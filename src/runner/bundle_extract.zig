@@ -209,12 +209,26 @@ pub fn extractSupportFiles(io: std.Io, alloc: std.mem.Allocator, tar_bytes: []co
         const rel = entry.name;
         if (std.mem.eql(u8, rel, SKILL_NAME) or std.mem.eql(u8, rel, TRIGGER_NAME)) continue;
         if (!safeRel(rel)) return error.UnsafePath;
-        total += @intCast(entry.size);
-        if (total > MAX_BUNDLE_TAR_BYTES) return error.TooLarge;
+        total = try accumulateBytes(total, entry.size);
         try writeEntry(io, alloc, &iter, entry, workspace_path, rel);
         written += 1;
     }
     return written;
+}
+
+/// Fold one entry's declared byte count into the running total, rejecting a
+/// corrupt / oversized size field BEFORE it can overflow `usize` or breach the
+/// cap (M100). The tar header's `size` is attacker-influenced (a corrupt
+/// cache entry), so: cast-guard a value that doesn't fit `usize`, reject a
+/// single entry already past the cap, and use a SATURATING add so a near-max
+/// header errors cleanly instead of panicking on overflow in a safe build.
+/// `pub` for the sibling `bundle_extract_test.zig`.
+pub fn accumulateBytes(total: usize, entry_size: u64) error{TooLarge}!usize {
+    const sz = std.math.cast(usize, entry_size) orelse return error.TooLarge;
+    if (sz > MAX_BUNDLE_TAR_BYTES) return error.TooLarge;
+    const next = total +| sz; // saturating: never overflow-panics
+    if (next > MAX_BUNDLE_TAR_BYTES) return error.TooLarge;
+    return next;
 }
 
 /// Materialize one tar entry at `{workspace_path}/{rel}`, creating parent folders.

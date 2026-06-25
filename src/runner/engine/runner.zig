@@ -37,14 +37,13 @@ const runner_progress = @import("runner_progress.zig");
 const runner_observer = @import("runner_observer.zig");
 const context_budget = @import("context_budget.zig");
 const client_errors = @import("client_errors.zig");
+const run_context = @import("run_context.zig");
 
 const log = logging.scoped(.runner);
 
 const ERR_EXEC_RUNNER_FLEET_INIT = client_errors.ERR_EXEC_RUNNER_FLEET_INIT;
 const ERR_EXEC_RUNNER_FLEET_RUN = client_errors.ERR_EXEC_RUNNER_FLEET_RUN;
 const ERR_EXEC_RUNNER_INVALID_CONFIG = client_errors.ERR_EXEC_RUNNER_INVALID_CONFIG;
-
-const S_SECRETS_LLM_API_KEY = "${secrets.llm.api_key}";
 
 pub const RunnerError = error{
     InvalidConfig,
@@ -86,7 +85,7 @@ pub fn execute(
 
     const start = clock.nowMillis();
 
-    const result = executeInner(env_map, alloc, workspace_path, fleet_config, tools_spec, msg, context, policy, progress_fd, hydrated_memory) catch |err| {
+    const result = executeInner(.{}, env_map, alloc, workspace_path, fleet_config, tools_spec, msg, context, policy, progress_fd, hydrated_memory) catch |err| {
         const elapsed = elapsedSeconds(start);
         const failure = mapError(err);
         log.err("runner_execute_failed", .{
@@ -112,7 +111,7 @@ pub fn execute(
     };
 }
 
-const InnerResult = struct {
+pub const InnerResult = struct {
     content: []const u8,
     token_count: u64,
     input_tokens: u64,
@@ -126,7 +125,10 @@ pub fn usageSplits(fleet: *const Fleet) struct { input: u64, output: u64 } {
     return .{ .input = fleet.promptTokensUsed(), .output = fleet.completionTokensUsed() };
 }
 
-fn executeInner(
+/// `pub` for `run_context_test.zig` — the DI seam (M100) makes this path
+/// drivable against an injected stub provider, offline.
+pub fn executeInner(
+    deps: run_context.RunDeps,
     env_map: *const std.process.Environ.Map,
     alloc: std.mem.Allocator,
     workspace_path: []const u8,
@@ -169,10 +171,12 @@ fn executeInner(
         }
     }
 
-    // 2. Build provider (real LLM bundle, or a stub in test builds).
+    // 2. Build provider through the injectable seam (M100): production wires the
+    // real LLM bundle; a test injects a stub to drive this path offline. The
+    // bundle is owned here regardless — a stub leaves it empty so deinit no-ops.
     var provider_bundle: runner_helpers.ProviderBundle = .{};
     defer provider_bundle.deinit();
-    const provider_i = provider_bundle.acquire(alloc, &cfg) catch return RunnerError.FleetInitFailed;
+    const provider_i = deps.acquireProvider(alloc, &cfg, &provider_bundle) catch return RunnerError.FleetInitFailed;
 
     // 3. Build tools from spec (or allTools as fallback).
     const tools = buildToolsFromSpec(alloc, workspace_path, tools_spec, &cfg, policy) catch {
@@ -202,12 +206,22 @@ fn executeInner(
     // env-selected log/noop observer. `writer`/`adapter` are stack-owned here
     // because the Adapter's observer vtable captures `&adapter` for the run.
     var obs_runtime = runner_observer.init(env_map);
-    var secrets_list = collectSecrets(fleet_config);
+    // Redaction set = api_key ∪ every secrets_map leaf (the same set the tool
+    // substitutor resolves into outbound HTTP), so no resolved secret can ride a
+    // frame/reply un-redacted. Fail closed on OOM — never run with an incomplete
+    // redaction set. (M100 §1.)
+    const secrets_map: ?std.json.Value = if (policy) |p| p.secrets_map else null;
+    const secrets_list = collectSecrets(alloc, fleet_config, secrets_map) catch {
+        log.err("secret_collection_failed", .{ .error_code = ERR_EXEC_RUNNER_FLEET_INIT });
+        return RunnerError.FleetInitFailed;
+    };
+    defer freeSecrets(alloc, secrets_list);
     // SAFETY: set by selectObserver when progress_fd is present; else unread.
     var writer: runner_progress.ProgressWriter = undefined;
     // SAFETY: set by selectObserver when progress_fd is present; else unread.
     var adapter: runner_progress.Adapter = undefined;
-    const obs = selectObserver(progress_fd, obs_runtime.observer(), &writer, &adapter, alloc, &secrets_list);
+    const obs = selectObserver(progress_fd, obs_runtime.observer(), &writer, &adapter, alloc, secrets_list);
+    defer if (progress_fd != null) adapter.deinit(alloc); // progress-fd path only inits adapter
     // With a live observer, drive mid-run capture off the checkpoint cadence the
     // lease carries (`adapter` is only initialized on the progress-fd path).
     if (progress_fd != null) {
@@ -240,7 +254,7 @@ fn executeInner(
         log.err("fleet_run_failed", .{ .error_code = ERR_EXEC_RUNNER_FLEET_RUN });
         return RunnerError.FleetRunFailed;
     };
-    const owned = runner_helpers.redactedFinalReply(alloc, response, &secrets_list) catch return RunnerError.FleetRunFailed;
+    const owned = runner_helpers.redactedFinalReply(alloc, response, secrets_list) catch return RunnerError.FleetRunFailed;
 
     // Run-end capture: flush the final memory state so a run that wrote memory
     // without crossing a mid-run checkpoint is still persisted by the parent.
@@ -295,26 +309,11 @@ const injectProviderBaseUrl = runner_helpers.injectProviderBaseUrl;
 const buildToolsFromSpec = runner_helpers.buildToolsFromSpec;
 pub const composeMessage = runner_helpers.composeMessage;
 
-/// Collect the known secret values + canonical placeholders from
-/// fleet_config so the progress adapter can redact them out of tool
-/// arguments before they cross the RPC boundary. The returned array is
-/// stack-storage; the adapter borrows it for the duration of the run.
-/// Secrets with empty values are still returned but the redactor
-/// short-circuits on `value.len == 0`.
-///
-/// Adding a new credential slot here (e.g. an installation token) is
-/// a two-step change: add the wire constant in `wire.zig`, extract it
-/// here, and extend the array length. `collectSecrets` is `pub` so the
-/// extraction shape is unit-testable from `runner_test.zig` —
-/// reviewers should add a row to those tests for every new slot.
-pub fn collectSecrets(fleet_config: ?std.json.Value) [1]runner_progress.Secret {
-    const ac = fleet_config orelse return .{
-        .{ .value = "", .placeholder = S_SECRETS_LLM_API_KEY },
-    };
-    return .{
-        .{ .value = json.getStr(ac, wire.api_key) orelse "", .placeholder = S_SECRETS_LLM_API_KEY },
-    };
-}
+/// Build the wire-redaction secret set (api_key ∪ every `secrets_map` leaf) and
+/// free it. Defined in runner_helpers (RULE FLL) and re-exported so call sites
+/// and tests keep using `runner.collectSecrets` / `runner.freeSecrets`. (M100 §1.)
+pub const collectSecrets = runner_helpers.collectSecrets;
+pub const freeSecrets = runner_helpers.freeSecrets;
 
 /// Map a runner error to a FailureClass.
 pub fn mapError(err: anyerror) types.FailureClass {
