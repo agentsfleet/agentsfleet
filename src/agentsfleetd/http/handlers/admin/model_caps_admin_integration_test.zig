@@ -27,6 +27,8 @@ const WORKSPACE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11";
 // Pre-seeded catalogue rows (known uids so PATCH/DELETE can address them).
 const UID_GLM = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a9001";
 const UID_OPUS = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a9002";
+// id for the direct-insert FK probe (uuidv7 — ck_platform_llm_keys_uid_uuidv7).
+const FK_GHOST_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a9201";
 
 const TEST_JWKS =
     \\{"keys":[{"kty":"RSA","n":"7ZUw6J4OYDXLJPGWADVw2-IgBawVd55H1Xh4R_FFFFYVNdG2O7EcTvBlFZhRzxDW9uL-SvxCt6slRDXDlZo9fmSI9yki7z8RAJZokcekxdP8za5w7g4QAoFeSieDhWWChkzHJ-vDGkrr0SAn8n4lIwpya-vCbO1eXmmz4Ay0pjenWyyGB1j371Zk2JGkAEJB347oJcVDMqVDt3d-TR0fyyspVw0nNxdDkZgNuB0EXOuEV4WvWgj0dtzwURhTI82AfpgheV23Kz7np9EoPxAhkfuslAjpRfqlRCXOOfmik-T6nvCe-fFPmHRwIY_zc1VrtwjKF0TjeALm4CCj_0pjRQ","e":"AQAB","kid":"test-kid-static","use":"sig","alg":"RS256"}]}
@@ -218,6 +220,62 @@ test "admin models: deleting the active default's model is blocked 409" {
     defer del.deinit();
     try del.expectStatus(.conflict);
     try del.expectErrorCode(error_registry.ERR_MODEL_CAP_IN_USE);
+}
+
+test "platform default FK: a platform_llm_keys row cannot reference an uncatalogued model" {
+    const h = try startHarness(ALLOC);
+    defer h.deinit();
+    defer cleanup(h);
+    try seedTenantWorkspace(h);
+
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    const now = clock.nowMillis();
+    // Direct insert, bypassing the handler's capFor pre-check: (ghostprov,
+    // ghost-model) is not a core.model_caps row, so fk_platform_llm_keys_model
+    // must reject it. This is the DB-level guarantee that makes the model-delete
+    // vs default-set race unwinnable — the app guard alone is not race-tight.
+    if (conn.exec(
+        \\INSERT INTO core.platform_llm_keys
+        \\  (id, provider, source_workspace_id, model, context_cap_tokens, active, created_at, updated_at)
+        \\VALUES ($1::uuid, 'ghostprov', $2::uuid, 'ghost-model', 128000, true, $3, $3)
+    , .{ FK_GHOST_ID, WORKSPACE_ID, now })) |_| {
+        return error.FkShouldHaveRejectedUncataloguedModel;
+    } else |_| {
+        // Must be a Postgres foreign_key_violation (SQLSTATE 23503), not an
+        // incidental failure — a malformed uid or the workspace FK would also
+        // throw and falsely "prove" enforcement. The driver carries the sqlstate
+        // on conn.err.?.code (see signup_bootstrap.zig / fleet_memory_role_test).
+        const pg_err = conn.err orelse return error.ExpectedPgError;
+        try std.testing.expectEqualStrings("23503", pg_err.code);
+    }
+}
+
+test "platform default: standing a provider down NULLs its model, freeing its catalogue row to delete" {
+    const h = try startHarness(ALLOC);
+    defer h.deinit();
+    defer cleanup(h);
+    try seedTenantWorkspace(h);
+    try seedModel(h, UID_GLM, "fireworks", "glm-5.2");
+    try seedModel(h, UID_OPUS, "anthropic", "claude-opus-4-8");
+
+    // fireworks becomes the default — its row references glm-5.2.
+    const a = try (try (try h.put("/v1/admin/platform-keys").bearer(PLATFORM_ADMIN_TOKEN))
+        .json("{\"provider\":\"fireworks\",\"source_workspace_id\":\"" ++ WORKSPACE_ID ++ "\",\"model\":\"glm-5.2\"}")).send();
+    defer a.deinit();
+    try a.expectStatus(.ok);
+
+    // anthropic takes over, standing fireworks down. The stand-down NULLs
+    // fireworks' model, releasing fk_platform_llm_keys_model — so glm-5.2 is now
+    // deletable. WITHOUT the NULL, this DELETE would hit the FK and 500.
+    const b = try (try (try h.put("/v1/admin/platform-keys").bearer(PLATFORM_ADMIN_TOKEN))
+        .json("{\"provider\":\"anthropic\",\"source_workspace_id\":\"" ++ WORKSPACE_ID ++ "\",\"model\":\"claude-opus-4-8\"}")).send();
+    defer b.deinit();
+    try b.expectStatus(.ok);
+
+    const del = try (try h.delete("/v1/admin/models/" ++ UID_GLM).bearer(PLATFORM_ADMIN_TOKEN)).send();
+    defer del.deinit();
+    try del.expectStatus(.no_content);
 }
 
 // Catalogue uid for the cache-repopulation probe — a private (provider, model)

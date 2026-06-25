@@ -31,6 +31,10 @@ pub const Context = common.Context;
 // Defined at module level so std.ArrayList(PlatformKeyRow) compiles in all build modes.
 const S_PROVIDER_MUST_BE_1_32_CHARS = "provider must be 1–32 chars";
 const S_ROLLBACK_FAILED = "platform_default_rollback_failed";
+// Postgres SQLSTATE for foreign_key_violation. fk_platform_llm_keys_model trips
+// it when a concurrent model-delete wins the race against this activation — the
+// signal that lets us return a catalogue-miss 4xx instead of an opaque 500.
+const PG_SQLSTATE_FK_VIOLATION = "23503";
 
 const PlatformKeyRow = struct {
     provider: []const u8,
@@ -154,8 +158,21 @@ fn activateDefault(
         common.internalOperationError(hx.res, "Failed to begin transaction", hx.req_id);
         return false;
     };
-    activateDefaultTx(conn, key_id, input, base_url, cap, now_ms) catch {
+    activateDefaultTx(conn, key_id, input, base_url, cap, now_ms) catch |tx_err| {
+        // Inspect the sqlstate BEFORE rollback (rollback issues a new command that
+        // clears conn.err). A foreign_key_violation here means the catalogued
+        // model was deleted between capFor and commit — the model-delete won the
+        // race fk_platform_llm_keys_model guards. Surface that as the same
+        // catalogue-miss the pre-flight returns, plus a distinct log line, rather
+        // than an opaque 500 the admin can't diagnose.
+        const model_deleted_race = if (conn.err) |pg_err| std.mem.eql(u8, pg_err.code, PG_SQLSTATE_FK_VIOLATION) else false;
         conn.rollback() catch |rb_err| log.warn(S_ROLLBACK_FAILED, .{ .err = @errorName(rb_err) });
+        if (model_deleted_race) {
+            log.warn("platform_default_model_deleted_race", .{ .provider = input.provider, .model = input.model });
+            hx.fail(error_codes.ERR_PROVIDER_MODEL_NOT_IN_CATALOGUE, "the chosen model was removed from the catalogue before activation; re-add it or pick another model");
+            return false;
+        }
+        log.warn("platform_default_set_failed", .{ .err = @errorName(tx_err) });
         common.internalOperationError(hx.res, "Failed to set platform default", hx.req_id);
         return false;
     };
@@ -187,9 +204,11 @@ fn activateDefaultTx(
         \\    active = true,
         \\    updated_at = EXCLUDED.updated_at
     , .{ key_id, input.provider, input.source_workspace_id, input.model, base_url, cap, now_ms });
-    // Exactly one active row: stand every other provider down.
+    // Exactly one active row: stand every other provider down. NULL their model
+    // so an inactive row never pins fk_platform_llm_keys_model — otherwise a
+    // deactivated provider's stale model would block deleting that catalogue row.
     _ = try conn.exec(
-        "UPDATE core.platform_llm_keys SET active = false, updated_at = $1 WHERE active = true AND provider <> $2",
+        "UPDATE core.platform_llm_keys SET active = false, model = NULL, updated_at = $1 WHERE active = true AND provider <> $2",
         .{ now_ms, input.provider },
     );
 }
@@ -211,8 +230,10 @@ pub fn innerDeleteAdminPlatformKey(hx: hx_mod.Hx, req: *httpz.Request, provider:
     };
     defer hx.ctx.pool.release(conn);
 
+    // NULL model alongside active=false so the deactivated row stops pinning
+    // fk_platform_llm_keys_model (lets the admin delete that catalogue model).
     _ = conn.exec(
-        "UPDATE core.platform_llm_keys SET active = false, updated_at = $1 WHERE provider = $2",
+        "UPDATE core.platform_llm_keys SET active = false, model = NULL, updated_at = $1 WHERE provider = $2",
         .{ clock.nowMillis(), provider },
     ) catch {
         common.internalOperationError(hx.res, "Failed to deactivate platform key", hx.req_id);

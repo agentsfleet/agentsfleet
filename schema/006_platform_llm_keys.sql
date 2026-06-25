@@ -12,9 +12,11 @@
 -- (PUT /v1/admin/platform-keys) propagates to every platform-mode tenant on
 -- their next lease, no redeploy. All three are NULLABLE (a row may predate a
 -- proper default-set); presence is enforced in the app write path (the admin PUT
--- validates `model` is a priced core.model_caps row before activating). No
--- DEFAULT literal / no CHECK list (RULE STS): the allowed shapes are app-enforced
--- named constants, not frozen SQL.
+-- validates `model` is a priced core.model_caps row before activating) AND, since
+-- M100, by the fk_platform_llm_keys_model FK below — the DB makes the model-delete
+-- vs default-set race unwinnable so the active default can never reference a
+-- deleted catalogue row. No DEFAULT literal / no CHECK list (RULE STS): the
+-- allowed shapes are app-enforced named constants, not frozen SQL.
 --   model              the priced (provider, model_id) the default resolves to
 --   base_url           custom OpenAI-compatible endpoint when the default is not
 --                      a named provider; NULL for named providers (built-in
@@ -33,7 +35,16 @@ CREATE TABLE IF NOT EXISTS core.platform_llm_keys (
     context_cap_tokens  INTEGER,
     created_at          BIGINT NOT NULL,
     updated_at          BIGINT NOT NULL,
-    CONSTRAINT uq_platform_llm_keys_provider UNIQUE (provider)
+    CONSTRAINT uq_platform_llm_keys_provider UNIQUE (provider),
+    -- Billing-spine integrity: a set (provider, model) MUST be a priced catalogue
+    -- row. ON DELETE RESTRICT makes the model-delete vs default-set race
+    -- unwinnable — whichever txn loses fails cleanly, so the active default can
+    -- never point at a deleted model (which would panic lease-issue billing and
+    -- silently run-fee-only on renewal). MATCH SIMPLE: a NULL model is exempt, so
+    -- deactivation NULLs model to release this reference.
+    CONSTRAINT fk_platform_llm_keys_model
+        FOREIGN KEY (provider, model) REFERENCES core.model_caps (provider, model_id)
+        ON DELETE RESTRICT
 );
 
 -- api_runtime reads/writes via admin API (PUT/DELETE/GET /v1/admin/platform-keys)
