@@ -61,20 +61,34 @@ pub fn push(
 /// capped at (longest secret − 1): a full-length match would already have been
 /// replaced by `redactBytes`, so only a strictly-partial head can remain. 0
 /// when no suffix is a viable secret head.
+///
+/// Per secret, we jump straight to the candidate start positions (where the
+/// secret's first byte occurs in `buf`'s tail window) via a SIMD scalar search
+/// rather than re-testing every length — so the common no-overlap chunk costs
+/// one vectorized scan per secret, not an O(k²) sweep. The running `best` prunes
+/// further work: a candidate shorter than the best found so far can't win, and
+/// because earlier positions yield longer overlaps, the first such position ends
+/// the secret's scan. Bounds the per-chunk cost even when `secrets_map` carries
+/// many leaf credentials.
 fn pendingPrefixLen(buf: []const u8, secrets: []const Secret) usize {
-    var max_len: usize = 0;
+    var best: usize = 0;
     for (secrets) |s| {
-        if (s.value.len > max_len) max_len = s.value.len;
-    }
-    if (max_len == 0) return 0;
-    var k = @min(max_len - 1, buf.len);
-    while (k > 0) : (k -= 1) {
-        for (secrets) |s| {
-            if (k >= s.value.len) continue; // k must be a strictly-partial head
-            if (std.mem.eql(u8, buf[buf.len - k ..], s.value[0..k])) return k;
+        const v = s.value;
+        if (v.len <= 1) continue; // a 1-byte secret is whole-or-absent, never a partial head
+        const window_start = buf.len - @min(v.len - 1, buf.len);
+        var i = window_start;
+        while (std.mem.indexOfScalarPos(u8, buf, i, v[0])) |p| {
+            const k = buf.len - p; // candidate overlap if buf[p..] is a prefix of v
+            if (k <= best) break; // later positions only yield smaller k — done with this secret
+            if (std.mem.eql(u8, buf[p..], v[0..k])) {
+                best = k;
+                break; // earliest position = longest overlap for this secret
+            }
+            i = p + 1;
+            if (i >= buf.len) break;
         }
     }
-    return 0;
+    return best;
 }
 
 // ── Tests ───────────────────────────────────────────────────────────────────
@@ -129,6 +143,41 @@ test "no secrets is a passthrough that never grows the carry" {
     defer alloc.free(emit);
     try testing.expectEqualStrings("anything at all", emit);
     try testing.expectEqual(@as(usize, 0), carry.items.len);
+}
+
+test "pendingPrefixLen matches a brute-force reference (optimization is behaviour-preserving)" {
+    // Naive O(k^2) reference: longest k < len(some secret) with buf suffix == secret prefix.
+    const ref = struct {
+        fn len(buf: []const u8, secrets: []const Secret) usize {
+            var max_len: usize = 0;
+            for (secrets) |s| {
+                if (s.value.len > max_len) max_len = s.value.len;
+            }
+            if (max_len == 0) return 0;
+            var k = @min(max_len - 1, buf.len);
+            while (k > 0) : (k -= 1) {
+                for (secrets) |s| {
+                    if (k >= s.value.len) continue;
+                    if (std.mem.eql(u8, buf[buf.len - k ..], s.value[0..k])) return k;
+                }
+            }
+            return 0;
+        }
+    }.len;
+
+    const secrets = [_]Secret{
+        .{ .value = "sk-abc123", .placeholder = "[A]" },
+        .{ .value = "tok-XY", .placeholder = "[B]" },
+        .{ .value = "s", .placeholder = "[C]" }, // 1-byte: never a partial head
+    };
+    const bufs = [_][]const u8{
+        "",                  "x",                "sk",            "plain sk-abc",
+        "ends with tok-X",   "sk-abc123 done",   "noise tok-",    "aaaask-ab",
+        "sk-abc12",          "trailing s",       "tok-XYno",      "sk-",
+    };
+    for (bufs) |b| {
+        try testing.expectEqual(ref(b, &secrets), pendingPrefixLen(b, &secrets));
+    }
 }
 
 test "OOM leaves the carry untouched (fail-closed, no half-applied delta)" {
