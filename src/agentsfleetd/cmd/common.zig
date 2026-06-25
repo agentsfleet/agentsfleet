@@ -24,6 +24,8 @@ pub fn canonicalMigrations() [24]db.Migration {
     return .{
         .{ .version = 1, .sql = schema.core_foundation_sql },
         .{ .version = 2, .sql = schema.vault_sql },
+        // model_caps before platform_llm_keys: the latter's inline FK references it.
+        .{ .version = 5, .sql = schema.model_caps_sql },
         .{ .version = 6, .sql = schema.platform_llm_keys_sql },
         .{ .version = 7, .sql = schema.core_fleets_sql },
         .{ .version = 8, .sql = schema.core_fleet_sessions_sql },
@@ -36,7 +38,6 @@ pub fn canonicalMigrations() [24]db.Migration {
         .{ .version = 16, .sql = schema.core_users_sql },
         .{ .version = 17, .sql = schema.tenant_billing_sql },
         .{ .version = 18, .sql = schema.fleet_events_sql },
-        .{ .version = 19, .sql = schema.model_caps_sql },
         .{ .version = 20, .sql = schema.tenant_providers_sql },
         .{ .version = 21, .sql = schema.fleet_runners_sql },
         .{ .version = 22, .sql = schema.fleet_runner_leases_sql },

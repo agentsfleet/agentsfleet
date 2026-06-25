@@ -39,6 +39,8 @@ fn setEncryptionKey() void {
 fn cleanupTeardown(conn: *pg.Conn, ws_id: []const u8) void {
     _ = conn.exec("DELETE FROM core.tenant_providers WHERE tenant_id = $1::uuid", .{uc1.TENANT_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
     _ = conn.exec("DELETE FROM core.platform_llm_keys WHERE source_workspace_id = $1::uuid", .{ws_id}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
+    // After platform_llm_keys (the FK referrer) is gone, the catalogue row is free to drop.
+    _ = conn.exec("DELETE FROM core.model_caps WHERE provider = $1", .{TP_TEST_PROVIDER}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
     _ = conn.exec("DELETE FROM vault.secrets WHERE workspace_id = $1", .{ws_id}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
     uc1.teardown(conn, ws_id);
 }
@@ -57,6 +59,17 @@ fn seedPlatformLlmKey(conn: *pg.Conn, alloc: std.mem.Allocator, ws_id: []const u
     const key_id = try id_format.generateFleetId(alloc);
     defer alloc.free(key_id);
     const now_ms: i64 = clock.nowMillis();
+    // Catalogue row the default points at — fk_platform_llm_keys_model requires it.
+    const caps_uid = try id_format.generateFleetId(alloc);
+    defer alloc.free(caps_uid);
+    _ = try conn.exec(
+        \\INSERT INTO core.model_caps
+        \\  (uid, model_id, provider, context_cap_tokens,
+        \\   input_nanos_per_mtok, cached_input_nanos_per_mtok, output_nanos_per_mtok,
+        \\   created_at_ms, updated_at_ms)
+        \\VALUES ($1::uuid, $2, $3, $4, 0, 0, 0, $5, $5)
+        \\ON CONFLICT (provider, model_id) DO NOTHING
+    , .{ caps_uid, TP_DEFAULT_MODEL, provider, @as(i32, @intCast(TP_DEFAULT_CAP)), now_ms });
     _ = try conn.exec(
         \\INSERT INTO core.platform_llm_keys (id, provider, source_workspace_id, model, context_cap_tokens, active, created_at, updated_at)
         \\VALUES ($1::uuid, $2, $3::uuid, $5, $6, true, $4, $4)
