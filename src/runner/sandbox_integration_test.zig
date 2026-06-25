@@ -33,6 +33,7 @@ const WAIT_BUDGET_MS = 5_000;
 test {
     _ = @import("worker_pool_integration_test.zig");
     _ = @import("network/egress_integration_test.zig");
+    _ = @import("sec_enforcement_integration_test.zig");
 }
 
 /// Read up to `cap` bytes from `fd` until EOF (the child's output is small).

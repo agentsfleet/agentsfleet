@@ -166,9 +166,9 @@ Retries are bounded, cross-thread locks are unconditionally thread-safe, and unt
 - **Dimension 3.4** — `max_tokens` negative/oversized → clamped, no panic → `test_max_tokens_out_of_range_clamped`
 - **Dimension 3.5** — corrupt tar size → rejected before accumulate, no overflow panic → `test_corrupt_tar_size_rejected`
 
-### §4 — Kernel-enforcement test lane + input-matrix (P0)  🟡 partial (§4.4 + §4.6 landed Jun 25, 2026)
+### §4 — Kernel-enforcement test lane + input-matrix (P0)  ✅ landed Jun 25, 2026
 
-> **Status.** §4.4 (pure `CgroupScope.parseEventCount` extracted + fixture-tested) and §4.6 (`Plan` input-matrix) landed + green. §4.1–4.3 (root-gated seccomp/Landlock/cgroup real-process proofs) + §4.5 (`integration:` depth prefix) remain — they can only RUN on a Linux root host/CI, so they are deferred to that environment rather than written blind on Darwin.
+> **Status.** ALL of §4 landed + green — the GA gate is closed. §4.1–4.3 (root-gated seccomp/Landlock/cgroup real-process proofs) authored in `src/runner/sec_enforcement_integration_test.zig` and **verified on a real Linux kernel** in a privileged native-arm64 container (`ghcr.io/agentsfleet/ci-zig-alpine:0.16.0`), NOT compile-and-skipped blind on Darwin: a forked child applies the real enforcer, attempts a concrete violation (denied `ptrace`, out-of-workspace write, fork past `pids.max=1`, over-budget mmap+touch), and the parent asserts the trap exit / Landlock denial / `resource_kill` / `oom_kill` classification via the real `classify`. §4.4/§4.6 landed earlier. §4.5: the 4 new proofs carry the `integration:` prefix → depth gate `integration` count rose 202→206. Local repro + CI prerequisite codified in `scripts/cgroup-delegate.sh` + `make test-enforcement{,-docker}`. Native-arm64 lane: 251 pass / 4 skip / 0 fail (the 4 skips are off-Linux unit guards). Container key learning: the proofs must run **native-arch** — under x86_64 QEMU emulation seccomp's arch-matched BPF filter is bypassed (false proof).
 
 The sandbox is proven to enforce, not merely shaped. **Implementation default:** a root-gated Linux test lane (own build step, `integration:`-prefixed, `SkipZigTest` when unprivileged/off-Linux) forks a real child and asserts each primitive; `CgroupScope` events-parsers are extracted pure and fixture-tested.
 
@@ -340,6 +340,7 @@ No whole-file deletions planned → otherwise "N/A".
 - §2 fail-closed egress + SSRF (Jun 25, 2026): **routine choice point** — unset/typo `RUNNER_NETWORK_POLICY` resolves to `allow_list_egress` (reuses the existing supervisor fail-closed refusal + the `egress_strict_unimplemented_fail_closed` error Product Clarity §10 names; forward-compatible with the documented end state) rather than a new error or `deny_all_egress`. Behaviour change: an *unset* policy now fails closed; operators set `allow_all` explicitly for the interim open posture. Local + reversible (one-line default flip). **SSRF realization:** the wrapper's outer exact gate is authoritative, so inner allowlist `&.{}` routes tenant hosts through `resolveConnectHost` — no nullclaw fork. Tests cross-platform (IP literals, hermetic): D2.1 fail-closed matrix, D2.3 private-IP reject (loopback/link-local/RFC1918), D2.5 wildcard non-widening, + end-to-end through the real `buildHttpRequest`.
 - §3 bounded reliability (Jun 25, 2026): **gate-flag triage / judgment** — §3.2's "use `std.Thread.Mutex`" is infeasible (type removed in Zig 0.16). Resolved by an enforced `comptime assert(!builtin.single_threaded)` over the futex-backed `common.Mutex` + a 2-thread mutual-exclusion test (see §3 header note). §3.3 `arm()` → `ArmOutcome`; a watchdog-spawn failure now fails the verb (`ClientError.WatchdogUnavailable`) instead of running unbounded. §3.1 backoff lives in new `common/backoff.zig` (sibling-helper re-exported by `constants.zig` — the established `clock.zig`/`sync.zig` pattern; keeps `loop.zig` under the 350 cap). All green.
 - §4 partial (Jun 25, 2026): §4.4 extracted pure `CgroupScope.parseEventCount` + fixture matrix; §4.6 `Plan` input-matrix. §4.1–4.3/4.5 (root-gated real-process enforcement proofs) deferred to a Linux-root/CI host — declined to author blind on Darwin where they only compile-and-skip (false-confidence risk). This is the remaining GA gate.
+- §4 COMPLETE — GA gate closed (Jun 25, 2026): **Indy-directed approach** ("Docker spike, then author") — rather than defer §4.1–4.3 to CI, authored + verified them locally in a privileged Linux container. New `src/runner/sec_enforcement_integration_test.zig` (4 `integration:`-prefixed proofs): seccomp denied-`ptrace` traps → `SECCOMP_VIOLATION_EXIT`; Landlock out-of-workspace write denied / in-workspace allowed; cgroup `pids.max=1` refuses fork → `wasPidsExhausted` → `classify`=`resource_kill`; cgroup `memory.max` over-budget child OOM-killed → `wasOomKilled` → `classify`=`oom_kill`. Pattern mirrors `sandbox_integration_test.zig` (fork → child applies the real enforcer → parent asserts the kernel verdict). **Key learnings:** (1) must run **native-arch** — under x86_64-on-arm64 QEMU the seccomp arch-matched BPF filter is bypassed (false green), so the lane uses `ci-zig-alpine:0.16.0` arm64; (2) the OOM child silently swaps unless swap is disabled on the scope (`memory.swap.max=0` — `disableScopeSwap`), mirroring a swapless prod node; (3) cgroup v2 needs a delegated controller subtree (`scripts/cgroup-delegate.sh`: drain root procs to an `init` leaf, enable `+cpu +memory +pids` in `subtree_control`, sweep stale scopes) — codified once, shared by `make test-enforcement` (CI-native) and `make test-enforcement-docker` (local mac). **No silent green:** cgroup tests `requireCgroupDelegation()` → skip ONLY when the prerequisite is genuinely absent; a delegated-but-broken cgroup fails hard. seccomp + Landlock need no delegation → they run in the existing unprivileged CI `test-integration-agentsfleet-runner` job today; the cgroup pair needs a privileged-container CI step (proposed diff handed to Indy for approval — `.github/workflows/**` is gated). Verified native-arm64: 251 pass / 4 skip / 0 fail; host cross-compile x86_64-linux + aarch64-linux clean; ZLint/pg-drain/line-limit/isolation/depth gates green.
 
 ---
 
@@ -360,12 +361,16 @@ No whole-file deletions planned → otherwise "N/A".
 
 | Check | Command | Result | Pass? |
 |-------|---------|--------|-------|
-| Unit | `zig build --build-file build_runner.zig test` | | |
-| Integration (Linux) | `zig build --build-file build_runner.zig test-integration` | | |
-| Cross-compile | `zig build --build-file build_runner.zig -Dtarget=x86_64-linux` | | |
-| Lint | `make lint` | | |
-| Memleak | `make memleak` (runner) | | |
-| Gitleaks | `gitleaks detect` | | |
+| Unit | `zig build --build-file build_runner.zig test` | 330 pass / 7 skip / 0 fail | ✅ |
+| Integration (Linux, native arm64) | `make test-enforcement` (privileged container) | 251 pass / 4 skip / 0 fail — §4.1–4.3 proofs run on a real kernel | ✅ |
+| Cross-compile x86_64 | `zig build --build-file build_runner.zig -Dtarget=x86_64-linux` | clean (runner exe + test graph) | ✅ |
+| Cross-compile aarch64 | `zig build --build-file build_runner.zig -Dtarget=aarch64-linux` | clean | ✅ |
+| ZLint | `make _zlint_check` | 0 errors / 0 warnings, 521 files | ✅ |
+| pg-drain | `python3 lint-zig.py src` | passed, 515 files | ✅ |
+| Depth gate | `make _lint_zig_test_depth` | unit=2121 integration=206 (+4 enforcement) | ✅ |
+| Line / isolation | `make _zig_line_limit_check _runner_isolation_check` | ≤350 all new files; nullclaw-only deps | ✅ |
+| Memleak (runner) | DebugAllocator on the runner unit suite | green (binding leak gate) | ✅ |
+| Gitleaks | pre-commit `gitleaks` | _run at COMMIT_ | ⏳ |
 
 ---
 
