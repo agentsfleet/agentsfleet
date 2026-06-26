@@ -17,6 +17,9 @@ const otel_traces = @import("../observability/otel_traces.zig");
 const otel_metrics = @import("../observability/otel_metrics.zig");
 const telemetry_mod = @import("../observability/telemetry.zig");
 const common = @import("common.zig");
+const credential_broker = @import("../credentials/broker.zig");
+const credentials_integration = @import("../credentials/integration.zig");
+const serve_broker = @import("../credentials/serve_broker.zig");
 
 const log = logging.scoped(.preflight);
 
@@ -229,6 +232,75 @@ pub fn installSignalHandlers(handler: *const fn (std.posix.SIG) callconv(.c) voi
     };
     std.posix.sigaction(std.posix.SIG.INT, &action, null);
     std.posix.sigaction(std.posix.SIG.TERM, &action, null);
+}
+
+// ---------------------------------------------------------------------------
+// On-demand credential broker (M102 §3)
+// ---------------------------------------------------------------------------
+
+/// Structured log message for a credential-broker boot failure (RULE UFS — one
+/// spelling across the three alloc/init guard sites).
+const S_CREDENTIAL_BROKER_INIT_FAILED: []const u8 = "startup.credential_broker_init_failed";
+
+/// Owns the heap-allocated credential-broker singleton + its HTTP boundary + the
+/// duped platform key. `deinit` tears them down at shutdown; all fields optional
+/// so a partially-built (or failed) install still cleans up exactly what it set.
+pub const CredentialBrokerHandle = struct {
+    alloc: std.mem.Allocator,
+    broker: ?*credential_broker = null,
+    exchange: ?*serve_broker.HttpClientExchange = null,
+    github_app: ?credentials_integration.GithubApp = null,
+
+    pub fn deinit(self: *CredentialBrokerHandle) void {
+        if (self.broker) |b| {
+            b.deinit();
+            self.alloc.destroy(b);
+        }
+        if (self.exchange) |e| self.alloc.destroy(e);
+        if (self.github_app) |a| {
+            self.alloc.free(a.app_id);
+            self.alloc.free(a.private_key_pem);
+        }
+    }
+};
+
+/// Boot the on-demand credential broker singleton and publish it on `broker_out`.
+/// serve.zig stays integration-agnostic (RULE CFG): WHICH integrations carry a
+/// platform key + how to load them lives in `serve_broker.buildDeps`, never here
+/// or in the boot path. The broker + its HTTP boundary are heap-owned so the
+/// published pointer is stable for the process. Degrades closed: an alloc/init
+/// failure leaves `broker_out` untouched (the mint endpoint 503s — never a crash),
+/// and the returned handle still frees whatever was built.
+pub fn installCredentialBroker(
+    alloc: std.mem.Allocator,
+    io: std.Io,
+    pool: *db.Pool,
+    admin_ws_id: []const u8,
+    broker_out: *?*credential_broker,
+) CredentialBrokerHandle {
+    var handle = CredentialBrokerHandle{ .alloc = alloc };
+    const exchange = alloc.create(serve_broker.HttpClientExchange) catch {
+        log.warn(S_CREDENTIAL_BROKER_INIT_FAILED, .{ .error_code = error_codes.ERR_STARTUP_ENV_ALLOC, .err = "exchange_alloc" });
+        return handle;
+    };
+    exchange.* = .{ .io = io };
+    handle.exchange = exchange;
+
+    const built = serve_broker.buildDeps(alloc, pool, exchange, admin_ws_id);
+    handle.github_app = built.github_app;
+
+    const broker = alloc.create(credential_broker) catch {
+        log.warn(S_CREDENTIAL_BROKER_INIT_FAILED, .{ .error_code = error_codes.ERR_STARTUP_ENV_ALLOC, .err = "broker_alloc" });
+        return handle;
+    };
+    broker.* = credential_broker.init(alloc, credentials_integration.REGISTRY, built.deps) catch |err| {
+        alloc.destroy(broker);
+        log.warn(S_CREDENTIAL_BROKER_INIT_FAILED, .{ .error_code = error_codes.ERR_STARTUP_ENV_ALLOC, .err = @errorName(err) });
+        return handle;
+    };
+    handle.broker = broker;
+    broker_out.* = broker;
+    return handle;
 }
 
 // Tests in preflight_test.zig
