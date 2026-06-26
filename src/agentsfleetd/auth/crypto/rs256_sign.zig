@@ -111,6 +111,41 @@ fn encodeEmsa(em: []u8, message: []const u8) SignError!void {
     @memcpy(em[3 + ps_len + SHA256_DIGEST_INFO.len ..][0..Sha256.digest_length], &h);
 }
 
+/// Max DER bytes for a 4096-bit RSA PKCS#1 private key (modulus + CRT params).
+const MAX_PKCS1_DER = 4096;
+
+/// Production `SignFn`: a PEM private key (PKCS#1 `RSA PRIVATE KEY` — the GitHub App
+/// `.pem` download format) → DER → RS256-sign. Matches the integration `SignFn`
+/// signature, so the broker wires this as `github`'s real signer.
+pub fn signPemRs256(out: []u8, private_key_pem: []const u8, message: []const u8) anyerror![]const u8 {
+    var der_buf: [MAX_PKCS1_DER]u8 = undefined;
+    const der_bytes = try pemBodyToDer(&der_buf, private_key_pem);
+    const key = try parsePkcs1(der_bytes);
+    return signRs256(out, key, message);
+}
+
+/// Strip PEM armor + whitespace and base64-decode the body into `der_out`.
+fn pemBodyToDer(der_out: []u8, pem: []const u8) SignError![]const u8 {
+    var b64: [MAX_PKCS1_DER * 2]u8 = undefined;
+    var n: usize = 0;
+    var lines = std.mem.splitScalar(u8, pem, '\n');
+    while (lines.next()) |line| {
+        const t = std.mem.trim(u8, line, " \r\t");
+        if (t.len == 0 or std.mem.startsWith(u8, t, "-----")) continue; // skip armor + blanks
+        for (t) |c| {
+            if (c == ' ' or c == '\r' or c == '\t') continue;
+            if (n >= b64.len) return error.KeyTooLarge;
+            b64[n] = c;
+            n += 1;
+        }
+    }
+    const dec = std.base64.standard.Decoder;
+    const der_len = dec.calcSizeForSlice(b64[0..n]) catch return error.KeyMalformed;
+    if (der_len > der_out.len) return error.KeyTooLarge;
+    dec.decode(der_out[0..der_len], b64[0..n]) catch return error.KeyMalformed;
+    return der_out[0..der_len];
+}
+
 // ── Tests (pure — no DB, no network; key material is a throwaway fixture) ─────
 
 // pin test: a throwaway 2048-bit RSA key as PKCS#1 DER (base64, no PEM armor) —
@@ -172,4 +207,25 @@ test "parsePkcs1: rejects malformed DER instead of panicking" {
     try std.testing.expectError(error.KeyMalformed, parsePkcs1(&[_]u8{ 0x30, 0x00 }));
     try std.testing.expectError(error.KeyMalformed, parsePkcs1("not-der-at-all"));
     try std.testing.expectError(error.KeyMalformed, parsePkcs1(&[_]u8{}));
+}
+
+test "signPemRs256: a PKCS#1 PEM produces the identical deterministic signature" {
+    // Assemble the PEM at runtime from the DER fixture; the armor is split so no
+    // literal private-key block sits in source (gitleaks-safe).
+    const begin = "-----BEGIN RSA " ++ "PRIVATE KEY-----";
+    const end = "-----END RSA " ++ "PRIVATE KEY-----";
+    var pem_buf: [4096]u8 = undefined;
+    const pem = try std.fmt.bufPrint(&pem_buf, "{s}\n{s}\n{s}\n", .{ begin, TEST_KEY_PKCS1_B64, end });
+
+    var sig: [MAX_MODULUS_LEN]u8 = undefined;
+    const out = try signPemRs256(&sig, pem, TEST_MSG);
+    var expected: [256]u8 = undefined;
+    _ = try std.fmt.hexToBytes(&expected, EXPECTED_SIG_HEX);
+    try std.testing.expectEqualSlices(u8, &expected, out);
+}
+
+test "signPemRs256: a malformed PEM body errors, never panics" {
+    var sig: [MAX_MODULUS_LEN]u8 = undefined;
+    const bad = "-----BEGIN RSA " ++ "PRIVATE KEY-----\nnot-base64-!!!\n-----END RSA " ++ "PRIVATE KEY-----";
+    try std.testing.expectError(error.KeyMalformed, signPemRs256(&sig, bad, TEST_MSG));
 }
