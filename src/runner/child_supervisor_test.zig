@@ -12,6 +12,7 @@ const client_errors = @import("engine/client_errors.zig");
 const contract = @import("contract");
 
 const cgroup = @import("engine/CgroupScope.zig");
+const cred = @import("engine/credential_request.zig");
 
 const ActivityFrame = contract.activity.ActivityFrame;
 const ActivitySink = supervisor.ActivitySink;
@@ -55,7 +56,7 @@ test "readResult forwards activity frames in order and returns the result frame"
     var cap: Cap = .{};
     const sink = ActivitySink{ .ctx = &cap, .forward = Cap.forward };
     const dl = clock.nowMillis() + 5_000;
-    const outcome = try supervisor.readResult(std.testing.allocator, fds[0], dl, sink, NoopMem.sink(), null);
+    const outcome = try supervisor.readResult(std.testing.allocator, fds[0], fds[1], dl, sink, NoopMem.sink(), null, null);
     defer std.testing.allocator.free(outcome.bytes);
 
     try std.testing.expect(!outcome.timed_out);
@@ -92,7 +93,7 @@ test "readResult forwards a memory frame's raw bytes to the memory sink, then th
     var cap: Cap = .{};
     const mem_sink = supervisor.MemorySink{ .ctx = &cap, .forward = Cap.forward };
     const dl = clock.nowMillis() + 5_000;
-    const outcome = try supervisor.readResult(std.testing.allocator, fds[0], dl, act_sink, mem_sink, null);
+    const outcome = try supervisor.readResult(std.testing.allocator, fds[0], fds[1], dl, act_sink, mem_sink, null, null);
     defer std.testing.allocator.free(outcome.bytes);
 
     try std.testing.expectEqual(@as(usize, 1), cap.count);
@@ -118,7 +119,7 @@ test "readResult tolerates a malformed activity frame and still returns the resu
     var dummy: u8 = 0;
     const sink = ActivitySink{ .ctx = &dummy, .forward = Noop.forward };
     const dl = clock.nowMillis() + 5_000;
-    const outcome = try supervisor.readResult(std.testing.allocator, fds[0], dl, sink, NoopMem.sink(), null);
+    const outcome = try supervisor.readResult(std.testing.allocator, fds[0], fds[1], dl, sink, NoopMem.sink(), null, null);
     defer std.testing.allocator.free(outcome.bytes);
     try std.testing.expectEqualStrings("{\"exit_ok\":false}", outcome.bytes);
 }
@@ -162,7 +163,7 @@ test "readResult: a hook returning .terminate kills the wait and reports termina
     const sink = ActivitySink{ .ctx = &dummy, .forward = NoopSink.forward };
 
     const dl = clock.nowMillis() + 60_000; // far; the 10ms tick fires first
-    const outcome = try supervisor.readResult(std.testing.allocator, fds[0], dl, sink, NoopMem.sink(), hook);
+    const outcome = try supervisor.readResult(std.testing.allocator, fds[0], fds[1], dl, sink, NoopMem.sink(), hook, null);
     defer std.testing.allocator.free(outcome.bytes);
 
     try std.testing.expect(outcome.terminated);
@@ -186,7 +187,7 @@ test "readResult round-trips one usage frame into the snapshot the tick observes
     var dummy: u8 = 0;
     const sink = ActivitySink{ .ctx = &dummy, .forward = NoopSink.forward };
     const dl = clock.nowMillis() + 5_000;
-    const outcome = try supervisor.readResult(std.testing.allocator, fds[0], dl, sink, NoopMem.sink(), hook);
+    const outcome = try supervisor.readResult(std.testing.allocator, fds[0], fds[1], dl, sink, NoopMem.sink(), hook, null);
     defer std.testing.allocator.free(outcome.bytes);
 
     try std.testing.expectEqualStrings("{\"exit_ok\":true}", outcome.bytes);
@@ -212,7 +213,7 @@ test "readResult folds a regressed usage frame with max so the snapshot never wa
     var dummy: u8 = 0;
     const sink = ActivitySink{ .ctx = &dummy, .forward = NoopSink.forward };
     const dl = clock.nowMillis() + 5_000;
-    const outcome = try supervisor.readResult(std.testing.allocator, fds[0], dl, sink, NoopMem.sink(), hook);
+    const outcome = try supervisor.readResult(std.testing.allocator, fds[0], fds[1], dl, sink, NoopMem.sink(), hook, null);
     defer std.testing.allocator.free(outcome.bytes);
 
     try std.testing.expect(hook_state.ticks >= 2); // one renewal point per usage frame
@@ -234,7 +235,7 @@ test "a malformed usage frame is dropped and the last-known counters survive" {
     var dummy: u8 = 0;
     const sink = ActivitySink{ .ctx = &dummy, .forward = NoopSink.forward };
     const dl = clock.nowMillis() + 5_000;
-    const outcome = try supervisor.readResult(std.testing.allocator, fds[0], dl, sink, NoopMem.sink(), hook);
+    const outcome = try supervisor.readResult(std.testing.allocator, fds[0], fds[1], dl, sink, NoopMem.sink(), hook, null);
     defer std.testing.allocator.free(outcome.bytes);
 
     try std.testing.expectEqualStrings("{\"exit_ok\":true}", outcome.bytes); // run unaffected
@@ -266,12 +267,80 @@ test "readResult: a hook .extend past a near deadline keeps reading to the resul
     defer wt.join();
 
     const near_dl = clock.nowMillis() + 500;
-    const outcome = try supervisor.readResult(std.testing.allocator, fds[0], near_dl, sink, NoopMem.sink(), hook);
+    const outcome = try supervisor.readResult(std.testing.allocator, fds[0], fds[1], near_dl, sink, NoopMem.sink(), hook, null);
     defer std.testing.allocator.free(outcome.bytes);
 
     try std.testing.expect(!outcome.timed_out);
     try std.testing.expect(!outcome.terminated);
     try std.testing.expectEqualStrings("{\"exit_ok\":true}", outcome.bytes);
+}
+
+test "readResult services a credential_request via the mint hook and frames the token back (§3)" {
+    // The parent half of the on-demand mint channel: a `credential_request` frame
+    // arrives on the child's stdout; the read loop invokes the mint hook and frames
+    // a `credential_response` carrying the token down the child's stdin (here a
+    // second pipe the test reads). The trailing `result` frame ends the loop.
+    const out = try pipe_proto.testOsPipe(); // child→parent stdout: parent reads out[0]
+    defer pipe_proto.testOsClose(out[0]);
+    const resp = try pipe_proto.testOsPipe(); // parent→child stdin: test reads resp[0]
+    defer pipe_proto.testOsClose(resp[0]);
+
+    try pipe_proto.writeFrame(out[1], .credential_request, "{\"integration\":\"github\"}");
+    try pipe_proto.writeFrame(out[1], .result, "{\"exit_ok\":true}");
+    pipe_proto.testOsClose(out[1]);
+
+    // Fake broker forward: any ask mints a fixed token (alloc-owned; the read loop
+    // frees it after framing — a leak here would trip the testing allocator).
+    const FakeMint = struct {
+        fn onMint(_: *anyopaque, alloc: std.mem.Allocator, integration: []const u8, _: ?[]const u8) supervisor.CredentialOutcome {
+            std.testing.expectEqualStrings("github", integration) catch return .rejected;
+            const tok = alloc.dupe(u8, "ghs_minted") catch return .rejected;
+            return .{ .minted = .{ .token = tok, .expires_at_ms = 4242 } };
+        }
+    };
+    var dummy: u8 = 0;
+    const mint_hook = supervisor.MintHook{ .ctx = &dummy, .onMint = FakeMint.onMint };
+    const sink = ActivitySink{ .ctx = &dummy, .forward = NoopSink.forward };
+
+    const dl = clock.nowMillis() + 5_000;
+    const outcome = try supervisor.readResult(std.testing.allocator, out[0], resp[1], dl, sink, NoopMem.sink(), null, mint_hook);
+    defer std.testing.allocator.free(outcome.bytes);
+    try std.testing.expectEqualStrings("{\"exit_ok\":true}", outcome.bytes);
+
+    // The token came back framed as a credential_response on the child's stdin.
+    pipe_proto.testOsClose(resp[1]);
+    const reply = try pipe_proto.readFrame(std.testing.allocator, resp[0], dl, 4096);
+    defer std.testing.allocator.free(reply.frame.payload);
+    try std.testing.expectEqual(pipe_proto.FrameType.credential_response, reply.frame.ftype);
+    const parsed = try std.json.parseFromSlice(cred.PipeResponse, std.testing.allocator, reply.frame.payload, .{});
+    defer parsed.deinit();
+    try std.testing.expect(parsed.value.ok);
+    try std.testing.expectEqualStrings("ghs_minted", parsed.value.token);
+    try std.testing.expectEqual(@as(i64, 4242), parsed.value.expires_at_ms);
+}
+
+test "readResult rejects a credential_request when no mint hook is configured (§3)" {
+    // A null hook (mint unconfigured) frames ok=false; the child fails closed.
+    const out = try pipe_proto.testOsPipe();
+    defer pipe_proto.testOsClose(out[0]);
+    const resp = try pipe_proto.testOsPipe();
+    defer pipe_proto.testOsClose(resp[0]);
+    try pipe_proto.writeFrame(out[1], .credential_request, "{\"integration\":\"github\"}");
+    try pipe_proto.writeFrame(out[1], .result, "{\"exit_ok\":true}");
+    pipe_proto.testOsClose(out[1]);
+
+    var dummy: u8 = 0;
+    const sink = ActivitySink{ .ctx = &dummy, .forward = NoopSink.forward };
+    const dl = clock.nowMillis() + 5_000;
+    const outcome = try supervisor.readResult(std.testing.allocator, out[0], resp[1], dl, sink, NoopMem.sink(), null, null);
+    defer std.testing.allocator.free(outcome.bytes);
+
+    pipe_proto.testOsClose(resp[1]);
+    const reply = try pipe_proto.readFrame(std.testing.allocator, resp[0], dl, 4096);
+    defer std.testing.allocator.free(reply.frame.payload);
+    const parsed = try std.json.parseFromSlice(cred.PipeResponse, std.testing.allocator, reply.frame.payload, .{});
+    defer parsed.deinit();
+    try std.testing.expect(!parsed.value.ok);
 }
 
 test "sandbox setup fails closed: dev_none runs bare, a required tier with no domain refuses" {

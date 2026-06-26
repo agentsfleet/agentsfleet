@@ -9,6 +9,7 @@
 test {
     _ = @import("main.zig");
     _ = @import("daemon/control_plane_client.zig");
+    _ = @import("daemon/control_plane_client_mint.zig");
     _ = @import("daemon/control_plane_client_test.zig");
     _ = @import("daemon/config.zig");
     _ = @import("daemon/loop.zig");
@@ -37,6 +38,7 @@ test {
     _ = @import("bundle_extract.zig");
     _ = @import("bundle_extract_test.zig");
     _ = @import("pipe_proto.zig");
+    _ = @import("engine/credential_request.zig");
     _ = @import("UsageSnapshot.zig");
     _ = @import("engine/runner.zig");
     _ = @import("engine/types.zig");

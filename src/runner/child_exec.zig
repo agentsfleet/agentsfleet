@@ -15,6 +15,8 @@ const std = @import("std");
 const builtin = @import("builtin");
 const build_options = @import("build_options");
 const logging = @import("log");
+const common = @import("common");
+const clock = common.clock;
 const contract = @import("contract");
 
 const engine = @import("engine/runner.zig");
@@ -49,7 +51,9 @@ pub const SANDBOXED_FLAG = "--sandboxed";
 const SANDBOX_FAIL_EXIT: u8 = pipe_proto.SANDBOX_FAIL_EXIT;
 const GENERIC_FAIL_EXIT: u8 = pipe_proto.GENERIC_FAIL_EXIT;
 const MAX_LEASE_BYTES: usize = 4 * 1024 * 1024;
-const READ_CHUNK: usize = 64 * 1024;
+/// Startup bound on the parent's `lease` frame write. The parent frames the lease
+/// immediately post-fork, so this is a wedged-parent guard, not a normal wait.
+const LEASE_READ_TIMEOUT_MS: i64 = 60_000;
 /// Operator-facing outcome when a lease carries no installed instructions — the
 /// fleet has no `SKILL.md` behaviour to run, so the model is not invoked.
 const NO_INSTRUCTIONS_MESSAGE = "no installed instructions: the fleet has no SKILL.md behaviour to run; awaiting configuration";
@@ -89,7 +93,11 @@ pub fn run(argv: []const [:0]const u8, env_map: *const std.process.Environ.Map, 
         };
     }
 
-    const input_json = readStdin(alloc) catch |err| {
+    // Read exactly one `lease` frame off stdin (no longer read-to-EOF): stdin
+    // stays OPEN afterward as the parent→child credential-response channel for the
+    // on-demand mint round-trip (M102 §3). The lease still rides stdin only, never
+    // argv/env (RULE VLT).
+    const input_json = readLeaseFrame(alloc) catch |err| {
         log.err("lease_read_failed", .{ .error_code = ERR_EXEC_RUNNER_FLEET_INIT, .err = @errorName(err) });
         return GENERIC_FAIL_EXIT;
     };
@@ -201,19 +209,21 @@ fn writeResult(alloc: std.mem.Allocator, result: types.ExecutionResult) !void {
     try pipe_proto.writeFrame(std.posix.STDOUT_FILENO, .result, json);
 }
 
-// BUFFER GATE: ArrayList(u8) for the stdin accumulator — read-to-EOF, size
-// unknown up front, need one contiguous slice to JSON-parse.
-fn readStdin(alloc: std.mem.Allocator) ![]u8 {
-    var buf: std.ArrayList(u8) = .empty;
-    errdefer buf.deinit(alloc);
-    var chunk: [READ_CHUNK]u8 = undefined;
-    while (true) {
-        const n = try std.posix.read(std.posix.STDIN_FILENO, &chunk);
-        if (n == 0) break; // EOF — parent closed our stdin
-        if (buf.items.len + n > MAX_LEASE_BYTES) return error.LeaseTooLarge;
-        try buf.appendSlice(alloc, chunk[0..n]);
+/// Read the single `lease` frame the parent feeds at startup (`pipe_proto`),
+/// returning its payload (caller-owned). stdin is left OPEN — the parent reuses it
+/// to frame `credential_response`s during the run. Fails closed on EOF (parent
+/// died before framing), a non-`lease` frame (wire skew), or the startup deadline.
+fn readLeaseFrame(alloc: std.mem.Allocator) ![]u8 {
+    const deadline = clock.nowMillis() + LEASE_READ_TIMEOUT_MS;
+    switch (try pipe_proto.readFrame(alloc, std.posix.STDIN_FILENO, deadline, MAX_LEASE_BYTES)) {
+        .frame => |f| {
+            if (f.ftype == .lease) return f.payload;
+            alloc.free(f.payload);
+            return error.UnexpectedLeaseFrame;
+        },
+        .eof => return error.NoLeaseFrame,
+        .timed_out => return error.LeaseReadTimeout,
     }
-    return buf.toOwnedSlice(alloc);
 }
 
 /// Value of the first `prefix…` argv entry, or null. argv is not secret.
@@ -247,7 +257,6 @@ fn applyNoNewPrivs() error{NoNewPrivsFailed}!void {
 
 // ── tests ────────────────────────────────────────────────────────────────────
 const testing = std.testing;
-const common = @import("common");
 const testLease = @import("child_exec_test_fixtures.zig").testLease;
 
 // The `buildCallArgs` / `buildInstructionsContext` pub-surface tests live in
