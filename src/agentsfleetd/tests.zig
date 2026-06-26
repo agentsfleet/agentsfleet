@@ -31,6 +31,8 @@ test {
     _ = @import("fleet/context_resolve.zig");
     _ = @import("fleet/secrets_resolve.zig");
     _ = @import("fleet/secrets_resolve_test.zig");
+    _ = @import("credentials/driver.zig");
+    _ = @import("credentials/broker.zig");
     _ = @import("fleet/schema_migration_test.zig");
     _ = @import("fleet/control_plane_integration_test.zig");
     _ = @import("fleet/event_lifecycle_integration_test.zig");
