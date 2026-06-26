@@ -195,6 +195,10 @@ pub const ERR_RUN_LEASE_LOST = "UZ-RUN-011";
 pub const ERR_RUN_LEASE_RENEWAL_NO_CREDITS = "UZ-RUN-012";
 pub const ERR_RUN_RENEW_BODY_INVALID = "UZ-RUN-013";
 pub const ERR_RUNNER_NOT_FOUND = "UZ-RUN-014";
+// CREDENTIAL BROKER (M102 — on-demand mint via POST /v1/runners/me/credentials/mint)
+pub const ERR_CRED_INTEGRATION_NOT_CONNECTED = "UZ-CRED-001";
+pub const ERR_GH_RECONNECT_REQUIRED = "UZ-GH-001";
+pub const ERR_GH_MINT_FAILED = "UZ-GH-002";
 
 // ── Non-error constants (migrated from codes.zig) ──────────────────────────
 // Webhook user-facing messages

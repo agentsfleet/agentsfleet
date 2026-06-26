@@ -99,6 +99,7 @@ pub fn classFor(route: router.Route) RouteClass {
         .runner_heartbeat,
         .runner_lease,
         .runner_report,
+        .runner_credentials_mint,
         .runner_activity,
         .runner_renew,
         .runner_memory_hydrate,
@@ -222,6 +223,9 @@ pub fn specFor(route: router.Route, registry: *auth_mw.MiddlewareRegistry) Route
         .runner_heartbeat => .{ .middlewares = registry.runnerBearer(), .invoke = invoke.invokeRunnerHeartbeat },
         .runner_lease => .{ .middlewares = registry.runnerBearer(), .invoke = invoke.invokeRunnerLease },
         .runner_report => .{ .middlewares = registry.runnerBearer(), .invoke = invoke.invokeRunnerReport },
+        // On-demand credential mint — same runnerBearer plane as the other
+        // self-verbs; the workspace is derived from the lease, never the caller.
+        .runner_credentials_mint => .{ .middlewares = registry.runnerBearer(), .invoke = invoke.invokeRunnerCredentialsMint },
         .runner_activity => .{ .middlewares = registry.runnerBearer(), .invoke = invoke.invokeRunnerActivity },
         .runner_renew => .{ .middlewares = registry.runnerBearer(), .invoke = invoke.invokeRunnerRenew },
         .runner_memory_hydrate => .{ .middlewares = registry.runnerBearer(), .invoke = invoke.invokeRunnerMemoryHydrate },

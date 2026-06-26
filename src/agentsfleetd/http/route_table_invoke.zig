@@ -1,7 +1,6 @@
 //! Invoke functions for the route table — one `pub fn invokeXxx` per Route
-//! variant. Each checks the HTTP method (405 if wrong), extracts path params
-//! from `route`, and calls the inner handler (auth already done by middleware).
-//! Imported by route_table.zig; not called from outside the http package.
+//! variant. Each checks the HTTP method (405 if wrong), extracts path params from
+//! `route`, calls the inner handler (auth already done by middleware). Imported by route_table.zig.
 
 const httpz = @import("httpz");
 const router = @import("router.zig");
@@ -343,6 +342,7 @@ pub const invokeRunnerSelf = runner_invokes.invokeRunnerSelf;
 pub const invokeRunnerHeartbeat = runner_invokes.invokeRunnerHeartbeat;
 pub const invokeRunnerLease = runner_invokes.invokeRunnerLease;
 pub const invokeRunnerReport = runner_invokes.invokeRunnerReport;
+pub const invokeRunnerCredentialsMint = runner_invokes.invokeRunnerCredentialsMint;
 pub const invokeRunnerActivity = runner_invokes.invokeRunnerActivity;
 pub const invokeRunnerRenew = runner_invokes.invokeRunnerRenew;
 pub const invokeRunnerMemoryHydrate = runner_invokes.invokeRunnerMemoryHydrate;

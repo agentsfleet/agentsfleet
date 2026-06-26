@@ -23,6 +23,7 @@ const ExecutionPolicy = @import("execution_policy.zig").ExecutionPolicy;
 const FailureClass = @import("execution_result.zig").FailureClass;
 const runner_events = @import("runner_events.zig");
 const memory = @import("protocol_memory.zig");
+const credentials = @import("protocol_credentials.zig");
 
 // ── Wire paths ──────────────────────────────────────────────────────────────
 // Single-sourced (RULE UFS) so the router and the future TS client share them
@@ -61,6 +62,16 @@ pub const PATH_RUNNER_SELF = PATH_RUNNERS ++ "/me";
 /// appends the `{content_hash}` segment, mirroring `PATH_RUNNER_MEMORY`. The daemon
 /// matcher keys on the `bundles` segment (`route_matchers_runner.zig`).
 pub const PATH_RUNNER_BUNDLES = PATH_RUNNERS ++ "/me/bundles";
+
+/// POST /v1/runners/me/credentials/mint — on-demand credential mint (M102 §3).
+/// The runner forwards a sandboxed child's request here; the daemon's broker
+/// mints a short-lived, workspace-scoped token. The workspace is derived from
+/// the lease server-side (Invariant 2) — a caller-supplied workspace is ignored,
+/// so the request carries only `lease_id`, the `integration` id, and an optional
+/// `scope`. Static exact-match path (no path param); `me` resolves from the
+/// `agt_r` token. Single-sourced (RULE UFS): the daemon handler matches on it and
+/// the runner forwarder builds the URL from it.
+pub const PATH_RUNNER_CREDENTIALS_MINT = PATH_RUNNERS ++ "/me/credentials/mint";
 
 /// GET /v1/fleets/runners — platform-admin operator-plane read of the whole
 /// fleet (paginated). The `/v1/fleet/...` namespace is the operator plane;
@@ -314,6 +325,11 @@ pub const HYDRATE_WINDOW_BYTES = memory.HYDRATE_WINDOW_BYTES;
 pub const MemoryDelta = memory.MemoryDelta;
 pub const MemoryPushRequest = memory.MemoryPushRequest;
 pub const MemoryHydrateResponse = memory.MemoryHydrateResponse;
+
+// On-demand credential-mint wire sub-protocol lives in `protocol_credentials.zig`
+// (RULE FLL); re-exported here so `protocol.MintCredentialRequest` is unchanged.
+pub const MintCredentialRequest = credentials.MintCredentialRequest;
+pub const MintCredentialResponse = credentials.MintCredentialResponse;
 
 /// What the runner parent pipes down the child's stdin: the lease to execute,
 /// plus the fleet's prior memory the parent already hydrated over the trusted
