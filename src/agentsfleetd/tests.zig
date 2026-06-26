@@ -33,6 +33,7 @@ test {
     _ = @import("fleet/secrets_resolve_test.zig");
     _ = @import("credentials/integration.zig");
     _ = @import("credentials/broker.zig");
+    _ = @import("auth/crypto/rs256_sign.zig");
     _ = @import("fleet/schema_migration_test.zig");
     _ = @import("fleet/control_plane_integration_test.zig");
     _ = @import("fleet/event_lifecycle_integration_test.zig");
