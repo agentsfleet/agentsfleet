@@ -43,6 +43,9 @@ pub const ServeConfig = struct {
     encryption_master_key: []const u8,
     auth_session_code_pepper: []const u8,
     audit_log_pepper: []const u8,
+    /// Non-secret pointer to the platform admin workspace (M102 §3, option 1).
+    /// Empty ⇒ the credential broker serves `static` only.
+    platform_admin_workspace_id: []const u8,
 
     alloc: std.mem.Allocator,
 
@@ -83,6 +86,7 @@ pub const ServeConfig = struct {
             .encryption_master_key = enc.master_key,
             .auth_session_code_pepper = peppers.session_code_pepper,
             .audit_log_pepper = peppers.audit_log_pepper,
+            .platform_admin_workspace_id = misc.platform_admin_workspace_id,
             .alloc = alloc,
         };
     }
@@ -90,6 +94,7 @@ pub const ServeConfig = struct {
     pub fn deinit(self: *Self) void {
         self.alloc.free(self.app_url);
         self.alloc.free(self.api_url);
+        self.alloc.free(self.platform_admin_workspace_id);
         if (self.oidc_jwks_url) |v| self.alloc.free(v);
         if (self.oidc_issuer) |v| self.alloc.free(v);
         if (self.oidc_audience) |v| self.alloc.free(v);
