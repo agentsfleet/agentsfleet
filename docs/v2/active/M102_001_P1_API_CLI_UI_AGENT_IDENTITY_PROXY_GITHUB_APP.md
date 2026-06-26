@@ -155,15 +155,31 @@ Sign a GitHub App token with the platform-held private key, exchange it at GitHu
 
 ### §3 — On-demand mint channel (child → runner → daemon)
 The child requests a token from its runner over the local pipe; the runner forwards to the broker over the `agt_r` plane. **The workspace is derived from the lease server-side — a child-supplied workspace id is ignored.**
-- **Dimension 3.1** — child request → runner forwards → short-lived token returned → `test_child_requests_token_via_runner`
-- **Dimension 3.2** — a forged workspace id resolves to the lease's workspace only → `test_mint_scoped_to_lease_workspace`
-- **Dimension 3.3** — a long-idle session with no external trigger mints a fresh token at the tool call → `test_on_demand_mint_no_trigger`
+- **Dimension 3.1** [WIRED — integration test pending in CI] — child request → runner forwards → short-lived token returned → `test_child_requests_token_via_runner`
+- **Dimension 3.2** [WIRED — integration test pending in CI] — a forged workspace id resolves to the lease's workspace only → `test_mint_scoped_to_lease_workspace`
+- **Dimension 3.3** [WIRED — integration test pending in CI] — a long-idle session with no external trigger mints a fresh token at the tool call → `test_on_demand_mint_no_trigger`
+
+> **§3/§4 end-to-end status (this session):** the on-demand mint path is now wired
+> end-to-end in code — child placeholder → `MintResolver` → `credential_request`
+> channel → daemon broker mint — and each LINK is unit-proven: the child `mint`
+> round-trip + `MintResolver` dedup (`credential_request.zig`), the tool-boundary
+> routing + fail-closed (`secret_substitution.zig`, `policy_http_request_test.zig`),
+> the daemon classify (`secrets_resolve.zig`), the broker dispatch (`broker_test.zig`).
+> Dimensions 3.1–3.3 are the *live* lease + subprocess + DB round-trip scenarios
+> (tier=integration); they are DB-gated and run in CI with `TEST_DATABASE_URL` —
+> not locally verifiable on this macOS host. Their named test files are NOT yet
+> written; that is the remaining §3 work and is the only reason 3.1–3.3 are not
+> marked DONE.
 
 ### §4 — Tool-boundary transparent resolve-or-mint
 When `PolicyHttpRequestTool` resolves `${secrets.<integration>.token}` for a **mintable** integration, it fetches via the channel instead of a static value; substitution stays at the tool boundary. **Static integrations resolve as today.**
-- **Dimension 4.1** — mintable `${secrets.github.token}` triggers a broker fetch, substituted only at dispatch → `test_bridge_mints_on_placeholder`
-- **Dimension 4.2** — the partial-substitution guard holds: residual `${secrets.` aborts the call → `test_bridge_refuses_partial_sub`
-- **Dimension 4.3** — a static integration's credential resolves with no mint (unchanged path) → `test_bridge_static_unchanged`
+- **Dimension 4.1** [DONE] — mintable `${secrets.github.token}` triggers a broker fetch, substituted only at dispatch → `test_bridge_mints_on_placeholder`
+- **Dimension 4.2** [DONE] — the partial-substitution guard holds: residual `${secrets.` aborts the call → `assertNoLeftover catches partial substitution` (unit) + the guard wired at the three `policy_http_request.execute` substitution sites (`S_SUBSTITUTION_LEFT_PLACEHOLDER`)
+- **Dimension 4.3** [DONE] — a static integration's credential resolves with no mint (unchanged path) → `test_bridge_static_unchanged`
+- **Dimension 4.4** [DONE] — mintable credentials ride the lease as a **typed, out-of-band** `ExecutionPolicy.mintable: []const Mintable` list (name → integration id), NEVER a reserved key inside `secrets_map`. The classifier ([RULE CFG]) routes a vault handle for an on-demand integration to that list and emits only the integration id (no handle/token bytes — VLT); `secrets_map` stays **static-only**, so the redaction set equals the substitution set by construction (no skip logic, no drift) and the wire stays additive/backward-compatible. → `test_policy_mintable_roundtrip` + `test_runner_facing_classify`
+- **Dimension 4.5** [DONE] — repeated mintable placeholders within one tool call mint **once** via a per-call resolver cache; the broker still caches across calls and on-demand timing is preserved (no mint at lease/run start) → `test_mint_resolver_dedups_per_call`
+
+  > **Design note (Bun model, locked this session — Indy):** the mint *strategy* is a tagged union (`integration.Mint = { static, custom: fn }`) — Bun's `SideEffects`/`AllowUnresolved` idiom: declarative-data variants + a function-pointer escape hatch, the union owns its `run`/`isOnDemand` dispatch so the broker never branches on id. A declarative `oauth2_refresh` variant (Zoho/Jira refresh-token grant) slots in here as DATA when its first real caller lands (M103) — not built now (untested dead code, RULE NDC). See the CTO refactor memo in Session Notes for the broader Bun-idiom adoption plan (strategy unions, comptime registries, pure-core + injected effects, typed result unions).
 
 ### §5 — GitHub App connect surface (UI-first) + generic webhook ingress
 A live GitHub **Connect** runs the App-install flow, storing `{integration:"github", installation_id}` (no token) and mapping `installation_id ↔ workspace`. The ingress is **generic — `POST /v1/ingress/{provider}`** — backed by an inbound verifier/router registry (RULE CFG, mirrors the outbound broker; extends the existing `webhook_verify.PROVIDER_REGISTRY`). A provider entry is a descriptor: `{scheme, header(s), prefix, timestamp_window?, routing_key_path, lifecycle_hook?}`. M102 ships ONE entry (`github`); Slack/Linear/Jira/Zoho are later descriptors (a new scheme impl or lifecycle hook only when the signature *family* is new — `hmac_sha256_body`, `hmac_sha256_ts_body`, `atlassian_jwt`). The receiver verifies the provider signature and routes by the descriptor's routing-key (`installation_id` for github) → workspace → matching fleet(s).
@@ -260,8 +276,10 @@ Mint result is a tagged union; `${secrets.…}` shape + integration ids are name
 | 3.2 | integration | `test_mint_scoped_to_lease_workspace` | foreign workspace id → resolved to the lease's workspace only |
 | 3.3 | integration | `test_on_demand_mint_no_trigger` | idle session, no event → tool call mints fresh |
 | 4.1 | unit | `test_bridge_mints_on_placeholder` | mintable placeholder → broker fetch; value only at dispatch |
-| 4.2 | unit | `test_bridge_refuses_partial_sub` | residual `${secrets.` → call aborted |
+| 4.2 | unit | `assertNoLeftover catches partial substitution` + `execute` guard | residual `${secrets.` → call aborted (`S_SUBSTITUTION_LEFT_PLACEHOLDER`) |
 | 4.3 | unit | `test_bridge_static_unchanged` | static integration credential → resolved with no mint call |
+| 4.4 | unit | `test_policy_mintable_roundtrip` + `test_runner_facing_classify` | mintable rides typed `ExecutionPolicy.mintable`; `secrets_map` static-only; classifier emits id-only, no handle bytes |
+| 4.5 | unit | `test_mint_resolver_dedups_per_call` | repeated mintable placeholders in one tool call mint once |
 | 5.1 | integration | `test_github_connect_stores_handle` | callback → `fleet:github` has handle, no token; ws map written |
 | 5.2 | integration | `test_ingress_routes_by_installation_id` | App webhook → verified → XADD to the matching fleet only |
 | 5.3 | unit | `test_github_states_and_planned` | connected/reconnect render; slack/zoho "Planned" + hint |

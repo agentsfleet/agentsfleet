@@ -20,6 +20,7 @@
 
 const std = @import("std");
 const pipe_proto = @import("../pipe_proto.zig");
+const Mintable = @import("contract").execution_policy.Mintable;
 
 /// child→parent mint ask (`credential_request` frame payload). The child names
 /// only the integration (+ an optional scope narrowing) — never a workspace or a
@@ -104,6 +105,43 @@ pub fn mint(
         },
     }
 }
+
+/// Per-tool-call credential minting (M102 §4). Wraps the lease's typed `mintable`
+/// grant list + the mint channel, and dedups: repeated `${secrets.<name>.token}`
+/// occurrences in one tool call (url ∪ headers ∪ body) mint ONCE. The broker also
+/// caches across calls, so this only saves intra-call pipe round-trips — on-demand
+/// timing is preserved (the first occurrence still mints fresh at the tool call).
+///
+/// `mintable` + `channel` are borrowed from the session/tool for the call; `cache`
+/// is owned by the per-call arena (the token bytes live there, freed at call end).
+pub const MintResolver = struct {
+    mintable: []const Mintable,
+    channel: ?Channel,
+    cache: std.StringHashMapUnmanaged([]const u8) = .empty,
+
+    pub const ResolveError = error{ MintUnavailable, MintFailed, OutOfMemory };
+
+    /// The integration id to mint for `name`, or null when `name` is not a mintable
+    /// credential (→ the caller does a static `secrets_map` field lookup instead).
+    pub fn integrationFor(self: *const MintResolver, name: []const u8) ?[]const u8 {
+        for (self.mintable) |m| {
+            if (std.mem.eql(u8, m.name, name)) return m.integration;
+        }
+        return null;
+    }
+
+    /// Mint (or return the per-call-cached) token for the mintable `name`. `alloc`
+    /// is the tool call's arena — owns the cache and the returned token. Fails
+    /// closed: no wired channel → `MintUnavailable`; a mint round-trip failure →
+    /// `MintFailed` (the caller aborts the tool call rather than dispatch tokenless).
+    pub fn token(self: *MintResolver, alloc: std.mem.Allocator, name: []const u8, integration_id: []const u8) ResolveError![]const u8 {
+        if (self.cache.get(name)) |t| return t;
+        const ch = self.channel orelse return error.MintUnavailable;
+        const minted = mint(ch, alloc, integration_id, null) catch return error.MintFailed;
+        self.cache.put(alloc, name, minted) catch return error.OutOfMemory;
+        return minted;
+    }
+};
 
 // ── Tests ───────────────────────────────────────────────────────────────────
 // The test plays the parent: it reads the child's request off one pipe and writes
@@ -193,4 +231,46 @@ test "mint rejects a wrong-type reply frame as protocol skew" {
     defer h.deinit();
     try pipe_proto.writeFrame(h.parent_write, .activity, "{}"); // not a credential_response
     try testing.expectError(error.Protocol, mint(h.ch, testing.allocator, "github", null));
+}
+
+test "MintResolver.integrationFor: matches the granted name, rejects others" {
+    const resolver = MintResolver{
+        .mintable = &.{.{ .name = "github", .integration = "github" }},
+        .channel = null,
+    };
+    try testing.expectEqualStrings("github", resolver.integrationFor("github").?);
+    try testing.expect(resolver.integrationFor("fly") == null); // static → lookup path
+}
+
+test "MintResolver.token: a mintable name with no wired channel fails closed" {
+    var resolver = MintResolver{
+        .mintable = &.{.{ .name = "github", .integration = "github" }},
+        .channel = null,
+    };
+    try testing.expectError(error.MintUnavailable, resolver.token(testing.allocator, "github", "github"));
+}
+
+test "test_mint_resolver_dedups_per_call" {
+    const clock = @import("common").clock;
+    const h = try Harness.init(clock.nowMillis() + 5_000);
+    defer h.deinit();
+    // Pre-buffer EXACTLY ONE reply. A second mint would block on an absent second
+    // reply, so if both calls return it, the second was served from the per-call
+    // cache — proving the dedup (Dimension 4.5).
+    const reply = try std.json.Stringify.valueAlloc(testing.allocator, PipeResponse{ .ok = true, .token = "ghs_once", .expires_at_ms = 999 }, .{});
+    defer testing.allocator.free(reply);
+    try pipe_proto.writeFrame(h.parent_write, .credential_response, reply);
+
+    var arena_state = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+
+    var resolver = MintResolver{
+        .mintable = &.{.{ .name = "github", .integration = "github" }},
+        .channel = h.ch,
+    };
+    const t1 = try resolver.token(arena, "github", "github");
+    const t2 = try resolver.token(arena, "github", "github"); // cache hit — no 2nd round-trip
+    try testing.expectEqualStrings("ghs_once", t1);
+    try testing.expectEqual(t1.ptr, t2.ptr); // same cached bytes, not re-minted
 }

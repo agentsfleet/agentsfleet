@@ -29,6 +29,7 @@ const HttpRequestTool = tools_mod.http_request.HttpRequestTool;
 
 const secret_substitution = @import("secret_substitution.zig");
 const context_budget = @import("../context_budget.zig");
+const credential_request = @import("../credential_request.zig");
 
 const Self = @This();
 
@@ -44,6 +45,10 @@ const arg_body: []const u8 = "body";
 /// at destroy_execution — so the borrow is safe for every call.
 policy: *const context_budget.ExecutionPolicy,
 inner: HttpRequestTool,
+/// The child→runner on-demand mint channel, or null when no session wired one
+/// (register-only/test path). A mintable `${secrets.<id>.token}` mints through
+/// this at dispatch; static placeholders never touch it. Borrowed for the call.
+cred_channel: ?credential_request.Channel = null,
 
 pub const tool_name = HttpRequestTool.tool_name;
 pub const tool_description = HttpRequestTool.tool_description;
@@ -66,7 +71,15 @@ pub fn execute(self: *Self, allocator: std.mem.Allocator, args: JsonObjectMap) !
         else => return ToolResult.fail("Invalid 'url' parameter"),
     };
 
-    const subst_url = try substOrFail(arena, url_str, self.policy.secrets_map);
+    // One resolver per tool call: its cache dedups repeated mintable placeholders
+    // across url ∪ headers ∪ body (the broker caches across calls). Arena-scoped —
+    // minted token bytes die with this call (VLT), never an alias into the policy.
+    var resolver = credential_request.MintResolver{
+        .mintable = self.policy.mintable,
+        .channel = self.cred_channel,
+    };
+
+    const subst_url = try substOrFail(arena, url_str, self.policy.secrets_map, &resolver);
     if (!secret_substitution.assertNoLeftover(subst_url))
         return ToolResult.fail(S_SUBSTITUTION_LEFT_PLACEHOLDER);
 
@@ -89,7 +102,7 @@ pub fn execute(self: *Self, allocator: std.mem.Allocator, args: JsonObjectMap) !
                 const v = e.value_ptr.*;
                 const replaced: std.json.Value = switch (v) {
                     .string => |s| blk: {
-                        const r = try substOrFail(arena, s, self.policy.secrets_map);
+                        const r = try substOrFail(arena, s, self.policy.secrets_map, &resolver);
                         if (!secret_substitution.assertNoLeftover(r))
                             return ToolResult.fail(S_SUBSTITUTION_LEFT_PLACEHOLDER);
                         break :blk .{ .string = r };
@@ -107,7 +120,7 @@ pub fn execute(self: *Self, allocator: std.mem.Allocator, args: JsonObjectMap) !
     if (args.get(arg_body)) |bv| {
         const replaced: std.json.Value = switch (bv) {
             .string => |s| blk: {
-                const r = try substOrFail(arena, s, self.policy.secrets_map);
+                const r = try substOrFail(arena, s, self.policy.secrets_map, &resolver);
                 if (!secret_substitution.assertNoLeftover(r))
                     return ToolResult.fail(S_SUBSTITUTION_LEFT_PLACEHOLDER);
                 break :blk .{ .string = r };
@@ -130,8 +143,9 @@ fn substOrFail(
     arena: std.mem.Allocator,
     raw: []const u8,
     secrets_map: ?std.json.Value,
+    resolver: ?*credential_request.MintResolver,
 ) error{SubstFailed}![]u8 {
-    return secret_substitution.substitute(arena, raw, secrets_map) catch
+    return secret_substitution.substitute(arena, raw, secrets_map, resolver) catch
         return error.SubstFailed;
 }
 

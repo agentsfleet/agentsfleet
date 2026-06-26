@@ -27,7 +27,7 @@ fn fakeMint(ctx: integration.MintCtx) anyerror!integration.Outcome {
     return .{ .ok = .{ .token = try ctx.alloc.dupe(u8, "minted_tok"), .expires_at_ms = FAKE_EXPIRY_MS } };
 }
 
-const FAKE_REGISTRY: []const Spec = &.{.{ .id = .github, .mintFn = fakeMint }};
+const FAKE_REGISTRY: []const Spec = &.{.{ .id = .github, .mint = .{ .custom = fakeMint } }};
 
 test "mint: dispatches by id to the matching integration (Dimension 1.1)" {
     const alloc = std.testing.allocator;

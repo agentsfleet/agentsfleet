@@ -20,6 +20,7 @@ const clock = common.clock;
 const contract = @import("contract");
 
 const engine = @import("engine/runner.zig");
+const credential_request = @import("engine/credential_request.zig");
 const types = @import("engine/types.zig");
 const landlock = @import("engine/landlock.zig");
 const seccomp = @import("engine/seccomp.zig");
@@ -176,12 +177,23 @@ fn runEngine(env_map: *const std.process.Environ.Map, alloc: std.mem.Allocator, 
     defer args.deinit(alloc);
     const ep: context_budget.ExecutionPolicy = payload.policy;
 
+    // The on-demand mint channel (M102 §4) rides the EXISTING child pipes: the
+    // child writes `credential_request` frames up its stdout (multiplexed with
+    // activity frames) and reads the `credential_response` back down its stdin; the
+    // round-trip is bounded by the lease deadline so a wedged parent can never
+    // block the child past `lease_expires_at`. No extra fd, no new sandbox hole.
+    const cred_channel = credential_request.Channel{
+        .request_fd = std.posix.STDOUT_FILENO,
+        .response_fd = std.posix.STDIN_FILENO,
+        .deadline_ms = payload.lease_expires_at,
+    };
+
     // `.{ .object = ctx_obj }` BORROWS ctx_obj's backing map (the struct copy
     // shares the same hash-map arrays). engine.execute is synchronous, so it must
     // fully consume `context` before this frame unwinds and `defer ctx_obj.deinit`
     // frees those arrays. A future async or context-retaining engine would have to
     // own or dupe the context instead of borrowing it here.
-    return engine.execute(env_map, alloc, workspace, args.fleet_config, args.tools_spec, args.message, .{ .object = ctx_obj }, &ep, std.posix.STDOUT_FILENO, hydrated_memory);
+    return engine.execute(env_map, alloc, workspace, args.fleet_config, args.tools_spec, args.message, .{ .object = ctx_obj }, &ep, std.posix.STDOUT_FILENO, hydrated_memory, cred_channel);
 }
 
 /// Fail-closed result for a lease whose installed instructions are absent (an

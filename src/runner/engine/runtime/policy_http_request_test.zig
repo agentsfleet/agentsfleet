@@ -108,6 +108,32 @@ test "host in allowlist (global IP) passes through to inner tool" {
     try std.testing.expectEqualStrings(NETWORK_DISABLED, r.error_msg.?);
 }
 
+test "test_bridge_static_unchanged" {
+    // Dimension 4.3: a STATIC credential resolves at the tool boundary with no
+    // mint. The tool has no `cred_channel` and the policy lists no `mintable`, so
+    // `${secrets.fly.global}` takes the static lookup path. Proof it never touched
+    // the mint path: a mint attempt with a null channel fails closed (SubstFailed);
+    // reaching the inner tool's NETWORK_DISABLED marker means no mint was tried.
+    const alloc = std.testing.allocator;
+    var arena_state = std.heap.ArenaAllocator.init(alloc);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+
+    const sm = try buildSecretsMap(arena);
+    const allow = [_][]const u8{GLOBAL_HOST};
+    const policy = newPolicy(&allow, sm); // no .mintable → every name is static
+    var t = newTool(&policy); // no cred_channel
+
+    var args: JsonObjectMap = .empty;
+    defer args.deinit(alloc);
+    try args.put(alloc, k_url, .{ .string = "https://${secrets.fly.global}/v1/apps" });
+
+    const r = try t.execute(alloc, args);
+    defer freeResult(alloc, r);
+    try std.testing.expect(!r.success);
+    try std.testing.expectEqualStrings(NETWORK_DISABLED, r.error_msg.?);
+}
+
 test "substitution runs before allowlist check" {
     // Pre-substitution url host is the literal "${secrets.fly.host}" — never
     // matches an allowlist. Post-substitution host is "api.fly.dev" — does

@@ -117,7 +117,7 @@ test "execute with api_key in fleet_config and null message fails closed (startu
     // Null message -> early return before credential injection path runs.
     var env_map = try common.env.fromPairs(alloc, &.{});
     defer env_map.deinit();
-    const result = runner.execute(&env_map, alloc, "/tmp/ws", ac, null, null, null, null, null, &.{});
+    const result = runner.execute(&env_map, alloc, "/tmp/ws", ac, null, null, null, null, null, &.{}, null);
     try std.testing.expect(!result.exit_ok);
     try std.testing.expectEqual(types.FailureClass.startup_posture, result.failure.?);
 }
@@ -131,7 +131,7 @@ test "execute with github_token in fleet_config and null message fails closed (s
 
     var env_map = try common.env.fromPairs(alloc, &.{});
     defer env_map.deinit();
-    const result = runner.execute(&env_map, alloc, "/tmp/ws", ac, null, null, null, null, null, &.{});
+    const result = runner.execute(&env_map, alloc, "/tmp/ws", ac, null, null, null, null, null, &.{}, null);
     try std.testing.expect(!result.exit_ok);
     try std.testing.expectEqual(types.FailureClass.startup_posture, result.failure.?);
 }
