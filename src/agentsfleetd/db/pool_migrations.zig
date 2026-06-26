@@ -13,11 +13,6 @@ const migration_versions = @import("migration_versions.zig");
 const AppliedVersionSet = migration_versions.AppliedVersionSet;
 const migration_lock = @import("pool_migration_lock.zig");
 
-/// Doctor's schema-gate asserts the migrator URL is a direct/session connection
-/// (not a :6432 transaction pooler) before trusting the migrate path. Exposed
-/// here so `pool.zig` can re-export it onto the public `db` surface.
-pub const assertMigratorSessionConnection = migration_lock.assertSessionConnection;
-
 const log = logging.scoped(.db_migrate);
 
 const Conn = pg.Conn;
@@ -282,11 +277,6 @@ pub fn runMigrations(pool: *Pool, migrations: []const Migration) !void {
     };
     ensureSchemaMigrationFailuresTable(conn) catch |err| {
         if (err == error.PG) logPgErrorContext(conn, "migrate.ensure_schema_migration_failures_table");
-        return err;
-    };
-
-    migration_lock.assertSessionConnection(conn) catch |err| {
-        if (err == error.PG) logPgErrorContext(conn, "migrate.assert_session");
         return err;
     };
 

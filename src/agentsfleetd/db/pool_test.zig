@@ -690,27 +690,6 @@ test "integration: migration lock serializes — second session fails fast, no h
     migration_lock.release(b.conn);
 }
 
-test "unit: migration session-scope probe verdict (probeIsSession)" {
-    const ml = migration_lock;
-    const nonce = "n";
-    try std.testing.expect(ml.probeIsSession(nonce, nonce)); // survived round-trip → session
-    try std.testing.expect(!ml.probeIsSession(null, nonce)); // gone → transaction pooler
-    try std.testing.expect(!ml.probeIsSession("other", nonce)); // changed → transaction pooler
-}
-
-// The local/direct test connection keeps session state across statements, so
-// the pooler guard must PASS (no false positive). The pooled-positive case
-// needs a real PgBouncer and is covered by the probe's pure unit test above.
-test "integration: migration session-scope guard passes on a direct connection" {
-    if (env.testLiveValue("LIVE_DB") == null) return error.SkipZigTest;
-    const alloc = std.testing.allocator;
-    const ctx = (try openIntegrationTestConn(alloc)) orelse return error.SkipZigTest;
-    defer ctx.pool.deinit();
-    defer ctx.pool.release(ctx.conn);
-
-    try migration_lock.assertSessionConnection(ctx.conn);
-}
-
 // probeAvailable is the inspect-side check (inspectMigrationState / serve-boot /
 // doctor). It MUST be pooler-safe: a transaction-scoped advisory lock that
 // auto-releases at statement end, so it never leaks the lock the way the old
