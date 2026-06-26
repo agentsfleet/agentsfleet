@@ -150,13 +150,29 @@ jobs:
         env:
           FLY_API_TOKEN: ${{ env.FLY_API_TOKEN }}
 
+      - name: Resolve dev-latest digest
+        id: digest
+        # Deploy the IMMUTABLE digest, never the mutable :dev-latest tag. Fly
+        # caches the tag -> image-id mapping on its side and can redeploy a stale
+        # (old) image even after push-dev publishes a new one — the exact failure
+        # that crash-looped agentsfleetd-dev on an old binary. push-dev (a needs:)
+        # has already pushed, so dev-latest in GHCR points at this run's image.
+        run: |
+          DIGEST=$(gh api "/orgs/${{ github.repository_owner }}/packages/container/agentsfleetd/versions" \
+            --jq '[.[] | select(.metadata.container.tags[]? == "dev-latest")][0].name')
+          if [ -z "$DIGEST" ] || [ "$DIGEST" = "null" ]; then
+            echo "FAIL: could not resolve dev-latest digest from GHCR"; exit 1
+          fi
+          echo "dev-latest -> $DIGEST"
+          echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Deploy agentsfleetd-dev
         run: |
-          flyctl deploy --app "${{ vars.FLY_APP_DEV }}" --image ghcr.io/agentsfleet/agentsfleetd:dev-latest --config deploy/fly/agentsfleetd-dev/fly.toml --wait-timeout 120 || STATUS=$?
-          STATUS=${STATUS:-0}
-          flyctl deploy --app "${{ vars.FLY_APP_DEV }}" --image ghcr.io/agentsfleet/agentsfleetd:dev-latest --config deploy/fly/agentsfleetd-dev/fly.toml --wait-timeout 120
-          STATUS=$?
-          if [ "$STATUS" -ne 0 ]; then
+          IMAGE="ghcr.io/agentsfleet/agentsfleetd@${{ steps.digest.outputs.digest }}"
+          echo "Deploying immutable image: $IMAGE"
+          if ! flyctl deploy --app "${{ vars.FLY_APP_DEV }}" --image "$IMAGE" --config deploy/fly/agentsfleetd-dev/fly.toml --wait-timeout 120; then
             APP="${{ vars.FLY_APP_DEV }}"
             echo "Fly deploy failed; collecting diagnostics for ${APP}..."
             flyctl status --app "${APP}" || true
@@ -164,8 +180,8 @@ jobs:
             flyctl releases --app "${APP}" || true
             echo "Fly logs (bounded to 30s):"
             timeout 30s flyctl logs --app "${APP}" || true
+            exit 1
           fi
-          exit "$STATUS"
         env:
           FLY_API_TOKEN: ${{ env.FLY_API_TOKEN }}
 

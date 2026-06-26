@@ -363,6 +363,7 @@ jobs:
     needs: verify-dev-gate
     permissions:
       contents: read
+      packages: read
     steps:
       - uses: actions/checkout@v6
 
@@ -419,11 +420,28 @@ jobs:
         env:
           FLY_API_TOKEN: ${{ env.FLY_API_TOKEN }}
 
+      - name: Resolve latest digest
+        id: digest
+        # Deploy the IMMUTABLE digest, never the mutable :latest tag — Fly caches
+        # the tag -> image-id mapping and can otherwise redeploy a stale image
+        # even after push-prod publishes a new one. push-prod (a needs: ancestor)
+        # has already pushed, so :latest in GHCR points at this release's image.
+        run: |
+          DIGEST=$(gh api "/orgs/${{ github.repository_owner }}/packages/container/agentsfleetd/versions" \
+            --jq '[.[] | select(.metadata.container.tags[]? == "latest")][0].name')
+          if [ -z "$DIGEST" ] || [ "$DIGEST" = "null" ]; then
+            echo "FAIL: could not resolve latest digest from GHCR"; exit 1
+          fi
+          echo "latest -> $DIGEST"
+          echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Deploy PROD API to Fly.io
         run: |
           flyctl deploy \
             --app ${{ vars.FLY_APP_PROD }} \
-            --image ghcr.io/agentsfleet/agentsfleetd:latest \
+            --image "ghcr.io/agentsfleet/agentsfleetd@${{ steps.digest.outputs.digest }}" \
             --config deploy/fly/agentsfleetd-prod/fly.toml \
             --wait-timeout 120
         env:
