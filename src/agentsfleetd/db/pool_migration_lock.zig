@@ -18,7 +18,10 @@
 const std = @import("std");
 const common = @import("common");
 const pg = @import("pg");
+const logging = @import("log");
 const PgQuery = @import("pg_query.zig").PgQuery;
+
+const log = logging.scoped(.db_migrate);
 
 const Conn = pg.Conn;
 
@@ -70,9 +73,18 @@ pub fn acquireBounded(conn: *Conn, max_attempts: u32, retry_ms: u64) !void {
     while (true) : (attempt += 1) {
         const got = try tryAcquire(conn);
         switch (classifyAttempt(got, attempt, max_attempts)) {
-            .acquired => return,
-            .exhausted => return error.MigrationLockUnavailable,
-            .retry => common.sleepNanos(retry_ms * std.time.ns_per_ms),
+            .acquired => {
+                if (attempt > 1) log.info("migrate.lock_acquired_after_contention", .{ .attempt = attempt });
+                return;
+            },
+            .exhausted => {
+                log.warn("migrate.lock_exhausted", .{ .attempts = max_attempts, .waited_ms = max_attempts * retry_ms });
+                return error.MigrationLockUnavailable;
+            },
+            .retry => {
+                log.warn("migrate.lock_contended", .{ .attempt = attempt, .max_attempts = max_attempts, .retry_ms = retry_ms });
+                common.sleepNanos(retry_ms * std.time.ns_per_ms);
+            },
         }
     }
 }
