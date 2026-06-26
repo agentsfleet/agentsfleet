@@ -1,12 +1,13 @@
 /**
  * Minimal TS twin of `ui/packages/app/tests/e2e/acceptance/fixtures/clerk-admin.ts`.
  *
- * Three-phase chain: `provisionUser` → (dashboard suite's bootstrap path
- * already ran for the shared `regular` fixture) → `attachJwt` → `mintTokens`.
- * The CLI suite re-uses the same Clerk identity the dashboard suite uses,
- * so only the JWT mint surface is needed here. Webhook user.created bootstrap
- * is implicit because the dashboard's globalSetup already ran it for the
- * shared fixture before this suite ever fires.
+ * Chain: `provisionUser` → `ensureFixtureTenantBootstrapped` → `mintTokens`.
+ * The CLI suite re-uses the same Clerk identity the dashboard suite uses, but
+ * no longer depends on the dashboard's globalSetup having bootstrapped the
+ * shared fixture first: in CI both suites only `needs: verify-dev` and run in
+ * parallel, and a dev-DB reset wipes the workspace. `attachJwt` therefore
+ * replays the `user.created` webhook itself (idempotent) before minting, so
+ * the minted JWT lands on a tenant that already has its default workspace.
  *
  * JWT TTL is 900s (15 min, ~2× observed p95 suite wall-clock) — same posture
  * as the dashboard acceptance suite so a leaked .fixture-jwt is bounded by
@@ -19,6 +20,7 @@ import {
   JWT_TEMPLATE,
   SESSION_TOKEN_TTL_SECONDS,
 } from "./constants.ts";
+import { ensureFixtureTenantBootstrapped } from "./bootstrap.ts";
 
 type ClerkMethod = "GET" | "POST";
 
@@ -147,8 +149,64 @@ export async function mintTokens(
   return { sessionId: session.id, sessionJwt: template.jwt, cookieJwt: standard.jwt };
 }
 
+// Clerk propagates publicMetadata (tenant_id/role) ASYNCHRONOUSLY after the
+// bootstrap webhook's best-effort writeback (identity_events_clerk.zig writes it
+// catch-and-warn, so the webhook 200 does NOT prove tenant_id has landed). The
+// api-template JWT snapshots publicMetadata at mint time, so minting before
+// tenant_id propagates yields a JWT agentsfleetd rejects with UZ-AUTH-001
+// ("Tenant context required"). Poll until it appears — same posture as the
+// dashboard suite's waitForTenantMetadata.
+const CLERK_METADATA_POLL_MS = 500;
+const CLERK_METADATA_TIMEOUT_MS = 15_000;
+const TENANT_ID_METADATA_KEY = "tenant_id";
+
+async function getUser(clerkSecret: string, userId: string): Promise<ClerkUser> {
+  return await clerkRequest(clerkSecret, "GET", `/users/${userId}`) as ClerkUser;
+}
+
+function readTenantId(user: ClerkUser): string | null {
+  const meta = user.public_metadata as Record<string, unknown> | undefined;
+  const value = meta?.[TENANT_ID_METADATA_KEY];
+  return typeof value === "string" ? value : null;
+}
+
+/**
+ * Wait for Clerk to expose the tenant_id the CURRENT bootstrap produced.
+ *
+ * `stale` is the tenant_id present BEFORE this bootstrap. When the webhook
+ * freshly created a tenant (`created === true`), the backend wrote a brand-new
+ * tenant_id, so a poll that returns on `stale` would snapshot a JWT for the old
+ * (now-deleted) tenant. Passing `stale` makes the poll wait until the value is
+ * present AND different from it. On a replay (`stale` passed as null) the
+ * existing value is already the correct tenant, so presence alone is enough.
+ */
+async function waitForTenantMetadata(clerkSecret: string, userId: string, stale: string | null): Promise<void> {
+  const deadline = Date.now() + CLERK_METADATA_TIMEOUT_MS;
+  while (Date.now() < deadline) {
+    const tenantId = readTenantId(await getUser(clerkSecret, userId));
+    if (tenantId !== null && tenantId !== stale) return;
+    await new Promise((resolve) => setTimeout(resolve, CLERK_METADATA_POLL_MS));
+  }
+  throw new Error(
+    `Clerk user ${userId} public_metadata.${TENANT_ID_METADATA_KEY} never ` +
+      `${stale === null ? "appeared" : "advanced past the stale value"} after ` +
+      `${CLERK_METADATA_TIMEOUT_MS}ms — tenant bootstrap metadata did not propagate`,
+  );
+}
+
 export async function attachJwt(clerkSecret: string, opts: AttachJwtOptions): Promise<AttachedJwt> {
   const user = await provisionUser(clerkSecret, { email: opts.email, password: opts.password });
+  // Snapshot the tenant_id Clerk holds BEFORE this bootstrap — it may be stale
+  // metadata from an older dev DB.
+  const staleTenantId = readTenantId(await getUser(clerkSecret, user.id));
+  // Replay user.created (idempotent); `created` distinguishes a fresh tenant from
+  // an idempotent replay.
+  const { created } = await ensureFixtureTenantBootstrapped({ clerkUserId: user.id, email: opts.email });
+  // Wait for the tenant_id the backend writes back to propagate. On a fresh
+  // create, REJECT the stale pre-bootstrap value so we don't mint a JWT for the
+  // old tenant; on a replay the existing value is already correct. Minting before
+  // the right tenant_id lands produces a JWT agentsfleetd rejects (UZ-AUTH-001).
+  await waitForTenantMetadata(clerkSecret, user.id, created ? staleTenantId : null);
   const tokens = await mintTokens(clerkSecret, user.id, { ttlSeconds: opts.ttlSeconds });
   return { ...tokens, clerkUserId: user.id, email: opts.email };
 }
