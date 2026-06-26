@@ -15,6 +15,7 @@ const clock = @import("common").clock;
 const logging = @import("log");
 const contract = @import("contract");
 const pipe_proto = @import("pipe_proto.zig");
+const cred = @import("engine/credential_request.zig");
 const result_mod = @import("child_supervisor_result.zig");
 const client_errors = @import("engine/client_errors.zig");
 
@@ -50,6 +51,24 @@ pub const MemorySink = struct {
 /// `extend` carries the new absolute kill deadline (epoch ms).
 pub const RenewDecision = union(enum) { keep, extend: i64, terminate };
 
+/// Outcome of servicing one `credential_request` (M102 §3): a short-lived token
+/// for the child, or a typed rejection it fails closed on. `token` is owned by the
+/// `alloc` handed to `onMint`; the read loop frees it after framing the reply.
+pub const CredentialOutcome = union(enum) {
+    minted: struct { token: []const u8, expires_at_ms: i64 },
+    rejected,
+};
+
+/// Hook the daemon installs so the supervisor can mint on the child's behalf
+/// without the read loop knowing any HTTP. `onMint` forwards the ask to the
+/// daemon broker over the agt_r plane (`control_plane_client.mint`), binding the
+/// mint to the lease's workspace server-side (Invariant 2). It never logs the
+/// token (VLT). A null hook means mint is unconfigured — every ask is rejected.
+pub const MintHook = struct {
+    ctx: *anyopaque,
+    onMint: *const fn (ctx: *anyopaque, alloc: std.mem.Allocator, integration: []const u8, scope: ?[]const u8) CredentialOutcome,
+};
+
 /// Hook the daemon installs so the supervisor can drive lease renewal during a
 /// long execution without the supervisor knowing any HTTP. `onTick` fires in
 /// the idle gap between frames (renewal-tick cadence) and after each progress
@@ -73,10 +92,15 @@ pub const RenewHook = struct {
 pub fn readResult(
     alloc: std.mem.Allocator,
     fd: std.posix.fd_t,
+    /// Child's stdin (parent→child): where a `credential_response` is framed back
+    /// when the child raises a `credential_request`. The lease's response channel.
+    response_fd: std.posix.fd_t,
     deadline_ms: i64,
     sink: ActivitySink,
     mem_sink: MemorySink,
     renew_hook: ?RenewHook,
+    /// Services on-demand mint asks (M102 §3); null ⇒ every ask is rejected.
+    mint_hook: ?MintHook,
 ) !ReadOutcome {
     var deadline = deadline_ms;
     // Frame parsing and renewal ticks share this one read-loop thread (every
@@ -101,7 +125,7 @@ pub fn readResult(
         switch (try pipe_proto.readFrame(alloc, fd, deadline, MAX_RESULT_BYTES)) {
             .timed_out => return .{ .timed_out = true },
             .eof => return .{},
-            .frame => |f| if (handleFrame(alloc, f, sink, mem_sink, renew_hook, &deadline, &usage)) |outcome|
+            .frame => |f| if (handleFrame(alloc, f, response_fd, sink, mem_sink, renew_hook, mint_hook, &deadline, &usage)) |outcome|
                 return outcome,
         }
     }
@@ -115,9 +139,11 @@ pub fn readResult(
 fn handleFrame(
     alloc: std.mem.Allocator,
     f: pipe_proto.Frame,
+    response_fd: std.posix.fd_t,
     sink: ActivitySink,
     mem_sink: MemorySink,
     renew_hook: ?RenewHook,
+    mint_hook: ?MintHook,
     deadline: *i64,
     usage: *pipe_proto.UsageSnapshot,
 ) ?ReadOutcome {
@@ -141,11 +167,58 @@ fn handleFrame(
                 // warn — symmetric with the child-side usage_frame_write_failed.
                 log.warn("usage_frame_dropped", .{ .error_code = ERR_EXEC_TRANSPORT_LOSS, .len = f.payload.len });
         },
+        .credential_request => {
+            defer alloc.free(f.payload);
+            // Mint on the child's behalf and frame the reply back down its stdin.
+            // The child is blocked reading that reply, so no stdout frame races.
+            serviceCredentialRequest(alloc, f.payload, response_fd, mint_hook);
+        },
         .result => return .{ .bytes = f.payload },
+        // `lease` / `credential_response` are parent→child only — the parent never
+        // reads them off the child's stdout. One here is wire skew; drop it.
+        .lease, .credential_response => {
+            defer alloc.free(f.payload);
+            log.warn("unexpected_child_frame", .{ .error_code = ERR_EXEC_TRANSPORT_LOSS, .ftype = @tagName(f.ftype) });
+        },
     }
     // Every non-terminal frame attests liveness and is a renewal point.
     if (applyTick(renew_hook, deadline, clock.nowMillis(), usage.*)) return .{ .terminated = true };
     return null;
+}
+
+/// Parse one `credential_request` payload, mint via the hook, and frame the
+/// `credential_response` back to the child's stdin. Best-effort + fail-closed:
+/// any parse miss, a null hook, or a broker rejection frames `ok=false`, and the
+/// child aborts its tool call. The token (when minted) is owned by `alloc` — freed
+/// here right after framing — and is never logged (VLT).
+fn serviceCredentialRequest(
+    alloc: std.mem.Allocator,
+    payload: []const u8,
+    response_fd: std.posix.fd_t,
+    mint_hook: ?MintHook,
+) void {
+    const hook = mint_hook orelse return writePipeResponse(alloc, response_fd, .{ .ok = false });
+    const parsed = std.json.parseFromSlice(cred.PipeRequest, alloc, payload, .{}) catch
+        return writePipeResponse(alloc, response_fd, .{ .ok = false });
+    defer parsed.deinit();
+    switch (hook.onMint(hook.ctx, alloc, parsed.value.integration, parsed.value.scope)) {
+        .minted => |m| {
+            defer alloc.free(m.token);
+            writePipeResponse(alloc, response_fd, .{ .ok = true, .token = m.token, .expires_at_ms = m.expires_at_ms });
+        },
+        .rejected => writePipeResponse(alloc, response_fd, .{ .ok = false }),
+    }
+}
+
+/// Serialize + frame a `credential_response` to the child's stdin. Best-effort:
+/// a write failure leaves the child to time out on its read and fail closed (its
+/// round-trip is bounded by the lease deadline), so a wedged pipe never hangs the
+/// parent. The token, when present, is framed straight through — never logged.
+fn writePipeResponse(alloc: std.mem.Allocator, response_fd: std.posix.fd_t, resp: cred.PipeResponse) void {
+    const json = std.json.Stringify.valueAlloc(alloc, resp, .{}) catch return;
+    defer alloc.free(json);
+    pipe_proto.writeFrame(response_fd, .credential_response, json) catch |err|
+        log.warn("credential_response_write_failed", .{ .error_code = ERR_EXEC_TRANSPORT_LOSS, .err = @errorName(err) });
 }
 
 /// Ask the renewal hook for a decision and apply it to `deadline`. Returns true

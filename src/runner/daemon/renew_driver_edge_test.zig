@@ -108,7 +108,7 @@ test "readResult should time out when renewal fails transiently on every tick" {
     var dummy: u8 = 0;
     const sink = ActivitySink{ .ctx = &dummy, .forward = Noop.forward };
 
-    const outcome = try child_supervisor.readResult(testing.allocator, fds[0], near_dl, sink, NoopMem.sink(), hook);
+    const outcome = try child_supervisor.readResult(testing.allocator, fds[0], fds[1], near_dl, sink, NoopMem.sink(), hook, null);
     defer testing.allocator.free(outcome.bytes);
 
     try testing.expect(outcome.timed_out);

@@ -254,6 +254,12 @@ pub fn isTerminalRenewStatus(status: u16) bool {
     return status == 401 or status == 402 or status == 404 or status == 409;
 }
 
+// `cp.mint` (on-demand credential mint, M102 §3) lives in
+// `control_plane_client_mint.zig` (RULE FLL — this file is at the cap).
+const mint_mod = @import("control_plane_client_mint.zig");
+pub const MintOutcome = mint_mod.MintOutcome;
+pub const mint = mint_mod.mint;
+
 pub const PostResult = struct { status: u16, body: []u8 };
 
 /// Pin the pooled connection the next fetch will use (get-or-create, then
@@ -270,8 +276,8 @@ fn pooledHandle(self: *LoopbackClient) ?std.Io.net.Socket.Handle {
 }
 
 /// One bearer-authed POST on the persistent client. Returns the status +
-/// response body (owned by `alloc`).
-fn post(self: *LoopbackClient, alloc: Allocator, path: []const u8, bearer: []const u8, payload: []const u8, deadline_ms: u31) !PostResult {
+/// response body (owned by `alloc`). Pub so the split-out `mint` verb shares it.
+pub fn post(self: *LoopbackClient, alloc: Allocator, path: []const u8, bearer: []const u8, payload: []const u8, deadline_ms: u31) !PostResult {
     // Fail the verb closed if the deadline can't be enforced (M100) — an
     // unbounded call is the silent hang the watchdog exists to prevent.
     if (self.pooledHandle()) |handle| {

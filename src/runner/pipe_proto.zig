@@ -1,12 +1,23 @@
-//! pipe_proto.zig — typed length-prefixed framing over the lease pipe.
+//! pipe_proto.zig — typed length-prefixed framing over the lease pipes.
 //!
-//! The child multiplexes two message classes onto its stdout: zero-or-more
-//! `activity` frames streamed during execution (live-tail progress), then
-//! exactly one terminal `result` frame. The parent reads frames in order,
-//! forwards each `activity` frame to the control plane, and parses the `result`
-//! frame as the `ExecutionResult`. stdout is the one fd that crosses the bwrap
-//! boundary cleanly, so the progress channel rides it rather than a fragile
-//! extra descriptor.
+//! Both lease pipes carry framed messages, multiplexed by `FrameType`:
+//!   * child stdout (child→parent): zero-or-more `activity` frames streamed
+//!     during execution (live-tail progress) interleaved with the occasional
+//!     `credential_request` (an on-demand mint ask, M102 §3), then exactly one
+//!     terminal `result` frame. The parent reads frames in order, forwards each
+//!     `activity` frame to the control plane, services each `credential_request`
+//!     inline, and parses the `result` frame as the `ExecutionResult`.
+//!   * child stdin (parent→child): exactly one `lease` frame at startup (the
+//!     work + inline secrets), then zero-or-more `credential_response` frames —
+//!     one per `credential_request` the child raised. stdin stays open for the
+//!     lease lifetime so the mint round-trip rides it (no extra descriptor, no
+//!     new sandbox hole — the same stdin/stdout pair the memory channel uses).
+//!
+//! The child is single-threaded during a turn, so a `credential_request` is only
+//! ever emitted between other frames (never concurrently): it writes the request,
+//! blocks reading its `credential_response`, then resumes — no interleave race.
+//! stdin/stdout are the two fds that cross the bwrap boundary cleanly, so both
+//! channels ride them rather than a fragile extra descriptor.
 //!
 //! Frame = [1 byte type][4 byte big-endian length][payload]. The payload is
 //! opaque to this module (the writer serializes, the reader hands bytes back);
@@ -19,12 +30,24 @@ const clock = common.clock;
 const globalIo = common.globalIo;
 
 /// Header byte selecting the message class. Values are ASCII so a stray frame is
-/// legible in a hexdump; the enum is the single source (RULE UFS).
+/// legible in a hexdump; the enum is the single source (RULE UFS). The first four
+/// ride child→parent on stdout; `lease` + `credential_response` ride parent→child
+/// on stdin; `credential_request` rides child→parent on stdout (M102 §3).
 pub const FrameType = enum(u8) {
     activity = 'A',
     result = 'R',
     memory = 'M',
     usage = 'U',
+    /// parent→child: the work + inline secrets, the first (and only) stdin frame
+    /// at startup. Replaces the pre-§3 write-then-EOF lease feed so stdin can stay
+    /// open as the credential-response channel for the lease lifetime.
+    lease = 'L',
+    /// child→parent: an on-demand mint ask (`PipeRequest`); the child blocks for
+    /// its `credential_response` before resuming.
+    credential_request = 'C',
+    /// parent→child: the mint reply (`PipeResponse`) — a short-lived token or a
+    /// typed rejection. Secret (VLT): never logged, only framed back to the child.
+    credential_response = 'T',
 };
 
 const HEADER_LEN = 1 + 4; // type byte + u32 big-endian length
@@ -212,6 +235,20 @@ test "writeFrame/readFrame round-trip a memory frame" {
     try std.testing.expectEqual(FrameType.memory, out.frame.ftype);
     try std.testing.expectEqualStrings("[{\"key\":\"k\",\"content\":\"c\",\"category\":\"core\"}]", out.frame.payload);
     std.testing.allocator.free(out.frame.payload);
+}
+
+test "writeFrame/readFrame round-trip the §3 lease + credential frame types" {
+    inline for (.{ FrameType.lease, FrameType.credential_request, FrameType.credential_response }) |ft| {
+        const fds = try testOsPipe();
+        defer testOsClose(fds[0]);
+        try writeFrame(fds[1], ft, "{\"integration\":\"github\"}");
+        testOsClose(fds[1]);
+        const dl = clock.nowMillis() + 5_000;
+        const out = try readFrame(std.testing.allocator, fds[0], dl, 1024);
+        defer std.testing.allocator.free(out.frame.payload);
+        try std.testing.expectEqual(ft, out.frame.ftype);
+        try std.testing.expectEqualStrings("{\"integration\":\"github\"}", out.frame.payload);
+    }
 }
 
 test "readFrame returns timed_out when the deadline is already past" {

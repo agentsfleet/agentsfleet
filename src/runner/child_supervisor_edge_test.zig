@@ -54,7 +54,7 @@ test "readResult should exit cleanly when the hook extends to an already-past de
     const sink = ActivitySink{ .ctx = &dummy, .forward = NoopSink.forward };
 
     const far_dl = clock.nowMillis() + 60_000; // far; the 10ms tick fires first
-    const outcome = try supervisor.readResult(std.testing.allocator, fds[0], far_dl, sink, NoopMem.sink(), hook);
+    const outcome = try supervisor.readResult(std.testing.allocator, fds[0], fds[1], far_dl, sink, NoopMem.sink(), hook, null);
     defer std.testing.allocator.free(outcome.bytes);
 
     try std.testing.expect(outcome.timed_out);
