@@ -1,7 +1,7 @@
 //! On-demand credential broker. Resolves a vault handle to a short-lived token
-//! by dispatching to the config-driven driver registry (`driver.zig`), caching
-//! the result until near expiry. Adding a connector is a registry descriptor,
-//! never a branch here (RULE CFG).
+//! by dispatching to the config-driven integration registry (`integration.zig`),
+//! caching the result until near expiry. Adding a connector is a registry
+//! descriptor, never a branch here (RULE CFG).
 //!
 //! RESOURCE BUDGET: the cache holds one entry per (workspace, integration),
 //! overwritten on re-mint — bounded by tenants × integrations, not per-request.
@@ -18,12 +18,12 @@ const EXPIRY_SKEW_MS: i64 = 60_000;
 const KEY_SEP: u8 = 0x1f;
 
 alloc: std.mem.Allocator,
-registry: []const Driver,
-cache: std.StringHashMapUnmanaged(driver.Minted) = .empty,
+registry: []const Spec,
+cache: std.StringHashMapUnmanaged(integration.Minted) = .empty,
 
-/// `registry` is injected (production passes `driver.DRIVER_REGISTRY`) so a test
-/// can supply a fake-kind registry and prove dispatch is data-driven.
-pub fn init(alloc: std.mem.Allocator, registry: []const Driver) CredentialBroker {
+/// `registry` is injected (production passes `integration.REGISTRY`) so a test
+/// can supply a fake-id registry and prove dispatch is data-driven.
+pub fn init(alloc: std.mem.Allocator, registry: []const Spec) CredentialBroker {
     return .{ .alloc = alloc, .registry = registry };
 }
 
@@ -37,20 +37,20 @@ pub fn deinit(self: *CredentialBroker) void {
     self.* = undefined;
 }
 
-/// Resolve `integration` for `workspace` to a short-lived token, minting via the
-/// driver registry on a cache miss. `now_ms` is injected (production passes
+/// Resolve `integration_id` for `workspace` to a short-lived token, minting via
+/// the registry on a cache miss. `now_ms` is injected (production passes
 /// `clock.nowMillis()`) for deterministic expiry. The returned `ok.token` is
 /// duped with `alloc` (caller-owned) — never an alias into the cache.
 pub fn mint(
     self: *CredentialBroker,
     alloc: std.mem.Allocator,
     workspace: []const u8,
-    integration: []const u8,
+    integration_id: []const u8,
     handle: std.json.Value,
     now_ms: i64,
-) !driver.MintResult {
+) !integration.MintResult {
     var key_buf: [512]u8 = undefined;
-    const key = writeKey(&key_buf, workspace, integration) orelse return .mint_failed;
+    const key = writeKey(&key_buf, workspace, integration_id) orelse return .mint_failed;
 
     if (self.cache.get(key)) |hit| {
         if (now_ms < hit.expires_at_ms - EXPIRY_SKEW_MS) {
@@ -58,10 +58,10 @@ pub fn mint(
         }
     }
 
-    const kind = parseKind(handle) orelse return .unknown_integration;
-    const drv = driver.resolve(self.registry, kind) orelse return .unknown_integration;
+    const id = parseIntegration(handle) orelse return .unknown_integration;
+    const spec = integration.resolve(self.registry, id) orelse return .unknown_integration;
 
-    const outcome = drv.mintFn(self.alloc, handle) catch return .mint_failed;
+    const outcome = spec.mintFn(self.alloc, handle) catch return .mint_failed;
     switch (outcome) {
         .ok => |minted| {
             self.store(key, minted) catch |err| {
@@ -78,7 +78,7 @@ pub fn mint(
 
 /// Insert/overwrite the cache entry. Frees a prior entry's token; dups the key
 /// only for a new entry. The minted token is already owned by `self.alloc`.
-fn store(self: *CredentialBroker, key: []const u8, minted: driver.Minted) !void {
+fn store(self: *CredentialBroker, key: []const u8, minted: integration.Minted) !void {
     const gop = try self.cache.getOrPut(self.alloc, key);
     if (gop.found_existing) {
         self.alloc.free(gop.value_ptr.token);
@@ -91,59 +91,59 @@ fn store(self: *CredentialBroker, key: []const u8, minted: driver.Minted) !void 
     gop.value_ptr.* = minted;
 }
 
-fn parseKind(handle: std.json.Value) ?driver.Kind {
+fn parseIntegration(handle: std.json.Value) ?integration.Id {
     const obj = switch (handle) {
         .object => |o| o,
         else => return null,
     };
-    const kv = obj.get(driver.FIELD_KIND) orelse return null;
+    const kv = obj.get(integration.FIELD_INTEGRATION) orelse return null;
     const ks = switch (kv) {
         .string => |s| s,
         else => return null,
     };
-    return driver.kindFromString(ks);
+    return integration.idFromString(ks);
 }
 
-fn writeKey(buf: []u8, workspace: []const u8, integration: []const u8) ?[]const u8 {
-    if (workspace.len + integration.len + 1 > buf.len) return null;
+fn writeKey(buf: []u8, workspace: []const u8, integration_id: []const u8) ?[]const u8 {
+    if (workspace.len + integration_id.len + 1 > buf.len) return null;
     @memcpy(buf[0..workspace.len], workspace);
     buf[workspace.len] = KEY_SEP;
-    @memcpy(buf[workspace.len + 1 ..][0..integration.len], integration);
-    return buf[0 .. workspace.len + 1 + integration.len];
+    @memcpy(buf[workspace.len + 1 ..][0..integration_id.len], integration_id);
+    return buf[0 .. workspace.len + 1 + integration_id.len];
 }
 
 const std = @import("std");
-const driver = @import("driver.zig");
-const Driver = driver.Driver;
+const integration = @import("integration.zig");
+const Spec = integration.Spec;
 
 // ── Tests (pure — injected registry + clock, no DB, no upstream) ─────────────
 
 var fake_calls: usize = 0;
 
-/// Fixed expiry the fake driver stamps, so the cache test reasons about the
+/// Fixed expiry the fake integration stamps, so the cache test reasons about the
 /// skew boundary against a named value, not a bare literal.
 const FAKE_EXPIRY_MS: i64 = 1_000_000;
 
-/// Fake driver standing in for `github_app`: counts invocations and returns a
+/// Fake integration standing in for `github`: counts invocations and returns a
 /// token expiring at a fixed epoch ms, so a test can assert cache reuse.
-fn fakeMintFinite(alloc: std.mem.Allocator, handle: std.json.Value) anyerror!driver.DriverOutcome {
+fn fakeMintFinite(alloc: std.mem.Allocator, handle: std.json.Value) anyerror!integration.Outcome {
     _ = handle;
     fake_calls += 1;
     return .{ .ok = .{ .token = try alloc.dupe(u8, "minted_tok"), .expires_at_ms = FAKE_EXPIRY_MS } };
 }
 
-const FAKE_REGISTRY: []const Driver = &.{.{ .kind = .github_app, .mintFn = fakeMintFinite }};
+const FAKE_REGISTRY: []const Spec = &.{.{ .id = .github, .mintFn = fakeMintFinite }};
 
 fn parseHandle(alloc: std.mem.Allocator, comptime json: []const u8) !std.json.Parsed(std.json.Value) {
     return std.json.parseFromSlice(std.json.Value, alloc, json, .{});
 }
 
-test "mint: dispatches by kind to the matching driver (Dimension 1.1)" {
+test "mint: dispatches by id to the matching integration (Dimension 1.1)" {
     const alloc = std.testing.allocator;
     fake_calls = 0;
     var b = CredentialBroker.init(alloc, FAKE_REGISTRY);
     defer b.deinit();
-    var h = try parseHandle(alloc, "{\"kind\":\"github_app\"}");
+    var h = try parseHandle(alloc, "{\"integration\":\"github\"}");
     defer h.deinit();
 
     const r = try b.mint(alloc, "ws1", "github", h.value, 0);
@@ -153,15 +153,15 @@ test "mint: dispatches by kind to the matching driver (Dimension 1.1)" {
     try std.testing.expectEqual(@as(usize, 1), fake_calls);
 }
 
-test "mint: a kind absent from the production registry becomes mintable purely via the injected descriptor (Dimension 1.2 — data-driven)" {
+test "mint: an id absent from the production registry becomes mintable purely via the injected descriptor (Dimension 1.2 — data-driven)" {
     const alloc = std.testing.allocator;
-    // github_app is NOT in driver.DRIVER_REGISTRY in §1 — yet a registry that
-    // lists it makes it mintable with zero edit to mint()/resolve().
-    try std.testing.expect(driver.resolve(driver.DRIVER_REGISTRY, .github_app) == null);
+    // github is NOT in integration.REGISTRY in §1 — yet a registry that lists it
+    // makes it mintable with zero edit to mint()/resolve().
+    try std.testing.expect(integration.resolve(integration.REGISTRY, .github) == null);
     fake_calls = 0;
     var b = CredentialBroker.init(alloc, FAKE_REGISTRY);
     defer b.deinit();
-    var h = try parseHandle(alloc, "{\"kind\":\"github_app\"}");
+    var h = try parseHandle(alloc, "{\"integration\":\"github\"}");
     defer h.deinit();
     const r = try b.mint(alloc, "ws1", "github", h.value, 0);
     try std.testing.expect(r == .ok);
@@ -173,7 +173,7 @@ test "mint: reuses a cached token within validity, re-mints past the skew (Dimen
     fake_calls = 0;
     var b = CredentialBroker.init(alloc, FAKE_REGISTRY);
     defer b.deinit();
-    var h = try parseHandle(alloc, "{\"kind\":\"github_app\"}");
+    var h = try parseHandle(alloc, "{\"integration\":\"github\"}");
     defer h.deinit();
 
     const r1 = try b.mint(alloc, "ws1", "github", h.value, 0); // miss → mint
@@ -187,18 +187,18 @@ test "mint: reuses a cached token within validity, re-mints past the skew (Dimen
     try std.testing.expectEqual(@as(usize, 2), fake_calls);
 }
 
-test "mint: unknown / unregistered kind returns unknown_integration, no upstream call (Dimension 1.4)" {
+test "mint: unknown / unregistered id returns unknown_integration, no upstream call (Dimension 1.4)" {
     const alloc = std.testing.allocator;
-    var b = CredentialBroker.init(alloc, driver.DRIVER_REGISTRY);
+    var b = CredentialBroker.init(alloc, integration.REGISTRY);
     defer b.deinit();
 
-    // kind not in the enum at all
-    var h1 = try parseHandle(alloc, "{\"kind\":\"zoho\"}");
+    // id not in the enum at all
+    var h1 = try parseHandle(alloc, "{\"integration\":\"zoho\"}");
     defer h1.deinit();
     try std.testing.expect((try b.mint(alloc, "ws1", "zoho", h1.value, 0)) == .unknown_integration);
 
-    // valid kind but no driver registered for it in the production registry
-    var h2 = try parseHandle(alloc, "{\"kind\":\"github_app\"}");
+    // valid id but no integration registered for it in the production registry
+    var h2 = try parseHandle(alloc, "{\"integration\":\"github\"}");
     defer h2.deinit();
     try std.testing.expect((try b.mint(alloc, "ws1", "github", h2.value, 0)) == .unknown_integration);
 }
