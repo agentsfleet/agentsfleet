@@ -427,10 +427,19 @@ jobs:
         # even after push-prod publishes a new one. push-prod (a needs: ancestor)
         # has already pushed, so :latest in GHCR points at this release's image.
         run: |
-          DIGEST=$(gh api "/orgs/${{ github.repository_owner }}/packages/container/agentsfleetd/versions" \
-            --jq '[.[] | select(.metadata.container.tags[]? == "latest")][0].name')
+          # Bounded retry: GHCR's package-versions API can lag a few seconds
+          # behind push-prod moving the tag, so a single lookup may transiently
+          # return empty for an image that pushed fine. Retry before failing.
+          DIGEST=""
+          for attempt in 1 2 3 4 5 6; do
+            DIGEST=$(gh api "/orgs/${{ github.repository_owner }}/packages/container/agentsfleetd/versions" \
+              --jq '[.[] | select(.metadata.container.tags[]? == "latest")][0].name')
+            if [ -n "$DIGEST" ] && [ "$DIGEST" != "null" ]; then break; fi
+            echo "latest not yet indexed by GHCR (attempt $attempt/6); retrying in 5s..."
+            sleep 5
+          done
           if [ -z "$DIGEST" ] || [ "$DIGEST" = "null" ]; then
-            echo "FAIL: could not resolve latest digest from GHCR"; exit 1
+            echo "FAIL: could not resolve latest digest from GHCR after retries"; exit 1
           fi
           echo "latest -> $DIGEST"
           echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
