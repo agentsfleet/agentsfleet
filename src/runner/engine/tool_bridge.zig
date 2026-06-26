@@ -24,6 +24,7 @@ const Config = nullclaw.config.Config;
 const builders = @import("tool_builders.zig");
 const context_budget = @import("context_budget.zig");
 const client_errors = @import("client_errors.zig");
+const credential_request = @import("credential_request.zig");
 
 const log = logging.scoped(.tool_bridge);
 
@@ -45,6 +46,10 @@ pub const BuildCtx = struct {
     workspace_path: []const u8,
     cfg: *const Config,
     policy: ?*const context_budget.ExecutionPolicy = null,
+    /// The child→runner on-demand mint channel (M102 §4), threaded to the
+    /// policy-aware http tool. Null on the no-session path (unit tests, the
+    /// register-only fallback) — a mintable placeholder then fails closed.
+    cred_channel: ?credential_request.Channel = null,
 };
 
 /// Factory function type — receives context, returns a NullClaw Tool.
@@ -147,12 +152,14 @@ pub fn buildTools(
     workspace_path: []const u8,
     cfg: *const Config,
     policy: ?*const context_budget.ExecutionPolicy,
+    cred_channel: ?credential_request.Channel,
 ) !BuildResult {
     const ctx = BuildCtx{
         .alloc = alloc,
         .workspace_path = workspace_path,
         .cfg = cfg,
         .policy = policy,
+        .cred_channel = cred_channel,
     };
 
     var list: std.ArrayList(tools_mod.Tool) = .empty;
@@ -249,7 +256,7 @@ test "buildTools: empty array returns empty slice" {
     const alloc = std.testing.allocator;
     var arr = std.json.Value{ .array = std.json.Array.init(alloc) };
     defer arr.array.deinit();
-    const result = try buildTools(alloc, arr, "/tmp", undefined, null);
+    const result = try buildTools(alloc, arr, "/tmp", undefined, null, null);
     defer result.deinit(alloc);
     try std.testing.expectEqual(@as(usize, 0), result.tools.len);
     try std.testing.expectEqual(@as(usize, 0), result.skipped.len);
@@ -257,7 +264,7 @@ test "buildTools: empty array returns empty slice" {
 
 test "buildTools: non-array value returns empty slice" {
     const alloc = std.testing.allocator;
-    const result = try buildTools(alloc, .{ .integer = 42 }, "/tmp", undefined, null);
+    const result = try buildTools(alloc, .{ .integer = 42 }, "/tmp", undefined, null, null);
     defer result.deinit(alloc);
     try std.testing.expectEqual(@as(usize, 0), result.tools.len);
 }
@@ -270,7 +277,7 @@ test "buildTools: unknown tool name skipped and reported" {
     defer obj.deinit(alloc);
     try obj.put(alloc, "name", .{ .string = "unknown_future_tool" });
     try arr.array.append(.{ .object = obj });
-    const result = try buildTools(alloc, arr, "/tmp", undefined, null);
+    const result = try buildTools(alloc, arr, "/tmp", undefined, null, null);
     defer result.deinit(alloc);
     try std.testing.expectEqual(@as(usize, 0), result.tools.len);
     try std.testing.expectEqual(@as(usize, 1), result.skipped.len);
@@ -286,7 +293,7 @@ test "buildTools: disabled tool skipped" {
     try obj.put(alloc, "name", .{ .string = "file_read" });
     try obj.put(alloc, "enabled", .{ .bool = false });
     try arr.array.append(.{ .object = obj });
-    const result = try buildTools(alloc, arr, "/tmp", undefined, null);
+    const result = try buildTools(alloc, arr, "/tmp", undefined, null, null);
     defer result.deinit(alloc);
     try std.testing.expectEqual(@as(usize, 0), result.tools.len);
     try std.testing.expectEqual(@as(usize, 0), result.skipped.len);

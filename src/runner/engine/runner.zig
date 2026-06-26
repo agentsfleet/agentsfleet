@@ -7,14 +7,8 @@
 //! Sandbox enforcement: Landlock (filesystem) and cgroups (memory/CPU) apply
 //! at the process level. NullClaw's tools run within this boundary.
 //!
-//! Call chain:
-//!   runner.execute(alloc, workspace_path, fleet_config, tools_spec, message, context, policy)
-//!     -> Config from params + env defaults
-//!     -> build tool set from spec
-//!     -> Fleet.fromConfig()
-//!     -> fleet.runSingle(composed_message)
-//!     -> capture result
-//!   <- ExecutionResult
+//! Call chain: execute() → Config from params+env → build tool set from spec →
+//! Fleet.fromConfig() → fleet.runSingle(composed_message) → ExecutionResult.
 
 const std = @import("std");
 const clock = @import("common").clock;
@@ -38,6 +32,7 @@ const runner_observer = @import("runner_observer.zig");
 const context_budget = @import("context_budget.zig");
 const client_errors = @import("client_errors.zig");
 const run_context = @import("run_context.zig");
+const credential_request = @import("credential_request.zig");
 
 const log = logging.scoped(.runner);
 
@@ -77,6 +72,9 @@ pub fn execute(
     /// Prior memory the parent hydrated over the trusted plane; the in-run store
     /// is seeded from it at run start. Empty when there is no prior memory.
     hydrated_memory: []const protocol.MemoryDelta,
+    /// The child→runner on-demand mint channel (M102 §4), or null when none was
+    /// wired (tests). Forwarded to the tool bridge for tool-boundary minting.
+    cred_channel: ?credential_request.Channel,
 ) types.ExecutionResult {
     const msg = message orelse {
         log.err("invalid_config", .{ .error_code = ERR_EXEC_RUNNER_INVALID_CONFIG, .reason = "missing_message" });
@@ -85,7 +83,7 @@ pub fn execute(
 
     const start = clock.nowMillis();
 
-    const result = executeInner(.{}, env_map, alloc, workspace_path, fleet_config, tools_spec, msg, context, policy, progress_fd, hydrated_memory) catch |err| {
+    const result = executeInner(.{ .cred_channel = cred_channel }, env_map, alloc, workspace_path, fleet_config, tools_spec, msg, context, policy, progress_fd, hydrated_memory) catch |err| {
         const elapsed = elapsedSeconds(start);
         const failure = mapError(err);
         log.err("runner_execute_failed", .{
@@ -179,7 +177,7 @@ pub fn executeInner(
     const provider_i = deps.acquireProvider(alloc, &cfg, &provider_bundle) catch return RunnerError.FleetInitFailed;
 
     // 3. Build tools from spec (or allTools as fallback).
-    const tools = buildToolsFromSpec(alloc, workspace_path, tools_spec, &cfg, policy) catch {
+    const tools = buildToolsFromSpec(alloc, workspace_path, tools_spec, &cfg, policy, deps.cred_channel) catch {
         log.err("tool_build_failed", .{ .error_code = ERR_EXEC_RUNNER_FLEET_INIT });
         return RunnerError.FleetInitFailed;
     };

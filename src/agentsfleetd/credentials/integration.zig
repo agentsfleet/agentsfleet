@@ -59,14 +59,55 @@ pub const MintResult = union(enum) {
     mint_failed: Retry,
 };
 
-/// One registered integration: its id + how it mints from a `MintCtx`.
-pub const Spec = struct {
-    id: Id,
-    mintFn: *const fn (mint_ctx: MintCtx) anyerror!Outcome,
+/// How an integration resolves its credential. A tagged union over the mint
+/// STRATEGY (Bun's `SideEffects` / `AllowUnresolved` idiom — data variants for the
+/// common cases, a function-pointer escape hatch for the bespoke one). Dispatch is
+/// the union's own `run` method, so the broker stays strategy-agnostic and adding a
+/// strategy never branches the hot path (RULE CFG / Invariant 4).
+///
+/// Today: `static` (handle carries a usable token, no network) + `custom` (github's
+/// App-JWT → installation-token exchange). A declarative `oauth2_refresh: …` variant
+/// for refresh-token providers (Zoho, Jira) slots in here as DATA when its first
+/// real caller lands — see the M103 spec; not built now (would be untested dead
+/// code, RULE NDC).
+pub const Mint = union(enum) {
+    /// The vault handle already carries a directly-usable stored token; resolved
+    /// inline (no network). The lease path ships it as a stored value, never a
+    /// mint marker — so a `static` credential never reaches the on-demand channel.
+    static,
+    /// Bespoke exchange — a function over the injected `MintCtx`. The escape hatch
+    /// for anything the declarative strategies don't cover (github).
+    custom: *const fn (mint_ctx: MintCtx) anyerror!Outcome,
+
+    /// Run this strategy against `ctx` (the union owns its dispatch — Bun's
+    /// `SideEffects.hasSideEffects` idiom). The broker calls this; it never
+    /// switches on integration id.
+    pub fn run(self: Mint, mint_ctx: MintCtx) anyerror!Outcome {
+        return switch (self) {
+            .static => mintStatic(mint_ctx),
+            .custom => |mintFn| mintFn(mint_ctx),
+        };
+    }
+
+    /// Whether this strategy defers to an on-demand broker mint (vs an inline
+    /// stored value). The lease path reads this to decide marker-vs-stored-value;
+    /// only `.static` is inline, so every other strategy is on-demand.
+    pub fn isOnDemand(self: Mint) bool {
+        return switch (self) {
+            .static => false,
+            .custom => true,
+        };
+    }
 };
 
-const STATIC_SPEC = Spec{ .id = .static, .mintFn = mintStatic };
-const GITHUB_SPEC = Spec{ .id = .github, .mintFn = @import("integration_github.zig").mint };
+/// One registered integration: its id + how it mints.
+pub const Spec = struct {
+    id: Id,
+    mint: Mint,
+};
+
+const STATIC_SPEC = Spec{ .id = .static, .mint = .static };
+const GITHUB_SPEC = Spec{ .id = .github, .mint = .{ .custom = @import("integration_github.zig").mint } };
 
 /// All registered integrations. Adding a connector = one entry here (RULE CFG) —
 /// the mint hot path never branches per id (Invariant 4).
@@ -92,6 +133,15 @@ pub fn resolve(registry: []const Spec, id: Id) ?*const Spec {
 /// Map the vault `integration` string to an `Id`; unknown → null.
 pub fn idFromString(s: []const u8) ?Id {
     return std.meta.stringToEnum(Id, s);
+}
+
+/// Whether `id` resolves by an on-demand broker mint (delegates to the strategy's
+/// own `isOnDemand` — no per-id branch, Invariant 4). An id absent from `registry`
+/// is treated as not-on-demand (fail safe: a stored value, never a mint marker).
+/// The lease path passes `REGISTRY`.
+pub fn mintsOnDemand(registry: []const Spec, id: Id) bool {
+    const s = resolve(registry, id) orelse return false;
+    return s.mint.isOnDemand();
 }
 
 /// `static` integration: the handle already carries the token; return it with the
@@ -125,6 +175,28 @@ test "idFromString: maps wire values, rejects unknown" {
     try std.testing.expectEqual(Id.static, idFromString("static").?);
     try std.testing.expectEqual(Id.github, idFromString("github").?);
     try std.testing.expect(idFromString("zoho") == null);
+}
+
+test "Mint.isOnDemand: only static resolves inline; minted strategies are on-demand" {
+    // The lease path keys marker-vs-stored-value off this — a `static` handle is
+    // a stored value (no mint marker), `custom` (github) mints on demand.
+    try std.testing.expect(!STATIC_SPEC.mint.isOnDemand());
+    try std.testing.expect(GITHUB_SPEC.mint.isOnDemand());
+    // …and routed through the registry the lease path actually calls.
+    try std.testing.expect(!mintsOnDemand(REGISTRY, .static));
+    try std.testing.expect(mintsOnDemand(REGISTRY, .github));
+}
+
+test "Mint.run: the strategy union dispatches without a per-id branch" {
+    const alloc = std.testing.allocator;
+    var parsed = try std.json.parseFromSlice(std.json.Value, alloc, "{\"integration\":\"static\",\"token\":\"ghp_xyz\"}", .{});
+    defer parsed.deinit();
+    // .static runs the inline strategy; a `.custom` entry would call its fn — both
+    // through the SAME `run`, so a new strategy never touches the broker (1.2).
+    const outcome = try STATIC_SPEC.mint.run(testing.ctxOver(alloc, parsed.value));
+    try std.testing.expect(outcome == .ok);
+    defer alloc.free(outcome.ok.token);
+    try std.testing.expectEqualStrings("ghp_xyz", outcome.ok.token);
 }
 
 test "mintStatic: returns the stored token with the never-expires bound" {

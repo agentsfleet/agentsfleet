@@ -13,6 +13,7 @@ const json = @import("json_helpers.zig");
 const wire = @import("wire.zig");
 const tool_bridge = @import("tool_bridge.zig");
 const context_budget = @import("context_budget.zig");
+const credential_request = @import("credential_request.zig");
 const runner_progress = @import("runner_progress.zig");
 const client_errors = @import("client_errors.zig");
 
@@ -235,6 +236,7 @@ pub fn buildToolsFromSpec(
     tools_spec: ?std.json.Value,
     cfg: *const Config,
     policy: ?*const context_budget.ExecutionPolicy,
+    cred_channel: ?credential_request.Channel,
 ) ![]tools_mod.Tool {
     const spec = tools_spec orelse return tools_mod.allTools(alloc, workspace_path, .{
         .allowed_paths = &.{workspace_path},
@@ -245,7 +247,7 @@ pub fn buildToolsFromSpec(
         .tools_config = cfg.tools,
     });
 
-    const result = try tool_bridge.buildTools(alloc, spec, workspace_path, cfg, policy);
+    const result = try tool_bridge.buildTools(alloc, spec, workspace_path, cfg, policy, cred_channel);
     for (result.skipped) |name| {
         log.warn("tool_skipped", .{ .error_code = ERR_TOOL_UNKNOWN, .name = name });
         alloc.free(name);

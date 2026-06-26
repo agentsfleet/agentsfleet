@@ -166,7 +166,8 @@ fn runMint(self: *CredentialBroker, id: integration.Id, handle: std.json.Value, 
         .http = self.deps.http,
         .sign = self.deps.sign,
     };
-    return spec.mintFn(ctx) catch .{ .mint_failed = .transient };
+    // The strategy union owns dispatch; the broker never branches on id.
+    return spec.mint.run(ctx) catch .{ .mint_failed = .transient };
 }
 
 fn emit(self: *CredentialBroker, integration_name: []const u8, outcome: []const u8, cache_hit: bool) void {
