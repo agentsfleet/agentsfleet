@@ -42,7 +42,7 @@ Every `op://` reference the agent will use across M2_002 and the deploy pipeline
 | `auth-session-code-pepper` | `credential` | Fly.io PROD `AUTH_SESSION_CODE_PEPPER` — `agentsfleetd` loads at boot via `src/state/vault.zig`; process fails fast if missing. Used to keyed-HMAC the CLI-login verification code (defeats offline brute-force from a Redis dump). |
 | `audit-log-pepper` | `credential` | Fly.io PROD `AUDIT_LOG_PEPPER` — `agentsfleetd` loads at boot; fails fast if missing. Used to keyed-HMAC `session_id` in the `.auth_audit` log scope (pseudonymization across audit events). |
 | `planetscale-prod` | `api-connection-string` | Fly.io PROD `DATABASE_URL_API` |
-| `planetscale-prod` | `migrator-connection-string` | Fly.io PROD `DATABASE_URL_MIGRATOR` (release migrations) |
+| `planetscale-prod` | `migrator-connection-string` | Fly.io PROD `DATABASE_URL_MIGRATOR` (release migrations). **Must be the DIRECT/session connection (port `5432`), NOT the pooled `:6432` endpoint — migrations take a session-scoped advisory lock that transaction-mode pooling breaks (it leaks onto a pooled backend and silently hangs `migrate`).** |
 | `upstash-prod` | `api-url` | Fly.io PROD `REDIS_URL_API` |
 | `grafana-prod` | `otlp-endpoint` | Fly.io PROD `GRAFANA_OTLP_ENDPOINT` (OTLP traces/metrics export) |
 | `grafana-prod` | `instance-id` | Fly.io PROD `GRAFANA_OTLP_INSTANCE_ID` |

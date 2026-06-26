@@ -5,6 +5,7 @@ const pg = @import("pg");
 const PgQuery = @import("pg_query.zig").PgQuery;
 const id_format = @import("../types/id_format.zig");
 const pool_mod = @import("pool.zig");
+const migration_lock = @import("pool_migration_lock.zig");
 
 const Pool = pool_mod.Pool;
 const Conn = pool_mod.Conn;
@@ -644,4 +645,83 @@ test "integration: api_runtime holds the fleet lease/report write grants" {
         try std.testing.expect(try row.get(bool, 1)); // INSERT
         try std.testing.expect(try row.get(bool, 2)); // UPDATE
     }
+}
+
+// ── Migration advisory lock: retry decision + real-DB concurrency ──────────
+
+test "unit: migration lock retry decision (classifyAttempt)" {
+    const ml = migration_lock;
+    try std.testing.expectEqual(ml.Outcome.acquired, ml.classifyAttempt(true, 1, 3));
+    try std.testing.expectEqual(ml.Outcome.acquired, ml.classifyAttempt(true, 3, 3)); // acquired wins at the bound
+    try std.testing.expectEqual(ml.Outcome.retry, ml.classifyAttempt(false, 1, 3));
+    try std.testing.expectEqual(ml.Outcome.retry, ml.classifyAttempt(false, 2, 3));
+    try std.testing.expectEqual(ml.Outcome.exhausted, ml.classifyAttempt(false, 3, 3)); // bound reached
+    try std.testing.expectEqual(ml.Outcome.exhausted, ml.classifyAttempt(false, 9, 3)); // past the bound
+}
+
+// Concurrency proof: while session A holds the migration advisory lock, a
+// second session B must FAIL FAST (bounded) rather than block forever — the
+// exact hang this module exists to prevent. Two independent pools = two real
+// Postgres sessions; advisory locks are per-session.
+test "integration: migration lock serializes — second session fails fast, no hang" {
+    if (env.testLiveValue("LIVE_DB") == null) return error.SkipZigTest;
+    const alloc = std.testing.allocator;
+
+    const a = (try openIntegrationTestConn(alloc)) orelse return error.SkipZigTest;
+    defer a.pool.deinit();
+    defer a.pool.release(a.conn);
+    const b = (try openIntegrationTestConn(alloc)) orelse return error.SkipZigTest;
+    defer b.pool.deinit();
+    defer b.pool.release(b.conn);
+
+    // Session A takes the lock.
+    try migration_lock.acquireBounded(a.conn, 3, 5);
+
+    // Session B must fail fast with MigrationLockUnavailable — bounded, not hung.
+    const t0 = clock.nowMillis();
+    try std.testing.expectError(error.MigrationLockUnavailable, migration_lock.acquireBounded(b.conn, 3, 5));
+    const elapsed_ms = clock.nowMillis() - t0;
+    // pin test: literal is the contract — the sub-second ceiling proving "fail fast, not hang"
+    try std.testing.expect(elapsed_ms < 1_000); // 3 polls × 5ms; a hang would be minutes
+
+    // Once A releases, B acquires cleanly — proving a real lock, not a dead end.
+    migration_lock.release(a.conn);
+    try migration_lock.acquireBounded(b.conn, 3, 5);
+    migration_lock.release(b.conn);
+}
+
+// probeAvailable is the inspect-side check (inspectMigrationState / serve-boot /
+// doctor). It MUST be pooler-safe: a transaction-scoped advisory lock that
+// auto-releases at statement end, so it never leaks the lock the way the old
+// session-scoped tryAcquire/release pair did over a pooled connection. Prove on
+// real PG: (1) free at rest, (2) detects contention while another session holds
+// the migrate lock, (3) reports free again once released, and crucially (4) a
+// true verdict NEVER retains the lock — another session can immediately acquire,
+// which a leaking session-scoped probe would have blocked.
+test "integration: probeAvailable detects contention and never leaks the lock" {
+    if (env.testLiveValue("LIVE_DB") == null) return error.SkipZigTest;
+    const alloc = std.testing.allocator;
+
+    const a = (try openIntegrationTestConn(alloc)) orelse return error.SkipZigTest;
+    defer a.pool.deinit();
+    defer a.pool.release(a.conn);
+    const b = (try openIntegrationTestConn(alloc)) orelse return error.SkipZigTest;
+    defer b.pool.deinit();
+    defer b.pool.release(b.conn);
+
+    // (1) Free at rest; (4) that true probe did not retain the lock — A can take it.
+    try std.testing.expect(try migration_lock.probeAvailable(b.conn));
+    try migration_lock.acquireBounded(a.conn, 3, 5);
+
+    // (2) Contention: while A holds the session lock, B's probe sees it taken.
+    // Repeated probes stay false and never accumulate a held lock on B.
+    try std.testing.expect(!try migration_lock.probeAvailable(b.conn));
+    try std.testing.expect(!try migration_lock.probeAvailable(b.conn));
+
+    // (3) Freed: once A releases, B's probe reports available again, and (4) the
+    // lock is still free for a real acquire afterward — proving auto-release.
+    migration_lock.release(a.conn);
+    try std.testing.expect(try migration_lock.probeAvailable(b.conn));
+    try migration_lock.acquireBounded(a.conn, 3, 5);
+    migration_lock.release(a.conn);
 }
