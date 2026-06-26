@@ -19,12 +19,15 @@ const KEY_SEP: u8 = 0x1f;
 
 alloc: std.mem.Allocator,
 registry: []const Spec,
+deps: integration.Deps,
 cache: std.StringHashMapUnmanaged(integration.Minted) = .empty,
 
 /// `registry` is injected (production passes `integration.REGISTRY`) so a test
-/// can supply a fake-id registry and prove dispatch is data-driven.
-pub fn init(alloc: std.mem.Allocator, registry: []const Spec) CredentialBroker {
-    return .{ .alloc = alloc, .registry = registry };
+/// can supply a fake-id registry and prove dispatch is data-driven. `deps` carries
+/// the daemon-singleton effects (platform secrets, HTTP boundary, RS256 signer)
+/// folded into every `MintCtx`.
+pub fn init(alloc: std.mem.Allocator, registry: []const Spec, deps: integration.Deps) CredentialBroker {
+    return .{ .alloc = alloc, .registry = registry, .deps = deps };
 }
 
 pub fn deinit(self: *CredentialBroker) void {
@@ -61,7 +64,15 @@ pub fn mint(
     const id = parseIntegration(handle) orelse return .unknown_integration;
     const spec = integration.resolve(self.registry, id) orelse return .unknown_integration;
 
-    const outcome = spec.mintFn(self.alloc, handle) catch return .mint_failed;
+    const ctx = integration.MintCtx{
+        .alloc = self.alloc,
+        .handle = handle,
+        .now_ms = now_ms,
+        .platform = self.deps.platform,
+        .http = self.deps.http,
+        .sign = self.deps.sign,
+    };
+    const outcome = spec.mintFn(ctx) catch return .mint_failed;
     switch (outcome) {
         .ok => |minted| {
             self.store(key, minted) catch |err| {
@@ -126,10 +137,9 @@ const FAKE_EXPIRY_MS: i64 = 1_000_000;
 
 /// Fake integration standing in for `github`: counts invocations and returns a
 /// token expiring at a fixed epoch ms, so a test can assert cache reuse.
-fn fakeMintFinite(alloc: std.mem.Allocator, handle: std.json.Value) anyerror!integration.Outcome {
-    _ = handle;
+fn fakeMintFinite(ctx: integration.MintCtx) anyerror!integration.Outcome {
     fake_calls += 1;
-    return .{ .ok = .{ .token = try alloc.dupe(u8, "minted_tok"), .expires_at_ms = FAKE_EXPIRY_MS } };
+    return .{ .ok = .{ .token = try ctx.alloc.dupe(u8, "minted_tok"), .expires_at_ms = FAKE_EXPIRY_MS } };
 }
 
 const FAKE_REGISTRY: []const Spec = &.{.{ .id = .github, .mintFn = fakeMintFinite }};
@@ -141,7 +151,7 @@ fn parseHandle(alloc: std.mem.Allocator, comptime json: []const u8) !std.json.Pa
 test "mint: dispatches by id to the matching integration (Dimension 1.1)" {
     const alloc = std.testing.allocator;
     fake_calls = 0;
-    var b = CredentialBroker.init(alloc, FAKE_REGISTRY);
+    var b = CredentialBroker.init(alloc, FAKE_REGISTRY, integration.nullDeps());
     defer b.deinit();
     var h = try parseHandle(alloc, "{\"integration\":\"github\"}");
     defer h.deinit();
@@ -153,25 +163,27 @@ test "mint: dispatches by id to the matching integration (Dimension 1.1)" {
     try std.testing.expectEqual(@as(usize, 1), fake_calls);
 }
 
-test "mint: an id absent from the production registry becomes mintable purely via the injected descriptor (Dimension 1.2 — data-driven)" {
+test "mint: an injected descriptor drives dispatch, independent of the production registry (Dimension 1.2 — data-driven)" {
     const alloc = std.testing.allocator;
-    // github is NOT in integration.REGISTRY in §1 — yet a registry that lists it
-    // makes it mintable with zero edit to mint()/resolve().
-    try std.testing.expect(integration.resolve(integration.REGISTRY, .github) == null);
+    // The broker dispatches by the INJECTED registry: FAKE_REGISTRY maps github to
+    // fakeMintFinite, so minting yields the fake's token — never the production
+    // github mint. Dispatch is data; no per-id branch in mint()/resolve().
     fake_calls = 0;
-    var b = CredentialBroker.init(alloc, FAKE_REGISTRY);
+    var b = CredentialBroker.init(alloc, FAKE_REGISTRY, integration.nullDeps());
     defer b.deinit();
     var h = try parseHandle(alloc, "{\"integration\":\"github\"}");
     defer h.deinit();
     const r = try b.mint(alloc, "ws1", "github", h.value, 0);
     try std.testing.expect(r == .ok);
-    alloc.free(r.ok.token);
+    defer alloc.free(r.ok.token);
+    try std.testing.expectEqualStrings("minted_tok", r.ok.token);
+    try std.testing.expectEqual(@as(usize, 1), fake_calls);
 }
 
 test "mint: reuses a cached token within validity, re-mints past the skew (Dimension 1.3)" {
     const alloc = std.testing.allocator;
     fake_calls = 0;
-    var b = CredentialBroker.init(alloc, FAKE_REGISTRY);
+    var b = CredentialBroker.init(alloc, FAKE_REGISTRY, integration.nullDeps());
     defer b.deinit();
     var h = try parseHandle(alloc, "{\"integration\":\"github\"}");
     defer h.deinit();
@@ -189,16 +201,16 @@ test "mint: reuses a cached token within validity, re-mints past the skew (Dimen
 
 test "mint: unknown / unregistered id returns unknown_integration, no upstream call (Dimension 1.4)" {
     const alloc = std.testing.allocator;
-    var b = CredentialBroker.init(alloc, integration.REGISTRY);
+    var b = CredentialBroker.init(alloc, integration.REGISTRY, integration.nullDeps());
     defer b.deinit();
 
-    // id not in the enum at all
+    // id not in the enum at all → unknown, no upstream call
     var h1 = try parseHandle(alloc, "{\"integration\":\"zoho\"}");
     defer h1.deinit();
     try std.testing.expect((try b.mint(alloc, "ws1", "zoho", h1.value, 0)) == .unknown_integration);
 
-    // valid id but no integration registered for it in the production registry
-    var h2 = try parseHandle(alloc, "{\"integration\":\"github\"}");
+    // a handle carrying no integration field is likewise unknown
+    var h2 = try parseHandle(alloc, "{\"token\":\"x\"}");
     defer h2.deinit();
     try std.testing.expect((try b.mint(alloc, "ws1", "github", h2.value, 0)) == .unknown_integration);
 }
