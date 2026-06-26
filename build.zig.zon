@@ -68,6 +68,10 @@
             .url = "https://codeberg.org/fellowtraveler/z3/archive/6170f82ac8dbc377167adc818b2ec45b0cd30b9c.tar.gz",
             .hash = "z3-0.4.0-N25-cCCMAQAJwdfivwRrCFccaGnnVPk7TnWKn4S7U-5a",
         },
+        .cache = .{
+            .url = "git+https://github.com/karlseguin/cache.zig#51b9d77bec8d9f3717349e9a007ff689959f3479",
+            .hash = "cache-0.0.0-winRwJu4AAD4Kf1LLubro_8Pf66vN8U4ARd0U4imAOI5",
+        },
     },
     .paths = .{
         "build.zig",
