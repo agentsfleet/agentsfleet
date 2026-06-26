@@ -164,28 +164,49 @@ async function getUser(clerkSecret: string, userId: string): Promise<ClerkUser> 
   return await clerkRequest(clerkSecret, "GET", `/users/${userId}`) as ClerkUser;
 }
 
-async function waitForTenantMetadata(clerkSecret: string, userId: string): Promise<void> {
+function readTenantId(user: ClerkUser): string | null {
+  const meta = user.public_metadata as Record<string, unknown> | undefined;
+  const value = meta?.[TENANT_ID_METADATA_KEY];
+  return typeof value === "string" ? value : null;
+}
+
+/**
+ * Wait for Clerk to expose the tenant_id the CURRENT bootstrap produced.
+ *
+ * `stale` is the tenant_id present BEFORE this bootstrap. When the webhook
+ * freshly created a tenant (`created === true`), the backend wrote a brand-new
+ * tenant_id, so a poll that returns on `stale` would snapshot a JWT for the old
+ * (now-deleted) tenant. Passing `stale` makes the poll wait until the value is
+ * present AND different from it. On a replay (`stale` passed as null) the
+ * existing value is already the correct tenant, so presence alone is enough.
+ */
+async function waitForTenantMetadata(clerkSecret: string, userId: string, stale: string | null): Promise<void> {
   const deadline = Date.now() + CLERK_METADATA_TIMEOUT_MS;
   while (Date.now() < deadline) {
-    const user = await getUser(clerkSecret, userId);
-    const meta = user.public_metadata as Record<string, unknown> | undefined;
-    if (typeof meta?.[TENANT_ID_METADATA_KEY] === "string") return;
+    const tenantId = readTenantId(await getUser(clerkSecret, userId));
+    if (tenantId !== null && tenantId !== stale) return;
     await new Promise((resolve) => setTimeout(resolve, CLERK_METADATA_POLL_MS));
   }
   throw new Error(
-    `Clerk user ${userId} missing public_metadata.${TENANT_ID_METADATA_KEY} after ` +
-      `${CLERK_METADATA_TIMEOUT_MS}ms — tenant bootstrap metadata never propagated`,
+    `Clerk user ${userId} public_metadata.${TENANT_ID_METADATA_KEY} never ` +
+      `${stale === null ? "appeared" : "advanced past the stale value"} after ` +
+      `${CLERK_METADATA_TIMEOUT_MS}ms — tenant bootstrap metadata did not propagate`,
   );
 }
 
 export async function attachJwt(clerkSecret: string, opts: AttachJwtOptions): Promise<AttachedJwt> {
   const user = await provisionUser(clerkSecret, { email: opts.email, password: opts.password });
-  // Replay user.created (idempotent) so the tenant + default workspace exist,
-  // THEN wait for Clerk to propagate the tenant_id metadata the backend writes
-  // back, THEN mint — minting before tenant_id lands produces a JWT without it
-  // that agentsfleetd rejects (UZ-AUTH-001).
-  await ensureFixtureTenantBootstrapped({ clerkUserId: user.id, email: opts.email });
-  await waitForTenantMetadata(clerkSecret, user.id);
+  // Snapshot the tenant_id Clerk holds BEFORE this bootstrap — it may be stale
+  // metadata from an older dev DB.
+  const staleTenantId = readTenantId(await getUser(clerkSecret, user.id));
+  // Replay user.created (idempotent); `created` distinguishes a fresh tenant from
+  // an idempotent replay.
+  const { created } = await ensureFixtureTenantBootstrapped({ clerkUserId: user.id, email: opts.email });
+  // Wait for the tenant_id the backend writes back to propagate. On a fresh
+  // create, REJECT the stale pre-bootstrap value so we don't mint a JWT for the
+  // old tenant; on a replay the existing value is already correct. Minting before
+  // the right tenant_id lands produces a JWT agentsfleetd rejects (UZ-AUTH-001).
+  await waitForTenantMetadata(clerkSecret, user.id, created ? staleTenantId : null);
   const tokens = await mintTokens(clerkSecret, user.id, { ttlSeconds: opts.ttlSeconds });
   return { ...tokens, clerkUserId: user.id, email: opts.email };
 }
