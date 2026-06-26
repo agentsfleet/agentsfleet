@@ -594,6 +594,9 @@ jobs:
           OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
           CLERK_SECRET_KEY: op://${{ vars.VAULT_DEV }}/clerk-dev/secret-key
           CLERK_PUBLISHABLE_KEY: op://${{ vars.VAULT_DEV }}/clerk-dev/publishable-key
+          # Signs the user.created webhook the fixtures replay to bootstrap the
+          # tenant + default workspace (attachJwt → ensureFixtureTenantBootstrapped).
+          CLERK_WEBHOOK_SECRET: op://${{ vars.VAULT_DEV }}/clerk-dev/webhook-secret
           AUTH_E2E_REGULAR_EMAIL: op://${{ vars.VAULT_DEV }}/e2e-fixtures-email/regular
           AUTH_E2E_ADMIN_EMAIL: op://${{ vars.VAULT_DEV }}/e2e-fixtures-email/admin
           # The handshake browser leg navigates the protected dev dashboard.
@@ -611,6 +614,8 @@ jobs:
           CLERK_SECRET_KEY: ${{ env.CLERK_SECRET_KEY }}
           # Browser leg signs in via clerk.signIn, which needs the publishable key.
           CLERK_PUBLISHABLE_KEY: ${{ env.CLERK_PUBLISHABLE_KEY }}
+          # Fixture bootstrap replays the Svix-signed user.created webhook.
+          CLERK_WEBHOOK_SECRET: ${{ env.CLERK_WEBHOOK_SECRET }}
           # Bypass Vercel deployment protection so the browser reaches the app.
           VERCEL_BYPASS_SECRET: ${{ env.VERCEL_BYPASS_SECRET }}
           AUTH_E2E_REGULAR_EMAIL: ${{ env.AUTH_E2E_REGULAR_EMAIL }}

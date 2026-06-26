@@ -1,12 +1,13 @@
 /**
  * Minimal TS twin of `ui/packages/app/tests/e2e/acceptance/fixtures/clerk-admin.ts`.
  *
- * Three-phase chain: `provisionUser` → (dashboard suite's bootstrap path
- * already ran for the shared `regular` fixture) → `attachJwt` → `mintTokens`.
- * The CLI suite re-uses the same Clerk identity the dashboard suite uses,
- * so only the JWT mint surface is needed here. Webhook user.created bootstrap
- * is implicit because the dashboard's globalSetup already ran it for the
- * shared fixture before this suite ever fires.
+ * Chain: `provisionUser` → `ensureFixtureTenantBootstrapped` → `mintTokens`.
+ * The CLI suite re-uses the same Clerk identity the dashboard suite uses, but
+ * no longer depends on the dashboard's globalSetup having bootstrapped the
+ * shared fixture first: in CI both suites only `needs: verify-dev` and run in
+ * parallel, and a dev-DB reset wipes the workspace. `attachJwt` therefore
+ * replays the `user.created` webhook itself (idempotent) before minting, so
+ * the minted JWT lands on a tenant that already has its default workspace.
  *
  * JWT TTL is 900s (15 min, ~2× observed p95 suite wall-clock) — same posture
  * as the dashboard acceptance suite so a leaked .fixture-jwt is bounded by
@@ -19,6 +20,7 @@ import {
   JWT_TEMPLATE,
   SESSION_TOKEN_TTL_SECONDS,
 } from "./constants.ts";
+import { ensureFixtureTenantBootstrapped } from "./bootstrap.ts";
 
 type ClerkMethod = "GET" | "POST";
 
@@ -149,6 +151,9 @@ export async function mintTokens(
 
 export async function attachJwt(clerkSecret: string, opts: AttachJwtOptions): Promise<AttachedJwt> {
   const user = await provisionUser(clerkSecret, { email: opts.email, password: opts.password });
+  // Replay user.created (idempotent) BEFORE minting so the tenant + default
+  // workspace exist and the JWT lands on a fully-provisioned identity.
+  await ensureFixtureTenantBootstrapped({ clerkUserId: user.id, email: opts.email });
   const tokens = await mintTokens(clerkSecret, user.id, { ttlSeconds: opts.ttlSeconds });
   return { ...tokens, clerkUserId: user.id, email: opts.email };
 }
