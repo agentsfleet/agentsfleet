@@ -270,6 +270,7 @@ pub fn inspectMigrationState(pool: *Pool, migrations: []const Migration) !Migrat
 pub fn runMigrations(pool: *Pool, migrations: []const Migration) !void {
     var conn = try pool.acquire();
     defer pool.release(conn);
+    log.info("migrate.conn_acquired", .{ .expected_versions = migrations.len });
 
     ensureSchemaMigrationsTable(conn) catch |err| {
         if (err == error.PG) logPgErrorContext(conn, "migrate.ensure_schema_migrations_table");
@@ -285,6 +286,7 @@ pub fn runMigrations(pool: *Pool, migrations: []const Migration) !void {
         return err;
     };
     defer migration_lock.release(conn);
+    log.info("migrate.lock_acquired", .{});
 
     var reap_scratch: [REAP_SCRATCH_BYTES]u8 = undefined;
     var reap_fba = std.heap.FixedBufferAllocator.init(&reap_scratch);
@@ -304,6 +306,7 @@ pub fn runMigrations(pool: *Pool, migrations: []const Migration) !void {
             continue;
         }
 
+        log.info("migration_start", .{ .version = migration.version });
         beginTx(conn) catch |err| {
             if (err == error.PG) logPgErrorContext(conn, "migrate.begin_tx");
             return err;
