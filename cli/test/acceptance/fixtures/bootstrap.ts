@@ -53,6 +53,13 @@ function buildPayload(opts: BootstrapFixtureOptions): UserCreatedPayload {
   };
 }
 
+export interface BootstrapResult {
+  /** `true` when the webhook freshly created the tenant (so the backend wrote a
+   *  NEW tenant_id to Clerk); `false` on an idempotent replay of an existing
+   *  account. Drives the metadata-wait's stale-value guard in attachJwt. */
+  readonly created: boolean;
+}
+
 /**
  * Ensure the fixture's tenant + default workspace exist. No-op only when
  * `AGENTSFLEET_ACCEPTANCE_TARGET` is unset (not an acceptance run). Once a target
@@ -60,10 +67,10 @@ function buildPayload(opts: BootstrapFixtureOptions): UserCreatedPayload {
  * `CLERK_WEBHOOK_SECRET` throws loudly (matching the dashboard suite) rather than
  * silently skipping into a confusing downstream hydration failure.
  */
-export async function ensureFixtureTenantBootstrapped(opts: BootstrapFixtureOptions): Promise<void> {
+export async function ensureFixtureTenantBootstrapped(opts: BootstrapFixtureOptions): Promise<BootstrapResult> {
   const secret = process.env.CLERK_WEBHOOK_SECRET;
   const apiUrl = process.env[ACCEPTANCE_TARGET_ENV];
-  if (!apiUrl) return; // not an acceptance run — nothing to bootstrap against
+  if (!apiUrl) return { created: false }; // not an acceptance run — nothing to bootstrap against
   if (!secret) {
     throw new Error(
       `CLERK_WEBHOOK_SECRET unset/empty but ${ACCEPTANCE_TARGET_ENV} is set — the acceptance ` +
@@ -85,6 +92,8 @@ export async function ensureFixtureTenantBootstrapped(opts: BootstrapFixtureOpti
       `fixture tenant bootstrap failed for ${opts.email}: ${res.status} ${res.statusText}\n${detail.slice(0, 300)}`,
     );
   }
-  // Drain the body so the connection is released; the payload is unused.
-  await res.text().catch(() => "");
+  // The handler returns { workspace_id, workspace_name, created }; `created`
+  // tells us whether a NEW tenant was minted (vs an idempotent replay).
+  const payload = await res.json().catch(() => ({})) as { created?: unknown };
+  return { created: payload.created === true };
 }
