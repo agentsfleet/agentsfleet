@@ -149,11 +149,43 @@ export async function mintTokens(
   return { sessionId: session.id, sessionJwt: template.jwt, cookieJwt: standard.jwt };
 }
 
+// Clerk propagates publicMetadata (tenant_id/role) ASYNCHRONOUSLY after the
+// bootstrap webhook's best-effort writeback (identity_events_clerk.zig writes it
+// catch-and-warn, so the webhook 200 does NOT prove tenant_id has landed). The
+// api-template JWT snapshots publicMetadata at mint time, so minting before
+// tenant_id propagates yields a JWT agentsfleetd rejects with UZ-AUTH-001
+// ("Tenant context required"). Poll until it appears — same posture as the
+// dashboard suite's waitForTenantMetadata.
+const CLERK_METADATA_POLL_MS = 500;
+const CLERK_METADATA_TIMEOUT_MS = 15_000;
+const TENANT_ID_METADATA_KEY = "tenant_id";
+
+async function getUser(clerkSecret: string, userId: string): Promise<ClerkUser> {
+  return await clerkRequest(clerkSecret, "GET", `/users/${userId}`) as ClerkUser;
+}
+
+async function waitForTenantMetadata(clerkSecret: string, userId: string): Promise<void> {
+  const deadline = Date.now() + CLERK_METADATA_TIMEOUT_MS;
+  while (Date.now() < deadline) {
+    const user = await getUser(clerkSecret, userId);
+    const meta = user.public_metadata as Record<string, unknown> | undefined;
+    if (typeof meta?.[TENANT_ID_METADATA_KEY] === "string") return;
+    await new Promise((resolve) => setTimeout(resolve, CLERK_METADATA_POLL_MS));
+  }
+  throw new Error(
+    `Clerk user ${userId} missing public_metadata.${TENANT_ID_METADATA_KEY} after ` +
+      `${CLERK_METADATA_TIMEOUT_MS}ms — tenant bootstrap metadata never propagated`,
+  );
+}
+
 export async function attachJwt(clerkSecret: string, opts: AttachJwtOptions): Promise<AttachedJwt> {
   const user = await provisionUser(clerkSecret, { email: opts.email, password: opts.password });
-  // Replay user.created (idempotent) BEFORE minting so the tenant + default
-  // workspace exist and the JWT lands on a fully-provisioned identity.
+  // Replay user.created (idempotent) so the tenant + default workspace exist,
+  // THEN wait for Clerk to propagate the tenant_id metadata the backend writes
+  // back, THEN mint — minting before tenant_id lands produces a JWT without it
+  // that agentsfleetd rejects (UZ-AUTH-001).
   await ensureFixtureTenantBootstrapped({ clerkUserId: user.id, email: opts.email });
+  await waitForTenantMetadata(clerkSecret, user.id);
   const tokens = await mintTokens(clerkSecret, user.id, { ttlSeconds: opts.ttlSeconds });
   return { ...tokens, clerkUserId: user.id, email: opts.email };
 }

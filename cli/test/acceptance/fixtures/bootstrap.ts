@@ -54,21 +54,22 @@ function buildPayload(opts: BootstrapFixtureOptions): UserCreatedPayload {
 }
 
 /**
- * Ensure the fixture's tenant + default workspace exist. Best-effort when
- * `CLERK_WEBHOOK_SECRET` is unset (local runs without it fall back to the
- * prior "dashboard already bootstrapped" assumption); loud when the secret is
- * present but the replay is rejected, since that is a real misconfiguration.
+ * Ensure the fixture's tenant + default workspace exist. No-op only when
+ * `AGENTSFLEET_ACCEPTANCE_TARGET` is unset (not an acceptance run). Once a target
+ * is set we are mid-acceptance and the bootstrap is REQUIRED: a missing/empty
+ * `CLERK_WEBHOOK_SECRET` throws loudly (matching the dashboard suite) rather than
+ * silently skipping into a confusing downstream hydration failure.
  */
 export async function ensureFixtureTenantBootstrapped(opts: BootstrapFixtureOptions): Promise<void> {
   const secret = process.env.CLERK_WEBHOOK_SECRET;
   const apiUrl = process.env[ACCEPTANCE_TARGET_ENV];
   if (!apiUrl) return; // not an acceptance run — nothing to bootstrap against
   if (!secret) {
-    console.warn(
-      "[acceptance] CLERK_WEBHOOK_SECRET unset — skipping fixture tenant bootstrap; " +
-        "relying on prior provisioning (a tenant with no workspace will fail hydration)",
+    throw new Error(
+      `CLERK_WEBHOOK_SECRET unset/empty but ${ACCEPTANCE_TARGET_ENV} is set — the acceptance ` +
+        "suite cannot sign the user.created webhook to bootstrap the fixture tenant. " +
+        "Set CLERK_WEBHOOK_SECRET (op://VAULT_DEV/clerk-dev/webhook-secret).",
     );
-    return;
   }
 
   const body = JSON.stringify(buildPayload(opts));
