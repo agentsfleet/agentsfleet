@@ -40,20 +40,24 @@ const RESP_FIELD_TOKEN: []const u8 = "token";
 const HTTP_CREATED: u16 = 201;
 const HTTP_UNAUTHORIZED: u16 = 401;
 const HTTP_NOT_FOUND: u16 = 404;
+/// Status at/above this is an upstream fault (retryable); below it (other 4xx) is
+/// a permanent client-side failure.
+const HTTP_SERVER_ERROR_FLOOR: u16 = 500;
 
 /// RSA signature scratch (4096-bit key ⇒ 512 bytes).
 const MAX_SIG_LEN = 512;
 
 /// Mint an installation token. `reconnect_required` when the install is gone
-/// (401/404) or the handle lacks an installation id; `mint_failed` on a transport
-/// error, a non-2xx other status, an unparseable body, or an unconfigured platform.
+/// (401/404) or the handle lacks an installation id; `mint_failed{transient}` on a
+/// transport error or 5xx; `mint_failed{permanent}` on a malformed body, other
+/// 4xx, or an unconfigured platform.
 pub fn mint(ctx: MintCtx) anyerror!Outcome {
     const obj = switch (ctx.handle) {
         .object => |o| o,
-        else => return .mint_failed,
+        else => return .{ .mint_failed = .permanent },
     };
     const installation_id = strField(obj, FIELD_INSTALLATION_ID) orelse return .reconnect_required;
-    const app = ctx.platform.github orelse return .mint_failed; // platform unconfigured
+    const app = ctx.platform.github orelse return .{ .mint_failed = .permanent }; // platform unconfigured
 
     const jwt = try buildAppJwt(ctx, app);
     defer ctx.alloc.free(jwt);
@@ -71,24 +75,28 @@ pub fn mint(ctx: MintCtx) anyerror!Outcome {
         .accept = ACCEPT_GITHUB,
         .user_agent = USER_AGENT,
         .body = "",
-    }) catch return .mint_failed;
+    }) catch return .{ .mint_failed = .transient }; // network / timeout → retryable
     defer ctx.alloc.free(resp.body);
 
     return switch (resp.status) {
         HTTP_CREATED => parseToken(ctx, resp.body),
         HTTP_UNAUTHORIZED, HTTP_NOT_FOUND => .reconnect_required,
-        else => .mint_failed,
+        else => classifyHttpFailure(resp.status),
     };
 }
 
+fn classifyHttpFailure(status: u16) Outcome {
+    return .{ .mint_failed = if (status >= HTTP_SERVER_ERROR_FLOOR) .transient else .permanent };
+}
+
 fn parseToken(ctx: MintCtx, body: []const u8) anyerror!Outcome {
-    var parsed = std.json.parseFromSlice(std.json.Value, ctx.alloc, body, .{}) catch return .mint_failed;
+    var parsed = std.json.parseFromSlice(std.json.Value, ctx.alloc, body, .{}) catch return .{ .mint_failed = .permanent };
     defer parsed.deinit();
     const obj = switch (parsed.value) {
         .object => |o| o,
-        else => return .mint_failed,
+        else => return .{ .mint_failed = .permanent },
     };
-    const tok = strField(obj, RESP_FIELD_TOKEN) orelse return .mint_failed;
+    const tok = strField(obj, RESP_FIELD_TOKEN) orelse return .{ .mint_failed = .permanent };
     return .{ .ok = .{
         .token = try ctx.alloc.dupe(u8, tok),
         .expires_at_ms = ctx.now_ms + INSTALL_TOKEN_TTL_MS,
@@ -136,139 +144,108 @@ fn strField(obj: std.json.ObjectMap, key: []const u8) ?[]const u8 {
     };
 }
 
-// ── Tests (pure — fake signer + fake GitHub, throwaway key, no network) ───────
+// ── Tests (shared harness: testing.FakeGitHub + fake signer, no network) ──────
 
-const FAKE_APP = GithubApp{
-    .app_id = "123456",
-    // pin test: a distinctive non-secret marker; the key-never-leaks test asserts
-    // this string never reaches the outbound request or the minted token.
-    .private_key_pem = "FAKE_PRIVATE_KEY_MATERIAL_zzz",
-};
-
-/// Fake RS256 signer — returns a fixed marker (real signing is proven separately
-/// in `rs256_sign.zig`); here we exercise JWT assembly + exchange + outcome mapping.
-fn fakeSign(out: []u8, private_key_pem: []const u8, signing_input: []const u8) anyerror![]const u8 {
-    _ = private_key_pem;
-    _ = signing_input;
-    const marker = "FAKESIG";
-    @memcpy(out[0..marker.len], marker);
-    return out[0..marker.len];
-}
-
-/// Fake GitHub: replies with a canned status + body, and captures the outbound
-/// url + bearer so tests can assert on them.
-const FakeGitHub = struct {
-    alloc: std.mem.Allocator,
-    status: u16,
-    resp_body: []const u8,
-    url: []u8 = &.{},
-    bearer: []u8 = &.{},
-
-    fn post(ptr: *anyopaque, alloc: std.mem.Allocator, req: integration.HttpRequest) anyerror!integration.HttpResponse {
-        const self: *FakeGitHub = @ptrCast(@alignCast(ptr));
-        self.url = try self.alloc.dupe(u8, req.url);
-        self.bearer = try self.alloc.dupe(u8, req.bearer);
-        return .{ .status = self.status, .body = try alloc.dupe(u8, self.resp_body) };
-    }
-
-    fn exchange(self: *FakeGitHub) integration.HttpExchange {
-        return .{ .ptr = self, .postFn = post };
-    }
-
-    fn deinit(self: *FakeGitHub) void {
-        if (self.url.len != 0) self.alloc.free(self.url);
-        if (self.bearer.len != 0) self.alloc.free(self.bearer);
-    }
-};
-
-fn ghCtx(alloc: std.mem.Allocator, handle: std.json.Value, gh: *FakeGitHub, now_ms: i64) MintCtx {
-    return .{
-        .alloc = alloc,
-        .handle = handle,
-        .now_ms = now_ms,
-        .platform = .{ .github = FAKE_APP },
-        .http = gh.exchange(),
-        .sign = fakeSign,
-    };
-}
-
-fn parseHandle(alloc: std.mem.Allocator, comptime json: []const u8) !std.json.Parsed(std.json.Value) {
-    return std.json.parseFromSlice(std.json.Value, alloc, json, .{});
-}
+const testing = @import("testing.zig");
+const Retry = integration.Retry;
 
 const HANDLE_GH = "{\"integration\":\"github\",\"installation_id\":\"42\"}";
 const TEST_NOW_MS: i64 = 1_700_000_000_000;
 
-test "github mint: 201 → installation token with future expiry; JWT targets the install (Dimension 2.1)" {
+const ExpectTag = enum { ok, reconnect, failed };
+
+test "github mint: status → outcome mapping incl. retry class (Dimensions 2.1/2.2)" {
     const alloc = std.testing.allocator;
-    var gh = FakeGitHub{ .alloc = alloc, .status = HTTP_CREATED, .resp_body = "{\"token\":\"ghs_minted\",\"expires_at\":\"2026-06-26T16:30:00Z\"}" };
+    const cases = [_]struct { status: u16, tag: ExpectTag, retry: ?Retry }{
+        .{ .status = 201, .tag = .ok, .retry = null },
+        .{ .status = 401, .tag = .reconnect, .retry = null }, // JWT rejected
+        .{ .status = 404, .tag = .reconnect, .retry = null }, // installation gone
+        .{ .status = 503, .tag = .failed, .retry = .transient }, // upstream fault → retry
+        .{ .status = 429, .tag = .failed, .retry = .permanent }, // other 4xx → permanent (coarse)
+        .{ .status = 422, .tag = .failed, .retry = .permanent },
+    };
+    for (cases) |c| {
+        var gh = testing.FakeGitHub{ .alloc = alloc, .status = c.status };
+        defer gh.deinit();
+        var h = try testing.parse(alloc, HANDLE_GH);
+        defer h.deinit();
+        const out = try mint(testing.githubCtx(alloc, h.value, &gh, TEST_NOW_MS));
+        switch (c.tag) {
+            .ok => {
+                try std.testing.expect(out == .ok);
+                alloc.free(out.ok.token);
+            },
+            .reconnect => try std.testing.expect(out == .reconnect_required),
+            .failed => {
+                try std.testing.expect(out == .mint_failed);
+                try std.testing.expectEqual(c.retry.?, out.mint_failed);
+            },
+        }
+    }
+}
+
+test "github mint: 201 → token with local expiry; URL targets the install; bearer is a 3-part JWT (Dimension 2.1)" {
+    const alloc = std.testing.allocator;
+    var gh = testing.FakeGitHub{ .alloc = alloc, .status = 201, .resp_body = "{\"token\":\"ghs_minted\",\"expires_at\":\"2026-06-26T16:30:00Z\"}" };
     defer gh.deinit();
-    var h = try parseHandle(alloc, HANDLE_GH);
+    var h = try testing.parse(alloc, HANDLE_GH);
     defer h.deinit();
 
-    const out = try mint(ghCtx(alloc, h.value, &gh, TEST_NOW_MS));
+    const out = try mint(testing.githubCtx(alloc, h.value, &gh, TEST_NOW_MS));
     try std.testing.expect(out == .ok);
     defer alloc.free(out.ok.token);
     try std.testing.expectEqualStrings("ghs_minted", out.ok.token);
     try std.testing.expectEqual(TEST_NOW_MS + INSTALL_TOKEN_TTL_MS, out.ok.expires_at_ms);
-    // URL targets the right installation; bearer is a 3-segment JWT carrying app_id.
     try std.testing.expect(std.mem.indexOf(u8, gh.url, "/app/installations/42/access_tokens") != null);
     try std.testing.expectEqual(@as(usize, 2), std.mem.count(u8, gh.bearer, "."));
 }
 
-test "github mint: 404 / 401 (install gone or JWT rejected) → reconnect_required (Dimension 2.2)" {
-    const alloc = std.testing.allocator;
-    for ([_]u16{ HTTP_NOT_FOUND, HTTP_UNAUTHORIZED }) |status| {
-        var gh = FakeGitHub{ .alloc = alloc, .status = status, .resp_body = "{\"message\":\"gone\"}" };
-        defer gh.deinit();
-        var h = try parseHandle(alloc, HANDLE_GH);
-        defer h.deinit();
-        try std.testing.expect((try mint(ghCtx(alloc, h.value, &gh, TEST_NOW_MS))) == .reconnect_required);
-    }
-}
-
 test "github mint: the App private key never reaches the outbound request or the token (Dimension 2.3)" {
     const alloc = std.testing.allocator;
-    var gh = FakeGitHub{ .alloc = alloc, .status = HTTP_CREATED, .resp_body = "{\"token\":\"ghs_minted\"}" };
+    var gh = testing.FakeGitHub{ .alloc = alloc, .status = 201 };
     defer gh.deinit();
-    var h = try parseHandle(alloc, HANDLE_GH);
+    var h = try testing.parse(alloc, HANDLE_GH);
     defer h.deinit();
 
-    const out = try mint(ghCtx(alloc, h.value, &gh, TEST_NOW_MS));
+    const out = try mint(testing.githubCtx(alloc, h.value, &gh, TEST_NOW_MS));
     try std.testing.expect(out == .ok);
     defer alloc.free(out.ok.token);
-    const key = FAKE_APP.private_key_pem;
+    const key = testing.fake_app.private_key_pem;
     try std.testing.expect(std.mem.indexOf(u8, gh.bearer, key) == null);
     try std.testing.expect(std.mem.indexOf(u8, gh.url, key) == null);
     try std.testing.expect(std.mem.indexOf(u8, out.ok.token, key) == null);
 }
 
-test "github mint: a GitHub 5xx is a retryable mint_failed, not a reconnect" {
+test "github mint: a transport error is a transient mint_failed (failure injection)" {
     const alloc = std.testing.allocator;
-    var gh = FakeGitHub{ .alloc = alloc, .status = 503, .resp_body = "upstream" };
+    var gh = testing.FakeGitHub{ .alloc = alloc, .fail_with = error.ConnectionRefused };
     defer gh.deinit();
-    var h = try parseHandle(alloc, HANDLE_GH);
+    var h = try testing.parse(alloc, HANDLE_GH);
     defer h.deinit();
-    try std.testing.expect((try mint(ghCtx(alloc, h.value, &gh, TEST_NOW_MS))) == .mint_failed);
+    const out = try mint(testing.githubCtx(alloc, h.value, &gh, TEST_NOW_MS));
+    try std.testing.expect(out == .mint_failed);
+    try std.testing.expectEqual(Retry.transient, out.mint_failed);
 }
 
 test "github mint: a handle with no installation id reconnects without calling GitHub" {
     const alloc = std.testing.allocator;
-    var gh = FakeGitHub{ .alloc = alloc, .status = HTTP_CREATED, .resp_body = "{}" };
+    var gh = testing.FakeGitHub{ .alloc = alloc, .status = 201 };
     defer gh.deinit();
-    var h = try parseHandle(alloc, "{\"integration\":\"github\"}");
+    var h = try testing.parse(alloc, "{\"integration\":\"github\"}");
     defer h.deinit();
-    try std.testing.expect((try mint(ghCtx(alloc, h.value, &gh, TEST_NOW_MS))) == .reconnect_required);
-    try std.testing.expectEqual(@as(usize, 0), gh.url.len); // GitHub never called
+    try std.testing.expect((try mint(testing.githubCtx(alloc, h.value, &gh, TEST_NOW_MS))) == .reconnect_required);
+    try std.testing.expectEqual(@as(usize, 0), gh.calls); // GitHub never called
 }
 
-test "github mint: an unconfigured platform (no App key) fails closed" {
+test "github mint: an unconfigured platform (no App key) fails permanent" {
     const alloc = std.testing.allocator;
-    var gh = FakeGitHub{ .alloc = alloc, .status = HTTP_CREATED, .resp_body = "{}" };
+    var gh = testing.FakeGitHub{ .alloc = alloc, .status = 201 };
     defer gh.deinit();
-    var h = try parseHandle(alloc, HANDLE_GH);
+    var h = try testing.parse(alloc, HANDLE_GH);
     defer h.deinit();
-    var ctx = ghCtx(alloc, h.value, &gh, TEST_NOW_MS);
+    var ctx = testing.githubCtx(alloc, h.value, &gh, TEST_NOW_MS);
     ctx.platform = .{}; // no github app configured
-    try std.testing.expect((try mint(ctx)) == .mint_failed);
+    const out = try mint(ctx);
+    try std.testing.expect(out == .mint_failed);
+    try std.testing.expectEqual(Retry.permanent, out.mint_failed);
 }
