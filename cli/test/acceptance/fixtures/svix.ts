@@ -23,8 +23,18 @@ export interface SvixHeaders {
 }
 
 function decodeWhsec(secret: string): Buffer {
-  const cleaned = secret.startsWith("whsec_") ? secret.slice("whsec_".length) : secret;
-  return Buffer.from(cleaned, "base64");
+  // The agentsfleetd verifier (auth/crypto/svix_verify.zig) returns
+  // `.invalid_signature` for any configured secret that does NOT start with
+  // `whsec_`. Accepting a bare base64 value here would produce a plausible
+  // signature the API always rejects, surfacing as a confusing bootstrap
+  // failure for every attachJwt caller — so require the prefix and fail loud.
+  if (!secret.startsWith("whsec_")) {
+    throw new Error(
+      "CLERK_WEBHOOK_SECRET must be a Clerk webhook secret of the form 'whsec_<base64>'; " +
+        "got a value without the whsec_ prefix (the agentsfleetd Svix verifier rejects it).",
+    );
+  }
+  return Buffer.from(secret.slice("whsec_".length), "base64");
 }
 
 export function signSvix(secret: string, msgId: string, body: string): SvixHeaders {
