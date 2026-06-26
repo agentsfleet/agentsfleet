@@ -36,6 +36,7 @@ pub fn match(path: []const u8, method: httpz.Method) ?Route {
     if (std.mem.eql(u8, path, runner_protocol.PATH_RUNNER_HEARTBEATS)) return .runner_heartbeat;
     if (std.mem.eql(u8, path, runner_protocol.PATH_RUNNER_LEASES)) return .runner_lease;
     if (std.mem.eql(u8, path, runner_protocol.PATH_RUNNER_REPORTS)) return .runner_report;
+    if (std.mem.eql(u8, path, runner_protocol.PATH_RUNNER_CREDENTIALS_MINT)) return .runner_credentials_mint;
 
     // Single canonical parse + version dispatch. The "v1" literal lives in
     // exactly one place — adding v2 is a new branch here, not a sweep across
@@ -218,6 +219,15 @@ test "match resolves admin platform key routes" {
     );
     try std.testing.expect(match("/v1/admin/platform-keys/a/b", .GET) == null);
     try std.testing.expect(match("/v1/admin/platform-keys/", .GET) == null);
+}
+
+test "match resolves the runner credential-mint route (static, lease_id in body)" {
+    try std.testing.expectEqualDeep(
+        Route.runner_credentials_mint,
+        match(runner_protocol.PATH_RUNNER_CREDENTIALS_MINT, .POST).?,
+    );
+    // A trailing path segment must NOT match — the lease id rides the body.
+    try std.testing.expect(match(runner_protocol.PATH_RUNNER_CREDENTIALS_MINT ++ "/x", .POST) == null);
 }
 
 // ── route tests ───────────────────────────────────────────────────────────────

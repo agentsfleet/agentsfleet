@@ -17,6 +17,7 @@ const balance_policy = @import("../../config/balance_policy.zig");
 const runtime_loader = @import("../../config/runtime_loader.zig");
 const subscription_hub = @import("../../events/subscription_hub.zig");
 const stream_registry = @import("../stream_registry.zig");
+const CredentialBroker = @import("../../credentials/broker.zig");
 const authz = @import("common_authz.zig");
 /// Request-id sentinel for responses written before a request id exists
 /// (e.g. the dispatch backpressure shed, which precedes the per-route arena).
@@ -84,6 +85,12 @@ pub const Context = struct {
     /// startup (the credit gate reads this, not the env, per request). Defaults
     /// so test/fixture Contexts that omit it get the production default.
     balance_policy: balance_policy.Policy = balance_policy.DEFAULT,
+    /// On-demand credential broker (M102), a daemon singleton built at boot and
+    /// shared across request threads. The credential-mint handler resolves a
+    /// vault handle to a short-lived token through it. Optional + defaulted: test
+    /// and fixture Contexts that omit it get null, and the mint handler fails
+    /// closed (503) when the broker is unconfigured.
+    broker: ?*CredentialBroker = null,
     /// Optional drain handle for detached install-progression workers (fleet
     /// create spawns one per fleet). Production leaves it null — the process
     /// exits without a graceful pool teardown, so the detached workers are

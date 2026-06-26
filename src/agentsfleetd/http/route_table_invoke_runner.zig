@@ -17,6 +17,7 @@ const runner_self = @import("handlers/runner/self.zig");
 const runner_heartbeat = @import("handlers/runner/heartbeat.zig");
 const runner_lease = @import("handlers/runner/lease.zig");
 const runner_report = @import("handlers/runner/report.zig");
+const runner_credentials_mint = @import("handlers/runner/credentials_mint.zig");
 const runner_activity = @import("handlers/runner/activity.zig");
 const runner_renew = @import("handlers/runner/renew.zig");
 const runner_memory = @import("handlers/runner/memory.zig");
@@ -105,6 +106,15 @@ pub fn invokeRunnerReport(hx: *Hx, req: *httpz.Request, route: router.Route) voi
         return;
     }
     runner_report.innerRunnerReport(hx.*, req);
+}
+
+pub fn invokeRunnerCredentialsMint(hx: *Hx, req: *httpz.Request, route: router.Route) void {
+    _ = route;
+    if (req.method != .POST) {
+        common.respondMethodNotAllowed(hx.res);
+        return;
+    }
+    runner_credentials_mint.innerRunnerCredentialsMint(hx.*, req);
 }
 
 pub fn invokeRunnerActivity(hx: *Hx, req: *httpz.Request, route: router.Route) void {

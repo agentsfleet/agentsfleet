@@ -112,6 +112,7 @@ pub const Route = union(enum) {
     runner_heartbeat, // POST /v1/runners/me/heartbeats
     runner_lease, // POST /v1/runners/me/leases
     runner_report, // POST /v1/runners/me/reports
+    runner_credentials_mint, // POST /v1/runners/me/credentials/mint (M102 — on-demand mint; lease_id in body)
     runner_activity: []const u8, // POST /v1/runners/me/leases/{lease_id}/activity
     runner_renew: []const u8, // POST /v1/runners/me/leases/{lease_id}/renew
     runner_memory_hydrate: []const u8, // GET /v1/runners/me/memory/{fleet_id}
