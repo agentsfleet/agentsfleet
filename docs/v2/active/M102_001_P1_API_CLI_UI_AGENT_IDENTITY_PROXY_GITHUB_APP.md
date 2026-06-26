@@ -137,10 +137,10 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 
 ### §1 — Credential broker core + config-driven driver registry
 One mint interface dispatching through a registry keyed by credential-kind. **Implementation default:** the registry is a data table (kind → descriptor), so a new connector is a registration, not a `switch` arm (RULE CFG). The broker caches a minted token until near `expires_at`.
-- **Dimension 1.1** — `mint(workspace, integration, scope)` returns `{token, expires_at}` via registry dispatch → `test_broker_dispatches_by_kind`
-- **Dimension 1.2** — adding a driver is a descriptor; the mint hot path has no per-integration branch → `test_driver_registry_is_data_driven`
-- **Dimension 1.3** — a cached token within validity is reused; near-expiry re-mints → `test_broker_caches_until_expiry`
-- **Dimension 1.4** — an unconfigured integration → typed `unknown_integration`, no mint → `test_broker_unknown_integration_errors`
+- **Dimension 1.1** — `mint(workspace, integration, scope)` returns `{token, expires_at}` via registry dispatch → `test_broker_dispatches_by_kind` — ✅ **DONE**
+- **Dimension 1.2** — adding a driver is a descriptor; the mint hot path has no per-integration branch → `test_driver_registry_is_data_driven` — ✅ **DONE**
+- **Dimension 1.3** — a cached token within validity is reused; near-expiry re-mints → `test_broker_caches_until_expiry` — ✅ **DONE**
+- **Dimension 1.4** — an unconfigured integration → typed `unknown_integration`, no mint → `test_broker_unknown_integration_errors` — ✅ **DONE**
 
 ### §2 — `github_app` driver
 Sign a GitHub App token with the platform-held private key, exchange it at GitHub for a ≤1h installation access token. **Default:** the App key + app id resolve from the platform/admin vault only.
@@ -321,6 +321,7 @@ grep -rn "private_key\|app_private" src/agentsfleetd/runner src/runner --include
 - **Origin (Indy + Orly/CTO, Jun 25–26 2026):** reborn from DEFERRED M99_001 per its "re-spec under the agent-identity-proxy framing" note. Indy's caveat is the reason to exist — *"the agentsfleetd-credentials-proxy: this will become too static that expanding and supporting more connectors will be a pain."* Resolution: config-driven driver registry (RULE CFG), connector = descriptor.
 - **Refinements this session:** (1) App-level webhook ingress routed by `installation_id` — one App webhook URL set once by the platform, no per-repo registration (M99 §5 under-specified). (2) grant/approval placement made explicit — grant at lease+mint, approval gate per-write unchanged. (3) Surface order: Indy chose **UI-first**.
 - **Provider generalization (Indy, Jun 26):** both planes are data-driven. Inbound = `/v1/ingress/{provider}` + verifier/router registry; per-provider variation is a descriptor (sig scheme, header, routing-key path, optional lifecycle handshake). Outbound = ~3 driver kinds (`github_app` JWT→token; `oauth_refresh` for Slack/Linear/Jira-3LO/Zoho; `static`). Linear/Jira/Zoho/Slack all "follow suit" as descriptors; new code only for a genuinely new signature family (Jira `atlassian_jwt`) or lifecycle handshake.
+- **§1 landed (Jun 26):** `credentials/driver.zig` + `credentials/broker.zig` — broker 8/8 + driver 4/4 unit tests pass (leak-checked, `std.testing.allocator`); ZLint 0 errors (pub surface clean); x86_64-linux + aarch64-linux cross-compile clean; test-depth +8 (2145→2153). Registry + cache + `static` driver + DI for tests; the real `github_app` driver lands in §2. Pre-existing `zig fmt` drift in `state/model_caps_store.zig` + `runner/engine/stream_redactor.zig` flagged — NOT M102 scope, left untouched.
 - **Doc-shape review:** `docs/v2/reviews/m102-doc-shape-review.md` (C1–C9 + invariants-that-hold); §8 absorbs it.
 - **Open to confirm at PLAN:** App registration ownership + admin-vault key storage; child→runner mint request framing; whether the App webhook reuses `/v1/webhooks/{fleet_id}` internally or a new `/v1/ingress/github` path.
 - **Deferrals:** `oauth_refresh` driver, per-fleet cryptographic identity / Agent Auth wire format, Stripe Agentic Commerce Protocol, exact-action approval-hash binding — Out of Scope, not dropped Dimensions; custom secrets bridge the non-GitHub connectors until then.
