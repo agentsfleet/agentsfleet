@@ -1,88 +1,129 @@
 import { redirect } from "next/navigation";
-import Link from "next/link";
 import { auth } from "@clerk/nextjs/server";
 import {
-  Button,
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+  DashboardPanel,
+  DashboardRowGroup,
   EmptyState,
   PageHeader,
   PageTitle,
   Section,
   SectionLabel,
+  StatusPill,
+  TerminalPanel,
 } from "@agentsfleet/design-system";
-import { KeyRoundIcon } from "lucide-react";
+import { CpuIcon, KeyRoundIcon, LinkIcon } from "lucide-react";
 import { withWorkspaceScope, orFallback } from "@/lib/workspace";
 import { getTenantProvider } from "@/lib/api/tenant_provider";
 import { listCredentials, type CredentialSummary } from "@/lib/api/credentials";
+import { OPENAI_COMPATIBLE_PROVIDER, PROVIDER_MODE, type TenantProvider } from "@/lib/types";
 import { VAULT_KIND, VAULT_KINDS } from "./lib/vault-kinds";
 import AddCredentialFormDynamic from "@/components/domain/island-dynamic/AddCredentialFormDynamic";
-import CredentialsList from "./components/CredentialsList";
 import CustomSecretsList from "./components/CustomSecretsList";
 import CustomEndpointForm from "./components/CustomEndpointForm";
 import IntegrationsComingSoon from "./components/IntegrationsComingSoon";
+import ProviderCredentialRows from "./components/ProviderCredentialRows";
 
 export const dynamic = "force-dynamic";
 
 const PAGE_TITLE = "Credentials";
 const PAGE_DESCRIPTION =
-  "Your write-only secret vault. Model keys, integration tokens, and your own custom secrets — each stored once and resolved by name at runtime.";
-const ADD_CREDENTIAL_LABEL = "Add credential";
+  "Write-only keys for models, tools, and secrets.";
+const NOT_CONNECTED = "Not connected";
+const CONNECTED = "Connected";
+
+const KIND_ICON = {
+  [VAULT_KIND.providers]: CpuIcon,
+  [VAULT_KIND.custom]: KeyRoundIcon,
+  [VAULT_KIND.integrations]: LinkIcon,
+} as const;
 
 function KindsStrip() {
   return (
     <div className="grid gap-3 sm:grid-cols-3" data-testid="vault-kinds-strip">
       {VAULT_KINDS.map((kind) => (
-        <div
+        <DashboardPanel
           key={kind.kind}
           data-testid={`vault-kind-${kind.kind}`}
-          className="rounded-md border border-border bg-card px-4 py-3"
+          padding="compact"
         >
-          <div className="font-medium text-foreground">{kind.label}</div>
-          <p className="mt-1 text-xs text-muted-foreground">{kind.blurb}</p>
-          <p className="mt-2 font-mono text-xs text-text-subtle">{kind.examples}</p>
-        </div>
+          <div className="flex items-center gap-2 font-medium text-foreground">
+            {(() => {
+              const Icon = KIND_ICON[kind.kind];
+              return <Icon size={15} className="text-pulse" aria-hidden="true" />;
+            })()}
+            {kind.label}
+          </div>
+          <p className="mt-1 text-body-sm leading-body-sm text-muted-foreground">{kind.blurb}</p>
+          <p className="mt-2 font-mono text-label leading-label text-text-subtle">{kind.examples}</p>
+        </DashboardPanel>
       ))}
     </div>
   );
 }
 
-function ProvidersGroup({
+function CustomEndpointRow({
   workspaceId,
-  providerCredentials,
-  activeModelRef,
+  provider,
 }: {
   workspaceId: string;
-  providerCredentials: CredentialSummary[];
-  activeModelRef: string | null;
+  provider: TenantProvider | null;
+}) {
+  const connected =
+    provider?.mode === PROVIDER_MODE.self_managed &&
+    provider.provider === OPENAI_COMPATIBLE_PROVIDER;
+  // Built on the shared Accordion primitive (reused from TriggerPanel); the
+  // primitive itself is untouched — row-specific look comes from className
+  // overrides resolved by tailwind-merge, so other Accordion usages are
+  // unaffected.
+  return (
+    <Accordion type="single" collapsible>
+      <AccordionItem value="custom-endpoint" className="border-b-0">
+        <AccordionTrigger className="items-start gap-3 px-lg py-md font-normal hover:bg-secondary hover:no-underline">
+          <span
+            className="grid h-8 w-8 flex-none place-items-center rounded-md border border-border bg-secondary text-muted-foreground"
+            aria-hidden="true"
+          >
+            <LinkIcon size={15} />
+          </span>
+          <span className="min-w-0 flex-1 text-left">
+            <span className="block font-medium text-foreground">Custom — OpenAI-compatible</span>
+            <span className="mt-1 block text-body-sm leading-body-sm text-muted-foreground">
+              OpenAI-compatible URL. Gateway, OpenRouter, or self-hosted.
+            </span>
+          </span>
+          <StatusPill variant={connected ? "success" : "neutral"} dot={connected}>
+            {connected ? CONNECTED : NOT_CONNECTED}
+          </StatusPill>
+        </AccordionTrigger>
+        <AccordionContent className="px-lg pb-lg pt-0">
+          <div className="border-t border-border pt-md">
+            <CustomEndpointForm workspaceId={workspaceId} />
+          </div>
+        </AccordionContent>
+      </AccordionItem>
+    </Accordion>
+  );
+}
+
+function ProvidersGroup({
+  workspaceId,
+  provider,
+}: {
+  workspaceId: string;
+  provider: TenantProvider | null;
 }) {
   return (
     <Section asChild>
       <section aria-label="Model providers" data-testid={`group-${VAULT_KIND.providers}`}>
         <SectionLabel>Model providers</SectionLabel>
-        {providerCredentials.length === 0 ? (
-          <EmptyState
-            icon={<KeyRoundIcon size={28} />}
-            title="No model-provider key in use"
-            description="Switch a teammate to own-key model setup to store a provider key here."
-          />
-        ) : (
-          <CredentialsList
-            workspaceId={workspaceId}
-            credentials={providerCredentials}
-            protectedCredentialName={activeModelRef}
-          />
-        )}
-        <details className="rounded-md border border-dashed border-border bg-card">
-          <summary className="cursor-pointer px-4 py-3">
-            <span className="block font-medium text-foreground">Custom — OpenAI-compatible</span>
-            <span className="block text-xs text-muted-foreground">
-              Point a teammate at any OpenAI-compatible endpoint (self-hosted vLLM, a
-              gateway, OpenRouter) — store its base URL and optional key here.
-            </span>
-          </summary>
-          <div className="border-t border-border p-4">
-            <CustomEndpointForm workspaceId={workspaceId} />
-          </div>
-        </details>
+        <DashboardRowGroup data-testid="provider-credential-rows">
+          <ProviderCredentialRows workspaceId={workspaceId} provider={provider} />
+          <CustomEndpointRow workspaceId={workspaceId} provider={provider} />
+        </DashboardRowGroup>
       </section>
     </Section>
   );
@@ -99,29 +140,31 @@ function CustomSecretsGroup({
     <Section asChild>
       <section aria-label="Custom secrets" data-testid={`group-${VAULT_KIND.custom}`}>
         <SectionLabel>Custom secrets</SectionLabel>
-        <CustomSecretsList workspaceId={workspaceId} secrets={secrets} />
-        <details className="rounded-md border border-dashed border-border bg-card">
-          <summary className="cursor-pointer px-4 py-3">
-            <span className="block font-medium text-foreground">Add a custom secret</span>
-            <span className="block text-xs text-muted-foreground">
-              An arbitrary <code className="font-mono">NAME=value</code> your SKILL.md reads by name.
-            </span>
-          </summary>
-          <div className="border-t border-border p-4">
+        <TerminalPanel title="vault · resolved by name" tag="write-only">
+          <div className="p-lg">
+            <CustomSecretsList workspaceId={workspaceId} secrets={secrets} />
+          </div>
+          <div className="border-t border-border bg-surface-deep p-lg" id="add-custom-secret">
+            <div className="mb-md">
+              <div className="font-medium text-foreground">Add a custom secret</div>
+              <p className="text-body-sm leading-body-sm text-muted-foreground">
+                Name it, add one or more fields. Write-only after save.
+              </p>
+            </div>
             <AddCredentialFormDynamic workspaceId={workspaceId} />
           </div>
-        </details>
+        </TerminalPanel>
       </section>
     </Section>
   );
 }
 
-function IntegrationsGroup() {
+function IntegrationsGroup({ secrets }: { secrets: CredentialSummary[] }) {
   return (
     <Section asChild>
       <section aria-label="Integrations" data-testid={`group-${VAULT_KIND.integrations}`}>
         <SectionLabel>Integrations</SectionLabel>
-        <IntegrationsComingSoon />
+        <IntegrationsComingSoon credentialNames={secrets.map((secret) => secret.name)} />
       </section>
     </Section>
   );
@@ -148,7 +191,7 @@ export default async function CredentialsPage() {
         <EmptyState
           icon={<KeyRoundIcon size={32} />}
           title="No workspace yet"
-          description="Create a workspace before storing credentials."
+          description="Create a workspace first."
         />
       </div>
     );
@@ -156,26 +199,18 @@ export default async function CredentialsPage() {
   const { workspaceId, providerResult, credentialsResp } = result;
   // The only KNOWN reference is the active model credential; a provider-fetch
   // error simply means we surface no referenced-by hint (never fabricated).
-  const activeModelRef =
-    "error" in providerResult ? null : providerResult.credential_ref;
+  const provider = "error" in providerResult ? null : providerResult;
+  const activeModelRef = provider?.credential_ref ?? null;
 
   const credentials = credentialsResp.credentials;
   // Best-effort split: a stored credential the active model setup points at is a
   // model-provider key; everything else is a custom secret. No usage graph is
   // synthesized beyond this one known reference.
-  const providerCredentials = credentials.filter((c) => c.name === activeModelRef);
   const customSecrets = credentials.filter((c) => c.name !== activeModelRef);
 
   return (
     <div className="space-y-8">
-      <PageHeader
-        description={PAGE_DESCRIPTION}
-        actions={
-          <Button asChild>
-            <Link href="#add-custom-secret">{ADD_CREDENTIAL_LABEL}</Link>
-          </Button>
-        }
-      >
+      <PageHeader description={PAGE_DESCRIPTION}>
         <PageTitle>{PAGE_TITLE}</PageTitle>
       </PageHeader>
 
@@ -183,13 +218,10 @@ export default async function CredentialsPage() {
 
       <ProvidersGroup
         workspaceId={workspaceId}
-        providerCredentials={providerCredentials}
-        activeModelRef={activeModelRef}
+        provider={provider}
       />
-      <div id="add-custom-secret">
-        <CustomSecretsGroup workspaceId={workspaceId} secrets={customSecrets} />
-      </div>
-      <IntegrationsGroup />
+      <CustomSecretsGroup workspaceId={workspaceId} secrets={customSecrets} />
+      <IntegrationsGroup secrets={customSecrets} />
     </div>
   );
 }

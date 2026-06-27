@@ -216,10 +216,19 @@ export function resetAnalyticsIdentity(): void {
 // call sites). Events that race the posthog-js chunk load are dropped, not
 // buffered — every call site fires after a completed server round-trip, so
 // the window is effectively unreachable.
-export function captureProductEvent<E extends EventName>(event: E, props: EventProps[E]): void {
+export function captureProductEvent<E extends EventName>(
+  event: E,
+  props: EventProps[E],
+  // Optional person-properties set atomically with the event via PostHog's
+  // `$set` reserved key — lets a capture also update the identified person
+  // (e.g. last_integration_requested) without a separate identify call.
+  options?: { setPersonProperties?: Record<string, AnalyticsValue> },
+): void {
   if (!analyticsEnabled || !posthogClient || typeof window === "undefined") return;
   try {
-    const payload: Record<string, AnalyticsValue> = { path: window.location.pathname };
+    const payload: Record<string, AnalyticsValue | Record<string, AnalyticsValue>> = {
+      path: window.location.pathname,
+    };
     const bag = props as Record<string, unknown>;
     for (const key of EVENT_PROP_KEYS[event]) {
       const value = bag[key];
@@ -227,7 +236,8 @@ export function captureProductEvent<E extends EventName>(event: E, props: EventP
         payload[key] = value;
       }
     }
-    posthogClient.capture(event, payload);
+    if (options?.setPersonProperties) payload.$set = options.setPersonProperties;
+    posthogClient.capture(event, payload as Record<string, AnalyticsValue>);
   } catch {
     // Analytics must never break the product flow it instruments — several
     // call sites sit beside one-time secret reveals.

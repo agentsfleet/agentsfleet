@@ -13,7 +13,7 @@ export const dynamic = "force-dynamic";
 
 const PAGE_TITLE = "Models";
 const PAGE_DESCRIPTION =
-  "Choose how teammates get model access. Credentials for the own-key path live under Credentials.";
+  "Choose platform defaults or your key.";
 
 export default async function ProviderSettingsPage() {
   const { getToken } = await auth();
@@ -39,7 +39,7 @@ export default async function ProviderSettingsPage() {
         <EmptyState
           icon={<ZapIcon size={32} />}
           title="No workspace yet"
-          description="Create a workspace before configuring your model."
+          description="Create a workspace first."
         />
       </div>
     );
@@ -60,8 +60,7 @@ export default async function ProviderSettingsPage() {
         <section id="model-setup" aria-label="Model setup" className="scroll-mt-20">
           <SectionLabel>Model access</SectionLabel>
           <p className="max-w-2xl text-sm text-muted-foreground">
-            One decision: use our managed provider, or bring your own key. Your current choice is
-            marked below.
+            Pick one setup. The current choice is marked.
           </p>
           <ProviderSelector
             workspaceId={workspaceId}

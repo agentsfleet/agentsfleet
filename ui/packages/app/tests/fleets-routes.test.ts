@@ -144,9 +144,11 @@ describe("fleets routes", () => {
     });
     const { FleetsData } = await import("../app/(dashboard)/fleets/page");
     const markup = renderToStaticMarkup(React.createElement(React.Fragment, null, await FleetsData()));
-    expect(markup).toContain("Start your fleet");
-    // The empty-state composes the shared InstallEntry (its source affordance).
-    expect(markup).toContain("Import from GitHub or paste SKILL.md");
+    expect(markup).toContain("Install your first fleet");
+    expect(markup).toContain("No fleets yet");
+    expect(markup).toContain("Watch it wake");
+    expect(markup).toContain('href="/fleets/new"');
+    expect(markup).not.toContain("Import from GitHub or paste SKILL.md");
     expect(markup).not.toContain("credit balance is exhausted");
   });
 
@@ -160,9 +162,8 @@ describe("fleets routes", () => {
     expect(markup).toContain("credit balance is exhausted");
   });
 
-  it("fleets list empty-state swallows a failed template fetch (gallery omitted)", async () => {
+  it("fleets list empty-state does not fetch template catalog", async () => {
     resolveActiveWorkspace.mockResolvedValueOnce({ id: "ws_1" });
-    listFleetTemplatesMock.mockRejectedValueOnce(new Error("catalog down"));
     fetchMock.mockImplementation(async (url: string) => {
       if (url.endsWith("/v1/tenants/me/billing")) {
         return { ok: true, status: 200, json: async () => happyBilling };
@@ -171,9 +172,10 @@ describe("fleets routes", () => {
     });
     const { FleetsData } = await import("../app/(dashboard)/fleets/page");
     const markup = renderToStaticMarkup(React.createElement(React.Fragment, null, await FleetsData()));
-    // Card still renders via the catch → [] arm; the shared source affordance shows.
-    expect(markup).toContain("Start your fleet");
-    expect(markup).toContain("Import from GitHub or paste SKILL.md");
+    expect(markup).toContain("Install your first fleet");
+    expect(markup).toContain("No fleets yet");
+    expect(markup).not.toContain("Import from GitHub or paste SKILL.md");
+    expect(listFleetTemplatesMock).not.toHaveBeenCalled();
   });
 
   it("fleets list page swallows a failed billing fetch and still renders", async () => {
@@ -190,7 +192,7 @@ describe("fleets routes", () => {
     });
     const { FleetsData } = await import("../app/(dashboard)/fleets/page");
     const markup = renderToStaticMarkup(React.createElement(React.Fragment, null, await FleetsData()));
-    expect(markup).toContain("Start your fleet");
+    expect(markup).toContain("Install your first fleet");
   });
 
   it("fleets new page redirects to /sign-in when no token", async () => {
@@ -203,7 +205,7 @@ describe("fleets routes", () => {
     resolveActiveWorkspace.mockResolvedValueOnce(null);
     const { default: Page } = await import("../app/(dashboard)/fleets/new/page");
     const markup = renderToStaticMarkup(await Page({ searchParams: Promise.resolve({}) }));
-    expect(markup).toContain("Create a workspace before installing a fleet");
+    expect(markup).toContain("Create a workspace first");
   });
 
   it("fleets new page renders the gallery-first install flow when a workspace exists", async () => {

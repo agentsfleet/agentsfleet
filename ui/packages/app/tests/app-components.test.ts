@@ -54,7 +54,7 @@ vi.mock("lucide-react", () => ({
   ExternalLinkIcon: (props: Record<string, unknown>) => React.createElement("svg", { ...props, "data-icon": "ExternalLinkIcon" }),
   LayoutDashboardIcon: (props: Record<string, unknown>) => React.createElement("svg", { ...props, "data-icon": "LayoutDashboardIcon" }),
   BoxIcon: (props: Record<string, unknown>) => React.createElement("svg", { ...props, "data-icon": "BoxIcon" }),
-  SkullIcon: (props: Record<string, unknown>) => React.createElement("svg", { ...props, "data-icon": "SkullIcon" }),
+  BotIcon: (props: Record<string, unknown>) => React.createElement("svg", { ...props, "data-icon": "BotIcon" }),
   SettingsIcon: (props: Record<string, unknown>) => React.createElement("svg", { ...props, "data-icon": "SettingsIcon" }),
   BookOpenIcon: (props: Record<string, unknown>) => React.createElement("svg", { ...props, "data-icon": "BookOpenIcon" }),
   ZapIcon: (props: Record<string, unknown>) => React.createElement("svg", { ...props, "data-icon": "ZapIcon" }),
@@ -282,7 +282,7 @@ describe("app components", () => {
     const markup = renderToStaticMarkup(React.createElement(React.Fragment, null, tree));
     // The active link gets data-active="true" — the sidebar's surface-3 fill
     // is driven from this attribute (no coloured bar per spec).
-    expect(markup).toMatch(/data-active="true"[^>]*>\s*<svg[^>]*data-icon="SkullIcon"/);
+    expect(markup).toMatch(/data-active="true"[^>]*>\s*<svg[^>]*data-icon="BotIcon"/);
   });
 
   it("Shell active-link resolves the longest-matching prefix (Settings collision)", async () => {

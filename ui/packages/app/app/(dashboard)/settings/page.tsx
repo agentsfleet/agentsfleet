@@ -61,7 +61,7 @@ export default async function SettingsPage({
       <Section aria-label="Workspace" className="min-w-0 max-w-2xl">
         <SectionLabel>Manage workspace</SectionLabel>
         <p className="mt-2 text-sm text-muted-foreground">
-          Switch the active workspace or create a new one.
+          Switch workspaces or create one.
         </p>
         <div className="mt-4">
           <WorkspaceSwitcher

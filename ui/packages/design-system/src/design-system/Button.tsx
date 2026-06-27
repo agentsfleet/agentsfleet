@@ -76,7 +76,7 @@ export const buttonVariants = cva(
         // fills mint and demotes the text to the theme-fixed dark token
         // (same swap-safe story as `default` and `destructive`).
         "double-border":
-          "border-2 border-primary bg-transparent text-foreground hover:bg-primary hover:text-on-pulse [&_a]:text-foreground [&_a]:no-underline [&_a:hover]:text-on-pulse",
+          "border-2 border-primary bg-transparent font-semibold text-primary hover:bg-primary/10 hover:text-primary [&_a]:text-primary [&_a]:no-underline [&_a:hover]:text-primary",
       },
       size: {
         default: "h-10 px-xl py-lg text-body-sm",
