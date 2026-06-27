@@ -15,8 +15,6 @@ const state = @import("state.zig");
 
 const log = logging.scoped(.connector_github);
 
-pub const Context = common.Context;
-
 const INSTALL_URL_FMT = "https://github.com/apps/{s}/installations/new?state={s}";
 const S_WORKSPACE_ACCESS_DENIED = "Workspace access denied";
 const S_NOT_CONFIGURED = "GitHub connect is not configured on this deployment";

@@ -23,7 +23,7 @@ const B64 = std.base64.url_safe_no_pad;
 
 const DOMAIN_PREFIX = "ghconnect:v1:";
 const NONCE_KEY_PREFIX = "connect:gh:nonce:";
-pub const STATE_TTL_SECONDS: u32 = 600;
+const STATE_TTL_SECONDS: u32 = 600;
 const MS_PER_SECOND: i64 = 1000;
 const FIELD_SEP: u8 = '|';
 const MAC_SEP: u8 = '.';

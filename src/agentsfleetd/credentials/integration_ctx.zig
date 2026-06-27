@@ -16,6 +16,10 @@ pub const PlatformSecrets = struct {
 pub const GithubApp = struct {
     app_id: []const u8,
     private_key_pem: []const u8,
+    /// The App's public GitHub handle for the connect install URL
+    /// (`github.com/apps/{app_slug}/installations/new`). Non-secret; null when the
+    /// vault entry omits it (connect degrades closed). NOT used by minting.
+    app_slug: ?[]const u8 = null,
 };
 
 /// An outbound HTTP request the broker performs on the integration's behalf.

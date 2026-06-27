@@ -20,8 +20,6 @@ const state_mod = @import("state.zig");
 
 const log = logging.scoped(.connector_github);
 
-pub const Context = common.Context;
-
 const INTEGRATION_GITHUB = "github";
 const Q_INSTALLATION_ID = "installation_id";
 const Q_STATE = "state";
