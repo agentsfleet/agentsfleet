@@ -7,7 +7,7 @@ const { startGithubConnectActionMock, captureProductEventMock } = vi.hoisted(() 
   startGithubConnectActionMock: vi.fn(),
   captureProductEventMock: vi.fn(),
 }));
-vi.mock("@/app/(dashboard)/credentials/connector-actions", () => ({
+vi.mock("@/app/(dashboard)/integrations/connector-actions", () => ({
   startGithubConnectAction: startGithubConnectActionMock,
 }));
 vi.mock("@/lib/analytics/posthog", () => ({
@@ -23,7 +23,7 @@ vi.mock("lucide-react", () => {
   };
 });
 
-import IntegrationsConnectors from "@/app/(dashboard)/credentials/components/IntegrationsConnectors";
+import IntegrationsConnectors from "@/app/(dashboard)/integrations/components/IntegrationsConnectors";
 import { CONNECTOR_STATUS } from "@/lib/api/connectors";
 
 const WS = "ws_test";

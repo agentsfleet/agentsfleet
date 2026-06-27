@@ -77,9 +77,12 @@ body {
 
 /* Content rises in as it mounts / on route change. Apply to a container whose
  * immediate children are the page's top-level sections (the Shell content
- * wrapper); single-root pages rise as one block, multi-section pages stagger.
- * `both` fill holds the final (visible) frame — never pin opacity:0 as a
- * resting state, so content degrades to visible if the animation never runs. */
+ * wrapper). Every section shares ONE timing so the page rises as a single
+ * smooth block — matching docs/design/M98_001-ui-polish-preview.html. The
+ * earlier per-child stagger (0.02s → 0.3s delays) read as wobbly on route
+ * changes, so it is gone. `both` fill holds the final (visible) frame — never
+ * pin opacity:0 as a resting state, so content degrades to visible if the
+ * animation never runs. */
 @keyframes rise-in {
   from {
     opacity: 0;
@@ -94,13 +97,6 @@ body {
 .app-content-rise > * {
   animation: rise-in 0.38s cubic-bezier(0.2, 0.7, 0.2, 1) both;
 }
-.app-content-rise > *:nth-child(1) { animation-delay: 0.02s; }
-.app-content-rise > *:nth-child(2) { animation-delay: 0.07s; }
-.app-content-rise > *:nth-child(3) { animation-delay: 0.12s; }
-.app-content-rise > *:nth-child(4) { animation-delay: 0.17s; }
-.app-content-rise > *:nth-child(5) { animation-delay: 0.22s; }
-.app-content-rise > *:nth-child(6) { animation-delay: 0.27s; }
-.app-content-rise > *:nth-child(n + 7) { animation-delay: 0.3s; }
 
 @keyframes glow-drift {
   0%,
