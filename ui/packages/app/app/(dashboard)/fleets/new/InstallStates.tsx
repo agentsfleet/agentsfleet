@@ -35,14 +35,14 @@ type Props = {
 // needs it), gates on connect-to-continue when a required credential is
 // missing, then auto-proceeds to create — no confirm beat. After create it
 // hands off to InstallStreamSteps, which advances the creating→provisioning→
-// ready steps off the existing SSE fleet-event stream and lands "Open fleet".
+// ready steps off the existing fleet-event stream and lands "Open fleet".
 export function InstallStates({ workspaceId, source, presentCredentialNames, onBack }: Props) {
   const router = useRouter();
   const requirements = requirementsOf(source);
-  // Pre-create phases the flow drives directly. Post-create, InstallStreamSteps
-  // owns the rendered steps (it reads the SSE stream), so this component only
+  // Pre-create stages the flow drives directly. Post-create, InstallStreamSteps
+  // owns the rendered steps (it reads the fleet event stream), so this component only
   // tracks up to the point a fleet exists.
-  const [phase, setPhase] = useState<"importing" | "connect" | "creating" | "error">("importing");
+  const [installStage, setInstallStage] = useState<"importing" | "connect" | "creating" | "error">("importing");
   const [fleet, setFleet] = useState<{ id: string; name: string } | null>(null);
   const [errorText, setErrorText] = useState<string | null>(null);
   const started = useRef(false);
@@ -72,12 +72,12 @@ export function InstallStates({ workspaceId, source, presentCredentialNames, onB
   }, [source, workspaceId]);
 
   const runCreate = useCallback(async () => {
-    setPhase("creating");
+    setInstallStage("creating");
     setErrorText(null);
     const resolved = await resolveCreateBody();
     if (!resolved.ok) {
       setErrorText(resolved.error);
-      setPhase("error");
+      setInstallStage("error");
       return;
     }
     const created = await installFleetAction(workspaceId, resolved.body);
@@ -85,7 +85,7 @@ export function InstallStates({ workspaceId, source, presentCredentialNames, onB
       setErrorText(
         created.status === 409 ? FLEET_NAME_CONFLICT_MESSAGE : flowError(created, "create the fleet"),
       );
-      setPhase("error");
+      setInstallStage("error");
       return;
     }
     captureProductEvent(EVENTS.fleet_created, { fleet_id: created.data.fleet_id });
@@ -101,11 +101,11 @@ export function InstallStates({ workspaceId, source, presentCredentialNames, onB
     if (readyToCreate(requirements.credentials, presentCredentialNames)) {
       void runCreate();
     } else {
-      setPhase("connect");
+      setInstallStage("connect");
     }
   }, [requirements.credentials, presentCredentialNames, runCreate]);
 
-  // Once a fleet exists, the SSE-driven steps own the panel.
+  // Once a fleet exists, the live event steps own the panel.
   if (fleet) {
     return (
       <InstallShell onBack={onBack} title={`installing · ${fleet.name}`}>
@@ -124,11 +124,11 @@ export function InstallStates({ workspaceId, source, presentCredentialNames, onB
   const unmet = unmetCredentials(requirements.credentials, presentCredentialNames);
   return (
     <InstallShell onBack={onBack} title={`installing · ${requirements.name}`}>
-      <PreCreateLines phase={phase} requirements={requirements} unmet={unmet} errorText={errorText} />
-      {phase === "connect" ? (
+      <PreCreateLines stage={installStage} requirements={requirements} unmet={unmet} errorText={errorText} />
+      {installStage === "connect" ? (
         <ConnectToContinue unmet={unmet} onRetry={() => void runCreate()} />
       ) : null}
-      {phase === "error" ? (
+      {installStage === "error" ? (
         <div className="border-t border-border px-lg py-md">
           <Button type="button" variant="ghost" size="sm" onClick={() => void runCreate()}>
             Retry
@@ -142,32 +142,32 @@ export function InstallStates({ workspaceId, source, presentCredentialNames, onB
 // ── pre-create state lines ─────────────────────────────────────────────────
 
 function PreCreateLines({
-  phase,
+  stage,
   requirements,
   unmet,
   errorText,
 }: {
-  phase: "importing" | "connect" | "creating" | "error";
+  stage: "importing" | "connect" | "creating" | "error";
   requirements: ReturnType<typeof requirementsOf>;
   unmet: string[];
   errorText: string | null;
 }) {
   const lines: StateLine[] = [];
-  if (phase === "importing") {
-    lines.push({ id: "importing", tone: "run", glyph: STATE_GLYPH.run, text: `importing ${requirements.name}… fetching SKILL.md, TRIGGER.md, support files` });
+  if (stage === "importing") {
+    lines.push({ id: "importing", tone: "run", glyph: STATE_GLYPH.run, text: `importing ${requirements.name}…` });
   } else {
     lines.push({ id: "imported", tone: "ok", glyph: STATE_GLYPH.ok, text: `imported ${requirements.name}` });
   }
   if (!requirements.triggerPresent) {
-    lines.push({ id: "skill-only", tone: "wait", glyph: STATE_GLYPH.wait, text: "no TRIGGER.md — a manual / API wake will be generated" });
+    lines.push({ id: "skill-only", tone: "wait", glyph: STATE_GLYPH.wait, text: "manual API wake will be generated" });
   }
-  if (phase === "connect") {
-    lines.push({ id: "connect", tone: "wait", glyph: STATE_GLYPH.wait, text: `first run: store ${unmet.join(", ")} to continue` });
+  if (stage === "connect") {
+    lines.push({ id: "connect", tone: "wait", glyph: STATE_GLYPH.wait, text: `first run: connect ${unmet.join(", ")}` });
   }
-  if (phase === "creating") {
+  if (stage === "creating") {
     lines.push({ id: "creating", tone: "run", glyph: STATE_GLYPH.run, text: "creating fleet…" });
   }
-  if (phase === "error" && errorText) {
+  if (stage === "error" && errorText) {
     lines.push({ id: "error", tone: "err", glyph: STATE_GLYPH.err, text: errorText });
   }
   return <StateList lines={lines} />;
@@ -175,27 +175,28 @@ function PreCreateLines({
 
 // Connect-to-continue: the requirement transparency the old review page showed,
 // surfaced as a gate. Resolves via the custom-secret bridge — the one-click
-// connector is a later milestone, so this links to the vault, not an App
+// connector is a later milestone, so this links to the vault, not an app
 // connect. The flow auto-resumes into create the instant the operator returns
 // (Retry re-checks; Back → re-enter re-evaluates the gate).
 function ConnectToContinue({ unmet, onRetry }: { unmet: string[]; onRetry: () => void }) {
+  const connectLabel = unmet.some((credential) => credential.toLowerCase().includes("github"))
+    ? "Connect GitHub"
+    : "Add token";
+  const objectLabel = unmet.length === 1 ? "it" : "them";
   return (
     <div className="space-y-3 border-t border-border px-lg py-md">
       <p className="text-sm text-muted-foreground">
-        This fleet needs{" "}
-        <span className="font-mono text-foreground">{unmet.join(", ")}</span>. Store{" "}
-        {unmet.length === 1 ? "it" : "them"} as a custom secret in your workspace vault, then
-        continue.
+        Needs <span className="font-mono text-foreground">{unmet.join(", ")}</span>. Add{" "}
+        {objectLabel} in Credentials, then continue.
       </p>
       <div className="flex flex-wrap items-center gap-2">
         <Button asChild size="sm">
-          <Link href={WORKSPACE_CREDENTIALS_PATH}>Store in vault</Link>
+          <Link href={WORKSPACE_CREDENTIALS_PATH}>{connectLabel}</Link>
         </Button>
         <Button type="button" variant="ghost" size="sm" onClick={onRetry}>
-          I&apos;ve stored it — continue
+          Continue
         </Button>
       </div>
     </div>
   );
 }
-

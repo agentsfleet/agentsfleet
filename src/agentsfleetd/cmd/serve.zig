@@ -148,7 +148,7 @@ pub fn run(io: std.Io, env_map: *const EnvMap, argv: []const [:0]const u8, alloc
     log.info("startup.redis_connect_ok", .{ .role = S_API });
 
     const migrate_on_start = preflight.parseMigrateOnStart(env_map, alloc) catch std.process.exit(1);
-    preflight.checkMigrations(api_pool, migrate_on_start) catch std.process.exit(1);
+    preflight.checkMigrations(io, env_map, alloc, api_pool, migrate_on_start) catch std.process.exit(1);
 
     log.info("startup.model_rate_cache_start", .{});
     {

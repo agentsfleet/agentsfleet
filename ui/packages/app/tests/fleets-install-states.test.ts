@@ -6,7 +6,7 @@ import { routerPush, routerRefresh, resetCommonMocks } from "./helpers/dashboard
 import { INSTALL_STEP } from "@/lib/streaming/install-steps";
 
 // InstallStates drives the inline flow; its only boundaries are the two server
-// actions, analytics, and the SSE hook (post-create steps). Mock those; render
+// actions, analytics, and the Server-Sent Events (SSE) hook. Mock those; render
 // the real flow + state-line components so importing → connect → creating →
 // done/error and the SSE-driven step ladder are exercised end to end.
 const {
@@ -99,13 +99,11 @@ describe("test_install_states_render", () => {
     resolveCreate({ ok: true, data: { fleet_id: "zom_x" } });
   });
 
-  it("gates on connect-to-continue when a required credential is missing (custom-secret bridge, no Connect)", async () => {
+  it("gates on connect-to-continue when a required credential is missing", async () => {
     renderStates({ kind: "template", template: TEMPLATE_GH }, []); // github not present
-    await waitFor(() => expect(screen.getByText(/store github to continue/i)).toBeTruthy());
-    // Resolves via the vault bridge, never an App "Connect".
-    const link = screen.getByRole("link", { name: /store in vault/i });
+    await waitFor(() => expect(screen.getByText(/first run: connect github/i)).toBeTruthy());
+    const link = screen.getByRole("link", { name: /connect github/i });
     expect(link.getAttribute("href")).toBe("/credentials");
-    expect(screen.queryByRole("button", { name: /^Connect/i })).toBeNull();
     // Create is gated — no fleet created yet.
     expect(installFleetActionMock).not.toHaveBeenCalled();
   });
@@ -115,9 +113,20 @@ describe("test_install_states_render", () => {
       { kind: "template", template: { ...TEMPLATE_GH, required_credentials: ["github", "zoho"] } },
       [],
     );
-    await waitFor(() => expect(screen.getByText(/store github, zoho to continue/i)).toBeTruthy());
-    // "them" (plural) arm, not "it".
-    expect(screen.getByText(/store them as a custom secret/i)).toBeTruthy();
+    await waitFor(() => expect(screen.getByText(/first run: connect github, zoho/i)).toBeTruthy());
+    expect(screen.getByText(/Add them in Credentials/i)).toBeTruthy();
+  });
+
+  it("uses Add token when the missing credential is not GitHub", async () => {
+    renderStates(
+      { kind: "template", template: { ...TEMPLATE_GH, required_credentials: ["zoho"] } },
+      [],
+    );
+
+    await waitFor(() => expect(screen.getByText(/first run: connect zoho/i)).toBeTruthy());
+    expect(screen.getByRole("link", { name: /add token/i }).getAttribute("href")).toBe(
+      "/credentials",
+    );
   });
 
   it("a paste source carrying a TRIGGER.md posts both markdown bodies", async () => {
@@ -137,8 +146,8 @@ describe("test_install_states_render", () => {
     installFleetActionMock.mockResolvedValue({ ok: true, data: { fleet_id: "zom_after_gate" } });
     const user = userEvent.setup({ delay: null });
     renderStates({ kind: "template", template: TEMPLATE_GH }, []);
-    await waitFor(() => expect(screen.getByText(/store github to continue/i)).toBeTruthy());
-    await user.click(screen.getByRole("button", { name: /stored it/i }));
+    await waitFor(() => expect(screen.getByText(/first run: connect github/i)).toBeTruthy());
+    await user.click(screen.getByRole("button", { name: /continue/i }));
     await waitFor(() => expect(installFleetActionMock).toHaveBeenCalled());
   });
 
@@ -161,7 +170,7 @@ describe("test_install_states_render", () => {
         },
       },
     );
-    await waitFor(() => expect(screen.getByText(/manual \/ API wake will be generated/i)).toBeTruthy());
+    await waitFor(() => expect(screen.getByText(/manual API wake will be generated/i)).toBeTruthy());
   });
 
   it("an import error (404 / no SKILL.md / rate-limited) renders an error line with Retry", async () => {

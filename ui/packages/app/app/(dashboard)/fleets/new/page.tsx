@@ -9,6 +9,7 @@ import { InstallFleet } from "./InstallFleet";
 export const dynamic = "force-dynamic";
 
 type SearchParams = { template?: string | string[] };
+const INSTALL_PAGE_DESCRIPTION = "Pick a source. Watch live states.";
 
 // Gallery-first install. Templates + the workspace's existing
 // credential names are fetched server-side so the client orchestrator can render
@@ -39,11 +40,11 @@ export default async function InstallFleetPage({
   if (!result) {
     return (
       <div>
-        <PageHeader>
+        <PageHeader description={INSTALL_PAGE_DESCRIPTION}>
           <PageTitle>Install fleet</PageTitle>
         </PageHeader>
         <p className="text-sm text-muted-foreground">
-          Create a workspace before installing a fleet.
+          Create a workspace first.
         </p>
       </div>
     );
@@ -54,7 +55,7 @@ export default async function InstallFleetPage({
 
   return (
     <div>
-      <PageHeader>
+      <PageHeader description={INSTALL_PAGE_DESCRIPTION}>
         <PageTitle>Install fleet</PageTitle>
       </PageHeader>
       <InstallFleet

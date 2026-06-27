@@ -7,28 +7,41 @@ const QUICKSTART_URL = "https://docs.agentsfleet.net/quickstart";
 
 type Props = {
   templates: FleetTemplate[];
-  // Optional trailing actions appended to the source strip (e.g. a Quick start
-  // link on the dashboard card). The Fleets empty-state passes none.
+  // Optional trailing actions appended to the source strip. The dashboard hides
+  // this strip because import/paste belongs on the full install page.
   quickstart?: boolean;
+  /** Dashboard shows the primary cards; the full install page passes all. */
+  maxTemplates?: number;
+  /** Dashboard embed uses a denser card treatment. */
+  compact?: boolean;
+  /** Full install surfaces import/paste actions; dashboard does not. */
+  showSourceActions?: boolean;
 };
 
-// The single shared install entry surface, composed verbatim by the Dashboard
-// "Start your fleet" card and the Fleets empty-state — one source, no
-// hand-rolled duplicates. A Server Component: each affordance deep-links into
-// the install page (which proceeds inline to the live states), so it carries no
-// client callbacks. Templates lead; `owner/repo` import + paste SKILL.md are the
-// secondary source strip.
-export function InstallEntry({ templates, quickstart = false }: Props) {
+// Template entry surface for the Dashboard and source picker. A Server
+// Component: each affordance deep-links into the install page (which proceeds
+// inline to live states), so it carries no client callbacks. Templates lead;
+// `owner/repo` import + paste SKILL.md are the secondary source strip.
+export function InstallEntry({
+  templates,
+  quickstart = false,
+  maxTemplates,
+  compact = false,
+  showSourceActions = true,
+}: Props) {
+  const visibleTemplates =
+    maxTemplates == null ? templates : templates.slice(0, maxTemplates);
   return (
-    <div className="space-y-5">
-      {templates.length > 0 ? (
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          {templates.map((template) => (
+    <div className={compact ? "space-y-md" : "space-y-lg"}>
+      {visibleTemplates.length > 0 ? (
+        <div className="grid grid-cols-1 gap-md sm:grid-cols-2">
+          {visibleTemplates.map((template) => (
             <TemplateCard
               key={template.id}
               template={template}
+              compact={compact}
               action={
-                <Button asChild size="sm">
+                <Button asChild>
                   <Link href={`/fleets/new?template=${template.id}`}>Use template</Link>
                 </Button>
               }
@@ -37,18 +50,20 @@ export function InstallEntry({ templates, quickstart = false }: Props) {
         </div>
       ) : null}
 
-      <div className="flex flex-wrap gap-3 border-t border-border pt-5">
-        <Button asChild variant="ghost" size="sm">
-          <Link href="/fleets/new">Import from GitHub or paste SKILL.md</Link>
-        </Button>
-        {quickstart ? (
-          <Button asChild variant="ghost" size="sm">
-            <a href={QUICKSTART_URL} target="_blank" rel="noopener noreferrer">
-              Quick start
-            </a>
+      {showSourceActions ? (
+        <div className="flex flex-wrap gap-md border-t border-border pt-lg">
+          <Button asChild variant="outline">
+            <Link href="/fleets/new">Import from GitHub or paste SKILL.md</Link>
           </Button>
-        ) : null}
-      </div>
+          {quickstart ? (
+            <Button asChild variant="ghost" size="sm">
+              <a href={QUICKSTART_URL} target="_blank" rel="noopener noreferrer">
+                Quick start
+              </a>
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   );
 }

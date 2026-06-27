@@ -174,9 +174,9 @@ pub fn connectDbPool(io: std.Io, env_map: *const EnvMap, alloc: std.mem.Allocato
 // Migration safety
 // ---------------------------------------------------------------------------
 
-pub fn checkMigrations(pool: *db.Pool, migrate_on_start: bool) anyerror!void {
+pub fn checkMigrations(io: std.Io, env_map: *const EnvMap, alloc: std.mem.Allocator, pool: *db.Pool, migrate_on_start: bool) anyerror!void {
     log.info("startup.migration_check_start", .{});
-    common.enforceServeMigrationSafety(pool, migrate_on_start) catch |err| {
+    common.enforceServeMigrationSafety(io, env_map, alloc, pool, migrate_on_start) catch |err| {
         const mc_code = error_codes.ERR_STARTUP_MIGRATION_CHECK;
         switch (err) {
             common.MigrationGuardError.MigrationPending => log.err(S_STARTUP_MIGRATION_CHECK_FAILED, .{

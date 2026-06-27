@@ -341,6 +341,18 @@
   td.cstatus .status { font-size: 12px; }
   .addsecret { display: grid; grid-template-columns: 1fr 1.5fr auto; gap: 10px; align-items: end; padding: 16px 18px; border-top: 1px solid var(--border); background: var(--surface-deep); }
   .addsecret label { display:block; font-family: var(--mono); font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--text-subtle); margin-bottom: 6px; }
+  /* Field/value builder — a named secret with structured fields; produces the
+     JSON object under the hood, no raw JSON typed by the user. */
+  .addsecret-v2 { padding: 16px 18px; border-top: 1px solid var(--border); background: var(--surface-deep); }
+  .addsecret-v2 .as-name { margin-bottom: 16px; }
+  .addsecret-v2 label, .addsecret-v2 .as-fields-label { display: block; font-family: var(--mono); font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--text-subtle); margin-bottom: 7px; }
+  .addsecret-v2 .hint { font-size: 12px; color: var(--text-subtle); margin-top: 6px; }
+  .addsecret-v2 .mono-inline { font-family: var(--mono); color: var(--text-muted); }
+  .kv-rows { display: flex; flex-direction: column; gap: 8px; }
+  .kv-row { display: grid; grid-template-columns: 220px 1fr 36px; gap: 10px; align-items: center; }
+  .kv-remove { background: none; border: 1px solid var(--border-strong); color: var(--text-subtle); border-radius: 8px; height: 36px; cursor: pointer; font-size: 16px; line-height: 1; }
+  .kv-remove:hover { color: var(--text); border-color: var(--text-subtle); }
+  .as-actions { display: flex; align-items: center; justify-content: space-between; margin-top: 14px; }
 
   /* coming-soon integrations */
   .cred-group.soon .cred-rows { opacity: .6; }
@@ -815,10 +827,29 @@
                 </tr>
               </tbody>
             </table>
-            <div class="addsecret">
-              <div><label>Name</label><input class="control mono" placeholder="MY_API_TOKEN" /></div>
-              <div><label>Value</label><input class="control mono" placeholder="value (write-only)" /></div>
-              <button class="btn btn-outline">＋ Add secret</button>
+            <div class="addsecret-v2">
+              <div class="as-name">
+                <label>Secret name</label>
+                <input class="control mono" placeholder="stripe" />
+                <div class="hint">Reference fields as <span class="mono-inline">${secrets.stripe.&lt;field&gt;}</span></div>
+              </div>
+              <label class="as-fields-label">Fields</label>
+              <div class="kv-rows">
+                <div class="kv-row">
+                  <input class="control mono" placeholder="api_key" />
+                  <input class="control mono" placeholder="value (write-only)" />
+                  <button class="kv-remove" title="Remove field" aria-label="Remove field">×</button>
+                </div>
+                <div class="kv-row">
+                  <input class="control mono" placeholder="webhook_secret" />
+                  <input class="control mono" placeholder="value (write-only)" />
+                  <button class="kv-remove" title="Remove field" aria-label="Remove field">×</button>
+                </div>
+              </div>
+              <div class="as-actions">
+                <button class="btn-link">＋ Add field</button>
+                <button class="btn btn-outline">Add secret</button>
+              </div>
             </div>
           </div>
         </div>

@@ -13,7 +13,10 @@ export function PageTitle({ className, ref, ...props }: PageTitleProps) {
   return (
     <h1
       ref={ref}
-      className={cn("text-xl font-semibold tracking-tight", className)}
+      className={cn(
+        "text-display-md font-semibold leading-display-md tracking-display-md text-foreground",
+        className,
+      )}
       {...props}
     />
   );

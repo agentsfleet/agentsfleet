@@ -27,7 +27,7 @@ export type CustomEndpointFormProps = {
 };
 
 export const BASE_URL_NOT_HTTPS =
-  "Base URL must use https:// — a custom endpoint is rejected otherwise.";
+  "Use https:// for the Base URL.";
 
 // Client-side https gate, matching the CLI option validator and the server-side
 // guard's first check. Parses as a URL so a malformed value is caught for the
@@ -153,7 +153,7 @@ export default function CustomEndpointForm({ workspaceId, onCreated }: CustomEnd
           autoComplete="off"
         />
         <p className="text-xs text-muted-foreground">
-          The model id this endpoint serves — required to activate the credential.
+          Required before this credential can run.
         </p>
       </div>
       <div className="space-y-2">
@@ -164,7 +164,7 @@ export default function CustomEndpointForm({ workspaceId, onCreated }: CustomEnd
           value={apiKey}
           onChange={(e) => setApiKey(e.target.value)}
           onKeyDown={onFieldKeyDown}
-          placeholder="leave blank if the endpoint needs no key"
+          placeholder="blank if no key"
           spellCheck={false}
           autoComplete="off"
         />

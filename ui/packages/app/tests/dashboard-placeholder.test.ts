@@ -336,7 +336,7 @@ describe("placeholder pages", () => {
     // renderToStaticMarkup escapes the apostrophe in "isn't"; assert on a
     // stable substring of the not-ready empty state instead.
     expect(m).toContain("ready yet");
-    expect(m).toContain("still being set up");
+    expect(m).toContain("Refresh in a moment");
   });
 
 });

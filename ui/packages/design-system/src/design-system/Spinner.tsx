@@ -6,6 +6,12 @@ import { WakePulse } from "./WakePulse";
 export type SpinnerSize = "sm" | "md" | "lg";
 
 const DOT_SIZE: Record<SpinnerSize, string> = {
+  sm: "h-1.5 w-1.5",
+  md: "h-2 w-2",
+  lg: "h-2.5 w-2.5",
+};
+
+const ORBIT_SIZE: Record<SpinnerSize, string> = {
   sm: "h-3 w-3",
   md: "h-3.5 w-3.5",
   lg: "h-5 w-5",
@@ -21,13 +27,10 @@ export interface SpinnerProps extends Omit<ComponentProps<"span">, "children"> {
 }
 
 /*
- * The system's indeterminate loading affordance. The design system has
- * exactly one animation — the wake-pulse glow ring (tokens.css
- * `[data-live]`) — so the loader is a brand pulse, not a rotating icon
- * (a spin would be a second, off-system animation). Use Spinner for
- * "working" waits: page-level loaders (with `label`) and in-button submit
- * feedback (dot only). Use Skeleton instead when the wait is "page-shape
- * pending" — a different affordance for a different kind of wait.
+ * The system's indeterminate loading affordance. Use Spinner for short
+ * working waits and install state chips; use Skeleton when the page shape is
+ * still resolving. The outer arc is intentionally tiny and monochrome so the
+ * WakePulse remains the brand signal.
  */
 export function Spinner({
   size = "md",
@@ -42,15 +45,23 @@ export function Spinner({
       aria-busy="true"
       className={cn(
         "inline-flex items-center gap-2 text-muted-foreground",
+        label &&
+          "rounded-md border border-primary/40 bg-primary/10 px-sm py-xs font-mono text-label font-medium leading-label text-primary",
         className,
       )}
       {...rest}
     >
-      <WakePulse
-        live
+      <span
         aria-hidden="true"
-        className={cn("inline-block shrink-0 rounded-full bg-pulse", DOT_SIZE[size])}
-      />
+        data-spinner-orbit
+        className={cn("relative inline-grid shrink-0 place-items-center", ORBIT_SIZE[size])}
+      >
+        <span className="absolute inset-0 rounded-full border border-primary/30 border-t-primary motion-safe:animate-spin" />
+        <WakePulse
+          live
+          className={cn("inline-block rounded-full bg-pulse", DOT_SIZE[size])}
+        />
+      </span>
       {label ? <span>{label}</span> : <span className="sr-only">{srLabel}</span>}
     </span>
   );

@@ -223,7 +223,7 @@ describe("ApiKeyList component", () => {
     await user.click(screen.getByRole("button", { name: /create key/i }));
     await screen.findByLabelText(/API key value/i);
     const before = listApiKeysActionMock.mock.calls.length;
-    await user.click(screen.getByRole("button", { name: /stored it — close/i }));
+    await user.click(screen.getByRole("button", { name: /done/i }));
     await waitFor(() =>
       expect(listApiKeysActionMock).toHaveBeenCalledWith(expect.objectContaining({ page: 1, sort: "-created_at" })),
     );

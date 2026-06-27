@@ -23,9 +23,10 @@ describe("dashboard motion is defined", () => {
     expect(GLOBALS).toMatch(/\.app-content-rise\s*>\s*\*\s*\{[^}]*animation:\s*rise-in/s);
   });
 
-  it("declares the ambient glow-drift keyframe and applies it to the dashboard glow", () => {
+  it("declares the ambient glow-drift keyframe and applies it to the dashboard canvas", () => {
     expect(GLOBALS).toMatch(/@keyframes\s+glow-drift\b/);
-    expect(GLOBALS).toMatch(/\[data-glow="dashboard"\]::before\s*\{[^}]*animation:\s*glow-drift/s);
+    expect(GLOBALS).toMatch(/\.app-dashboard-canvas\s*\{[^}]*animation:\s*glow-drift/s);
+    expect(GLOBALS).toMatch(/\.app-dashboard-canvas\s*\{[^}]*radial-gradient\(1150px 660px/s);
   });
 
   it("never pins opacity:0 as a resting state — rise-in degrades to visible", () => {
@@ -38,6 +39,10 @@ describe("dashboard motion is defined", () => {
   it("wires the mount-rise container onto the Shell content wrapper", () => {
     // Same element that carries the shared content width — so it rises, not chrome.
     expect(SHELL).toMatch(/app-content-rise[^"]*max-w-content|max-w-content[^"]*app-content-rise/);
+  });
+
+  it("wires the dual-glow canvas onto the Shell main region", () => {
+    expect(SHELL).toMatch(/<main className="app-dashboard-canvas/);
   });
 });
 
@@ -63,6 +68,8 @@ describe("test_motion_respects_reduced_motion — every effect is gated", () => 
     const body = noPref![1];
     expect(body).toMatch(/\.app-glow-surface button:hover\s*\{[^}]*filter:\s*brightness/s);
     expect(body).toMatch(/\.app-glow-surface button:active\s*\{[^}]*transform:\s*translateY/s);
+    expect(body).toMatch(/\.app-dashboard-canvas \[data-dashboard-panel\]/);
+    expect(body).toMatch(/\.app-dashboard-canvas \[data-terminal-panel\]/);
   });
 
   it("gates the sidebar hover nudge with the motion-safe variant", () => {

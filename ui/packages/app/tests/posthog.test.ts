@@ -356,6 +356,27 @@ describe("app analytics", () => {
     });
   });
 
+  it("sets person properties via $set, atomically with the event", async () => {
+    const { mod, client } = await loadModule({
+      pathname: "/credentials",
+      env: { NEXT_PUBLIC_POSTHOG_KEY: "phc_live" },
+    });
+
+    await mod.initAnalytics();
+    mod.captureProductEvent(
+      EVENTS.integration_requested,
+      { integration_id: "zoho", integration_name: "Zoho" },
+      { setPersonProperties: { last_integration_requested: "zoho" } },
+    );
+
+    expect(client.capture).toHaveBeenCalledWith(EVENTS.integration_requested, {
+      path: "/credentials",
+      integration_id: "zoho",
+      integration_name: "Zoho",
+      $set: { last_integration_requested: "zoho" },
+    });
+  });
+
   it("capture, identify, and reset are no-ops when analytics is disabled", async () => {
     const { mod, client } = await loadModule({
       env: { NEXT_PUBLIC_POSTHOG_KEY: "phc_live", NEXT_PUBLIC_POSTHOG_ENABLED: "0" },
