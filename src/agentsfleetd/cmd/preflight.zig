@@ -250,6 +250,9 @@ pub const CredentialBrokerHandle = struct {
     broker: ?*credential_broker = null,
     exchange: ?*serve_broker.HttpClientExchange = null,
     github_app: ?credentials_integration.GithubApp = null,
+    /// Platform App slug for the connect install URL (M102 §5), duped here so the
+    /// connect handler borrows it for the process lifetime; freed at shutdown.
+    github_app_slug: ?[]const u8 = null,
 
     pub fn deinit(self: *CredentialBrokerHandle) void {
         if (self.broker) |b| {
@@ -261,6 +264,7 @@ pub const CredentialBrokerHandle = struct {
             self.alloc.free(a.app_id);
             self.alloc.free(a.private_key_pem);
         }
+        if (self.github_app_slug) |s| self.alloc.free(s);
     }
 };
 
@@ -277,8 +281,14 @@ pub fn installCredentialBroker(
     pool: *db.Pool,
     admin_ws_id: []const u8,
     broker_out: *?*credential_broker,
+    slug_out: *?[]const u8,
 ) CredentialBrokerHandle {
     var handle = CredentialBrokerHandle{ .alloc = alloc };
+    // M102 §5 — the connect install URL's App slug (vault, not env). Resolved
+    // first so every return path (incl. broker-init failure) still publishes it.
+    const slug = serve_broker.loadGithubAppSlug(alloc, pool, admin_ws_id);
+    handle.github_app_slug = slug;
+    slug_out.* = slug;
     const exchange = alloc.create(serve_broker.HttpClientExchange) catch {
         log.warn(S_CREDENTIAL_BROKER_INIT_FAILED, .{ .error_code = error_codes.ERR_STARTUP_ENV_ALLOC, .err = "exchange_alloc" });
         return handle;

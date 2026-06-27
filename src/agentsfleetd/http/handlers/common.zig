@@ -53,6 +53,10 @@ pub const Context = struct {
     /// of re-reading env per request. Null = unset → the handler fails closed.
     clerk_webhook_secret: ?[]const u8,
     approval_signing_secret: ?[]const u8,
+    /// GitHub App slug for the connect install URL, resolved at boot from the
+    /// admin vault `github-app` entry. Null → connect degrades closed (no
+    /// install URL minted) rather than pointing at a nonexistent App.
+    github_app_slug: ?[]const u8 = null,
     clerk_secret_key: ?[]const u8,
     oidc: ?*oidc.Verifier,
     /// Cloudflare R2 client for Fleet Bundle canonical-tar storage, resolved once

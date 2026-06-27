@@ -19,12 +19,13 @@ import { CpuIcon, KeyRoundIcon, LinkIcon } from "lucide-react";
 import { withWorkspaceScope, orFallback } from "@/lib/workspace";
 import { getTenantProvider } from "@/lib/api/tenant_provider";
 import { listCredentials, type CredentialSummary } from "@/lib/api/credentials";
+import { getGithubConnector, CONNECTOR_STATUS, type ConnectorStatus } from "@/lib/api/connectors";
 import { OPENAI_COMPATIBLE_PROVIDER, PROVIDER_MODE, type TenantProvider } from "@/lib/types";
 import { VAULT_KIND, VAULT_KINDS } from "./lib/vault-kinds";
 import AddCredentialFormDynamic from "@/components/domain/island-dynamic/AddCredentialFormDynamic";
 import CustomSecretsList from "./components/CustomSecretsList";
 import CustomEndpointForm from "./components/CustomEndpointForm";
-import IntegrationsComingSoon from "./components/IntegrationsComingSoon";
+import IntegrationsConnectors from "./components/IntegrationsConnectors";
 import ProviderCredentialRows from "./components/ProviderCredentialRows";
 
 export const dynamic = "force-dynamic";
@@ -159,12 +160,24 @@ function CustomSecretsGroup({
   );
 }
 
-function IntegrationsGroup({ secrets }: { secrets: CredentialSummary[] }) {
+function IntegrationsGroup({
+  workspaceId,
+  githubStatus,
+  secrets,
+}: {
+  workspaceId: string;
+  githubStatus: ConnectorStatus;
+  secrets: CredentialSummary[];
+}) {
   return (
     <Section asChild>
       <section aria-label="Integrations" data-testid={`group-${VAULT_KIND.integrations}`}>
         <SectionLabel>Integrations</SectionLabel>
-        <IntegrationsComingSoon credentialNames={secrets.map((secret) => secret.name)} />
+        <IntegrationsConnectors
+          workspaceId={workspaceId}
+          githubStatus={githubStatus}
+          credentialNames={secrets.map((secret) => secret.name)}
+        />
       </section>
     </Section>
   );
@@ -176,11 +189,14 @@ export default async function CredentialsPage() {
   if (!token) redirect("/sign-in");
 
   const result = await withWorkspaceScope(token, async (workspaceId) => {
-    const [providerResult, credentialsResp] = await Promise.all([
+    const [providerResult, credentialsResp, githubConnector] = await Promise.all([
       getTenantProvider(token).catch((err) => ({ error: String(err) })),
       listCredentials(workspaceId, token).catch(orFallback({ credentials: [] })),
+      // A missing/unbuilt connector endpoint degrades to "not connected" — the
+      // pill never fabricates a connected state.
+      getGithubConnector(workspaceId, token).catch(() => ({ status: CONNECTOR_STATUS.notConnected })),
     ]);
-    return { workspaceId, providerResult, credentialsResp };
+    return { workspaceId, providerResult, credentialsResp, githubConnector };
   });
   if (!result) {
     return (
@@ -196,7 +212,7 @@ export default async function CredentialsPage() {
       </div>
     );
   }
-  const { workspaceId, providerResult, credentialsResp } = result;
+  const { workspaceId, providerResult, credentialsResp, githubConnector } = result;
   // The only KNOWN reference is the active model credential; a provider-fetch
   // error simply means we surface no referenced-by hint (never fabricated).
   const provider = "error" in providerResult ? null : providerResult;
@@ -221,7 +237,11 @@ export default async function CredentialsPage() {
         provider={provider}
       />
       <CustomSecretsGroup workspaceId={workspaceId} secrets={customSecrets} />
-      <IntegrationsGroup secrets={customSecrets} />
+      <IntegrationsGroup
+        workspaceId={workspaceId}
+        githubStatus={githubConnector.status}
+        secrets={customSecrets}
+      />
     </div>
   );
 }

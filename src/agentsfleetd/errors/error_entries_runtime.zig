@@ -77,4 +77,9 @@ pub const ENTRIES_RUNTIME = [_]Entry{
         "Reconnect GitHub from the dashboard \u{2014} the fleet stays blocked until the App is reinstalled."),
     e("UZ-GH-002", .bad_gateway, "GitHub token mint failed", "GitHub did not return an installation token (upstream 5xx, network, or a malformed exchange response). " ++
         "This is transient \u{2014} retry shortly; if it persists, check GitHub status and the App configuration."),
+    // ── GITHUB CONNECT (M102 §5 — the connect round-trip) ─────────────────────
+    e("UZ-CONN-001", .service_unavailable, "Connector not configured", "GitHub connect is unavailable on this deployment (the platform App slug or signing secret is unset). " ++
+        "An operator must register the GitHub App and populate the admin vault before fleets can connect."),
+    e("UZ-CONN-002", .bad_request, "Invalid connect state", "The connect callback's state was missing, forged, expired, or already used. " ++
+        "Start the connect again from the dashboard \u{2014} each attempt issues a fresh single-use state."),
 };
