@@ -141,3 +141,33 @@ test "mint: different workspaces mint concurrently in parallel over the sharded 
     // Distinct keys → distinct segments → all minted in parallel, none lost.
     try std.testing.expectEqual(@as(usize, N), fake_calls.load(.monotonic));
 }
+
+test "mint: a caller allocation failure fails closed as mint_failed{transient}, no leak (OOM injection)" {
+    fake_calls.store(0, .monotonic);
+    // Broker internals (cache + runMint copy) use the non-failing testing
+    // allocator; only the mint's CALLER allocator fails — isolating the
+    // caller-facing token dup, the one alloc that can OOM a successful mint.
+    var b = try brokerWith(std.testing.allocator, FAKE_REGISTRY);
+    defer b.deinit();
+    var h = try testing.parse(std.testing.allocator, "{\"integration\":\"github\"}");
+    defer h.deinit();
+
+    // Cold path: runMint succeeds, the caller dup OOMs → mint_failed{transient}.
+    {
+        var failing = std.testing.FailingAllocator.init(std.testing.allocator, .{ .fail_index = 0 });
+        const r = try b.mint(failing.allocator(), "ws-oom", "github", h.value, 0);
+        try std.testing.expect(r == .mint_failed);
+        try std.testing.expectEqual(integration.Retry.transient, r.mint_failed);
+    }
+    // Warm path: the cold mint above cached ws-oom; a hit whose caller dup OOMs
+    // takes the SAME fail-closed branch — never a panic, never a stale token.
+    {
+        var failing = std.testing.FailingAllocator.init(std.testing.allocator, .{ .fail_index = 0 });
+        const r = try b.mint(failing.allocator(), "ws-oom", "github", h.value, 0);
+        try std.testing.expect(r == .mint_failed);
+        try std.testing.expectEqual(integration.Retry.transient, r.mint_failed);
+    }
+    // Exactly one upstream mint (the cold one); the warm path hit cache. The
+    // testing allocator's deinit asserts every internal allocation was freed.
+    try std.testing.expectEqual(@as(usize, 1), fake_calls.load(.monotonic));
+}

@@ -4,12 +4,8 @@
 // 30 lines and the fixtures themselves can be audited in one place.
 
 const std = @import("std");
-const webhook_verify = @import("bench_app").webhook_verify;
 
 const EVAL_BRANCH_QUOTA = 1_000_000;
-const EVAL_BRANCH_QUOTA_2 = 100_000;
-
-const HmacSha256 = std.crypto.auth.hmac.sha2.HmacSha256;
 
 // ── activity_chunk_encode ─────────────────────────────────────────────────
 // Representative chunk frame: a UUIDv7 event id, a 256-byte text payload
@@ -19,7 +15,6 @@ pub const CHUNK_EVENT_ID = "019abcde-5678-7ccc-8ddd-abcdef012345";
 const S_THE_QUICK_BROWN_FOX_JUMPS_OVER_THE_LAZY_DOG = "The quick brown fox jumps over the lazy dog. ";
 const S_PAUSED = "paused";
 const S_N_019WSPS_7AAA_8BBB_ABCDEF012345 = "019wsps-7aaa-8bbb-abcdef012345";
-const S_SHA256 = "sha256=";
 const S_RUNNING = "running";
 
 pub const CHUNK_TEXT =
@@ -94,36 +89,3 @@ pub const AGENTSFLEET_PAGE = [_]AgentRow{
     .{ .id = "019abcde-0009-7aaa-8bbb-abcdef012345", .workspace_id = S_N_019WSPS_7AAA_8BBB_ABCDEF012345, .name = "agent-iota", .status = S_RUNNING, .created_at = 1_700_000_008_000, .updated_at = 1_700_000_038_000 },
     .{ .id = "019abcde-000a-7aaa-8bbb-abcdef012345", .workspace_id = S_N_019WSPS_7AAA_8BBB_ABCDEF012345, .name = "agent-kappa", .status = S_RUNNING, .created_at = 1_700_000_009_000, .updated_at = 1_700_000_039_000 },
 };
-
-// ── webhook_signature_verify ──────────────────────────────────────────────
-// A ~1 KB random-ish payload — real webhooks range from a few hundred bytes
-// to ~64 KiB; 1 KB is representative of Slack/GitHub event bodies.
-pub const WEBHOOK_SECRET = "test_signing_secret_not_real_for_bench_0000";
-pub const WEBHOOK_BODY = mkBody(1024);
-
-fn mkBody(comptime n: usize) [n]u8 {
-    @setEvalBranchQuota(n * 10);
-    var buf: [n]u8 = undefined;
-    for (0..n) |i| buf[i] = @intCast((i * 31 + 7) & 0xff);
-    return buf;
-}
-
-// Precomputed signature over WEBHOOK_BODY — format matches
-// webhook_verify.GITHUB (prefix "sha256=" + 64 hex chars).
-pub const WEBHOOK_SIGNATURE = blk: {
-    @setEvalBranchQuota(EVAL_BRANCH_QUOTA_2);
-    var mac: [HmacSha256.mac_length]u8 = undefined;
-    var hmac = HmacSha256.init(WEBHOOK_SECRET);
-    hmac.update(&WEBHOOK_BODY);
-    hmac.final(&mac);
-    const hex = std.fmt.bytesToHex(mac, .lower);
-    break :blk S_SHA256 ++ hex;
-};
-
-comptime {
-    // Catch silent drift: a format change in GITHUB would invalidate the
-    // precomputed signature, producing a benchmark that always hits the
-    // reject path and doesn't measure the work we think it does.
-    std.debug.assert(webhook_verify.GITHUB.prefix.len == S_SHA256.len);
-    std.debug.assert(WEBHOOK_SIGNATURE.len == S_SHA256.len + 64);
-}

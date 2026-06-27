@@ -297,6 +297,8 @@ pub fn build(b: *std.Build) void {
                 .{ .name = S_CONTRACT, .module = contract_mod },
                 .{ .name = S_COMMON, .module = common_mod },
                 .{ .name = S_AUTH_CODES, .module = auth_codes_mod },
+                // The credential broker's token store — benched via bench_exports.
+                .{ .name = S_CACHE, .module = cache_mod },
             },
         });
 
