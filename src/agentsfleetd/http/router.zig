@@ -116,7 +116,7 @@ fn matchV1(p: matchers.Path, method: httpz.Method) ?Route {
     if (matchers.matchWorkspaceConnectorGithub(p)) |ws| return .{ .github_connector_status = ws };
     if (matchers.matchGithubConnectCallback(p)) return .{ .github_connect_callback = {} };
     // ── Workspace + leaf ──────────────────────────────────────────────────
-    if (matchers.matchWorkspaceCredential(p)) |r| return .{ .delete_workspace_credential = r };
+    if (matchers.matchWorkspaceCredential(p)) |r| return .{ .workspace_credential = r };
     if (matchers.matchWorkspaceFleetKeyDelete(p)) |r| return .{ .delete_fleet_key = r };
     if (matchers.matchWorkspaceFleet(p)) |r| return .{ .patch_workspace_fleet = r };
     if (matchers.matchWorkspaceFleetBundle(p)) |r| return .{ .workspace_fleet_bundle = r };

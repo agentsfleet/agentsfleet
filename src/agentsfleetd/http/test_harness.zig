@@ -305,6 +305,9 @@ pub const TestHarness = struct {
     pub fn put(self: *TestHarness, path: []const u8) Request {
         return Request.init(self, .PUT, path);
     }
+    pub fn patch(self: *TestHarness, path: []const u8) Request {
+        return Request.init(self, .PATCH, path);
+    }
     pub fn delete(self: *TestHarness, path: []const u8) Request {
         return Request.init(self, .DELETE, path);
     }

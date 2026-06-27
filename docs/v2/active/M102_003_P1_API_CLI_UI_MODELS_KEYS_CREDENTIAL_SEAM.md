@@ -121,18 +121,18 @@
 
 ## Sections (implementation slices)
 
-### §1 — Credential metadata projection on list
+### §1 — Credential metadata projection on list — ✅ implemented (unit local; integration in CI)
 
-The list decrypts each body, derives `kind` from `provider` (`openai-compatible`→`custom_endpoint`; recognised provider id→`provider_key`; else `custom_secret`), returns non-secret `provider`/`model`/`base_url`; **api_key never read into the response, plaintext zeroed**; unparseable/legacy bodies degrade to `custom_secret`.
+Two passes over one `pg.Conn` (a second open read result on the same connection is forbidden): pass 1 materializes the stored keys then drains the query; pass 2 `vault.loadJson`s each row (an N+1 that is fine on the cold settings page) and projects via the pure `credential_metadata`. `kind` is derived from the `provider` field's presence/value — `openai-compatible`→`custom_endpoint`; any other string `provider`→`provider_key`; missing/non-string→`custom_secret` (accepted edge: a custom secret carrying a `provider` string misfiles as a provider key). Returns non-secret `provider`/`model`/`base_url`; **api_key is never read into the response** (the projection type has no field for it); unparseable/legacy bodies degrade to `custom_secret` (list still 200). Split for FLL: pure classify/project in `credential_metadata.zig` (unit-tested), DB orchestration in `credential_list.zig`.
 
 - **1.1** `kind` from `provider`, not name → `test_list_classifies_by_provider`
 - **1.2** response carries provider/model/base_url, never api_key → `test_list_omits_api_key`
 - **1.3** unparseable body → `custom_secret`, still 200 → `test_list_degrades_unparseable_body`
 - **1.4** operator gate + pg-drain unchanged → `test_list_requires_operator`
 
-### §2 — Key-only credential rotate
+### §2 — Key-only credential rotate — ✅ implemented (unit local; integration in CI)
 
-`PATCH …/credentials/{name}` `{api_key}` updates only the secret, preserving provider/model/base_url — Replace-key safe for every kind.
+`PATCH …/credentials/{name}` `{api_key}` updates only the secret, preserving provider/model/base_url — Replace-key safe for every kind. The handler loads the stored object, `put`s only `api_key` on the parse-arena map, re-stringifies (4 KB cap → `UZ-VAULT-002`), re-stores, then `secureZero`s its duped key copy. Missing row → `UZ-VAULT-003` 404; empty key → `UZ-REQ-001` 400. The item route is method-neutral (`workspace_credential`: PATCH + DELETE).
 
 - **2.1** rotate preserves non-secret fields → `test_rotate_preserves_nonsecret_fields`
 - **2.2** missing credential → typed 404 → `test_rotate_missing_404`
@@ -222,7 +222,7 @@ type Credential =
 ## Invariants
 
 1. **api_key never in any response or log** — CI grep over responses/logs after a self-managed run (M48-style) + §1 negative test.
-2. **Decrypt plaintext zeroed** — `defer secureZero` on the list decrypt buffer (compile-checked lifecycle, mirrors `credentials_mint.zig`).
+2. **Decrypted body freed; api_key never copied out** — the list decrypt routes through `vault.loadJson`, whose `parsed.deinit()` frees the arena-backed plaintext (the read path frees but does **not** `secureZero`, matching `credentials_mint.zig`). The api_key is structurally unprojectable: `credential_metadata.Projection` has no api_key field, so a leak is a compile error, not a review catch. (The PATCH rotate additionally `secureZero`s its duped key copy after the re-store.)
 3. **Classification only from server `kind`** — no provider/name string-compare in client classification (grep sweep; heuristic helpers deleted).
 4. **List stays operator-gated** — `workspace_guards.enforce(.operator)` unchanged; `test_list_requires_operator`.
 
@@ -291,6 +291,8 @@ type Credential =
 - **Indy decision (2026-06-28):** rides PR #458 in the m102 worktree — no new milestone/branch; worktree clean post-commit. One spec (trimmed under cap).
 - **Architecture decision (2026-06-28):** metadata via **decrypt-on-list (Option A)** over a metadata column — keeps the M45 opaque-body invariant; Option B is the named follow-up.
 - **Indy directive (2026-06-28):** at CHORE-close review **every** `docs/architecture/*.md` + every docs-repo product/capability `*.mdx`; update or **argue-back per file** (two reports); `changelog.mdx` before close. Cross-repo docs edit authorized this session (own-branch flow).
+- **§1/§2 implementation (2026-06-28):** list projection is a two-pass materialize→drain→`vault.loadJson` (N+1, cold-page-acceptable); pure classify/project extracted to `credential_metadata.zig` (unit-tested, 3 tests) with DB orchestration in `credential_list.zig` (FLL split — neither was in the original Files-Changed table, added for the 350-line cap). Classification keys on the `provider` field. Rotate route renamed `delete_workspace_credential`→`workspace_credential` (method-neutral; a `delete_`-named route serving PATCH was an inaccurate name). New error `UZ-VAULT-003` (credential-not-found, 404). Read path frees the decrypted body via `parsed.deinit()` (no `secureZero`, matching `credentials_mint.zig`); api_key unprojectable by type.
+- **VERIFY constraint (2026-06-28):** backend unit tests + `make lint-zig` (fmt/zlint/pg-drain/FLL/test-depth) + cross-compile (x86_64+aarch64-linux) all pass locally; the DB-backed credential integration tests compile clean but run in **CI** — local Docker daemon is down (`make _ensure-test-infra` fails). The telemetry/webhook `zig build test` failures are pre-existing/environmental (reproduce in isolation; `test-unit-agentsfleetd` was green on CI at base).
 - Skill-chain outcomes + Indy-acked deferral quotes appended as work proceeds.
 
 ---

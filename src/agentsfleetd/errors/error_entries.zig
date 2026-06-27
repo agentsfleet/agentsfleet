@@ -128,6 +128,7 @@ pub const ENTRIES = [_]Entry{
     e("UZ-VAULT-001", .bad_request, "Credential data must be a non-empty JSON object", "POST /credentials body must include a 'data' field that is a JSON object with at least one key. " ++
         "Bare strings, arrays, scalars, and {} are rejected."),
     e("UZ-VAULT-002", .bad_request, "Credential data too large", "Stringified credential data exceeds 4KB. Compose the secret from fewer or shorter fields."),
+    e("UZ-VAULT-003", .not_found, "Credential not found", "No credential matches this name in the workspace. List the workspace credentials to find a valid name, or create it first."),
     // ── PROVIDER (PUT /v1/tenants/me/provider) ───────────────────────────────
     e("UZ-PROVIDER-001", .bad_request, "credential_ref required when mode=self_managed", "PUT body must include `credential_ref` naming a vault credential when `mode` is self_managed."),
     e("UZ-PROVIDER-002", .bad_request, "Credential row not found in vault", "The named credential_ref has no vault row in the tenant's primary workspace. " ++
