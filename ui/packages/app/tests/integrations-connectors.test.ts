@@ -83,7 +83,31 @@ describe("IntegrationsConnectors (test_github_states_and_planned)", () => {
     await waitFor(() => expect(startGithubConnectActionMock).toHaveBeenCalledWith(WS));
   });
 
-  it("renders Zoho and Slack as planned connectors that request access via email", () => {
+  it("redirects the browser to the install URL when connect succeeds", async () => {
+    const install_url = "https://github.com/apps/agentsfleet/installations/new?state=signed";
+    startGithubConnectActionMock.mockResolvedValue({ ok: true, data: { install_url } });
+    // jsdom won't navigate; capture the assignment instead of letting it no-op.
+    const original = window.location;
+    let assigned = "";
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      value: { ...original, set href(v: string) { assigned = v; }, get href() { return assigned; } },
+    });
+    try {
+      render(
+        React.createElement(IntegrationsConnectors, {
+          workspaceId: WS,
+          githubStatus: CONNECTOR_STATUS.notConnected,
+        }),
+      );
+      fireEvent.click(screen.getByRole("button", { name: /connect github/i }));
+      await waitFor(() => expect(assigned).toBe(install_url));
+    } finally {
+      Object.defineProperty(window, "location", { configurable: true, value: original });
+    }
+  });
+
+  it("renders Zoho and Slack as planned connectors with a Request access button (no email)", () => {
     render(
       React.createElement(IntegrationsConnectors, {
         workspaceId: WS,
@@ -94,11 +118,16 @@ describe("IntegrationsConnectors (test_github_states_and_planned)", () => {
       const row = screen.getByTestId(`integration-${name}`);
       expect(row.textContent).toContain("Planned");
     }
-    const requestLinks = screen.getAllByRole("link", { name: "Request access" });
-    expect(requestLinks).toHaveLength(PLANNED_INTEGRATIONS.length);
-    for (const link of requestLinks) {
-      expect((link.getAttribute("href") ?? "").startsWith("mailto:agentsfleet@agentmail.to")).toBe(true);
-    }
+    // Request access is a PostHog-only signal now — a plain button, never a
+    // mailto link. No <a> should carry an email href.
+    const requestButtons = screen.getAllByRole("button", { name: "Request access" });
+    expect(requestButtons).toHaveLength(PLANNED_INTEGRATIONS.length);
+    expect(screen.queryByRole("link", { name: "Request access" })).toBeNull();
+    expect(
+      Array.from(document.querySelectorAll("a")).some((a) =>
+        (a.getAttribute("href") ?? "").startsWith("mailto:"),
+      ),
+    ).toBe(false);
   });
 
   it("captures interest and marks Requested when a planned connector is requested", () => {
@@ -108,12 +137,25 @@ describe("IntegrationsConnectors (test_github_states_and_planned)", () => {
         githubStatus: CONNECTOR_STATUS.notConnected,
       }),
     );
-    fireEvent.click(screen.getAllByRole("link", { name: "Request access" })[0]!);
+    fireEvent.click(screen.getAllByRole("button", { name: "Request access" })[0]!);
     expect(captureProductEventMock).toHaveBeenCalledWith(
       EVENTS.integration_requested,
       { integration_id: "zoho", integration_name: "Zoho" },
       { setPersonProperties: { last_integration_requested: "zoho" } },
     );
     expect(screen.getByTestId("integration-zoho").querySelector("button[disabled]")).toBeTruthy();
+  });
+
+  it("shows Token stored for a planned connector whose required secret is already in the vault", () => {
+    render(
+      React.createElement(IntegrationsConnectors, {
+        workspaceId: WS,
+        githubStatus: CONNECTOR_STATUS.notConnected,
+        // ZOHO_TOKEN is the required secret for the Zoho connector; once stored,
+        // the pill reads "Token stored" rather than "Planned".
+        credentialNames: ["ZOHO_TOKEN"],
+      }),
+    );
+    expect(screen.getByTestId("integration-zoho").textContent).toContain("Token stored");
   });
 });
