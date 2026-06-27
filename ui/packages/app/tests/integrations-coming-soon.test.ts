@@ -81,9 +81,11 @@ describe("IntegrationsComingSoon (test_integrations_coming_soon)", () => {
     render(React.createElement(IntegrationsComingSoon));
     fireEvent.click(screen.getAllByRole("link", { name: "Request access" })[0]!);
 
-    expect(captureProductEventMock).toHaveBeenCalledWith(EVENTS.integration_requested, {
-      integration_id: "zoho",
-    });
+    expect(captureProductEventMock).toHaveBeenCalledWith(
+      EVENTS.integration_requested,
+      { integration_id: "zoho", integration_name: "Zoho" },
+      { setPersonProperties: { last_integration_requested: "zoho" } },
+    );
     const zoho = screen.getByTestId("integration-zoho");
     expect(zoho.textContent).toContain("Requested");
     // After requesting, the control is a disabled button (no second submit).
