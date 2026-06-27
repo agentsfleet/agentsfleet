@@ -66,9 +66,6 @@ export const wsCredentialPath = (wsId: string, name: string): string =>
   `${WORKSPACES_PATH}${enc(wsId)}/credentials/${enc(name)}`;
 
 // Workspace-scoped integration grant routes (per fleet).
-export const wsGrantRequestPath = (wsId: string, fleetId: string): string =>
-  `${WORKSPACES_PATH}${enc(wsId)}/fleets/${enc(fleetId)}/integration-requests`;
-
 export const wsGrantsListPath = (wsId: string, fleetId: string): string =>
   `${WORKSPACES_PATH}${enc(wsId)}/fleets/${enc(fleetId)}/integration-grants`;
 
