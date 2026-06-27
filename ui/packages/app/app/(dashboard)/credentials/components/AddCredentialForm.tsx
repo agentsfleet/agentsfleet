@@ -2,51 +2,77 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { useForm } from "react-hook-form";
+import { useFieldArray, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import {
   Button,
   Form,
   FormControl,
-  FormDescription,
   FormField,
   FormItem,
   FormLabel,
   FormMessage,
   Input,
   Spinner,
-  Textarea,
 } from "@agentsfleet/design-system";
+import { XIcon } from "lucide-react";
 import { createCredentialAction } from "../actions";
 import { presentErrorString } from "@/lib/errors";
-import { CREDENTIAL_NAME_MAX, parseCredentialDataObject } from "../lib/credential-data";
+import { CREDENTIAL_NAME_MAX } from "../lib/credential-data";
 import { EVENTS } from "@/lib/analytics/events";
 import { captureProductEvent } from "@/lib/analytics/posthog";
 
 type Props = { workspaceId: string };
 
-// Re-exported from the shared credential-data parser so existing importers
-// (and tests) keep their import site; the implementation lives in one place.
-export { jsonParseErrorMessage } from "../lib/credential-data";
+const STORE_ACTION = "store the credential";
+const ADD_FIELD_LABEL = "Add field";
+const ADD_SECRET_LABEL = "Add secret";
+// Secret names become a vault key; field names become JSON object keys resolved
+// at runtime as ${secrets.<name>.<field>}, so both must be reference-safe.
+const NAME_PATTERN = /^[A-Za-z0-9_-]+$/;
+const FIELD_PATTERN = /^[A-Za-z0-9_]+$/;
+
+const fieldSchema = z.object({
+  key: z
+    .string()
+    .trim()
+    .min(1, "Field name is required")
+    .regex(FIELD_PATTERN, "Letters, numbers, and underscores only"),
+  // Values are stored verbatim (tokens may carry symbols), so they are not
+  // trimmed or pattern-checked — only required.
+  value: z.string().min(1, "Value is required"),
+});
 
 const schema = z.object({
   name: z
     .string()
     .trim()
-    .min(1, "Credential name is required")
-    .max(CREDENTIAL_NAME_MAX, `Credential name must be ${CREDENTIAL_NAME_MAX} characters or fewer`),
-  data_json: z
-    .string()
-    .trim()
-    .min(1, "Credential data is required")
-    .superRefine((s, ctx) => {
-      // Empty is already gated by .min(1) above; share the parse/shape rules.
-      const result = parseCredentialDataObject(s, "Credential data is required");
-      if (!result.ok) ctx.addIssue({ code: z.ZodIssueCode.custom, message: result.message });
+    .min(1, "Secret name is required")
+    .max(CREDENTIAL_NAME_MAX, `Secret name must be ${CREDENTIAL_NAME_MAX} characters or fewer`)
+    .regex(NAME_PATTERN, "Letters, numbers, dashes, and underscores only"),
+  fields: z
+    .array(fieldSchema)
+    .min(1, "Add at least one field")
+    .superRefine((fields, ctx) => {
+      const seen = new Set<string>();
+      fields.forEach((entry, index) => {
+        const key = entry.key.trim();
+        if (key !== "" && seen.has(key)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: [index, "key"],
+            message: "Duplicate field name",
+          });
+        }
+        seen.add(key);
+      });
     }),
 });
+
 type FormValues = z.infer<typeof schema>;
+
+const EMPTY_FIELD = { key: "", value: "" };
 
 export default function AddCredentialForm({ workspaceId }: Props) {
   const router = useRouter();
@@ -55,30 +81,31 @@ export default function AddCredentialForm({ workspaceId }: Props) {
 
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
-    defaultValues: { name: "", data_json: "" },
+    defaultValues: { name: "", fields: [{ ...EMPTY_FIELD }] },
   });
+  const { fields, append, remove } = useFieldArray({ control: form.control, name: "fields" });
 
   function onSubmit(values: FormValues) {
     setApiError(null);
+    // Field rows → JSON object the vault stores and the runtime resolves by name.
+    const data: Record<string, string> = {};
+    for (const entry of values.fields) data[entry.key.trim()] = entry.value;
+
     startTransition(async () => {
-      // zod's superRefine on `data_json` (see schema above) runs the same
-      // JSON.parse + object-shape checks before onSubmit fires, so by the
-      // time we land here `values.data_json` is guaranteed parseable.
-      // No defensive try/catch — the framework already proved it.
-      const data = JSON.parse(values.data_json) as Record<string, unknown>;
-      const result = await createCredentialAction(workspaceId, { name: values.name.trim(), data });
+      const name = values.name.trim();
+      const result = await createCredentialAction(workspaceId, { name, data });
       if (!result.ok) {
         setApiError(
           presentErrorString({
             errorCode: result.errorCode,
             message: result.error,
-            action: "store the credential",
+            action: STORE_ACTION,
           }),
         );
         return;
       }
-      captureProductEvent(EVENTS.credential_added, { credential_name: values.name.trim() });
-      form.reset({ name: "", data_json: "" });
+      captureProductEvent(EVENTS.credential_added, { credential_name: name });
+      form.reset({ name: "", fields: [{ ...EMPTY_FIELD }] });
       router.refresh();
     });
   }
@@ -86,55 +113,103 @@ export default function AddCredentialForm({ workspaceId }: Props) {
   return (
     <Form {...form}>
       <form
-        onSubmit={(e) => { void form.handleSubmit(onSubmit)(e); }}
-        className="grid gap-3 lg:grid-cols-3 lg:items-start"
+        onSubmit={(e) => {
+          void form.handleSubmit(onSubmit)(e);
+        }}
+        className="space-y-md"
       >
         <FormField
           control={form.control}
           name="name"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Name</FormLabel>
+              <FormLabel>Secret name</FormLabel>
               <FormControl>
-                <Input placeholder="fly" {...field} />
+                <Input placeholder="stripe" className="font-mono" spellCheck={false} {...field} />
               </FormControl>
-              <FormDescription>
-                Use as <code>{"${secrets.<name>.<field>}"}</code>.
-              </FormDescription>
+              <p className="text-body-sm leading-body-sm text-muted-foreground">
+                Reference fields as{" "}
+                <code className="font-mono">{"${secrets.<name>.<field>}"}</code>.
+              </p>
               <FormMessage />
             </FormItem>
           )}
         />
-        <FormField
-          control={form.control}
-          name="data_json"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Data (JSON object)</FormLabel>
-              <FormControl>
-                <Textarea
-                  rows={4}
-                  spellCheck={false}
-                  autoComplete="off"
-                  placeholder='{"host": "api.machines.dev", "api_token": "FLY_API_TOKEN"}'
-                  className="font-mono text-sm"
-                  {...field}
+
+        <div className="space-y-2">
+          <span className="block font-mono text-label uppercase leading-label tracking-label text-muted-foreground">
+            Fields
+          </span>
+          <div className="space-y-2">
+            {fields.map((row, index) => (
+              <div key={row.id} className="flex items-start gap-2">
+                <FormField
+                  control={form.control}
+                  name={`fields.${index}.key`}
+                  render={({ field }) => (
+                    <FormItem className="w-48 flex-none">
+                      <FormControl>
+                        <Input
+                          aria-label={`Field ${index + 1} name`}
+                          placeholder="api_key"
+                          className="font-mono"
+                          spellCheck={false}
+                          autoComplete="off"
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
                 />
-              </FormControl>
-              <FormDescription>
-                Write-only after save.
-              </FormDescription>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-        <Button type="submit" disabled={pending} variant="outline" className="lg:mt-xl">
+                <FormField
+                  control={form.control}
+                  name={`fields.${index}.value`}
+                  render={({ field }) => (
+                    <FormItem className="flex-1">
+                      <FormControl>
+                        <Input
+                          aria-label={`Field ${index + 1} value`}
+                          type="password"
+                          placeholder="value (write-only)"
+                          className="font-mono"
+                          spellCheck={false}
+                          autoComplete="off"
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  aria-label={`Remove field ${index + 1}`}
+                  disabled={fields.length === 1}
+                  onClick={() => remove(index)}
+                >
+                  <XIcon size={16} />
+                </Button>
+              </div>
+            ))}
+          </div>
+          <Button
+            type="button"
+            variant="link"
+            size="sm"
+            onClick={() => append({ ...EMPTY_FIELD })}
+          >
+            + {ADD_FIELD_LABEL}
+          </Button>
+        </div>
+
+        <Button type="submit" disabled={pending} variant="outline">
           {pending ? <Spinner size="sm" srLabel="Adding" /> : null}
-          Add secret
+          {ADD_SECRET_LABEL}
         </Button>
-        {apiError ? (
-          <p className="text-body-sm text-destructive lg:col-span-3">{apiError}</p>
-        ) : null}
+        {apiError ? <p className="text-body-sm text-destructive">{apiError}</p> : null}
       </form>
     </Form>
   );

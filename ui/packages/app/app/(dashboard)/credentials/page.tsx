@@ -1,12 +1,10 @@
 import { redirect } from "next/navigation";
-import Link from "next/link";
 import { auth } from "@clerk/nextjs/server";
 import {
   Accordion,
   AccordionContent,
   AccordionItem,
   AccordionTrigger,
-  Button,
   DashboardPanel,
   DashboardRowGroup,
   EmptyState,
@@ -34,7 +32,6 @@ export const dynamic = "force-dynamic";
 const PAGE_TITLE = "Credentials";
 const PAGE_DESCRIPTION =
   "Write-only keys for models, tools, and secrets.";
-const ADD_CREDENTIAL_LABEL = "Add credential";
 const NOT_CONNECTED = "Not connected";
 const CONNECTED = "Connected";
 
@@ -151,8 +148,7 @@ function CustomSecretsGroup({
             <div className="mb-md">
               <div className="font-medium text-foreground">Add a custom secret</div>
               <p className="text-body-sm leading-body-sm text-muted-foreground">
-                Store JSON. Use{" "}
-                <code className="font-mono">secrets.NAME.FIELD</code>.
+                Name it, add one or more fields. Write-only after save.
               </p>
             </div>
             <AddCredentialFormDynamic workspaceId={workspaceId} />
@@ -214,14 +210,7 @@ export default async function CredentialsPage() {
 
   return (
     <div className="space-y-8">
-      <PageHeader
-        description={PAGE_DESCRIPTION}
-        actions={
-          <Button asChild>
-            <Link href="#add-custom-secret">{ADD_CREDENTIAL_LABEL}</Link>
-          </Button>
-        }
-      >
+      <PageHeader description={PAGE_DESCRIPTION}>
         <PageTitle>{PAGE_TITLE}</PageTitle>
       </PageHeader>
 

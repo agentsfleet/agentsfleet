@@ -40,6 +40,7 @@ vi.mock("lucide-react", () => {
     Loader2Icon: make("Loader2Icon"),
     KeyRoundIcon: make("KeyRoundIcon"),
     PencilIcon: make("PencilIcon"),
+    XIcon: make("XIcon"),
   };
 });
 
@@ -95,27 +96,9 @@ describe("EditCredentialDialog dismiss guard", () => {
   });
 });
 
-// ── jsonParseErrorMessage ──────────────────────────────────────────────────
-
-describe("jsonParseErrorMessage", () => {
-  it("returns the message of a thrown Error (the JSON.parse SyntaxError path)", async () => {
-    const { jsonParseErrorMessage } = await import(
-      "../app/(dashboard)/credentials/components/AddCredentialForm"
-    );
-    expect(jsonParseErrorMessage(new SyntaxError("Unexpected token x"))).toBe(
-      "Unexpected token x",
-    );
-  });
-
-  it("falls back to a fixed label for a non-Error throw value", async () => {
-    const { jsonParseErrorMessage } = await import(
-      "../app/(dashboard)/credentials/components/AddCredentialForm"
-    );
-    expect(jsonParseErrorMessage("not-an-error")).toBe("Invalid JSON");
-  });
-});
-
-// ── AddCredentialForm ──────────────────────────────────────────────────────
+// ── AddCredentialForm (field/value builder) ─────────────────────────────────
+// (jsonParseErrorMessage + parseCredentialDataObject now live in
+// tests/credential-data.test.ts, co-located with the pure module they cover.)
 
 describe("AddCredentialForm component", () => {
   async function renderForm() {
@@ -125,149 +108,138 @@ describe("AddCredentialForm component", () => {
     render(React.createElement(AddCredentialForm, { workspaceId: "ws_1" } as never));
   }
 
-  it("renders name + data inputs + submit button", async () => {
+  const ADD_SECRET = { name: /^add secret$/i } as const;
+  const ADD_FIELD = { name: /\+ add field/i } as const;
+
+  it("renders secret name, one field row, add-field, and submit", async () => {
     await renderForm();
-    expect(screen.getByLabelText(/^name$/i)).toBeTruthy();
-    expect(screen.getByLabelText(/data \(json object\)/i)).toBeTruthy();
-    expect(screen.getByRole("button", { name: /add secret/i })).toBeTruthy();
+    expect(screen.getByLabelText(/secret name/i)).toBeTruthy();
+    expect(screen.getByLabelText("Field 1 name")).toBeTruthy();
+    expect(screen.getByLabelText("Field 1 value")).toBeTruthy();
+    expect(screen.getByRole("button", ADD_FIELD)).toBeTruthy();
+    expect(screen.getByRole("button", ADD_SECRET)).toBeTruthy();
   });
 
-  it("submit with empty fields shows zod required errors", async () => {
+  it("submit while empty shows required errors and does not call the action", async () => {
     const user = userEvent.setup();
     await renderForm();
-    await user.click(screen.getByRole("button", { name: /add secret/i }));
+    await user.click(screen.getByRole("button", ADD_SECRET));
     await waitFor(() => {
-      expect(screen.getByText(/Credential name is required/i)).toBeTruthy();
-      expect(screen.getByText(/Credential data is required/i)).toBeTruthy();
+      expect(screen.getByText(/Secret name is required/i)).toBeTruthy();
+      expect(screen.getByText(/Field name is required/i)).toBeTruthy();
+      expect(screen.getByText(/Value is required/i)).toBeTruthy();
     });
     expect(createCredentialActionMock).not.toHaveBeenCalled();
   });
 
-  // `userEvent.type` interprets `{` and `[` as keyboard descriptors, so use
-  // fireEvent.change to set the textarea value verbatim for these cases.
-
-  it("submit with invalid JSON shows Invalid JSON error", async () => {
+  it("rejects an invalid (non-identifier) field name", async () => {
     const user = userEvent.setup();
     await renderForm();
-    await user.type(screen.getByLabelText(/^name$/i), "fly");
-    fireEvent.change(screen.getByLabelText(/data \(json object\)/i), {
-      target: { value: "{not json" },
-    });
-    await user.click(screen.getByRole("button", { name: /add secret/i }));
+    await user.type(screen.getByLabelText(/secret name/i), "stripe");
+    await user.type(screen.getByLabelText("Field 1 name"), "bad name");
+    await user.type(screen.getByLabelText("Field 1 value"), "v");
+    await user.click(screen.getByRole("button", ADD_SECRET));
     await waitFor(() =>
-      expect(screen.getByText(/Invalid JSON:/i)).toBeTruthy(),
+      expect(screen.getByText(/Letters, numbers, and underscores only/i)).toBeTruthy(),
     );
     expect(createCredentialActionMock).not.toHaveBeenCalled();
   });
 
-  it("submit with array JSON rejects (must be object)", async () => {
+  it("rejects an invalid secret name", async () => {
     const user = userEvent.setup();
     await renderForm();
-    await user.type(screen.getByLabelText(/^name$/i), "fly");
-    fireEvent.change(screen.getByLabelText(/data \(json object\)/i), {
-      target: { value: "[1,2,3]" },
-    });
-    await user.click(screen.getByRole("button", { name: /add secret/i }));
+    await user.type(screen.getByLabelText(/secret name/i), "has space");
+    await user.type(screen.getByLabelText("Field 1 name"), "api_key");
+    await user.type(screen.getByLabelText("Field 1 value"), "v");
+    await user.click(screen.getByRole("button", ADD_SECRET));
     await waitFor(() =>
-      expect(screen.getByText(/Data must be a JSON object/i)).toBeTruthy(),
+      expect(screen.getByText(/Letters, numbers, dashes, and underscores only/i)).toBeTruthy(),
     );
     expect(createCredentialActionMock).not.toHaveBeenCalled();
   });
 
-  it("submit with empty object rejects (must have one field)", async () => {
+  it("adds and removes field rows (remove disabled at one row)", async () => {
     const user = userEvent.setup();
     await renderForm();
-    await user.type(screen.getByLabelText(/^name$/i), "fly");
-    fireEvent.change(screen.getByLabelText(/data \(json object\)/i), {
-      target: { value: "{}" },
-    });
-    await user.click(screen.getByRole("button", { name: /add secret/i }));
-    await waitFor(() =>
-      expect(screen.getByText(/Object must have at least one field/i)).toBeTruthy(),
-    );
+    expect((screen.getByLabelText("Remove field 1") as HTMLButtonElement).disabled).toBe(true);
+    await user.click(screen.getByRole("button", ADD_FIELD));
+    expect(screen.getByLabelText("Field 2 name")).toBeTruthy();
+    expect((screen.getByLabelText("Remove field 1") as HTMLButtonElement).disabled).toBe(false);
+    await user.click(screen.getByLabelText("Remove field 2"));
+    await waitFor(() => expect(screen.queryByLabelText("Field 2 name")).toBeNull());
+  });
+
+  it("rejects duplicate field names", async () => {
+    const user = userEvent.setup();
+    await renderForm();
+    await user.type(screen.getByLabelText(/secret name/i), "stripe");
+    await user.type(screen.getByLabelText("Field 1 name"), "api_key");
+    await user.type(screen.getByLabelText("Field 1 value"), "a");
+    await user.click(screen.getByRole("button", ADD_FIELD));
+    await user.type(screen.getByLabelText("Field 2 name"), "api_key");
+    await user.type(screen.getByLabelText("Field 2 value"), "b");
+    await user.click(screen.getByRole("button", ADD_SECRET));
+    await waitFor(() => expect(screen.getByText(/Duplicate field name/i)).toBeTruthy());
     expect(createCredentialActionMock).not.toHaveBeenCalled();
   });
 
-  it("happy path: createCredentialAction called with parsed data, then router refresh", async () => {
-    createCredentialActionMock.mockResolvedValue({ ok: true, data: { name: "fly" } });
+  it("happy path: assembles the JSON object, calls the action, refreshes; no secret in analytics", async () => {
+    createCredentialActionMock.mockResolvedValue({ ok: true, data: { name: "stripe" } });
     const user = userEvent.setup();
     await renderForm();
-    await user.type(screen.getByLabelText(/^name$/i), "fly");
-    await user.type(
-      screen.getByLabelText(/data \(json object\)/i),
-      '{{"host":"api.machines.dev","api_token":"T"}',
-    );
-    await user.click(screen.getByRole("button", { name: /add secret/i }));
+    await user.type(screen.getByLabelText(/secret name/i), "stripe");
+    await user.type(screen.getByLabelText("Field 1 name"), "api_key");
+    await user.type(screen.getByLabelText("Field 1 value"), "sk-test");
+    await user.click(screen.getByRole("button", ADD_FIELD));
+    await user.type(screen.getByLabelText("Field 2 name"), "webhook");
+    await user.type(screen.getByLabelText("Field 2 value"), "whsec");
+    await user.click(screen.getByRole("button", ADD_SECRET));
     await waitFor(() =>
-      expect(createCredentialActionMock).toHaveBeenCalledWith(
-        "ws_1",
-        { name: "fly", data: { host: "api.machines.dev", api_token: "T" } },
-      ),
+      expect(createCredentialActionMock).toHaveBeenCalledWith("ws_1", {
+        name: "stripe",
+        data: { api_key: "sk-test", webhook: "whsec" },
+      }),
     );
     await waitFor(() => expect(routerRefresh).toHaveBeenCalled());
-    expect(captureProductEventMock).toHaveBeenCalledTimes(1);
-    expect(captureProductEventMock).toHaveBeenCalledWith(EVENTS.credential_added, { credential_name: "fly" });
-    // The secret payload must never reach analytics.
-    expect(JSON.stringify(captureProductEventMock.mock.calls)).not.toContain("api_token");
+    expect(captureProductEventMock).toHaveBeenCalledWith(EVENTS.credential_added, {
+      credential_name: "stripe",
+    });
+    // The secret value must never reach analytics.
+    expect(JSON.stringify(captureProductEventMock.mock.calls)).not.toContain("sk-test");
   });
 
-  it("API error renders apiError below the form", async () => {
-    createCredentialActionMock.mockResolvedValue({
-      ok: false,
-      error: "data too large",
-      status: 400,
-    });
+  it("API error renders below the form", async () => {
+    createCredentialActionMock.mockResolvedValue({ ok: false, error: "data too large", status: 400 });
     const user = userEvent.setup();
     await renderForm();
-    await user.type(screen.getByLabelText(/^name$/i), "fly");
-    await user.type(
-      screen.getByLabelText(/data \(json object\)/i),
-      '{{"host":"x"}',
-    );
-    await user.click(screen.getByRole("button", { name: /add secret/i }));
-    await waitFor(() =>
-      expect(screen.getByText(/data too large/i)).toBeTruthy(),
-    );
+    await user.type(screen.getByLabelText(/secret name/i), "stripe");
+    await user.type(screen.getByLabelText("Field 1 name"), "api_key");
+    await user.type(screen.getByLabelText("Field 1 value"), "v");
+    await user.click(screen.getByRole("button", ADD_SECRET));
+    await waitFor(() => expect(screen.getByText(/data too large/i)).toBeTruthy());
     expect(captureProductEventMock).not.toHaveBeenCalled();
   });
 
-  it("API error with empty string falls back to default message (covers `||` short-circuit)", async () => {
-    createCredentialActionMock.mockResolvedValue({
-      ok: false,
-      error: "",
-      status: 500,
-    });
+  it("API error with empty string falls back to the default message", async () => {
+    createCredentialActionMock.mockResolvedValue({ ok: false, error: "", status: 500 });
     const user = userEvent.setup();
     await renderForm();
-    await user.type(screen.getByLabelText(/^name$/i), "fly");
-    await user.type(
-      screen.getByLabelText(/data \(json object\)/i),
-      '{{"host":"x"}',
-    );
-    await user.click(screen.getByRole("button", { name: /add secret/i }));
-    // Empty error from the action falls through presentError's default path.
-    await waitFor(() =>
-      expect(screen.getByText(/Couldn't store the credential/i)).toBeTruthy(),
-    );
+    await user.type(screen.getByLabelText(/secret name/i), "stripe");
+    await user.type(screen.getByLabelText("Field 1 name"), "api_key");
+    await user.type(screen.getByLabelText("Field 1 value"), "v");
+    await user.click(screen.getByRole("button", ADD_SECRET));
+    await waitFor(() => expect(screen.getByText(/Couldn't store the credential/i)).toBeTruthy());
   });
 
-  it("unauthenticated action result surfaces Not authenticated", async () => {
-    createCredentialActionMock.mockResolvedValue({
-      ok: false,
-      error: "Not authenticated",
-      status: 401,
-    });
+  it("unauthenticated action surfaces Not authenticated", async () => {
+    createCredentialActionMock.mockResolvedValue({ ok: false, error: "Not authenticated", status: 401 });
     const user = userEvent.setup();
     await renderForm();
-    await user.type(screen.getByLabelText(/^name$/i), "fly");
-    await user.type(
-      screen.getByLabelText(/data \(json object\)/i),
-      '{{"host":"x"}',
-    );
-    await user.click(screen.getByRole("button", { name: /add secret/i }));
-    await waitFor(() =>
-      expect(screen.getByText(/Not authenticated/i)).toBeTruthy(),
-    );
+    await user.type(screen.getByLabelText(/secret name/i), "stripe");
+    await user.type(screen.getByLabelText("Field 1 name"), "api_key");
+    await user.type(screen.getByLabelText("Field 1 value"), "v");
+    await user.click(screen.getByRole("button", ADD_SECRET));
+    await waitFor(() => expect(screen.getByText(/Not authenticated/i)).toBeTruthy());
   });
 });
 
