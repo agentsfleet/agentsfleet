@@ -29,20 +29,20 @@ beforeEach(() => {
 });
 afterEach(() => cleanup());
 
-describe("CustomSecretsList (test_custom_secret_create_and_status)", () => {
-  it("renders an empty state when there are no custom secrets", () => {
+describe("CustomSecretsList (test_custom_secret_create_and_metadata)", () => {
+  it("renders a compact empty table row when there are no custom secrets", () => {
     render(React.createElement(CustomSecretsList, { workspaceId: "ws_1", secrets: [] }));
-    expect(screen.getByText(/No custom secrets yet/i)).toBeTruthy();
+    expect(screen.getByText(/No custom secrets stored/i)).toBeTruthy();
   });
 
-  it("lists each secret with a 'Set' status and a Replace action", () => {
+  it("lists each secret with added metadata and a Replace action", () => {
     render(
       React.createElement(CustomSecretsList, { workspaceId: "ws_1", secrets: [STRIPE, WEBHOOK] }),
     );
     expect(screen.getByText("STRIPE_API_KEY")).toBeTruthy();
     expect(screen.getByText("INTERNAL_WEBHOOK")).toBeTruthy();
-    // A listed secret always holds a value → status reads "Set".
-    expect(screen.getAllByText("Set")).toHaveLength(2);
+    expect(screen.getByText("Added")).toBeTruthy();
+    expect(screen.queryByText("Stored")).toBeNull();
     expect(screen.getByLabelText("Replace secret STRIPE_API_KEY")).toBeTruthy();
   });
 
@@ -56,7 +56,12 @@ describe("CustomSecretsList (test_custom_secret_create_and_status)", () => {
     );
     // Only the known reference (the active model credential) is surfaced; the
     // other secret reads "not referenced yet" — no usage graph is fabricated.
-    expect(screen.getByText("model setup")).toBeTruthy();
+    const refpill = screen.getByText("model setup");
+    expect(refpill).toBeTruthy();
+    // The reference renders as a styled "refpill" (rounded, bordered chip) per
+    // the design preview — not bare text.
+    expect(refpill.className).toContain("rounded-full");
+    expect(refpill.className).toContain("border");
     expect(screen.getByText(/not referenced yet/i)).toBeTruthy();
   });
 
@@ -65,7 +70,7 @@ describe("CustomSecretsList (test_custom_secret_create_and_status)", () => {
     fireEvent.click(screen.getByLabelText("Replace secret STRIPE_API_KEY"));
     await waitFor(() => expect(screen.getByText(/Edit credential .*STRIPE_API_KEY/i)).toBeTruthy());
     // EditCredentialDialog's write-only copy proves Replace, not reveal.
-    expect(screen.getByText(/re-enter the full secret to replace/i)).toBeTruthy();
+    expect(screen.getByText(/enter the full replacement secret/i)).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: /^cancel$/i }));
     await waitFor(() => expect(screen.queryByText(/Edit credential .*STRIPE_API_KEY/i)).toBeNull());
   });

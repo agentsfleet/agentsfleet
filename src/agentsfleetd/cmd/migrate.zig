@@ -4,7 +4,6 @@ const constants = @import("common");
 const db = @import("../db/pool.zig");
 const common = @import("common.zig");
 const error_codes = @import("../errors/error_registry.zig");
-const preflight = @import("preflight.zig");
 const logging = @import("log");
 
 const log = logging.scoped(.agentsfleetd);
@@ -17,9 +16,13 @@ const S_MIGRATOR = "migrator";
 const retry_delay_ms: u64 = 2_000;
 
 pub fn run(io: std.Io, env_map: *const EnvMap, alloc: std.mem.Allocator) !void {
-    preflight.initOtelLogs(env_map, alloc);
-    defer preflight.deinitOtelLogs();
-
+    // The one-shot `migrate` command deliberately does NOT install the OTLP log
+    // exporter. migrate completes in well under the exporter's 5s flush interval,
+    // so async shipping never fires before the process is done — the only OTLP
+    // work that would run is the shutdown drain, whose unbounded HTTP POST blocks
+    // uninstall()'s thread join and hung the Fly release_command machine ~90s
+    // (deploy timeout, never reaching "destroyed"). migrate logs still reach Fly
+    // via the stdout log sink; serve keeps the full OTLP exporter set.
     var attempt: u32 = 1;
     while (true) {
         log.info("migrate.connect_start", .{ .role = S_MIGRATOR, .attempt = attempt, .max_attempts = max_migrate_attempts });
@@ -40,7 +43,6 @@ pub fn run(io: std.Io, env_map: *const EnvMap, alloc: std.mem.Allocator) !void {
                 .role = S_MIGRATOR,
                 .err = @errorName(err),
             });
-            preflight.deinitOtelLogs();
             std.process.exit(1);
         };
 
@@ -62,7 +64,6 @@ pub fn run(io: std.Io, env_map: *const EnvMap, alloc: std.mem.Allocator) !void {
                 .error_code = error_codes.ERR_STARTUP_MIGRATION_CHECK,
                 .err = @errorName(err),
             });
-            preflight.deinitOtelLogs();
             std.process.exit(1);
         };
         pool.deinit();

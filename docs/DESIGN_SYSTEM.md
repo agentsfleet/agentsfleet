@@ -48,6 +48,16 @@ Restraint is procedural, not only visual. Default every flow to the **fewest ste
 
 **The one exception:** destructive or irreversible actions still confirm. Cutting friction never overrides the safety-confirm rule.
 
+## Product copy
+
+App copy is short, literal, and useful at scan speed.
+
+- **Page subtitles:** one short sentence when possible; two short sentences only when the second carries state the user needs now.
+- **Helper text:** explain the next action, not the feature. Prefer "Create a workspace first." over longer prerequisite prose.
+- **Credential copy:** always say write-only, but keep it short: "Write-only. Replace to rotate."
+- **Install copy:** keep the three beats visible: pick source, connect token, watch live states.
+- **Integration copy:** show current status and one action. Do not describe roadmap detail in row subtitles.
+
 ---
 
 ## Typography
@@ -170,7 +180,7 @@ Dark is the **primary** brand surface. All hero shots, marketing screenshots, do
 - **Docs:** single-column, ~68ch measure (`max-width: 720px` at default body size). Commit Mono headers, Instrument Sans body.
 - **CLI / agentsfleet:** 256-color palette mirroring web tokens. Pulse cyan for live state, amber for `EVIDENCE` lines, status colors restrained, no decorative ASCII art (no boxes-around-titles, no banners, no ASCII agents).
 - **Max content width (marketing & docs):** 1280px.
-- **Border radius:** small and hierarchical. `--r-sm: 2px`, `--r-md: 4px`, `--r-lg: 6px`. **No `border-radius: 9999px` on buttons. Ever.** Only on circular dots, avatars, status rings.
+- **Border radius:** small and hierarchical. `--r-sm: 6px`, `--r-md: 9px`, `--r-lg: 14px`. **No `border-radius: 9999px` on buttons. Ever.** Only on circular dots, avatars, status rings.
 - **Borders preferred over shadows.** A `1px solid var(--border)` is the default elevation cue. Drop shadows are only for floating elements (popovers, modals).
 
 ---
@@ -246,7 +256,7 @@ into the anti-vibes traps the rest of this doc forbids.
 - **Focus rings:** instant, no animated draw-on. `box-shadow: 0 0 0 3px var(--pulse-glow)`.
 - **Page transitions:** instant on marketing + docs — no fade, no slide. The gated operator dashboard is the exception: page content performs a restrained mount-rise (≤0.4s, reduced-motion-gated) on route change — see *Dashboard motion pass* above.
 - **Log streams (operational):** new lines fade in over 80ms (`opacity 0 → 1`). No slide-up, no stagger. (The marketing install-demo terminal is the one sanctioned staggered reveal — see above.)
-- **Loading states:** prefer skeleton bars (1-pixel-thick borders) over spinners. If a spinner is required, use a 2px monochrome arc, not a circular pulse.
+- **Loading states:** prefer skeleton bars (1-pixel-thick borders) when the page shape is still resolving. For active work already underway (button submits, install states, short route waits), use the shared `Spinner`: a tiny monochrome arc around the WakePulse dot. When visible text is needed, render it as the compact mono install chip (`rounded-md`, pulse-tinted border/background, label text). Do not introduce page-local loader glyphs.
 
 ### `prefers-reduced-motion: reduce`
 
@@ -267,10 +277,10 @@ into the anti-vibes traps the rest of this doc forbids.
 
 ## Component principles
 
-- **Buttons:** mono font, 13px, padding `12px 16px`, border-radius `--r-md`. Three variants: `primary` (fills with `--cta` — the pulse in dark, **solid ink in light**; `--cta-foreground` text: dark on mint, white on ink), `default` (surface-2 fill, border-strong outline), `ghost` (transparent, muted text). No gradient buttons. No icon-only buttons larger than 36px square.
+- **Buttons:** mono font, 13px, padding `12px 16px`, border-radius `--r-md` (`9px`). Three variants: `primary` (fills with `--cta` — the pulse in dark, **solid ink in light**; `--cta-foreground` text: dark on mint, white on ink), `default` (surface-2 fill, border-strong outline), `ghost` (transparent, muted text). No gradient buttons. No icon-only buttons larger than 36px square.
 - **Badges:** mono font, 11px, padding `4px 8px`, border-radius `--r-sm`. Status badges (`LIVE`, `degraded`, `failed`) get colored fills; informational badges get muted outlines.
 - **Form fields:** surface-2 background, border on default, pulse-cyan focus ring with `--pulse-glow` shadow. Mono font for input values (they're operational data, not prose).
-- **Cards:** surface-1 background, 1px border, `--r-md` radius. Padding 24px default, 16px in dense data views.
+- **Cards:** surface-1 background, 1px border, `--r-lg` (`14px`) radius. Padding 24px default, 16px in dense data views.
 - **Tables / lists:** prefer flat rows with 1px bottom borders over zebra-striping. Tabular-nums everywhere. Right-align numbers, left-align text.
 - **Sidebars:** surface-2 background. Mono nav items, 12px. Active item gets surface-3 fill, not a colored bar.
 - **Tabs:** one visual — an underline. Inactive triggers read `--text-muted` on a thin `--border` rail; the active trigger lights its 2px bottom-border to `--pulse` (a sanctioned "active" use of the currency) and its label to `--text`. No pill tray, no `bg-background` active fill, no shadow. The in-page Radix tabs and the route-style tab-nav share one style module (`design-system/tab-styles.ts`).
@@ -331,8 +341,8 @@ Each workstream is its own spec. Use `kishore-spec-new` to create them once you'
 | 2026-06-23 | Retire the pill tab; one underline tab style (app) | M98 §1.1. The app shipped two tab visuals (a `bg-muted` pill tray with a `bg-background` active fill) applied inconsistently. Unified to a single underline: active = a `--pulse` 2px bottom-border on a `--border` rail; inactive `--text-muted`. Shared `design-system/tab-styles.ts` consumed by `Tabs` (Radix) + `TabNav` (links) + their tests (RULE UFS). Approved in the M98 mockup (`docs/design/M98_001-ui-polish-preview.html`). |
 | 2026-06-23 | Add a scoped motion pass to the operator dashboard (mount-rise, ambient glow-drift, hover/press micro-interactions) | M98 §1.5. A lived-in operator dashboard performs where marketing stays still — approved by Indy as full mockup motion (`docs/design/M98_001-ui-polish-preview.html`, signed off screen-by-screen). Supersedes the 2026-05-08 "everything else functional or absent" call and the §Motion "page transitions instant / operational software does not perform" rule **for the gated app dashboard only**; marketing + docs keep the restraint. Every effect is reduced-motion-gated; pinned by `app/tests/shell-motion.test.ts`. |
 | 2026-06-23 | Billing reads consumption-honest: balance + meter, a terminal usage ledger, one "Pay as you go" row — no seat grid | M98 §2. Consumption/prepaid billing has no seats, so the seat-plan grid is dropped for a single honest Current row + a volume-pricing link. The balance card leads with amount + a full-width usage meter; usage history is a terminal-native `date · amount · type · description` ledger (model + tokens fold into the description, since the telemetry has no free-text field). Presentation only — the billing data path is unchanged. |
-| 2026-06-24 | Split Models and Credentials into two destinations; option-card mode picker; `/credentials` is a real vault | M98 §3–§4. The conflated "Models & Credentials" tabbed page becomes two nav entries. Models collapses its triple "current setup" restatement into **two option-cards** — the active one badged "Current" reading "Active — nothing to do" (no button), the action living only on the option you'd switch *to*. `/credentials` (was a redirect) is a write-only **vault**: a kinds strip (Model providers · Custom secrets · Integrations) then those groups in order; integrations render "Planned" (no Connect — connector is M99), bridged by custom secrets. |
-| 2026-06-24 | Install is one shared, minimal, state-driven flow — no review page | M98 §9. The Dashboard card, the Fleets empty-state, and `fleets/new` compose ONE install component (template grid · `owner/repo` · paste-SKILL.md). One click commits and proceeds **inline** through terminal-native install states (importing → connect-to-continue → creating → done; errors retry) — the `BundlePreview` review page is removed. Create **auto-proceeds** (no confirm beat). Live status reuses the existing SSE fleet-event stream (no polling); an installing fleet always shows its state; "Open fleet" lands in the full-height steer/chat. |
+| 2026-06-24 | Split Models and Credentials into two destinations; option-card mode picker; `/credentials` is a real vault | M98 §3–§4. The conflated "Models & Credentials" tabbed page becomes two nav entries. Models collapses its triple "current setup" restatement into **two option-cards** — the active one badged "Current" reading "Active — nothing to do" (no button), the action living only on the option you'd switch *to*. `/credentials` is a write-only **vault**: a kinds strip (Model providers · Custom secrets · Integrations) then those groups in order. Model-provider rows add or replace Anthropic/OpenAI keys in place; custom secrets show Added + Replace; GitHub is native, while Zoho/Slack show Planned + Request access to capture demand. |
+| 2026-06-24 | Install is minimal and state-driven — no review page | M98 §9. The Dashboard previews template cards; the Fleets empty-state offers one Install fleet action; `/fleets/new` owns the full source picker (template grid · `owner/repo` · paste-SKILL.md). One click proceeds **inline** through terminal-native install states (importing → connect-to-continue → creating → done; errors retry) — the `BundlePreview` review page is removed. Create **auto-proceeds** (no confirm beat). Live status reuses the existing Server-Sent Events (SSE) fleet-event stream (no polling); an installing fleet always shows its state; "Open fleet" lands in the full-height steer/chat. |
 | 2026-06-23 | Page header: description renders below the title | M98 §1.2. `PageHeader` gained a `description` slot (muted body-sm, stacked under the title) + an optional top-right `actions` slot; the bare flex-row shape stays back-compatible. Fixes the description-beside-title drift (the app was rendering the page description as a right-aligned sibling). |
 | 2026-06-23 | Light-mode primary CTA = solid ink (not mint) | M98 §1.4. Added a `--cta` token isolated from `--pulse`: dark = the pulse, light = solid ink (`--ink` `#17211F`, white text). Keeps mint as currency (accents/links/active/glow) while the light-mode primary button reads as confident ink. `Button` default variant consumes `--cta`/`--cta-foreground`. |
 

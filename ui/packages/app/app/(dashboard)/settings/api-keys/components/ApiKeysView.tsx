@@ -17,8 +17,7 @@ export default function ApiKeysView({ initial }: { initial: ApiKeyListResponse }
       <SettingsTabs />
       <div className="flex items-start justify-between gap-4">
         <p className="max-w-2xl text-sm text-muted-foreground">
-          Keys let outside tools — n8n, Zapier, cron, CI — call this workspace&apos;s API. Each key is
-          shown once when created, so store it somewhere safe.
+          Keys let outside tools call this workspace API. Each key is shown once.
         </p>
         <CreateApiKeyDialogDynamic onCreated={() => listRef.current?.refresh()} />
       </div>

@@ -150,13 +150,38 @@ jobs:
         env:
           FLY_API_TOKEN: ${{ env.FLY_API_TOKEN }}
 
+      - name: Resolve dev-latest digest
+        id: digest
+        # Deploy the IMMUTABLE digest, never the mutable :dev-latest tag. Fly
+        # caches the tag -> image-id mapping on its side and can redeploy a stale
+        # (old) image even after push-dev publishes a new one — the exact failure
+        # that crash-looped agentsfleetd-dev on an old binary. push-dev (a needs:)
+        # has already pushed, so dev-latest in GHCR points at this run's image.
+        run: |
+          # Bounded retry: GHCR's package-versions API can lag a few seconds
+          # behind push-dev moving the tag, so a single lookup may transiently
+          # return empty for an image that pushed fine. Retry before failing.
+          DIGEST=""
+          for attempt in 1 2 3 4 5 6; do
+            DIGEST=$(gh api "/orgs/${{ github.repository_owner }}/packages/container/agentsfleetd/versions" \
+              --jq '[.[] | select(.metadata.container.tags[]? == "dev-latest")][0].name')
+            if [ -n "$DIGEST" ] && [ "$DIGEST" != "null" ]; then break; fi
+            echo "dev-latest not yet indexed by GHCR (attempt $attempt/6); retrying in 5s..."
+            sleep 5
+          done
+          if [ -z "$DIGEST" ] || [ "$DIGEST" = "null" ]; then
+            echo "FAIL: could not resolve dev-latest digest from GHCR after retries"; exit 1
+          fi
+          echo "dev-latest -> $DIGEST"
+          echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Deploy agentsfleetd-dev
         run: |
-          flyctl deploy --app "${{ vars.FLY_APP_DEV }}" --image ghcr.io/agentsfleet/agentsfleetd:dev-latest --config deploy/fly/agentsfleetd-dev/fly.toml --wait-timeout 120 || STATUS=$?
-          STATUS=${STATUS:-0}
-          flyctl deploy --app "${{ vars.FLY_APP_DEV }}" --image ghcr.io/agentsfleet/agentsfleetd:dev-latest --config deploy/fly/agentsfleetd-dev/fly.toml --wait-timeout 120
-          STATUS=$?
-          if [ "$STATUS" -ne 0 ]; then
+          IMAGE="ghcr.io/agentsfleet/agentsfleetd@${{ steps.digest.outputs.digest }}"
+          echo "Deploying immutable image: $IMAGE"
+          if ! flyctl deploy --app "${{ vars.FLY_APP_DEV }}" --image "$IMAGE" --config deploy/fly/agentsfleetd-dev/fly.toml --wait-timeout 120; then
             APP="${{ vars.FLY_APP_DEV }}"
             echo "Fly deploy failed; collecting diagnostics for ${APP}..."
             flyctl status --app "${APP}" || true
@@ -164,8 +189,8 @@ jobs:
             flyctl releases --app "${APP}" || true
             echo "Fly logs (bounded to 30s):"
             timeout 30s flyctl logs --app "${APP}" || true
+            exit 1
           fi
-          exit "$STATUS"
         env:
           FLY_API_TOKEN: ${{ env.FLY_API_TOKEN }}
 
@@ -569,6 +594,9 @@ jobs:
           OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
           CLERK_SECRET_KEY: op://${{ vars.VAULT_DEV }}/clerk-dev/secret-key
           CLERK_PUBLISHABLE_KEY: op://${{ vars.VAULT_DEV }}/clerk-dev/publishable-key
+          # Signs the user.created webhook the fixtures replay to bootstrap the
+          # tenant + default workspace (attachJwt → ensureFixtureTenantBootstrapped).
+          CLERK_WEBHOOK_SECRET: op://${{ vars.VAULT_DEV }}/clerk-dev/webhook-secret
           AUTH_E2E_REGULAR_EMAIL: op://${{ vars.VAULT_DEV }}/e2e-fixtures-email/regular
           AUTH_E2E_ADMIN_EMAIL: op://${{ vars.VAULT_DEV }}/e2e-fixtures-email/admin
           # The handshake browser leg navigates the protected dev dashboard.
@@ -586,6 +614,8 @@ jobs:
           CLERK_SECRET_KEY: ${{ env.CLERK_SECRET_KEY }}
           # Browser leg signs in via clerk.signIn, which needs the publishable key.
           CLERK_PUBLISHABLE_KEY: ${{ env.CLERK_PUBLISHABLE_KEY }}
+          # Fixture bootstrap replays the Svix-signed user.created webhook.
+          CLERK_WEBHOOK_SECRET: ${{ env.CLERK_WEBHOOK_SECRET }}
           # Bypass Vercel deployment protection so the browser reaches the app.
           VERCEL_BYPASS_SECRET: ${{ env.VERCEL_BYPASS_SECRET }}
           AUTH_E2E_REGULAR_EMAIL: ${{ env.AUTH_E2E_REGULAR_EMAIL }}

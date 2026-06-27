@@ -1,11 +1,11 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { Button, cn } from "@agentsfleet/design-system";
+import { Button, Spinner, TerminalPanel, cn } from "@agentsfleet/design-system";
 import type { StateLine } from "./install-flow";
 
 // Shared terminal-native presentational shell for the install states. Lives in
-// its own module so both the pre-create flow (InstallStates) and the SSE-driven
+// its own module so both the pre-create flow (InstallStates) and the live-event
 // steps (InstallStreamSteps) can compose it without an import cycle.
 
 export function InstallShell({
@@ -19,22 +19,18 @@ export function InstallShell({
 }) {
   return (
     <div className="space-y-4">
-      <Button type="button" variant="ghost" size="sm" onClick={onBack}>
+      <Button type="button" variant="link" size="sm" onClick={onBack}>
         ← Back to templates
       </Button>
-      <div className="overflow-hidden rounded-md border border-border bg-surface-deep">
-        <div className="flex items-center gap-md border-b border-border px-lg py-md">
-          <span className="font-mono text-label text-muted-foreground">{title}</span>
-          <span className="ml-auto font-mono text-label uppercase tracking-label text-muted-foreground">
-            states
-          </span>
-        </div>
+      <TerminalPanel title={title} tag="states">
         {children}
+      </TerminalPanel>
+      <div className="flex flex-wrap items-center gap-md">
+        <Spinner size="sm" label="installing" />
+        <p className="text-body-sm leading-body-sm text-muted-foreground">
+          Visible here and in Fleets while it installs.
+        </p>
       </div>
-      <p className="text-sm text-muted-foreground">
-        While it provisions, the fleet shows this state in your Fleets list and on its own page —
-        never hidden.
-      </p>
     </div>
   );
 }
@@ -47,10 +43,10 @@ const TONE_CLASS: Record<StateLine["tone"], string> = {
 };
 
 // Renders the ordered state lines as a semantic list. Shared by the pre-create
-// flow and the SSE-driven steps so the terminal aesthetic is one source.
+// flow and the live-event steps so the terminal aesthetic is one source.
 export function StateList({ lines }: { lines: StateLine[] }) {
   return (
-    <ul aria-label="Install states" className="m-0 list-none p-0">
+    <ul aria-label="Install states" data-terminal-reveal className="m-0 list-none p-0">
       {lines.map((line) => (
         <li
           key={line.id}
@@ -58,7 +54,11 @@ export function StateList({ lines }: { lines: StateLine[] }) {
           className="flex items-center gap-md border-b border-border px-lg py-md text-sm last:border-b-0"
         >
           <span className={cn("w-4 text-center font-mono", TONE_CLASS[line.tone])} aria-hidden="true">
-            {line.glyph}
+            {line.tone === "run" ? (
+              <Spinner size="sm" srLabel="Running" className="justify-center text-pulse" />
+            ) : (
+              line.glyph
+            )}
           </span>
           <span>{line.text}</span>
         </li>

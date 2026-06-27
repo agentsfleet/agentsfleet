@@ -2,12 +2,17 @@ import { Suspense } from "react";
 import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import {
-  Card,
+  DashboardPanel,
+  DashboardPanelContent,
+  DashboardPanelDescription,
+  DashboardPanelHeader,
+  DashboardPanelTitle,
   PageHeader,
   PageTitle,
   Section,
   SectionLabel,
   StatusCard,
+  StatusPill,
   Skeleton,
 } from "@agentsfleet/design-system";
 import { listFleets, AGENTSFLEET_STATUS } from "@/lib/api/fleets";
@@ -20,6 +25,7 @@ import { withWorkspaceScope, orFallback } from "@/lib/workspace";
 import { EventsList } from "@/components/domain/EventsList";
 import ExhaustionBanner from "@/components/domain/ExhaustionBanner";
 import { InstallEntry } from "./fleets/new/InstallEntry";
+import { InstallFlowGuide } from "./fleets/new/InstallFlowGuide";
 
 export const dynamic = "force-dynamic";
 
@@ -88,24 +94,29 @@ function FirstInstallCard({
 }) {
   const credits = balanceNanos != null ? Math.floor(balanceNanos / NANOS_PER_USD) : null;
   return (
-    <Section aria-label="Start your fleet" className="mb-8">
-      <Card className="space-y-6 p-6 sm:p-8">
-        <div className="space-y-3">
-          <SectionLabel>Next step</SectionLabel>
-          <h2 className="font-mono text-heading text-foreground">Start your fleet</h2>
-          <p className="max-w-prose text-sm text-muted-foreground">
-            Pick a template and it installs inline — you see each state. Each one
-            installs from a single <code className="font-mono">SKILL.md</code>.
-          </p>
-          {credits != null && credits > 0 ? (
-            <p className="text-sm text-muted-foreground">
-              ${credits} free credit is ready for that first run.
-            </p>
-          ) : null}
-        </div>
+    <Section aria-label="Start your fleet" className="mb-6">
+      <div className="grid grid-cols-1 gap-lg lg:grid-cols-3">
+        <DashboardPanel padding="compact" className="lg:col-span-2">
+          <DashboardPanelHeader>
+            <div className="space-y-2">
+              <SectionLabel>Next step</SectionLabel>
+              <DashboardPanelTitle>Start your fleet</DashboardPanelTitle>
+              <DashboardPanelDescription className="max-w-prose">
+                Pick a template. Watch install states.
+              </DashboardPanelDescription>
+            </div>
+            {credits != null && credits > 0 ? (
+              <StatusPill variant="pulse">${credits} free credit ready</StatusPill>
+            ) : null}
+          </DashboardPanelHeader>
 
-        <InstallEntry templates={templates} quickstart />
-      </Card>
+          <DashboardPanelContent className="mt-md">
+            <InstallEntry templates={templates} maxTemplates={3} compact showSourceActions={false} />
+          </DashboardPanelContent>
+        </DashboardPanel>
+
+        <InstallFlowGuide />
+      </div>
     </Section>
   );
 }
@@ -147,7 +158,7 @@ export default async function DashboardPage() {
 
   return (
     <div>
-      <PageHeader>
+      <PageHeader description="Pick a template. Starter credit is ready.">
         <PageTitle>Dashboard</PageTitle>
       </PageHeader>
 

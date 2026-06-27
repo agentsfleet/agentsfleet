@@ -149,17 +149,14 @@ export default function InstallFleetForm({ onBack, onSubmit }: Props) {
 
           <p className="rounded-md border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
             Paste <code className="font-mono">SKILL.md</code> first.{" "}
-            Leave <code className="font-mono">TRIGGER.md</code> blank and the server
-            will install an API wake; add cron or webhook rules later.
+            Leave <code className="font-mono">TRIGGER.md</code> blank for a manual API wake.
           </p>
           <Alert variant="info">
             <div>
               <AlertTitle>What is SKILL.md?</AlertTitle>
               <AlertDescription>
-                This is the fleet&apos;s operating guide: the goal, constraints,
-                and steps it should follow. <code className="font-mono">agentsfleet</code>
-                {" "}stores it with the installed fleet so every run wakes with
-                the same instructions.
+                The fleet guide. <code className="font-mono">agentsfleet</code>{" "}
+                stores it for every run.
               </AlertDescription>
             </div>
           </Alert>

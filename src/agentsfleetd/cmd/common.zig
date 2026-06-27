@@ -78,7 +78,23 @@ fn decideServeMigrationPolicy(
     return .allow_without_running;
 }
 
+/// The migration RUN must use a direct/session connection (the migrator role →
+/// PlanetScale :5432), never the pooled API role (:6432, transaction mode).
+/// `pg_advisory_lock` is session-scoped: over a transaction pooler the lock is
+/// taken on one backend and the next statement routes to another, so the
+/// migrator runs unserialized and orphans the lock on a pooled backend.
+/// Inspection stays on the pooled API pool — `inspectMigrationState` uses a
+/// transaction-scoped probe (`probeAvailable`) that is pooler-safe.
+const MIGRATION_RUN_ROLE: db.DbRole = .migrator;
+
+/// `pool` is the pooled API connection used for the (pooler-safe) inspection.
+/// When a run is required, the actual migration is executed over a dedicated
+/// session-scoped migrator pool — see MIGRATION_RUN_ROLE — opened only on that
+/// path so serve needs migrator creds only when it actually auto-migrates.
 pub fn enforceServeMigrationSafety(
+    io: std.Io,
+    env_map: *const EnvMap,
+    alloc: std.mem.Allocator,
     pool: *db.Pool,
     migrate_on_start: bool,
 ) (MigrationGuardError || anyerror)!void {
@@ -90,7 +106,13 @@ pub fn enforceServeMigrationSafety(
         .allow_without_running => return,
         .run_required => {
             log.warn("startup.migration_auto_apply_start", .{ .reason = "MIGRATE_ON_START enabled" });
-            try db.runMigrations(pool, &migrations);
+
+            // Run over a session-scoped migrator pool, NOT the pooled API pool
+            // the inspection used — the session advisory lock leaks on a
+            // transaction pooler (:6432). See MIGRATION_RUN_ROLE.
+            const migrator_pool = try db.initFromEnvForRole(io, env_map, alloc, MIGRATION_RUN_ROLE);
+            defer migrator_pool.deinit();
+            try db.runMigrations(migrator_pool, &migrations);
 
             const post = try db.inspectMigrationState(pool, &migrations);
             if (post.has_newer_schema_version) return MigrationGuardError.MigrationSchemaAhead;
@@ -135,6 +157,15 @@ test "unit: migration guard allows startup when schema is clean" {
         .has_newer_schema_version = false,
     }, false);
     try std.testing.expectEqual(.allow_without_running, decision);
+}
+
+test "unit: serve auto-migrate runs over the session-scoped migrator role, never the pooled api" {
+    // Regression guard for the pooled-migrator leak: serve's MIGRATE_ON_START
+    // auto-apply previously ran the session-scoped advisory lock over the
+    // pooled API connection (:6432), where it leaks per-transaction. The run
+    // must use the direct/session migrator role (:5432).
+    try std.testing.expectEqual(db.DbRole.migrator, MIGRATION_RUN_ROLE);
+    try std.testing.expect(MIGRATION_RUN_ROLE != db.DbRole.api);
 }
 
 test "integration: startup allows clean schema with no pending migrations" {

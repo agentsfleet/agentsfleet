@@ -108,13 +108,13 @@ describe("dashboard overview page", () => {
     expect(m).toContain("free credit"); // credits > 0 copy branch
   });
 
-  it("StatusTiles first-install copy still points at SKILL.md when balance is unknown", async () => {
+  it("StatusTiles first-install copy stays short when balance is unknown", async () => {
     listFleetsMock.mockResolvedValue({ items: [], total: 0, cursor: null });
     getTenantBillingMock.mockResolvedValue(null); // balance null → credits-null branch
     const { StatusTiles } = await import("../app/(dashboard)/page");
     const m = renderToStaticMarkup(React.createElement(React.Fragment, null, await StatusTiles()));
     expect(m).toContain("Start your fleet");
-    expect(m).toContain("SKILL.md");
+    expect(m).toContain("Live states appear inline");
   });
 
   it("StatusTiles first-install card surfaces template cards deep-linking to the install flow", async () => {
@@ -157,12 +157,10 @@ describe("dashboard overview page", () => {
     expect(await StatusTiles()).toBeNull();
   });
 
-  // The Dashboard "Start your fleet" card and the Fleets empty-state CTAs
-  // compose the SAME shared install component (InstallEntry) — one source, no
-  // hand-rolled duplicate. Proven by rendering both empty states and asserting
-  // each emits InstallEntry's signature output (template deep-links + the
-  // shared "Import from GitHub or paste SKILL.md" affordance to /fleets/new).
-  it("test_install_experience_shared — dashboard card + fleets empty-state render the same InstallEntry", async () => {
+  // Dashboard shows compact template deep links; Fleets uses a focused empty
+  // state with one Install fleet action, so the source tools live only on
+  // /fleets/new.
+  it("test_install_experience_shared — dashboard card deep-links, fleets routes to install", async () => {
     const templates = {
       items: [
         {
@@ -177,7 +175,6 @@ describe("dashboard overview page", () => {
     };
     const noFleets = { items: [], total: 0, cursor: null };
     const SHARED_LINK = 'href="/fleets/new?template=github-pr-reviewer"';
-    const SHARED_SOURCE = "Import from GitHub or paste SKILL.md";
 
     // Dashboard card (StatusTiles → FirstInstallCard → InstallEntry).
     listFleetsMock.mockResolvedValue(noFleets);
@@ -186,16 +183,17 @@ describe("dashboard overview page", () => {
     const { StatusTiles } = await import("../app/(dashboard)/page");
     const dash = renderToStaticMarkup(React.createElement(React.Fragment, null, await StatusTiles()));
     expect(dash).toContain(SHARED_LINK);
-    expect(dash).toContain(SHARED_SOURCE);
+    expect(dash).not.toContain("Import from GitHub or paste SKILL.md");
 
-    // Fleets empty-state (fleets/page → InstallEntry).
+    // Fleets empty-state links to the full install flow.
     resolveActiveWorkspaceMock.mockResolvedValue({ id: "ws_1" });
     listFleetsMock.mockResolvedValue(noFleets);
     getTenantBillingMock.mockResolvedValue(null);
     listFleetTemplatesMock.mockResolvedValue(templates);
     const { FleetsData } = await import("../app/(dashboard)/fleets/page");
     const fleets = renderToStaticMarkup(React.createElement(React.Fragment, null, await FleetsData()));
-    expect(fleets).toContain(SHARED_LINK);
-    expect(fleets).toContain(SHARED_SOURCE);
+    expect(fleets).toContain('href="/fleets/new"');
+    expect(fleets).toContain("Install your first fleet");
+    expect(fleets).not.toContain(SHARED_LINK);
   });
 });
