@@ -12,9 +12,9 @@ describe("PageTitle", () => {
   it("applies base typography utilities", () => {
     const { container } = render(<PageTitle>Title</PageTitle>);
     const cls = (container.firstChild as HTMLElement).className;
-    expect(cls).toContain("text-xl");
+    expect(cls).toContain("text-display-md");
     expect(cls).toContain("font-semibold");
-    expect(cls).toContain("tracking-tight");
+    expect(cls).toContain("tracking-display-md");
   });
 
   it("merges consumer className without losing base utilities", () => {

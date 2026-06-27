@@ -1,16 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { Badge, Button, DataTable, EmptyState, type DataTableColumn } from "@agentsfleet/design-system";
-import { KeyRoundIcon } from "lucide-react";
+import { Button, Time } from "@agentsfleet/design-system";
 import type { CredentialSummary } from "@/lib/api/credentials";
 import EditCredentialDialog from "./EditCredentialDialog";
 
-// Custom secrets are arbitrary NAME=value vault entries a SKILL.md reads by
-// name. A listed entry always holds a value, so its status reads "Set"; the
-// "Referenced by" column shows only the KNOWN reference — the active model
-// credential — and never fabricates a usage graph (Dimension 4.3 / Invariant:
-// referenced-by is best-effort, not a synthesized dependency map).
+// Custom secrets are named JSON objects a SKILL.md reads by field path. A
+// listed entry always holds a value; the reference column shows only the known
+// active model credential and never fabricates a usage graph.
 
 type Props = {
   workspaceId: string;
@@ -19,84 +16,93 @@ type Props = {
   referencedName?: string | null;
 };
 
-const SET_STATUS = "Set";
 const NOT_REFERENCED = "— not referenced yet";
 const MODEL_SETUP_REF = "model setup";
+const EMPTY_ROW = "No custom secrets stored";
 
 function SecretNameCell({ secret }: { secret: CredentialSummary }) {
   return <span className="font-mono text-sm text-foreground">{secret.name}</span>;
-}
-
-function SecretStatusCell() {
-  return (
-    <Badge variant="green" className="normal-case tracking-normal">
-      {SET_STATUS}
-    </Badge>
-  );
 }
 
 function SecretRefCell({ referenced }: { referenced: boolean }) {
   if (!referenced) {
     return <span className="text-xs text-text-subtle">{NOT_REFERENCED}</span>;
   }
-  return <span className="font-mono text-xs text-muted-foreground">{MODEL_SETUP_REF}</span>;
-}
-
-function buildColumns(
-  referencedName: string | null,
-  onReplace: (name: string) => void,
-): DataTableColumn<CredentialSummary>[] {
-  return [
-    { key: "name", header: "Name", cell: (s) => <SecretNameCell secret={s} /> },
-    { key: "status", header: "Status", cell: () => <SecretStatusCell /> },
-    {
-      key: "refs",
-      header: "Referenced by",
-      hideOnMobile: true,
-      cell: (s) => <SecretRefCell referenced={s.name === referencedName} />,
-    },
-    {
-      key: "actions",
-      header: "Actions",
-      numeric: true,
-      cell: (s) => (
-        <div className="flex justify-end">
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={() => onReplace(s.name)}
-            aria-label={`Replace secret ${s.name}`}
-          >
-            Replace
-          </Button>
-        </div>
-      ),
-    },
-  ];
+  // Styled "refpill" per the design preview — a bordered mono chip naming what
+  // references the secret, instead of bare text.
+  return (
+    <span className="inline-flex items-center rounded-full border border-border bg-secondary px-2 py-0.5 font-mono text-label leading-none text-muted-foreground">
+      {MODEL_SETUP_REF}
+    </span>
+  );
 }
 
 export default function CustomSecretsList({ workspaceId, secrets, referencedName = null }: Props) {
   const [editTarget, setEditTarget] = useState<string | null>(null);
 
-  if (secrets.length === 0) {
-    return (
-      <EmptyState
-        icon={<KeyRoundIcon size={28} />}
-        title="No custom secrets yet"
-        description="Add a NAME=value secret your fleets read by name."
-      />
-    );
-  }
-
   return (
-    <div className="space-y-3" data-testid="custom-secrets-list">
-      <DataTable
-        columns={buildColumns(referencedName, setEditTarget)}
-        rows={secrets}
-        rowKey={(s) => s.name}
-        caption="Custom secrets"
-      />
+    <div data-testid="custom-secrets-list">
+      <table className="w-full border-collapse text-body-sm">
+        <caption className="sr-only">Custom secrets</caption>
+        <thead className="bg-surface-deep">
+          <tr>
+            <th className="px-lg py-md text-left font-mono text-label uppercase tracking-label text-muted-foreground">
+              Name
+            </th>
+            <th className="px-lg py-md text-left font-mono text-label uppercase tracking-label text-muted-foreground">
+              Added
+            </th>
+            <th className="hidden px-lg py-md text-left font-mono text-label uppercase tracking-label text-muted-foreground sm:table-cell">
+              Referenced by
+            </th>
+            <th className="px-lg py-md text-right font-mono text-label uppercase tracking-label text-muted-foreground">
+              Action
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {secrets.length === 0 ? (
+            <tr className="border-t border-border">
+              <td className="px-lg py-lg text-muted-foreground" colSpan={4}>
+                {EMPTY_ROW}. Add one below.
+              </td>
+            </tr>
+          ) : (
+            secrets.map((secret) => (
+              <tr
+                key={secret.name}
+                className="border-t border-border transition-colors duration-snap ease-snap hover:bg-secondary"
+              >
+                <td className="px-lg py-md align-middle">
+                  <SecretNameCell secret={secret} />
+                </td>
+                <td className="px-lg py-md align-middle">
+                  <Time
+                    value={new Date(secret.created_at)}
+                    format="relative"
+                    tooltip={false}
+                    className="text-body-sm text-muted-foreground"
+                  />
+                </td>
+                <td className="hidden px-lg py-md align-middle sm:table-cell">
+                  <SecretRefCell referenced={secret.name === referencedName} />
+                </td>
+                <td className="px-lg py-md text-right align-middle">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setEditTarget(secret.name)}
+                    aria-label={`Replace secret ${secret.name}`}
+                  >
+                    Replace
+                  </Button>
+                </td>
+              </tr>
+            ))
+          )}
+        </tbody>
+      </table>
       <EditCredentialDialog
         workspaceId={workspaceId}
         name={editTarget ?? ""}

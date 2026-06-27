@@ -1,7 +1,7 @@
 // Config-driven vault taxonomy (RULE CFG). The Credentials vault renders three
 // kinds in a fixed order — model providers first (they power the own-key model
-// path), custom secrets next (arbitrary NAME=value the SKILL.md reads), and
-// integrations last (connectors are a later milestone). The strings live here
+// path), custom secrets next (named JSON objects the SKILL.md reads), and
+// integrations last. The strings live here
 // once so the page renderer, the IntegrationsComingSoon component, and the tests
 // share the exact same labels (RULE UFS) instead of restating them.
 
@@ -20,24 +20,24 @@ export type VaultKindMeta = {
   examples: string;
 };
 
-// Order is load-bearing: providers → custom → integrations (Dimension 4.1).
+// Order is load-bearing: providers → custom → integrations.
 export const VAULT_KINDS: readonly VaultKindMeta[] = [
   {
     kind: VAULT_KIND.providers,
     label: "Model providers",
-    blurb: "Keys that power the own-key model path.",
+    blurb: "Own-key model keys.",
     examples: "anthropic · openai · custom endpoint",
   },
   {
     kind: VAULT_KIND.custom,
     label: "Custom secrets",
-    blurb: "Any NAME=value your SKILL.md reads.",
+    blurb: "Named JSON for fleets.",
     examples: "STRIPE_API_KEY · INTERNAL_WEBHOOK",
   },
   {
     kind: VAULT_KIND.integrations,
     label: "Integrations",
-    blurb: "Tokens for the tools your fleets act on.",
+    blurb: "Tool tokens for fleets.",
     examples: "github · zoho · slack · …",
   },
 ] as const;

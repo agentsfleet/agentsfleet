@@ -2,7 +2,16 @@
 
 import { useActionState, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ActionForm, Alert, Badge, Button, Spinner } from "@agentsfleet/design-system";
+import {
+  ActionForm,
+  Alert,
+  Badge,
+  Button,
+  DashboardPanel,
+  MetaGrid,
+  Spinner,
+  StatusPill,
+} from "@agentsfleet/design-system";
 import { resetProviderAction, setProviderSelfManagedAction } from "../actions";
 import type { CredentialSummary } from "@/lib/api/credentials";
 import type { ModelCap } from "@/lib/api/model_caps";
@@ -42,22 +51,14 @@ const CARD_META: Record<ProviderMode, { credential: string; account: string; bil
 function CardMeta({ mode }: { mode: ProviderMode }) {
   const meta = CARD_META[mode];
   return (
-    <dl className="grid grid-cols-3 gap-3 text-xs">
-      {(
-        [
-          ["Credential", meta.credential],
-          ["Account", meta.account],
-          ["Billing", meta.billing],
-        ] as const
-      ).map(([label, value]) => (
-        <div key={label}>
-          <dt className="font-mono text-label uppercase tracking-label text-muted-foreground">
-            {label}
-          </dt>
-          <dd className="mt-1 font-medium text-foreground">{value}</dd>
-        </div>
-      ))}
-    </dl>
+    <MetaGrid
+      bordered
+      items={[
+        { label: "Credential", value: meta.credential },
+        { label: "Account", value: meta.account },
+        { label: "Billing", value: meta.billing },
+      ]}
+    />
   );
 }
 
@@ -84,22 +85,31 @@ type OptionCardProps = {
 
 function OptionCard({ mode, title, description, modelLine, isActive, action }: OptionCardProps) {
   return (
-    <div
+    <DashboardPanel
       data-active={isActive}
       data-testid={`option-card-${mode}`}
-      className="flex flex-col gap-4 rounded-md border border-border bg-card p-4 data-[active=true]:border-primary"
+      className="flex flex-col gap-lg data-[active=true]:border-primary data-[active=true]:ring-1 data-[active=true]:ring-primary/30"
     >
-      <div className="space-y-1">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="font-medium text-foreground">{title}</span>
-          {isActive ? <Badge variant="cyan">Current</Badge> : null}
+      <div className="flex items-start gap-3">
+        <span
+          className="mt-0.5 grid h-5 w-5 flex-none place-items-center rounded-full border-2 border-border-strong data-[active=true]:border-primary"
+          data-active={isActive}
+          aria-hidden="true"
+        >
+          {isActive ? <span className="h-2 w-2 rounded-full bg-primary" /> : null}
+        </span>
+        <div className="min-w-0 space-y-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="font-medium text-foreground">{title}</span>
+            {isActive ? <StatusPill variant="pulse">Current</StatusPill> : null}
+          </div>
+          <p className="text-body-sm leading-body-sm text-muted-foreground">{description}</p>
         </div>
-        <p className="text-xs text-muted-foreground">{description}</p>
       </div>
-      <div className="break-all font-mono text-xs text-muted-foreground">{modelLine}</div>
+      <div className="break-all font-mono text-label leading-label text-muted-foreground">{modelLine}</div>
       <CardMeta mode={mode} />
       <div className="mt-auto pt-1">{isActive ? <ActiveFoot /> : action}</div>
-    </div>
+    </DashboardPanel>
   );
 }
 
@@ -122,13 +132,13 @@ type OwnKeyConfigProps = {
 function OwnKeyConfig(props: OwnKeyConfigProps) {
   const isCustom = props.ownKeyKind === OWN_KEY_KIND.custom;
   return (
-    <div className="space-y-4 rounded-md border border-border bg-card p-4">
+    <DashboardPanel className="space-y-4">
       <div className="space-y-1">
-        <h3 className="font-mono text-heading text-foreground">Own-key model setup</h3>
-        <p className="text-xs text-muted-foreground">
+        <h3 className="font-medium text-foreground">Own-key model setup</h3>
+        <p className="text-body-sm leading-body-sm text-muted-foreground">
           {isCustom
-            ? "Point the model at any OpenAI-compatible endpoint — store its base URL and optional key."
-            : "Pick the stored credential and name the model teammates should use."}
+            ? "Use an OpenAI-compatible endpoint."
+            : "Pick a credential and model name."}
         </p>
       </div>
       <OwnKeyKindToggle kind={props.ownKeyKind} onKindChange={props.onKindChange} />
@@ -152,16 +162,23 @@ function OwnKeyConfig(props: OwnKeyConfigProps) {
             />
             <Step2Model catalogue={props.catalogue} model={props.modelOverride} onModelChange={props.onModelChange} />
           </div>
-          <Button type="submit" disabled={props.isPending || props.credentialRef === ""}>
-            {props.isPending ? <Spinner size="sm" srLabel="Saving" /> : null}
-            Save model setup
-          </Button>
+          <div className="flex flex-wrap gap-md border-t border-border pt-lg">
+            <Button type="submit" disabled={props.isPending || props.credentialRef === ""}>
+              {props.isPending ? <Spinner size="sm" srLabel="Saving" /> : null}
+              Save model setup
+            </Button>
+            <Button type="button" variant="outline" disabled={props.isPending} onClick={props.onCancel}>
+              Cancel
+            </Button>
+          </div>
         </>
       )}
-      <Button type="button" variant="ghost" disabled={props.isPending} onClick={props.onCancel}>
-        Cancel
-      </Button>
-    </div>
+      {isCustom ? (
+        <Button type="button" variant="outline" disabled={props.isPending} onClick={props.onCancel}>
+          Cancel
+        </Button>
+      ) : null}
+    </DashboardPanel>
   );
 }
 
@@ -260,11 +277,11 @@ export default function ProviderSelector({
 
   return (
     <ActionForm action={submitAction} className="space-y-4 text-sm">
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid gap-lg lg:grid-cols-2">
         <OptionCard
           mode={PROVIDER_MODE.platform}
           title="Platform defaults"
-          description="Built-in provider, paid per event from your balance. No key to manage."
+          description="Built-in provider. No key to manage."
           modelLine="▸ managed provider · default model · default context"
           isActive={platformActive}
           action={
@@ -277,7 +294,7 @@ export default function ProviderSelector({
         <OptionCard
           mode={PROVIDER_MODE.self_managed}
           title="Bring your own key"
-          description="Point the model config at any provider you hold a credential for."
+          description="Use your provider key."
           modelLine="▸ any provider · your model · your context"
           isActive={ownKeyActive}
           action={
@@ -313,7 +330,7 @@ export default function ProviderSelector({
       ) : null}
 
       <p className="text-xs text-muted-foreground">
-        Changes apply to new events; events already in flight finish on their current configuration.
+        New events use this setup.
       </p>
 
       <ProviderSelectorFeedback state={customState.ok || customState.error ? customState : state} />

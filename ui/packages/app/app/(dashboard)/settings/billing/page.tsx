@@ -19,7 +19,7 @@ import { summarizeCharges } from "./lib/charges";
 export const dynamic = "force-dynamic";
 
 const BILLING_DESCRIPTION =
-  "Manage credits and usage. You pay per Fleet event from your balance — no seats, no monthly minimum.";
+  "Manage credits and usage. No seats or monthly minimum.";
 
 export default async function BillingSettingsPage() {
   const { getToken } = await auth();
@@ -48,7 +48,7 @@ export default async function BillingSettingsPage() {
         <EmptyState
           icon={<WalletIcon size={28} />}
           title="Billing isn't ready yet"
-          description="Your tenant is still being set up. Refresh in a moment; if this persists, contact support."
+          description="Refresh in a moment. Contact support if it stays blocked."
         />
       </div>
     );

@@ -79,7 +79,7 @@ export default function WorkspaceSwitcher({
       <div className="inline-flex flex-wrap items-center gap-2">
         <DropdownMenu>
           <DropdownMenuTrigger
-            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-border bg-transparent text-foreground font-mono text-eyebrow cursor-pointer transition-colors duration-snap ease-snap enabled:hover:bg-muted disabled:opacity-60 disabled:cursor-wait"
+            className="inline-flex items-center gap-2 rounded-md border border-border-strong bg-card px-lg py-md font-mono text-eyebrow text-foreground transition-colors duration-snap ease-snap enabled:hover:bg-secondary disabled:cursor-wait disabled:opacity-60"
             aria-label="Select workspace"
             data-testid="workspace-switcher"
             disabled={pending}

@@ -26,7 +26,7 @@ import { captureProductEvent } from "@/lib/analytics/posthog";
 
 type Props = { workspaceId: string };
 
-// Re-exported from the shared credential-data contract so existing importers
+// Re-exported from the shared credential-data parser so existing importers
 // (and tests) keep their import site; the implementation lives in one place.
 export { jsonParseErrorMessage } from "../lib/credential-data";
 
@@ -41,7 +41,7 @@ const schema = z.object({
     .trim()
     .min(1, "Credential data is required")
     .superRefine((s, ctx) => {
-      // Empty is already gated by .min(1) above; share the parse/shape contract.
+      // Empty is already gated by .min(1) above; share the parse/shape rules.
       const result = parseCredentialDataObject(s, "Credential data is required");
       if (!result.ok) ctx.addIssue({ code: z.ZodIssueCode.custom, message: result.message });
     }),
@@ -85,7 +85,10 @@ export default function AddCredentialForm({ workspaceId }: Props) {
 
   return (
     <Form {...form}>
-      <form onSubmit={(e) => { void form.handleSubmit(onSubmit)(e); }} className="space-y-4">
+      <form
+        onSubmit={(e) => { void form.handleSubmit(onSubmit)(e); }}
+        className="grid gap-3 lg:grid-cols-3 lg:items-start"
+      >
         <FormField
           control={form.control}
           name="name"
@@ -96,7 +99,7 @@ export default function AddCredentialForm({ workspaceId }: Props) {
                 <Input placeholder="fly" {...field} />
               </FormControl>
               <FormDescription>
-                Fleets reference this by name — <code>{"${secrets.<name>.<field>}"}</code>.
+                Use as <code>{"${secrets.<name>.<field>}"}</code>.
               </FormDescription>
               <FormMessage />
             </FormItem>
@@ -110,7 +113,7 @@ export default function AddCredentialForm({ workspaceId }: Props) {
               <FormLabel>Data (JSON object)</FormLabel>
               <FormControl>
                 <Textarea
-                  rows={8}
+                  rows={4}
                   spellCheck={false}
                   autoComplete="off"
                   placeholder='{"host": "api.machines.dev", "api_token": "FLY_API_TOKEN"}'
@@ -119,17 +122,19 @@ export default function AddCredentialForm({ workspaceId }: Props) {
                 />
               </FormControl>
               <FormDescription>
-                Encrypted at rest. Values are never shown again after you save.
+                Write-only after save.
               </FormDescription>
               <FormMessage />
             </FormItem>
           )}
         />
-        {apiError ? <p className="text-sm text-destructive">{apiError}</p> : null}
-        <Button type="submit" disabled={pending}>
+        <Button type="submit" disabled={pending} variant="outline" className="lg:mt-xl">
           {pending ? <Spinner size="sm" srLabel="Adding" /> : null}
-          Add
+          Add secret
         </Button>
+        {apiError ? (
+          <p className="text-body-sm text-destructive lg:col-span-3">{apiError}</p>
+        ) : null}
       </form>
     </Form>
   );

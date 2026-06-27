@@ -79,7 +79,7 @@ describe("EventsList", () => {
   it("renders default empty state when no items", () => {
     renderList({ items: [], next_cursor: null });
     expect(screen.getByText(/No events yet/i)).toBeTruthy();
-    expect(screen.getByText(/Webhook deliveries, cron runs, manual wakes/i)).toBeTruthy();
+    expect(screen.getByText(/Fleet activity appears here/i)).toBeTruthy();
   });
 
   it("respects custom empty copy", () => {

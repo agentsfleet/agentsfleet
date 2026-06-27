@@ -162,8 +162,7 @@ function RevealPanel({ keyValue, keyName, onClose }: { keyValue: string; keyName
       <DialogHeader>
         <DialogTitle>Save your API key</DialogTitle>
         <DialogDescription>
-          This is the only time <span className="font-mono">{keyName}</span> is shown. Copy it now and store it
-          somewhere safe — you won&apos;t be able to see it again.
+          <span className="font-mono">{keyName}</span> is shown once. Copy it now.
         </DialogDescription>
       </DialogHeader>
       {/* ph-no-capture keeps the one-time raw key out of PostHog autocapture and
@@ -177,15 +176,15 @@ function RevealPanel({ keyValue, keyName, onClose }: { keyValue: string; keyName
           onFocus={(e) => e.currentTarget.select()}
         />
         <Button type="button" variant="ghost" size="sm" onClick={() => void copy()}>
-          {copyState === "copied" ? "Copied" : "Copy to clipboard"}
+          {copyState === "copied" ? "Copied" : "Copy"}
         </Button>
         {copyState === "failed" ? (
-          <p className="text-sm text-destructive">Copy failed — select the value above and copy it manually.</p>
+          <p className="text-sm text-destructive">Copy failed. Select the key and copy manually.</p>
         ) : null}
       </div>
       <DialogFooter>
         <Button type="button" onClick={onClose}>
-          I&apos;ve stored it — close
+          Done
         </Button>
       </DialogFooter>
     </>

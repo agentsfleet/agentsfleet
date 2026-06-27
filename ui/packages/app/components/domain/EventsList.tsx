@@ -54,7 +54,7 @@ export function EventsList({
   scope,
   initial,
   emptyTitle = "No events yet",
-  emptyDescription = "Webhook deliveries, cron runs, manual wakes, approvals, and run results appear here.",
+  emptyDescription = "Fleet activity appears here.",
   viewAllHref,
 }: EventsListProps) {
   const [items, setItems] = useState<EventRow[]>(initial.items);

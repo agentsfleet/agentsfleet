@@ -67,10 +67,10 @@
   --info: #60a5fa;
   --evidence: #fbbf24;
 
-  /* ── Radius (small + hierarchical; no pill-radius on buttons) ── */
-  --r-sm: 2px;
-  --r-md: 4px;
-  --r-lg: 6px;
+  /* ── Radius (preview-matched; no pill-radius on buttons) ── */
+  --r-sm: 6px;
+  --r-md: 9px;
+  --r-lg: 14px;
 
   /* ── Typography ──
    * Layer 0 names use --ff-* (font-family) so they don't collide with

@@ -1,36 +1,16 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { SunIcon, MoonIcon } from "lucide-react";
-import { Button } from "@agentsfleet/design-system";
-import { THEME_COOKIE, THEME_COOKIE_MAX_AGE, DEFAULT_THEME, normalizeTheme, type Theme } from "@/lib/theme";
+import { useEffect } from "react";
+import { THEME_COOKIE, THEME_COOKIE_MAX_AGE, DEFAULT_THEME } from "@/lib/theme";
 
 export default function ThemeToggle() {
-  const [theme, setTheme] = useState<Theme>(DEFAULT_THEME);
-
-  // Sync from the SSR-stamped (or pre-paint-script-adjusted) attribute on mount
-  // so the icon reflects the actual theme rather than the render-time default.
+  // Product default is dark-only now. Keep this tiny client normalizer mounted
+  // so stale `theme=light` cookies from earlier builds are overwritten after
+  // hydration, while the server stamp already renders dark via normalizeTheme().
   useEffect(() => {
-    setTheme(normalizeTheme(document.documentElement.dataset.theme));
+    document.documentElement.dataset.theme = DEFAULT_THEME;
+    document.cookie = `${THEME_COOKIE}=${DEFAULT_THEME}; path=/; max-age=${THEME_COOKIE_MAX_AGE}; samesite=lax`;
   }, []);
 
-  function toggle() {
-    const next: Theme = theme === "light" ? "dark" : "light";
-    document.documentElement.dataset.theme = next;
-    document.cookie = `${THEME_COOKIE}=${next}; path=/; max-age=${THEME_COOKIE_MAX_AGE}; samesite=lax`;
-    setTheme(next);
-  }
-
-  const nextLabel = theme === "light" ? "dark" : "light";
-  return (
-    <Button
-      type="button"
-      variant="ghost"
-      size="icon"
-      onClick={toggle}
-      aria-label={`Switch to ${nextLabel} theme`}
-    >
-      {theme === "light" ? <MoonIcon size={16} /> : <SunIcon size={16} />}
-    </Button>
-  );
+  return null;
 }
