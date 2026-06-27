@@ -74,7 +74,7 @@ pub fn classFor(route: router.Route) RouteClass {
         .workspace_fleets,
         .patch_workspace_fleet,
         .workspace_credentials,
-        .delete_workspace_credential,
+        .workspace_credential,
         .workspace_fleet_bundles,
         .workspace_fleet_bundle,
         .workspace_fleet_messages,
@@ -179,7 +179,7 @@ pub fn specFor(route: router.Route, registry: *auth_mw.MiddlewareRegistry) Route
         .workspace_fleets => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeWorkspaceFleets },
         .patch_workspace_fleet => .{ .middlewares = registry.bearer(), .invoke = invoke.invokePatchWorkspaceFleet },
         .workspace_credentials => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeWorkspaceCredentials },
-        .delete_workspace_credential => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeWorkspaceCredentialDelete },
+        .workspace_credential => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeWorkspaceCredentialItem },
         .workspace_fleet_bundles => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeFleetBundleImports },
         .workspace_fleet_bundle => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeFleetBundleGet },
         // Chat ingress (workspace-scoped) — POST /messages

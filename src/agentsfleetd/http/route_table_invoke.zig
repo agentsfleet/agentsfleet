@@ -251,13 +251,13 @@ pub fn invokeWorkspaceCredentials(hx: *Hx, req: *httpz.Request, route: router.Ro
     }
 }
 
-pub fn invokeWorkspaceCredentialDelete(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    if (req.method != .DELETE) {
-        common.respondMethodNotAllowed(hx.res);
-        return;
+pub fn invokeWorkspaceCredentialItem(hx: *Hx, req: *httpz.Request, route: router.Route) void {
+    const r = route.workspace_credential;
+    switch (req.method) {
+        .PATCH => fleet_creds.innerRotateCredential(hx.*, req, r.workspace_id, r.credential_name),
+        .DELETE => fleet_creds.innerDeleteCredential(hx.*, req, r.workspace_id, r.credential_name),
+        else => common.respondMethodNotAllowed(hx.res),
     }
-    const r = route.delete_workspace_credential;
-    fleet_creds.innerDeleteCredential(hx.*, req, r.workspace_id, r.credential_name);
 }
 
 // ── Fleet messages (chat ingress) ────────────────────────────────────────
