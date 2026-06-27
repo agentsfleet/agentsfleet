@@ -61,16 +61,17 @@ describe("Button", () => {
     expect(cls).toContain("text-pulse");
   });
 
-  it("applies the double-border variant — 2px primary outline, no shadow", () => {
+  it("applies the double-border variant — primary outline, no shadow", () => {
     render(<Button variant="double-border">Setup</Button>);
     const cls = screen.getByRole("button").className;
-    expect(cls).toContain("border-2");
     expect(cls).toContain("border-primary");
     expect(cls).toContain("bg-transparent");
+    expect(cls).toContain("text-primary");
+    expect(cls).toContain("font-semibold");
     expect(cls).not.toContain("shadow-");
   });
 
-  it("uses --r-md radius (no pill-radius on chrome)", () => {
+  it("uses --r-md radius (preview-rounded, no pill-radius on chrome)", () => {
     render(<Button>X</Button>);
     expect(screen.getByRole("button").className).toContain("rounded-md");
   });

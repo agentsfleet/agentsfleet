@@ -10,6 +10,11 @@ describe("design-system public exports", () => {
     expect(DesignSystem.CardDescription).toBeDefined();
     expect(DesignSystem.CardContent).toBeDefined();
     expect(DesignSystem.CardFooter).toBeDefined();
+    expect(DesignSystem.DashboardPanel).toBeDefined();
+    expect(DesignSystem.DashboardRow).toBeDefined();
+    expect(DesignSystem.MetaGrid).toBeDefined();
+    expect(DesignSystem.StatusPill).toBeDefined();
+    expect(DesignSystem.TerminalPanel).toBeDefined();
     expect(DesignSystem.Terminal).toBeDefined();
     expect(DesignSystem.Grid).toBeDefined();
     expect(DesignSystem.Section).toBeDefined();

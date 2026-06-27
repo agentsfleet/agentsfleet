@@ -18,6 +18,29 @@ export {
   CardFooter,
   type CardProps,
 } from "./Card";
+export {
+  DashboardPanel,
+  DashboardPanelHeader,
+  DashboardPanelTitle,
+  DashboardPanelDescription,
+  DashboardPanelContent,
+  DashboardPanelFooter,
+  dashboardPanelVariants,
+  type DashboardPanelProps,
+} from "./DashboardPanel";
+export {
+  DashboardRow,
+  DashboardRowGroup,
+  type DashboardRowProps,
+  type DashboardRowGroupProps,
+} from "./DashboardRow";
+export { MetaGrid, type MetaGridItem, type MetaGridProps } from "./MetaGrid";
+export {
+  StatusPill,
+  type StatusPillProps,
+  type StatusPillVariant,
+} from "./StatusPill";
+export { TerminalPanel, type TerminalPanelProps } from "./TerminalPanel";
 export { default as Terminal } from "./Terminal";
 export {
   LogLine,

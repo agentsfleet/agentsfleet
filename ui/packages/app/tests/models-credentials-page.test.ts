@@ -70,6 +70,20 @@ vi.mock("@/app/(dashboard)/credentials/components/CustomSecretsList", () => ({
       ...secrets.map((s) => React.createElement("span", { key: s.name }, s.name)),
     ),
 }));
+vi.mock("@/app/(dashboard)/credentials/components/ProviderCredentialRows", () => ({
+  default: ({
+    workspaceId,
+    provider,
+  }: {
+    workspaceId: string;
+    provider: { credential_ref?: string | null } | null;
+  }) =>
+    React.createElement(
+      "div",
+      { "data-provider-credential-rows-client": workspaceId },
+      provider?.credential_ref ?? "provider keys",
+    ),
+}));
 vi.mock("@/app/(dashboard)/credentials/components/AddCredentialForm", () => ({
   default: ({ workspaceId }: { workspaceId: string }) =>
     React.createElement("div", { "data-add-credential-form": workspaceId }),
@@ -84,6 +98,9 @@ vi.mock("lucide-react", () => {
     GitPullRequestIcon: make("GitPullRequestIcon"),
     BriefcaseIcon: make("BriefcaseIcon"),
     HashIcon: make("HashIcon"),
+    CpuIcon: make("CpuIcon"),
+    LinkIcon: make("LinkIcon"),
+    ChevronDownIcon: make("ChevronDownIcon"),
   };
 });
 
@@ -91,7 +108,7 @@ import { withWorkspaceScope } from "@/lib/workspace";
 import { getTenantProvider } from "@/lib/api/tenant_provider";
 import { listCredentials } from "@/lib/api/credentials";
 import { getModelCaps } from "@/lib/api/model_caps";
-import { PROVIDER_MODE } from "@/lib/types";
+import { OPENAI_COMPATIBLE_PROVIDER, PROVIDER_MODE } from "@/lib/types";
 
 const FIREWORKS_PROVIDER = "fireworks";
 const FIREWORKS_MODEL_ID = "kimi-k2.6";
@@ -142,7 +159,7 @@ describe("Models page", () => {
     // Single-purpose page: title "Models" + description, the model selector, and
     // NO tablist / Credentials tab trigger.
     expect(markup).toContain(">Models<");
-    expect(markup).toContain("Credentials for the own-key path live under Credentials");
+    expect(markup).toContain("Choose platform defaults or your key");
     expect(markup).toContain('data-provider-selector="ws_1"');
     expect(markup).not.toContain('role="tablist"');
     expect(markup).not.toContain('role="tab"');
@@ -194,7 +211,7 @@ describe("Credentials vault page", () => {
 
     // Header + Add credential action.
     expect(markup).toContain(">Credentials<");
-    expect(markup).toContain("write-only secret vault");
+    expect(markup).toContain("Write-only keys for models, tools, and secrets.");
     expect(markup).toContain("Add credential");
 
     // Kinds strip carries all three kinds.
@@ -216,7 +233,7 @@ describe("Credentials vault page", () => {
     expect(markup).toContain(STRIPE_SECRET_NAME);
   });
 
-  it("test_custom_secret_create_and_status: custom secrets list + an add form for NAME+value", async () => {
+  it("test_custom_secret_create_and_status: custom secrets list + an add form for named JSON objects", async () => {
     // Platform mode → no active model credential, so every stored credential is a
     // custom secret and the providers group shows its empty state.
     vi.mocked(getTenantProvider).mockResolvedValue(platformProvider());
@@ -227,13 +244,31 @@ describe("Credentials vault page", () => {
     const { default: Page } = await import("../app/(dashboard)/credentials/page");
     const markup = renderToStaticMarkup(await Page());
 
-    // The custom secret is listed and the add form (NAME+value) is composed.
+    // The custom secret is listed and the add form for named JSON objects is composed.
     expect(markup).toContain('data-custom-secrets-list="ws_1"');
     expect(markup).toContain(STRIPE_SECRET_NAME);
     expect(markup).toContain('data-add-credential-form="ws_1"');
-    expect(markup).toContain("NAME=value");
-    // No active model key → providers group shows the empty hint, not a list.
-    expect(markup).toContain("No model-provider key in use");
+    expect(markup).toContain("secrets.NAME.FIELD");
+    // No active model key: provider rows still render, but no fake reference is made.
+    expect(markup).toContain('data-provider-credential-rows-client="ws_1"');
+    expect(markup).toContain("provider keys");
+    expect(markup).toContain("Custom — OpenAI-compatible");
+  });
+
+  it("marks the custom OpenAI-compatible provider row as connected when selected", async () => {
+    vi.mocked(getTenantProvider).mockResolvedValue({
+      ...platformProvider(),
+      mode: PROVIDER_MODE.self_managed,
+      provider: OPENAI_COMPATIBLE_PROVIDER,
+      credential_ref: "custom-endpoint",
+    });
+    vi.mocked(listCredentials).mockResolvedValue({ credentials: [] });
+
+    const { default: Page } = await import("../app/(dashboard)/credentials/page");
+    const markup = renderToStaticMarkup(await Page());
+
+    expect(markup).toContain("Custom — OpenAI-compatible");
+    expect(markup).toContain("Connected");
   });
 
   it("never fabricates a referenced-by when the provider fetch fails", async () => {
@@ -246,7 +281,8 @@ describe("Credentials vault page", () => {
     // With no known provider ref, the credential is a custom secret (not a
     // fabricated model-provider reference).
     expect(markup).toContain('data-custom-secrets-list="ws_1"');
-    expect(markup).toContain("No model-provider key in use");
+    expect(markup).toContain('data-provider-credential-rows-client="ws_1"');
+    expect(markup).toContain("provider keys");
   });
 
   it("renders the no-workspace empty state under the Credentials title", async () => {

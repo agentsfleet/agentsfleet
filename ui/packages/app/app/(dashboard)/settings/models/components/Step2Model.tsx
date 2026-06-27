@@ -68,8 +68,7 @@ export default function Step2Model({ catalogue, model, onModelChange }: Step2Mod
         />
       )}
       <p className="text-xs text-muted-foreground">
-        Optional. Pick a model from the public catalogue, or leave it on the model stored with the
-        credential.
+        Optional. Leave blank to use the credential model.
       </p>
     </div>
   );

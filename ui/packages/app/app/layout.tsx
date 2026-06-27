@@ -11,12 +11,9 @@ export const metadata: Metadata = {
   description: "Fleet delivery control plane. Manage workspaces, runs, and pipeline visibility.",
 };
 
-// Dark is the brand default; the only other palette is `[data-theme="light"]`.
-// The SSR stamp below reads the saved cookie (absent → dark), so the server
-// renders the correct palette with no flash and no client-side re-paint. The
-// header toggle flips `data-theme` + writes the cookie; the next SSR load
-// re-stamps from it. Auth pages stay dark because a logged-out first visit has
-// no cookie — we deliberately do NOT auto-switch to the OS light preference.
+// Dark is the product surface. The SSR stamp below still reads the cookie, but
+// normalizeTheme() maps every value to dark so stale light cookies from older
+// builds cannot repaint auth or dashboard screens.
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const theme = normalizeTheme((await cookies()).get(THEME_COOKIE)?.value);
   return (

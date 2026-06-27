@@ -3,20 +3,25 @@ import { auth } from "@clerk/nextjs/server";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import {
+  Button,
   buttonClassName,
+  DashboardPanel,
+  DashboardPanelContent,
+  DashboardPanelDescription,
+  DashboardPanelHeader,
+  DashboardPanelTitle,
   EmptyState,
   PageHeader,
   PageTitle,
+  SectionLabel,
   Skeleton,
 } from "@agentsfleet/design-system";
 import { listFleets } from "@/lib/api/fleets";
-import { listFleetTemplatesCached } from "@/lib/api/fleet-bundles";
 import { getTenantBillingCached } from "@/lib/api/tenant_billing";
 import { withWorkspaceScope } from "@/lib/workspace";
 import ExhaustionBanner from "@/components/domain/ExhaustionBanner";
 import { PlusIcon } from "lucide-react";
 import FleetsList from "./components/FleetsList";
-import { InstallEntry } from "./new/InstallEntry";
 
 export const dynamic = "force-dynamic";
 
@@ -57,39 +62,46 @@ export async function FleetsData() {
       listFleets(workspaceId, token, { limit: 20 }),
       getTenantBillingCached(token).catch(() => null),
     ]);
-    // Only the empty state needs the template gallery — fetch it lazily so a
-    // populated list pays nothing for it.
-    const templates =
-      page.items.length === 0
-        ? await listFleetTemplatesCached(token)
-            .then((response) => response.items)
-            .catch(() => [])
-        : [];
-    return { workspaceId, page, billing, templates };
+    return { workspaceId, page, billing };
   });
   if (!result) {
     return (
       <EmptyState
         title="No workspace yet"
-        description="Create a workspace before installing teammates."
+        description="Create a workspace first."
       />
     );
   }
-  const { workspaceId, page, billing, templates } = result;
+  const { workspaceId, page, billing } = result;
 
   return (
     <>
       <ExhaustionBanner billing={billing} />
       {page.items.length === 0 ? (
-        <EmptyState
-          title="Start your fleet"
-          description="Install your first fleet to automate recurring work, then trigger it once to see events."
-          action={
-            <div className="w-full max-w-xl text-left">
-              <InstallEntry templates={templates} quickstart />
+        <DashboardPanel padding="compact" className="max-w-3xl">
+          <DashboardPanelHeader>
+            <div className="space-y-2">
+              <SectionLabel>No fleets yet</SectionLabel>
+              <DashboardPanelTitle>Install your first fleet</DashboardPanelTitle>
+              <DashboardPanelDescription className="max-w-prose">
+                Pick a template, connect the tool, and watch it wake.
+              </DashboardPanelDescription>
             </div>
-          }
-        />
+            <Button asChild>
+              <Link href="/fleets/new">
+                <PlusIcon size={16} /> Install fleet
+              </Link>
+            </Button>
+          </DashboardPanelHeader>
+          <DashboardPanelContent className="grid gap-md sm:grid-cols-3">
+            {["Choose template", "Connect the tool", "Watch it wake"].map((item, index) => (
+              <div key={item} className="rounded-md border border-border bg-secondary p-md">
+                <div className="font-mono text-eyebrow text-pulse">0{index + 1}</div>
+                <div className="mt-2 font-medium text-foreground">{item}</div>
+              </div>
+            ))}
+          </DashboardPanelContent>
+        </DashboardPanel>
       ) : (
         <FleetsList
           workspaceId={workspaceId}

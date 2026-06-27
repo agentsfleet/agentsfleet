@@ -23,7 +23,7 @@ export const TAB_LIST_CLASS =
  *  `-mb-px` laps the trigger's 2px underline over the rail's 1px border. */
 const TAB_TRIGGER_BASE =
   "inline-flex items-center justify-center whitespace-nowrap px-3.5 py-2.5 -mb-px " +
-  "text-sm font-medium no-underline border-b-2 border-transparent " +
+  "text-body-sm font-medium no-underline border-b-2 border-transparent " +
   "ring-offset-background transition-colors hover:text-foreground " +
   "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-offset-1 " +
   "disabled:pointer-events-none disabled:opacity-50";

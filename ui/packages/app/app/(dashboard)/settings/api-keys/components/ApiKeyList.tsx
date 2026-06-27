@@ -72,7 +72,7 @@ export default function ApiKeyList({
   // User-initiated sort/page navigation. Clears the error on a clean load; an
   // invalid sort/page (UZ-REQ-001) resets to the defaults rather than blanking.
   // `retried` guards the reset: if the backend rejects even the defaults
-  // (contract drift), self-calling again would loop forever — reset at most once.
+  // (response drift), self-calling again would loop forever — reset at most once.
   function loadPage(next: { page: number; sort?: ApiKeySort }, retried = false) {
     const nextPage = next.page;
     const nextSort = next.sort ?? sort;
@@ -137,7 +137,7 @@ export default function ApiKeyList({
         <EmptyState
           icon={<KeyRoundIcon size={28} />}
           title="No API keys yet"
-          description="Create one to let an outside tool call your API."
+          description="Create one for outside tools."
         />
       ) : (
         <div className="divide-y rounded-md border">

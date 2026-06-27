@@ -132,7 +132,7 @@ export default function EditCredentialDialog({
         <DialogHeader>
           <DialogTitle>Edit credential &ldquo;{name}&rdquo;</DialogTitle>
           <DialogDescription>
-            Values are write-only — re-enter the full secret to replace what&apos;s stored.
+            Write-only. Enter the full replacement secret.
           </DialogDescription>
         </DialogHeader>
 
