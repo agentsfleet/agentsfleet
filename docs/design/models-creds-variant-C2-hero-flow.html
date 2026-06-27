@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>agentsfleet · Models &amp; Keys — Variant C2 (Active-Model hero, annotated)</title>
+<style>
+  :root{
+    --surface-deep:#06090a; --bg:#0a0d0e; --surface-1:#11161a; --surface-2:#181e22; --surface-3:#1f262c;
+    --border:#23292e; --border-strong:#2e373e; --text:#e6eaec; --text-muted:#8b9398; --text-subtle:#7a8085;
+    --pulse:#5eead4; --pulse-dim:#2dd4bf; --on-pulse:#0a0d0e; --success:#34d399; --warn:#f59e0b; --error:#f87171;
+    --r-sm:6px; --r-md:9px; --r-lg:14px;
+    --mono:"Commit Mono","JetBrains Mono",ui-monospace,monospace;
+    --sans:"Instrument Sans",system-ui,-apple-system,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  html,body{background:var(--surface-deep);color:var(--text);font-family:var(--sans);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased;}
+  ::selection{background:rgba(94,234,212,.22);}
+
+  /* ---------- layout ---------- */
+  .shell{display:flex;min-height:100vh;}
+  .sidebar{position:fixed;top:0;left:0;width:240px;height:100vh;background:var(--surface-1);border-right:1px solid var(--border);
+    display:flex;flex-direction:column;padding:18px 14px;gap:18px;overflow-y:auto;}
+  .main{margin-left:240px;flex:1;background:var(--bg);padding:32px;}
+  .main-inner{max-width:980px;margin:0 auto;}
+
+  /* ---------- sidebar ---------- */
+  .brand{display:flex;align-items:center;gap:10px;padding:2px 6px;}
+  .brand .chip{width:22px;height:22px;border-radius:var(--r-sm);background:var(--pulse);box-shadow:0 0 14px rgba(94,234,212,.45);display:flex;align-items:center;justify-content:center;}
+  .brand .chip::after{content:"";width:8px;height:8px;border-radius:2px;background:var(--on-pulse);}
+  .brand .name{font-family:var(--mono);font-size:14px;font-weight:600;letter-spacing:-.01em;color:var(--text);}
+  .ws-pill{display:flex;align-items:center;justify-content:space-between;background:var(--surface-2);border:1px solid var(--border);
+    border-radius:var(--r-md);padding:8px 11px;font-family:var(--mono);font-size:12.5px;color:var(--text-muted);cursor:pointer;}
+  .ws-pill:hover{border-color:var(--border-strong);}
+  .nav-group{display:flex;flex-direction:column;gap:1px;}
+  .nav-eyebrow{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--text-subtle);padding:10px 8px 5px;}
+  .nav-item{display:flex;align-items:center;gap:10px;padding:7px 10px;border-radius:var(--r-sm);color:var(--text-muted);font-size:13px;cursor:pointer;border-left:2px solid transparent;}
+  .nav-item .g{font-family:var(--mono);font-size:13px;width:15px;text-align:center;color:var(--text-subtle);}
+  .nav-item:hover{background:var(--surface-2);color:var(--text);}
+  .nav-item.active{background:var(--surface-2);color:var(--pulse);border-left:2px solid var(--pulse);}
+  .nav-item.active .g{color:var(--pulse);}
+
+  /* ---------- generic ui ---------- */
+  .eyebrow{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--text-subtle);}
+  .mono{font-family:var(--mono);}
+  .muted{color:var(--text-muted);} .subtle{color:var(--text-subtle);}
+
+  .page-head h1{font-size:22px;font-weight:600;letter-spacing:-.015em;}
+  .page-head p{color:var(--text-muted);font-size:13.5px;margin-top:4px;}
+
+  /* state scaffolding */
+  .state-block{margin-bottom:14px;}
+  .state-label{display:flex;align-items:center;gap:12px;margin:6px 0 12px;}
+  .state-tag{font-family:var(--mono);font-size:12px;font-weight:600;color:var(--on-pulse);background:var(--pulse);
+    border-radius:var(--r-sm);padding:3px 9px;letter-spacing:.02em;}
+  .state-title{font-size:17px;font-weight:600;letter-spacing:-.01em;}
+  .divider{height:1px;background:var(--border);margin:48px 0;}
+
+  /* annotation note (designer-facing, amber) */
+  .note{border-left:3px solid var(--warn);background:rgba(245,158,11,.06);
+    border-radius:0 var(--r-sm) var(--r-sm) 0;padding:9px 13px;margin:12px 0;}
+  .note span{font-style:italic;font-size:12.5px;color:#e9c48a;}
+  .note .lead{font-style:normal;font-weight:600;color:var(--warn);font-size:11px;letter-spacing:.06em;text-transform:uppercase;display:block;margin-bottom:3px;}
+  .anno-tag{display:inline-block;border-left:2px solid var(--warn);background:rgba(245,158,11,.05);
+    padding:4px 9px;border-radius:0 4px 4px 0;font-style:italic;font-size:11.5px;color:#e9c48a;}
+
+  /* hero */
+  .hero{background:var(--surface-1);border:1px solid var(--border);border-radius:var(--r-lg);padding:24px;}
+  .hero.live{border-color:var(--pulse);box-shadow:0 0 0 1px rgba(94,234,212,.18),0 0 40px -8px rgba(94,234,212,.30);}
+  .hero-top{display:flex;align-items:center;gap:12px;margin-bottom:14px;}
+  .pill{display:inline-flex;align-items:center;gap:6px;font-family:var(--mono);font-size:11.5px;font-weight:600;padding:3px 10px;border-radius:999px;}
+  .pill.live{color:var(--pulse);background:rgba(94,234,212,.10);border:1px solid rgba(94,234,212,.35);}
+  .pill.live .dot{width:7px;height:7px;border-radius:50%;background:var(--pulse);box-shadow:0 0 8px var(--pulse);}
+  .pill.default{color:var(--text-muted);background:var(--surface-2);border:1px solid var(--border-strong);}
+  .pill.default .dot{width:7px;height:7px;border-radius:50%;background:var(--text-subtle);}
+  .hero-name{font-family:var(--mono);font-size:26px;font-weight:600;letter-spacing:-.02em;line-height:1.15;}
+  .hero-sub{font-family:var(--mono);font-size:13px;color:var(--text-muted);margin-top:6px;}
+  .meta-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--border);border:1px solid var(--border);
+    border-radius:var(--r-md);overflow:hidden;margin:18px 0;}
+  .meta-cell{background:var(--surface-1);padding:11px 14px;}
+  .meta-cell .k{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--text-subtle);}
+  .meta-cell .v{font-family:var(--mono);font-size:13px;color:var(--text);margin-top:3px;}
+
+  .action-row{display:flex;flex-wrap:wrap;gap:9px;align-items:center;}
+  .btn{font-family:var(--sans);font-size:12.5px;font-weight:500;padding:7px 13px;border-radius:var(--r-sm);cursor:pointer;
+    border:1px solid var(--border-strong);background:transparent;color:var(--text);transition:border-color .12s,background .12s;}
+  .btn:hover{border-color:var(--text-subtle);background:var(--surface-2);}
+  .btn.primary{background:var(--pulse);color:var(--on-pulse);border-color:var(--pulse);font-weight:600;}
+  .btn.primary:hover{background:var(--pulse-dim);border-color:var(--pulse-dim);}
+  .btn.ghost{border-color:transparent;color:var(--text-muted);}
+  .btn.ghost:hover{color:var(--text);background:var(--surface-2);border-color:transparent;}
+  .btn.sm{padding:5px 11px;font-size:12px;}
+
+  /* annotation tag row under actions */
+  .anno-cluster{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:14px;}
+  .anno-cluster .anno-tag{display:block;}
+
+  /* inline expand panel inside hero */
+  .inline-panel{margin-top:16px;border:1px solid var(--border-strong);border-radius:var(--r-md);background:var(--surface-2);padding:16px;}
+  .inline-panel .eyebrow{margin-bottom:10px;display:block;}
+  .field{display:flex;gap:9px;align-items:center;flex-wrap:wrap;}
+  .input{font-family:var(--mono);font-size:13px;background:var(--surface-deep);border:1px solid var(--border-strong);
+    color:var(--text);padding:8px 11px;border-radius:var(--r-sm);min-width:240px;flex:1;}
+  .input::placeholder{color:var(--text-subtle);}
+  select.input{cursor:pointer;min-width:200px;flex:0 0 auto;appearance:none;background-image:none;}
+  .panel-foot{margin-top:11px;font-size:12px;color:var(--text-muted);font-family:var(--mono);}
+
+  /* provider list */
+  .section-eyebrow{margin:30px 0 10px;display:block;}
+  .prov-list{background:var(--surface-1);border:1px solid var(--border);border-radius:var(--r-lg);overflow:hidden;}
+  .prov-row{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:14px 18px;border-top:1px solid var(--border);}
+  .prov-row:first-child{border-top:none;}
+  .prov-row .info .nm{font-family:var(--mono);font-size:14px;font-weight:500;}
+  .prov-row .info .sb{font-size:12px;color:var(--text-muted);margin-top:2px;font-family:var(--mono);}
+  .prov-expand{background:var(--surface-2);border-top:1px solid var(--border);padding:16px 18px;}
+
+  .with-aside{display:grid;grid-template-columns:1fr 280px;gap:18px;align-items:start;}
+  @media(max-width:860px){.with-aside{grid-template-columns:1fr;}.anno-cluster,.meta-grid{grid-template-columns:1fr;}}
+
+  /* footer vault panel */
+  .vault{background:var(--surface-deep);border:1px solid var(--border);border-radius:var(--r-lg);overflow:hidden;}
+  .vault-head{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--border);background:var(--surface-1);}
+  .vault-head .t{font-family:var(--mono);font-size:13px;color:var(--text);}
+  .vault-head .t .acc{color:var(--text-subtle);}
+  .tag{font-family:var(--mono);font-size:10.5px;letter-spacing:.04em;text-transform:uppercase;padding:2px 8px;border-radius:999px;
+    border:1px solid var(--border-strong);color:var(--text-muted);}
+  .vault-row{display:flex;align-items:center;justify-content:space-between;padding:11px 16px;border-top:1px solid var(--border);}
+  .vault-row:first-child{border-top:none;}
+  .vault-row .nm{font-family:var(--mono);font-size:13px;}
+  .vault-row .st{font-family:var(--mono);font-size:12px;color:var(--text-subtle);}
+
+  .caption{position:fixed;right:14px;bottom:12px;font-size:11px;color:var(--text-subtle);font-family:var(--mono);
+    background:rgba(6,9,10,.8);padding:4px 9px;border:1px solid var(--border);border-radius:var(--r-sm);backdrop-filter:blur(4px);}
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <!-- ================= SIDEBAR ================= -->
+  <aside class="sidebar">
+    <div class="brand"><span class="chip"></span><span class="name">agentsfleet</span></div>
+    <div class="ws-pill"><span>acme-corp</span><span>▾</span></div>
+
+    <nav class="nav-group">
+      <div class="nav-item"><span class="g">▭</span>Dashboard</div>
+    </nav>
+    <nav class="nav-group">
+      <div class="nav-eyebrow">Operations</div>
+      <div class="nav-item"><span class="g">⊟</span>Fleets</div>
+      <div class="nav-item"><span class="g">✓</span>Approvals</div>
+      <div class="nav-item"><span class="g">≋</span>Events</div>
+    </nav>
+    <nav class="nav-group">
+      <div class="nav-eyebrow">Configuration</div>
+      <div class="nav-item active"><span class="g">◈</span>Models &amp; Keys</div>
+      <div class="nav-item"><span class="g">⊕</span>Integrations</div>
+    </nav>
+    <nav class="nav-group">
+      <div class="nav-eyebrow">Organization</div>
+      <div class="nav-item"><span class="g">⌂</span>Workspace</div>
+      <div class="nav-item"><span class="g">$</span>Billing</div>
+    </nav>
+  </aside>
+
+  <!-- ================= MAIN ================= -->
+  <main class="main">
+    <div class="main-inner">
+
+      <div class="page-head">
+        <h1>Models &amp; Keys</h1>
+        <p>The model your fleets run on, and the keys behind it.</p>
+      </div>
+
+      <!-- ============ STATE 1 ============ -->
+      <section class="state-block" style="margin-top:26px;">
+        <div class="state-label">
+          <span class="state-tag">STATE 1</span>
+          <span class="state-title">Active: your Anthropic key</span>
+        </div>
+        <div class="note">
+          <span class="lead">Designer note</span>
+          <span>Default view when a custom model is active. The hero answers “what’s running?” instantly.</span>
+        </div>
+
+        <div class="hero live">
+          <div class="hero-top">
+            <span class="pill live"><span class="dot"></span>LIVE</span>
+            <span class="eyebrow">Active Model</span>
+          </div>
+          <div class="hero-name">claude-sonnet-4-6</div>
+          <div class="hero-sub">via your Anthropic key · sk-ant-••••3f9a</div>
+
+          <div class="meta-grid">
+            <div class="meta-cell"><div class="k">Provider</div><div class="v">Anthropic</div></div>
+            <div class="meta-cell"><div class="k">Context</div><div class="v">200k</div></div>
+            <div class="meta-cell"><div class="k">Billing</div><div class="v">Provider direct</div></div>
+          </div>
+
+          <div class="action-row">
+            <button class="btn">Change model ▾</button>
+            <button class="btn">Replace key</button>
+            <button class="btn ghost">Switch to platform defaults</button>
+          </div>
+
+          <div class="anno-cluster">
+            <span class="anno-tag">↑ Change model — same key, different model (dropdown of this provider’s models).</span>
+            <span class="anno-tag">↑ Replace key — rotate the API key. Same provider + model.</span>
+            <span class="anno-tag">↑ Switch to platform defaults — shortcut to the managed provider. Your keys stay saved.</span>
+          </div>
+        </div>
+
+        <div class="with-aside">
+          <div>
+            <span class="eyebrow section-eyebrow">Other providers — switch anytime</span>
+            <div class="prov-list">
+              <div class="prov-row">
+                <div class="info"><div class="nm">Platform defaults</div><div class="sb">Built-in provider · no key</div></div>
+                <button class="btn sm">Switch</button>
+              </div>
+              <div class="prov-row">
+                <div class="info"><div class="nm">OpenAI</div><div class="sb">Key saved · gpt-4o</div></div>
+                <button class="btn sm">Switch</button>
+              </div>
+              <div class="prov-row">
+                <div class="info"><div class="nm">Custom — OpenAI-compatible</div><div class="sb">Not configured</div></div>
+                <button class="btn sm">Add endpoint</button>
+              </div>
+            </div>
+          </div>
+          <div class="note" style="margin-top:38px;">
+            <span class="lead">Designer note</span>
+            <span>Every provider you’ve added a key for is remembered here. Switching back is ONE click — keys are never re-entered. A provider with no key yet shows “Add key &amp; model” instead of “Switch”.</span>
+          </div>
+        </div>
+      </section>
+
+      <div class="divider"></div>
+
+      <!-- ============ STATE 2 ============ -->
+      <section class="state-block">
+        <div class="state-label">
+          <span class="state-tag">STATE 2</span>
+          <span class="state-title">Replace key (expanded)</span>
+        </div>
+        <div class="note">
+          <span class="lead">Designer note</span>
+          <span>What “Replace key” opens — inline, in the hero. Rotates the key only.</span>
+        </div>
+
+        <div class="hero live">
+          <div class="hero-top">
+            <span class="pill live"><span class="dot"></span>LIVE</span>
+            <span class="eyebrow">Active Model</span>
+          </div>
+          <div class="hero-name">claude-sonnet-4-6</div>
+          <div class="hero-sub">via your Anthropic key · sk-ant-••••3f9a</div>
+
+          <div class="meta-grid">
+            <div class="meta-cell"><div class="k">Provider</div><div class="v">Anthropic</div></div>
+            <div class="meta-cell"><div class="k">Context</div><div class="v">200k</div></div>
+            <div class="meta-cell"><div class="k">Billing</div><div class="v">Provider direct</div></div>
+          </div>
+
+          <div class="action-row">
+            <button class="btn">Change model ▾</button>
+            <button class="btn" style="border-color:var(--text-subtle);background:var(--surface-2);">Replace key</button>
+            <button class="btn ghost">Switch to platform defaults</button>
+          </div>
+
+          <div class="inline-panel">
+            <span class="eyebrow">Replace Anthropic Key</span>
+            <div class="field">
+              <input class="input" type="password" placeholder="sk-ant-..." />
+              <button class="btn primary">Save key</button>
+              <button class="btn ghost">Cancel</button>
+            </div>
+            <div class="panel-foot">Model stays claude-sonnet-4-6.</div>
+          </div>
+        </div>
+      </section>
+
+      <div class="divider"></div>
+
+      <!-- ============ STATE 3 ============ -->
+      <section class="state-block">
+        <div class="state-label">
+          <span class="state-tag">STATE 3</span>
+          <span class="state-title">On platform defaults — adding your own</span>
+        </div>
+        <div class="note">
+          <span class="lead">Designer note</span>
+          <span>When platform defaults is active, the hero shows it; switching to your own = pick a provider from the list (expand to add a key).</span>
+        </div>
+
+        <div class="hero">
+          <div class="hero-top">
+            <span class="pill default"><span class="dot"></span>DEFAULT</span>
+            <span class="eyebrow">Active Model</span>
+          </div>
+          <div class="hero-name">Platform default model</div>
+          <div class="hero-sub">Managed by agentsfleet · no key needed</div>
+
+          <div class="meta-grid">
+            <div class="meta-cell"><div class="k">Provider</div><div class="v">agentsfleet managed</div></div>
+            <div class="meta-cell"><div class="k">Context</div><div class="v">default</div></div>
+            <div class="meta-cell"><div class="k">Billing</div><div class="v">Tenant balance</div></div>
+          </div>
+
+          <div class="action-row">
+            <button class="btn primary">Bring your own key</button>
+          </div>
+        </div>
+
+        <div class="with-aside">
+          <div>
+            <span class="eyebrow section-eyebrow">Other providers — switch anytime</span>
+            <div class="prov-list">
+              <div class="prov-row" style="border-bottom:none;">
+                <div class="info"><div class="nm">Anthropic</div><div class="sb">Not configured</div></div>
+                <button class="btn sm" style="border-color:var(--text-subtle);background:var(--surface-2);">Add key &amp; model</button>
+              </div>
+              <div class="prov-expand">
+                <span class="eyebrow">Add Anthropic</span>
+                <div class="field" style="margin-top:10px;">
+                  <input class="input" type="password" placeholder="sk-ant-..." />
+                  <select class="input">
+                    <option>select a model ▾</option>
+                    <option>claude-sonnet-4-6</option>
+                    <option>claude-opus-4-8</option>
+                  </select>
+                  <button class="btn primary">Save &amp; make active</button>
+                </div>
+              </div>
+              <div class="prov-row">
+                <div class="info"><div class="nm">OpenAI</div><div class="sb">Not configured</div></div>
+                <button class="btn sm">Add key &amp; model</button>
+              </div>
+              <div class="prov-row">
+                <div class="info"><div class="nm">Custom — OpenAI-compatible</div><div class="sb">Not configured</div></div>
+                <button class="btn sm">Add key &amp; model</button>
+              </div>
+            </div>
+          </div>
+          <div class="note" style="margin-top:38px;">
+            <span class="lead">Designer note</span>
+            <span>Adding a provider key + model is ONE inline step. On save it becomes the active hero. Provider keys live here in the Model layer — they NEVER appear under Custom secrets.</span>
+          </div>
+        </div>
+      </section>
+
+      <div class="divider"></div>
+
+      <!-- ============ FOOTER: CUSTOM SECRETS ============ -->
+      <section class="state-block">
+        <div class="state-label">
+          <span class="eyebrow" style="font-size:12px;">Custom secrets (separate, unchanged)</span>
+        </div>
+
+        <div class="with-aside">
+          <div class="vault">
+            <div class="vault-head">
+              <div class="t">vault <span class="acc">· resolved by name</span></div>
+              <span class="tag">write-only</span>
+            </div>
+            <div class="vault-row">
+              <span class="nm">STRIPE_API_KEY</span>
+              <span style="display:flex;align-items:center;gap:14px;">
+                <span class="st">•••• written</span>
+                <button class="btn sm">Replace</button>
+              </span>
+            </div>
+            <div class="vault-row">
+              <span class="nm">INTERNAL_WEBHOOK</span>
+              <span style="display:flex;align-items:center;gap:14px;">
+                <span class="st">•••• written</span>
+                <button class="btn sm">Replace</button>
+              </span>
+            </div>
+          </div>
+          <div class="note" style="margin-top:0;">
+            <span class="lead">Designer note</span>
+            <span>Different section, different object. Named JSON your fleets read by name. Provider/model keys are NOT shown here — that misfiling bug is gone.</span>
+          </div>
+        </div>
+      </section>
+
+    </div>
+  </main>
+</div>
+
+<div class="caption">Variant C2 — Active-Model hero · full switching flow (annotated)</div>
+</body>
+</html>

@@ -5,7 +5,8 @@ import { renderToStaticMarkup } from "react-dom/server";
 // Server-component page tests: render the async page to static markup with the
 // data layer + heavy client components mocked at module boundaries. Covers the
 // single-purpose Models page (no in-page Credentials tab) and the Credentials
-// vault page (kinds strip + three ordered groups).
+// vault page (kinds strip + two ordered groups — integrations moved to its own
+// /integrations page, tested in integrations-page.test.ts).
 
 const redirect = vi.fn((path: string) => {
   throw new Error(`redirect:${path}`);
@@ -193,7 +194,7 @@ describe("Models page", () => {
 });
 
 describe("Credentials vault page", () => {
-  it("test_credentials_vault_order: kinds strip + groups in order providers→custom→integrations", async () => {
+  it("test_credentials_vault_order: kinds strip + groups in order providers→custom", async () => {
     vi.mocked(getTenantProvider).mockResolvedValue({
       ...platformProvider(),
       mode: PROVIDER_MODE.self_managed,
@@ -214,41 +215,23 @@ describe("Credentials vault page", () => {
     expect(markup).toContain("Write-only keys for models, tools, and secrets.");
     expect(markup).not.toContain("Add credential");
 
-    // Kinds strip carries all three kinds.
+    // Kinds strip carries the two on-page kinds; integrations moved to its own
+    // /integrations destination, so it is no longer in this strip.
     expect(markup).toContain('data-testid="vault-kinds-strip"');
     expect(markup).toContain('data-testid="vault-kind-providers"');
     expect(markup).toContain('data-testid="vault-kind-custom"');
-    expect(markup).toContain('data-testid="vault-kind-integrations"');
+    expect(markup).not.toContain('data-testid="vault-kind-integrations"');
 
-    // Groups render in order: providers → custom → integrations.
+    // Groups render in order: providers → custom. No integrations group here.
     const providersAt = markup.indexOf('data-testid="group-providers"');
     const customAt = markup.indexOf('data-testid="group-custom"');
-    const integrationsAt = markup.indexOf('data-testid="group-integrations"');
     expect(providersAt).toBeGreaterThan(-1);
     expect(providersAt).toBeLessThan(customAt);
-    expect(customAt).toBeLessThan(integrationsAt);
+    expect(markup).not.toContain('data-testid="group-integrations"');
 
     // The active model credential lands in the providers group; the other in custom.
     expect(markup).toContain(ANTHROPIC_CREDENTIAL_NAME);
     expect(markup).toContain(STRIPE_SECRET_NAME);
-  });
-
-  it("degrades the GitHub connector to not-connected when the status endpoint errors", async () => {
-    vi.mocked(getTenantProvider).mockResolvedValue(platformProvider());
-    vi.mocked(listCredentials).mockResolvedValue({ credentials: [] });
-    // getGithubConnector is the only client on this page not module-mocked, so it
-    // hits the real request → global fetch. Force that one call to reject: the page
-    // must catch it, degrade the connector to "not connected" (never fabricate a
-    // connected pill), and still render the vault rather than throw.
-    const stubbedFetch = global.fetch;
-    global.fetch = vi.fn().mockRejectedValue(new Error("connector endpoint down")) as unknown as typeof fetch;
-    try {
-      const { default: Page } = await import("../app/(dashboard)/credentials/page");
-      const markup = renderToStaticMarkup(await Page());
-      expect(markup).toContain(">Credentials<");
-    } finally {
-      global.fetch = stubbedFetch;
-    }
   });
 
   it("test_custom_secret_create_and_status: custom secrets list + an add form for named JSON objects", async () => {
@@ -322,8 +305,8 @@ describe("Credentials vault page", () => {
     vi.mocked(listCredentials).mockRejectedValue(new Error("503"));
     const { default: Page } = await import("../app/(dashboard)/credentials/page");
     const markup = renderToStaticMarkup(await Page());
-    // Empty custom-secrets list still renders the add form + integrations group.
+    // Empty custom-secrets list still renders the add form + the custom group.
     expect(markup).toContain('data-add-credential-form="ws_1"');
-    expect(markup).toContain('data-testid="group-integrations"');
+    expect(markup).toContain('data-testid="group-custom"');
   });
 });

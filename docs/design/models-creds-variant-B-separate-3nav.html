@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>agentsfleet — Models</title>
+<style>
+  :root{
+    --surface-deep:#06090a; --bg:#0a0d0e; --surface-1:#11161a; --surface-2:#181e22; --surface-3:#1f262c;
+    --border:#23292e; --border-strong:#2e373e;
+    --text:#e6eaec; --text-muted:#8b9398; --text-subtle:#7a8085;
+    --pulse:#5eead4; --pulse-dim:#2dd4bf; --on-pulse:#0a0d0e;
+    --success:#34d399; --warn:#f59e0b; --error:#f87171;
+    --r-sm:6px; --r-md:9px; --r-lg:14px;
+    --mono:"Commit Mono","JetBrains Mono",ui-monospace,monospace;
+    --sans:"Instrument Sans",system-ui,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  html,body{background:var(--surface-deep);color:var(--text);font-family:var(--sans);font-size:14px;-webkit-font-smoothing:antialiased;}
+  body{display:flex;min-height:100vh;}
+  .eyebrow{font-family:var(--mono);text-transform:uppercase;letter-spacing:.08em;font-size:11px;color:var(--text-subtle);}
+  .mono{font-family:var(--mono);}
+
+  /* ---------- SIDEBAR ---------- */
+  .sidebar{
+    width:240px;flex:0 0 240px;background:var(--surface-1);border-right:1px solid var(--border);
+    display:flex;flex-direction:column;padding:18px 14px;gap:18px;position:fixed;top:0;bottom:0;left:0;
+  }
+  .brand{display:flex;align-items:center;gap:10px;padding:2px 6px;}
+  .brand-chip{
+    width:28px;height:28px;border-radius:var(--r-sm);background:linear-gradient(140deg,var(--surface-3),var(--surface-2));
+    border:1px solid var(--border-strong);display:flex;align-items:center;justify-content:center;
+    font-family:var(--mono);font-size:15px;color:var(--pulse);
+  }
+  .brand-name{font-family:var(--mono);font-size:15px;letter-spacing:-.01em;color:var(--text);}
+  .workspace{
+    display:flex;align-items:center;justify-content:space-between;gap:8px;
+    background:var(--surface-2);border:1px solid var(--border);border-radius:var(--r-md);
+    padding:8px 11px;font-family:var(--mono);font-size:12.5px;color:var(--text-muted);cursor:pointer;
+  }
+  .workspace .ws-dot{width:7px;height:7px;border-radius:50%;background:var(--text-subtle);}
+  .workspace b{color:var(--text);font-weight:500;}
+
+  .nav{display:flex;flex-direction:column;gap:14px;overflow:auto;}
+  .nav-group{display:flex;flex-direction:column;gap:2px;}
+  .nav-group .grp-label{padding:4px 8px 6px;}
+  .nav-item{
+    display:flex;align-items:center;gap:10px;padding:7px 10px;border-radius:var(--r-sm);
+    font-size:13px;color:var(--text-muted);cursor:pointer;border-left:2px solid transparent;
+    text-decoration:none;
+  }
+  .nav-item:hover{background:var(--surface-2);color:var(--text);}
+  .nav-item .glyph{font-family:var(--mono);font-size:13px;width:16px;text-align:center;color:var(--text-subtle);}
+  .nav-item.active{
+    background:var(--surface-2);color:var(--pulse);border-left:2px solid var(--pulse);
+  }
+  .nav-item.active .glyph{color:var(--pulse);}
+
+  /* ---------- MAIN ---------- */
+  .main{margin-left:240px;flex:1;background:var(--bg);padding:32px;min-width:0;}
+  .canvas{max-width:1040px;}
+
+  /* destination strip */
+  .dest-strip{margin-bottom:26px;}
+  .dest-chips{display:flex;align-items:center;gap:10px;}
+  .dest-chip{
+    display:flex;align-items:center;gap:7px;font-family:var(--mono);font-size:12.5px;
+    padding:7px 13px;border-radius:999px;border:1px solid var(--border);color:var(--text-subtle);
+    background:var(--surface-1);
+  }
+  .dest-chip.current{border-color:var(--pulse);color:var(--pulse);box-shadow:0 0 0 1px rgba(94,234,212,.18), 0 0 18px -6px rgba(94,234,212,.4);}
+  .dest-chip .dc-glyph{font-size:11px;}
+  .dest-sep{font-family:var(--mono);color:var(--text-subtle);font-size:13px;}
+  .dest-caption{margin-top:9px;font-family:var(--mono);font-size:11px;color:var(--text-subtle);letter-spacing:.04em;}
+
+  /* page header */
+  .page-head{margin-bottom:26px;}
+  .page-title{font-size:24px;letter-spacing:-.02em;font-weight:600;color:var(--text);}
+  .page-desc{margin-top:6px;font-size:13.5px;color:var(--text-muted);}
+
+  /* section */
+  .section-eyebrow{margin-bottom:14px;display:flex;align-items:center;gap:10px;}
+  .section-eyebrow .rule{flex:1;height:1px;background:var(--border);}
+
+  /* option cards */
+  .options{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
+  .opt-card{
+    background:var(--surface-1);border:1px solid var(--border);border-radius:var(--r-lg);padding:20px;
+    position:relative;display:flex;flex-direction:column;gap:14px;
+  }
+  .opt-card.active{
+    border-color:var(--pulse);
+    box-shadow:0 0 0 1px rgba(94,234,212,.25), 0 0 40px -16px rgba(94,234,212,.55);
+  }
+  .opt-top{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;}
+  .opt-id{display:flex;align-items:center;gap:11px;}
+  .radio{width:18px;height:18px;border-radius:50%;border:1.5px solid var(--border-strong);flex:0 0 18px;position:relative;}
+  .radio.on{border-color:var(--pulse);}
+  .radio.on::after{content:"";position:absolute;inset:3px;border-radius:50%;background:var(--pulse);box-shadow:0 0 10px -1px var(--pulse);}
+  .opt-name{font-size:15.5px;font-weight:600;color:var(--text);letter-spacing:-.01em;}
+  .opt-sub{font-size:12.5px;color:var(--text-muted);}
+  .active-pill{
+    font-family:var(--mono);font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;
+    color:var(--pulse);background:rgba(94,234,212,.08);border:1px solid rgba(94,234,212,.35);
+    border-radius:999px;padding:3px 9px;
+  }
+  .meta-grid{display:flex;flex-direction:column;gap:0;border-top:1px solid var(--border);}
+  .meta-row{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);font-family:var(--mono);font-size:12px;}
+  .meta-row:last-child{border-bottom:none;}
+  .meta-k{color:var(--text-subtle);}
+  .meta-v{color:var(--text-muted);}
+  .meta-v.req{color:var(--text);}
+
+  .btn{
+    font-family:var(--mono);font-size:12.5px;padding:9px 14px;border-radius:var(--r-md);cursor:pointer;
+    border:1px solid var(--border-strong);background:transparent;color:var(--text);text-align:center;
+  }
+  .btn.outline:hover{border-color:var(--text-subtle);}
+  .btn.primary{
+    background:var(--pulse);color:var(--on-pulse);border-color:var(--pulse);font-weight:600;
+    box-shadow:0 0 24px -8px rgba(94,234,212,.6);
+  }
+
+  /* own-key setup panel */
+  .setup-panel{
+    margin-top:16px;background:var(--surface-1);border:1px solid var(--border);border-radius:var(--r-lg);
+    padding:18px 20px;display:flex;flex-direction:column;gap:14px;position:relative;
+    box-shadow:0 0 0 1px rgba(94,234,212,.1);
+  }
+  .setup-head{display:flex;align-items:center;justify-content:space-between;}
+  .setup-head .st-title{font-family:var(--mono);font-size:12.5px;color:var(--text);letter-spacing:.02em;}
+  .form-row{display:grid;grid-template-columns:140px 1fr;align-items:center;gap:14px;}
+  .form-label{font-family:var(--mono);font-size:11.5px;color:var(--text-subtle);text-transform:uppercase;letter-spacing:.06em;}
+  .field{
+    background:var(--surface-2);border:1px solid var(--border);border-radius:var(--r-sm);
+    padding:9px 12px;font-family:var(--mono);font-size:12.5px;color:var(--text);
+    display:flex;align-items:center;justify-content:space-between;gap:10px;
+  }
+  .field .caret{color:var(--text-subtle);}
+  .field .replace{color:var(--pulse);cursor:pointer;font-size:11.5px;}
+  .field .masked{color:var(--text-muted);letter-spacing:.04em;}
+  .setup-actions{display:flex;justify-content:flex-end;}
+  .setup-footer{
+    margin-top:2px;font-family:var(--mono);font-size:12px;color:var(--pulse);
+    display:flex;align-items:center;gap:8px;
+  }
+  .setup-footer .live-dot{width:7px;height:7px;border-radius:50%;background:var(--pulse);box-shadow:0 0 10px 0 var(--pulse);}
+
+  /* dimmed preview panels */
+  .previews-eyebrow{margin:34px 0 14px;}
+  .previews{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
+  .preview{
+    opacity:.5;background:var(--surface-1);border:1px solid var(--border);border-radius:var(--r-lg);
+    padding:0;overflow:hidden;
+  }
+  .preview-hd{
+    background:var(--surface-2);border-bottom:1px solid var(--border);padding:9px 14px;
+    display:flex;align-items:center;gap:9px;font-family:var(--mono);font-size:11.5px;color:var(--text-muted);
+  }
+  .preview-hd .dots{display:flex;gap:5px;}
+  .preview-hd .dots i{width:8px;height:8px;border-radius:50%;background:var(--border-strong);display:block;}
+  .preview-body{padding:14px;display:flex;flex-direction:column;gap:8px;}
+  .pv-row{
+    display:flex;align-items:center;justify-content:space-between;
+    font-family:var(--mono);font-size:12px;color:var(--text-muted);
+    background:var(--surface-2);border:1px solid var(--border);border-radius:var(--r-sm);padding:8px 11px;
+  }
+  .pv-row .tag{font-size:10.5px;color:var(--text-subtle);}
+  .pv-row .conn{color:var(--pulse);display:flex;align-items:center;gap:6px;}
+  .pv-row .conn .d{width:6px;height:6px;border-radius:50%;background:var(--pulse);}
+  .pv-caption{margin-top:10px;font-family:var(--mono);font-size:11px;color:var(--text-subtle);}
+
+  .footer-cap{
+    position:fixed;right:16px;bottom:12px;font-family:var(--mono);font-size:11px;color:var(--text-subtle);
+    letter-spacing:.03em;
+  }
+</style>
+</head>
+<body>
+
+  <!-- ===== SIDEBAR ===== -->
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-chip">◈</div>
+      <div class="brand-name">agentsfleet</div>
+    </div>
+    <div class="workspace">
+      <span style="display:flex;align-items:center;gap:8px;"><span class="ws-dot"></span> acme-corp</span>
+      <span class="caret">▾</span>
+    </div>
+
+    <nav class="nav">
+      <div class="nav-group">
+        <a class="nav-item"><span class="glyph">◇</span> Dashboard</a>
+      </div>
+
+      <div class="nav-group">
+        <div class="grp-label eyebrow">Operations</div>
+        <a class="nav-item"><span class="glyph">▸</span> Fleets</a>
+        <a class="nav-item"><span class="glyph">✦</span> Approvals</a>
+        <a class="nav-item"><span class="glyph">⬡</span> Events</a>
+      </div>
+
+      <div class="nav-group">
+        <div class="grp-label eyebrow">Configuration</div>
+        <a class="nav-item active"><span class="glyph">◈</span> Models</a>
+        <a class="nav-item"><span class="glyph">⚷</span> Credentials</a>
+        <a class="nav-item"><span class="glyph">⬡</span> Integrations</a>
+      </div>
+
+      <div class="nav-group">
+        <div class="grp-label eyebrow">Organization</div>
+        <a class="nav-item"><span class="glyph">◇</span> Workspace</a>
+        <a class="nav-item"><span class="glyph">⚙</span> Billing</a>
+      </div>
+    </nav>
+  </aside>
+
+  <!-- ===== MAIN ===== -->
+  <main class="main">
+    <div class="canvas">
+
+      <!-- destination strip -->
+      <div class="dest-strip">
+        <div class="dest-chips">
+          <span class="dest-chip current"><span class="dc-glyph">▸</span> Models</span>
+          <span class="dest-sep">·</span>
+          <span class="dest-chip"><span class="dc-glyph">⚷</span> Credentials</span>
+          <span class="dest-sep">·</span>
+          <span class="dest-chip"><span class="dc-glyph">⬡</span> Integrations</span>
+        </div>
+        <div class="dest-caption">Three separate destinations</div>
+      </div>
+
+      <!-- page header -->
+      <div class="page-head">
+        <h1 class="page-title">Models</h1>
+        <p class="page-desc">Pick platform defaults or bring your own provider key + model.</p>
+      </div>
+
+      <!-- section -->
+      <div class="section-eyebrow">
+        <span class="eyebrow">Model Access</span>
+        <span class="rule"></span>
+      </div>
+
+      <div class="options">
+        <!-- Platform defaults -->
+        <div class="opt-card">
+          <div class="opt-top">
+            <div class="opt-id">
+              <span class="radio"></span>
+              <div>
+                <div class="opt-name">Platform defaults</div>
+                <div class="opt-sub">Built-in provider. No key to manage.</div>
+              </div>
+            </div>
+          </div>
+          <div class="meta-grid">
+            <div class="meta-row"><span class="meta-k">Credential</span><span class="meta-v">Not required</span></div>
+            <div class="meta-row"><span class="meta-k">Account</span><span class="meta-v">agentsfleet managed</span></div>
+            <div class="meta-row"><span class="meta-k">Billing</span><span class="meta-v">Tenant balance</span></div>
+          </div>
+          <button class="btn outline">Use platform defaults</button>
+        </div>
+
+        <!-- Bring your own key (ACTIVE) -->
+        <div class="opt-card active">
+          <div class="opt-top">
+            <div class="opt-id">
+              <span class="radio on"></span>
+              <div>
+                <div class="opt-name">Bring your own key</div>
+                <div class="opt-sub">Your provider account, your key, your model.</div>
+              </div>
+            </div>
+            <span class="active-pill">Active</span>
+          </div>
+          <div class="meta-grid">
+            <div class="meta-row"><span class="meta-k">Credential</span><span class="meta-v req">Required</span></div>
+            <div class="meta-row"><span class="meta-k">Account</span><span class="meta-v req">Your provider</span></div>
+            <div class="meta-row"><span class="meta-k">Billing</span><span class="meta-v req">Provider direct</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- own-key setup panel -->
+      <div class="setup-panel">
+        <div class="setup-head">
+          <span class="st-title">Own-key setup</span>
+          <span class="eyebrow">Unified inline form</span>
+        </div>
+
+        <div class="form-row">
+          <span class="form-label">Provider</span>
+          <div class="field"><span>anthropic</span><span class="caret">▾</span></div>
+        </div>
+        <div class="form-row">
+          <span class="form-label">API key</span>
+          <div class="field"><span class="masked">sk-ant-••••3f9a</span><span class="replace">Replace</span></div>
+        </div>
+        <div class="form-row">
+          <span class="form-label">Model</span>
+          <div class="field"><span>claude-sonnet-4-6</span><span class="caret">▾</span></div>
+        </div>
+
+        <div class="setup-actions">
+          <button class="btn primary">Save model setup</button>
+        </div>
+
+        <div class="setup-footer">
+          <span class="live-dot"></span> Active — claude-sonnet-4-6 via anthropic
+        </div>
+      </div>
+
+      <!-- dimmed previews of the OTHER two destinations -->
+      <div class="previews-eyebrow eyebrow">Two separate pages, one click away</div>
+      <div class="previews">
+
+        <!-- credentials preview -->
+        <div class="preview">
+          <div class="preview-hd">
+            <span class="dots"><i></i><i></i><i></i></span>
+            /credentials · vault · resolved by name (write-only)
+          </div>
+          <div class="preview-body">
+            <div class="pv-row"><span>STRIPE_API_KEY</span><span class="tag">json · write-only</span></div>
+            <div class="pv-row"><span>INTERNAL_WEBHOOK</span><span class="tag">json · write-only</span></div>
+            <div class="pv-caption">Separate page · named JSON for fleets (no model keys here)</div>
+          </div>
+        </div>
+
+        <!-- integrations preview -->
+        <div class="preview">
+          <div class="preview-hd">
+            <span class="dots"><i></i><i></i><i></i></span>
+            /integrations · tool connectors
+          </div>
+          <div class="preview-body">
+            <div class="pv-row"><span>GitHub</span><span class="conn"><span class="d"></span> Connected</span></div>
+            <div class="pv-row"><span>Zoho</span><span class="tag">Planned</span></div>
+            <div class="pv-row"><span>Slack</span><span class="tag">Planned</span></div>
+            <div class="pv-caption">Separate page · OAuth/tool tokens</div>
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+  </main>
+
+  <div class="footer-cap">Variant B — SEPARATE (3 nav: Models · Credentials · Integrations)</div>
+
+</body>
+</html>

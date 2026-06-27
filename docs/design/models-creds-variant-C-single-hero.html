@@ -1,0 +1,563 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>agentsfleet · Models &amp; Keys</title>
+<style>
+  :root {
+    --surface-deep:#06090a;
+    --bg:#0a0d0e;
+    --surface-1:#11161a;
+    --surface-2:#181e22;
+    --surface-3:#1f262c;
+    --border:#23292e;
+    --border-strong:#2e373e;
+    --text:#e6eaec;
+    --text-muted:#8b9398;
+    --text-subtle:#7a8085;
+    --pulse:#5eead4;
+    --pulse-dim:#2dd4bf;
+    --on-pulse:#0a0d0e;
+    --success:#34d399;
+    --warn:#f59e0b;
+    --error:#f87171;
+    --r-sm:6px;
+    --r-md:9px;
+    --r-lg:14px;
+    --mono:"Commit Mono","JetBrains Mono",ui-monospace,monospace;
+    --sans:"Instrument Sans",system-ui,-apple-system,sans-serif;
+  }
+
+  * { box-sizing:border-box; margin:0; padding:0; }
+
+  html,body {
+    background:var(--surface-deep);
+    color:var(--text);
+    font-family:var(--sans);
+    font-size:14px;
+    line-height:1.5;
+    -webkit-font-smoothing:antialiased;
+  }
+
+  .app { display:flex; min-height:100vh; }
+
+  /* ---------- Sidebar ---------- */
+  .sidebar {
+    position:fixed;
+    top:0; left:0; bottom:0;
+    width:240px;
+    background:var(--surface-1);
+    border-right:1px solid var(--border);
+    display:flex;
+    flex-direction:column;
+    padding:18px 14px;
+    gap:18px;
+  }
+
+  .brand {
+    display:flex;
+    align-items:center;
+    gap:10px;
+    padding:2px 4px;
+  }
+  .brand-chip {
+    width:26px; height:26px;
+    border-radius:var(--r-sm);
+    background:linear-gradient(135deg,var(--surface-3),var(--surface-2));
+    border:1px solid var(--border-strong);
+    display:flex; align-items:center; justify-content:center;
+    color:var(--pulse);
+    font-family:var(--mono);
+    font-size:13px;
+  }
+  .brand-name {
+    font-family:var(--mono);
+    font-size:14px;
+    letter-spacing:-.01em;
+    color:var(--text);
+  }
+
+  .workspace-pill {
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    background:var(--surface-2);
+    border:1px solid var(--border);
+    border-radius:var(--r-md);
+    padding:8px 11px;
+    font-family:var(--mono);
+    font-size:12px;
+    color:var(--text-muted);
+    cursor:pointer;
+  }
+  .workspace-pill:hover { border-color:var(--border-strong); }
+  .workspace-pill .caret { color:var(--text-subtle); font-size:10px; }
+
+  .nav { display:flex; flex-direction:column; gap:16px; overflow-y:auto; }
+  .nav-group { display:flex; flex-direction:column; gap:2px; }
+  .nav-label {
+    font-size:11px;
+    text-transform:uppercase;
+    letter-spacing:.08em;
+    color:var(--text-subtle);
+    padding:4px 8px 4px;
+    font-family:var(--mono);
+  }
+  .nav-item {
+    display:flex;
+    align-items:center;
+    gap:10px;
+    padding:7px 8px;
+    border-radius:var(--r-sm);
+    color:var(--text-muted);
+    font-size:13px;
+    text-decoration:none;
+    border-left:2px solid transparent;
+    cursor:pointer;
+  }
+  .nav-item:hover { background:var(--surface-2); color:var(--text); }
+  .nav-item .glyph {
+    font-family:var(--mono);
+    font-size:13px;
+    width:16px;
+    text-align:center;
+    color:var(--text-subtle);
+  }
+  .nav-item.active {
+    background:var(--surface-2);
+    color:var(--pulse);
+    border-left:2px solid var(--pulse);
+  }
+  .nav-item.active .glyph { color:var(--pulse); }
+
+  /* ---------- Main ---------- */
+  .main {
+    margin-left:240px;
+    flex:1;
+    background:var(--bg);
+    padding:32px;
+    min-height:100vh;
+  }
+  .content { max-width:960px; margin:0 auto; }
+
+  .page-header { margin-bottom:26px; }
+  .page-title {
+    font-size:22px;
+    font-weight:600;
+    letter-spacing:-.02em;
+    color:var(--text);
+    margin-bottom:5px;
+  }
+  .page-desc {
+    color:var(--text-muted);
+    font-size:13px;
+    font-family:var(--mono);
+  }
+
+  .eyebrow {
+    font-size:11px;
+    text-transform:uppercase;
+    letter-spacing:.08em;
+    color:var(--text-subtle);
+    font-family:var(--mono);
+  }
+
+  /* ---------- Hero ---------- */
+  .hero {
+    background:var(--surface-1);
+    border:1px solid var(--pulse);
+    border-radius:var(--r-lg);
+    padding:24px;
+    margin-bottom:32px;
+    box-shadow:0 0 0 1px rgba(94,234,212,.06), 0 0 40px -8px rgba(94,234,212,.22), inset 0 1px 0 rgba(94,234,212,.04);
+    position:relative;
+    overflow:hidden;
+  }
+  .hero::after {
+    content:"";
+    position:absolute;
+    top:-40%; right:-10%;
+    width:300px; height:300px;
+    background:radial-gradient(circle, rgba(94,234,212,.10), transparent 70%);
+    pointer-events:none;
+  }
+  .hero-top {
+    display:flex;
+    align-items:center;
+    gap:12px;
+    margin-bottom:16px;
+  }
+  .live-pill {
+    display:inline-flex;
+    align-items:center;
+    gap:6px;
+    background:rgba(94,234,212,.10);
+    border:1px solid rgba(94,234,212,.35);
+    color:var(--pulse);
+    border-radius:999px;
+    padding:3px 10px;
+    font-family:var(--mono);
+    font-size:11px;
+    letter-spacing:.04em;
+    font-weight:500;
+  }
+  .live-dot {
+    width:7px; height:7px;
+    border-radius:50%;
+    background:var(--pulse);
+    box-shadow:0 0 8px var(--pulse);
+  }
+  .hero-name {
+    font-size:26px;
+    font-weight:600;
+    letter-spacing:-.02em;
+    color:var(--text);
+    font-family:var(--mono);
+    margin-bottom:6px;
+  }
+  .hero-sub {
+    font-family:var(--mono);
+    color:var(--text-muted);
+    font-size:13px;
+    margin-bottom:20px;
+  }
+  .hero-sub .key { color:var(--text-subtle); }
+
+  .meta-grid {
+    display:grid;
+    grid-template-columns:repeat(3,1fr);
+    gap:1px;
+    background:var(--border);
+    border:1px solid var(--border);
+    border-radius:var(--r-md);
+    overflow:hidden;
+    margin-bottom:22px;
+  }
+  .meta-cell {
+    background:var(--surface-2);
+    padding:12px 14px;
+  }
+  .meta-key {
+    font-size:11px;
+    text-transform:uppercase;
+    letter-spacing:.06em;
+    color:var(--text-subtle);
+    font-family:var(--mono);
+    margin-bottom:5px;
+  }
+  .meta-val {
+    font-family:var(--mono);
+    font-size:13px;
+    color:var(--text);
+  }
+
+  .action-row {
+    display:flex;
+    align-items:center;
+    gap:10px;
+    flex-wrap:wrap;
+  }
+  .btn {
+    font-family:var(--mono);
+    font-size:12px;
+    padding:7px 13px;
+    border-radius:var(--r-sm);
+    border:1px solid var(--border-strong);
+    background:var(--surface-2);
+    color:var(--text);
+    cursor:pointer;
+  }
+  .btn:hover { border-color:var(--text-subtle); background:var(--surface-3); }
+  .btn-ghost {
+    background:transparent;
+    border:1px solid transparent;
+    color:var(--text-subtle);
+    margin-left:auto;
+  }
+  .btn-ghost:hover { color:var(--text-muted); background:transparent; border-color:transparent; text-decoration:underline; }
+  .btn-sm {
+    font-family:var(--mono);
+    font-size:11px;
+    padding:5px 11px;
+    border-radius:var(--r-sm);
+    border:1px solid var(--border-strong);
+    background:var(--surface-2);
+    color:var(--text);
+    cursor:pointer;
+    white-space:nowrap;
+  }
+  .btn-sm:hover { border-color:var(--text-subtle); background:var(--surface-3); }
+
+  /* ---------- Section ---------- */
+  .section { margin-bottom:32px; }
+  .section-eyebrow { margin-bottom:12px; }
+
+  /* ---------- Provider list ---------- */
+  .list {
+    background:var(--surface-1);
+    border:1px solid var(--border);
+    border-radius:var(--r-lg);
+    overflow:hidden;
+  }
+  .list-row {
+    display:flex;
+    align-items:center;
+    gap:14px;
+    padding:14px 16px;
+    border-bottom:1px solid var(--border);
+    cursor:pointer;
+  }
+  .list-row:last-child { border-bottom:none; }
+  .list-row:hover { background:var(--surface-2); }
+  .row-caret {
+    color:var(--text-subtle);
+    font-size:10px;
+    font-family:var(--mono);
+    width:12px;
+  }
+  .row-main { flex:1; min-width:0; }
+  .row-title {
+    font-family:var(--mono);
+    font-size:13px;
+    color:var(--text);
+    margin-bottom:3px;
+  }
+  .row-sub {
+    font-size:12px;
+    color:var(--text-muted);
+    font-family:var(--mono);
+  }
+  .muted-pill {
+    display:inline-block;
+    background:var(--surface-3);
+    border:1px solid var(--border);
+    color:var(--text-subtle);
+    border-radius:999px;
+    padding:2px 9px;
+    font-family:var(--mono);
+    font-size:11px;
+  }
+
+  /* ---------- Vault panel ---------- */
+  .vault {
+    background:var(--surface-1);
+    border:1px solid var(--border);
+    border-radius:var(--r-lg);
+    overflow:hidden;
+  }
+  .vault-header {
+    display:flex;
+    align-items:center;
+    gap:10px;
+    padding:12px 16px;
+    border-bottom:1px solid var(--border);
+    background:var(--surface-2);
+  }
+  .vault-header .label {
+    font-family:var(--mono);
+    font-size:12px;
+    color:var(--text-muted);
+  }
+  .vault-header .glyph { color:var(--text-subtle); font-family:var(--mono); }
+  .tag-write {
+    margin-left:auto;
+    background:var(--surface-3);
+    border:1px solid var(--border-strong);
+    color:var(--warn);
+    border-radius:var(--r-sm);
+    padding:2px 8px;
+    font-family:var(--mono);
+    font-size:11px;
+  }
+  .vault-row {
+    display:flex;
+    align-items:center;
+    gap:14px;
+    padding:12px 16px;
+    border-bottom:1px solid var(--border);
+  }
+  .vault-row:hover { background:var(--surface-2); }
+  .vault-name {
+    font-family:var(--mono);
+    font-size:13px;
+    color:var(--text);
+    flex:1;
+  }
+  .vault-status {
+    font-family:var(--mono);
+    font-size:12px;
+    color:var(--text-subtle);
+  }
+  .vault-status .dot { color:var(--success); }
+  .vault-add {
+    padding:11px 16px;
+    font-family:var(--mono);
+    font-size:12px;
+    color:var(--text-muted);
+    cursor:pointer;
+  }
+  .vault-add:hover { color:var(--pulse); }
+
+  /* ---------- Footer caption ---------- */
+  .footer-caption {
+    position:fixed;
+    bottom:12px;
+    right:16px;
+    font-family:var(--mono);
+    font-size:11px;
+    color:var(--text-subtle);
+    z-index:50;
+  }
+</style>
+</head>
+<body>
+  <div class="app">
+    <!-- ================= SIDEBAR ================= -->
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-chip">⬢</div>
+        <span class="brand-name">agentsfleet</span>
+      </div>
+
+      <div class="workspace-pill">
+        <span>acme-corp</span>
+        <span class="caret">▾</span>
+      </div>
+
+      <nav class="nav">
+        <div class="nav-group">
+          <a class="nav-item"><span class="glyph">◇</span>Dashboard</a>
+        </div>
+
+        <div class="nav-group">
+          <div class="nav-label">Operations</div>
+          <a class="nav-item"><span class="glyph">▸</span>Fleets</a>
+          <a class="nav-item"><span class="glyph">⬡</span>Approvals</a>
+          <a class="nav-item"><span class="glyph">✦</span>Events</a>
+        </div>
+
+        <div class="nav-group">
+          <div class="nav-label">Configuration</div>
+          <a class="nav-item active"><span class="glyph">◈</span>Models &amp; Keys</a>
+          <a class="nav-item"><span class="glyph">⚙</span>Integrations</a>
+        </div>
+
+        <div class="nav-group">
+          <div class="nav-label">Organization</div>
+          <a class="nav-item"><span class="glyph">◇</span>Workspace</a>
+          <a class="nav-item"><span class="glyph">▸</span>Billing</a>
+        </div>
+      </nav>
+    </aside>
+
+    <!-- ================= MAIN ================= -->
+    <main class="main">
+      <div class="content">
+
+        <!-- Page header -->
+        <header class="page-header">
+          <h1 class="page-title">Models &amp; Keys</h1>
+          <p class="page-desc">The model your fleets run on, and the keys behind it.</p>
+        </header>
+
+        <!-- ===== HERO ===== -->
+        <section class="hero">
+          <div class="hero-top">
+            <span class="live-pill"><span class="live-dot"></span>LIVE</span>
+            <span class="eyebrow">Active Model</span>
+          </div>
+
+          <div class="hero-name">claude-sonnet-4-6</div>
+          <div class="hero-sub">via your Anthropic key · <span class="key">sk-ant-••••3f9a</span></div>
+
+          <div class="meta-grid">
+            <div class="meta-cell">
+              <div class="meta-key">Provider</div>
+              <div class="meta-val">Anthropic</div>
+            </div>
+            <div class="meta-cell">
+              <div class="meta-key">Context</div>
+              <div class="meta-val">200k</div>
+            </div>
+            <div class="meta-cell">
+              <div class="meta-key">Billing</div>
+              <div class="meta-val">Provider direct</div>
+            </div>
+          </div>
+
+          <div class="action-row">
+            <button class="btn">Change model</button>
+            <button class="btn">Replace key</button>
+            <button class="btn-ghost">Switch to platform defaults</button>
+          </div>
+        </section>
+
+        <!-- ===== OTHER PROVIDERS ===== -->
+        <section class="section">
+          <div class="section-eyebrow eyebrow">Other Providers</div>
+          <div class="list">
+
+            <div class="list-row">
+              <span class="row-caret">▾</span>
+              <div class="row-main">
+                <div class="row-title">Platform defaults</div>
+                <div class="row-sub">Built-in provider, no key</div>
+              </div>
+              <button class="btn-sm">Use</button>
+            </div>
+
+            <div class="list-row">
+              <span class="row-caret">▾</span>
+              <div class="row-main">
+                <div class="row-title">OpenAI</div>
+                <div class="row-sub"><span class="muted-pill">Not connected</span></div>
+              </div>
+              <button class="btn-sm">Add key</button>
+            </div>
+
+            <div class="list-row">
+              <span class="row-caret">▾</span>
+              <div class="row-main">
+                <div class="row-title">Custom — OpenAI-compatible</div>
+                <div class="row-sub">Gateway / OpenRouter / self-hosted</div>
+              </div>
+              <button class="btn-sm">Configure</button>
+            </div>
+
+          </div>
+        </section>
+
+        <!-- ===== CUSTOM SECRETS ===== -->
+        <section class="section">
+          <div class="section-eyebrow eyebrow">Custom Secrets</div>
+          <div class="vault">
+            <div class="vault-header">
+              <span class="glyph">⌗</span>
+              <span class="label">vault · resolved by name</span>
+              <span class="tag-write">write-only</span>
+            </div>
+
+            <div class="vault-row">
+              <span class="vault-name">STRIPE_API_KEY</span>
+              <span class="vault-status"><span class="dot">●</span> •••• written</span>
+              <button class="btn-sm">Replace</button>
+            </div>
+
+            <div class="vault-row">
+              <span class="vault-name">INTERNAL_WEBHOOK</span>
+              <span class="vault-status"><span class="dot">●</span> •••• written</span>
+              <button class="btn-sm">Replace</button>
+            </div>
+
+            <div class="vault-add">+ Add custom secret</div>
+          </div>
+        </section>
+
+      </div>
+    </main>
+  </div>
+
+  <div class="footer-caption">Variant C — SINGLE page + Active-Model hero (Model + Creds combined)</div>
+</body>
+</html>

@@ -13,7 +13,7 @@ const { withTokenMock, startGithubConnectMock } = vi.hoisted(() => ({
 vi.mock("@/lib/actions/with-token", () => ({ withToken: withTokenMock }));
 vi.mock("@/lib/api/connectors", () => ({ startGithubConnect: startGithubConnectMock }));
 
-import { startGithubConnectAction } from "@/app/(dashboard)/credentials/connector-actions";
+import { startGithubConnectAction } from "@/app/(dashboard)/integrations/connector-actions";
 
 beforeEach(() => {
   vi.clearAllMocks();

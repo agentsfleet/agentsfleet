@@ -21,6 +21,21 @@ describe("dashboard segment loading states", () => {
       expectsTitle: "Workspace",
     },
     {
+      name: "settings/models",
+      importer: () => import("../app/(dashboard)/settings/models/loading"),
+      expectsTitle: "Models",
+    },
+    {
+      name: "credentials",
+      importer: () => import("../app/(dashboard)/credentials/loading"),
+      expectsTitle: "Credentials",
+    },
+    {
+      name: "integrations",
+      importer: () => import("../app/(dashboard)/integrations/loading"),
+      expectsTitle: "Integrations",
+    },
+    {
       name: "events",
       importer: () => import("../app/(dashboard)/events/loading"),
       expectsTitle: "Events",

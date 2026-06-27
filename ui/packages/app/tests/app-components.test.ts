@@ -60,6 +60,7 @@ vi.mock("lucide-react", () => ({
   ZapIcon: (props: Record<string, unknown>) => React.createElement("svg", { ...props, "data-icon": "ZapIcon" }),
   ShieldIcon: (props: Record<string, unknown>) => React.createElement("svg", { ...props, "data-icon": "ShieldIcon" }),
   KeyRoundIcon: (props: Record<string, unknown>) => React.createElement("svg", { ...props, "data-icon": "KeyRoundIcon" }),
+  LinkIcon: (props: Record<string, unknown>) => React.createElement("svg", { ...props, "data-icon": "LinkIcon" }),
   CheckCircle2Icon: (props: Record<string, unknown>) => React.createElement("svg", { ...props, "data-icon": "CheckCircle2Icon" }),
   ServerIcon: (props: Record<string, unknown>) => React.createElement("svg", { ...props, "data-icon": "ServerIcon" }),
   CpuIcon: (props: Record<string, unknown>) => React.createElement("svg", { ...props, "data-icon": "CpuIcon" }),
@@ -253,26 +254,30 @@ describe("app components", () => {
     expect(markup).toContain("Organization");
     expect(markup).toContain("Dashboard");
     expect(markup).toContain("Fleets");
-    // Models and Credentials are two separate Configuration entries now.
+    // Models, Credentials, and Integrations are separate Configuration entries.
     expect(markup).toContain(">Models<");
     expect(markup).toContain(">Credentials<");
+    expect(markup).toContain(">Integrations<");
     expect(markup).toContain('href="/settings/models"');
     // Credentials is its own top-level vault destination.
     expect(markup).toContain('href="/credentials"');
+    // Integrations is its own connectors destination.
+    expect(markup).toContain('href="/integrations"');
     expect(markup).toContain("Approvals");
     expect(markup).toContain("Events");
     expect(markup).toContain("Workspace");
     expect(markup).toContain("Billing");
   });
 
-  it("test_nav_models_credentials_split: nav renders Models→/settings/models and Credentials→/credentials", async () => {
+  it("test_nav_config_destinations: nav renders Models→/settings/models, Credentials→/credentials, Integrations→/integrations", async () => {
     const { default: Shell } = await import("../components/layout/Shell");
     mocks.usePathname.mockReturnValue("/");
     const tree = Shell({ children: React.createElement("div", null, "content") });
     const markup = renderToStaticMarkup(React.createElement(React.Fragment, null, tree));
-    // Two distinct Configuration destinations, each at its own route.
+    // Three distinct Configuration destinations, each at its own route.
     expect(markup).toMatch(/href="\/settings\/models"[\s\S]*?data-icon="CpuIcon"[^>]*><\/svg>Models</);
     expect(markup).toMatch(/href="\/credentials"[\s\S]*?data-icon="KeyRoundIcon"[^>]*><\/svg>Credentials</);
+    expect(markup).toMatch(/href="\/integrations"[\s\S]*?data-icon="LinkIcon"[^>]*><\/svg>Integrations</);
   });
 
   it("Shell sidebar marks the active route via data-active attribute", async () => {
