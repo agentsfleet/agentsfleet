@@ -71,6 +71,47 @@ function integrationStatusVariant({
   return "neutral";
 }
 
+// One action per row, by integration shape. Early returns read top-to-bottom
+// instead of a nested ternary: native connected → nothing; native unconnected →
+// link to store its token; planned+requested → disabled marker; planned →
+// email request that also fires the PostHog event on click.
+function IntegrationAction({
+  integration,
+  isNative,
+  isReady,
+  requested,
+  onRequest,
+}: {
+  integration: Integration;
+  isNative: boolean;
+  isReady: boolean;
+  requested: boolean;
+  onRequest: (integration: Integration) => void;
+}) {
+  if (isNative) {
+    if (isReady) return null;
+    return (
+      <Button asChild variant="outline" size="sm">
+        <a href={ADD_CUSTOM_SECRET_ID}>{CONNECT_GITHUB_LABEL}</a>
+      </Button>
+    );
+  }
+  if (requested) {
+    return (
+      <Button type="button" variant="outline" size="sm" disabled>
+        {REQUESTED_LABEL}
+      </Button>
+    );
+  }
+  return (
+    <Button asChild variant="outline" size="sm">
+      <a href={requestMailto(integration)} onClick={() => onRequest(integration)}>
+        {REQUEST_ACCESS_LABEL}
+      </a>
+    </Button>
+  );
+}
+
 function IntegrationRow({
   integration,
   storedCredentialNames,
@@ -80,12 +121,11 @@ function IntegrationRow({
   integration: Integration;
   storedCredentialNames: ReadonlySet<string>;
   requested: boolean;
-  onRequest: (integrationId: Integration["id"]) => void;
+  onRequest: (integration: Integration) => void;
 }) {
   const Icon = INTEGRATION_ICON[integration.id];
   const isNative = integration.status === INTEGRATION_STATUS.native;
   const isReady = storedCredentialNames.has(integration.requiredSecret);
-  const actionLabel = isNative ? CONNECT_GITHUB_LABEL : REQUEST_ACCESS_LABEL;
   const statusLabel = integrationStatusLabel({ isNative, isReady, requested });
   const statusVariant = integrationStatusVariant({ isNative, isReady, requested });
   const description = isNative ? (
@@ -112,21 +152,13 @@ function IntegrationRow({
           >
             {statusLabel}
           </StatusPill>
-          {isReady && isNative ? null : isNative ? (
-            <Button asChild variant="outline" size="sm">
-              <a href={ADD_CUSTOM_SECRET_ID}>{actionLabel}</a>
-            </Button>
-          ) : requested ? (
-            <Button type="button" variant="outline" size="sm" disabled>
-              {REQUESTED_LABEL}
-            </Button>
-          ) : (
-            <Button asChild variant="outline" size="sm">
-              <a href={requestMailto(integration)} onClick={() => onRequest(integration.id)}>
-                {actionLabel}
-              </a>
-            </Button>
-          )}
+          <IntegrationAction
+            integration={integration}
+            isNative={isNative}
+            isReady={isReady}
+            requested={requested}
+            onRequest={onRequest}
+          />
         </div>
       }
     />
@@ -143,11 +175,15 @@ export default function IntegrationsComingSoon({
     () => new Set(),
   );
 
-  function requestAccess(integrationId: Integration["id"]) {
-    captureProductEvent(EVENTS.integration_requested, { integration_id: integrationId });
+  function requestAccess(integration: Integration) {
+    captureProductEvent(
+      EVENTS.integration_requested,
+      { integration_id: integration.id, integration_name: integration.name },
+      { setPersonProperties: { last_integration_requested: integration.id } },
+    );
     setRequestedIntegrations((prev) => {
       const next = new Set(prev);
-      next.add(integrationId);
+      next.add(integration.id);
       return next;
     });
   }
