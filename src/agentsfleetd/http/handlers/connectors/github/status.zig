@@ -12,8 +12,6 @@ const ec = @import("../../../../errors/error_registry.zig");
 const vault = @import("../../../../state/vault.zig");
 const credential_key = @import("../../../../fleet_runtime/credential_key.zig");
 
-pub const Context = common.Context;
-
 const INTEGRATION_GITHUB = "github";
 const FIELD_INSTALLATION_ID = "installation_id";
 const STATUS_CONNECTED = "connected";
