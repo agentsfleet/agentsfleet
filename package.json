@@ -7,7 +7,7 @@
     "ui/packages/design-system"
   ],
   "devDependencies": {
-    "@redocly/cli": "^2.34.0"
+    "@redocly/cli": "^2.35.1"
   },
   "overrides": {
     "playwright-core": "1.60.0"
