@@ -47,12 +47,7 @@ body {
 }
 
 .app-glow-surface[data-glow="dashboard"]::before {
-  left: 58%;
-  top: 18%;
-  opacity: 0.18;
-  /* The ambient dashboard glow drifts a few percent over ~24s — alive, never
-   * busy. Neutralised by the prefers-reduced-motion block at the foot. */
-  animation: glow-drift 24s ease-in-out infinite;
+  display: none;
 }
 
 /* ── Dashboard motion — restrained, app-surface only, reduced-motion-gated ──
@@ -65,6 +60,20 @@ body {
  * prefers-reduced-motion block at the foot of this file; the hover/press lifts
  * sit inside an explicit no-preference query so they vanish under the same
  * preference rather than relying on a duration override. */
+
+/* Content canvas: preview-matched dual glow. The header and sidebar stay flat;
+ * only the working area carries the ambient field. */
+.app-dashboard-canvas {
+  background:
+    radial-gradient(1150px 660px at 94% -16%, var(--pulse-glow), transparent 60%),
+    radial-gradient(620px 460px at 66% 0%, color-mix(in srgb, var(--info) 7%, transparent), transparent 55%),
+    radial-gradient(720px 540px at 4% 116%, color-mix(in srgb, var(--pulse) 8%, transparent), transparent 60%),
+    var(--bg);
+  background-repeat: no-repeat;
+  background-size: 150% 150%, 150% 150%, 150% 150%, auto;
+  background-position: 90% 0%, 60% 0%, 0% 100%, 0 0;
+  animation: glow-drift 26s ease-in-out infinite;
+}
 
 /* Content rises in as it mounts / on route change. Apply to a container whose
  * immediate children are the page's top-level sections (the Shell content
@@ -93,15 +102,13 @@ body {
 .app-content-rise > *:nth-child(6) { animation-delay: 0.27s; }
 .app-content-rise > *:nth-child(n + 7) { animation-delay: 0.3s; }
 
-/* 0%/100% hold the base transform (matching .app-glow-surface::before) so the
- * static reduced-motion frame lands where the un-animated glow sits. */
 @keyframes glow-drift {
   0%,
   100% {
-    transform: translate3d(-50%, -50%, 0);
+    background-position: 90% 0%, 60% 0%, 0% 100%, 0 0;
   }
   50% {
-    transform: translate3d(-46%, -54%, 0);
+    background-position: 80% 7%, 67% 4%, 7% 95%, 0 0;
   }
 }
 
@@ -116,6 +123,19 @@ body {
   }
   .app-glow-surface button:active {
     transform: translateY(1px);
+  }
+  .app-dashboard-canvas [data-dashboard-panel],
+  .app-dashboard-canvas [data-terminal-panel] {
+    transition:
+      border-color 0.2s ease,
+      filter 0.16s ease,
+      transform 0.16s ease;
+  }
+  .app-dashboard-canvas [data-dashboard-panel]:hover,
+  .app-dashboard-canvas [data-terminal-panel]:hover {
+    border-color: var(--border-strong);
+    filter: brightness(1.02);
+    transform: translateY(-1px);
   }
 }
 

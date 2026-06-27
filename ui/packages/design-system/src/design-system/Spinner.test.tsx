@@ -10,16 +10,19 @@ describe("Spinner", () => {
     expect(el.getAttribute("aria-busy")).toBe("true");
   });
 
-  it("renders the brand wake-pulse dot, not a spinning icon", () => {
+  it("renders the preview-style arc with the brand wake-pulse dot", () => {
     const { getByRole } = render(<Spinner />);
-    const dot = getByRole("status").firstElementChild as HTMLElement;
+    const orbit = getByRole("status").querySelector("[data-spinner-orbit]") as HTMLElement;
+    const dot = orbit.querySelector("[data-live]") as HTMLElement;
+    expect(orbit.className).toContain("place-items-center");
     expect(dot.hasAttribute("data-live")).toBe(true);
     expect(dot.className).toContain("bg-pulse");
   });
 
   it("shows a visible label for standalone loaders", () => {
-    const { getByText } = render(<Spinner label="Loading agents…" />);
+    const { getByRole, getByText } = render(<Spinner label="Loading agents…" />);
     expect(getByText("Loading agents…")).toBeTruthy();
+    expect(getByRole("status").className).toContain("font-mono");
   });
 
   it("falls back to a screen-reader-only label when no visible label", () => {
@@ -29,7 +32,7 @@ describe("Spinner", () => {
 
   it("scales the dot by size", () => {
     const { getByRole } = render(<Spinner size="lg" />);
-    const dot = getByRole("status").firstElementChild as HTMLElement;
-    expect(dot.className).toContain("h-5");
+    const orbit = getByRole("status").querySelector("[data-spinner-orbit]") as HTMLElement;
+    expect(orbit.className).toContain("h-5");
   });
 });

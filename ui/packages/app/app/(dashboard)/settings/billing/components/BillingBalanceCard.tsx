@@ -36,7 +36,7 @@ export default function BillingBalanceCard({ billing, summary }: BillingBalanceC
             <div className="font-mono text-label uppercase tracking-label text-muted-foreground">
               Balance
             </div>
-            <div className="mt-1 text-3xl font-semibold tracking-tight tabular-nums">
+            <div className="mt-1 text-display-md font-semibold leading-display-md tracking-normal tabular-nums">
               <span
                 data-exhausted={isExhausted}
                 className={isExhausted ? "text-destructive" : undefined}

@@ -121,7 +121,7 @@ describe("CredentialsList component", () => {
     await user.click(screen.getByLabelText(/Edit credential openai-key/i));
     await waitFor(() => expect(screen.getByText(/Edit credential .*openai-key/i)).toBeTruthy());
     expect(screen.getByRole("button", { name: /^rotate$/i })).toBeTruthy();
-    expect(screen.getByText(/re-enter the full secret to replace/i)).toBeTruthy();
+    expect(screen.getByText(/enter the full replacement secret/i)).toBeTruthy();
     // There is no "reveal"/"show" control that would expose the stored value.
     expect(screen.queryByRole("button", { name: /reveal|show secret/i })).toBeNull();
   });

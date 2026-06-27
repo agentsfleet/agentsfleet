@@ -64,7 +64,7 @@ export async function installViaUI(page: Page, name: string): Promise<string> {
   await page.getByRole("button", { name: "Paste SKILL.md instead" }).click();
   await page.getByLabel("SKILL.md body").fill(fixtureSkillMd(name));
   await page.getByLabel("TRIGGER.md body").fill(fixtureTriggerMd(name));
-  await page.getByRole("button", { name: "Install teammate" }).click();
+  await page.getByRole("button", { name: "Install fleet" }).click();
 
   // Success path: router.push(`/fleets/${fleet_id}`). Exclude the
   // /fleets/new sentinel so we don't false-match an install that failed and

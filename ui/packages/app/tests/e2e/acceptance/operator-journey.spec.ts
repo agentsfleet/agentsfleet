@@ -44,7 +44,7 @@ async function clickSidebarLink(page: Page, href: string, destination: RegExp): 
 }
 
 async function closeApiKeyReveal(page: Page): Promise<void> {
-  await page.getByRole("button", { name: /stored it/i }).click();
+  await page.getByRole("button", { name: /done/i }).click();
   await expect(page.getByLabel(/api key value/i)).toHaveCount(0);
 }
 

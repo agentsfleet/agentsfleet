@@ -173,7 +173,7 @@ function CredentialDialogs({
         open={target !== null}
         onOpenChange={onDeleteClose}
         title={`Delete credential "${target ?? ""}"?`}
-        description="Fleets referencing this name will fail to resolve until it is re-added. This cannot be undone."
+        description="Deleting breaks fleets that reference it. This cannot be undone."
         confirmLabel="Delete"
         intent="destructive"
         errorMessage={error}

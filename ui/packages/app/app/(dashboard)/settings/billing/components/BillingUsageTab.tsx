@@ -99,7 +99,7 @@ export default function BillingUsageTab({ initialCharges, initialCursor }: Billi
       <EmptyState
         icon={<ActivityIcon size={28} />}
         title="No billable events yet"
-        description="Charges appear here once your Fleets start running."
+        description="Charges appear once fleets run."
       />
     );
   }

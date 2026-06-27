@@ -42,7 +42,7 @@ test.describe("settings api-keys page", () => {
     expect(raw.startsWith("agt_t")).toBe(true);
 
     // Close — the raw value must not survive in the DOM (Invariant 1).
-    await page.getByRole("button", { name: /stored it/i }).click();
+    await page.getByRole("button", { name: /done/i }).click();
     await expect(page.getByLabel(/api key value/i)).toHaveCount(0);
     await expect(page.getByText(raw, { exact: false })).toHaveCount(0);
 

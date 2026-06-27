@@ -8,7 +8,7 @@ import {
   ActivityIcon,
   SettingsIcon,
   BookOpenIcon,
-  SkullIcon,
+  BotIcon,
   CheckCircle2Icon,
   CpuIcon,
   KeyRoundIcon,
@@ -48,7 +48,7 @@ const TOP_NAV: NavEntry[] = [
 
 // The live work — what the fleets do.
 const OPERATIONS_NAV: NavEntry[] = [
-  { label: "Fleets", href: "/fleets", icon: SkullIcon },
+  { label: "Fleets", href: "/fleets", icon: BotIcon },
   { label: "Approvals", href: "/approvals", icon: CheckCircle2Icon },
   { label: "Events", href: "/events", icon: ActivityIcon },
 ];
@@ -154,10 +154,10 @@ export default function Shell({
         <SidebarNav isActive={isActive} onNavigate={() => {}} isPlatformAdmin={isPlatformAdmin} />
       </aside>
 
-      <main className="p-6 md:p-8 overflow-auto">
+      <main className="app-dashboard-canvas p-6 md:p-8 overflow-auto">
         {/* `app-content-rise` rises the page's top-level sections in on mount /
          * route change (globals.css, reduced-motion-gated). */}
-        <div className="app-content-rise mx-auto w-full max-w-content">{children}</div>
+        <div className="app-content-rise w-full max-w-content">{children}</div>
       </main>
     </div>
   );

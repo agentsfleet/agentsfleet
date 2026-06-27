@@ -1,69 +1,209 @@
-import { Badge } from "@agentsfleet/design-system";
+"use client";
+
+import type { ComponentType } from "react";
+import { useState } from "react";
+import {
+  Button,
+  DashboardRow,
+  DashboardRowGroup,
+  StatusPill,
+  type StatusPillVariant,
+} from "@agentsfleet/design-system";
 import { BriefcaseIcon, GitPullRequestIcon, HashIcon } from "lucide-react";
+import {
+  INTEGRATION_CATALOG,
+  INTEGRATION_STATUS,
+  type Integration,
+} from "@/lib/integrations/catalog";
+import { EVENTS } from "@/lib/analytics/events";
+import { captureProductEvent } from "@/lib/analytics/posthog";
 
-// Integrations render as "Planned" with no Connect control — the first-class
-// one-click connectors (Connect → auth flow → minted token) are a separate
-// milestone. Until they land, a fleet reaches these tools by storing the token
-// as a custom secret (the bridge hint below). Config-driven rows (RULE CFG):
-// adding a future integration is a data row, not a new branch.
-
+const NOT_CONNECTED_LABEL = "Not connected";
+const CONNECTED_LABEL = "Connected";
+const TOKEN_STORED_LABEL = "Token stored";
 const PLANNED_LABEL = "Planned";
+const REQUESTED_LABEL = "Requested";
+const CONNECT_GITHUB_LABEL = "Connect GitHub";
+const REQUEST_ACCESS_LABEL = "Request access";
+const ADD_CUSTOM_SECRET_ID = "#add-custom-secret";
+// Planned-connector access requests route to the team inbox; the click also
+// fires the EVENTS.integration_requested PostHog event so demand can be
+// filtered and studied.
+const REQUEST_EMAIL = "agentsfleet@agentmail.to";
 
-type Integration = {
-  name: string;
-  description: string;
-  Icon: React.ComponentType<{ size?: number }>;
-};
+function requestMailto(integration: Integration): string {
+  const subject = `Integration request: ${integration.name}`;
+  const body = `I'd like the ${integration.name} integration for agentsfleet.`;
+  return `mailto:${REQUEST_EMAIL}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+}
 
-const INTEGRATIONS: readonly Integration[] = [
-  {
-    name: "GitHub",
-    description: "Run fleets on issues, pull requests, and CI failures.",
-    Icon: GitPullRequestIcon,
-  },
-  {
-    name: "Zoho",
-    description: "Summarize Sprints, act on Desk tickets.",
-    Icon: BriefcaseIcon,
-  },
-  {
-    name: "Slack",
-    description: "Mention a fleet in channels; post run results.",
-    Icon: HashIcon,
-  },
-] as const;
+const INTEGRATION_ICON = {
+  github: GitPullRequestIcon,
+  zoho: BriefcaseIcon,
+  slack: HashIcon,
+} as const satisfies Record<Integration["id"], ComponentType<{ size?: number }>>;
 
-function IntegrationRow({ name, description, Icon }: Integration) {
+function integrationStatusLabel({
+  isNative,
+  isReady,
+  requested,
+}: {
+  isNative: boolean;
+  isReady: boolean;
+  requested: boolean;
+}) {
+  if (isReady) return isNative ? CONNECTED_LABEL : TOKEN_STORED_LABEL;
+  if (isNative) return NOT_CONNECTED_LABEL;
+  return requested ? REQUESTED_LABEL : PLANNED_LABEL;
+}
+
+function integrationStatusVariant({
+  isReady,
+  isNative,
+  requested,
+}: {
+  isReady: boolean;
+  isNative: boolean;
+  requested: boolean;
+}): StatusPillVariant {
+  if (isReady) return "success";
+  if (isNative || requested) return "warning";
+  return "neutral";
+}
+
+// One action per row, by integration shape. Early returns read top-to-bottom
+// instead of a nested ternary: native connected → nothing; native unconnected →
+// link to store its token; planned+requested → disabled marker; planned →
+// email request that also fires the PostHog event on click.
+function IntegrationAction({
+  integration,
+  isNative,
+  isReady,
+  requested,
+  onRequest,
+}: {
+  integration: Integration;
+  isNative: boolean;
+  isReady: boolean;
+  requested: boolean;
+  onRequest: (integration: Integration) => void;
+}) {
+  if (isNative) {
+    if (isReady) return null;
+    return (
+      <Button asChild variant="outline" size="sm">
+        <a href={ADD_CUSTOM_SECRET_ID}>{CONNECT_GITHUB_LABEL}</a>
+      </Button>
+    );
+  }
+  if (requested) {
+    return (
+      <Button type="button" variant="outline" size="sm" disabled>
+        {REQUESTED_LABEL}
+      </Button>
+    );
+  }
   return (
-    <div
-      data-testid={`integration-${name.toLowerCase()}`}
-      className="flex items-center gap-3 rounded-md border border-border bg-card px-4 py-3"
-    >
-      <span className="flex-none text-muted-foreground" aria-hidden="true">
-        <Icon size={16} />
-      </span>
-      <div className="min-w-0 flex-1">
-        <div className="font-medium text-foreground">{name}</div>
-        <div className="text-xs text-muted-foreground">{description}</div>
-      </div>
-      <Badge variant="default">{PLANNED_LABEL}</Badge>
-    </div>
+    <Button asChild variant="outline" size="sm">
+      <a href={requestMailto(integration)} onClick={() => onRequest(integration)}>
+        {REQUEST_ACCESS_LABEL}
+      </a>
+    </Button>
   );
 }
 
-export default function IntegrationsComingSoon() {
+function IntegrationRow({
+  integration,
+  storedCredentialNames,
+  requested,
+  onRequest,
+}: {
+  integration: Integration;
+  storedCredentialNames: ReadonlySet<string>;
+  requested: boolean;
+  onRequest: (integration: Integration) => void;
+}) {
+  const Icon = INTEGRATION_ICON[integration.id];
+  const isNative = integration.status === INTEGRATION_STATUS.native;
+  const isReady = storedCredentialNames.has(integration.requiredSecret);
+  const statusLabel = integrationStatusLabel({ isNative, isReady, requested });
+  const statusVariant = integrationStatusVariant({ isNative, isReady, requested });
+  const description = isNative ? (
+    <>
+      {integration.description} Store{" "}
+      <code className="font-mono">{integration.requiredSecret}</code>.
+    </>
+  ) : (
+    <>
+      Planned. Use <code className="font-mono">{integration.requiredSecret}</code> for now.
+    </>
+  );
   return (
-    <div className="space-y-3" data-testid="integrations-coming-soon">
-      <p className="text-xs text-muted-foreground">
-        Connectors are on the roadmap — until then, store an integration token as a{" "}
-        <span className="font-medium text-foreground">custom secret</span> above (e.g.{" "}
-        <code className="font-mono">GITHUB_TOKEN</code>) and your fleets use it today.
+    <DashboardRow
+      data-testid={`integration-${integration.id}`}
+      icon={<Icon size={16} />}
+      title={integration.name}
+      description={description}
+      action={
+        <div className="flex items-center gap-2">
+          <StatusPill
+            variant={statusVariant}
+            dot={isReady || isNative || requested}
+          >
+            {statusLabel}
+          </StatusPill>
+          <IntegrationAction
+            integration={integration}
+            isNative={isNative}
+            isReady={isReady}
+            requested={requested}
+            onRequest={onRequest}
+          />
+        </div>
+      }
+    />
+  );
+}
+
+export default function IntegrationsComingSoon({
+  credentialNames = [],
+}: {
+  credentialNames?: readonly string[];
+}) {
+  const storedCredentialNames = new Set(credentialNames);
+  const [requestedIntegrations, setRequestedIntegrations] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
+
+  function requestAccess(integration: Integration) {
+    captureProductEvent(
+      EVENTS.integration_requested,
+      { integration_id: integration.id, integration_name: integration.name },
+      { setPersonProperties: { last_integration_requested: integration.id } },
+    );
+    setRequestedIntegrations((prev) => {
+      const next = new Set(prev);
+      next.add(integration.id);
+      return next;
+    });
+  }
+
+  return (
+    <div className="space-y-md" data-testid="integrations-coming-soon">
+      <p className="text-body-sm leading-body-sm text-muted-foreground">
+        GitHub connects now. Request Zoho or Slack if needed.
       </p>
-      <div className="flex flex-col gap-2">
-        {INTEGRATIONS.map((integration) => (
-          <IntegrationRow key={integration.name} {...integration} />
+      <DashboardRowGroup>
+        {INTEGRATION_CATALOG.map((integration) => (
+          <IntegrationRow
+            key={integration.id}
+            integration={integration}
+            storedCredentialNames={storedCredentialNames}
+            requested={requestedIntegrations.has(integration.id)}
+            onRequest={requestAccess}
+          />
         ))}
-      </div>
+      </DashboardRowGroup>
     </div>
   );
 }
