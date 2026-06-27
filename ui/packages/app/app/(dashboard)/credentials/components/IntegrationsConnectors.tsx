@@ -32,21 +32,12 @@ const CONNECT_GITHUB_LABEL = "Connect GitHub";
 const RECONNECT_GITHUB_LABEL = "Reconnect GitHub";
 const CONNECTING_LABEL = "Connecting…";
 const REQUEST_ACCESS_LABEL = "Request access";
-// Planned-connector access requests route to the team inbox and fire the
-// EVENTS.integration_requested PostHog event so demand can be filtered.
-const REQUEST_EMAIL = "agentsfleet@agentmail.to";
 
 const INTEGRATION_ICON = {
   github: GitPullRequestIcon,
   zoho: BriefcaseIcon,
   slack: HashIcon,
 } as const satisfies Record<Integration["id"], ComponentType<{ size?: number }>>;
-
-function requestMailto(integration: Integration): string {
-  const subject = `Integration request: ${integration.name}`;
-  const body = `I'd like the ${integration.name} integration for agentsfleet.`;
-  return `mailto:${REQUEST_EMAIL}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-}
 
 // ── GitHub: App-connect (browser OAuth install, no token paste) ──────────────
 
@@ -183,10 +174,13 @@ function PlannedConnectorRow({
               {REQUESTED_LABEL}
             </Button>
           ) : (
-            <Button asChild variant="outline" size="sm">
-              <a href={requestMailto(integration)} onClick={() => onRequest(integration)}>
-                {REQUEST_ACCESS_LABEL}
-              </a>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => onRequest(integration)}
+            >
+              {REQUEST_ACCESS_LABEL}
             </Button>
           )}
         </div>

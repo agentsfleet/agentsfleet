@@ -233,6 +233,24 @@ describe("Credentials vault page", () => {
     expect(markup).toContain(STRIPE_SECRET_NAME);
   });
 
+  it("degrades the GitHub connector to not-connected when the status endpoint errors", async () => {
+    vi.mocked(getTenantProvider).mockResolvedValue(platformProvider());
+    vi.mocked(listCredentials).mockResolvedValue({ credentials: [] });
+    // getGithubConnector is the only client on this page not module-mocked, so it
+    // hits the real request → global fetch. Force that one call to reject: the page
+    // must catch it, degrade the connector to "not connected" (never fabricate a
+    // connected pill), and still render the vault rather than throw.
+    const stubbedFetch = global.fetch;
+    global.fetch = vi.fn().mockRejectedValue(new Error("connector endpoint down")) as unknown as typeof fetch;
+    try {
+      const { default: Page } = await import("../app/(dashboard)/credentials/page");
+      const markup = renderToStaticMarkup(await Page());
+      expect(markup).toContain(">Credentials<");
+    } finally {
+      global.fetch = stubbedFetch;
+    }
+  });
+
   it("test_custom_secret_create_and_status: custom secrets list + an add form for named JSON objects", async () => {
     // Platform mode → no active model credential, so every stored credential is a
     // custom secret and the providers group shows its empty state.
