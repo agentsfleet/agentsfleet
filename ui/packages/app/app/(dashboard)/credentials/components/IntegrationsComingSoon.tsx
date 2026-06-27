@@ -26,6 +26,16 @@ const REQUESTED_LABEL = "Requested";
 const CONNECT_GITHUB_LABEL = "Connect GitHub";
 const REQUEST_ACCESS_LABEL = "Request access";
 const ADD_CUSTOM_SECRET_ID = "#add-custom-secret";
+// Planned-connector access requests route to the team inbox; the click also
+// fires the EVENTS.integration_requested PostHog event so demand can be
+// filtered and studied.
+const REQUEST_EMAIL = "agentsfleet@agentmail.to";
+
+function requestMailto(integration: Integration): string {
+  const subject = `Integration request: ${integration.name}`;
+  const body = `I'd like the ${integration.name} integration for agentsfleet.`;
+  return `mailto:${REQUEST_EMAIL}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+}
 
 const INTEGRATION_ICON = {
   github: GitPullRequestIcon,
@@ -106,15 +116,15 @@ function IntegrationRow({
             <Button asChild variant="outline" size="sm">
               <a href={ADD_CUSTOM_SECRET_ID}>{actionLabel}</a>
             </Button>
+          ) : requested ? (
+            <Button type="button" variant="outline" size="sm" disabled>
+              {REQUESTED_LABEL}
+            </Button>
           ) : (
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={requested}
-              onClick={() => onRequest(integration.id)}
-            >
-              {requested ? REQUESTED_LABEL : actionLabel}
+            <Button asChild variant="outline" size="sm">
+              <a href={requestMailto(integration)} onClick={() => onRequest(integration.id)}>
+                {actionLabel}
+              </a>
             </Button>
           )}
         </div>

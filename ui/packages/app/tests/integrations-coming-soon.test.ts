@@ -49,7 +49,7 @@ describe("IntegrationsComingSoon (test_integrations_coming_soon)", () => {
     expect(screen.queryByRole("link", { name: /connect github/i })).toBeNull();
   });
 
-  it("renders Zoho and Slack as planned connectors with request controls", () => {
+  it("renders Zoho and Slack as planned connectors that request access via email", () => {
     render(React.createElement(IntegrationsComingSoon));
 
     for (const name of PLANNED_INTEGRATIONS) {
@@ -57,6 +57,14 @@ describe("IntegrationsComingSoon (test_integrations_coming_soon)", () => {
       expect(row).toBeTruthy();
       expect(row.textContent).toContain("Planned");
       expect(row.textContent).toContain("Request access");
+    }
+    // The request control is a mailto link to the team inbox.
+    const requestLinks = screen.getAllByRole("link", { name: "Request access" });
+    expect(requestLinks).toHaveLength(PLANNED_INTEGRATIONS.length);
+    for (const link of requestLinks) {
+      const href = link.getAttribute("href") ?? "";
+      expect(href.startsWith("mailto:agentsfleet@agentmail.to")).toBe(true);
+      expect(href).toContain("subject=");
     }
     expect(screen.queryByText(/^connect$/i)).toBeNull();
   });
@@ -69,15 +77,17 @@ describe("IntegrationsComingSoon (test_integrations_coming_soon)", () => {
     expect(zoho.textContent).toContain("Request access");
   });
 
-  it("captures interest when a planned connector is requested", () => {
+  it("captures interest and marks Requested when a planned connector is requested", () => {
     render(React.createElement(IntegrationsComingSoon));
-    fireEvent.click(screen.getAllByRole("button", { name: "Request access" })[0]!);
+    fireEvent.click(screen.getAllByRole("link", { name: "Request access" })[0]!);
 
     expect(captureProductEventMock).toHaveBeenCalledWith(EVENTS.integration_requested, {
       integration_id: "zoho",
     });
     const zoho = screen.getByTestId("integration-zoho");
     expect(zoho.textContent).toContain("Requested");
+    // After requesting, the control is a disabled button (no second submit).
+    expect(zoho.querySelector("button[disabled]")).toBeTruthy();
     expect(JSON.stringify(captureProductEventMock.mock.calls)).not.toContain("ZOHO_TOKEN");
   });
 
