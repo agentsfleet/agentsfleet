@@ -63,6 +63,50 @@ describe("dashboard primitives", () => {
     expect(pill.className).toContain("text-warning");
   });
 
+  it("renders a dashboard row with icon and meta, omitting description and action", () => {
+    render(
+      <DashboardRow icon={<span>ic</span>} title="OpenAI" meta={<span>meta-info</span>} />,
+    );
+    expect(screen.getByText("ic")).toBeTruthy(); // icon branch
+    expect(screen.getByText("OpenAI")).toBeTruthy();
+    expect(screen.getByText("meta-info")).toBeTruthy(); // meta branch
+    // description + action omitted exercises their null branches
+    expect(screen.queryByText("Token required")).toBeNull();
+  });
+
+  it("renders a status pill with a status dot", () => {
+    render(
+      <StatusPill variant="success" dot>
+        Connected
+      </StatusPill>,
+    );
+    const pill = screen.getByText("Connected");
+    expect(pill).toHaveAttribute("data-variant", "success");
+    expect(pill.querySelector("span.rounded-full")).toBeTruthy(); // dot branch
+  });
+
+  it("renders a bordered meta grid", () => {
+    render(<MetaGrid bordered items={[{ label: "Account", value: "managed" }]} />);
+    expect(screen.getByText("Account").closest("dl")?.className).toContain("border-t");
+  });
+
+  it("renders a dashboard panel as a child element via asChild (Slot)", () => {
+    render(
+      <DashboardPanel asChild>
+        <section data-testid="as-child">panel as section</section>
+      </DashboardPanel>,
+    );
+    const el = screen.getByTestId("as-child");
+    expect(el.nodeName).toBe("SECTION");
+    expect(el).toHaveAttribute("data-dashboard-panel", "");
+  });
+
+  it("renders terminal chrome without a tag", () => {
+    render(<TerminalPanel title="vault">body only</TerminalPanel>);
+    expect(screen.getByText("body only")).toBeTruthy();
+    expect(screen.queryByText("write-only")).toBeNull(); // tag null branch
+  });
+
   it("renders terminal chrome with title and tag", () => {
     render(
       <TerminalPanel title="vault" tag="write-only">
