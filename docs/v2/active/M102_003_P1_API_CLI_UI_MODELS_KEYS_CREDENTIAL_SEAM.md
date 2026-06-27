@@ -4,11 +4,12 @@
 **Milestone:** M102
 **Workstream:** 003
 **Date:** Jun 28, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — operator-facing model/key surface + the credential read API both change
 **Categories:** API, CLI, UI
 **Batch:** B1 — §1–§2 (backend seam) land before §3–§6 consume the shape; §7 (docs) gates CHORE-close
 **Branch:** feat/m102-agent-identity-proxy — rides PR #458 (per Indy, 2026-06-28)
+**Test Baseline:** unit=2204 integration=208 (zig test-depth gate at CHORE-open)
 **Depends on:** M102_001 (shares the credential vault + tenant_provider surfaces #458 already opens)
 **Provenance:** agent-generated (pre-spec) — live chat scoping with Indy 2026-06-28; supersedes the spec-less redesign that previously rode #458 (resolves prior Risk R1).
 
