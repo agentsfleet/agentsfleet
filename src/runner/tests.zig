@@ -25,6 +25,7 @@ test {
     _ = @import("child_supervisor_read.zig");
     _ = @import("child_supervisor_result.zig");
     _ = @import("child_supervisor_test.zig");
+    _ = @import("credential_mint_e2e_test.zig");
     _ = @import("child_process.zig");
     _ = @import("child_exec.zig");
     _ = @import("cmd/version.zig");

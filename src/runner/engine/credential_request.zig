@@ -274,3 +274,14 @@ test "test_mint_resolver_dedups_per_call" {
     try testing.expectEqualStrings("ghs_once", t1);
     try testing.expectEqual(t1.ptr, t2.ptr); // same cached bytes, not re-minted
 }
+
+test "mint: a failing allocator fails closed with OutOfMemory, writes no frame, no leak" {
+    const clock = @import("common").clock;
+    const h = try Harness.init(clock.nowMillis() + 5_000);
+    defer h.deinit();
+    // The request-frame stringify is the first (and failing) allocation: the
+    // round-trip aborts with OutOfMemory before any byte reaches the request pipe,
+    // so the child fails its tool call closed rather than blocking on a half-write.
+    var failing = std.testing.FailingAllocator.init(testing.allocator, .{ .fail_index = 0 });
+    try testing.expectError(error.OutOfMemory, mint(h.ch, failing.allocator(), "github", null));
+}
