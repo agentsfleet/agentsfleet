@@ -209,10 +209,10 @@ describe("Credentials vault page", () => {
     const { default: Page } = await import("../app/(dashboard)/credentials/page");
     const markup = renderToStaticMarkup(await Page());
 
-    // Header + Add credential action.
+    // Header (no generic "Add credential" action — each kind self-serves inline).
     expect(markup).toContain(">Credentials<");
     expect(markup).toContain("Write-only keys for models, tools, and secrets.");
-    expect(markup).toContain("Add credential");
+    expect(markup).not.toContain("Add credential");
 
     // Kinds strip carries all three kinds.
     expect(markup).toContain('data-testid="vault-kinds-strip"');
@@ -248,7 +248,7 @@ describe("Credentials vault page", () => {
     expect(markup).toContain('data-custom-secrets-list="ws_1"');
     expect(markup).toContain(STRIPE_SECRET_NAME);
     expect(markup).toContain('data-add-credential-form="ws_1"');
-    expect(markup).toContain("secrets.NAME.FIELD");
+    expect(markup).toContain("Add a custom secret");
     // No active model key: provider rows still render, but no fake reference is made.
     expect(markup).toContain('data-provider-credential-rows-client="ws_1"');
     expect(markup).toContain("provider keys");
