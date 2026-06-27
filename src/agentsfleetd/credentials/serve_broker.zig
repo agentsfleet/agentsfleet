@@ -33,6 +33,7 @@ pub const GITHUB_APP_VAULT_KEY: []const u8 = "github-app";
 
 const FIELD_APP_ID: []const u8 = "app_id";
 const FIELD_PRIVATE_KEY_PEM: []const u8 = "private_key_pem";
+const FIELD_APP_SLUG: []const u8 = "app_slug";
 
 /// Structured log message for an unconfigured/incomplete github platform key
 /// (RULE UFS — one spelling across the vault-miss + missing-field sites).
@@ -156,6 +157,21 @@ pub fn loadGithubApp(alloc: std.mem.Allocator, conn: *pg.Conn, admin_ws_id: []co
     };
     log.info("credential_broker_github_configured", .{ .app_id = app_id });
     return .{ .app_id = app_id, .private_key_pem = pem };
+}
+
+/// Load the platform GitHub App slug from `(admin_ws_id, "github-app")` for the
+/// connect install URL (`github.com/apps/{slug}/installations/new`). Duped into
+/// `alloc` (process-lifetime; the caller frees at shutdown). Null on any miss so
+/// the connect route degrades closed rather than minting a dead install URL.
+pub fn loadGithubAppSlug(alloc: std.mem.Allocator, pool: *pg.Pool, admin_ws_id: []const u8) ?[]const u8 {
+    if (admin_ws_id.len == 0) return null;
+    const conn = pool.acquire() catch return null;
+    defer pool.release(conn);
+    var parsed = vault.loadJson(alloc, conn, admin_ws_id, GITHUB_APP_VAULT_KEY) catch return null;
+    defer parsed.deinit();
+    const slug_v = parsed.value.object.get(FIELD_APP_SLUG) orelse return null;
+    if (slug_v != .string) return null;
+    return alloc.dupe(u8, slug_v.string) catch null;
 }
 
 fn logMissing(field: []const u8) ?integration.GithubApp {

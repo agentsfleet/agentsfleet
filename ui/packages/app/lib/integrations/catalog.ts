@@ -4,10 +4,14 @@ export const INTEGRATION_STATUS = {
 } as const;
 
 export const INTEGRATION_AUTH = {
+  // GitHub: one-click browser OAuth App install — connect once, the broker mints
+  // installation tokens on demand. No token is ever pasted or stored by the user.
+  appConnect: "app_connect",
+  // Zoho/Slack: paste a token into the vault for now (custom-secret bridge until
+  // each grows a native connector).
   vaultSecret: "vault_secret",
 } as const;
 
-export const GITHUB_TOKEN_SECRET = "GITHUB_TOKEN";
 export const ZOHO_TOKEN_SECRET = "ZOHO_TOKEN";
 export const SLACK_BOT_TOKEN_SECRET = "SLACK_BOT_TOKEN";
 
@@ -16,8 +20,7 @@ export const INTEGRATION_CATALOG = [
     id: "github",
     name: "GitHub",
     status: INTEGRATION_STATUS.native,
-    auth: INTEGRATION_AUTH.vaultSecret,
-    requiredSecret: GITHUB_TOKEN_SECRET,
+    auth: INTEGRATION_AUTH.appConnect,
     description: "Run fleets on issues and pull requests.",
   },
   {
