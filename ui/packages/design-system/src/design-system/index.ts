@@ -59,6 +59,7 @@ export {
   type BadgeProps,
   type BadgeVariant,
 } from "./Badge";
+export { Refpill, type RefpillProps } from "./Refpill";
 export { Input, type InputProps } from "./Input";
 export { Textarea, type TextareaProps } from "./Textarea";
 export { Label, type LabelProps } from "./Label";

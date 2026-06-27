@@ -32,6 +32,8 @@ export {
   StatusPill,
   type StatusPillProps,
   type StatusPillVariant,
+  Refpill,
+  type RefpillProps,
   TerminalPanel,
   type TerminalPanelProps,
   Terminal,

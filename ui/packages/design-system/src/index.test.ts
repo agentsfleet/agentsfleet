@@ -14,6 +14,7 @@ describe("design-system public exports", () => {
     expect(DesignSystem.DashboardRow).toBeDefined();
     expect(DesignSystem.MetaGrid).toBeDefined();
     expect(DesignSystem.StatusPill).toBeDefined();
+    expect(DesignSystem.Refpill).toBeDefined();
     expect(DesignSystem.TerminalPanel).toBeDefined();
     expect(DesignSystem.Terminal).toBeDefined();
     expect(DesignSystem.Grid).toBeDefined();
