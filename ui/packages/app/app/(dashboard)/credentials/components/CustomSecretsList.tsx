@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Button, Time } from "@agentsfleet/design-system";
+import { Button, Refpill, Time } from "@agentsfleet/design-system";
 import type { CredentialSummary } from "@/lib/api/credentials";
 import EditCredentialDialog from "./EditCredentialDialog";
 
@@ -28,13 +28,9 @@ function SecretRefCell({ referenced }: { referenced: boolean }) {
   if (!referenced) {
     return <span className="text-xs text-text-subtle">{NOT_REFERENCED}</span>;
   }
-  // Styled "refpill" per the design preview — a bordered mono chip naming what
-  // references the secret, instead of bare text.
-  return (
-    <span className="inline-flex items-center rounded-full border border-border bg-secondary px-2 py-0.5 font-mono text-label leading-none text-muted-foreground">
-      {MODEL_SETUP_REF}
-    </span>
-  );
+  // Reusable Refpill primitive (design preview `.refpill`) names what references
+  // the secret, instead of bare text.
+  return <Refpill>{MODEL_SETUP_REF}</Refpill>;
 }
 
 export default function CustomSecretsList({ workspaceId, secrets, referencedName = null }: Props) {

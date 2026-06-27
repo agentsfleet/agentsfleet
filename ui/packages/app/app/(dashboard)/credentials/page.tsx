@@ -2,6 +2,10 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { auth } from "@clerk/nextjs/server";
 import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
   Button,
   DashboardPanel,
   DashboardRowGroup,
@@ -13,7 +17,7 @@ import {
   StatusPill,
   TerminalPanel,
 } from "@agentsfleet/design-system";
-import { ChevronDownIcon, CpuIcon, KeyRoundIcon, LinkIcon } from "lucide-react";
+import { CpuIcon, KeyRoundIcon, LinkIcon } from "lucide-react";
 import { withWorkspaceScope, orFallback } from "@/lib/workspace";
 import { getTenantProvider } from "@/lib/api/tenant_provider";
 import { listCredentials, type CredentialSummary } from "@/lib/api/credentials";
@@ -74,36 +78,37 @@ function CustomEndpointRow({
   const connected =
     provider?.mode === PROVIDER_MODE.self_managed &&
     provider.provider === OPENAI_COMPATIBLE_PROVIDER;
+  // Built on the shared Accordion primitive (reused from TriggerPanel); the
+  // primitive itself is untouched — row-specific look comes from className
+  // overrides resolved by tailwind-merge, so other Accordion usages are
+  // unaffected.
   return (
-    <details className="group border-b border-border last:border-b-0">
-      <summary className="flex cursor-pointer list-none items-start gap-3 px-lg py-md transition-colors duration-snap ease-snap hover:bg-secondary">
-        <span
-          className="grid h-8 w-8 flex-none place-items-center rounded-md border border-border bg-secondary text-muted-foreground"
-          aria-hidden="true"
-        >
-          <LinkIcon size={15} />
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className="block font-medium text-foreground">Custom — OpenAI-compatible</span>
-          <span className="mt-1 block text-body-sm leading-body-sm text-muted-foreground">
-            OpenAI-compatible URL. Gateway, OpenRouter, or self-hosted.
+    <Accordion type="single" collapsible>
+      <AccordionItem value="custom-endpoint" className="border-b-0">
+        <AccordionTrigger className="items-start gap-3 px-lg py-md font-normal hover:bg-secondary hover:no-underline">
+          <span
+            className="grid h-8 w-8 flex-none place-items-center rounded-md border border-border bg-secondary text-muted-foreground"
+            aria-hidden="true"
+          >
+            <LinkIcon size={15} />
           </span>
-        </span>
-        <span className="ml-auto flex flex-none items-center gap-2">
+          <span className="min-w-0 flex-1 text-left">
+            <span className="block font-medium text-foreground">Custom — OpenAI-compatible</span>
+            <span className="mt-1 block text-body-sm leading-body-sm text-muted-foreground">
+              OpenAI-compatible URL. Gateway, OpenRouter, or self-hosted.
+            </span>
+          </span>
           <StatusPill variant={connected ? "success" : "neutral"} dot={connected}>
             {connected ? CONNECTED : NOT_CONNECTED}
           </StatusPill>
-          <ChevronDownIcon
-            size={16}
-            className="text-muted-foreground transition-transform duration-snap ease-snap group-open:rotate-180"
-            aria-hidden="true"
-          />
-        </span>
-      </summary>
-      <div className="border-t border-border px-lg pb-lg pt-md">
-        <CustomEndpointForm workspaceId={workspaceId} />
-      </div>
-    </details>
+        </AccordionTrigger>
+        <AccordionContent className="px-lg pb-lg pt-0">
+          <div className="border-t border-border pt-md">
+            <CustomEndpointForm workspaceId={workspaceId} />
+          </div>
+        </AccordionContent>
+      </AccordionItem>
+    </Accordion>
   );
 }
 
