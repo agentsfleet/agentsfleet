@@ -18,12 +18,17 @@ const PingFake = support.PingFake;
 // its budget and surfaces AcquireTimeout. Exactly one winner is the contract.
 
 const N_WAITERS = 8;
-// Loser acquire budget: long enough that all waiters are still blocked when
-// the single release lands, short enough to time out before the assert.
-const WAITER_TIMEOUT_MS = 150;
-// Slack for waiters to park before the release, and to drain after losers
-// time out before the assert. Generous so the test is not timing-fragile.
-const WAITER_SETTLE_MS = 30;
+// Loser acquire budget. This is ALSO the wall-clock window the single winner has
+// to wake and grab the freed slot — so it must absorb scheduler starvation when
+// the suite runs under the pre-push hook's parallel test lanes (many test binaries
+// × many threads on few cores). At 150ms all 8 waiters could starve past their
+// budget before any grabbed the slot → 0 winners (a load flake). Sized in seconds,
+// matching the sibling CAP test's 5s budget — the pool's wait is wall-clock-bounded,
+// so a generous budget costs runtime, not correctness.
+const WAITER_TIMEOUT_MS = 2_000;
+// Slack for waiters to park before the release, and to drain after losers time out
+// before the assert. Generous so the test is not timing-fragile under load.
+const WAITER_SETTLE_MS = 100;
 
 const OneWinnerCtx = struct {
     pool: *Pool,
