@@ -106,6 +106,10 @@ export type FleetTemplate = {
   name: string;
   description: string;
   required_credentials: string[];
+  // Display-only "why this fleet needs it" copy, keyed by credential name (e.g.
+  // { github: "review your pull requests" }). Drives the install gate's
+  // purpose-driven prompt; absent keys fall back to the generic connect copy.
+  required_credentials_reasons: Record<string, string>;
   required_tools: string[];
   network_hosts: string[];
 };

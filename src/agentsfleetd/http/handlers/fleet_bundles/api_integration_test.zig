@@ -345,6 +345,10 @@ test "integration: template catalog lists seeded first-party templates from the 
     try std.testing.expect(res.bodyContains("\"required_credentials\""));
     // The JSONB array decodes to a JSON array, not quoted JSONB text.
     try std.testing.expect(res.bodyContains("[\"github\"]"));
+    // Per-credential reasons round-trip as a nested object (not quoted text), so
+    // the install gate can render the seeded "why connect" copy.
+    try std.testing.expect(res.bodyContains("\"required_credentials_reasons\""));
+    try std.testing.expect(res.bodyContains("review your pull requests and post review comments"));
 }
 
 const PRIVATE_PROBE_ID = "private-visibility-probe";
