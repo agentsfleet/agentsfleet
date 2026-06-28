@@ -13,8 +13,8 @@ const INSTALL_FLOW_STEPS = [
   },
   {
     number: "03",
-    title: "Watch it wake",
-    description: "Live states appear inline.",
+    title: "It starts running",
+    description: "Watch live progress appear inline.",
   },
 ] as const;
 

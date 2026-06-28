@@ -113,7 +113,7 @@ describe("dashboard overview page", () => {
     const { StatusTiles } = await import("../app/(dashboard)/page");
     const m = renderToStaticMarkup(React.createElement(React.Fragment, null, await StatusTiles()));
     expect(m).toContain("Start your fleet");
-    expect(m).toContain("Live states appear inline");
+    expect(m).toContain("Watch live progress appear inline");
   });
 
   it("StatusTiles first-install card surfaces template cards deep-linking to the install flow", async () => {
