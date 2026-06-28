@@ -178,7 +178,7 @@ describe("ProviderSwitchList — live roster", () => {
     expect(screen.getByTestId("custom-endpoint-form").getAttribute("data-activate")).toBe("true");
 
     // Other provider → generic ProviderKeyForm (no locked provider).
-    fireEvent.click(rowOf("Paste a key — we'll detect the provider").getByRole("button", { name: "Add key & model" }));
+    fireEvent.click(rowOf("Paste a key — we'll detect common providers, or pick one").getByRole("button", { name: "Add key & model" }));
     expect(screen.getByTestId("provider-key-form").getAttribute("data-provider")).toBe("generic");
   });
 
@@ -201,10 +201,10 @@ describe("ProviderSwitchList — live roster", () => {
     expect(screen.queryByTestId("custom-endpoint-form")).toBeNull();
 
     // Generic provider-key form callbacks.
-    fireEvent.click(rowOf("Paste a key — we'll detect the provider").getByRole("button", { name: "Add key & model" }));
+    fireEvent.click(rowOf("Paste a key — we'll detect common providers, or pick one").getByRole("button", { name: "Add key & model" }));
     fireEvent.click(screen.getByTestId("pkf-done"));
     expect(screen.queryByTestId("provider-key-form")).toBeNull();
-    fireEvent.click(rowOf("Paste a key — we'll detect the provider").getByRole("button", { name: "Add key & model" }));
+    fireEvent.click(rowOf("Paste a key — we'll detect common providers, or pick one").getByRole("button", { name: "Add key & model" }));
     fireEvent.click(screen.getByTestId("pkf-cancel"));
     expect(screen.queryByTestId("provider-key-form")).toBeNull();
   });

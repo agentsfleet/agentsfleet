@@ -106,6 +106,8 @@ describe("test_install_states_render", () => {
     expect(link.getAttribute("href")).toBe("/credentials");
     // Create is gated — no fleet created yet.
     expect(installFleetActionMock).not.toHaveBeenCalled();
+    // No skip path: connecting is the only action (the "Continue" button is gone).
+    expect(screen.queryByRole("button", { name: /continue/i })).toBeNull();
   });
 
   it("pluralises the connect-to-continue copy when multiple credentials are unmet", async () => {
@@ -141,14 +143,13 @@ describe("test_install_states_render", () => {
     resolveCreate({ ok: true, data: { fleet_id: "zom_p" } });
   });
 
-  it("auto-resumes into create the instant connect-to-continue is satisfied", async () => {
+  it("auto-creates when the required credential is already present (no gate)", async () => {
     importBundleActionMock.mockResolvedValue({ ok: true, data: { bundle_id: "bnd_1" } });
     installFleetActionMock.mockResolvedValue({ ok: true, data: { fleet_id: "zom_after_gate" } });
-    const user = userEvent.setup({ delay: null });
-    renderStates({ kind: "template", template: TEMPLATE_GH }, []);
-    await waitFor(() => expect(screen.getByText(/first run: connect github/i)).toBeTruthy());
-    await user.click(screen.getByRole("button", { name: /continue/i }));
+    // The credential is present, so the gate never shows and create runs on mount.
+    renderStates({ kind: "template", template: TEMPLATE_GH }, ["github"]);
     await waitFor(() => expect(installFleetActionMock).toHaveBeenCalled());
+    expect(screen.queryByText(/first run: connect github/i)).toBeNull();
   });
 
   it("renders the skill-only line when the snapshot has no TRIGGER.md", async () => {
