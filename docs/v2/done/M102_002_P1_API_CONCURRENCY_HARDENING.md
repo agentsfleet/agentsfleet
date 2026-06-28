@@ -12,7 +12,7 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Milestone:** M102
 **Workstream:** 002
 **Date:** Jun 26, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE — §1–§6 (the concurrency rebuild) **descoped** after the measurement gate resolved to "keep the jwks mutex". The dashboard UX folded into this milestone shipped in PR #460. See Discovery → "Descoped §1–§6".
 **Priority:** P1 — the JSON Web Key Set (JWKS) key set is read on **every authenticated request**; an exclusive `common.Mutex` there caps auth throughput at scale. This retires the lock on the hot path.
 **Categories:** API
 **Batch:** B2 — rides after M102_001's credential-broker work (§1–§8); its own commits/sections, kept separate for reviewability.
@@ -126,6 +126,8 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 ---
 
 ## Sections (implementation slices)
+
+> **DESCOPED (Jun 28, 2026).** §1–§6 below were **not built**. The concurrency rebuild was descoped after the measurement gate resolved to "keep the jwks mutex" (Discovery → "Descoped §1–§6"). The sections are retained as the historical design record only.
 
 ### §1 — Foundation: `common.snapshot` (RCU) + vendored lock-free `Queue`
 The RCU helper: `Snapshot(T)` holds an atomic pointer to an immutable `*const T`; `load()` is one `@atomicLoad(.acquire)` (no lock); `publish(new)` takes a write-only mutex, `@atomicStore(.release)`s the new pointer, and frees the `K`-th-oldest retained snapshot. The vendored `Queue` is a lock-free MPSC/MPMC queue (bun, attributed).
@@ -291,6 +293,7 @@ zig build -Dwith-bench-tools bench 2>&1 | tail -20
   - `9121a203` test — dashboard-vs-fleets contrast updated for the inline gallery.
   - Verification: full app vitest suite green (1138 tests); Zig cross-compiles both linux targets; pre-commit harness-verify all gates green (incl. schema-gate, pre-v2.0 teardown). The new catalog integration assertion is DB-gated (`make test-integration-db`).
 - **Correction + MEASUREMENT GATE (Indy challenge, Jun 28 2026) — supersedes the "switch to hazard pointers" entry above as the FIRST step.** Indy challenged the "bun has this bug" framing. He's right: a re-read of bun's `ptr/ref_count.zig` + `ptr/shared.zig` shows **bun has no bug**. Bun's refcount clones a reference you *already hold* (safe by construction, count ≥ 1), and `AtomicShared` makes only the *count* atomic — its doc says verbatim *"it does not provide any synchronization of the data itself. You must ensure proper concurrency using mutexes or atomics."* Bun never ships a lock-free load-a-slot-and-acquire primitive, so there is nothing for them to find. **The use-after-free is specific to this spec's bounded-count retention** (free-by-publish-count, *no per-reader reference*) — which is neither bun's refcount nor standard RCU. **Before rebuilding §1, RE-MEASURE whether the jwks mutex is actually a contention ceiling** under realistic concurrent load — the "measured scale ceiling" premise (Problem section) is unvalidated, and a `kid` lookup under an *uncontended* mutex is ~tens of ns. Decision tree: **(a)** not a real bottleneck → keep the mutex (what bun does for the slot) and **descope §1–§6**; **(b)** a real, measured ceiling → use **hazard pointers or epoch/QSBR** (the proven lock-free-*safe* schemes) — NOT bun's refcount (it needs a mutex per its own docs) and NOT bounded retention (the UAF). **Do not build until measurement decides (a) vs (b).** The hazard-pointer ruling above stands only as the chosen primitive *for case (b)*.
+- **Descoped §1–§6 — gate resolved to case (a) (Indy, Jun 28 2026).** The decision tree resolved to **(a): the jwks mutex is not a measured bottleneck → keep it, descope §1–§6.** Three findings, none favouring a build: **(1) bun prescribes a mutex** — `AtomicShared` makes only the *refcount* atomic; its own doc says verbatim _"it does not provide any synchronization of the data itself. You must ensure proper concurrency using mutexes or atomics."_, so the lock-free-read primitive §1 set out to copy does not exist. **(2) The mutex is cheap for this workload** — it guards a tens-of-ns `kid` lookup over a 1–3 key set, written only on the ~6h refresh TTL (single-flight; the network fetch is outside the lock), so it is effectively always uncontended; the "measured scale ceiling" premise (Problem) was never measured. **(3) The lock-free build was broken and unnecessary** — bounded retention carried a real use-after-free (free-by-publish-count vs a wall-clock-preempted reader), the correct fix (hazard pointers / epoch) is real complexity for an unproven problem, and the cheap escalation if contention ever appears is a plain `RwLock` (concurrent reads, no reclamation), not lock-free RCU. **Resolution:** keep the jwks mutex; §1–§6 not built; spec moved to `done/`. The bounded-retention WIP stash was dropped — its lesson lives in the two entries above. **Revisit condition:** only if a future load measurement shows real jwks lock contention, and then via `RwLock` first (or hazard pointers / epoch-QSBR if even that is a proven ceiling); never bounded-count retention (the UAF), never bun's refcount (it needs a mutex per its own docs).
 
 ---
 
