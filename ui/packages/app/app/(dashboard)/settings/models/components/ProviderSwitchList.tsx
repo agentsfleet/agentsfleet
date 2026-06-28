@@ -182,7 +182,7 @@ export default function ProviderSwitchList({ workspaceId, provider, credentials 
           <DashboardRow
             icon={<CpuIcon size={15} />}
             title="Other provider"
-            description="Paste a key — we'll detect the provider"
+            description="Paste a key — we'll detect common providers, or pick one"
             action={addButton(ADD_GENERIC_ROW, "Add key & model")}
           />
           {open === ADD_GENERIC_ROW ? (

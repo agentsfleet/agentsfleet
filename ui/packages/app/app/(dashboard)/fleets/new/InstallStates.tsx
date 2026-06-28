@@ -25,14 +25,14 @@ type Props = {
   workspaceId: string;
   source: InstallSource;
   // The workspace's present credential names, or null when the vault read
-  // failed — in which case connect-to-continue gates nothing (the server's 424
+  // failed — in which case the connect gate holds nothing back (the server's 424
   // stays authoritative).
   presentCredentialNames: string[] | null;
   onBack: () => void;
 };
 
 // One install experience, run inline. On mount it imports (when the source
-// needs it), gates on connect-to-continue when a required credential is
+// needs it), holds at the connect gate when a required credential is
 // missing, then auto-proceeds to create — no confirm beat. After create it
 // hands off to InstallStreamSteps, which advances the creating→provisioning→
 // ready steps off the existing fleet-event stream and lands "Open fleet".
@@ -93,7 +93,7 @@ export function InstallStates({ workspaceId, source, presentCredentialNames, onB
   }, [resolveCreateBody, workspaceId, requirements.name]);
 
   // Drive the flow once on mount: a source with no unmet credential creates
-  // immediately; otherwise we sit on connect-to-continue until the operator
+  // immediately; otherwise we sit on the connect gate until the operator
   // returns with the credential stored (Back → re-enter re-evaluates).
   useEffect(() => {
     if (started.current) return;
@@ -126,7 +126,7 @@ export function InstallStates({ workspaceId, source, presentCredentialNames, onB
     <InstallShell onBack={onBack} title={`installing · ${requirements.name}`}>
       <PreCreateLines stage={installStage} requirements={requirements} unmet={unmet} errorText={errorText} />
       {installStage === "connect" ? (
-        <ConnectToContinue unmet={unmet} onRetry={() => void runCreate()} />
+        <ConnectGate unmet={unmet} reasons={requirements.credentialReasons} />
       ) : null}
       {installStage === "error" ? (
         <div className="border-t border-border px-lg py-md">
@@ -173,28 +173,41 @@ function PreCreateLines({
   return <StateList lines={lines} />;
 }
 
-// Connect-to-continue: the requirement transparency the old review page showed,
+// Connect gate: the requirement transparency the old review page showed,
 // surfaced as a gate. Resolves via the custom-secret bridge — the one-click
 // connector is a later milestone, so this links to the vault, not an app
-// connect. The flow auto-resumes into create the instant the operator returns
-// (Retry re-checks; Back → re-enter re-evaluates the gate).
-function ConnectToContinue({ unmet, onRetry }: { unmet: string[]; onRetry: () => void }) {
+// connect. There is no skip: a fleet that can't reach its tool can't run, so the
+// only action is to connect. Back → re-enter re-evaluates the gate, and an
+// operator returning with the credential stored auto-proceeds to create.
+function ConnectGate({ unmet, reasons }: { unmet: string[]; reasons: Record<string, string> }) {
   const connectLabel = unmet.some((credential) => credential.toLowerCase().includes("github"))
     ? "Connect GitHub"
     : "Add token";
   const objectLabel = unmet.length === 1 ? "it" : "them";
+  // Purpose-driven copy when the template declares why each credential is needed
+  // (e.g. "to review your pull requests"); otherwise the generic connect prompt.
+  // Only when EVERY unmet credential has a reason, so the sentence never lists a
+  // credential whose purpose is missing.
+  const purposes = unmet.map((credential) => reasons[credential]).filter(Boolean);
+  const allHaveReasons = unmet.length > 0 && purposes.length === unmet.length;
   return (
     <div className="space-y-3 border-t border-border px-lg py-md">
       <p className="text-sm text-muted-foreground">
-        Needs <span className="font-mono text-foreground">{unmet.join(", ")}</span>. Add{" "}
-        {objectLabel} in Credentials, then continue.
+        {allHaveReasons ? (
+          <>
+            This fleet needs <span className="font-mono text-foreground">{unmet.join(", ")}</span> to{" "}
+            {purposes.join(" and ")}.
+          </>
+        ) : (
+          <>
+            Needs <span className="font-mono text-foreground">{unmet.join(", ")}</span>. Add{" "}
+            {objectLabel} in Credentials to run this fleet.
+          </>
+        )}
       </p>
       <div className="flex flex-wrap items-center gap-2">
         <Button asChild size="sm">
           <Link href={WORKSPACE_CREDENTIALS_PATH}>{connectLabel}</Link>
-        </Button>
-        <Button type="button" variant="ghost" size="sm" onClick={onRetry}>
-          Continue
         </Button>
       </div>
     </div>

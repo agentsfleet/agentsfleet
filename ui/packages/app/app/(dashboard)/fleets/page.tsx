@@ -3,13 +3,7 @@ import { auth } from "@clerk/nextjs/server";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import {
-  Button,
   buttonClassName,
-  DashboardPanel,
-  DashboardPanelContent,
-  DashboardPanelDescription,
-  DashboardPanelHeader,
-  DashboardPanelTitle,
   EmptyState,
   PageHeader,
   PageTitle,
@@ -17,11 +11,14 @@ import {
   Skeleton,
 } from "@agentsfleet/design-system";
 import { listFleets } from "@/lib/api/fleets";
+import { listFleetTemplatesCached } from "@/lib/api/fleet-bundles";
 import { getTenantBillingCached } from "@/lib/api/tenant_billing";
 import { withWorkspaceScope } from "@/lib/workspace";
 import ExhaustionBanner from "@/components/domain/ExhaustionBanner";
 import { PlusIcon } from "lucide-react";
 import FleetsList from "./components/FleetsList";
+import { InstallEntry } from "./new/InstallEntry";
+import type { FleetTemplate } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -73,35 +70,22 @@ export async function FleetsData() {
     );
   }
   const { workspaceId, page, billing } = result;
+  // Fetch the template catalogue only on the empty path (one-time onboarding), so
+  // the populated list never pays for it. The await lives here in the async data
+  // region; FleetsEmptyState stays sync so renderToStaticMarkup / React's sync
+  // render never hit a nested async boundary.
+  const templates =
+    page.items.length === 0
+      ? await listFleetTemplatesCached(token)
+          .then((response) => response.items)
+          .catch(() => [])
+      : [];
 
   return (
     <>
       <ExhaustionBanner billing={billing} />
       {page.items.length === 0 ? (
-        <DashboardPanel padding="compact" className="max-w-3xl">
-          <DashboardPanelHeader>
-            <div className="space-y-2">
-              <SectionLabel>No fleets yet</SectionLabel>
-              <DashboardPanelTitle>Install your first fleet</DashboardPanelTitle>
-              <DashboardPanelDescription className="max-w-prose">
-                Pick a template, connect the tool, and watch it wake.
-              </DashboardPanelDescription>
-            </div>
-            <Button asChild>
-              <Link href="/fleets/new">
-                <PlusIcon size={16} /> Install fleet
-              </Link>
-            </Button>
-          </DashboardPanelHeader>
-          <DashboardPanelContent className="grid gap-md sm:grid-cols-3">
-            {["Choose template", "Connect the tool", "Watch it wake"].map((item, index) => (
-              <div key={item} className="rounded-md border border-border bg-secondary p-md">
-                <div className="font-mono text-eyebrow text-pulse">0{index + 1}</div>
-                <div className="mt-2 font-medium text-foreground">{item}</div>
-              </div>
-            ))}
-          </DashboardPanelContent>
-        </DashboardPanel>
+        <FleetsEmptyState templates={templates} />
       ) : (
         <FleetsList
           workspaceId={workspaceId}
@@ -110,5 +94,25 @@ export async function FleetsData() {
         />
       )}
     </>
+  );
+}
+
+// Empty fleets → a full-width onboarding gallery. Reuses the InstallEntry picker
+// so the first-run experience IS the real template gallery — spanning the page
+// like Models & Keys — instead of abstract step cards. The catalogue is fetched
+// by FleetsData (the async region); this stays a sync component. Besides the page
+// header's "Install fleet" button, this gallery is the install affordance here.
+function FleetsEmptyState({ templates }: { templates: FleetTemplate[] }) {
+  return (
+    <div className="space-y-6">
+      <div className="space-y-1.5">
+        <SectionLabel>No fleets yet</SectionLabel>
+        <p className="max-w-prose text-body-sm leading-body-sm text-muted-foreground">
+          Pick a template to install your first fleet — connect its tool and it runs on every
+          matching event.
+        </p>
+      </div>
+      <InstallEntry templates={templates} quickstart />
+    </div>
   );
 }

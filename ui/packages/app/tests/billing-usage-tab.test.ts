@@ -50,7 +50,7 @@ afterEach(() => cleanup());
 describe("BillingUsageTab (test_billing_usage_ledger_and_empty)", () => {
   it("renders the empty-state when there are no charges and no cursor", () => {
     render(React.createElement(BillingUsageTab, { initialCharges: [], initialCursor: null }));
-    expect(screen.getByText("No billable events yet")).toBeTruthy();
+    expect(screen.getByText("No charges yet")).toBeTruthy();
     expect(screen.queryByTestId("usage-load-more")).toBeNull();
   });
 

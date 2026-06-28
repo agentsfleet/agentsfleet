@@ -1,5 +1,5 @@
 // Pure helpers for the state-driven install flow. No React, no network — the
-// source→requirements normalisation, the connect-to-continue gate, and the
+// source→requirements normalisation, the connect gate, and the
 // rendered state-line model live here so InstallStates stays under the length
 // cap and the gating logic is unit-testable in isolation.
 
@@ -20,6 +20,10 @@ export type InstallSource =
 export type SourceRequirements = {
   name: string;
   credentials: string[];
+  // Why each credential is needed, keyed by name. Only templates carry it
+  // (catalog metadata); github/paste sources report an empty map and the gate
+  // falls back to its generic connect copy.
+  credentialReasons: Record<string, string>;
   tools: string[];
   networkHosts: string[];
   // The bundle's own name, used as the create name default (snapshots know it;
@@ -39,6 +43,7 @@ export function requirementsOf(source: InstallSource): SourceRequirements {
     return {
       name: t.name,
       credentials: t.required_credentials,
+      credentialReasons: t.required_credentials_reasons ?? {},
       tools: t.required_tools,
       networkHosts: t.network_hosts,
       triggerPresent: true,
@@ -49,13 +54,21 @@ export function requirementsOf(source: InstallSource): SourceRequirements {
     return {
       name: s.name,
       credentials: s.requirements.credentials,
+      credentialReasons: {},
       tools: s.requirements.tools,
       networkHosts: s.requirements.network_hosts,
       defaultName: s.name,
       triggerPresent: s.requirements.trigger_present,
     };
   }
-  return { name: "pasted SKILL.md", credentials: [], tools: [], networkHosts: [], triggerPresent: true };
+  return {
+    name: "pasted SKILL.md",
+    credentials: [],
+    credentialReasons: {},
+    tools: [],
+    networkHosts: [],
+    triggerPresent: true,
+  };
 }
 
 // The credentials a source needs that are not present in the workspace vault.
@@ -72,7 +85,7 @@ export function unmetCredentials(
   return missingCredentials(required, present);
 }
 
-// True when the source can create immediately with no connect-to-continue beat.
+// True when the source can create immediately with no connect-gate beat.
 export function readyToCreate(
   required: readonly string[],
   present: readonly string[] | null,
