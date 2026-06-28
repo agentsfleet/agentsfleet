@@ -166,12 +166,14 @@ Nav "Models & Keys" (Credentials item removed); `/credentials`→`/settings/mode
 - **5.3** repointed path + comment + test consistent → `test_workspace_credentials_path`
 - **5.4** deleted files gone, zero orphan refs → grep sweep
 
-### §6 — e2e (UI + CLI)
+### §6 — e2e (UI + CLI) — §6.1/6.2 ✅ done · §6.3/6.4 ⏸ BLOCKED (no backend API)
 
-- **6.1** rewrite `settings-models` / `provider-credential-reference` / `credentials-lifecycle` to the combined page
-- **6.2** `integrations-nav.spec.ts`: nav→`/integrations` + Models & Keys renders
-- **6.3** `agentsfleet integration list` / `integration show <id>` read-only → unit + acceptance (mirror `tenant-provider-mutation`)
-- **6.4** CLI `tenant provider` + `credential` round-trip acceptance
+- **6.1** ✅ rewrote `settings-models` (hero/switch-list/custom-secrets testids + `/credentials` redirect), `provider-credential-reference` (new generic add-key + activate flow, defensive Select/Input + outcome race), `credentials-lifecycle` (custom-secret add+rotate scoped to `custom-secrets-group`) to the combined page
+- **6.2** ✅ `integrations-nav.spec.ts`: nav → `/integrations` (testid `integrations-page`) + Models & Keys hero render
+- **6.3** ⏸ `agentsfleet integration list` / `integration show <id>` — **BLOCKED**: no backend tenant-integrations API exists (only fleet-scoped grants; no `/v1/tenants/me/integrations` route/handler/schema). Needs backend work first; Indy-acked deferral required for CHORE-close.
+- **6.4** ⏸ CLI `tenant provider` + `credential` round-trip acceptance — deferred with §6.3 (same missing-backend block; the credential round-trip is already covered by the rewritten UI acceptance + `cli/test/acceptance/credential-vault.spec.ts`).
+
+e2e validated to the extent the environment allows (local Docker down → acceptance suite runs post-deploy, not in PR CI): `tsc --noEmit` clean, `oxlint` clean, `playwright --list` enumerates all 5 new tests (suite 42/31 files). Selectors pinned against the component unit tests.
 
 ### §7 — Docs reconciliation + changelog (DOCUMENT stage; gates CHORE-close) — ✅ done
 
