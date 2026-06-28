@@ -222,7 +222,7 @@ describe("fleets routes", () => {
         },
       ],
     });
-    listCredentialsMock.mockResolvedValue({ credentials: [{ name: "github", created_at: 1 }] });
+    listCredentialsMock.mockResolvedValue({ credentials: [{ kind: "custom_secret", name: "github", created_at: 1 }] });
     const { default: Page } = await import("../app/(dashboard)/fleets/new/page");
     const markup = renderToStaticMarkup(await Page({ searchParams: Promise.resolve({}) }));
     expect(markup).toContain("Install fleet"); // page title

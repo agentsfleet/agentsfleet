@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Button, Refpill, Time } from "@agentsfleet/design-system";
-import type { CredentialSummary } from "@/lib/api/credentials";
+import type { CustomSecretCredential } from "@/lib/api/credentials";
 import EditCredentialDialog from "./EditCredentialDialog";
 
 // Custom secrets are named JSON objects a SKILL.md reads by field path. A
@@ -11,7 +11,7 @@ import EditCredentialDialog from "./EditCredentialDialog";
 
 type Props = {
   workspaceId: string;
-  secrets: CredentialSummary[];
+  secrets: CustomSecretCredential[];
   /** The credential name the active model setup references, if it is a custom secret. */
   referencedName?: string | null;
 };
@@ -20,7 +20,7 @@ const NOT_REFERENCED = "— not referenced yet";
 const MODEL_SETUP_REF = "model setup";
 const EMPTY_ROW = "No custom secrets stored";
 
-function SecretNameCell({ secret }: { secret: CredentialSummary }) {
+function SecretNameCell({ secret }: { secret: CustomSecretCredential }) {
   return <span className="font-mono text-sm text-foreground">{secret.name}</span>;
 }
 

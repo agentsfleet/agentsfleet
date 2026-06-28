@@ -254,13 +254,13 @@ describe("app components", () => {
     expect(markup).toContain("Organization");
     expect(markup).toContain("Dashboard");
     expect(markup).toContain("Fleets");
-    // Models, Credentials, and Integrations are separate Configuration entries.
-    expect(markup).toContain(">Models<");
-    expect(markup).toContain(">Credentials<");
+    // Models & Keys (the credentials vault folded in) and Integrations
+    // are the two Configuration entries; the standalone Credentials item is gone.
+    expect(markup).toContain(">Models &amp; Keys<");
     expect(markup).toContain(">Integrations<");
     expect(markup).toContain('href="/settings/models"');
-    // Credentials is its own top-level vault destination.
-    expect(markup).toContain('href="/credentials"');
+    expect(markup).not.toContain(">Credentials<");
+    expect(markup).not.toContain('href="/credentials"');
     // Integrations is its own connectors destination.
     expect(markup).toContain('href="/integrations"');
     expect(markup).toContain("Approvals");
@@ -269,14 +269,13 @@ describe("app components", () => {
     expect(markup).toContain("Billing");
   });
 
-  it("test_nav_config_destinations: nav renders Models→/settings/models, Credentials→/credentials, Integrations→/integrations", async () => {
+  it("test_nav_config_destinations: nav renders Models & Keys→/settings/models, Integrations→/integrations", async () => {
     const { default: Shell } = await import("../components/layout/Shell");
     mocks.usePathname.mockReturnValue("/");
     const tree = Shell({ children: React.createElement("div", null, "content") });
     const markup = renderToStaticMarkup(React.createElement(React.Fragment, null, tree));
-    // Three distinct Configuration destinations, each at its own route.
-    expect(markup).toMatch(/href="\/settings\/models"[\s\S]*?data-icon="CpuIcon"[^>]*><\/svg>Models</);
-    expect(markup).toMatch(/href="\/credentials"[\s\S]*?data-icon="KeyRoundIcon"[^>]*><\/svg>Credentials</);
+    // Two distinct Configuration destinations, each at its own route.
+    expect(markup).toMatch(/href="\/settings\/models"[\s\S]*?data-icon="CpuIcon"[^>]*><\/svg>Models &amp; Keys</);
     expect(markup).toMatch(/href="\/integrations"[\s\S]*?data-icon="LinkIcon"[^>]*><\/svg>Integrations</);
   });
 
@@ -403,9 +402,9 @@ describe("app components", () => {
     // Footer 'Docs' is external; 'Workspace' is internal.
     await user.click(screen.getByText("Docs"));
     await user.click(screen.getByText("Workspace"));
-    // The Models Configuration entry — a nested route exercises the
+    // The Models & Keys Configuration entry — a nested route exercises the
     // multi-segment slug branch.
-    await user.click(screen.getByText("Models"));
+    await user.click(screen.getByText("Models & Keys"));
     await user.click(screen.getByText("Billing"));
 
     const sources = mocks.trackNavigationClicked.mock.calls.map(

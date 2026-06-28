@@ -9,10 +9,12 @@
 // links service credentials here and only here — it must not imply the two are
 // the same thing.
 //
-// `/credentials` is the top-level write-only secret vault page; linking the
-// semantic route keeps the preview decoupled from that page's layout. (The
-// model-provider `/settings/models` page is the WRONG target — asserted against
-// by the install preview's routing test.)
+// `/credentials` is the semantic write-only secret-vault route. The standalone
+// vault page was folded into Models & Keys, so `/credentials` now
+// `redirect()`s to `/settings/models` (whose custom-secrets section IS the vault
+// surface). The deep-link keeps pointing at the stable `/credentials` route
+// rather than the moving destination, so the preview stays decoupled from the
+// page's layout and survives any further relocation of the vault section.
 export const WORKSPACE_CREDENTIALS_PATH = "/credentials";
 
 // Which required credentials are not yet present in the workspace vault. Match

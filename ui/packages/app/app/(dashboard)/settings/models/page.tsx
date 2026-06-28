@@ -1,34 +1,38 @@
 import { redirect } from "next/navigation";
-import { EmptyState, PageHeader, PageTitle, Section, SectionLabel } from "@agentsfleet/design-system";
+import {
+  EmptyState,
+  PageHeader,
+  PageTitle,
+  SectionLabel,
+  TerminalPanel,
+} from "@agentsfleet/design-system";
 import { ZapIcon } from "lucide-react";
 import { auth } from "@clerk/nextjs/server";
 import { withWorkspaceScope, orFallback } from "@/lib/workspace";
-import { getTenantProvider } from "@/lib/api/tenant_provider";
-import { listCredentials } from "@/lib/api/credentials";
-import { getModelCaps, type ModelCap } from "@/lib/api/model_caps";
-import { PROVIDER_MODE } from "@/lib/types";
-import ProviderSelector from "./components/ProviderSelector";
+import { customSecretsOf } from "@/lib/api/credentials";
+import { getTenantProviderCached, listCredentialsCached } from "./lib/reads";
+import AddCredentialFormDynamic from "@/components/domain/island-dynamic/AddCredentialFormDynamic";
+import CustomSecretsList from "@/app/(dashboard)/credentials/components/CustomSecretsList";
+import { ModelCatalogueProvider } from "./components/ModelCatalogueProvider";
+import ActiveModelHero from "./components/ActiveModelHero";
+import ProviderSwitchList from "./components/ProviderSwitchList";
 
 export const dynamic = "force-dynamic";
 
-const PAGE_TITLE = "Models";
-const PAGE_DESCRIPTION =
-  "Choose platform defaults or your key.";
+const PAGE_TITLE = "Models & Keys";
+const PAGE_DESCRIPTION = "The model your fleets run on, and the keys behind it.";
 
-export default async function ProviderSettingsPage() {
+export default async function ModelsKeysPage() {
   const { getToken } = await auth();
   const token = await getToken();
   if (!token) redirect("/sign-in");
 
   const result = await withWorkspaceScope(token, async (workspaceId) => {
-    const [providerResult, credentialsResp, catalogue] = await Promise.all([
-      getTenantProvider(token).catch((err) => ({ error: String(err) })),
-      listCredentials(workspaceId, token).catch(orFallback({ credentials: [] })),
-      getModelCaps()
-        .then((caps) => caps.models)
-        .catch(() => [] as ModelCap[]),
+    const [providerResult, credentialsResp] = await Promise.all([
+      getTenantProviderCached(token).catch((err) => ({ error: String(err) })),
+      listCredentialsCached(workspaceId, token).catch(orFallback({ credentials: [] })),
     ]);
-    return { workspaceId, providerResult, credentialsResp, catalogue };
+    return { workspaceId, providerResult, credentialsResp };
   });
   if (!result) {
     return (
@@ -44,11 +48,14 @@ export default async function ProviderSettingsPage() {
       </div>
     );
   }
-  const { workspaceId, providerResult, credentialsResp, catalogue } = result;
-  // A provider-fetch error degrades the option cards to platform-default state
-  // rather than failing the page; `provider` is null in that case.
+  const { workspaceId, providerResult, credentialsResp } = result;
+  // A provider-fetch error degrades the hero to the platform-default view rather
+  // than failing the page; `provider` is null in that case.
   const provider = "error" in providerResult ? null : providerResult;
-  const activeMode = provider?.mode ?? PROVIDER_MODE.platform;
+  const credentials = credentialsResp.credentials;
+  // Classification is the server's `kind`, never a name heuristic — provider keys
+  // and custom endpoints live in the model layer; only custom_secret rows here.
+  const customSecrets = customSecretsOf(credentials);
 
   return (
     <div className="space-y-8">
@@ -56,22 +63,30 @@ export default async function ProviderSettingsPage() {
         <PageTitle>{PAGE_TITLE}</PageTitle>
       </PageHeader>
 
-      <Section asChild>
-        <section id="model-setup" aria-label="Model setup" className="scroll-mt-20">
-          <SectionLabel>Model access</SectionLabel>
-          <p className="max-w-2xl text-sm text-muted-foreground">
-            Pick one setup. The current choice is marked.
-          </p>
-          <ProviderSelector
-            workspaceId={workspaceId}
-            currentMode={activeMode}
-            currentCredentialRef={provider?.credential_ref ?? null}
-            currentModel={provider?.model ?? ""}
-            credentials={credentialsResp.credentials}
-            catalogue={catalogue}
-          />
-        </section>
-      </Section>
+      <ModelCatalogueProvider>
+        <div className="space-y-6">
+          <ActiveModelHero workspaceId={workspaceId} provider={provider} credentials={credentials} />
+          <ProviderSwitchList workspaceId={workspaceId} provider={provider} credentials={credentials} />
+        </div>
+      </ModelCatalogueProvider>
+
+      <div aria-label="Custom secrets" data-testid="custom-secrets-group" className="space-y-md">
+        <SectionLabel>Custom secrets</SectionLabel>
+        <TerminalPanel title="vault · resolved by name" tag="write-only">
+          <div className="p-lg">
+            <CustomSecretsList workspaceId={workspaceId} secrets={customSecrets} />
+          </div>
+          <div className="border-t border-border bg-surface-deep p-lg" id="add-custom-secret">
+            <div className="mb-md">
+              <div className="font-medium text-foreground">Add a custom secret</div>
+              <p className="text-body-sm leading-body-sm text-muted-foreground">
+                Name it, add one or more fields. Write-only after save.
+              </p>
+            </div>
+            <AddCredentialFormDynamic workspaceId={workspaceId} />
+          </div>
+        </TerminalPanel>
+      </div>
     </div>
   );
 }

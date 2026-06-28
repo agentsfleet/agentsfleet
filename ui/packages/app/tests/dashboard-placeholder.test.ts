@@ -9,12 +9,9 @@ import {
 } from "./helpers/dashboard-mocks";
 import {
   resetDashboardMocks,
-  listCredentialsMock,
   listWorkspaceEventsMock,
-  getTenantProviderMock,
   getTenantBillingMock,
   listTenantBillingChargesMock,
-  getModelCapsMock,
 } from "./helpers/dashboard-app-mocks";
 
 // Common dashboard mock harness — see tests/helpers/dashboard-mocks.tsx.
@@ -35,7 +32,6 @@ vi.mock("@/app/(dashboard)/fleets/actions", async () => (await import("./helpers
 vi.mock("@/lib/api/tenant_billing", async () => (await import("./helpers/dashboard-app-mocks")).tenantBillingMock());
 vi.mock("@/lib/api/tenant_provider", async () => (await import("./helpers/dashboard-app-mocks")).tenantProviderMock());
 vi.mock("@/lib/api/model_caps", async () => (await import("./helpers/dashboard-app-mocks")).modelCapsMock());
-vi.mock("@/app/(dashboard)/settings/models/components/ProviderSelector", async () => (await import("./helpers/dashboard-app-mocks")).providerSelectorMock());
 vi.mock("@/app/(dashboard)/settings/billing/components/BillingBalanceCard", async () => (await import("./helpers/dashboard-app-mocks")).billingBalanceCardMock());
 vi.mock("@/app/(dashboard)/settings/billing/components/BillingUsageTab", async () => (await import("./helpers/dashboard-app-mocks")).billingUsageTabMock());
 vi.mock("@/lib/api/events", async () => (await import("./helpers/dashboard-app-mocks")).eventsMock());
@@ -53,24 +49,13 @@ afterEach(() => {
 });
 
 describe("placeholder pages", () => {
-  it("credentials route renders the vault page (kinds strip + groups)", async () => {
-    // /credentials is now a real server-rendered vault page. Its grouping +
-    // ordering is covered in depth by tests/models-credentials-page.test.ts; here
-    // we prove the shared-mock harness renders it without throwing.
-    mockAuth({ token: "token_cred" });
-    resolveActiveWorkspaceMock.mockResolvedValue({ id: "ws_c", name: "C" });
-    getTenantProviderMock.mockResolvedValue({
-      mode: PROVIDER_MODE.platform,
-      provider: "fireworks",
-      model: "kimi-k2.6",
-      context_cap_tokens: 256000,
-      credential_ref: null,
-    });
-    listCredentialsMock.mockResolvedValue({ credentials: [] });
+  it("credentials route redirects to the consolidated Models & Keys page", async () => {
+    // /credentials was folded into Models & Keys: the route is now a
+    // bare redirect. In the test harness `redirect()` throws `redirect:<path>`.
     const { default: Page } = await import("../app/(dashboard)/credentials/page");
-    const m = renderToStaticMarkup(await Page());
-    expect(m).toContain(">Credentials<");
-    expect(m).toContain('data-testid="vault-kinds-strip"');
+    // CredentialsPage is a synchronous component: redirect() throws inline, so
+    // the throw surfaces from the call itself rather than a rejected promise.
+    expect(() => Page()).toThrow("redirect:/settings/models");
   });
 
   it("settings page redirects to /sign-in when no token", async () => {
@@ -205,25 +190,10 @@ describe("placeholder pages", () => {
     expect(m).toContain("Listed");
   });
 
-  it("provider settings page renders selector with current config and empty credentials", async () => {
-    mockAuth({ token: "token_provider" });
-    resolveActiveWorkspaceMock.mockResolvedValue({ id: "ws_p", name: "P" });
-    getTenantProviderMock.mockResolvedValue({
-      mode: PROVIDER_MODE.platform,
-      provider: "fireworks",
-      model: "kimi-k2.6",
-      context_cap_tokens: 256000,
-      credential_ref: null,
-    });
-    listCredentialsMock.mockResolvedValue({ credentials: [] });
-    const { default: Page } = await import("../app/(dashboard)/settings/models/page");
-    const m = renderToStaticMarkup(await Page());
-    expect(m).toContain("Models");
-    expect(m).toContain("Model access");
-    expect(m).toContain("data-provider-selector=\"ws_p\"");
-  });
-
-  it("provider settings page renders empty-workspace empty-state when no workspace", async () => {
+  it("models & keys settings page renders empty-workspace empty-state when no workspace", async () => {
+    // Full-page composition (hero + switch list + custom secrets) is covered in
+    // depth by tests/models-credentials-page.test.ts; here only the light
+    // early-return branches that don't mount the heavy client children.
     mockAuth({ token: "token_provider" });
     resolveActiveWorkspaceMock.mockResolvedValue(null);
     const { default: Page } = await import("../app/(dashboard)/settings/models/page");
@@ -231,55 +201,10 @@ describe("placeholder pages", () => {
     expect(m).toContain("No workspace yet");
   });
 
-  it("provider settings page redirects to /sign-in when no token", async () => {
+  it("models & keys settings page redirects to /sign-in when no token", async () => {
     mockAuth({ token: null });
     const { default: Page } = await import("../app/(dashboard)/settings/models/page");
     await expect(Page()).rejects.toThrow("redirect:/sign-in");
-  });
-
-  it("provider settings page tolerates a getTenantProvider 5xx (catch fallback)", async () => {
-    mockAuth({ token: "token_provider" });
-    resolveActiveWorkspaceMock.mockResolvedValue({ id: "ws_p", name: "P" });
-    getTenantProviderMock.mockRejectedValue(new Error("503"));
-    listCredentialsMock.mockResolvedValue({ credentials: [] });
-    const { default: Page } = await import("../app/(dashboard)/settings/models/page");
-    // The page swallows the error to keep rendering.
-    const m = renderToStaticMarkup(await Page());
-    expect(m).toContain("Models");
-  });
-
-  it("provider settings page tolerates a getModelCaps 5xx (empty catalogue fallback)", async () => {
-    mockAuth({ token: "token_provider" });
-    resolveActiveWorkspaceMock.mockResolvedValue({ id: "ws_p", name: "P" });
-    getTenantProviderMock.mockResolvedValue({
-      mode: PROVIDER_MODE.platform,
-      provider: "fireworks",
-      model: "kimi-k2.6",
-      context_cap_tokens: 256000,
-      credential_ref: null,
-    });
-    listCredentialsMock.mockResolvedValue({ credentials: [] });
-    getModelCapsMock.mockRejectedValue(new Error("503"));
-    const { default: Page } = await import("../app/(dashboard)/settings/models/page");
-    // The catalogue fetch failing must not break the page (catch -> []).
-    const m = renderToStaticMarkup(await Page());
-    expect(m).toContain("Models");
-  });
-
-  it("provider settings page tolerates a listCredentials 5xx (empty credentials fallback)", async () => {
-    mockAuth({ token: "token_provider" });
-    resolveActiveWorkspaceMock.mockResolvedValue({ id: "ws_p", name: "P" });
-    getTenantProviderMock.mockResolvedValue({
-      mode: PROVIDER_MODE.platform,
-      provider: "fireworks",
-      model: "kimi-k2.6",
-      context_cap_tokens: 256000,
-      credential_ref: null,
-    });
-    listCredentialsMock.mockRejectedValue(new Error("503"));
-    const { default: Page } = await import("../app/(dashboard)/settings/models/page");
-    const m = renderToStaticMarkup(await Page());
-    expect(m).toContain("Models");
   });
 
   it("billing settings page renders balance card + usage tab + invoice/payment empty states", async () => {
