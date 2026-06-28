@@ -6,8 +6,10 @@ import { Spinner } from "@agentsfleet/design-system";
 // spinner rather than risk a wrong title. Named routes (fleets, events,
 // billing, models, …) have their own titled RouteLoading.
 export default function DashboardLoading() {
+  // Spinner is itself role=status (a polite live region), so the wrapper carries
+  // no aria-live/aria-busy — nesting two live regions double-announces.
   return (
-    <div aria-busy="true" aria-live="polite">
+    <div>
       <Spinner size="lg" label="Loading…" className="py-16 text-sm" />
     </div>
   );

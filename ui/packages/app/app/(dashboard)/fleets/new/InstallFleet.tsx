@@ -27,7 +27,7 @@ type Props = {
 // Orchestrates the minimal, state-driven install flow: pick a source
 // (template / GitHub / paste), then proceed INLINE to the live install states —
 // never to a separate review/preview page. Create auto-proceeds once the source
-// resolves (and the instant connect-to-continue is satisfied). The states own
+// resolves (and the instant connect gate is satisfied). The states own
 // importing → connect → creating → done and land "Open fleet".
 export function InstallFleet({
   workspaceId,

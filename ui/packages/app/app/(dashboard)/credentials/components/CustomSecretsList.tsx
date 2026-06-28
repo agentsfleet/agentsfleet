@@ -62,7 +62,7 @@ export default function CustomSecretsList({ workspaceId, secrets, referencedName
               <td className="px-lg py-10" colSpan={4}>
                 <div className="flex flex-col items-center justify-center gap-2 text-center">
                   <LockIcon size={24} className="text-text-subtle" aria-hidden="true" />
-                  <div className="font-medium text-foreground">No secrets yet</div>
+                  <h3 className="font-medium text-foreground">No secrets yet</h3>
                   <p className="text-body-sm text-muted-foreground">
                     Add an API token or credential your fleets can use.
                   </p>

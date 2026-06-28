@@ -86,9 +86,9 @@ export default async function ModelsKeysPage() {
                   href="https://docs.agentsfleet.net/secrets"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-pulse underline-offset-2 hover:underline"
+                  className="text-pulse underline-offset-2 hover:underline focus-visible:underline"
                 >
-                  Learn more
+                  Learn more<span className="sr-only"> (opens in a new tab)</span>
                 </a>
               </p>
             </div>

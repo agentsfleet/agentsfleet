@@ -30,9 +30,11 @@ describe("dashboard segment loading states", () => {
       expectsTitle: "Billing",
     },
     {
+      // /credentials redirects to /settings/models, so its loader paints the
+      // DESTINATION title (no flash) — see credentials/loading.
       name: "credentials",
       importer: () => import("../app/(dashboard)/credentials/loading"),
-      expectsTitle: "Credentials",
+      expectsTitle: "Models &amp; Keys", // renderToStaticMarkup escapes the ampersand
     },
     {
       name: "integrations",
@@ -57,7 +59,7 @@ describe("dashboard segment loading states", () => {
     {
       name: "(dashboard) root",
       importer: () => import("../app/(dashboard)/loading"),
-      expectsTitle: null, // dashboard-wide fallback — skeleton only, no static text
+      expectsTitle: null, // dashboard-wide fallback — spinner only, no static text
     },
   ];
 
@@ -65,9 +67,9 @@ describe("dashboard segment loading states", () => {
     it(`${name} loading renders loading chrome`, async () => {
       const { default: Loading } = await importer();
       const markup = renderToStaticMarkup(React.createElement(Loading));
-      // Every loading state participates in the design-system skeleton
-      // primitive — its data signature is the surface-2 token + reduced-
-      // motion-aware shimmer. Smoke-check the markup contains a div.
+      // A loader renders either a RouteLoading title + Spinner or a bespoke
+      // Skeleton (the detail/settings routes); both emit a div. Smoke-check the
+      // markup contains one — the title assertion below pins the rest.
       expect(markup).toContain("<div");
       if (expectsTitle) {
         expect(markup).toContain(expectsTitle);

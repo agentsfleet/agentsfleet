@@ -82,7 +82,7 @@ describe("requirementsOf — normalises each source", () => {
   });
 });
 
-describe("unmetCredentials + readyToCreate — the connect-to-continue gate", () => {
+describe("unmetCredentials + readyToCreate — the connect gate", () => {
   it("lists the required credentials not present in the vault", () => {
     expect(unmetCredentials(["github", "zoho"], ["github"])).toEqual(["zoho"]);
     expect(readyToCreate(["github"], ["github"])).toBe(true);

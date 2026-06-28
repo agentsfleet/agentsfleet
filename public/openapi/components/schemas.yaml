@@ -259,6 +259,15 @@ components:
           type: array
           items:
             type: string
+        required_credentials_reasons:
+          type: object
+          additionalProperties:
+            type: string
+          description: >-
+            Per-credential display-only "why this fleet needs it" copy, keyed by
+            credential name (e.g. {"github": "review your pull requests"}). An
+            install-gate hint, NOT a security control — credential validation
+            reads required_credentials. Optional: older catalogs may omit it.
         required_tools:
           type: array
           items:
