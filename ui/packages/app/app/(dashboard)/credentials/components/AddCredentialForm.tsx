@@ -128,8 +128,8 @@ export default function AddCredentialForm({ workspaceId }: Props) {
                 <Input placeholder="stripe" className="font-mono" spellCheck={false} {...field} />
               </FormControl>
               <p className="text-body-sm leading-body-sm text-muted-foreground">
-                Reference fields as{" "}
-                <code className="font-mono">{"${secrets.<name>.<field>}"}</code>.
+                Use it in a fleet by writing{" "}
+                <code className="font-mono">{"${secrets.<name>.<field>}"}</code> in your config.
               </p>
               <FormMessage />
             </FormItem>

@@ -16,7 +16,7 @@ vi.mock("@/app/(dashboard)/credentials/actions", () => ({
 vi.mock("lucide-react", () => {
   const make = (name: string) => (p: Record<string, unknown>) =>
     React.createElement("svg", { ...p, "data-icon": name });
-  return { KeyRoundIcon: make("KeyRoundIcon") };
+  return { KeyRoundIcon: make("KeyRoundIcon"), LockIcon: make("LockIcon") };
 });
 
 import CustomSecretsList from "@/app/(dashboard)/credentials/components/CustomSecretsList";
@@ -30,9 +30,9 @@ beforeEach(() => {
 afterEach(() => cleanup());
 
 describe("CustomSecretsList (test_custom_secret_create_and_metadata)", () => {
-  it("renders a compact empty table row when there are no custom secrets", () => {
+  it("renders a centered empty state when there are no custom secrets", () => {
     render(React.createElement(CustomSecretsList, { workspaceId: "ws_1", secrets: [] }));
-    expect(screen.getByText(/No custom secrets stored/i)).toBeTruthy();
+    expect(screen.getByText("No secrets yet")).toBeTruthy();
   });
 
   it("lists each secret with added metadata and a Replace action", () => {

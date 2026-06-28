@@ -126,7 +126,7 @@ export function InstallStates({ workspaceId, source, presentCredentialNames, onB
     <InstallShell onBack={onBack} title={`installing · ${requirements.name}`}>
       <PreCreateLines stage={installStage} requirements={requirements} unmet={unmet} errorText={errorText} />
       {installStage === "connect" ? (
-        <ConnectToContinue unmet={unmet} onRetry={() => void runCreate()} />
+        <ConnectGate unmet={unmet} />
       ) : null}
       {installStage === "error" ? (
         <div className="border-t border-border px-lg py-md">
@@ -173,12 +173,13 @@ function PreCreateLines({
   return <StateList lines={lines} />;
 }
 
-// Connect-to-continue: the requirement transparency the old review page showed,
+// Connect gate: the requirement transparency the old review page showed,
 // surfaced as a gate. Resolves via the custom-secret bridge — the one-click
 // connector is a later milestone, so this links to the vault, not an app
-// connect. The flow auto-resumes into create the instant the operator returns
-// (Retry re-checks; Back → re-enter re-evaluates the gate).
-function ConnectToContinue({ unmet, onRetry }: { unmet: string[]; onRetry: () => void }) {
+// connect. There is no skip: a fleet that can't reach its tool can't run, so the
+// only action is to connect. Back → re-enter re-evaluates the gate, and an
+// operator returning with the credential stored auto-proceeds to create.
+function ConnectGate({ unmet }: { unmet: string[] }) {
   const connectLabel = unmet.some((credential) => credential.toLowerCase().includes("github"))
     ? "Connect GitHub"
     : "Add token";
@@ -187,14 +188,11 @@ function ConnectToContinue({ unmet, onRetry }: { unmet: string[]; onRetry: () =>
     <div className="space-y-3 border-t border-border px-lg py-md">
       <p className="text-sm text-muted-foreground">
         Needs <span className="font-mono text-foreground">{unmet.join(", ")}</span>. Add{" "}
-        {objectLabel} in Credentials, then continue.
+        {objectLabel} in Credentials to run this fleet.
       </p>
       <div className="flex flex-wrap items-center gap-2">
         <Button asChild size="sm">
           <Link href={WORKSPACE_CREDENTIALS_PATH}>{connectLabel}</Link>
-        </Button>
-        <Button type="button" variant="ghost" size="sm" onClick={onRetry}>
-          Continue
         </Button>
       </div>
     </div>
