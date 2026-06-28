@@ -1,14 +1,14 @@
-import { Skeleton } from "@agentsfleet/design-system";
+import { Spinner } from "@agentsfleet/design-system";
 
-// Dashboard-wide fallback skeleton. Routes without their own loading.tsx
-// (Dashboard, Runners) get instant feedback on navigation instead of hanging
-// on the previous page while the server renders. Closer loading.tsx boundaries
-// (settings, fleets, credentials, events, approvals, api-keys) still win.
+// Dashboard-wide fallback (Next.js loading.tsx): the home route plus any child
+// route without its own loader (admin, settings/defaults, settings/security).
+// Title-less on purpose — it stands in for many routes, so it shows a neutral
+// spinner rather than risk a wrong title. Named routes (fleets, events,
+// billing, models, …) have their own titled RouteLoading.
 export default function DashboardLoading() {
   return (
-    <div className="space-y-6" aria-busy="true" aria-live="polite">
-      <Skeleton className="h-8 w-48" />
-      <Skeleton className="h-64 w-full rounded-md" />
+    <div aria-busy="true" aria-live="polite">
+      <Spinner size="lg" label="Loading…" className="py-16 text-sm" />
     </div>
   );
 }

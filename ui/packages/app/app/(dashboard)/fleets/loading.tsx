@@ -1,5 +1,5 @@
-import { Spinner } from "@agentsfleet/design-system";
+import RouteLoading from "@/components/layout/RouteLoading";
 
 export default function FleetsLoading() {
-  return <Spinner size="lg" label="Loading fleets…" className="py-16 text-sm" />;
+  return <RouteLoading title="Fleets" />;
 }

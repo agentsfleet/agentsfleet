@@ -2,11 +2,10 @@ import React from "react";
 import { describe, expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 
-// Each Next.js segment has its own loading.tsx Suspense fallback. The
-// skeleton shapes must match the eventual page chrome (PageHeader +
-// SectionLabel placement) so a route swap does not cause layout shift.
-// Rendering each one drives the inner Array.from arrow callbacks too,
-// which v8 counts as separate functions.
+// Each Next.js segment has its own loading.tsx Suspense fallback. The shared
+// RouteLoading paints the page's exact title + description so a route swap shows
+// the correct header instantly (no wobble) with one consistent spinner across
+// routes. The title assertions below pin that each loader matches its page.
 
 describe("dashboard segment loading states", () => {
   const cases: Array<{ name: string; importer: () => Promise<{ default: React.ComponentType }>; expectsTitle: string | null }> = [
@@ -23,7 +22,12 @@ describe("dashboard segment loading states", () => {
     {
       name: "settings/models",
       importer: () => import("../app/(dashboard)/settings/models/loading"),
-      expectsTitle: "Models",
+      expectsTitle: "Models &amp; Keys", // renderToStaticMarkup escapes the ampersand
+    },
+    {
+      name: "settings/billing",
+      importer: () => import("../app/(dashboard)/settings/billing/loading"),
+      expectsTitle: "Billing",
     },
     {
       name: "credentials",
@@ -58,7 +62,7 @@ describe("dashboard segment loading states", () => {
   ];
 
   for (const { name, importer, expectsTitle } of cases) {
-    it(`${name} loading renders skeleton chrome`, async () => {
+    it(`${name} loading renders loading chrome`, async () => {
       const { default: Loading } = await importer();
       const markup = renderToStaticMarkup(React.createElement(Loading));
       // Every loading state participates in the design-system skeleton
