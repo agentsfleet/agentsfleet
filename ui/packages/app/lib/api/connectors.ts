@@ -23,7 +23,7 @@ export interface GithubConnectStart {
 }
 
 const githubConnectorPath = (workspaceId: string): string =>
-  `/v1/workspaces/${workspaceId}/connectors/github`;
+  `/v1/workspaces/${encodeURIComponent(workspaceId)}/connectors/github`;
 
 export async function getGithubConnector(
   workspaceId: string,
