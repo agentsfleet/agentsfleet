@@ -60,6 +60,31 @@ export function modelsForProvider(models: ModelCap[], provider: string): ModelCa
 }
 
 /**
+ * Distinct provider ids the catalogue serves, first-occurrence order preserved.
+ * The switch list unions these with the providers the workspace has stored keys
+ * for, so an operator can add a key for a catalogue provider they haven't
+ * configured yet.
+ */
+export function uniqueProviders(models: ModelCap[]): string[] {
+  return Array.from(new Set(models.map((m) => m.provider)));
+}
+
+// Display labels for the provider ids the UI knows by name. `openai-compatible`
+// mirrors OPENAI_COMPATIBLE_PROVIDER in lib/types (kept verbatim here to avoid a
+// client-bundle import of the broader types module for one string). Any id not
+// listed falls back to its raw slug via `providerLabel`.
+const PROVIDER_LABELS: Readonly<Record<string, string>> = {
+  anthropic: "Anthropic",
+  openai: "OpenAI",
+  "openai-compatible": "Custom — OpenAI-compatible",
+};
+
+/** Human label for a provider id; unknown ids show their raw slug. */
+export function providerLabel(provider: string): string {
+  return PROVIDER_LABELS[provider] ?? provider;
+}
+
+/**
  * Fetch the public model catalogue + global config. Unauthenticated — no Bearer
  * token (the document is global, non-secret). Server-fetched by the Models page
  * and passed into the wizard as props. Throws on a non-2xx response so callers

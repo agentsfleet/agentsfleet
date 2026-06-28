@@ -19,6 +19,7 @@ test {
     _ = @import("fleet_runtime/config.zig");
     _ = @import("fleet_runtime/yaml_frontmatter.zig");
     _ = @import("http/route_matchers.zig");
+    _ = @import("http/handlers/fleets/credential_metadata.zig");
     _ = @import("fleet_runtime/activity_publisher.zig");
     _ = @import("fleet_runtime/metering.zig");
     _ = @import("util/strings/string_builder.zig");
@@ -31,6 +32,14 @@ test {
     _ = @import("fleet/context_resolve.zig");
     _ = @import("fleet/secrets_resolve.zig");
     _ = @import("fleet/secrets_resolve_test.zig");
+    _ = @import("credentials/integration.zig");
+    _ = @import("credentials/integration_ctx.zig");
+    _ = @import("credentials/integration_github.zig");
+    _ = @import("credentials/broker.zig");
+    _ = @import("credentials/broker_test.zig");
+    _ = @import("credentials/serve_broker.zig");
+    _ = @import("http/handlers/connectors/github/state.zig");
+    _ = @import("auth/crypto/rs256_sign.zig");
     _ = @import("fleet/schema_migration_test.zig");
     _ = @import("fleet/control_plane_integration_test.zig");
     _ = @import("fleet/event_lifecycle_integration_test.zig");
@@ -144,6 +153,7 @@ test {
     _ = @import("http/handlers/fleets/messages_integration_test.zig");
     _ = @import("http/handlers/memory/memories_integration_test.zig");
     _ = @import("http/handlers/runner/memory_fencing_test.zig");
+    _ = @import("http/handlers/runner/credentials_mint_integration_test.zig");
     _ = @import("http/handlers/runner/memory_loop_integration_test.zig");
     _ = @import("http/handlers/runner/bundles.zig");
     _ = @import("http/handlers/fleets/events_integration_test.zig");

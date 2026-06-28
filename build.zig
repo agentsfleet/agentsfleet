@@ -9,6 +9,7 @@ comptime {
 
 const S_POSTHOG = "posthog";
 const S_HTTPZ = "httpz";
+const S_CACHE = "cache";
 const S_ZBENCH = "zbench";
 const S_BUILD_OPTIONS = "build_options";
 const S_SCHEMA = "schema";
@@ -51,6 +52,9 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     const httpz_mod = httpz_dep.module(S_HTTPZ);
+
+    // cache.zig (karlseguin) — sharded, RwLock-shared reads, refcounted entries.
+    const cache_mod = b.dependency(S_CACHE, .{ .target = target, .optimize = optimize }).module(S_CACHE);
 
     const pg_mod = buildpkg.pg.module(b, target, optimize, S_PG);
 
@@ -139,6 +143,7 @@ pub fn build(b: *std.Build) void {
             .imports = &.{
                 .{ .name = S_NULLCLAW, .module = nullclaw_mod },
                 .{ .name = S_HTTPZ, .module = httpz_mod },
+                .{ .name = S_CACHE, .module = cache_mod },
                 .{ .name = S_PG, .module = pg_mod },
                 .{ .name = S_POSTHOG, .module = posthog_mod },
                 .{ .name = S_SCHEMA, .module = schema_mod },
@@ -220,6 +225,7 @@ pub fn build(b: *std.Build) void {
             .imports = &.{
                 .{ .name = S_NULLCLAW, .module = nullclaw_mod },
                 .{ .name = S_HTTPZ, .module = httpz_mod },
+                .{ .name = S_CACHE, .module = cache_mod },
                 .{ .name = S_PG, .module = pg_mod },
                 .{ .name = S_POSTHOG, .module = posthog_mod },
                 .{ .name = S_SCHEMA, .module = schema_mod },
@@ -291,6 +297,8 @@ pub fn build(b: *std.Build) void {
                 .{ .name = S_CONTRACT, .module = contract_mod },
                 .{ .name = S_COMMON, .module = common_mod },
                 .{ .name = S_AUTH_CODES, .module = auth_codes_mod },
+                // The credential broker's token store — benched via bench_exports.
+                .{ .name = S_CACHE, .module = cache_mod },
             },
         });
 

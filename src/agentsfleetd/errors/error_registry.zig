@@ -131,6 +131,7 @@ pub const ERR_FLEET_BUNDLE_TOO_MANY_IMPORTS = "UZ-BUNDLE-006";
 // VAULT (structured-credential JSON shape)
 pub const ERR_VAULT_DATA_INVALID = "UZ-VAULT-001";
 pub const ERR_VAULT_DATA_TOO_LARGE = "UZ-VAULT-002";
+pub const ERR_CREDENTIAL_NOT_FOUND = "UZ-VAULT-003";
 // PROVIDER (tenant-scoped LLM provider config — PUT /v1/tenants/me/provider)
 pub const ERR_PROVIDER_CREDENTIAL_REF_REQUIRED = "UZ-PROVIDER-001";
 pub const ERR_PROVIDER_CREDENTIAL_NOT_FOUND = "UZ-PROVIDER-002";
@@ -195,6 +196,13 @@ pub const ERR_RUN_LEASE_LOST = "UZ-RUN-011";
 pub const ERR_RUN_LEASE_RENEWAL_NO_CREDITS = "UZ-RUN-012";
 pub const ERR_RUN_RENEW_BODY_INVALID = "UZ-RUN-013";
 pub const ERR_RUNNER_NOT_FOUND = "UZ-RUN-014";
+// CREDENTIAL BROKER (M102 — on-demand mint via POST /v1/runners/me/credentials/mint)
+pub const ERR_CRED_INTEGRATION_NOT_CONNECTED = "UZ-CRED-001";
+pub const ERR_GH_RECONNECT_REQUIRED = "UZ-GH-001";
+pub const ERR_GH_MINT_FAILED = "UZ-GH-002";
+// GITHUB CONNECT (M102 §5 — the connect round-trip)
+pub const ERR_CONNECTOR_NOT_CONFIGURED = "UZ-CONN-001";
+pub const ERR_CONNECTOR_STATE_INVALID = "UZ-CONN-002";
 
 // ── Non-error constants (migrated from codes.zig) ──────────────────────────
 // Webhook user-facing messages
@@ -216,6 +224,8 @@ pub const MSG_WORKSPACE_ID_REQUIRED = "workspace_id is required (UUIDv7)";
 pub const MSG_CREDENTIAL_NAME_REQUIRED = "credential name is required (max 64 chars)";
 pub const MSG_CREDENTIAL_DATA_REQUIRED = "credential data must be a non-empty JSON object";
 pub const MSG_CREDENTIAL_DATA_TOO_LARGE = "credential data exceeds 4KB when stringified";
+pub const MSG_CREDENTIAL_KEY_REQUIRED = "api_key is required and must be a non-empty string";
+pub const MSG_CREDENTIAL_NOT_FOUND = "credential not found in this workspace";
 // Serving-plane backpressure messages
 pub const MSG_API_BACKPRESSURE = "Server is at its in-flight request ceiling";
 pub const MSG_SSE_STREAM_CAP = "Concurrent event-stream limit reached on this instance";

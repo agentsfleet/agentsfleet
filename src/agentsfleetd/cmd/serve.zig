@@ -240,6 +240,8 @@ pub fn run(io: std.Io, env_map: *const EnvMap, argv: []const [:0]const u8, alloc
         ctx.oidc = v;
         log.info("startup.oidc_init_ok", .{});
     }
+    var cred_broker = preflight.installCredentialBroker(alloc, io, api_pool, serve_cfg.platform_admin_workspace_id, &ctx.broker, &ctx.github_app_slug); // M102 §3 + §5 slug
+    defer cred_broker.deinit();
 
     // Build the middleware registry at boot.
     // The webhook signing secret is the boot-resolved `approval_signing_secret_owned`

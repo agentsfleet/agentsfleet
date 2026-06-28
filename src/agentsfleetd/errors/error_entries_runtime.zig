@@ -67,4 +67,19 @@ pub const ENTRIES_RUNTIME = [_]Entry{
         "Request one with: POST /v1/fleets/{id}/integration-requests"),
     e("UZ-GRANT-002", .not_found, "Integration grant not found", "No grant with that id exists for this fleet, or it was already revoked. " ++
         "List current grants with: GET /v1/workspaces/{ws}/fleets/{id}/integration-grants"),
+    // ── CREDENTIAL BROKER (M102 — on-demand mint) ─────────────────────────────
+    // Surfaced first at POST /v1/runners/me/credentials/mint (the mint endpoint
+    // is the first caller — registering them earlier would be caller-less, NDC).
+    // No secret ever appears in these messages (VLT) — host/status only.
+    e("UZ-CRED-001", .not_found, "Integration not connected", "No connected integration matches this id for the fleet's workspace. " ++
+        "Connect it first (e.g. GitHub via the dashboard \u{201c}Connect\u{201d} flow) before a fleet can mint a token for it."),
+    e("UZ-GH-001", .conflict, "GitHub App reconnect required", "The GitHub App installation is gone (uninstalled or revoked), so no token can be minted. " ++
+        "Reconnect GitHub from the dashboard \u{2014} the fleet stays blocked until the App is reinstalled."),
+    e("UZ-GH-002", .bad_gateway, "GitHub token mint failed", "GitHub did not return an installation token (upstream 5xx, network, or a malformed exchange response). " ++
+        "This is transient \u{2014} retry shortly; if it persists, check GitHub status and the App configuration."),
+    // ── GITHUB CONNECT (M102 §5 — the connect round-trip) ─────────────────────
+    e("UZ-CONN-001", .service_unavailable, "Connector not configured", "GitHub connect is unavailable on this deployment (the platform App slug or signing secret is unset). " ++
+        "An operator must register the GitHub App and populate the admin vault before fleets can connect."),
+    e("UZ-CONN-002", .bad_request, "Invalid connect state", "The connect callback's state was missing, forged, expired, or already used. " ++
+        "Start the connect again from the dashboard \u{2014} each attempt issues a fresh single-use state."),
 };

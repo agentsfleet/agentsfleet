@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>agentsfleet · Models + Credentials redesign — comparison board</title>
+<style>
+  :root{
+    --bg:#0a0d0e; --surface-1:#11161a; --surface-2:#181e22; --surface-deep:#06090a;
+    --border:#23292e; --border-strong:#2e373e;
+    --text:#e6eaec; --text-muted:#8b9398; --text-subtle:#7a8085;
+    --pulse:#5eead4; --on-pulse:#0a0d0e;
+    --mono:"Commit Mono","JetBrains Mono",ui-monospace,"Cascadia Code",monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg);color:var(--text);font-family:var(--mono);}
+  header{padding:24px 28px 8px;border-bottom:1px solid var(--border);}
+  h1{font-size:18px;margin:0 0 4px;letter-spacing:-.01em}
+  .sub{color:var(--text-muted);font-size:13px;line-height:1.55;max-width:880px}
+  .axis{margin-top:10px;color:var(--text-subtle);font-size:11px;letter-spacing:.08em;text-transform:uppercase}
+  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;padding:22px 28px 60px;align-items:start}
+  @media(max-width:1200px){.grid{grid-template-columns:1fr}}
+  .col{background:var(--surface-1);border:1px solid var(--border);border-radius:14px;overflow:hidden;display:flex;flex-direction:column}
+  .col h2{font-size:14px;margin:0;padding:14px 16px 4px}
+  .col .tag{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--pulse);padding:0 16px}
+  .col .desc{font-size:12px;color:var(--text-muted);padding:6px 16px 12px;line-height:1.5;min-height:54px}
+  .frameWrap{position:relative;height:520px;border-top:1px solid var(--border);background:var(--surface-deep);overflow:hidden}
+  /* render the 1320px-wide wireframe scaled to fit the column */
+  .frameWrap iframe{position:absolute;top:0;left:0;width:1320px;height:1480px;border:0;
+    transform:scale(.345);transform-origin:top left;background:var(--bg)}
+  .actions{display:flex;gap:8px;padding:12px 16px;border-top:1px solid var(--border)}
+  a.btn{font-size:12px;color:var(--text);text-decoration:none;border:1px solid var(--border-strong);
+    border-radius:6px;padding:6px 10px;background:var(--surface-2)}
+  a.btn.primary{border-color:var(--pulse);color:var(--pulse)}
+  a.btn:hover{border-color:var(--pulse)}
+  .legend{padding:0 28px 40px;color:var(--text-subtle);font-size:12px;line-height:1.7;max-width:900px}
+  .legend b{color:var(--text)}
+  code{color:var(--pulse)}
+</style>
+</head>
+<body>
+<header>
+  <h1>Models + Credentials — redesign comparison</h1>
+  <div class="sub">Three wireframes for the unified flow. Common to all: <b>Integrations</b> moves to its own nav item
+  (<code>/integrations</code>), and provider keys + model selection live together so an Anthropic key can never misfile
+  under Custom secrets.</div>
+  <div class="axis">Decision axis — single combined page&nbsp;vs&nbsp;separate destinations for Model + Creds</div>
+</header>
+
+<div class="grid">
+  <div class="col">
+    <h2>A · Provider Cards</h2>
+    <div class="tag">SINGLE page</div>
+    <div class="desc">Model + Creds on one page. Each provider is a self-contained card holding key <i>and</i> model inline; custom secrets below.</div>
+    <div class="frameWrap"><iframe src="models-creds-variant-A-single-cards.html" scrolling="no"></iframe></div>
+    <div class="actions"><a class="btn primary" href="models-creds-variant-A-single-cards.html" target="_blank">Open full</a></div>
+  </div>
+
+  <div class="col">
+    <h2>B · Separate (3 nav)</h2>
+    <div class="tag">SEPARATE pages</div>
+    <div class="desc">Models · Credentials · Integrations as three distinct destinations. Models page shown; the other two previewed dimmed.</div>
+    <div class="frameWrap"><iframe src="models-creds-variant-B-separate-3nav.html" scrolling="no"></iframe></div>
+    <div class="actions"><a class="btn primary" href="models-creds-variant-B-separate-3nav.html" target="_blank">Open full</a></div>
+  </div>
+
+  <div class="col">
+    <h2>C · Active-Model hero</h2>
+    <div class="tag">SINGLE page</div>
+    <div class="desc">Model + Creds on one page, led by a big live-model hero ("what's running now"); other providers collapsed; custom secrets below.</div>
+    <div class="frameWrap"><iframe src="models-creds-variant-C-single-hero.html" scrolling="no"></iframe></div>
+    <div class="actions"><a class="btn primary" href="models-creds-variant-C-single-hero.html" target="_blank">Open full</a></div>
+  </div>
+</div>
+
+<div class="legend">
+  <b>How to read this:</b> thumbnails are scaled. Click <b>Open full</b> for the real density.<br>
+  <b>A vs C</b> are both the <i>single combined</i> answer (A = symmetric provider cards; C = one active model up top, rest collapsed).
+  <b>B</b> is the <i>separate</i> answer (three nav items).<br>
+  All three fix the original bugs: provider keys never land in Custom secrets, and key+model are chosen in one step.
+</div>
+</body>
+</html>

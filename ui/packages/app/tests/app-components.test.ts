@@ -10,6 +10,8 @@ const mocks = vi.hoisted(() => ({
   identifyAnalyticsUser: vi.fn(),
   resetAnalyticsIdentity: vi.fn(),
   hasStaleAnalyticsIdentity: vi.fn(() => false),
+  setAnalyticsContext: vi.fn(),
+  captureProductEvent: vi.fn(),
   useUser: vi.fn(),
   usePathname: vi.fn(),
   useEffectMock: vi.fn((fn: () => void) => fn()),
@@ -26,6 +28,8 @@ vi.mock("@/lib/analytics/posthog", () => ({
   identifyAnalyticsUser: mocks.identifyAnalyticsUser,
   resetAnalyticsIdentity: mocks.resetAnalyticsIdentity,
   hasStaleAnalyticsIdentity: mocks.hasStaleAnalyticsIdentity,
+  setAnalyticsContext: mocks.setAnalyticsContext,
+  captureProductEvent: mocks.captureProductEvent,
 }));
 
 vi.mock("@clerk/nextjs", () => ({
@@ -60,6 +64,7 @@ vi.mock("lucide-react", () => ({
   ZapIcon: (props: Record<string, unknown>) => React.createElement("svg", { ...props, "data-icon": "ZapIcon" }),
   ShieldIcon: (props: Record<string, unknown>) => React.createElement("svg", { ...props, "data-icon": "ShieldIcon" }),
   KeyRoundIcon: (props: Record<string, unknown>) => React.createElement("svg", { ...props, "data-icon": "KeyRoundIcon" }),
+  LinkIcon: (props: Record<string, unknown>) => React.createElement("svg", { ...props, "data-icon": "LinkIcon" }),
   CheckCircle2Icon: (props: Record<string, unknown>) => React.createElement("svg", { ...props, "data-icon": "CheckCircle2Icon" }),
   ServerIcon: (props: Record<string, unknown>) => React.createElement("svg", { ...props, "data-icon": "ServerIcon" }),
   CpuIcon: (props: Record<string, unknown>) => React.createElement("svg", { ...props, "data-icon": "CpuIcon" }),
@@ -91,6 +96,8 @@ beforeEach(() => {
   mocks.resetAnalyticsIdentity.mockReset();
   mocks.hasStaleAnalyticsIdentity.mockReset();
   mocks.hasStaleAnalyticsIdentity.mockReturnValue(false);
+  mocks.setAnalyticsContext.mockReset();
+  mocks.captureProductEvent.mockReset();
   mocks.useEffectMock.mockClear();
   mocks.usePathname.mockReturnValue("/workspaces");
 });
@@ -116,6 +123,27 @@ describe("app components", () => {
     // no decorative badges, no marketing chrome.
     expect(container.innerHTML).toContain("agentsfleet");
     expect(container.innerHTML).toContain("data-live");
+    cleanup();
+  });
+
+  it("binds the analytics workspace context from the active workspace + count", async () => {
+    const { default: Shell } = await import("../components/layout/Shell");
+    mocks.usePathname.mockReturnValue("/");
+    render(
+      React.createElement(
+        Shell,
+        {
+          workspaces: [
+            { id: "ws_1", name: "Alpha", created_at: 1 },
+            { id: "ws_2", name: "Beta", created_at: 2 },
+          ],
+          activeWorkspaceId: "ws_1",
+        } as never,
+        React.createElement("div", null, "content"),
+      ),
+    );
+    // The Shell effect binds the PostHog workspace group + records the count.
+    expect(mocks.setAnalyticsContext).toHaveBeenCalledWith({ workspaceId: "ws_1", workspaceCount: 2 });
     cleanup();
   });
 
@@ -253,26 +281,29 @@ describe("app components", () => {
     expect(markup).toContain("Organization");
     expect(markup).toContain("Dashboard");
     expect(markup).toContain("Fleets");
-    // Models and Credentials are two separate Configuration entries now.
-    expect(markup).toContain(">Models<");
-    expect(markup).toContain(">Credentials<");
+    // Models & Keys (the credentials vault folded in) and Integrations
+    // are the two Configuration entries; the standalone Credentials item is gone.
+    expect(markup).toContain(">Models &amp; Keys<");
+    expect(markup).toContain(">Integrations<");
     expect(markup).toContain('href="/settings/models"');
-    // Credentials is its own top-level vault destination.
-    expect(markup).toContain('href="/credentials"');
+    expect(markup).not.toContain(">Credentials<");
+    expect(markup).not.toContain('href="/credentials"');
+    // Integrations is its own connectors destination.
+    expect(markup).toContain('href="/integrations"');
     expect(markup).toContain("Approvals");
     expect(markup).toContain("Events");
     expect(markup).toContain("Workspace");
     expect(markup).toContain("Billing");
   });
 
-  it("test_nav_models_credentials_split: nav renders Models→/settings/models and Credentials→/credentials", async () => {
+  it("test_nav_config_destinations: nav renders Models & Keys→/settings/models, Integrations→/integrations", async () => {
     const { default: Shell } = await import("../components/layout/Shell");
     mocks.usePathname.mockReturnValue("/");
     const tree = Shell({ children: React.createElement("div", null, "content") });
     const markup = renderToStaticMarkup(React.createElement(React.Fragment, null, tree));
     // Two distinct Configuration destinations, each at its own route.
-    expect(markup).toMatch(/href="\/settings\/models"[\s\S]*?data-icon="CpuIcon"[^>]*><\/svg>Models</);
-    expect(markup).toMatch(/href="\/credentials"[\s\S]*?data-icon="KeyRoundIcon"[^>]*><\/svg>Credentials</);
+    expect(markup).toMatch(/href="\/settings\/models"[\s\S]*?data-icon="CpuIcon"[^>]*><\/svg>Models &amp; Keys</);
+    expect(markup).toMatch(/href="\/integrations"[\s\S]*?data-icon="LinkIcon"[^>]*><\/svg>Integrations</);
   });
 
   it("Shell sidebar marks the active route via data-active attribute", async () => {
@@ -398,9 +429,9 @@ describe("app components", () => {
     // Footer 'Docs' is external; 'Workspace' is internal.
     await user.click(screen.getByText("Docs"));
     await user.click(screen.getByText("Workspace"));
-    // The Models Configuration entry — a nested route exercises the
+    // The Models & Keys Configuration entry — a nested route exercises the
     // multi-segment slug branch.
-    await user.click(screen.getByText("Models"));
+    await user.click(screen.getByText("Models & Keys"));
     await user.click(screen.getByText("Billing"));
 
     const sources = mocks.trackNavigationClicked.mock.calls.map(

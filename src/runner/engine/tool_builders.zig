@@ -208,6 +208,9 @@ pub fn buildHttpRequest(ctx: BuildCtx) anyerror!tools_mod.Tool {
                 .max_response_size = MAX_RESPONSE_SIZE_BYTES,
                 .timeout_secs = ctx.cfg.tools.shell_timeout_secs,
             },
+            // The on-demand mint channel (M102 §4); null on the no-session path —
+            // a mintable placeholder then fails closed at the tool boundary.
+            .cred_channel = ctx.cred_channel,
         };
         return ptr.tool();
     }

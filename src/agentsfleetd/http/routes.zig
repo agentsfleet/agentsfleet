@@ -73,7 +73,7 @@ pub const Route = union(enum) {
     workspace_fleets: []const u8, // GET|POST /v1/workspaces/{ws}/fleets
     patch_workspace_fleet: matchers.WorkspaceFleetRoute, // PATCH /v1/workspaces/{ws}/fleets/{id}
     workspace_credentials: []const u8, // GET|POST /v1/workspaces/{ws}/credentials
-    delete_workspace_credential: matchers.WorkspaceCredentialRoute, // DELETE /v1/workspaces/{ws}/credentials/{name}
+    workspace_credential: matchers.WorkspaceCredentialRoute, // PATCH|DELETE /v1/workspaces/{ws}/credentials/{name}
     workspace_fleet_bundles: []const u8, // POST /v1/workspaces/{ws}/fleets/bundles/snapshots
     workspace_fleet_bundle: matchers.WorkspaceFleetBundleRoute, // GET /v1/workspaces/{ws}/fleets/bundles/snapshots/{bundle_id}
     // Chat ingress — POST /v1/workspaces/{ws}/fleets/{id}/messages
@@ -93,6 +93,10 @@ pub const Route = union(enum) {
     request_integration_grant: matchers.WorkspaceFleetRoute, // POST /v1/workspaces/{ws}/fleets/{id}/integration-requests
     list_integration_grants: matchers.WorkspaceFleetRoute, // GET /v1/workspaces/{ws}/fleets/{id}/integration-grants
     revoke_integration_grant: matchers.WorkspaceFleetGrantRoute, // DELETE /v1/workspaces/{ws}/fleets/{id}/integration-grants/{grant_id}
+    // GitHub App connector (M102 §5)
+    connect_github: []const u8, // POST /v1/workspaces/{ws}/connectors/github/connect
+    github_connector_status: []const u8, // GET /v1/workspaces/{ws}/connectors/github
+    github_connect_callback, // GET /v1/connectors/github/callback (Bearer-less; state-authed)
     // Workspace fleet-key management
     fleet_keys: []const u8, // POST|GET /v1/workspaces/{ws}/fleet-keys
     delete_fleet_key: matchers.WorkspaceFleetKeyRoute, // DELETE /v1/workspaces/{ws}/fleet-keys/{fleet_key_id}
@@ -112,6 +116,7 @@ pub const Route = union(enum) {
     runner_heartbeat, // POST /v1/runners/me/heartbeats
     runner_lease, // POST /v1/runners/me/leases
     runner_report, // POST /v1/runners/me/reports
+    runner_credentials_mint, // POST /v1/runners/me/credentials/mint (M102 — on-demand mint; lease_id in body)
     runner_activity: []const u8, // POST /v1/runners/me/leases/{lease_id}/activity
     runner_renew: []const u8, // POST /v1/runners/me/leases/{lease_id}/renew
     runner_memory_hydrate: []const u8, // GET /v1/runners/me/memory/{fleet_id}

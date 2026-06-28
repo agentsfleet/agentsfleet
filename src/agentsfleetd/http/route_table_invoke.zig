@@ -1,7 +1,6 @@
 //! Invoke functions for the route table — one `pub fn invokeXxx` per Route
-//! variant. Each checks the HTTP method (405 if wrong), extracts path params
-//! from `route`, and calls the inner handler (auth already done by middleware).
-//! Imported by route_table.zig; not called from outside the http package.
+//! variant. Each checks the HTTP method (405 if wrong), extracts path params from
+//! `route`, calls the inner handler (auth already done by middleware). Imported by route_table.zig.
 
 const httpz = @import("httpz");
 const router = @import("router.zig");
@@ -252,13 +251,13 @@ pub fn invokeWorkspaceCredentials(hx: *Hx, req: *httpz.Request, route: router.Ro
     }
 }
 
-pub fn invokeWorkspaceCredentialDelete(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    if (req.method != .DELETE) {
-        common.respondMethodNotAllowed(hx.res);
-        return;
+pub fn invokeWorkspaceCredentialItem(hx: *Hx, req: *httpz.Request, route: router.Route) void {
+    const r = route.workspace_credential;
+    switch (req.method) {
+        .PATCH => fleet_creds.innerRotateCredential(hx.*, req, r.workspace_id, r.credential_name),
+        .DELETE => fleet_creds.innerDeleteCredential(hx.*, req, r.workspace_id, r.credential_name),
+        else => common.respondMethodNotAllowed(hx.res),
     }
-    const r = route.delete_workspace_credential;
-    fleet_creds.innerDeleteCredential(hx.*, req, r.workspace_id, r.credential_name);
 }
 
 // ── Fleet messages (chat ingress) ────────────────────────────────────────
@@ -343,6 +342,7 @@ pub const invokeRunnerSelf = runner_invokes.invokeRunnerSelf;
 pub const invokeRunnerHeartbeat = runner_invokes.invokeRunnerHeartbeat;
 pub const invokeRunnerLease = runner_invokes.invokeRunnerLease;
 pub const invokeRunnerReport = runner_invokes.invokeRunnerReport;
+pub const invokeRunnerCredentialsMint = runner_invokes.invokeRunnerCredentialsMint;
 pub const invokeRunnerActivity = runner_invokes.invokeRunnerActivity;
 pub const invokeRunnerRenew = runner_invokes.invokeRunnerRenew;
 pub const invokeRunnerMemoryHydrate = runner_invokes.invokeRunnerMemoryHydrate;

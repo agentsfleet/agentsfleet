@@ -32,7 +32,7 @@ export default async function FleetsListPage() {
 
   // Shell-first: the header (title + Install link) paints immediately while the
   // workspace resolves and the list/billing load inside FleetsData. Mirrors the
-  // home page's StatusTiles/RecentActivity streaming split.
+  // home page's StatusTiles streaming.
   return (
     <div>
       <PageHeader>

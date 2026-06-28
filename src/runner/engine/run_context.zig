@@ -11,6 +11,7 @@ const nullclaw = @import("nullclaw");
 const providers = nullclaw.providers;
 const Config = nullclaw.config.Config;
 const runner_helpers = @import("runner_helpers.zig");
+const credential_request = @import("credential_request.zig");
 
 /// Acquire the LLM provider for one run. The bundle is owned by the caller (it
 /// holds the real provider's resources and is `deinit`'d there); the production
@@ -26,6 +27,10 @@ pub const AcquireProviderFn = *const fn (
 /// what they need.
 pub const RunDeps = struct {
     acquireProvider: AcquireProviderFn = runtimeAcquireProvider,
+    /// The child→runner on-demand mint channel (M102 §4), forwarded to the tool
+    /// bridge so the policy-aware http tool can mint at the boundary. Null on the
+    /// no-session path (tests, register-only) — a mintable placeholder fails closed.
+    cred_channel: ?credential_request.Channel = null,
 };
 
 /// Production provider acquisition: build the real runtime bundle into `bundle`

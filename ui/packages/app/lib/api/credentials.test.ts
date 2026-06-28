@@ -78,6 +78,86 @@ describe("createCredential", () => {
   });
 });
 
+describe("listCredentials — tagged-union passthrough", () => {
+  it("returns each kind variant verbatim (provider_key / custom_endpoint / custom_secret)", async () => {
+    const items = [
+      { kind: "provider_key", name: "anthropic", created_at: 1, provider: "anthropic", model: "claude-sonnet-4-6" },
+      { kind: "custom_endpoint", name: "vllm", created_at: 2, provider: "openai-compatible", base_url: "https://vllm.corp/v1" },
+      { kind: "custom_secret", name: "STRIPE", created_at: 3 },
+    ];
+    fetchMock.mockResolvedValue({ ok: true, status: 200, json: async () => ({ credentials: items }) });
+    const { listCredentials } = await import("./credentials");
+    const res = await listCredentials("ws_1", "tok");
+    // The client never re-derives kind — it surfaces the server projection as-is.
+    expect(res.credentials).toEqual(items);
+  });
+});
+
+describe("credential narrowing helpers", () => {
+  const MIXED = [
+    { kind: "provider_key", name: "anthropic", created_at: 1, provider: "anthropic", model: "claude-sonnet-4-6" },
+    { kind: "provider_key", name: "openai", created_at: 2, provider: "openai" },
+    { kind: "custom_endpoint", name: "vllm", created_at: 3, provider: "openai-compatible", base_url: "https://vllm.corp/v1" },
+    { kind: "custom_secret", name: "STRIPE", created_at: 4 },
+  ] as const;
+
+  it("providerKeysOf keeps only provider_key rows", async () => {
+    const { providerKeysOf } = await import("./credentials");
+    const keys = providerKeysOf([...MIXED]);
+    expect(keys.map((k) => k.name)).toEqual(["anthropic", "openai"]);
+    expect(keys.every((k) => k.kind === "provider_key")).toBe(true);
+  });
+
+  it("customEndpointsOf keeps only custom_endpoint rows (with base_url)", async () => {
+    const { customEndpointsOf } = await import("./credentials");
+    const endpoints = customEndpointsOf([...MIXED]);
+    expect(endpoints.map((e) => e.name)).toEqual(["vllm"]);
+    expect(endpoints[0]!.base_url).toBe("https://vllm.corp/v1");
+  });
+
+  it("customSecretsOf keeps only custom_secret rows", async () => {
+    const { customSecretsOf } = await import("./credentials");
+    const secrets = customSecretsOf([...MIXED]);
+    expect(secrets.map((s) => s.name)).toEqual(["STRIPE"]);
+    expect(secrets[0]!.kind).toBe("custom_secret");
+  });
+
+  it("each helper returns an empty array when no row matches", async () => {
+    const { providerKeysOf, customEndpointsOf, customSecretsOf } = await import("./credentials");
+    const onlySecret = [{ kind: "custom_secret", name: "X", created_at: 1 }] as const;
+    expect(providerKeysOf([...onlySecret])).toEqual([]);
+    expect(customEndpointsOf([...onlySecret])).toEqual([]);
+    expect(customSecretsOf([])).toEqual([]);
+  });
+});
+
+describe("rotateCredential", () => {
+  it("PATCHes /credentials/:name with a {api_key} body and URL-encoded name", async () => {
+    fetchMock.mockResolvedValue({ ok: true, status: 200, json: async () => ({ name: "anthropic prod" }) });
+    const { rotateCredential } = await import("./credentials");
+    const res = await rotateCredential("ws_1", "anthropic prod", "sk-ant-rotated", "tok");
+    expect(res.name).toBe("anthropic prod");
+    const [url, init] = fetchMock.mock.calls[0]!;
+    expect(url).toContain("/v1/workspaces/ws_1/credentials/anthropic%20prod");
+    expect(init.method).toBe("PATCH");
+    expect(JSON.parse(init.body as string)).toEqual({ api_key: "sk-ant-rotated" });
+    expect((init.headers as Record<string, string>).Authorization).toBe("Bearer tok");
+  });
+
+  it("propagates a typed 404 when the credential name is missing", async () => {
+    fetchMock.mockResolvedValue({
+      ok: false,
+      status: 404,
+      json: async () => ({ detail: "not found", error_code: "UZ-VAULT-404" }),
+    });
+    const { rotateCredential } = await import("./credentials");
+    const err = (await rotateCredential("ws_1", "ghost", "sk-x", "tok").catch((e) => e)) as ApiError;
+    expect(err).toBeInstanceOf(ApiError);
+    expect(err.status).toBe(404);
+    expect(err.code).toBe("UZ-VAULT-404");
+  });
+});
+
 describe("deleteCredential", () => {
   it("DELETE /v1/workspaces/:ws/credentials/:name with URL-encoded name", async () => {
     fetchMock.mockResolvedValue({ ok: true, status: 204, json: async () => undefined });

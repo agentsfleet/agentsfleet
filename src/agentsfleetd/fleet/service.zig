@@ -191,17 +191,34 @@ fn resolveExecutionPolicy(hx: Hx, session: *FleetSession, resolved: ?tenant_prov
         if (resolved) |r| r.context_cap_tokens else 0,
         if (resolved) |r| r.model else "",
     );
+    // Classify each resolved credential (M102 §4): an on-demand mintable handle
+    // contributes id-ONLY to the typed `mintable` list (the App/installation config
+    // never reaches the child, VLT); a static one keeps its stored value in
+    // `secrets_map`. Keeping mintables out of `secrets_map` means the redaction set
+    // derives from `secrets_map` alone — no "github" literal to scrub, no drift.
     var secrets_map: ?std.json.Value = null;
+    var mintable: []const execution_policy.Mintable = &.{};
     if (entries) |list| {
         var obj: std.json.ObjectMap = .empty;
+        var mints: std.ArrayList(execution_policy.Mintable) = .empty;
         for (list) |entry| {
-            obj.put(alloc, entry.name, entry.parsed.value) catch |err| log.warn("lease_secret_put_failed", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .err = @errorName(err) });
+            if (secrets_resolve.mintableId(entry.parsed.value)) |id| {
+                // `@tagName` is the static wire id; `entry.name` is arena-owned and
+                // outlives the hx.ok serialization — both safe for the response.
+                mints.append(alloc, .{ .name = entry.name, .integration = @tagName(id) }) catch |err|
+                    log.warn("lease_secret_mintable_failed", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .err = @errorName(err) });
+            } else {
+                obj.put(alloc, entry.name, entry.parsed.value) catch |err|
+                    log.warn("lease_secret_put_failed", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .err = @errorName(err) });
+            }
         }
-        secrets_map = .{ .object = obj };
+        if (obj.count() > 0) secrets_map = .{ .object = obj };
+        mintable = mints.toOwnedSlice(alloc) catch &.{};
     }
     const endpoint = customEndpoint(alloc, resolved);
     return .{
         .secrets_map = secrets_map,
+        .mintable = mintable,
         .context = budget,
         .provider = endpoint.provider,
         .api_key = if (resolved) |r| r.api_key else "",

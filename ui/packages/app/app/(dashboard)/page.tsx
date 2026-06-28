@@ -20,9 +20,7 @@ import { listFleetTemplatesCached } from "@/lib/api/fleet-bundles";
 import { getTenantBillingCached } from "@/lib/api/tenant_billing";
 import { NANOS_PER_USD } from "@/lib/types";
 import type { FleetTemplate } from "@/lib/types";
-import { listWorkspaceEvents } from "@/lib/api/events";
 import { withWorkspaceScope, orFallback } from "@/lib/workspace";
-import { EventsList } from "@/components/domain/EventsList";
 import ExhaustionBanner from "@/components/domain/ExhaustionBanner";
 import { InstallEntry } from "./fleets/new/InstallEntry";
 import { InstallFlowGuide } from "./fleets/new/InstallFlowGuide";
@@ -121,36 +119,6 @@ function FirstInstallCard({
   );
 }
 
-export async function RecentActivity() {
-  const { getToken } = await auth();
-  const token = await getToken();
-  if (!token) return null;
-
-  // Dashboard shows a short preview; the full, paginated stream lives at
-  // /events (the sidebar "Events" item). Keeps the two from duplicating.
-  const result = await withWorkspaceScope(token, async (workspaceId) => ({
-    workspaceId,
-    page: await listWorkspaceEvents(workspaceId, token, { limit: 5 }).catch(
-      orFallback({ items: [], next_cursor: null }),
-    ),
-  }));
-  if (!result) return null;
-  const { workspaceId, page } = result;
-
-  return (
-    <Section asChild>
-      <section aria-label="Recent Activity">
-        <SectionLabel>Recent Activity</SectionLabel>
-        <EventsList
-          scope={{ kind: "workspace", workspaceId }}
-          initial={page}
-          viewAllHref="/events"
-        />
-      </section>
-    </Section>
-  );
-}
-
 export default async function DashboardPage() {
   const { getToken } = await auth();
   const token = await getToken();
@@ -170,10 +138,6 @@ export default async function DashboardPage() {
         }
       >
         <StatusTiles />
-      </Suspense>
-
-      <Suspense fallback={<Skeleton className="h-48 rounded-lg" />}>
-        <RecentActivity />
       </Suspense>
     </div>
   );

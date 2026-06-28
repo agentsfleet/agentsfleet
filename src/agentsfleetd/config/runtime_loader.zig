@@ -173,11 +173,18 @@ pub fn freeAuthPeppers(alloc: Allocator, cfg: AuthPeppersConfig) void {
 const MiscConfig = struct {
     app_url: []const u8,
     api_url: []const u8,
+    /// Non-secret pointer to the workspace whose vault holds the platform
+    /// integration keys (M102 §3, option 1). Empty when unset — the credential
+    /// broker then serves `static` only and github mints reconnect_required.
+    platform_admin_workspace_id: []const u8,
 };
 
 pub fn loadMisc(env_map: *const EnvMap, alloc: Allocator) !MiscConfig {
     const app_url = try env.envOrDefaultOwned(env_map, alloc, "APP_URL", "https://app.agentsfleet.net");
     errdefer alloc.free(app_url);
     const api_url = try env.envOrDefaultOwned(env_map, alloc, "API_URL", "https://api.agentsfleet.net");
-    return .{ .app_url = app_url, .api_url = api_url };
+    errdefer alloc.free(api_url);
+    // Optional (default empty): a non-secret workspace UUID, not a credential.
+    const platform_admin_workspace_id = try env.envOrDefaultOwned(env_map, alloc, "PLATFORM_ADMIN_WORKSPACE_ID", "");
+    return .{ .app_url = app_url, .api_url = api_url, .platform_admin_workspace_id = platform_admin_workspace_id };
 }

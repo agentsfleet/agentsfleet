@@ -11,7 +11,8 @@ const router = app.router;
 const error_registry = app.error_registry;
 const keyset_cursor = app.keyset_cursor;
 const id_format = app.id_format;
-const webhook_verify = app.webhook_verify;
+const credential_broker = app.credential_broker;
+const credential_integration = app.credential_integration;
 const fx = @import("micro_fixtures.zig");
 
 // ── route_match ───────────────────────────────────────────────────────────
@@ -58,22 +59,6 @@ fn benchUuidV7Generate(allocator: std.mem.Allocator) void {
     std.mem.doNotOptimizeAway(id.ptr);
 }
 
-// ── webhook_signature_verify ──────────────────────────────────────────────
-fn benchWebhookSignatureVerify(allocator: std.mem.Allocator) void {
-    _ = allocator;
-    const ok = webhook_verify.verifySignature(
-        webhook_verify.GITHUB,
-        fx.WEBHOOK_SECRET,
-        null,
-        &fx.WEBHOOK_BODY,
-        fx.WEBHOOK_SIGNATURE,
-    );
-    // @panic survives ReleaseFast — std.debug.assert would be elided and
-    // silently measure the reject path if the comptime fixture ever drifted.
-    if (!ok) @panic("webhook fixture invalid");
-    std.mem.doNotOptimizeAway(ok);
-}
-
 // ── activity_chunk_encode ─ streaming-substrate hot path
 // Mirrors `activity_publisher.publishChunk` encode step: clearRetaining
 // the per-event scratch buffer, encode the frame via the Writer
@@ -99,6 +84,49 @@ fn benchActivityChunkEncode(allocator: std.mem.Allocator) void {
 // The progress_frame_decode bench mirrored the pre-cutover in-process transport
 // decode, removed at the M80 cutover when execution moved to the runner.
 
+// ── credential_broker_cache_hit ─ the mint hot path
+// A token is minted once and then served from cache on every tool call for the
+// lease's life, so the CACHE HIT is the hot path. This measures the lock-free
+// read (cache.zig SHARED RwLock) + the caller dup + the metrics emit. A
+// regression that put an exclusive lock back on this read would show here.
+//
+// Process-lifetime broker + handle — built in main() under the bench allocator,
+// warmed once so every iteration is a hit, torn down before main() returns.
+// Single-sourced by the warm-up + the cache-hit bench (RULE UFS); the integration
+// id ties to the enum so a rename can't drift the bench.
+const BENCH_WS = "ws-bench";
+const BENCH_STATIC_ID = @tagName(credential_integration.Id.static);
+
+// SAFETY: populated in main() before the bench runs; torn down after.
+var bench_broker: credential_broker = undefined;
+// SAFETY: populated in main() before the bench runs; torn down after.
+var bench_handle: std.json.Parsed(std.json.Value) = undefined;
+
+fn benchBrokerCacheHit(allocator: std.mem.Allocator) void {
+    const r = bench_broker.mint(allocator, BENCH_WS, BENCH_STATIC_ID, bench_handle.value, 0) catch @panic("broker mint failed");
+    if (r != .ok) @panic("broker cache-hit not ok");
+    allocator.free(r.ok.token);
+}
+
+// ── credential_static_mint_dispatch ─ the per-integration dispatch cost
+// Isolates the registry resolve + tagged-union strategy dispatch + token dup,
+// with no cache and no network (the `static` integration). The cold-path compute
+// floor a real mint pays on top of the GitHub round-trip.
+fn benchStaticMintDispatch(allocator: std.mem.Allocator) void {
+    const spec = credential_integration.resolve(credential_integration.REGISTRY, .static).?;
+    const nd = credential_integration.nullDeps();
+    const out = spec.mint.run(.{
+        .alloc = allocator,
+        .handle = bench_handle.value,
+        .now_ms = 0,
+        .platform = .{},
+        .http = nd.http,
+        .sign = nd.sign,
+    }) catch @panic("static mint dispatch failed");
+    if (out != .ok) @panic("static mint dispatch not ok");
+    allocator.free(out.ok.token);
+}
+
 // ── Entry point ───────────────────────────────────────────────────────────
 
 pub fn main() !void {
@@ -114,13 +142,24 @@ pub fn main() !void {
     bench_chunk_scratch = .init(alloc);
     defer bench_chunk_scratch.deinit();
 
+    bench_broker = try credential_broker.init(alloc, credential_integration.REGISTRY, credential_integration.nullDeps());
+    defer bench_broker.deinit();
+    bench_handle = try std.json.parseFromSlice(std.json.Value, alloc, "{\"integration\":\"static\",\"token\":\"ghs_bench_token\"}", .{});
+    defer bench_handle.deinit();
+    // Warm the cache once so broker_cache_hit measures the HIT (the hot path).
+    {
+        const warm = try bench_broker.mint(alloc, BENCH_WS, BENCH_STATIC_ID, bench_handle.value, 0);
+        if (warm == .ok) alloc.free(warm.ok.token);
+    }
+
     try bench.add("route_match", benchRouteMatch, .{});
     try bench.add("error_registry_lookup", benchErrorRegistryLookup, .{});
     try bench.add("keyset_cursor_roundtrip", benchActivityCursorRoundtrip, .{});
     try bench.add("json_encode_response", benchJsonEncodeResponse, .{});
     try bench.add("uuid_v7_generate", benchUuidV7Generate, .{});
-    try bench.add("webhook_signature_verify", benchWebhookSignatureVerify, .{});
     try bench.add("activity_chunk_encode", benchActivityChunkEncode, .{});
+    try bench.add("broker_cache_hit", benchBrokerCacheHit, .{});
+    try bench.add("static_mint_dispatch", benchStaticMintDispatch, .{});
 
     // zbench 0.11.2's run writes + flushes to the File directly on the 0.16 io.
     try bench.run(app.globalIo(), std.Io.File.stdout());

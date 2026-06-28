@@ -36,6 +36,7 @@ pub fn match(path: []const u8, method: httpz.Method) ?Route {
     if (std.mem.eql(u8, path, runner_protocol.PATH_RUNNER_HEARTBEATS)) return .runner_heartbeat;
     if (std.mem.eql(u8, path, runner_protocol.PATH_RUNNER_LEASES)) return .runner_lease;
     if (std.mem.eql(u8, path, runner_protocol.PATH_RUNNER_REPORTS)) return .runner_report;
+    if (std.mem.eql(u8, path, runner_protocol.PATH_RUNNER_CREDENTIALS_MINT)) return .runner_credentials_mint;
 
     // Single canonical parse + version dispatch. The "v1" literal lives in
     // exactly one place — adding v2 is a new branch here, not a sweep across
@@ -110,8 +111,12 @@ fn matchV1(p: matchers.Path, method: httpz.Method) ?Route {
     if (matchers.matchWorkspaceFleetAction(p, "memories")) |r| return .{ .workspace_fleet_memories = r };
     if (matchers.matchWorkspaceFleetAction(p, "integration-requests")) |r| return .{ .request_integration_grant = r };
     if (matchers.matchWorkspaceFleetAction(p, "integration-grants")) |r| return .{ .list_integration_grants = r };
+    // ── Workspace + connector (GitHub App, M102 §5) ──────────────────────
+    if (matchers.matchWorkspaceConnectorGithubConnect(p)) |ws| return .{ .connect_github = ws };
+    if (matchers.matchWorkspaceConnectorGithub(p)) |ws| return .{ .github_connector_status = ws };
+    if (matchers.matchGithubConnectCallback(p)) return .{ .github_connect_callback = {} };
     // ── Workspace + leaf ──────────────────────────────────────────────────
-    if (matchers.matchWorkspaceCredential(p)) |r| return .{ .delete_workspace_credential = r };
+    if (matchers.matchWorkspaceCredential(p)) |r| return .{ .workspace_credential = r };
     if (matchers.matchWorkspaceFleetKeyDelete(p)) |r| return .{ .delete_fleet_key = r };
     if (matchers.matchWorkspaceFleet(p)) |r| return .{ .patch_workspace_fleet = r };
     if (matchers.matchWorkspaceFleetBundle(p)) |r| return .{ .workspace_fleet_bundle = r };
@@ -218,6 +223,15 @@ test "match resolves admin platform key routes" {
     );
     try std.testing.expect(match("/v1/admin/platform-keys/a/b", .GET) == null);
     try std.testing.expect(match("/v1/admin/platform-keys/", .GET) == null);
+}
+
+test "match resolves the runner credential-mint route (static, lease_id in body)" {
+    try std.testing.expectEqualDeep(
+        Route.runner_credentials_mint,
+        match(runner_protocol.PATH_RUNNER_CREDENTIALS_MINT, .POST).?,
+    );
+    // A trailing path segment must NOT match — the lease id rides the body.
+    try std.testing.expect(match(runner_protocol.PATH_RUNNER_CREDENTIALS_MINT ++ "/x", .POST) == null);
 }
 
 // ── route tests ───────────────────────────────────────────────────────────────

@@ -50,6 +50,30 @@ const TickFanout = struct {
     }
 };
 
+/// Forwards the sandboxed child's on-demand mint asks to the daemon broker over
+/// the agt_r plane (M102 §3). Holds the lease binding the mint server-side: a
+/// child-supplied workspace is impossible — `cp.mint` sends only `lease_id`, and
+/// the daemon derives the workspace from it (Invariant 2). The minted token is
+/// duped into the read loop's `alloc` and freed there after it frames the reply.
+const MintForwarder = struct {
+    cp: *client_mod,
+    runner_token: []const u8,
+    lease_id: []const u8,
+    deadline_ms: u31,
+
+    fn onMint(ctx: *anyopaque, alloc: std.mem.Allocator, integration: []const u8, scope: ?[]const u8) child_supervisor.CredentialOutcome {
+        const self: *MintForwarder = @ptrCast(@alignCast(ctx));
+        return switch (self.cp.mint(alloc, self.runner_token, self.lease_id, integration, scope, self.deadline_ms)) {
+            .minted => |m| .{ .minted = .{ .token = m.token, .expires_at_ms = m.expires_at_ms } },
+            .rejected => .rejected,
+        };
+    }
+
+    fn hook(self: *MintForwarder) child_supervisor.MintHook {
+        return .{ .ctx = self, .onMint = onMint };
+    }
+};
+
 /// Execute one leased event in a sandboxed child and report the result to the
 /// control plane, forwarding live-tail activity frames as the child streams them.
 pub fn executeAndReport(
@@ -86,6 +110,7 @@ pub fn executeAndReport(
     const sink = child_supervisor.ActivitySink{ .ctx = &forwarder, .forward = forwarders.ActivityForwarder.forward };
     var driver = RenewDriver.init(alloc, cp, runner_token, payload, cfg.cp_deadlines.renew_ms);
     var fanout = TickFanout{ .forwarder = &forwarder, .driver = &driver };
+    var minter = MintForwarder{ .cp = cp, .runner_token = runner_token, .lease_id = payload.lease_id, .deadline_ms = cfg.cp_deadlines.default_ms };
 
     // Hydrate the fleet's prior memory over the trusted plane BEFORE the fork so
     // the child seeds its in-run store from it — the child makes no network call
@@ -109,7 +134,7 @@ pub fn executeAndReport(
     const mem_sink = child_supervisor.MemorySink{ .ctx = &mem_forwarder, .forward = forwarders.MemoryForwarder.forward };
 
     const start_ms = clock.nowMillis();
-    const result = child_supervisor.run(io, alloc, cfg, env_map, workspace_path, payload, hydrated_memory, sink, mem_sink, fanout.hook());
+    const result = child_supervisor.run(io, alloc, cfg, env_map, workspace_path, payload, hydrated_memory, sink, mem_sink, fanout.hook(), minter.hook());
     const wall_ms: u64 = @intCast(@max(0, clock.nowMillis() - start_ms));
     defer if (result.content.len > 0) alloc.free(result.content);
     // Ship whatever the batch still holds before the terminal report.
