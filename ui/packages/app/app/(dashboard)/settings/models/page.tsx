@@ -83,7 +83,7 @@ export default async function ModelsKeysPage() {
                 Give it a name and one or more fields (like <span className="font-mono">api_key</span>). Once
                 saved, values are encrypted and can&apos;t be viewed again — only replaced.{" "}
                 <a
-                  href="https://docs.agentsfleet.net/secrets"
+                  href="https://docs.agentsfleet.net/fleets/credentials"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-pulse underline-offset-2 hover:underline focus-visible:underline"
