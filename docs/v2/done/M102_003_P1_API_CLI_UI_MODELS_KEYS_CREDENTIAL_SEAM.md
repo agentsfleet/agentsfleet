@@ -4,7 +4,7 @@
 **Milestone:** M102
 **Workstream:** 003
 **Date:** Jun 28, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — operator-facing model/key surface + the credential read API both change
 **Categories:** API, CLI, UI
 **Batch:** B1 — §1–§2 (backend seam) land before §3–§6 consume the shape; §7 (docs) gates CHORE-close
@@ -166,7 +166,7 @@ Nav "Models & Keys" (Credentials item removed); `/credentials`→`/settings/mode
 - **5.3** repointed path + comment + test consistent → `test_workspace_credentials_path`
 - **5.4** deleted files gone, zero orphan refs → grep sweep
 
-### §6 — e2e (UI + CLI) — §6.1/6.2 ✅ done · §6.3/6.4 ⏸ BLOCKED (no backend API)
+### §6 — e2e (UI + CLI) — §6.1/6.2 ✅ done · §6.3/6.4 ⏸ DEFERRED (Indy-acked — see Discovery)
 
 - **6.1** ✅ rewrote `settings-models` (hero/switch-list/custom-secrets testids + `/credentials` redirect), `provider-credential-reference` (new generic add-key + activate flow, defensive Select/Input + outcome race), `credentials-lifecycle` (custom-secret add+rotate scoped to `custom-secrets-group`) to the combined page
 - **6.2** ✅ `integrations-nav.spec.ts`: nav → `/integrations` (testid `integrations-page`) + Models & Keys hero render
@@ -249,12 +249,12 @@ type Credential =
 
 ## Acceptance Criteria
 
-- [ ] `kind` projected, api_key absent; PATCH rotate preserves non-secret fields — verify: `make test-integration` (credentials suite)
-- [ ] Models & Keys page + switch list — verify: `cd ui/packages/app && bun run test:coverage` (100%)
-- [ ] dead flow gone — verify: `grep -rn "ProviderSelector\|Step1Credential\|ProviderCredentialRows\|OwnKeyKind" ui/packages/app | grep -v '\.test\.'` (empty)
-- [ ] `make lint` clean · `make test` passes · `make memleak` clean (decrypt buffer)
-- [ ] Cross-compile: `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` · `gitleaks detect` clean · no added file over 350 lines
-- [ ] §7 docs: both per-file reports in Session Notes; `changelog.mdx` Update present — verify: reports + `git -C ~/Projects/docs diff --stat`
+- [x] `kind` projected, api_key absent; PATCH rotate preserves non-secret fields — `test-integration` GREEN on CI (#458, run 28314432329) after the broker overflow fix
+- [x] Models & Keys page + switch list — `test-unit-app` GREEN (100%, 1136 tests) on CI + local
+- [x] dead flow gone — grep empty (prior-session sweep; orphan refs zero)
+- [x] `make lint` clean · `make test` passes · `make memleak` clean — all GREEN on CI #458
+- [x] Cross-compile x86_64+aarch64-linux · `gitleaks` clean · no added file over 350 lines — GREEN on CI (codeberg recovered)
+- [x] §7 docs: both per-file reports in Discovery + Session Notes; `changelog.mdx` Update present — docs PR #112
 
 ---
 
@@ -314,7 +314,11 @@ type Credential =
   - **UPDATE `api-reference/error-codes.mdx`** — **full registry reconciliation** (Indy directive, 2026-06-28): extracted all 113 `e("UZ-…")` registrations from `src/**.zig` and diffed both ways against the public table. Findings: (a) every one of the 106 documented codes is real — zero phantom codes; (b) `UZ-REQ-001` already present; (c) **6 new user-facing codes ship on #458, only 1 was documented** — added `UZ-VAULT-003` (404, M102_003) **and the 5 M102_001 integration codes** the recon missed: `UZ-CONN-001` (503), `UZ-CONN-002` (400), `UZ-CRED-001` (404), `UZ-GH-001` (409), `UZ-GH-002` (502) under a new "Integration connect & token mint" section. Scope note: the 5 CONN/CRED/GH codes are M102_001-domain but ship on the same PR — folded into PR #112 for public-table accuracy at #458 deploy (touch-it-fix-it). Only `UZ-NONEXISTENT-999` / `UZ-TEST-001` sentinels remain (deliberately) undocumented. The recon marked this file NO-CHANGE — **overruled**.
   - **NO-CHANGE** (swept): `api-reference/introduction.mdx`, `quickstart.mdx`, `concepts.mdx`, `workspaces/*.mdx`, `fleets/{authoring,tools,troubleshooting,webhooks,overview,templates,install,running}.mdx`, `cli/{configuration,flags,install}.mdx`, `billing/*.mdx`, `memory.mdx` — none describe the credential list shape, the credential UI, or the rotate path.
   - **Telemetry omitted from changelog (argue-back)** — group analytics / person props / `workspace_switched` are zero user-visible change; the changelog is user-facing only. Documented in `product_analytics.md` (Report A) instead.
-- Skill-chain outcomes + Indy-acked deferral quotes appended as work proceeds.
+- **§6.3/6.4 CLI deferral — Indy-acked (2026-06-28).** The CLI `integration list/show` needs a tenant-integrations read API. Investigation (agent, 2026-06-28) found the connected-integration data already lives in `vault.secrets` (workspace-scoped, `fleet:github` handles) and `credential_list.zig` already returns those rows (mislabeled `custom_secret` — no `integration` kind). A minimal `GET /v1/workspaces/{ws}/integrations` thin-projection (no new schema, S–M scope) was proposed. Indy's call:
+  > Indy (2026-06-28): "lets skip for now." — context: the §6.3/6.4 tenant-integrations read API + CLI `integration list/show`; deferred to a follow-up milestone, #458 closes on §1–§7.
+  Follow-up milestone (queued, not spec'd): tenant/workspace-integrations read API + the `integration` CLI command. Scope decision (workspace- vs tenant-scoped) deferred with it.
+- **Telemetry completeness — verified COMPLETE (Indy directive, 2026-06-28).** Diffed our `posthog.ts`+`events.ts` against Supabase's pattern (`packages/common/{posthog-client.ts,telemetry.tsx,telemetry-constants.ts}`, `apps/studio/lib/telemetry.tsx`). We carry the full core pattern: `group("workspace")` analytics (auto-attached to every event+pageview because we keep autocapture **on** — the SDK does natively what their manual `$groups`-on-pageview re-attach does for their server-relay architecture), person properties (`setPersonProperties`), typed event catalog (`EVENTS`/`EventProps`/`EVENT_PROP_KEYS` — with a PII allowlist they lack), typed capture helper, identify/reset + pending-queue deferral, past-tense naming. The one in-scope parity delta — a pre-init event buffer (Supabase queues ≤20 pre-load events; we drop them) — Indy chose to **leave as-is** ("Leave as-is (drop pre-init)") since our call sites fire post-round-trip. Out-of-scope LACKs (feature flags, experiments, UTM attribution, backend relay) are outside the named pattern. Consent gate explicitly excluded by Indy.
+- **Skill chain (CHORE-close, 2026-06-28):** `/write-unit-test` — no new production surface this session (docs + e2e only); `test-unit-app` coverage intact at 100% (pre-push run green); the §6 e2e specs are the test deliverable. `/review` (local adversarial) — clean: docs verified against source (billing §8.3, analytics events vs `events.ts`, the full UZ-* registry reconciliation 114=114), e2e selectors pinned to component unit tests + `tsc`/`oxlint`/`playwright --list` green; no findings requiring a fix.
 
 ---
 
@@ -330,15 +334,18 @@ type Credential =
 
 ## Verification Evidence
 
+Evidence source: CI on #458 at HEAD `be923787` (local `make test-integration`/`memleak` unrunnable — Docker daemon down; run in CI). The broker-fix run `28314432329` cleared the prior panic + cascade.
+
 | Check | Command | Result | Pass? |
 |-------|---------|--------|-------|
-| Unit (backend) | `make test` | {paste} | |
-| Integration | `make test-integration` | {paste} | |
-| UI coverage | `bun run test:coverage` | {paste} | |
-| Memleak | `make memleak` | {paste} | |
-| Cross-compile | `zig build -Dtarget=…` | {paste} | |
-| Lint + gitleaks | `make lint` / `gitleaks detect` | {paste} | |
-| api_key + orphan sweep | E5 | {paste} | |
+| Unit (backend) | `make test` (CI `test-unit-agentsfleetd`) | GREEN | ✅ |
+| Integration | `make test-integration` (CI) | GREEN (post broker overflow fix) | ✅ |
+| UI coverage | `bun run test:coverage` | 100% · 1136 tests | ✅ |
+| Memleak | `make memleak` (CI) | GREEN | ✅ |
+| Cross-compile | x86_64-linux + aarch64-linux (CI) | GREEN (codeberg recovered) | ✅ |
+| Lint + gitleaks | `make lint` / `gitleaks` (CI) | GREEN | ✅ |
+| api_key + orphan sweep | E5 + ERROR REGISTRY gate (114=114) | GREEN | ✅ |
+| Mint broker regression | `zig build test -Dtest-filter="mint:"` | 42/42 (incl. never-expires) | ✅ |
 
 ---
 
