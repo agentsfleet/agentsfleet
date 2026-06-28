@@ -76,6 +76,35 @@ test "mint: reuses a cached token within validity, re-mints past the skew (Dimen
     try std.testing.expectEqual(@as(usize, 2), fake_calls.load(.monotonic));
 }
 
+// Regression (bounds): the production `static` integration mints with
+// expires_at_ms = maxInt(i64) (never expires). ttlSeconds must clamp to a
+// BOUNDED MAX_TTL_S, never maxInt(u32) — cache.zig stores the entry expiry as
+// `@as(u32, now_epoch_seconds) + ttl` (segment.zig), so a maxInt(u32) ttl
+// overflows that u32 add and panics at put time. cache.zig reads the REAL wall
+// clock for `now`, so this reproduces regardless of the broker `now_ms` arg.
+const NEVER_EXPIRES_MS: i64 = std.math.maxInt(i64);
+
+fn fakeMintNeverExpires(ctx: integration.MintCtx) anyerror!integration.Outcome {
+    return .{ .ok = .{ .token = try ctx.alloc.dupe(u8, "static_tok"), .expires_at_ms = NEVER_EXPIRES_MS } };
+}
+
+const NEVER_EXPIRES_REGISTRY: []const Spec = &.{.{ .id = .github, .mint = .{ .custom = fakeMintNeverExpires } }};
+
+test "mint: a never-expires token caches without overflowing the cache TTL (bounds regression)" {
+    const alloc = std.testing.allocator;
+    var b = try brokerWith(alloc, NEVER_EXPIRES_REGISTRY);
+    defer b.deinit();
+    var h = try testing.parse(alloc, "{\"integration\":\"github\"}");
+    defer h.deinit();
+
+    // Pre-fix this panics with `integer overflow` inside cache.zig's put (real
+    // now_epoch_seconds + maxInt(u32)). Post-fix the ttl is clamped to MAX_TTL_S.
+    const r = try b.mint(alloc, "ws-static", "github", h.value, 0);
+    try std.testing.expect(r == .ok);
+    alloc.free(r.ok.token);
+    try std.testing.expectEqual(NEVER_EXPIRES_MS, r.ok.expires_at_ms);
+}
+
 test "mint: unknown / unregistered id returns unknown_integration, no upstream call (Dimension 1.4)" {
     const alloc = std.testing.allocator;
     var b = try brokerWith(alloc, integration.REGISTRY);
