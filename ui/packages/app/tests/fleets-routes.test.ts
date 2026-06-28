@@ -189,6 +189,23 @@ describe("fleets routes", () => {
     expect(listFleetTemplatesMock).toHaveBeenCalled();
   });
 
+  it("fleets list empty-state swallows a failed template catalog fetch (empty gallery, no crash)", async () => {
+    resolveActiveWorkspace.mockResolvedValueOnce({ id: "ws_1" });
+    // Catalog outage on the empty path → the `.catch(() => [])` arm yields no
+    // templates, so the empty state still renders rather than throwing.
+    listFleetTemplatesMock.mockRejectedValue(new Error("catalog down"));
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url.endsWith("/v1/tenants/me/billing")) {
+        return { ok: true, status: 200, json: async () => happyBilling };
+      }
+      return { ok: true, status: 200, json: async () => ({ items: [], total: 0, next_cursor: null }) };
+    });
+    const { FleetsData } = await import("../app/(dashboard)/fleets/page");
+    const markup = renderToStaticMarkup(React.createElement(React.Fragment, null, await FleetsData()));
+    expect(markup).toContain("No fleets yet");
+    expect(markup).not.toContain("GitHub PR reviewer");
+  });
+
   it("fleets list page swallows a failed billing fetch and still renders", async () => {
     resolveActiveWorkspace.mockResolvedValueOnce({ id: "ws_1" });
     fetchMock.mockImplementation(async (url: string) => {
