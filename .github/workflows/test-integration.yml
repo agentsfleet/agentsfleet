@@ -63,10 +63,12 @@ jobs:
           # the host daemon; the workspace is bind-mounted at the same path so
           # the restored Zig cache + extracted cert line up inside and out.
           #
-          # `test-bin` first compiles (without running) the exact artifact
-          # `zig build test` executes (build.zig), so the suite then finds a
-          # warm cache and only *runs* — on a cold cache the long compile lands
-          # here, hidden behind the datastore boot above.
+          # Pre-compile both agentsfleetd binaries the suite needs, without
+          # running them: `install` builds the agentsfleetd exe (the migrate
+          # binary `make test-integration` runs) and `test-bin` builds the exact
+          # test artifact `zig build test` executes (build.zig). So the make
+          # step finds a warm cache and only *migrates + runs* — on a cold cache
+          # both long compiles land here, hidden behind the datastore boot above.
           docker run --rm --network host \
             -v /var/run/docker.sock:/var/run/docker.sock \
             -v "${{ github.workspace }}":"${{ github.workspace }}" \
@@ -76,7 +78,7 @@ jobs:
             -e TEST_DATABASE_URL="postgres://agentsfleet:agentsfleet@localhost:5432/agentsfleetdb" \
             -e TEST_REDIS_TLS_URL="rediss://:agentsfleet@localhost:6379" \
             ghcr.io/agentsfleet/ci-zig-ubuntu:0.16.0 \
-            sh -c 'mkdir -p "$ZIG_GLOBAL_CACHE_DIR" "$ZIG_LOCAL_CACHE_DIR" && zig build test-bin && make test-integration'
+            sh -c 'mkdir -p "$ZIG_GLOBAL_CACHE_DIR" "$ZIG_LOCAL_CACHE_DIR" && zig build install test-bin && make test-integration'
 
       - name: Stop services
         if: always()
