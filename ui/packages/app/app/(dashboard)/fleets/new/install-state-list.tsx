@@ -28,7 +28,7 @@ export function InstallShell({
       <div className="flex flex-wrap items-center gap-md">
         <Spinner size="sm" label="installing" />
         <p className="text-body-sm leading-body-sm text-muted-foreground">
-          Visible here and in Fleets while it installs.
+          You can leave this page — your fleet keeps installing and shows up in Fleets when it&apos;s ready.
         </p>
       </div>
     </div>

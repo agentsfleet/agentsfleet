@@ -72,7 +72,7 @@ export default async function ModelsKeysPage() {
 
       <div aria-label="Custom secrets" data-testid="custom-secrets-group" className="space-y-md">
         <SectionLabel>Custom secrets</SectionLabel>
-        <TerminalPanel title="vault · resolved by name" tag="write-only">
+        <TerminalPanel title="Encrypted secrets" tag="write-only">
           <div className="p-lg">
             <CustomSecretsList workspaceId={workspaceId} secrets={customSecrets} />
           </div>
@@ -80,7 +80,16 @@ export default async function ModelsKeysPage() {
             <div className="mb-md">
               <div className="font-medium text-foreground">Add a custom secret</div>
               <p className="text-body-sm leading-body-sm text-muted-foreground">
-                Name it, add one or more fields. Write-only after save.
+                Give it a name and one or more fields (like <span className="font-mono">api_key</span>). Once
+                saved, values are encrypted and can&apos;t be viewed again — only replaced.{" "}
+                <a
+                  href="https://docs.agentsfleet.net/fleets/credentials"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-pulse underline-offset-2 hover:underline focus-visible:underline"
+                >
+                  Learn more<span className="sr-only"> (opens in a new tab)</span>
+                </a>
               </p>
             </div>
             <AddCredentialFormDynamic workspaceId={workspaceId} />

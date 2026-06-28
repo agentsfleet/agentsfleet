@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Button, Refpill, Time } from "@agentsfleet/design-system";
+import { LockIcon } from "lucide-react";
 import type { CustomSecretCredential } from "@/lib/api/credentials";
 import EditCredentialDialog from "./EditCredentialDialog";
 
@@ -18,7 +19,6 @@ type Props = {
 
 const NOT_REFERENCED = "— not referenced yet";
 const MODEL_SETUP_REF = "model setup";
-const EMPTY_ROW = "No custom secrets stored";
 
 function SecretNameCell({ secret }: { secret: CustomSecretCredential }) {
   return <span className="font-mono text-sm text-foreground">{secret.name}</span>;
@@ -59,8 +59,14 @@ export default function CustomSecretsList({ workspaceId, secrets, referencedName
         <tbody>
           {secrets.length === 0 ? (
             <tr className="border-t border-border">
-              <td className="px-lg py-lg text-muted-foreground" colSpan={4}>
-                {EMPTY_ROW}. Add one below.
+              <td className="px-lg py-10" colSpan={4}>
+                <div className="flex flex-col items-center justify-center gap-2 text-center">
+                  <LockIcon size={24} className="text-text-subtle" aria-hidden="true" />
+                  <h3 className="font-medium text-foreground">No secrets yet</h3>
+                  <p className="text-body-sm text-muted-foreground">
+                    Add an API token or credential your fleets can use.
+                  </p>
+                </div>
               </td>
             </tr>
           ) : (

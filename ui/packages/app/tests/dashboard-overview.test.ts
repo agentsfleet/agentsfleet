@@ -113,7 +113,7 @@ describe("dashboard overview page", () => {
     const { StatusTiles } = await import("../app/(dashboard)/page");
     const m = renderToStaticMarkup(React.createElement(React.Fragment, null, await StatusTiles()));
     expect(m).toContain("Start your fleet");
-    expect(m).toContain("Live states appear inline");
+    expect(m).toContain("Watch live progress appear inline");
   });
 
   it("StatusTiles first-install card surfaces template cards deep-linking to the install flow", async () => {
@@ -184,7 +184,8 @@ describe("dashboard overview page", () => {
     expect(dash).toContain(SHARED_LINK);
     expect(dash).not.toContain("Import from GitHub or paste SKILL.md");
 
-    // Fleets empty-state links to the full install flow.
+    // Fleets empty-state now renders the full template gallery inline
+    // (InstallEntry with the source strip), unlike the dashboard card above.
     resolveActiveWorkspaceMock.mockResolvedValue({ id: "ws_1" });
     listFleetsMock.mockResolvedValue(noFleets);
     getTenantBillingMock.mockResolvedValue(null);
@@ -192,7 +193,8 @@ describe("dashboard overview page", () => {
     const { FleetsData } = await import("../app/(dashboard)/fleets/page");
     const fleets = renderToStaticMarkup(React.createElement(React.Fragment, null, await FleetsData()));
     expect(fleets).toContain('href="/fleets/new"');
-    expect(fleets).toContain("Install your first fleet");
-    expect(fleets).not.toContain(SHARED_LINK);
+    expect(fleets).toContain("No fleets yet");
+    expect(fleets).toContain(SHARED_LINK);
+    expect(fleets).toContain("Import from GitHub or paste SKILL.md");
   });
 });

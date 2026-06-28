@@ -58,6 +58,16 @@ describe("fleets routes", () => {
     is_exhausted: true,
     exhausted_at: 1,
   };
+  const SAMPLE_TEMPLATES = [
+    {
+      id: "github-pr-reviewer",
+      name: "GitHub PR reviewer",
+      description: "Reviews pull requests.",
+      required_credentials: ["github"],
+      required_tools: [],
+      network_hosts: [],
+    },
+  ];
 
   function mockFetchBilling(billing: BillingSnapshot) {
     fetchMock.mockImplementation(async (url: string) => {
@@ -93,7 +103,7 @@ describe("fleets routes", () => {
     const { default: Loading } = await import("../app/(dashboard)/fleets/loading");
     render(React.createElement(Loading));
     const el = screen.getByRole("status");
-    expect(el.textContent).toContain("Loading fleets");
+    expect(el.textContent).toContain("Loading Fleets");
     // Branded WakePulse dot (data-live), not the off-system Loader2Icon spin.
     const dot = el.querySelector("[data-live]");
     expect(dot).toBeTruthy();
@@ -130,8 +140,9 @@ describe("fleets routes", () => {
     expect(markup).toContain("No workspace yet");
   });
 
-  it("fleets list page renders empty-fleets state with banner suppressed", async () => {
+  it("fleets list page renders empty-fleets state with the template gallery, banner suppressed", async () => {
     resolveActiveWorkspace.mockResolvedValueOnce({ id: "ws_1" });
+    listFleetTemplatesMock.mockResolvedValue({ items: SAMPLE_TEMPLATES });
     fetchMock.mockImplementation(async (url: string) => {
       if (url.endsWith("/v1/tenants/me/billing")) {
         return { ok: true, status: 200, json: async () => happyBilling };
@@ -144,11 +155,11 @@ describe("fleets routes", () => {
     });
     const { FleetsData } = await import("../app/(dashboard)/fleets/page");
     const markup = renderToStaticMarkup(React.createElement(React.Fragment, null, await FleetsData()));
-    expect(markup).toContain("Install your first fleet");
     expect(markup).toContain("No fleets yet");
-    expect(markup).toContain("Watch it wake");
+    // The real template gallery now stands in for the abstract step cards.
+    expect(markup).toContain("GitHub PR reviewer");
+    expect(markup).toContain("Import from GitHub or paste SKILL.md");
     expect(markup).toContain('href="/fleets/new"');
-    expect(markup).not.toContain("Import from GitHub or paste SKILL.md");
     expect(markup).not.toContain("credit balance is exhausted");
   });
 
@@ -162,8 +173,9 @@ describe("fleets routes", () => {
     expect(markup).toContain("credit balance is exhausted");
   });
 
-  it("fleets list empty-state does not fetch template catalog", async () => {
+  it("fleets list empty-state fetches and renders the template catalog", async () => {
     resolveActiveWorkspace.mockResolvedValueOnce({ id: "ws_1" });
+    listFleetTemplatesMock.mockResolvedValue({ items: SAMPLE_TEMPLATES });
     fetchMock.mockImplementation(async (url: string) => {
       if (url.endsWith("/v1/tenants/me/billing")) {
         return { ok: true, status: 200, json: async () => happyBilling };
@@ -172,10 +184,26 @@ describe("fleets routes", () => {
     });
     const { FleetsData } = await import("../app/(dashboard)/fleets/page");
     const markup = renderToStaticMarkup(React.createElement(React.Fragment, null, await FleetsData()));
-    expect(markup).toContain("Install your first fleet");
     expect(markup).toContain("No fleets yet");
-    expect(markup).not.toContain("Import from GitHub or paste SKILL.md");
-    expect(listFleetTemplatesMock).not.toHaveBeenCalled();
+    expect(markup).toContain("GitHub PR reviewer");
+    expect(listFleetTemplatesMock).toHaveBeenCalled();
+  });
+
+  it("fleets list empty-state swallows a failed template catalog fetch (empty gallery, no crash)", async () => {
+    resolveActiveWorkspace.mockResolvedValueOnce({ id: "ws_1" });
+    // Catalog outage on the empty path → the `.catch(() => [])` arm yields no
+    // templates, so the empty state still renders rather than throwing.
+    listFleetTemplatesMock.mockRejectedValue(new Error("catalog down"));
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url.endsWith("/v1/tenants/me/billing")) {
+        return { ok: true, status: 200, json: async () => happyBilling };
+      }
+      return { ok: true, status: 200, json: async () => ({ items: [], total: 0, next_cursor: null }) };
+    });
+    const { FleetsData } = await import("../app/(dashboard)/fleets/page");
+    const markup = renderToStaticMarkup(React.createElement(React.Fragment, null, await FleetsData()));
+    expect(markup).toContain("No fleets yet");
+    expect(markup).not.toContain("GitHub PR reviewer");
   });
 
   it("fleets list page swallows a failed billing fetch and still renders", async () => {
@@ -192,7 +220,7 @@ describe("fleets routes", () => {
     });
     const { FleetsData } = await import("../app/(dashboard)/fleets/page");
     const markup = renderToStaticMarkup(React.createElement(React.Fragment, null, await FleetsData()));
-    expect(markup).toContain("Install your first fleet");
+    expect(markup).toContain("No fleets yet");
   });
 
   it("fleets new page redirects to /sign-in when no token", async () => {

@@ -115,7 +115,7 @@ export default function ProviderKeyForm({
           value={apiKey}
           onChange={(e) => onApiKeyChange(e.target.value)}
           onKeyDown={onFieldKeyDown}
-          placeholder={locked ? "sk-..." : "paste your key — we'll detect the provider"}
+          placeholder={locked ? "sk-..." : "paste your key — we'll detect common providers"}
           spellCheck={false}
           autoComplete="off"
         />

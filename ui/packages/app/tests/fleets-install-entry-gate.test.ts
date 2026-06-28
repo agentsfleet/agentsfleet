@@ -22,6 +22,7 @@ const TEMPLATE = {
   name: "GitHub PR reviewer",
   description: "Reviews pull requests.",
   required_credentials: ["github"],
+  required_credentials_reasons: { github: "review your pull requests" },
   required_tools: [],
   network_hosts: [],
 };

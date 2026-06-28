@@ -38,6 +38,7 @@ const TEMPLATE_GH = {
   name: "GitHub PR reviewer",
   description: "Reviews pull requests.",
   required_credentials: ["github"],
+  required_credentials_reasons: { github: "review your pull requests" },
   required_tools: ["github_review_comment"],
   network_hosts: ["api.github.com"],
 };
@@ -46,6 +47,7 @@ const TEMPLATE_BARE = {
   name: "Hello bot",
   description: "Says hi.",
   required_credentials: [],
+  required_credentials_reasons: {},
   required_tools: [],
   network_hosts: [],
 };

@@ -27,7 +27,8 @@ const VISIBILITY_PUBLIC: []const u8 = "public";
 // gallery must show every public template, so a cap would silently truncate it.
 const SELECT_PUBLIC =
     \\SELECT id, name, description,
-    \\       required_credentials::text, required_tools::text, network_hosts::text
+    \\       required_credentials::text, required_tools::text, network_hosts::text,
+    \\       required_credentials_reasons::text
     \\  FROM core.fleet_bundle_templates
     \\ WHERE visibility = $1
     \\ ORDER BY id
@@ -38,6 +39,9 @@ const CatalogRow = struct {
     name: []const u8,
     description: []const u8,
     required_credentials: []const []const u8,
+    // Display-only {credential_name: reason} object, passed through as a JSON
+    // value so the response emits a nested object the gallery + install gate read.
+    required_credentials_reasons: std.json.Value,
     required_tools: []const []const u8,
     network_hosts: []const []const u8,
 };
@@ -83,11 +87,15 @@ fn appendRow(alloc: std.mem.Allocator, rows: *std.ArrayList(CatalogRow), row: an
     const required_credentials = try decodeStringArray(alloc, try row.get([]const u8, 3));
     const required_tools = try decodeStringArray(alloc, try row.get([]const u8, 4));
     const network_hosts = try decodeStringArray(alloc, try row.get([]const u8, 5));
+    // Reasons is a {name: reason} object, not a string array — decode it as a
+    // JSON value so it round-trips into the response as a nested object.
+    const required_credentials_reasons = try std.json.parseFromSliceLeaky(std.json.Value, alloc, try row.get([]const u8, 6), .{});
     try rows.append(alloc, .{
         .id = id,
         .name = name,
         .description = description,
         .required_credentials = required_credentials,
+        .required_credentials_reasons = required_credentials_reasons,
         .required_tools = required_tools,
         .network_hosts = network_hosts,
     });

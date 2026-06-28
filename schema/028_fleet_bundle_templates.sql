@@ -24,6 +24,11 @@ CREATE TABLE IF NOT EXISTS core.fleet_bundle_templates (
     source_path          TEXT NOT NULL,
     source_ref           TEXT NOT NULL,
     required_credentials JSONB NOT NULL,
+    -- Per-credential "why this fleet needs it" copy, keyed by credential name
+    -- (e.g. {"github":"review your pull requests"}). A display-only preview hint
+    -- the install gate renders so the operator knows why to connect — NOT a
+    -- security control; credential validation reads required_credentials.
+    required_credentials_reasons JSONB NOT NULL,
     required_tools       JSONB NOT NULL,
     network_hosts        JSONB NOT NULL,
     visibility           TEXT NOT NULL,
@@ -41,14 +46,16 @@ GRANT SELECT ON core.fleet_bundle_templates TO api_runtime;
 -- ON CONFLICT keeps the seed idempotent on re-apply.
 INSERT INTO core.fleet_bundle_templates
     (id, name, description, source_repo, source_path, source_ref,
-     required_credentials, required_tools, network_hosts, visibility,
+     required_credentials, required_credentials_reasons, required_tools, network_hosts, visibility,
      created_at, updated_at)
 VALUES
     ('github-pr-reviewer',
      'GitHub Pull Request reviewer',
      'Reviews GitHub pull requests and posts review comments.',
      'agentsfleet/github-pr-reviewer', '', 'main',
-     '["github"]'::jsonb, '["github_review_comment"]'::jsonb,
+     '["github"]'::jsonb,
+     '{"github":"review your pull requests and post review comments"}'::jsonb,
+     '["github_review_comment"]'::jsonb,
      '["api.github.com"]'::jsonb, 'public',
      (extract(epoch from now()) * 1000)::bigint,
      (extract(epoch from now()) * 1000)::bigint),
@@ -56,7 +63,9 @@ VALUES
      'Zoho Sprints daily summarizer',
      'Summarizes the day''s Zoho Sprints activity and posts a digest.',
      'agentsfleet/zoho-sprint-daily-summarizer', '', 'main',
-     '["zoho"]'::jsonb, '["zoho_sprint_read"]'::jsonb,
+     '["zoho"]'::jsonb,
+     '{"zoho":"read your Zoho Sprints activity for the daily digest"}'::jsonb,
+     '["zoho_sprint_read"]'::jsonb,
      '["sprintsapi.zoho.com","accounts.zoho.com"]'::jsonb, 'public',
      (extract(epoch from now()) * 1000)::bigint,
      (extract(epoch from now()) * 1000)::bigint),
@@ -64,7 +73,9 @@ VALUES
      'Security reviewer',
      'Reviews pull requests for security issues and posts findings.',
      'agentsfleet/security-reviewer', '', 'main',
-     '["github"]'::jsonb, '["github_review_comment"]'::jsonb,
+     '["github"]'::jsonb,
+     '{"github":"scan your pull requests for security issues and post findings"}'::jsonb,
+     '["github_review_comment"]'::jsonb,
      '["api.github.com"]'::jsonb, 'public',
      (extract(epoch from now()) * 1000)::bigint,
      (extract(epoch from now()) * 1000)::bigint)
