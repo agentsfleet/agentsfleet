@@ -374,12 +374,12 @@ test "integration: catalog hides non-public templates (visibility filter)" {
     _ = try conn.exec(
         \\INSERT INTO core.fleet_bundle_templates
         \\    (id, name, description, source_repo, source_path, source_ref,
-        \\     required_credentials, required_tools, network_hosts, visibility,
+        \\     required_credentials, required_credentials_reasons, required_tools, network_hosts, visibility,
         \\     created_at, updated_at)
         \\VALUES
         \\    ($1, 'Private probe', 'Hidden from the gallery.',
         \\     'agentsfleet/private-visibility-probe', '', 'main',
-        \\     '[]'::jsonb, '[]'::jsonb, '[]'::jsonb, 'private', 0, 0)
+        \\     '[]'::jsonb, '{}'::jsonb, '[]'::jsonb, '[]'::jsonb, 'private', 0, 0)
     , .{PRIVATE_PROBE_ID});
 
     const res = try (try h.get("/v1/fleets/bundles").bearer(TOKEN_USER)).send();

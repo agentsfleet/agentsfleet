@@ -109,7 +109,10 @@ export type FleetTemplate = {
   // Display-only "why this fleet needs it" copy, keyed by credential name (e.g.
   // { github: "review your pull requests" }). Drives the install gate's
   // purpose-driven prompt; absent keys fall back to the generic connect copy.
-  required_credentials_reasons: Record<string, string>;
+  // Optional: the catalog response is only cast on the client, so a cached
+  // response, an old backend, or a mock template may omit it entirely — callers
+  // default to {} so the gate shows generic copy instead of crashing.
+  required_credentials_reasons?: Record<string, string>;
   required_tools: string[];
   network_hosts: string[];
 };

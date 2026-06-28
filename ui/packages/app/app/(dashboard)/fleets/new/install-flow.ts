@@ -43,7 +43,7 @@ export function requirementsOf(source: InstallSource): SourceRequirements {
     return {
       name: t.name,
       credentials: t.required_credentials,
-      credentialReasons: t.required_credentials_reasons,
+      credentialReasons: t.required_credentials_reasons ?? {},
       tools: t.required_tools,
       networkHosts: t.network_hosts,
       triggerPresent: true,
