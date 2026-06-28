@@ -40,6 +40,14 @@ const KEY_SEP: u8 = 0x1f;
 /// authoritative expiry, so this is only a backstop that must stay positive.
 const MIN_TTL_S: u32 = 1;
 
+/// Ceiling for the cache.zig TTL (seconds). cache.zig stores the entry expiry as
+/// `@as(u32, now_epoch_seconds) + ttl` (segment.zig) — a u32 add — so an
+/// unbounded ttl (e.g. a never-expires `static` token whose remaining seconds
+/// exceed `maxInt(u32)`) overflows that u32 and panics. One day is a safe
+/// backstop: the broker's `now_ms` skew check at the read path is authoritative,
+/// so the cache TTL only needs to be long enough to avoid needless re-mints.
+const MAX_TTL_S: u32 = 24 * 60 * 60;
+
 /// Metrics `outcome` labels (RULE UFS — shared by every emit site).
 const OUTCOME_OK: []const u8 = "ok";
 const OUTCOME_RECONNECT: []const u8 = "reconnect_required";
@@ -147,10 +155,15 @@ fn cacheMinted(self: *CredentialBroker, key: []const u8, minted: integration.Min
 /// cache.zig expiry backstop (seconds). Our `now_ms` skew check is authoritative;
 /// in production `now_ms` tracks wall time so this matches the real remaining life.
 fn ttlSeconds(expires_at_ms: i64, now_ms: i64) u32 {
-    const remaining_ms = expires_at_ms - now_ms;
+    // Saturating subtraction: a never-expires token uses `maxInt(i64)`, and
+    // `maxInt(i64) - negative_now` would overflow a plain i64 subtraction.
+    const remaining_ms = expires_at_ms -| now_ms;
     if (remaining_ms <= 0) return MIN_TTL_S;
     const secs = @divFloor(remaining_ms, 1000);
-    if (secs > std.math.maxInt(u32)) return std.math.maxInt(u32);
+    // Clamp to MAX_TTL_S, never `maxInt(u32)`: cache.zig adds `now_epoch_seconds`
+    // to this ttl in a u32, so the type max is the one value guaranteed to
+    // overflow it. A bounded ceiling keeps `now + ttl` inside u32.
+    if (secs >= MAX_TTL_S) return MAX_TTL_S;
     return @max(MIN_TTL_S, @as(u32, @intCast(secs)));
 }
 
