@@ -12,14 +12,14 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Milestone:** M102
 **Workstream:** 002
 **Date:** Jun 26, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — the JSON Web Key Set (JWKS) key set is read on **every authenticated request**; an exclusive `common.Mutex` there caps auth throughput at scale. This retires the lock on the hot path.
 **Categories:** API
 **Batch:** B2 — rides after M102_001's credential-broker work (§1–§8); its own commits/sections, kept separate for reviewability.
-**Branch:** feat/m102-agent-identity-proxy
+**Branch:** feat/m102-concurrency-hardening
 **Depends on:** none hard. Composes with M102_001 (same worktree; the credential cache already moved to `cache.zig`'s shared-read model, the in-repo precedent this generalises).
 **Provenance:** agent-generated (interactive CTO design session with Indy, Jun 26 2026; the architecture below is confirmed, not proposed). Re-confirm at PLAN.
-**Test Baseline:** unit=2164 integration=206
+**Test Baseline:** unit=2214 integration=213
 
 > **Scope honesty.** This is a daemon-wide concurrency change touching auth (`jwks`), event delivery, metrics, connection pools, and logging. It introduces **no new feature and no behaviour change** — same outputs, fewer locks on the read path. `jwks` is the auth boundary and is reviewed hardest. The work lands as its own clearly-delineated workstream (separate commits), never invisibly folded into the credential-broker diff.
 
@@ -280,6 +280,7 @@ zig build -Dwith-bench-tools bench 2>&1 | tail -20
 - **Why not RwLock (recorded so a reviewer can check the call):** RwLock makes the *reader* take a shared lock (atomic RMW + cache-line bounce) to guard against a writer 6 hours apart; RCU pays only the rare writer. The `atomic<shared_ptr>` race that motivates refcounted Arc is sidestepped because RCU's read is a plain atomic-load (no refcount). Correctness rests on read critical sections being bounded-tiny vs the publish interval — true for the jwks `kid` lookup (pure CPU) and the log-registry read.
 - **Scope boundary (Indy-directed):** lands in the M102 worktree as separate commits/sections, reviewed apart from the credential broker; jwks reviewed hardest (auth boundary).
 - **Bench requirement:** each read-mostly migration carries a micro-benchmark recording the mutex-vs-RCU read-throughput delta into Verification Evidence — the only externally-visible artefact of an otherwise behaviour-preserving change.
+- **Perf-proof directive (Indy, Jun 28 2026):** the verification bar is raised from "record a delta" to "**prove the concurrency win**". Every migrated hot path — jwks, event bus, metrics, **and redis_pool** — gets a dedicated concurrent benchmark written against its *public* API (unchanged by this workstream, so the same bench exe compiles on both branches). The proof method is **`main` (mutex) vs this `m102` branch (RCU/lock-free)**, measured under N reader/producer threads `[1,2,4,8,16]`, with the deltas captured into Verification Evidence and a non-regression assertion added so the win can't silently erode. Verbatim ack: _"i think you will have to build the relevant testing even redis_pool has an impact i think comparing between main and this m102 branch. You can now continue with these answers in mind."_ — context: how to benchmark a before/after when the mutex is deleted from the hot path.
 
 ---
 
