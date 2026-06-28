@@ -37,8 +37,27 @@ describe("requirementsOf — normalises each source", () => {
     });
     expect(r.name).toBe("T");
     expect(r.credentials).toEqual(["github"]);
+    expect(r.credentialReasons).toEqual({ github: "review pull requests" });
     expect(r.triggerPresent).toBe(true);
     expect(r.defaultName).toBeUndefined();
+  });
+
+  it("a template that omits required_credentials_reasons defaults to an empty map", () => {
+    // A cached response, an old backend, or a mock can drop the field despite
+    // the client cast; the `?? {}` guard keeps the gate on generic copy rather
+    // than feeding undefined into ConnectGate (where reasons[credential] throws).
+    const r = requirementsOf({
+      kind: "template",
+      template: {
+        id: "t",
+        name: "T",
+        description: "d",
+        required_credentials: ["github"],
+        required_tools: [],
+        network_hosts: [],
+      },
+    });
+    expect(r.credentialReasons).toEqual({});
   });
 
   it("a github snapshot carries its parsed requirements, default name, and trigger flag", () => {
