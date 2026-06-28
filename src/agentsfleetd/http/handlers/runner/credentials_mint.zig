@@ -77,6 +77,17 @@ pub fn innerRunnerCredentialsMint(hx: Hx, req: *httpz.Request) void {
     defer inputs.handle.deinit();
 
     // No DB connection is held here — the broker may do a network token exchange.
+    //
+    // Residual lease-check race (accepted; deferred to a follow-up hardening):
+    // the lease is validated live in `loadMintInputs`, which then releases the
+    // conn before this exchange. The exchange is non-atomic w.r.t. the lease, so
+    // if the lease expires (raw TTL) or is reclaimed during the in-flight
+    // exchange, a ≤1h token still returns. The window is bounded to a single
+    // request (~exchange duration) and only bites at the exact expiry/kill edge;
+    // the unbounded replay-past-kill hole is already closed by the live-lease
+    // gate above. A recheck-after-mint would only *withhold* the token — it
+    // cannot un-mint the upstream credential, which lives ≤1h regardless — so
+    // the marginal value is low. Tracked as a separate atomic-mint follow-up.
     const result = broker.mint(
         hx.alloc,
         inputs.workspace_id,
