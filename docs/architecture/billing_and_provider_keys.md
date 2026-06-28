@@ -289,13 +289,21 @@ The api_key — platform OR self-managed — crosses one boundary cleanly. It ex
 
 **The api_key MUST NEVER appear in:**
 
-- HTTP response bodies — `agentsfleet doctor --json` output, `GET /v1/tenants/me/provider`, any other JSON the user sees.
+- HTTP response bodies — `agentsfleet doctor --json` output, `GET /v1/tenants/me/provider`, the `GET /v1/workspaces/{ws}/credentials` metadata list (§8.3), any other JSON the user sees.
 - Logs — `agentsfleetd`, runner, structured logs, request logs.
 - The fleet's tool context — placeholders are substituted *after* sandbox entry by the tool bridge; the provider key is on a different path entirely (the runner's NullClaw uses it for the inference call only, never via `secrets_map`).
 - Persisted event rows — `core.fleet_events`, `fleet_execution_telemetry`, anything else under `core.*`.
 - User-facing artefacts — frontmatter, the dashboard, CLI table output, status-page bodies.
 
 The boundary is "process-internal vs user-facing," not "in memory vs not in memory." A grep across the event log, `agentsfleetd` logs, runner logs, and HTTP responses for the api_key bytes after a self-managed run is a CI-level invariant (M48 acceptance criteria).
+
+### 8.3 The credential metadata list and key-only rotate (M102_003)
+
+`GET /v1/workspaces/{ws}/credentials` projects each stored credential's **non-secret** descriptor so the dashboard classifies and labels without guessing from the user-chosen name. Each row carries a server-derived `kind` ∈ {`provider_key`, `custom_endpoint`, `custom_secret`} plus the non-secret `provider` / `model` / `base_url`, and **never** `api_key`. The list path decrypts each opaque body on read (the same `vault.loadJson` the mint path uses), projects everything *except* the key, and frees the plaintext; the projection type has no `api_key` field, so a leak is a compile error rather than a review catch. `kind` is derived from the `provider` field — `openai-compatible` → `custom_endpoint`, any other provider string → `provider_key`, missing/non-string → `custom_secret` — never from the name. An unparseable or legacy body degrades to `custom_secret` and the list still returns 200. The list stays operator-gated (`workspace_guards.enforce(.operator)`).
+
+`PATCH /v1/workspaces/{ws}/credentials/{name}` with body `{api_key}` rotates **only** the secret, preserving `provider` / `model` / `base_url` — a Replace-key that is safe for every kind. Missing credential → `UZ-VAULT-003` (404); empty key → `UZ-REQ-001` (400); the duped key copy is `secureZero`d after the re-store.
+
+Both endpoints honour §8.2: the metadata is a read-time *projection*, not a new stored column, so the M45 opaque-body invariant (§8.1) is unchanged; `api_key` is structurally absent from the list response and is the only field the rotate accepts but never returns or logs. (A non-secret metadata sidecar column — which would let the list avoid decrypting at all — is the named Option B follow-up, deferred to keep the M45 invariant.)
 
 ---
 

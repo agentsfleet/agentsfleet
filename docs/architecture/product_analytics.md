@@ -32,10 +32,15 @@ never break the product flow it instruments.
 | Event | Fires when | Props |
 |---|---|---|
 | `fleet_created` | the dashboard install form succeeds | `fleet_id` |
+| `workspace_switched` | the workspace switcher changes the active workspace | `workspace_id` |
 | `runner_token_minted` | the add-runner dialog mints a registration token (the runner goes live later, host-side) | `runner_id`, `sandbox_tier` |
 | `api_key_minted` | the API-key dialog succeeds | `api_key_id` (never the key) |
-| `model_added` | the models wizard saves a Bring-Your-Own-Key (BYOK) setup (a platform-defaults reset emits nothing) | `provider`, `mode`, `model?` |
-| `credential_added` | the credentials-page form succeeds | `credential_name` (never `data_json`) |
+| `model_added` | the Models & Keys provider-key form saves a Bring-Your-Own-Key (BYOK) setup (a platform-defaults reset emits nothing) | `provider`, `mode`, `model?` |
+| `model_changed` | the Models & Keys hero switches the active provider/model | `provider`, `model` |
+| `key_rotated` | a provider key is rotated via Replace key (PATCH `…/credentials/{name}`) | `provider` (never the key) |
+| `provider_reset` | the active provider is reset to the platform default | `from_provider` |
+| `credential_added` | the Models & Keys custom-secret form succeeds | `credential_name` (never `data_json`) |
+| `integration_requested` | a fleet requests an integration grant from the integrations surface | `integration_id`, `integration_name` |
 | `approval_resolved` | approve/deny actually resolves the gate (the `already_resolved` race emits nothing) | `gate_id`, `decision`, `has_reason` |
 
 Events fire on success only — validation failures and aborted actions emit
@@ -55,6 +60,20 @@ actually reset, and a racing identify is queued and flushed at init. Accepted
 residual risk: a user who clears localStorage but keeps cookies can retain a
 posthog identity with no marker (the app's default posthog persistence is
 localStorage+cookie).
+
+## Workspace group + person context
+
+`setAnalyticsContext` (bound from `Shell`) binds the active workspace as a
+PostHog **group** (`group("workspace", …)`), so every subsequent event and
+pageview is sliceable per workspace — mirroring Supabase Studio's
+`$groups: { organization, project }`. The same call sets org-level **person
+properties** (`workspace_count`, `workspace_plan`) on the identified user via
+`setPersonProperties`. Both are best-effort and ride the same pending-queue
+deferral as identify/reset: context that races the lazy posthog-js chunk load
+is queued and flushed at init *after* identify, so person properties attach to
+the identified user, never a pre-identify anonymous id. A redundant `group()`
+for the already-bound workspace is skipped; `resetAnalyticsIdentity()` rebinds
+on the next session.
 
 ## Website (marketing)
 
