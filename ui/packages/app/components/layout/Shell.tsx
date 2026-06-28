@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
 import {
@@ -11,7 +11,7 @@ import {
   BotIcon,
   CheckCircle2Icon,
   CpuIcon,
-  KeyRoundIcon,
+  LinkIcon,
   CreditCardIcon,
   ServerIcon,
   MenuIcon,
@@ -24,9 +24,8 @@ import {
   DialogTrigger,
   WakePulse,
 } from "@agentsfleet/design-system";
-import { trackNavigationClicked } from "@/lib/analytics/posthog";
+import { setAnalyticsContext, trackNavigationClicked } from "@/lib/analytics/posthog";
 import { setActiveWorkspace } from "@/app/(dashboard)/actions";
-import { WORKSPACE_CREDENTIALS_PATH } from "@/lib/fleet-credentials";
 import type { TenantWorkspace } from "@/lib/api/workspaces";
 import WorkspaceSwitcher from "./WorkspaceSwitcher";
 import ThemeToggle from "./ThemeToggle";
@@ -53,11 +52,12 @@ const OPERATIONS_NAV: NavEntry[] = [
   { label: "Events", href: "/events", icon: ActivityIcon },
 ];
 
-// What the fleets are wired to — the model brain and the write-only secret
-// vault, now two destinations; plus the execution fleet for platform admins.
+// What the fleets are wired to — the model brain (which now also hosts the
+// write-only secret vault) and the tool connectors, each its own destination;
+// plus the execution fleet for platform admins.
 const CONFIGURATION_NAV: NavEntry[] = [
-  { label: "Models", href: "/settings/models", icon: CpuIcon },
-  { label: "Credentials", href: WORKSPACE_CREDENTIALS_PATH, icon: KeyRoundIcon },
+  { label: "Models & Keys", href: "/settings/models", icon: CpuIcon },
+  { label: "Integrations", href: "/integrations", icon: LinkIcon },
 ];
 
 // Platform-admin-only — appended to the Configuration group only when the
@@ -119,6 +119,16 @@ export default function Shell({
   const activeHref = resolveActiveHref(pathname);
   const isActive = (href: string) => href === activeHref;
 
+  // Bind the active workspace as the PostHog group + record workspace_count on
+  // the person, so every event/pageview is sliceable per workspace (Supabase
+  // group-analytics model). Best-effort + queued until posthog-js loads.
+  useEffect(() => {
+    setAnalyticsContext({
+      workspaceId: activeWorkspaceId,
+      workspaceCount: workspaces.length,
+    });
+  }, [activeWorkspaceId, workspaces.length]);
+
   return (
     <div className="app-glow-surface grid min-h-screen md:grid-cols-[240px_1fr] grid-rows-[56px_1fr]" data-glow="dashboard">
       <header className="col-span-full sticky top-0 z-40 flex items-center gap-4 px-4 md:px-6 border-b border-border bg-background/85 backdrop-blur">
@@ -154,10 +164,14 @@ export default function Shell({
         <SidebarNav isActive={isActive} onNavigate={() => {}} isPlatformAdmin={isPlatformAdmin} />
       </aside>
 
-      <main className="app-dashboard-canvas p-6 md:p-8 overflow-auto">
+      <main className="app-dashboard-canvas overflow-auto px-4 py-6 sm:px-6 md:px-8 md:py-8 2xl:px-12">
         {/* `app-content-rise` rises the page's top-level sections in on mount /
-         * route change (globals.css, reduced-motion-gated). */}
-        <div className="app-content-rise w-full max-w-content">{children}</div>
+         * route change (globals.css, reduced-motion-gated). Full-width canvas:
+         * the page spans the available width at every breakpoint (mobile → 4K),
+         * with gutters that grow on large screens. Long-form text / forms cap
+         * themselves with a per-component measure (max-w-prose / max-w-form),
+         * and short content centres (mx-auto) rather than stretching. */}
+        <div className="app-content-rise w-full">{children}</div>
       </main>
     </div>
   );

@@ -110,7 +110,10 @@ describe("CreateApiKeyDialog component", () => {
     await reachReveal(user);
     await user.click(screen.getByRole("button", { name: /^copy$/i }));
     await waitFor(() => expect(writeText).toHaveBeenCalledWith("agt_tdeadbeef"));
-    expect(screen.getByRole("button", { name: /^copied$/i })).toBeTruthy();
+    // The "Copied" label flips after the async clipboard write resolves + a
+    // re-render; await it rather than racing a synchronous getByRole — this is
+    // what flaked under full-suite load.
+    await waitFor(() => expect(screen.getByRole("button", { name: /^copied$/i })).toBeTruthy());
   });
 
   it("falls back to manual selection when the clipboard API is blocked", async () => {

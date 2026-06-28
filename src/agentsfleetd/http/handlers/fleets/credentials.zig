@@ -2,13 +2,14 @@
 //
 // POST   /v1/workspaces/{ws}/credentials             → innerStoreCredential
 // GET    /v1/workspaces/{ws}/credentials             → innerListCredentials
+// PATCH  /v1/workspaces/{ws}/credentials/{name}      → innerRotateCredential
 // DELETE /v1/workspaces/{ws}/credentials/{name}      → innerDeleteCredential
 
 const std = @import("std");
 const httpz = @import("httpz");
 const pg = @import("pg");
 const logging = @import("log");
-const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
+const credential_list = @import("credential_list.zig");
 const common = @import("../common.zig");
 const hx_mod = @import("../hx.zig");
 const ec = @import("../../../errors/error_registry.zig");
@@ -22,7 +23,7 @@ const API_ACTOR = "api";
 
 pub const Context = common.Context;
 
-const S_AGENT = "fleet:";
+const S_API_KEY = "api_key";
 
 const MAX_CREDENTIAL_DATA_LEN: usize = 4 * 1024; // 4KB stringified JSON
 const MAX_CREDENTIAL_NAME_LEN: usize = 64;
@@ -179,47 +180,126 @@ pub fn innerListCredentials(hx: hx_mod.Hx, req: *httpz.Request, workspace_id: []
     }) orelse return;
     defer access.deinit(hx.alloc);
 
-    const creds = fetchCredentialListOnConn(conn, hx.alloc, workspace_id) catch |err| {
+    const creds = credential_list.fetchCredentialListOnConn(conn, hx.alloc, workspace_id) catch |err| {
         log.err("list_failed", .{ .error_code = ec.ERR_INTERNAL_DB_QUERY, .err = @errorName(err), .req_id = hx.req_id });
         common.internalDbError(hx.res, hx.req_id);
         return;
     };
 
-    hx.ok(.ok, .{ .credentials = creds });
+    respondCredentialList(hx, creds);
 }
 
-const CredentialListRow = struct {
-    name: []const u8,
-    created_at: i64,
+/// Serialize the list with null optional fields omitted, so each row carries
+/// only its kind's descriptors (the per-kind wire shape the client union and
+/// the `integration` CLI consume). hx.ok would emit `provider:null` noise.
+fn respondCredentialList(hx: hx_mod.Hx, creds: []const credential_list.CredentialListRow) void {
+    hx.res.status = @intFromEnum(std.http.Status.ok);
+    hx.res.json(.{ .credentials = creds }, .{ .emit_null_optional_fields = false }) catch {
+        common.internalOperationError(hx.res, "Failed to serialize credential list", hx.req_id);
+    };
+}
+
+// ── Rotate Credential Key (PATCH) ──────────────────────────────────────────
+
+// Replace-key body: only the secret rotates; provider/model/base_url are
+// preserved by loading the stored object and swapping a single field.
+const RotateBody = struct {
+    api_key: []const u8,
 };
 
-fn fetchCredentialListOnConn(conn: *pg.Conn, alloc: std.mem.Allocator, workspace_id: []const u8) ![]CredentialListRow {
-    // Query vault.secrets for fleet-prefixed keys (fleet:{name}).
-    var q = PgQuery.from(try conn.query(
-        \\SELECT key_name, created_at FROM vault.secrets
-        \\WHERE workspace_id = $1::uuid AND key_name LIKE 'fleet:%'
-        \\ORDER BY key_name ASC
-    , .{workspace_id}));
-    defer q.deinit();
+pub fn innerRotateCredential(
+    hx: hx_mod.Hx,
+    req: *httpz.Request,
+    workspace_id: []const u8,
+    credential_name: []const u8,
+) void {
+    if (!id_format.isSupportedWorkspaceId(workspace_id)) {
+        hx.fail(ec.ERR_INVALID_REQUEST, ec.MSG_WORKSPACE_ID_REQUIRED);
+        return;
+    }
+    if (!validateCredentialName(hx, credential_name)) return;
 
-    var rows: std.ArrayList(CredentialListRow) = .empty;
-    errdefer {
-        for (rows.items) |r| alloc.free(r.name);
-        rows.deinit(alloc);
+    const body = req.body() orelse {
+        hx.fail(ec.ERR_INVALID_REQUEST, ec.MSG_BODY_REQUIRED);
+        return;
+    };
+    if (!common.checkBodySize(req, hx.res, body, hx.req_id)) return;
+
+    const parsed = std.json.parseFromSlice(RotateBody, hx.alloc, body, .{ .ignore_unknown_fields = true }) catch {
+        hx.fail(ec.ERR_INVALID_REQUEST, ec.MSG_MALFORMED_JSON);
+        return;
+    };
+    defer parsed.deinit();
+    if (parsed.value.api_key.len == 0) {
+        hx.fail(ec.ERR_INVALID_REQUEST, ec.MSG_CREDENTIAL_KEY_REQUIRED);
+        return;
     }
-    while (try q.next()) |row| {
-        const raw_name = try row.get([]const u8, 0);
-        // Strip "fleet:" prefix for display
-        const display_name = if (std.mem.startsWith(u8, raw_name, S_AGENT))
-            raw_name[S_AGENT.len..]
-        else
-            raw_name;
-        const name = try alloc.dupe(u8, display_name);
-        errdefer alloc.free(name);
-        try rows.append(alloc, .{
-            .name = name,
-            .created_at = try row.get(i64, 1),
-        });
+
+    const conn = hx.ctx.pool.acquire() catch {
+        common.internalDbUnavailable(hx.res, hx.req_id);
+        return;
+    };
+    defer hx.ctx.pool.release(conn);
+
+    // Credential endpoints require operator-minimum role.
+    const actor = hx.principal.user_id orelse API_ACTOR;
+    const access = workspace_guards.enforce(hx.res, hx.req_id, conn, hx.alloc, hx.principal, workspace_id, actor, .{
+        .minimum_role = .operator,
+    }) orelse return;
+    defer access.deinit(hx.alloc);
+
+    rotateCredentialKeyOnConn(conn, hx.alloc, workspace_id, credential_name, parsed.value.api_key) catch |err| switch (err) {
+        error.NotFound => {
+            hx.fail(ec.ERR_CREDENTIAL_NOT_FOUND, ec.MSG_CREDENTIAL_NOT_FOUND);
+            return;
+        },
+        error.DataTooLarge => {
+            hx.fail(ec.ERR_VAULT_DATA_TOO_LARGE, ec.MSG_CREDENTIAL_DATA_TOO_LARGE);
+            return;
+        },
+        else => {
+            log.err("rotate_failed", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .err = @errorName(err), .name = credential_name, .req_id = hx.req_id });
+            common.internalDbError(hx.res, hx.req_id);
+            return;
+        },
+    };
+
+    log.debug("rotated", .{ .name = credential_name, .workspace = workspace_id });
+    hx.ok(.ok, .{ .name = credential_name });
+}
+
+fn rotateCredentialKeyOnConn(
+    conn: *pg.Conn,
+    alloc: std.mem.Allocator,
+    workspace_id: []const u8,
+    credential_name: []const u8,
+    new_key: []const u8,
+) !void {
+    const key_name = try credential_key.allocKeyName(alloc, credential_name);
+    defer alloc.free(key_name);
+
+    // Load the existing object, swap ONLY api_key, re-store. A missing row
+    // surfaces error.NotFound (mapped to 404 by the caller).
+    var parsed = vault.loadJson(alloc, conn, workspace_id, key_name) catch |err| switch (err) {
+        error.NotFound => return error.NotFound,
+        else => return err,
+    };
+    defer parsed.deinit();
+
+    // Own a mutable copy of the key so it can be securely zeroed after the
+    // re-store; the parse-arena/request-body copies are not wiped.
+    const key_copy = try alloc.dupe(u8, new_key);
+    defer {
+        std.crypto.secureZero(u8, key_copy);
+        alloc.free(key_copy);
     }
-    return rows.toOwnedSlice(alloc);
+    // The object map is backed by the parse arena — mutate it with that same
+    // allocator so its storage stays single-owner (freed by parsed.deinit()).
+    try parsed.value.object.put(parsed.arena.allocator(), S_API_KEY, .{ .string = key_copy });
+
+    const plaintext = try std.json.Stringify.valueAlloc(alloc, parsed.value, .{});
+    defer alloc.free(plaintext);
+    if (plaintext.len > MAX_CREDENTIAL_DATA_LEN) return error.DataTooLarge;
+
+    try vault.storeJsonPlaintext(alloc, conn, workspace_id, key_name, plaintext);
 }

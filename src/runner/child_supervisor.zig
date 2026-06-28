@@ -47,6 +47,8 @@ pub const ActivitySink = read_mod.ActivitySink;
 pub const MemorySink = read_mod.MemorySink;
 pub const RenewDecision = read_mod.RenewDecision;
 pub const RenewHook = read_mod.RenewHook;
+pub const MintHook = read_mod.MintHook;
+pub const CredentialOutcome = read_mod.CredentialOutcome;
 pub const readResult = read_mod.readResult;
 pub const ReadOutcome = result_mod.ReadOutcome;
 pub const classify = result_mod.classify;
@@ -72,13 +74,16 @@ pub fn run(
     /// Receives the child's `.memory` capture frames for the parent to POST.
     mem_sink: MemorySink,
     renew_hook: ?RenewHook,
+    /// Services the child's on-demand `credential_request` asks (M102 §3); null
+    /// (e.g. tests) ⇒ every ask is rejected and the child fails its tool closed.
+    mint_hook: ?MintHook,
 ) ExecutionResult {
     const input = contract.protocol.RunnerChildInput{ .lease = payload, .hydrated_memory = hydrated_memory };
     const lease_json = std.json.Stringify.valueAlloc(alloc, input, .{}) catch
         return failed(.startup_posture);
     defer alloc.free(lease_json);
 
-    return supervise(io, alloc, cfg, env_map, workspace_path, payload, lease_json, sink, mem_sink, renew_hook) catch |err| {
+    return supervise(io, alloc, cfg, env_map, workspace_path, payload, lease_json, sink, mem_sink, renew_hook, mint_hook) catch |err| {
         log.err("supervise_failed", .{ .error_code = client_errors.ERR_EXEC_CRASH, .lease_id = payload.lease_id, .err = @errorName(err) });
         return failed(.runner_crash);
     };
@@ -97,6 +102,7 @@ fn supervise(
     sink: ActivitySink,
     mem_sink: MemorySink,
     renew_hook: ?RenewHook,
+    mint_hook: ?MintHook,
 ) !ExecutionResult {
     // Fail-closed (Invariant 7): if the tier requires isolation and it cannot
     // be established, refuse the lease — never run prompt-injectable tool
@@ -151,16 +157,17 @@ fn supervise(
     // cgroup AND leave the exec-cgroup empty (a later scope.kill would no-op).
     enrollOrFail(&scope, child.id.?, payload.lease_id) catch return failed(.startup_posture);
 
-    // Feed the lease (incl. inline secrets) in, then EOF the child's stdin. Null
-    // the File after closing so the terminal `wait` does not double-close it.
-    child.stdin.?.writeStreamingAll(io, lease_json) catch |err|
+    // Feed the lease (incl. inline secrets) as a single framed `lease` message,
+    // then KEEP stdin open: it is the parent→child credential-response channel for
+    // the rest of the lease (M102 §3). The child reads exactly one `lease` frame
+    // (no longer read-to-EOF), so the channel rides the same pipe with no new fd.
+    // `child.stdout`/`child.stdin` are both closed by the terminal `wait` below.
+    pipe_proto.writeFrame(child.stdin.?.handle, .lease, lease_json) catch |err|
         log.warn("lease_write_failed", .{ .error_code = client_errors.ERR_EXEC_TRANSPORT_LOSS, .err = @errorName(err) });
-    child.stdin.?.close(io);
-    child.stdin = null;
 
-    const outcome = try readResult(alloc, child.stdout.?.handle, payload.lease_expires_at, sink, mem_sink, renew_hook);
+    const outcome = try readResult(alloc, child.stdout.?.handle, child.stdin.?.handle, payload.lease_expires_at, sink, mem_sink, renew_hook, mint_hook);
     defer alloc.free(outcome.bytes);
-    // child.stdout is closed by the terminal `wait` below — no manual close.
+    // child.stdout + child.stdin are closed by the terminal `wait` below — no manual close.
 
     if (outcome.terminated) {
         log.warn("lease_terminated_by_renewal", .{ .error_code = client_errors.ERR_EXEC_RENEWAL_TERMINATED, .lease_id = payload.lease_id });

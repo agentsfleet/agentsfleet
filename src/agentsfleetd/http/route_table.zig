@@ -16,6 +16,7 @@ const router = @import("router.zig");
 const auth_mw = @import("../auth/middleware/mod.zig");
 const hx_mod = @import("handlers/hx.zig");
 const invoke = @import("route_table_invoke.zig");
+const connectors_invoke = @import("route_table_invoke_connectors.zig");
 
 // ── Types ─────────────────────────────────────────────────────────────────
 
@@ -73,7 +74,7 @@ pub fn classFor(route: router.Route) RouteClass {
         .workspace_fleets,
         .patch_workspace_fleet,
         .workspace_credentials,
-        .delete_workspace_credential,
+        .workspace_credential,
         .workspace_fleet_bundles,
         .workspace_fleet_bundle,
         .workspace_fleet_messages,
@@ -86,6 +87,9 @@ pub fn classFor(route: router.Route) RouteClass {
         .request_integration_grant,
         .list_integration_grants,
         .revoke_integration_grant,
+        .connect_github,
+        .github_connector_status,
+        .github_connect_callback,
         .fleet_keys,
         .delete_fleet_key,
         .tenant_api_keys,
@@ -99,6 +103,7 @@ pub fn classFor(route: router.Route) RouteClass {
         .runner_heartbeat,
         .runner_lease,
         .runner_report,
+        .runner_credentials_mint,
         .runner_activity,
         .runner_renew,
         .runner_memory_hydrate,
@@ -164,12 +169,17 @@ pub fn specFor(route: router.Route, registry: *auth_mw.MiddlewareRegistry) Route
         .approval_webhook => .{ .middlewares = registry.webhookHmac(), .invoke = invoke.invokeApprovalWebhook },
         // grant_approval_webhook uses Redis nonce; no standard policy fits.
         .grant_approval_webhook => .{ .middlewares = auth_mw.MiddlewareRegistry.none, .invoke = invoke.invokeGrantApprovalWebhook },
+        // GitHub App connector (M102 §5). connect/status are workspace-authed;
+        // the callback is Bearer-less (a github.com redirect) — state-authed in-handler.
+        .connect_github => .{ .middlewares = registry.bearer(), .invoke = connectors_invoke.invokeConnectGithub },
+        .github_connector_status => .{ .middlewares = registry.bearer(), .invoke = connectors_invoke.invokeGithubConnectorStatus },
+        .github_connect_callback => .{ .middlewares = auth_mw.MiddlewareRegistry.none, .invoke = connectors_invoke.invokeGithubCallback },
 
         // Fleet create/read/update/delete + activity + credentials
         .workspace_fleets => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeWorkspaceFleets },
         .patch_workspace_fleet => .{ .middlewares = registry.bearer(), .invoke = invoke.invokePatchWorkspaceFleet },
         .workspace_credentials => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeWorkspaceCredentials },
-        .delete_workspace_credential => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeWorkspaceCredentialDelete },
+        .workspace_credential => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeWorkspaceCredentialItem },
         .workspace_fleet_bundles => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeFleetBundleImports },
         .workspace_fleet_bundle => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeFleetBundleGet },
         // Chat ingress (workspace-scoped) — POST /messages
@@ -222,6 +232,9 @@ pub fn specFor(route: router.Route, registry: *auth_mw.MiddlewareRegistry) Route
         .runner_heartbeat => .{ .middlewares = registry.runnerBearer(), .invoke = invoke.invokeRunnerHeartbeat },
         .runner_lease => .{ .middlewares = registry.runnerBearer(), .invoke = invoke.invokeRunnerLease },
         .runner_report => .{ .middlewares = registry.runnerBearer(), .invoke = invoke.invokeRunnerReport },
+        // On-demand credential mint — same runnerBearer plane as the other
+        // self-verbs; the workspace is derived from the lease, never the caller.
+        .runner_credentials_mint => .{ .middlewares = registry.runnerBearer(), .invoke = invoke.invokeRunnerCredentialsMint },
         .runner_activity => .{ .middlewares = registry.runnerBearer(), .invoke = invoke.invokeRunnerActivity },
         .runner_renew => .{ .middlewares = registry.runnerBearer(), .invoke = invoke.invokeRunnerRenew },
         .runner_memory_hydrate => .{ .middlewares = registry.runnerBearer(), .invoke = invoke.invokeRunnerMemoryHydrate },

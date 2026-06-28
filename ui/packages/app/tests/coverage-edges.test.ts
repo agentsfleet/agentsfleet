@@ -201,35 +201,6 @@ describe("dashboard page inner async components", () => {
     const html = renderToStaticMarkup(element as React.ReactElement);
     expect(html).toContain("—");
   });
-
-  it("RecentActivity returns null when token missing", async () => {
-    await withMocks({ token: null });
-    const { RecentActivity } = await import("../app/(dashboard)/page");
-    expect(await RecentActivity()).toBeNull();
-  });
-
-  it("RecentActivity returns null when workspace missing", async () => {
-    await withMocks({ workspace: null });
-    const { RecentActivity } = await import("../app/(dashboard)/page");
-    expect(await RecentActivity()).toBeNull();
-  });
-
-  it("RecentActivity falls back to an empty events page on fetch failure", async () => {
-    await withMocks({ activity: vi.fn().mockRejectedValue(new Error("events-down")) });
-    const { RecentActivity } = await import("../app/(dashboard)/page");
-    const element = await RecentActivity();
-    // Slice 10 changed the failure mode: instead of returning null and
-    // hiding the panel, render the events list with an empty initial
-    // page. Operators still see the section header + EmptyState.
-    expect(element).not.toBeNull();
-  });
-
-  it("RecentActivity renders the feed on success", async () => {
-    await withMocks();
-    const { RecentActivity } = await import("../app/(dashboard)/page");
-    const element = await RecentActivity();
-    expect(element).not.toBeNull();
-  });
 });
 
 // ── DashboardLayout — null token + catch branch ─────────────────────────

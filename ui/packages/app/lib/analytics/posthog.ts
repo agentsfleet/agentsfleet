@@ -34,8 +34,14 @@ type PostHogLike = {
   capture: (event: string, properties?: Record<string, AnalyticsValue>) => void;
   identify?: (distinctId: string, properties?: Record<string, AnalyticsValue>) => void;
   group?: (groupType: string, groupKey: string, properties?: Record<string, AnalyticsValue>) => void;
+  setPersonProperties?: (props: Record<string, AnalyticsValue>) => void;
   reset?: () => void;
 };
+
+// Group type for PostHog group analytics — every event/pageview captured after a
+// group() call carries this group, so funnels can be sliced per workspace
+// (mirrors Supabase's `$groups: { organization, project }`).
+const GROUP_TYPE_WORKSPACE = "workspace";
 
 const ALLOWED_PROP_KEYS = new Set<keyof AnalyticsProps>([
   "source",
@@ -67,6 +73,12 @@ let identifiedUserId: string | null = null;
 // both the moment the client lands so neither is silently lost.
 let pendingIdentify: { id: string; email?: string | null } | null = null;
 let pendingReset = false;
+// The workspace currently bound as the PostHog group — skip redundant group()
+// calls and let resetAnalyticsIdentity() rebind on the next session.
+let groupedWorkspaceId: string | null = null;
+// Group/person context that raced the posthog-js chunk load; initAnalytics
+// flushes it after identify so person props attach to the identified user.
+let pendingContext: AnalyticsContext | null = null;
 
 function boolFromEnv(value: string | undefined, fallback: boolean): boolean {
   if (value == null || value === "") return fallback;
@@ -156,6 +168,11 @@ export async function initAnalytics(): Promise<void> {
   pendingIdentify = null;
   if (pendingReset) resetAnalyticsIdentity();
   if (queuedIdentify !== null) identifyAnalyticsUser(queuedIdentify);
+  // Flush group/person context after identify so person props land on the
+  // identified user, not the pre-identify anonymous id.
+  const queuedContext = pendingContext;
+  pendingContext = null;
+  if (queuedContext !== null) setAnalyticsContext(queuedContext);
 }
 
 export function identifyAnalyticsUser(user: { id: string; email?: string | null }): void {
@@ -180,6 +197,37 @@ export function identifyAnalyticsUser(user: { id: string; email?: string | null 
   withMarkerStore((store) => store.setItem(IDENTIFIED_MARKER_KEY, "1"));
 }
 
+export type AnalyticsContext = {
+  workspaceId?: string | null;
+  workspaceCount?: number;
+  plan?: string;
+};
+
+// Bind the active workspace as the PostHog group + set org-level person
+// properties (workspace_count / plan), so every subsequent event and pageview
+// is sliceable per workspace and the identified person carries org context.
+// Mirrors Supabase's group() + identify($set) split. Best-effort: queues until
+// posthog-js loads (initAnalytics flushes it after identify), no-ops when off.
+export function setAnalyticsContext(ctx: AnalyticsContext): void {
+  if (!analyticsEnabled) return;
+  if (posthogClient === null) {
+    pendingContext = { ...pendingContext, ...ctx };
+    return;
+  }
+  applyAnalyticsContext(ctx);
+}
+
+function applyAnalyticsContext(ctx: AnalyticsContext): void {
+  if (ctx.workspaceId && groupedWorkspaceId !== ctx.workspaceId && posthogClient?.group) {
+    posthogClient.group(GROUP_TYPE_WORKSPACE, ctx.workspaceId);
+    groupedWorkspaceId = ctx.workspaceId;
+  }
+  const personProps = sanitizeProps({ workspace_count: ctx.workspaceCount, workspace_plan: ctx.plan });
+  if (Object.keys(personProps).length > 0 && posthogClient?.setPersonProperties) {
+    posthogClient.setPersonProperties(personProps);
+  }
+}
+
 // True when this browser still carries an identified analytics session —
 // identified during this page load, or flagged by the persisted marker from a
 // prior load (hard navigation / expired session).
@@ -195,6 +243,10 @@ export function hasStaleAnalyticsIdentity(): boolean {
 export function resetAnalyticsIdentity(): void {
   identifiedUserId = null;
   pendingIdentify = null;
+  // posthog.reset() clears the bound groups too; drop our cache so the next
+  // session's setAnalyticsContext rebinds the workspace group.
+  groupedWorkspaceId = null;
+  pendingContext = null;
   if (analyticsConfigured && posthogClient === null) {
     // posthog-js is still loading (or its import failed — the next load
     // retries): keep the marker and let initAnalytics complete the reset.

@@ -26,6 +26,24 @@ pub const NetworkPolicy = struct {
     allow: []const []const u8 = &.{},
 };
 
+/// One on-demand mintable credential the lease grants (M102 §4). The lease carries
+/// the integration id ONLY — never the stored handle or a token (VLT); the child
+/// mints the short-lived token at the tool boundary through the runner channel.
+///
+/// This is the TYPED, out-of-band representation of "this credential mints": it
+/// lives in `ExecutionPolicy.mintable`, never as a reserved key inside
+/// `secrets_map`. That keeps `secrets_map` static-only (so the redaction set
+/// equals the substitution set by construction) and makes the mint signal
+/// collision-free — a static credential can carry any field names without ever
+/// being mistaken for a mint handle.
+pub const Mintable = struct {
+    /// The `${secrets.<name>.token}` placeholder name the fleet references.
+    name: []const u8,
+    /// The integration id the broker mints for (e.g. "github"). The child sends
+    /// exactly this on the mint channel; the workspace is server-derived.
+    integration: []const u8,
+};
+
 /// Context-budget knobs from `x-agentsfleet.context`. `model` + `context_cap_tokens`
 /// are upstream-populated passthrough; the runner does not interpret `model`.
 pub const ContextBudget = struct {
@@ -80,10 +98,18 @@ pub const ExecutionPolicy = struct {
     network_policy: NetworkPolicy = .{},
     /// Allowlist of tool names the fleet may invoke. Empty = no filter.
     tools: []const []const u8 = &.{},
-    /// Resolved credentials — JSON object keyed by credential name, values the
-    /// parsed JSON bodies from vault. `null` = no secrets. Substitution looks up
-    /// `${secrets.NAME.FIELD}` against this at outbound-request time.
+    /// Resolved STATIC credentials — JSON object keyed by credential name, values
+    /// the parsed JSON bodies from vault. `null` = no static secrets. Substitution
+    /// looks up `${secrets.NAME.FIELD}` against this at outbound-request time.
+    /// On-demand mintable credentials are NOT here — they ride `mintable` (so this
+    /// map carries only real secret bytes, and the redaction set derives from it).
     secrets_map: ?std.json.Value = null,
+    /// On-demand mintable credentials granted to this lease (M102 §4). Out-of-band
+    /// from `secrets_map` and id-only (no handle/token bytes — VLT). Additive +
+    /// defaulted, so leases serialized before this field deserialize to empty —
+    /// backward-compatible with in-flight leases. A `${secrets.<name>.token}` whose
+    /// name matches an entry here mints via the channel; otherwise it is static.
+    mintable: []const Mintable = &.{},
     /// Resolved LLM provider name for this lease (e.g. "fireworks"); "" = none.
     /// Authoritative — the engine authenticates against the same provider the
     /// tenant is billed for. Carried inline on the lease, additive + defaulted
@@ -180,6 +206,31 @@ test "test_policy_base_url_optional_roundtrip" {
     defer legacy_parsed.deinit();
     try std.testing.expectEqual(@as(?[]const u8, null), legacy_parsed.value.base_url);
     try std.testing.expectEqualStrings("api.fireworks.ai", legacy_parsed.value.inference_host);
+}
+
+test "test_policy_mintable_roundtrip" {
+    const alloc = std.testing.allocator;
+    // A lease granting an on-demand github credential carries it id-only in the
+    // typed `mintable` list — never a token, never inside secrets_map (Dimension 4.4).
+    const policy: ExecutionPolicy = .{
+        .mintable = &.{.{ .name = "github", .integration = "github" }},
+    };
+    const json = try std.json.Stringify.valueAlloc(alloc, policy, .{});
+    defer alloc.free(json);
+    // No token/handle bytes ride the wire — only the integration id (VLT).
+    try std.testing.expect(std.mem.indexOf(u8, json, "ghs_") == null);
+    const parsed = try std.json.parseFromSlice(ExecutionPolicy, alloc, json, .{});
+    defer parsed.deinit();
+    try std.testing.expectEqual(@as(usize, 1), parsed.value.mintable.len);
+    try std.testing.expectEqualStrings("github", parsed.value.mintable[0].name);
+    try std.testing.expectEqualStrings("github", parsed.value.mintable[0].integration);
+
+    // A legacy lease serialized before `mintable` existed deserializes to empty —
+    // backward-compatible with in-flight leases.
+    const legacy = "{\"provider\":\"fireworks\",\"api_key\":\"fw\"}";
+    const legacy_parsed = try std.json.parseFromSlice(ExecutionPolicy, alloc, legacy, .{});
+    defer legacy_parsed.deinit();
+    try std.testing.expectEqual(@as(usize, 0), legacy_parsed.value.mintable.len);
 }
 
 test "applyDefaults resolves an auto tool_window from the cap; overrides survive" {

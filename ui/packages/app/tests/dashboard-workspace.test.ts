@@ -4,6 +4,16 @@ import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { routerPush, routerRefresh } from "./helpers/dashboard-mocks";
 import { resetDashboardMocks, setActiveWorkspaceMock, createWorkspaceActionMock } from "./helpers/dashboard-app-mocks";
+import { EVENTS } from "@/lib/analytics/events";
+
+// WorkspaceSwitcher emits the workspace-switched product event after a
+// successful switch. Keep the real analytics module (its other exports are used
+// transitively) and spy only on captureProductEvent.
+const captureProductEventMock = vi.hoisted(() => vi.fn());
+vi.mock("@/lib/analytics/posthog", async (orig) => {
+  const actual = await orig<typeof import("@/lib/analytics/posthog")>();
+  return { ...actual, captureProductEvent: captureProductEventMock };
+});
 
 // Common dashboard mock harness — see tests/helpers/dashboard-mocks.tsx.
 vi.mock("next/navigation", async () => (await import("./helpers/dashboard-mocks")).nextNavigationMock());
@@ -22,7 +32,6 @@ vi.mock("@/lib/api/fleets", async () => (await import("./helpers/dashboard-app-m
 vi.mock("@/app/(dashboard)/fleets/actions", async () => (await import("./helpers/dashboard-app-mocks")).fleetActionsMock());
 vi.mock("@/lib/api/tenant_billing", async () => (await import("./helpers/dashboard-app-mocks")).tenantBillingMock());
 vi.mock("@/lib/api/tenant_provider", async () => (await import("./helpers/dashboard-app-mocks")).tenantProviderMock());
-vi.mock("@/app/(dashboard)/settings/models/components/ProviderSelector", async () => (await import("./helpers/dashboard-app-mocks")).providerSelectorMock());
 vi.mock("@/app/(dashboard)/settings/billing/components/BillingBalanceCard", async () => (await import("./helpers/dashboard-app-mocks")).billingBalanceCardMock());
 vi.mock("@/app/(dashboard)/settings/billing/components/BillingUsageTab", async () => (await import("./helpers/dashboard-app-mocks")).billingUsageTabMock());
 vi.mock("@/lib/api/events", async () => (await import("./helpers/dashboard-app-mocks")).eventsMock());
@@ -137,6 +146,8 @@ describe("WorkspaceSwitcher component", () => {
       expect(setActiveWorkspaceMock).toHaveBeenCalledWith("ws_2"),
     );
     expect(routerRefresh).toHaveBeenCalled();
+    // The product event fires with the picked workspace id after the switch.
+    expect(captureProductEventMock).toHaveBeenCalledWith(EVENTS.workspace_switched, { workspace_id: "ws_2" });
     await waitFor(() =>
       expect(screen.getByText("Workspace changed to Beta.")).toBeTruthy(),
     );
@@ -183,6 +194,8 @@ describe("WorkspaceSwitcher component", () => {
       expect(screen.getByText("Workspace switch failed.")).toBeTruthy(),
     );
     expect(routerRefresh).not.toHaveBeenCalled();
+    // A failed switch must not emit the product event.
+    expect(captureProductEventMock).not.toHaveBeenCalled();
   });
 
   it("picking the active workspace is a no-op", async () => {

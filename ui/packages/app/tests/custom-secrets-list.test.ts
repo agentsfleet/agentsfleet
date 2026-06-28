@@ -21,8 +21,8 @@ vi.mock("lucide-react", () => {
 
 import CustomSecretsList from "@/app/(dashboard)/credentials/components/CustomSecretsList";
 
-const STRIPE = { name: "STRIPE_API_KEY", created_at: Date.UTC(2026, 3, 26, 12) };
-const WEBHOOK = { name: "INTERNAL_WEBHOOK", created_at: Date.UTC(2026, 3, 26, 12, 1) };
+const STRIPE = { kind: "custom_secret", name: "STRIPE_API_KEY", created_at: Date.UTC(2026, 3, 26, 12) } as const;
+const WEBHOOK = { kind: "custom_secret", name: "INTERNAL_WEBHOOK", created_at: Date.UTC(2026, 3, 26, 12, 1) } as const;
 
 beforeEach(() => {
   vi.clearAllMocks();

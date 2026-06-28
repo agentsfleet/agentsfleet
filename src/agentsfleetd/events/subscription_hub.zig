@@ -89,10 +89,10 @@ pub fn stop(self: *Self) void {
         for (entry.*.subscribers.items) |sub| sub.close();
     }
     self.mutex.unlock(self.io);
-    // Bounded drain: every closed stream detaches through unsubscribe(),
-    // which touches the channel map — deinit() must not race that.
-    var waited_ms: u64 = 0;
-    while (self.channelCount() > 0 and waited_ms < STOP_DRAIN_MAX_MS) : (waited_ms += STOP_DRAIN_POLL_MS) {
+    // Bounded drain by WALL-CLOCK deadline (re-checked each poll), not a sum of
+    // nominal sleep slices — a starved `sleepNanos` overshoots and would overrun it.
+    const drain_deadline_ms = clock.nowMillis() + @as(i64, @intCast(STOP_DRAIN_MAX_MS));
+    while (self.channelCount() > 0 and clock.nowMillis() < drain_deadline_ms) {
         common.sleepNanos(STOP_DRAIN_POLL_MS * std.time.ns_per_ms);
     }
     if (self.channelCount() > 0) {

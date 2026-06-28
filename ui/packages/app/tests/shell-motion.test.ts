@@ -37,8 +37,9 @@ describe("dashboard motion is defined", () => {
   });
 
   it("wires the mount-rise container onto the Shell content wrapper", () => {
-    // Same element that carries the shared content width — so it rises, not chrome.
-    expect(SHELL).toMatch(/app-content-rise[^"]*max-w-content|max-w-content[^"]*app-content-rise/);
+    // The full-width content wrapper carries the rise — so the page rises, not
+    // the chrome. Width is full-bleed now (no max-w-content cap).
+    expect(SHELL).toMatch(/app-content-rise[^"]*w-full|w-full[^"]*app-content-rise/);
   });
 
   it("wires the dual-glow canvas onto the Shell main region", () => {

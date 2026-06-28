@@ -10,6 +10,8 @@ type MockClient = {
   capture: ReturnType<typeof vi.fn>;
   identify: ReturnType<typeof vi.fn>;
   reset?: ReturnType<typeof vi.fn>;
+  group?: ReturnType<typeof vi.fn>;
+  setPersonProperties?: ReturnType<typeof vi.fn>;
 };
 
 // Minimal in-memory localStorage so the identified-marker logic is exercisable
@@ -681,6 +683,116 @@ describe("app analytics", () => {
     // never reach them.
     expect(() => mod.captureProductEvent(EVENTS.api_key_minted, { api_key_id: "k1" })).not.toThrow();
     expect(client.capture).toHaveBeenCalledTimes(1);
+  });
+
+  // ── Group analytics + person context (Supabase-modeled group()/$set) ───────
+
+  function clientWithGroups() {
+    return {
+      init: vi.fn(),
+      capture: vi.fn(),
+      identify: vi.fn(),
+      reset: vi.fn(),
+      group: vi.fn(),
+      setPersonProperties: vi.fn(),
+    };
+  }
+
+  it("queues setAnalyticsContext before the client lands, then applies group + person props after init", async () => {
+    const client = clientWithGroups();
+    let resolveImport!: (value: { default: MockClient }) => void;
+    const importGate = new Promise<{ default: MockClient }>((resolve) => {
+      resolveImport = resolve;
+    });
+    vi.resetModules();
+    vi.doMock("posthog-js", () => importGate);
+    vi.stubGlobal("window", createWindow("/workspaces"));
+    vi.stubEnv("NEXT_PUBLIC_POSTHOG_KEY", "phc_live");
+    const mod = await import("../lib/analytics/posthog");
+    const initPromise = mod.initAnalytics();
+
+    // The client is still in flight → the context is queued, not applied.
+    mod.setAnalyticsContext({ workspaceId: "ws_1", workspaceCount: 3 });
+    expect(client.group).not.toHaveBeenCalled();
+    expect(client.setPersonProperties).not.toHaveBeenCalled();
+
+    resolveImport({ default: client });
+    await initPromise;
+
+    // initAnalytics flushes the queued context after identify.
+    expect(client.group).toHaveBeenCalledWith("workspace", "ws_1");
+    expect(client.setPersonProperties).toHaveBeenCalledWith({ workspace_count: 3 });
+  });
+
+  it("skips a redundant group() bind for the same workspace id", async () => {
+    const client = clientWithGroups();
+    const { mod } = await loadModule({ client, env: { NEXT_PUBLIC_POSTHOG_KEY: "phc_live" } });
+    await mod.initAnalytics();
+
+    mod.setAnalyticsContext({ workspaceId: "ws_1" });
+    mod.setAnalyticsContext({ workspaceId: "ws_1" });
+
+    // The second same-id call is deduped against the cached group.
+    expect(client.group).toHaveBeenCalledTimes(1);
+    expect(client.group).toHaveBeenCalledWith("workspace", "ws_1");
+  });
+
+  it("sanitizes person props — a numeric count passes, an empty plan is dropped, no group without an id", async () => {
+    const client = clientWithGroups();
+    const { mod } = await loadModule({ client, env: { NEXT_PUBLIC_POSTHOG_KEY: "phc_live" } });
+    await mod.initAnalytics();
+
+    mod.setAnalyticsContext({ workspaceCount: 3, plan: "" });
+
+    expect(client.setPersonProperties).toHaveBeenCalledWith({ workspace_count: 3 });
+    // No workspaceId → no group bind.
+    expect(client.group).not.toHaveBeenCalled();
+  });
+
+  it("binds the group but sets no person props when only a workspace id is given", async () => {
+    const client = clientWithGroups();
+    const { mod } = await loadModule({ client, env: { NEXT_PUBLIC_POSTHOG_KEY: "phc_live" } });
+    await mod.initAnalytics();
+
+    mod.setAnalyticsContext({ workspaceId: "ws_2" });
+
+    expect(client.group).toHaveBeenCalledWith("workspace", "ws_2");
+    expect(client.setPersonProperties).not.toHaveBeenCalled();
+  });
+
+  it("tolerates a client lacking group()/setPersonProperties()", async () => {
+    // The default loadModule client exposes neither optional method.
+    const { mod, client } = await loadModule({ env: { NEXT_PUBLIC_POSTHOG_KEY: "phc_live" } });
+    await mod.initAnalytics();
+    expect(() => mod.setAnalyticsContext({ workspaceId: "ws_1", workspaceCount: 2 })).not.toThrow();
+    expect((client as MockClient).group).toBeUndefined();
+  });
+
+  it("is a no-op when analytics is disabled", async () => {
+    const client = clientWithGroups();
+    const { mod } = await loadModule({
+      client,
+      env: { NEXT_PUBLIC_POSTHOG_KEY: "phc_live", NEXT_PUBLIC_POSTHOG_ENABLED: "0" },
+    });
+    await mod.initAnalytics();
+    mod.setAnalyticsContext({ workspaceId: "ws_1", workspaceCount: 3 });
+    expect(client.group).not.toHaveBeenCalled();
+    expect(client.setPersonProperties).not.toHaveBeenCalled();
+  });
+
+  it("reset clears the group cache so a later context re-binds the workspace group", async () => {
+    const client = clientWithGroups();
+    const { mod } = await loadModule({ client, env: { NEXT_PUBLIC_POSTHOG_KEY: "phc_live" } });
+    await mod.initAnalytics();
+
+    mod.setAnalyticsContext({ workspaceId: "ws_1" });
+    expect(client.group).toHaveBeenCalledTimes(1);
+
+    // posthog.reset() drops bound groups; our cache must clear too so the next
+    // session re-binds the same workspace rather than deduping against the stale id.
+    mod.resetAnalyticsIdentity();
+    mod.setAnalyticsContext({ workspaceId: "ws_1" });
+    expect(client.group).toHaveBeenCalledTimes(2);
   });
 
   it("product events fired before the client resolves are dropped, not buffered", async () => {

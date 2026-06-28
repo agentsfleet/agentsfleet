@@ -1,0 +1,553 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>agentsfleet — Models &amp; Keys</title>
+<style>
+  :root{
+    --surface-deep:#06090a; --bg:#0a0d0e; --surface-1:#11161a; --surface-2:#181e22; --surface-3:#1f262c;
+    --border:#23292e; --border-strong:#2e373e;
+    --text:#e6eaec; --text-muted:#8b9398; --text-subtle:#7a8085;
+    --pulse:#5eead4; --pulse-dim:#2dd4bf; --on-pulse:#0a0d0e;
+    --success:#34d399; --warn:#f59e0b; --error:#f87171;
+    --r-sm:6px; --r-md:9px; --r-lg:14px;
+    --mono:"Commit Mono","JetBrains Mono",ui-monospace,"Cascadia Code",monospace;
+    --sans:"Instrument Sans",system-ui,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  html,body{height:100%;}
+  body{
+    background:var(--surface-deep);
+    color:var(--text);
+    font-family:var(--mono);
+    font-size:13px;
+    line-height:1.5;
+    -webkit-font-smoothing:antialiased;
+  }
+  .app{
+    display:grid;
+    grid-template-columns:240px 1fr;
+    min-height:100vh;
+    background:var(--bg);
+  }
+
+  /* ---------------- SIDEBAR ---------------- */
+  .sidebar{
+    width:240px;
+    background:var(--surface-1);
+    border-right:1px solid var(--border);
+    padding:20px 14px;
+    display:flex;
+    flex-direction:column;
+    gap:22px;
+    position:sticky;
+    top:0;
+    align-self:start;
+    height:100vh;
+  }
+  .brand{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    padding:0 6px;
+  }
+  .logo-chip{
+    width:22px;height:22px;border-radius:var(--r-sm);
+    background:var(--pulse);
+    box-shadow:0 0 12px -2px rgba(94,234,212,.55);
+    flex:none;
+  }
+  .wordmark{
+    font-family:var(--mono);
+    font-size:14px;
+    font-weight:600;
+    letter-spacing:-.01em;
+    color:var(--text);
+  }
+  .ws-switcher{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:8px;
+    background:var(--surface-2);
+    border:1px solid var(--border-strong);
+    border-radius:999px;
+    padding:7px 14px;
+    font-size:12.5px;
+    color:var(--text-muted);
+    cursor:pointer;
+    user-select:none;
+  }
+  .ws-switcher:hover{border-color:var(--border-strong);color:var(--text);}
+  .ws-switcher .caret{color:var(--text-subtle);font-size:11px;}
+
+  nav{display:flex;flex-direction:column;gap:18px;}
+  .nav-group{display:flex;flex-direction:column;gap:2px;}
+  .nav-eyebrow{
+    font-size:10.5px;
+    text-transform:uppercase;
+    letter-spacing:.08em;
+    color:var(--text-subtle);
+    padding:2px 8px 6px;
+  }
+  .nav-item{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    padding:7px 8px;
+    border-radius:var(--r-sm);
+    color:var(--text-muted);
+    font-size:13px;
+    cursor:pointer;
+    border-left:2px solid transparent;
+    text-decoration:none;
+  }
+  .nav-item .glyph{
+    width:16px;text-align:center;color:var(--text-subtle);font-size:12px;flex:none;
+  }
+  .nav-item:hover{background:var(--surface-2);color:var(--text);}
+  .nav-item.active{
+    background:var(--surface-2);
+    color:var(--pulse);
+    border-left:2px solid var(--pulse);
+    border-radius:0 var(--r-sm) var(--r-sm) 0;
+  }
+  .nav-item.active .glyph{color:var(--pulse);}
+
+  /* ---------------- MAIN ---------------- */
+  .main{
+    padding:32px;
+    display:flex;
+    justify-content:center;
+  }
+  .content{
+    width:100%;
+    max-width:960px;
+    display:flex;
+    flex-direction:column;
+    gap:34px;
+  }
+
+  .page-header{display:flex;flex-direction:column;gap:6px;}
+  .page-title{font-size:18px;font-weight:600;color:var(--text);letter-spacing:-.01em;}
+  .page-desc{font-size:13px;color:var(--text-muted);}
+
+  .eyebrow{
+    font-size:11px;
+    text-transform:uppercase;
+    letter-spacing:.08em;
+    color:var(--text-subtle);
+    margin-bottom:14px;
+    display:flex;
+    align-items:center;
+    gap:10px;
+  }
+  .eyebrow::after{content:"";height:1px;flex:1;background:var(--border);}
+
+  /* ---------------- CARDS ---------------- */
+  .grid{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:16px;
+  }
+  @media (max-width:780px){ .grid{grid-template-columns:1fr;} }
+
+  .card{
+    position:relative;
+    background:var(--surface-1);
+    border:1px solid var(--border);
+    border-radius:var(--r-lg);
+    padding:20px;
+    display:flex;
+    flex-direction:column;
+    gap:14px;
+  }
+  .card:hover{border-color:var(--border-strong);}
+  .card.active{
+    border-color:var(--pulse);
+    box-shadow:0 0 0 1px rgba(94,234,212,.25), 0 0 28px -6px rgba(94,234,212,.35);
+  }
+
+  .card-head{display:flex;align-items:flex-start;gap:12px;}
+  .radio{
+    width:16px;height:16px;border-radius:50%;
+    border:1.5px solid var(--border-strong);
+    flex:none;margin-top:2px;
+    display:grid;place-items:center;
+  }
+  .radio.filled{border-color:var(--pulse);}
+  .radio.filled::after{
+    content:"";width:7px;height:7px;border-radius:50%;
+    background:var(--pulse);box-shadow:0 0 8px -1px var(--pulse);
+  }
+  .card-titles{display:flex;flex-direction:column;gap:3px;flex:1;}
+  .card-name{font-size:14px;font-weight:600;color:var(--text);}
+  .card-desc{font-size:12.5px;color:var(--text-muted);}
+
+  .pill{
+    font-size:10.5px;
+    text-transform:uppercase;
+    letter-spacing:.08em;
+    padding:3px 9px;
+    border-radius:999px;
+    flex:none;
+  }
+  .pill-active{
+    background:rgba(94,234,212,.12);
+    color:var(--pulse);
+    border:1px solid rgba(94,234,212,.4);
+  }
+
+  .meta-line{
+    font-family:var(--mono);
+    font-size:12px;
+    color:var(--text-subtle);
+  }
+
+  /* field */
+  .field{display:flex;flex-direction:column;gap:6px;}
+  .field-row{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+  @media (max-width:520px){ .field-row{grid-template-columns:1fr;} }
+  .field-label{
+    font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;
+    color:var(--text-subtle);
+    display:flex;align-items:center;justify-content:space-between;
+  }
+  .input{
+    background:var(--surface-deep);
+    border:1px solid var(--border);
+    border-radius:var(--r-sm);
+    padding:9px 11px;
+    font-family:var(--mono);
+    font-size:12.5px;
+    color:var(--text);
+    width:100%;
+  }
+  .input::placeholder{color:var(--text-subtle);}
+  .input:focus{outline:none;border-color:var(--border-strong);}
+  .input.disabled{color:var(--text-subtle);opacity:.6;}
+  .select{
+    background:var(--surface-deep);
+    border:1px solid var(--border);
+    border-radius:var(--r-sm);
+    padding:9px 11px;
+    font-family:var(--mono);
+    font-size:12.5px;
+    color:var(--text);
+    display:flex;align-items:center;justify-content:space-between;
+    cursor:pointer;
+  }
+  .select.disabled{color:var(--text-subtle);}
+  .select .caret{color:var(--text-subtle);font-size:11px;}
+  .replace-link{
+    font-size:11px;color:var(--pulse-dim);text-decoration:none;text-transform:none;letter-spacing:0;
+    cursor:pointer;
+  }
+  .replace-link:hover{color:var(--pulse);}
+
+  /* buttons */
+  .btn{
+    font-family:var(--mono);
+    font-size:12.5px;
+    padding:9px 14px;
+    border-radius:var(--r-sm);
+    cursor:pointer;
+    text-align:center;
+    border:1px solid var(--border-strong);
+    background:transparent;
+    color:var(--text);
+    align-self:flex-start;
+  }
+  .btn:hover{border-color:var(--text-subtle);}
+  .btn-primary{
+    background:var(--pulse);
+    color:var(--on-pulse);
+    border-color:var(--pulse);
+    font-weight:600;
+  }
+  .btn-primary:hover{background:var(--pulse-dim);border-color:var(--pulse-dim);}
+  .btn-block{align-self:stretch;}
+
+  .card-footer-note{
+    font-size:12px;
+    color:var(--pulse);
+    display:flex;align-items:center;gap:7px;
+    border-top:1px solid var(--border);
+    padding-top:12px;
+  }
+  .card-footer-note .dot{color:var(--pulse);}
+
+  .configure-affordance{
+    display:flex;align-items:center;gap:7px;
+    font-size:12px;color:var(--text-muted);
+    border:1px dashed var(--border-strong);
+    border-radius:var(--r-sm);
+    padding:9px 11px;
+    cursor:pointer;
+  }
+  .configure-affordance:hover{color:var(--text);}
+  .configure-affordance .caret{margin-left:auto;color:var(--text-subtle);font-size:11px;}
+
+  /* ---------------- TERMINAL / VAULT PANEL ---------------- */
+  .terminal{
+    border:1px solid var(--border);
+    border-radius:var(--r-lg);
+    overflow:hidden;
+    background:var(--surface-1);
+  }
+  .term-head{
+    background:var(--surface-deep);
+    border-bottom:1px solid var(--border);
+    padding:11px 16px;
+    display:flex;align-items:center;justify-content:space-between;
+    font-family:var(--mono);
+    font-size:12px;
+    color:var(--text-muted);
+  }
+  .term-head .lead{display:flex;align-items:center;gap:9px;}
+  .term-head .lead .prompt{color:var(--pulse);}
+  .term-tag{
+    font-size:10px;text-transform:uppercase;letter-spacing:.08em;
+    color:var(--text-subtle);
+    border:1px solid var(--border-strong);
+    border-radius:999px;
+    padding:2px 9px;
+  }
+  .vault-row{
+    display:flex;align-items:center;gap:14px;
+    padding:13px 16px;
+    border-bottom:1px solid var(--border);
+    font-family:var(--mono);
+    font-size:12.5px;
+  }
+  .vault-row:last-of-type{border-bottom:1px solid var(--border);}
+  .vault-row .keyglyph{color:var(--text-subtle);font-size:13px;flex:none;}
+  .vault-name{color:var(--text);font-weight:500;flex:none;min-width:180px;}
+  .vault-status{color:var(--text-subtle);flex:1;}
+  .vault-actions{display:flex;gap:14px;flex:none;}
+  .vault-actions a{font-size:11.5px;color:var(--text-muted);text-decoration:none;cursor:pointer;}
+  .vault-actions a:hover{color:var(--text);}
+  .vault-actions a.danger:hover{color:var(--error);}
+
+  .vault-add{
+    display:flex;align-items:center;gap:10px;
+    padding:14px 16px;
+    background:var(--surface-2);
+  }
+  .vault-add .input{flex:1;max-width:280px;}
+  .vault-add .hint{font-size:11px;color:var(--text-subtle);margin-left:auto;}
+
+  .section-sub{
+    font-size:12px;color:var(--text-muted);margin-bottom:14px;margin-top:-6px;
+  }
+
+  /* ---------------- FOOTER CAPTION ---------------- */
+  .frame-caption{
+    position:fixed;
+    bottom:10px;right:14px;
+    font-family:var(--mono);
+    font-size:11px;
+    color:var(--text-subtle);
+    background:rgba(6,9,10,.7);
+    padding:3px 8px;
+    border-radius:var(--r-sm);
+    pointer-events:none;
+  }
+</style>
+</head>
+<body>
+  <div class="app">
+    <!-- SIDEBAR -->
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="logo-chip"></div>
+        <span class="wordmark">agentsfleet</span>
+      </div>
+
+      <div class="ws-switcher">
+        <span>acme-corp</span>
+        <span class="caret">&#9662;</span>
+      </div>
+
+      <nav>
+        <div class="nav-group">
+          <a class="nav-item"><span class="glyph">&#9671;</span> Dashboard</a>
+        </div>
+
+        <div class="nav-group">
+          <div class="nav-eyebrow">Operations</div>
+          <a class="nav-item"><span class="glyph">&#11041;</span> Fleets</a>
+          <a class="nav-item"><span class="glyph">&#10022;</span> Approvals</a>
+          <a class="nav-item"><span class="glyph">&#9656;</span> Events</a>
+        </div>
+
+        <div class="nav-group">
+          <div class="nav-eyebrow">Configuration</div>
+          <a class="nav-item active"><span class="glyph">&#9672;</span> Models &amp; Keys</a>
+          <a class="nav-item"><span class="glyph">&#9881;</span> Integrations</a>
+        </div>
+
+        <div class="nav-group">
+          <div class="nav-eyebrow">Organization</div>
+          <a class="nav-item"><span class="glyph">&#9671;</span> Workspace</a>
+          <a class="nav-item"><span class="glyph">&#9656;</span> Billing</a>
+        </div>
+      </nav>
+    </aside>
+
+    <!-- MAIN -->
+    <main class="main">
+      <div class="content">
+
+        <!-- PAGE HEADER -->
+        <header class="page-header">
+          <h1 class="page-title">Models &amp; Keys</h1>
+          <p class="page-desc">Your agents' model brain and the provider keys behind it.</p>
+        </header>
+
+        <!-- MODEL ACCESS -->
+        <section>
+          <div class="eyebrow">Model access</div>
+          <div class="grid">
+
+            <!-- Platform defaults -->
+            <div class="card">
+              <div class="card-head">
+                <div class="radio"></div>
+                <div class="card-titles">
+                  <div class="card-name">Platform defaults</div>
+                  <div class="card-desc">Built-in provider. No key to manage.</div>
+                </div>
+              </div>
+              <div class="meta-line">&#9656; managed provider &middot; default model</div>
+              <button class="btn">Use platform defaults</button>
+            </div>
+
+            <!-- Anthropic (ACTIVE) -->
+            <div class="card active">
+              <span class="pill pill-active" style="position:absolute;top:18px;right:18px;">Active</span>
+              <div class="card-head">
+                <div class="radio filled"></div>
+                <div class="card-titles">
+                  <div class="card-name">Anthropic</div>
+                  <div class="card-desc">Your key. Pick the model your fleets run on.</div>
+                </div>
+              </div>
+
+              <div class="field-row">
+                <div class="field">
+                  <div class="field-label">
+                    <span>API key</span>
+                    <a class="replace-link">Replace</a>
+                  </div>
+                  <input class="input" value="sk-ant-&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;3f9a" readonly />
+                </div>
+                <div class="field">
+                  <div class="field-label"><span>Model</span></div>
+                  <div class="select"><span>claude-sonnet-4-6</span><span class="caret">&#9662;</span></div>
+                </div>
+              </div>
+
+              <div class="card-footer-note">
+                <span class="dot">&#9679;</span> Active — claude-sonnet-4-6 via your Anthropic key
+              </div>
+            </div>
+
+            <!-- OpenAI (NOT connected) -->
+            <div class="card">
+              <div class="card-head">
+                <div class="radio"></div>
+                <div class="card-titles">
+                  <div class="card-name">OpenAI</div>
+                  <div class="card-desc">Add a key, then choose a model — in one step.</div>
+                </div>
+              </div>
+
+              <div class="field-row">
+                <div class="field">
+                  <div class="field-label"><span>API key</span></div>
+                  <input class="input" placeholder="sk-..." />
+                </div>
+                <div class="field">
+                  <div class="field-label"><span>Model</span></div>
+                  <div class="select disabled"><span>select a model</span><span class="caret">&#9662;</span></div>
+                </div>
+              </div>
+
+              <button class="btn btn-primary btn-block">Add key &amp; model</button>
+            </div>
+
+            <!-- Custom OpenAI-compatible -->
+            <div class="card">
+              <div class="card-head">
+                <div class="radio"></div>
+                <div class="card-titles">
+                  <div class="card-name">Custom — OpenAI-compatible</div>
+                  <div class="card-desc">Gateway, OpenRouter, or self-hosted URL.</div>
+                </div>
+              </div>
+
+              <div class="field">
+                <div class="field-label"><span>Base URL</span></div>
+                <input class="input" placeholder="https://..." />
+              </div>
+
+              <div class="configure-affordance">
+                <span>Configure key &amp; model</span>
+                <span class="caret">&#9662;</span>
+              </div>
+
+              <button class="btn">Save endpoint</button>
+            </div>
+
+          </div>
+        </section>
+
+        <!-- CUSTOM SECRETS -->
+        <section>
+          <div class="eyebrow">Custom secrets</div>
+          <p class="section-sub">Not model keys — named JSON your fleets resolve at runtime by name.</p>
+
+          <div class="terminal">
+            <div class="term-head">
+              <div class="lead"><span class="prompt">vault</span> &middot; resolved by name</div>
+              <span class="term-tag">write-only</span>
+            </div>
+
+            <div class="vault-row">
+              <span class="keyglyph">&#9919;</span>
+              <span class="vault-name">STRIPE_API_KEY</span>
+              <span class="vault-status">&bull;&bull;&bull;&bull; written</span>
+              <span class="vault-actions">
+                <a>Replace</a>
+                <a class="danger">Delete</a>
+              </span>
+            </div>
+
+            <div class="vault-row">
+              <span class="keyglyph">&#9919;</span>
+              <span class="vault-name">INTERNAL_WEBHOOK</span>
+              <span class="vault-status">&bull;&bull;&bull;&bull; written</span>
+              <span class="vault-actions">
+                <a>Replace</a>
+                <a class="danger">Delete</a>
+              </span>
+            </div>
+
+            <div class="vault-add">
+              <input class="input" placeholder="SECRET_NAME" />
+              <button class="btn">Add field</button>
+              <button class="btn btn-primary">Save</button>
+              <span class="hint">named JSON for fleets</span>
+            </div>
+          </div>
+        </section>
+
+      </div>
+    </main>
+  </div>
+
+  <div class="frame-caption">Variant A — SINGLE page (Model + Creds combined) &middot; provider cards, key+model inline</div>
+</body>
+</html>

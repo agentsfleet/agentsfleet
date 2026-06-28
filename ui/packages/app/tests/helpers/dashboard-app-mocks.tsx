@@ -104,10 +104,6 @@ export function tenantProviderMock() {
   };
 }
 
-export function providerSelectorMock() {
-  return { default: ({ workspaceId }: { workspaceId: string }) => React.createElement("div", { "data-provider-selector": workspaceId }) };
-}
-
 export function billingBalanceCardMock() {
   return { default: () => React.createElement("div", { "data-balance-card": "1" }) };
 }
@@ -123,8 +119,27 @@ export function eventsMock() {
   return { listWorkspaceEvents: listWorkspaceEventsMock, listFleetEvents: listFleetEventsMock };
 }
 
+const CREDENTIAL_KIND = {
+  provider_key: "provider_key",
+  custom_endpoint: "custom_endpoint",
+  custom_secret: "custom_secret",
+} as const;
+
 export function credentialsApiMock() {
-  return { listCredentials: listCredentialsMock, createCredential: createCredentialMock, deleteCredential: deleteCredentialMock };
+  // The vault API calls are mocked fns; the kind discriminator + narrowing
+  // helpers (read by the Models & Keys page + its client children) keep their
+  // real behaviour so the full module mock doesn't strip them to undefined.
+  type C = { kind?: string };
+  return {
+    listCredentials: listCredentialsMock,
+    createCredential: createCredentialMock,
+    deleteCredential: deleteCredentialMock,
+    rotateCredential: vi.fn(),
+    CREDENTIAL_KIND,
+    providerKeysOf: (credentials: C[]) => credentials.filter((c) => c.kind === CREDENTIAL_KIND.provider_key),
+    customEndpointsOf: (credentials: C[]) => credentials.filter((c) => c.kind === CREDENTIAL_KIND.custom_endpoint),
+    customSecretsOf: (credentials: C[]) => credentials.filter((c) => c.kind === CREDENTIAL_KIND.custom_secret),
+  };
 }
 
 export function fleetBundlesMock() {
@@ -137,7 +152,22 @@ export function fleetBundlesMock() {
 }
 
 export function modelCapsMock() {
-  return { getModelCaps: getModelCapsMock };
+  // getModelCaps is mocked; the pure catalogue helpers (read synchronously by
+  // ProviderSwitchList / ActiveModelHero / ProviderModelSelect) keep their real
+  // behaviour so a full module mock doesn't strip them to undefined.
+  return {
+    getModelCaps: getModelCapsMock,
+    uniqueModelIds: (models: { id: string }[]) =>
+      Array.from(new Map(models.map((m) => [m.id, m])).values()),
+    modelsForProvider: (models: { provider: string }[], provider: string) =>
+      models.filter((m) => m.provider === provider),
+    uniqueProviders: (models: { provider: string }[]) =>
+      Array.from(new Set(models.map((m) => m.provider))),
+    providerLabel: (provider: string) =>
+      ({ anthropic: "Anthropic", openai: "OpenAI", "openai-compatible": "Custom — OpenAI-compatible" })[
+        provider
+      ] ?? provider,
+  };
 }
 
 export function addCredentialFormMock() {
@@ -146,7 +176,7 @@ export function addCredentialFormMock() {
 
 export function credentialsListMock() {
   return {
-    default: ({ workspaceId, credentials }: { workspaceId: string; credentials: { name: string; created_at: string }[] }) =>
+    default: ({ workspaceId, credentials }: { workspaceId: string; credentials: { name: string; created_at: number }[] }) =>
       credentials.length === 0
         ? React.createElement("p", { "data-credentials-empty": workspaceId }, "No credentials stored yet")
         : React.createElement(

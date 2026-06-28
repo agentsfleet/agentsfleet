@@ -76,7 +76,7 @@ test "should skip unknown tool and report UZ-TOOL-005 in buildTools" {
     const spec = try specOf(alloc, &.{ "shell", "unknown_tool" });
     defer freeSpec(alloc, spec);
 
-    const result = try tool_bridge.buildTools(alloc, spec, WORKSPACE, &cfg, null);
+    const result = try tool_bridge.buildTools(alloc, spec, WORKSPACE, &cfg, null, null);
     defer result.deinit(alloc);
 
     // shell builds; unknown_tool lands in `skipped` (never a built tool).
@@ -93,7 +93,7 @@ test "should build http_request plain variant when policy is null" {
     const spec = try specOf(alloc, &.{"http_request"});
     defer freeSpec(alloc, spec);
 
-    const result = try tool_bridge.buildTools(alloc, spec, WORKSPACE, &cfg, null);
+    const result = try tool_bridge.buildTools(alloc, spec, WORKSPACE, &cfg, null, null);
     defer result.deinit(alloc);
 
     // No policy → plain NullClaw http_request still builds (one tool, none skipped).
@@ -112,7 +112,7 @@ test "should build http_request policy-aware variant when ExecutionPolicy is pre
     const policy = context_budget.ExecutionPolicy{
         .network_policy = .{ .allow = &allow },
     };
-    const result = try tool_bridge.buildTools(alloc, spec, WORKSPACE, &cfg, &policy);
+    const result = try tool_bridge.buildTools(alloc, spec, WORKSPACE, &cfg, &policy, null);
     defer result.deinit(alloc);
 
     // Policy-aware variant still resolves to exactly one built tool.
@@ -136,7 +136,7 @@ test "should drop a disabled tool without building or skipping it" {
     try obj.put(alloc, "enabled", .{ .bool = false });
     try arr.append(.{ .object = obj });
 
-    const result = try tool_bridge.buildTools(alloc, .{ .array = arr }, WORKSPACE, &cfg, null);
+    const result = try tool_bridge.buildTools(alloc, .{ .array = arr }, WORKSPACE, &cfg, null, null);
     defer result.deinit(alloc);
 
     // Disabled → silent drop: neither built nor reported as skipped.
@@ -147,7 +147,7 @@ test "should drop a disabled tool without building or skipping it" {
 test "should return empty result when spec is not an array" {
     const alloc = std.testing.allocator;
     const cfg = defaultCfg();
-    const result = try tool_bridge.buildTools(alloc, .{ .integer = 7 }, WORKSPACE, &cfg, null);
+    const result = try tool_bridge.buildTools(alloc, .{ .integer = 7 }, WORKSPACE, &cfg, null, null);
     defer result.deinit(alloc);
     try std.testing.expectEqual(@as(usize, 0), result.tools.len);
     try std.testing.expectEqual(@as(usize, 0), result.skipped.len);
@@ -162,7 +162,7 @@ test "should have no memory leaks when buildTools skips unknown tools repeatedly
     for (0..50) |_| {
         const spec = try specOf(alloc, &.{ "shell", "ghost_tool", "calculator", "phantom" });
         defer freeSpec(alloc, spec);
-        const result = try tool_bridge.buildTools(alloc, spec, WORKSPACE, &cfg, null);
+        const result = try tool_bridge.buildTools(alloc, spec, WORKSPACE, &cfg, null, null);
         defer result.deinit(alloc);
         try std.testing.expectEqual(@as(usize, 2), result.tools.len);
         try std.testing.expectEqual(@as(usize, 2), result.skipped.len);

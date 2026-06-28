@@ -12,6 +12,9 @@
 
 pub const router = @import("http/router.zig");
 pub const error_registry = @import("errors/error_registry.zig");
+// Credential broker hot path — cache-hit + mint dispatch micro-benches.
+pub const credential_broker = @import("credentials/broker.zig");
+pub const credential_integration = @import("credentials/integration.zig");
 pub const keyset_cursor = @import("fleet_runtime/keyset_cursor.zig");
 pub const id_format = @import("types/id_format.zig");
 pub const webhook_verify = @import("fleet_runtime/webhook_verify.zig");

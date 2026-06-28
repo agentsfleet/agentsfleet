@@ -86,7 +86,7 @@ test "readResult should forward frames in order then honor terminate without pro
     const sink = ActivitySink{ .ctx = &cap, .forward = OrderedCap.forward };
 
     const far_dl = clock.nowMillis() + 60_000;
-    const outcome = try supervisor.readResult(std.testing.allocator, fds[0], far_dl, sink, NoopMem.sink(), hook);
+    const outcome = try supervisor.readResult(std.testing.allocator, fds[0], fds[1], far_dl, sink, NoopMem.sink(), hook, null);
     defer std.testing.allocator.free(outcome.bytes);
 
     try std.testing.expect(outcome.terminated);
