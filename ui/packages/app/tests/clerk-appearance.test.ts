@@ -1,8 +1,16 @@
 import { describe, expect, it } from "vitest";
+import { dark } from "@clerk/themes";
 import { AUTH_APPEARANCE } from "@/lib/clerkAppearance";
 
 describe("AUTH_APPEARANCE", () => {
   const { elements } = AUTH_APPEARANCE;
+
+  it("applies the dark baseTheme so unmapped Clerk internals (Security device icons, Profile inputs) render on the dark surface", () => {
+    // The app is dark-only (lib/theme.ts), so the dark base theme is
+    // unconditional: it covers the elements the map below does not name, which
+    // otherwise paint in Clerk's stock light palette (invisible on dark).
+    expect(AUTH_APPEARANCE.baseTheme).toBe(dark);
+  });
 
   it("inputs are visually distinct from the card they sit on", () => {
     // Regression: both were var(--surface-2), so the input fields were

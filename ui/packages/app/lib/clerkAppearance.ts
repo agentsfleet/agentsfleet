@@ -16,6 +16,8 @@
  * No box-shadow on chrome (spec: borders preferred over shadows).
  * No gradient on the footer (spec: no decorative gradients on chrome).
  */
+import { dark } from "@clerk/themes";
+
 const SURFACE_1 = "var(--surface-1)";
 const SURFACE_2 = "var(--surface-2)";
 const SURFACE_3 = "var(--surface-3)";
@@ -38,6 +40,14 @@ const MENU_ACTION_INTERACTION = {
 } as const;
 
 export const AUTH_APPEARANCE = {
+  // Dark is the only product surface (lib/theme.ts forces it), so the dark
+  // baseTheme applies unconditionally. It styles the Clerk internals the element
+  // map below does not name — the Security tab's device-type icons and the
+  // account modal's inputs — which otherwise render in Clerk's stock light
+  // palette (dark text/icons on the dark surface, effectively invisible). The
+  // variables + elements below then map the design tokens on top, so the
+  // baseline is dark and the accents stay on-brand.
+  baseTheme: dark,
   variables: {
     colorBackground: SURFACE_1,
     colorInputBackground: SURFACE_2,
@@ -86,10 +96,8 @@ export const AUTH_APPEARANCE = {
     },
     // The account modal's email (secondary identifier) read as a too-dim token
     // on the dark modal surface — effectively invisible. Pin it to the primary
-    // readable text token. The token is theme-adaptive ([data-theme] swaps
-    // --text), so it stays legible in light too — no static Clerk baseTheme
-    // (which would force one palette and re-break the other). Hierarchy below
-    // the name comes from Clerk's smaller secondary-identifier type, not colour.
+    // readable text token; hierarchy below the name comes from Clerk's smaller
+    // secondary-identifier type, not colour.
     userPreviewSecondaryIdentifier: {
       color: TEXT,
     },
