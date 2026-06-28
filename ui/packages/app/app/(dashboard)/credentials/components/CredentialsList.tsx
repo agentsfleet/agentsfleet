@@ -12,13 +12,13 @@ import {
 } from "@agentsfleet/design-system";
 import { KeyRoundIcon, PencilIcon, Trash2Icon } from "lucide-react";
 import { deleteCredentialAction } from "../actions";
-import type { CredentialSummary } from "@/lib/api/credentials";
+import type { Credential } from "@/lib/api/credentials";
 import { presentErrorString } from "@/lib/errors";
 import EditCredentialDialogDynamic from "@/components/domain/island-dynamic/EditCredentialDialogDynamic";
 
 type Props = {
   workspaceId: string;
-  credentials: CredentialSummary[];
+  credentials: Credential[];
   protectedCredentialName?: string | null;
 };
 
@@ -32,7 +32,7 @@ function formatCreatedAt(ms: number) {
 }
 
 type CredentialActionProps = {
-  credential: CredentialSummary;
+  credential: Credential;
   pending: boolean;
   deleting: boolean;
   protectedFromDelete: boolean;
@@ -84,7 +84,7 @@ function CredentialActions({
   );
 }
 
-function CredentialNameCell({ credential }: { credential: CredentialSummary }) {
+function CredentialNameCell({ credential }: { credential: Credential }) {
   return (
     <div className="min-w-0">
       <div className="truncate font-mono text-sm">{credential.name}</div>
@@ -93,7 +93,7 @@ function CredentialNameCell({ credential }: { credential: CredentialSummary }) {
   );
 }
 
-function CredentialCreatedCell({ credential }: { credential: CredentialSummary }) {
+function CredentialCreatedCell({ credential }: { credential: Credential }) {
   return (
     <span className="font-mono text-xs tabular-nums text-muted-foreground">
       {formatCreatedAt(credential.created_at)}
@@ -113,7 +113,7 @@ function buildColumns({
   protectedCredentialName: string | null;
   onEdit: (name: string) => void;
   onDelete: (name: string) => void;
-}): DataTableColumn<CredentialSummary>[] {
+}): DataTableColumn<Credential>[] {
   return [
     {
       key: "name",
@@ -193,7 +193,7 @@ function CredentialTable({
   onEdit,
   onDelete,
 }: {
-  credentials: CredentialSummary[];
+  credentials: Credential[];
   pending: boolean;
   target: string | null;
   protectedCredentialName: string | null;

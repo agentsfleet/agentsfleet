@@ -138,7 +138,7 @@ Two passes over one `pg.Conn` (a second open read result on the same connection 
 - **2.2** missing credential → typed 404 → `test_rotate_missing_404`
 - **2.3** empty/oversized key rejected; key never logged → `test_rotate_validates_key`
 
-### §3 — Client domain model + reads
+### §3 — Client domain model + reads — ✅ implemented (100% test-unit-app)
 
 Tagged-union `Credential` keyed by server `kind`; provider list from credentials' metadata ∪ `uniqueProviders(model_caps)` + a small label map; `getTenantProvider`/`listCredentials` `cache()`-wrapped; cap.json fetched once client-side via `ModelCatalogueProvider`, out of the RSC payload.
 
@@ -147,7 +147,7 @@ Tagged-union `Credential` keyed by server `kind`; provider list from credentials
 - **3.3** catalogue fetched once, same-origin, cached; not in RSC fetch → `test_catalogue_fetches_once`
 - **3.4** provider/credential reads deduped per render → `test_reads_deduped`
 
-### §4 — C2 page + form consolidation
+### §4 — C2 page + form consolidation — ✅ implemented (100% test-unit-app)
 
 Active-Model hero (LIVE/DEFAULT pill, model, credential-ref chip, Provider/Context/Billing meta-grid; Change model / Replace key / Switch-to-platform) + credential-driven switch list + separate custom-secrets section. Six forms collapse to `ProviderKeyForm` + `CustomEndpointForm` (each with an `activate` flag).
 
@@ -157,7 +157,7 @@ Active-Model hero (LIVE/DEFAULT pill, model, credential-ref chip, Provider/Conte
 - **4.4** keyed → one-click Switch (stored model); unkeyed → inline Add+activate; platform → reset → `test_switch_one_click`, `test_add_key_and_activate`
 - **4.5** provider keys never appear under custom secrets → `test_custom_secrets_excludes_provider_keys`
 
-### §5 — Nav, routing, Dead Code Sweep
+### §5 — Nav, routing, Dead Code Sweep — ✅ implemented (100% test-unit-app)
 
 Nav "Models & Keys" (Credentials item removed); `/credentials`→`/settings/models` redirect; `WORKSPACE_CREDENTIALS_PATH` repointed with its comment + routing test in lockstep; option-card flow + tests deleted.
 
@@ -293,6 +293,10 @@ type Credential =
 - **Indy directive (2026-06-28):** at CHORE-close review **every** `docs/architecture/*.md` + every docs-repo product/capability `*.mdx`; update or **argue-back per file** (two reports); `changelog.mdx` before close. Cross-repo docs edit authorized this session (own-branch flow).
 - **§1/§2 implementation (2026-06-28):** list projection is a two-pass materialize→drain→`vault.loadJson` (N+1, cold-page-acceptable); pure classify/project extracted to `credential_metadata.zig` (unit-tested, 3 tests) with DB orchestration in `credential_list.zig` (FLL split — neither was in the original Files-Changed table, added for the 350-line cap). Classification keys on the `provider` field. Rotate route renamed `delete_workspace_credential`→`workspace_credential` (method-neutral; a `delete_`-named route serving PATCH was an inaccurate name). New error `UZ-VAULT-003` (credential-not-found, 404). Read path frees the decrypted body via `parsed.deinit()` (no `secureZero`, matching `credentials_mint.zig`); api_key unprojectable by type.
 - **VERIFY constraint (2026-06-28):** backend unit tests + `make lint-zig` (fmt/zlint/pg-drain/FLL/test-depth) + cross-compile (x86_64+aarch64-linux) all pass locally; the DB-backed credential integration tests compile clean but run in **CI** — local Docker daemon is down (`make _ensure-test-infra` fails). The telemetry/webhook `zig build test` failures are pre-existing/environmental (reproduce in isolation; `test-unit-agentsfleetd` was green on CI at base).
+- **§3–§5 client batch (2026-06-28):** tagged-union `Credential` (kind-keyed) + `rotateCredential` + cached server reads + `ModelCatalogueProvider` (client cap.json, once-per-session via `useEffect` background fetch — deliberately non-blocking, not `use()`/Suspense, so the hero never waits on the catalogue); C2 hero rebuilt as `ActiveModelHero` + extracted `HeroChangeModelPanel`/`HeroReplaceKeyPanel` + `ProviderSwitchList`; 6→2 forms (`ProviderKeyForm`/`CustomEndpointForm`, each `activate`); nav→"Models & Keys", `/credentials`→`redirect`. 100% `test-unit-app` (1128 tests).
+- **R6 decision (2026-06-28):** `WORKSPACE_CREDENTIALS_PATH` kept at `/credentials` (now redirects to `/settings/models`, which hosts the custom-secrets vault) — install-preview deep-links stay decoupled from the destination; the R6 inversion was unneeded, comment rewritten.
+- **Dead-code judgment (2026-06-28):** `InlineProviderKeyCreate` + `CustomEndpointOwnKey` + `Step2Model` were orphaned once `Step1Credential`/`ProviderSelector` were deleted; their reusable logic (paste-detect via `detect-provider.ts`, `isHttpsUrl`/`BASE_URL_NOT_HTTPS` → `lib/custom-endpoint.ts`) was folded into the consolidated forms and the originals deleted (NDC/ORP). `detect-provider.ts` stays, now consumed by `ProviderKeyForm`. `CredentialsList` (pre-existing orphan, not in scope) was retyped to keep building, flagged for separate cleanup.
+- **Telemetry alignment (Indy directive, Supabase reference, 2026-06-28):** added granular product events `model_changed`/`key_rotated`/`provider_reset` (one helper each in `settings/models/lib/track.ts`) so rotate/change/reset are instrumented like Supabase's granular telemetry. Page-view telemetry was already global (`capture_pageview`/`pageleave`/`autocapture` in `posthog.ts`) — Supabase-equivalent, left untouched. The Supabase "UX touches" (FormHeader-style `SectionHeader`, catalogue skeleton + error-alert) were built then **reverted per Indy — zero visual change**; only componentization + invisible telemetry retained.
 - Skill-chain outcomes + Indy-acked deferral quotes appended as work proceeds.
 
 ---

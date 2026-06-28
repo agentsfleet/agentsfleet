@@ -8,10 +8,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // vi.mock is hoisted above the static actions import, so the mock fns must be
 // created via vi.hoisted() to exist when the factories run.
-const { withTokenMock, setTenantProviderSelfManagedMock, resetTenantProviderMock } = vi.hoisted(() => ({
+const { withTokenMock, setTenantProviderSelfManagedMock, resetTenantProviderMock, rotateCredentialMock } = vi.hoisted(() => ({
   withTokenMock: vi.fn(),
   setTenantProviderSelfManagedMock: vi.fn(),
   resetTenantProviderMock: vi.fn(),
+  rotateCredentialMock: vi.fn(),
 }));
 
 vi.mock("@/lib/actions/with-token", () => ({ withToken: withTokenMock }));
@@ -19,8 +20,13 @@ vi.mock("@/lib/api/tenant_provider", () => ({
   setTenantProviderSelfManaged: setTenantProviderSelfManagedMock,
   resetTenantProvider: resetTenantProviderMock,
 }));
+vi.mock("@/lib/api/credentials", () => ({ rotateCredential: rotateCredentialMock }));
 
-import { setProviderSelfManagedAction, resetProviderAction } from "@/app/(dashboard)/settings/models/actions";
+import {
+  setProviderSelfManagedAction,
+  resetProviderAction,
+  rotateCredentialAction,
+} from "@/app/(dashboard)/settings/models/actions";
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -66,5 +72,14 @@ describe("provider server actions — thin forwarders", () => {
     await setProviderSelfManagedAction({ credential_ref: "vault://x" });
     await resetProviderAction();
     expect(withTokenMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("rotateCredentialAction forwards (workspaceId, name, apiKey) then token to the client", async () => {
+    rotateCredentialMock.mockResolvedValueOnce({ name: "anthropic-prod" });
+    const r = await rotateCredentialAction("ws_1", "anthropic-prod", "sk-ant-rotated");
+    expect(r).toEqual({ ok: true, data: { name: "anthropic-prod" } });
+    expect(rotateCredentialMock).toHaveBeenCalledWith("ws_1", "anthropic-prod", "sk-ant-rotated", "tok");
+    expect(setTenantProviderSelfManagedMock).not.toHaveBeenCalled();
+    expect(resetTenantProviderMock).not.toHaveBeenCalled();
   });
 });

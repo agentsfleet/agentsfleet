@@ -11,6 +11,9 @@ export const EVENTS = {
   runner_token_minted: "runner_token_minted",
   api_key_minted: "api_key_minted",
   model_added: "model_added",
+  model_changed: "model_changed",
+  key_rotated: "key_rotated",
+  provider_reset: "provider_reset",
   credential_added: "credential_added",
   integration_requested: "integration_requested",
   approval_resolved: "approval_resolved",
@@ -23,6 +26,9 @@ export type EventProps = {
   [EVENTS.runner_token_minted]: { runner_id: string; sandbox_tier: string };
   [EVENTS.api_key_minted]: { api_key_id: string };
   [EVENTS.model_added]: { provider: string; mode: string; model?: string };
+  [EVENTS.model_changed]: { provider: string; model: string };
+  [EVENTS.key_rotated]: { provider: string };
+  [EVENTS.provider_reset]: { from_provider: string };
   [EVENTS.credential_added]: { credential_name: string };
   [EVENTS.integration_requested]: { integration_id: string; integration_name: string };
   [EVENTS.approval_resolved]: { gate_id: string; decision: string; has_reason: boolean };
@@ -36,6 +42,9 @@ export const EVENT_PROP_KEYS = {
   [EVENTS.runner_token_minted]: ["runner_id", "sandbox_tier"],
   [EVENTS.api_key_minted]: ["api_key_id"],
   [EVENTS.model_added]: ["provider", "mode", "model"],
+  [EVENTS.model_changed]: ["provider", "model"],
+  [EVENTS.key_rotated]: ["provider"],
+  [EVENTS.provider_reset]: ["from_provider"],
   [EVENTS.credential_added]: ["credential_name"],
   [EVENTS.integration_requested]: ["integration_id", "integration_name"],
   [EVENTS.approval_resolved]: ["gate_id", "decision", "has_reason"],

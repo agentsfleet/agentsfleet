@@ -94,11 +94,11 @@ describe("app layouts and pages", () => {
     expect(authMarkup).toContain("agentsfleet");
     // Auth shell carries the brand-mark wake-pulse — the brand is always alive.
     expect(authMarkup).toContain("data-live");
-    // Configuration nav carries Models and Credentials as two destinations;
-    // Credentials is its own top-level vault route.
-    expect(dashboardMarkup).toContain(">Models<");
-    expect(dashboardMarkup).toContain(">Credentials<");
-    expect(dashboardMarkup).toContain('href="/credentials"');
+    // Configuration nav carries the consolidated Models & Keys destination
+    // (the standalone Credentials vault was folded into it).
+    expect(dashboardMarkup).toContain(">Models &amp; Keys<");
+    expect(dashboardMarkup).toContain('href="/settings/models"');
+    expect(dashboardMarkup).not.toContain('href="/credentials"');
   });
 
   it("dashboard entry page renders page header when authenticated", async () => {

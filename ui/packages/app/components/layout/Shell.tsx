@@ -11,7 +11,6 @@ import {
   BotIcon,
   CheckCircle2Icon,
   CpuIcon,
-  KeyRoundIcon,
   LinkIcon,
   CreditCardIcon,
   ServerIcon,
@@ -27,7 +26,6 @@ import {
 } from "@agentsfleet/design-system";
 import { trackNavigationClicked } from "@/lib/analytics/posthog";
 import { setActiveWorkspace } from "@/app/(dashboard)/actions";
-import { WORKSPACE_CREDENTIALS_PATH } from "@/lib/fleet-credentials";
 import type { TenantWorkspace } from "@/lib/api/workspaces";
 import WorkspaceSwitcher from "./WorkspaceSwitcher";
 import ThemeToggle from "./ThemeToggle";
@@ -54,12 +52,11 @@ const OPERATIONS_NAV: NavEntry[] = [
   { label: "Events", href: "/events", icon: ActivityIcon },
 ];
 
-// What the fleets are wired to — the model brain, the write-only secret vault,
-// and the tool connectors, each its own destination; plus the execution fleet
-// for platform admins.
+// What the fleets are wired to — the model brain (which now also hosts the
+// write-only secret vault) and the tool connectors, each its own destination;
+// plus the execution fleet for platform admins.
 const CONFIGURATION_NAV: NavEntry[] = [
-  { label: "Models", href: "/settings/models", icon: CpuIcon },
-  { label: "Credentials", href: WORKSPACE_CREDENTIALS_PATH, icon: KeyRoundIcon },
+  { label: "Models & Keys", href: "/settings/models", icon: CpuIcon },
   { label: "Integrations", href: "/integrations", icon: LinkIcon },
 ];
 

@@ -65,7 +65,7 @@ afterEach(() => vi.clearAllMocks());
 describe("Integrations page", () => {
   it("renders the connectors wired with the github status and stored-secret names", async () => {
     vi.mocked(listCredentials).mockResolvedValue({
-      credentials: [{ name: "SLACK_BOT_TOKEN", created_at: 0 }],
+      credentials: [{ kind: "custom_secret", name: "SLACK_BOT_TOKEN", created_at: 0 }],
     });
     vi.mocked(getGithubConnector).mockResolvedValue({ status: CONNECTOR_STATUS.connected });
 
