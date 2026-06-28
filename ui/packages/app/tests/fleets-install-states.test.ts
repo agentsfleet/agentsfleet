@@ -100,7 +100,7 @@ describe("test_install_states_render", () => {
     resolveCreate({ ok: true, data: { fleet_id: "zom_x" } });
   });
 
-  it("gates on connect-to-continue when a required credential is missing", async () => {
+  it("holds at the connect gate when a required credential is missing", async () => {
     renderStates({ kind: "template", template: TEMPLATE_GH }, []); // github not present
     await waitFor(() => expect(screen.getByText(/first run: connect github/i)).toBeTruthy());
     const link = screen.getByRole("link", { name: /connect github/i });
@@ -113,13 +113,40 @@ describe("test_install_states_render", () => {
     expect(screen.queryByRole("button", { name: /continue/i })).toBeNull();
   });
 
-  it("pluralises the connect-to-continue copy when multiple credentials are unmet", async () => {
+  it("pluralises the connect gate copy when multiple credentials are unmet", async () => {
     renderStates(
       { kind: "template", template: { ...TEMPLATE_GH, required_credentials: ["github", "zoho"] } },
       [],
     );
     await waitFor(() => expect(screen.getByText(/first run: connect github, zoho/i)).toBeTruthy());
+    // github has a reason but zoho does not → not every credential has one, so
+    // the gate falls back to the generic copy rather than a half-listed purpose.
     expect(screen.getByText(/Add them in Credentials/i)).toBeTruthy();
+  });
+
+  it("joins per-credential reasons with \"and\" when every unmet credential has one", async () => {
+    renderStates(
+      {
+        kind: "template",
+        template: {
+          ...TEMPLATE_GH,
+          required_credentials: ["github", "zoho"],
+          required_credentials_reasons: {
+            github: "review your pull requests",
+            zoho: "read your zoho activity",
+          },
+        },
+      },
+      [],
+    );
+    // Every unmet credential carries a reason → the purpose-driven sentence
+    // joins them with "and"; the generic "Add them in Credentials" copy is gone.
+    await waitFor(() =>
+      expect(
+        screen.getByText(/review your pull requests and read your zoho activity/i),
+      ).toBeTruthy(),
+    );
+    expect(screen.queryByText(/Add them in Credentials/i)).toBeNull();
   });
 
   it("uses Add token when the missing credential is not GitHub", async () => {

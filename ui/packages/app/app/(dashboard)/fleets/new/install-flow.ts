@@ -1,5 +1,5 @@
 // Pure helpers for the state-driven install flow. No React, no network — the
-// source→requirements normalisation, the connect-to-continue gate, and the
+// source→requirements normalisation, the connect gate, and the
 // rendered state-line model live here so InstallStates stays under the length
 // cap and the gating logic is unit-testable in isolation.
 
@@ -85,7 +85,7 @@ export function unmetCredentials(
   return missingCredentials(required, present);
 }
 
-// True when the source can create immediately with no connect-to-continue beat.
+// True when the source can create immediately with no connect-gate beat.
 export function readyToCreate(
   required: readonly string[],
   present: readonly string[] | null,

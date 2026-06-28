@@ -333,6 +333,23 @@ test "integration: template catalog lists seeded first-party templates from the 
     defer h.releaseConn(conn);
     try resetAndSeed(conn);
 
+    // Seed one PUBLIC template with NO per-credential reasons. Every seeded
+    // first-party row carries reasons, so without this the empty-map path is
+    // served by nothing visible (only the hidden private probe has '{}'). Removed
+    // at the end so the curated set is left intact.
+    const EMPTY_REASONS_ID = "catalog-empty-reasons";
+    _ = conn.exec("DELETE FROM core.fleet_bundle_templates WHERE id = $1", .{EMPTY_REASONS_ID}) catch {};
+    _ = try conn.exec(
+        \\INSERT INTO core.fleet_bundle_templates
+        \\    (id, name, description, source_repo, source_path, source_ref,
+        \\     required_credentials, required_credentials_reasons, required_tools, network_hosts, visibility,
+        \\     created_at, updated_at)
+        \\VALUES
+        \\    ($1, 'Empty reasons', 'Public row with no per-credential reasons.',
+        \\     'agentsfleet/catalog-empty-reasons', '', 'main',
+        \\     '[]'::jsonb, '{}'::jsonb, '[]'::jsonb, '[]'::jsonb, 'public', 0, 0)
+    , .{EMPTY_REASONS_ID});
+
     // GET /v1/fleets/bundles serves core.fleet_bundle_templates (migration-seeded,
     // not a hardcoded Zig array). The JSONB requirement columns come back as JSON
     // arrays, not quoted JSONB text.
@@ -349,6 +366,13 @@ test "integration: template catalog lists seeded first-party templates from the 
     // the install gate can render the seeded "why connect" copy.
     try std.testing.expect(res.bodyContains("\"required_credentials_reasons\""));
     try std.testing.expect(res.bodyContains("review your pull requests and post review comments"));
+    // A public row with no reasons round-trips its empty map as a nested {} —
+    // not quoted text ("{}") or null — so the install gate reads every row
+    // uniformly (compact serializer: no space after the colon).
+    try std.testing.expect(res.bodyContains(EMPTY_REASONS_ID));
+    try std.testing.expect(res.bodyContains("\"required_credentials_reasons\":{}"));
+
+    _ = conn.exec("DELETE FROM core.fleet_bundle_templates WHERE id = $1", .{EMPTY_REASONS_ID}) catch {};
 }
 
 const PRIVATE_PROBE_ID = "private-visibility-probe";

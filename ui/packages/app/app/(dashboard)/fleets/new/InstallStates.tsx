@@ -25,14 +25,14 @@ type Props = {
   workspaceId: string;
   source: InstallSource;
   // The workspace's present credential names, or null when the vault read
-  // failed — in which case connect-to-continue gates nothing (the server's 424
+  // failed — in which case the connect gate holds nothing back (the server's 424
   // stays authoritative).
   presentCredentialNames: string[] | null;
   onBack: () => void;
 };
 
 // One install experience, run inline. On mount it imports (when the source
-// needs it), gates on connect-to-continue when a required credential is
+// needs it), holds at the connect gate when a required credential is
 // missing, then auto-proceeds to create — no confirm beat. After create it
 // hands off to InstallStreamSteps, which advances the creating→provisioning→
 // ready steps off the existing fleet-event stream and lands "Open fleet".
@@ -93,7 +93,7 @@ export function InstallStates({ workspaceId, source, presentCredentialNames, onB
   }, [resolveCreateBody, workspaceId, requirements.name]);
 
   // Drive the flow once on mount: a source with no unmet credential creates
-  // immediately; otherwise we sit on connect-to-continue until the operator
+  // immediately; otherwise we sit on the connect gate until the operator
   // returns with the credential stored (Back → re-enter re-evaluates).
   useEffect(() => {
     if (started.current) return;
