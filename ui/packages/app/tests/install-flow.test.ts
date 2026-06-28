@@ -30,6 +30,7 @@ describe("requirementsOf — normalises each source", () => {
         name: "T",
         description: "d",
         required_credentials: ["github"],
+        required_credentials_reasons: { github: "review pull requests" },
         required_tools: ["x"],
         network_hosts: ["h"],
       },

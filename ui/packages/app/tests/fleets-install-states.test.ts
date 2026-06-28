@@ -41,6 +41,7 @@ const TEMPLATE_GH = {
   name: "GitHub PR reviewer",
   description: "Reviews pull requests.",
   required_credentials: ["github"],
+  required_credentials_reasons: { github: "review your pull requests" },
   required_tools: ["github_review_comment"],
   network_hosts: ["api.github.com"],
 };
@@ -104,6 +105,8 @@ describe("test_install_states_render", () => {
     await waitFor(() => expect(screen.getByText(/first run: connect github/i)).toBeTruthy());
     const link = screen.getByRole("link", { name: /connect github/i });
     expect(link.getAttribute("href")).toBe("/credentials");
+    // Purpose-driven copy from the template's per-credential reason (data-driven).
+    expect(screen.getByText(/review your pull requests/i)).toBeTruthy();
     // Create is gated — no fleet created yet.
     expect(installFleetActionMock).not.toHaveBeenCalled();
     // No skip path: connecting is the only action (the "Continue" button is gone).
