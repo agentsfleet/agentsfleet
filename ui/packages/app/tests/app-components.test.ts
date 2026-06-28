@@ -10,6 +10,8 @@ const mocks = vi.hoisted(() => ({
   identifyAnalyticsUser: vi.fn(),
   resetAnalyticsIdentity: vi.fn(),
   hasStaleAnalyticsIdentity: vi.fn(() => false),
+  setAnalyticsContext: vi.fn(),
+  captureProductEvent: vi.fn(),
   useUser: vi.fn(),
   usePathname: vi.fn(),
   useEffectMock: vi.fn((fn: () => void) => fn()),
@@ -26,6 +28,8 @@ vi.mock("@/lib/analytics/posthog", () => ({
   identifyAnalyticsUser: mocks.identifyAnalyticsUser,
   resetAnalyticsIdentity: mocks.resetAnalyticsIdentity,
   hasStaleAnalyticsIdentity: mocks.hasStaleAnalyticsIdentity,
+  setAnalyticsContext: mocks.setAnalyticsContext,
+  captureProductEvent: mocks.captureProductEvent,
 }));
 
 vi.mock("@clerk/nextjs", () => ({
@@ -92,6 +96,8 @@ beforeEach(() => {
   mocks.resetAnalyticsIdentity.mockReset();
   mocks.hasStaleAnalyticsIdentity.mockReset();
   mocks.hasStaleAnalyticsIdentity.mockReturnValue(false);
+  mocks.setAnalyticsContext.mockReset();
+  mocks.captureProductEvent.mockReset();
   mocks.useEffectMock.mockClear();
   mocks.usePathname.mockReturnValue("/workspaces");
 });
@@ -117,6 +123,27 @@ describe("app components", () => {
     // no decorative badges, no marketing chrome.
     expect(container.innerHTML).toContain("agentsfleet");
     expect(container.innerHTML).toContain("data-live");
+    cleanup();
+  });
+
+  it("binds the analytics workspace context from the active workspace + count", async () => {
+    const { default: Shell } = await import("../components/layout/Shell");
+    mocks.usePathname.mockReturnValue("/");
+    render(
+      React.createElement(
+        Shell,
+        {
+          workspaces: [
+            { id: "ws_1", name: "Alpha", created_at: 1 },
+            { id: "ws_2", name: "Beta", created_at: 2 },
+          ],
+          activeWorkspaceId: "ws_1",
+        } as never,
+        React.createElement("div", null, "content"),
+      ),
+    );
+    // The Shell effect binds the PostHog workspace group + records the count.
+    expect(mocks.setAnalyticsContext).toHaveBeenCalledWith({ workspaceId: "ws_1", workspaceCount: 2 });
     cleanup();
   });
 
