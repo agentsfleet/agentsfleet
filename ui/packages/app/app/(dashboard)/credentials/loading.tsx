@@ -1,15 +1,12 @@
-import { PageHeader, PageTitle, Skeleton } from "@agentsfleet/design-system";
+import RouteLoading from "@/components/layout/RouteLoading";
 
-// Paints the correct Credentials title instantly on navigation while the
+// Paints the correct Credentials header instantly on navigation while the
 // provider + stored-secret reads resolve.
 export default function CredentialsLoading() {
   return (
-    <div className="space-y-8">
-      <PageHeader description="Write-only keys for models, tools, and secrets.">
-        <PageTitle>Credentials</PageTitle>
-      </PageHeader>
-      <Skeleton className="h-24 w-full rounded-lg" />
-      <Skeleton className="h-48 w-full rounded-lg" />
-    </div>
+    <RouteLoading
+      title="Credentials"
+      description="Write-only keys for models, tools, and secrets."
+    />
   );
 }
