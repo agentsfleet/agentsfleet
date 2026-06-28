@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
 import {
@@ -24,7 +24,7 @@ import {
   DialogTrigger,
   WakePulse,
 } from "@agentsfleet/design-system";
-import { trackNavigationClicked } from "@/lib/analytics/posthog";
+import { setAnalyticsContext, trackNavigationClicked } from "@/lib/analytics/posthog";
 import { setActiveWorkspace } from "@/app/(dashboard)/actions";
 import type { TenantWorkspace } from "@/lib/api/workspaces";
 import WorkspaceSwitcher from "./WorkspaceSwitcher";
@@ -118,6 +118,16 @@ export default function Shell({
   const pathname = usePathname();
   const activeHref = resolveActiveHref(pathname);
   const isActive = (href: string) => href === activeHref;
+
+  // Bind the active workspace as the PostHog group + record workspace_count on
+  // the person, so every event/pageview is sliceable per workspace (Supabase
+  // group-analytics model). Best-effort + queued until posthog-js loads.
+  useEffect(() => {
+    setAnalyticsContext({
+      workspaceId: activeWorkspaceId,
+      workspaceCount: workspaces.length,
+    });
+  }, [activeWorkspaceId, workspaces.length]);
 
   return (
     <div className="app-glow-surface grid min-h-screen md:grid-cols-[240px_1fr] grid-rows-[56px_1fr]" data-glow="dashboard">

@@ -16,6 +16,8 @@ import {
   type ToastSeverity,
 } from "@agentsfleet/design-system";
 import type { TenantWorkspace } from "@/lib/api/workspaces";
+import { EVENTS } from "@/lib/analytics/events";
+import { captureProductEvent } from "@/lib/analytics/posthog";
 import CreateWorkspaceDialogDynamic from "@/components/domain/island-dynamic/CreateWorkspaceDialogDynamic";
 
 type Props = {
@@ -66,6 +68,7 @@ export default function WorkspaceSwitcher({
     startTransition(async () => {
       try {
         await onSwitch(id);
+        captureProductEvent(EVENTS.workspace_switched, { workspace_id: id });
         router.refresh();
         showNotice("success", `Workspace changed to ${label}.`);
       } catch {
