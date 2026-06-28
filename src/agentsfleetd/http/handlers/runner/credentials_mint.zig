@@ -129,13 +129,19 @@ fn loadMintInputs(hx: Hx, runner_id: []const u8, mint_req: protocol.MintCredenti
 }
 
 /// Resolve the lease scoped to the presenting runner (Invariant 2: the runner-id
-/// scope is the ownership check). A foreign or stale `lease_id` → null → 404.
+/// scope is the ownership check) AND still live — `status = active` and unexpired.
+/// A foreign, expired, or revoked `lease_id` → null → 404, so mint authority is
+/// bound to the lease's lifetime, not the runner's: a cancelled/expired run, or a
+/// compromised runner replaying a stale `lease_id`, cannot mint past the lease.
+/// Mirrors the active-lease predicate the sibling `memory.zig` already enforces.
 /// Returns the workspace id arena-duped (survives the connection release).
 fn resolveLeaseWorkspace(hx: Hx, conn: *pg.Conn, runner_id: []const u8, lease_id: []const u8) !?[]const u8 {
     var q = PgQuery.from(try conn.query(
         \\SELECT workspace_id::text
-        \\FROM fleet.runner_leases WHERE id = $1::uuid AND runner_id = $2::uuid
-    , .{ lease_id, runner_id }));
+        \\FROM fleet.runner_leases
+        \\WHERE id = $1::uuid AND runner_id = $2::uuid
+        \\  AND status = $3 AND lease_expires_at > $4
+    , .{ lease_id, runner_id, protocol.RUNNER_LEASE_STATUS_ACTIVE, constants.clock.nowMillis() }));
     defer q.deinit();
     const row = try q.next() orelse return null;
     return try hx.alloc.dupe(u8, try row.get([]const u8, 0));
