@@ -24,6 +24,7 @@ const auth_ctx = @import("auth_ctx.zig");
 const bearer = @import("bearer.zig");
 const errors = @import("errors.zig");
 const api_key = @import("../api_key.zig");
+const scopes = @import("../scopes.zig");
 const logging = @import("log");
 const contract = @import("contract");
 
@@ -109,6 +110,8 @@ fn resolve(self: *RunnerBearer, ctx: *AuthCtx, raw_token: []const u8) !chain.Out
         .mode = .runner,
         .runner_id = row.runner_id,
         .tenant_id = null,
+        // Self-plane only — a runner holds no tenant authority of its own.
+        .scopes = scopes.defaultScopes(.runner),
     };
     return .next;
 }

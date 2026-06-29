@@ -24,14 +24,14 @@ const TEST_WORKSPACE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11";
 const TEST_ISSUER = "https://clerk.dev.agentsfleet.net";
 const TEST_AUDIENCE = "https://api.agentsfleet.net";
 const TEST_JWKS =
-    \\{"keys":[{"kty":"RSA","n":"310oH7ahxoKws6fEKmbOP30dQaQhT21HGRxvibeBuqfywkNxJ0xcfhhao1mwbLH7BUOg2GYXDEA6EvcVlKXqGN_Wa_4Q7UenmZqeXYdB_IhAc-SzyoW9hRi01FskVVI8w_N0Pf5SItu7DIqdxbKP8_eGFyrTL1mN-5klkIDCSnhrDLUEgjVo7iod0vsoqUEH-2m1s-2xDh5aQr5rSF6neCTA1-JvKVkJLD6eOdBnEwYBm6-yZ0CNgMfw1uUyw5cGwdaPsCerHctH0EwcI_qQFUUnFjBeN4FJkP_DDoHWTEV9a-5wzomOcoKlyfZvRgplGYYqTWrIAfcZobyzYiSy1w","e":"AQAB","kid":"rbac-test-kid","use":"sig","alg":"RS256"}]}
+    \\{"keys":[{"kty":"RSA","n":"055gLVwlsa0-zUCqQAYqyfiAob0IBQZgtHfhGUSIyRz-Czj-q0-2ota3rtZVla0drH56Zjzs80rSt9sDFQzsl0EfBrErbfhaUiEyiSwJnR69BxkbEtxTgdi-gtTe6Y5dbkxjO126xAaBcAkFYrfABFKaUZiEZjECtVjjRIu-LihcBbVx_LiLQr2beTb8A7sGeOY0JUjIcKMCDofdcRUoVuqvPBRjNk0pwDp7EOccQVthDOysJi6k5JdY3seExqNtthtWOcnUTD1uYKtx9YGoDLbdu5N3HkPieQHDXd8-Ah1uxbmHUr94CVzYlTxyIfp_vPvJa9pbYUy2PdoDuK_I9w","e":"AQAB","kid":"test-kid-static","use":"sig","alg":"RS256"}]}
 ;
 const TEST_USER_TOKEN =
-    "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6InJiYWMtdGVzdC1raWQifQ.eyJzdWIiOiJ1c2VyX3Rlc3QiLCJpc3MiOiJodHRwczovL2NsZXJrLmRldi5hZ2VudHNmbGVldC5uZXQiLCJhdWQiOiJodHRwczovL2FwaS5hZ2VudHNmbGVldC5uZXQiLCJleHAiOjQxMDI0NDQ4MDAsIm1ldGFkYXRhIjp7InRlbmFudF9pZCI6IjAxOTViNGJhLThkM2EtN2YxMy04YWJjLTJiM2UxZTBhNmYwMSIsIndvcmtzcGFjZV9pZCI6IjAxOTViNGJhLThkM2EtN2YxMy04YWJjLTJiM2UxZTBhNmYxMSIsInJvbGUiOiJ1c2VyIn19.aSqdpbu-D-1NmzJgcw-7LUJYImlFu-gbrO3fBPlMI6DFvgSGJJg3wAYe5DKJXe5ytCActeAHN8LxGyr1emB4ReHk90B7t_DB301cl5fz6H1EIBnUYkuOYIeCQXvqTmEHduR1KPumEYc6Jfw3kv1tY95k-bugObZ4FihLhWXw4ud8fXRl_CTnD3J3FSx-cn4K8mfy8JjTc1RDmEx5_4-TbBhPyTgj5EAXqB1ddUw7k46UAh_-w2G07SrOxsl1b57Etwp0gvuu4tkpXICYmG423n-RjVvtvuxjSzQyhUZ2Lmfbvi1tLlY7_uzTh_BwwWWYLdJtnmKEblmGReoAu_Qs6A";
+    "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6InRlc3Qta2lkLXN0YXRpYyJ9.eyJzdWIiOiJ1c2VyX3Rlc3QiLCJpc3MiOiJodHRwczovL2NsZXJrLmRldi5hZ2VudHNmbGVldC5uZXQiLCJhdWQiOiJodHRwczovL2FwaS5hZ2VudHNmbGVldC5uZXQiLCJleHAiOjQxMDI0NDQ4MDAsInNjb3BlcyI6ImZsZWV0OnJlYWQiLCJtZXRhZGF0YSI6eyJ0ZW5hbnRfaWQiOiIwMTk1YjRiYS04ZDNhLTdmMTMtOGFiYy0yYjNlMWUwYTZmMDEiLCJ3b3Jrc3BhY2VfaWQiOiIwMTk1YjRiYS04ZDNhLTdmMTMtOGFiYy0yYjNlMWUwYTZmMTEifX0.u6CS-YuOMeBdKkJirBlOmA15U4a5b7H6F-xATiTIpQMy-9t5U1VP7ivMQOmX6TrIfDAtt5y4YZxYkgfruNdefZAdlnYqZ1mXq9R1EQbGh8zlWfFLIq1pJih5lt5Bc8MD7TQH6GUshzcRig0Vy9_dzEwERBvllk2KJo24th8zrRB39UHMzVzVTyA_I6yanpHhuTwcbD6UtFjrgaJLq68NJlZG05iRb-cbsIo-5i8tnlupVrO9NfTPkYWTTwexzFwktxcHMNtBwZ7leMMx6H9pFo2xWdzykduKJI6d1doCd_SLjDyxU3sgdYTcrRU09JDpASTDseDH9n8kSXO0Q0Y5sg";
 const TEST_OPERATOR_TOKEN =
-    "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6InJiYWMtdGVzdC1raWQifQ.eyJzdWIiOiJ1c2VyX3Rlc3QiLCJpc3MiOiJodHRwczovL2NsZXJrLmRldi5hZ2VudHNmbGVldC5uZXQiLCJhdWQiOiJodHRwczovL2FwaS5hZ2VudHNmbGVldC5uZXQiLCJleHAiOjQxMDI0NDQ4MDAsIm1ldGFkYXRhIjp7InRlbmFudF9pZCI6IjAxOTViNGJhLThkM2EtN2YxMy04YWJjLTJiM2UxZTBhNmYwMSIsIndvcmtzcGFjZV9pZCI6IjAxOTViNGJhLThkM2EtN2YxMy04YWJjLTJiM2UxZTBhNmYxMSIsInJvbGUiOiJvcGVyYXRvciJ9fQ.eEQp3HyUFsV1bRBDvww3DirCY1R-vrASYT3KXnTeXBa8Owuag8Mc1I_v93XBatf-t-Y0qd6r9uNQuRiRpuXkrC01MJwyPnyvKDYHFAX828PIMdFgZ5FUGU0S6r1B4B8FaVZnfMdwyyQW9tCeFBvvh2hkuodoOlkcaJnR98kMrYjGHVoyDQc5H5JnU5O8Kkb9STE-XR-3b8VdOlGJR-ljX4Vw8Fipo5p7fo_VdhhUXD2C974DrbQWtsXhqUTqOFWAEUcUMM2ODH8pEFWhG8poHVP8LLWCcSFxZDN_Ia3dNR8OK9SEblCPIlfimiMtscqxli-9uC00n62UmLuQtGVlXA";
+    "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6InRlc3Qta2lkLXN0YXRpYyJ9.eyJzdWIiOiJ1c2VyX3Rlc3QiLCJpc3MiOiJodHRwczovL2NsZXJrLmRldi5hZ2VudHNmbGVldC5uZXQiLCJhdWQiOiJodHRwczovL2FwaS5hZ2VudHNmbGVldC5uZXQiLCJleHAiOjQxMDI0NDQ4MDAsInNjb3BlcyI6ImZsZWV0OndyaXRlIGNyZWRlbnRpYWw6cmVhZCIsIm1ldGFkYXRhIjp7InRlbmFudF9pZCI6IjAxOTViNGJhLThkM2EtN2YxMy04YWJjLTJiM2UxZTBhNmYwMSIsIndvcmtzcGFjZV9pZCI6IjAxOTViNGJhLThkM2EtN2YxMy04YWJjLTJiM2UxZTBhNmYxMSJ9fQ.Vf7b0wnWFRmIEOtd1jq01MRha9MHeTUybxubZhO5ctyROlswnGezKs4V_4Mn8avKz-vfCHwqId1ejWNuTxQvlkJnfkwHOH9kh3wdi41yeEGekLBzx5UYk01brVmyRksq52kdjRVnPTZKd2qoNhKM3un0lvjl669EGK0iPheGWj581r1EfAs31FrcWN6WPTuGw_N39mnofyx0JoEhLXMmlCIZcrhq7UeOALf_NBQR-Fm8C5d2hRpnth-_Ryd3PzFvuRJPd6uR73f_n9Cl66TLCIoNygIzrhMPqszmOyA6Kk-GRHCawU4OaxK50fCqohxSfimc26BK26A8N872RZtcRQ";
 const TEST_ADMIN_TOKEN =
-    "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6InJiYWMtdGVzdC1raWQifQ.eyJzdWIiOiJ1c2VyX3Rlc3QiLCJpc3MiOiJodHRwczovL2NsZXJrLmRldi5hZ2VudHNmbGVldC5uZXQiLCJhdWQiOiJodHRwczovL2FwaS5hZ2VudHNmbGVldC5uZXQiLCJleHAiOjQxMDI0NDQ4MDAsIm1ldGFkYXRhIjp7InRlbmFudF9pZCI6IjAxOTViNGJhLThkM2EtN2YxMy04YWJjLTJiM2UxZTBhNmYwMSIsIndvcmtzcGFjZV9pZCI6IjAxOTViNGJhLThkM2EtN2YxMy04YWJjLTJiM2UxZTBhNmYxMSIsInJvbGUiOiJhZG1pbiJ9fQ.PoaybxCP-Am6iec1ZmRFRnzOuZZtAYfbemZ0CcYbUdUrLgRq8OfQACcT0u5Ads2vBHmQGPtnL-iNo2VnLF013aOhyXxIDdpB8sUWZo_eBl9pNDqmjnGX14yDgVX8nftZ_6h6sFCKe3mzUIITzxZDJAsDfue68iRdAflECLY6RSFEdY-8wHnc9cxlAHrEgiUbscMPVYTsc8zrDkFDZvZMhanUKcoh0o6d3WnRWjCDY-Xoh34V3SkJ3G7-G2CzugMF_iEon9kXeQCzhlIp3rsrLZrRQjnNibtlCga_2-5H0TbKk_6BtBLKeDQ9Kv7g-NA0SrdcAb7GAj9L_mfweKS4TQ";
+    "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6InRlc3Qta2lkLXN0YXRpYyJ9.eyJzdWIiOiJ1c2VyX3Rlc3QiLCJpc3MiOiJodHRwczovL2NsZXJrLmRldi5hZ2VudHNmbGVldC5uZXQiLCJhdWQiOiJodHRwczovL2FwaS5hZ2VudHNmbGVldC5uZXQiLCJleHAiOjQxMDI0NDQ4MDAsInNjb3BlcyI6ImZsZWV0OmFkbWluIGNyZWRlbnRpYWw6d3JpdGUgYXBpa2V5OmFkbWluIGZsZWV0a2V5OndyaXRlIGdyYW50OndyaXRlIGNvbm5lY3Rvcjp3cml0ZSBiaWxsaW5nOnJlYWQgYXBwcm92YWw6cmVzb2x2ZSB3b3Jrc3BhY2U6YWRtaW4gdGVtcGxhdGU6d3JpdGUiLCJtZXRhZGF0YSI6eyJ0ZW5hbnRfaWQiOiIwMTk1YjRiYS04ZDNhLTdmMTMtOGFiYy0yYjNlMWUwYTZmMDEiLCJ3b3Jrc3BhY2VfaWQiOiIwMTk1YjRiYS04ZDNhLTdmMTMtOGFiYy0yYjNlMWUwYTZmMTEifX0.wIBu6pV0SEgUx-dWvIQS6qXYXDT3licQxSYiC2-n7ijivJCikIRnO96t7HD71TQnSeJWR2uBbuK0oMDfUotxO-bkIDZ8CnEXMrV3u0W3o5ChssaBCjrU4zPOFTEt4kxICm0BRItzSAI7U8LDSsqa90OYeN2teZ0rtjrc8KlwqOFRoJJ17hDjbxUDqx1sbL_kKgn2mN8Vrwgksyze7z9buSI2f0be555BaR9bgE6rMeBBSqQSlRiNP_7_CITCciZ9cenAzJL7oytaA0XHj73Qdadq4_0L5fPKg5WCVFlgqEofuP5pQo8cHK-jxn1PHYlzVisMWObFcI4ki_A6DZFlqg";
 
 fn configureRegistry(_: *auth_mw.MiddlewareRegistry, _: *TestHarness) anyerror!void {}
 
@@ -90,12 +90,11 @@ test "integration: RBAC endpoints enforce operator and admin roles over live HTT
     };
     defer h.deinit();
 
-    // Platform-admin-gated endpoint (M100 tightened it from admin() to
-    // platformAdmin()): the gate requires the `platform_admin` claim, so a
-    // per-tenant role — user, operator, OR admin — is insufficient and is
-    // rejected with UZ-AUTH-021, not the role-mismatch UZ-AUTH-009. The
-    // platform-admin success path (200) is covered in
-    // model_caps_admin_integration_test, which carries a platform_admin token.
+    // Platform-plane endpoint: the route requires a platform scope
+    // (`platform-key:read`), so a tenant-scoped principal — whatever tenant
+    // capabilities it carries — is insufficient and is rejected `403 UZ-AUTH-022`.
+    // The platform success path (200) is covered in
+    // model_caps_admin_integration_test, which carries a platform-scoped token.
     const admin_keys_path = "/v1/admin/platform-keys";
 
     { // No token → 401
@@ -104,23 +103,23 @@ test "integration: RBAC endpoints enforce operator and admin roles over live HTT
         try r.expectStatus(.unauthorized);
         try r.expectErrorCode(error_codes.ERR_UNAUTHORIZED);
     }
-    { // User role lacks platform_admin → 403 UZ-AUTH-021
+    { // Tenant principal without a platform scope → 403 UZ-AUTH-022
         const r = try (try h.get(admin_keys_path).bearer(TEST_USER_TOKEN)).send();
         defer r.deinit();
         try r.expectStatus(.forbidden);
-        try r.expectErrorCode(error_codes.ERR_PLATFORM_ADMIN_REQUIRED);
+        try r.expectErrorCode(error_codes.ERR_INSUFFICIENT_SCOPE);
     }
-    { // Operator role lacks platform_admin → 403 UZ-AUTH-021
+    { // Another tenant principal without a platform scope → 403 UZ-AUTH-022
         const r = try (try h.get(admin_keys_path).bearer(TEST_OPERATOR_TOKEN)).send();
         defer r.deinit();
         try r.expectStatus(.forbidden);
-        try r.expectErrorCode(error_codes.ERR_PLATFORM_ADMIN_REQUIRED);
+        try r.expectErrorCode(error_codes.ERR_INSUFFICIENT_SCOPE);
     }
-    { // A per-tenant admin (no platform_admin claim) is ALSO rejected → 403
+    { // A full tenant-capability principal is ALSO rejected (no platform scope) → 403
         const r = try (try h.get(admin_keys_path).bearer(TEST_ADMIN_TOKEN)).send();
         defer r.deinit();
         try r.expectStatus(.forbidden);
-        try r.expectErrorCode(error_codes.ERR_PLATFORM_ADMIN_REQUIRED);
+        try r.expectErrorCode(error_codes.ERR_INSUFFICIENT_SCOPE);
     }
 
     // RULE BIL regression — destructive lifecycle (PATCH fleet status =
@@ -136,7 +135,7 @@ test "integration: RBAC endpoints enforce operator and admin roles over live HTT
         const r = try req.send();
         defer r.deinit();
         try r.expectStatus(.forbidden);
-        try r.expectErrorCode(error_codes.ERR_INSUFFICIENT_ROLE);
+        try r.expectErrorCode(error_codes.ERR_INSUFFICIENT_SCOPE);
     }
 
     // M11_005: removed workspace-scoped billing endpoints must 404 regardless

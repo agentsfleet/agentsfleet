@@ -1,6 +1,7 @@
-// Runner-enrollment authz over the live HTTP surface: `POST /v1/runners` mints
-// a `agt_r` only for a verified JWT carrying `metadata.platform_admin == true`;
-// a tenant-admin JWT and a `agt_t` api_key are both rejected `403`.
+// Runner-enrollment authz over the live HTTP surface: `POST
+// /v1/runners` mints a `agt_r` only for a verified JWT whose `scopes` claim
+// carries `runner:enroll`; a tenant-scoped JWT (no `runner:enroll`) and a
+// `agt_t` api_key are both rejected `403 UZ-AUTH-022`.
 //
 // The DB-backed arms require TEST_DATABASE_URL — skipped gracefully otherwise
 // via `TestHarness.start` returning `error.SkipZigTest`. The first test needs
@@ -9,9 +10,10 @@
 // through production code, not just that it was signed correctly.
 //
 // Fixtures (JWKS + the two tokens) are generated offline with an RSA keypair we
-// do not commit; regenerate with the script in this PR's Session Notes. Payload
-// shape mirrors the Clerk session token: `metadata.{tenant_id, role,
-// platform_admin}`. `exp` is 4102444800 (2100) so the fixture never ages out.
+// do not commit; regenerate with the Node script in this PR's Session Notes.
+// Payload shape mirrors the Clerk session token: top-level `scopes` (the
+// capability claim) + `metadata.{tenant_id, workspace_id}`. `exp` is 4102444800
+// (2100) so the fixture never ages out.
 
 const std = @import("std");
 const clock = @import("common").clock;
@@ -36,7 +38,7 @@ const TENANT_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01";
 const API_KEY_ROW_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a7001";
 
 // A valid tenant api_key. The DB stores only its SHA-256 hash; a `agt_t`
-// authenticates as `.role=.admin` but never carries `platform_admin`.
+// carries the workspace_admin tenant-scope bundle but never `runner:enroll`.
 const AGT_T_KEY = auth_mw.tenant_api_key.TENANT_KEY_PREFIX ++ "c" ** 48;
 
 const REGISTER_BODY =
@@ -44,14 +46,14 @@ const REGISTER_BODY =
 ;
 
 const TEST_JWKS =
-    \\{"keys":[{"kty":"RSA","n":"7ZUw6J4OYDXLJPGWADVw2-IgBawVd55H1Xh4R_FFFFYVNdG2O7EcTvBlFZhRzxDW9uL-SvxCt6slRDXDlZo9fmSI9yki7z8RAJZokcekxdP8za5w7g4QAoFeSieDhWWChkzHJ-vDGkrr0SAn8n4lIwpya-vCbO1eXmmz4Ay0pjenWyyGB1j371Zk2JGkAEJB347oJcVDMqVDt3d-TR0fyyspVw0nNxdDkZgNuB0EXOuEV4WvWgj0dtzwURhTI82AfpgheV23Kz7np9EoPxAhkfuslAjpRfqlRCXOOfmik-T6nvCe-fFPmHRwIY_zc1VrtwjKF0TjeALm4CCj_0pjRQ","e":"AQAB","kid":"test-kid-static","use":"sig","alg":"RS256"}]}
+    \\{"keys":[{"kty":"RSA","n":"xqsdGSYutr9L0eBYgPfoR55s-ZWGJkRtDM6KJaaCVH0rtUSUVq0noOYqVchWTM5ltwPw9rIajLR3DHsIO4sIWARdk-RhtVMg5kOtZ4S-v6AVsUq5iKGRbtb518dtpgt-ljVrgoJo93lx7GZ0cqaIZikRZ_C7SiyF8xiF_9q5JpYreXJCZFr3Ts8637rc7Mrdr8JNmTwCAhY1D9l3ZChqjVWiSW-R5AJGl59bHupdgjNjpeiYh_wR2yJQqEN4pzcX0CcMIBeVRSXQ8bNaQ3xWUUb-4TJ2FB8jH4tBkSgr8LPNO3RFFgRzmTGP6wpXPGnD1AJEU9Bu27mXIwZtAgSC8Q","e":"AQAB","kid":"test-kid-static","use":"sig","alg":"RS256"}]}
 ;
-// metadata.platform_admin == true → may enroll.
-const PLATFORM_ADMIN_TOKEN =
-    "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6InRlc3Qta2lkLXN0YXRpYyJ9.eyJzdWIiOiJ1c2VyX204MDAwNSIsImlzcyI6Imh0dHBzOi8vY2xlcmsudGVzdC5hZ2VudHNmbGVldC5uZXQiLCJhdWQiOiJodHRwczovL2FwaS5hZ2VudHNmbGVldC5uZXQiLCJleHAiOjQxMDI0NDQ4MDAsIm1ldGFkYXRhIjp7InRlbmFudF9pZCI6IjAxOTViNGJhLThkM2EtN2YxMy04YWJjLTJiM2UxZTBhNmYwMSIsIndvcmtzcGFjZV9pZCI6IjAxOTViNGJhLThkM2EtN2YxMy04YWJjLTJiM2UxZTBhNmYxMSIsInJvbGUiOiJhZG1pbiIsInBsYXRmb3JtX2FkbWluIjp0cnVlfX0.Jz-CQ6v1iiI5g1neq9zAwuNa99k33WzEJYCrazuizcFXaxGTmcRzb20iWmo2eIPBcwERzrOXmSM1iw5NdlAJSsamtds2WCQntNdpkOG3Xp4_xp0faUZmNUeD4viISG1kfMr2hKKR1XPEbydTdbKEvcQoNVVmGFdDnba9fV-9WiXlSLgHuGOKHWWgZCUV8akZImjNhbGM3l0y-_v3V8skx1BaUxkTg-WInhagaDOXvGOOAEoPThmGj2bhDT4F3ZXlAbEvLyJnoQz7pkWUwv4jTQVE4jqyBs19Fx-pGppDU_1tM8h5GRN0GegzuM98bgWgfBAX2uvrIT_a5XoMRhFxQg";
-// role=admin, NO platform_admin → tenant admin, must be 403.
-const TENANT_ADMIN_TOKEN =
-    "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6InRlc3Qta2lkLXN0YXRpYyJ9.eyJzdWIiOiJ1c2VyX204MDAwNSIsImlzcyI6Imh0dHBzOi8vY2xlcmsudGVzdC5hZ2VudHNmbGVldC5uZXQiLCJhdWQiOiJodHRwczovL2FwaS5hZ2VudHNmbGVldC5uZXQiLCJleHAiOjQxMDI0NDQ4MDAsIm1ldGFkYXRhIjp7InRlbmFudF9pZCI6IjAxOTViNGJhLThkM2EtN2YxMy04YWJjLTJiM2UxZTBhNmYwMSIsIndvcmtzcGFjZV9pZCI6IjAxOTViNGJhLThkM2EtN2YxMy04YWJjLTJiM2UxZTBhNmYxMSIsInJvbGUiOiJhZG1pbiJ9fQ.jBmYsg5xN1HFcENmp24xn3RwWCKkX-jF1uffnnCpot_iYJfNv_yOYzGocigF62rsHlOAqRJF0ZQ-C3te8oOzPAd8yKZcaXJiC9SU_Rj59CpNri5pk3PjdovN9UL-2oPLkOEkoiwG-36ubpBieunFP3VuyfIwWcpXbmXsXVy68WIr9bfCemW1XZa4rCTOcKwg6Q8ccU2McscPhZ_hwgJI2jA8uygL3wgaC2CIMKsH6aUII5IO9zMNKkC_lK_t9OAHNkBCqxXNTQOXXLSyddbvwvmQ2Vjcy_ZftGaYtTZlWurXfY9pOX4tno_WWVvy2R_kOWEaAeSK_dfHOIRvv3YVsw";
+// scopes claim carries `runner:enroll` → may enroll a runner.
+const OPERATOR_TOKEN =
+    "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6InRlc3Qta2lkLXN0YXRpYyJ9.eyJzdWIiOiJ1c2VyX29wX20xMDQiLCJpc3MiOiJodHRwczovL2NsZXJrLnRlc3QuYWdlbnRzZmxlZXQubmV0IiwiYXVkIjoiaHR0cHM6Ly9hcGkuYWdlbnRzZmxlZXQubmV0IiwiZXhwIjo0MTAyNDQ0ODAwLCJzY29wZXMiOiJydW5uZXI6ZW5yb2xsIHJ1bm5lcjpyZWFkIHJ1bm5lcjp3cml0ZSBzdHJlYW06cmVhZCIsIm1ldGFkYXRhIjp7InRlbmFudF9pZCI6IjAxOTViNGJhLThkM2EtN2YxMy04YWJjLTJiM2UxZTBhNmYwMSIsIndvcmtzcGFjZV9pZCI6IjAxOTViNGJhLThkM2EtN2YxMy04YWJjLTJiM2UxZTBhNmYxMSJ9fQ.SZaVcAjdF_bOKW4R1o7iMwGq7fciPYC-Faq4gj9yJKYEw4NP9mg1Sabpufjn-W0f7Fztiz40X7j72EpfNylcoxMQGXfRqy4P7ZhpPK4lJg1wGF-JxlXfJWBNWt7eE-eJKH1GkaCx_slLjgy4bOFrp9labmxHTkNmcPRDW-7rZR1Inwl-IttUO1rT-AaSchzC9ouLo1pEkNWQBrVGMnAbb9SmxBUbz-CWPB2bXHjfxIrGrwdH079nJhwEauAgMnBwGooF3IIhi-oyji3bCdDZ6gKrQhmwJaPkVfjkboGhw0z9FFnsd3zPEL7AZGoN4RD1Hq4dALdqS57yR9tcJluqtw";
+// scopes carry tenant capability only (no `runner:enroll`) → must be 403.
+const TENANT_TOKEN =
+    "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6InRlc3Qta2lkLXN0YXRpYyJ9.eyJzdWIiOiJ1c2VyX3RlbmFudF9tMTA0IiwiaXNzIjoiaHR0cHM6Ly9jbGVyay50ZXN0LmFnZW50c2ZsZWV0Lm5ldCIsImF1ZCI6Imh0dHBzOi8vYXBpLmFnZW50c2ZsZWV0Lm5ldCIsImV4cCI6NDEwMjQ0NDgwMCwic2NvcGVzIjoiZmxlZXQ6YWRtaW4gY3JlZGVudGlhbDp3cml0ZSIsIm1ldGFkYXRhIjp7InRlbmFudF9pZCI6IjAxOTViNGJhLThkM2EtN2YxMy04YWJjLTJiM2UxZTBhNmYwMSIsIndvcmtzcGFjZV9pZCI6IjAxOTViNGJhLThkM2EtN2YxMy04YWJjLTJiM2UxZTBhNmYxMSJ9fQ.UPkH61DyvWyGuxi8RnloNiMqeNtno2jId3FQUOALDmvRZZBb20tLi9kSAA3Tu51Fh4OIsCrW_6cmJUYyUGhvGLgFHEhMLMRxJcHnTTQODB6bJMBCOrA0anvwlf5Khn-OoWvok8ZC9_AhDxGmsHBgecXyk2M6sct0fjPXiCtrxF1JC5DwGwUFAa4t4qUiVWzF2DeQUjXYnYu7vmV427gnJkJYrT1FAGXvn9grV7xzH--07GNztwzLEf1lZmR22Cbggo-r5CG2QTDlMfXfdZ47SfugzlsYsiJC2UaGRjFJtz79olFxuugHlPeN3rgvP1QywXA_XC4LjR5X_y7YeebosQ";
 
 // ── Verifier proof (no DB) ───────────────────────────────────────────────────
 // Drives the real oidc.Verifier so the fixture is proven against production
@@ -63,7 +65,6 @@ fn freePrincipal(p: oidc.Principal) void {
     if (p.tenant_id) |v| ALLOC.free(v);
     if (p.org_id) |v| ALLOC.free(v);
     if (p.workspace_id) |v| ALLOC.free(v);
-    if (p.role) |v| ALLOC.free(v);
     if (p.audience) |v| ALLOC.free(v);
     if (p.scopes) |v| ALLOC.free(v);
 }
@@ -81,16 +82,16 @@ fn verify(token: []const u8) !oidc.Principal {
     return verifier.verifyAuthorization(ALLOC, auth);
 }
 
-test "fixture tokens verify through the real oidc verifier; platform_admin parses fail-closed" {
-    const admin = try verify(PLATFORM_ADMIN_TOKEN);
-    defer freePrincipal(admin);
-    try std.testing.expect(admin.platform_admin);
-    try std.testing.expectEqualStrings("admin", admin.role.?);
+test "fixture tokens verify through the real oidc verifier; scopes claim surfaces" {
+    const operator = try verify(OPERATOR_TOKEN);
+    defer freePrincipal(operator);
+    // The operator fixture carries the platform-plane scopes incl. runner:enroll.
+    try std.testing.expectEqualStrings("runner:enroll runner:read runner:write stream:read", operator.scopes.?);
 
-    const tenant = try verify(TENANT_ADMIN_TOKEN);
+    const tenant = try verify(TENANT_TOKEN);
     defer freePrincipal(tenant);
-    try std.testing.expect(!tenant.platform_admin); // absent claim ⇒ false
-    try std.testing.expectEqualStrings("admin", tenant.role.?);
+    // The tenant fixture carries tenant capability only — no runner:enroll.
+    try std.testing.expectEqualStrings("fleet:admin credential:write", tenant.scopes.?);
 }
 
 // ── Register-handler authz (DB-backed) ───────────────────────────────────────
@@ -146,28 +147,28 @@ fn cleanup(h: *TestHarness) void {
         std.log.warn("cleanup runners ignored: {s}", .{@errorName(err)});
 }
 
-test "register: a platform_admin JWT mints a agt_r (201)" {
+test "register: a runner:enroll JWT mints a agt_r (201)" {
     const h = try startHarness(ALLOC);
     defer h.deinit();
     try seedTenantAndApiKey(h);
     defer cleanup(h);
 
-    const resp = try (try (try h.post(protocol.PATH_RUNNERS).bearer(PLATFORM_ADMIN_TOKEN)).json(REGISTER_BODY)).send();
+    const resp = try (try (try h.post(protocol.PATH_RUNNERS).bearer(OPERATOR_TOKEN)).json(REGISTER_BODY)).send();
     defer resp.deinit();
     try resp.expectStatus(.created);
     try std.testing.expect(resp.bodyContains(auth_mw.runner_bearer.RUNNER_TOKEN_PREFIX));
 }
 
-test "register: a tenant-admin JWT without platform_admin is rejected 403" {
+test "register: a tenant-scoped JWT without runner:enroll is rejected 403" {
     const h = try startHarness(ALLOC);
     defer h.deinit();
     try seedTenantAndApiKey(h);
     defer cleanup(h);
 
-    const resp = try (try (try h.post(protocol.PATH_RUNNERS).bearer(TENANT_ADMIN_TOKEN)).json(REGISTER_BODY)).send();
+    const resp = try (try (try h.post(protocol.PATH_RUNNERS).bearer(TENANT_TOKEN)).json(REGISTER_BODY)).send();
     defer resp.deinit();
     try resp.expectStatus(.forbidden);
-    try resp.expectErrorCode(error_registry.ERR_PLATFORM_ADMIN_REQUIRED);
+    try resp.expectErrorCode(error_registry.ERR_INSUFFICIENT_SCOPE);
 }
 
 test "register: a agt_t api_key cannot enroll a runner (403)" {
@@ -179,7 +180,7 @@ test "register: a agt_t api_key cannot enroll a runner (403)" {
     const resp = try (try (try h.post(protocol.PATH_RUNNERS).bearer(AGT_T_KEY)).json(REGISTER_BODY)).send();
     defer resp.deinit();
     try resp.expectStatus(.forbidden);
-    try resp.expectErrorCode(error_registry.ERR_PLATFORM_ADMIN_REQUIRED);
+    try resp.expectErrorCode(error_registry.ERR_INSUFFICIENT_SCOPE);
 }
 
 test "register: the mint records last_seen_at = 0 (never connected → registered)" {
@@ -188,7 +189,7 @@ test "register: the mint records last_seen_at = 0 (never connected → registere
     try seedTenantAndApiKey(h);
     defer cleanup(h);
 
-    const mint = try (try (try h.post(protocol.PATH_RUNNERS).bearer(PLATFORM_ADMIN_TOKEN)).json(REGISTER_BODY)).send();
+    const mint = try (try (try h.post(protocol.PATH_RUNNERS).bearer(OPERATOR_TOKEN)).json(REGISTER_BODY)).send();
     defer mint.deinit();
     try mint.expectStatus(.created);
 
@@ -206,17 +207,17 @@ test "register: the mint records last_seen_at = 0 (never connected → registere
 // Same platform-admin gate as enrollment; read-only; derives liveness and never
 // leaks the token hash or the raw agt_r.
 
-test "fleet list: a platform_admin JWT lists the fleet with derived liveness (200)" {
+test "fleet list: a runner:read JWT lists the fleet with derived liveness (200)" {
     const h = try startHarness(ALLOC);
     defer h.deinit();
     try seedTenantAndApiKey(h);
     defer cleanup(h);
 
-    const mint = try (try (try h.post(protocol.PATH_RUNNERS).bearer(PLATFORM_ADMIN_TOKEN)).json(REGISTER_BODY)).send();
+    const mint = try (try (try h.post(protocol.PATH_RUNNERS).bearer(OPERATOR_TOKEN)).json(REGISTER_BODY)).send();
     defer mint.deinit();
     try mint.expectStatus(.created);
 
-    const resp = try (try h.get(protocol.PATH_FLEET_RUNNERS).bearer(PLATFORM_ADMIN_TOKEN)).send();
+    const resp = try (try h.get(protocol.PATH_FLEET_RUNNERS).bearer(OPERATOR_TOKEN)).send();
     defer resp.deinit();
     try resp.expectStatus(.ok);
     try std.testing.expect(resp.bodyContains("host-enroll-test"));
@@ -226,16 +227,16 @@ test "fleet list: a platform_admin JWT lists the fleet with derived liveness (20
     try std.testing.expect(!resp.bodyContains(auth_mw.runner_bearer.RUNNER_TOKEN_PREFIX)); // the raw token is mint-only
 }
 
-test "fleet list: a tenant-admin JWT is rejected 403" {
+test "fleet list: a tenant-scoped JWT without runner:read is rejected 403" {
     const h = try startHarness(ALLOC);
     defer h.deinit();
     try seedTenantAndApiKey(h);
     defer cleanup(h);
 
-    const resp = try (try h.get(protocol.PATH_FLEET_RUNNERS).bearer(TENANT_ADMIN_TOKEN)).send();
+    const resp = try (try h.get(protocol.PATH_FLEET_RUNNERS).bearer(TENANT_TOKEN)).send();
     defer resp.deinit();
     try resp.expectStatus(.forbidden);
-    try resp.expectErrorCode(error_registry.ERR_PLATFORM_ADMIN_REQUIRED);
+    try resp.expectErrorCode(error_registry.ERR_INSUFFICIENT_SCOPE);
 }
 
 test "fleet list: a agt_t api_key is rejected 403" {
@@ -247,7 +248,7 @@ test "fleet list: a agt_t api_key is rejected 403" {
     const resp = try (try h.get(protocol.PATH_FLEET_RUNNERS).bearer(AGT_T_KEY)).send();
     defer resp.deinit();
     try resp.expectStatus(.forbidden);
-    try resp.expectErrorCode(error_registry.ERR_PLATFORM_ADMIN_REQUIRED);
+    try resp.expectErrorCode(error_registry.ERR_INSUFFICIENT_SCOPE);
 }
 
 // ── Runner-plane auth gate: admin_state admits only `active` ──────────────────

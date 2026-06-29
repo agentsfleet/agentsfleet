@@ -64,7 +64,7 @@ Cookies **never reach the Zig backend**. The Clerk `__session` cookie lives on t
 The middleware that gates almost every route is `bearer_or_api_key` (`src/agentsfleetd/auth/middleware/bearer_or_api_key.zig`). It parses the `Bearer …` prefix, then routes by sub-prefix:
 
 - `Bearer agt_t*` → `tenant_api_key.zig` (DB lookup, hash compare).
-- `Bearer <anything else>` → `oidc.Verifier.verifyAuthorization` (cached JWKS, RS256 signature check, `iss` + `aud` + `exp` claims, role mapping).
+- `Bearer <anything else>` → `oidc.Verifier.verifyAuthorization` (cached JWKS, RS256 signature check, `iss` + `aud` + `exp` claims, `scopes`-claim parsing onto `principal.scopes`).
 
 Both paths resolve to the same `AuthPrincipal` struct (`src/agentsfleetd/auth/principal.zig`). Handlers downstream never know which credential shape was used.
 
@@ -85,11 +85,75 @@ Six principal surfaces, one wire shape (`Authorization: Bearer …`), and a pref
 
 Routing in `bearer_or_api_key.zig`: `agt_t` → tenant-key DB lookup; anything else → OIDC/JWKS verify; no token → 401. The runner plane is deliberately a separate middleware (`runnerBearer`, `agt_r` only) so a runner token cannot satisfy a tenant route and vice versa.
 
-Authorization is **role-based** today: `AuthRole = user < operator < admin` (`src/agentsfleetd/auth/rbac.zig`), enforced by `RequireRole`. Scope-based authz (`fleet:write`, finer tenant scopes) is a v2.1 item — see [`architecture/roadmap.md`](./architecture/roadmap.md).
+Authorization is **scope-based** (M104_001). Every capability is an explicit `resource:action` scope carried on the verified token's `scopes` claim and surfaced as `principal.scopes` (a bitset). Two independent axes decide a request:
 
-One authorization signal sits *outside* the role ladder: **`platform_admin`** — a boolean claim on `AuthPrincipal`, parsed from a verified JWT's `metadata.platform_admin` and granted by a manual Clerk `publicMetadata` flip on agentsfleet's operator user (no redeploy to grant). It is orthogonal to `role` because a tenant `admin` is admin *of their tenant*, whereas `platform_admin` is agentsfleet-the-operator authority. It gates runner enrollment (`POST /v1/runners`) and the fleet operator plane (`GET /v1/fleets/runners`, `PATCH /v1/fleets/runners/{id}`, `GET /v1/fleets/runners/{id}/events`); those routes fail closed when the claim is absent, and the `agt_t` api_key path never sets it (so no tenant key can enroll, mutate, or audit hosts). See *Runner token → Provisioning* below.
+1. **Capability** — `requireScope` (one middleware) checks the route's required scopes (declared per route + HTTP method in `http/route_scopes.zig`) against `principal.scopes`, any-of, hierarchy-expanded. Absent/insufficient ⇒ `403 UZ-AUTH-022` naming the missing scope.
+2. **Ownership** — `authorizeWorkspace` (unchanged) checks the principal owns the target workspace (tenant-id match), independent of scopes. The two compose: holding `fleet:write` does not let you touch a workspace you do not own.
+
+The former `AuthRole = user < operator < admin` ladder and the `platform_admin` bool are **gone** — they were undocumented capability bundles. See the **Scope catalogue** below for the full vocabulary, the `read < write < admin` hierarchy, and the default provisioning grants.
 
 Everything below is per-surface detail. For the CLI device-flow threat model + crypto, see [`AUTH_DEVICE_LOGIN.md`](./AUTH_DEVICE_LOGIN.md).
+
+---
+
+## Scope catalogue
+
+The complete capability vocabulary (`src/agentsfleetd/auth/scopes.zig`). Scope strings are the JWT `scopes` claim values — matched **verbatim** in the Clerk session-token template (RULE UFS). The `read < write < admin` ladder is stored as data: holding a higher scope satisfies a lower requirement (a `fleet:admin` holder passes a `fleet:read` gate), expanded at parse time.
+
+**Laddered resources** (`read < write < admin`):
+
+| Scope | Grants |
+|---|---|
+| `fleet:read` / `fleet:write` / `fleet:admin` | view fleets+events+memories / create+update+message fleets / delete a fleet |
+| `credential:read` / `credential:write` | list workspace credentials / store, rotate, delete them (+ tenant LLM provider config) |
+| `apikey:read` / `apikey:write` / `apikey:admin` | list tenant api-keys / create+rotate / delete (revoke) |
+| `fleetkey:read` / `fleetkey:write` | list fleet-keys / create+delete |
+| `grant:read` / `grant:write` | list integration grants / revoke them |
+| `connector:read` / `connector:write` | read connector status (GitHub App) / connect a connector |
+| `model:read` / `model:admin` | read the priced model catalogue / create+update+delete catalogue rows |
+| `platform-key:read` / `platform-key:admin` | read the platform default key/model / set+delete it |
+| `runner:read` / `runner:write` | list runners + their events (operator plane) / cordon+patch a runner's state |
+
+**Discrete verbs** (no ladder — a distinct action):
+
+| Scope | Grants |
+|---|---|
+| `runner:enroll` | create a trusted runner (mint a `agt_r`) — uniquely dangerous (the host then receives every tenant's inline secrets); held independently of `runner:read`/`runner:write` so it is separately grantable/revocable |
+| `stream:read` | view the live SSE streams open on an instance (operator diagnostic) |
+| `approval:read` / `approval:resolve` | view the approval inbox / decide (approve or deny) an approval gate |
+| `billing:read` | read tenant billing snapshot, charges, metering periods |
+| `workspace:admin` | create workspaces; list the tenant's workspaces |
+| `template:write` | mutate the template catalogue (consumed by M103) |
+
+**Runner credential** (machine identity — minted onto the `agt_r` token, never granted to a human):
+
+| Scope | Grants |
+|---|---|
+| `runner:self` | the runner's own plane: `/v1/runners/me/*` (heartbeat, lease, report, credential-mint, memory). Only the runner-token principal carries it, and it carries *only* this — so a runner cannot reach a tenant route and a user/api-key cannot reach a runner route |
+
+**Cross-tenant override** (held by almost no one; every use audited):
+
+| Scope | Grants |
+|---|---|
+| `workspace:any` | bypass the tenant-id ownership match to read and act on *any* tenant's workspace. Every bypass emits a `.auth_audit` record (operator, their tenant, the target tenant, workspace). Mirrors Sentry's `is_global`. |
+
+### Provisioning grants
+
+Capabilities reach a principal as an explicit `scopes` claim. Two grants are applied **in code** at principal construction — `scopes.zig::DefaultGrant`, keyed by *credential source* (not a role name) and **never checked at a gate** (gates take `Scope` values). All other capability sets are provisioned **manually** at the identity provider.
+
+**Code-applied default grants** (`DefaultGrant` → `defaultScopes` / `defaultClaim`):
+
+| Source | Scopes provisioned | Applied by |
+|---|---|---|
+| `.tenant` | `fleet:admin`, `credential:write`, `apikey:admin`, `fleetkey:write`, `grant:write`, `connector:write`, `billing:read`, `approval:resolve`, `workspace:admin`, `template:write` | a tenant owner at signup (Clerk `user.created` writeback, `identity_events_clerk.zig`) **and** every `agt_t` tenant api-key (`tenant_api_key.zig`) — every tenant capability, no platform/cross-tenant scope, preserving "an admin api-key cannot enroll a runner" |
+| `.runner` | `runner:self` | minted onto every `agt_r` runner token (`runner_bearer.zig`) |
+
+**Manually-provisioned scope sets** — written by a human onto `public_metadata.scopes` in Clerk. There is **no code bundle**: these are recommended scope lists, not roles. Copy the exact strings (RULE UFS); each capability is enforced per-scope like any other.
+
+| Recommended for | Scope set |
+|---|---|
+| platform operator (almost no one) | `runner:enroll`, `runner:write`, `stream:read`, `model:admin`, `platform-key:admin`, `template:admin`, `workspace:any` |
+| read-only collaborator | `fleet:read`, `fleetkey:read`, `grant:read`, `connector:read`, `billing:read`, `approval:read` |
 
 ---
 
@@ -284,17 +348,17 @@ Flows 1–3 and fleet keys all act *on behalf of* a human or a tenant. The **run
 
 ### Provisioning (register)
 
-A runner has no credential until **agentsfleet's platform admin** mints one from the **dashboard "Add runner"** action (a session-authed server action — M84_001 retired the `register --token` CLI, so no identity credential ever reaches a shell). Enrollment is the trust decision — a runner that joins the shared fleet receives every tenant's inline `secrets_map` via the leases it is placed — so the endpoint that mints a `agt_r` (`POST /v1/runners`) is gated by the `platform_admin` claim, **not** per-tenant `admin`. A tenant `admin` JWT and any `agt_t` api_key are rejected `403 platform_admin_required`; an absent claim fails closed. There is no open enrollment token. The same `platformAdmin()` gate also fronts the read-only fleet list `GET /v1/fleets/runners` (M84_001), the operator-plane mutation `PATCH /v1/fleets/runners/{id}`, and the runner event history `GET /v1/fleets/runners/{id}/events` (M84_002).
+A runner has no credential until an **agentsfleet platform operator** mints one from the **dashboard "Add runner"** action (a session-authed server action — M84_001 retired the `register --token` CLI, so no identity credential ever reaches a shell). Enrollment is the trust decision — a runner that joins the shared fleet receives every tenant's inline `secrets_map` via the leases it is placed — so the endpoint that mints a `agt_r` (`POST /v1/runners`) requires the `runner:enroll` scope, a discrete capability held only by platform operators and independently revocable from `runner:read`/`runner:write` (separation of duties). A tenant-scoped JWT (no `runner:enroll`) and any `agt_t` api_key are rejected `403 UZ-AUTH-022`; an empty scope set fails closed. There is no open enrollment token. The operator plane has its own scopes: `runner:read` fronts the fleet list `GET /v1/fleets/runners` (M84_001) and event history `GET /v1/fleets/runners/{id}/events` (M84_002); `runner:write` fronts the operator-plane mutation `PATCH /v1/fleets/runners/{id}`.
 
 The host **never self-registers** (Option B, the GitLab-16 "create runner → authentication token" model): the operator pre-mints the `agt_r` and installs it on the host as `AGENTSFLEET_RUNNER_TOKEN`; the daemon validates the `agt_r` prefix at boot and goes straight to the heartbeat/lease loop. No host ever holds an enrollment-grade credential.
 
 ```
-Platform admin — dashboard "Add runner" (session JWT, platform_admin=true)  agentsfleetd
+Platform operator — dashboard "Add runner" (session JWT, scopes ∋ runner:enroll)  agentsfleetd
    │ server action → POST /v1/runners
    │   Authorization: Bearer <session-JWT>
    │   { host_id, sandbox_tier, labels[] }
    ▼
-   platformAdmin() chain [bearer_or_api_key, PlatformAdmin] gates the route;
+   bearer() chain [bearer_or_api_key, requireScope] gates the route (runner:enroll);
    the handler mints agt_r<random>, stores ONLY sha256(agt_r) in fleet.runners,
    returns the raw token ONCE
    │
@@ -330,6 +394,11 @@ The same placement model carries the resolved **LLM provider key** (M80_009): `a
 `AGENTSFLEET_RUNNER_TOKEN` lives in the **daemon's** environment (the un-sandboxed parent that speaks the control protocol). The per-lease sandboxed child that runs the prompt-injectable fleet must never see it. The parent forks the child with a **filtered environment** — `forkExec` passes `std.process.spawn` an `environ_map` built from a fail-closed **allowlist** (`HOME`, `PATH`, the engine's optional knobs, the TLS bundle path), so the child inherits only what tool execution needs and **nothing** from the `AGENTSFLEET_` (or `RUNNER_`) namespace. A prompt-injected fleet that runs `getenv("AGENTSFLEET_RUNNER_TOKEN")` or reads its own `/proc/self/environ` finds nothing — the control-plane credential is structurally absent from the child, not merely undisclosed. This pairs with the existing rule that lease secrets ride the child's **stdin pipe**, never argv/env (both `/proc`-readable).
 
 ### What ships when
+
+> **Historical (pre-M104_001).** The sequencing below describes the original
+> role/`platform_admin` rollout. M104_001 replaced that capability axis with
+> explicit scopes: the `POST /v1/runners` gate is now `runner:enroll`, the
+> operator plane `runner:{read,write}` — see *Scope catalogue* above.
 
 M80_001 freezes the protocol, the `fleet.runners` schema, and the error codes — and, per the keystone's single-PR delivery, ships the working `register` handler, the `runnerBearer` middleware, and `AuthPrincipal.runner_id`. They land here rather than later because the `/v1/runners/*` routes are registered always-on: a real `lease`/`report` handler on `none` middleware would be a live, unauthenticated endpoint handing a tenant's `secrets_map` to any caller. M80_005 adds the `platform_admin` principal and re-gates `POST /v1/runners` from per-tenant `admin` to `platformAdmin()`, and flips the host to Option B (pre-minted `agt_r`, no self-register). Operator-assigned-trust placement fields (`trust_class`, `allowed_workspace_ids`) are deferred to M80_007 (scheduler), where a "required trust" data source lands; runner revocation/rotation and the fleet operator plane are M80_006.
 
@@ -416,7 +485,7 @@ This is why the UI flow has the extra Clerk hop, and why the SSE path uses a Nex
 
 Per-template audience isolation: a Token-B leak via agentsfleetd logs cannot be replayed against `storage-svc` because the `aud` doesn't match. Each microservice strict-checks only its own audience; cross-service replay is structurally prevented by the JWT verifier, not by application logic.
 
-Templates can also be role-gated (e.g. "only users with `metadata.role=admin` can mint the `fleets` template") via Clerk dashboard configuration. Adding a new microservice = create a new JWT template in Clerk + add a new strict `OIDC_AUDIENCE` value on that service. No new auth middleware code in agentsfleetd (or any sibling service); the existing `bearer_or_api_key.zig` path serves all future Bearer-audience services with config alone.
+Templates can also be scope-gated (e.g. "only users whose `scopes` claim carries `template:write` can mint the `fleets` template") via Clerk dashboard configuration. Adding a new microservice = create a new JWT template in Clerk + add a new strict `OIDC_AUDIENCE` value on that service. No new auth middleware code in agentsfleetd (or any sibling service); the existing `bearer_or_api_key.zig` path serves all future Bearer-audience services with config alone.
 
 ---
 
@@ -452,7 +521,7 @@ Three mint paths exist for Token B (the api-template JWT that agentsfleetd accep
 
 `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` IS in the browser bundle by design (the `NEXT_PUBLIC_` prefix means "ship to client"). `CLERK_SECRET_KEY` is NOT — no `NEXT_PUBLIC_` prefix means Next.js never inlines it into client code. An accidental rename to `NEXT_PUBLIC_CLERK_SECRET_KEY` would be a catastrophic incident requiring immediate key rotation.
 
-Compromise of `CLERK_SECRET_KEY` is total: anyone holding it can mint Token B for any user, modify any user's `publicMetadata` (which controls `tenant_id` + `role`), and impersonate the entire user base.
+Compromise of `CLERK_SECRET_KEY` is total: anyone holding it can mint Token B for any user, modify any user's `publicMetadata` (which controls `tenant_id` + the `scopes` claim), and impersonate the entire user base.
 
 ### Rotation procedure
 
@@ -495,7 +564,7 @@ Every named credential / token / identifier in the auth surface, with sensitivit
 
 The Token A / Token B split documented in *The two tokens at a glance* is not load-bearing on agentsfleetd's side. `src/agentsfleetd/auth/jwks.zig` validates `sub`, `iss`, `exp`, and `aud`; `sid` is never checked. The split exists because Clerk's *default* session token does not carry `aud=https://api.agentsfleet.net` (agentsfleetd's strict-check rejects it) and Clerk's *custom JWT templates* (the `api` template) cannot include `sid` per Clerk's docs (so the template can't double as the dashboard's `clerkMiddleware()` session token). Hence two distinct JWTs running in parallel today.
 
-Clerk's **session-token claim customization** — a separate Clerk feature from JWT templates — lifts the constraint. Adding `aud`, `metadata.tenant_id`, `metadata.role` to the session token produces one JWT that satisfies both `clerkMiddleware()` (it already carries `sid`) and agentsfleetd (the new `aud` claim passes the existing strict-check). Token B as a separate artifact for Flow 2 becomes unnecessary.
+Clerk's **session-token claim customization** — a separate Clerk feature from JWT templates — lifts the constraint. Adding `aud`, `metadata.tenant_id`, and the `scopes` claim to the session token produces one JWT that satisfies both `clerkMiddleware()` (it already carries `sid`) and agentsfleetd (the new `aud` claim passes the existing strict-check). Token B as a separate artifact for Flow 2 becomes unnecessary.
 
 ### Current direction vs future direction
 
@@ -531,7 +600,7 @@ flowchart TB
 │  Browser tab @ app.agentsfleet.net                                          │
 │  ┌─────────────────────────────────────────────────────────────────────┐ │
 │  │  __session cookie  (customized: sid + aud + metadata.tenant_id +    │ │
-│  │                     metadata.role — ONE token)                       │ │
+│  │                     scopes claim — ONE token)                       │ │
 │  │  JS heap:                                                            │ │
 │  │    useAuth().getToken()        // NO {template:"api"} arg            │ │
 │  │      ← session JWT (already-issued)                                  │ │
@@ -551,7 +620,7 @@ flowchart TB
 
 | Surface | Outcome |
 |---|---|
-| Clerk org config (D40) | Session Token Claims += `aud`, `metadata.tenant_id`, `metadata.role`. DEV applied; PROD pending operator click. |
+| Clerk org config (D40) | Session Token Claims += `aud`, `metadata.tenant_id`, `scopes`. DEV applied; PROD pending operator click. |
 | `lib/auth/server.ts` (D41) | DELETED — `getServerToken()` / `getServerAuth()` / `getServerSessionMetadata()` / `API_TEMPLATE` const all gone. |
 | `lib/api/redacted.ts` (D42) | N/A — file not present in this worktree; no surface to delete. |
 | `lib/actions/with-token.ts` (D43) | Simplified — drops the `getServerToken` indirection; calls `auth().getToken()` directly. |

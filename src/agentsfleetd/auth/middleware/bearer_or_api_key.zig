@@ -19,7 +19,7 @@ const auth_ctx = @import("auth_ctx.zig");
 const bearer = @import("bearer.zig");
 const errors = @import("errors.zig");
 const oidc = @import("../oidc.zig");
-const rbac = @import("../rbac.zig");
+const scopes = @import("../scopes.zig");
 const principal_mod = @import("../principal.zig");
 const tenant_api_key_mod = @import("tenant_api_key.zig");
 
@@ -29,12 +29,12 @@ pub const TenantApiKey = tenant_api_key_mod.TenantApiKey;
 const S_INVALID_OR_MISSING_TOKEN = "Invalid or missing token";
 
 /// Free fields of `oidc.Principal` that `AuthPrincipal` does not adopt —
-/// keeps subject/tenant_id/workspace_id; issuer/org_id/role/audience/scopes
-/// would otherwise leak.
+/// keeps subject/tenant_id/workspace_id; issuer/org_id/audience/scopes
+/// would otherwise leak. (The `scopes` string is freed here because the
+/// principal adopts its parsed bitset, not the raw string.)
 fn freeUnusedPrincipalFields(alloc: std.mem.Allocator, p: oidc.Principal) void {
     alloc.free(p.issuer);
     if (p.org_id) |v| alloc.free(v);
-    if (p.role) |v| alloc.free(v);
     if (p.audience) |v| alloc.free(v);
     if (p.scopes) |v| alloc.free(v);
 }
@@ -89,26 +89,17 @@ pub const BearerOrApiKey = struct {
                 return .short_circuit;
             },
         };
-        const role: principal_mod.AuthRole = if (verified.role) |raw|
-            rbac.parseAuthRole(raw) orelse {
-                freeUnusedPrincipalFields(ctx.alloc, verified);
-                ctx.alloc.free(verified.subject);
-                if (verified.tenant_id) |v| ctx.alloc.free(v);
-                if (verified.workspace_id) |v| ctx.alloc.free(v);
-                ctx.fail(errors.ERR_UNSUPPORTED_ROLE, "Unsupported role in token");
-                return .short_circuit;
-            }
-        else
-            .user;
+        // Parse the explicit scope claim into a bitset BEFORE freeing the source
+        // string (parseClaim copies into the EnumSet — no borrow survives).
+        const scope_set = if (verified.scopes) |s| scopes.parseClaim(s) else scopes.Set.initEmpty();
         // AuthPrincipal adopts subject/tenant_id/workspace_id; free the rest.
         freeUnusedPrincipalFields(ctx.alloc, verified);
         ctx.principal = .{
             .mode = .jwt_oidc,
-            .role = role,
             .user_id = verified.subject,
             .tenant_id = verified.tenant_id,
             .workspace_scope_id = verified.workspace_id,
-            .platform_admin = verified.platform_admin,
+            .scopes = scope_set,
         };
         return .next;
     }

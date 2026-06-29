@@ -98,15 +98,14 @@ pub fn innerPatchFleet(hx: Hx, req: *httpz.Request, workspace_id: []const u8, fl
     };
     defer hx.ctx.pool.release(conn);
 
-    // Status transitions (stop/resume/kill) are destructive lifecycle actions
-    // and require operator-minimum role per RULE BIL — same gate the retired
-    // DELETE /current-run enforced. Pure config_json updates (no status field)
-    // stay at workspace-member.
+    // Status transitions (stop/resume/kill) take the ownership gate that also
+    // writes the RLS tenant context (`enforce`), so a `workspace:any` cross-tenant
+    // status change is audited. Pure config_json updates (no status field) take
+    // the bare ownership check. Capability for both is gated upstream by the
+    // route's `fleet:write` scope (requireScope), independent of this axis.
     if (body.status != null) {
         const actor = hx.principal.user_id orelse API_ACTOR;
-        const access = workspace_guards.enforce(hx.res, hx.req_id, conn, hx.alloc, hx.principal, workspace_id, actor, .{
-            .minimum_role = .operator,
-        }) orelse return;
+        const access = workspace_guards.enforce(hx.res, hx.req_id, conn, hx.alloc, hx.principal, workspace_id, actor) orelse return;
         defer access.deinit(hx.alloc);
     } else {
         if (!common.authorizeWorkspace(conn, hx.principal, workspace_id)) {
