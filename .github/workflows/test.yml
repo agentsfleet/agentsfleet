@@ -1,6 +1,20 @@
 name: test
 
 on:
+  # Run on merges to main (Zig-relevant paths only) so the default branch
+  # populates the actions/cache for each Zig job. GitHub scopes caches per
+  # branch with a fallback to the default branch, so without a main run every
+  # new PR branch starts from a COLD Zig cache (~5 min full recompile). A warmed
+  # main cache lets PR branches restore it and recompile only changed modules.
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'build.zig'
+      - 'build.zig.zon'
+      - 'build_runner.zig'
+      - 'schema/**'
+      - '.github/workflows/test.yml'
   pull_request:
     types: [opened, synchronize, reopened]
 

@@ -1,6 +1,22 @@
 name: test-integration
 
 on:
+  # Run on merges to main (Zig-relevant paths only) so the default branch
+  # populates the actions/cache for the integration jobs. Without a main run the
+  # cache is only ever saved under PR refs, so every new PR branch starts from a
+  # COLD Zig cache and recompiles the test binary from scratch (~minutes). A
+  # warmed main cache lets PR branches restore it and recompile only changed
+  # modules. Paths-filtered: a main push that changes no Zig/schema input leaves
+  # the cache key unchanged, so re-warming would be wasted.
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'build.zig'
+      - 'build.zig.zon'
+      - 'build_runner.zig'
+      - 'schema/**'
+      - '.github/workflows/test-integration.yml'
   pull_request:
     types: [opened, synchronize, reopened]
 
@@ -14,26 +30,19 @@ concurrency:
 jobs:
   test-integration:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # Brushed the old 10-min ceiling (one run was cancelled at 600s); the suite
+    # run is the long pole, so give it headroom while the image + overlap below
+    # trim the front-loaded setup/compile.
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
 
-      - uses: mlugg/setup-zig@v2
-        with:
-          version: 0.16.0
-          # We manage the build cache ourselves via actions/cache on .tmp/ (see
-          # below). setup-zig's own cache is keyed per run-id (never reused
-          # across runs) AND it exports ZIG_GLOBAL/LOCAL_CACHE_DIR, which would
-          # hijack the Makefile's .tmp/ paths and leave our cache empty.
-          use-cache: false
-      - name: Install OpenSSL dev headers
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libssl-dev
-
       # Persist the Zig compilation cache across runs. The Makefile points Zig's
-      # cache at .tmp/zig-{global,local}-cache (forced on the build step below,
-      # so setup-zig can't redirect it) — without this, every CI run recompiles
-      # the agentsfleetd test binary from cold (~150s). Content-addressed: a
-      # stale hit only triggers a recompile of changed modules, never a wrong build.
+      # cache at .tmp/zig-{global,local}-cache — without this, every CI run
+      # recompiles the agentsfleetd test binary from cold (~150s). Content-
+      # addressed: a stale hit only recompiles changed modules, never a wrong
+      # build. Key unchanged (runner.os/github.job identical), so existing
+      # cache entries carry over.
       - name: Cache Zig build
         uses: actions/cache@v5
         with:
@@ -45,49 +54,47 @@ jobs:
             zig-${{ runner.os }}-${{ github.job }}-0.16.0-${{ hashFiles('build.zig.zon', 'build.zig', 'build_runner.zig') }}-
             zig-${{ runner.os }}-${{ github.job }}-0.16.0-
 
-      - name: Start Postgres and Redis via docker compose
-        run: docker compose up -d postgres redis
-
-      - name: Wait for Postgres to be ready
-        run: |
-          echo "→ Waiting for Postgres (TLS-enabled container, may need extra startup time)..."
-          for i in $(seq 1 30); do
-            pg_isready -h localhost -p 5432 -U agentsfleet -d agentsfleetdb 2>/dev/null && break
-            echo "  attempt $i/30 — not ready yet"
-            sleep 3
-          done
-          pg_isready -h localhost -p 5432 -U agentsfleet -d agentsfleetdb \
-            || { echo "✗ Postgres did not become ready in time"; exit 1; }
-          echo "✓ Postgres is ready"
-
-      - name: Wait for Redis to be ready
-        run: |
-          echo "→ Waiting for Redis..."
-          for i in $(seq 1 30); do
-            docker compose exec -T redis redis-cli --tls --insecure -a agentsfleet ping 2>/dev/null | grep -q PONG && break
-            echo "  attempt $i/30 — not ready yet"
-            sleep 2
-          done
-          docker compose exec -T redis redis-cli --tls --insecure -a agentsfleet ping 2>/dev/null | grep -q PONG \
-            || { echo "✗ Redis did not become ready in time"; exit 1; }
-          echo "✓ Redis is ready"
-
-      - name: Extract Redis TLS CA cert
-        run: |
-          mkdir -p .tmp
-          docker compose cp redis:/tls/server.crt .tmp/redis-ca.crt
-          echo "TEST_REDIS_TLS_CA_CERT=$(pwd)/.tmp/redis-ca.crt" >> "$GITHUB_ENV"
-
-      - name: Run all integration tests
+      - name: Run integration tests in ci-zig-ubuntu (compose datastores on host)
         env:
-          TEST_DATABASE_URL: postgres://agentsfleet:agentsfleet@localhost:5432/agentsfleetdb
-          TEST_REDIS_TLS_URL: rediss://:agentsfleet@localhost:6379
-          # Force the build to write where actions/cache reads (step env beats
-          # setup-zig's GITHUB_ENV export). These equal the Makefile's CURDIR
-          # default, so the cached objects are found + saved.
           ZIG_GLOBAL_CACHE_DIR: ${{ github.workspace }}/.tmp/zig-global-cache
           ZIG_LOCAL_CACHE_DIR: ${{ github.workspace }}/.tmp/zig-local-cache
-        run: make test-integration
+        run: |
+          # Boot Postgres + Redis on the host daemon now (no --wait, returns
+          # immediately). The make target's own `docker compose up --wait` (run
+          # inside the image below) blocks on the healthchecks, so this boot —
+          # including Redis's apk-add + cert-gen — overlaps the compile instead
+          # of running serially before it. _ensure-test-infra also extracts the
+          # Redis TLS CA cert into .tmp/redis-ca.crt (its TEST_REDIS_TLS_CA_CERT
+          # default), so no manual wait/extract steps are needed.
+          docker compose up -d postgres redis
+          # Build + test inside the project's own CI image (Zig 0.16.0 +
+          # libssl-dev + docker compose v2 baked in) — the same image every Zig
+          # unit job and test-integration-kernel use, so this lane stops paying
+          # the per-run setup-zig download + apt install. We run it via `docker
+          # run` rather than a job `container:` because --network host is
+          # mandatory here (keeps localhost:5432/6379 pointing at the compose-
+          # published ports, so the connection strings are unchanged) and a GHA
+          # job container is forced onto GitHub's managed network, which rejects
+          # --network host. The mounted socket lets the in-image compose drive
+          # the host daemon; the workspace is bind-mounted at the same path so
+          # the restored Zig cache + extracted cert line up inside and out.
+          #
+          # Pre-compile both agentsfleetd binaries the suite needs, without
+          # running them: `install` builds the agentsfleetd exe (the migrate
+          # binary `make test-integration` runs) and `test-bin` builds the exact
+          # test artifact `zig build test` executes (build.zig). So the make
+          # step finds a warm cache and only *migrates + runs* — on a cold cache
+          # both long compiles land here, hidden behind the datastore boot above.
+          docker run --rm --network host \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            -v "${{ github.workspace }}":"${{ github.workspace }}" \
+            -w "${{ github.workspace }}" \
+            -e ZIG_GLOBAL_CACHE_DIR \
+            -e ZIG_LOCAL_CACHE_DIR \
+            -e TEST_DATABASE_URL="postgres://agentsfleet:agentsfleet@localhost:5432/agentsfleetdb" \
+            -e TEST_REDIS_TLS_URL="rediss://:agentsfleet@localhost:6379" \
+            ghcr.io/agentsfleet/ci-zig-ubuntu:0.16.0 \
+            sh -c 'mkdir -p "$ZIG_GLOBAL_CACHE_DIR" "$ZIG_LOCAL_CACHE_DIR" && zig build install test-bin && make test-integration'
 
       - name: Stop services
         if: always()
