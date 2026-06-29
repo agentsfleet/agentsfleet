@@ -45,6 +45,14 @@ const server_bringup = @import("test_harness_server.zig");
 const TEST_AUTH_SESSION_PEPPER: []const u8 = "test-pepper-bytes-32-len--padded";
 const TEST_AUDIT_LOG_PEPPER: []const u8 = "test-pepper-bytes-32-len--padded";
 
+/// Reader-socket read timeout for the harness hub. Production uses the hub's
+/// 1 s default; tests lower it because every `deinit()` joins the hub reader
+/// thread, which is parked in `nextMessage` — at 1 s that join cost ~0.9 s PER
+/// TEST and dominated the integration-suite wall-clock. Against localhost Redis
+/// (instant, tiny pub/sub frames) a 100 ms SO_RCVTIMEO never truncates a frame,
+/// and the dead-socket discrimination (read_timeout_ms / 2 = 50 ms) still holds.
+const TEST_HUB_READ_TIMEOUT_MS: u32 = 100;
+
 /// Re-exported from `test_http_message.zig` so consumers keep importing the
 /// fluent request/response types from this module unchanged.
 pub const Request = message.Request;
@@ -115,6 +123,9 @@ pub const TestHarness = struct {
         defer env_map.deinit();
         self.queue = try queue_redis.Client.connectFromEnv(constants.globalIo(), &env_map, self.alloc, .api);
         self.has_redis = true;
+        // Lower the reader-socket timeout BEFORE start() so the reader thread is
+        // created with it — bounds the per-test `deinit()` join (see the const).
+        self.hub.read_timeout_ms = TEST_HUB_READ_TIMEOUT_MS;
         try self.hub.start(self.queue.pool.cfg);
         // SessionStore holds a pointer to `self.queue`; safe now that the
         // queue handle is initialized. `ctx.auth_sessions` already points
