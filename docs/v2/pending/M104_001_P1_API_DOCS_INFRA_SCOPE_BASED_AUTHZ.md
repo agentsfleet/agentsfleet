@@ -33,8 +33,8 @@ This spec uses Role-Based Access Control (RBAC), JSON Web Token (JWT), Identity 
 1. `src/agentsfleetd/auth/{rbac.zig,principal.zig,claims.zig}` — `AuthRole` ladder, the `platform_admin` bool, and the `scopes` claim that is parsed-but-discarded today (the rail this lights up).
 2. `src/agentsfleetd/auth/middleware/{require_role.zig,platform_admin.zig,bearer_or_api_key.zig,runner_bearer.zig}` — the gates being replaced and the principal-construction path.
 3. `src/agentsfleetd/http/handlers/common_authz.zig` and `workspace_guards.zig` — the resource/ownership axis (`authorizeWorkspace`, tenant-id isolation) that **stays unchanged**.
-4. `docs/AUTH.md` and `docs/architecture/roadmap.md §v2.1` — the model to rewrite and the documented target naming (`fleet:write` colon convention).
-5. `~/Projects/oss/auth.md` — reference OAuth-scoped-credential design the roadmap aligns to.
+4. `docs/AUTH.md` and `docs/architecture/roadmap.md §v2.1` — the model to rewrite and the documented target naming (colon convention).
+5. **Reference systems (read for the pattern, cite in comments):** Sentry `conf/server.py` (scope catalog + `SENTRY_SCOPE_HIERARCHY_MAPPING` + `SENTRY_ROLES` bundles), `api/permissions.py` (`scope_map` any-of), `auth/access.py` (scope × membership, `is_global` bypass); Supabase `apps/studio/hooks/misc/useCheckPermissions.ts` (call-site intent, `project_refs` scoping); bun `src/HTMLScanner.zig` + `src/bun.zig::ComptimeEnumMap` (declarative comptime table, no vtable).
 
 ---
 
@@ -86,7 +86,7 @@ This spec uses Role-Based Access Control (RBAC), JSON Web Token (JWT), Identity 
 
 ## Overview
 
-**Goal (testable):** Every authenticated route authorizes via `requireScope(principal, <scope>)` reading an explicit `principal.scopes`; `AuthRole` and `platform_admin` no longer exist in the codebase; resource-ownership checks are unchanged; and `docs/AUTH.md` lists every scope with the capability it grants.
+**Goal (testable):** Every authenticated route declares its required `resource:action` scopes in a comptime table and authorizes via a single `requireScope` gate (any-of, hierarchy-expanded) reading an explicit `principal.scopes`; `AuthRole` and `platform_admin` no longer exist; the resource-ownership check is unchanged except for an audited `workspace:{read,write}:any` cross-tenant override; and `docs/AUTH.md` lists every scope, the `read<write<admin` ladder, and the provisioning bundles.
 
 **Problem:** Authorization is role-based — `AuthRole = user < operator < admin` plus an orthogonal `platform_admin` bool. A role is an undocumented bundle of capabilities: "what can `platform_admin` do?" has no enumerable answer (it is 7 distinct capabilities, never written down). You cannot grant or revoke a single ability, do least-privilege, or separate duties — e.g. you cannot give `model:manage` without also granting `runner:enroll`, which exposes every tenant's secrets.
 
@@ -96,10 +96,12 @@ This spec uses Role-Based Access Control (RBAC), JSON Web Token (JWT), Identity 
 
 ## Prior-Art / Reference Implementations
 
-- **Target model** — `~/Projects/oss/auth.md` (OAuth-scoped credentials, `api.read`/`api.write` style) and `docs/architecture/roadmap.md §v2.1` (the `fleet:write` colon convention, "grant a capability without a whole role").
-- **Claim parsing** — `src/agentsfleetd/auth/claims.zig` already parses `scope`/`scopes`/`scp` (space-delimited or array); surface the result on the principal instead of freeing it.
-- **Gate shape** — mirror `auth/middleware/platform_admin.zig` (fail-closed boolean gate) for `requireScope` (fail-closed set membership).
-- **Ownership axis** — mirror and preserve `common_authz.zig::authorizeWorkspace` and `workspace_guards.zig` verbatim; scopes do not replace them.
+> Grounded in three production systems (read in-session); cite them in code comments.
+
+- **Sentry** (`github.com/getsentry/sentry`) — the canonical model. `resource:action` scopes with the `read<write<admin` ladder stored as **data** (`conf/server.py::SENTRY_SCOPE_HIERARCHY_MAPPING`, where `org:admin ⊇ {org:read,org:write}`); a role is **literally a named bundle of scopes** (`SENTRY_ROLES`, each `scopes:set`); endpoints declare a `scope_map:{method:[scopes]}` checked **any-of** (`api/permissions.py`); the resource axis is independent — `has_scope` AND membership, with `is_global` roles bypassing membership (`auth/access.py`). Tokens carry an explicit `scope_list` capped by the holder's scopes.
+- **Supabase** (`~/Projects/oss/supabase`) — granular `action`+`resource` permissions, declared at the call site as intent (`apps/studio/hooks/misc/useCheckPermissions.ts::useCheckPermissions(action, resource)`); resource scoping via `project_refs[]` (empty = org-wide → org-level permission auto-applies to every project, the cross-tenant pattern).
+- **bun** (`~/Projects/oss/bun/src`) — the Zig structure: a **declarative comptime table** (`HTMLScanner.zig` tag-handlers, `ComptimeEnumMap`) + one central checker, **not** a vtable — the idiomatic shape for a comptime-known route→scope map. No scattered `if`-chains.
+- **Local** — `claims.zig` already parses `scope`/`scopes`/`scp`; surface it on the principal. Preserve `common_authz.zig::authorizeWorkspace` + `workspace_guards.zig` verbatim for the resource axis.
 
 ---
 
@@ -108,7 +110,9 @@ This spec uses Role-Based Access Control (RBAC), JSON Web Token (JWT), Identity 
 | File | Action | Why |
 |------|--------|-----|
 | `docs/v2/pending/M104_001_*.md` | CREATE | This spec. |
-| `src/agentsfleetd/auth/scopes.zig` | CREATE | Scope catalog: every capability as a named constant + default provisioning bundles. |
+| `src/agentsfleetd/auth/scopes.zig` | CREATE | Scope catalog (enum), the `read<write<admin` hierarchy as a comptime map, default provisioning bundles, and `satisfiesAny` membership-with-hierarchy. |
+| `src/agentsfleetd/http/route_scopes.zig` | CREATE | Declarative route→required-scope table (bun comptime-table pattern); the `any-of` requirement per route. |
+| `src/agentsfleetd/auth/cross_tenant_audit.zig` | CREATE | Audit-log emit for every `workspace:read:any`/`workspace:write:any` cross-tenant access (who, tenant, workspace, route). |
 | `src/agentsfleetd/auth/principal.zig` | EDIT | Add `scopes`; remove `role` and `platform_admin`. |
 | `src/agentsfleetd/auth/claims.zig` | EDIT | Surface parsed scopes onto the principal (stop discarding). |
 | `src/agentsfleetd/auth/rbac.zig` | DELETE | `AuthRole` ladder removed (legacy waded out). |
@@ -126,37 +130,39 @@ This spec uses Role-Based Access Control (RBAC), JSON Web Token (JWT), Identity 
 
 ## Decomposition & alternatives (patch vs refactor)
 
-- **Chosen shape:** A foundation rebuild of the capability axis only: scopes replace roles; the resource axis is preserved verbatim. The gate enumeration is the lossless-cutover checklist.
-- **Alternatives considered:** Tier→scope expansion server-side (token carries a tier label) — rejected: it keeps a role word and blocks single-capability revoke, the product's key need (separation of duties, incident revoke). Staged dual-run — rejected by Indy: pre-2.0, not in production, so the safety margin isn't worth the prolonged two-model complexity.
+- **Chosen shape:** A foundation rebuild of the capability axis only: granular `resource:action` scopes (Sentry/Supabase) replace roles; a declarative comptime route→scope table + one central gate (bun) replaces scattered role checks; the resource axis is preserved verbatim plus an audited cross-tenant override. The gate enumeration is the lossless-cutover checklist.
+- **Alternatives considered:** Tier→scope expansion server-side — rejected: keeps a role word and blocks single-capability revoke (separation of duties, incident revoke). Staged dual-run — rejected by Indy: pre-2.0, not in production. Coarse role-scopes (`workspace:admin` enforced directly) — rejected: Sentry/Supabase both enforce granular and treat roles as **bundles only**; we keep `workspace_admin`/`workspace_member` as provisioning bundles, never gate-checked. Flat verbs (no hierarchy) — rejected in favour of the Sentry `read<write<admin` ladder stored as data (any-of at the route). vtable/runtime dispatch — rejected: the route→scope map is comptime-known (bun avoids vtables here).
 - **Patch-vs-refactor verdict:** a **refactor**, scoped to the capability axis. The ownership/IDOR axis is explicitly out of the blast radius. Fleet-key first-class principal and v3 capability tokens are named follow-ups, not bundled.
 
 ---
 
 ## Sections (implementation slices)
 
-### §1 — Scope catalog and principal scopes
+### §1 — Scope catalog, hierarchy-as-data, and bundles
 
-The named capability vocabulary and carrying it on the principal. **Implementation default:** colon convention (`fleet:write`); scope strings are `UFS` constants shared verbatim with Clerk config.
+The `resource:action` vocabulary with a declared `read<write<admin` ladder, carried on the principal. **Implementation default:** colon convention; scope strings are `UFS` constants shared verbatim with Clerk; the hierarchy is a comptime map (Sentry-style), never inferred from the string.
 
-- **Dimension 1.1** — A scope catalog enumerates every capability from the gate sweep (platform: `runner:enroll`/`runner:operate`/`stream:operate`/`platform-key:manage`/`model:manage`; tenant: `fleet:read`/`fleet:write`/`fleet:delete`/`credential:manage`/`apikey:manage`/`fleetkey:manage`/`grant:manage`/`connector:manage`/`approval:resolve`/`billing:read`/`workspace:manage`/`template:write`; credential: `runner:self`) → Test `test_scope_catalog_covers_every_enumerated_gate`
-- **Dimension 1.2** — `principal.scopes` is populated from the verified token's parsed scope claim; absent claim yields the empty set → Test `test_principal_scopes_populated_from_claim`
-- **Dimension 1.3** — Documented default bundles (`platform_operator`, `tenant_admin`, `tenant_member`, `runner`) expand to explicit scope lists → Test `test_default_bundles_expand_to_documented_scopes`
+- **Dimension 1.1** — The catalog covers every capability from the gate sweep — laddered resources `fleet:{read,write,admin}`, `credential:{read,write}`, `apikey:{read,write,admin}`, `fleetkey:{read,write}`, `grant:{read,write}`, `connector:{read,write}`, `model:{read,admin}`, `platform-key:{read,admin}`, `runner:{operate}`; discrete verbs `runner:enroll`, `stream:operate`, `approval:resolve`, `billing:read`, `workspace:admin`, `template:write`; credential `runner:self`; cross-tenant override `workspace:read:any`, `workspace:write:any` → Test `test_scope_catalog_covers_every_enumerated_gate`
+- **Dimension 1.2** — The hierarchy map subsumes lower scopes (`fleet:admin` satisfies `fleet:write` and `fleet:read`), stored as data and validated, not string-prefix-inferred → Test `test_scope_hierarchy_subsumes_lower`
+- **Dimension 1.3** — `principal.scopes` is populated from the verified token's parsed scope claim; absent claim yields the empty set → Test `test_principal_scopes_populated_from_claim`
+- **Dimension 1.4** — Documented provisioning bundles (`platform_operator`, `workspace_admin`, `workspace_member`, `runner`) expand to explicit scope lists; bundles are provisioning-only and never checked at a gate → Test `test_bundles_expand_and_are_not_enforced`
 
-### §2 — The `requireScope` gate; ownership unchanged
+### §2 — Declarative gate; any-of; ownership unchanged
 
-One fail-closed capability gate replaces both role gates; the resource axis is preserved.
+Routes **declare** their requirement in a comptime table (bun pattern); one central gate enforces it with Sentry any-of semantics. The resource axis is preserved verbatim.
 
-- **Dimension 2.1** — `requireScope(p, s)` allows iff `s ∈ p.scopes`, else `403` naming the missing scope; empty scope set is denied → Test `test_require_scope_allows_only_on_membership`
+- **Dimension 2.1** — A route's required scopes live in the declarative `route_scopes` table; `requireScope` allows iff the principal satisfies **any-of** the listed scopes (hierarchy-expanded), else `403` naming them; empty principal scope set is denied → Test `test_require_scope_any_of_with_hierarchy`
 - **Dimension 2.2** — `authorizeWorkspace` / tenant-id isolation / lease ownership / fleet-key identity behave exactly as before, independent of scopes → Test `test_ownership_axis_unchanged`
-- **Dimension 2.3** — A capability gate and an ownership gate compose: a principal with `fleet:write` but not owning workspace W is denied W → Test `test_scope_and_ownership_compose`
+- **Dimension 2.3** — Capability and ownership compose as two gates: a principal with `fleet:write` but not owning workspace W is denied W → Test `test_scope_and_ownership_compose`
 
 ### §3 — Migrate every gate to scopes
 
-All 65+ decision points cut over, fail-closed, no capability dropped.
+All 65+ decision points cut over via the declarative table, fail-closed, no capability dropped.
 
 - **Dimension 3.1** — Each former `platform_admin` route requires its mapped scope; an api-key principal (no platform scopes) is rejected as today → Test `test_platform_routes_require_platform_scopes`
-- **Dimension 3.2** — Each former role/bearer route requires its mapped tenant scope; a principal lacking it gets `403` → Test `test_tenant_routes_require_tenant_scopes`
+- **Dimension 3.2** — Each former role/bearer route requires its mapped tenant scope; a `GET` accepts any-of `{read,write,admin}` while a `DELETE` demands `:admin` → Test `test_tenant_routes_require_tenant_scopes`
 - **Dimension 3.3** — Runner routes require `runner:self` and nothing tenant/platform satisfies them → Test `test_runner_routes_require_runner_self`
+- **Dimension 3.4** — A holder of `workspace:read:any`/`workspace:write:any` bypasses the tenant-id ownership match for reads/writes respectively, and every such access emits a cross-tenant audit record; a non-holder is tenant-bound as before → Test `test_cross_tenant_override_bypasses_with_audit`
 
 ### §4 — Delete the role layer (legacy waded out)
 
@@ -178,17 +184,29 @@ The IdP emits explicit scopes; `docs/AUTH.md` becomes the scope source of truth.
 
 ```
 Principal:  scopes: Set<Scope>    (role + platform_admin REMOVED)
-Gate:       requireScope(principal, scope) → allow | 403 "requires scope <name>"
-            (capability ONLY; resource ownership remains a separate, unchanged check)
-Scope strings (colon convention, UFS constants, verbatim-matched in Clerk):
-  platform: runner:enroll runner:operate stream:operate platform-key:manage model:manage
-  tenant:   fleet:read fleet:write fleet:delete credential:manage apikey:manage
-            fleetkey:manage grant:manage connector:manage approval:resolve billing:read
-            workspace:manage template:write
-  runner:   runner:self
-Token claim: explicit scopes in `scopes` (array) — already parsed by claims.zig.
-Default bundles (provisioning convenience, expand to explicit scopes; NOT a runtime role):
-  platform_operator · tenant_admin · tenant_member · runner
+
+Two independent gates per request (Sentry shape):
+  ① CAPABILITY  requireScope(route, principal) → any-of the route's declared scopes,
+                  hierarchy-expanded; else 403 "requires scope <name>"
+  ② RESOURCE    authorizeWorkspace(principal, workspace_id) → ownership (unchanged),
+                  UNLESS principal holds workspace:{read,write}:any → bypass + audit
+
+Scope catalog (resource:action, UFS constants, verbatim-matched in Clerk):
+  laddered (read<write<admin, hierarchy stored as data):
+    fleet:{read,write,admin}  credential:{read,write}  apikey:{read,write,admin}
+    fleetkey:{read,write}  grant:{read,write}  connector:{read,write}
+    model:{read,admin}  platform-key:{read,admin}
+  discrete verbs: runner:enroll  runner:operate  stream:operate  approval:resolve
+                  billing:read  workspace:admin  template:write  runner:self
+  cross-tenant override (held by almost no one, every use audited):
+                  workspace:read:any  workspace:write:any
+
+Route requirement: declared in a comptime route_scopes table (bun pattern), e.g.
+  GET    .../fleets/{id}  → any_of { fleet:read, fleet:write, fleet:admin }
+  DELETE .../fleets/{id}  → any_of { fleet:admin }
+Token claim: explicit `scopes` array — already parsed by claims.zig.
+Provisioning bundles (expand to explicit scopes; NEVER checked at a gate):
+  platform_operator · workspace_admin · workspace_member · runner
 ```
 
 ---
@@ -201,8 +219,10 @@ Default bundles (provisioning convenience, expand to explicit scopes; NOT a runt
 | No scopes claim | Token carries no scopes | Empty scope set → every capability gate fails closed. |
 | Api-key reaches platform route | Machine credential without platform scopes | `403`, as `platform_admin` rejected api-keys before. |
 | Runner reaches tenant route | `runner:self`-only principal | `403`; no tenant/platform scope present. |
-| Cross-tenant resource | Correct scope, wrong workspace owner | Ownership check denies independently of scope. |
+| Cross-tenant resource | Correct scope, wrong workspace owner, no override scope | Ownership check denies independently of scope. |
+| Cross-tenant override used | Holder of `workspace:{read,write}:any` reaches another tenant | Allowed for the matching verb; a cross-tenant audit record (operator, tenant, workspace, route) is emitted — absence of the audit write fails the request. |
 | Unknown scope string in token | Malformed/typo claim value | Unknown strings ignored; they grant nothing (deny by absence). |
+| Bundle name reaches a gate | A route mistakenly checks `workspace_admin` | Compile/lint fails: gates accept only `Scope` enum values, never bundle names. |
 | Legacy role check survives migration | A gate not cut over | Deletion test + grep fail the build; no role symbol compiles. |
 | Scope string drift Clerk vs Zig | Claim value mismatch | UFS constant + a documented exact-match list; mismatch denies (fail closed), caught in integration test. |
 
@@ -218,6 +238,9 @@ Default bundles (provisioning convenience, expand to explicit scopes; NOT a runt
 6. The runner credential carries only `runner:self` — enforced by runner-principal construction tests.
 7. Scope strings are identical across Clerk config and Zig — enforced by UFS constants and an exact-match integration test.
 8. Auth logs never carry the token or be usable to reconstruct a secret — enforced by redaction tests.
+9. The `read<write<admin` hierarchy is stored as data and `admin` subsumes `write`/`read` — enforced by the hierarchy-subsumption test, not string prefixing.
+10. Bundles are provisioning-only: no gate accepts a bundle name; gates take `Scope` enum values only — enforced by the type system + a gate-signature test.
+11. Every cross-tenant override access emits an audit record before the response — enforced by an audit-on-bypass integration test.
 
 ---
 
@@ -226,14 +249,16 @@ Default bundles (provisioning convenience, expand to explicit scopes; NOT a runt
 | Dimension | Tier | Test | Asserts (concrete inputs → expected output) |
 |-----------|------|------|---------------------------------------------|
 | 1.1 | unit | `test_scope_catalog_covers_every_enumerated_gate` | Catalog scope set ⊇ every capability in the enumeration checklist. |
-| 1.2 | unit | `test_principal_scopes_populated_from_claim` | Token with `scopes:[fleet:read]` → principal holds exactly that; no claim → empty set. |
-| 1.3 | unit | `test_default_bundles_expand_to_documented_scopes` | Each bundle expands to its documented explicit scope list. |
-| 2.1 | unit | `test_require_scope_allows_only_on_membership` | `s∈scopes` allows; absent → `403` naming `s`; empty set denies. |
+| 1.2 | unit | `test_scope_hierarchy_subsumes_lower` | `fleet:admin` satisfies `fleet:write` and `fleet:read`; map is data, not prefix-inferred. |
+| 1.3 | unit | `test_principal_scopes_populated_from_claim` | Token `scopes:[fleet:read]` → principal holds exactly that; no claim → empty set. |
+| 1.4 | unit | `test_bundles_expand_and_are_not_enforced` | Each bundle expands to its documented scopes; gate signatures reject a bundle name. |
+| 2.1 | unit | `test_require_scope_any_of_with_hierarchy` | Route any-of `{fleet:read,write,admin}`: holder of `fleet:admin` allowed; empty set → `403` naming the set. |
 | 2.2 | integration | `test_ownership_axis_unchanged` | `authorizeWorkspace` accepts/denies exactly as before for the same inputs. |
 | 2.3 | integration | `test_scope_and_ownership_compose` | `fleet:write` + non-owned W → denied on ownership. |
 | 3.1 | integration | `test_platform_routes_require_platform_scopes` | `POST /v1/runners` needs `runner:enroll`; api-key/tenant principal → `403`. |
-| 3.2 | integration | `test_tenant_routes_require_tenant_scopes` | Fleet create needs `fleet:write`; principal without it → `403`. |
+| 3.2 | integration | `test_tenant_routes_require_tenant_scopes` | `GET` fleet accepts any-of `{read,write,admin}`; `DELETE` demands `fleet:admin`; lacking → `403`. |
 | 3.3 | integration | `test_runner_routes_require_runner_self` | `/v1/runners/me/*` needs `runner:self`; tenant/platform scopes do not satisfy. |
+| 3.4 | integration | `test_cross_tenant_override_bypasses_with_audit` | `workspace:read:any` reads acme/wp1 as parle-less operator + audit row written; `workspace:write:any` for writes; non-holder denied. |
 | 4.1 | unit | `test_role_layer_fully_removed` | `AuthRole`/`require_role.zig`/`platform_admin.zig` symbols absent (build proves it). |
 | 4.2 | unit | `test_no_legacy_role_references` | Grep finds no `platform_admin`/`AuthRole` in production outside historical specs. |
 | 5.1 | unit | `test_authdoc_documents_every_scope` | `docs/AUTH.md` contains each catalog scope + its capability line + bundles. |
@@ -291,6 +316,9 @@ rg -n "RequireRole|platformAdmin|platform_admin|AuthRole|\.atLeast\(|\.allows\("
 - Design decision (Indy, Jun 29, 2026): explicit scopes in the token (not tier→scope expansion) so a single capability can be granted/revoked — required for separation of duties (e.g. `model:manage` without `runner:enroll`), the approver persona, finance read-only, and incident revoke. Default bundles are a provisioning convenience only.
 - Design decision (Indy, Jun 29, 2026): big-bang cutover, no staged dual-run — pre-2.0, not in production.
 - Two-axis clarification: scopes replace the capability axis (roles); the resource/ownership axis (`authorizeWorkspace`, tenant isolation) is independent and unchanged.
+- Reference consult, Jun 29, 2026 (three production systems read in-session): **Sentry** — `resource:action` scopes, `read<write<admin` hierarchy as data, roles = named scope bundles, endpoints declare `scope_map` any-of, scope × membership two-gate with `is_global` bypass (`conf/server.py`, `api/permissions.py`, `auth/access.py`). **Supabase** — granular permissions declared at call sites, `project_refs` resource scoping, org-level permission auto-applies cross-project (`useCheckPermissions.ts`). **bun** — declarative comptime table + central checker, no vtable (`HTMLScanner.zig`, `ComptimeEnumMap`).
+- Design decision (Indy, Jun 29, 2026): adopt the Sentry `read<write<admin` ladder stored as data (any-of at the route); `workspace_admin`/`workspace_member` are provisioning bundles, not enforcement primitives.
+- Design decision (Indy, Jun 29, 2026): add **read AND write** cross-tenant override scopes (`workspace:read:any`, `workspace:write:any`) so a platform operator can read and act on any tenant's workspace; every use is audit-logged; granted to almost no one. Mirrors Sentry `is_global` + Supabase org-level fallback.
 
 ---
 
