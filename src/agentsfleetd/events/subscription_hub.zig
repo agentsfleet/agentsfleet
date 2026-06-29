@@ -38,17 +38,18 @@ channels: std.StringHashMapUnmanaged(*ChannelEntry) = .empty,
 conn: ?redis_subscriber = null,
 reader_thread: ?std.Thread = null,
 stopped: std.atomic.Value(bool) = .init(false),
+/// Reader-socket read timeout (SO_RCVTIMEO). Default = prod's
+/// `HUB_READ_TIMEOUT_MS`; the test harness lowers it so `stop()`'s join is fast.
+read_timeout_ms: u32 = HUB_READ_TIMEOUT_MS,
 
 const ChannelEntry = struct {
     subscribers: std.ArrayList(*Subscription) = .empty,
 };
 
-/// Reader wake cadence — bounds stop latency, reconnect detection, and the
-/// pickup delay for wire commands queued behind a quiet socket.
+/// Default reader wake cadence — bounds stop latency, reconnect detection, and
+/// pickup delay for wire commands behind a quiet socket. The per-instance
+/// `read_timeout_ms` field defaults to this; the test harness overrides it.
 const HUB_READ_TIMEOUT_MS: u32 = 1_000;
-/// A `nextMessage` null in under half the read timeout is a dead socket,
-/// not an elapsed timeout (the discrimination the SSE loop used pre-hub).
-const DISCONNECT_MIN_ELAPSED_MS: i64 = HUB_READ_TIMEOUT_MS / 2;
 /// Redial pacing: one attempt per second, stop-checked every slice so
 /// `stop()` never waits out a full backoff.
 const RECONNECT_SLICE_MS: u64 = 250;
@@ -66,7 +67,7 @@ pub fn init(alloc: std.mem.Allocator, io: std.Io) Self {
 /// failure here is a startup failure, mirroring the queue client connect.
 pub fn start(self: *Self, cfg: redis_config.Config) !void {
     self.cfg = cfg;
-    var conn = try redis_subscriber.connectFromConfig(self.io, self.alloc, cfg, .{ .read_timeout_ms = HUB_READ_TIMEOUT_MS });
+    var conn = try redis_subscriber.connectFromConfig(self.io, self.alloc, cfg, .{ .read_timeout_ms = self.read_timeout_ms });
     errdefer conn.deinit();
     conn.installReadTimeout();
     self.conn = conn;
@@ -228,8 +229,8 @@ fn readerMain(self: *Self) void {
             self.dispatch(m.channel, m.payload);
             continue;
         }
-        // null = read-timeout tick OR closed socket; block time tells them apart
-        if (clock.nowMillis() - before_ms < DISCONNECT_MIN_ELAPSED_MS) self.reconnect();
+        // null = timeout tick OR closed socket; a null in under half the (instance) timeout is a dead socket.
+        if (clock.nowMillis() - before_ms < @divTrunc(@as(i64, self.read_timeout_ms), 2)) self.reconnect();
     }
 }
 
@@ -252,7 +253,7 @@ fn reconnect(self: *Self) void {
             if (self.stopped.load(.acquire)) return;
             common.sleepNanos(RECONNECT_SLICE_MS * std.time.ns_per_ms);
         }
-        var fresh = redis_subscriber.connectFromConfig(self.io, self.alloc, self.cfg.?, .{ .read_timeout_ms = HUB_READ_TIMEOUT_MS }) catch |err| {
+        var fresh = redis_subscriber.connectFromConfig(self.io, self.alloc, self.cfg.?, .{ .read_timeout_ms = self.read_timeout_ms }) catch |err| {
             log.warn("hub_redial_failed", .{ .err = @errorName(err) });
             continue;
         };
