@@ -13,10 +13,12 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Milestone:** M104
 **Workstream:** 001
 **Date:** Jun 29, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — foundational security-boundary refactor; M103_001 and future per-capability grants depend on it.
 **Categories:** API, DOCS, INFRA
 **Batch:** B1 — authorization foundation.
+**Branch:** feat/m104-scope-authz
+**Test Baseline:** unit=2214 integration=213
 **Depends on:** none (foundation). Blocks M103_001 (template catalog consumes `template:write`).
 **Provenance:** agent-generated (Indy design chat, Jun 29, 2026) — gate enumeration by Explore sweep, 65+ decision points.
 
