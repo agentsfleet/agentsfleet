@@ -18,14 +18,14 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Categories:** API, DOCS, INFRA
 **Batch:** B1 — template catalog consolidation.
 **Branch:** added when work begins
-**Depends on:** M94_002 (Fleet Bundle import, runner materialization, install preview already exist). Supersedes M96_001 (R2-canonical store) — its R2-only content decision is absorbed here; M96_001 retires to `done/` as DEFERRED.
+**Depends on:** M104_001 (scope-based authorization — onboarding routes gate on `template:write`, not roles); M94_002 (Fleet Bundle import, runner materialization, install preview already exist). Supersedes M96_001 (R2-canonical store) — its R2-only content decision is absorbed here; M96_001 retires to `done/` as DEFERRED.
 **Provenance:** agent-generated (Indy design chat, Jun 29, 2026)
 
 > **Provenance is load-bearing.** LLM-drafted — cross-check every claim against the codebase before EXECUTE; the design decisions below were Indy-approved in-session but the file pointers must be re-verified.
 
 **Canonical architecture:** `docs/architecture/fleet_bundles.md` and `docs/architecture/data_flow.md` — bundle/fleet split, import snapshot storage, runner materialization path.
 
-This spec uses Cloudflare R2 object storage (R2), Pull Request (PR), Command-Line Interface (CLI), User Interface (UI), Representational State Transfer (REST), Secure Hash Algorithm 256-bit (SHA-256), Universally Unique Identifier version 7 (UUIDv7), Foreign Key (FK), and Role-Based Access Control (RBAC) below.
+This spec uses Cloudflare R2 object storage (R2), Pull Request (PR), Command-Line Interface (CLI), User Interface (UI), Representational State Transfer (REST), Secure Hash Algorithm 256-bit (SHA-256), Universally Unique Identifier version 7 (UUIDv7), and Foreign Key (FK) below.
 
 ---
 
@@ -33,7 +33,7 @@ This spec uses Cloudflare R2 object storage (R2), Pull Request (PR), Command-Lin
 
 1. `schema/028_fleet_bundle_templates.sql` — the curated platform catalog (slug-keyed, `visibility`, the gallery shop-window). Its header records the eng-review FINAL decisions this spec partially reverses; read it before editing.
 2. `src/agentsfleetd/fleet_bundle/{importer.zig,github_source.zig,store.zig}` — content-hash derivation, canonical tar packing, and the bundle row insert/fetch the onboarding paths reuse.
-3. `src/agentsfleetd/auth/{principal.zig,rbac.zig,middleware/require_role.zig}` — `platform_admin` bool vs `AuthRole.admin`; the RBAC the two onboarding routes gate on.
+3. `src/agentsfleetd/auth/{principal.zig,scopes.zig,middleware/require_scope.zig}` (delivered by M104_001) — `principal.scopes` and the `requireScope` gate the two onboarding routes use; `template:write` is the capability.
 4. `src/agentsfleetd/http/handlers/fleet_bundles/{imports.zig,get.zig,resolve.zig}` and `runner/bundles.zig` — current import/detail responses and the runner-plane R2 proxy by content hash.
 5. `docs/SCHEMA_CONVENTIONS.md`, `docs/REST_API_DESIGN_GUIDELINES.md`, `dispatch/write_zig.md` — schema, REST, and Zig rules for this diff.
 
@@ -53,7 +53,7 @@ This spec uses Cloudflare R2 object storage (R2), Pull Request (PR), Command-Lin
 2. **Preserved user behaviour** — Platform gallery, public GitHub import at install, credential preview, runner bundle cache, live `SKILL.md`/`TRIGGER.md` editing of an installed Fleet, and direct Fleet runtime all keep working.
 3. **Optimal-way check** — Admins onboard via a GitHub source-ref; bytes land in R2 once keyed by content hash; the gallery unions platform + own-tenant rows; users install by reference. The gap (no archive upload, no resync) is acceptable: neither changes storage ownership.
 4. **Rebuild-vs-iterate** — No larger rewrite. M94_002 already content-addresses R2 snapshots and materializes them on runners; this adds the tenant tier, the admin write paths, and drops the duplicated Postgres content copy.
-5. **What we build** — Tenant template table, two RBAC-gated onboarding routes, R2-only bytes with metadata-only Postgres rows, a visibility-unioned gallery, a three-source install surface, reconciled architecture docs.
+5. **What we build** — Tenant template table, two scope-gated onboarding routes, R2-only bytes with metadata-only Postgres rows, a visibility-unioned gallery, a three-source install surface, reconciled architecture docs.
 6. **What we do NOT build** — Archive upload; resync; paste-`SKILL.md` create; Memory Milestone 1; action-broker hardening; marketplace ranking.
 7. **Fit with existing features** — Compounds with Fleet Bundle import and runner materialization; must not destabilize direct Markdown Fleets or live-edited instructions (runtime still reads live `SKILL.md`/`TRIGGER.md` from `core.fleets`).
 8. **Surface order** — API first; UI keeps the install flow and stops exposing any R2 path-like field; CLI changes only if response types force a renderer update.
@@ -66,7 +66,7 @@ This spec uses Cloudflare R2 object storage (R2), Pull Request (PR), Command-Lin
 
 - **`docs/greptile-learnings/RULES.md`** — `NDC` (No Dead Code), `NLR` (touch-it-fix-it), `NLG` (no new legacy framing), `UFS` (unified symbols), `ORP` (orphan sweep), `FLL` (file/function length), `PSR` (standard parsers), `ECL` (error classes), `VLT` (secrets in vault), `STS` (no static strings in SQL schema), `NSQ` (schema-qualified SQL), `MIG` (migration index assertions), `ITF` (real integration fixtures), `DRAIN` (Postgres drain-before-deinit), `XCC` (cross-compile), `TST-NAM` (milestone-free test names), `ERR` (error registry), `LOG` (logging discipline), `PRI` (prompt-injection resistance).
 - **`dispatch/write_zig.md`** — importer, store, onboarding handlers, runner proxy, materialization tests.
-- **`dispatch/write_auth.md`** + **`docs/AUTH.md`** — the two onboarding routes are auth-gated; reuse the existing authorization model (role ladder + `platform_admin` + workspace ownership), add no new claim or DB role. AUTH.md §"Authorization is role-based today" governs.
+- **`dispatch/write_auth.md`** + **`docs/AUTH.md`** — the two onboarding routes are auth-gated. Per M104_001 (scope-based authz), gate on the `template:write` capability scope plus the unchanged workspace-ownership check; add no role check. AUTH.md (rewritten by M104_001) governs.
 - **`docs/REST_API_DESIGN_GUIDELINES.md`** — new onboarding routes and any import/detail response schema or OpenAPI change.
 - **`docs/SCHEMA_CONVENTIONS.md`** — new tenant table, `schema/027`/`028` edits, `schema/embed.zig`, migration array assertions.
 - **`dispatch/write_ts_adhere_bun.md`** — only if UI/CLI types or renderers change after the public response shape settles.
@@ -92,7 +92,7 @@ This spec uses Cloudflare R2 object storage (R2), Pull Request (PR), Command-Lin
 
 **Problem:** Templates today are a single curated, migration-seeded global catalog with no tenant-owned tier, and bundle support-file bytes are stored twice — the canonical tar in R2 and full bytes inline in Postgres `support_files_json`. There is no admin onboarding path, the duplicate storage drifts, and the database is a hidden artifact store.
 
-**Solution summary:** Add a tenant-scoped template tier beside the platform catalog, give each tier an RBAC-gated runtime onboarding route that writes the canonical tar to R2 and persists metadata only, restrict the install surface to three sources, and make the gallery union both tiers by visibility. R2 becomes the sole content store; Postgres holds metadata, a support manifest, and the content hash.
+**Solution summary:** Add a tenant-scoped template tier beside the platform catalog, give each tier an scope-gated runtime onboarding route that writes the canonical tar to R2 and persists metadata only, restrict the install surface to three sources, and make the gallery union both tiers by visibility. R2 becomes the sole content store; Postgres holds metadata, a support manifest, and the content hash.
 
 ---
 
@@ -100,7 +100,7 @@ This spec uses Cloudflare R2 object storage (R2), Pull Request (PR), Command-Lin
 
 - **Onboarding + hash** — mirror `fleet_bundles/imports.zig` (validate/fetch, R2-put before metadata, return preview) and `fleet_bundle/{github_source,importer}.zig` (validated files re-packed into an agentsfleet tar; content hash over `SKILL.md`, optional `TRIGGER.md`, support paths, support bytes).
 - **Tenant-scoped table** — mirror `schema/027_core_fleet_bundles.sql`: UUIDv7 id, `workspace_id UUID NOT NULL REFERENCES core.workspaces(workspace_id) ON DELETE CASCADE`, app-set timestamps, no SQL enum checks or default strings. Platform tier mirrors `schema/028_fleet_bundle_templates.sql`.
-- **RBAC** — mirror `src/agentsfleetd/auth/middleware/require_role.zig` for both routes' role gates.
+- **Authorization** — mirror `src/agentsfleetd/auth/middleware/require_scope.zig` (M104_001) for both routes' `template:write` scope gate; mirror `common_authz.zig::authorizeWorkspace` for the tenant route's ownership check.
 - **Runner read** — preserve `runner/bundles.zig` + `src/runner/bundle_extract.zig`: download and cache by content hash.
 
 ---
@@ -113,7 +113,7 @@ This spec uses Cloudflare R2 object storage (R2), Pull Request (PR), Command-Lin
 | `docs/architecture/{fleet_bundles,data_flow}.md`, `scenarios/gh-pr-reviewer.md` | EDIT | R2-canonical + two-tier model; onboard-vs-install storage roles; admin-onboard-vs-user-install, no resync. |
 | `schema/029_core_tenant_fleet_bundle_templates.sql` | CREATE | Tenant tier: workspace-scoped, runtime-mutable, content-hash + manifest. |
 | `schema/027_core_fleet_bundles.sql` | EDIT | Full support-file content → manifest metadata. |
-| `schema/028_fleet_bundle_templates.sql` | EDIT | Content-hash + manifest columns; grant `api_runtime` INSERT/UPDATE (consistent with `core.fleet_bundles`); writes gated in-handler by `platform_admin`. |
+| `schema/028_fleet_bundle_templates.sql` | EDIT | Content-hash + manifest columns; grant `api_runtime` INSERT/UPDATE (consistent with `core.fleet_bundles`); writes gated in-handler by the `template:write` scope. |
 | `schema/embed.zig`, `src/agentsfleetd/cmd/common.zig` | EDIT | Migration embedding + index assertions stay aligned. |
 | `src/agentsfleetd/fleet_bundle/{importer,store}.zig` | EDIT | Manifest + content hash, no support bytes in Postgres; metadata-only rows. |
 | `src/agentsfleetd/http/handlers/fleet_bundles/{imports,get,resolve}.zig` | EDIT | R2-before-metadata; previews without R2 key; onboarding source resolution. |
@@ -129,9 +129,9 @@ This spec uses Cloudflare R2 object storage (R2), Pull Request (PR), Command-Lin
 
 ## Decomposition & alternatives (patch vs refactor)
 
-- **Chosen shape:** Two tables (platform + tenant) with two RBAC-gated onboarding routes and a unioned gallery read; R2 owns support-file bytes; Postgres owns metadata, source provenance, requirements, manifest, content identity, and visibility scope.
+- **Chosen shape:** Two tables (platform + tenant) with two scope-gated onboarding routes and a unioned gallery read; R2 owns support-file bytes; Postgres owns metadata, source provenance, requirements, manifest, content identity, and visibility scope.
 - **Alternatives considered:** One shared table with a nullable `workspace_id` + `visibility` predicate — rejected: a nullable FK can't express a real cascade, and a single write grant lets a tenant path touch global rows. Keeping templates migration-only — rejected: the product needs runtime admin onboarding. Archive-upload onboarding — deferred: it adds a multipart attack surface without changing storage ownership.
-- **Patch-vs-refactor verdict:** a **targeted refactor** — it adds a tier and write paths and changes storage ownership around one install path, while preserving Fleet creation, runner leasing, and the platform gallery. The `028` "SELECT-only / migration-curated" note updates: the platform catalog becomes an app-written table like `core.fleet_bundles` (grant `api_runtime` INSERT/UPDATE), with writes gated **in the handler** by the existing `platform_admin` claim — no new authorization primitive. Seed rows stay as bootstrap.
+- **Patch-vs-refactor verdict:** a **targeted refactor** — it adds a tier and write paths and changes storage ownership around one install path, while preserving Fleet creation, runner leasing, and the platform gallery. The `028` "SELECT-only / migration-curated" note updates: the platform catalog becomes an app-written table like `core.fleet_bundles` (grant `api_runtime` INSERT/UPDATE), with writes gated **in the handler** by the `template:write` scope (M104_001). Seed rows stay as bootstrap.
 
 ---
 
@@ -145,12 +145,12 @@ A new workspace-owned template table beside the platform catalog, carrying enoug
 - **Dimension 1.2** — `content_hash` derives from `SKILL.md`, optional `TRIGGER.md`, support paths, and support bytes, byte-identical to the bundle importer → Test `test_content_hash_stable_across_tiers`
 - **Dimension 1.3** — Re-onboarding identical bytes into the same workspace converges on one `(workspace_id, content_hash)` row without mutating R2 → Test `test_tenant_onboard_dedupes_by_workspace_and_hash`
 
-### §2 — Two RBAC-gated onboarding routes
+### §2 — Two scope-gated onboarding routes
 
-Platform and tenant admins onboard by GitHub source-ref; each route validates, fetches, writes the R2 snapshot, then commits its metadata row. **Implementation default:** reuse `github_source` + the importer; no archive upload.
+Platform and tenant admins onboard by GitHub source-ref; each route validates, fetches, writes the R2 snapshot, then commits its metadata row. **Implementation default:** reuse `github_source` + the importer; no archive upload. Both routes gate on the `template:write` capability scope (M104_001); the resource axis (global vs workspace) distinguishes the tiers.
 
-- **Dimension 2.1** — Platform onboarding requires `platform_admin`; a non-platform principal is rejected and writes nothing → Test `test_platform_onboard_requires_platform_admin`
-- **Dimension 2.2** — Tenant onboarding requires `AuthRole.admin` and writes only its own `workspace_id`; a plain user is rejected → Test `test_tenant_onboard_requires_workspace_admin`
+- **Dimension 2.1** — Platform onboarding requires the `template:write` scope at the global resource; a principal lacking it is rejected and writes nothing → Test `test_platform_onboard_requires_template_write`
+- **Dimension 2.2** — Tenant onboarding requires the `template:write` scope plus ownership of the target workspace, and writes only its own `workspace_id`; a principal without scope or ownership is rejected → Test `test_tenant_onboard_requires_scope_and_ownership`
 - **Dimension 2.3** — Onboarding writes `fleet-bundles/sha256/{content_hash}.tar` to R2 before any metadata commit; an injected R2 put failure leaves no row → Test `test_onboard_writes_r2_before_metadata`
 - **Dimension 2.4** — Skill-only template (no support files) onboards without requiring an R2 object → Test `test_skill_only_template_onboard_needs_no_r2`
 
@@ -193,8 +193,8 @@ Architecture docs become the source of truth for the two-tier, R2-canonical mode
 ```
 Onboard (body {source_kind:"github", source_ref:"owner/repo"}; 201 returns id, name,
   visibility, content_hash, requirements, support_files[] — never snapshot_key/R2 path):
-  POST /v1/admin/fleet-templates                      requires platform_admin → visibility "platform"
-  POST /v1/workspaces/{workspace_id}/fleet-templates  requires AuthRole.admin → visibility "tenant"
+  POST /v1/admin/fleet-templates                      requires scope template:write (global)  → visibility "platform"
+  POST /v1/workspaces/{workspace_id}/fleet-templates  requires scope template:write + workspace ownership → visibility "tenant"
 Gallery (user read):
   GET /v1/fleets/bundles         → platform templates ∪ caller-workspace tenant templates
   GET .../snapshots/{bundle_id}  → public metadata: content_hash, requirements, support summaries
@@ -212,7 +212,7 @@ Storage: core.tenant_fleet_bundle_templates = UUIDv7 id, workspace_id FK (CASCAD
 
 | Mode | Cause | Handling (system response + what the caller observes) |
 |------|-------|--------------------------------------------------------|
-| Onboard without privilege | Non-`platform_admin` hits platform route; non-admin hits tenant route | 403; no R2 put, no metadata row. |
+| Onboard without scope | Principal lacks `template:write` (or, tenant route, lacks workspace ownership) | 403; no R2 put, no metadata row. |
 | R2 unavailable during onboard | Object store client missing or put fails | Storage-unavailable error; no metadata row committed. |
 | R2 object missing at run time | Metadata references a `content_hash` with no stored tar | Runner reports startup failure; event log records materialization failure, no secret leak. |
 | Cross-tenant install | User installs another workspace's tenant template | 404/403; visibility check rejects; no Fleet created. |
@@ -227,8 +227,8 @@ Storage: core.tenant_fleet_bundle_templates = UUIDv7 id, workspace_id FK (CASCAD
 ## Invariants
 
 1. Support-file bytes live in R2 only — enforced by schema shape, store tests, and a production grep for removed content fields.
-2. Tenant onboarding authorizes `RequireRole(admin)` plus workspace ownership and writes only its own `workspace_id` and only the tenant table — enforced by RBAC middleware tests.
-3. Platform onboarding authorizes the existing `platform_admin` claim (same gate as runner enrollment); no new claim, scope, or DB role is introduced — enforced by route RBAC tests and an auth-primitive grep.
+2. Tenant onboarding requires the `template:write` scope plus ownership of the target workspace, and writes only its own `workspace_id` and only the tenant table — enforced by scope + ownership middleware tests.
+3. Platform onboarding requires the `template:write` scope at the global resource and writes only the platform table — enforced by scope-gate tests; the tenant write path has no grant on the platform table.
 4. `content_hash` is content-derived, byte-identical across tiers — enforced by hashing tests importing identical bytes through platform and tenant routes.
 5. R2 writes happen before Postgres metadata commits — enforced by failure-injection integration tests.
 6. The gallery for workspace W returns no other workspace's tenant templates — enforced by visibility query tests.
@@ -245,8 +245,8 @@ Storage: core.tenant_fleet_bundle_templates = UUIDv7 id, workspace_id FK (CASCAD
 | 1.1 | integration | `test_tenant_template_row_excludes_support_content` | Onboard with support files stores path/size/hash, no body text in Postgres. |
 | 1.2 | unit | `test_content_hash_stable_across_tiers` | Same bytes via platform and tenant routes yield the same 64-char SHA-256 hex. |
 | 1.3 | integration | `test_tenant_onboard_dedupes_by_workspace_and_hash` | Identical bytes onboarded twice into W return one `(workspace_id, content_hash)` row. |
-| 2.1 | integration | `test_platform_onboard_requires_platform_admin` | Non-platform principal → 403, no row, no R2 put. |
-| 2.2 | integration | `test_tenant_onboard_requires_workspace_admin` | Plain user → 403; admin writes only its own `workspace_id`. |
+| 2.1 | integration | `test_platform_onboard_requires_template_write` | Principal without `template:write` (global) → 403, no row, no R2 put. |
+| 2.2 | integration | `test_tenant_onboard_requires_scope_and_ownership` | Missing scope or non-owned workspace → 403; owner with scope writes only its own `workspace_id`. |
 | 2.3 | integration | `test_onboard_writes_r2_before_metadata` | Injected R2 put failure → storage error and no metadata row. |
 | 2.4 | integration | `test_skill_only_template_onboard_needs_no_r2` | No support files, no R2 client → onboard and install still succeed. |
 | 3.1 | integration | `test_bundle_store_excludes_support_file_content` | Bundle row stores manifest only; no support body text. |
@@ -270,7 +270,7 @@ Idempotency/replay: duplicate onboards converge on one `(workspace_id, content_h
 ## Acceptance Criteria
 
 - [ ] Tenant template tier exists, workspace-scoped, metadata-only — verify: `make test-integration` and production grep for content fields.
-- [ ] Both onboarding routes enforce RBAC and write R2 before metadata — verify: `make test-integration`.
+- [ ] Both onboarding routes enforce the `template:write` scope and write R2 before metadata — verify: `make test-integration`.
 - [ ] Gallery unions platform + own-tenant templates and isolates other tenants — verify: `make test-integration`.
 - [ ] Install accepts exactly three sources; raw-`SKILL.md` create is rejected; live-edit unaffected — verify: `make test-integration`.
 - [ ] Public responses hide R2 keys and keep `content_hash` + summaries — verify: `make check-openapi && make test-unit-agentsfleetd`.
@@ -313,9 +313,9 @@ No files are deleted; M96_001 moves `pending/` → `done/` (record, not deletion
 ## Discovery (consult log)
 
 - Architecture consult, Jun 29, 2026: grounded in `docs/architecture/fleet_bundles.md` and `docs/architecture/data_flow.md`. Decision: GitHub remains the user-visible source; R2 is the internal canonical store; Postgres holds metadata only; templates split into a migration-bootstrapped platform tier and a runtime-onboarded tenant tier.
-- Design decision (Indy, Jun 29, 2026): two tables, not one — tenant tier carries a `workspace_id` FK with cascade; platform tier keeps its slug-keyed shape. Both tiers onboard at runtime via separate RBAC-gated routes.
-- Auth consult, Jun 29, 2026 (`docs/AUTH.md`): authorization is role-based today (`user < operator < admin` + orthogonal `platform_admin`); scope-based authz (`fleet:write`, finer scopes) is the planned v2.1 item (AUTH.md §"Authorization is role-based today"). Decision for this spec: gate the platform route on the existing `platform_admin` claim (identical to runner enrollment, AUTH.md:90) and the tenant route on `RequireRole(admin)` + workspace ownership — **no new claim, scope, or DB role**. The earlier in-session `platform_catalog_writer` DB-role idea is withdrawn: it answered an authorization question at the database-grant layer. The token's dormant `scopes` claim is the future generalization rail, deferred to the v2.1 scope-authz milestone.
-- `028` note update (no longer a "reversal needing ack"): the platform catalog stops being migration-only and becomes an app-written table like `core.fleet_bundles` (grant `api_runtime` INSERT/UPDATE), authorized in-handler by `platform_admin`. The `028` "SELECT-only" was an anomaly tied to migration-curation, not a security boundary; seed rows stay as bootstrap.
+- Design decision (Indy, Jun 29, 2026): two tables, not one — tenant tier carries a `workspace_id` FK with cascade; platform tier keeps its slug-keyed shape. Both tiers onboard at runtime via separate scope-gated routes.
+- Auth design (Indy, Jun 29, 2026): authorization moves from roles to explicit scopes (M104_001, a dependency of this spec). Both onboarding routes gate on the `template:write` capability scope; platform = `template:write` at the global resource, tenant = `template:write` + workspace ownership. The earlier in-session `platform_catalog_writer` DB-role idea and the "reuse `platform_admin`/`RequireRole`" interim plan are both withdrawn — superseded by M104_001. No new authorization primitive is introduced here; this spec consumes M104_001's `requireScope`.
+- `028` note update (no longer a "reversal needing ack"): the platform catalog stops being migration-only and becomes an app-written table like `core.fleet_bundles` (grant `api_runtime` INSERT/UPDATE), authorized in-handler by the `template:write` scope. The `028` "SELECT-only" was an anomaly tied to migration-curation, not a security boundary; seed rows stay as bootstrap.
 - Deferral quote (resync + archive upload): > Indy (2026-06-22 22:30): "There two design decision currently M1 Memory and Cloudflare R2 is redundant (i am not focussed on resync)" — context: GitHub-to-template resync and archive-upload onboarding stay out of this catalog spec.
 
 ---
@@ -324,7 +324,7 @@ No files are deleted; M96_001 moves `pending/` → `done/` (record, not deletion
 
 | When | Skill | What it does | Required output |
 |------|-------|--------------|-----------------|
-| After implementation, before CHORE(close) | `/write-unit-test` | Audits diff coverage vs this Test Specification, including RBAC, visibility, metadata-only storage, failure injection. | Clean; final coverage note in Discovery. |
+| After implementation, before CHORE(close) | `/write-unit-test` | Audits diff coverage vs this Test Specification, including scope gates, visibility, metadata-only storage, failure injection. | Clean; final coverage note in Discovery. |
 | After tests pass, before CHORE(close) | `/review` | Adversarial diff review vs this spec, architecture docs, REST guide, Zig rules, Failure Modes, Invariants. | Clean or every finding dispositioned. |
 | After `gh pr create` | `/review-pr` | Reviews the open PR for response-shape drift, schema orphaning, generated-client mismatch. | Comments addressed before human review. |
 
