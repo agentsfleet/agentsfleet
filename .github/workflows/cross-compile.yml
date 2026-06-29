@@ -47,9 +47,29 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      # Persist the Zig cache across runs — without this every cross-compile is a
+      # full cold ReleaseSafe (LLVM) build. Content-addressed; a stale hit only
+      # recompiles changed modules. Distinct key prefix (zig-xcompile) from the
+      # Debug-native test lanes so the two caches never collide. GNU tar is
+      # present in ci-zig-alpine, so actions/cache works inside the container.
+      - name: Cache Zig build
+        uses: actions/cache@v5
+        with:
+          path: |
+            .tmp/zig-global-cache
+            .tmp/zig-local-cache
+          key: zig-xcompile-${{ runner.os }}-${{ github.job }}-0.16.0-${{ hashFiles('build.zig.zon', 'build.zig', 'build_runner.zig') }}-${{ hashFiles('src/**/*.zig', 'schema/**/*.sql') }}
+          restore-keys: |
+            zig-xcompile-${{ runner.os }}-${{ github.job }}-0.16.0-${{ hashFiles('build.zig.zon', 'build.zig', 'build_runner.zig') }}-
+            zig-xcompile-${{ runner.os }}-${{ github.job }}-0.16.0-
+
       - name: Compile agentsfleetd + agentsfleet-runner (x86_64-linux)
         # Retry on transient GitHub CDN 5xx when fetching transitive zig deps.
+        env:
+          ZIG_GLOBAL_CACHE_DIR: ${{ github.workspace }}/.tmp/zig-global-cache
+          ZIG_LOCAL_CACHE_DIR: ${{ github.workspace }}/.tmp/zig-local-cache
         run: |
+          mkdir -p "$ZIG_GLOBAL_CACHE_DIR" "$ZIG_LOCAL_CACHE_DIR"
           attempt=1
           until zig build -Doptimize=ReleaseSafe -Dtarget=x86_64-linux-musl \
              && zig build --build-file build_runner.zig -Doptimize=ReleaseSafe -Dtarget=x86_64-linux-musl; do
@@ -95,6 +115,20 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      # Persist the Zig cache across runs (see the x86 job). Kept under
+      # runner.temp — OUTSIDE the workspace that `cp -a /src/. /build` copies —
+      # so a warm cache isn't re-copied into the build dir each run. The host
+      # ubuntu-arm runner has GNU tar, so actions/cache works here even though
+      # the build itself runs inside the mounted Alpine container.
+      - name: Cache Zig build
+        uses: actions/cache@v5
+        with:
+          path: ${{ runner.temp }}/zig-xcache-aarch64
+          key: zig-xcompile-${{ runner.os }}-${{ github.job }}-0.16.0-${{ hashFiles('build.zig.zon', 'build.zig', 'build_runner.zig') }}-${{ hashFiles('src/**/*.zig', 'schema/**/*.sql') }}
+          restore-keys: |
+            zig-xcompile-${{ runner.os }}-${{ github.job }}-0.16.0-${{ hashFiles('build.zig.zon', 'build.zig', 'build_runner.zig') }}-
+            zig-xcompile-${{ runner.os }}-${{ github.job }}-0.16.0-
+
       - name: Build aarch64-linux inside Alpine (musl-native static OpenSSL)
         # Pre-baked image: ci-zig-alpine multi-arch manifest carries linux/arm64,
         # so docker pulls the arm64 variant (no QEMU emulation needed on the
@@ -102,10 +136,14 @@ jobs:
         # the aarch64-linux-gnu symlinks, and Zig 0.16.0 in /opt/zig on $PATH.
         run: |
           mkdir -p "$GITHUB_WORKSPACE/zig-out/bin"
+          mkdir -p "$RUNNER_TEMP/zig-xcache-aarch64/global" "$RUNNER_TEMP/zig-xcache-aarch64/local"
           docker run --rm \
             --platform linux/arm64 \
             -v "$GITHUB_WORKSPACE:/src:ro" \
             -v "$GITHUB_WORKSPACE/zig-out:/zig-out" \
+            -v "$RUNNER_TEMP/zig-xcache-aarch64:/zig-cache" \
+            -e ZIG_GLOBAL_CACHE_DIR=/zig-cache/global \
+            -e ZIG_LOCAL_CACHE_DIR=/zig-cache/local \
             ghcr.io/agentsfleet/ci-zig-alpine:0.16.0 \
             sh -c '
               set -e
@@ -196,12 +234,32 @@ jobs:
       - uses: mlugg/setup-zig@v2
         with:
           version: 0.16.0
+          # We manage the build cache via actions/cache on .tmp/ below; setup-zig
+          # otherwise exports ZIG_GLOBAL/LOCAL_CACHE_DIR and hijacks those paths.
+          use-cache: false
+
+      # Persist the Zig cache across runs — without this every macOS cross is a
+      # full cold ReleaseSafe build. Same scheme as the Linux cross jobs.
+      - name: Cache Zig build
+        uses: actions/cache@v5
+        with:
+          path: |
+            .tmp/zig-global-cache
+            .tmp/zig-local-cache
+          key: zig-xcompile-${{ runner.os }}-${{ github.job }}-0.16.0-${{ hashFiles('build.zig.zon', 'build.zig', 'build_runner.zig') }}-${{ hashFiles('src/**/*.zig', 'schema/**/*.sql') }}
+          restore-keys: |
+            zig-xcompile-${{ runner.os }}-${{ github.job }}-0.16.0-${{ hashFiles('build.zig.zon', 'build.zig', 'build_runner.zig') }}-
+            zig-xcompile-${{ runner.os }}-${{ github.job }}-0.16.0-
 
       - name: Ensure OpenSSL is available (macOS)
         run: brew install openssl@3 || true
 
       - name: Compile agentsfleetd + agentsfleet-runner (aarch64-macos)
+        env:
+          ZIG_GLOBAL_CACHE_DIR: ${{ github.workspace }}/.tmp/zig-global-cache
+          ZIG_LOCAL_CACHE_DIR: ${{ github.workspace }}/.tmp/zig-local-cache
         run: |
+          mkdir -p "$ZIG_GLOBAL_CACHE_DIR" "$ZIG_LOCAL_CACHE_DIR"
           zig build -Doptimize=ReleaseSafe -Dtarget=aarch64-macos
           zig build --build-file build_runner.zig -Doptimize=ReleaseSafe -Dtarget=aarch64-macos
 

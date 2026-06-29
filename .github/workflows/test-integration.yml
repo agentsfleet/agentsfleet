@@ -1,6 +1,22 @@
 name: test-integration
 
 on:
+  # Run on merges to main (Zig-relevant paths only) so the default branch
+  # populates the actions/cache for the integration jobs. Without a main run the
+  # cache is only ever saved under PR refs, so every new PR branch starts from a
+  # COLD Zig cache and recompiles the test binary from scratch (~minutes). A
+  # warmed main cache lets PR branches restore it and recompile only changed
+  # modules. Paths-filtered: a main push that changes no Zig/schema input leaves
+  # the cache key unchanged, so re-warming would be wasted.
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'build.zig'
+      - 'build.zig.zon'
+      - 'build_runner.zig'
+      - 'schema/**'
+      - '.github/workflows/test-integration.yml'
   pull_request:
     types: [opened, synchronize, reopened]
 
