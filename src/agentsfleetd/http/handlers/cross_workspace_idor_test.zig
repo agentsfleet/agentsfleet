@@ -60,11 +60,11 @@ const TEST_JWKS_URL = "https://clerk.dev.agentsfleet.net/.well-known/jwks.json";
 const TEST_ISSUER = "https://clerk.dev.agentsfleet.net";
 const TEST_AUDIENCE = "https://api.agentsfleet.net";
 const TEST_JWKS =
-    \\{"keys":[{"kty":"RSA","n":"310oH7ahxoKws6fEKmbOP30dQaQhT21HGRxvibeBuqfywkNxJ0xcfhhao1mwbLH7BUOg2GYXDEA6EvcVlKXqGN_Wa_4Q7UenmZqeXYdB_IhAc-SzyoW9hRi01FskVVI8w_N0Pf5SItu7DIqdxbKP8_eGFyrTL1mN-5klkIDCSnhrDLUEgjVo7iod0vsoqUEH-2m1s-2xDh5aQr5rSF6neCTA1-JvKVkJLD6eOdBnEwYBm6-yZ0CNgMfw1uUyw5cGwdaPsCerHctH0EwcI_qQFUUnFjBeN4FJkP_DDoHWTEV9a-5wzomOcoKlyfZvRgplGYYqTWrIAfcZobyzYiSy1w","e":"AQAB","kid":"rbac-test-kid","use":"sig","alg":"RS256"}]}
+    \\{"keys":[{"kty":"RSA","n":"055gLVwlsa0-zUCqQAYqyfiAob0IBQZgtHfhGUSIyRz-Czj-q0-2ota3rtZVla0drH56Zjzs80rSt9sDFQzsl0EfBrErbfhaUiEyiSwJnR69BxkbEtxTgdi-gtTe6Y5dbkxjO126xAaBcAkFYrfABFKaUZiEZjECtVjjRIu-LihcBbVx_LiLQr2beTb8A7sGeOY0JUjIcKMCDofdcRUoVuqvPBRjNk0pwDp7EOccQVthDOysJi6k5JdY3seExqNtthtWOcnUTD1uYKtx9YGoDLbdu5N3HkPieQHDXd8-Ah1uxbmHUr94CVzYlTxyIfp_vPvJa9pbYUy2PdoDuK_I9w","e":"AQAB","kid":"test-kid-static","use":"sig","alg":"RS256"}]}
 ;
 // .operator role, workspace_id = TEST_WORKSPACE_ID, tenant_id = TEST_TENANT_ID, exp = year 2100
 const TOKEN_OPERATOR =
-    "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6InJiYWMtdGVzdC1raWQifQ.eyJzdWIiOiJ1c2VyX3Rlc3QiLCJpc3MiOiJodHRwczovL2NsZXJrLmRldi5hZ2VudHNmbGVldC5uZXQiLCJhdWQiOiJodHRwczovL2FwaS5hZ2VudHNmbGVldC5uZXQiLCJleHAiOjQxMDI0NDQ4MDAsIm1ldGFkYXRhIjp7InRlbmFudF9pZCI6IjAxOTViNGJhLThkM2EtN2YxMy04YWJjLTJiM2UxZTBhNmYwMSIsIndvcmtzcGFjZV9pZCI6IjAxOTViNGJhLThkM2EtN2YxMy04YWJjLTJiM2UxZTBhNmYxMSIsInJvbGUiOiJvcGVyYXRvciJ9fQ.eEQp3HyUFsV1bRBDvww3DirCY1R-vrASYT3KXnTeXBa8Owuag8Mc1I_v93XBatf-t-Y0qd6r9uNQuRiRpuXkrC01MJwyPnyvKDYHFAX828PIMdFgZ5FUGU0S6r1B4B8FaVZnfMdwyyQW9tCeFBvvh2hkuodoOlkcaJnR98kMrYjGHVoyDQc5H5JnU5O8Kkb9STE-XR-3b8VdOlGJR-ljX4Vw8Fipo5p7fo_VdhhUXD2C974DrbQWtsXhqUTqOFWAEUcUMM2ODH8pEFWhG8poHVP8LLWCcSFxZDN_Ia3dNR8OK9SEblCPIlfimiMtscqxli-9uC00n62UmLuQtGVlXA";
+    "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6InRlc3Qta2lkLXN0YXRpYyJ9.eyJzdWIiOiJ1c2VyX3Rlc3QiLCJpc3MiOiJodHRwczovL2NsZXJrLmRldi5hZ2VudHNmbGVldC5uZXQiLCJhdWQiOiJodHRwczovL2FwaS5hZ2VudHNmbGVldC5uZXQiLCJleHAiOjQxMDI0NDQ4MDAsInNjb3BlcyI6ImZsZWV0OmFkbWluIGNyZWRlbnRpYWw6d3JpdGUgYXBpa2V5OmFkbWluIGZsZWV0a2V5OndyaXRlIGdyYW50OndyaXRlIGNvbm5lY3Rvcjp3cml0ZSBiaWxsaW5nOnJlYWQgYXBwcm92YWw6cmVzb2x2ZSB3b3Jrc3BhY2U6YWRtaW4gdGVtcGxhdGU6d3JpdGUiLCJtZXRhZGF0YSI6eyJ0ZW5hbnRfaWQiOiIwMTk1YjRiYS04ZDNhLTdmMTMtOGFiYy0yYjNlMWUwYTZmMDEiLCJ3b3Jrc3BhY2VfaWQiOiIwMTk1YjRiYS04ZDNhLTdmMTMtOGFiYy0yYjNlMWUwYTZmMTEifX0.wIBu6pV0SEgUx-dWvIQS6qXYXDT3licQxSYiC2-n7ijivJCikIRnO96t7HD71TQnSeJWR2uBbuK0oMDfUotxO-bkIDZ8CnEXMrV3u0W3o5ChssaBCjrU4zPOFTEt4kxICm0BRItzSAI7U8LDSsqa90OYeN2teZ0rtjrc8KlwqOFRoJJ17hDjbxUDqx1sbL_kKgn2mN8Vrwgksyze7z9buSI2f0be555BaR9bgE6rMeBBSqQSlRiNP_7_CITCciZ9cenAzJL7oytaA0XHj73Qdadq4_0L5fPKg5WCVFlgqEofuP5pQo8cHK-jxn1PHYlzVisMWObFcI4ki_A6DZFlqg";
 
 fn stubTenantApiKeyLookup(_: *anyopaque, _: std.mem.Allocator, _: []const u8) anyerror!?auth_mw.tenant_api_key.LookupResult {
     return null;
@@ -274,9 +274,7 @@ fn startTestServer(alloc: std.mem.Allocator) !*TestServer {
         .tenant_api_key_mw = .{ .host = undefined, .lookup = stubTenantApiKeyLookup },
         // SAFETY: stubRunnerLookup ignores host and returns null; .host unread.
         .runner_bearer_mw = .{ .host = undefined, .lookup = stubRunnerLookup },
-        .require_role_admin = .{ .required = .admin },
-        .require_role_operator = .{ .required = .operator },
-        .platform_admin_mw = .{},
+        .require_scope_mw = .{},
         .webhook_hmac_mw = .{ .secret = "" },
     };
     srv.registry.initChains();

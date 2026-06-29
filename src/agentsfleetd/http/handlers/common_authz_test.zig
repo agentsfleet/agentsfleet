@@ -1,32 +1,41 @@
 const std = @import("std");
 const pg = @import("pg");
 const common = @import("common.zig");
+const scopes = @import("../../auth/scopes.zig");
 const PgQuery = @import("../../db/pg_query.zig").PgQuery;
 const http_auth = @import("../../db/test_fixtures_http_auth.zig");
 const constants = @import("common");
 
-test "requireRole error message includes current role and required role" {
-    var msg_buf: [128]u8 = undefined;
-    const user_msg = std.fmt.bufPrint(
-        &msg_buf,
-        "Your role is '{s}'. {s} role required.",
-        .{ common.AuthRole.user.label(), common.AuthRole.operator.label() },
-    ) catch unreachable;
-    try std.testing.expectEqualStrings("Your role is 'user'. operator role required.", user_msg);
-}
+test "integration: workspace:any bypasses the tenant match; a non-holder is tenant-bound" {
+    const db_ctx = (try common.openHandlerTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
 
-test "requireRole error message fits all role combinations in 128-byte buffer" {
-    const roles = [_]common.AuthRole{ .user, .operator, .admin };
-    for (roles) |current| {
-        for (roles) |required| {
-            var msg_buf: [128]u8 = undefined;
-            _ = try std.fmt.bufPrint(
-                &msg_buf,
-                "Your role is '{s}'. {s} role required.",
-                .{ current.label(), required.label() },
-            );
-        }
-    }
+    http_auth.cleanup(db_ctx.conn);
+    defer http_auth.cleanup(db_ctx.conn);
+
+    try http_auth.seedTenant(db_ctx.conn);
+    try http_auth.seedScopeWorkspace(db_ctx.conn, http_auth.WS_PRIMARY); // owned by TENANT_ID
+
+    // A platform operator authenticated in a DIFFERENT tenant, holding the
+    // audited cross-tenant override, reaches TENANT_ID's workspace.
+    const operator = common.AuthPrincipal{
+        .mode = .jwt_oidc,
+        .tenant_id = http_auth.TENANT_UNRELATED,
+        .scopes = scopes.parseClaim("workspace:any"),
+    };
+    try std.testing.expect(common.authorizeWorkspace(db_ctx.conn, operator, http_auth.WS_PRIMARY));
+
+    // Capability ≠ ownership (Dimension 2.3): even holding fleet:admin, a
+    // cross-tenant principal WITHOUT workspace:any is denied — the capability
+    // axis (scopes) does not grant the ownership axis. Tenant isolation is
+    // otherwise unchanged.
+    const stranger = common.AuthPrincipal{
+        .mode = .jwt_oidc,
+        .tenant_id = http_auth.TENANT_UNRELATED,
+        .scopes = scopes.parseClaim("fleet:admin"),
+    };
+    try std.testing.expect(!common.authorizeWorkspace(db_ctx.conn, stranger, http_auth.WS_PRIMARY));
 }
 
 test "integration: oidc workspace scoping blocks cross-workspace access" {
@@ -89,7 +98,7 @@ test "integration: null-tenant principal is denied workspace authorization (IDOR
     // A principal with no tenant (unprovisioned Clerk session window) must be
     // denied even against a workspace that exists. Pre-fix, the null-tenant
     // branch ran an unscoped existence check and returned true — cross-tenant IDOR.
-    const null_tenant = common.AuthPrincipal{ .mode = .jwt_oidc, .role = .user, .tenant_id = null };
+    const null_tenant = common.AuthPrincipal{ .mode = .jwt_oidc, .tenant_id = null };
     try std.testing.expect(!common.authorizeWorkspace(db_ctx.conn, null_tenant, http_auth.WS_PRIMARY));
 
     // Positive control: the same workspace with the correct tenant still authorizes,

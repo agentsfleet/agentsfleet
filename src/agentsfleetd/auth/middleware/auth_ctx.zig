@@ -38,6 +38,13 @@ pub const AuthCtx = struct {
     // and svix middlewares read it; all others ignore it.
     webhook_fleet_id: ?[]const u8 = null,
 
+    // Per-request capability requirement — the dispatcher resolves it from the
+    // matched route + HTTP method (`route_scopes.requiredScopes`) before running
+    // the chain. `requireScope` reads it as an any-of set; empty means the route
+    // requires authentication only (no capability scope). Set by the host so the
+    // auth layer never imports the HTTP route table (portability boundary).
+    required_scopes: []const principal_mod.Scope = &.{},
+
     /// Write a problem+json error response via the host-supplied writer.
     /// The HTTP status comes from the host's error table (middleware does
     /// not know it).

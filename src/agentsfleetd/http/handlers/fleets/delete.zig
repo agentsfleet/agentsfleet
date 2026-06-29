@@ -59,9 +59,7 @@ pub fn innerDeleteFleet(hx: Hx, _: *httpz.Request, workspace_id: []const u8, fle
     defer hx.ctx.pool.release(conn);
 
     const actor = hx.principal.user_id orelse API_ACTOR;
-    const access = workspace_guards.enforce(hx.res, hx.req_id, conn, hx.alloc, hx.principal, workspace_id, actor, .{
-        .minimum_role = .operator,
-    }) orelse return;
+    const access = workspace_guards.enforce(hx.res, hx.req_id, conn, hx.alloc, hx.principal, workspace_id, actor) orelse return;
     defer access.deinit(hx.alloc);
 
     const outcome = purgeFleetOnConn(conn, workspace_id, fleet_id) catch |err| {

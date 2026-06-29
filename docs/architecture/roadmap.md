@@ -4,16 +4,9 @@
 
 ## v2.1 — authorization
 
-### Scope-based authorization (designed at the API level now, enforced in v2.1)
+### Scope-based authorization — ✅ DELIVERED (M104_001)
 
-Today authorization is **role-based**: `AuthRole = user < operator < admin` (`src/agentsfleetd/auth/rbac.zig`), enforced by the `RequireRole` middleware. JWTs already carry a `scope`/`scopes` claim — `src/agentsfleetd/auth/claims.zig` parses it — but the middleware frees it and never puts it on `AuthPrincipal`. So scopes are parsed-but-discarded; nothing is enforced on them.
-
-v2.1 wires scope enforcement at the API level so a capability can be granted without handing out a whole role. The API surface is shaped for it now:
-
-- **`fleet:write`** — register / cordon runners. Runner provisioning carries cross-tenant blast radius (a trusted-fleet runner receives any tenant's secrets inline), so a dedicated scope is tighter than the blunt `admin` role.
-- finer tenant scopes (`runs:read`, `runs:write`, `workspace:pause`, …) on api keys / JWTs, replacing the all-or-nothing `agt_t = admin` grant.
-
-Until v2.1, runner registration is gated by the `platform_admin` claim (see [`../AUTH.md`](../AUTH.md) → *Runner token*). The scope names above are the v2.1 target, documented so the `/v1/runners` surface is designed for them.
+Authorization is now **scope-based**. The role ladder (`AuthRole = user < operator < admin`) and the `platform_admin` bool were deleted; every capability is an explicit `resource:action` scope on the verified token's `scopes` claim, surfaced as `principal.scopes` and enforced by a single `requireScope` gate against a declarative route→scope table (`src/agentsfleetd/http/route_scopes.zig`). The resource/ownership axis (`authorizeWorkspace`) is unchanged, plus an audited `workspace:any` cross-tenant override. Runner enrollment is gated by the discrete `runner:enroll` scope (independently grantable from `runner:{read,write}`), replacing the old `platform_admin` claim. See [`../AUTH.md`](../AUTH.md) → *Scope catalogue* for the full vocabulary, hierarchy, and provisioning bundles.
 
 ### Fleet keys → first-class principal
 

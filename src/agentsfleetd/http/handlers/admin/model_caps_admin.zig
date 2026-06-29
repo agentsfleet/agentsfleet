@@ -1,8 +1,9 @@
-//! Admin model-caps CRUD — platform-admin-gated management of the priced model
-//! catalogue (core.model_caps), the billing spine.
+//! Admin model-caps CRUD — `model:{read,admin}`-gated management of the priced
+//! model catalogue (core.model_caps), the billing spine.
 //!
-//! Routes (gated by registry.platformAdmin() in route_table.zig — the middleware
-//! is the sole gate, mirroring register_runner; no handler-internal role check):
+//! Routes (gated by the `model:read` (GET) / `model:admin` (write) scope in
+//! route_scopes.zig → requireScope — the middleware is the sole gate, mirroring
+//! register_runner; no handler-internal capability check):
 //!   GET    /v1/admin/models        list every catalogue row (with uid)
 //!   POST   /v1/admin/models        create a priced row
 //!   PATCH  /v1/admin/models/{uid}  update caps/rates (provider+model_id are the

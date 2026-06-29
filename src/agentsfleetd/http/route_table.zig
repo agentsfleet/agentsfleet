@@ -143,15 +143,15 @@ pub fn specFor(route: router.Route, registry: *auth_mw.MiddlewareRegistry) Route
         .tenant_provider => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeTenantProvider },
         .fleet_bundles => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeFleetBundles },
 
-        // Admin platform keys + model catalogue — platform-admin claim required
-        // (the platformAdmin middleware is the sole gate; a tenant admin / agt_t
-        // is rejected 403). Tightened from the per-tenant admin() gate: setting
-        // the platform default and pricing the catalogue are platform-wide
-        // controls, not per-tenant ones (mirrors register_runner).
-        .admin_platform_keys => .{ .middlewares = registry.platformAdmin(), .invoke = invoke.invokeAdminPlatformKeys },
-        .delete_admin_platform_key => .{ .middlewares = registry.platformAdmin(), .invoke = invoke.invokeDeleteAdminPlatformKey },
-        .admin_models => .{ .middlewares = registry.platformAdmin(), .invoke = invoke.invokeAdminModels },
-        .admin_model_by_id => .{ .middlewares = registry.platformAdmin(), .invoke = invoke.invokeAdminModelById },
+        // Admin platform keys + model catalogue — platform-plane scopes
+        // (`platform-key:{read,admin}`, `model:{read,admin}`) resolved per-method
+        // from route_scopes. A tenant principal (no platform scope) is rejected
+        // 403; setting the platform default and pricing the catalogue are
+        // platform-wide controls, not per-tenant ones (mirrors register_runner).
+        .admin_platform_keys => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeAdminPlatformKeys },
+        .delete_admin_platform_key => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeDeleteAdminPlatformKey },
+        .admin_models => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeAdminModels },
+        .admin_model_by_id => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeAdminModelById },
 
         // Webhooks — receive_webhook uses webhookSig middleware (HMAC-only:
         // scheme + secret resolved per-fleet from the workspace credential
@@ -207,27 +207,28 @@ pub fn specFor(route: router.Route, registry: *auth_mw.MiddlewareRegistry) Route
         .fleet_keys => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeFleetKeys },
         .delete_fleet_key => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeDeleteFleetKey },
 
-        // Tenant API keys — operator-minimum per RULE BIL.
-        .tenant_api_keys => .{ .middlewares = registry.operator(), .invoke = invoke.invokeTenantApiKeys },
-        .tenant_api_key_by_id => .{ .middlewares = registry.operator(), .invoke = invoke.invokeTenantApiKeyById },
+        // Tenant API keys — `apikey:{read,write,admin}` per method (route_scopes).
+        .tenant_api_keys => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeTenantApiKeys },
+        .tenant_api_key_by_id => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeTenantApiKeyById },
 
         // Runner control plane. Enrollment mints a `agt_r` that joins the shared
-        // fleet receiving every tenant's inline secrets, so it is gated on the
-        // platform-admin claim (platformAdmin), not per-tenant admin — a tenant
-        // admin or any `agt_t` api_key is rejected 403. The self-plane verbs are
-        // authed by the minted runner_token via runnerBearer (agt_r only, no
-        // JWKS/tenant fall-through) — a runner token can't satisfy a tenant
-        // route and a tenant/user token can't satisfy a runner route, enforced
-        // by which middleware guards the route.
-        .register_runner => .{ .middlewares = registry.platformAdmin(), .invoke = invoke.invokeRegisterRunner },
-        // Operator-plane read — same platform-admin gate as enrollment (a tenant
-        // admin / `agt_t` is rejected 403); never the runnerBearer plane.
-        .fleet_runners_list => .{ .middlewares = registry.platformAdmin(), .invoke = invoke.invokeFleetRunnersList },
-        .fleet_runner_patch => .{ .middlewares = registry.platformAdmin(), .invoke = invoke.invokeFleetRunnerPatch },
-        .fleet_runner_events => .{ .middlewares = registry.platformAdmin(), .invoke = invoke.invokeFleetRunnerEvents },
-        // Live SSE streams on this instance — same operator plane + gate as
-        // the fleet runner reads.
-        .fleet_streams_list => .{ .middlewares = registry.platformAdmin(), .invoke = invoke.invokeFleetStreamsList },
+        // fleet receiving every tenant's inline secrets, so it requires the
+        // distinct `runner:enroll` scope — held only by platform operators and
+        // independently revocable from `runner:{read,write}` (separation of
+        // duties). A tenant principal (no platform scope) is rejected 403. The
+        // self-plane verbs are authed by the minted runner_token via runnerBearer
+        // (agt_r only, no JWKS/tenant fall-through) and require `runner:self` —
+        // which only the runner principal carries, so a runner token can't
+        // satisfy a tenant route and a tenant/user token can't satisfy a runner
+        // route, enforced by both the middleware and the scope.
+        .register_runner => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeRegisterRunner },
+        // Operator-plane reads/patch — `runner:{read,write}` (route_scopes);
+        // never the runnerBearer plane.
+        .fleet_runners_list => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeFleetRunnersList },
+        .fleet_runner_patch => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeFleetRunnerPatch },
+        .fleet_runner_events => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeFleetRunnerEvents },
+        // Live SSE streams on this instance — `stream:read` (operator view).
+        .fleet_streams_list => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeFleetStreamsList },
         .runner_self => .{ .middlewares = registry.runnerBearer(), .invoke = invoke.invokeRunnerSelf },
         .runner_heartbeat => .{ .middlewares = registry.runnerBearer(), .invoke = invoke.invokeRunnerHeartbeat },
         .runner_lease => .{ .middlewares = registry.runnerBearer(), .invoke = invoke.invokeRunnerLease },

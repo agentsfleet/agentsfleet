@@ -269,9 +269,7 @@ pub fn run(io: std.Io, env_map: *const EnvMap, argv: []const [:0]const u8, alloc
             .host = &runner_lookup_ctx,
             .lookup = serve_runner_lookup.lookup,
         },
-        .require_role_admin = .{ .required = .admin },
-        .require_role_operator = .{ .required = .operator },
-        .platform_admin_mw = .{},
+        .require_scope_mw = .{},
         .webhook_hmac_mw = .{ .secret = approval_signing_secret },
     };
     // Construct the generic WebhookSig with concrete *pg.Pool type.

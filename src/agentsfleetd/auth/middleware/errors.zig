@@ -13,9 +13,7 @@ pub const ERR_FORBIDDEN = auth_codes.ERR_FORBIDDEN;
 pub const ERR_UNAUTHORIZED = auth_codes.ERR_UNAUTHORIZED;
 pub const ERR_TOKEN_EXPIRED = auth_codes.ERR_TOKEN_EXPIRED;
 pub const ERR_AUTH_UNAVAILABLE = auth_codes.ERR_AUTH_UNAVAILABLE;
-pub const ERR_INSUFFICIENT_ROLE = auth_codes.ERR_INSUFFICIENT_ROLE;
-pub const ERR_UNSUPPORTED_ROLE = auth_codes.ERR_UNSUPPORTED_ROLE;
-pub const ERR_PLATFORM_ADMIN_REQUIRED = auth_codes.ERR_PLATFORM_ADMIN_REQUIRED;
+pub const ERR_INSUFFICIENT_SCOPE = auth_codes.ERR_INSUFFICIENT_SCOPE;
 pub const ERR_APPROVAL_INVALID_SIGNATURE = auth_codes.ERR_APPROVAL_INVALID_SIGNATURE;
 // Generic webhook signature codes — shared by webhook_sig and svix_signature.
 // Named without provider prefix because the same code fires for every

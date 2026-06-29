@@ -63,8 +63,6 @@ pub const ENTRIES = [_]Entry{
     e("UZ-AUTH-004", .service_unavailable, "Authentication service unavailable", "Authentication service is temporarily unavailable. Retry shortly."),
     e("UZ-AUTH-005", .not_found, "Session not found", "Session was not found. It may have expired or been invalidated."),
     e("UZ-AUTH-006", .unauthorized, "Session expired", "Your session has expired. Please sign in again."),
-    e("UZ-AUTH-009", .forbidden, "Insufficient role", "Your role does not have sufficient permissions for this action."),
-    e("UZ-AUTH-010", .forbidden, "Unsupported role", "The specified role is not supported."),
     e("UZ-AUTH-011", .bad_request, "Verification code did not match", "The 6-digit verification code did not match what the dashboard issued. " ++
         "Double-check the code shown in your browser and try again."),
     e("UZ-AUTH-012", .gone, "Login session already consumed", "This login session has already been consumed. Start over with `agentsfleet login`."),
@@ -78,7 +76,7 @@ pub const ENTRIES = [_]Entry{
     e("UZ-AUTH-018", .bad_request, "Invalid verification code shape", "verification_code must be exactly 6 ASCII digits."),
     e("UZ-AUTH-019", .bad_request, "Invalid ciphertext", "ciphertext is missing or empty. Expect a base64url-encoded AES-256-GCM output."),
     e("UZ-AUTH-020", .bad_request, "Invalid nonce", "nonce is missing, empty, or the wrong length. Expect a base64url-encoded 12-byte value."),
-    e("UZ-AUTH-021", .forbidden, "Platform-admin privileges required", "This action is restricted to agentsfleet platform operators. Your account does not carry platform-admin privileges."),
+    e("UZ-AUTH-022", .forbidden, "Insufficient scope", "Your token does not carry a scope required for this action. The required scope is named in the error detail; see docs/AUTH.md for the scope catalogue."),
     // ── API (serving-plane backpressure) ─────────────────────────────────────
     e("UZ-API-001", .too_many_requests, "Too many in-flight requests", "This API instance is at its in-flight request ceiling and is shedding load. " ++
         "Honor the Retry-After header and retry with backoff. Operators: raise API_MAX_IN_FLIGHT_REQUESTS or add replicas."),

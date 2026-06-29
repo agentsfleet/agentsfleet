@@ -15,9 +15,7 @@ pub const ERR_FORBIDDEN = "UZ-AUTH-001";
 pub const ERR_UNAUTHORIZED = "UZ-AUTH-002";
 pub const ERR_TOKEN_EXPIRED = "UZ-AUTH-003";
 pub const ERR_AUTH_UNAVAILABLE = "UZ-AUTH-004";
-pub const ERR_INSUFFICIENT_ROLE = "UZ-AUTH-009";
-pub const ERR_UNSUPPORTED_ROLE = "UZ-AUTH-010";
-pub const ERR_PLATFORM_ADMIN_REQUIRED = "UZ-AUTH-021";
+pub const ERR_INSUFFICIENT_SCOPE = "UZ-AUTH-022";
 pub const ERR_APPROVAL_INVALID_SIGNATURE = "UZ-APPROVAL-003";
 // Generic webhook signature codes — one set for every HMAC-style webhook.
 pub const ERR_WEBHOOK_SIG_INVALID = "UZ-WH-010";
