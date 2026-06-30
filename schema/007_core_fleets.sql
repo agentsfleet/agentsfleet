@@ -16,8 +16,10 @@
 --   Stored as TEXT[] (not JSONB): a string-set needs no nesting, and only the
 --   array `array_ops` GIN opclass supports `<@`, so the eligibility filter is
 --   index-eligible when the runner's labels are bound as a constant array.
--- bundle_id / bundle_*: source snapshot metadata for Fleets created from a
---   Fleet Bundle. No secret values live here; credentials remain vault refs.
+-- bundle_content_hash / bundle_snapshot_key: the content identity of the
+--   onboarded template a Fleet was installed from. The runner materializes the
+--   support files from R2 by content hash. No secret values live here;
+--   credentials remain vault refs.
 
 CREATE TABLE IF NOT EXISTS core.fleets (
     uid             UUID GENERATED ALWAYS AS (id) STORED PRIMARY KEY,
@@ -36,7 +38,6 @@ CREATE TABLE IF NOT EXISTS core.fleets (
     -- validated set explicitly; the default keeps unrelated inserts from
     -- re-stating it.
     required_tags   TEXT[] NOT NULL DEFAULT '{}'::text[],
-    bundle_id       UUID,
     bundle_content_hash TEXT,
     bundle_snapshot_key TEXT,
     created_at      BIGINT NOT NULL,

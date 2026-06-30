@@ -69,6 +69,42 @@ fn freeIds(alloc: std.mem.Allocator, ids: [][]const u8) void {
     alloc.free(ids);
 }
 
+// Install now flows through an onboarded template (M103 §4); these create-API
+// tests seed a tenant template directly (arbitrary/mismatched content the onboard
+// API would reject is fine here) and install it by id. Requirements come from the
+// parsed TRIGGER at install time, so this minimal object is inert.
+const TEMPLATE_REQUIREMENTS = "{\"credentials\":[],\"tools\":[],\"network_hosts\":[],\"support_files\":[],\"trigger_present\":false}";
+
+fn seedTenantTemplate(conn: *pg.Conn, alloc: std.mem.Allocator, name: []const u8, skill_md: []const u8, trigger_md: ?[]const u8) ![]const u8 {
+    const id = try id_format.generateFleetTemplateId(alloc);
+    errdefer alloc.free(id);
+    var digest: [32]u8 = undefined;
+    std.crypto.hash.sha2.Sha256.hash(skill_md, &digest, .{});
+    const content_hash = std.fmt.bytesToHex(digest, .lower);
+    _ = try conn.exec(
+        \\INSERT INTO core.tenant_fleet_bundle_templates
+        \\  (id, workspace_id, name, source_kind, source_ref, visibility,
+        \\   content_hash, skill_markdown, trigger_markdown, support_files_json,
+        \\   requirements_json, created_at, updated_at)
+        \\VALUES ($1::uuid, $2::uuid, $3, 'upload', 'unit', 'tenant',
+        \\        $4, $5, $6, '[]'::jsonb, $7::jsonb, 0, 0)
+        \\ON CONFLICT (workspace_id, content_hash) DO NOTHING
+    , .{ id, TEST_WORKSPACE_ID, name, &content_hash, skill_md, trigger_md, TEMPLATE_REQUIREMENTS });
+    return id;
+}
+
+/// Seed `skill_md`/`trigger_md` as a tenant template and return the install body
+/// `{"tenant_template_id": "<id>"[, "name": "<override>"]}`. Caller frees both.
+fn templateInstallBody(conn: *pg.Conn, alloc: std.mem.Allocator, name: []const u8, skill_md: []const u8, trigger_md: ?[]const u8, override_name: ?[]const u8) !struct { id: []const u8, body: []const u8 } {
+    const id = try seedTenantTemplate(conn, alloc, name, skill_md, trigger_md);
+    errdefer alloc.free(id);
+    const body = if (override_name) |n|
+        try std.fmt.allocPrint(alloc, "{{\"tenant_template_id\":\"{s}\",\"name\":\"{s}\"}}", .{ id, n })
+    else
+        try std.fmt.allocPrint(alloc, "{{\"tenant_template_id\":\"{s}\"}}", .{id});
+    return .{ .id = id, .body = body };
+}
+
 // ── Cursor pagination roundtrip + invalid-cursor handling ────────────────────
 
 test "integration: fleets list — cursor pagination roundtrip" {
@@ -303,13 +339,34 @@ test "integration: install — 201 returns webhook_urls map keyed by source" {
     const now_ms = clock.nowMillis();
     try seedWorkspace(conn, now_ms);
 
-    const body =
-        "{\"source_markdown\":\"---\\nname: webhook-install-pin\\ndescription: pins webhook_urls shape\\nversion: 0.1.0\\n---\\nBody.\\n\"," ++
-        "\"trigger_markdown\":\"---\\nname: webhook-install-pin\\nx-agentsfleet:\\n  triggers:\\n    - type: webhook\\n      source: github\\n  tools:\\n    - agentmail\\n  budget:\\n    daily_dollars: 1.0\\n---\\n\"}";
+    const skill =
+        \\---
+        \\name: webhook-install-pin
+        \\description: pins webhook_urls shape
+        \\version: 0.1.0
+        \\---
+        \\Body.
+    ;
+    const trigger =
+        \\---
+        \\name: webhook-install-pin
+        \\x-agentsfleet:
+        \\  triggers:
+        \\    - type: webhook
+        \\      source: github
+        \\  tools:
+        \\    - agentmail
+        \\  budget:
+        \\    daily_dollars: 1.0
+        \\---
+    ;
+    const tpl = try templateInstallBody(conn, alloc, "webhook-install-pin", skill, trigger, null);
+    defer alloc.free(tpl.id);
+    defer alloc.free(tpl.body);
 
     const url = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/fleets", .{TEST_WORKSPACE_ID});
     defer alloc.free(url);
-    const r = try (try (try h.post(url).bearer(TOKEN_USER)).json(body)).send();
+    const r = try (try (try h.post(url).bearer(TOKEN_USER)).json(tpl.body)).send();
     defer r.deinit();
     try r.expectStatus(.created);
 
@@ -337,13 +394,34 @@ test "integration: install — cron-only trigger returns empty webhook_urls map"
     const now_ms = clock.nowMillis();
     try seedWorkspace(conn, now_ms);
 
-    const body =
-        "{\"source_markdown\":\"---\\nname: cron-only-install-pin\\ndescription: pins empty webhook_urls\\nversion: 0.1.0\\n---\\nBody.\\n\"," ++
-        "\"trigger_markdown\":\"---\\nname: cron-only-install-pin\\nx-agentsfleet:\\n  triggers:\\n    - type: cron\\n      schedule: '*/30 * * * *'\\n  tools:\\n    - agentmail\\n  budget:\\n    daily_dollars: 1.0\\n---\\n\"}";
+    const skill =
+        \\---
+        \\name: cron-only-install-pin
+        \\description: pins empty webhook_urls
+        \\version: 0.1.0
+        \\---
+        \\Body.
+    ;
+    const trigger =
+        \\---
+        \\name: cron-only-install-pin
+        \\x-agentsfleet:
+        \\  triggers:
+        \\    - type: cron
+        \\      schedule: '*/30 * * * *'
+        \\  tools:
+        \\    - agentmail
+        \\  budget:
+        \\    daily_dollars: 1.0
+        \\---
+    ;
+    const tpl = try templateInstallBody(conn, alloc, "cron-only-install-pin", skill, trigger, null);
+    defer alloc.free(tpl.id);
+    defer alloc.free(tpl.body);
 
     const url = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/fleets", .{TEST_WORKSPACE_ID});
     defer alloc.free(url);
-    const r = try (try (try h.post(url).bearer(TOKEN_USER)).json(body)).send();
+    const r = try (try (try h.post(url).bearer(TOKEN_USER)).json(tpl.body)).send();
     defer r.deinit();
     try r.expectStatus(.created);
 
@@ -364,12 +442,21 @@ test "integration: install — SKILL.md-only body generates default API trigger"
     const now_ms = clock.nowMillis();
     try seedWorkspace(conn, now_ms);
 
-    const body =
-        "{\"source_markdown\":\"---\\nname: skill-only-install-pin\\ndescription: pins default trigger generation\\nversion: 0.1.0\\n---\\nBody.\\n\"}";
+    const skill =
+        \\---
+        \\name: skill-only-install-pin
+        \\description: pins default trigger generation
+        \\version: 0.1.0
+        \\---
+        \\Body.
+    ;
+    const tpl = try templateInstallBody(conn, alloc, "skill-only-install-pin", skill, null, null);
+    defer alloc.free(tpl.id);
+    defer alloc.free(tpl.body);
 
     const url = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/fleets", .{TEST_WORKSPACE_ID});
     defer alloc.free(url);
-    const r = try (try (try h.post(url).bearer(TOKEN_USER)).json(body)).send();
+    const r = try (try (try h.post(url).bearer(TOKEN_USER)).json(tpl.body)).send();
     defer r.deinit();
     try r.expectStatus(.created);
     try std.testing.expect(r.bodyContains("\"name\":\"skill-only-install-pin\""));
@@ -408,13 +495,34 @@ test "integration: fleet create rejects SKILL/TRIGGER name mismatch with UZ-AGT-
     // SKILL.md says alpha-fleet; TRIGGER.md says beta-fleet. Both halves
     // parse cleanly in isolation — the rejection only fires at the install
     // handler, which is what this test pins.
-    const body =
-        "{\"source_markdown\":\"---\\nname: alpha-fleet\\ndescription: alpha\\nversion: 0.1.0\\n---\\nBody.\\n\"," ++
-        "\"trigger_markdown\":\"---\\nname: beta-fleet\\nx-agentsfleet:\\n  triggers:\\n    - type: webhook\\n      source: agentmail\\n  tools:\\n    - agentmail\\n  budget:\\n    daily_dollars: 1.0\\n---\\n\"}";
+    const skill =
+        \\---
+        \\name: alpha-fleet
+        \\description: alpha
+        \\version: 0.1.0
+        \\---
+        \\Body.
+    ;
+    const trigger =
+        \\---
+        \\name: beta-fleet
+        \\x-agentsfleet:
+        \\  triggers:
+        \\    - type: webhook
+        \\      source: agentmail
+        \\  tools:
+        \\    - agentmail
+        \\  budget:
+        \\    daily_dollars: 1.0
+        \\---
+    ;
+    const tpl = try templateInstallBody(conn, alloc, "alpha-fleet", skill, trigger, null);
+    defer alloc.free(tpl.id);
+    defer alloc.free(tpl.body);
 
     const url = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/fleets", .{TEST_WORKSPACE_ID});
     defer alloc.free(url);
-    const r = try (try (try h.post(url).bearer(TOKEN_USER)).json(body)).send();
+    const r = try (try (try h.post(url).bearer(TOKEN_USER)).json(tpl.body)).send();
     defer r.deinit();
     try r.expectStatus(.bad_request);
     try r.expectErrorCode("UZ-AGT-011");
@@ -451,13 +559,35 @@ test "integration: fleet create persists SKILL.md tags into required_tags" {
     const now_ms = clock.nowMillis();
     try seedWorkspace(conn, now_ms);
 
-    const body =
-        "{\"source_markdown\":\"---\\nname: tag-persist-pin\\ndescription: pins required_tags persistence\\nversion: 0.1.0\\ntags: [gpu, us-east]\\n---\\nBody.\\n\"," ++
-        "\"trigger_markdown\":\"---\\nname: tag-persist-pin\\nx-agentsfleet:\\n  triggers:\\n    - type: cron\\n      schedule: '*/30 * * * *'\\n  tools:\\n    - agentmail\\n  budget:\\n    daily_dollars: 1.0\\n---\\n\"}";
+    const skill =
+        \\---
+        \\name: tag-persist-pin
+        \\description: pins required_tags persistence
+        \\version: 0.1.0
+        \\tags: [gpu, us-east]
+        \\---
+        \\Body.
+    ;
+    const trigger =
+        \\---
+        \\name: tag-persist-pin
+        \\x-agentsfleet:
+        \\  triggers:
+        \\    - type: cron
+        \\      schedule: '*/30 * * * *'
+        \\  tools:
+        \\    - agentmail
+        \\  budget:
+        \\    daily_dollars: 1.0
+        \\---
+    ;
+    const tpl = try templateInstallBody(conn, alloc, "tag-persist-pin", skill, trigger, null);
+    defer alloc.free(tpl.id);
+    defer alloc.free(tpl.body);
 
     const url = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/fleets", .{TEST_WORKSPACE_ID});
     defer alloc.free(url);
-    const r = try (try (try h.post(url).bearer(TOKEN_USER)).json(body)).send();
+    const r = try (try (try h.post(url).bearer(TOKEN_USER)).json(tpl.body)).send();
     defer r.deinit();
     try r.expectStatus(.created);
 
@@ -497,12 +627,33 @@ test "integration: fleet create name override enables same-source multi-instance
     const now_ms = clock.nowMillis();
     try seedWorkspace(conn, now_ms);
 
-    // SKILL.md + TRIGGER.md both name themselves "pr-reviewer"; each install
-    // overrides the persisted name, so the two coexist in one workspace.
-    const skill = "---\\nname: pr-reviewer\\ndescription: reviews prs\\nversion: 0.1.0\\n---\\nBody.\\n";
-    const trigger = "---\\nname: pr-reviewer\\nx-agentsfleet:\\n  triggers:\\n    - type: api\\n  tools: []\\n  budget:\\n    daily_dollars: 1.0\\n---\\n";
-    const body_a = "{\"source_markdown\":\"" ++ skill ++ "\",\"trigger_markdown\":\"" ++ trigger ++ "\",\"name\":\"pr-reviewer-acme\"}";
-    const body_b = "{\"source_markdown\":\"" ++ skill ++ "\",\"trigger_markdown\":\"" ++ trigger ++ "\",\"name\":\"pr-reviewer-blog\"}";
+    // SKILL.md + TRIGGER.md both name themselves "pr-reviewer"; each install of
+    // the SAME template overrides the persisted name, so the two coexist.
+    const skill =
+        \\---
+        \\name: pr-reviewer
+        \\description: reviews prs
+        \\version: 0.1.0
+        \\---
+        \\Body.
+    ;
+    const trigger =
+        \\---
+        \\name: pr-reviewer
+        \\x-agentsfleet:
+        \\  triggers:
+        \\    - type: api
+        \\  tools: []
+        \\  budget:
+        \\    daily_dollars: 1.0
+        \\---
+    ;
+    const tid = try seedTenantTemplate(conn, alloc, "pr-reviewer", skill, trigger);
+    defer alloc.free(tid);
+    const body_a = try std.fmt.allocPrint(alloc, "{{\"tenant_template_id\":\"{s}\",\"name\":\"pr-reviewer-acme\"}}", .{tid});
+    defer alloc.free(body_a);
+    const body_b = try std.fmt.allocPrint(alloc, "{{\"tenant_template_id\":\"{s}\",\"name\":\"pr-reviewer-blog\"}}", .{tid});
+    defer alloc.free(body_b);
 
     const url = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/fleets", .{TEST_WORKSPACE_ID});
     defer alloc.free(url);
@@ -537,14 +688,32 @@ test "integration: fleet create rejects an invalid name override" {
     const now_ms = clock.nowMillis();
     try seedWorkspace(conn, now_ms);
 
-    const body =
-        "{\"source_markdown\":\"---\\nname: pr-reviewer\\ndescription: d\\nversion: 0.1.0\\n---\\nBody.\\n\"," ++
-        "\"trigger_markdown\":\"---\\nname: pr-reviewer\\nx-agentsfleet:\\n  triggers:\\n    - type: api\\n  tools: []\\n  budget:\\n    daily_dollars: 1.0\\n---\\n\"," ++
-        "\"name\":\"Not A Slug\"}";
+    const skill =
+        \\---
+        \\name: pr-reviewer
+        \\description: d
+        \\version: 0.1.0
+        \\---
+        \\Body.
+    ;
+    const trigger =
+        \\---
+        \\name: pr-reviewer
+        \\x-agentsfleet:
+        \\  triggers:
+        \\    - type: api
+        \\  tools: []
+        \\  budget:
+        \\    daily_dollars: 1.0
+        \\---
+    ;
+    const tpl = try templateInstallBody(conn, alloc, "pr-reviewer", skill, trigger, "Not A Slug");
+    defer alloc.free(tpl.id);
+    defer alloc.free(tpl.body);
 
     const url = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/fleets", .{TEST_WORKSPACE_ID});
     defer alloc.free(url);
-    const r = try (try (try h.post(url).bearer(TOKEN_USER)).json(body)).send();
+    const r = try (try (try h.post(url).bearer(TOKEN_USER)).json(tpl.body)).send();
     defer r.deinit();
     try r.expectStatus(.bad_request);
 }
@@ -567,17 +736,36 @@ test "integration: fleet create rejects an over-long required tag with UZ-REQ-00
     try seedWorkspace(conn, now_ms);
 
     const long_tag = "a" ** 65; // one over the 64-char per-tag bound
-    const body = try std.fmt.allocPrint(
-        alloc,
-        "{{\"source_markdown\":\"---\\nname: bad-tag-pin\\ndescription: d\\nversion: 0.1.0\\ntags: [{s}]\\n---\\nBody.\\n\"," ++
-            "\"trigger_markdown\":\"---\\nname: bad-tag-pin\\nx-agentsfleet:\\n  triggers:\\n    - type: cron\\n      schedule: '*/30 * * * *'\\n  tools:\\n    - agentmail\\n  budget:\\n    daily_dollars: 1.0\\n---\\n\"}}",
-        .{long_tag},
-    );
-    defer alloc.free(body);
+    const skill = try std.fmt.allocPrint(alloc,
+        \\---
+        \\name: bad-tag-pin
+        \\description: d
+        \\version: 0.1.0
+        \\tags: [{s}]
+        \\---
+        \\Body.
+    , .{long_tag});
+    defer alloc.free(skill);
+    const trigger =
+        \\---
+        \\name: bad-tag-pin
+        \\x-agentsfleet:
+        \\  triggers:
+        \\    - type: cron
+        \\      schedule: '*/30 * * * *'
+        \\  tools:
+        \\    - agentmail
+        \\  budget:
+        \\    daily_dollars: 1.0
+        \\---
+    ;
+    const tpl = try templateInstallBody(conn, alloc, "bad-tag-pin", skill, trigger, null);
+    defer alloc.free(tpl.id);
+    defer alloc.free(tpl.body);
 
     const url = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/fleets", .{TEST_WORKSPACE_ID});
     defer alloc.free(url);
-    const r = try (try (try h.post(url).bearer(TOKEN_USER)).json(body)).send();
+    const r = try (try (try h.post(url).bearer(TOKEN_USER)).json(tpl.body)).send();
     defer r.deinit();
     try r.expectStatus(.bad_request);
     try r.expectErrorCode("UZ-REQ-001");
@@ -600,12 +788,33 @@ test "integration: fleet patch re-derives required_tags from reparsed source_mar
     const now_ms = clock.nowMillis();
     try seedWorkspace(conn, now_ms);
 
-    const create_body =
-        "{\"source_markdown\":\"---\\nname: patch-tag-pin\\ndescription: starts untagged\\nversion: 0.1.0\\n---\\nBody.\\n\"," ++
-        "\"trigger_markdown\":\"---\\nname: patch-tag-pin\\nx-agentsfleet:\\n  triggers:\\n    - type: cron\\n      schedule: '*/30 * * * *'\\n  tools:\\n    - agentmail\\n  budget:\\n    daily_dollars: 1.0\\n---\\n\"}";
+    const create_skill =
+        \\---
+        \\name: patch-tag-pin
+        \\description: starts untagged
+        \\version: 0.1.0
+        \\---
+        \\Body.
+    ;
+    const create_trigger =
+        \\---
+        \\name: patch-tag-pin
+        \\x-agentsfleet:
+        \\  triggers:
+        \\    - type: cron
+        \\      schedule: '*/30 * * * *'
+        \\  tools:
+        \\    - agentmail
+        \\  budget:
+        \\    daily_dollars: 1.0
+        \\---
+    ;
+    const create_tpl = try templateInstallBody(conn, alloc, "patch-tag-pin", create_skill, create_trigger, null);
+    defer alloc.free(create_tpl.id);
+    defer alloc.free(create_tpl.body);
     const create_url = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/fleets", .{TEST_WORKSPACE_ID});
     defer alloc.free(create_url);
-    const cr = try (try (try h.post(create_url).bearer(TOKEN_USER)).json(create_body)).send();
+    const cr = try (try (try h.post(create_url).bearer(TOKEN_USER)).json(create_tpl.body)).send();
     defer cr.deinit();
     try cr.expectStatus(.created);
 
@@ -637,4 +846,57 @@ test "integration: fleet patch re-derives required_tags from reparsed source_mar
     const after = try requiredTagsCsv(conn, alloc, "patch-tag-pin");
     defer alloc.free(after);
     try std.testing.expectEqualStrings("gpu", after);
+}
+
+// M103 §4 / Dimension 4.1: install accepts only the two template sources; a raw
+// SKILL.md paste (or an empty body) is rejected — there is no create-by-paste.
+test "integration: fleet create rejects a raw source_markdown payload" {
+    const alloc = std.testing.allocator;
+    const h = makeHarness(alloc) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    try seedWorkspace(conn, clock.nowMillis());
+
+    const url = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/fleets", .{TEST_WORKSPACE_ID});
+    defer alloc.free(url);
+
+    // Raw SKILL paste (the removed authoring path) → 400, nothing created.
+    const paste = "{\"source_markdown\":\"---\\nname: pasted\\ndescription: d\\nversion: 0.1.0\\n---\\nBody.\\n\"}";
+    const r1 = try (try (try h.post(url).bearer(TOKEN_USER)).json(paste)).send();
+    defer r1.deinit();
+    try r1.expectStatus(.bad_request);
+
+    // No source at all → 400.
+    const r2 = try (try (try h.post(url).bearer(TOKEN_USER)).json("{}")).send();
+    defer r2.deinit();
+    try r2.expectStatus(.bad_request);
+}
+
+// Dimension 4.2: installing a tenant template that is not in the caller's
+// workspace (here, one that does not exist for it) is a 404 — a workspace cannot
+// install another workspace's template.
+test "integration: fleet create 404s an unknown tenant template" {
+    const alloc = std.testing.allocator;
+    const h = makeHarness(alloc) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    try seedWorkspace(conn, clock.nowMillis());
+
+    const url = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/fleets", .{TEST_WORKSPACE_ID});
+    defer alloc.free(url);
+    // A well-formed UUIDv7 that was never onboarded into this workspace.
+    const body = "{\"tenant_template_id\":\"0195b4ba-8d3a-7f13-8abc-0000000000ee\"}";
+    const r = try (try (try h.post(url).bearer(TOKEN_USER)).json(body)).send();
+    defer r.deinit();
+    try std.testing.expectEqual(@as(u16, 404), r.status);
 }

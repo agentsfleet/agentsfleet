@@ -80,8 +80,6 @@ pub const Route = union(enum) {
     patch_workspace_fleet: matchers.WorkspaceFleetRoute, // PATCH /v1/workspaces/{ws}/fleets/{id}
     workspace_credentials: []const u8, // GET|POST /v1/workspaces/{ws}/credentials
     workspace_credential: matchers.WorkspaceCredentialRoute, // PATCH|DELETE /v1/workspaces/{ws}/credentials/{name}
-    workspace_fleet_bundles: []const u8, // POST /v1/workspaces/{ws}/fleets/bundles/snapshots
-    workspace_fleet_bundle: matchers.WorkspaceFleetBundleRoute, // GET /v1/workspaces/{ws}/fleets/bundles/snapshots/{bundle_id}
     // Chat ingress — POST /v1/workspaces/{ws}/fleets/{id}/messages
     workspace_fleet_messages: matchers.WorkspaceFleetRoute,
     // Per-Fleet event history + Server-Sent Events (SSE) live tail

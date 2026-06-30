@@ -32,18 +32,17 @@ const DEFAULT_TRIGGER_DAILY_DOLLARS = "1.0";
 pub const MAX_SOURCE_LEN = markdown_limits.MAX_SOURCE_LEN;
 pub const MAX_TRIGGER_LEN = markdown_limits.MAX_TRIGGER_LEN;
 
-/// Install request shape. The server is the single parser of TRIGGER.md
-/// frontmatter — `name` and `config_json` are derived here, not sent by
-/// the Command-Line Interface (CLI). `bundle_id` selects a stored Fleet Bundle
-/// snapshot while preserving the direct Markdown body path. Keeping the wire
-/// shape minimal lets the CLI stay zero-dep (no frontmatter parser in
-/// JavaScript (JS)).
+/// Install request shape (M103 §4). A fleet is installed from exactly one
+/// onboarded template tier — a platform template (slug id) or a tenant template
+/// (this workspace's, UUIDv7). The server reads the SKILL/TRIGGER markdown and
+/// content identity from the template row; raw-SKILL paste and the legacy
+/// per-workspace bundle_id are no longer accepted. The CLI stays zero-dep (no
+/// frontmatter parser in JavaScript (JS)) — the server parses TRIGGER.md.
 const CreateBody = struct {
-    bundle_id: ?[]const u8 = null,
-    trigger_markdown: ?[]const u8 = null,
-    source_markdown: ?[]const u8 = null,
+    platform_template_id: ?[]const u8 = null,
+    tenant_template_id: ?[]const u8 = null,
     // Optional operator-supplied name. Absent ⇒ the SKILL.md `name:` is used.
-    // Present ⇒ overrides the persisted fleet name so one bundle can back many
+    // Present ⇒ overrides the persisted fleet name so one template can back many
     // fleets in a workspace (each with its own name + webhooks/cron).
     name: ?[]const u8 = null,
 };
@@ -80,9 +79,8 @@ pub fn innerCreateFleet(hx: Hx, req: *httpz.Request, workspace_id: []const u8) v
     }
 
     const source = create_fleet_bundle.resolveSource(hx, conn, workspace_id, .{
-        .source_markdown = body.source_markdown,
-        .trigger_markdown = body.trigger_markdown,
-        .bundle_id = body.bundle_id,
+        .platform_template_id = body.platform_template_id,
+        .tenant_template_id = body.tenant_template_id,
     }) orelse return;
     defer source.deinit(hx.alloc);
     if (!create_fleet_bundle.validateFields(hx, source.source_markdown, source.trigger_markdown)) return;
@@ -268,16 +266,15 @@ fn insertFleetOnConn(
     fleet_id: []const u8,
     now_ms: i64,
 ) !void {
-    const bundle_id: ?[]const u8 = if (bundle_ref) |b| b.id else null;
     const bundle_hash: ?[]const u8 = if (bundle_ref) |b| b.content_hash else null;
     const bundle_key: ?[]const u8 = if (bundle_ref) |b| b.snapshot_key else null;
     _ = try conn.exec(
         \\INSERT INTO core.fleets
         \\  (id, workspace_id, name, source_markdown, trigger_markdown, config_json,
-        \\   status, required_tags, bundle_id, bundle_content_hash,
+        \\   status, required_tags, bundle_content_hash,
         \\   bundle_snapshot_key, created_at, updated_at)
         \\VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6::jsonb, $7, $8::text[],
-        \\        $9::uuid, $10, $11, $12, $12)
+        \\        $9, $10, $11, $11)
     , .{
         fleet_id,
         workspace_id,
@@ -291,7 +288,6 @@ fn insertFleetOnConn(
         // from this column (the activity channel has no replay).
         fleet_config.FleetStatus.installing.toSlice(),
         required_tags,
-        bundle_id,
         bundle_hash,
         bundle_key,
         now_ms,

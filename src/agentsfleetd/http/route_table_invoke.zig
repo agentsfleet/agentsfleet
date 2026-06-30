@@ -39,8 +39,6 @@ pub const invokeWorkspaceApprovalDetail = approvals_invokes.invokeWorkspaceAppro
 pub const invokeWorkspaceApprovalResolve = approvals_invokes.invokeWorkspaceApprovalResolve;
 const bundle_invokes = @import("route_table_invoke_fleet_bundles.zig");
 pub const invokeFleetBundles = bundle_invokes.invokeFleetBundles;
-pub const invokeFleetBundleImports = bundle_invokes.invokeFleetBundleImports;
-pub const invokeFleetBundleGet = bundle_invokes.invokeFleetBundleGet;
 
 const Hx = hx_mod.Hx;
 

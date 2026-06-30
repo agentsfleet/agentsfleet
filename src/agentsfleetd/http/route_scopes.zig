@@ -136,12 +136,10 @@ pub fn requiredScopes(route: router.Route, method: httpz.Method) []const S {
             else => &FLEET_WRITE,
         },
         .workspace_fleet_messages => &FLEET_WRITE,
-        .workspace_fleet_bundles => &FLEET_WRITE,
         .workspace_fleet_events,
         .workspace_fleet_events_stream,
         .workspace_events,
         .workspace_fleet_memories,
-        .workspace_fleet_bundle,
         .fleet_bundles,
         => &FLEET_READ,
 

@@ -106,23 +106,6 @@ test "matchWorkspaceFleet: workspace_id and fleet_id extracted" {
     try std.testing.expect(matchers.matchWorkspaceFleet(parse("/v1/workspaces/ws_1/fleets/bundles", &buf)) == null);
 }
 
-test "matchWorkspaceFleetBundles: workspace collection and detail" {
-    var buf: [matchers.PATH_MAX_SEGMENTS][]const u8 = undefined;
-    const ws_id = matchers.matchWorkspaceFleetBundles(parse("/v1/workspaces/ws_1/fleets/bundles/snapshots", &buf)).?;
-    try std.testing.expectEqualStrings("ws_1", ws_id);
-
-    const detail = matchers.matchWorkspaceFleetBundle(parse("/v1/workspaces/ws_1/fleets/bundles/snapshots/bundle_1", &buf)).?;
-    try std.testing.expectEqualStrings("ws_1", detail.workspace_id);
-    try std.testing.expectEqualStrings("bundle_1", detail.bundle_id);
-
-    try std.testing.expect(matchers.matchWorkspaceFleetBundles(parse("/v1/workspaces/ws_1/fleet-bundles", &buf)) == null);
-    try std.testing.expect(matchers.matchWorkspaceFleetBundle(parse("/v1/workspaces/ws_1/fleet-bundles/bundle_1", &buf)) == null);
-    try std.testing.expect(matchers.matchWorkspaceFleetBundles(parse("/v1/workspaces/ws_1/fleets/bundles", &buf)) == null);
-    try std.testing.expect(matchers.matchWorkspaceFleetBundle(parse("/v1/workspaces/ws_1/fleets/bundles/bundle_1", &buf)) == null);
-    try std.testing.expect(matchers.matchWorkspaceFleetBundles(parse("/v1/workspaces//fleets/bundles", &buf)) == null);
-    try std.testing.expect(matchers.matchWorkspaceFleetBundle(parse("/v1/workspaces/ws_1/fleets/bundles/snapshots/", &buf)) == null);
-}
-
 test "matchWorkspaceFleetAction: /messages extracts ws_id + fleet_id" {
     var buf: [matchers.PATH_MAX_SEGMENTS][]const u8 = undefined;
     const r = matchers.matchWorkspaceFleetAction(parse("/v1/workspaces/ws1/fleets/z1/messages", &buf), "messages").?;
