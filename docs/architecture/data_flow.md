@@ -504,7 +504,7 @@ installed runtime. Runner remains the infrastructure vocabulary.
    > channel_id) → channel-resident fleet (core.slack_channel_bindings, lazily
    > materialized on first mention). One more producer into THIS same ingress —
    > the lease/execute path does not change. The resident fleet owns the
-   > channel's memory namespace (instance_id=channel_fleet_id), so memory
+   > channel's memory namespace (keyed by the resident fleet_id), so memory
    > persists thread→thread through the existing hydrate/capture loop
    > (runner_fleet.md §Memory continuity). Reactive only — no write tools, no
    > source triggers, no cron. Spec:

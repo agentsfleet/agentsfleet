@@ -20,7 +20,7 @@
 
 ## Implementing agent — read these first
 
-1. `docs/architecture/runner_fleet.md` §Memory continuity — the `GET`/`POST /v1/runners/me/memory/{fleet_id}` hydrate/capture loop the channel memory reuses **verbatim**; `instance_id = fleet_id`, durable in `memory.memory_entries`, `:memory:` SQLite in the child.
+1. `docs/architecture/runner_fleet.md` §Memory continuity + `docs/architecture/memory.md` — the `GET`/`POST /v1/runners/me/memory/{fleet_id}` hydrate/capture loop the channel memory reuses **verbatim**; the durable scope column is `fleet_id` (the legacy `instance_id` name is retired — `schema/013`), durable in `memory.memory_entries`, `:memory:` SQLite in the child.
 2. `src/agentsfleetd/credentials/integration_github.zig` + `src/agentsfleetd/http/handlers/connectors/github/` — the OAuth connector + platform-secret (`crypto_store.load` in the `agentsfleet-admin` vault) pattern the Slack app install mirrors.
 3. `src/agentsfleetd/auth/middleware/webhook_hmac.zig` + `webhook_sig.zig` — constant-time signature verify and the `UZ-WH-0xx` error taxonomy the Slack v0 scheme mirrors.
 4. `src/agentsfleetd/http/handlers/fleets/messages.zig` — the steer ingress (`XADD fleet:{id}:events`, `actor=steer:<user>`) the mention routing reuses with `actor=slack:<user>`.
@@ -41,7 +41,7 @@
 1. **Successful user moment** — a support lead types `@agentsfleet what's our prod called?` in `#support` thread A, tells it "aurora", and *days later in a different thread* asks `@agentsfleet is aurora healthy?` — and it answers using "aurora" it learned in thread A. The bot lives in the channel and remembers the channel.
 2. **Preserved user behaviour** — every existing trigger (webhook/cron/steer), the dashboard chat, the runner lease/report path, and the memory-continuity loop keep working unchanged. The Slack mention is one more producer into the single ingress, not a new runtime.
 3. **Optimal-way check** — the unconstrained-optimal is "channel-scoped memory keyed by channel." The direct shape is exactly that: one resident fleet per `(team_id, channel_id)` carrying the channel's memory namespace. No gap.
-4. **Rebuild-vs-iterate** — iterate. A refactor of the memory layer to add a channel-keyed store would trade away the proven `instance_id=fleet_id` determinism for nothing; the resident-fleet-as-namespace reuses it intact. **Verdict: patch (additive), not refactor.**
+4. **Rebuild-vs-iterate** — iterate. A refactor of the memory layer to add a channel-keyed store would trade away the proven `fleet_id`-scoped determinism for nothing; the resident-fleet-as-namespace reuses it intact. **Verdict: patch (additive), not refactor.**
 5. **What we build** — Slack OAuth install + `slack_installations`; one signed events ingress; per-channel resident-fleet lazy materialization + `slack_channel_bindings`; mention→steer routing; in-thread answer; the locked reactive policy; the dashboard Connect-Slack connector; operator playbooks + architecture-doc updates.
 6. **What we do NOT build** — hired durable teammates from Slack; source webhooks (Zoho/Statuspage); write actions; approval gating + Slack-user→`approval:resolve` allowlist; interactivity buttons / "Make it permanent"; slash commands; DMs / on-call (`im:write`). All deferred to the Rung-1 follow-on.
 7. **Fit** — compounds with memory continuity + the connector/vault + single-ingress models; must not destabilize the lease/report path (the resident fleet leases like any other).
@@ -120,7 +120,7 @@
 ## Decomposition & alternatives (patch vs refactor)
 
 - **Chosen shape:** six value slices — install, ingress, resident fleet, memory round-trip, dashboard, docs — each independently testable. The resident fleet is the keystone; everything else is plumbing around the existing memory loop.
-- **Alternatives considered:** (a) *per-thread fleet* — rejected: forgets across threads, kills "learns the channel." (b) *per-workspace fleet* — rejected: bleeds `#support` memory into `#random`. (c) *a new channel-keyed memory store* — rejected: reinvents `memory.memory_entries`, trades away `instance_id=fleet_id` determinism (`direction.md`).
+- **Alternatives considered:** (a) *per-thread fleet* — rejected: forgets across threads, kills "learns the channel." (b) *per-workspace fleet* — rejected: bleeds `#support` memory into `#random` (and the store has no workspace key — memory is `fleet_id`-scoped). (c) *a new channel-keyed memory store* — rejected: reinvents `memory.memory_entries`, trades away `fleet_id`-scoped determinism (`direction.md`).
 - **Patch-vs-refactor verdict:** **patch (additive)** — one new producer + one routing layer + reused memory loop. The Rung-1 hired-teammate surface is the named follow-up, not silently mud-patched in here.
 
 ---
@@ -194,7 +194,7 @@ core.slack_channel_bindings: (team_id, channel_id) UNIQUE → fleet_id (FK), kin
 
 steer envelope (reused):     XADD fleet:{channel_fleet_id}:events  actor=slack:<user_id>  type=chat
                              request={ text, thread_ts, channel_id, recent_thread_msgs[] }
-memory (reused, unchanged):  GET/POST /v1/runners/me/memory/{channel_fleet_id}   (instance_id = channel_fleet_id)
+memory (reused, unchanged):  GET/POST /v1/runners/me/memory/{channel_fleet_id}   (scope column fleet_id = the channel's resident fleet)
 ```
 
 ---
@@ -217,7 +217,7 @@ memory (reused, unchanged):  GET/POST /v1/runners/me/memory/{channel_fleet_id}  
 
 ## Invariants
 
-1. **Memory scope = channel = audience boundary** — `instance_id` is the resident `channel_fleet_id`, server-derived from the binding; `slack_channel_bindings` has UNIQUE `(team_id, channel_id)`. One channel ⇒ one namespace; never per-thread, per-user, or per-workspace. Enforced by the UNIQUE constraint + server-side derivation (no client-supplied scope).
+1. **Memory scope = channel = audience boundary** — the memory scope column `fleet_id` is the resident channel fleet (`channel_fleet_id`), server-derived from the binding; `slack_channel_bindings` has UNIQUE `(team_id, channel_id)`. One channel ⇒ one namespace; never per-thread, per-user, or per-workspace. Enforced by the UNIQUE constraint + server-side derivation (no client-supplied scope).
 2. **Resident fleet is reactive** — its `ExecutionPolicy` for `kind='resident'` admits no write tool, no `triggers[]`, no cron. Enforced by a single locked-policy constructor (comptime/explicit) with no code path that sets agency for residents.
 3. **Bot token never in an entity table** — `slack_installations` stores only the `slack:bot` key-name; the secret lives in the vault (RULE VLT). Enforced by schema (no token column) + `crypto_store` resolution.
 4. **Signature is constant-time + time-bounded** — non-short-circuiting compare (RULE CTC) over `v0:{ts}:{body}` + 300 s window. Enforced by reuse of `webhook_hmac` constant-time path.

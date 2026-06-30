@@ -46,7 +46,7 @@ The first `@mention` in `#support` lazily materializes a **durable per-channel r
 | | Thread | Channel-resident fleet |
 |---|---|---|
 | Lifetime | one conversation | durable, per `(team_id, channel_id)` |
-| Carries | transient input (mention + recent thread msgs) + `thread_ts` delivery target | the channel's **memory namespace** (`instance_id = channel_fleet_id`) |
+| Carries | transient input (mention + recent thread msgs) + `thread_ts` delivery target | the channel's **memory namespace** (keyed by the resident `fleet_id`) |
 
 ## 3. Mention → steer → answer (one reasoning loop)
 
@@ -60,7 +60,7 @@ Thread A stored `prod=aurora`. Thread B — a different thread, possibly days la
 
 | Step | Status |
 |---|---|
-| Memory hydrate/capture loop (`instance_id = fleet_id`) | ✅ reused |
+| Memory hydrate/capture loop (keyed by `fleet_id`) | ✅ reused |
 | Single ingress / lease / execute / report | ✅ reused |
 | Slack OAuth install + `core.slack_installations` | 🔨 M106 |
 | Signed events ingress + `(team,channel)→fleet` routing | 🔨 M106 |
@@ -69,7 +69,7 @@ Thread A stored `prod=aurora`. Thread B — a different thread, possibly days la
 
 ## 6. What this scenario proves
 
-- **Memory scope = channel = audience boundary.** The resident fleet (`instance_id = channel_fleet_id`), not the thread, is the namespace — so memory crosses threads and never bleeds across channels.
+- **Memory scope = channel = audience boundary.** The resident fleet (keyed by its `fleet_id`), not the thread, is the namespace — so memory crosses threads and never bleeds across channels.
 - **One reasoning loop.** A Slack mention is one more producer into the same ingress; the lease/execute/report path never branches on actor type.
 - **Reactive is not a second runtime.** Read-only, mention-only, never unattended — the on-ramp to the durable hired teammate (Rung 1), not "a chat UI over tools."
 
