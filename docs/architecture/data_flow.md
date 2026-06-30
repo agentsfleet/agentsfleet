@@ -497,6 +497,18 @@ installed runtime. Runner remains the infrastructure vocabulary.
    All four producers land the same envelope on the same stream. The
    reasoning loop never branches on actor — actor is metadata for the
    SKILL.md prose and the user's history filter.
+
+   > Forward-looking (M106 — pending): a fifth producer, the Slack-resident
+   > bot, lands an actor=slack:<user> steer on fleet:{channel_fleet_id}:events
+   > via POST /v1/integrations/slack/events after resolving (team_id,
+   > channel_id) → channel-resident fleet (core.slack_channel_bindings, lazily
+   > materialized on first mention). One more producer into THIS same ingress —
+   > the lease/execute path does not change. The resident fleet owns the
+   > channel's memory namespace (instance_id=channel_fleet_id), so memory
+   > persists thread→thread through the existing hydrate/capture loop
+   > (runner_fleet.md §Memory continuity). Reactive only — no write tools, no
+   > source triggers, no cron. Spec:
+   > docs/v2/pending/M106_001_P1_API_DOCS_INFRA_UI_SLACK_RESIDENT_CHANNEL_BOT.md
 ```
 
 **Webhook auth taxonomy.** The `webhook_sig` middleware classifies every
