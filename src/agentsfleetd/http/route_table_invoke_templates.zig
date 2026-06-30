@@ -19,10 +19,13 @@ pub fn invokePlatformTemplateOnboard(hx: *Hx, req: *httpz.Request, route: router
     templates.innerPlatformOnboard(hx.*, req);
 }
 
-pub fn invokeTenantTemplateOnboard(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    if (req.method != .POST) {
-        common.respondMethodNotAllowed(hx.res);
-        return;
+/// GET lists the workspace gallery (platform ∪ this workspace's tenant
+/// templates); POST onboards a tenant template. Both carry workspace_id.
+pub fn invokeWorkspaceFleetTemplates(hx: *Hx, req: *httpz.Request, route: router.Route) void {
+    const workspace_id = route.workspace_fleet_templates;
+    switch (req.method) {
+        .GET => templates.innerGallery(hx.*, workspace_id),
+        .POST => templates.innerTenantOnboard(hx.*, req, workspace_id),
+        else => common.respondMethodNotAllowed(hx.res),
     }
-    templates.innerTenantOnboard(hx.*, req, route.workspace_fleet_templates);
 }

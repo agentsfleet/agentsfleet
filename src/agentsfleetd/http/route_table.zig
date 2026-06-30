@@ -150,7 +150,7 @@ pub fn specFor(route: router.Route, registry: *auth_mw.MiddlewareRegistry) Route
         // route_scopes (platform-template:write / template:write); the tenant
         // handler adds a workspace-ownership check.
         .admin_fleet_templates => .{ .middlewares = registry.bearer(), .invoke = template_invoke.invokePlatformTemplateOnboard },
-        .workspace_fleet_templates => .{ .middlewares = registry.bearer(), .invoke = template_invoke.invokeTenantTemplateOnboard },
+        .workspace_fleet_templates => .{ .middlewares = registry.bearer(), .invoke = template_invoke.invokeWorkspaceFleetTemplates },
 
         // Admin platform keys + model catalogue — platform-plane scopes
         // (`platform-key:{read,admin}`, `model:{read,admin}`) resolved per-method

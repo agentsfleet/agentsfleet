@@ -379,6 +379,58 @@ components:
           type: string
           maxLength: 204800
           description: Optional raw TRIGGER.md bytes for `upload`. Ignored for fetched sources.
+    FleetTemplateGalleryEntry:
+      type: object
+      description: >-
+        One gallery row — a platform or tenant Fleet template. Carries identity,
+        source, derived requirements, and support-file summaries; never an
+        object-store key or support-file content.
+      required:
+      - id
+      - name
+      - visibility
+      - source_ref
+      - requirements
+      - support_files
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        visibility:
+          type: string
+          description: The catalog tier this template belongs to.
+          enum:
+          - platform
+          - tenant
+        source_ref:
+          type: string
+        requirements:
+          type: object
+          required:
+          - credentials
+          - tools
+          - network_hosts
+          - trigger_present
+          properties:
+            credentials:
+              type: array
+              items:
+                type: string
+            tools:
+              type: array
+              items:
+                type: string
+            network_hosts:
+              type: array
+              items:
+                type: string
+            trigger_present:
+              type: boolean
+        support_files:
+          type: array
+          items:
+            $ref: '#/components/schemas/FleetBundleSupportFileSummary'
     FleetTemplateOnboardResult:
       type: object
       description: >-

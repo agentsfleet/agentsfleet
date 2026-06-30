@@ -147,7 +147,11 @@ pub fn requiredScopes(route: router.Route, method: httpz.Method) []const S {
 
         // ── Template onboarding (M103; independent scopes, no hierarchy) ──
         .admin_fleet_templates => &PLATFORM_TEMPLATE_WRITE,
-        .workspace_fleet_templates => &TEMPLATE_WRITE,
+        // GET lists the workspace gallery (read); POST onboards (write).
+        .workspace_fleet_templates => switch (method) {
+            .GET => &FLEET_READ,
+            else => &TEMPLATE_WRITE,
+        },
 
         // ── Credentials ──
         .workspace_credentials => switch (method) {
