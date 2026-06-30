@@ -27,10 +27,28 @@ async function makeBundleDir(name: string): Promise<string> {
   return dir;
 }
 
-// ── install: missing --from (lines 68-73) ───────────────────────────────────
+// A gallery (GET) route returning one platform-tier entry whose id matches,
+// paired with the create (POST) route. A `--template` install makes both calls:
+// resolve the gallery, then create the fleet keyed off the entry's tier.
+const TEMPLATE_ID = "github-pr-reviewer";
 
-describe("install — missing --from flag", () => {
-  test("install without --from exits with validation error", async () => {
+function galleryRoute(
+  id: string,
+  name: string | undefined,
+  requirements: Record<string, unknown> = { trigger_present: true },
+): MockRoutes {
+  return {
+    [`GET /v1/workspaces/${WS_ID}/fleet-templates`]: () =>
+      jsonResponse(200, {
+        items: [{ id, ...(name ? { name } : {}), visibility: "platform", requirements }],
+      }),
+  };
+}
+
+// ── install: missing --template ─────────────────────────────────────────────
+
+describe("install — missing --template flag", () => {
+  test("install without --template exits with validation error", async () => {
     await authedScope(async () => {
       await withMockApi({}, async (apiUrl, calls) => {
         const out = bufferStream();
@@ -40,8 +58,31 @@ describe("install — missing --from flag", () => {
           { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
         );
         expect(code).toBe(4);
-        expect(err.read()).toContain("--from");
+        expect(err.read()).toContain("--template");
         expect(calls).toHaveLength(0);
+      });
+    });
+  });
+});
+
+// ── install: template not in the workspace gallery ──────────────────────────
+
+describe("install — template absent from gallery", () => {
+  test("an unknown template id exits ConfigError (exit 5)", async () => {
+    await authedScope(async () => {
+      const routes: MockRoutes = {
+        [`GET /v1/workspaces/${WS_ID}/fleet-templates`]: () =>
+          jsonResponse(200, { items: [] }),
+      };
+      await withMockApi(routes, async (apiUrl) => {
+        const out = bufferStream();
+        const err = bufferStream();
+        const code = await runCli(
+          ["install", "--template", "no-such-template"],
+          { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
+        );
+        expect(code).toBe(5);
+        expect(err.read()).toContain("is not in this workspace's gallery");
       });
     });
   });
@@ -52,117 +93,103 @@ describe("install — missing --from flag", () => {
 describe("install — text-mode success", () => {
   test("install success prints name and fleet id", async () => {
     await authedScope(async () => {
-      const dir = await makeBundleDir("text-mode-fleet");
-      try {
-        const routes: MockRoutes = {
-          [`POST /v1/workspaces/${WS_ID}/fleets`]: () =>
-            jsonResponse(201, { fleet_id: FLEET_ID, name: "text-mode-fleet" }),
-        };
-        await withMockApi(routes, async (apiUrl) => {
-          const out = bufferStream();
-          const err = bufferStream();
-          const code = await runCli(
-            ["install", "--from", dir],
-            { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
-          );
-          expect(code).toBe(0);
-          expect(out.read()).toContain("text-mode-fleet");
-          expect(out.read()).toContain(FLEET_ID);
-        });
-      } finally {
-        await fs.rm(dir, { recursive: true, force: true });
-      }
+      const routes: MockRoutes = {
+        ...galleryRoute(TEMPLATE_ID, "text-mode-fleet"),
+        [`POST /v1/workspaces/${WS_ID}/fleets`]: () =>
+          jsonResponse(201, { fleet_id: FLEET_ID, name: "text-mode-fleet" }),
+      };
+      await withMockApi(routes, async (apiUrl) => {
+        const out = bufferStream();
+        const err = bufferStream();
+        const code = await runCli(
+          ["install", "--template", TEMPLATE_ID],
+          { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
+        );
+        expect(code).toBe(0);
+        expect(out.read()).toContain("text-mode-fleet");
+        expect(out.read()).toContain(FLEET_ID);
+      });
     });
   });
 });
 
-// ── install: JSON mode (lines 108-114) ──────────────────────────────────────
+// ── install: JSON mode ──────────────────────────────────────────────────────
 
 describe("install — JSON-mode success", () => {
   test("install --json emits structured JSON on stdout", async () => {
     await authedScope(async () => {
-      const dir = await makeBundleDir("json-mode-fleet");
-      try {
-        const routes: MockRoutes = {
-          [`POST /v1/workspaces/${WS_ID}/fleets`]: () =>
-            jsonResponse(201, { fleet_id: FLEET_ID, name: "json-mode-fleet", webhook_urls: {} }),
+      const routes: MockRoutes = {
+        ...galleryRoute(TEMPLATE_ID, "json-mode-fleet"),
+        [`POST /v1/workspaces/${WS_ID}/fleets`]: () =>
+          jsonResponse(201, { fleet_id: FLEET_ID, name: "json-mode-fleet", webhook_urls: {} }),
+      };
+      await withMockApi(routes, async (apiUrl) => {
+        const out = bufferStream();
+        const err = bufferStream();
+        const code = await runCli(
+          ["--json", "install", "--template", TEMPLATE_ID],
+          { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
+        );
+        expect(code).toBe(0);
+        const parsed = JSON.parse(out.read()) as {
+          status?: string; fleet_id?: string; name?: string;
+          webhook_urls?: Record<string, string>;
         };
-        await withMockApi(routes, async (apiUrl) => {
-          const out = bufferStream();
-          const err = bufferStream();
-          const code = await runCli(
-            ["--json", "install", "--from", dir],
-            { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
-          );
-          expect(code).toBe(0);
-          const parsed = JSON.parse(out.read()) as {
-            status?: string; fleet_id?: string; name?: string;
-            webhook_urls?: Record<string, string>;
-          };
-          expect(parsed.status).toBe("installed");
-          expect(parsed.fleet_id).toBe(FLEET_ID);
-          expect(parsed.name).toBe("json-mode-fleet");
-          expect(parsed.webhook_urls).toEqual({});
-        });
-      } finally {
-        await fs.rm(dir, { recursive: true, force: true });
-      }
+        expect(parsed.status).toBe("installed");
+        expect(parsed.fleet_id).toBe(FLEET_ID);
+        expect(parsed.name).toBe("json-mode-fleet");
+        expect(parsed.webhook_urls).toEqual({});
+      });
     });
   });
 });
 
-// ── install: webhook URLs (lines 122-125) ───────────────────────────────────
+// ── install: webhook URLs ───────────────────────────────────────────────────
 
 describe("install — webhook URL output", () => {
   test("install prints webhook URLs when server response includes them", async () => {
     await authedScope(async () => {
-      const dir = await makeBundleDir("webhook-fleet");
-      try {
-        const routes: MockRoutes = {
-          [`POST /v1/workspaces/${WS_ID}/fleets`]: () =>
-            jsonResponse(201, {
-              fleet_id: FLEET_ID, name: "webhook-fleet",
-              webhook_urls: { github: "https://hook.agentsfleet.net/gh/abc123" },
-            }),
-        };
-        await withMockApi(routes, async (apiUrl) => {
-          const out = bufferStream();
-          const err = bufferStream();
-          const code = await runCli(
-            ["install", "--from", dir],
-            { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
-          );
-          expect(code).toBe(0);
-          expect(out.read()).toContain("github");
-          expect(out.read()).toContain("https://hook.agentsfleet.net/gh/abc123");
-        });
-      } finally {
-        await fs.rm(dir, { recursive: true, force: true });
-      }
+      const routes: MockRoutes = {
+        ...galleryRoute(TEMPLATE_ID, "webhook-fleet"),
+        [`POST /v1/workspaces/${WS_ID}/fleets`]: () =>
+          jsonResponse(201, {
+            fleet_id: FLEET_ID, name: "webhook-fleet",
+            webhook_urls: { github: "https://hook.agentsfleet.net/gh/abc123" },
+          }),
+      };
+      await withMockApi(routes, async (apiUrl) => {
+        const out = bufferStream();
+        const err = bufferStream();
+        const code = await runCli(
+          ["install", "--template", TEMPLATE_ID],
+          { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
+        );
+        expect(code).toBe(0);
+        expect(out.read()).toContain("github");
+        expect(out.read()).toContain("https://hook.agentsfleet.net/gh/abc123");
+      });
     });
   });
 
-  test("install uses directory basename when server response omits name", async () => {
+  test("install falls back to the template id when gallery + create both omit name", async () => {
     await authedScope(async () => {
-      const dir = await makeBundleDir("fallback-name");
-      try {
-        await withMockApi(
-          { [`POST /v1/workspaces/${WS_ID}/fleets`]: () => jsonResponse(201, { fleet_id: FLEET_ID }) },
-          async (apiUrl) => {
-            const out = bufferStream();
-            const code = await runCli(
-              ["install", "--from", dir],
-              { stdout: out.stream, stderr: bufferStream().stream, env: { AGENTSFLEET_API_URL: apiUrl } },
-            );
-            expect(code).toBe(0);
-            // Assert the EXACT directory basename, not the "fallback-name"
-            // substring (which leaks through the mkdtemp prefix regardless).
-            expect(out.read()).toContain(path.basename(dir));
-          },
+      const fallbackTemplateId = "fallback-template-id";
+      const routes: MockRoutes = {
+        // gallery entry carries no `name`, create response carries no `name`,
+        // so the CLI renders `entry.name || templateId` → the template id.
+        ...galleryRoute(fallbackTemplateId, undefined),
+        [`POST /v1/workspaces/${WS_ID}/fleets`]: () =>
+          jsonResponse(201, { fleet_id: FLEET_ID }),
+      };
+      await withMockApi(routes, async (apiUrl) => {
+        const out = bufferStream();
+        const code = await runCli(
+          ["install", "--template", fallbackTemplateId],
+          { stdout: out.stream, stderr: bufferStream().stream, env: { AGENTSFLEET_API_URL: apiUrl } },
         );
-      } finally {
-        await fs.rm(dir, { recursive: true, force: true });
-      }
+        expect(code).toBe(0);
+        expect(out.read()).toContain(fallbackTemplateId);
+      });
     });
   });
 });
@@ -232,6 +259,37 @@ describe("fleet update — text-mode success", () => {
           expect(out.read()).toContain(FLEET_ID);
           expect(out.read()).toContain("7");
           expect(calls[0]).toMatchObject({ method: "PATCH" });
+        });
+      } finally {
+        await fs.rm(dir, { recursive: true, force: true });
+      }
+    });
+  });
+
+  test("fleet update with a SKILL.md-only bundle PATCHes source_markdown without trigger_markdown", async () => {
+    await authedScope(async () => {
+      // No TRIGGER.md → loadBundle returns trigger_md: null → bodyFromBundle
+      // omits trigger_markdown (fleet_install_source.ts bodyFromBundle branch).
+      const dir = await fs.mkdtemp(path.join(os.tmpdir(), "zctl-skillonly-"));
+      await fs.writeFile(path.join(dir, "SKILL.md"),
+        "---\nname: skill-only\n---\n# skill only\n", { mode: 0o644 });
+      try {
+        const routes: MockRoutes = {
+          [`PATCH /v1/workspaces/${WS_ID}/fleets/${FLEET_ID}`]: () =>
+            jsonResponse(200, { config_revision: 3 }),
+        };
+        await withMockApi(routes, async (apiUrl, calls) => {
+          const out = bufferStream();
+          const code = await runCli(
+            ["fleet", "update", FLEET_ID, "--from", dir],
+            { stdout: out.stream, stderr: bufferStream().stream, env: { AGENTSFLEET_API_URL: apiUrl } },
+          );
+          expect(code).toBe(0);
+          const body = JSON.parse(calls[0]?.body ?? "{}") as {
+            source_markdown?: string; trigger_markdown?: string;
+          };
+          expect(body.source_markdown).toContain("skill only");
+          expect(body.trigger_markdown).toBeUndefined();
         });
       } finally {
         await fs.rm(dir, { recursive: true, force: true });
