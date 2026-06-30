@@ -108,7 +108,7 @@ test "integration: SSE publish→receive latency p95 < 200ms over 50 trials" {
     fixtures.closeAndWakeSubscriber(&sc, &pub_client, channel);
     const conn = try h.acquireConn();
     defer h.releaseConn(conn);
-    fixtures.cleanupWorkspaceData(conn);
+    fixtures.cleanupFleet(conn, AGENTSFLEET_LATENCY);
 }
 
 // ── test_sse_reconnect_backfills_via_events ─────────────────────────────────
@@ -182,7 +182,7 @@ test "integration: SSE reconnect — durable backfill via /events covers the gap
     fixtures.closeAndWakeSubscriber(&sc2, &pub_client, channel);
     const conn = try h.acquireConn();
     defer h.releaseConn(conn);
-    fixtures.cleanupWorkspaceData(conn);
+    fixtures.cleanupFleet(conn, AGENTSFLEET_RECONNECT);
 }
 
 // ── test_sse_sequence_resets_on_reconnect ───────────────────────────────────
@@ -228,5 +228,5 @@ test "integration: SSE id resets to 0 on reconnect — Last-Event-ID ignored" {
     fixtures.closeAndWakeSubscriber(&sc2, &pub_client, channel);
     const conn = try h.acquireConn();
     defer h.releaseConn(conn);
-    fixtures.cleanupWorkspaceData(conn);
+    fixtures.cleanupFleet(conn, AGENTSFLEET_SEQUENCE);
 }

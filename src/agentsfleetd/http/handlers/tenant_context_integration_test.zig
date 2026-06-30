@@ -55,7 +55,7 @@ test "authorizeWorkspaceAndSetTenantContext fails closed for a null-tenant princ
 
     // A null-tenant principal — even against a workspace that really exists —
     // must be denied and must not have its tenant inferred from that workspace.
-    const principal = common.AuthPrincipal{ .mode = .jwt_oidc, .role = .user, .tenant_id = null };
+    const principal = common.AuthPrincipal{ .mode = .jwt_oidc, .tenant_id = null };
     try std.testing.expect(!common.authorizeWorkspaceAndSetTenantContext(conn, principal, WORKSPACE_ID));
 
     // RLS context is untouched: still the sentinel, never the workspace's real tenant.

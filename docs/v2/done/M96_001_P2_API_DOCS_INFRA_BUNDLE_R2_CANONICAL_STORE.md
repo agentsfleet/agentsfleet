@@ -14,7 +14,7 @@ Specification (SPEC) AUTHORING RULES (load-bearing - do not delete):
 **Milestone:** Milestone 96 (M96)
 **Workstream:** 001
 **Date:** Jun 22, 2026
-**Status:** PENDING
+**Status:** DEFERRED - superseded by M103_001 (Two-tier Fleet template catalog with R2-canonical admin onboarding), which absorbs this spec's R2-only content decision. Never started; retired as a design record. Reactivation condition: none - the work lands under M103_001.
 **Priority:** Priority 2 (P2) - removes duplicate artifact storage from the bundle install path without changing the install user journey.
 **Categories:** API, Documentation (DOCS), Infrastructure (INFRA)
 **Batch:** Batch 1 (B1) - bundle storage consolidation.

@@ -1,0 +1,55 @@
+//! Tests for the declarative route → required-scope table. FLL-exempt.
+
+const std = @import("std");
+const testing = std.testing;
+const route_scopes = @import("route_scopes.zig");
+const scopes = @import("../auth/scopes.zig");
+
+fn onlyScope(required: []const scopes.Scope) ?scopes.Scope {
+    if (required.len != 1) return null;
+    return required[0];
+}
+
+test "tenant fleet routes map method → capability scope (GET read, write/delete escalate)" {
+    try testing.expectEqual(scopes.Scope.fleet_read, onlyScope(route_scopes.requiredScopes(.{ .workspace_fleets = "ws1" }, .GET)).?);
+    try testing.expectEqual(scopes.Scope.fleet_write, onlyScope(route_scopes.requiredScopes(.{ .workspace_fleets = "ws1" }, .POST)).?);
+
+    const fleet = router_fleet();
+    try testing.expectEqual(scopes.Scope.fleet_write, onlyScope(route_scopes.requiredScopes(fleet, .PATCH)).?);
+    try testing.expectEqual(scopes.Scope.fleet_admin, onlyScope(route_scopes.requiredScopes(fleet, .DELETE)).?);
+}
+
+test "platform routes map to platform-plane scopes; runner enroll is its own verb" {
+    try testing.expectEqual(scopes.Scope.runner_enroll, onlyScope(route_scopes.requiredScopes(.register_runner, .POST)).?);
+    try testing.expectEqual(scopes.Scope.runner_read, onlyScope(route_scopes.requiredScopes(.fleet_runners_list, .GET)).?);
+    try testing.expectEqual(scopes.Scope.runner_write, onlyScope(route_scopes.requiredScopes(.{ .fleet_runner_patch = "r1" }, .PATCH)).?);
+    try testing.expectEqual(scopes.Scope.stream_read, onlyScope(route_scopes.requiredScopes(.fleet_streams_list, .GET)).?);
+    try testing.expectEqual(scopes.Scope.platform_key_read, onlyScope(route_scopes.requiredScopes(.admin_platform_keys, .GET)).?);
+    try testing.expectEqual(scopes.Scope.platform_key_admin, onlyScope(route_scopes.requiredScopes(.admin_platform_keys, .PUT)).?);
+    try testing.expectEqual(scopes.Scope.model_read, onlyScope(route_scopes.requiredScopes(.admin_models, .GET)).?);
+    try testing.expectEqual(scopes.Scope.model_admin, onlyScope(route_scopes.requiredScopes(.admin_models, .POST)).?);
+}
+
+test "tenant api-key routes escalate read→write→admin by method" {
+    try testing.expectEqual(scopes.Scope.apikey_read, onlyScope(route_scopes.requiredScopes(.tenant_api_keys, .GET)).?);
+    try testing.expectEqual(scopes.Scope.apikey_write, onlyScope(route_scopes.requiredScopes(.tenant_api_keys, .POST)).?);
+    try testing.expectEqual(scopes.Scope.apikey_write, onlyScope(route_scopes.requiredScopes(.{ .tenant_api_key_by_id = "k1" }, .PATCH)).?);
+    try testing.expectEqual(scopes.Scope.apikey_admin, onlyScope(route_scopes.requiredScopes(.{ .tenant_api_key_by_id = "k1" }, .DELETE)).?);
+}
+
+test "runner self-plane routes all require runner:self" {
+    try testing.expectEqual(scopes.Scope.runner_self, onlyScope(route_scopes.requiredScopes(.runner_self, .GET)).?);
+    try testing.expectEqual(scopes.Scope.runner_self, onlyScope(route_scopes.requiredScopes(.runner_heartbeat, .POST)).?);
+    try testing.expectEqual(scopes.Scope.runner_self, onlyScope(route_scopes.requiredScopes(.runner_lease, .POST)).?);
+}
+
+test "no-auth and self-service routes carry no capability scope (authenticated-only/none)" {
+    try testing.expectEqual(@as(usize, 0), route_scopes.requiredScopes(.healthz, .GET).len);
+    try testing.expectEqual(@as(usize, 0), route_scopes.requiredScopes(.{ .receive_webhook = "z1" }, .POST).len);
+    // Self-session management authenticates but needs no capability scope.
+    try testing.expectEqual(@as(usize, 0), route_scopes.requiredScopes(.delete_all_auth_sessions, .DELETE).len);
+}
+
+fn router_fleet() @import("router.zig").Route {
+    return .{ .patch_workspace_fleet = .{ .workspace_id = "ws1", .fleet_id = "z1" } };
+}

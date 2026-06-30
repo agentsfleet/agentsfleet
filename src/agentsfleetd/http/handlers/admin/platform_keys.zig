@@ -1,8 +1,9 @@
 //! Admin platform LLM key management — the platform default provider + model.
 //!
-//! Consumed by the platform-admin "/admin/models" dashboard (Platform Default
-//! card). Gated by registry.platformAdmin() at the route — the middleware is the
-//! sole gate (no handler-internal role re-check), mirroring register_runner.
+//! Consumed by the platform-operator "/admin/models" dashboard (Platform Default
+//! card). Gated by the `platform-key:{read,admin}` scope at the route
+//! (route_scopes.zig → requireScope) — the middleware is the sole gate (no
+//! handler-internal capability re-check), mirroring register_runner.
 //!
 //! PUT sets the one active default: it validates the (provider, model) is a
 //! priced core.model_caps row (the billing spine — a free-text default would
@@ -59,9 +60,9 @@ const PutInput = struct {
 };
 
 pub fn innerPutAdminPlatformKey(hx: hx_mod.Hx, req: *httpz.Request) void {
-    // Gate is the platformAdmin() middleware on this route (route_table.zig) — a
-    // platform-admin principal need not carry the per-tenant `admin` role, so no
-    // handler-internal requireRole here (mirrors register_runner).
+    // Gate is the `platform-key:admin` scope on this route (route_scopes.zig +
+    // requireScope) — capability rides the token, so no handler-internal
+    // re-check here (mirrors register_runner).
     const body = req.body() orelse {
         hx.fail(error_codes.ERR_INVALID_REQUEST, "Request body required");
         return;
@@ -218,7 +219,7 @@ fn activateDefaultTx(
 
 pub fn innerDeleteAdminPlatformKey(hx: hx_mod.Hx, req: *httpz.Request, provider: []const u8) void {
     _ = req;
-    // Gate is the platformAdmin() middleware (route_table.zig) — see PUT above.
+    // Gate is the `platform-key:admin` scope (route_scopes.zig) — see PUT above.
     if (provider.len == 0 or provider.len > 32) {
         hx.fail(error_codes.ERR_INVALID_REQUEST, S_PROVIDER_MUST_BE_1_32_CHARS);
         return;
@@ -254,7 +255,7 @@ pub fn innerDeleteAdminPlatformKey(hx: hx_mod.Hx, req: *httpz.Request, provider:
 
 pub fn innerGetAdminPlatformKeys(hx: hx_mod.Hx, req: *httpz.Request) void {
     _ = req;
-    // Gate is the platformAdmin() middleware (route_table.zig) — see PUT above.
+    // Gate is the `platform-key:admin` scope (route_scopes.zig) — see PUT above.
     const conn = hx.ctx.pool.acquire() catch {
         common.internalDbUnavailable(hx.res, hx.req_id);
         return;

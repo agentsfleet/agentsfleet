@@ -7,6 +7,7 @@
 // Requires TEST_DATABASE_URL — skipped gracefully when unset.
 
 const std = @import("std");
+const scope_fixtures = @import("../test_scope_tokens.zig");
 const clock = @import("common").clock;
 const pg = @import("pg");
 const auth_mw = @import("../../auth/middleware/mod.zig");
@@ -23,19 +24,16 @@ const TestHarness = harness_mod.TestHarness;
 const TEST_TENANT_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f31";
 const TEST_WORKSPACE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f41";
 const TEST_FLEET_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f51";
-const TEST_ISSUER = "https://clerk.dev.agentsfleet.net";
-const TEST_AUDIENCE = "https://api.agentsfleet.net";
-const TEST_JWKS =
-    \\{"keys":[{"kty":"RSA","n":"310oH7ahxoKws6fEKmbOP30dQaQhT21HGRxvibeBuqfywkNxJ0xcfhhao1mwbLH7BUOg2GYXDEA6EvcVlKXqGN_Wa_4Q7UenmZqeXYdB_IhAc-SzyoW9hRi01FskVVI8w_N0Pf5SItu7DIqdxbKP8_eGFyrTL1mN-5klkIDCSnhrDLUEgjVo7iod0vsoqUEH-2m1s-2xDh5aQr5rSF6neCTA1-JvKVkJLD6eOdBnEwYBm6-yZ0CNgMfw1uUyw5cGwdaPsCerHctH0EwcI_qQFUUnFjBeN4FJkP_DDoHWTEV9a-5wzomOcoKlyfZvRgplGYYqTWrIAfcZobyzYiSy1w","e":"AQAB","kid":"rbac-test-kid","use":"sig","alg":"RS256"}]}
-;
+const TEST_ISSUER = scope_fixtures.ISSUER;
+const TEST_AUDIENCE = scope_fixtures.AUDIENCE;
+const TEST_JWKS = scope_fixtures.JWKS;
 // Reuses the dashboard test's pre-signed operator JWT — the tenant_id
 // in the `metadata` claim is distinct from this suite's seeded tenant
 // (`…6f01` vs `…6f31`), so we override the billing row to the claim's
 // tenant before running the GET tests.
 const TEST_BALANCE_NANOS: i64 = 1000;
 
-const TOKEN_OPERATOR =
-    "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6InJiYWMtdGVzdC1raWQifQ.eyJzdWIiOiJ1c2VyX3Rlc3QiLCJpc3MiOiJodHRwczovL2NsZXJrLmRldi5hZ2VudHNmbGVldC5uZXQiLCJhdWQiOiJodHRwczovL2FwaS5hZ2VudHNmbGVldC5uZXQiLCJleHAiOjQxMDI0NDQ4MDAsIm1ldGFkYXRhIjp7InRlbmFudF9pZCI6IjAxOTViNGJhLThkM2EtN2YxMy04YWJjLTJiM2UxZTBhNmYwMSIsIndvcmtzcGFjZV9pZCI6IjAxOTViNGJhLThkM2EtN2YxMy04YWJjLTJiM2UxZTBhNmYxMSIsInJvbGUiOiJvcGVyYXRvciJ9fQ.eEQp3HyUFsV1bRBDvww3DirCY1R-vrASYT3KXnTeXBa8Owuag8Mc1I_v93XBatf-t-Y0qd6r9uNQuRiRpuXkrC01MJwyPnyvKDYHFAX828PIMdFgZ5FUGU0S6r1B4B8FaVZnfMdwyyQW9tCeFBvvh2hkuodoOlkcaJnR98kMrYjGHVoyDQc5H5JnU5O8Kkb9STE-XR-3b8VdOlGJR-ljX4Vw8Fipo5p7fo_VdhhUXD2C974DrbQWtsXhqUTqOFWAEUcUMM2ODH8pEFWhG8poHVP8LLWCcSFxZDN_Ia3dNR8OK9SEblCPIlfimiMtscqxli-9uC00n62UmLuQtGVlXA";
+const TOKEN_OPERATOR = scope_fixtures.TENANT_ADMIN;
 const TOKEN_TENANT_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01";
 
 fn configureRegistry(_: *auth_mw.MiddlewareRegistry, _: *TestHarness) anyerror!void {}
@@ -283,12 +281,12 @@ test "integration(m11_006): POST /v1/workspaces with a JWT lacking tenant_id ret
 
     // A JWT that omits `metadata.tenant_id`. Same kid / signature flow as
     // the shared fixtures; payload minted for this suite only.
-    // header: {"alg":"RS256","typ":"JWT","kid":"rbac-test-kid"}
-    // payload: {"sub":"user_m11_006","iss":"https://clerk.dev.agentsfleet.net",
+    // header: {"alg":"RS256","typ":"JWT","kid":"test-kid-static"}
+    // payload: {"sub":"user_m11_006","iss":"https://clerk.test.agentsfleet.net",
     //   "aud":"https://api.agentsfleet.net","exp":4102444800,
     //   "metadata":{"role":"operator"}}
     // Signed with the same test RSA key used elsewhere in the suite.
-    const TOKEN_NO_TENANT = "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6InJiYWMtdGVzdC1raWQifQ.eyJzdWIiOiJ1c2VyX20xMV8wMDYiLCJpc3MiOiJodHRwczovL2NsZXJrLmRldi5hZ2VudHNmbGVldC5uZXQiLCJhdWQiOiJodHRwczovL2FwaS5hZ2VudHNmbGVldC5uZXQiLCJleHAiOjQxMDI0NDQ4MDAsIm1ldGFkYXRhIjp7InJvbGUiOiJvcGVyYXRvciJ9fQ.Jr7TVI5LpX9j1YoJG7dTyaV1HZVZ5UZVEryrj7CeYw_YR6Oe74VlRaybj-iZHR_NnZmXveG86IC3fuUQjesTjpGEg6Lij2QDjdkQIXLYVhevMLaVZIjb6fstjLwe9tFT8V8ckNQCDexj_JXb1i2ENEYXPIV8SCpdAbbk5eBzWr7UDvEeAyqkcDjmVqa4MC2lIpq-Y6c_Es04ZPoWLWoAlcLCRHk21Mrm5VtLjCQ5GbR5JFMf_lFdzuo3rwypWYduWvBZKI4xwvu6In5YUN0wenT1kRylcXD5HIPzCB2t5t1DLzaD5kSMpVslEZdtXfFn5Q1P-PrY4XtZBH0XG3etig";
+    const TOKEN_NO_TENANT = scope_fixtures.NO_TENANT;
 
     const r = try (try (try h.post("/v1/workspaces").json("{}")).bearer(TOKEN_NO_TENANT)).send();
     defer r.deinit();

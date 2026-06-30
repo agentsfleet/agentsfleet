@@ -1,6 +1,7 @@
 // Runner event history over the live HTTP surface.
 
 const std = @import("std");
+const scope_fixtures = @import("./test_scope_tokens.zig");
 const clock = @import("common").clock;
 const auth_mw = @import("../auth/middleware/mod.zig");
 const api_key = @import("../auth/api_key.zig");
@@ -14,8 +15,8 @@ const base = @import("../db/test_fixtures.zig");
 
 const ALLOC = std.testing.allocator;
 
-const TEST_ISSUER = "https://clerk.test.agentsfleet.net";
-const TEST_AUDIENCE = "https://api.agentsfleet.net";
+const TEST_ISSUER = scope_fixtures.ISSUER;
+const TEST_AUDIENCE = scope_fixtures.AUDIENCE;
 const REGISTER_HOST = "host-event-register-test";
 const REGISTER_BODY =
     \\{"host_id":"host-event-register-test","sandbox_tier":"dev_none","labels":[]}
@@ -67,11 +68,8 @@ const SOURCE_MD =
     \\You are a runner event test fleet.
 ;
 
-const TEST_JWKS =
-    \\{"keys":[{"kty":"RSA","n":"qXJuc_Hncnu-ZAFKPEhb6qeXXSp1GcUidOyyiyFFwi5bmql2NZH4Quv23LhHsAKM8L5950bvTQppdzcJ8zWQKx9F8kViZgaG1Ghagoz2a2BMjeSHLFu_gfsxP6y752WUcZ1uHUGnWm9WsDE7xMfbOOpcUoOc_RxiRhwuXjR3zw6J8Vl4DABKQXq_jb6l5nyDWOsi9FopsaS6FKpQoiWO4DWHEHVVNA7RxoYtb1ew9u4qSq4dyeyb6sOXBWuc9wOjSXcuEm30qYsvZJ8ORSh1hxdDaArUCXQKp_DPVJBO7Mmu_EAnOcSsFeZ-kgLVD7yJp_Yq983-s9odwX0TxlL8Lw","e":"AQAB","kid":"m80005-test-kid","use":"sig","alg":"RS256"}]}
-;
-const PLATFORM_ADMIN_TOKEN =
-    "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6Im04MDAwNS10ZXN0LWtpZCJ9.eyJzdWIiOiJ1c2VyX204MDAwNSIsImlzcyI6Imh0dHBzOi8vY2xlcmsudGVzdC5hZ2VudHNmbGVldC5uZXQiLCJhdWQiOiJodHRwczovL2FwaS5hZ2VudHNmbGVldC5uZXQiLCJleHAiOjQxMDI0NDQ4MDAsIm1ldGFkYXRhIjp7InRlbmFudF9pZCI6IjAxOTViNGJhLThkM2EtN2YxMy04YWJjLTJiM2UxZTBhNmYwMSIsIndvcmtzcGFjZV9pZCI6IjAxOTViNGJhLThkM2EtN2YxMy04YWJjLTJiM2UxZTBhNmYxMSIsInJvbGUiOiJhZG1pbiIsInBsYXRmb3JtX2FkbWluIjp0cnVlfX0.H3gZWcqBWYnREFPQAbnoIzhV33ckaYyo37clfhGekxy4TMM96QuUbeyHJW0CnuMRS6UueCjwiidW3mfkINdfQy6-Y4aERoqPvfYQ7QGiwMSPU63heJKxS4fzHzbdDMfO1XoAEcj333xJ8NyvkdBXEbKS9k0LA2-4mczKXLnWkEHnAfWslsK1hdLdIf4rNYP4KahrV25QU-8RirkUTV5jUUgH3HuPMTF976FZX_Q6pL2vW6i1iS2S4iMVwmBdBPlMCPLfjc3Yi9EIP0eBCkWCwZrp1nD5U74Akb6Yh4LCJw9xbhj4kI4jr9e-zwOh7FH_fzbxgJUxHg2jl9pLSAofGw";
+const TEST_JWKS = scope_fixtures.JWKS;
+const PLATFORM_ADMIN_TOKEN = scope_fixtures.PLATFORM_ADMIN;
 
 // SAFETY: populated by configureRegistry before runnerBearer reads it.
 var runner_lookup_ctx: serve_runner_lookup.Ctx = undefined;

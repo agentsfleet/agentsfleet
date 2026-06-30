@@ -11,10 +11,10 @@ test "metadata endpoint uses PATCH (Clerk rejects POST with 405)" {
 
 test "renderMetadataPayload: both fields → compact merge body" {
     const alloc = std.testing.allocator;
-    const payload = try cb.renderMetadataPayload(alloc, "0195b4ba-8d3a-7f13-8abc-aa0000000001", "operator");
+    const payload = try cb.renderMetadataPayload(alloc, "0195b4ba-8d3a-7f13-8abc-aa0000000001", "fleet:admin credential:write");
     defer alloc.free(payload);
     try std.testing.expectEqualStrings(
-        \\{"public_metadata":{"tenant_id":"0195b4ba-8d3a-7f13-8abc-aa0000000001","role":"operator"}}
+        \\{"public_metadata":{"tenant_id":"0195b4ba-8d3a-7f13-8abc-aa0000000001","scopes":"fleet:admin credential:write"}}
     , payload);
 }
 
@@ -27,12 +27,12 @@ test "renderMetadataPayload: tenant_id only" {
     , payload);
 }
 
-test "renderMetadataPayload: role only" {
+test "renderMetadataPayload: scopes only" {
     const alloc = std.testing.allocator;
-    const payload = try cb.renderMetadataPayload(alloc, null, "admin");
+    const payload = try cb.renderMetadataPayload(alloc, null, "workspace:admin");
     defer alloc.free(payload);
     try std.testing.expectEqualStrings(
-        \\{"public_metadata":{"role":"admin"}}
+        \\{"public_metadata":{"scopes":"workspace:admin"}}
     , payload);
 }
 

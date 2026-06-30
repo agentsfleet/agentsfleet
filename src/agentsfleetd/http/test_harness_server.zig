@@ -23,9 +23,7 @@ pub fn defaultRegistry(h: *TestHarness, cfg: Config) auth_mw.MiddlewareRegistry 
         // SAFETY: stubRunnerLookup ignores host and returns null, so .host is
         // never dereferenced; runner-authed routes 401 in this harness.
         .runner_bearer_mw = .{ .host = undefined, .lookup = stubRunnerLookup },
-        .require_role_admin = .{ .required = .admin },
-        .require_role_operator = .{ .required = .operator },
-        .platform_admin_mw = .{},
+        .require_scope_mw = .{},
         .webhook_hmac_mw = .{ .secret = "" },
     };
 }

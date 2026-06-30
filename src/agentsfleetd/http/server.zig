@@ -11,6 +11,7 @@ const otel_traces = @import("../observability/otel_traces.zig");
 const auth_mw = @import("../auth/middleware/mod.zig");
 const auth_adapter = @import("handlers/auth/adapter.zig");
 const route_table = @import("route_table.zig");
+const route_scopes = @import("route_scopes.zig");
 const hx_mod = @import("handlers/hx.zig");
 const error_codes = @import("../errors/error_registry.zig");
 const metrics = @import("../observability/metrics.zig");
@@ -229,17 +230,14 @@ fn dispatchMatchedRoute(ctx: *handler.Context, registry: *auth_mw.MiddlewareRegi
     const req_id = common.requestId(alloc);
     var auth = auth_adapter.buildAuthCtx(res, alloc, req_id);
 
-    // Populate the webhook fleet slot before running the middleware
-    // chain. The webhook_sig + svix middlewares read it; all other
-    // middlewares ignore the field.
+    // Per-request route capability requirement read by requireScope (empty for
+    // no-auth/webhook routes). Resolved here so the auth layer never imports the
+    // HTTP route table (portability boundary).
+    auth.required_scopes = route_scopes.requiredScopes(matched, req.method);
+
+    // Webhook fleet slot — read by webhook_sig + svix, ignored by others.
     switch (matched) {
-        .receive_webhook => |fleet_id| {
-            auth.webhook_fleet_id = fleet_id;
-        },
-        .receive_svix_webhook => |fleet_id| {
-            auth.webhook_fleet_id = fleet_id;
-        },
-        .github_webhook => |fleet_id| {
+        .receive_webhook, .receive_svix_webhook, .github_webhook => |fleet_id| {
             auth.webhook_fleet_id = fleet_id;
         },
         else => {},
@@ -251,9 +249,8 @@ fn dispatchMatchedRoute(ctx: *handler.Context, registry: *auth_mw.MiddlewareRegi
     };
     if (outcome == .short_circuit) return;
 
-    // Build Hx from auth context — principal is set by bearer/admin middleware
-    // for authenticated routes; zero-value (.mode=.api_key) for none-policy
-    // routes (those handlers do not access hx.principal).
+    // Principal is set by the bearer/runner middleware; zero-value for
+    // none-policy routes (those handlers do not access hx.principal).
     var hx = hx_mod.Hx{
         .alloc = alloc,
         .principal = auth.principal orelse .{ .mode = .api_key },
@@ -345,4 +342,6 @@ test {
     _ = @import("test_port.zig");
     // M102 §3 — credential-mint handler unit tests (outcome→wire mapping).
     _ = @import("handlers/runner/credentials_mint.zig");
+    // Declarative route → required-scope table tests.
+    _ = @import("route_scopes_test.zig");
 }

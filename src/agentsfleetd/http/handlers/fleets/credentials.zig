@@ -19,7 +19,6 @@ const credential_key = @import("../../../fleet_runtime/credential_key.zig");
 const workspace_guards = @import("../../workspace_guards.zig");
 
 const log = logging.scoped(.fleet_credentials_api);
-const API_ACTOR = "api";
 
 pub const Context = common.Context;
 
@@ -67,10 +66,7 @@ pub fn innerStoreCredential(hx: hx_mod.Hx, req: *httpz.Request, workspace_id: []
     defer hx.ctx.pool.release(conn);
 
     // Credential endpoints require operator-minimum role.
-    const actor = hx.principal.user_id orelse API_ACTOR;
-    const access = workspace_guards.enforce(hx.res, hx.req_id, conn, hx.alloc, hx.principal, workspace_id, actor, .{
-        .minimum_role = .operator,
-    }) orelse return;
+    const access = workspace_guards.enforce(hx.res, hx.req_id, conn, hx.principal, workspace_id) orelse return;
     defer access.deinit(hx.alloc);
 
     storeCredentialJsonOnConn(conn, hx.alloc, workspace_id, cred) catch |err| switch (err) {
@@ -137,10 +133,7 @@ pub fn innerDeleteCredential(
     };
     defer hx.ctx.pool.release(conn);
 
-    const actor = hx.principal.user_id orelse API_ACTOR;
-    const access = workspace_guards.enforce(hx.res, hx.req_id, conn, hx.alloc, hx.principal, workspace_id, actor, .{
-        .minimum_role = .operator,
-    }) orelse return;
+    const access = workspace_guards.enforce(hx.res, hx.req_id, conn, hx.principal, workspace_id) orelse return;
     defer access.deinit(hx.alloc);
 
     const key_name = credential_key.allocKeyName(hx.alloc, credential_name) catch {
@@ -174,10 +167,7 @@ pub fn innerListCredentials(hx: hx_mod.Hx, req: *httpz.Request, workspace_id: []
     defer hx.ctx.pool.release(conn);
 
     // RULE BIL: credential endpoints require operator-minimum role.
-    const actor = hx.principal.user_id orelse API_ACTOR;
-    const access = workspace_guards.enforce(hx.res, hx.req_id, conn, hx.alloc, hx.principal, workspace_id, actor, .{
-        .minimum_role = .operator,
-    }) orelse return;
+    const access = workspace_guards.enforce(hx.res, hx.req_id, conn, hx.principal, workspace_id) orelse return;
     defer access.deinit(hx.alloc);
 
     const creds = credential_list.fetchCredentialListOnConn(conn, hx.alloc, workspace_id) catch |err| {
@@ -242,10 +232,7 @@ pub fn innerRotateCredential(
     defer hx.ctx.pool.release(conn);
 
     // Credential endpoints require operator-minimum role.
-    const actor = hx.principal.user_id orelse API_ACTOR;
-    const access = workspace_guards.enforce(hx.res, hx.req_id, conn, hx.alloc, hx.principal, workspace_id, actor, .{
-        .minimum_role = .operator,
-    }) orelse return;
+    const access = workspace_guards.enforce(hx.res, hx.req_id, conn, hx.principal, workspace_id) orelse return;
     defer access.deinit(hx.alloc);
 
     rotateCredentialKeyOnConn(conn, hx.alloc, workspace_id, credential_name, parsed.value.api_key) catch |err| switch (err) {

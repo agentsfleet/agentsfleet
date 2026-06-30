@@ -77,12 +77,10 @@ pub const Principal = struct {
     tenant_id: ?[]u8,
     org_id: ?[]u8,
     workspace_id: ?[]u8,
-    role: ?[]u8,
     audience: ?[]u8,
+    /// Explicit capability claim (space-delimited `resource:action` scopes),
+    /// parsed onto the principal as a bitset by the auth middleware.
     scopes: ?[]u8,
-    /// Platform-operator flag from the verified JWT. A bool, so it carries no
-    /// allocation and needs no free. Defaults false (fail-closed).
-    platform_admin: bool = false,
 };
 
 pub const Config = struct {
@@ -143,10 +141,8 @@ pub const Verifier = struct {
             .tenant_id = normalized.tenant_id,
             .org_id = normalized.org_id,
             .workspace_id = normalized.workspace_id,
-            .role = normalized.role,
             .audience = normalized.audience,
             .scopes = normalized.scopes,
-            .platform_admin = normalized.platform_admin,
         };
     }
 
@@ -180,7 +176,6 @@ test "verifyAuthorization happy path via vendor-neutral oidc facade" {
             if (principal.tenant_id) |v| std.testing.allocator.free(v);
             if (principal.org_id) |v| std.testing.allocator.free(v);
             if (principal.workspace_id) |v| std.testing.allocator.free(v);
-            if (principal.role) |v| std.testing.allocator.free(v);
             if (principal.audience) |v| std.testing.allocator.free(v);
             if (principal.scopes) |v| std.testing.allocator.free(v);
         }
@@ -219,7 +214,7 @@ test "parseProvider is case-insensitive and supportedProviderList is stable" {
     try std.testing.expectEqualStrings("clerk, custom", supportedProviderList());
 }
 
-test "verifyAuthorization returns null role when token has no role claim" {
+test "verifyAuthorization returns null scopes when token has no scope claim" {
     const providers = [_]Provider{ .clerk, .custom };
     for (providers) |provider| {
         var verifier = Verifier.init(std.testing.allocator, .{
@@ -238,41 +233,37 @@ test "verifyAuthorization returns null role when token has no role claim" {
             if (principal.tenant_id) |v| std.testing.allocator.free(v);
             if (principal.org_id) |v| std.testing.allocator.free(v);
             if (principal.workspace_id) |v| std.testing.allocator.free(v);
-            if (principal.role) |v| std.testing.allocator.free(v);
             if (principal.audience) |v| std.testing.allocator.free(v);
             if (principal.scopes) |v| std.testing.allocator.free(v);
         }
-        // The test token payload does not contain a role claim.
-        try std.testing.expect(principal.role == null);
+        // The test token payload contains no scope claim.
+        try std.testing.expect(principal.scopes == null);
     }
 }
 
-test "Principal struct exposes role field alongside other identity fields" {
+test "Principal struct exposes the scopes claim alongside other identity fields" {
     const p = Principal{
         .subject = @constCast("sub"),
         .issuer = @constCast("iss"),
         .tenant_id = @constCast("t"),
         .org_id = @constCast("o"),
         .workspace_id = null,
-        .role = @constCast("operator"),
         .audience = @constCast("aud"),
-        .scopes = null,
+        .scopes = @constCast("fleet:read fleet:write"),
     };
-    try std.testing.expectEqualStrings("operator", p.role.?);
+    try std.testing.expectEqualStrings("fleet:read fleet:write", p.scopes.?);
     try std.testing.expect(p.workspace_id == null);
-    try std.testing.expect(p.scopes == null);
 }
 
-test "Principal struct role can be null" {
+test "Principal struct scopes can be null" {
     const p = Principal{
         .subject = @constCast("sub"),
         .issuer = @constCast("iss"),
         .tenant_id = null,
         .org_id = null,
         .workspace_id = null,
-        .role = null,
         .audience = null,
         .scopes = null,
     };
-    try std.testing.expect(p.role == null);
+    try std.testing.expect(p.scopes == null);
 }

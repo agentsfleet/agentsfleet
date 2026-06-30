@@ -319,7 +319,7 @@ For local docker-compose Redis, static credentials are configured in `docker-com
 
 ### 3.3 Clerk — Session Token Customization
 
-Agentd's OIDC verifier checks `aud` **only when `OIDC_AUDIENCE` is set** (`src/auth/jwks.zig` — the audience comparison is skipped when the configured audience is null). Clerk's *default* session token does not carry `aud`, so the dashboard ran a second JWT shape (the api-template Bearer) through every fetch pre-M74_002 §9. Customizing the session token to add `aud`, `metadata.tenant_id`, `metadata.role` collapses the dashboard's runtime auth to one JWT — the same `useAuth().getToken()` value that `clerkMiddleware()` already reads from the `__session` cookie. The tenant-context claims (`metadata.tenant_id` + `metadata.role`) are load-bearing; `aud` becomes load-bearing once `OIDC_AUDIENCE` is set (below).
+Agentd's OIDC verifier checks `aud` **only when `OIDC_AUDIENCE` is set** (`src/auth/jwks.zig` — the audience comparison is skipped when the configured audience is null). Clerk's *default* session token does not carry `aud`, so the dashboard ran a second JWT shape (the api-template Bearer) through every fetch pre-M74_002 §9. Customizing the session token to add `aud`, `metadata.tenant_id`, and the `scopes` claim collapses the dashboard's runtime auth to one JWT — the same `useAuth().getToken()` value that `clerkMiddleware()` already reads from the `__session` cookie. The tenant-context claim (`metadata.tenant_id`) and the capability claim (`scopes`) are load-bearing; `aud` becomes load-bearing once `OIDC_AUDIENCE` is set (below).
 
 **`OIDC_AUDIENCE` is wired in CI, not the vault.** It is set as a per-env literal in the `flyctl secrets set` step (alongside `OIDC_PROVIDER="clerk"`): `deploy-dev.yml` sets `https://api-dev.agentsfleet.net`, `release.yml` sets `https://api.agentsfleet.net`. It is **not** a 1Password field — the vault has no `clerk-{dev,prod}/audience`. (Historically `OIDC_AUDIENCE` was unset on both envs, so the aud check was a no-op; M74_002 §9 wires it.)
 
@@ -337,17 +337,27 @@ Because surfaces 2 and 3 carry the **same** per-env `aud`, enabling `OIDC_AUDIEN
 
 1. Sign in to the Clerk dashboard for the target instance (`dashboard.clerk.com` → select `clerk-dev` or `clerk-prod`).
 2. Navigate to **Sessions → Customize session token**.
-3. Paste the claims JSON below. Replace `<AUDIENCE>` with the env-specific value (see *Per-env audience* above).
+3. Paste the claims JSON below. Replace `<AUDIENCE>` with the env-specific value (see *Per-env audience* above). The top-level **`scopes`** claim is the capability axis (M104_001) — agentsfleetd parses it onto `principal.scopes` and the `requireScope` gate enforces it. It is sourced from `user.public_metadata.scopes`, a space-delimited string of `resource:action` scopes written at signup (see *Scope provisioning* below).
    ```json
    {
      "aud": "<AUDIENCE>",
+     "scopes": "{{user.public_metadata.scopes}}",
      "metadata": {
-       "role": "{{user.public_metadata.role}}",
        "tenant_id": "{{user.public_metadata.tenant_id}}"
      }
    }
    ```
 4. Click **Save**. The Clerk UI applies the new template to all subsequently-minted session tokens; existing browser sessions continue with the pre-customization shape until next token refresh (~60s) or sign-out.
+
+**Scope provisioning (M104_001 — how a user gets capabilities, no manual step per user):**
+
+Authorization is scope-based: a request is allowed only if `principal.scopes` (parsed from the `scopes` claim above) carries the route's required scope. The owner and runner grants are applied **in code** at principal construction (`src/agentsfleetd/auth/scopes.zig::DefaultGrant`, keyed by credential source — never gate-checked); operator and collaborator scope sets are written **manually** in Clerk:
+
+- **Owner at signup** — the `user.created` Clerk webhook handler (auth-plane event `/v1/auth/identity-events/clerk`) writes the **`.tenant`** default grant's scope list into the new user's `public_metadata.scopes` (alongside `tenant_id`). It carries every tenant capability (`fleet:admin`, `credential:write`, `apikey:admin`, `workspace:admin`, `template:write`, …), so a fresh owner can create workspaces and fleets immediately — **no manual Clerk role flip**, the historical `user→operator` auto-promotion is gone.
+- **Collaborator (manual)** — write a read-only scope set onto `public_metadata.scopes`: `fleet:read`, `fleetkey:read`, `grant:read`, `connector:read`, `billing:read`, `approval:read`. No code grant; a collaborator who must act gets `fleet:write` etc. added explicitly.
+- **Platform operator (manual)** — write `runner:enroll`, `runner:write`, `stream:read`, `model:admin`, `platform-key:admin`, `template:admin`, `workspace:any` onto the agentsfleet operator user's `public_metadata.scopes` — the one place a human edits scopes, replacing the old `platform_admin` boolean flip.
+
+The scope strings in `public_metadata.scopes` MUST match the catalogue in `scopes.zig` verbatim (RULE UFS); an unknown string is ignored (grants nothing, deny-by-absence).
 
 **Verification (per env, after save):**
 
@@ -356,7 +366,7 @@ Because surfaces 2 and 3 carry the **same** per-env `aud`, enabling `OIDC_AUDIEN
 3. Decode at `jwt.io` (or `jwt-cli decode`). Confirm the payload carries:
    - `aud` matches the env's `OIDC_AUDIENCE`.
    - `metadata.tenant_id` is non-empty (post-bootstrap).
-   - `metadata.role` is `admin` or `member`.
+   - `scopes` is a non-empty space-delimited capability string (e.g. carries `fleet:admin`/`workspace:admin` for an owner).
    - `sid` is present (proves the session token wasn't replaced by a template token).
 4. Reload any `/(dashboard)/**` page; confirm no 401s in the network panel.
 
