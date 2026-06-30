@@ -35,7 +35,7 @@ export default function FleetConfig({
       );
     }
     // No router.refresh() — calling refresh immediately after push races
-    // the URL commit (same surface InstallFleetForm hit); /fleets is
+    // the URL commit (the same surface the install flow hits); /fleets is
     // `force-dynamic` so it re-fetches on its own.
     router.push("/fleets");
   }

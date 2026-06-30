@@ -45,7 +45,7 @@ describe("rankOf — the monotonic SSE ladder", () => {
   it("ranks creating < provisioning < ready; off-ladder steps are -1", () => {
     expect(rankOf(INSTALL_STEP.CREATING)).toBeLessThan(rankOf(INSTALL_STEP.PROVISIONING));
     expect(rankOf(INSTALL_STEP.PROVISIONING)).toBeLessThan(rankOf(INSTALL_STEP.READY));
-    expect(rankOf(INSTALL_STEP.IMPORTING)).toBe(-1);
+    expect(rankOf(INSTALL_STEP.CONNECT)).toBe(-1);
     expect(rankOf(INSTALL_STEP.ERROR)).toBe(-1);
   });
 });

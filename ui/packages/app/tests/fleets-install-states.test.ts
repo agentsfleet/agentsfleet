@@ -4,18 +4,19 @@ import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { routerPush, routerRefresh, resetCommonMocks } from "./helpers/dashboard-mocks";
 import { INSTALL_STEP } from "@/lib/streaming/install-steps";
+import type { FleetTemplateGalleryEntry } from "@/lib/types";
 
-// InstallStates drives the inline flow; its only boundaries are the two server
-// actions, analytics, and the Server-Sent Events (SSE) hook. Mock those; render
-// the real flow + state-line components so importing → connect → creating →
-// done/error and the SSE-driven step ladder are exercised end to end.
+// InstallStates drives the inline template-only flow; its only boundaries are
+// the install server action, analytics, and the Server-Sent Events (SSE) hook.
+// Mock those; render the real flow + state-line components so selected → connect
+// → creating → done/error and the SSE-driven step ladder are exercised end to
+// end. M103 removed the import step — the template is already onboarded, so the
+// flow opens on the selected template and creates with a visibility-keyed body.
 const {
-  importBundleActionMock,
   installFleetActionMock,
   captureProductEventMock,
   useFleetEventStreamMock,
 } = vi.hoisted(() => ({
-  importBundleActionMock: vi.fn(),
   installFleetActionMock: vi.fn(),
   captureProductEventMock: vi.fn(),
   useFleetEventStreamMock: vi.fn(),
@@ -24,7 +25,6 @@ const {
 vi.mock("next/navigation", async () => (await import("./helpers/dashboard-mocks")).nextNavigationMock());
 vi.mock("next/link", async () => (await import("./helpers/dashboard-mocks")).nextLinkMock());
 vi.mock("@/app/(dashboard)/fleets/actions", () => ({
-  importBundleAction: importBundleActionMock,
   installFleetAction: installFleetActionMock,
 }));
 vi.mock("@/lib/analytics/posthog", () => ({ captureProductEvent: captureProductEventMock }));
@@ -36,15 +36,44 @@ import { InstallStates } from "../app/(dashboard)/fleets/new/InstallStates";
 import { InstallStreamSteps } from "../app/(dashboard)/fleets/new/InstallStreamSteps";
 import type { InstallSource } from "../app/(dashboard)/fleets/new/install-flow";
 
-const TEMPLATE_GH = {
+// A platform gallery entry — installs by slug (`platform_template_id`).
+const TEMPLATE_GH: FleetTemplateGalleryEntry = {
   id: "github-pr-reviewer",
   name: "GitHub PR reviewer",
   description: "Reviews pull requests.",
-  required_credentials: ["github"],
+  visibility: "platform",
+  source_ref: "platform/github-pr-reviewer",
+  requirements: {
+    credentials: ["github"],
+    tools: ["github_review_comment"],
+    network_hosts: ["api.github.com"],
+    trigger_present: true,
+  },
   required_credentials_reasons: { github: "review your pull requests" },
-  required_tools: ["github_review_comment"],
-  network_hosts: ["api.github.com"],
+  support_files: [],
 };
+
+// A tenant gallery entry — installs by UUID (`tenant_template_id`), carries no
+// per-credential reasons, and ships no TRIGGER.md (skill-only fallback).
+const TEMPLATE_TENANT: FleetTemplateGalleryEntry = {
+  id: "01932d4e-7c10-7a3a-9f00-000000000001",
+  name: "Internal ops",
+  description: "Tenant-authored ops fleet.",
+  visibility: "tenant",
+  source_ref: "tenant/01932d4e",
+  requirements: { credentials: [], tools: [], network_hosts: [], trigger_present: false },
+  required_credentials_reasons: {},
+  support_files: [],
+};
+
+// Build a gallery entry with the given requirements overrides on the platform base.
+function entry(overrides: Partial<FleetTemplateGalleryEntry> = {}): FleetTemplateGalleryEntry {
+  return {
+    ...TEMPLATE_GH,
+    ...overrides,
+    requirements: { ...TEMPLATE_GH.requirements, ...(overrides.requirements ?? {}) },
+  };
+}
 
 // Default the SSE hook to "no install frame yet" so the stream-steps render
 // `creating`; individual tests override the installStep they want to assert.
@@ -82,26 +111,37 @@ afterEach(() => cleanup());
 // ── 9.4: states render in order; error shows retry ──────────────────────────
 
 describe("test_install_states_render", () => {
-  it("a clean template auto-proceeds importing → creating with no confirm beat", async () => {
-    importBundleActionMock.mockResolvedValue({ ok: true, data: { bundle_id: "bnd_1" } });
+  it("a clean template auto-proceeds selected → creating with no confirm beat", async () => {
     // Hold create open so the `creating` line is observable before a fleet exists.
     let resolveCreate: (v: unknown) => void = () => {};
     installFleetActionMock.mockReturnValue(new Promise((r) => { resolveCreate = r; }));
 
-    renderStates({ kind: "template", template: TEMPLATE_GH }, ["github"]);
+    renderStates(TEMPLATE_GH, ["github"]);
 
-    // No review page — proceeds straight into the states; no "Use template"/"Create" button.
+    // No review page — proceeds straight into the states; the first line is the
+    // already-onboarded template, then create runs with the platform body.
     await waitFor(() => expect(screen.getByText(/creating fleet/i)).toBeTruthy());
+    expect(screen.getByText(/template · GitHub PR reviewer/i)).toBeTruthy();
     expect(screen.queryByText(/Review what it needs/i)).toBeNull();
-    expect(importBundleActionMock).toHaveBeenCalledWith("ws_1", {
-      source_kind: "template",
-      source_ref: "github-pr-reviewer",
+    expect(installFleetActionMock).toHaveBeenCalledWith("ws_1", {
+      platform_template_id: "github-pr-reviewer",
     });
     resolveCreate({ ok: true, data: { fleet_id: "zom_x" } });
   });
 
+  it("a tenant template installs by tenant_template_id", async () => {
+    let resolveCreate: (v: unknown) => void = () => {};
+    installFleetActionMock.mockReturnValue(new Promise((r) => { resolveCreate = r; }));
+    renderStates(TEMPLATE_TENANT, []);
+    await waitFor(() => expect(installFleetActionMock).toHaveBeenCalled());
+    expect(installFleetActionMock).toHaveBeenCalledWith("ws_1", {
+      tenant_template_id: "01932d4e-7c10-7a3a-9f00-000000000001",
+    });
+    resolveCreate({ ok: true, data: { fleet_id: "zom_t" } });
+  });
+
   it("holds at the connect gate when a required credential is missing", async () => {
-    renderStates({ kind: "template", template: TEMPLATE_GH }, []); // github not present
+    renderStates(TEMPLATE_GH, []); // github not present
     await waitFor(() => expect(screen.getByText(/first run: connect github/i)).toBeTruthy());
     const link = screen.getByRole("link", { name: /connect github/i });
     expect(link.getAttribute("href")).toBe("/credentials");
@@ -115,7 +155,7 @@ describe("test_install_states_render", () => {
 
   it("pluralises the connect gate copy when multiple credentials are unmet", async () => {
     renderStates(
-      { kind: "template", template: { ...TEMPLATE_GH, required_credentials: ["github", "zoho"] } },
+      entry({ requirements: { ...TEMPLATE_GH.requirements, credentials: ["github", "zoho"] } }),
       [],
     );
     await waitFor(() => expect(screen.getByText(/first run: connect github, zoho/i)).toBeTruthy());
@@ -126,17 +166,13 @@ describe("test_install_states_render", () => {
 
   it("joins per-credential reasons with \"and\" when every unmet credential has one", async () => {
     renderStates(
-      {
-        kind: "template",
-        template: {
-          ...TEMPLATE_GH,
-          required_credentials: ["github", "zoho"],
-          required_credentials_reasons: {
-            github: "review your pull requests",
-            zoho: "read your zoho activity",
-          },
+      entry({
+        requirements: { ...TEMPLATE_GH.requirements, credentials: ["github", "zoho"] },
+        required_credentials_reasons: {
+          github: "review your pull requests",
+          zoho: "read your zoho activity",
         },
-      },
+      }),
       [],
     );
     // Every unmet credential carries a reason → the purpose-driven sentence
@@ -151,7 +187,7 @@ describe("test_install_states_render", () => {
 
   it("uses Add token when the missing credential is not GitHub", async () => {
     renderStates(
-      { kind: "template", template: { ...TEMPLATE_GH, required_credentials: ["zoho"] } },
+      entry({ requirements: { ...TEMPLATE_GH.requirements, credentials: ["zoho"] } }),
       [],
     );
 
@@ -161,69 +197,28 @@ describe("test_install_states_render", () => {
     );
   });
 
-  it("a paste source carrying a TRIGGER.md posts both markdown bodies", async () => {
-    let resolveCreate: (v: unknown) => void = () => {};
-    installFleetActionMock.mockReturnValue(new Promise((r) => { resolveCreate = r; }));
-    renderStates({ kind: "paste", sourceMarkdown: "skill-body", triggerMarkdown: "trigger-body" }, []);
-    await waitFor(() => expect(installFleetActionMock).toHaveBeenCalled());
-    expect(installFleetActionMock).toHaveBeenCalledWith("ws_1", {
-      source_markdown: "skill-body",
-      trigger_markdown: "trigger-body",
-    });
-    resolveCreate({ ok: true, data: { fleet_id: "zom_p" } });
-  });
-
   it("auto-creates when the required credential is already present (no gate)", async () => {
-    importBundleActionMock.mockResolvedValue({ ok: true, data: { bundle_id: "bnd_1" } });
     installFleetActionMock.mockResolvedValue({ ok: true, data: { fleet_id: "zom_after_gate" } });
     // The credential is present, so the gate never shows and create runs on mount.
-    renderStates({ kind: "template", template: TEMPLATE_GH }, ["github"]);
+    renderStates(TEMPLATE_GH, ["github"]);
     await waitFor(() => expect(installFleetActionMock).toHaveBeenCalled());
     expect(screen.queryByText(/first run: connect github/i)).toBeNull();
   });
 
-  it("renders the skill-only line when the snapshot has no TRIGGER.md", async () => {
-    importBundleActionMock.mockResolvedValue({ ok: true, data: { bundle_id: "bnd_1" } });
+  it("renders the skill-only line when the template has no TRIGGER.md", async () => {
     installFleetActionMock.mockReturnValue(new Promise(() => {}));
-    renderStates(
-      {
-        kind: "github",
-        snapshot: {
-          bundle_id: "bnd_x",
-          name: "acme/repo",
-          source_kind: "github",
-          source_ref: "acme/repo",
-          validation_status: "ok",
-          content_hash: "h",
-          requirements: { credentials: [], tools: [], network_hosts: [], support_files: [], trigger_present: false },
-          support_files: [],
-        },
-      },
-    );
+    renderStates(TEMPLATE_TENANT, []);
     await waitFor(() => expect(screen.getByText(/manual API wake will be generated/i)).toBeTruthy());
   });
 
-  it("an import error (404 / no SKILL.md / rate-limited) renders an error line with Retry", async () => {
-    importBundleActionMock.mockResolvedValue({
-      ok: false,
-      error: "no SKILL.md",
-      errorCode: "UZ-BUNDLE-004",
-      status: 404,
-    });
-    renderStates({ kind: "template", template: { ...TEMPLATE_GH, required_credentials: [] } }, []);
-    await waitFor(() => expect(screen.getByRole("button", { name: /retry/i })).toBeTruthy());
-    expect(installFleetActionMock).not.toHaveBeenCalled();
-  });
-
   it("a create 409 surfaces the duplicate-name hint with Retry", async () => {
-    importBundleActionMock.mockResolvedValue({ ok: true, data: { bundle_id: "bnd_1" } });
     installFleetActionMock.mockResolvedValue({
       ok: false,
       error: "conflict",
       errorCode: "UZ-FLEET-409",
       status: 409,
     });
-    renderStates({ kind: "template", template: { ...TEMPLATE_GH, required_credentials: [] } }, []);
+    renderStates(entry({ requirements: { ...TEMPLATE_GH.requirements, credentials: [] } }), []);
     await waitFor(() =>
       expect(screen.getByText(/already exists in this workspace/i)).toBeTruthy(),
     );
@@ -232,33 +227,18 @@ describe("test_install_states_render", () => {
   });
 
   it("a non-409 create failure renders the error and Retry re-runs create", async () => {
-    importBundleActionMock.mockResolvedValue({ ok: true, data: { bundle_id: "bnd_1" } });
     installFleetActionMock
       .mockResolvedValueOnce({ ok: false, error: "boom", errorCode: "UZ-SRV", status: 500 })
       .mockResolvedValueOnce({ ok: true, data: { fleet_id: "zom_retry" } });
     stubStream(INSTALL_STEP.READY);
     const user = userEvent.setup({ delay: null });
-    renderStates({ kind: "template", template: { ...TEMPLATE_GH, required_credentials: [] } }, []);
+    renderStates(entry({ requirements: { ...TEMPLATE_GH.requirements, credentials: [] } }), []);
 
     await waitFor(() => expect(screen.getByRole("button", { name: /retry/i })).toBeTruthy());
     await user.click(screen.getByRole("button", { name: /retry/i }));
     // The retry re-creates and, with the stream reporting ready, lands Open fleet.
     await waitFor(() => expect(screen.getByRole("button", { name: /open fleet/i })).toBeTruthy());
     expect(installFleetActionMock).toHaveBeenCalledTimes(2);
-  });
-
-  it("a template whose lazy import fails at create-time surfaces the error with Retry", async () => {
-    // No unmet credential → auto-proceeds to create, where the template imports
-    // lazily; that import fails, exercising the resolveCreateBody error arm.
-    importBundleActionMock.mockResolvedValue({
-      ok: false,
-      error: "repo empty",
-      errorCode: "UZ-BUNDLE-004",
-      status: 404,
-    });
-    renderStates({ kind: "template", template: { ...TEMPLATE_GH, required_credentials: [] } }, []);
-    await waitFor(() => expect(screen.getByRole("button", { name: /retry/i })).toBeTruthy());
-    expect(installFleetActionMock).not.toHaveBeenCalled();
   });
 });
 
@@ -311,12 +291,11 @@ describe("test_install_status_stream — InstallStreamSteps consumes the SSE str
 
 describe("test_install_lands_in_steer", () => {
   it("create → ready → Open fleet pushes to /fleets/{id} (the full-height steer/chat)", async () => {
-    importBundleActionMock.mockResolvedValue({ ok: true, data: { bundle_id: "bnd_1" } });
     installFleetActionMock.mockResolvedValue({ ok: true, data: { fleet_id: "zom_steer" } });
     // The fleet exists and the stream reports ready → Open fleet is offered.
     stubStream(INSTALL_STEP.READY);
     const user = userEvent.setup({ delay: null });
-    renderStates({ kind: "template", template: { ...TEMPLATE_GH, required_credentials: [] } }, []);
+    renderStates(entry({ requirements: { ...TEMPLATE_GH.requirements, credentials: [] } }), []);
 
     await waitFor(() => expect(screen.getByRole("button", { name: /open fleet/i })).toBeTruthy());
     await user.click(screen.getByRole("button", { name: /open fleet/i }));
