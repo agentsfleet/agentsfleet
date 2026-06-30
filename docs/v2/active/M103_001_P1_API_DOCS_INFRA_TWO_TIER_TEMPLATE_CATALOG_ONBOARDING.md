@@ -19,7 +19,7 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Batch:** B1 — template catalog consolidation.
 **Branch:** feat/m103-two-tier-template-catalog
 **Test Baseline:** unit=2190 integration=210
-**Depends on:** M104_001 (scope-based authorization — onboarding routes gate on `template:write`, not roles); M94_002 (Fleet Bundle import, runner materialization, install preview already exist). Supersedes M96_001 (R2-canonical store) — its R2-only content decision is absorbed here; M96_001 retires to `done/` as DEFERRED.
+**Depends on:** M104_001 (scope-based authorization — platform route gates on `platform-template:write`, tenant route on `template:write`; M104_001's provisional `template:admin` is renamed to `platform_template_write` here); M94_002 (Fleet Bundle import, runner materialization, install preview already exist). Supersedes M96_001 (R2-canonical store) — its R2-only content decision is absorbed here; M96_001 is already in `done/` as DEFERRED.
 **Provenance:** agent-generated (Indy design chat, Jun 29, 2026)
 
 > **Provenance is load-bearing.** LLM-drafted — cross-check every claim against the codebase before EXECUTE; the design decisions below were Indy-approved in-session but the file pointers must be re-verified.
@@ -34,7 +34,7 @@ This spec uses Cloudflare R2 object storage (R2), Pull Request (PR), Command-Lin
 
 1. `schema/028_fleet_bundle_templates.sql` — the curated platform catalog (slug-keyed, `visibility`, the gallery shop-window). Its header records the eng-review FINAL decisions this spec partially reverses; read it before editing.
 2. `src/agentsfleetd/fleet_bundle/{importer.zig,github_source.zig,store.zig}` — content-hash derivation, canonical tar packing, and the bundle row insert/fetch the onboarding paths reuse.
-3. `src/agentsfleetd/auth/{principal.zig,scopes.zig,middleware/require_scope.zig}` (delivered by M104_001) — `principal.scopes` and the `requireScope` gate the two onboarding routes use; `template:write` is the capability.
+3. `src/agentsfleetd/auth/{principal.zig,scopes.zig,middleware/require_scope.zig}` (delivered by M104_001) — `principal.scopes` and the `requireScope` gate the two onboarding routes use; the platform route gates on `platform-template:write` (replacing M104_001's provisional `template:admin`), the tenant route on `template:write`.
 4. `src/agentsfleetd/http/handlers/fleet_bundles/{imports.zig,get.zig,resolve.zig}` and `runner/bundles.zig` — current import/detail responses and the runner-plane R2 proxy by content hash.
 5. `docs/SCHEMA_CONVENTIONS.md`, `docs/REST_API_DESIGN_GUIDELINES.md`, `dispatch/write_zig.md` — schema, REST, and Zig rules for this diff.
 
@@ -67,7 +67,7 @@ This spec uses Cloudflare R2 object storage (R2), Pull Request (PR), Command-Lin
 
 - **`docs/greptile-learnings/RULES.md`** — `NDC` (No Dead Code), `NLR` (touch-it-fix-it), `NLG` (no new legacy framing), `UFS` (unified symbols), `ORP` (orphan sweep), `FLL` (file/function length), `PSR` (standard parsers), `ECL` (error classes), `VLT` (secrets in vault), `STS` (no static strings in SQL schema), `NSQ` (schema-qualified SQL), `MIG` (migration index assertions), `ITF` (real integration fixtures), `DRAIN` (Postgres drain-before-deinit), `XCC` (cross-compile), `TST-NAM` (milestone-free test names), `ERR` (error registry), `LOG` (logging discipline), `PRI` (prompt-injection resistance).
 - **`dispatch/write_zig.md`** — importer, store, onboarding handlers, runner proxy, materialization tests.
-- **`dispatch/write_auth.md`** + **`docs/AUTH.md`** — the two onboarding routes are auth-gated. Per M104_001 (scope-based authz), gate on the `template:write` capability scope plus the unchanged workspace-ownership check; add no role check. AUTH.md (rewritten by M104_001) governs.
+- **`dispatch/write_auth.md`** + **`docs/AUTH.md`** — the two onboarding routes are auth-gated. Per M104_001 (scope-based authz), the platform route gates on the `platform-template:write` capability scope (replacing M104_001's provisional `template:admin` — M104_001 anticipated this reconciliation at M103 time); the tenant route gates on `template:write` plus the unchanged workspace-ownership check. The two scopes are independent (no hierarchy). AUTH.md (rewritten by M104_001) governs and is updated for the rename.
 - **`docs/REST_API_DESIGN_GUIDELINES.md`** — new onboarding routes and any import/detail response schema or OpenAPI change.
 - **`docs/SCHEMA_CONVENTIONS.md`** — new tenant table, `schema/027`/`028` edits, `schema/embed.zig`, migration array assertions.
 - **`dispatch/write_ts_adhere_bun.md`** — only if UI/CLI types or renderers change after the public response shape settles.
@@ -114,7 +114,9 @@ This spec uses Cloudflare R2 object storage (R2), Pull Request (PR), Command-Lin
 | `docs/architecture/{fleet_bundles,data_flow}.md`, `scenarios/gh-pr-reviewer.md` | EDIT | R2-canonical + two-tier model; onboard-vs-install storage roles; admin-onboard-vs-user-install, no resync. |
 | `schema/029_core_tenant_fleet_bundle_templates.sql` | CREATE | Tenant tier: workspace-scoped, runtime-mutable, content-hash + manifest. |
 | `schema/027_core_fleet_bundles.sql` | EDIT | Full support-file content → manifest metadata. |
-| `schema/028_fleet_bundle_templates.sql` | EDIT | Content-hash + manifest columns; grant `api_runtime` INSERT/UPDATE (consistent with `core.fleet_bundles`); writes gated in-handler by the `template:write` scope. |
+| `schema/028_fleet_bundle_templates.sql` | EDIT | Content-hash + manifest columns; grant `api_runtime` INSERT/UPDATE (consistent with `core.fleet_bundles`); writes gated in-handler by the `platform-template:write` scope. |
+| `src/agentsfleetd/auth/scopes.zig`, `scopes_test.zig`, `http/test_scope_tokens.zig` | EDIT | Rename `template_admin` → `platform_template_write` (wire `platform-template:write`); remove hierarchy entry (independent of `template_write`); update test fixtures. M104_001 anticipated this reconciliation. |
+| `scripts/mint-scope-personas.mjs`, `docs/AUTH.md`, `playbooks/founding/03_priming_infra/001_playbook.md` | EDIT | Replace `template:admin` wire string with `platform-template:write` in scope minting, auth docs, and priming playbook. |
 | `schema/embed.zig`, `src/agentsfleetd/cmd/common.zig` | EDIT | Migration embedding + index assertions stay aligned. |
 | `src/agentsfleetd/fleet_bundle/{importer,store}.zig` | EDIT | Manifest + content hash, no support bytes in Postgres; metadata-only rows. |
 | `src/agentsfleetd/http/handlers/fleet_bundles/{imports,get,resolve}.zig` | EDIT | R2-before-metadata; previews without R2 key; onboarding source resolution. |
@@ -148,9 +150,9 @@ A new workspace-owned template table beside the platform catalog, carrying enoug
 
 ### §2 — Two scope-gated onboarding routes
 
-Platform and tenant admins onboard by GitHub source-ref; each route validates, fetches, writes the R2 snapshot, then commits its metadata row. **Implementation default:** reuse `github_source` + the importer; no archive upload. Both routes gate on the `template:write` capability scope (M104_001); the resource axis (global vs workspace) distinguishes the tiers.
+Platform and tenant admins onboard by GitHub source-ref; each route validates, fetches, writes the R2 snapshot, then commits its metadata row. **Implementation default:** reuse `github_source` + the importer; no archive upload. The platform route gates on the `platform-template:write` capability scope (M104_001's `template:admin` renamed — the reconciliation M104_001 anticipated); the tenant route gates on `template:write` plus ownership of the target workspace. The two scopes are independent (no hierarchy).
 
-- **Dimension 2.1** — Platform onboarding requires the `template:write` scope at the global resource; a principal lacking it is rejected and writes nothing → Test `test_platform_onboard_requires_template_write`
+- **Dimension 2.1** — Platform onboarding requires the `platform-template:write` scope; a principal lacking it is rejected and writes nothing → Test `test_platform_onboard_requires_platform_template_write`
 - **Dimension 2.2** — Tenant onboarding requires the `template:write` scope plus ownership of the target workspace, and writes only its own `workspace_id`; a principal without scope or ownership is rejected → Test `test_tenant_onboard_requires_scope_and_ownership`
 - **Dimension 2.3** — Onboarding writes `fleet-bundles/sha256/{content_hash}.tar` to R2 before any metadata commit; an injected R2 put failure leaves no row → Test `test_onboard_writes_r2_before_metadata`
 - **Dimension 2.4** — Skill-only template (no support files) onboards without requiring an R2 object → Test `test_skill_only_template_onboard_needs_no_r2`
@@ -194,7 +196,7 @@ Architecture docs become the source of truth for the two-tier, R2-canonical mode
 ```
 Onboard (body {source_kind:"github", source_ref:"owner/repo"}; 201 returns id, name,
   visibility, content_hash, requirements, support_files[] — never snapshot_key/R2 path):
-  POST /v1/admin/fleet-templates                      requires scope template:write (global)  → visibility "platform"
+  POST /v1/admin/fleet-templates                      requires scope platform-template:write (global)  → visibility "platform"
   POST /v1/workspaces/{workspace_id}/fleet-templates  requires scope template:write + workspace ownership → visibility "tenant"
 Gallery (user read):
   GET /v1/fleets/bundles         → platform templates ∪ caller-workspace tenant templates
@@ -213,7 +215,7 @@ Storage: core.tenant_fleet_bundle_templates = UUIDv7 id, workspace_id FK (CASCAD
 
 | Mode | Cause | Handling (system response + what the caller observes) |
 |------|-------|--------------------------------------------------------|
-| Onboard without scope | Principal lacks `template:write` (or, tenant route, lacks workspace ownership) | 403; no R2 put, no metadata row. |
+| Onboard without scope | Principal lacks `platform-template:write` (platform route) or `template:write` (tenant route, or lacks workspace ownership) | 403; no R2 put, no metadata row. |
 | R2 unavailable during onboard | Object store client missing or put fails | Storage-unavailable error; no metadata row committed. |
 | R2 object missing at run time | Metadata references a `content_hash` with no stored tar | Runner reports startup failure; event log records materialization failure, no secret leak. |
 | Cross-tenant install | User installs another workspace's tenant template | 404/403; visibility check rejects; no Fleet created. |
@@ -229,7 +231,7 @@ Storage: core.tenant_fleet_bundle_templates = UUIDv7 id, workspace_id FK (CASCAD
 
 1. Support-file bytes live in R2 only — enforced by schema shape, store tests, and a production grep for removed content fields.
 2. Tenant onboarding requires the `template:write` scope plus ownership of the target workspace, and writes only its own `workspace_id` and only the tenant table — enforced by scope + ownership middleware tests.
-3. Platform onboarding requires the `template:write` scope at the global resource and writes only the platform table — enforced by scope-gate tests; the tenant write path has no grant on the platform table.
+3. Platform onboarding requires the `platform-template:write` scope and writes only the platform table — enforced by scope-gate tests; the tenant write path has no grant on the platform table.
 4. `content_hash` is content-derived, byte-identical across tiers — enforced by hashing tests importing identical bytes through platform and tenant routes.
 5. R2 writes happen before Postgres metadata commits — enforced by failure-injection integration tests.
 6. The gallery for workspace W returns no other workspace's tenant templates — enforced by visibility query tests.
@@ -246,7 +248,7 @@ Storage: core.tenant_fleet_bundle_templates = UUIDv7 id, workspace_id FK (CASCAD
 | 1.1 | integration | `test_tenant_template_row_excludes_support_content` | Onboard with support files stores path/size/hash, no body text in Postgres. |
 | 1.2 | unit | `test_content_hash_stable_across_tiers` | Same bytes via platform and tenant routes yield the same 64-char SHA-256 hex. |
 | 1.3 | integration | `test_tenant_onboard_dedupes_by_workspace_and_hash` | Identical bytes onboarded twice into W return one `(workspace_id, content_hash)` row. |
-| 2.1 | integration | `test_platform_onboard_requires_template_write` | Principal without `template:write` (global) → 403, no row, no R2 put. |
+| 2.1 | integration | `test_platform_onboard_requires_platform_template_write` | Principal without `platform-template:write` → 403, no row, no R2 put. |
 | 2.2 | integration | `test_tenant_onboard_requires_scope_and_ownership` | Missing scope or non-owned workspace → 403; owner with scope writes only its own `workspace_id`. |
 | 2.3 | integration | `test_onboard_writes_r2_before_metadata` | Injected R2 put failure → storage error and no metadata row. |
 | 2.4 | integration | `test_skill_only_template_onboard_needs_no_r2` | No support files, no R2 client → onboard and install still succeed. |
@@ -315,8 +317,8 @@ No files are deleted; M96_001 moves `pending/` → `done/` (record, not deletion
 
 - Architecture consult, Jun 29, 2026: grounded in `docs/architecture/fleet_bundles.md` and `docs/architecture/data_flow.md`. Decision: GitHub remains the user-visible source; R2 is the internal canonical store; Postgres holds metadata only; templates split into a migration-bootstrapped platform tier and a runtime-onboarded tenant tier.
 - Design decision (Indy, Jun 29, 2026): two tables, not one — tenant tier carries a `workspace_id` FK with cascade; platform tier keeps its slug-keyed shape. Both tiers onboard at runtime via separate scope-gated routes.
-- Auth design (Indy, Jun 29, 2026): authorization moves from roles to explicit scopes (M104_001, a dependency of this spec). Both onboarding routes gate on the `template:write` capability scope; platform = `template:write` at the global resource, tenant = `template:write` + workspace ownership. The earlier in-session `platform_catalog_writer` DB-role idea and the "reuse `platform_admin`/`RequireRole`" interim plan are both withdrawn — superseded by M104_001. No new authorization primitive is introduced here; this spec consumes M104_001's `requireScope`.
-- `028` note update (no longer a "reversal needing ack"): the platform catalog stops being migration-only and becomes an app-written table like `core.fleet_bundles` (grant `api_runtime` INSERT/UPDATE), authorized in-handler by the `template:write` scope. The `028` "SELECT-only" was an anomaly tied to migration-curation, not a security boundary; seed rows stay as bootstrap.
+- Auth design (Indy, Jun 29, 2026): authorization moves from roles to explicit scopes (M104_001, a dependency of this spec). Platform route gates on `platform-template:write` (M104_001's provisional `template:admin` renamed — the reconciliation M104_001 anticipated at M103 time); tenant route gates on `template:write` + workspace ownership. The two scopes are independent (no hierarchy). The earlier in-session `platform_catalog_writer` DB-role idea and the "reuse `platform_admin`/`RequireRole`" interim plan are both withdrawn — superseded by M104_001.
+- `028` note update (no longer a "reversal needing ack"): the platform catalog stops being migration-only and becomes an app-written table like `core.fleet_bundles` (grant `api_runtime` INSERT/UPDATE), authorized in-handler by the `platform-template:write` scope. The `028` "SELECT-only" was an anomaly tied to migration-curation, not a security boundary; seed rows stay as bootstrap.
 - Deferral quote (resync + archive upload): > Indy (2026-06-22 22:30): "There two design decision currently M1 Memory and Cloudflare R2 is redundant (i am not focussed on resync)" — context: GitHub-to-template resync and archive-upload onboarding stay out of this catalog spec.
 
 ---
