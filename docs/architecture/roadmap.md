@@ -38,6 +38,17 @@ Both shipped: the `GET /v1/fleets/runners` read + honest derived liveness landed
 
 A customer-facing prebuilt fleet whose job is **security testing on the customer's own code and infrastructure** (authorized, defensive — not red-teaming the fleet runtime itself, which is the platform's internal sandbox concern). It fits the existing evidence-plus-approval loop: wakes on a pull request or a schedule, scans the diff and dependencies for vulnerabilities and exposed secrets, reproduces the finding as a scenario, opens a remediation pull request with the evidence attached, and **holds the fix at human approval** while flagging the team in Slack. Integrations: GitHub (code / pull requests) + Slack (alerts); no new credential class beyond what the review and incident fleets already use. Captured here because it surfaced as product direction (marketing showcase + customer ask) before any spec — so spec authors don't foreclose it. Not part of v2.0 scope.
 
+## Slack-resident surface — the consumption ladder (M106 + follow-on)
+
+Where the human front door points after the CLI/dashboard wedge. Rung 0 is specced as `docs/v2/pending/M106_001_P1_API_DOCS_INFRA_UI_SLACK_RESIDENT_CHANNEL_BOT.md`; the hired-teammate follow-on is not yet specced. **Direction, not a commitment.**
+
+The product is reached through a two-rung ladder whose boundary is **agency, not memory**:
+
+- **Rung 0 — channel-resident reactive bot (M106).** A first-party multi-tenant `@agentsfleet` Slack app: one OAuth (Open Authorization) install per Slack workspace (`team_id → workspace`). In any channel it's invited to, an `@mention` is answered in-thread, read-only, mention-only — and the bot **learns that channel** over time. The memory namespace is a **per-channel resident fleet** (memory is keyed by `fleet_id`, not workspace), so memory persists across threads because the fleet, not the thread, owns it (reuses the [`runner_fleet.md`](./runner_fleet.md) §Memory-continuity loop verbatim). It never acts unattended.
+- **Rung 1 — hired durable teammates (follow-on).** From the same Slack surface, a recurring need converts into a durable teammate that subscribes to a real source (e.g. Zoho Desk), wakes unattended, and takes **gated** write actions with approval — the existing event-driven runtime. The Slack surface adds template-install + per-integration OAuth connectors + the Slack-user → `approval:resolve` allowlist. Depends on M103 (templates) + M105 (schedules).
+
+**Why this is not "a chat UI over tools"** ([`high_level.md`](./high_level.md) §1): Rung 0 is the acquisition on-ramp, deliberately reactive — its job is to be useful enough to convert to the durable teammate. The durable runtime is still the product; agency (acting unattended) is what the operator hires and what a reactive channel bot structurally cannot do. Memory is free at both rungs.
+
 ## Bastion — post-MVP shape
 
 Where the v2 wedge points after launch. Not part of v2; documented so spec authors don't foreclose it.

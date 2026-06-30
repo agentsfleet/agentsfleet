@@ -315,7 +315,7 @@ RUN 1  (first ever for fleet A)
   fleet:  memory_store("todo", "step 3 of 5"),  memory_store("prefs", …)
   run-end  +  every memory_checkpoint_every:
      runner lists its :memory: store → deltas ─pipe─► parent
-     parent ─POST /me/memory─►  agentsfleetd INSERTs rows   (instance_id = A (the fleet_id))
+     parent ─POST /me/memory─►  agentsfleetd INSERTs rows   (fleet_id = A)
   child exits → :memory: store vanishes (no disk artifact)
 
   Postgres now holds:   A · todo · "step 3 of 5"    |    A · prefs · …
@@ -329,7 +329,7 @@ RUN 2  (next run, same fleet A)                          ◄── THE CARRY-OVE
   push → agentsfleetd UPDATEs (todo, A) + INSERTs any new keys (idempotent)
 ```
 
-**Data model.** Scope is the **fleet**, not the workspace: `instance_id = fleet_id`, derived **server-side** from the lease `agentsfleetd` issued — a client-supplied scope is ignored. Within a fleet each `key` is one row; re-storing a key is `ON CONFLICT (key, instance_id) DO UPDATE`, so a retried or duplicate push is idempotent. The workspace is the *authorization* boundary above this (a tenant must own the fleet to read its memory via the tenant `GET`); two fleets never share a memory namespace.
+**Data model.** Scope is the **fleet**, not the workspace: the durable scope column is **`fleet_id`** (the legacy NullClaw `instance_id` name is retired — `schema/013`), derived **server-side** from the lease `agentsfleetd` issued — a client-supplied scope is ignored. Within a fleet each `key` is one row; re-storing a key is `ON CONFLICT (key, fleet_id) DO UPDATE`, so a retried or duplicate push is idempotent. The workspace is the *authorization* boundary above this (a tenant must own the fleet to read its memory via the tenant `GET`); two fleets never share a memory namespace. Canonical scope reference: [`memory.md`](./memory.md).
 
 **Multi-lease isolation invariant.** Concurrent-lease safety (M88_002's worker pool) rests on the per-fleet **affinity slot admitting a single live holder** — `uq_runner_affinity_fleet_id UNIQUE(fleet_id)` + the `leased_until < now` time-gate — plus **capture-time `fencing_token`** rejecting a stale holder. (It is *not* a unique constraint on `fleet.runner_leases`; multiple lease rows per fleet are normal, and a slow old holder can transiently coexist with a reclaimer — which is *why* fencing exists: only one writer durably persists into a fleet's namespace.) So a runner's N concurrent leases are always N *distinct* fleets = N distinct namespaces. Isolation does **not** rest on `fleet_id` scoping alone: a future retry / speculative / failover / takeover-lease feature that broke the single-live-holder property would have to scope memory by `lease_id` first. Keep this invariant load-bearing.
 
