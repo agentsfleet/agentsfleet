@@ -4,11 +4,12 @@
 **Milestone:** M106
 **Workstream:** 001
 **Date:** Jun 30, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — first customer-facing surface that lives where users already work (Slack); the acquisition on-ramp to the durable hired teammate.
 **Categories:** API, DOCS, INFRA, UI
 **Batch:** B1 — standalone; reuses shipped substrate, blocks the Rung-1 follow-on.
-**Branch:** {feat/m106-slack-resident — added when work begins}
+**Branch:** feat/m106-slack-resident
+**Test Baseline:** unit=2190 integration=210 (`make _lint_zig_test_depth` @ origin/main 8c41ae18)
 **Depends on:** None — builds entirely on shipped substrate (M80 runner/memory continuity, M28 webhook-signature middleware, the GitHub OAuth connector pattern). Rung 1 (the hired-teammate follow-on) will depend on this + M103 (template catalogue) + M105 (schedules).
 **Provenance:** agent-generated (pre-spec; brainstorm transcript Jun 30, 2026 — office-hours → sequence design → consumption-ladder refinement → code-grounded reuse correction).
 
