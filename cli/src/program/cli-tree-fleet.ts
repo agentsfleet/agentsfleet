@@ -40,11 +40,7 @@ export function buildFleetTree(
 
   program
     .command("install")
-    .description("Register a Fleet from a template (--template) or local skill bundle (--from)")
-    // Path existence is validated by loadSkillFromPath inside the handler
-    // so the failure path emits ERR_PATH_NOT_FOUND with the friendly
-    // remap message instead of commander's generic "path does not exist".
-    .option(FLAG_FROM_PATH, SKILL_BUNDLE_PATH, parsePathOption({ mustExist: false }))
+    .description("Install a Fleet from an onboarded template (--template <id>)")
     .option(FLAG_TEMPLATE_ID, TEMPLATE_ID_DESC, parseStringOption)
     .option(FLAG_NAME, NAME_DESC, parseStringOption)
     .action(actionFor("fleet.install", (frame) => runHandler(state, frame, handlers.fleet.install)));

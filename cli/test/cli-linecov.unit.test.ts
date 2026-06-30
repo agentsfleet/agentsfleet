@@ -41,6 +41,19 @@ function throwingStdout(message: string): Writable & { isTTY?: boolean } {
   }) as Writable & { isTTY?: boolean };
 }
 
+// Sibling of throwingStdout that throws a NON-Error value (a bare string).
+// The bridge still reports it as `otherError`, but `errMessage` falls through
+// its `instanceof Error` guard and takes the `String(err)` branch — the
+// complementary line to the Error path above.
+function throwingStdoutNonError(value: string): Writable & { isTTY?: boolean } {
+  return new Writable({
+    write() {
+      // eslint-disable-next-line no-throw-literal
+      throw value;
+    },
+  }) as Writable & { isTTY?: boolean };
+}
+
 describe("runCli non-CommanderError parse-failure tail", () => {
   test("a raw Error escaping parse renders error: <message> on stderr and exits 1", async () => {
     await withFreshStateDir(async () => {
@@ -96,6 +109,24 @@ describe("runCli non-CommanderError parse-failure tail", () => {
       const rendered = err.read();
       expect(rendered).toContain(distinct);
       expect(rendered).not.toContain(`Error: ${distinct}`);
+    });
+  });
+
+  test("a non-Error thrown value routes through errMessage's String(err) fallback", async () => {
+    // Complementary to the Error-instance branch: a bare string thrown from
+    // the write path is not `instanceof Error`, so errMessage returns
+    // String(err) — the raw string reaches the operator as `error: <string>`.
+    const marker = "non-error string thrown from write";
+    await withFreshStateDir(async () => {
+      const err = bufferStream();
+      const code = await runCli([HELP_ARG], {
+        stdout: throwingStdoutNonError(marker),
+        stderr: err.stream,
+        env: NO_COLOR_ENV,
+      });
+
+      expect(code).toBe(1);
+      expect(err.read()).toContain(`error: ${marker}`);
     });
   });
 });
