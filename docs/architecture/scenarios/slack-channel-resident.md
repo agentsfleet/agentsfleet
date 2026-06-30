@@ -17,18 +17,18 @@ sequenceDiagram
   participant PG as Postgres
   participant Runner as agentsfleet-runner
 
-  Note over Lead,Runner: one-time — admin connects Slack (OAuth) → core.slack_installations 🔨
+  Note over Lead,Runner: one-time — admin connects Slack (OAuth) → vault handle + core.connector_installs 🔨
   Lead->>Slack: @agentsfleet what's our prod called? (thread A)
   Slack->>API: POST /v1/integrations/slack/events (v0 HMAC) 🔨
-  API->>PG: resolve team→workspace; lazily materialize channel-resident fleet 🔨
-  API->>API: XADD fleet:{channel_fleet_id}:events actor=slack:<user> ✅ reused
+  API->>PG: resolve team→workspace; materialize channel fleet via innerCreateFleet (default skill.md) 🔨
+  API->>API: XADD fleet:{channel_fleet_id}:events actor=slack:<user> (webhook-producer shape) ✅ reused
   Runner->>API: lease → run; GET /me/memory/{channel_fleet_id} (empty) ✅
   Runner->>Slack: chat.postMessage thread_ts=A "don't know yet — tell me?" 🔨
   Lead->>Slack: it's "aurora" (thread A)
   Runner->>API: POST /me/memory/{channel_fleet_id} {prod: aurora} ✅
   Note over Lead,Runner: …days later, a different thread…
   Lead->>Slack: @agentsfleet is aurora healthy? (thread B)
-  API->>API: SAME channel_fleet_id (slack_channel_bindings)
+  API->>API: SAME channel_fleet_id (core.connector_channels)
   Runner->>API: lease → GET /me/memory/{channel_fleet_id} → {prod: aurora} ✅
   Runner->>Slack: chat.postMessage thread_ts=B (uses "aurora") 🔨
 ```
@@ -37,11 +37,11 @@ sequenceDiagram
 
 ## 1. Install — one OAuth, multi-tenant
 
-A workspace admin clicks **Connect Slack** in the dashboard. `agentsfleetd` runs the OAuth (Open Authorization) code-exchange, persists `core.slack_installations (team_id → workspace_id, bot_user_id, …)`, and vaults the per-install bot token under `slack:bot`. The platform app credentials (`client_id`/`client_secret`/`signing_secret`) were registered once via [`../../../playbooks/operations/slack_app_registration/001_playbook.md`](../../../playbooks/operations/slack_app_registration/001_playbook.md). One app serves every tenant; `team_id` is the routing key. 🔨
+A workspace admin clicks **Connect Slack** in the dashboard. `agentsfleetd` runs the OAuth (Open Authorization) code-exchange, persists the install as a `(workspace_id,'slack')` **vault handle** carrying the bot token + metadata (`bot_user_id`, `scopes`) — mirroring the GitHub connector (`github/callback.zig`, zero entity tables) — plus a generic `core.connector_installs (provider='slack', external_account_id=team_id → workspace_id)` row that makes the inbound `team_id → workspace` lookup resolvable. The platform app credentials (`client_id`/`client_secret`/`signing_secret`) were registered once via [`../../../playbooks/operations/slack_app_registration/001_playbook.md`](../../../playbooks/operations/slack_app_registration/001_playbook.md). One app serves every tenant; `team_id` is the routing key. 🔨
 
 ## 2. The channel is the memory namespace
 
-The first `@mention` in `#support` lazily materializes a **durable per-channel resident fleet** — a normal `core.fleets` row with a **locked reactive policy** (read-only tools, no `triggers[]`, no cron) — and binds it in `core.slack_channel_bindings (team_id, channel_id → fleet_id, kind='resident')`. Every later mention in *any thread* of `#support` routes to this same fleet.
+The first `@mention` in `#support` materializes a **durable per-channel resident fleet** by calling the existing fleet-create path (`innerCreateFleet`) with a default channel-bot `skill.md` — a normal `core.fleets` row with a **code-set reactive config** (read-only tools, no `triggers[]`, no cron; set by the materialization helper, never from the skill.md prose) — and binds it in the generic `core.connector_channels (provider='slack', team_id, channel_id → fleet_id, kind='resident')`. Every later mention in *any thread* of `#support` routes to this same fleet. No new fleet-creation actor exists: `innerCreateFleet` is the sole `core.fleets` insert path, invoked here under the install-delegated workspace authority.
 
 | | Thread | Channel-resident fleet |
 |---|---|---|
@@ -50,7 +50,7 @@ The first `@mention` in `#support` lazily materializes a **durable per-channel r
 
 ## 3. Mention → steer → answer (one reasoning loop)
 
-A mention is a `slack:<user>` steer on `fleet:{channel_fleet_id}:events` — the **same** single ingress as webhook / cron / steer ([`../data_flow.md`](../data_flow.md) §B). On lease, the runner hydrates the channel's memory (`GET /v1/runners/me/memory/{channel_fleet_id}`); NullClaw answers from that memory plus the live thread context (read-only — it holds no write credentials at Rung 0); the answer posts back via `chat.postMessage thread_ts=<originating>`. On report, new facts are captured (`POST …/memory/{channel_fleet_id}`). The hydrate/capture loop is **reused unchanged** from [`../runner_fleet.md`](../runner_fleet.md) §Memory continuity.
+A mention is a `slack:<user>` event XADDed via the webhook-producer shape (signature-authed, no principal — `webhooks/fleet.zig`) on `fleet:{channel_fleet_id}:events` — the **same** single ingress as webhook / cron / steer ([`../data_flow.md`](../data_flow.md) §B). On lease, the runner hydrates the channel's memory (`GET /v1/runners/me/memory/{channel_fleet_id}`); NullClaw answers from that memory plus the live thread context (read-only — it holds no write credentials at Rung 0); the answer posts back via `chat.postMessage thread_ts=<originating>`. On report, new facts are captured (`POST …/memory/{channel_fleet_id}`). The hydrate/capture loop is **reused unchanged** from [`../runner_fleet.md`](../runner_fleet.md) §Memory continuity.
 
 ## 4. The cross-thread payoff
 
@@ -62,9 +62,9 @@ Thread A stored `prod=aurora`. Thread B — a different thread, possibly days la
 |---|---|
 | Memory hydrate/capture loop (keyed by `fleet_id`) | ✅ reused |
 | Single ingress / lease / execute / report | ✅ reused |
-| Slack OAuth install + `core.slack_installations` | 🔨 M106 |
-| Signed events ingress + `(team,channel)→fleet` routing | 🔨 M106 |
-| Per-channel resident fleet + locked reactive policy | 🔨 M106 |
+| Slack OAuth install — vault handle + generic `core.connector_installs` | 🔨 M106 |
+| Signed events ingress + `(team,channel)→fleet` routing (`core.connector_channels`) | 🔨 M106 |
+| Per-channel resident fleet — via `innerCreateFleet` + default skill.md, code-set reactive config | 🔨 M106 |
 | In-thread answer (`chat.postMessage thread_ts`) | 🔨 M106 |
 
 ## 6. What this scenario proves

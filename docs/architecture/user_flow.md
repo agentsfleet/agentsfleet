@@ -273,10 +273,10 @@ Single source of truth for caps: `https://api.agentsfleet.net/_um/da5b6b3810543f
 
 ## §8.8 Slack as a resident surface (Rung 0) — forward-looking (M106)
 
-A second front door, alongside Claude / CLI / dashboard, for users who live in Slack and never author markdown. After a workspace admin connects Slack once in the dashboard (OAuth — Open Authorization; `team_id → workspace` in `core.slack_installations`), `@agentsfleet` lives in any channel it's invited to:
+A second front door, alongside Claude / CLI / dashboard, for users who live in Slack and never author markdown. After a workspace admin connects Slack once in the dashboard (OAuth — Open Authorization; the install is a `(workspace_id,'slack')` vault handle plus a generic `core.connector_installs` row mapping `team_id → workspace`), `@agentsfleet` lives in any channel it's invited to:
 
-1. A user `@mentions` it; the signed events ingress (`POST /v1/integrations/slack/events`) resolves `(team_id, channel_id)` and routes a `slack:<user>` steer.
-2. The first mention in a channel lazily materializes a **durable per-channel resident fleet** (a `core.fleets` row with a locked reactive policy — read-only, no triggers, no cron), bound in `core.slack_channel_bindings`.
+1. A user `@mentions` it; the signed events ingress (`POST /v1/integrations/slack/events`) resolves `(team_id, channel_id)` and lands a `slack:<user>` event via the webhook-producer XADD shape (signature-authed, no principal).
+2. The first mention in a channel materializes a **durable per-channel resident fleet** by calling the existing fleet-create path with a default channel-bot skill.md (a `core.fleets` row with a code-set reactive config — read-only, no triggers, no cron), bound in the generic `core.connector_channels`.
 3. The run hydrates and captures that channel's memory via the existing `/v1/runners/me/memory/{fleet_id}` loop ([`runner_fleet.md`](./runner_fleet.md) §Memory continuity) — so the bot **learns the channel**, and memory persists thread→thread because the resident fleet (not the thread) is the namespace. The answer posts back in-thread.
 
 The bot is **reactive** by design — it answers on mention, never acts unattended. Converting a recurring need into a durable teammate that wakes on a real source and acts with approval is **Rung 1** (the follow-on; out of scope of M106). Canonical spec: `docs/v2/pending/M106_001_P1_API_DOCS_INFRA_UI_SLACK_RESIDENT_CHANNEL_BOT.md`.

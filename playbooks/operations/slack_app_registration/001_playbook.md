@@ -161,4 +161,4 @@ AGENTSFLEET_API_KEY="$ADMIN_KEY" agentsfleet credential show slack-app --json | 
 
 1. `agentsfleet credential delete slack-app` (admin key) to drop the platform secret.
 2. At `api.slack.com/apps` → the app → **Basic Information → Delete App** (or rotate `client_secret`/`signing_secret` and re-run §5).
-3. Existing per-customer installs (`slack_installations` rows + `slack:bot` vault entries) are unaffected by an app-secret rotation; a full app delete invalidates them — re-install per customer afterward.
+3. Existing per-customer installs (`core.connector_installs` rows + the `(workspace_id,'slack')` vault handles) are unaffected by an app-secret rotation; a full app delete invalidates them — re-install per customer afterward.
