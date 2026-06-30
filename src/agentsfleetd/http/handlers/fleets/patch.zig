@@ -40,7 +40,6 @@ const create = @import("create.zig");
 const workspace_guards = @import("../../workspace_guards.zig");
 
 const log = logging.scoped(.fleet_api);
-const API_ACTOR = "api";
 
 const Hx = hx_mod.Hx;
 
@@ -104,8 +103,7 @@ pub fn innerPatchFleet(hx: Hx, req: *httpz.Request, workspace_id: []const u8, fl
     // the bare ownership check. Capability for both is gated upstream by the
     // route's `fleet:write` scope (requireScope), independent of this axis.
     if (body.status != null) {
-        const actor = hx.principal.user_id orelse API_ACTOR;
-        const access = workspace_guards.enforce(hx.res, hx.req_id, conn, hx.alloc, hx.principal, workspace_id, actor) orelse return;
+        const access = workspace_guards.enforce(hx.res, hx.req_id, conn, hx.principal, workspace_id) orelse return;
         defer access.deinit(hx.alloc);
     } else {
         if (!common.authorizeWorkspace(conn, hx.principal, workspace_id)) {

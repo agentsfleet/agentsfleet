@@ -16,6 +16,7 @@
 // (2100) so the fixture never ages out.
 
 const std = @import("std");
+const scope_fixtures = @import("./test_scope_tokens.zig");
 const clock = @import("common").clock;
 const auth_mw = @import("../auth/middleware/mod.zig");
 const oidc = @import("../auth/oidc.zig");
@@ -30,8 +31,8 @@ const TestHarness = harness_mod.TestHarness;
 
 const ALLOC = std.testing.allocator;
 
-const TEST_ISSUER = "https://clerk.test.agentsfleet.net";
-const TEST_AUDIENCE = "https://api.agentsfleet.net";
+const TEST_ISSUER = scope_fixtures.ISSUER;
+const TEST_AUDIENCE = scope_fixtures.AUDIENCE;
 
 // UUIDv7 literals (version nibble 7, variant 8) so the schema id CHECK passes.
 const TENANT_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01";
@@ -45,15 +46,13 @@ const REGISTER_BODY =
     \\{"host_id":"host-enroll-test","sandbox_tier":"dev_none","labels":[]}
 ;
 
-const TEST_JWKS =
-    \\{"keys":[{"kty":"RSA","n":"xqsdGSYutr9L0eBYgPfoR55s-ZWGJkRtDM6KJaaCVH0rtUSUVq0noOYqVchWTM5ltwPw9rIajLR3DHsIO4sIWARdk-RhtVMg5kOtZ4S-v6AVsUq5iKGRbtb518dtpgt-ljVrgoJo93lx7GZ0cqaIZikRZ_C7SiyF8xiF_9q5JpYreXJCZFr3Ts8637rc7Mrdr8JNmTwCAhY1D9l3ZChqjVWiSW-R5AJGl59bHupdgjNjpeiYh_wR2yJQqEN4pzcX0CcMIBeVRSXQ8bNaQ3xWUUb-4TJ2FB8jH4tBkSgr8LPNO3RFFgRzmTGP6wpXPGnD1AJEU9Bu27mXIwZtAgSC8Q","e":"AQAB","kid":"test-kid-static","use":"sig","alg":"RS256"}]}
-;
+const TEST_JWKS = scope_fixtures.JWKS;
 // scopes claim carries `runner:enroll` → may enroll a runner.
 const OPERATOR_TOKEN =
-    "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6InRlc3Qta2lkLXN0YXRpYyJ9.eyJzdWIiOiJ1c2VyX29wX20xMDQiLCJpc3MiOiJodHRwczovL2NsZXJrLnRlc3QuYWdlbnRzZmxlZXQubmV0IiwiYXVkIjoiaHR0cHM6Ly9hcGkuYWdlbnRzZmxlZXQubmV0IiwiZXhwIjo0MTAyNDQ0ODAwLCJzY29wZXMiOiJydW5uZXI6ZW5yb2xsIHJ1bm5lcjpyZWFkIHJ1bm5lcjp3cml0ZSBzdHJlYW06cmVhZCIsIm1ldGFkYXRhIjp7InRlbmFudF9pZCI6IjAxOTViNGJhLThkM2EtN2YxMy04YWJjLTJiM2UxZTBhNmYwMSIsIndvcmtzcGFjZV9pZCI6IjAxOTViNGJhLThkM2EtN2YxMy04YWJjLTJiM2UxZTBhNmYxMSJ9fQ.SZaVcAjdF_bOKW4R1o7iMwGq7fciPYC-Faq4gj9yJKYEw4NP9mg1Sabpufjn-W0f7Fztiz40X7j72EpfNylcoxMQGXfRqy4P7ZhpPK4lJg1wGF-JxlXfJWBNWt7eE-eJKH1GkaCx_slLjgy4bOFrp9labmxHTkNmcPRDW-7rZR1Inwl-IttUO1rT-AaSchzC9ouLo1pEkNWQBrVGMnAbb9SmxBUbz-CWPB2bXHjfxIrGrwdH079nJhwEauAgMnBwGooF3IIhi-oyji3bCdDZ6gKrQhmwJaPkVfjkboGhw0z9FFnsd3zPEL7AZGoN4RD1Hq4dALdqS57yR9tcJluqtw";
+    "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6InRlc3Qta2lkLXN0YXRpYyJ9.eyJzdWIiOiJ1c2VyX29wX20xMDQiLCJpc3MiOiJodHRwczovL2NsZXJrLnRlc3QuYWdlbnRzZmxlZXQubmV0IiwiYXVkIjoiaHR0cHM6Ly9hcGkuYWdlbnRzZmxlZXQubmV0IiwiZXhwIjo0MTAyNDQ0ODAwLCJzY29wZXMiOiJydW5uZXI6ZW5yb2xsIHJ1bm5lcjpyZWFkIHJ1bm5lcjp3cml0ZSBzdHJlYW06cmVhZCIsIm1ldGFkYXRhIjp7InRlbmFudF9pZCI6IjAxOTViNGJhLThkM2EtN2YxMy04YWJjLTJiM2UxZTBhNmYwMSIsIndvcmtzcGFjZV9pZCI6IjAxOTViNGJhLThkM2EtN2YxMy04YWJjLTJiM2UxZTBhNmYxMSJ9fQ.ADYOJzBdVCEgAppXcvxCdOPN7yv3xCf44D2tFCDrWV9OASGC5ohfehxYCHXMz-rrmsq48lWHvpLt9R0qX99QDo4oBWjBd4c8-CcRl3KnWsNNTQVd7HeZNYcY3KdwDx8aXxdAr_Hsu6dHhGy2SeEFzlYffbtZT-qr6VT2nAqjNomcvUaPfNqb2U2-KwlS18ypM3VBxU2LYDMsjoRzxcex-ZgM49wzMccTFRKLJkPgmC0YI5i4BzmnYFDZ6owfjzVacHls_tNErBPQJ_gPbSl42eM_i-xqvtImdz8j9VJewbQ0CSAFc_PcdpNuHLDnOYfXSksFjnE5wbk5D0xlRBvrkQ";
 // scopes carry tenant capability only (no `runner:enroll`) → must be 403.
 const TENANT_TOKEN =
-    "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6InRlc3Qta2lkLXN0YXRpYyJ9.eyJzdWIiOiJ1c2VyX3RlbmFudF9tMTA0IiwiaXNzIjoiaHR0cHM6Ly9jbGVyay50ZXN0LmFnZW50c2ZsZWV0Lm5ldCIsImF1ZCI6Imh0dHBzOi8vYXBpLmFnZW50c2ZsZWV0Lm5ldCIsImV4cCI6NDEwMjQ0NDgwMCwic2NvcGVzIjoiZmxlZXQ6YWRtaW4gY3JlZGVudGlhbDp3cml0ZSIsIm1ldGFkYXRhIjp7InRlbmFudF9pZCI6IjAxOTViNGJhLThkM2EtN2YxMy04YWJjLTJiM2UxZTBhNmYwMSIsIndvcmtzcGFjZV9pZCI6IjAxOTViNGJhLThkM2EtN2YxMy04YWJjLTJiM2UxZTBhNmYxMSJ9fQ.UPkH61DyvWyGuxi8RnloNiMqeNtno2jId3FQUOALDmvRZZBb20tLi9kSAA3Tu51Fh4OIsCrW_6cmJUYyUGhvGLgFHEhMLMRxJcHnTTQODB6bJMBCOrA0anvwlf5Khn-OoWvok8ZC9_AhDxGmsHBgecXyk2M6sct0fjPXiCtrxF1JC5DwGwUFAa4t4qUiVWzF2DeQUjXYnYu7vmV427gnJkJYrT1FAGXvn9grV7xzH--07GNztwzLEf1lZmR22Cbggo-r5CG2QTDlMfXfdZ47SfugzlsYsiJC2UaGRjFJtz79olFxuugHlPeN3rgvP1QywXA_XC4LjR5X_y7YeebosQ";
+    "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6InRlc3Qta2lkLXN0YXRpYyJ9.eyJzdWIiOiJ1c2VyX3RlbmFudF9tMTA0IiwiaXNzIjoiaHR0cHM6Ly9jbGVyay50ZXN0LmFnZW50c2ZsZWV0Lm5ldCIsImF1ZCI6Imh0dHBzOi8vYXBpLmFnZW50c2ZsZWV0Lm5ldCIsImV4cCI6NDEwMjQ0NDgwMCwic2NvcGVzIjoiZmxlZXQ6YWRtaW4gY3JlZGVudGlhbDp3cml0ZSIsIm1ldGFkYXRhIjp7InRlbmFudF9pZCI6IjAxOTViNGJhLThkM2EtN2YxMy04YWJjLTJiM2UxZTBhNmYwMSIsIndvcmtzcGFjZV9pZCI6IjAxOTViNGJhLThkM2EtN2YxMy04YWJjLTJiM2UxZTBhNmYxMSJ9fQ.LHVx2-AWzyGF4uPeAzBTUVQHrPrRrQMne8-x9w0N0S-S5n7cYzB663wdlfuPAysmxw9vy022UYvJ0pSIKeMgiydIvWq5_WRu7vvOJm7wsnrIRPw13vQEB3Emk0JWYJzD0TRAajy6AcJTD2-R5OZfCLS4Es3iKl2GsGLm86NJbF6RkgBm4MtdfVkKo_K9vvSwqem3by8p-urKoGrilsd1RBQv6nOvAKyQIhHptLvRRNK1DC3bKuMWsUtuhbdEaEGBFmwYdBl7DIZHlH2rDkZ4d5iUQ_uMbRyiqzPKenUzJUj0HPbdo4N5y5EA2jo6XKw-AOkSHVkNCMZYSl4zz2OKmg";
 
 // ── Verifier proof (no DB) ───────────────────────────────────────────────────
 // Drives the real oidc.Verifier so the fixture is proven against production

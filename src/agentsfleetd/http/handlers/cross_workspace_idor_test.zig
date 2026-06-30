@@ -25,6 +25,7 @@
 // Skips all tests if TEST_DATABASE_URL / DATABASE_URL is not set.
 
 const std = @import("std");
+const scope_fixtures = @import("../test_scope_tokens.zig");
 const clock = @import("common").clock;
 const pg = @import("pg");
 const logging = @import("log");
@@ -56,15 +57,13 @@ const AGENTSFLEET_IN_FOREIGN_WS = "0195b4ba-8d3a-7f13-8abc-2b3e1e0bbb01";
 const GRANT_ID_PLACEHOLDER = "0195b4ba-8d3a-7f13-8abc-2b3e1e0bbb99";
 
 // Same JWKS + token as the steer test — DO NOT regenerate independently.
-const TEST_JWKS_URL = "https://clerk.dev.agentsfleet.net/.well-known/jwks.json";
-const TEST_ISSUER = "https://clerk.dev.agentsfleet.net";
-const TEST_AUDIENCE = "https://api.agentsfleet.net";
-const TEST_JWKS =
-    \\{"keys":[{"kty":"RSA","n":"055gLVwlsa0-zUCqQAYqyfiAob0IBQZgtHfhGUSIyRz-Czj-q0-2ota3rtZVla0drH56Zjzs80rSt9sDFQzsl0EfBrErbfhaUiEyiSwJnR69BxkbEtxTgdi-gtTe6Y5dbkxjO126xAaBcAkFYrfABFKaUZiEZjECtVjjRIu-LihcBbVx_LiLQr2beTb8A7sGeOY0JUjIcKMCDofdcRUoVuqvPBRjNk0pwDp7EOccQVthDOysJi6k5JdY3seExqNtthtWOcnUTD1uYKtx9YGoDLbdu5N3HkPieQHDXd8-Ah1uxbmHUr94CVzYlTxyIfp_vPvJa9pbYUy2PdoDuK_I9w","e":"AQAB","kid":"test-kid-static","use":"sig","alg":"RS256"}]}
-;
+const TEST_JWKS_URL = "https://clerk.test.agentsfleet.net/.well-known/jwks.json";
+const TEST_ISSUER = scope_fixtures.ISSUER;
+const TEST_AUDIENCE = scope_fixtures.AUDIENCE;
+const TEST_JWKS = scope_fixtures.JWKS;
 // .operator role, workspace_id = TEST_WORKSPACE_ID, tenant_id = TEST_TENANT_ID, exp = year 2100
 const TOKEN_OPERATOR =
-    "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6InRlc3Qta2lkLXN0YXRpYyJ9.eyJzdWIiOiJ1c2VyX3Rlc3QiLCJpc3MiOiJodHRwczovL2NsZXJrLmRldi5hZ2VudHNmbGVldC5uZXQiLCJhdWQiOiJodHRwczovL2FwaS5hZ2VudHNmbGVldC5uZXQiLCJleHAiOjQxMDI0NDQ4MDAsInNjb3BlcyI6ImZsZWV0OmFkbWluIGNyZWRlbnRpYWw6d3JpdGUgYXBpa2V5OmFkbWluIGZsZWV0a2V5OndyaXRlIGdyYW50OndyaXRlIGNvbm5lY3Rvcjp3cml0ZSBiaWxsaW5nOnJlYWQgYXBwcm92YWw6cmVzb2x2ZSB3b3Jrc3BhY2U6YWRtaW4gdGVtcGxhdGU6d3JpdGUiLCJtZXRhZGF0YSI6eyJ0ZW5hbnRfaWQiOiIwMTk1YjRiYS04ZDNhLTdmMTMtOGFiYy0yYjNlMWUwYTZmMDEiLCJ3b3Jrc3BhY2VfaWQiOiIwMTk1YjRiYS04ZDNhLTdmMTMtOGFiYy0yYjNlMWUwYTZmMTEifX0.wIBu6pV0SEgUx-dWvIQS6qXYXDT3licQxSYiC2-n7ijivJCikIRnO96t7HD71TQnSeJWR2uBbuK0oMDfUotxO-bkIDZ8CnEXMrV3u0W3o5ChssaBCjrU4zPOFTEt4kxICm0BRItzSAI7U8LDSsqa90OYeN2teZ0rtjrc8KlwqOFRoJJ17hDjbxUDqx1sbL_kKgn2mN8Vrwgksyze7z9buSI2f0be555BaR9bgE6rMeBBSqQSlRiNP_7_CITCciZ9cenAzJL7oytaA0XHj73Qdadq4_0L5fPKg5WCVFlgqEofuP5pQo8cHK-jxn1PHYlzVisMWObFcI4ki_A6DZFlqg";
+    "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6InRlc3Qta2lkLXN0YXRpYyJ9.eyJzdWIiOiJ1c2VyX3Rlc3QiLCJpc3MiOiJodHRwczovL2NsZXJrLnRlc3QuYWdlbnRzZmxlZXQubmV0IiwiYXVkIjoiaHR0cHM6Ly9hcGkuYWdlbnRzZmxlZXQubmV0IiwiZXhwIjo0MTAyNDQ0ODAwLCJzY29wZXMiOiJmbGVldDphZG1pbiBjcmVkZW50aWFsOndyaXRlIGFwaWtleTphZG1pbiBmbGVldGtleTp3cml0ZSBncmFudDp3cml0ZSBjb25uZWN0b3I6d3JpdGUgYmlsbGluZzpyZWFkIGFwcHJvdmFsOnJlc29sdmUgd29ya3NwYWNlOmFkbWluIHRlbXBsYXRlOndyaXRlIiwibWV0YWRhdGEiOnsidGVuYW50X2lkIjoiMDE5NWI0YmEtOGQzYS03ZjEzLThhYmMtMmIzZTFlMGE2ZjAxIiwid29ya3NwYWNlX2lkIjoiMDE5NWI0YmEtOGQzYS03ZjEzLThhYmMtMmIzZTFlMGE2ZjExIn19.clzrJQSbL5tON0PQQwuJYCRDJVDHiebt40X0wYNsN93A6KlNcLO2I_zREIXn2aUI8HAN0WaVJKGHuh1RXuQ-4Fw4wUS7UFIlrY_4DWKkTg6WCbAXxhwe90ScOn9Q5oXUfDLTbpMGw1sFgLe67qy2QPdyH_yephKyjArBnwJQqMbXtb-uKXN66lcrgHlR-KoBGzqkDHyc5bVy9CPKiLgbzZQac1mug53gc8zOZeAFlfgTXTWdSn65f37Cd-vmbGngrhY6sH2oZcUGOlXPiZtyw7jgWyp6tL9gLiDEwwLbQFkUqVvUjjhmkY8-LG7nna-ratPpt5UK3r7WB4bjREbsyQ";
 
 fn stubTenantApiKeyLookup(_: *anyopaque, _: std.mem.Allocator, _: []const u8) anyerror!?auth_mw.tenant_api_key.LookupResult {
     return null;

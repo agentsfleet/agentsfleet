@@ -41,13 +41,9 @@ pub fn enforce(
     res: *httpz.Response,
     req_id: []const u8,
     conn: *pg.Conn,
-    alloc: std.mem.Allocator,
     principal: common.AuthPrincipal,
     workspace_id: []const u8,
-    actor: []const u8,
 ) ?Access {
-    _ = alloc;
-    _ = actor;
     if (!authorizeWorkspace(res, req_id, conn, principal, workspace_id)) return null;
     return .{};
 }
