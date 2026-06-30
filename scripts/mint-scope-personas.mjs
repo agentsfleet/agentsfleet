@@ -58,7 +58,7 @@ const PERSONAS = {
   PLATFORM_ADMIN: {
     sub: "user_op_m104",
     scopes:
-      "runner:enroll runner:read runner:write stream:read model:admin platform-key:admin template:admin workspace:any",
+      "runner:enroll runner:read runner:write stream:read model:admin platform-key:admin platform-template:write workspace:any",
   },
   // Full tenant scopes but NO tenant_id/workspace_id claim — proves the null-
   // tenant principal is denied workspace authorization (IDOR fail-closed).
