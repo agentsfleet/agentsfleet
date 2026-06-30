@@ -13,11 +13,12 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Milestone:** M103
 **Workstream:** 001
 **Date:** Jun 29, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — operator- and user-facing: admins onboard templates, users consume installed bytes without uploading.
 **Categories:** API, DOCS, INFRA
 **Batch:** B1 — template catalog consolidation.
-**Branch:** added when work begins
+**Branch:** feat/m103-two-tier-template-catalog
+**Test Baseline:** unit=2190 integration=210
 **Depends on:** M104_001 (scope-based authorization — onboarding routes gate on `template:write`, not roles); M94_002 (Fleet Bundle import, runner materialization, install preview already exist). Supersedes M96_001 (R2-canonical store) — its R2-only content decision is absorbed here; M96_001 retires to `done/` as DEFERRED.
 **Provenance:** agent-generated (Indy design chat, Jun 29, 2026)
 
