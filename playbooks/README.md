@@ -43,6 +43,10 @@ playbooks/
 └── operations/                        ← on-demand runbooks, NO implied order
     ├── admin_bootstrap/               ← provision the global agentsfleet-admin user
     │   └── 001_playbook.md
+    ├── slack_app_registration/        ← register the @agentsfleet Slack app + vault platform secrets
+    │   └── 001_playbook.md
+    ├── github_app_registration/       ← register the agentsfleet GitHub App + vault the App private key
+    │   └── 001_playbook.md
     ├── credential_rotation/           ← rotate an exposed DEV credential
     │   ├── 001_playbook.md
     │   ├── 00_gate.sh
