@@ -191,7 +191,7 @@ You are @agentsfleet, a reactive assistant living in one Slack channel.
 
 ### §4 — Channel memory + answer round-trip (the flagged mechanism)
 
-A mention is an event on the channel fleet; the run hydrates and captures the channel's memory via the **existing** `/v1/runners/me/memory/{channel_fleet_id}` loop; the answer posts back in-thread (`thread_ts`). **The thread is a delivery surface, not a memory boundary — the resident fleet owns the durable namespace, so memory crosses threads because they share `channel_fleet_id`.** On **every** mention the worker live-fetches the recent thread (bounded last-N, a named const) into `recent_thread_msgs[]`: the bot is mention-only and blind to intervening non-mention messages, so same-thread continuity *requires* this re-read. Thread context is transient — passed as input, never written to `memory.memory_entries`. **Conflict rule:** when an in-thread statement contradicts durable memory, the freshest in-thread value wins for the current answer AND the run re-captures the correction to memory (so a later cross-thread recall isn't stale).
+A mention is an event on the channel fleet; the run hydrates and captures the channel's memory via the **existing** `/v1/runners/me/memory/{channel_fleet_id}` loop; the answer posts back in-thread using **`thread_ts = event.thread_ts orelse event.ts`** — a top-level mention (no `thread_ts`) anchors a new thread on its own `event.ts`, so the reply is always threaded, never a detached channel message. **The thread is a delivery surface, not a memory boundary — the resident fleet owns the durable namespace, so memory crosses threads because they share `channel_fleet_id`.** On **every** mention the worker live-fetches the recent thread (bounded last-N, a named const) into `recent_thread_msgs[]`: the bot is mention-only and blind to intervening non-mention messages, so same-thread continuity *requires* this re-read. Thread context is transient — passed as input, never written to `memory.memory_entries`. **Conflict rule:** when an in-thread statement contradicts durable memory, the freshest in-thread value wins for the current answer AND the run re-captures the correction to memory (so a later cross-thread recall isn't stale).
 
 - **Dimension 4.1** — mention routes to a `slack:<user>` event on `fleet:{channel_fleet_id}:events`; the answer posts to the originating `thread_ts` → Test `test_mention_steers_channel_fleet_and_replies_in_thread`
 - **Dimension 4.2** — a fact stored during thread A's run is recalled in a thread-B run of the same channel (cross-thread persistence) → Test `test_channel_memory_persists_across_threads`
@@ -217,8 +217,8 @@ Write the two registration playbooks and update the architecture docs (forward-m
 ## Interfaces
 
 ```
-POST /v1/integrations/slack/oauth/callback?code=&state=   (signature: none; state-signed)
-  → 302 to dashboard "Slack connected" on success
+GET /v1/integrations/slack/oauth/callback?code=&state=    (signature: none; state-signed; browser redirect)
+  → 302 to dashboard "Slack connected" on success      (Slack redirects the browser here via GET, mirroring github/callback.zig)
   → UZ-SLK-021 invalid_state | UZ-SLK-022 oauth_exchange_failed
 
 POST /v1/integrations/slack/events                         (auth: Slack v0 signature ONLY)
@@ -236,7 +236,7 @@ core.connector_channels:  provider, external_account_id (=team_id), external_cha
 
 producer (reused, webhooks/fleet.zig shape — signature-authed, NO principal):
   XADD fleet:{channel_fleet_id}:events  actor=slack:<user_id>  type=chat
-  request={ text, thread_ts, channel_id, recent_thread_msgs[] }
+  request={ text, reply_thread_ts (= event.thread_ts orelse event.ts), channel_id, recent_thread_msgs[] }
 fleet creation (reused): innerCreateFleet(workspace_id, source_markdown=DEFAULT_CHANNEL_BOT_SKILL, reactive config)
 memory (reused, unchanged): GET/POST /v1/runners/me/memory/{channel_fleet_id}   (scope column fleet_id = the channel's resident fleet)
 ```

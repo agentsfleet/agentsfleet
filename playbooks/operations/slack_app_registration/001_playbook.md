@@ -125,9 +125,9 @@ All three values captured.
 
 ```bash
 jq -n \
-  --arg cid "$(op read "op://$VAULT/slack-app/client_id" 2>/dev/null || read -rsp 'client_id: ' v; echo "$v")" \
-  --arg sec "$(read -rsp 'client_secret: ' v; echo "$v")" \
-  --arg sig "$(read -rsp 'signing_secret: ' v; echo "$v")" \
+  --arg cid "$(cid=$(op read "op://$VAULT/slack-app/client_id" 2>/dev/null) || read -rsp 'client_id: ' cid >&2; printf '%s' "$cid")" \
+  --arg sec "$(read -rsp 'client_secret: ' sec >&2; printf '%s' "$sec")" \
+  --arg sig "$(read -rsp 'signing_secret: ' sig >&2; printf '%s' "$sig")" \
   '{client_id:$cid, client_secret:$sec, signing_secret:$sig}' |
   AGENTSFLEET_API_KEY="$ADMIN_KEY" agentsfleet credential add slack-app --data @-
 ```
