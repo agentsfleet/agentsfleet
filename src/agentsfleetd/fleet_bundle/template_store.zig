@@ -25,8 +25,9 @@ pub const TIER_TENANT: []const u8 = "tenant";
 /// (`list.zig`, visibility = 'public') surfaces them beside the seed rows.
 const PLATFORM_CATALOG_VISIBILITY: []const u8 = "public";
 /// The importer does not produce per-credential reason copy; onboarded rows
-/// start with an empty reasons object (the seed rows carry curated copy).
-const EMPTY_REASONS_JSON: []const u8 = "{}";
+/// start with an empty reasons object (the seed rows carry curated copy). Shared
+/// with the gallery handler, which emits the same empty object for tenant rows.
+pub const EMPTY_REASONS_JSON: []const u8 = "{}";
 /// One repo per template, bundle at the repo root — no subpath filter.
 const SOURCE_PATH_ROOT: []const u8 = "";
 /// GitHub sources resolve at the default branch until per-source commit pinning.
@@ -53,6 +54,7 @@ pub const TenantInsertParams = struct {
     id: []const u8,
     workspace_id: []const u8,
     name: []const u8,
+    description: []const u8,
     source_kind: []const u8,
     source_ref: []const u8,
     content_hash: []const u8,
@@ -168,22 +170,23 @@ pub fn insertOrFetchTenant(conn: *pg.Conn, alloc: std.mem.Allocator, p: TenantIn
     var q = PgQuery.from(try conn.query(
         \\WITH inserted AS (
         \\  INSERT INTO core.tenant_fleet_bundle_templates
-        \\    (id, workspace_id, name, source_kind, source_ref, visibility,
+        \\    (id, workspace_id, name, description, source_kind, source_ref, visibility,
         \\     content_hash, skill_markdown, trigger_markdown, support_files_json,
         \\     requirements_json, created_at, updated_at)
-        \\  VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11::jsonb, $12, $12)
+        \\  VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb, $12::jsonb, $13, $13)
         \\  ON CONFLICT (workspace_id, content_hash) DO NOTHING
         \\  RETURNING id::text
         \\)
         \\SELECT id FROM inserted
         \\UNION ALL
         \\SELECT id::text FROM core.tenant_fleet_bundle_templates
-        \\WHERE workspace_id = $2::uuid AND content_hash = $7
+        \\WHERE workspace_id = $2::uuid AND content_hash = $8
         \\LIMIT 1
     , .{
         p.id,
         p.workspace_id,
         p.name,
+        p.description,
         p.source_kind,
         p.source_ref,
         TIER_TENANT,

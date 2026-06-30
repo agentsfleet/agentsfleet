@@ -117,7 +117,7 @@ pub const ENTRIES = [_]Entry{
     e("UZ-AGT-012", .conflict, "Fleet is paused", "This fleet is not active and refuses new work. Resume it with: agentsfleet resume <fleet>, then retry."),
     // ── Fleet Bundle ───────────────────────────────────────────────────────
     e("UZ-BUNDLE-001", .bad_request, "Invalid Fleet Bundle", "The supplied Fleet Bundle is missing SKILL.md or contains unsafe, oversized, or malformed files."),
-    e("UZ-BUNDLE-002", .not_found, "Fleet Bundle not found", "No Fleet Bundle snapshot matches the supplied bundle_id in this workspace."),
+    e("UZ-BUNDLE-002", .not_found, "Fleet Bundle not found", "No installable template or stored snapshot matches the request in this workspace."),
     e("UZ-BUNDLE-003", .failed_dependency, "Fleet Bundle credentials missing", "Add the missing workspace credentials before installing this Fleet Bundle."),
     e("UZ-BUNDLE-004", .bad_gateway, "Fleet Bundle fetch failed", "The Fleet Bundle source could not be fetched from GitHub. The repository may be missing or private, or GitHub may be unreachable. Verify the source reference and retry."),
     e("UZ-BUNDLE-005", .service_unavailable, "Fleet Bundle storage unavailable", "Snapshot storage is not configured or is unavailable, so the validated bundle could not be stored. Retry later or contact the operator."),

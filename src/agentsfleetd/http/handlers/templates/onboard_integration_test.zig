@@ -235,11 +235,11 @@ fn seedForeignTenantTemplate(conn: *pg.Conn) !void {
     try http_auth.seedScopeWorkspace(conn, http_auth.WS_SECONDARY);
     _ = try conn.exec(
         \\INSERT INTO core.tenant_fleet_bundle_templates
-        \\  (id, workspace_id, name, source_kind, source_ref, visibility,
+        \\  (id, workspace_id, name, description, source_kind, source_ref, visibility,
         \\   content_hash, skill_markdown, trigger_markdown, support_files_json,
         \\   requirements_json, created_at, updated_at)
         \\VALUES ('0195b4ba-8d3a-7f13-8abc-0000000000d1'::uuid, $1::uuid, $2,
-        \\        'upload', 'unit/foreign', 'tenant',
+        \\        'foreign workspace template', 'upload', 'unit/foreign', 'tenant',
         \\        'deadbeef', 'skill', NULL, '[]'::jsonb,
         \\        '{"credentials":[],"tools":[],"network_hosts":[],"support_files":[],"trigger_present":false}'::jsonb,
         \\        0, 0)
@@ -277,6 +277,38 @@ test "integration: gallery unions platform and own tenant templates" {
     // No object-store key escapes the gallery (Dimension 5.3).
     try std.testing.expect(!gallery.bodyContains("snapshot_key"));
     try std.testing.expect(!gallery.bodyContains("fleet-bundles/sha256/"));
+}
+
+test "integration: gallery entries carry description and credential reasons" {
+    const alloc = std.testing.allocator;
+    const h = makeHarness(alloc) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    try resetAndSeed(conn);
+
+    // Onboard a tenant template so the gallery exercises both tiers.
+    const body = try onboardBody(alloc);
+    defer alloc.free(body);
+    const url = try tenantUrl(alloc, http_auth.WS_PRIMARY);
+    defer alloc.free(url);
+    const created = try (try (try h.post(url).bearer(TOKEN_TENANT)).json(body)).send();
+    defer created.deinit();
+    try created.expectStatus(.created);
+
+    const gallery = try (try h.get(url).bearer(TOKEN_TENANT)).send();
+    defer gallery.deinit();
+    try gallery.expectStatus(.ok);
+    // Every entry carries the description + reasons keys (Dimension 5.4).
+    try std.testing.expect(gallery.bodyContains("\"description\""));
+    try std.testing.expect(gallery.bodyContains("\"required_credentials_reasons\""));
+    // The platform seed surfaces its curated per-credential reason copy...
+    try std.testing.expect(gallery.bodyContains("review your pull requests and post review comments"));
+    // ...and the onboarded tenant template surfaces its SKILL.md description.
+    try std.testing.expect(gallery.bodyContains("Probe template for onboarding tests."));
 }
 
 test "integration: gallery isolates another workspace's tenant templates" {

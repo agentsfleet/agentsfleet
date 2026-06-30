@@ -157,6 +157,7 @@ fn insertTenant(hx: Hx, workspace_id: []const u8, body: importer.ImportBody, pre
         .id = template_id,
         .workspace_id = workspace_id,
         .name = prepared.name,
+        .description = prepared.description,
         .source_kind = body.source_kind,
         .source_ref = body.source_ref,
         .content_hash = prepared.content_hash,

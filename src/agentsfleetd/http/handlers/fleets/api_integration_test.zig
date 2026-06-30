@@ -83,10 +83,10 @@ fn seedTenantTemplate(conn: *pg.Conn, alloc: std.mem.Allocator, name: []const u8
     const content_hash = std.fmt.bytesToHex(digest, .lower);
     _ = try conn.exec(
         \\INSERT INTO core.tenant_fleet_bundle_templates
-        \\  (id, workspace_id, name, source_kind, source_ref, visibility,
+        \\  (id, workspace_id, name, description, source_kind, source_ref, visibility,
         \\   content_hash, skill_markdown, trigger_markdown, support_files_json,
         \\   requirements_json, created_at, updated_at)
-        \\VALUES ($1::uuid, $2::uuid, $3, 'upload', 'unit', 'tenant',
+        \\VALUES ($1::uuid, $2::uuid, $3, 'integration test template', 'upload', 'unit', 'tenant',
         \\        $4, $5, $6, '[]'::jsonb, $7::jsonb, 0, 0)
         \\ON CONFLICT (workspace_id, content_hash) DO NOTHING
     , .{ id, TEST_WORKSPACE_ID, name, &content_hash, skill_md, trigger_md, TEMPLATE_REQUIREMENTS });
