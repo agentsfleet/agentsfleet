@@ -347,20 +347,28 @@ components:
       type: object
       description: >-
         One gallery row — a platform or tenant Fleet template. Carries identity,
-        source, derived requirements, and support-file summaries; never an
-        object-store key or support-file content.
+        description, source, derived requirements, per-credential reason copy, and
+        support-file summaries; never an object-store key or support-file content.
       required:
       - id
       - name
+      - description
       - visibility
       - source_ref
       - requirements
+      - required_credentials_reasons
       - support_files
       properties:
         id:
           type: string
         name:
           type: string
+        description:
+          type: string
+          description: >-
+            The template's SKILL.md description, rendered on the gallery card.
+            Platform rows carry their curated copy; tenant rows carry the
+            description derived from the onboarded SKILL frontmatter.
         visibility:
           type: string
           description: The catalog tier this template belongs to.
@@ -391,6 +399,14 @@ components:
                 type: string
             trigger_present:
               type: boolean
+        required_credentials_reasons:
+          type: object
+          description: >-
+            Display-only {credential_name: reason} map driving the install gate's
+            purpose copy. Platform rows surface their curated reasons; tenant rows
+            surface an empty object (the importer derives no per-credential copy).
+          additionalProperties:
+            type: string
         support_files:
           type: array
           items:

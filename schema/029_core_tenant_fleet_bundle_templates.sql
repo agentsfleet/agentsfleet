@@ -16,6 +16,10 @@ CREATE TABLE IF NOT EXISTS core.tenant_fleet_bundle_templates (
     id                  UUID NOT NULL UNIQUE,
     workspace_id        UUID NOT NULL REFERENCES core.workspaces(workspace_id) ON DELETE CASCADE,
     name                TEXT NOT NULL,
+    -- SKILL.md description, surfaced on the gallery card (M103 Dimension 5.4).
+    -- Mirrors core.fleet_bundle_templates.description; the importer derives it
+    -- from the onboarded SKILL frontmatter.
+    description         TEXT NOT NULL,
     source_kind         TEXT NOT NULL,
     source_ref          TEXT NOT NULL,
     visibility          TEXT NOT NULL,

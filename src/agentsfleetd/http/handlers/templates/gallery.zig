@@ -42,10 +42,15 @@ const ManifestEntry = struct {
 const GalleryEntry = struct {
     id: []const u8,
     name: []const u8,
+    description: []const u8,
     /// Catalog tier — "platform" or "tenant".
     visibility: []const u8,
     source_ref: []const u8,
     requirements: Requirements,
+    /// Display-only {credential_name: reason} object driving the install gate's
+    /// purpose copy. Platform rows surface their curated column; tenant rows
+    /// surface `{}` (the importer derives no reasons) — M103 Dimension 5.4.
+    required_credentials_reasons: std.json.Value,
     support_files: []const SupportSummary,
 };
 
@@ -56,8 +61,9 @@ const ResponseBody = struct {
 // Platform tier: requirements live in split JSONB columns; support manifest and
 // trigger flag come from the onboarding snapshot (nullable for seed rows).
 const SELECT_PLATFORM =
-    \\SELECT id, name, source_repo,
+    \\SELECT id, name, description, source_repo,
     \\       required_credentials::text, required_tools::text, network_hosts::text,
+    \\       required_credentials_reasons::text,
     \\       COALESCE(support_files_json::text, '[]'), (trigger_markdown IS NOT NULL)
     \\  FROM core.fleet_bundle_templates
     \\ WHERE visibility = $1
@@ -67,7 +73,7 @@ const SELECT_PLATFORM =
 // Tenant tier: requirements ride a single JSONB object; scope to the caller's
 // workspace only (Dimension 5.2).
 const SELECT_TENANT =
-    \\SELECT id::text, name, source_ref,
+    \\SELECT id::text, name, description, source_ref,
     \\       requirements_json::text, support_files_json::text
     \\  FROM core.tenant_fleet_bundle_templates
     \\ WHERE workspace_id = $1::uuid
@@ -112,15 +118,17 @@ fn appendPlatform(alloc: std.mem.Allocator, conn: *pg.Conn, rows: *std.ArrayList
         try rows.append(alloc, .{
             .id = try alloc.dupe(u8, try row.get([]const u8, 0)),
             .name = try alloc.dupe(u8, try row.get([]const u8, 1)),
+            .description = try alloc.dupe(u8, try row.get([]const u8, 2)),
             .visibility = template_store.TIER_PLATFORM,
-            .source_ref = try alloc.dupe(u8, try row.get([]const u8, 2)),
+            .source_ref = try alloc.dupe(u8, try row.get([]const u8, 3)),
             .requirements = .{
-                .credentials = try decodeStrings(alloc, try row.get([]const u8, 3)),
-                .tools = try decodeStrings(alloc, try row.get([]const u8, 4)),
-                .network_hosts = try decodeStrings(alloc, try row.get([]const u8, 5)),
-                .trigger_present = try row.get(bool, 7),
+                .credentials = try decodeStrings(alloc, try row.get([]const u8, 4)),
+                .tools = try decodeStrings(alloc, try row.get([]const u8, 5)),
+                .network_hosts = try decodeStrings(alloc, try row.get([]const u8, 6)),
+                .trigger_present = try row.get(bool, 9),
             },
-            .support_files = try decodeSummaries(alloc, try row.get([]const u8, 6)),
+            .required_credentials_reasons = try decodeReasons(alloc, try row.get([]const u8, 7)),
+            .support_files = try decodeSummaries(alloc, try row.get([]const u8, 8)),
         });
     }
 }
@@ -129,20 +137,29 @@ fn appendTenant(alloc: std.mem.Allocator, conn: *pg.Conn, workspace_id: []const 
     var q = PgQuery.from(try conn.query(SELECT_TENANT, .{workspace_id}));
     defer q.deinit();
     while (try q.next()) |row| {
-        const req = try std.json.parseFromSliceLeaky(Requirements, alloc, try row.get([]const u8, 3), .{ .ignore_unknown_fields = true });
+        const req = try std.json.parseFromSliceLeaky(Requirements, alloc, try row.get([]const u8, 4), .{ .ignore_unknown_fields = true });
         try rows.append(alloc, .{
             .id = try alloc.dupe(u8, try row.get([]const u8, 0)),
             .name = try alloc.dupe(u8, try row.get([]const u8, 1)),
+            .description = try alloc.dupe(u8, try row.get([]const u8, 2)),
             .visibility = template_store.TIER_TENANT,
-            .source_ref = try alloc.dupe(u8, try row.get([]const u8, 2)),
+            .source_ref = try alloc.dupe(u8, try row.get([]const u8, 3)),
             .requirements = req,
-            .support_files = try decodeSummaries(alloc, try row.get([]const u8, 4)),
+            .required_credentials_reasons = try decodeReasons(alloc, template_store.EMPTY_REASONS_JSON),
+            .support_files = try decodeSummaries(alloc, try row.get([]const u8, 5)),
         });
     }
 }
 
 fn decodeStrings(alloc: std.mem.Allocator, json_text: []const u8) ![]const []const u8 {
     return std.json.parseFromSliceLeaky([]const []const u8, alloc, json_text, .{});
+}
+
+// Decode the `{credential_name: reason}` object as a JSON value so it round-trips
+// into the response as a nested object (mirrors list.zig). Tenant rows pass the
+// empty-object literal; platform rows pass their stored column.
+fn decodeReasons(alloc: std.mem.Allocator, json_text: []const u8) !std.json.Value {
+    return std.json.parseFromSliceLeaky(std.json.Value, alloc, json_text, .{});
 }
 
 // Project the stored manifest into {path, size_bytes} summaries; the per-file
