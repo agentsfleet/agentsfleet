@@ -170,3 +170,7 @@ Trigger modes:
 - **Steer.** A direct operator instruction via `agentsfleet steer <fleet_id> <message>` or the dashboard chat widget; lands with `actor=steer:<user>`.
 
 All three flow through the same reasoning loop. The fleet does not branch on actor type — its SKILL.md describes the general outcome and the same `http_request` tool calls fire regardless of trigger source.
+
+### 5.2 Slack-resident channel bot — the on-ramp (forward-looking, M106)
+
+The first surface that meets non-terminal users — support, ops — where they already work. A first-party multi-tenant `@agentsfleet` Slack app: one OAuth (Open Authorization) install per workspace, and in any channel it's invited to, an `@mention` is answered in-thread, read-only, learning that channel over time (the channel's memory namespace is a per-channel resident fleet, `instance_id = channel_fleet_id`). It is **reactive** — it answers, never acts unattended — which is the deliberate boundary to the durable hired teammate (§5.1's platform-ops is the active form). This is acquisition, not a second product: the reactive bot's job is to convert to a durable teammate, so it does **not** make v2 "just a chat UI over tools" — agency, not memory, is the line. Specced in `docs/v2/pending/M106_001_P1_API_DOCS_INFRA_UI_SLACK_RESIDENT_CHANNEL_BOT.md`; the hired-teammate Rung 1 is the follow-on.
