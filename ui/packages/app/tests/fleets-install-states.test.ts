@@ -195,7 +195,6 @@ describe("test_install_states_render", () => {
           source_ref: "acme/repo",
           validation_status: "ok",
           content_hash: "h",
-          snapshot_key: "k",
           requirements: { credentials: [], tools: [], network_hosts: [], support_files: [], trigger_present: false },
           support_files: [],
         },

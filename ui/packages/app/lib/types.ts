@@ -94,7 +94,6 @@ export type BundleSnapshot = {
   source_ref: string;
   validation_status: string;
   content_hash: string;
-  snapshot_key: string;
   requirements: BundleRequirements;
   support_files: BundleSupportFileSummary[];
 };

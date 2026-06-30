@@ -17,7 +17,6 @@ const SNAPSHOT = {
   source_ref: "acme/repo",
   validation_status: "ok",
   content_hash: "h",
-  snapshot_key: "k",
   support_files: [],
 };
 

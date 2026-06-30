@@ -176,7 +176,6 @@ fn respond(hx: hx_mod.Hx, body: importer.ImportBody, prepared: importer.Prepared
         .source_ref = body.source_ref,
         .validation_status = importer.STATUS_VALID,
         .content_hash = prepared.content_hash,
-        .snapshot_key = prepared.snapshot_key,
         .requirements = requirements.value,
         .support_files = summaries,
     });
@@ -189,11 +188,23 @@ fn parseJsonValue(hx: hx_mod.Hx, json: []const u8) ?std.json.Parsed(std.json.Val
     };
 }
 
-/// Shared by the import response and the bundle detail handler (`get.zig`).
+/// Build {path, size_bytes} summaries from the live import body's support files —
+/// used by the import response, where the in-flight bytes are still in hand.
 pub fn supportSummaries(alloc: std.mem.Allocator, files: []const importer.SupportFile) ![]SupportFileSummary {
     const summaries = try alloc.alloc(SupportFileSummary, files.len);
     for (files, 0..) |file, i| {
         summaries[i] = .{ .path = file.path, .size_bytes = file.content.len };
+    }
+    return summaries;
+}
+
+/// Build the same public {path, size_bytes} summaries from a persisted manifest —
+/// used by the bundle detail handler, which reads back rows that hold no bytes.
+/// The per-file `sha256` stays internal (the public summary is path + size only).
+pub fn manifestSummaries(alloc: std.mem.Allocator, manifest: []const importer.SupportFileManifest) ![]SupportFileSummary {
+    const summaries = try alloc.alloc(SupportFileSummary, manifest.len);
+    for (manifest, 0..) |entry, i| {
+        summaries[i] = .{ .path = entry.path, .size_bytes = entry.size_bytes };
     }
     return summaries;
 }

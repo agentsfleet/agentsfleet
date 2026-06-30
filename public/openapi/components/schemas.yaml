@@ -323,7 +323,6 @@ components:
       - source_ref
       - validation_status
       - content_hash
-      - snapshot_key
       - requirements
       - support_files
       properties:
@@ -345,9 +344,6 @@ components:
         content_hash:
           type: string
           description: SHA-256 content hash of the imported snapshot.
-        snapshot_key:
-          type: string
-          description: Content-addressed snapshot key for runner materialization.
         requirements:
           $ref: '#/components/schemas/FleetBundleRequirements'
         support_files:
