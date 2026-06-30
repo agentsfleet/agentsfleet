@@ -46,6 +46,12 @@ pub const Route = union(enum) {
     // Tenant-scoped LLM provider config — GET/PUT/DELETE /v1/tenants/me/provider
     tenant_provider,
     fleet_bundles, // GET /v1/fleets/bundles
+    // Platform template onboarding — POST /v1/admin/fleet-templates
+    // (platform-template:write). No workspace context.
+    admin_fleet_templates,
+    // Tenant template onboarding — POST /v1/workspaces/{ws}/fleet-templates
+    // (template:write + workspace ownership). Carries workspace_id.
+    workspace_fleet_templates: []const u8,
     /// POST /v1/webhooks/{fleet_id} — generic per-fleet webhook receiver.
     /// HMAC-only via webhook_sig middleware; secret resolved from the
     /// workspace credential keyed by the matching `triggers[].source`.

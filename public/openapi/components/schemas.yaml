@@ -350,6 +350,70 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/FleetBundleSupportFileSummary'
+    FleetTemplateOnboardRequest:
+      type: object
+      required:
+      - source_kind
+      properties:
+        source_kind:
+          type: string
+          description: >-
+            Where the template comes from. `github` and `template` are fetched
+            and validated server-side; `upload` carries the SKILL.md (and optional
+            TRIGGER.md) Markdown inline for a skill-only template.
+          enum:
+          - template
+          - upload
+          - github
+        source_ref:
+          type: string
+          maxLength: 512
+          description: >-
+            Required for `github` (an `owner/repo` locator resolved at the default
+            branch) and `template` (a first-party template id).
+        skill_markdown:
+          type: string
+          maxLength: 204800
+          description: Raw SKILL.md bytes. Required for `upload`; ignored for fetched sources.
+        trigger_markdown:
+          type: string
+          maxLength: 204800
+          description: Optional raw TRIGGER.md bytes for `upload`. Ignored for fetched sources.
+    FleetTemplateOnboardResult:
+      type: object
+      description: >-
+        Result of onboarding a Fleet template (platform or tenant tier). Carries
+        the template identity, its tier in `visibility`, the content hash, the
+        derived requirements, and support-file summaries — never an object-store
+        key or support-file content.
+      required:
+      - id
+      - name
+      - visibility
+      - content_hash
+      - requirements
+      - support_files
+      properties:
+        id:
+          type: string
+          description: Template id — the slug for platform templates, a UUIDv7 for tenant templates.
+        name:
+          type: string
+        visibility:
+          type: string
+          description: The catalog tier the template was onboarded into.
+          enum:
+          - platform
+          - tenant
+        content_hash:
+          type: string
+          description: SHA-256 content hash of the onboarded snapshot.
+        requirements:
+          $ref: '#/components/schemas/FleetBundleRequirements'
+        support_files:
+          type: array
+          items:
+            $ref: '#/components/schemas/FleetBundleSupportFileSummary'
     FleetTrigger:
       type: object
       description: A single trigger projected into the fleet list row.

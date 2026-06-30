@@ -63,6 +63,9 @@ pub const ImportBody = struct {
 
 pub const PreparedBundle = struct {
     name: []const u8,
+    /// SKILL.md frontmatter description — used by the platform template catalog
+    /// row; the per-workspace bundle insert ignores it.
+    description: []const u8,
     content_hash: []const u8,
     snapshot_key: []const u8,
     support_files_json: []const u8,
@@ -70,6 +73,7 @@ pub const PreparedBundle = struct {
 
     pub fn deinit(self: *const PreparedBundle, alloc: std.mem.Allocator) void {
         alloc.free(self.name);
+        alloc.free(self.description);
         alloc.free(self.content_hash);
         alloc.free(self.snapshot_key);
         alloc.free(self.support_files_json);
@@ -121,8 +125,17 @@ pub fn prepare(alloc: std.mem.Allocator, body: ImportBody) (std.mem.Allocator.Er
     const snapshot_key = try snapshotKey(alloc, content_hash);
     errdefer alloc.free(snapshot_key);
 
+    // Dupe name + description out of `skill` before its defer frees it. Two
+    // dupes, so build them with errdefers ahead of the literal rather than
+    // inline (struct-init partial-leak rule).
+    const name = try alloc.dupe(u8, skill.name);
+    errdefer alloc.free(name);
+    const description = try alloc.dupe(u8, skill.description);
+    errdefer alloc.free(description);
+
     return .{
-        .name = try alloc.dupe(u8, skill.name),
+        .name = name,
+        .description = description,
         .content_hash = content_hash,
         .snapshot_key = snapshot_key,
         .support_files_json = support_files_json,
