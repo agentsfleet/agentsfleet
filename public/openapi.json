@@ -141,6 +141,13 @@
       }
     },
     {
+      "name": "Fleet Templates",
+      "description": "Two-tier Fleet template catalog — platform-wide and tenant-scoped onboarding from a GitHub source, stored once in object storage by content hash.",
+      "x-mintlify": {
+        "navigation": "Fleet Templates"
+      }
+    },
+    {
       "name": "Model Catalogue",
       "description": "Public model→capability catalogue consumed at provisioning time.",
       "x-mintlify": {
@@ -3045,6 +3052,124 @@
         }
       }
     },
+    "/v1/admin/fleet-templates": {
+      "post": {
+        "operationId": "onboard_platform_fleet_template",
+        "summary": "Onboard a platform Fleet template",
+        "description": "Onboards a Fleet template into the global platform catalog from a GitHub source reference. Requires the `platform-template:write` scope. The canonical bundle is written to internal object storage keyed by content hash; the response carries metadata only — never an object-store key or support-file content.",
+        "tags": [
+          "Fleet Templates"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FleetTemplateOnboardRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Template onboarded into the platform catalog.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FleetTemplateOnboardResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error"
+          },
+          "502": {
+            "$ref": "#/components/responses/Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/workspaces/{workspace_id}/fleet-templates": {
+      "post": {
+        "operationId": "onboard_tenant_fleet_template",
+        "summary": "Onboard a tenant Fleet template",
+        "description": "Onboards a Fleet template into the caller's workspace catalog from a GitHub source reference. Requires the `template:write` scope plus ownership of the target workspace. Re-onboarding identical bytes converges on one `(workspace_id, content_hash)` row. The response carries metadata only.",
+        "tags": [
+          "Fleet Templates"
+        ],
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "description": "UUIDv7 of the workspace.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FleetTemplateOnboardRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Template onboarded into the workspace catalog.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FleetTemplateOnboardResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error"
+          },
+          "502": {
+            "$ref": "#/components/responses/Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/v1/workspaces/{workspace_id}/fleets/bundles/snapshots": {
       "post": {
         "operationId": "import_fleet_bundle",
@@ -5171,6 +5296,38 @@
           }
         }
       },
+      "FleetTemplateOnboardRequest": {
+        "type": "object",
+        "required": [
+          "source_kind"
+        ],
+        "properties": {
+          "source_kind": {
+            "type": "string",
+            "description": "Where the template comes from. `github` and `template` are fetched and validated server-side; `upload` carries the SKILL.md (and optional TRIGGER.md) Markdown inline for a skill-only template.",
+            "enum": [
+              "template",
+              "upload",
+              "github"
+            ]
+          },
+          "source_ref": {
+            "type": "string",
+            "maxLength": 512,
+            "description": "Required for `github` (an `owner/repo` locator resolved at the default branch) and `template` (a first-party template id)."
+          },
+          "skill_markdown": {
+            "type": "string",
+            "maxLength": 204800,
+            "description": "Raw SKILL.md bytes. Required for `upload`; ignored for fetched sources."
+          },
+          "trigger_markdown": {
+            "type": "string",
+            "maxLength": 204800,
+            "description": "Optional raw TRIGGER.md bytes for `upload`. Ignored for fetched sources."
+          }
+        }
+      },
       "FleetBundleRequirements": {
         "type": "object",
         "required": [
@@ -5223,6 +5380,48 @@
           "size_bytes": {
             "type": "integer",
             "format": "int64"
+          }
+        }
+      },
+      "FleetTemplateOnboardResult": {
+        "type": "object",
+        "description": "Result of onboarding a Fleet template (platform or tenant tier). Carries the template identity, its tier in `visibility`, the content hash, the derived requirements, and support-file summaries — never an object-store key or support-file content.",
+        "required": [
+          "id",
+          "name",
+          "visibility",
+          "content_hash",
+          "requirements",
+          "support_files"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Template id — the slug for platform templates, a UUIDv7 for tenant templates."
+          },
+          "name": {
+            "type": "string"
+          },
+          "visibility": {
+            "type": "string",
+            "description": "The catalog tier the template was onboarded into.",
+            "enum": [
+              "platform",
+              "tenant"
+            ]
+          },
+          "content_hash": {
+            "type": "string",
+            "description": "SHA-256 content hash of the onboarded snapshot."
+          },
+          "requirements": {
+            "$ref": "#/components/schemas/FleetBundleRequirements"
+          },
+          "support_files": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FleetBundleSupportFileSummary"
+            }
           }
         }
       },

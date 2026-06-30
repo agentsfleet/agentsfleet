@@ -102,7 +102,11 @@ fn persist(
     return insertBundle(hx, workspace_id, resolved.body, prepared);
 }
 
-fn putSnapshot(hx: hx_mod.Hx, resolved: *const resolve.Resolved, prepared: importer.PreparedBundle) bool {
+/// Write the canonical tar to R2 under the content-addressed snapshot key, before
+/// any metadata commit (R2-before-metadata invariant). Shared with the template
+/// onboarding handlers. Returns false (and responds) when R2 is unset or the put
+/// fails. Only called when the bundle carries support files.
+pub fn putSnapshot(hx: hx_mod.Hx, resolved: *const resolve.Resolved, prepared: importer.PreparedBundle) bool {
     const r2 = hx.ctx.r2 orelse {
         storageUnavailable(hx);
         return false;
@@ -218,7 +222,9 @@ fn storageUnavailable(hx: hx_mod.Hx) void {
     common.errorResponse(hx.res, ec.ERR_FLEET_BUNDLE_STORAGE_UNAVAILABLE, "Fleet Bundle snapshot storage is unavailable", hx.req_id);
 }
 
-fn failImport(hx: hx_mod.Hx, err: anyerror) void {
+/// Map a resolve/import error to its HTTP response. Shared with the template
+/// onboarding handlers, which run the same resolve → prepare pipeline.
+pub fn failImport(hx: hx_mod.Hx, err: anyerror) void {
     switch (err) {
         error.MissingSkill => hx.fail(ec.ERR_FLEET_BUNDLE_INVALID, "missing_skill"),
         error.UploadAttachmentsUnsupported => hx.fail(ec.ERR_FLEET_BUNDLE_INVALID, "upload sources cannot carry support files; use a github or template source"),

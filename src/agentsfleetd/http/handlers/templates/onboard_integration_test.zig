@@ -1,0 +1,227 @@
+//! Integration coverage for the two template onboarding routes (M103 §2):
+//! scope gating, workspace ownership, skill-only (no-R2) onboard, and the
+//! tenant `(workspace_id, content_hash)` dedup. Support-file fetch paths ride
+//! github/template sources and are covered by the importer + github_source unit
+//! tests; these exercise the upload (paste) path, which needs no network or R2.
+
+const std = @import("std");
+const pg = @import("pg");
+const auth_mw = @import("../../../auth/middleware/mod.zig");
+
+const scope_fixtures = @import("../../test_scope_tokens.zig");
+const http_auth = @import("../../../db/test_fixtures_http_auth.zig");
+const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
+const harness_mod = @import("../../test_harness.zig");
+const TestHarness = harness_mod.TestHarness;
+
+const TEST_ISSUER = scope_fixtures.ISSUER;
+const TEST_AUDIENCE = scope_fixtures.AUDIENCE;
+const TEST_JWKS = scope_fixtures.JWKS;
+// TENANT_ADMIN holds template:write (tenant tier), not platform-template:write.
+const TOKEN_TENANT = scope_fixtures.TENANT_ADMIN;
+// PLATFORM_ADMIN holds platform-template:write, not template:write.
+const TOKEN_PLATFORM = scope_fixtures.PLATFORM_ADMIN;
+
+const PROBE_NAME = "onboard-probe";
+const PROBE_SKILL =
+    \\---
+    \\name: onboard-probe
+    \\description: Probe template for onboarding tests.
+    \\version: 0.1.0
+    \\---
+    \\Body for the onboarding probe.
+;
+
+const PLATFORM_URL = "/v1/admin/fleet-templates";
+
+fn configureRegistry(_: *auth_mw.MiddlewareRegistry, _: *TestHarness) anyerror!void {}
+
+fn makeHarness(alloc: std.mem.Allocator) !*TestHarness {
+    return TestHarness.start(alloc, .{
+        .configureRegistry = configureRegistry,
+        .inline_jwks_json = TEST_JWKS,
+        .issuer = TEST_ISSUER,
+        .audience = TEST_AUDIENCE,
+    });
+}
+
+fn resetAndSeed(conn: *pg.Conn) !void {
+    _ = try conn.exec("DELETE FROM core.tenant_fleet_bundle_templates WHERE workspace_id = $1::uuid", .{http_auth.WS_PRIMARY});
+    _ = try conn.exec("DELETE FROM core.fleet_bundle_templates WHERE id = $1", .{PROBE_NAME});
+    http_auth.cleanup(conn);
+    try http_auth.seedTenant(conn);
+    try http_auth.seedScopeWorkspace(conn, http_auth.WS_PRIMARY);
+}
+
+fn tenantUrl(alloc: std.mem.Allocator, workspace_id: []const u8) ![]const u8 {
+    return std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/fleet-templates", .{workspace_id});
+}
+
+/// Upload (paste) onboarding body — skill-only, no support files, so no fetch
+/// and no R2 object are needed.
+fn onboardBody(alloc: std.mem.Allocator) ![]const u8 {
+    return std.json.Stringify.valueAlloc(alloc, .{
+        .source_kind = "upload",
+        .source_ref = "unit/onboard-probe",
+        .skill_markdown = PROBE_SKILL,
+    }, .{});
+}
+
+fn platformCount(conn: *pg.Conn) !i64 {
+    var q = PgQuery.from(try conn.query(
+        \\SELECT count(*)::bigint FROM core.fleet_bundle_templates WHERE id = $1
+    , .{PROBE_NAME}));
+    defer q.deinit();
+    const row = try q.next() orelse return error.CountMissing;
+    return try row.get(i64, 0);
+}
+
+fn tenantCount(conn: *pg.Conn) !i64 {
+    var q = PgQuery.from(try conn.query(
+        \\SELECT count(*)::bigint FROM core.tenant_fleet_bundle_templates WHERE workspace_id = $1::uuid
+    , .{http_auth.WS_PRIMARY}));
+    defer q.deinit();
+    const row = try q.next() orelse return error.CountMissing;
+    return try row.get(i64, 0);
+}
+
+test "integration: platform onboard requires platform-template:write" {
+    const alloc = std.testing.allocator;
+    const h = makeHarness(alloc) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    try resetAndSeed(conn);
+
+    const body = try onboardBody(alloc);
+    defer alloc.free(body);
+
+    // TENANT_ADMIN lacks platform-template:write → 403, nothing written.
+    const denied = try (try (try h.post(PLATFORM_URL).bearer(TOKEN_TENANT)).json(body)).send();
+    defer denied.deinit();
+    try denied.expectStatus(.forbidden);
+    try std.testing.expectEqual(@as(i64, 0), try platformCount(conn));
+
+    // PLATFORM_ADMIN holds the scope → 201, row persisted, response tier "platform".
+    const ok = try (try (try h.post(PLATFORM_URL).bearer(TOKEN_PLATFORM)).json(body)).send();
+    defer ok.deinit();
+    try ok.expectStatus(.created);
+    try std.testing.expect(ok.bodyContains("\"visibility\":\"platform\""));
+    try std.testing.expect(ok.bodyContains("\"content_hash\""));
+    try std.testing.expect(!ok.bodyContains("snapshot_key"));
+    try std.testing.expectEqual(@as(i64, 1), try platformCount(conn));
+}
+
+test "integration: tenant onboard requires template:write plus workspace ownership" {
+    const alloc = std.testing.allocator;
+    const h = makeHarness(alloc) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    try resetAndSeed(conn);
+
+    const body = try onboardBody(alloc);
+    defer alloc.free(body);
+    const owned_url = try tenantUrl(alloc, http_auth.WS_PRIMARY);
+    defer alloc.free(owned_url);
+
+    // PLATFORM_ADMIN lacks template:write → 403 even with workspace:any.
+    const no_scope = try (try (try h.post(owned_url).bearer(TOKEN_PLATFORM)).json(body)).send();
+    defer no_scope.deinit();
+    try no_scope.expectStatus(.forbidden);
+
+    // TENANT_ADMIN holds template:write but does not own WS_ABSENT → 403.
+    const foreign_url = try tenantUrl(alloc, http_auth.WS_ABSENT);
+    defer alloc.free(foreign_url);
+    const not_owned = try (try (try h.post(foreign_url).bearer(TOKEN_TENANT)).json(body)).send();
+    defer not_owned.deinit();
+    try not_owned.expectStatus(.forbidden);
+    try std.testing.expectEqual(@as(i64, 0), try tenantCount(conn));
+
+    // TENANT_ADMIN owns WS_PRIMARY → 201, row written under that workspace.
+    const ok = try (try (try h.post(owned_url).bearer(TOKEN_TENANT)).json(body)).send();
+    defer ok.deinit();
+    try ok.expectStatus(.created);
+    try std.testing.expect(ok.bodyContains("\"visibility\":\"tenant\""));
+    try std.testing.expectEqual(@as(i64, 1), try tenantCount(conn));
+}
+
+test "integration: skill-only template onboards without an R2 object" {
+    const alloc = std.testing.allocator;
+    const h = makeHarness(alloc) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    try resetAndSeed(conn);
+
+    const body = try onboardBody(alloc);
+    defer alloc.free(body);
+    const url = try tenantUrl(alloc, http_auth.WS_PRIMARY);
+    defer alloc.free(url);
+
+    // The harness configures no R2 client; a skill-only onboard must still succeed
+    // (no support files → no snapshot put). The stored manifest is an empty array.
+    const ok = try (try (try h.post(url).bearer(TOKEN_TENANT)).json(body)).send();
+    defer ok.deinit();
+    try ok.expectStatus(.created);
+
+    var q = PgQuery.from(try conn.query(
+        \\SELECT support_files_json::text FROM core.tenant_fleet_bundle_templates
+        \\WHERE workspace_id = $1::uuid
+    , .{http_auth.WS_PRIMARY}));
+    defer q.deinit();
+    const row = try q.next() orelse return error.RowMissing;
+    try std.testing.expectEqualStrings("[]", try row.get([]const u8, 0));
+}
+
+test "integration: tenant onboard dedupes by workspace and content hash" {
+    const alloc = std.testing.allocator;
+    const h = makeHarness(alloc) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    try resetAndSeed(conn);
+
+    const body = try onboardBody(alloc);
+    defer alloc.free(body);
+    const url = try tenantUrl(alloc, http_auth.WS_PRIMARY);
+    defer alloc.free(url);
+
+    const first = try (try (try h.post(url).bearer(TOKEN_TENANT)).json(body)).send();
+    defer first.deinit();
+    try first.expectStatus(.created);
+    const first_id = try jsonStringField(alloc, first.body, "id");
+    defer alloc.free(first_id);
+
+    const second = try (try (try h.post(url).bearer(TOKEN_TENANT)).json(body)).send();
+    defer second.deinit();
+    try second.expectStatus(.created);
+    const second_id = try jsonStringField(alloc, second.body, "id");
+    defer alloc.free(second_id);
+
+    // Identical bytes converge on one (workspace_id, content_hash) row.
+    try std.testing.expectEqualStrings(first_id, second_id);
+    try std.testing.expectEqual(@as(i64, 1), try tenantCount(conn));
+}
+
+fn jsonStringField(alloc: std.mem.Allocator, body: []const u8, field: []const u8) ![]const u8 {
+    const parsed = try std.json.parseFromSlice(std.json.Value, alloc, body, .{});
+    defer parsed.deinit();
+    const value = parsed.value.object.get(field) orelse return error.JsonFieldMissing;
+    return switch (value) {
+        .string => |s| alloc.dupe(u8, s),
+        else => error.JsonFieldWrongType,
+    };
+}
