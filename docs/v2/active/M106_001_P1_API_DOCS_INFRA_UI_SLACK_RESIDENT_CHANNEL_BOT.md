@@ -25,7 +25,7 @@
 2. `src/agentsfleetd/credentials/integration_github.zig` + `src/agentsfleetd/http/handlers/connectors/github/` — the OAuth connector + platform-secret (`crypto_store.load`) pattern the Slack app install mirrors. **Note:** GitHub persists its install as a **vault JSON handle keyed `(workspace_id, "github")`** (`callback.zig:86`) with **zero entity tables**; status is a handle-existence check (`status.zig:40`); the broker mints from the handle at runtime. Slack mirrors this for the token + metadata and adds only a generic inbound-routing index (item 6).
 3. `src/agentsfleetd/auth/middleware/webhook_hmac.zig` + `webhook_sig.zig` — constant-time signature verify and the `UZ-WH-0xx` error taxonomy the Slack v0 scheme mirrors.
 4. `src/agentsfleetd/http/handlers/webhooks/fleet.zig` — the **signature-authenticated producer**: per-fleet HMAC only, **no OIDC principal** (`:3`), a **free-form** `actor="webhook:{src}"` (`:104`), and a direct `XADD` of an `EventEnvelope` (`:114`). The Slack mention reuses *this* producer shape with `actor=slack:<user>`. It does **NOT** reuse `fleets/messages.zig`, whose steer ingress is gated on `authorizeWorkspace(hx.principal, …)` (`messages.zig:67`) and derives the actor from the principal (`:177`) — authority the signature-only Slack plane does not have.
-5. `src/agentsfleetd/http/handlers/fleets/create.zig` (`innerCreateFleet`, `:275`) + `create_stream.zig` — the **only** path that inserts `core.fleets` (runners never create fleets). The channel-fleet materialization **calls this shared path** (it never inserts `core.fleets` itself), seeded with the default channel-bot `skill.md` as `source_markdown` + a reactive config, under the install-delegated workspace authority.
+5. `src/agentsfleetd/http/handlers/fleets/create.zig` (`innerCreateFleet` `:64` → its request-independent core `insertFleetOnConn` `:260`) + `create_stream.zig` — the **only** path that inserts `core.fleets` (runners never create fleets). `innerCreateFleet` is HTTP-coupled (parses `*httpz.Request`, needs a principal); the principal-less channel-fleet materialization therefore **calls `insertFleetOnConn` directly** (it never inserts `core.fleets` itself), seeded with the default channel-bot `skill.md` as `source_markdown` + a code-built reactive config, under the install-delegated workspace authority.
 6. `schema/010_core_integration_grants.sql` + `schema/020_tenant_providers.sql` — convention reference for the two **generic, provider-keyed** routing tables this milestone adds (`connector_installs`, `connector_channels`). The inbound `team_id → workspace_id` reverse lookup is the one piece the vault (keyed by `workspace_id`) cannot serve, because Slack events arrive addressed only by `team_id`.
 
 ---
@@ -58,7 +58,7 @@
 - **`docs/greptile-learnings/RULES.md`** — universal. Specific IDs this diff trips: **CTM** + **CTC** (constant-time, non-short-circuiting Slack signature compare), **VLT** (bot token in the vault handle, never in an entity table), **STS** + **NSQ** (no static strings / schema-qualified named constants in the two migrations), **UFS** (Slack scope strings, ingress path constants, `slack:bot` key-name, `slack` provider constant, `slack:` actor prefix, `UZ-SLK-*` codes — all named constants), **CFG** (Slack added as a config-driven connector descriptor against the *generic* `connector_installs`/`connector_channels` tables, not a per-integration table), **PRI** (Slack mention text is untrusted user input flowing into fleet reasoning; the reactive guarantee is code-set, never prompt-set), **TGU** (ingress result as a tagged union), **OBS** (every ingress rejection + materialization emits a log/event), **MIG** + **ORP** (migration-index assertions; orphan sweep on the new symbols), **NDC** + **NLR** (no dead code; flip the placeholder Slack catalogue card, don't leave both).
 - **`docs/SCHEMA_CONVENTIONS.md`** — the two new migrations (`029`, `030`) + `schema/embed.zig` + migration-array update.
 - **`dispatch/write_zig.md`** — all ingress/handler code is `*.zig` (pg-drain lifecycle, tagged-union results, multi-step `errdefer`, cross-compile both linux targets).
-- **`docs/REST_API_DESIGN_GUIDELINES.md`** — the `/v1/integrations/slack/*` routes.
+- **`docs/REST_API_DESIGN_GUIDELINES.md`** — the `/v1/connectors/slack/*` routes (single platform connector namespace; GitHub already lives at `/v1/connectors/github/*`).
 - **`dispatch/write_ts_adhere_bun.md`** — the dashboard Connect-Slack connector (Next.js/TS).
 - **`docs/AUTH.md`** — read before touching the ingress: the signature-only auth surface (no Bearer fallback) mirrors the webhook plane, and the **install-delegated authority** (the admin's one-time OAuth install is the standing consent under which the events worker creates a fleet) is the only principal in the inbound flow.
 
@@ -95,7 +95,7 @@ Every secret the end-to-end flow needs, with who writes it and when. Platform se
 
 ## Overview
 
-**Goal (testable):** a signed Slack `app_mention` POSTed to `/v1/integrations/slack/events` resolves `team_id → workspace_id` (via `connector_installs`) and `(team_id, channel_id) → fleet_id` (via `connector_channels`); on a binding miss it materializes a per-channel resident fleet by **calling the existing fleet-create path** with the default channel-bot `skill.md`; it lands a `slack:<user>` event on `fleet:{channel_fleet_id}:events` via the webhook-producer XADD shape; and the fleet's answer — hydrated from and captured back to that channel's `memory.memory_entries` namespace — is posted to the originating Slack thread. A second mention in a *different thread of the same channel* recalls memory written by the first.
+**Goal (testable):** a signed Slack `app_mention` POSTed to `/v1/connectors/slack/events` resolves `team_id → workspace_id` (via `connector_installs`) and `(team_id, channel_id) → fleet_id` (via `connector_channels`); on a binding miss it materializes a per-channel resident fleet by **calling the existing fleet-create path** with the default channel-bot `skill.md`; it lands a `slack:<user>` event on `fleet:{channel_fleet_id}:events` via the webhook-producer XADD shape; and the fleet's answer — hydrated from and captured back to that channel's `memory.memory_entries` namespace — is posted to the originating Slack thread. A second mention in a *different thread of the same channel* recalls memory written by the first.
 
 **Problem:** agentsfleet's only human front doors are the CLI, the dashboard chat, and per-fleet webhooks. Support and ops people live in Slack, never open the dashboard, and never author markdown — so the durable runtime never reaches them. There is no surface where the product is useful with zero setup.
 
@@ -119,17 +119,19 @@ Every secret the end-to-end flow needs, with who writes it and when. Platform se
 |------|--------|-----|
 | `schema/029_core_connector_installs.sql` | CREATE | **generic** `(provider, external_account_id) → workspace_id` inbound-routing index; UNIQUE `(provider, external_account_id)`. Slack: `external_account_id = team_id`. Token + metadata live in the vault handle, NOT here. |
 | `schema/030_core_connector_channels.sql` | CREATE | **generic** `(provider, external_account_id, external_channel_id) → fleet_id` binding; UNIQUE `(provider, external_account_id, external_channel_id)`. Slack: `(slack, team_id, channel_id)`. |
-| `schema/embed.zig` | EDIT | register `029`/`030` in the migration array (RULE MIG). |
-| `src/agentsfleetd/http/handlers/integrations/slack/oauth.zig` | CREATE | OAuth callback: state-verify, code-exchange, vault the bot token + install metadata as a `(workspace_id,"slack")` handle (mirrors `github/callback.zig`), insert the `connector_installs` reverse-lookup row. |
-| `src/agentsfleetd/http/handlers/integrations/slack/events.zig` | CREATE | signed `app_mention` ingress: verify → handshake → 3 s ack → resolve install/channel → XADD via the webhook-producer shape (`actor=slack:<user>`, no principal). |
-| `src/agentsfleetd/integrations/slack/channel_fleet.zig` | CREATE | resolve `(slack, team, channel)` → fleet via `connector_channels`; on miss **call the shared `innerCreateFleet` path** with the default channel-bot skill.md + reactive config, then upsert the binding. Concurrent first-mentions converge via UNIQUE + ON CONFLICT. **Never inserts `core.fleets` directly.** |
-| `src/agentsfleetd/integrations/slack/channel_bot_skill.md` | CREATE | the default channel-bot `skill.md`, embedded via `@embedFile`, seeded as `source_markdown` for every resident channel fleet. |
-| `src/agentsfleetd/integrations/slack/post.zig` | CREATE | post the fleet's answer back in-thread via `chat.postMessage`. |
+| `schema/embed.zig` + `src/cmd/common.zig` | EDIT | `@embedFile` `029`/`030` in `embed.zig`; register both in the `canonicalMigrations()` array in `src/cmd/common.zig` (RULE MIG). |
+| `src/types/id_format.zig` | EDIT | add UUIDv7 generators `generateConnectorInstallId()` + `generateConnectorChannelId()` (SCHEMA_CONVENTIONS uid format). |
+| `src/agentsfleetd/errors/error_registry.zig` + `error_entries.zig` | EDIT | register `UZ-SLK-010/011/020/021/022/030` (comptime-validated), mirroring `UZ-WH-0xx`. |
+| `src/agentsfleetd/http/handlers/connectors/slack/callback.zig` | CREATE | OAuth callback: state-verify, code-exchange, vault the bot token + install metadata as a `(workspace_id,"slack")` handle (mirrors `github/callback.zig`), insert the `connector_installs` reverse-lookup row. |
+| `src/agentsfleetd/http/handlers/connectors/slack/events.zig` | CREATE | signed `app_mention` ingress: verify → handshake → 3 s ack → resolve install/channel → XADD via the webhook-producer shape (`actor=slack:<user>`, no principal). |
+| `src/agentsfleetd/connectors/slack/channel_fleet.zig` | CREATE | resolve `(slack, team, channel)` → fleet via `connector_channels`; on miss **call the shared `innerCreateFleet` path** with the default channel-bot skill.md + reactive config, then upsert the binding. Concurrent first-mentions converge via UNIQUE + ON CONFLICT. **Never inserts `core.fleets` directly.** |
+| `src/agentsfleetd/connectors/slack/channel_bot_skill.md` | CREATE | the default channel-bot `skill.md`, embedded via `@embedFile`, seeded as `source_markdown` for every resident channel fleet. |
+| `src/agentsfleetd/connectors/slack/post.zig` | CREATE | post the fleet's answer back in-thread via `chat.postMessage`. |
 | `src/agentsfleetd/auth/middleware/slack_sig.zig` | CREATE | Slack v0 signature middleware (reuses the constant-time compare). |
-| `src/agentsfleetd/http/routes.zig` | EDIT | register `/v1/integrations/slack/{oauth/callback,events}`. |
+| `src/agentsfleetd/http/routes.zig` | EDIT | register `/v1/connectors/slack/{callback,events}` (public) + `/v1/workspaces/{ws}/connectors/slack/connect` (authed), mirroring the GitHub connector routes. |
 | `src/lib/common/constants.zig` | EDIT | Slack scopes, paths, `slack` provider, `slack:bot`, `slack:` actor prefix, thread re-read bound (UFS). |
 | `ui/packages/app/lib/integrations/catalog.ts` | EDIT | flip Slack card to OAuth connector. |
-| `ui/packages/app/.../integrations/SlackConnect.tsx` | CREATE | dashboard Connect-Slack action + connected-state view. |
+| `ui/packages/app/app/(dashboard)/integrations/components/IntegrationsConnectors.tsx` (+ extract a `SlackConnectorRow` file if length-capped) + `connector-actions.ts` | EDIT | `SlackConnectorRow` mirroring `GithubConnectorRow` + `startSlackConnectAction`; connected-state "Slack connected: {team}". |
 | `playbooks/operations/slack_app_registration/001_playbook.md` | CREATE | operator runbook: register the Slack app, set URLs/scopes (incl. `channels:history` for thread re-read), vault the platform secrets. |
 | `playbooks/operations/github_app_registration/001_playbook.md` | CREATE | operator runbook: register the GitHub App, vault the App private key (documents the existing pattern). |
 | `docs/architecture/{high_level,user_flow,data_flow,direction,roadmap}.md` | EDIT | introduce the Slack-resident surface (forward-marked). |
@@ -156,7 +158,7 @@ Dashboard Connect-Slack runs the OAuth code-exchange. Persist the token + instal
 
 ### §2 — Signed events ingress
 
-`POST /v1/integrations/slack/events`: verify Slack v0 signature (constant-time), echo `url_verification` challenge, then **inline** resolve `team_id → workspace` (`connector_installs`) + `(team, channel) → fleet` (`connector_channels`, materializing on a miss) and XADD the `slack:<user>` event — all within the 3 s ack budget. **There is no deferred-task substrate**: like `webhooks/fleet.zig`, the handler does its work inline (fast lookups + at most one `innerCreateFleet` INSERT + one XADD) and returns. The **answer** is the only asynchronous part — the runner leases the fleet and replies later via `chat.postMessage`; Slack never waits on it.
+`POST /v1/connectors/slack/events`: verify Slack v0 signature (constant-time), echo `url_verification` challenge, then **inline** resolve `team_id → workspace` (`connector_installs`) + `(team, channel) → fleet` (`connector_channels`, materializing on a miss) and XADD the `slack:<user>` event — all within the 3 s ack budget. **There is no deferred-task substrate**: like `webhooks/fleet.zig`, the handler does its work inline (fast lookups + at most one `insertFleetOnConn` INSERT + one XADD) and returns. The **answer** is the only asynchronous part — the runner leases the fleet and replies later via `chat.postMessage`; Slack never waits on it.
 
 - **Dimension 2.1** — valid signed `app_mention` resolves + XADDs inline and returns ≤3 s (one stream entry written before the response) → Test `test_slack_events_acks_fast_and_enqueues`
 - **Dimension 2.2** — bad signature → `UZ-SLK-010`; stale timestamp (>300 s) → `UZ-SLK-011`; unknown team → `UZ-SLK-020` → Tests `test_slack_sig_invalid`, `test_slack_sig_stale`, `test_slack_team_unmapped`
@@ -164,13 +166,13 @@ Dashboard Connect-Slack runs the OAuth code-exchange. Persist the token + instal
 
 ### §3 — Per-channel resident fleet (materialized via the create API)
 
-First mention with no `connector_channels` binding calls the **shared fleet-create path** (`innerCreateFleet`) under the **install-delegated workspace authority** (the admin's one-time OAuth install is the standing consent — there is no human in the inbound flow), seeded with the **default channel-bot `skill.md`** and a **reactive config** (read-only tools, no `triggers[]`, no cron — *code-set, not derived from the skill.md prose*), then upserts `connector_channels(slack, team_id, channel_id → fleet_id)`. Concurrent first-mentions converge on one fleet. The events worker never inserts `core.fleets` directly.
+First mention with no `connector_channels` binding calls the **shared insert helper** (`insertFleetOnConn`, the request-independent core that `innerCreateFleet` wraps) under the **install-delegated workspace authority** (the admin's one-time OAuth install is the standing consent — there is no human in the inbound flow), seeded with the **default channel-bot `skill.md`** as `source_markdown` and a **code-constructed reactive config** (one `api` trigger, read-only `tools: []`, a modest code-set budget — built in code, *not parsed from the skill.md prose*), then upserts `connector_channels(slack, team_id, channel_id → fleet_id)`. Concurrent first-mentions converge on one fleet. The events worker never inserts `core.fleets` directly.
 
 - **Dimension 3.1** — first mention creates exactly one resident fleet (via `innerCreateFleet`) + binding; subsequent mentions reuse the same `fleet_id` → Test `test_resident_fleet_materialized_once`
 - **Dimension 3.2** — two concurrent first-mentions yield one fleet (UNIQUE + ON CONFLICT on `connector_channels`) → Test `test_resident_fleet_concurrent_first_mention`
 - **Dimension 3.3** — the resident fleet's config admits no write tool / trigger / cron regardless of skill.md or mention input → Test `test_resident_policy_is_reactive_readonly`
 
-**Default channel-bot `skill.md` (embedded via `@embedFile`).** Seeded as `source_markdown` for every resident fleet. The `{channel_id}` placeholder is substituted by the materialization helper so `SkillMetadata.name == FleetConfig.name` holds; `tools: []` + the absent `triggers:` block yield the reactive config, which the helper then asserts (Invariant 2):
+**Default channel-bot `skill.md` (embedded via `@embedFile`).** Seeded as `source_markdown` (prose + frontmatter `name`) for every resident fleet. The `{channel_id}` placeholder is substituted by the materialization helper so `SkillMetadata.name == FleetConfig.name` holds. The reactive config (one `api` trigger, `tools: []`, code-set budget) is **constructed in code and asserted** (Invariant 2) — the skill.md frontmatter is *not* the source of capability; exact frontmatter finalized in §3 against the `insertFleetOnConn`/`ParsedTrigger` contract:
 
 ```markdown
 ---
@@ -178,9 +180,9 @@ name: slack-channel-{channel_id}
 description: Reactive read-only assistant resident in one Slack channel. Answers @mentions from what it has learned about this channel; never acts unattended.
 version: 1.0.0
 when_to_use: A member @mentions the bot in this channel with a question.
-x-agentsfleet:
-  tools: []   # read-only — no write/exec tools; no `triggers:` block (reactive, woken by mentions, not a trigger)
 ---
+<!-- Reactive config (one `api` trigger, tools: [], budget) is built in code by the materialization helper and asserted (Invariant 2); this skill.md carries prose + name only. -->
+
 
 You are @agentsfleet, a reactive assistant living in one Slack channel.
 
@@ -218,11 +220,11 @@ Write the two registration playbooks and update the architecture docs (forward-m
 ## Interfaces
 
 ```
-GET /v1/integrations/slack/oauth/callback?code=&state=    (signature: none; state-signed; browser redirect)
+GET /v1/connectors/slack/callback?code=&state=    (signature: none; state-signed; browser redirect)
   → 302 to dashboard "Slack connected" on success      (Slack redirects the browser here via GET, mirroring github/callback.zig)
   → UZ-SLK-021 invalid_state | UZ-SLK-022 oauth_exchange_failed
 
-POST /v1/integrations/slack/events                         (auth: Slack v0 signature ONLY)
+POST /v1/connectors/slack/events                         (auth: Slack v0 signature ONLY)
   headers: X-Slack-Signature: v0=<hmac>, X-Slack-Request-Timestamp
   body (url_verification): { type, challenge }   → 200 { challenge }
   body (event_callback):   { team_id, event:{ type:"app_mention", channel, user, text, ts, thread_ts? } }
@@ -238,7 +240,7 @@ core.connector_channels:  provider, external_account_id (=team_id), external_cha
 producer (reused, webhooks/fleet.zig shape — signature-authed, NO principal):
   XADD fleet:{channel_fleet_id}:events  actor=slack:<user_id>  type=chat
   request={ text, reply_thread_ts (= event.thread_ts orelse event.ts), channel_id, recent_thread_msgs[] }
-fleet creation (reused): innerCreateFleet(workspace_id, source_markdown=DEFAULT_CHANNEL_BOT_SKILL, reactive config)
+fleet creation (reused): insertFleetOnConn(conn, workspace_id, source_markdown=DEFAULT_CHANNEL_BOT_SKILL, trigger_markdown=<code-built reactive config>, …)  — innerCreateFleet's request-independent core
 memory (reused, unchanged): GET/POST /v1/runners/me/memory/{channel_fleet_id}   (scope column fleet_id = the channel's resident fleet)
 ```
 
@@ -263,12 +265,12 @@ memory (reused, unchanged): GET/POST /v1/runners/me/memory/{channel_fleet_id}   
 ## Invariants
 
 1. **Memory scope = channel = audience boundary** — the memory scope column `fleet_id` is the resident channel fleet (`channel_fleet_id`), server-derived from the `connector_channels` binding; that table has UNIQUE `(provider, team_id, channel_id)`. One channel ⇒ one namespace; never per-thread, per-user, or per-workspace. Enforced by the UNIQUE constraint + server-side derivation (no client-supplied scope).
-2. **Resident fleet is reactive** — concretely, the created `FleetConfig` (`fleet_runtime/config_types.zig`) has `triggers == &.{}` (empty — no `webhook`/`cron`/`api` trigger) and `tools` ⊆ a read-only allow-list. The materialization helper **asserts both post-parse** and rejects any trigger or write-tool the default skill.md frontmatter might carry, so agency cannot be set for residents by editing the markdown (a prompt can be injection-overridden — RULE PRI). No code path grants a resident a trigger or write-tool.
+2. **Resident fleet is reactive** — concretely, the created `FleetConfig` (`fleet_runtime/config_types.zig`) carries **exactly one `api` trigger** (parameterless — the fleet is woken only when an event is XADDed to its stream, never by a `webhook`/`cron` autonomous trigger; an empty `triggers` slice is *rejected* by the config parser, so the reactive shape is the lone `api` trigger, not the *absence* of a trigger) and `tools` ⊆ a read-only allow-list. The reactive policy is **constructed in code**, not parsed from skill.md prose; the materialization helper **asserts post-build** that no `webhook`/`cron` trigger and no write-tool slipped in (a prompt can be injection-overridden — RULE PRI). No code path grants a resident a `webhook`/`cron` trigger or a write-tool.
 3. **Bot token never in an entity table** — `connector_installs` stores only `(provider, team_id, workspace_id, scopes)`; the token + metadata live in the `(workspace_id,'slack')` vault handle (RULE VLT). Enforced by schema (no token column) + `crypto_store`/`vault` resolution.
 4. **Signature is constant-time + time-bounded** — non-short-circuiting compare (RULE CTC) over `v0:{ts}:{body}` + 300 s window. Enforced by reuse of `webhook_hmac` constant-time path.
-5. **Signature is the only auth on `/v1/integrations/slack/events`** — `Authorization` is never consulted (mirrors the webhook plane); the only inbound authority is the install-delegated workspace resolved from `connector_installs`. Enforced by the middleware wiring (no Bearer branch on the route).
+5. **Signature is the only auth on `/v1/connectors/slack/events`** — `Authorization` is never consulted (mirrors the webhook plane); the only inbound authority is the install-delegated workspace resolved from `connector_installs`. Enforced by the middleware wiring (no Bearer branch on the route).
 6. **One resident fleet per channel under concurrency** — UNIQUE + ON CONFLICT DO NOTHING on the `connector_channels` insert. Enforced by Postgres.
-7. **Fleets are only ever inserted by `innerCreateFleet`** — the Slack worker calls that shared path; it has no `INSERT INTO core.fleets` of its own. Enforced by code review + ORP sweep (zero new fleet-insert sites).
+7. **Fleets are only ever inserted by the shared insert helper (`insertFleetOnConn`, which `innerCreateFleet` wraps)** — the Slack materialization reuses `insertFleetOnConn` directly (it is request-independent; `innerCreateFleet` is coupled to an `httpz.Request` + principal and is not callable from the principal-less events worker). The worker has no `INSERT INTO core.fleets` of its own. Enforced by code review + ORP sweep (zero new fleet-insert sites).
 8. **No static strings / unscoped SQL in `029`/`030`** — RULE STS/NSQ. Enforced by the SCHEMA guard.
 
 ---
@@ -325,7 +327,7 @@ make test-integration 2>&1 | grep test_channel_memory_persists_across_threads
 
 **1. Orphaned files.** N/A — no files deleted (the Slack catalogue card is edited in place, not removed; RULE NLR).
 
-**2. Orphaned references.** After flipping the Slack `vault_secret` placeholder to the OAuth connector, `grep -rn SLACK_BOT_TOKEN ui/ src/` must show 0 stale paste-token uses. After materialization is wired, `grep -rn "INSERT INTO core.fleets" src/agentsfleetd/integrations/slack` must show 0 (the worker calls `innerCreateFleet`, never inserts).
+**2. Orphaned references.** After flipping the Slack `vault_secret` placeholder to the OAuth connector, `grep -rn SLACK_BOT_TOKEN ui/ src/` must show 0 stale paste-token uses. After materialization is wired, `grep -rn "INSERT INTO core.fleets" src/agentsfleetd/connectors/slack` must show 0 (the worker calls `innerCreateFleet`, never inserts).
 
 ---
 
@@ -338,7 +340,12 @@ make test-integration 2>&1 | grep test_channel_memory_persists_across_threads
   - *Fleet creation:* the first draft invented `integrations/slack/resident.zig` as an autonomous server-side fleet creator. No such actor exists — `innerCreateFleet` (`create.zig:275`) is the only fleet-insert path. Corrected to **call the existing create API with a default skill.md**, under install-delegated authority (Indy: "Option 1 is a no brainer, just spin a fleet via API, using a default skill.md").
   - *Storage:* the first draft added Slack-specific `slack_installations` + `slack_channel_bindings` tables. GitHub proves the connector pattern is a vault handle + zero tables (`github/callback.zig:86`). Corrected to a vault handle + **two generic** provider-keyed tables (`connector_installs`, `connector_channels`) — no per-integration table sprawl (Indy chose "Vault handle + 1 generic routing table").
 - **Agent-chosen defaults (open to Indy veto)** — §4 same-thread behavior: live thread re-read (bounded last-N) is *required* for mention-only coherence; the conflict rule (freshest in-thread wins + re-capture to memory) is the chosen default.
-- **Completeness pass (`/review`, Jun 30, 2026)** — four handoff-readiness gaps closed so a fresh agent doesn't stall: (1) §2 corrected — the ingress works **inline** (no deferred-task substrate exists; `webhooks/fleet.zig` is the model), only the answer is async; (2) the default channel-bot `skill.md` content is now specified verbatim in §3; (3) the reactive config is pinned to `FleetConfig` fields (`triggers == &.{}`, read-only `tools`) in Invariant 2; (4) a `## Credential Manifest` enumerates every secret + vault location + human-vs-agent sequencing.
+- **Completeness pass (`/review`, Jun 30, 2026)** — four handoff-readiness gaps closed so a fresh agent doesn't stall: (1) §2 corrected — the ingress works **inline** (no deferred-task substrate exists; `webhooks/fleet.zig` is the model), only the answer is async; (2) the default channel-bot `skill.md` content is now specified verbatim in §3; (3) the reactive config is pinned to `FleetConfig` fields (then believed `triggers == &.{}`, read-only `tools`) in Invariant 2 — **superseded Jul 01** (empty `triggers` is unparseable; reactive = one `api` trigger — see the EXECUTE-start reconciliations below); (4) a `## Credential Manifest` enumerates every secret + vault location + human-vs-agent sequencing.
+- **EXECUTE-start reconciliations (Jul 01, 2026 — code-grounded via 4 parallel verification agents + Indy)** — four spec pointers aligned to verified code before any implementation:
+  - *Route/handler namespace:* adopted the single platform standard `/v1/connectors/slack/*` + `http/handlers/connectors/slack/`. GitHub already ships `/v1/connectors/github/*`, and its callback URL is registered in the live GitHub App — so the alternative (renaming GitHub to `integrations/`) is a breaking change outside M106 scope that collides with active M102. Indy: *"I think i want to follow 1 single convention … so ensure the standard is followed."* → standardize on `connectors/`.
+  - *Reactive config:* Invariant 2 corrected — an empty `triggers` slice is *rejected* by the config parser, so "reactive" is one parameterless `api` trigger (woken by event XADD) + `tools: []` + a code-set budget, all built in code and asserted; not the *absence* of a trigger.
+  - *Fleet insert:* `innerCreateFleet` is `httpz.Request`+principal-coupled and uncallable from the events worker; materialization reuses its request-independent core `insertFleetOnConn` directly (Invariant 7 reworded; single insert site preserved, grep-confirmed).
+  - *Scope additions:* migration array also lives in `src/cmd/common.zig`; UUIDv7 gens in `src/types/id_format.zig`; `UZ-SLK-*` in `errors/error_registry.zig`+`error_entries.zig`; per-install vault key is `fleet:slack` via `credential_key.allocKeyName` (mirrors `fleet:github`).
 - **Skill chain** — `/write-unit-test`, `/review`, `/review-pr`, `kishore-babysit-prs` outcomes (filled during EXECUTE/CHORE(close)).
 - **Deferrals** — Rung 1 (hired teammates, source webhooks, writes, approvals, buttons, slash, DMs) is **scoped out by design**, not deferred work; the follow-on milestone owns it. Any *other* "deferred to follow-up" needs an Indy-acked verbatim quote here.
 
