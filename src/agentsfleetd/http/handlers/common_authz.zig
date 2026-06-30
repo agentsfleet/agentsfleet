@@ -5,6 +5,9 @@ const PgQuery = @import("../../db/pg_query.zig").PgQuery;
 const db = @import("../../db/pool.zig");
 const AuthPrincipal = @import("../../auth/principal.zig").AuthPrincipal;
 const cross_tenant_audit = @import("../../auth/cross_tenant_audit.zig");
+const logging = @import("log");
+
+const log = logging.scoped(.auth);
 
 pub fn getFleetWorkspaceId(conn: *pg.Conn, alloc: std.mem.Allocator, fleet_id: []const u8) ?[]const u8 {
     var q = PgQuery.from(conn.query(
@@ -88,7 +91,14 @@ fn crossTenantBypass(conn: *pg.Conn, principal: AuthPrincipal, workspace_id: []c
         defer q.deinit();
         const row = (q.next() catch return false) orelse return false;
         const t = row.get([]u8, 0) catch return false;
-        if (t.len == 0 or t.len > tenant_buf.len) return false;
+        if (t.len == 0) return false;
+        if (t.len > tenant_buf.len) {
+            // A `workspace:any` holder is denied here only if the target tenant_id
+            // is longer than the buffer — a misconfiguration, not a normal deny.
+            // Surface it so the silent cross-tenant rejection is diagnosable.
+            log.err("cross_tenant_target_tenant_id_too_long", .{ .workspace_id = workspace_id, .len = t.len, .cap = tenant_buf.len });
+            return false;
+        }
         @memcpy(tenant_buf[0..t.len], t);
         break :blk tenant_buf[0..t.len];
     };

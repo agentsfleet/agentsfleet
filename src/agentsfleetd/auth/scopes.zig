@@ -113,10 +113,15 @@ fn grantMembers(src: DefaultGrant) []const Scope {
 
 /// The hierarchy-expanded scope set provisioned to `src` — written onto the
 /// principal at construction (`tenant_api_key`, `runner_bearer`).
-pub fn defaultScopes(src: DefaultGrant) Set {
-    var set = Set.initEmpty();
-    for (grantMembers(src)) |s| insertWithClosure(&set, s);
-    return set;
+pub fn defaultScopes(comptime src: DefaultGrant) Set {
+    // Comptime-pinned: the grant + hierarchy are statically known, so each
+    // credential source resolves to a constant Set inlined at the call site —
+    // no per-request closure walk, and the set can't be silently widened.
+    return comptime blk: {
+        var set = Set.initEmpty();
+        for (grantMembers(src)) |s| insertWithClosure(&set, s);
+        break :blk set;
+    };
 }
 
 /// The space-delimited wire string provisioned to `src` — the exact value
