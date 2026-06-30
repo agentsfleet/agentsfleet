@@ -3,71 +3,40 @@
 // rendered state-line model live here so InstallStates stays under the length
 // cap and the gating logic is unit-testable in isolation.
 
-import type { BundleSnapshot, FleetTemplate } from "@/lib/types";
+import type { FleetTemplateGalleryEntry } from "@/lib/types";
 import { missingCredentials } from "@/lib/fleet-credentials";
 import { presentErrorString } from "@/lib/errors";
 import { INSTALL_STEP, type InstallStepId } from "@/lib/streaming/install-steps";
 
-// The chosen install source. A template previews from catalog metadata; a
-// GitHub source previews from its already-imported snapshot; a paste posts its
-// markdown straight to create (no import step, no requirements to gate on).
-export type InstallSource =
-  | { kind: "template"; template: FleetTemplate }
-  | { kind: "github"; snapshot: BundleSnapshot }
-  | { kind: "paste"; sourceMarkdown: string; triggerMarkdown?: string };
+// The chosen template to install — a single gallery entry. The flow keys the
+// create body off its `visibility` (platform vs tenant). github-import and paste
+// sources were removed in M103; install is template-only.
+export type InstallSource = FleetTemplateGalleryEntry;
 
-// What a source needs before it can run, normalised across template / snapshot.
+// What a template needs before it can run, normalised for the install gate.
 export type SourceRequirements = {
   name: string;
   credentials: string[];
-  // Why each credential is needed, keyed by name. Only templates carry it
-  // (catalog metadata); github/paste sources report an empty map and the gate
-  // falls back to its generic connect copy.
+  // Why each credential is needed, keyed by name (e.g. github → "review your
+  // pull requests"). Platform templates carry curated copy; tenant templates
+  // report an empty map and the gate falls back to its generic connect copy.
   credentialReasons: Record<string, string>;
   tools: string[];
   networkHosts: string[];
-  // The bundle's own name, used as the create name default (snapshots know it;
-  // templates resolve it server-side at import, so it stays undefined there).
-  defaultName?: string;
-  // False when the source shipped no TRIGGER.md — create still succeeds, but the
-  // skill-only state tells the operator a manual / API wake was generated.
+  // False when the template shipped no TRIGGER.md — create still succeeds, but
+  // the skill-only state tells the operator a manual / API wake was generated.
   triggerPresent: boolean;
 };
 
-// Normalise a source's declared requirements. Paste has none to show — its
-// content is parsed server-side at create — so it reports an empty, trigger-
-// present shape (the form already validated the frontmatter).
+// Normalise a template's declared requirements for the install gate.
 export function requirementsOf(source: InstallSource): SourceRequirements {
-  if (source.kind === "template") {
-    const t = source.template;
-    return {
-      name: t.name,
-      credentials: t.required_credentials,
-      credentialReasons: t.required_credentials_reasons ?? {},
-      tools: t.required_tools,
-      networkHosts: t.network_hosts,
-      triggerPresent: true,
-    };
-  }
-  if (source.kind === "github") {
-    const s = source.snapshot;
-    return {
-      name: s.name,
-      credentials: s.requirements.credentials,
-      credentialReasons: {},
-      tools: s.requirements.tools,
-      networkHosts: s.requirements.network_hosts,
-      defaultName: s.name,
-      triggerPresent: s.requirements.trigger_present,
-    };
-  }
   return {
-    name: "pasted SKILL.md",
-    credentials: [],
-    credentialReasons: {},
-    tools: [],
-    networkHosts: [],
-    triggerPresent: true,
+    name: source.name,
+    credentials: source.requirements.credentials,
+    credentialReasons: source.required_credentials_reasons ?? {},
+    tools: source.requirements.tools,
+    networkHosts: source.requirements.network_hosts,
+    triggerPresent: source.requirements.trigger_present,
   };
 }
 
@@ -112,7 +81,7 @@ export const STATE_GLYPH: Record<StateTone, string> = {
 
 // Map an SSE-driven install step onto its rendered tone + label. `creating`/
 // `provisioning` are in-flight (run); `ready` is done (ok); `error` is failed.
-// `importing`/`connect` are driven pre-create by the flow, not by this map.
+// `connect` is driven pre-create by the flow, not by this map.
 export function stepLine(step: InstallStepId): StateLine {
   switch (step) {
     case INSTALL_STEP.CREATING:

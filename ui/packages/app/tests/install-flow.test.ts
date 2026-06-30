@@ -10,74 +10,59 @@ import {
 } from "@/app/(dashboard)/fleets/new/install-flow";
 import { INSTALL_STEP, type InstallStepId } from "@/lib/streaming/install-steps";
 
-const SNAPSHOT = {
-  bundle_id: "bnd_1",
-  name: "acme/repo",
-  source_kind: "github" as const,
-  source_ref: "acme/repo",
-  validation_status: "ok",
-  content_hash: "h",
+// A gallery entry is the only install source in M103 (template-only). These
+// fixtures mirror GET /v1/workspaces/{ws}/fleet-templates: requirements are
+// nested, and `visibility` keys the create body off the tier.
+const PLATFORM_ENTRY: InstallSource = {
+  id: "github-pr-reviewer",
+  name: "GitHub PR reviewer",
+  description: "Reviews pull requests.",
+  visibility: "platform",
+  source_ref: "platform/github-pr-reviewer",
+  requirements: {
+    credentials: ["github"],
+    tools: ["github_review_comment"],
+    network_hosts: ["api.github.com"],
+    trigger_present: true,
+  },
+  required_credentials_reasons: { github: "review pull requests" },
   support_files: [],
 };
 
-describe("requirementsOf — normalises each source", () => {
-  it("a template reports catalog metadata, trigger present, no default name", () => {
-    const r = requirementsOf({
-      kind: "template",
-      template: {
-        id: "t",
-        name: "T",
-        description: "d",
-        required_credentials: ["github"],
-        required_credentials_reasons: { github: "review pull requests" },
-        required_tools: ["x"],
-        network_hosts: ["h"],
-      },
-    });
-    expect(r.name).toBe("T");
+describe("requirementsOf — normalises the gallery entry", () => {
+  it("a platform template reports its nested requirements + curated reasons", () => {
+    const r = requirementsOf(PLATFORM_ENTRY);
+    expect(r.name).toBe("GitHub PR reviewer");
     expect(r.credentials).toEqual(["github"]);
     expect(r.credentialReasons).toEqual({ github: "review pull requests" });
+    expect(r.tools).toEqual(["github_review_comment"]);
+    expect(r.networkHosts).toEqual(["api.github.com"]);
     expect(r.triggerPresent).toBe(true);
-    expect(r.defaultName).toBeUndefined();
   });
 
-  it("a template that omits required_credentials_reasons defaults to an empty map", () => {
-    // A cached response, an old backend, or a mock can drop the field despite
-    // the client cast; the `?? {}` guard keeps the gate on generic copy rather
-    // than feeding undefined into ConnectGate (where reasons[credential] throws).
+  it("a template with no TRIGGER.md reports triggerPresent=false (skill-only fallback)", () => {
     const r = requirementsOf({
-      kind: "template",
-      template: {
-        id: "t",
-        name: "T",
-        description: "d",
-        required_credentials: ["github"],
-        required_tools: [],
-        network_hosts: [],
-      },
+      ...PLATFORM_ENTRY,
+      requirements: { ...PLATFORM_ENTRY.requirements, trigger_present: false },
     });
-    expect(r.credentialReasons).toEqual({});
-  });
-
-  it("a github snapshot carries its parsed requirements, default name, and trigger flag", () => {
-    const source: InstallSource = {
-      kind: "github",
-      snapshot: {
-        ...SNAPSHOT,
-        requirements: { credentials: ["a"], tools: ["b"], network_hosts: ["c"], support_files: [], trigger_present: false },
-      },
-    };
-    const r = requirementsOf(source);
-    expect(r.credentials).toEqual(["a"]);
-    expect(r.defaultName).toBe("acme/repo");
     expect(r.triggerPresent).toBe(false);
   });
 
-  it("a paste source has no declared requirements (parsed server-side at create)", () => {
-    const r = requirementsOf({ kind: "paste", sourceMarkdown: "---\n---\n" });
-    expect(r.credentials).toEqual([]);
-    expect(r.tools).toEqual([]);
-    expect(r.triggerPresent).toBe(true);
+  it("a tenant template's empty reasons map falls back to an empty map (generic copy)", () => {
+    // Tenant rows carry no per-credential reason (the importer derives none), so
+    // the gate must read an empty map rather than feed undefined into ConnectGate
+    // (where reasons[credential] would otherwise throw).
+    const r = requirementsOf({
+      id: "01932d4e-7c10-7a3a-9f00-000000000001",
+      name: "Internal ops",
+      description: "Tenant template.",
+      visibility: "tenant",
+      source_ref: "tenant/01932d4e",
+      requirements: { credentials: ["github"], tools: [], network_hosts: [], trigger_present: true },
+      required_credentials_reasons: {},
+      support_files: [],
+    });
+    expect(r.credentialReasons).toEqual({});
   });
 });
 
@@ -113,7 +98,7 @@ describe("stepLine — SSE step → rendered line", () => {
 
 describe("flowError — threads the action verb through the shared presenter", () => {
   it("produces a human string for a typed failure", () => {
-    const msg = flowError({ errorCode: "UZ-BUNDLE-004", error: "no SKILL.md" }, "import the template");
+    const msg = flowError({ errorCode: "UZ-FLEET-409", error: "name taken" }, "create the fleet");
     expect(typeof msg).toBe("string");
     expect(msg.length).toBeGreaterThan(0);
   });

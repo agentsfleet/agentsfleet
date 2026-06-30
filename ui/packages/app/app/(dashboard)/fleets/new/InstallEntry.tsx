@@ -1,33 +1,30 @@
 import Link from "next/link";
 import { Button } from "@agentsfleet/design-system";
-import type { FleetTemplate } from "@/lib/types";
+import type { FleetTemplateGalleryEntry } from "@/lib/types";
 import { TemplateCard } from "./TemplateCard";
 
 const QUICKSTART_URL = "https://docs.agentsfleet.net/quickstart";
 
 type Props = {
-  templates: FleetTemplate[];
-  // Optional trailing actions appended to the source strip. The dashboard hides
-  // this strip because import/paste belongs on the full install page.
+  templates: FleetTemplateGalleryEntry[];
+  // Appends a quickstart link below the gallery. The full install page is the
+  // primary affordance; the dashboard embed omits it.
   quickstart?: boolean;
   /** Dashboard shows the primary cards; the full install page passes all. */
   maxTemplates?: number;
   /** Dashboard embed uses a denser card treatment. */
   compact?: boolean;
-  /** Full install surfaces import/paste actions; dashboard does not. */
-  showSourceActions?: boolean;
 };
 
-// Template entry surface for the Dashboard and source picker. A Server
-// Component: each affordance deep-links into the install page (which proceeds
-// inline to live states), so it carries no client callbacks. Templates lead;
-// `owner/repo` import + paste SKILL.md are the secondary source strip.
+// Template entry surface for the Dashboard and install page. A Server Component:
+// each card deep-links into the install page (which proceeds inline to live
+// states), so it carries no client callbacks. github-import and paste authoring
+// were removed in M103 — templates are the only install source.
 export function InstallEntry({
   templates,
   quickstart = false,
   maxTemplates,
   compact = false,
-  showSourceActions = true,
 }: Props) {
   const visibleTemplates =
     maxTemplates == null ? templates : templates.slice(0, maxTemplates);
@@ -48,20 +45,23 @@ export function InstallEntry({
             />
           ))}
         </div>
-      ) : null}
+      ) : (
+        <p className="text-body-sm leading-body-sm text-muted-foreground">
+          No templates available yet.{" "}
+          <Link href="/fleets/new" className="text-foreground underline underline-offset-4">
+            Open the install page
+          </Link>{" "}
+          to browse, or onboard a template into your workspace.
+        </p>
+      )}
 
-      {showSourceActions ? (
+      {quickstart ? (
         <div className="flex flex-wrap gap-md border-t border-border pt-lg">
-          <Button asChild variant="outline">
-            <Link href="/fleets/new">Import from GitHub or paste SKILL.md</Link>
+          <Button asChild variant="ghost" size="sm">
+            <a href={QUICKSTART_URL} target="_blank" rel="noopener noreferrer">
+              Quick start
+            </a>
           </Button>
-          {quickstart ? (
-            <Button asChild variant="ghost" size="sm">
-              <a href={QUICKSTART_URL} target="_blank" rel="noopener noreferrer">
-                Quick start
-              </a>
-            </Button>
-          ) : null}
         </div>
       ) : null}
     </div>

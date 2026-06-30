@@ -2,14 +2,14 @@ import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import { PageHeader, PageTitle } from "@agentsfleet/design-system";
 import { withWorkspaceScope, orFallback } from "@/lib/workspace";
-import { listFleetTemplatesCached } from "@/lib/api/fleet-bundles";
+import { listWorkspaceFleetTemplatesCached } from "@/lib/api/fleet-templates";
 import { listCredentials } from "@/lib/api/credentials";
 import { InstallFleet } from "./InstallFleet";
 
 export const dynamic = "force-dynamic";
 
 type SearchParams = { template?: string | string[] };
-const INSTALL_PAGE_DESCRIPTION = "Pick a source. Watch live states.";
+const INSTALL_PAGE_DESCRIPTION = "Pick a template. Watch live states.";
 
 // Gallery-first install. Templates + the workspace's existing
 // credential names are fetched server-side so the client orchestrator can render
@@ -26,7 +26,7 @@ export default async function InstallFleetPage({
   const params = await searchParams;
   const result = await withWorkspaceScope(token, async (workspaceId) => {
     const [templates, credentialNames] = await Promise.all([
-      listFleetTemplatesCached(token)
+      listWorkspaceFleetTemplatesCached(workspaceId, token)
         .then((response) => response.items)
         .catch(() => []),
       listCredentials(workspaceId, token)

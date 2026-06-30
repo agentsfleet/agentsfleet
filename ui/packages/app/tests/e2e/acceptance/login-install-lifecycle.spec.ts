@@ -46,11 +46,16 @@ test.describe("login → install → lifecycle", () => {
     // Cookie-mount via signInAs — no form-drive needed.
     await signInAs(page, FIXTURE_KEY.regular);
 
-    // Install via dashboard form. Random name avoids the
+    // Install via the dashboard template gallery. Random name avoids the
     // (workspace_id, name) uniqueness collision if a previous interrupted
-    // run left a killed-but-not-deleted row.
+    // run left a killed-but-not-deleted row. The onboard targets the fixture's
+    // default workspace — the one active in the browser here.
+    const workspaceId = await getDefaultWorkspaceId(FIXTURE_KEY.regular);
     const name = uniqueName();
-    const fleetId = await installViaUI(page, name);
+    const fleetId = await installViaUI(page, name, {
+      handle: FIXTURE_KEY.regular,
+      workspaceId,
+    });
 
     // Post-install: form redirects to detail page. Recent Activity section
     // is the section-scaffolding assertion (matches logs-detail downgrade).
