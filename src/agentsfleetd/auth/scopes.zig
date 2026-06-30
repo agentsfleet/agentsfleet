@@ -54,10 +54,10 @@ pub const Scope = enum {
     billing_read,
     workspace_admin,
     // Template catalogue (M103 consumes these): write = tenant-tier onboarding
-    // (held by a workspace owner), admin = platform-tier onboarding (held by a
-    // platform operator). Laddered so admin ⊇ write — see HIERARCHY.
+    // (held by a workspace owner), platform_template_write = platform-tier
+    // onboarding (held by a platform operator). Independent — no hierarchy.
     template_write,
-    template_admin,
+    platform_template_write,
     // ── Runner credential (machine identity — minted onto the agt_r token) ─
     runner_self,
     // ── Cross-tenant override (held by almost no one; every use audited) ──
@@ -170,7 +170,7 @@ const WIRE = [_]ScopeWire{
     .{ .scope = .billing_read, .str = "billing:read" },
     .{ .scope = .workspace_admin, .str = "workspace:admin" },
     .{ .scope = .template_write, .str = "template:write" },
-    .{ .scope = .template_admin, .str = "template:admin" },
+    .{ .scope = .platform_template_write, .str = "platform-template:write" },
     .{ .scope = .runner_self, .str = "runner:self" },
     .{ .scope = .workspace_any, .str = "workspace:any" },
 };
@@ -210,8 +210,6 @@ const HIERARCHY = [_]Subsumption{
     .{ .scope = .runner_write, .includes = &.{.runner_read} },
     // Deciding an approval gate implies the ability to view the inbox.
     .{ .scope = .approval_resolve, .includes = &.{.approval_read} },
-    // Platform-tier template onboarding subsumes tenant-tier (M103).
-    .{ .scope = .template_admin, .includes = &.{.template_write} },
 };
 
 fn insertWithClosure(set: *Set, s: Scope) void {
