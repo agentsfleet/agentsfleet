@@ -119,8 +119,8 @@ Every secret the end-to-end flow needs, with who writes it and when. Platform se
 |------|--------|-----|
 | `schema/029_core_connector_installs.sql` | CREATE | **generic** `(provider, external_account_id) → workspace_id` inbound-routing index; UNIQUE `(provider, external_account_id)`. Slack: `external_account_id = team_id`. Token + metadata live in the vault handle, NOT here. |
 | `schema/030_core_connector_channels.sql` | CREATE | **generic** `(provider, external_account_id, external_channel_id) → fleet_id` binding; UNIQUE `(provider, external_account_id, external_channel_id)`. Slack: `(slack, team_id, channel_id)`. |
-| `schema/embed.zig` + `src/cmd/common.zig` | EDIT | `@embedFile` `029`/`030` in `embed.zig`; register both in the `canonicalMigrations()` array in `src/cmd/common.zig` (RULE MIG). |
-| `src/types/id_format.zig` | EDIT | add UUIDv7 generators `generateConnectorInstallId()` + `generateConnectorChannelId()` (SCHEMA_CONVENTIONS uid format). |
+| `schema/embed.zig` + `src/agentsfleetd/cmd/common.zig` | EDIT | `@embedFile` `029`/`030` in `embed.zig`; register both in the `canonicalMigrations()` array in `src/cmd/common.zig` (RULE MIG). |
+| `src/agentsfleetd/types/id_format.zig` | EDIT | add UUIDv7 generators `generateConnectorInstallId()` + `generateConnectorChannelId()` (SCHEMA_CONVENTIONS uid format). |
 | `src/agentsfleetd/errors/error_registry.zig` + `error_entries.zig` | EDIT | register `UZ-SLK-010/011/020/021/022/030` (comptime-validated), mirroring `UZ-WH-0xx`. |
 | `src/agentsfleetd/http/handlers/connectors/slack/callback.zig` | CREATE | OAuth callback: state-verify, code-exchange, vault the bot token + install metadata as a `(workspace_id,"slack")` handle (mirrors `github/callback.zig`), insert the `connector_installs` reverse-lookup row. |
 | `src/agentsfleetd/http/handlers/connectors/slack/events.zig` | CREATE | signed `app_mention` ingress: verify → handshake → 3 s ack → resolve install/channel → XADD via the webhook-producer shape (`actor=slack:<user>`, no principal). |
