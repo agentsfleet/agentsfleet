@@ -47,6 +47,7 @@ fn makeHarness(alloc: std.mem.Allocator) !*TestHarness {
 
 fn resetAndSeed(conn: *pg.Conn) !void {
     _ = try conn.exec("DELETE FROM core.tenant_fleet_bundle_templates WHERE workspace_id = $1::uuid", .{http_auth.WS_PRIMARY});
+    _ = try conn.exec("DELETE FROM core.tenant_fleet_bundle_templates WHERE workspace_id = $1::uuid", .{http_auth.WS_SECONDARY});
     _ = try conn.exec("DELETE FROM core.fleet_bundle_templates WHERE id = $1", .{PROBE_NAME});
     http_auth.cleanup(conn);
     try http_auth.seedTenant(conn);
@@ -224,4 +225,78 @@ fn jsonStringField(alloc: std.mem.Allocator, body: []const u8, field: []const u8
         .string => |s| alloc.dupe(u8, s),
         else => error.JsonFieldWrongType,
     };
+}
+
+// A tenant template row planted directly under another workspace, used to prove
+// the gallery never leaks across workspaces (Dimension 5.2).
+const FOREIGN_TEMPLATE_NAME = "foreign-workspace-template";
+
+fn seedForeignTenantTemplate(conn: *pg.Conn) !void {
+    try http_auth.seedScopeWorkspace(conn, http_auth.WS_SECONDARY);
+    _ = try conn.exec(
+        \\INSERT INTO core.tenant_fleet_bundle_templates
+        \\  (id, workspace_id, name, source_kind, source_ref, visibility,
+        \\   content_hash, skill_markdown, trigger_markdown, support_files_json,
+        \\   requirements_json, created_at, updated_at)
+        \\VALUES ('0195b4ba-8d3a-7f13-8abc-0000000000d1'::uuid, $1::uuid, $2,
+        \\        'upload', 'unit/foreign', 'tenant',
+        \\        'deadbeef', 'skill', NULL, '[]'::jsonb,
+        \\        '{"credentials":[],"tools":[],"network_hosts":[],"support_files":[],"trigger_present":false}'::jsonb,
+        \\        0, 0)
+    , .{ http_auth.WS_SECONDARY, FOREIGN_TEMPLATE_NAME });
+}
+
+test "integration: gallery unions platform and own tenant templates" {
+    const alloc = std.testing.allocator;
+    const h = makeHarness(alloc) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    try resetAndSeed(conn);
+
+    // Onboard one tenant template into WS_PRIMARY.
+    const body = try onboardBody(alloc);
+    defer alloc.free(body);
+    const url = try tenantUrl(alloc, http_auth.WS_PRIMARY);
+    defer alloc.free(url);
+    const created = try (try (try h.post(url).bearer(TOKEN_TENANT)).json(body)).send();
+    defer created.deinit();
+    try created.expectStatus(.created);
+
+    // The gallery returns platform seeds plus WS_PRIMARY's own tenant template.
+    const gallery = try (try h.get(url).bearer(TOKEN_TENANT)).send();
+    defer gallery.deinit();
+    try gallery.expectStatus(.ok);
+    try std.testing.expect(gallery.bodyContains("\"github-pr-reviewer\"")); // platform seed
+    try std.testing.expect(gallery.bodyContains("\"onboard-probe\"")); // own tenant
+    try std.testing.expect(gallery.bodyContains("\"visibility\":\"platform\""));
+    try std.testing.expect(gallery.bodyContains("\"visibility\":\"tenant\""));
+    // No object-store key escapes the gallery (Dimension 5.3).
+    try std.testing.expect(!gallery.bodyContains("snapshot_key"));
+    try std.testing.expect(!gallery.bodyContains("fleet-bundles/sha256/"));
+}
+
+test "integration: gallery isolates another workspace's tenant templates" {
+    const alloc = std.testing.allocator;
+    const h = makeHarness(alloc) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    try resetAndSeed(conn);
+    try seedForeignTenantTemplate(conn);
+
+    const url = try tenantUrl(alloc, http_auth.WS_PRIMARY);
+    defer alloc.free(url);
+    const gallery = try (try h.get(url).bearer(TOKEN_TENANT)).send();
+    defer gallery.deinit();
+    try gallery.expectStatus(.ok);
+    // WS_PRIMARY's gallery must not surface WS_SECONDARY's tenant template.
+    try std.testing.expect(!gallery.bodyContains(FOREIGN_TEMPLATE_NAME));
+    try std.testing.expect(gallery.bodyContains("\"github-pr-reviewer\"")); // platform still shown
 }
