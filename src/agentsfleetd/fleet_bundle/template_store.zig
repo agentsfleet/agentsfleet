@@ -63,6 +63,57 @@ pub const TenantInsertParams = struct {
     now_ms: i64,
 };
 
+/// A template resolved for install — the SKILL/TRIGGER markdown the fleet row
+/// stores plus the content hash the runner materializes support files from.
+/// Caller passes the same allocator to `deinit`.
+pub const InstallTemplate = struct {
+    skill_markdown: []const u8,
+    trigger_markdown: ?[]const u8,
+    content_hash: []const u8,
+
+    pub fn deinit(self: *const InstallTemplate, alloc: std.mem.Allocator) void {
+        alloc.free(self.skill_markdown);
+        if (self.trigger_markdown) |tm| alloc.free(tm);
+        alloc.free(self.content_hash);
+    }
+};
+
+/// Resolve a platform template for install by slug id. Only onboarded rows (a
+/// non-null snapshot) are installable; a seed row not yet onboarded returns null.
+pub fn fetchPlatformInstall(conn: *pg.Conn, alloc: std.mem.Allocator, id: []const u8) !?InstallTemplate {
+    var q = PgQuery.from(try conn.query(
+        \\SELECT skill_markdown, trigger_markdown, content_hash
+        \\  FROM core.fleet_bundle_templates
+        \\ WHERE id = $1 AND content_hash IS NOT NULL AND skill_markdown IS NOT NULL
+    , .{id}));
+    defer q.deinit();
+    return rowToInstall(try q.next(), alloc);
+}
+
+/// Resolve a tenant template for install, scoped to the caller's workspace — a
+/// template owned by another workspace is invisible (returns null), so install
+/// enforces visibility (Dimension 4.2).
+pub fn fetchTenantInstall(conn: *pg.Conn, alloc: std.mem.Allocator, workspace_id: []const u8, id: []const u8) !?InstallTemplate {
+    var q = PgQuery.from(try conn.query(
+        \\SELECT skill_markdown, trigger_markdown, content_hash
+        \\  FROM core.tenant_fleet_bundle_templates
+        \\ WHERE id = $1::uuid AND workspace_id = $2::uuid
+    , .{ id, workspace_id }));
+    defer q.deinit();
+    return rowToInstall(try q.next(), alloc);
+}
+
+fn rowToInstall(row_opt: anytype, alloc: std.mem.Allocator) !?InstallTemplate {
+    const row = row_opt orelse return null;
+    const skill = try alloc.dupe(u8, try row.get([]const u8, 0));
+    errdefer alloc.free(skill);
+    const trigger_opt = try row.get(?[]const u8, 1);
+    const trigger = if (trigger_opt) |tm| try alloc.dupe(u8, tm) else null;
+    errdefer if (trigger) |tm| alloc.free(tm);
+    const content_hash = try alloc.dupe(u8, try row.get([]const u8, 2));
+    return .{ .skill_markdown = skill, .trigger_markdown = trigger, .content_hash = content_hash };
+}
+
 /// UPSERT a platform template by slug id, refreshing the onboarding snapshot and
 /// requirement columns on re-onboard. Returns the row id (caller owns it).
 pub fn insertOrUpdatePlatform(conn: *pg.Conn, alloc: std.mem.Allocator, p: PlatformInsertParams) ![]const u8 {

@@ -314,42 +314,6 @@ components:
             type: string
         trigger_present:
           type: boolean
-    FleetBundleDetail:
-      type: object
-      required:
-      - bundle_id
-      - name
-      - source_kind
-      - source_ref
-      - validation_status
-      - content_hash
-      - requirements
-      - support_files
-      properties:
-        bundle_id:
-          type: string
-          format: uuid
-        name:
-          type: string
-        source_kind:
-          type: string
-          enum:
-          - template
-          - upload
-          - github
-        source_ref:
-          type: string
-        validation_status:
-          type: string
-        content_hash:
-          type: string
-          description: SHA-256 content hash of the imported snapshot.
-        requirements:
-          $ref: '#/components/schemas/FleetBundleRequirements'
-        support_files:
-          type: array
-          items:
-            $ref: '#/components/schemas/FleetBundleSupportFileSummary'
     FleetTemplateOnboardRequest:
       type: object
       required:

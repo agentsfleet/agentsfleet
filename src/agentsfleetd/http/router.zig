@@ -120,7 +120,6 @@ fn matchV1(p: matchers.Path, method: httpz.Method) ?Route {
     if (matchers.matchWorkspaceCredential(p)) |r| return .{ .workspace_credential = r };
     if (matchers.matchWorkspaceFleetKeyDelete(p)) |r| return .{ .delete_fleet_key = r };
     if (matchers.matchWorkspaceFleet(p)) |r| return .{ .patch_workspace_fleet = r };
-    if (matchers.matchWorkspaceFleetBundle(p)) |r| return .{ .workspace_fleet_bundle = r };
 
     // ── Approval inbox detail / resolve (colon-noun) ──────────────────────
     if (matchers.matchWorkspaceApprovalResolve(p)) |r| return .{ .workspace_approval_resolve = r };
@@ -129,7 +128,6 @@ fn matchV1(p: matchers.Path, method: httpz.Method) ?Route {
     // ── Workspace + suffix collections ────────────────────────────────────
     if (matchers.matchWorkspaceSuffix(p, S_FLEETS)) |ws_id| return .{ .workspace_fleets = ws_id };
     if (matchers.matchWorkspaceSuffix(p, "fleet-templates")) |ws_id| return .{ .workspace_fleet_templates = ws_id };
-    if (matchers.matchWorkspaceFleetBundles(p)) |ws_id| return .{ .workspace_fleet_bundles = ws_id };
     if (matchers.matchWorkspaceSuffix(p, "credentials")) |ws_id| return .{ .workspace_credentials = ws_id };
     if (matchers.matchWorkspaceSuffix(p, "fleet-keys")) |ws_id| return .{ .fleet_keys = ws_id };
     if (matchers.matchWorkspaceSuffix(p, S_EVENTS)) |ws_id| return .{ .workspace_events = ws_id };

@@ -2914,6 +2914,7 @@
         ],
         "requestBody": {
           "required": true,
+          "description": "Install a fleet from exactly one onboarded template tier (M103 §4): a platform template (slug id) or this workspace's tenant template (UUIDv7). The server reads SKILL/TRIGGER + content identity from the template row; raw-SKILL paste and the legacy per-workspace bundle_id are not accepted.",
           "content": {
             "application/json": {
               "schema": {
@@ -2921,35 +2922,29 @@
                 "anyOf": [
                   {
                     "required": [
-                      "source_markdown"
+                      "platform_template_id"
                     ]
                   },
                   {
                     "required": [
-                      "bundle_id"
+                      "tenant_template_id"
                     ]
                   }
                 ],
                 "properties": {
-                  "bundle_id": {
+                  "platform_template_id": {
+                    "type": "string",
+                    "description": "Slug id of a platform catalog template to install."
+                  },
+                  "tenant_template_id": {
                     "type": "string",
                     "format": "uuid",
-                    "description": "Optional Fleet Bundle Universally Unique Identifier (UUID). When present, the install uses the stored bundle snapshot through this same fleets endpoint."
-                  },
-                  "trigger_markdown": {
-                    "type": "string",
-                    "maxLength": 65536,
-                    "description": "Optional TRIGGER.md raw bytes — frontmatter (`name`, `trigger`, `tools`, `credentials`, `network`, `budget`, `gates`) between `---` delimiters. When omitted, the server derives a default API trigger from SKILL.md and persists the generated `config_json`."
-                  },
-                  "source_markdown": {
-                    "type": "string",
-                    "maxLength": 65536,
-                    "description": "SKILL.md raw bytes — the fleet instructions, stored as-is."
+                    "description": "UUIDv7 of one of this workspace's tenant templates to install."
                   },
                   "name": {
                     "type": "string",
                     "maxLength": 64,
-                    "description": "Optional operator-supplied fleet name (slug-safe, lowercase/digits/hyphen, max 64 chars). Overrides the SKILL.md-derived name so one bundle can back multiple fleets in a workspace, each with its own name + webhooks. Absent ⇒ the SKILL.md `name:`."
+                    "description": "Optional operator-supplied fleet name (slug-safe, lowercase/digits/hyphen, max 64 chars). Overrides the SKILL.md-derived name so one template can back multiple fleets in a workspace, each with its own name + webhooks. Absent ⇒ the SKILL.md `name:`."
                   }
                 }
               }
@@ -3019,8 +3014,8 @@
     "/v1/fleets/bundles": {
       "get": {
         "operationId": "list_fleet_bundles",
-        "summary": "List Fleet Bundles",
-        "description": "Returns first-party Fleet Bundle templates that can be imported into a workspace. Template rows contain only metadata and requirement hints; they do not carry credential values.",
+        "summary": "List the platform Fleet template catalog",
+        "description": "Returns the first-party (platform) Fleet template catalog. Rows contain only metadata and requirement hints; they carry no credential values or object-store keys. The workspace gallery union lives at GET /v1/workspaces/{workspace_id}/fleet-templates.",
         "tags": [
           "Fleet Bundles"
         ],
@@ -3217,162 +3212,6 @@
             "$ref": "#/components/responses/Error"
           },
           "503": {
-            "$ref": "#/components/responses/Error"
-          },
-          "default": {
-            "$ref": "#/components/responses/Error"
-          }
-        }
-      }
-    },
-    "/v1/workspaces/{workspace_id}/fleets/bundles/snapshots": {
-      "post": {
-        "operationId": "import_fleet_bundle",
-        "summary": "Import a Fleet Bundle",
-        "description": "Validates and stores a workspace-scoped Fleet Bundle snapshot from uploaded Markdown, a GitHub source reference, or a first-party template reference. The import response previews credentials, tools, network hosts, and support-file names without returning support-file content.",
-        "tags": [
-          "Fleet Bundles"
-        ],
-        "parameters": [
-          {
-            "name": "workspace_id",
-            "in": "path",
-            "required": true,
-            "description": "Universally Unique Identifier v7 (UUIDv7) of the workspace.",
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": [
-                  "source_kind"
-                ],
-                "properties": {
-                  "source_kind": {
-                    "type": "string",
-                    "description": "Where the bundle comes from. `upload` carries the SKILL.md (and optional TRIGGER.md) Markdown inline; `github` and `template` are fetched and validated server-side from GitHub.",
-                    "enum": [
-                      "template",
-                      "upload",
-                      "github"
-                    ]
-                  },
-                  "source_ref": {
-                    "type": "string",
-                    "maxLength": 512,
-                    "description": "Required for `github` (an `owner/repo` locator resolved at the default branch) and `template` (a first-party template id). For `upload` it is an optional operator-traceability label."
-                  },
-                  "skill_markdown": {
-                    "type": "string",
-                    "maxLength": 204800,
-                    "description": "Raw SKILL.md bytes. Required for `upload`; ignored for fetched sources, whose fetched SKILL.md is authoritative."
-                  },
-                  "trigger_markdown": {
-                    "type": "string",
-                    "maxLength": 204800,
-                    "description": "Optional raw TRIGGER.md bytes for `upload`. When omitted, installing the bundle uses the server-generated default API trigger. Ignored for fetched sources."
-                  }
-                }
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": "Bundle imported and stored.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/FleetBundleDetail"
-                }
-              }
-            }
-          },
-          "400": {
-            "$ref": "#/components/responses/Error"
-          },
-          "401": {
-            "$ref": "#/components/responses/Error"
-          },
-          "403": {
-            "$ref": "#/components/responses/Error"
-          },
-          "413": {
-            "$ref": "#/components/responses/Error"
-          },
-          "429": {
-            "$ref": "#/components/responses/Error"
-          },
-          "502": {
-            "$ref": "#/components/responses/Error"
-          },
-          "503": {
-            "$ref": "#/components/responses/Error"
-          },
-          "default": {
-            "$ref": "#/components/responses/Error"
-          }
-        }
-      }
-    },
-    "/v1/workspaces/{workspace_id}/fleets/bundles/snapshots/{bundle_id}": {
-      "get": {
-        "operationId": "get_fleet_bundle",
-        "summary": "Get a Fleet Bundle preview",
-        "description": "Returns the stored Fleet Bundle snapshot metadata and requirement preview for a workspace. Support-file contents and credential values are never returned.",
-        "tags": [
-          "Fleet Bundles"
-        ],
-        "parameters": [
-          {
-            "name": "workspace_id",
-            "in": "path",
-            "required": true,
-            "description": "UUIDv7 of the workspace.",
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          },
-          {
-            "name": "bundle_id",
-            "in": "path",
-            "required": true,
-            "description": "UUIDv7 of the Fleet Bundle.",
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Bundle preview.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/FleetBundleDetail"
-                }
-              }
-            }
-          },
-          "400": {
-            "$ref": "#/components/responses/Error"
-          },
-          "401": {
-            "$ref": "#/components/responses/Error"
-          },
-          "403": {
-            "$ref": "#/components/responses/Error"
-          },
-          "404": {
             "$ref": "#/components/responses/Error"
           },
           "default": {
@@ -5540,55 +5379,6 @@
                 "type": "boolean"
               }
             }
-          },
-          "support_files": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/FleetBundleSupportFileSummary"
-            }
-          }
-        }
-      },
-      "FleetBundleDetail": {
-        "type": "object",
-        "required": [
-          "bundle_id",
-          "name",
-          "source_kind",
-          "source_ref",
-          "validation_status",
-          "content_hash",
-          "requirements",
-          "support_files"
-        ],
-        "properties": {
-          "bundle_id": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "name": {
-            "type": "string"
-          },
-          "source_kind": {
-            "type": "string",
-            "enum": [
-              "template",
-              "upload",
-              "github"
-            ]
-          },
-          "source_ref": {
-            "type": "string"
-          },
-          "validation_status": {
-            "type": "string"
-          },
-          "content_hash": {
-            "type": "string",
-            "description": "SHA-256 content hash of the imported snapshot."
-          },
-          "requirements": {
-            "$ref": "#/components/schemas/FleetBundleRequirements"
           },
           "support_files": {
             "type": "array",

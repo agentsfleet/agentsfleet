@@ -117,7 +117,6 @@ test {
     _ = @import("http/handlers/fleets/patch_concurrent_integration_test.zig");
     _ = @import("http/handlers/fleets/delete.zig");
     _ = @import("http/handlers/fleet_bundles/api_integration_test.zig");
-    _ = @import("http/handlers/fleet_bundles/imports.zig");
     _ = @import("http/handlers/fleet_bundles/resolve.zig");
     // Two-tier template onboarding + gallery (M103)
     _ = @import("http/handlers/templates/onboard.zig");

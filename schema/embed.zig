@@ -22,6 +22,5 @@ pub const fleet_runner_affinity_sql = @embedFile("023_fleet_runner_affinity.sql"
 pub const fleet_metering_periods_sql = @embedFile("024_fleet_metering_periods.sql");
 pub const fleet_runner_events_sql = @embedFile("025_fleet_runner_events.sql");
 pub const account_purge_gate_bypass_sql = @embedFile("026_account_purge_gate_bypass.sql");
-pub const core_fleet_bundles_sql = @embedFile("027_core_fleet_bundles.sql");
 pub const fleet_bundle_templates_sql = @embedFile("028_fleet_bundle_templates.sql");
 pub const tenant_fleet_bundle_templates_sql = @embedFile("029_core_tenant_fleet_bundle_templates.sql");

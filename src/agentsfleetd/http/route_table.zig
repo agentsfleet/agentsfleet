@@ -78,8 +78,6 @@ pub fn classFor(route: router.Route) RouteClass {
         .patch_workspace_fleet,
         .workspace_credentials,
         .workspace_credential,
-        .workspace_fleet_bundles,
-        .workspace_fleet_bundle,
         .workspace_fleet_messages,
         .workspace_fleet_events,
         .workspace_events,
@@ -189,8 +187,6 @@ pub fn specFor(route: router.Route, registry: *auth_mw.MiddlewareRegistry) Route
         .patch_workspace_fleet => .{ .middlewares = registry.bearer(), .invoke = invoke.invokePatchWorkspaceFleet },
         .workspace_credentials => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeWorkspaceCredentials },
         .workspace_credential => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeWorkspaceCredentialItem },
-        .workspace_fleet_bundles => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeFleetBundleImports },
-        .workspace_fleet_bundle => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeFleetBundleGet },
         // Chat ingress (workspace-scoped) — POST /messages
         .workspace_fleet_messages => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeFleetMessagesPost },
         // Per-Fleet event history + Server-Sent Events live tail (Bearer this slice;

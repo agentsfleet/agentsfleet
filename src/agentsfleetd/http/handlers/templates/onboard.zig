@@ -21,7 +21,7 @@ const id_format = @import("../../../types/id_format.zig");
 const importer = @import("../../../fleet_bundle/importer.zig");
 const template_store = @import("../../../fleet_bundle/template_store.zig");
 const resolve = @import("../fleet_bundles/resolve.zig");
-const imports_h = @import("../fleet_bundles/imports.zig");
+const pipeline = @import("pipeline.zig");
 const clock = @import("common").clock;
 
 const Hx = hx_mod.Hx;
@@ -76,19 +76,19 @@ fn prepareOnboard(hx: Hx, req: *httpz.Request) ?OnboardCtx {
     errdefer parsed.deinit();
 
     var resolved = resolve.resolve(hx.alloc, hx.ctx.io, parsed.value) catch |err| {
-        imports_h.failImport(hx, err);
+        pipeline.failImport(hx, err);
         return null;
     };
     errdefer resolved.deinit(hx.alloc);
 
     const prepared = importer.prepare(hx.alloc, resolved.body) catch |err| {
-        imports_h.failImport(hx, err);
+        pipeline.failImport(hx, err);
         return null;
     };
     errdefer prepared.deinit(hx.alloc);
 
     if (resolved.body.support_files.len > 0) {
-        if (!imports_h.putSnapshot(hx, &resolved, prepared)) return null;
+        if (!pipeline.putSnapshot(hx, &resolved, prepared)) return null;
     }
     return .{ .parsed = parsed, .resolved = resolved, .prepared = prepared };
 }
@@ -178,7 +178,7 @@ fn respond(hx: Hx, body: importer.ImportBody, prepared: importer.PreparedBundle,
         return;
     };
     defer requirements.deinit();
-    const summaries = imports_h.supportSummaries(hx.alloc, body.support_files) catch {
+    const summaries = pipeline.supportSummaries(hx.alloc, body.support_files) catch {
         common.internalOperationError(hx.res, "support summary allocation failed", hx.req_id);
         return;
     };
