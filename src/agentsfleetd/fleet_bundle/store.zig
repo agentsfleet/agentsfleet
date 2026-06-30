@@ -28,7 +28,6 @@ pub const BundleDetail = struct {
     source_ref: []const u8,
     visibility: []const u8,
     content_hash: []const u8,
-    snapshot_key: []const u8,
     support_files_json: []const u8,
     requirements_json: []const u8,
     validation_status: []const u8,
@@ -42,7 +41,6 @@ pub const BundleDetail = struct {
         alloc.free(self.source_ref);
         alloc.free(self.visibility);
         alloc.free(self.content_hash);
-        alloc.free(self.snapshot_key);
         alloc.free(self.support_files_json);
         alloc.free(self.requirements_json);
         alloc.free(self.validation_status);
@@ -112,7 +110,7 @@ pub fn fetchDetail(
 ) !?BundleDetail {
     var q = PgQuery.from(try conn.query(
         \\SELECT id::text, name, source_kind, source_ref, visibility,
-        \\       content_hash, snapshot_key, support_files_json::text,
+        \\       content_hash, support_files_json::text,
         \\       requirements_json::text, validation_status, created_at, updated_at
         \\FROM core.fleet_bundles
         \\WHERE workspace_id = $1::uuid AND id = $2::uuid
@@ -126,12 +124,11 @@ pub fn fetchDetail(
         .source_ref = try dupeCol(row, alloc, 3),
         .visibility = try dupeCol(row, alloc, 4),
         .content_hash = try dupeCol(row, alloc, 5),
-        .snapshot_key = try dupeCol(row, alloc, 6),
-        .support_files_json = try dupeCol(row, alloc, 7),
-        .requirements_json = try dupeCol(row, alloc, 8),
-        .validation_status = try dupeCol(row, alloc, 9),
-        .created_at = try row.get(i64, 10),
-        .updated_at = try row.get(i64, 11),
+        .support_files_json = try dupeCol(row, alloc, 6),
+        .requirements_json = try dupeCol(row, alloc, 7),
+        .validation_status = try dupeCol(row, alloc, 8),
+        .created_at = try row.get(i64, 9),
+        .updated_at = try row.get(i64, 10),
     };
 }
 

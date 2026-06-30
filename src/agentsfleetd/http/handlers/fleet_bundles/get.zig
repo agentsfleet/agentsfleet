@@ -43,12 +43,12 @@ pub fn innerGet(hx: hx_mod.Hx, req: *httpz.Request, workspace_id: []const u8, bu
 
     const requirements = parseJsonValue(hx, detail.requirements_json) orelse return;
     defer requirements.deinit();
-    const support = std.json.parseFromSlice([]importer.SupportFile, hx.alloc, detail.support_files_json, .{}) catch {
+    const manifest = std.json.parseFromSlice([]importer.SupportFileManifest, hx.alloc, detail.support_files_json, .{}) catch {
         common.internalOperationError(hx.res, "bundle support serialization failed", hx.req_id);
         return;
     };
-    defer support.deinit();
-    const summaries = imports_h.supportSummaries(hx.alloc, support.value) catch {
+    defer manifest.deinit();
+    const summaries = imports_h.manifestSummaries(hx.alloc, manifest.value) catch {
         common.internalOperationError(hx.res, "support summary allocation failed", hx.req_id);
         return;
     };
@@ -62,7 +62,6 @@ pub fn innerGet(hx: hx_mod.Hx, req: *httpz.Request, workspace_id: []const u8, bu
         .visibility = detail.visibility,
         .validation_status = detail.validation_status,
         .content_hash = detail.content_hash,
-        .snapshot_key = detail.snapshot_key,
         .requirements = requirements.value,
         .support_files = summaries,
         .created_at = detail.created_at,
