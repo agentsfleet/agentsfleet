@@ -19,8 +19,7 @@ const TEST_WORKSPACE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11";
 const TEST_ISSUER = scope_fixtures.ISSUER;
 const TEST_AUDIENCE = scope_fixtures.AUDIENCE;
 const TEST_JWKS = scope_fixtures.JWKS;
-const TOKEN_USER =
-    "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6InRlc3Qta2lkLXN0YXRpYyJ9.eyJzdWIiOiJ1c2VyX3Rlc3QiLCJpc3MiOiJodHRwczovL2NsZXJrLnRlc3QuYWdlbnRzZmxlZXQubmV0IiwiYXVkIjoiaHR0cHM6Ly9hcGkuYWdlbnRzZmxlZXQubmV0IiwiZXhwIjo0MTAyNDQ0ODAwLCJzY29wZXMiOiJmbGVldDphZG1pbiBjcmVkZW50aWFsOndyaXRlIGFwaWtleTphZG1pbiBmbGVldGtleTp3cml0ZSBncmFudDp3cml0ZSBjb25uZWN0b3I6d3JpdGUgYmlsbGluZzpyZWFkIGFwcHJvdmFsOnJlc29sdmUgd29ya3NwYWNlOmFkbWluIHRlbXBsYXRlOndyaXRlIiwibWV0YWRhdGEiOnsidGVuYW50X2lkIjoiMDE5NWI0YmEtOGQzYS03ZjEzLThhYmMtMmIzZTFlMGE2ZjAxIiwid29ya3NwYWNlX2lkIjoiMDE5NWI0YmEtOGQzYS03ZjEzLThhYmMtMmIzZTFlMGE2ZjExIn19.clzrJQSbL5tON0PQQwuJYCRDJVDHiebt40X0wYNsN93A6KlNcLO2I_zREIXn2aUI8HAN0WaVJKGHuh1RXuQ-4Fw4wUS7UFIlrY_4DWKkTg6WCbAXxhwe90ScOn9Q5oXUfDLTbpMGw1sFgLe67qy2QPdyH_yephKyjArBnwJQqMbXtb-uKXN66lcrgHlR-KoBGzqkDHyc5bVy9CPKiLgbzZQac1mug53gc8zOZeAFlfgTXTWdSn65f37Cd-vmbGngrhY6sH2oZcUGOlXPiZtyw7jgWyp6tL9gLiDEwwLbQFkUqVvUjjhmkY8-LG7nna-ratPpt5UK3r7WB4bjREbsyQ";
+const TOKEN_USER = scope_fixtures.TENANT_ADMIN;
 
 fn configureRegistry(_: *auth_mw.MiddlewareRegistry, _: *TestHarness) anyerror!void {}
 
@@ -93,7 +92,13 @@ test "integration: fleets list — cursor pagination roundtrip" {
     //   (b) last page carries cursor=null,
     //   (c) union of ids across pages == seeded set (order agnostic).
     var seen_ids = std.StringHashMap(void).init(alloc);
-    defer seen_ids.deinit();
+    defer {
+        // Free every duped id key on ALL exit paths — an early return on a failed
+        // assertion must not leak the keys accumulated so far.
+        var key_it = seen_ids.keyIterator();
+        while (key_it.next()) |key_ptr| alloc.free(key_ptr.*);
+        seen_ids.deinit();
+    }
 
     var next_cursor: ?[]const u8 = null;
     var page_count: usize = 0;
@@ -131,10 +136,11 @@ test "integration: fleets list — cursor pagination roundtrip" {
         }
     }
     try std.testing.expect(next_cursor == null);
-    // (c) every seeded fleet was returned across the walk.
-    try std.testing.expectEqual(@as(usize, 5), seen_ids.count());
-    var seen_it = seen_ids.keyIterator();
-    while (seen_it.next()) |key_ptr| alloc.free(key_ptr.*);
+    // (c) every seeded fleet was returned across the walk. This workspace is
+    // shared across integration tests under the parallel runner, so assert the
+    // seeded set is a SUBSET of what we saw — not an exact count. Pagination
+    // correctness (no cross-page overlap, terminal cursor) is what this test owns.
+    for (ids) |seeded| try std.testing.expect(seen_ids.contains(seeded));
 
     // Bad cursor → 400.
     const url_bad = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/fleets?cursor=not-a-cursor", .{TEST_WORKSPACE_ID});

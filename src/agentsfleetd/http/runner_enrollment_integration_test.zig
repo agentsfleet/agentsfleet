@@ -9,8 +9,8 @@
 // the fixture token actually verifies (RS256 signature + claim extraction)
 // through production code, not just that it was signed correctly.
 //
-// Fixtures (JWKS + the two tokens) are generated offline with an RSA keypair we
-// do not commit; regenerate with the Node script in this PR's Session Notes.
+// Fixtures are the shared personas in `test_scope_tokens.zig`, minted offline by
+// `scripts/mint-scope-personas.mjs` against a committed throwaway test key.
 // Payload shape mirrors the Clerk session token: top-level `scopes` (the
 // capability claim) + `metadata.{tenant_id, workspace_id}`. `exp` is 4102444800
 // (2100) so the fixture never ages out.
@@ -48,11 +48,9 @@ const REGISTER_BODY =
 
 const TEST_JWKS = scope_fixtures.JWKS;
 // scopes claim carries `runner:enroll` → may enroll a runner.
-const OPERATOR_TOKEN =
-    "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6InRlc3Qta2lkLXN0YXRpYyJ9.eyJzdWIiOiJ1c2VyX29wX20xMDQiLCJpc3MiOiJodHRwczovL2NsZXJrLnRlc3QuYWdlbnRzZmxlZXQubmV0IiwiYXVkIjoiaHR0cHM6Ly9hcGkuYWdlbnRzZmxlZXQubmV0IiwiZXhwIjo0MTAyNDQ0ODAwLCJzY29wZXMiOiJydW5uZXI6ZW5yb2xsIHJ1bm5lcjpyZWFkIHJ1bm5lcjp3cml0ZSBzdHJlYW06cmVhZCIsIm1ldGFkYXRhIjp7InRlbmFudF9pZCI6IjAxOTViNGJhLThkM2EtN2YxMy04YWJjLTJiM2UxZTBhNmYwMSIsIndvcmtzcGFjZV9pZCI6IjAxOTViNGJhLThkM2EtN2YxMy04YWJjLTJiM2UxZTBhNmYxMSJ9fQ.ADYOJzBdVCEgAppXcvxCdOPN7yv3xCf44D2tFCDrWV9OASGC5ohfehxYCHXMz-rrmsq48lWHvpLt9R0qX99QDo4oBWjBd4c8-CcRl3KnWsNNTQVd7HeZNYcY3KdwDx8aXxdAr_Hsu6dHhGy2SeEFzlYffbtZT-qr6VT2nAqjNomcvUaPfNqb2U2-KwlS18ypM3VBxU2LYDMsjoRzxcex-ZgM49wzMccTFRKLJkPgmC0YI5i4BzmnYFDZ6owfjzVacHls_tNErBPQJ_gPbSl42eM_i-xqvtImdz8j9VJewbQ0CSAFc_PcdpNuHLDnOYfXSksFjnE5wbk5D0xlRBvrkQ";
+const OPERATOR_TOKEN = scope_fixtures.PLATFORM_ADMIN;
 // scopes carry tenant capability only (no `runner:enroll`) → must be 403.
-const TENANT_TOKEN =
-    "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6InRlc3Qta2lkLXN0YXRpYyJ9.eyJzdWIiOiJ1c2VyX3RlbmFudF9tMTA0IiwiaXNzIjoiaHR0cHM6Ly9jbGVyay50ZXN0LmFnZW50c2ZsZWV0Lm5ldCIsImF1ZCI6Imh0dHBzOi8vYXBpLmFnZW50c2ZsZWV0Lm5ldCIsImV4cCI6NDEwMjQ0NDgwMCwic2NvcGVzIjoiZmxlZXQ6YWRtaW4gY3JlZGVudGlhbDp3cml0ZSIsIm1ldGFkYXRhIjp7InRlbmFudF9pZCI6IjAxOTViNGJhLThkM2EtN2YxMy04YWJjLTJiM2UxZTBhNmYwMSIsIndvcmtzcGFjZV9pZCI6IjAxOTViNGJhLThkM2EtN2YxMy04YWJjLTJiM2UxZTBhNmYxMSJ9fQ.LHVx2-AWzyGF4uPeAzBTUVQHrPrRrQMne8-x9w0N0S-S5n7cYzB663wdlfuPAysmxw9vy022UYvJ0pSIKeMgiydIvWq5_WRu7vvOJm7wsnrIRPw13vQEB3Emk0JWYJzD0TRAajy6AcJTD2-R5OZfCLS4Es3iKl2GsGLm86NJbF6RkgBm4MtdfVkKo_K9vvSwqem3by8p-urKoGrilsd1RBQv6nOvAKyQIhHptLvRRNK1DC3bKuMWsUtuhbdEaEGBFmwYdBl7DIZHlH2rDkZ4d5iUQ_uMbRyiqzPKenUzJUj0HPbdo4N5y5EA2jo6XKw-AOkSHVkNCMZYSl4zz2OKmg";
+const TENANT_TOKEN = scope_fixtures.TENANT_ADMIN;
 
 // ── Verifier proof (no DB) ───────────────────────────────────────────────────
 // Drives the real oidc.Verifier so the fixture is proven against production
@@ -84,13 +82,16 @@ fn verify(token: []const u8) !oidc.Principal {
 test "fixture tokens verify through the real oidc verifier; scopes claim surfaces" {
     const operator = try verify(OPERATOR_TOKEN);
     defer freePrincipal(operator);
-    // The operator fixture carries the platform-plane scopes incl. runner:enroll.
-    try std.testing.expectEqualStrings("runner:enroll runner:read runner:write stream:read", operator.scopes.?);
+    // Assert the load-bearing capability, not the exact scope set: the persona's
+    // full scopes live once in test_scope_tokens.zig, so re-pinning them here would
+    // make a scope change a two-place edit. The operator (platform plane) carries
+    // runner:enroll → may enroll.
+    try std.testing.expect(std.mem.indexOf(u8, operator.scopes.?, "runner:enroll") != null);
 
     const tenant = try verify(TENANT_TOKEN);
     defer freePrincipal(tenant);
-    // The tenant fixture carries tenant capability only — no runner:enroll.
-    try std.testing.expectEqualStrings("fleet:admin credential:write", tenant.scopes.?);
+    // The tenant fixture carries tenant capability only — no runner:enroll → 403.
+    try std.testing.expect(std.mem.indexOf(u8, tenant.scopes.?, "runner:enroll") == null);
 }
 
 // ── Register-handler authz (DB-backed) ───────────────────────────────────────

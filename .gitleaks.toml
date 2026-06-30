@@ -15,6 +15,9 @@ paths = [
   '''(^|/).*_test\.zig$''',
   # Shared test-fixture helpers (deterministic seeds, not real credentials)
   '''(^|/)test_fixtures\.zig$''',
+  # Centralized persona auth fixtures — deterministic offline test JWTs minted by
+  # scripts/mint-scope-personas.mjs against a throwaway committed test key.
+  '''(^|/)test_scope_tokens\.zig$''',
   # Zig build/cache directories
   '''(^|/)\.tmp/''',
   '''(^|/)zig-cache/''',
@@ -32,7 +35,11 @@ paths = [
 ]
 regexTarget = "match"
 regexes = [
-  # Test JWT tokens (RBAC integration test, kid=rbac-test-kid) — deterministic
+  # Pre-M104 test JWTs (kid=rbac-test-kid) still present in git HISTORY — gitleaks
+  # `detect` scans every commit, not just the working tree. The live tree mints
+  # kid=test-kid-static (allowlisted via test_scope_tokens.zig / *_test.zig paths),
+  # but these old-path fixtures persist in history. Deterministic, not real creds.
+  # Do NOT remove based on a working-tree-only grep — history still trips it.
   '''eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6InJiYWMtdGVzdC1raWQifQ\..*''',
   # UZ-* error codes in structured log messages (false positive: generic-api-key)
   '''UZ-[A-Z]+-\d{3}''',

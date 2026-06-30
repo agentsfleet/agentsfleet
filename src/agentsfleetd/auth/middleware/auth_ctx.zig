@@ -16,7 +16,9 @@ const errors = @import("errors.zig");
 pub const AuthPrincipal = principal_mod.AuthPrincipal;
 
 /// Error-writing callback supplied by the host. Abstracts RFC 7807 body
-/// assembly so the middleware layer never imports `src/errors/`.
+/// assembly so the middleware layer never imports `src/errors/`. `detail` is
+/// borrowed for the call only — callers may pass a stack slice, so the host
+/// must serialize/copy it before returning, never retain the slice.
 pub const WriteErrorFn = *const fn (
     res: *httpz.Response,
     code: []const u8,

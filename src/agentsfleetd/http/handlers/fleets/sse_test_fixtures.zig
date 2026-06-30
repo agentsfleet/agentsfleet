@@ -31,8 +31,7 @@ pub const TEST_WORKSPACE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11";
 pub const TEST_ISSUER = scope_fixtures.ISSUER;
 pub const TEST_AUDIENCE = scope_fixtures.AUDIENCE;
 pub const TEST_JWKS = scope_fixtures.JWKS;
-pub const TOKEN_OPERATOR =
-    "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6InRlc3Qta2lkLXN0YXRpYyJ9.eyJzdWIiOiJ1c2VyX3Rlc3QiLCJpc3MiOiJodHRwczovL2NsZXJrLnRlc3QuYWdlbnRzZmxlZXQubmV0IiwiYXVkIjoiaHR0cHM6Ly9hcGkuYWdlbnRzZmxlZXQubmV0IiwiZXhwIjo0MTAyNDQ0ODAwLCJzY29wZXMiOiJmbGVldDphZG1pbiBjcmVkZW50aWFsOndyaXRlIGFwaWtleTphZG1pbiBmbGVldGtleTp3cml0ZSBncmFudDp3cml0ZSBjb25uZWN0b3I6d3JpdGUgYmlsbGluZzpyZWFkIGFwcHJvdmFsOnJlc29sdmUgd29ya3NwYWNlOmFkbWluIHRlbXBsYXRlOndyaXRlIiwibWV0YWRhdGEiOnsidGVuYW50X2lkIjoiMDE5NWI0YmEtOGQzYS03ZjEzLThhYmMtMmIzZTFlMGE2ZjAxIiwid29ya3NwYWNlX2lkIjoiMDE5NWI0YmEtOGQzYS03ZjEzLThhYmMtMmIzZTFlMGE2ZjExIn19.clzrJQSbL5tON0PQQwuJYCRDJVDHiebt40X0wYNsN93A6KlNcLO2I_zREIXn2aUI8HAN0WaVJKGHuh1RXuQ-4Fw4wUS7UFIlrY_4DWKkTg6WCbAXxhwe90ScOn9Q5oXUfDLTbpMGw1sFgLe67qy2QPdyH_yephKyjArBnwJQqMbXtb-uKXN66lcrgHlR-KoBGzqkDHyc5bVy9CPKiLgbzZQac1mug53gc8zOZeAFlfgTXTWdSn65f37Cd-vmbGngrhY6sH2oZcUGOlXPiZtyw7jgWyp6tL9gLiDEwwLbQFkUqVvUjjhmkY8-LG7nna-ratPpt5UK3r7WB4bjREbsyQ"; // gitleaks:allow (deterministic offline test fixture, not a real credential)
+pub const TOKEN_OPERATOR = scope_fixtures.TENANT_ADMIN; // gitleaks:allow (deterministic offline test fixture, not a real credential)
 
 pub const SUBSCRIBE_SETTLE_NS: u64 = 200 * std.time.ns_per_ms;
 pub const TEST_REDIS_URL_ENV = "TEST_REDIS_TLS_URL";
@@ -90,10 +89,15 @@ pub fn seedFleet(conn: *pg.Conn, fleet_id: []const u8, name: []const u8) !void {
     , .{ fleet_id, TEST_WORKSPACE_ID, name });
 }
 
-pub fn cleanupWorkspaceData(conn: *pg.Conn) void {
-    _ = conn.exec("DELETE FROM core.fleet_events WHERE workspace_id = $1::uuid", .{TEST_WORKSPACE_ID}) catch |err| std.log.warn(IGNORED_ERROR_FMT, .{@errorName(err)});
-    _ = conn.exec("DELETE FROM core.fleets WHERE workspace_id = $1::uuid", .{TEST_WORKSPACE_ID}) catch |err| std.log.warn(IGNORED_ERROR_FMT, .{@errorName(err)});
-    _ = conn.exec("DELETE FROM workspaces WHERE workspace_id = $1", .{TEST_WORKSPACE_ID}) catch |err| std.log.warn(IGNORED_ERROR_FMT, .{@errorName(err)});
+/// Delete only the rows the calling test seeded for `fleet_id`. Scoped to the
+/// fleet, NOT the workspace: TEST_WORKSPACE_ID is shared across stream tests that
+/// run concurrently under the parallel (`--seed`) runner, so a by-workspace
+/// delete here races siblings' fixtures — deleting fleets/events they are still
+/// using mid-test. The shared workspace row is left in place (it is idempotently
+/// re-seeded by seedWorkspace and dropped wholesale by `make _reset-test-db`).
+pub fn cleanupFleet(conn: *pg.Conn, fleet_id: []const u8) void {
+    _ = conn.exec("DELETE FROM core.fleet_events WHERE fleet_id = $1::uuid", .{fleet_id}) catch |err| std.log.warn(IGNORED_ERROR_FMT, .{@errorName(err)});
+    _ = conn.exec("DELETE FROM core.fleets WHERE id = $1::uuid", .{fleet_id}) catch |err| std.log.warn(IGNORED_ERROR_FMT, .{@errorName(err)});
 }
 
 pub fn connectPublisher(alloc: std.mem.Allocator) !queue_redis.Client {
