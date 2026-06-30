@@ -33,8 +33,7 @@ const TEST_JWKS = scope_fixtures.JWKS;
 // tenant before running the GET tests.
 const TEST_BALANCE_NANOS: i64 = 1000;
 
-const TOKEN_OPERATOR =
-    "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6InRlc3Qta2lkLXN0YXRpYyJ9.eyJzdWIiOiJ1c2VyX3Rlc3QiLCJpc3MiOiJodHRwczovL2NsZXJrLnRlc3QuYWdlbnRzZmxlZXQubmV0IiwiYXVkIjoiaHR0cHM6Ly9hcGkuYWdlbnRzZmxlZXQubmV0IiwiZXhwIjo0MTAyNDQ0ODAwLCJzY29wZXMiOiJmbGVldDphZG1pbiBjcmVkZW50aWFsOndyaXRlIGFwaWtleTphZG1pbiBmbGVldGtleTp3cml0ZSBncmFudDp3cml0ZSBjb25uZWN0b3I6d3JpdGUgYmlsbGluZzpyZWFkIGFwcHJvdmFsOnJlc29sdmUgd29ya3NwYWNlOmFkbWluIHRlbXBsYXRlOndyaXRlIiwibWV0YWRhdGEiOnsidGVuYW50X2lkIjoiMDE5NWI0YmEtOGQzYS03ZjEzLThhYmMtMmIzZTFlMGE2ZjAxIiwid29ya3NwYWNlX2lkIjoiMDE5NWI0YmEtOGQzYS03ZjEzLThhYmMtMmIzZTFlMGE2ZjExIn19.clzrJQSbL5tON0PQQwuJYCRDJVDHiebt40X0wYNsN93A6KlNcLO2I_zREIXn2aUI8HAN0WaVJKGHuh1RXuQ-4Fw4wUS7UFIlrY_4DWKkTg6WCbAXxhwe90ScOn9Q5oXUfDLTbpMGw1sFgLe67qy2QPdyH_yephKyjArBnwJQqMbXtb-uKXN66lcrgHlR-KoBGzqkDHyc5bVy9CPKiLgbzZQac1mug53gc8zOZeAFlfgTXTWdSn65f37Cd-vmbGngrhY6sH2oZcUGOlXPiZtyw7jgWyp6tL9gLiDEwwLbQFkUqVvUjjhmkY8-LG7nna-ratPpt5UK3r7WB4bjREbsyQ";
+const TOKEN_OPERATOR = scope_fixtures.TENANT_ADMIN;
 const TOKEN_TENANT_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01";
 
 fn configureRegistry(_: *auth_mw.MiddlewareRegistry, _: *TestHarness) anyerror!void {}
@@ -287,7 +286,7 @@ test "integration(m11_006): POST /v1/workspaces with a JWT lacking tenant_id ret
     //   "aud":"https://api.agentsfleet.net","exp":4102444800,
     //   "metadata":{"role":"operator"}}
     // Signed with the same test RSA key used elsewhere in the suite.
-    const TOKEN_NO_TENANT = "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6InRlc3Qta2lkLXN0YXRpYyJ9.eyJzdWIiOiJ1c2VyX20xMV8wMDYiLCJpc3MiOiJodHRwczovL2NsZXJrLnRlc3QuYWdlbnRzZmxlZXQubmV0IiwiYXVkIjoiaHR0cHM6Ly9hcGkuYWdlbnRzZmxlZXQubmV0IiwiZXhwIjo0MTAyNDQ0ODAwLCJzY29wZXMiOiJmbGVldDphZG1pbiBjcmVkZW50aWFsOndyaXRlIGFwaWtleTphZG1pbiBmbGVldGtleTp3cml0ZSBncmFudDp3cml0ZSBjb25uZWN0b3I6d3JpdGUgYmlsbGluZzpyZWFkIGFwcHJvdmFsOnJlc29sdmUgd29ya3NwYWNlOmFkbWluIHRlbXBsYXRlOndyaXRlIiwibWV0YWRhdGEiOnt9fQ.a85sfc1dxTivLtF15-KpYBj_L-LrlGA8ZTYjqSzNEyxVfFUEFXSqfuQqEjzxRDU8dDATX8BQiWCiB-thfMU9W5Yo9z_obqjO00vPNWre-zObalPUs_UhkfKgtOccO3RlIMNFIBwO1BQyAhTleMjkAYWPUEfdQjzchr2IkKRPwCrJ37IaZhcf8uU25usEXGtiL45wQKO0Y3SPbbrbj07se6QLutb5afNsC_g6BYc47YxtbPvPCzor0m85ejh5h9z6V_Oz3o97eNtFHbDS_CW42QUp_Bd2Z3dJqEeInvuh3Rv79Se_XRfHxCpBkkNLpBc6_9huhSc-mcy3wn7QlVqJtg";
+    const TOKEN_NO_TENANT = scope_fixtures.NO_TENANT;
 
     const r = try (try (try h.post("/v1/workspaces").json("{}")).bearer(TOKEN_NO_TENANT)).send();
     defer r.deinit();

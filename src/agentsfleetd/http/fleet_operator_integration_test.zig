@@ -36,10 +36,8 @@ const BODY_BAD_ACTION = "{\"action\":\"pause\"}";
 const ONE_EVENT: i64 = 1;
 
 const TEST_JWKS = scope_fixtures.JWKS;
-const PLATFORM_ADMIN_TOKEN =
-    "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6InRlc3Qta2lkLXN0YXRpYyJ9.eyJzdWIiOiJ1c2VyX29wX20xMDQiLCJpc3MiOiJodHRwczovL2NsZXJrLnRlc3QuYWdlbnRzZmxlZXQubmV0IiwiYXVkIjoiaHR0cHM6Ly9hcGkuYWdlbnRzZmxlZXQubmV0IiwiZXhwIjo0MTAyNDQ0ODAwLCJzY29wZXMiOiJydW5uZXI6ZW5yb2xsIHJ1bm5lcjpyZWFkIHJ1bm5lcjp3cml0ZSBzdHJlYW06cmVhZCBtb2RlbDphZG1pbiBwbGF0Zm9ybS1rZXk6YWRtaW4gdGVtcGxhdGU6YWRtaW4gd29ya3NwYWNlOmFueSIsIm1ldGFkYXRhIjp7InRlbmFudF9pZCI6IjAxOTViNGJhLThkM2EtN2YxMy04YWJjLTJiM2UxZTBhNmYwMSIsIndvcmtzcGFjZV9pZCI6IjAxOTViNGJhLThkM2EtN2YxMy04YWJjLTJiM2UxZTBhNmYxMSJ9fQ.Tgto78_3Qnu6NHx7wWwJkSZ6ZSKyDEqAf1TRN2zqaGSXy1s8nayNORBfBXJhla9nLMgxp6uJbDvFrY_tm3dtbhgjfAYj8vMC7lxihpv12cmlZ9aNK53AF4lzqmnfj6YysLY-RMQ1TKOEJpSSkocCniQoMaNou7k-bzt4nsfPYWhh123E6oMA9rsD3YHCQFn6qmmhA0LpHsRsO76noOvxPWVPsS2jukDO1d-j_HusXM6cgVp_AGzcdK64nVlWapof6uPhxvBJh0yCokNDn26SQi6LYYcV8Vgf-nyeQ02Yked-Fs3DLxOv5pqfzPz5EVDZf1VQmKYua3HeZPAyv3peNg";
-const TENANT_ADMIN_TOKEN =
-    "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6InRlc3Qta2lkLXN0YXRpYyJ9.eyJzdWIiOiJ1c2VyX3RlbmFudF9tMTA0IiwiaXNzIjoiaHR0cHM6Ly9jbGVyay50ZXN0LmFnZW50c2ZsZWV0Lm5ldCIsImF1ZCI6Imh0dHBzOi8vYXBpLmFnZW50c2ZsZWV0Lm5ldCIsImV4cCI6NDEwMjQ0NDgwMCwic2NvcGVzIjoiZmxlZXQ6YWRtaW4gY3JlZGVudGlhbDp3cml0ZSBhcGlrZXk6YWRtaW4gZmxlZXRrZXk6d3JpdGUgZ3JhbnQ6d3JpdGUgY29ubmVjdG9yOndyaXRlIGJpbGxpbmc6cmVhZCBhcHByb3ZhbDpyZXNvbHZlIHdvcmtzcGFjZTphZG1pbiB0ZW1wbGF0ZTp3cml0ZSIsIm1ldGFkYXRhIjp7InRlbmFudF9pZCI6IjAxOTViNGJhLThkM2EtN2YxMy04YWJjLTJiM2UxZTBhNmYwMSIsIndvcmtzcGFjZV9pZCI6IjAxOTViNGJhLThkM2EtN2YxMy04YWJjLTJiM2UxZTBhNmYxMSJ9fQ.XXyCtKzYF_oHpbADSYtFtd573Q-belo7kaiIE9nLfqxf0Oap4cFlj7gXnqm8qgBV4dIcI5IxhovU2BOB6Jl0onr85zyPkWmJymSTa61o4ZiUHpeNVFSDPbRDxPJILhWIq9phr9aPZyL-IPqeS4JkIJMnGH7xWcoGi-l517VwR1YAuLU4TARGARq-zvmrFMbSPbr5DrueDvLC65jpQTSo5UAWThRw07x7_AgsP3aglAh7Nl4HjBgrd0-9kXVTGmtLZVct7MfnltGUCN0nbt4JWkaGw--bmrvjTGCUoZ704Y5kU51W0_7uY4jZe6Gr1cukH5Ldx2XwzVDDH0KCgoXb1Q";
+const PLATFORM_ADMIN_TOKEN = scope_fixtures.PLATFORM_ADMIN;
+const TENANT_ADMIN_TOKEN = scope_fixtures.TENANT_ADMIN;
 
 // SAFETY: populated by configureRegistry before the middleware chain reads it.
 var api_key_ctx: api_key_lookup.Ctx = undefined;
@@ -264,11 +262,14 @@ test "fleet streams: platform-admin lists live streams; tenant admin is 403" {
     try empty.expectStatus(.ok);
     try std.testing.expect(empty.bodyContains("\"total\":0"));
 
-    // a live stream appears with its workspace + fleet (the platform-admin
-    // token's workspace metadata matches the seeded fixture workspace)
+    // A live stream then appears in the platform listing with its workspace +
+    // fleet. The SUBSCRIBER is the tenant token: opening a fleet's event stream
+    // requires fleet:read (route_scopes), which the platform persona deliberately
+    // lacks — platform admins get the streams *overview* (stream:read), not tenant
+    // fleet data. The tenant token's workspace matches the seeded fixture.
     const stream_path = try sse_fixtures.streamPath(ALLOC, AGENTSFLEET_FLEET_STREAM);
     defer ALLOC.free(stream_path);
-    var sc = try SseClient.connect(ALLOC, h.port, stream_path, .{ .bearer = PLATFORM_ADMIN_TOKEN });
+    var sc = try SseClient.connect(ALLOC, h.port, stream_path, .{ .bearer = TENANT_ADMIN_TOKEN });
     @import("common").sleepNanos(sse_fixtures.SUBSCRIBE_SETTLE_NS);
 
     const listed = try (try h.get(STREAMS_PATH).bearer(PLATFORM_ADMIN_TOKEN)).send();
@@ -286,5 +287,5 @@ test "fleet streams: platform-admin lists live streams; tenant admin is 403" {
 
     const conn = try h.acquireConn();
     defer h.releaseConn(conn);
-    sse_fixtures.cleanupWorkspaceData(conn);
+    sse_fixtures.cleanupFleet(conn, AGENTSFLEET_FLEET_STREAM);
 }

@@ -89,6 +89,11 @@ const principal_mod = @import("../principal.zig");
 
 const test_fixtures = struct {
     var last_code: []const u8 = "";
+    // Stable copy of the detail bytes. `execute` builds `detail` in a stack-local
+    // buffer and hands write_error a borrowed slice; the real host writer consumes
+    // it synchronously, but this fixture reads `last_detail` *after* execute()
+    // returns — a slice into the popped stack frame is a use-after-return. Copy.
+    var detail_store: [256]u8 = undefined;
     var last_detail: []const u8 = "";
     var write_count: usize = 0;
 
@@ -99,8 +104,10 @@ const test_fixtures = struct {
     }
 
     fn writeError(_: *httpz.Response, code: []const u8, detail: []const u8, _: []const u8) void {
-        last_code = code;
-        last_detail = detail;
+        last_code = code; // code is always a static registry constant — no copy needed
+        const n = @min(detail.len, detail_store.len);
+        @memcpy(detail_store[0..n], detail[0..n]);
+        last_detail = detail_store[0..n];
         write_count += 1;
     }
 };

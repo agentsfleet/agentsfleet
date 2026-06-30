@@ -196,7 +196,7 @@ test "integration: registry drain closes live streams and rejects new ones" {
 
     const conn = try h.acquireConn();
     defer h.releaseConn(conn);
-    fixtures.cleanupWorkspaceData(conn);
+    fixtures.cleanupFleet(conn, AGENTSFLEET_DRAIN);
 }
 
 test "integration: the SSE stream class is exempt from the api ceiling" {
@@ -236,7 +236,7 @@ test "integration: the SSE stream class is exempt from the api ceiling" {
 
     const conn = try h.acquireConn();
     defer h.releaseConn(conn);
-    fixtures.cleanupWorkspaceData(conn);
+    fixtures.cleanupFleet(conn, AGENTSFLEET_STREAM_CLASS);
 }
 
 test "integration: a stream rejected after registration releases its slot" {
@@ -263,7 +263,7 @@ test "integration: a stream rejected after registration releases its slot" {
 
     const conn = try h.acquireConn();
     defer h.releaseConn(conn);
-    fixtures.cleanupWorkspaceData(conn);
+    fixtures.cleanupFleet(conn, AGENTSFLEET_UNSEEDED);
 }
 
 fn countOpenFds() usize {
@@ -322,7 +322,7 @@ test "integration: finished streams return their socket fds to the OS" {
 
     const conn = try h.acquireConn();
     defer h.releaseConn(conn);
-    fixtures.cleanupWorkspaceData(conn);
+    fixtures.cleanupFleet(conn, AGENTSFLEET_FD_CYCLE);
 }
 
 /// One full stream lifecycle: connect, settle, close + wake, then wait for
@@ -416,5 +416,5 @@ test "integration: SSE streams above the cap shed 503 while healthz stays alive"
 
     const conn = try h.acquireConn();
     defer h.releaseConn(conn);
-    fixtures.cleanupWorkspaceData(conn);
+    fixtures.cleanupFleet(conn, AGENTSFLEET_BACKPRESSURE);
 }
