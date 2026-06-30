@@ -24,8 +24,7 @@ pub const AuthCtx = auth_ctx.AuthCtx;
 const bearer_or_api_key = @import("bearer_or_api_key.zig");
 pub const tenant_api_key = @import("tenant_api_key.zig");
 pub const runner_bearer = @import("runner_bearer.zig");
-const require_role = @import("require_role.zig");
-const platform_admin = @import("platform_admin.zig");
+const require_scope = @import("require_scope.zig");
 const webhook_hmac = @import("webhook_hmac.zig");
 pub const webhook_sig_mod = @import("webhook_sig.zig");
 pub const svix_signature_mod = @import("svix_signature.zig");
@@ -33,8 +32,7 @@ pub const svix_signature_mod = @import("svix_signature.zig");
 const BearerOrApiKey = bearer_or_api_key.BearerOrApiKey;
 const TenantApiKey = tenant_api_key.TenantApiKey;
 const RunnerBearer = runner_bearer.RunnerBearer;
-const RequireRole = require_role.RequireRole;
-const PlatformAdmin = platform_admin.PlatformAdmin;
+const RequireScope = require_scope.RequireScope;
 const WebhookHmac = webhook_hmac.WebhookHmac;
 
 /// Boot-time registry of pre-instantiated middleware structs and pre-built
@@ -52,24 +50,22 @@ pub const MiddlewareRegistry = struct {
     bearer_or_api_key: BearerOrApiKey,
     tenant_api_key_mw: TenantApiKey,
     runner_bearer_mw: RunnerBearer,
-    require_role_admin: RequireRole,
-    require_role_operator: RequireRole,
-    platform_admin_mw: PlatformAdmin,
+    // One capability gate for every authenticated route. The
+    // route's required scopes ride `AuthCtx.required_scopes`, set per-request by
+    // the host; this single middleware enforces them. Replaces the per-role
+    // RequireRole instances and the PlatformAdmin gate.
+    require_scope_mw: RequireScope,
     webhook_hmac_mw: WebhookHmac,
 
     // ── Pre-built policy chains ────────────────────────────────────────────
     // Populated by initChains(). Fixed-size arrays so policy methods can
     // return slices without allocating per request.
+    // Authenticated chain = identity (bearer/api-key) + capability (require_scope).
     // SAFETY: populated by initChains() before any policy method reads it.
-    _bearer_chain: [1]Middleware(AuthCtx) = undefined,
+    _bearer_chain: [2]Middleware(AuthCtx) = undefined,
+    // Runner chain = runner-token identity + capability (require_scope → runner:self).
     // SAFETY: populated by initChains() before any policy method reads it.
-    _runner_chain: [1]Middleware(AuthCtx) = undefined,
-    // SAFETY: populated by initChains() before any policy method reads it.
-    _admin_chain: [2]Middleware(AuthCtx) = undefined,
-    // SAFETY: populated by initChains() before any policy method reads it.
-    _operator_chain: [2]Middleware(AuthCtx) = undefined,
-    // SAFETY: populated by initChains() before any policy method reads it.
-    _platform_admin_chain: [2]Middleware(AuthCtx) = undefined,
+    _runner_chain: [2]Middleware(AuthCtx) = undefined,
     // SAFETY: populated by initChains() before any policy method reads it.
     _webhook_hmac_chain: [1]Middleware(AuthCtx) = undefined,
     // webhook_sig is generic over LookupCtx, so the host calls
@@ -88,19 +84,13 @@ pub const MiddlewareRegistry = struct {
         // Wire the tenant-key pointer into bearer_or_api_key so `agt_t`-
         // prefixed tokens delegate to the DB-backed lookup path.
         self.bearer_or_api_key.tenant_api_key = &self.tenant_api_key_mw;
-        self._bearer_chain = .{self.bearer_or_api_key.middleware()};
-        self._runner_chain = .{self.runner_bearer_mw.middleware()};
-        self._admin_chain = .{
+        self._bearer_chain = .{
             self.bearer_or_api_key.middleware(),
-            self.require_role_admin.middleware(),
+            self.require_scope_mw.middleware(),
         };
-        self._operator_chain = .{
-            self.bearer_or_api_key.middleware(),
-            self.require_role_operator.middleware(),
-        };
-        self._platform_admin_chain = .{
-            self.bearer_or_api_key.middleware(),
-            self.platform_admin_mw.middleware(),
+        self._runner_chain = .{
+            self.runner_bearer_mw.middleware(),
+            self.require_scope_mw.middleware(),
         };
         self._webhook_hmac_chain = .{self.webhook_hmac_mw.middleware()};
         // _webhook_sig_chain is set by the host via setWebhookSig()
@@ -123,33 +113,21 @@ pub const MiddlewareRegistry = struct {
     /// No authentication required.
     pub const none: []const Middleware(AuthCtx) = &.{};
 
-    /// Bearer token or admin API key, any role.
+    /// Bearer token or `agt_t` API key, then the capability gate. The route's
+    /// required scopes (resolved from `route_scopes` onto `AuthCtx.required_scopes`)
+    /// decide what the principal must hold; an empty requirement is
+    /// authenticated-only. This single policy replaces the former
+    /// bearer/admin/operator/platformAdmin chains — capability is now data
+    /// (the route→scope table), not a per-policy middleware.
     pub fn bearer(self: *Self) []const Middleware(AuthCtx) {
         return &self._bearer_chain;
     }
 
-    /// Bearer token or admin API key, admin role required.
-    pub fn admin(self: *Self) []const Middleware(AuthCtx) {
-        return &self._admin_chain;
-    }
-
-    /// Runner-token (`agt_r`) machine principal — wired only onto
-    /// `/v1/runners/me/*`. No JWKS/tenant fall-through.
+    /// Runner-token (`agt_r`) machine principal + capability gate (the
+    /// `/v1/runners/me/*` routes require `runner:self`, which only this
+    /// principal carries). No JWKS/tenant fall-through.
     pub fn runnerBearer(self: *Self) []const Middleware(AuthCtx) {
         return &self._runner_chain;
-    }
-
-    /// Bearer token or admin API key, operator role required.
-    pub fn operator(self: *Self) []const Middleware(AuthCtx) {
-        return &self._operator_chain;
-    }
-
-    /// Bearer token or admin API key, plus the verified `platform_admin`
-    /// claim. The one policy that gates runner enrollment (`POST /v1/runners`):
-    /// only agentsfleet's platform operator passes; a tenant admin or any
-    /// `agt_t` api_key is rejected 403.
-    pub fn platformAdmin(self: *Self) []const Middleware(AuthCtx) {
-        return &self._platform_admin_chain;
     }
 
     /// HMAC-SHA256 body signature (approval/generic webhooks).

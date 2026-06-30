@@ -30,11 +30,15 @@ const account_teardown = @import("../../../state/account_teardown.zig");
 const metrics = @import("../../../observability/metrics_counters.zig");
 const telemetry_mod = @import("../../../observability/telemetry.zig");
 const clerk_backend = @import("../../../auth/clerk_backend.zig");
+const scopes = @import("../../../auth/scopes.zig");
 
-/// Default role written to Clerk publicMetadata on signup.
-/// Admin promotion is a manual one-line edit in the Clerk Dashboard
-/// (`role: "admin"`); the webhook never writes admin.
-const DEFAULT_SIGNUP_ROLE = "operator";
+/// Default capability `scopes` written to Clerk publicMetadata on signup
+/// the `tenant` default grant — every tenant capability, so a new
+/// owner can create workspaces + fleets with no manual step. The JWT template
+/// reads `public_metadata.scopes` into the `scopes` claim. Platform-operator
+/// scopes (`workspace:any`, `runner:enroll`, …) are NEVER auto-granted — they
+/// are a manual Clerk edit on the operator user.
+const DEFAULT_SIGNUP_SCOPES = scopes.defaultClaim(.tenant);
 
 const log = logging.scoped(.auth_identity_events);
 
@@ -273,7 +277,7 @@ fn runBootstrap(hx: Hx, oidc_subject: []const u8, email: []const u8, display_nam
 }
 
 fn writePublicMetadata(hx: Hx, oidc_subject: []const u8, tenant_id: []const u8) void {
-    clerk_backend.patchUserPublicMetadata(hx.ctx.clerk_secret_key, hx.alloc, oidc_subject, tenant_id, DEFAULT_SIGNUP_ROLE) catch |err| {
+    clerk_backend.patchUserPublicMetadata(hx.ctx.clerk_secret_key, hx.alloc, oidc_subject, tenant_id, DEFAULT_SIGNUP_SCOPES) catch |err| {
         log.warn(
             "metadata_writeback_failed",
             .{

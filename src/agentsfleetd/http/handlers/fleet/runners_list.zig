@@ -1,6 +1,6 @@
-//! GET /v1/fleets/runners — platform-admin operator-plane read of the fleet.
+//! GET /v1/fleets/runners — operator-plane read of the fleet.
 //!
-//! Authed by `platformAdmin` (same gate as enrollment). Paginated, read-only.
+//! Gated by the `runner:read` scope (route_scopes.zig). Paginated, read-only.
 //! Each row carries a DERIVED `liveness` (never the stored auth `status`, never
 //! the `token_hash`): a runner minted but never seen reads `registered`; one
 //! holding a live lease reads `busy` (the live-lease check runs before the

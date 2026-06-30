@@ -9,6 +9,7 @@
 // the canonical pattern.
 
 const std = @import("std");
+const scope_fixtures = @import("./test_scope_tokens.zig");
 const clock = @import("common").clock;
 const pg = @import("pg");
 const auth_mw = @import("../auth/middleware/mod.zig");
@@ -21,17 +22,12 @@ const TEST_BALANCE_NANOS: i64 = 1000000;
 
 const TEST_TENANT_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01";
 const TEST_WORKSPACE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11";
-const TEST_ISSUER = "https://clerk.dev.agentsfleet.net";
-const TEST_AUDIENCE = "https://api.agentsfleet.net";
-const TEST_JWKS =
-    \\{"keys":[{"kty":"RSA","n":"310oH7ahxoKws6fEKmbOP30dQaQhT21HGRxvibeBuqfywkNxJ0xcfhhao1mwbLH7BUOg2GYXDEA6EvcVlKXqGN_Wa_4Q7UenmZqeXYdB_IhAc-SzyoW9hRi01FskVVI8w_N0Pf5SItu7DIqdxbKP8_eGFyrTL1mN-5klkIDCSnhrDLUEgjVo7iod0vsoqUEH-2m1s-2xDh5aQr5rSF6neCTA1-JvKVkJLD6eOdBnEwYBm6-yZ0CNgMfw1uUyw5cGwdaPsCerHctH0EwcI_qQFUUnFjBeN4FJkP_DDoHWTEV9a-5wzomOcoKlyfZvRgplGYYqTWrIAfcZobyzYiSy1w","e":"AQAB","kid":"rbac-test-kid","use":"sig","alg":"RS256"}]}
-;
-const TEST_USER_TOKEN =
-    "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6InJiYWMtdGVzdC1raWQifQ.eyJzdWIiOiJ1c2VyX3Rlc3QiLCJpc3MiOiJodHRwczovL2NsZXJrLmRldi5hZ2VudHNmbGVldC5uZXQiLCJhdWQiOiJodHRwczovL2FwaS5hZ2VudHNmbGVldC5uZXQiLCJleHAiOjQxMDI0NDQ4MDAsIm1ldGFkYXRhIjp7InRlbmFudF9pZCI6IjAxOTViNGJhLThkM2EtN2YxMy04YWJjLTJiM2UxZTBhNmYwMSIsIndvcmtzcGFjZV9pZCI6IjAxOTViNGJhLThkM2EtN2YxMy04YWJjLTJiM2UxZTBhNmYxMSIsInJvbGUiOiJ1c2VyIn19.aSqdpbu-D-1NmzJgcw-7LUJYImlFu-gbrO3fBPlMI6DFvgSGJJg3wAYe5DKJXe5ytCActeAHN8LxGyr1emB4ReHk90B7t_DB301cl5fz6H1EIBnUYkuOYIeCQXvqTmEHduR1KPumEYc6Jfw3kv1tY95k-bugObZ4FihLhWXw4ud8fXRl_CTnD3J3FSx-cn4K8mfy8JjTc1RDmEx5_4-TbBhPyTgj5EAXqB1ddUw7k46UAh_-w2G07SrOxsl1b57Etwp0gvuu4tkpXICYmG423n-RjVvtvuxjSzQyhUZ2Lmfbvi1tLlY7_uzTh_BwwWWYLdJtnmKEblmGReoAu_Qs6A";
-const TEST_OPERATOR_TOKEN =
-    "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6InJiYWMtdGVzdC1raWQifQ.eyJzdWIiOiJ1c2VyX3Rlc3QiLCJpc3MiOiJodHRwczovL2NsZXJrLmRldi5hZ2VudHNmbGVldC5uZXQiLCJhdWQiOiJodHRwczovL2FwaS5hZ2VudHNmbGVldC5uZXQiLCJleHAiOjQxMDI0NDQ4MDAsIm1ldGFkYXRhIjp7InRlbmFudF9pZCI6IjAxOTViNGJhLThkM2EtN2YxMy04YWJjLTJiM2UxZTBhNmYwMSIsIndvcmtzcGFjZV9pZCI6IjAxOTViNGJhLThkM2EtN2YxMy04YWJjLTJiM2UxZTBhNmYxMSIsInJvbGUiOiJvcGVyYXRvciJ9fQ.eEQp3HyUFsV1bRBDvww3DirCY1R-vrASYT3KXnTeXBa8Owuag8Mc1I_v93XBatf-t-Y0qd6r9uNQuRiRpuXkrC01MJwyPnyvKDYHFAX828PIMdFgZ5FUGU0S6r1B4B8FaVZnfMdwyyQW9tCeFBvvh2hkuodoOlkcaJnR98kMrYjGHVoyDQc5H5JnU5O8Kkb9STE-XR-3b8VdOlGJR-ljX4Vw8Fipo5p7fo_VdhhUXD2C974DrbQWtsXhqUTqOFWAEUcUMM2ODH8pEFWhG8poHVP8LLWCcSFxZDN_Ia3dNR8OK9SEblCPIlfimiMtscqxli-9uC00n62UmLuQtGVlXA";
-const TEST_ADMIN_TOKEN =
-    "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6InJiYWMtdGVzdC1raWQifQ.eyJzdWIiOiJ1c2VyX3Rlc3QiLCJpc3MiOiJodHRwczovL2NsZXJrLmRldi5hZ2VudHNmbGVldC5uZXQiLCJhdWQiOiJodHRwczovL2FwaS5hZ2VudHNmbGVldC5uZXQiLCJleHAiOjQxMDI0NDQ4MDAsIm1ldGFkYXRhIjp7InRlbmFudF9pZCI6IjAxOTViNGJhLThkM2EtN2YxMy04YWJjLTJiM2UxZTBhNmYwMSIsIndvcmtzcGFjZV9pZCI6IjAxOTViNGJhLThkM2EtN2YxMy04YWJjLTJiM2UxZTBhNmYxMSIsInJvbGUiOiJhZG1pbiJ9fQ.PoaybxCP-Am6iec1ZmRFRnzOuZZtAYfbemZ0CcYbUdUrLgRq8OfQACcT0u5Ads2vBHmQGPtnL-iNo2VnLF013aOhyXxIDdpB8sUWZo_eBl9pNDqmjnGX14yDgVX8nftZ_6h6sFCKe3mzUIITzxZDJAsDfue68iRdAflECLY6RSFEdY-8wHnc9cxlAHrEgiUbscMPVYTsc8zrDkFDZvZMhanUKcoh0o6d3WnRWjCDY-Xoh34V3SkJ3G7-G2CzugMF_iEon9kXeQCzhlIp3rsrLZrRQjnNibtlCga_2-5H0TbKk_6BtBLKeDQ9Kv7g-NA0SrdcAb7GAj9L_mfweKS4TQ";
+const TEST_ISSUER = scope_fixtures.ISSUER;
+const TEST_AUDIENCE = scope_fixtures.AUDIENCE;
+const TEST_JWKS = scope_fixtures.JWKS;
+const TEST_USER_TOKEN = scope_fixtures.VIEWER;
+const TEST_OPERATOR_TOKEN = scope_fixtures.OPERATOR;
+const TEST_ADMIN_TOKEN = scope_fixtures.TENANT_ADMIN;
 
 fn configureRegistry(_: *auth_mw.MiddlewareRegistry, _: *TestHarness) anyerror!void {}
 
@@ -90,12 +86,11 @@ test "integration: RBAC endpoints enforce operator and admin roles over live HTT
     };
     defer h.deinit();
 
-    // Platform-admin-gated endpoint (M100 tightened it from admin() to
-    // platformAdmin()): the gate requires the `platform_admin` claim, so a
-    // per-tenant role — user, operator, OR admin — is insufficient and is
-    // rejected with UZ-AUTH-021, not the role-mismatch UZ-AUTH-009. The
-    // platform-admin success path (200) is covered in
-    // model_caps_admin_integration_test, which carries a platform_admin token.
+    // Platform-plane endpoint: the route requires a platform scope
+    // (`platform-key:read`), so a tenant-scoped principal — whatever tenant
+    // capabilities it carries — is insufficient and is rejected `403 UZ-AUTH-022`.
+    // The platform success path (200) is covered in
+    // model_caps_admin_integration_test, which carries a platform-scoped token.
     const admin_keys_path = "/v1/admin/platform-keys";
 
     { // No token → 401
@@ -104,23 +99,23 @@ test "integration: RBAC endpoints enforce operator and admin roles over live HTT
         try r.expectStatus(.unauthorized);
         try r.expectErrorCode(error_codes.ERR_UNAUTHORIZED);
     }
-    { // User role lacks platform_admin → 403 UZ-AUTH-021
+    { // Tenant principal without a platform scope → 403 UZ-AUTH-022
         const r = try (try h.get(admin_keys_path).bearer(TEST_USER_TOKEN)).send();
         defer r.deinit();
         try r.expectStatus(.forbidden);
-        try r.expectErrorCode(error_codes.ERR_PLATFORM_ADMIN_REQUIRED);
+        try r.expectErrorCode(error_codes.ERR_INSUFFICIENT_SCOPE);
     }
-    { // Operator role lacks platform_admin → 403 UZ-AUTH-021
+    { // Another tenant principal without a platform scope → 403 UZ-AUTH-022
         const r = try (try h.get(admin_keys_path).bearer(TEST_OPERATOR_TOKEN)).send();
         defer r.deinit();
         try r.expectStatus(.forbidden);
-        try r.expectErrorCode(error_codes.ERR_PLATFORM_ADMIN_REQUIRED);
+        try r.expectErrorCode(error_codes.ERR_INSUFFICIENT_SCOPE);
     }
-    { // A per-tenant admin (no platform_admin claim) is ALSO rejected → 403
+    { // A full tenant-capability principal is ALSO rejected (no platform scope) → 403
         const r = try (try h.get(admin_keys_path).bearer(TEST_ADMIN_TOKEN)).send();
         defer r.deinit();
         try r.expectStatus(.forbidden);
-        try r.expectErrorCode(error_codes.ERR_PLATFORM_ADMIN_REQUIRED);
+        try r.expectErrorCode(error_codes.ERR_INSUFFICIENT_SCOPE);
     }
 
     // RULE BIL regression — destructive lifecycle (PATCH fleet status =
@@ -136,7 +131,7 @@ test "integration: RBAC endpoints enforce operator and admin roles over live HTT
         const r = try req.send();
         defer r.deinit();
         try r.expectStatus(.forbidden);
-        try r.expectErrorCode(error_codes.ERR_INSUFFICIENT_ROLE);
+        try r.expectErrorCode(error_codes.ERR_INSUFFICIENT_SCOPE);
     }
 
     // M11_005: removed workspace-scoped billing endpoints must 404 regardless

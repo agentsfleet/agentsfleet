@@ -11,7 +11,6 @@ const telemetry_mod = @import("../../observability/telemetry.zig");
 const trace_ctx = @import("../../observability/trace.zig");
 const error_codes = @import("../../errors/error_registry.zig");
 const id_format = @import("../../types/id_format.zig");
-const rbac = @import("../../auth/rbac.zig");
 const principal_mod = @import("../../auth/principal.zig");
 const balance_policy = @import("../../config/balance_policy.zig");
 const runtime_loader = @import("../../config/runtime_loader.zig");
@@ -114,9 +113,9 @@ pub fn resolveTraceContext(req: *httpz.Request) TraceContext {
     return TraceContext.generate();
 }
 
-// AuthPrincipal + AuthRole live in src/agentsfleetd/auth/; the handler layer
-// reaches them through these re-exports.
-pub const AuthRole = rbac.AuthRole;
+// AuthPrincipal lives in src/agentsfleetd/auth/; the handler layer reaches it
+// through this re-export. The role ladder was removed —
+// authorization is scope-based (see require_scope middleware + route_scopes).
 pub const AuthPrincipal = principal_mod.AuthPrincipal;
 
 pub fn writeJson(res: *httpz.Response, status: std.http.Status, value: anytype) void {
@@ -228,18 +227,6 @@ pub fn requireUuidV7Id(
     var msg_buf: [96]u8 = undefined;
     const message = std.fmt.bufPrint(&msg_buf, "Invalid {s} format", .{id_label}) catch "Invalid identifier format";
     errorResponse(res, error_codes.ERR_UUIDV7_INVALID_ID_SHAPE, message, req_id);
-    return false;
-}
-
-pub fn requireRole(res: *httpz.Response, req_id: []const u8, principal: AuthPrincipal, required: AuthRole) bool {
-    if (principal.role.allows(required)) return true;
-    var msg_buf: [128]u8 = undefined;
-    const message = std.fmt.bufPrint(
-        &msg_buf,
-        "Your role is '{s}'. {s} role required.",
-        .{ principal.role.label(), required.label() },
-    ) catch "Insufficient role";
-    errorResponse(res, error_codes.ERR_INSUFFICIENT_ROLE, message, req_id);
     return false;
 }
 

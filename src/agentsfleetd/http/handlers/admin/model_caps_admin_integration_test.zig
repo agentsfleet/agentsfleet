@@ -9,6 +9,7 @@
 // age out.
 
 const std = @import("std");
+const scope_fixtures = @import("../../test_scope_tokens.zig");
 const clock = @import("common").clock;
 const auth_mw = @import("../../../auth/middleware/mod.zig");
 const error_registry = @import("../../../errors/error_registry.zig");
@@ -19,8 +20,8 @@ const TestHarness = harness_mod.TestHarness;
 
 const ALLOC = std.testing.allocator;
 
-const TEST_ISSUER = "https://clerk.test.agentsfleet.net";
-const TEST_AUDIENCE = "https://api.agentsfleet.net";
+const TEST_ISSUER = scope_fixtures.ISSUER;
+const TEST_AUDIENCE = scope_fixtures.AUDIENCE;
 
 const TENANT_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01";
 const WORKSPACE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11";
@@ -30,13 +31,9 @@ const UID_OPUS = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a9002";
 // id for the direct-insert FK probe (uuidv7 — ck_platform_llm_keys_uid_uuidv7).
 const FK_GHOST_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a9201";
 
-const TEST_JWKS =
-    \\{"keys":[{"kty":"RSA","n":"7ZUw6J4OYDXLJPGWADVw2-IgBawVd55H1Xh4R_FFFFYVNdG2O7EcTvBlFZhRzxDW9uL-SvxCt6slRDXDlZo9fmSI9yki7z8RAJZokcekxdP8za5w7g4QAoFeSieDhWWChkzHJ-vDGkrr0SAn8n4lIwpya-vCbO1eXmmz4Ay0pjenWyyGB1j371Zk2JGkAEJB347oJcVDMqVDt3d-TR0fyyspVw0nNxdDkZgNuB0EXOuEV4WvWgj0dtzwURhTI82AfpgheV23Kz7np9EoPxAhkfuslAjpRfqlRCXOOfmik-T6nvCe-fFPmHRwIY_zc1VrtwjKF0TjeALm4CCj_0pjRQ","e":"AQAB","kid":"test-kid-static","use":"sig","alg":"RS256"}]}
-;
-const PLATFORM_ADMIN_TOKEN =
-    "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6InRlc3Qta2lkLXN0YXRpYyJ9.eyJzdWIiOiJ1c2VyX204MDAwNSIsImlzcyI6Imh0dHBzOi8vY2xlcmsudGVzdC5hZ2VudHNmbGVldC5uZXQiLCJhdWQiOiJodHRwczovL2FwaS5hZ2VudHNmbGVldC5uZXQiLCJleHAiOjQxMDI0NDQ4MDAsIm1ldGFkYXRhIjp7InRlbmFudF9pZCI6IjAxOTViNGJhLThkM2EtN2YxMy04YWJjLTJiM2UxZTBhNmYwMSIsIndvcmtzcGFjZV9pZCI6IjAxOTViNGJhLThkM2EtN2YxMy04YWJjLTJiM2UxZTBhNmYxMSIsInJvbGUiOiJhZG1pbiIsInBsYXRmb3JtX2FkbWluIjp0cnVlfX0.Jz-CQ6v1iiI5g1neq9zAwuNa99k33WzEJYCrazuizcFXaxGTmcRzb20iWmo2eIPBcwERzrOXmSM1iw5NdlAJSsamtds2WCQntNdpkOG3Xp4_xp0faUZmNUeD4viISG1kfMr2hKKR1XPEbydTdbKEvcQoNVVmGFdDnba9fV-9WiXlSLgHuGOKHWWgZCUV8akZImjNhbGM3l0y-_v3V8skx1BaUxkTg-WInhagaDOXvGOOAEoPThmGj2bhDT4F3ZXlAbEvLyJnoQz7pkWUwv4jTQVE4jqyBs19Fx-pGppDU_1tM8h5GRN0GegzuM98bgWgfBAX2uvrIT_a5XoMRhFxQg";
-const TENANT_ADMIN_TOKEN =
-    "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6InRlc3Qta2lkLXN0YXRpYyJ9.eyJzdWIiOiJ1c2VyX204MDAwNSIsImlzcyI6Imh0dHBzOi8vY2xlcmsudGVzdC5hZ2VudHNmbGVldC5uZXQiLCJhdWQiOiJodHRwczovL2FwaS5hZ2VudHNmbGVldC5uZXQiLCJleHAiOjQxMDI0NDQ4MDAsIm1ldGFkYXRhIjp7InRlbmFudF9pZCI6IjAxOTViNGJhLThkM2EtN2YxMy04YWJjLTJiM2UxZTBhNmYwMSIsIndvcmtzcGFjZV9pZCI6IjAxOTViNGJhLThkM2EtN2YxMy04YWJjLTJiM2UxZTBhNmYxMSIsInJvbGUiOiJhZG1pbiJ9fQ.jBmYsg5xN1HFcENmp24xn3RwWCKkX-jF1uffnnCpot_iYJfNv_yOYzGocigF62rsHlOAqRJF0ZQ-C3te8oOzPAd8yKZcaXJiC9SU_Rj59CpNri5pk3PjdovN9UL-2oPLkOEkoiwG-36ubpBieunFP3VuyfIwWcpXbmXsXVy68WIr9bfCemW1XZa4rCTOcKwg6Q8ccU2McscPhZ_hwgJI2jA8uygL3wgaC2CIMKsH6aUII5IO9zMNKkC_lK_t9OAHNkBCqxXNTQOXXLSyddbvwvmQ2Vjcy_ZftGaYtTZlWurXfY9pOX4tno_WWVvy2R_kOWEaAeSK_dfHOIRvv3YVsw";
+const TEST_JWKS = scope_fixtures.JWKS;
+const PLATFORM_ADMIN_TOKEN = scope_fixtures.PLATFORM_ADMIN;
+const TENANT_ADMIN_TOKEN = scope_fixtures.TENANT_ADMIN;
 
 fn configureRegistry(_: *auth_mw.MiddlewareRegistry, _: *TestHarness) anyerror!void {}
 
@@ -137,7 +134,7 @@ test "admin models: a tenant-admin JWT without platform_admin is rejected 403" {
     const r = try (try (try h.post("/v1/admin/models").bearer(TENANT_ADMIN_TOKEN)).json(CREATE_BODY)).send();
     defer r.deinit();
     try r.expectStatus(.forbidden);
-    try r.expectErrorCode(error_registry.ERR_PLATFORM_ADMIN_REQUIRED);
+    try r.expectErrorCode(error_registry.ERR_INSUFFICIENT_SCOPE);
 }
 
 test "admin models: PATCH updates rates; DELETE removes the row" {

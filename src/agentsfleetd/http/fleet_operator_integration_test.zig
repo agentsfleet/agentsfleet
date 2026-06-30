@@ -3,6 +3,7 @@
 // the admin_state that runnerBearer enforces on the self-plane.
 
 const std = @import("std");
+const scope_fixtures = @import("./test_scope_tokens.zig");
 const clock = @import("common").clock;
 const auth_mw = @import("../auth/middleware/mod.zig");
 const api_key = @import("../auth/api_key.zig");
@@ -18,8 +19,8 @@ const sse_fixtures = @import("handlers/fleets/sse_test_fixtures.zig");
 
 const ALLOC = std.testing.allocator;
 
-const TEST_ISSUER = "https://clerk.test.agentsfleet.net";
-const TEST_AUDIENCE = "https://api.agentsfleet.net";
+const TEST_ISSUER = scope_fixtures.ISSUER;
+const TEST_AUDIENCE = scope_fixtures.AUDIENCE;
 const TENANT_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f02";
 const API_KEY_ROW_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a7003";
 const OP_RUNNER_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a7004";
@@ -34,13 +35,9 @@ const BODY_REVOKE = "{\"action\":\"revoke\"}";
 const BODY_BAD_ACTION = "{\"action\":\"pause\"}";
 const ONE_EVENT: i64 = 1;
 
-const TEST_JWKS =
-    \\{"keys":[{"kty":"RSA","n":"qXJuc_Hncnu-ZAFKPEhb6qeXXSp1GcUidOyyiyFFwi5bmql2NZH4Quv23LhHsAKM8L5950bvTQppdzcJ8zWQKx9F8kViZgaG1Ghagoz2a2BMjeSHLFu_gfsxP6y752WUcZ1uHUGnWm9WsDE7xMfbOOpcUoOc_RxiRhwuXjR3zw6J8Vl4DABKQXq_jb6l5nyDWOsi9FopsaS6FKpQoiWO4DWHEHVVNA7RxoYtb1ew9u4qSq4dyeyb6sOXBWuc9wOjSXcuEm30qYsvZJ8ORSh1hxdDaArUCXQKp_DPVJBO7Mmu_EAnOcSsFeZ-kgLVD7yJp_Yq983-s9odwX0TxlL8Lw","e":"AQAB","kid":"m80005-test-kid","use":"sig","alg":"RS256"}]}
-;
-const PLATFORM_ADMIN_TOKEN =
-    "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6Im04MDAwNS10ZXN0LWtpZCJ9.eyJzdWIiOiJ1c2VyX204MDAwNSIsImlzcyI6Imh0dHBzOi8vY2xlcmsudGVzdC5hZ2VudHNmbGVldC5uZXQiLCJhdWQiOiJodHRwczovL2FwaS5hZ2VudHNmbGVldC5uZXQiLCJleHAiOjQxMDI0NDQ4MDAsIm1ldGFkYXRhIjp7InRlbmFudF9pZCI6IjAxOTViNGJhLThkM2EtN2YxMy04YWJjLTJiM2UxZTBhNmYwMSIsIndvcmtzcGFjZV9pZCI6IjAxOTViNGJhLThkM2EtN2YxMy04YWJjLTJiM2UxZTBhNmYxMSIsInJvbGUiOiJhZG1pbiIsInBsYXRmb3JtX2FkbWluIjp0cnVlfX0.H3gZWcqBWYnREFPQAbnoIzhV33ckaYyo37clfhGekxy4TMM96QuUbeyHJW0CnuMRS6UueCjwiidW3mfkINdfQy6-Y4aERoqPvfYQ7QGiwMSPU63heJKxS4fzHzbdDMfO1XoAEcj333xJ8NyvkdBXEbKS9k0LA2-4mczKXLnWkEHnAfWslsK1hdLdIf4rNYP4KahrV25QU-8RirkUTV5jUUgH3HuPMTF976FZX_Q6pL2vW6i1iS2S4iMVwmBdBPlMCPLfjc3Yi9EIP0eBCkWCwZrp1nD5U74Akb6Yh4LCJw9xbhj4kI4jr9e-zwOh7FH_fzbxgJUxHg2jl9pLSAofGw";
-const TENANT_ADMIN_TOKEN =
-    "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6Im04MDAwNS10ZXN0LWtpZCJ9.eyJzdWIiOiJ1c2VyX204MDAwNSIsImlzcyI6Imh0dHBzOi8vY2xlcmsudGVzdC5hZ2VudHNmbGVldC5uZXQiLCJhdWQiOiJodHRwczovL2FwaS5hZ2VudHNmbGVldC5uZXQiLCJleHAiOjQxMDI0NDQ4MDAsIm1ldGFkYXRhIjp7InRlbmFudF9pZCI6IjAxOTViNGJhLThkM2EtN2YxMy04YWJjLTJiM2UxZTBhNmYwMSIsIndvcmtzcGFjZV9pZCI6IjAxOTViNGJhLThkM2EtN2YxMy04YWJjLTJiM2UxZTBhNmYxMSIsInJvbGUiOiJhZG1pbiJ9fQ.hwmrKrb3wFrLg6Bni7UJupLBC77ZVz9lLgCzTCLPrbSqfj25y-VzQUgA7aiXWJtmPlH565zIU2FCmOwD2oxDDlPSA2XJB0GkHQQT0_jWLBIK6il72YAhijRheJJKiRa2K7c1UABp9CPC2PPd8cEAPy2e5-N884T4y_jQo6qhn-bM2lHJ3i3SOG-vVHkt35uA-_Kgsg5DZHrCwsbWXc1jRM8_wirbtFIWzasEYMfjyt3HO15mMhiBUlo6-v28z_NQkA1WZ3BTFtUvpEbH5ZLhNNEQndbx3nqmF6U1F1YvgvR1krtwCJGFXXiv5RUuDR5fqMnH6DytrSxd7EpAvAlqnQ";
+const TEST_JWKS = scope_fixtures.JWKS;
+const PLATFORM_ADMIN_TOKEN = scope_fixtures.PLATFORM_ADMIN;
+const TENANT_ADMIN_TOKEN = scope_fixtures.TENANT_ADMIN;
 
 // SAFETY: populated by configureRegistry before the middleware chain reads it.
 var api_key_ctx: api_key_lookup.Ctx = undefined;
@@ -177,12 +174,12 @@ test "fleet runner PATCH is platform-admin gated" {
     const tenant = try patchRunner(h, TENANT_ADMIN_TOKEN, BODY_CORDON);
     defer tenant.deinit();
     try tenant.expectStatus(.forbidden);
-    try tenant.expectErrorCode(error_registry.ERR_PLATFORM_ADMIN_REQUIRED);
+    try tenant.expectErrorCode(error_registry.ERR_INSUFFICIENT_SCOPE);
 
     const api_key_resp = try patchRunner(h, AGT_T_KEY, BODY_CORDON);
     defer api_key_resp.deinit();
     try api_key_resp.expectStatus(.forbidden);
-    try api_key_resp.expectErrorCode(error_registry.ERR_PLATFORM_ADMIN_REQUIRED);
+    try api_key_resp.expectErrorCode(error_registry.ERR_INSUFFICIENT_SCOPE);
 }
 
 test "fleet runner PATCH revoke makes the next runner-plane call unauthorized" {
@@ -265,11 +262,14 @@ test "fleet streams: platform-admin lists live streams; tenant admin is 403" {
     try empty.expectStatus(.ok);
     try std.testing.expect(empty.bodyContains("\"total\":0"));
 
-    // a live stream appears with its workspace + fleet (the platform-admin
-    // token's workspace metadata matches the seeded fixture workspace)
+    // A live stream then appears in the platform listing with its workspace +
+    // fleet. The SUBSCRIBER is the tenant token: opening a fleet's event stream
+    // requires fleet:read (route_scopes), which the platform persona deliberately
+    // lacks — platform admins get the streams *overview* (stream:read), not tenant
+    // fleet data. The tenant token's workspace matches the seeded fixture.
     const stream_path = try sse_fixtures.streamPath(ALLOC, AGENTSFLEET_FLEET_STREAM);
     defer ALLOC.free(stream_path);
-    var sc = try SseClient.connect(ALLOC, h.port, stream_path, .{ .bearer = PLATFORM_ADMIN_TOKEN });
+    var sc = try SseClient.connect(ALLOC, h.port, stream_path, .{ .bearer = TENANT_ADMIN_TOKEN });
     @import("common").sleepNanos(sse_fixtures.SUBSCRIBE_SETTLE_NS);
 
     const listed = try (try h.get(STREAMS_PATH).bearer(PLATFORM_ADMIN_TOKEN)).send();
@@ -287,5 +287,5 @@ test "fleet streams: platform-admin lists live streams; tenant admin is 403" {
 
     const conn = try h.acquireConn();
     defer h.releaseConn(conn);
-    sse_fixtures.cleanupWorkspaceData(conn);
+    sse_fixtures.cleanupFleet(conn, AGENTSFLEET_FLEET_STREAM);
 }

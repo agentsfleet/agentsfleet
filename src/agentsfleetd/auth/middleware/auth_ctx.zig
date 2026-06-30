@@ -16,7 +16,9 @@ const errors = @import("errors.zig");
 pub const AuthPrincipal = principal_mod.AuthPrincipal;
 
 /// Error-writing callback supplied by the host. Abstracts RFC 7807 body
-/// assembly so the middleware layer never imports `src/errors/`.
+/// assembly so the middleware layer never imports `src/errors/`. `detail` is
+/// borrowed for the call only — callers may pass a stack slice, so the host
+/// must serialize/copy it before returning, never retain the slice.
 pub const WriteErrorFn = *const fn (
     res: *httpz.Response,
     code: []const u8,
@@ -37,6 +39,13 @@ pub const AuthCtx = struct {
     // the matched route's fleet_id before calling chain.run. The webhook_sig
     // and svix middlewares read it; all others ignore it.
     webhook_fleet_id: ?[]const u8 = null,
+
+    // Per-request capability requirement — the dispatcher resolves it from the
+    // matched route + HTTP method (`route_scopes.requiredScopes`) before running
+    // the chain. `requireScope` reads it as an any-of set; empty means the route
+    // requires authentication only (no capability scope). Set by the host so the
+    // auth layer never imports the HTTP route table (portability boundary).
+    required_scopes: []const principal_mod.Scope = &.{},
 
     /// Write a problem+json error response via the host-supplied writer.
     /// The HTTP status comes from the host's error table (middleware does

@@ -2,9 +2,10 @@
 //!
 //! Resolves `Authorization: Bearer agt_t{hex}` tokens via a host-supplied
 //! `LookupFn` callback. On match (and row.active = true), populates
-//! `ctx.principal` with `.mode=.api_key`, `.role=.admin`, `.user_id`, and
-//! `.tenant_id`. Rejects unknown keys with 401 ERR_UNAUTHORIZED; rejects
-//! revoked keys with 401 ERR_APIKEY_REVOKED.
+//! `ctx.principal` with `.mode=.api_key`, the `.tenant` default grant
+//! (every tenant capability, no platform/cross-tenant scope),
+//! `.user_id`, and `.tenant_id`. Rejects unknown keys with 401 ERR_UNAUTHORIZED;
+//! rejects revoked keys with 401 ERR_APIKEY_REVOKED.
 //!
 //! Portability: this file MUST NOT import from `src/db/`, `src/http/`, or
 //! any business-layer module (§1.2 contract; enforced by `make test-auth`).
@@ -24,6 +25,7 @@ const auth_ctx = @import("auth_ctx.zig");
 const bearer = @import("bearer.zig");
 const errors = @import("errors.zig");
 const api_key = @import("../api_key.zig");
+const scopes = @import("../scopes.zig");
 const logging = @import("log");
 
 pub const AuthCtx = auth_ctx.AuthCtx;
@@ -109,9 +111,12 @@ fn resolve(self: *TenantApiKey, ctx: *AuthCtx, raw_key: []const u8) !chain.Outco
     ctx.alloc.free(row.api_key_id);
     ctx.principal = .{
         .mode = .api_key,
-        .role = .admin,
         .user_id = row.user_id,
         .tenant_id = row.tenant_id,
+        // An `agt_t` key carries every tenant capability but NO platform or
+        // cross-tenant scope — preserving today's "admin api-key cannot enroll a
+        // runner" boundary (`platform_admin` was never set on this path).
+        .scopes = scopes.defaultScopes(.tenant),
     };
     return .next;
 }
@@ -275,7 +280,10 @@ test "tenant_api_key populates principal on active key match" {
     try testing.expectEqual(@as(usize, 0), test_fixtures.write_count);
     try testing.expect(ctx.principal != null);
     try testing.expectEqual(principal_mod.AuthMode.api_key, ctx.principal.?.mode);
-    try testing.expectEqual(principal_mod.AuthRole.admin, ctx.principal.?.role);
+    // An `agt_t` key carries the workspace_admin tenant-scope bundle, NOT platform
+    // scopes — preserving the "admin key can't enroll a runner" boundary.
+    try testing.expect(ctx.principal.?.scopes.contains(.fleet_admin));
+    try testing.expect(!ctx.principal.?.scopes.contains(.runner_enroll));
     try testing.expectEqualStrings("33333333-3333-7333-8333-333333333333", ctx.principal.?.user_id.?);
     try testing.expectEqualStrings("22222222-2222-7222-8222-222222222222", ctx.principal.?.tenant_id.?);
 }

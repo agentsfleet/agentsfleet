@@ -5,9 +5,10 @@
 //! `src/http/handlers/common.zig` re-exports these symbols for backward
 //! compatibility during the M18_002 migration.
 
-const rbac = @import("rbac.zig");
+const scopes = @import("scopes.zig");
 
-pub const AuthRole = rbac.AuthRole;
+pub const Scope = scopes.Scope;
+pub const ScopeSet = scopes.Set;
 
 pub const AuthMode = enum {
     api_key,
@@ -19,18 +20,16 @@ pub const AuthMode = enum {
 
 pub const AuthPrincipal = struct {
     mode: AuthMode,
-    role: AuthRole = .user,
     user_id: ?[]const u8 = null,
     tenant_id: ?[]const u8 = null,
     workspace_scope_id: ?[]const u8 = null,
     /// Set only when `mode == .runner` — the `fleet.runners` row id resolved
     /// from the presented runner token. Freed with the other principal fields.
     runner_id: ?[]const u8 = null,
-    /// agentsfleet platform operator, granted by a manual Clerk `publicMetadata`
-    /// flip surfaced as the `platform_admin` JWT claim. Distinct from the
-    /// per-tenant `role`: the only principal allowed to mint a runner token.
-    /// Fail-closed — the `api_key` path never sets it, so a `agt_t` key (which
-    /// is `.role=.admin`) can never enroll a runner. A plain bool: as tamper-
-    /// proof as `role`/`tenant_id` (same signed JWT, same verifier).
-    platform_admin: bool = false,
+    /// Explicit capability set parsed from the verified token's `scopes` claim.
+    /// A bitset — no allocation, no lifetime. Hierarchy-expanded at
+    /// parse time, so a gate is a single `contains`. Absent claim ⇒ empty set ⇒
+    /// every capability gate fails closed. The sole authorization axis on the
+    /// principal — `role`/`platform_admin` were removed.
+    scopes: ScopeSet = ScopeSet.initEmpty(),
 };

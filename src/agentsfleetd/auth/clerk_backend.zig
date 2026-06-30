@@ -3,8 +3,9 @@
 //! endpoint (`PATCH /v1/users/{user_id}/metadata`) because that is the
 //! single use case we have: after `signup_bootstrap.bootstrapPersonalAccount`
 //! creates a tenant row, we need the next session JWT to carry the new
-//! `tenant_id` + default `role=operator`. Clerk merges the payload rather
-//! than replacing, so we do not need a read-then-write.
+//! `tenant_id` + the owner's capability `scopes` (the `.tenant` default grant).
+//! Clerk merges the payload rather than replacing, so we do not need
+//! a read-then-write.
 //!
 //! Fire-and-forget: the webhook handler calls `patchUserPublicMetadata`
 //! and ignores its return. So the HTTP call itself runs on a detached
@@ -55,14 +56,14 @@ pub fn patchUserPublicMetadata(
     alloc: std.mem.Allocator,
     user_id: []const u8,
     tenant_id: ?[]const u8,
-    role: ?[]const u8,
+    scopes: ?[]const u8,
 ) PatchError!void {
     // Borrowed from the boot-resolved Context secret (CLERK_SECRET_KEY) — no
     // per-request env read, no free here.
     const clerk_secret = secret orelse return PatchError.MissingSecret;
     if (std.mem.trim(u8, clerk_secret, " \t\r\n").len == 0) return PatchError.MissingSecret;
 
-    const payload = try renderMetadataPayload(alloc, tenant_id, role);
+    const payload = try renderMetadataPayload(alloc, tenant_id, scopes);
     defer alloc.free(payload);
 
     const url = try std.fmt.allocPrint(alloc, "{s}/users/{s}/metadata", .{ API_BASE, user_id });
@@ -78,7 +79,7 @@ pub fn patchUserPublicMetadata(
 pub fn renderMetadataPayload(
     alloc: std.mem.Allocator,
     tenant_id: ?[]const u8,
-    role: ?[]const u8,
+    scopes: ?[]const u8,
 ) PatchError![]u8 {
     var aw: std.Io.Writer.Allocating = .init(alloc);
     defer aw.deinit();
@@ -89,8 +90,8 @@ pub fn renderMetadataPayload(
     if (tenant_id) |v| {
         writeJsonKeyValue(w, &first, "tenant_id", v) catch return PatchError.SerializationFailed;
     }
-    if (role) |v| {
-        writeJsonKeyValue(w, &first, "role", v) catch return PatchError.SerializationFailed;
+    if (scopes) |v| {
+        writeJsonKeyValue(w, &first, "scopes", v) catch return PatchError.SerializationFailed;
     }
     w.writeAll("}}") catch return PatchError.SerializationFailed;
     return aw.toOwnedSlice() catch return PatchError.OutOfMemory;
@@ -107,8 +108,8 @@ fn writeJsonKeyValue(w: anytype, first: *bool, key: []const u8, value: []const u
 }
 
 /// Minimal JSON string-body escaper. Our values are either UUID v7
-/// strings (`0195b4ba-…`, no special chars) or the literal role enum
-/// labels from rbac.zig (`"operator"`, `"admin"`). Escaping `"`, `\`,
+/// strings (`0195b4ba-…`, no special chars) or the space-delimited scope
+/// claim (`"fleet:admin credential:write …"`, ASCII). Escaping `"`, `\`,
 /// and ASCII control chars is sufficient — we never pass non-ASCII or
 /// Unicode surrogate pairs through this path.
 fn writeJsonEscaped(w: anytype, value: []const u8) !void {
