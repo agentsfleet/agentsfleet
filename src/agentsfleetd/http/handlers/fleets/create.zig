@@ -10,7 +10,6 @@ const std = @import("std");
 const constants = @import("common");
 const clock = constants.clock;
 const httpz = @import("httpz");
-const pg = @import("pg");
 const logging = @import("log");
 
 const common = @import("../common.zig");
@@ -23,6 +22,10 @@ const markdown_limits = @import("../../../fleet_runtime/markdown_limits.zig");
 const create_stream = @import("create_stream.zig");
 const create_install_steps = @import("create_install_steps.zig");
 const create_fleet_bundle = @import("create_fleet_bundle.zig");
+// Request-independent core.fleets row-write primitives (insert/activate/delete +
+// unique-violation probe) live in their own module — shared with the Slack
+// channel-fleet materialization + the install worker, and split out per RULE FLL.
+const fleet_row = @import("fleet_row.zig");
 
 const log = logging.scoped(.fleet_api);
 
@@ -158,8 +161,8 @@ pub fn innerCreateFleet(hx: Hx, req: *httpz.Request, workspace_id: []const u8) v
     };
     const now_ms = clock.nowMillis();
 
-    insertFleetOnConn(conn, workspace_id, source.source_markdown, trigger_markdown, parsed, skill_meta.tags, source.bundle_ref, fleet_id, now_ms) catch |err| {
-        if (isUniqueViolation(conn)) {
+    fleet_row.insertFleetOnConn(conn, workspace_id, source.source_markdown, trigger_markdown, parsed, skill_meta.tags, source.bundle_ref, fleet_id, now_ms) catch |err| {
+        if (fleet_row.isUniqueViolation(conn)) {
             hx.fail(ec.ERR_AGENTSFLEET_NAME_EXISTS, ec.MSG_AGENTSFLEET_NAME_EXISTS);
             return;
         }
@@ -177,7 +180,7 @@ pub fn innerCreateFleet(hx: Hx, req: *httpz.Request, workspace_id: []const u8) v
         // an orphan behind. If the rollback also fails (rare — PG flapping in
         // the same handler), the orphan is not auto-healed: a control-plane
         // reconcile job is the planned replacement for the deleted watcher.
-        deleteFleetRow(conn, workspace_id, fleet_id) catch |rollback_err| {
+        fleet_row.deleteFleetRow(conn, workspace_id, fleet_id) catch |rollback_err| {
             log.err(
                 "create_rollback_failed",
                 .{ .error_code = ec.ERR_INTERNAL_DB_QUERY, .err = @errorName(rollback_err), .fleet_id = fleet_id, .req_id = hx.req_id, .hint = "row_orphaned_manual_recovery" },
@@ -255,83 +258,11 @@ fn buildDefaultTriggerMarkdown(alloc: std.mem.Allocator, name: []const u8) ![]co
     , .{ name, DEFAULT_TRIGGER_DAILY_DOLLARS });
 }
 
-/// Insert one `core.fleets` row — the single request-independent fleet-insert
-/// site (Invariant 7). `innerCreateFleet` wraps it for the HTTP create path;
-/// the principal-less Slack channel-fleet materialization
-/// (`connectors/slack/channel_fleet.zig`) calls it directly under
-/// install-delegated authority. Callers own the ensuing `create_stream`
-/// setup; this fn only writes the row (born `installing`).
-pub fn insertFleetOnConn(
-    conn: *pg.Conn,
-    workspace_id: []const u8,
-    source_markdown: []const u8,
-    trigger_markdown: []const u8,
-    parsed: fleet_config.ParsedTrigger,
-    required_tags: []const []const u8,
-    bundle_ref: ?create_fleet_bundle.BundleRef,
-    fleet_id: []const u8,
-    now_ms: i64,
-) !void {
-    const bundle_hash: ?[]const u8 = if (bundle_ref) |b| b.content_hash else null;
-    const bundle_key: ?[]const u8 = if (bundle_ref) |b| b.snapshot_key else null;
-    _ = try conn.exec(
-        \\INSERT INTO core.fleets
-        \\  (id, workspace_id, name, source_markdown, trigger_markdown, config_json,
-        \\   status, required_tags, bundle_content_hash,
-        \\   bundle_snapshot_key, created_at, updated_at)
-        \\VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6::jsonb, $7, $8::text[],
-        \\        $9, $10, $11, $11)
-    , .{
-        fleet_id,
-        workspace_id,
-        parsed.config.name,
-        source_markdown,
-        trigger_markdown,
-        parsed.config_json,
-        // Born installing: the synthetic install steps run on a deferred tick
-        // after the 201 (create_install_steps), flipping the row to active on
-        // the ready step. A subscriber that reconnects mid-install reconciles
-        // from this column (the activity channel has no replay).
-        fleet_config.FleetStatus.installing.toSlice(),
-        required_tags,
-        bundle_hash,
-        bundle_key,
-        now_ms,
-    });
-}
-
-/// Roll back a freshly-INSERTed fleet row. Workspace-scoped to prevent
-/// cross-tenant deletes. Returns errors so the caller can decide whether
-/// to log loudly (rare double-fault) or swallow. Shared with the Slack
-/// channel-fleet materialization, which deletes its own orphan when it loses
-/// the concurrent first-mention race (Invariant 6).
-pub fn deleteFleetRow(conn: *pg.Conn, workspace_id: []const u8, fleet_id: []const u8) !void {
-    _ = try conn.exec(
-        \\DELETE FROM core.fleets WHERE id = $1::uuid AND workspace_id = $2::uuid
-    , .{ fleet_id, workspace_id });
-}
-
-/// True when the last statement on `conn` failed the `uq_fleets_workspace_id_name`
-/// unique constraint (a duplicate fleet name in the workspace). The pg driver
-/// surfaces the structured SQLSTATE on `conn.err` after a failed `exec`, so the
-/// 409 path is reachable — same introspection the api-keys and signup handlers use.
-/// Shared with the Slack channel-fleet materialization, which converges a
-/// concurrent same-channel first-mention on this constraint (Invariant 6).
-pub fn isUniqueViolation(conn: *pg.Conn) bool {
-    const pg_err = conn.err orelse return false;
-    return isUniqueViolationCode(pg_err.code);
-}
-
-/// SQLSTATE `23505` is `unique_violation`.
-fn isUniqueViolationCode(sqlstate: []const u8) bool {
-    return std.mem.eql(u8, sqlstate, "23505");
-}
-
-test "isUniqueViolationCode matches 23505 only" {
-    try std.testing.expect(isUniqueViolationCode("23505"));
-    try std.testing.expect(!isUniqueViolationCode("23503")); // foreign_key_violation
-    try std.testing.expect(!isUniqueViolationCode("XX000"));
-    try std.testing.expect(!isUniqueViolationCode(""));
+// The request-independent row-write primitives (insertFleetOnConn /
+// activateFleetOnConn / deleteFleetRow / isUniqueViolation) moved to
+// fleet_row.zig (RULE FLL). Pull its tests into this file's test set.
+test {
+    _ = fleet_row;
 }
 
 test "buildDefaultTriggerMarkdown creates an API trigger" {

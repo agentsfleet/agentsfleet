@@ -182,6 +182,11 @@ test "integration: signed app_mention acks + enqueues; second mention reuses the
     // insertFleetOnConn path — never a direct core.fleets insert).
     const name = try countRows(conn, "SELECT count(*) FROM core.fleets WHERE id = $1::uuid AND name = $2", .{ fleet_id, RESIDENT_NAME });
     try testing.expectEqual(@as(i64, 1), name);
+    // Activation (§4): the resident fleet is `active` (leaseable) right after
+    // materialization — NOT left `installing`. A reactive fleet has no
+    // provisioning beat, so channel_fleet activates it inline before binding.
+    const active = try countRows(conn, "SELECT count(*) FROM core.fleets WHERE id = $1::uuid AND status = 'active'", .{fleet_id});
+    try testing.expectEqual(@as(i64, 1), active);
     // One stream entry landed before the response.
     try testing.expectEqual(@as(i64, 1), try streamLen(h, alloc, fleet_id));
 
