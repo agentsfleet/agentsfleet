@@ -63,9 +63,12 @@ pub fn resolveSource(
         hx.fail(ec.ERR_FLEET_BUNDLE_NOT_FOUND, "template not found or not installable");
         return null;
     };
-    errdefer template.deinit(hx.alloc);
 
+    // `snapshotKey` is the only fallible step after `template` is owned, so free
+    // it explicitly on failure. An `errdefer` would not fire: this fn returns an
+    // optional (not an error union), so the `return null` path skips errdefers.
     const snapshot_key = importer.snapshotKey(hx.alloc, template.content_hash) catch {
+        template.deinit(hx.alloc);
         common.internalOperationError(hx.res, "bundle key build failed", hx.req_id);
         return null;
     };

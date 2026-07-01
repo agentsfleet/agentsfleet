@@ -60,13 +60,17 @@ const ResponseBody = struct {
 
 // Platform tier: requirements live in split JSONB columns; support manifest and
 // trigger flag come from the onboarding snapshot (nullable for seed rows).
+// Only ONBOARDED platform rows (a non-null content_hash / snapshot) are
+// installable — `fetchPlatformInstall` enforces the same. A migration-seeded
+// row with no snapshot yet would otherwise show in the gallery but dead-end at
+// install with "not installable", so the gallery hides it until onboarded.
 const SELECT_PLATFORM =
     \\SELECT id, name, description, source_repo,
     \\       required_credentials::text, required_tools::text, network_hosts::text,
     \\       required_credentials_reasons::text,
     \\       COALESCE(support_files_json::text, '[]'), (trigger_markdown IS NOT NULL)
     \\  FROM core.fleet_bundle_templates
-    \\ WHERE visibility = $1
+    \\ WHERE visibility = $1 AND content_hash IS NOT NULL
     \\ ORDER BY id
 ;
 

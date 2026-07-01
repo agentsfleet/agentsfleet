@@ -89,7 +89,7 @@ This spec uses Cloudflare R2 object storage (R2), Pull Request (PR), Command-Lin
 
 ## Overview
 
-**Goal (testable):** A platform admin and a tenant admin each onboard a template by GitHub source-ref; the bytes land in R2 once under `fleet-bundles/sha256/{content_hash}.tar`; the gallery returns platform templates to everyone and a tenant's templates only to that workspace; a plain user installs either and runs the Fleet — and no Postgres row holds support-file bytes and no public response holds an R2 key.
+**Goal (testable):** A platform admin and a tenant admin each onboard a template by GitHub source-ref; the bytes land in R2 once under `fleet-bundles/sha256/{content_hash}.tar`; the gallery returns installable (onboarded) platform templates to everyone and a tenant's templates only to that workspace; a plain user installs either and runs the Fleet — and no Postgres row holds support-file bytes and no public response holds an R2 key.
 
 **Problem:** Templates today are a single curated, migration-seeded global catalog with no tenant-owned tier, and bundle support-file bytes are stored twice — the canonical tar in R2 and full bytes inline in Postgres `support_files_json`. There is no admin onboarding path, the duplicate storage drifts, and the database is a hidden artifact store.
 
@@ -175,12 +175,12 @@ Creating a Fleet accepts exactly one onboarded template tier — a platform temp
 
 ### §5 — Gallery read model (visibility union)
 
-The gallery returns the union of platform templates and the requesting workspace's own templates, and nothing from other workspaces.
+The gallery returns the union of installable (onboarded) platform templates and the requesting workspace's own templates, and nothing from other workspaces. A migration-seeded platform row is metadata-only (no `content_hash`) until onboarded; the gallery hides it until then, mirroring `fetchPlatformInstall` so no entry can dead-end at install.
 
-- **Dimension 5.1** — Gallery for workspace W returns all platform templates plus W's tenant templates → Test `test_gallery_unions_platform_and_own_tenant`
+- **Dimension 5.1** — Gallery for workspace W returns all installable (onboarded) platform templates plus W's tenant templates → Test `test_gallery_unions_platform_and_own_tenant`
 - **Dimension 5.2** — Gallery for W never returns another workspace's tenant templates → Test `test_gallery_isolates_tenant_templates`
 - **Dimension 5.3** — Gallery entries carry identity, source, requirements, and support summaries — no R2 path-like field → Test `test_gallery_entries_hide_object_keys`
-- **Dimension 5.4** — Gallery entries carry `description` and a `required_credentials_reasons` object so the dashboard renders template descriptions and purpose-driven credential copy; platform rows surface their curated columns, tenant rows surface the onboarded SKILL description and an empty reasons object → Test `test_gallery_entries_carry_description_and_reasons`
+- **Dimension 5.4** — Gallery entries carry `description` and a `required_credentials_reasons` object so the dashboard renders template descriptions and purpose-driven credential copy; platform rows surface their curated columns (onboarding a seed preserves its curated reasons via the `ON CONFLICT` UPSERT), tenant rows surface the onboarded SKILL description and an empty reasons object → Test `test_gallery_entries_carry_description_and_reasons`
 
 ### §6 — Documentation and orphan cleanup
 
@@ -189,6 +189,18 @@ Architecture docs become the source of truth for the two-tier, R2-canonical mode
 - **Dimension 6.1** — Architecture docs define content hash, user-visible GitHub source, internal R2 snapshot, two-tier visibility, and no user-provided R2 path → Test `test_architecture_docs_define_two_tier_r2_model`
 - **Dimension 6.2** — Removed `support_files_json` full-content semantics have no production references outside historical specs → Test `test_support_files_content_orphan_sweep`
 - **Dimension 6.3** — No resync and no archive-upload route, CLI verb, or UI affordance is added → Test `test_no_resync_or_upload_surface_added`
+
+---
+
+## Metrics & Observability
+
+M103 adds no net-new analytics event: the dashboard install flow reuses the existing `fleet_created` product event, fired once after a template-backed fleet is created (either tier). The two onboarding routes and the gallery read are operator/admin surfaces observed through the service's structured request logs (RULE LOG) — request id, route, workspace/template id, content hash, and outcome — not product analytics. The R2 write rides the existing object-store client logs. The privacy bound is the same one the gallery enforces at Dimension 5.3: no SKILL/TRIGGER content, credential material, or R2 object key reaches an analytics property or a client-facing field.
+
+| Metric / event | Owner | Fires when | Properties allowed | Privacy guard | Test proof |
+|----------------|-------|------------|--------------------|---------------|------------|
+| `fleet_created` | product | A template-backed fleet is created (platform or tenant tier), after the install server action returns ok | `fleet_id` only | No SKILL/TRIGGER bytes, no credential names or token material — only the resource id | `test_install_lands_in_steer` (asserts `captureProductEvent` fires with the fleet id) |
+| onboarding request logs | ops | A platform or tenant onboarding route completes (2xx or error) | request id, route, workspace id, template id, content hash, status | No SKILL/TRIGGER content and no R2 object key in any client-facing field | `onboard_integration_test.zig` (status + persistence assertions) |
+| gallery request logs | ops | A workspace gallery read completes | request id, workspace id, row count, status | No object-store key surfaces (Dimension 5.3) | `test_gallery_entries_hide_object_keys` |
 
 ---
 
@@ -260,7 +272,7 @@ Storage: core.tenant_fleet_bundle_templates = UUIDv7 id, workspace_id FK (CASCAD
 | 4.1 | integration | `test_install_rejects_manual_skill_create` | Raw-`SKILL.md`/`bundle_id`/github-import create payload → 400; exactly one of the two template tiers accepted. |
 | 4.2 | integration | `test_install_enforces_template_visibility` | Install of another workspace's tenant template → rejected. |
 | 4.3 | integration | `test_live_fleet_markdown_remains_authoritative` | Patched instructions ride the lease; support files from the immutable snapshot. |
-| 5.1 | integration | `test_gallery_unions_platform_and_own_tenant` | Gallery for W returns all platform + W's tenant templates. |
+| 5.1 | integration | `test_gallery_unions_platform_and_own_tenant` | Gallery for W returns all installable (onboarded) platform + W's tenant templates; un-onboarded seeds stay hidden. |
 | 5.2 | integration | `test_gallery_isolates_tenant_templates` | Gallery for W excludes another workspace's tenant templates. |
 | 5.3 | unit | `test_gallery_entries_hide_object_keys` | Gallery entries carry summaries, no R2 path-like field. |
 | 5.4 | integration | `test_gallery_entries_carry_description_and_reasons` | Onboard platform + tenant templates → gallery entries expose `description` and a `required_credentials_reasons` object (platform from columns; tenant description from SKILL, reasons `{}`). |
