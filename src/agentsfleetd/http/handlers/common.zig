@@ -62,6 +62,11 @@ pub const Context = struct {
     /// browser flow, not a hot path). Empty → connectors fail closed. Boot-set
     /// from `serve_cfg.platform_admin_workspace_id`.
     platform_admin_workspace_id: []const u8 = "",
+    /// Test/dev seam: override the OAuth-2.0 connector token endpoint. Null in
+    /// production — the connector's compile-time `Spec.token_endpoint` (the real
+    /// provider) is used. Integration tests point it at a loopback fake-provider
+    /// so the code-exchange hits an in-process server, never the real Slack API.
+    connector_oauth_token_endpoint_override: ?[]const u8 = null,
     clerk_secret_key: ?[]const u8,
     oidc: ?*oidc.Verifier,
     /// Cloudflare R2 client for Fleet Bundle canonical-tar storage, resolved once

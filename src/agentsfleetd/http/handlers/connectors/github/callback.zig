@@ -87,8 +87,10 @@ fn storeHandle(hx: hx_mod.Hx, workspace_id: []const u8, installation_id: []const
 }
 
 fn redirectToDashboard(hx: hx_mod.Hx) void {
-    // url lives on the request arena (hx.alloc) — owned for the response write.
-    const url = std.fmt.allocPrint(hx.alloc, "{s}{s}", .{ hx.ctx.app_url, DEST_PATH }) catch {
+    // The Location value must outlive the handler: httpz writes response headers
+    // AFTER the dispatcher's per-request arena (hx.alloc) is freed, so it lives
+    // on res.arena (owned until the response is written), not hx.alloc.
+    const url = std.fmt.allocPrint(hx.res.arena, "{s}{s}", .{ hx.ctx.app_url, DEST_PATH }) catch {
         // The connection succeeded; a redirect-build failure is cosmetic, so
         // return 200 rather than a 500 over a missing app_url.
         hx.ok(.ok, .{ .status = "connected" });

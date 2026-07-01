@@ -110,11 +110,14 @@ pub fn exchange(
     var client: std.http.Client = .{ .allocator = alloc, .io = io };
     defer client.deinit();
 
-    // BUFFER GATE: ArrayList(u8) for the response body — append-as-you-go, size
-    // unknown until the full token JSON arrives; read once, no random access.
+    // BUFFER GATE: Allocating writer over an ArrayList(u8) — append-as-you-go,
+    // size unknown until the full token JSON arrives; read once, no random
+    // access. The body is read back through the writer (`aw.toOwnedSlice`): once
+    // the writer grows its buffer via drain, the seed ArrayList is stale, so
+    // reading `resp_body` directly returns an empty slice.
     var resp_body: std.ArrayList(u8) = .empty;
-    errdefer resp_body.deinit(alloc);
     var aw: std.Io.Writer.Allocating = .fromArrayList(alloc, &resp_body);
+    errdefer aw.deinit();
 
     const headers = [_]std.http.Header{
         .{ .name = "content-type", .value = "application/x-www-form-urlencoded" },
@@ -126,7 +129,7 @@ pub fn exchange(
         .extra_headers = &headers,
         .response_writer = &aw.writer,
     });
-    return .{ .status = @intFromEnum(result.status), .body = try resp_body.toOwnedSlice(alloc) };
+    return .{ .status = @intFromEnum(result.status), .body = try aw.toOwnedSlice() };
 }
 
 const APP_VAULT_KEY_SUFFIX = "-app";
