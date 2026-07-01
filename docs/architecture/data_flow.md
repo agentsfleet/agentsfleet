@@ -495,12 +495,12 @@ installed runtime. Runner remains the infrastructure vocabulary.
                  `actor=continuation:steer:kishore` on every continuation,
                  not `continuation:continuation:continuation:...`).
 
-   All four producers land the same envelope on the same stream. The
+   All five producers land the same envelope on the same stream. The
    reasoning loop never branches on actor — actor is metadata for the
    SKILL.md prose and the user's history filter.
 
-   > Forward-looking (M106 — pending): a fifth producer, the Slack-resident
-   > bot, lands an actor=slack:<user> event on fleet:{channel_fleet_id}:events
+   > SLACK (M106): a fifth producer — the Slack-resident
+   > bot lands an actor=slack:<user> event on fleet:{channel_fleet_id}:events
    > via the webhook-producer XADD shape (signature-authed, no principal —
    > webhooks/fleet.zig) after POST /v1/connectors/slack/events resolves
    > team_id → workspace (core.connector_installs) and (team_id, channel_id) →
@@ -513,7 +513,7 @@ installed runtime. Runner remains the infrastructure vocabulary.
    > thread→thread through the existing hydrate/capture loop (runner_fleet.md
    > §Memory continuity). Reactive only — read-only tools, no source triggers,
    > no cron, code-set at creation (not from the skill.md prose). Spec:
-   > docs/v2/pending/M106_001_P1_API_DOCS_INFRA_UI_SLACK_RESIDENT_CHANNEL_BOT.md
+   > docs/v2/done/M106_001_P1_API_DOCS_INFRA_UI_SLACK_RESIDENT_CHANNEL_BOT.md
 ```
 
 **Webhook auth taxonomy.** The `webhook_sig` middleware classifies every
@@ -658,6 +658,8 @@ The deleted worker's single in-process `processEvent` loop is now split across t
    regardless of how many redelivery attempts occur. A late report from the
    dead runner is fenced out at claimReport (UZ-RUN-005).
 ```
+
+**Slack-resident answer round-trip (M106).** For §B's fifth producer (the Slack channel bot) two connector-specific hops bracket this generic trace without altering it. *At ingress:* `connectors/slack/thread.zig` does a best-effort re-read of the recent thread (Slack `conversations.replies`, bounded to the last-N messages) so the leased `request_json` carries same-thread context; it **never throws** — a failed or absent re-fetch degrades to an empty thread and the answer still runs from the mention alone. *On the way out:* the answer is not posted from the report handler directly. Step 7's report path calls `enqueueOutboundAnswer` (`fleet/service_report.zig`) — if the reporting fleet has a `core.connector_channels` binding it enqueues a `provider`-tagged job onto the generic `connector:outbound` stream (`queue/connector_outbound.zig`); a non-connector fleet, empty answer, or any failure is a logged no-op that never fails the finalized report. The boot-started `outbound/worker.zig` consumer (the one blocking Redis consumer sized in [`scaling.md`](./scaling.md)) then reads the job, routes it by `provider`, and posts the answer back in-thread with bounded retry + pending-first redelivery. The core report path stays provider-agnostic (Invariant 9) — the worker is the only place a connector poster is imported.
 
 ### D. WATCH  (user-side: how the live tail surfaces)
 
