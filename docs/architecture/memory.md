@@ -34,9 +34,9 @@ Continuity is the hydrate/capture loop bridging the two: `GET /v1/runners/me/mem
 
 **The load-bearing consequence:** because the durable key is `fleet_id`, **a new fleet = a new `fleet_id` = an empty namespace.** Spinning a *new ephemeral fleet per event* gives each one nothing to hydrate — zero continuity. Memory continuity **requires reusing the same `fleet_id`** across events. The fleet (and its memory) is durable; only the run is ephemeral. "Workspace-shared memory across ephemeral fleets" is not possible — there is no workspace key.
 
-## 4. The M106 channel pattern (forward-looking)
+## 4. The M106 channel pattern
 
-Because memory is `fleet_id`-keyed, **per-channel memory = a per-channel fleet.** The Slack-resident bot (M106 — pending) gives each channel a **durable resident fleet**; every mention in any thread of that channel routes to the same `fleet_id`, so memory persists thread→thread (the thread is a delivery surface, not a memory key). Per-thread would forget across threads; per-workspace can't exist (no workspace key). Spec: `docs/v2/pending/M106_001_P1_API_DOCS_INFRA_UI_SLACK_RESIDENT_CHANNEL_BOT.md`; scenario: [`scenarios/slack-channel-resident.md`](./scenarios/slack-channel-resident.md).
+Because memory is `fleet_id`-keyed, **per-channel memory = a per-channel fleet.** The Slack-resident bot (M106) gives each channel a **durable resident fleet**; every mention in any thread of that channel routes to the same `fleet_id`, so memory persists thread→thread (the thread is a delivery surface, not a memory key). Per-thread would forget across threads; per-workspace can't exist (no workspace key). Spec: `docs/v2/done/M106_001_P1_API_DOCS_INFRA_UI_SLACK_RESIDENT_CHANNEL_BOT.md`; scenario: [`scenarios/slack-channel-resident.md`](./scenarios/slack-channel-resident.md).
 
 ## 5. Categories, selection, tools — see the topic docs
 

@@ -5,7 +5,7 @@ One golden end-to-end walkthrough that composes the v2 install, trigger, and exe
 | File | What it proves |
 |---|---|
 | [`gh-pr-reviewer.md`](./gh-pr-reviewer.md) | **The golden path.** John Doe installs the `github-pr-reviewer` from a GitHub repo (the bundle storage journey: GitHub tarball → canonical re-pack → R2 + Postgres), wires the webhook, and a Pull Request (PR) gets reviewed. Marks what is built vs the one piece of trigger plumbing still to land (`pull_request` events). |
-| [`slack-channel-resident.md`](./slack-channel-resident.md) | **The Rung-0 on-ramp (forward-looking, M106).** A fact told to `@agentsfleet` in one Slack thread is recalled in a different thread of the same channel — because the memory namespace is the per-channel resident fleet, not the thread. Reactive (read-only, mention-only); the acquisition on-ramp to the durable hired teammate. |
+| [`slack-channel-resident.md`](./slack-channel-resident.md) | **The Rung-0 on-ramp (M106).** A fact told to `@agentsfleet` in one Slack thread is recalled in a different thread of the same channel — because the memory namespace is the per-channel resident fleet, not the thread. Reactive (read-only, mention-only); the acquisition on-ramp to the durable hired teammate. |
 
 > **Why one scenario.** Earlier the set carried three platform-ops walkthroughs (cold install, self-managed posture, credit-gate drain). Those narratives were consolidated into the topic docs they proved — the canonical facts now live in [`../billing_and_provider_keys.md`](../billing_and_provider_keys.md) (posture + billing + gate) and [`../data_flow.md`](../data_flow.md) (the install/trigger/execute/bill loop). The scenario set keeps a single golden narrative; the invariants below point at those topic docs.
 >
