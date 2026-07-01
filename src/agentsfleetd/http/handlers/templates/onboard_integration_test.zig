@@ -49,9 +49,38 @@ fn resetAndSeed(conn: *pg.Conn) !void {
     _ = try conn.exec("DELETE FROM core.tenant_fleet_bundle_templates WHERE workspace_id = $1::uuid", .{http_auth.WS_PRIMARY});
     _ = try conn.exec("DELETE FROM core.tenant_fleet_bundle_templates WHERE workspace_id = $1::uuid", .{http_auth.WS_SECONDARY});
     _ = try conn.exec("DELETE FROM core.fleet_bundle_templates WHERE id = $1", .{PROBE_NAME});
+    // Restore the migration-seeded platform rows to their un-onboarded
+    // (metadata-only) state, so a test that onboards one — setting content_hash,
+    // which makes it gallery-visible — never leaks into the next test.
+    _ = try conn.exec("UPDATE core.fleet_bundle_templates SET content_hash = NULL, skill_markdown = NULL, trigger_markdown = NULL", .{});
     http_auth.cleanup(conn);
     try http_auth.seedTenant(conn);
     try http_auth.seedScopeWorkspace(conn, http_auth.WS_PRIMARY);
+}
+
+// Onboarding the github-pr-reviewer slug UPSERTs the seed row (id == the parsed
+// SKILL name), setting content_hash (installable → gallery-visible) while the
+// UPSERT preserves the seed's curated required_credentials_reasons.
+const GH_REVIEWER_SKILL =
+    \\---
+    \\name: github-pr-reviewer
+    \\description: Reviews GitHub pull requests.
+    \\version: 0.1.0
+    \\---
+    \\Body for the github-pr-reviewer onboarding.
+;
+
+// Onboard `skill` into the platform tier (upload kind — no fetch, no R2).
+fn onboardPlatform(h: *TestHarness, alloc: std.mem.Allocator, skill: []const u8) !void {
+    const body = try std.json.Stringify.valueAlloc(alloc, .{
+        .source_kind = "upload",
+        .source_ref = "unit/platform",
+        .skill_markdown = skill,
+    }, .{});
+    defer alloc.free(body);
+    const res = try (try (try h.post(PLATFORM_URL).bearer(TOKEN_PLATFORM)).json(body)).send();
+    defer res.deinit();
+    try res.expectStatus(.created);
 }
 
 fn tenantUrl(alloc: std.mem.Allocator, workspace_id: []const u8) ![]const u8 {
@@ -257,6 +286,10 @@ test "integration: gallery unions platform and own tenant templates" {
     defer h.releaseConn(conn);
     try resetAndSeed(conn);
 
+    // Onboard a platform template so an installable platform row exists — raw
+    // migration seeds carry no content_hash and are hidden by the gallery filter.
+    try onboardPlatform(h, alloc, PROBE_SKILL);
+
     // Onboard one tenant template into WS_PRIMARY.
     const body = try onboardBody(alloc);
     defer alloc.free(body);
@@ -266,14 +299,16 @@ test "integration: gallery unions platform and own tenant templates" {
     defer created.deinit();
     try created.expectStatus(.created);
 
-    // The gallery returns platform seeds plus WS_PRIMARY's own tenant template.
+    // The gallery returns the onboarded platform template plus WS_PRIMARY's own
+    // tenant template — both surface under the shared `onboard-probe` id.
     const gallery = try (try h.get(url).bearer(TOKEN_TENANT)).send();
     defer gallery.deinit();
     try gallery.expectStatus(.ok);
-    try std.testing.expect(gallery.bodyContains("\"github-pr-reviewer\"")); // platform seed
-    try std.testing.expect(gallery.bodyContains("\"onboard-probe\"")); // own tenant
+    try std.testing.expect(gallery.bodyContains("\"onboard-probe\"")); // onboarded platform + own tenant
     try std.testing.expect(gallery.bodyContains("\"visibility\":\"platform\""));
     try std.testing.expect(gallery.bodyContains("\"visibility\":\"tenant\""));
+    // An un-onboarded migration seed (no content_hash) stays hidden until onboarded.
+    try std.testing.expect(!gallery.bodyContains("\"security-reviewer\""));
     // No object-store key escapes the gallery (Dimension 5.3).
     try std.testing.expect(!gallery.bodyContains("snapshot_key"));
     try std.testing.expect(!gallery.bodyContains("fleet-bundles/sha256/"));
@@ -290,6 +325,11 @@ test "integration: gallery entries carry description and credential reasons" {
     defer h.releaseConn(conn);
     try resetAndSeed(conn);
 
+    // Onboard the github-pr-reviewer seed so it becomes installable (gallery-
+    // visible). The platform UPSERT sets content_hash but preserves the seed's
+    // curated required_credentials_reasons — that's what surfaces below.
+    try onboardPlatform(h, alloc, GH_REVIEWER_SKILL);
+
     // Onboard a tenant template so the gallery exercises both tiers.
     const body = try onboardBody(alloc);
     defer alloc.free(body);
@@ -305,7 +345,7 @@ test "integration: gallery entries carry description and credential reasons" {
     // Every entry carries the description + reasons keys (Dimension 5.4).
     try std.testing.expect(gallery.bodyContains("\"description\""));
     try std.testing.expect(gallery.bodyContains("\"required_credentials_reasons\""));
-    // The platform seed surfaces its curated per-credential reason copy...
+    // The onboarded platform seed surfaces its curated per-credential reason copy...
     try std.testing.expect(gallery.bodyContains("review your pull requests and post review comments"));
     // ...and the onboarded tenant template surfaces its SKILL.md description.
     try std.testing.expect(gallery.bodyContains("Probe template for onboarding tests."));
@@ -323,6 +363,9 @@ test "integration: gallery isolates another workspace's tenant templates" {
     try resetAndSeed(conn);
     try seedForeignTenantTemplate(conn);
 
+    // An installable platform row must survive the workspace filter unchanged.
+    try onboardPlatform(h, alloc, PROBE_SKILL);
+
     const url = try tenantUrl(alloc, http_auth.WS_PRIMARY);
     defer alloc.free(url);
     const gallery = try (try h.get(url).bearer(TOKEN_TENANT)).send();
@@ -330,5 +373,5 @@ test "integration: gallery isolates another workspace's tenant templates" {
     try gallery.expectStatus(.ok);
     // WS_PRIMARY's gallery must not surface WS_SECONDARY's tenant template.
     try std.testing.expect(!gallery.bodyContains(FOREIGN_TEMPLATE_NAME));
-    try std.testing.expect(gallery.bodyContains("\"github-pr-reviewer\"")); // platform still shown
+    try std.testing.expect(gallery.bodyContains("\"onboard-probe\"")); // platform still shown
 }
