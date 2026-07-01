@@ -52,4 +52,42 @@ describe("lib/api/connectors", () => {
     );
     expect(res.install_url).toBe(install_url);
   });
+
+  it("getSlackConnector sends GET with bearer and surfaces status + team", async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ status: "connected", team: "Acme HQ" }),
+    });
+    const mod = await import("../lib/api/connectors");
+    const res = await mod.getSlackConnector("ws_1", "tkn");
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining("/v1/workspaces/ws_1/connectors/slack"),
+      expect.objectContaining({
+        method: "GET",
+        headers: expect.objectContaining({ Authorization: "Bearer tkn" }),
+      }),
+    );
+    expect(res.status).toBe(mod.CONNECTOR_STATUS.connected);
+    expect(res.team).toBe("Acme HQ");
+  });
+
+  it("startSlackConnect POSTs to the /connect sub-path and returns the authorize URL", async () => {
+    const install_url = "https://slack.com/oauth/v2/authorize?state=signed";
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ install_url }),
+    });
+    const mod = await import("../lib/api/connectors");
+    const res = await mod.startSlackConnect("ws_1", "tkn");
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining("/v1/workspaces/ws_1/connectors/slack/connect"),
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({ Authorization: "Bearer tkn" }),
+      }),
+    );
+    expect(res.install_url).toBe(install_url);
+  });
 });
