@@ -10,7 +10,7 @@ import {
 import { LinkIcon } from "lucide-react";
 import { withWorkspaceScope, orFallback } from "@/lib/workspace";
 import { listCredentials } from "@/lib/api/credentials";
-import { getGithubConnector, CONNECTOR_STATUS } from "@/lib/api/connectors";
+import { getGithubConnector, getSlackConnector, CONNECTOR_STATUS } from "@/lib/api/connectors";
 import IntegrationsConnectors from "./components/IntegrationsConnectors";
 
 export const dynamic = "force-dynamic";
@@ -28,13 +28,17 @@ export default async function IntegrationsPage() {
   // fetched together. A missing/unbuilt connector endpoint degrades to "not
   // connected" — the pill never fabricates a connected state.
   const result = await withWorkspaceScope(token, async (workspaceId) => {
-    const [credentialsResp, githubConnector] = await Promise.all([
+    const [credentialsResp, githubConnector, slackConnector] = await Promise.all([
       listCredentials(workspaceId, token).catch(orFallback({ credentials: [] })),
       getGithubConnector(workspaceId, token).catch(() => ({
         status: CONNECTOR_STATUS.notConnected,
       })),
+      getSlackConnector(workspaceId, token).catch(() => ({
+        status: CONNECTOR_STATUS.notConnected,
+        team: null,
+      })),
     ]);
-    return { workspaceId, credentialsResp, githubConnector };
+    return { workspaceId, credentialsResp, githubConnector, slackConnector };
   });
   if (!result) {
     return (
@@ -50,7 +54,7 @@ export default async function IntegrationsPage() {
       </div>
     );
   }
-  const { workspaceId, credentialsResp, githubConnector } = result;
+  const { workspaceId, credentialsResp, githubConnector, slackConnector } = result;
 
   return (
     <div className="space-y-8">
@@ -64,6 +68,8 @@ export default async function IntegrationsPage() {
           <IntegrationsConnectors
             workspaceId={workspaceId}
             githubStatus={githubConnector.status}
+            slackStatus={slackConnector.status}
+            slackTeam={slackConnector.team}
             credentialNames={credentialsResp.credentials.map((secret) => secret.name)}
           />
         </section>

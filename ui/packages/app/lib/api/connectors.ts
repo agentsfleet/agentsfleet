@@ -46,3 +46,44 @@ export async function startGithubConnect(
     token,
   );
 }
+
+// Slack OAuth connector (M106). Like GitHub, connecting is a browser OAuth
+// round-trip — the backend callback vaults `{bot_token, team_name, …}` under the
+// workspace `fleet:slack` handle; reads here are status only. `team` is the Slack
+// workspace name (surfaced for "Slack connected: {team}"), null when not connected.
+
+export interface SlackConnectorState {
+  status: ConnectorStatus;
+  team: string | null;
+}
+
+export interface SlackConnectStart {
+  // The Slack authorize URL the browser is redirected to. Carries the signed
+  // `state` that binds this workspace and guards CSRF at the callback.
+  install_url: string;
+}
+
+const slackConnectorPath = (workspaceId: string): string =>
+  `/v1/workspaces/${encodeURIComponent(workspaceId)}/connectors/slack`;
+
+export async function getSlackConnector(
+  workspaceId: string,
+  token: string,
+): Promise<SlackConnectorState> {
+  return request<SlackConnectorState>(
+    slackConnectorPath(workspaceId),
+    { method: "GET" },
+    token,
+  );
+}
+
+export async function startSlackConnect(
+  workspaceId: string,
+  token: string,
+): Promise<SlackConnectStart> {
+  return request<SlackConnectStart>(
+    `${slackConnectorPath(workspaceId)}/connect`,
+    { method: "POST" },
+    token,
+  );
+}

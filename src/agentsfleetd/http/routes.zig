@@ -103,6 +103,7 @@ pub const Route = union(enum) {
     github_connect_callback, // GET /v1/connectors/github/callback (Bearer-less; state-authed)
     // Slack OAuth connector (M106 §1)
     connect_slack: []const u8, // POST /v1/workspaces/{ws}/connectors/slack/connect
+    slack_connector_status: []const u8, // GET /v1/workspaces/{ws}/connectors/slack
     slack_connect_callback, // GET /v1/connectors/slack/callback (Bearer-less; state-authed)
     // Slack events ingress (M106 §2) — POST /v1/connectors/slack/events.
     // Bearer-less; the Slack v0 request signature is the only auth (in-handler).

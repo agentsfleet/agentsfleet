@@ -43,6 +43,13 @@ pub fn matchWorkspaceConnectorSlackConnect(p: Path) ?[]const u8 {
     return p.param(1);
 }
 
+/// GET /v1/workspaces/{ws}/connectors/slack — connector status.
+pub fn matchWorkspaceConnectorSlack(p: Path) ?[]const u8 {
+    if (p.segs.len != 4) return null;
+    if (!p.eq(0, S_WORKSPACES) or !p.eq(2, S_CONNECTORS) or !p.eq(3, S_SLACK)) return null;
+    return p.param(1);
+}
+
 /// GET /v1/connectors/slack/callback — Bearer-less; workspace comes from the signed state.
 pub fn matchSlackConnectCallback(p: Path) bool {
     if (p.segs.len != 3) return false;
