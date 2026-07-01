@@ -95,7 +95,9 @@ fn loadRequestJson(alloc: std.mem.Allocator, conn: *pg.Conn, fleet_id: []const u
 
 /// Resolve the per-install bot token from the `(workspace_id,'fleet:slack')`
 /// vault handle callback.zig wrote (RULE VLT). Caller owns the returned token.
-fn loadBotToken(alloc: std.mem.Allocator, conn: *pg.Conn, workspace_id: []const u8) ![]const u8 {
+/// `pub` so the §4 E thread re-read (`thread.zig`) resolves the same token from
+/// the one site that reads the `fleet:slack` handle (RULE NDC — no second loader).
+pub fn loadBotToken(alloc: std.mem.Allocator, conn: *pg.Conn, workspace_id: []const u8) ![]const u8 {
     const key = try credential_key.allocKeyName(alloc, spec.PROVIDER); // "fleet:slack"
     defer alloc.free(key);
     var parsed = try vault.loadJson(alloc, conn, workspace_id, key);

@@ -33,6 +33,8 @@ const oauth2 = @import("../oauth2.zig");
 const slack_sig = @import("slack_sig.zig");
 const event_parse = @import("event_parse.zig");
 const channel_fleet = @import("channel_fleet.zig");
+const post = @import("post.zig");
+const thread = @import("thread.zig");
 const spec = @import("spec.zig");
 
 const log = logging.scoped(.connector_slack);
@@ -137,13 +139,13 @@ fn dispatchMention(hx: Hx, conn: *pg.Conn, m: Mention) void {
     };
     defer hx.alloc.free(channel_fleet_id);
 
-    enqueueMention(hx, workspace_id, channel_fleet_id, m);
+    enqueueMention(hx, conn, workspace_id, channel_fleet_id, m);
 }
 
 /// Dedup on (channel_fleet_id, event.ts) then XADD the mention as a `slack:<user>`
 /// chat event — the no-principal webhook-producer shape. The dedup slot is
 /// released on any post-claim failure so Slack's retry stays deliverable.
-fn enqueueMention(hx: Hx, workspace_id: []const u8, channel_fleet_id: []const u8, m: Mention) void {
+fn enqueueMention(hx: Hx, conn: *pg.Conn, workspace_id: []const u8, channel_fleet_id: []const u8, m: Mention) void {
     var dedup_buf: [256]u8 = undefined;
     const dedup_key = std.fmt.bufPrint(&dedup_buf, "{s}{s}:{s}", .{ ec.SLACK_DEDUP_KEY_PREFIX, channel_fleet_id, m.ts }) catch {
         common.internalOperationError(hx.res, "dedup key overflow", hx.req_id);
@@ -159,7 +161,16 @@ fn enqueueMention(hx: Hx, workspace_id: []const u8, channel_fleet_id: []const u8
         return;
     }
 
-    const request_json = buildRequestJson(hx.alloc, m) catch {
+    // §4 E — best-effort recent-thread re-read (bounded last-N) so the runner's
+    // input carries same-thread continuity the mention-only bot is otherwise
+    // blind to. Any failure degrades to an empty thread (the answer still works
+    // from durable channel memory + the mention text); dedup on event.ts makes a
+    // slow Slack call safe to retry.
+    const api_base = hx.ctx.connector_slack_api_base_override orelse post.SLACK_API_BASE_DEFAULT;
+    var recent = thread.fetchRecent(hx.alloc, hx.ctx.io, conn, api_base, workspace_id, m.channel, m.thread_ts orelse m.ts);
+    defer recent.deinit();
+
+    const request_json = buildRequestJson(hx.alloc, m, recent.msgs) catch {
         releaseDedup(hx, channel_fleet_id, dedup_key);
         common.internalOperationError(hx.res, "request serialization failed", hx.req_id);
         return;
@@ -193,15 +204,14 @@ fn enqueueMention(hx: Hx, workspace_id: []const u8, channel_fleet_id: []const u8
 /// `{ text, reply_thread_ts, channel_id, recent_thread_msgs }` — the runner's
 /// input for the answer. `reply_thread_ts = thread_ts orelse ts` so a top-level
 /// mention anchors its own thread (the reply is always threaded, never a
-/// detached channel post). `recent_thread_msgs` is empty here; §4 populates it
-/// from a bounded live thread re-read on each mention.
-fn buildRequestJson(alloc: std.mem.Allocator, m: Mention) ![]const u8 {
-    const empty: []const []const u8 = &.{};
+/// detached channel post). `recent_thread_msgs` is the bounded last-N thread
+/// re-read (§4 E) — `[]` when the re-read degraded (best-effort).
+fn buildRequestJson(alloc: std.mem.Allocator, m: Mention, recent_msgs: []const thread.Msg) ![]const u8 {
     return std.json.Stringify.valueAlloc(alloc, .{
         .text = m.text,
         .reply_thread_ts = m.thread_ts orelse m.ts,
         .channel_id = m.channel,
-        .recent_thread_msgs = empty,
+        .recent_thread_msgs = recent_msgs,
     }, .{});
 }
 
@@ -248,4 +258,5 @@ test {
     _ = event_parse;
     _ = channel_fleet;
     _ = slack_sig;
+    _ = thread;
 }
