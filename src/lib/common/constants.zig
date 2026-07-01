@@ -88,3 +88,25 @@ comptime {
 /// Backoff hint handed to a runner when there is no work to lease. The lease
 /// verb is always 200; this rides `retry_after_ms` (no 204).
 pub const NO_WORK_RETRY_AFTER_MS: u32 = 1_000;
+
+// ── Connectors (Slack-resident channel bot, M106) ───────────────────────────
+// Provider + binding-kind identifiers shared across the OAuth connector
+// (spec.zig aliases `PROVIDER_SLACK`), the inbound events ingress, and the
+// generic `connector_installs`/`connector_channels` routing tables. The
+// migrations (schema/029,030) reference these named constants rather than
+// static-string CHECKs (RULE STS/UFS).
+
+/// Connector provider id for Slack — the `provider` column value in
+/// `connector_installs`/`connector_channels` and the `<provider>-app` /
+/// `fleet:<provider>` vault-key stem.
+pub const PROVIDER_SLACK = "slack";
+
+/// `connector_channels.kind` for a per-channel resident fleet — the durable
+/// fleet that owns one Slack channel's memory namespace.
+pub const CONNECTOR_CHANNEL_KIND_RESIDENT = "resident";
+
+/// Actor-attribution prefix for an inbound Slack mention event
+/// (`slack:<slack_user_id>`), mirroring the webhook producer's `webhook:<src>`
+/// shape. The signature-only ingress has no OIDC principal, so the actor is
+/// free-form provenance, never an authorization subject.
+pub const SLACK_ACTOR_PREFIX = "slack:";

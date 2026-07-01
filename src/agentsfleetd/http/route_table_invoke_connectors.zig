@@ -13,6 +13,7 @@ const callback_h = @import("handlers/connectors/github/callback.zig");
 const status_h = @import("handlers/connectors/github/status.zig");
 const slack_connect_h = @import("handlers/connectors/slack/connect.zig");
 const slack_callback_h = @import("handlers/connectors/slack/callback.zig");
+const slack_events_h = @import("handlers/connectors/slack/events.zig");
 
 const Hx = hx_mod.Hx;
 
@@ -56,4 +57,13 @@ pub fn invokeSlackCallback(hx: *Hx, req: *httpz.Request, route: router.Route) vo
     }
     _ = route;
     slack_callback_h.innerSlackCallback(hx.*, req);
+}
+
+pub fn invokeSlackEvents(hx: *Hx, req: *httpz.Request, route: router.Route) void {
+    if (req.method != .POST) {
+        common.respondMethodNotAllowed(hx.res);
+        return;
+    }
+    _ = route;
+    slack_events_h.innerSlackEvents(hx.*, req);
 }
