@@ -90,6 +90,8 @@ pub fn classFor(route: router.Route) RouteClass {
         .connect_github,
         .github_connector_status,
         .github_connect_callback,
+        .connect_slack,
+        .slack_connect_callback,
         .fleet_keys,
         .delete_fleet_key,
         .tenant_api_keys,
@@ -174,6 +176,10 @@ pub fn specFor(route: router.Route, registry: *auth_mw.MiddlewareRegistry) Route
         .connect_github => .{ .middlewares = registry.bearer(), .invoke = connectors_invoke.invokeConnectGithub },
         .github_connector_status => .{ .middlewares = registry.bearer(), .invoke = connectors_invoke.invokeGithubConnectorStatus },
         .github_connect_callback => .{ .middlewares = auth_mw.MiddlewareRegistry.none, .invoke = connectors_invoke.invokeGithubCallback },
+        // Slack OAuth connector (M106 §1). connect is workspace-authed; the
+        // callback is Bearer-less (a slack.com redirect) — state-authed in-handler.
+        .connect_slack => .{ .middlewares = registry.bearer(), .invoke = connectors_invoke.invokeConnectSlack },
+        .slack_connect_callback => .{ .middlewares = auth_mw.MiddlewareRegistry.none, .invoke = connectors_invoke.invokeSlackCallback },
 
         // Fleet create/read/update/delete + activity + credentials
         .workspace_fleets => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeWorkspaceFleets },

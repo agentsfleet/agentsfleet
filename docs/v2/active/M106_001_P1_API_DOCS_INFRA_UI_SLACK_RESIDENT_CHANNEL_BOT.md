@@ -130,8 +130,11 @@ Every secret the end-to-end flow needs, with who writes it and when. Platform se
 | `src/agentsfleetd/auth/middleware/slack_sig.zig` | CREATE | Slack v0 signature middleware (reuses the constant-time compare). |
 | `src/agentsfleetd/http/handlers/connectors/state.zig` | CREATE | shared connector OAuth install-state (signed single-use, HMAC + Redis nonce), parameterized by a per-connector `Config` (domain/nonce prefix). Extracted from GitHub's `state.zig` per Indy ("do C"). |
 | `src/agentsfleetd/http/handlers/connectors/github/state.zig` | EDIT | collapse to a thin wrapper binding GitHub's `Config` (`ghconnect:v1:`) to the shared module — behavior-preserving; `callback`/`connect` unchanged. |
-| `src/agentsfleetd/http/handlers/connectors/slack/state.zig` | CREATE | thin wrapper binding Slack's `Config` (`slackconnect:v1:` / `connect:slack:nonce:`) to the shared module. |
-| `src/agentsfleetd/http/routes.zig` | EDIT | register `/v1/connectors/slack/{callback,events}` (public) + `/v1/workspaces/{ws}/connectors/slack/connect` (authed), mirroring the GitHub connector routes. |
+| `src/agentsfleetd/http/handlers/connectors/oauth2.zig` | CREATE | shared OAuth-2.0 connector mechanism (`Spec`-parameterized authorize/exchange/state + on-demand `loadAppCreds` from admin vault `<provider>-app`). Slack is its first user; Zoho/Jira/Linear reuse it as a `Spec`. |
+| `src/agentsfleetd/http/handlers/connectors/slack/spec.zig` | CREATE | Slack connector descriptor (`Spec`: authorize/token endpoints, scopes, `slackconnect:v1:` state domain). |
+| `src/agentsfleetd/http/handlers/connectors/slack/connect.zig` | CREATE | authed connect (`POST …/connectors/slack/connect`): mint state + build authorize URL via the shared mechanism. |
+| `src/agentsfleetd/http/{routes,router,route_matchers,route_table,route_table_invoke_connectors,route_scopes}.zig` | EDIT | register `/v1/connectors/slack/callback` (public, state-authed) + `/v1/workspaces/{ws}/connectors/slack/connect` (authed, `connector:write`); events ingress added in §2. Mirrors the GitHub connector wiring. |
+| `src/agentsfleetd/cmd/serve.zig` + `src/agentsfleetd/http/handlers/common.zig` | EDIT | `Context.platform_admin_workspace_id` (generic admin-workspace vault namespace for `<provider>-app` connector secrets) + boot wiring. |
 | `src/lib/common/constants.zig` | EDIT | Slack scopes, paths, `slack` provider, `slack:bot`, `slack:` actor prefix, thread re-read bound (UFS). |
 | `ui/packages/app/lib/integrations/catalog.ts` | EDIT | flip Slack card to OAuth connector. |
 | `ui/packages/app/app/(dashboard)/integrations/components/IntegrationsConnectors.tsx` (+ extract a `SlackConnectorRow` file if length-capped) + `connector-actions.ts` | EDIT | `SlackConnectorRow` mirroring `GithubConnectorRow` + `startSlackConnectAction`; connected-state "Slack connected: {team}". |
@@ -217,6 +220,23 @@ Write the two registration playbooks and update the architecture docs (forward-m
 - **Dimension 6.1** — `slack_app_registration` playbook covers app create, scopes (incl. `channels:history` for thread re-read), the three Request URLs, OAuth redirect, and vaulting `client_id`/`client_secret`/`signing_secret` as platform secrets → Test `test_playbook_slack_registration_present` (doc-presence + required-anchor check)
 - **Dimension 6.2** — `github_app_registration` playbook documents the existing GitHub App registration + private-key vaulting → Test `test_playbook_github_registration_present`
 - **Dimension 6.3** — `high_level`/`user_flow`/`data_flow`/`direction`/`roadmap` updated + the new scenario added, all marking the surface forward-looking (not "runs now") → Test `test_arch_docs_reference_slack_resident`
+
+---
+
+## Metrics & Observability
+
+Per RULE OBS, every ingress rejection + materialization emits a structured log/event; message text and secrets are never logged (RULE PRI/VLT). Log scopes: `connector_slack` (OAuth connect/callback), the Slack ingress + materialization (§2/§3), and the outbound post (§4).
+
+| Metric / event | Owner | Fires when | Properties allowed | Privacy guard | Test proof |
+|----------------|-------|------------|--------------------|---------------|------------|
+| `slack.connected` | ops | callback vaults the bot token + inserts the install | `workspace_id`, `team_id` | no `bot_token` / `code` | `test_slack_oauth_persists_install_and_vaults_token` |
+| `slack.oauth_exchange_failed` | ops | token exchange returns non-OK (`UZ-SLK-022`) | `workspace_id` | no `code` / `client_secret` | callback error path (unit: `parseSlackToken` rejects `ok:false`) |
+| `slack.ingress_rejected` | ops | signature / stale / unmapped rejection (`UZ-SLK-010/011/020`) | `reason` | no request body | `test_slack_sig_invalid` / `test_slack_sig_stale` / `test_slack_team_unmapped` |
+| `slack.mention_enqueued` | ops | a valid mention is XADDed to the channel fleet | `channel_fleet_id` | no mention text | `test_slack_events_acks_fast_and_enqueues` |
+| `slack.channel_fleet_materialized` | ops | first mention creates a resident fleet | `team_id`, `channel_id`, `fleet_id` | no mention text | `test_resident_fleet_materialized_once` |
+| `slack.connect_initiated` | product | admin clicks Connect Slack in the dashboard | `workspace_id` | none | `test_dashboard_slack_connect_flow` |
+
+**Metrics review:** the dashboard Connect-Slack action is the one net-new product funnel step; no analytics/funnel playbook update is required beyond the connect event — Rung 0 is reactive/read-only, so there are no per-message product events until Rung 1.
 
 ---
 
@@ -350,6 +370,7 @@ make test-integration 2>&1 | grep test_channel_memory_persists_across_threads
   - *Fleet insert:* `innerCreateFleet` is `httpz.Request`+principal-coupled and uncallable from the events worker; materialization reuses its request-independent core `insertFleetOnConn` directly (Invariant 7 reworded; single insert site preserved, grep-confirmed).
   - *Scope additions:* migration array also lives in `src/cmd/common.zig`; UUIDv7 gens in `src/types/id_format.zig`; `UZ-SLK-*` in `errors/error_registry.zig`+`error_entries.zig`; per-install vault key is `fleet:slack` via `credential_key.allocKeyName` (mirrors `fleet:github`).
 - **Connector-state extraction (Jul 01, 2026 — Indy: "I wan you to do C" + "connectors/state.zig").** The signed single-use OAuth install-state (HMAC + Redis nonce) is now a shared, `Config`-parameterized module at `http/handlers/connectors/state.zig`; GitHub's `state.zig` (landed by M102) is collapsed to a thin wrapper binding its `ghconnect:v1:` domain, and Slack binds `slackconnect:v1:` — a per-connector domain prefix keeps one connector's state from cross-verifying as another's (new isolation test). **No M102 collision:** M102's connect surface (incl. `state.zig`) landed Jun 27 and is stable; M102's open work is the webhook ingress (`/v1/ingress/{provider}`), different files. This edits GitHub's shipped connector — outside M106's original Files-Changed — under Indy's explicit "do C".
+- **§1 OAuth flow implemented (Jul 01, 2026).** Built on a shared, `Spec`-parameterized OAuth-2.0 mechanism (`connectors/oauth2.zig`: authorize URL + code exchange + state + on-demand `loadAppCreds` from admin vault `<provider>-app`), so Slack is the first of the OAuth-2.0 family — Zoho/Jira/Linear reuse it as a `Spec` + a vaulted secret (GitHub stays its App-installation flow, a different protocol). `connect.zig`/`callback.zig` are thin drivers wired through the 6-file routing (routes/router/route_matchers/route_table/route_table_invoke_connectors/route_scopes) mirroring GitHub. Admin-vault model kept per Indy (env is for bootstrap-into-platform secrets like Clerk; connector data-secrets live in the vault) via one generic `Context.platform_admin_workspace_id`. **Error taxonomy reconciled:** state-invalid reuses the generic `ERR_CONNECTOR_STATE_INVALID` (consistent with GitHub); only the Slack-specific exchange failure is new (`UZ-SLK-022`) — so Dim 1.2 asserts the generic code, not `UZ-SLK-021`. **Tests:** state crypto, oauth2 URL building, and Slack token-response parsing (`parseSlackToken`) are unit-tested + green. **Remaining in §1 (not a deferral — the next step):** the e2e integration test (Dim 1.1 — signed callback → `connector_installs` row + `fleet:slack` vault handle) needs `Spec.token_endpoint` made injectable + a loopback fake-Slack + the DB harness (no connector-integration-test precedent exists — M102's GitHub connector shipped without one).
 - **Skill chain** — `/write-unit-test`, `/review`, `/review-pr`, `kishore-babysit-prs` outcomes (filled during EXECUTE/CHORE(close)).
 - **Deferrals** — Rung 1 (hired teammates, source webhooks, writes, approvals, buttons, slash, DMs) is **scoped out by design**, not deferred work; the follow-on milestone owns it. Any *other* "deferred to follow-up" needs an Indy-acked verbatim quote here.
 

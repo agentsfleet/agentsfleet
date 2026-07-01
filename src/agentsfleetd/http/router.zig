@@ -115,6 +115,9 @@ fn matchV1(p: matchers.Path, method: httpz.Method) ?Route {
     if (matchers.matchWorkspaceConnectorGithubConnect(p)) |ws| return .{ .connect_github = ws };
     if (matchers.matchWorkspaceConnectorGithub(p)) |ws| return .{ .github_connector_status = ws };
     if (matchers.matchGithubConnectCallback(p)) return .{ .github_connect_callback = {} };
+    // ── Workspace + connector (Slack OAuth, M106 §1) ─────────────────────
+    if (matchers.matchWorkspaceConnectorSlackConnect(p)) |ws| return .{ .connect_slack = ws };
+    if (matchers.matchSlackConnectCallback(p)) return .{ .slack_connect_callback = {} };
     // ── Workspace + leaf ──────────────────────────────────────────────────
     if (matchers.matchWorkspaceCredential(p)) |r| return .{ .workspace_credential = r };
     if (matchers.matchWorkspaceFleetKeyDelete(p)) |r| return .{ .delete_fleet_key = r };

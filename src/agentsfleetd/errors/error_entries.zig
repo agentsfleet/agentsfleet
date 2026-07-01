@@ -102,6 +102,9 @@ pub const ENTRIES = [_]Entry{
         "in the fleet's workspace, then resend."),
     e("UZ-WH-030", .payload_too_large, "Webhook payload too large", "Webhook body exceeds the 1 MiB ingest limit. Reduce the payload size " ++
         "or filter at the source."),
+    // ── SLACK CONNECTOR ──────────────────────────────────────────────────────
+    e("UZ-SLK-022", .bad_gateway, "Slack token exchange failed", "The Slack OAuth code could not be exchanged for a bot token. Retry the " ++
+        "connect flow; if it persists, verify the platform Slack app credentials."),
     // ── TOOL ─────────────────────────────────────────────────────────────────
     e("UZ-TOOL-005", .bad_request, "Unknown tool", "Unknown tool name. Check spelling against the known tools list."),
     // ── AGENT ───────────────────────────────────────────────────────────────

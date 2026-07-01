@@ -208,6 +208,7 @@ pub fn run(io: std.Io, env_map: *const EnvMap, argv: []const [:0]const u8, alloc
         .audit_ctx = audit_events.AuditCtx.init(serve_cfg.audit_log_pepper),
         .app_url = serve_cfg.app_url,
         .api_url = serve_cfg.api_url,
+        .platform_admin_workspace_id = serve_cfg.platform_admin_workspace_id,
         .api_in_flight_requests = std.atomic.Value(u32).init(0),
         .api_max_in_flight_requests = serve_cfg.api_max_in_flight_requests,
         .sse_max_streams = serve_cfg.sse_max_streams,

@@ -56,6 +56,12 @@ pub const Context = struct {
     /// admin vault `github-app` entry. Null → connect degrades closed (no
     /// install URL minted) rather than pointing at a nonexistent App.
     github_app_slug: ?[]const u8 = null,
+    /// Admin workspace id — the vault namespace platform connector-app secrets
+    /// (`<provider>-app`) live under. One generic field for ALL connectors; the
+    /// OAuth connect/callback resolve client creds on-demand from it (a rare
+    /// browser flow, not a hot path). Empty → connectors fail closed. Boot-set
+    /// from `serve_cfg.platform_admin_workspace_id`.
+    platform_admin_workspace_id: []const u8 = "",
     clerk_secret_key: ?[]const u8,
     oidc: ?*oidc.Verifier,
     /// Cloudflare R2 client for Fleet Bundle canonical-tar storage, resolved once
