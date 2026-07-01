@@ -64,6 +64,13 @@ describe("requirementsOf — normalises the gallery entry", () => {
     });
     expect(r.credentialReasons).toEqual({});
   });
+
+  it("an entry missing required_credentials_reasons falls back to an empty map", () => {
+    // The field is optional on the client (a stale cache or an older backend may
+    // omit it), so `?? {}` must default it — otherwise ConnectGate reads undefined.
+    const r = requirementsOf({ ...PLATFORM_ENTRY, required_credentials_reasons: undefined });
+    expect(r.credentialReasons).toEqual({});
+  });
 });
 
 describe("unmetCredentials + readyToCreate — the connect gate", () => {

@@ -185,6 +185,36 @@ describe("test_install_inline_state_driven", () => {
     );
   });
 
+  it("an operator-supplied name overrides the SKILL.md name for a tenant template too", async () => {
+    installFleetActionMock.mockResolvedValue({ ok: true, data: { fleet_id: "zom_tenant_named" } });
+    const user = userEvent.setup({ delay: null });
+    renderFlow({ presentCredentialNames: [] });
+
+    await user.click(useTemplateButton(1)); // TEMPLATE_TENANT — installs by UUID
+    await confirmInstall(user, "ops-frontend");
+    await waitFor(() =>
+      expect(installFleetActionMock).toHaveBeenCalledWith("ws_1", {
+        tenant_template_id: "01932d4e-7c10-7a3a-9f00-000000000001",
+        name: "ops-frontend",
+      }),
+    );
+  });
+
+  it("the confirm step renders no description paragraph when the template has none", async () => {
+    installFleetActionMock.mockReturnValue(new Promise(() => {}));
+    const user = userEvent.setup({ delay: null });
+    // A template whose SKILL.md carried no `description:` → the confirm panel
+    // shows the name but skips the description line (the `: null` branch).
+    const noDesc = { ...TEMPLATE_GH, id: "no-desc", name: "No description template", description: "" };
+    renderFlow({ templates: [noDesc], presentCredentialNames: ["github"] });
+
+    await user.click(useTemplateButton(0));
+    // Reaching the confirm step (Install button) renders InstallConfirm with a
+    // falsy description; the panel still surfaces the template name.
+    await waitFor(() => expect(screen.getByRole("button", { name: "Install" })).toBeTruthy());
+    expect(screen.getByText("No description template")).toBeTruthy();
+  });
+
   it("preselects a template from a ?template= deep link and lands on the confirm step", async () => {
     installFleetActionMock.mockReturnValue(new Promise(() => {}));
     const user = userEvent.setup({ delay: null });
