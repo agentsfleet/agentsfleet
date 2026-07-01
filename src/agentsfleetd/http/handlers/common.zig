@@ -67,6 +67,11 @@ pub const Context = struct {
     /// provider) is used. Integration tests point it at a loopback fake-provider
     /// so the code-exchange hits an in-process server, never the real Slack API.
     connector_oauth_token_endpoint_override: ?[]const u8 = null,
+    /// Test/dev seam: override the Slack Web API base (`https://slack.com/api`)
+    /// for the §4 outbound `chat.postMessage` + thread re-read. Null in
+    /// production. Integration tests point it at a loopback FakeSlack so the
+    /// outbound post + thread fetch hit an in-process server, never real Slack.
+    connector_slack_api_base_override: ?[]const u8 = null,
     clerk_secret_key: ?[]const u8,
     oidc: ?*oidc.Verifier,
     /// Cloudflare R2 client for Fleet Bundle canonical-tar storage, resolved once

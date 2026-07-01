@@ -23,6 +23,7 @@ const std = @import("std");
 const clock = @import("common").clock;
 const logging = @import("log");
 const httpz = @import("httpz");
+const pg = @import("pg");
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
 
 const hx_mod = @import("../http/handlers/hx.zig");
@@ -37,6 +38,7 @@ const metering = @import("../fleet_runtime/metering.zig");
 const renewal = @import("renewal.zig");
 const renewal_settle = @import("renewal_settle.zig");
 const redis_fleet = @import("../queue/redis_fleet.zig");
+const connector_outbound = @import("../queue/connector_outbound.zig");
 const tenant_provider = @import("../state/tenant_provider.zig");
 const activity_publisher = @import("../fleet_runtime/activity_publisher.zig");
 const metrics_runner = @import("../observability/metrics_runner.zig");
@@ -209,6 +211,11 @@ fn finalize(hx: Hx, runner_id: []const u8, lease: Lease, body: protocol.ReportRe
     var scratch = activity_publisher.Scratch.init(alloc);
     defer scratch.deinit();
     activity_publisher.publishEventComplete(hx.ctx.queue, &scratch, lease.fleet_id, lease.event_id, status_text);
+    // §4: if this fleet is a connector-resident fleet, hand the answer to the
+    // connector:outbound worker for out-of-band delivery (e.g. Slack
+    // chat.postMessage). Provider-agnostic + best-effort (Invariant 9) — a generic
+    // job, never a connector import here; never fails the report.
+    enqueueOutboundAnswer(hx, lease, body.response_text);
     // Emit the delivery span. The final slice was already settled atomically with
     // the report claim (`claimReportAndSettle`, before finalize), so by here the
     // billing is closed and only the OTel span remains. Best-effort.
@@ -260,4 +267,48 @@ fn releaseAffinity(hx: Hx, fleet_id: []const u8, token: u64) void {
     affinity.release(conn, fleet_id, token) catch |err| {
         log.warn("report_claim_release_failed", .{ .error_code = ec.ERR_INTERNAL_DB_QUERY, .fleet_id = fleet_id, .err = @errorName(err) });
     };
+}
+
+const SELECT_BOUND_PROVIDER_SQL =
+    \\SELECT provider FROM core.connector_channels WHERE fleet_id = $1::uuid LIMIT 1
+;
+
+/// If the reporting fleet has a `connector_channels` binding, enqueue the answer
+/// for out-of-band delivery on the generic `connector:outbound` stream (§4). Most
+/// fleets are not connector-resident, so this is a common-case miss served by the
+/// `connector_channels(fleet_id)` index (migration 032). Best-effort +
+/// provider-agnostic (Invariant 9): an empty answer, a miss, or any failure is a
+/// logged no-op — it never fails the already-finalized report, and it imports no
+/// connector (it enqueues a provider-tagged generic job the worker routes).
+fn enqueueOutboundAnswer(hx: Hx, lease: Lease, answer: []const u8) void {
+    if (answer.len == 0) return; // a crashed / empty run has nothing to deliver
+    const conn = hx.ctx.pool.acquire() catch return;
+    defer hx.ctx.pool.release(conn);
+    const provider = lookupBoundProvider(hx.alloc, conn, lease.fleet_id) catch |err| {
+        log.warn("outbound_binding_lookup_failed", .{ .error_code = ec.ERR_INTERNAL_DB_QUERY, .fleet_id = lease.fleet_id, .err = @errorName(err) });
+        return;
+    } orelse return; // not a connector fleet — the common case
+    defer hx.alloc.free(provider);
+    const entry_id = connector_outbound.enqueue(hx.ctx.queue, .{
+        .provider = provider,
+        .workspace_id = lease.workspace_id,
+        .fleet_id = lease.fleet_id,
+        .event_id = lease.event_id,
+        .answer = answer,
+    }) catch |err| {
+        log.warn("outbound_enqueue_failed", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .fleet_id = lease.fleet_id, .err = @errorName(err) });
+        return;
+    };
+    hx.ctx.alloc.free(entry_id);
+    log.debug("outbound_answer_enqueued", .{ .fleet_id = lease.fleet_id, .provider = provider });
+}
+
+/// Generic reverse lookup: `fleet_id → provider` if the fleet has any connector
+/// binding. Returns an owned provider (caller frees) or null. Provider is an
+/// opaque string — the report path never learns which connector.
+fn lookupBoundProvider(alloc: std.mem.Allocator, conn: *pg.Conn, fleet_id: []const u8) !?[]const u8 {
+    var q = PgQuery.from(try conn.query(SELECT_BOUND_PROVIDER_SQL, .{fleet_id}));
+    defer q.deinit();
+    const row = try q.next() orelse return null;
+    return try alloc.dupe(u8, try row.get([]const u8, 0));
 }
