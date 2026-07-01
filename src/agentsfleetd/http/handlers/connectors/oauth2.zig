@@ -174,9 +174,14 @@ pub fn loadAppCreds(
     const cid = strField(obj, FIELD_CLIENT_ID) orelse return null;
     const csec = strField(obj, FIELD_CLIENT_SECRET) orelse return null;
 
+    // `errdefer` does NOT fire on `return null` from a `?T` function (only on an
+    // error-typed return), so free `cid_owned` explicitly if the second dupe fails
+    // — otherwise the partial init leaks on OOM (RULE: free on ALL paths).
     const cid_owned = alloc.dupe(u8, cid) catch return null;
-    errdefer alloc.free(cid_owned);
-    const csec_owned = alloc.dupe(u8, csec) catch return null;
+    const csec_owned = alloc.dupe(u8, csec) catch {
+        alloc.free(cid_owned);
+        return null;
+    };
     return .{ .client_id = cid_owned, .client_secret = csec_owned };
 }
 
