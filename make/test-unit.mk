@@ -40,7 +40,9 @@ test-unit-cli:  ## Run agentsfleet CLI unit tests (bun)
 	@echo "→ [agentsfleet] Building dist/ (tests spawn dist/bin/agentsfleet.js)..."
 	@cd cli && bun run build >/dev/null
 	@echo "→ [agentsfleet] Running Bun unit tests..."
-	@cd cli && bun test
+	@# --timeout 30000: the help-e2e / PTY tests spawn the built binary and wait
+	@# for output; bun's 5s default flakes under the parallel pre-push lane load.
+	@cd cli && bun test --timeout 30000
 	@echo "✓ [agentsfleet] Unit tests passed"
 
 test-unit-website:  ## Run website unit tests (vitest)

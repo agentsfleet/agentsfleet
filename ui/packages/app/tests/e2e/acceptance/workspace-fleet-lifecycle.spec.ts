@@ -53,8 +53,13 @@ test.describe("multi-workspace + fleet lifecycle", () => {
       timeout: SWITCH_TIMEOUT_MS,
     });
 
+    // Onboard + install against the secondary workspace — the one now active
+    // in the browser, so the onboarded card renders on /fleets/new.
     const name = `ws-life-${Math.random().toString(36).slice(2, 8)}`;
-    const fleetId = await installViaUI(page, name);
+    const fleetId = await installViaUI(page, name, {
+      handle: FIXTURE_KEY.regular,
+      workspaceId: secondary.id,
+    });
     await expect(page).toHaveURL(new RegExp(`/fleets/${fleetId}(\\?|$)`));
 
     await page.goto("/fleets");

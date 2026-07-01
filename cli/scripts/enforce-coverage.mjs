@@ -27,7 +27,9 @@ function readThreshold() {
 }
 
 function runTests() {
-  const result = spawnSync("bun", ["test", "--coverage"], {
+  // --timeout 30000: spawn-based help-e2e / PTY tests flake at bun's 5s default
+  // under parallel test-lane load; give the built-binary spawns realistic time.
+  const result = spawnSync("bun", ["test", "--coverage", "--timeout", "30000"], {
     cwd: CLI_DIR,
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],

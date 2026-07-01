@@ -3,17 +3,18 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { resetCommonMocks } from "./helpers/dashboard-mocks";
+import type { FleetTemplateGalleryEntry } from "@/lib/types";
 
-// The install flow's boundaries are the two server actions, analytics, and the
-// SSE hook (post-create). Mock those; render the real source selector + states
-// so the source → inline-states wiring (no review page) is exercised end to end.
+// The template-only install flow's boundaries are the install server action,
+// analytics, and the SSE hook (post-create). Mock those; render the real source
+// selector + states so picking a template proceeds inline to the live states
+// (no review page) and creates with the visibility-keyed body. M103 removed the
+// github-import and paste sources — templates are the only install surface.
 const {
-  importBundleActionMock,
   installFleetActionMock,
   captureProductEventMock,
   useFleetEventStreamMock,
 } = vi.hoisted(() => ({
-  importBundleActionMock: vi.fn(),
   installFleetActionMock: vi.fn(),
   captureProductEventMock: vi.fn(),
   useFleetEventStreamMock: vi.fn(),
@@ -22,7 +23,6 @@ const {
 vi.mock("next/navigation", async () => (await import("./helpers/dashboard-mocks")).nextNavigationMock());
 vi.mock("next/link", async () => (await import("./helpers/dashboard-mocks")).nextLinkMock());
 vi.mock("@/app/(dashboard)/fleets/actions", () => ({
-  importBundleAction: importBundleActionMock,
   installFleetAction: installFleetActionMock,
 }));
 vi.mock("@/lib/analytics/posthog", () => ({ captureProductEvent: captureProductEventMock }));
@@ -31,25 +31,33 @@ vi.mock("@/components/domain/useFleetEventStream", () => ({
 }));
 
 import { InstallFleet } from "../app/(dashboard)/fleets/new/InstallFleet";
-import { InstallSourceSelector } from "../app/(dashboard)/fleets/new/InstallSourceSelector";
 
-const TEMPLATE_GH = {
+// A platform gallery entry (installs by slug) and a tenant one (installs by
+// UUID). Mirrors GET /v1/workspaces/{ws}/fleet-templates.
+const TEMPLATE_GH: FleetTemplateGalleryEntry = {
   id: "github-pr-reviewer",
   name: "GitHub PR reviewer",
   description: "Reviews pull requests.",
-  required_credentials: ["github"],
+  visibility: "platform",
+  source_ref: "platform/github-pr-reviewer",
+  requirements: {
+    credentials: ["github"],
+    tools: ["github_review_comment"],
+    network_hosts: ["api.github.com"],
+    trigger_present: true,
+  },
   required_credentials_reasons: { github: "review your pull requests" },
-  required_tools: ["github_review_comment"],
-  network_hosts: ["api.github.com"],
+  support_files: [],
 };
-const TEMPLATE_BARE = {
-  id: "hello",
-  name: "Hello bot",
-  description: "Says hi.",
-  required_credentials: [],
+const TEMPLATE_TENANT: FleetTemplateGalleryEntry = {
+  id: "01932d4e-7c10-7a3a-9f00-000000000001",
+  name: "Internal ops",
+  description: "Tenant-authored ops fleet.",
+  visibility: "tenant",
+  source_ref: "tenant/01932d4e",
+  requirements: { credentials: [], tools: [], network_hosts: [], trigger_present: true },
   required_credentials_reasons: {},
-  required_tools: [],
-  network_hosts: [],
+  support_files: [],
 };
 
 function stubStream(installStep: string | null) {
@@ -66,7 +74,7 @@ function stubStream(installStep: string | null) {
 }
 
 type FlowProps = {
-  templates?: typeof TEMPLATE_GH[];
+  templates?: FleetTemplateGalleryEntry[];
   presentCredentialNames?: string[] | null;
   initialTemplateId?: string;
 };
@@ -75,7 +83,7 @@ function renderFlow(props: FlowProps = {}) {
   return render(
     React.createElement(InstallFleet, {
       workspaceId: "ws_1",
-      templates: props.templates ?? [TEMPLATE_GH, TEMPLATE_BARE],
+      templates: props.templates ?? [TEMPLATE_GH, TEMPLATE_TENANT],
       presentCredentialNames:
         props.presentCredentialNames === undefined ? [] : props.presentCredentialNames,
       initialTemplateId: props.initialTemplateId,
@@ -89,6 +97,19 @@ function useTemplateButton(index: number): HTMLElement {
   return button;
 }
 
+// Drive the confirm step that sits between picking a template and the live
+// states: optionally type a fleet-name override, then click Install.
+async function confirmInstall(
+  user: ReturnType<typeof userEvent.setup>,
+  name?: string,
+): Promise<void> {
+  await waitFor(() => expect(screen.getByRole("button", { name: "Install" })).toBeTruthy());
+  if (name !== undefined) {
+    await user.type(screen.getByLabelText("Fleet name"), name);
+  }
+  await user.click(screen.getByRole("button", { name: "Install" }));
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   resetCommonMocks();
@@ -96,20 +117,15 @@ beforeEach(() => {
 });
 afterEach(() => cleanup());
 
-// ── 9.1: the three install paths render minimally ───────────────────────────
+// ── 9.1: the template gallery renders ───────────────────────────────────────
 
-describe("test_install_three_paths_render", () => {
-  it("renders the template grid, the owner/repo import, and the paste-SKILL.md link", () => {
+describe("test_install_template_gallery_render", () => {
+  it("renders the template grid with one Use template button per template", () => {
     renderFlow();
     expect(screen.getByText("Start from a template")).toBeTruthy();
     expect(screen.getByText("GitHub PR reviewer")).toBeTruthy();
     expect(screen.getByText("needs: github")).toBeTruthy();
     expect(screen.getAllByRole("button", { name: "Use template" }).length).toBe(2);
-    // owner/repo import path
-    expect(screen.getByLabelText("GitHub owner/repo")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Import from GitHub" })).toBeTruthy();
-    // paste a quiet tertiary link
-    expect(screen.getByRole("button", { name: "Paste SKILL.md instead" })).toBeTruthy();
   });
 
   it("shows an empty state when no templates are available", () => {
@@ -118,104 +134,92 @@ describe("test_install_three_paths_render", () => {
   });
 });
 
-// ── 9.3: clicking a source proceeds INLINE to the states (no review page) ────
+// ── 9.3: picking a template proceeds INLINE to the states (no review page) ───
 
 describe("test_install_inline_state_driven", () => {
-  it("Use template proceeds inline to the states and fires create with the template source", async () => {
-    importBundleActionMock.mockResolvedValue({ ok: true, data: { bundle_id: "bnd_1" } });
+  it("Use template → confirm → fires create with the platform body", async () => {
     installFleetActionMock.mockResolvedValue({ ok: true, data: { fleet_id: "zom_new" } });
     const user = userEvent.setup({ delay: null });
     renderFlow({ presentCredentialNames: ["github"] });
 
     await user.click(useTemplateButton(0));
+    await confirmInstall(user);
 
     // Inline states — NOT the retired review page.
     await waitFor(() => expect(screen.getByLabelText("Install states")).toBeTruthy());
     expect(screen.queryByText("Review what it needs")).toBeNull();
     await waitFor(() =>
-      expect(installFleetActionMock).toHaveBeenCalledWith("ws_1", { bundle_id: "bnd_1" }),
+      expect(installFleetActionMock).toHaveBeenCalledWith("ws_1", {
+        platform_template_id: "github-pr-reviewer",
+      }),
     );
-    expect(importBundleActionMock).toHaveBeenCalledWith("ws_1", {
-      source_kind: "template",
-      source_ref: "github-pr-reviewer",
-    });
   });
 
-  it("Import from GitHub proceeds inline to the states and creates from the snapshot bundle_id", async () => {
-    importBundleActionMock
-      .mockResolvedValueOnce({
-        ok: true,
-        data: {
-          bundle_id: "bnd_gh",
-          name: "acme/pr-reviewer",
-          requirements: { credentials: [], tools: [], network_hosts: [], support_files: [], trigger_present: true },
-        },
-      });
-    installFleetActionMock.mockResolvedValue({ ok: true, data: { fleet_id: "zom_gh" } });
+  it("a tenant template installs with the tenant body", async () => {
+    installFleetActionMock.mockResolvedValue({ ok: true, data: { fleet_id: "zom_tenant" } });
     const user = userEvent.setup({ delay: null });
-    renderFlow();
+    renderFlow({ presentCredentialNames: [] });
 
-    await user.type(screen.getByLabelText("GitHub owner/repo"), "acme/pr-reviewer");
-    await user.click(screen.getByRole("button", { name: "Import from GitHub" }));
+    await user.click(useTemplateButton(1)); // TEMPLATE_TENANT
+    await confirmInstall(user);
     await waitFor(() => expect(screen.getByLabelText("Install states")).toBeTruthy());
-    expect(screen.queryByText("Review what it needs")).toBeNull();
     await waitFor(() =>
-      expect(installFleetActionMock).toHaveBeenCalledWith("ws_1", { bundle_id: "bnd_gh" }),
+      expect(installFleetActionMock).toHaveBeenCalledWith("ws_1", {
+        tenant_template_id: "01932d4e-7c10-7a3a-9f00-000000000001",
+      }),
     );
   });
 
-  it("Paste-create validates then proceeds inline, posting the pasted source markdown", async () => {
-    installFleetActionMock.mockResolvedValue({ ok: true, data: { fleet_id: "zom_paste" } });
+  it("an operator-supplied name overrides the SKILL.md name in the create body", async () => {
+    installFleetActionMock.mockResolvedValue({ ok: true, data: { fleet_id: "zom_named" } });
     const user = userEvent.setup({ delay: null });
-    renderFlow();
+    renderFlow({ presentCredentialNames: ["github"] });
 
-    await user.click(screen.getByRole("button", { name: "Paste SKILL.md instead" }));
-    await user.type(
-      screen.getByLabelText(/SKILL\.md body/i),
-      "---\nname: pasted\ndescription: d\nversion: 0.1.0\n---\n# Pasted\n",
-    );
-    await user.click(screen.getByRole("button", { name: /create fleet/i }));
-
-    await waitFor(() => expect(screen.getByLabelText("Install states")).toBeTruthy());
-    await waitFor(() => expect(installFleetActionMock).toHaveBeenCalled());
-    const body = installFleetActionMock.mock.calls[0]![1] as { source_markdown?: string };
-    expect(body.source_markdown).toContain("Pasted");
-    // Paste posts markdown directly — never a bundle_id.
-    expect(importBundleActionMock).not.toHaveBeenCalled();
-  });
-
-  it("a non-owner/repo import ref is rejected without a server call (stays on the selector)", async () => {
-    const user = userEvent.setup({ delay: null });
-    renderFlow();
-    await user.type(screen.getByLabelText("GitHub owner/repo"), "notaslug");
-    await user.click(screen.getByRole("button", { name: "Import from GitHub" }));
+    await user.click(useTemplateButton(0));
+    await confirmInstall(user, "pr-reviewer-frontend");
     await waitFor(() =>
-      expect(screen.getByText("Enter a GitHub repository as owner/repo.")).toBeTruthy(),
+      expect(installFleetActionMock).toHaveBeenCalledWith("ws_1", {
+        platform_template_id: "github-pr-reviewer",
+        name: "pr-reviewer-frontend",
+      }),
     );
-    expect(importBundleActionMock).not.toHaveBeenCalled();
-    expect(screen.queryByLabelText("Install states")).toBeNull();
   });
 
-  it("a GitHub import failure stays on the selector with the error", async () => {
-    importBundleActionMock.mockResolvedValue({
-      ok: false,
-      error: "repo not found",
-      errorCode: "UZ-BUNDLE-004",
-      status: 404,
-    });
+  it("an operator-supplied name overrides the SKILL.md name for a tenant template too", async () => {
+    installFleetActionMock.mockResolvedValue({ ok: true, data: { fleet_id: "zom_tenant_named" } });
     const user = userEvent.setup({ delay: null });
-    renderFlow();
-    await user.type(screen.getByLabelText("GitHub owner/repo"), "acme/missing");
-    await user.click(screen.getByRole("button", { name: "Import from GitHub" }));
-    await waitFor(() => expect(importBundleActionMock).toHaveBeenCalled());
-    expect(screen.getByText("Start from a template")).toBeTruthy();
-    expect(screen.queryByLabelText("Install states")).toBeNull();
+    renderFlow({ presentCredentialNames: [] });
+
+    await user.click(useTemplateButton(1)); // TEMPLATE_TENANT — installs by UUID
+    await confirmInstall(user, "ops-frontend");
+    await waitFor(() =>
+      expect(installFleetActionMock).toHaveBeenCalledWith("ws_1", {
+        tenant_template_id: "01932d4e-7c10-7a3a-9f00-000000000001",
+        name: "ops-frontend",
+      }),
+    );
   });
 
-  it("preselects a template from a ?template= deep link and proceeds to its states", async () => {
-    importBundleActionMock.mockResolvedValue({ ok: true, data: { bundle_id: "bnd_dl" } });
+  it("the confirm step renders no description paragraph when the template has none", async () => {
     installFleetActionMock.mockReturnValue(new Promise(() => {}));
+    const user = userEvent.setup({ delay: null });
+    // A template whose SKILL.md carried no `description:` → the confirm panel
+    // shows the name but skips the description line (the `: null` branch).
+    const noDesc = { ...TEMPLATE_GH, id: "no-desc", name: "No description template", description: "" };
+    renderFlow({ templates: [noDesc], presentCredentialNames: ["github"] });
+
+    await user.click(useTemplateButton(0));
+    // Reaching the confirm step (Install button) renders InstallConfirm with a
+    // falsy description; the panel still surfaces the template name.
+    await waitFor(() => expect(screen.getByRole("button", { name: "Install" })).toBeTruthy());
+    expect(screen.getByText("No description template")).toBeTruthy();
+  });
+
+  it("preselects a template from a ?template= deep link and lands on the confirm step", async () => {
+    installFleetActionMock.mockReturnValue(new Promise(() => {}));
+    const user = userEvent.setup({ delay: null });
     renderFlow({ initialTemplateId: "github-pr-reviewer", presentCredentialNames: ["github"] });
+    await confirmInstall(user);
     await waitFor(() => expect(screen.getByLabelText("Install states")).toBeTruthy());
   });
 
@@ -224,36 +228,12 @@ describe("test_install_inline_state_driven", () => {
     expect(screen.getByText("Start from a template")).toBeTruthy();
   });
 
-  it("the import-pending arm disables the button with a label", () => {
-    render(
-      React.createElement(InstallSourceSelector, {
-        templates: [],
-        onUseTemplate: vi.fn(),
-        onImport: vi.fn(),
-        importPending: true,
-        importError: null,
-        onPaste: vi.fn(),
-      }),
-    );
-    const button = screen.getByRole("button", { name: "Importing…" }) as HTMLButtonElement;
-    expect(button.disabled).toBe(true);
-  });
-
-  it("Back from the paste input returns to the selector", async () => {
-    const user = userEvent.setup({ delay: null });
-    renderFlow();
-    await user.click(screen.getByRole("button", { name: "Paste SKILL.md instead" }));
-    expect(screen.getByText("SKILL.md body")).toBeTruthy();
-    await user.click(screen.getByRole("button", { name: /Back to templates/ }));
-    expect(screen.getByText("Start from a template")).toBeTruthy();
-  });
-
   it("Back from the states returns to the selector", async () => {
-    importBundleActionMock.mockResolvedValue({ ok: true, data: { bundle_id: "bnd_1" } });
     installFleetActionMock.mockReturnValue(new Promise(() => {}));
     const user = userEvent.setup({ delay: null });
     renderFlow({ presentCredentialNames: ["github"] });
     await user.click(useTemplateButton(0));
+    await confirmInstall(user);
     await waitFor(() => expect(screen.getByLabelText("Install states")).toBeTruthy());
     await user.click(screen.getByRole("button", { name: /Back to templates/ }));
     expect(screen.getByText("Start from a template")).toBeTruthy();

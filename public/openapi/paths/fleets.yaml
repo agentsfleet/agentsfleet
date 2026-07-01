@@ -189,36 +189,33 @@
         format: uuid
     requestBody:
       required: true
+      description: >-
+        Install a fleet from exactly one onboarded template tier (M103 §4): a
+        platform template (slug id) or this workspace's tenant template (UUIDv7).
+        The server reads SKILL/TRIGGER + content identity from the template row;
+        raw-SKILL paste and the legacy per-workspace bundle_id are not accepted.
       content:
         application/json:
           schema:
             type: object
             anyOf:
             - required:
-              - source_markdown
+              - platform_template_id
             - required:
-              - bundle_id
+              - tenant_template_id
             properties:
-              bundle_id:
+              platform_template_id:
+                type: string
+                description: Slug id of a platform catalog template to install.
+              tenant_template_id:
                 type: string
                 format: uuid
-                description: Optional Fleet Bundle Universally Unique Identifier (UUID). When present, the install
-                  uses the stored bundle snapshot through this same fleets endpoint.
-              trigger_markdown:
-                type: string
-                maxLength: 65536
-                description: Optional TRIGGER.md raw bytes — frontmatter (`name`, `trigger`, `tools`,
-                  `credentials`, `network`, `budget`, `gates`) between `---` delimiters. When omitted, the
-                  server derives a default API trigger from SKILL.md and persists the generated `config_json`.
-              source_markdown:
-                type: string
-                maxLength: 65536
-                description: SKILL.md raw bytes — the fleet instructions, stored as-is.
+                description: UUIDv7 of one of this workspace's tenant templates to install.
               name:
                 type: string
                 maxLength: 64
                 description: Optional operator-supplied fleet name (slug-safe, lowercase/digits/hyphen,
-                  max 64 chars). Overrides the SKILL.md-derived name so one bundle can back multiple
+                  max 64 chars). Overrides the SKILL.md-derived name so one template can back multiple
                   fleets in a workspace, each with its own name + webhooks. Absent ⇒ the SKILL.md `name:`.
     responses:
       '201':

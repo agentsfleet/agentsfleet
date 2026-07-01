@@ -43,6 +43,7 @@ NOUN_FINAL_SEGMENT_ALLOW: set[str] = {
     "credentials",       # core.credentials
     "fleets",           # core.fleets
     "bundles",           # Fleet Bundle catalog/import nested under /fleets by product vocabulary
+    "fleet-templates",   # two-tier Fleet template catalog onboarding (M103)
     "snapshots",         # immutable workspace-owned Fleet Bundle source copies
     "workspaces",        # core.workspaces
     "runners",           # core runner fleet — enrollment (POST /v1/runners) + operator plane (GET /v1/fleets/runners)

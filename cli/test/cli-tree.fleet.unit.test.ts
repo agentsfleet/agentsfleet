@@ -11,13 +11,6 @@ import {
   dispatch,
 } from "./helpers-cli-tree.ts";
 
-test("install accepts --from <path>", async () => {
-  const { handlers, calls } = makeSpyTree();
-  await dispatch(["install", "--from", "/tmp/skill"], handlers);
-  expect(calls[0]?.name).toBe("fleet.install");
-  expect(calls[0]?.frame.parsed.options.from).toBe("/tmp/skill");
-});
-
 test("install accepts --template <id> and --name <name>", async () => {
   const { handlers, calls } = makeSpyTree();
   await dispatch(

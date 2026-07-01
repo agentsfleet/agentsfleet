@@ -148,26 +148,14 @@ test "match resolves workspace-scoped fleet collection" {
     });
 }
 
-test "match resolves Fleet Bundle routes under fleets" {
-    const ws_id = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11";
-    const bundle_id = "019abc12-8d3a-7f13-8abc-2b3e1e0a6f11";
-
+test "match resolves the platform catalog and 404s the removed snapshot routes (M103)" {
+    // The platform catalog gallery stays.
     try std.testing.expectEqual(Route.fleet_bundles, match("/v1/fleets/bundles", .GET).?);
-    try std.testing.expectEqualStrings(ws_id, switch (match("/v1/workspaces/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11/fleets/bundles/snapshots", .POST).?) {
-        .workspace_fleet_bundles => |id| id,
-        else => return error.TestExpectedEqual,
-    });
-    switch (match("/v1/workspaces/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11/fleets/bundles/snapshots/019abc12-8d3a-7f13-8abc-2b3e1e0a6f11", .GET).?) {
-        .workspace_fleet_bundle => |route| {
-            try std.testing.expectEqualStrings(ws_id, route.workspace_id);
-            try std.testing.expectEqualStrings(bundle_id, route.bundle_id);
-        },
-        else => return error.TestExpectedEqual,
-    }
-
+    // The legacy per-workspace bundle import + detail endpoints are removed —
+    // install now goes through the two template tiers (M103 §4).
+    try std.testing.expect(match("/v1/workspaces/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11/fleets/bundles/snapshots", .POST) == null);
+    try std.testing.expect(match("/v1/workspaces/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11/fleets/bundles/snapshots/019abc12-8d3a-7f13-8abc-2b3e1e0a6f11", .GET) == null);
     try std.testing.expect(match("/v1/fleet-bundles", .GET) == null);
-    try std.testing.expect(match("/v1/workspaces/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11/fleet-bundles", .POST) == null);
-    try std.testing.expect(match("/v1/workspaces/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11/fleets/bundles", .POST) == null);
 }
 
 test "match: flat /v1/fleets/ is removed (pre-v2.0 bare 404 per RULE EP4)" {

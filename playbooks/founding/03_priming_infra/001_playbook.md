@@ -355,7 +355,7 @@ Authorization is scope-based: a request is allowed only if `principal.scopes` (p
 
 - **Owner at signup** — the `user.created` Clerk webhook handler (auth-plane event `/v1/auth/identity-events/clerk`) writes the **`.tenant`** default grant's scope list into the new user's `public_metadata.scopes` (alongside `tenant_id`). It carries every tenant capability (`fleet:admin`, `credential:write`, `apikey:admin`, `workspace:admin`, `template:write`, …), so a fresh owner can create workspaces and fleets immediately — **no manual Clerk role flip**, the historical `user→operator` auto-promotion is gone.
 - **Collaborator (manual)** — write a read-only scope set onto `public_metadata.scopes`: `fleet:read`, `fleetkey:read`, `grant:read`, `connector:read`, `billing:read`, `approval:read`. No code grant; a collaborator who must act gets `fleet:write` etc. added explicitly.
-- **Platform operator (manual)** — write `runner:enroll`, `runner:write`, `stream:read`, `model:admin`, `platform-key:admin`, `template:admin`, `workspace:any` onto the agentsfleet operator user's `public_metadata.scopes` — the one place a human edits scopes, replacing the old `platform_admin` boolean flip.
+- **Platform operator (manual)** — write `runner:enroll`, `runner:write`, `stream:read`, `model:admin`, `platform-key:admin`, `platform-template:write`, `workspace:any` onto the agentsfleet operator user's `public_metadata.scopes` — the one place a human edits scopes, replacing the old `platform_admin` boolean flip.
 
 The scope strings in `public_metadata.scopes` MUST match the catalogue in `scopes.zig` verbatim (RULE UFS); an unknown string is ignored (grants nothing, deny-by-absence).
 
