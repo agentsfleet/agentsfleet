@@ -502,7 +502,7 @@ installed runtime. Runner remains the infrastructure vocabulary.
    > Forward-looking (M106 — pending): a fifth producer, the Slack-resident
    > bot, lands an actor=slack:<user> event on fleet:{channel_fleet_id}:events
    > via the webhook-producer XADD shape (signature-authed, no principal —
-   > webhooks/fleet.zig) after POST /v1/integrations/slack/events resolves
+   > webhooks/fleet.zig) after POST /v1/connectors/slack/events resolves
    > team_id → workspace (core.connector_installs) and (team_id, channel_id) →
    > channel-resident fleet (core.connector_channels). On first mention the
    > fleet is materialized through the existing fleet-create path

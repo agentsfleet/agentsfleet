@@ -19,7 +19,7 @@ sequenceDiagram
 
   Note over Lead,Runner: one-time — admin connects Slack (OAuth) → vault handle + core.connector_installs 🔨
   Lead->>Slack: @agentsfleet what's our prod called? (thread A)
-  Slack->>API: POST /v1/integrations/slack/events (v0 HMAC) 🔨
+  Slack->>API: POST /v1/connectors/slack/events (v0 HMAC) 🔨
   API->>PG: resolve team→workspace; materialize channel fleet via innerCreateFleet (default skill.md) 🔨
   API->>API: XADD fleet:{channel_fleet_id}:events actor=slack:<user> (webhook-producer shape) ✅ reused
   Runner->>API: lease → run; GET /me/memory/{channel_fleet_id} (empty) ✅

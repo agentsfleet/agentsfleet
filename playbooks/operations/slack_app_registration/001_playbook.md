@@ -3,9 +3,9 @@
 **Milestone:** M106
 **Workstream:** 001 (§6.1 deliverable)
 **Updated:** Jun 30, 2026
-**Prerequisite:** The M106 ingress (`POST /v1/integrations/slack/events`, `/oauth/callback`) is **deployed and reachable** at `$API_BASE` — Slack verifies the events Request URL with a live `url_verification` challenge, so the handler must answer before this playbook can complete. `op` CLI authenticated; the `agentsfleet-admin` tenant API key in vault (see `operations/admin_bootstrap/001_playbook.md`). Slack workspace where you can create apps.
+**Prerequisite:** The M106 ingress (`POST /v1/connectors/slack/events`, `GET /v1/connectors/slack/callback`) is **deployed and reachable** at `$API_BASE` — Slack verifies the events Request URL with a live `url_verification` challenge, so the handler must answer before this playbook can complete. `op` CLI authenticated; the `agentsfleet-admin` tenant API key in vault (see `operations/admin_bootstrap/001_playbook.md`). Slack workspace where you can create apps.
 
-Registers **one** multi-tenant Slack app and stores its **platform** credentials (`client_id`, `client_secret`, `signing_secret`) in the `agentsfleet-admin` workspace vault, resolved daemon-side via `crypto_store.load` — the same model as the platform LLM key (admin_bootstrap §7) and the GitHub App private key (`github_app_registration`). This is the Stage-0 one-time setup; the per-customer bot token (`xoxb`) is minted later at OAuth-install time and stored in **the customer's** workspace vault under `slack:bot` — it is **not** handled here.
+Registers **one** multi-tenant Slack app and stores its **platform** credentials (`client_id`, `client_secret`, `signing_secret`) in the `agentsfleet-admin` workspace vault, resolved daemon-side via `crypto_store.load` — the same model as the platform LLM key (admin_bootstrap §7) and the GitHub App private key (`github_app_registration`). This is the Stage-0 one-time setup; the per-customer bot token (`xoxb`) is minted later at OAuth-install time and stored in **the customer's** workspace vault under the `fleet:slack` handle — it is **not** handled here.
 
 > **Run once per environment**, when M106 has shipped. Re-running is idempotent on the vault write (§6); the Slack app itself is edited in place at `api.slack.com/apps`.
 
@@ -62,7 +62,7 @@ features:
     always_online: true
 oauth_config:
   redirect_urls:
-    - https://api.agentsfleet.net/v1/integrations/slack/oauth/callback
+    - https://api.agentsfleet.net/v1/connectors/slack/callback
   scopes:
     bot:
       - app_mentions:read   # hear @agentsfleet
@@ -72,7 +72,7 @@ oauth_config:
       - users:read          # resolve the mentioning user
 settings:
   event_subscriptions:
-    request_url: https://api.agentsfleet.net/v1/integrations/slack/events
+    request_url: https://api.agentsfleet.net/v1/connectors/slack/events
     bot_events:
       - app_mention
   org_deploy_enabled: false
@@ -136,7 +136,7 @@ jq -n \
 
 ### Acceptance
 
-`agentsfleet credential set` exits 0. No secret appears in shell history, process argv, or output.
+`agentsfleet credential add` exits 0. No secret appears in shell history, process argv, or output.
 
 ---
 
@@ -161,4 +161,4 @@ AGENTSFLEET_API_KEY="$ADMIN_KEY" agentsfleet credential show slack-app --json | 
 
 1. `agentsfleet credential delete slack-app` (admin key) to drop the platform secret.
 2. At `api.slack.com/apps` → the app → **Basic Information → Delete App** (or rotate `client_secret`/`signing_secret` and re-run §5).
-3. Existing per-customer installs (`core.connector_installs` rows + the `(workspace_id,'slack')` vault handles) are unaffected by an app-secret rotation; a full app delete invalidates them — re-install per customer afterward.
+3. Existing per-customer installs (`core.connector_installs` rows + the per-workspace `fleet:slack` vault handles) are unaffected by an app-secret rotation; a full app delete invalidates them — re-install per customer afterward.
