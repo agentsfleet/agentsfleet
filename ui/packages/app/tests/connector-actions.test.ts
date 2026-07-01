@@ -1,26 +1,20 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-// connector-actions is a thin server-action wrapper: it forwards the workspace
-// id through withToken to the connectors API client and returns the install URL
-// the browser redirects to. No token or secret ever passes through the action —
-// the real connect/callback security boundary is the backend, proven by its own
-// suite. Mock both module boundaries so only the action's delegation is tested.
-const { withTokenMock, startGithubConnectMock, startSlackConnectMock } = vi.hoisted(() => ({
+// connector-actions is a thin server-action wrapper: it forwards the provider +
+// workspace id through withToken to the connectors API client and returns the
+// authorize/install URL the browser redirects to. No token or secret ever passes
+// through the action — the real connect/callback security boundary is the backend,
+// proven by its own suite. Mock both module boundaries so only the action's
+// provider-parameterised delegation is tested.
+const { withTokenMock, startConnectMock } = vi.hoisted(() => ({
   withTokenMock: vi.fn(),
-  startGithubConnectMock: vi.fn(),
-  startSlackConnectMock: vi.fn(),
+  startConnectMock: vi.fn(),
 }));
 
 vi.mock("@/lib/actions/with-token", () => ({ withToken: withTokenMock }));
-vi.mock("@/lib/api/connectors", () => ({
-  startGithubConnect: startGithubConnectMock,
-  startSlackConnect: startSlackConnectMock,
-}));
+vi.mock("@/lib/api/connectors", () => ({ startConnect: startConnectMock }));
 
-import {
-  startGithubConnectAction,
-  startSlackConnectAction,
-} from "@/app/(dashboard)/integrations/connector-actions";
+import { startConnectAction } from "@/app/(dashboard)/integrations/connector-actions";
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -36,43 +30,43 @@ beforeEach(() => {
 });
 afterEach(() => vi.resetAllMocks());
 
-describe("credentials connector server actions", () => {
-  it("startGithubConnectAction forwards the workspace id through withToken to startGithubConnect", async () => {
+describe("connector connect server action", () => {
+  it("forwards the GitHub provider + workspace through withToken to startConnect", async () => {
     const install = { install_url: "https://github.com/apps/agentsfleet/installations/new?state=signed" };
-    startGithubConnectMock.mockResolvedValue(install);
+    startConnectMock.mockResolvedValue(install);
 
-    const result = await startGithubConnectAction("ws_1");
+    const result = await startConnectAction("github", "ws_1");
 
     expect(result).toEqual({ ok: true, data: install });
     expect(withTokenMock).toHaveBeenCalledTimes(1);
     // The token is injected by withToken, not the caller — the action only knows
-    // the workspace id.
-    expect(startGithubConnectMock).toHaveBeenCalledWith("ws_1", "tok");
+    // the provider + workspace id.
+    expect(startConnectMock).toHaveBeenCalledWith("github", "ws_1", "tok");
   });
 
   it("surfaces a connectors-client failure as { ok: false } (degraded closed, no throw)", async () => {
-    startGithubConnectMock.mockRejectedValue(new Error("UZ-CONN-001"));
+    startConnectMock.mockRejectedValue(new Error("UZ-CONN-001"));
 
-    const result = await startGithubConnectAction("ws_1");
+    const result = await startConnectAction("github", "ws_1");
 
     expect(result).toEqual({ ok: false, error: "UZ-CONN-001" });
   });
 
-  it("startSlackConnectAction forwards the workspace id through withToken to startSlackConnect", async () => {
+  it("forwards the Slack provider + workspace through withToken to startConnect", async () => {
     const install = { install_url: "https://slack.com/oauth/v2/authorize?state=signed" };
-    startSlackConnectMock.mockResolvedValue(install);
+    startConnectMock.mockResolvedValue(install);
 
-    const result = await startSlackConnectAction("ws_1");
+    const result = await startConnectAction("slack", "ws_1");
 
     expect(result).toEqual({ ok: true, data: install });
     expect(withTokenMock).toHaveBeenCalledTimes(1);
-    expect(startSlackConnectMock).toHaveBeenCalledWith("ws_1", "tok");
+    expect(startConnectMock).toHaveBeenCalledWith("slack", "ws_1", "tok");
   });
 
   it("surfaces a Slack connect failure as { ok: false } (degraded closed, no throw)", async () => {
-    startSlackConnectMock.mockRejectedValue(new Error("UZ-SLK-021"));
+    startConnectMock.mockRejectedValue(new Error("UZ-SLK-021"));
 
-    const result = await startSlackConnectAction("ws_1");
+    const result = await startConnectAction("slack", "ws_1");
 
     expect(result).toEqual({ ok: false, error: "UZ-SLK-021" });
   });

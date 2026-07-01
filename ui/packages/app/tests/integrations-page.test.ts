@@ -22,8 +22,7 @@ vi.mock("@/lib/workspace", () => ({
 }));
 vi.mock("@/lib/api/credentials", () => ({ listCredentials: vi.fn() }));
 vi.mock("@/lib/api/connectors", () => ({
-  getGithubConnector: vi.fn(),
-  getSlackConnector: vi.fn(),
+  getConnector: vi.fn(),
   CONNECTOR_STATUS: {
     connected: "connected",
     reconnectRequired: "reconnect_required",
@@ -61,7 +60,18 @@ vi.mock("lucide-react", () => ({
 
 import { withWorkspaceScope } from "@/lib/workspace";
 import { listCredentials } from "@/lib/api/credentials";
-import { getGithubConnector, getSlackConnector, CONNECTOR_STATUS } from "@/lib/api/connectors";
+import { getConnector, CONNECTOR_STATUS } from "@/lib/api/connectors";
+
+// The page reads both connectors through one getConnector(provider, …); dispatch
+// the stub on the provider argument so each row's status/team (and its
+// fail-closed rejection path) is set independently.
+type StubResult = { status: string; team?: string | null } | Error;
+function stubConnectors(github: StubResult, slack: StubResult) {
+  vi.mocked(getConnector).mockImplementation(((provider: string) => {
+    const r = provider === "github" ? github : slack;
+    return r instanceof Error ? Promise.reject(r) : Promise.resolve(r);
+  }) as unknown as typeof getConnector);
+}
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -69,11 +79,11 @@ beforeEach(() => {
   vi.mocked(withWorkspaceScope).mockImplementation(
     async (_token: string, fn: (workspaceId: string) => Promise<unknown>) => fn("ws_1"),
   );
-  // Default: Slack not connected. Individual tests override as needed.
-  vi.mocked(getSlackConnector).mockResolvedValue({
-    status: CONNECTOR_STATUS.notConnected,
-    team: null,
-  });
+  // Default: both connectors not connected. Individual tests override as needed.
+  stubConnectors(
+    { status: CONNECTOR_STATUS.notConnected },
+    { status: CONNECTOR_STATUS.notConnected, team: null },
+  );
 });
 afterEach(() => vi.clearAllMocks());
 
@@ -82,7 +92,10 @@ describe("Integrations page", () => {
     vi.mocked(listCredentials).mockResolvedValue({
       credentials: [{ kind: "custom_secret", name: "SLACK_BOT_TOKEN", created_at: 0 }],
     });
-    vi.mocked(getGithubConnector).mockResolvedValue({ status: CONNECTOR_STATUS.connected });
+    stubConnectors(
+      { status: CONNECTOR_STATUS.connected },
+      { status: CONNECTOR_STATUS.notConnected, team: null },
+    );
 
     const { default: Page } = await import("../app/(dashboard)/integrations/page");
     const markup = renderToStaticMarkup(await Page());
@@ -95,11 +108,10 @@ describe("Integrations page", () => {
 
   it("wires the Slack connector status + team through to the connectors component", async () => {
     vi.mocked(listCredentials).mockResolvedValue({ credentials: [] });
-    vi.mocked(getGithubConnector).mockResolvedValue({ status: CONNECTOR_STATUS.notConnected });
-    vi.mocked(getSlackConnector).mockResolvedValue({
-      status: CONNECTOR_STATUS.connected,
-      team: "Acme Corp",
-    });
+    stubConnectors(
+      { status: CONNECTOR_STATUS.notConnected },
+      { status: CONNECTOR_STATUS.connected, team: "Acme Corp" },
+    );
 
     const { default: Page } = await import("../app/(dashboard)/integrations/page");
     const markup = renderToStaticMarkup(await Page());
@@ -110,8 +122,10 @@ describe("Integrations page", () => {
 
   it("degrades the Slack connector to not-connected when the status read errors", async () => {
     vi.mocked(listCredentials).mockResolvedValue({ credentials: [] });
-    vi.mocked(getGithubConnector).mockResolvedValue({ status: CONNECTOR_STATUS.notConnected });
-    vi.mocked(getSlackConnector).mockRejectedValue(new Error("connector endpoint down"));
+    stubConnectors(
+      { status: CONNECTOR_STATUS.notConnected },
+      new Error("connector endpoint down"),
+    );
 
     const { default: Page } = await import("../app/(dashboard)/integrations/page");
     const markup = renderToStaticMarkup(await Page());
@@ -121,7 +135,10 @@ describe("Integrations page", () => {
 
   it("degrades the GitHub connector to not-connected when the status read errors", async () => {
     vi.mocked(listCredentials).mockResolvedValue({ credentials: [] });
-    vi.mocked(getGithubConnector).mockRejectedValue(new Error("connector endpoint down"));
+    stubConnectors(
+      new Error("connector endpoint down"),
+      { status: CONNECTOR_STATUS.notConnected, team: null },
+    );
 
     const { default: Page } = await import("../app/(dashboard)/integrations/page");
     const markup = renderToStaticMarkup(await Page());

@@ -10,7 +10,7 @@ import {
 import { LinkIcon } from "lucide-react";
 import { withWorkspaceScope, orFallback } from "@/lib/workspace";
 import { listCredentials } from "@/lib/api/credentials";
-import { getGithubConnector, getSlackConnector, CONNECTOR_STATUS } from "@/lib/api/connectors";
+import { getConnector, CONNECTOR_STATUS } from "@/lib/api/connectors";
 import IntegrationsConnectors from "./components/IntegrationsConnectors";
 
 export const dynamic = "force-dynamic";
@@ -30,10 +30,10 @@ export default async function IntegrationsPage() {
   const result = await withWorkspaceScope(token, async (workspaceId) => {
     const [credentialsResp, githubConnector, slackConnector] = await Promise.all([
       listCredentials(workspaceId, token).catch(orFallback({ credentials: [] })),
-      getGithubConnector(workspaceId, token).catch(() => ({
+      getConnector("github", workspaceId, token).catch(() => ({
         status: CONNECTOR_STATUS.notConnected,
       })),
-      getSlackConnector(workspaceId, token).catch(() => ({
+      getConnector("slack", workspaceId, token).catch(() => ({
         status: CONNECTOR_STATUS.notConnected,
         team: null,
       })),
