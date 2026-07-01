@@ -38,6 +38,13 @@ const RESIDENT_NAME = "slack-channel-t106evt-c106evt"; // "slack-channel-" ++ lo
 const USER_ID = "U777";
 const EVENTS_PATH = "/v1/connectors/slack/events";
 
+// Dim 3.2 concurrent-first-mention fixtures — a distinct (team, channel) from
+// the Dim 2.1 suite above so the two tests never contend for the same resident
+// fleet name under the parallel runner. Both mentions below target THIS channel.
+const TEAM_CC = "T106CC";
+const CHANNEL_CC = "C106CC";
+const RESIDENT_NAME_CC = "slack-channel-t106cc-c106cc"; // "slack-channel-" ++ lower(TEAM_CC) ++ "-" ++ lower(CHANNEL_CC)
+
 fn noopRegistry(_: *auth_mw.MiddlewareRegistry, _: *TestHarness) anyerror!void {}
 
 // ── Fixtures ─────────────────────────────────────────────────────────────────
@@ -257,4 +264,73 @@ test "integration: a bad signature is rejected 401 UZ-SLK-010 end-to-end (Dim 2.
     defer r.deinit();
     try r.expectStatus(.unauthorized);
     try r.expectErrorCode(ec.ERR_SLACK_SIG_INVALID);
+}
+
+// ── Dim 3.2 — concurrent first-mention converges on exactly one fleet ─────────
+
+/// One barrier-gated firing of a signed mention. Both worker threads spin on the
+/// shared gate and cross it together (Zig 0.16 dropped `ResetEvent.timedWait`, so
+/// an atomic-bool gate is the house barrier idiom — see
+/// patch_concurrent_integration_test.zig), maximizing the odds that both reach
+/// `channel_fleet.materialize` before either inserts its binding — i.e. that the
+/// race actually exercises the fleet-name-unique (23505) convergence path rather
+/// than the trivial "second mention just reads the binding" path. The invariant
+/// under test (one fleet + one binding) holds either way; the gate only sharpens
+/// which code path is covered. `status` is left 0 on any error so the test fails.
+const ConcurrentFirstMention = struct {
+    fn fire(h: *TestHarness, now_s: i64, body: []const u8, gate: *std.atomic.Value(bool), status: *u16) void {
+        while (!gate.load(.acquire)) std.atomic.spinLoopHint();
+        const r = postSigned(h, SIGNING_SECRET, now_s, body) catch return;
+        defer r.deinit();
+        status.* = r.status;
+    }
+};
+
+test "integration: two concurrent first-mentions converge on exactly one fleet + binding (Dim 3.2)" {
+    const alloc = testing.allocator;
+    const h = try startHarness(alloc);
+    defer h.deinit();
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+
+    test_fixtures.setTestEncryptionKey();
+    try test_fixtures.seedTenant(conn);
+    try test_fixtures.seedWorkspace(conn, ADMIN_WS);
+    try test_fixtures.seedWorkspace(conn, TARGET_WS);
+    // Pre-clean this channel's rows (fleet delete cascades its binding via the FK;
+    // the explicit binding + install deletes cover a never-materialized prior run).
+    _ = conn.exec("DELETE FROM core.connector_channels WHERE provider = $1 AND external_account_id = $2", .{ spec.PROVIDER, TEAM_CC }) catch |e| std.log.warn("cc preclean channels: {s}", .{@errorName(e)});
+    _ = conn.exec("DELETE FROM core.fleets WHERE workspace_id = $1::uuid AND name = $2", .{ TARGET_WS, RESIDENT_NAME_CC }) catch |e| std.log.warn("cc preclean fleet: {s}", .{@errorName(e)});
+    _ = conn.exec("DELETE FROM core.connector_installs WHERE provider = $1 AND external_account_id = $2", .{ spec.PROVIDER, TEAM_CC }) catch |e| std.log.warn("cc preclean install: {s}", .{@errorName(e)});
+    try seedSlackApp(alloc, conn);
+    try seedInstall(alloc, conn, TEAM_CC, TARGET_WS);
+    h.ctx.platform_admin_workspace_id = ADMIN_WS;
+    const now = common.clock.nowSeconds();
+
+    // Two distinct events (distinct event.ts → distinct dedup keys, both enqueue)
+    // racing to materialize the SAME channel's resident fleet.
+    const body1 = try mentionBody(alloc, TEAM_CC, CHANNEL_CC, "1700000001.000100");
+    defer alloc.free(body1);
+    const body2 = try mentionBody(alloc, TEAM_CC, CHANNEL_CC, "1700000001.000200");
+    defer alloc.free(body2);
+
+    var status: [2]u16 = .{ 0, 0 };
+    var gate = std.atomic.Value(bool).init(false);
+    var threads: [2]std.Thread = undefined;
+    threads[0] = try std.Thread.spawn(.{}, ConcurrentFirstMention.fire, .{ h, now, body1, &gate, &status[0] });
+    threads[1] = try std.Thread.spawn(.{}, ConcurrentFirstMention.fire, .{ h, now, body2, &gate, &status[1] });
+    gate.store(true, .release); // release both threads together
+    for (threads) |t| t.join();
+
+    // Both mentions are acked 200 — the race loser converges, it does not error.
+    try testing.expectEqual(@as(u16, 200), status[0]);
+    try testing.expectEqual(@as(u16, 200), status[1]);
+
+    // Invariant 6 (one resident fleet per channel under concurrency) + Invariant 1
+    // (one binding): the fleet-name unique constraint serializes the two inserts;
+    // the loser resolves the winner's fleet and the binding is ON CONFLICT DO NOTHING.
+    const fleet_count = try countRows(conn, "SELECT count(*) FROM core.fleets WHERE workspace_id = $1::uuid AND name = $2", .{ TARGET_WS, RESIDENT_NAME_CC });
+    try testing.expectEqual(@as(i64, 1), fleet_count);
+    const binding_count = try countRows(conn, "SELECT count(*) FROM core.connector_channels WHERE provider = $1 AND external_account_id = $2 AND external_channel_id = $3", .{ spec.PROVIDER, TEAM_CC, CHANNEL_CC });
+    try testing.expectEqual(@as(i64, 1), binding_count);
 }
