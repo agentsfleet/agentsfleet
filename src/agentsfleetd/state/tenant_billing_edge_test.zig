@@ -86,6 +86,7 @@ test "should succeed with zero balance when debit exactly covers the remaining c
     try uc1.seed(db_ctx.conn, WS_DEBIT_EXACT);
     defer uc1.teardown(db_ctx.conn, WS_DEBIT_EXACT);
 
+    base.resetBilling(db_ctx.conn);
     // Provision a known, small balance so the exact-drain boundary is precise.
     const balance: i64 = 1_000_000;
     try tenant_billing.provision(db_ctx.conn, uc1.TENANT_ID, balance, "test_exact");
@@ -109,6 +110,7 @@ test "should return CreditExhausted and leave balance unchanged when debit is on
     try uc1.seed(db_ctx.conn, WS_DEBIT_OVER);
     defer uc1.teardown(db_ctx.conn, WS_DEBIT_OVER);
 
+    base.resetBilling(db_ctx.conn);
     const balance: i64 = 1_000_000;
     try tenant_billing.provision(db_ctx.conn, uc1.TENANT_ID, balance, "test_over");
 

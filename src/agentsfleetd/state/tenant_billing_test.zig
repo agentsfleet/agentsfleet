@@ -46,6 +46,7 @@ test "provision inserts one row and replay is a no-op" {
     try uc1.seed(db_ctx.conn, uc1.WS_PROVISION);
     defer uc1.teardown(db_ctx.conn, uc1.WS_PROVISION);
 
+    base.resetBilling(db_ctx.conn);
     try tenant_billing.insertStarterGrant(db_ctx.conn, uc1.TENANT_ID);
     // Second call must be idempotent.
     try tenant_billing.insertStarterGrant(db_ctx.conn, uc1.TENANT_ID);
@@ -64,6 +65,7 @@ test "debit decrements atomically; 0-row UPDATE returns CreditExhausted" {
     try uc1.seed(db_ctx.conn, uc1.WS_DEDUCT);
     defer uc1.teardown(db_ctx.conn, uc1.WS_DEDUCT);
 
+    base.resetBilling(db_ctx.conn);
     try tenant_billing.insertStarterGrant(db_ctx.conn, uc1.TENANT_ID);
 
     // Debit a sample charge of 1M nanos ($0.001) and check the balance lands.
@@ -132,6 +134,7 @@ test "debit on an exhausted row auto-clears balance_exhausted_at on success" {
     try uc1.seed(db_ctx.conn, uc1.WS_DEDUCT);
     defer uc1.teardown(db_ctx.conn, uc1.WS_DEDUCT);
 
+    base.resetBilling(db_ctx.conn);
     try tenant_billing.insertStarterGrant(db_ctx.conn, uc1.TENANT_ID);
     _ = try tenant_billing.markExhausted(db_ctx.conn, uc1.TENANT_ID);
 
@@ -153,6 +156,7 @@ test "markExhausted: first call transitions, second call is a no-op" {
     try uc1.seed(db_ctx.conn, uc1.WS_DEDUCT);
     defer uc1.teardown(db_ctx.conn, uc1.WS_DEDUCT);
 
+    base.resetBilling(db_ctx.conn);
     try tenant_billing.insertStarterGrant(db_ctx.conn, uc1.TENANT_ID);
 
     // Fresh row: exhausted_at is NULL.
