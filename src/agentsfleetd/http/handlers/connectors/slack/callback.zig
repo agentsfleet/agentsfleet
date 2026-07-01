@@ -114,7 +114,12 @@ fn completeInstall(hx: hx_mod.Hx, workspace_id: []const u8, code: []const u8) In
     const redirect_uri = try joinUrl(hx.alloc, hx.ctx.api_url, CALLBACK_PATH);
     defer hx.alloc.free(redirect_uri);
 
-    const result = try oauth2.exchange(hx.alloc, hx.ctx.io, spec.SPEC, creds, code, redirect_uri);
+    // Effective spec: production uses the connector's real token endpoint; an
+    // integration test points `connector_oauth_token_endpoint_override` at a
+    // loopback fake-provider so the exchange never dials the real Slack API.
+    var eff_spec = spec.SPEC;
+    if (hx.ctx.connector_oauth_token_endpoint_override) |ep| eff_spec.token_endpoint = ep;
+    const result = try oauth2.exchange(hx.alloc, hx.ctx.io, eff_spec, creds, code, redirect_uri);
     defer hx.alloc.free(result.body);
     if (result.status != HTTP_OK) return error.ExchangeFailed;
 
@@ -168,7 +173,10 @@ fn insertInstall(
 }
 
 fn redirectToDashboard(hx: hx_mod.Hx) void {
-    const url = joinUrl(hx.alloc, hx.ctx.app_url, DEST_PATH) catch {
+    // The Location value must outlive the handler: httpz writes response headers
+    // AFTER the dispatcher's per-request arena (hx.alloc) is freed, so it lives
+    // on res.arena (owned until the response is written), not hx.alloc.
+    const url = joinUrl(hx.res.arena, hx.ctx.app_url, DEST_PATH) catch {
         hx.ok(.ok, .{ .status = "connected" }); // connection succeeded; redirect build is cosmetic
         return;
     };
