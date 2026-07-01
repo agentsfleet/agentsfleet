@@ -1,11 +1,11 @@
 import type { ReactNode } from "react";
 import { Badge, Card } from "@agentsfleet/design-system";
-import type { FleetTemplate } from "@/lib/types";
+import type { FleetTemplateGalleryEntry } from "@/lib/types";
 
 const NEEDS_PREFIX = "needs:";
 
 type Props = {
-  template: FleetTemplate;
+  template: FleetTemplateGalleryEntry;
   compact?: boolean;
   // The call-to-action slot — a link on the dashboard gallery
   // (/fleets/new?template=<id>) or an in-page "Use template" button on the
@@ -23,9 +23,9 @@ export function TemplateCard({ template, compact = false, action }: Props) {
         <h3 className="font-medium text-foreground">{template.name}</h3>
         <p className="text-body-sm leading-body-sm text-muted-foreground">{template.description}</p>
       </div>
-      {template.required_credentials.length > 0 ? (
+      {template.requirements.credentials.length > 0 ? (
         <div className="flex flex-wrap gap-1.5">
-          {template.required_credentials.map((name) => (
+          {template.requirements.credentials.map((name) => (
             <Badge key={name} variant="amber">
               {NEEDS_PREFIX} {name}
             </Badge>

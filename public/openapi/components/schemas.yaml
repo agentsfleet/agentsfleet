@@ -314,40 +314,132 @@ components:
             type: string
         trigger_present:
           type: boolean
-    FleetBundleDetail:
+    FleetTemplateOnboardRequest:
       type: object
       required:
-      - bundle_id
-      - name
       - source_kind
-      - source_ref
-      - validation_status
-      - content_hash
-      - snapshot_key
-      - requirements
-      - support_files
       properties:
-        bundle_id:
-          type: string
-          format: uuid
-        name:
-          type: string
         source_kind:
           type: string
+          description: >-
+            Where the template comes from. `github` and `template` are fetched
+            and validated server-side; `upload` carries the SKILL.md (and optional
+            TRIGGER.md) Markdown inline for a skill-only template.
           enum:
           - template
           - upload
           - github
         source_ref:
           type: string
-        validation_status:
+          maxLength: 512
+          description: >-
+            Required for `github` (an `owner/repo` locator resolved at the default
+            branch) and `template` (a first-party template id).
+        skill_markdown:
           type: string
+          maxLength: 204800
+          description: Raw SKILL.md bytes. Required for `upload`; ignored for fetched sources.
+        trigger_markdown:
+          type: string
+          maxLength: 204800
+          description: Optional raw TRIGGER.md bytes for `upload`. Ignored for fetched sources.
+    FleetTemplateGalleryEntry:
+      type: object
+      description: >-
+        One gallery row — a platform or tenant Fleet template. Carries identity,
+        description, source, derived requirements, per-credential reason copy, and
+        support-file summaries; never an object-store key or support-file content.
+      required:
+      - id
+      - name
+      - description
+      - visibility
+      - source_ref
+      - requirements
+      - required_credentials_reasons
+      - support_files
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+          description: >-
+            The template's SKILL.md description, rendered on the gallery card.
+            Platform rows carry their curated copy; tenant rows carry the
+            description derived from the onboarded SKILL frontmatter.
+        visibility:
+          type: string
+          description: The catalog tier this template belongs to.
+          enum:
+          - platform
+          - tenant
+        source_ref:
+          type: string
+        requirements:
+          type: object
+          required:
+          - credentials
+          - tools
+          - network_hosts
+          - trigger_present
+          properties:
+            credentials:
+              type: array
+              items:
+                type: string
+            tools:
+              type: array
+              items:
+                type: string
+            network_hosts:
+              type: array
+              items:
+                type: string
+            trigger_present:
+              type: boolean
+        required_credentials_reasons:
+          type: object
+          description: >-
+            Display-only {credential_name: reason} map driving the install gate's
+            purpose copy. Platform rows surface their curated reasons; tenant rows
+            surface an empty object (the importer derives no per-credential copy).
+          additionalProperties:
+            type: string
+        support_files:
+          type: array
+          items:
+            $ref: '#/components/schemas/FleetBundleSupportFileSummary'
+    FleetTemplateOnboardResult:
+      type: object
+      description: >-
+        Result of onboarding a Fleet template (platform or tenant tier). Carries
+        the template identity, its tier in `visibility`, the content hash, the
+        derived requirements, and support-file summaries — never an object-store
+        key or support-file content.
+      required:
+      - id
+      - name
+      - visibility
+      - content_hash
+      - requirements
+      - support_files
+      properties:
+        id:
+          type: string
+          description: Template id — the slug for platform templates, a UUIDv7 for tenant templates.
+        name:
+          type: string
+        visibility:
+          type: string
+          description: The catalog tier the template was onboarded into.
+          enum:
+          - platform
+          - tenant
         content_hash:
           type: string
-          description: SHA-256 content hash of the imported snapshot.
-        snapshot_key:
-          type: string
-          description: Content-addressed snapshot key for runner materialization.
+          description: SHA-256 content hash of the onboarded snapshot.
         requirements:
           $ref: '#/components/schemas/FleetBundleRequirements'
         support_files:

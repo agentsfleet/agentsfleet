@@ -44,6 +44,15 @@ pub const SupportFile = struct {
     content: []const u8,
 };
 
+/// Manifest entry for a support file — path, byte size, and per-file SHA-256.
+/// This is the shape persisted in Postgres `support_files_json` (the canonical
+/// bytes live in R2 only), so the bundle-detail handler parses rows back into it.
+pub const SupportFileManifest = struct {
+    path: []const u8,
+    size_bytes: usize,
+    sha256: []const u8,
+};
+
 pub const ImportBody = struct {
     source_kind: []const u8,
     source_ref: []const u8 = "",
@@ -54,6 +63,9 @@ pub const ImportBody = struct {
 
 pub const PreparedBundle = struct {
     name: []const u8,
+    /// SKILL.md frontmatter description — used by the platform template catalog
+    /// row; the per-workspace bundle insert ignores it.
+    description: []const u8,
     content_hash: []const u8,
     snapshot_key: []const u8,
     support_files_json: []const u8,
@@ -61,6 +73,7 @@ pub const PreparedBundle = struct {
 
     pub fn deinit(self: *const PreparedBundle, alloc: std.mem.Allocator) void {
         alloc.free(self.name);
+        alloc.free(self.description);
         alloc.free(self.content_hash);
         alloc.free(self.snapshot_key);
         alloc.free(self.support_files_json);
@@ -93,18 +106,36 @@ pub fn prepare(alloc: std.mem.Allocator, body: ImportBody) (std.mem.Allocator.Er
     const requirements_json = try buildRequirementsJson(alloc, body, skill.name);
     errdefer alloc.free(requirements_json);
 
-    const support_files_json = std.json.Stringify.valueAlloc(alloc, body.support_files, .{}) catch |err| switch (err) {
+    // Single pass over the support files yields both the per-file manifest hashes
+    // and the whole-bundle content hash, so each support-file body is walked once
+    // (Indy: fold the double hash). The bundle hash stays byte-identical to the
+    // legacy order (skill, trigger, then path+content per file) — Dimension 1.2.
+    const hashed = try hashBundle(alloc, body);
+    const content_hash = hashed.content_hash;
+    errdefer alloc.free(content_hash);
+    defer {
+        for (hashed.manifest) |entry| alloc.free(entry.sha256);
+        alloc.free(hashed.manifest);
+    }
+    const support_files_json = std.json.Stringify.valueAlloc(alloc, hashed.manifest, .{}) catch |err| switch (err) {
         error.OutOfMemory => return error.OutOfMemory,
     };
     errdefer alloc.free(support_files_json);
 
-    const content_hash = try allocContentHash(alloc, body);
-    errdefer alloc.free(content_hash);
     const snapshot_key = try snapshotKey(alloc, content_hash);
     errdefer alloc.free(snapshot_key);
 
+    // Dupe name + description out of `skill` before its defer frees it. Two
+    // dupes, so build them with errdefers ahead of the literal rather than
+    // inline (struct-init partial-leak rule).
+    const name = try alloc.dupe(u8, skill.name);
+    errdefer alloc.free(name);
+    const description = try alloc.dupe(u8, skill.description);
+    errdefer alloc.free(description);
+
     return .{
-        .name = try alloc.dupe(u8, skill.name),
+        .name = name,
+        .description = description,
         .content_hash = content_hash,
         .snapshot_key = snapshot_key,
         .support_files_json = support_files_json,
@@ -198,27 +229,60 @@ fn containsCredentialShape(content: []const u8) bool {
     return false;
 }
 
-fn allocContentHash(alloc: std.mem.Allocator, body: ImportBody) ![]const u8 {
+const HashedBundle = struct {
+    /// Whole-bundle content hash (64-char lowercase SHA-256 hex). Caller owns it.
+    content_hash: []const u8,
+    /// Per-support-file manifest; each `sha256` is caller-owned.
+    manifest: []SupportFileManifest,
+};
+
+/// Hash the bundle and its support files in a single pass: each support-file body
+/// is fed once into its own per-file hasher (manifest `sha256`) and once into the
+/// rolling whole-bundle hasher (content identity), so the file list is walked once
+/// instead of twice. The bundle hash covers CONTENT only (skill + trigger +
+/// support paths/bytes), never source_kind/source_ref, so the same bundle imported
+/// via template, github, or paste dedupes to one snapshot; source_ref stays a
+/// metadata column. Caller owns `content_hash` and every `manifest[i].sha256`.
+fn hashBundle(alloc: std.mem.Allocator, body: ImportBody) !HashedBundle {
     const Sha256 = std.crypto.hash.sha2.Sha256;
-    var hasher = Sha256.init(.{});
-    // Content-only identity: hash the bundle CONTENT (skill + trigger + support
-    // files), never source_kind/source_ref — so the same bundle imported via
-    // template, github, or paste dedupes to one snapshot. source_ref stays a
-    // metadata column on the row, out of the content identity.
-    hasher.update(body.skill_markdown);
-    hasher.update(&.{0});
-    if (body.trigger_markdown) |tm| hasher.update(tm);
-    hasher.update(&.{0});
-    for (body.support_files) |file| {
-        hasher.update(file.path);
-        hasher.update(&.{0});
-        hasher.update(file.content);
-        hasher.update(&.{0});
+    var bundle = Sha256.init(.{});
+    bundle.update(body.skill_markdown);
+    bundle.update(&.{0});
+    if (body.trigger_markdown) |tm| bundle.update(tm);
+    bundle.update(&.{0});
+
+    const manifest = try alloc.alloc(SupportFileManifest, body.support_files.len);
+    var built: usize = 0;
+    errdefer {
+        for (manifest[0..built]) |entry| alloc.free(entry.sha256);
+        alloc.free(manifest);
     }
+    for (body.support_files, 0..) |file, i| {
+        bundle.update(file.path);
+        bundle.update(&.{0});
+        bundle.update(file.content);
+        bundle.update(&.{0});
+
+        var file_hasher = Sha256.init(.{});
+        file_hasher.update(file.content);
+        var file_digest: [Sha256.digest_length]u8 = undefined;
+        file_hasher.final(&file_digest);
+        const file_hex = std.fmt.bytesToHex(file_digest, .lower);
+        manifest[i] = .{
+            .path = file.path,
+            .size_bytes = file.content.len,
+            .sha256 = try alloc.dupe(u8, file_hex[0..]),
+        };
+        built += 1;
+    }
+
     var digest: [Sha256.digest_length]u8 = undefined;
-    hasher.final(&digest);
+    bundle.final(&digest);
     const hex = std.fmt.bytesToHex(digest, .lower);
-    return alloc.dupe(u8, hex[0..]);
+    return .{
+        .content_hash = try alloc.dupe(u8, hex[0..]),
+        .manifest = manifest,
+    };
 }
 
 test "prepare rejects unsafe support paths" {
@@ -259,4 +323,20 @@ test "prepare lists trigger requirements" {
     try std.testing.expect(std.mem.indexOf(u8, prepared.requirements_json, "\"github\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, prepared.requirements_json, "api.github.com") != null);
     try std.testing.expect(std.mem.indexOf(u8, prepared.support_files_json, "README.md") != null);
+}
+
+test "prepare stores support file manifest not content" {
+    const alloc = std.testing.allocator;
+    const body = ImportBody{
+        .source_kind = SOURCE_KIND_UPLOAD,
+        .source_ref = "unit",
+        .skill_markdown = "---\nname: manifest-test\ndescription: d\nversion: 0.1.0\n---\nBody.\n",
+        .support_files = &.{.{ .path = "README.md", .content = "review notes" }},
+    };
+    const prepared = try prepare(alloc, body);
+    defer prepared.deinit(alloc);
+    try std.testing.expect(std.mem.indexOf(u8, prepared.support_files_json, "README.md") != null);
+    try std.testing.expect(std.mem.indexOf(u8, prepared.support_files_json, "size_bytes") != null);
+    try std.testing.expect(std.mem.indexOf(u8, prepared.support_files_json, "sha256") != null);
+    try std.testing.expect(std.mem.indexOf(u8, prepared.support_files_json, "review notes") == null);
 }

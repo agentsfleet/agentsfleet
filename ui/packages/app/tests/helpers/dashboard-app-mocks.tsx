@@ -33,8 +33,7 @@ export const listCredentialsMock = vi.fn();
 export const createCredentialMock = vi.fn();
 export const deleteCredentialMock = vi.fn();
 export const getModelCapsMock = vi.fn();
-export const listFleetTemplatesMock = vi.fn();
-export const importBundleSnapshotMock = vi.fn();
+export const listWorkspaceFleetTemplatesMock = vi.fn();
 
 export const setFleetStatusActionMock = vi.fn<
   (ws: string, zid: string, status: string) => Promise<ActionResult<unknown>>
@@ -142,12 +141,14 @@ export function credentialsApiMock() {
   };
 }
 
-export function fleetBundlesMock() {
+// Mocks the fleet-template gallery client (`@/lib/api/fleet-templates`). Both the
+// raw reader and its React cache() wrapper resolve to the same vi.fn so a test
+// can drive either entry point through one mock. M103 replaced the legacy
+// bundle client (github-import / paste) with this template-only gallery read.
+export function fleetTemplatesMock() {
   return {
-    listFleetTemplates: listFleetTemplatesMock,
-    listFleetTemplatesCached: listFleetTemplatesMock,
-    importBundleSnapshot: importBundleSnapshotMock,
-    getBundleSnapshot: vi.fn(),
+    listWorkspaceFleetTemplates: listWorkspaceFleetTemplatesMock,
+    listWorkspaceFleetTemplatesCached: listWorkspaceFleetTemplatesMock,
   };
 }
 
@@ -219,5 +220,5 @@ export function resetDashboardMocks() {
     billing: { starter_credit_nanos: 0, free_trial_end_ms: 0, free_trial_stage_nanos: 0 },
   });
   stopFleetMock.mockResolvedValue(undefined);
-  listFleetTemplatesMock.mockResolvedValue({ items: [] });
+  listWorkspaceFleetTemplatesMock.mockResolvedValue({ items: [] });
 }

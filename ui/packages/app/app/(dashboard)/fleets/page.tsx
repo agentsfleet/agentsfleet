@@ -11,14 +11,14 @@ import {
   Skeleton,
 } from "@agentsfleet/design-system";
 import { listFleets } from "@/lib/api/fleets";
-import { listFleetTemplatesCached } from "@/lib/api/fleet-bundles";
+import { listWorkspaceFleetTemplatesCached } from "@/lib/api/fleet-templates";
 import { getTenantBillingCached } from "@/lib/api/tenant_billing";
 import { withWorkspaceScope } from "@/lib/workspace";
 import ExhaustionBanner from "@/components/domain/ExhaustionBanner";
 import { PlusIcon } from "lucide-react";
 import FleetsList from "./components/FleetsList";
 import { InstallEntry } from "./new/InstallEntry";
-import type { FleetTemplate } from "@/lib/types";
+import type { FleetTemplateGalleryEntry } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -76,7 +76,7 @@ export async function FleetsData() {
   // render never hit a nested async boundary.
   const templates =
     page.items.length === 0
-      ? await listFleetTemplatesCached(token)
+      ? await listWorkspaceFleetTemplatesCached(workspaceId, token)
           .then((response) => response.items)
           .catch(() => [])
       : [];
@@ -102,7 +102,7 @@ export async function FleetsData() {
 // like Models & Keys — instead of abstract step cards. The catalogue is fetched
 // by FleetsData (the async region); this stays a sync component. Besides the page
 // header's "Install fleet" button, this gallery is the install affordance here.
-function FleetsEmptyState({ templates }: { templates: FleetTemplate[] }) {
+function FleetsEmptyState({ templates }: { templates: FleetTemplateGalleryEntry[] }) {
   return (
     <div className="space-y-6">
       <div className="space-y-1.5">

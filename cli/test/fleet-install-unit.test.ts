@@ -1,15 +1,12 @@
-// Unit-style coverage for src/commands/fleet_install.ts branches that are
-// unreachable via the Command-Line Interface (CLI) integration path.
+// Unit-style coverage for src/commands/fleet_install.ts branches.
 //
-// Two branches need Effect-layer injection:
-//   Lines 143-148: updateEffectFromArgs with undefined fleetId. Commander
-//     enforces <fleet_id> as a required positional so runCli never reaches
-//     the guard — the handler must be called directly.
-//   Lines 55-56: loadBundle catch block — generic Error (not SkillLoadError).
-//     loadSkillFromPath only throws SkillLoadError so this branch requires a
-//     patched loadSkillFromPath substitute that throws a plain Error.
-//
-// Pattern mirrors fleet-steer.integration.test.ts unit-style section.
+// `install` is template-only: it resolves the workspace gallery (GET) then
+// creates the fleet (POST) keyed off the entry's tier. The shared mock returns
+// one response for both calls, so the template fixtures carry both `items`
+// (gallery) and the create fields (`fleet_id`/`name`/`webhook_urls`). Local
+// `--from` install was removed with the two-tier model; the live-edit
+// `fleet update --from` PATCH path (loadBundle/bodyFromBundle) is unchanged and
+// covered here via updateEffectFromArgs + loadBundle.
 
 import { describe, test, expect } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
@@ -93,9 +90,26 @@ async function makeSkillOnlyDir(): Promise<string> {
   return dir;
 }
 
-// ── Lines 143-148: updateEffectFromArgs with undefined fleetId ──────────────
+const TEMPLATE_FLEET_ID = "01900000-0000-7000-8000-0000000f1ee7";
 
-describe("updateEffectFromArgs — undefined fleetId (lines 143-148)", () => {
+// A gallery+create stub for a `--template` run: `items` answers the gallery GET,
+// the create fields answer the POST (the mock returns the same object for both).
+const templateResponse = (
+  id: string,
+  visibility: string,
+  requirements: Record<string, unknown> | undefined,
+  createName: string,
+  webhookUrls: Record<string, string> = {},
+) => ({
+  items: [{ id, name: createName, visibility, ...(requirements ? { requirements } : {}) }],
+  fleet_id: TEMPLATE_FLEET_ID,
+  name: createName,
+  webhook_urls: webhookUrls,
+});
+
+// ── updateEffectFromArgs with undefined fleetId (live-edit path) ─────────────
+
+describe("updateEffectFromArgs — undefined fleetId", () => {
   test("undefined fleetId produces ValidationError on the error channel", async () => {
     const captured: string[] = [];
     const exit = await Effect.runPromiseExit(
@@ -110,13 +124,12 @@ describe("updateEffectFromArgs — undefined fleetId (lines 143-148)", () => {
   });
 });
 
-// ── loadBundle defensive catch ladder ────────────────────────────────────────
+// ── loadBundle defensive catch ladder (still used by `fleet update --from`) ──
 //
-// loadSkillFromPath only throws SkillLoadError today (that arm is covered by
-// fleet-install.integration.test.ts via a real bad path). The other two arms
-// guard against a future foreign throw — reachable here because loadBundle
-// takes an injectable `loader`. The rule being pinned: a foreign error
-// must still render a readable detail, never `undefined: ...`.
+// loadSkillFromPath only throws SkillLoadError today; the other arms guard
+// against a future foreign throw — reachable here because loadBundle takes an
+// injectable `loader`. The rule pinned: a foreign error must still render a
+// readable detail, never `undefined: ...`.
 
 describe("loadBundle — foreign error catch arm", () => {
   test("a non-SkillLoadError throw surfaces a readable detail, never 'undefined:'", async () => {
@@ -143,60 +156,23 @@ describe("loadSkillFromPath — optional TRIGGER.md", () => {
   });
 });
 
-describe("installEffectFromFlags — SKILL.md-only bundle", () => {
-  test("omits trigger_markdown and prints the generated-trigger note", async () => {
-    const dir = await makeSkillOnlyDir();
+describe("installEffectFromFlags — missing --template", () => {
+  test("no template id produces a ValidationError requiring --template", async () => {
     const captured: string[] = [];
     const requests: HttpRequestInput[] = [];
-    try {
-      const exit = await Effect.runPromiseExit(
-        installEffectFromFlags({ fromPath: dir }).pipe(
-          Effect.provide(makeLayer(captured, false, requests, {
-            fleet_id: "01900000-0000-7000-8000-0000000a91d1",
-            name: "skill-only-install",
-            webhook_urls: {},
-          })),
-        ),
-      );
-      expect(Exit.isSuccess(exit)).toBe(true);
-      expect(requests[0]?.body).toEqual({ source_markdown: SKILL_ONLY_MD });
-      expect(captured.join("\n")).toContain("Generated default API wake");
-    } finally {
-      await rm(dir, { recursive: true, force: true });
-    }
-  });
-});
-
-describe("installEffectFromFlags — no source", () => {
-  test("empty fromPath string produces ValidationError naming both sources", async () => {
-    const captured: string[] = [];
-    const exit = await Effect.runPromiseExit(
-      installEffectFromFlags({ fromPath: "" }).pipe(
-        Effect.provide(makeLayer(captured)),
-      ),
-    );
-    expect(Exit.isFailure(exit)).toBe(true);
-    if (Exit.isFailure(exit)) {
-      expect(JSON.stringify(exit.cause)).toContain("a source is required");
-    }
-  });
-
-  test("empty flags object produces ValidationError naming both sources", async () => {
-    const captured: string[] = [];
     const exit = await Effect.runPromiseExit(
       installEffectFromFlags({}).pipe(
-        Effect.provide(makeLayer(captured)),
+        Effect.provide(makeLayer(captured, false, requests)),
       ),
     );
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
-      expect(JSON.stringify(exit.cause)).toContain("--from <path> or --template <id>");
+      expect(JSON.stringify(exit.cause)).toContain("--template <id> is required");
     }
+    // The required-flag guard fires before any API call.
+    expect(requests.length).toBe(0);
   });
 });
-
-const TEMPLATE_BUNDLE_ID = "01900000-0000-7000-8000-0000000bund1";
-const TEMPLATE_FLEET_ID = "01900000-0000-7000-8000-0000000f1ee7";
 
 describe("installEffectFromFlags — template JSON mode", () => {
   test("prints structured install output in JSON mode", async () => {
@@ -204,13 +180,8 @@ describe("installEffectFromFlags — template JSON mode", () => {
     const requests: HttpRequestInput[] = [];
     const exit = await Effect.runPromiseExit(
       installEffectFromFlags({ templateId: "t1" }).pipe(
-        Effect.provide(makeLayer(captured, true, requests, {
-          bundle_id: TEMPLATE_BUNDLE_ID,
-          fleet_id: TEMPLATE_FLEET_ID,
-          name: "t1",
-          webhook_urls: {},
-          requirements: { trigger_present: true },
-        })),
+        Effect.provide(makeLayer(captured, true, requests,
+          templateResponse("t1", "platform", { trigger_present: true }, "t1"))),
       ),
     );
     expect(Exit.isSuccess(exit)).toBe(true);
@@ -218,28 +189,21 @@ describe("installEffectFromFlags — template JSON mode", () => {
   });
 });
 
-describe("installEffectFromFlags — webhook URLs", () => {
+describe("installEffectFromFlags — template webhook URLs", () => {
   test("prints webhook URLs when the create response carries them", async () => {
-    const dir = await makeSkillOnlyDir();
     const captured: string[] = [];
     const requests: HttpRequestInput[] = [];
-    try {
-      const exit = await Effect.runPromiseExit(
-        installEffectFromFlags({ fromPath: dir }).pipe(
-          Effect.provide(makeLayer(captured, false, requests, {
-            fleet_id: "01900000-0000-7000-8000-0000000a91d1",
-            name: "skill-only-install",
-            webhook_urls: { github: "https://api.example/webhooks/github" },
-          })),
-        ),
-      );
-      expect(Exit.isSuccess(exit)).toBe(true);
-      const out = captured.join("\n");
-      expect(out).toContain("Webhook URLs");
-      expect(out).toContain("github: https://api.example/webhooks/github");
-    } finally {
-      await rm(dir, { recursive: true, force: true });
-    }
+    const exit = await Effect.runPromiseExit(
+      installEffectFromFlags({ templateId: "t1" }).pipe(
+        Effect.provide(makeLayer(captured, false, requests,
+          templateResponse("t1", "platform", { trigger_present: true }, "t1",
+            { github: "https://api.example/webhooks/github" }))),
+      ),
+    );
+    expect(Exit.isSuccess(exit)).toBe(true);
+    const out = captured.join("\n");
+    expect(out).toContain("Webhook URLs");
+    expect(out).toContain("github: https://api.example/webhooks/github");
   });
 });
 
@@ -249,18 +213,13 @@ describe("installEffectFromFlags — template requirements preview", () => {
     const requests: HttpRequestInput[] = [];
     const exit = await Effect.runPromiseExit(
       installEffectFromFlags({ templateId: "t1" }).pipe(
-        Effect.provide(makeLayer(captured, false, requests, {
-          bundle_id: TEMPLATE_BUNDLE_ID,
-          fleet_id: TEMPLATE_FLEET_ID,
-          name: "t1",
-          webhook_urls: {},
-          requirements: {
+        Effect.provide(makeLayer(captured, false, requests,
+          templateResponse("t1", "platform", {
             credentials: ["github"],
             tools: ["github_review_comment"],
             network_hosts: ["api.github.com"],
             trigger_present: false,
-          },
-        })),
+          }, "t1"))),
       ),
     );
     expect(Exit.isSuccess(exit)).toBe(true);
@@ -271,17 +230,13 @@ describe("installEffectFromFlags — template requirements preview", () => {
     expect(out).toContain("Generated default API wake");
   });
 
-  test("tolerates a snapshot with no requirements field", async () => {
+  test("tolerates a gallery entry with no requirements field", async () => {
     const captured: string[] = [];
     const requests: HttpRequestInput[] = [];
     const exit = await Effect.runPromiseExit(
       installEffectFromFlags({ templateId: "t1" }).pipe(
-        Effect.provide(makeLayer(captured, false, requests, {
-          bundle_id: TEMPLATE_BUNDLE_ID,
-          fleet_id: TEMPLATE_FLEET_ID,
-          name: "t1",
-          webhook_urls: {},
-        })),
+        Effect.provide(makeLayer(captured, false, requests,
+          templateResponse("t1", "platform", undefined, "t1"))),
       ),
     );
     expect(Exit.isSuccess(exit)).toBe(true);
@@ -289,67 +244,76 @@ describe("installEffectFromFlags — template requirements preview", () => {
   });
 });
 
-describe("installEffectFromFlags — snapshot without bundle_id", () => {
-  test("fails with a ConfigError when the import returns no bundle_id", async () => {
+describe("installEffectFromFlags — template not in the gallery", () => {
+  test("fails with a ConfigError when the id is absent from the workspace gallery", async () => {
     const captured: string[] = [];
     const requests: HttpRequestInput[] = [];
     const exit = await Effect.runPromiseExit(
       installEffectFromFlags({ templateId: "t1" }).pipe(
-        Effect.provide(makeLayer(captured, false, requests, {
-          requirements: { trigger_present: true },
-        })),
+        Effect.provide(makeLayer(captured, false, requests, { items: [] })),
       ),
     );
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
-      expect(JSON.stringify(exit.cause)).toContain("did not return a bundle_id");
+      expect(JSON.stringify(exit.cause)).toContain("is not in this workspace's gallery");
     }
   });
 });
 
-describe("installEffectFromFlags — both sources", () => {
-  test("--from and --template together are rejected as mutually exclusive", async () => {
+describe("installEffectFromFlags — unrecognized template tier", () => {
+  test("fails with a ConfigError when the gallery entry visibility is neither tier", async () => {
     const captured: string[] = [];
+    const requests: HttpRequestInput[] = [];
     const exit = await Effect.runPromiseExit(
-      installEffectFromFlags({ fromPath: "/x", templateId: "t" }).pipe(
-        Effect.provide(makeLayer(captured)),
+      installEffectFromFlags({ templateId: "t1" }).pipe(
+        Effect.provide(makeLayer(captured, false, requests,
+          templateResponse("t1", "weird", { trigger_present: true }, "t1"))),
       ),
     );
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
-      expect(JSON.stringify(exit.cause)).toContain("mutually exclusive");
+      expect(JSON.stringify(exit.cause)).toContain("unrecognized tier");
     }
   });
 });
 
-describe("installEffectFromFlags — template source", () => {
-  test("imports a snapshot then creates with bundle_id + name override", async () => {
+describe("installEffectFromFlags — resolves the gallery then installs by tier", () => {
+  test("GETs the gallery, then creates with platform_template_id + name override", async () => {
     const captured: string[] = [];
     const requests: HttpRequestInput[] = [];
     const exit = await Effect.runPromiseExit(
       installEffectFromFlags({ templateId: "github-pr-reviewer", name: "pr-reviewer-frontend" }).pipe(
         Effect.provide(
-          makeLayer(captured, false, requests, {
-            // snapshot import + fleet create both return this stub
-            bundle_id: "01900000-0000-7000-8000-0000000bun01",
-            fleet_id: "01900000-0000-7000-8000-0000000f1ee7",
-            name: "pr-reviewer-frontend",
-            webhook_urls: {},
-            requirements: { credentials: ["github"], trigger_present: true },
-          }),
+          makeLayer(captured, false, requests,
+            templateResponse("github-pr-reviewer", "platform",
+              { credentials: ["github"], trigger_present: true }, "pr-reviewer-frontend")),
         ),
       ),
     );
     expect(Exit.isSuccess(exit)).toBe(true);
-    // first request imports the template snapshot
-    expect(requests[0]?.body).toEqual({
-      source_kind: "template",
-      source_ref: "github-pr-reviewer",
-    });
-    // second request creates the fleet from the snapshot, carrying the override
+    // first request resolves the workspace gallery (GET)
+    expect(requests[0]?.method).toBe("GET");
+    expect(requests[0]?.path).toContain("/fleet-templates");
+    // second request creates the fleet keyed off the platform tier, with override
     expect(requests[1]?.body).toEqual({
-      bundle_id: "01900000-0000-7000-8000-0000000bun01",
+      platform_template_id: "github-pr-reviewer",
       name: "pr-reviewer-frontend",
     });
+  });
+
+  test("installs a tenant-tier entry by tenant_template_id", async () => {
+    const captured: string[] = [];
+    const requests: HttpRequestInput[] = [];
+    const tenantId = "0195b4ba-8d3a-7f13-8abc-0000000000a1";
+    const exit = await Effect.runPromiseExit(
+      installEffectFromFlags({ templateId: tenantId }).pipe(
+        Effect.provide(
+          makeLayer(captured, false, requests,
+            templateResponse(tenantId, "tenant", { trigger_present: true }, "my-tenant-fleet")),
+        ),
+      ),
+    );
+    expect(Exit.isSuccess(exit)).toBe(true);
+    expect(requests[1]?.body).toEqual({ tenant_template_id: tenantId });
   });
 });

@@ -17,6 +17,7 @@ const auth_mw = @import("../auth/middleware/mod.zig");
 const hx_mod = @import("handlers/hx.zig");
 const invoke = @import("route_table_invoke.zig");
 const connectors_invoke = @import("route_table_invoke_connectors.zig");
+const template_invoke = @import("route_table_invoke_templates.zig");
 
 // ── Types ─────────────────────────────────────────────────────────────────
 
@@ -61,6 +62,8 @@ pub fn classFor(route: router.Route) RouteClass {
         .list_tenant_workspaces,
         .tenant_provider,
         .fleet_bundles,
+        .admin_fleet_templates,
+        .workspace_fleet_templates,
         .receive_webhook,
         .receive_svix_webhook,
         .auth_identity_event_clerk,
@@ -75,8 +78,6 @@ pub fn classFor(route: router.Route) RouteClass {
         .patch_workspace_fleet,
         .workspace_credentials,
         .workspace_credential,
-        .workspace_fleet_bundles,
-        .workspace_fleet_bundle,
         .workspace_fleet_messages,
         .workspace_fleet_events,
         .workspace_events,
@@ -146,6 +147,12 @@ pub fn specFor(route: router.Route, registry: *auth_mw.MiddlewareRegistry) Route
         .tenant_provider => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeTenantProvider },
         .fleet_bundles => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeFleetBundles },
 
+        // Template onboarding (M103). Scope enforced by requireScope from
+        // route_scopes (platform-template:write / template:write); the tenant
+        // handler adds a workspace-ownership check.
+        .admin_fleet_templates => .{ .middlewares = registry.bearer(), .invoke = template_invoke.invokePlatformTemplateOnboard },
+        .workspace_fleet_templates => .{ .middlewares = registry.bearer(), .invoke = template_invoke.invokeWorkspaceFleetTemplates },
+
         // Admin platform keys + model catalogue — platform-plane scopes
         // (`platform-key:{read,admin}`, `model:{read,admin}`) resolved per-method
         // from route_scopes. A tenant principal (no platform scope) is rejected
@@ -191,8 +198,6 @@ pub fn specFor(route: router.Route, registry: *auth_mw.MiddlewareRegistry) Route
         .patch_workspace_fleet => .{ .middlewares = registry.bearer(), .invoke = invoke.invokePatchWorkspaceFleet },
         .workspace_credentials => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeWorkspaceCredentials },
         .workspace_credential => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeWorkspaceCredentialItem },
-        .workspace_fleet_bundles => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeFleetBundleImports },
-        .workspace_fleet_bundle => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeFleetBundleGet },
         // Chat ingress (workspace-scoped) — POST /messages
         .workspace_fleet_messages => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeFleetMessagesPost },
         // Per-Fleet event history + Server-Sent Events live tail (Bearer this slice;

@@ -117,8 +117,8 @@ Every secret the end-to-end flow needs, with who writes it and when. Platform se
 
 | File | Action | Why |
 |------|--------|-----|
-| `schema/029_core_connector_installs.sql` | CREATE | **generic** `(provider, external_account_id) → workspace_id` inbound-routing index; UNIQUE `(provider, external_account_id)`. Slack: `external_account_id = team_id`. Token + metadata live in the vault handle, NOT here. |
-| `schema/030_core_connector_channels.sql` | CREATE | **generic** `(provider, external_account_id, external_channel_id) → fleet_id` binding; UNIQUE `(provider, external_account_id, external_channel_id)`. Slack: `(slack, team_id, channel_id)`. |
+| `schema/030_core_connector_installs.sql` | CREATE | **generic** `(provider, external_account_id) → workspace_id` inbound-routing index; UNIQUE `(provider, external_account_id)`. Slack: `external_account_id = team_id`. Token + metadata live in the vault handle, NOT here. (Renumbered 029→030 on the M103 merge — M103 took v29.) |
+| `schema/031_core_connector_channels.sql` | CREATE | **generic** `(provider, external_account_id, external_channel_id) → fleet_id` binding; UNIQUE `(provider, external_account_id, external_channel_id)`. Slack: `(slack, team_id, channel_id)`. (Renumbered 030→031 on the M103 merge.) |
 | `schema/embed.zig` + `src/agentsfleetd/cmd/common.zig` | EDIT | `@embedFile` `029`/`030` in `embed.zig`; register both in the `canonicalMigrations()` array in `src/cmd/common.zig` (RULE MIG). |
 | `src/agentsfleetd/types/id_format.zig` | EDIT | add UUIDv7 generators `generateConnectorInstallId()` + `generateConnectorChannelId()` (SCHEMA_CONVENTIONS uid format). |
 | `src/agentsfleetd/errors/error_registry.zig` + `error_entries.zig` | EDIT | register `UZ-SLK-010/011/020/021/022/030` (comptime-validated), mirroring `UZ-WH-0xx`. |

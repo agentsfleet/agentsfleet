@@ -45,10 +45,10 @@ pub fn canonicalMigrations() [26]db.Migration {
         .{ .version = 24, .sql = schema.fleet_metering_periods_sql },
         .{ .version = 25, .sql = schema.fleet_runner_events_sql },
         .{ .version = 26, .sql = schema.account_purge_gate_bypass_sql },
-        .{ .version = 27, .sql = schema.core_fleet_bundles_sql },
         .{ .version = 28, .sql = schema.fleet_bundle_templates_sql },
-        .{ .version = 29, .sql = schema.connector_installs_sql },
-        .{ .version = 30, .sql = schema.connector_channels_sql },
+        .{ .version = 29, .sql = schema.tenant_fleet_bundle_templates_sql },
+        .{ .version = 30, .sql = schema.connector_installs_sql },
+        .{ .version = 31, .sql = schema.connector_channels_sql },
     };
 }
 
@@ -245,9 +245,9 @@ test "integration: startup with pending migrations proceeds when enabled and loc
     try std.testing.expectEqual(.run_required, decision);
 }
 
-test "canonical schema bootstrap: last version is 27" {
+test "canonical schema bootstrap: last version is 29" {
     const migrations = canonicalMigrations();
-    try std.testing.expectEqual(@as(i32, 27), migrations[migrations.len - 1].version);
+    try std.testing.expectEqual(@as(i32, 29), migrations[migrations.len - 1].version);
 }
 
 test "every migration SQL is parseable by SqlStatementSplitter" {

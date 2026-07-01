@@ -4,16 +4,14 @@
  * Mints a Clerk session JSON Web Token (JWT) via the admin path, hydrates workspaces.json
  * from the API (matching the lifecycle-with-token spec's identity setup),
  * then drives the failure surface of `agentsfleet install`:
- *   - `install --from <nonexistent path>`  → ConfigError, exit 5,
- *     ERR_PATH_NOT_FOUND in stderr, no fleet created.
- *   - `install --from <dir missing SKILL.md>`    → ERR_SKILL_MISSING, exit 5.
- *   - `install` with no `--from`            → ValidationError, exit 4, no network.
- *   - duplicate name (same bundle installed twice) → second install rejected
- *     (UZ-AGT-006, exit 3) — the workspace's `(workspace_id, name)`
- *     uniqueness constraint. The duplicate bundle is the canonical
- *     `platform-ops-sample` rewritten with a stable prefixed name, so the
- *     first install actually succeeds (a minimal bundle would fail server
- *     config validation long before the conflict path).
+ *   - `install --template <id absent from gallery>` → ConfigError, exit 5,
+ *     "is not in this workspace's gallery", no fleet created.
+ *   - `install` with no `--template`        → ValidationError, exit 4, no network.
+ *   - duplicate name (same onboarded template installed twice) → second install
+ *     rejected (UZ-AGT-006, exit 3) — the workspace's `(workspace_id, name)`
+ *     uniqueness constraint. The template is the canonical `platform-ops` sample
+ *     onboarded (upload) with a stable prefixed name, so both installs take that
+ *     name and the first actually succeeds.
  *
  * Every spawn runs `assertNoSecretLeak` against the minted JWT. Mutating
  * tests are prefix-scoped via ACCEPTANCE_RUN_PREFIX and reclaimed in
@@ -48,19 +46,16 @@ import {
   EXIT_SERVER_ERROR,
   EXIT_VALIDATION_ERROR,
   ERR_AGENTSFLEET_NAME_TAKEN,
-  ERR_PATH_NOT_FOUND,
-  ERR_SKILL_MISSING,
-  makeNamedBundle,
-  makeSkillMissingBundle,
-  nonexistentBundlePath,
-  removeDir,
-  type NamedBundle,
+  ERR_TEMPLATE_NOT_IN_GALLERY,
+  FLAG_TEMPLATE,
+  absentTemplateId,
+  onboardDuplicateTemplate,
+  type DuplicateTemplate,
 } from "./fixtures/install-negatives-ops.ts";
 
 const target = process.env.AGENTSFLEET_ACCEPTANCE_TARGET ?? "";
 const isLive = target.startsWith("https://");
 
-const FLAG_FROM = "--from";
 const FLAG_JSON = "--json";
 const INSTALL = "install";
 
@@ -131,91 +126,68 @@ if (!isLive) {
       if (stateDir) await fs.rm(stateDir, { recursive: true, force: true });
     });
 
-    // ── nonexistent --from path ─────────────────────────────────────
-    describe("--from nonexistent path", () => {
-      it("exits ConfigError with ERR_PATH_NOT_FOUND and helpful suggestion", async () => {
-        const absent = nonexistentBundlePath();
-        const result = await runWithEnv([INSTALL, FLAG_FROM, absent, FLAG_JSON]);
+    // ── --template absent from the gallery ──────────────────────────
+    describe("--template absent from gallery", () => {
+      it("exits ConfigError when the id is not in the workspace gallery", async () => {
+        const result = await runWithEnv([INSTALL, FLAG_TEMPLATE, absentTemplateId(), FLAG_JSON]);
         assert.equal(
           result.code,
           EXIT_CONFIG_ERROR,
           `expected exit ${EXIT_CONFIG_ERROR}; got ${result.code}: ${merged(result)}`,
         );
         const body = merged(result);
-        assert.match(
-          body,
-          new RegExp(ERR_PATH_NOT_FOUND),
-          `expected ${ERR_PATH_NOT_FOUND} in output: ${body}`,
-        );
-        // The loader's remap carries an actionable suggestion, not a raw
-        // ENOENT stack — assert the operator gets guidance.
-        assert.match(body, /skill\.md|trigger\.md|path/i, `expected actionable hint: ${body}`);
-      });
-    });
-
-    // ── malformed bundle: missing SKILL.md ────────────────────────────
-    describe("--from dir missing SKILL.md", () => {
-      let dir: string | null = null;
-      afterAll(async () => { await removeDir(dir); dir = null; });
-
-      it("exits ConfigError with ERR_SKILL_MISSING", async () => {
-        dir = await makeSkillMissingBundle();
-        const result = await runWithEnv([INSTALL, FLAG_FROM, dir, FLAG_JSON]);
-        assert.equal(
-          result.code,
-          EXIT_CONFIG_ERROR,
-          `expected exit ${EXIT_CONFIG_ERROR}; got ${result.code}: ${merged(result)}`,
-        );
-        assert.match(
-          merged(result),
-          new RegExp(ERR_SKILL_MISSING),
-          `expected ${ERR_SKILL_MISSING}: ${merged(result)}`,
+        assert.ok(
+          body.includes(ERR_TEMPLATE_NOT_IN_GALLERY),
+          `expected "${ERR_TEMPLATE_NOT_IN_GALLERY}" in output: ${body}`,
         );
       });
     });
 
-    // ── missing required --from flag ────────────────────────────────
-    describe("missing --from flag", () => {
-      it("exits ValidationError and names --from without hitting the network", async () => {
+    // ── missing required --template flag ────────────────────────────
+    describe("missing --template flag", () => {
+      it("exits ValidationError and names --template without hitting the network", async () => {
         const result = await runWithEnv([INSTALL, FLAG_JSON]);
         assert.equal(
           result.code,
           EXIT_VALIDATION_ERROR,
           `expected exit ${EXIT_VALIDATION_ERROR}; got ${result.code}: ${merged(result)}`,
         );
-        assert.match(merged(result), new RegExp(FLAG_FROM), `expected --from mention: ${merged(result)}`);
+        assert.ok(
+          merged(result).includes(FLAG_TEMPLATE),
+          `expected --template mention: ${merged(result)}`,
+        );
         // Client-side validation precedes any HTTP call — a stack-trace
         // network error would mean the guard never fired.
         assert.doesNotMatch(
           merged(result),
           /ECONNREFUSED|ENOTFOUND|EAI_AGAIN|fetch failed/,
-          `--from guard should precede any network call: ${merged(result)}`,
+          `--template guard should precede any network call: ${merged(result)}`,
         );
       });
     });
 
-    // ── duplicate name: same bundle installed twice ──────────────────────
+    // ── duplicate name: same onboarded template installed twice ──────────
     // The first install must succeed (and is tracked for teardown); the
     // second must be rejected by the `(workspace_id, name)` uniqueness
-    // constraint. We do NOT assume the wire shape beyond "non-zero exit, no
-    // SECOND fleet row" — but when the server surfaces its conflict code we
-    // assert it is exactly UZ-AGT-006 (exit 3).
+    // constraint (both installs take the template's frontmatter `name:`). We do
+    // NOT assume the wire shape beyond "non-zero exit, no SECOND fleet row" —
+    // but when the server surfaces its conflict code we assert it is exactly
+    // UZ-AGT-006 (exit 3).
     describe("duplicate fleet name", () => {
-      let bundle: NamedBundle | null = null;
+      let tmpl: DuplicateTemplate | null = null;
       let firstId: string | null = null;
 
       afterAll(async () => {
         if (firstId) {
           try { await runFleetctl(["kill", firstId, FLAG_JSON], { env }); } catch { /* teardown */ }
         }
-        await removeDir(bundle?.dir);
-        bundle = null;
+        tmpl = null;
       });
 
-      it("first install of a fresh prefixed name succeeds", async () => {
-        bundle = await makeNamedBundle();
+      it("first install of a freshly onboarded template succeeds", async () => {
+        tmpl = await onboardDuplicateTemplate(env, ACCEPTANCE_RUN_PREFIX);
         const result = await runFleetctl(
-          [INSTALL, FLAG_FROM, bundle.dir, FLAG_JSON],
+          [INSTALL, FLAG_TEMPLATE, tmpl.templateId, FLAG_JSON],
           { env, timeoutMs: 120_000 },
         );
         assertNoSecretLeak(result, sessionJwt);
@@ -224,11 +196,11 @@ if (!isLive) {
         assert.ok(firstId, `first install missing fleet id: ${result.stdout}`);
       }, 130_000);
 
-      it("second install of the same name is rejected, no duplicate created", async () => {
-        assert.ok(bundle, "bundle must be created by the first-install test");
-        const target2 = bundle as NamedBundle;
+      it("second install of the same template is rejected, no duplicate created", async () => {
+        assert.ok(tmpl, "template must be onboarded by the first-install test");
+        const target2 = tmpl as DuplicateTemplate;
         const result = await runFleetctl(
-          [INSTALL, FLAG_FROM, target2.dir, FLAG_JSON],
+          [INSTALL, FLAG_TEMPLATE, target2.templateId, FLAG_JSON],
           { env, timeoutMs: 120_000 },
         );
         assertNoSecretLeak(result, sessionJwt);
@@ -253,12 +225,12 @@ if (!isLive) {
         }
       }, 130_000);
 
-      // Prefix-scoped leak audit — exactly one LIVE fleet for this bundle's
+      // Prefix-scoped leak audit — exactly one LIVE fleet for this template's
       // name should exist after the duplicate attempt (the first install),
       // never two. Confirms the rejected second install left no residue.
-      it("exactly one live fleet carries the duplicate bundle name", async () => {
-        assert.ok(bundle, "bundle must exist");
-        const wanted = (bundle as NamedBundle).name;
+      it("exactly one live fleet carries the template name", async () => {
+        assert.ok(tmpl, "template must exist");
+        const wanted = (tmpl as DuplicateTemplate).name;
         const listed = await runWithEnv(["list", FLAG_JSON]);
         assert.equal(listed.code, 0, `list exited ${listed.code}: ${listed.stderr}`);
         const parsed = JSON.parse(listed.stdout.trim() || "{}") as { items?: unknown };

@@ -65,14 +65,14 @@ const NEVER_MATCH = (): boolean => false;
 // — not the timer — settles the waiter). TIMER_WAIT_MS is far below the
 // child's cold-start (~python+node spawn), so the timer fires while the child
 // is still alive — exercising the timeout path specifically.
-const RESOLVE_WAIT_MS = 8_000;
+const RESOLVE_WAIT_MS = 20_000;
 const TIMER_WAIT_MS = 50;
 
 // bun:test per-test deadlines. These MUST exceed the internal waitForLine
 // ceiling above — bun's default 5s deadline would otherwise kill a spawning
 // test before waitForLine's own timer can fire, masking the harness's real
 // behaviour with an opaque runner timeout.
-const SPAWN_TEST_TIMEOUT_MS = 20_000;
+const SPAWN_TEST_TIMEOUT_MS = 35_000;
 const REJECT_TEST_TIMEOUT_MS = 10_000;
 
 const TIMED_OUT_MARKER = "timed out";

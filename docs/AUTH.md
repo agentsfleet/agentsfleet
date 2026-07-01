@@ -152,7 +152,7 @@ Capabilities reach a principal as an explicit `scopes` claim. Two grants are app
 
 | Recommended for | Scope set |
 |---|---|
-| platform operator (almost no one) | `runner:enroll`, `runner:write`, `stream:read`, `model:admin`, `platform-key:admin`, `template:admin`, `workspace:any` |
+| platform operator (almost no one) | `runner:enroll`, `runner:write`, `stream:read`, `model:admin`, `platform-key:admin`, `platform-template:write`, `workspace:any` |
 | read-only collaborator | `fleet:read`, `fleetkey:read`, `grant:read`, `connector:read`, `billing:read`, `approval:read` |
 
 ---

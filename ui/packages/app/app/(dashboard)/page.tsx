@@ -16,10 +16,10 @@ import {
   Skeleton,
 } from "@agentsfleet/design-system";
 import { listFleets, AGENTSFLEET_STATUS } from "@/lib/api/fleets";
-import { listFleetTemplatesCached } from "@/lib/api/fleet-bundles";
+import { listWorkspaceFleetTemplatesCached } from "@/lib/api/fleet-templates";
 import { getTenantBillingCached } from "@/lib/api/tenant_billing";
 import { NANOS_PER_USD } from "@/lib/types";
-import type { FleetTemplate } from "@/lib/types";
+import type { FleetTemplateGalleryEntry } from "@/lib/types";
 import { withWorkspaceScope, orFallback } from "@/lib/workspace";
 import ExhaustionBanner from "@/components/domain/ExhaustionBanner";
 import { InstallEntry } from "./fleets/new/InstallEntry";
@@ -41,17 +41,17 @@ export async function StatusTiles() {
       listFleets(workspaceId, token, { limit: 100 }).then((r) => r.items).catch(orFallback([])),
       getTenantBillingCached(token).catch(() => null),
     ]);
-    return { fleets, billing };
+    return { fleets, billing, workspaceId };
   });
   if (!result) return null;
-  const { fleets, billing } = result;
+  const { fleets, billing, workspaceId } = result;
 
   const active = fleets.filter((z) => z.status === AGENTSFLEET_STATUS.ACTIVE).length;
   const paused = fleets.filter((z) => z.status === AGENTSFLEET_STATUS.PAUSED).length;
   const stopped = fleets.filter((z) => z.status === AGENTSFLEET_STATUS.STOPPED).length;
 
   if (fleets.length === 0) {
-    const templates = await listFleetTemplatesCached(token)
+    const templates = await listWorkspaceFleetTemplatesCached(workspaceId, token)
       .then((response) => response.items)
       .catch(() => []);
     return (
@@ -88,7 +88,7 @@ function FirstInstallCard({
   templates,
 }: {
   balanceNanos: number | null;
-  templates: FleetTemplate[];
+  templates: FleetTemplateGalleryEntry[];
 }) {
   const credits = balanceNanos != null ? Math.floor(balanceNanos / NANOS_PER_USD) : null;
   return (
@@ -109,7 +109,7 @@ function FirstInstallCard({
           </DashboardPanelHeader>
 
           <DashboardPanelContent className="mt-md">
-            <InstallEntry templates={templates} maxTemplates={3} compact showSourceActions={false} />
+            <InstallEntry templates={templates} maxTemplates={3} compact />
           </DashboardPanelContent>
         </DashboardPanel>
 

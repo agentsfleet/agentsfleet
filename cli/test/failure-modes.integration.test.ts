@@ -13,14 +13,8 @@
 //   UZ-AGT-006        (409, fleet name conflict)       error_entries.zig:180
 //   UZ-EXEC-013       (500, runner fleet run failed)    error_entries_runtime.zig:56
 //   UZ-INTERNAL-001   (503, database unavailable)       error_entries.zig:61
-//
-// Local skill-load errors (no fetch) come from src/lib/load-skill-from-path.js:
-//   ERR_PATH_NOT_FOUND, ERR_SKILL_MISSING
 
 import { describe, test, expect } from "bun:test";
-import fs from "node:fs/promises";
-import os from "node:os";
-import path from "node:path";
 
 import { runCli } from "../src/cli.ts";
 import { saveWorkspaces } from "../src/lib/state.ts";
@@ -94,79 +88,34 @@ describe("failure modes — workspace surface", () => {
   });
 });
 
-describe("failure modes — install surface (local + server)", () => {
-  test("install --from /nonexistent/path errors locally with ERR_PATH_NOT_FOUND (no fetch)", async () => {
+describe("failure modes — install surface (server)", () => {
+  test("install hitting UZ-AGT-006 (name conflict, 409) surfaces clearly without writing any local state", async () => {
     await authedScope(async () => {
-      // Mock with empty routes — any HTTP attempt becomes a 404 and the test
-      // catches an unexpected outbound call. The CLI must fail before fetch.
-      await withMockApi({}, async (apiUrl, calls) => {
+      const templateId = "github-pr-reviewer";
+      const routes: MockRoutes = {
+        // The gallery resolves so the create POST is reached; the create
+        // then returns the 409 name conflict.
+        [`GET /v1/workspaces/${WS_ID}/fleet-templates`]: () => jsonResponse(200, {
+          items: [{ id: templateId, name: "test-fleet", visibility: "platform",
+            requirements: { trigger_present: true } }],
+        }),
+        [`POST /v1/workspaces/${WS_ID}/fleets`]: () => jsonResponse(409,
+          errorEnvelope("UZ-AGT-006", "Fleet name 'test-fleet' already exists in this workspace")),
+      };
+      await withMockApi(routes, async (apiUrl) => {
         const out = bufferStream();
         const err = bufferStream();
         const code = await runCli(
-          ["install", "--from", "/definitely/does/not/exist/fleet-template"],
+          ["install", "--template", templateId],
           { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
         );
-        // Effect-shape contract: SkillLoadError is rewrapped as
-        // ConfigError → exit 5. The pre-Effect path returned 1 via
-        // writeError(SkillLoadError.code, …).
-        expect(code).toBe(5);
-        expect(err.read()).toContain("ERR_PATH_NOT_FOUND");
-        expect(calls).toHaveLength(0);
+        // Effect-shape contract: HTTP 4xx → ServerError → exit 3.
+        // The pre-Effect path collapsed every API failure to exit 1.
+        expect(code).toBe(3);
+        const text = err.read();
+        expect(text).toContain("UZ-AGT-006");
+        expect(text).toContain("already exists");
       });
-    });
-  });
-
-  test("install --from <dir-without-SKILL.md> errors locally with ERR_SKILL_MISSING", async () => {
-    await authedScope(async () => {
-      const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "agentsfleet-empty-skill-"));
-      try {
-        await withMockApi({}, async (apiUrl, calls) => {
-          const out = bufferStream();
-          const err = bufferStream();
-          const code = await runCli(
-            ["install", "--from", tmpDir],
-            { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
-          );
-          // Effect-shape contract: SkillLoadError → ConfigError → exit 5.
-          expect(code).toBe(5);
-          expect(err.read()).toContain("ERR_SKILL_MISSING");
-          expect(calls).toHaveLength(0);
-        });
-      } finally {
-        await fs.rm(tmpDir, { recursive: true, force: true });
-      }
-    });
-  });
-
-  test("install hitting UZ-AGT-006 (name conflict, 409) surfaces clearly without writing any local state", async () => {
-    await authedScope(async () => {
-      const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "agentsfleet-skill-bundle-"));
-      try {
-        await fs.writeFile(path.join(tmpDir, "SKILL.md"),
-          "---\nname: test-fleet\n---\n# test fleet\n", { mode: 0o644 });
-        await fs.writeFile(path.join(tmpDir, "TRIGGER.md"),
-          "---\nname: test-fleet\n---\n# trigger\n", { mode: 0o644 });
-        const routes: MockRoutes = {
-          [`POST /v1/workspaces/${WS_ID}/fleets`]: () => jsonResponse(409,
-            errorEnvelope("UZ-AGT-006", "Fleet name 'test-fleet' already exists in this workspace")),
-        };
-        await withMockApi(routes, async (apiUrl) => {
-          const out = bufferStream();
-          const err = bufferStream();
-          const code = await runCli(
-            ["install", "--from", tmpDir],
-            { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
-          );
-          // Effect-shape contract: HTTP 4xx → ServerError → exit 3.
-          // The pre-Effect path collapsed every API failure to exit 1.
-          expect(code).toBe(3);
-          const text = err.read();
-          expect(text).toContain("UZ-AGT-006");
-          expect(text).toContain("already exists");
-        });
-      } finally {
-        await fs.rm(tmpDir, { recursive: true, force: true });
-      }
     });
   });
 });
@@ -174,73 +123,70 @@ describe("failure modes — install surface (local + server)", () => {
 describe("failure modes — runtime / observability surface", () => {
   test("install succeeds, but logs subsequently surface a runner failure event with UZ-EXEC-013 (the 'nullclaw errored out' shape)", async () => {
     await authedScope(async () => {
-      const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "agentsfleet-skill-runner-"));
-      try {
-        await fs.writeFile(path.join(tmpDir, "SKILL.md"),
-          "---\nname: runner-test\n---\n# runner test\n", { mode: 0o644 });
-        await fs.writeFile(path.join(tmpDir, "TRIGGER.md"),
-          "---\nname: runner-test\n---\n# trigger\n", { mode: 0o644 });
-        const routes: MockRoutes = {
-          // Step 1: install returns 201 — the server side is happy.
-          [`POST /v1/workspaces/${WS_ID}/fleets`]: () => jsonResponse(201, {
-            fleet_id: FLEET_ID,
-            name: "runner-test",
-            status: "running",
+      const templateId = "runner-test";
+      const routes: MockRoutes = {
+        // The gallery resolves so the create POST is reached.
+        [`GET /v1/workspaces/${WS_ID}/fleet-templates`]: () => jsonResponse(200, {
+          items: [{ id: templateId, name: "runner-test", visibility: "platform",
+            requirements: { trigger_present: true } }],
+        }),
+        // Step 1: install returns 201 — the server side is happy.
+        [`POST /v1/workspaces/${WS_ID}/fleets`]: () => jsonResponse(201, {
+          fleet_id: FLEET_ID,
+          name: "runner-test",
+          status: "running",
+        }),
+        // Step 2: events show the worker died after the fact. The user
+        // discovers the failure only by tailing logs — the install
+        // command itself returned success.
+        [`GET /v1/workspaces/${WS_ID}/fleets/${FLEET_ID}/events`]:
+          () => jsonResponse(200, {
+            items: [
+              {
+                created_at: 1700000000000,
+                actor: "fleet",
+                status: "fleet_error",
+                error_code: "UZ-EXEC-013",
+                response_text: "Runner fleet run failed: nullclaw worker exited with signal SIGSEGV before claiming the fleet",
+              },
+            ],
+            next_cursor: null,
           }),
-          // Step 2: events show the worker died after the fact. The user
-          // discovers the failure only by tailing logs — the install
-          // command itself returned success.
-          [`GET /v1/workspaces/${WS_ID}/fleets/${FLEET_ID}/events`]:
-            () => jsonResponse(200, {
-              items: [
-                {
-                  created_at: 1700000000000,
-                  actor: "fleet",
-                  status: "fleet_error",
-                  error_code: "UZ-EXEC-013",
-                  response_text: "Runner fleet run failed: nullclaw worker exited with signal SIGSEGV before claiming the fleet",
-                },
-              ],
-              next_cursor: null,
-            }),
-        };
-        await withMockApi(routes, async (apiUrl) => {
-          // Step 1: install succeeds.
-          const installOut = bufferStream();
-          const installErr = bufferStream();
-          const installCode = await runCli(
-            ["install", "--from", tmpDir],
-            { stdout: installOut.stream, stderr: installErr.stream,
-              env: { AGENTSFLEET_API_URL: apiUrl } },
-          );
-          expect(installCode).toBe(0);
+      };
+      await withMockApi(routes, async (apiUrl) => {
+        // Step 1: install succeeds.
+        const installOut = bufferStream();
+        const installErr = bufferStream();
+        const installCode = await runCli(
+          ["install", "--template", templateId],
+          { stdout: installOut.stream, stderr: installErr.stream,
+            env: { AGENTSFLEET_API_URL: apiUrl } },
+        );
+        expect(installCode).toBe(0);
 
-          // Step 2: logs surface the worker's post-install failure.
-          const logsOut = bufferStream();
-          const logsErr = bufferStream();
-          const logsCode = await runCli(
-            ["logs", FLEET_ID],
-            { stdout: logsOut.stream, stderr: logsErr.stream,
-              env: { AGENTSFLEET_API_URL: apiUrl } },
-          );
-          expect(logsCode).toBe(0);
-          const logsText = logsOut.read();
-          // Captain's "nullclaw errored out" scenario: install returned 201,
-          // but the worker died after the fact and the failure surfaces only
-          // via events. The user MUST see the failure message in `logs`
-          // output — otherwise the silent-success illusion is the bug.
-          //
-          // Note on rendering: fleet.js commandLogs prefers response_text
-          // over status when both are present, so the visible signal is
-          // the runner's failure message, not the bare `fleet_error` tag.
-          // Surfacing the status itself when response_text is set is a
-          // separate UX concern; this test pins what the user sees today.
-          expect(logsText).toContain("Runner fleet run failed");
-          expect(logsText).toContain("nullclaw");
-        });
-      } finally {
-        await fs.rm(tmpDir, { recursive: true, force: true });
-      }
+        // Step 2: logs surface the worker's post-install failure.
+        const logsOut = bufferStream();
+        const logsErr = bufferStream();
+        const logsCode = await runCli(
+          ["logs", FLEET_ID],
+          { stdout: logsOut.stream, stderr: logsErr.stream,
+            env: { AGENTSFLEET_API_URL: apiUrl } },
+        );
+        expect(logsCode).toBe(0);
+        const logsText = logsOut.read();
+        // Captain's "nullclaw errored out" scenario: install returned 201,
+        // but the worker died after the fact and the failure surfaces only
+        // via events. The user MUST see the failure message in `logs`
+        // output — otherwise the silent-success illusion is the bug.
+        //
+        // Note on rendering: fleet.js commandLogs prefers response_text
+        // over status when both are present, so the visible signal is
+        // the runner's failure message, not the bare `fleet_error` tag.
+        // Surfacing the status itself when response_text is set is a
+        // separate UX concern; this test pins what the user sees today.
+        expect(logsText).toContain("Runner fleet run failed");
+        expect(logsText).toContain("nullclaw");
+      });
     });
   });
 
