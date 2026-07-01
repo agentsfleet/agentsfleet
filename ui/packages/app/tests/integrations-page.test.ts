@@ -23,6 +23,7 @@ vi.mock("@/lib/workspace", () => ({
 vi.mock("@/lib/api/credentials", () => ({ listCredentials: vi.fn() }));
 vi.mock("@/lib/api/connectors", () => ({
   getGithubConnector: vi.fn(),
+  getSlackConnector: vi.fn(),
   CONNECTOR_STATUS: {
     connected: "connected",
     reconnectRequired: "reconnect_required",
@@ -33,15 +34,24 @@ vi.mock("@/app/(dashboard)/integrations/components/IntegrationsConnectors", () =
   default: ({
     workspaceId,
     githubStatus,
+    slackStatus,
+    slackTeam,
     credentialNames,
   }: {
     workspaceId: string;
     githubStatus: string;
+    slackStatus: string;
+    slackTeam: string | null;
     credentialNames: readonly string[];
   }) =>
     React.createElement(
       "div",
-      { "data-integrations-connectors": workspaceId, "data-github-status": githubStatus },
+      {
+        "data-integrations-connectors": workspaceId,
+        "data-github-status": githubStatus,
+        "data-slack-status": slackStatus,
+        "data-slack-team": slackTeam ?? "",
+      },
       credentialNames.join(","),
     ),
 }));
@@ -51,7 +61,7 @@ vi.mock("lucide-react", () => ({
 
 import { withWorkspaceScope } from "@/lib/workspace";
 import { listCredentials } from "@/lib/api/credentials";
-import { getGithubConnector, CONNECTOR_STATUS } from "@/lib/api/connectors";
+import { getGithubConnector, getSlackConnector, CONNECTOR_STATUS } from "@/lib/api/connectors";
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -59,6 +69,11 @@ beforeEach(() => {
   vi.mocked(withWorkspaceScope).mockImplementation(
     async (_token: string, fn: (workspaceId: string) => Promise<unknown>) => fn("ws_1"),
   );
+  // Default: Slack not connected. Individual tests override as needed.
+  vi.mocked(getSlackConnector).mockResolvedValue({
+    status: CONNECTOR_STATUS.notConnected,
+    team: null,
+  });
 });
 afterEach(() => vi.clearAllMocks());
 
@@ -76,6 +91,32 @@ describe("Integrations page", () => {
     expect(markup).toContain('data-integrations-connectors="ws_1"');
     expect(markup).toContain('data-github-status="connected"');
     expect(markup).toContain("SLACK_BOT_TOKEN");
+  });
+
+  it("wires the Slack connector status + team through to the connectors component", async () => {
+    vi.mocked(listCredentials).mockResolvedValue({ credentials: [] });
+    vi.mocked(getGithubConnector).mockResolvedValue({ status: CONNECTOR_STATUS.notConnected });
+    vi.mocked(getSlackConnector).mockResolvedValue({
+      status: CONNECTOR_STATUS.connected,
+      team: "Acme Corp",
+    });
+
+    const { default: Page } = await import("../app/(dashboard)/integrations/page");
+    const markup = renderToStaticMarkup(await Page());
+
+    expect(markup).toContain('data-slack-status="connected"');
+    expect(markup).toContain('data-slack-team="Acme Corp"');
+  });
+
+  it("degrades the Slack connector to not-connected when the status read errors", async () => {
+    vi.mocked(listCredentials).mockResolvedValue({ credentials: [] });
+    vi.mocked(getGithubConnector).mockResolvedValue({ status: CONNECTOR_STATUS.notConnected });
+    vi.mocked(getSlackConnector).mockRejectedValue(new Error("connector endpoint down"));
+
+    const { default: Page } = await import("../app/(dashboard)/integrations/page");
+    const markup = renderToStaticMarkup(await Page());
+
+    expect(markup).toContain('data-slack-status="not_connected"');
   });
 
   it("degrades the GitHub connector to not-connected when the status read errors", async () => {

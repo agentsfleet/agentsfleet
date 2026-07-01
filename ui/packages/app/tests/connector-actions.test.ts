@@ -5,15 +5,22 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // the browser redirects to. No token or secret ever passes through the action —
 // the real connect/callback security boundary is the backend, proven by its own
 // suite. Mock both module boundaries so only the action's delegation is tested.
-const { withTokenMock, startGithubConnectMock } = vi.hoisted(() => ({
+const { withTokenMock, startGithubConnectMock, startSlackConnectMock } = vi.hoisted(() => ({
   withTokenMock: vi.fn(),
   startGithubConnectMock: vi.fn(),
+  startSlackConnectMock: vi.fn(),
 }));
 
 vi.mock("@/lib/actions/with-token", () => ({ withToken: withTokenMock }));
-vi.mock("@/lib/api/connectors", () => ({ startGithubConnect: startGithubConnectMock }));
+vi.mock("@/lib/api/connectors", () => ({
+  startGithubConnect: startGithubConnectMock,
+  startSlackConnect: startSlackConnectMock,
+}));
 
-import { startGithubConnectAction } from "@/app/(dashboard)/integrations/connector-actions";
+import {
+  startGithubConnectAction,
+  startSlackConnectAction,
+} from "@/app/(dashboard)/integrations/connector-actions";
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -49,5 +56,24 @@ describe("credentials connector server actions", () => {
     const result = await startGithubConnectAction("ws_1");
 
     expect(result).toEqual({ ok: false, error: "UZ-CONN-001" });
+  });
+
+  it("startSlackConnectAction forwards the workspace id through withToken to startSlackConnect", async () => {
+    const install = { install_url: "https://slack.com/oauth/v2/authorize?state=signed" };
+    startSlackConnectMock.mockResolvedValue(install);
+
+    const result = await startSlackConnectAction("ws_1");
+
+    expect(result).toEqual({ ok: true, data: install });
+    expect(withTokenMock).toHaveBeenCalledTimes(1);
+    expect(startSlackConnectMock).toHaveBeenCalledWith("ws_1", "tok");
+  });
+
+  it("surfaces a Slack connect failure as { ok: false } (degraded closed, no throw)", async () => {
+    startSlackConnectMock.mockRejectedValue(new Error("UZ-SLK-021"));
+
+    const result = await startSlackConnectAction("ws_1");
+
+    expect(result).toEqual({ ok: false, error: "UZ-SLK-021" });
   });
 });

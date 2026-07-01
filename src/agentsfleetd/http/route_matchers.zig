@@ -168,6 +168,7 @@ pub const matchWorkspaceConnectorGithub = connectors.matchWorkspaceConnectorGith
 pub const matchWorkspaceConnectorGithubConnect = connectors.matchWorkspaceConnectorGithubConnect;
 pub const matchGithubConnectCallback = connectors.matchGithubConnectCallback;
 pub const matchWorkspaceConnectorSlackConnect = connectors.matchWorkspaceConnectorSlackConnect;
+pub const matchWorkspaceConnectorSlack = connectors.matchWorkspaceConnectorSlack;
 pub const matchSlackConnectCallback = connectors.matchSlackConnectCallback;
 pub const matchSlackEvents = connectors.matchSlackEvents;
 

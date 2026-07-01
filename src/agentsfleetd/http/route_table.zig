@@ -92,6 +92,7 @@ pub fn classFor(route: router.Route) RouteClass {
         .github_connector_status,
         .github_connect_callback,
         .connect_slack,
+        .slack_connector_status,
         .slack_connect_callback,
         .slack_events,
         .fleet_keys,
@@ -187,6 +188,7 @@ pub fn specFor(route: router.Route, registry: *auth_mw.MiddlewareRegistry) Route
         // Slack OAuth connector (M106 §1). connect is workspace-authed; the
         // callback is Bearer-less (a slack.com redirect) — state-authed in-handler.
         .connect_slack => .{ .middlewares = registry.bearer(), .invoke = connectors_invoke.invokeConnectSlack },
+        .slack_connector_status => .{ .middlewares = registry.bearer(), .invoke = connectors_invoke.invokeSlackConnectorStatus },
         .slack_connect_callback => .{ .middlewares = auth_mw.MiddlewareRegistry.none, .invoke = connectors_invoke.invokeSlackCallback },
         // Slack events ingress (M106 §2). Bearer-less — the Slack v0 request
         // signature is verified in-handler (the signing secret is resolved
