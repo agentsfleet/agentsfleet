@@ -102,7 +102,14 @@ pub fn loadBotToken(alloc: std.mem.Allocator, conn: *pg.Conn, workspace_id: []co
     defer alloc.free(key);
     var parsed = try vault.loadJson(alloc, conn, workspace_id, key);
     defer parsed.deinit();
-    const obj = parsed.value.object; // loadJson guarantees `.object`
+    // Guard the object variant locally rather than relying on loadJson's shape
+    // check (mirrors loadSigningSecret / loadAppCreds): loadBotToken runs on the
+    // background outbound worker, so a stray non-object handle must return an
+    // error the worker classifies `permanent`, never trap the thread.
+    const obj = switch (parsed.value) {
+        .object => |o| o,
+        else => return error.SlackBotTokenHandleMalformed,
+    };
     const tok = strField(obj, F_BOT_TOKEN) orelse return error.SlackBotTokenMissing;
     return alloc.dupe(u8, tok);
 }

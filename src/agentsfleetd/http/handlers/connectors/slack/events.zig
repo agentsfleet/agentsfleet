@@ -8,7 +8,16 @@
 //!
 //! Flow (all inline, ≤3 s — there is no deferred-task substrate; the model run
 //! is the runner's async job, not this handler's):
+//!   0. header presence (cheap, DB-free) → reject before any acquire.
 //!   1. verify signature (constant-time, 300 s window) → UZ-SLK-010 / UZ-SLK-011.
+//!      NOTE (intentional ordering): the HMAC needs the signing secret, so step 1
+//!      first acquires a pool conn + does the `slack-app` vault SELECT. A request
+//!      with present-but-wrong sig/ts headers therefore costs one conn + one
+//!      vault read *before* the HMAC rejects it — an accepted tradeoff of the
+//!      per-request vault-resolution design (no boot/env caching), not an
+//!      oversight. If this ever becomes a load concern, boot-cache the platform
+//!      signing secret on `Context` (like `approval_signing_secret`) rather than
+//!      reordering — you cannot verify without the secret in hand.
 //!   2. `url_verification` → echo the challenge.
 //!   3. resolve team_id → workspace (`connector_installs`); unknown team is a
 //!      200-ack no-op (UZ-SLK-020 — Slack must never see an error loop).
