@@ -119,6 +119,25 @@ pub fn teardownTenantById(conn: *pg.Conn, tenant_id: []const u8) void {
     ) catch |err| std.log.warn(IGNORED_ERROR_FMT, .{@errorName(err)});
 }
 
+/// Delete the shared test tenant's billing row so a test that asserts an exact
+/// balance starts from a known-clean slate. TEST_TENANT_ID is shared across
+/// suites, and `insertStarterGrant`/`provision` are idempotent (`ON CONFLICT DO
+/// NOTHING`), so a balance a prior test left behind survives into this one: that
+/// test's `teardownTenant` is silently FK-blocked by some leaked tenant-scoped row
+/// (`core.workspaces`, `core.users`, … are NO ACTION references to `core.tenants`),
+/// which strands the CASCADE-linked billing row with its dirtied balance. A later
+/// billing test's idempotent grant then no-ops onto that balance (double-debit /
+/// exhausted-carry under seed-randomized order). A direct DELETE here sidesteps the
+/// whole FK chain, making balance assertions order-independent. Billing tests that
+/// establish their own grant call this at setup; the platform edge tests re-grant
+/// via `seedPlatformProvider`, so they are unaffected.
+pub fn resetBilling(conn: *pg.Conn) void {
+    _ = conn.exec(
+        "DELETE FROM billing.tenant_billing WHERE tenant_id = $1::uuid",
+        .{TEST_TENANT_ID},
+    ) catch |err| std.log.warn(IGNORED_ERROR_FMT, .{@errorName(err)});
+}
+
 // M10_001: seedSpec, seedRun, teardownRuns, teardownSpecs removed.
 // Tables core.specs and core.runs were dropped in pipeline v1 removal.
 
@@ -284,7 +303,7 @@ pub fn seedPlatformProviderWithKey(
 pub fn teardownPlatformProvider(conn: *pg.Conn, workspace_id: []const u8) void {
     _ = conn.exec("DELETE FROM core.platform_llm_keys WHERE provider = $1", .{TEST_PROVIDER_NAME}) catch |err| std.log.warn(IGNORED_ERROR_FMT, .{@errorName(err)});
     _ = conn.exec("DELETE FROM vault.secrets WHERE workspace_id = $1 AND key_name = $2", .{ workspace_id, TEST_PROVIDER_NAME }) catch |err| std.log.warn(IGNORED_ERROR_FMT, .{@errorName(err)});
-    _ = conn.exec("DELETE FROM billing.tenant_billing WHERE tenant_id = $1::uuid", .{TEST_TENANT_ID}) catch |err| std.log.warn(IGNORED_ERROR_FMT, .{@errorName(err)});
+    resetBilling(conn);
     _ = conn.exec("DELETE FROM core.tenant_providers WHERE tenant_id = $1::uuid", .{TEST_TENANT_ID}) catch |err| std.log.warn(IGNORED_ERROR_FMT, .{@errorName(err)});
     _ = conn.exec("DELETE FROM core.fleet_execution_telemetry WHERE workspace_id = $1", .{workspace_id}) catch |err| std.log.warn(IGNORED_ERROR_FMT, .{@errorName(err)});
 }
