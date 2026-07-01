@@ -103,6 +103,16 @@ pub const ENTRIES = [_]Entry{
     e("UZ-WH-030", .payload_too_large, "Webhook payload too large", "Webhook body exceeds the 1 MiB ingest limit. Reduce the payload size " ++
         "or filter at the source."),
     // ── SLACK CONNECTOR ──────────────────────────────────────────────────────
+    // Events ingress (M106 §2). 010/011 are the only rejections Slack ever sees
+    // as a 4xx; 020 is a benign 200-ack no-op (an uninstalled team), so its
+    // entry carries `.ok` — the code is a structured telemetry/log reason, never
+    // an `hx.fail` wire status (the handler returns 200 via `hx.ok`).
+    e("UZ-SLK-010", .unauthorized, "Invalid Slack signature", "The Slack request signature did not verify. Confirm the platform Slack " ++
+        "app signing secret matches the one vaulted at slack-app/signing_secret."),
+    e("UZ-SLK-011", .unauthorized, "Stale Slack timestamp", "The Slack request timestamp is outside the allowed 5-minute drift window — " ++
+        "a replay attempt or a skewed server clock."),
+    e("UZ-SLK-020", .ok, "Slack team not installed", "The Slack team that sent this event has no connector install, so the event " ++
+        "is acknowledged (200) and ignored. Re-run Connect Slack in the dashboard to (re)install."),
     e("UZ-SLK-022", .bad_gateway, "Slack token exchange failed", "The Slack OAuth code could not be exchanged for a bot token. Retry the " ++
         "connect flow; if it persists, verify the platform Slack app credentials."),
     // ── TOOL ─────────────────────────────────────────────────────────────────

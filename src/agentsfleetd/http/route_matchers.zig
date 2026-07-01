@@ -170,6 +170,7 @@ pub const matchWorkspaceConnectorGithubConnect = connectors.matchWorkspaceConnec
 pub const matchGithubConnectCallback = connectors.matchGithubConnectCallback;
 pub const matchWorkspaceConnectorSlackConnect = connectors.matchWorkspaceConnectorSlackConnect;
 pub const matchSlackConnectCallback = connectors.matchSlackConnectCallback;
+pub const matchSlackEvents = connectors.matchSlackEvents;
 
 // ── /workspaces/{ws}/fleet-keys/{fleet_key_id} ─────────────────────────────────
 

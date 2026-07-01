@@ -14,6 +14,7 @@ const S_GITHUB = "github";
 const S_SLACK = "slack";
 const S_CONNECT = "connect";
 const S_CALLBACK = "callback";
+const S_EVENTS = "events";
 
 /// GET /v1/workspaces/{ws}/connectors/github — connector status.
 pub fn matchWorkspaceConnectorGithub(p: Path) ?[]const u8 {
@@ -46,4 +47,12 @@ pub fn matchWorkspaceConnectorSlackConnect(p: Path) ?[]const u8 {
 pub fn matchSlackConnectCallback(p: Path) bool {
     if (p.segs.len != 3) return false;
     return p.eq(0, S_CONNECTORS) and p.eq(1, S_SLACK) and p.eq(2, S_CALLBACK);
+}
+
+/// POST /v1/connectors/slack/events — Bearer-less; authenticated by the Slack v0
+/// request signature in-handler (mirrors the callback's 3-segment shape, but the
+/// `events` segment + POST verb disambiguate it from `callback`).
+pub fn matchSlackEvents(p: Path) bool {
+    if (p.segs.len != 3) return false;
+    return p.eq(0, S_CONNECTORS) and p.eq(1, S_SLACK) and p.eq(2, S_EVENTS);
 }

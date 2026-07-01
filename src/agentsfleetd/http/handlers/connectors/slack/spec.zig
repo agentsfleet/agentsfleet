@@ -4,7 +4,11 @@
 
 const oauth2 = @import("../oauth2.zig");
 
-pub const PROVIDER = "slack";
+/// Single source of the Slack provider id (the `provider` column value + the
+/// `<provider>-app`/`fleet:<provider>` vault-key stem). Aliased from
+/// `common` so the OAuth connector, the events ingress, and the migrations
+/// all key off one constant (RULE UFS).
+pub const PROVIDER = @import("common").PROVIDER_SLACK;
 
 pub const SPEC = oauth2.Spec{
     .provider = PROVIDER,

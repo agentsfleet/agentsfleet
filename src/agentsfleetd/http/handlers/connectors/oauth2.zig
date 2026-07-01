@@ -132,9 +132,26 @@ pub fn exchange(
     return .{ .status = @intFromEnum(result.status), .body = try aw.toOwnedSlice() };
 }
 
-const APP_VAULT_KEY_SUFFIX = "-app";
+pub const APP_VAULT_KEY_SUFFIX = "-app";
 const FIELD_CLIENT_ID = "client_id";
 const FIELD_CLIENT_SECRET = "client_secret";
+
+/// Load + parse the admin-workspace `<provider>-app` vault entry — the shared
+/// platform-app secret bag (client id/secret for the OAuth exchange, plus any
+/// provider-specific fields like Slack's `signing_secret` the ingress reads).
+/// Caller owns the returned `Parsed` (`.deinit()`); null = unconfigured/missing.
+/// The single site that builds the `<provider>-app` key (RULE UFS).
+pub fn loadAppVaultJson(
+    alloc: std.mem.Allocator,
+    conn: *pg.Conn,
+    admin_ws_id: []const u8,
+    provider: []const u8,
+) ?std.json.Parsed(std.json.Value) {
+    if (admin_ws_id.len == 0) return null;
+    const key = std.fmt.allocPrint(alloc, "{s}" ++ APP_VAULT_KEY_SUFFIX, .{provider}) catch return null;
+    defer alloc.free(key);
+    return vault.loadJson(alloc, conn, admin_ws_id, key) catch return null;
+}
 
 /// Resolve a connector's platform app creds from the admin-workspace vault
 /// `<provider>-app` entry (one OAuth app per connector, serving all tenants).
@@ -148,11 +165,7 @@ pub fn loadAppCreds(
     admin_ws_id: []const u8,
     provider: []const u8,
 ) ?AppCreds {
-    if (admin_ws_id.len == 0) return null;
-    const key = std.fmt.allocPrint(alloc, "{s}" ++ APP_VAULT_KEY_SUFFIX, .{provider}) catch return null;
-    defer alloc.free(key);
-
-    var parsed = vault.loadJson(alloc, conn, admin_ws_id, key) catch return null;
+    var parsed = loadAppVaultJson(alloc, conn, admin_ws_id, provider) orelse return null;
     defer parsed.deinit();
     const obj = switch (parsed.value) {
         .object => |o| o,

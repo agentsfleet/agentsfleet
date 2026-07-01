@@ -84,6 +84,7 @@ pub fn requiredScopes(route: router.Route, method: httpz.Method) []const S {
         .github_webhook,
         .github_connect_callback,
         .slack_connect_callback,
+        .slack_events,
         .request_integration_grant,
         => &NONE,
 

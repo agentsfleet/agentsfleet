@@ -257,7 +257,13 @@ fn buildDefaultTriggerMarkdown(alloc: std.mem.Allocator, name: []const u8) ![]co
     , .{ name, DEFAULT_TRIGGER_DAILY_DOLLARS });
 }
 
-fn insertFleetOnConn(
+/// Insert one `core.fleets` row — the single request-independent fleet-insert
+/// site (Invariant 7). `innerCreateFleet` wraps it for the HTTP create path;
+/// the principal-less Slack channel-fleet materialization
+/// (`connectors/slack/channel_fleet.zig`) calls it directly under
+/// install-delegated authority. Callers own the ensuing `create_stream`
+/// setup; this fn only writes the row (born `installing`).
+pub fn insertFleetOnConn(
     conn: *pg.Conn,
     workspace_id: []const u8,
     source_markdown: []const u8,
@@ -300,8 +306,10 @@ fn insertFleetOnConn(
 
 /// Roll back a freshly-INSERTed fleet row. Workspace-scoped to prevent
 /// cross-tenant deletes. Returns errors so the caller can decide whether
-/// to log loudly (rare double-fault) or swallow.
-fn deleteFleetRow(conn: *pg.Conn, workspace_id: []const u8, fleet_id: []const u8) !void {
+/// to log loudly (rare double-fault) or swallow. Shared with the Slack
+/// channel-fleet materialization, which deletes its own orphan when it loses
+/// the concurrent first-mention race (Invariant 6).
+pub fn deleteFleetRow(conn: *pg.Conn, workspace_id: []const u8, fleet_id: []const u8) !void {
     _ = try conn.exec(
         \\DELETE FROM core.fleets WHERE id = $1::uuid AND workspace_id = $2::uuid
     , .{ fleet_id, workspace_id });
@@ -311,7 +319,9 @@ fn deleteFleetRow(conn: *pg.Conn, workspace_id: []const u8, fleet_id: []const u8
 /// unique constraint (a duplicate fleet name in the workspace). The pg driver
 /// surfaces the structured SQLSTATE on `conn.err` after a failed `exec`, so the
 /// 409 path is reachable — same introspection the api-keys and signup handlers use.
-fn isUniqueViolation(conn: *pg.Conn) bool {
+/// Shared with the Slack channel-fleet materialization, which converges a
+/// concurrent same-channel first-mention on this constraint (Invariant 6).
+pub fn isUniqueViolation(conn: *pg.Conn) bool {
     const pg_err = conn.err orelse return false;
     return isUniqueViolationCode(pg_err.code);
 }

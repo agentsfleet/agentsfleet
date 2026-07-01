@@ -20,6 +20,7 @@ const PgQuery = @import("../../../../db/pg_query.zig").PgQuery;
 const test_fixtures = @import("../../../../db/test_fixtures.zig");
 const vault = @import("../../../../state/vault.zig");
 const credential_key = @import("../../../../fleet_runtime/credential_key.zig");
+const ec = @import("../../../../errors/error_registry.zig");
 const oauth2 = @import("../oauth2.zig");
 const spec = @import("spec.zig");
 
@@ -205,4 +206,71 @@ test "integration: slack oauth callback persists install + vaults token (Dim 1.1
     try testing.expectEqualStrings(BOT_TOKEN, handle.get("bot_token").?.string);
     try testing.expectEqualStrings(BOT_USER_ID, handle.get("bot_user_id").?.string);
     try testing.expectEqualStrings(TEAM_ID, handle.get("team_id").?.string);
+}
+
+test "integration: slack oauth callback rejects a forged state (Dim 1.2)" {
+    const alloc = testing.allocator;
+    const h = TestHarness.start(alloc, .{ .configureRegistry = noopRegistry }) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+
+    test_fixtures.setTestEncryptionKey();
+    try test_fixtures.seedTenant(conn);
+    try test_fixtures.seedWorkspace(conn, ADMIN_WS);
+    try test_fixtures.seedWorkspace(conn, TARGET_WS);
+    preClean(alloc, conn);
+    try seedSlackAppCreds(alloc, conn);
+
+    h.ctx.approval_signing_secret = SIGNING_SECRET;
+    h.ctx.platform_admin_workspace_id = ADMIN_WS;
+
+    // Mint a valid single-use state for TARGET_WS, then tamper one byte so the
+    // HMAC no longer verifies — a signature-forged state (the security property
+    // Dim 1.2 pins), rejected before any code exchange or write.
+    const good = try oauth2.mintState(alloc, &h.queue, spec.SPEC, SIGNING_SECRET, TARGET_WS, common.clock.nowMillis());
+    defer alloc.free(good);
+    const forged = try alloc.dupe(u8, good);
+    defer alloc.free(forged);
+    forged[forged.len - 1] = if (forged[forged.len - 1] == 'A') 'B' else 'A';
+
+    const path = try std.fmt.allocPrint(alloc, "/v1/connectors/slack/callback?code=whatever&state={s}", .{forged});
+    defer alloc.free(path);
+    const r = try h.get(path).redirectBehavior(.unhandled).send();
+    defer r.deinit();
+
+    // Rejected with the GENERIC connector-state-invalid code, consistent with
+    // GitHub — NOT a Slack-specific state code (the §1 reconciliation
+    // deliberately reused the generic connector code, not a new SLK one).
+    try r.expectStatus(.bad_request);
+    try r.expectErrorCode(ec.ERR_CONNECTOR_STATE_INVALID);
+
+    // No install row was written… (scoped so the result drains — releasing the
+    // conn — before the next query on the same connection, else ConnectionBusy).
+    {
+        var q = PgQuery.from(try conn.query(
+            "SELECT count(*) FROM core.connector_installs WHERE provider = $1 AND external_account_id = $2",
+            .{ spec.PROVIDER, TEAM_ID },
+        ));
+        defer q.deinit();
+        const row = try q.next() orelse return error.CountRowMissing;
+        try testing.expectEqual(@as(i64, 0), try row.get(i64, 0));
+    }
+
+    // …and no fleet:slack vault handle was stored for TARGET_WS.
+    const key = try credential_key.allocKeyName(alloc, spec.PROVIDER);
+    defer alloc.free(key);
+    {
+        var vq = PgQuery.from(try conn.query(
+            "SELECT count(*) FROM vault.secrets WHERE workspace_id = $1 AND key_name = $2",
+            .{ TARGET_WS, key },
+        ));
+        defer vq.deinit();
+        const vrow = try vq.next() orelse return error.CountRowMissing;
+        try testing.expectEqual(@as(i64, 0), try vrow.get(i64, 0));
+    }
 }

@@ -118,6 +118,8 @@ fn matchV1(p: matchers.Path, method: httpz.Method) ?Route {
     // ── Workspace + connector (Slack OAuth, M106 §1) ─────────────────────
     if (matchers.matchWorkspaceConnectorSlackConnect(p)) |ws| return .{ .connect_slack = ws };
     if (matchers.matchSlackConnectCallback(p)) return .{ .slack_connect_callback = {} };
+    // ── Slack events ingress (M106 §2) — POST-only (invoke fn 405s others) ─
+    if (matchers.matchSlackEvents(p)) return .{ .slack_events = {} };
     // ── Workspace + leaf ──────────────────────────────────────────────────
     if (matchers.matchWorkspaceCredential(p)) |r| return .{ .workspace_credential = r };
     if (matchers.matchWorkspaceFleetKeyDelete(p)) |r| return .{ .delete_fleet_key = r };
