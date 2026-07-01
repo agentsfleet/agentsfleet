@@ -199,6 +199,7 @@ test "integration: slack_post.deliver posts the answer to the mention's thread (
     const conn = try h.acquireConn();
     defer h.releaseConn(conn);
     try seedAll(alloc, conn);
+    defer preClean(conn); // don't leak the seeded active fleet into other suites' lease scans
 
     var fake: FakeSlack = undefined;
     try fake.start();
@@ -225,6 +226,7 @@ test "integration: enqueue → worker delivers the answer end-to-end + acks (Dim
     const conn = try h.acquireConn();
     defer h.releaseConn(conn);
     try seedAll(alloc, conn);
+    defer preClean(conn); // don't leak the seeded active fleet into other suites' lease scans
     try connector_outbound.ensureGroup(&h.queue);
 
     var fake: FakeSlack = undefined;

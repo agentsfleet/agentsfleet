@@ -83,6 +83,19 @@ fn preClean(conn: *pg.Conn) void {
     _ = conn.exec("DELETE FROM core.connector_installs WHERE provider = $1 AND external_account_id = $2", .{ spec.PROVIDER, TEAM_UNMAPPED }) catch |e| std.log.warn("preclean install2: {s}", .{@errorName(e)});
 }
 
+/// Post-test teardown for a materialized resident fleet. It is born ACTIVE with a
+/// fresh event on its Redis stream, so leaving it behind lets an unrelated
+/// suite's runner lease-scan pick it up (control_plane's "assigns across active
+/// fleets" asserts an exact fleet count under seed-randomized test order). Delete
+/// the fleet_events + the fleet so it drops out of the active-fleet scan; an
+/// orphaned Redis stream with no backing PG fleet is never scanned, so it is inert.
+fn teardownResident(conn: *pg.Conn, name: []const u8, team: []const u8) void {
+    _ = conn.exec("DELETE FROM core.fleet_events WHERE fleet_id IN (SELECT id FROM core.fleets WHERE workspace_id = $1::uuid AND name = $2)", .{ TARGET_WS, name }) catch |e| std.log.warn("teardown events: {s}", .{@errorName(e)});
+    _ = conn.exec("DELETE FROM core.connector_channels WHERE provider = $1 AND external_account_id = $2", .{ spec.PROVIDER, team }) catch |e| std.log.warn("teardown channels: {s}", .{@errorName(e)});
+    _ = conn.exec("DELETE FROM core.fleets WHERE workspace_id = $1::uuid AND name = $2", .{ TARGET_WS, name }) catch |e| std.log.warn("teardown fleet: {s}", .{@errorName(e)});
+    _ = conn.exec("DELETE FROM core.connector_installs WHERE provider = $1 AND external_account_id = $2", .{ spec.PROVIDER, team }) catch |e| std.log.warn("teardown install: {s}", .{@errorName(e)});
+}
+
 // ── Request signing + assertions ─────────────────────────────────────────────
 
 fn mentionBody(alloc: std.mem.Allocator, team: []const u8, channel: []const u8, ts: []const u8) ![]const u8 {
@@ -164,6 +177,7 @@ test "integration: signed app_mention acks + enqueues; second mention reuses the
     try test_fixtures.seedWorkspace(conn, ADMIN_WS);
     try test_fixtures.seedWorkspace(conn, TARGET_WS);
     preClean(conn);
+    defer teardownResident(conn, RESIDENT_NAME, TEAM_ID); // don't leak the materialized fleet into other lease scans
     try seedSlackApp(alloc, conn);
     try seedInstall(alloc, conn, TEAM_ID, TARGET_WS);
     h.ctx.platform_admin_workspace_id = ADMIN_WS;
@@ -307,6 +321,7 @@ test "integration: two concurrent first-mentions converge on exactly one fleet +
     _ = conn.exec("DELETE FROM core.connector_channels WHERE provider = $1 AND external_account_id = $2", .{ spec.PROVIDER, TEAM_CC }) catch |e| std.log.warn("cc preclean channels: {s}", .{@errorName(e)});
     _ = conn.exec("DELETE FROM core.fleets WHERE workspace_id = $1::uuid AND name = $2", .{ TARGET_WS, RESIDENT_NAME_CC }) catch |e| std.log.warn("cc preclean fleet: {s}", .{@errorName(e)});
     _ = conn.exec("DELETE FROM core.connector_installs WHERE provider = $1 AND external_account_id = $2", .{ spec.PROVIDER, TEAM_CC }) catch |e| std.log.warn("cc preclean install: {s}", .{@errorName(e)});
+    defer teardownResident(conn, RESIDENT_NAME_CC, TEAM_CC); // this active fleet + its Redis event is control_plane's phantom 3rd lease
     try seedSlackApp(alloc, conn);
     try seedInstall(alloc, conn, TEAM_CC, TARGET_WS);
     h.ctx.platform_admin_workspace_id = ADMIN_WS;
