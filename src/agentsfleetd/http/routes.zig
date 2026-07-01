@@ -97,6 +97,9 @@ pub const Route = union(enum) {
     connect_github: []const u8, // POST /v1/workspaces/{ws}/connectors/github/connect
     github_connector_status: []const u8, // GET /v1/workspaces/{ws}/connectors/github
     github_connect_callback, // GET /v1/connectors/github/callback (Bearer-less; state-authed)
+    // Slack OAuth connector (M106 §1)
+    connect_slack: []const u8, // POST /v1/workspaces/{ws}/connectors/slack/connect
+    slack_connect_callback, // GET /v1/connectors/slack/callback (Bearer-less; state-authed)
     // Workspace fleet-key management
     fleet_keys: []const u8, // POST|GET /v1/workspaces/{ws}/fleet-keys
     delete_fleet_key: matchers.WorkspaceFleetKeyRoute, // DELETE /v1/workspaces/{ws}/fleet-keys/{fleet_key_id}

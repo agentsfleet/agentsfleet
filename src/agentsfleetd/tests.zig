@@ -39,6 +39,8 @@ test {
     _ = @import("credentials/broker_test.zig");
     _ = @import("credentials/serve_broker.zig");
     _ = @import("http/handlers/connectors/state.zig");
+    _ = @import("http/handlers/connectors/oauth2.zig");
+    _ = @import("http/handlers/connectors/slack/callback.zig");
     _ = @import("auth/crypto/rs256_sign.zig");
     _ = @import("fleet/schema_migration_test.zig");
     _ = @import("fleet/control_plane_integration_test.zig");
