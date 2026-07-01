@@ -226,6 +226,31 @@ describe("test_install_states_render", () => {
     expect(routerPush).not.toHaveBeenCalled();
   });
 
+  it("the mount guard blocks a second create when the effect re-runs", async () => {
+    installFleetActionMock.mockResolvedValue({ ok: true, data: { fleet_id: "zom_once" } });
+    const source = entry({ requirements: { ...TEMPLATE_GH.requirements, credentials: [] } });
+    const { rerender } = render(
+      React.createElement(InstallStates, {
+        workspaceId: "ws_1",
+        source,
+        presentCredentialNames: [],
+        onBack: vi.fn(),
+      }),
+    );
+    await waitFor(() => expect(installFleetActionMock).toHaveBeenCalledTimes(1));
+    // A fresh presentCredentialNames reference re-fires the mount effect; the
+    // `started` guard (`if (started.current) return;`) holds, so create runs once.
+    rerender(
+      React.createElement(InstallStates, {
+        workspaceId: "ws_1",
+        source,
+        presentCredentialNames: [],
+        onBack: vi.fn(),
+      }),
+    );
+    await waitFor(() => expect(installFleetActionMock).toHaveBeenCalledTimes(1));
+  });
+
   it("a non-409 create failure renders the error and Retry re-runs create", async () => {
     installFleetActionMock
       .mockResolvedValueOnce({ ok: false, error: "boom", errorCode: "UZ-SRV", status: 500 })
