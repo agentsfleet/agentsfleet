@@ -115,6 +115,11 @@ pub const ENTRIES = [_]Entry{
         "is acknowledged (200) and ignored. Re-run Connect Slack in the dashboard to (re)install."),
     e("UZ-SLK-022", .bad_gateway, "Slack token exchange failed", "The Slack OAuth code could not be exchanged for a bot token. Retry the " ++
         "connect flow; if it persists, verify the platform Slack app credentials."),
+    // 030 is log-only: the connector:outbound worker posts the answer async, so a
+    // failed chat.postMessage is logged + retried with backoff, never surfaced to
+    // an HTTP caller. The status is nominal (mirrors 022 — a Slack-upstream fault).
+    e("UZ-SLK-030", .bad_gateway, "Slack answer post failed", "The channel bot's answer could not be delivered to Slack (missing chat:write, " ++
+        "a 429, or a Slack outage). It is logged and retried with backoff; the run itself never fails."),
     // ── TOOL ─────────────────────────────────────────────────────────────────
     e("UZ-TOOL-005", .bad_request, "Unknown tool", "Unknown tool name. Check spelling against the known tools list."),
     // ── AGENT ───────────────────────────────────────────────────────────────

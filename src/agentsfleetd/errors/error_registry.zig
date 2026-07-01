@@ -115,6 +115,11 @@ pub const ERR_SLACK_SIG_INVALID = "UZ-SLK-010";
 pub const ERR_SLACK_TIMESTAMP_STALE = "UZ-SLK-011";
 pub const ERR_SLACK_TEAM_NOT_INSTALLED = "UZ-SLK-020";
 pub const ERR_SLACK_OAUTH_EXCHANGE_FAILED = "UZ-SLK-022";
+// Outbound answer post (§4): a log-only code — the connector:outbound worker
+// logs a failed chat.postMessage and retries with backoff; it is never an
+// `hx.fail` wire status (no HTTP caller waits on the answer). Carries a
+// `.bad_gateway` status for symmetry with UZ-SLK-022 (both Slack-upstream).
+pub const ERR_SLACK_OUTBOUND_POST_FAILED = "UZ-SLK-030";
 // TOOL
 pub const ERR_TOOL_UNKNOWN = "UZ-TOOL-005";
 // AGENT
