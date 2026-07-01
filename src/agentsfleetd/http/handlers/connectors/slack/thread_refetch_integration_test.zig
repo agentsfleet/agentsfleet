@@ -38,6 +38,7 @@ const RESIDENT_NAME = "slack-channel-t106thr-c106thr"; // "slack-channel-" ++ lo
 const USER_ID = "U778";
 const THREAD_TS = "1700000100.000100";
 const MENTION_TS = "1700000100.000200";
+const MENTION_TS_429 = "1700000100.000300";
 const BOT_TOKEN = "xoxb-m106-thread-tok";
 // A distinctive phrase in the FakeSlack thread so the request_json assertion can
 // not pass by accident (it is not present anywhere in the mention text).
@@ -51,6 +52,11 @@ const FakeSlack = struct {
     port: u16,
     accept_thread: std.Thread,
     stop: std.atomic.Value(bool),
+    /// HTTP status the fake answers with (200 by default). A test sets this to
+    /// 429/5xx to exercise the best-effort degrade path (the re-read must
+    /// degrade to an empty thread, never crash the ingress — regression guard
+    /// for the errdefer/manual double-deinit bug).
+    reply_status: std.atomic.Value(u16),
 
     const REPLIES_BODY =
         "{\"ok\":true,\"messages\":[" ++
@@ -64,6 +70,7 @@ const FakeSlack = struct {
         self.server = lp.server;
         self.port = lp.port;
         self.stop = std.atomic.Value(bool).init(false);
+        self.reply_status = std.atomic.Value(u16).init(200);
         self.accept_thread = try std.Thread.spawn(.{}, acceptLoop, .{self});
     }
 
@@ -96,7 +103,7 @@ const FakeSlack = struct {
         }
     }
 
-    fn handleConn(_: *FakeSlack, stream: net.Stream) void {
+    fn handleConn(self: *FakeSlack, stream: net.Stream) void {
         const io = common.globalIo();
         defer stream.close(io);
         var read_buf: [4096]u8 = undefined;
@@ -105,7 +112,12 @@ const FakeSlack = struct {
         var swriter = stream.writer(io, &write_buf);
         var http_server = std.http.Server.init(&sreader.interface, &swriter.interface);
         var req = http_server.receiveHead() catch return;
-        req.respond(REPLIES_BODY, .{
+        const status = self.reply_status.load(.acquire);
+        // Non-200 → a short error body (Slack sends `retry_after` etc.); the
+        // re-read must classify it and degrade to an empty thread.
+        const body = if (status == 200) REPLIES_BODY else "{\"ok\":false,\"error\":\"ratelimited\"}";
+        req.respond(body, .{
+            .status = @enumFromInt(status),
             .keep_alive = false,
             .extra_headers = &.{.{ .name = "content-type", .value = "application/json" }},
         }) catch return;
@@ -151,13 +163,30 @@ fn preClean(conn: *pg.Conn) void {
     _ = conn.exec("DELETE FROM core.connector_installs WHERE provider = $1 AND external_account_id = $2", .{ spec.PROVIDER, TEAM_ID }) catch |e| std.log.warn("preclean install: {s}", .{@errorName(e)});
 }
 
-fn mentionBody(alloc: std.mem.Allocator) ![]const u8 {
+/// Post-test teardown, keyed by fleet_id so it cleans whichever channel fleet a
+/// test materialized. The mention MATERIALIZES an active resident fleet with a
+/// pending event on its Redis stream; without this, that leftover active fleet
+/// leaks into other suites' lease scans (e.g. control_plane's "assigns across
+/// active fleets" asserts an exact fleet count). Drops the fleet_events + the
+/// Redis stream (which also removes the consumer group + PEL) + the binding +
+/// the fleet row. The shared install is re-seeded per test, so it is left alone.
+fn teardownMaterialized(h: *TestHarness, conn: *pg.Conn, fleet_id: []const u8) void {
+    _ = conn.exec("DELETE FROM core.fleet_events WHERE fleet_id = $1::uuid", .{fleet_id}) catch |e| std.log.warn("teardown events: {s}", .{@errorName(e)});
+    var key_buf: [128]u8 = undefined;
+    if (std.fmt.bufPrint(&key_buf, "fleet:{s}:events", .{fleet_id})) |stream_key| {
+        h.queue.del(stream_key) catch |e| std.log.warn("teardown stream: {s}", .{@errorName(e)});
+    } else |e| std.log.warn("teardown stream key: {s}", .{@errorName(e)});
+    _ = conn.exec("DELETE FROM core.connector_channels WHERE fleet_id = $1::uuid", .{fleet_id}) catch |e| std.log.warn("teardown binding: {s}", .{@errorName(e)});
+    _ = conn.exec("DELETE FROM core.fleets WHERE id = $1::uuid", .{fleet_id}) catch |e| std.log.warn("teardown fleet: {s}", .{@errorName(e)});
+}
+
+fn mentionBody(alloc: std.mem.Allocator, mention_ts: []const u8) ![]const u8 {
     return std.fmt.allocPrint(
         alloc,
         "{{\"type\":\"event_callback\",\"team_id\":\"{s}\"," ++
             "\"event\":{{\"type\":\"app_mention\",\"channel\":\"{s}\",\"user\":\"{s}\"," ++
             "\"text\":\"<@U0BOT> what is prod called?\",\"ts\":\"{s}\",\"thread_ts\":\"{s}\"}}}}",
-        .{ TEAM_ID, CHANNEL_ID, USER_ID, MENTION_TS, THREAD_TS },
+        .{ TEAM_ID, CHANNEL_ID, USER_ID, mention_ts, THREAD_TS },
     );
 }
 
@@ -231,7 +260,7 @@ test "integration: ingress re-reads the thread into request_json, stores nothing
     var base_buf: [64]u8 = undefined;
     h.ctx.connector_slack_api_base_override = try fake.baseUrl(&base_buf);
 
-    const body = try mentionBody(alloc);
+    const body = try mentionBody(alloc, MENTION_TS);
     defer alloc.free(body);
     const r = try postSigned(h, common.clock.nowSeconds(), body);
     defer r.deinit();
@@ -239,6 +268,9 @@ test "integration: ingress re-reads the thread into request_json, stores nothing
 
     const fleet_id = try boundFleetId(alloc, conn);
     defer alloc.free(fleet_id);
+    // Drop the materialized fleet + its stream so it can't leak into other
+    // suites' lease scans (LIFO: runs before `alloc.free(fleet_id)` above).
+    defer teardownMaterialized(h, conn, fleet_id);
 
     // §4 E — the enqueued event's request_json carries the re-read thread. Read
     // the stream entry back (create the group at 0 so the existing entry is
@@ -253,4 +285,49 @@ test "integration: ingress re-reads the thread into request_json, stores nothing
     // Dim 4.3 — thread context is transient: ingress wrote nothing to durable
     // memory (the runner, absent here, is the only writer of memory_entries).
     try testing.expectEqual(@as(i64, 0), try memoryRowCount(conn, fleet_id));
+}
+
+test "integration: a Slack 429 on the thread re-read degrades to an empty thread + still acks (§4 E best-effort)" {
+    const alloc = testing.allocator;
+    const h = try startHarness(alloc);
+    defer h.deinit();
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+
+    test_fixtures.setTestEncryptionKey();
+    try test_fixtures.seedTenant(conn);
+    try test_fixtures.seedWorkspace(conn, ADMIN_WS);
+    try test_fixtures.seedWorkspace(conn, TARGET_WS);
+    preClean(conn);
+    try seedSlackApp(alloc, conn);
+    try seedBotToken(alloc, conn);
+    try seedInstall(alloc, conn);
+    h.ctx.platform_admin_workspace_id = ADMIN_WS;
+
+    var fake: FakeSlack = undefined;
+    try fake.start();
+    defer fake.shutdown();
+    // conversations.replies rate-limited — the pre-fix code double-freed the
+    // Allocating writer here (errdefer + manual deinit) and crashed the ingress.
+    fake.reply_status.store(429, .release);
+    var base_buf: [64]u8 = undefined;
+    h.ctx.connector_slack_api_base_override = try fake.baseUrl(&base_buf);
+
+    const body = try mentionBody(alloc, MENTION_TS_429);
+    defer alloc.free(body);
+    const r = try postSigned(h, common.clock.nowSeconds(), body);
+    defer r.deinit();
+    try r.expectStatus(.ok); // ingress does NOT crash — it degrades + 200-acks
+
+    const fleet_id = try boundFleetId(alloc, conn);
+    defer alloc.free(fleet_id);
+    defer teardownMaterialized(h, conn, fleet_id);
+
+    // The event still enqueued, but the re-read degraded to an EMPTY thread:
+    // recent_thread_msgs is `[]` and the FakeSlack phrase never made it in.
+    try redis_fleet.ensureFleetConsumerGroup(&h.queue, fleet_id);
+    var ev = (try redis_fleet.xreadgroupFleetOnce(&h.queue, fleet_id, TEST_CONSUMER)) orelse return error.NoStreamEntry;
+    defer ev.deinit(alloc);
+    try testing.expect(std.mem.indexOf(u8, ev.request_json, "\"recent_thread_msgs\":[]") != null);
+    try testing.expect(std.mem.indexOf(u8, ev.request_json, THREAD_PHRASE) == null);
 }

@@ -117,10 +117,11 @@ fn fetchInto(
         .extra_headers = &headers,
         .response_writer = &aw.writer,
     });
-    if (@intFromEnum(result.status) != HTTP_OK) {
-        aw.deinit();
-        return error.SlackRepliesStatus;
-    }
+    // The `errdefer aw.deinit()` above covers every error return below (non-200,
+    // toOwnedSlice failure) — no manual deinit here, or it would double-free with
+    // the errdefer on unwind (this is the best-effort degrade path; a Slack 429
+    // must degrade to empty, never crash the ingress).
+    if (@intFromEnum(result.status) != HTTP_OK) return error.SlackRepliesStatus;
     // Read the body via the writer (the seed ArrayList is stale once it grows).
     const resp = try aw.toOwnedSlice();
     defer scratch.free(resp);
