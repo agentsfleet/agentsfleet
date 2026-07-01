@@ -3,15 +3,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { EVENTS } from "../lib/analytics/events";
 
-const { startGithubConnectActionMock, startSlackConnectActionMock, captureProductEventMock } =
-  vi.hoisted(() => ({
-    startGithubConnectActionMock: vi.fn(),
-    startSlackConnectActionMock: vi.fn(),
-    captureProductEventMock: vi.fn(),
-  }));
+const { startConnectActionMock, captureProductEventMock } = vi.hoisted(() => ({
+  startConnectActionMock: vi.fn(),
+  captureProductEventMock: vi.fn(),
+}));
 vi.mock("@/app/(dashboard)/integrations/connector-actions", () => ({
-  startGithubConnectAction: startGithubConnectActionMock,
-  startSlackConnectAction: startSlackConnectActionMock,
+  startConnectAction: startConnectActionMock,
 }));
 vi.mock("@/lib/analytics/posthog", () => ({
   captureProductEvent: captureProductEventMock,
@@ -34,8 +31,7 @@ const PLANNED_INTEGRATIONS = ["zoho"] as const;
 
 afterEach(() => {
   cleanup();
-  startGithubConnectActionMock.mockReset();
-  startSlackConnectActionMock.mockReset();
+  startConnectActionMock.mockReset();
   captureProductEventMock.mockReset();
 });
 
@@ -76,7 +72,7 @@ describe("IntegrationsConnectors (test_github_states_and_planned)", () => {
   });
 
   it("calls the connect action with the workspace on click", async () => {
-    startGithubConnectActionMock.mockResolvedValue({ ok: false, error: "not wired yet" });
+    startConnectActionMock.mockResolvedValue({ ok: false, error: "not wired yet" });
     render(
       React.createElement(IntegrationsConnectors, {
         workspaceId: WS,
@@ -84,12 +80,12 @@ describe("IntegrationsConnectors (test_github_states_and_planned)", () => {
       }),
     );
     fireEvent.click(screen.getByRole("button", { name: /connect github/i }));
-    await waitFor(() => expect(startGithubConnectActionMock).toHaveBeenCalledWith(WS));
+    await waitFor(() => expect(startConnectActionMock).toHaveBeenCalledWith("github", WS));
   });
 
   it("redirects the browser to the install URL when connect succeeds", async () => {
     const install_url = "https://github.com/apps/agentsfleet/installations/new?state=signed";
-    startGithubConnectActionMock.mockResolvedValue({ ok: true, data: { install_url } });
+    startConnectActionMock.mockResolvedValue({ ok: true, data: { install_url } });
     // jsdom won't navigate; capture the assignment instead of letting it no-op.
     const original = window.location;
     let assigned = "";
@@ -206,7 +202,7 @@ describe("IntegrationsConnectors — Slack OAuth (test_dashboard_slack_connect_f
   });
 
   it("calls the Slack connect action with the workspace on click", async () => {
-    startSlackConnectActionMock.mockResolvedValue({ ok: false, error: "not wired yet" });
+    startConnectActionMock.mockResolvedValue({ ok: false, error: "not wired yet" });
     render(
       React.createElement(IntegrationsConnectors, {
         workspaceId: WS,
@@ -215,12 +211,12 @@ describe("IntegrationsConnectors — Slack OAuth (test_dashboard_slack_connect_f
       }),
     );
     fireEvent.click(screen.getByRole("button", { name: /connect slack/i }));
-    await waitFor(() => expect(startSlackConnectActionMock).toHaveBeenCalledWith(WS));
+    await waitFor(() => expect(startConnectActionMock).toHaveBeenCalledWith("slack", WS));
   });
 
   it("redirects the browser to the Slack authorize URL when connect succeeds", async () => {
     const install_url = "https://slack.com/oauth/v2/authorize?state=signed";
-    startSlackConnectActionMock.mockResolvedValue({ ok: true, data: { install_url } });
+    startConnectActionMock.mockResolvedValue({ ok: true, data: { install_url } });
     const original = window.location;
     let assigned = "";
     Object.defineProperty(window, "location", {

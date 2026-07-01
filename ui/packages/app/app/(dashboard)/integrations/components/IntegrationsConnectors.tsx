@@ -16,9 +16,13 @@ import {
   INTEGRATION_CATALOG,
   type Integration,
 } from "@/lib/integrations/catalog";
-import { CONNECTOR_STATUS, type ConnectorStatus } from "@/lib/api/connectors";
+import {
+  CONNECTOR_PROVIDERS,
+  CONNECTOR_STATUS,
+  type ConnectorStatus,
+} from "@/lib/api/connectors";
 import type { ActionResult } from "@/lib/actions/with-token";
-import { startGithubConnectAction, startSlackConnectAction } from "../connector-actions";
+import { startConnectAction } from "../connector-actions";
 import { EVENTS } from "@/lib/analytics/events";
 import { captureProductEvent } from "@/lib/analytics/posthog";
 import { presentErrorString } from "@/lib/errors";
@@ -255,7 +259,7 @@ export default function IntegrationsConnectors({
               connectLabel={CONNECT_GITHUB_LABEL}
               reconnectLabel={RECONNECT_GITHUB_LABEL}
               actionVerb="connect GitHub"
-              onConnect={startGithubConnectAction}
+              onConnect={startConnectAction.bind(null, CONNECTOR_PROVIDERS.github)}
             />
           ) : integration.auth === INTEGRATION_AUTH.oauthConnect ? (
             <OAuthConnectorRow
@@ -266,7 +270,7 @@ export default function IntegrationsConnectors({
               connectLabel={CONNECT_SLACK_LABEL}
               reconnectLabel={RECONNECT_SLACK_LABEL}
               actionVerb="connect Slack"
-              onConnect={startSlackConnectAction}
+              onConnect={startConnectAction.bind(null, CONNECTOR_PROVIDERS.slack)}
               connectedDescription={slackTeam ? `${SLACK_CONNECTED_PREFIX}${slackTeam}` : null}
             />
           ) : (
