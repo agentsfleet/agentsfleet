@@ -124,10 +124,13 @@ Every secret the end-to-end flow needs, with who writes it and when. Platform se
 | `src/agentsfleetd/errors/error_registry.zig` + `error_entries.zig` | EDIT | register `UZ-SLK-010/011/020/021/022/030` (comptime-validated), mirroring `UZ-WH-0xx`. |
 | `src/agentsfleetd/http/handlers/connectors/slack/callback.zig` | CREATE | OAuth callback: state-verify, code-exchange, vault the bot token + install metadata as a `(workspace_id,"slack")` handle (mirrors `github/callback.zig`), insert the `connector_installs` reverse-lookup row. |
 | `src/agentsfleetd/http/handlers/connectors/slack/events.zig` | CREATE | signed `app_mention` ingress: verify → handshake → 3 s ack → resolve install/channel → XADD via the webhook-producer shape (`actor=slack:<user>`, no principal). |
-| `src/agentsfleetd/connectors/slack/channel_fleet.zig` | CREATE | resolve `(slack, team, channel)` → fleet via `connector_channels`; on miss **call the shared `innerCreateFleet` path** with the default channel-bot skill.md + reactive config, then upsert the binding. Concurrent first-mentions converge via UNIQUE + ON CONFLICT. **Never inserts `core.fleets` directly.** |
-| `src/agentsfleetd/connectors/slack/channel_bot_skill.md` | CREATE | the default channel-bot `skill.md`, embedded via `@embedFile`, seeded as `source_markdown` for every resident channel fleet. |
-| `src/agentsfleetd/connectors/slack/post.zig` | CREATE | post the fleet's answer back in-thread via `chat.postMessage`. |
+| `src/agentsfleetd/http/handlers/connectors/slack/channel_fleet.zig` | CREATE | resolve `(slack, team, channel)` → fleet via `connector_channels`; on miss **call the shared `innerCreateFleet` path** with the default channel-bot skill.md + reactive config, then upsert the binding. Concurrent first-mentions converge via UNIQUE + ON CONFLICT. **Never inserts `core.fleets` directly.** |
+| `src/agentsfleetd/http/handlers/connectors/slack/channel_bot_skill.md` | CREATE | the default channel-bot `skill.md`, embedded via `@embedFile`, seeded as `source_markdown` for every resident channel fleet. |
+| `src/agentsfleetd/http/handlers/connectors/slack/post.zig` | CREATE | post the fleet's answer back in-thread via `chat.postMessage`. |
 | `src/agentsfleetd/auth/middleware/slack_sig.zig` | CREATE | Slack v0 signature middleware (reuses the constant-time compare). |
+| `src/agentsfleetd/http/handlers/connectors/state.zig` | CREATE | shared connector OAuth install-state (signed single-use, HMAC + Redis nonce), parameterized by a per-connector `Config` (domain/nonce prefix). Extracted from GitHub's `state.zig` per Indy ("do C"). |
+| `src/agentsfleetd/http/handlers/connectors/github/state.zig` | EDIT | collapse to a thin wrapper binding GitHub's `Config` (`ghconnect:v1:`) to the shared module — behavior-preserving; `callback`/`connect` unchanged. |
+| `src/agentsfleetd/http/handlers/connectors/slack/state.zig` | CREATE | thin wrapper binding Slack's `Config` (`slackconnect:v1:` / `connect:slack:nonce:`) to the shared module. |
 | `src/agentsfleetd/http/routes.zig` | EDIT | register `/v1/connectors/slack/{callback,events}` (public) + `/v1/workspaces/{ws}/connectors/slack/connect` (authed), mirroring the GitHub connector routes. |
 | `src/lib/common/constants.zig` | EDIT | Slack scopes, paths, `slack` provider, `slack:bot`, `slack:` actor prefix, thread re-read bound (UFS). |
 | `ui/packages/app/lib/integrations/catalog.ts` | EDIT | flip Slack card to OAuth connector. |
@@ -327,7 +330,7 @@ make test-integration 2>&1 | grep test_channel_memory_persists_across_threads
 
 **1. Orphaned files.** N/A — no files deleted (the Slack catalogue card is edited in place, not removed; RULE NLR).
 
-**2. Orphaned references.** After flipping the Slack `vault_secret` placeholder to the OAuth connector, `grep -rn SLACK_BOT_TOKEN ui/ src/` must show 0 stale paste-token uses. After materialization is wired, `grep -rn "INSERT INTO core.fleets" src/agentsfleetd/connectors/slack` must show 0 (the worker calls `innerCreateFleet`, never inserts).
+**2. Orphaned references.** After flipping the Slack `vault_secret` placeholder to the OAuth connector, `grep -rn SLACK_BOT_TOKEN ui/ src/` must show 0 stale paste-token uses. After materialization is wired, `grep -rn "INSERT INTO core.fleets" src/agentsfleetd/http/handlers/connectors/slack` must show 0 (the worker calls `innerCreateFleet`, never inserts).
 
 ---
 
@@ -346,6 +349,7 @@ make test-integration 2>&1 | grep test_channel_memory_persists_across_threads
   - *Reactive config:* Invariant 2 corrected — an empty `triggers` slice is *rejected* by the config parser, so "reactive" is one parameterless `api` trigger (woken by event XADD) + `tools: []` + a code-set budget, all built in code and asserted; not the *absence* of a trigger.
   - *Fleet insert:* `innerCreateFleet` is `httpz.Request`+principal-coupled and uncallable from the events worker; materialization reuses its request-independent core `insertFleetOnConn` directly (Invariant 7 reworded; single insert site preserved, grep-confirmed).
   - *Scope additions:* migration array also lives in `src/cmd/common.zig`; UUIDv7 gens in `src/types/id_format.zig`; `UZ-SLK-*` in `errors/error_registry.zig`+`error_entries.zig`; per-install vault key is `fleet:slack` via `credential_key.allocKeyName` (mirrors `fleet:github`).
+- **Connector-state extraction (Jul 01, 2026 — Indy: "I wan you to do C" + "connectors/state.zig").** The signed single-use OAuth install-state (HMAC + Redis nonce) is now a shared, `Config`-parameterized module at `http/handlers/connectors/state.zig`; GitHub's `state.zig` (landed by M102) is collapsed to a thin wrapper binding its `ghconnect:v1:` domain, and Slack binds `slackconnect:v1:` — a per-connector domain prefix keeps one connector's state from cross-verifying as another's (new isolation test). **No M102 collision:** M102's connect surface (incl. `state.zig`) landed Jun 27 and is stable; M102's open work is the webhook ingress (`/v1/ingress/{provider}`), different files. This edits GitHub's shipped connector — outside M106's original Files-Changed — under Indy's explicit "do C".
 - **Skill chain** — `/write-unit-test`, `/review`, `/review-pr`, `kishore-babysit-prs` outcomes (filled during EXECUTE/CHORE(close)).
 - **Deferrals** — Rung 1 (hired teammates, source webhooks, writes, approvals, buttons, slash, DMs) is **scoped out by design**, not deferred work; the follow-on milestone owns it. Any *other* "deferred to follow-up" needs an Indy-acked verbatim quote here.
 
