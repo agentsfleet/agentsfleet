@@ -4,7 +4,7 @@ import { cleanup } from "@testing-library/react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { NANOS_PER_USD } from "@/lib/types";
 import { mockAuthOnce as mockAuth, resolveActiveWorkspace as resolveActiveWorkspaceMock } from "./helpers/dashboard-mocks";
-import { resetDashboardMocks, listFleetsMock, getTenantBillingMock, listFleetTemplatesMock } from "./helpers/dashboard-app-mocks";
+import { resetDashboardMocks, listFleetsMock, getTenantBillingMock, listWorkspaceFleetTemplatesMock } from "./helpers/dashboard-app-mocks";
 
 // Common dashboard mock harness — see tests/helpers/dashboard-mocks.tsx.
 vi.mock("next/navigation", async () => (await import("./helpers/dashboard-mocks")).nextNavigationMock());
@@ -27,7 +27,7 @@ vi.mock("@/app/(dashboard)/settings/billing/components/BillingBalanceCard", asyn
 vi.mock("@/app/(dashboard)/settings/billing/components/BillingUsageTab", async () => (await import("./helpers/dashboard-app-mocks")).billingUsageTabMock());
 vi.mock("@/lib/api/events", async () => (await import("./helpers/dashboard-app-mocks")).eventsMock());
 vi.mock("@/lib/api/credentials", async () => (await import("./helpers/dashboard-app-mocks")).credentialsApiMock());
-vi.mock("@/lib/api/fleet-bundles", async () => (await import("./helpers/dashboard-app-mocks")).fleetBundlesMock());
+vi.mock("@/lib/api/fleet-templates", async () => (await import("./helpers/dashboard-app-mocks")).fleetTemplatesMock());
 vi.mock("@/app/(dashboard)/credentials/components/AddCredentialForm", async () => (await import("./helpers/dashboard-app-mocks")).addCredentialFormMock());
 vi.mock("@/app/(dashboard)/credentials/components/CredentialsList", async () => (await import("./helpers/dashboard-app-mocks")).credentialsListMock());
 vi.mock("@/app/(dashboard)/actions", async () => (await import("./helpers/dashboard-app-mocks")).dashboardActionsMock());
@@ -119,15 +119,22 @@ describe("dashboard overview page", () => {
   it("StatusTiles first-install card surfaces template cards deep-linking to the install flow", async () => {
     listFleetsMock.mockResolvedValue({ items: [], total: 0, cursor: null });
     getTenantBillingMock.mockResolvedValue(null);
-    listFleetTemplatesMock.mockResolvedValue({
+    listWorkspaceFleetTemplatesMock.mockResolvedValue({
       items: [
         {
           id: "github-pr-reviewer",
           name: "GitHub PR reviewer",
           description: "Reviews pull requests.",
-          required_credentials: ["github"],
-          required_tools: [],
-          network_hosts: [],
+          visibility: "platform",
+          source_ref: "platform/github-pr-reviewer",
+          requirements: {
+            credentials: ["github"],
+            tools: [],
+            network_hosts: [],
+            trigger_present: true,
+          },
+          required_credentials_reasons: { github: "review your pull requests" },
+          support_files: [],
         },
       ],
     });
@@ -141,7 +148,7 @@ describe("dashboard overview page", () => {
   it("StatusTiles first-install card swallows a failed template fetch", async () => {
     listFleetsMock.mockResolvedValue({ items: [], total: 0, cursor: null });
     getTenantBillingMock.mockResolvedValue(null);
-    listFleetTemplatesMock.mockRejectedValue(new Error("catalog down"));
+    listWorkspaceFleetTemplatesMock.mockRejectedValue(new Error("catalog down"));
     const { StatusTiles } = await import("../app/(dashboard)/page");
     const m = renderToStaticMarkup(React.createElement(React.Fragment, null, await StatusTiles()));
     expect(m).toContain("Start your fleet"); // card still renders, gallery omitted
@@ -156,9 +163,10 @@ describe("dashboard overview page", () => {
     expect(await StatusTiles()).toBeNull();
   });
 
-  // Dashboard shows compact template deep links; Fleets uses a focused empty
-  // state with one Install fleet action, so the source tools live only on
-  // /fleets/new.
+  // Both empty states deep-link into the same install page off the shared
+  // template gallery. The dashboard card is compact (no quickstart link); the
+  // Fleets empty-state passes quickstart, so the Quick start link distinguishes
+  // the two surfaces.
   it("test_install_experience_shared — dashboard card deep-links, fleets routes to install", async () => {
     const templates = {
       items: [
@@ -166,35 +174,41 @@ describe("dashboard overview page", () => {
           id: "github-pr-reviewer",
           name: "GitHub PR reviewer",
           description: "Reviews pull requests.",
-          required_credentials: ["github"],
-          required_tools: [],
-          network_hosts: [],
+          visibility: "platform",
+          source_ref: "platform/github-pr-reviewer",
+          requirements: {
+            credentials: ["github"],
+            tools: [],
+            network_hosts: [],
+            trigger_present: true,
+          },
+          required_credentials_reasons: { github: "review your pull requests" },
+          support_files: [],
         },
       ],
     };
     const noFleets = { items: [], total: 0, cursor: null };
     const SHARED_LINK = 'href="/fleets/new?template=github-pr-reviewer"';
 
-    // Dashboard card (StatusTiles → FirstInstallCard → InstallEntry).
+    // Dashboard card (StatusTiles → FirstInstallCard → InstallEntry, compact).
     listFleetsMock.mockResolvedValue(noFleets);
     getTenantBillingMock.mockResolvedValue(null);
-    listFleetTemplatesMock.mockResolvedValue(templates);
+    listWorkspaceFleetTemplatesMock.mockResolvedValue(templates);
     const { StatusTiles } = await import("../app/(dashboard)/page");
     const dash = renderToStaticMarkup(React.createElement(React.Fragment, null, await StatusTiles()));
     expect(dash).toContain(SHARED_LINK);
-    expect(dash).not.toContain("Import from GitHub or paste SKILL.md");
+    expect(dash).not.toContain("Quick start");
 
-    // Fleets empty-state now renders the full template gallery inline
-    // (InstallEntry with the source strip), unlike the dashboard card above.
+    // Fleets empty-state renders the full template gallery inline with the
+    // quickstart link, unlike the compact dashboard card above.
     resolveActiveWorkspaceMock.mockResolvedValue({ id: "ws_1" });
     listFleetsMock.mockResolvedValue(noFleets);
     getTenantBillingMock.mockResolvedValue(null);
-    listFleetTemplatesMock.mockResolvedValue(templates);
+    listWorkspaceFleetTemplatesMock.mockResolvedValue(templates);
     const { FleetsData } = await import("../app/(dashboard)/fleets/page");
     const fleets = renderToStaticMarkup(React.createElement(React.Fragment, null, await FleetsData()));
-    expect(fleets).toContain('href="/fleets/new"');
     expect(fleets).toContain("No fleets yet");
     expect(fleets).toContain(SHARED_LINK);
-    expect(fleets).toContain("Import from GitHub or paste SKILL.md");
+    expect(fleets).toContain("Quick start");
   });
 });

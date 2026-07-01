@@ -8,7 +8,7 @@ import { EVENTS } from "@/lib/analytics/events";
 import { captureProductEvent } from "@/lib/analytics/posthog";
 import { FLEET_NAME_CONFLICT_MESSAGE } from "@/lib/errors";
 import { WORKSPACE_CREDENTIALS_PATH } from "@/lib/fleet-credentials";
-import { importBundleAction, installFleetAction } from "../actions";
+import { installFleetAction } from "../actions";
 import {
   flowError,
   readyToCreate,
@@ -28,59 +28,52 @@ type Props = {
   // failed — in which case the connect gate holds nothing back (the server's 424
   // stays authoritative).
   presentCredentialNames: string[] | null;
+  // Optional operator-supplied fleet name. Absent ⇒ the template's SKILL.md
+  // `name:` is used, so two installs of one template collide; present ⇒ overrides
+  // it so one template can back several fleets in the workspace.
+  name?: string;
   onBack: () => void;
 };
 
-// One install experience, run inline. On mount it imports (when the source
-// needs it), holds at the connect gate when a required credential is
-// missing, then auto-proceeds to create — no confirm beat. After create it
-// hands off to InstallStreamSteps, which advances the creating→provisioning→
-// ready steps off the existing fleet-event stream and lands "Open fleet".
-export function InstallStates({ workspaceId, source, presentCredentialNames, onBack }: Props) {
+// One install experience, run inline. On mount it holds at the connect gate when
+// a required credential is missing, then auto-proceeds to create — no confirm
+// beat. After create it hands off to InstallStreamSteps, which advances the
+// creating→provisioning→ready steps off the existing fleet-event stream and
+// lands "Open fleet".
+export function InstallStates({ workspaceId, source, presentCredentialNames, name, onBack }: Props) {
   const router = useRouter();
   const requirements = requirementsOf(source);
   // Pre-create stages the flow drives directly. Post-create, InstallStreamSteps
   // owns the rendered steps (it reads the fleet event stream), so this component only
-  // tracks up to the point a fleet exists.
-  const [installStage, setInstallStage] = useState<"importing" | "connect" | "creating" | "error">("importing");
+  // tracks up to the point a fleet exists. Initial stage is computed from the gate
+  // so a ready template never flashes the connect copy before the effect runs.
+  const [installStage, setInstallStage] = useState<"connect" | "creating" | "error">(() =>
+    readyToCreate(requirements.credentials, presentCredentialNames) ? "creating" : "connect",
+  );
   const [fleet, setFleet] = useState<{ id: string; name: string } | null>(null);
   const [errorText, setErrorText] = useState<string | null>(null);
   const started = useRef(false);
 
-  // Resolve the bundle_id to create from. A GitHub source is already imported;
-  // a template imports lazily here (its content is fetched server-side, so an
-  // unpopulated template repo surfaces its import error at this step).
-  const resolveCreateBody = useCallback(async (): Promise<
-    | { ok: true; body: Parameters<typeof installFleetAction>[1] }
-    | { ok: false; error: string }
-  > => {
-    if (source.kind === "paste") {
-      const body = source.triggerMarkdown
-        ? { source_markdown: source.sourceMarkdown, trigger_markdown: source.triggerMarkdown }
-        : { source_markdown: source.sourceMarkdown };
-      return { ok: true, body };
+  // The create body keys off the template's tier: a platform template installs
+  // by slug `platform_template_id`, a tenant template by its UUID
+  // `tenant_template_id`. No import step — the server reads SKILL/TRIGGER from
+  // the onboarded template row.
+  const resolveCreateBody = useCallback((): Parameters<typeof installFleetAction>[1] => {
+    const override = name?.trim();
+    if (source.visibility === "platform") {
+      return override
+        ? { platform_template_id: source.id, name: override }
+        : { platform_template_id: source.id };
     }
-    if (source.kind === "github") {
-      return { ok: true, body: { bundle_id: source.snapshot.bundle_id } };
-    }
-    const imported = await importBundleAction(workspaceId, {
-      source_kind: "template",
-      source_ref: source.template.id,
-    });
-    if (!imported.ok) return { ok: false, error: flowError(imported, "import the template") };
-    return { ok: true, body: { bundle_id: imported.data.bundle_id } };
-  }, [source, workspaceId]);
+    return override
+      ? { tenant_template_id: source.id, name: override }
+      : { tenant_template_id: source.id };
+  }, [source, name]);
 
   const runCreate = useCallback(async () => {
     setInstallStage("creating");
     setErrorText(null);
-    const resolved = await resolveCreateBody();
-    if (!resolved.ok) {
-      setErrorText(resolved.error);
-      setInstallStage("error");
-      return;
-    }
-    const created = await installFleetAction(workspaceId, resolved.body);
+    const created = await installFleetAction(workspaceId, resolveCreateBody());
     if (!created.ok) {
       setErrorText(
         created.status === 409 ? FLEET_NAME_CONFLICT_MESSAGE : flowError(created, "create the fleet"),
@@ -89,8 +82,8 @@ export function InstallStates({ workspaceId, source, presentCredentialNames, onB
       return;
     }
     captureProductEvent(EVENTS.fleet_created, { fleet_id: created.data.fleet_id });
-    setFleet({ id: created.data.fleet_id, name: requirements.name });
-  }, [resolveCreateBody, workspaceId, requirements.name]);
+    setFleet({ id: created.data.fleet_id, name: name?.trim() || requirements.name });
+  }, [resolveCreateBody, workspaceId, requirements.name, name]);
 
   // Drive the flow once on mount: a source with no unmet credential creates
   // immediately; otherwise we sit on the connect gate until the operator
@@ -147,17 +140,15 @@ function PreCreateLines({
   unmet,
   errorText,
 }: {
-  stage: "importing" | "connect" | "creating" | "error";
+  stage: "connect" | "creating" | "error";
   requirements: ReturnType<typeof requirementsOf>;
   unmet: string[];
   errorText: string | null;
 }) {
   const lines: StateLine[] = [];
-  if (stage === "importing") {
-    lines.push({ id: "importing", tone: "run", glyph: STATE_GLYPH.run, text: `importing ${requirements.name}…` });
-  } else {
-    lines.push({ id: "imported", tone: "ok", glyph: STATE_GLYPH.ok, text: `imported ${requirements.name}` });
-  }
+  // No import step: the template is already onboarded, so the flow opens on the
+  // selected template, then gates on credentials before create.
+  lines.push({ id: "selected", tone: "ok", glyph: STATE_GLYPH.ok, text: `template · ${requirements.name}` });
   if (!requirements.triggerPresent) {
     lines.push({ id: "skill-only", tone: "wait", glyph: STATE_GLYPH.wait, text: "manual API wake will be generated" });
   }

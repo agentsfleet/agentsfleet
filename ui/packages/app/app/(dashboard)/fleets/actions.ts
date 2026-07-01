@@ -11,10 +11,7 @@ import {
   type FleetStatusSettable,
   type FleetStatusUpdate,
 } from "@/lib/api/fleets";
-import { importBundleSnapshot } from "@/lib/api/fleet-bundles";
 import type {
-  BundleSnapshot,
-  ImportBundleRequest,
   InstallFleetRequest,
   InstallFleetResponse,
 } from "@/lib/types";
@@ -46,18 +43,6 @@ export async function installFleetAction(
   body: InstallFleetRequest,
 ): Promise<ActionResult<InstallFleetResponse>> {
   return withToken((t) => apiInstallFleet(workspaceId, body, t));
-}
-
-// Imports a bundle source (template id or public github owner/repo) into an
-// immutable snapshot, returning `bundle_id` + parsed `requirements` for the
-// install preview. The server fetches and validates the source; the dashboard
-// sends only `{ source_kind, source_ref }`. Creating the Fleet afterwards
-// reuses `installFleetAction` with `{ bundle_id }`.
-export async function importBundleAction(
-  workspaceId: string,
-  body: ImportBundleRequest,
-): Promise<ActionResult<BundleSnapshot>> {
-  return withToken((t) => importBundleSnapshot(workspaceId, body, t));
 }
 
 // Submits a steer message server-side so the browser never holds the

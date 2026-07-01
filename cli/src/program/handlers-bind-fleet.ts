@@ -51,7 +51,6 @@ export const buildFleetHandlers = (
     "fleet.install",
     (frame) =>
       installEffectFromFlags({
-        fromPath: optString(frame.parsed.options, FIELD_FROM),
         templateId: optString(frame.parsed.options, FIELD_TEMPLATE),
         name: optString(frame.parsed.options, FIELD_NAME),
       }),

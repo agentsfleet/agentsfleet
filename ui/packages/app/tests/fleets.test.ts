@@ -149,7 +149,7 @@ describe("FleetConfig interactions", () => {
     expect(routerPush).toHaveBeenCalledWith("/fleets");
     // router.refresh() is intentionally NOT called — refresh-after-push races
     // the current-route refetch against push's URL commit (same race the
-    // InstallFleetForm hit). /fleets is `force-dynamic` so refresh isn't
+    // install flow hits). /fleets is `force-dynamic` so refresh isn't
     // needed.
     expect(routerRefresh).not.toHaveBeenCalled();
   });

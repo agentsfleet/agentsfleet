@@ -9,12 +9,11 @@
 
 import { FRAME_KIND, type LiveFrame } from "@/lib/api/events";
 
-// The renderable install steps, in walk order. Pre-create steps (`importing`,
-// `connect`) are client-driven from the import/create responses; the post-create
-// steps below are advanced by the SSE `install:*` frames. `id` doubles as the
-// stable React key and the value the tests assert on (RULE UFS — one source).
+// The renderable install steps, in walk order. The pre-create `connect` step is
+// client-driven from the create gate; the post-create steps below are advanced
+// by the SSE `install:*` frames. `id` doubles as the stable React key and the
+// value the tests assert on (RULE UFS — one source).
 export const INSTALL_STEP = {
-  IMPORTING: "importing",
   CONNECT: "connect",
   CREATING: "creating",
   PROVISIONING: "provisioning",
@@ -35,7 +34,7 @@ const SSE_STEP_ORDER: readonly InstallStepId[] = [
 
 export function rankOf(step: InstallStepId): number {
   const idx = SSE_STEP_ORDER.indexOf(step);
-  // Non-SSE steps (importing/connect/error) are not on the monotonic ladder;
+  // Non-SSE steps (connect/error) are not on the monotonic ladder;
   // -1 keeps them out of the forward-only comparison.
   return idx;
 }

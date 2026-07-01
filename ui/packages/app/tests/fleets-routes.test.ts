@@ -4,7 +4,7 @@ import { cleanup, render, screen } from "@testing-library/react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { NANOS_PER_USD } from "@/lib/types";
 import { resolveActiveWorkspace, fetchMock, resetCommonMocks, authMock as auth } from "./helpers/dashboard-mocks";
-import { listFleetTemplatesMock, listCredentialsMock } from "./helpers/dashboard-app-mocks";
+import { listWorkspaceFleetTemplatesMock, listCredentialsMock } from "./helpers/dashboard-app-mocks";
 
 type BillingSnapshot = {
   balance_nanos: number;
@@ -28,7 +28,7 @@ vi.mock("@agentsfleet/design-system", async (orig) => {
   const h = await import("./helpers/dashboard-mocks");
   return { ...h.designSystemCore(await orig<Record<string, unknown>>()), ...h.designSystemTabs() };
 });
-vi.mock("@/lib/api/fleet-bundles", async () => (await import("./helpers/dashboard-app-mocks")).fleetBundlesMock());
+vi.mock("@/lib/api/fleet-templates", async () => (await import("./helpers/dashboard-app-mocks")).fleetTemplatesMock());
 vi.mock("@/lib/api/credentials", async () => (await import("./helpers/dashboard-app-mocks")).credentialsApiMock());
 
 beforeEach(() => {
@@ -37,7 +37,7 @@ beforeEach(() => {
   // The Fleets empty-state lazily fetches the template gallery; default it to an
   // empty catalog so tests that don't care about templates don't crash on the
   // unmocked promise (individual tests override as needed).
-  listFleetTemplatesMock.mockResolvedValue({ items: [] });
+  listWorkspaceFleetTemplatesMock.mockResolvedValue({ items: [] });
 });
 afterEach(() => {
   cleanup();
@@ -63,9 +63,16 @@ describe("fleets routes", () => {
       id: "github-pr-reviewer",
       name: "GitHub PR reviewer",
       description: "Reviews pull requests.",
-      required_credentials: ["github"],
-      required_tools: [],
-      network_hosts: [],
+      visibility: "platform",
+      source_ref: "platform/github-pr-reviewer",
+      requirements: {
+        credentials: ["github"],
+        tools: [],
+        network_hosts: [],
+        trigger_present: true,
+      },
+      required_credentials_reasons: { github: "review your pull requests" },
+      support_files: [],
     },
   ];
 
@@ -142,7 +149,7 @@ describe("fleets routes", () => {
 
   it("fleets list page renders empty-fleets state with the template gallery, banner suppressed", async () => {
     resolveActiveWorkspace.mockResolvedValueOnce({ id: "ws_1" });
-    listFleetTemplatesMock.mockResolvedValue({ items: SAMPLE_TEMPLATES });
+    listWorkspaceFleetTemplatesMock.mockResolvedValue({ items: SAMPLE_TEMPLATES });
     fetchMock.mockImplementation(async (url: string) => {
       if (url.endsWith("/v1/tenants/me/billing")) {
         return { ok: true, status: 200, json: async () => happyBilling };
@@ -156,10 +163,13 @@ describe("fleets routes", () => {
     const { FleetsData } = await import("../app/(dashboard)/fleets/page");
     const markup = renderToStaticMarkup(React.createElement(React.Fragment, null, await FleetsData()));
     expect(markup).toContain("No fleets yet");
-    // The real template gallery now stands in for the abstract step cards.
+    // The real template gallery now stands in for the abstract step cards; the
+    // empty state passes quickstart, so the Quick start link renders.
     expect(markup).toContain("GitHub PR reviewer");
-    expect(markup).toContain("Import from GitHub or paste SKILL.md");
-    expect(markup).toContain('href="/fleets/new"');
+    expect(markup).toContain("Quick start");
+    // The per-template deep link is the install affordance in the empty state;
+    // the bare /fleets/new link lives in the page header (outside FleetsData).
+    expect(markup).toContain('href="/fleets/new?template=github-pr-reviewer"');
     expect(markup).not.toContain("credit balance is exhausted");
   });
 
@@ -175,7 +185,7 @@ describe("fleets routes", () => {
 
   it("fleets list empty-state fetches and renders the template catalog", async () => {
     resolveActiveWorkspace.mockResolvedValueOnce({ id: "ws_1" });
-    listFleetTemplatesMock.mockResolvedValue({ items: SAMPLE_TEMPLATES });
+    listWorkspaceFleetTemplatesMock.mockResolvedValue({ items: SAMPLE_TEMPLATES });
     fetchMock.mockImplementation(async (url: string) => {
       if (url.endsWith("/v1/tenants/me/billing")) {
         return { ok: true, status: 200, json: async () => happyBilling };
@@ -186,14 +196,14 @@ describe("fleets routes", () => {
     const markup = renderToStaticMarkup(React.createElement(React.Fragment, null, await FleetsData()));
     expect(markup).toContain("No fleets yet");
     expect(markup).toContain("GitHub PR reviewer");
-    expect(listFleetTemplatesMock).toHaveBeenCalled();
+    expect(listWorkspaceFleetTemplatesMock).toHaveBeenCalled();
   });
 
   it("fleets list empty-state swallows a failed template catalog fetch (empty gallery, no crash)", async () => {
     resolveActiveWorkspace.mockResolvedValueOnce({ id: "ws_1" });
     // Catalog outage on the empty path → the `.catch(() => [])` arm yields no
     // templates, so the empty state still renders rather than throwing.
-    listFleetTemplatesMock.mockRejectedValue(new Error("catalog down"));
+    listWorkspaceFleetTemplatesMock.mockRejectedValue(new Error("catalog down"));
     fetchMock.mockImplementation(async (url: string) => {
       if (url.endsWith("/v1/tenants/me/billing")) {
         return { ok: true, status: 200, json: async () => happyBilling };
@@ -238,30 +248,19 @@ describe("fleets routes", () => {
 
   it("fleets new page renders the gallery-first install flow when a workspace exists", async () => {
     resolveActiveWorkspace.mockResolvedValueOnce({ id: "ws_1" });
-    listFleetTemplatesMock.mockResolvedValue({
-      items: [
-        {
-          id: "github-pr-reviewer",
-          name: "GitHub PR reviewer",
-          description: "Reviews pull requests.",
-          required_credentials: ["github"],
-          required_tools: [],
-          network_hosts: [],
-        },
-      ],
-    });
+    listWorkspaceFleetTemplatesMock.mockResolvedValue({ items: SAMPLE_TEMPLATES });
     listCredentialsMock.mockResolvedValue({ credentials: [{ kind: "custom_secret", name: "github", created_at: 1 }] });
     const { default: Page } = await import("../app/(dashboard)/fleets/new/page");
     const markup = renderToStaticMarkup(await Page({ searchParams: Promise.resolve({}) }));
     expect(markup).toContain("Install fleet"); // page title
     expect(markup).toContain("Start from a template");
     expect(markup).toContain("GitHub PR reviewer");
-    expect(markup).toContain("Import from GitHub"); // GitHub source-strip action
+    expect(markup).toContain("Use template"); // the gallery card's install action
   });
 
   it("fleets new page swallows failed template + credential fetches", async () => {
     resolveActiveWorkspace.mockResolvedValueOnce({ id: "ws_1" });
-    listFleetTemplatesMock.mockRejectedValue(new Error("catalog down"));
+    listWorkspaceFleetTemplatesMock.mockRejectedValue(new Error("catalog down"));
     listCredentialsMock.mockRejectedValue(new Error("vault down"));
     const { default: Page } = await import("../app/(dashboard)/fleets/new/page");
     const markup = renderToStaticMarkup(await Page({ searchParams: Promise.resolve({}) }));
@@ -270,7 +269,7 @@ describe("fleets routes", () => {
 
   it("fleets new page accepts a ?template= deep link", async () => {
     resolveActiveWorkspace.mockResolvedValueOnce({ id: "ws_1" });
-    listFleetTemplatesMock.mockResolvedValue({ items: [] });
+    listWorkspaceFleetTemplatesMock.mockResolvedValue({ items: [] });
     listCredentialsMock.mockResolvedValue({ credentials: [] });
     const { default: Page } = await import("../app/(dashboard)/fleets/new/page");
     const markup = renderToStaticMarkup(

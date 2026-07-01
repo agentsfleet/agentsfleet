@@ -19,9 +19,9 @@ export interface UpdateResponse {
   readonly config_revision?: number | string | null;
 }
 
-// Parsed requirements of an imported bundle — drives the install preview
-// (mirrors the dashboard's install states). `trigger_present: false` means the
-// server generated a default API wake because the bundle shipped no TRIGGER.md.
+// A template's declared requirements — drives the install preview (mirrors the
+// dashboard's install states). `trigger_present: false` means the server will
+// generate a default API wake because the template shipped no TRIGGER.md.
 export interface BundleRequirements {
   readonly credentials?: ReadonlyArray<string>;
   readonly tools?: ReadonlyArray<string>;
@@ -29,39 +29,38 @@ export interface BundleRequirements {
   readonly trigger_present?: boolean;
 }
 
-// POST /v1/workspaces/{ws}/fleets/bundles/snapshots response — the content-
-// addressed snapshot the create call then references by `bundle_id`.
-export interface BundleSnapshot {
-  readonly bundle_id?: string;
+// A Fleet template gallery row (GET /v1/workspaces/{ws}/fleet-templates).
+// `visibility` is the tier the install keys the create body off; `requirements`
+// drives the preview. Metadata only — never an object-store key.
+export interface FleetTemplateGalleryEntry {
+  readonly id: string;
   readonly name?: string;
+  readonly visibility?: string;
   readonly requirements?: BundleRequirements;
 }
 
-// Fleet create body — `bundle_id` (template/import path) and direct
-// `source_markdown`/`trigger_markdown` are mutually exclusive sources; `name`
-// is the optional operator override that lets one bundle back many fleets.
+export interface FleetTemplateGalleryResponse {
+  readonly items?: ReadonlyArray<FleetTemplateGalleryEntry>;
+}
+
+// Tier literals carried in a gallery entry's `visibility` field.
+export const VISIBILITY_PLATFORM = "platform" as const;
+export const VISIBILITY_TENANT = "tenant" as const;
+
+// Fleet create body. Install keys off exactly one template tier —
+// `platform_template_id` (slug) or `tenant_template_id` (UUIDv7). The live-edit
+// update path (`fleet update --from`) still posts `source_markdown`/
+// `trigger_markdown` to PATCH the fleet; those never ride a create. `name` is the
+// optional operator override that lets one template back many fleets.
 export interface CreateFleetBody {
+  readonly platform_template_id?: string;
+  readonly tenant_template_id?: string;
   readonly source_markdown?: string;
   readonly trigger_markdown?: string;
-  readonly bundle_id?: string;
   readonly name?: string;
 }
 
-// Install sources are mutually exclusive — exactly one of a local bundle path
-// or a first-party template id. Tagged union so the resolved source carries
-// only the field its kind needs.
-export type InstallSource =
-  | { readonly kind: typeof SOURCE_PATH; readonly fromPath: string }
-  | { readonly kind: typeof SOURCE_TEMPLATE; readonly templateId: string };
-
-export const SOURCE_PATH = "path" as const;
-// Internal InstallSource discriminant. Its value coincides with
-// SOURCE_KIND_TEMPLATE below but the two answer to different owners — this one
-// is a local tag, that one is the wire value — so keep them separate.
-export const SOURCE_TEMPLATE = "template" as const;
-// Wire value for ImportBundleRequest.source_kind (the only kind the CLI
-// imports; `upload`/`github` are dashboard-only today).
-export const SOURCE_KIND_TEMPLATE = "template" as const;
+export const METHOD_GET = "GET" as const;
 export const METHOD_POST = "POST" as const;
 const TYPE_STRING = "string" as const;
 
@@ -69,7 +68,7 @@ const TYPE_STRING = "string" as const;
 // the call site — typeof-narrowing only fires on the string literal, not a const.
 export const isString = (value: unknown): value is string => typeof value === TYPE_STRING;
 
-export const USAGE_INSTALL = "agentsfleet install (--from <path> | --template <id>)";
+export const USAGE_INSTALL = "agentsfleet install --template <id>";
 export const USAGE_UPDATE = "agentsfleet fleet update <fleet_id> --from <path>";
 
 export const bodyFromBundle = (
@@ -99,32 +98,22 @@ export const requireFromPath = (
   return Effect.succeed(fromPath);
 };
 
-// Exactly one source: a local bundle path (`--from`) or a template id
-// (`--template`). Neither is the common first-run mistake; both is an
-// ambiguous request — both fail with the usage line rather than silently
-// preferring one.
-export const resolveSource = (
-  fromPath: string | null | undefined,
+// Install requires a template id — a platform slug or a tenant UUID, resolved in
+// the workspace gallery. Local-directory install was removed with the two-tier
+// model; iterate on an installed fleet with `agentsfleet fleet update
+// <fleet_id> --from <path>` instead.
+export const requireTemplateId = (
   templateId: string | null | undefined,
-): Effect.Effect<InstallSource, ValidationError> => {
-  const hasPath = isString(fromPath) && fromPath.length > 0;
-  const hasTemplate = isString(templateId) && templateId.length > 0;
-  if (hasPath && hasTemplate) {
+): Effect.Effect<string, ValidationError> => {
+  if (!isString(templateId) || templateId.length === 0) {
     return Effect.fail(
       new ValidationError({
-        detail: "--from and --template are mutually exclusive",
+        detail: "--template <id> is required",
         suggestion: `usage: ${USAGE_INSTALL}`,
       }),
     );
   }
-  if (hasPath) return Effect.succeed({ kind: SOURCE_PATH, fromPath });
-  if (hasTemplate) return Effect.succeed({ kind: SOURCE_TEMPLATE, templateId });
-  return Effect.fail(
-    new ValidationError({
-      detail: "a source is required: --from <path> or --template <id>",
-      suggestion: `usage: ${USAGE_INSTALL}`,
-    }),
-  );
+  return Effect.succeed(templateId);
 };
 
 // Fold an optional operator name override into a create body. A blank/whitespace

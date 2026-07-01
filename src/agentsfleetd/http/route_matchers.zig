@@ -13,7 +13,6 @@ const std = @import("std");
 const webhook = @import("route_matchers_webhook.zig");
 const billing = @import("route_matchers_billing.zig");
 const fleet = @import("route_matchers_fleet.zig");
-const bundles = @import("route_matchers_fleet_bundles.zig");
 const runner_m = @import("route_matchers_runner.zig");
 const connectors = @import("route_matchers_connectors.zig");
 
@@ -321,9 +320,6 @@ pub const matchWebhook = webhook.matchWebhook;
 
 pub const matchFleetRunner = fleet.matchFleetRunner;
 pub const matchFleetRunnerEvents = fleet.matchFleetRunnerEvents;
-pub const WorkspaceFleetBundleRoute = bundles.WorkspaceFleetBundleRoute;
-pub const matchWorkspaceFleetBundles = bundles.matchWorkspaceFleetBundles;
-pub const matchWorkspaceFleetBundle = bundles.matchWorkspaceFleetBundle;
 
 // Runner control-plane matchers live in `route_matchers_runner.zig` (RULE FLL);
 // re-exported here so `matchers.matchRunner*` is unchanged for the router.

@@ -31,93 +31,66 @@ export type Fleet = {
   triggers?: FleetTrigger[];
 };
 
-// Create accepts EITHER direct Markdown (paste/CLI) OR a `bundle_id` pointing
-// at a stored snapshot — never both. The `?: never` arms make the two
-// mutually exclusive at compile time, mirroring the immutable-bundle rule:
-// a bundle install does not also carry override Markdown (see the
-// Discovery 2026-06-20 codex review of create_fleet_bundle.zig). A bundle
-// install may carry an optional `name` that overrides the SKILL.md-derived
-// fleet name, so one bundle can back multiple fleets in a workspace.
+// Install a fleet from exactly one onboarded template tier (M103 §4): a platform
+// template (slug id) or this workspace's tenant template (UUIDv7). The `?: never`
+// arms make the two mutually exclusive at compile time; raw-`SKILL.md` paste, the
+// legacy per-workspace `bundle_id`, and github-import-at-create are no longer
+// accepted. An optional `name` overrides the SKILL.md-derived fleet name so one
+// template can back multiple fleets in a workspace.
 export type InstallFleetRequest =
-  | { source_markdown: string; trigger_markdown?: string; bundle_id?: never }
-  | { bundle_id: string; name?: string; source_markdown?: never; trigger_markdown?: never };
+  | { platform_template_id: string; name?: string; tenant_template_id?: never }
+  | { tenant_template_id: string; name?: string; platform_template_id?: never };
 
 export type InstallFleetResponse = {
   fleet_id: string;
   status: string;
 };
 
-// ── Fleet Bundles ──
-// Source package layer above the runtime Fleet. Mirrors agentsfleetd
-// `fleet_bundle/importer.zig` (ImportBody / Requirements) and the
-// `fleet_bundles/{imports,get,list}.zig` response shapes.
+// ── Fleet template catalog (two-tier) ──
+// The platform catalog and per-workspace tenant templates, unioned by the
+// workspace gallery (M103 §5). R2 holds the canonical tar; these rows are
+// metadata only — never support-file bytes or an object-store key. Mirrors
+// agentsfleetd `http/handlers/templates/gallery.zig` (GalleryEntry).
 
-// Backend accepts template | upload | github. The dashboard sends `template`
-// (curated agentsfleet/skills source) or `github` (public owner/repo URL);
-// `upload` is deferred (Discovery 2026-06-20). Paste does NOT use a
-// bundle — it posts source_markdown directly to create.
-export type BundleSourceKind = "template" | "upload" | "github";
+// The catalog tier of a template. The install flow keys the create body off it:
+// platform → `platform_template_id`, tenant → `tenant_template_id`.
+export type FleetTemplateVisibility = "platform" | "tenant";
 
-// A non-authoritative support file shipped alongside SKILL.md/TRIGGER.md.
-// Content is inert: capabilities come only from TRIGGER.md metadata ∩ grants.
-export type BundleSupportFile = { path: string; content: string };
-export type BundleSupportFileSummary = { path: string; size_bytes: number };
+// A non-authoritative support file shipped alongside SKILL.md/TRIGGER.md, shown
+// as a {path, size_bytes} summary — the bytes live in R2, never in the response.
+export type FleetTemplateSupportFileSummary = { path: string; size_bytes: number };
 
-// Posted to POST /v1/workspaces/{ws}/fleets/bundles/snapshots. For `github`
-// and `template` the server fetches and validates the source itself (SSRF +
-// extraction guards) — the dashboard sends only `{ source_kind, source_ref }`.
-// `skill_markdown`/`trigger_markdown` are inline content for the `upload`
-// kind only (support files ride fetched sources, not uploads). The dashboard's
-// paste path does NOT import — it posts source_markdown straight to create.
-export type ImportBundleRequest = {
-  source_kind: BundleSourceKind;
-  source_ref: string;
-  skill_markdown?: string;
-  trigger_markdown?: string;
-  support_files?: BundleSupportFile[];
-};
-
-// Parsed, declared requirements of a bundle — drives the install preview.
-export type BundleRequirements = {
+// A template's declared requirements — drives the install gate's credential
+// preview and the skill-only fallback when no TRIGGER.md shipped.
+export type FleetTemplateRequirements = {
   credentials: string[];
   tools: string[];
   network_hosts: string[];
-  support_files: string[];
   trigger_present: boolean;
 };
 
-// Snapshot import / detail response (immutable, content-addressed).
-export type BundleSnapshot = {
-  bundle_id: string;
-  name: string;
-  source_kind: BundleSourceKind;
-  source_ref: string;
-  validation_status: string;
-  content_hash: string;
-  snapshot_key: string;
-  requirements: BundleRequirements;
-  support_files: BundleSupportFileSummary[];
-};
-
-// First-party template catalog row from GET /v1/fleets/bundles (metadata only —
-// the actual SKILL.md/TRIGGER.md content is fetched from agentsfleet/skills).
-export type FleetTemplate = {
+// One gallery row from GET /v1/workspaces/{ws}/fleet-templates — a platform or
+// tenant template. Metadata only; `visibility` is the tier the install flow keys
+// the create body off.
+export type FleetTemplateGalleryEntry = {
   id: string;
   name: string;
   description: string;
-  required_credentials: string[];
+  visibility: FleetTemplateVisibility;
+  source_ref: string;
+  requirements: FleetTemplateRequirements;
   // Display-only "why this fleet needs it" copy, keyed by credential name (e.g.
-  // { github: "review your pull requests" }). Drives the install gate's
-  // purpose-driven prompt; absent keys fall back to the generic connect copy.
-  // Optional: the catalog response is only cast on the client, so a cached
-  // response, an old backend, or a mock template may omit it entirely — callers
-  // default to {} so the gate shows generic copy instead of crashing.
+  // { github: "review your pull requests" }). Platform rows carry curated copy;
+  // tenant rows are an empty object (the importer derives no per-credential
+  // reason), so the gate falls back to its generic connect prompt. Optional on
+  // the client: the server always sends it (OpenAPI-required), but the gallery
+  // response is only cast here, so a stale cache or an old backend may omit it —
+  // callers default to {} so the gate degrades to generic copy, never crashes.
   required_credentials_reasons?: Record<string, string>;
-  required_tools: string[];
-  network_hosts: string[];
+  support_files: FleetTemplateSupportFileSummary[];
 };
 
-export type FleetTemplateListResponse = { items: FleetTemplate[] };
+export type FleetTemplateGalleryResponse = { items: FleetTemplateGalleryEntry[] };
 
 export type FleetListResponse = {
   items: Fleet[];

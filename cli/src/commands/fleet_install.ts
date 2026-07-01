@@ -21,7 +21,7 @@ import { requireWorkspaceId, resolveAuthToken } from "./workspace-guards.ts";
 import {
   wsFleetsPath,
   wsFleetPath,
-  wsFleetBundleSnapshotsPath,
+  wsFleetTemplatesPath,
 } from "../lib/api-paths.ts";
 import {
   loadSkillFromPath,
@@ -37,22 +37,22 @@ import {
 } from "../errors/index.ts";
 import {
   bodyFromBundle,
+  METHOD_GET,
   METHOD_POST,
   printRequirements,
   requireFromPath,
-  resolveSource,
-  SOURCE_KIND_TEMPLATE,
-  SOURCE_TEMPLATE,
+  requireTemplateId,
   USAGE_UPDATE,
+  VISIBILITY_PLATFORM,
+  VISIBILITY_TENANT,
   withName,
-  type BundleSnapshot,
   type CreateFleetBody,
+  type FleetTemplateGalleryResponse,
   type InstallResponse,
   type UpdateResponse,
 } from "./fleet_install_source.ts";
 
 export interface InstallFlags {
-  readonly fromPath?: string | null | undefined;
   readonly templateId?: string | null | undefined;
   readonly name?: string | null | undefined;
 }
@@ -141,38 +141,47 @@ export const installEffectFromFlags = (
   Effect.gen(function* () {
     const http = yield* HttpClient;
 
-    const source = yield* resolveSource(flags.fromPath, flags.templateId);
+    const templateId = yield* requireTemplateId(flags.templateId);
     const wsId = yield* requireWorkspaceId;
     const token = yield* resolveAuthToken;
 
-    if (source.kind === SOURCE_TEMPLATE) {
-      const snapshot = yield* http.request<BundleSnapshot>({
-        path: wsFleetBundleSnapshotsPath(wsId),
-        method: METHOD_POST,
-        body: { source_kind: SOURCE_KIND_TEMPLATE, source_ref: source.templateId },
-        token,
-      });
-      yield* printRequirements(snapshot.requirements);
-      const bundleId = snapshot.bundle_id;
-      if (!bundleId) {
-        return yield* Effect.fail(
-          new ConfigError({
-            detail: "import did not return a bundle_id",
-            suggestion: "retry, or report if it persists",
-          }),
-        );
-      }
-      const body = withName({ bundle_id: bundleId }, flags.name);
-      const generatedTrigger = snapshot.requirements?.trigger_present === false;
-      const fallbackName = snapshot.name || source.templateId;
-      yield* createAndRender(wsId, token, body, generatedTrigger, fallbackName);
-      return;
+    // Resolve the template in the workspace gallery (platform ∪ tenant). The
+    // entry carries its tier + declared requirements; the create body keys off
+    // `visibility` (M103 §4). No snapshot import — the server reads SKILL/TRIGGER
+    // from the onboarded template row.
+    const gallery = yield* http.request<FleetTemplateGalleryResponse>({
+      path: wsFleetTemplatesPath(wsId),
+      method: METHOD_GET,
+      token,
+    });
+    const entry = (gallery.items ?? []).find((e) => e.id === templateId);
+    if (!entry) {
+      return yield* Effect.fail(
+        new ConfigError({
+          detail: `template '${templateId}' is not in this workspace's gallery`,
+          suggestion: "run `agentsfleet templates` for platform ids; tenant template ids come from your workspace gallery in the dashboard",
+        }),
+      );
     }
-
-    const bundle = yield* loadBundle(source.fromPath);
-    const body = withName(bodyFromBundle(bundle), flags.name);
-    const generatedTrigger = bundle.trigger_md === null;
-    yield* createAndRender(wsId, token, body, generatedTrigger, bundle.fallback_name);
+    yield* printRequirements(entry.requirements);
+    // Key the create body off the resolved tier. Fail loud on an unrecognized
+    // visibility rather than silently posting a platform slug as a tenant id.
+    if (entry.visibility !== VISIBILITY_PLATFORM && entry.visibility !== VISIBILITY_TENANT) {
+      return yield* Effect.fail(
+        new ConfigError({
+          detail: `template '${templateId}' has an unrecognized tier '${entry.visibility ?? ""}'`,
+          suggestion: "update the CLI to a version that understands this template tier",
+        }),
+      );
+    }
+    const idBody: CreateFleetBody =
+      entry.visibility === VISIBILITY_PLATFORM
+        ? { platform_template_id: entry.id }
+        : { tenant_template_id: entry.id };
+    const body = withName(idBody, flags.name);
+    const generatedTrigger = entry.requirements?.trigger_present === false;
+    const fallbackName = entry.name || templateId;
+    yield* createAndRender(wsId, token, body, generatedTrigger, fallbackName);
   });
 
 export const updateEffectFromArgs = (
