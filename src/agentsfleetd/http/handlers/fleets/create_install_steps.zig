@@ -29,7 +29,7 @@ const pg = @import("pg");
 const ec = @import("../../../errors/error_registry.zig");
 const queue_redis = @import("../../../queue/redis_client.zig");
 const activity_publisher = @import("../../../fleet_runtime/activity_publisher.zig");
-const fleet_config = @import("../../../fleet_runtime/config.zig");
+const fleet_row = @import("fleet_row.zig");
 
 const log = logging.scoped(.fleet_install);
 
@@ -168,16 +168,10 @@ fn runProgression(job: *Job) void {
 fn flipToActive(job: *Job) !void {
     const conn = try job.pool.acquire();
     defer job.pool.release(conn);
-    _ = try conn.exec(
-        \\UPDATE core.fleets SET status = $1, updated_at = $2
-        \\WHERE id = $3::uuid AND workspace_id = $4::uuid AND status = $5
-    , .{
-        fleet_config.FleetStatus.active.toSlice(),
-        constants.clock.nowMillis(),
-        job.fleet_id,
-        job.workspace_id,
-        fleet_config.FleetStatus.installing.toSlice(),
-    });
+    // Single flip site: the guarded installing→active UPDATE lives in fleet_row.zig
+    // alongside insertFleetOnConn/deleteFleetRow. The Slack channel-fleet
+    // materialization reuses the same helper inline (RULE NDC — no duplicate SQL).
+    try fleet_row.activateFleetOnConn(conn, job.workspace_id, job.fleet_id, constants.clock.nowMillis());
 }
 
 // ── tests ──────────────────────────────────────────────────────────────────

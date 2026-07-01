@@ -2,7 +2,7 @@
 //! `core.connector_channels`; on a binding miss, materialize a durable
 //! per-channel resident fleet.
 //!
-//! Materialization reuses the shared fleet-insert path (`create.insertFleetOnConn`,
+//! Materialization reuses the shared fleet-insert path (`fleet_row.insertFleetOnConn`,
 //! Invariant 7 — this file never runs `INSERT INTO core.fleets` itself) under
 //! install-delegated authority (no principal in the inbound flow), seeded with
 //! the embedded default channel-bot skill.md as `source_markdown` and a
@@ -28,7 +28,7 @@ const ec = @import("../../../../errors/error_registry.zig");
 const fleet_config = @import("../../../../fleet_runtime/config.zig");
 const id_format = @import("../../../../types/id_format.zig");
 const queue_redis = @import("../../../../queue/redis_client.zig");
-const create = @import("../../fleets/create.zig");
+const fleet_row = @import("../../fleets/fleet_row.zig");
 const create_stream = @import("../../fleets/create_stream.zig");
 const spec = @import("spec.zig");
 
@@ -106,11 +106,11 @@ fn materialize(
     defer if (!keep) alloc.free(fleet_id);
 
     const no_tags = [_][]const u8{};
-    create.insertFleetOnConn(conn, workspace_id, source_markdown, trigger_markdown, parsed, &no_tags, null, fleet_id, clock.nowMillis()) catch |err| {
+    fleet_row.insertFleetOnConn(conn, workspace_id, source_markdown, trigger_markdown, parsed, &no_tags, null, fleet_id, clock.nowMillis()) catch |err| {
         // A concurrent same-channel first-mention (or a prior partial
         // materialization) already took this channel's unique fleet name →
         // converge on that fleet instead of wedging on the constraint.
-        if (create.isUniqueViolation(conn))
+        if (fleet_row.isUniqueViolation(conn))
             return resolveExistingByName(alloc, conn, queue, workspace_id, skill_meta.name, team_id, channel_id);
         return err;
     };
@@ -119,10 +119,18 @@ fn materialize(
     // it). On failure roll the row back so the next mention re-materializes
     // cleanly rather than wedging on the now-taken name.
     create_stream.ensureEventStream(queue, fleet_id) catch |err| {
-        create.deleteFleetRow(conn, workspace_id, fleet_id) catch |re|
+        fleet_row.deleteFleetRow(conn, workspace_id, fleet_id) catch |re|
             log.warn("channel_fleet_rollback_failed", .{ .error_code = ec.ERR_INTERNAL_DB_QUERY, .fleet_id = fleet_id, .err = @errorName(re) });
         return err;
     };
+    // Activate BEFORE writing the binding so the invariant "a binding exists ⇒ the
+    // fleet is leaseable" holds. A reactive resident fleet has no provisioning beat
+    // (the install-steps beat is dashboard-only cosmetics), so it is leaseable the
+    // instant its row + stream exist — the runner leases only `active` fleets. The
+    // flip is idempotent (guarded installing→active). On failure we return the
+    // error WITHOUT binding; the leftover installing row is reclaimed by the next
+    // mention's unique-violation convergence, which retries the flip.
+    try fleet_row.activateFleetOnConn(conn, workspace_id, fleet_id, clock.nowMillis());
     try insertBinding(alloc, conn, team_id, channel_id, fleet_id);
 
     log.info("channel_fleet_materialized", .{ .team_id = team_id, .channel_id = channel_id, .fleet_id = fleet_id });
@@ -145,6 +153,11 @@ fn resolveExistingByName(
     const fleet_id = (try selectFleetByName(alloc, conn, workspace_id, name)) orelse return error.ResidentFleetVanished;
     errdefer alloc.free(fleet_id);
     try create_stream.ensureEventStream(queue, fleet_id);
+    // Idempotent activation on the convergence path too: the race winner may not
+    // have flipped yet (or failed after insert), so the loser guarantees the
+    // shared fleet is leaseable before it writes the binding (guarded → 0-row
+    // no-op if the winner already flipped).
+    try fleet_row.activateFleetOnConn(conn, workspace_id, fleet_id, clock.nowMillis());
     try insertBinding(alloc, conn, team_id, channel_id, fleet_id);
     return fleet_id;
 }
