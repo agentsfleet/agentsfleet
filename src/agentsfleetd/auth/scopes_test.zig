@@ -20,7 +20,7 @@ test "test_scope_catalog_covers_every_enumerated_gate" {
         "credential:write",  "apikey:read",        "apikey:write",   "apikey:admin",
         "fleetkey:read",     "fleetkey:write",     "grant:read",     "grant:write",
         "connector:read",    "connector:write",    "billing:read",   "approval:read",
-        "approval:resolve",  "workspace:admin",    "template:write", "template:admin",
+        "approval:resolve",  "workspace:admin",    "template:write", "platform-template:write",
         // Runner credential.
         "runner:self",
         // Cross-tenant override (single scope covering read + write).
@@ -55,10 +55,10 @@ test "test_scope_hierarchy_subsumes_lower" {
     try testing.expect(w.contains(.apikey_read));
     try testing.expect(!w.contains(.apikey_admin));
 
-    // template:admin (platform-tier onboarding) subsumes template:write (tenant-tier).
-    const ta = scopes.parseClaim("template:admin");
-    try testing.expect(ta.contains(.template_admin));
-    try testing.expect(ta.contains(.template_write));
+    // platform-template:write and template:write are independent (no hierarchy).
+    const ptw = scopes.parseClaim("platform-template:write");
+    try testing.expect(ptw.contains(.platform_template_write));
+    try testing.expect(!ptw.contains(.template_write)); // independent, not laddered
 
     // A discrete verb subsumes nothing.
     const enroll = scopes.parseClaim("runner:enroll");
@@ -113,7 +113,7 @@ test "test_default_grants_provision_and_are_not_enforced" {
     try testing.expect(owner.contains(.credential_write));
     try testing.expect(owner.contains(.workspace_admin));
     try testing.expect(owner.contains(.template_write));
-    try testing.expect(!owner.contains(.template_admin)); // tenant tier only
+    try testing.expect(!owner.contains(.platform_template_write)); // tenant tier only
     try testing.expect(!owner.contains(.runner_enroll));
     try testing.expect(!owner.contains(.workspace_any));
     try testing.expect(!owner.contains(.model_admin));

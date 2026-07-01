@@ -46,6 +46,12 @@ pub const Route = union(enum) {
     // Tenant-scoped LLM provider config — GET/PUT/DELETE /v1/tenants/me/provider
     tenant_provider,
     fleet_bundles, // GET /v1/fleets/bundles
+    // Platform template onboarding — POST /v1/admin/fleet-templates
+    // (platform-template:write). No workspace context.
+    admin_fleet_templates,
+    // Tenant template onboarding — POST /v1/workspaces/{ws}/fleet-templates
+    // (template:write + workspace ownership). Carries workspace_id.
+    workspace_fleet_templates: []const u8,
     /// POST /v1/webhooks/{fleet_id} — generic per-fleet webhook receiver.
     /// HMAC-only via webhook_sig middleware; secret resolved from the
     /// workspace credential keyed by the matching `triggers[].source`.
@@ -74,8 +80,6 @@ pub const Route = union(enum) {
     patch_workspace_fleet: matchers.WorkspaceFleetRoute, // PATCH /v1/workspaces/{ws}/fleets/{id}
     workspace_credentials: []const u8, // GET|POST /v1/workspaces/{ws}/credentials
     workspace_credential: matchers.WorkspaceCredentialRoute, // PATCH|DELETE /v1/workspaces/{ws}/credentials/{name}
-    workspace_fleet_bundles: []const u8, // POST /v1/workspaces/{ws}/fleets/bundles/snapshots
-    workspace_fleet_bundle: matchers.WorkspaceFleetBundleRoute, // GET /v1/workspaces/{ws}/fleets/bundles/snapshots/{bundle_id}
     // Chat ingress — POST /v1/workspaces/{ws}/fleets/{id}/messages
     workspace_fleet_messages: matchers.WorkspaceFleetRoute,
     // Per-Fleet event history + Server-Sent Events (SSE) live tail

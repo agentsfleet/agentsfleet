@@ -114,6 +114,45 @@ describe("authStatusEffect — probe branches", () => {
     expect(rec.stderr.some((line) => line.includes("server rejected"))).toBe(true);
   });
 
+  test("probe unauthorized with a decodable JWT routes to the 'current token' message", async () => {
+    // The sibling test above seeds "tok" — not a decodable JWT — so
+    // credential_kind resolves to api_key and renderHuman prints the
+    // AGENTSFLEET_API_KEY rejection line. A real JWT resolves to jwt, taking
+    // the complementary `:` branch ("server rejected the current token").
+    const rec = makeRec();
+    const jwtPayload = Buffer.from(
+      JSON.stringify({ sub: "user_1", exp: 9999999999 }),
+    ).toString("base64url");
+    const jwtHeader = Buffer.from(JSON.stringify({ alg: "none" })).toString("base64url");
+    const jwt = Redacted.make(`${jwtHeader}.${jwtPayload}.sig`);
+    const program = authStatusEffect.pipe(
+      Effect.provide(configLayer()),
+      Effect.provide(credentialsLayer(Option.some(jwt), 1700000000000, "s")),
+      Effect.provide(
+        httpLayer(() =>
+          Effect.fail(
+            new ServerError({
+              detail: "unauthorized",
+              suggestion: "login",
+              code: ERR_UNAUTHORIZED,
+              status: 401,
+              requestId: null,
+            }),
+          ),
+        ),
+      ),
+      Effect.provide(outputLayer(rec)),
+      Effect.provide(analyticsLayer),
+    );
+    const exit = await Effect.runPromiseExit(program);
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (Exit.isFailure(exit)) {
+      const fail = Option.getOrNull(Cause.findErrorOption(exit.cause));
+      expect(fail).toBeInstanceOf(AuthError);
+    }
+    expect(rec.stderr.some((line) => line.includes("server rejected the current token"))).toBe(true);
+  });
+
   test("probe unreachable still renders the table without AuthError", async () => {
     const rec = makeRec();
     const fakeToken = Redacted.make("tok");

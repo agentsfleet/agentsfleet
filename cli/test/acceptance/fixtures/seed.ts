@@ -1,23 +1,24 @@
 /**
  * Acceptance-suite seed helper.
  *
- * Drives `agentsfleet install --from tests/fixtures/fleetbundle/platform-ops` against the
- * worktree's canonical sample bundle. Returns the parsed JSON envelope
- * the CLI emits with `--json` set.
+ * Onboards the worktree's canonical sample bundle as a tenant template
+ * (`source_kind: "upload"`, via `template-ops.ts`), then drives
+ * `agentsfleet install --template <id> --json`. Local-directory install
+ * (`--from`) was removed with the two-tier model, so the seed path
+ * onboards-then-installs. A unique name per call keeps each onboarded template
+ * (and its fleet) distinct. Returns the parsed JSON envelope the CLI emits with
+ * `--json` set.
  */
 
 import crypto from "node:crypto";
-import path from "node:path";
-import url from "node:url";
-import fs from "node:fs/promises";
-import os from "node:os";
 
-import { ACCEPTANCE_RUN_PREFIX, PLATFORM_OPS_SAMPLE_DIR } from "./constants.ts";
+import { ACCEPTANCE_RUN_PREFIX } from "./constants.ts";
 import { runFleetctl } from "./cli.js";
-
-const HERE = path.dirname(url.fileURLToPath(import.meta.url));
-const WORKTREE_ROOT = path.resolve(HERE, "..", "..", "..", "..");
-const SAMPLE_NAME = "platform-ops-fleet";
+import {
+  buildPlatformOpsContent,
+  onboardUploadTemplate,
+  readAuthContext,
+} from "./template-ops.ts";
 
 export interface InstallOptions {
   readonly env: Readonly<Record<string, string>>;
@@ -37,32 +38,13 @@ function uniqueName(runPrefix: string): string {
   return `${runPrefix}-platform-ops-${crypto.randomBytes(3).toString("hex")}`;
 }
 
-async function createInstallFixture(runPrefix: string): Promise<string> {
-  const sourceDir = path.join(WORKTREE_ROOT, PLATFORM_OPS_SAMPLE_DIR);
-  const targetDir = await fs.mkdtemp(path.join(os.tmpdir(), "agentsfleet-platform-ops-"));
-  const name = uniqueName(runPrefix);
-  const skill = await fs.readFile(path.join(sourceDir, "SKILL.md"), "utf8");
-  const trigger = await fs.readFile(path.join(sourceDir, "TRIGGER.md"), "utf8");
-  await fs.writeFile(
-    path.join(targetDir, "SKILL.md"),
-    skill
-      .replace(`name: ${SAMPLE_NAME}`, `name: ${name}`)
-      .replaceAll("{{slack_channel}}", "#agentsfleet-acceptance"),
-  );
-  await fs.writeFile(
-    path.join(targetDir, "TRIGGER.md"),
-    trigger
-      .replace(`name: ${SAMPLE_NAME}`, `name: ${name}`)
-      .replaceAll("{{model}}", "accounts/fireworks/models/kimi-k2.6")
-      .replaceAll("{{context_cap_tokens}}", "256000"),
-  );
-  return targetDir;
-}
-
 export async function installPlatformOpsFleet(opts: InstallOptions): Promise<InstalledFleet> {
-  const samplePath = await createInstallFixture(opts.runPrefix ?? ACCEPTANCE_RUN_PREFIX);
+  const runPrefix = opts.runPrefix ?? ACCEPTANCE_RUN_PREFIX;
+  const ctx = await readAuthContext(opts.env);
+  const content = await buildPlatformOpsContent(uniqueName(runPrefix));
+  const templateId = await onboardUploadTemplate(ctx, content);
   const result = await runFleetctl(
-    ["install", "--from", samplePath, "--json"],
+    ["install", "--template", templateId, "--json"],
     { env: opts.env, timeoutMs: opts.timeoutMs ?? 120_000 },
   );
   if (result.code !== 0) {

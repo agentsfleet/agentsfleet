@@ -89,9 +89,15 @@ test.describe("signup → install → lifecycle", () => {
     await expect(page.getByTestId("workspace-switcher")).toBeVisible();
     await expect(page.getByText(/no fleets yet/i)).toBeVisible();
 
-    // Install via dashboard form. Browser-driven; no API short-cut.
+    // Install via the dashboard template gallery. The fresh tenant has exactly
+    // one auto-provisioned workspace (signup.workspaceId) — the one active in
+    // the browser — so the onboard targets it and its card renders here. The
+    // onboard reuses the signup session's own JWT (no persistent fixture).
     const name = uniqueName();
-    const fleetId = await installViaUI(page, name);
+    const fleetId = await installViaUI(page, name, {
+      handle: { sessionJwt: signup.sessionJwt },
+      workspaceId: signup.workspaceId,
+    });
 
     // Post-install: the form redirects to /fleets/${id}. Recent Activity
     // section is the section-scaffolding assertion (matches logs-detail's

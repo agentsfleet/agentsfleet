@@ -4,6 +4,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { signInAs } from "./fixtures/auth";
 import { FIXTURE_KEY } from "./fixtures/constants";
 import { clientFor } from "./fixtures/api-client";
+import { listWorkspaces } from "./fixtures/seed";
 import { installViaUI } from "./fixtures/install-ui";
 import {
   expectDetailKilled,
@@ -163,7 +164,18 @@ test.describe("operator journey", () => {
     await clickSidebarLink(page, "/fleets", /\/fleets(\?|$)/);
     await page.getByRole("link", { name: /install teammate/i }).first().click();
     await expect(page).toHaveURL(/\/fleets\/new(\?|$)/);
-    const fleetId = await installViaUI(page, fleetName);
+    // Resolve the active (secondary) workspace id so the onboard targets the
+    // same workspace the browser switched to — its card must render here.
+    const installWorkspace = (await listWorkspaces(FIXTURE_KEY.admin)).find(
+      (workspace) => workspace.name === secondaryWorkspaceName,
+    );
+    if (!installWorkspace) {
+      throw new Error(`operator-journey: workspace '${secondaryWorkspaceName}' not found via API`);
+    }
+    const fleetId = await installViaUI(page, fleetName, {
+      handle: FIXTURE_KEY.admin,
+      workspaceId: installWorkspace.id,
+    });
     createdFleetId = fleetId;
     await expect(page.getByRole("region", { name: "Recent Activity" })).toBeVisible();
 

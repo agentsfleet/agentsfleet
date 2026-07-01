@@ -44,10 +44,10 @@ sequenceDiagram
 
 ## 1. Install — the bundle storage journey
 
-John runs `agentsfleet install --template github-pr-reviewer`. Two API calls: **snapshot** (bytes land in storage) then **create** (a fleet references them).
+Two roles, two API calls (M103): a platform admin **onboards** the template once; every user **installs** from it.
 
-1. **Snapshot.** `POST /v1/workspaces/{ws}/fleets/bundles/snapshots { source_kind:"template", source_ref:"github-pr-reviewer" }`. The template id maps to the repo `agentsfleet/github-pr-reviewer`. `agentsfleetd`: `GET api.github.com/repos/.../tarball/main` → **validate** (strip wrapper, reject symlinks/`..`/dotfiles, cap 16 MiB / 4096 entries) → **re-pack a NEW canonical tar** (`canonicalTar()`, root-level, deterministic — agentsfleet's own tar, not GitHub's archive) → `content_hash = sha256(skill + trigger + support files)` → `R2.put("fleet-bundles/sha256/{hash}.tar")` → `INSERT core.fleet_bundles (skill_markdown, trigger_markdown, support_files_json, content_hash, snapshot_key, requirements_json)`. Caps: **32 files · 64 KiB each · 256 KiB total**.
-2. **Create.** `POST /v1/workspaces/{ws}/fleets { bundle_id, name }` → `INSERT core.fleets (source_markdown, trigger_markdown, bundle_id, bundle_content_hash)` + `XGROUP CREATE fleet:{id}:events`. Returns `{ fleet_id, webhook_urls:{ github } }`.
+1. **Onboard (admin, once).** `POST /v1/admin/fleet-templates { source_kind:"template", source_ref:"github-pr-reviewer" }` (scope `platform-template:write`). The template id maps to the repo `agentsfleet/github-pr-reviewer`. `agentsfleetd`: `GET api.github.com/repos/.../tarball/main` → **validate** (strip wrapper, reject symlinks/`..`/dotfiles, cap 16 MiB / 4096 entries) → **re-pack a NEW canonical tar** (`canonicalTar()`, root-level, deterministic — agentsfleet's own tar, not GitHub's archive) → `content_hash = sha256(skill + trigger + support files)` → `R2.put("fleet-bundles/sha256/{hash}.tar")` → `INSERT core.fleet_bundle_templates (skill_markdown, trigger_markdown, support_files_json [manifest only], content_hash, requirements_json)`. Caps: **32 files · 64 KiB each · 256 KiB total**. (A tenant can do the same into its own catalog via `POST /v1/workspaces/{ws}/fleet-templates`.)
+2. **Install (user).** `POST /v1/workspaces/{ws}/fleets { platform_template_id:"github-pr-reviewer", name }` → reads SKILL/TRIGGER + content hash from the template → `INSERT core.fleets (source_markdown, trigger_markdown, bundle_content_hash, bundle_snapshot_key)` + `XGROUP CREATE fleet:{id}:events`. Returns `{ fleet_id, webhook_urls:{ github } }`. No GitHub fetch and no bytes uploaded at install.
 
 Full storage detail: [`../fleet_bundles.md`](../fleet_bundles.md).
 

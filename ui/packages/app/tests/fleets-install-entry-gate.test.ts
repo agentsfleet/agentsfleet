@@ -21,10 +21,16 @@ const TEMPLATE = {
   id: "github-pr-reviewer",
   name: "GitHub PR reviewer",
   description: "Reviews pull requests.",
-  required_credentials: ["github"],
+  visibility: "platform" as const,
+  source_ref: "platform/github-pr-reviewer",
+  requirements: {
+    credentials: ["github"],
+    tools: [],
+    network_hosts: [],
+    trigger_present: true,
+  },
   required_credentials_reasons: { github: "review your pull requests" },
-  required_tools: [],
-  network_hosts: [],
+  support_files: [],
 };
 
 function stubStream(installStep: string | null) {
@@ -50,19 +56,18 @@ afterEach(() => cleanup());
 // ── InstallEntry — the shared entry surface (both empty states compose it) ───
 
 describe("InstallEntry", () => {
-  it("renders the template grid + the shared source affordance with quickstart", () => {
+  it("renders the template grid with a deep link + quickstart", () => {
     const m = renderToStaticMarkup(
       React.createElement(InstallEntry, { templates: [TEMPLATE], quickstart: true }),
     );
     expect(m).toContain('href="/fleets/new?template=github-pr-reviewer"');
-    expect(m).toContain("Import from GitHub or paste SKILL.md");
+    expect(m).toContain("GitHub PR reviewer");
     expect(m).toContain("Quick start");
   });
 
   it("omits the template grid when there are no templates, and Quick start when not asked", () => {
     const m = renderToStaticMarkup(React.createElement(InstallEntry, { templates: [] }));
     expect(m).not.toContain("?template=");
-    expect(m).toContain("Import from GitHub or paste SKILL.md");
     expect(m).not.toContain("Quick start");
   });
 });
