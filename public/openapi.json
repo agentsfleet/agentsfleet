@@ -1737,7 +1737,7 @@
       "get": {
         "operationId": "connector_callback",
         "summary": "Complete a connector connect flow (vendor redirect)",
-        "description": "The provider redirects the operator's browser here after authorization. Bearer-less by design — the signed single-use `state` minted at connect is the only trust anchor (there is no Bearer on a cross-site redirect); verify-and-consume yields the bound workspace. oauth2 providers exchange the `code` for a token under an enforced vendor deadline (`UZ-CONN-003` on stall) and vault it; app_install providers (`github`) record the `installation_id` handle instead. On success the browser is 302-redirected to the dashboard's connector card (200 `{\"status\":\"connected\"}` when no dashboard URL is configured). Invalid/expired/replayed state → 400 `UZ-CONN-002`.",
+        "description": "The provider redirects the operator's browser here after authorization. Bearer-less by design — the signed single-use `state` minted at connect is the only trust anchor (there is no Bearer on a cross-site redirect); verify-and-consume yields the bound workspace. oauth2 providers exchange the `code` for a token under an enforced vendor deadline (`UZ-CONN-003` on stall) and vault it; app_install providers (`github`) record the `installation_id` handle instead. On success the browser is 302-redirected to the dashboard's connector card; if that redirect URL cannot be built (dashboard base URL allocation failure) the connection still succeeded, so it returns 200 `{\"status\":\"connected\"}` instead. Invalid, expired, or replayed state gives 400 `UZ-CONN-002`.",
         "tags": [
           "Connectors"
         ],
@@ -1780,6 +1780,25 @@
           }
         ],
         "responses": {
+          "200": {
+            "description": "Connected, but the dashboard redirect URL could not be built (allocation failure). The connection succeeded; no redirect is issued.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "status"
+                  ],
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "const": "connected"
+                    }
+                  }
+                }
+              }
+            }
+          },
           "302": {
             "description": "Connected — browser redirected to the dashboard's connector card.",
             "headers": {
@@ -1872,10 +1891,10 @@
               }
             }
           },
-          "400": {
+          "401": {
             "$ref": "#/components/responses/Error"
           },
-          "401": {
+          "413": {
             "$ref": "#/components/responses/Error"
           },
           "503": {

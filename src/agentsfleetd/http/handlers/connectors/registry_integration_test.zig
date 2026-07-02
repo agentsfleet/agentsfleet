@@ -28,7 +28,9 @@ const test_fixtures = @import("../../../db/test_fixtures.zig");
 const vault = @import("../../../state/vault.zig");
 const credential_key = @import("../../../fleet_runtime/credential_key.zig");
 const oauth2 = @import("oauth2.zig");
+const connector_state = @import("state.zig");
 const slack_spec = @import("slack/spec.zig");
+const github_spec = @import("github/spec.zig");
 
 const TestHarness = harness_mod.TestHarness;
 const net = std.Io.net;
@@ -132,6 +134,11 @@ fn preClean(alloc: std.mem.Allocator, conn: *pg.Conn) void {
     const key = credential_key.allocKeyName(alloc, common.PROVIDER_SLACK) catch return;
     defer alloc.free(key);
     _ = vault.deleteCredential(conn, TARGET_WS, key) catch |e| std.log.warn("preclean vault ignored: {s}", .{@errorName(e)});
+    // Belt-and-suspenders: the "unconfigured" assertion depends on ADMIN_WS
+    // having NO slack-app bag. A sibling seed-creds test that crashed before
+    // its cleanup could leave one — and then this test would load real creds
+    // and dial the real slack.com token endpoint. Delete it unconditionally.
+    _ = vault.deleteCredential(conn, ADMIN_WS, "slack-app") catch |e| std.log.warn("preclean slack-app ignored: {s}", .{@errorName(e)});
 }
 
 // ── Bearer-authed generic flows ──────────────────────────────────────────────
@@ -235,6 +242,7 @@ test "integration: slack connect returns the provider authorize URL with a bound
     test_fixtures.setTestEncryptionKey();
     try seedAuthedFixtures(conn);
     try seedSlackAppCreds(alloc, conn);
+    defer deleteVaultKey(conn, ADMIN_WS, "slack-app"); // cleans up even if an assert below fails
     h.ctx.approval_signing_secret = SIGNING_SECRET;
     h.ctx.platform_admin_workspace_id = ADMIN_WS;
 
@@ -245,8 +253,6 @@ test "integration: slack connect returns the provider authorize URL with a bound
     try testing.expect(r.bodyContains("slack.com/oauth/v2/authorize")); // the registry entry's endpoint
     try testing.expect(r.bodyContains("state=")); // the signed single-use state rides the URL
     try testing.expect(r.bodyContains("m108-test-client-id"));
-
-    deleteVaultKey(conn, ADMIN_WS, "slack-app");
 }
 
 test "integration: github connect builds the App install URL from the configured slug" {
@@ -405,6 +411,110 @@ test "integration: github status reads the installation handle" {
     deleteFleetHandle(alloc, conn, AUTHED_WS, common.PROVIDER_GITHUB);
 }
 
+// ── app_install callback e2e (the archetype the oauth2 suites don't cover) ──
+
+test "integration: github callback writes the fleet:github handle and 302s (app_install archetype)" {
+    const alloc = testing.allocator;
+    const h = TestHarness.start(alloc, .{ .configureRegistry = noopRegistry }) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    test_fixtures.setTestEncryptionKey();
+    try test_fixtures.seedTenantById(conn, TENANT_ID, TENANT_NAME);
+    try test_fixtures.seedWorkspaceWithTenant(conn, TARGET_WS, TENANT_ID);
+    deleteFleetHandle(alloc, conn, TARGET_WS, common.PROVIDER_GITHUB);
+    h.ctx.approval_signing_secret = SIGNING_SECRET;
+
+    // app_install state is minted against github's OWN domain binding.
+    const state = try connector_state.mint(alloc, &h.queue, github_spec.STATE, SIGNING_SECRET, TARGET_WS, common.clock.nowMillis());
+    defer alloc.free(state);
+    const path = try std.fmt.allocPrint(alloc, "/v1/connectors/github/callback?installation_id=42424242&state={s}", .{state});
+    defer alloc.free(path);
+
+    const r = try h.get(path).redirectBehavior(.unhandled).send();
+    defer r.deinit();
+    try r.expectStatus(.found); // 302 back to the dashboard connector card
+
+    // The one row app_install writes: the fleet:github handle with the id.
+    const key = try credential_key.allocKeyName(alloc, common.PROVIDER_GITHUB);
+    defer alloc.free(key);
+    var parsed = try vault.loadJson(alloc, conn, TARGET_WS, key);
+    defer parsed.deinit();
+    try testing.expectEqualStrings("42424242", parsed.value.object.get("installation_id").?.string);
+
+    deleteFleetHandle(alloc, conn, TARGET_WS, common.PROVIDER_GITHUB);
+}
+
+test "integration: github callback with a non-numeric installation_id is a 400, no handle written" {
+    const alloc = testing.allocator;
+    const h = TestHarness.start(alloc, .{ .configureRegistry = noopRegistry }) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    test_fixtures.setTestEncryptionKey();
+    try test_fixtures.seedTenantById(conn, TENANT_ID, TENANT_NAME);
+    try test_fixtures.seedWorkspaceWithTenant(conn, TARGET_WS, TENANT_ID);
+    deleteFleetHandle(alloc, conn, TARGET_WS, common.PROVIDER_GITHUB);
+    h.ctx.approval_signing_secret = SIGNING_SECRET;
+
+    const state = try connector_state.mint(alloc, &h.queue, github_spec.STATE, SIGNING_SECRET, TARGET_WS, common.clock.nowMillis());
+    defer alloc.free(state);
+    const path = try std.fmt.allocPrint(alloc, "/v1/connectors/github/callback?installation_id=not-a-number&state={s}", .{state});
+    defer alloc.free(path);
+
+    const r = try h.get(path).redirectBehavior(.unhandled).send();
+    defer r.deinit();
+    try r.expectStatus(.bad_request);
+    try r.expectErrorCode("UZ-REQ-001");
+
+    const key = try credential_key.allocKeyName(alloc, common.PROVIDER_GITHUB);
+    defer alloc.free(key);
+    if (vault.loadJson(alloc, conn, TARGET_WS, key)) |p| {
+        var pp = p;
+        pp.deinit();
+        return error.HandleUnexpectedlyWritten;
+    } else |_| {}
+}
+
+// ── Cross-workspace authorization (the generic trio's authorizeWorkspace gate)
+
+test "integration: a valid token cannot connect/read a workspace it doesn't own (IDOR)" {
+    const alloc = testing.allocator;
+    const h = startAuthedHarness(alloc) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    test_fixtures.setTestEncryptionKey();
+    try seedAuthedFixtures(conn);
+    // A second tenant's workspace the TENANT_ADMIN persona (bound to AUTHED_WS)
+    // has no claim on — same suite tenant, distinct workspace id.
+    try test_fixtures.seedWorkspaceWithTenant(conn, TARGET_WS, TENANT_ID);
+    h.ctx.approval_signing_secret = SIGNING_SECRET;
+    h.ctx.platform_admin_workspace_id = ADMIN_WS;
+
+    // connect on a foreign workspace → 403 (authorizeWorkspace denies).
+    {
+        const r = try (try (try h.post("/v1/workspaces/" ++ TARGET_WS ++ "/connectors/slack/connect").json("{}")).bearer(scope_tokens.TENANT_ADMIN)).send();
+        defer r.deinit();
+        try r.expectStatus(.forbidden);
+    }
+    // status on a foreign workspace → 403 likewise.
+    {
+        const r = try (try h.get("/v1/workspaces/" ++ TARGET_WS ++ "/connectors/slack").bearer(scope_tokens.TENANT_ADMIN)).send();
+        defer r.deinit();
+        try r.expectStatus(.forbidden);
+    }
+}
+
 // ── Vendor-failure classes on the exchange (e2e through bounded_fetch) ──────
 
 test "integration: an unreachable vendor is a 502 UZ-CONN-003 (pin refused, never unbounded)" {
@@ -419,6 +529,8 @@ test "integration: an unreachable vendor is a 502 UZ-CONN-003 (pin refused, neve
     test_fixtures.setTestEncryptionKey();
     try seedAuthedFixtures(conn);
     try seedSlackAppCreds(alloc, conn);
+    defer deleteVaultKey(conn, ADMIN_WS, "slack-app"); // cleans up even if an assert below fails
+    defer deleteFleetHandle(alloc, conn, TARGET_WS, common.PROVIDER_SLACK);
     h.ctx.approval_signing_secret = SIGNING_SECRET;
     h.ctx.platform_admin_workspace_id = ADMIN_WS;
     // Port 1 (tcpmux) never listens on a dev/CI host: the dial is refused,
@@ -435,9 +547,6 @@ test "integration: an unreachable vendor is a 502 UZ-CONN-003 (pin refused, neve
     defer r.deinit();
     try r.expectStatus(.bad_gateway);
     try r.expectErrorCode("UZ-CONN-003");
-
-    deleteVaultKey(conn, ADMIN_WS, "slack-app");
-    deleteFleetHandle(alloc, conn, TARGET_WS, common.PROVIDER_SLACK);
 }
 
 /// A vendor that answers every request 500 — the exchange-failed shape.
@@ -507,6 +616,7 @@ test "integration: a vendor 5xx on the exchange is a 502 exchange-failed" {
     test_fixtures.setTestEncryptionKey();
     try seedAuthedFixtures(conn);
     try seedSlackAppCreds(alloc, conn);
+    defer deleteVaultKey(conn, ADMIN_WS, "slack-app"); // cleans up even if an assert below fails
 
     var fake: FakeVendor500 = undefined;
     try fake.start();
@@ -535,6 +645,4 @@ test "integration: a vendor 5xx on the exchange is a 502 exchange-failed" {
         p.deinit();
         return error.HandleUnexpectedlyWritten;
     } else |_| {}
-
-    deleteVaultKey(conn, ADMIN_WS, "slack-app");
 }

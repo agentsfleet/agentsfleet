@@ -110,8 +110,9 @@
       signed single-use `state` minted at connect is the only trust anchor (there is no Bearer on a cross-site redirect);
       verify-and-consume yields the bound workspace. oauth2 providers exchange the `code` for a token under an enforced
       vendor deadline (`UZ-CONN-003` on stall) and vault it; app_install providers (`github`) record the `installation_id`
-      handle instead. On success the browser is 302-redirected to the dashboard's connector card (200 `{"status":"connected"}`
-      when no dashboard URL is configured). Invalid/expired/replayed state → 400 `UZ-CONN-002`.
+      handle instead. On success the browser is 302-redirected to the dashboard's connector card; if that redirect URL
+      cannot be built (dashboard base URL allocation failure) the connection still succeeded, so it returns 200
+      `{"status":"connected"}` instead. Invalid, expired, or replayed state gives 400 `UZ-CONN-002`.
     tags:
     - Connectors
     parameters:
@@ -148,6 +149,19 @@
             description: Dashboard connectors page for the just-connected provider.
             schema:
               type: string
+      '200':
+        description: Connected, but the dashboard redirect URL could not be built (allocation failure). The connection
+          succeeded; no redirect is issued.
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - status
+              properties:
+                status:
+                  type: string
+                  const: connected
       '400':
         $ref: ../components/responses.yaml#/components/responses/Error
       '404':
@@ -207,9 +221,9 @@
                   type: string
                 ignored:
                   type: string
-      '400':
-        $ref: ../components/responses.yaml#/components/responses/Error
       '401':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '413':
         $ref: ../components/responses.yaml#/components/responses/Error
       '503':
         $ref: ../components/responses.yaml#/components/responses/Error

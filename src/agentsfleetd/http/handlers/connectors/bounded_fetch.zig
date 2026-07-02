@@ -7,9 +7,15 @@
 //! One deliberate divergence from the runner client: a pin failure REFUSES
 //! the call (`error.VendorUnreachable`) instead of falling through to an
 //! unarmed fetch — a connector call either runs armed or is refused; there is
-//! no unbounded branch to take. Residual window: name resolution + the TCP
-//! dial are connect-phase semantics (OS-bounded), not the read watchdog —
-//! see docs/architecture/connectors.md.
+//! no unbounded branch to take. Residual window: the whole connect phase —
+//! name resolution, the TCP dial, AND the TLS handshake reads — runs before a
+//! pooled handle exists to arm. DNS + dial are OS-bounded; the TLS handshake
+//! read is NOT (`std.http.Client.connect` does TCP+TLS atomically, so we
+//! cannot arm between them without a connect-phase deadline mechanism that
+//! doesn't exist yet). A vendor that completes TCP then stalls the TLS
+//! handshake is the one unbounded branch left — tracked as a follow-up; still
+//! a strict improvement over the fully-unbounded pre-M108 call. See
+//! docs/architecture/connectors.md §Bounded outbound.
 //!
 //! Callers own watchdog lifetime by context: the outbound worker keeps one
 //! across its loop; the request-scoped paths (OAuth exchange, thread re-read)
@@ -70,6 +76,7 @@ pub const Call = struct {
 const EV_VENDOR_DEADLINE = "connector_vendor_deadline_fired";
 const R_DEADLINE = "deadline";
 const R_WATCHDOG_UNAVAILABLE = "watchdog_unavailable";
+const R_VENDOR_UNREACHABLE = "vendor_unreachable";
 
 /// Run one deadline-armed vendor call on a fresh per-call client. The caller's
 /// watchdog enforces the bound; on a fire the pooled socket is shut down and
@@ -81,9 +88,12 @@ pub fn fetch(alloc: std.mem.Allocator, io: std.Io, wd: *Watchdog, call: Call) Fe
 
     // Armed or refused: no pin → no call (the runner client falls through to
     // an unarmed fetch here; connectors must not).
-    const handle = pinPooledHandle(&client, call.url) orelse return FetchError.VendorUnreachable;
+    const handle = pinPooledHandle(&client, call.url) orelse {
+        warnRefused(call, R_VENDOR_UNREACHABLE);
+        return FetchError.VendorUnreachable;
+    };
     if (wd.arm(handle, call.deadline_ms) == .watchdog_unavailable) {
-        warnDeadline(call, R_WATCHDOG_UNAVAILABLE);
+        warnRefused(call, R_WATCHDOG_UNAVAILABLE);
         return FetchError.WatchdogUnavailable;
     }
     defer wd.disarm();
@@ -99,19 +109,30 @@ pub fn fetch(alloc: std.mem.Allocator, io: std.Io, wd: *Watchdog, call: Call) Fe
         .method = call.method,
         .payload = call.payload,
         .extra_headers = call.extra_headers,
+        // A redirect's new leg dials a fresh connection whose read is OUTSIDE
+        // the armed handle (the watchdog holds the first socket) — that would
+        // re-open the unbounded-read window, and a deadline fire mid-redirect
+        // would shutdown() a possibly-recycled fd. Connector vendor endpoints
+        // are direct; treat a 3xx as the response, never chase it.
+        .redirect_behavior = .unhandled,
         .response_writer = &aw.writer,
     }) catch {
         if (wd.deadlineFired()) {
-            warnDeadline(call, R_DEADLINE);
+            warnRefused(call, R_DEADLINE);
             return FetchError.DeadlineExceeded;
         }
+        warnRefused(call, R_VENDOR_UNREACHABLE);
         return FetchError.VendorUnreachable;
     };
     const resp = aw.toOwnedSlice() catch return FetchError.OutOfMemory;
     return .{ .status = @intFromEnum(result.status), .body = resp };
 }
 
-fn warnDeadline(call: Call, reason: []const u8) void {
+/// One warn line for every UZ-CONN-003 refusal class (deadline fired, watchdog
+/// unavailable, vendor unreachable) so all three are greppable — the caller
+/// maps them to the same 502 and would otherwise leave vendor-down 502s with
+/// no server-side log. Never carries URL query or token material.
+fn warnRefused(call: Call, reason: []const u8) void {
     log.warn(EV_VENDOR_DEADLINE, .{
         .error_code = ec.ERR_CONNECTOR_VENDOR_DEADLINE,
         .reason = reason,

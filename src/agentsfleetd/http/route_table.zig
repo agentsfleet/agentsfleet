@@ -177,13 +177,12 @@ pub fn specFor(route: router.Route, registry: *auth_mw.MiddlewareRegistry) Route
         .approval_webhook => .{ .middlewares = registry.webhookHmac(), .invoke = invoke.invokeApprovalWebhook },
         // grant_approval_webhook uses Redis nonce; no standard policy fits.
         .grant_approval_webhook => .{ .middlewares = auth_mw.MiddlewareRegistry.none, .invoke = invoke.invokeGrantApprovalWebhook },
-        // GitHub App connector (M102 §5). connect/status are workspace-authed;
-        // the callback is Bearer-less (a github.com redirect) — state-authed in-handler.
+        // Connector platform (M108) — the generic {provider} trio resolved
+        // against the registry. connect/status are workspace-authed; the
+        // callback is Bearer-less (a vendor redirect) — state-authed in-handler.
         .connector_connect => .{ .middlewares = registry.bearer(), .invoke = connectors_invoke.invokeConnectorConnect },
         .connector_status => .{ .middlewares = registry.bearer(), .invoke = connectors_invoke.invokeConnectorStatus },
         .connector_callback => .{ .middlewares = auth_mw.MiddlewareRegistry.none, .invoke = connectors_invoke.invokeConnectorCallback },
-        // Slack OAuth connector (M106 §1). connect is workspace-authed; the
-        // callback is Bearer-less (a slack.com redirect) — state-authed in-handler.
         // Slack events ingress (M106 §2). Bearer-less — the Slack v0 request
         // signature is verified in-handler (the signing secret is resolved
         // per-request from the vault; no static-secret middleware fits).
