@@ -13,7 +13,7 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Milestone:** M108
 **Workstream:** 001
 **Date:** Jul 02, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — every upcoming customer-facing connector (Grafana, Zoho Desk, Jira, Linear, Fly, Datadog) blocks on this base; today each new provider re-implements routes/handlers by hand and every outbound vendor call is unbounded.
 **Categories:** API, DOCS
 **Batch:** B1 — base lands before M108_002 provider entries
