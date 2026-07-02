@@ -21,10 +21,12 @@ const slack_post = @import("../slack/post.zig");
 
 const log = logging.scoped(.connector_outbound);
 
-/// XREADGROUP BLOCK window (ms, decimal string): the worker parks at most this
-/// long on an idle stream, then loops to re-check the shutdown flag — so
-/// teardown joins within ~1 s.
-const BLOCK_MS = "1000";
+/// Idle backoff between non-blocking stream claims. Answers arrive at
+/// model-run cadence (seconds), so a ≤250 ms pickup lag is noise — and the
+/// shared queue connection is borrowed per-command instead of parked in a
+/// server-side BLOCK (the scaling doc's "no per-stream blocking loop"
+/// invariant holds again). Shutdown joins within one interval.
+const IDLE_POLL_MS: u64 = 250;
 /// Inline delivery attempts before a retryable failure is dropped (acked). Kept
 /// small — a durable stream + pending redelivery cover a crash; this covers a
 /// transient 429 / brief 5xx without hammering.
@@ -53,17 +55,20 @@ pub fn run(
     while (!shutdown.load(.acquire)) {
         // Pending-first: redeliver anything this consumer was handed but never
         // acked (a restart mid-post). Drain one per loop; a hit `continue`s to
-        // check for more before parking on a new read.
+        // check for more before claiming a new read.
         if (readPendingSafe(queue, consumer_id)) |d| {
             var job = d;
             deliverAndAck(pool, queue, alloc, &job, slack_api_base);
             continue;
         }
-        // No pending → block briefly for a new job.
+        // Non-blocking claim; a hit loops straight back (drain a hot stream
+        // without pacing), an idle pass sleeps the backoff.
         if (readNextSafe(queue, consumer_id)) |d| {
             var job = d;
             deliverAndAck(pool, queue, alloc, &job, slack_api_base);
+            continue;
         }
+        constants.sleepNanos(IDLE_POLL_MS * std.time.ns_per_ms);
     }
     log.debug("outbound_worker_shutdown", .{});
 }
@@ -76,7 +81,7 @@ fn readPendingSafe(queue: *queue_redis.Client, consumer_id: []const u8) ?connect
 }
 
 fn readNextSafe(queue: *queue_redis.Client, consumer_id: []const u8) ?connector_outbound.Delivery {
-    return connector_outbound.readNext(queue, consumer_id, BLOCK_MS) catch |err| {
+    return connector_outbound.readNext(queue, consumer_id) catch |err| {
         log.warn("outbound_read_next_failed", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .err = @errorName(err) });
         return null;
     };

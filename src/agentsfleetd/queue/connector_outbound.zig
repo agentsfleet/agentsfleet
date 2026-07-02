@@ -95,14 +95,16 @@ pub fn enqueue(client: *redis_client.Client, job: Job) ![]u8 {
     return client.alloc.dupe(u8, id);
 }
 
-/// Blocking XREADGROUP for the next undelivered job — parks up to `block_ms`
-/// (a decimal-string like "5000"), then null on timeout so the worker can check
-/// its shutdown flag. The blocked read parks only the worker thread, not the pool.
-pub fn readNext(client: *redis_client.Client, consumer_id: []const u8, block_ms: []const u8) !?Delivery {
+/// Non-blocking XREADGROUP for the next undelivered job — null immediately on
+/// an idle stream. The worker paces itself with an idle backoff instead of a
+/// server-side BLOCK, so the shared queue connection is borrowed per-command
+/// like every other pooled read (the lease-path shape) rather than parked on
+/// the stream.
+pub fn readNext(client: *redis_client.Client, consumer_id: []const u8) !?Delivery {
     var resp = try client.command(&.{
         CMD_XREADGROUP, ARG_GROUP,  CONSUMER_GROUP, consumer_id,
-        ARG_COUNT,      READ_COUNT, "BLOCK",        block_ms,
-        ARG_STREAMS,    STREAM_KEY, ">",
+        ARG_COUNT,      READ_COUNT, ARG_STREAMS,    STREAM_KEY,
+        ">",
     });
     defer resp.deinit(client.alloc);
     return decodeDelivery(client.alloc, resp);
