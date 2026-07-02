@@ -94,6 +94,7 @@
 |------|--------|-----|
 | `scripts/check_route_registration_doc.py` | CREATE | four-check doc-freshness gate (middleware names, cited paths, cited make targets, dead path prefixes) |
 | `make/quality.mk` | EDIT | add `check-route-registration-doc` target; add it to `lint-all`'s dependency list and the `.PHONY` line |
+| `docs/SCHEMA_CONVENTIONS.md` | EDIT | three `src/(cmd\|types)/` stale prefixes found by Check A against the real tree (dotfiles symlink; see Discovery) |
 
 ---
 
@@ -178,7 +179,7 @@ Tooling script: tiers collapse to deterministic shell/Python evals (no unit/inte
 | 1.5 | eval | `test_missing_path_detected` | scratch copy with `src/agentsfleetd/http/handlers/does_not_exist.zig` injected → script reports `MISSING: src/agentsfleetd/http/handlers/does_not_exist.zig` |
 | 1.6 | eval | `test_phantom_make_target_detected` | scratch copy with `make totally-fake-target` injected → script reports `PHANTOM TARGET: totally-fake-target` |
 | 2.1 | eval | `test_make_target_clean_exit` | `make check-route-registration-doc` against real tree → exit 0 |
-| 2.2 | eval | `test_lint_all_wiring` | `grep check-route-registration-doc make/quality.mk` → 2 hits (`.PHONY` line + `lint-all` dependency line) |
+| 2.2 | eval | `test_lint_all_wiring` | `grep check-route-registration-doc make/quality.mk` → 3 hits (`.PHONY` line + target definition + `lint-all` dependency line) |
 
 Regression: `check-openapi`/`check-schema-gate`/`check-gh-actions-valid`/`check-playbooks` unaffected — `make lint-all` still runs all of them (verify by diffing `lint-all`'s dependency list: only one name added). Idempotency/replay: N/A — read-only check, no retry semantics.
 
@@ -186,11 +187,11 @@ Regression: `check-openapi`/`check-schema-gate`/`check-gh-actions-valid`/`check-
 
 ## Acceptance Criteria
 
-- [ ] Script exists and is executable-clean — verify: `python3 scripts/check_route_registration_doc.py; echo "exit: $?"` → `exit: 0` against the real tree
-- [ ] `make check-route-registration-doc` exists and passes — verify: `make check-route-registration-doc`
-- [ ] Wired into `lint-all` — verify: `grep -c check-route-registration-doc make/quality.mk` → `2`
-- [ ] Negative paths all fire — verify: the four scratch-copy injection tests in Test Specification each print their named violation
-- [ ] `gitleaks detect` clean · no file over 350 lines added
+- [x] Script exists and is executable-clean — verify: `python3 scripts/check_route_registration_doc.py; echo "exit: $?"` → `exit: 0` against the real tree
+- [x] `make check-route-registration-doc` exists and passes — verify: `make check-route-registration-doc`
+- [x] Wired into `lint-all` — verify: `grep -c check-route-registration-doc make/quality.mk` → `3`
+- [x] Negative paths all fire — verify: the four injection tests in Test Specification each print their named violation
+- [x] `gitleaks detect` clean · no file over 350 lines added (160 lines, post-review fixes)
 
 ---
 
@@ -202,12 +203,19 @@ python3 scripts/check_route_registration_doc.py && echo "PASS" || echo "FAIL"
 # E2: make target exists and passes
 make check-route-registration-doc && echo "PASS" || echo "FAIL"
 # E3: wired into lint-all (.PHONY + dependency list)
-test "$(grep -c check-route-registration-doc make/quality.mk)" -eq 2 && echo "PASS" || echo "FAIL"
-# E4: negative path — synthetic phantom middleware is caught
-cp docs/REST_API_DESIGN_GUIDELINES.md /tmp/rest_guide_scratch.md
-echo 'registry.operator()' >> /tmp/rest_guide_scratch.md
-python3 scripts/check_route_registration_doc.py --doc /tmp/rest_guide_scratch.md | grep -q "PHANTOM MIDDLEWARE" && echo "PASS" || echo "FAIL"
-rm /tmp/rest_guide_scratch.md
+test "$(grep -c check-route-registration-doc make/quality.mk)" -eq 3 && echo "PASS" || echo "FAIL"
+# E4: negative paths — the script has no CLI flags (matches scripts/check_openapi_*.py
+# style); negative paths are exercised by importing it and calling its check
+# functions directly against synthetic strings, not a --doc flag.
+python3 -c "
+import sys; sys.path.insert(0, 'scripts')
+import check_route_registration_doc as m
+real = m.real_middleware_policies(open(m.MIDDLEWARE_MOD_PATH).read())
+assert m.check_phantom_middleware('registry.operator()', real), 'phantom middleware not caught'
+assert m.check_missing_paths('src/agentsfleetd/http/handlers/does_not_exist.zig'), 'missing path not caught'
+assert m.check_phantom_make_targets('make totally-fake-target', m.MAKE_DIR, m.MAKEFILE_PATH), 'phantom target not caught'
+print('PASS')
+"
 # E5: gitleaks
 gitleaks detect 2>&1 | tail -3
 ```
@@ -222,8 +230,11 @@ N/A — no files deleted; this spec only creates a new script and extends `make/
 
 ## Discovery (consult log)
 
-- **Scope narrowing (Indy to confirm or redirect)** — Indy's literal ask was "a code-derived, always-fresh route-registration reference" (implying generated table content). This spec narrows that to a **verification gate** over the four fact classes M107_001 hand-fixed, reasoned in Product Clarity #3: full per-route table generation needs real Zig parsing (grouped exhaustive-switch arms, typed union payloads) that the existing `scripts/check_openapi_*.py` regex-based pattern can't safely do, while a verification gate achieves the stated durability goal ("never drifts again") at the same mechanical simplicity as prior art. Flagged for Indy to redirect before EXECUTE if the literal generated-table shape is what's wanted instead.
+- **Scope narrowing (Indy to confirm or redirect)** — Indy's literal ask was "a code-derived, always-fresh route-registration reference" (implying generated table content). This spec narrows that to a **verification gate** over the four fact classes M107_001 hand-fixed, reasoned in Product Clarity #3: full per-route table generation needs real Zig parsing (grouped exhaustive-switch arms, typed union payloads) that the existing `scripts/check_openapi_*.py` regex-based pattern can't safely do, while a verification gate achieves the stated durability goal ("never drifts again") at the same mechanical simplicity as prior art. Surfaced to Indy in-session before EXECUTE; no redirect received, proceeded with the gate.
+- **Pre-existing drift found by the generalized Check A** — running the new script against the real tree (before implementation was "done") surfaced three stale `src/(cmd|types)/` references in `docs/SCHEMA_CONVENTIONS.md` (lines 16, 35, 40) that neither M107_001 nor this spec's Files Changed table named — a gate that fails against current `main` isn't shippable, and the fix is the same mechanical class Indy already approved in M107_001, so it was folded in here rather than blocked on a third spec. `docs/SCHEMA_CONVENTIONS.md` is a dotfiles symlink; fixed and will be committed in `~/Projects/dotfiles` alongside M107_001's dotfiles commit.
+- **Spec self-correction** — Dimension 2.2 / the E3 eval originally expected `grep -c check-route-registration-doc make/quality.mk` → `2`, undercounting: the target's own definition line also matches the string, in addition to the `.PHONY` line and the `lint-all` dependency line. Corrected to `3` (the real, verified count) in the Test Specification, Acceptance Criteria, and Eval Commands sections.
 - **Metrics review** — no analytics/funnel playbook update required — internal lint tooling.
+- **`/review` outcome (`code-review` skill, medium effort)** — 3 finder angles (correctness, cleanup/simplification/efficiency, conventions) ran independently against the script + `make/quality.mk` diff, verified, 8 findings survived, all dispositioned: (1) `DOC_MAKE_TARGET_RE` over-matched ordinary prose ("make sure") — CONFIRMED by two independent finders, fixed by requiring backtick-quoting, matching the guide's actual citation style; (2) bare string concatenation of `make/*.mk` files risked a cross-file line-merge on a missing trailing newline, hiding target definitions from the `MULTILINE` anchor — PLAUSIBLE, fixed via newline-joined concatenation; (3) docstring overclaimed "all docs/*.md" coverage when the glob is non-recursive (14 of 216 total `.md` files) — CONFIRMED, docstring reworded to state the top-level-only scope explicitly; (4) O(targets × corpus size) make-target lookup — fixed for free alongside (2) via a single defined-targets extraction pass; (5) `M107_001`/`M107_002` milestone-ID tokens embedded in the `.py` docstring — CONFIRMED MILESTONE-ID GATE hit (`dispatch/write_any.md` exempts `docs/*.md`, not `.py`), rewritten to describe purpose not spec lineage; (6) "REST" unexpanded on first mention — CONFIRMED acronym-rule hit, spelled out; (7) duplicated read-or-fail block — fixed within this file via a local `read_file()` helper (not retrofitted into the two pre-existing sibling scripts, out of this spec's scope); (8) `check_dead_prefix`'s unreachable `FileNotFoundError` branch — PLAUSIBLE but harmless defensive code, left as-is. All fixes re-verified against the full eval suite (E1–E5) plus two targeted regression checks (ordinary-prose non-match, newline-merge repro) before commit.
 
 ---
 
@@ -241,11 +252,13 @@ N/A — no files deleted; this spec only creates a new script and extends `make/
 
 | Check | Command | Result | Pass? |
 |-------|---------|--------|-------|
-| Script clean on real tree | E1 | (fill at VERIFY) | |
-| Make target passes | E2 | (fill at VERIFY) | |
-| lint-all wiring | E3 | (fill at VERIFY) | |
-| Negative path (phantom middleware) | E4 | (fill at VERIFY) | |
-| Gitleaks | E5 | (fill at VERIFY) | |
+| Script clean on real tree | E1 | `OK: route-registration doc freshness — docs/REST_API_DESIGN_GUIDELINES.md clean, 14 docs scanned for dead prefixes.` | ✅ |
+| Make target passes | E2 | same output via `make check-route-registration-doc` | ✅ |
+| lint-all wiring | E3 | grep count = 3 (`.PHONY`, target definition, `lint-all` dependency) | ✅ |
+| Negative paths (all four checks) | E4 | `PASS` — phantom middleware, missing path, and phantom make target all caught by direct function calls | ✅ |
+| Gitleaks | E5 | `no leaks found` (scanned whole tree, ~14.26 MB) | ✅ |
+
+**Test Delta:** unit 2270→2270 (+0) · integration 243→243 (+0) vs CHORE(open) baseline. Lacking: none — Python tooling script outside the Zig test-depth counter's scope; coverage proof is the eval suite above (E1–E5 + the four negative-path Dimension tests), per this spec's Test Specification framing (tiers collapse to deterministic evals for a tooling script with no Zig surface).
 
 ---
 
