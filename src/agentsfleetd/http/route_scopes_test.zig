@@ -50,6 +50,17 @@ test "no-auth and self-service routes carry no capability scope (authenticated-o
     try testing.expectEqual(@as(usize, 0), route_scopes.requiredScopes(.delete_all_auth_sessions, .DELETE).len);
 }
 
+test "connector routes: generic trio gates write/read; callback + events are signature/state-authed (no scope)" {
+    const connect_route: @import("router.zig").Route = .{ .connector_connect = .{ .workspace_id = "ws1", .provider = "slack" } };
+    const status_route: @import("router.zig").Route = .{ .connector_status = .{ .workspace_id = "ws1", .provider = "github" } };
+    try testing.expectEqual(scopes.Scope.connector_write, onlyScope(route_scopes.requiredScopes(connect_route, .POST)).?);
+    try testing.expectEqual(scopes.Scope.connector_read, onlyScope(route_scopes.requiredScopes(status_route, .GET)).?);
+    // Bearer-less by design: the callback trusts the signed single-use state,
+    // the events ingress trusts the Slack v0 signature — neither carries a scope.
+    try testing.expectEqual(@as(usize, 0), route_scopes.requiredScopes(.{ .connector_callback = "slack" }, .GET).len);
+    try testing.expectEqual(@as(usize, 0), route_scopes.requiredScopes(.slack_events, .POST).len);
+}
+
 fn router_fleet() @import("router.zig").Route {
     return .{ .patch_workspace_fleet = .{ .workspace_id = "ws1", .fleet_id = "z1" } };
 }

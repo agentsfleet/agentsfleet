@@ -82,7 +82,7 @@ pub const ENTRIES_RUNTIME = [_]Entry{
         "An operator must register the provider app and populate the admin vault before workspaces can connect."),
     e("UZ-CONN-002", .bad_request, "Invalid connect state", "The connect callback's state was missing, forged, expired, or already used. " ++
         "Start the connect again from the dashboard \u{2014} each attempt issues a fresh single-use state."),
-    e("UZ-CONN-003", .bad_gateway, "Connector vendor call exceeded its deadline", "An outbound call to the connector's vendor hit its enforced deadline (the vendor accepted the connection, then stalled) or could not be deadline-armed and was refused (watchdog unavailable) \u{2014} the call never runs unbounded. " ++
+    e("UZ-CONN-003", .bad_gateway, "Connector vendor call exceeded its deadline", "An outbound call to the connector's vendor hit its enforced deadline (the vendor accepted the connection, then stalled), could not be deadline-armed and was refused (watchdog unavailable), or the vendor was unreachable (dial/transport failure) \u{2014} the call never runs unbounded. " ++
         "Transient \u{2014} retry; if it persists, check the vendor's status page and this deployment's egress."),
     e("UZ-CONN-004", .not_found, "Unknown connector provider", "The {provider} segment does not match any provider in this deployment's connector registry. " ++
         "List the available providers from the dashboard connectors page (or the catalog endpoint once it ships)."),
