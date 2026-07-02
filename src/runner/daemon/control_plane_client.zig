@@ -9,8 +9,8 @@
 //! persistent `std.http.Client` per owner (keep-alive connection reuse —
 //! a chatty fleet run no longer pays a TCP/TLS handshake per frame).
 //!
-//! Every verb takes a required `deadline_ms`: a per-client watchdog
-//! (call_deadline.zig) shuts the in-flight pooled socket down at the bound,
+//! Every verb takes a required `deadline_ms`: a per-client watchdog (the
+//! `call_deadline` module) shuts the in-flight pooled socket down at the bound,
 //! so a hung control plane surfaces as a retryable transport error instead of
 //! wedging the worker (and starving the child's deadline kill). Residual
 //! window: name resolution + TCP connect inside fetch are not armed (the
@@ -31,17 +31,17 @@ host: []const u8,
 port: u16,
 tls: bool,
 /// Bounds the in-flight call (lazy thread; joined by deinit).
-watchdog: call_deadline.CallWatchdog = .{},
+watchdog: CallWatchdog = .{},
 
 pub const ClientError = error{ RequestFailed, BadStatus, MalformedResponse, WatchdogUnavailable };
-
-// Re-exported call-bounding policy (defaults + resolved set) — single source
-// in call_deadline.zig; config.zig and the cmd verbs consume these names.
-pub const DEFAULT_DEADLINE_MS = call_deadline.DEFAULT_DEADLINE_MS;
-pub const REPORT_DEADLINE_MS = call_deadline.REPORT_DEADLINE_MS;
-pub const ACTIVITY_DEADLINE_MS = call_deadline.ACTIVITY_DEADLINE_MS;
-pub const RENEW_DEADLINE_MS = call_deadline.RENEW_DEADLINE_MS;
-pub const Deadlines = call_deadline.Deadlines;
+// Watchdog bound to this client's log identity (the shipped `cp_*` events +
+// the runner transport-loss code); deadline policy lives in `call_deadline`.
+const CallWatchdog = call_deadline.Watchdog(.{
+    .scope = .fleet_runner,
+    .fire_event = "cp_call_deadline_fired",
+    .spawn_fail_event = "cp_watchdog_spawn_failed",
+    .error_code = client_errors.ERR_EXEC_TRANSPORT_LOSS,
+});
 
 /// Build a client with a persistent connection pool. `alloc` must outlive the
 /// client (per-worker allocator); call `deinit()` to close pooled connections.
@@ -254,8 +254,7 @@ pub fn isTerminalRenewStatus(status: u16) bool {
     return status == 401 or status == 402 or status == 404 or status == 409;
 }
 
-// `cp.mint` (on-demand credential mint, M102 §3) lives in
-// `control_plane_client_mint.zig` (RULE FLL — this file is at the cap).
+// `cp.mint` lives in `control_plane_client_mint.zig` (RULE FLL — at the cap).
 const mint_mod = @import("control_plane_client_mint.zig");
 pub const MintOutcome = mint_mod.MintOutcome;
 pub const mint = mint_mod.mint;
@@ -346,5 +345,6 @@ pub fn get(self: *LoopbackClient, alloc: Allocator, path: []const u8, bearer: []
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
-const call_deadline = @import("call_deadline.zig");
+const call_deadline = @import("call_deadline");
+const client_errors = @import("../engine/client_errors.zig");
 const protocol = @import("contract").protocol;

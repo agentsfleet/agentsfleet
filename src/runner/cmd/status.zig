@@ -7,6 +7,7 @@ const std = @import("std");
 const protocol = @import("contract").protocol;
 const Config = @import("../daemon/config.zig");
 const Client = @import("../daemon/control_plane_client.zig");
+const call_deadline = @import("call_deadline");
 const args = @import("args.zig");
 const output = @import("output.zig");
 
@@ -21,7 +22,7 @@ pub fn run(argv: []const [:0]const u8, env_map: *const std.process.Environ.Map, 
 
     var client = Client.init(alloc, io, api);
     defer client.deinit();
-    const parsed = client.getSelf(alloc, token, Client.DEFAULT_DEADLINE_MS) catch return output.fail(a, alloc, output.ERR_UNREACHABLE);
+    const parsed = client.getSelf(alloc, token, call_deadline.DEFAULT_DEADLINE_MS) catch return output.fail(a, alloc, output.ERR_UNREACHABLE);
     defer parsed.deinit();
     var buf: [384]u8 = undefined;
     output.writeOut(renderStatus(&buf, a, parsed.value));

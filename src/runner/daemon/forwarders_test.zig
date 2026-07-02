@@ -8,6 +8,7 @@ const testing = std.testing;
 const common = @import("common");
 const contract = @import("contract");
 const client_mod = @import("control_plane_client.zig");
+const call_deadline = @import("call_deadline");
 const forwarders = @import("forwarders.zig");
 
 const DEAD_URL = "http://127.0.0.1:9";
@@ -22,7 +23,7 @@ fn testForwarder(c: *client_mod) forwarders.ActivityForwarder {
         .cp = c,
         .runner_token = "agt_rtest",
         .lease_id = "lease_test",
-        .deadline_ms = client_mod.ACTIVITY_DEADLINE_MS,
+        .deadline_ms = call_deadline.ACTIVITY_DEADLINE_MS,
     };
 }
 
@@ -85,7 +86,7 @@ fn testMemoryForwarder(c: *client_mod) forwarders.MemoryForwarder {
         .fleet_id = "z_test",
         .lease_id = "lease_test",
         .fencing_token = 7,
-        .deadline_ms = client_mod.ACTIVITY_DEADLINE_MS,
+        .deadline_ms = call_deadline.ACTIVITY_DEADLINE_MS,
     };
 }
 

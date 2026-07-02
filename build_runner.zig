@@ -28,6 +28,7 @@ comptime {
 const S_LOG = "log";
 const S_CONTRACT = "contract";
 const S_COMMON = "common";
+const S_CALL_DEADLINE = "call_deadline";
 const S_NULLCLAW = "nullclaw";
 const S_BUILD_OPTIONS = "build_options";
 
@@ -58,6 +59,11 @@ pub fn build(b: *std.Build) void {
     // (RULE UFS); datastore-free, so importing it keeps the zero-credential
     // invariant. A named module because src/lib sits outside the runner root.
     const common_mod = deps.common;
+
+    // Call-deadline watchdog + control-plane deadline policy (src/lib/call_deadline)
+    // — the mechanism every client verb arms; shared with agentsfleetd's
+    // connector bounded_fetch so neither graph reaches across the other's tree.
+    const call_deadline_mod = deps.call_deadline;
 
     // NullClaw engine dependency — same options as the agentsfleetd build graph.
     const nullclaw_mod = deps.nullclaw;
@@ -91,6 +97,7 @@ pub fn build(b: *std.Build) void {
                 .{ .name = S_LOG, .module = log_mod },
                 .{ .name = S_CONTRACT, .module = contract_mod },
                 .{ .name = S_COMMON, .module = common_mod },
+                .{ .name = S_CALL_DEADLINE, .module = call_deadline_mod },
                 .{ .name = S_NULLCLAW, .module = nullclaw_mod },
                 .{ .name = S_BUILD_OPTIONS, .module = build_options_mod },
             },
@@ -120,6 +127,7 @@ pub fn build(b: *std.Build) void {
                 .{ .name = S_LOG, .module = log_mod },
                 .{ .name = S_CONTRACT, .module = contract_mod },
                 .{ .name = S_COMMON, .module = common_mod },
+                .{ .name = S_CALL_DEADLINE, .module = call_deadline_mod },
                 .{ .name = S_NULLCLAW, .module = nullclaw_mod },
                 .{ .name = S_BUILD_OPTIONS, .module = build_options_mod },
             },
@@ -127,7 +135,7 @@ pub fn build(b: *std.Build) void {
         .filters = test_filters,
     });
     buildpkg.fixtures.addRunner(b, runner_tests.root_module);
-    b.step("test", "Run agentsfleet-runner unit tests (contract + daemon + common)").dependOn(&b.addRunArtifact(runner_tests).step);
+    b.step("test", "Run agentsfleet-runner unit tests (daemon + engine + cmd)").dependOn(&b.addRunArtifact(runner_tests).step);
 
     // The stub child binary the worker-pool integration lane forks: a real
     // `agentsfleet-runner` built with `executor_provider_stub=true`, so its `__execute`
@@ -148,6 +156,7 @@ pub fn build(b: *std.Build) void {
                 .{ .name = S_LOG, .module = log_mod },
                 .{ .name = S_CONTRACT, .module = contract_mod },
                 .{ .name = S_COMMON, .module = common_mod },
+                .{ .name = S_CALL_DEADLINE, .module = call_deadline_mod },
                 .{ .name = S_NULLCLAW, .module = nullclaw_mod },
                 .{ .name = S_BUILD_OPTIONS, .module = stub_exe_opts.createModule() },
             },
@@ -178,6 +187,7 @@ pub fn build(b: *std.Build) void {
                 .{ .name = S_LOG, .module = log_mod },
                 .{ .name = S_CONTRACT, .module = contract_mod },
                 .{ .name = S_COMMON, .module = common_mod },
+                .{ .name = S_CALL_DEADLINE, .module = call_deadline_mod },
                 .{ .name = S_NULLCLAW, .module = nullclaw_mod },
                 .{ .name = S_BUILD_OPTIONS, .module = integ_opts.createModule() },
             },

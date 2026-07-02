@@ -1,24 +1,25 @@
-//! §4 E — best-effort recent-thread re-read at mention ingress.
+//! Best-effort recent-thread re-read at mention ingress.
 //!
 //! The bot is mention-only and blind to intervening non-mention messages, so
-//! same-thread continuity requires re-reading the thread on each mention (spec
-//! §4). We do it at INGRESS (Indy-acked placement): `events.zig` calls
-//! `fetchRecent` before building the event's `request_json`, so the bounded
-//! last-N thread lands in the payload the runner later leases.
+//! same-thread continuity requires re-reading the thread on each mention. We
+//! do it at INGRESS: `events.zig` calls `fetchRecent` before building the
+//! event's `request_json`, so the bounded last-N thread lands in the payload
+//! the runner later leases. The caller pre-loads the bot token and releases
+//! its pooled conn BEFORE calling here — no database connection is ever held
+//! across the vendor read.
 //!
-//! Everything here is BEST-EFFORT: any failure (no token, transport, non-200,
-//! unparseable body) degrades to an EMPTY thread — the answer still works from
-//! durable channel memory + the mention text, and dedup on `event.ts` makes a
-//! slow Slack call safe to retry. There is no per-call timeout primitive on
-//! `std.http.Client.fetch` in Zig 0.16 (neither `oauth2.exchange` nor `post.zig`
-//! has one); the call is bounded structurally by `RECENT_THREAD_LIMIT` (a small,
-//! fast `conversations.replies` page) rather than a bespoke watchdog thread.
+//! Everything here is BEST-EFFORT: any failure (no token, transport, deadline,
+//! non-200, unparseable body) degrades to an EMPTY thread — the answer still
+//! works from durable channel memory + the mention text, and dedup on
+//! `event.ts` makes a slow Slack call safe to retry. The read is bounded twice
+//! over: structurally by `RECENT_THREAD_LIMIT` (a small `conversations.replies`
+//! page) and by the armed `THREAD_READ_DEADLINE_MS` watchdog.
 
 const std = @import("std");
-const pg = @import("pg");
 const logging = @import("log");
 
-const post = @import("post.zig");
+const bounded_fetch = @import("../bounded_fetch.zig");
+const spec = @import("spec.zig");
 
 const log = logging.scoped(.connector_slack);
 
@@ -27,6 +28,8 @@ const log = logging.scoped(.connector_slack);
 pub const RECENT_THREAD_LIMIT: usize = 20;
 
 const CONVERSATIONS_REPLIES = "/conversations.replies";
+// Structured log event (RULE UFS — emitted from both degrade branches).
+const EV_REFETCH_DEGRADED = "slack_thread_refetch_degraded";
 const HTTP_OK: u16 = 200;
 // conversations.replies message fields we keep (attribution + dedup + content).
 const F_MESSAGES = "messages";
@@ -56,77 +59,72 @@ pub const Recent = struct {
 };
 
 /// Fetch the last-N messages of thread `thread_ts` in `channel` via Slack
-/// `conversations.replies`, authed with the workspace's bot token. NEVER throws —
-/// any failure returns an empty `Recent`. `api_base` is the Slack Web API root
-/// (overridden to a loopback FakeSlack in tests). Caller owns the result
-/// (`.deinit()`).
+/// `conversations.replies`, authed with the caller-loaded bot token (null =
+/// no usable token → empty thread). NEVER throws — any failure returns an
+/// empty `Recent`. `api_base` is the Slack Web API root (overridden to a
+/// loopback FakeSlack in tests). Caller owns the result (`.deinit()`).
 pub fn fetchRecent(
     alloc: std.mem.Allocator,
     io: std.Io,
-    conn: *pg.Conn,
+    token: ?[]const u8,
     api_base: []const u8,
     workspace_id: []const u8,
     channel: []const u8,
     thread_ts: []const u8,
 ) Recent {
     var arena = std.heap.ArenaAllocator.init(alloc);
-    // `arena` is moved into the returned Recent on both paths — the scratch
+    // `arena` is moved into the returned Recent on every path — the scratch
     // allocator (`alloc`) holds the transient HTTP body + parse; only the kept
     // Msg strings are duped into the arena.
-    const msgs = fetchInto(arena.allocator(), alloc, io, conn, api_base, workspace_id, channel, thread_ts) catch |err| {
-        log.debug("slack_thread_refetch_degraded", .{ .workspace_id = workspace_id, .err = @errorName(err) });
+    const tok = token orelse {
+        log.debug(EV_REFETCH_DEGRADED, .{ .workspace_id = workspace_id, .err = "missing_bot_token" });
+        return .{ .arena = arena, .msgs = &.{} };
+    };
+    const msgs = fetchInto(arena.allocator(), alloc, io, tok, api_base, channel, thread_ts) catch |err| {
+        log.debug(EV_REFETCH_DEGRADED, .{ .workspace_id = workspace_id, .err = @errorName(err) });
         return .{ .arena = arena, .msgs = &.{} };
     };
     return .{ .arena = arena, .msgs = msgs };
 }
 
-/// GET `conversations.replies`, parse, and dupe the kept messages into `arena`.
-/// `scratch` backs the transient HTTP client, response slice, and JSON parse
+/// GET `conversations.replies` (deadline-armed), parse, and dupe the kept
+/// messages into `arena`. `scratch` backs the transient response + JSON parse
 /// (freed before returning); only the returned `Msg` slices live in `arena`.
 fn fetchInto(
     arena: std.mem.Allocator,
     scratch: std.mem.Allocator,
     io: std.Io,
-    conn: *pg.Conn,
+    token: []const u8,
     api_base: []const u8,
-    workspace_id: []const u8,
     channel: []const u8,
     thread_ts: []const u8,
 ) ![]const Msg {
-    const token = try post.loadBotToken(scratch, conn, workspace_id);
-    defer scratch.free(token);
-
     // channel + thread_ts are Slack-issued opaque ids (`[A-Z0-9.]`) — no query
-    // escaping needed. limit caps the page (spec: bounded last-N).
+    // escaping needed. limit caps the page (bounded last-N).
     const url = try std.fmt.allocPrint(scratch, "{s}{s}?channel={s}&ts={s}&limit={d}", .{ api_base, CONVERSATIONS_REPLIES, channel, thread_ts, RECENT_THREAD_LIMIT });
     defer scratch.free(url);
     const auth = try std.fmt.allocPrint(scratch, "Bearer {s}", .{token});
     defer scratch.free(auth);
 
-    var client: std.http.Client = .{ .allocator = scratch, .io = io };
-    defer client.deinit();
-    var resp_body: std.ArrayList(u8) = .empty;
-    var aw: std.Io.Writer.Allocating = .fromArrayList(scratch, &resp_body);
-    errdefer aw.deinit();
+    // The mention is the client context — the watchdog is request-scoped (the
+    // ingress handles mentions concurrently; a shared watchdog arms one call
+    // at a time and would clobber under concurrency).
+    var wd: bounded_fetch.Watchdog = .{};
+    defer wd.deinit();
     const headers = [_]std.http.Header{
         .{ .name = "authorization", .value = auth },
     };
-    const result = try client.fetch(.{
-        .location = .{ .url = url },
+    const res = try bounded_fetch.fetch(scratch, io, &wd, .{
+        .url = url,
         .method = .GET,
         .extra_headers = &headers,
-        .response_writer = &aw.writer,
+        .deadline_ms = bounded_fetch.THREAD_READ_DEADLINE_MS,
+        .provider = spec.PROVIDER,
+        .class = .thread_read,
     });
-    // The `errdefer aw.deinit()` above covers every error return below (non-200,
-    // toOwnedSlice failure) — no manual deinit here, or it would double-free with
-    // the errdefer on unwind (this is the best-effort degrade path; a Slack 429
-    // must degrade to empty, never crash the ingress).
-    if (@intFromEnum(result.status) != HTTP_OK) return error.SlackRepliesStatus;
-    // Read the body via the writer (the seed ArrayList is stale once it grows).
-    const resp = try aw.toOwnedSlice();
-    defer scratch.free(resp);
-
-    return parseReplies(arena, scratch, resp);
+    defer scratch.free(res.body);
+    if (res.status != HTTP_OK) return error.SlackRepliesStatus;
+    return parseReplies(arena, scratch, res.body);
 }
 
 /// Parse a `conversations.replies` body into arena-owned `Msg`s. `ok:false` or a

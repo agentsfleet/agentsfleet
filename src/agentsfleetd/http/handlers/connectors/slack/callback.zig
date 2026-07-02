@@ -96,6 +96,11 @@ pub fn innerSlackCallback(hx: hx_mod.Hx, req: *httpz.Request) void {
         switch (err) {
             error.NotConfigured => hx.fail(ec.ERR_CONNECTOR_NOT_CONFIGURED, S_NOT_CONFIGURED),
             error.ExchangeFailed => hx.fail(ec.ERR_SLACK_OAUTH_EXCHANGE_FAILED, "Slack token exchange failed"),
+            // The armed deadline fired mid-exchange, or the deadline could not
+            // be enforced and the call was refused — either way no vault write
+            // happened (the exchange precedes it) and the connect is safe to
+            // restart from the dashboard.
+            error.DeadlineExceeded, error.WatchdogUnavailable => hx.fail(ec.ERR_CONNECTOR_VENDOR_DEADLINE, "Slack token exchange did not complete in time"),
             else => common.internalOperationError(hx.res, "Failed to complete Slack connection", hx.req_id),
         }
         return;
@@ -105,10 +110,14 @@ pub fn innerSlackCallback(hx: hx_mod.Hx, req: *httpz.Request) void {
 }
 
 fn completeInstall(hx: hx_mod.Hx, workspace_id: []const u8, code: []const u8) InstallError!void {
-    const conn: *pg.Conn = hx.ctx.pool.acquire() catch return error.DbUnavailable;
-    defer hx.ctx.pool.release(conn);
-
-    const creds = oauth2.loadAppCreds(hx.alloc, conn, hx.ctx.platform_admin_workspace_id, spec.PROVIDER) orelse return error.NotConfigured;
+    // Creds under a short-lived acquire, released BEFORE the vendor exchange —
+    // a pool slot never rides a vendor call (the exchange is deadline-armed,
+    // but even a bounded stall must not hold database capacity).
+    const creds = blk: {
+        const conn: *pg.Conn = hx.ctx.pool.acquire() catch return error.DbUnavailable;
+        defer hx.ctx.pool.release(conn);
+        break :blk oauth2.loadAppCreds(hx.alloc, conn, hx.ctx.platform_admin_workspace_id, spec.PROVIDER) orelse return error.NotConfigured;
+    };
     defer creds.deinit(hx.alloc);
 
     const redirect_uri = try joinUrl(hx.alloc, hx.ctx.api_url, CALLBACK_PATH);
@@ -131,6 +140,10 @@ fn completeInstall(hx: hx_mod.Hx, workspace_id: []const u8, code: []const u8) In
     };
     // Borrowed from `parsed` — used before its deinit (the store + insert below).
     const tok = try parseSlackToken(obj);
+
+    // Fresh acquire for the two writes (the pre-exchange conn went back).
+    const conn: *pg.Conn = hx.ctx.pool.acquire() catch return error.DbUnavailable;
+    defer hx.ctx.pool.release(conn);
 
     try storeHandle(hx, conn, workspace_id, .{
         .integration = spec.PROVIDER,
