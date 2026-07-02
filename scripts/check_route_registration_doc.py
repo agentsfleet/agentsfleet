@@ -11,8 +11,10 @@ facts stay true without needing another audit pass.
 
 Four checks, all read-only:
   A. Dead path prefix sweep — the pre-reorg daemon subsystem paths
-     (src/errors/, src/http/, src/state/, src/types/, src/cmd/, src/auth/)
-     never come back; the real tree only has src/agentsfleetd/<subsystem>/.
+     (src/errors/, src/http/, src/state/, src/types/, src/cmd/, src/auth/,
+     src/fleet/) never come back; the real tree only has
+     src/agentsfleetd/<subsystem>/ (src/fleet/ specifically split into
+     src/agentsfleetd/fleet/ and src/agentsfleetd/fleet_runtime/).
      Runs across every top-level docs/*.md file (not recursive into
      docs/v2/**, docs/architecture/**, etc. — same boundary the original
      hand-fix covered).
@@ -43,7 +45,7 @@ MAKEFILE_PATH = "Makefile"
 # The daemon subsystems that moved under src/agentsfleetd/ — this exact prefix
 # shape (subsystem directly under src/, no agentsfleetd/ segment) can never be
 # correct again. Named once here per UFS — every check reuses this constant.
-DEAD_PREFIX_RE = re.compile(r"src/(errors|http|state|types|cmd|auth)/")
+DEAD_PREFIX_RE = re.compile(r"src/(errors|http|state|types|cmd|auth|fleet)/")
 
 MIDDLEWARE_ACCESSOR_RE = re.compile(
     r"pub fn (\w+)\(self: \*Self\) \[\]const Middleware\(AuthCtx\)"
