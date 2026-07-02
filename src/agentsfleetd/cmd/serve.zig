@@ -220,6 +220,7 @@ pub fn run(io: std.Io, env_map: *const EnvMap, argv: []const [:0]const u8, alloc
         // SAFETY: written by surrounding init logic before any read of this storage.
         .telemetry = undefined,
     };
+    defer ctx.deinitSlackSigningSecretCache();
     metrics.setApiInFlightRequests(0);
     metrics.setSseInFlightStreams(0);
 

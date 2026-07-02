@@ -72,6 +72,14 @@ pub const Context = struct {
     /// production. Integration tests point it at a loopback FakeSlack so the
     /// outbound post + thread fetch hit an in-process server, never real Slack.
     connector_slack_api_base_override: ?[]const u8 = null,
+    /// Once-set cache for the platform Slack signing secret (admin-vault
+    /// `slack-app`.`signing_secret`). The events ingress publishes its first
+    /// successful vault read here and every later request borrows it — the
+    /// steady-state per-event vault SELECT disappears, while an unconfigured
+    /// deployment keeps re-reading until the operator vaults the secret (live
+    /// vaulting needs no restart). Entry + bytes are `alloc`-owned; the Context
+    /// owner frees via `deinitSlackSigningSecretCache`.
+    connector_slack_signing_secret_cache: std.atomic.Value(?*const SlackSigningSecret) = .init(null),
     clerk_secret_key: ?[]const u8,
     oidc: ?*oidc.Verifier,
     /// Cloudflare R2 client for Fleet Bundle canonical-tar storage, resolved once
@@ -117,6 +125,47 @@ pub const Context = struct {
     /// workers BEFORE freeing the pool, closing the use-after-free a worker would
     /// hit calling pool.acquire() after teardown.
     install_wg: ?*constants.WaitGroup = null,
+
+    pub const SlackSigningSecret = struct { bytes: []const u8 };
+
+    /// The cached platform Slack signing secret, borrowed for the process
+    /// lifetime — callers never free it. Null until the first successful
+    /// publish.
+    pub fn cachedSlackSigningSecret(self: *Context) ?[]const u8 {
+        const entry = self.connector_slack_signing_secret_cache.load(.acquire) orelse return null;
+        return entry.bytes;
+    }
+
+    /// Publish a freshly-loaded signing secret. Takes ownership of `owned`
+    /// (allocated with `self.alloc`) and returns the canonical process-lifetime
+    /// slice to use. Thread-safe: a compare-and-swap loser frees its copy and
+    /// borrows the winner's. Null only when the entry allocation fails (`owned`
+    /// has been freed) — the caller fails the request closed.
+    pub fn publishSlackSigningSecret(self: *Context, owned: []const u8) ?[]const u8 {
+        const entry = self.alloc.create(SlackSigningSecret) catch {
+            self.alloc.free(owned);
+            return null;
+        };
+        entry.* = .{ .bytes = owned };
+        if (self.connector_slack_signing_secret_cache.cmpxchgStrong(null, entry, .release, .acquire)) |current| {
+            // Lost the publish race — free ours, borrow the winner's canonical
+            // bytes. `current` is non-null by construction (the CAS only fails
+            // when the observed value differs from the expected null).
+            self.alloc.free(owned);
+            self.alloc.destroy(entry);
+            return (current orelse return null).bytes;
+        }
+        return owned;
+    }
+
+    /// Free the cache entry (owner-side teardown: serve.zig defer + the test
+    /// harness deinit). Safe on an empty cache and idempotent via swap.
+    pub fn deinitSlackSigningSecretCache(self: *Context) void {
+        if (self.connector_slack_signing_secret_cache.swap(null, .acq_rel)) |entry| {
+            self.alloc.free(entry.bytes);
+            self.alloc.destroy(@constCast(entry));
+        }
+    }
 };
 
 /// Parse traceparent header from request, or generate a root trace context.

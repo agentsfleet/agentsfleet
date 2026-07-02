@@ -907,8 +907,8 @@ The provider app is **one per connector, shared across every tenant**. Its secre
 Slack posts channel mentions here. This is **not** the fleet-trigger webhook path: it is registered with the `none` middleware and verifies **in the handler** (`connectors/slack/slack_sig.zig`), because the signing secret is the *platform-app* secret, not a per-fleet workspace credential. Order of operations (`connectors/slack/events.zig`):
 
 1. Require the `x-slack-signature` + `x-slack-request-timestamp` headers.
-2. Acquire a pool conn and **read `signing_secret`** from the admin `slack-app` entry (missing → `UZ-CONN-001 connector_not_configured`). The vault read precedes the verify because you cannot verify without the secret; if per-request reads ever bite, boot-cache it on `Context` like `approval_signing_secret`.
-3. **Verify**: freshness (5-min drift → `UZ-SLK-011 slack_timestamp_stale`), then a constant-time `v0=` HMAC over `v0:{ts}:{body}` (mismatch → `UZ-SLK-010 slack_signature_invalid`).
+2. **Resolve `signing_secret`** — from the once-per-process cache on `Context`; only the first request (or an unconfigured deployment, which keeps re-reading so live vaulting needs no restart) acquires a conn and reads the admin `slack-app` entry (missing → 503 `UZ-CONN-001`, fail loud). The read precedes the verify because you cannot verify without the secret.
+3. **Verify**: freshness (5-min drift → 401 `UZ-SLK-011`), then a constant-time `v0=` HMAC over `v0:{ts}:{body}` (mismatch → 401 `UZ-SLK-010`). With the cache warm this rejects with zero database work.
 4. Resolve `team_id → workspace_id` via `core.connector_installs`. An **unknown team is acknowledged with 200 and dropped** — the body says so (`{"ignored":"UZ-SLK-020"}`, `events.zig` `hx.ok`) — so Slack never enters a retry loop against an uninstalled workspace.
 
 ### Not the fleet-trigger webhook surface

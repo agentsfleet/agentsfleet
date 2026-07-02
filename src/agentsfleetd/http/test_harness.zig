@@ -283,6 +283,9 @@ pub const TestHarness = struct {
         self.hub.deinit();
         self.streams.deinit();
         self.verifier.deinit();
+        // Server threads are joined above, so no request can be mid-publish;
+        // frees the lazily-cached Slack signing secret (ctx.alloc-owned).
+        self.ctx.deinitSlackSigningSecretCache();
         // The server is fully stopped + deinit'd above, so no handler can spawn
         // another install worker. Drain any already-detached worker before
         // freeing the queue + pool it borrows — a worker mid-flipToActive
