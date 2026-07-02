@@ -1,28 +1,30 @@
 //! POST /v1/connectors/slack/events — Slack Events API ingress.
 //!
 //! Auth: Slack v0 request signature ONLY (no Bearer — mirrors the webhook
-//! plane, Invariant 5). The platform signing secret is resolved per-request
-//! from the admin-workspace `slack-app` vault entry (decision: connector
-//! data-secrets live in the vault, keyed by `Context.platform_admin_workspace_id`
-//! — same on-demand pattern as `oauth2.loadAppCreds`, no boot/env wiring).
+//! plane, Invariant 5). The platform signing secret lives in the
+//! admin-workspace `slack-app` vault entry (decision: connector data-secrets
+//! live in the vault, keyed by `Context.platform_admin_workspace_id`, no
+//! boot/env wiring) and is cached once-per-process on `Context` after the
+//! first successful read — steady state does the vault SELECT zero times,
+//! while an unconfigured deployment keeps re-reading until the operator
+//! vaults the secret, so live vaulting still needs no restart.
 //!
 //! Flow (all inline, ≤3 s — there is no deferred-task substrate; the model run
 //! is the runner's async job, not this handler's):
 //!   0. header presence (cheap, DB-free) → reject before any acquire.
-//!   1. verify signature (constant-time, 300 s window) → UZ-SLK-010 / UZ-SLK-011.
-//!      NOTE (intentional ordering): the HMAC needs the signing secret, so step 1
-//!      first acquires a pool conn + does the `slack-app` vault SELECT. A request
-//!      with present-but-wrong sig/ts headers therefore costs one conn + one
-//!      vault read *before* the HMAC rejects it — an accepted tradeoff of the
-//!      per-request vault-resolution design (no boot/env caching), not an
-//!      oversight. If this ever becomes a load concern, boot-cache the platform
-//!      signing secret on `Context` (like `approval_signing_secret`) rather than
-//!      reordering — you cannot verify without the secret in hand.
-//!   2. `url_verification` → echo the challenge.
-//!   3. resolve team_id → workspace (`connector_installs`); unknown team is a
-//!      200-ack no-op (UZ-SLK-020 — Slack must never see an error loop).
-//!   4. resolve (team, channel) → resident fleet (materialize on miss).
-//!   5. dedup on (channel_fleet_id, event.ts) + XADD a `slack:<user>` chat event
+//!   1. resolve the signing secret: the process cache, or (first request /
+//!      unconfigured) one pool acquire + `slack-app` vault SELECT that
+//!      publishes into the cache.
+//!   2. verify signature (constant-time, 300 s window) → UZ-SLK-010 /
+//!      UZ-SLK-011. With the cache warm, a request with wrong sig/ts headers
+//!      is rejected with ZERO database work; `url_verification` and ignored
+//!      shapes never acquire a conn at all.
+//!   3. `url_verification` → echo the challenge.
+//!   4. resolve team_id → workspace (`connector_installs`); unknown team is a
+//!      200-ack no-op (UZ-SLK-020 — Slack must never see an error loop). The
+//!      conn is acquired here (mention path only) when step 1 didn't already.
+//!   5. resolve (team, channel) → resident fleet (materialize on miss).
+//!   6. dedup on (channel_fleet_id, event.ts) + XADD a `slack:<user>` chat event
 //!      onto `fleet:{channel_fleet_id}:events` (the webhook-producer shape, no
 //!      principal). The runner leases + answers later via chat.postMessage (§4).
 
@@ -79,20 +81,13 @@ pub fn innerSlackEvents(hx: Hx, req: *httpz.Request) void {
         return;
     };
 
-    const conn = hx.ctx.pool.acquire() catch {
-        common.internalDbUnavailable(hx.res, hx.req_id);
-        return;
-    };
-    defer hx.ctx.pool.release(conn);
+    // Lazily-acquired conn: the cached-secret steady state verifies + parses
+    // without one; only the mention path (and the one-time cache fill) pays
+    // for a pool acquire.
+    var maybe_conn: ?*pg.Conn = null;
+    defer if (maybe_conn) |c| hx.ctx.pool.release(c);
 
-    const signing_secret = loadSigningSecret(hx.alloc, conn, hx.ctx.platform_admin_workspace_id) orelse {
-        // Platform misconfiguration — fail loud (the operator must vault it via
-        // the registration playbook before the ingress can serve).
-        log.err("slack_signing_secret_missing", .{ .error_code = ec.ERR_CONNECTOR_NOT_CONFIGURED });
-        hx.fail(ec.ERR_CONNECTOR_NOT_CONFIGURED, S_NOT_CONFIGURED);
-        return;
-    };
-    defer hx.alloc.free(signing_secret);
+    const signing_secret = resolveSigningSecret(hx, &maybe_conn) orelse return;
 
     switch (slack_sig.verify(signing_secret, timestamp, provided_sig, body)) {
         .ok => {},
@@ -123,8 +118,39 @@ pub fn innerSlackEvents(hx: Hx, req: *httpz.Request) void {
     switch (event_parse.parseSlackEvent(root)) {
         .url_verification => |challenge| hx.ok(.ok, .{ .challenge = challenge }),
         .ignore => hx.ok(.ok, .{ .status = ec.STATUS_ACCEPTED }),
-        .app_mention => |m| dispatchMention(hx, conn, m),
+        .app_mention => |m| {
+            const conn = maybe_conn orelse hx.ctx.pool.acquire() catch {
+                common.internalDbUnavailable(hx.res, hx.req_id);
+                return;
+            };
+            maybe_conn = conn;
+            dispatchMention(hx, conn, m);
+        },
     }
+}
+
+/// Resolve the platform signing secret: the process-lifetime cached slice when
+/// present; otherwise one vault read (acquiring the request's conn on the way,
+/// handed back via `maybe_conn` for the caller's defer) that publishes into the
+/// Context cache. Emits the failure response and returns null when the secret
+/// is unconfigured (fail loud, UZ-CONN-001 — the operator must vault it via the
+/// registration playbook) or when the publish allocation failed.
+fn resolveSigningSecret(hx: Hx, maybe_conn: *?*pg.Conn) ?[]const u8 {
+    if (hx.ctx.cachedSlackSigningSecret()) |s| return s;
+    const conn = hx.ctx.pool.acquire() catch {
+        common.internalDbUnavailable(hx.res, hx.req_id);
+        return null;
+    };
+    maybe_conn.* = conn;
+    const loaded = loadSigningSecret(hx.ctx.alloc, conn, hx.ctx.platform_admin_workspace_id) orelse {
+        log.err("slack_signing_secret_missing", .{ .error_code = ec.ERR_CONNECTOR_NOT_CONFIGURED });
+        hx.fail(ec.ERR_CONNECTOR_NOT_CONFIGURED, S_NOT_CONFIGURED);
+        return null;
+    };
+    return hx.ctx.publishSlackSigningSecret(loaded) orelse {
+        common.internalOperationError(hx.res, "signing-secret cache publish failed", hx.req_id);
+        return null;
+    };
 }
 
 /// Resolve the install + resident fleet, then enqueue. An unknown team is a
