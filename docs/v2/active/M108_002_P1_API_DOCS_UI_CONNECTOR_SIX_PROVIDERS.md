@@ -144,8 +144,8 @@ Connect for the api_key archetype is an authed `POST …/connect` whose JSON bod
 
 - **Dimension 2.1 DONE** — valid key (fake vendor 200) → handle in vault; status endpoint reports connected → Test `test_api_key_connect_probe_success_writes_handle`
 - **Dimension 2.2 DONE** — invalid key (fake vendor 401/403) → 400 `UZ-CONN-005`, zero vault rows → Test `test_api_key_probe_rejects_no_write`
-- **Dimension 2.3** — hung vendor probe → bounded_fetch deadline → 502-class `UZ-CONN-003`, zero vault rows → Test `test_api_key_probe_deadline_no_write`
-- **Dimension 2.4** — api_key connect requires Bearer + `connector:write` and workspace membership (WAUTH) → Test `test_api_key_connect_workspace_scoped`
+- **Dimension 2.3 DONE** — hung vendor probe → bounded_fetch deadline → 502-class `UZ-CONN-003`, zero vault rows → Test `test_api_key_probe_deadline_no_write`
+- **Dimension 2.4 DONE** — api_key connect requires Bearer + `connector:write` and workspace membership (WAUTH) → Test `test_api_key_connect_workspace_scoped`
 
 ### §3 — Broker refresh-minting (Zoho, Jira)
 

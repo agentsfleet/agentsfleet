@@ -120,7 +120,7 @@ fn runProbe(hx: hx_mod.Hx, provider: []const u8, probe: Probe, fields: std.json.
         .url = url,
         .method = .GET,
         .extra_headers = headers,
-        .deadline_ms = bounded_fetch.TOKEN_EXCHANGE_DEADLINE_MS,
+        .deadline_ms = hx.ctx.connector_api_key_probe_deadline_ms_override orelse bounded_fetch.TOKEN_EXCHANGE_DEADLINE_MS,
         .provider = provider,
         .class = .token_exchange,
     });
