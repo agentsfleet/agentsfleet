@@ -18,6 +18,9 @@ const net = std.Io.net;
 
 const AUTHED_TENANT = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01";
 const AUTHED_WS = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11";
+const FOREIGN_TENANT = "0195c108-0100-7000-8000-f00000000001";
+const FOREIGN_WS = "0195c108-0101-7000-8000-000000000001";
+const STALL_PROBE_DEADLINE_MS: u31 = 250;
 
 fn noopRegistry(_: *auth_mw.MiddlewareRegistry, _: *TestHarness) anyerror!void {}
 
@@ -40,6 +43,8 @@ fn seedAuthedFixtures(conn: *pg.Conn) !void {
         "INSERT INTO workspaces (workspace_id, tenant_id, created_at) VALUES ($1, $2, $3) ON CONFLICT (workspace_id) DO NOTHING",
         .{ AUTHED_WS, AUTHED_TENANT, now_ms },
     );
+    try test_fixtures.seedTenantById(conn, FOREIGN_TENANT, "M108 Foreign Tenant");
+    try test_fixtures.seedWorkspaceWithTenant(conn, FOREIGN_WS, FOREIGN_TENANT);
 }
 
 fn deleteFleetHandle(alloc: std.mem.Allocator, conn: *pg.Conn, provider: []const u8) void {
@@ -177,4 +182,65 @@ test "test_api_key_probe_rejects_no_write" {
         p.deinit();
         return error.HandleUnexpectedlyWritten;
     } else |_| {}
+}
+
+test "test_api_key_probe_deadline_no_write" {
+    const alloc = testing.allocator;
+    const h = startAuthedHarness(alloc) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    test_fixtures.setTestEncryptionKey();
+    try seedAuthedFixtures(conn);
+    deleteFleetHandle(alloc, conn, common.PROVIDER_DATADOG);
+
+    const io = common.globalIo();
+    var addr = try net.IpAddress.parseIp4("127.0.0.1", 0);
+    var listener = try addr.listen(io, .{ .reuse_address = true });
+    defer listener.deinit(io);
+    const port = try boundPort(listener.socket.handle);
+    var base_buf: [64]u8 = undefined;
+    h.ctx.connector_api_key_probe_base_override = try std.fmt.bufPrint(&base_buf, "http://127.0.0.1:{d}", .{port});
+    h.ctx.connector_api_key_probe_deadline_ms_override = STALL_PROBE_DEADLINE_MS;
+
+    const body = "{\"api_key\":\"dd_api_test\",\"app_key\":\"dd_app_test\",\"site\":\"us1\"}";
+    const r = try (try (try h.post("/v1/workspaces/" ++ AUTHED_WS ++ "/connectors/datadog/connect").bearer(scope_tokens.TENANT_ADMIN)).json(body)).send();
+    defer r.deinit();
+    try r.expectStatus(.bad_gateway);
+    try r.expectErrorCode(ec.ERR_CONNECTOR_VENDOR_DEADLINE);
+
+    const key = try credential_key.allocKeyName(alloc, common.PROVIDER_DATADOG);
+    defer alloc.free(key);
+    if (vault.loadJson(alloc, conn, AUTHED_WS, key)) |parsed| {
+        var p = parsed;
+        p.deinit();
+        return error.HandleUnexpectedlyWritten;
+    } else |_| {}
+}
+
+test "test_api_key_connect_workspace_scoped" {
+    const alloc = testing.allocator;
+    const h = startAuthedHarness(alloc) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    try seedAuthedFixtures(conn);
+
+    const body = "{\"api_key\":\"dd_api_test\",\"app_key\":\"dd_app_test\",\"site\":\"us1\"}";
+    {
+        const r = try (try (try h.post("/v1/workspaces/" ++ AUTHED_WS ++ "/connectors/datadog/connect").bearer(scope_tokens.VIEWER)).json(body)).send();
+        defer r.deinit();
+        try r.expectStatus(.forbidden);
+    }
+    {
+        const r = try (try (try h.post("/v1/workspaces/" ++ FOREIGN_WS ++ "/connectors/datadog/connect").bearer(scope_tokens.TENANT_ADMIN)).json(body)).send();
+        defer r.deinit();
+        try r.expectStatus(.forbidden);
+    }
 }
