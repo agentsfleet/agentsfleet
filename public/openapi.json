@@ -99,6 +99,13 @@
       }
     },
     {
+      "name": "Connectors",
+      "description": "Workspace connectors — auth + credential plumbing for third-party providers. One generic `{provider}` route set serves every provider in the deployment's connector registry; unknown providers are 404.",
+      "x-mintlify": {
+        "navigation": "Connectors"
+      }
+    },
+    {
       "name": "Fleet Keys",
       "description": "Per-Fleet API keys for LangGraph/CrewAI/Composio Fleets to call the execute endpoint. Workspace-scoped.",
       "x-mintlify": {
@@ -1570,6 +1577,308 @@
             "$ref": "#/components/responses/Error"
           },
           "413": {
+            "$ref": "#/components/responses/Error"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": []
+      }
+    },
+    "/v1/workspaces/{workspace_id}/connectors/{provider}/connect": {
+      "post": {
+        "operationId": "connector_connect",
+        "summary": "Start a connector connect flow",
+        "description": "Begins the connect round-trip for any provider in the connector registry (requires the `connector:write` scope). Returns the URL the operator's browser is redirected to — the provider's OAuth authorize URL (oauth2 archetype, e.g. `slack`) or the vendor App install URL (app_install archetype, e.g. `github`). A single-use signed state bound to the workspace rides that URL; the round-trip finishes at the callback. No token is created or stored here. Unknown provider → 404 `UZ-CONN-004`; provider not provisioned on this deployment → 503 `UZ-CONN-001`.",
+        "tags": [
+          "Connectors"
+        ],
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "description": "UUIDv7 of the workspace the connector will be bound to.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "provider",
+            "in": "path",
+            "required": true,
+            "description": "Connector registry id (`slack`, `github`). The id is also the `{provider}` segment of the callback URL and the vault-key stem.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Connect flow started.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "install_url"
+                  ],
+                  "properties": {
+                    "install_url": {
+                      "type": "string",
+                      "description": "URL to redirect the operator's browser to (provider authorize URL or vendor install URL)."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/workspaces/{workspace_id}/connectors/{provider}": {
+      "get": {
+        "operationId": "connector_status",
+        "summary": "Read a connector's status",
+        "description": "Reports whether the workspace holds a live `fleet:{provider}` vault handle (requires the `connector:read` scope). Never fabricates a connected state — a missing or unreadable handle reads as `not_connected`. Provider-specific extras ride alongside (`slack` adds `team`, the connected Slack workspace name). Unknown provider → 404 `UZ-CONN-004`.",
+        "tags": [
+          "Connectors"
+        ],
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "description": "UUIDv7 of the workspace.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "provider",
+            "in": "path",
+            "required": true,
+            "description": "Connector registry id (`slack`, `github`).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Connector status.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "status"
+                  ],
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "connected",
+                        "not_connected"
+                      ]
+                    },
+                    "team": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "description": "Slack only — the connected Slack workspace name (absent for other providers)."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/connectors/{provider}/callback": {
+      "get": {
+        "operationId": "connector_callback",
+        "summary": "Complete a connector connect flow (vendor redirect)",
+        "description": "The provider redirects the operator's browser here after authorization. Bearer-less by design — the signed single-use `state` minted at connect is the only trust anchor (there is no Bearer on a cross-site redirect); verify-and-consume yields the bound workspace. oauth2 providers exchange the `code` for a token under an enforced vendor deadline (`UZ-CONN-003` on stall) and vault it; app_install providers (`github`) record the `installation_id` handle instead. On success the browser is 302-redirected to the dashboard's connector card (200 `{\"status\":\"connected\"}` when no dashboard URL is configured). Invalid/expired/replayed state → 400 `UZ-CONN-002`.",
+        "tags": [
+          "Connectors"
+        ],
+        "parameters": [
+          {
+            "name": "provider",
+            "in": "path",
+            "required": true,
+            "description": "Connector registry id (`slack`, `github`).",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "state",
+            "in": "query",
+            "required": true,
+            "description": "The signed single-use state minted at connect. Binds the callback to a workspace; expired or replayed states are rejected.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "code",
+            "in": "query",
+            "required": false,
+            "description": "OAuth authorization code (oauth2 providers — required for them).",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "installation_id",
+            "in": "query",
+            "required": false,
+            "description": "Vendor installation id (app_install providers — required for them; `github` sends it after the App install).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "302": {
+            "description": "Connected — browser redirected to the dashboard's connector card.",
+            "headers": {
+              "Location": {
+                "description": "Dashboard connectors page for the just-connected provider.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "502": {
+            "$ref": "#/components/responses/Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": []
+      }
+    },
+    "/v1/connectors/slack/events": {
+      "post": {
+        "operationId": "slack_events",
+        "summary": "Ingest Slack Events API deliveries",
+        "description": "Slack's Events API receiver (bespoke — inbound event surfaces are per-provider by nature). Bearer-less; every request is authenticated by the Slack v0 request signature (`X-Slack-Signature` + timestamp, 5-minute drift window) — signature failures are 401 `UZ-SLK-010`/`UZ-SLK-011`. `url_verification` echoes the challenge; event deliveries are acknowledged 200 within Slack's deadline and processed async (duplicates dedup to `{\"status\":\"duplicate\"}`; events from teams with no connector install are dropped with `{\"ignored\":\"UZ-SLK-020\"}` so Slack stops retrying).",
+        "tags": [
+          "Connectors"
+        ],
+        "parameters": [
+          {
+            "name": "X-Slack-Signature",
+            "in": "header",
+            "required": true,
+            "description": "Slack v0 HMAC-SHA256 request signature.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Slack-Request-Timestamp",
+            "in": "header",
+            "required": true,
+            "description": "Unix timestamp of the delivery; rejected outside the 5-minute drift window.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "description": "Slack Events API envelope (`url_verification` or `event_callback`) — see https://api.slack.com/apis/events-api#events-JSON.",
+                "additionalProperties": true
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Acknowledged. Shapes: `{\"status\":\"accepted\"}` (enqueued), `{\"status\":\"duplicate\"}` (dedup hit), `{\"challenge\":\"...\"}` (url_verification echo), `{\"ignored\":\"UZ-SLK-020\"}` (no install for the sending team).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string"
+                    },
+                    "challenge": {
+                      "type": "string"
+                    },
+                    "ignored": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "503": {
             "$ref": "#/components/responses/Error"
           },
           "default": {

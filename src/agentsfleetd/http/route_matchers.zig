@@ -160,16 +160,14 @@ pub fn matchWorkspaceCredential(p: Path) ?WorkspaceCredentialRoute {
     return .{ .workspace_id = ws, .credential_name = name };
 }
 
-// Connector OAuth matchers (GitHub App-install + Slack OAuth connect/callback)
-// live in route_matchers_connectors.zig (RULE FLL — keep this file under 350
-// lines); re-exported so the router's `matchers.match*Connector*` /
-// `match*ConnectCallback` call sites stay unchanged.
-pub const matchWorkspaceConnectorGithub = connectors.matchWorkspaceConnectorGithub;
-pub const matchWorkspaceConnectorGithubConnect = connectors.matchWorkspaceConnectorGithubConnect;
-pub const matchGithubConnectCallback = connectors.matchGithubConnectCallback;
-pub const matchWorkspaceConnectorSlackConnect = connectors.matchWorkspaceConnectorSlackConnect;
-pub const matchWorkspaceConnectorSlack = connectors.matchWorkspaceConnectorSlack;
-pub const matchSlackConnectCallback = connectors.matchSlackConnectCallback;
+// Connector matchers (the generic `{provider}` trio resolved against the
+// connector registry + Slack's bespoke events ingress) live in
+// route_matchers_connectors.zig (RULE FLL — keep this file under 350 lines);
+// re-exported so the router's call sites read uniformly.
+pub const WorkspaceConnectorRoute = connectors.WorkspaceConnectorRoute;
+pub const matchWorkspaceConnector = connectors.matchWorkspaceConnector;
+pub const matchWorkspaceConnectorConnect = connectors.matchWorkspaceConnectorConnect;
+pub const matchConnectorCallback = connectors.matchConnectorCallback;
 pub const matchSlackEvents = connectors.matchSlackEvents;
 
 // ── /workspaces/{ws}/fleet-keys/{fleet_key_id} ─────────────────────────────────
