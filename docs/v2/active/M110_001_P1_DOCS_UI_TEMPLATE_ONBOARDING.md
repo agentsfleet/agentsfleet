@@ -4,10 +4,12 @@
 **Milestone:** M110
 **Workstream:** 001
 **Date:** Jul 02, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — user-facing: completes M103's API-first onboarding with the missing dashboard surface, so an empty workspace is no longer a dead end.
 **Categories:** DOCS, UI
 **Batch:** B1 — standalone; no sibling workstream dependency.
+**Branch:** feat/m110-template-onboarding
+**Test Baseline:** unit=2270 integration=243
 **Depends on:** M103_001 (two-tier catalog + the `POST …/fleet-templates` onboard endpoints this consumes; already `done/`). M104_001 (the `template:write` scope the endpoint gates on; already live).
 **Provenance:** LLM-drafted (claude-opus-4-8, Jul 02, 2026) — drafted from a live debugging session that surfaced the gap.
 
