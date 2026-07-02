@@ -177,7 +177,7 @@ CREATE `docs/architecture/connectors.md`: the registry/archetype shape, the two 
 
 | Metric / event | Owner | Fires when | Properties allowed | Privacy guard | Test proof |
 |----------------|-------|------------|--------------------|---------------|------------|
-| `connector_vendor_deadline_fired` (warn log, `error_code=UZ-CONN-003`) | ops | bounded_fetch deadline fires or watchdog unavailable | provider, call class, deadline_ms | no URL query/token material | `test_bounded_fetch_deadline_fires` |
+| `connector_vendor_call_refused` (warn log, `error_code=UZ-CONN-003`) | ops | bounded_fetch refuses/fails a vendor call — deadline fired, watchdog unavailable, or vendor unreachable (`reason` distinguishes) | provider, call class, reason, deadline_ms | no URL query/token material | `test_bounded_fetch_deadline_fires` |
 
 No product analytics change in this workstream (mechanism only; M108_002 adds the product events). Funnel playbook: no update required — reason recorded in Discovery.
 
