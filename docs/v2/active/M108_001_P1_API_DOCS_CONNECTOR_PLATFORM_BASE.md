@@ -13,11 +13,12 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Milestone:** M108
 **Workstream:** 001
 **Date:** Jul 02, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — every upcoming customer-facing connector (Grafana, Zoho Desk, Jira, Linear, Fly, Datadog) blocks on this base; today each new provider re-implements routes/handlers by hand and every outbound vendor call is unbounded.
 **Categories:** API, DOCS
 **Batch:** B1 — base lands before M108_002 provider entries
-**Branch:** feat/m106-slack-resident (folded into PR #468 per Indy's direction — see Discovery)
+**Branch:** feat/m108-connector-platform
+**Test Baseline:** unit=2244 integration=227
 **Depends on:** M106_001 (Slack connector — the second concrete connector this base generalizes), M102_001 (GitHub App connector — the app_install archetype's concrete instance), M99_001 (credential broker — the mint surface the platform extends, DONE)
 **Provenance:** LLM-drafted (Claude Fable 5, Jul 02, 2026) — implementing agent cross-checks every claim against the tree
 
@@ -299,6 +300,7 @@ grep -rn "std.http.Client" src/agentsfleetd/http/handlers/connectors/ --include=
 - **Watchdog disposition (Indy-acked):**
   > Indy (2026-07-02): "Yes i agree on building watchdog, i am sure we would have fixed this before?" — context: confirmed prior art found — runner `call_deadline.zig` (M100); decision recorded to PROMOTE it to `src/lib/` rather than re-author the reverted thread-abandon patch (which was preserved only as wiring; its module file was never saved).
 - **`src/lib/` promotion (gated):** reason — consumed by ≥2 build graphs (runner + agentsfleetd). Proposed to Indy in-session alongside the inventory table; treated as approved with this spec unless he objects at review.
+- **Fold superseded by merge (Jul 02, 2026):** Indy merged PR #468 before M108 implementation began ("merged, git pull origin main, git prune" — 05:10 UTC), so the fold-into-#468 direction above is moot; this workstream proceeds on its own branch `feat/m108-connector-platform` (M108_002 follows on the same branch/PR, preserving the one-PR intent within M108). Greptile's P1 on the merged PR (`events.zig` — pooled connection held across the unbounded Slack fetch) is confirmed valid and is absorbed into §2's Dimension 2.3 acceptance: `bounded_fetch` loads the bot token before any HTTP begins and the connection is released before the fetch.
 - **Metrics review:** no analytics/funnel playbook update required — mechanism-only workstream; ops signal added via `UZ-CONN-003` logging.
 
 ---
