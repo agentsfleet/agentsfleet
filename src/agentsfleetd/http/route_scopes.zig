@@ -86,6 +86,8 @@ pub fn requiredScopes(route: router.Route, method: httpz.Method) []const S {
         .grant_approval_webhook,
         .github_webhook,
         .github_connect_callback,
+        .slack_connect_callback,
+        .slack_events,
         .request_integration_grant,
         => &NONE,
 
@@ -172,6 +174,8 @@ pub fn requiredScopes(route: router.Route, method: httpz.Method) []const S {
         // ── Connectors ──
         .connect_github => &CONNECTOR_WRITE,
         .github_connector_status => &CONNECTOR_READ,
+        .connect_slack => &CONNECTOR_WRITE,
+        .slack_connector_status => &CONNECTOR_READ,
 
         // ── Approvals: view the inbox (read) vs decide a gate (resolve) ──
         .workspace_approvals, .workspace_approval_detail => &APPROVAL_READ,

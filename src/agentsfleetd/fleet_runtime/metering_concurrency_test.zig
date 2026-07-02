@@ -10,16 +10,30 @@
 // 100 threads contend through a handful of real connections.
 
 const std = @import("std");
+const pg = @import("pg");
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
 
 const metering = @import("metering.zig");
 const tenant_billing = @import("../state/tenant_billing.zig");
 const base = @import("../db/test_fixtures.zig");
-const uc1 = @import("../db/test_fixtures_uc1.zig");
 
 const ALLOC = std.testing.allocator;
 
+// Per-suite tenant (fa08 block, matching the aa08 workspace segment): keeps
+// this suite's provision + balance reads off every other suite's grants.
+const TENANT_ID = "0195b4ba-8d3a-7f13-8abc-fa0800000000";
+
 const WS_RECEIVE_RACE = "0195b4ba-8d3a-7f13-8abc-aa0800000001";
+
+fn seed(conn: *pg.Conn, workspace_id: []const u8) !void {
+    try base.seedTenantById(conn, TENANT_ID, "metering-concurrency-suite");
+    try base.seedWorkspaceWithTenant(conn, workspace_id, TENANT_ID);
+}
+
+fn teardown(conn: *pg.Conn, workspace_id: []const u8) void {
+    base.teardownWorkspace(conn, workspace_id);
+    base.teardownTenantById(conn, TENANT_ID);
+}
 
 const N_WORKERS = 100;
 
@@ -47,7 +61,7 @@ const Job = struct {
 };
 
 fn runReceive(job: *Job) void {
-    job.outcome = metering.debitReceive(job.pool, ALLOC, uc1.TENANT_ID, job.ctx(), .stop);
+    job.outcome = metering.debitReceive(job.pool, ALLOC, TENANT_ID, job.ctx(), .stop);
 }
 
 // event_id pattern: aa19 segment + a per-index suffix, zero-padded, unique.
@@ -65,15 +79,15 @@ test "should drain every concurrent receive debit without lost writes" {
     defer db_ctx.pool.deinit();
     defer db_ctx.pool.release(db_ctx.conn);
 
-    try uc1.seed(db_ctx.conn, WS_RECEIVE_RACE);
-    defer uc1.teardown(db_ctx.conn, WS_RECEIVE_RACE);
+    try seed(db_ctx.conn, WS_RECEIVE_RACE);
+    defer teardown(db_ctx.conn, WS_RECEIVE_RACE);
     defer _ = db_ctx.conn.exec("DELETE FROM core.fleet_execution_telemetry WHERE workspace_id = $1", .{WS_RECEIVE_RACE}) catch {};
 
     // Ample balance so no receive debit can exhaust — receive charges
     // EVENT_NANOS (0) per event, so the balance never moves, but every call
     // must still succeed and write exactly one telemetry row.
-    try tenant_billing.provision(db_ctx.conn, uc1.TENANT_ID, tenant_billing.STARTER_CREDIT_NANOS, "test_recv_race");
-    const initial = (try tenant_billing.getBilling(db_ctx.conn, ALLOC, uc1.TENANT_ID)).?;
+    try tenant_billing.provision(db_ctx.conn, TENANT_ID, tenant_billing.STARTER_CREDIT_NANOS, "test_recv_race");
+    const initial = (try tenant_billing.getBilling(db_ctx.conn, ALLOC, TENANT_ID)).?;
     defer ALLOC.free(@constCast(initial.grant_source));
 
     var jobs: [N_WORKERS]Job = undefined;
@@ -94,7 +108,7 @@ test "should drain every concurrent receive debit without lost writes" {
     }
 
     // Balance unchanged (receive = 0); no phantom drains, no lost updates.
-    const final = (try tenant_billing.getBilling(db_ctx.conn, ALLOC, uc1.TENANT_ID)).?;
+    const final = (try tenant_billing.getBilling(db_ctx.conn, ALLOC, TENANT_ID)).?;
     defer ALLOC.free(@constCast(final.grant_source));
     try std.testing.expectEqual(initial.balance_nanos, final.balance_nanos);
 

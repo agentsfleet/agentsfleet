@@ -1,13 +1,27 @@
 "use server";
 
 import { withToken, type ActionResult } from "@/lib/actions/with-token";
-import { startGithubConnect, type GithubConnectStart } from "@/lib/api/connectors";
+import {
+  CONNECTOR_PROVIDERS,
+  startConnect,
+  type ConnectorProvider,
+  type ConnectorConnectStart,
+} from "@/lib/api/connectors";
 
-// Initiates the GitHub App connect. Returns the install URL the client redirects
-// the browser to; the round-trip finishes at the backend callback, which writes
-// the vault handle the broker mints from. No token ever passes through here.
-export async function startGithubConnectAction(
+// Initiates a browser-OAuth connector connect (GitHub App or Slack OAuth). Returns
+// the provider authorize/install URL the client redirects to; the round-trip
+// finishes at the backend callback, which writes the vault handle the broker mints
+// from. No token or secret ever passes through here. The provider is bound per-row
+// in the client (`startConnectAction.bind(null, provider)`).
+export async function startConnectAction(
+  provider: ConnectorProvider,
   workspaceId: string,
-): Promise<ActionResult<GithubConnectStart>> {
-  return withToken((t) => startGithubConnect(workspaceId, t));
+): Promise<ActionResult<ConnectorConnectStart>> {
+  // Server-action arguments arrive from the client untrusted; the union type is
+  // compile-time only. Re-validate so a tampered invocation can't smuggle an
+  // arbitrary path segment into the connector route.
+  if (!(provider in CONNECTOR_PROVIDERS)) {
+    return { ok: false, error: "Unknown connector provider" };
+  }
+  return withToken((t) => startConnect(provider, workspaceId, t));
 }

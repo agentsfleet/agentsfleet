@@ -3,12 +3,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { EVENTS } from "../lib/analytics/events";
 
-const { startGithubConnectActionMock, captureProductEventMock } = vi.hoisted(() => ({
-  startGithubConnectActionMock: vi.fn(),
+const { startConnectActionMock, captureProductEventMock } = vi.hoisted(() => ({
+  startConnectActionMock: vi.fn(),
   captureProductEventMock: vi.fn(),
 }));
 vi.mock("@/app/(dashboard)/integrations/connector-actions", () => ({
-  startGithubConnectAction: startGithubConnectActionMock,
+  startConnectAction: startConnectActionMock,
 }));
 vi.mock("@/lib/analytics/posthog", () => ({
   captureProductEvent: captureProductEventMock,
@@ -27,11 +27,11 @@ import IntegrationsConnectors from "@/app/(dashboard)/integrations/components/In
 import { CONNECTOR_STATUS } from "@/lib/api/connectors";
 
 const WS = "ws_test";
-const PLANNED_INTEGRATIONS = ["zoho", "slack"] as const;
+const PLANNED_INTEGRATIONS = ["zoho"] as const;
 
 afterEach(() => {
   cleanup();
-  startGithubConnectActionMock.mockReset();
+  startConnectActionMock.mockReset();
   captureProductEventMock.mockReset();
 });
 
@@ -72,7 +72,7 @@ describe("IntegrationsConnectors (test_github_states_and_planned)", () => {
   });
 
   it("calls the connect action with the workspace on click", async () => {
-    startGithubConnectActionMock.mockResolvedValue({ ok: false, error: "not wired yet" });
+    startConnectActionMock.mockResolvedValue({ ok: false, error: "not wired yet" });
     render(
       React.createElement(IntegrationsConnectors, {
         workspaceId: WS,
@@ -80,12 +80,12 @@ describe("IntegrationsConnectors (test_github_states_and_planned)", () => {
       }),
     );
     fireEvent.click(screen.getByRole("button", { name: /connect github/i }));
-    await waitFor(() => expect(startGithubConnectActionMock).toHaveBeenCalledWith(WS));
+    await waitFor(() => expect(startConnectActionMock).toHaveBeenCalledWith("github", WS));
   });
 
   it("redirects the browser to the install URL when connect succeeds", async () => {
     const install_url = "https://github.com/apps/agentsfleet/installations/new?state=signed";
-    startGithubConnectActionMock.mockResolvedValue({ ok: true, data: { install_url } });
+    startConnectActionMock.mockResolvedValue({ ok: true, data: { install_url } });
     // jsdom won't navigate; capture the assignment instead of letting it no-op.
     const original = window.location;
     let assigned = "";
@@ -107,7 +107,7 @@ describe("IntegrationsConnectors (test_github_states_and_planned)", () => {
     }
   });
 
-  it("renders Zoho and Slack as planned connectors with a Request access button (no email)", () => {
+  it("renders Zoho as a planned connector with a Request access button (no email)", () => {
     render(
       React.createElement(IntegrationsConnectors, {
         workspaceId: WS,
@@ -157,5 +157,92 @@ describe("IntegrationsConnectors (test_github_states_and_planned)", () => {
       }),
     );
     expect(screen.getByTestId("integration-zoho").textContent).toContain("Token stored");
+  });
+});
+
+describe("IntegrationsConnectors — Slack OAuth (test_dashboard_slack_connect_flow)", () => {
+  it("renders Slack not-connected with a Connect button and no token to paste", () => {
+    render(
+      React.createElement(IntegrationsConnectors, {
+        workspaceId: WS,
+        githubStatus: CONNECTOR_STATUS.notConnected,
+        slackStatus: CONNECTOR_STATUS.notConnected,
+      }),
+    );
+    const slack = screen.getByTestId("integration-slack");
+    expect(slack.textContent).toContain("Not connected");
+    expect(slack.textContent).not.toContain("SLACK_BOT_TOKEN");
+    expect(slack.textContent).not.toContain("Planned");
+    expect(screen.getByRole("button", { name: /connect slack/i })).toBeTruthy();
+  });
+
+  it("renders Slack connected with the team name and no connect button", () => {
+    render(
+      React.createElement(IntegrationsConnectors, {
+        workspaceId: WS,
+        githubStatus: CONNECTOR_STATUS.notConnected,
+        slackStatus: CONNECTOR_STATUS.connected,
+        slackTeam: "Acme Corp",
+      }),
+    );
+    const slack = screen.getByTestId("integration-slack");
+    expect(slack.textContent).toContain("Slack connected: Acme Corp");
+    expect(screen.queryByRole("button", { name: /connect slack/i })).toBeNull();
+  });
+
+  it("offers Reconnect when the Slack install was revoked", () => {
+    render(
+      React.createElement(IntegrationsConnectors, {
+        workspaceId: WS,
+        githubStatus: CONNECTOR_STATUS.notConnected,
+        slackStatus: CONNECTOR_STATUS.reconnectRequired,
+      }),
+    );
+    expect(screen.getByRole("button", { name: /reconnect slack/i })).toBeTruthy();
+  });
+
+  it("calls the Slack connect action with the workspace on click", async () => {
+    startConnectActionMock.mockResolvedValue({ ok: false, error: "not wired yet" });
+    render(
+      React.createElement(IntegrationsConnectors, {
+        workspaceId: WS,
+        githubStatus: CONNECTOR_STATUS.notConnected,
+        slackStatus: CONNECTOR_STATUS.notConnected,
+      }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: /connect slack/i }));
+    await waitFor(() => expect(startConnectActionMock).toHaveBeenCalledWith("slack", WS));
+  });
+
+  it("redirects the browser to the Slack authorize URL when connect succeeds", async () => {
+    const install_url = "https://slack.com/oauth/v2/authorize?state=signed";
+    startConnectActionMock.mockResolvedValue({ ok: true, data: { install_url } });
+    const original = window.location;
+    let assigned = "";
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      value: {
+        ...original,
+        set href(v: string) {
+          assigned = v;
+        },
+        get href() {
+          return assigned;
+        },
+      },
+    });
+    try {
+      render(
+        React.createElement(IntegrationsConnectors, {
+          workspaceId: WS,
+          githubStatus: CONNECTOR_STATUS.notConnected,
+          slackStatus: CONNECTOR_STATUS.notConnected,
+        }),
+      );
+      fireEvent.click(screen.getByRole("button", { name: /connect slack/i }));
+      await waitFor(() => expect(assigned).toBe(install_url));
+    } finally {
+      Object.defineProperty(window, "location", { configurable: true, value: original });
+    }
   });
 });

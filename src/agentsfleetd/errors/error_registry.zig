@@ -107,6 +107,19 @@ pub const ERR_WEBHOOK_SIG_INVALID = "UZ-WH-010";
 pub const ERR_WEBHOOK_TIMESTAMP_STALE = "UZ-WH-011";
 pub const ERR_WEBHOOK_CREDENTIAL_NOT_CONFIGURED = "UZ-WH-020";
 pub const ERR_WEBHOOK_PAYLOAD_TOO_LARGE = "UZ-WH-030";
+// SLACK CONNECTOR
+// Events ingress (M106 §2): signature/replay rejections are 401; an unmapped
+// team is a 200-ack no-op (Slack must never see an error loop) — UZ-SLK-020 is
+// its structured log/telemetry reason, not a wire status.
+pub const ERR_SLACK_SIG_INVALID = "UZ-SLK-010";
+pub const ERR_SLACK_TIMESTAMP_STALE = "UZ-SLK-011";
+pub const ERR_SLACK_TEAM_NOT_INSTALLED = "UZ-SLK-020";
+pub const ERR_SLACK_OAUTH_EXCHANGE_FAILED = "UZ-SLK-022";
+// Outbound answer post (§4): a log-only code — the connector:outbound worker
+// logs a failed chat.postMessage and retries with backoff; it is never an
+// `hx.fail` wire status (no HTTP caller waits on the answer). Carries a
+// `.bad_gateway` status for symmetry with UZ-SLK-022 (both Slack-upstream).
+pub const ERR_SLACK_OUTBOUND_POST_FAILED = "UZ-SLK-030";
 // TOOL
 pub const ERR_TOOL_UNKNOWN = "UZ-TOOL-005";
 // AGENT
@@ -239,6 +252,9 @@ pub const DEDUP_TTL_SECONDS: u32 = 86400;
 /// Redis key prefix for webhook idempotency slots (RULE UFS — one site; both
 /// webhook handlers + tests import it).
 pub const WEBHOOK_DEDUP_KEY_PREFIX = "webhook:dedup:";
+/// Redis key prefix for the Slack events idempotency slot, keyed on
+/// `(channel_fleet_id, event.ts)` — Slack retries deliver the same `event.ts`.
+pub const SLACK_DEDUP_KEY_PREFIX = "slack:dedup:";
 pub const WEBHOOK_EVENT_TYPE = "webhook_received";
 pub const STATUS_DUPLICATE = "duplicate";
 /// Webhook 200-ignored reason for a paused/non-active fleet:

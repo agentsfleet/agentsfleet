@@ -11,6 +11,10 @@ const hx_mod = @import("handlers/hx.zig");
 const connect_h = @import("handlers/connectors/github/connect.zig");
 const callback_h = @import("handlers/connectors/github/callback.zig");
 const status_h = @import("handlers/connectors/github/status.zig");
+const slack_connect_h = @import("handlers/connectors/slack/connect.zig");
+const slack_callback_h = @import("handlers/connectors/slack/callback.zig");
+const slack_events_h = @import("handlers/connectors/slack/events.zig");
+const slack_status_h = @import("handlers/connectors/slack/status.zig");
 
 const Hx = hx_mod.Hx;
 
@@ -37,4 +41,38 @@ pub fn invokeGithubCallback(hx: *Hx, req: *httpz.Request, route: router.Route) v
     }
     _ = route;
     callback_h.innerGithubCallback(hx.*, req);
+}
+
+pub fn invokeConnectSlack(hx: *Hx, req: *httpz.Request, route: router.Route) void {
+    if (req.method != .POST) {
+        common.respondMethodNotAllowed(hx.res);
+        return;
+    }
+    slack_connect_h.innerConnectSlack(hx.*, route.connect_slack);
+}
+
+pub fn invokeSlackConnectorStatus(hx: *Hx, req: *httpz.Request, route: router.Route) void {
+    if (req.method != .GET) {
+        common.respondMethodNotAllowed(hx.res);
+        return;
+    }
+    slack_status_h.innerSlackStatus(hx.*, route.slack_connector_status);
+}
+
+pub fn invokeSlackCallback(hx: *Hx, req: *httpz.Request, route: router.Route) void {
+    if (req.method != .GET) {
+        common.respondMethodNotAllowed(hx.res);
+        return;
+    }
+    _ = route;
+    slack_callback_h.innerSlackCallback(hx.*, req);
+}
+
+pub fn invokeSlackEvents(hx: *Hx, req: *httpz.Request, route: router.Route) void {
+    if (req.method != .POST) {
+        common.respondMethodNotAllowed(hx.res);
+        return;
+    }
+    _ = route;
+    slack_events_h.innerSlackEvents(hx.*, req);
 }

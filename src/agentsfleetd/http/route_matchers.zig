@@ -14,6 +14,7 @@ const webhook = @import("route_matchers_webhook.zig");
 const billing = @import("route_matchers_billing.zig");
 const fleet = @import("route_matchers_fleet.zig");
 const runner_m = @import("route_matchers_runner.zig");
+const connectors = @import("route_matchers_connectors.zig");
 
 const S_APPROVALS = "approvals";
 const S_WORKSPACES = "workspaces";
@@ -24,10 +25,6 @@ const S_SESSIONS = "sessions";
 const S_ALL = "all";
 const S_APPROVE = "approve";
 const S_VERIFY = "verify";
-const S_CONNECTORS = "connectors";
-const S_GITHUB = "github";
-const S_CONNECT = "connect";
-const S_CALLBACK = "callback";
 pub const PATH_MAX_SEGMENTS: usize = 16;
 
 const APPROVAL_ACTION_APPROVE = ":approve";
@@ -163,25 +160,17 @@ pub fn matchWorkspaceCredential(p: Path) ?WorkspaceCredentialRoute {
     return .{ .workspace_id = ws, .credential_name = name };
 }
 
-/// GET /v1/workspaces/{ws}/connectors/github — connector status.
-pub fn matchWorkspaceConnectorGithub(p: Path) ?[]const u8 {
-    if (p.segs.len != 4) return null;
-    if (!p.eq(0, S_WORKSPACES) or !p.eq(2, S_CONNECTORS) or !p.eq(3, S_GITHUB)) return null;
-    return p.param(1);
-}
-
-/// POST /v1/workspaces/{ws}/connectors/github/connect — start the App install.
-pub fn matchWorkspaceConnectorGithubConnect(p: Path) ?[]const u8 {
-    if (p.segs.len != 5) return null;
-    if (!p.eq(0, S_WORKSPACES) or !p.eq(2, S_CONNECTORS) or !p.eq(3, S_GITHUB) or !p.eq(4, S_CONNECT)) return null;
-    return p.param(1);
-}
-
-/// GET /v1/connectors/github/callback — Bearer-less; workspace comes from the signed state.
-pub fn matchGithubConnectCallback(p: Path) bool {
-    if (p.segs.len != 3) return false;
-    return p.eq(0, S_CONNECTORS) and p.eq(1, S_GITHUB) and p.eq(2, S_CALLBACK);
-}
+// Connector OAuth matchers (GitHub App-install + Slack OAuth connect/callback)
+// live in route_matchers_connectors.zig (RULE FLL — keep this file under 350
+// lines); re-exported so the router's `matchers.match*Connector*` /
+// `match*ConnectCallback` call sites stay unchanged.
+pub const matchWorkspaceConnectorGithub = connectors.matchWorkspaceConnectorGithub;
+pub const matchWorkspaceConnectorGithubConnect = connectors.matchWorkspaceConnectorGithubConnect;
+pub const matchGithubConnectCallback = connectors.matchGithubConnectCallback;
+pub const matchWorkspaceConnectorSlackConnect = connectors.matchWorkspaceConnectorSlackConnect;
+pub const matchWorkspaceConnectorSlack = connectors.matchWorkspaceConnectorSlack;
+pub const matchSlackConnectCallback = connectors.matchSlackConnectCallback;
+pub const matchSlackEvents = connectors.matchSlackEvents;
 
 // ── /workspaces/{ws}/fleet-keys/{fleet_key_id} ─────────────────────────────────
 
