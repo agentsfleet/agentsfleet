@@ -4,11 +4,12 @@
 **Milestone:** M107
 **Workstream:** 001
 **Date:** Jul 02, 2026
-**Status:** PENDING
+**Status:** DONE
 **Priority:** P2 — docs hygiene; no user-facing behavior changes, but every stale pointer taxes the next implementing agent with a dead-path detour.
 **Categories:** DOCS
 **Batch:** B1 — standalone; no code dependency.
-**Branch:** (added when work begins)
+**Branch:** feat/m107-docs-freshness
+**Test Baseline:** unit=2270 integration=243
 **Depends on:** M106_001 (the doc audit that inventoried this drift ran there; its M106-scoped fixes landed in PR #468 — this spec is the agreed carve-out for the pre-existing remainder).
 **Provenance:** agent-generated (pre-spec; M106 CHORE(close) doc-freshness audit, Jul 02, 2026 — three parallel audit agents cross-checked all 28 `docs/*.md` + `docs/architecture/*.md` files against the code).
 
@@ -93,7 +94,7 @@
 
 | File | Action | Why |
 |------|--------|-----|
-| `docs/REST_API_DESIGN_GUIDELINES.md` | EDIT | §7 refresh: middleware model, 6-place registration, raw-handler table, make gates, path prefixes |
+| `docs/REST_API_DESIGN_GUIDELINES.md` | EDIT | §7 refresh: middleware model, 6-place registration, raw-handler table, make gates, path prefixes; §3/§8 fabricated code fixed after adversarial fact-check proved them false (see Discovery) |
 | `docs/EXECUTE_DOC_READS.md` | EDIT | "5-place" → "6-place" descriptor; trigger glob `src/http/handlers/**` → `src/agentsfleetd/http/handlers/**` |
 | `docs/AUTH_DEVICE_LOGIN.md` | EDIT | two `src/…` path prefixes → `src/agentsfleetd/…` |
 | `docs/CHANGELOG_VOICE.md` | EDIT | rate-constant pin path → `src/agentsfleetd/state/tenant_billing.zig` |
@@ -192,11 +193,11 @@ Regression: untouched doc sections byte-identical (review the diff hunks — onl
 
 ## Acceptance Criteria
 
-- [ ] Zero stale daemon prefixes — verify: `grep -rnE "src/(errors|http|state|types|cmd|auth)/" docs/AUTH_DEVICE_LOGIN.md docs/CHANGELOG_VOICE.md docs/TEMPLATE.md docs/VERIFY_TIERS.md docs/EXECUTE_DOC_READS.md docs/SKILL_FRONTMATTER_SCHEMA.md docs/REST_API_DESIGN_GUIDELINES.md; test $? -eq 1`
-- [ ] No phantom middleware — verify: `grep -nE "registry\.(admin|operator|slack)\(" docs/REST_API_DESIGN_GUIDELINES.md; test $? -eq 1`
-- [ ] §7 paths exist — verify: the E3 loop below prints no `MISSING:` lines
-- [ ] Make targets real — verify: `grep -oE "make [a-z-]+" docs/REST_API_DESIGN_GUIDELINES.md | sort -u | while read -r _ t; do grep -qrE "^${t}:|^_${t}:" make/ Makefile || echo "PHANTOM: $t"; done` prints nothing
-- [ ] `gitleaks detect` clean · dotfiles-symlinked docs committed in `~/Projects/dotfiles` with clean status there
+- [x] Zero stale daemon prefixes — verify: `grep -rnE "src/(errors|http|state|types|cmd|auth)/" docs/AUTH_DEVICE_LOGIN.md docs/CHANGELOG_VOICE.md docs/TEMPLATE.md docs/VERIFY_TIERS.md docs/EXECUTE_DOC_READS.md docs/SKILL_FRONTMATTER_SCHEMA.md docs/REST_API_DESIGN_GUIDELINES.md; test $? -eq 1`
+- [x] No phantom middleware — verify: `grep -nE "registry\.(admin|operator|slack)\(" docs/REST_API_DESIGN_GUIDELINES.md; test $? -eq 1`
+- [x] §7 paths exist — verify: the E3 loop below prints no `MISSING:` lines
+- [x] Make targets real — verify: `grep -oE "make [a-z-]+" docs/REST_API_DESIGN_GUIDELINES.md | sort -u | while read -r _ t; do grep -qrE "^${t}:|^_${t}:" make/ Makefile || echo "PHANTOM: $t"; done` prints nothing
+- [x] `gitleaks detect` clean · dotfiles-symlinked docs committed in `~/Projects/dotfiles` with clean status there (commit `fec9ee4`, pushed to `origin/master`)
 
 ---
 
@@ -228,6 +229,10 @@ N/A — no files deleted; prose rows removed from §7 tables reference files alr
 - **Provenance of scope** — carved out of M106 CHORE(close) by decision:
   > Indy (2026-07-02): "M106 fixes here, rest → ticket (Recommended)" — context: AskUserQuestion on doc-fix scope for PR #468; M106-caused staleness landed there (AUTH.md, docs/architecture/), this pre-existing drift became this spec.
 - **Metrics review** — no analytics/funnel playbook update required — docs-only diff.
+- **§8 wrapper-table staleness — escalated from "flagged, deferred" to "fixed"** — during PLAN, `hx.zig`'s own top comment confirmed the `authenticated()`/`authenticatedWithParam()` comptime wrappers §8 documents were removed in M18_002 Batch D. Initially deferred (outside this spec's Files-Changed row, `AskUserQuestion` unanswered, Hard Safety default = no unapproved scope expansion). A subsequent adversarial fact-check agent (part of the `/review` skill-chain step) proved the staleness was far more severe than "conceptually outdated": §8 contained outright fabricated code — a `db()`/`releaseDb()`/`redis()` method set on `Hx` that doesn't exist (real `Hx` only has `ok()`/`fail()`/`noContent()`), a fabricated example file `webhooks.zig` with an `agent_id`+`url_secret` signature that doesn't exist anywhere in the tree, and a `common.authenticate` call that doesn't exist. Given this doc's own audience section calls it "Canonical instruction set. Read this before adding, modifying, or removing any HTTP endpoint," shipping proven-fabricated code examples is a materially worse RULE NDC violation than initially assessed — reversed the deferral and fixed §8 (Hx struct reference, the wrapper table, the multi-path-param claim, the two "enforced by comptime wrappers" lines) with facts verified against `hx.zig` and `server.zig::dispatchMatchedRoute()`.
+- **§3 pagination helper names — fixed (own-edit miss)** — the same fact-check found `parsePaginationParams`/`derivePaginationResult` (cited in §3 as the shared keyset-pagination helper in `common.zig`) don't exist anywhere in the codebase. This line was in this spec's own edit scope (I fixed its path prefix earlier without verifying the cited function names existed) — corrected to describe the real split: cursor encode/decode goes through `fleet_runtime/keyset_cursor.zig`, `limit` parsing is currently per-handler (no shared helper for that piece yet), and the legacy `page`/`page_size` shape is backed by `pagination.zig::parsePageParams`.
+- **`/review` outcome (adversarial fact-check agent)** — ran one thorough pass cross-referencing every path, function name, and behavioral claim in the diff against the real source tree (`test -e` per path, `grep`/read per function/behavior claim). 5 findings, all CONFIRMED and fixed (the two above, both in §8/§3). Everything else — the "six places" registration model, all six middleware policy names, the raw-handler exceptions table, the reference-implementations table, both non-REST-guide docs' path fixes — independently verified accurate against the real tree.
+- **`/write-unit-test` outcome** — docs-only diff; Test Specification is entirely eval-tier (E1–E5), all run and passing (see Verification Evidence). No code-test framework applies.
 
 ---
 
@@ -245,11 +250,13 @@ N/A — no files deleted; prose rows removed from §7 tables reference files alr
 
 | Check | Command | Result | Pass? |
 |-------|---------|--------|-------|
-| Stale-prefix sweep | E1 | (fill at VERIFY) | |
-| Phantom middleware | E2 | (fill at VERIFY) | |
-| Cited paths exist | E3 | (fill at VERIFY) | |
-| Make targets exist | E4 | (fill at VERIFY) | |
-| Gitleaks | E5 | (fill at VERIFY) | |
+| Stale-prefix sweep | E1 | 0 hits across all seven docs | ✅ |
+| Phantom middleware | E2 | 0 hits for `registry.(admin\|operator\|slack)(` | ✅ |
+| Cited paths exist | E3 | 0 `MISSING:` lines (all `src/agentsfleetd/*.zig` citations resolve; the one genuinely-deleted file, `route_manifest.zig`, is cited without a full compilable path since it's an intentional historical reference) | ✅ |
+| Make targets exist | E4 | 0 `PHANTOM:` lines (`make check-openapi`, `make test-unit-agentsfleetd`, `make lint-zig`, `make bench`, `make test-integration` all resolve in `make/*.mk`) | ✅ |
+| Gitleaks | E5 | `no leaks found` (scanned `docs/`, ~6.16 MB) | ✅ |
+
+**Test Delta:** unit 2270→2270 (+0) · integration 243→243 (+0) vs CHORE(open) baseline. Lacking: none — docs-only diff, no code surface touched, zero delta is expected.
 
 ---
 

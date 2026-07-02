@@ -2,7 +2,7 @@
 # QUALITY — code quality, formatting, analysis
 # =============================================================================
 
-.PHONY: lint-all lint-zig lint-website lint-apps-ds-ctl lint-app lint-design-system lint-cli lint-shell check-openapi check-schema-gate check-gh-actions-valid check-playbooks _fmt _fmt_check _zlint_check _lint_zig_pg_drain _lint_zig_test_depth _schema_gate_check _zig_target_lint _zig_line_limit_check _hardcoded_role_check _legacy_symbols_check _website_lint _app_lint _design_system_lint _cli_lint _shell_lint
+.PHONY: lint-all lint-zig lint-website lint-apps-ds-ctl lint-app lint-design-system lint-cli lint-shell check-openapi check-schema-gate check-gh-actions-valid check-playbooks check-route-registration-doc _fmt _fmt_check _zlint_check _lint_zig_pg_drain _lint_zig_test_depth _schema_gate_check _zig_target_lint _zig_line_limit_check _hardcoded_role_check _legacy_symbols_check _website_lint _app_lint _design_system_lint _cli_lint _shell_lint
 
 ZLINT ?= zlint
 ACTIONLINT ?= actionlint
@@ -185,6 +185,9 @@ check-openapi:  ## Bundle YAML → openapi.json + Redocly lint + error-schema + 
 	@python3 scripts/check_openapi_url_shape.py
 	@echo "✓ [openapi] Bundle + lint + error-schema + url-shape all green"
 
+check-route-registration-doc:  ## REST guide §7 route-registration facts stay fresh (middleware names, cited paths, make targets, dead prefixes)
+	@python3 scripts/check_route_registration_doc.py
+
 SHELLCHECK ?= shellcheck
 
 _shell_lint:
@@ -262,7 +265,7 @@ lint-cli: _cli_lint  ## Lint agentsfleet CLI only (Oxlint + runtime/const audits
 lint-shell: _shell_lint  ## Lint scripts/*.sh via shellcheck (follows dotfiles symlinks)
 
 
-lint-all: lint-zig lint-website lint-apps-ds-ctl lint-shell check-openapi check-schema-gate check-gh-actions-valid check-playbooks  ## Run all linters + quality gates
+lint-all: lint-zig lint-website lint-apps-ds-ctl lint-shell check-openapi check-schema-gate check-gh-actions-valid check-playbooks check-route-registration-doc  ## Run all linters + quality gates
 	@echo "✓ All lint checks passed"
 
 check-gh-actions-valid:  ## Validate .github/workflows/ — actionlint (YAML + run: shellcheck) + make-target ref check
