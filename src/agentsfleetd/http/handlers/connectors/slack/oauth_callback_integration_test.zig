@@ -31,6 +31,8 @@ const testing = std.testing;
 // UUIDv7-shaped fixtures (version nibble '7' at position 15). Distinct from
 // other suites' ids so the shared test DB stays collision-free under the
 // parallel runner.
+const TENANT_ID = "0195c106-0000-7000-8000-f00000000001"; // per-suite tenant — keeps this suite's workspaces off the shared tenant's FK chain
+const TENANT_NAME = "slack-oauth-callback-suite";
 const ADMIN_WS = "0195c106-0001-7000-8000-000000000001";
 const TARGET_WS = "0195c106-0002-7000-8000-000000000002";
 const SIGNING_SECRET = "m106-connect-signing-secret-key!";
@@ -151,9 +153,9 @@ test "integration: slack oauth callback persists install + vaults token (Dim 1.1
     test_fixtures.setTestEncryptionKey();
 
     // Fixtures: shared tenant + the admin (creds) and target (install) workspaces.
-    try test_fixtures.seedTenant(conn);
-    try test_fixtures.seedWorkspace(conn, ADMIN_WS);
-    try test_fixtures.seedWorkspace(conn, TARGET_WS);
+    try test_fixtures.seedTenantById(conn, TENANT_ID, TENANT_NAME);
+    try test_fixtures.seedWorkspaceWithTenant(conn, ADMIN_WS, TENANT_ID);
+    try test_fixtures.seedWorkspaceWithTenant(conn, TARGET_WS, TENANT_ID);
     preClean(alloc, conn);
     try seedSlackAppCreds(alloc, conn);
 
@@ -220,9 +222,9 @@ test "integration: slack oauth callback rejects a forged state (Dim 1.2)" {
     defer h.releaseConn(conn);
 
     test_fixtures.setTestEncryptionKey();
-    try test_fixtures.seedTenant(conn);
-    try test_fixtures.seedWorkspace(conn, ADMIN_WS);
-    try test_fixtures.seedWorkspace(conn, TARGET_WS);
+    try test_fixtures.seedTenantById(conn, TENANT_ID, TENANT_NAME);
+    try test_fixtures.seedWorkspaceWithTenant(conn, ADMIN_WS, TENANT_ID);
+    try test_fixtures.seedWorkspaceWithTenant(conn, TARGET_WS, TENANT_ID);
     preClean(alloc, conn);
     try seedSlackAppCreds(alloc, conn);
 

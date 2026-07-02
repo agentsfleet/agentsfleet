@@ -89,7 +89,7 @@ test "integration: balanceCoversEstimate honours policy and tenant balance" {
     try seedTenantAndWorkspace(db_ctx.conn, TEST_TENANT_ID, now_ms);
     defer teardown(db_ctx.conn, TEST_TENANT_ID);
 
-    test_fixtures.resetBilling(db_ctx.conn);
+    test_fixtures.resetBillingFor(db_ctx.conn, TEST_TENANT_ID);
     try tenant_billing.insertStarterGrant(db_ctx.conn, TEST_TENANT_ID);
 
     // STARTER_CREDIT_NANOS covers a self-managed event under stop policy.
@@ -227,7 +227,7 @@ test "integration(m11_006): concurrent markExhausted calls — exactly one trans
     const now_ms = clock.nowMillis();
     {
         try seedTenantAndWorkspace(db_ctx.conn, TEST_TENANT_ID, now_ms);
-        test_fixtures.resetBilling(db_ctx.conn);
+        test_fixtures.resetBillingFor(db_ctx.conn, TEST_TENANT_ID);
         try tenant_billing.insertStarterGrant(db_ctx.conn, TEST_TENANT_ID);
     }
     defer {

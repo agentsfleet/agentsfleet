@@ -6,6 +6,45 @@ const PgQuery = @import("pg_query.zig").PgQuery;
 const id_format = @import("../types/id_format.zig");
 const pool_mod = @import("pool.zig");
 const migration_lock = @import("pool_migration_lock.zig");
+/// runMigrations prunes audit.schema_migrations rows not in ITS array — so a
+/// test that feeds it a fixture subset wipes the canonical bookkeeping rows,
+/// and any later-ordered test asserting on audit contents fails (caught by an
+/// audit-delete spy trigger under the seed-randomized runner). Every test
+/// below that runs a fixture array snapshots the rows first and defers the
+/// restore. Row snapshot/re-insert — NOT a canonical re-apply: applied
+/// migrations are skipped via these very rows, so re-running the SQL against
+/// a live schema collides on unguarded DDL (e.g. v9's CREATE TRIGGER).
+const SavedMigrationRows = struct {
+    // 64 slots ≥ the canonical set with headroom; stack-only, no heap.
+    versions: [64]i32 = @splat(0),
+    applied: [64]i64 = @splat(0),
+    len: usize = 0,
+};
+
+fn snapshotAuditRows(conn: *Conn) !SavedMigrationRows {
+    var saved: SavedMigrationRows = .{};
+    var q = PgQuery.from(try conn.query(
+        "SELECT version, applied_at FROM audit.schema_migrations ORDER BY version",
+        .{},
+    ));
+    defer q.deinit();
+    while (try q.next()) |row| {
+        if (saved.len >= saved.versions.len) break;
+        saved.versions[saved.len] = try row.get(i32, 0);
+        saved.applied[saved.len] = try row.get(i64, 1);
+        saved.len += 1;
+    }
+    return saved;
+}
+
+fn restoreAuditRows(conn: *Conn, saved: *const SavedMigrationRows) void {
+    for (0..saved.len) |i| {
+        _ = conn.exec(
+            "INSERT INTO audit.schema_migrations (version, applied_at) VALUES ($1, $2) ON CONFLICT (version) DO NOTHING",
+            .{ saved.versions[i], saved.applied[i] },
+        ) catch |err| std.log.warn("audit row restore failed: {s}", .{@errorName(err)});
+    }
+}
 
 const Pool = pool_mod.Pool;
 const Conn = pool_mod.Conn;
@@ -391,6 +430,9 @@ test "integration: runMigrations is idempotent when table exists but migration r
     defer db_ctx.pool.deinit();
     defer db_ctx.pool.release(db_ctx.conn);
 
+    var saved_audit = try snapshotAuditRows(db_ctx.conn);
+    defer restoreAuditRows(db_ctx.conn, &saved_audit);
+
     // Version well above all real migrations to avoid collisions.
     const test_version: i32 = 99998;
     const test_sql =
@@ -445,6 +487,9 @@ test "integration: runMigrations reaps orphan rows for versions no longer in can
     defer db_ctx.pool.deinit();
     defer db_ctx.pool.release(db_ctx.conn);
 
+    var saved_audit = try snapshotAuditRows(db_ctx.conn);
+    defer restoreAuditRows(db_ctx.conn, &saved_audit);
+
     const orphan_version: i32 = 99997;
     const keep_version: i32 = 99996;
     const keep_sql =
@@ -496,6 +541,9 @@ test "integration: runMigrations reaps orphan rows in schema_migration_failures 
     defer db_ctx.pool.deinit();
     defer db_ctx.pool.release(db_ctx.conn);
 
+    var saved_audit = try snapshotAuditRows(db_ctx.conn);
+    defer restoreAuditRows(db_ctx.conn, &saved_audit);
+
     const orphan_version: i32 = 99995;
     const keep_version: i32 = 99994;
     const keep_sql =
@@ -535,6 +583,9 @@ test "integration: runMigrations reap is a no-op when all applied rows are canon
     const db_ctx = (try openIntegrationTestConn(alloc)) orelse return error.SkipZigTest;
     defer db_ctx.pool.deinit();
     defer db_ctx.pool.release(db_ctx.conn);
+
+    var saved_audit = try snapshotAuditRows(db_ctx.conn);
+    defer restoreAuditRows(db_ctx.conn, &saved_audit);
 
     const v1: i32 = 99993;
     const v2: i32 = 99992;

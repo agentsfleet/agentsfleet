@@ -11,12 +11,26 @@
 
 const std = @import("std");
 const clock = @import("common").clock;
+const pg = @import("pg");
 
 const tenant_billing = @import("tenant_billing.zig");
 const base = @import("../db/test_fixtures.zig");
-const uc1 = @import("../db/test_fixtures_uc1.zig");
 
 const ALLOC = std.testing.allocator;
+
+// Per-suite tenant (fa06 block, matching the aa06 workspace segment): keeps
+// this suite's grants/resets off every other suite's balance assertions.
+const TENANT_ID = "0195b4ba-8d3a-7f13-8abc-fa0600000000";
+
+fn seed(conn: *pg.Conn, workspace_id: []const u8) !void {
+    try base.seedTenantById(conn, TENANT_ID, "tenant-billing-edge-suite");
+    try base.seedWorkspaceWithTenant(conn, workspace_id, TENANT_ID);
+}
+
+fn teardown(conn: *pg.Conn, workspace_id: []const u8) void {
+    base.teardownWorkspace(conn, workspace_id);
+    base.teardownTenantById(conn, TENANT_ID);
+}
 
 // Segment 5 (aa06xx) identifies this file's workspaces; easy to grep + clean.
 const WS_PLATFORM_ZERO = "0195b4ba-8d3a-7f13-8abc-aa0600000001";
@@ -28,8 +42,8 @@ const WS_TRIAL = "0195b4ba-8d3a-7f13-8abc-aa0600000005";
 // Reads the clock-derived free-trial projection. While the promotional
 // window is open every platform stage charge short-circuits to zero, so the
 // token-rate assertions can only be exercised post-trial.
-fn trialActive(conn: *@import("pg").Conn) !bool {
-    const b = (try tenant_billing.getBilling(conn, ALLOC, uc1.TENANT_ID)).?;
+fn trialActive(conn: *pg.Conn) !bool {
+    const b = (try tenant_billing.getBilling(conn, ALLOC, TENANT_ID)).?;
     defer ALLOC.free(@constCast(b.grant_source));
     return b.free_trial_active;
 }
@@ -39,8 +53,8 @@ test "should charge the run fee for platform runtime with zero token counts post
     defer db_ctx.pool.deinit();
     defer db_ctx.pool.release(db_ctx.conn);
 
-    try uc1.seed(db_ctx.conn, WS_PLATFORM_ZERO);
-    defer uc1.teardown(db_ctx.conn, WS_PLATFORM_ZERO);
+    try seed(db_ctx.conn, WS_PLATFORM_ZERO);
+    defer teardown(db_ctx.conn, WS_PLATFORM_ZERO);
     // seedPlatformProvider populates the process-global model rate cache so
     // platform-posture charge math can resolve a model. Teardown drops it.
     try base.seedPlatformProvider(ALLOC, db_ctx.conn, WS_PLATFORM_ZERO);
@@ -63,8 +77,8 @@ test "should not overflow when platform token counts approach u32 max" {
     defer db_ctx.pool.deinit();
     defer db_ctx.pool.release(db_ctx.conn);
 
-    try uc1.seed(db_ctx.conn, WS_PLATFORM_LARGE);
-    defer uc1.teardown(db_ctx.conn, WS_PLATFORM_LARGE);
+    try seed(db_ctx.conn, WS_PLATFORM_LARGE);
+    defer teardown(db_ctx.conn, WS_PLATFORM_LARGE);
     try base.seedPlatformProvider(ALLOC, db_ctx.conn, WS_PLATFORM_LARGE);
     defer base.teardownPlatformProvider(db_ctx.conn, WS_PLATFORM_LARGE);
 
@@ -83,19 +97,19 @@ test "should succeed with zero balance when debit exactly covers the remaining c
     defer db_ctx.pool.deinit();
     defer db_ctx.pool.release(db_ctx.conn);
 
-    try uc1.seed(db_ctx.conn, WS_DEBIT_EXACT);
-    defer uc1.teardown(db_ctx.conn, WS_DEBIT_EXACT);
+    try seed(db_ctx.conn, WS_DEBIT_EXACT);
+    defer teardown(db_ctx.conn, WS_DEBIT_EXACT);
 
-    base.resetBilling(db_ctx.conn);
+    base.resetBillingFor(db_ctx.conn, TENANT_ID);
     // Provision a known, small balance so the exact-drain boundary is precise.
     const balance: i64 = 1_000_000;
-    try tenant_billing.provision(db_ctx.conn, uc1.TENANT_ID, balance, "test_exact");
+    try tenant_billing.provision(db_ctx.conn, TENANT_ID, balance, "test_exact");
 
     // Debit exactly the remaining balance: succeeds, lands at zero, no exhaust.
-    const after = try tenant_billing.debit(db_ctx.conn, uc1.TENANT_ID, balance);
+    const after = try tenant_billing.debit(db_ctx.conn, TENANT_ID, balance);
     try std.testing.expectEqual(@as(i64, 0), after.balance_nanos);
 
-    const row = (try tenant_billing.getBilling(db_ctx.conn, ALLOC, uc1.TENANT_ID)).?;
+    const row = (try tenant_billing.getBilling(db_ctx.conn, ALLOC, TENANT_ID)).?;
     defer ALLOC.free(@constCast(row.grant_source));
     try std.testing.expectEqual(@as(i64, 0), row.balance_nanos);
     // A zero-balance debit-to-exact must NOT stamp the exhausted gate.
@@ -107,20 +121,20 @@ test "should return CreditExhausted and leave balance unchanged when debit is on
     defer db_ctx.pool.deinit();
     defer db_ctx.pool.release(db_ctx.conn);
 
-    try uc1.seed(db_ctx.conn, WS_DEBIT_OVER);
-    defer uc1.teardown(db_ctx.conn, WS_DEBIT_OVER);
+    try seed(db_ctx.conn, WS_DEBIT_OVER);
+    defer teardown(db_ctx.conn, WS_DEBIT_OVER);
 
-    base.resetBilling(db_ctx.conn);
+    base.resetBillingFor(db_ctx.conn, TENANT_ID);
     const balance: i64 = 1_000_000;
-    try tenant_billing.provision(db_ctx.conn, uc1.TENANT_ID, balance, "test_over");
+    try tenant_billing.provision(db_ctx.conn, TENANT_ID, balance, "test_over");
 
     // One nano more than the balance: CreditExhausted, balance untouched.
     try std.testing.expectError(
         error.CreditExhausted,
-        tenant_billing.debit(db_ctx.conn, uc1.TENANT_ID, balance + 1),
+        tenant_billing.debit(db_ctx.conn, TENANT_ID, balance + 1),
     );
 
-    const row = (try tenant_billing.getBilling(db_ctx.conn, ALLOC, uc1.TENANT_ID)).?;
+    const row = (try tenant_billing.getBilling(db_ctx.conn, ALLOC, TENANT_ID)).?;
     defer ALLOC.free(@constCast(row.grant_source));
     try std.testing.expectEqual(balance, row.balance_nanos);
 }
@@ -130,17 +144,17 @@ test "should report the free trial active just before the cutoff and inactive at
     defer db_ctx.pool.deinit();
     defer db_ctx.pool.release(db_ctx.conn);
 
-    try uc1.seed(db_ctx.conn, WS_TRIAL);
-    defer uc1.teardown(db_ctx.conn, WS_TRIAL);
+    try seed(db_ctx.conn, WS_TRIAL);
+    defer teardown(db_ctx.conn, WS_TRIAL);
 
-    try tenant_billing.insertStarterGrant(db_ctx.conn, uc1.TENANT_ID);
+    try tenant_billing.insertStarterGrant(db_ctx.conn, TENANT_ID);
 
     // isFreeTrialActive / FREE_TRIAL_END_MS are private; the public projection
     // is Billing.free_trial_active vs free_trial_ends_at_ms. The strict
     // less-than gate is the contract: active iff now_ms < ends_at_ms. This
     // asserts the projection is internally consistent with the wall clock at
     // call time without reaching into the private cutoff constant.
-    const row = (try tenant_billing.getBilling(db_ctx.conn, ALLOC, uc1.TENANT_ID)).?;
+    const row = (try tenant_billing.getBilling(db_ctx.conn, ALLOC, TENANT_ID)).?;
     defer ALLOC.free(@constCast(row.grant_source));
 
     const now_ms = clock.nowMillis();
