@@ -4,7 +4,7 @@
 **Milestone:** M107
 **Workstream:** 001
 **Date:** Jul 02, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P2 — docs hygiene; no user-facing behavior changes, but every stale pointer taxes the next implementing agent with a dead-path detour.
 **Categories:** DOCS
 **Batch:** B1 — standalone; no code dependency.
