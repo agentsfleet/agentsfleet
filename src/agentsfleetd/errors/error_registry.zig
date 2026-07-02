@@ -217,6 +217,7 @@ pub const ERR_CONNECTOR_NOT_CONFIGURED = "UZ-CONN-001";
 pub const ERR_CONNECTOR_STATE_INVALID = "UZ-CONN-002";
 pub const ERR_CONNECTOR_VENDOR_DEADLINE = "UZ-CONN-003";
 pub const ERR_CONNECTOR_UNKNOWN = "UZ-CONN-004";
+pub const ERR_CONNECTOR_PROBE_REJECTED = "UZ-CONN-005";
 
 // ── Non-error constants (migrated from codes.zig) ──────────────────────────
 // Webhook user-facing messages

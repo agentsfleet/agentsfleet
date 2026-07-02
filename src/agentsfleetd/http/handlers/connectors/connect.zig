@@ -8,6 +8,7 @@
 //! Per-provider deltas live in the registry entry's data + hooks, never here.
 
 const std = @import("std");
+const httpz = @import("httpz");
 const pg = @import("pg");
 const logging = @import("log");
 const clock = @import("common").clock;
@@ -16,6 +17,7 @@ const hx_mod = @import("../hx.zig");
 const ec = @import("../../../errors/error_registry.zig");
 const matchers = @import("../../route_matchers_connectors.zig");
 const registry = @import("registry.zig");
+const api_key = @import("api_key.zig");
 const oauth2 = @import("oauth2.zig");
 const connector_state = @import("state.zig");
 
@@ -32,7 +34,7 @@ const NOT_CONFIGURED_FALLBACK = "Connector is not configured on this deployment"
 /// callback route serves it for every provider.
 const CALLBACK_PATH_FMT = "/v1/connectors/{s}/callback";
 
-pub fn innerConnect(hx: hx_mod.Hx, route: matchers.WorkspaceConnectorRoute) void {
+pub fn innerConnect(hx: hx_mod.Hx, req: *httpz.Request, route: matchers.WorkspaceConnectorRoute) void {
     const spec = registry.lookup(route.provider) orelse return registry.respondUnknown(hx, route.provider);
 
     const conn = hx.ctx.pool.acquire() catch {
@@ -46,20 +48,16 @@ pub fn innerConnect(hx: hx_mod.Hx, route: matchers.WorkspaceConnectorRoute) void
         return;
     }
 
-    // The state signing secret is platform config resolved at boot; absent it,
-    // connect degrades closed rather than minting a state that can never
-    // complete (fail-loud UZ-CONN-001). Both LIVE archetypes need it; the
-    // api_key diff moves this check into the two state-minting arms (an
-    // api_key connect has no state, so no secret requirement).
-    const secret = hx.ctx.approval_signing_secret orelse return failNotConfigured(hx, spec);
-
     switch (spec.archetype) {
-        .oauth2 => |o| connectOauth2(hx, conn, spec, o, route.workspace_id, secret),
-        .app_install => |a| connectAppInstall(hx, spec, a, route.workspace_id, secret),
-        // Comptime-asserted: the registry carries no api_key entry yet; the
-        // first api_key provider implements this arm in the same diff that
-        // removes that assert.
-        .api_key => unreachable,
+        .oauth2 => |o| {
+            const secret = hx.ctx.approval_signing_secret orelse return failNotConfigured(hx, spec);
+            connectOauth2(hx, conn, spec, o, route.workspace_id, secret);
+        },
+        .app_install => |a| {
+            const secret = hx.ctx.approval_signing_secret orelse return failNotConfigured(hx, spec);
+            connectAppInstall(hx, spec, a, route.workspace_id, secret);
+        },
+        .api_key => |a| api_key.connect(hx, req, conn, spec.provider, a, route.workspace_id),
     }
 }
 

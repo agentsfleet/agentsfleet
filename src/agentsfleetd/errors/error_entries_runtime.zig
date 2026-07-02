@@ -88,4 +88,6 @@ pub const ENTRIES_RUNTIME = [_]Entry{
         "Transient \u{2014} retry; if it persists, check the vendor's status page and this deployment's egress."),
     e("UZ-CONN-004", .not_found, "Unknown connector provider", "The {provider} segment does not match any provider in this deployment's connector registry. " ++
         "List the available providers from the dashboard connectors page (or the catalog endpoint once it ships)."),
+    e("UZ-CONN-005", .bad_request, "Connector probe rejected credentials", "The connector validation probe rejected the submitted API-key credentials. " ++
+        "Check the provider key, app key, site, and token scope, then try connecting again; no credential was stored."),
 };

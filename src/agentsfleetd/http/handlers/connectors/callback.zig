@@ -88,11 +88,7 @@ pub fn innerCallback(hx: hx_mod.Hx, req: *httpz.Request, provider: []const u8) v
             // (installation callbacks carry vendor-bespoke inputs).
             if (a.complete(hx, workspace_id, req)) redirectToDashboard(hx, spec.provider);
         },
-        // Comptime-asserted: no api_key entries in the registry (an api_key
-        // connect has no browser round-trip, so no callback exists to hit).
-        // The api_key diff MUST turn this arm into a 404 — the URL becomes
-        // reachable the moment an api_key provider id resolves.
-        .api_key => unreachable,
+        .api_key => hx.fail(ec.ERR_CONNECTOR_UNKNOWN, "API-key connectors do not have a callback"),
     }
 }
 
