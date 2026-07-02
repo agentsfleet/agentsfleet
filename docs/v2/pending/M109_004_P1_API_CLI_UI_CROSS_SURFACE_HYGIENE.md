@@ -8,14 +8,14 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
   which also assert the determinism-critical sections below are present and filled (not left as {placeholders}).
 -->
 
-# M109_004: Deduplicate route method-checks, fix a permanently-wedged PostHog loader, and resolve a collapsed dev/prod claim namespace
+# M109_004: Deduplicate route method-checks, fix a permanently-wedged PostHog loader, resolve a collapsed dev/prod claim namespace, and gate the operator UI on scope not the `platform_admin` boolean
 
 **Prototype:** v2.0.0
 **Milestone:** M109
 **Workstream:** 004
 **Date:** Jul 02, 2026
 **Status:** PENDING
-**Priority:** P1 — the PostHog loader permanently stops delivering analytics after one transient failure for the rest of a page session (silent product-signal loss); the JWT role-claim namespace collapse is a real dev/prod distinction lost during a brand rename (auth-adjacent, though not itself a bypass); the route-method duplication is a maintainability/DRY issue at P2-grade severity kept in this workstream only because it shares no scope conflict with the other two.
+**Priority:** P1 — the PostHog loader permanently stops delivering analytics after one transient failure for the rest of a page session (silent product-signal loss); the JWT role-claim namespace collapse is a real dev/prod distinction lost during a brand rename (auth-adjacent, though not itself a bypass); the operator dashboard (runners, admin models) gates on a legacy `platform_admin` boolean the M104 scope migration left behind, so a correctly-scoped operator cannot reach the surface and platform-admin must be configured twice (boolean + scopes), which drift; the route-method duplication is a maintainability/DRY issue at P2-grade severity kept in this workstream only because it shares no scope conflict with the others.
 **Categories:** API CLI UI
 **Batch:** B1 — independent of M109_001/002/003; no shared files.
 **Branch:** feat/m109-004-cross-surface-hygiene
@@ -34,13 +34,14 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 2. `ui/packages/app/lib/analytics/posthog.ts:142-152` — the sibling app-package PostHog loader already handles a failed dynamic import correctly (`try/catch` around `await import("posthog-js")`, flips a flag rather than leaving a permanently-rejected promise); this is the exact pattern §2 ports into the website package.
 3. `cli/src/program/auth-token.ts:45-47,74-83` — `ROLE_NAMESPACE_DEV`/`ROLE_NAMESPACE_COM` and the `candidates` array probing both; `docs/AUTH.md` — read before touching any auth-flow file per `AGENTS.md`'s auth-flow trigger, to confirm the dev-instance namespace domain against the live Clerk dev app rather than guessing.
 4. `docs/AUTH.md:210,782` — documents `iss=https://clerk.dev.agentsfleet.net` for the dev Clerk instance, the closest existing evidence for what `ROLE_NAMESPACE_DEV` should resolve to; this is a strong lead, not a confirmed live value (see §3's Discovery consult).
+5. `ui/packages/app/lib/auth/platform.ts` + `src/agentsfleetd/http/route_scopes.zig:120-127` — the frontend `platform_admin` boolean gate to reconcile (§4) and the per-route scopes it must mirror (`runner:enroll` enroll, `runner:read` list, `model:read`/`model:admin` models); the session token now carries a top-level `scopes` claim the gate reads instead.
 
 ---
 
 ## PR Intent & comprehension handshake
 
 - **PR title (eventual):** Add requireMethod helper, fix PostHog's permanently-wedged loader, restore the dev/prod role-claim namespace split
-- **Intent (one sentence):** A malformed route no longer needs a hand-copied 4-line check at 63 call sites, a transient PostHog load failure no longer kills analytics for the rest of the page session, and dev/prod JWT role claims are probed under their actual distinct namespaces again.
+- **Intent (one sentence):** A malformed route no longer needs a hand-copied 4-line check at 63 call sites, a transient PostHog load failure no longer kills analytics for the rest of the page session, dev/prod JWT role claims are probed under their actual distinct namespaces again, and the operator UI is gated on the same scopes the backend enforces instead of a divergent `platform_admin` boolean.
 - **Handshake (agent fills at PLAN, before EXECUTE):** the implementing agent restates the intent in its own words and lists the assumptions it is proceeding on (`ASSUMPTIONS I'M MAKING: …`). A mismatch between this restatement and the Intent above → STOP and reconcile before any edit.
 
 ---
@@ -51,7 +52,7 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 2. **Preserved user behaviour** — every route's actual method-allow/deny behavior is byte-for-byte unchanged (§1 is a pure refactor); PostHog's happy-path load is unchanged (§2 only changes the failure branch); prod role-claim resolution (`https://agentsfleet.net/role`) is unchanged (§3 only restores the dev-specific value, doesn't touch prod).
 3. **Optimal-way check** — §1's optimal fix is exactly a shared boolean-returning helper matching the file's own existing convention; no larger routing-layer refactor is warranted for a DRY issue. §2/§3's optimal fixes are equally narrow — a `.catch`/reset and a corrected constant, respectively.
 4. **Rebuild-vs-iterate** — iterate on all three; each has a working sibling/reference (the app-package PostHog loader, the `requireUuidV7Id` convention, the dev Clerk instance's actual issuer domain) to converge onto rather than a redesign.
-5. **What we build** — `common.requireMethod` (single-method call sites migrate to it; multi-method `switch` sites are evaluated separately per §1's Discovery note); a `.catch`/retry-reset on `ensureLoader`'s `loadPromise` assignment in the website package; a corrected `ROLE_NAMESPACE_DEV` value confirmed against the live dev Clerk instance.
+5. **What we build** — `common.requireMethod` (single-method call sites migrate to it; multi-method `switch` sites are evaluated separately per §1's Discovery note); a `.catch`/retry-reset on `ensureLoader`'s `loadPromise` assignment in the website package; a corrected `ROLE_NAMESPACE_DEV` value confirmed against the live dev Clerk instance; a scope-based operator-UI gate replacing `readPlatformAdminClaim`/`platform_admin` with per-surface session-`scopes` checks.
 6. **What we do NOT build** — a `requireMethodOneOf` for the 10 multi-method `switch` sites (Discovery records why single- vs multi-method sites are treated differently, but building the multi-method helper is flagged as a follow-up, not blocking); a rewrite of PostHog's retry/backoff policy beyond "don't stay permanently wedged"; any change to the prod role-claim namespace.
 7. **Fit with existing features** — §1 must not change any route's actual method-allow set (regression risk is purely mechanical — a copy-paste-to-call-site error); §3 must not weaken prod auth in any way — this is an auth-flow file, `docs/AUTH.md` is read first per the gate, and the dev-namespace value is confirmed against the live Clerk dev instance before landing, not guessed from `docs/AUTH.md` alone.
 8. **Surface order** — API-first for §1 (no CLI/UI surface); UI-first for §2 (website analytics loader); CLI-first for §3 (`agentsfleet` auth-token resolution).
@@ -88,7 +89,7 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 
 **Problem:** 63 occurrences of an identical 4-line method-check pattern across 9 files, with no shared helper, means every future route risks a copy-paste drift. `ensureLoader`'s `loadPromise = loadPosthog(cfg);` has no `.catch`; once `loadPosthog` rejects (a blocked/offline chunk load), `loadPromise` stays set to the rejected promise forever, so every subsequent page interaction on that session silently stops delivering analytics — with an unhandled-rejection console error as the only symptom. `ROLE_NAMESPACE_DEV` and `ROLE_NAMESPACE_COM` are byte-identical strings today, but git history shows they were genuinely different (`usezombie.dev` vs `usezombie.com`) until a two-step brand-rename mechanically collapsed both onto the new prod domain — losing the dev/prod claim-namespace distinction as an unintended side effect, not a deliberate simplification.
 
-**Solution summary:** Add `common.requireMethod` mirroring the file's own `requireUuidV7Id` convention and migrate the 63 single-method call sites (multi-method `switch` sites stay as-is per Discovery). Port the app package's `try/catch`-around-dynamic-import pattern into the website package's `ensureLoader`/`loadPosthog`, resetting `loadPromise` on failure so retry is possible. Confirm the dev Clerk instance's actual role-claim namespace domain against its live JWT template/session-token config, then set `ROLE_NAMESPACE_DEV` to that value (distinct from `ROLE_NAMESPACE_COM`).
+**Solution summary:** Add `common.requireMethod` mirroring the file's own `requireUuidV7Id` convention and migrate the 63 single-method call sites (multi-method `switch` sites stay as-is per Discovery). Port the app package's `try/catch`-around-dynamic-import pattern into the website package's `ensureLoader`/`loadPosthog`, resetting `loadPromise` on failure so retry is possible. Confirm the dev Clerk instance's actual role-claim namespace domain against its live JWT template/session-token config, then set `ROLE_NAMESPACE_DEV` to that value (distinct from `ROLE_NAMESPACE_COM`). Replace the frontend `platform_admin` boolean gate with per-surface session-`scopes` predicates keyed to the scope each operator route enforces in `route_scopes.zig`, removing the divergent second source of truth.
 
 ---
 
@@ -117,6 +118,11 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 | `ui/packages/website/src/analytics/posthog.ts` | EDIT | `ensureLoader`'s `loadPromise` assignment gains failure handling that resets state for retry. |
 | `cli/src/program/auth-token.ts` | EDIT | `ROLE_NAMESPACE_DEV` set to the confirmed dev-instance namespace value, distinct from `ROLE_NAMESPACE_COM`. |
 | `cli/test/auth-token.unit.test.ts` | EDIT | add a case asserting a dev-namespace claim resolves correctly (currently only the collapsed prod string is exercised). |
+| `ui/packages/app/lib/auth/platform.ts` | EDIT | replace the `platform_admin` boolean read with a session-`scopes` predicate (`hasScope`); retire `readPlatformAdminClaim`. |
+| `ui/packages/app/app/(dashboard)/layout.tsx` | EDIT | operator nav gating switches to per-surface scope checks. |
+| `ui/packages/app/app/(dashboard)/admin/runners/{page.tsx,actions.ts}` | EDIT | gate on `runner:read` (view) / `runner:enroll` (enroll); fix the stale `UZ-AUTH-021` comment → `UZ-AUTH-022`. |
+| `ui/packages/app/app/(dashboard)/admin/models/{page.tsx,actions.ts}` | EDIT | gate on `model:read` (view) / `model:admin` (mutate). |
+| `ui/packages/app/lib/auth/platform.test.ts` | CREATE/EDIT | scope-predicate coverage + zero-remaining-`platform_admin`-reference assertion. |
 
 ---
 
@@ -124,7 +130,8 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 
 - **Chosen shape:** three independent, small patches sharing a workstream; grouped because none conflicts with M109_001/002/003's files and each is a self-contained hygiene fix.
 - **Alternatives considered:** for §1, forcing all 10 multi-method `switch` sites through a `requireMethodOneOf` helper was considered and rejected for this patch — the switch shape already reads clearly and collapsing it risks losing per-method routing clarity for a marginal DRY gain; flagged as an optional follow-up in Out of Scope, not built here. For §3, deleting `ROLE_NAMESPACE_COM` entirely (since Clerk's default claim location might make custom namespace probing unnecessary) was considered and rejected without evidence — the spec fixes the confirmed regression (namespaces collapsed) without also removing a still-potentially-load-bearing probe.
-- **Patch-vs-refactor verdict:** **patch**, all three.
+- **§4 verdict:** **patch** — a scope-predicate swap at the existing gate call sites, no auth-model redesign; the backend `requireScope` gate is unchanged and remains authoritative (the UI gate is defence-in-depth). Removing the `platform_admin` boolean entirely (vs leaving it as a legacy alias) is chosen because a dual source of truth is exactly the drift that caused this.
+- **Patch-vs-refactor verdict:** **patch**, all four.
 
 ---
 
@@ -153,13 +160,22 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 
 ---
 
+### §4 — Operator UI (runners, admin models) gates on scope, not the `platform_admin` boolean
+
+`readPlatformAdminClaim()` (`ui/packages/app/lib/auth/platform.ts`) gates the operator nav, the `admin/runners` + `admin/models` pages, and their `asPlatformAdmin`-wrapped Server Actions on a boolean `metadata.platform_admin === true` — a pre-M104 claim the scope migration never retired. The backend gates the same routes on scopes (`route_scopes.zig:120-127`: enroll → `runner:enroll`, runner list → `runner:read`, model mutate → `model:admin`, model read → `model:read`), so a correctly-scoped operator still can't see the UI and platform-admin is configured twice, which drifts. **Implementation default:** read the session `scopes` claim (top-level, space-delimited) and gate each surface on the scope its backend route enforces — page/nav visibility on the read scope (`runner:read`, `model:read`), each mutating action on its write scope (`runner:enroll`, `runner:write`, `model:admin`); delete `readPlatformAdminClaim`/`platform_admin` once no caller remains, and correct the stale `UZ-AUTH-021` comment in `admin/runners/page.tsx` (the gate returns `UZ-AUTH-022`).
+
+- **Dimension 4.1** — the runner operator nav + page render iff the session `scopes` claim holds `runner:read`, and the enroll action is allowed iff it holds `runner:enroll`; the `platform_admin` boolean is never consulted → Test `test_runner_ui_gates_on_runner_scopes`.
+- **Dimension 4.2** — the admin-models nav/page/actions gate on `model:read`/`model:admin`, and `readPlatformAdminClaim`/`platform_admin` have zero remaining references repo-wide → Test `test_admin_models_ui_gates_on_model_scope_no_boolean_left`.
+
+---
+
 ## Metrics & Observability
 
 | Metric / event | Owner | Fires when | Properties allowed | Privacy guard | Test proof |
 |----------------|-------|------------|--------------------|---------------|------------|
 | (existing) PostHog delivery itself | product | §2's fix restores delivery after a transient failure, rather than adding a new event | n/a — this fixes an existing pipeline, doesn't add one | n/a | `test_ensure_loader_retries_after_failed_load` |
 
-No new event names in §1/§3. §2's fix is itself the analytics-reliability improvement — no separate event needed to prove it beyond the retry test; `not applicable` for any funnel/playbook change since no event shape changes.
+No new event names in §1/§3/§4 (§4 is an auth-gate reconciliation, no product signal). §2's fix is itself the analytics-reliability improvement — no separate event needed to prove it beyond the retry test; `not applicable` for any funnel/playbook change since no event shape changes.
 
 ---
 
@@ -175,6 +191,11 @@ state-machine gains a failure→null transition instead of failure→permanently
 ROLE_NAMESPACE_DEV: same `string` constant type, new confirmed value distinct
 from ROLE_NAMESPACE_COM; extractRoleFromToken's candidates array unchanged in
 shape (still 8 entries), only the DEV constant's value changes.
+
+platform.ts: readPlatformAdminClaim(): Promise<boolean> is removed; callers switch
+to hasScope(scope): boolean over the session `scopes` claim. Per-surface predicate
+map is fixed by route_scopes.zig (runner:read/runner:enroll, model:read/model:admin),
+not free choice.
 ```
 
 ---
@@ -186,6 +207,7 @@ shape (still 8 entries), only the DEV constant's value changes.
 | Migrated route's method check behaves differently | copy-paste error during the 63-site migration | Dimension 1.1's regression test catches any behavioral drift before merge. |
 | PostHog load fails again after a retry | sustained outage, not transient | `loadPromise` resets again, next call retries again — no infinite-backoff/circuit-breaker added in this patch (Out of Scope), so repeated failures mean repeated retries, which is a strict improvement over "wedged forever" but not a rate-limited retry policy. |
 | Dev Clerk instance's actual namespace differs from `docs/AUTH.md`'s documented value | doc drift between what's written and the live Clerk config | §3's Discovery consult requires confirming against the live dashboard before landing, not trusting the doc alone. |
+| Operator UI shown without backend authority | §4 UI scope predicate diverges from the route's enforced scope | §4.1/4.2 assert the UI predicate matches `route_scopes.zig`; the backend `requireScope` still 403s (`UZ-AUTH-022`) as the real gate — the UI check is defence-in-depth only, never the sole authority. |
 
 ---
 
@@ -194,6 +216,7 @@ shape (still 8 entries), only the DEV constant's value changes.
 1. Every single-method route's allow/deny behavior is identical before and after the `requireMethod` migration — enforced by Dimension 1.1's per-route regression coverage.
 2. `ensureLoader` never permanently stops retrying after a single failed load — enforced by Dimension 2.1's test asserting `loadPromise` is resettable.
 3. `ROLE_NAMESPACE_DEV` and `ROLE_NAMESPACE_COM` are never byte-identical after this fix — enforced by Dimension 3.1's test asserting distinct resolution.
+4. No operator surface is gated on the `platform_admin` boolean after §4 — enforced by Dimension 4.2's repo-wide zero-reference grep for `platform_admin`/`readPlatformAdminClaim`.
 
 ---
 
@@ -207,6 +230,8 @@ shape (still 8 entries), only the DEV constant's value changes.
 | 2.2 | unit | `test_failed_load_does_not_produce_unhandled_rejection` | a rejected `loadPosthog` call is observably caught (test harness asserts no `unhandledrejection` event fires). |
 | 3.1 | unit | `test_extract_role_resolves_dev_and_prod_namespaces_distinctly` | a token with the claim under the confirmed dev namespace resolves the role; a token with only the prod namespace claim present does not falsely match under the dev constant. |
 | 3.2 | unit | `test_extract_role_resolves_prod_namespace_unchanged` | a token with the claim under `ROLE_NAMESPACE_COM` (`https://agentsfleet.net/role`) resolves correctly, unchanged from current behavior. |
+| 4.1 | unit | `test_runner_ui_gates_on_runner_scopes` | session scopes `…runner:read runner:enroll…` → nav+page render and enroll allowed; scopes lacking them → hidden/redirect; the `platform_admin` boolean is absent from the decision. |
+| 4.2 | unit | `test_admin_models_ui_gates_on_model_scope_no_boolean_left` | admin-models gate resolves via `model:read`/`model:admin`; `grep -rn "platform_admin\|readPlatformAdminClaim" ui/packages/app` → 0 matches. |
 
 Regression: Dimension 1.1 and 3.2 are the explicit regression cases. Idempotency/replay: N/A — none of these three sections add retry-with-side-effects semantics (§2's retry is a pure re-attempt of an idempotent load).
 
@@ -217,6 +242,7 @@ Regression: Dimension 1.1 and 3.2 are the explicit regression cases. Idempotency
 - [ ] `requireMethod` matches `requireUuidV7Id`'s convention, all 63 single-method sites migrated — verify: `zig build test --summary all` (Dimensions 1.1/1.2)
 - [ ] PostHog loader retries after a failed load — verify: `bun test ui/packages/website` (Dimensions 2.1/2.2)
 - [ ] Dev/prod role namespaces resolve distinctly — verify: `bun test cli/test/auth-token.unit.test.ts` (Dimensions 3.1/3.2)
+- [ ] Operator UI gates on scope, `platform_admin` fully removed — verify: `bun test ui/packages/app` + `grep -rn "platform_admin\|readPlatformAdminClaim" ui/packages/app | grep -v node_modules` empty (Dimensions 4.1/4.2)
 - [ ] `make lint` clean · `make test` passes
 - [ ] Cross-compile clean: `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux`
 - [ ] `gitleaks detect` clean · no file over 350 lines added
@@ -257,6 +283,7 @@ N/A — no files deleted; §1 replaces inline blocks with calls in place, §2/§
 
 - **§3 consult (resolve before EXECUTE, auth-flow gate):** `docs/AUTH.md:210,782` documents `clerk.dev.agentsfleet.net` as the dev issuer, but the exact role-claim namespace *key* used in JWT custom claims must be confirmed against the live dev Clerk instance's JWT template/session-token config (`dashboard.clerk.com` → `clerk-dev` app), not assumed from the issuer domain alone. This line records the confirmed value once checked.
 - **§1 scope note:** the 10 multi-method `switch` sites in `route_table_invoke.zig` are deliberately not migrated to a new `requireMethodOneOf` helper in this patch (see Decomposition) — flagged as an optional follow-up, not blocking.
+- **§4 note:** the UI operator gate is defence-in-depth; the backend `requireScope` (`route_scopes.zig`) stays authoritative. The per-surface scope map (`runner:read`/`runner:enroll`, `model:read`/`model:admin`) is taken from `route_scopes.zig:120-127`, not guessed. Live-verified this session: the dev session token now carries a top-level `scopes` claim, and `metadata.platform_admin` is absent — the boolean gate hides the surface even for a fully-scoped operator, which is the bug §4 fixes.
 - **Metrics review:** no new events; §2 restores existing PostHog delivery reliability, no playbook update required (no funnel/event shape changes).
 
 ---
