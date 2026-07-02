@@ -68,7 +68,7 @@ The registry refactor moved neither anchor: mechanics and behavior prose live in
 - **Residual window: the connect phase.** Name resolution, the TCP dial, **and the TLS handshake** happen before a pooled handle exists to arm. DNS + dial are OS-bounded (connect timeouts); the TLS handshake read is **not** — `std.http.Client.connect` does TCP+TLS atomically, so we cannot arm between them without a connect-phase deadline mechanism that does not exist yet. So a vendor that completes TCP then stalls the TLS handshake is the one unbounded branch left (tracked as a follow-up alongside the non-connector-caller bounding in §Out of Scope). The armed surface is the post-handshake read phase, where the M100/M106 incidents actually lived (vendor accepts + handshakes, then stalls the response). This is a strict improvement, not a regression: pre-M108 the *entire* call — connect, handshake, and read — was unbounded.
 - **No pool slot rides a vendor call.** Credentials load under a short acquire released before the exchange; the events ingress pre-loads the bot token and returns its slot before the thread re-read (closes merged-PR #468's P1).
 
-Deadline fired or unarmable → `UZ-CONN-003` (502) + a `connector_vendor_deadline_fired` warn naming provider, call class, and deadline — never URL query or token material.
+Deadline fired, watchdog unarmable, or vendor unreachable → `UZ-CONN-003` (502) + a `connector_vendor_call_refused` warn naming provider, call class, and `reason` (the per-class distinction) — never URL query or token material.
 
 ## Unknown vs unconfigured (the two front-door failures)
 

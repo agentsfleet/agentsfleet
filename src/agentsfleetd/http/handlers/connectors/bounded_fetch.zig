@@ -73,7 +73,10 @@ pub const Call = struct {
     class: CallClass,
 };
 
-const EV_VENDOR_DEADLINE = "connector_vendor_deadline_fired";
+// Class-neutral event name: warnRefused covers all three UZ-CONN-003 refusal
+// classes (deadline fired, watchdog unavailable, vendor unreachable), so the
+// name must not imply "deadline" — `reason` carries the per-class distinction.
+const EV_VENDOR_REFUSED = "connector_vendor_call_refused";
 const R_DEADLINE = "deadline";
 const R_WATCHDOG_UNAVAILABLE = "watchdog_unavailable";
 const R_VENDOR_UNREACHABLE = "vendor_unreachable";
@@ -133,7 +136,7 @@ pub fn fetch(alloc: std.mem.Allocator, io: std.Io, wd: *Watchdog, call: Call) Fe
 /// maps them to the same 502 and would otherwise leave vendor-down 502s with
 /// no server-side log. Never carries URL query or token material.
 fn warnRefused(call: Call, reason: []const u8) void {
-    log.warn(EV_VENDOR_DEADLINE, .{
+    log.warn(EV_VENDOR_REFUSED, .{
         .error_code = ec.ERR_CONNECTOR_VENDOR_DEADLINE,
         .reason = reason,
         .provider = call.provider,
