@@ -4,11 +4,12 @@
 **Milestone:** M107
 **Workstream:** 002
 **Date:** Jul 02, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P2 — docs hygiene tooling; no user-facing behavior change, but closes the exact drift class M107_001 just fixed manually.
 **Categories:** DOCS
 **Batch:** B1 — same branch as M107_001; sequenced after it.
 **Branch:** feat/m107-docs-freshness (shared with M107_001, per Indy's direction — land in the same PR)
+**Test Baseline:** unit=2270 integration=243
 **Depends on:** M107_001 (`docs/v2/active/M107_001_P2_DOCS_FRESHNESS_PATHS_REST_GUIDE.md`) — the REST guide's §7 must already describe the real 6-place/real-middleware model before a permanent check can be pinned against it; checking the old (phantom-middleware) content would fail on day one.
 **Provenance:** human-directed (Indy, 2026-07-02, in-session: "spec out but do it in this PR, i see its a simple fix" — overriding M107_001's own Out-of-Scope deferral of this exact work).
 
