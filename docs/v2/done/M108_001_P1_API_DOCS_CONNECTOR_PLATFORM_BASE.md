@@ -344,7 +344,7 @@ grep -rn "std.http.Client" src/agentsfleetd/http/handlers/connectors/ --include=
 | Unit tests | `make test-unit-all` (repo's tier-1 umbrella; spec's `make test` predates the target names) | all unit lanes green; TS coverage gates 100% | ✅ |
 | Integration tests | `make test-integration` ×4 — incl. Tier-3 from clean state (`make down` first) | green every run; direct binary run: 1859 passed / 10 skipped / 0 connector failures (the 1 direct-run failure is a pre-existing flush-dependent event_lifecycle test — Discovery #8d) | ✅ |
 | Lint | `make lint-all` (umbrella incl. lint-zig: fmt, ZLint, pg-drain, test-depth, cross-target, line-limit) | all checks passed | ✅ |
-| Cross-compile | main + runner graphs × `x86_64-linux` + `aarch64-linux`; linux test-graph compile | 4/4 OK; test graph ends in "unable to execute binaries from the target" (the façade's PASS signal) | ✅ |
+| Cross-compile | main + runner + **`test-lib`** graphs × `x86_64-linux` + `aarch64-linux` | all compile (end in "unable to execute binaries from the target" — the PASS signal). **Correction:** pre-`033e2776` the `test-lib` graph was NOT cross-compiled in verification (only `zig build test`); CI caught it — the standalone lib graph doesn't link libc, so `std.c.shutdown` in `call_deadline` was a Linux compile error. Fixed via a raw-syscall shutdown; all three graphs now green both targets. | ✅ |
 | Gitleaks | `gitleaks detect` | 3076 commits scanned, no leaks found | ✅ |
 | Bounded-outbound grep | eval E8 | 0 matches | ✅ |
 | Dead code sweep | eval E10 | 0 matches | ✅ |
