@@ -119,12 +119,13 @@ pub fn innerSlackEvents(hx: Hx, req: *httpz.Request) void {
         .url_verification => |challenge| hx.ok(.ok, .{ .challenge = challenge }),
         .ignore => hx.ok(.ok, .{ .status = ec.STATUS_ACCEPTED }),
         .app_mention => |m| {
-            const conn = maybe_conn orelse hx.ctx.pool.acquire() catch {
-                common.internalDbUnavailable(hx.res, hx.req_id);
-                return;
-            };
-            maybe_conn = conn;
-            dispatchMention(hx, conn, m);
+            if (maybe_conn == null) {
+                maybe_conn = hx.ctx.pool.acquire() catch {
+                    common.internalDbUnavailable(hx.res, hx.req_id);
+                    return;
+                };
+            }
+            dispatchMention(hx, &maybe_conn, m);
         },
     }
 }
@@ -153,10 +154,14 @@ fn resolveSigningSecret(hx: Hx, maybe_conn: *?*pg.Conn) ?[]const u8 {
     };
 }
 
-/// Resolve the install + resident fleet, then enqueue. An unknown team is a
-/// 200-ack no-op (UZ-SLK-020): the workspace uninstalled or never installed, and
-/// an error status would make Slack retry-loop.
-fn dispatchMention(hx: Hx, conn: *pg.Conn, m: Mention) void {
+/// Resolve the install + resident fleet, pre-load the bot token, RELEASE the
+/// pooled conn, then enqueue. An unknown team is a 200-ack no-op (UZ-SLK-020):
+/// the workspace uninstalled or never installed, and an error status would
+/// make Slack retry-loop. Takes the caller's conn SLOT (`maybe_conn`, non-null
+/// on entry) so the release happens here, before any vendor HTTP — a stalled
+/// vendor must degrade this one mention, never park a pool slot with it.
+fn dispatchMention(hx: Hx, maybe_conn: *?*pg.Conn, m: Mention) void {
+    const conn = maybe_conn.*.?;
     const workspace_id = resolveWorkspace(hx.alloc, conn, m.team_id) catch {
         common.internalDbError(hx.res, hx.req_id);
         return;
@@ -174,13 +179,26 @@ fn dispatchMention(hx: Hx, conn: *pg.Conn, m: Mention) void {
     };
     defer hx.alloc.free(channel_fleet_id);
 
-    enqueueMention(hx, conn, workspace_id, channel_fleet_id, m);
+    // Pre-load the bot token for the best-effort thread re-read — the last
+    // database read this request makes. Absent/garbled handle → null → the
+    // re-read degrades to an empty thread downstream.
+    const bot_token: ?[]const u8 = post.loadBotToken(hx.alloc, conn, workspace_id) catch null;
+    defer if (bot_token) |t| hx.alloc.free(t);
+
+    // Everything after this line is Redis + vendor HTTP: hand the pool slot
+    // back NOW instead of riding it through a (deadline-armed, but still up to
+    // 1.5 s) vendor read.
+    hx.ctx.pool.release(conn);
+    maybe_conn.* = null;
+
+    enqueueMention(hx, bot_token, workspace_id, channel_fleet_id, m);
 }
 
 /// Dedup on (channel_fleet_id, event.ts) then XADD the mention as a `slack:<user>`
 /// chat event — the no-principal webhook-producer shape. The dedup slot is
 /// released on any post-claim failure so Slack's retry stays deliverable.
-fn enqueueMention(hx: Hx, conn: *pg.Conn, workspace_id: []const u8, channel_fleet_id: []const u8, m: Mention) void {
+/// Conn-free by design: runs entirely on Redis + the deadline-armed vendor read.
+fn enqueueMention(hx: Hx, bot_token: ?[]const u8, workspace_id: []const u8, channel_fleet_id: []const u8, m: Mention) void {
     var dedup_buf: [256]u8 = undefined;
     const dedup_key = std.fmt.bufPrint(&dedup_buf, "{s}{s}:{s}", .{ ec.SLACK_DEDUP_KEY_PREFIX, channel_fleet_id, m.ts }) catch {
         common.internalOperationError(hx.res, "dedup key overflow", hx.req_id);
@@ -196,13 +214,13 @@ fn enqueueMention(hx: Hx, conn: *pg.Conn, workspace_id: []const u8, channel_flee
         return;
     }
 
-    // §4 E — best-effort recent-thread re-read (bounded last-N) so the runner's
-    // input carries same-thread continuity the mention-only bot is otherwise
-    // blind to. Any failure degrades to an empty thread (the answer still works
-    // from durable channel memory + the mention text); dedup on event.ts makes a
-    // slow Slack call safe to retry.
+    // Best-effort recent-thread re-read (bounded last-N, deadline-armed) so the
+    // runner's input carries same-thread continuity the mention-only bot is
+    // otherwise blind to. Any failure degrades to an empty thread (the answer
+    // still works from durable channel memory + the mention text); dedup on
+    // event.ts makes a slow Slack call safe to retry.
     const api_base = hx.ctx.connector_slack_api_base_override orelse post.SLACK_API_BASE_DEFAULT;
-    var recent = thread.fetchRecent(hx.alloc, hx.ctx.io, conn, api_base, workspace_id, m.channel, m.thread_ts orelse m.ts);
+    var recent = thread.fetchRecent(hx.alloc, hx.ctx.io, bot_token, api_base, workspace_id, m.channel, m.thread_ts orelse m.ts);
     defer recent.deinit();
 
     const request_json = buildRequestJson(hx.alloc, m, recent.msgs) catch {

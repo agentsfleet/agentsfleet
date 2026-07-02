@@ -10,6 +10,7 @@
 
 const std = @import("std");
 const pg = @import("pg");
+const bounded_fetch = @import("bounded_fetch.zig");
 const connector_state = @import("state.zig");
 const queue_redis = @import("../../../queue/redis.zig");
 const vault = @import("../../../state/vault.zig");
@@ -87,9 +88,11 @@ pub fn authorizeUrl(
 }
 
 /// Exchange an authorization `code` for tokens at the connector's token endpoint
-/// (form-encoded POST). Returns the raw status + body for provider-specific
-/// parsing. `io` is injected so tests can drive a loopback server. Never logs
-/// the body — it carries the client secret + minted token (RULE VLT).
+/// (form-encoded POST), deadline-armed via `bounded_fetch` (fail-closed: a
+/// deadline that cannot be enforced refuses the call). Returns the raw status +
+/// body for provider-specific parsing. `io` is injected so tests can drive a
+/// loopback server. Never logs the body — it carries the client secret +
+/// minted token (RULE VLT).
 pub fn exchange(
     alloc: std.mem.Allocator,
     io: std.Io,
@@ -107,29 +110,24 @@ pub fn exchange(
     );
     defer alloc.free(body);
 
-    var client: std.http.Client = .{ .allocator = alloc, .io = io };
-    defer client.deinit();
-
-    // BUFFER GATE: Allocating writer over an ArrayList(u8) — append-as-you-go,
-    // size unknown until the full token JSON arrives; read once, no random
-    // access. The body is read back through the writer (`aw.toOwnedSlice`): once
-    // the writer grows its buffer via drain, the seed ArrayList is stale, so
-    // reading `resp_body` directly returns an empty slice.
-    var resp_body: std.ArrayList(u8) = .empty;
-    var aw: std.Io.Writer.Allocating = .fromArrayList(alloc, &resp_body);
-    errdefer aw.deinit();
-
+    // The exchange is a rare, request-scoped browser round-trip — the request
+    // IS the client context, so the watchdog is request-scoped too (a shared
+    // one would let two concurrent callbacks clobber each other's arm).
+    var wd: bounded_fetch.Watchdog = .{};
+    defer wd.deinit();
     const headers = [_]std.http.Header{
         .{ .name = "content-type", .value = "application/x-www-form-urlencoded" },
     };
-    const result = try client.fetch(.{
-        .location = .{ .url = spec.token_endpoint },
+    const res = try bounded_fetch.fetch(alloc, io, &wd, .{
+        .url = spec.token_endpoint,
         .method = .POST,
         .payload = body,
         .extra_headers = &headers,
-        .response_writer = &aw.writer,
+        .deadline_ms = bounded_fetch.TOKEN_EXCHANGE_DEADLINE_MS,
+        .provider = spec.provider,
+        .class = .token_exchange,
     });
-    return .{ .status = @intFromEnum(result.status), .body = try aw.toOwnedSlice() };
+    return .{ .status = res.status, .body = res.body };
 }
 
 pub const APP_VAULT_KEY_SUFFIX = "-app";

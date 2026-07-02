@@ -97,16 +97,16 @@ pub const Route = union(enum) {
     request_integration_grant: matchers.WorkspaceFleetRoute, // POST /v1/workspaces/{ws}/fleets/{id}/integration-requests
     list_integration_grants: matchers.WorkspaceFleetRoute, // GET /v1/workspaces/{ws}/fleets/{id}/integration-grants
     revoke_integration_grant: matchers.WorkspaceFleetGrantRoute, // DELETE /v1/workspaces/{ws}/fleets/{id}/integration-grants/{grant_id}
-    // GitHub App connector (M102 §5)
-    connect_github: []const u8, // POST /v1/workspaces/{ws}/connectors/github/connect
-    github_connector_status: []const u8, // GET /v1/workspaces/{ws}/connectors/github
-    github_connect_callback, // GET /v1/connectors/github/callback (Bearer-less; state-authed)
-    // Slack OAuth connector (M106 §1)
-    connect_slack: []const u8, // POST /v1/workspaces/{ws}/connectors/slack/connect
-    slack_connector_status: []const u8, // GET /v1/workspaces/{ws}/connectors/slack
-    slack_connect_callback, // GET /v1/connectors/slack/callback (Bearer-less; state-authed)
-    // Slack events ingress (M106 §2) — POST /v1/connectors/slack/events.
-    // Bearer-less; the Slack v0 request signature is the only auth (in-handler).
+    // Connector platform — one generic trio resolved against the comptime
+    // registry (handlers/connectors/registry.zig); an unknown provider is a
+    // 404 whose body names it. Slack + GitHub are registry ids, so their
+    // shipped URLs are preserved verbatim.
+    connector_connect: matchers.WorkspaceConnectorRoute, // POST /v1/workspaces/{ws}/connectors/{provider}/connect
+    connector_status: matchers.WorkspaceConnectorRoute, // GET /v1/workspaces/{ws}/connectors/{provider}
+    connector_callback: []const u8, // GET /v1/connectors/{provider}/callback (Bearer-less; state-authed)
+    // Slack events ingress — POST /v1/connectors/slack/events. Bearer-less;
+    // the Slack v0 request signature is the only auth (in-handler). Bespoke:
+    // inbound event surfaces are per-provider by nature.
     slack_events,
     // Workspace fleet-key management
     fleet_keys: []const u8, // POST|GET /v1/workspaces/{ws}/fleet-keys

@@ -64,12 +64,13 @@ NOUN_FINAL_SEGMENT_ALLOW: set[str] = {
     "stream",            # SSE sub-resource of /events; not "to stream", a thing
     "current-run",       # the active run record (read-only resource)
     "llm",               # LLM credential bucket (a class of credential)
-    "interactions",      # slack interaction events
     # Webhook receivers — these are inbound endpoints, not RESTful resources.
     # Their shape is dictated by the calling vendor, not by us.
-    "callback",          # OAuth callback receiver (slack, github)
+    "callback",          # generic connector callback receiver — /v1/connectors/{provider}/callback (M108)
     "events",            # slack events receiver (already covered above)
-    "install",           # slack install initiation (vendor-prescribed path)
+    "connect",           # connector connect initiation — /v1/workspaces/{ws}/connectors/{provider}/connect;
+                         # URL shipped per-provider in M102/M106 (integration suites assert it verbatim),
+                         # so the colon-op rename (:connect) is out of reach without breaking live installs
     "clerk",             # clerk webhook receiver
     "approval",          # webhook subpath for vendor-driven approval flows
     "grant-approval",    # webhook subpath for grant approval flows

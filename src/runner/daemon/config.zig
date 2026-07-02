@@ -43,7 +43,7 @@ worker_count: u32,
 /// defaults single-sourced from the client. Renew is clamped strictly under
 /// the renewal tick at load so a hung control plane can never starve the
 /// child's deadline kill.
-cp_deadlines: client_mod.Deadlines,
+cp_deadlines: call_deadline.Deadlines,
 /// Operator-fed registry baseline (env `RUNNER_REGISTRY_ALLOWLIST`,
 /// comma-separated), merged into each lease's egress allowlist. Empty when unset
 /// — the caller substitutes the named default (`network/AllowList.DEFAULT_REGISTRY`).
@@ -109,15 +109,15 @@ pub fn load(env_map: *const std.process.Environ.Map, alloc: Allocator) ConfigErr
 
 /// Resolve the four control-plane deadlines from the environment over the
 /// client defaults. Borrowed env slices only — nothing to free.
-fn loadDeadlines(env_map: *const std.process.Environ.Map) client_mod.Deadlines {
-    var d = client_mod.Deadlines{};
+fn loadDeadlines(env_map: *const std.process.Environ.Map) call_deadline.Deadlines {
+    var d = call_deadline.Deadlines{};
     d.default_ms = resolveDeadline(env_map, ENV_RUNNER_CP_DEADLINE_MS, d.default_ms);
     d.report_ms = resolveDeadline(env_map, ENV_RUNNER_CP_REPORT_DEADLINE_MS, d.report_ms);
     d.activity_ms = resolveDeadline(env_map, ENV_RUNNER_CP_ACTIVITY_DEADLINE_MS, d.activity_ms);
     d.renew_ms = resolveDeadline(env_map, ENV_RUNNER_CP_RENEW_DEADLINE_MS, d.renew_ms);
     if (d.renew_ms + common_constants.RENEWAL_TICK_MS >= common_constants.RENEWAL_WINDOW_MS) {
-        log.warn("runner_cp_renew_deadline_clamped", .{ .error_code = client_errors.ERR_EXEC_RUNNER_INVALID_CONFIG, .configured_ms = d.renew_ms, .fallback_ms = client_mod.RENEW_DEADLINE_MS });
-        d.renew_ms = client_mod.RENEW_DEADLINE_MS;
+        log.warn("runner_cp_renew_deadline_clamped", .{ .error_code = client_errors.ERR_EXEC_RUNNER_INVALID_CONFIG, .configured_ms = d.renew_ms, .fallback_ms = call_deadline.RENEW_DEADLINE_MS });
+        d.renew_ms = call_deadline.RENEW_DEADLINE_MS;
     }
     return d;
 }
@@ -224,7 +224,7 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const contract = @import("contract");
 const common_constants = @import("common");
-const client_mod = @import("control_plane_client.zig");
+const call_deadline = @import("call_deadline");
 const client_errors = @import("../engine/client_errors.zig");
 const network = @import("../network/Policy.zig");
 const logging = @import("log");
@@ -292,7 +292,7 @@ test "worker count invalid falls back to default" {
 }
 
 test "deadline parses default, clamps bounds, rejects garbage" {
-    const default = client_mod.DEFAULT_DEADLINE_MS;
+    const default = call_deadline.DEFAULT_DEADLINE_MS;
     try std.testing.expectEqual(default, parseDeadlineMs(null, default).value); // unset → default
     try std.testing.expectEqual(@as(u31, 2_500), parseDeadlineMs("2500", default).value);
     try std.testing.expectEqual(MIN_CP_DEADLINE_MS, parseDeadlineMs("1", default).value); // below floor → clamp up
@@ -308,7 +308,7 @@ test "renew deadline override above the tick clamps back to the default" {
     });
     defer env_map.deinit();
     const d = loadDeadlines(&env_map);
-    try std.testing.expectEqual(client_mod.RENEW_DEADLINE_MS, d.renew_ms);
+    try std.testing.expectEqual(call_deadline.RENEW_DEADLINE_MS, d.renew_ms);
 }
 
 test "parseRegistryAllowlist splits, trims, and skips empty tokens" {

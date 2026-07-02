@@ -112,14 +112,10 @@ fn matchV1(p: matchers.Path, method: httpz.Method) ?Route {
     if (matchers.matchWorkspaceFleetAction(p, "memories")) |r| return .{ .workspace_fleet_memories = r };
     if (matchers.matchWorkspaceFleetAction(p, "integration-requests")) |r| return .{ .request_integration_grant = r };
     if (matchers.matchWorkspaceFleetAction(p, "integration-grants")) |r| return .{ .list_integration_grants = r };
-    // ── Workspace + connector (GitHub App, M102 §5) ──────────────────────
-    if (matchers.matchWorkspaceConnectorGithubConnect(p)) |ws| return .{ .connect_github = ws };
-    if (matchers.matchWorkspaceConnectorGithub(p)) |ws| return .{ .github_connector_status = ws };
-    if (matchers.matchGithubConnectCallback(p)) return .{ .github_connect_callback = {} };
-    // ── Workspace + connector (Slack OAuth, M106 §1) ─────────────────────
-    if (matchers.matchWorkspaceConnectorSlackConnect(p)) |ws| return .{ .connect_slack = ws };
-    if (matchers.matchWorkspaceConnectorSlack(p)) |ws| return .{ .slack_connector_status = ws };
-    if (matchers.matchSlackConnectCallback(p)) return .{ .slack_connect_callback = {} };
+    // ── Connectors: generic {provider} trio, registry-resolved (M108) ─────
+    if (matchers.matchWorkspaceConnectorConnect(p)) |r| return .{ .connector_connect = r };
+    if (matchers.matchWorkspaceConnector(p)) |r| return .{ .connector_status = r };
+    if (matchers.matchConnectorCallback(p)) |provider| return .{ .connector_callback = provider };
     // ── Slack events ingress (M106 §2) — POST-only (invoke fn 405s others) ─
     if (matchers.matchSlackEvents(p)) return .{ .slack_events = {} };
     // ── Workspace + leaf ──────────────────────────────────────────────────

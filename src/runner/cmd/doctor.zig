@@ -8,6 +8,7 @@ const std = @import("std");
 const protocol = @import("contract").protocol;
 const Config = @import("../daemon/config.zig");
 const Client = @import("../daemon/control_plane_client.zig");
+const call_deadline = @import("call_deadline");
 const args = @import("args.zig");
 const output = @import("output.zig");
 const LITERAL = "\n";
@@ -45,7 +46,7 @@ fn reachCheck(io: std.Io, alloc: std.mem.Allocator, api: ?[]const u8, token: ?[]
     if (api == null or token == null) return .{ .name = CHECK_CONTROL_PLANE, .ok = false, .detail = "skipped — api/token unset" };
     var client = Client.init(alloc, io, api.?);
     defer client.deinit();
-    _ = client.heartbeat(alloc, token.?, Client.DEFAULT_DEADLINE_MS) catch
+    _ = client.heartbeat(alloc, token.?, call_deadline.DEFAULT_DEADLINE_MS) catch
         return .{ .name = CHECK_CONTROL_PLANE, .ok = false, .detail = "unreachable or token rejected" };
     return .{ .name = CHECK_CONTROL_PLANE, .ok = true, .detail = "reachable; token valid" };
 }

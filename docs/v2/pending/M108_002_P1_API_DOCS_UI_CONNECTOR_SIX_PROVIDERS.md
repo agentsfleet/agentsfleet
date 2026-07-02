@@ -17,7 +17,7 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Priority:** P1 — Indy's stated integration targets; each must connect with "low lift" as proof the platform base earns its keep.
 **Categories:** API, DOCS, UI
 **Batch:** B2 — starts after M108_001's registry + bounded-fetch gates clear
-**Branch:** feat/m106-slack-resident (folded into PR #468 per Indy's direction — see M108_001 Discovery)
+**Branch:** feat/m108-connector-platform (follows M108_001 on the same branch/PR — #468 merged before M108 implementation began; see M108_001 Discovery)
 **Depends on:** M108_001 (registry, archetypes, bounded outbound — the base these entries plug into)
 **Provenance:** LLM-drafted (Claude Fable 5, Jul 02, 2026) — implementing agent cross-checks each provider's endpoints against current vendor docs at EXECUTE
 

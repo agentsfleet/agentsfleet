@@ -101,6 +101,10 @@ pub const NO_WORK_RETRY_AFTER_MS: u32 = 1_000;
 /// `fleet:<provider>` vault-key stem.
 pub const PROVIDER_SLACK = "slack";
 
+/// Connector provider id for GitHub — the registry id, the `{provider}` route
+/// segment, and the `github-app` / `fleet:github` vault-key stem.
+pub const PROVIDER_GITHUB = "github";
+
 /// `connector_channels.kind` for a per-channel resident fleet — the durable
 /// fleet that owns one Slack channel's memory namespace.
 pub const CONNECTOR_CHANNEL_KIND_RESIDENT = "resident";

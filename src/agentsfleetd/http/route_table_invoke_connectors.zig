@@ -1,71 +1,43 @@
-//! GitHub connector invokes — kept in a sibling file so route_table_invoke.zig
-//! stays under the file-length budget (RULE FLL). connect/status carry the
-//! workspace id; the callback reads its signed state from the query (no path
-//! param), so it ignores `route`.
+//! Connector invokes — kept in a sibling file so route_table_invoke.zig stays
+//! under the file-length budget (RULE FLL). One generic trio serves every
+//! provider in the connector registry (connect/status carry the workspace +
+//! provider captures; the callback reads its signed state from the query, so
+//! its only capture is the provider). Slack's events ingress stays bespoke.
 
 const httpz = @import("httpz");
 const router = @import("router.zig");
 const common = @import("handlers/common.zig");
 const hx_mod = @import("handlers/hx.zig");
 
-const connect_h = @import("handlers/connectors/github/connect.zig");
-const callback_h = @import("handlers/connectors/github/callback.zig");
-const status_h = @import("handlers/connectors/github/status.zig");
-const slack_connect_h = @import("handlers/connectors/slack/connect.zig");
-const slack_callback_h = @import("handlers/connectors/slack/callback.zig");
+const connect_h = @import("handlers/connectors/connect.zig");
+const callback_h = @import("handlers/connectors/callback.zig");
+const status_h = @import("handlers/connectors/status.zig");
 const slack_events_h = @import("handlers/connectors/slack/events.zig");
-const slack_status_h = @import("handlers/connectors/slack/status.zig");
 
 const Hx = hx_mod.Hx;
 
-pub fn invokeConnectGithub(hx: *Hx, req: *httpz.Request, route: router.Route) void {
+pub fn invokeConnectorConnect(hx: *Hx, req: *httpz.Request, route: router.Route) void {
     if (req.method != .POST) {
         common.respondMethodNotAllowed(hx.res);
         return;
     }
-    connect_h.innerConnectGithub(hx.*, route.connect_github);
+    connect_h.innerConnect(hx.*, route.connector_connect);
 }
 
-pub fn invokeGithubConnectorStatus(hx: *Hx, req: *httpz.Request, route: router.Route) void {
+pub fn invokeConnectorStatus(hx: *Hx, req: *httpz.Request, route: router.Route) void {
     if (req.method != .GET) {
         common.respondMethodNotAllowed(hx.res);
         return;
     }
-    status_h.innerGithubStatus(hx.*, route.github_connector_status);
+    status_h.innerStatus(hx.*, route.connector_status);
 }
 
-pub fn invokeGithubCallback(hx: *Hx, req: *httpz.Request, route: router.Route) void {
+pub fn invokeConnectorCallback(hx: *Hx, req: *httpz.Request, route: router.Route) void {
     if (req.method != .GET) {
         common.respondMethodNotAllowed(hx.res);
         return;
     }
-    _ = route;
-    callback_h.innerGithubCallback(hx.*, req);
-}
-
-pub fn invokeConnectSlack(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    if (req.method != .POST) {
-        common.respondMethodNotAllowed(hx.res);
-        return;
-    }
-    slack_connect_h.innerConnectSlack(hx.*, route.connect_slack);
-}
-
-pub fn invokeSlackConnectorStatus(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    if (req.method != .GET) {
-        common.respondMethodNotAllowed(hx.res);
-        return;
-    }
-    slack_status_h.innerSlackStatus(hx.*, route.slack_connector_status);
-}
-
-pub fn invokeSlackCallback(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    if (req.method != .GET) {
-        common.respondMethodNotAllowed(hx.res);
-        return;
-    }
-    _ = route;
-    slack_callback_h.innerSlackCallback(hx.*, req);
+    callback_h.innerCallback(hx.*, req, route.connector_callback);
 }
 
 pub fn invokeSlackEvents(hx: *Hx, req: *httpz.Request, route: router.Route) void {

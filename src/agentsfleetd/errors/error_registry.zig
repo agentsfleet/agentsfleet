@@ -211,9 +211,11 @@ pub const ERR_RUNNER_NOT_FOUND = "UZ-RUN-014";
 pub const ERR_CRED_INTEGRATION_NOT_CONNECTED = "UZ-CRED-001";
 pub const ERR_GH_RECONNECT_REQUIRED = "UZ-GH-001";
 pub const ERR_GH_MINT_FAILED = "UZ-GH-002";
-// GITHUB CONNECT (M102 §5 — the connect round-trip)
+// CONNECTOR PLATFORM (the connect round-trip + bounded vendor calls — any provider)
 pub const ERR_CONNECTOR_NOT_CONFIGURED = "UZ-CONN-001";
 pub const ERR_CONNECTOR_STATE_INVALID = "UZ-CONN-002";
+pub const ERR_CONNECTOR_VENDOR_DEADLINE = "UZ-CONN-003";
+pub const ERR_CONNECTOR_UNKNOWN = "UZ-CONN-004";
 
 // ── Non-error constants (migrated from codes.zig) ──────────────────────────
 // Webhook user-facing messages

@@ -24,6 +24,7 @@ const S_PG = "pg";
 const S_YAML = "yaml";
 const S_CONTRACT = "contract";
 const S_COMMON = "common";
+const S_CALL_DEADLINE = "call_deadline";
 const S_S3 = "s3";
 
 pub fn build(b: *std.Build) void {
@@ -124,6 +125,11 @@ pub fn build(b: *std.Build) void {
     // outside the agentsfleetd module root, so it cannot be relative-imported.
     const common_mod = deps.common;
 
+    // Socket-shutdown call watchdog (src/lib/call_deadline) — bounds the
+    // connectors' outbound vendor HTTP (bounded_fetch); shared with the
+    // runner's control-plane client so the mechanism exists exactly once.
+    const call_deadline_mod = deps.call_deadline;
+
     // hmac_sig sources its wall-clock from `common.clock` (Zig 0.16 removed
     // std.time.*Timestamp). Same pure, datastore-free shared module as log_mod —
     // no domain coupling, no cycle (common never imports hmac_sig).
@@ -153,6 +159,7 @@ pub fn build(b: *std.Build) void {
                 .{ .name = S_LOG, .module = log_mod },
                 .{ .name = S_CONTRACT, .module = contract_mod },
                 .{ .name = S_COMMON, .module = common_mod },
+                .{ .name = S_CALL_DEADLINE, .module = call_deadline_mod },
                 .{ .name = S_YAML, .module = yaml_mod },
                 .{ .name = S_S3, .module = s3_mod },
             },
@@ -173,38 +180,11 @@ pub fn build(b: *std.Build) void {
     // (`build_runner.zig`) and never links agentsfleetd's server infrastructure
     // (pg/httpz/redis). It shares only the frozen wire protocol by source.
 
-    // ── Shared src/lib test step ─────────────────────────────────────────────
-    // One step, two compilations. agentsfleet-lib-tests file-imports contract +
-    // common so their tests collect into its root module (the test runner only
-    // collects root-module tests). Logging cannot join that root: its files
-    // resolve `@import("common")` as a named module, and one file cannot
-    // belong to two modules — file-importing common/*.zig beside the named
-    // instance is a compile error — so the logging barrel roots its own
-    // compilation in the exact module shape the production graphs use.
-    const lib_tests = b.addTest(.{
-        .name = "agentsfleet-lib-tests",
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("src/lib/tests.zig"),
-            .target = target,
-            .optimize = optimize,
-        }),
-        .filters = test_filters,
-    });
-    const logging_tests = b.addTest(.{
-        .name = "agentsfleet-logging-tests",
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("src/lib/logging/mod.zig"),
-            .target = target,
-            .optimize = optimize,
-            .imports = &.{
-                .{ .name = S_COMMON, .module = common_mod },
-            },
-        }),
-        .filters = test_filters,
-    });
-    const lib_test_step = b.step("test-lib", "Run shared src/lib module unit tests");
-    lib_test_step.dependOn(&b.addRunArtifact(lib_tests).step);
-    lib_test_step.dependOn(&b.addRunArtifact(logging_tests).step);
+    // ── Shared src/lib test step (`test-lib`) ────────────────────────────────
+    // Extracted to src/build/lib_tests.zig (RULE FLL) — one step covering the
+    // src/lib barrel plus the named-module-consuming lib modules (logging,
+    // call_deadline), each compiled in its production module shape.
+    buildpkg.lib_tests.addTestStep(b, target, optimize, test_filters, deps);
 
     // `test-s3`: compile r2.zig against z3 standalone (build-wiring gate).
     buildpkg.s3.addTestStep(b, target, optimize, test_filters);
@@ -235,6 +215,7 @@ pub fn build(b: *std.Build) void {
                 .{ .name = S_LOG, .module = log_mod },
                 .{ .name = S_CONTRACT, .module = contract_mod },
                 .{ .name = S_COMMON, .module = common_mod },
+                .{ .name = S_CALL_DEADLINE, .module = call_deadline_mod },
                 .{ .name = S_YAML, .module = yaml_mod },
                 .{ .name = S_S3, .module = s3_mod },
             },

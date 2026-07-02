@@ -56,6 +56,11 @@ tags:
   description: Fleet runtime permission grants for third-party services (Slack, GitHub, etc.)
   x-mintlify:
     navigation: Integration Grants
+- name: Connectors
+  description: Workspace connectors — auth + credential plumbing for third-party providers. One generic `{provider}` route
+    set serves every provider in the deployment's connector registry; unknown providers are 404.
+  x-mintlify:
+    navigation: Connectors
 - name: Fleet Keys
   description: Per-Fleet API keys for LangGraph/CrewAI/Composio Fleets to call the execute endpoint. Workspace-scoped.
   x-mintlify:
@@ -124,6 +129,14 @@ paths:
     $ref: ./paths/webhooks.yaml#/~1v1~1webhooks~1{fleet_id}~1grant-approval
   /v1/webhooks/{fleet_id}/github:
     $ref: ./paths/webhooks.yaml#/~1v1~1webhooks~1{fleet_id}~1github
+  /v1/workspaces/{workspace_id}/connectors/{provider}/connect:
+    $ref: ./paths/connectors.yaml#/~1v1~1workspaces~1{workspace_id}~1connectors~1{provider}~1connect
+  /v1/workspaces/{workspace_id}/connectors/{provider}:
+    $ref: ./paths/connectors.yaml#/~1v1~1workspaces~1{workspace_id}~1connectors~1{provider}
+  /v1/connectors/{provider}/callback:
+    $ref: ./paths/connectors.yaml#/~1v1~1connectors~1{provider}~1callback
+  /v1/connectors/slack/events:
+    $ref: ./paths/connectors.yaml#/~1v1~1connectors~1slack~1events
   /v1/workspaces:
     $ref: ./paths/workspaces.yaml#/~1v1~1workspaces
   /v1/tenants/me/billing:
