@@ -9,6 +9,7 @@ const std = @import("std");
 const testing = std.testing;
 const constants = @import("common");
 const client = @import("control_plane_client.zig");
+const call_deadline = @import("call_deadline");
 const child_supervisor = @import("../child_supervisor.zig");
 const renew_driver = @import("renew_driver.zig");
 const protocol = @import("contract").protocol;
@@ -43,7 +44,7 @@ fn driverWith(fake: *FakeClient, deadline_ms: i64) Driver {
         .runner_token = "agt_rtest",
         .lease_id = "lease_test",
         .deadline_ms = deadline_ms,
-        .renew_deadline_ms = client.RENEW_DEADLINE_MS,
+        .renew_deadline_ms = call_deadline.RENEW_DEADLINE_MS,
     };
 }
 

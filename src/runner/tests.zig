@@ -4,7 +4,9 @@
 //! `main.zig` pulls in the prod module graph and main's own inline tests; the
 //! remaining lines force the daemon/ + engine/ modules and their `*_test.zig`
 //! files into the test compilation. No pg/redis — same isolation the runner
-//! exe ships with. Mirrors `src/agentsfleetd/tests.zig`.
+//! exe ships with. Mirrors `src/agentsfleetd/tests.zig`. Named-module tests
+//! (common, call_deadline, contract, log) do NOT collect here — the test
+//! runner only collects root-module tests; they run in `zig build test-lib`.
 
 test {
     _ = @import("main.zig");
@@ -20,7 +22,6 @@ test {
     _ = @import("daemon/worker_pool_test.zig");
     _ = @import("daemon/renew_driver.zig");
     _ = @import("daemon/renew_driver_test.zig");
-    _ = @import("common");
     _ = @import("child_supervisor.zig");
     _ = @import("child_supervisor_read.zig");
     _ = @import("child_supervisor_result.zig");
