@@ -87,6 +87,20 @@ pub const LogSpec = struct {
     error_code: []const u8,
 };
 
+/// Best-effort `shutdown(2)` on a raw socket fd, no libc required. On Linux we
+/// issue the syscall directly (`std.os.linux.shutdown`) so this module compiles
+/// in a test graph that doesn't link libc — the agentsfleetd/runner binaries
+/// link it, but the standalone `test-lib` compilation does not, and `std.c`
+/// there is a compile error. macOS has no stable syscall ABI and always links
+/// libc, so it keeps the `std.c` path.
+fn rawShutdown(handle: std.posix.fd_t) void {
+    if (comptime builtin.os.tag == .linux) {
+        _ = std.os.linux.shutdown(handle, std.os.linux.SHUT.RDWR);
+    } else {
+        _ = std.c.shutdown(handle, std.c.SHUT.RDWR);
+    }
+}
+
 /// One watchdog per single-call-at-a-time client context. While a call is
 /// armed, a deadline pass shuts the in-flight socket down, waking the blocked
 /// read; the verb surfaces a retryable transport error and the pool replaces
@@ -186,7 +200,7 @@ pub fn Watchdog(comptime log_spec: ?LogSpec) type {
                     // the syscall and the shutdown would hit the next call's
                     // socket. shutdown(2) is non-blocking; the hold is
                     // microseconds.
-                    _ = std.c.shutdown(self.handle, std.c.SHUT.RDWR);
+                    rawShutdown(self.handle);
                     self.armed = false;
                     self.fired = true;
                     if (comptime log_spec) |spec| {
