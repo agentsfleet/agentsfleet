@@ -28,6 +28,8 @@ const testing = std.testing;
 
 // UUIDv7-shaped fixtures distinct from the oauth-callback suite's ids so the
 // shared test DB stays collision-free under the parallel runner.
+const TENANT_ID = "0195c106-1000-7000-8000-f00000000011"; // per-suite tenant — keeps this suite's workspaces off the shared tenant's FK chain
+const TENANT_NAME = "slack-events-suite";
 const ADMIN_WS = "0195c106-1001-7000-8000-000000000011";
 const TARGET_WS = "0195c106-1002-7000-8000-000000000012";
 const SIGNING_SECRET = "m106-events-signing-secret-key!!";
@@ -173,9 +175,9 @@ test "integration: signed app_mention acks + enqueues; second mention reuses the
     defer h.releaseConn(conn);
 
     test_fixtures.setTestEncryptionKey();
-    try test_fixtures.seedTenant(conn);
-    try test_fixtures.seedWorkspace(conn, ADMIN_WS);
-    try test_fixtures.seedWorkspace(conn, TARGET_WS);
+    try test_fixtures.seedTenantById(conn, TENANT_ID, TENANT_NAME);
+    try test_fixtures.seedWorkspaceWithTenant(conn, ADMIN_WS, TENANT_ID);
+    try test_fixtures.seedWorkspaceWithTenant(conn, TARGET_WS, TENANT_ID);
     preClean(conn);
     defer teardownResident(conn, RESIDENT_NAME, TEAM_ID); // don't leak the materialized fleet into other lease scans
     try seedSlackApp(alloc, conn);
@@ -225,8 +227,8 @@ test "integration: unmapped team is a 200-ack no-op, nothing enqueued (Dim 2.2)"
     defer h.releaseConn(conn);
 
     test_fixtures.setTestEncryptionKey();
-    try test_fixtures.seedTenant(conn);
-    try test_fixtures.seedWorkspace(conn, ADMIN_WS);
+    try test_fixtures.seedTenantById(conn, TENANT_ID, TENANT_NAME);
+    try test_fixtures.seedWorkspaceWithTenant(conn, ADMIN_WS, TENANT_ID);
     preClean(conn);
     try seedSlackApp(alloc, conn); // signing secret present, but NO install for TEAM_UNMAPPED
     h.ctx.platform_admin_workspace_id = ADMIN_WS;
@@ -250,8 +252,8 @@ test "integration: url_verification handshake echoes the challenge (Dim 2.3)" {
     defer h.releaseConn(conn);
 
     test_fixtures.setTestEncryptionKey();
-    try test_fixtures.seedTenant(conn);
-    try test_fixtures.seedWorkspace(conn, ADMIN_WS);
+    try test_fixtures.seedTenantById(conn, TENANT_ID, TENANT_NAME);
+    try test_fixtures.seedWorkspaceWithTenant(conn, ADMIN_WS, TENANT_ID);
     try seedSlackApp(alloc, conn);
     h.ctx.platform_admin_workspace_id = ADMIN_WS;
 
@@ -270,8 +272,8 @@ test "integration: a bad signature is rejected 401 UZ-SLK-010 end-to-end (Dim 2.
     defer h.releaseConn(conn);
 
     test_fixtures.setTestEncryptionKey();
-    try test_fixtures.seedTenant(conn);
-    try test_fixtures.seedWorkspace(conn, ADMIN_WS);
+    try test_fixtures.seedTenantById(conn, TENANT_ID, TENANT_NAME);
+    try test_fixtures.seedWorkspaceWithTenant(conn, ADMIN_WS, TENANT_ID);
     try seedSlackApp(alloc, conn);
     h.ctx.platform_admin_workspace_id = ADMIN_WS;
 
@@ -313,9 +315,9 @@ test "integration: two concurrent first-mentions converge on exactly one fleet +
     defer h.releaseConn(conn);
 
     test_fixtures.setTestEncryptionKey();
-    try test_fixtures.seedTenant(conn);
-    try test_fixtures.seedWorkspace(conn, ADMIN_WS);
-    try test_fixtures.seedWorkspace(conn, TARGET_WS);
+    try test_fixtures.seedTenantById(conn, TENANT_ID, TENANT_NAME);
+    try test_fixtures.seedWorkspaceWithTenant(conn, ADMIN_WS, TENANT_ID);
+    try test_fixtures.seedWorkspaceWithTenant(conn, TARGET_WS, TENANT_ID);
     // Pre-clean this channel's rows (fleet delete cascades its binding via the FK;
     // the explicit binding + install deletes cover a never-materialized prior run).
     _ = conn.exec("DELETE FROM core.connector_channels WHERE provider = $1 AND external_account_id = $2", .{ spec.PROVIDER, TEAM_CC }) catch |e| std.log.warn("cc preclean channels: {s}", .{@errorName(e)});

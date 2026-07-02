@@ -25,6 +25,8 @@ const TestHarness = harness_mod.TestHarness;
 const net = std.Io.net;
 const testing = std.testing;
 
+const TENANT_ID = "0195c106-4000-7000-8000-f00000000042"; // per-suite tenant — keeps this suite's workspace off the shared tenant's FK chain
+const TENANT_NAME = "slack-outbound-suite";
 const WS = "0195c106-4002-7000-8000-000000000042";
 const FLEET_ID = "0195c106-4003-7000-8000-000000000043";
 const FLEET_NAME = "slack-channel-t106out-c106out";
@@ -175,8 +177,8 @@ fn preClean(conn: *pg.Conn) void {
 
 fn seedAll(alloc: std.mem.Allocator, conn: *pg.Conn) !void {
     test_fixtures.setTestEncryptionKey();
-    try test_fixtures.seedTenant(conn);
-    try test_fixtures.seedWorkspace(conn, WS);
+    try test_fixtures.seedTenantById(conn, TENANT_ID, TENANT_NAME);
+    try test_fixtures.seedWorkspaceWithTenant(conn, WS, TENANT_ID);
     preClean(conn);
     try seedFleetRow(conn);
     try seedEventRow(conn);

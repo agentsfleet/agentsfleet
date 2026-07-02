@@ -26,6 +26,8 @@ const TestHarness = harness_mod.TestHarness;
 const testing = std.testing;
 const ALLOC = std.testing.allocator;
 
+const TENANT_ID = "0195c106-6000-7000-8000-f00000000061"; // per-suite tenant — keeps this suite's workspace + lease off the shared tenant's FK chain
+const TENANT_NAME = "slack-channel-memory-suite";
 const WORKSPACE_ID = "0195c106-6001-7000-8000-000000000061";
 const RUNNER_ID = "0195c106-6002-7000-8000-000000000062";
 const FLEET_ID = "0195c106-6003-7000-8000-000000000063";
@@ -92,7 +94,7 @@ fn seedLease(conn: *pg.Conn) !void {
         \\        'chat', '{"message":"hi"}', 0, 'platform', 'p', 'm', 0, 0, 0, 0,
         \\        $7, $8, 'active', 0, 0)
         \\ON CONFLICT (id) DO NOTHING
-    , .{ LEASE_ID, RUNNER_ID, FLEET_ID, WORKSPACE_ID, test_fixtures.TEST_TENANT_ID, EVENT_ID, @as(i64, FENCE), NOW_MS + 30_000 });
+    , .{ LEASE_ID, RUNNER_ID, FLEET_ID, WORKSPACE_ID, TENANT_ID, EVENT_ID, @as(i64, FENCE), NOW_MS + 30_000 });
 }
 
 /// Best-effort cleanup exec — logs (never suppresses) so a stale-state warning
@@ -154,8 +156,8 @@ test "integration: a channel fact captured in one thread is recalled in another 
     defer h.releaseConn(conn);
 
     test_fixtures.setTestEncryptionKey();
-    try test_fixtures.seedTenant(conn);
-    try test_fixtures.seedWorkspace(conn, WORKSPACE_ID);
+    try test_fixtures.seedTenantById(conn, TENANT_ID, TENANT_NAME);
+    try test_fixtures.seedWorkspaceWithTenant(conn, WORKSPACE_ID, TENANT_ID);
     teardown(conn);
     try seedFleet(conn);
     try seedBinding(conn);

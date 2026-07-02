@@ -29,6 +29,8 @@ const TestHarness = harness_mod.TestHarness;
 const net = std.Io.net;
 const testing = std.testing;
 
+const TENANT_ID = "0195c106-5000-7000-8000-f00000000051"; // per-suite tenant — keeps this suite's workspaces off the shared tenant's FK chain
+const TENANT_NAME = "slack-thread-refetch-suite";
 const ADMIN_WS = "0195c106-5001-7000-8000-000000000051";
 const TARGET_WS = "0195c106-5002-7000-8000-000000000052";
 const SIGNING_SECRET = "m106-thread-signing-secret-key!!"; // 32 bytes
@@ -245,9 +247,9 @@ test "integration: ingress re-reads the thread into request_json, stores nothing
     defer h.releaseConn(conn);
 
     test_fixtures.setTestEncryptionKey();
-    try test_fixtures.seedTenant(conn);
-    try test_fixtures.seedWorkspace(conn, ADMIN_WS);
-    try test_fixtures.seedWorkspace(conn, TARGET_WS);
+    try test_fixtures.seedTenantById(conn, TENANT_ID, TENANT_NAME);
+    try test_fixtures.seedWorkspaceWithTenant(conn, ADMIN_WS, TENANT_ID);
+    try test_fixtures.seedWorkspaceWithTenant(conn, TARGET_WS, TENANT_ID);
     preClean(conn);
     try seedSlackApp(alloc, conn);
     try seedBotToken(alloc, conn);
@@ -295,9 +297,9 @@ test "integration: a Slack 429 on the thread re-read degrades to an empty thread
     defer h.releaseConn(conn);
 
     test_fixtures.setTestEncryptionKey();
-    try test_fixtures.seedTenant(conn);
-    try test_fixtures.seedWorkspace(conn, ADMIN_WS);
-    try test_fixtures.seedWorkspace(conn, TARGET_WS);
+    try test_fixtures.seedTenantById(conn, TENANT_ID, TENANT_NAME);
+    try test_fixtures.seedWorkspaceWithTenant(conn, ADMIN_WS, TENANT_ID);
+    try test_fixtures.seedWorkspaceWithTenant(conn, TARGET_WS, TENANT_ID);
     preClean(conn);
     try seedSlackApp(alloc, conn);
     try seedBotToken(alloc, conn);

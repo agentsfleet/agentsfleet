@@ -1,14 +1,32 @@
 // Tests for src/state/tenant_billing.zig.
 
 const std = @import("std");
+const pg = @import("pg");
 
 const tenant_billing = @import("tenant_billing.zig");
 const base = @import("../db/test_fixtures.zig");
-const uc1 = @import("../db/test_fixtures_uc1.zig");
 const RUN_NANOS_PER_SEC_EXPECTED = 100_000;
 const TEST_CHARGE_NANOS = 1_000_000;
 
 const ALLOC = std.testing.allocator;
+
+// Per-suite tenant (fa10 block): no other suite grants or asserts on this
+// tenant, so balance assertions stay order-independent under the
+// seed-randomized runner.
+const TENANT_ID = "0195b4ba-8d3a-7f13-8abc-fa1000000000";
+const WS_PROVISION = "0195b4ba-8d3a-7f13-8abc-aa1000000001";
+const WS_DEDUCT = "0195b4ba-8d3a-7f13-8abc-aa1000000002";
+const WS_ENFORCE = "0195b4ba-8d3a-7f13-8abc-aa1000000003";
+
+fn seed(conn: *pg.Conn, workspace_id: []const u8) !void {
+    try base.seedTenantById(conn, TENANT_ID, "tenant-billing-suite");
+    try base.seedWorkspaceWithTenant(conn, workspace_id, TENANT_ID);
+}
+
+fn teardown(conn: *pg.Conn, workspace_id: []const u8) void {
+    base.teardownWorkspace(conn, workspace_id);
+    base.teardownTenantById(conn, TENANT_ID);
+}
 
 // ── Rate constants pinned (regression) ─────────────────────────────────────
 // Mirror this with ui/packages/website/src/lib/rates.test.ts. Bumping a
@@ -43,15 +61,15 @@ test "provision inserts one row and replay is a no-op" {
     defer db_ctx.pool.deinit();
     defer db_ctx.pool.release(db_ctx.conn);
 
-    try uc1.seed(db_ctx.conn, uc1.WS_PROVISION);
-    defer uc1.teardown(db_ctx.conn, uc1.WS_PROVISION);
+    try seed(db_ctx.conn, WS_PROVISION);
+    defer teardown(db_ctx.conn, WS_PROVISION);
 
-    base.resetBilling(db_ctx.conn);
-    try tenant_billing.insertStarterGrant(db_ctx.conn, uc1.TENANT_ID);
+    base.resetBillingFor(db_ctx.conn, TENANT_ID);
+    try tenant_billing.insertStarterGrant(db_ctx.conn, TENANT_ID);
     // Second call must be idempotent.
-    try tenant_billing.insertStarterGrant(db_ctx.conn, uc1.TENANT_ID);
+    try tenant_billing.insertStarterGrant(db_ctx.conn, TENANT_ID);
 
-    const row = (try tenant_billing.getBilling(db_ctx.conn, ALLOC, uc1.TENANT_ID)).?;
+    const row = (try tenant_billing.getBilling(db_ctx.conn, ALLOC, TENANT_ID)).?;
     defer ALLOC.free(@constCast(row.grant_source));
     try std.testing.expectEqual(@as(i64, 5_000_000_000), row.balance_nanos);
     try std.testing.expectEqualStrings("bootstrap_starter_grant", row.grant_source);
@@ -62,20 +80,20 @@ test "debit decrements atomically; 0-row UPDATE returns CreditExhausted" {
     defer db_ctx.pool.deinit();
     defer db_ctx.pool.release(db_ctx.conn);
 
-    try uc1.seed(db_ctx.conn, uc1.WS_DEDUCT);
-    defer uc1.teardown(db_ctx.conn, uc1.WS_DEDUCT);
+    try seed(db_ctx.conn, WS_DEDUCT);
+    defer teardown(db_ctx.conn, WS_DEDUCT);
 
-    base.resetBilling(db_ctx.conn);
-    try tenant_billing.insertStarterGrant(db_ctx.conn, uc1.TENANT_ID);
+    base.resetBillingFor(db_ctx.conn, TENANT_ID);
+    try tenant_billing.insertStarterGrant(db_ctx.conn, TENANT_ID);
 
     // Debit a sample charge of 1M nanos ($0.001) and check the balance lands.
-    const after = try tenant_billing.debit(db_ctx.conn, uc1.TENANT_ID, 1_000_000);
+    const after = try tenant_billing.debit(db_ctx.conn, TENANT_ID, 1_000_000);
     try std.testing.expectEqual(@as(i64, 5_000_000_000 - TEST_CHARGE_NANOS), after.balance_nanos);
 
     // Exhaust: try to debit more than remaining (well above current balance).
-    try std.testing.expectError(error.CreditExhausted, tenant_billing.debit(db_ctx.conn, uc1.TENANT_ID, 6_000_000_000));
+    try std.testing.expectError(error.CreditExhausted, tenant_billing.debit(db_ctx.conn, TENANT_ID, 6_000_000_000));
 
-    const row = (try tenant_billing.getBilling(db_ctx.conn, ALLOC, uc1.TENANT_ID)).?;
+    const row = (try tenant_billing.getBilling(db_ctx.conn, ALLOC, TENANT_ID)).?;
     defer ALLOC.free(@constCast(row.grant_source));
     try std.testing.expectEqual(@as(i64, 5_000_000_000 - TEST_CHARGE_NANOS), row.balance_nanos);
 }
@@ -94,12 +112,12 @@ test "resolveTenantFromWorkspace returns the owning tenant" {
     defer db_ctx.pool.deinit();
     defer db_ctx.pool.release(db_ctx.conn);
 
-    try uc1.seed(db_ctx.conn, uc1.WS_ENFORCE);
-    defer uc1.teardown(db_ctx.conn, uc1.WS_ENFORCE);
+    try seed(db_ctx.conn, WS_ENFORCE);
+    defer teardown(db_ctx.conn, WS_ENFORCE);
 
-    const tid = try tenant_billing.resolveTenantFromWorkspace(db_ctx.conn, ALLOC, uc1.WS_ENFORCE);
+    const tid = try tenant_billing.resolveTenantFromWorkspace(db_ctx.conn, ALLOC, WS_ENFORCE);
     defer ALLOC.free(tid);
-    try std.testing.expectEqualStrings(uc1.TENANT_ID, tid);
+    try std.testing.expectEqualStrings(TENANT_ID, tid);
 }
 
 test "clearExhausted + debit together: replenishment path resets the stop gate" {
@@ -107,21 +125,21 @@ test "clearExhausted + debit together: replenishment path resets the stop gate" 
     defer db_ctx.pool.deinit();
     defer db_ctx.pool.release(db_ctx.conn);
 
-    try uc1.seed(db_ctx.conn, uc1.WS_DEDUCT);
-    defer uc1.teardown(db_ctx.conn, uc1.WS_DEDUCT);
+    try seed(db_ctx.conn, WS_DEDUCT);
+    defer teardown(db_ctx.conn, WS_DEDUCT);
 
-    try tenant_billing.insertStarterGrant(db_ctx.conn, uc1.TENANT_ID);
-    _ = try tenant_billing.markExhausted(db_ctx.conn, uc1.TENANT_ID);
+    try tenant_billing.insertStarterGrant(db_ctx.conn, TENANT_ID);
+    _ = try tenant_billing.markExhausted(db_ctx.conn, TENANT_ID);
 
     // clearExhausted on an already-marked row: transitions and returns true.
-    try std.testing.expect(try tenant_billing.clearExhausted(db_ctx.conn, uc1.TENANT_ID));
+    try std.testing.expect(try tenant_billing.clearExhausted(db_ctx.conn, TENANT_ID));
     // Second call on an already-cleared row: idempotent, returns false.
-    try std.testing.expect(!(try tenant_billing.clearExhausted(db_ctx.conn, uc1.TENANT_ID)));
+    try std.testing.expect(!(try tenant_billing.clearExhausted(db_ctx.conn, TENANT_ID)));
 
     // And the billing row reflects the clear — covers the "stop gate is a
     // one-way door" follow-up when admin credit lands without a matching
     // debit.
-    const row = (try tenant_billing.getBilling(db_ctx.conn, ALLOC, uc1.TENANT_ID)).?;
+    const row = (try tenant_billing.getBilling(db_ctx.conn, ALLOC, TENANT_ID)).?;
     defer ALLOC.free(@constCast(row.grant_source));
     try std.testing.expect(row.exhausted_at_ms == null);
 }
@@ -131,19 +149,19 @@ test "debit on an exhausted row auto-clears balance_exhausted_at on success" {
     defer db_ctx.pool.deinit();
     defer db_ctx.pool.release(db_ctx.conn);
 
-    try uc1.seed(db_ctx.conn, uc1.WS_DEDUCT);
-    defer uc1.teardown(db_ctx.conn, uc1.WS_DEDUCT);
+    try seed(db_ctx.conn, WS_DEDUCT);
+    defer teardown(db_ctx.conn, WS_DEDUCT);
 
-    base.resetBilling(db_ctx.conn);
-    try tenant_billing.insertStarterGrant(db_ctx.conn, uc1.TENANT_ID);
-    _ = try tenant_billing.markExhausted(db_ctx.conn, uc1.TENANT_ID);
+    base.resetBillingFor(db_ctx.conn, TENANT_ID);
+    try tenant_billing.insertStarterGrant(db_ctx.conn, TENANT_ID);
+    _ = try tenant_billing.markExhausted(db_ctx.conn, TENANT_ID);
 
     // Simulate a top-up path: the next successful debit must clear the
     // exhausted flag so the `stop` gate re-opens atomically.
-    const after = try tenant_billing.debit(db_ctx.conn, uc1.TENANT_ID, 1_000_000);
+    const after = try tenant_billing.debit(db_ctx.conn, TENANT_ID, 1_000_000);
     try std.testing.expectEqual(@as(i64, 5_000_000_000 - TEST_CHARGE_NANOS), after.balance_nanos);
 
-    const row = (try tenant_billing.getBilling(db_ctx.conn, ALLOC, uc1.TENANT_ID)).?;
+    const row = (try tenant_billing.getBilling(db_ctx.conn, ALLOC, TENANT_ID)).?;
     defer ALLOC.free(@constCast(row.grant_source));
     try std.testing.expect(row.exhausted_at_ms == null);
 }
@@ -153,32 +171,32 @@ test "markExhausted: first call transitions, second call is a no-op" {
     defer db_ctx.pool.deinit();
     defer db_ctx.pool.release(db_ctx.conn);
 
-    try uc1.seed(db_ctx.conn, uc1.WS_DEDUCT);
-    defer uc1.teardown(db_ctx.conn, uc1.WS_DEDUCT);
+    try seed(db_ctx.conn, WS_DEDUCT);
+    defer teardown(db_ctx.conn, WS_DEDUCT);
 
-    base.resetBilling(db_ctx.conn);
-    try tenant_billing.insertStarterGrant(db_ctx.conn, uc1.TENANT_ID);
+    base.resetBillingFor(db_ctx.conn, TENANT_ID);
+    try tenant_billing.insertStarterGrant(db_ctx.conn, TENANT_ID);
 
     // Fresh row: exhausted_at is NULL.
     {
-        const row = (try tenant_billing.getBilling(db_ctx.conn, ALLOC, uc1.TENANT_ID)).?;
+        const row = (try tenant_billing.getBilling(db_ctx.conn, ALLOC, TENANT_ID)).?;
         defer ALLOC.free(@constCast(row.grant_source));
         try std.testing.expect(row.exhausted_at_ms == null);
     }
 
     // First mark transitions.
-    try std.testing.expect(try tenant_billing.markExhausted(db_ctx.conn, uc1.TENANT_ID));
+    try std.testing.expect(try tenant_billing.markExhausted(db_ctx.conn, TENANT_ID));
     const first_ts = blk: {
-        const row = (try tenant_billing.getBilling(db_ctx.conn, ALLOC, uc1.TENANT_ID)).?;
+        const row = (try tenant_billing.getBilling(db_ctx.conn, ALLOC, TENANT_ID)).?;
         defer ALLOC.free(@constCast(row.grant_source));
         try std.testing.expect(row.exhausted_at_ms != null);
         break :blk row.exhausted_at_ms.?;
     };
 
     // Second call is a no-op; timestamp unchanged.
-    try std.testing.expect(!(try tenant_billing.markExhausted(db_ctx.conn, uc1.TENANT_ID)));
+    try std.testing.expect(!(try tenant_billing.markExhausted(db_ctx.conn, TENANT_ID)));
     {
-        const row = (try tenant_billing.getBilling(db_ctx.conn, ALLOC, uc1.TENANT_ID)).?;
+        const row = (try tenant_billing.getBilling(db_ctx.conn, ALLOC, TENANT_ID)).?;
         defer ALLOC.free(@constCast(row.grant_source));
         try std.testing.expectEqual(first_ts, row.exhausted_at_ms.?);
     }
