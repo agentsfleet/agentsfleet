@@ -245,14 +245,14 @@ Regression: the entire shipped connector test surface (M102 + M106) is the regre
 
 ## Acceptance Criteria
 
-- [ ] Generic routes resolve slack + github; unknown provider 404 — verify: `make test-integration`
-- [ ] Hung-vendor deadline fires; fail-closed on watchdog unavailable — verify: `make test-integration` (new §2 tests)
-- [ ] No raw outbound client in connectors — verify: eval E8 (empty)
-- [ ] Runner unchanged — verify: `make test` + `make test-integration-kernel` green
-- [ ] `make lint` clean · `make test` passes · `make test-integration` passes
-- [ ] Cross-compile clean: `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux`
-- [ ] `gitleaks detect` clean · no non-test file over 350 lines added
-- [ ] `make check-openapi` passes
+- [x] Generic routes resolve slack + github; unknown provider 404 — verify: `make test-integration` ✅
+- [x] Hung-vendor deadline fires; fail-closed on watchdog unavailable — verify: `make test-integration` + the §2 unit stall/spawn-fail suite ✅
+- [x] No raw outbound client in connectors — verify: eval E8 (empty) ✅
+- [x] Runner unchanged — verify: `make test-unit-agentsfleet-runner` green (355 pass, §2 evidence); runner graph cross-compiles both targets ✅
+- [x] `make lint-all` clean · `make test-unit-all` passes · `make test-integration` passes ✅
+- [x] Cross-compile clean: `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` (+ runner graph both targets) ✅
+- [x] `gitleaks detect` clean · no non-test file over 350 lines added (generated `openapi.json` bundle exempt — build artifact) ✅
+- [x] `make check-openapi` passes ✅
 
 ---
 
@@ -316,6 +316,7 @@ grep -rn "std.http.Client" src/agentsfleetd/http/handlers/connectors/ --include=
   5. **Spec test names → house descriptive strings**: the Test Specification's `test_*` identifiers landed as descriptive test names (e.g. `test_connect_unconfigured_provider_503` → "integration: unconfigured provider fails loud 503, no partial state"); mapping recorded per-dimension above.
   6. **api_key future-diff obligations bound in-code** (taste-audit outcome): `connect.zig` documents that the `approval_signing_secret` check must move into the two state-minting arms when api_key lands (an api_key connect has no state, so no secret requirement), and `callback.zig` documents that its `.api_key => unreachable` arm MUST become a 404 in that diff — the URL becomes reachable the moment an api_key id resolves.
   7. **`zig build test` `--listen` teardown notice**: the integration make target prints `failed command: …agentsfleetd-tests --listen=-` while exiting 0 with every test green — the binary run directly (no `--listen`) reports `1848 passed; 10 skipped; 0 failed` and exits 0, so the notice is protocol-mode teardown noise (non-zero process exit after all results transmitted), not a masked failure. Follow-up candidate, not blocking.
+  8. **`/write-unit-test` audit outcomes (Jul 02, 2026):** (a) **behavior fix** — `bounded_fetch.VendorUnreachable` (vendor down / dial refused / transport failure) fell through callback.zig's `else` arm to a 500 internal error; an upstream failure now rides `UZ-CONN-003`'s 502 with the other bounded-outbound refusals (registry description amended — one code per failure class). (b) **+11 integration tests** closing ledger rows that shipped uncovered in M102/M106 and moved under this refactor: generic-route scope enforcement 403, connect-side unconfigured 503 (Dim 1.1's literal wording — the prior test proved only the callback side), slack authorize-URL minting, github install-URL + no-slug 503, callback missing-state/missing-code 400s, status flips for both archetypes, vendor-unreachable 502 e2e, vendor-5xx 502 exchange-failed via a loopback fake. (c) **route_scopes_test pins the connector scope rows** (never pinned in any milestone). (d) One pre-existing state-dependence found outside the diff: `event_lifecycle` "consumer identity is stable" assumes flushed Redis (fails on direct re-run against a used instance; the canonical flush-first gate is green) — noted, not M108's.
 
 ---
 
@@ -323,7 +324,8 @@ grep -rn "std.http.Client" src/agentsfleetd/http/handlers/connectors/ --include=
 
 | When | Skill | Required output |
 |------|-------|-----------------|
-| After implementation, before CHORE(close) | `/write-unit-test` | clean; iterations in Discovery |
+| After implementation, before CHORE(close) | `/write-unit-test` | ✅ ran Jul 02, 2026 — 25-row diff ledger: 22 tested / 3 won't-test with reasons (2 OOM-wording fallbacks: 3-line static-fallback branches, FailingAllocator-through-full-harness cost ≫ blast radius; 1 e2e deadline-stall: mechanism already unit-proven in §2's loopback stall test, an e2e copy costs a 10 s wall-clock sleep per run). Outcomes in Discovery §3/§4 deviations #8: 1 behavior fix (VendorUnreachable → 502) + 11 integration tests + scope pins |
+| With `/write-unit-test` at VERIFY | `/write-integration-test` | ✅ satisfied via the same ledger's integration lane — the 11 additions are service-layer tests through the real router/middleware/Postgres/Redis/loopback vendors with per-suite tenants + explicit in-body cleanup; drain audit via `make check-pg-drain` (in lint-zig, green), leak audit via `std.testing.allocator` + `make memleak` (green) |
 | After tests pass, before CHORE(close) | `/review` | clean or dispositioned |
 | After PR update | `/review-pr` | per Indy's standing instruction this session: skipped unless he asks — record here |
 | After every push | `kishore-babysit-prs` | final report in Discovery |
@@ -334,13 +336,18 @@ grep -rn "std.http.Client" src/agentsfleetd/http/handlers/connectors/ --include=
 
 | Check | Command | Result | Pass? |
 |-------|---------|--------|-------|
-| Unit tests | `make test` | | |
-| Integration tests | `make test-integration` | | |
-| Lint | `make lint` | | |
-| Cross-compile | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` | | |
-| Gitleaks | `gitleaks detect` | | |
-| Bounded-outbound grep | eval E8 | | |
-| Dead code sweep | eval E10 | | |
+| Unit tests | `make test-unit-all` (repo's tier-1 umbrella; spec's `make test` predates the target names) | all unit lanes green; TS coverage gates 100% | ✅ |
+| Integration tests | `make test-integration` ×4 — incl. Tier-3 from clean state (`make down` first) | green every run; direct binary run: 1859 passed / 10 skipped / 0 connector failures (the 1 direct-run failure is a pre-existing flush-dependent event_lifecycle test — Discovery #8d) | ✅ |
+| Lint | `make lint-all` (umbrella incl. lint-zig: fmt, ZLint, pg-drain, test-depth, cross-target, line-limit) | all checks passed | ✅ |
+| Cross-compile | main + runner graphs × `x86_64-linux` + `aarch64-linux`; linux test-graph compile | 4/4 OK; test graph ends in "unable to execute binaries from the target" (the façade's PASS signal) | ✅ |
+| Gitleaks | `gitleaks detect` | 3076 commits scanned, no leaks found | ✅ |
+| Bounded-outbound grep | eval E8 | 0 matches | ✅ |
+| Dead code sweep | eval E10 | 0 matches | ✅ |
+| OpenAPI | `make check-openapi` (eval E9) | bundle valid, 54 paths REST §1 compliant, 0 connector-path warnings | ✅ |
+| Memleak | `make memleak` | "1418 passed; 440 skipped; 0 failed." → "✓ [agentsfleetd] memleak gate passed" (macOS SIP "not debuggable" line expected per VERIFY_TIERS) | ✅ |
+| Bench | `make bench` (request-path touched: route matchers) | Tier-1 zbench passed; Tier-2 loadgen: 114,773 req, 0 fail, p50 2.8 ms / p95 7.2 ms / p99 16.8 ms @ 20-conn 20 s | ✅ |
+| Acceptance e2e | `acceptance-e2e` / `cli-acceptance` | N/A — both suites cover auth-session lifecycle (Clerk sign-in, CLI login) against live deployments; no connector surface in their scope and the branch is undeployed | ⚪ |
+| Test delta | `make _lint_zig_test_depth` | unit 2244→2267 (+23) · integration 227→240 (+13) vs CHORE(open) baseline | ✅ |
 
 ---
 
