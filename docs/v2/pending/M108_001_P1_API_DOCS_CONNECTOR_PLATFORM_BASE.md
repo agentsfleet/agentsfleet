@@ -1,0 +1,336 @@
+<!--
+SPEC AUTHORING RULES (load-bearing — do not delete):
+- No time/effort/hour/day estimates anywhere. No effort columns, complexity ratings,
+  percentage-complete, implementation dates, assigned owners.
+- Priority (P0/P1/P2/P3) is the only sizing signal; Dependencies are the only sequencing signal.
+- If a section below contradicts these rules, the rule wins — delete the section.
+- Enforced by SPEC TEMPLATE GATE (dispatch/write_spec.md) and audits/spec-template.sh.
+-->
+
+# M108_001: Connector platform base — registry-driven connector routes + bounded outbound HTTP
+
+**Prototype:** v2.0.0
+**Milestone:** M108
+**Workstream:** 001
+**Date:** Jul 02, 2026
+**Status:** PENDING
+**Priority:** P1 — every upcoming customer-facing connector (Grafana, Zoho Desk, Jira, Linear, Fly, Datadog) blocks on this base; today each new provider re-implements routes/handlers by hand and every outbound vendor call is unbounded.
+**Categories:** API, DOCS
+**Batch:** B1 — base lands before M108_002 provider entries
+**Branch:** feat/m106-slack-resident (folded into PR #468 per Indy's direction — see Discovery)
+**Depends on:** M106_001 (Slack connector — the second concrete connector this base generalizes), M102_001 (GitHub App connector — the app_install archetype's concrete instance), M99_001 (credential broker — the mint surface the platform extends, DONE)
+**Provenance:** LLM-drafted (Claude Fable 5, Jul 02, 2026) — implementing agent cross-checks every claim against the tree
+
+**Canonical architecture:** `docs/AUTH.md` §OAuth connectors is today's source of truth for the connector trust model; this workstream CREATES `docs/architecture/connectors.md` as the platform-shape home (registry, archetypes, bounded-outbound rule, connector-vs-integration terminology) and re-points AUTH.md cross-references at it.
+
+---
+
+## Implementing agent — read these first
+
+1. `src/agentsfleetd/http/handlers/connectors/oauth2.zig` + `connectors/slack/spec.zig` — the proto-registry this workstream formalizes: `oauth2.Spec` is already pure data; slack/spec.zig's header says "Adding Zoho/Jira/Linear is a sibling Spec like this one, not new flow code". The registry makes that sentence structurally true.
+2. `src/runner/daemon/call_deadline.zig` + `control_plane_client.zig` (`pooledHandle`/`arm`/`disarm` around `fetch`) — the shipped `CallWatchdog` this workstream PROMOTES to `src/lib/`. Do NOT re-author the reverted thread-abandon watchdog; socket-shutdown-at-deadline is the house mechanism.
+3. `src/agentsfleetd/http/route_matchers_connectors.zig` + `route_table_invoke_connectors.zig` + `routes.zig` (connector entries) — the per-provider route duplication the registry collapses.
+4. `docs/AUTH.md` §OAuth connectors — trust anchors (signed single-use state; `<provider>-app` admin-vault bags; `fleet:<provider>` per-install handles; error taxonomy UZ-CONN-001/002, UZ-SLK-01x/02x).
+5. `dispatch/write_zig.md` §Module Boundaries & Shared Modules — the `src/lib/` promotion rules (named module in both build graphs, no relative reach-across) and §Bun-Inspired Conventions (comptime registry + comptime validation; strategy tagged-union).
+
+---
+
+## PR Intent & comprehension handshake
+
+- **PR title (eventual):** part of PR #468 — `feat(m106+m108): Slack-resident bot + connector platform base`
+- **Intent (one sentence):** adding the next connector to agentsfleet becomes a data entry (a registry `Spec` + a thin hook) instead of a hand-rolled route/handler set, and no connector call can hang the server on a silent vendor.
+- **Handshake (agent fills at PLAN, before EXECUTE):** restate intent + `ASSUMPTIONS I'M MAKING: …`; mismatch → STOP.
+
+---
+
+## Product Clarity
+
+1. **Successful user moment** — an operator opens the dashboard connectors page after M108_002 and sees six new providers connectable; behind the scenes each of those cards cost one registry entry, and a Slack outage during a mention degrades that one mention instead of freezing ingress workers.
+2. **Preserved user behaviour** — GitHub App install and Slack connect/callback/status/events flows keep working byte-identically at their existing URLs; existing vault handles and `connector_installs` rows stay valid; the runner's control-plane deadlines are unchanged.
+3. **Optimal-way check** — unconstrained optimal is a full plugin system with per-connector packages; the gap (comptime in-tree registry instead) is deliberate: we control every connector, comptime validation beats dynamic loading, and the binary stays auditable. Acceptable until third parties author connectors.
+4. **Rebuild-vs-iterate** — iterate: `oauth2.Spec` already exists as data; this promotes shape that shipped twice (M102, M106) into the registry. A rebuild (new connector service) would trade away run-to-run determinism and the single-binary posture for nothing at this scale.
+5. **What we build** — comptime `ConnectorSpec` registry + archetype dispatch; generic `{provider}` connector routes; `CallWatchdog` promoted to `src/lib/`; connector outbound calls bounded; Slack+GitHub migrated onto the registry; `docs/architecture/connectors.md`.
+6. **What we do NOT build** — new providers (M108_002); UI changes (M108_002 §UI); genericized inbound *events* ingress (each provider's inbound surface is bespoke by nature — Slack's stays as shipped); bounding of non-connector outbound callers (JWKS/Clerk/OTLP/fleet_bundle — follow-up, see Out of Scope).
+7. **Fit with existing features** — compounds with the credential broker (M99/M102: mint surface gains providers cheaply in M108_002) and the fleet-trigger webhook surface (unchanged, stays distinct per AUTH.md). Must not destabilize: the Slack events ingress hot path (its zero-DB signature verify and 200-ack semantics are load-bearing for Slack retry behavior).
+8. **Surface order** — API only in this workstream. Dashboard cards/forms land with providers in M108_002; CLI has no connector surface today and gains none here.
+9. **Dashboard restraint** — nothing new rendered in this workstream; M108_002's catalog endpoint is where UI truth comes from (no hand-maintained provider lists in the app).
+10. **Confused-user next step** — hitting a connector URL for an unknown provider returns 404 with a body naming the provider as unknown; an unconfigured provider returns 503 `UZ-CONN-001` (existing taxonomy) whose docs URL explains platform-app provisioning.
+
+---
+
+## Applicable Rules
+
+- `docs/greptile-learnings/RULES.md` — **UFS** (provider ids/deadline constants are named once), **NDC/NLR** (per-provider route+handler dupes deleted in the same diff that generalizes them), **TGU** (archetype is a tagged union, never optional-field structs), **VLT** (tokens only in vault), **CTM/CTC** (state HMAC compare stays constant-time — existing code, do not regress), **ORP** (route-constant renames swept across matchers/table/OpenAPI/tests), **FLL**, **WAUTH** (workspace-scoped connect/status keep `authorizeWorkspace`).
+- `dispatch/write_zig.md` — §Module Boundaries (src/lib named-module promotion), §Bun-Inspired Conventions (comptime registry + validation; strategy tagged-union owning its dispatch), §Concurrency (watchdog atomics/mutex commentary), §Tagged Unions for Result Types.
+- `docs/REST_API_DESIGN_GUIDELINES.md` — generic route design, 404-vs-503 semantics, OpenAPI parity for the `{provider}` parameterization.
+- `docs/AUTH.md` — §OAuth connectors (trust anchors this refactor must not weaken); auth-flow edits trigger `dispatch/write_auth.md`.
+- `docs/LOGGING_STANDARD.md` — new `error_code=UZ-CONN-003` rows registered same-commit (ERROR REGISTRY).
+
+## Applicable Gates
+
+| Gate | Fires? | Satisfaction strategy |
+|------|--------|-----------------------|
+| ZIG GATE | yes — all-Zig diff | read façade; cross-compile x86_64+aarch64-linux per commit |
+| PUB / Struct-Shape | yes — new `src/lib` module + registry pub surface | shape verdict per new pub; registry is a function-namespace module (conventional); consumers named per symbol |
+| File & Function Length | yes | registry as its own file; route tables shrink (dupes deleted); split-before-cap if any file approaches 350 |
+| UFS | yes | provider ids from `common` constants; per-class deadline constants named once; no re-spelled route literals |
+| LOGGING / ERROR REGISTRY | yes | `UZ-CONN-003` (vendor call exceeded deadline / watchdog unavailable) registered in `error_registry.zig` same commit; `cp_call_deadline_fired`-style warn on fire |
+| LIFECYCLE | yes — watchdog owns a thread | arm/disarm/deinit lifecycle tests move with the module; deinit joins the thread |
+| SCHEMA GUARD | no | no schema changes |
+| UI / DESIGN TOKEN | no | no UI files in this workstream |
+
+---
+
+## Overview
+
+**Goal (testable):** `POST /v1/workspaces/{ws}/connectors/{provider}/connect`, `GET /v1/connectors/{provider}/callback`, and `GET /v1/workspaces/{ws}/connectors/{provider}` resolve any provider in the comptime registry through one generic route set (unknown provider → 404), Slack and GitHub keep passing their existing integration suites unmodified in behavior, and a connector outbound HTTP call against a hung vendor returns within its named deadline instead of parking the worker thread.
+
+**Problem:** two connectors in, every provider costs a hand-rolled route trio + handler set (route_matchers, route_table, routes.zig, per-provider connect/status), and six more providers are queued. Separately, all nine `agentsfleetd` outbound `std.http.Client` call sites are unbounded — a vendor that accepts a connection and stalls parks a server worker forever (`fleet_bundle/github_net.zig` documents the hole; the runner solved it in M100 with `call_deadline.zig`, but only for its own client).
+
+**Solution summary:** formalize the existing `oauth2.Spec`-as-data insight into a comptime `ConnectorSpec` registry with an archetype tagged-union (`oauth2` — with refresh flag + post-auth hook, `app_install`, `api_key`), collapse the per-provider connector routes into `{provider}`-parameterized matchers that resolve against the registry, and promote the runner's `CallWatchdog` to `src/lib/` so connector outbound calls arm a socket-shutdown deadline the way the runner already does.
+
+---
+
+## Prior-Art / Reference Implementations
+
+- **Registry + comptime validation** → Bun's declarative `[]const Spec` tables with `comptime` duplicate/coverage assertions (`dispatch/write_zig.md` §Bun-Inspired Conventions); in-tree: `oauth2.Spec` + `slack/spec.zig` (the data shape already shipped).
+- **Bounded outbound call** → `src/runner/daemon/call_deadline.zig` (`CallWatchdog`) + `control_plane_client.zig` `pooledHandle→arm→fetch→disarm`. Alignment: reuse verbatim semantics (fail-closed on `watchdog_unavailable`, fire-under-lock, per-verb named deadlines). Divergence: none — promotion, not reinvention.
+- **API** → `docs/REST_API_DESIGN_GUIDELINES.md` + the shipped connector handlers under `handlers/connectors/`.
+- **Shared module mechanics** → `src/lib/common/` (the existing named-module precedent for both build graphs).
+
+---
+
+## Files Changed (blast radius)
+
+| File | Action | Why |
+|------|--------|-----|
+| `src/lib/call_deadline/call_deadline.zig` | CREATE (moved) | `CallWatchdog` + `Deadlines` promoted from `src/runner/daemon/call_deadline.zig`; consumed by both build graphs as named module `call_deadline` |
+| `src/runner/daemon/call_deadline.zig` | DELETE | superseded by the `src/lib` module (Dead Code Sweep) |
+| `src/runner/daemon/control_plane_client.zig` (+ `config.zig`, tests) | EDIT | import the named module; behavior unchanged |
+| `build.zig`, `build_runner.zig` | EDIT | declare the `call_deadline` named module in both graphs |
+| `src/agentsfleetd/http/handlers/connectors/registry.zig` | CREATE | comptime `ConnectorSpec` table + archetype tagged-union + comptime validation + lookup |
+| `src/agentsfleetd/http/handlers/connectors/bounded_fetch.zig` | CREATE | the arm→fetch→disarm wrapper (mirrors `pooledHandle`); the ONLY sanctioned outbound HTTP entry for connector code |
+| `src/agentsfleetd/http/handlers/connectors/oauth2.zig` | EDIT | exchange goes through `bounded_fetch`; `Spec` becomes the oauth2 archetype's payload (refresh flag + post-auth hook added for M108_002) |
+| `src/agentsfleetd/http/handlers/connectors/{connect,callback,status}.zig` | CREATE | generic `{provider}` handlers dispatching on the registry archetype; per-provider deltas live in hooks |
+| `src/agentsfleetd/http/handlers/connectors/slack/{connect,callback,status}.zig` | EDIT/DELETE | reduce to the slack hook (exchange-response parse, installs row, handle shape); dupes deleted per NLR |
+| `src/agentsfleetd/http/handlers/connectors/github/{connect,callback,status}.zig` | EDIT/DELETE | reduce to the app_install hook (installation_id capture, install URL) |
+| `src/agentsfleetd/http/handlers/connectors/slack/{post,thread}.zig` | EDIT | outbound calls through `bounded_fetch` with named deadlines |
+| `src/agentsfleetd/http/route_matchers_connectors.zig`, `route_table_invoke_connectors.zig`, `routes.zig`, `route_scopes.zig` | EDIT | per-provider entries collapse to `{provider}` matchers resolved against the registry |
+| `src/agentsfleetd/errors/error_registry.zig` | EDIT | add `UZ-CONN-003` (vendor deadline exceeded / watchdog unavailable) |
+| `public/openapi.json` | EDIT | connector paths gain the `{provider}` parameterized form |
+| `docs/architecture/connectors.md` | CREATE | platform shape: registry, archetypes, bounded-outbound rule, connector-vs-integration terminology |
+| `docs/AUTH.md` | EDIT | §OAuth connectors points at the registry + generic routes; cross-reference the new architecture doc |
+| existing Slack/GitHub connector integration tests | EDIT | only where imports/route constants moved — assertions unchanged (they are the migration proof) |
+
+---
+
+## Decomposition & alternatives
+
+- **Chosen shape:** two workstreams — 001 mechanism (registry + bounded outbound + migration), 002 data (six providers + broker minting + UI). Mechanism must prove itself against the two shipped connectors before new providers pile on.
+- **Alternatives considered:** (a) per-provider copy-paste continuation — rejected: six queued providers × four files each is exactly the rot the proto-registry comment warns against; (b) runtime plugin/config-file registry — rejected: loses comptime validation and the single-auditable-binary posture; (c) re-author the reverted thread-abandon watchdog — rejected: `CallWatchdog`'s socket-shutdown mechanism already shipped, is leak-free by construction (no abandoned threads), and is battle-tested by the runner.
+- **Patch-vs-refactor verdict:** **refactor** (route/handler generalization) because the third-through-eighth consumers are already committed; the alternative is six mud-patches.
+
+---
+
+## Sections (implementation slices)
+
+### §1 — Milestone credential enumeration (credential gate)
+
+M108 as a milestone needs, at go-live of M108_002's OAuth providers: `zoho-app`, `jira-app`, `linear-app` bags `{client_id, client_secret}` in the admin-workspace vault (same `<provider>-app` convention as `slack-app`/`github-app`; source of record: 1Password `ops` vault items of the same names, provisioned by Indy before those providers leave "not configured"). The api_key archetype providers (`datadog`, `grafana`, `fly`) need **no** platform credential — the user supplies their own key at connect. This workstream itself ships with **zero new external credentials**: integration tests run against loopback fakes (M106 pattern), and an unprovisioned provider fails loud with 503 `UZ-CONN-001`.
+
+- **Dimension 1.1** — connect for a registry provider whose `<provider>-app` bag is absent returns 503 `UZ-CONN-001` (fail-loud, no partial state) → Test `test_connect_unconfigured_provider_503`
+
+### §2 — Bounded outbound HTTP (`CallWatchdog` promotion)
+
+Move `call_deadline.zig` to `src/lib/call_deadline/` as the named module `call_deadline`, consumed by both build graphs (`src/lib` promotion approved — Discovery). Runner behavior is unchanged (its tests move with it). On the `agentsfleetd` side, `connectors/bounded_fetch.zig` wraps pin-pooled-handle → `arm` → `fetch` → `disarm` (mirror `control_plane_client.zig`), fail-closed on `watchdog_unavailable`. Per-class deadlines are named constants (token exchange, outbound post, thread re-read — thread re-read keeps M106's 1.5 s intent). **Implementation default:** one `CallWatchdog` per long-lived client context (events ingress ctx, outbound worker, broker), not per call.
+
+- **Dimension 2.1** — `call_deadline` module compiles into both graphs; runner tests pass unchanged → Test `test_runner_call_deadline_unchanged` (existing suite green)
+- **Dimension 2.2** — a hung vendor (fake that accepts then stalls) makes `bounded_fetch` return a deadline error within the named bound; caller surfaces `UZ-CONN-003`; worker thread is free (no park) → Test `test_bounded_fetch_deadline_fires`
+- **Dimension 2.3** — oauth2 exchange, slack post, and slack thread re-read all route through `bounded_fetch`; a repo grep proves no raw `std.http.Client` remains under `handlers/connectors/` outside `bounded_fetch.zig` → Test `test_connectors_outbound_all_bounded` (grep-backed eval E8)
+- **Dimension 2.4** — watchdog-unavailable (forced spawn fail) refuses the call loud (503 `UZ-CONN-003`, reason logged), never runs unbounded → Test `test_watchdog_unavailable_fail_closed`
+
+### §3 — `ConnectorSpec` registry + archetypes
+
+`connectors/registry.zig`: a comptime `[]const ConnectorSpec` where `ConnectorSpec = {provider, archetype}` and archetype is `union(enum){ oauth2: Oauth2Data (endpoints, scopes, refresh: bool, post_auth hook), app_install: AppInstallData, api_key: ApiKeyData }` — the strategy tagged-union owns its dispatch; callers never switch on provider id. Comptime validation: unique provider ids; ids sourced from `common` constants (UFS); every oauth2 entry has nonempty scopes. Registry entries at the end of this workstream: `slack` (oauth2, refresh=false, slack hook), `github` (app_install). `api_key` variant lands with a comptime-asserted shape but no entries until M108_002 — no dead runtime code, the variant is data.
+
+- **Dimension 3.1** — registry lookup resolves `slack`/`github`; unknown id returns null → 404 on every generic route → Test `test_registry_unknown_provider_404`
+- **Dimension 3.2** — comptime validation rejects duplicate provider ids (compile-error test via `zig build` negative harness or doc-comment + refAllDecls proof) → Test `test_registry_comptime_validated`
+
+### §4 — Generic `{provider}` routes + Slack/GitHub migration
+
+The three per-provider route sets collapse into `{provider}`-parameterized matchers resolving against the registry; scopes (`connector:read`/`connector:write`) unchanged (`route_scopes.zig` follows the generic form). Slack keeps its bespoke events ingress route untouched. Per-provider handlers shrink to hooks: slack = exchange-body parse + `connector_installs` row + handle shape; github = install URL + `installation_id` handle. Deleted dupes swept per ORP/NLR. **The shipped M106/M102 integration suites are the migration proof: their assertions do not change.**
+
+- **Dimension 4.1** — Slack connect/callback/status integration suites pass against the generic routes with unchanged assertions → Test existing `oauth_callback_integration_test` + `events_integration_test` (unmodified behavior)
+- **Dimension 4.2** — GitHub connect/callback/status keep their shipped behavior (state-forged rejection, handle write, no installs row) → Test existing github connector suite/unit set
+- **Dimension 4.3** — OpenAPI documents the `{provider}` form; `make check-openapi` passes → Test eval E9
+
+### §5 — Architecture doc + terminology
+
+CREATE `docs/architecture/connectors.md`: the registry/archetype shape, the two trust anchors (signed single-use state; platform `<provider>-app` bags), the bounded-outbound rule (every connector vendor call is armed), and the binding terminology — **connector** = auth + credential plumbing (this platform); **integration** = product-facing capability built on a connector. AUTH.md §OAuth connectors updates its cross-references; behavior prose stays in AUTH.md.
+
+- **Dimension 5.1** — architecture doc exists, AUTH.md cross-links it, and the terminology table appears once (greppable) → Test eval E10 (docs lint + link check via `make lint`)
+
+---
+
+## Metrics & Observability
+
+| Metric / event | Owner | Fires when | Properties allowed | Privacy guard | Test proof |
+|----------------|-------|------------|--------------------|---------------|------------|
+| `connector_vendor_deadline_fired` (warn log, `error_code=UZ-CONN-003`) | ops | bounded_fetch deadline fires or watchdog unavailable | provider, call class, deadline_ms | no URL query/token material | `test_bounded_fetch_deadline_fires` |
+
+No product analytics change in this workstream (mechanism only; M108_002 adds the product events). Funnel playbook: no update required — reason recorded in Discovery.
+
+---
+
+## Interfaces
+
+```
+POST /v1/workspaces/{ws}/connectors/{provider}/connect   (Bearer, connector:write)
+GET  /v1/workspaces/{ws}/connectors/{provider}           (Bearer, connector:read)  — status
+GET  /v1/connectors/{provider}/callback                  (Bearer-less; signed state is the trust anchor)
+POST /v1/connectors/slack/events                         (unchanged, bespoke)
+
+registry.lookup(provider: []const u8) ?*const ConnectorSpec   (comptime table; runtime lookup)
+bounded_fetch: arm(handle, deadline_ms) → fetch → disarm      (mirrors control_plane_client; fail-closed)
+```
+
+Existing per-provider URLs are preserved verbatim by the generic form (slack/github are registry ids). Response shapes of connect/callback/status are unchanged from M102/M106.
+
+---
+
+## Failure Modes
+
+| Mode | Cause | Handling (system response + what the caller observes) |
+|------|-------|--------------------------------------------------------|
+| Unknown provider | `{provider}` not in registry | 404, body names the unknown provider; no side effects |
+| Provider unconfigured | `<provider>-app` bag missing | 503 `UZ-CONN-001` (existing), fail-loud, no partial state |
+| Vendor hangs mid-exchange | upstream accepts then stalls | watchdog fires at deadline → socket shutdown → verb returns transport error → 502-class response with `UZ-CONN-003`; no vault write (exchange precedes write) |
+| Watchdog unavailable | thread spawn failure | call refused (503 `UZ-CONN-003`, reason=watchdog_unavailable) — never unbounded |
+| Forged/replayed state | attacker-supplied callback | 400 `UZ-CONN-002` (existing, constant-time verify) — regression-guarded by shipped tests |
+| First-dial hang | dial itself stalls before a pooled handle exists | connect-phase semantics (not the read watchdog); documented in the architecture doc — read-phase is the bounded surface |
+| Deadline fires during pool reuse | fd recycled between disarm and next arm | fire-under-lock discipline (shipped in CallWatchdog) prevents cross-call shutdown — covered by moved unit tests |
+
+---
+
+## Invariants
+
+1. Registry ids are unique and drawn from `common` constants — **comptime assertion** (compile fails on violation).
+2. No raw `std.http.Client` under `handlers/connectors/` outside `bounded_fetch.zig` — **grep gate** (eval E8; empty output required).
+3. A connector outbound call either runs armed or is refused — **code path** (`watchdog_unavailable` returns error; no unbounded fallback branch exists to take).
+4. Callback trust anchor stays the signed single-use state; no Bearer added to callback routes — **route table + shipped negative tests**.
+5. Tokens/secrets appear only in vault rows (VLT) — **shipped tests** (oauth_callback suite asserts no token outside vault) remain green.
+
+---
+
+## Test Specification (tiered)
+
+| Dimension | Tier | Test | Asserts (concrete inputs → expected output) |
+|-----------|------|------|---------------------------------------------|
+| 1.1 | integration | `test_connect_unconfigured_provider_503` | registry provider without vault bag → 503 `UZ-CONN-001`, no state minted |
+| 2.1 | unit (existing) | runner `call_deadline` suite | arm/disarm/deinit, spawn-fail fail-closed, cross-thread mutex — pass unchanged from the new module path |
+| 2.2 | integration | `test_bounded_fetch_deadline_fires` | loopback fake accepts + stalls → bounded_fetch errors within deadline+slack; `UZ-CONN-003` logged |
+| 2.3 | integration + eval | `test_connectors_outbound_all_bounded` | E8 grep empty; slack post/thread/exchange behavior preserved via existing suites |
+| 2.4 | unit | `test_watchdog_unavailable_fail_closed` | forced spawn fail → verb refused, no HTTP attempt |
+| 3.1 | integration | `test_registry_unknown_provider_404` | `/v1/workspaces/{ws}/connectors/nope/connect` → 404; callback + status likewise |
+| 3.2 | unit | `test_registry_comptime_validated` | registry length/coverage assertions compile; duplicate-id case documented as compile-error |
+| 4.1 | integration (existing, e2e-shaped) | M106 slack suites | unchanged assertions pass on generic routes — the real-HTTP user-centric path |
+| 4.2 | integration (existing) | github connector tests | unchanged assertions pass |
+| 4.3 | eval | `make check-openapi` | OpenAPI matches the parameterized routes |
+| 5.1 | eval | `make lint` docs/link checks | architecture doc present + linked |
+
+Regression: the entire shipped connector test surface (M102 + M106) is the regression suite — assertions unmodified. Idempotency/replay: state single-use replay tests (shipped) stay green.
+
+---
+
+## Acceptance Criteria
+
+- [ ] Generic routes resolve slack + github; unknown provider 404 — verify: `make test-integration`
+- [ ] Hung-vendor deadline fires; fail-closed on watchdog unavailable — verify: `make test-integration` (new §2 tests)
+- [ ] No raw outbound client in connectors — verify: eval E8 (empty)
+- [ ] Runner unchanged — verify: `make test` + `make test-integration-kernel` green
+- [ ] `make lint` clean · `make test` passes · `make test-integration` passes
+- [ ] Cross-compile clean: `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux`
+- [ ] `gitleaks detect` clean · no non-test file over 350 lines added
+- [ ] `make check-openapi` passes
+
+---
+
+## Eval Commands (post-implementation)
+
+```bash
+# E1: Build — zig build
+# E2: Unit — make test
+# E3: Integration — make test-integration
+# E4: Lint — make lint 2>&1 | tail -3
+# E5: Cross-compile — zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux && echo PASS
+# E6: Gitleaks — gitleaks detect 2>&1 | tail -3
+# E7: 350-line gate — git diff --name-only origin/main | grep -v -E '\.md$|_test\.zig$' | xargs wc -l 2>/dev/null | awk '$1 > 350 {print "OVER: "$2}'
+# E8: Bounded-outbound invariant (empty = pass)
+grep -rn "std.http.Client" src/agentsfleetd/http/handlers/connectors/ --include="*.zig" | grep -v bounded_fetch.zig | grep -v "_test.zig"
+# E9: OpenAPI parity — make check-openapi
+# E10: Old module gone (empty = pass) — grep -rn "daemon/call_deadline" src/ | head
+```
+
+---
+
+## Dead Code Sweep
+
+**1. Orphaned files — deleted from disk and git.**
+
+| File to delete | Verify |
+|----------------|--------|
+| `src/runner/daemon/call_deadline.zig` | `test ! -f src/runner/daemon/call_deadline.zig` |
+| per-provider connect/status handler files fully absorbed by generic handlers + hooks (exact set per PLAN) | `test ! -f …` per file |
+
+**2. Orphaned references — zero remaining imports/uses.**
+
+| Deleted symbol/import | Grep | Expected |
+|-----------------------|------|----------|
+| `daemon/call_deadline` import path | `grep -rn "daemon/call_deadline" src/ \| head` | 0 matches |
+| retired per-provider route constants | `git grep -rn -w '<route_const>'` (blast-radius form) | 0 matches outside history |
+
+---
+
+## Discovery (consult log)
+
+- **Fold decision (Indy-acked):**
+  > Indy (2026-07-02): "I prefer to have the M108 connector in this PR not a new one." — context: M108 rides PR #468 on `feat/m106-slack-resident`; no separate PR/worktree.
+  > Indy (2026-07-02): "I need the M108 connector platform to be laid a based now, since you are shipping not just GH, an addtional Slack, which is multiple and we must be prepare and having a connector platform." — context: platform base greenlit ahead of the six providers.
+- **Watchdog disposition (Indy-acked):**
+  > Indy (2026-07-02): "Yes i agree on building watchdog, i am sure we would have fixed this before?" — context: confirmed prior art found — runner `call_deadline.zig` (M100); decision recorded to PROMOTE it to `src/lib/` rather than re-author the reverted thread-abandon patch (which was preserved only as wiring; its module file was never saved).
+- **`src/lib/` promotion (gated):** reason — consumed by ≥2 build graphs (runner + agentsfleetd). Proposed to Indy in-session alongside the inventory table; treated as approved with this spec unless he objects at review.
+- **Metrics review:** no analytics/funnel playbook update required — mechanism-only workstream; ops signal added via `UZ-CONN-003` logging.
+
+---
+
+## Skill-Driven Review Chain (mandatory)
+
+| When | Skill | Required output |
+|------|-------|-----------------|
+| After implementation, before CHORE(close) | `/write-unit-test` | clean; iterations in Discovery |
+| After tests pass, before CHORE(close) | `/review` | clean or dispositioned |
+| After PR update | `/review-pr` | per Indy's standing instruction this session: skipped unless he asks — record here |
+| After every push | `kishore-babysit-prs` | final report in Discovery |
+
+---
+
+## Verification Evidence
+
+| Check | Command | Result | Pass? |
+|-------|---------|--------|-------|
+| Unit tests | `make test` | | |
+| Integration tests | `make test-integration` | | |
+| Lint | `make lint` | | |
+| Cross-compile | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` | | |
+| Gitleaks | `gitleaks detect` | | |
+| Bounded-outbound grep | eval E8 | | |
+| Dead code sweep | eval E10 | | |
+
+---
+
+## Out of Scope
+
+- The six new providers, broker refresh-minting, catalog endpoint, and UI — **M108_002**.
+- Bounding non-connector outbound callers (`auth/jwks.zig`, `auth/clerk_backend.zig`, `observability/otlp/post.zig`, `fleet_bundle/github_net.zig`, `credentials/serve_broker.zig` github mint) — follow-up spec once `bounded_fetch` proves out here; `github_net.zig`'s slot-isolation mitigation stays until then.
+- Genericizing inbound event ingress surfaces (Slack events stays bespoke; future providers bring their own inbound shapes).
+- Third-party/plugin connectors (registry stays in-tree + comptime).
