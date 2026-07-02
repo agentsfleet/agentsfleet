@@ -16,8 +16,13 @@ import {
   INTEGRATION_CATALOG,
   type Integration,
 } from "@/lib/integrations/catalog";
-import { CONNECTOR_STATUS, type ConnectorStatus } from "@/lib/api/connectors";
-import { startGithubConnectAction } from "../connector-actions";
+import {
+  CONNECTOR_PROVIDERS,
+  CONNECTOR_STATUS,
+  type ConnectorStatus,
+} from "@/lib/api/connectors";
+import type { ActionResult } from "@/lib/actions/with-token";
+import { startConnectAction } from "../connector-actions";
 import { EVENTS } from "@/lib/analytics/events";
 import { captureProductEvent } from "@/lib/analytics/posthog";
 import { presentErrorString } from "@/lib/errors";
@@ -30,6 +35,9 @@ const PLANNED_LABEL = "Planned";
 const REQUESTED_LABEL = "Requested";
 const CONNECT_GITHUB_LABEL = "Connect GitHub";
 const RECONNECT_GITHUB_LABEL = "Reconnect GitHub";
+const CONNECT_SLACK_LABEL = "Connect Slack";
+const RECONNECT_SLACK_LABEL = "Reconnect Slack";
+const SLACK_CONNECTED_PREFIX = "Slack connected: ";
 const CONNECTING_LABEL = "Connecting…";
 const REQUEST_ACCESS_LABEL = "Request access";
 
@@ -39,44 +47,59 @@ const INTEGRATION_ICON = {
   slack: HashIcon,
 } as const satisfies Record<Integration["id"], ComponentType<{ size?: number }>>;
 
-// ── GitHub: App-connect (browser OAuth install, no token paste) ──────────────
+// ── OAuth connectors (browser connect, no token paste): GitHub + Slack ───────
 
-function githubPill(status: ConnectorStatus): { label: string; variant: StatusPillVariant } {
+// Status → pill is auth-agnostic (both GitHub and Slack surface the same three
+// states), so one mapper serves both rows.
+function oauthStatusPill(status: ConnectorStatus): { label: string; variant: StatusPillVariant } {
   if (status === CONNECTOR_STATUS.connected) return { label: CONNECTED_LABEL, variant: "success" };
   if (status === CONNECTOR_STATUS.reconnectRequired) return { label: RECONNECT_LABEL, variant: "warning" };
   return { label: NOT_CONNECTED_LABEL, variant: "warning" };
 }
 
-function GithubConnectorRow({
+// One row for both browser-OAuth connectors (GitHub, Slack): identical connect
+// redirect + status pill; only the labels, the action, and the connected-state
+// description (Slack shows the team) differ, passed in by the caller.
+function OAuthConnectorRow({
   integration,
   workspaceId,
   status,
+  connectLabel,
+  reconnectLabel,
+  actionVerb,
+  onConnect,
+  connectedDescription = null,
 }: {
   integration: Integration;
   workspaceId: string;
   status: ConnectorStatus;
+  connectLabel: string;
+  reconnectLabel: string;
+  actionVerb: string;
+  onConnect: (workspaceId: string) => Promise<ActionResult<{ install_url: string }>>;
+  connectedDescription?: string | null;
 }) {
   const Icon = INTEGRATION_ICON[integration.id];
   const [connecting, startConnecting] = useTransition();
   const [error, setError] = useState<string | null>(null);
-  const pill = githubPill(status);
+  const pill = oauthStatusPill(status);
   const isConnected = status === CONNECTOR_STATUS.connected;
-  const ctaLabel =
-    status === CONNECTOR_STATUS.reconnectRequired ? RECONNECT_GITHUB_LABEL : CONNECT_GITHUB_LABEL;
+  const ctaLabel = status === CONNECTOR_STATUS.reconnectRequired ? reconnectLabel : connectLabel;
 
-  // Connect is a redirect: the action returns the GitHub App install URL (with a
-  // signed state binding this workspace); the browser leaves for GitHub and
-  // returns via the backend callback. No token is exchanged client-side.
+  // Connect is a redirect: the action returns the provider authorize/install URL
+  // (with a signed state binding this workspace); the browser leaves for the
+  // provider and returns via the backend callback, which vaults the credential.
+  // No token is exchanged client-side.
   function connect() {
     setError(null);
     startConnecting(async () => {
-      const result = await startGithubConnectAction(workspaceId);
+      const result = await onConnect(workspaceId);
       if (!result.ok) {
         setError(
           presentErrorString({
             errorCode: result.errorCode,
             message: result.error,
-            action: "connect GitHub",
+            action: actionVerb,
           }),
         );
         return;
@@ -92,7 +115,7 @@ function GithubConnectorRow({
       title={integration.name}
       description={
         <>
-          {integration.description}
+          {isConnected && connectedDescription ? connectedDescription : integration.description}
           {error ? (
             <Alert variant="destructive" className="mt-2">
               {error}
@@ -123,7 +146,7 @@ function GithubConnectorRow({
   );
 }
 
-// ── Zoho / Slack: custom-secret bridge (Planned) ─────────────────────────────
+// ── Zoho: custom-secret bridge (Planned) ─────────────────────────────────────
 
 function plannedPill({
   isReady,
@@ -192,10 +215,14 @@ function PlannedConnectorRow({
 export default function IntegrationsConnectors({
   workspaceId,
   githubStatus,
+  slackStatus = CONNECTOR_STATUS.notConnected,
+  slackTeam = null,
   credentialNames = [],
 }: {
   workspaceId: string;
   githubStatus: ConnectorStatus;
+  slackStatus?: ConnectorStatus;
+  slackTeam?: string | null;
   credentialNames?: readonly string[];
 }) {
   const storedCredentialNames = new Set(credentialNames);
@@ -219,16 +246,32 @@ export default function IntegrationsConnectors({
   return (
     <div className="space-y-md" data-testid="integrations-connectors">
       <p className="text-body-sm leading-body-sm text-muted-foreground">
-        Connect GitHub in one click — no token to paste. Request Zoho or Slack if needed.
+        Connect GitHub or Slack in one click — no token to paste. Request Zoho if needed.
       </p>
       <DashboardRowGroup>
         {INTEGRATION_CATALOG.map((integration) =>
           integration.auth === INTEGRATION_AUTH.appConnect ? (
-            <GithubConnectorRow
+            <OAuthConnectorRow
               key={integration.id}
               integration={integration}
               workspaceId={workspaceId}
               status={githubStatus}
+              connectLabel={CONNECT_GITHUB_LABEL}
+              reconnectLabel={RECONNECT_GITHUB_LABEL}
+              actionVerb="connect GitHub"
+              onConnect={startConnectAction.bind(null, CONNECTOR_PROVIDERS.github)}
+            />
+          ) : integration.auth === INTEGRATION_AUTH.oauthConnect ? (
+            <OAuthConnectorRow
+              key={integration.id}
+              integration={integration}
+              workspaceId={workspaceId}
+              status={slackStatus}
+              connectLabel={CONNECT_SLACK_LABEL}
+              reconnectLabel={RECONNECT_SLACK_LABEL}
+              actionVerb="connect Slack"
+              onConnect={startConnectAction.bind(null, CONNECTOR_PROVIDERS.slack)}
+              connectedDescription={slackTeam ? `${SLACK_CONNECTED_PREFIX}${slackTeam}` : null}
             />
           ) : (
             <PlannedConnectorRow

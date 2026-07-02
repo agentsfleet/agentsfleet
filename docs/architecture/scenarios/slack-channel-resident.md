@@ -2,7 +2,7 @@
 
 > Parent: [`README.md`](./README.md) · References: [`../runner_fleet.md`](../runner_fleet.md) (§Memory continuity — the hydrate/capture loop), [`../data_flow.md`](../data_flow.md) (single-ingress trigger/execute loop), [`../user_flow.md`](../user_flow.md) §8.8 (Slack as a resident surface).
 >
-> **Forward-looking (M106 — pending).** Specced in [`../../v2/pending/M106_001_P1_API_DOCS_INFRA_UI_SLACK_RESIDENT_CHANNEL_BOT.md`](../../v2/pending/M106_001_P1_API_DOCS_INFRA_UI_SLACK_RESIDENT_CHANNEL_BOT.md). This narrates the *target* surface, not the runtime as it ships today.
+> **Shipped (M106).** Specced in [`../../v2/done/M106_001_P1_API_DOCS_INFRA_UI_SLACK_RESIDENT_CHANNEL_BOT.md`](../../v2/done/M106_001_P1_API_DOCS_INFRA_UI_SLACK_RESIDENT_CHANNEL_BOT.md). This narrates the channel-resident surface as it now ships.
 
 **Outcome under test:** a fact a user tells `@agentsfleet` in one Slack thread is recalled by the bot in a *different thread of the same channel* — because the memory namespace is the per-channel resident fleet, not the thread — with the bot read-only and never acting unattended.
 
@@ -19,7 +19,7 @@ sequenceDiagram
 
   Note over Lead,Runner: one-time — admin connects Slack (OAuth) → vault handle + core.connector_installs 🔨
   Lead->>Slack: @agentsfleet what's our prod called? (thread A)
-  Slack->>API: POST /v1/integrations/slack/events (v0 HMAC) 🔨
+  Slack->>API: POST /v1/connectors/slack/events (v0 HMAC) 🔨
   API->>PG: resolve team→workspace; materialize channel fleet via innerCreateFleet (default skill.md) 🔨
   API->>API: XADD fleet:{channel_fleet_id}:events actor=slack:<user> (webhook-producer shape) ✅ reused
   Runner->>API: lease → run; GET /me/memory/{channel_fleet_id} (empty) ✅

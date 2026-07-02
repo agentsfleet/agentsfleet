@@ -19,7 +19,7 @@ const ServeMigrationDecision = enum {
     run_required,
 };
 
-pub fn canonicalMigrations() [24]db.Migration {
+pub fn canonicalMigrations() [26]db.Migration {
     const schema = @import("schema");
     return .{
         .{ .version = 1, .sql = schema.core_foundation_sql },
@@ -47,6 +47,8 @@ pub fn canonicalMigrations() [24]db.Migration {
         .{ .version = 26, .sql = schema.account_purge_gate_bypass_sql },
         .{ .version = 28, .sql = schema.fleet_bundle_templates_sql },
         .{ .version = 29, .sql = schema.tenant_fleet_bundle_templates_sql },
+        .{ .version = 30, .sql = schema.connector_installs_sql },
+        .{ .version = 31, .sql = schema.connector_channels_sql },
     };
 }
 
@@ -125,6 +127,19 @@ pub fn enforceServeMigrationSafety(
 pub fn runCanonicalMigrations(pool: *db.Pool) !void {
     const migrations = canonicalMigrations();
     try db.runMigrations(pool, &migrations);
+}
+
+test "canonical migrations: connector install + channel tables registered (v29, v30)" {
+    const migrations = canonicalMigrations();
+    try std.testing.expectEqual(@as(usize, 26), migrations.len);
+    var has_installs = false;
+    var has_channels = false;
+    for (migrations) |m| {
+        if (m.version == 29) has_installs = true;
+        if (m.version == 30) has_channels = true;
+    }
+    try std.testing.expect(has_installs);
+    try std.testing.expect(has_channels);
 }
 
 test "migrateOnStartEnabledFromEnv parses known values" {

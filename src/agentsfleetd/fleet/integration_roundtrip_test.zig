@@ -241,6 +241,11 @@ fn delStream(h: *TestHarness, comptime key: []const u8) void {
 
 fn cleanupAll(h: *TestHarness, conn: *pg.Conn) void {
     delStream(h, "fleet:" ++ FLEET_ID ++ ":events");
+    // The reclaim test settles under this FIXED event id; without this delete
+    // the leaked slice makes any rerun collide on
+    // uq_metering_periods_event_id_slice_seq (the sibling renewal/concurrency
+    // suites all carry the same cleanup for their own fixed ids).
+    execIgnore(conn, "DELETE FROM fleet.metering_periods WHERE event_id = 'evt-seed-1'", .{});
     execIgnore(conn, "DELETE FROM fleet.runner_leases WHERE fleet_id = $1::uuid", .{FLEET_ID});
     execIgnore(conn, "DELETE FROM fleet.runner_affinity WHERE fleet_id = $1::uuid", .{FLEET_ID});
     execIgnore(conn, "DELETE FROM fleet.runners WHERE id IN ($1::uuid, $2::uuid)", .{ RUNNER_A_ID, RUNNER_B_ID });

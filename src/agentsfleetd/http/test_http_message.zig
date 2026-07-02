@@ -22,6 +22,10 @@ pub const Request = struct {
     hdr_count: usize = 0,
     body: ?[]const u8 = null,
     bearer_owned: ?[]u8 = null, // allocated by bearer(); freed in send()'s defer
+    /// null → std's default (follow up to 3). `.unhandled` returns a 3xx as-is,
+    /// so a test can assert an OAuth callback's 302 without the client chasing
+    /// Location to a dead `app_url`. Set via `redirectBehavior()`.
+    redirect_behavior: ?std.http.Client.Request.RedirectBehavior = null,
 
     pub fn init(h: *harness_mod.TestHarness, method: std.http.Method, path: []const u8) Request {
         return .{ .harness = h, .method = method, .path = path };
@@ -61,6 +65,15 @@ pub const Request = struct {
         return r;
     }
 
+    /// Bound/disable redirect following for this request. Default (unset) keeps
+    /// std's follow-up-to-3; `.unhandled` returns a 3xx as-is — needed to assert
+    /// an OAuth callback's 302 without the client chasing Location to a dead URL.
+    pub fn redirectBehavior(self: Request, rb: std.http.Client.Request.RedirectBehavior) Request {
+        var r = self;
+        r.redirect_behavior = rb;
+        return r;
+    }
+
     pub fn send(self: Request) !Response {
         const alloc = self.harness.alloc;
         defer if (self.bearer_owned) |v| alloc.free(v);
@@ -83,6 +96,7 @@ pub const Request = struct {
             .method = self.method,
             .payload = self.body,
             .extra_headers = hdrs[0..self.hdr_count],
+            .redirect_behavior = self.redirect_behavior,
             .response_writer = &writer.writer,
         });
         return .{

@@ -8,19 +8,33 @@
 // post-trial — the same honest-in-both-eras shape used by metering_test.zig.
 
 const std = @import("std");
+const pg = @import("pg");
 
 const metering = @import("metering.zig");
 const tenant_billing = @import("../state/tenant_billing.zig");
 const base = @import("../db/test_fixtures.zig");
-const uc1 = @import("../db/test_fixtures_uc1.zig");
 
 const ALLOC = std.testing.allocator;
+
+// Per-suite tenant (fa07 block, matching the aa07 workspace segment): keeps
+// this suite's grants/resets off every other suite's balance assertions.
+const TENANT_ID = "0195b4ba-8d3a-7f13-8abc-fa0700000000";
 
 const WS_GATE_EXACT = "0195b4ba-8d3a-7f13-8abc-aa0700000002";
 const WS_GATE_UNDER = "0195b4ba-8d3a-7f13-8abc-aa0700000003";
 
-fn trialActive(conn: *@import("pg").Conn) !bool {
-    const b = (try tenant_billing.getBilling(conn, ALLOC, uc1.TENANT_ID)).?;
+fn seed(conn: *pg.Conn, workspace_id: []const u8) !void {
+    try base.seedTenantById(conn, TENANT_ID, "metering-edge-suite");
+    try base.seedWorkspaceWithTenant(conn, workspace_id, TENANT_ID);
+}
+
+fn teardown(conn: *pg.Conn, workspace_id: []const u8) void {
+    base.teardownWorkspace(conn, workspace_id);
+    base.teardownTenantById(conn, TENANT_ID);
+}
+
+fn trialActive(conn: *pg.Conn) !bool {
+    const b = (try tenant_billing.getBilling(conn, ALLOC, TENANT_ID)).?;
     defer ALLOC.free(@constCast(b.grant_source));
     return b.free_trial_active;
 }
@@ -30,8 +44,8 @@ test "should pass the stop gate for self_managed at zero balance (no upfront cha
     defer db_ctx.pool.deinit();
     defer db_ctx.pool.release(db_ctx.conn);
 
-    try uc1.seed(db_ctx.conn, WS_GATE_EXACT);
-    defer uc1.teardown(db_ctx.conn, WS_GATE_EXACT);
+    try seed(db_ctx.conn, WS_GATE_EXACT);
+    defer teardown(db_ctx.conn, WS_GATE_EXACT);
 
     // Under the run-fee model the self_managed issue-time estimate is zero —
     // receive (EVENT_NANOS=0) plus runFee(0)=0; tokens land on the user's own
@@ -49,13 +63,13 @@ test "should pass the stop gate for self_managed at zero balance (no upfront cha
             tenant_billing.ESTIMATE_FLOOR_OUTPUT_TOKENS,
         );
     try std.testing.expectEqual(@as(i64, 0), est_total);
-    try tenant_billing.provision(db_ctx.conn, uc1.TENANT_ID, est_total, "test_gate_exact");
+    try tenant_billing.provision(db_ctx.conn, TENANT_ID, est_total, "test_gate_exact");
 
     // balance == est_total == 0 → gate passes (>= comparison, not strict).
     try std.testing.expect(metering.balanceCoversEstimate(
         db_ctx.pool,
         ALLOC,
-        uc1.TENANT_ID,
+        TENANT_ID,
         .self_managed,
         "self-managed-test",
         "any-model-self-managed",
@@ -68,8 +82,8 @@ test "should block the stop gate when balance is one nano below the estimate pos
     defer db_ctx.pool.deinit();
     defer db_ctx.pool.release(db_ctx.conn);
 
-    try uc1.seed(db_ctx.conn, WS_GATE_UNDER);
-    defer uc1.teardown(db_ctx.conn, WS_GATE_UNDER);
+    try seed(db_ctx.conn, WS_GATE_UNDER);
+    defer teardown(db_ctx.conn, WS_GATE_UNDER);
 
     // Platform posture so the issue-time estimate (the token floor) is non-zero
     // and the refuse boundary is reachable; self_managed carries no upfront
@@ -89,8 +103,11 @@ test "should block the stop gate when balance is one nano below the estimate pos
         );
     // Provision the exact estimate first: the billing row must exist for the
     // trial probe, and est_total is non-negative in both eras (0 while the
-    // trial zeroes the charge, the token floor after).
-    try tenant_billing.provision(db_ctx.conn, uc1.TENANT_ID, est_total, "test_gate_under");
+    // trial zeroes the charge, the token floor after). seedPlatformProvider
+    // granted the starter balance and provision is idempotent — reset so
+    // est_total actually lands.
+    base.resetBillingFor(db_ctx.conn, TENANT_ID);
+    try tenant_billing.provision(db_ctx.conn, TENANT_ID, est_total, "test_gate_under");
 
     // While the trial window is open est_total == 0, so "one nano below" is a
     // negative balance the gate can't reach honestly — skip until post-trial.
@@ -100,12 +117,12 @@ test "should block the stop gate when balance is one nano below the estimate pos
 
     // Post-trial: drop exactly one nano below the estimate so the stop gate
     // must refuse.
-    _ = try tenant_billing.debit(db_ctx.conn, uc1.TENANT_ID, 1);
+    _ = try tenant_billing.debit(db_ctx.conn, TENANT_ID, 1);
 
     try std.testing.expect(!metering.balanceCoversEstimate(
         db_ctx.pool,
         ALLOC,
-        uc1.TENANT_ID,
+        TENANT_ID,
         .platform,
         "anthropic",
         "claude-sonnet-4-6",

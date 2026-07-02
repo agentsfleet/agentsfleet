@@ -22,7 +22,7 @@ vi.mock("@/lib/workspace", () => ({
 }));
 vi.mock("@/lib/api/credentials", () => ({ listCredentials: vi.fn() }));
 vi.mock("@/lib/api/connectors", () => ({
-  getGithubConnector: vi.fn(),
+  getConnector: vi.fn(),
   CONNECTOR_STATUS: {
     connected: "connected",
     reconnectRequired: "reconnect_required",
@@ -33,15 +33,24 @@ vi.mock("@/app/(dashboard)/integrations/components/IntegrationsConnectors", () =
   default: ({
     workspaceId,
     githubStatus,
+    slackStatus,
+    slackTeam,
     credentialNames,
   }: {
     workspaceId: string;
     githubStatus: string;
+    slackStatus: string;
+    slackTeam: string | null;
     credentialNames: readonly string[];
   }) =>
     React.createElement(
       "div",
-      { "data-integrations-connectors": workspaceId, "data-github-status": githubStatus },
+      {
+        "data-integrations-connectors": workspaceId,
+        "data-github-status": githubStatus,
+        "data-slack-status": slackStatus,
+        "data-slack-team": slackTeam ?? "",
+      },
       credentialNames.join(","),
     ),
 }));
@@ -51,13 +60,29 @@ vi.mock("lucide-react", () => ({
 
 import { withWorkspaceScope } from "@/lib/workspace";
 import { listCredentials } from "@/lib/api/credentials";
-import { getGithubConnector, CONNECTOR_STATUS } from "@/lib/api/connectors";
+import { getConnector, CONNECTOR_STATUS } from "@/lib/api/connectors";
+
+// The page reads both connectors through one getConnector(provider, …); dispatch
+// the stub on the provider argument so each row's status/team (and its
+// fail-closed rejection path) is set independently.
+type StubResult = { status: string; team?: string | null } | Error;
+function stubConnectors(github: StubResult, slack: StubResult) {
+  vi.mocked(getConnector).mockImplementation(((provider: string) => {
+    const r = provider === "github" ? github : slack;
+    return r instanceof Error ? Promise.reject(r) : Promise.resolve(r);
+  }) as unknown as typeof getConnector);
+}
 
 beforeEach(() => {
   vi.clearAllMocks();
   auth.mockResolvedValue({ getToken: vi.fn().mockResolvedValue("token_123") });
   vi.mocked(withWorkspaceScope).mockImplementation(
     async (_token: string, fn: (workspaceId: string) => Promise<unknown>) => fn("ws_1"),
+  );
+  // Default: both connectors not connected. Individual tests override as needed.
+  stubConnectors(
+    { status: CONNECTOR_STATUS.notConnected },
+    { status: CONNECTOR_STATUS.notConnected, team: null },
   );
 });
 afterEach(() => vi.clearAllMocks());
@@ -67,7 +92,10 @@ describe("Integrations page", () => {
     vi.mocked(listCredentials).mockResolvedValue({
       credentials: [{ kind: "custom_secret", name: "SLACK_BOT_TOKEN", created_at: 0 }],
     });
-    vi.mocked(getGithubConnector).mockResolvedValue({ status: CONNECTOR_STATUS.connected });
+    stubConnectors(
+      { status: CONNECTOR_STATUS.connected },
+      { status: CONNECTOR_STATUS.notConnected, team: null },
+    );
 
     const { default: Page } = await import("../app/(dashboard)/integrations/page");
     const markup = renderToStaticMarkup(await Page());
@@ -78,9 +106,39 @@ describe("Integrations page", () => {
     expect(markup).toContain("SLACK_BOT_TOKEN");
   });
 
+  it("wires the Slack connector status + team through to the connectors component", async () => {
+    vi.mocked(listCredentials).mockResolvedValue({ credentials: [] });
+    stubConnectors(
+      { status: CONNECTOR_STATUS.notConnected },
+      { status: CONNECTOR_STATUS.connected, team: "Acme Corp" },
+    );
+
+    const { default: Page } = await import("../app/(dashboard)/integrations/page");
+    const markup = renderToStaticMarkup(await Page());
+
+    expect(markup).toContain('data-slack-status="connected"');
+    expect(markup).toContain('data-slack-team="Acme Corp"');
+  });
+
+  it("degrades the Slack connector to not-connected when the status read errors", async () => {
+    vi.mocked(listCredentials).mockResolvedValue({ credentials: [] });
+    stubConnectors(
+      { status: CONNECTOR_STATUS.notConnected },
+      new Error("connector endpoint down"),
+    );
+
+    const { default: Page } = await import("../app/(dashboard)/integrations/page");
+    const markup = renderToStaticMarkup(await Page());
+
+    expect(markup).toContain('data-slack-status="not_connected"');
+  });
+
   it("degrades the GitHub connector to not-connected when the status read errors", async () => {
     vi.mocked(listCredentials).mockResolvedValue({ credentials: [] });
-    vi.mocked(getGithubConnector).mockRejectedValue(new Error("connector endpoint down"));
+    stubConnectors(
+      new Error("connector endpoint down"),
+      { status: CONNECTOR_STATUS.notConnected, team: null },
+    );
 
     const { default: Page } = await import("../app/(dashboard)/integrations/page");
     const markup = renderToStaticMarkup(await Page());
