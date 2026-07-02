@@ -1,16 +1,19 @@
-//! §4 — post the channel bot's answer back to Slack via `chat.postMessage`.
+//! Post the channel bot's answer back to Slack via `chat.postMessage`.
 //!
 //! Called ONLY by the `connector:outbound` worker's slack dispatch arm (never on
 //! the runner's report path, and never by the sandboxed runner itself — it holds
 //! no bot token). Resolves the per-install bot token from the
 //! `(workspace_id,'fleet:slack')` vault handle, reads the originating channel +
-//! reply thread from the mention event's `request_json`, and posts the answer
-//! threaded. Best-effort: every failure is logged `UZ-SLK-030` and returns a
-//! verdict the worker uses for bounded backoff — the run itself never fails.
+//! reply thread from the mention event's `request_json`, RELEASES the pooled
+//! conn, and only then posts the answer threaded (deadline-armed — a stalled
+//! vendor can never park a pool slot or the worker). Best-effort: every failure
+//! is logged `UZ-SLK-030` and returns a verdict the worker uses for bounded
+//! backoff — the run itself never fails.
 
 const std = @import("std");
 const pg = @import("pg");
 const logging = @import("log");
+const bounded_fetch = @import("../bounded_fetch.zig");
 const ec = @import("../../../../errors/error_registry.zig");
 const vault = @import("../../../../state/vault.zig");
 const credential_key = @import("../../../../fleet_runtime/credential_key.zig");
@@ -44,10 +47,12 @@ const SELECT_EVENT_REQUEST_JSON =
 /// Post `answer` to the Slack thread that mention `event_id` arrived on. Resolves
 /// the channel + reply thread from the event's `request_json` and the bot token
 /// from the workspace's `fleet:slack` vault handle. `api_base` is the Slack Web
-/// API root. Never throws — returns a verdict; all failures log `UZ-SLK-030`.
+/// API root; `wd` is the worker's loop-lived watchdog. Never throws — returns a
+/// verdict; all failures log `UZ-SLK-030`.
 pub fn deliver(
     alloc: std.mem.Allocator,
     io: std.Io,
+    wd: *bounded_fetch.Watchdog,
     pool: *pg.Pool,
     api_base: []const u8,
     workspace_id: []const u8,
@@ -55,31 +60,60 @@ pub fn deliver(
     event_id: []const u8,
     answer: []const u8,
 ) Outcome {
-    const conn = pool.acquire() catch return .retryable; // DB blip → retry
-    defer pool.release(conn);
-
-    // Channel + reply thread live in the event's request_json (what events.zig
-    // XADDed). A missing/garbled row is permanent — there is nowhere to post.
-    var req = loadRequestJson(alloc, conn, fleet_id, event_id) catch |err| {
-        log.warn("slack_post_event_load_failed", .{ .error_code = ec.ERR_SLACK_OUTBOUND_POST_FAILED, .fleet_id = fleet_id, .err = @errorName(err) });
-        return .permanent;
-    } orelse return .permanent;
-    defer req.deinit();
-    const robj = switch (req.value) {
+    var loaded = switch (loadInputs(alloc, pool, workspace_id, fleet_id, event_id)) {
+        .verdict => |v| return v,
+        .ok => |l| l,
+    };
+    defer loaded.deinit(alloc);
+    const robj = switch (loaded.req.value) {
         .object => |o| o,
         else => return .permanent,
     };
     const channel = strField(robj, RQ_CHANNEL) orelse return .permanent;
     const thread_ts = strField(robj, RQ_THREAD) orelse return .permanent;
 
+    return postMessage(alloc, io, wd, api_base, loaded.token, channel, thread_ts, answer);
+}
+
+/// Everything the post needs from the database, loaded under ONE short-lived
+/// pool acquire that is released before any vendor HTTP begins (a pool slot
+/// must never ride a vendor call).
+const Loaded = struct {
+    req: std.json.Parsed(std.json.Value),
+    token: []const u8,
+
+    fn deinit(self: *Loaded, alloc: std.mem.Allocator) void {
+        self.req.deinit();
+        alloc.free(self.token);
+    }
+};
+
+const LoadResult = union(enum) { ok: Loaded, verdict: Outcome };
+
+fn loadInputs(
+    alloc: std.mem.Allocator,
+    pool: *pg.Pool,
+    workspace_id: []const u8,
+    fleet_id: []const u8,
+    event_id: []const u8,
+) LoadResult {
+    const conn = pool.acquire() catch return .{ .verdict = .retryable }; // DB blip → retry
+    defer pool.release(conn);
+
+    // Channel + reply thread live in the event's request_json (what events.zig
+    // XADDed). A missing/garbled row is permanent — there is nowhere to post.
+    var req = loadRequestJson(alloc, conn, fleet_id, event_id) catch |err| {
+        log.warn("slack_post_event_load_failed", .{ .error_code = ec.ERR_SLACK_OUTBOUND_POST_FAILED, .fleet_id = fleet_id, .err = @errorName(err) });
+        return .{ .verdict = .permanent };
+    } orelse return .{ .verdict = .permanent };
+
     const token = loadBotToken(alloc, conn, workspace_id) catch |err| {
         // No/garbled handle → uninstalled or misconfigured; a retry won't help.
+        req.deinit();
         log.warn("slack_post_token_load_failed", .{ .error_code = ec.ERR_SLACK_OUTBOUND_POST_FAILED, .workspace_id = workspace_id, .err = @errorName(err) });
-        return .permanent;
+        return .{ .verdict = .permanent };
     };
-    defer alloc.free(token);
-
-    return postMessage(alloc, io, api_base, token, channel, thread_ts, answer);
+    return .{ .ok = .{ .req = req, .token = token } };
 }
 
 /// SELECT the event row's `request_json` and parse it (owned Parsed — std.json
@@ -95,8 +129,9 @@ fn loadRequestJson(alloc: std.mem.Allocator, conn: *pg.Conn, fleet_id: []const u
 
 /// Resolve the per-install bot token from the `(workspace_id,'fleet:slack')`
 /// vault handle callback.zig wrote (RULE VLT). Caller owns the returned token.
-/// `pub` so the §4 E thread re-read (`thread.zig`) resolves the same token from
-/// the one site that reads the `fleet:slack` handle (RULE NDC — no second loader).
+/// `pub` so the mention ingress (`events.zig`) pre-loads the same token for the
+/// thread re-read from the one site that reads the `fleet:slack` handle
+/// (RULE NDC — no second loader).
 pub fn loadBotToken(alloc: std.mem.Allocator, conn: *pg.Conn, workspace_id: []const u8) ![]const u8 {
     const key = try credential_key.allocKeyName(alloc, spec.PROVIDER); // "fleet:slack"
     defer alloc.free(key);
@@ -114,12 +149,15 @@ pub fn loadBotToken(alloc: std.mem.Allocator, conn: *pg.Conn, workspace_id: []co
     return alloc.dupe(u8, tok);
 }
 
-/// POST `{channel, thread_ts, text}` to `chat.postMessage` with the bot token.
-/// Slack returns 200 with `{ok:true|false}` for app-level outcomes, 429 for
-/// rate-limit, 5xx for its own faults — mapped to the retry verdict.
+/// POST `{channel, thread_ts, text}` to `chat.postMessage` with the bot token,
+/// deadline-armed on the worker's watchdog. Slack returns 200 with
+/// `{ok:true|false}` for app-level outcomes, 429 for rate-limit, 5xx for its
+/// own faults — mapped to the retry verdict; a fired deadline or refused call
+/// is retryable like any transport failure.
 fn postMessage(
     alloc: std.mem.Allocator,
     io: std.Io,
+    wd: *bounded_fetch.Watchdog,
     api_base: []const u8,
     token: []const u8,
     channel: []const u8,
@@ -134,33 +172,24 @@ fn postMessage(
     const auth = std.fmt.allocPrint(alloc, "Bearer {s}", .{token}) catch return .retryable;
     defer alloc.free(auth);
 
-    var client: std.http.Client = .{ .allocator = alloc, .io = io };
-    defer client.deinit();
-    var resp_body: std.ArrayList(u8) = .empty;
-    var aw: std.Io.Writer.Allocating = .fromArrayList(alloc, &resp_body);
     const headers = [_]std.http.Header{
         .{ .name = "authorization", .value = auth },
         .{ .name = "content-type", .value = "application/json; charset=utf-8" },
     };
-    const result = client.fetch(.{
-        .location = .{ .url = url },
+    const res = bounded_fetch.fetch(alloc, io, wd, .{
+        .url = url,
         .method = .POST,
         .payload = body,
         .extra_headers = &headers,
-        .response_writer = &aw.writer,
+        .deadline_ms = bounded_fetch.OUTBOUND_POST_DEADLINE_MS,
+        .provider = spec.PROVIDER,
+        .class = .outbound_post,
     }) catch |err| {
-        aw.deinit();
         log.warn("slack_post_transport_failed", .{ .error_code = ec.ERR_SLACK_OUTBOUND_POST_FAILED, .err = @errorName(err) });
-        return .retryable; // transport / dial error → retry
+        return .retryable; // transport / deadline / refused → retry with backoff
     };
-    const status = @intFromEnum(result.status);
-    // Read the body via the writer (the seed ArrayList is stale once it grows).
-    const resp = aw.toOwnedSlice() catch {
-        aw.deinit();
-        return classifyStatus(status);
-    };
-    defer alloc.free(resp);
-    return classify(alloc, status, resp);
+    defer alloc.free(res.body);
+    return classify(alloc, res.status, res.body);
 }
 
 /// Map HTTP status + Slack body to a verdict. 200 with `ok:true` is the only
@@ -177,13 +206,6 @@ fn classify(alloc: std.mem.Allocator, status: u16, resp: []const u8) Outcome {
     }
     if (slackOk(alloc, resp)) return .delivered;
     log.warn("slack_post_app_error", .{ .error_code = ec.ERR_SLACK_OUTBOUND_POST_FAILED, .status = status });
-    return .permanent;
-}
-
-/// Verdict when the body could not be read (rare post-200): trust the status.
-fn classifyStatus(status: u16) Outcome {
-    if (status == HTTP_TOO_MANY_REQUESTS or status >= HTTP_SERVER_ERROR_FLOOR) return .retryable;
-    if (status == HTTP_OK) return .delivered; // 200 with an unread body — assume ok
     return .permanent;
 }
 

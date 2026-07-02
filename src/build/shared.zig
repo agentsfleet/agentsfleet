@@ -20,6 +20,7 @@ const NULLCLAW_ENGINES = "base,sqlite";
 // Module import names used internally below — must match the module's `@import`
 // sites (the binding names are applied by each graph's `.imports`).
 const S_COMMON = "common";
+const S_LOG = "log";
 const S_NULLCLAW = "nullclaw";
 
 // Version + git-commit build options (consumed via `@import("build_options")`).
@@ -36,6 +37,7 @@ pub const SharedDeps = struct {
     log: *std.Build.Module,
     protocol: *std.Build.Module,
     common: *std.Build.Module,
+    call_deadline: *std.Build.Module,
     nullclaw: *std.Build.Module,
 
     pub fn init(
@@ -65,6 +67,16 @@ pub const SharedDeps = struct {
             .root_source_file = b.path("src/lib/contract/contract.zig"),
         });
 
+        // call_deadline: the socket-shutdown call watchdog + the runner's
+        // per-verb deadline policy (src/lib/call_deadline). Bounds outbound
+        // HTTP in both binaries: the runner's control-plane verbs and the
+        // daemon's connector vendor calls (bounded_fetch). Datastore-free.
+        const call_deadline = b.createModule(.{
+            .root_source_file = b.path("src/lib/call_deadline/call_deadline.zig"),
+        });
+        call_deadline.addImport(S_COMMON, common);
+        call_deadline.addImport(S_LOG, log);
+
         // NullClaw engine dependency — same options on both graphs (RULE UFS).
         const nullclaw_dep = b.dependency(S_NULLCLAW, .{
             .target = target,
@@ -77,6 +89,7 @@ pub const SharedDeps = struct {
             .log = log,
             .protocol = protocol,
             .common = common,
+            .call_deadline = call_deadline,
             .nullclaw = nullclaw_dep.module(S_NULLCLAW),
         };
     }
