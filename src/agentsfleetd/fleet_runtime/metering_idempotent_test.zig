@@ -40,7 +40,9 @@ test "should keep the first balance when provision is replayed on the same tenan
     const balance1: i64 = 3_000_000;
     const balance2: i64 = 9_000_000;
 
-    // First provision lands balance1 + source1.
+    // First provision lands balance1 + source1. The claim below is
+    // first-provision-wins, so start from a guaranteed-absent row.
+    base.resetBilling(db_ctx.conn);
     try tenant_billing.provision(db_ctx.conn, uc1.TENANT_ID, balance1, "source_first");
     // Second provision with a different balance/source must be a silent no-op
     // (ON CONFLICT DO NOTHING) — the row stays as the first call left it.

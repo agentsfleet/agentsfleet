@@ -85,7 +85,10 @@ test "balanceCoversEstimate: blocks when stop policy AND balance below est_total
     defer base.teardownPlatformProvider(db_ctx.conn, WS_GATE_BLOCK);
 
     // platform: receive = EVENT_NANOS (0), stage = token-floor cost (run fee is
-    // 0 at issue). Balance 0 < est_total → blocked.
+    // 0 at issue). Balance 0 < est_total → blocked. seedPlatformProvider just
+    // granted the starter balance onto the shared tenant and provision is
+    // idempotent — reset so the 0 actually lands.
+    base.resetBilling(db_ctx.conn);
     try tenant_billing.provision(db_ctx.conn, uc1.TENANT_ID, 0, "test_block");
 
     // Free-trial: stage charge short-circuits to 0 until FREE_TRIAL_END_MS, so
@@ -142,6 +145,7 @@ test "debitReceive self-managed: EVENT_NANOS=0 charge writes telemetry row, bala
     defer uc1.teardown(db_ctx.conn, WS_RECEIVE_DEBIT);
     defer _ = db_ctx.conn.exec("DELETE FROM core.fleet_execution_telemetry WHERE workspace_id = $1", .{WS_RECEIVE_DEBIT}) catch {};
 
+    base.resetBilling(db_ctx.conn);
     try tenant_billing.insertStarterGrant(db_ctx.conn, uc1.TENANT_ID);
 
     const event_id = "0195b4ba-8d3a-7f13-8abc-aa1900000a01";
@@ -184,6 +188,7 @@ test "telemetry insert is idempotent: same event_id+charge_type replayed inserts
     defer uc1.teardown(db_ctx.conn, ws);
     defer _ = db_ctx.conn.exec("DELETE FROM core.fleet_execution_telemetry WHERE workspace_id = $1", .{ws}) catch {};
 
+    base.resetBilling(db_ctx.conn);
     try tenant_billing.insertStarterGrant(db_ctx.conn, uc1.TENANT_ID);
 
     const event_id = "0195b4ba-8d3a-7f13-8abc-aa1900000a06";

@@ -552,7 +552,7 @@ Every named credential / token / identifier in the auth surface, with sensitivit
 | `AUTH_SESSION_CODE_PEPPER` | secret (catastrophic if disclosed) | until rotated | 1Password vaults (`op://ops/ZMB_CD_{PROD,DEV,LOCAL_DEV}/AUTH_SESSION_CODE_PEPPER/credential`) · agentsfleetd process memory after Vault load | disk · logs · metrics · client bundles · environment-variable dumps · `op://` URI logged in any audit trail |
 | `AUDIT_LOG_PEPPER` | secret | until rotated | 1Password vaults · agentsfleetd process memory | same as `AUTH_SESSION_CODE_PEPPER` |
 | Fleet-trigger webhook secrets (per-provider HMAC keys) | secret | until rotated | vault items (`fleet:<source>` in workspace vault, field `webhook_secret`) · webhook_sig middleware in agentsfleetd | logs · error bodies · diagnostic bundles · operator screenshots |
-| Connector per-install handle (`fleet:<provider>` in the **workspace** vault, M106) — Slack: `{bot_token (xoxb-…), bot_user_id, team_id, team_name, scopes}`; GitHub: `{integration, installation_id}` | secret | until reconnected / revoked | workspace vault · agentsfleetd process memory (`loadBotToken` for the outbound poster / thread re-fetch / status; the GitHub installation-token mint) · outbound HTTPS `Authorization: Bearer` to the provider | logs · error bodies · client bundles · telemetry · the connector status read (returns only `{status, team}`) |
+| Connector per-install handle (`fleet:<provider>` in the **workspace** vault, M106) — Slack: `{integration, bot_token (xoxb-…), bot_user_id, team_id, team_name, scopes}`; GitHub: `{integration, installation_id}` | secret | until reconnected / revoked | workspace vault · agentsfleetd process memory (`loadBotToken` for the outbound poster + thread re-fetch, `vault.loadJson` for the status read, the GitHub installation-token mint) · outbound HTTPS `Authorization: Bearer` to the provider | logs · error bodies · client bundles · telemetry · the connector status read (returns only `{status, team}`) |
 | Platform connector-app secret bag (admin-workspace `<provider>-app`, e.g. `slack-app` → `{client_id, client_secret, signing_secret}`, M106) | secret (catastrophic — one OAuth app for every tenant) | until rotated | admin-workspace vault (keyed by `Context.platform_admin_workspace_id`) · agentsfleetd process memory (OAuth code exchange; the events-ingress `loadSigningSecret`) | logs · error bodies · client bundles · any per-tenant surface · metrics labels |
 | Connector OAuth `state` (signed, single-use, M106) | sensitive ephemeral capability | one callback round-trip (consumed on use) | the provider authorize URL · the callback query string it returns on | server-side persistence · reuse after consume · `.auth` logs |
 | LLM provider `api_key` (platform OR self-managed, M80_009) | secret | per-lease ephemeral (resolved at lease, `secureZero`d after serialize) | vault items (`platform_llm_keys` pointer / tenant `credential_ref`) · `agentsfleetd` process memory (`resolveActiveProvider`) · inline on the lease `ExecutionPolicy.api_key` over TLS to a *placed* trusted-fleet runner · the runner's in-process NullClaw session + outbound HTTPS `Authorization: Bearer` to the provider | logs · activity/progress frames · the `fleet.runner_leases` row · `secrets_map` · telemetry · error bodies · `doctor --json` · any user-facing surface |
@@ -888,14 +888,19 @@ The dashboard's **connectors** (GitHub App, Slack) are a third inbound surface, 
 
 ### Connect + callback (the OAuth round-trip)
 
-`POST /v1/workspaces/{ws}/connectors/{provider}/connect` (Bearer, `connector:write`) mints a **signed single-use `state`** — HMAC'd with the **approval signing secret** — that binds the workspace, and returns the provider authorize URL. The browser leaves for the provider and returns to `GET /v1/connectors/{provider}/callback`, a **Bearer-less** endpoint whose *sole* trust anchor is that signed `state` (verified + consumed; missing/forged/replayed → `UZ-CONN-002 connector_state_invalid`). The handler then exchanges the `code` for a token using the platform app's `client_id`/`client_secret`, and writes two rows:
+`POST /v1/workspaces/{ws}/connectors/{provider}/connect` (Bearer, `connector:write`) mints a **signed single-use `state`** — HMAC'd with the **approval signing secret** — that binds the workspace, and returns the provider authorize URL. The browser leaves for the provider and returns to `GET /v1/connectors/{provider}/callback`, a **Bearer-less** endpoint whose *sole* trust anchor is that signed `state` (verified + consumed; a *missing* state is a malformed request → `UZ-REQ-001`; forged/expired/replayed → `UZ-CONN-002 connector_state_invalid`). What happens next is per-provider:
 
-- **Per-install handle** `fleet:<provider>` in the **workspace** vault (`fleet_runtime/credential_key.zig` composes the `fleet:` prefix) — Slack `{bot_token, bot_user_id, team_id, team_name, scopes}`, GitHub `{integration, installation_id}`. This is the credential the broker/worker mints from. RULE VLT — the token lives only here.
-- **`core.connector_installs`** — the `team_id → workspace_id` map that routes inbound events (below).
+- **Slack** is a real OAuth-2.0 code exchange: the callback trades the `code` for a bot token using the platform app's `client_id`/`client_secret`, then writes **two** rows — the per-install vault handle and the `core.connector_installs` routing row.
+- **GitHub** is a GitHub App **installation**, not a code exchange (`oauth2.zig:8-9` says so explicitly): its callback carries `installation_id` (no `code`, nothing to exchange) and writes **one** row — the vault handle only. Inbound GitHub traffic routes via the fleet-trigger webhook path, so it needs no `connector_installs` entry.
+
+The rows themselves:
+
+- **Per-install handle** `fleet:<provider>` in the **workspace** vault (`fleet_runtime/credential_key.zig` composes the `fleet:` prefix) — Slack `{integration, bot_token, bot_user_id, team_id, team_name, scopes}`, GitHub `{integration, installation_id}`. This is the credential the broker/worker mints from. RULE VLT — the token lives only here.
+- **`core.connector_installs`** (Slack only) — the `team_id → workspace_id` map that routes inbound events (below).
 
 ### Platform app secrets (`<provider>-app`, admin workspace)
 
-The OAuth app is **one per connector, shared across every tenant**. Its secrets live in the **admin-workspace** vault under `<provider>-app` (e.g. `slack-app`, `connectors/oauth2.zig` `APP_VAULT_KEY_SUFFIX = "-app"`), keyed by `Context.platform_admin_workspace_id`, holding `{client_id, client_secret, signing_secret}`. `client_secret` and `signing_secret` are catastrophic-if-leaked — they compromise every tenant's connector — so they never touch a per-tenant surface (see the sensitive-data table).
+The provider app is **one per connector, shared across every tenant**. Its secrets live in the **admin-workspace** vault under `<provider>-app` (`connectors/oauth2.zig` `APP_VAULT_KEY_SUFFIX = "-app"`), keyed by `Context.platform_admin_workspace_id`. The bag is per-provider: `slack-app` holds `{client_id, client_secret, signing_secret}`; `github-app` holds `{app_id, private_key_pem, app_slug}` (the App mints installation tokens from the private key — there is no client secret). These are catastrophic-if-leaked — they compromise every tenant's connector — so they never touch a per-tenant surface (see the sensitive-data table).
 
 ### Signed events ingress (`POST /v1/connectors/slack/events`)
 
@@ -904,7 +909,7 @@ Slack posts channel mentions here. This is **not** the fleet-trigger webhook pat
 1. Require the `x-slack-signature` + `x-slack-request-timestamp` headers.
 2. Acquire a pool conn and **read `signing_secret`** from the admin `slack-app` entry (missing → `UZ-CONN-001 connector_not_configured`). The vault read precedes the verify because you cannot verify without the secret; if per-request reads ever bite, boot-cache it on `Context` like `approval_signing_secret`.
 3. **Verify**: freshness (5-min drift → `UZ-SLK-011 slack_timestamp_stale`), then a constant-time `v0=` HMAC over `v0:{ts}:{body}` (mismatch → `UZ-SLK-010 slack_signature_invalid`).
-4. Resolve `team_id → workspace_id` via `core.connector_installs`. An **unknown team is a 200-ack no-op** (`UZ-SLK-020 slack_team_not_installed` logged, not returned) so Slack never enters a retry loop against an uninstalled workspace.
+4. Resolve `team_id → workspace_id` via `core.connector_installs`. An **unknown team is acknowledged with 200 and dropped** — the body says so (`{"ignored":"UZ-SLK-020"}`, `events.zig` `hx.ok`) — so Slack never enters a retry loop against an uninstalled workspace.
 
 ### Not the fleet-trigger webhook surface
 
@@ -922,15 +927,17 @@ A workspace that connected the `@agentsfleet` Slack app stores a `fleet:slack` h
 
 ### Error taxonomy
 
+Log reasons in parentheses are the greppable `reason=` values the ingress emits (`events.zig`).
+
 | Code | When | Surfaced as |
 | --- | --- | --- |
-| `UZ-CONN-001 connector_not_configured` | connector/app secret missing at connect, status, or ingress | 4xx (or logged no-op on ingress) |
-| `UZ-CONN-002 connector_state_invalid` | callback `state` missing / forged / replayed | 4xx on the callback |
-| `UZ-SLK-010 slack_signature_invalid` | events-ingress HMAC mismatch | 401 |
-| `UZ-SLK-011 slack_timestamp_stale` | events-ingress timestamp outside the 5-min drift | 401 |
-| `UZ-SLK-020 slack_team_not_installed` | events-ingress `team_id` not in `connector_installs` | **200-ack no-op** (logged) |
-| `UZ-SLK-022 slack_oauth_exchange_failed` | `code`→token exchange rejected by the provider | 4xx on the callback |
-| `UZ-SLK-030 slack_outbound_post_failed` | outbound answer POST to Slack failed | logged (background worker) |
+| `UZ-CONN-001` (connector not configured) | platform app secrets missing at connect or the events ingress (the status read never emits it — it degrades to `not_connected`) | **503** — the ingress fails loud too, it is not a silent no-op |
+| `UZ-CONN-002` (invalid connect state) | callback `state` forged / expired / replayed (a *missing* state is `UZ-REQ-001`) | 400 on the callback |
+| `UZ-SLK-010` (`invalid_signature`) | events-ingress HMAC mismatch | 401 |
+| `UZ-SLK-011` (`stale_timestamp`) | events-ingress timestamp outside the 5-min drift | 401 |
+| `UZ-SLK-020` (`team_not_installed`) | events-ingress `team_id` not in `connector_installs` | **200 ack**, body `{"ignored":"UZ-SLK-020"}`, event dropped |
+| `UZ-SLK-022` (token exchange failed) | `code`→token exchange rejected by the provider | **502** on the callback |
+| `UZ-SLK-030` (answer post failed) | outbound answer POST to Slack failed | logged + retried (background worker; the run never fails) |
 
 ### Cross-references
 

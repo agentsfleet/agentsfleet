@@ -12,7 +12,10 @@ const { withTokenMock, startConnectMock } = vi.hoisted(() => ({
 }));
 
 vi.mock("@/lib/actions/with-token", () => ({ withToken: withTokenMock }));
-vi.mock("@/lib/api/connectors", () => ({ startConnect: startConnectMock }));
+vi.mock("@/lib/api/connectors", () => ({
+  startConnect: startConnectMock,
+  CONNECTOR_PROVIDERS: { github: "github", slack: "slack" },
+}));
 
 import { startConnectAction } from "@/app/(dashboard)/integrations/connector-actions";
 
@@ -69,5 +72,16 @@ describe("connector connect server action", () => {
     const result = await startConnectAction("slack", "ws_1");
 
     expect(result).toEqual({ ok: false, error: "UZ-SLK-021" });
+  });
+
+  it("rejects an unknown provider before any token or API work (untrusted wire argument)", async () => {
+    const result = await startConnectAction(
+      "evil/../provider" as unknown as Parameters<typeof startConnectAction>[0],
+      "ws_1",
+    );
+
+    expect(result).toEqual({ ok: false, error: "Unknown connector provider" });
+    expect(withTokenMock).not.toHaveBeenCalled();
+    expect(startConnectMock).not.toHaveBeenCalled();
   });
 });

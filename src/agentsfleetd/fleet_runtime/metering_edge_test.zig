@@ -89,7 +89,10 @@ test "should block the stop gate when balance is one nano below the estimate pos
         );
     // Provision the exact estimate first: the billing row must exist for the
     // trial probe, and est_total is non-negative in both eras (0 while the
-    // trial zeroes the charge, the token floor after).
+    // trial zeroes the charge, the token floor after). seedPlatformProvider
+    // granted the starter balance and provision is idempotent — reset so
+    // est_total actually lands.
+    base.resetBilling(db_ctx.conn);
     try tenant_billing.provision(db_ctx.conn, uc1.TENANT_ID, est_total, "test_gate_under");
 
     // While the trial window is open est_total == 0, so "one nano below" is a
