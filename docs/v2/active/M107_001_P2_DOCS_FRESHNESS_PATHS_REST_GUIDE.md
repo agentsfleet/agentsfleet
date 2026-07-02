@@ -4,11 +4,12 @@
 **Milestone:** M107
 **Workstream:** 001
 **Date:** Jul 02, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P2 — docs hygiene; no user-facing behavior changes, but every stale pointer taxes the next implementing agent with a dead-path detour.
 **Categories:** DOCS
 **Batch:** B1 — standalone; no code dependency.
-**Branch:** (added when work begins)
+**Branch:** feat/m107-docs-freshness
+**Test Baseline:** unit=2270 integration=243
 **Depends on:** M106_001 (the doc audit that inventoried this drift ran there; its M106-scoped fixes landed in PR #468 — this spec is the agreed carve-out for the pre-existing remainder).
 **Provenance:** agent-generated (pre-spec; M106 CHORE(close) doc-freshness audit, Jul 02, 2026 — three parallel audit agents cross-checked all 28 `docs/*.md` + `docs/architecture/*.md` files against the code).
 
