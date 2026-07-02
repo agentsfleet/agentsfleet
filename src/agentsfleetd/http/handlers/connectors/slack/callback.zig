@@ -1,36 +1,22 @@
-//! GET /v1/connectors/slack/callback?code=&state= — Bearer-less.
-//!
-//! Slack redirects the admin's browser here after they authorize the app. The
-//! signed `state` is the only trust anchor: verify + single-use consume yields
-//! the bound workspace, then exchange the `code` for the bot token, vault it as
-//! the `fleet:slack` handle (RULE VLT — the token lives only there), record the
-//! install in `connector_installs` (for inbound team_id → workspace routing),
-//! and 302 back to the dashboard.
+//! Slack callback hook — the provider delta the generic callback handler
+//! (`connectors/callback.zig`) dispatches to for the oauth2 archetype. The
+//! generic handler has already consumed the signed state, exchanged the
+//! `code` (deadline-armed), and checked the HTTP status; this hook parses
+//! Slack's `oauth.v2.access` body, vaults the bot token as the `fleet:slack`
+//! handle (RULE VLT — the token lives only there), and records the install in
+//! `core.connector_installs` (for inbound team_id → workspace routing).
 
 const std = @import("std");
-const httpz = @import("httpz");
 const pg = @import("pg");
 const logging = @import("log");
 const clock = @import("common").clock;
-const common = @import("../../common.zig");
 const hx_mod = @import("../../hx.zig");
-const ec = @import("../../../../errors/error_registry.zig");
 const vault = @import("../../../../state/vault.zig");
 const credential_key = @import("../../../../fleet_runtime/credential_key.zig");
 const id_format = @import("../../../../types/id_format.zig");
-const oauth2 = @import("../oauth2.zig");
 const spec = @import("spec.zig");
 
 const log = logging.scoped(.connector_slack);
-
-const Q_CODE = "code";
-const Q_STATE = "state";
-const CALLBACK_PATH = "/v1/connectors/slack/callback";
-const DEST_PATH = "/credentials?connector=slack";
-const HEADER_LOCATION = "location";
-const STATUS_FOUND: u16 = 302;
-const HTTP_OK: u16 = 200;
-const S_NOT_CONFIGURED = "Slack connect is not configured";
 
 // Slack `oauth.v2.access` response fields.
 const F_OK = "ok";
@@ -65,65 +51,13 @@ const Handle = struct {
     scopes: []const u8,
 };
 
-const InstallError = error{ NotConfigured, ExchangeFailed } || anyerror;
-
-pub fn innerSlackCallback(hx: hx_mod.Hx, req: *httpz.Request) void {
-    const qs = req.query() catch {
-        hx.fail(ec.ERR_INVALID_REQUEST, "Bad query string");
-        return;
-    };
-    const raw_state = qs.get(Q_STATE) orelse {
-        hx.fail(ec.ERR_INVALID_REQUEST, "Missing state");
-        return;
-    };
-    const code = qs.get(Q_CODE) orelse {
-        hx.fail(ec.ERR_INVALID_REQUEST, "Missing code");
-        return;
-    };
-
-    const secret = hx.ctx.approval_signing_secret orelse {
-        hx.fail(ec.ERR_CONNECTOR_NOT_CONFIGURED, S_NOT_CONFIGURED);
-        return;
-    };
-
-    const workspace_id = oauth2.consumeState(hx.alloc, hx.ctx.queue, spec.SPEC, secret, raw_state, clock.nowMillis()) orelse {
-        hx.fail(ec.ERR_CONNECTOR_STATE_INVALID, "Invalid or expired connect state");
-        return;
-    };
-    defer hx.alloc.free(workspace_id);
-
-    completeInstall(hx, workspace_id, code) catch |err| {
-        switch (err) {
-            error.NotConfigured => hx.fail(ec.ERR_CONNECTOR_NOT_CONFIGURED, S_NOT_CONFIGURED),
-            error.ExchangeFailed => hx.fail(ec.ERR_SLACK_OAUTH_EXCHANGE_FAILED, "Slack token exchange failed"),
-            else => common.internalOperationError(hx.res, "Failed to complete Slack connection", hx.req_id),
-        }
-        return;
-    };
-
-    redirectToDashboard(hx);
-}
-
-fn completeInstall(hx: hx_mod.Hx, workspace_id: []const u8, code: []const u8) InstallError!void {
-    const conn: *pg.Conn = hx.ctx.pool.acquire() catch return error.DbUnavailable;
-    defer hx.ctx.pool.release(conn);
-
-    const creds = oauth2.loadAppCreds(hx.alloc, conn, hx.ctx.platform_admin_workspace_id, spec.PROVIDER) orelse return error.NotConfigured;
-    defer creds.deinit(hx.alloc);
-
-    const redirect_uri = try joinUrl(hx.alloc, hx.ctx.api_url, CALLBACK_PATH);
-    defer hx.alloc.free(redirect_uri);
-
-    // Effective spec: production uses the connector's real token endpoint; an
-    // integration test points `connector_oauth_token_endpoint_override` at a
-    // loopback fake-provider so the exchange never dials the real Slack API.
-    var eff_spec = spec.SPEC;
-    if (hx.ctx.connector_oauth_token_endpoint_override) |ep| eff_spec.token_endpoint = ep;
-    const result = try oauth2.exchange(hx.alloc, hx.ctx.io, eff_spec, creds, code, redirect_uri);
-    defer hx.alloc.free(result.body);
-    if (result.status != HTTP_OK) return error.ExchangeFailed;
-
-    var parsed = std.json.parseFromSlice(std.json.Value, hx.alloc, result.body, .{}) catch return error.ExchangeFailed;
+/// Registry `post_auth` hook for the oauth2 archetype: parse the exchange
+/// body, then persist the two rows under a fresh short-lived pool acquire
+/// (the pre-exchange conn went back before the vendor call). A malformed or
+/// `{"ok":false}` body is `error.ExchangeFailed` — the generic handler maps
+/// it to the provider's exchange-failed code.
+pub fn postAuth(hx: hx_mod.Hx, workspace_id: []const u8, body: []const u8) anyerror!void {
+    var parsed = std.json.parseFromSlice(std.json.Value, hx.alloc, body, .{}) catch return error.ExchangeFailed;
     defer parsed.deinit();
     const obj = switch (parsed.value) {
         .object => |o| o,
@@ -131,6 +65,9 @@ fn completeInstall(hx: hx_mod.Hx, workspace_id: []const u8, code: []const u8) In
     };
     // Borrowed from `parsed` — used before its deinit (the store + insert below).
     const tok = try parseSlackToken(obj);
+
+    const conn: *pg.Conn = hx.ctx.pool.acquire() catch return error.DbUnavailable;
+    defer hx.ctx.pool.release(conn);
 
     try storeHandle(hx, conn, workspace_id, .{
         .integration = spec.PROVIDER,
@@ -172,23 +109,6 @@ fn insertInstall(
     _ = try conn.exec(INSERT_INSTALL_SQL, .{ uid, spec.PROVIDER, team_id, workspace_id, installed_by, scopes.items, now });
 }
 
-fn redirectToDashboard(hx: hx_mod.Hx) void {
-    // The Location value must outlive the handler: httpz writes response headers
-    // AFTER the dispatcher's per-request arena (hx.alloc) is freed, so it lives
-    // on res.arena (owned until the response is written), not hx.alloc.
-    const url = joinUrl(hx.res.arena, hx.ctx.app_url, DEST_PATH) catch {
-        hx.ok(.ok, .{ .status = "connected" }); // connection succeeded; redirect build is cosmetic
-        return;
-    };
-    hx.res.status = STATUS_FOUND;
-    hx.res.header(HEADER_LOCATION, url);
-    hx.res.body = "";
-}
-
-fn joinUrl(alloc: std.mem.Allocator, base: []const u8, path: []const u8) ![]u8 {
-    return std.fmt.allocPrint(alloc, "{s}{s}", .{ base, path });
-}
-
 fn strField(obj: std.json.ObjectMap, key: []const u8) ?[]const u8 {
     const v = obj.get(key) orelse return null;
     return switch (v) {
@@ -226,7 +146,7 @@ const SlackToken = struct {
 /// Extract the install fields from a Slack `oauth.v2.access` success body. All
 /// slices borrow from the caller's parsed JSON (valid until its deinit).
 /// `{"ok":false}` or a missing required field → `ExchangeFailed`.
-fn parseSlackToken(obj: std.json.ObjectMap) InstallError!SlackToken {
+fn parseSlackToken(obj: std.json.ObjectMap) error{ExchangeFailed}!SlackToken {
     if (!okTrue(obj)) return error.ExchangeFailed; // {"ok":false,"error":"…"}
     const team = objField(obj, F_TEAM) orelse return error.ExchangeFailed;
     return .{
