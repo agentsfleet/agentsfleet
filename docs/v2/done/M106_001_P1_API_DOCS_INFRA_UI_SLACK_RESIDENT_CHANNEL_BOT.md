@@ -4,7 +4,7 @@
 **Milestone:** M106
 **Workstream:** 001
 **Date:** Jun 30, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — first customer-facing surface that lives where users already work (Slack); the acquisition on-ramp to the durable hired teammate.
 **Categories:** API, DOCS, INFRA, UI
 **Batch:** B1 — standalone; reuses shipped substrate, blocks the Rung-1 follow-on.
@@ -341,11 +341,11 @@ memory (reused, unchanged): GET/POST /v1/runners/me/memory/{channel_fleet_id}   
 - [x] Cross-thread memory recall holds — verify: `make test-integration` (`channel_memory_integration_test`, Dim 4.2)
 - [x] Ingress re-reads the thread into `request_json`, stores nothing durable — verify: `make test-integration` (`thread_refetch_integration_test`, §4 E / Dim 4.3)
 - [ ] Same-thread correction overrides + re-captures — **staging eval** (`slack-channel-resident` scenario), not a harness test (locked decision 9)
-- [ ] `make lint` clean · `make test` passes
-- [ ] `make test-integration` passes (HTTP/schema/Redis touched)
-- [ ] Cross-compile clean: `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux`
-- [ ] `make check-pg-drain` clean (new queries) · `gitleaks detect` clean · no non-`.md` file over 350 lines
-- [ ] `bash audits/spec-template.sh --staged` clean · SCHEMA guard clean on `029`/`030`/`embed.zig`
+- [x] `make lint` clean · `make test` passes
+- [x] `make test-integration` passes (HTTP/schema/Redis touched)
+- [x] Cross-compile clean: `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux`
+- [x] `make check-pg-drain` clean (new queries) · `gitleaks detect` clean · no non-`.md` file over 350 lines
+- [x] `bash audits/spec-template.sh --staged` clean · SCHEMA guard clean on `029`/`030`/`embed.zig`
 - [x] Two playbooks present + five arch docs + scenario updated — verify: `git diff --name-only origin/main | grep -E 'playbooks/operations/(slack|github)_app_registration|docs/architecture'` (+ `make check-playbooks`)
 
 ---
