@@ -118,6 +118,17 @@ pub const REGISTRY = [_]ConnectorSpec{
     },
 };
 
+/// The signed single-use state binding an archetype carries (oauth2 via its
+/// flow, app_install directly). Both carry a `connector_state.Config`; api_key
+/// has no callback so no binding (and the comptime block rejects it anyway).
+fn stateBinding(spec: ConnectorSpec) ?connector_state.Config {
+    return switch (spec.archetype) {
+        .oauth2 => |o| o.flow.state,
+        .app_install => |a| a.state,
+        .api_key => null,
+    };
+}
+
 comptime {
     // Registry length × string scans — stay clear of the default 1000 quota.
     @setEvalBranchQuota(REGISTRY.len * REGISTRY.len * 64 + 4096);
@@ -130,6 +141,14 @@ comptime {
             if (std.mem.eql(u8, spec.provider, other.provider))
                 @compileError("registry: duplicate provider id: " ++ spec.provider);
         }
+        // Every callback-bearing archetype needs a non-empty state binding —
+        // it is the SOLE trust anchor of the Bearer-less callback (state.zig),
+        // so an empty domain/nonce is a degenerate HMAC domain, not a typo.
+        // (oauth2 was previously unchecked; only app_install was.)
+        if (stateBinding(spec)) |sb| {
+            if (sb.domain_prefix.len == 0 or sb.nonce_prefix.len == 0)
+                @compileError("registry: entry without a state binding (domain/nonce): " ++ spec.provider);
+        }
         switch (spec.archetype) {
             .oauth2 => |o| {
                 if (o.flow.scopes.len == 0) @compileError("registry: oauth2 entry without scopes: " ++ spec.provider);
@@ -137,14 +156,27 @@ comptime {
                     @compileError("registry: oauth2 flow provider id disagrees with entry: " ++ spec.provider);
                 if (o.exchange_failed_code.len == 0) @compileError("registry: oauth2 entry without exchange_failed_code: " ++ spec.provider);
             },
-            .app_install => |a| {
-                if (a.state.domain_prefix.len == 0 or a.state.nonce_prefix.len == 0)
-                    @compileError("registry: app_install entry without state binding: " ++ spec.provider);
-            },
+            .app_install => {},
             // No api_key entries yet — the generic handlers' `.api_key =>
             // unreachable` arms rest on this assert; the first api_key
             // provider deletes it and implements the arms in the same diff.
             .api_key => @compileError("registry: api_key entries are not wired yet (implement the generic handlers' api_key arms first): " ++ spec.provider),
+        }
+    }
+    // State bindings must be UNIQUE across entries. domain_prefix is
+    // independent of the provider id, so the duplicate-id scan above does not
+    // catch two connectors sharing a state domain — and a shared (domain,
+    // nonce) pair lets one connector's signed state verify + consume under
+    // another's callback (state.zig's cross-verify invariant). Enforce it here.
+    for (REGISTRY, 0..) |spec, i| {
+        const sb = stateBinding(spec) orelse continue;
+        for (REGISTRY[i + 1 ..]) |other| {
+            const ob = stateBinding(other) orelse continue;
+            const pair = spec.provider ++ PROVIDER_PAIR_SEP ++ other.provider;
+            if (std.mem.eql(u8, sb.domain_prefix, ob.domain_prefix))
+                @compileError("registry: duplicate state domain_prefix across providers: " ++ pair);
+            if (std.mem.eql(u8, sb.nonce_prefix, ob.nonce_prefix))
+                @compileError("registry: duplicate state nonce_prefix across providers: " ++ pair);
         }
     }
 }
@@ -160,6 +192,10 @@ pub fn lookup(provider: []const u8) ?*const ConnectorSpec {
 
 const UNKNOWN_PROVIDER_DETAIL_FMT = "Unknown connector provider: {s}";
 const UNKNOWN_PROVIDER_DETAIL_FALLBACK = "Unknown connector provider";
+
+/// Separator for the "<a> / <b>" provider pair in the duplicate-binding
+/// comptime error messages.
+const PROVIDER_PAIR_SEP = " / ";
 
 /// The shared 404 for an unresolved `{provider}` segment — names the unknown
 /// provider in the body (the segment is caller-supplied; `hx.fail` JSON-escapes
