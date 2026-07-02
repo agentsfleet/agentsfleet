@@ -193,11 +193,11 @@ Regression: untouched doc sections byte-identical (review the diff hunks — onl
 
 ## Acceptance Criteria
 
-- [ ] Zero stale daemon prefixes — verify: `grep -rnE "src/(errors|http|state|types|cmd|auth)/" docs/AUTH_DEVICE_LOGIN.md docs/CHANGELOG_VOICE.md docs/TEMPLATE.md docs/VERIFY_TIERS.md docs/EXECUTE_DOC_READS.md docs/SKILL_FRONTMATTER_SCHEMA.md docs/REST_API_DESIGN_GUIDELINES.md; test $? -eq 1`
-- [ ] No phantom middleware — verify: `grep -nE "registry\.(admin|operator|slack)\(" docs/REST_API_DESIGN_GUIDELINES.md; test $? -eq 1`
-- [ ] §7 paths exist — verify: the E3 loop below prints no `MISSING:` lines
-- [ ] Make targets real — verify: `grep -oE "make [a-z-]+" docs/REST_API_DESIGN_GUIDELINES.md | sort -u | while read -r _ t; do grep -qrE "^${t}:|^_${t}:" make/ Makefile || echo "PHANTOM: $t"; done` prints nothing
-- [ ] `gitleaks detect` clean · dotfiles-symlinked docs committed in `~/Projects/dotfiles` with clean status there
+- [x] Zero stale daemon prefixes — verify: `grep -rnE "src/(errors|http|state|types|cmd|auth)/" docs/AUTH_DEVICE_LOGIN.md docs/CHANGELOG_VOICE.md docs/TEMPLATE.md docs/VERIFY_TIERS.md docs/EXECUTE_DOC_READS.md docs/SKILL_FRONTMATTER_SCHEMA.md docs/REST_API_DESIGN_GUIDELINES.md; test $? -eq 1`
+- [x] No phantom middleware — verify: `grep -nE "registry\.(admin|operator|slack)\(" docs/REST_API_DESIGN_GUIDELINES.md; test $? -eq 1`
+- [x] §7 paths exist — verify: the E3 loop below prints no `MISSING:` lines
+- [x] Make targets real — verify: `grep -oE "make [a-z-]+" docs/REST_API_DESIGN_GUIDELINES.md | sort -u | while read -r _ t; do grep -qrE "^${t}:|^_${t}:" make/ Makefile || echo "PHANTOM: $t"; done` prints nothing
+- [x] `gitleaks detect` clean · dotfiles-symlinked docs committed in `~/Projects/dotfiles` with clean status there (commit `fec9ee4`, pushed to `origin/master`)
 
 ---
 
@@ -229,6 +229,7 @@ N/A — no files deleted; prose rows removed from §7 tables reference files alr
 - **Provenance of scope** — carved out of M106 CHORE(close) by decision:
   > Indy (2026-07-02): "M106 fixes here, rest → ticket (Recommended)" — context: AskUserQuestion on doc-fix scope for PR #468; M106-caused staleness landed there (AUTH.md, docs/architecture/), this pre-existing drift became this spec.
 - **Metrics review** — no analytics/funnel playbook update required — docs-only diff.
+- **§8 wrapper-table staleness (flagged, deferred)** — during PLAN, `src/agentsfleetd/http/handlers/hx.zig`'s own top comment confirmed the `authenticated()`/`authenticatedWithParam()` comptime wrappers §8 documents were fully removed in M18_002 Batch D (auth is now 100% middleware-chain-driven via `route_table.zig`). Same falsehood category as §7, same file, but outside this spec's Files-Changed row (§7 only) and not covered by any of Dimensions 1–3's eval commands. Asked Kishore via `AskUserQuestion` whether to fix now (RULE NLR) or defer; no response within the turn. Per the Hard Safety default (edits outside Files-Changed scope need explicit approval, and none was given), left untouched here — needs a follow-up spec or an explicit ask before landing.
 
 ---
 
@@ -246,11 +247,13 @@ N/A — no files deleted; prose rows removed from §7 tables reference files alr
 
 | Check | Command | Result | Pass? |
 |-------|---------|--------|-------|
-| Stale-prefix sweep | E1 | (fill at VERIFY) | |
-| Phantom middleware | E2 | (fill at VERIFY) | |
-| Cited paths exist | E3 | (fill at VERIFY) | |
-| Make targets exist | E4 | (fill at VERIFY) | |
-| Gitleaks | E5 | (fill at VERIFY) | |
+| Stale-prefix sweep | E1 | 0 hits across all seven docs | ✅ |
+| Phantom middleware | E2 | 0 hits for `registry.(admin\|operator\|slack)(` | ✅ |
+| Cited paths exist | E3 | 0 `MISSING:` lines (all `src/agentsfleetd/*.zig` citations resolve; the one genuinely-deleted file, `route_manifest.zig`, is cited without a full compilable path since it's an intentional historical reference) | ✅ |
+| Make targets exist | E4 | 0 `PHANTOM:` lines (`make check-openapi`, `make test-unit-agentsfleetd`, `make lint-zig`, `make bench`, `make test-integration` all resolve in `make/*.mk`) | ✅ |
+| Gitleaks | E5 | `no leaks found` (scanned `docs/`, ~6.16 MB) | ✅ |
+
+**Test Delta:** unit 2270→2270 (+0) · integration 243→243 (+0) vs CHORE(open) baseline. Lacking: none — docs-only diff, no code surface touched, zero delta is expected.
 
 ---
 
