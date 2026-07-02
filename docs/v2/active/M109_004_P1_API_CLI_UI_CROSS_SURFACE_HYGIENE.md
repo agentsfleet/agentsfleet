@@ -14,7 +14,8 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Milestone:** M109
 **Workstream:** 004
 **Date:** Jul 02, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
+**Test Baseline:** unit=2270 integration=243
 **Priority:** P1 — the PostHog loader permanently stops delivering analytics after one transient failure for the rest of a page session (silent product-signal loss); the JWT role-claim namespace collapse is a real dev/prod distinction lost during a brand rename (auth-adjacent, though not itself a bypass); the operator dashboard (runners, admin models) gates on a legacy `platform_admin` boolean the M104 scope migration left behind, so a correctly-scoped operator cannot reach the surface and platform-admin must be configured twice (boolean + scopes), which drift; the route-method duplication is a maintainability/DRY issue at P2-grade severity kept in this workstream only because it shares no scope conflict with the others.
 **Categories:** API CLI UI
 **Batch:** B1 — independent of M109_001/002/003; no shared files.
