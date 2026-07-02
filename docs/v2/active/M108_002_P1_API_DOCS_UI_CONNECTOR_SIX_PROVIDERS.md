@@ -142,8 +142,8 @@ Registry data + thin hooks. Zoho Desk (`refresh=true`): handle stores `{integrat
 
 Connect for the api_key archetype is an authed `POST …/connect` whose JSON body carries the archetype's declared fields (Datadog `{api_key, app_key, site}`; Grafana `{instance_url, service_account_token}`; Fly `{org_token}`). The handler runs a **bounded validation probe** against the vendor's cheapest authenticated endpoint; success → vault handle written + 200 `{status:"connected"}`; vendor rejection → 400 `UZ-CONN-005` with the vendor's reason class, **no write**. Submitted secrets are never echoed back and never logged (VLT/PRI).
 
-- **Dimension 2.1** — valid key (fake vendor 200) → handle in vault; status endpoint reports connected → Test `test_api_key_connect_probe_success_writes_handle`
-- **Dimension 2.2** — invalid key (fake vendor 401/403) → 400 `UZ-CONN-005`, zero vault rows → Test `test_api_key_probe_rejects_no_write`
+- **Dimension 2.1 DONE** — valid key (fake vendor 200) → handle in vault; status endpoint reports connected → Test `test_api_key_connect_probe_success_writes_handle`
+- **Dimension 2.2 DONE** — invalid key (fake vendor 401/403) → 400 `UZ-CONN-005`, zero vault rows → Test `test_api_key_probe_rejects_no_write`
 - **Dimension 2.3** — hung vendor probe → bounded_fetch deadline → 502-class `UZ-CONN-003`, zero vault rows → Test `test_api_key_probe_deadline_no_write`
 - **Dimension 2.4** — api_key connect requires Bearer + `connector:write` and workspace membership (WAUTH) → Test `test_api_key_connect_workspace_scoped`
 

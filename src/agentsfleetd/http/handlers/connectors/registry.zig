@@ -16,6 +16,7 @@ const httpz = @import("httpz");
 const common = @import("common");
 const hx_mod = @import("../hx.zig");
 const ec = @import("../../../errors/error_registry.zig");
+const api_key = @import("api_key.zig");
 const oauth2 = @import("oauth2.zig");
 const connector_state = @import("state.zig");
 const slack_spec = @import("slack/spec.zig");
@@ -27,6 +28,11 @@ const github_callback = @import("github/callback.zig");
 const github_status = @import("github/status.zig");
 
 const Hx = hx_mod.Hx;
+
+const FIELD_API_KEY = "api_key";
+const FIELD_APP_KEY = "app_key";
+const FIELD_ORG_TOKEN = "org_token";
+const FIELD_SERVICE_ACCOUNT_TOKEN = "service_account_token";
 
 /// oauth2 post-auth hook: parse the exchange body + persist the install rows.
 /// Never writes the response — the generic callback owns response mapping.
@@ -65,14 +71,8 @@ pub const AppInstallData = struct {
 };
 
 /// User-supplied-key archetype: the operator pastes their own vendor key at
-/// connect; no platform app, no browser round-trip, no callback. The first
-/// entries land with the provider batch — until then the comptime check
-/// below asserts the registry carries none, which is what makes the generic
-/// handlers' `.api_key => unreachable` arms provably safe.
-pub const ApiKeyData = struct {
-    /// Vault-handle field the user's key is stored under.
-    key_field: []const u8,
-};
+/// connect; no platform app, no browser round-trip, no callback.
+pub const ApiKeyData = api_key.Data;
 
 /// The strategy tagged-union — owns which flow runs; exhaustive switches in
 /// the generic handlers mean a new archetype cannot land half-wired.
@@ -116,6 +116,45 @@ pub const REGISTRY = [_]ConnectorSpec{
         } },
         .respond_status = github_status.respondStatus,
     },
+    .{
+        .provider = common.PROVIDER_DATADOG,
+        .display_name = "Datadog",
+        .archetype = .{ .api_key = .{
+            .fields = &.{ .{ .name = FIELD_API_KEY }, .{ .name = FIELD_APP_KEY }, .{ .name = "site", .secret = false } },
+            .probe = .{
+                .base_url = "https://api.datadoghq.com",
+                .path = "/api/v1/validate",
+                .auth = .{ .datadog_keys = .{ .api_key_field = FIELD_API_KEY, .app_key_field = FIELD_APP_KEY } },
+            },
+        } },
+        .respond_status = api_key.respondStatus,
+    },
+    .{
+        .provider = common.PROVIDER_GRAFANA,
+        .display_name = "Grafana",
+        .archetype = .{ .api_key = .{
+            .fields = &.{ .{ .name = FIELD_SERVICE_ACCOUNT_TOKEN }, .{ .name = "instance_url", .secret = false } },
+            .probe = .{
+                .base_url = "https://grafana.com",
+                .path = "/api/health",
+                .auth = .{ .bearer_field = FIELD_SERVICE_ACCOUNT_TOKEN },
+            },
+        } },
+        .respond_status = api_key.respondStatus,
+    },
+    .{
+        .provider = common.PROVIDER_FLY,
+        .display_name = "Fly.io",
+        .archetype = .{ .api_key = .{
+            .fields = &.{.{ .name = FIELD_ORG_TOKEN }},
+            .probe = .{
+                .base_url = "https://api.machines.dev",
+                .path = "/v1/apps",
+                .auth = .{ .bearer_field = FIELD_ORG_TOKEN },
+            },
+        } },
+        .respond_status = api_key.respondStatus,
+    },
 };
 
 /// The signed single-use state binding an archetype carries (oauth2 via its
@@ -157,10 +196,10 @@ comptime {
                 if (o.exchange_failed_code.len == 0) @compileError("registry: oauth2 entry without exchange_failed_code: " ++ spec.provider);
             },
             .app_install => {},
-            // No api_key entries yet — the generic handlers' `.api_key =>
-            // unreachable` arms rest on this assert; the first api_key
-            // provider deletes it and implements the arms in the same diff.
-            .api_key => @compileError("registry: api_key entries are not wired yet (implement the generic handlers' api_key arms first): " ++ spec.provider),
+            .api_key => |a| {
+                if (a.fields.len == 0) @compileError("registry: api_key entry without fields: " ++ spec.provider);
+                if (a.probe.base_url.len == 0 or a.probe.path.len == 0) @compileError("registry: api_key entry without probe: " ++ spec.provider);
+            },
         }
     }
     // State bindings must be UNIQUE across entries. domain_prefix is
@@ -233,5 +272,5 @@ test "registry: unknown or empty provider resolves to null (the 404 path)" {
 
 test "registry: exactly the shipped entries (a new provider updates this pin)" {
     // pin test: literal is the contract
-    try testing.expectEqual(@as(usize, 2), REGISTRY.len);
+    try testing.expectEqual(@as(usize, 5), REGISTRY.len);
 }

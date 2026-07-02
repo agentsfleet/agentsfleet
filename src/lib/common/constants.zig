@@ -105,6 +105,30 @@ pub const PROVIDER_SLACK = "slack";
 /// segment, and the `github-app` / `fleet:github` vault-key stem.
 pub const PROVIDER_GITHUB = "github";
 
+/// Connector provider id for Zoho Desk — the registry id, the `{provider}` route
+/// segment, and the `zoho-app` / `fleet:zoho` vault-key stem.
+pub const PROVIDER_ZOHO = "zoho";
+
+/// Connector provider id for Jira — the registry id, the `{provider}` route
+/// segment, and the `jira-app` / `fleet:jira` vault-key stem.
+pub const PROVIDER_JIRA = "jira";
+
+/// Connector provider id for Linear — the registry id, the `{provider}` route
+/// segment, and the `linear-app` / `fleet:linear` vault-key stem.
+pub const PROVIDER_LINEAR = "linear";
+
+/// Connector provider id for Datadog — the registry id, the `{provider}` route
+/// segment, and the `fleet:datadog` vault-key stem.
+pub const PROVIDER_DATADOG = "datadog";
+
+/// Connector provider id for Grafana — the registry id, the `{provider}` route
+/// segment, and the `fleet:grafana` vault-key stem.
+pub const PROVIDER_GRAFANA = "grafana";
+
+/// Connector provider id for Fly — the registry id, the `{provider}` route
+/// segment, and the `fleet:fly` vault-key stem.
+pub const PROVIDER_FLY = "fly";
+
 /// `connector_channels.kind` for a per-channel resident fleet — the durable
 /// fleet that owns one Slack channel's memory namespace.
 pub const CONNECTOR_CHANNEL_KIND_RESIDENT = "resident";
