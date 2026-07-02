@@ -30,7 +30,7 @@ const NOT_CONFIGURED_FMT = "{s} connect is not configured on this deployment";
 const NOT_CONFIGURED_FALLBACK = "Connector is not configured on this deployment";
 /// The one site that spells the callback path shape (RULE UFS); the generic
 /// callback route serves it for every provider.
-pub const CALLBACK_PATH_FMT = "/v1/connectors/{s}/callback";
+const CALLBACK_PATH_FMT = "/v1/connectors/{s}/callback";
 
 pub fn innerConnect(hx: hx_mod.Hx, route: matchers.WorkspaceConnectorRoute) void {
     const spec = registry.lookup(route.provider) orelse return registry.respondUnknown(hx, route.provider);
@@ -123,7 +123,7 @@ pub fn callbackUrl(hx: hx_mod.Hx, provider: []const u8) ![]const u8 {
 }
 
 /// 503 UZ-CONN-001 with the provider's shipped wording.
-pub fn failNotConfigured(hx: hx_mod.Hx, spec: *const registry.ConnectorSpec) void {
+fn failNotConfigured(hx: hx_mod.Hx, spec: *const registry.ConnectorSpec) void {
     const detail = std.fmt.allocPrint(hx.alloc, NOT_CONFIGURED_FMT, .{spec.display_name}) catch
         return hx.fail(ec.ERR_CONNECTOR_NOT_CONFIGURED, NOT_CONFIGURED_FALLBACK);
     defer hx.alloc.free(detail);
