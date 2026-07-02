@@ -298,8 +298,8 @@ pub fn seedPlatformProviderWithKey(
 }
 
 /// Counterpart to seedPlatformProvider — drops the platform key + vault row
-/// for the workspace. Tenant_billing row is NOT touched here (some tests
-/// override balance_nanos and want to control teardown explicitly).
+/// for the workspace, resets the shared tenant's billing row (the seed's
+/// starter grant landed on it), and clears provider + telemetry rows.
 pub fn teardownPlatformProvider(conn: *pg.Conn, workspace_id: []const u8) void {
     _ = conn.exec("DELETE FROM core.platform_llm_keys WHERE provider = $1", .{TEST_PROVIDER_NAME}) catch |err| std.log.warn(IGNORED_ERROR_FMT, .{@errorName(err)});
     _ = conn.exec("DELETE FROM vault.secrets WHERE workspace_id = $1 AND key_name = $2", .{ workspace_id, TEST_PROVIDER_NAME }) catch |err| std.log.warn(IGNORED_ERROR_FMT, .{@errorName(err)});

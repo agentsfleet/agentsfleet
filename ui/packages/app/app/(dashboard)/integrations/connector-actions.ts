@@ -2,6 +2,7 @@
 
 import { withToken, type ActionResult } from "@/lib/actions/with-token";
 import {
+  CONNECTOR_PROVIDERS,
   startConnect,
   type ConnectorProvider,
   type ConnectorConnectStart,
@@ -16,5 +17,11 @@ export async function startConnectAction(
   provider: ConnectorProvider,
   workspaceId: string,
 ): Promise<ActionResult<ConnectorConnectStart>> {
+  // Server-action arguments arrive from the client untrusted; the union type is
+  // compile-time only. Re-validate so a tampered invocation can't smuggle an
+  // arbitrary path segment into the connector route.
+  if (!(provider in CONNECTOR_PROVIDERS)) {
+    return { ok: false, error: "Unknown connector provider" };
+  }
   return withToken((t) => startConnect(provider, workspaceId, t));
 }
