@@ -13,11 +13,12 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Milestone:** M108
 **Workstream:** 002
 **Date:** Jul 02, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — Indy's stated integration targets; each must connect with "low lift" as proof the platform base earns its keep.
 **Categories:** API, DOCS, UI
 **Batch:** B2 — starts after M108_001's registry + bounded-fetch gates clear
 **Branch:** feat/m108-connector-platform (follows M108_001 on the same branch/PR — #468 merged before M108 implementation began; see M108_001 Discovery)
+**Test Baseline:** unit=2270 integration=243
 **Depends on:** M108_001 (registry, archetypes, bounded outbound — the base these entries plug into)
 **Provenance:** LLM-drafted (Claude Fable 5, Jul 02, 2026) — implementing agent cross-checks each provider's endpoints against current vendor docs at EXECUTE
 
@@ -39,7 +40,7 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 
 - **PR title (eventual):** part of PR #468 — providers slice of `feat(m106+m108)`
 - **Intent (one sentence):** a workspace can connect Grafana, Zoho Desk, Jira, Linear, Fly, and Datadog from the dashboard, each landing a vaulted credential the broker can mint from — with every vendor call bounded.
-- **Handshake (agent fills at PLAN, before EXECUTE):** restate + `ASSUMPTIONS I'M MAKING: …`; mismatch → STOP.
+- **Handshake (agent fills at PLAN, before EXECUTE):** Orly understands this as: add the six provider connector entries and surfaces on top of M108_001's connector platform, proving OAuth and API-key archetypes end-to-end with vaulted credentials, bounded vendor calls, broker minting for refresh-token providers, registry-driven dashboard cards, and docs. `ASSUMPTIONS I'M MAKING:` M108_001 is landed on `main`; the branch is `feat/m108-connector-platform`; GitHub and Slack behaviour stays unchanged while the new providers reuse the shipped mechanisms.
 
 ---
 
