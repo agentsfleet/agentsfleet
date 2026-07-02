@@ -65,11 +65,12 @@ pub fn innerCallback(hx: hx_mod.Hx, req: *httpz.Request, provider: []const u8) v
                 switch (err) {
                     error.NotConfigured => failFmt(hx, ec.ERR_CONNECTOR_NOT_CONFIGURED, NOT_CONFIGURED_FMT, NOT_CONFIGURED_FALLBACK, spec),
                     error.ExchangeFailed => failFmt(hx, o.exchange_failed_code, EXCHANGE_FAILED_FMT, EXCHANGE_FAILED_FALLBACK, spec),
-                    // The armed deadline fired mid-exchange, or the deadline
-                    // could not be enforced and the call was refused — either
-                    // way no vault write happened (the exchange precedes it)
-                    // and the connect is safe to restart from the dashboard.
-                    error.DeadlineExceeded, error.WatchdogUnavailable => failFmt(hx, ec.ERR_CONNECTOR_VENDOR_DEADLINE, VENDOR_DEADLINE_FMT, VENDOR_DEADLINE_FALLBACK, spec),
+                    // The armed deadline fired mid-exchange, the deadline could
+                    // not be enforced and the call was refused, or the vendor
+                    // was unreachable (dial/transport failure) — upstream-call
+                    // failures all; no vault write happened (the exchange
+                    // precedes it) and the connect is safe to restart.
+                    error.DeadlineExceeded, error.WatchdogUnavailable, error.VendorUnreachable => failFmt(hx, ec.ERR_CONNECTOR_VENDOR_DEADLINE, VENDOR_DEADLINE_FMT, VENDOR_DEADLINE_FALLBACK, spec),
                     else => common.internalOperationError(hx.res, "Failed to complete connector connection", hx.req_id),
                 }
                 return;
