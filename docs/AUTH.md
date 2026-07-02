@@ -109,7 +109,7 @@ The complete capability vocabulary (`src/agentsfleetd/auth/scopes.zig`). Scope s
 | `apikey:read` / `apikey:write` / `apikey:admin` | list tenant api-keys / create+rotate / delete (revoke) |
 | `fleetkey:read` / `fleetkey:write` | list fleet-keys / create+delete |
 | `grant:read` / `grant:write` | list integration grants / revoke them |
-| `connector:read` / `connector:write` | read connector status / start a connector connect — gates both OAuth connectors (GitHub App install + Slack OAuth); see §OAuth connectors |
+| `connector:read` / `connector:write` | read connector status / start a connector connect — gates the generic `{provider}` connector routes (every registry provider: Slack OAuth, GitHub App install, …); see §OAuth connectors |
 | `model:read` / `model:admin` | read the priced model catalogue / create+update+delete catalogue rows |
 | `platform-key:read` / `platform-key:admin` | read the platform default key/model / set+delete it |
 | `runner:read` / `runner:write` | list runners + their events (operator plane) / cordon+patch a runner's state |
@@ -882,13 +882,13 @@ The `UZ-WH-020` vs `UZ-WH-010` split matters: the first is a recoverable misconf
 
 ---
 
-## OAuth connectors (separate surface — M106)
+## OAuth connectors (separate surface — M106, generalized by the M108 registry)
 
-The dashboard's **connectors** (GitHub App, Slack) are a third inbound surface, distinct from both Bearer auth and fleet-trigger webhooks. agentsfleet is the OAuth **client**: connecting is a browser redirect round-trip that ends with a provider-issued token vaulted server-side — never a token paste, and no Bearer on the inbound legs. Scopes: `connector:write` gates `connect_{github,slack}`, `connector:read` gates the status read (`http/route_scopes.zig`).
+The dashboard's **connectors** (GitHub App, Slack, and every future registry provider) are a third inbound surface, distinct from both Bearer auth and fleet-trigger webhooks. agentsfleet is the OAuth **client**: connecting is a browser redirect round-trip that ends with a provider-issued token vaulted server-side — never a token paste, and no Bearer on the inbound legs. Since M108 the routes are one generic `{provider}` trio resolved against the comptime connector registry (`handlers/connectors/registry.zig`; unknown provider → 404 `UZ-CONN-004`) — the platform shape (registry, archetypes, bounded outbound, connector-vs-integration terminology) lives in [`architecture/connectors.md`](./architecture/connectors.md); THIS section stays the behavior + trust-anchor reference. Scopes: `connector:write` gates the generic `connector_connect`, `connector:read` gates `connector_status` (`http/route_scopes.zig`).
 
 ### Connect + callback (the OAuth round-trip)
 
-`POST /v1/workspaces/{ws}/connectors/{provider}/connect` (Bearer, `connector:write`) mints a **signed single-use `state`** — HMAC'd with the **approval signing secret** — that binds the workspace, and returns the provider authorize URL. The browser leaves for the provider and returns to `GET /v1/connectors/{provider}/callback`, a **Bearer-less** endpoint whose *sole* trust anchor is that signed `state` (verified + consumed; a *missing* state is a malformed request → `UZ-REQ-001`; forged/expired/replayed → `UZ-CONN-002 connector_state_invalid`). What happens next is per-provider:
+`POST /v1/workspaces/{ws}/connectors/{provider}/connect` (Bearer, `connector:write`) mints a **signed single-use `state`** — HMAC'd with the **approval signing secret** — that binds the workspace, and returns the provider authorize URL. The browser leaves for the provider and returns to `GET /v1/connectors/{provider}/callback`, a **Bearer-less** endpoint whose *sole* trust anchor is that signed `state` (verified + consumed; a *missing* state is a malformed request → `UZ-REQ-001`; forged/expired/replayed → `UZ-CONN-002 connector_state_invalid`). The generic callback dispatches on the registry entry's **archetype** — the oauth2 code exchange runs deadline-armed through `bounded_fetch` (a stalled vendor → 502 `UZ-CONN-003`, no vault write) — and hands the provider-specific part to the entry's hook. What that means per shipped provider:
 
 - **Slack** is a real OAuth-2.0 code exchange: the callback trades the `code` for a bot token using the platform app's `client_id`/`client_secret`, then writes **two** rows — the per-install vault handle and the `core.connector_installs` routing row.
 - **GitHub** is a GitHub App **installation**, not a code exchange (`oauth2.zig:8-9` says so explicitly): its callback carries `installation_id` (no `code`, nothing to exchange) and writes **one** row — the vault handle only. Inbound GitHub traffic routes via the fleet-trigger webhook path, so it needs no `connector_installs` entry.
@@ -933,6 +933,8 @@ Log reasons in parentheses are the greppable `reason=` values the ingress emits 
 | --- | --- | --- |
 | `UZ-CONN-001` (connector not configured) | platform app secrets missing at connect or the events ingress (the status read never emits it — it degrades to `not_connected`) | **503** — the ingress fails loud too, it is not a silent no-op |
 | `UZ-CONN-002` (invalid connect state) | callback `state` forged / expired / replayed (a *missing* state is `UZ-REQ-001`) | 400 on the callback |
+| `UZ-CONN-003` (vendor deadline exceeded) | a connector vendor call hit its enforced deadline (vendor accepted, then stalled) or could not be deadline-armed and was refused — never runs unbounded (`bounded_fetch`; shape in `architecture/connectors.md` §Bounded outbound) | **502** on the callback exchange; logged + retried on background paths |
+| `UZ-CONN-004` (unknown connector provider) | the `{provider}` route segment resolves to no registry entry — connect, callback, and status answer identically, body names the id | 404 |
 | `UZ-SLK-010` (`invalid_signature`) | events-ingress HMAC mismatch | 401 |
 | `UZ-SLK-011` (`stale_timestamp`) | events-ingress timestamp outside the 5-min drift | 401 |
 | `UZ-SLK-020` (`team_not_installed`) | events-ingress `team_id` not in `connector_installs` | **200 ack**, body `{"ignored":"UZ-SLK-020"}`, event dropped |
@@ -941,6 +943,7 @@ Log reasons in parentheses are the greppable `reason=` values the ingress emits 
 
 ### Cross-references
 
-- Implementation: `connectors/oauth2.zig` (signed state + `<provider>-app` creds + exchange), `connectors/slack/{connect,callback,events,slack_sig,post,thread,status}.zig`, `fleet_runtime/credential_key.zig` (the `fleet:` prefix).
-- Scopes: `http/route_scopes.zig` (`connect_*` → `connector:write`, `*_connector_status` → `connector:read`).
+- Platform shape (registry, archetypes, bounded outbound, add-a-provider recipe, terminology): [`architecture/connectors.md`](./architecture/connectors.md).
+- Implementation: `connectors/registry.zig` (the comptime registry) + the generic `connectors/{connect,callback,status}.zig`; shared flow data + exchange in `connectors/oauth2.zig` (signed state + `<provider>-app` creds), outbound bound in `connectors/bounded_fetch.zig`; per-provider hooks `connectors/slack/{spec,callback,status}.zig` + `connectors/github/{spec,connect,callback,status}.zig`; Slack's bespoke ingress `connectors/slack/{events,slack_sig,post,thread}.zig`; `fleet_runtime/credential_key.zig` (the `fleet:` prefix).
+- Scopes: `http/route_scopes.zig` (`connector_connect` → `connector:write`, `connector_status` → `connector:read`; the callback + events routes are Bearer-less by design).
 - Error registry: `src/agentsfleetd/errors/error_registry.zig`.

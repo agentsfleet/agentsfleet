@@ -169,7 +169,7 @@ The three per-provider route sets collapse into `{provider}`-parameterized match
 
 CREATE `docs/architecture/connectors.md`: the registry/archetype shape, the two trust anchors (signed single-use state; platform `<provider>-app` bags), the bounded-outbound rule (every connector vendor call is armed), and the binding terminology — **connector** = auth + credential plumbing (this platform); **integration** = product-facing capability built on a connector. AUTH.md §OAuth connectors updates its cross-references; behavior prose stays in AUTH.md.
 
-- **Dimension 5.1** — architecture doc exists, AUTH.md cross-links it, and the terminology table appears once (greppable) → Test eval E10 (docs lint + link check via `make lint`)
+- **Dimension 5.1** — ✅ DONE — architecture doc exists (`docs/architecture/connectors.md`, indexed in the architecture README), AUTH.md §OAuth connectors cross-links it (heading, exchange prose, taxonomy rows `UZ-CONN-003/004`, Cross-references block, scope-catalogue row — stale per-provider route names swept), and the terminology table appears exactly once (grep: "product-facing capability built ON a connector" → 1 hit) → `make lint` green
 
 ---
 
