@@ -1,7 +1,7 @@
 /**
  * provider-credential-reference.spec.ts — a provider key entered in the UI
  * becomes a stored credential the tenant provider references, on the
- * consolidated Models & Keys page.
+ * consolidated Models page.
  *
  * After the M102 form consolidation the option-card flow is gone. The switch
  * list's generic "Other provider" row opens the consolidated ProviderKeyForm

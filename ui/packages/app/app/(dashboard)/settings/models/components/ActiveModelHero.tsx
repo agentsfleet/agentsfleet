@@ -117,7 +117,7 @@ export default function ActiveModelHero({ workspaceId, provider, credentials }: 
         </div>
       ) : (
         <div>
-          <Button asChild>
+          <Button asChild size="sm">
             <a href="#other-providers">Bring your own key</a>
           </Button>
         </div>

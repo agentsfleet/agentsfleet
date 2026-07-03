@@ -34,6 +34,7 @@ export const createCredentialMock = vi.fn();
 export const deleteCredentialMock = vi.fn();
 export const getModelCapsMock = vi.fn();
 export const listWorkspaceFleetTemplatesMock = vi.fn();
+export const onboardWorkspaceFleetTemplateMock = vi.fn();
 
 export const setFleetStatusActionMock = vi.fn<
   (ws: string, zid: string, status: string) => Promise<ActionResult<unknown>>
@@ -126,7 +127,7 @@ const CREDENTIAL_KIND = {
 
 export function credentialsApiMock() {
   // The vault API calls are mocked fns; the kind discriminator + narrowing
-  // helpers (read by the Models & Keys page + its client children) keep their
+  // helpers (read by the Models page + its client children) keep their
   // real behaviour so the full module mock doesn't strip them to undefined.
   type C = { kind?: string };
   return {
@@ -149,6 +150,7 @@ export function fleetTemplatesMock() {
   return {
     listWorkspaceFleetTemplates: listWorkspaceFleetTemplatesMock,
     listWorkspaceFleetTemplatesCached: listWorkspaceFleetTemplatesMock,
+    onboardWorkspaceFleetTemplate: onboardWorkspaceFleetTemplateMock,
   };
 }
 
@@ -221,4 +223,12 @@ export function resetDashboardMocks() {
   });
   stopFleetMock.mockResolvedValue(undefined);
   listWorkspaceFleetTemplatesMock.mockResolvedValue({ items: [] });
+  onboardWorkspaceFleetTemplateMock.mockResolvedValue({
+    id: "tmpl_1",
+    name: "Template",
+    visibility: "tenant",
+    content_hash: "sha256:abc",
+    requirements: { credentials: [], tools: [], network_hosts: [], trigger_present: true },
+    support_files: [],
+  });
 }

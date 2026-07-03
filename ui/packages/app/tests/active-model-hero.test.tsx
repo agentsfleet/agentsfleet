@@ -189,6 +189,7 @@ describe("ActiveModelHero — default (platform / no provider)", () => {
     expect(screen.getByText("Tenant balance")).toBeTruthy();
     const link = screen.getByText("Bring your own key").closest("a");
     expect(link?.getAttribute("href")).toBe("#other-providers");
+    expect(link?.getAttribute("data-size")).toBe("sm");
   });
 
   it("treats a null provider as the default view", () => {

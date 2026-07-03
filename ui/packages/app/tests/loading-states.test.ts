@@ -22,7 +22,7 @@ describe("dashboard segment loading states", () => {
     {
       name: "settings/models",
       importer: () => import("../app/(dashboard)/settings/models/loading"),
-      expectsTitle: "Models &amp; Keys", // renderToStaticMarkup escapes the ampersand
+      expectsTitle: "Models",
     },
     {
       name: "settings/billing",
@@ -34,7 +34,7 @@ describe("dashboard segment loading states", () => {
       // DESTINATION title (no flash) — see credentials/loading.
       name: "credentials",
       importer: () => import("../app/(dashboard)/credentials/loading"),
-      expectsTitle: "Models &amp; Keys", // renderToStaticMarkup escapes the ampersand
+      expectsTitle: "Models",
     },
     {
       name: "integrations",

@@ -51,15 +51,10 @@ body {
 }
 
 /* ── Dashboard motion — restrained, app-surface only, reduced-motion-gated ──
- * The operator dashboard layers a quiet motion pass over the otherwise-static
- * system: page content rises as it mounts / on route change, the ambient glow
- * drifts slowly (above), and interactive chrome lifts on hover / presses on
- * active. Marketing + docs keep the "instant, no performance" restraint
- * (docs/DESIGN_SYSTEM.md §Motion); this is the scoped, approved exception for
- * the gated dashboard. Keyframe animations are neutralised by the
- * prefers-reduced-motion block at the foot of this file; the hover/press lifts
- * sit inside an explicit no-preference query so they vanish under the same
- * preference rather than relying on a duration override. */
+ * Route-level animation is intentionally absent: RouteLoading owns loading
+ * feedback with a spinner, while the dashboard canvas stays static to avoid
+ * wobble on navigation. Interactive chrome keeps a tiny no-preference-only
+ * hover / press lift, and reduced motion still neutralises transitions. */
 
 /* Content canvas: preview-matched dual glow. The header and sidebar stay flat;
  * only the working area carries the ambient field. */
@@ -72,40 +67,6 @@ body {
   background-repeat: no-repeat;
   background-size: 150% 150%, 150% 150%, 150% 150%, auto;
   background-position: 90% 0%, 60% 0%, 0% 100%, 0 0;
-  animation: glow-drift 26s ease-in-out infinite;
-}
-
-/* Content rises in as it mounts / on route change. Apply to a container whose
- * immediate children are the page's top-level sections (the Shell content
- * wrapper). Every section shares ONE timing so the page rises as a single
- * smooth block — matching docs/design/M98_001-ui-polish-preview.html. The
- * earlier per-child stagger (0.02s → 0.3s delays) read as wobbly on route
- * changes, so it is gone. `both` fill holds the final (visible) frame — never
- * pin opacity:0 as a resting state, so content degrades to visible if the
- * animation never runs. */
-@keyframes rise-in {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-
-.app-content-rise > * {
-  animation: rise-in 0.38s cubic-bezier(0.2, 0.7, 0.2, 1) both;
-}
-
-@keyframes glow-drift {
-  0%,
-  100% {
-    background-position: 90% 0%, 60% 0%, 0% 100%, 0 0;
-  }
-  50% {
-    background-position: 80% 7%, 67% 4%, 7% 95%, 0 0;
-  }
 }
 
 /* Interactive chrome under the dashboard surface: a faint brightness lift on
@@ -185,9 +146,8 @@ code, pre, kbd { font-family: var(--ff-mono); }
   }
 }
 
-/* prefers-reduced-motion — wake-pulse becomes a static glow; the dashboard
- * motion pass (rise-in, glow-drift, meter-fill) snaps to its final frame; hover
- * lifts (in a no-preference query) + the motion-safe nav nudge are absent. */
+/* prefers-reduced-motion — wake-pulse becomes a static glow, meter-fill snaps
+ * to its final frame, and hover lifts + motion-safe nav nudge are absent. */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
