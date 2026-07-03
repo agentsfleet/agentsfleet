@@ -183,7 +183,7 @@ fn evaluatePendingGate(
     redis: *queue_redis.Client,
     ref: *const approval_gate_async.EventGateRef,
 ) GateCheckResult {
-    const eval = approval_gate_async.evaluateRef(redis, ref, clock.nowMillis()) catch |err| {
+    const eval = approval_gate_async.evaluateRef(redis, pool, ref, clock.nowMillis()) catch |err| {
         // Redis blip: a transient read failure must not deny an approved gate.
         log.warn("gate_decision_read_fail", .{ .error_code = error_codes.ERR_INTERNAL_OPERATION_FAILED, .fleet_id = session.fleet_id, .err = @errorName(err) });
         return .{ .pending = {} };
