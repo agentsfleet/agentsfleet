@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { CheckIcon, CopyIcon } from "lucide-react";
 import { Button } from "./Button";
+import { cn } from "../utils";
 import { useResettableTimeout } from "./use-resettable-timeout";
 
 /*
@@ -47,7 +48,12 @@ export function CopyButton({ value, label, className }: CopyButtonProps) {
       }}
       aria-label={copied ? COPIED_LABEL : label}
       title={copied ? COPIED_LABEL : label}
-      className={className}
+      // icon-sm keeps its 24px visuals; the ::after overlay widens the
+      // interactive area (40px, 48px on touch) toward the 44px floor.
+      className={cn(
+        "relative after:absolute after:-inset-md pointer-coarse:after:-inset-lg",
+        className,
+      )}
       data-slot="copy-button"
     >
       {copied ? (
