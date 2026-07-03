@@ -71,6 +71,43 @@ describe("logs (paginated event tail)", () => {
     });
   });
 
+  test("`logs <fleet_id>` survives a malformed created_at — renders — and exits 0, never RangeError", async () => {
+    // Regression: an unparseable created_at used to throw
+    // `RangeError: Invalid time value` from formatTimestamp and crash the whole
+    // command. The row must degrade to the — literal while the stream continues.
+    await authedScope(async () => {
+      const routes: MockRoutes = {
+        [`GET /v1/workspaces/${WS_ID}/fleets/${FLEET_ID}/events`]:
+          () => jsonResponse(200, {
+            items: [
+              { created_at: "not-a-real-date", actor: "user", status: "processed", response_text: "still rendered" },
+              { created_at: 1700000000000, actor: "fleet", status: "processed", response_text: "valid row" },
+            ],
+            next_cursor: null,
+          }),
+      };
+      await withMockApi(routes, async (apiUrl) => {
+        const out = bufferStream();
+        const err = bufferStream();
+        const code = await runCli(
+          ["logs", FLEET_ID],
+          { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
+        );
+        // The command completed cleanly instead of throwing.
+        expect(code).toBe(0);
+        const text = out.read();
+        // The malformed row degraded to the fallback literal but still printed.
+        expect(text).toContain("—");
+        expect(text).toContain("still rendered");
+        // The valid row's ISO timestamp is unaffected.
+        expect(text).toMatch(/\d{4}-\d{2}-\d{2}T/);
+        expect(text).toContain("valid row");
+        // No RangeError leaked to stderr.
+        expect(err.read()).not.toMatch(/RangeError|Invalid time value/);
+      });
+    });
+  });
+
   test("`logs` with no fleet_id exits ValidationError (4) with a missing-argument error", async () => {
     await authedScope(async () => {
       // No mock routes — the CLI's argument validation must fire before any
