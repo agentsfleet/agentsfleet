@@ -19,7 +19,7 @@ const Hx = hx_mod.Hx;
 
 pub fn invokeConnectorConnect(hx: *Hx, req: *httpz.Request, route: router.Route) void {
     if (!common.requireMethod(hx.res, req.method, .POST)) return;
-    connect_h.innerConnect(hx.*, req, route.connector_connect);
+    connect_h.innerConnect(hx.*, route.connector_connect);
 }
 
 pub fn invokeConnectorStatus(hx: *Hx, req: *httpz.Request, route: router.Route) void {

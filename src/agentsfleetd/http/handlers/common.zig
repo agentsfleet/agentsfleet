@@ -72,12 +72,6 @@ pub const Context = struct {
     /// production. Integration tests point it at a loopback FakeSlack so the
     /// outbound post + thread fetch hit an in-process server, never real Slack.
     connector_slack_api_base_override: ?[]const u8 = null,
-    /// Test/dev seam: override API-key connector probe base URLs. Null in
-    /// production — each provider's registry probe uses the real vendor base.
-    connector_api_key_probe_base_override: ?[]const u8 = null,
-    /// Test/dev seam: shorten API-key probe deadlines for loopback stall tests.
-    /// Null in production — registry probes use the normal connector call bound.
-    connector_api_key_probe_deadline_ms_override: ?u31 = null,
     /// Once-set cache for the platform Slack signing secret (admin-vault
     /// `slack-app`.`signing_secret`). The events ingress publishes its first
     /// successful vault read here and every later request borrows it — the

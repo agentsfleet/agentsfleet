@@ -43,8 +43,6 @@ test {
     _ = @import("http/handlers/connectors/state.zig");
     _ = @import("http/handlers/connectors/oauth2.zig");
     _ = @import("http/handlers/connectors/oauth_status.zig");
-    _ = @import("http/handlers/connectors/api_key.zig");
-    _ = @import("http/handlers/connectors/api_key_integration_test.zig");
     _ = @import("http/handlers/connectors/registry.zig");
     _ = @import("http/handlers/connectors/registry_integration_test.zig");
     _ = @import("http/handlers/connectors/slack/callback.zig");

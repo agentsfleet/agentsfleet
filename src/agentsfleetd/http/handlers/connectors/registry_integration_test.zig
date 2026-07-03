@@ -400,22 +400,17 @@ test "integration: catalog reflects the registry with correct configured/connect
     const path = "/v1/workspaces/" ++ AUTHED_WS ++ "/connectors";
 
     // Baseline — registry-driven (every provider present), slack unconfigured +
-    // not connected, api_key (datadog) always configured but not connected.
+    // not connected.
     {
         const r = try (try h.get(path).bearer(scope_tokens.TENANT_ADMIN)).send();
         defer r.deinit();
         try r.expectStatus(.ok);
-        // No hard-coded list — all eight registry providers appear.
-        inline for (.{ "slack", "github", "zoho", "jira", "linear", "datadog", "grafana", "fly" }) |id| {
+        // No hard-coded list — every registry provider appears.
+        inline for (.{ "slack", "github", "zoho", "jira", "linear" }) |id| {
             try testing.expect(r.bodyContains("\"id\":\"" ++ id ++ "\""));
         }
-        // Field order is CatalogEntry declaration order (compact JSON). oauth2
-        // connectors connect by redirect, so their field schema is empty.
-        try testing.expect(r.bodyContains("\"id\":\"slack\",\"archetype\":\"oauth2\",\"display_name\":\"Slack\",\"configured\":false,\"connected\":false,\"fields\":[]"));
-        // api_key connectors carry their registry-declared connect form fields
-        // (secret flags intact — `site` is a plain coordinate, keys are masked);
-        // the dashboard renders the form from this, never a hard-coded list.
-        try testing.expect(r.bodyContains("\"id\":\"datadog\",\"archetype\":\"api_key\",\"display_name\":\"Datadog\",\"configured\":true,\"connected\":false,\"fields\":[{\"name\":\"api_key\",\"secret\":true},{\"name\":\"app_key\",\"secret\":true},{\"name\":\"site\",\"secret\":false}]"));
+        // Field order is CatalogEntry declaration order (compact JSON).
+        try testing.expect(r.bodyContains("\"id\":\"slack\",\"archetype\":\"oauth2\",\"display_name\":\"Slack\",\"configured\":false,\"connected\":false"));
     }
 
     // Provision slack's platform bag + connect this workspace.
@@ -461,10 +456,8 @@ test "integration: catalog degrades to configured:false when the platform-admin 
     const r = try (try h.get(path).bearer(scope_tokens.TENANT_ADMIN)).send();
     defer r.deinit();
     try r.expectStatus(.ok); // not 500
-    // oauth2/app_install read not-configured (no admin bag to check); api_key stays
-    // configured (self-provisioned).
+    // Every oauth2/app_install provider reads not-configured (no admin bag to check).
     try testing.expect(r.bodyContains("\"id\":\"slack\",\"archetype\":\"oauth2\",\"display_name\":\"Slack\",\"configured\":false"));
-    try testing.expect(r.bodyContains("\"id\":\"datadog\",\"archetype\":\"api_key\",\"display_name\":\"Datadog\",\"configured\":true"));
 }
 
 test "integration: github status reads the installation handle" {

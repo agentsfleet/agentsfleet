@@ -3,16 +3,11 @@
 import { DashboardRowGroup, EmptyState } from "@agentsfleet/design-system";
 import { PlugIcon } from "lucide-react";
 import {
-  CONNECTOR_ARCHETYPE,
   CONNECTOR_STATUS,
   type ConnectorCatalogEntry,
   type ConnectorStatus,
 } from "@/lib/api/connectors";
-import {
-  ApiKeyConnectorRow,
-  OAuthConnectorRow,
-  type ConnectorStatusOverride,
-} from "./connector-rows";
+import { OAuthConnectorRow, type ConnectorStatusOverride } from "./connector-rows";
 
 export default function IntegrationsConnectors({
   workspaceId,
@@ -42,7 +37,7 @@ export default function IntegrationsConnectors({
   return (
     <div className="space-y-md" data-testid="integrations-connectors">
       <p className="text-body-sm leading-body-sm text-muted-foreground">
-        OAuth connectors link in one click — no token to paste. API-key connectors take a key you paste once.
+        Connect a tool in one click — no token to paste.
       </p>
       {catalog.length === 0 ? (
         <EmptyState
@@ -53,18 +48,14 @@ export default function IntegrationsConnectors({
         />
       ) : (
         <DashboardRowGroup>
-          {catalog.map((entry) =>
-            entry.archetype === CONNECTOR_ARCHETYPE.apiKey ? (
-              <ApiKeyConnectorRow key={entry.id} entry={entry} workspaceId={workspaceId} />
-            ) : (
-              <OAuthConnectorRow
-                key={entry.id}
-                entry={entry}
-                workspaceId={workspaceId}
-                override={overrideFor(entry.id)}
-              />
-            ),
-          )}
+          {catalog.map((entry) => (
+            <OAuthConnectorRow
+              key={entry.id}
+              entry={entry}
+              workspaceId={workspaceId}
+              override={overrideFor(entry.id)}
+            />
+          ))}
         </DashboardRowGroup>
       )}
     </div>

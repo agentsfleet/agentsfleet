@@ -117,18 +117,6 @@ pub const PROVIDER_JIRA = "jira";
 /// segment, and the `linear-app` / `fleet:linear` vault-key stem.
 pub const PROVIDER_LINEAR = "linear";
 
-/// Connector provider id for Datadog — the registry id, the `{provider}` route
-/// segment, and the `fleet:datadog` vault-key stem.
-pub const PROVIDER_DATADOG = "datadog";
-
-/// Connector provider id for Grafana — the registry id, the `{provider}` route
-/// segment, and the `fleet:grafana` vault-key stem.
-pub const PROVIDER_GRAFANA = "grafana";
-
-/// Connector provider id for Fly — the registry id, the `{provider}` route
-/// segment, and the `fleet:fly` vault-key stem.
-pub const PROVIDER_FLY = "fly";
-
 /// OAuth 2.0 token endpoints for the refresh-token providers — the ONE spelling
 /// shared by the connect flow (`connectors/<p>/spec.zig`) and the credential
 /// broker's refresh-mint registry (`credentials/integration.zig`), so the code

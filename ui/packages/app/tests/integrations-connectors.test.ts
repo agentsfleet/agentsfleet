@@ -4,30 +4,22 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 
 // The connectors card grid is registry-driven: it renders whatever the catalog
 // returns (`ConnectorCatalogEntry[]`), so these tests feed a catalog and assert
-// the cards/forms mirror it — no provider list is baked into the component. Both
-// action-module boundaries are mocked; the real connect/probe security boundary is
-// the backend, proven by its own suite.
-const { startConnectActionMock, submitApiKeyConnectActionMock, refreshMock } = vi.hoisted(() => ({
-  startConnectActionMock: vi.fn(),
-  submitApiKeyConnectActionMock: vi.fn(),
-  refreshMock: vi.fn(),
-}));
+// the cards mirror it — no provider list is baked into the component. All
+// connectors are OAuth/app_install (api-key providers are custom secrets, not
+// connectors). The connect action is mocked; the real security boundary is the
+// backend, proven by its own suite.
+const { startConnectActionMock } = vi.hoisted(() => ({ startConnectActionMock: vi.fn() }));
 vi.mock("@/app/(dashboard)/integrations/connector-actions", () => ({
   startConnectAction: startConnectActionMock,
-  submitApiKeyConnectAction: submitApiKeyConnectActionMock,
 }));
-vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: refreshMock }) }));
 vi.mock("lucide-react", () => {
   const make = (name: string) => (p: Record<string, unknown>) =>
     React.createElement("svg", { ...p, "data-icon": name });
   return {
-    ActivityIcon: make("ActivityIcon"),
     BriefcaseIcon: make("BriefcaseIcon"),
     GitPullRequestIcon: make("GitPullRequestIcon"),
     Grid2x2Icon: make("Grid2x2Icon"),
     HashIcon: make("HashIcon"),
-    LineChartIcon: make("LineChartIcon"),
-    PlaneIcon: make("PlaneIcon"),
     PlugIcon: make("PlugIcon"),
     TicketIcon: make("TicketIcon"),
   };
@@ -43,28 +35,15 @@ import {
 
 const WS = "ws_test";
 
-// Catalog rows mirroring the backend wire contract; `fields` on api_key entries is
-// exactly what the catalog serializes (name + secret).
-const DATADOG_FIELDS = [
-  { name: "api_key", secret: true },
-  { name: "app_key", secret: true },
-  { name: "site", secret: false },
-] as const;
-
-function entry(over: Partial<ConnectorCatalogEntry> & Pick<ConnectorCatalogEntry, "id" | "archetype">): ConnectorCatalogEntry {
-  return {
-    display_name: over.id,
-    configured: true,
-    connected: false,
-    fields: [],
-    ...over,
-  };
+function entry(
+  over: Partial<ConnectorCatalogEntry> & Pick<ConnectorCatalogEntry, "id" | "archetype">,
+): ConnectorCatalogEntry {
+  return { display_name: over.id, configured: true, connected: false, ...over };
 }
 
 const GITHUB = entry({ id: "github", archetype: "app_install", display_name: "GitHub" });
 const SLACK = entry({ id: "slack", archetype: "oauth2", display_name: "Slack" });
 const ZOHO = entry({ id: "zoho", archetype: "oauth2", display_name: "Zoho Desk" });
-const DATADOG = entry({ id: "datadog", archetype: "api_key", display_name: "Datadog", fields: [...DATADOG_FIELDS] });
 
 function renderConnectors(
   catalog: ConnectorCatalogEntry[],
@@ -84,18 +63,14 @@ function renderConnectors(
 afterEach(() => {
   cleanup();
   startConnectActionMock.mockReset();
-  submitApiKeyConnectActionMock.mockReset();
-  refreshMock.mockReset();
 });
 
 describe("IntegrationsConnectors (test_ui_connectors_cards_from_catalog)", () => {
   it("renders one card per catalog entry — registry-driven, no hard-coded list", () => {
-    renderConnectors([GITHUB, SLACK, ZOHO, DATADOG]);
-    for (const e of [GITHUB, SLACK, ZOHO, DATADOG]) {
-      const card = screen.getByTestId(`integration-${e.id}`);
-      expect(card.textContent).toContain(e.display_name);
+    renderConnectors([GITHUB, SLACK, ZOHO]);
+    for (const e of [GITHUB, SLACK, ZOHO]) {
+      expect(screen.getByTestId(`integration-${e.id}`).textContent).toContain(e.display_name);
     }
-    // Nothing beyond the catalog: a provider absent from it has no card.
     expect(screen.queryByTestId("integration-jira")).toBeNull();
   });
 
@@ -105,7 +80,10 @@ describe("IntegrationsConnectors (test_ui_connectors_cards_from_catalog)", () =>
     expect(screen.queryByTestId("integration-github")).toBeNull();
   });
 
-  // ── OAuth / app_install cards ──────────────────────────────────────────────
+  it("renders a card for a provider with no bespoke icon (generic plug fallback)", () => {
+    renderConnectors([entry({ id: "webhooks_custom", archetype: "oauth2", display_name: "Custom" })]);
+    expect(screen.getByTestId("integration-webhooks_custom").textContent).toContain("Custom");
+  });
 
   it("renders an OAuth connector not-connected with a Connect button and no paste", () => {
     renderConnectors([GITHUB], { githubStatus: CONNECTOR_STATUS.notConnected });
@@ -126,10 +104,9 @@ describe("IntegrationsConnectors (test_ui_connectors_cards_from_catalog)", () =>
     expect(screen.getByRole("button", { name: /reconnect github/i })).toBeTruthy();
   });
 
-  it("derives status from the catalog `connected` flag for providers with no override (Zoho)", () => {
+  it("derives status from the catalog `connected` flag when there's no override (Zoho)", () => {
     renderConnectors([entry({ id: "zoho", archetype: "oauth2", display_name: "Zoho Desk", connected: true })]);
-    const zoho = screen.getByTestId("integration-zoho");
-    expect(zoho.textContent).toContain("Connected");
+    expect(screen.getByTestId("integration-zoho").textContent).toContain("Connected");
     expect(screen.queryByRole("button", { name: /connect zoho/i })).toBeNull();
   });
 
@@ -173,111 +150,5 @@ describe("IntegrationsConnectors (test_ui_connectors_cards_from_catalog)", () =>
     expect(screen.queryByRole("button", { name: /connect jira/i })).toBeNull();
     const link = within(jira).getByRole("link", { name: /setup guide/i });
     expect(link.getAttribute("href")).toBe(CONNECTOR_NOT_CONFIGURED_DOCS_URI);
-  });
-
-  // ── api_key cards + connect form ───────────────────────────────────────────
-
-  it("reveals the api_key form with exactly the catalog-declared fields", () => {
-    renderConnectors([DATADOG]);
-    // No form until the operator opens it.
-    expect(screen.queryByTestId("api-key-form-datadog")).toBeNull();
-    fireEvent.click(within(screen.getByTestId("integration-datadog")).getByRole("button", { name: "Connect" }));
-    const form = screen.getByTestId("api-key-form-datadog");
-    // One input per declared field, secrets masked, plain coordinate as text.
-    expect((within(form).getByLabelText("API key") as HTMLInputElement).type).toBe("password");
-    expect((within(form).getByLabelText("App key") as HTMLInputElement).type).toBe("password");
-    expect((within(form).getByLabelText("Site") as HTMLInputElement).type).toBe("text");
-  });
-
-  it("posts the declared fields and refreshes on a successful probe", async () => {
-    submitApiKeyConnectActionMock.mockResolvedValue({ ok: true, data: { status: "connected" } });
-    renderConnectors([DATADOG]);
-    fireEvent.click(within(screen.getByTestId("integration-datadog")).getByRole("button", { name: "Connect" }));
-    const form = screen.getByTestId("api-key-form-datadog");
-    fireEvent.change(within(form).getByLabelText("API key"), { target: { value: "dd-key" } });
-    fireEvent.change(within(form).getByLabelText("App key"), { target: { value: "dd-app" } });
-    fireEvent.change(within(form).getByLabelText("Site"), { target: { value: "datadoghq.com" } });
-    fireEvent.click(within(form).getByRole("button", { name: "Connect" }));
-    await waitFor(() =>
-      expect(submitApiKeyConnectActionMock).toHaveBeenCalledWith("datadog", WS, {
-        api_key: "dd-key",
-        app_key: "dd-app",
-        site: "datadoghq.com",
-      }),
-    );
-    await waitFor(() => expect(refreshMock).toHaveBeenCalled());
-  });
-
-  it("keeps the form open and shows the rejection when the probe fails (UZ-CONN-005)", async () => {
-    submitApiKeyConnectActionMock.mockResolvedValue({
-      ok: false,
-      error: "Connector probe rejected the supplied credentials",
-      errorCode: "UZ-CONN-005",
-    });
-    renderConnectors([DATADOG]);
-    fireEvent.click(within(screen.getByTestId("integration-datadog")).getByRole("button", { name: "Connect" }));
-    const form = screen.getByTestId("api-key-form-datadog");
-    fireEvent.change(within(form).getByLabelText("API key"), { target: { value: "bad" } });
-    fireEvent.change(within(form).getByLabelText("App key"), { target: { value: "bad" } });
-    fireEvent.change(within(form).getByLabelText("Site"), { target: { value: "datadoghq.com" } });
-    fireEvent.click(within(form).getByRole("button", { name: "Connect" }));
-    await waitFor(() => expect(within(form).getByRole("alert")).toBeTruthy());
-    expect(refreshMock).not.toHaveBeenCalled();
-    // Form stays open on failure so the operator can correct and retry.
-    expect(screen.getByTestId("api-key-form-datadog")).toBeTruthy();
-  });
-
-  it("renders a connected api_key connector with no form and no Connect button", () => {
-    renderConnectors([entry({ id: "fly", archetype: "api_key", display_name: "Fly.io", connected: true, fields: [{ name: "org_token", secret: true }] })]);
-    const fly = screen.getByTestId("integration-fly");
-    expect(fly.textContent).toContain("Connected");
-    expect(within(fly).queryByRole("button", { name: "Connect" })).toBeNull();
-  });
-
-  it("renders a card for a provider with no bespoke icon (generic plug fallback)", () => {
-    // An id absent from the icon map still renders — the icon falls back to a plug.
-    renderConnectors([entry({ id: "webhooks_custom", archetype: "oauth2", display_name: "Custom" })]);
-    expect(screen.getByTestId("integration-webhooks_custom").textContent).toContain("Custom");
-  });
-
-  it("closes the api_key form when the toggle is clicked again (Cancel)", () => {
-    renderConnectors([DATADOG]);
-    const row = screen.getByTestId("integration-datadog");
-    fireEvent.click(within(row).getByRole("button", { name: "Connect" }));
-    expect(screen.getByTestId("api-key-form-datadog")).toBeTruthy();
-    // Open → the action button flips to Cancel; clicking it closes the form.
-    fireEvent.click(within(row).getByRole("button", { name: "Cancel" }));
-    expect(screen.queryByTestId("api-key-form-datadog")).toBeNull();
-  });
-
-  it("Enter on an incomplete api_key form does nothing (submit guard)", () => {
-    submitApiKeyConnectActionMock.mockResolvedValue({ ok: true, data: { status: "connected" } });
-    renderConnectors([DATADOG]);
-    fireEvent.click(within(screen.getByTestId("integration-datadog")).getByRole("button", { name: "Connect" }));
-    const form = screen.getByTestId("api-key-form-datadog");
-    // Fields empty → canSubmit false → Enter reaches submit's guard, which returns.
-    fireEvent.keyDown(within(form).getByLabelText("API key"), { key: "Enter" });
-    expect(submitApiKeyConnectActionMock).not.toHaveBeenCalled();
-  });
-
-  it("submits the api_key form via Enter when complete, and ignores other keys", async () => {
-    submitApiKeyConnectActionMock.mockResolvedValue({ ok: true, data: { status: "connected" } });
-    renderConnectors([DATADOG]);
-    fireEvent.click(within(screen.getByTestId("integration-datadog")).getByRole("button", { name: "Connect" }));
-    const form = screen.getByTestId("api-key-form-datadog");
-    fireEvent.change(within(form).getByLabelText("API key"), { target: { value: "k" } });
-    fireEvent.change(within(form).getByLabelText("App key"), { target: { value: "k" } });
-    fireEvent.change(within(form).getByLabelText("Site"), { target: { value: "s" } });
-    // A non-Enter key is ignored; Enter submits.
-    fireEvent.keyDown(within(form).getByLabelText("Site"), { key: "a" });
-    expect(submitApiKeyConnectActionMock).not.toHaveBeenCalled();
-    fireEvent.keyDown(within(form).getByLabelText("Site"), { key: "Enter" });
-    await waitFor(() =>
-      expect(submitApiKeyConnectActionMock).toHaveBeenCalledWith("datadog", WS, {
-        api_key: "k",
-        app_key: "k",
-        site: "s",
-      }),
-    );
   });
 });
