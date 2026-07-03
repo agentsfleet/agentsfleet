@@ -184,7 +184,7 @@ function PlannedConnectorRow({
       title={integration.name}
       description={
         <>
-          Planned. Use <code className="font-mono">{requiredSecret}</code> for now.
+          Use <code className="font-mono">{requiredSecret}</code> for now.
         </>
       }
       action={
