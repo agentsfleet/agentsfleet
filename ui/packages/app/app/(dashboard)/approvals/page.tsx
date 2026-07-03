@@ -9,6 +9,8 @@ import ApprovalsList from "./components/ApprovalsList";
 
 export const dynamic = "force-dynamic";
 
+const APPROVALS_DESCRIPTION = "Fleet actions that pause for human review.";
+
 export default async function ApprovalsPage() {
   const { getToken } = await auth();
   const token = await getToken();
@@ -17,7 +19,7 @@ export default async function ApprovalsPage() {
   // Header streams first; the inbox loads inside ApprovalsData under Suspense.
   return (
     <div>
-      <PageHeader>
+      <PageHeader description={APPROVALS_DESCRIPTION}>
         <PageTitle>Approvals</PageTitle>
       </PageHeader>
 
