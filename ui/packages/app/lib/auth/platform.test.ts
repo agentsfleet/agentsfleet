@@ -8,6 +8,7 @@ const { authMock } = vi.hoisted(() => ({ authMock: vi.fn() }));
 vi.mock("@clerk/nextjs/server", () => ({ auth: authMock }));
 
 import { readSessionScopes, hasScope } from "./platform";
+import { expandScopes } from "@/lib/auth/scopes";
 
 beforeEach(() => vi.clearAllMocks());
 afterEach(() => vi.resetAllMocks());
@@ -76,6 +77,31 @@ describe("hasScope", () => {
   it("is false (fail-closed) when the auth provider throws", async () => {
     authMock.mockRejectedValueOnce(new Error("clerk unavailable"));
     await expect(hasScope("runner:read")).resolves.toBe(false);
+  });
+});
+
+// expandScopes downward-closure contract (security: no privilege escalation).
+describe("expandScopes", () => {
+  it("adds the downward closure of a held ladder scope", () => {
+    expect([...expandScopes(["model:admin"])].sort()).toEqual(["model:admin", "model:read"]);
+    expect([...expandScopes(["runner:write"])].sort()).toEqual(["runner:read", "runner:write"]);
+    expect([...expandScopes(["fleet:admin"])].sort()).toEqual(["fleet:admin", "fleet:read", "fleet:write"]);
+  });
+
+  it("never closes UPWARD — a read scope must not grant write/admin (no escalation)", () => {
+    const s = expandScopes(["model:read"]);
+    expect(s.has("model:admin")).toBe(false);
+    const r = expandScopes(["runner:read"]);
+    expect(r.has("runner:write")).toBe(false);
+    expect(r.has("runner:enroll")).toBe(false); // enroll is independent, never implied
+  });
+
+  it("passes an unknown scope through verbatim, granting nothing extra", () => {
+    expect([...expandScopes(["totally:bogus"])]).toEqual(["totally:bogus"]);
+  });
+
+  it("returns an empty set for no held scopes", () => {
+    expect(expandScopes([]).size).toBe(0);
   });
 });
 
