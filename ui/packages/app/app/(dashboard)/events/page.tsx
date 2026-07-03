@@ -13,6 +13,8 @@ import { EventsList } from "@/components/domain/EventsList";
 
 export const dynamic = "force-dynamic";
 
+const EVENTS_DESCRIPTION = "Every action your fleets take, as it happens.";
+
 export default async function EventsPage() {
   const { getToken } = await auth();
   const token = await getToken();
@@ -21,7 +23,7 @@ export default async function EventsPage() {
   // Header streams first; the stream loads inside EventsData under Suspense.
   return (
     <div>
-      <PageHeader>
+      <PageHeader description={EVENTS_DESCRIPTION}>
         <PageTitle>Events</PageTitle>
       </PageHeader>
 
