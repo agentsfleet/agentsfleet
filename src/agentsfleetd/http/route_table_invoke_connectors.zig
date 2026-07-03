@@ -28,10 +28,7 @@ pub fn invokeConnectorStatus(hx: *Hx, req: *httpz.Request, route: router.Route) 
 }
 
 pub fn invokeConnectorCatalog(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    if (req.method != .GET) {
-        common.respondMethodNotAllowed(hx.res);
-        return;
-    }
+    if (!common.requireMethod(hx.res, req.method, .GET)) return;
     catalog_h.innerCatalog(hx.*, route.connector_catalog);
 }
 
