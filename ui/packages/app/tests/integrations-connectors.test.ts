@@ -1,6 +1,6 @@
 import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { EVENTS } from "../lib/analytics/events";
 
 const { startConnectActionMock, captureProductEventMock } = vi.hoisted(() => ({
@@ -162,11 +162,15 @@ describe("IntegrationsConnectors (test_github_states_and_planned)", () => {
         workspaceId: WS,
         githubStatus: CONNECTOR_STATUS.notConnected,
         // ZOHO_TOKEN is the required secret for the Zoho connector; once stored,
-        // the pill reads "Token stored" rather than "Planned".
+        // the pill reads "Token stored" rather than "Not connected".
         credentialNames: ["ZOHO_TOKEN"],
       }),
     );
-    expect(screen.getByTestId("integration-zoho").textContent).toContain("Token stored");
+    const zohoRow = screen.getByTestId("integration-zoho");
+    expect(zohoRow.textContent).toContain("Token stored");
+    // A connected workspace (token in the vault) is not begged for access — the
+    // Request-access CTA is suppressed on the Zoho row once isReady is true.
+    expect(within(zohoRow).queryByRole("button", { name: "Request access" })).toBeNull();
   });
 });
 
