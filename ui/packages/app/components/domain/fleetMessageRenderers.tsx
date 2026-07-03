@@ -2,7 +2,7 @@
 
 import type { CSSProperties, ReactNode } from "react";
 import type { MessageState } from "@assistant-ui/react";
-import { Badge, cn, type BadgeVariant } from "@agentsfleet/design-system";
+import { Badge, cn, EYEBROW_CLASS, type BadgeVariant } from "@agentsfleet/design-system";
 
 const ACTOR_STEER_PREFIX = "steer:";
 const ACTOR_WEBHOOK_PREFIX = "webhook:";
@@ -192,7 +192,8 @@ function WebhookRow({
             <span
               className={cn(
                 "rounded-sm bg-accent px-md py-xs",
-                "font-mono text-label font-semibold uppercase tracking-label",
+                EYEBROW_CLASS,
+                "font-semibold",
                 "text-foreground",
               )}
             >

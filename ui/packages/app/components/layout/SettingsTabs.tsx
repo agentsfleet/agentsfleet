@@ -39,13 +39,15 @@ function tabSource(href: string): string {
 // rendering/styling lives in the design-system primitive.
 type SettingsTabsProps = {
   title?: string;
+  /** Standard page-header secondary line (muted, below the title). */
+  description?: string;
 };
 
-export default function SettingsTabs({ title = "Settings" }: SettingsTabsProps) {
+export default function SettingsTabs({ title = "Settings", description }: SettingsTabsProps) {
   const pathname = usePathname();
   return (
     <div className="space-y-6">
-      <PageHeader>
+      <PageHeader description={description}>
         <PageTitle>{title}</PageTitle>
       </PageHeader>
       <TabNav

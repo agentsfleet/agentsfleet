@@ -1,6 +1,7 @@
 import { type ComponentProps, type ReactNode } from "react";
 
 import { cn } from "../utils";
+import { EYEBROW_CLASS } from "./eyebrow";
 
 export type TerminalPanelProps = ComponentProps<"div"> & {
   title: ReactNode;
@@ -32,7 +33,7 @@ export function TerminalPanel({
         </span>
         <span className="font-mono text-label text-muted-foreground">{title}</span>
         {tag ? (
-          <span className="ml-auto font-mono text-label uppercase tracking-label text-text-subtle">
+          <span className={cn("ml-auto text-text-subtle", EYEBROW_CLASS)}>
             {tag}
           </span>
         ) : null}

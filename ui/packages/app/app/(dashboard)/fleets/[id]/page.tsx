@@ -1,6 +1,7 @@
 import { auth } from "@clerk/nextjs/server";
 import { notFound, redirect } from "next/navigation";
-import { Badge, PageHeader, PageTitle, Section, SectionLabel, WakePulse } from "@agentsfleet/design-system";
+import { Badge, EYEBROW_CLASS, PageHeader, PageTitle, Section, SectionLabel, WakePulse } from "@agentsfleet/design-system";
+import { cn } from "@/lib/utils";
 import { getFleet, AGENTSFLEET_STATUS } from "@/lib/api/fleets";
 import { getTenantBillingCached } from "@/lib/api/tenant_billing";
 import { listFleetEvents } from "@/lib/api/events";
@@ -65,7 +66,7 @@ export default async function FleetDetailPage({
       <PageHeader>
         <div className="flex items-center gap-3">
           <PageTitle>{fleet.name}</PageTitle>
-          <span className="inline-flex items-center gap-2 font-mono text-label uppercase tracking-label text-muted-foreground" data-state={fleet.status}>
+          <span className={cn(EYEBROW_CLASS, "inline-flex items-center gap-2 text-muted-foreground")} data-state={fleet.status}>
             {fleet.status === AGENTSFLEET_STATUS.ACTIVE ? (
               <WakePulse
                 live

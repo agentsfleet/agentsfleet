@@ -134,6 +134,7 @@ export {
   type TooltipContentProps,
 } from "./Tooltip";
 export { EmptyState, type EmptyStateProps } from "./EmptyState";
+export { CopyButton, type CopyButtonProps } from "./CopyButton";
 export { TabNav, type TabNavItem, type TabNavProps } from "./TabNav";
 export {
   StatusCard,
@@ -153,6 +154,7 @@ export {
 export { PageHeader, PageDescription, type PageHeaderProps } from "./PageHeader";
 export { PageTitle, type PageTitleProps } from "./PageTitle";
 export { SectionLabel, type SectionLabelProps } from "./SectionLabel";
+export { EYEBROW_CLASS } from "./eyebrow";
 export { DisplayXL, DisplayLG, type DisplayXLProps, type DisplayLGProps } from "./Display";
 export {
   DataTable,

@@ -64,6 +64,18 @@ describe("settings index", () => {
     expect(html).toMatch(/Manage workspace/i);
   });
 
+  it("renders the standard workspace subtitle and a copy control for the workspace ID", async () => {
+    // The Workspace page carries a PageHeader subtitle like every other page,
+    // and the workspace ID (what the CLI/API target) gets a one-click copy
+    // affordance. The mocked workspace resolves an id (name null), so the ID
+    // copy control renders even when the name is absent.
+    mockAuth();
+    const { default: SettingsPage } = await import("../app/(dashboard)/settings/page");
+    const html = renderToStaticMarkup(await SettingsPage());
+    expect(html).toContain("Switch workspaces or create one.");
+    expect(html).toContain("Copy workspace ID");
+  });
+
   it("shows the admin-access notice when redirected from the api-keys guard", async () => {
     mockAuth();
     const { default: SettingsPage } = await import("../app/(dashboard)/settings/page");

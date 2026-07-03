@@ -3,6 +3,7 @@
 import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
 import { type ComponentProps, type HTMLAttributes } from "react";
 import { cn } from "../utils";
+import { EYEBROW_CLASS } from "./eyebrow";
 
 /*
  * DropdownMenu — Radix dropdown composition with semantic utilities.
@@ -72,7 +73,8 @@ export function DropdownMenuLabel({ className, inset, ref, ...props }: DropdownM
     <DropdownMenuPrimitive.Label
       ref={ref}
       className={cn(
-        "px-2.5 py-1.5 font-mono text-[0.65rem] uppercase tracking-widest text-muted-foreground",
+        "px-2.5 py-1.5 text-muted-foreground",
+        EYEBROW_CLASS,
         inset && "pl-8",
         className,
       )}

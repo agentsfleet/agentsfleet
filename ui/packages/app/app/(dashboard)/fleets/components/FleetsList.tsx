@@ -2,7 +2,19 @@
 
 import { useDeferredValue, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
-import { Alert, Button, Input, List, ListItem, Time, WakePulse } from "@agentsfleet/design-system";
+import { PlusIcon } from "lucide-react";
+import {
+  Alert,
+  Button,
+  buttonClassName,
+  EYEBROW_CLASS,
+  Input,
+  List,
+  ListItem,
+  Time,
+  WakePulse,
+} from "@agentsfleet/design-system";
+import { cn } from "@/lib/utils";
 import { AGENTSFLEET_STATUS, type Fleet } from "@/lib/api/fleets";
 import { listFleetsAction } from "../actions";
 import { presentErrorString } from "@/lib/errors";
@@ -101,7 +113,7 @@ export default function FleetsList({
         />
         {liveTotal > 0 ? (
           <span
-            className="font-mono text-xs uppercase tracking-wide text-muted-foreground inline-flex items-center gap-2"
+            className={cn(EYEBROW_CLASS, "text-muted-foreground inline-flex items-center gap-2")}
             aria-label={`${liveTotal} live`}
           >
             <WakePulse
@@ -112,6 +124,9 @@ export default function FleetsList({
             {liveTotal} live{overCap ? ` · capped at ${PULSE_CAP}` : ""}
           </span>
         ) : null}
+        <Link href="/fleets/new" className={buttonClassName("default", "sm")}>
+          <PlusIcon size={14} /> Install fleet
+        </Link>
       </div>
 
       {filtered.length === 0 ? (
@@ -164,7 +179,7 @@ function FleetRow({ fleet: z, pulses }: FleetRowProps) {
       </div>
       <div className="col-span-7 sm:col-span-5 min-w-0">
         <div className="font-medium truncate">{z.name}</div>
-        <div className="font-mono text-label uppercase tracking-label text-muted-foreground">
+        <div className={cn(EYEBROW_CLASS, "text-muted-foreground")}>
           {z.status}
         </div>
       </div>

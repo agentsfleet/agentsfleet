@@ -22,8 +22,10 @@ import {
   DialogContent,
   DialogTitle,
   DialogTrigger,
+  EYEBROW_CLASS,
   WakePulse,
 } from "@agentsfleet/design-system";
+import { cn } from "@/lib/utils";
 import { setAnalyticsContext, trackNavigationClicked } from "@/lib/analytics/posthog";
 import { SCOPE } from "@/lib/auth/scopes";
 import { setActiveWorkspace } from "@/app/(dashboard)/actions";
@@ -275,7 +277,7 @@ function NavGroup({ label, children }: { label?: string; children: React.ReactNo
   return (
     <div className="px-3 mb-6">
       {label ? (
-        <div className="font-mono text-label uppercase tracking-label text-muted-foreground px-2 mb-2">
+        <div className={cn(EYEBROW_CLASS, "text-muted-foreground px-2 mb-2")}>
           {label}
         </div>
       ) : null}

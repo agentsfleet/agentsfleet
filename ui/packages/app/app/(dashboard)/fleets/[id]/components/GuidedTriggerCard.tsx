@@ -8,11 +8,13 @@ import {
   CardContent,
   CardHeader,
   CardTitle,
+  EYEBROW_CLASS,
   Input,
   Label,
   Time,
   useResettableTimeout,
 } from "@agentsfleet/design-system";
+import { cn } from "@/lib/utils";
 import type { FleetTrigger } from "@/lib/types";
 import type { GuidanceCard } from "./provider-guidance";
 
@@ -61,7 +63,7 @@ export default function GuidedTriggerCard({
     <Card data-testid={`guided-trigger-card-${trigger.source}`} className="bg-card">
       <CardHeader className="gap-1">
         <CardTitle className="text-base">{guidance.title}</CardTitle>
-        <p className="font-mono text-label uppercase tracking-label text-muted-foreground">
+        <p className={cn(EYEBROW_CLASS, "text-muted-foreground")}>
           {guidance.eventsLabel(events)}
         </p>
       </CardHeader>
@@ -77,7 +79,7 @@ export default function GuidedTriggerCard({
 
         {guidance.variables.length > 0 ? (
           <div className="flex flex-col gap-2">
-            <span className="font-mono text-label uppercase tracking-label text-muted-foreground">
+            <span className={cn(EYEBROW_CLASS, "text-muted-foreground")}>
               Variables
             </span>
             <div className="grid gap-2 sm:grid-cols-2">
@@ -105,7 +107,7 @@ export default function GuidedTriggerCard({
         ) : null}
 
         <div className="flex flex-col gap-2">
-          <span className="font-mono text-label uppercase tracking-label text-muted-foreground">
+          <span className={cn(EYEBROW_CLASS, "text-muted-foreground")}>
             Registration command
           </span>
           <pre
@@ -175,7 +177,7 @@ function CopyableLine({
 }) {
   return (
     <div className="flex flex-col gap-1">
-      <span className="font-mono text-label uppercase tracking-label text-muted-foreground">
+      <span className={cn(EYEBROW_CLASS, "text-muted-foreground")}>
         {label}
       </span>
       <div className="flex items-center gap-2">

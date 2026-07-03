@@ -1,9 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { Button, Refpill, Time } from "@agentsfleet/design-system";
+import { Button, EYEBROW_CLASS, Refpill, Time } from "@agentsfleet/design-system";
 import { LockIcon } from "lucide-react";
 import type { CustomSecretCredential } from "@/lib/api/credentials";
+import { cn } from "@/lib/utils";
 import EditCredentialDialog from "./EditCredentialDialog";
 
 // Custom secrets are named JSON objects a SKILL.md reads by field path. A
@@ -42,16 +43,16 @@ export default function CustomSecretsList({ workspaceId, secrets, referencedName
         <caption className="sr-only">Custom secrets</caption>
         <thead className="bg-surface-deep">
           <tr>
-            <th className="px-lg py-md text-left font-mono text-label uppercase tracking-label text-muted-foreground">
+            <th className={cn(EYEBROW_CLASS, "px-lg py-md text-left text-muted-foreground")}>
               Name
             </th>
-            <th className="px-lg py-md text-left font-mono text-label uppercase tracking-label text-muted-foreground">
+            <th className={cn(EYEBROW_CLASS, "px-lg py-md text-left text-muted-foreground")}>
               Added
             </th>
-            <th className="hidden px-lg py-md text-left font-mono text-label uppercase tracking-label text-muted-foreground sm:table-cell">
+            <th className={cn(EYEBROW_CLASS, "hidden px-lg py-md text-left text-muted-foreground sm:table-cell")}>
               Referenced by
             </th>
-            <th className="px-lg py-md text-right font-mono text-label uppercase tracking-label text-muted-foreground">
+            <th className={cn(EYEBROW_CLASS, "px-lg py-md text-right text-muted-foreground")}>
               Action
             </th>
           </tr>
