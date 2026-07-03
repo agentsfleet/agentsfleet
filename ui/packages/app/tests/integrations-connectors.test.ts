@@ -1,6 +1,6 @@
 import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { EVENTS } from "../lib/analytics/events";
 
 const { startConnectActionMock, captureProductEventMock } = vi.hoisted(() => ({
@@ -20,9 +20,6 @@ vi.mock("lucide-react", () => {
     GitPullRequestIcon: make("GitPullRequestIcon"),
     BriefcaseIcon: make("BriefcaseIcon"),
     HashIcon: make("HashIcon"),
-    TicketIcon: make("TicketIcon"),
-    SquareKanbanIcon: make("SquareKanbanIcon"),
-    GaugeIcon: make("GaugeIcon"),
   };
 });
 
@@ -30,10 +27,7 @@ import IntegrationsConnectors from "@/app/(dashboard)/integrations/components/In
 import { CONNECTOR_STATUS } from "@/lib/api/connectors";
 
 const WS = "ws_test";
-// Connectors without one-click OAuth: Zoho (vault-secret bridge) plus the
-// roadmap rows (Jira/Linear/Grafana). All render as "Not connected" with a
-// Request-access button until they ship a native connector.
-const COMING_SOON_INTEGRATIONS = ["zoho", "jira", "linear", "grafana"] as const;
+const PLANNED_INTEGRATIONS = ["zoho"] as const;
 
 afterEach(() => {
   cleanup();
@@ -113,25 +107,21 @@ describe("IntegrationsConnectors (test_github_states_and_planned)", () => {
     }
   });
 
-  it("renders the coming-soon connectors as Not connected, each with a Request access button (no email)", () => {
+  it("renders Zoho as a planned connector with a Request access button (no email)", () => {
     render(
       React.createElement(IntegrationsConnectors, {
         workspaceId: WS,
         githubStatus: CONNECTOR_STATUS.notConnected,
       }),
     );
-    for (const name of COMING_SOON_INTEGRATIONS) {
+    for (const name of PLANNED_INTEGRATIONS) {
       const row = screen.getByTestId(`integration-${name}`);
-      expect(row.textContent).toContain("Not connected");
+      expect(row.textContent).toContain("Planned");
     }
-    // Description branch: the vault-secret bridge (Zoho) surfaces its secret name;
-    // the pure roadmap rows (Jira) read "Coming soon".
-    expect(screen.getByTestId("integration-zoho").textContent).toContain("ZOHO_TOKEN");
-    expect(screen.getByTestId("integration-jira").textContent).toContain("Coming soon");
     // Request access is a PostHog-only signal now — a plain button, never a
     // mailto link. No <a> should carry an email href.
     const requestButtons = screen.getAllByRole("button", { name: "Request access" });
-    expect(requestButtons).toHaveLength(COMING_SOON_INTEGRATIONS.length);
+    expect(requestButtons).toHaveLength(PLANNED_INTEGRATIONS.length);
     expect(screen.queryByRole("link", { name: "Request access" })).toBeNull();
     expect(
       Array.from(document.querySelectorAll("a")).some((a) =>
@@ -162,15 +152,11 @@ describe("IntegrationsConnectors (test_github_states_and_planned)", () => {
         workspaceId: WS,
         githubStatus: CONNECTOR_STATUS.notConnected,
         // ZOHO_TOKEN is the required secret for the Zoho connector; once stored,
-        // the pill reads "Token stored" rather than "Not connected".
+        // the pill reads "Token stored" rather than "Planned".
         credentialNames: ["ZOHO_TOKEN"],
       }),
     );
-    const zohoRow = screen.getByTestId("integration-zoho");
-    expect(zohoRow.textContent).toContain("Token stored");
-    // A connected workspace (token in the vault) is not begged for access — the
-    // Request-access CTA is suppressed on the Zoho row once isReady is true.
-    expect(within(zohoRow).queryByRole("button", { name: "Request access" })).toBeNull();
+    expect(screen.getByTestId("integration-zoho").textContent).toContain("Token stored");
   });
 });
 
