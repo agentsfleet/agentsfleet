@@ -36,7 +36,7 @@ export function InstallEntry({ templates, maxTemplates, compact = false }: Props
           <div className="flex flex-wrap items-center justify-center gap-md">
             <TemplateDocsLink />
             <Button asChild size="sm">
-              <Link href="/fleets/new">
+              <Link href="/fleets/new?create=1">
                 <PlusIcon size={14} /> Create a template
               </Link>
             </Button>
