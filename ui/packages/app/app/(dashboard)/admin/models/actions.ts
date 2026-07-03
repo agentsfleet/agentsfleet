@@ -1,9 +1,9 @@
 "use server";
 
 import { withToken, type ActionResult } from "@/lib/actions/with-token";
-import { readPlatformAdminClaim } from "@/lib/auth/platform";
+import { requireScope } from "@/lib/actions/require-scope";
+import { SCOPE } from "@/lib/auth/scopes";
 import { withWorkspaceScope } from "@/lib/workspace";
-import { ERROR_CODE } from "@/lib/errors";
 import { createCredential as apiCreateCredential } from "@/lib/api/credentials";
 import {
   listAdminModels,
@@ -17,39 +17,23 @@ import {
   type ModelRatesInput,
 } from "@/lib/api/admin_models";
 
-// Defence-in-depth: gate every admin action on the platform_admin claim before
-// the round-trip. The backend independently 403s a non-platform-admin principal
-// — this just fails fast and keeps the surface platform-only (mirrors the
-// runners admin actions).
-async function asPlatformAdmin<T>(fn: () => Promise<ActionResult<T>>): Promise<ActionResult<T>> {
-  if (!(await readPlatformAdminClaim())) {
-    return {
-      ok: false,
-      error: "Platform-admin access required",
-      status: 403,
-      errorCode: ERROR_CODE.PLATFORM_ADMIN_REQUIRED,
-    };
-  }
-  return fn();
-}
-
 export async function listAdminModelsAction(): Promise<ActionResult<AdminModelList>> {
-  return asPlatformAdmin(() => withToken((t) => listAdminModels(t)));
+  return requireScope(SCOPE.MODEL_READ, () => withToken((t) => listAdminModels(t)));
 }
 
 export async function createAdminModelAction(body: ModelCapInput): Promise<ActionResult<AdminModel>> {
-  return asPlatformAdmin(() => withToken((t) => createAdminModel(t, body)));
+  return requireScope(SCOPE.MODEL_ADMIN, () => withToken((t) => createAdminModel(t, body)));
 }
 
 export async function updateAdminModelAction(
   uid: string,
   body: ModelRatesInput,
 ): Promise<ActionResult<{ uid: string; updated: boolean }>> {
-  return asPlatformAdmin(() => withToken((t) => updateAdminModel(t, uid, body)));
+  return requireScope(SCOPE.MODEL_ADMIN, () => withToken((t) => updateAdminModel(t, uid, body)));
 }
 
 export async function deleteAdminModelAction(uid: string): Promise<ActionResult<void>> {
-  return asPlatformAdmin(() => withToken((t) => deleteAdminModel(t, uid)));
+  return requireScope(SCOPE.MODEL_ADMIN, () => withToken((t) => deleteAdminModel(t, uid)));
 }
 
 /**
@@ -68,7 +52,7 @@ export async function setPlatformDefaultAction(body: {
   api_key: string;
   base_url?: string;
 }): Promise<ActionResult<{ provider: string; model: string; active: boolean }>> {
-  return asPlatformAdmin(() =>
+  return requireScope(SCOPE.MODEL_ADMIN, () =>
     withToken(async (t) => {
       // withWorkspaceScope resolves the active workspace from the 0-RTT
       // cookie/claim hint and self-heals a stale hint against the authoritative

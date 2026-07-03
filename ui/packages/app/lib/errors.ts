@@ -83,13 +83,13 @@ const CODE_MAP = {
     title: "You need operator access for that",
     body: "Ask a tenant operator or admin to manage API keys.",
   },
-  "UZ-AUTH-021": {
-    title: "You need platform-admin access for that",
-    body: "Only an agentsfleet platform admin can enroll or view runners.",
-  },
+  // UZ-AUTH-022 is the shared insufficient-scope code across every scope gate
+  // (runner/model operator surfaces, template onboarding, …). One generic copy
+  // — the backend `detail` names the specific scope required. (Reconciled from
+  // two domain-specific entries — operator + template — that collided here.)
   "UZ-AUTH-022": {
-    title: "You need template access for that",
-    body: "Ask a workspace admin to grant template access.",
+    title: "You need an additional scope for that",
+    body: "Ask an agentsfleet admin to grant the scope this action requires.",
   },
   "UZ-REQ-001": {
     title: "That request wasn't valid",
@@ -129,7 +129,7 @@ export const CURATED_ERROR_CODES = Object.keys(CODE_MAP) as ReadonlyArray<keyof 
  */
 export const ERROR_CODE = {
   AUTH_401: "UZ-AUTH-401",
-  PLATFORM_ADMIN_REQUIRED: "UZ-AUTH-021",
+  INSUFFICIENT_SCOPE: "UZ-AUTH-022",
 } as const satisfies Record<string, keyof typeof CODE_MAP>;
 
 export function presentError(input: ErrorInput): ErrorPresentation {

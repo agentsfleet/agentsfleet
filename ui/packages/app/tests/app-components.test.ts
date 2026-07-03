@@ -321,9 +321,9 @@ describe("app components", () => {
     // Render at a pathname and report how many items are active + the active
     // item's icon — exactly one item must light, and it must be the most
     // specific match (a nested /settings/* child beats its parent Settings).
-    const activeFor = (pathname: string, isPlatformAdmin = false) => {
+    const activeFor = (pathname: string, operatorScopes: string[] = []) => {
       mocks.usePathname.mockReturnValue(pathname);
-      const tree = Shell({ children: React.createElement("div"), isPlatformAdmin });
+      const tree = Shell({ children: React.createElement("div"), operatorScopes });
       const markup = renderToStaticMarkup(React.createElement(React.Fragment, null, tree));
       const count = (markup.match(/data-active="true"/g) ?? []).length;
       const icon = markup.match(/data-active="true"[^>]*>\s*<svg[^>]*data-icon="([^"]+)"/)?.[1] ?? null;
@@ -337,13 +337,13 @@ describe("app components", () => {
     expect(activeFor("/settings/api-keys")).toEqual({ count: 1, icon: "SettingsIcon" });
     // Other groups resolve to their own item; root and admin-gated paths too.
     expect(activeFor("/")).toEqual({ count: 1, icon: "LayoutDashboardIcon" });
-    expect(activeFor("/admin/runners", true)).toEqual({ count: 1, icon: "ServerIcon" });
+    expect(activeFor("/admin/runners", ["runner:read"])).toEqual({ count: 1, icon: "ServerIcon" });
   });
 
-  it("Shell appends the platform-admin Runners item only when isPlatformAdmin", async () => {
+  it("Shell appends the Runners item only when the session holds runner:read", async () => {
     const { default: Shell } = await import("../components/layout/Shell");
     mocks.usePathname.mockReturnValue("/");
-    const tree = Shell({ children: React.createElement("div"), isPlatformAdmin: true });
+    const tree = Shell({ children: React.createElement("div"), operatorScopes: ["runner:read"] });
     const markup = renderToStaticMarkup(React.createElement(React.Fragment, null, tree));
     // Runners joins the Configuration group with its link + ServerIcon glyph.
     expect(markup).toContain("Configuration");
@@ -356,10 +356,10 @@ describe("app components", () => {
     expect(markup).not.toMatch(/>\s*Platform\s*</);
   });
 
-  it("Shell hides the platform-admin surface for a non-admin session", async () => {
+  it("Shell hides the platform surface for a session without operator scopes", async () => {
     const { default: Shell } = await import("../components/layout/Shell");
     mocks.usePathname.mockReturnValue("/");
-    // Default (no isPlatformAdmin prop) → the Platform nav group is absent. This
+    // Default (no operatorScopes prop) → the platform nav items are absent. This
     // is discoverability only; the backend independently gates the route.
     const tree = Shell({ children: React.createElement("div") });
     const markup = renderToStaticMarkup(React.createElement(React.Fragment, null, tree));

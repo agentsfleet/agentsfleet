@@ -1,7 +1,8 @@
 import { redirect } from "next/navigation";
 import { auth } from "@clerk/nextjs/server";
 import { ApiError } from "@/lib/api/errors";
-import { readPlatformAdminClaim } from "@/lib/auth/platform";
+import { hasScope } from "@/lib/auth/platform";
+import { SCOPE } from "@/lib/auth/scopes";
 import { listAdminModels } from "@/lib/api/admin_models";
 import ModelsView from "./components/ModelsView";
 
@@ -10,9 +11,10 @@ export const dynamic = "force-dynamic";
 const NOT_ADMIN = "/settings?notice=models-platform-admin-only";
 
 export default async function AdminModelsPage() {
-  // Platform-admin only — hide the surface entirely for everyone else. The
-  // backend independently 403s a non-platform-admin; this is the UI guard.
-  if (!(await readPlatformAdminClaim())) redirect(NOT_ADMIN);
+  // Model operators only — hide the surface for a token without `model:read`.
+  // The backend independently 403s a token missing the scope (UZ-AUTH-022);
+  // this is the UI guard.
+  if (!(await hasScope(SCOPE.MODEL_READ))) redirect(NOT_ADMIN);
 
   const { getToken } = await auth();
   const token = await getToken();

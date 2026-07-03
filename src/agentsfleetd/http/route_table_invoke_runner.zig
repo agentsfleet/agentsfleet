@@ -31,128 +31,83 @@ const Hx = hx_mod.Hx;
 
 pub fn invokeRegisterRunner(hx: *Hx, req: *httpz.Request, route: router.Route) void {
     _ = route;
-    if (req.method != .POST) {
-        common.respondMethodNotAllowed(hx.res);
-        return;
-    }
+    if (!common.requireMethod(hx.res, req.method, .POST)) return;
     runner_register.innerRegisterRunner(hx.*, req);
 }
 
 pub fn invokeFleetRunnersList(hx: *Hx, req: *httpz.Request, route: router.Route) void {
     _ = route;
-    if (req.method != .GET) {
-        common.respondMethodNotAllowed(hx.res);
-        return;
-    }
+    if (!common.requireMethod(hx.res, req.method, .GET)) return;
     fleet_runners_list.innerListFleetRunners(hx.*, req);
 }
 
 pub fn invokeFleetStreamsList(hx: *Hx, req: *httpz.Request, route: router.Route) void {
     _ = route;
-    if (req.method != .GET) {
-        common.respondMethodNotAllowed(hx.res);
-        return;
-    }
+    if (!common.requireMethod(hx.res, req.method, .GET)) return;
     fleet_streams_list.innerListFleetStreams(hx.*, req);
 }
 
 pub fn invokeFleetRunnerPatch(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    if (req.method != .PATCH) {
-        common.respondMethodNotAllowed(hx.res);
-        return;
-    }
+    if (!common.requireMethod(hx.res, req.method, .PATCH)) return;
     fleet_runner_patch.innerPatchFleetRunner(hx.*, req, route.fleet_runner_patch);
 }
 
 pub fn invokeFleetRunnerEvents(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    if (req.method != .GET) {
-        common.respondMethodNotAllowed(hx.res);
-        return;
-    }
+    if (!common.requireMethod(hx.res, req.method, .GET)) return;
     fleet_runner_events.innerListFleetRunnerEvents(hx.*, req, route.fleet_runner_events);
 }
 
 pub fn invokeRunnerSelf(hx: *Hx, req: *httpz.Request, route: router.Route) void {
     _ = route;
-    if (req.method != .GET) {
-        common.respondMethodNotAllowed(hx.res);
-        return;
-    }
+    if (!common.requireMethod(hx.res, req.method, .GET)) return;
     runner_self.innerRunnerSelf(hx.*, req);
 }
 
 pub fn invokeRunnerHeartbeat(hx: *Hx, req: *httpz.Request, route: router.Route) void {
     _ = route;
-    if (req.method != .POST) {
-        common.respondMethodNotAllowed(hx.res);
-        return;
-    }
+    if (!common.requireMethod(hx.res, req.method, .POST)) return;
     runner_heartbeat.innerRunnerHeartbeat(hx.*, req);
 }
 
 pub fn invokeRunnerLease(hx: *Hx, req: *httpz.Request, route: router.Route) void {
     _ = route;
-    if (req.method != .POST) {
-        common.respondMethodNotAllowed(hx.res);
-        return;
-    }
+    if (!common.requireMethod(hx.res, req.method, .POST)) return;
     runner_lease.innerRunnerLease(hx.*, req);
 }
 
 pub fn invokeRunnerReport(hx: *Hx, req: *httpz.Request, route: router.Route) void {
     _ = route;
-    if (req.method != .POST) {
-        common.respondMethodNotAllowed(hx.res);
-        return;
-    }
+    if (!common.requireMethod(hx.res, req.method, .POST)) return;
     runner_report.innerRunnerReport(hx.*, req);
 }
 
 pub fn invokeRunnerCredentialsMint(hx: *Hx, req: *httpz.Request, route: router.Route) void {
     _ = route;
-    if (req.method != .POST) {
-        common.respondMethodNotAllowed(hx.res);
-        return;
-    }
+    if (!common.requireMethod(hx.res, req.method, .POST)) return;
     runner_credentials_mint.innerRunnerCredentialsMint(hx.*, req);
 }
 
 pub fn invokeRunnerActivity(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    if (req.method != .POST) {
-        common.respondMethodNotAllowed(hx.res);
-        return;
-    }
+    if (!common.requireMethod(hx.res, req.method, .POST)) return;
     runner_activity.innerRunnerActivity(hx.*, req, route.runner_activity);
 }
 
 pub fn invokeRunnerRenew(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    if (req.method != .POST) {
-        common.respondMethodNotAllowed(hx.res);
-        return;
-    }
+    if (!common.requireMethod(hx.res, req.method, .POST)) return;
     runner_renew.innerRunnerRenew(hx.*, req, route.runner_renew);
 }
 
 pub fn invokeRunnerMemoryHydrate(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    if (req.method != .GET) {
-        common.respondMethodNotAllowed(hx.res);
-        return;
-    }
+    if (!common.requireMethod(hx.res, req.method, .GET)) return;
     runner_memory.innerRunnerMemoryHydrate(hx.*, route.runner_memory_hydrate);
 }
 
 pub fn invokeRunnerMemoryCapture(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    if (req.method != .POST) {
-        common.respondMethodNotAllowed(hx.res);
-        return;
-    }
+    if (!common.requireMethod(hx.res, req.method, .POST)) return;
     runner_memory.innerRunnerMemoryCapture(hx.*, req, route.runner_memory_capture);
 }
 
 pub fn invokeRunnerBundle(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    if (req.method != .GET) {
-        common.respondMethodNotAllowed(hx.res);
-        return;
-    }
+    if (!common.requireMethod(hx.res, req.method, .GET)) return;
     runner_bundle.innerRunnerBundle(hx.*, route.runner_bundle);
 }

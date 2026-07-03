@@ -1,7 +1,8 @@
 import { redirect } from "next/navigation";
 import { auth } from "@clerk/nextjs/server";
 import { ApiError } from "@/lib/api/errors";
-import { readPlatformAdminClaim } from "@/lib/auth/platform";
+import { hasScope } from "@/lib/auth/platform";
+import { SCOPE } from "@/lib/auth/scopes";
 import { listRunners, DEFAULT_PAGE_SIZE, DEFAULT_SORT } from "@/lib/api/runners";
 import RunnersView from "./components/RunnersView";
 
@@ -10,9 +11,10 @@ export const dynamic = "force-dynamic";
 const NOT_ADMIN = "/settings?notice=runners-platform-admin-only";
 
 export default async function RunnersPage() {
-  // Platform-admin only — hide the surface entirely for everyone else. The
-  // backend independently 403s a non-admin (UZ-AUTH-021); this is the UI guard.
-  if (!(await readPlatformAdminClaim())) redirect(NOT_ADMIN);
+  // Runner operators only — hide the surface for a token without `runner:read`.
+  // The backend independently 403s a token missing the scope (UZ-AUTH-022);
+  // this is the UI guard.
+  if (!(await hasScope(SCOPE.RUNNER_READ))) redirect(NOT_ADMIN);
 
   const { getToken } = await auth();
   const token = await getToken();

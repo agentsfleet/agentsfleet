@@ -201,3 +201,22 @@ test "repeated errorResponse calls with std.testing.allocator do not leak" {
         try ht.expectStatus(401);
     }
 }
+
+// requireMethod — the single-method guard shared by the route_table invoke
+// functions. Housed here (not inline in common.zig) to keep that file under the
+// 350-line cap; uses the same httpz.testing harness.
+
+test "requireMethod accepts a matching method and leaves the response untouched" {
+    var ht = httpz.testing.init(.{});
+    defer ht.deinit();
+    try std.testing.expect(common.requireMethod(ht.res, .POST, .POST));
+    // No side effect on a match: status stays at the default 200, body unset.
+    try ht.expectStatus(200);
+}
+
+test "requireMethod rejects a mismatched method with 405" {
+    var ht = httpz.testing.init(.{});
+    defer ht.deinit();
+    try std.testing.expect(!common.requireMethod(ht.res, .GET, .POST));
+    try ht.expectStatus(405);
+}

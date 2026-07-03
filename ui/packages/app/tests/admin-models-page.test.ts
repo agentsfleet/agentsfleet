@@ -13,12 +13,12 @@ const redirect = vi.fn((path: string) => {
   throw new Error(`redirect:${path}`);
 });
 const authMock = vi.fn();
-const readPlatformAdminClaimMock = vi.fn();
+const hasScopeMock = vi.fn();
 const listAdminModelsMock = vi.fn();
 
 vi.mock("next/navigation", () => ({ redirect }));
 vi.mock("@clerk/nextjs/server", () => ({ auth: authMock }));
-vi.mock("@/lib/auth/platform", () => ({ readPlatformAdminClaim: readPlatformAdminClaimMock }));
+vi.mock("@/lib/auth/platform", () => ({ hasScope: hasScopeMock }));
 vi.mock("@/lib/api/admin_models", async (orig) => ({
   ...(await orig<typeof import("@/lib/api/admin_models")>()),
   listAdminModels: listAdminModelsMock,
@@ -42,12 +42,12 @@ function mockAuth(token: string | null = "tok") {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  readPlatformAdminClaimMock.mockResolvedValue(true);
+  hasScopeMock.mockResolvedValue(true);
 });
 
 describe("admin/models page", () => {
-  it("redirects a non-platform-admin to settings with the operator notice (UI guard)", async () => {
-    readPlatformAdminClaimMock.mockResolvedValueOnce(false);
+  it("redirects a caller without model:read to settings with the operator notice (UI guard)", async () => {
+    hasScopeMock.mockResolvedValueOnce(false);
     const { default: Page } = await import("../app/(dashboard)/admin/models/page");
     await expect(Page()).rejects.toThrow(`redirect:${NOT_ADMIN}`);
     // The guard short-circuits before any token resolution or backend read.
@@ -63,7 +63,7 @@ describe("admin/models page", () => {
 
   it("redirects to settings when the backend independently 403s the read", async () => {
     mockAuth();
-    listAdminModelsMock.mockRejectedValueOnce(new ApiError("forbidden", 403, "UZ-AUTH-021"));
+    listAdminModelsMock.mockRejectedValueOnce(new ApiError("forbidden", 403, "UZ-AUTH-022"));
     const { default: Page } = await import("../app/(dashboard)/admin/models/page");
     await expect(Page()).rejects.toThrow(`redirect:${NOT_ADMIN}`);
   });
