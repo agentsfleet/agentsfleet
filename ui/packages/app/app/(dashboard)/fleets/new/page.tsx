@@ -9,7 +9,7 @@ import { hasTemplateWriteScope } from "../scope";
 
 export const dynamic = "force-dynamic";
 
-type SearchParams = { template?: string | string[] };
+type SearchParams = { template?: string | string[]; create?: string | string[] };
 const INSTALL_PAGE_DESCRIPTION = "Pick a template. Watch live states.";
 
 // Gallery-first install. Templates + the workspace's existing
@@ -53,6 +53,9 @@ export default async function InstallFleetPage({
   const { workspaceId, templates, credentialNames } = result;
   const initialTemplateId =
     typeof params.template === "string" ? params.template : undefined;
+  // ?create=1 (the dashboard empty-state CTA) opens the create-template dialog
+  // immediately — no second identical empty state between click and form.
+  const initialCreateOpen = params.create === "1";
 
   return (
     <div>
@@ -65,6 +68,7 @@ export default async function InstallFleetPage({
         presentCredentialNames={credentialNames}
         initialTemplateId={initialTemplateId}
         canAddTemplate={hasTemplateWriteScope(sessionClaims)}
+        initialCreateOpen={initialCreateOpen}
       />
     </div>
   );
