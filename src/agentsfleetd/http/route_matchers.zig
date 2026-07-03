@@ -168,7 +168,7 @@ pub const WorkspaceConnectorRoute = connectors.WorkspaceConnectorRoute;
 pub const matchWorkspaceConnector = connectors.matchWorkspaceConnector;
 pub const matchWorkspaceConnectorConnect = connectors.matchWorkspaceConnectorConnect;
 pub const matchConnectorCallback = connectors.matchConnectorCallback;
-pub const matchConnectorCatalog = connectors.matchConnectorCatalog;
+pub const matchWorkspaceConnectorCatalog = connectors.matchWorkspaceConnectorCatalog;
 pub const matchSlackEvents = connectors.matchSlackEvents;
 
 // ── /workspaces/{ws}/fleet-keys/{fleet_key_id} ─────────────────────────────────

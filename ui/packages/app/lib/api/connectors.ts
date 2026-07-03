@@ -75,3 +75,58 @@ export async function startConnect(
     token,
   );
 }
+
+// ── Registry-driven catalog (M108) ───────────────────────────────────────────
+// The dashboard renders its connector cards from this, never a hard-coded list:
+// `GET /v1/workspaces/{ws}/connectors` returns one entry per registry provider —
+// the collection whose items are the per-provider status routes. `configured` is
+// platform-side (an oauth2/app_install `<provider>-app` bag exists; api_key
+// self-provisions → always true); `connected` is this workspace's handle.
+
+export const CONNECTOR_ARCHETYPE = {
+  oauth2: "oauth2",
+  appInstall: "app_install",
+  apiKey: "api_key",
+} as const;
+export type ConnectorArchetype = (typeof CONNECTOR_ARCHETYPE)[keyof typeof CONNECTOR_ARCHETYPE];
+
+export interface ConnectorCatalogEntry {
+  id: string;
+  archetype: ConnectorArchetype;
+  display_name: string;
+  configured: boolean;
+  connected: boolean;
+}
+
+export async function getConnectorCatalog(
+  workspaceId: string,
+  token: string,
+): Promise<ConnectorCatalogEntry[]> {
+  return request<ConnectorCatalogEntry[]>(
+    `/v1/workspaces/${encodeURIComponent(workspaceId)}/connectors`,
+    { method: "GET" },
+    token,
+  );
+}
+
+// api_key connect is an authed POST whose body carries the archetype's declared
+// fields (Datadog `{api_key, app_key, site}`, Grafana `{instance_url,
+// service_account_token}`, Fly `{org_token}`). The handler runs a bounded
+// validation probe before vaulting; a bad key → 400 `UZ-CONN-005`, no write. The
+// submitted secrets travel only in this request body — never echoed back.
+export interface ApiKeyConnectResult {
+  status: ConnectorStatus;
+}
+
+export async function submitApiKeyConnect(
+  provider: string,
+  workspaceId: string,
+  fields: Record<string, string>,
+  token: string,
+): Promise<ApiKeyConnectResult> {
+  return request<ApiKeyConnectResult>(
+    `/v1/workspaces/${encodeURIComponent(workspaceId)}/connectors/${encodeURIComponent(provider)}/connect`,
+    { method: "POST", body: JSON.stringify(fields) },
+    token,
+  );
+}

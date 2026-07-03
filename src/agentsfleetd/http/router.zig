@@ -116,7 +116,7 @@ fn matchV1(p: matchers.Path, method: httpz.Method) ?Route {
     if (matchers.matchWorkspaceConnectorConnect(p)) |r| return .{ .connector_connect = r };
     if (matchers.matchWorkspaceConnector(p)) |r| return .{ .connector_status = r };
     if (matchers.matchConnectorCallback(p)) |provider| return .{ .connector_callback = provider };
-    if (matchers.matchConnectorCatalog(p)) return .{ .connector_catalog = {} };
+    if (matchers.matchWorkspaceConnectorCatalog(p)) |ws| return .{ .connector_catalog = ws };
     // ── Slack events ingress (M106 §2) — POST-only (invoke fn 405s others) ─
     if (matchers.matchSlackEvents(p)) return .{ .slack_events = {} };
     // ── Workspace + leaf ──────────────────────────────────────────────────

@@ -60,7 +60,7 @@ NOUN_FINAL_SEGMENT_ALLOW: set[str] = {
     "integration-grants",
     "integration-requests",
     "approvals",         # approval-gate inbox collection
-    "connectors",        # connector catalog collection — GET /v1/connectors (M108); the registry rendered as data
+    "connectors",        # connector catalog collection — GET /v1/workspaces/{ws}/connectors (M108); the registry rendered as data
     # Sub-resource leaves that are operator-facing nouns:
     "stream",            # SSE sub-resource of /events; not "to stream", a thing
     "current-run",       # the active run record (read-only resource)
