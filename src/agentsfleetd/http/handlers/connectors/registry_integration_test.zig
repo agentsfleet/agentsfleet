@@ -60,6 +60,12 @@ test "router: the generic connector trio captures workspace + provider" {
     const callback = router.match("/v1/connectors/slack/callback", .GET) orelse return error.TestUnexpectedResult;
     try testing.expectEqualStrings("slack", callback.connector_callback);
 
+    // The catalog is a captureless 1-segment route (workspace_id is a query
+    // param, read in the handler) — it must not shadow, nor be shadowed by, the
+    // multi-segment trio above.
+    const catalog = router.match("/v1/connectors", .GET) orelse return error.TestUnexpectedResult;
+    try testing.expect(catalog == .connector_catalog);
+
     // An unknown id still ROUTES (the registry 404s it with a naming body —
     // proven end-to-end below); the events ingress stays bespoke.
     const unknown = router.match("/v1/workspaces/ws-1/connectors/nope/connect", .POST) orelse return error.TestUnexpectedResult;
@@ -369,6 +375,61 @@ test "integration: slack status flips not_connected → connected and surfaces t
         try testing.expect(r.bodyContains("Acme M108"));
     }
 
+    deleteFleetHandle(alloc, conn, AUTHED_WS, common.PROVIDER_SLACK);
+}
+
+test "integration: catalog reflects the registry with correct configured/connected flags (Dimension 4.1)" {
+    const alloc = testing.allocator;
+    const h = startAuthedHarness(alloc) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    test_fixtures.setTestEncryptionKey();
+    try seedAuthedFixtures(conn);
+    // Clean slate: no slack platform bag, no slack handle for this workspace.
+    _ = vault.deleteCredential(conn, ADMIN_WS, "slack-app") catch {};
+    deleteFleetHandle(alloc, conn, AUTHED_WS, common.PROVIDER_SLACK);
+
+    const path = "/v1/connectors?workspace_id=" ++ AUTHED_WS;
+
+    // Baseline — registry-driven (every provider present), slack unconfigured +
+    // not connected, api_key (datadog) always configured but not connected.
+    {
+        const r = try (try h.get(path).bearer(scope_tokens.TENANT_ADMIN)).send();
+        defer r.deinit();
+        try r.expectStatus(.ok);
+        // No hard-coded list — all eight registry providers appear.
+        inline for (.{ "slack", "github", "zoho", "jira", "linear", "datadog", "grafana", "fly" }) |id| {
+            try testing.expect(r.bodyContains("\"id\":\"" ++ id ++ "\""));
+        }
+        // Field order is CatalogEntry declaration order (compact JSON).
+        try testing.expect(r.bodyContains("\"id\":\"slack\",\"archetype\":\"oauth2\",\"display_name\":\"Slack\",\"configured\":false,\"connected\":false"));
+        try testing.expect(r.bodyContains("\"id\":\"datadog\",\"archetype\":\"api_key\",\"display_name\":\"Datadog\",\"configured\":true,\"connected\":false"));
+    }
+
+    // Provision slack's platform bag + connect this workspace.
+    try seedSlackAppCreds(alloc, conn);
+    const key = try credential_key.allocKeyName(alloc, common.PROVIDER_SLACK);
+    defer alloc.free(key);
+    var handle: std.json.ObjectMap = .empty;
+    defer handle.deinit(alloc);
+    try handle.put(alloc, "bot_token", .{ .string = "xoxb-m108-catalog-tok" });
+    try test_fixtures.storeVaultJson(alloc, conn, AUTHED_WS, key, .{ .object = handle });
+
+    // slack now flips to configured (platform bag) AND connected (handle).
+    {
+        const r = try (try h.get(path).bearer(scope_tokens.TENANT_ADMIN)).send();
+        defer r.deinit();
+        try r.expectStatus(.ok);
+        try testing.expect(r.bodyContains("\"id\":\"slack\",\"archetype\":\"oauth2\",\"display_name\":\"Slack\",\"configured\":true,\"connected\":true"));
+    }
+
+    // Foreign workspace / no scope is already covered by the IDOR + scope tests;
+    // clean up this suite's shared platform bag + handle.
+    _ = vault.deleteCredential(conn, ADMIN_WS, "slack-app") catch {};
     deleteFleetHandle(alloc, conn, AUTHED_WS, common.PROVIDER_SLACK);
 }
 

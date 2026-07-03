@@ -173,6 +173,7 @@ pub fn requiredScopes(route: router.Route, method: httpz.Method) []const S {
         // ── Connectors (generic {provider} trio) ──
         .connector_connect => &CONNECTOR_WRITE,
         .connector_status => &CONNECTOR_READ,
+        .connector_catalog => &CONNECTOR_READ,
 
         // ── Approvals: view the inbox (read) vs decide a gate (resolve) ──
         .workspace_approvals, .workspace_approval_detail => &APPROVAL_READ,
