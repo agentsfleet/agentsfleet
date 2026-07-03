@@ -41,7 +41,7 @@ CREATE TABLE IF NOT EXISTS fleet.runner_leases (
     CONSTRAINT ck_runner_leases_uid_uuidv7 CHECK (substring(uid::text from 15 for 1) = '7'),
     id                UUID   NOT NULL UNIQUE,
     runner_id         UUID   NOT NULL REFERENCES fleet.runners(id) ON DELETE CASCADE,
-    fleet_id         UUID   NOT NULL,
+    fleet_id         UUID   NOT NULL REFERENCES core.fleets(id) ON DELETE CASCADE,
     workspace_id      UUID   NOT NULL,
     tenant_id         UUID   NOT NULL,
     event_id          TEXT   NOT NULL,

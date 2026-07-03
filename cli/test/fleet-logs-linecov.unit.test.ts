@@ -7,7 +7,7 @@
 import { describe, test, expect } from "bun:test";
 import { Cause, Effect, Exit, Layer, Option, Redacted } from "effect";
 
-import { logsEffectFromFlags } from "../src/commands/fleet_logs.ts";
+import { formatTimestamp, logsEffectFromFlags } from "../src/commands/fleet_logs.ts";
 import { CliConfig } from "../src/services/config.ts";
 import { HttpClient } from "../src/services/http-client.ts";
 import { Output } from "../src/services/output.ts";
@@ -209,5 +209,50 @@ describe("logsEffectFromFlags — cursor pagination", () => {
     expect(Exit.isSuccess(exit)).toBe(true);
     expect(httpSpy.requestedPath).not.toBeNull();
     expect(httpSpy.requestedPath).not.toContain("cursor=");
+  });
+});
+
+const FALLBACK = "—";
+
+describe("formatTimestamp — malformed input never throws", () => {
+  test("falls back to the em-dash literal for unparseable / out-of-range input", () => {
+    // Truthy-but-unparseable and out-of-range values used to throw
+    // `RangeError: Invalid time value`, crashing the whole `logs` command.
+    expect(() => formatTimestamp("garbage")).not.toThrow();
+    expect(formatTimestamp("garbage")).toBe(FALLBACK);
+    expect(formatTimestamp(NaN)).toBe(FALLBACK);
+    expect(formatTimestamp(Number.MAX_VALUE)).toBe(FALLBACK);
+    expect(formatTimestamp("not-a-date")).toBe(FALLBACK);
+  });
+
+  test("falsy input still renders the fallback literal", () => {
+    expect(formatTimestamp(null)).toBe(FALLBACK);
+    expect(formatTimestamp(undefined)).toBe(FALLBACK);
+    expect(formatTimestamp(0)).toBe(FALLBACK);
+    expect(formatTimestamp("")).toBe(FALLBACK);
+  });
+
+  test("valid timestamps still render an ISO string (regression)", () => {
+    expect(formatTimestamp(1735689600000)).toBe("2025-01-01T00:00:00.000Z");
+    expect(formatTimestamp("2025-01-01T00:00:00.000Z")).toBe(
+      "2025-01-01T00:00:00.000Z",
+    );
+  });
+
+  test("a malformed created_at does not crash the human-readable event stream", async () => {
+    const httpSpy: HttpSpy = { requestedPath: null };
+    const outSpy: OutputSpy = { jsonPayloads: [], infoLines: [] };
+    const exit = await runWith(
+      logsEffectFromFlags({ fleetId: VALID_FLEET_ID }),
+      {
+        config: configLayer(false),
+        output: outputLayer(outSpy),
+        http: httpClientLayer(httpSpy, {
+          items: [{ created_at: "garbage", actor: "fleet", status: "done" }],
+        }),
+      },
+    );
+    expect(Exit.isSuccess(exit)).toBe(true);
+    expect(outSpy.infoLines.some((line) => line.includes(FALLBACK))).toBe(true);
   });
 });

@@ -505,6 +505,34 @@ describe("workspaceCredentialsEffect", () => {
     expect(rec.stdout).toContain("# Workspace credentials");
     expect(rec.stdout.some((line) => line.includes("/credentials"))).toBe(true);
   });
+
+  // The redirect must name the real top-level `credential` group
+  // (cli-tree-fleet.ts), not the phantom `agentsfleet agent credential` that has
+  // no registration anywhere in the CLI tree.
+  const REAL_COMMAND = "agentsfleet credential";
+  const PHANTOM_COMMAND = "agentsfleet agent credential";
+
+  test("JSON-mode redirect names the real credential command", async () => {
+    const rec = makeRecorder();
+    const program = workspaceCredentialsEffect.pipe(
+      Effect.provide(configLayer({ jsonMode: true })),
+      Effect.provide(outputLayer(rec)),
+    );
+    await runWith(program);
+    expect(rec.stdout.some((line) => line.includes(REAL_COMMAND))).toBe(true);
+    expect(rec.stdout.some((line) => line.includes(PHANTOM_COMMAND))).toBe(false);
+  });
+
+  test("human-mode redirect names the real credential command", async () => {
+    const rec = makeRecorder();
+    const program = workspaceCredentialsEffect.pipe(
+      Effect.provide(configLayer()),
+      Effect.provide(outputLayer(rec)),
+    );
+    await runWith(program);
+    expect(rec.stdout.some((line) => line.includes(REAL_COMMAND))).toBe(true);
+    expect(rec.stdout.some((line) => line.includes(PHANTOM_COMMAND))).toBe(false);
+  });
 });
 
 describe("workspaceDeleteEffectFromArgs", () => {

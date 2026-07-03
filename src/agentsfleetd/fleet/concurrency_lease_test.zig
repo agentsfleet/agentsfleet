@@ -55,6 +55,9 @@ fn execIgnore(conn: *pg.Conn, sql: []const u8, args: anytype) void {
 fn teardown(conn: *pg.Conn) void {
     execIgnore(conn, "DELETE FROM fleet.runner_affinity WHERE fleet_id = $1::uuid", .{FLEET_ID});
     execIgnore(conn, "DELETE FROM fleet.runners WHERE id = $1::uuid", .{RUNNER_ID});
+    // Fleet before tenant/workspace — core.fleets.workspace_id has no cascade;
+    // cascades any residual affinity via the new FK.
+    base.teardownFleets(conn, WORKSPACE_ID);
     base.teardownTenant(conn);
     base.teardownWorkspace(conn, WORKSPACE_ID);
 }
@@ -91,6 +94,7 @@ test "100 concurrent claims on one free fleet yield exactly one winner" {
     teardown(c_init);
     try base.seedTenant(c_init);
     try base.seedWorkspace(c_init, WORKSPACE_ID);
+    try base.seedFleet(c_init, FLEET_ID, WORKSPACE_ID, "conc-lease", "{}", "# z");
     try seedRunner(c_init);
     // No affinity row seeded → the fleet's slot is unclaimed; the INSERT branch
     // of the UPSERT wins for exactly one racer, the ON CONFLICT guard rejects

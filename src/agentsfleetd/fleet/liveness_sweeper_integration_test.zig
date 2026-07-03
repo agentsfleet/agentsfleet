@@ -89,9 +89,24 @@ fn seedLease(conn: *pg.Conn, lease_id: []const u8, runner_id: []const u8, fleet_
     });
 }
 
+/// Seed the tenant/workspace/fleet rows the lease + affinity inserts now depend
+/// on (runner_leases.fleet_id / runner_affinity.fleet_id → core.fleets FK).
+/// Idempotent; both fleets are seeded unconditionally (an unused fleet row does
+/// not affect any per-runner lease/event count assertion).
+fn seedFleetBase(conn: *pg.Conn) !void {
+    try base.seedTenant(conn);
+    try base.seedWorkspace(conn, WORKSPACE_ID);
+    try base.seedFleet(conn, AGENTSFLEET_ONE_ID, WORKSPACE_ID, "liveness-one", "{}", "# z");
+    try base.seedFleet(conn, AGENTSFLEET_TWO_ID, WORKSPACE_ID, "liveness-two", "{}", "# z");
+}
+
 fn cleanup(conn: *pg.Conn) void {
     execIgnore(conn, "DELETE FROM fleet.runner_affinity WHERE fleet_id IN ($1::uuid, $2::uuid)", .{ AGENTSFLEET_ONE_ID, AGENTSFLEET_TWO_ID });
     execIgnore(conn, "DELETE FROM fleet.runners WHERE id IN ($1::uuid, $2::uuid)", .{ RUNNER_STALE_ID, RUNNER_LIVE_ID });
+    // Fleets (cascades any residual lease/affinity via the new FK) before the
+    // workspace — core.fleets.workspace_id has no on-delete-cascade.
+    base.teardownFleets(conn, WORKSPACE_ID);
+    base.teardownWorkspace(conn, WORKSPACE_ID);
 }
 
 fn execIgnore(conn: *pg.Conn, sql: []const u8, args: anytype) void {
@@ -177,6 +192,7 @@ test "stale runner swept and work reassigned" {
     defer ctx.pool.release(ctx.conn);
     cleanup(ctx.conn);
     defer cleanup(ctx.conn);
+    try seedFleetBase(ctx.conn);
 
     try seedStaleActiveLease(ctx.conn, AGENTSFLEET_ONE_ID, AFFINITY_ONE_ID, LEASE_ONE_ID, EVENT_ID_ONE, 1);
     try seedRunner(ctx.conn, RUNNER_LIVE_ID, LIVE_HOST, LIVE_HASH, .active, clock.nowMillis());
@@ -196,6 +212,7 @@ test "reassignment holds when no eligible target" {
     defer ctx.pool.release(ctx.conn);
     cleanup(ctx.conn);
     defer cleanup(ctx.conn);
+    try seedFleetBase(ctx.conn);
 
     try seedStaleActiveLease(ctx.conn, AGENTSFLEET_ONE_ID, AFFINITY_ONE_ID, LEASE_ONE_ID, EVENT_ID_ONE, 1);
     _ = try sweeper.sweepOnce(ctx.pool, ALLOC);
@@ -212,6 +229,7 @@ test "liveness derives active lease set without singular column" {
     defer ctx.pool.release(ctx.conn);
     cleanup(ctx.conn);
     defer cleanup(ctx.conn);
+    try seedFleetBase(ctx.conn);
 
     try seedRunner(ctx.conn, RUNNER_STALE_ID, STALE_HOST, STALE_HASH, .active, clock.nowMillis());
     try std.testing.expectEqual(@as(i64, 0), try activeCount(ctx.conn, RUNNER_STALE_ID));
@@ -231,6 +249,7 @@ test "idle draining runner becomes drained on the next sweep" {
     defer ctx.pool.release(ctx.conn);
     cleanup(ctx.conn);
     defer cleanup(ctx.conn);
+    try seedFleetBase(ctx.conn);
 
     try seedRunner(ctx.conn, RUNNER_STALE_ID, STALE_HOST, STALE_HASH, .draining, clock.nowMillis());
     try std.testing.expectEqual(@as(i64, 0), try activeCount(ctx.conn, RUNNER_STALE_ID));
@@ -258,6 +277,7 @@ test "concurrent sweepers emit one offline event" {
     defer ctx.pool.release(ctx.conn);
     cleanup(ctx.conn);
     defer cleanup(ctx.conn);
+    try seedFleetBase(ctx.conn);
 
     try seedStaleActiveLease(ctx.conn, AGENTSFLEET_ONE_ID, AFFINITY_ONE_ID, LEASE_ONE_ID, EVENT_ID_ONE, 1);
     var workers: [CONCURRENT_SWEEPERS]SweepWorker = undefined;

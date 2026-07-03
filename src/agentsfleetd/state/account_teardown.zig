@@ -39,8 +39,10 @@ const PURGE_STATEMENTS = [_][]const u8{
     "DELETE FROM core.fleet_execution_telemetry WHERE workspace_id IN (SELECT workspace_id::text FROM core.workspaces WHERE tenant_id = $1::uuid)",
     // Keyed, no FK — memory fleet_id is the owning fleet UUID (schema/013).
     "DELETE FROM memory.memory_entries WHERE fleet_id IN " ++ AGENTS_OF_TENANT,
-    // Fleet rows carry tenant/fleet ids but no FK into core (by design) —
-    // swept explicitly so an erased account leaves no identifying rows behind.
+    // metering_periods is keyed by event_id (no FK); runner_leases/runner_affinity
+    // now carry an ON DELETE CASCADE FK to core.fleets but are still
+    // swept explicitly here — before core.fleets below — so an erased account
+    // leaves no identifying rows behind, not only whatever the cascade would catch.
     "DELETE FROM fleet.metering_periods WHERE event_id IN (SELECT event_id FROM fleet.runner_leases WHERE tenant_id = $1::uuid)",
     "DELETE FROM fleet.runner_leases WHERE tenant_id = $1::uuid",
     "DELETE FROM fleet.runner_affinity WHERE fleet_id IN " ++ AGENTS_OF_TENANT,
