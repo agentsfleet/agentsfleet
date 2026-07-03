@@ -14,11 +14,12 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Milestone:** M109
 **Workstream:** 002
 **Date:** Jul 02, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — each defect is a caller-visible-signal loss (a DB/network failure reported as success), not a crash; confirmed by 2-3 independent adversarial verifier passes per finding, none yet observed in production but all reachable under real failure conditions (pool exhaustion, transient network blips).
 **Categories:** API OBS
 **Batch:** B1 — independent of M109_001/003/004; no shared files.
 **Branch:** feat/m109-002-silent-failure-hardening
+**Test Baseline:** unit=2272 integration=243
 **Depends on:** None.
 **Provenance:** agent-generated (pre-spec, fleet-wide-refactor-audit `Workflow` run `wf_8ec169f4-8e4`, each finding independently re-verified against current source before this spec was drafted, Jul 02, 2026).
 
