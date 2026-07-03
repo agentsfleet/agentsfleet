@@ -56,7 +56,7 @@ const OPERATIONS_NAV: NavEntry[] = [
 // write-only secret vault) and the tool connectors, each its own destination;
 // plus the execution fleet for platform admins.
 const CONFIGURATION_NAV: NavEntry[] = [
-  { label: "Models & Keys", href: "/settings/models", icon: CpuIcon },
+  { label: "Models", href: "/settings/models", icon: CpuIcon },
   { label: "Integrations", href: "/integrations", icon: LinkIcon },
 ];
 
@@ -165,13 +165,11 @@ export default function Shell({
       </aside>
 
       <main className="app-dashboard-canvas overflow-auto px-4 py-6 sm:px-6 md:px-8 md:py-8 2xl:px-12">
-        {/* `app-content-rise` rises the page's top-level sections in on mount /
-         * route change (globals.css, reduced-motion-gated). Full-width canvas:
-         * the page spans the available width at every breakpoint (mobile → 4K),
-         * with gutters that grow on large screens. Long-form text / forms cap
-         * themselves with a per-component measure (max-w-prose / max-w-form),
-         * and short content centres (mx-auto) rather than stretching. */}
-        <div className="app-content-rise w-full">{children}</div>
+        {/* Full-width canvas: the page spans the available width at every
+         * breakpoint, with gutters that grow on large screens. Long-form text /
+         * forms cap themselves with a per-component measure, and short content
+         * centres rather than stretching. */}
+        <div className="w-full">{children}</div>
       </main>
     </div>
   );

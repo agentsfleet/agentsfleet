@@ -2,7 +2,7 @@ import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 
-// Server-component page test for the consolidated Models & Keys page.
+// Server-component page test for the consolidated Models page.
 // The data layer (reads.ts → tenant_provider / credentials) and the heavy client
 // children (hero, switch list, catalogue provider, custom-secrets list, add form)
 // are mocked at module boundaries, so this asserts the page's composition: the
@@ -122,7 +122,7 @@ beforeEach(() => {
 });
 afterEach(() => vi.clearAllMocks());
 
-describe("Models & Keys page", () => {
+describe("Models page", () => {
   it("composes the hero + switch list under the catalogue, and a custom-secrets section", async () => {
     getTenantProviderCached.mockResolvedValue(selfManagedProvider());
     listCredentialsCached.mockResolvedValue({
@@ -136,8 +136,8 @@ describe("Models & Keys page", () => {
     const markup = renderToStaticMarkup(await Page());
 
     // Title + description.
-    expect(markup).toContain("Models &amp; Keys");
-    expect(markup).toContain("The model your fleets run on, and the keys behind it.");
+    expect(markup).toContain("Models");
+    expect(markup).toContain("The model your fleets run on, and the key behind it.");
 
     // Hero + switch list mount inside the catalogue provider.
     expect(markup).toContain('data-catalogue-provider="1"');
@@ -181,11 +181,11 @@ describe("Models & Keys page", () => {
     expect(markup).toContain('data-add-credential-form="ws_1"');
   });
 
-  it("renders the no-workspace empty state under the Models & Keys title", async () => {
+  it("renders the no-workspace empty state under the Models title", async () => {
     vi.mocked(withWorkspaceScope).mockResolvedValue(null);
     const { default: Page } = await import("../app/(dashboard)/settings/models/page");
     const markup = renderToStaticMarkup(await Page());
-    expect(markup).toContain("Models &amp; Keys");
+    expect(markup).toContain("Models");
     expect(markup).toContain("No workspace yet");
   });
 

@@ -3,7 +3,7 @@
 import { useCallback, useState } from "react";
 import { useRouter } from "next/navigation";
 
-// Shared action-runner for the Models & Keys client surfaces (hero, switch list,
+// Shared action-runner for the Models client surfaces (hero, switch list,
 // panels). Every model/credential mutation follows the same shape: clear error,
 // flip pending, await a server action that returns an error string or null,
 // surface the error or run an optional success step + router.refresh(). Centralised

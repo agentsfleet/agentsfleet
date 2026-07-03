@@ -70,6 +70,30 @@ describe("InstallEntry", () => {
     expect(m).not.toContain("?template=");
     expect(m).not.toContain("Quick start");
   });
+
+  it("test_add_template_hidden_without_scope: hides the Add template trigger without template:write", () => {
+    render(
+      React.createElement(InstallEntry, {
+        templates: [],
+        workspaceId: "ws_1",
+        canAddTemplate: false,
+      }),
+    );
+    expect(screen.getByText("No templates found.")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Add template" })).toBeNull();
+  });
+
+  it("renders the Add template trigger when template:write is available", () => {
+    render(
+      React.createElement(InstallEntry, {
+        templates: [],
+        workspaceId: "ws_1",
+        canAddTemplate: true,
+      }),
+    );
+    expect(screen.getByRole("button", { name: "Add template" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Create a template" })).toBeTruthy();
+  });
 });
 
 // ── FleetInstallGate — installing fleets show states first, then the page ────

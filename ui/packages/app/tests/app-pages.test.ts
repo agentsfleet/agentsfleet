@@ -94,9 +94,9 @@ describe("app layouts and pages", () => {
     expect(authMarkup).toContain("agentsfleet");
     // Auth shell carries the brand-mark wake-pulse — the brand is always alive.
     expect(authMarkup).toContain("data-live");
-    // Configuration nav carries the consolidated Models & Keys destination
+    // Configuration nav carries the consolidated Models destination
     // (the standalone Credentials vault was folded into it).
-    expect(dashboardMarkup).toContain(">Models &amp; Keys<");
+    expect(dashboardMarkup).toContain(">Models<");
     expect(dashboardMarkup).toContain('href="/settings/models"');
     expect(dashboardMarkup).not.toContain('href="/credentials"');
   });

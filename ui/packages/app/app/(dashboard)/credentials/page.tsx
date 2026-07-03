@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 
-// The standalone credentials vault was folded into Models & Keys: the
+// The standalone credentials vault was folded into Models: the
 // custom-secrets section now lives on /settings/models. This route redirects
 // there. WORKSPACE_CREDENTIALS_PATH still points at `/credentials`, so
 // install-preview service-credential deep-links resolve through this hop without

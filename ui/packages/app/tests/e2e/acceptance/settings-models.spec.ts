@@ -1,5 +1,5 @@
 /**
- * settings-models.spec.ts — /settings/models (Models & Keys) renders for an
+ * settings-models.spec.ts — /settings/models (Models) renders for an
  * authed user, and the legacy /credentials route redirects into it.
  *
  * Asserts the page resolves the active workspace, calls GET
@@ -18,22 +18,22 @@ import { expect, test } from "@playwright/test";
 import { signInAs } from "./fixtures/auth";
 import { FIXTURE_KEY } from "./fixtures/constants";
 
-test.describe("Models & Keys page", () => {
-  test("Models & Keys renders the hero, switch list, and custom secrets", async ({ page }) => {
+test.describe("Models page", () => {
+  test("Models renders the hero, switch list, and custom secrets", async ({ page }) => {
     await signInAs(page, FIXTURE_KEY.regular);
     await page.goto("/settings/models");
     await expect(page).toHaveURL(/\/settings\/models(\?|$)/);
 
-    await expect(page.getByRole("heading", { name: /^models & keys$/i })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /^models$/i })).toBeVisible();
     await expect(page.getByTestId("active-model-hero")).toBeVisible();
     await expect(page.getByTestId("provider-switch-list")).toBeVisible();
     await expect(page.getByTestId("custom-secrets-group")).toBeVisible();
   });
 
-  test("the legacy /credentials route redirects into Models & Keys", async ({ page }) => {
+  test("the legacy /credentials route redirects into Models", async ({ page }) => {
     await signInAs(page, FIXTURE_KEY.regular);
     await page.goto("/credentials");
-    // The standalone credentials vault was folded into Models & Keys; the route
+    // The standalone credentials vault was folded into Models; the route
     // is a server redirect that keeps install-preview deep-links resolving.
     await expect(page).toHaveURL(/\/settings\/models(\?|$)/);
     await expect(page.getByTestId("custom-secrets-group")).toBeVisible();

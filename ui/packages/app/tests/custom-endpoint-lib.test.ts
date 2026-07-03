@@ -5,7 +5,7 @@ import {
 } from "@/app/(dashboard)/settings/models/lib/custom-endpoint";
 
 // Covers the shared custom-endpoint client validation extracted for the
-// consolidated Models & Keys forms. The server re-validates and additionally
+// consolidated Models forms. The server re-validates and additionally
 // blocks SSRF-unsafe hosts — this is only the cheap inline https gate.
 describe("isHttpsUrl", () => {
   it("accepts a well-formed https URL", () => {

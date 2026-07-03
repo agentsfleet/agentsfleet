@@ -264,7 +264,7 @@ describe("fleets routes", () => {
     listCredentialsMock.mockRejectedValue(new Error("vault down"));
     const { default: Page } = await import("../app/(dashboard)/fleets/new/page");
     const markup = renderToStaticMarkup(await Page({ searchParams: Promise.resolve({}) }));
-    expect(markup).toContain("No templates available yet"); // empty gallery → EmptyState
+    expect(markup).toContain("No templates found"); // empty gallery
   });
 
   it("fleets new page accepts a ?template= deep link", async () => {

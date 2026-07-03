@@ -1,6 +1,13 @@
 import { cache } from "react";
 import { request } from "./client";
-import type { FleetTemplateGalleryResponse } from "../types";
+import type {
+  FleetTemplateGalleryResponse,
+  OnboardedTemplate,
+  OnboardTemplateRequest,
+} from "../types";
+
+const workspaceFleetTemplatesPath = (workspaceId: string) =>
+  `/v1/workspaces/${workspaceId}/fleet-templates`;
 
 // Fleet template gallery client. Mirrors src/agentsfleetd/http/routes.zig:
 //   GET /v1/workspaces/{ws}/fleet-templates  (platform ∪ own-tenant templates)
@@ -15,8 +22,20 @@ export async function listWorkspaceFleetTemplates(
   token: string,
 ): Promise<FleetTemplateGalleryResponse> {
   return request<FleetTemplateGalleryResponse>(
-    `/v1/workspaces/${workspaceId}/fleet-templates`,
+    workspaceFleetTemplatesPath(workspaceId),
     { method: "GET" },
+    token,
+  );
+}
+
+export async function onboardWorkspaceFleetTemplate(
+  workspaceId: string,
+  body: OnboardTemplateRequest,
+  token: string,
+): Promise<OnboardedTemplate> {
+  return request<OnboardedTemplate>(
+    workspaceFleetTemplatesPath(workspaceId),
+    { method: "POST", body: JSON.stringify(body) },
     token,
   );
 }

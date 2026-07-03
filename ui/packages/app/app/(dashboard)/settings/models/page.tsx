@@ -19,8 +19,8 @@ import ProviderSwitchList from "./components/ProviderSwitchList";
 
 export const dynamic = "force-dynamic";
 
-const PAGE_TITLE = "Models & Keys";
-const PAGE_DESCRIPTION = "The model your fleets run on, and the keys behind it.";
+const PAGE_TITLE = "Models";
+const PAGE_DESCRIPTION = "The model your fleets run on, and the key behind it.";
 
 export default async function ModelsKeysPage() {
   const { getToken } = await auth();
