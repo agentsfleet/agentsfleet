@@ -1,6 +1,6 @@
 "use client";
 
-import type { ComponentType } from "react";
+import type { ComponentType, KeyboardEvent } from "react";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -262,6 +262,15 @@ export function ApiKeyConnectorRow({
     }
   }
 
+  // Enter in any field submits (the button is disabled until the form is valid, so
+  // Enter is the only path that reaches `submit`'s guard on an incomplete form).
+  function onFieldKeyDown(e: KeyboardEvent<HTMLInputElement>) {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      void submit();
+    }
+  }
+
   return (
     <DashboardRow
       data-testid={`integration-${entry.id}`}
@@ -282,6 +291,7 @@ export function ApiKeyConnectorRow({
                     type={field.secret ? "password" : "text"}
                     value={fieldValue(field.name)}
                     onChange={(e) => setValues((prev) => ({ ...prev, [field.name]: e.target.value }))}
+                    onKeyDown={onFieldKeyDown}
                     spellCheck={false}
                     autoComplete="off"
                   />
