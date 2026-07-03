@@ -3,7 +3,7 @@
 //! GRAFANA_OTLP_ENDPOINT/v1/logs on a background flush thread, fire-and-forget.
 //!
 //! Migrated onto the generic otlp/ substrate. Config + the basic-auth POST that
-//! used to live here moved to otlp/config.zig + otlp/post.zig (shared by all
+//! used to live here moved to otlp/config.zig + otlp/Client.zig (shared by all
 //! three signals); this file now carries only the log-entry shape, its
 //! serialization, and the enqueue API.
 
