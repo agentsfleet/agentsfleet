@@ -72,8 +72,8 @@ beforeEach(() => {
   );
   // Defaults: a two-entry catalog, both bespoke connectors not connected.
   vi.mocked(getConnectorCatalog).mockResolvedValue([
-    { id: "github", archetype: "app_install", display_name: "GitHub", configured: true, connected: false, fields: [] },
-    { id: "datadog", archetype: "api_key", display_name: "Datadog", configured: true, connected: false, fields: [] },
+    { id: "github", archetype: "app_install", display_name: "GitHub", configured: true, connected: false },
+    { id: "slack", archetype: "oauth2", display_name: "Slack", configured: true, connected: false },
   ]);
   stubConnectors(
     { status: CONNECTOR_STATUS.notConnected },
@@ -85,8 +85,8 @@ afterEach(() => vi.clearAllMocks());
 describe("Integrations page", () => {
   it("wires the registry-driven catalog and the github status into the connectors", async () => {
     vi.mocked(getConnectorCatalog).mockResolvedValue([
-      { id: "github", archetype: "app_install", display_name: "GitHub", configured: true, connected: true, fields: [] },
-      { id: "grafana", archetype: "api_key", display_name: "Grafana", configured: true, connected: false, fields: [] },
+      { id: "github", archetype: "app_install", display_name: "GitHub", configured: true, connected: true },
+      { id: "zoho", archetype: "oauth2", display_name: "Zoho Desk", configured: true, connected: false },
     ]);
     stubConnectors(
       { status: CONNECTOR_STATUS.connected },
@@ -98,7 +98,7 @@ describe("Integrations page", () => {
 
     expect(markup).toContain(">Integrations<");
     expect(markup).toContain('data-integrations-connectors="ws_1"');
-    expect(markup).toContain('data-catalog="github,grafana"');
+    expect(markup).toContain('data-catalog="github,zoho"');
     expect(markup).toContain('data-github-status="connected"');
   });
 

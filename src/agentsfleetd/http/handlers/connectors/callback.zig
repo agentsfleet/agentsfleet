@@ -88,7 +88,6 @@ pub fn innerCallback(hx: hx_mod.Hx, req: *httpz.Request, provider: []const u8) v
             // (installation callbacks carry vendor-bespoke inputs).
             if (a.complete(hx, workspace_id, req)) redirectToDashboard(hx, spec.provider);
         },
-        .api_key => hx.fail(ec.ERR_CONNECTOR_UNKNOWN, "API-key connectors do not have a callback"),
     }
 }
 

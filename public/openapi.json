@@ -1590,7 +1590,7 @@
       "get": {
         "operationId": "connector_catalog",
         "summary": "List the connector catalog for a workspace",
-        "description": "Renders the deployment's connector registry as data for the dashboard (requires the `connector:read` scope) — every provider with its archetype, display name, whether the platform side is `configured` (oauth2/app_install need a `<provider>-app` platform bag; api_key connectors self-provision and are always configured), and whether this workspace is `connected` (holds a `fleet:<provider>` vault handle). The dashboard renders its cards from this — there is no hard-coded provider list. This is the collection whose items are the per-provider status routes below.",
+        "description": "Renders the deployment's connector registry as data for the dashboard (requires the `connector:read` scope) — every provider with its archetype, display name, whether the platform side is `configured` (the `<provider>-app` platform bag exists), and whether this workspace is `connected` (holds a `fleet:<provider>` vault handle). The dashboard renders its cards from this — there is no hard-coded provider list. This is the collection whose items are the per-provider status routes below.",
         "tags": [
           "Connectors"
         ],
@@ -1620,20 +1620,18 @@
                       "archetype",
                       "display_name",
                       "configured",
-                      "connected",
-                      "fields"
+                      "connected"
                     ],
                     "properties": {
                       "id": {
                         "type": "string",
-                        "description": "Connector registry id / route segment (`slack`, `github`, `zoho`, `jira`, `linear`, `datadog`, `grafana`, `fly`)."
+                        "description": "Connector registry id / route segment (`slack`, `github`, `zoho`, `jira`, `linear`)."
                       },
                       "archetype": {
                         "type": "string",
                         "enum": [
                           "oauth2",
-                          "app_install",
-                          "api_key"
+                          "app_install"
                         ]
                       },
                       "display_name": {
@@ -1641,32 +1639,11 @@
                       },
                       "configured": {
                         "type": "boolean",
-                        "description": "Platform side ready — the `<provider>-app` bag exists (oauth2/app_install); api_key connectors self-provision and are always true."
+                        "description": "Platform side ready — the `<provider>-app` bag exists."
                       },
                       "connected": {
                         "type": "boolean",
                         "description": "This workspace holds a `fleet:<provider>` vault handle."
-                      },
-                      "fields": {
-                        "type": "array",
-                        "description": "Declared input fields the api_key connect form submits; empty for oauth2/app_install connectors, which connect by redirect. Registry-sourced so the dashboard never hard-codes a provider's field list.",
-                        "items": {
-                          "type": "object",
-                          "required": [
-                            "name",
-                            "secret"
-                          ],
-                          "properties": {
-                            "name": {
-                              "type": "string",
-                              "description": "Wire field name submitted in the connect body (`api_key`, `app_key`, `site`, `instance_url`, `service_account_token`, `org_token`)."
-                            },
-                            "secret": {
-                              "type": "boolean",
-                              "description": "Secret material (rendered masked, vaulted, never echoed back) when true; a plain coordinate (site, instance_url) when false."
-                            }
-                          }
-                        }
                       }
                     }
                   }

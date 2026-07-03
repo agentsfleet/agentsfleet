@@ -8,7 +8,6 @@
 //! Per-provider deltas live in the registry entry's data + hooks, never here.
 
 const std = @import("std");
-const httpz = @import("httpz");
 const pg = @import("pg");
 const logging = @import("log");
 const clock = @import("common").clock;
@@ -17,7 +16,6 @@ const hx_mod = @import("../hx.zig");
 const ec = @import("../../../errors/error_registry.zig");
 const matchers = @import("../../route_matchers_connectors.zig");
 const registry = @import("registry.zig");
-const api_key = @import("api_key.zig");
 const oauth2 = @import("oauth2.zig");
 const connector_state = @import("state.zig");
 
@@ -34,7 +32,7 @@ const NOT_CONFIGURED_FALLBACK = "Connector is not configured on this deployment"
 /// callback route serves it for every provider.
 const CALLBACK_PATH_FMT = "/v1/connectors/{s}/callback";
 
-pub fn innerConnect(hx: hx_mod.Hx, req: *httpz.Request, route: matchers.WorkspaceConnectorRoute) void {
+pub fn innerConnect(hx: hx_mod.Hx, route: matchers.WorkspaceConnectorRoute) void {
     const spec = registry.lookup(route.provider) orelse return registry.respondUnknown(hx, route.provider);
 
     const conn = hx.ctx.pool.acquire() catch {
@@ -57,7 +55,6 @@ pub fn innerConnect(hx: hx_mod.Hx, req: *httpz.Request, route: matchers.Workspac
             const secret = hx.ctx.approval_signing_secret orelse return failNotConfigured(hx, spec);
             connectAppInstall(hx, spec, a, route.workspace_id, secret);
         },
-        .api_key => |a| api_key.connect(hx, req, conn, spec.provider, a, route.workspace_id),
     }
 }
 

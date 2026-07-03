@@ -1,14 +1,14 @@
 import { request } from "./client";
 
 // Connectors API client. The dashboard renders its cards from the registry-driven
-// catalog (`getConnectorCatalog`) — the provider list, archetypes, display names,
-// and (for api_key) the connect-form field schema all arrive from the backend;
-// nothing here re-declares them. Two connectors — GitHub and Slack — additionally
-// expose a bespoke per-provider status route (`getConnector`) whose shape is
-// richer than the catalog's `connected` bool (reconnect state; Slack's connected
-// team). Connecting is uniform: OAuth/app_install redirect via `startConnect` (no
-// token paste), api_key probe-then-vault via `submitApiKeyConnect`. No secret ever
-// crosses this API on a read.
+// catalog (`getConnectorCatalog`) — the provider list, archetypes, and display
+// names all arrive from the backend; nothing here re-declares them. All connectors
+// are OAuth/app_install: connecting is a redirect round-trip via `startConnect`, no
+// token paste. (Static vendor keys — Datadog/Grafana/Fly — are workspace secrets
+// referenced as `${secrets.<name>.<field>}`, not connectors.) Two connectors —
+// GitHub and Slack — additionally expose a bespoke per-provider status route
+// (`getConnector`) richer than the catalog's `connected` bool (reconnect state;
+// Slack's connected team). No secret ever crosses this API on a read.
 
 export const CONNECTOR_STATUS = {
   connected: "connected",
@@ -87,18 +87,8 @@ export async function startConnect(
 export const CONNECTOR_ARCHETYPE = {
   oauth2: "oauth2",
   appInstall: "app_install",
-  apiKey: "api_key",
 } as const;
 export type ConnectorArchetype = (typeof CONNECTOR_ARCHETYPE)[keyof typeof CONNECTOR_ARCHETYPE];
-
-// One api_key input field, as declared by the backend registry. The dashboard's
-// connect form renders these — which inputs a provider needs, and which are secret
-// (masked) vs plain coordinates (site, instance_url). The app never hard-codes
-// this; it arrives on the catalog entry.
-export interface ApiKeyField {
-  name: string;
-  secret: boolean;
-}
 
 export interface ConnectorCatalogEntry {
   id: string;
@@ -106,9 +96,6 @@ export interface ConnectorCatalogEntry {
   display_name: string;
   configured: boolean;
   connected: boolean;
-  // The connect-form field schema for api_key connectors; empty for
-  // oauth2/app_install (they connect by redirect, not a form).
-  fields: readonly ApiKeyField[];
 }
 
 // The docs anchor an unconfigured OAuth connector's card links to. The backend
@@ -130,23 +117,3 @@ export async function getConnectorCatalog(
   );
 }
 
-// api_key connect is an authed POST whose body carries the fields the catalog
-// entry declared (see `ConnectorCatalogEntry.fields`). The handler runs a bounded
-// validation probe before vaulting; a bad key → 400 `UZ-CONN-005`, no write. The
-// submitted secrets travel only in this request body — never echoed back.
-export interface ApiKeyConnectResult {
-  status: ConnectorStatus;
-}
-
-export async function submitApiKeyConnect(
-  provider: string,
-  workspaceId: string,
-  fields: Record<string, string>,
-  token: string,
-): Promise<ApiKeyConnectResult> {
-  return request<ApiKeyConnectResult>(
-    `/v1/workspaces/${encodeURIComponent(workspaceId)}/connectors/${encodeURIComponent(provider)}/connect`,
-    { method: "POST", body: JSON.stringify(fields) },
-    token,
-  );
-}

@@ -17,7 +17,6 @@ const common = @import("common");
 const hx_mod = @import("../hx.zig");
 const ec = @import("../../../errors/error_registry.zig");
 const credentials_integration = @import("../../../credentials/integration.zig");
-const api_key = @import("api_key.zig");
 const oauth2 = @import("oauth2.zig");
 const oauth_status = @import("oauth_status.zig");
 const connector_state = @import("state.zig");
@@ -36,11 +35,6 @@ const linear_spec = @import("linear/spec.zig");
 const linear_callback = @import("linear/callback.zig");
 
 const Hx = hx_mod.Hx;
-
-const FIELD_API_KEY = "api_key";
-const FIELD_APP_KEY = "app_key";
-const FIELD_ORG_TOKEN = "org_token";
-const FIELD_SERVICE_ACCOUNT_TOKEN = "service_account_token";
 
 /// oauth2 post-auth hook: parse the exchange body + persist the install rows.
 /// Never writes the response — the generic callback owns response mapping.
@@ -78,16 +72,13 @@ pub const AppInstallData = struct {
     complete: CompleteFn,
 };
 
-/// User-supplied-key archetype: the operator pastes their own vendor key at
-/// connect; no platform app, no browser round-trip, no callback.
-pub const ApiKeyData = api_key.Data;
-
 /// The strategy tagged-union — owns which flow runs; exhaustive switches in
-/// the generic handlers mean a new archetype cannot land half-wired.
+/// the generic handlers mean a new archetype cannot land half-wired. (An
+/// api_key archetype was considered and dropped: a static vendor key is just a
+/// workspace secret referenced as `${secrets.<name>.<field>}`, not a connector.)
 pub const Archetype = union(enum) {
     oauth2: Oauth2Data,
     app_install: AppInstallData,
-    api_key: ApiKeyData,
 };
 
 pub const ConnectorSpec = struct {
@@ -157,55 +148,15 @@ pub const REGISTRY = [_]ConnectorSpec{
         } },
         .respond_status = oauth_status.respondStatus,
     },
-    .{
-        .provider = common.PROVIDER_DATADOG,
-        .display_name = "Datadog",
-        .archetype = .{ .api_key = .{
-            .fields = &.{ .{ .name = FIELD_API_KEY }, .{ .name = FIELD_APP_KEY }, .{ .name = "site", .secret = false } },
-            .probe = .{
-                .base_url = "https://api.datadoghq.com",
-                .path = "/api/v1/validate",
-                .auth = .{ .datadog_keys = .{ .api_key_field = FIELD_API_KEY, .app_key_field = FIELD_APP_KEY } },
-            },
-        } },
-        .respond_status = api_key.respondStatus,
-    },
-    .{
-        .provider = common.PROVIDER_GRAFANA,
-        .display_name = "Grafana",
-        .archetype = .{ .api_key = .{
-            .fields = &.{ .{ .name = FIELD_SERVICE_ACCOUNT_TOKEN }, .{ .name = "instance_url", .secret = false } },
-            .probe = .{
-                .base_url = "https://grafana.com",
-                .path = "/api/health",
-                .auth = .{ .bearer_field = FIELD_SERVICE_ACCOUNT_TOKEN },
-            },
-        } },
-        .respond_status = api_key.respondStatus,
-    },
-    .{
-        .provider = common.PROVIDER_FLY,
-        .display_name = "Fly.io",
-        .archetype = .{ .api_key = .{
-            .fields = &.{.{ .name = FIELD_ORG_TOKEN }},
-            .probe = .{
-                .base_url = "https://api.machines.dev",
-                .path = "/v1/apps",
-                .auth = .{ .bearer_field = FIELD_ORG_TOKEN },
-            },
-        } },
-        .respond_status = api_key.respondStatus,
-    },
 };
 
 /// The signed single-use state binding an archetype carries (oauth2 via its
-/// flow, app_install directly). Both carry a `connector_state.Config`; api_key
-/// has no callback so no binding (and the comptime block rejects it anyway).
+/// flow, app_install directly). Both remaining archetypes carry a
+/// `connector_state.Config` — the SOLE trust anchor of the Bearer-less callback.
 fn stateBinding(spec: ConnectorSpec) ?connector_state.Config {
     return switch (spec.archetype) {
         .oauth2 => |o| o.flow.state,
         .app_install => |a| a.state,
-        .api_key => null,
     };
 }
 
@@ -244,10 +195,6 @@ comptime {
                     @compileError("registry: refresh connector '" ++ spec.provider ++ "' has no oauth2_refresh entry in credentials/integration.zig — the broker cannot mint from it");
             },
             .app_install => {},
-            .api_key => |a| {
-                if (a.fields.len == 0) @compileError("registry: api_key entry without fields: " ++ spec.provider);
-                if (a.probe.base_url.len == 0 or a.probe.path.len == 0) @compileError("registry: api_key entry without probe: " ++ spec.provider);
-            },
         }
     }
     // State bindings must be UNIQUE across entries. domain_prefix is
@@ -331,6 +278,7 @@ test "registry: unknown or empty provider resolves to null (the 404 path)" {
 }
 
 test "registry: exactly the shipped entries (a new provider updates this pin)" {
-    // Pin test: the registry is the provider catalog source of truth.
-    try testing.expectEqual(@as(usize, 8), REGISTRY.len);
+    // Pin test: the registry is the provider catalog source of truth. Five OAuth
+    // connectors — api-key providers (Datadog/Grafana/Fly) are custom secrets now.
+    try testing.expectEqual(@as(usize, 5), REGISTRY.len);
 }

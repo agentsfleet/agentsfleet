@@ -3,9 +3,7 @@
 import { withToken, type ActionResult } from "@/lib/actions/with-token";
 import {
   startConnect,
-  submitApiKeyConnect,
   type ConnectorConnectStart,
-  type ApiKeyConnectResult,
 } from "@/lib/api/connectors";
 
 // A connector id is a registry provider slug. Server-action arguments arrive from
@@ -32,19 +30,4 @@ export async function startConnectAction(
     return { ok: false, error: UNKNOWN_PROVIDER };
   }
   return withToken((t) => startConnect(provider, workspaceId, t));
-}
-
-// Submits an api_key connector's declared fields to the backend probe-then-vault
-// endpoint. The field set is whatever the catalog entry declared; the submitted
-// key material travels only in the request body withToken builds, never logged
-// here. Same untrusted-provider re-validation as the OAuth connect.
-export async function submitApiKeyConnectAction(
-  provider: string,
-  workspaceId: string,
-  fields: Record<string, string>,
-): Promise<ActionResult<ApiKeyConnectResult>> {
-  if (!PROVIDER_ID_PATTERN.test(provider)) {
-    return { ok: false, error: UNKNOWN_PROVIDER };
-  }
-  return withToken((t) => submitApiKeyConnect(provider, workspaceId, fields, t));
 }
