@@ -190,7 +190,11 @@ export async function initAnalytics(): Promise<void> {
   if (queuedContext !== null) setAnalyticsContext(queuedContext);
   // Flush product events captured before the chunk resolved (mount-fired call
   // sites like fleet_viewed) — after identify + context so they attach to the
-  // identified person and workspace group.
+  // identified person and workspace group. Load-bearing ordering: this capture
+  // MUST stay below the `if (pendingReset) resetAnalyticsIdentity()` above —
+  // that reset empties pendingProductEvents, so reading queuedEvents post-reset
+  // drops a signed-out session's buffer instead of stitching it to the next
+  // identity. Do not hoist this assignment above the reset.
   const queuedEvents = pendingProductEvents;
   pendingProductEvents = [];
   for (const queued of queuedEvents) posthogClient.capture(queued.event, queued.payload);
