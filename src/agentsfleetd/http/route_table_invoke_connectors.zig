@@ -32,8 +32,7 @@ pub fn invokeConnectorCatalog(hx: *Hx, req: *httpz.Request, route: router.Route)
         common.respondMethodNotAllowed(hx.res);
         return;
     }
-    _ = route;
-    catalog_h.innerCatalog(hx.*, req);
+    catalog_h.innerCatalog(hx.*, route.connector_catalog);
 }
 
 pub fn invokeConnectorCallback(hx: *Hx, req: *httpz.Request, route: router.Route) void {

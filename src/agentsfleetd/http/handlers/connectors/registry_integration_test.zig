@@ -60,11 +60,11 @@ test "router: the generic connector trio captures workspace + provider" {
     const callback = router.match("/v1/connectors/slack/callback", .GET) orelse return error.TestUnexpectedResult;
     try testing.expectEqualStrings("slack", callback.connector_callback);
 
-    // The catalog is a captureless 1-segment route (workspace_id is a query
-    // param, read in the handler) — it must not shadow, nor be shadowed by, the
-    // multi-segment trio above.
-    const catalog = router.match("/v1/connectors", .GET) orelse return error.TestUnexpectedResult;
-    try testing.expect(catalog == .connector_catalog);
+    // The catalog is the workspace-nested collection whose items are the status
+    // routes; its capture is the workspace id (workspace_id is a PATH param, per
+    // the universal standard — never a query).
+    const catalog = router.match("/v1/workspaces/ws-1/connectors", .GET) orelse return error.TestUnexpectedResult;
+    try testing.expectEqualStrings("ws-1", catalog.connector_catalog);
 
     // An unknown id still ROUTES (the registry 404s it with a naming body —
     // proven end-to-end below); the events ingress stays bespoke.
@@ -393,7 +393,7 @@ test "integration: catalog reflects the registry with correct configured/connect
     _ = vault.deleteCredential(conn, ADMIN_WS, "slack-app") catch {};
     deleteFleetHandle(alloc, conn, AUTHED_WS, common.PROVIDER_SLACK);
 
-    const path = "/v1/connectors?workspace_id=" ++ AUTHED_WS;
+    const path = "/v1/workspaces/" ++ AUTHED_WS ++ "/connectors";
 
     // Baseline — registry-driven (every provider present), slack unconfigured +
     // not connected, api_key (datadog) always configured but not connected.

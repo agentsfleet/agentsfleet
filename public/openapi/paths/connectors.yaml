@@ -49,7 +49,7 @@
         $ref: ../components/responses.yaml#/components/responses/Error
       default:
         $ref: ../components/responses.yaml#/components/responses/Error
-/v1/connectors:
+/v1/workspaces/{workspace_id}/connectors:
   get:
     operationId: connector_catalog
     summary: List the connector catalog for a workspace
@@ -57,12 +57,12 @@
       scope) — every provider with its archetype, display name, whether the platform side is `configured` (oauth2/app_install
       need a `<provider>-app` platform bag; api_key connectors self-provision and are always configured), and whether this
       workspace is `connected` (holds a `fleet:<provider>` vault handle). The dashboard renders its cards from this — there
-      is no hard-coded provider list.
+      is no hard-coded provider list. This is the collection whose items are the per-provider status routes below.
     tags:
     - Connectors
     parameters:
     - name: workspace_id
-      in: query
+      in: path
       required: true
       description: UUIDv7 of the workspace to report connected state for.
       schema:

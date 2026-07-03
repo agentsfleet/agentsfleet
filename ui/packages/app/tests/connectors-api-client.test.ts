@@ -91,4 +91,39 @@ describe("lib/api/connectors", () => {
     );
     expect(res.install_url).toBe(install_url);
   });
+
+  it("getConnectorCatalog(…) GETs the workspace-nested /connectors collection and returns the entries", async () => {
+    const entries = [
+      { id: "slack", archetype: "oauth2", display_name: "Slack", configured: true, connected: true },
+      { id: "datadog", archetype: "api_key", display_name: "Datadog", configured: true, connected: false },
+    ];
+    fetchMock.mockResolvedValue({ ok: true, status: 200, json: async () => entries });
+    const mod = await import("../lib/api/connectors");
+    const res = await mod.getConnectorCatalog("ws_1", "tkn");
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining("/v1/workspaces/ws_1/connectors"),
+      expect.objectContaining({
+        method: "GET",
+        headers: expect.objectContaining({ Authorization: "Bearer tkn" }),
+      }),
+    );
+    expect(res).toHaveLength(2);
+    expect(res[1]?.archetype).toBe(mod.CONNECTOR_ARCHETYPE.apiKey);
+  });
+
+  it("submitApiKeyConnect(…) POSTs the declared fields as the JSON body to /connect", async () => {
+    fetchMock.mockResolvedValue({ ok: true, status: 200, json: async () => ({ status: "connected" }) });
+    const mod = await import("../lib/api/connectors");
+    const fields = { org_token: "fo1_secret" };
+    const res = await mod.submitApiKeyConnect("fly", "ws_1", fields, "tkn");
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining("/v1/workspaces/ws_1/connectors/fly/connect"),
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify(fields),
+        headers: expect.objectContaining({ Authorization: "Bearer tkn" }),
+      }),
+    );
+    expect(res.status).toBe(mod.CONNECTOR_STATUS.connected);
+  });
 });
