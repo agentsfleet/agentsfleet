@@ -185,6 +185,30 @@ pub const ResolveArgs = struct {
     }
 };
 
+/// Read the current terminal decision for an action, if the DB row has reached
+/// one. The lease-poll DB fallback (approval_gate_async.evaluateRef) calls this
+/// when the Redis decision mirror is absent — the DB row is the durable source
+/// of truth, so a committed resolve is observable even if its best-effort Redis
+/// mirror write failed. Returns null when the row is missing or still pending.
+/// Allocation-free: reads a single status enum, no row materialization.
+pub fn readTerminalDecision(pool: *pg.Pool, action_id: []const u8) !?GateStatus {
+    const conn = try pool.acquire();
+    defer pool.release(conn);
+
+    var q = PgQuery.from(try conn.query(
+        \\SELECT status FROM core.fleet_approval_gates
+        \\WHERE action_id = $1
+        \\ORDER BY requested_at DESC LIMIT 1
+    , .{action_id}));
+    defer q.deinit();
+
+    if (try q.next()) |row| {
+        const status = parseStatus(try row.get([]const u8, 0));
+        return if (status.isTerminal()) status else null;
+    }
+    return null;
+}
+
 // ── Internals ───────────────────────────────────────────────────────────
 
 fn insertPendingRow(
