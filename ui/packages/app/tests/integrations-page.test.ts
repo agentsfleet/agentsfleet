@@ -2,10 +2,11 @@ import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 
-// Server-component test for the standalone /integrations page. The data layer
-// and the interactive connectors client are mocked at module boundaries; this
-// asserts composition (title + connectors wiring) and the fail-closed connector
-// degradation that used to live on the Credentials page.
+// Server-component test for the /integrations page. The data layer and the
+// interactive connectors client are mocked at module boundaries; this asserts
+// composition (title + catalog/status wiring) and the fail-closed degradation:
+// a failed catalog read → empty grid, a failed status read → not-connected —
+// never a fabricated connected state.
 
 const redirect = vi.fn((path: string) => {
   throw new Error(`redirect:${path}`);
@@ -13,16 +14,10 @@ const redirect = vi.fn((path: string) => {
 const auth = vi.fn();
 vi.mock("next/navigation", () => ({ redirect }));
 vi.mock("@clerk/nextjs/server", () => ({ auth }));
-vi.mock("@/lib/workspace", () => ({
-  withWorkspaceScope: vi.fn(),
-  orFallback:
-    <T,>(fallback: T) =>
-    (): T =>
-      fallback,
-}));
-vi.mock("@/lib/api/credentials", () => ({ listCredentials: vi.fn() }));
+vi.mock("@/lib/workspace", () => ({ withWorkspaceScope: vi.fn() }));
 vi.mock("@/lib/api/connectors", () => ({
   getConnector: vi.fn(),
+  getConnectorCatalog: vi.fn(),
   CONNECTOR_STATUS: {
     connected: "connected",
     reconnectRequired: "reconnect_required",
@@ -32,39 +27,35 @@ vi.mock("@/lib/api/connectors", () => ({
 vi.mock("@/app/(dashboard)/integrations/components/IntegrationsConnectors", () => ({
   default: ({
     workspaceId,
+    catalog,
     githubStatus,
     slackStatus,
     slackTeam,
-    credentialNames,
   }: {
     workspaceId: string;
+    catalog: ReadonlyArray<{ id: string }>;
     githubStatus: string;
     slackStatus: string;
     slackTeam: string | null;
-    credentialNames: readonly string[];
   }) =>
-    React.createElement(
-      "div",
-      {
-        "data-integrations-connectors": workspaceId,
-        "data-github-status": githubStatus,
-        "data-slack-status": slackStatus,
-        "data-slack-team": slackTeam ?? "",
-      },
-      credentialNames.join(","),
-    ),
+    React.createElement("div", {
+      "data-integrations-connectors": workspaceId,
+      "data-github-status": githubStatus,
+      "data-slack-status": slackStatus,
+      "data-slack-team": slackTeam ?? "",
+      "data-catalog": catalog.map((e) => e.id).join(","),
+    }),
 }));
 vi.mock("lucide-react", () => ({
   LinkIcon: (p: Record<string, unknown>) => React.createElement("svg", { ...p, "data-icon": "LinkIcon" }),
 }));
 
 import { withWorkspaceScope } from "@/lib/workspace";
-import { listCredentials } from "@/lib/api/credentials";
-import { getConnector, CONNECTOR_STATUS } from "@/lib/api/connectors";
+import { getConnector, getConnectorCatalog, CONNECTOR_STATUS } from "@/lib/api/connectors";
 
-// The page reads both connectors through one getConnector(provider, …); dispatch
-// the stub on the provider argument so each row's status/team (and its
-// fail-closed rejection path) is set independently.
+// The page reads both bespoke-status connectors through one getConnector(provider,
+// …); dispatch the stub on the provider argument so each row's status/team (and
+// its fail-closed rejection path) is set independently.
 type StubResult = { status: string; team?: string | null } | Error;
 function stubConnectors(github: StubResult, slack: StubResult) {
   vi.mocked(getConnector).mockImplementation(((provider: string) => {
@@ -79,7 +70,11 @@ beforeEach(() => {
   vi.mocked(withWorkspaceScope).mockImplementation(
     async (_token: string, fn: (workspaceId: string) => Promise<unknown>) => fn("ws_1"),
   );
-  // Default: both connectors not connected. Individual tests override as needed.
+  // Defaults: a two-entry catalog, both bespoke connectors not connected.
+  vi.mocked(getConnectorCatalog).mockResolvedValue([
+    { id: "github", archetype: "app_install", display_name: "GitHub", configured: true, connected: false, fields: [] },
+    { id: "datadog", archetype: "api_key", display_name: "Datadog", configured: true, connected: false, fields: [] },
+  ]);
   stubConnectors(
     { status: CONNECTOR_STATUS.notConnected },
     { status: CONNECTOR_STATUS.notConnected, team: null },
@@ -88,10 +83,11 @@ beforeEach(() => {
 afterEach(() => vi.clearAllMocks());
 
 describe("Integrations page", () => {
-  it("renders the connectors wired with the github status and stored-secret names", async () => {
-    vi.mocked(listCredentials).mockResolvedValue({
-      credentials: [{ kind: "custom_secret", name: "SLACK_BOT_TOKEN", created_at: 0 }],
-    });
+  it("wires the registry-driven catalog and the github status into the connectors", async () => {
+    vi.mocked(getConnectorCatalog).mockResolvedValue([
+      { id: "github", archetype: "app_install", display_name: "GitHub", configured: true, connected: true, fields: [] },
+      { id: "grafana", archetype: "api_key", display_name: "Grafana", configured: true, connected: false, fields: [] },
+    ]);
     stubConnectors(
       { status: CONNECTOR_STATUS.connected },
       { status: CONNECTOR_STATUS.notConnected, team: null },
@@ -102,12 +98,11 @@ describe("Integrations page", () => {
 
     expect(markup).toContain(">Integrations<");
     expect(markup).toContain('data-integrations-connectors="ws_1"');
+    expect(markup).toContain('data-catalog="github,grafana"');
     expect(markup).toContain('data-github-status="connected"');
-    expect(markup).toContain("SLACK_BOT_TOKEN");
   });
 
   it("wires the Slack connector status + team through to the connectors component", async () => {
-    vi.mocked(listCredentials).mockResolvedValue({ credentials: [] });
     stubConnectors(
       { status: CONNECTOR_STATUS.notConnected },
       { status: CONNECTOR_STATUS.connected, team: "Acme Corp" },
@@ -120,8 +115,16 @@ describe("Integrations page", () => {
     expect(markup).toContain('data-slack-team="Acme Corp"');
   });
 
+  it("degrades to an empty catalog when the catalog read errors (never fabricates cards)", async () => {
+    vi.mocked(getConnectorCatalog).mockRejectedValue(new Error("catalog endpoint down"));
+
+    const { default: Page } = await import("../app/(dashboard)/integrations/page");
+    const markup = renderToStaticMarkup(await Page());
+
+    expect(markup).toContain('data-catalog=""');
+  });
+
   it("degrades the Slack connector to not-connected when the status read errors", async () => {
-    vi.mocked(listCredentials).mockResolvedValue({ credentials: [] });
     stubConnectors(
       { status: CONNECTOR_STATUS.notConnected },
       new Error("connector endpoint down"),
@@ -134,7 +137,6 @@ describe("Integrations page", () => {
   });
 
   it("degrades the GitHub connector to not-connected when the status read errors", async () => {
-    vi.mocked(listCredentials).mockResolvedValue({ credentials: [] });
     stubConnectors(
       new Error("connector endpoint down"),
       { status: CONNECTOR_STATUS.notConnected, team: null },

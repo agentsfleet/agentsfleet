@@ -1620,7 +1620,8 @@
                       "archetype",
                       "display_name",
                       "configured",
-                      "connected"
+                      "connected",
+                      "fields"
                     ],
                     "properties": {
                       "id": {
@@ -1645,6 +1646,27 @@
                       "connected": {
                         "type": "boolean",
                         "description": "This workspace holds a `fleet:<provider>` vault handle."
+                      },
+                      "fields": {
+                        "type": "array",
+                        "description": "Declared input fields the api_key connect form submits; empty for oauth2/app_install connectors, which connect by redirect. Registry-sourced so the dashboard never hard-codes a provider's field list.",
+                        "items": {
+                          "type": "object",
+                          "required": [
+                            "name",
+                            "secret"
+                          ],
+                          "properties": {
+                            "name": {
+                              "type": "string",
+                              "description": "Wire field name submitted in the connect body (`api_key`, `app_key`, `site`, `instance_url`, `service_account_token`, `org_token`)."
+                            },
+                            "secret": {
+                              "type": "boolean",
+                              "description": "Secret material (rendered masked, vaulted, never echoed back) when true; a plain coordinate (site, instance_url) when false."
+                            }
+                          }
+                        }
                       }
                     }
                   }

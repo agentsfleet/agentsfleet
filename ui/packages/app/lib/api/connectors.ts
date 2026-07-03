@@ -1,15 +1,14 @@
 import { request } from "./client";
 
-// Browser-OAuth connectors (GitHub App install, Slack OAuth). Connecting is always
-// a redirect round-trip — never a token paste: the backend callback vaults the
-// credential handle (`fleet:<provider>`) and the broker mints short-lived tokens
-// from it on demand. Reads here are status only (no secret ever crosses this API).
-//
-// GitHub and Slack differ only in their status shape (Slack surfaces the connected
-// team), so the client is one provider-parameterised pair — `getConnector` /
-// `startConnect` — with `ConnectorStateByProvider` keeping call sites exactly typed
-// off the provider argument. A third connector is a one-line map entry, not a new
-// function pair.
+// Connectors API client. The dashboard renders its cards from the registry-driven
+// catalog (`getConnectorCatalog`) — the provider list, archetypes, display names,
+// and (for api_key) the connect-form field schema all arrive from the backend;
+// nothing here re-declares them. Two connectors — GitHub and Slack — additionally
+// expose a bespoke per-provider status route (`getConnector`) whose shape is
+// richer than the catalog's `connected` bool (reconnect state; Slack's connected
+// team). Connecting is uniform: OAuth/app_install redirect via `startConnect` (no
+// token paste), api_key probe-then-vault via `submitApiKeyConnect`. No secret ever
+// crosses this API on a read.
 
 export const CONNECTOR_STATUS = {
   connected: "connected",
@@ -17,12 +16,6 @@ export const CONNECTOR_STATUS = {
   notConnected: "not_connected",
 } as const;
 export type ConnectorStatus = (typeof CONNECTOR_STATUS)[keyof typeof CONNECTOR_STATUS];
-
-export const CONNECTOR_PROVIDERS = {
-  github: "github",
-  slack: "slack",
-} as const;
-export type ConnectorProvider = (typeof CONNECTOR_PROVIDERS)[keyof typeof CONNECTOR_PROVIDERS];
 
 export interface GithubConnectorState {
   status: ConnectorStatus;
@@ -42,6 +35,11 @@ export interface ConnectorStateByProvider {
   slack: SlackConnectorState;
 }
 
+// The providers with a bespoke per-provider status read (GitHub, Slack). Every
+// other provider derives its card status from the catalog's `connected` flag
+// rather than a dedicated status route.
+export type ConnectorStatusProvider = keyof ConnectorStateByProvider;
+
 export interface ConnectorConnectStart {
   // The provider authorize/install URL the browser is redirected to. Carries the
   // signed `state` that binds this workspace and guards CSRF at the callback.
@@ -49,10 +47,13 @@ export interface ConnectorConnectStart {
   install_url: string;
 }
 
-const connectorPath = (provider: ConnectorProvider, workspaceId: string): string =>
-  `/v1/workspaces/${encodeURIComponent(workspaceId)}/connectors/${provider}`;
+// `provider` is a registry id sourced from the catalog at runtime; encode it as a
+// single path segment. The server action that reaches here re-validates the id's
+// shape, and the backend is the authority on which providers exist.
+const connectorPath = (provider: string, workspaceId: string): string =>
+  `/v1/workspaces/${encodeURIComponent(workspaceId)}/connectors/${encodeURIComponent(provider)}`;
 
-export async function getConnector<P extends ConnectorProvider>(
+export async function getConnector<P extends ConnectorStatusProvider>(
   provider: P,
   workspaceId: string,
   token: string,
@@ -65,7 +66,7 @@ export async function getConnector<P extends ConnectorProvider>(
 }
 
 export async function startConnect(
-  provider: ConnectorProvider,
+  provider: string,
   workspaceId: string,
   token: string,
 ): Promise<ConnectorConnectStart> {
@@ -90,13 +91,33 @@ export const CONNECTOR_ARCHETYPE = {
 } as const;
 export type ConnectorArchetype = (typeof CONNECTOR_ARCHETYPE)[keyof typeof CONNECTOR_ARCHETYPE];
 
+// One api_key input field, as declared by the backend registry. The dashboard's
+// connect form renders these — which inputs a provider needs, and which are secret
+// (masked) vs plain coordinates (site, instance_url). The app never hard-codes
+// this; it arrives on the catalog entry.
+export interface ApiKeyField {
+  name: string;
+  secret: boolean;
+}
+
 export interface ConnectorCatalogEntry {
   id: string;
   archetype: ConnectorArchetype;
   display_name: string;
   configured: boolean;
   connected: boolean;
+  // The connect-form field schema for api_key connectors; empty for
+  // oauth2/app_install (they connect by redirect, not a form).
+  fields: readonly ApiKeyField[];
 }
+
+// The docs anchor an unconfigured OAuth connector's card links to. The backend
+// reports `configured:false` for the same condition it raises 503 UZ-CONN-001 on
+// (a missing `<provider>-app` platform bag); the catalog carries no error body to
+// read `docs_uri` from, so the one deep link lives here. Not a provider list — a
+// single documentation pointer.
+export const CONNECTOR_NOT_CONFIGURED_DOCS_URI =
+  "https://docs.agentsfleet.net/api-reference/error-codes#UZ-CONN-001";
 
 export async function getConnectorCatalog(
   workspaceId: string,
@@ -109,9 +130,8 @@ export async function getConnectorCatalog(
   );
 }
 
-// api_key connect is an authed POST whose body carries the archetype's declared
-// fields (Datadog `{api_key, app_key, site}`, Grafana `{instance_url,
-// service_account_token}`, Fly `{org_token}`). The handler runs a bounded
+// api_key connect is an authed POST whose body carries the fields the catalog
+// entry declared (see `ConnectorCatalogEntry.fields`). The handler runs a bounded
 // validation probe before vaulting; a bad key → 400 `UZ-CONN-005`, no write. The
 // submitted secrets travel only in this request body — never echoed back.
 export interface ApiKeyConnectResult {

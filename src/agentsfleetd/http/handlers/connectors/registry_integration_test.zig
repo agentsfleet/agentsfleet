@@ -405,9 +405,13 @@ test "integration: catalog reflects the registry with correct configured/connect
         inline for (.{ "slack", "github", "zoho", "jira", "linear", "datadog", "grafana", "fly" }) |id| {
             try testing.expect(r.bodyContains("\"id\":\"" ++ id ++ "\""));
         }
-        // Field order is CatalogEntry declaration order (compact JSON).
-        try testing.expect(r.bodyContains("\"id\":\"slack\",\"archetype\":\"oauth2\",\"display_name\":\"Slack\",\"configured\":false,\"connected\":false"));
-        try testing.expect(r.bodyContains("\"id\":\"datadog\",\"archetype\":\"api_key\",\"display_name\":\"Datadog\",\"configured\":true,\"connected\":false"));
+        // Field order is CatalogEntry declaration order (compact JSON). oauth2
+        // connectors connect by redirect, so their field schema is empty.
+        try testing.expect(r.bodyContains("\"id\":\"slack\",\"archetype\":\"oauth2\",\"display_name\":\"Slack\",\"configured\":false,\"connected\":false,\"fields\":[]"));
+        // api_key connectors carry their registry-declared connect form fields
+        // (secret flags intact — `site` is a plain coordinate, keys are masked);
+        // the dashboard renders the form from this, never a hard-coded list.
+        try testing.expect(r.bodyContains("\"id\":\"datadog\",\"archetype\":\"api_key\",\"display_name\":\"Datadog\",\"configured\":true,\"connected\":false,\"fields\":[{\"name\":\"api_key\",\"secret\":true},{\"name\":\"app_key\",\"secret\":true},{\"name\":\"site\",\"secret\":false}]"));
     }
 
     // Provision slack's platform bag + connect this workspace.
