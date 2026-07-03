@@ -15,6 +15,7 @@ const auth_mw = @import("../../../auth/middleware/mod.zig");
 const error_registry = @import("../../../errors/error_registry.zig");
 const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
 const model_rate_cache = @import("../../../state/model_rate_cache.zig");
+const model_caps_store = @import("../../../state/model_caps_store.zig");
 const harness_mod = @import("../../test_harness.zig");
 const TestHarness = harness_mod.TestHarness;
 
@@ -342,4 +343,30 @@ test "admin models: PATCH rejects a negative rate 400" {
     defer r.deinit();
     try r.expectStatus(.bad_request);
     try r.expectErrorCode(error_registry.ERR_INVALID_REQUEST);
+}
+
+// §2 / Dimension 2.1 — the delete-guard's reference check must FAIL
+// CLOSED on a DB fault. Before the fix, isReferencedByActiveDefault swallowed a
+// query error to `false` (fail OPEN → a transient blip lets the live default's
+// model-cap be deleted, then the next platform lease resolves an uncatalogued
+// model and silently degrades to run-fee-only). The fault is injected the
+// deterministic way: a malformed uid makes the guard's own `$1::uuid` cast fail
+// at query time — the identical `!` error path a pool exhaustion or connection
+// reset takes — and we assert the store function propagates it rather than
+// returning a bool. Dimension 2.2 (the genuine-409 happy path) stays covered by
+// "admin models: deleting the active default's model is blocked 409" above.
+test "test_delete_blocked_on_referenced_check_query_error" {
+    const h = try startHarness(ALLOC);
+    defer h.deinit();
+    defer cleanup(h);
+
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+
+    if (model_caps_store.isReferencedByActiveDefault(conn, "not-a-uuid")) |_| {
+        // A bool return on a query error is the fail-OPEN bug this closes.
+        return error.QueryErrorSwallowedAsBool;
+    } else |_| {
+        // Expected: the query error propagates so the DELETE handler fails closed.
+    }
 }

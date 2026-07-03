@@ -274,9 +274,21 @@ fn pooledHandle(self: *LoopbackClient) ?std.Io.net.Socket.Handle {
     return handle;
 }
 
-/// One bearer-authed POST on the persistent client. Returns the status +
-/// response body (owned by `alloc`). Pub so the split-out `mint` verb shares it.
-pub fn post(self: *LoopbackClient, alloc: Allocator, path: []const u8, bearer: []const u8, payload: []const u8, deadline_ms: u31) !PostResult {
+/// Shared core of the bearer-authed verbs: arm the deadline watchdog, issue one
+/// `fetch` on the persistent client, and return the status + owned response body.
+/// `payload == null` sends no body (GET); a non-null payload rides a POST with a
+/// content-type header. The single `errdefer` here releases the partial response
+/// buffer on any mid-stream fetch failure — the success path hands it off via
+/// `toOwnedSlice()`. `post`/`get`/`mint` are thin wrappers over this.
+fn send(
+    self: *LoopbackClient,
+    alloc: Allocator,
+    method: std.http.Method,
+    path: []const u8,
+    bearer: []const u8,
+    payload: ?[]const u8,
+    deadline_ms: u31,
+) !PostResult {
     // Fail the verb closed if the deadline can't be enforced (M100) — an
     // unbounded call is the silent hang the watchdog exists to prevent.
     if (self.pooledHandle()) |handle| {
@@ -290,24 +302,34 @@ pub fn post(self: *LoopbackClient, alloc: Allocator, path: []const u8, bearer: [
     const auth = try std.fmt.allocPrint(alloc, "Bearer {s}", .{bearer});
     defer alloc.free(auth);
 
-    // BUFFER GATE: ArrayList for response body — fetch appends as it streams;
-    // .items is read once for the JSON parse.
+    // BUFFER GATE: ArrayList response body — fetch appends as it streams; read once for the parse.
     var body: std.ArrayList(u8) = .empty;
     var aw: std.Io.Writer.Allocating = .fromArrayList(alloc, &body);
+    errdefer aw.deinit(); // release partial bytes if fetch fails mid-stream; success path uses toOwnedSlice
 
-    const headers: [2]std.http.Header = .{
-        .{ .name = "content-type", .value = "application/json" },
+    // authorization is always sent; a body-bearing POST adds content-type. The
+    // fixed buffer outlives the fetch; `extra_headers` takes the used prefix.
+    var header_buf: [2]std.http.Header = .{
         .{ .name = "authorization", .value = auth },
+        .{ .name = "content-type", .value = "application/json" },
     };
+    const headers: []const std.http.Header = if (payload == null) header_buf[0..1] else header_buf[0..2];
+
     const result = self.http.fetch(.{
         .location = .{ .url = url },
-        .method = .POST,
+        .method = method,
         .payload = payload,
-        .extra_headers = &headers,
+        .extra_headers = headers,
         .response_writer = &aw.writer,
     }) catch return ClientError.RequestFailed;
 
     return .{ .status = @intFromEnum(result.status), .body = aw.toOwnedSlice() catch return ClientError.RequestFailed };
+}
+
+/// One bearer-authed POST on the persistent client. Returns the status +
+/// response body (owned by `alloc`). Pub so the split-out `mint` verb shares it.
+pub fn post(self: *LoopbackClient, alloc: Allocator, path: []const u8, bearer: []const u8, payload: []const u8, deadline_ms: u31) !PostResult {
+    return self.send(alloc, .POST, path, bearer, payload, deadline_ms);
 }
 
 /// One bearer-authed GET (no body) on the persistent client. Returns the status +
@@ -315,32 +337,7 @@ pub fn post(self: *LoopbackClient, alloc: Allocator, path: []const u8, bearer: [
 /// read-only `getSelf`/`memoryHydrate` verbs and consumed by `bundle_extract` for
 /// the Fleet Bundle snapshot download.
 pub fn get(self: *LoopbackClient, alloc: Allocator, path: []const u8, bearer: []const u8, deadline_ms: u31) !PostResult {
-    // Fail the verb closed if the deadline can't be enforced (M100) — an
-    // unbounded call is the silent hang the watchdog exists to prevent.
-    if (self.pooledHandle()) |handle| {
-        if (self.watchdog.arm(handle, deadline_ms) == .watchdog_unavailable)
-            return ClientError.WatchdogUnavailable;
-    }
-    defer self.watchdog.disarm();
-
-    const url = try std.fmt.allocPrint(alloc, "{s}{s}", .{ self.base_url, path });
-    defer alloc.free(url);
-    const auth = try std.fmt.allocPrint(alloc, "Bearer {s}", .{bearer});
-    defer alloc.free(auth);
-
-    // BUFFER GATE: ArrayList for response body — fetch appends as it streams.
-    var body: std.ArrayList(u8) = .empty;
-    var aw: std.Io.Writer.Allocating = .fromArrayList(alloc, &body);
-
-    const headers: [1]std.http.Header = .{.{ .name = "authorization", .value = auth }};
-    const result = self.http.fetch(.{
-        .location = .{ .url = url },
-        .method = .GET,
-        .extra_headers = &headers,
-        .response_writer = &aw.writer,
-    }) catch return ClientError.RequestFailed;
-
-    return .{ .status = @intFromEnum(result.status), .body = aw.toOwnedSlice() catch return ClientError.RequestFailed };
+    return self.send(alloc, .GET, path, bearer, null, deadline_ms);
 }
 
 const std = @import("std");
