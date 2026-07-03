@@ -114,11 +114,15 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 | `src/agentsfleetd/http/route_table_invoke_api_keys.zig` | EDIT | migrate single-method sites (of 2). |
 | `src/agentsfleetd/http/route_table_invoke_fleet_bundles.zig` | EDIT | migrate its 1 single-method site. |
 | `ui/packages/website/src/analytics/posthog.ts` | EDIT | `ensureLoader`'s `loadPromise` assignment gains failure handling that resets state for retry. |
-| `ui/packages/app/lib/auth/platform.ts` | EDIT | replace the `platform_admin` boolean read with a session-`scopes` predicate (`hasScope`); retire `readPlatformAdminClaim`. |
-| `ui/packages/app/app/(dashboard)/layout.tsx` | EDIT | operator nav gating switches to per-surface scope checks. |
-| `ui/packages/app/app/(dashboard)/admin/runners/{page.tsx,actions.ts}` | EDIT | gate on `runner:read` (view) / `runner:enroll` (enroll); fix the stale `UZ-AUTH-021` comment → `UZ-AUTH-022`. |
-| `ui/packages/app/app/(dashboard)/admin/models/{page.tsx,actions.ts}` | EDIT | gate on `model:read` (view) / `model:admin` (mutate). |
-| `ui/packages/app/lib/auth/platform.test.ts` | CREATE/EDIT | scope-predicate coverage + zero-remaining-`platform_admin`-reference assertion. |
+| `ui/packages/app/lib/auth/platform.ts` | EDIT | replace the `platform_admin` boolean read with a session-`scopes` reader (`readSessionScopes`/`hasScope`); retire `readPlatformAdminClaim`. |
+| `ui/packages/app/lib/auth/scopes.ts` | CREATE | client-safe scope-string constants (`SCOPE.*`) mirroring `route_scopes.zig`; importable from the client `Shell` (which can't import `platform.ts`'s server `auth`). |
+| `ui/packages/app/lib/errors.ts` | EDIT | retire the dead `UZ-AUTH-021` code (`PLATFORM_ADMIN_REQUIRED`, absent from `src/` now) for `UZ-AUTH-022` (`INSUFFICIENT_SCOPE`) + operator-friendly copy. |
+| `ui/packages/app/app/(dashboard)/layout.tsx` | EDIT | resolve the session scope set and pass it to `Shell` for per-surface nav gating. |
+| `ui/packages/app/components/layout/Shell.tsx` | EDIT | nav prop `isPlatformAdmin` → `operatorScopes`; each platform nav item shows iff the session holds its read scope. |
+| `ui/packages/app/app/(dashboard)/admin/runners/{page.tsx,actions.ts}` | EDIT | gate page on `runner:read`; actions on `runner:read`/`runner:enroll`/`runner:write`; fix the stale `UZ-AUTH-021` comment → `UZ-AUTH-022`. |
+| `ui/packages/app/app/(dashboard)/admin/models/{page.tsx,actions.ts}` | EDIT | gate page/list on `model:read`; mutations + platform-default on `model:admin`. |
+| `ui/packages/app/lib/auth/platform.test.ts` | EDIT | scope-reader coverage + the Invariant-3 production source scan (the one place the retired identifiers are named, to enforce their absence). |
+| `ui/packages/app/tests/{runners-actions,admin-models-actions,runners-page,admin-models-page,runners-create-dialog,app-components}.test.ts` | EDIT | migrate the gate mocks from `readPlatformAdminClaim` to `hasScope`/`operatorScopes`; `UZ-AUTH-021` fixtures → `UZ-AUTH-022`. |
 
 ---
 
@@ -153,8 +157,8 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 
 `readPlatformAdminClaim()` (`ui/packages/app/lib/auth/platform.ts`) gates the operator nav, the `admin/runners` + `admin/models` pages, and their `asPlatformAdmin`-wrapped Server Actions on a boolean `metadata.platform_admin === true` — a pre-M104 claim the scope migration never retired. The backend gates the same routes on scopes (`route_scopes.zig:120-127`: enroll → `runner:enroll`, runner list → `runner:read`, model mutate → `model:admin`, model read → `model:read`), so a correctly-scoped operator still can't see the UI and platform-admin is configured twice, which drifts. **Implementation default:** read the session `scopes` claim (top-level, space-delimited) and gate each surface on the scope its backend route enforces — page/nav visibility on the read scope (`runner:read`, `model:read`), each mutating action on its write scope (`runner:enroll`, `runner:write`, `model:admin`); delete `readPlatformAdminClaim`/`platform_admin` once no caller remains, and correct the stale `UZ-AUTH-021` comment in `admin/runners/page.tsx` (the gate returns `UZ-AUTH-022`).
 
-- **Dimension 4.1** — the runner operator nav + page render iff the session `scopes` claim holds `runner:read`, and the enroll action is allowed iff it holds `runner:enroll`; the `platform_admin` boolean is never consulted → Test `test_runner_ui_gates_on_runner_scopes`.
-- **Dimension 4.2** — the admin-models nav/page/actions gate on `model:read`/`model:admin`, and `readPlatformAdminClaim`/`platform_admin` have zero remaining references repo-wide → Test `test_admin_models_ui_gates_on_model_scope_no_boolean_left`.
+- **Dimension 4.1 — DONE** — the runner operator nav + page render iff the session `scopes` claim holds `runner:read`, and the enroll action is allowed iff it holds `runner:enroll`; the `platform_admin` boolean is never consulted → Test `test_runner_ui_gates_on_runner_scopes` (`tests/runners-actions.test.ts`, `tests/runners-page.test.ts`, `tests/app-components.test.ts`).
+- **Dimension 4.2 — DONE** — the admin-models nav/page/actions gate on `model:read`/`model:admin`, and `readPlatformAdminClaim`/`platform_admin`/`isPlatformAdmin` have zero remaining references in production source → Test `test_admin_models_ui_gates_on_model_scope_no_boolean_left` (`tests/admin-models-actions.test.ts`, `lib/auth/platform.test.ts` source scan).
 
 ---
 
@@ -199,7 +203,7 @@ not free choice.
 
 1. Every single-method route's allow/deny behavior is identical before and after the `requireMethod` migration — enforced by Dimension 1.1's per-route regression coverage.
 2. `ensureLoader` never permanently stops retrying after a single failed load — enforced by Dimension 2.1's test asserting `loadPromise` is resettable.
-3. No operator surface is gated on the `platform_admin` boolean after §4 — enforced by Dimension 4.2's repo-wide zero-reference grep for `platform_admin`/`readPlatformAdminClaim`.
+3. No operator **production** surface is gated on the `platform_admin` boolean after §4 — enforced by Dimension 4.2's source scan over `lib/auth`, `app/(dashboard)/admin`, `components/layout` (test files excluded, since the guard test that asserts absence must itself name the retired identifiers).
 4. The UI scope gate never becomes the sole authority — the backend `requireScope` (`route_scopes.zig`) stays authoritative; §4 is defence-in-depth only (Failure Modes row 3).
 
 ---
@@ -213,7 +217,7 @@ not free choice.
 | 2.1 | unit | `test_ensure_loader_retries_after_failed_load` | `loadPosthog` mocked to reject once → `ensureLoader` call after the rejection settles retries (calls `loadPosthog` again), not short-circuited by a stale `loadPromise`. |
 | 2.2 | unit | `test_failed_load_does_not_produce_unhandled_rejection` | a rejected `loadPosthog` call is observably caught (test harness asserts no `unhandledrejection` event fires). |
 | 4.1 | unit | `test_runner_ui_gates_on_runner_scopes` | session scopes `…runner:read runner:enroll…` → nav+page render and enroll allowed; scopes lacking them → hidden/redirect; the `platform_admin` boolean is absent from the decision. |
-| 4.2 | unit | `test_admin_models_ui_gates_on_model_scope_no_boolean_left` | admin-models gate resolves via `model:read`/`model:admin`; `grep -rn "platform_admin\|readPlatformAdminClaim" ui/packages/app` → 0 matches. |
+| 4.2 | unit | `test_admin_models_ui_gates_on_model_scope_no_boolean_left` | admin-models gate resolves via `model:read`/`model:admin`; the Invariant-3 source scan (production files, tests excluded) finds zero `platform_admin`/`readPlatformAdminClaim`/`isPlatformAdmin` references. |
 
 Regression: Dimension 1.1 is the explicit regression case (§1 pure refactor). Idempotency/replay: N/A — none of these sections add retry-with-side-effects semantics (§2's retry is a pure re-attempt of an idempotent load).
 
@@ -223,7 +227,7 @@ Regression: Dimension 1.1 is the explicit regression case (§1 pure refactor). I
 
 - [ ] `requireMethod` matches `requireUuidV7Id`'s convention, all 63 single-method sites migrated — verify: `zig build test --summary all` (Dimensions 1.1/1.2)
 - [ ] PostHog loader retries after a failed load — verify: `bun test ui/packages/website` (Dimensions 2.1/2.2)
-- [ ] Operator UI gates on scope, `platform_admin` fully removed — verify: `bun test ui/packages/app` + `grep -rn "platform_admin\|readPlatformAdminClaim" ui/packages/app | grep -v node_modules` empty (Dimensions 4.1/4.2)
+- [ ] Operator UI gates on scope, `platform_admin` fully removed from production — verify: `bun test ui/packages/app` + E9 sweep (production files, tests excluded) empty (Dimensions 4.1/4.2)
 - [ ] `make lint` clean · `make test` passes
 - [ ] Cross-compile clean: `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux`
 - [ ] `gitleaks detect` clean · no file over 350 lines added
@@ -250,8 +254,9 @@ gitleaks detect 2>&1 | tail -3
 git diff --name-only origin/main | grep -v '\.md$' | xargs wc -l 2>/dev/null | awk '$1 > 350 {print "OVER: "$2": "$1}'
 # E8: orphan sweep — confirm no remaining hand-copied single-method check outside requireMethod
 grep -rn "respondMethodNotAllowed" src/agentsfleetd/http/route_table_invoke*.zig | grep -v "requireMethod\|fn respondMethodNotAllowed\|switch (req.method)"
-# E9: §4 zero-reference sweep — platform_admin boolean fully retired
-grep -rn "platform_admin\|readPlatformAdminClaim" ui/packages/app | grep -v node_modules
+# E9: §4 zero-reference sweep — platform_admin boolean fully retired from PRODUCTION
+# (test files excluded: the Invariant-3 guard test names the identifiers to enforce their absence)
+grep -rn "platform_admin\|readPlatformAdminClaim\|isPlatformAdmin" ui/packages/app | grep -v node_modules | grep -vE '\.test\.|/tests/'
 ```
 
 ---
@@ -266,7 +271,9 @@ grep -rn "platform_admin\|readPlatformAdminClaim" ui/packages/app | grep -v node
 
 - **§1 scope note:** the 10 multi-method `switch` sites in `route_table_invoke.zig` are deliberately not migrated to a new `requireMethodOneOf` helper in this patch (see Decomposition) — flagged as an optional follow-up, not blocking.
 - **§3 drop (resolved before EXECUTE):** the original §3 (restore `ROLE_NAMESPACE_DEV`) was dropped — the static-role concept the namespaced claim fed has been removed from the product, so restoring the dev/prod namespace split reinstates plumbing for a claim nothing reads. Ack captured in the header Scope amendment. Any residual dead role-claim machinery in `cli/src/program/auth-token.ts` is a separate cleanup, not in this branch's scope.
-- **§4 note:** the UI operator gate is defence-in-depth; the backend `requireScope` (`route_scopes.zig`) stays authoritative. The per-surface scope map (`runner:read`/`runner:enroll`, `model:read`/`model:admin`) is taken from `route_scopes.zig:120-127`, not guessed. Live-verified this session: the dev session token now carries a top-level `scopes` claim, and `metadata.platform_admin` is absent — the boolean gate hides the surface even for a fully-scoped operator, which is the bug §4 fixes.
+- **§4 note:** the UI operator gate is defence-in-depth; the backend `requireScope` (`route_scopes.zig`) stays authoritative. The per-surface scope map (`runner:read`/`runner:enroll`/`runner:write`, `model:read`/`model:admin`) is taken from `route_scopes.zig:120-127`, not guessed. Live-verified this session: the dev session token now carries a top-level `scopes` claim, and `metadata.platform_admin` is absent — the boolean gate hides the surface even for a fully-scoped operator, which is the bug §4 fixes.
+- **§4 PROD rollout dependency (load-bearing):** the top-level `scopes` claim is projected into the Clerk session token by a **Clerk-dashboard "Session Token Claims" config** — applied on DEV, **pending on PROD** (`docs/AUTH.md:626`, "DEV applied; PROD pending operator click"). No code change makes it appear. Because §4 removes the `platform_admin` boolean and gates purely on `scopes`, PROD operators are hidden until that PROD config lands AND the operator user carries the scopes on `public_metadata.scopes`. This is a **hard deploy prerequisite**, documented in the PR, `docs/AUTH.md`, and the docs repo. Ack: `> Indy (2026-07-02): "remove the platform_admin entirely, document the scope in PR, docs/AUTH.md, docs repo, and i will update it in the clerk those two permissions for nkishore@megam.io" — context: §4 PROD Clerk config is Indy's manual step; ship clean.`
+- **§4 error-code reconciliation:** the UI minted `UZ-AUTH-021` (`PLATFORM_ADMIN_REQUIRED`) on a failed gate, but that code is retired backend-side — the operator routes return `UZ-AUTH-022` (insufficient scope) now (`grep UZ-AUTH-021 src/` → none; `error_entries.zig:79` defines only `022`). §4 switches the UI mint + `lib/errors.ts` copy to `UZ-AUTH-022` (`INSUFFICIENT_SCOPE`), removing the drift. Blast radius wider than the pre-spec Files-Changed table anticipated (LLM-drafted spec, per provenance): `lib/errors.ts`, `Shell.tsx`, `lib/auth/scopes.ts`, and six test files added — table reconciled above.
 - **Metrics review:** no new events; §2 restores existing PostHog delivery reliability, no playbook update required (no funnel/event shape changes).
 
 ---

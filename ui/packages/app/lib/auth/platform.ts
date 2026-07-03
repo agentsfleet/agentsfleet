@@ -1,25 +1,42 @@
 import { auth } from "@clerk/nextjs/server";
 
 /**
- * Reads the `platform_admin` claim from the Clerk session metadata.
+ * Reads the operator `scopes` claim off the Clerk session token.
  *
- * `platform_admin` is a boolean claim set by a manual Clerk `publicMetadata`
- * flip on agentsfleet's operator user (docs/AUTH.md). It gates the runner
- * operator plane — enrollment (`POST /v1/runners`) and the fleet read
- * (`GET /v1/fleets/runners`). This is the frontend's defence-in-depth check:
- * the dashboard hides the surface for non-admins, and the backend independently
- * rejects a non-admin principal `403 UZ-AUTH-021` regardless.
+ * `scopes` is a **top-level** claim (not nested under `metadata`) that Clerk's
+ * session-token customization projects from `public_metadata.scopes`
+ * (docs/AUTH.md §Session token). It is the same claim the backend verifies via
+ * `requireScope` — which stays the authoritative gate (a missing scope is
+ * rejected `403 UZ-AUTH-022` regardless of what the UI shows). Every read here
+ * is the dashboard's defence-in-depth check: hide/redirect/refuse a surface the
+ * caller's token can't reach.
  *
- * Returns `false` when the auth provider isn't available, the session is
+ * The documented session-token form is a space-delimited string
+ * (`"runner:read runner:enroll model:admin"`); we also accept a JSON array to
+ * mirror the backend's tolerant reader (`claims.zig` `getScopesOwned`) in case
+ * the template is ever switched to array form.
+ *
+ * Returns an empty set when the auth provider isn't available, the session is
  * anonymous, or the claim is absent (fail-closed) — every caller treats a
- * `false` as "not a platform admin" and redirects.
+ * missing scope as "not permitted".
  */
-export async function readPlatformAdminClaim(): Promise<boolean> {
+export async function readSessionScopes(): Promise<ReadonlySet<string>> {
   try {
     const { sessionClaims } = await auth();
-    const metadata = (sessionClaims?.metadata ?? null) as Record<string, unknown> | null;
-    return metadata !== null && metadata.platform_admin === true;
+    const raw = (sessionClaims as Record<string, unknown> | null)?.scopes;
+    return parseScopes(raw);
   } catch {
-    return false;
+    return new Set();
   }
+}
+
+/** True iff the live session token carries `scope`. Fail-closed on any error. */
+export async function hasScope(scope: string): Promise<boolean> {
+  return (await readSessionScopes()).has(scope);
+}
+
+function parseScopes(raw: unknown): ReadonlySet<string> {
+  if (typeof raw === "string") return new Set(raw.split(/\s+/).filter(Boolean));
+  if (Array.isArray(raw)) return new Set(raw.filter((s): s is string => typeof s === "string"));
+  return new Set();
 }

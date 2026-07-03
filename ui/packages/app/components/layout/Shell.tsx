@@ -25,6 +25,7 @@ import {
   WakePulse,
 } from "@agentsfleet/design-system";
 import { setAnalyticsContext, trackNavigationClicked } from "@/lib/analytics/posthog";
+import { SCOPE } from "@/lib/auth/scopes";
 import { setActiveWorkspace } from "@/app/(dashboard)/actions";
 import type { TenantWorkspace } from "@/lib/api/workspaces";
 import WorkspaceSwitcher from "./WorkspaceSwitcher";
@@ -37,6 +38,10 @@ type NavEntry = {
   icon: React.ComponentType<{ size?: number }>;
   external?: boolean;
 };
+
+// A platform-operator nav entry carries the read scope that reveals it — the
+// nav shows a surface iff the session token holds that scope (route_scopes.zig).
+type PlatformNavEntry = NavEntry & { scope: string };
 
 const NAV_SURFACE = "app_sidebar";
 
@@ -60,12 +65,14 @@ const CONFIGURATION_NAV: NavEntry[] = [
   { label: "Integrations", href: "/integrations", icon: LinkIcon },
 ];
 
-// Platform-admin-only — appended to the Configuration group only when the
-// session carries the platform_admin claim (the backend independently gates
-// the routes, so this is discoverability, not the security boundary).
-const PLATFORM_NAV: NavEntry[] = [
-  { label: "Runners", href: "/admin/runners", icon: ServerIcon },
-  { label: "Model catalogue", href: "/admin/models", icon: CpuIcon },
+// Platform-operator surfaces — each appended to the Configuration group only
+// when the session token carries that surface's read scope (the backend
+// independently gates the routes, so this is discoverability, not the security
+// boundary). A runner operator sees Runners; a model operator sees the
+// catalogue; a token with neither sees neither.
+const PLATFORM_NAV: PlatformNavEntry[] = [
+  { label: "Runners", href: "/admin/runners", icon: ServerIcon, scope: SCOPE.RUNNER_READ },
+  { label: "Model catalogue", href: "/admin/models", icon: CpuIcon, scope: SCOPE.MODEL_READ },
 ];
 
 const ORGANIZATION_NAV: NavEntry[] = [
@@ -106,14 +113,15 @@ type ShellProps = {
   children: React.ReactNode;
   workspaces?: TenantWorkspace[];
   activeWorkspaceId?: string | null;
-  isPlatformAdmin?: boolean;
+  /** Operator scopes on the session token; gate the platform nav per-surface. */
+  operatorScopes?: string[];
 };
 
 export default function Shell({
   children,
   workspaces = [],
   activeWorkspaceId = null,
-  isPlatformAdmin = false,
+  operatorScopes = [],
 }: ShellProps) {
   const pathname = usePathname();
   const activeHref = resolveActiveHref(pathname);
@@ -132,7 +140,7 @@ export default function Shell({
   return (
     <div className="app-glow-surface grid min-h-screen md:grid-cols-[240px_1fr] grid-rows-[56px_1fr]" data-glow="dashboard">
       <header className="col-span-full sticky top-0 z-40 flex items-center gap-4 px-4 md:px-6 border-b border-border bg-background/85 backdrop-blur">
-        <MobileNav isActive={isActive} isPlatformAdmin={isPlatformAdmin} />
+        <MobileNav isActive={isActive} operatorScopes={operatorScopes} />
 
         <Link
           href="/"
@@ -161,7 +169,7 @@ export default function Shell({
       </header>
 
       <aside className="hidden md:flex flex-col bg-muted border-r border-border sticky top-14 h-[calc(100vh-56px)] overflow-y-auto py-4">
-        <SidebarNav isActive={isActive} onNavigate={() => {}} isPlatformAdmin={isPlatformAdmin} />
+        <SidebarNav isActive={isActive} onNavigate={() => {}} operatorScopes={operatorScopes} />
       </aside>
 
       <main className="app-dashboard-canvas overflow-auto px-4 py-6 sm:px-6 md:px-8 md:py-8 2xl:px-12">
@@ -177,10 +185,10 @@ export default function Shell({
 
 function MobileNav({
   isActive,
-  isPlatformAdmin,
+  operatorScopes,
 }: {
   isActive: (href: string) => boolean;
-  isPlatformAdmin: boolean;
+  operatorScopes: string[];
 }) {
   const [open, setOpen] = useState(false);
   return (
@@ -198,7 +206,7 @@ function MobileNav({
       </DialogTrigger>
       <DialogContent className="sm:max-w-xs">
         <DialogTitle className="sr-only">Navigation</DialogTitle>
-        <SidebarNav isActive={isActive} onNavigate={() => setOpen(false)} isPlatformAdmin={isPlatformAdmin} />
+        <SidebarNav isActive={isActive} onNavigate={() => setOpen(false)} operatorScopes={operatorScopes} />
       </DialogContent>
     </Dialog>
   );
@@ -207,13 +215,14 @@ function MobileNav({
 type NavProps = {
   isActive: (href: string) => boolean;
   onNavigate: () => void;
-  isPlatformAdmin: boolean;
+  operatorScopes: string[];
 };
 
-function SidebarNav({ isActive, onNavigate, isPlatformAdmin }: NavProps) {
-  const configItems = isPlatformAdmin
-    ? [...CONFIGURATION_NAV, ...PLATFORM_NAV]
-    : CONFIGURATION_NAV;
+function SidebarNav({ isActive, onNavigate, operatorScopes }: NavProps) {
+  // Each platform surface appears iff the session token holds its read scope;
+  // a token with neither scope sees the plain Configuration group.
+  const platformItems = PLATFORM_NAV.filter((entry) => operatorScopes.includes(entry.scope));
+  const configItems = [...CONFIGURATION_NAV, ...platformItems];
   return (
     <div className="flex flex-col h-full">
       <NavSection items={TOP_NAV} isActive={isActive} onNavigate={onNavigate} />

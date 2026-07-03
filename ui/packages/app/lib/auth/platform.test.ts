@@ -1,3 +1,5 @@
+import { readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // vi.mock is hoisted above the static `./platform` import, so the mock fn must
@@ -5,41 +7,89 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const { authMock } = vi.hoisted(() => ({ authMock: vi.fn() }));
 vi.mock("@clerk/nextjs/server", () => ({ auth: authMock }));
 
-import { readPlatformAdminClaim } from "./platform";
+import { readSessionScopes, hasScope } from "./platform";
 
 beforeEach(() => vi.clearAllMocks());
 afterEach(() => vi.resetAllMocks());
 
-describe("readPlatformAdminClaim", () => {
-  it("is true only when the session metadata carries platform_admin === true", async () => {
+describe("readSessionScopes", () => {
+  it("parses the top-level space-delimited scopes claim into a set", async () => {
+    authMock.mockResolvedValueOnce({ sessionClaims: { scopes: "runner:read runner:enroll model:admin" } });
+    const scopes = await readSessionScopes();
+    expect([...scopes].sort()).toEqual(["model:admin", "runner:enroll", "runner:read"]);
+  });
+
+  it("accepts a JSON-array scopes claim too (backend-tolerant reader parity)", async () => {
+    authMock.mockResolvedValueOnce({ sessionClaims: { scopes: ["runner:read", "model:read"] } });
+    const scopes = await readSessionScopes();
+    expect([...scopes].sort()).toEqual(["model:read", "runner:read"]);
+  });
+
+  it("collapses arbitrary whitespace and ignores empty tokens", async () => {
+    authMock.mockResolvedValueOnce({ sessionClaims: { scopes: "  runner:read   model:read  " } });
+    const scopes = await readSessionScopes();
+    expect([...scopes].sort()).toEqual(["model:read", "runner:read"]);
+  });
+
+  it("is empty (fail-closed) when the scopes claim is absent", async () => {
+    authMock.mockResolvedValueOnce({ sessionClaims: { metadata: { tenant_id: "t1" } } });
+    expect((await readSessionScopes()).size).toBe(0);
+  });
+
+  it("is empty (fail-closed) — the legacy metadata.platform_admin boolean is never consulted", async () => {
+    // A session carrying only the retired boolean grants nothing now.
     authMock.mockResolvedValueOnce({ sessionClaims: { metadata: { platform_admin: true } } });
-    await expect(readPlatformAdminClaim()).resolves.toBe(true);
+    expect((await readSessionScopes()).size).toBe(0);
   });
 
-  it("is false when the claim is present but not exactly the boolean true", async () => {
-    // Guard against a truthy-but-wrong value (e.g. the string "true") slipping
-    // a non-admin through — the check is strict `=== true`.
-    authMock.mockResolvedValueOnce({ sessionClaims: { metadata: { platform_admin: "true" } } });
-    await expect(readPlatformAdminClaim()).resolves.toBe(false);
-  });
-
-  it("is false when the claim is explicitly false", async () => {
-    authMock.mockResolvedValueOnce({ sessionClaims: { metadata: { platform_admin: false } } });
-    await expect(readPlatformAdminClaim()).resolves.toBe(false);
-  });
-
-  it("is false (fail-closed) when the metadata bag is absent", async () => {
-    authMock.mockResolvedValueOnce({ sessionClaims: {} });
-    await expect(readPlatformAdminClaim()).resolves.toBe(false);
-  });
-
-  it("is false (fail-closed) for an anonymous session with no claims", async () => {
+  it("is empty (fail-closed) for an anonymous session with no claims", async () => {
     authMock.mockResolvedValueOnce({ sessionClaims: null });
-    await expect(readPlatformAdminClaim()).resolves.toBe(false);
+    expect((await readSessionScopes()).size).toBe(0);
+  });
+
+  it("is empty (fail-closed) when the auth provider throws", async () => {
+    authMock.mockRejectedValueOnce(new Error("clerk unavailable"));
+    expect((await readSessionScopes()).size).toBe(0);
+  });
+});
+
+describe("hasScope", () => {
+  it("is true only for a scope the session token actually carries", async () => {
+    authMock.mockResolvedValue({ sessionClaims: { scopes: "runner:read model:read" } });
+    await expect(hasScope("runner:read")).resolves.toBe(true);
+    await expect(hasScope("runner:enroll")).resolves.toBe(false);
   });
 
   it("is false (fail-closed) when the auth provider throws", async () => {
     authMock.mockRejectedValueOnce(new Error("clerk unavailable"));
-    await expect(readPlatformAdminClaim()).resolves.toBe(false);
+    await expect(hasScope("runner:read")).resolves.toBe(false);
+  });
+});
+
+// Dimension 4.2 / Invariant 3: no operator surface is gated on the legacy
+// `platform_admin` boolean after §4. Scan the operator source (not tests) for
+// the retired identifiers — the source of truth the E9 eval command also greps.
+describe("platform_admin fully retired (Invariant 3)", () => {
+  const ROOT = join(__dirname, "..", "..");
+  const SCANNED = [
+    join(ROOT, "lib", "auth"),
+    join(ROOT, "app", "(dashboard)", "admin"),
+    join(ROOT, "components", "layout"),
+  ];
+  const FORBIDDEN = /platform_admin|readPlatformAdminClaim|isPlatformAdmin/;
+
+  function sourceFiles(dir: string): string[] {
+    const out: string[] = [];
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const full = join(dir, entry.name);
+      if (entry.isDirectory()) out.push(...sourceFiles(full));
+      else if (/\.(ts|tsx)$/.test(entry.name) && !entry.name.includes(".test.")) out.push(full);
+    }
+    return out;
+  }
+
+  it("no operator source file references the retired platform_admin boolean", () => {
+    const offenders = SCANNED.flatMap(sourceFiles).filter((f) => FORBIDDEN.test(readFileSync(f, "utf8")));
+    expect(offenders).toEqual([]);
   });
 });

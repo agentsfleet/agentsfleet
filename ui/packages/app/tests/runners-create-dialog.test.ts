@@ -112,13 +112,13 @@ describe("AddRunnerDialog component", () => {
   it("a server 403 keeps the dialog open, reveals no token, and does not signal onCreated", async () => {
     createRunnerActionMock.mockResolvedValue({
       ok: false,
-      error: "platform admin required",
-      errorCode: "UZ-AUTH-021",
+      error: "Operator scope required: runner:enroll",
+      errorCode: "UZ-AUTH-022",
     });
     const { user, onCreated } = await openDialog();
     await user.type(screen.getByLabelText(/host id/i), "web-prod-1");
     await user.click(screen.getByRole("button", { name: /create runner/i }));
-    await waitFor(() => expect(screen.getByText(/platform-admin access/i)).toBeTruthy());
+    await waitFor(() => expect(screen.getByText(/operator scope/i)).toBeTruthy());
     expect(screen.queryByLabelText("Runner token")).toBeNull();
     expect(onCreated).not.toHaveBeenCalled();
     expect(captureProductEventMock).not.toHaveBeenCalled();
