@@ -14,7 +14,7 @@ const std = @import("std");
 const common = @import("common");
 const clock = common.clock;
 const config = @import("config.zig");
-const post = @import("post.zig");
+const Client = @import("Client.zig");
 
 const logging = @import("log");
 
@@ -85,7 +85,7 @@ pub fn Exporter(comptime hooks: Hooks) type {
         }
 
         fn flushLoop() void {
-            var client = post.Client.init();
+            var client = Client.init();
             defer client.deinit();
             while (g_running.load(.acquire)) {
                 interruptibleSleep(hooks.flush_interval_ms);
@@ -98,7 +98,7 @@ pub fn Exporter(comptime hooks: Hooks) type {
             }
         }
 
-        fn flushOnce(client: *post.Client) void {
+        fn flushOnce(client: *Client) void {
             const cfg = g_config orelse return;
             var payload_buf: [OTLP_PAYLOAD_BUF_BYTES]u8 = undefined;
             var fba = std.heap.FixedBufferAllocator.init(&payload_buf);
