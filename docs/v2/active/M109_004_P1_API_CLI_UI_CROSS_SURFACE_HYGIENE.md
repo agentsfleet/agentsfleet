@@ -148,8 +148,10 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 
 `ensureLoader`'s unguarded `loadPromise = loadPosthog(cfg);` leaves `loadPromise` permanently set to a rejected promise on any dynamic-import/init failure, wedging analytics for the rest of the page session. **Implementation default:** port the app package's `try/catch`-around-`await import(...)` pattern (`initAnalytics`, lines 142-152) into the website package's `loadPosthog`/`ensureLoader`, resetting `loadPromise` to `null` on failure so a later call can retry — because that's the exact working pattern already in this codebase for the sibling loader.
 
-- **Dimension 2.1** — a failed `loadPosthog` call resets state so a subsequent `ensureLoader` call retries instead of returning immediately due to a stale `loadPromise` → Test `test_ensure_loader_retries_after_failed_load`.
-- **Dimension 2.2** — a failed load does not produce an unhandled promise rejection in the console → Test `test_failed_load_does_not_produce_unhandled_rejection`.
+- **Dimension 2.1 — DONE** — a failed `loadPosthog` call resets `loadPromise` (and leaves `posthogModule` null, since the client is bound only after `init()` succeeds) so a subsequent `ensureLoader`/`track()` retries instead of short-circuiting → Test `test_ensure_loader_retries_after_failed_load`.
+- **Dimension 2.2 — DONE** — a failed load does not produce an unhandled promise rejection (the `.catch` handles it) → Test `test_failed_load_does_not_produce_unhandled_rejection`.
+
+> **Implementation note (2.1):** the faithful port surfaced a second latent bug — `loadPosthog` set `posthogModule = mod.default` *before* `init()`, so a failed init left the module-level client non-null and `track()` would `capture()` against an uninitialised client instead of retrying. The fix binds `posthogModule` only after `init()` succeeds (exactly the app sibling's local-var-then-assign shape), so the retry actually reloads.
 
 ---
 

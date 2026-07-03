@@ -82,9 +82,14 @@ async function loadPosthog(cfg: RuntimeConfig): Promise<void> {
   // No posthogModule re-entry guard: ensureLoader gates the single call via
   // `loadPromise`, so this runs exactly once per init cycle (module still
   // unloaded). A guard here would be unreachable defensive code.
+  //
+  // The client is bound to `posthogModule` only AFTER init() succeeds (mirrors
+  // the sibling app-package loader): if the import or init throws, the
+  // module-level client stays null so a retry actually reloads, rather than
+  // leaving track() to capture() against an uninitialised client.
   const mod = await import("posthog-js");
-  posthogModule = mod.default;
-  posthogModule.init(cfg.key, {
+  const client = mod.default;
+  client.init(cfg.key, {
     api_host: cfg.host,
     // Autocapture covers clicks/changes/submits with element metadata
     // (text, href, css path, surrounding form). Pageviews fire on every
@@ -105,6 +110,7 @@ async function loadPosthog(cfg: RuntimeConfig): Promise<void> {
     capture_pageleave: true,
     persistence: "localStorage",
   });
+  posthogModule = client;
   // Drain buffered events in arrival order; splice(0) empties the queue and
   // hands back every entry, so there is no partial-shift undefined to guard.
   for (const [event, props] of pendingEvents.splice(0)) {
@@ -114,7 +120,14 @@ async function loadPosthog(cfg: RuntimeConfig): Promise<void> {
 
 function ensureLoader(cfg: RuntimeConfig): void {
   if (loadPromise || !cfg.enabled) return;
-  loadPromise = loadPosthog(cfg);
+  // Reset loadPromise on failure (blocked/offline chunk load, an init throw) so
+  // a later ensureLoader/track() retries instead of being wedged forever on a
+  // permanently-rejected promise. The `.catch` also handles the rejection, so a
+  // failed load never surfaces an unhandled promise rejection. Mirrors the
+  // sibling app-package loader's try/catch failure isolation (lib/analytics).
+  loadPromise = loadPosthog(cfg).catch(() => {
+    loadPromise = null;
+  });
 }
 
 function scheduleIdle(fn: () => void): void {

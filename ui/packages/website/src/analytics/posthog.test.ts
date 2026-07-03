@@ -18,10 +18,17 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const TEST_KEY = ["phc", "synthetic", "fixture", "0123456789"].join("_");
 
 const captured: Array<{ key: string; opts: Record<string, unknown> }> = [];
+// When true, the next posthog-js `init()` throws — simulating a blocked/offline
+// chunk load or an init failure. Tests flip it to exercise the recovery path.
+let failNextInit = false;
 
 vi.mock("posthog-js", () => ({
   default: {
     init: (key: string, opts: Record<string, unknown>) => {
+      if (failNextInit) {
+        failNextInit = false;
+        throw new Error("posthog-js chunk blocked");
+      }
       captured.push({ key, opts });
     },
     capture: vi.fn(),
@@ -35,6 +42,7 @@ const originalRic = (globalThis as { requestIdleCallback?: unknown }).requestIdl
 
 beforeEach(() => {
   captured.length = 0;
+  failNextInit = false;
   (globalThis as { requestIdleCallback?: (cb: () => void) => void }).requestIdleCallback = (
     cb: () => void,
   ) => cb();
@@ -108,5 +116,37 @@ describe("posthog init contract", () => {
     mod.initAnalytics();
     await mod.flushAnalyticsForTests();
     expect(captured).toHaveLength(0);
+  });
+});
+
+describe("posthog loader failure recovery (§2)", () => {
+  // test_ensure_loader_retries_after_failed_load (Dimension 2.1)
+  it("retries the load after a failed attempt instead of wedging permanently", async () => {
+    const mod = await import("./posthog");
+
+    // First load attempt fails (blocked chunk / init throw).
+    failNextInit = true;
+    mod.initAnalytics();
+    await mod.flushAnalyticsForTests();
+    expect(captured).toHaveLength(0); // nothing initialized on the failed attempt
+
+    // A later event must retry the load — not short-circuit on a stale, still
+    // permanently-rejected `loadPromise`. The queued event flushes on success.
+    mod.trackNavigationClicked({ source: "hero" });
+    await mod.flushAnalyticsForTests();
+    expect(captured).toHaveLength(1); // retry succeeded → init ran
+  });
+
+  // test_failed_load_does_not_produce_unhandled_rejection (Dimension 2.2)
+  it("a failed load is caught internally — the loader promise never rejects", async () => {
+    const mod = await import("./posthog");
+    failNextInit = true;
+    mod.initAnalytics();
+    // The production `loadPromise` IS this `.catch`-wrapped promise: it carries
+    // a handler, so a failed load can never surface as an unhandled rejection.
+    // Awaiting it must resolve (not throw). Without the `.catch`, loadPromise
+    // would be the raw rejected promise this guards against, and this rejects.
+    await expect(mod.flushAnalyticsForTests()).resolves.toBeUndefined();
+    expect(captured).toHaveLength(0); // failure left state resettable, not wedged
   });
 });
