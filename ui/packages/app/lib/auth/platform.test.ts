@@ -13,10 +13,11 @@ beforeEach(() => vi.clearAllMocks());
 afterEach(() => vi.resetAllMocks());
 
 describe("readSessionScopes", () => {
-  it("parses the top-level space-delimited scopes claim into a set", async () => {
+  it("parses the top-level space-delimited scopes claim into a set (with closure)", async () => {
     authMock.mockResolvedValueOnce({ sessionClaims: { scopes: "runner:read runner:enroll model:admin" } });
     const scopes = await readSessionScopes();
-    expect([...scopes].sort()).toEqual(["model:admin", "runner:enroll", "runner:read"]);
+    // model:admin closes down to model:read; runner:read already explicit.
+    expect([...scopes].sort()).toEqual(["model:admin", "model:read", "runner:enroll", "runner:read"]);
   });
 
   it("accepts a JSON-array scopes claim too (backend-tolerant reader parity)", async () => {
@@ -29,6 +30,18 @@ describe("readSessionScopes", () => {
     authMock.mockResolvedValueOnce({ sessionClaims: { scopes: "  runner:read   model:read  " } });
     const scopes = await readSessionScopes();
     expect([...scopes].sort()).toEqual(["model:read", "runner:read"]);
+  });
+
+  it("expands the downward closure — a held write/admin scope satisfies its read rung", async () => {
+    // Mirrors the backend parseClaim closure: the documented operator set carries
+    // runner:write / model:admin (not the :read rungs) — the read-gated pages
+    // must still resolve, matching the backend requireScope decision.
+    authMock.mockResolvedValueOnce({ sessionClaims: { scopes: "runner:write model:admin" } });
+    const scopes = await readSessionScopes();
+    expect(scopes.has("runner:read")).toBe(true);
+    expect(scopes.has("model:read")).toBe(true);
+    expect(scopes.has("runner:write")).toBe(true);
+    expect(scopes.has("model:admin")).toBe(true);
   });
 
   it("is empty (fail-closed) when the scopes claim is absent", async () => {
