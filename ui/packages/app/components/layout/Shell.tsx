@@ -23,6 +23,7 @@ import {
   DialogTitle,
   DialogTrigger,
   EYEBROW_CLASS,
+  Nav,
   WakePulse,
 } from "@agentsfleet/design-system";
 import { cn } from "@/lib/utils";
@@ -226,7 +227,7 @@ function SidebarNav({ isActive, onNavigate, operatorScopes }: NavProps) {
   const platformItems = PLATFORM_NAV.filter((entry) => operatorScopes.includes(entry.scope));
   const configItems = [...CONFIGURATION_NAV, ...platformItems];
   return (
-    <div className="flex flex-col h-full">
+    <Nav aria-label="Primary" className="flex flex-col h-full">
       <NavSection items={TOP_NAV} isActive={isActive} onNavigate={onNavigate} />
       <NavSection label="Automations" items={OPERATIONS_NAV} isActive={isActive} onNavigate={onNavigate} />
       <NavSection label="Configuration" items={configItems} isActive={isActive} onNavigate={onNavigate} />
@@ -234,7 +235,7 @@ function SidebarNav({ isActive, onNavigate, operatorScopes }: NavProps) {
       <div className="mt-auto">
         <NavSection items={BOTTOM_NAV} isActive={isActive} onNavigate={onNavigate} />
       </div>
-    </div>
+    </Nav>
   );
 }
 
