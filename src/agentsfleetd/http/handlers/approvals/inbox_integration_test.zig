@@ -16,8 +16,12 @@ const pg = @import("pg");
 const harness_mod = @import("../../test_harness.zig");
 const TestHarness = harness_mod.TestHarness;
 const auth_mw = @import("../../../auth/middleware/mod.zig");
+const approval_gate = @import("../../../fleet_runtime/approval_gate.zig");
 const approval_gate_db = @import("../../../fleet_runtime/approval_gate_db.zig");
 const approval_gate_sweeper = @import("../../../fleet_runtime/approval_gate_sweeper.zig");
+const approval_gate_async = @import("../../../fleet_runtime/approval_gate_async.zig");
+const queue_redis = @import("../../../queue/redis_client.zig");
+const ec = @import("../../../errors/error_registry.zig");
 
 const ALLOC = std.testing.allocator;
 const MS_PER_SECOND = 1000;
@@ -393,9 +397,7 @@ test "integration: anomaly EVAL atomically sets TTL on first INCR" {
     defer h.releaseConn(conn);
     defer cleanupTestData(conn);
 
-    const approval_gate = @import("../../../fleet_runtime/approval_gate.zig");
     const cfg = @import("../../../fleet_runtime/config_gates.zig");
-    const ec = @import("../../../errors/error_registry.zig");
 
     const test_agent = "anomaly-ttl-fleet-001";
     const tool = "write_repo";
@@ -634,7 +636,6 @@ test "integration: sweeper transitions expired pending row to timed_out + system
 
     // Suppress unused-import warning for the sweeper module the test exercises.
     _ = approval_gate_sweeper;
-    _ = approval_gate_db;
 }
 
 // ── Cross-fleet defense ────────────────────────────────────────────────
@@ -692,4 +693,178 @@ test "approval_gate.resolve with mismatched fleet_id_filter leaves row pending" 
     const status_final = try statusOf(conn, ALLOC, gid);
     defer ALLOC.free(status_final);
     try std.testing.expectEqualStrings("approved", status_final);
+}
+
+// ── DB fallback: decision survives a missing Redis mirror ──
+// resolve() commits the terminal decision to Postgres, then best-effort-mirrors
+// it into Redis. When that mirror write fails, the DB row still holds the
+// decision. evaluateRef (the only reader on the enforcement path) must observe
+// it via the DB fallback — otherwise the audit trail (DB says approved) and
+// enforcement (Redis-only read times out) diverge permanently.
+
+fn delRedisKey(q: *queue_redis.Client, key: []const u8) void {
+    var resp = q.commandAllowError(&.{ "DEL", key }) catch return;
+    resp.deinit(q.alloc);
+}
+
+fn delDecisionKey(q: *queue_redis.Client, action_id: []const u8) void {
+    var buf: [256]u8 = undefined;
+    if (std.fmt.bufPrint(&buf, "{s}{s}", .{ ec.GATE_RESPONSE_KEY_PREFIX, action_id })) |k| delRedisKey(q, k) else |_| {}
+}
+
+fn cleanupGateRedis(q: *queue_redis.Client, fleet_id: []const u8, event_id: []const u8, action_id: []const u8) void {
+    var buf_a: [256]u8 = undefined;
+    if (std.fmt.bufPrint(&buf_a, "{s}{s}:{s}", .{ ec.GATE_EVENT_REF_KEY_PREFIX, fleet_id, event_id })) |k| delRedisKey(q, k) else |_| {}
+    delDecisionKey(q, action_id);
+}
+
+// Commit a terminal decision to the DB ONLY. ResolveArgs.atomic never touches
+// Redis, so this reproduces the exact "DB commit succeeded, Redis mirror write
+// failed" state the durability fix targets.
+fn resolveDbOnly(pool: *pg.Pool, action_id: []const u8, outcome: approval_gate.GateStatus) !void {
+    const args = approval_gate_db.ResolveArgs{ .action_id = action_id, .outcome = outcome, .by = "user:op" };
+    var oc = try args.atomic(pool, ALLOC);
+    defer oc.deinit(ALLOC);
+    try std.testing.expect(oc == .resolved);
+}
+
+test "integration: evaluateRef falls back to DB when the Redis decision mirror is absent" {
+    const h = seedAndHarness(ALLOC) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+    if (!h.tryConnectRedis()) return error.SkipZigTest;
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    defer cleanupTestData(conn);
+
+    const gid = "01999999-dddd-7000-8000-000000000001";
+    const action_id = "act-dbfb-1";
+    const fleet_id = "z-dbfb-approve";
+    const event_id = "ev-dbfb-1";
+    try insertGate(conn, .{ .gate_id = gid, .action_id = action_id });
+    try resolveDbOnly(h.pool, action_id, .approved);
+
+    // Mirror key absent; record only the byevent ref so evaluateRef has a ref.
+    delDecisionKey(&h.queue, action_id);
+    const deadline = clock.nowMillis() + 60_000;
+    try approval_gate_async.recordEventGateRef(&h.queue, fleet_id, event_id, action_id, deadline);
+    defer cleanupGateRedis(&h.queue, fleet_id, event_id, action_id);
+
+    const ref = (try approval_gate_async.lookupEventGateRef(&h.queue, fleet_id, event_id)).?;
+    const eval = try approval_gate_async.evaluateRef(&h.queue, h.pool, &ref, clock.nowMillis());
+    try std.testing.expectEqual(approval_gate_async.PendingEval.approved, eval);
+}
+
+test "integration: sweeper resolve cannot overwrite a DB-fallback-resolved row" {
+    const h = seedAndHarness(ALLOC) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+    if (!h.tryConnectRedis()) return error.SkipZigTest;
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    defer cleanupTestData(conn);
+
+    const gid = "01999999-dddd-7000-8000-000000000002";
+    const action_id = "act-dbfb-2";
+    const fleet_id = "z-dbfb-race";
+    const event_id = "ev-dbfb-2";
+    // Past timeout_at — a real sweeper cycle would target this row if it were
+    // still pending; the DB-only resolve makes it terminal first.
+    try insertGate(conn, .{ .gate_id = gid, .action_id = action_id, .timeout_at = 1 });
+    try resolveDbOnly(h.pool, action_id, .approved);
+
+    delDecisionKey(&h.queue, action_id);
+    const deadline = clock.nowMillis() + 60_000;
+    try approval_gate_async.recordEventGateRef(&h.queue, fleet_id, event_id, action_id, deadline);
+    defer cleanupGateRedis(&h.queue, fleet_id, event_id, action_id);
+
+    // The DB fallback observes the approved decision.
+    const ref = (try approval_gate_async.lookupEventGateRef(&h.queue, fleet_id, event_id)).?;
+    try std.testing.expectEqual(approval_gate_async.PendingEval.approved, try approval_gate_async.evaluateRef(&h.queue, h.pool, &ref, clock.nowMillis()));
+
+    // The sweeper's only mutation is resolve(timed_out); the atomic
+    // WHERE status='pending' guard makes it a loser on an already-approved row.
+    var outcome = try approval_gate.resolve(h.pool, &h.queue, ALLOC, .{
+        .action_id = action_id,
+        .outcome = .timed_out,
+        .by = "system:timeout",
+        .reason = "auto-timeout",
+    });
+    defer switch (outcome) {
+        .resolved => |*r| @constCast(r).deinit(ALLOC),
+        .already_resolved => |*r| @constCast(r).deinit(ALLOC),
+        .not_found => {},
+    };
+    try std.testing.expect(outcome == .already_resolved);
+    try std.testing.expectEqual(approval_gate.GateStatus.approved, outcome.already_resolved.outcome);
+
+    const status = try statusOf(conn, ALLOC, gid);
+    defer ALLOC.free(status);
+    try std.testing.expectEqualStrings("approved", status);
+}
+
+// The fallback must map every terminal DB status, not just approved — a denied
+// decision whose Redis mirror was lost must still block via the DB row
+// (statusToDecision: denied/timed_out/auto_killed → .denied).
+test "integration: evaluateRef DB fallback surfaces a denied decision when the Redis mirror is absent" {
+    const h = seedAndHarness(ALLOC) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+    if (!h.tryConnectRedis()) return error.SkipZigTest;
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    defer cleanupTestData(conn);
+
+    const gid = "01999999-dddd-7000-8000-000000000003";
+    const action_id = "act-dbfb-3";
+    const fleet_id = "z-dbfb-deny";
+    const event_id = "ev-dbfb-3";
+    try insertGate(conn, .{ .gate_id = gid, .action_id = action_id });
+    try resolveDbOnly(h.pool, action_id, .denied);
+
+    delDecisionKey(&h.queue, action_id);
+    const deadline = clock.nowMillis() + 60_000;
+    try approval_gate_async.recordEventGateRef(&h.queue, fleet_id, event_id, action_id, deadline);
+    defer cleanupGateRedis(&h.queue, fleet_id, event_id, action_id);
+
+    const ref = (try approval_gate_async.lookupEventGateRef(&h.queue, fleet_id, event_id)).?;
+    const eval = try approval_gate_async.evaluateRef(&h.queue, h.pool, &ref, clock.nowMillis());
+    try std.testing.expectEqual(approval_gate_async.PendingEval.denied, eval);
+}
+
+// The fallback must NOT fabricate a decision: a still-pending DB row (no
+// terminal decision, Redis mirror absent) leaves evaluateRef at .pending when
+// the deadline is ahead (readTerminalDecision returns null for non-terminal).
+test "integration: evaluateRef stays pending when the DB row is unresolved and Redis is absent" {
+    const h = seedAndHarness(ALLOC) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+    if (!h.tryConnectRedis()) return error.SkipZigTest;
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    defer cleanupTestData(conn);
+
+    const gid = "01999999-dddd-7000-8000-000000000004";
+    const action_id = "act-dbfb-4";
+    const fleet_id = "z-dbfb-pending";
+    const event_id = "ev-dbfb-4";
+    // Row stays 'pending' — no resolveDbOnly. Redis decision mirror never written.
+    try insertGate(conn, .{ .gate_id = gid, .action_id = action_id });
+
+    delDecisionKey(&h.queue, action_id);
+    const deadline = clock.nowMillis() + 60_000;
+    try approval_gate_async.recordEventGateRef(&h.queue, fleet_id, event_id, action_id, deadline);
+    defer cleanupGateRedis(&h.queue, fleet_id, event_id, action_id);
+
+    const ref = (try approval_gate_async.lookupEventGateRef(&h.queue, fleet_id, event_id)).?;
+    const eval = try approval_gate_async.evaluateRef(&h.queue, h.pool, &ref, clock.nowMillis());
+    try std.testing.expectEqual(approval_gate_async.PendingEval.pending, eval);
 }
