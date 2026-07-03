@@ -122,6 +122,7 @@ fn teardown(conn: *pg.Conn) void {
     }
     execIgnore(conn, "DELETE FROM fleet.runner_leases WHERE runner_id = $1::uuid", .{RUNNER_ID});
     execIgnore(conn, "DELETE FROM fleet.runners WHERE id = $1::uuid", .{RUNNER_ID});
+    base.teardownFleets(conn, WORKSPACE_ID);
     base.teardownWorkspace(conn, WORKSPACE_ID);
 }
 
@@ -149,6 +150,15 @@ fn setup() !?Env {
     teardown(conn);
     try base.seedTenant(conn);
     try base.seedWorkspace(conn, WORKSPACE_ID);
+    try base.seedFleet(conn, ZID_HYD_DROP, WORKSPACE_ID, "mem-hyd-drop", "{}", "# z");
+    try base.seedFleet(conn, ZID_HYD_FIT, WORKSPACE_ID, "mem-hyd-fit", "{}", "# z");
+    try base.seedFleet(conn, ZID_CAP_OVER, WORKSPACE_ID, "mem-cap-over", "{}", "# z");
+    try base.seedFleet(conn, ZID_CAP_UNDER, WORKSPACE_ID, "mem-cap-under", "{}", "# z");
+    try base.seedFleet(conn, ZID_TRUNC, WORKSPACE_ID, "mem-trunc", "{}", "# z");
+    try base.seedFleet(conn, ZID_SKIP, WORKSPACE_ID, "mem-skip", "{}", "# z");
+    try base.seedFleet(conn, ZID_HYD_CORE, WORKSPACE_ID, "mem-hyd-core", "{}", "# z");
+    try base.seedFleet(conn, ZID_SWEEP, WORKSPACE_ID, "mem-sweep", "{}", "# z");
+    try base.seedFleet(conn, ZID_SWEEP_CAP, WORKSPACE_ID, "mem-sweep-cap", "{}", "# z");
     try seedRunner(conn);
     try seedLease(conn, LEASE_HYD_DROP, ZID_HYD_DROP);
     try seedLease(conn, LEASE_HYD_FIT, ZID_HYD_FIT);

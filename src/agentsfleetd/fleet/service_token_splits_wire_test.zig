@@ -163,6 +163,7 @@ fn teardown(conn: *pg.Conn) void {
     model_rate_cache.populate(conn) catch |err|
         std.log.warn("cleanup ignored: {s}", .{@errorName(err)});
     base.teardownTenant(conn);
+    base.teardownFleets(conn, WORKSPACE_ID);
     base.teardownWorkspace(conn, WORKSPACE_ID);
 }
 
@@ -180,6 +181,7 @@ fn arrange(cursor_in: i64, cursor_cached: i64, cursor_out: i64) !Setup {
     teardown(conn);
     try base.seedTenant(conn);
     try base.seedWorkspace(conn, WORKSPACE_ID);
+    try base.seedFleet(conn, FLEET_ID, WORKSPACE_ID, "service-splits-fleet", "{}", "# z");
     try seedRunner(conn);
     try seedBalance(conn);
     try seedModelRates(conn);

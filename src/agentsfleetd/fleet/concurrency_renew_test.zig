@@ -137,6 +137,10 @@ fn teardown(conn: *pg.Conn) void {
     execIgnore(conn, "DELETE FROM fleet.runner_leases WHERE id = $1::uuid", .{LEASE_ID});
     execIgnore(conn, "DELETE FROM fleet.runner_affinity WHERE fleet_id = $1::uuid", .{FLEET_ID});
     execIgnore(conn, "DELETE FROM fleet.runners WHERE id = $1::uuid", .{RUNNER_ID});
+    // Fleets before tenant/workspace — core.fleets.workspace_id has no cascade, so
+    // a lingering fleet row would block the workspace delete. Removes both FLEET_ID
+    // and FLEET_ID_2 (same workspace); cascades any residual lease/affinity.
+    base.teardownFleets(conn, WORKSPACE_ID);
     base.teardownTenant(conn);
     base.teardownWorkspace(conn, WORKSPACE_ID);
 }
@@ -182,6 +186,7 @@ test "100 concurrent renews on one active lease converge to a single shared dead
     teardown(c_init);
     try base.seedTenant(c_init);
     try base.seedWorkspace(c_init, WORKSPACE_ID);
+    try base.seedFleet(c_init, FLEET_ID, WORKSPACE_ID, "conc-renew", "{}", "# z");
     try seedRunner(c_init);
     // Fence holds (token == seq); created_at recent so the cap is far away and
     // every renew clamps to the same now+TTL target.
@@ -249,6 +254,7 @@ test "100 concurrent metered renews on one lease charge the slice exactly once (
     teardown(c);
     try base.seedTenant(c);
     try base.seedWorkspace(c, WORKSPACE_ID);
+    try base.seedFleet(c, FLEET_ID, WORKSPACE_ID, "conc-renew", "{}", "# z");
     try seedRunner(c);
     try seedAffinity(c, 5, NOW_MS - MS_PER_SECOND);
     try seedLease(c, 5, NOW_MS - 2_000, NOW_MS - MS_PER_SECOND);
@@ -314,6 +320,7 @@ test "claim+settle racing a reclaim never reports without charging the final sli
     teardown(c);
     try base.seedTenant(c);
     try base.seedWorkspace(c, WORKSPACE_ID);
+    try base.seedFleet(c, FLEET_ID, WORKSPACE_ID, "conc-renew", "{}", "# z");
     try seedRunner(c);
     // Fence holds at issue (token == seq == 5) so the claim CAN win; a racing
     // reclaim bumps the sequence to 6+, which would fence the claim out.
@@ -371,6 +378,7 @@ const EVENT_ID_2 = "evt-conc-renew-2";
 // A second active lease for the SAME tenant on its own fleet, with the same
 // 20s cursor baseline so its slice price equals the first lease's.
 fn seedSecondLease(conn: *pg.Conn) !void {
+    try base.seedFleet(conn, FLEET_ID_2, WORKSPACE_ID, "conc-renew-2", "{}", "# z");
     _ = try conn.exec(
         \\INSERT INTO fleet.runner_affinity
         \\  (id, fleet_id, last_runner_id, fencing_seq, leased_until,
@@ -471,6 +479,7 @@ test "integration: two same-tenant renews at exhaustion record audit rows summin
     teardownSecond(c);
     try base.seedTenant(c);
     try base.seedWorkspace(c, WORKSPACE_ID);
+    try base.seedFleet(c, FLEET_ID, WORKSPACE_ID, "conc-renew", "{}", "# z");
     try seedRunner(c);
     try seedAffinity(c, 5, NOW_MS - MS_PER_SECOND);
     try seedLease(c, 5, NOW_MS - 2_000, NOW_MS - MS_PER_SECOND);
@@ -527,6 +536,7 @@ test "integration: two same-tenant settles at exhaustion record audit rows summi
     teardownSecond(c);
     try base.seedTenant(c);
     try base.seedWorkspace(c, WORKSPACE_ID);
+    try base.seedFleet(c, FLEET_ID, WORKSPACE_ID, "conc-renew", "{}", "# z");
     try seedRunner(c);
     try seedAffinity(c, 5, NOW_MS - MS_PER_SECOND);
     try seedLease(c, 5, NOW_MS - 2_000, NOW_MS - MS_PER_SECOND);
@@ -575,6 +585,7 @@ test "integration: a regressed cumulative token report charges zero tokens and n
     teardown(c);
     try base.seedTenant(c);
     try base.seedWorkspace(c, WORKSPACE_ID);
+    try base.seedFleet(c, FLEET_ID, WORKSPACE_ID, "conc-renew", "{}", "# z");
     try seedRunner(c);
     try seedAffinity(c, 5, NOW_MS - MS_PER_SECOND);
     try seedLease(c, 5, NOW_MS - 2_000, NOW_MS - MS_PER_SECOND);
