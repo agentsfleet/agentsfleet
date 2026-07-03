@@ -96,6 +96,7 @@ fn teardown(conn: *pg.Conn) void {
     execIgnore(conn, "DELETE FROM fleet.runner_leases WHERE id = $1::uuid", .{LEASE_ID});
     execIgnore(conn, "DELETE FROM fleet.runner_affinity WHERE fleet_id = $1::uuid", .{FLEET_ID});
     execIgnore(conn, "DELETE FROM fleet.runners WHERE id = $1::uuid", .{RUNNER_ID});
+    base.teardownFleets(conn, WORKSPACE_ID);
     base.teardownWorkspace(conn, WORKSPACE_ID);
 }
 
@@ -130,6 +131,7 @@ test "renew extends both the lease row and the affinity slot to the same clamped
     teardown(conn);
     try base.seedTenant(conn); // workspaces.tenant_id FK requires the tenant first
     try base.seedWorkspace(conn, WORKSPACE_ID);
+    try base.seedFleet(conn, FLEET_ID, WORKSPACE_ID, "renewal-int-fleet", "{}", "# z");
     try seedRunner(conn);
     // Fence holds (token == seq). created_at recent → cap not reached. Both rows
     // start at an about-to-expire deadline.
@@ -160,6 +162,7 @@ test "renew on a lease whose fence was bumped by a reclaim returns lost" {
     teardown(conn);
     try base.seedTenant(conn); // workspaces.tenant_id FK requires the tenant first
     try base.seedWorkspace(conn, WORKSPACE_ID);
+    try base.seedFleet(conn, FLEET_ID, WORKSPACE_ID, "renewal-int-fleet", "{}", "# z");
     try seedRunner(conn);
     // A reclaim bumped the affinity fence past the lease's token: lease holds
     // token 5, the live slot is at seq 6 → the lease is no longer the holder.
@@ -187,6 +190,7 @@ test "renew past the hard max-runtime cap returns max_runtime and does not exten
     teardown(conn);
     try base.seedTenant(conn); // workspaces.tenant_id FK requires the tenant first
     try base.seedWorkspace(conn, WORKSPACE_ID);
+    try base.seedFleet(conn, FLEET_ID, WORKSPACE_ID, "renewal-int-fleet", "{}", "# z");
     try seedRunner(conn);
     // Fence holds, but created_at is older than MAX_RUNTIME_MS, so the cap
     // (created_at + MAX) is already <= now → no extension is legal.
@@ -218,6 +222,7 @@ test "renew clamps the new deadline to the hard cap when TTL would overshoot it"
     teardown(conn);
     try base.seedTenant(conn); // workspaces.tenant_id FK requires the tenant first
     try base.seedWorkspace(conn, WORKSPACE_ID);
+    try base.seedFleet(conn, FLEET_ID, WORKSPACE_ID, "renewal-int-fleet", "{}", "# z");
     try seedRunner(conn);
     // created_at is set so the cap lands BETWEEN now and now+TTL: the renewal is
     // legal (cap > now) but clamps to the cap, not the full TTL increment.
