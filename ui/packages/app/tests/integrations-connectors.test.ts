@@ -91,6 +91,9 @@ describe("IntegrationsConnectors (test_ui_connectors_cards_from_catalog)", () =>
     expect(github.textContent).toContain("Not connected");
     expect(github.textContent).not.toContain("GITHUB_TOKEN");
     expect(screen.getByRole("button", { name: /connect github/i })).toBeTruthy();
+    // Not-connected is a neutral fact, not a fault (FINDING-007) — amber stays
+    // reserved for reconnect-required, which genuinely needs attention.
+    expect(within(github).getByText("Not connected").getAttribute("data-variant")).toBe("neutral");
   });
 
   it("uses the bespoke GitHub status override (connected → no Connect button)", () => {
