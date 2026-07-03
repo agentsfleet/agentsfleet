@@ -623,7 +623,7 @@ flowchart TB
 
 | Surface | Outcome |
 |---|---|
-| Clerk org config (D40) | Session Token Claims += `aud`, `metadata.tenant_id`, `scopes`. DEV applied; PROD pending operator click. |
+| Clerk org config (D40) | Session Token Claims += `aud`, `metadata.tenant_id`, `scopes`. DEV applied; PROD pending operator click. **⚠️ Now load-bearing for operator-UI visibility (M109_004 §4):** the dashboard operator surfaces (runners, admin models) gate on the top-level `scopes` claim via `lib/auth/platform.ts` `hasScope` — the legacy `metadata.platform_admin` boolean is retired. Until the PROD Session-Token-Claims config projects `scopes` **and** the operator user carries the scopes on `public_metadata.scopes`, PROD operators are hidden (fail-closed). The backend `requireScope` (`route_scopes.zig`) stays the authoritative gate; the UI check is defence-in-depth. |
 | `lib/auth/server.ts` (D41) | DELETED — `getServerToken()` / `getServerAuth()` / `getServerSessionMetadata()` / `API_TEMPLATE` const all gone. |
 | `lib/api/redacted.ts` (D42) | N/A — file not present in this worktree; no surface to delete. |
 | `lib/actions/with-token.ts` (D43) | Simplified — drops the `getServerToken` indirection; calls `auth().getToken()` directly. |

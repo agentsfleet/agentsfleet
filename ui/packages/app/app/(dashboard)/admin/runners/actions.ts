@@ -1,7 +1,8 @@
 "use server";
 
 import { withToken, type ActionResult } from "@/lib/actions/with-token";
-import { readPlatformAdminClaim } from "@/lib/auth/platform";
+import { hasScope } from "@/lib/auth/platform";
+import { SCOPE } from "@/lib/auth/scopes";
 import { ERROR_CODE } from "@/lib/errors";
 import {
   listRunners,
@@ -18,23 +19,24 @@ import {
   type SandboxTier,
 } from "@/lib/api/runners";
 
-// Defence-in-depth: gate every runner action on the platform_admin claim before
-// the round-trip. The backend independently 403s a non-admin principal
-// (UZ-AUTH-021) — this just fails fast and keeps the surface platform-only.
-async function asPlatformAdmin<T>(fn: () => Promise<ActionResult<T>>): Promise<ActionResult<T>> {
-  if (!(await readPlatformAdminClaim())) {
+// Defence-in-depth: gate each runner action on the specific operator scope its
+// backend route enforces (route_scopes.zig) before the round-trip. The backend
+// independently 403s a token missing the scope (UZ-AUTH-022) — this just fails
+// fast so the UI never round-trips a request the token can't satisfy.
+async function requireScope<T>(scope: string, fn: () => Promise<ActionResult<T>>): Promise<ActionResult<T>> {
+  if (!(await hasScope(scope))) {
     return {
       ok: false,
-      error: "Platform-admin access required",
+      error: `Operator scope required: ${scope}`,
       status: 403,
-      errorCode: ERROR_CODE.PLATFORM_ADMIN_REQUIRED,
+      errorCode: ERROR_CODE.INSUFFICIENT_SCOPE,
     };
   }
   return fn();
 }
 
 export async function listRunnersAction(params: ListParams): Promise<ActionResult<RunnerListResponse>> {
-  return asPlatformAdmin(() => withToken((t) => listRunners(t, params)));
+  return requireScope(SCOPE.RUNNER_READ, () => withToken((t) => listRunners(t, params)));
 }
 
 export async function createRunnerAction(body: {
@@ -42,19 +44,19 @@ export async function createRunnerAction(body: {
   sandbox_tier: SandboxTier;
   labels: string[];
 }): Promise<ActionResult<CreatedRunner>> {
-  return asPlatformAdmin(() => withToken((t) => createRunner(t, body)));
+  return requireScope(SCOPE.RUNNER_ENROLL, () => withToken((t) => createRunner(t, body)));
 }
 
 export async function updateRunnerAdminStateAction(
   runnerId: string,
   action: RunnerAdminAction,
 ): Promise<ActionResult<RunnerAdminStateUpdate>> {
-  return asPlatformAdmin(() => withToken((t) => updateRunnerAdminState(t, runnerId, action)));
+  return requireScope(SCOPE.RUNNER_WRITE, () => withToken((t) => updateRunnerAdminState(t, runnerId, action)));
 }
 
 export async function listRunnerEventsAction(
   runnerId: string,
   params: EventListParams,
 ): Promise<ActionResult<RunnerEventsResponse>> {
-  return asPlatformAdmin(() => withToken((t) => listRunnerEvents(t, runnerId, params)));
+  return requireScope(SCOPE.RUNNER_READ, () => withToken((t) => listRunnerEvents(t, runnerId, params)));
 }
