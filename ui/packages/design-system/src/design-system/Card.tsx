@@ -2,6 +2,7 @@ import { Slot } from "@radix-ui/react-slot";
 import { cva, type VariantProps } from "class-variance-authority";
 import { type ComponentProps, type ReactNode } from "react";
 import { cn } from "../utils";
+import { EYEBROW_CLASS } from "./eyebrow";
 
 /*
  * Card — unified marketing/dashboard surface. Default <article>; pass
@@ -60,7 +61,8 @@ export function Card({
           className={cn(
             "absolute -top-2.5 left-6 rounded-sm px-2 py-0.5",
             "bg-primary text-primary-foreground",
-            "font-mono text-label font-medium uppercase tracking-label",
+            EYEBROW_CLASS,
+            "font-medium",
           )}
         >
           {badgeLabel ?? "Popular"}

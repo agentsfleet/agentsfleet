@@ -103,6 +103,13 @@ describe("Button", () => {
     expect(cls).toContain("w-9");
   });
 
+  it("icon-sm size is 24px square (inline affordance, e.g. CopyButton)", () => {
+    render(<Button size="icon-sm" aria-label="copy">⧉</Button>);
+    const cls = screen.getByRole("button").className;
+    expect(cls).toContain("h-6");
+    expect(cls).toContain("w-6");
+  });
+
   it("merges a custom className via cn", () => {
     render(<Button className="extra-class">X</Button>);
     expect(screen.getByRole("button").className).toContain("extra-class");

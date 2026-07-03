@@ -4,6 +4,7 @@ import {
   Alert,
   AlertDescription,
   AlertTitle,
+  CopyButton,
   DescriptionList,
   DescriptionTerm,
   DescriptionDetails,
@@ -16,6 +17,8 @@ import SettingsTabs from "@/components/layout/SettingsTabs";
 import WorkspaceSwitcher from "@/components/layout/WorkspaceSwitcher";
 
 export const dynamic = "force-dynamic";
+
+const WORKSPACE_DESCRIPTION = "Switch workspaces or create one.";
 
 export default async function SettingsPage({
   searchParams,
@@ -45,7 +48,7 @@ export default async function SettingsPage({
 
   return (
     <div className="space-y-8">
-      <SettingsTabs title="Workspace" />
+      <SettingsTabs title="Workspace" description={WORKSPACE_DESCRIPTION} />
 
       {notice === "api-keys-operator-only" ? (
         <Alert variant="warning">
@@ -60,10 +63,7 @@ export default async function SettingsPage({
 
       <Section aria-label="Workspace" className="min-w-0 max-w-2xl">
         <SectionLabel>Manage workspace</SectionLabel>
-        <p className="mt-2 text-sm text-muted-foreground">
-          Switch workspaces or create one.
-        </p>
-        <div className="mt-4">
+        <div>
           <WorkspaceSwitcher
             workspaces={workspaces}
             activeId={workspace?.id ?? null}
@@ -72,14 +72,26 @@ export default async function SettingsPage({
             showManageItem={false}
           />
         </div>
-        <DescriptionList layout="stacked" className="mt-3 break-all">
+        {/* Name + ID as aligned rows, each copyable — the ID is what the
+            command line and the API target, so copy is one click. */}
+        <DescriptionList className="mt-6">
           <div>
             <DescriptionTerm>Name</DescriptionTerm>
-            <DescriptionDetails>{workspace?.name ?? "—"}</DescriptionDetails>
+            <DescriptionDetails className="flex min-w-0 items-center gap-1">
+              <span className="truncate">{workspace?.name ?? "—"}</span>
+              {workspace?.name ? (
+                <CopyButton value={workspace.name} label="Copy workspace name" />
+              ) : null}
+            </DescriptionDetails>
           </div>
           <div>
             <DescriptionTerm>Workspace ID</DescriptionTerm>
-            <DescriptionDetails mono>{workspace?.id ?? "—"}</DescriptionDetails>
+            <DescriptionDetails mono className="flex min-w-0 items-center gap-1">
+              <span className="break-all">{workspace?.id ?? "—"}</span>
+              {workspace?.id ? (
+                <CopyButton value={workspace.id} label="Copy workspace ID" />
+              ) : null}
+            </DescriptionDetails>
           </div>
         </DescriptionList>
       </Section>

@@ -40,7 +40,7 @@ afterEach(() => cleanup());
 async function openDialog() {
   const user = userEvent.setup({ delay: null });
   render(React.createElement(AddTemplateDialog, { workspaceId: "ws_1" }));
-  await user.click(screen.getByRole("button", { name: /^add template$/i }));
+  await user.click(screen.getByRole("button", { name: /^create a template$/i }));
   await screen.findByLabelText("Repository");
   return user;
 }
@@ -54,7 +54,7 @@ function submitDialog() {
 describe("AddTemplateDialog", () => {
   it("links to the create-template docs from the dialog", async () => {
     await openDialog();
-    const link = screen.getByRole("link", { name: "Create a template" });
+    const link = screen.getByRole("link", { name: /^learn more/i });
     expect(link.getAttribute("href")).toBe(CREATE_TEMPLATE_DOC_URL);
   });
 
@@ -117,9 +117,9 @@ describe("AddTemplateDialog", () => {
     await user.type(screen.getByLabelText("Repository"), "owner/repo");
     submitDialog();
 
-    await screen.findByText("Adding template");
+    await screen.findByText("Creating template");
     expect(
-      (screen.getByRole("button", { name: /adding template add template/i }) as HTMLButtonElement)
+      (screen.getByRole("button", { name: /creating template create template/i }) as HTMLButtonElement)
         .disabled,
     ).toBe(true);
 
@@ -138,15 +138,15 @@ describe("AddTemplateDialog", () => {
     await user.type(screen.getByLabelText("Repository"), "owner/repo");
     submitDialog();
 
-    await screen.findByText("Adding template");
+    await screen.findByText("Creating template");
     await user.click(screen.getByRole("button", { name: "Close" }));
-    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Add template" })).toBeNull());
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Create a template" })).toBeNull());
     finishAction?.(onboarded);
 
-    await user.click(screen.getByRole("button", { name: /^add template$/i }));
-    const dialog = await screen.findByRole("dialog", { name: "Add template" });
+    await user.click(screen.getByRole("button", { name: /^create a template$/i }));
+    const dialog = await screen.findByRole("dialog", { name: "Create a template" });
     expect(
-      (within(dialog).getByRole("button", { name: /^add template$/i }) as HTMLButtonElement)
+      (within(dialog).getByRole("button", { name: /^create template$/i }) as HTMLButtonElement)
         .disabled,
     ).toBe(false);
     expect(routerRefresh).not.toHaveBeenCalled();

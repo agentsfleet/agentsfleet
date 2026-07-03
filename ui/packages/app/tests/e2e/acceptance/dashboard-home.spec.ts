@@ -2,7 +2,7 @@
  * dashboard-home.spec.ts — `/` renders for the fixture user.
  *
  * Two render modes worth covering, both via the same authed fixture:
- *   - Empty: no Fleets → FirstInstallCard renders ("Start your fleet").
+ *   - Empty: no Fleets → the FirstInstall gallery renders ("Start your fleet").
  *   - Populated: ≥1 Fleet → StatusCard tiles render (Live / Paused /
  *     Stopped / Balance).
  *
@@ -25,7 +25,7 @@ test.describe("dashboard home", () => {
     await expect(page.getByRole("heading", { name: /^dashboard$/i })).toBeVisible();
 
     // Either render path is correct. data-testid="status-card" comes from
-    // the StatusCard primitive; role=region narrows the FirstInstallCard
+    // the StatusCard primitive; role=region narrows the FirstInstall
     // section and avoids matching its command block label.
     const tiles = page.getByTestId("status-card");
     const firstInstall = page.getByLabel("Start your fleet");

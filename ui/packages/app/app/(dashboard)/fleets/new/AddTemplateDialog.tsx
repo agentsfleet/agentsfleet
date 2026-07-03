@@ -50,7 +50,7 @@ type Props = {
   triggerLabel?: string;
 };
 
-export default function AddTemplateDialog({ workspaceId, triggerLabel = "Add template" }: Props) {
+export default function AddTemplateDialog({ workspaceId, triggerLabel = "Create a template" }: Props) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [apiError, setApiError] = useState<ErrorPresentation | null>(null);
@@ -113,7 +113,7 @@ export default function AddTemplateDialog({ workspaceId, triggerLabel = "Add tem
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Add template</DialogTitle>
+          <DialogTitle>Create a template</DialogTitle>
           <DialogDescription>
             Add a GitHub repository that contains a Fleet template.
           </DialogDescription>
@@ -136,7 +136,7 @@ export default function AddTemplateDialog({ workspaceId, triggerLabel = "Add tem
                       rel="noopener noreferrer"
                       className="text-pulse underline-offset-2 hover:underline focus-visible:underline"
                     >
-                      Create a template
+                      Learn more<span className="sr-only"> about writing templates (opens in a new tab)</span>
                     </a>
                   </FormDescription>
                   <FormMessage />
@@ -152,8 +152,8 @@ export default function AddTemplateDialog({ workspaceId, triggerLabel = "Add tem
             ) : null}
             <DialogFooter>
               <Button type="submit" disabled={pending}>
-                {pending ? <Spinner size="sm" srLabel="Adding template" /> : null}
-                Add template
+                {pending ? <Spinner size="sm" srLabel="Creating template" /> : null}
+                Create template
               </Button>
             </DialogFooter>
           </form>

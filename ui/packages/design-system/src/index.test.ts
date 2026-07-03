@@ -29,6 +29,14 @@ describe("design-system public exports", () => {
     expect(DesignSystem.buttonClassName).toBeDefined();
   });
 
+  it("exports the shared EYEBROW_CLASS eyebrow-typography constant", () => {
+    expect(DesignSystem.EYEBROW_CLASS).toBeDefined();
+    // It is the eyebrow token set — the single source every eyebrow composes.
+    expect(DesignSystem.EYEBROW_CLASS).toContain("text-eyebrow");
+    expect(DesignSystem.EYEBROW_CLASS).toContain("tracking-eyebrow");
+    expect(DesignSystem.EYEBROW_CLASS).toContain("uppercase");
+  });
+
   it.each([
     "Time",
     "List",
@@ -36,6 +44,7 @@ describe("design-system public exports", () => {
     "DescriptionList",
     "DescriptionTerm",
     "DescriptionDetails",
+    "CopyButton",
   ] as const)("exports %s", (name) => {
     expect(DesignSystem[name]).toBeDefined();
   });

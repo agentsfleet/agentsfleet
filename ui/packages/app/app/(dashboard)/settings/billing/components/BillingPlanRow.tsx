@@ -1,5 +1,5 @@
 import { ActivityIcon } from "lucide-react";
-import { Badge, Button, Card, CardContent } from "@agentsfleet/design-system";
+import { Badge, Card, CardContent } from "@agentsfleet/design-system";
 import { SUPPORT_EMAIL } from "@/lib/contact";
 
 const VOLUME_SUBJECT = "Volume pricing enquiry";
@@ -25,13 +25,17 @@ export default function BillingPlanRow() {
             </p>
           </div>
         </div>
-        <div className="sm:text-right">
+        {/* Tight text stack (no Button chrome) so the two lines right-align and
+            baseline-match the left column instead of riding low on the h-8
+            control box. Inline pulse-link idiom matches the Models page. */}
+        <div className="flex flex-col items-start gap-1 sm:items-end">
           <div className="text-xs text-muted-foreground">Running heavy volume?</div>
-          <Button variant="link" size="sm" asChild className="px-0">
-            <a href={`mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent(VOLUME_SUBJECT)}`}>
-              Talk to us about volume pricing →
-            </a>
-          </Button>
+          <a
+            href={`mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent(VOLUME_SUBJECT)}`}
+            className="text-body-sm font-medium text-pulse underline-offset-2 hover:underline focus-visible:underline"
+          >
+            Talk to us about volume pricing →
+          </a>
         </div>
       </CardContent>
     </Card>

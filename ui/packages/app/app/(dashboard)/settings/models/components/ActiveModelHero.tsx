@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { Alert, Button, DashboardPanel, MetaGrid, StatusPill } from "@agentsfleet/design-system";
+import { Alert, Button, DashboardPanel, EYEBROW_CLASS, MetaGrid, StatusPill } from "@agentsfleet/design-system";
+import { cn } from "@/lib/utils";
 import { resetProviderAction } from "../actions";
 import { captureProviderReset } from "../lib/track";
 import { useProviderAction } from "../lib/use-provider-action";
@@ -75,15 +76,23 @@ export default function ActiveModelHero({ workspaceId, provider, credentials }: 
         <StatusPill variant={live ? "pulse" : "neutral"} dot>
           {live ? "LIVE" : "DEFAULT"}
         </StatusPill>
-        <span className="font-mono text-label uppercase tracking-label text-text-subtle">Active model</span>
+        <span className={cn(EYEBROW_CLASS, "text-text-subtle")}>Active model</span>
       </div>
 
+      {/* Heading in the sans display scale like every other page-level object;
+          mono stays reserved for data (the credential ref below, IDs, code). */}
       <div>
-        <div className="break-all font-mono text-2xl font-semibold tracking-tight text-foreground">
+        <div className="break-all text-display-md font-semibold leading-display-md tracking-display-md text-foreground">
           {live ? provider.model : "Platform default model"}
         </div>
-        <div className="mt-1 font-mono text-sm text-muted-foreground">
-          {live ? `via ${credRef ?? provider.provider}` : "Managed by agentsfleet · no key needed"}
+        <div className="mt-1 text-body-sm leading-body-sm text-muted-foreground">
+          {live ? (
+            <>
+              via <span className="font-mono">{credRef ?? provider.provider}</span>
+            </>
+          ) : (
+            "Managed by agentsfleet · no key needed"
+          )}
         </div>
       </div>
 

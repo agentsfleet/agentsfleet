@@ -13,6 +13,9 @@ import React from "react";
 // component / a test assertion reads (testids, ids, aria-*, disabled, onClick).
 export function designSystemStub() {
   return {
+    // Shared eyebrow typography constant (plain string; components compose it
+    // via cn). The stub only needs it to be a defined export.
+    EYEBROW_CLASS: "font-mono text-eyebrow uppercase leading-eyebrow tracking-eyebrow",
     Button: ({
       children,
       onClick,

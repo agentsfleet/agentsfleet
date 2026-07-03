@@ -164,9 +164,13 @@ describe("fleets routes", () => {
     const markup = renderToStaticMarkup(React.createElement(React.Fragment, null, await FleetsData()));
     expect(markup).toContain("No fleets yet");
     // The empty state is a centered EmptyState that routes to /fleets/new (where
-    // the template gallery lives) — no inline gallery, no quickstart here.
+    // the template gallery lives) — no inline gallery, no quickstart here. The
+    // action pair is [Learn more] + [Install fleet]; template authoring lives on
+    // the install page, not here.
     expect(markup).toContain('href="/fleets/new"');
-    expect(markup).toContain("Create a template");
+    expect(markup).toContain("Install fleet");
+    expect(markup).toContain("Learn more");
+    expect(markup).not.toContain("Create a template");
     expect(markup).not.toContain("Quick start");
     expect(markup).not.toContain("?template=");
     expect(markup).not.toContain("credit balance is exhausted");
@@ -219,7 +223,7 @@ describe("fleets routes", () => {
     const { default: Page } = await import("../app/(dashboard)/fleets/new/page");
     const markup = renderToStaticMarkup(await Page({ searchParams: Promise.resolve({}) }));
     expect(markup).toContain("Install fleet"); // page title
-    expect(markup).toContain("Start from a template");
+    expect(markup).toContain("Templates");
     expect(markup).toContain("GitHub PR reviewer");
     expect(markup).toContain("Use template"); // the gallery card's install action
   });
@@ -241,7 +245,7 @@ describe("fleets routes", () => {
     const markup = renderToStaticMarkup(
       await Page({ searchParams: Promise.resolve({ template: "github-pr-reviewer" }) }),
     );
-    expect(markup).toContain("Start from a template");
+    expect(markup).toContain("Templates");
   });
 
   it("fleets detail page redirects to /sign-in when no token", async () => {

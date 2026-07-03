@@ -63,10 +63,11 @@ describe("InstallEntry", () => {
     expect(m).toContain("GitHub PR reviewer");
   });
 
-  it("falls back to an empty state with a Create-a-template link when there are no templates", () => {
+  it("falls back to an empty state with Learn-more + Create-a-template when there are no templates", () => {
     const m = renderToStaticMarkup(React.createElement(InstallEntry, { templates: [] }));
     expect(m).toContain("No templates found");
     expect(m).toContain("Create a template");
+    expect(m).toContain("Learn more");
     expect(m).not.toContain("?template=");
   });
 
@@ -83,7 +84,7 @@ describe("InstallEntry", () => {
 // ── InstallSourceSelector — full install page template picker ───────────────
 
 describe("InstallSourceSelector", () => {
-  it("renders Add template in the populated gallery when template:write is available", async () => {
+  it("renders Create-a-template in the populated gallery when template:write is available", async () => {
     const onUseTemplate = vi.fn();
     const user = userEvent.setup({ delay: null });
     render(
@@ -95,12 +96,12 @@ describe("InstallSourceSelector", () => {
       }),
     );
 
-    expect(screen.getByRole("button", { name: "Add template" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Create a template" })).toBeTruthy();
     await user.click(screen.getByRole("button", { name: "Use template" }));
     expect(onUseTemplate).toHaveBeenCalledWith(TEMPLATE);
   });
 
-  it("renders the empty selector without Add template when template:write is absent", () => {
+  it("renders the empty selector without Create-a-template when template:write is absent", () => {
     render(
       React.createElement(InstallSourceSelector, {
         workspaceId: "ws_1",
@@ -111,11 +112,11 @@ describe("InstallSourceSelector", () => {
     );
 
     expect(screen.getByText("No templates found")).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Add template" })).toBeNull();
-    expect(screen.getByRole("link", { name: "Create a template" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Create a template" })).toBeNull();
+    expect(screen.getByRole("link", { name: "Learn more" })).toBeTruthy();
   });
 
-  it("defaults the selector to no Add template access", () => {
+  it("defaults the selector to no Create-a-template access", () => {
     render(
       React.createElement(InstallSourceSelector, {
         workspaceId: "ws_1",
@@ -125,10 +126,10 @@ describe("InstallSourceSelector", () => {
     );
 
     expect(screen.getByText("No templates found")).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Add template" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Create a template" })).toBeNull();
   });
 
-  it("renders Add template in the empty selector when template:write is available", () => {
+  it("renders Create-a-template in the empty selector when template:write is available", () => {
     render(
       React.createElement(InstallSourceSelector, {
         workspaceId: "ws_1",
@@ -139,7 +140,7 @@ describe("InstallSourceSelector", () => {
     );
 
     expect(screen.getByText("No templates found")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Add template" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Create a template" })).toBeTruthy();
   });
 });
 
