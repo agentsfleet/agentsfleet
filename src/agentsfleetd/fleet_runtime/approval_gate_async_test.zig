@@ -46,11 +46,11 @@ test "gate ref: pending until approved — the next poll proceeds" {
     try std.testing.expectEqual(deadline, ref.deadline_ms);
 
     // No decision yet, deadline ahead → pending (lease answers no-work).
-    try std.testing.expectEqual(ag_async.PendingEval.pending, try ag_async.evaluateRef(&client, &ref, clock.nowMillis()));
+    try std.testing.expectEqual(ag_async.PendingEval.pending, try ag_async.evaluateRef(&client, null, &ref, clock.nowMillis()));
 
     // Human approves → the next poll proceeds.
     try approval_gate.resolveApproval(&client, action_id, ec.GATE_DECISION_APPROVE);
-    try std.testing.expectEqual(ag_async.PendingEval.approved, try ag_async.evaluateRef(&client, &ref, clock.nowMillis()));
+    try std.testing.expectEqual(ag_async.PendingEval.approved, try ag_async.evaluateRef(&client, null, &ref, clock.nowMillis()));
 }
 
 test "gate ref: deny decision blocks" {
@@ -66,7 +66,7 @@ test "gate ref: deny decision blocks" {
     try approval_gate.resolveApproval(&client, action_id, ec.GATE_DECISION_DENY);
 
     const ref = (try ag_async.lookupEventGateRef(&client, fleet_id, event_id)).?;
-    try std.testing.expectEqual(ag_async.PendingEval.denied, try ag_async.evaluateRef(&client, &ref, clock.nowMillis()));
+    try std.testing.expectEqual(ag_async.PendingEval.denied, try ag_async.evaluateRef(&client, null, &ref, clock.nowMillis()));
 }
 
 test "gate ref: deadline passed without decision evaluates expired" {
@@ -82,7 +82,7 @@ test "gate ref: deadline passed without decision evaluates expired" {
     try ag_async.recordEventGateRef(&client, fleet_id, event_id, action_id, deadline);
 
     const ref = (try ag_async.lookupEventGateRef(&client, fleet_id, event_id)).?;
-    try std.testing.expectEqual(ag_async.PendingEval.expired, try ag_async.evaluateRef(&client, &ref, clock.nowMillis()));
+    try std.testing.expectEqual(ag_async.PendingEval.expired, try ag_async.evaluateRef(&client, null, &ref, clock.nowMillis()));
 }
 
 test "gate ref: absent ref reads as null (first encounter)" {

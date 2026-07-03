@@ -107,3 +107,42 @@ test("workspace add persists backend workspace_id in json mode", async () => {
     assert.equal(workspaces.items[0]?.workspace_id, "ws_123456789abc");
   });
 });
+
+test("workspace credentials names the real credential command and exits 0", async () => {
+  await withStateDir(async () => {
+    const out = bufferStream();
+    const err = bufferStream();
+
+    const code = await runCli(["workspace", "credentials"], {
+      env: { ...process.env, AGENTSFLEET_API_KEY: "agt_t_test", BROWSER: "false" },
+      stdout: out.stream,
+      stderr: err.stream,
+    });
+
+    assert.equal(code, 0);
+    const text = out.read();
+    // The redirect points at the real top-level `credential` group...
+    assert.ok(text.includes("agentsfleet credential"), "names the real command");
+    // ...never the phantom `agentsfleet agent credential` that has no registration.
+    assert.ok(!text.includes("agentsfleet agent credential"), "no phantom command");
+  });
+});
+
+test("workspace credentials in --json mode names the real credential command", async () => {
+  await withStateDir(async () => {
+    const out = bufferStream();
+    const err = bufferStream();
+
+    const code = await runCli(["--json", "workspace", "credentials"], {
+      env: { ...process.env, AGENTSFLEET_API_KEY: "agt_t_test", BROWSER: "false" },
+      stdout: out.stream,
+      stderr: err.stream,
+    });
+
+    assert.equal(code, 0);
+    const parsed = JSON.parse(out.read()) as { status: string; message: string };
+    assert.equal(parsed.status, "redirect");
+    assert.ok(parsed.message.includes("agentsfleet credential"), "names the real command");
+    assert.ok(!parsed.message.includes("agentsfleet agent credential"), "no phantom command");
+  });
+});

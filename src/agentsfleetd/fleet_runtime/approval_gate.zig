@@ -237,8 +237,12 @@ pub fn resolve(
     const db_outcome = try args.atomic(pool, alloc);
     return switch (db_outcome) {
         .resolved => |row| blk: {
+            // Best-effort Redis mirror of the just-committed decision. A failure
+            // here is recoverable: evaluateRef's DB fallback reads the durable
+            // row, so enforcement still observes this decision — no silent
+            // DB/Redis divergence. Logged as recoverable, not a silent drop.
             resolveApproval(redis, args.action_id, decisionString(args.outcome)) catch |err| {
-                log.warn("resolve_redis_fail", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .action_id = args.action_id, .err = @errorName(err) });
+                log.warn("resolve_redis_fail", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .action_id = args.action_id, .recovered_by = "db_fallback", .err = @errorName(err) });
             };
             break :blk .{ .resolved = row };
         },
