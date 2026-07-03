@@ -168,6 +168,20 @@ pub fn idFromString(s: []const u8) ?Id {
     return std.meta.stringToEnum(Id, s);
 }
 
+/// Does the production registry mint `provider` via the `oauth2_refresh`
+/// strategy? Comptime-usable — the connector registry (`handlers/connectors/
+/// registry.zig`) calls this in a `comptime {}` block to prove every
+/// refresh-capable connector has a matching broker entry, so the two registries
+/// cannot silently drift (finding ①: single source of truth without a
+/// cross-layer merge — the broker stays lower than the handler registry).
+pub fn hasRefreshMint(provider: []const u8) bool {
+    const id = idFromString(provider) orelse return false;
+    for (REGISTRY) |s| {
+        if (s.id == id) return s.mint == .oauth2_refresh;
+    }
+    return false;
+}
+
 /// Whether `id` resolves by an on-demand broker mint (delegates to the strategy's
 /// own `isOnDemand` — no per-id branch, Invariant 4). An id absent from `registry`
 /// is treated as not-on-demand (fail safe: a stored value, never a mint marker).
@@ -215,6 +229,20 @@ test "idFromString: maps wire values, rejects unknown" {
     try std.testing.expectEqual(Id.linear, idFromString("linear").?);
     // api_key providers never reach the broker, so they are not broker ids.
     try std.testing.expect(idFromString("datadog") == null);
+}
+
+test "hasRefreshMint: true only for oauth2_refresh providers (the ① drift guard)" {
+    // The connector registry's comptime cross-check keys off this: every
+    // refresh-capable connector must answer true here.
+    try std.testing.expect(hasRefreshMint("zoho"));
+    try std.testing.expect(hasRefreshMint("jira"));
+    try std.testing.expect(hasRefreshMint("linear"));
+    // github mints via `custom` (App JWT), not oauth2_refresh; static is inline.
+    try std.testing.expect(!hasRefreshMint("github"));
+    try std.testing.expect(!hasRefreshMint("static"));
+    // Unknown / api_key ids have no broker entry at all.
+    try std.testing.expect(!hasRefreshMint("datadog"));
+    try std.testing.expect(!hasRefreshMint("nope"));
 }
 
 test "Mint.isOnDemand: only static resolves inline; minted strategies are on-demand" {
