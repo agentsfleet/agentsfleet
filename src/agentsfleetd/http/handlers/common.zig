@@ -302,6 +302,18 @@ pub fn respondMethodNotAllowed(res: *httpz.Response) void {
     res.body = "";
 }
 
+/// Returns `true` when `method` matches `expected`. On a mismatch, writes a 405
+/// via `respondMethodNotAllowed` and returns `false` — same side-effect-on-
+/// failure + bool shape as `requireUuidV7Id`. Collapses the hand-copied
+/// single-method check at a route_table invoke site to one line:
+/// `if (!common.requireMethod(res, req.method, .POST)) return;`. Multi-method
+/// routes keep their `switch (req.method)` dispatch.
+pub fn requireMethod(res: *httpz.Response, method: httpz.Method, expected: httpz.Method) bool {
+    if (method == expected) return true;
+    respondMethodNotAllowed(res);
+    return false;
+}
+
 test "requireUuidV7Id rejects SQL injection payload" {
     // This function requires an httpz.Response which we can't easily mock.
     // Instead, test the underlying validator directly (id_format imported at file scope).

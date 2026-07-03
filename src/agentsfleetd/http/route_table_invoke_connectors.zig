@@ -17,34 +17,22 @@ const slack_events_h = @import("handlers/connectors/slack/events.zig");
 const Hx = hx_mod.Hx;
 
 pub fn invokeConnectorConnect(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    if (req.method != .POST) {
-        common.respondMethodNotAllowed(hx.res);
-        return;
-    }
+    if (!common.requireMethod(hx.res, req.method, .POST)) return;
     connect_h.innerConnect(hx.*, route.connector_connect);
 }
 
 pub fn invokeConnectorStatus(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    if (req.method != .GET) {
-        common.respondMethodNotAllowed(hx.res);
-        return;
-    }
+    if (!common.requireMethod(hx.res, req.method, .GET)) return;
     status_h.innerStatus(hx.*, route.connector_status);
 }
 
 pub fn invokeConnectorCallback(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    if (req.method != .GET) {
-        common.respondMethodNotAllowed(hx.res);
-        return;
-    }
+    if (!common.requireMethod(hx.res, req.method, .GET)) return;
     callback_h.innerCallback(hx.*, req, route.connector_callback);
 }
 
 pub fn invokeSlackEvents(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    if (req.method != .POST) {
-        common.respondMethodNotAllowed(hx.res);
-        return;
-    }
+    if (!common.requireMethod(hx.res, req.method, .POST)) return;
     _ = route;
     slack_events_h.innerSlackEvents(hx.*, req);
 }
