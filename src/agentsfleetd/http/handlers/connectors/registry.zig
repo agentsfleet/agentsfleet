@@ -18,6 +18,7 @@ const hx_mod = @import("../hx.zig");
 const ec = @import("../../../errors/error_registry.zig");
 const api_key = @import("api_key.zig");
 const oauth2 = @import("oauth2.zig");
+const oauth_status = @import("oauth_status.zig");
 const connector_state = @import("state.zig");
 const slack_spec = @import("slack/spec.zig");
 const slack_callback = @import("slack/callback.zig");
@@ -26,6 +27,12 @@ const github_spec = @import("github/spec.zig");
 const github_connect = @import("github/connect.zig");
 const github_callback = @import("github/callback.zig");
 const github_status = @import("github/status.zig");
+const zoho_spec = @import("zoho/spec.zig");
+const zoho_callback = @import("zoho/callback.zig");
+const jira_spec = @import("jira/spec.zig");
+const jira_callback = @import("jira/callback.zig");
+const linear_spec = @import("linear/spec.zig");
+const linear_callback = @import("linear/callback.zig");
 
 const Hx = hx_mod.Hx;
 
@@ -115,6 +122,39 @@ pub const REGISTRY = [_]ConnectorSpec{
             .complete = github_callback.complete,
         } },
         .respond_status = github_status.respondStatus,
+    },
+    .{
+        .provider = common.PROVIDER_ZOHO,
+        .display_name = "Zoho Desk",
+        .archetype = .{ .oauth2 = .{
+            .flow = zoho_spec.SPEC,
+            .refresh = true,
+            .exchange_failed_code = ec.ERR_CONNECTOR_OAUTH_EXCHANGE_FAILED,
+            .post_auth = zoho_callback.postAuth,
+        } },
+        .respond_status = oauth_status.respondStatus,
+    },
+    .{
+        .provider = common.PROVIDER_JIRA,
+        .display_name = "Jira",
+        .archetype = .{ .oauth2 = .{
+            .flow = jira_spec.SPEC,
+            .refresh = true,
+            .exchange_failed_code = ec.ERR_CONNECTOR_OAUTH_EXCHANGE_FAILED,
+            .post_auth = jira_callback.postAuth,
+        } },
+        .respond_status = oauth_status.respondStatus,
+    },
+    .{
+        .provider = common.PROVIDER_LINEAR,
+        .display_name = "Linear",
+        .archetype = .{ .oauth2 = .{
+            .flow = linear_spec.SPEC,
+            .refresh = true,
+            .exchange_failed_code = ec.ERR_CONNECTOR_OAUTH_EXCHANGE_FAILED,
+            .post_auth = linear_callback.postAuth,
+        } },
+        .respond_status = oauth_status.respondStatus,
     },
     .{
         .provider = common.PROVIDER_DATADOG,
@@ -262,6 +302,18 @@ test "registry: lookup resolves the shipped providers to their archetypes" {
     const github = lookup(common.PROVIDER_GITHUB) orelse return error.TestUnexpectedResult;
     try testing.expect(github.archetype == .app_install);
     try testing.expectEqualStrings("GitHub", github.display_name);
+
+    const zoho = lookup(common.PROVIDER_ZOHO) orelse return error.TestUnexpectedResult;
+    try testing.expect(zoho.archetype == .oauth2);
+    try testing.expect(zoho.archetype.oauth2.refresh);
+
+    const jira = lookup(common.PROVIDER_JIRA) orelse return error.TestUnexpectedResult;
+    try testing.expect(jira.archetype == .oauth2);
+    try testing.expect(jira.archetype.oauth2.refresh);
+
+    const linear = lookup(common.PROVIDER_LINEAR) orelse return error.TestUnexpectedResult;
+    try testing.expect(linear.archetype == .oauth2);
+    try testing.expect(linear.archetype.oauth2.refresh);
 }
 
 test "registry: unknown or empty provider resolves to null (the 404 path)" {
@@ -271,6 +323,6 @@ test "registry: unknown or empty provider resolves to null (the 404 path)" {
 }
 
 test "registry: exactly the shipped entries (a new provider updates this pin)" {
-    // pin test: literal is the contract
-    try testing.expectEqual(@as(usize, 5), REGISTRY.len);
+    // Pin test: the registry is the provider catalog source of truth.
+    try testing.expectEqual(@as(usize, 8), REGISTRY.len);
 }

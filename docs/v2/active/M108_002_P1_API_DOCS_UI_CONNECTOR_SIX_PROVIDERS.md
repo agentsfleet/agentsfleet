@@ -50,7 +50,7 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 2. **Preserved user behaviour** — GitHub + Slack connect flows and their cards unchanged; existing vault handles untouched; fleet-trigger webhooks unaffected.
 3. **Optimal-way check** — optimal is also per-provider *capability* surfaces (list Jira issues, query Datadog monitors); deliberately out — this workstream is connectors (auth + credential plumbing) per the platform terminology; integrations build on it later.
 4. **Rebuild-vs-iterate** — pure iterate: six data entries + two broker mint archetypes on shipped mechanism.
-5. **What we build** — six registry entries (3 oauth2: Zoho Desk (refresh), Jira (refresh), Linear (no refresh); 3 api_key: Datadog, Grafana, Fly); api_key connect surface with live validation probe; broker refresh-mint for Zoho + Jira; catalog endpoint; dashboard cards + api-key form; docs pages + changelog.
+5. **What we build** — six registry entries (3 oauth2: Zoho Desk, Jira, Linear; all refresh-token handles per current vendor docs; 3 api_key: Datadog, Grafana, Fly); api_key connect surface with live validation probe; broker refresh-mint for Zoho + Jira + Linear; catalog endpoint; dashboard cards + api-key form; docs pages + changelog.
 6. **What we do NOT build** — per-provider product capabilities (integrations); webhook/event ingress for any of the six; token rotation UI; multi-instance per provider per workspace (one handle per provider, matching GitHub/Slack).
 7. **Fit with existing features** — compounds the credential broker (runner-side mints gain six providers) and the M108_001 registry; must not destabilize the GitHub/Slack connect flows (shared generic routes).
 8. **Surface order** — API + minimal UI in the same slice: connectors are dashboard-initiated by design (AUTH.md — browser redirect round-trip; no CLI surface exists for connect).
@@ -131,12 +131,12 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 
 ### §1 — oauth2 entries: Zoho Desk, Jira, Linear
 
-Registry data + thin hooks. Zoho Desk (`refresh=true`): handle stores `{integration, refresh_token, access_token, expires_at_ms, accounts_base}` — Zoho's data-center-specific base URL is captured at callback (from the token response's issuing host) rather than guessed. Jira (`refresh=true`, `offline_access` in scopes): post-auth hook resolves the cloud instance id via the accessible-resources probe (bounded) and stores it in the handle beside the refresh token. Linear (`refresh=false`): long-lived token stored directly, no mint path. **Implementation default:** scopes per provider start minimal-read + the write scope each integration target needs later can extend them in its own spec — connect-time scopes are the floor, not the ceiling.
+Registry data + thin hooks. Zoho Desk (`refresh=true`): handle stores `{integration, refresh_token, access_token, expires_at_ms, accounts_base}` — Zoho's data-center-specific base URL is captured at callback (from the token response's issuing host) rather than guessed. Jira (`refresh=true`, `offline_access` in scopes): post-auth hook resolves the cloud instance id via the accessible-resources probe (bounded) and stores it in the handle beside the refresh token. Linear (`refresh=true`): current Linear OAuth docs say refresh-token pairs are issued for OAuth apps; store the refresh token and use the same later broker mint path instead of a 24-hour access-token-only handle. **Implementation default:** scopes per provider start minimal-read + the write scope each integration target needs later can extend them in its own spec — connect-time scopes are the floor, not the ceiling.
 
-- **Dimension 1.1** — Zoho callback → handle with refresh token; no token in `connector_installs`-like rows or logs → Test `test_zoho_callback_vaults_refresh_handle`
-- **Dimension 1.2** — Jira callback → handle carries cloud instance id resolved via bounded probe → Test `test_jira_callback_resolves_cloud_id`
-- **Dimension 1.3** — Linear callback → handle with long-lived token, `refresh=false` path (no mint archetype registered) → Test `test_linear_callback_vaults_token`
-- **Dimension 1.4** — forged/replayed state rejected for a new-provider callback exactly as Slack's (`UZ-CONN-002`) → Test `test_new_provider_state_forgery_rejected`
+- **Dimension 1.1 DONE** — Zoho callback → handle with refresh token; no token in `connector_installs`-like rows or logs → Test `test_zoho_callback_vaults_refresh_handle`
+- **Dimension 1.2 DONE** — Jira callback → handle carries cloud instance id resolved via bounded probe → Test `test_jira_callback_resolves_cloud_id`
+- **Dimension 1.3 DONE** — Linear callback → handle with refresh token (live-doc correction from Linear's Apr 2026 refresh-token migration) → Test `test_linear_callback_vaults_refresh_handle`
+- **Dimension 1.4 DONE** — forged/replayed state rejected for a new-provider callback exactly as Slack's (`UZ-CONN-002`) → Test `test_new_provider_state_forgery_rejected`
 
 ### §2 — api_key entries: Datadog, Grafana, Fly
 
@@ -147,9 +147,9 @@ Connect for the api_key archetype is an authed `POST …/connect` whose JSON bod
 - **Dimension 2.3 DONE** — hung vendor probe → bounded_fetch deadline → 502-class `UZ-CONN-003`, zero vault rows → Test `test_api_key_probe_deadline_no_write`
 - **Dimension 2.4 DONE** — api_key connect requires Bearer + `connector:write` and workspace membership (WAUTH) → Test `test_api_key_connect_workspace_scoped`
 
-### §3 — Broker refresh-minting (Zoho, Jira)
+### §3 — Broker refresh-minting (Zoho, Jira, Linear)
 
-The credential broker gains a refresh-mint archetype: given a workspace's `fleet:<provider>` handle carrying a refresh token, mint a fresh access token via the provider token endpoint (through `bounded_fetch`), cache until expiry-minus-skew (mirror the GitHub mint's cache discipline), and degrade to `reconnect_required` when the refresh token is revoked/expired — never a crash, never a raw refresh-token egress to the runner.
+The credential broker gains a refresh-mint archetype: given a workspace's `fleet:<provider>` handle carrying a refresh token, mint a fresh access token via the provider token endpoint (through `bounded_fetch`), cache until expiry-minus-skew (mirror the GitHub mint's cache discipline), and degrade to `reconnect_required` when the refresh token is revoked/expired — never a crash, never a raw refresh-token egress to the runner. Providers in this slice: Zoho, Jira, and Linear.
 
 - **Dimension 3.1** — mint returns a fresh access token from a refresh handle; second mint within expiry serves the cache (fake vendor sees one exchange) → Test `test_refresh_mint_caches_until_skew`
 - **Dimension 3.2** — revoked refresh token (fake vendor `invalid_grant`) → `reconnect_required` outcome, `UZ-CONN-006` logged, no retry storm (single bounded attempt per mint request) → Test `test_refresh_mint_revoked_reconnect_required`
@@ -193,7 +193,7 @@ GET  /v1/workspaces/{ws}/connectors/{provider}           → {status, identity?}
 Broker mint (runner-facing, existing surface): provider ∈ {github, zoho, jira, …} → {access_token, expires_at_ms} | reconnect_required
 ```
 
-Vault handle shapes (prose-locked): oauth2-refresh `{integration, refresh_token, access_token?, expires_at_ms?, provider-instance fields}`; api_key `{integration, key fields as submitted}`; Linear `{integration, access_token}`.
+Vault handle shapes (prose-locked): oauth2-refresh `{integration, refresh_token, access_token?, expires_at_ms?, provider-instance fields}`; api_key `{integration, key fields as submitted}`.
 
 ---
 
@@ -228,7 +228,7 @@ Vault handle shapes (prose-locked): oauth2-refresh `{integration, refresh_token,
 |-----------|------|------|---------|
 | 1.1 | integration | `test_zoho_callback_vaults_refresh_handle` | fake token endpoint → handle fields; no secret outside vault |
 | 1.2 | integration | `test_jira_callback_resolves_cloud_id` | accessible-resources fake → cloud id in handle |
-| 1.3 | integration | `test_linear_callback_vaults_token` | token stored; no mint archetype invoked |
+| 1.3 | integration | `test_linear_callback_vaults_refresh_handle` | refresh handle stored for Linear's current token response shape |
 | 1.4 | integration | `test_new_provider_state_forgery_rejected` | tampered state → 400 `UZ-CONN-002`, no rows |
 | 2.1 | integration (e2e-shaped: real HTTP + fake vendor) | `test_api_key_connect_probe_success_writes_handle` | 200, handle present, `connector_connected` emitted |
 | 2.2 | integration | `test_api_key_probe_rejects_no_write` | 400 `UZ-CONN-005`, zero vault rows |
