@@ -36,6 +36,10 @@ import {
 } from "../constants/analytics-events.ts";
 
 const WORKSPACE_ID_FIELD = "workspace_id";
+// The real, registered top-level command group (cli-tree-fleet.ts). One const
+// so the JSON-mode and human-readable redirects can never re-diverge onto a
+// phantom `agentsfleet agent credential` that has no CLI registration.
+const CREDENTIAL_COMMAND = "agentsfleet credential" as const;
 
 interface WorkspaceCreateResponse {
   readonly workspace_id: string;
@@ -268,14 +272,13 @@ export const workspaceCredentialsEffect: Effect.Effect<
   if (config.jsonMode) {
     yield* output.printJson({
       status: "redirect",
-      message:
-        "use `agentsfleet agent credential` from the CLI, or manage workspace credentials at /credentials in the dashboard",
+      message: `use \`${CREDENTIAL_COMMAND}\` from the CLI, or manage workspace credentials at /credentials in the dashboard`,
     });
     return;
   }
   yield* output.printSection("Workspace credentials");
   yield* output.info(
-    "Manage credentials at /credentials in the dashboard, or run: agentsfleet agent credential",
+    `Manage credentials at /credentials in the dashboard, or run: ${CREDENTIAL_COMMAND}`,
   );
 });
 

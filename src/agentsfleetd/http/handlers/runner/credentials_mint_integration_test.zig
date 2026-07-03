@@ -133,7 +133,9 @@ fn teardown(conn: *pg.Conn) void {
     execIgnore(conn, "DELETE FROM fleet.runners WHERE id IN ($1::uuid, $2::uuid)", .{ RUNNER_OWNER, RUNNER_ATTACKER });
     execIgnore(conn, "DELETE FROM vault.secrets WHERE workspace_id = $1", .{WORKSPACE_OWNER});
     execIgnore(conn, "DELETE FROM vault.secrets WHERE workspace_id = $1", .{WORKSPACE_FOREIGN});
+    base.teardownFleets(conn, WORKSPACE_OWNER);
     base.teardownWorkspace(conn, WORKSPACE_OWNER);
+    base.teardownFleets(conn, WORKSPACE_FOREIGN);
     base.teardownWorkspace(conn, WORKSPACE_FOREIGN);
 }
 
@@ -172,6 +174,8 @@ test "test_mint_scoped_to_lease_workspace" {
         try base.seedTenant(conn);
         try base.seedWorkspace(conn, WORKSPACE_OWNER);
         try base.seedWorkspace(conn, WORKSPACE_FOREIGN);
+        try base.seedFleet(conn, FLEET_OWNER, WORKSPACE_OWNER, "cred-owner", "{}", "# z");
+        try base.seedFleet(conn, FLEET_FOREIGN, WORKSPACE_FOREIGN, "cred-foreign", "{}", "# z");
         try seedRunner(conn, RUNNER_OWNER, TOKEN_OWNER);
         try seedRunner(conn, RUNNER_ATTACKER, TOKEN_ATTACKER);
         try seedLease(conn, LEASE_OWNER, RUNNER_OWNER, FLEET_OWNER, WORKSPACE_OWNER);
@@ -257,6 +261,7 @@ test "test_mint_rejects_cancelled_or_expired_lease" {
         teardown(conn); // clear any residue from an aborted prior run
         try base.seedTenant(conn);
         try base.seedWorkspace(conn, WORKSPACE_OWNER);
+        try base.seedFleet(conn, FLEET_OWNER, WORKSPACE_OWNER, "cred-owner", "{}", "# z");
         try seedRunner(conn, RUNNER_OWNER, TOKEN_OWNER);
         // Only the lifecycle differs between the two leases.
         try seedLeaseFull(conn, LEASE_OWNER, RUNNER_OWNER, FLEET_OWNER, WORKSPACE_OWNER, PAST_MS, protocol.RUNNER_LEASE_STATUS_ACTIVE);

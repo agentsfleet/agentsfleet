@@ -121,6 +121,7 @@ fn teardown(conn: *pg.Conn) void {
     execIgnore(conn, "DELETE FROM fleet.runner_leases WHERE id = $1::uuid", .{LEASE_ID});
     execIgnore(conn, "DELETE FROM fleet.runner_affinity WHERE fleet_id = $1::uuid", .{FLEET_ID});
     execIgnore(conn, "DELETE FROM fleet.runners WHERE id = $1::uuid", .{RUNNER_ID});
+    base.teardownFleets(conn, WORKSPACE_ID);
     base.teardownWorkspace(conn, WORKSPACE_ID);
 }
 
@@ -138,6 +139,7 @@ fn arrange(fencing: i64) !Setup {
     teardown(conn);
     try base.seedTenant(conn);
     try base.seedWorkspace(conn, WORKSPACE_ID);
+    try base.seedFleet(conn, FLEET_ID, WORKSPACE_ID, "renewal-metering-fleet", "{}", "# z");
     try seedRunner(conn);
     try seedAffinity(conn, fencing, 0, 0, 0, ISSUE_MS);
     try seedLease(conn, fencing, "active");

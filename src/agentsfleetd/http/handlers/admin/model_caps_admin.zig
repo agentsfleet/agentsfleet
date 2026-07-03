@@ -230,8 +230,14 @@ pub fn innerDeleteAdminModel(hx: hx_mod.Hx, req: *httpz.Request, uid: []const u8
     // Block deleting the model the active platform default points at — otherwise
     // the next platform-mode lease resolves a model with no priced catalogue row
     // and silently degrades to run-fee-only (the revenue leak this milestone
-    // closes). The default must be repointed first.
-    if (model_caps_store.isReferencedByActiveDefault(conn, uid)) {
+    // closes). The default must be repointed first. A DB fault during this check
+    // fails CLOSED (block the delete, respond internal-error) rather than
+    // collapsing to "not referenced" and letting the live default be removed.
+    const referenced = model_caps_store.isReferencedByActiveDefault(conn, uid) catch {
+        common.internalOperationError(hx.res, "Failed to verify model reference", hx.req_id);
+        return;
+    };
+    if (referenced) {
         hx.fail(error_codes.ERR_MODEL_CAP_IN_USE, "This model is the active platform default; repoint the default before deleting it");
         return;
     }
