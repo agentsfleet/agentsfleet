@@ -1,10 +1,9 @@
 "use server";
 
 import { withToken, type ActionResult } from "@/lib/actions/with-token";
-import { hasScope } from "@/lib/auth/platform";
+import { requireScope } from "@/lib/actions/require-scope";
 import { SCOPE } from "@/lib/auth/scopes";
 import { withWorkspaceScope } from "@/lib/workspace";
-import { ERROR_CODE } from "@/lib/errors";
 import { createCredential as apiCreateCredential } from "@/lib/api/credentials";
 import {
   listAdminModels,
@@ -17,23 +16,6 @@ import {
   type ModelCapInput,
   type ModelRatesInput,
 } from "@/lib/api/admin_models";
-
-// Defence-in-depth: gate each admin action on the specific operator scope its
-// backend route enforces (route_scopes.zig) before the round-trip — reads on
-// `model:read`, mutations on `model:admin`. The backend independently 403s a
-// token missing the scope (UZ-AUTH-022); this just fails fast so the UI never
-// round-trips a request the token can't satisfy (mirrors the runners actions).
-async function requireScope<T>(scope: string, fn: () => Promise<ActionResult<T>>): Promise<ActionResult<T>> {
-  if (!(await hasScope(scope))) {
-    return {
-      ok: false,
-      error: `Operator scope required: ${scope}`,
-      status: 403,
-      errorCode: ERROR_CODE.INSUFFICIENT_SCOPE,
-    };
-  }
-  return fn();
-}
 
 export async function listAdminModelsAction(): Promise<ActionResult<AdminModelList>> {
   return requireScope(SCOPE.MODEL_READ, () => withToken((t) => listAdminModels(t)));
