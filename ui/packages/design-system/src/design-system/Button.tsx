@@ -83,7 +83,7 @@ export const buttonVariants = cva(
         sm: "h-8 px-lg py-md text-label",
         lg: "h-12 px-2xl py-xl text-body",
         icon: "h-9 w-9 p-0",
-        "icon-sm": "h-6 w-6 p-0",
+        "icon-sm": "h-6 w-6 shrink-0 p-0",
       },
     },
     defaultVariants: {
