@@ -41,7 +41,7 @@ export default function CatalogueList({
   return (
     <div className="space-y-4">
       <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-        Model catalogue · {models.length} {models.length === 1 ? "model" : "models"}
+        Model rates · {models.length} {models.length === 1 ? "model" : "models"}
       </p>
 
       {models.length === 0 ? (
@@ -90,10 +90,6 @@ export default function CatalogueList({
       )}
 
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
-      <p className="text-xs text-muted-foreground">
-        Adding or removing a model updates the live rate cache immediately. Deleting the model the
-        platform default points at is blocked — repoint the default first.
-      </p>
     </div>
   );
 }

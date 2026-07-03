@@ -163,10 +163,9 @@ describe("dashboard overview page", () => {
     expect(await StatusTiles()).toBeNull();
   });
 
-  // Both empty states deep-link into the same install page off the shared
-  // template gallery. The dashboard card is compact (no quickstart link); the
-  // Fleets empty-state passes quickstart, so the Quick start link distinguishes
-  // the two surfaces.
+  // The dashboard card renders the gallery inline (per-template deep links); the
+  // Fleets empty-state is a centered EmptyState that routes to /fleets/new. Both
+  // ultimately land on the same install page, but only the dashboard deep-links.
   it("test_install_experience_shared — dashboard card deep-links, fleets routes to install", async () => {
     const templates = {
       items: [
@@ -199,16 +198,16 @@ describe("dashboard overview page", () => {
     expect(dash).toContain(SHARED_LINK);
     expect(dash).not.toContain("Quick start");
 
-    // Fleets empty-state renders the full template gallery inline with the
-    // quickstart link, unlike the compact dashboard card above.
+    // Fleets empty-state is a centered EmptyState that routes to /fleets/new
+    // (where the gallery lives) — no inline per-template deep link, no quickstart.
     resolveActiveWorkspaceMock.mockResolvedValue({ id: "ws_1" });
     listFleetsMock.mockResolvedValue(noFleets);
     getTenantBillingMock.mockResolvedValue(null);
-    listWorkspaceFleetTemplatesMock.mockResolvedValue(templates);
     const { FleetsData } = await import("../app/(dashboard)/fleets/page");
     const fleets = renderToStaticMarkup(React.createElement(React.Fragment, null, await FleetsData()));
     expect(fleets).toContain("No fleets yet");
-    expect(fleets).toContain(SHARED_LINK);
-    expect(fleets).toContain("Quick start");
+    expect(fleets).toContain('href="/fleets/new"');
+    expect(fleets).not.toContain(SHARED_LINK);
+    expect(fleets).not.toContain("Quick start");
   });
 });

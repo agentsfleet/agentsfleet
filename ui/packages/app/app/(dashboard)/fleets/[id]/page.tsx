@@ -14,6 +14,7 @@ import TriggerPanel from "./components/TriggerPanel";
 import FleetConfig from "./components/FleetConfig";
 import KillSwitch from "./components/KillSwitch";
 import { FleetInstallGate } from "./components/FleetInstallGate";
+import { FleetViewedTracker } from "./components/FleetViewedTracker";
 import { resolveLastDeliveries } from "./components/last-delivery";
 
 export const dynamic = "force-dynamic";
@@ -60,6 +61,7 @@ export default async function FleetDetailPage({
 
   return (
     <div>
+      <FleetViewedTracker fleetId={fleet.id} status={fleet.status} />
       <PageHeader>
         <div className="flex items-center gap-3">
           <PageTitle>{fleet.name}</PageTitle>

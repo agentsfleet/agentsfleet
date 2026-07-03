@@ -18,8 +18,7 @@ export default function RunnersView({ initial }: { initial: RunnerListResponse }
         <AddRunnerDialogDynamic onCreated={() => listRef.current?.refresh()} />
       </PageHeader>
       <p className="mb-6 max-w-2xl text-sm text-muted-foreground">
-        Runners are hosts you enroll to execute Fleet work. Adding one mints an install token
-        that&apos;s shown only once.
+        Hosts you enroll to run fleet work. Adding one mints an install token, shown only once.
       </p>
       <Section asChild>
         <section aria-label="Runners">

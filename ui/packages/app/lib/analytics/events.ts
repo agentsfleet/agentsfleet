@@ -15,8 +15,10 @@ export const EVENTS = {
   model_changed: "model_changed",
   key_rotated: "key_rotated",
   provider_reset: "provider_reset",
+  platform_default_set: "platform_default_set",
   credential_added: "credential_added",
   fleet_template_onboarded: "fleet_template_onboarded",
+  fleet_viewed: "fleet_viewed",
   integration_requested: "integration_requested",
   approval_resolved: "approval_resolved",
 } as const;
@@ -32,6 +34,7 @@ export type EventProps = {
   [EVENTS.model_changed]: { provider: string; model: string };
   [EVENTS.key_rotated]: { provider: string };
   [EVENTS.provider_reset]: { from_provider: string };
+  [EVENTS.platform_default_set]: { provider: string; model: string; is_custom: boolean };
   [EVENTS.credential_added]: { credential_name: string };
   [EVENTS.fleet_template_onboarded]: {
     workspace_id: string;
@@ -39,6 +42,7 @@ export type EventProps = {
     source_kind: string;
     outcome: string;
   };
+  [EVENTS.fleet_viewed]: { fleet_id: string; status: string };
   [EVENTS.integration_requested]: { integration_id: string; integration_name: string };
   [EVENTS.approval_resolved]: { gate_id: string; decision: string; has_reason: boolean };
 };
@@ -55,8 +59,10 @@ export const EVENT_PROP_KEYS = {
   [EVENTS.model_changed]: ["provider", "model"],
   [EVENTS.key_rotated]: ["provider"],
   [EVENTS.provider_reset]: ["from_provider"],
+  [EVENTS.platform_default_set]: ["provider", "model", "is_custom"],
   [EVENTS.credential_added]: ["credential_name"],
   [EVENTS.fleet_template_onboarded]: ["workspace_id", "visibility", "source_kind", "outcome"],
+  [EVENTS.fleet_viewed]: ["fleet_id", "status"],
   [EVENTS.integration_requested]: ["integration_id", "integration_name"],
   [EVENTS.approval_resolved]: ["gate_id", "decision", "has_reason"],
 } as const satisfies { [E in EventName]: readonly (keyof EventProps[E])[] };
