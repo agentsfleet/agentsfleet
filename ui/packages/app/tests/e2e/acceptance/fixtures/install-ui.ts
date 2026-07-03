@@ -21,6 +21,7 @@
  */
 import * as crypto from "node:crypto";
 import { expect, type Page } from "@playwright/test";
+import { SOURCE_KIND_UPLOAD } from "@/lib/types";
 import { clientFor, type ClientHandle } from "./api-client";
 
 // 60s, not 30s — the install now runs inline through the live SSE state stream
@@ -29,7 +30,6 @@ import { clientFor, type ClientHandle } from "./api-client";
 // exercising any product behavior; it still sits well inside each scenario's
 // FLOW_TIMEOUT budget.
 const INSTALL_TIMEOUT_MS = 60_000;
-const SOURCE_KIND_UPLOAD = "upload";
 
 // Auth context the onboard call needs: which fixture identity makes the call
 // (a cached FixtureKey or an ephemeral `{sessionJwt}` handle) and the workspace

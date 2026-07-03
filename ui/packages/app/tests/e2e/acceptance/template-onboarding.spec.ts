@@ -9,13 +9,13 @@
  */
 import * as crypto from "node:crypto";
 import { expect, test } from "@playwright/test";
+import { SOURCE_KIND_UPLOAD } from "@/lib/types";
 import { clientFor } from "./fixtures/api-client";
 import { signInAs } from "./fixtures/auth";
 import { FIXTURE_KEY } from "./fixtures/constants";
 import { getDefaultWorkspaceId } from "./fixtures/seed";
 
 const INVALID_GITHUB_SOURCE_REF = "agentsfleet/github-pr-reviewer";
-const SOURCE_KIND_UPLOAD = "upload";
 const FLOW_TIMEOUT_MS = 120_000;
 
 function fixtureSkillMd(name: string): string {

@@ -93,11 +93,18 @@ export type FleetTemplateGalleryEntry = {
 export type FleetTemplateGalleryResponse = { items: FleetTemplateGalleryEntry[] };
 
 export const SOURCE_KIND_GITHUB = "github" as const;
+export const SOURCE_KIND_UPLOAD = "upload" as const;
 
-export type OnboardTemplateRequest = {
-  source_kind: typeof SOURCE_KIND_GITHUB;
-  source_ref: string;
-};
+export type OnboardTemplateRequest =
+  | {
+      source_kind: typeof SOURCE_KIND_GITHUB;
+      source_ref: string;
+    }
+  | {
+      source_kind: typeof SOURCE_KIND_UPLOAD;
+      skill_markdown: string;
+      trigger_markdown?: string;
+    };
 
 export type OnboardedTemplate = {
   id: string;

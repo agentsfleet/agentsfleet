@@ -1,6 +1,6 @@
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { EVENTS } from "../lib/analytics/events";
 import { SOURCE_KIND_GITHUB } from "../lib/types";
@@ -70,7 +70,7 @@ describe("AddTemplateDialog", () => {
   it("test_onboard_success_refreshes_gallery and test_onboard_emits_analytics_event", async () => {
     onboardTemplateActionMock.mockResolvedValueOnce({ ok: true, data: onboarded });
     const user = await openDialog();
-    await user.type(screen.getByLabelText("Repository"), "owner/repo");
+    await user.type(screen.getByLabelText("Repository"), " owner/repo ");
     submitDialog();
 
     await waitFor(() => {
@@ -126,6 +126,31 @@ describe("AddTemplateDialog", () => {
 
     finishAction?.(onboarded);
     await waitFor(() => expect(routerRefresh).toHaveBeenCalledTimes(1));
+  });
+
+  it("resets pending state when the dialog closes before the action resolves", async () => {
+    let finishAction: ((value: typeof onboarded) => void) | undefined;
+    onboardTemplateActionMock.mockReturnValueOnce(
+      new Promise((resolve) => {
+        finishAction = (value) => resolve({ ok: true, data: value });
+      }),
+    );
+    const user = await openDialog();
+    await user.type(screen.getByLabelText("Repository"), "owner/repo");
+    submitDialog();
+
+    await screen.findByText("Adding template");
+    await user.click(screen.getByRole("button", { name: "Close" }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Add template" })).toBeNull());
+    finishAction?.(onboarded);
+
+    await user.click(screen.getByRole("button", { name: /^add template$/i }));
+    const dialog = await screen.findByRole("dialog", { name: "Add template" });
+    expect(
+      (within(dialog).getByRole("button", { name: /^add template$/i }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(false);
+    expect(routerRefresh).not.toHaveBeenCalled();
   });
 
   it("renders fallback errors without optional body or code rows", async () => {
