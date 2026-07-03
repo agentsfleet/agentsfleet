@@ -83,13 +83,13 @@ const CODE_MAP = {
     title: "You need operator access for that",
     body: "Ask a tenant operator or admin to manage API keys.",
   },
+  // UZ-AUTH-022 is the shared insufficient-scope code across every scope gate
+  // (runner/model operator surfaces, template onboarding, …). One generic copy
+  // — the backend `detail` names the specific scope required. (Reconciled from
+  // two domain-specific entries — operator + template — that collided here.)
   "UZ-AUTH-022": {
-    title: "You need an operator scope for that",
-    body: "Ask an agentsfleet admin to grant the runner or model operator scope.",
-  },
-  "UZ-AUTH-022": {
-    title: "You need template access for that",
-    body: "Ask a workspace admin to grant template access.",
+    title: "You need an additional scope for that",
+    body: "Ask an agentsfleet admin to grant the scope this action requires.",
   },
   "UZ-REQ-001": {
     title: "That request wasn't valid",
