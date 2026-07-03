@@ -16,6 +16,7 @@ export const EVENTS = {
   key_rotated: "key_rotated",
   provider_reset: "provider_reset",
   credential_added: "credential_added",
+  fleet_template_onboarded: "fleet_template_onboarded",
   integration_requested: "integration_requested",
   approval_resolved: "approval_resolved",
 } as const;
@@ -32,6 +33,12 @@ export type EventProps = {
   [EVENTS.key_rotated]: { provider: string };
   [EVENTS.provider_reset]: { from_provider: string };
   [EVENTS.credential_added]: { credential_name: string };
+  [EVENTS.fleet_template_onboarded]: {
+    workspace_id: string;
+    visibility: string;
+    source_kind: string;
+    outcome: string;
+  };
   [EVENTS.integration_requested]: { integration_id: string; integration_name: string };
   [EVENTS.approval_resolved]: { gate_id: string; decision: string; has_reason: boolean };
 };
@@ -49,6 +56,7 @@ export const EVENT_PROP_KEYS = {
   [EVENTS.key_rotated]: ["provider"],
   [EVENTS.provider_reset]: ["from_provider"],
   [EVENTS.credential_added]: ["credential_name"],
+  [EVENTS.fleet_template_onboarded]: ["workspace_id", "visibility", "source_kind", "outcome"],
   [EVENTS.integration_requested]: ["integration_id", "integration_name"],
   [EVENTS.approval_resolved]: ["gate_id", "decision", "has_reason"],
 } as const satisfies { [E in EventName]: readonly (keyof EventProps[E])[] };

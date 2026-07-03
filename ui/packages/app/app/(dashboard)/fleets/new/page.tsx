@@ -5,6 +5,7 @@ import { withWorkspaceScope, orFallback } from "@/lib/workspace";
 import { listWorkspaceFleetTemplatesCached } from "@/lib/api/fleet-templates";
 import { listCredentials } from "@/lib/api/credentials";
 import { InstallFleet } from "./InstallFleet";
+import { hasTemplateWriteScope } from "../scope";
 
 export const dynamic = "force-dynamic";
 
@@ -19,7 +20,7 @@ export default async function InstallFleetPage({
 }: {
   searchParams: Promise<SearchParams>;
 }) {
-  const { getToken } = await auth();
+  const { getToken, sessionClaims } = await auth();
   const token = await getToken();
   if (!token) redirect("/sign-in");
 
@@ -63,6 +64,7 @@ export default async function InstallFleetPage({
         templates={templates}
         presentCredentialNames={credentialNames}
         initialTemplateId={initialTemplateId}
+        canAddTemplate={hasTemplateWriteScope(sessionClaims)}
       />
     </div>
   );

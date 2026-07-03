@@ -87,6 +87,10 @@ const CODE_MAP = {
     title: "You need platform-admin access for that",
     body: "Only an agentsfleet platform admin can enroll or view runners.",
   },
+  "UZ-AUTH-022": {
+    title: "You need template access for that",
+    body: "Ask a workspace admin to grant template access.",
+  },
   "UZ-REQ-001": {
     title: "That request wasn't valid",
     body: "We reset to the defaults — try again.",

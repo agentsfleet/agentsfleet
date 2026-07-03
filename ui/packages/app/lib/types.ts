@@ -92,6 +92,22 @@ export type FleetTemplateGalleryEntry = {
 
 export type FleetTemplateGalleryResponse = { items: FleetTemplateGalleryEntry[] };
 
+export const SOURCE_KIND_GITHUB = "github" as const;
+
+export type OnboardTemplateRequest = {
+  source_kind: typeof SOURCE_KIND_GITHUB;
+  source_ref: string;
+};
+
+export type OnboardedTemplate = {
+  id: string;
+  name: string;
+  visibility: "tenant";
+  content_hash: string;
+  requirements: FleetTemplateRequirements;
+  support_files: FleetTemplateSupportFileSummary[];
+};
+
 export type FleetListResponse = {
   items: Fleet[];
   total: number;

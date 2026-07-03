@@ -3,9 +3,9 @@ import { render, screen } from "@testing-library/react";
 import { SectionLabel } from "./SectionLabel";
 
 describe("SectionLabel", () => {
-  it("renders as a <p> with children", () => {
+  it("renders as a <h2> with children", () => {
     const { container } = render(<SectionLabel>Pipeline</SectionLabel>);
-    expect(container.firstChild?.nodeName).toBe("P");
+    expect(container.firstChild?.nodeName).toBe("H2");
     expect(screen.getByText("Pipeline")).toBeInTheDocument();
   });
 

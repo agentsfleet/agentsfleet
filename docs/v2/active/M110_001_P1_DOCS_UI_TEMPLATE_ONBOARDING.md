@@ -121,24 +121,24 @@
 
 Add the write half of `fleet-templates.ts` and the Server Action that fronts it, so the UI can onboard with a server-minted token and a typed body. **Implementation default:** `source_kind` fixed to the `github` wire value for MVP (matching `importer.SOURCE_KIND_GITHUB`); the request type is a discriminated union so `upload`/`template` extend it later without a breaking change.
 
-- **Dimension 1.1** — `onboardWorkspaceFleetTemplate(workspaceId, body, token)` issues `POST /v1/workspaces/{workspaceId}/fleet-templates` with the JSON body and returns the parsed `OnboardedTemplate`. → Test `test_onboard_client_posts_tenant_endpoint`
-- **Dimension 1.2** — `onboardTemplateAction(workspaceId, body)` wraps it in `withToken`, returns `ActionResult`, and surfaces `ApiError.code` as `errorCode` on failure. → Test `test_onboard_action_maps_apierror_to_errorcode`
+- **Dimension 1.1 — DONE** — `onboardWorkspaceFleetTemplate(workspaceId, body, token)` issues `POST /v1/workspaces/{workspaceId}/fleet-templates` with the JSON body and returns the parsed `OnboardedTemplate`. → Test `test_onboard_client_posts_tenant_endpoint`
+- **Dimension 1.2 — DONE** — `onboardTemplateAction(workspaceId, body)` wraps it in `withToken`, returns `ActionResult`, and surfaces `ApiError.code` as `errorCode` on failure. → Test `test_onboard_action_maps_apierror_to_errorcode`
 
 ### §2 — Add-template affordance (dialog + surfacing)
 
 A client dialog with a single `owner/repo` field submitting to `onboardTemplateAction`, surfaced from the empty-state gallery and the install page. Built only from design-system primitives.
 
-- **Dimension 2.1** — The dialog renders a labelled `owner/repo` input + submit built from design-system primitives (no raw HTML control, no arbitrary utility). → Test `test_add_template_dialog_renders_primitives`
-- **Dimension 2.2** — The **Add template** trigger appears in `InstallEntry` (empty gallery + install page); clicking opens the dialog. → Test `test_add_template_affordance_present`
-- **Dimension 2.3** — Empty or malformed `source_ref` (not `owner/repo` shape) is blocked client-side with an inline message before any submit. → Test `test_add_template_blocks_bad_source_ref`
+- **Dimension 2.1 — DONE** — The dialog renders a labelled `owner/repo` input + submit built from design-system primitives (no raw HTML control, no arbitrary utility). → Test `test_add_template_dialog_renders_primitives`
+- **Dimension 2.2 — DONE** — The **Add template** trigger appears in `InstallEntry` (empty gallery + install page); clicking opens the dialog. → Test `test_add_template_affordance_present`
+- **Dimension 2.3 — DONE** — Empty or malformed `source_ref` (not `owner/repo` shape) is blocked client-side with an inline message before any submit. → Test `test_add_template_blocks_bad_source_ref`
 
 ### §3 — Success refresh, error surfacing, scope gating
 
 On `201` refresh the gallery so the new card appears; on failure keep the dialog open and show the mapped error; hide the trigger from callers without `template:write`.
 
-- **Dimension 3.1** — On success the dialog closes and the gallery re-reads (`router.refresh()` / `revalidatePath`), so the onboarded template is visible without navigation. → Test `test_onboard_success_refreshes_gallery`
-- **Dimension 3.2** — A `403` (insufficient scope / workspace-ownership) or a GitHub fetch failure keeps the dialog open and renders the `UZ-…`-mapped message via `presentError`. → Test `test_onboard_failure_surfaces_mapped_error`
-- **Dimension 3.3** — The **Add template** trigger is not rendered when the caller's session scopes lack `template:write`. → Test `test_add_template_hidden_without_scope`
+- **Dimension 3.1 — DONE** — On success the dialog closes and the gallery re-reads (`router.refresh()` / `revalidatePath`), so the onboarded template is visible without navigation. → Unit test `test_onboard_success_refreshes_gallery`; End-to-End (E2E) test `test_onboarded_template_renders_in_gallery`
+- **Dimension 3.2 — DONE** — A `403` (insufficient scope / workspace-ownership) or a GitHub fetch failure keeps the dialog open and renders the `UZ-…`-mapped message via `presentError`. → Test `test_onboard_failure_surfaces_mapped_error`
+- **Dimension 3.3 — DONE** — The **Add template** trigger is not rendered when the caller's session scopes lack `template:write`. → Test `test_add_template_hidden_without_scope`
 
 ---
 
@@ -196,7 +196,7 @@ onboardTemplateAction(
 
 1. The onboard token is minted and used server-side only — enforced by `"use server"` + `withToken` (the browser never receives an api-audience token), same as every existing action.
 2. `source_kind` is a constrained union value, never free-text — enforced by the TypeScript type + a named constant equal to the Zig wire value (`importer.SOURCE_KIND_GITHUB`).
-3. After a successful onboard the gallery reflects the new template — enforced by `router.refresh()` / `revalidatePath` in the success path, asserted by e2e (§3.1).
+3. After a successful onboard the gallery reflects the new template — enforced by `router.refresh()` / `revalidatePath` in the success path and asserted by unit + End-to-End (E2E) coverage (§3.1).
 4. The Add-template trigger is gated on `template:write` — enforced by a scope check on the session claim, asserted by §3.3.
 
 ---
@@ -210,7 +210,7 @@ onboardTemplateAction(
 | 2.1 | unit | `test_add_template_dialog_renders_primitives` | dialog mounts a design-system input + button; no raw `<input>`/arbitrary class. |
 | 2.2 | unit | `test_add_template_affordance_present` | `InstallEntry` (empty gallery) renders an Add-template trigger. |
 | 2.3 | unit | `test_add_template_blocks_bad_source_ref` | `"notarepo"` / `""` → inline error, action not invoked. |
-| 3.1 | e2e | `test_onboard_success_refreshes_gallery` | submit valid repo → 201 → gallery shows the new card without navigation. |
+| 3.1 | unit + E2E | `test_onboard_success_refreshes_gallery`; `test_onboarded_template_renders_in_gallery` | dialog success closes + calls `router.refresh()`; real onboarded tenant template renders as a gallery card. |
 | 3.2 | unit | `test_onboard_failure_surfaces_mapped_error` | `403`/import-fail → dialog open, `presentError` text shown. |
 | 3.3 | unit | `test_add_template_hidden_without_scope` | session scopes without `template:write` → no trigger rendered. |
 | Metrics | unit | `test_onboard_emits_analytics_event` | successful action → `fleet_template_onboarded` with allowed props only. |
@@ -221,12 +221,12 @@ Regression: `test_gallery_get_unchanged` — the GET gallery read path and insta
 
 ## Acceptance Criteria
 
-- [ ] Empty Fleets gallery shows a working **Add template** control — verify: e2e `test_onboard_success_refreshes_gallery`
-- [ ] Onboard posts the tenant endpoint with a server-minted token — verify: `test_onboard_client_posts_tenant_endpoint`
-- [ ] Failures surface the mapped `UZ-…` message, dialog stays open — verify: `test_onboard_failure_surfaces_mapped_error`
-- [ ] Trigger hidden without `template:write` — verify: `test_add_template_hidden_without_scope`
-- [ ] `make lint` clean · `make test` passes (UI unit) · UI e2e passes
-- [ ] `gitleaks detect` clean · no file over 350 lines added
+- [x] Empty Fleets gallery shows a working **Add template** control — verify: `test_onboard_success_refreshes_gallery`; `test_github_source_error_stays_in_dialog`
+- [x] Onboard posts the tenant endpoint with a server-minted token — verify: `test_onboard_client_posts_tenant_endpoint`
+- [x] Failures surface the mapped `UZ-…` message, dialog stays open — verify: `test_onboard_failure_surfaces_mapped_error`
+- [x] Trigger hidden without `template:write` — verify: `test_add_template_hidden_without_scope`
+- [x] `make lint` clean · `make test` passes (app unit) · app E2E passes
+- [x] `gitleaks detect` clean · no file over 350 lines added
 
 ---
 
@@ -256,8 +256,9 @@ N/A — no files deleted. This workstream is purely additive; `InstallEntry`'s "
 > **Empty at creation.** Append as work surfaces consults and decisions.
 
 - **Consults** — NLG (onboard-vs-install) distinction confirmed against M103_001 §Product Clarity before EXECUTE.
-- **Metrics review** — {events added; `/review` findings; analytics/funnel playbook update or explicit no-change reason}.
-- **Skill chain outcomes** — {`/write-unit-test`, `/review`, `/review-pr`, `kishore-babysit-prs`}.
+- **Metrics review** — added `fleet_template_onboarded`; analytics properties stay in the existing allowlist surface (`workspace_id`, `visibility`, `source_kind`, `outcome`), so no separate funnel-playbook file changed in this app workstream.
+- **E2E fixture note** — the live dev API rejects `agentsfleet/github-pr-reviewer` with `missing_skill` because current public `agentsfleet/*` template repos do not expose a root-level `SKILL.md`; browser coverage therefore verifies real gallery rendering via an upload-onboarded tenant template plus the live GitHub dialog error path.
+- **Skill chain outcomes** — `/write-unit-test`: clean coverage ledger; `/write-integration-test`: no new service-layer integration test added because no backend handler/repository/schema changed, but `make test-integration` passed; `/review`: one broken docs fragment found and fixed (`#create-a-template` → `#writing-your-own`).
 - **Deferrals** — {Indy-acked verbatim quotes only}.
 
 ---
@@ -276,10 +277,15 @@ N/A — no files deleted. This workstream is purely additive; `InstallEntry`'s "
 
 | Check | Command | Result | Pass? |
 |-------|---------|--------|-------|
-| Unit tests | `make test` | {paste} | |
-| e2e (user-centric) | `{e2e onboard scenario}` | {paste} | |
-| Lint | `make lint` | {paste} | |
-| Gitleaks | `gitleaks detect` | {paste} | |
+| Unit tests | `make test-unit-app` | 127 files passed; 1,148 tests passed. | yes |
+| Adjacent unit lanes | `make test-unit-website`; `make test-unit-design-system`; `make test-unit-cli`; `make test-unit-agentsfleetd`; `make test-unit-agentsfleet-lib`; `make test-unit-agentsfleet-runner` | website: 24 files / 171 tests passed; design-system: 45 files / 426 tests passed; CLI: 1,252 passed / 15 skipped; agentsfleetd: 1,419 passed / 454 skipped; lib: 59 passed; runner: 355 passed / 7 skipped. | yes |
+| E2E (user-centric) | `bunx playwright test --config=playwright.acceptance.config.ts template-onboarding.spec.ts` | 2 tests passed: gallery render with a real onboarded tenant template; live GitHub import error stays in dialog. | yes |
+| Lint | `make lint-apps-ds-ctl` | App, design-system, and command-line interface checks passed. | yes |
+| Gitleaks | `gitleaks detect` | No leaks found. | yes |
+| Integration | `make test-integration` | Local Postgres + Redis integration suite passed. | yes |
+| Postgres drain | `make _lint_zig_pg_drain` | 581 files scanned; passed. | yes |
+| Test delta | `make _lint_zig_test_depth` | unit=2270 integration=243; unchanged from baseline. | yes |
+| Review follow-up | `bunx vitest run tests/add-template-dialog.test.tsx tests/fleets-install-entry-gate.test.ts --testTimeout 60000` | 2 files passed; 12 tests passed after fixing the create-template docs link. | yes |
 
 ---
 

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-// The Models & Keys page reads the tenant provider + credential list through
+// The Models page reads the tenant provider + credential list through
 // React `cache()` wrappers (collapsing repeat reads within one server render).
 // The page test mocks these wrappers, so this proves the wrappers themselves
 // delegate to the underlying API functions with the arguments forwarded.
@@ -18,7 +18,7 @@ import {
   listCredentialsCached,
 } from "@/app/(dashboard)/settings/models/lib/reads";
 
-describe("Models & Keys cached reads", () => {
+describe("Models cached reads", () => {
   it("getTenantProviderCached forwards the token to getTenantProvider", async () => {
     const provider = { mode: "platform" };
     getTenantProvider.mockResolvedValue(provider);

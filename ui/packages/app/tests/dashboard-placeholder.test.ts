@@ -49,8 +49,8 @@ afterEach(() => {
 });
 
 describe("placeholder pages", () => {
-  it("credentials route redirects to the consolidated Models & Keys page", async () => {
-    // /credentials was folded into Models & Keys: the route is now a
+  it("credentials route redirects to the consolidated Models page", async () => {
+    // /credentials was folded into Models: the route is now a
     // bare redirect. In the test harness `redirect()` throws `redirect:<path>`.
     const { default: Page } = await import("../app/(dashboard)/credentials/page");
     // CredentialsPage is a synchronous component: redirect() throws inline, so

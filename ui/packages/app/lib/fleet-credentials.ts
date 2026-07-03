@@ -10,7 +10,7 @@
 // the same thing.
 //
 // `/credentials` is the semantic write-only secret-vault route. The standalone
-// vault page was folded into Models & Keys, so `/credentials` now
+// vault page was folded into Models, so `/credentials` now
 // `redirect()`s to `/settings/models` (whose custom-secrets section IS the vault
 // surface). The deep-link keeps pointing at the stable `/credentials` route
 // rather than the moving destination, so the preview stays decoupled from the
