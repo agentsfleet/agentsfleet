@@ -14,7 +14,8 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Milestone:** M109
 **Workstream:** 001
 **Date:** Jul 02, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
+**Test Baseline:** unit=2272 integration=243
 **Priority:** P0 — one defect silently diverges the approval audit trail from what actually gets enforced (a security/compliance-grade correctness bug); one crashes a CLI command on realistic input; one sends operators to a command that does not exist.
 **Categories:** API CLI
 **Batch:** B1 — independent of M109_002/003/004; no shared files, safe to land in parallel with them.
