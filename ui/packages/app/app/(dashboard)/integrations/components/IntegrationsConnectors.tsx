@@ -54,7 +54,9 @@ const INTEGRATION_ICON = {
 function oauthStatusPill(status: ConnectorStatus): { label: string; variant: StatusPillVariant } {
   if (status === CONNECTOR_STATUS.connected) return { label: CONNECTED_LABEL, variant: "success" };
   if (status === CONNECTOR_STATUS.reconnectRequired) return { label: RECONNECT_LABEL, variant: "warning" };
-  return { label: NOT_CONNECTED_LABEL, variant: "warning" };
+  // Not-connected is a neutral fact, not a fault — the Connect button carries
+  // the invitation; amber stays reserved for states that need attention.
+  return { label: NOT_CONNECTED_LABEL, variant: "neutral" };
 }
 
 // One row for both browser-OAuth connectors (GitHub, Slack): identical connect
@@ -184,7 +186,7 @@ function PlannedConnectorRow({
       title={integration.name}
       description={
         <>
-          Planned. Use <code className="font-mono">{requiredSecret}</code> for now.
+          Use <code className="font-mono">{requiredSecret}</code> for now.
         </>
       }
       action={
