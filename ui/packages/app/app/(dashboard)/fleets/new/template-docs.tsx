@@ -6,18 +6,20 @@ import { Button } from "@agentsfleet/design-system";
 export const CREATE_TEMPLATE_DOC_URL =
   "https://docs.agentsfleet.net/fleets/templates#writing-your-own";
 
-// Shared "Create a template" affordance across the install surfaces (Fleets
-// empty-state, dashboard gallery empty-state, install picker). One source for
-// the label + external-link hardening; the button variant flexes per surface.
-export function CreateTemplateDocLink({
-  variant = "ghost",
-}: {
-  variant?: "default" | "ghost";
-}) {
+// Shared copy for the template-gallery empty state (dashboard embed + install
+// picker) so the two surfaces can never drift apart.
+export const TEMPLATES_EMPTY_TITLE = "No templates found";
+export const TEMPLATES_EMPTY_DESCRIPTION =
+  "Write your own template to install your first fleet.";
+
+// Shared "Learn more" docs affordance across the install surfaces (dashboard
+// gallery empty-state, install picker). Secondary by design — the primary CTA
+// beside it is always the concrete action (Install fleet / Create a template).
+export function TemplateDocsLink() {
   return (
-    <Button asChild variant={variant} size="sm">
+    <Button asChild variant="outline" size="sm">
       <a href={CREATE_TEMPLATE_DOC_URL} target="_blank" rel="noopener noreferrer">
-        Create a template
+        Learn more
       </a>
     </Button>
   );

@@ -2,15 +2,19 @@ import { PageHeader, PageTitle, Section, Skeleton } from "@agentsfleet/design-sy
 
 // Bespoke skeleton on purpose — NOT the shared RouteLoading (title + spinner).
 // The header + key-list rows preview the real table layout, which a plain
-// spinner can't. Same rationale as settings/loading; the "API keys" title is
-// already correct, so there is no wrong-title flash to fix.
+// spinner can't. Mirrors the loaded view: the "Workspace" title + tab strip
+// paint first (same as settings/loading), so there is no wrong-title flash.
 export default function ApiKeysLoading() {
   return (
     <div>
       <PageHeader>
-        <PageTitle>API keys</PageTitle>
+        <PageTitle>Workspace</PageTitle>
       </PageHeader>
-      <Skeleton className="mb-6 h-4 w-2/3" />
+      <div className="mb-6 flex gap-2">
+        {Array.from({ length: 2 }, (_, i) => (
+          <Skeleton key={i} className="h-9 w-24" />
+        ))}
+      </div>
       <Section asChild>
         <section aria-label="API keys">
           <div className="mb-3 flex items-center justify-between">

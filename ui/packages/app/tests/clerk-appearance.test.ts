@@ -43,6 +43,25 @@ describe("AUTH_APPEARANCE", () => {
     expect(elements.userPreviewSecondaryIdentifier.color).toBe("var(--text)");
     expect(elements.userPreviewSecondaryIdentifier.color).not.toBe("var(--text-subtle)");
     // The global fallback for any unmapped secondary text stays readable too.
-    expect(AUTH_APPEARANCE.variables.colorTextSecondary).toBe("var(--text-muted)");
+    // v7 key: colorMutedForeground (pre-v7 colorTextSecondary is ignored).
+    expect(AUTH_APPEARANCE.variables.colorMutedForeground).toBe("var(--text-muted)");
+  });
+
+  it("test_clerk_v7_variable_keys: primary text + input use the v7 foreground keys, not the ignored pre-v7 names", () => {
+    // Root cause of invisible account-modal text: the pre-v7 keys (colorText,
+    // colorTextSecondary, colorInputBackground, colorInputText) are silently
+    // dropped by Clerk v7, so text fell back to library defaults (dark-on-dark).
+    const { variables } = AUTH_APPEARANCE;
+    expect(variables.colorForeground).toBe("var(--text)");
+    expect(variables.colorInput).toBe("var(--surface-2)");
+    expect(variables.colorInputForeground).toBe("var(--text)");
+    expect(variables).not.toHaveProperty("colorText");
+    expect(variables).not.toHaveProperty("colorTextSecondary");
+    expect(variables).not.toHaveProperty("colorInputBackground");
+  });
+
+  it("the modal close (X) button is pinned readable on the dark surface", () => {
+    // Reported: the X in the top corner rendered near-black — invisible on dark.
+    expect(elements.modalCloseButton.color).toBe("var(--text)");
   });
 });

@@ -11,9 +11,11 @@ import {
   Button,
   Card,
   CardContent,
+  EYEBROW_CLASS,
   Time,
   useResettableTimeout,
 } from "@agentsfleet/design-system";
+import { cn } from "@/lib/utils";
 import { webhookUrlFor } from "@/lib/api/fleets";
 import GuidedTriggerCard, { COPY_RESET_MS } from "./GuidedTriggerCard";
 import CronCard from "./CronCard";
@@ -190,7 +192,7 @@ function CopyUrlFallback({ url, source }: { url: string; source: string }) {
     : "Unknown provider — paste this URL into any webhook-capable service.";
   return (
     <div className="flex flex-col gap-2" data-testid={`copy-url-fallback-${source}`}>
-      <span className="font-mono text-label uppercase tracking-label text-muted-foreground">
+      <span className={cn(EYEBROW_CLASS, "text-muted-foreground")}>
         Webhook URL
       </span>
       <div className="flex items-center gap-2">
@@ -220,7 +222,7 @@ function EmptyTriggers({ fleetId }: { fleetId: string }) {
   return (
     <Card className="bg-card" data-testid="trigger-panel-empty">
       <CardContent className="flex flex-col gap-3 py-4">
-        <p className="font-mono text-label uppercase tracking-label text-muted-foreground">
+        <p className={cn(EYEBROW_CLASS, "text-muted-foreground")}>
           No triggers declared
         </p>
         <p className="text-sm text-muted-foreground">

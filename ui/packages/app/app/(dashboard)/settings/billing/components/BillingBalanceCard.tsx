@@ -3,11 +3,13 @@ import {
   Button,
   Card,
   CardContent,
+  EYEBROW_CLASS,
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from "@agentsfleet/design-system";
+import { cn } from "@/lib/utils";
 import type { TenantBilling } from "@/lib/types";
 import { SUPPORT_EMAIL } from "@/lib/contact";
 import { formatDollars, type ChargeSummary } from "../lib/charges";
@@ -33,7 +35,7 @@ export default function BillingBalanceCard({ billing, summary }: BillingBalanceC
       <CardContent className="space-y-4 p-6">
         <div className="flex flex-row items-end justify-between gap-4">
           <div>
-            <div className="font-mono text-label uppercase tracking-label text-muted-foreground">
+            <div className={cn(EYEBROW_CLASS, "text-muted-foreground")}>
               Balance
             </div>
             <div className="mt-1 text-display-md font-semibold leading-display-md tracking-normal tabular-nums">

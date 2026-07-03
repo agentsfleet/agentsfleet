@@ -15,25 +15,26 @@ import { withWorkspaceScope } from "@/lib/workspace";
 import ExhaustionBanner from "@/components/domain/ExhaustionBanner";
 import { BotIcon, PlusIcon } from "lucide-react";
 import FleetsList from "./components/FleetsList";
-import { CreateTemplateDocLink } from "./new/template-docs";
 
 export const dynamic = "force-dynamic";
+
+const FLEETS_DESCRIPTION = "Fleets installed in this workspace, and their live state.";
+const FLEETS_DOC_URL = "https://docs.agentsfleet.net/fleets/overview";
 
 export default async function FleetsListPage() {
   const { getToken } = await auth();
   const token = await getToken();
   if (!token) redirect("/sign-in");
 
-  // Shell-first: the header (title + Install link) paints immediately while the
-  // workspace resolves and the list/billing load inside FleetsData. Mirrors the
-  // home page's StatusTiles streaming.
+  // Shell-first: the header paints immediately while the workspace resolves and
+  // the list/billing load inside FleetsData. Mirrors the home page's StatusTiles
+  // streaming. The Install affordance lives with the content it acts on: the
+  // list toolbar when fleets exist, the empty state's primary action otherwise —
+  // never duplicated in the header corner.
   return (
     <div>
-      <PageHeader>
+      <PageHeader description={FLEETS_DESCRIPTION}>
         <PageTitle>Fleets</PageTitle>
-        <Link href="/fleets/new" className={buttonClassName("default", "sm")}>
-          <PlusIcon size={14} /> Install fleet
-        </Link>
       </PageHeader>
 
       <Suspense fallback={<Skeleton className="h-48 rounded-lg" />}>
@@ -84,11 +85,10 @@ export async function FleetsData() {
   );
 }
 
-// Empty fleets → a centered EmptyState mirroring Approvals: icon, headline, one
-// line of context, then the primary Install affordance plus a prominent docs
-// link. The template gallery itself lives on /fleets/new (the Install fleet
-// button routes there), so the first-run screen stays calm rather than
-// rendering the full picker inline.
+// Empty fleets → a centered EmptyState: icon, headline, one line of context,
+// then [Learn more] + the primary Install affordance. The template gallery
+// itself lives on /fleets/new (the Install fleet button routes there), so the
+// first-run screen stays calm rather than rendering the full picker inline.
 function FleetsEmptyState() {
   return (
     <EmptyState
@@ -97,10 +97,17 @@ function FleetsEmptyState() {
       description="Pick a template to install your first fleet — connect its tool and it runs on every matching event."
       action={
         <div className="flex flex-wrap items-center justify-center gap-md">
+          <a
+            href={FLEETS_DOC_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={buttonClassName("outline", "sm")}
+          >
+            Learn more
+          </a>
           <Link href="/fleets/new" className={buttonClassName("default", "sm")}>
             <PlusIcon size={14} /> Install fleet
           </Link>
-          <CreateTemplateDocLink />
         </div>
       }
     />

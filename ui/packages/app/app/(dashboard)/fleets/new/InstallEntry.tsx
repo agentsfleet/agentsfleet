@@ -1,8 +1,12 @@
 import Link from "next/link";
 import { Button, EmptyState } from "@agentsfleet/design-system";
-import { LayoutTemplateIcon } from "lucide-react";
+import { LayoutTemplateIcon, PlusIcon } from "lucide-react";
 import type { FleetTemplateGalleryEntry } from "@/lib/types";
-import { CreateTemplateDocLink } from "./template-docs";
+import {
+  TemplateDocsLink,
+  TEMPLATES_EMPTY_DESCRIPTION,
+  TEMPLATES_EMPTY_TITLE,
+} from "./template-docs";
 import { TemplateCard } from "./TemplateCard";
 
 type Props = {
@@ -13,11 +17,11 @@ type Props = {
   compact?: boolean;
 };
 
-// Template gallery for the Dashboard first-run card. A Server Component: each
-// card deep-links into the install page (which proceeds inline to live states),
-// so it carries no client callbacks. When the catalogue is empty it falls back
-// to a centered EmptyState with a prominent "Create a template" affordance —
-// the "add template" / paste authoring surfaces live on /fleets/new.
+// Template gallery for the Dashboard first-run surface. A Server Component:
+// each card deep-links into the install page (which proceeds inline to live
+// states), so it carries no client callbacks. When the catalogue is empty it
+// falls back to a centered EmptyState with [Learn more] + [Create a template]
+// — authoring itself lives on /fleets/new.
 export function InstallEntry({ templates, maxTemplates, compact = false }: Props) {
   const visibleTemplates =
     maxTemplates == null ? templates : templates.slice(0, maxTemplates);
@@ -26,16 +30,25 @@ export function InstallEntry({ templates, maxTemplates, compact = false }: Props
     return (
       <EmptyState
         icon={<LayoutTemplateIcon size={28} />}
-        title="No templates found"
-        description="Write your own template to install your first fleet."
-        action={<CreateTemplateDocLink variant="default" />}
+        title={TEMPLATES_EMPTY_TITLE}
+        description={TEMPLATES_EMPTY_DESCRIPTION}
+        action={
+          <div className="flex flex-wrap items-center justify-center gap-md">
+            <TemplateDocsLink />
+            <Button asChild size="sm">
+              <Link href="/fleets/new">
+                <PlusIcon size={14} /> Create a template
+              </Link>
+            </Button>
+          </div>
+        }
       />
     );
   }
 
   return (
     <div className={compact ? "space-y-md" : "space-y-lg"}>
-      <div className="grid grid-cols-1 gap-md sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-md sm:grid-cols-2 lg:grid-cols-3">
         {visibleTemplates.map((template) => (
           <TemplateCard
             key={template.id}

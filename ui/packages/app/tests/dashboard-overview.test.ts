@@ -113,7 +113,7 @@ describe("dashboard overview page", () => {
     const { StatusTiles } = await import("../app/(dashboard)/page");
     const m = renderToStaticMarkup(React.createElement(React.Fragment, null, await StatusTiles()));
     expect(m).toContain("Start your fleet");
-    expect(m).toContain("Watch live progress appear inline");
+    expect(m).not.toContain("free credit"); // balance unknown → no credit pill
   });
 
   it("StatusTiles first-install card surfaces template cards deep-linking to the install flow", async () => {
@@ -189,7 +189,7 @@ describe("dashboard overview page", () => {
     const noFleets = { items: [], total: 0, cursor: null };
     const SHARED_LINK = 'href="/fleets/new?template=github-pr-reviewer"';
 
-    // Dashboard card (StatusTiles → FirstInstallCard → InstallEntry, compact).
+    // Dashboard first-run (StatusTiles → FirstInstall → InstallEntry, compact).
     listFleetsMock.mockResolvedValue(noFleets);
     getTenantBillingMock.mockResolvedValue(null);
     listWorkspaceFleetTemplatesMock.mockResolvedValue(templates);

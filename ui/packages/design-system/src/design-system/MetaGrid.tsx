@@ -1,6 +1,7 @@
 import { type ComponentProps, type ReactNode } from "react";
 
 import { cn } from "../utils";
+import { EYEBROW_CLASS } from "./eyebrow";
 
 export type MetaGridItem = {
   label: string;
@@ -39,7 +40,7 @@ export function MetaGrid({
     >
       {items.map((item) => (
         <div key={item.label}>
-          <dt className="font-mono text-label uppercase tracking-label text-muted-foreground">
+          <dt className={cn(EYEBROW_CLASS, "text-muted-foreground")}>
             {item.label}
           </dt>
           <dd className="mt-1 text-foreground">{item.value}</dd>
