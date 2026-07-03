@@ -77,6 +77,7 @@ fn teardown(conn: *pg.Conn) void {
     execIgnore(conn, "DELETE FROM fleet.runner_leases WHERE id IN ($1::uuid, $2::uuid)", .{ LEASE_ID, OTHER_LEASE });
     execIgnore(conn, "DELETE FROM fleet.runner_affinity WHERE fleet_id = $1::uuid", .{FLEET_ID});
     execIgnore(conn, "DELETE FROM fleet.runners WHERE id = $1::uuid", .{RUNNER_ID});
+    base.teardownFleets(conn, WORKSPACE_ID);
     base.teardownWorkspace(conn, WORKSPACE_ID);
 }
 
@@ -98,6 +99,7 @@ test "pushLeaseSeq: held lease returns the live seq; wrong fleet/lease is null (
     teardown(conn);
     try base.seedTenant(conn);
     try base.seedWorkspace(conn, WORKSPACE_ID);
+    try base.seedFleet(conn, FLEET_ID, WORKSPACE_ID, "mem-fence", "{}", "# z");
     try seedRunner(conn);
     try seedLease(conn, LEASE_ID, FLEET_ID, 5);
     defer teardown(conn);
@@ -119,6 +121,7 @@ test "pushLeaseSeq: a reclaim that bumped the affinity fence strands the old hol
     teardown(conn);
     try base.seedTenant(conn);
     try base.seedWorkspace(conn, WORKSPACE_ID);
+    try base.seedFleet(conn, FLEET_ID, WORKSPACE_ID, "mem-fence", "{}", "# z");
     try seedRunner(conn);
     try seedLease(conn, LEASE_ID, FLEET_ID, 5);
     try seedAffinity(conn, 7); // a newer holder bumped the slot to seq 7
@@ -138,6 +141,7 @@ test "liveLeaseSeq: hydrate authorizes a held fleet; an unheld fleet is null" {
     teardown(conn);
     try base.seedTenant(conn);
     try base.seedWorkspace(conn, WORKSPACE_ID);
+    try base.seedFleet(conn, FLEET_ID, WORKSPACE_ID, "mem-fence", "{}", "# z");
     try seedRunner(conn);
     try seedLease(conn, LEASE_ID, FLEET_ID, 5);
     defer teardown(conn);
