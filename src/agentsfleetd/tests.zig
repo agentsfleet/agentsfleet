@@ -78,7 +78,7 @@ test {
     _ = @import("observability/metrics_redis_pool.zig");
     _ = @import("observability/otlp/ring.zig");
     _ = @import("observability/otlp/config.zig");
-    _ = @import("observability/otlp/post.zig");
+    _ = @import("observability/otlp/Client.zig");
     _ = @import("observability/otlp/exporter.zig");
     _ = @import("observability/otel_logs.zig");
     _ = @import("observability/otel_traces.zig");

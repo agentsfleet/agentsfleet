@@ -158,17 +158,20 @@ pub fn capFor(conn: anytype, provider: []const u8, model: []const u8) ?i32 {
 
 /// True iff the row `uid` is the (provider, model) the active platform_llm_keys
 /// row resolves to — the delete-guard that blocks removing the live default.
-pub fn isReferencedByActiveDefault(conn: anytype, uid: []const u8) bool {
-    var q = PgQuery.from(conn.query(
+/// Propagates the query error (matching this file's create/updateRates/remove
+/// siblings) so the caller fails CLOSED on a DB fault instead of collapsing a
+/// blip to `false` and letting the live default's model be deleted.
+pub fn isReferencedByActiveDefault(conn: anytype, uid: []const u8) !bool {
+    var q = PgQuery.from(try conn.query(
         \\SELECT 1
         \\  FROM core.model_caps mc
         \\  JOIN core.platform_llm_keys plk
         \\    ON plk.provider = mc.provider AND plk.model = mc.model_id AND plk.active = true
         \\ WHERE mc.uid = $1::uuid
         \\ LIMIT 1
-    , .{uid}) catch return false);
+    , .{uid}));
     defer q.deinit();
-    return (q.next() catch null) != null;
+    return (try q.next()) != null;
 }
 
 /// Insert a new priced row. ON CONFLICT (provider, model_id) DO NOTHING, so the
