@@ -133,6 +133,8 @@ export {
   type PagePaginationProps,
   ConfirmDialog,
   type ConfirmDialogProps,
+  Nav,
+  type NavProps,
   PageHeader,
   PageDescription,
   type PageHeaderProps,

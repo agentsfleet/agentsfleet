@@ -13,6 +13,8 @@ type Props = {
   presentCredentialNames: string[] | null;
   initialTemplateId?: string;
   canAddTemplate?: boolean;
+  /** Open the create-template dialog on first render (?create=1 deep link). */
+  initialCreateOpen?: boolean;
 };
 
 // Orchestrates the template-only install flow: pick a template from the gallery
@@ -26,6 +28,7 @@ export function InstallFleet({
   presentCredentialNames,
   initialTemplateId,
   canAddTemplate = false,
+  initialCreateOpen = false,
 }: Props) {
   const [selection, setSelection] = useState<InstallSource | null>(null);
   // `null` ⇒ the operator has not confirmed the install yet (the confirm step is
@@ -75,6 +78,7 @@ export function InstallFleet({
       templates={templates}
       onUseTemplate={(template) => setSelection(template)}
       canAddTemplate={canAddTemplate}
+      initialCreateOpen={initialCreateOpen}
     />
   );
 }
