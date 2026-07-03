@@ -13,7 +13,7 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Milestone:** M108
 **Workstream:** 002
 **Date:** Jul 02, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — Indy's stated integration targets; each must connect with "low lift" as proof the platform base earns its keep.
 **Categories:** API, DOCS, UI
 **Batch:** B2 — starts after M108_001's registry + bounded-fetch gates clear
@@ -168,13 +168,13 @@ The credential broker gains a refresh-mint archetype: given a workspace's `fleet
 `GET /v1/connectors` (Bearer, `connector:read`, workspace-scoped query) renders from the registry: provider id, archetype, display name, configured (platform bag present — oauth2 only), connected (workspace handle present). Dashboard cards + the api-key form render from it; no provider list is hard-coded in the app. UI copy for an unconfigured OAuth provider links the `UZ-CONN-001` docs anchor.
 
 - **Dimension 4.1 DONE** — `GET /v1/connectors` lists all registry entries with correct configured/connected flags (registry-driven, no hard-coded list) → Tests `registry_integration_test.zig` "catalog reflects the registry with correct configured/connected flags (Dimension 4.1)" (integration, DB-gated) + router-match + scope assertions (DB-free)
-- **Dimension 4.2** — dashboard renders cards from the catalog (unit/component tier) and the api-key form posts the archetype's declared fields → Test `test_ui_connectors_cards_from_catalog` (app unit suite)
+- **Dimension 4.2 DONE** — dashboard renders cards from the catalog (registry-driven, no hard-coded provider list) and the api-key form posts the archetype's declared fields (sourced from the catalog entry's `fields`, not an app-side map); the connect server-action format-validates the provider id rather than allow-listing it → Test `test_ui_connectors_cards_from_catalog` (app suite, 16 cases) + `connector-actions` suite (format-validation + api-key forwarding)
 
 ### §5 — Docs + changelog
 
 `docs.agentsfleet.net` connector pages gain the six providers (per-provider connect walkthrough + required credentials); AUTH.md tables extended; changelog `<Update>` per CHANGELOG_VOICE (docs-repo work on its `chore/m108-*` branch).
 
-- **Dimension 5.1** — docs pages + changelog land in the docs repo PR; AUTH.md tables extended in this repo → verify at CHORE(close) (docs diff linked in Session Notes)
+- **Dimension 5.1 DONE** — changelog + connector docs landed in docs repo PR #122 (MERGED 2026-07-03, `docs(m108): changelog — six connectors + catalog + bounded broker mint`); AUTH.md tables extended in this repo (commit 5b4934e9). §4.2's catalog `fields` extension is internal plumbing — the user-facing connect flow is unchanged, so no new changelog entry is warranted.
 
 ---
 
@@ -287,6 +287,15 @@ N/A — no files deleted (additive data + hooks on the M108_001 base).
   > Indy (session, Jul 02, 2026): need Grafana, Zoho Desk, Jira, Linear, Fly, Datadog "with low lift".
 - **Metrics review** — `connector_connected` / `connector_connect_failed` added (table above); funnel playbook update decision recorded at implementation.
 - **§3 scope addition — runner mint error mapping (agent-initiated, pending Indy review).** `dispose()` in `http/handlers/runner/credentials_mint.zig` mapped every broker outcome to GitHub-specific copy (`ERR_GH_RECONNECT_REQUIRED` "GitHub App installation needs reconnect", `ERR_GH_MINT_FAILED`). §3 routes zoho/jira/linear through this same runner mint path, so their failures would return GitHub copy — a bug §3 activates — and Dimension 3.2 mandates `UZ-CONN-006` here. `dispose()` is now provider-aware (github→`UZ-GH-*`, oauth-refresh→`UZ-CONN-006`). This file was **not** in the original Files-Changed table; it was added because §3's mechanism directly reaches it. Surfaced to Indy at implementation (question posed; proceeded on the recommended "fix now" after no response within the window). **Reversible if Indy prefers a follow-up spec** — revert the `credentials_mint.zig` diff; the refresh mint still works, only the wire copy regresses to GitHub-labelled.
+  > Indy (2026-07-03): "Yes go" — **ratified** the `dispose()` scope-add (keep, not a follow-up spec) at §4.2 CHORE(close) review.
+
+- **Finding ⑤ (vault handle `integration` → `connector` field rename) — SKIPPED.** Internal-only (no wire/UX/schema effect); pure churn on a shipped field.
+  > Indy (2026-07-03): "Yes go" — confirmed **skip** ⑤.
+
+- **§4.2 — catalog serves the api_key field schema (re-opened §4.1).** The dashboard connect form needs each api_key provider's input fields (datadog `{api_key,app_key,site}`, …). The catalog endpoint originally served only `{id, archetype, display_name, configured, connected}`, so the first cut hard-coded an app-side `API_KEY_FIELDS` map. Indy flagged that as re-declaring registry data the frontend should consume, not own:
+  > Indy (2026-07-03): "in this then are you re inventing again?" … "Yes confirmed, extend."
+  Resolution: `catalog.zig`'s `CatalogEntry` gained a registry-sourced `fields: []const api_key.Field` (`{name, secret}`, empty for oauth2/app_install); the app renders whatever it gets, deriving labels from the field name (presentation only). A new api_key provider now needs **zero** app changes. `public/openapi.json` + the DB-gated catalog test extended in the same diff. This adds `catalog.zig` + `openapi.json` + `registry_integration_test.zig` to §4's blast radius (documented in Files Changed).
+- **§4.2 — connect action format-validates instead of allow-listing.** `startConnectAction`/`submitApiKeyConnectAction` re-validate the untrusted provider id by shape (`^[a-z][a-z0-9_]*$`, a safe path segment) rather than an enumerated `CONNECTOR_PROVIDERS` set that duplicated the registry; the backend is the authority on existence. The now-dead `CONNECTOR_PROVIDERS` value map + `ConnectorProvider` type and the static `lib/integrations/catalog.ts` (github/zoho/slack, with Zoho's placeholder "Planned/Request access" row) were deleted — Zoho is a first-class OAuth card now.
 
 ---
 
@@ -294,21 +303,32 @@ N/A — no files deleted (additive data + hooks on the M108_001 base).
 
 Same chain as M108_001 (`/write-unit-test` → `/review` → `/review-pr` per Indy's standing skip unless asked → `kishore-babysit-prs` after each push); outcomes recorded here.
 
+- **`/review` (§4.2, high effort, 8 finder angles + verify)** — 5 substantive findings, all fixed:
+  1. **`public/openapi.json` `fields` addition was clobbered** — it's a `redocly bundle` artifact; the direct edit reverted on the next `check-openapi`. Fixed at the YAML source (`connectors.yaml`) + re-bundled. (Highest-value catch — the deliverable was silently missing.)
+  2. **`PROVIDER_ID_PATTERN` rejected hyphens** — a future `ms-teams`/`google-drive` id would render a card but be un-connectable, breaking the zero-app-change invariant. Widened to `[a-z0-9_-]` (still injection-safe).
+  3. **Prototype-member lookups** — `FIELD_ACRONYMS`/`PROVIDER_ICON`/form values keyed by registry strings could resolve inherited members (a field named `toString`). Own-key guards (`Object.hasOwn`) added.
+  4. **File length** — `IntegrationsConnectors.tsx` hit 368 > 350 (RULE FLL). Split the two row components into `connector-rows.tsx` (container 72, rows 324).
+  5. **Empty-state raw `<p>`** — replaced with the `EmptyState` design-system primitive (UI GATE).
+  Left with rationale: `catalog.zig`'s two `switch (spec.archetype)` (low-severity; each is compile-exhaustive); the now-orphaned `EVENTS.integration_requested` registration (Zoho "Request access" is gone — internal-only, flagged for a follow-up rather than cascading into the analytics taxonomy + `posthog.test.ts` outside §4.2).
+
 ---
 
 ## Verification Evidence
 
-_§3 (broker refresh-minting) evidence — §4/§5 rows filled when those slices land._
+_§3 (broker refresh-minting) + §4 (catalog + dashboard cards) evidence. §4.1's catalog was re-opened to serve the api_key `fields` schema — see Discovery._
 
 | Check | Command | Result | Pass? |
 |-------|---------|--------|-------|
-| Unit tests (Zig) | `zig build test` | all pass (incl. new oauth2_refresh + dispose + cache tests); exit 0 | ✅ §3 |
-| Integration tests | `make test-integration` | not re-run for §3 (broker mints proven with injected fake vendor, the shipped github-mint pattern; no DB-backed handler added) | ⏳ §4 |
-| App unit (UI) | `make test` (app lane) | N/A for §3 (no UI in this slice) | ⏳ §4 |
-| Lint | `make lint-zig` | ✓ [zig] Lint passed | ✅ §3 |
-| Cross-compile | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` | both clean, exit 0 | ✅ §3 |
-| Gitleaks | `gitleaks detect` | 3119 commits scanned, no leaks found | ✅ §3 |
-| Bounded-outbound grep | eval E8 | one hit (`serve_broker.zig` `HttpClientExchange`) — the pre-existing sanctioned credentials-layer boundary (M102 github mint); §3 adds none, uses injected `ctx.http` | ✅ unchanged |
+| Unit tests (Zig) | `zig build test` | exit 0 (incl. oauth2_refresh + dispose + cache tests + the extended catalog `fields` serialization assertion). A pre-existing flaky server-lifecycle diagnostic (`worker_started`/`server_started`) prints but does not fail the build — unrelated to connectors | ✅ §3/§4 |
+| Integration tests | `make test-integration` | DB-gated catalog test extended to assert api_key `fields` (datadog's `[{api_key,secret:true},{app_key,secret:true},{site,secret:false}]`) + oauth `fields:[]`; skips locally (no Postgres), CI-verified | ⏳ CI §4 |
+| App unit (UI) | `bunx vitest run` (app) | 1151 pass; `test_ui_connectors_cards_from_catalog` (16 cases) + `connector-actions` suite green. 1 pre-existing failure in `no-api-template-mint` grep-gate (AddRunnerDialog, M92_004) — reproduces on HEAD with this work stashed, out of scope | ✅ §4 (mine) |
+| Lint (app) | `make lint-app` | ✓ oxlint (type-aware) + tsc `--noEmit` clean | ✅ §4 |
+| Lint (Zig) | `make lint-zig` | ✓ [zig] Lint passed (ZLint + pg-drain + isolation) | ✅ §3/§4 |
+| OpenAPI | `make check-openapi` | ✓ 55 paths, url-shape + error-schema + bundle green. `fields` added at the YAML **source** (`public/openapi/paths/connectors.yaml`) then bundled → `public/openapi.json` (both in diff). NB: `openapi.json` is a generated bundle — a direct edit is clobbered by `redocly bundle`; caught by `/review` | ✅ §4 |
+| No hard-coded provider list | eval E10 | empty — no `.tsx` names a provider without also reading the catalog | ✅ §4 |
+| Cross-compile | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` | both clean, exit 0 | ✅ §3/§4 |
+| Gitleaks | `gitleaks detect` | 3137 commits scanned, no leaks found | ✅ §3/§4 |
+| Bounded-outbound grep | eval E8 | connectors/ hits only in `bounded_fetch.zig` (the sanctioned helper); §4 adds no raw `std.http.Client` | ✅ unchanged |
 
 ---
 

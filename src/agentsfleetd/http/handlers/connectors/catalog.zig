@@ -15,19 +15,28 @@ const ec = @import("../../../errors/error_registry.zig");
 const vault = @import("../../../state/vault.zig");
 const credential_key = @import("../../../fleet_runtime/credential_key.zig");
 const oauth2 = @import("oauth2.zig");
+const api_key = @import("api_key.zig");
 const registry = @import("registry.zig");
 
 const S_WORKSPACE_ACCESS_DENIED = "Workspace access denied";
 const S_KEY_ALLOC_FAILED = "catalog key alloc failed";
 
 /// One catalog row (wire shape). `configured` is platform-global; `connected` is
-/// scoped to the requested workspace. No secret material — only status flags.
+/// scoped to the requested workspace. No secret material — only status flags and
+/// (for api_key connectors) the input-field schema the dashboard's connect form
+/// renders from. `api_key.Field` is exactly the `{name, secret}` wire shape, so
+/// it serializes verbatim — keep it wire-clean if it ever gains a field.
 const CatalogEntry = struct {
     id: []const u8,
     archetype: []const u8,
     display_name: []const u8,
     configured: bool,
     connected: bool,
+    /// Declared input fields for the api_key connect form (which secrets/plain
+    /// values the operator submits). Empty for oauth2/app_install — those connect
+    /// by redirect, not a form. Registry-sourced so the dashboard never hard-codes
+    /// a provider's field list.
+    fields: []const api_key.Field,
 };
 
 const N = registry.REGISTRY.len;
@@ -97,6 +106,12 @@ pub fn innerCatalog(hx: hx_mod.Hx, workspace_id: []const u8) void {
                 .oauth2, .app_install => app_present[i],
             },
             .connected = fleet_present[i],
+            // Exhaustive by archetype (a new archetype can't land half-wired):
+            // only api_key carries a submit form, so only it exposes fields.
+            .fields = switch (spec.archetype) {
+                .api_key => |d| d.fields,
+                .oauth2, .app_install => &.{},
+            },
         };
     }
     hx.ok(.ok, entries[0..]);
