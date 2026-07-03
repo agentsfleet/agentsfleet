@@ -14,8 +14,9 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Milestone:** M109
 **Workstream:** 004
 **Date:** Jul 02, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Test Baseline:** unit=2270 integration=243
+**Test Delta:** unit=2272 integration=243 (+2 unit — the two `requireMethod` cases; §2/§4 add TS/vitest tests not counted by the Zig depth gate)
 **Priority:** P1 — the PostHog loader permanently stops delivering analytics after one transient failure for the rest of a page session (silent product-signal loss); the operator dashboard (runners, admin models) gates on a legacy `platform_admin` boolean the M104 scope migration left behind, so a correctly-scoped operator cannot reach the surface and platform-admin must be configured twice (boolean + scopes), which drift; the route-method duplication is a maintainability/DRY issue at P2-grade severity kept in this workstream only because it shares no scope conflict with the others.
 **Categories:** API UI
 **Batch:** B1 — independent of M109_001/002/003; no shared files.
@@ -278,6 +279,7 @@ grep -rn "platform_admin\|readPlatformAdminClaim\|isPlatformAdmin" ui/packages/a
 - **§4 scope-hierarchy closure (added post-review):** the frontend gate must mirror the backend's downward closure (`scopes.zig` `HIERARCHY`/`parseClaim`, `read < write < admin`), because the *documented* platform-operator set (`docs/AUTH.md` §Manually-provisioned: `runner:enroll runner:write … model:admin …`) carries the write/admin rungs but **not** the `:read` rungs — it relies on closure for read access. A literal `hasScope("runner:read")` would hide the runners/models pages from a correctly-provisioned operator. `lib/auth/scopes.ts` `expandScopes` mirrors the backend `HIERARCHY` verbatim (same accepted defence-in-depth duplication as the wire strings); `readSessionScopes` applies it. Covered by `platform.test.ts` "expands the downward closure".
 - **§4 error-code reconciliation:** the UI minted `UZ-AUTH-021` (`PLATFORM_ADMIN_REQUIRED`) on a failed gate, but that code is retired backend-side — the operator routes return `UZ-AUTH-022` (insufficient scope) now (`grep UZ-AUTH-021 src/` → none; `error_entries.zig:79` defines only `022`). §4 switches the UI mint + `lib/errors.ts` copy to `UZ-AUTH-022` (`INSUFFICIENT_SCOPE`), removing the drift. Blast radius wider than the pre-spec Files-Changed table anticipated (LLM-drafted spec, per provenance): `lib/errors.ts`, `Shell.tsx`, `lib/auth/scopes.ts`, and six test files added — table reconciled above.
 - **Metrics review:** no new events; §2 restores existing PostHog delivery reliability, no playbook update required (no funnel/event shape changes).
+- **Review chain outcomes:** `/write-unit-test` — coverage is complete, every Dimension maps to a passing test (1.2 `requireMethod`; 2.1/2.2 PostHog retry + no-unhandled-rejection; 4.1/4.2 per-scope gate + Invariant-3 production source scan; plus a closure test). `/review` — ran the adversarial core (independent fresh-eyes subagent over the code diff): **clean, "ship as-is"** — §1 preserves every method enum with no `switch`-site contamination, §2's failure-reset + post-init bind eliminate the wedge and the unhandled rejection, §4 is fail-closed on every path with the UI closure table matching the backend `HIERARCHY` exactly and zero residual `platform_admin` references. No fixes required.
 
 ---
 
@@ -295,13 +297,14 @@ grep -rn "platform_admin\|readPlatformAdminClaim\|isPlatformAdmin" ui/packages/a
 
 | Check | Command | Result | Pass? |
 |-------|---------|--------|-------|
-| Unit tests | `zig build test --summary all` | {paste snippet} | |
-| UI tests (website) | `bun test ui/packages/website` | {paste snippet} | |
-| UI tests (app) | `bun test ui/packages/app` | {paste snippet} | |
-| Lint | `make lint` | {paste snippet} | |
-| Cross-compile (Zig) | `zig build -Dtarget=x86_64-linux` | {paste snippet} | |
-| Gitleaks | `gitleaks detect` | {paste snippet} | |
-| Dead code sweep | E8 + E9 above | {paste snippet} | |
+| Unit tests (Zig) | `zig build test --summary all` | `34/34 steps; 1421/1875 tests passed (454 skipped, 0 failed)`; depth gate `unit=2272` (baseline 2270, +2 requireMethod) | ✅ |
+| UI tests (website) | `vitest run` (ui/packages/website) | `24 files, 173 tests passed` (incl. posthog retry + no-unhandled-rejection) | ✅ |
+| UI tests (app) | `vitest run` (ui/packages/app) | `124 files, 1141 tests passed` (incl. scope-gate + closure + Invariant-3 scan) | ✅ |
+| Lint | pre-commit `make harness-verify` + `lint-app`/`lint-website`/zig lint | all gates green (UFS, DESIGN TOKEN, SPEC TEMPLATE, MS-ID+UI, ZIG/FLL, oxlint+tsc) | ✅ |
+| Cross-compile (Zig) | `zig build -Dtarget={x86_64,aarch64}-linux` | both targets built clean | ✅ |
+| Gitleaks | `gitleaks detect` | `no leaks found` (~150 MB scanned) | ✅ |
+| Dead code sweep | E8 (orphan) + E9 (platform_admin, prod-only) | E8: only switch-else arms remain; E9: production sweep empty | ✅ |
+| Adversarial review | independent fresh-eyes subagent (`/review` core) | clean — "ship as-is"; §1 no method swap / no switch contamination, §2 no wedge/no unhandled-rejection, §4 fail-closed + closure matches backend HIERARCHY | ✅ |
 
 ---
 
