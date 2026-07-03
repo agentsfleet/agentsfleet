@@ -110,13 +110,45 @@ test "mint: unknown / unregistered id returns unknown_integration, no upstream c
     var b = try brokerWith(alloc, integration.REGISTRY);
     defer b.deinit();
 
-    var h1 = try testing.parse(alloc, "{\"integration\":\"zoho\"}");
+    // `datadog` is an api_key connector — used directly, never broker-minted — so
+    // it is not a broker integration id and resolves to unknown.
+    var h1 = try testing.parse(alloc, "{\"integration\":\"datadog\"}");
     defer h1.deinit();
-    try std.testing.expect((try b.mint(alloc, "ws1", "zoho", h1.value, 0)) == .unknown_integration);
+    try std.testing.expect((try b.mint(alloc, "ws1", "datadog", h1.value, 0)) == .unknown_integration);
 
     var h2 = try testing.parse(alloc, "{\"token\":\"x\"}");
     defer h2.deinit();
     try std.testing.expect((try b.mint(alloc, "ws1", "github", h2.value, 0)) == .unknown_integration);
+}
+
+test "mint: an oauth2_refresh token caches within validity, re-mints past the skew (Dimension 3.1)" {
+    const alloc = std.testing.allocator;
+    const EXPIRES_IN_S: i64 = 3600;
+    const EXPIRES_IN_TEXT = std.fmt.comptimePrint("{d}", .{EXPIRES_IN_S});
+    const MS_PER_S: i64 = 1000;
+    // The production zoho entry mints via the injected token endpoint (FakeGitHub).
+    var vendor = testing.FakeGitHub{ .alloc = alloc, .status = 200, .resp_body = "{\"access_token\":\"at_zoho\",\"expires_in\":" ++ EXPIRES_IN_TEXT ++ "}" };
+    defer vendor.deinit();
+    var rec = testing.RecordingMetrics{};
+    var b = try CredentialBroker.init(alloc, integration.REGISTRY, testing.brokerDeps(&vendor, &rec));
+    defer b.deinit();
+    var h = try testing.parse(alloc, "{\"integration\":\"zoho\",\"refresh_token\":\"rt_abc\"}");
+    defer h.deinit();
+
+    const EXPIRY_MS: i64 = EXPIRES_IN_S * MS_PER_S;
+
+    const r1 = try b.mint(alloc, "ws1", "zoho", h.value, 0); // miss → one exchange
+    try std.testing.expect(r1 == .ok);
+    alloc.free(r1.ok.token);
+    const r2 = try b.mint(alloc, "ws1", "zoho", h.value, EXPIRY_MS - EXPIRY_SKEW_MS - 1); // still valid → cache hit
+    try std.testing.expect(r2 == .ok);
+    alloc.free(r2.ok.token);
+    try std.testing.expectEqual(@as(usize, 1), vendor.calls); // one exchange served two mints
+
+    const r3 = try b.mint(alloc, "ws1", "zoho", h.value, EXPIRY_MS - EXPIRY_SKEW_MS + 1); // past skew → re-mint
+    try std.testing.expect(r3 == .ok);
+    alloc.free(r3.ok.token);
+    try std.testing.expectEqual(@as(usize, 2), vendor.calls);
 }
 
 test "mint: emits a metrics event per call with the cache-hit flag (#11)" {

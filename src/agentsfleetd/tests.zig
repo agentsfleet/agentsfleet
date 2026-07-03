@@ -35,6 +35,7 @@ test {
     _ = @import("credentials/integration.zig");
     _ = @import("credentials/integration_ctx.zig");
     _ = @import("credentials/integration_github.zig");
+    _ = @import("credentials/integration_oauth_refresh.zig");
     _ = @import("credentials/broker.zig");
     _ = @import("credentials/broker_test.zig");
     _ = @import("credentials/serve_broker.zig");

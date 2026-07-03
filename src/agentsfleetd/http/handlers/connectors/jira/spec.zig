@@ -7,7 +7,7 @@ const oauth2 = @import("../oauth2.zig");
 pub const PROVIDER = common.PROVIDER_JIRA;
 
 const AUTHORIZE_ENDPOINT = "https://auth.atlassian.com/authorize";
-const TOKEN_ENDPOINT = "https://auth.atlassian.com/oauth/token";
+const TOKEN_ENDPOINT = common.JIRA_TOKEN_ENDPOINT;
 const SCOPES = "read:jira-work read:jira-user offline_access";
 const AUTHORIZE_EXTRA_QUERY = "audience=api.atlassian.com&prompt=consent";
 const STATE_DOMAIN_PREFIX = "jira:v1:";

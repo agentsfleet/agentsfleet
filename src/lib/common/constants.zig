@@ -129,6 +129,14 @@ pub const PROVIDER_GRAFANA = "grafana";
 /// segment, and the `fleet:fly` vault-key stem.
 pub const PROVIDER_FLY = "fly";
 
+/// OAuth 2.0 token endpoints for the refresh-token providers — the ONE spelling
+/// shared by the connect flow (`connectors/<p>/spec.zig`) and the credential
+/// broker's refresh-mint registry (`credentials/integration.zig`), so the code
+/// exchange and the later refresh mint hit the same URL (RULE UFS).
+pub const ZOHO_TOKEN_ENDPOINT: []const u8 = "https://accounts.zoho.com/oauth/v2/token";
+pub const JIRA_TOKEN_ENDPOINT: []const u8 = "https://auth.atlassian.com/oauth/token";
+pub const LINEAR_TOKEN_ENDPOINT: []const u8 = "https://api.linear.app/oauth/token";
+
 /// `connector_channels.kind` for a per-channel resident fleet — the durable
 /// fleet that owns one Slack channel's memory namespace.
 pub const CONNECTOR_CHANNEL_KIND_RESIDENT = "resident";

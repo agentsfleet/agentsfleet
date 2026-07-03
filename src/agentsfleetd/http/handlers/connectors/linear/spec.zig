@@ -7,7 +7,7 @@ const oauth2 = @import("../oauth2.zig");
 pub const PROVIDER = common.PROVIDER_LINEAR;
 
 const AUTHORIZE_ENDPOINT = "https://linear.app/oauth/authorize";
-const TOKEN_ENDPOINT = "https://api.linear.app/oauth/token";
+const TOKEN_ENDPOINT = common.LINEAR_TOKEN_ENDPOINT;
 const SCOPES = "read";
 const STATE_DOMAIN_PREFIX = "linear:v1:";
 const STATE_NONCE_PREFIX = "connect:linear:nonce:";

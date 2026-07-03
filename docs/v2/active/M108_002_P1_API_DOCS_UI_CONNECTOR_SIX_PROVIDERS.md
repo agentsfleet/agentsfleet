@@ -109,7 +109,15 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 | `src/agentsfleetd/http/handlers/connectors/{zoho,jira,linear}/hook.zig` (names per local style) | CREATE | per-provider oauth2 deltas: exchange-body parse, handle shape, Jira cloud-id post-auth resolve |
 | `src/agentsfleetd/http/handlers/connectors/api_key.zig` (+ per-provider probe data) | CREATE | api_key archetype connect: submission shape, bounded probe, vault write |
 | `src/agentsfleetd/http/handlers/connectors/catalog.zig` + route files | CREATE/EDIT | `GET /v1/connectors` registry-driven catalog (id, archetype, configured, connected-per-workspace) |
-| `src/agentsfleetd/credentials/…` | EDIT | refresh-mint archetype (Zoho, Jira) beside the GitHub mint; cache-until-skew |
+| `src/agentsfleetd/credentials/integration.zig` | EDIT | `oauth2_refresh` Mint variant + zoho/jira/linear Id + registry entries + `OauthApp` re-export |
+| `src/agentsfleetd/credentials/integration_oauth_refresh.zig` | CREATE | the refresh-mint archetype (Zoho, Jira, Linear); the declarative twin of the GitHub App mint |
+| `src/agentsfleetd/credentials/integration_ctx.zig` | EDIT | `OauthApp` secret type + zoho/jira/linear platform slots; optional-bearer / content-type on `HttpRequest` (token-endpoint form POST) |
+| `src/agentsfleetd/credentials/serve_broker.zig` | EDIT | `loadOauthApp` platform-secret load (`<provider>-app`) + `loadPlatformSecrets`; broker's HTTP boundary posts the form body |
+| `src/agentsfleetd/credentials/testing.zig` | EDIT | `fake_oauth_app`; FakeGitHub records the request body; `brokerDeps` wires the oauth apps |
+| `src/agentsfleetd/cmd/preflight.zig` | EDIT | own + free the three OAuth apps at shutdown (broker handle lifecycle) |
+| `src/agentsfleetd/http/handlers/connectors/{zoho,jira,linear}/spec.zig` | EDIT | token endpoint sourced from `common.*_TOKEN_ENDPOINT` (UFS single-source with the broker) |
+| `src/agentsfleetd/http/handlers/runner/credentials_mint.zig` | EDIT | **scope addition (see Discovery)** — `dispose()` made provider-aware: github→`UZ-GH-*`, oauth-refresh→`UZ-CONN-006`. §3 routes zoho/jira/linear through this path, which previously returned GitHub-only copy |
+| `src/lib/common/constants.zig` | EDIT | provider id constants for the six (UFS) **+ `ZOHO/JIRA/LINEAR_TOKEN_ENDPOINT`** shared with the broker refresh-mint |
 | `src/agentsfleetd/errors/error_registry.zig` | EDIT | `UZ-CONN-005`, `UZ-CONN-006` |
 | `public/openapi.json` | EDIT | catalog endpoint + api_key connect body |
 | `ui/packages/app` connectors page files | EDIT | cards from catalog; api-key connect form (fields per archetype data) |
@@ -151,9 +159,9 @@ Connect for the api_key archetype is an authed `POST …/connect` whose JSON bod
 
 The credential broker gains a refresh-mint archetype: given a workspace's `fleet:<provider>` handle carrying a refresh token, mint a fresh access token via the provider token endpoint (through `bounded_fetch`), cache until expiry-minus-skew (mirror the GitHub mint's cache discipline), and degrade to `reconnect_required` when the refresh token is revoked/expired — never a crash, never a raw refresh-token egress to the runner. Providers in this slice: Zoho, Jira, and Linear.
 
-- **Dimension 3.1** — mint returns a fresh access token from a refresh handle; second mint within expiry serves the cache (fake vendor sees one exchange) → Test `test_refresh_mint_caches_until_skew`
-- **Dimension 3.2** — revoked refresh token (fake vendor `invalid_grant`) → `reconnect_required` outcome, `UZ-CONN-006` logged, no retry storm (single bounded attempt per mint request) → Test `test_refresh_mint_revoked_reconnect_required`
-- **Dimension 3.3** — the runner-facing mint response carries only the short-lived access token, never the refresh token → Test `test_mint_response_never_carries_refresh_token`
+- **Dimension 3.1 DONE** — mint returns a fresh access token from a refresh handle; second mint within expiry serves the cache (fake vendor sees one exchange) → Test `broker_test.zig` "mint: an oauth2_refresh token caches within validity, re-mints past the skew (Dimension 3.1)"
+- **Dimension 3.2 DONE** — revoked refresh token (fake vendor `invalid_grant`) → `reconnect_required` outcome, single bounded attempt (no retry storm); the runner mint surfaces `UZ-CONN-006` for zoho/jira/linear via provider-aware `dispose()` → Tests `integration_oauth_refresh.zig` "…invalid_grant → reconnect_required in a single attempt (Dimension 3.2)" + `credentials_mint.zig` "dispose: oauth2-refresh connectors surface UZ-CONN-006, not GitHub copy"
+- **Dimension 3.3 DONE** — the runner-facing mint response carries only the short-lived access token, never the refresh token (refresh token is posted as the request credential but absent from the result) → Test `integration_oauth_refresh.zig` "…200 → access token with local expiry; refresh token posted, not returned (Dimension 3.3)"
 
 ### §4 — Catalog endpoint + dashboard cards
 
@@ -278,6 +286,7 @@ N/A — no files deleted (additive data + hooks on the M108_001 base).
 - Fold + terminology + provider set inherited from M108_001 Discovery (Indy quotes there). Provider list source:
   > Indy (session, Jul 02, 2026): need Grafana, Zoho Desk, Jira, Linear, Fly, Datadog "with low lift".
 - **Metrics review** — `connector_connected` / `connector_connect_failed` added (table above); funnel playbook update decision recorded at implementation.
+- **§3 scope addition — runner mint error mapping (agent-initiated, pending Indy review).** `dispose()` in `http/handlers/runner/credentials_mint.zig` mapped every broker outcome to GitHub-specific copy (`ERR_GH_RECONNECT_REQUIRED` "GitHub App installation needs reconnect", `ERR_GH_MINT_FAILED`). §3 routes zoho/jira/linear through this same runner mint path, so their failures would return GitHub copy — a bug §3 activates — and Dimension 3.2 mandates `UZ-CONN-006` here. `dispose()` is now provider-aware (github→`UZ-GH-*`, oauth-refresh→`UZ-CONN-006`). This file was **not** in the original Files-Changed table; it was added because §3's mechanism directly reaches it. Surfaced to Indy at implementation (question posed; proceeded on the recommended "fix now" after no response within the window). **Reversible if Indy prefers a follow-up spec** — revert the `credentials_mint.zig` diff; the refresh mint still works, only the wire copy regresses to GitHub-labelled.
 
 ---
 
@@ -289,15 +298,17 @@ Same chain as M108_001 (`/write-unit-test` → `/review` → `/review-pr` per In
 
 ## Verification Evidence
 
+_§3 (broker refresh-minting) evidence — §4/§5 rows filled when those slices land._
+
 | Check | Command | Result | Pass? |
 |-------|---------|--------|-------|
-| Unit tests | `make test` | | |
-| Integration tests | `make test-integration` | | |
-| App unit (UI) | `make test` (app lane) | | |
-| Lint | `make lint` | | |
-| Cross-compile | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` | | |
-| Gitleaks | `gitleaks detect` | | |
-| Bounded-outbound grep | eval E8 | | |
+| Unit tests (Zig) | `zig build test` | all pass (incl. new oauth2_refresh + dispose + cache tests); exit 0 | ✅ §3 |
+| Integration tests | `make test-integration` | not re-run for §3 (broker mints proven with injected fake vendor, the shipped github-mint pattern; no DB-backed handler added) | ⏳ §4 |
+| App unit (UI) | `make test` (app lane) | N/A for §3 (no UI in this slice) | ⏳ §4 |
+| Lint | `make lint-zig` | ✓ [zig] Lint passed | ✅ §3 |
+| Cross-compile | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` | both clean, exit 0 | ✅ §3 |
+| Gitleaks | `gitleaks detect` | 3119 commits scanned, no leaks found | ✅ §3 |
+| Bounded-outbound grep | eval E8 | one hit (`serve_broker.zig` `HttpClientExchange`) — the pre-existing sanctioned credentials-layer boundary (M102 github mint); §3 adds none, uses injected `ctx.http` | ✅ unchanged |
 
 ---
 

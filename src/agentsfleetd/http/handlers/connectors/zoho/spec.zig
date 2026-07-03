@@ -8,7 +8,7 @@ const oauth2 = @import("../oauth2.zig");
 pub const PROVIDER = common.PROVIDER_ZOHO;
 
 const AUTHORIZE_ENDPOINT = "https://accounts.zoho.com/oauth/v2/auth";
-const TOKEN_ENDPOINT = "https://accounts.zoho.com/oauth/v2/token";
+const TOKEN_ENDPOINT = common.ZOHO_TOKEN_ENDPOINT;
 const SCOPES = "Desk.organization.READ,Desk.basic.READ";
 const AUTHORIZE_EXTRA_QUERY = "access_type=offline&prompt=consent";
 const STATE_DOMAIN_PREFIX = "zoho:v1:";
