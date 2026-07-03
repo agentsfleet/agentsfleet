@@ -12,6 +12,7 @@ const hx_mod = @import("handlers/hx.zig");
 const connect_h = @import("handlers/connectors/connect.zig");
 const callback_h = @import("handlers/connectors/callback.zig");
 const status_h = @import("handlers/connectors/status.zig");
+const catalog_h = @import("handlers/connectors/catalog.zig");
 const slack_events_h = @import("handlers/connectors/slack/events.zig");
 
 const Hx = hx_mod.Hx;
@@ -24,6 +25,15 @@ pub fn invokeConnectorConnect(hx: *Hx, req: *httpz.Request, route: router.Route)
 pub fn invokeConnectorStatus(hx: *Hx, req: *httpz.Request, route: router.Route) void {
     if (!common.requireMethod(hx.res, req.method, .GET)) return;
     status_h.innerStatus(hx.*, route.connector_status);
+}
+
+pub fn invokeConnectorCatalog(hx: *Hx, req: *httpz.Request, route: router.Route) void {
+    if (req.method != .GET) {
+        common.respondMethodNotAllowed(hx.res);
+        return;
+    }
+    _ = route;
+    catalog_h.innerCatalog(hx.*, req);
 }
 
 pub fn invokeConnectorCallback(hx: *Hx, req: *httpz.Request, route: router.Route) void {

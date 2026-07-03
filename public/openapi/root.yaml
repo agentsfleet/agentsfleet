@@ -129,6 +129,8 @@ paths:
     $ref: ./paths/webhooks.yaml#/~1v1~1webhooks~1{fleet_id}~1grant-approval
   /v1/webhooks/{fleet_id}/github:
     $ref: ./paths/webhooks.yaml#/~1v1~1webhooks~1{fleet_id}~1github
+  /v1/connectors:
+    $ref: ./paths/connectors.yaml#/~1v1~1connectors
   /v1/workspaces/{workspace_id}/connectors/{provider}/connect:
     $ref: ./paths/connectors.yaml#/~1v1~1workspaces~1{workspace_id}~1connectors~1{provider}~1connect
   /v1/workspaces/{workspace_id}/connectors/{provider}:

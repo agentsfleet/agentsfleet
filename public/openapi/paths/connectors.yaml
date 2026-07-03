@@ -49,6 +49,68 @@
         $ref: ../components/responses.yaml#/components/responses/Error
       default:
         $ref: ../components/responses.yaml#/components/responses/Error
+/v1/connectors:
+  get:
+    operationId: connector_catalog
+    summary: List the connector catalog for a workspace
+    description: Renders the deployment's connector registry as data for the dashboard (requires the `connector:read`
+      scope) — every provider with its archetype, display name, whether the platform side is `configured` (oauth2/app_install
+      need a `<provider>-app` platform bag; api_key connectors self-provision and are always configured), and whether this
+      workspace is `connected` (holds a `fleet:<provider>` vault handle). The dashboard renders its cards from this — there
+      is no hard-coded provider list.
+    tags:
+    - Connectors
+    parameters:
+    - name: workspace_id
+      in: query
+      required: true
+      description: UUIDv7 of the workspace to report connected state for.
+      schema:
+        type: string
+        format: uuid
+    responses:
+      '200':
+        description: The connector catalog — one entry per registry provider.
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                type: object
+                required:
+                - id
+                - archetype
+                - display_name
+                - configured
+                - connected
+                properties:
+                  id:
+                    type: string
+                    description: Connector registry id / route segment (`slack`, `github`, `zoho`, `jira`, `linear`, `datadog`,
+                      `grafana`, `fly`).
+                  archetype:
+                    type: string
+                    enum:
+                    - oauth2
+                    - app_install
+                    - api_key
+                  display_name:
+                    type: string
+                  configured:
+                    type: boolean
+                    description: Platform side ready — the `<provider>-app` bag exists (oauth2/app_install); api_key connectors
+                      self-provision and are always true.
+                  connected:
+                    type: boolean
+                    description: This workspace holds a `fleet:<provider>` vault handle.
+      '400':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '401':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '403':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      default:
+        $ref: ../components/responses.yaml#/components/responses/Error
 /v1/workspaces/{workspace_id}/connectors/{provider}:
   get:
     operationId: connector_status

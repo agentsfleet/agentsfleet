@@ -90,6 +90,7 @@ pub fn classFor(route: router.Route) RouteClass {
         .revoke_integration_grant,
         .connector_connect,
         .connector_status,
+        .connector_catalog,
         .connector_callback,
         .slack_events,
         .fleet_keys,
@@ -182,6 +183,7 @@ pub fn specFor(route: router.Route, registry: *auth_mw.MiddlewareRegistry) Route
         // callback is Bearer-less (a vendor redirect) — state-authed in-handler.
         .connector_connect => .{ .middlewares = registry.bearer(), .invoke = connectors_invoke.invokeConnectorConnect },
         .connector_status => .{ .middlewares = registry.bearer(), .invoke = connectors_invoke.invokeConnectorStatus },
+        .connector_catalog => .{ .middlewares = registry.bearer(), .invoke = connectors_invoke.invokeConnectorCatalog },
         .connector_callback => .{ .middlewares = auth_mw.MiddlewareRegistry.none, .invoke = connectors_invoke.invokeConnectorCallback },
         // Slack events ingress (M106 §2). Bearer-less — the Slack v0 request
         // signature is verified in-handler (the signing secret is resolved

@@ -104,6 +104,7 @@ pub const Route = union(enum) {
     connector_connect: matchers.WorkspaceConnectorRoute, // POST /v1/workspaces/{ws}/connectors/{provider}/connect
     connector_status: matchers.WorkspaceConnectorRoute, // GET /v1/workspaces/{ws}/connectors/{provider}
     connector_callback: []const u8, // GET /v1/connectors/{provider}/callback (Bearer-less; state-authed)
+    connector_catalog, // GET /v1/connectors?workspace_id={ws} (Bearer, connector:read) — registry-driven dashboard catalog
     // Slack events ingress — POST /v1/connectors/slack/events. Bearer-less;
     // the Slack v0 request signature is the only auth (in-handler). Bespoke:
     // inbound event surfaces are per-provider by nature.

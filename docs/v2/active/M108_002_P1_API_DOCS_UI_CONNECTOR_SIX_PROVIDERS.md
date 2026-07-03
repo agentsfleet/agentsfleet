@@ -167,7 +167,7 @@ The credential broker gains a refresh-mint archetype: given a workspace's `fleet
 
 `GET /v1/connectors` (Bearer, `connector:read`, workspace-scoped query) renders from the registry: provider id, archetype, display name, configured (platform bag present — oauth2 only), connected (workspace handle present). Dashboard cards + the api-key form render from it; no provider list is hard-coded in the app. UI copy for an unconfigured OAuth provider links the `UZ-CONN-001` docs anchor.
 
-- **Dimension 4.1** — catalog lists all registry entries with correct configured/connected flags → Test `test_catalog_reflects_registry_and_state`
+- **Dimension 4.1 DONE** — `GET /v1/connectors` lists all registry entries with correct configured/connected flags (registry-driven, no hard-coded list) → Tests `registry_integration_test.zig` "catalog reflects the registry with correct configured/connected flags (Dimension 4.1)" (integration, DB-gated) + router-match + scope assertions (DB-free)
 - **Dimension 4.2** — dashboard renders cards from the catalog (unit/component tier) and the api-key form posts the archetype's declared fields → Test `test_ui_connectors_cards_from_catalog` (app unit suite)
 
 ### §5 — Docs + changelog
