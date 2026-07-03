@@ -12,6 +12,7 @@ type Props = {
   templates: FleetTemplateGalleryEntry[];
   presentCredentialNames: string[] | null;
   initialTemplateId?: string;
+  canAddTemplate?: boolean;
 };
 
 // Orchestrates the template-only install flow: pick a template from the gallery
@@ -24,6 +25,7 @@ export function InstallFleet({
   templates,
   presentCredentialNames,
   initialTemplateId,
+  canAddTemplate = false,
 }: Props) {
   const [selection, setSelection] = useState<InstallSource | null>(null);
   // `null` ⇒ the operator has not confirmed the install yet (the confirm step is
@@ -69,8 +71,10 @@ export function InstallFleet({
 
   return (
     <InstallSourceSelector
+      workspaceId={workspaceId}
       templates={templates}
       onUseTemplate={(template) => setSelection(template)}
+      canAddTemplate={canAddTemplate}
     />
   );
 }

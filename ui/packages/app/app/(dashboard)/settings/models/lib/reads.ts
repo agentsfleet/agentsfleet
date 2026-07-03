@@ -2,7 +2,7 @@ import { cache } from "react";
 import { getTenantProvider } from "@/lib/api/tenant_provider";
 import { listCredentials } from "@/lib/api/credentials";
 
-// Server-only read wrappers for the Models & Keys page. React's `cache()` is an
+// Server-only read wrappers for the Models page. React's `cache()` is an
 // RSC primitive that collapses repeat reads within ONE server render — the hero
 // and the switch list both need the tenant provider + the credential list, and
 // without this they would each trigger a separate backend round-trip. Same

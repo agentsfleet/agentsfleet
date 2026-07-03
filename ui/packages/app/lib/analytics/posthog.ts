@@ -27,6 +27,9 @@ type AnalyticsProps = {
   error_code?: string;
   error_message?: string;
   reason?: string;
+  visibility?: string;
+  source_kind?: string;
+  outcome?: string;
 };
 
 type PostHogLike = {
@@ -59,6 +62,9 @@ const ALLOWED_PROP_KEYS = new Set<keyof AnalyticsProps>([
   "error_code",
   "error_message",
   "reason",
+  "visibility",
+  "source_kind",
+  "outcome",
 ]);
 
 let analyticsEnabled = false;

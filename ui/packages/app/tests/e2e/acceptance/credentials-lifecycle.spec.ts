@@ -1,6 +1,6 @@
 /**
  * credentials-lifecycle.spec.ts — custom-secret add (field builder) → list →
- * rotate, on the consolidated Models & Keys page.
+ * rotate, on the consolidated Models page.
  *
  * After the M102 consolidation the standalone /credentials vault is gone; the
  * custom-secrets section now lives in the `custom-secrets-group` region on

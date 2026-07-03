@@ -1,6 +1,6 @@
 import React from "react";
 
-// Shared mock harness for the Models & Keys client-component tests (hero, switch
+// Shared mock harness for the Models client-component tests (hero, switch
 // list, forms, panels). Each shard declares its own hoisted `vi.mock(...)` and
 // delegates the factory body here via
 // `vi.mock("mod", async () => (await import("./helpers/models-component-mocks")).designSystemStub())`.
@@ -33,7 +33,12 @@ export function designSystemStub() {
       size?: string;
     }> &
       Record<string, unknown>) => {
-      // `asChild` renders the single child as-is (the hero's anchor button).
+      if (asChild && React.isValidElement(children)) {
+        return React.cloneElement(children, {
+          "data-size": _size,
+          "data-variant": _variant,
+        } as Partial<React.HTMLAttributes<HTMLElement>>);
+      }
       if (asChild) return children as React.ReactElement;
       // Reflect the disabled state via aria-* rather than the native `disabled`
       // attribute: React suppresses click handlers on truly-disabled buttons, so

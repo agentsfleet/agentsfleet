@@ -45,7 +45,7 @@ const ISLANDS: Island[] = [
     shim: "AddCredentialFormDynamic",
     rawImportFragment: "credentials/components/AddCredentialForm",
     // /credentials is now a bare redirect; the custom-secrets add form lives on
-    // the consolidated Models & Keys page.
+    // the consolidated Models page.
     callSite: "app/(dashboard)/settings/models/page.tsx",
     rawComponent: "AddCredentialForm",
   },

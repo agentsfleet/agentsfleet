@@ -16,6 +16,7 @@ vi.mock("@/components/domain/useFleetEventStream", () => ({
 
 import { InstallEntry } from "../app/(dashboard)/fleets/new/InstallEntry";
 import { FleetInstallGate } from "../app/(dashboard)/fleets/[id]/components/FleetInstallGate";
+import { InstallSourceSelector } from "../app/(dashboard)/fleets/new/InstallSourceSelector";
 
 const TEMPLATE = {
   id: "github-pr-reviewer",
@@ -69,6 +70,106 @@ describe("InstallEntry", () => {
     const m = renderToStaticMarkup(React.createElement(InstallEntry, { templates: [] }));
     expect(m).not.toContain("?template=");
     expect(m).not.toContain("Quick start");
+  });
+
+  it("test_add_template_hidden_without_scope: hides the Add template trigger without template:write", () => {
+    render(
+      React.createElement(InstallEntry, {
+        templates: [],
+        workspaceId: "ws_1",
+        canAddTemplate: false,
+      }),
+    );
+    expect(screen.getByText("No templates found.")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Add template" })).toBeNull();
+  });
+
+  it("renders the Add template trigger when template:write is available", () => {
+    render(
+      React.createElement(InstallEntry, {
+        templates: [],
+        workspaceId: "ws_1",
+        canAddTemplate: true,
+      }),
+    );
+    expect(screen.getByRole("button", { name: "Add template" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Create a template" })).toBeTruthy();
+  });
+
+  it("renders Add template above a populated gallery when template:write is available", () => {
+    render(
+      React.createElement(InstallEntry, {
+        templates: [TEMPLATE],
+        workspaceId: "ws_1",
+        canAddTemplate: true,
+      }),
+    );
+
+    expect(screen.getByRole("button", { name: "Add template" })).toBeTruthy();
+    expect(screen.getByText("GitHub PR reviewer")).toBeTruthy();
+  });
+});
+
+// ── InstallSourceSelector — full install page template picker ───────────────
+
+describe("InstallSourceSelector", () => {
+  it("renders Add template in the populated gallery when template:write is available", async () => {
+    const onUseTemplate = vi.fn();
+    const user = userEvent.setup({ delay: null });
+    render(
+      React.createElement(InstallSourceSelector, {
+        workspaceId: "ws_1",
+        templates: [TEMPLATE],
+        onUseTemplate,
+        canAddTemplate: true,
+      }),
+    );
+
+    expect(screen.getByRole("button", { name: "Add template" })).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Use template" }));
+    expect(onUseTemplate).toHaveBeenCalledWith(TEMPLATE);
+  });
+
+  it("renders the empty selector without Add template when template:write is absent", () => {
+    render(
+      React.createElement(InstallSourceSelector, {
+        workspaceId: "ws_1",
+        templates: [],
+        onUseTemplate: vi.fn(),
+        canAddTemplate: false,
+      }),
+    );
+
+    expect(screen.getByText("No templates found")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Add template" })).toBeNull();
+    expect(screen.getByRole("link", { name: "Create a template" })).toBeTruthy();
+  });
+
+  it("defaults the selector to no Add template access", () => {
+    render(
+      React.createElement(InstallSourceSelector, {
+        workspaceId: "ws_1",
+        templates: [],
+        onUseTemplate: vi.fn(),
+      }),
+    );
+
+    expect(screen.getByText("No templates found")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Add template" })).toBeNull();
+  });
+
+  it("renders Add template in the empty selector when template:write is available", () => {
+    render(
+      React.createElement(InstallSourceSelector, {
+        workspaceId: "ws_1",
+        templates: [],
+        onUseTemplate: vi.fn(),
+        canAddTemplate: true,
+      }),
+    );
+
+    expect(screen.getByText("No templates found")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Add template" })).toBeTruthy();
   });
 });
 

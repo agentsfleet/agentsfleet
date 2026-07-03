@@ -18,6 +18,7 @@ import ExhaustionBanner from "@/components/domain/ExhaustionBanner";
 import { PlusIcon } from "lucide-react";
 import FleetsList from "./components/FleetsList";
 import { InstallEntry } from "./new/InstallEntry";
+import { hasTemplateWriteScope } from "./scope";
 import type { FleetTemplateGalleryEntry } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -50,7 +51,7 @@ export default async function FleetsListPage() {
 // from the cookie/JWT hint (no list round-trip on the hot path), then loads the
 // fleet page + billing in one pass. Exported so it renders/tests in isolation.
 export async function FleetsData() {
-  const { getToken } = await auth();
+  const { getToken, sessionClaims } = await auth();
   const token = await getToken();
   if (!token) return null;
 
@@ -70,6 +71,7 @@ export async function FleetsData() {
     );
   }
   const { workspaceId, page, billing } = result;
+  const canAddTemplate = hasTemplateWriteScope(sessionClaims);
   // Fetch the template catalogue only on the empty path (one-time onboarding), so
   // the populated list never pays for it. The await lives here in the async data
   // region; FleetsEmptyState stays sync so renderToStaticMarkup / React's sync
@@ -85,7 +87,11 @@ export async function FleetsData() {
     <>
       <ExhaustionBanner billing={billing} />
       {page.items.length === 0 ? (
-        <FleetsEmptyState templates={templates} />
+        <FleetsEmptyState
+          workspaceId={workspaceId}
+          templates={templates}
+          canAddTemplate={canAddTemplate}
+        />
       ) : (
         <FleetsList
           workspaceId={workspaceId}
@@ -99,10 +105,18 @@ export async function FleetsData() {
 
 // Empty fleets → a full-width onboarding gallery. Reuses the InstallEntry picker
 // so the first-run experience IS the real template gallery — spanning the page
-// like Models & Keys — instead of abstract step cards. The catalogue is fetched
+// like Models — instead of abstract step cards. The catalogue is fetched
 // by FleetsData (the async region); this stays a sync component. Besides the page
 // header's "Install fleet" button, this gallery is the install affordance here.
-function FleetsEmptyState({ templates }: { templates: FleetTemplateGalleryEntry[] }) {
+function FleetsEmptyState({
+  workspaceId,
+  templates,
+  canAddTemplate,
+}: {
+  workspaceId: string;
+  templates: FleetTemplateGalleryEntry[];
+  canAddTemplate: boolean;
+}) {
   return (
     <div className="space-y-6">
       <div className="space-y-1.5">
@@ -112,7 +126,12 @@ function FleetsEmptyState({ templates }: { templates: FleetTemplateGalleryEntry[
           matching event.
         </p>
       </div>
-      <InstallEntry templates={templates} quickstart />
+      <InstallEntry
+        templates={templates}
+        quickstart
+        workspaceId={workspaceId}
+        canAddTemplate={canAddTemplate}
+      />
     </div>
   );
 }

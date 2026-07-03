@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { EVENTS } from "@/lib/analytics/events";
 
-// The Models & Keys product-event helpers each forward a fixed shape to the
+// The Models product-event helpers each forward a fixed shape to the
 // fire-and-forget posthog helper and never throw.
 const captureProductEvent = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/analytics/posthog", () => ({ captureProductEvent }));

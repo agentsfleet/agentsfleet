@@ -5,10 +5,12 @@ import { HOW_IT_WORKS_HEADING, LOOP_STEPS } from "../lib/marketing-copy";
 
 describe("HowItWorks", () => {
   it("renders the section heading", () => {
-    const { container } = render(<HowItWorks />);
-    const heading = container.querySelector("h2");
+    render(<HowItWorks />);
+    const heading = screen.getByRole("heading", {
+      level: 2,
+      name: HOW_IT_WORKS_HEADING,
+    });
     expect(heading).toBeInTheDocument();
-    expect(heading?.textContent).toBe(HOW_IT_WORKS_HEADING);
   });
 
   it("renders the eyebrow", () => {

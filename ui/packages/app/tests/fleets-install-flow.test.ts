@@ -130,7 +130,7 @@ describe("test_install_template_gallery_render", () => {
 
   it("shows an empty state when no templates are available", () => {
     renderFlow({ templates: [] });
-    expect(screen.getByText("No templates available yet")).toBeTruthy();
+    expect(screen.getByText("No templates found")).toBeTruthy();
   });
 });
 

@@ -2,7 +2,7 @@ import { EVENTS } from "@/lib/analytics/events";
 import { captureProductEvent } from "@/lib/analytics/posthog";
 import type { TenantProvider } from "@/lib/types";
 
-// One place per Models & Keys product event, so every call site emits the same
+// One place per Models product event, so every call site emits the same
 // shape. captureProductEvent is fire-and-forget + error-safe, so callers never
 // await or guard these.
 

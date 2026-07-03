@@ -7,7 +7,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // network + auth boundary is proven elsewhere). vi.mock is hoisted above the
 // static actions import, so every mock fn referenced inside a factory is created
 // via vi.hoisted() (see runners-actions.test.ts).
-const { withTokenMock, listFleetsMock, setFleetStatusMock, deleteFleetMock, installFleetMock, steerFleetMock } =
+const {
+  withTokenMock,
+  listFleetsMock,
+  setFleetStatusMock,
+  deleteFleetMock,
+  installFleetMock,
+  steerFleetMock,
+  onboardWorkspaceFleetTemplateMock,
+} =
   vi.hoisted(() => ({
     withTokenMock: vi.fn(),
     listFleetsMock: vi.fn(),
@@ -15,6 +23,7 @@ const { withTokenMock, listFleetsMock, setFleetStatusMock, deleteFleetMock, inst
     deleteFleetMock: vi.fn(),
     installFleetMock: vi.fn(),
     steerFleetMock: vi.fn(),
+    onboardWorkspaceFleetTemplateMock: vi.fn(),
   }));
 
 vi.mock("@/lib/actions/with-token", () => ({ withToken: withTokenMock }));
@@ -25,6 +34,9 @@ vi.mock("@/lib/api/fleets", () => ({
   installFleet: installFleetMock,
   steerFleet: steerFleetMock,
 }));
+vi.mock("@/lib/api/fleet-templates", () => ({
+  onboardWorkspaceFleetTemplate: onboardWorkspaceFleetTemplateMock,
+}));
 
 import {
   listFleetsAction,
@@ -32,6 +44,7 @@ import {
   deleteFleetAction,
   installFleetAction,
   steerFleetAction,
+  onboardTemplateAction,
 } from "@/app/(dashboard)/fleets/actions";
 
 beforeEach(() => {
@@ -101,5 +114,37 @@ describe("fleet server actions — thin token-forwarders", () => {
     const r = await steerFleetAction("ws1", "z1", "ship it");
     expect(r).toEqual({ ok: true, data: { event_id: "evt-1" } });
     expect(steerFleetMock).toHaveBeenCalledWith("ws1", "z1", "ship it", "tok");
+  });
+
+  it("test_onboard_action_maps_apierror_to_errorcode: forwards the template onboard body through withToken", async () => {
+    const onboarded = {
+      id: "tmpl_1",
+      name: "GitHub PR reviewer",
+      visibility: "tenant",
+      content_hash: "sha256:abc",
+      requirements: { credentials: [], tools: [], network_hosts: [], trigger_present: true },
+      support_files: [],
+    };
+    onboardWorkspaceFleetTemplateMock.mockResolvedValueOnce(onboarded);
+    const body = { source_kind: "github" as const, source_ref: "owner/repo" };
+    const r = await onboardTemplateAction("ws1", body);
+    expect(r).toEqual({ ok: true, data: onboarded });
+    expect(onboardWorkspaceFleetTemplateMock).toHaveBeenCalledWith("ws1", body, "tok");
+  });
+
+  it("test_onboard_action_maps_apierror_to_errorcode: returns withToken's error shape unchanged", async () => {
+    const error = {
+      ok: false,
+      error: "forbidden",
+      status: 403,
+      errorCode: "UZ-AUTH-022",
+    };
+    withTokenMock.mockResolvedValueOnce(error);
+    const r = await onboardTemplateAction("ws1", {
+      source_kind: "github",
+      source_ref: "owner/repo",
+    });
+    expect(r).toEqual(error);
+    expect(onboardWorkspaceFleetTemplateMock).not.toHaveBeenCalled();
   });
 });
