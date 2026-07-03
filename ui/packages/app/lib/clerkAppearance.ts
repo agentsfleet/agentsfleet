@@ -30,6 +30,9 @@ const BORDER = "var(--border)";
 const BORDER_STRONG = "var(--border-strong)";
 const ERROR = "var(--error)";
 const SUCCESS = "var(--success)";
+const WARN = "var(--warn)";
+const RADIUS_SM = "var(--r-sm)";
+const FONT_SANS = "var(--ff-sans)";
 const BORDER_STYLE = `1px solid ${BORDER}`;
 const BORDER_STRONG_STYLE = `1px solid ${BORDER_STRONG}`;
 const FOCUS_RING = `0 0 0 1px ${PULSE}`;
@@ -48,16 +51,30 @@ export const AUTH_APPEARANCE = {
   // variables + elements below then map the design tokens on top, so the
   // baseline is dark and the accents stay on-brand.
   baseTheme: dark,
+  // Colors are `var()` refs to the design-system tokens (tokens.css) — Clerk's
+  // own themes declare `variables` the same way (e.g. `colorForeground:
+  // "var(--card-foreground)"`), so custom properties resolve fine here; there
+  // is no JS color parsing that would need hex literals.
+  //
+  // The key names are the Clerk v7 set (colorForeground / colorMutedForeground /
+  // colorInput / colorInputForeground / colorPrimaryForeground / colorBorder).
+  // The pre-v7 keys (colorText, colorTextSecondary, colorInputBackground,
+  // colorInputText) are silently ignored by v7 — that was the "invisible
+  // account-modal text": those shades fell back to Clerk defaults, dark-on-dark.
   variables: {
     colorBackground: SURFACE_1,
-    colorInputBackground: SURFACE_2,
-    colorInputText: TEXT,
-    colorText: TEXT,
-    colorTextSecondary: TEXT_MUTED,
+    colorInput: SURFACE_2,
+    colorInputForeground: TEXT,
+    colorForeground: TEXT,
+    colorMutedForeground: TEXT_MUTED,
     colorPrimary: PULSE,
+    colorPrimaryForeground: BACKGROUND,
+    colorBorder: BORDER_STRONG,
     colorDanger: ERROR,
-    borderRadius: "var(--r-sm)",
-    fontFamily: "var(--ff-sans)",
+    colorSuccess: SUCCESS,
+    colorWarning: WARN,
+    borderRadius: RADIUS_SM,
+    fontFamily: FONT_SANS,
   },
   elements: {
     // Dashboard header avatar (UserButton). With no uploaded image Clerk renders
@@ -127,6 +144,13 @@ export const AUTH_APPEARANCE = {
     },
     modalBackdrop: {
       backgroundColor: "rgba(10, 13, 14, 0.72)",
+    },
+    // The modal's close (X) button rendered in a near-black default on the
+    // dark surface — invisible. Pin it readable, with a hover fill matching
+    // the other chrome actions.
+    modalCloseButton: {
+      color: TEXT,
+      "&:hover": MENU_ACTION_INTERACTION,
     },
     pageScrollBox: {
       backgroundColor: SURFACE_1,

@@ -1,19 +1,14 @@
 "use client";
 
-import {
-  Button,
-  DashboardPanel,
-  DashboardPanelContent,
-  DashboardPanelDescription,
-  DashboardPanelHeader,
-  DashboardPanelTitle,
-  EmptyState,
-  SectionLabel,
-} from "@agentsfleet/design-system";
+import { Button, EmptyState, SectionLabel } from "@agentsfleet/design-system";
+import { LayoutTemplateIcon } from "lucide-react";
 import type { FleetTemplateGalleryEntry } from "@/lib/types";
 import AddTemplateDialog from "./AddTemplateDialog";
-import { CreateTemplateDocLink } from "./template-docs";
-import { InstallFlowGuide } from "./InstallFlowGuide";
+import {
+  TemplateDocsLink,
+  TEMPLATES_EMPTY_DESCRIPTION,
+  TEMPLATES_EMPTY_TITLE,
+} from "./template-docs";
 import { TemplateCard } from "./TemplateCard";
 
 type Props = {
@@ -25,8 +20,9 @@ type Props = {
 
 // Template gallery picker: the workspace's templates (platform ∪ tenant) are the
 // install surface. Picking one proceeds inline to the live install states —
-// there is no review page. github-import and paste authoring were removed in
-// M103; onboard a template first, then install it from here.
+// there is no review page. Rendered plainly under the page header (same shape
+// as the dashboard's first-run gallery) — the page title/description already
+// frame it, so no wrapping panel and no side guide.
 export function InstallSourceSelector({
   workspaceId,
   templates,
@@ -35,57 +31,40 @@ export function InstallSourceSelector({
 }: Props) {
   const showAddTemplate = canAddTemplate;
   return (
-    <div className="grid grid-cols-1 gap-lg lg:grid-cols-3">
-      <DashboardPanel padding="compact" className="lg:col-span-2">
-        <DashboardPanelHeader>
-          <div className="space-y-2">
-            <SectionLabel>Next step</SectionLabel>
-            <DashboardPanelTitle>Start your fleet</DashboardPanelTitle>
-            <DashboardPanelDescription className="max-w-prose">
-              Pick a template. Install runs inline.
-            </DashboardPanelDescription>
-          </div>
-        </DashboardPanelHeader>
-
-        <DashboardPanelContent>
-          <div className="space-y-sm">
-            <div className="flex flex-wrap items-center justify-between gap-md">
-              <SectionLabel>Start from a template</SectionLabel>
-              {showAddTemplate && templates.length > 0 ? (
-                <AddTemplateDialog workspaceId={workspaceId} />
-              ) : null}
+    <div className="space-y-sm">
+      <div className="flex flex-wrap items-baseline justify-between gap-md">
+        <SectionLabel>Templates</SectionLabel>
+        {showAddTemplate && templates.length > 0 ? (
+          <AddTemplateDialog workspaceId={workspaceId} />
+        ) : null}
+      </div>
+      {templates.length > 0 ? (
+        <div className="grid grid-cols-1 gap-md sm:grid-cols-2 lg:grid-cols-3">
+          {templates.map((template) => (
+            <TemplateCard
+              key={template.id}
+              template={template}
+              action={
+                <Button type="button" onClick={() => onUseTemplate(template)}>
+                  Use template
+                </Button>
+              }
+            />
+          ))}
+        </div>
+      ) : (
+        <EmptyState
+          icon={<LayoutTemplateIcon size={28} />}
+          title={TEMPLATES_EMPTY_TITLE}
+          description={TEMPLATES_EMPTY_DESCRIPTION}
+          action={
+            <div className="flex flex-wrap items-center justify-center gap-md">
+              <TemplateDocsLink />
+              {showAddTemplate ? <AddTemplateDialog workspaceId={workspaceId} /> : null}
             </div>
-            {templates.length > 0 ? (
-              <div className="grid grid-cols-1 gap-md sm:grid-cols-2">
-                {templates.map((template) => (
-                  <TemplateCard
-                    key={template.id}
-                    template={template}
-                    action={
-                      <Button type="button" onClick={() => onUseTemplate(template)}>
-                        Use template
-                      </Button>
-                    }
-                  />
-                ))}
-              </div>
-            ) : (
-              <div className="space-y-md">
-                <EmptyState
-                  title="No templates found"
-                  description="Add a template, then install it here."
-                />
-                <div className="flex flex-wrap justify-center gap-md">
-                  {showAddTemplate ? <AddTemplateDialog workspaceId={workspaceId} /> : null}
-                  <CreateTemplateDocLink />
-                </div>
-              </div>
-            )}
-          </div>
-        </DashboardPanelContent>
-      </DashboardPanel>
-
-      <InstallFlowGuide />
+          }
+        />
+      )}
     </div>
   );
 }

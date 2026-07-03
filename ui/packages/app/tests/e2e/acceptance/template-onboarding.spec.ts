@@ -67,11 +67,11 @@ test.describe("template onboarding", () => {
     await page.goto("/fleets/new");
     await expect(page).toHaveURL(/\/fleets\/new(\?|$)/);
 
-    await page.getByRole("button", { name: "Add template" }).first().click();
-    const dialog = page.getByRole("dialog", { name: "Add template" });
+    await page.getByRole("button", { name: "Create a template" }).first().click();
+    const dialog = page.getByRole("dialog", { name: "Create a template" });
     await expect(dialog).toBeVisible();
     await dialog.getByLabel("Repository").fill(INVALID_GITHUB_SOURCE_REF);
-    await dialog.getByRole("button", { name: /^add template$/i }).click();
+    await dialog.getByRole("button", { name: /^create template$/i }).click();
 
     await expect(dialog).toBeVisible({ timeout: FLOW_TIMEOUT_MS });
     await expect(dialog.getByRole("alert")).toContainText("Couldn't add the template");

@@ -2,11 +2,6 @@ import { Suspense } from "react";
 import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import {
-  DashboardPanel,
-  DashboardPanelContent,
-  DashboardPanelDescription,
-  DashboardPanelHeader,
-  DashboardPanelTitle,
   PageHeader,
   PageTitle,
   Section,
@@ -22,7 +17,6 @@ import type { FleetTemplateGalleryEntry } from "@/lib/types";
 import { withWorkspaceScope, orFallback } from "@/lib/workspace";
 import ExhaustionBanner from "@/components/domain/ExhaustionBanner";
 import { InstallEntry } from "./fleets/new/InstallEntry";
-import { InstallFlowGuide } from "./fleets/new/InstallFlowGuide";
 
 export const dynamic = "force-dynamic";
 
@@ -56,7 +50,7 @@ export async function StatusTiles() {
     return (
       <>
         <ExhaustionBanner billing={billing} />
-        <FirstInstallCard balanceNanos={billing?.balance_nanos ?? null} templates={templates} />
+        <FirstInstall balanceNanos={billing?.balance_nanos ?? null} templates={templates} />
       </>
     );
   }
@@ -78,11 +72,13 @@ export async function StatusTiles() {
   );
 }
 
-// First-run card: composes the shared InstallEntry (one source for the install
-// affordances), wrapped in the dashboard's "Start your fleet" framing. Each
-// affordance deep-links into the install page, which proceeds inline to the
-// live states — no review page.
-function FirstInstallCard({
+// First-run surface: the shared InstallEntry rendered plainly under the page
+// header — no wrapping panel (its title just repeated the page description)
+// and no side guide; the empty state / gallery carries the actions itself.
+// Each affordance deep-links into the install page, which proceeds inline to
+// the live states — no review page. The free-credit pill is the one place the
+// starter credit is announced.
+function FirstInstall({
   balanceNanos,
   templates,
 }: {
@@ -91,28 +87,13 @@ function FirstInstallCard({
 }) {
   const credits = balanceNanos != null ? Math.floor(balanceNanos / NANOS_PER_USD) : null;
   return (
-    <Section aria-label="Start your fleet" className="mb-6">
-      <div className="grid grid-cols-1 gap-lg lg:grid-cols-3">
-        <DashboardPanel padding="compact" className="lg:col-span-2">
-          <DashboardPanelHeader>
-            <div className="space-y-2">
-              <DashboardPanelTitle>Start your fleet from a template</DashboardPanelTitle>
-              <DashboardPanelDescription className="max-w-prose">
-                Pick a template. Watch install states.
-              </DashboardPanelDescription>
-            </div>
-            {credits != null && credits > 0 ? (
-              <StatusPill variant="pulse">${credits} free credit ready</StatusPill>
-            ) : null}
-          </DashboardPanelHeader>
-
-          <DashboardPanelContent className="mt-md">
-            <InstallEntry templates={templates} maxTemplates={3} compact />
-          </DashboardPanelContent>
-        </DashboardPanel>
-
-        <InstallFlowGuide />
-      </div>
+    <Section aria-label="Start your fleet" className="mb-6 space-y-md">
+      {credits != null && credits > 0 ? (
+        <div className="flex justify-end">
+          <StatusPill variant="pulse">${credits} free credit ready</StatusPill>
+        </div>
+      ) : null}
+      <InstallEntry templates={templates} maxTemplates={3} compact />
     </Section>
   );
 }

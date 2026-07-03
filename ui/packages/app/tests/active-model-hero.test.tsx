@@ -76,7 +76,7 @@ describe("ActiveModelHero — live (self-managed)", () => {
     expect(screen.getByText("Anthropic")).toBeTruthy();
     expect(screen.getByText("256k")).toBeTruthy();
     expect(screen.getByText("Provider direct")).toBeTruthy();
-    expect(screen.getByText(/via anthropic-prod/)).toBeTruthy();
+    expect(screen.getByText("anthropic-prod")).toBeTruthy(); // credential ref (mono span after "via")
 
     // Change model panel toggles open then closed (via the toggle button).
     fireEvent.click(screen.getByRole("button", { name: "Change model" }));
@@ -135,7 +135,7 @@ describe("ActiveModelHero — live (self-managed)", () => {
         credentials: [],
       }),
     );
-    expect(screen.getByText(/via anthropic/)).toBeTruthy();
+    expect(screen.getByText("anthropic")).toBeTruthy(); // credRef null → provider id after "via"
     expect(screen.getByText("default")).toBeTruthy();
     // No credential ref → no Replace key, and the change panel can't open.
     expect(screen.queryByRole("button", { name: "Replace key" })).toBeNull();

@@ -7,6 +7,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import {
   Button,
+  EYEBROW_CLASS,
   Form,
   FormControl,
   FormField,
@@ -17,6 +18,7 @@ import {
   Spinner,
 } from "@agentsfleet/design-system";
 import { XIcon } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { createCredentialAction } from "../actions";
 import { presentErrorString } from "@/lib/errors";
 import { CREDENTIAL_NAME_MAX } from "../lib/credential-data";
@@ -137,7 +139,7 @@ export default function AddCredentialForm({ workspaceId }: Props) {
         />
 
         <div className="space-y-2">
-          <span className="block font-mono text-label uppercase leading-label tracking-label text-muted-foreground">
+          <span className={cn(EYEBROW_CLASS, "block text-muted-foreground")}>
             Fields
           </span>
           <div className="space-y-2">
