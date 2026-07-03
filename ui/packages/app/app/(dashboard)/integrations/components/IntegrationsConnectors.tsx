@@ -213,7 +213,9 @@ function ComingSoonConnectorRow({
           <StatusPill variant={pill.variant} dot={isReady || requested}>
             {pill.label}
           </StatusPill>
-          {requested ? (
+          {/* Token already in the vault (Zoho bridge) → the "Token stored" pill
+              is the whole state; don't beg a connected workspace for access. */}
+          {isReady ? null : requested ? (
             <Button type="button" variant="outline" size="sm" disabled>
               {REQUESTED_LABEL}
             </Button>
