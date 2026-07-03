@@ -142,7 +142,7 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 
 63 total `respondMethodNotAllowed` occurrences across 9 files, no shared helper. **Count reconciliation (LLM-drafted spec, per provenance — verified against source at EXECUTE):** of the 63, **50 are single-method `if (req.method != .X)` blocks** (migrated) and **13 are multi-method `switch (req.method)` `else` arms** (left as-is — the spec's "10 multi-method / 63 single-method" split was wrong; 63 was the *total* occurrence count). Per-file single-method sites migrated: `route_table_invoke.zig` 17, `_runner` 15, `_webhooks` 6, `_connectors` 4, `_events` 3, `_approvals` 3, `_templates` 1, `_fleet_bundles` 1 = **50**. `route_table_invoke_api_keys.zig` has **0** single-method sites (both its `respondMethodNotAllowed` calls are `switch` arms) — so it is **not** edited by §1. **Implementation:** added `requireMethod` matching `requireUuidV7Id`'s exact shape; scripted the 50-site migration (each 4-line block → `if (!common.requireMethod(hx.res, req.method, .X)) return;`).
 
-- **Dimension 1.1 — DONE** — every migrated route's method-allow/deny behavior is unchanged (a GET-only route still rejects POST, etc.) — the existing route-level integration tests (unchanged) still pass, and E8's orphan sweep confirms no hand-copied single-method block remains outside the helper.
+- **Dimension 1.1 — DONE** — every migrated route's method-allow/deny behavior is unchanged (a GET-only route still rejects POST, etc.) — the existing route-level integration tests (unchanged) still pass (`make test-integration` green against real DB+Redis), and E8's orphan sweep confirms no hand-copied single-method block remains outside the helper.
 - **Dimension 1.2 — DONE** — `requireMethod` returns `false` and calls `respondMethodNotAllowed` on a mismatch, `true` and no side effect on a match → Test `test_require_method_matches_and_rejects_correctly` (`error_response_test.zig`, two `httpz.testing` cases: `.POST` vs `.POST` → true/200, `.GET` vs `.POST` → false/405; housed in the sibling test file, not inline, to keep `common.zig` under the 350-line cap — it landed at 337).
 
 ### §2 — PostHog loader recovers from a failed load
@@ -298,6 +298,7 @@ grep -rn "platform_admin\|readPlatformAdminClaim\|isPlatformAdmin" ui/packages/a
 | Check | Command | Result | Pass? |
 |-------|---------|--------|-------|
 | Unit tests (Zig) | `zig build test --summary all` | `34/34 steps; 1421/1875 tests passed (454 skipped, 0 failed)`; depth gate `unit=2272` (baseline 2270, +2 requireMethod) | ✅ |
+| Integration (Zig, real DB+Redis) | `make test-integration` | `✓ Full integration suite passed / All integration tests passed` (exit 0) — validates §1 route behaviour unchanged end-to-end (the 454 unit-skipped route tests run here) | ✅ |
 | UI tests (website) | `vitest run` (ui/packages/website) | `24 files, 173 tests passed` (incl. posthog retry + no-unhandled-rejection) | ✅ |
 | UI tests (app) | `vitest run` (ui/packages/app) | `124 files, 1141 tests passed` (incl. scope-gate + closure + Invariant-3 scan) | ✅ |
 | Lint | pre-commit `make harness-verify` + `lint-app`/`lint-website`/zig lint | all gates green (UFS, DESIGN TOKEN, SPEC TEMPLATE, MS-ID+UI, ZIG/FLL, oxlint+tsc) | ✅ |
