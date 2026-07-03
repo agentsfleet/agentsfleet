@@ -149,8 +149,8 @@ pub const ENTRIES = [_]Entry{
     e("UZ-PROVIDER-001", .bad_request, "credential_ref required when mode=self_managed", "PUT body must include `credential_ref` naming a vault credential when `mode` is self_managed."),
     e("UZ-PROVIDER-002", .bad_request, "Credential row not found in vault", "The named credential_ref has no vault row in the tenant's primary workspace. " ++
         "Run `agentsfleet credential set <name> --data @-` to create it."),
-    e("UZ-PROVIDER-003", .bad_request, "Credential JSON missing required field", "Stored credential JSON must include `provider`, `api_key`, and `model` (all non-empty strings). " ++
-        "Re-run `agentsfleet credential set` with the full triplet."),
+    e("UZ-PROVIDER-003", .bad_request, "Credential JSON missing required field", "Stored credential JSON must include `provider` and `model` (non-empty strings); `api_key` is required for a named provider but optional for an `openai-compatible` endpoint. " ++
+        "Re-run `agentsfleet credential set` with the required fields."),
     e("UZ-PROVIDER-004", .bad_request, "Model not in cached caps catalogue", "The effective model is not present in core.model_caps. Pick a model from the model-caps endpoint " ++
         "or request the catalogue be extended."),
     e("UZ-PROVIDER-005", .bad_request, "Custom endpoint base_url invalid or unsafe", "An openai-compatible credential needs a valid `base_url`: it must use https and must not target a " ++

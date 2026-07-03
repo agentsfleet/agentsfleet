@@ -103,6 +103,7 @@ fn teardown(conn: *pg.Conn) void {
     execIgnore(conn, "DELETE FROM fleet.runner_affinity WHERE fleet_id = $1::uuid", .{FLEET_ID});
     execIgnore(conn, "DELETE FROM fleet.runners WHERE id IN ($1::uuid, $2::uuid)", .{ RUNNER_ID, RUNNER_B_ID });
     base.teardownTenant(conn);
+    base.teardownFleets(conn, WORKSPACE_ID);
     base.teardownWorkspace(conn, WORKSPACE_ID);
 }
 
@@ -138,6 +139,7 @@ test "renew at the exact deadline boundary still extends by a full TTL" {
     teardown(conn);
     try base.seedTenant(conn);
     try base.seedWorkspace(conn, WORKSPACE_ID);
+    try base.seedFleet(conn, FLEET_ID, WORKSPACE_ID, "renewal-edge-fleet", "{}", "# z");
     try seedRunner(conn, RUNNER_ID, "edge-host");
     // Both rows expire at EXACTLY now — the boundary case. Fence holds (token ==
     // seq); created_at recent so the cap is far away and TTL wins.
@@ -163,6 +165,7 @@ test "renew one millisecond before the hard cap clamps to the exact cap" {
     teardown(conn);
     try base.seedTenant(conn);
     try base.seedWorkspace(conn, WORKSPACE_ID);
+    try base.seedFleet(conn, FLEET_ID, WORKSPACE_ID, "renewal-edge-fleet", "{}", "# z");
     try seedRunner(conn, RUNNER_ID, "edge-host");
     // created_at is set so the cap (created_at + MAX) lands exactly one ms past
     // now: the renewal is still legal (capped > now) but clamps to the cap, not
@@ -189,6 +192,7 @@ test "a free fleet with an expired slot but no prior lease is claimed fresh" {
     teardown(conn);
     try base.seedTenant(conn);
     try base.seedWorkspace(conn, WORKSPACE_ID);
+    try base.seedFleet(conn, FLEET_ID, WORKSPACE_ID, "renewal-edge-fleet", "{}", "# z");
     try seedRunner(conn, RUNNER_ID, "edge-host-a"); // prior holder, now gone
     try seedRunner(conn, RUNNER_B_ID, "edge-host-b"); // second runner claiming
     // Expired affinity (leased_until in the past), but NO runner_leases row was

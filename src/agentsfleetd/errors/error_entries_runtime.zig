@@ -67,6 +67,8 @@ pub const ENTRIES_RUNTIME = [_]Entry{
         "Request one with: POST /v1/fleets/{id}/integration-requests"),
     e("UZ-GRANT-002", .not_found, "Integration grant not found", "No grant with that id exists for this fleet, or it was already revoked. " ++
         "List current grants with: GET /v1/workspaces/{ws}/fleets/{id}/integration-grants"),
+    e("UZ-GRANT-003", .conflict, "Grant already resolved", "This grant was already approved or denied \u{2014} by an earlier click, the dashboard, or an auto-timeout. " ++
+        "The original decision stands; this request changed nothing."),
     // ── CREDENTIAL BROKER (M102 — on-demand mint) ─────────────────────────────
     // Surfaced first at POST /v1/runners/me/credentials/mint (the mint endpoint
     // is the first caller — registering them earlier would be caller-less, NDC).

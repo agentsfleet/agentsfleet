@@ -280,3 +280,85 @@ test "renew puts the cumulative splits on the wire as the POST body (production 
     try testing.expectEqual(@as(u32, 0), parsed.value.cached_input_tokens);
     try testing.expectEqual(@as(u32, 40), parsed.value.output_tokens);
 }
+
+// §4 / Dimension 4.1 — post()/get() build an Allocating response writer
+// (`aw`) and only hand its buffer off via `toOwnedSlice()` on the SUCCESS path. A
+// fetch failure after the server has already streamed partial bytes leaves those
+// bytes owned by `aw`; without the errdefer this milestone adds, that partial
+// buffer leaks.
+//
+// The fault: a `Transfer-Encoding: chunked` response whose first data chunk is
+// delivered in full (so the client decodes it INTO `aw`) but whose stream is then
+// cut before the terminating 0-length chunk. Unlike a Content-Length body — where
+// the client tolerates a short read at EOF and returns the partial body as a bogus
+// success — a chunked stream that ends without its terminator is an unambiguous
+// framing error, so fetch fails with bytes already in `aw`. std.testing.allocator
+// turns any leaked `aw` buffer into a hard failure, so a green run IS the zero-leak
+// proof for the errdefer, on both verbs.
+const CHUNK_SIZE_HEX = "1000"; // 0x1000 = 4096 bytes — one complete data chunk
+const CHUNK_DATA = "x" ** 4096; // decoded into `aw` before the framing error hits
+
+const ChunkedThenCutStub = struct {
+    io: std.Io,
+    listener: *std.Io.net.Server,
+
+    fn run(self: *ChunkedThenCutStub) void {
+        const conn = self.listener.accept(self.io) catch return;
+        defer conn.close(self.io); // return → stream ends with no terminating 0-chunk
+        var rbuf: [2048]u8 = undefined;
+        var total: usize = 0;
+        while (std.mem.indexOf(u8, rbuf[0..total], "\r\n\r\n") == null) {
+            const n = std.posix.read(conn.socket.handle, rbuf[total..]) catch return;
+            if (n == 0) return;
+            total += n;
+            if (total == rbuf.len) return;
+        }
+        var wbuf: [8192]u8 = undefined;
+        var w = conn.writer(self.io, &wbuf);
+        // Headers + exactly one complete chunk, then close — the required
+        // `0\r\n\r\n` terminator never arrives, so the decoder errors mid-stream.
+        w.interface.print(
+            "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n{s}\r\n{s}\r\n",
+            .{ CHUNK_SIZE_HEX, CHUNK_DATA },
+        ) catch return;
+        w.interface.flush() catch return;
+    }
+};
+
+fn expectVerbReleasesBufferOnMidStreamFailure(comptime verb: enum { post, get }) !void {
+    const alloc = testing.allocator;
+    const io = common.globalIo();
+
+    var addr = try std.Io.net.IpAddress.parseIp4("127.0.0.1", 0);
+    var listener = addr.listen(io, .{ .reuse_address = true }) catch return error.SkipZigTest;
+    defer listener.deinit(io);
+    const port = boundPort(listener.socket.handle) catch return error.SkipZigTest;
+
+    var stub = ChunkedThenCutStub{ .io = io, .listener = &listener };
+    const responder = std.Thread.spawn(.{}, ChunkedThenCutStub.run, .{&stub}) catch return error.SkipZigTest;
+
+    var url_buf: [48]u8 = undefined;
+    const url = try std.fmt.bufPrint(&url_buf, "http://127.0.0.1:{d}", .{port});
+    var c = client.init(alloc, io, url);
+    defer c.deinit();
+
+    const result = switch (verb) {
+        .post => c.post(alloc, "/v1/runners/me/heartbeats", "agt_rtest", "", DEADLINE_PROBE_MS),
+        .get => c.get(alloc, "/v1/runners/me", "agt_rtest", DEADLINE_PROBE_MS),
+    };
+    responder.join();
+
+    // The verb must surface the mid-stream failure as an error, never a bogus 200.
+    if (result) |ok| {
+        alloc.free(ok.body); // unreachable on the fix's contract; free to stay leak-clean
+        return error.MidStreamFailureNotSurfaced;
+    } else |err| {
+        try testing.expect(err == client.ClientError.RequestFailed);
+    }
+    // testing.allocator asserts zero leaks at test end — the errdefer's proof.
+}
+
+test "test_post_get_release_buffer_on_mid_stream_fetch_failure" {
+    try expectVerbReleasesBufferOnMidStreamFailure(.post);
+    try expectVerbReleasesBufferOnMidStreamFailure(.get);
+}
