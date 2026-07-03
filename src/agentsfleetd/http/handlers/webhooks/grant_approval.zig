@@ -85,34 +85,43 @@ fn fetchWorkspaceId(pool: *pg.Pool, alloc: std.mem.Allocator, fleet_id: []const 
     return alloc.dupe(u8, ws) catch return "";
 }
 
+/// Outcome of applying a grant decision, distinguishing the three states the
+/// caller must respond to differently — a 0-row no-op must never read as a 200
+/// success (the silent-failure this section closes):
+///   `applied`          — this call transitioned the row (1 row affected).
+///   `already_resolved` — the row was no longer pending, so the conditional
+///                        UPDATE matched 0 rows (an out-of-band approve/deny/
+///                        expiry won the race, and this call still carried a
+///                        valid nonce). Caller responds 409, not 200.
+///   `db_error`         — the UPDATE itself failed; caller responds 503.
+/// A bare enum, not a `union(enum)`: none of the three arms carries a payload
+/// (the affected-row count is captured here, not surfaced), so the compiler's
+/// exhaustive switch — the property the tagged-union rule protects — is identical.
+const DecisionOutcome = enum { applied, already_resolved, db_error };
+
 fn applyDecision(
-    hx: hx_mod.Hx,
     conn: *pg.Conn,
     grant_id: []const u8,
     fleet_id: []const u8,
     is_approved: bool,
     now_ms: i64,
-) bool {
-    if (is_approved) {
-        _ = conn.exec(
+) DecisionOutcome {
+    const affected = if (is_approved)
+        conn.exec(
             \\UPDATE core.integration_grants
             \\SET status = $1, approved_at = $2
             \\WHERE grant_id = $3 AND fleet_id = $4::uuid AND status = $5
-        , .{ STATUS_APPROVED, now_ms, grant_id, fleet_id, STATUS_PENDING }) catch {
-            common.internalDbError(hx.res, hx.req_id);
-            return false;
-        };
-    } else {
-        _ = conn.exec(
+        , .{ STATUS_APPROVED, now_ms, grant_id, fleet_id, STATUS_PENDING }) catch return .db_error
+    else
+        conn.exec(
             \\UPDATE core.integration_grants
             \\SET status = $1, revoked_at = $2
             \\WHERE grant_id = $3 AND fleet_id = $4::uuid AND status = $5
-        , .{ STATUS_REVOKED, now_ms, grant_id, fleet_id, STATUS_PENDING }) catch {
-            common.internalDbError(hx.res, hx.req_id);
-            return false;
-        };
-    }
-    return true;
+        , .{ STATUS_REVOKED, now_ms, grant_id, fleet_id, STATUS_PENDING }) catch return .db_error;
+
+    // 0 rows affected → the WHERE's `status = pending` clause didn't match, i.e.
+    // the grant was already resolved. 1 row → this call applied the decision.
+    return if ((affected orelse 0) == 0) .already_resolved else .applied;
 }
 
 pub fn innerGrantApproval(hx: hx_mod.Hx, req: *httpz.Request, fleet_id: []const u8) void {
@@ -190,7 +199,26 @@ pub fn innerGrantApproval(hx: hx_mod.Hx, req: *httpz.Request, fleet_id: []const 
     defer hx.ctx.pool.release(conn);
 
     const now_ms = clock.nowMillis();
-    if (!applyDecision(hx, conn, body.grant_id, fleet_id, is_approved, now_ms)) return;
+    switch (applyDecision(conn, body.grant_id, fleet_id, is_approved, now_ms)) {
+        .db_error => {
+            common.internalDbError(hx.res, hx.req_id);
+            return;
+        },
+        .already_resolved => {
+            // A late-but-valid-nonce click on a grant an out-of-band path already
+            // resolved: honest 409, not a silent 200 that pretends it applied.
+            log.warn("decision_already_resolved", .{
+                .error_code = ec.ERR_GRANT_ALREADY_RESOLVED,
+                .fleet_id = fleet_id,
+                .req_id = hx.req_id,
+                .grant_id = body.grant_id,
+                .decision = body.decision,
+            });
+            hx.fail(ec.ERR_GRANT_ALREADY_RESOLVED, "This grant was already resolved; the original decision stands");
+            return;
+        },
+        .applied => {},
+    }
 
     const workspace_id = fetchWorkspaceId(hx.ctx.pool, hx.alloc, fleet_id);
     const event_type: []const u8 = if (is_approved) "grant.approved" else "grant.denied";

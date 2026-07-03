@@ -14,7 +14,7 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Milestone:** M109
 **Workstream:** 002
 **Date:** Jul 02, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — each defect is a caller-visible-signal loss (a DB/network failure reported as success), not a crash; confirmed by 2-3 independent adversarial verifier passes per finding, none yet observed in production but all reachable under real failure conditions (pool exhaustion, transient network blips).
 **Categories:** API OBS
 **Batch:** B1 — independent of M109_001/003/004; no shared files.
@@ -107,15 +107,19 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 | File | Action | Why |
 |------|--------|-----|
 | `src/agentsfleetd/http/handlers/webhooks/grant_approval.zig` | EDIT | `applyDecision` returns a tri-state outcome instead of discarding `conn.exec()`'s affected-row count; handler responds distinctly on the already-resolved case. |
-| `src/agentsfleetd/errors/error_entries.zig` | EDIT | add a grant-specific "already resolved" error code, mirroring `ERR_APPROVAL_ALREADY_RESOLVED`. |
+| `src/agentsfleetd/errors/error_entries_runtime.zig` | EDIT | add the `UZ-GRANT-003` "Grant already resolved" entry (`.conflict`), mirroring `UZ-APPROVAL-006`. (Spec originally named `error_entries.zig`; the grant/approval entries actually live in the `_runtime` sibling.) |
+| `src/agentsfleetd/errors/error_registry.zig` | EDIT | add the `ERR_GRANT_ALREADY_RESOLVED` const (satisfies the comptime "every ERR_* has a REGISTRY entry" check). |
 | `src/agentsfleetd/http/webhook_http_integration_test.zig` | EDIT | add coverage for the racing/late-decision no-op case now surfacing as a distinct response. |
 | `src/agentsfleetd/state/model_caps_store.zig` | EDIT | `isReferencedByActiveDefault` propagates query errors instead of collapsing them to `false`. |
 | `src/agentsfleetd/http/handlers/admin/model_caps_admin.zig` | EDIT | `innerDeleteAdminModel` handles the new error path (fail closed, respond 503/internal-error) instead of assuming `false` means "not referenced." |
 | `src/agentsfleetd/http/handlers/admin/model_caps_admin_integration_test.zig` | EDIT | add coverage for the guard's query-failure path (currently only the happy-path 409 is tested). |
-| `src/agentsfleetd/observability/otlp/post.zig` | EDIT | `fetch()` call propagates its error instead of `catch return;`, closing the gap that keeps `flushOnce`'s warn log from firing. |
-| `src/agentsfleetd/observability/otlp/post_test.zig` | EDIT | add a fault-injected-transport case exercising the propagated error. |
-| `src/runner/daemon/control_plane_client.zig` | EDIT | `post()`/`get()` gain an `errdefer aw.deinit();` so a fetch failure mid-stream releases the partially-written buffer. |
-| `src/runner/daemon/control_plane_client_test.zig` | EDIT | add a leak-detecting test (via `std.testing.allocator`) for a fault-injected fetch failure after partial writes. |
+| `src/agentsfleetd/observability/otlp/post.zig` → `Client.zig` | EDIT + RENAME | §3: `fetch()` propagates its error (via `try`); §6 (folded): the remaining URL/auth formatting swallows propagate too, the b64 guard becomes a `std.debug.assert`, `defer` cleanups added, and the file is rearchitected to `const Client = @This()` (Single-Type-Module) — hence the rename. |
+| `src/agentsfleetd/observability/otlp/post_test.zig` → `Client_test.zig` | EDIT + RENAME | §3 fault-injected-transport test, now on `std.testing.allocator` (propagation + zero-leak on the error path). Renamed to pair with `Client.zig`. |
+| `src/agentsfleetd/observability/otlp/exporter.zig` | EDIT (§6 importer) | `@import("post.zig")` → `@import("Client.zig")`; `post.Client` → `Client`. |
+| `src/agentsfleetd/tests.zig` | EDIT (§6 importer) | test-discovery import `otlp/post.zig` → `otlp/Client.zig`. |
+| `src/agentsfleetd/observability/otel_logs.zig` | EDIT (§6 rename fan-out) | module doc-comment reference `otlp/post.zig` → `otlp/Client.zig` (repoint a dangling doc reference the rename left; surfaced by `/review`). |
+| `src/runner/daemon/control_plane_client.zig` | EDIT | §4: `errdefer aw.deinit();` releases the partial buffer on a mid-stream fetch failure; §5 (folded): `post()`/`get()` deduped into a shared private `send()`, so the errdefer + fetch live in one place (file 350 → 347). |
+| `src/runner/daemon/control_plane_client_test.zig` | EDIT | §4: leak-detecting test (via `std.testing.allocator`) for a chunked-stream-cut mid-stream fetch failure, both verbs. |
 
 ---
 
@@ -217,7 +221,7 @@ Timeout / auth failure / exceeded quota / replay: unchanged by this workstream �
 | 1.1 | integration | `test_apply_decision_distinguishes_already_resolved_from_applied` | two decisions on the same grant (approve then approve again) → first returns applied/200, second returns already_resolved, not a duplicate 200. |
 | 1.2 | integration | `test_apply_decision_happy_path_unchanged` | single decision on a pending grant → applied/200, unchanged response shape. |
 | 2.1 | integration | `test_delete_blocked_on_referenced_check_query_error` | fault-injected query error during the reference check → delete request fails closed (blocked, internal-error response), model-cap row still present. |
-| 2.2 | integration | `test_delete_blocked_when_genuinely_referenced` | model-cap is the active default, no fault injected → 409, unchanged from existing test. |
+| 2.2 | integration | `"admin models: deleting the active default's model is blocked 409"` (pre-existing) | model-cap is the active default, no fault injected → 409, unchanged. Regression covered by the existing happy-path test (not a new `test_delete_blocked_when_genuinely_referenced` — the spec's aspirational name; coverage exists under the real test's name). |
 | 3.1 | unit | `test_post_propagates_transport_error_to_exporter_log` | fault-injected `fetch()` failure inside `post()` → error propagates to `flushOnce`'s `catch`, warn log observed. |
 | 4.1 | unit | `test_post_get_release_buffer_on_mid_stream_fetch_failure` | fault-injected fetch failure after partial writes into `aw` → `std.testing.allocator` reports zero leaks at `deinit()`. |
 
@@ -227,15 +231,15 @@ Regression: Dimensions 1.2 and 2.2 are the explicit regression cases for §1/§2
 
 ## Acceptance Criteria
 
-- [ ] Racing grant decision distinguishable from applied — verify: `zig build test --summary all` (Dimension 1.1)
-- [ ] Model-cap delete fails closed on a query error — verify: `zig build test --summary all` (Dimension 2.1)
-- [ ] OTLP transport failure reaches the exporter's warn log — verify: `zig build test --summary all` (Dimension 3.1)
-- [ ] Control-plane client leaks zero bytes on a mid-stream fetch failure — verify: `zig build test --summary all` (Dimension 4.1)
-- [ ] `make lint` clean · `make test` passes
-- [ ] `make test-integration` passes (§1/§2 touch DB)
-- [ ] `make memleak` clean (§4 touches allocator wiring directly)
-- [ ] Cross-compile clean: `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux`
-- [ ] `gitleaks detect` clean · no file over 350 lines added
+- [x] Racing grant decision distinguishable from applied — Dimension 1.1: `apply_decision` filter, 0 skip / 0 fail against real DB+Redis.
+- [x] Model-cap delete fails closed on a query error — Dimension 2.1: `referenced_check_query_error` filter, 0 skip / 0 fail against real DB.
+- [x] OTLP transport failure reaches the exporter's warn log — Dimension 3.1: agentsfleetd 33/33 (Client_test on `std.testing.allocator`, propagation + zero-leak).
+- [x] Control-plane client leaks zero bytes on a mid-stream fetch failure — Dimension 4.1: runner 356 pass; red/green proven (leak fires without the errdefer, clean with it).
+- [x] `make lint-zig` clean (ZLint 0/0, pg-drain, line-limit, schema-gate, isolation). `make test`/agentsfleetd unit green.
+- [x] `make test-integration` passes (Full integration suite passed, EXIT 0; §1/§2 confirmed non-skipped above).
+- [x] `make memleak` clean (agentsfleetd allocator guard; §4's runner-graph leak covered by the runner `testing.allocator` suite + red/green, since `make memleak` builds only the agentsfleetd graph).
+- [x] Cross-compile clean ×4: agentsfleetd + runner, both `x86_64-linux` and `aarch64-linux`.
+- [x] `gitleaks detect` clean · no file over 350 lines (`control_plane_client.zig` 350→347; `Client.zig` well under).
 
 ---
 
@@ -262,7 +266,7 @@ git diff --name-only origin/main | grep -v '\.md$' | xargs wc -l 2>/dev/null | a
 
 ## Dead Code Sweep
 
-N/A — no files deleted; all four sections edit existing functions in place.
+No dead code introduced. The scope expansion renames (not deletes) `otlp/post.zig` → `Client.zig` and `post_test.zig` → `Client_test.zig` (`git mv`, all references repointed — no orphaned imports); the `control_plane_client` dedup removes the duplicated `post()`/`get()` bodies in favour of the shared `send()` (no callers lost — `post`/`get` keep their signatures for `mint`/`getSelf`/etc.). RULE ORP orphan sweep: clean.
 
 ---
 
@@ -270,6 +274,10 @@ N/A — no files deleted; all four sections edit existing functions in place.
 
 - **§3 scope narrowing:** `otlp/post.zig` has 3 other lower-severity `catch return;` calls (buffer-formatting failures on an overlong `instance_id`/`api_key`, lines 39/43/51) beyond the `fetch()` call this workstream fixes. Only the `fetch()` call is in scope here (it's the realistic, non-configuration-error failure mode); the formatting-buffer swallows are flagged for a P2/P3 follow-up in Out of Scope.
 - **Metrics review:** no new event names; §3 restores an existing warn log's ability to fire. No analytics/funnel playbook applies to backend-internal telemetry-export plumbing.
+- **File-shape (Single-Type-Module) flag — `otlp/post.zig`:** the file is single-primary-type + behavior-bound-to-state (`pub const Client = struct { inner: std.http.Client; init/deinit/post }`), so `dispatch/write_zig.md`'s binding rule says touching it (even §3's 1-line `catch |err| return err`) should rearchitect it to file-as-struct (`const Client = @This()`) and rename → `otlp/Client.zig` with its 3 importers updated. That reshape is **outside §3's Files-Changed scope** (a 1-line edit), and cross-scope opportunistic bundling is a Hard-Safety block without an explicit ask. Surfaced to Indy mid-implementation; no response (away). Resolved toward **scope-discipline: §3 stays the minimal fix; the file-as-struct reshape is a noted debt for Indy's call** (fold into this PR on approval, else a follow-up). `control_plane_client.zig` (§4) is already file-as-struct; the other touched files are legitimately conventional (handler-collections, function-namespace store, data/registry).
+- **§4 leak proof (red/green):** with the `errdefer aw.deinit()` present, `test_post_get_release_buffer_on_mid_stream_fetch_failure` is green (5/5) under `std.testing.allocator`; with `post()`'s errdefer removed, the same test reports `memory address … leaked` (the `Allocating` writer's partial buffer) — confirming the leak is real and the fix load-bearing. Fault injected via a `Transfer-Encoding: chunked` response cut before its terminating 0-chunk (a Content-Length short read is tolerated by the client as a partial-success, so it can't exercise the error path).
+- **`control_plane_client.zig` at the FLL cap:** the file was exactly 350 lines; §4's two `errdefer` lines were absorbed net-zero by tightening the adjacent BUFFER GATE comments; the §5 dedup then dropped it to 347.
+- **Test Coverage Audit (`/write-unit-test`, Change-set mode):** diff ledger **9/9 resolved — 7 tested, 2 `needs-infra`** (§1 `.db_error` arm — unchanged behaviour, restructured not new; §2 handler `catch`→503 over HTTP — the uid is uuid-validated upstream so a malformed uid can't reach the store via HTTP, and the store-level propagation is tested directly). Both need a real pool fault for e2e injection. **One gap filled during the audit:** `test_post_propagates_oversized_auth_formatting_error` (§6 — a 600-byte `instance_id` overflows the Basic-auth `bufPrint`, now propagating `error.NoSpaceLeft` instead of the pre-fix silent success; red/green vs the swallow). Error-path coverage: 100% of the swallow→propagate changes; negative-path ratio ~5/7 (≥50%). **Production-safety:** Zig-leak ✅ (Client_test on `testing.allocator` + §4 red/green + `make memleak` 0 leaks; `checkAllAllocationFailures` not required — `post()`'s sole allocation propagates via `try` before any `defer` registers, so there is no partial-init leak surface). Concurrency/Performance: **N/A** — cold failure-path fixes, no new shared state or hot path (the §5 dedup preserves complexity; §1's exactly-once is DB-atomic via the conditional `UPDATE`, and the 100-way-race proof already exists on the sibling `approval_gate` flow). Mutation not run (Change-set); the §3/§4/§6 red/green cover the risk surface.
 
 ---
 
@@ -298,6 +306,22 @@ N/A — no files deleted; all four sections edit existing functions in place.
 
 ## Out of Scope
 
-- `otlp/post.zig`'s remaining buffer-formatting `catch return;` calls (lines 39, 43, 51) — lower severity (configuration-error only), flagged for a P2/P3 follow-up.
-- A generic "never swallow an error" lint rule across the codebase — would need its own spec and tooling design.
+- A generic "never swallow an error" lint rule + whole-repo sweep — genuinely milestone-sized (new gate tooling + hundreds of files); stays its own spec. (Explicitly excluded from the scope expansion below.)
 - A retry policy for OTLP export — the existing flush-interval retry is sufficient once the error is actually visible.
+
+> **Formerly out of scope, now folded in** (see Scope Expansion below): `otlp/Client.zig`'s remaining buffer-formatting swallows (originally deferred to a P2/P3) are now propagated.
+
+---
+
+## Scope Expansion (folded findings)
+
+After the four core fixes landed and verified, the implementing agent surfaced three refactor findings on the files already in scope; Indy directed folding the contained ones into this PR:
+
+> Indy (2026-07-03): "I think fold the findings you did into this PR" — context: fold the contained refactor findings (not the milestone-sized systemic lint+sweep, which stays a separate spec).
+
+Folded (all on files already touched, all in the silent-failure / struct-model theme):
+
+- **§5 — `control_plane_client.zig` `post()`/`get()` dedup.** The two ~90%-identical verbs collapse into one private `send(method, path, bearer, payload: ?[]const u8, deadline)`; `post`/`get` become thin wrappers. Single `errdefer` (replacing the duplicate §4 added), single `fetch`. File drops 350 → 347. Covered by the existing runner verb tests + §4's leak test.
+- **§6 — `otlp/post.zig` fully hardened + reshaped to file-as-struct.** The 3 remaining `catch return;` swallows (URL/auth formatting) now `try`-propagate; the provably-satisfied b64 buffer guard becomes a `std.debug.assert` (invariant, not silent return); the discarded response buffer + URL scratch gain `defer` cleanups (allocator-agnostic, no arena-masking). The file is rearchitected to `const Client = @This()` and renamed `post.zig` → `Client.zig` (+ `post_test.zig` → `Client_test.zig`), resolving the Single-Type-Module debt; its 3 importers (`exporter.zig`, `tests.zig`, the internal test import) are updated. §3's test now runs on `std.testing.allocator`, doubling as a zero-leak proof on the error path.
+
+Explicitly **not** folded: the systemic swallowed-error lint rule + whole-repo sweep (its own spec).
