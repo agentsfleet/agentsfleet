@@ -14,8 +14,9 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Milestone:** M109
 **Workstream:** 003
 **Date:** Jul 02, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Test Baseline:** unit=2272 integration=243 (recorded at CHORE(open), Jul 03, 2026, via `make _lint_zig_test_depth` on `main` @ `bb5bfc8b`)
+**Test Delta at close:** unit=2276 (+4: §3 hint, §4 pagination-consumers, §1 delete-cascade, §1 orphan-reject) · integration=243 (FK tests use plain `test "…"` names, not the `test "integration:` prefix the depth gate counts). No zero/negative unit delta.
 **Priority:** P1 — none of these crash today, but each is a claimed invariant (a foreign key, a "single source of truth" comment, a hint's field list, a live-error-codes list) that is currently false, and each misleads either a future implementer or an API client.
 **Categories:** API DOCS
 **Batch:** B1 — independent of M109_001/002/004; no shared files.
