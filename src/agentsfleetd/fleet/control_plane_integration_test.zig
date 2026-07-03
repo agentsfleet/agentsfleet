@@ -326,6 +326,7 @@ test "integration: runner control plane — report with a stale fencing token is
     try base.seedTenant(conn);
     try base.seedWorkspace(conn, WORKSPACE_ID);
     try seedRunner(conn, RUNNER_A_ID, "runner-cp-a", RUNNER_A_TOKEN);
+    try seedActiveFleet(conn, AGENTSFLEET_1_ID, "cp-fleet-1", SESSION_1_ID);
     try seedActiveLease(conn, LEASE_OLD_ID, RUNNER_A_ID, AGENTSFLEET_1_ID, 1);
     // The fleet's live fencing seq has advanced past this lease's token, as a
     // reclaim would leave it.
@@ -530,6 +531,7 @@ test "integration: runner control plane — release is token-guarded: a supersed
     try base.seedTenant(conn);
     try base.seedWorkspace(conn, WORKSPACE_ID);
     try seedRunner(conn, RUNNER_A_ID, "runner-cp-a", RUNNER_A_TOKEN);
+    try seedActiveFleet(conn, AGENTSFLEET_1_ID, "cp-fleet-1", SESSION_1_ID);
     // The live holder owns the slot at fencing_seq=2, claim valid into the future.
     const live_until = clock.nowMillis() + 60_000;
     try seedAffinity(conn, AFFINITY_1_ID, AGENTSFLEET_1_ID, RUNNER_A_ID, 2, live_until);

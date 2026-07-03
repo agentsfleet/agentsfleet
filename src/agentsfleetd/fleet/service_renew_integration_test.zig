@@ -105,6 +105,7 @@ fn teardown(conn: *pg.Conn) void {
     _ = conn.exec("DELETE FROM fleet.runners WHERE id = $1::uuid", .{RUNNER_ID}) catch |err|
         std.log.warn("cleanup ignored: {s}", .{@errorName(err)});
     base.teardownTenant(conn);
+    base.teardownFleets(conn, WORKSPACE_ID);
     base.teardownWorkspace(conn, WORKSPACE_ID);
 }
 
@@ -126,6 +127,7 @@ test "integration: renew refused with UZ-RUN-012 on an exhausted tenant, deadlin
     teardown(conn);
     try base.seedTenant(conn);
     try base.seedWorkspace(conn, WORKSPACE_ID);
+    try base.seedFleet(conn, FLEET_ID, WORKSPACE_ID, "service-renew-fleet", "{}", "# z");
     try seedRunner(conn);
     try exhaustBalance(conn); // 0 balance → under .stop the gate refuses the renewal charge
     const deadline = clock.nowMillis() + 60_000;
@@ -167,6 +169,7 @@ test "integration: a transient DB fault loading the lease is a retryable 5xx, no
     teardown(conn);
     try base.seedTenant(conn);
     try base.seedWorkspace(conn, WORKSPACE_ID);
+    try base.seedFleet(conn, FLEET_ID, WORKSPACE_ID, "service-renew-fleet", "{}", "# z");
     try seedRunner(conn);
     try seedActiveLease(conn, clock.nowMillis() + 60_000);
     defer teardown(conn);

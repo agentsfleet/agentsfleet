@@ -1,7 +1,16 @@
-//! Shared page/page_size parsing for paginated list endpoints. One source of
-//! truth so the fleet + api-key list parsers cannot drift apart, and the bound
-//! lives in exactly one place. Sort is endpoint-specific (each list has its own
-//! column allowlist) and stays with the individual handler.
+//! Shared page/page_size parsing for OFFSET-paginated list endpoints. One source
+//! of truth so its consumers cannot drift apart, and the page-size bound lives in
+//! exactly one place. Actual consumers of `parsePageParams` (keep this list in
+//! step with reality — a regression test asserts it): `api_keys/list.zig`,
+//! `fleet/runners_list.zig`, and `fleet/runner_events.zig`.
+//!
+//! NOT a consumer: the fleet *resource* list (`fleets/list.zig`) paginates by
+//! keyset (`cursor` + `limit`) — a structurally different scheme with its own
+//! fail-open limit parser — so it neither imports this module nor shares this
+//! parser. Do not assume parity with it.
+//!
+//! Sort is endpoint-specific (each list has its own column allowlist) and stays
+//! with the individual handler.
 
 const std = @import("std");
 const QUERY_PAGE = "page";
@@ -73,4 +82,31 @@ test "parsePageParams: page below 1 is rejected" {
 test "parsePageParams: page_size outside 1..max is rejected" {
     try std.testing.expect(parsePageParams(FakeQs{ .page_size = "0" }) == null);
     try std.testing.expect(parsePageParams(FakeQs{ .page_size = "101" }) == null);
+}
+
+// ── the header comment must name this module's REAL consumers and
+//    must not reclaim fleets/list.zig (keyset scheme, not a consumer). Regression
+//    guard so the "single source of truth" comment cannot silently re-drift.
+test "pagination header names its real consumers and excludes the fleets/list keyset scheme" {
+    const self_src = @embedFile("pagination.zig");
+    // Slice off just the //! header block (everything before the first code line),
+    // so this test's own strings below cannot self-satisfy the header check.
+    const header = self_src[0 .. std.mem.indexOf(u8, self_src, "const std = @import").?];
+
+    // The three real consumers: each is named in the header AND actually calls the parser.
+    const consumers = [_][]const u8{ "api_keys/list.zig", "fleet/runners_list.zig", "fleet/runner_events.zig" };
+    inline for (consumers) |c| {
+        try std.testing.expect(std.mem.indexOf(u8, header, c) != null);
+    }
+    try std.testing.expect(std.mem.indexOf(u8, @embedFile("api_keys/list.zig"), "parsePageParams") != null);
+    try std.testing.expect(std.mem.indexOf(u8, @embedFile("fleet/runners_list.zig"), "parsePageParams") != null);
+    try std.testing.expect(std.mem.indexOf(u8, @embedFile("fleet/runner_events.zig"), "parsePageParams") != null);
+
+    // fleets/list.zig is NOT a consumer: it must not import this module nor call the
+    // shared parser — it hand-rolls a keyset limit parser instead.
+    const fleets_list = @embedFile("fleets/list.zig");
+    try std.testing.expect(std.mem.indexOf(u8, fleets_list, "parsePageParams") == null);
+    // Match the actual import statement, not a bare filename mention — a future
+    // comment referencing pagination.zig must not false-fail this guard.
+    try std.testing.expect(std.mem.indexOf(u8, fleets_list, "@import(\"../pagination.zig\")") == null);
 }

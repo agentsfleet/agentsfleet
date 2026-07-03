@@ -113,8 +113,8 @@ fn seedRollbackAccount(conn: *pg.Conn) !void {
         \\VALUES ($1::uuid, 'teardown-rollback-canary', 'canary', 'must survive the rollback', 'core', $2::uuid, 1700000000000, 1700000000000)
         \\ON CONFLICT (uid) DO NOTHING
     , .{ RB_MEMORY_UID, RB_FLEET_ID });
-    // Fleet rows: no FK into core, swept only by the purge's explicit fleet
-    // DELETEs. The runner row is shared host infrastructure and must SURVIVE.
+    // The runner row is shared host infrastructure (tenant_id NULL, no per-account
+    // FK) and must SURVIVE the purge — it is not swept by any fleet/tenant DELETE.
     _ = try conn.exec(
         \\INSERT INTO fleet.runners
         \\  (id, host_id, token_hash, sandbox_tier, admin_state, labels, tenant_id,
