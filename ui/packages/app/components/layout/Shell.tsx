@@ -72,7 +72,7 @@ const CONFIGURATION_NAV: NavEntry[] = [
 // catalogue; a token with neither sees neither.
 const PLATFORM_NAV: PlatformNavEntry[] = [
   { label: "Runners", href: "/admin/runners", icon: ServerIcon, scope: SCOPE.RUNNER_READ },
-  { label: "Model catalogue", href: "/admin/models", icon: CpuIcon, scope: SCOPE.MODEL_READ },
+  { label: "Model rates", href: "/admin/models", icon: CpuIcon, scope: SCOPE.MODEL_READ },
 ];
 
 const ORGANIZATION_NAV: NavEntry[] = [
@@ -226,7 +226,7 @@ function SidebarNav({ isActive, onNavigate, operatorScopes }: NavProps) {
   return (
     <div className="flex flex-col h-full">
       <NavSection items={TOP_NAV} isActive={isActive} onNavigate={onNavigate} />
-      <NavSection label="Operations" items={OPERATIONS_NAV} isActive={isActive} onNavigate={onNavigate} />
+      <NavSection label="Automations" items={OPERATIONS_NAV} isActive={isActive} onNavigate={onNavigate} />
       <NavSection label="Configuration" items={configItems} isActive={isActive} onNavigate={onNavigate} />
       <NavSection label="Organization" items={ORGANIZATION_NAV} isActive={isActive} onNavigate={onNavigate} />
       <div className="mt-auto">

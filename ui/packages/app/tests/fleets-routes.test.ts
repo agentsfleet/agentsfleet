@@ -34,9 +34,10 @@ vi.mock("@/lib/api/credentials", async () => (await import("./helpers/dashboard-
 beforeEach(() => {
   vi.clearAllMocks();
   resetCommonMocks({ pathname: "/fleets" });
-  // The Fleets empty-state lazily fetches the template gallery; default it to an
+  // The /fleets/new install page fetches the template gallery; default it to an
   // empty catalog so tests that don't care about templates don't crash on the
-  // unmocked promise (individual tests override as needed).
+  // unmocked promise (individual tests override as needed). The Fleets list
+  // empty-state no longer fetches — it routes to /fleets/new instead.
   listWorkspaceFleetTemplatesMock.mockResolvedValue({ items: [] });
 });
 afterEach(() => {
@@ -147,9 +148,8 @@ describe("fleets routes", () => {
     expect(markup).toContain("No workspace yet");
   });
 
-  it("fleets list page renders empty-fleets state with the template gallery, banner suppressed", async () => {
+  it("fleets list page renders the empty-fleets state (centered EmptyState), banner suppressed", async () => {
     resolveActiveWorkspace.mockResolvedValueOnce({ id: "ws_1" });
-    listWorkspaceFleetTemplatesMock.mockResolvedValue({ items: SAMPLE_TEMPLATES });
     fetchMock.mockImplementation(async (url: string) => {
       if (url.endsWith("/v1/tenants/me/billing")) {
         return { ok: true, status: 200, json: async () => happyBilling };
@@ -163,13 +163,12 @@ describe("fleets routes", () => {
     const { FleetsData } = await import("../app/(dashboard)/fleets/page");
     const markup = renderToStaticMarkup(React.createElement(React.Fragment, null, await FleetsData()));
     expect(markup).toContain("No fleets yet");
-    // The real template gallery now stands in for the abstract step cards; the
-    // empty state passes quickstart, so the Quick start link renders.
-    expect(markup).toContain("GitHub PR reviewer");
-    expect(markup).toContain("Quick start");
-    // The per-template deep link is the install affordance in the empty state;
-    // the bare /fleets/new link lives in the page header (outside FleetsData).
-    expect(markup).toContain('href="/fleets/new?template=github-pr-reviewer"');
+    // The empty state is a centered EmptyState that routes to /fleets/new (where
+    // the template gallery lives) — no inline gallery, no quickstart here.
+    expect(markup).toContain('href="/fleets/new"');
+    expect(markup).toContain("Create a template");
+    expect(markup).not.toContain("Quick start");
+    expect(markup).not.toContain("?template=");
     expect(markup).not.toContain("credit balance is exhausted");
   });
 
@@ -181,39 +180,6 @@ describe("fleets routes", () => {
     expect(markup).toContain("href=\"/fleets/zom_1\"");
     expect(markup).toContain("platform-ops");
     expect(markup).toContain("credit balance is exhausted");
-  });
-
-  it("fleets list empty-state fetches and renders the template catalog", async () => {
-    resolveActiveWorkspace.mockResolvedValueOnce({ id: "ws_1" });
-    listWorkspaceFleetTemplatesMock.mockResolvedValue({ items: SAMPLE_TEMPLATES });
-    fetchMock.mockImplementation(async (url: string) => {
-      if (url.endsWith("/v1/tenants/me/billing")) {
-        return { ok: true, status: 200, json: async () => happyBilling };
-      }
-      return { ok: true, status: 200, json: async () => ({ items: [], total: 0, next_cursor: null }) };
-    });
-    const { FleetsData } = await import("../app/(dashboard)/fleets/page");
-    const markup = renderToStaticMarkup(React.createElement(React.Fragment, null, await FleetsData()));
-    expect(markup).toContain("No fleets yet");
-    expect(markup).toContain("GitHub PR reviewer");
-    expect(listWorkspaceFleetTemplatesMock).toHaveBeenCalled();
-  });
-
-  it("fleets list empty-state swallows a failed template catalog fetch (empty gallery, no crash)", async () => {
-    resolveActiveWorkspace.mockResolvedValueOnce({ id: "ws_1" });
-    // Catalog outage on the empty path → the `.catch(() => [])` arm yields no
-    // templates, so the empty state still renders rather than throwing.
-    listWorkspaceFleetTemplatesMock.mockRejectedValue(new Error("catalog down"));
-    fetchMock.mockImplementation(async (url: string) => {
-      if (url.endsWith("/v1/tenants/me/billing")) {
-        return { ok: true, status: 200, json: async () => happyBilling };
-      }
-      return { ok: true, status: 200, json: async () => ({ items: [], total: 0, next_cursor: null }) };
-    });
-    const { FleetsData } = await import("../app/(dashboard)/fleets/page");
-    const markup = renderToStaticMarkup(React.createElement(React.Fragment, null, await FleetsData()));
-    expect(markup).toContain("No fleets yet");
-    expect(markup).not.toContain("GitHub PR reviewer");
   });
 
   it("fleets list page swallows a failed billing fetch and still renders", async () => {

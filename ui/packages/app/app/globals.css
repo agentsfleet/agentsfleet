@@ -56,17 +56,17 @@ body {
  * wobble on navigation. Interactive chrome keeps a tiny no-preference-only
  * hover / press lift, and reduced motion still neutralises transitions. */
 
-/* Content canvas: preview-matched dual glow. The header and sidebar stay flat;
- * only the working area carries the ambient field. */
+/* Content canvas: a single restrained brand glow in the top-right corner — low
+ * opacity so it reads as ambient warmth, not a hero background. The header and
+ * sidebar stay flat; only the working area carries it. (Operational Restraint:
+ * one calm glow, not a multi-stop teal/blue field.) */
 .app-dashboard-canvas {
   background:
-    radial-gradient(1150px 660px at 94% -16%, var(--pulse-glow), transparent 60%),
-    radial-gradient(620px 460px at 66% 0%, color-mix(in srgb, var(--info) 7%, transparent), transparent 55%),
-    radial-gradient(720px 540px at 4% 116%, color-mix(in srgb, var(--pulse) 8%, transparent), transparent 60%),
+    radial-gradient(1000px 620px at 96% -18%, var(--pulse-glow), transparent 62%),
     var(--bg);
   background-repeat: no-repeat;
-  background-size: 150% 150%, 150% 150%, 150% 150%, auto;
-  background-position: 90% 0%, 60% 0%, 0% 100%, 0 0;
+  background-size: 150% 150%, auto;
+  background-position: 100% 0%, 0 0;
 }
 
 /* Interactive chrome under the dashboard surface: a faint brightness lift on

@@ -19,9 +19,8 @@ vi.mock("@/lib/analytics/posthog", () => ({
   captureProductEvent: captureProductEventMock,
 }));
 
-import AddTemplateDialog, {
-  CREATE_TEMPLATE_DOC_URL,
-} from "../app/(dashboard)/fleets/new/AddTemplateDialog";
+import AddTemplateDialog from "../app/(dashboard)/fleets/new/AddTemplateDialog";
+import { CREATE_TEMPLATE_DOC_URL } from "../app/(dashboard)/fleets/new/template-docs";
 
 const onboarded = {
   id: "tmpl_1",

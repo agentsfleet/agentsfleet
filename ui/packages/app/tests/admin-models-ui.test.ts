@@ -6,10 +6,11 @@ import userEvent from "@testing-library/user-event";
 // Only the server-action module is stubbed; lib/api/admin_models (the $/1M⇄nanos
 // conversion) stays real so the form's actual conversion is exercised, not faked.
 // vi.hoisted: vi.mock is hoisted above const decls, so the mock fns must be too.
-const { createAdminModelActionMock, setPlatformDefaultActionMock, deleteAdminModelActionMock } = vi.hoisted(() => ({
+const { createAdminModelActionMock, setPlatformDefaultActionMock, deleteAdminModelActionMock, captureProductEventMock } = vi.hoisted(() => ({
   createAdminModelActionMock: vi.fn(),
   setPlatformDefaultActionMock: vi.fn(),
   deleteAdminModelActionMock: vi.fn(),
+  captureProductEventMock: vi.fn(),
 }));
 
 vi.mock("@/app/(dashboard)/admin/models/actions", () => ({
@@ -19,12 +20,14 @@ vi.mock("@/app/(dashboard)/admin/models/actions", () => ({
   listAdminModelsAction: vi.fn(),
   updateAdminModelAction: vi.fn(),
 }));
+vi.mock("@/lib/analytics/posthog", () => ({ captureProductEvent: captureProductEventMock }));
 
 import AddModelDialog from "@/app/(dashboard)/admin/models/components/AddModelDialog";
 import PlatformDefaultCard from "@/app/(dashboard)/admin/models/components/PlatformDefaultCard";
 import CatalogueList from "@/app/(dashboard)/admin/models/components/CatalogueList";
 import ModelsView from "@/app/(dashboard)/admin/models/components/ModelsView";
 import { type AdminModel, OPENAI_COMPATIBLE_PROVIDER } from "@/lib/api/admin_models";
+import { EVENTS } from "../lib/analytics/events";
 
 // Open a design-system (Radix) Select and click one of its options. Mirrors the
 // pointerDown→click→Enter sequence provider-selector.test.ts uses — Radix only
@@ -142,6 +145,13 @@ describe("PlatformDefaultCard — save flow", () => {
     await waitFor(() => expect(screen.getByText("Platform default updated.")).toBeTruthy());
     // The key is cleared from the field after a successful store (it lives in the vault now).
     expect(key.value).toBe("");
+    // Telemetry: a platform_default_set product event fires with the priced
+    // model + a non-custom flag, and never the key material.
+    expect(captureProductEventMock).toHaveBeenCalledWith(EVENTS.platform_default_set, {
+      provider: "fireworks",
+      model: "glm-5.2",
+      is_custom: false,
+    });
   });
 
   it("surfaces the action error and leaves the key in place when activation fails", async () => {
@@ -155,6 +165,8 @@ describe("PlatformDefaultCard — save flow", () => {
 
     await waitFor(() => expect(screen.getByText(/rate gate rejected the model/i)).toBeTruthy());
     expect(screen.queryByText("Platform default updated.")).toBeNull();
+    // Telemetry sits on the success path only — a rejected save fires no event.
+    expect(captureProductEventMock).not.toHaveBeenCalled();
   });
 
   it("requires a base URL for an openai-compatible endpoint and threads it into the save", async () => {
@@ -183,13 +195,20 @@ describe("PlatformDefaultCard — save flow", () => {
       api_key: "sk-secret",
       base_url: "https://endpoint.example/v1",
     });
+    // The custom-endpoint path flags the event is_custom: true (the other save
+    // test covers the is_custom: false branch).
+    expect(captureProductEventMock).toHaveBeenCalledWith(EVENTS.platform_default_set, {
+      provider: OPENAI_COMPATIBLE_PROVIDER,
+      model: "glm-5.2",
+      is_custom: true,
+    });
   });
 });
 
 describe("CatalogueList", () => {
   it("renders a priced row per catalogue model with $/1M rates", () => {
     render(React.createElement(CatalogueList, { models: CATALOGUE, onDeleted: vi.fn() }));
-    expect(screen.getByText("Model catalogue · 2 models")).toBeTruthy();
+    expect(screen.getByText("Model rates · 2 models")).toBeTruthy();
     expect(screen.getByLabelText("fireworks glm-5.2 catalogue row")).toBeTruthy();
     // 550_000_000 nanos/Mtok → $0.55, two decimals.
     expect(screen.getByText("0.55 / 0.14 / 2.19")).toBeTruthy();
@@ -197,7 +216,7 @@ describe("CatalogueList", () => {
 
   it("uses the singular noun for a one-model catalogue", () => {
     render(React.createElement(CatalogueList, { models: [CATALOGUE[0]!], onDeleted: vi.fn() }));
-    expect(screen.getByText("Model catalogue · 1 model")).toBeTruthy();
+    expect(screen.getByText("Model rates · 1 model")).toBeTruthy();
   });
 
   it("shows the empty state when there are no models", () => {
@@ -237,7 +256,7 @@ describe("ModelsView", () => {
   it("renders the catalogue and the platform-default surface from the seeded list", () => {
     render(React.createElement(ModelsView, { initial }));
     expect(screen.getByText("Models")).toBeTruthy();
-    expect(screen.getByText("Model catalogue · 2 models")).toBeTruthy();
+    expect(screen.getByText("Model rates · 2 models")).toBeTruthy();
     // The platform-default card reads the same catalogue for its picker.
     expect(screen.getByLabelText("Default provider")).toBeTruthy();
   });
@@ -258,7 +277,7 @@ describe("ModelsView", () => {
     fireEvent.submit(screen.getByRole("dialog").querySelector("form")!);
 
     // ModelsView's onCreated callback appends the row → count goes 2 → 3.
-    await waitFor(() => expect(screen.getByText("Model catalogue · 3 models")).toBeTruthy());
+    await waitFor(() => expect(screen.getByText("Model rates · 3 models")).toBeTruthy());
     expect(screen.getByLabelText("moonshot kimi-k2.6 catalogue row")).toBeTruthy();
   });
 
@@ -270,7 +289,7 @@ describe("ModelsView", () => {
     fireEvent.click(within(row).getByRole("button", { name: "Delete" }));
 
     // ModelsView's onDeleted callback filters the row out → count goes 2 → 1.
-    await waitFor(() => expect(screen.getByText("Model catalogue · 1 model")).toBeTruthy());
+    await waitFor(() => expect(screen.getByText("Model rates · 1 model")).toBeTruthy());
     expect(screen.queryByLabelText("fireworks glm-5.2 catalogue row")).toBeNull();
   });
 });
