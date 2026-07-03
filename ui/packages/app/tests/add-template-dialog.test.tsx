@@ -106,4 +106,41 @@ describe("AddTemplateDialog", () => {
     expect(screen.getByLabelText("Repository")).toBeTruthy();
     expect(routerRefresh).not.toHaveBeenCalled();
   });
+
+  it("shows pending state while adding a template", async () => {
+    let finishAction: ((value: typeof onboarded) => void) | undefined;
+    onboardTemplateActionMock.mockReturnValueOnce(
+      new Promise((resolve) => {
+        finishAction = (value) => resolve({ ok: true, data: value });
+      }),
+    );
+    const user = await openDialog();
+    await user.type(screen.getByLabelText("Repository"), "owner/repo");
+    submitDialog();
+
+    await screen.findByText("Adding template");
+    expect(
+      (screen.getByRole("button", { name: /adding template add template/i }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+
+    finishAction?.(onboarded);
+    await waitFor(() => expect(routerRefresh).toHaveBeenCalledTimes(1));
+  });
+
+  it("renders fallback errors without optional body or code rows", async () => {
+    onboardTemplateActionMock.mockResolvedValueOnce({
+      ok: false,
+      error: "repo not found",
+      status: 404,
+    });
+    const user = await openDialog();
+    await user.type(screen.getByLabelText("Repository"), "owner/repo");
+    submitDialog();
+
+    await screen.findByText("Couldn't add the template — repo not found.");
+    expect(screen.queryByText("Ask a workspace admin to grant template access.")).toBeNull();
+    expect(screen.queryByText(/^UZ-/)).toBeNull();
+    expect(routerRefresh).not.toHaveBeenCalled();
+  });
 });
