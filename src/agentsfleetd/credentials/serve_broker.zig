@@ -20,12 +20,23 @@ const std = @import("std");
 const pg = @import("pg");
 const common = @import("common");
 const logging = @import("log");
+const call_deadline = @import("call_deadline");
 
 const integration = @import("integration.zig");
 const vault = @import("../state/vault.zig");
 const rs256_sign = @import("../auth/crypto/rs256_sign.zig");
 
 const log = logging.scoped(.credential_broker);
+
+/// Silent per-call watchdog for the outbound token exchange (the broker maps any
+/// failure to `mint_failed{transient}`, so it needs the bound, not the taxonomy).
+const Watchdog = call_deadline.Watchdog(null);
+
+/// Deadline for a broker token exchange (installation-token mint or oauth2
+/// refresh) — a rare cold-cache vendor round-trip. Mirrors the connector layer's
+/// `bounded_fetch.TOKEN_EXCHANGE_DEADLINE_MS`; a hung vendor token endpoint must
+/// never stall the broker (fail closed → transient, re-minted on the next call).
+const MINT_DEADLINE_MS: u31 = 10_000;
 
 /// Vault key_name holding the platform App secret under the admin workspace
 /// (RULE UFS — the one spelling the load path uses). Adding an integration adds a
@@ -145,6 +156,9 @@ fn loadPlatformSecrets(alloc: std.mem.Allocator, pool: *pg.Pool, admin_ws_id: []
 /// so no lifecycle to leak.
 pub const HttpClientExchange = struct {
     io: std.Io,
+    /// Outbound deadline (ms). Defaults to the production bound; a test injects a
+    /// short value to prove the watchdog fires without a 10 s wait.
+    deadline_ms: u31 = MINT_DEADLINE_MS,
 
     pub fn exchange(self: *HttpClientExchange) integration.HttpExchange {
         return .{ .ptr = self, .postFn = postImpl };
@@ -179,15 +193,51 @@ pub const HttpClientExchange = struct {
             n += 1;
         }
 
+        // Deadline-arm the exchange, fail CLOSED — pin the pooled socket, arm a
+        // per-call watchdog, disarm after. postImpl can run concurrently across
+        // workspaces, so the watchdog is per-call (a shared one would let two
+        // arms clobber each other). A pin/arm failure refuses the call rather
+        // than running unbounded — same discipline as `bounded_fetch`.
+        const handle = pinHandle(&client, req.url) orelse return error.HttpExchangeFailed;
+        var wd: Watchdog = .{};
+        defer wd.deinit();
+        if (wd.arm(handle, self.deadline_ms) == .watchdog_unavailable) return error.HttpExchangeFailed;
+        defer wd.disarm();
+
         const result = client.fetch(.{
             .location = .{ .url = req.url },
             .method = .POST,
             .payload = if (req.body.len > 0) req.body else null,
             .extra_headers = headers[0..n],
+            // A redirect's new leg dials a fresh socket outside the armed handle
+            // (re-opening the unbounded window); token endpoints answer directly.
+            .redirect_behavior = .unhandled,
             .response_writer = &aw.writer,
         }) catch return error.HttpExchangeFailed;
 
         return .{ .status = @intFromEnum(result.status), .body = aw.toOwnedSlice() catch return error.OutOfMemory };
+    }
+
+    /// Pin the pooled connection the fetch will use (get-or-create, release back
+    /// so the fetch pops the same one) and return its socket handle for the
+    /// watchdog. Null on an unusable URL or a dial failure → the call is refused.
+    /// Mirrors `bounded_fetch.pinPooledHandle`; a shared armed-fetch primitive
+    /// unifying the two is the DRY follow-up noted in the M108 refactor findings.
+    fn pinHandle(client: *std.http.Client, url: []const u8) ?std.Io.net.Socket.Handle {
+        const uri = std.Uri.parse(url) catch return null;
+        const tls = std.ascii.eqlIgnoreCase(uri.scheme, "https");
+        const port: u16 = uri.port orelse @as(u16, if (tls) 443 else 80);
+        const raw_host = uri.host orelse return null;
+        const host_str = switch (raw_host) {
+            .raw => |r| r,
+            .percent_encoded => |p| p,
+        };
+        if (host_str.len == 0) return null;
+        const host = std.Io.net.HostName.init(host_str) catch return null;
+        const conn = client.connect(host, port, if (tls) .tls else .plain) catch return null;
+        const handle = conn.stream_writer.stream.socket.handle;
+        client.connection_pool.release(conn, client.io);
+        return handle;
     }
 };
 
@@ -280,18 +330,4 @@ fn onMint(_: *anyopaque, ev: integration.MintEvent) void {
     });
 }
 
-// ── Tests ────────────────────────────────────────────────────────────────────
-const testing = std.testing;
-
-test "metricsSink emits without dereferencing its opaque ptr" {
-    const sink = metricsSink();
-    // ptr is undefined by contract; onMint must never touch it.
-    sink.onMint(.{ .integration = "github", .outcome = "ok", .latency_ms = 12, .cache_hit = false });
-}
-
-test "exchange wires a post boundary over the client" {
-    var ex = HttpClientExchange{ .io = @import("common").globalIo() };
-    const boundary = ex.exchange();
-    // The boundary points back at the exchange struct (no network here).
-    try testing.expect(boundary.ptr == @as(*anyopaque, @ptrCast(&ex)));
-}
+// Tests live in `serve_broker_test.zig` (FLL-exempt) — production stays ≤350.

@@ -225,7 +225,7 @@ Vault handle shapes (prose-locked): oauth2-refresh `{integration, refresh_token,
 1. Registry entries for the six use `common` provider constants — comptime (M108_001 validation covers new entries automatically).
 2. No secret material (submitted keys, refresh/access tokens) in logs, error bodies, catalog, or status responses — enforced by handle-shape tests + LOGGING audit; status returns only identity labels.
 3. Refresh tokens never leave the vault/broker boundary (runner receives only short-lived access tokens) — mint-response test.
-4. Every vendor call in this workstream goes through `bounded_fetch` — the M108_001 grep invariant (E8) extends unchanged to the new files.
+4. Every vendor call is deadline-armed, fail-closed. Connector-layer calls go through `bounded_fetch` (E8 grep). The **broker's** outbound (`serve_broker.HttpClientExchange`) — the credentials-layer's single sanctioned `std.http.Client` point, serving the github + oauth2-refresh mints — is now itself deadline-armed via a per-call `call_deadline` watchdog (finding ②): pin → arm → fetch(`.unhandled`) → disarm, refusing on a pin/arm failure. A hung vendor token endpoint can no longer stall the broker (proved by a loopback-stall test).
 5. api_key connect writes the vault handle only after a successful probe — negative tests pin the no-write paths.
 
 ---
