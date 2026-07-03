@@ -22,6 +22,10 @@ pub const Spec = struct {
     authorize_endpoint: []const u8,
     token_endpoint: []const u8,
     scopes: []const u8,
+    /// Provider-specific authorization query tail, without a leading `&`.
+    /// Values are compile-time constants that are already URL-safe (for
+    /// example Atlassian's `audience=api.atlassian.com`).
+    authorize_extra_query: []const u8 = "",
     state: connector_state.Config,
 };
 
@@ -82,8 +86,15 @@ pub fn authorizeUrl(
 ) ![]const u8 {
     const redir = try percentEncode(alloc, redirect_uri);
     defer alloc.free(redir);
-    return std.fmt.allocPrint(alloc, "{s}?client_id={s}&scope={s}&redirect_uri={s}&state={s}", .{
-        spec.authorize_endpoint, client_id, spec.scopes, redir, state,
+    const scope = try percentEncode(alloc, spec.scopes);
+    defer alloc.free(scope);
+    if (spec.authorize_extra_query.len > 0) {
+        return std.fmt.allocPrint(alloc, "{s}?response_type=code&client_id={s}&scope={s}&redirect_uri={s}&state={s}&{s}", .{
+            spec.authorize_endpoint, client_id, scope, redir, state, spec.authorize_extra_query,
+        });
+    }
+    return std.fmt.allocPrint(alloc, "{s}?response_type=code&client_id={s}&scope={s}&redirect_uri={s}&state={s}", .{
+        spec.authorize_endpoint, client_id, scope, redir, state,
     });
 }
 
@@ -105,7 +116,7 @@ pub fn exchange(
     defer alloc.free(redir);
     const body = try std.fmt.allocPrint(
         alloc,
-        "client_id={s}&client_secret={s}&code={s}&redirect_uri={s}",
+        "grant_type=authorization_code&client_id={s}&client_secret={s}&code={s}&redirect_uri={s}",
         .{ creds.client_id, creds.client_secret, code, redir },
     );
     defer alloc.free(body);
@@ -228,7 +239,7 @@ test "authorizeUrl: composes endpoint + params, percent-encodes redirect_uri" {
     const url = try authorizeUrl(testing.allocator, T_SPEC, "CID123", "https://app.test/cb", "st.mac");
     defer testing.allocator.free(url);
     try testing.expectEqualStrings(
-        "https://example.test/authorize?client_id=CID123&scope=read,write&redirect_uri=https%3A%2F%2Fapp.test%2Fcb&state=st.mac",
+        "https://example.test/authorize?response_type=code&client_id=CID123&scope=read%2Cwrite&redirect_uri=https%3A%2F%2Fapp.test%2Fcb&state=st.mac",
         url,
     );
 }

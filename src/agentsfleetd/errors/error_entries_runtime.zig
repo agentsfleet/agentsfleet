@@ -90,4 +90,6 @@ pub const ENTRIES_RUNTIME = [_]Entry{
         "List the available providers from the dashboard connectors page (or the catalog endpoint once it ships)."),
     e("UZ-CONN-005", .bad_request, "Connector probe rejected credentials", "The connector validation probe rejected the submitted API-key credentials. " ++
         "Check the provider key, app key, site, and token scope, then try connecting again; no credential was stored."),
+    e("UZ-CONN-006", .bad_gateway, "Connector OAuth exchange failed", "The connector's OAuth code exchange or provider callback body was rejected. " ++
+        "Start the connect again from the dashboard; if it repeats, verify the provider app credentials and redirect URL."),
 };
