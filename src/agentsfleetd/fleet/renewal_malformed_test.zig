@@ -96,6 +96,7 @@ fn cleanupAll(conn: *pg.Conn) void {
     execIgnore(conn, "DELETE FROM fleet.runner_leases WHERE id = $1::uuid", .{LEASE_ID});
     execIgnore(conn, "DELETE FROM fleet.runners WHERE id IN ($1::uuid, $2::uuid)", .{ RUNNER_A_ID, RUNNER_B_ID });
     base.teardownTenant(conn);
+    base.teardownFleets(conn, WORKSPACE_ID);
     base.teardownWorkspace(conn, WORKSPACE_ID);
 }
 
@@ -155,6 +156,7 @@ test "renew by a runner that is not the lease owner is refused 404 UZ-RUN-006" {
     cleanupAll(conn);
     try base.seedTenant(conn);
     try base.seedWorkspace(conn, WORKSPACE_ID);
+    try base.seedFleet(conn, FLEET_ID, WORKSPACE_ID, "renewal-mal-fleet", "{}", "# z");
     try seedRunner(conn, RUNNER_A_ID, "renew-mal-a", RUNNER_A_TOKEN); // owner
     try seedRunner(conn, RUNNER_B_ID, "renew-mal-b", RUNNER_B_TOKEN); // interloper
     try seedActiveLease(conn, RUNNER_A_ID); // lease belongs to A

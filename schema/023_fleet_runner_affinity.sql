@@ -42,7 +42,7 @@ CREATE TABLE IF NOT EXISTS fleet.runner_affinity (
     uid             UUID   GENERATED ALWAYS AS (id) STORED PRIMARY KEY,
     CONSTRAINT ck_runner_affinity_uid_uuidv7 CHECK (substring(uid::text from 15 for 1) = '7'),
     id              UUID   NOT NULL UNIQUE,
-    fleet_id       UUID   NOT NULL,
+    fleet_id       UUID   NOT NULL REFERENCES core.fleets(id) ON DELETE CASCADE,
     last_runner_id  UUID   NULL REFERENCES fleet.runners(id) ON DELETE SET NULL,
     fencing_seq     BIGINT NOT NULL,
     leased_until    BIGINT NOT NULL,

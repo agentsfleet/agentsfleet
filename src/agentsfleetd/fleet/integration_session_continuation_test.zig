@@ -13,9 +13,9 @@
 //   2. Mid-lease unavailability: after a lease is issued, its durable
 //      `runner_leases` row is purged (the fleet/session torn down out from under
 //      the holder). A renew then loads no lease and is refused 404 UZ-RUN-006 —
-//      no extend, no orphaned active lease left behind. (`runner_leases.fleet_id`
-//      is not an FK to `core.fleets`, so the purge is modeled by removing the
-//      durable lease state itself — the row the renew path actually reads.)
+//      no extend, no orphaned active lease left behind. (The purge removes the
+//      durable `runner_leases` row directly — the row the renew path reads —
+//      modeling the lease state vanishing while its fleet persists.)
 //
 // Mirrors control_plane_integration_test.zig's harness wiring + seed helpers.
 // Requires LIVE_DB=1 + a reachable Redis; skipped when either is missing.
@@ -278,9 +278,9 @@ test "renew is refused 404 when the lease was purged after issue, no orphan left
     try std.testing.expect(lv.present);
 
     // The fleet/session is torn down mid-lease: purge the durable lease row the
-    // renew path reads (runner_leases.fleet_id is not an FK to core.fleets, so
-    // a fleet delete alone would not touch it — we remove the lease state the
-    // renew actually loads).
+    // renew path reads directly — not via a fleet delete, which would now cascade
+    // the lease away through the fleet_id FK — so we remove exactly the lease
+    // state the renew actually loads.
     execIgnore(conn, "DELETE FROM fleet.runner_leases WHERE id = $1::uuid", .{lv.lease_id.?});
 
     // Renew now loads no lease → 404 UZ-RUN-006, no extend.

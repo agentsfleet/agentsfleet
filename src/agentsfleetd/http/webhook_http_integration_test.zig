@@ -19,6 +19,7 @@ const harness_mod = @import("test_harness.zig");
 const fx_mod = @import("webhook_test_fixtures.zig");
 const signers = @import("webhook_test_signers.zig");
 const ec = @import("../errors/error_registry.zig");
+const clock = @import("common").clock;
 
 const TestHarness = harness_mod.TestHarness;
 
@@ -668,3 +669,92 @@ test "C2: generic route — paused fleet → 200 ignored fleet_paused, dedup slo
     try r2.expectStatus(.accepted);
     try std.testing.expectEqual(@as(i64, 1), try xlen(s.h, alloc, AGENTSFLEET_LINEAR));
 }
+
+// ── §D: grant-approval webhook — applied vs already-resolved (spec §1) ──
+//
+// POST /v1/webhooks/{fleet_id}/grant-approval, middleware `none` — auth is the
+// single-use Redis nonce (grant:nonce:{grant_id}), so these seed a grant row +
+// its nonce and drive the handler directly. Needs DB + Redis.
+//
+// The defect: applyDecision's conditional UPDATE (`... AND status = 'pending'`)
+// can affect 0 rows on a grant that was already resolved out-of-band (dashboard
+// approve, auto-timeout) while a late Slack click still carries a valid nonce —
+// and the old handler reported that 0-row no-op as a 200 "ok". Dimension 1.1
+// proves it is now a distinguishable 409; Dimension 1.2 pins the happy path.
+
+const GRANT_FX: fx_mod.Fixture = .{
+    .tenant_id = fx_mod.ID_TENANT_A,
+    .workspace_id = fx_mod.ID_WS_A,
+    .fleet_id = fx_mod.ID_AGENTSFLEET_A,
+};
+const GRANT_ID = "0197a4ba-8d3a-7f13-8abc-11111111bb01"; // uuidv7; the schema pins uid::text == grant_id
+const GRANT_SERVICE = "github";
+const GRANT_NONCE = "nonce-m109-002-grant-approval-test";
+const GRANT_NONCE_KEY = "grant:nonce:" ++ GRANT_ID;
+const GRANT_URL = "/v1/webhooks/" ++ fx_mod.ID_AGENTSFLEET_A ++ "/grant-approval";
+const GRANT_BODY = "{\"grant_id\":\"" ++ GRANT_ID ++ "\",\"decision\":\"approved\",\"nonce\":\"" ++ GRANT_NONCE ++ "\"}";
+
+fn seedGrant(h: *TestHarness, status: []const u8) !void {
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    const trigger = try fx_mod.buildTriggerConfig(h.alloc, "github", null);
+    defer h.alloc.free(trigger);
+    try fx_mod.insertFleet(conn, GRANT_FX, trigger); // fresh tenant+workspace+fleet (cleans first)
+    _ = try conn.exec("DELETE FROM core.integration_grants WHERE grant_id = $1", .{GRANT_ID});
+    _ = try conn.exec(
+        \\INSERT INTO core.integration_grants
+        \\  (uid, grant_id, fleet_id, service, status, requested_at, requested_reason)
+        \\VALUES ($1::uuid, $1, $2::uuid, $3, $4, $5, 'm109-002 test grant')
+    , .{ GRANT_ID, GRANT_FX.fleet_id, GRANT_SERVICE, status, clock.nowMillis() });
+}
+
+fn setGrantNonce(h: *TestHarness) !void {
+    var v = try h.queue.command(&.{ "SET", GRANT_NONCE_KEY, GRANT_NONCE });
+    v.deinit(h.alloc);
+}
+
+fn cleanupGrant(h: *TestHarness) void {
+    const conn = h.acquireConn() catch return;
+    defer h.releaseConn(conn);
+    _ = conn.exec("DELETE FROM core.integration_grants WHERE grant_id = $1", .{GRANT_ID}) catch |err| std.log.warn("grant cleanup ignored: {s}", .{@errorName(err)});
+    fx_mod.cleanup(conn, GRANT_FX) catch |err| std.log.warn("grant fx cleanup ignored: {s}", .{@errorName(err)});
+    var v = h.queue.command(&.{ "DEL", GRANT_NONCE_KEY }) catch return;
+    v.deinit(h.alloc);
+}
+
+test "test_apply_decision_happy_path_unchanged" {
+    const alloc = std.testing.allocator;
+    const h = startHarness(alloc) catch |err| return skipOrErr(err);
+    defer h.deinit();
+    try requireRedis(h);
+    defer cleanupGrant(h);
+    try seedGrant(h, STATUS_PENDING_SEED);
+    try setGrantNonce(h);
+
+    // A single decision on a pending grant → the UPDATE matches 1 row → applied.
+    const r = try (try h.post(GRANT_URL).json(GRANT_BODY)).send();
+    defer r.deinit();
+    try r.expectStatus(.ok);
+    try std.testing.expect(r.bodyContains("\"decision\":\"approved\""));
+}
+
+test "test_apply_decision_distinguishes_already_resolved_from_applied" {
+    const alloc = std.testing.allocator;
+    const h = startHarness(alloc) catch |err| return skipOrErr(err);
+    defer h.deinit();
+    try requireRedis(h);
+    defer cleanupGrant(h);
+    // Grant already resolved out-of-band; the late click still carries a valid
+    // nonce, so it clears the nonce gate and reaches applyDecision.
+    try seedGrant(h, STATUS_APPROVED_SEED);
+    try setGrantNonce(h);
+
+    const r = try (try h.post(GRANT_URL).json(GRANT_BODY)).send();
+    defer r.deinit();
+    // Before the fix: a silent 200 "ok" identical to a genuine apply. Now: 409.
+    try r.expectStatus(.conflict);
+    try r.expectErrorCode(ec.ERR_GRANT_ALREADY_RESOLVED);
+}
+
+const STATUS_PENDING_SEED = "pending";
+const STATUS_APPROVED_SEED = "approved";

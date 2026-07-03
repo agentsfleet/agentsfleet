@@ -49,9 +49,10 @@ pub fn seedWorkspace(conn: *pg.Conn, workspace_id: []const u8) !void {
     , .{ workspace_id, TEST_TENANT_ID });
 }
 
-/// Delete workspace. CASCADE removes everything that FKs `core.workspaces` —
-/// vault.secrets, integration_grants, fleet_keys, memory_entries, fleets,
-/// and downstream telemetry / event rows.
+/// Delete workspace. `core.fleets` is NOT cascade-backed on `workspace_id` — a
+/// lingering fleet (and, through the fleet_id FK, its runner_leases /
+/// runner_affinity cascade children) blocks this DELETE, so call `teardownFleets`
+/// first. Other cascade-backed workspace children drop with it.
 pub fn teardownWorkspace(conn: *pg.Conn, workspace_id: []const u8) void {
     _ = conn.exec(
         "DELETE FROM core.workspaces WHERE workspace_id = $1::uuid",
