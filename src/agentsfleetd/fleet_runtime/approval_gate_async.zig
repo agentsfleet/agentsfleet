@@ -5,11 +5,22 @@
 //! Key shapes (prefixes owned by the error registry):
 //!   byevent ref: fleet:gate:byevent:{fleet_id}:{event_id} → "action_id|deadline_ms"
 //!   decision:    fleet:gate:response:{action_id}           → approve | deny
+//!
+//! The decision read prefers the Redis mirror but falls back to the durable
+//! DB row (approval_gate_db.readTerminalDecision) when the mirror key is
+//! absent, so a committed resolve is enforced even if resolve()'s best-effort
+//! Redis mirror write failed after the DB commit.
 
 const std = @import("std");
+const pg = @import("pg");
 const clock = @import("common").clock;
 const queue_redis = @import("../queue/redis_client.zig");
 const ec = @import("../errors/error_registry.zig");
+const approval_gate = @import("approval_gate.zig");
+const approval_gate_db = @import("approval_gate_db.zig");
+const logging = @import("log");
+
+const log = logging.scoped(.approval_gate_async);
 
 /// Action ids are UUIDv7 strings (id_format.allocUuidV7).
 const ACTION_ID_LEN: usize = 36;
@@ -105,13 +116,57 @@ pub fn readDecision(redis: *queue_redis.Client, action_id: []const u8) !?StoredD
     return null;
 }
 
-/// One lease-poll evaluation of a recorded gate.
-pub fn evaluateRef(redis: *queue_redis.Client, ref: *const EventGateRef, now_ms: i64) !PendingEval {
-    if (try readDecision(redis, ref.actionId())) |decision| {
-        return switch (decision) {
-            .approved => .approved,
-            .denied => .denied,
-        };
+/// Which store answered a terminal-decision read. The db_fallback variant fires
+/// only when the Redis mirror key was absent and the durable DB row supplied the
+/// decision — it powers the approval_decision_db_fallback_used metric.
+const DecisionRead = union(enum) {
+    redis: StoredDecision,
+    db_fallback: StoredDecision,
+    absent,
+};
+
+/// Read the terminal decision for an action, preferring the Redis mirror and
+/// falling back to the durable DB row when the mirror key is absent. Closes the
+/// gap where resolve()'s best-effort Redis mirror write failed after the DB
+/// commit already succeeded. `pool` is optional only so the Redis-primitive unit
+/// tests can read decisions without a live DB; production callers always pass the
+/// live pool, keeping the fallback unconditional there.
+fn readDecisionSourced(redis: *queue_redis.Client, pool: ?*pg.Pool, action_id: []const u8) !DecisionRead {
+    if (try readDecision(redis, action_id)) |decision| return .{ .redis = decision };
+    const p = pool orelse return .absent;
+    const status = (try approval_gate_db.readTerminalDecision(p, action_id)) orelse return .absent;
+    return .{ .db_fallback = statusToDecision(status) };
+}
+
+fn statusToDecision(status: approval_gate.GateStatus) StoredDecision {
+    return switch (status) {
+        .approved => .approved,
+        .denied, .timed_out, .auto_killed => .denied,
+        .pending => unreachable, // readTerminalDecision returns null for pending
+    };
+}
+
+fn decisionEval(decision: StoredDecision) PendingEval {
+    return switch (decision) {
+        .approved => .approved,
+        .denied => .denied,
+    };
+}
+
+/// One lease-poll evaluation of a recorded gate. Consults the Redis decision
+/// mirror first, then falls back to the durable DB row (via `pool`) when the
+/// mirror key is absent, so a committed decision is enforced even if its Redis
+/// mirror write failed.
+pub fn evaluateRef(redis: *queue_redis.Client, pool: ?*pg.Pool, ref: *const EventGateRef, now_ms: i64) !PendingEval {
+    switch (try readDecisionSourced(redis, pool, ref.actionId())) {
+        .redis => |decision| return decisionEval(decision),
+        .db_fallback => |decision| {
+            // Redis mirror was absent; the durable DB row answered. Emit the
+            // ops metric so the write-side mirror gap stays observable.
+            log.info("approval_decision_db_fallback_used", .{ .action_id = ref.actionId(), .outcome = @tagName(decision) });
+            return decisionEval(decision);
+        },
+        .absent => {},
     }
     if (now_ms > ref.deadline_ms) return .expired;
     return .pending;

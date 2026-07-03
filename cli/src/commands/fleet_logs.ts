@@ -60,8 +60,16 @@ const requireFleetId = (
     return raw;
   });
 
-const formatTimestamp = (raw: number | string | null | undefined): string =>
-  raw ? new Date(raw).toISOString() : LITERAL;
+// Falsy input (null/undefined/0/""/NaN) and any truthy-but-unparseable value
+// (`new Date("garbage")`, out-of-range numbers) both fall back to LITERAL —
+// never throw RangeError, which would crash the whole `logs` command.
+// Numeric 0 (Unix epoch) is treated as an unset/invalid sentinel here, not a
+// valid timestamp, matching how the API uses created_at.
+export const formatTimestamp = (raw: number | string | null | undefined): string => {
+  if (!raw) return LITERAL;
+  const date = new Date(raw);
+  return Number.isNaN(date.getTime()) ? LITERAL : date.toISOString();
+};
 
 export const logsEffectFromFlags = (
   flags: LogsEffectFlags,
