@@ -10,7 +10,6 @@ import {
   PageHeader,
   PageTitle,
   Section,
-  SectionLabel,
   StatusCard,
   StatusPill,
   Skeleton,
@@ -97,8 +96,7 @@ function FirstInstallCard({
         <DashboardPanel padding="compact" className="lg:col-span-2">
           <DashboardPanelHeader>
             <div className="space-y-2">
-              <SectionLabel>Next step</SectionLabel>
-              <DashboardPanelTitle>Start your fleet</DashboardPanelTitle>
+              <DashboardPanelTitle>Start your fleet from a template</DashboardPanelTitle>
               <DashboardPanelDescription className="max-w-prose">
                 Pick a template. Watch install states.
               </DashboardPanelDescription>
@@ -126,7 +124,7 @@ export default async function DashboardPage() {
 
   return (
     <div>
-      <PageHeader description="Pick a template. Starter credit is ready.">
+      <PageHeader description="Start a fleet from a template.">
         <PageTitle>Dashboard</PageTitle>
       </PageHeader>
 

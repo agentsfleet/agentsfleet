@@ -8,6 +8,9 @@ export const INTEGRATION_AUTH = {
   // Zoho: paste a token into the vault for now (custom-secret bridge until it
   // grows a native connector).
   vaultSecret: "vault_secret",
+  // Jira / Linear / Grafana: on the roadmap, no bridge yet. Shown as
+  // "Not connected" with a Request-access signal so demand is captured.
+  comingSoon: "coming_soon",
 } as const;
 
 export const ZOHO_TOKEN_SECRET = "ZOHO_TOKEN";
@@ -31,6 +34,24 @@ export const INTEGRATION_CATALOG = [
     name: "Slack",
     auth: INTEGRATION_AUTH.oauthConnect,
     description: "Mention a fleet in a channel; it answers in-thread.",
+  },
+  {
+    id: "jira",
+    name: "Jira",
+    auth: INTEGRATION_AUTH.comingSoon,
+    description: "Triage and comment on Jira issues.",
+  },
+  {
+    id: "linear",
+    name: "Linear",
+    auth: INTEGRATION_AUTH.comingSoon,
+    description: "Pick up and update Linear issues.",
+  },
+  {
+    id: "grafana",
+    name: "Grafana",
+    auth: INTEGRATION_AUTH.comingSoon,
+    description: "Investigate alerts straight from Grafana.",
   },
 ] as const;
 

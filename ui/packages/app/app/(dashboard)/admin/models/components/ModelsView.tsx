@@ -21,9 +21,8 @@ export default function ModelsView({ initial }: { initial: AdminModelList }) {
         <AddModelDialog onCreated={(m) => setModels((prev) => [...prev, m])} />
       </PageHeader>
       <p className="mb-6 max-w-2xl text-sm text-muted-foreground">
-        The priced model catalogue is the billing spine: every model a teammate can run is listed
-        here with its per-token rates. The platform default below is the model end users get when
-        they don&apos;t bring their own key.
+        Every model your team can run, priced per token. The platform default below runs for users
+        who don&apos;t bring their own key.
       </p>
 
       <Section asChild>

@@ -274,9 +274,9 @@ describe("app components", () => {
     const markup = renderToStaticMarkup(React.createElement(React.Fragment, null, tree));
     expect(markup).toContain("data-live");
     expect(markup).toContain("agentsfleet");
-    // Sidebar nav rendered across the Operations / Configuration / Organization
+    // Sidebar nav rendered across the Automations / Configuration / Organization
     // groups, plus the Dashboard overview entry and the Docs footer link.
-    expect(markup).toContain("Operations");
+    expect(markup).toContain("Automations");
     expect(markup).toContain("Configuration");
     expect(markup).toContain("Organization");
     expect(markup).toContain("Dashboard");

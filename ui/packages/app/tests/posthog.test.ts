@@ -724,6 +724,35 @@ describe("app analytics", () => {
     expect(client.setPersonProperties).toHaveBeenCalledWith({ workspace_count: 3 });
   });
 
+  it("buffers a product event captured before the client lands, then flushes it after init", async () => {
+    const client = clientWithGroups();
+    let resolveImport!: (value: { default: MockClient }) => void;
+    const importGate = new Promise<{ default: MockClient }>((resolve) => {
+      resolveImport = resolve;
+    });
+    vi.resetModules();
+    vi.doMock("posthog-js", () => importGate);
+    vi.stubGlobal("window", createWindow("/fleets/zom_1"));
+    vi.stubEnv("NEXT_PUBLIC_POSTHOG_KEY", "phc_live");
+    const mod = await import("../lib/analytics/posthog");
+    const initPromise = mod.initAnalytics();
+
+    // Chunk still loading (a mount-fired capture, e.g. fleet_viewed on a cold
+    // load) → the event is buffered, not dropped.
+    mod.captureProductEvent(EVENTS.fleet_viewed, { fleet_id: "zom_1", status: "active" });
+    expect(client.capture).not.toHaveBeenCalled();
+
+    resolveImport({ default: client });
+    await initPromise;
+
+    // Flushed once the chunk resolves — the cold-load view is not lost.
+    expect(client.capture).toHaveBeenCalledWith(EVENTS.fleet_viewed, {
+      path: "/fleets/zom_1",
+      fleet_id: "zom_1",
+      status: "active",
+    });
+  });
+
   it("skips a redundant group() bind for the same workspace id", async () => {
     const client = clientWithGroups();
     const { mod } = await loadModule({ client, env: { NEXT_PUBLIC_POSTHOG_KEY: "phc_live" } });
@@ -795,8 +824,8 @@ describe("app analytics", () => {
     expect(client.group).toHaveBeenCalledTimes(2);
   });
 
-  it("product events fired before the client resolves are dropped, not buffered", async () => {
-    const client = { init: vi.fn(), capture: vi.fn(), identify: vi.fn(), reset: vi.fn() };
+  it("caps the pre-init product-event buffer so a stalled chunk load can't grow memory unbounded", async () => {
+    const client = clientWithGroups();
     let resolveImport!: (value: { default: MockClient }) => void;
     const importGate = new Promise<{ default: MockClient }>((resolve) => {
       resolveImport = resolve;
@@ -808,12 +837,13 @@ describe("app analytics", () => {
     const mod = await import("../lib/analytics/posthog");
     const initPromise = mod.initAnalytics();
 
-    // Pins the drop contract: unlike the website module there is no pre-init
-    // buffer — every call site fires after a completed server round-trip, so
-    // this window is effectively unreachable in practice.
-    mod.captureProductEvent(EVENTS.fleet_created, { fleet_id: "zom_early" });
+    // Fire well past the cap (20) while the chunk is still in flight; the FIFO
+    // drops the overflow rather than growing without bound.
+    for (let i = 0; i < 50; i++) {
+      mod.captureProductEvent(EVENTS.fleet_created, { fleet_id: `zom_${i}` });
+    }
     resolveImport({ default: client });
     await initPromise;
-    expect(client.capture).not.toHaveBeenCalled();
+    expect(client.capture).toHaveBeenCalledTimes(20);
   });
 });

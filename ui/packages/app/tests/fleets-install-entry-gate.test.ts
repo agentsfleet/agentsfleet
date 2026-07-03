@@ -57,56 +57,26 @@ afterEach(() => cleanup());
 // ── InstallEntry — the shared entry surface (both empty states compose it) ───
 
 describe("InstallEntry", () => {
-  it("renders the template grid with a deep link + quickstart", () => {
-    const m = renderToStaticMarkup(
-      React.createElement(InstallEntry, { templates: [TEMPLATE], quickstart: true }),
-    );
+  it("renders the template grid with a deep link", () => {
+    const m = renderToStaticMarkup(React.createElement(InstallEntry, { templates: [TEMPLATE] }));
     expect(m).toContain('href="/fleets/new?template=github-pr-reviewer"');
     expect(m).toContain("GitHub PR reviewer");
-    expect(m).toContain("Quick start");
   });
 
-  it("omits the template grid when there are no templates, and Quick start when not asked", () => {
+  it("falls back to an empty state with a Create-a-template link when there are no templates", () => {
     const m = renderToStaticMarkup(React.createElement(InstallEntry, { templates: [] }));
+    expect(m).toContain("No templates found");
+    expect(m).toContain("Create a template");
     expect(m).not.toContain("?template=");
-    expect(m).not.toContain("Quick start");
   });
 
-  it("test_add_template_hidden_without_scope: hides the Add template trigger without template:write", () => {
-    render(
-      React.createElement(InstallEntry, {
-        templates: [],
-        workspaceId: "ws_1",
-        canAddTemplate: false,
-      }),
+  it("caps the gallery at maxTemplates", () => {
+    const many = [TEMPLATE, { ...TEMPLATE, id: "second", name: "Second template" }];
+    const m = renderToStaticMarkup(
+      React.createElement(InstallEntry, { templates: many, maxTemplates: 1 }),
     );
-    expect(screen.getByText("No templates found.")).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Add template" })).toBeNull();
-  });
-
-  it("renders the Add template trigger when template:write is available", () => {
-    render(
-      React.createElement(InstallEntry, {
-        templates: [],
-        workspaceId: "ws_1",
-        canAddTemplate: true,
-      }),
-    );
-    expect(screen.getByRole("button", { name: "Add template" })).toBeTruthy();
-    expect(screen.getByRole("link", { name: "Create a template" })).toBeTruthy();
-  });
-
-  it("renders Add template above a populated gallery when template:write is available", () => {
-    render(
-      React.createElement(InstallEntry, {
-        templates: [TEMPLATE],
-        workspaceId: "ws_1",
-        canAddTemplate: true,
-      }),
-    );
-
-    expect(screen.getByRole("button", { name: "Add template" })).toBeTruthy();
-    expect(screen.getByText("GitHub PR reviewer")).toBeTruthy();
+    expect(m).toContain("GitHub PR reviewer");
+    expect(m).not.toContain("Second template");
   });
 });
 
