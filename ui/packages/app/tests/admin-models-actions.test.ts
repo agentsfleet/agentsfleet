@@ -1,18 +1,20 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { SCOPE } from "@/lib/auth/scopes";
 
 // ── Shared mocks ───────────────────────────────────────────────────────────
 // The actions module is the dashboard's defence-in-depth gate: it must fail
-// closed on the platform_admin claim BEFORE any token round-trip (mirrors the
-// runners admin actions). We mock the claim, the token wrapper, the workspace
-// resolver, and the API clients so only the action's own branches are under
-// test — the real security boundary is the backend, proven by its integration
-// suite. `@/lib/errors` stays real so PLATFORM_ADMIN_REQUIRED → UZ-AUTH-021 is
-// the actual constant, not a fixture.
+// closed on the specific operator scope BEFORE any token round-trip (reads on
+// model:read, mutations on model:admin — mirrors the runners admin actions). We
+// mock the scope check, the token wrapper, the workspace resolver, and the API
+// clients so only the action's own branches are under test — the real security
+// boundary is the backend requireScope, proven by its integration suite.
+// `@/lib/errors` stays real so INSUFFICIENT_SCOPE → UZ-AUTH-022 is the actual
+// constant, not a fixture.
 
 // vi.mock is hoisted above the static actions import, so the mock fns must be
 // created via vi.hoisted() to exist when the factories run.
 const {
-  readPlatformAdminClaimMock,
+  hasScopeMock,
   withTokenMock,
   withWorkspaceScopeMock,
   createCredentialMock,
@@ -22,7 +24,7 @@ const {
   deleteAdminModelMock,
   setPlatformDefaultMock,
 } = vi.hoisted(() => ({
-  readPlatformAdminClaimMock: vi.fn(),
+  hasScopeMock: vi.fn(),
   withTokenMock: vi.fn(),
   withWorkspaceScopeMock: vi.fn(),
   createCredentialMock: vi.fn(),
@@ -33,7 +35,7 @@ const {
   setPlatformDefaultMock: vi.fn(),
 }));
 
-vi.mock("@/lib/auth/platform", () => ({ readPlatformAdminClaim: readPlatformAdminClaimMock }));
+vi.mock("@/lib/auth/platform", () => ({ hasScope: hasScopeMock }));
 vi.mock("@/lib/actions/with-token", () => ({ withToken: withTokenMock }));
 vi.mock("@/lib/workspace", () => ({ withWorkspaceScope: withWorkspaceScopeMock }));
 vi.mock("@/lib/api/credentials", () => ({ createCredential: createCredentialMock }));
@@ -77,39 +79,40 @@ beforeEach(() => {
 });
 afterEach(() => vi.resetAllMocks());
 
-const NOT_ADMIN = {
-  ok: false,
-  error: "Platform-admin access required",
-  status: 403,
-  errorCode: "UZ-AUTH-021",
-};
+function notScoped(scope: string) {
+  return { ok: false, error: `Operator scope required: ${scope}`, status: 403, errorCode: "UZ-AUTH-022" };
+}
 
-describe("admin/models server actions — platform-admin gate (defence-in-depth)", () => {
-  it("listAdminModelsAction fails closed with 403 UZ-AUTH-021 for a non-admin, before any round-trip", async () => {
-    readPlatformAdminClaimMock.mockResolvedValueOnce(false);
-    expect(await listAdminModelsAction()).toEqual(NOT_ADMIN);
+// test_admin_models_ui_gates_on_model_scope_no_boolean_left (Dimension 4.2)
+describe("admin/models server actions — per-scope gate (defence-in-depth)", () => {
+  it("listAdminModelsAction gates on model:read and fails closed 403 UZ-AUTH-022 without it", async () => {
+    hasScopeMock.mockResolvedValueOnce(false);
+    expect(await listAdminModelsAction()).toEqual(notScoped(SCOPE.MODEL_READ));
+    expect(hasScopeMock).toHaveBeenCalledWith(SCOPE.MODEL_READ);
     expect(withTokenMock).not.toHaveBeenCalled();
     expect(listAdminModelsMock).not.toHaveBeenCalled();
   });
 
-  it("createAdminModelAction fails closed with 403 for a non-admin, before any round-trip", async () => {
-    readPlatformAdminClaimMock.mockResolvedValueOnce(false);
-    expect(await createAdminModelAction({ ...MODEL })).toEqual(NOT_ADMIN);
+  it("createAdminModelAction gates on model:admin and fails closed without it, before any round-trip", async () => {
+    hasScopeMock.mockResolvedValueOnce(false);
+    expect(await createAdminModelAction({ ...MODEL })).toEqual(notScoped(SCOPE.MODEL_ADMIN));
+    expect(hasScopeMock).toHaveBeenCalledWith(SCOPE.MODEL_ADMIN);
     expect(createAdminModelMock).not.toHaveBeenCalled();
   });
 
-  it("setPlatformDefaultAction fails closed with 403 for a non-admin, before storing any key", async () => {
-    readPlatformAdminClaimMock.mockResolvedValueOnce(false);
+  it("setPlatformDefaultAction gates on model:admin and fails closed before storing any key", async () => {
+    hasScopeMock.mockResolvedValueOnce(false);
     const r = await setPlatformDefaultAction({ provider: "fireworks", model: "glm-5.2", api_key: "sk-x" });
-    expect(r).toEqual(NOT_ADMIN);
+    expect(r).toEqual(notScoped(SCOPE.MODEL_ADMIN));
+    expect(hasScopeMock).toHaveBeenCalledWith(SCOPE.MODEL_ADMIN);
     // The api_key never reaches the vault when the gate fails closed.
     expect(createCredentialMock).not.toHaveBeenCalled();
     expect(setPlatformDefaultMock).not.toHaveBeenCalled();
   });
 });
 
-describe("admin/models server actions — admin happy paths forward through withToken", () => {
-  beforeEach(() => readPlatformAdminClaimMock.mockResolvedValue(true));
+describe("admin/models server actions — scoped happy paths forward through withToken", () => {
+  beforeEach(() => hasScopeMock.mockResolvedValue(true));
 
   it("listAdminModelsAction forwards the token to the client", async () => {
     listAdminModelsMock.mockResolvedValueOnce({ models: [MODEL] });
@@ -151,7 +154,7 @@ describe("admin/models server actions — admin happy paths forward through with
 });
 
 describe("setPlatformDefaultAction — two-step vault write + activation", () => {
-  beforeEach(() => readPlatformAdminClaimMock.mockResolvedValue(true));
+  beforeEach(() => hasScopeMock.mockResolvedValue(true));
 
   it("stores the key in the admin workspace vault then activates the catalogued default (no base_url)", async () => {
     withWorkspaceScopeMock.mockImplementationOnce(

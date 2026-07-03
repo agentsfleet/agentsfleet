@@ -100,8 +100,8 @@ describe("AddTemplateDialog", () => {
     await user.type(screen.getByLabelText("Repository"), "owner/repo");
     submitDialog();
 
-    await screen.findByText("You need template access for that");
-    expect(screen.getByText("Ask a workspace admin to grant template access.")).toBeTruthy();
+    await screen.findByText("You need an additional scope for that");
+    expect(screen.getByText("Ask an agentsfleet admin to grant the scope this action requires.")).toBeTruthy();
     expect(screen.getByText("UZ-AUTH-022")).toBeTruthy();
     expect(screen.getByLabelText("Repository")).toBeTruthy();
     expect(routerRefresh).not.toHaveBeenCalled();
@@ -164,7 +164,7 @@ describe("AddTemplateDialog", () => {
     submitDialog();
 
     await screen.findByText("Couldn't add the template — repo not found.");
-    expect(screen.queryByText("Ask a workspace admin to grant template access.")).toBeNull();
+    expect(screen.queryByText("Ask an agentsfleet admin to grant the scope this action requires.")).toBeNull();
     expect(screen.queryByText(/^UZ-/)).toBeNull();
     expect(routerRefresh).not.toHaveBeenCalled();
   });

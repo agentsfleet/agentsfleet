@@ -11,9 +11,6 @@ const Hx = hx_mod.Hx;
 /// GET /v1/workspaces/{ws}/fleet-templates.
 pub fn invokeFleetBundles(hx: *Hx, req: *httpz.Request, route: router.Route) void {
     _ = route;
-    if (req.method != .GET) {
-        common.respondMethodNotAllowed(hx.res);
-        return;
-    }
+    if (!common.requireMethod(hx.res, req.method, .GET)) return;
     bundles.innerList(hx.*, req);
 }

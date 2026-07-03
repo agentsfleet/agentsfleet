@@ -70,51 +70,33 @@ pub fn invokeModelCaps(hx: *Hx, req: *httpz.Request, route: router.Route) void {
 
 pub fn invokeCreateAuthSession(hx: *Hx, req: *httpz.Request, route: router.Route) void {
     _ = route;
-    if (req.method != .POST) {
-        common.respondMethodNotAllowed(hx.res);
-        return;
-    }
+    if (!common.requireMethod(hx.res, req.method, .POST)) return;
     auth_sessions.innerCreateAuthSession(hx.*, req);
 }
 
 pub fn invokePollAuthSession(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    if (req.method != .GET) {
-        common.respondMethodNotAllowed(hx.res);
-        return;
-    }
+    if (!common.requireMethod(hx.res, req.method, .GET)) return;
     auth_sessions.innerPollAuthSession(hx.*, route.poll_auth_session);
 }
 
 pub fn invokeApproveAuthSession(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    if (req.method != .PATCH) {
-        common.respondMethodNotAllowed(hx.res);
-        return;
-    }
+    if (!common.requireMethod(hx.res, req.method, .PATCH)) return;
     auth_sessions.innerApproveAuthSession(hx.*, req, route.approve_auth_session);
 }
 
 pub fn invokeVerifyAuthSession(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    if (req.method != .POST) {
-        common.respondMethodNotAllowed(hx.res);
-        return;
-    }
+    if (!common.requireMethod(hx.res, req.method, .POST)) return;
     auth_sessions.innerVerifyAuthSession(hx.*, req, route.verify_auth_session);
 }
 
 pub fn invokeDeleteAuthSession(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    if (req.method != .DELETE) {
-        common.respondMethodNotAllowed(hx.res);
-        return;
-    }
+    if (!common.requireMethod(hx.res, req.method, .DELETE)) return;
     auth_sessions.innerDeleteAuthSession(hx.*, req, route.delete_auth_session);
 }
 
 pub fn invokeDeleteAllAuthSessions(hx: *Hx, req: *httpz.Request, route: router.Route) void {
     _ = route;
-    if (req.method != .DELETE) {
-        common.respondMethodNotAllowed(hx.res);
-        return;
-    }
+    if (!common.requireMethod(hx.res, req.method, .DELETE)) return;
     auth_sessions.innerDeleteAllAuthSessions(hx.*, req);
 }
 
@@ -122,45 +104,30 @@ pub fn invokeDeleteAllAuthSessions(hx: *Hx, req: *httpz.Request, route: router.R
 
 pub fn invokeCreateWorkspace(hx: *Hx, req: *httpz.Request, route: router.Route) void {
     _ = route;
-    if (req.method != .POST) {
-        common.respondMethodNotAllowed(hx.res);
-        return;
-    }
+    if (!common.requireMethod(hx.res, req.method, .POST)) return;
     ws_lifecycle.innerCreateWorkspace(hx.*, req);
 }
 
 pub fn invokeGetTenantBilling(hx: *Hx, req: *httpz.Request, route: router.Route) void {
     _ = route;
-    if (req.method != .GET) {
-        common.respondMethodNotAllowed(hx.res);
-        return;
-    }
+    if (!common.requireMethod(hx.res, req.method, .GET)) return;
     tenant_billing_h.innerGetTenantBilling(hx.*, req);
 }
 
 pub fn invokeGetTenantBillingCharges(hx: *Hx, req: *httpz.Request, route: router.Route) void {
     _ = route;
-    if (req.method != .GET) {
-        common.respondMethodNotAllowed(hx.res);
-        return;
-    }
+    if (!common.requireMethod(hx.res, req.method, .GET)) return;
     tenant_billing_h.innerGetTenantBillingCharges(hx.*, req);
 }
 
 pub fn invokeGetTenantMeteringPeriods(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    if (req.method != .GET) {
-        common.respondMethodNotAllowed(hx.res);
-        return;
-    }
+    if (!common.requireMethod(hx.res, req.method, .GET)) return;
     tenant_billing_h.innerGetTenantMeteringPeriods(hx.*, req, route.get_tenant_metering_periods);
 }
 
 pub fn invokeListTenantWorkspaces(hx: *Hx, req: *httpz.Request, route: router.Route) void {
     _ = route;
-    if (req.method != .GET) {
-        common.respondMethodNotAllowed(hx.res);
-        return;
-    }
+    if (!common.requireMethod(hx.res, req.method, .GET)) return;
     tenant_workspaces_h.innerListTenantWorkspaces(hx.*, req);
 }
 
@@ -186,10 +153,7 @@ pub fn invokeAdminPlatformKeys(hx: *Hx, req: *httpz.Request, route: router.Route
 }
 
 pub fn invokeDeleteAdminPlatformKey(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    if (req.method != .DELETE) {
-        common.respondMethodNotAllowed(hx.res);
-        return;
-    }
+    if (!common.requireMethod(hx.res, req.method, .DELETE)) return;
     admin_keys.innerDeleteAdminPlatformKey(hx.*, req, route.delete_admin_platform_key);
 }
 
@@ -261,10 +225,7 @@ pub fn invokeWorkspaceCredentialItem(hx: *Hx, req: *httpz.Request, route: router
 // ── Fleet messages (chat ingress) ────────────────────────────────────────
 
 pub fn invokeFleetMessagesPost(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    if (req.method != .POST) {
-        common.respondMethodNotAllowed(hx.res);
-        return;
-    }
+    if (!common.requireMethod(hx.res, req.method, .POST)) return;
     const r = route.workspace_fleet_messages;
     fleet_messages.innerFleetMessagesPost(hx.*, req, r.workspace_id, r.fleet_id);
 }
@@ -284,28 +245,19 @@ pub fn invokeFleetMemoriesCollection(hx: *Hx, req: *httpz.Request, route: router
 // ── Integration grants ────────────────────────────────────────────────────
 
 pub fn invokeRequestGrant(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    if (req.method != .POST) {
-        common.respondMethodNotAllowed(hx.res);
-        return;
-    }
+    if (!common.requireMethod(hx.res, req.method, .POST)) return;
     const r = route.request_integration_grant;
     grants.innerRequestGrant(hx.*, req, r.workspace_id, r.fleet_id);
 }
 
 pub fn invokeListGrants(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    if (req.method != .GET) {
-        common.respondMethodNotAllowed(hx.res);
-        return;
-    }
+    if (!common.requireMethod(hx.res, req.method, .GET)) return;
     const r = route.list_integration_grants;
     grants_ws.innerListGrants(hx.*, r.workspace_id, r.fleet_id);
 }
 
 pub fn invokeRevokeGrant(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    if (req.method != .DELETE) {
-        common.respondMethodNotAllowed(hx.res);
-        return;
-    }
+    if (!common.requireMethod(hx.res, req.method, .DELETE)) return;
     const r = route.revoke_integration_grant;
     grants_ws.innerRevokeGrant(hx.*, r.workspace_id, r.fleet_id, r.grant_id);
 }
@@ -321,10 +273,7 @@ pub fn invokeFleetKeys(hx: *Hx, req: *httpz.Request, route: router.Route) void {
 }
 
 pub fn invokeDeleteFleetKey(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    if (req.method != .DELETE) {
-        common.respondMethodNotAllowed(hx.res);
-        return;
-    }
+    if (!common.requireMethod(hx.res, req.method, .DELETE)) return;
     const r = route.delete_fleet_key;
     fleet_keys_h.innerDeleteFleetKey(hx.*, r.workspace_id, r.fleet_key_id);
 }

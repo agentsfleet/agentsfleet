@@ -15,18 +15,12 @@ const clerk_webhook_h = @import("handlers/auth/identity_events_clerk.zig");
 const Hx = hx_mod.Hx;
 
 pub fn invokeReceiveWebhook(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    if (req.method != .POST) {
-        common.respondMethodNotAllowed(hx.res);
-        return;
-    }
+    if (!common.requireMethod(hx.res, req.method, .POST)) return;
     webhooks.innerReceiveWebhook(hx.*, req, route.receive_webhook);
 }
 
 pub fn invokeReceiveSvixWebhook(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    if (req.method != .POST) {
-        common.respondMethodNotAllowed(hx.res);
-        return;
-    }
+    if (!common.requireMethod(hx.res, req.method, .POST)) return;
     webhooks.innerReceiveSvixWebhook(hx.*, req, route.receive_svix_webhook);
 }
 
@@ -36,33 +30,21 @@ pub fn invokeReceiveSvixWebhook(hx: *Hx, req: *httpz.Request, route: router.Rout
 // the pub surface" and a rename is symmetric).
 pub fn invokeClerkWebhook(hx: *Hx, req: *httpz.Request, route: router.Route) void {
     _ = route;
-    if (req.method != .POST) {
-        common.respondMethodNotAllowed(hx.res);
-        return;
-    }
+    if (!common.requireMethod(hx.res, req.method, .POST)) return;
     clerk_webhook_h.innerClerkWebhook(hx.*, req);
 }
 
 pub fn invokeApprovalWebhook(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    if (req.method != .POST) {
-        common.respondMethodNotAllowed(hx.res);
-        return;
-    }
+    if (!common.requireMethod(hx.res, req.method, .POST)) return;
     approval.innerApprovalCallback(hx.*, req, route.approval_webhook);
 }
 
 pub fn invokeGrantApprovalWebhook(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    if (req.method != .POST) {
-        common.respondMethodNotAllowed(hx.res);
-        return;
-    }
+    if (!common.requireMethod(hx.res, req.method, .POST)) return;
     grant_approval.innerGrantApproval(hx.*, req, route.grant_approval_webhook);
 }
 
 pub fn invokeGithubWebhook(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    if (req.method != .POST) {
-        common.respondMethodNotAllowed(hx.res);
-        return;
-    }
+    if (!common.requireMethod(hx.res, req.method, .POST)) return;
     github_webhook_h.innerInvokeGithubWebhook(hx.*, req, route.github_webhook);
 }
