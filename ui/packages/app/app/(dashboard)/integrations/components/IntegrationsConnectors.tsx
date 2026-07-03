@@ -10,14 +10,7 @@ import {
   StatusPill,
   type StatusPillVariant,
 } from "@agentsfleet/design-system";
-import {
-  BriefcaseIcon,
-  GaugeIcon,
-  GitPullRequestIcon,
-  HashIcon,
-  SquareKanbanIcon,
-  TicketIcon,
-} from "lucide-react";
+import { BriefcaseIcon, GitPullRequestIcon, HashIcon } from "lucide-react";
 import {
   INTEGRATION_AUTH,
   INTEGRATION_CATALOG,
@@ -38,6 +31,7 @@ const NOT_CONNECTED_LABEL = "Not connected";
 const CONNECTED_LABEL = "Connected";
 const RECONNECT_LABEL = "Reconnect needed";
 const TOKEN_STORED_LABEL = "Token stored";
+const PLANNED_LABEL = "Planned";
 const REQUESTED_LABEL = "Requested";
 const CONNECT_GITHUB_LABEL = "Connect GitHub";
 const RECONNECT_GITHUB_LABEL = "Reconnect GitHub";
@@ -51,9 +45,6 @@ const INTEGRATION_ICON = {
   github: GitPullRequestIcon,
   zoho: BriefcaseIcon,
   slack: HashIcon,
-  jira: TicketIcon,
-  linear: SquareKanbanIcon,
-  grafana: GaugeIcon,
 } as const satisfies Record<Integration["id"], ComponentType<{ size?: number }>>;
 
 // ── OAuth connectors (browser connect, no token paste): GitHub + Slack ───────
@@ -155,9 +146,9 @@ function OAuthConnectorRow({
   );
 }
 
-// ── Coming-soon connectors: Zoho (custom-secret bridge) + Jira/Linear/Grafana ─
+// ── Zoho: custom-secret bridge (Planned) ─────────────────────────────────────
 
-function comingSoonPill({
+function plannedPill({
   isReady,
   requested,
 }: {
@@ -167,55 +158,41 @@ function comingSoonPill({
   if (isReady) return { label: TOKEN_STORED_LABEL, variant: "success" };
   return requested
     ? { label: REQUESTED_LABEL, variant: "warning" }
-    : { label: NOT_CONNECTED_LABEL, variant: "neutral" };
+    : { label: PLANNED_LABEL, variant: "neutral" };
 }
 
-// One row for every connector that isn't wired for one-click OAuth yet. Zoho
-// carries a vault-secret bridge (`requiredSecret`), so it can reach "Token
-// stored"; the rest (Jira/Linear/Grafana) are pure coming-soon rows whose only
-// affordance is Request access, which fires a PostHog demand signal.
-function ComingSoonConnectorRow({
+function PlannedConnectorRow({
   integration,
+  requiredSecret,
   storedCredentialNames,
   requested,
   onRequest,
 }: {
   integration: Integration;
+  requiredSecret: string;
   storedCredentialNames: ReadonlySet<string>;
   requested: boolean;
   onRequest: (integration: Integration) => void;
 }) {
   const Icon = INTEGRATION_ICON[integration.id];
-  // Only the vault-secret connector (Zoho) carries a bridge secret; the pure
-  // coming-soon rows (Jira/Linear/Grafana) have none. Narrow on the `auth`
-  // discriminant so TypeScript derives `requiredSecret` from the union member
-  // itself, rather than probing for the property name with a magic string.
-  const requiredSecret =
-    integration.auth === INTEGRATION_AUTH.vaultSecret ? integration.requiredSecret : undefined;
-  const isReady = requiredSecret != null && storedCredentialNames.has(requiredSecret);
-  const pill = comingSoonPill({ isReady, requested });
+  const isReady = storedCredentialNames.has(requiredSecret);
+  const pill = plannedPill({ isReady, requested });
   return (
     <DashboardRow
       data-testid={`integration-${integration.id}`}
       icon={<Icon size={16} />}
       title={integration.name}
       description={
-        requiredSecret ? (
-          <>
-            {integration.description} Use <code className="font-mono">{requiredSecret}</code> for now.
-          </>
-        ) : (
-          <>{integration.description} Coming soon.</>
-        )
+        <>
+          Planned. Use <code className="font-mono">{requiredSecret}</code> for now.
+        </>
       }
       action={
         <div className="flex items-center gap-2">
           <StatusPill variant={pill.variant} dot={isReady || requested}>
             {pill.label}
           </StatusPill>
-          {/* Token already in the vault (Zoho bridge) → the "Token stored" pill
-              is the whole state; don't beg a connected workspace for access. */}
-          {isReady ? null : requested ? (
+          {requested ? (
             <Button type="button" variant="outline" size="sm" disabled>
               {REQUESTED_LABEL}
             </Button>
@@ -269,8 +246,7 @@ export default function IntegrationsConnectors({
   return (
     <div className="space-y-md" data-testid="integrations-connectors">
       <p className="text-body-sm leading-body-sm text-muted-foreground">
-        Connect GitHub or Slack in one click — no token to paste. More connectors are on the way —
-        request access to move them up the list.
+        Connect GitHub or Slack in one click — no token to paste. Request Zoho if needed.
       </p>
       <DashboardRowGroup>
         {INTEGRATION_CATALOG.map((integration) =>
@@ -298,9 +274,10 @@ export default function IntegrationsConnectors({
               connectedDescription={slackTeam ? `${SLACK_CONNECTED_PREFIX}${slackTeam}` : null}
             />
           ) : (
-            <ComingSoonConnectorRow
+            <PlannedConnectorRow
               key={integration.id}
               integration={integration}
+              requiredSecret={integration.requiredSecret}
               storedCredentialNames={storedCredentialNames}
               requested={requestedIntegrations.has(integration.id)}
               onRequest={requestAccess}
