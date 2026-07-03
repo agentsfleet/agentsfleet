@@ -64,7 +64,9 @@ export interface ConnectorStatusOverride {
 function oauthStatusPill(status: ConnectorStatus): { label: string; variant: StatusPillVariant } {
   if (status === CONNECTOR_STATUS.connected) return { label: CONNECTED_LABEL, variant: "success" };
   if (status === CONNECTOR_STATUS.reconnectRequired) return { label: RECONNECT_LABEL, variant: "warning" };
-  return { label: NOT_CONNECTED_LABEL, variant: "warning" };
+  // Not-connected is a neutral fact, not a fault — the Connect button carries
+  // the invitation; amber stays reserved for states that need attention.
+  return { label: NOT_CONNECTED_LABEL, variant: "neutral" };
 }
 
 // oauth2 / app_install connectors: connect is a redirect. The action returns the
