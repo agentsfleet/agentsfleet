@@ -48,6 +48,7 @@ test {
     _ = @import("http/handlers/connectors/registry.zig");
     _ = @import("http/handlers/connectors/registry_integration_test.zig");
     _ = @import("http/handlers/connectors/slack/callback.zig");
+    _ = @import("http/handlers/connectors/oauth_refresh.zig");
     _ = @import("http/handlers/connectors/zoho/callback.zig");
     _ = @import("http/handlers/connectors/jira/callback.zig");
     _ = @import("http/handlers/connectors/linear/callback.zig");
