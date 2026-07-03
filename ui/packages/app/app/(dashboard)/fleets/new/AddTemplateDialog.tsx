@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
@@ -55,6 +55,7 @@ export default function AddTemplateDialog({ workspaceId, triggerLabel = "Add tem
   const [open, setOpen] = useState(false);
   const [apiError, setApiError] = useState<ErrorPresentation | null>(null);
   const [pending, setPending] = useState(false);
+  const requestIdRef = useRef(0);
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: { source_ref: "" },
@@ -63,19 +64,24 @@ export default function AddTemplateDialog({ workspaceId, triggerLabel = "Add tem
   function handleOpenChange(next: boolean) {
     setOpen(next);
     if (next) return;
+    requestIdRef.current += 1;
+    setPending(false);
     setApiError(null);
     form.reset({ source_ref: "" });
   }
 
   async function onSubmit(values: FormValues) {
+    const requestId = requestIdRef.current + 1;
+    requestIdRef.current = requestId;
     setApiError(null);
     setPending(true);
-    const sourceRef = values.source_ref.trim();
+    const sourceRef = values.source_ref;
     try {
       const result = await onboardTemplateAction(workspaceId, {
         source_kind: SOURCE_KIND_GITHUB,
         source_ref: sourceRef,
       });
+      if (requestId !== requestIdRef.current) return;
       if (!result.ok) {
         setApiError(presentError({
           errorCode: result.errorCode,
@@ -93,7 +99,7 @@ export default function AddTemplateDialog({ workspaceId, triggerLabel = "Add tem
       handleOpenChange(false);
       router.refresh();
     } finally {
-      setPending(false);
+      if (requestId === requestIdRef.current) setPending(false);
     }
   }
 
