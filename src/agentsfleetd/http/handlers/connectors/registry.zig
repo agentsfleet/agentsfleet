@@ -16,6 +16,7 @@ const httpz = @import("httpz");
 const common = @import("common");
 const hx_mod = @import("../hx.zig");
 const ec = @import("../../../errors/error_registry.zig");
+const credentials_integration = @import("../../../credentials/integration.zig");
 const api_key = @import("api_key.zig");
 const oauth2 = @import("oauth2.zig");
 const oauth_status = @import("oauth_status.zig");
@@ -234,6 +235,13 @@ comptime {
                 if (!std.mem.eql(u8, o.flow.provider, spec.provider))
                     @compileError("registry: oauth2 flow provider id disagrees with entry: " ++ spec.provider);
                 if (o.exchange_failed_code.len == 0) @compileError("registry: oauth2 entry without exchange_failed_code: " ++ spec.provider);
+                // Finding ① drift guard: a refresh-token connector is useless
+                // without a broker refresh-mint entry to turn its vaulted refresh
+                // token into access tokens. Prove the two registries agree at
+                // compile time — the connector registry (this file) is the higher
+                // layer, so it checks the lower `credentials/integration.zig`.
+                if (o.refresh and !credentials_integration.hasRefreshMint(spec.provider))
+                    @compileError("registry: refresh connector '" ++ spec.provider ++ "' has no oauth2_refresh entry in credentials/integration.zig — the broker cannot mint from it");
             },
             .app_install => {},
             .api_key => |a| {
