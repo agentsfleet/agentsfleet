@@ -12,10 +12,7 @@ const Hx = hx_mod.Hx;
 
 pub fn invokePlatformTemplateOnboard(hx: *Hx, req: *httpz.Request, route: router.Route) void {
     _ = route;
-    if (req.method != .POST) {
-        common.respondMethodNotAllowed(hx.res);
-        return;
-    }
+    if (!common.requireMethod(hx.res, req.method, .POST)) return;
     templates.innerPlatformOnboard(hx.*, req);
 }
 

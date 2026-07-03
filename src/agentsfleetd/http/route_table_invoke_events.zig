@@ -13,27 +13,18 @@ const workspace_events_h = @import("handlers/workspaces/events.zig");
 const Hx = hx_mod.Hx;
 
 pub fn invokeFleetEvents(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    if (req.method != .GET) {
-        common.respondMethodNotAllowed(hx.res);
-        return;
-    }
+    if (!common.requireMethod(hx.res, req.method, .GET)) return;
     const r = route.workspace_fleet_events;
     fleet_events.innerListEvents(hx.*, req, r.workspace_id, r.fleet_id);
 }
 
 pub fn invokeFleetEventsStream(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    if (req.method != .GET) {
-        common.respondMethodNotAllowed(hx.res);
-        return;
-    }
+    if (!common.requireMethod(hx.res, req.method, .GET)) return;
     const r = route.workspace_fleet_events_stream;
     fleet_events_stream_h.innerEventsStream(hx.*, req, r.workspace_id, r.fleet_id);
 }
 
 pub fn invokeWorkspaceEvents(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    if (req.method != .GET) {
-        common.respondMethodNotAllowed(hx.res);
-        return;
-    }
+    if (!common.requireMethod(hx.res, req.method, .GET)) return;
     workspace_events_h.innerListWorkspaceEvents(hx.*, req, route.workspace_events);
 }

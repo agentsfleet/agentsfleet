@@ -72,7 +72,7 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 
 | Gate | Fires? | Satisfaction strategy |
 |------|--------|-----------------------|
-| ZIG GATE | yes — §1 | cross-compile both linux targets after the `requireMethod` addition + single-method call-site migrations across the 9-file family. |
+| ZIG GATE | yes — §1 | cross-compile both linux targets after the `requireMethod` addition + 50 single-method call-site migrations across 8 files (api_keys excluded — 0 single-method sites). |
 | PUB / Struct-Shape | yes — §1 | `requireMethod(res, method, expected) bool` matches `requireUuidV7Id`'s established shape exactly — verdict: no new struct, a plain function alongside its sibling in `common.zig`. |
 | File & Function Length (≤350/≤50/≤70) | yes — §1 | `route_table_invoke.zig` is the largest file in the family (348 lines pre-migration per the research pass); each single-method site collapsing from 4 lines to 1 line should net-shrink it, but verify post-migration, don't assume. |
 | UFS | no | no new repeated/semantic literal introduced; §1 removes duplication. |
@@ -83,7 +83,7 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 
 ## Overview
 
-**Goal (testable):** a route handler needing a single-method check calls `common.requireMethod(res, req.method, .POST)` instead of a 4-line hand-copied block, at all 63 existing single-method sites across the 9-file `route_table_invoke*` family; a PostHog load failure in the website package resets `loadPromise` so a later `ensureLoader`/`track()` call retries instead of being permanently wedged; the operator UI (runners, admin models) gates on the session `scopes` claim matching the backend's per-route scope map, and the `platform_admin` boolean has zero remaining references.
+**Goal (testable):** a route handler needing a single-method check calls `common.requireMethod(res, req.method, .POST)` instead of a 4-line hand-copied block, at all 50 existing single-method sites across the 8 affected `route_table_invoke*` files (the 13 multi-method `switch` sites keep their dispatch); a PostHog load failure in the website package resets `loadPromise` so a later `ensureLoader`/`track()` call retries instead of being permanently wedged; the operator UI (runners, admin models) gates on the session `scopes` claim matching the backend's per-route scope map, and the `platform_admin` boolean has zero remaining references.
 
 **Problem:** 63 occurrences of an identical 4-line method-check pattern across 9 files, with no shared helper, means every future route risks a copy-paste drift. `ensureLoader`'s `loadPromise = loadPosthog(cfg);` has no `.catch`; once `loadPosthog` rejects (a blocked/offline chunk load), `loadPromise` stays set to the rejected promise forever, so every subsequent page interaction on that session silently stops delivering analytics — with an unhandled-rejection console error as the only symptom. The operator dashboard gates the runners and admin-models surfaces on a boolean `metadata.platform_admin === true` — a pre-M104 claim the scope migration never retired — while the backend gates the same routes on scopes; a correctly-scoped operator therefore still can't see the UI, and platform-admin has to be configured twice (boolean + scopes), which drifts.
 
@@ -110,8 +110,8 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 | `src/agentsfleetd/http/route_table_invoke_connectors.zig` | EDIT | migrate single-method sites (of 4). |
 | `src/agentsfleetd/http/route_table_invoke_events.zig` | EDIT | migrate single-method sites (of 3). |
 | `src/agentsfleetd/http/route_table_invoke_approvals.zig` | EDIT | migrate single-method sites (of 3). |
-| `src/agentsfleetd/http/route_table_invoke_templates.zig` | EDIT | migrate single-method sites (of 2). |
-| `src/agentsfleetd/http/route_table_invoke_api_keys.zig` | EDIT | migrate single-method sites (of 2). |
+| `src/agentsfleetd/http/route_table_invoke_templates.zig` | EDIT | migrate its 1 single-method site (its other `respondMethodNotAllowed` is a `switch` arm). |
+| `src/agentsfleetd/http/route_table_invoke_api_keys.zig` | ~~EDIT~~ NOT EDITED | both its `respondMethodNotAllowed` calls are `switch` arms — 0 single-method sites, nothing to migrate. |
 | `src/agentsfleetd/http/route_table_invoke_fleet_bundles.zig` | EDIT | migrate its 1 single-method site. |
 | `ui/packages/website/src/analytics/posthog.ts` | EDIT | `ensureLoader`'s `loadPromise` assignment gains failure handling that resets state for retry. |
 | `ui/packages/app/lib/auth/platform.ts` | EDIT | replace the `platform_admin` boolean read with a session-`scopes` reader (`readSessionScopes`/`hasScope`); retire `readPlatformAdminClaim`. |
@@ -137,12 +137,12 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 
 ## Sections (implementation slices)
 
-### §1 — `requireMethod` helper, single-method call sites migrated
+### §1 — `requireMethod` helper, single-method call sites migrated — DONE
 
-63 occurrences of an identical 4-line pattern across 9 files, no shared helper. **Implementation default:** add `requireMethod` matching `requireUuidV7Id`'s exact shape; migrate all 27 single-method sites in `route_table_invoke.zig` plus the remaining single-method sites in the other 8 files (the 10 multi-method `switch` sites in `route_table_invoke.zig` are explicitly excluded — see Decomposition).
+63 total `respondMethodNotAllowed` occurrences across 9 files, no shared helper. **Count reconciliation (LLM-drafted spec, per provenance — verified against source at EXECUTE):** of the 63, **50 are single-method `if (req.method != .X)` blocks** (migrated) and **13 are multi-method `switch (req.method)` `else` arms** (left as-is — the spec's "10 multi-method / 63 single-method" split was wrong; 63 was the *total* occurrence count). Per-file single-method sites migrated: `route_table_invoke.zig` 17, `_runner` 15, `_webhooks` 6, `_connectors` 4, `_events` 3, `_approvals` 3, `_templates` 1, `_fleet_bundles` 1 = **50**. `route_table_invoke_api_keys.zig` has **0** single-method sites (both its `respondMethodNotAllowed` calls are `switch` arms) — so it is **not** edited by §1. **Implementation:** added `requireMethod` matching `requireUuidV7Id`'s exact shape; scripted the 50-site migration (each 4-line block → `if (!common.requireMethod(hx.res, req.method, .X)) return;`).
 
-- **Dimension 1.1** — every migrated route's method-allow/deny behavior is unchanged (a GET-only route still rejects POST, etc.) → Test `test_route_method_checks_unchanged_after_migration` (parametrized over each migrated route, reusing existing route-level integration tests rather than writing 63 new ones — the migration must not change what's asserted, only how it's expressed).
-- **Dimension 1.2** — `requireMethod` itself returns `false` and calls `respondMethodNotAllowed` on a mismatch, `true` and no side effect on a match → Test `test_require_method_matches_and_rejects_correctly`.
+- **Dimension 1.1 — DONE** — every migrated route's method-allow/deny behavior is unchanged (a GET-only route still rejects POST, etc.) — the existing route-level integration tests (unchanged) still pass, and E8's orphan sweep confirms no hand-copied single-method block remains outside the helper.
+- **Dimension 1.2 — DONE** — `requireMethod` returns `false` and calls `respondMethodNotAllowed` on a mismatch, `true` and no side effect on a match → Test `test_require_method_matches_and_rejects_correctly` (`error_response_test.zig`, two `httpz.testing` cases: `.POST` vs `.POST` → true/200, `.GET` vs `.POST` → false/405; housed in the sibling test file, not inline, to keep `common.zig` under the 350-line cap — it landed at 337).
 
 ### §2 — PostHog loader recovers from a failed load
 
@@ -227,7 +227,7 @@ Regression: Dimension 1.1 is the explicit regression case (§1 pure refactor). I
 
 ## Acceptance Criteria
 
-- [ ] `requireMethod` matches `requireUuidV7Id`'s convention, all 63 single-method sites migrated — verify: `zig build test --summary all` (Dimensions 1.1/1.2)
+- [ ] `requireMethod` matches `requireUuidV7Id`'s convention, all 50 single-method sites migrated (13 multi-method switch sites unchanged) — verify: `zig build test --summary all` (Dimensions 1.1/1.2)
 - [ ] PostHog loader retries after a failed load — verify: `bun test ui/packages/website` (Dimensions 2.1/2.2)
 - [ ] Operator UI gates on scope, `platform_admin` fully removed from production — verify: `bun test ui/packages/app` + E9 sweep (production files, tests excluded) empty (Dimensions 4.1/4.2)
 - [ ] `make lint` clean · `make test` passes
