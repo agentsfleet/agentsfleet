@@ -16,6 +16,8 @@ type Props = {
   templates: FleetTemplateGalleryEntry[];
   onUseTemplate: (template: FleetTemplateGalleryEntry) => void;
   canAddTemplate?: boolean;
+  /** Open the create-template dialog on first render (?create=1 deep link). */
+  initialCreateOpen?: boolean;
 };
 
 // Template gallery picker: the workspace's templates (platform ∪ tenant) are the
@@ -28,6 +30,7 @@ export function InstallSourceSelector({
   templates,
   onUseTemplate,
   canAddTemplate = false,
+  initialCreateOpen = false,
 }: Props) {
   const showAddTemplate = canAddTemplate;
   return (
@@ -35,7 +38,7 @@ export function InstallSourceSelector({
       <div className="flex flex-wrap items-baseline justify-between gap-md">
         <SectionLabel>Templates</SectionLabel>
         {showAddTemplate && templates.length > 0 ? (
-          <AddTemplateDialog workspaceId={workspaceId} />
+          <AddTemplateDialog workspaceId={workspaceId} defaultOpen={initialCreateOpen} />
         ) : null}
       </div>
       {templates.length > 0 ? (
@@ -60,7 +63,9 @@ export function InstallSourceSelector({
           action={
             <div className="flex flex-wrap items-center justify-center gap-md">
               <TemplateDocsLink />
-              {showAddTemplate ? <AddTemplateDialog workspaceId={workspaceId} /> : null}
+              {showAddTemplate ? (
+                <AddTemplateDialog workspaceId={workspaceId} defaultOpen={initialCreateOpen} />
+              ) : null}
             </div>
           }
         />

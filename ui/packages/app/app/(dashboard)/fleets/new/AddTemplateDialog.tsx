@@ -48,11 +48,17 @@ type FormValues = z.infer<typeof schema>;
 type Props = {
   workspaceId: string;
   triggerLabel?: string;
+  /** Open the dialog on first render (e.g. the ?create=1 deep link). */
+  defaultOpen?: boolean;
 };
 
-export default function AddTemplateDialog({ workspaceId, triggerLabel = "Create a template" }: Props) {
+export default function AddTemplateDialog({
+  workspaceId,
+  triggerLabel = "Create a template",
+  defaultOpen = false,
+}: Props) {
   const router = useRouter();
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(defaultOpen);
   const [apiError, setApiError] = useState<ErrorPresentation | null>(null);
   const [pending, setPending] = useState(false);
   const requestIdRef = useRef(0);

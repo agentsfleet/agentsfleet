@@ -151,6 +151,7 @@ export {
   ConfirmDialog,
   type ConfirmDialogProps,
 } from "./ConfirmDialog";
+export { Nav, type NavProps } from "./Nav";
 export { PageHeader, PageDescription, type PageHeaderProps } from "./PageHeader";
 export { PageTitle, type PageTitleProps } from "./PageTitle";
 export { SectionLabel, type SectionLabelProps } from "./SectionLabel";
