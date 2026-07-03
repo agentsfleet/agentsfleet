@@ -31,9 +31,9 @@ import { EVENTS } from "@/lib/analytics/events";
 import { presentError, type ErrorPresentation } from "@/lib/errors";
 import { SOURCE_KIND_GITHUB } from "@/lib/types";
 import { onboardTemplateAction } from "../actions";
+import { CREATE_TEMPLATE_DOC_URL } from "./template-docs";
 
 const SOURCE_REF_PATTERN = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
-const CREATE_TEMPLATE_DOC_URL = "https://docs.agentsfleet.net/fleets/templates#writing-your-own";
 const ONBOARD_ACTION = "add the template";
 
 const schema = z.object({
@@ -162,5 +162,3 @@ export default function AddTemplateDialog({ workspaceId, triggerLabel = "Add tem
     </Dialog>
   );
 }
-
-export { CREATE_TEMPLATE_DOC_URL };

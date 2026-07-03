@@ -15,6 +15,8 @@ import {
 } from "@agentsfleet/design-system";
 import { type AdminModel, OPENAI_COMPATIBLE_PROVIDER } from "@/lib/api/admin_models";
 import { presentErrorString } from "@/lib/errors";
+import { captureProductEvent } from "@/lib/analytics/posthog";
+import { EVENTS } from "@/lib/analytics/events";
 import { setPlatformDefaultAction } from "../actions";
 
 const LABEL = "block text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5";
@@ -55,6 +57,7 @@ export default function PlatformDefaultCard({ models }: { models: AdminModel[] }
       }
       setApiKey("");
       setSaved(true);
+      captureProductEvent(EVENTS.platform_default_set, { provider, model, is_custom: isCustom });
     });
   }
 
@@ -63,9 +66,8 @@ export default function PlatformDefaultCard({ models }: { models: AdminModel[] }
       <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Platform default</p>
       <Card className="space-y-5 p-5">
         <p className="max-w-xl text-sm text-muted-foreground">
-          End users on platform mode run this model, billed to their own tenant at its catalogue
-          rate. They never see this key — it is stored in your workspace vault and resolved
-          server-side.
+          Users without their own key run this model, billed at its catalogue rate. The key stays
+          in your vault — they never see it.
         </p>
 
         <div className="grid gap-4 sm:grid-cols-2">
@@ -122,10 +124,6 @@ export default function PlatformDefaultCard({ models }: { models: AdminModel[] }
             <p className="mt-1 text-xs text-muted-foreground">Required for an OpenAI-compatible endpoint (https only).</p>
           </div>
         ) : null}
-
-        <p className="rounded-md border border-border bg-surface-1 p-2.5 text-sm text-muted-foreground">
-          Default model must be in the catalogue.
-        </p>
 
         {error ? <p className="text-sm text-destructive">{error}</p> : null}
         {saved ? <p className="text-sm text-success">Platform default updated.</p> : null}

@@ -18,7 +18,9 @@ describe("dashboard route motion is absent", () => {
     expect(GLOBALS).not.toMatch(/\.app-content-rise\s*>\s*\*\s*\{/);
     expect(GLOBALS).not.toMatch(/@keyframes\s+glow-drift\b/);
     expect(GLOBALS).not.toMatch(/\.app-dashboard-canvas\s*\{[^}]*animation:\s*glow-drift/s);
-    expect(GLOBALS).toMatch(/\.app-dashboard-canvas\s*\{[^}]*radial-gradient\(1150px 660px/s);
+    // A single restrained brand glow (top-right); the former multi-stop teal/blue
+    // field was reduced to one calm radial per the Operational-Restraint pass.
+    expect(GLOBALS).toMatch(/\.app-dashboard-canvas\s*\{[^}]*radial-gradient\(1000px 620px/s);
   });
 
   it("never wires a page-mount animation onto the Shell content wrapper", () => {
@@ -26,7 +28,7 @@ describe("dashboard route motion is absent", () => {
     expect(GLOBALS).not.toMatch(/\.app-content-rise\s*>\s*\*\s*\{[^}]*opacity:\s*0\s*;/s);
   });
 
-  it("wires the dual-glow canvas onto the Shell main region", () => {
+  it("wires the ambient-glow canvas onto the Shell main region", () => {
     expect(SHELL).toMatch(/<main className="app-dashboard-canvas/);
   });
 });

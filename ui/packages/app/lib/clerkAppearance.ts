@@ -135,9 +135,12 @@ export const AUTH_APPEARANCE = {
       backgroundColor: SURFACE_1,
       borderRight: BORDER_STYLE,
     },
+    // The account modal's left nav ("Account" / "Security"). At TEXT_MUTED the
+    // inactive tab label sat too dim to read on the dark surface; pin it to the
+    // primary token — the active tab still stands out via its SURFACE_3 fill.
     navbarButton: {
       backgroundColor: "transparent",
-      color: TEXT_MUTED,
+      color: TEXT,
       "&:hover": MENU_ACTION_INTERACTION,
       "&:focus": MENU_ACTION_INTERACTION,
     },
@@ -154,14 +157,30 @@ export const AUTH_APPEARANCE = {
     profileSectionTitleText: {
       color: TEXT,
     },
+    // Profile row values — the email address under "Email addresses", the
+    // "Chrome on macOS" line under "Active devices" — render as Clerk's
+    // secondary text, which is near-invisible on the dark modal surface. Pin the
+    // section content + item rows to the primary readable token.
     profileSectionContent: {
-      color: TEXT_MUTED,
+      color: TEXT,
     },
     profileSectionItem: {
       borderColor: BORDER,
+      color: TEXT,
     },
     profileSectionItemList: {
       borderColor: BORDER,
+    },
+    // Inline chips ("Primary" on an email, "This device" on a session) default
+    // to Clerk's light-palette badge → invisible on dark; give them real tokens.
+    badge: {
+      backgroundColor: SURFACE_2,
+      color: TEXT,
+      border: BORDER_STYLE,
+    },
+    // Active-device rows can sit inside an accordion; keep the trigger legible.
+    accordionTriggerButton: {
+      color: TEXT,
     },
     profileSectionPrimaryButton: {
       color: PULSE,

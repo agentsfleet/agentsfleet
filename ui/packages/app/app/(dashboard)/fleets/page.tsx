@@ -7,19 +7,15 @@ import {
   EmptyState,
   PageHeader,
   PageTitle,
-  SectionLabel,
   Skeleton,
 } from "@agentsfleet/design-system";
 import { listFleets } from "@/lib/api/fleets";
-import { listWorkspaceFleetTemplatesCached } from "@/lib/api/fleet-templates";
 import { getTenantBillingCached } from "@/lib/api/tenant_billing";
 import { withWorkspaceScope } from "@/lib/workspace";
 import ExhaustionBanner from "@/components/domain/ExhaustionBanner";
-import { PlusIcon } from "lucide-react";
+import { BotIcon, PlusIcon } from "lucide-react";
 import FleetsList from "./components/FleetsList";
-import { InstallEntry } from "./new/InstallEntry";
-import { hasTemplateWriteScope } from "./scope";
-import type { FleetTemplateGalleryEntry } from "@/lib/types";
+import { CreateTemplateDocLink } from "./new/template-docs";
 
 export const dynamic = "force-dynamic";
 
@@ -51,7 +47,7 @@ export default async function FleetsListPage() {
 // from the cookie/JWT hint (no list round-trip on the hot path), then loads the
 // fleet page + billing in one pass. Exported so it renders/tests in isolation.
 export async function FleetsData() {
-  const { getToken, sessionClaims } = await auth();
+  const { getToken } = await auth();
   const token = await getToken();
   if (!token) return null;
 
@@ -71,27 +67,12 @@ export async function FleetsData() {
     );
   }
   const { workspaceId, page, billing } = result;
-  const canAddTemplate = hasTemplateWriteScope(sessionClaims);
-  // Fetch the template catalogue only on the empty path (one-time onboarding), so
-  // the populated list never pays for it. The await lives here in the async data
-  // region; FleetsEmptyState stays sync so renderToStaticMarkup / React's sync
-  // render never hit a nested async boundary.
-  const templates =
-    page.items.length === 0
-      ? await listWorkspaceFleetTemplatesCached(workspaceId, token)
-          .then((response) => response.items)
-          .catch(() => [])
-      : [];
 
   return (
     <>
       <ExhaustionBanner billing={billing} />
       {page.items.length === 0 ? (
-        <FleetsEmptyState
-          workspaceId={workspaceId}
-          templates={templates}
-          canAddTemplate={canAddTemplate}
-        />
+        <FleetsEmptyState />
       ) : (
         <FleetsList
           workspaceId={workspaceId}
@@ -103,35 +84,25 @@ export async function FleetsData() {
   );
 }
 
-// Empty fleets → a full-width onboarding gallery. Reuses the InstallEntry picker
-// so the first-run experience IS the real template gallery — spanning the page
-// like Models — instead of abstract step cards. The catalogue is fetched
-// by FleetsData (the async region); this stays a sync component. Besides the page
-// header's "Install fleet" button, this gallery is the install affordance here.
-function FleetsEmptyState({
-  workspaceId,
-  templates,
-  canAddTemplate,
-}: {
-  workspaceId: string;
-  templates: FleetTemplateGalleryEntry[];
-  canAddTemplate: boolean;
-}) {
+// Empty fleets → a centered EmptyState mirroring Approvals: icon, headline, one
+// line of context, then the primary Install affordance plus a prominent docs
+// link. The template gallery itself lives on /fleets/new (the Install fleet
+// button routes there), so the first-run screen stays calm rather than
+// rendering the full picker inline.
+function FleetsEmptyState() {
   return (
-    <div className="space-y-6">
-      <div className="space-y-1.5">
-        <SectionLabel>No fleets yet</SectionLabel>
-        <p className="max-w-prose text-body-sm leading-body-sm text-muted-foreground">
-          Pick a template to install your first fleet — connect its tool and it runs on every
-          matching event.
-        </p>
-      </div>
-      <InstallEntry
-        templates={templates}
-        quickstart
-        workspaceId={workspaceId}
-        canAddTemplate={canAddTemplate}
-      />
-    </div>
+    <EmptyState
+      icon={<BotIcon size={28} />}
+      title="No fleets yet"
+      description="Pick a template to install your first fleet — connect its tool and it runs on every matching event."
+      action={
+        <div className="flex flex-wrap items-center justify-center gap-md">
+          <Link href="/fleets/new" className={buttonClassName("default", "sm")}>
+            <PlusIcon size={14} /> Install fleet
+          </Link>
+          <CreateTemplateDocLink />
+        </div>
+      }
+    />
   );
 }

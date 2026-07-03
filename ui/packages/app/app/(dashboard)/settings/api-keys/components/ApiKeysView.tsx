@@ -14,10 +14,10 @@ export default function ApiKeysView({ initial }: { initial: ApiKeyListResponse }
   const listRef = useRef<ApiKeyListHandle>(null);
   return (
     <div className="space-y-8">
-      <SettingsTabs />
+      <SettingsTabs title="Workspace" />
       <div className="flex items-start justify-between gap-4">
         <p className="max-w-2xl text-sm text-muted-foreground">
-          Keys let outside tools call this workspace API. Each key is shown once.
+          Keys let outside tools call agentsfleet on behalf of this workspace. Each key is shown once.
         </p>
         <CreateApiKeyDialogDynamic onCreated={() => listRef.current?.refresh()} />
       </div>

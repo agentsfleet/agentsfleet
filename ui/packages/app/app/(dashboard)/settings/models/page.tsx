@@ -80,8 +80,8 @@ export default async function ModelsKeysPage() {
             <div className="mb-md">
               <div className="font-medium text-foreground">Add a custom secret</div>
               <p className="text-body-sm leading-body-sm text-muted-foreground">
-                Give it a name and one or more fields (like <span className="font-mono">api_key</span>). Once
-                saved, values are encrypted and can&apos;t be viewed again — only replaced.{" "}
+                Name it and add one or more fields (like <span className="font-mono">api_key</span>). Values
+                are encrypted on save — you can replace them later, but never view them again.{" "}
                 <a
                   href="https://docs.agentsfleet.net/fleets/credentials"
                   target="_blank"

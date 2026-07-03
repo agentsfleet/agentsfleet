@@ -11,7 +11,8 @@ import {
   SectionLabel,
 } from "@agentsfleet/design-system";
 import type { FleetTemplateGalleryEntry } from "@/lib/types";
-import AddTemplateDialog, { CREATE_TEMPLATE_DOC_URL } from "./AddTemplateDialog";
+import AddTemplateDialog from "./AddTemplateDialog";
+import { CreateTemplateDocLink } from "./template-docs";
 import { InstallFlowGuide } from "./InstallFlowGuide";
 import { TemplateCard } from "./TemplateCard";
 
@@ -76,11 +77,7 @@ export function InstallSourceSelector({
                 />
                 <div className="flex flex-wrap justify-center gap-md">
                   {showAddTemplate ? <AddTemplateDialog workspaceId={workspaceId} /> : null}
-                  <Button asChild variant="ghost" size="sm">
-                    <a href={CREATE_TEMPLATE_DOC_URL} target="_blank" rel="noopener noreferrer">
-                      Create a template
-                    </a>
-                  </Button>
+                  <CreateTemplateDocLink />
                 </div>
               </div>
             )}

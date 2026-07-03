@@ -85,6 +85,15 @@ let groupedWorkspaceId: string | null = null;
 // Group/person context that raced the posthog-js chunk load; initAnalytics
 // flushes it after identify so person props attach to the identified user.
 let pendingContext: AnalyticsContext | null = null;
+// Product events that raced the posthog-js chunk load. identify/context are
+// single-slot (latest wins); product events are distinct, so this is a bounded
+// FIFO. Mount-fired call sites (fleet_viewed) can capture before the dynamic
+// import resolves on a cold/direct load — action-fired sites can't, they run
+// after a server round-trip. Without this the cold-load captures would be
+// silently dropped, systematically under-counting first views. Bounded so a
+// stuck or failed load can't grow it without limit.
+const MAX_PENDING_PRODUCT_EVENTS = 20;
+let pendingProductEvents: Array<{ event: string; payload: Record<string, AnalyticsValue> }> = [];
 
 function boolFromEnv(value: string | undefined, fallback: boolean): boolean {
   if (value == null || value === "") return fallback;
@@ -179,6 +188,16 @@ export async function initAnalytics(): Promise<void> {
   const queuedContext = pendingContext;
   pendingContext = null;
   if (queuedContext !== null) setAnalyticsContext(queuedContext);
+  // Flush product events captured before the chunk resolved (mount-fired call
+  // sites like fleet_viewed) — after identify + context so they attach to the
+  // identified person and workspace group. Load-bearing ordering: this capture
+  // MUST stay below the `if (pendingReset) resetAnalyticsIdentity()` above —
+  // that reset empties pendingProductEvents, so reading queuedEvents post-reset
+  // drops a signed-out session's buffer instead of stitching it to the next
+  // identity. Do not hoist this assignment above the reset.
+  const queuedEvents = pendingProductEvents;
+  pendingProductEvents = [];
+  for (const queued of queuedEvents) posthogClient.capture(queued.event, queued.payload);
 }
 
 export function identifyAnalyticsUser(user: { id: string; email?: string | null }): void {
@@ -253,6 +272,9 @@ export function resetAnalyticsIdentity(): void {
   // session's setAnalyticsContext rebinds the workspace group.
   groupedWorkspaceId = null;
   pendingContext = null;
+  // Drop any product events buffered against the prior session — they must not
+  // stitch onto the next (anonymous or other) identity.
+  pendingProductEvents = [];
   if (analyticsConfigured && posthogClient === null) {
     // posthog-js is still loading (or its import failed — the next load
     // retries): keep the marker and let initAnalytics complete the reset.
@@ -271,9 +293,9 @@ export function resetAnalyticsIdentity(): void {
 // catalog's own EVENT_PROP_KEYS mirror — compile-time excess-property checks
 // only cover object literals, so a spread or widened argument must not be
 // able to smuggle extra fields (a raw token is one property away at several
-// call sites). Events that race the posthog-js chunk load are dropped, not
-// buffered — every call site fires after a completed server round-trip, so
-// the window is effectively unreachable.
+// call sites). Events that race the posthog-js chunk load are buffered (bounded
+// FIFO) and flushed on init — mount-fired call sites (fleet_viewed) can capture
+// before the chunk lands on a cold load; action-fired sites never do.
 export function captureProductEvent<E extends EventName>(
   event: E,
   props: EventProps[E],
@@ -282,7 +304,7 @@ export function captureProductEvent<E extends EventName>(
   // (e.g. last_integration_requested) without a separate identify call.
   options?: { setPersonProperties?: Record<string, AnalyticsValue> },
 ): void {
-  if (!analyticsEnabled || !posthogClient || typeof window === "undefined") return;
+  if (!analyticsEnabled || typeof window === "undefined") return;
   try {
     const payload: Record<string, AnalyticsValue | Record<string, AnalyticsValue>> = {
       path: window.location.pathname,
@@ -295,7 +317,17 @@ export function captureProductEvent<E extends EventName>(
       }
     }
     if (options?.setPersonProperties) payload.$set = options.setPersonProperties;
-    posthogClient.capture(event, payload as Record<string, AnalyticsValue>);
+    const finalPayload = payload as Record<string, AnalyticsValue>;
+    if (posthogClient === null) {
+      // Racing the chunk load (a mount-fired capture): buffer, don't drop. The
+      // FIFO is bounded — events beyond the cap are dropped rather than grow
+      // memory if the load stalls.
+      if (pendingProductEvents.length < MAX_PENDING_PRODUCT_EVENTS) {
+        pendingProductEvents.push({ event, payload: finalPayload });
+      }
+      return;
+    }
+    posthogClient.capture(event, finalPayload);
   } catch {
     // Analytics must never break the product flow it instruments — several
     // call sites sit beside one-time secret reveals.
