@@ -1,4 +1,5 @@
 import { auth } from "@clerk/nextjs/server";
+import { expandScopes } from "@/lib/auth/scopes";
 
 /**
  * Reads the operator `scopes` claim off the Clerk session token.
@@ -14,7 +15,9 @@ import { auth } from "@clerk/nextjs/server";
  * The documented session-token form is a space-delimited string
  * (`"runner:read runner:enroll model:admin"`); we also accept a JSON array to
  * mirror the backend's tolerant reader (`claims.zig` `getScopesOwned`) in case
- * the template is ever switched to array form.
+ * the template is ever switched to array form. The held set is expanded to its
+ * downward closure (`expandScopes`) so a `model:admin` grant satisfies a
+ * `model:read` check — matching the backend `requireScope` decision.
  *
  * Returns an empty set when the auth provider isn't available, the session is
  * anonymous, or the claim is absent (fail-closed) — every caller treats a
@@ -36,7 +39,7 @@ export async function hasScope(scope: string): Promise<boolean> {
 }
 
 function parseScopes(raw: unknown): ReadonlySet<string> {
-  if (typeof raw === "string") return new Set(raw.split(/\s+/).filter(Boolean));
-  if (Array.isArray(raw)) return new Set(raw.filter((s): s is string => typeof s === "string"));
+  if (typeof raw === "string") return expandScopes(raw.split(/\s+/).filter(Boolean));
+  if (Array.isArray(raw)) return expandScopes(raw.filter((s): s is string => typeof s === "string"));
   return new Set();
 }
