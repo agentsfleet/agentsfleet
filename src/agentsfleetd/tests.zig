@@ -39,6 +39,7 @@ test {
     _ = @import("credentials/broker.zig");
     _ = @import("credentials/broker_test.zig");
     _ = @import("credentials/serve_broker.zig");
+    _ = @import("credentials/serve_broker_test.zig");
     _ = @import("http/handlers/connectors/state.zig");
     _ = @import("http/handlers/connectors/oauth2.zig");
     _ = @import("http/handlers/connectors/oauth_status.zig");
