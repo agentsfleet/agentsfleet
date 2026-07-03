@@ -118,7 +118,7 @@ describe("AddRunnerDialog component", () => {
     const { user, onCreated } = await openDialog();
     await user.type(screen.getByLabelText(/host id/i), "web-prod-1");
     await user.click(screen.getByRole("button", { name: /create runner/i }));
-    await waitFor(() => expect(screen.getByText(/operator scope/i)).toBeTruthy());
+    await waitFor(() => expect(screen.getByText(/additional scope/i)).toBeTruthy());
     expect(screen.queryByLabelText("Runner token")).toBeNull();
     expect(onCreated).not.toHaveBeenCalled();
     expect(captureProductEventMock).not.toHaveBeenCalled();
