@@ -389,6 +389,10 @@ test "integration: catalog reflects the registry with correct configured/connect
     defer h.releaseConn(conn);
     test_fixtures.setTestEncryptionKey();
     try seedAuthedFixtures(conn);
+    // The catalog's "configured" lookup targets the platform-admin workspace; wire
+    // it (every sibling test does) so the seed/delete of `slack-app` at ADMIN_WS is
+    // what that lookup reads. Without it the ctx default "" hits an invalid-UUID cast.
+    h.ctx.platform_admin_workspace_id = ADMIN_WS;
     // Clean slate: no slack platform bag, no slack handle for this workspace.
     _ = vault.deleteCredential(conn, ADMIN_WS, "slack-app") catch {};
     deleteFleetHandle(alloc, conn, AUTHED_WS, common.PROVIDER_SLACK);
@@ -435,6 +439,32 @@ test "integration: catalog reflects the registry with correct configured/connect
     // clean up this suite's shared platform bag + handle.
     _ = vault.deleteCredential(conn, ADMIN_WS, "slack-app") catch {};
     deleteFleetHandle(alloc, conn, AUTHED_WS, common.PROVIDER_SLACK);
+}
+
+// An unconfigured deployment leaves the platform-admin workspace unset. The
+// catalog must degrade to configured:false, never 500 on the invalid-UUID cast.
+test "integration: catalog degrades to configured:false when the platform-admin workspace is unset (no 500)" {
+    const alloc = testing.allocator;
+    const h = startAuthedHarness(alloc) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    test_fixtures.setTestEncryptionKey();
+    try seedAuthedFixtures(conn);
+    // Deliberately DO NOT set h.ctx.platform_admin_workspace_id — it stays "" (the
+    // unconfigured-deployment default). The configured lookup must be skipped.
+
+    const path = "/v1/workspaces/" ++ AUTHED_WS ++ "/connectors";
+    const r = try (try h.get(path).bearer(scope_tokens.TENANT_ADMIN)).send();
+    defer r.deinit();
+    try r.expectStatus(.ok); // not 500
+    // oauth2/app_install read not-configured (no admin bag to check); api_key stays
+    // configured (self-provisioned).
+    try testing.expect(r.bodyContains("\"id\":\"slack\",\"archetype\":\"oauth2\",\"display_name\":\"Slack\",\"configured\":false"));
+    try testing.expect(r.bodyContains("\"id\":\"datadog\",\"archetype\":\"api_key\",\"display_name\":\"Datadog\",\"configured\":true"));
 }
 
 test "integration: github status reads the installation handle" {

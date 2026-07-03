@@ -233,4 +233,51 @@ describe("IntegrationsConnectors (test_ui_connectors_cards_from_catalog)", () =>
     expect(fly.textContent).toContain("Connected");
     expect(within(fly).queryByRole("button", { name: "Connect" })).toBeNull();
   });
+
+  it("renders a card for a provider with no bespoke icon (generic plug fallback)", () => {
+    // An id absent from the icon map still renders — the icon falls back to a plug.
+    renderConnectors([entry({ id: "webhooks_custom", archetype: "oauth2", display_name: "Custom" })]);
+    expect(screen.getByTestId("integration-webhooks_custom").textContent).toContain("Custom");
+  });
+
+  it("closes the api_key form when the toggle is clicked again (Cancel)", () => {
+    renderConnectors([DATADOG]);
+    const row = screen.getByTestId("integration-datadog");
+    fireEvent.click(within(row).getByRole("button", { name: "Connect" }));
+    expect(screen.getByTestId("api-key-form-datadog")).toBeTruthy();
+    // Open → the action button flips to Cancel; clicking it closes the form.
+    fireEvent.click(within(row).getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByTestId("api-key-form-datadog")).toBeNull();
+  });
+
+  it("Enter on an incomplete api_key form does nothing (submit guard)", () => {
+    submitApiKeyConnectActionMock.mockResolvedValue({ ok: true, data: { status: "connected" } });
+    renderConnectors([DATADOG]);
+    fireEvent.click(within(screen.getByTestId("integration-datadog")).getByRole("button", { name: "Connect" }));
+    const form = screen.getByTestId("api-key-form-datadog");
+    // Fields empty → canSubmit false → Enter reaches submit's guard, which returns.
+    fireEvent.keyDown(within(form).getByLabelText("API key"), { key: "Enter" });
+    expect(submitApiKeyConnectActionMock).not.toHaveBeenCalled();
+  });
+
+  it("submits the api_key form via Enter when complete, and ignores other keys", async () => {
+    submitApiKeyConnectActionMock.mockResolvedValue({ ok: true, data: { status: "connected" } });
+    renderConnectors([DATADOG]);
+    fireEvent.click(within(screen.getByTestId("integration-datadog")).getByRole("button", { name: "Connect" }));
+    const form = screen.getByTestId("api-key-form-datadog");
+    fireEvent.change(within(form).getByLabelText("API key"), { target: { value: "k" } });
+    fireEvent.change(within(form).getByLabelText("App key"), { target: { value: "k" } });
+    fireEvent.change(within(form).getByLabelText("Site"), { target: { value: "s" } });
+    // A non-Enter key is ignored; Enter submits.
+    fireEvent.keyDown(within(form).getByLabelText("Site"), { key: "a" });
+    expect(submitApiKeyConnectActionMock).not.toHaveBeenCalled();
+    fireEvent.keyDown(within(form).getByLabelText("Site"), { key: "Enter" });
+    await waitFor(() =>
+      expect(submitApiKeyConnectActionMock).toHaveBeenCalledWith("datadog", WS, {
+        api_key: "k",
+        app_key: "k",
+        site: "s",
+      }),
+    );
+  });
 });

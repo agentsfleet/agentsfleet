@@ -84,10 +84,20 @@ pub fn innerCatalog(hx: hx_mod.Hx, workspace_id: []const u8) void {
     // workspace, connected handles in the requested workspace.
     var app_present: [N]bool = undefined;
     var fleet_present: [N]bool = undefined;
-    vault.markExisting(conn, hx.ctx.platform_admin_workspace_id, app_keys[0..], app_present[0..]) catch {
-        common.internalOperationError(hx.res, "catalog configured lookup failed", hx.req_id);
-        return;
-    };
+    // An unconfigured deployment leaves the platform-admin workspace unset (the
+    // field defaults to "" — "empty → connectors fail closed"). Binding "" into a
+    // `workspace_id UUID` predicate is a hard 22P02 cast error, which would 500
+    // every catalog request; instead skip the configured lookup and report every
+    // oauth2/app_install provider as not-configured (mirrors serve_broker's
+    // empty-workspace guard). markExisting normally zeroes present_out, so zero it
+    // here for the skipped path.
+    @memset(app_present[0..], false);
+    if (hx.ctx.platform_admin_workspace_id.len != 0) {
+        vault.markExisting(conn, hx.ctx.platform_admin_workspace_id, app_keys[0..], app_present[0..]) catch {
+            common.internalOperationError(hx.res, "catalog configured lookup failed", hx.req_id);
+            return;
+        };
+    }
     vault.markExisting(conn, workspace_id, fleet_keys[0..], fleet_present[0..]) catch {
         common.internalOperationError(hx.res, "catalog connected lookup failed", hx.req_id);
         return;
