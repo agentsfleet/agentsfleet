@@ -259,6 +259,7 @@ N/A — no files deleted. This workstream is purely additive; `InstallEntry`'s "
 - **Metrics review** — added `fleet_template_onboarded`; analytics properties stay in the existing allowlist surface (`workspace_id`, `visibility`, `source_kind`, `outcome`), so no separate funnel-playbook file changed in this app workstream.
 - **E2E fixture note** — the live dev API rejects `agentsfleet/github-pr-reviewer` with `missing_skill` because current public `agentsfleet/*` template repos do not expose a root-level `SKILL.md`; browser coverage therefore verifies real gallery rendering via an upload-onboarded tenant template plus the live GitHub dialog error path.
 - **Skill chain outcomes** — `/write-unit-test`: clean coverage ledger; `/write-integration-test`: no new service-layer integration test added because no backend handler/repository/schema changed, but `make test-integration` passed; `/review`: one broken docs fragment found and fixed (`#create-a-template` → `#writing-your-own`).
+- **Parking note, Jul 03, 2026** — app implementation is committed in `1b9b044b`; cross-repo docs/changelog work under `~/Projects/docs/**` remains pending because this session has no explicit approval to write that repo.
 - **Deferrals** — {Indy-acked verbatim quotes only}.
 
 ---
