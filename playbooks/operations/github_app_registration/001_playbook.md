@@ -47,7 +47,7 @@ export ADMIN_KEY=$(op read "op://$VAULT/agentsfleet-admin/api_key")
 **Goal:** an App scoped to what the fleets actually do, with no broker-irrelevant callback. At **github.com/settings/apps/new** (or `https://github.com/organizations/<org>/settings/apps/new` for an org-owned App):
 
 1. **GitHub App name** — `agentsfleet` (or `agentsfleet-<env>`); **Homepage URL** `https://agentsfleet.net`.
-2. **Callback URL** — `https://api.agentsfleet.net/v1/integrations/github/oauth/callback` (the connector callback; swap `$API_BASE` in dev).
+2. **Callback URL** — `https://api.agentsfleet.net/v1/connectors/github/callback` (the connector callback; swap `$API_BASE` in dev).
 3. **Webhook** — **uncheck Active.** The broker is outbound-only (it mints tokens for the fleet's own calls); the GitHub Actions deploy trigger is a **separate per-fleet webhook the customer registers** (`docs/architecture/user_flow.md` §8.5), not this App-level webhook.
 4. **Repository permissions** — scope minimally to the fleets you ship:
    - **Metadata:** Read-only (mandatory).
