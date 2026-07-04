@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
 import {
@@ -50,14 +50,12 @@ type PlatformNavEntry = NavEntry & { scope: string };
 
 const NAV_SURFACE = "app_sidebar";
 
-// Persists the desktop sidebar's collapsed/expanded state across reloads.
-// Read/written only after mount (see the effect in Shell below) so the
-// server-rendered markup always matches the client's first paint — no
-// hydration mismatch. The two pixel widths this drives live only as literal
-// Tailwind arbitrary-value strings ("md:grid-cols-[64px_1fr]" /
-// "[240px_1fr]") below — Tailwind statically scans source for class-name
-// literals, so a variable can't be interpolated into one at runtime.
-const SIDEBAR_COLLAPSED_KEY = "agentsfleet:sidebar-collapsed";
+// aria-controls target for the collapse toggle — ties it to the <aside> it collapses.
+// The two pixel widths the toggle drives live only as literal Tailwind
+// arbitrary-value strings ("md:grid-cols-[64px_1fr]" / "[240px_1fr]") below —
+// Tailwind statically scans source for class-name literals, so a variable
+// can't be interpolated into one at runtime.
+const SIDEBAR_NAV_ID = "app-sidebar-nav";
 
 // Dashboard sits above the labelled groups as a headerless overview entry.
 const TOP_NAV: NavEntry[] = [
@@ -141,8 +139,10 @@ export default function Shell({
   const pathname = usePathname();
   const activeHref = resolveActiveHref(pathname);
   const isActive = (href: string) => href === activeHref;
+  // Not persisted — every dashboard load starts expanded, matching the
+  // reference product's behavior (Supabase Studio's sidebar also resets on
+  // reload rather than remembering a per-user preference).
   const [collapsed, setCollapsed] = useState(false);
-  const hydratedCollapsedRef = useRef(false);
 
   // Bind the active workspace as the PostHog group + record workspace_count on
   // the person, so every event/pageview is sliceable per workspace (Supabase
@@ -154,23 +154,8 @@ export default function Shell({
     });
   }, [activeWorkspaceId, workspaces.length]);
 
-  // Hydrate the persisted preference after mount only — the server-rendered
-  // markup always starts expanded, so this never causes a hydration mismatch.
-  // Ref-guarded (not just an empty dep array) so a caller that invokes effects
-  // on every render (e.g. a test double) can't turn this into a render loop —
-  // real React only runs it once regardless, so this is a no-op there.
-  useEffect(() => {
-    if (hydratedCollapsedRef.current) return;
-    hydratedCollapsedRef.current = true;
-    setCollapsed(window.localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "true");
-  }, []);
-
   function toggleCollapsed() {
-    setCollapsed((prev) => {
-      const next = !prev;
-      window.localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(next));
-      return next;
-    });
+    setCollapsed((prev) => !prev);
   }
 
   return (
@@ -188,6 +173,7 @@ export default function Shell({
           type="button"
           aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
           aria-expanded={!collapsed}
+          aria-controls={SIDEBAR_NAV_ID}
           variant="ghost"
           size="icon"
           className="hidden md:inline-flex -ml-2"
@@ -222,7 +208,10 @@ export default function Shell({
         <ClientOnlyAuthUserButton />
       </header>
 
-      <aside className="hidden md:flex flex-col bg-muted border-r border-border sticky top-14 h-[calc(100vh-56px)] overflow-y-auto py-4">
+      <aside
+        id={SIDEBAR_NAV_ID}
+        className="hidden md:flex flex-col bg-muted border-r border-border sticky top-14 h-[calc(100vh-56px)] overflow-y-auto py-4"
+      >
         <SidebarNav
           isActive={isActive}
           onNavigate={() => {}}
