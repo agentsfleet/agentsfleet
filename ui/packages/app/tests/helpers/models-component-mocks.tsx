@@ -122,20 +122,24 @@ export function designSystemStub() {
       icon,
       title,
       description,
+      meta,
       action,
+      ...rest
     }: {
       icon?: React.ReactNode;
       title: React.ReactNode;
       description?: React.ReactNode;
+      meta?: React.ReactNode;
       action?: React.ReactNode;
-    }) =>
+    } & Record<string, unknown>) =>
       React.createElement(
         "div",
-        { "data-row": typeof title === "string" ? title : "row" },
+        { "data-row": typeof title === "string" ? title : "row", ...rest },
         icon,
         React.createElement("span", { "data-row-title": "1" }, title),
         React.createElement("span", { "data-row-desc": "1" }, description),
         React.createElement("span", { "data-row-action": "1" }, action),
+        meta ? React.createElement("span", { "data-row-meta": "1" }, meta) : null,
       ),
   };
 }

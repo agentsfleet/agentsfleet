@@ -118,8 +118,11 @@ describe("ProviderSwitchList — live roster", () => {
   it("renders the platform row, keyed/unkeyed provider rows, and custom endpoints", () => {
     renderLive();
     expect(screen.getByText("Platform defaults")).toBeTruthy();
-    // anthropic is the active credential → excluded from the list.
-    expect(screen.queryByText("Anthropic")).toBeNull();
+    // anthropic is the active credential → excluded as a separate switch row;
+    // it may still legitimately appear inside the merged hero row's own meta.
+    screen.queryAllByText("Anthropic").forEach((el) => {
+      expect(el.closest('[data-testid="active-model-hero"]')).toBeTruthy();
+    });
     // openai keyed → "Key saved · gpt-4"; groq keyed but model-less; fireworks unkeyed.
     expect(screen.getByText("Key saved · gpt-4")).toBeTruthy();
     expect(screen.getByText("Key saved · model not set")).toBeTruthy();
@@ -132,6 +135,17 @@ describe("ProviderSwitchList — live roster", () => {
     // The two add affordances.
     expect(screen.getByText("OpenAI-compatible gateway, OpenRouter, or self-hosted")).toBeTruthy();
     expect(screen.getByText("Other provider")).toBeTruthy();
+  });
+
+  it("renders the active-model row as the first row inside the same shared list as every other provider row", () => {
+    renderLive();
+    const list = screen.getByTestId("provider-switch-list");
+    const hero = screen.getByTestId("active-model-hero");
+    const otherRow = screen.getByText("Key saved · gpt-4").closest("[data-row]");
+    expect(list.contains(hero)).toBe(true);
+    expect(list.contains(otherRow)).toBe(true);
+    // The hero is the first child row of the shared list container.
+    expect(list.firstElementChild).toBe(hero);
   });
 
   it("switches to a keyed provider (with and without a stored model) and to a custom endpoint", async () => {

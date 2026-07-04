@@ -63,17 +63,16 @@ vi.mock("@/app/(dashboard)/settings/models/components/ModelCatalogueProvider", (
   ModelCatalogueProvider: ({ children }: React.PropsWithChildren) =>
     React.createElement("div", { "data-catalogue-provider": "1" }, children),
 }));
-vi.mock("@/app/(dashboard)/settings/models/components/ActiveModelHero", () => ({
+// ActiveModelHero is no longer a page-level child — ProviderSwitchList owns
+// rendering it as the list's first row. The page's own contract is just: pass
+// workspaceId/provider/credentials through to ProviderSwitchList.
+vi.mock("@/app/(dashboard)/settings/models/components/ProviderSwitchList", () => ({
   default: ({ workspaceId, provider }: { workspaceId: string; provider: unknown }) =>
     React.createElement("div", {
-      "data-testid": "active-model-hero",
+      "data-testid": "provider-switch-list",
       "data-workspace": workspaceId,
       "data-provider": provider === null ? "null" : "present",
     }),
-}));
-vi.mock("@/app/(dashboard)/settings/models/components/ProviderSwitchList", () => ({
-  default: ({ workspaceId }: { workspaceId: string }) =>
-    React.createElement("div", { "data-testid": "provider-switch-list", "data-workspace": workspaceId }),
 }));
 vi.mock("@/app/(dashboard)/credentials/components/CustomSecretsList", () => ({
   default: ({ workspaceId, secrets }: { workspaceId: string; secrets: { name: string }[] }) =>
@@ -139,9 +138,9 @@ describe("Models page", () => {
     expect(markup).toContain("Models");
     expect(markup).toContain("The model your fleets run on, and the key behind it.");
 
-    // Hero + switch list mount inside the catalogue provider.
+    // The switch list (which owns the active-model row internally) mounts
+    // inside the catalogue provider.
     expect(markup).toContain('data-catalogue-provider="1"');
-    expect(markup).toContain('data-testid="active-model-hero"');
     expect(markup).toContain('data-testid="provider-switch-list"');
     expect(markup).toContain('data-provider="present"');
 
@@ -164,8 +163,9 @@ describe("Models page", () => {
     const { default: Page } = await import("../app/(dashboard)/settings/models/page");
     const markup = renderToStaticMarkup(await Page());
 
-    // Provider error → `provider` is null; the page still renders, hero gets null.
-    expect(markup).toContain('data-testid="active-model-hero"');
+    // Provider error → `provider` is null; the page still renders, passing
+    // null through to the switch list (which degrades its hero row to DEFAULT).
+    expect(markup).toContain('data-testid="provider-switch-list"');
     expect(markup).toContain('data-provider="null"');
   });
 

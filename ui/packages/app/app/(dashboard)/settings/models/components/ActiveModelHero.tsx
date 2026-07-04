@@ -1,8 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { Alert, Button, DashboardPanel, EYEBROW_CLASS, MetaGrid, StatusPill } from "@agentsfleet/design-system";
-import { cn } from "@/lib/utils";
+import { Alert, Button, DashboardRow, MetaGrid, StatusPill } from "@agentsfleet/design-system";
+import { CpuIcon, ServerIcon } from "lucide-react";
 import { resetProviderAction } from "../actions";
 import { captureProviderReset } from "../lib/track";
 import { useProviderAction } from "../lib/use-provider-action";
@@ -11,6 +11,7 @@ import { CREDENTIAL_KIND, type Credential } from "@/lib/api/credentials";
 import { PROVIDER_MODE, type TenantProvider } from "@/lib/types";
 import HeroChangeModelPanel from "./HeroChangeModelPanel";
 import HeroReplaceKeyPanel from "./HeroReplaceKeyPanel";
+import ProviderKeyForm from "./ProviderKeyForm";
 
 type Props = {
   workspaceId: string;
@@ -18,12 +19,15 @@ type Props = {
   credentials: Credential[];
 };
 
-const PANEL = { idle: "idle", changeModel: "changeModel", replaceKey: "replaceKey" } as const;
+const PANEL = { idle: "idle", changeModel: "changeModel", replaceKey: "replaceKey", addKey: "addKey" } as const;
 type Panel = (typeof PANEL)[keyof typeof PANEL];
 
 const BILLING_PROVIDER_DIRECT = "Provider direct";
 const BILLING_TENANT_BALANCE = "Tenant balance";
 const MANAGED_PROVIDER = "agentsfleet managed";
+
+// Shared with ProviderSwitchList — the same add-a-key affordance, named once.
+export const ADD_KEY_AND_MODEL_LABEL = "Add key & model";
 
 // Threshold + divisor for the "k" context abbreviation (200000 → "200k").
 const TOKENS_PER_K = 1000;
@@ -67,94 +71,101 @@ export default function ActiveModelHero({ workspaceId, provider, credentials }: 
       ];
 
   return (
-    <DashboardPanel
+    <DashboardRow
       data-testid="active-model-hero"
       data-live={live}
-      className="space-y-lg data-[live=true]:border-primary data-[live=true]:ring-1 data-[live=true]:ring-primary/20"
-    >
-      <div className="flex items-center gap-3">
+      icon={live ? <CpuIcon size={15} /> : <ServerIcon size={15} />}
+      title={live ? provider.model : "Platform default model"}
+      description={
+        live ? (
+          <>
+            via <span className="font-mono">{credRef ?? provider.provider}</span>
+          </>
+        ) : null
+      }
+      action={
         <StatusPill variant={live ? "pulse" : "neutral"} dot>
           {live ? "LIVE" : "DEFAULT"}
         </StatusPill>
-        <span className={cn(EYEBROW_CLASS, "text-text-subtle")}>Active model</span>
-      </div>
+      }
+      meta={
+        <div className="space-y-md">
+          <MetaGrid bordered items={metaItems} />
 
-      {/* Heading in the sans display scale like every other page-level object;
-          mono stays reserved for data (the credential ref below, IDs, code). */}
-      <div>
-        <div className="break-all text-display-md font-semibold leading-display-md tracking-display-md text-foreground">
-          {live ? provider.model : "Platform default model"}
-        </div>
-        <div className="mt-1 text-body-sm leading-body-sm text-muted-foreground">
           {live ? (
-            <>
-              via <span className="font-mono">{credRef ?? provider.provider}</span>
-            </>
+            <div className="flex flex-wrap items-center gap-md">
+              <Button
+                type="button"
+                variant="outline"
+                disabled={pending}
+                aria-expanded={panel === PANEL.changeModel}
+                onClick={() => setPanel((p) => (p === PANEL.changeModel ? PANEL.idle : PANEL.changeModel))}
+              >
+                Change model
+              </Button>
+              {canRotate ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={pending}
+                  aria-expanded={panel === PANEL.replaceKey}
+                  onClick={() => setPanel((p) => (p === PANEL.replaceKey ? PANEL.idle : PANEL.replaceKey))}
+                >
+                  Replace key
+                </Button>
+              ) : null}
+              <Button type="button" variant="ghost" disabled={pending} onClick={() => onReset(provider.provider)}>
+                Switch to platform defaults
+              </Button>
+            </div>
           ) : (
-            "Managed by agentsfleet · no key needed"
+            <div>
+              <Button
+                type="button"
+                size="sm"
+                disabled={pending}
+                aria-expanded={panel === PANEL.addKey}
+                onClick={() => setPanel((p) => (p === PANEL.addKey ? PANEL.idle : PANEL.addKey))}
+              >
+                {ADD_KEY_AND_MODEL_LABEL}
+              </Button>
+            </div>
           )}
-        </div>
-      </div>
 
-      <MetaGrid bordered items={metaItems} />
-
-      {live ? (
-        <div className="flex flex-wrap items-center gap-md">
-          <Button
-            type="button"
-            variant="outline"
-            disabled={pending}
-            aria-expanded={panel === PANEL.changeModel}
-            onClick={() => setPanel((p) => (p === PANEL.changeModel ? PANEL.idle : PANEL.changeModel))}
-          >
-            Change model
-          </Button>
-          {canRotate ? (
-            <Button
-              type="button"
-              variant="outline"
-              disabled={pending}
-              aria-expanded={panel === PANEL.replaceKey}
-              onClick={() => setPanel((p) => (p === PANEL.replaceKey ? PANEL.idle : PANEL.replaceKey))}
-            >
-              Replace key
-            </Button>
+          {live && credRef && panel === PANEL.changeModel ? (
+            <HeroChangeModelPanel
+              provider={provider.provider}
+              credentialRef={credRef}
+              onClose={() => setPanel(PANEL.idle)}
+            />
           ) : null}
-          <Button type="button" variant="ghost" disabled={pending} onClick={() => onReset(provider.provider)}>
-            Switch to platform defaults
-          </Button>
+
+          {live && credRef && panel === PANEL.replaceKey ? (
+            <HeroReplaceKeyPanel
+              workspaceId={workspaceId}
+              credentialRef={credRef}
+              provider={provider.provider}
+              currentModel={provider.model}
+              onClose={() => setPanel(PANEL.idle)}
+            />
+          ) : null}
+
+          {!live && panel === PANEL.addKey ? (
+            <ProviderKeyForm
+              workspaceId={workspaceId}
+              activate
+              onDone={() => setPanel(PANEL.idle)}
+              onCancel={() => setPanel(PANEL.idle)}
+            />
+          ) : null}
+
+          {error ? (
+            <Alert variant="destructive" className="text-xs">
+              {error}
+            </Alert>
+          ) : null}
         </div>
-      ) : (
-        <div>
-          <Button asChild size="sm">
-            <a href="#other-providers">Bring your own key</a>
-          </Button>
-        </div>
-      )}
-
-      {live && credRef && panel === PANEL.changeModel ? (
-        <HeroChangeModelPanel
-          provider={provider.provider}
-          credentialRef={credRef}
-          onClose={() => setPanel(PANEL.idle)}
-        />
-      ) : null}
-
-      {live && credRef && panel === PANEL.replaceKey ? (
-        <HeroReplaceKeyPanel
-          workspaceId={workspaceId}
-          credentialRef={credRef}
-          provider={provider.provider}
-          currentModel={provider.model}
-          onClose={() => setPanel(PANEL.idle)}
-        />
-      ) : null}
-
-      {error ? (
-        <Alert variant="destructive" className="text-xs">
-          {error}
-        </Alert>
-      ) : null}
-    </DashboardPanel>
+      }
+    />
   );
 }

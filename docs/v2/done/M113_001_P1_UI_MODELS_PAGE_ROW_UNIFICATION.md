@@ -14,7 +14,7 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Milestone:** M113
 **Workstream:** 001
 **Date:** Jul 04, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — the confusing "Bring your own key" affordance and redundant hero copy were flagged directly against the shipping v2.0.0 dashboard.
 **Categories:** UI
 **Batch:** B1 — independent of M113_002 (error copy) and M113_003 (Secrets split); both touch this page's file tree but different concerns.
@@ -123,7 +123,7 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 
 ## Sections (implementation slices)
 
-### §1 — Fold the hero card into the row list
+### §1 — Fold the hero card into the row list — DONE
 
 **Implementation default:** the platform-default row renders through the same component `ProviderSwitchList` uses for every other row, positioned first; its distinguishing content (balance-independent "DEFAULT · ACTIVE MODEL" pill, provider/context/billing facts) becomes that row's expanded/detail content, not a separate card.
 
@@ -131,7 +131,7 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 - **Dimension 1.2** — no element with accessible name "Bring your own key" exists; the default row's own action opens the same "Other provider"-style form inline (one click, not a scroll) → Test `test_bring_your_own_key_button_removed`
 - **Dimension 1.3** — the redundant "Platform default model" heading / "Managed by agentsfleet · no key needed" subtext is trimmed to what the pill doesn't already say → Test `test_default_row_copy_not_redundant_with_pill`
 
-### §2 — Real Provider dropdown for Other provider
+### §2 — Real Provider dropdown for Other provider — DONE
 
 - **Dimension 2.1** — the generic "Other provider" form's Provider field renders as a dropdown populated from the catalogue's known providers (the same list `ProviderSwitchList`'s `uniqueProviders(models)` already computes), with the Model field's existing dropdown-or-free-text behavior unchanged → Test `test_other_provider_field_is_dropdown`
 - **Dimension 2.2** — regression: `CustomEndpointForm` (openai-compatible) is unaffected — its Provider is fixed, not part of this dropdown → Test `test_custom_endpoint_form_unchanged`
@@ -184,11 +184,11 @@ Idempotency/replay: N/A — no retry semantics touched.
 
 ## Acceptance Criteria
 
-- [ ] One shared row list renders both the platform default and every provider — verify: `make test-unit-app` (Dimension 1.1)
-- [ ] No "Bring your own key" button remains — verify: grep `ui/packages/app/app/(dashboard)/settings/models/` for the literal string
-- [ ] Other-provider Provider field is a dropdown — verify: `make test-unit-app` (Dimension 2.1)
-- [ ] `make lint-app` clean · no file over 350 lines added
-- [ ] `gitleaks detect` clean
+- [x] One shared row list renders both the platform default and every provider — verify: `make test-unit-app` (Dimension 1.1)
+- [x] No "Bring your own key" button remains — verify: grep `ui/packages/app/app/(dashboard)/settings/models/` for the literal string
+- [x] Other-provider Provider field is a dropdown — verify: `make test-unit-app` (Dimension 2.1)
+- [x] `make lint-app` clean · no file over 350 lines added
+- [x] `gitleaks detect` clean
 
 ---
 
@@ -224,10 +224,12 @@ Mandatory if `ActiveModelHero.tsx` is deleted rather than reduced to an adapter.
 
 ## Discovery (consult log)
 
-- **Consults:** none yet — populated during EXECUTE/VERIFY.
+- **Design decision:** `ActiveModelHero` folds into `ProviderSwitchList` via `DashboardRow`'s existing (previously unused on this page) `meta` slot rather than a new expand-toggle — every existing hero button/panel assertion still resolves via `getByRole`/`getByText` regardless of DOM nesting. Required extending the shared test stub `tests/helpers/models-component-mocks.tsx` (not in the original Files Changed list) since its `DashboardRow` mock didn't render `meta` or spread arbitrary props — without that, hero tests would've gone dark under the mock.
+- **Bug found + fixed during `/review` (RULE DID):** merging the hero gave it an independent expand-state (`panel`) separate from `ProviderSwitchList`'s own `open` state. `ProviderKeyForm` hardcodes its field ids (`provider-key-provider` etc.), which was safe pre-merge (a single shared `open` toggle meant only one instance ever mounted) but became reachable as a real bug post-merge — the hero's own inline add-key form and any other row's add-key form can now be open simultaneously, colliding ids and breaking `htmlFor` association. Fixed with `React.useId()`; proved with a red-green test (`tests/provider-key-form.test.tsx` — reverted the fix, confirmed the new test fails, restored, confirmed it passes).
+- **UFS violation found + fixed:** "Add key & model" was a literal repeated across `ProviderSwitchList.tsx` (2 pre-existing sites) and newly in `ActiveModelHero.tsx` (1 site) — `audit-ufs.sh` doesn't catch this (ui/ carve-out is manual duty per `dispatch/write_ts_adhere_bun.md` §2). Extracted `ADD_KEY_AND_MODEL_LABEL` from `ActiveModelHero.tsx`, imported into `ProviderSwitchList.tsx`.
 - **Metrics review:** not applicable — no product/operator signal changes.
-- **Skill chain outcomes:** populated after `/write-unit-test` and `/review` run.
-- **Deferrals:** none yet.
+- **Skill chain outcomes:** `/write-unit-test` audit found and closed one gap (the Provider-dropdown's `onValueChange` reset-model interaction lacked a firing test). `/review` (adversarial diff review vs `docs/greptile-learnings/RULES.md` + `dispatch/write_ts_adhere_bun.md`) found the RULE DID and UFS issues above; both fixed in this diff.
+- **Deferrals:** none.
 
 ---
 
@@ -241,10 +243,11 @@ Standard chain — `/write-unit-test` → `/review` → `/review-pr`, per `AGENT
 
 | Check | Command | Result | Pass? |
 |-------|---------|--------|-------|
-| Unit tests | `make test-unit-app` | | |
-| Lint | `make lint-app` | | |
-| Gitleaks | `gitleaks detect` | | |
-| Dead code sweep | see above | | |
+| Unit tests | `make test-unit-app` | 128 files, 1175/1175 (baseline at CHORE(open): 1169) | ✅ |
+| Lint | `make lint-app` | Oxlint + tsc clean | ✅ |
+| Gitleaks | `gitleaks protect --staged` (pre-commit hook, every commit this workstream) | 0 leaks | ✅ |
+| Dead code sweep | N/A — `ActiveModelHero.tsx` kept (reduced to a row component), not deleted | — | N/A |
+| 350-line gate | `git diff --name-only origin/main \| grep -v '\.md$' \| xargs wc -l \| awk '$1>350'` | no M113_001-touched file over 350 lines (pre-existing over-length files from M108/M112 unrelated to this diff) | ✅ |
 
 ---
 
