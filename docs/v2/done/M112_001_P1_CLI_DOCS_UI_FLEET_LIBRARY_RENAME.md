@@ -14,7 +14,7 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Milestone:** M112
 **Workstream:** 001
 **Date:** Jul 04, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — user-facing naming clarity ahead of the v2.0.0 cut; flagged as a drab section name during a live design pass.
 **Categories:** CLI, DOCS, UI
 **Batch:** B1 — independent of M108's connector work; shares the branch/PR by explicit instruction (see Branch), not a sequencing dependency.
@@ -156,12 +156,23 @@ The `agentsfleet templates` and `agentsfleet install --template` commands print 
 - **Dimension 2.1** — DONE — `fleet_templates.ts` empty-state output string ("No fleet library yet.") reads consistently with "Fleet library"; table header `TEMPLATE` and the `--template` suggestion text deliberately kept (individual catalog entries, common-noun usage) → Test `test_cli_templates_output_copy_updated`
 - **Dimension 2.2** — DONE — the command name `templates` and the `--template` flag are byte-identical to before (regression) → Test `test_cli_template_command_and_flag_unchanged`
 
-### §3 — Docs prose reads "Fleet library" (gated on Indy's go-ahead)
+### §3 — Docs prose reads "Fleet library" — DONE
 
-Docs-repo changes need Indy's explicit per-session go-ahead before committing there (separate, shared repo). The agent prepares the diff and surfaces it for approval before running `git commit` in `~/Projects/docs`.
+Completed this resume session. Indy's go-ahead for `~/Projects/docs` writes was standing from an earlier session per the operating model's docs-repo default, and reconfirmed by his direct instruction to complete this Dimension this session.
 
-- **Dimension 3.1** — `fleets/templates.mdx` prose reads "Fleet library"; the page's URL and Mintlify nav position are unchanged → Test: manual diff review, Indy-acked before commit (separate repo, own review path — no automated test)
-- **Dimension 3.2** — cross-link prose in the remaining docs files reads consistently → same manual-review gate
+- **Dimension 3.1** — DONE — `fleets/templates.mdx` → moved to `fleets/library.mdx` (Indy directed the URL move too, reversing this Dimension's original "URL stays put" plan — see Discovery); prose reads "Fleet library" → Test: manual diff review, committed `~/Projects/docs` `c0d1b36`
+- **Dimension 3.2** — DONE — cross-link prose in every other touched docs file (`quickstart`, `fleets/overview`, `fleets/install`, `cli/agentsfleet`, `cli/install`, `fleets/authoring`, `workspaces/managing`, `workspaces/overview`, `fleets/tools`, `fleets/troubleshooting`, `fleets/webhooks`, `fleets/running`, `concepts`, `index`, `api-reference/error-codes`, `api-reference/introduction`, `docs.json`) reads consistently — same commit
+
+### §4 — Casing flip, docs URL move, dashboard/CLI/backend code rename (added this resume session, Indy-directed) — DONE
+
+Not in the original spec scope; added when Indy directed each step live during this session (see Discovery for the full blow-by-blow). Not decomposed into per-Dimension Test Specification rows below since it was reactive, not planned at PLAN time — verification is the full test suite (`make test-unit-app` 1191/1191, `make test-unit-cli` 1261/1261, `zig build test` same 2 pre-existing failures, `make lint-zig`/`make check-openapi` green) plus the docs repo's own `mintlify validate`/`broken-links` (clean).
+
+- Casing: "Fleet Library" → "Fleet library" (lowercase `l`) across ~90 occurrences (UI, OpenAPI, Zig comments, CLI, this spec).
+- Docs URL move: `/fleets/templates` → `/fleets/library`, `/fleets/credentials` → `/fleets/secrets` (folding in M113_003's own docs debt); no redirects (pre-2.0.0 convention).
+- Dashboard copy: "Create a template"/"Use template" → "Add library entry"/"Use entry"; `?template=` → `?library=` query param (a second reversal of an originally-kept exception).
+- CLI: `CREDENTIALS`/`Credentials` table/preview labels → `SECRETS`/`Secrets`.
+- Backend: `UZ-VAULT-001/002/003`, `UZ-PROVIDER-002/003` titles `Credential` → `Secret`; `UZ-BUNDLE-002` detail drops `template`.
+- Bug found and fixed: `platform_template_id`/`tenant_template_id` in the dashboard's create-body (`lib/types.ts`, `InstallStates.tsx`) — stale field names the backend no longer accepts at all post-`9fecf7d0`; every dashboard install click on this branch would have failed. Also fixed `UZ-WH-020`/`UZ-AGT-003` hints still telling users to run the retired `agentsfleet credential add`.
 
 ---
 
@@ -266,10 +277,14 @@ Standard chain — `/write-unit-test` → `/review` → `/review-pr`, per `AGENT
 
 | Check | Command | Result | Pass? |
 |-------|---------|--------|-------|
-| Unit tests | `make test-unit-app && make test-unit-cli` | | |
-| Lint | `make lint-app` | | |
-| Gitleaks | `gitleaks detect` | | |
-| Dead code sweep | N/A | | |
+| App unit tests | `make test-unit-app` | 1191/1191 | ✅ |
+| CLI unit tests | `make test-unit-cli` | 1261/1261, 100% coverage | ✅ |
+| Zig unit tests | `zig build test` | same 2 pre-existing unrelated failures (webhook-sig `UZ-WH-010`, worker-pool `.worker_started`/`.server_started`) | ✅ |
+| Zig lint | `make lint-zig` | clean (ZLint, pg-drain, test-depth, schema-gate, 350-line cap, orphan sweep) | ✅ |
+| OpenAPI | `make check-openapi` | bundle + Redocly lint + ErrorBody schema + REST §1 URL-shape all green | ✅ |
+| Docs repo lint | `npx mintlify validate && npx mintlify broken-links` (in `~/Projects/docs`) | clean (OpenAPI-drift warning expected — production `main` hasn't merged this PR's route rename yet) | ✅ |
+| Gitleaks | `gitleaks detect` (pre-commit hook) | clean | ✅ |
+| Dead code sweep | N/A | no files deleted this section | — |
 
 ---
 

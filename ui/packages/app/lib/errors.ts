@@ -72,17 +72,6 @@ const CODE_MAP = {
     title: "You need an additional scope for that",
     body: "Ask an agentsfleet admin to grant the scope this action requires.",
   },
-  // Dead entries — no backend code with either string exists anywhere in
-  // src/, and neither is client-minted. Can never fire. Left in place;
-  // removing dead code is a distinct, smaller cleanup not undertaken here.
-  "UZ-VALIDATION-001": {
-    title: "That didn't pass validation",
-    body: "Double-check the fields above and resubmit.",
-  },
-  "UZ-CRED-003": {
-    title: "That credential already exists",
-    body: "Pick a different name, or delete the existing one first.",
-  },
 } as const satisfies Record<string, CodeEntry>;
 
 /** Every code the dashboard currently maps to operator-friendly copy. */
