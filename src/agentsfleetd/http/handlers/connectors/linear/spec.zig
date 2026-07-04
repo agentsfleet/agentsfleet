@@ -8,7 +8,7 @@ pub const PROVIDER = common.PROVIDER_LINEAR;
 
 const AUTHORIZE_ENDPOINT = "https://linear.app/oauth/authorize";
 const TOKEN_ENDPOINT = common.LINEAR_TOKEN_ENDPOINT;
-const SCOPES = "read";
+const SCOPES = "read,offline_access";
 const STATE_DOMAIN_PREFIX = "linear:v1:";
 const STATE_NONCE_PREFIX = "connect:linear:nonce:";
 
