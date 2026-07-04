@@ -82,7 +82,8 @@ agentsfleet doctor
 
 | Command | Description |
 |---------|-------------|
-| `install --from <path>` | Register a Fleet from `<path>` |
+| `templates` | Browse first-party Fleet templates |
+| `install --template <id> [--name <name>]` | Install a Fleet from an onboarded template |
 | `list [--cursor <token>] [--limit <n>] [--workspace-id <id>]` | List Fleets (paginated) |
 | `status [<fleet_id>]` | Show Fleet status (workspace-wide if no id) |
 | `stop <fleet_id>` | Halt the session (resumable) |

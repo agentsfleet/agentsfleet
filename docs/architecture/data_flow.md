@@ -349,23 +349,25 @@ A config change never alters a language-model turn already in flight (one lease 
 
 ## End-to-end sequence
 
-### A. INSTALL  (`agentsfleet install --from <path>` or Fleet Bundle)
+### A. INSTALL  (`agentsfleet install --template <id>` from an onboarded template)
 
-Fleet Bundle import is a source-prep step before Fleet creation, not a second runtime creation path:
+Fleet template onboarding is the source-prep step before Fleet creation, not a second runtime creation path:
 
 ```
    dashboard source picker
     │
     ├─► Start from template
     ├─► Import public GitHub repository/path
-    ├─► Manual SKILL.md paste / local command-line install
+    ├─► Manual SKILL.md paste / local template onboarding
     └─► Upload bundle archive            (DEFERRED 2026-06-20, Indy-acked — not in the shipping picker)
             │
             ▼
    agentsfleetd-api
-    │  GET  /v1/fleets/bundles                (first-party template list)
-    │  POST /v1/workspaces/{ws}/fleets/bundles/snapshots
-    │       body: { source_kind, source_url? | template_id? }   (upload_ref DEFERRED 2026-06-20)
+    │  GET  /v1/fleets/bundles                (first-party catalog metadata)
+    │  GET  /v1/workspaces/{ws}/fleet-templates
+    │       (platform ∪ workspace tenant templates)
+    │  POST /v1/workspaces/{ws}/fleet-templates
+    │       body: { source_kind, source_ref, name? }
     │
     ├─► validate archive/path names, size caps, required SKILL.md,
     │    frontmatter, secret-shaped content, and path traversal
@@ -388,16 +390,15 @@ installed runtime. Runner remains the infrastructure vocabulary.
 ```
    user / agentsfleet CLI
     │  POST /v1/workspaces/{ws}/fleets
-    │  body, direct Markdown:
-    │       { name, trigger_markdown?, source_markdown }
-    │  OR body, validated bundle:
-    │       { name, bundle_id, overrides? }
+    │  body, platform template:
+    │       { platform_template_id, name? }
+    │  OR body, tenant template:
+    │       { tenant_template_id, name? }
     ▼
   agentsfleetd-api (create handler)
     │
-    ├─► if bundle_id present:
-    │      load validated bundle metadata + normalized SKILL.md/TRIGGER.md
-    │      from Postgres and immutable snapshot metadata from object storage
+    ├─► load normalized SKILL.md/TRIGGER.md + immutable snapshot metadata
+    │    from the selected template tier (platform or tenant)
     ├─► if trigger_markdown is absent:
     │      generate default manual/API trigger config
     ├─► check required workspace credentials by key name only; never resolve
