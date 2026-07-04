@@ -14,11 +14,12 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Milestone:** M113
 **Workstream:** 001
 **Date:** Jul 04, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — the confusing "Bring your own key" affordance and redundant hero copy were flagged directly against the shipping v2.0.0 dashboard.
 **Categories:** UI
 **Batch:** B1 — independent of M113_002 (error copy) and M113_003 (Secrets split); both touch this page's file tree but different concerns.
 **Branch:** feat/m108-connector-platform — folded into the SAME branch/PR (#477) as M108/M112, by Indy's explicit instruction this session.
+**Test Baseline:** unit=2309 integration=249
 **Depends on:** none
 **Provenance:** LLM-drafted (Claude Sonnet 5, Jul 04, 2026) from a live design pass + targeted codebase investigation this session (traced "Bring your own key" to a scroll-only anchor with no form-open behavior, confirmed the model-catalogue endpoint already backs a dropdown for Model but not Provider).
 
