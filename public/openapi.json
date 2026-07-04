@@ -5322,6 +5322,11 @@
             "type": "string",
             "description": "Present only on 409 conflict responses (RFC 7807 extension). Names the resource state that forbade the requested transition, e.g. `paused` when steering a paused fleet (UZ-AGT-012).",
             "example": "paused"
+          },
+          "user_message": {
+            "type": "string",
+            "description": "Present only for error codes with a curated dashboard-safe rendering\n(RFC 7807 extension). One plain sentence with no snake_case tokens,\ninternal nouns, or HTTP jargon — safe to render directly to an\nend user, unlike `detail`/`title` which are written for the\nCLI/API-integrator audience and may reference internal state.\nOmitted (not `null`) for every code without a curated override;\nclients should fall back to `detail`/`title` in that case.\n",
+            "example": "We couldn't find that Fleet. It may have been deleted, or the ID doesn't match one in this workspace."
           }
         }
       },

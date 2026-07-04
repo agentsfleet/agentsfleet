@@ -120,10 +120,14 @@ describe("EditSecretDialog", () => {
     expect(createCredentialActionMock).not.toHaveBeenCalled();
   });
 
-  it("surfaces a create error as friendly copy (UZ-VAULT-001 curated in CODE_MAP) and does not refresh or close", async () => {
+  it("surfaces a create error's friendly copy (UZ-VAULT-001's user_message, curated server-side, error_entries.zig) and does not refresh or close", async () => {
+    // A real server action's ActionResult.error is ApiError.message, which
+    // client.ts now resolves as user_message ?? detail ?? title — the mock
+    // stands in for that resolved value (the backend registry migration;
+    // UZ-VAULT-001 is no longer curated in frontend CODE_MAP).
     createCredentialActionMock.mockResolvedValue({
       ok: false,
-      error: "POST body must include a 'data' field that is a JSON object with at least one key.",
+      error: "That secret needs at least one field. Enter it as a JSON object with one or more keys — not a bare string or list.",
       errorCode: "UZ-VAULT-001",
       status: 400,
     });

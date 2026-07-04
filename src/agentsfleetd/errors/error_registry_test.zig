@@ -232,11 +232,11 @@ test "startup hints reference 'agentsfleetd doctor' or env vars" {
     }
 }
 
-// ── Entry struct has exactly 5 fields ─────────────────────────────────────
+// ── Entry struct has exactly 6 fields ─────────────────────────────────────
 
-test "Entry struct has 5 fields (code, http_status, title, hint, docs_uri)" {
+test "Entry struct has 6 fields (code, http_status, title, hint, docs_uri, user_message)" {
     const fields = @typeInfo(reg.Entry).@"struct".fields;
-    try std.testing.expectEqual(@as(usize, 5), fields.len);
+    try std.testing.expectEqual(@as(usize, 6), fields.len);
 }
 
 // ── UNKNOWN sentinel has non-empty fields ─────────────────────────────────
@@ -246,6 +246,45 @@ test "UNKNOWN sentinel has all fields populated" {
     try std.testing.expect(reg.UNKNOWN.title.len > 0);
     try std.testing.expect(reg.UNKNOWN.hint.len > 0);
     try std.testing.expect(reg.UNKNOWN.docs_uri.len > 0);
+    try std.testing.expect(reg.UNKNOWN.user_message == null);
+}
+
+// ── user_message ───────────────────────────────────────────────────────
+
+test "an e()-constructed entry (no curated override) has a null user_message" {
+    // ERR_PAYLOAD_TOO_LARGE is deliberately NOT one of this spec's 27 curated
+    // codes — picked to prove e() (not eu()) still defaults the field to null.
+    const entry = reg.lookup(reg.ERR_PAYLOAD_TOO_LARGE);
+    try std.testing.expect(entry.user_message == null);
+}
+
+test "every code migrated to eu() this spec has a non-empty user_message distinct from its hint" {
+    const migrated = [_][]const u8{
+        reg.ERR_INTERNAL_DB_UNAVAILABLE,         reg.ERR_INTERNAL_DB_QUERY,
+        reg.ERR_INVALID_REQUEST,                 reg.ERR_FORBIDDEN,
+        reg.ERR_INSUFFICIENT_SCOPE,              reg.ERR_AGENTSFLEET_NOT_FOUND,
+        reg.ERR_FLEET_BUNDLE_INVALID,            reg.ERR_FLEET_BUNDLE_NOT_FOUND,
+        reg.ERR_VAULT_DATA_INVALID,              reg.ERR_VAULT_DATA_TOO_LARGE,
+        reg.ERR_SECRET_NOT_FOUND,                reg.ERR_PROVIDER_SECRET_REF_REQUIRED,
+        reg.ERR_PROVIDER_SECRET_NOT_FOUND,       reg.ERR_PROVIDER_SECRET_DATA_MALFORMED,
+        reg.ERR_PROVIDER_MODEL_NOT_IN_CATALOGUE, reg.ERR_APPROVAL_PARSE_FAILED,
+        reg.ERR_APPROVAL_NOT_FOUND,              reg.ERR_APPROVAL_INVALID_SIGNATURE,
+        reg.ERR_APPROVAL_REDIS_UNAVAILABLE,      reg.ERR_APPROVAL_CONDITION_INVALID,
+        reg.ERR_APPROVAL_ALREADY_RESOLVED,       reg.ERR_APIKEY_NOT_FOUND,
+        reg.ERR_APIKEY_NAME_TAKEN,               reg.ERR_APIKEY_ALREADY_REVOKED,
+        reg.ERR_APIKEY_READONLY_FIELD,           reg.ERR_APIKEY_MUST_REVOKE_FIRST,
+        reg.ERR_CRED_INTEGRATION_NOT_CONNECTED,
+    };
+    try std.testing.expectEqual(@as(usize, 27), migrated.len);
+    for (migrated) |code| {
+        const entry = reg.lookup(code);
+        const um = entry.user_message orelse {
+            std.debug.print("code missing user_message: {s}\n", .{code});
+            return error.TestExpectedUserMessage;
+        };
+        try std.testing.expect(um.len > 0);
+        try std.testing.expect(!std.mem.eql(u8, um, entry.hint));
+    }
 }
 
 // ── Canary: deleted files must not be importable ─────────────────────────

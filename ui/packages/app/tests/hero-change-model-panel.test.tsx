@@ -58,10 +58,14 @@ describe("HeroChangeModelPanel", () => {
     expect(onClose).not.toHaveBeenCalled();
   });
 
-  it("maps UZ-PROVIDER-004 to the curated catalogue-copy instead of the raw backend string", async () => {
+  it("renders UZ-PROVIDER-004's curated copy (now authored server-side, error_entries.zig) instead of the raw backend string", async () => {
+    // ApiError.message is user_message ?? detail (client.ts) —
+    // the friendly copy for UZ-PROVIDER-004 moved to the backend registry,
+    // so the mock stands in for the already-resolved value a real call
+    // would produce.
     setProviderSelfManagedAction.mockResolvedValue({
       ok: false,
-      error: "The effective model is not present in core.model_caps.",
+      error: "That model isn't in our catalogue yet. Pick a listed model, or ask us to add support for it.",
       errorCode: "UZ-PROVIDER-004",
     });
     const onClose = renderPanel();

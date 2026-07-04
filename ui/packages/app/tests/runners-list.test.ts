@@ -185,7 +185,14 @@ describe("RunnerList component", () => {
   it("surfaces a non-validation load error inline without resetting", async () => {
     const user = userEvent.setup();
     await renderList(listResponse([REGISTERED], 30));
-    listRunnersActionMock.mockResolvedValueOnce({ ok: false, error: "boom", errorCode: "UZ-INTERNAL-001" });
+    // ApiError.message is now user_message ?? detail (client.ts)
+    // — UZ-INTERNAL-001's friendly copy lives in error_entries.zig, not
+    // frontend CODE_MAP anymore; the mock stands in for the resolved value.
+    listRunnersActionMock.mockResolvedValueOnce({
+      ok: false,
+      error: "Something broke on our end. Give it another shot — if it keeps failing, send us the code below.",
+      errorCode: "UZ-INTERNAL-001",
+    });
     await user.click(screen.getByRole("button", { name: /^next$/i }));
     await screen.findByText(/something broke on our end/i);
     // No UZ-REQ-001 reset loop: exactly one load fired by the click.

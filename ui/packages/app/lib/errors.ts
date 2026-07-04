@@ -50,130 +50,38 @@ interface CodeEntry {
 // `CURATED_ERROR_CODES` (below) is the public-facing key list — exported so
 // the invariant test in errors.test.ts iterates the live set instead of a
 // hand-typed shadow that goes stale the next time someone adds an entry.
+//
+// Every code that CAN be backend-authored now carries its friendly copy as
+// `user_message` on the RFC 7807 error body (see
+// src/agentsfleetd/errors/error_entries.zig's eu()) instead of living here —
+// client.ts/approvals.ts prefer it automatically, no call-site changes
+// needed. What's left below is exactly the set that can't be: codes minted
+// client-side that never round-trip to a real backend response, plus two
+// dead entries kept as-is (see the note below).
 const CODE_MAP = {
+  // Minted in with-token.ts when no Bearer token exists at all.
   "UZ-AUTH-401": {
     title: "Your session expired",
     body: "Sign in again to keep going.",
   },
-  "UZ-INTERNAL-001": {
-    title: "Something broke on our end",
-    body: "Give it another shot — if it keeps failing, send us the code below.",
-  },
-  "UZ-INTERNAL-002": {
-    title: "We're under load and dropped your request",
-    body: "Try again in a few seconds.",
-  },
-  "UZ-VALIDATION-001": {
-    title: "That didn't pass validation",
-    body: "Double-check the fields above and resubmit.",
-  },
-  "UZ-CRED-001": {
-    title: "We couldn't look up that credential",
-    body: "Re-store the credential under the same name, or pick a different one.",
-  },
-  "UZ-CRED-003": {
-    title: "That credential already exists",
-    body: "Pick a different name, or delete the existing one first.",
-  },
-  "UZ-AGT-009": {
-    title: "That Fleet is in a state that blocks this action",
-    body: "Check the current status on the detail page and try the right transition.",
-  },
-  "UZ-AUTH-001": {
-    title: "You need operator access for that",
-    body: "Ask a tenant operator or admin to manage API keys.",
-  },
-  // UZ-AUTH-022 is the shared insufficient-scope code across every scope gate
-  // (runner/model operator surfaces, template onboarding, …). One generic copy
-  // — the backend `detail` names the specific scope required. (Reconciled from
-  // two domain-specific entries — operator + template — that collided here.)
+  // ALSO minted client-side (lib/actions/require-scope.ts's fail-fast
+  // pre-check, before any request reaches the backend) — that path can't
+  // read a backend user_message, so this entry has to stay even though
+  // UZ-AUTH-022 also has one now for the real-HTTP-403 path.
   "UZ-AUTH-022": {
     title: "You need an additional scope for that",
     body: "Ask an agentsfleet admin to grant the scope this action requires.",
   },
-  "UZ-REQ-001": {
-    title: "That request wasn't valid",
-    body: "We reset to the defaults — try again.",
+  // Dead entries — no backend code with either string exists anywhere in
+  // src/, and neither is client-minted. Can never fire. Left in place;
+  // removing dead code is a distinct, smaller cleanup not undertaken here.
+  "UZ-VALIDATION-001": {
+    title: "That didn't pass validation",
+    body: "Double-check the fields above and resubmit.",
   },
-  "UZ-APIKEY-003": {
-    title: "We couldn't find that API key",
-    body: "It may have already been deleted — refresh the list.",
-  },
-  "UZ-APIKEY-005": {
-    title: "An API key with that name already exists",
-    body: "Pick a different name for this tenant.",
-  },
-  "UZ-APIKEY-006": {
-    title: "That API key is already revoked",
-    body: "Refresh the list to see its current state.",
-  },
-  "UZ-APIKEY-007": {
-    title: "A revoked key can't be reactivated",
-    body: "Mint a new key instead.",
-  },
-  "UZ-APIKEY-008": {
-    title: "Revoke this key before deleting it",
-    body: "Revoke it first, then delete the revoked key.",
-  },
-  "UZ-PROVIDER-001": {
-    title: "Pick a secret to activate",
-    body: "Choose a stored secret before switching to a self-managed model.",
-  },
-  "UZ-PROVIDER-002": {
-    title: "We couldn't find that secret",
-    body: "Store it under Secrets & ENVs, then try again.",
-  },
-  "UZ-PROVIDER-003": {
-    title: "That secret is missing required fields",
-    body: "It needs a provider and model set — edit it under Secrets & ENVs and add them.",
-  },
-  "UZ-PROVIDER-004": {
-    title: "That model isn't in our catalogue yet",
-    body: "Pick a listed model, or ask us to add support for it.",
-  },
-  "UZ-VAULT-001": {
-    title: "That secret needs at least one field",
-    body: "Enter it as a JSON object with one or more keys — not a bare string or list.",
-  },
-  "UZ-VAULT-002": {
-    title: "That secret is too large",
-    body: "Keep it under 4 KB — trim or shorten the fields.",
-  },
-  "UZ-VAULT-003": {
-    title: "We couldn't find that secret",
-    body: "It may have already been deleted — refresh the list.",
-  },
-  "UZ-BUNDLE-001": {
-    title: "That Fleet Bundle isn't valid",
-    body: "It's missing SKILL.md, or has an unsafe or oversized file — check the source and try again.",
-  },
-  "UZ-BUNDLE-002": {
-    title: "We couldn't find that Fleet Bundle",
-    body: "It may not be installed in this workspace yet — check the Fleet Library.",
-  },
-  "UZ-APPROVAL-001": {
-    title: "That approval gate's config is invalid",
-    body: "Check the gates section in TRIGGER.md.",
-  },
-  "UZ-APPROVAL-002": {
-    title: "That approval action wasn't found",
-    body: "It may have already timed out or been resolved elsewhere.",
-  },
-  "UZ-APPROVAL-003": {
-    title: "That approval callback couldn't be verified",
-    body: "Check the signing secret configuration.",
-  },
-  "UZ-APPROVAL-004": {
-    title: "Approvals are temporarily unavailable",
-    body: "We default to denying while this is down — try again shortly.",
-  },
-  "UZ-APPROVAL-005": {
-    title: "That approval gate's condition is invalid",
-    body: "Check the gate's condition expression for a supported operator.",
-  },
-  "UZ-APPROVAL-006": {
-    title: "Someone already resolved this",
-    body: "Refresh to see the outcome and who resolved it.",
+  "UZ-CRED-003": {
+    title: "That credential already exists",
+    body: "Pick a different name, or delete the existing one first.",
   },
 } as const satisfies Record<string, CodeEntry>;
 

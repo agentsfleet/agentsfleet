@@ -53,15 +53,17 @@ export async function request<T>(
   if (res.status === 204) return undefined as T;
 
   // Error bodies are RFC 7807 problem+json: `{ docs_uri, title, detail,
-  // error_code, request_id }` (see src/http/handlers/common.zig errorResponse).
-  // The human-facing message is `detail` (instance-specific), falling back to
-  // `title` (the short label) then the HTTP reason phrase.
+  // error_code, request_id, user_message? }` (see
+  // src/agentsfleetd/http/handlers/common.zig errorResponse). `user_message`
+  // (when present) is the curated dashboard-safe sentence for this code —
+  // preferred over `detail`/`title`, which are written for the CLI/API
+  // audience and often carry internal nouns a dashboard user can't act on.
   const body = await res.json().catch(() => ({ detail: res.statusText }));
 
   if (!res.ok) {
     const retryAfterMs = retryAfterFrom(res);
     throw new ApiError(
-      body.detail ?? body.title ?? res.statusText,
+      body.user_message ?? body.detail ?? body.title ?? res.statusText,
       res.status,
       body.error_code ?? "UZ-UNKNOWN",
       body.request_id,
