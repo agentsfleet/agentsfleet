@@ -23,7 +23,7 @@ import { useProviderAction } from "../lib/use-provider-action";
 import { useModelCatalogue } from "./ModelCatalogueProvider";
 import ProviderKeyForm from "./ProviderKeyForm";
 import CustomEndpointForm from "./CustomEndpointForm";
-import ActiveModelHero, { ADD_KEY_AND_MODEL_LABEL } from "./ActiveModelHero";
+import ActiveModelRow, { ADD_KEY_AND_MODEL_LABEL } from "./ActiveModelRow";
 
 type Props = {
   workspaceId: string;
@@ -114,7 +114,7 @@ export default function ProviderSwitchList({ workspaceId, provider, secrets }: P
       <SectionLabel>Providers</SectionLabel>
       {pending ? <Spinner size="sm" srLabel="Switching" /> : null}
       <DashboardRowGroup data-testid="provider-switch-list">
-        <ActiveModelHero workspaceId={workspaceId} provider={provider} secrets={secrets} />
+        <ActiveModelRow workspaceId={workspaceId} provider={provider} secrets={secrets} />
 
         {/* Platform defaults — shown only while a self-managed model is live. */}
         {live ? (

@@ -4,7 +4,7 @@ import { withToken, type ActionResult } from "@/lib/actions/with-token";
 import { requireScope } from "@/lib/actions/require-scope";
 import { SCOPE } from "@/lib/auth/scopes";
 import { withWorkspaceScope } from "@/lib/workspace";
-import { createSecret as apiCreateCredential } from "@/lib/api/secrets";
+import { createSecret } from "@/lib/api/secrets";
 import {
   listAdminModels,
   createAdminModel,
@@ -39,7 +39,7 @@ export async function deleteAdminModelAction(uid: string): Promise<ActionResult<
 /**
  * Set the active platform default. Two server-side steps under one token:
  *   1. write the api_key into the acting admin's workspace vault as the
- *      credential named for the provider (decision F — the key lives in the
+ *      secret named for the provider (decision F — the key lives in the
  *      admin's own workspace; the resolver follows source_workspace_id into it),
  *   2. PUT the platform-keys row (provider + catalogued model + base_url), which
  *      validates the model against the catalogue and stands every other row down.
@@ -61,7 +61,7 @@ export async function setPlatformDefaultAction(body: {
       const result = await withWorkspaceScope(t, async (workspaceId) => {
         const data: Record<string, unknown> = { provider: body.provider, api_key: body.api_key, model: body.model };
         if (body.base_url) data.base_url = body.base_url;
-        await apiCreateCredential(workspaceId, { name: body.provider, data }, t);
+        await createSecret(workspaceId, { name: body.provider, data }, t);
 
         return setPlatformDefault(t, {
           provider: body.provider,

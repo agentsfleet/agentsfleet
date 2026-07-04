@@ -156,7 +156,7 @@ export function fleetLibraryMock() {
 
 export function modelCapsMock() {
   // getModelCaps is mocked; the pure catalogue helpers (read synchronously by
-  // ProviderSwitchList / ActiveModelHero / ProviderModelSelect) keep their real
+  // ProviderSwitchList / ActiveModelRow / ProviderModelSelect) keep their real
   // behaviour so a full module mock doesn't strip them to undefined.
   return {
     getModelCaps: getModelCapsMock,
