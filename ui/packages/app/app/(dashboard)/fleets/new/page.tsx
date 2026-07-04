@@ -10,7 +10,7 @@ import { hasTemplateWriteScope } from "../scope";
 export const dynamic = "force-dynamic";
 
 type SearchParams = { template?: string | string[]; create?: string | string[] };
-const INSTALL_PAGE_DESCRIPTION = "Pick from the fleet library. Watch the loop..";
+const INSTALL_PAGE_DESCRIPTION = "Start a fleet from the library. Watch it run in a loop.";
 
 // Gallery-first install. Templates + the workspace's existing
 // credential names are fetched server-side so the client orchestrator can render
