@@ -131,7 +131,7 @@ Two first scenarios anchor the product flow:
 
 A Fleet's `TRIGGER.md` declares `triggers: [...]` — an array of 1–8 trigger entries (unique on `(type, source)` tuple). Each entry is one of:
 
-- **Webhook trigger.** Type `webhook`, `source` from M28's `PROVIDER_REGISTRY` (`github`, `linear`, `jira`, `grafana`, `slack`, `agentmail`, `clerk`), and `events: [...]` listing the provider-specific subscriptions. An external system POSTs to `POST /v1/webhooks/{fleet_id}/{source}`; `fleet_id` is the canonical Fleet identifier. The receiver verifies the HMAC signature via M28's middleware (per provider), normalises the payload, and lands a synthetic event on `fleet:{id}:events` with `actor=webhook:<source>`.
+- **Webhook trigger.** Type `webhook`, `source` from M28's `PROVIDER_REGISTRY` (`github`, `linear`, `jira`, `grafana`, `slack`, `agentmail`, `clerk`), and `events: [...]` listing the provider-specific subscriptions. An external system POSTs to `POST /v1/webhooks/{fleet_id}` (GitHub gets its own `POST /v1/webhooks/{fleet_id}/github`; every other provider posts to the bare route, `source` resolved server-side from the fleet's `triggers[]` config, not the URL); `fleet_id` is the canonical Fleet identifier. The receiver verifies the HMAC signature via M28's middleware (per provider), normalises the payload, and lands a synthetic event on `fleet:{id}:events` with `actor=webhook:<source>`.
 - **Cron trigger.** Type `cron`, `schedule` as a 5-field cron expression. NullClaw's in-runner cron tool fires on time. Each fire arrives as a synthetic event with `actor=cron:<schedule>`. At most one cron entry per Fleet.
 
 In addition to the declared triggers, every Fleet always accepts:
