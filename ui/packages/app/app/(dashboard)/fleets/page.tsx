@@ -86,7 +86,7 @@ export async function FleetsData() {
 }
 
 // Empty fleets → a centered EmptyState: icon, headline, one line of context,
-// then [Learn more] + the primary Install affordance. The template gallery
+// then [Learn more] + the primary Install affordance. The library gallery
 // itself lives on /fleets/new (the Install fleet button routes there), so the
 // first-run screen stays calm rather than rendering the full picker inline.
 function FleetsEmptyState() {
@@ -94,7 +94,7 @@ function FleetsEmptyState() {
     <EmptyState
       icon={<BotIcon size={28} />}
       title="No fleets yet"
-      description="Pick a template to install your first fleet — connect its tool and it runs on every matching event."
+      description="Pick from the fleet library to install your first fleet."
       action={
         <div className="flex flex-wrap items-center justify-center gap-md">
           <a

@@ -11,13 +11,13 @@ import { OPENAI_COMPATIBLE_PROVIDER } from "@/lib/types";
 // points the tenant provider at the new endpoint.
 
 const routerRefresh = vi.fn();
-const createCredentialAction = vi.hoisted(() => vi.fn());
+const createSecretAction = vi.hoisted(() => vi.fn());
 const setProviderSelfManagedAction = vi.hoisted(() => vi.fn());
 const captureModelActivated = vi.hoisted(() => vi.fn());
 const captureProductEvent = vi.hoisted(() => vi.fn());
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: routerRefresh, push: vi.fn() }) }));
-vi.mock("@/app/(dashboard)/credentials/actions", () => ({ createCredentialAction }));
+vi.mock("@/app/(dashboard)/secrets/actions", () => ({ createSecretAction }));
 vi.mock("@/app/(dashboard)/settings/models/actions", () => ({ setProviderSelfManagedAction }));
 vi.mock("@/app/(dashboard)/settings/models/lib/track", () => ({ captureModelActivated }));
 vi.mock("@/lib/analytics/posthog", () => ({ captureProductEvent }));
@@ -28,7 +28,7 @@ import CustomEndpointForm from "@/app/(dashboard)/settings/models/components/Cus
 
 beforeEach(() => {
   vi.clearAllMocks();
-  createCredentialAction.mockResolvedValue({ ok: true, data: { name: "vllm" } });
+  createSecretAction.mockResolvedValue({ ok: true, data: { name: "vllm" } });
   setProviderSelfManagedAction.mockResolvedValue({
     ok: true,
     data: { provider: OPENAI_COMPATIBLE_PROVIDER, mode: "self_managed", model: "m1" },
@@ -49,7 +49,7 @@ describe("CustomEndpointForm", () => {
     fill("vllm", "http://vllm.corp/v1", "m1");
     fireEvent.click(screen.getByRole("button", { name: "Add custom endpoint" }));
     await waitFor(() => expect(screen.getByRole("alert").textContent).toMatch(/https/i));
-    expect(createCredentialAction).not.toHaveBeenCalled();
+    expect(createSecretAction).not.toHaveBeenCalled();
   });
 
   it("stores the endpoint without an api key and activates it", async () => {
@@ -58,13 +58,13 @@ describe("CustomEndpointForm", () => {
     fill("vllm", "https://vllm.corp/v1", "m1");
     fireEvent.click(screen.getByRole("button", { name: "Save & make active" }));
     await waitFor(() =>
-      expect(createCredentialAction).toHaveBeenCalledWith("ws_1", {
+      expect(createSecretAction).toHaveBeenCalledWith("ws_1", {
         name: "vllm",
         data: { provider: OPENAI_COMPATIBLE_PROVIDER, base_url: "https://vllm.corp/v1", model: "m1" },
       }),
     );
-    expect(captureProductEvent).toHaveBeenCalledWith(EVENTS.credential_added, { credential_name: "vllm" });
-    expect(setProviderSelfManagedAction).toHaveBeenCalledWith({ credential_ref: "vllm", model: "m1" });
+    expect(captureProductEvent).toHaveBeenCalledWith(EVENTS.secret_added, { secret_name: "vllm" });
+    expect(setProviderSelfManagedAction).toHaveBeenCalledWith({ secret_ref: "vllm", model: "m1" });
     expect(captureModelActivated).toHaveBeenCalled();
     await waitFor(() => expect(onDone).toHaveBeenCalled());
     expect(routerRefresh).toHaveBeenCalled();
@@ -75,7 +75,7 @@ describe("CustomEndpointForm", () => {
     fill("vllm", "https://vllm.corp/v1", "m1", "sk-secret");
     fireEvent.click(screen.getByRole("button", { name: "Add custom endpoint" }));
     await waitFor(() =>
-      expect(createCredentialAction).toHaveBeenCalledWith("ws_1", {
+      expect(createSecretAction).toHaveBeenCalledWith("ws_1", {
         name: "vllm",
         data: { provider: OPENAI_COMPATIBLE_PROVIDER, base_url: "https://vllm.corp/v1", model: "m1", api_key: "sk-secret" },
       }),
@@ -84,7 +84,7 @@ describe("CustomEndpointForm", () => {
   });
 
   it("surfaces a store error", async () => {
-    createCredentialAction.mockResolvedValue({ ok: false, error: "too big" });
+    createSecretAction.mockResolvedValue({ ok: false, error: "too big" });
     render(React.createElement(CustomEndpointForm, { workspaceId: "ws_1", onDone: vi.fn() }));
     fill("vllm", "https://vllm.corp/v1", "m1");
     fireEvent.click(screen.getByRole("button", { name: "Add custom endpoint" }));
@@ -92,13 +92,14 @@ describe("CustomEndpointForm", () => {
     expect(setProviderSelfManagedAction).not.toHaveBeenCalled();
   });
 
-  it("surfaces an activation error after a successful store", async () => {
+  it("surfaces a friendly activation error, routed through presentErrorString like the store step", async () => {
     setProviderSelfManagedAction.mockResolvedValue({ ok: false, error: "activation rejected" });
     const onDone = vi.fn();
     render(React.createElement(CustomEndpointForm, { workspaceId: "ws_1", activate: true, onDone }));
     fill("vllm", "https://vllm.corp/v1", "m1");
     fireEvent.click(screen.getByRole("button", { name: "Save & make active" }));
-    await waitFor(() => expect(screen.getByRole("alert").textContent).toMatch(/activation rejected/));
+    await waitFor(() => expect(screen.getByRole("alert").textContent).toMatch(/^Couldn't activate this model/));
+    expect(screen.getByRole("alert").textContent).toMatch(/activation rejected/);
     expect(onDone).not.toHaveBeenCalled();
   });
 
@@ -108,7 +109,7 @@ describe("CustomEndpointForm", () => {
     // A non-Enter key is ignored by the field handler.
     fireEvent.keyDown(screen.getByLabelText("Name"), { key: "a" });
     fireEvent.keyDown(screen.getByLabelText("Name"), { key: "Enter" });
-    expect(createCredentialAction).not.toHaveBeenCalled();
+    expect(createSecretAction).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     expect(onCancel).toHaveBeenCalled();
   });

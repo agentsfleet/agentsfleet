@@ -91,4 +91,23 @@ describe("lib/api/connectors", () => {
     );
     expect(res.install_url).toBe(install_url);
   });
+
+  it("getConnectorCatalog(…) GETs the workspace-nested /connectors collection and returns the entries", async () => {
+    const entries = [
+      { id: "slack", archetype: "oauth2", display_name: "Slack", configured: true, connected: true },
+      { id: "github", archetype: "app_install", display_name: "GitHub", configured: true, connected: false },
+    ];
+    fetchMock.mockResolvedValue({ ok: true, status: 200, json: async () => entries });
+    const mod = await import("../lib/api/connectors");
+    const res = await mod.getConnectorCatalog("ws_1", "tkn");
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining("/v1/workspaces/ws_1/connectors"),
+      expect.objectContaining({
+        method: "GET",
+        headers: expect.objectContaining({ Authorization: "Bearer tkn" }),
+      }),
+    );
+    expect(res).toHaveLength(2);
+    expect(res[1]?.archetype).toBe(mod.CONNECTOR_ARCHETYPE.appInstall);
+  });
 });

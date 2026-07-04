@@ -27,8 +27,8 @@ pub const Scope = enum {
     fleet_read,
     fleet_write,
     fleet_admin,
-    credential_read,
-    credential_write,
+    secret_read,
+    secret_write,
     apikey_read,
     apikey_write,
     apikey_admin,
@@ -53,11 +53,11 @@ pub const Scope = enum {
     approval_resolve, // decide an approval gate (approve/deny)
     billing_read,
     workspace_admin,
-    // Template catalogue (M103 consumes these): write = tenant-tier onboarding
-    // (held by a workspace owner), platform_template_write = platform-tier
+    // Fleet library (M103 consumes these): write = tenant-tier onboarding
+    // (held by a workspace owner), platform_library_write = platform-tier
     // onboarding (held by a platform operator). Independent — no hierarchy.
-    template_write,
-    platform_template_write,
+    library_write,
+    platform_library_write,
     // ── Runner credential (machine identity — minted onto the agt_r token) ─
     runner_self,
     // ── Cross-tenant override (held by almost no one; every use audited) ──
@@ -96,7 +96,7 @@ fn grantMembers(src: DefaultGrant) []const Scope {
         // enroll a runner").
         .tenant => &.{
             .fleet_admin,
-            .credential_write,
+            .secret_write,
             .apikey_admin,
             .fleetkey_write,
             .grant_write,
@@ -104,7 +104,7 @@ fn grantMembers(src: DefaultGrant) []const Scope {
             .billing_read,
             .approval_resolve,
             .workspace_admin,
-            .template_write,
+            .library_write,
         },
         // Host-resident runner credential — self-plane only.
         .runner => &.{.runner_self},
@@ -146,8 +146,8 @@ const WIRE = [_]ScopeWire{
     .{ .scope = .fleet_read, .str = "fleet:read" },
     .{ .scope = .fleet_write, .str = "fleet:write" },
     .{ .scope = .fleet_admin, .str = "fleet:admin" },
-    .{ .scope = .credential_read, .str = "credential:read" },
-    .{ .scope = .credential_write, .str = "credential:write" },
+    .{ .scope = .secret_read, .str = "secret:read" },
+    .{ .scope = .secret_write, .str = "secret:write" },
     .{ .scope = .apikey_read, .str = "apikey:read" },
     .{ .scope = .apikey_write, .str = "apikey:write" },
     .{ .scope = .apikey_admin, .str = "apikey:admin" },
@@ -169,8 +169,8 @@ const WIRE = [_]ScopeWire{
     .{ .scope = .approval_resolve, .str = "approval:resolve" },
     .{ .scope = .billing_read, .str = "billing:read" },
     .{ .scope = .workspace_admin, .str = "workspace:admin" },
-    .{ .scope = .template_write, .str = "template:write" },
-    .{ .scope = .platform_template_write, .str = "platform-template:write" },
+    .{ .scope = .library_write, .str = "library:write" },
+    .{ .scope = .platform_library_write, .str = "platform-library:write" },
     .{ .scope = .runner_self, .str = "runner:self" },
     .{ .scope = .workspace_any, .str = "workspace:any" },
 };
@@ -199,7 +199,7 @@ const Subsumption = struct { scope: Scope, includes: []const Scope };
 const HIERARCHY = [_]Subsumption{
     .{ .scope = .fleet_admin, .includes = &.{ .fleet_write, .fleet_read } },
     .{ .scope = .fleet_write, .includes = &.{.fleet_read} },
-    .{ .scope = .credential_write, .includes = &.{.credential_read} },
+    .{ .scope = .secret_write, .includes = &.{.secret_read} },
     .{ .scope = .apikey_admin, .includes = &.{ .apikey_write, .apikey_read } },
     .{ .scope = .apikey_write, .includes = &.{.apikey_read} },
     .{ .scope = .fleetkey_write, .includes = &.{.fleetkey_read} },

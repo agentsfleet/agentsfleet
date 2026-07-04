@@ -29,12 +29,12 @@ export const listTenantBillingChargesMock = vi.fn();
 export const getTenantProviderMock = vi.fn();
 export const setTenantProviderSelfManagedMock = vi.fn();
 export const resetTenantProviderMock = vi.fn();
-export const listCredentialsMock = vi.fn();
-export const createCredentialMock = vi.fn();
-export const deleteCredentialMock = vi.fn();
+export const listSecretsMock = vi.fn();
+export const createSecretMock = vi.fn();
+export const deleteSecretMock = vi.fn();
 export const getModelCapsMock = vi.fn();
-export const listWorkspaceFleetTemplatesMock = vi.fn();
-export const onboardWorkspaceFleetTemplateMock = vi.fn();
+export const listWorkspaceFleetLibraryMock = vi.fn();
+export const onboardWorkspaceFleetLibraryMock = vi.fn();
 
 export const setFleetStatusActionMock = vi.fn<
   (ws: string, zid: string, status: string) => Promise<ActionResult<unknown>>
@@ -119,44 +119,44 @@ export function eventsMock() {
   return { listWorkspaceEvents: listWorkspaceEventsMock, listFleetEvents: listFleetEventsMock };
 }
 
-const CREDENTIAL_KIND = {
+const SECRET_KIND = {
   provider_key: "provider_key",
   custom_endpoint: "custom_endpoint",
   custom_secret: "custom_secret",
 } as const;
 
-export function credentialsApiMock() {
+export function secretsApiMock() {
   // The vault API calls are mocked fns; the kind discriminator + narrowing
   // helpers (read by the Models page + its client children) keep their
   // real behaviour so the full module mock doesn't strip them to undefined.
   type C = { kind?: string };
   return {
-    listCredentials: listCredentialsMock,
-    createCredential: createCredentialMock,
-    deleteCredential: deleteCredentialMock,
-    rotateCredential: vi.fn(),
-    CREDENTIAL_KIND,
-    providerKeysOf: (credentials: C[]) => credentials.filter((c) => c.kind === CREDENTIAL_KIND.provider_key),
-    customEndpointsOf: (credentials: C[]) => credentials.filter((c) => c.kind === CREDENTIAL_KIND.custom_endpoint),
-    customSecretsOf: (credentials: C[]) => credentials.filter((c) => c.kind === CREDENTIAL_KIND.custom_secret),
+    listSecrets: listSecretsMock,
+    createSecret: createSecretMock,
+    deleteSecret: deleteSecretMock,
+    rotateSecret: vi.fn(),
+    SECRET_KIND,
+    providerKeysOf: (secrets: C[]) => secrets.filter((c) => c.kind === SECRET_KIND.provider_key),
+    customEndpointsOf: (secrets: C[]) => secrets.filter((c) => c.kind === SECRET_KIND.custom_endpoint),
+    customSecretsOf: (secrets: C[]) => secrets.filter((c) => c.kind === SECRET_KIND.custom_secret),
   };
 }
 
-// Mocks the fleet-template gallery client (`@/lib/api/fleet-templates`). Both the
+// Mocks the fleet-template gallery client (`@/lib/api/fleet-library`). Both the
 // raw reader and its React cache() wrapper resolve to the same vi.fn so a test
 // can drive either entry point through one mock. M103 replaced the legacy
 // bundle client (github-import / paste) with this template-only gallery read.
-export function fleetTemplatesMock() {
+export function fleetLibraryMock() {
   return {
-    listWorkspaceFleetTemplates: listWorkspaceFleetTemplatesMock,
-    listWorkspaceFleetTemplatesCached: listWorkspaceFleetTemplatesMock,
-    onboardWorkspaceFleetTemplate: onboardWorkspaceFleetTemplateMock,
+    listWorkspaceFleetLibrary: listWorkspaceFleetLibraryMock,
+    listWorkspaceFleetLibraryCached: listWorkspaceFleetLibraryMock,
+    onboardWorkspaceFleetLibrary: onboardWorkspaceFleetLibraryMock,
   };
 }
 
 export function modelCapsMock() {
   // getModelCaps is mocked; the pure catalogue helpers (read synchronously by
-  // ProviderSwitchList / ActiveModelHero / ProviderModelSelect) keep their real
+  // ProviderSwitchList / ActiveModelRow / ProviderModelSelect) keep their real
   // behaviour so a full module mock doesn't strip them to undefined.
   return {
     getModelCaps: getModelCapsMock,
@@ -173,19 +173,19 @@ export function modelCapsMock() {
   };
 }
 
-export function addCredentialFormMock() {
-  return { default: ({ workspaceId }: { workspaceId: string }) => React.createElement("div", { "data-add-credential-form": workspaceId }) };
+export function addSecretFormMock() {
+  return { default: ({ workspaceId }: { workspaceId: string }) => React.createElement("div", { "data-add-secret-form": workspaceId }) };
 }
 
-export function credentialsListMock() {
+export function secretsListMock() {
   return {
-    default: ({ workspaceId, credentials }: { workspaceId: string; credentials: { name: string; created_at: number }[] }) =>
-      credentials.length === 0
-        ? React.createElement("p", { "data-credentials-empty": workspaceId }, "No credentials stored yet")
+    default: ({ workspaceId, secrets }: { workspaceId: string; secrets: { name: string; created_at: number }[] }) =>
+      secrets.length === 0
+        ? React.createElement("p", { "data-secrets-empty": workspaceId }, "No secrets stored yet")
         : React.createElement(
             "div",
-            { "data-credentials-list": workspaceId },
-            ...credentials.map((c) => React.createElement("div", { key: c.name, "data-credential-name": c.name }, c.name)),
+            { "data-secrets-list": workspaceId },
+            ...secrets.map((c) => React.createElement("div", { key: c.name, "data-secret-name": c.name }, c.name)),
           ),
   };
 }
@@ -222,8 +222,8 @@ export function resetDashboardMocks() {
     billing: { starter_credit_nanos: 0, free_trial_end_ms: 0, free_trial_stage_nanos: 0 },
   });
   stopFleetMock.mockResolvedValue(undefined);
-  listWorkspaceFleetTemplatesMock.mockResolvedValue({ items: [] });
-  onboardWorkspaceFleetTemplateMock.mockResolvedValue({
+  listWorkspaceFleetLibraryMock.mockResolvedValue({ items: [] });
+  onboardWorkspaceFleetLibraryMock.mockResolvedValue({
     id: "tmpl_1",
     name: "Template",
     visibility: "tenant",

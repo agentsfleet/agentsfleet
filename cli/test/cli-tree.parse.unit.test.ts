@@ -1,7 +1,7 @@
 // Parser-level unit tests for buildProgram (top-level + non-fleet tree).
 // Drives commander directly with a no-op handlers tree so every actionFor()
 // closure fires for its argv. Companion file cli-tree.fleet.unit.test.js
-// covers the fleet / credential subtree.
+// covers the fleet / secret subtree.
 
 import { test, expect } from "bun:test";
 import { CommanderError, type Help } from "commander";
@@ -76,10 +76,10 @@ test("workspace show [id] accepts positional OR --workspace-id flag", async () =
   expect(calls[0]?.frame.parsed.options["workspace-id"]).toBe(VALID_ID);
 });
 
-test("workspace credentials dispatches (auth-only redirect surface)", async () => {
+test("workspace secrets dispatches (auth-only redirect surface)", async () => {
   const { handlers, calls } = makeSpyTree();
-  await dispatch(["workspace", "credentials"], handlers);
-  expect(calls[0]?.name).toBe("workspace.credentials");
+  await dispatch(["workspace", "secrets"], handlers);
+  expect(calls[0]?.name).toBe("workspace.secrets");
 });
 
 test("workspace delete <id> captures required positional", async () => {
@@ -145,15 +145,15 @@ test("tenant provider show dispatches", async () => {
   expect(calls[0]?.name).toBe("tenant.provider.show");
 });
 
-test("tenant provider add accepts --credential / --model", async () => {
+test("tenant provider add accepts --secret / --model", async () => {
   const { handlers, calls } = makeSpyTree();
   await dispatch([
     "tenant", "provider", "add",
-    "--credential", "openai-prod",
+    "--secret", "openai-prod",
     "--model",      "gpt-4o",
   ], handlers);
   expect(calls[0]?.name).toBe("tenant.provider.add");
-  expect(calls[0]?.frame.parsed.options.credential).toBe("openai-prod");
+  expect(calls[0]?.frame.parsed.options.secret).toBe("openai-prod");
   expect(calls[0]?.frame.parsed.options.model).toBe("gpt-4o");
 });
 

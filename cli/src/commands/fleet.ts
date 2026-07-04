@@ -1,7 +1,7 @@
 // Fleet CLI top-level command Effects — status / stop / resume / kill /
 // delete. Install + update live in fleet_install.ts; list/logs/events/
-// steer/credential leaves live in sibling files (fleet_list.ts,
-// fleet_logs.ts, fleet_events.ts, fleet_steer.ts, fleet_credential.ts).
+// steer/secret leaves live in sibling files (fleet_list.ts,
+// fleet_logs.ts, fleet_events.ts, fleet_steer.ts, fleet_secret.ts).
 //
 // Each command yields services from the MainLayer (CliConfig, Output,
 // HttpClient, Credentials, Workspaces, Analytics) and emits one of the

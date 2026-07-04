@@ -2,17 +2,21 @@ import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 
-// The shared action-runner behind every Models mutation: clear error,
-// flip pending, await a server action returning an error string | null; on null
-// run an optional success step + router.refresh(); on a string, surface it.
+// The shared action-runner behind every Models mutation: clear error, flip
+// pending, await a server action returning a ProviderActionError | null; on
+// null run an optional success step + router.refresh(); on an error, route it
+// through presentErrorString so the raw backend string never
+// reaches the UI unmapped.
 
 const routerRefresh = vi.fn();
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: routerRefresh, push: vi.fn() }) }));
 
-import { useProviderAction } from "@/app/(dashboard)/settings/models/lib/use-provider-action";
+import { useProviderAction, type ProviderActionError } from "@/app/(dashboard)/settings/models/lib/use-provider-action";
+
+const ACTION = "do the thing";
 
 type ProbeProps = {
-  fn: () => Promise<string | null>;
+  fn: () => Promise<ProviderActionError | null>;
   onSuccess?: () => void;
 };
 
@@ -23,7 +27,7 @@ function Probe({ fn, onSuccess }: ProbeProps) {
     null,
     React.createElement("span", { "data-testid": "pending" }, String(pending)),
     React.createElement("span", { "data-testid": "error" }, error ?? ""),
-    React.createElement("button", { "data-testid": "run", onClick: () => run(fn, onSuccess) }, "run"),
+    React.createElement("button", { "data-testid": "run", onClick: () => run(ACTION, fn, onSuccess) }, "run"),
     React.createElement("button", { "data-testid": "seterr", onClick: () => setError("manual") }, "seterr"),
   );
 }
@@ -34,8 +38,8 @@ afterEach(() => cleanup());
 describe("useProviderAction", () => {
   it("runs the success path: onSuccess + router.refresh, error cleared, pending toggled", async () => {
     const onSuccess = vi.fn();
-    let resolveFn!: (v: string | null) => void;
-    const fn = vi.fn(() => new Promise<string | null>((r) => (resolveFn = r)));
+    let resolveFn!: (v: ProviderActionError | null) => void;
+    const fn = vi.fn(() => new Promise<ProviderActionError | null>((r) => (resolveFn = r)));
     render(React.createElement(Probe, { fn, onSuccess }));
 
     act(() => {
@@ -54,18 +58,35 @@ describe("useProviderAction", () => {
     expect(screen.getByTestId("pending").textContent).toBe("false");
   });
 
-  it("surfaces the error string and skips onSuccess + refresh", async () => {
+  it("routes the error through presentErrorString and skips onSuccess + refresh", async () => {
     const onSuccess = vi.fn();
     render(
-      React.createElement(Probe, { fn: () => Promise.resolve("boom"), onSuccess }),
+      React.createElement(Probe, { fn: () => Promise.resolve({ message: "boom" }), onSuccess }),
     );
     await act(async () => {
       screen.getByTestId("run").click();
     });
-    await waitFor(() => expect(screen.getByTestId("error").textContent).toBe("boom"));
+    await waitFor(() => expect(screen.getByTestId("error").textContent).toMatch(/^Couldn't do the thing/));
+    expect(screen.getByTestId("error").textContent).toMatch(/boom/);
     expect(onSuccess).not.toHaveBeenCalled();
     expect(routerRefresh).not.toHaveBeenCalled();
     expect(screen.getByTestId("pending").textContent).toBe("false");
+  });
+
+  it("maps a curated errorCode to its friendly copy instead of the raw message", async () => {
+    render(
+      React.createElement(Probe, {
+        fn: () => Promise.resolve({ message: "raw backend detail", errorCode: "UZ-AUTH-022" }),
+      }),
+    );
+    await act(async () => {
+      screen.getByTestId("run").click();
+    });
+    await waitFor(() =>
+      expect(screen.getByTestId("error").textContent).toBe(
+        "You need an additional scope for that. Ask an agentsfleet admin to grant the scope this action requires.",
+      ),
+    );
   });
 
   it("refreshes even without an onSuccess callback", async () => {

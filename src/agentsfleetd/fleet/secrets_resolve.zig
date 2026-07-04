@@ -135,7 +135,12 @@ test "test_runner_facing_classify" {
     const static_handle = try parseValue(arena, "{\"integration\":\"static\",\"token\":\"ghp_abc\"}");
     try testing.expect(mintableId(static_handle) == null);
 
+    // A refresh-token integration (zoho/jira/linear) is on-demand → mintable.
+    const zoho = try parseValue(arena, "{\"integration\":\"zoho\",\"refresh_token\":\"rt\"}");
+    try testing.expectEqual(integration.Id.zoho, mintableId(zoho).?);
+
     // An unknown/unregistered id falls through as static (fail safe — never a mint).
-    const unknown = try parseValue(arena, "{\"integration\":\"zoho\",\"token\":\"z\"}");
+    // api_key connectors (datadog/grafana/fly) are used directly, never minted.
+    const unknown = try parseValue(arena, "{\"integration\":\"datadog\",\"token\":\"z\"}");
     try testing.expect(mintableId(unknown) == null);
 }

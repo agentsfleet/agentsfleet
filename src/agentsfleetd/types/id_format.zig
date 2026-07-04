@@ -50,7 +50,7 @@ pub fn generateConnectorChannelId(alloc: std.mem.Allocator) ![]const u8 {
     return allocUuidV7(alloc);
 }
 
-pub fn generateFleetTemplateId(alloc: std.mem.Allocator) ![]const u8 {
+pub fn generateFleetLibraryId(alloc: std.mem.Allocator) ![]const u8 {
     return allocUuidV7(alloc);
 }
 

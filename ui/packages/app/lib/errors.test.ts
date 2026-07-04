@@ -33,8 +33,8 @@ describe("presentError", () => {
 
 describe("presentErrorString", () => {
   it("joins title and body with a sentence-final period when the title lacks one", () => {
-    const s = presentErrorString({ errorCode: "UZ-INTERNAL-002", action: "store the credential" });
-    expect(s).toBe("We're under load and dropped your request. Try again in a few seconds.");
+    const s = presentErrorString({ errorCode: "UZ-AUTH-401", action: "load the dashboard" });
+    expect(s).toBe("Your session expired. Sign in again to keep going.");
   });
 
   it("returns just the title when no body is provided", () => {
@@ -52,6 +52,38 @@ describe("presentErrorString", () => {
     for (const code of CURATED_ERROR_CODES) {
       const title = presentErrorString({ errorCode: code, action: "x" }).split(". ")[0];
       expect(title, `code=${code} title=${title}`).not.toMatch(/[.!?]$/);
+    }
+  });
+});
+
+// The codes this session's audit curated (UZ-PROVIDER-*, UZ-VAULT-*,
+// UZ-BUNDLE-*, UZ-APPROVAL-*, plus most of the pre-existing entries) moved
+// to the backend's `user_message` (error_entries.zig's eu()) — see
+// client.test.ts's "prefers user_message over detail" for the mechanism.
+// CODE_MAP now holds only what can never be backend-authored.
+describe("CODE_MAP — shrunk to client-minted entries", () => {
+  it("contains exactly the codes that cannot be backend-authored", () => {
+    // UZ-AUTH-401/UZ-AUTH-022: client-minted (with-token.ts / require-scope.ts),
+    // never round-trip to a real backend response for that code path.
+    // UZ-VALIDATION-001/UZ-CRED-003 (dead, no backend code, never client-minted)
+    // were deleted rather than left in place.
+    expect([...CURATED_ERROR_CODES].sort()).toEqual(
+      ["UZ-AUTH-401", "UZ-AUTH-022"].sort(),
+    );
+  });
+
+  it("no longer maps any of the 26 codes migrated to the backend registry", () => {
+    const migrated = [
+      "UZ-INTERNAL-001", "UZ-INTERNAL-002", "UZ-AGT-009", "UZ-AUTH-001", "UZ-REQ-001",
+      "UZ-APIKEY-003", "UZ-APIKEY-005", "UZ-APIKEY-006", "UZ-APIKEY-007", "UZ-APIKEY-008",
+      "UZ-CRED-001", "UZ-PROVIDER-001", "UZ-PROVIDER-002", "UZ-PROVIDER-003", "UZ-PROVIDER-004",
+      "UZ-VAULT-001", "UZ-VAULT-002", "UZ-VAULT-003", "UZ-BUNDLE-001", "UZ-BUNDLE-002",
+      "UZ-APPROVAL-001", "UZ-APPROVAL-002", "UZ-APPROVAL-003", "UZ-APPROVAL-004",
+      "UZ-APPROVAL-005", "UZ-APPROVAL-006",
+    ];
+    expect(migrated.length).toBe(26);
+    for (const code of migrated) {
+      expect((CURATED_ERROR_CODES as readonly string[]).includes(code), code).toBe(false);
     }
   });
 });

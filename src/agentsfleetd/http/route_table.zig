@@ -17,7 +17,7 @@ const auth_mw = @import("../auth/middleware/mod.zig");
 const hx_mod = @import("handlers/hx.zig");
 const invoke = @import("route_table_invoke.zig");
 const connectors_invoke = @import("route_table_invoke_connectors.zig");
-const template_invoke = @import("route_table_invoke_templates.zig");
+const library_invoke = @import("route_table_invoke_library.zig");
 
 // ── Types ─────────────────────────────────────────────────────────────────
 
@@ -62,8 +62,8 @@ pub fn classFor(route: router.Route) RouteClass {
         .list_tenant_workspaces,
         .tenant_provider,
         .fleet_bundles,
-        .admin_fleet_templates,
-        .workspace_fleet_templates,
+        .admin_fleet_library,
+        .workspace_fleet_library,
         .receive_webhook,
         .receive_svix_webhook,
         .auth_identity_event_clerk,
@@ -76,8 +76,8 @@ pub fn classFor(route: router.Route) RouteClass {
         .admin_model_by_id,
         .workspace_fleets,
         .patch_workspace_fleet,
-        .workspace_credentials,
-        .workspace_credential,
+        .workspace_secrets,
+        .workspace_secret,
         .workspace_fleet_messages,
         .workspace_fleet_events,
         .workspace_events,
@@ -90,6 +90,7 @@ pub fn classFor(route: router.Route) RouteClass {
         .revoke_integration_grant,
         .connector_connect,
         .connector_status,
+        .connector_catalog,
         .connector_callback,
         .slack_events,
         .fleet_keys,
@@ -145,11 +146,11 @@ pub fn specFor(route: router.Route, registry: *auth_mw.MiddlewareRegistry) Route
         .tenant_provider => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeTenantProvider },
         .fleet_bundles => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeFleetBundles },
 
-        // Template onboarding (M103). Scope enforced by requireScope from
-        // route_scopes (platform-template:write / template:write); the tenant
+        // Fleet library onboarding (M103). Scope enforced by requireScope from
+        // route_scopes (platform-library:write / library:write); the tenant
         // handler adds a workspace-ownership check.
-        .admin_fleet_templates => .{ .middlewares = registry.bearer(), .invoke = template_invoke.invokePlatformTemplateOnboard },
-        .workspace_fleet_templates => .{ .middlewares = registry.bearer(), .invoke = template_invoke.invokeWorkspaceFleetTemplates },
+        .admin_fleet_library => .{ .middlewares = registry.bearer(), .invoke = library_invoke.invokePlatformLibraryOnboard },
+        .workspace_fleet_library => .{ .middlewares = registry.bearer(), .invoke = library_invoke.invokeWorkspaceFleetLibrary },
 
         // Admin platform keys + model catalogue — platform-plane scopes
         // (`platform-key:{read,admin}`, `model:{read,admin}`) resolved per-method
@@ -182,6 +183,7 @@ pub fn specFor(route: router.Route, registry: *auth_mw.MiddlewareRegistry) Route
         // callback is Bearer-less (a vendor redirect) — state-authed in-handler.
         .connector_connect => .{ .middlewares = registry.bearer(), .invoke = connectors_invoke.invokeConnectorConnect },
         .connector_status => .{ .middlewares = registry.bearer(), .invoke = connectors_invoke.invokeConnectorStatus },
+        .connector_catalog => .{ .middlewares = registry.bearer(), .invoke = connectors_invoke.invokeConnectorCatalog },
         .connector_callback => .{ .middlewares = auth_mw.MiddlewareRegistry.none, .invoke = connectors_invoke.invokeConnectorCallback },
         // Slack events ingress (M106 §2). Bearer-less — the Slack v0 request
         // signature is verified in-handler (the signing secret is resolved
@@ -191,8 +193,8 @@ pub fn specFor(route: router.Route, registry: *auth_mw.MiddlewareRegistry) Route
         // Fleet create/read/update/delete + activity + credentials
         .workspace_fleets => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeWorkspaceFleets },
         .patch_workspace_fleet => .{ .middlewares = registry.bearer(), .invoke = invoke.invokePatchWorkspaceFleet },
-        .workspace_credentials => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeWorkspaceCredentials },
-        .workspace_credential => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeWorkspaceCredentialItem },
+        .workspace_secrets => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeWorkspaceSecrets },
+        .workspace_secret => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeWorkspaceSecretItem },
         // Chat ingress (workspace-scoped) — POST /messages
         .workspace_fleet_messages => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeFleetMessagesPost },
         // Per-Fleet event history + Server-Sent Events live tail (Bearer this slice;
@@ -283,7 +285,7 @@ test "specFor resolves a RouteSpec for a representative sample of every route fa
     _ = specFor(.get_tenant_billing_charges, &reg);
     _ = specFor(.{ .workspace_fleets = "ws1" }, &reg);
     _ = specFor(.{ .patch_workspace_fleet = .{ .workspace_id = "ws1", .fleet_id = "z1" } }, &reg);
-    _ = specFor(.{ .workspace_credentials = "ws1" }, &reg);
+    _ = specFor(.{ .workspace_secrets = "ws1" }, &reg);
     _ = specFor(.{ .workspace_fleet_messages = .{ .workspace_id = "ws1", .fleet_id = "z1" } }, &reg);
     _ = specFor(.admin_platform_keys, &reg);
     _ = specFor(.{ .delete_admin_platform_key = "anthropic" }, &reg);

@@ -250,6 +250,9 @@ pub const CredentialBrokerHandle = struct {
     broker: ?*credential_broker = null,
     exchange: ?*serve_broker.HttpClientExchange = null,
     github_app: ?credentials_integration.GithubApp = null,
+    zoho_app: ?credentials_integration.OauthApp = null,
+    jira_app: ?credentials_integration.OauthApp = null,
+    linear_app: ?credentials_integration.OauthApp = null,
 
     pub fn deinit(self: *CredentialBrokerHandle) void {
         if (self.broker) |b| {
@@ -262,8 +265,18 @@ pub const CredentialBrokerHandle = struct {
             self.alloc.free(a.private_key_pem);
             if (a.app_slug) |s| self.alloc.free(s);
         }
+        freeOauthApp(self.alloc, self.zoho_app);
+        freeOauthApp(self.alloc, self.jira_app);
+        freeOauthApp(self.alloc, self.linear_app);
     }
 };
+
+fn freeOauthApp(alloc: std.mem.Allocator, app: ?credentials_integration.OauthApp) void {
+    if (app) |a| {
+        alloc.free(a.client_id);
+        alloc.free(a.client_secret);
+    }
+}
 
 /// Boot the on-demand credential broker singleton and publish it on `broker_out`.
 /// serve.zig stays integration-agnostic (RULE CFG): WHICH integrations carry a
@@ -290,6 +303,9 @@ pub fn installCredentialBroker(
 
     const built = serve_broker.buildDeps(alloc, pool, exchange, admin_ws_id);
     handle.github_app = built.github_app;
+    handle.zoho_app = built.zoho_app;
+    handle.jira_app = built.jira_app;
+    handle.linear_app = built.linear_app;
     // M102 §5 — the connect install URL's App slug rides the GithubApp (one github
     // carrier, not a second handle field). Non-secret; null degrades connect closed.
     slug_out.* = if (built.github_app) |a| a.app_slug else null;

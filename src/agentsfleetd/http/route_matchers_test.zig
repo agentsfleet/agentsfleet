@@ -55,14 +55,14 @@ test "Path.parse: overflow returns empty view (no partial match)" {
     try std.testing.expectEqual(@as(usize, 0), view.segs.len);
 }
 
-test "matchWorkspaceCredential: workspace_id and credential_name" {
+test "matchWorkspaceSecret: workspace_id and secret_name" {
     var buf: [matchers.PATH_MAX_SEGMENTS][]const u8 = undefined;
-    const r = matchers.matchWorkspaceCredential(parse("/v1/workspaces/ws1/credentials/fly", &buf)).?;
+    const r = matchers.matchWorkspaceSecret(parse("/v1/workspaces/ws1/secrets/fly", &buf)).?;
     try std.testing.expectEqualStrings("ws1", r.workspace_id);
-    try std.testing.expectEqualStrings("fly", r.credential_name);
-    try std.testing.expect(matchers.matchWorkspaceCredential(parse("/v1/workspaces/ws1/credentials/", &buf)) == null);
-    try std.testing.expect(matchers.matchWorkspaceCredential(parse("/v1/workspaces//credentials/fly", &buf)) == null);
-    try std.testing.expect(matchers.matchWorkspaceCredential(parse("/v1/workspaces/ws1/credentials", &buf)) == null);
+    try std.testing.expectEqualStrings("fly", r.secret_name);
+    try std.testing.expect(matchers.matchWorkspaceSecret(parse("/v1/workspaces/ws1/secrets/", &buf)) == null);
+    try std.testing.expect(matchers.matchWorkspaceSecret(parse("/v1/workspaces//secrets/fly", &buf)) == null);
+    try std.testing.expect(matchers.matchWorkspaceSecret(parse("/v1/workspaces/ws1/secrets", &buf)) == null);
 }
 
 test "matchWorkspaceFleetKeyDelete: workspace_id and fleet_key_id" {

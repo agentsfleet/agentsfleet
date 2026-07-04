@@ -20,7 +20,7 @@ export function InstallShell({
   return (
     <div className="space-y-4">
       <Button type="button" variant="link" size="sm" onClick={onBack}>
-        ← Back to templates
+        ← Back to library
       </Button>
       <TerminalPanel title={title} tag="states">
         {children}

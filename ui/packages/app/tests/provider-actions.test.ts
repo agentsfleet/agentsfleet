@@ -8,11 +8,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // vi.mock is hoisted above the static actions import, so the mock fns must be
 // created via vi.hoisted() to exist when the factories run.
-const { withTokenMock, setTenantProviderSelfManagedMock, resetTenantProviderMock, rotateCredentialMock } = vi.hoisted(() => ({
+const { withTokenMock, setTenantProviderSelfManagedMock, resetTenantProviderMock, rotateSecretMock } = vi.hoisted(() => ({
   withTokenMock: vi.fn(),
   setTenantProviderSelfManagedMock: vi.fn(),
   resetTenantProviderMock: vi.fn(),
-  rotateCredentialMock: vi.fn(),
+  rotateSecretMock: vi.fn(),
 }));
 
 vi.mock("@/lib/actions/with-token", () => ({ withToken: withTokenMock }));
@@ -20,12 +20,12 @@ vi.mock("@/lib/api/tenant_provider", () => ({
   setTenantProviderSelfManaged: setTenantProviderSelfManagedMock,
   resetTenantProvider: resetTenantProviderMock,
 }));
-vi.mock("@/lib/api/credentials", () => ({ rotateCredential: rotateCredentialMock }));
+vi.mock("@/lib/api/secrets", () => ({ rotateSecret: rotateSecretMock }));
 
 import {
   setProviderSelfManagedAction,
   resetProviderAction,
-  rotateCredentialAction,
+  rotateSecretAction,
 } from "@/app/(dashboard)/settings/models/actions";
 
 beforeEach(() => {
@@ -42,16 +42,16 @@ describe("provider server actions — thin forwarders", () => {
   it("setProviderSelfManagedAction forwards the body then token through withToken to the client", async () => {
     const provider = { mode: "self_managed", model: "claude-opus" };
     setTenantProviderSelfManagedMock.mockResolvedValueOnce(provider);
-    const body = { credential_ref: "vault://anthropic", model: "claude-opus" };
+    const body = { secret_ref: "vault://anthropic", model: "claude-opus" };
     const r = await setProviderSelfManagedAction(body);
     expect(r).toEqual({ ok: true, data: provider });
     expect(setTenantProviderSelfManagedMock).toHaveBeenCalledWith(body, "tok");
     expect(resetTenantProviderMock).not.toHaveBeenCalled();
   });
 
-  it("setProviderSelfManagedAction forwards a body with only credential_ref (model omitted)", async () => {
+  it("setProviderSelfManagedAction forwards a body with only secret_ref (model omitted)", async () => {
     setTenantProviderSelfManagedMock.mockResolvedValueOnce({ mode: "self_managed" });
-    const body = { credential_ref: "vault://openai" };
+    const body = { secret_ref: "vault://openai" };
     const r = await setProviderSelfManagedAction(body);
     expect(r).toEqual({ ok: true, data: { mode: "self_managed" } });
     expect(setTenantProviderSelfManagedMock).toHaveBeenCalledWith(body, "tok");
@@ -69,16 +69,16 @@ describe("provider server actions — thin forwarders", () => {
   it("both actions route through withToken exactly once", async () => {
     setTenantProviderSelfManagedMock.mockResolvedValueOnce({});
     resetTenantProviderMock.mockResolvedValueOnce({});
-    await setProviderSelfManagedAction({ credential_ref: "vault://x" });
+    await setProviderSelfManagedAction({ secret_ref: "vault://x" });
     await resetProviderAction();
     expect(withTokenMock).toHaveBeenCalledTimes(2);
   });
 
-  it("rotateCredentialAction forwards (workspaceId, name, apiKey) then token to the client", async () => {
-    rotateCredentialMock.mockResolvedValueOnce({ name: "anthropic-prod" });
-    const r = await rotateCredentialAction("ws_1", "anthropic-prod", "sk-ant-rotated");
+  it("rotateSecretAction forwards (workspaceId, name, apiKey) then token to the client", async () => {
+    rotateSecretMock.mockResolvedValueOnce({ name: "anthropic-prod" });
+    const r = await rotateSecretAction("ws_1", "anthropic-prod", "sk-ant-rotated");
     expect(r).toEqual({ ok: true, data: { name: "anthropic-prod" } });
-    expect(rotateCredentialMock).toHaveBeenCalledWith("ws_1", "anthropic-prod", "sk-ant-rotated", "tok");
+    expect(rotateSecretMock).toHaveBeenCalledWith("ws_1", "anthropic-prod", "sk-ant-rotated", "tok");
     expect(setTenantProviderSelfManagedMock).not.toHaveBeenCalled();
     expect(resetTenantProviderMock).not.toHaveBeenCalled();
   });

@@ -20,8 +20,8 @@
     - name: provider
       in: path
       required: true
-      description: Connector registry id (`slack`, `github`). The id is also the `{provider}` segment of the callback URL
-        and the vault-key stem.
+      description: Connector registry id (`slack`, `github`, `zoho`, `jira`, `linear`). The id is also the `{provider}`
+        segment of the callback URL and the vault-key stem.
       schema:
         type: string
     responses:
@@ -49,13 +49,72 @@
         $ref: ../components/responses.yaml#/components/responses/Error
       default:
         $ref: ../components/responses.yaml#/components/responses/Error
+/v1/workspaces/{workspace_id}/connectors:
+  get:
+    operationId: connector_catalog
+    summary: List the connector catalog for a workspace
+    description: Renders the deployment's connector registry as data for the dashboard (requires the `connector:read`
+      scope) — every provider with its archetype, display name, whether the platform side is `configured` (the
+      `<provider>-app` platform bag exists), and whether this workspace is `connected` (holds a `fleet:<provider>` vault
+      handle). The dashboard renders its cards from this — there is no hard-coded provider list. This is the collection
+      whose items are the per-provider status routes below.
+    tags:
+    - Connectors
+    parameters:
+    - name: workspace_id
+      in: path
+      required: true
+      description: UUIDv7 of the workspace to report connected state for.
+      schema:
+        type: string
+        format: uuid
+    responses:
+      '200':
+        description: The connector catalog — one entry per registry provider.
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                type: object
+                required:
+                - id
+                - archetype
+                - display_name
+                - configured
+                - connected
+                properties:
+                  id:
+                    type: string
+                    description: Connector registry id / route segment (`slack`, `github`, `zoho`, `jira`, `linear`).
+                  archetype:
+                    type: string
+                    enum:
+                    - oauth2
+                    - app_install
+                  display_name:
+                    type: string
+                  configured:
+                    type: boolean
+                    description: Platform side ready — the `<provider>-app` bag exists.
+                  connected:
+                    type: boolean
+                    description: This workspace holds a `fleet:<provider>` vault handle.
+      '400':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '401':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '403':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      default:
+        $ref: ../components/responses.yaml#/components/responses/Error
 /v1/workspaces/{workspace_id}/connectors/{provider}:
   get:
     operationId: connector_status
     summary: Read a connector's status
     description: Reports whether the workspace holds a live `fleet:{provider}` vault handle (requires the `connector:read`
       scope). Never fabricates a connected state — a missing or unreadable handle reads as `not_connected`. Provider-specific
-      extras ride alongside (`slack` adds `team`, the connected Slack workspace name). Unknown provider → 404 `UZ-CONN-004`.
+      extras ride alongside (`slack` adds `team`, generic OAuth providers add `label`). Unknown provider → 404 `UZ-CONN-004`.
     tags:
     - Connectors
     parameters:
@@ -69,7 +128,7 @@
     - name: provider
       in: path
       required: true
-      description: Connector registry id (`slack`, `github`).
+      description: Connector registry id (`slack`, `github`, `zoho`, `jira`, `linear`).
       schema:
         type: string
     responses:
@@ -92,6 +151,11 @@
                   - string
                   - 'null'
                   description: Slack only — the connected Slack workspace name (absent for other providers).
+                label:
+                  type:
+                  - string
+                  - 'null'
+                  description: Generic OAuth providers only — display label from the provider handle, when available.
       '400':
         $ref: ../components/responses.yaml#/components/responses/Error
       '401':
@@ -119,7 +183,7 @@
     - name: provider
       in: path
       required: true
-      description: Connector registry id (`slack`, `github`).
+      description: Connector registry id (`slack`, `github`, `zoho`, `jira`, `linear`).
       schema:
         type: string
     - name: state

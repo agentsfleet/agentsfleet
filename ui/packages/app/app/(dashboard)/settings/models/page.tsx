@@ -1,20 +1,10 @@
 import { redirect } from "next/navigation";
-import {
-  EmptyState,
-  PageHeader,
-  PageTitle,
-  SectionLabel,
-  TerminalPanel,
-} from "@agentsfleet/design-system";
+import { EmptyState, PageHeader, PageTitle } from "@agentsfleet/design-system";
 import { ZapIcon } from "lucide-react";
 import { auth } from "@clerk/nextjs/server";
 import { withWorkspaceScope, orFallback } from "@/lib/workspace";
-import { customSecretsOf } from "@/lib/api/credentials";
-import { getTenantProviderCached, listCredentialsCached } from "./lib/reads";
-import AddCredentialFormDynamic from "@/components/domain/island-dynamic/AddCredentialFormDynamic";
-import CustomSecretsList from "@/app/(dashboard)/credentials/components/CustomSecretsList";
+import { getTenantProviderCached, listSecretsCached } from "./lib/reads";
 import { ModelCatalogueProvider } from "./components/ModelCatalogueProvider";
-import ActiveModelHero from "./components/ActiveModelHero";
 import ProviderSwitchList from "./components/ProviderSwitchList";
 
 export const dynamic = "force-dynamic";
@@ -28,11 +18,11 @@ export default async function ModelsKeysPage() {
   if (!token) redirect("/sign-in");
 
   const result = await withWorkspaceScope(token, async (workspaceId) => {
-    const [providerResult, credentialsResp] = await Promise.all([
+    const [providerResult, secretsResp] = await Promise.all([
       getTenantProviderCached(token).catch((err) => ({ error: String(err) })),
-      listCredentialsCached(workspaceId, token).catch(orFallback({ credentials: [] })),
+      listSecretsCached(workspaceId, token).catch(orFallback({ secrets: [] })),
     ]);
-    return { workspaceId, providerResult, credentialsResp };
+    return { workspaceId, providerResult, secretsResp };
   });
   if (!result) {
     return (
@@ -48,14 +38,11 @@ export default async function ModelsKeysPage() {
       </div>
     );
   }
-  const { workspaceId, providerResult, credentialsResp } = result;
+  const { workspaceId, providerResult, secretsResp } = result;
   // A provider-fetch error degrades the hero to the platform-default view rather
   // than failing the page; `provider` is null in that case.
   const provider = "error" in providerResult ? null : providerResult;
-  const credentials = credentialsResp.credentials;
-  // Classification is the server's `kind`, never a name heuristic — provider keys
-  // and custom endpoints live in the model layer; only custom_secret rows here.
-  const customSecrets = customSecretsOf(credentials);
+  const secrets = secretsResp.secrets;
 
   return (
     <div className="space-y-8">
@@ -64,38 +51,8 @@ export default async function ModelsKeysPage() {
       </PageHeader>
 
       <ModelCatalogueProvider>
-        <div className="space-y-6">
-          <ActiveModelHero workspaceId={workspaceId} provider={provider} credentials={credentials} />
-          <ProviderSwitchList workspaceId={workspaceId} provider={provider} credentials={credentials} />
-        </div>
+        <ProviderSwitchList workspaceId={workspaceId} provider={provider} secrets={secrets} />
       </ModelCatalogueProvider>
-
-      <div aria-label="Custom secrets" data-testid="custom-secrets-group" className="space-y-md">
-        <SectionLabel>Custom secrets</SectionLabel>
-        <TerminalPanel title="Encrypted secrets" tag="write-only">
-          <div className="p-lg">
-            <CustomSecretsList workspaceId={workspaceId} secrets={customSecrets} />
-          </div>
-          <div className="border-t border-border bg-surface-deep p-lg" id="add-custom-secret">
-            <div className="mb-md">
-              <div className="font-medium text-foreground">Add a custom secret</div>
-              <p className="text-body-sm leading-body-sm text-muted-foreground">
-                Name it and add one or more fields (like <span className="font-mono">api_key</span>). Values
-                are encrypted on save — you can replace them later, but never view them again.{" "}
-                <a
-                  href="https://docs.agentsfleet.net/fleets/credentials"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-pulse underline-offset-2 hover:underline focus-visible:underline"
-                >
-                  Learn more<span className="sr-only"> (opens in a new tab)</span>
-                </a>
-              </p>
-            </div>
-            <AddCredentialFormDynamic workspaceId={workspaceId} />
-          </div>
-        </TerminalPanel>
-      </div>
     </div>
   );
 }

@@ -104,12 +104,22 @@ describe("EventsList", () => {
       next_cursor: null,
     });
     expect(screen.getByText("first event")).toBeTruthy();
-    // failure_label fallback for null response_text
+    // failure_label fallback for null response_text — "boom" isn't a real
+    // FailureClass tag, so it renders raw (Invariant #2's negative case).
     expect(screen.getByText(/Reason: boom/)).toBeTruthy();
     // weird status falls through to default badge variant (still rendered)
     expect(screen.getByText("weird-unknown")).toBeTruthy();
     // listitems should equal items.length
     expect(screen.getAllByRole("listitem").length).toBe(5);
+  });
+
+  it("renders a known FailureClass tag as its friendly label, not the raw enum name", () => {
+    renderList({
+      items: [row({ event_id: "f", status: "fleet_error", response_text: null, failure_label: "oom_kill" })],
+      next_cursor: null,
+    });
+    expect(screen.getByText("Reason: Ran out of memory")).toBeTruthy();
+    expect(screen.queryByText(/oom_kill/)).toBeNull();
   });
 
   it("collapses whitespace and truncates long preview text to 160 chars", () => {

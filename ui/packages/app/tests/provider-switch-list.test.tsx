@@ -1,14 +1,14 @@
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { CREDENTIAL_KIND, type Credential } from "@/lib/api/credentials";
+import { SECRET_KIND, type Secret } from "@/lib/api/secrets";
 import { PROVIDER_MODE, type TenantProvider } from "@/lib/types";
 import type { ModelCap } from "@/lib/api/model_caps";
 
 // The "switch anytime" list: a Platform row (live only), one row per named
 // provider (Switch when keyed / Add key & model when not), stored custom
 // endpoints (Switch), an Add-endpoint row, and a generic paste-detect row. The
-// active credential is excluded everywhere (it's the hero).
+// active secret is excluded everywhere (it's the hero).
 
 const routerRefresh = vi.fn();
 const resetProviderAction = vi.hoisted(() => vi.fn());
@@ -67,23 +67,23 @@ const cap = (provider: string): ModelCap => ({
   output_nanos_per_mtok: 1,
 });
 
-function liveProvider(credentialRef = "anthropic-prod"): TenantProvider {
+function liveProvider(secretRef = "anthropic-prod"): TenantProvider {
   return {
     mode: PROVIDER_MODE.self_managed,
     provider: "anthropic",
     model: "claude-sonnet-4-6",
     context_cap_tokens: 256000,
-    credential_ref: credentialRef,
+    secret_ref: secretRef,
   } as TenantProvider;
 }
 
-const ROSTER: Credential[] = [
-  { kind: CREDENTIAL_KIND.provider_key, name: "anthropic-prod", created_at: 1, provider: "anthropic", model: "claude-sonnet-4-6" },
-  { kind: CREDENTIAL_KIND.provider_key, name: "openai-key", created_at: 1, provider: "openai", model: "gpt-4" },
-  { kind: CREDENTIAL_KIND.provider_key, name: "groq-key", created_at: 1, provider: "groq" },
-  { kind: CREDENTIAL_KIND.custom_endpoint, name: "vllm", created_at: 1, provider: "openai-compatible", model: "m1", base_url: "https://x/v1" },
-  { kind: CREDENTIAL_KIND.custom_endpoint, name: "vllm2", created_at: 1, provider: "openai-compatible", base_url: "https://y/v1" },
-  { kind: CREDENTIAL_KIND.custom_endpoint, name: "vllm3", created_at: 1, provider: "openai-compatible" },
+const ROSTER: Secret[] = [
+  { kind: SECRET_KIND.provider_key, name: "anthropic-prod", created_at: 1, provider: "anthropic", model: "claude-sonnet-4-6" },
+  { kind: SECRET_KIND.provider_key, name: "openai-key", created_at: 1, provider: "openai", model: "gpt-4" },
+  { kind: SECRET_KIND.provider_key, name: "groq-key", created_at: 1, provider: "groq" },
+  { kind: SECRET_KIND.custom_endpoint, name: "vllm", created_at: 1, provider: "openai-compatible", model: "m1", base_url: "https://x/v1" },
+  { kind: SECRET_KIND.custom_endpoint, name: "vllm2", created_at: 1, provider: "openai-compatible", base_url: "https://y/v1" },
+  { kind: SECRET_KIND.custom_endpoint, name: "vllm3", created_at: 1, provider: "openai-compatible" },
 ];
 
 function rowOf(text: string | RegExp) {
@@ -104,12 +104,12 @@ beforeEach(() => {
 });
 afterEach(() => cleanup());
 
-function renderLive(credentialRef = "anthropic-prod") {
+function renderLive(secretRef = "anthropic-prod") {
   render(
     React.createElement(ProviderSwitchList, {
       workspaceId: "ws_1",
-      provider: liveProvider(credentialRef),
-      credentials: ROSTER,
+      provider: liveProvider(secretRef),
+      secrets: ROSTER,
     }),
   );
 }
@@ -118,8 +118,11 @@ describe("ProviderSwitchList — live roster", () => {
   it("renders the platform row, keyed/unkeyed provider rows, and custom endpoints", () => {
     renderLive();
     expect(screen.getByText("Platform defaults")).toBeTruthy();
-    // anthropic is the active credential → excluded from the list.
-    expect(screen.queryByText("Anthropic")).toBeNull();
+    // anthropic is the active secret → excluded as a separate switch row;
+    // it may still legitimately appear inside the merged hero row's own meta.
+    screen.queryAllByText("Anthropic").forEach((el) => {
+      expect(el.closest('[data-testid="active-model-hero"]')).toBeTruthy();
+    });
     // openai keyed → "Key saved · gpt-4"; groq keyed but model-less; fireworks unkeyed.
     expect(screen.getByText("Key saved · gpt-4")).toBeTruthy();
     expect(screen.getByText("Key saved · model not set")).toBeTruthy();
@@ -134,22 +137,33 @@ describe("ProviderSwitchList — live roster", () => {
     expect(screen.getByText("Other provider")).toBeTruthy();
   });
 
+  it("renders the active-model row as the first row inside the same shared list as every other provider row", () => {
+    renderLive();
+    const list = screen.getByTestId("provider-switch-list");
+    const hero = screen.getByTestId("active-model-hero");
+    const otherRow = screen.getByText("Key saved · gpt-4").closest("[data-row]");
+    expect(list.contains(hero)).toBe(true);
+    expect(list.contains(otherRow)).toBe(true);
+    // The hero is the first child row of the shared list container.
+    expect(list.firstElementChild).toBe(hero);
+  });
+
   it("switches to a keyed provider (with and without a stored model) and to a custom endpoint", async () => {
     renderLive();
     rowOf("Key saved · gpt-4").getByRole("button", { name: "Switch" }).click();
     await waitFor(() =>
-      expect(setProviderSelfManagedAction).toHaveBeenCalledWith({ credential_ref: "openai-key", model: "gpt-4" }),
+      expect(setProviderSelfManagedAction).toHaveBeenCalledWith({ secret_ref: "openai-key", model: "gpt-4" }),
     );
     expect(captureModelActivated).toHaveBeenCalled();
 
     rowOf("Key saved · model not set").getByRole("button", { name: "Switch" }).click();
     await waitFor(() =>
-      expect(setProviderSelfManagedAction).toHaveBeenCalledWith({ credential_ref: "groq-key", model: undefined }),
+      expect(setProviderSelfManagedAction).toHaveBeenCalledWith({ secret_ref: "groq-key", model: undefined }),
     );
 
     rowOf("vllm · m1").getByRole("button", { name: "Switch" }).click();
     await waitFor(() =>
-      expect(setProviderSelfManagedAction).toHaveBeenCalledWith({ credential_ref: "vllm", model: "m1" }),
+      expect(setProviderSelfManagedAction).toHaveBeenCalledWith({ secret_ref: "vllm", model: "m1" }),
     );
   });
 
@@ -209,25 +223,29 @@ describe("ProviderSwitchList — live roster", () => {
     expect(screen.queryByTestId("provider-key-form")).toBeNull();
   });
 
-  it("excludes a custom endpoint when it is the active credential", () => {
+  it("excludes a custom endpoint when it is the active secret", () => {
     renderLive("vllm");
     // vllm is active → not offered as a switch row; vllm2 still is.
     expect(screen.queryByText("vllm · m1")).toBeNull();
     expect(screen.getByText("vllm2 · https://y/v1")).toBeTruthy();
   });
 
-  it("surfaces a switch error", async () => {
+  it("surfaces a friendly switch error routed through presentErrorString, not the raw string", async () => {
     setProviderSelfManagedAction.mockResolvedValue({ ok: false, error: "switch failed" });
     renderLive();
     rowOf("Key saved · gpt-4").getByRole("button", { name: "Switch" }).click();
-    await waitFor(() => expect(screen.getByRole("alert").textContent).toMatch(/switch failed/));
+    await waitFor(() => expect(screen.getByRole("alert").textContent).toMatch(/^Couldn't switch providers/));
+    expect(screen.getByRole("alert").textContent).toMatch(/switch failed/);
   });
 
-  it("surfaces a platform-switch error", async () => {
+  it("surfaces a friendly platform-switch error routed through presentErrorString, not the raw string", async () => {
     resetProviderAction.mockResolvedValue({ ok: false, error: "platform reset failed" });
     renderLive();
     rowOf("Built-in provider · no key").getByRole("button", { name: "Switch" }).click();
-    await waitFor(() => expect(screen.getByRole("alert").textContent).toMatch(/platform reset failed/));
+    await waitFor(() =>
+      expect(screen.getByRole("alert").textContent).toMatch(/^Couldn't switch to platform defaults/),
+    );
+    expect(screen.getByRole("alert").textContent).toMatch(/platform reset failed/);
   });
 
   it("shows a switching spinner while an action is in flight", async () => {
@@ -247,7 +265,7 @@ describe("ProviderSwitchList — not live", () => {
       React.createElement(ProviderSwitchList, {
         workspaceId: "ws_1",
         provider: { ...liveProvider(), mode: PROVIDER_MODE.platform } as TenantProvider,
-        credentials: ROSTER,
+        secrets: ROSTER,
       }),
     );
     expect(screen.queryByText("Platform defaults")).toBeNull();
@@ -257,7 +275,7 @@ describe("ProviderSwitchList — not live", () => {
 
   it("treats a null provider as not live", () => {
     render(
-      React.createElement(ProviderSwitchList, { workspaceId: "ws_1", provider: null, credentials: [] }),
+      React.createElement(ProviderSwitchList, { workspaceId: "ws_1", provider: null, secrets: [] }),
     );
     expect(screen.queryByText("Platform defaults")).toBeNull();
     expect(screen.getByText("Other provider")).toBeTruthy();

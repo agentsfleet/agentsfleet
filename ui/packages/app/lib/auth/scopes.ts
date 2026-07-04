@@ -36,7 +36,7 @@ export type Scope = (typeof SCOPE)[keyof typeof SCOPE];
 const SCOPE_INCLUDES: Readonly<Record<string, readonly string[]>> = {
   "fleet:admin": ["fleet:write", "fleet:read"],
   "fleet:write": ["fleet:read"],
-  "credential:write": ["credential:read"],
+  "secret:write": ["secret:read"],
   "apikey:admin": ["apikey:write", "apikey:read"],
   "apikey:write": ["apikey:read"],
   "fleetkey:write": ["fleetkey:read"],

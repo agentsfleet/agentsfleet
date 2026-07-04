@@ -16,7 +16,9 @@ const httpz = @import("httpz");
 const common = @import("common");
 const hx_mod = @import("../hx.zig");
 const ec = @import("../../../errors/error_registry.zig");
+const credentials_integration = @import("../../../credentials/integration.zig");
 const oauth2 = @import("oauth2.zig");
+const oauth_status = @import("oauth_status.zig");
 const connector_state = @import("state.zig");
 const slack_spec = @import("slack/spec.zig");
 const slack_callback = @import("slack/callback.zig");
@@ -25,12 +27,22 @@ const github_spec = @import("github/spec.zig");
 const github_connect = @import("github/connect.zig");
 const github_callback = @import("github/callback.zig");
 const github_status = @import("github/status.zig");
+const zoho_spec = @import("zoho/spec.zig");
+const zoho_callback = @import("zoho/callback.zig");
+const zoho_multi_dc = @import("zoho/multi_dc.zig");
+const jira_spec = @import("jira/spec.zig");
+const jira_callback = @import("jira/callback.zig");
+const linear_spec = @import("linear/spec.zig");
+const linear_callback = @import("linear/callback.zig");
 
 const Hx = hx_mod.Hx;
 
 /// oauth2 post-auth hook: parse the exchange body + persist the install rows.
-/// Never writes the response — the generic callback owns response mapping.
-pub const PostAuthFn = *const fn (hx: Hx, workspace_id: []const u8, exchange_body: []const u8) anyerror!void;
+/// `location` is the callback's `location` query param, when the provider's
+/// redirect carries one (Zoho multi-DC: "us"/"eu"/"in"/"au"/"cn"/"jp"/"ca");
+/// null for every other provider. Never writes the response — the generic
+/// callback owns response mapping.
+pub const PostAuthFn = *const fn (hx: Hx, workspace_id: []const u8, exchange_body: []const u8, location: ?[]const u8) anyerror!void;
 /// app_install completion hook: validates + persists AND owns its failure
 /// responses (an installation callback's inputs are provider-bespoke).
 /// Returns true on success; false after having responded.
@@ -54,6 +66,13 @@ pub const Oauth2Data = struct {
     /// Provider-specific error code for a rejected/malformed exchange.
     exchange_failed_code: []const u8,
     post_auth: PostAuthFn,
+    /// Multi-DC providers (Zoho) override the exchange's effective token
+    /// endpoint from the callback's `location` query param — the code is
+    /// only redeemable at the data-center-specific accounts server that
+    /// issued it, not the single-region `flow.token_endpoint`. Single-region
+    /// providers (Slack/Jira/Linear) leave this null and always use
+    /// `flow.token_endpoint`.
+    resolve_token_endpoint: ?*const fn (location: ?[]const u8) []const u8 = null,
 };
 
 /// App-installation archetype (GitHub App shape): no code exchange — the
@@ -64,22 +83,13 @@ pub const AppInstallData = struct {
     complete: CompleteFn,
 };
 
-/// User-supplied-key archetype: the operator pastes their own vendor key at
-/// connect; no platform app, no browser round-trip, no callback. The first
-/// entries land with the provider batch — until then the comptime check
-/// below asserts the registry carries none, which is what makes the generic
-/// handlers' `.api_key => unreachable` arms provably safe.
-pub const ApiKeyData = struct {
-    /// Vault-handle field the user's key is stored under.
-    key_field: []const u8,
-};
-
 /// The strategy tagged-union — owns which flow runs; exhaustive switches in
-/// the generic handlers mean a new archetype cannot land half-wired.
+/// the generic handlers mean a new archetype cannot land half-wired. (An
+/// api_key archetype was considered and dropped: a static vendor key is just a
+/// workspace secret referenced as `${secrets.<name>.<field>}`, not a connector.)
 pub const Archetype = union(enum) {
     oauth2: Oauth2Data,
     app_install: AppInstallData,
-    api_key: ApiKeyData,
 };
 
 pub const ConnectorSpec = struct {
@@ -116,16 +126,49 @@ pub const REGISTRY = [_]ConnectorSpec{
         } },
         .respond_status = github_status.respondStatus,
     },
+    .{
+        .provider = common.PROVIDER_ZOHO,
+        .display_name = "Zoho Desk",
+        .archetype = .{ .oauth2 = .{
+            .flow = zoho_spec.SPEC,
+            .refresh = true,
+            .exchange_failed_code = ec.ERR_CONNECTOR_OAUTH_EXCHANGE_FAILED,
+            .post_auth = zoho_callback.postAuth,
+            .resolve_token_endpoint = zoho_multi_dc.tokenEndpoint,
+        } },
+        .respond_status = oauth_status.respondStatus,
+    },
+    .{
+        .provider = common.PROVIDER_JIRA,
+        .display_name = "Jira",
+        .archetype = .{ .oauth2 = .{
+            .flow = jira_spec.SPEC,
+            .refresh = true,
+            .exchange_failed_code = ec.ERR_CONNECTOR_OAUTH_EXCHANGE_FAILED,
+            .post_auth = jira_callback.postAuth,
+        } },
+        .respond_status = oauth_status.respondStatus,
+    },
+    .{
+        .provider = common.PROVIDER_LINEAR,
+        .display_name = "Linear",
+        .archetype = .{ .oauth2 = .{
+            .flow = linear_spec.SPEC,
+            .refresh = true,
+            .exchange_failed_code = ec.ERR_CONNECTOR_OAUTH_EXCHANGE_FAILED,
+            .post_auth = linear_callback.postAuth,
+        } },
+        .respond_status = oauth_status.respondStatus,
+    },
 };
 
 /// The signed single-use state binding an archetype carries (oauth2 via its
-/// flow, app_install directly). Both carry a `connector_state.Config`; api_key
-/// has no callback so no binding (and the comptime block rejects it anyway).
+/// flow, app_install directly). Both remaining archetypes carry a
+/// `connector_state.Config` — the SOLE trust anchor of the Bearer-less callback.
 fn stateBinding(spec: ConnectorSpec) ?connector_state.Config {
     return switch (spec.archetype) {
         .oauth2 => |o| o.flow.state,
         .app_install => |a| a.state,
-        .api_key => null,
     };
 }
 
@@ -155,12 +198,15 @@ comptime {
                 if (!std.mem.eql(u8, o.flow.provider, spec.provider))
                     @compileError("registry: oauth2 flow provider id disagrees with entry: " ++ spec.provider);
                 if (o.exchange_failed_code.len == 0) @compileError("registry: oauth2 entry without exchange_failed_code: " ++ spec.provider);
+                // Finding ① drift guard: a refresh-token connector is useless
+                // without a broker refresh-mint entry to turn its vaulted refresh
+                // token into access tokens. Prove the two registries agree at
+                // compile time — the connector registry (this file) is the higher
+                // layer, so it checks the lower `credentials/integration.zig`.
+                if (o.refresh and !credentials_integration.hasRefreshMint(spec.provider))
+                    @compileError("registry: refresh connector '" ++ spec.provider ++ "' has no oauth2_refresh entry in credentials/integration.zig — the broker cannot mint from it");
             },
             .app_install => {},
-            // No api_key entries yet — the generic handlers' `.api_key =>
-            // unreachable` arms rest on this assert; the first api_key
-            // provider deletes it and implements the arms in the same diff.
-            .api_key => @compileError("registry: api_key entries are not wired yet (implement the generic handlers' api_key arms first): " ++ spec.provider),
         }
     }
     // State bindings must be UNIQUE across entries. domain_prefix is
@@ -223,6 +269,18 @@ test "registry: lookup resolves the shipped providers to their archetypes" {
     const github = lookup(common.PROVIDER_GITHUB) orelse return error.TestUnexpectedResult;
     try testing.expect(github.archetype == .app_install);
     try testing.expectEqualStrings("GitHub", github.display_name);
+
+    const zoho = lookup(common.PROVIDER_ZOHO) orelse return error.TestUnexpectedResult;
+    try testing.expect(zoho.archetype == .oauth2);
+    try testing.expect(zoho.archetype.oauth2.refresh);
+
+    const jira = lookup(common.PROVIDER_JIRA) orelse return error.TestUnexpectedResult;
+    try testing.expect(jira.archetype == .oauth2);
+    try testing.expect(jira.archetype.oauth2.refresh);
+
+    const linear = lookup(common.PROVIDER_LINEAR) orelse return error.TestUnexpectedResult;
+    try testing.expect(linear.archetype == .oauth2);
+    try testing.expect(linear.archetype.oauth2.refresh);
 }
 
 test "registry: unknown or empty provider resolves to null (the 404 path)" {
@@ -232,6 +290,7 @@ test "registry: unknown or empty provider resolves to null (the 404 path)" {
 }
 
 test "registry: exactly the shipped entries (a new provider updates this pin)" {
-    // pin test: literal is the contract
-    try testing.expectEqual(@as(usize, 2), REGISTRY.len);
+    // Pin test: the registry is the provider catalog source of truth. Five OAuth
+    // connectors — api-key providers (Datadog/Grafana/Fly) are custom secrets now.
+    try testing.expectEqual(@as(usize, 5), REGISTRY.len);
 }

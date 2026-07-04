@@ -34,8 +34,8 @@ const NONE = [_]S{};
 const FLEET_READ = [_]S{.fleet_read};
 const FLEET_WRITE = [_]S{.fleet_write};
 const FLEET_ADMIN = [_]S{.fleet_admin};
-const CREDENTIAL_READ = [_]S{.credential_read};
-const CREDENTIAL_WRITE = [_]S{.credential_write};
+const SECRET_READ = [_]S{.secret_read};
+const SECRET_WRITE = [_]S{.secret_write};
 const APIKEY_READ = [_]S{.apikey_read};
 const APIKEY_WRITE = [_]S{.apikey_write};
 const APIKEY_ADMIN = [_]S{.apikey_admin};
@@ -47,9 +47,9 @@ const CONNECTOR_READ = [_]S{.connector_read};
 const CONNECTOR_WRITE = [_]S{.connector_write};
 const MODEL_READ = [_]S{.model_read};
 const MODEL_ADMIN = [_]S{.model_admin};
-// Template onboarding — independent scopes, no hierarchy between them (M103).
-const TEMPLATE_WRITE = [_]S{.template_write};
-const PLATFORM_TEMPLATE_WRITE = [_]S{.platform_template_write};
+// Fleet library onboarding — independent scopes, no hierarchy between them (M103).
+const LIBRARY_WRITE = [_]S{.library_write};
+const PLATFORM_LIBRARY_WRITE = [_]S{.platform_library_write};
 const PLATFORM_KEY_READ = [_]S{.platform_key_read};
 const PLATFORM_KEY_ADMIN = [_]S{.platform_key_admin};
 
@@ -107,8 +107,8 @@ pub fn requiredScopes(route: router.Route, method: httpz.Method) []const S {
 
         // ── Tenant LLM-provider config (provider credential) ──
         .tenant_provider => switch (method) {
-            .GET => &CREDENTIAL_READ,
-            else => &CREDENTIAL_WRITE,
+            .GET => &SECRET_READ,
+            else => &SECRET_WRITE,
         },
 
         // ── Platform plane (former platform_admin) ──
@@ -144,20 +144,20 @@ pub fn requiredScopes(route: router.Route, method: httpz.Method) []const S {
         .fleet_bundles,
         => &FLEET_READ,
 
-        // ── Template onboarding (M103; independent scopes, no hierarchy) ──
-        .admin_fleet_templates => &PLATFORM_TEMPLATE_WRITE,
+        // ── Fleet library onboarding (M103; independent scopes, no hierarchy) ──
+        .admin_fleet_library => &PLATFORM_LIBRARY_WRITE,
         // GET lists the workspace gallery (read); POST onboards (write).
-        .workspace_fleet_templates => switch (method) {
+        .workspace_fleet_library => switch (method) {
             .GET => &FLEET_READ,
-            else => &TEMPLATE_WRITE,
+            else => &LIBRARY_WRITE,
         },
 
         // ── Credentials ──
-        .workspace_credentials => switch (method) {
-            .GET => &CREDENTIAL_READ,
-            else => &CREDENTIAL_WRITE,
+        .workspace_secrets => switch (method) {
+            .GET => &SECRET_READ,
+            else => &SECRET_WRITE,
         },
-        .workspace_credential => &CREDENTIAL_WRITE,
+        .workspace_secret => &SECRET_WRITE,
 
         // ── Fleet keys ──
         .fleet_keys => switch (method) {
@@ -173,6 +173,7 @@ pub fn requiredScopes(route: router.Route, method: httpz.Method) []const S {
         // ── Connectors (generic {provider} trio) ──
         .connector_connect => &CONNECTOR_WRITE,
         .connector_status => &CONNECTOR_READ,
+        .connector_catalog => &CONNECTOR_READ,
 
         // ── Approvals: view the inbox (read) vs decide a gate (resolve) ──
         .workspace_approvals, .workspace_approval_detail => &APPROVAL_READ,

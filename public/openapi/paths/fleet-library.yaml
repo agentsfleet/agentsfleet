@@ -1,0 +1,125 @@
+/v1/admin/fleet-libraries:
+  post:
+    operationId: onboard_platform_fleet_library
+    summary: Onboard a platform Fleet library entry
+    description: >-
+      Onboards a Fleet library entry into the global platform catalog from a GitHub
+      source reference. Requires the `platform-library:write` scope. The
+      canonical bundle is written to internal object storage keyed by content
+      hash; the response carries metadata only — never an object-store key or
+      support-file content.
+    tags:
+    - Fleet library
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../components/schemas.yaml#/components/schemas/FleetLibraryOnboardRequest
+    responses:
+      '201':
+        description: Entry onboarded into the platform catalog.
+        content:
+          application/json:
+            schema:
+              $ref: ../components/schemas.yaml#/components/schemas/FleetLibraryOnboardResult
+      '400':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '401':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '403':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '413':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '502':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '503':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      default:
+        $ref: ../components/responses.yaml#/components/responses/Error
+/v1/workspaces/{workspace_id}/fleet-libraries:
+  get:
+    operationId: list_workspace_fleet_library
+    summary: List the workspace Fleet library gallery
+    description: >-
+      Returns the union of the platform Fleet library catalog and this
+      workspace's own tenant entries — and nothing from another workspace.
+      Each entry carries identity, source, requirements, and support-file
+      summaries; never an object-store key.
+    tags:
+    - Fleet library
+    parameters:
+    - name: workspace_id
+      in: path
+      required: true
+      description: UUIDv7 of the workspace.
+      schema:
+        type: string
+        format: uuid
+    responses:
+      '200':
+        description: The workspace Fleet library gallery.
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - items
+              properties:
+                items:
+                  type: array
+                  items:
+                    $ref: ../components/schemas.yaml#/components/schemas/FleetLibraryGalleryEntry
+      '400':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '401':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '403':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      default:
+        $ref: ../components/responses.yaml#/components/responses/Error
+  post:
+    operationId: onboard_tenant_fleet_library
+    summary: Onboard a tenant Fleet library entry
+    description: >-
+      Onboards a Fleet library entry into the caller's workspace catalog from a GitHub
+      source reference. Requires the `library:write` scope plus ownership of the
+      target workspace. Re-onboarding identical bytes converges on one
+      `(workspace_id, content_hash)` row. The response carries metadata only.
+    tags:
+    - Fleet library
+    parameters:
+    - name: workspace_id
+      in: path
+      required: true
+      description: UUIDv7 of the workspace.
+      schema:
+        type: string
+        format: uuid
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../components/schemas.yaml#/components/schemas/FleetLibraryOnboardRequest
+    responses:
+      '201':
+        description: Entry onboarded into the workspace catalog.
+        content:
+          application/json:
+            schema:
+              $ref: ../components/schemas.yaml#/components/schemas/FleetLibraryOnboardResult
+      '400':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '401':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '403':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '413':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '502':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '503':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      default:
+        $ref: ../components/responses.yaml#/components/responses/Error

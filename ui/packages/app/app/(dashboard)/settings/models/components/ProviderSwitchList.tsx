@@ -14,8 +14,8 @@ import { resetProviderAction, setProviderSelfManagedAction } from "../actions";
 import {
   customEndpointsOf,
   providerKeysOf,
-  type Credential,
-} from "@/lib/api/credentials";
+  type Secret,
+} from "@/lib/api/secrets";
 import { providerLabel, uniqueProviders } from "@/lib/api/model_caps";
 import { OPENAI_COMPATIBLE_PROVIDER, PROVIDER_MODE, type TenantProvider } from "@/lib/types";
 import { captureModelActivated, captureProviderReset } from "../lib/track";
@@ -23,28 +23,31 @@ import { useProviderAction } from "../lib/use-provider-action";
 import { useModelCatalogue } from "./ModelCatalogueProvider";
 import ProviderKeyForm from "./ProviderKeyForm";
 import CustomEndpointForm from "./CustomEndpointForm";
+import ActiveModelRow, { ADD_KEY_AND_MODEL_LABEL } from "./ActiveModelRow";
 
 type Props = {
   workspaceId: string;
   provider: TenantProvider | null;
-  credentials: Credential[];
+  secrets: Secret[];
 };
 
 const ADD_ENDPOINT_ROW = "__add_endpoint__";
 const ADD_GENERIC_ROW = "__add_generic__";
 const PLATFORM_LABEL = "Platform defaults";
 const CUSTOM_LABEL = "Custom — OpenAI-compatible";
+const SWITCH_ACTION = "switch providers";
+const SWITCH_PLATFORM_ACTION = "switch to platform defaults";
 
-export default function ProviderSwitchList({ workspaceId, provider, credentials }: Props) {
+export default function ProviderSwitchList({ workspaceId, provider, secrets }: Props) {
   const { models } = useModelCatalogue();
   const [open, setOpen] = useState<string | null>(null);
   const { pending, error, run } = useProviderAction();
   const closeOpen = () => setOpen(null);
 
   const live = provider?.mode === PROVIDER_MODE.self_managed;
-  const activeRef = live ? provider.credential_ref : null;
-  const providerKeys = providerKeysOf(credentials);
-  const customEndpoints = customEndpointsOf(credentials);
+  const activeRef = live ? provider.secret_ref : null;
+  const providerKeys = providerKeysOf(secrets);
+  const customEndpoints = customEndpointsOf(secrets);
 
   // Named providers the switch list offers: the catalogue's providers unioned
   // with any the workspace already stored a key for, minus the openai-compatible
@@ -53,22 +56,30 @@ export default function ProviderSwitchList({ workspaceId, provider, credentials 
     new Set([...uniqueProviders(models), ...providerKeys.map((k) => k.provider)]),
   ).filter((p) => p !== OPENAI_COMPATIBLE_PROVIDER);
 
-  function onSwitch(credentialRef: string, model?: string) {
-    void run(async () => {
-      const res = await setProviderSelfManagedAction({ credential_ref: credentialRef, model });
-      if (!res.ok) return res.error;
-      captureModelActivated(res.data);
-      return null;
-    }, closeOpen);
+  function onSwitch(secretRef: string, model?: string) {
+    void run(
+      SWITCH_ACTION,
+      async () => {
+        const res = await setProviderSelfManagedAction({ secret_ref: secretRef, model });
+        if (!res.ok) return { message: res.error, errorCode: res.errorCode };
+        captureModelActivated(res.data);
+        return null;
+      },
+      closeOpen,
+    );
   }
 
   function onSwitchPlatform(fromProvider: string) {
-    void run(async () => {
-      const res = await resetProviderAction();
-      if (!res.ok) return res.error;
-      captureProviderReset(fromProvider);
-      return null;
-    }, closeOpen);
+    void run(
+      SWITCH_PLATFORM_ACTION,
+      async () => {
+        const res = await resetProviderAction();
+        if (!res.ok) return { message: res.error, errorCode: res.errorCode };
+        captureProviderReset(fromProvider);
+        return null;
+      },
+      closeOpen,
+    );
   }
 
   function toggle(id: string) {
@@ -99,10 +110,12 @@ export default function ProviderSwitchList({ workspaceId, provider, credentials 
   }
 
   return (
-    <div id="other-providers" aria-label="Other providers" className="scroll-mt-20">
-      <SectionLabel>Other providers — switch anytime</SectionLabel>
+    <div aria-label="Providers">
+      <SectionLabel>Providers</SectionLabel>
       {pending ? <Spinner size="sm" srLabel="Switching" /> : null}
       <DashboardRowGroup data-testid="provider-switch-list">
+        <ActiveModelRow workspaceId={workspaceId} provider={provider} secrets={secrets} />
+
         {/* Platform defaults — shown only while a self-managed model is live. */}
         {live ? (
           <DashboardRow
@@ -126,7 +139,7 @@ export default function ProviderSwitchList({ workspaceId, provider, credentials 
                 action={
                   storedKey
                     ? switchButton(() => onSwitch(storedKey.name, storedKey.model))
-                    : addButton(p, "Add key & model")
+                    : addButton(p, ADD_KEY_AND_MODEL_LABEL)
                 }
               />
               {open === p ? (
@@ -183,7 +196,7 @@ export default function ProviderSwitchList({ workspaceId, provider, credentials 
             icon={<CpuIcon size={15} />}
             title="Other provider"
             description="Paste a key — we'll detect common providers, or pick one"
-            action={addButton(ADD_GENERIC_ROW, "Add key & model")}
+            action={addButton(ADD_GENERIC_ROW, ADD_KEY_AND_MODEL_LABEL)}
           />
           {open === ADD_GENERIC_ROW ? (
             <div className="border-t border-border bg-surface-deep p-lg">

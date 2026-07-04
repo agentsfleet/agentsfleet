@@ -23,10 +23,11 @@ const connect_h = @import("connect.zig");
 
 const Q_CODE = "code";
 const Q_STATE = "state";
+const Q_LOCATION = "location";
 const HTTP_OK: u16 = 200;
 const HEADER_LOCATION = "location";
 const STATUS_FOUND: u16 = 302;
-const DEST_PATH_FMT = "/credentials?connector={s}";
+const DEST_PATH = "/integrations";
 const S_STATE_INVALID = "Invalid or expired connect state";
 // Callback wording is the shipped shorter form (no "on this deployment").
 const NOT_CONFIGURED_FMT = "{s} connect is not configured";
@@ -61,7 +62,11 @@ pub fn innerCallback(hx: hx_mod.Hx, req: *httpz.Request, provider: []const u8) v
             };
             defer hx.alloc.free(workspace_id);
 
-            completeOauth2(hx, spec, o, workspace_id, code) catch |err| {
+            // Multi-DC providers (Zoho) append `location` to the redirect —
+            // absent for single-region providers.
+            const location = qs.get(Q_LOCATION);
+
+            completeOauth2(hx, spec, o, workspace_id, code, location) catch |err| {
                 switch (err) {
                     error.NotConfigured => failFmt(hx, ec.ERR_CONNECTOR_NOT_CONFIGURED, NOT_CONFIGURED_FMT, NOT_CONFIGURED_FALLBACK, spec),
                     error.ExchangeFailed => failFmt(hx, o.exchange_failed_code, EXCHANGE_FAILED_FMT, EXCHANGE_FAILED_FALLBACK, spec),
@@ -75,7 +80,7 @@ pub fn innerCallback(hx: hx_mod.Hx, req: *httpz.Request, provider: []const u8) v
                 }
                 return;
             };
-            redirectToDashboard(hx, spec.provider);
+            redirectToDashboard(hx);
         },
         .app_install => |a| {
             const workspace_id = connector_state.verifyConsume(hx.alloc, hx.ctx.queue, a.state, secret, raw_state, clock.nowMillis()) orelse {
@@ -86,20 +91,15 @@ pub fn innerCallback(hx: hx_mod.Hx, req: *httpz.Request, provider: []const u8) v
 
             // The hook owns validation + persistence + its failure responses
             // (installation callbacks carry vendor-bespoke inputs).
-            if (a.complete(hx, workspace_id, req)) redirectToDashboard(hx, spec.provider);
+            if (a.complete(hx, workspace_id, req)) redirectToDashboard(hx);
         },
-        // Comptime-asserted: no api_key entries in the registry (an api_key
-        // connect has no browser round-trip, so no callback exists to hit).
-        // The api_key diff MUST turn this arm into a 404 — the URL becomes
-        // reachable the moment an api_key provider id resolves.
-        .api_key => unreachable,
     }
 }
 
 /// Creds under a short-lived acquire released BEFORE the vendor exchange —
 /// a pool slot never rides a vendor call — then the deadline-armed exchange
 /// and the provider's parse-and-persist hook.
-fn completeOauth2(hx: hx_mod.Hx, spec: *const registry.ConnectorSpec, o: registry.Oauth2Data, workspace_id: []const u8, code: []const u8) anyerror!void {
+fn completeOauth2(hx: hx_mod.Hx, spec: *const registry.ConnectorSpec, o: registry.Oauth2Data, workspace_id: []const u8, code: []const u8, location: ?[]const u8) anyerror!void {
     const creds = blk: {
         const conn: *pg.Conn = hx.ctx.pool.acquire() catch return error.DbUnavailable;
         defer hx.ctx.pool.release(conn);
@@ -110,23 +110,27 @@ fn completeOauth2(hx: hx_mod.Hx, spec: *const registry.ConnectorSpec, o: registr
     const redirect_uri = try connect_h.callbackUrl(hx, spec.provider);
     defer hx.alloc.free(redirect_uri);
 
-    // Effective flow: production uses the provider's real token endpoint; an
-    // integration test points `connector_oauth_token_endpoint_override` at a
-    // loopback fake-provider so the exchange never dials the real vendor.
+    // Effective flow: production uses the provider's real token endpoint,
+    // overridden per-request for multi-DC providers (Zoho) via `location` —
+    // the code is only redeemable at the data-center-specific accounts
+    // server that issued it. An integration test points
+    // `connector_oauth_token_endpoint_override` at a loopback fake-provider
+    // so the exchange never dials the real vendor; the override always wins.
     var eff_flow = o.flow;
+    if (o.resolve_token_endpoint) |resolve| eff_flow.token_endpoint = resolve(location);
     if (hx.ctx.connector_oauth_token_endpoint_override) |ep| eff_flow.token_endpoint = ep;
     const result = try oauth2.exchange(hx.alloc, hx.ctx.io, eff_flow, creds, code, redirect_uri);
     defer hx.alloc.free(result.body);
     if (result.status != HTTP_OK) return error.ExchangeFailed;
 
-    try o.post_auth(hx, workspace_id, result.body);
+    try o.post_auth(hx, workspace_id, result.body, location);
 }
 
-fn redirectToDashboard(hx: hx_mod.Hx, provider: []const u8) void {
+fn redirectToDashboard(hx: hx_mod.Hx) void {
     // The Location value must outlive the handler: httpz writes response
     // headers AFTER the dispatcher's per-request arena (hx.alloc) is freed, so
     // it lives on res.arena (owned until the response is written).
-    const url = std.fmt.allocPrint(hx.res.arena, "{s}" ++ DEST_PATH_FMT, .{ hx.ctx.app_url, provider }) catch {
+    const url = std.fmt.allocPrint(hx.res.arena, "{s}" ++ DEST_PATH, .{hx.ctx.app_url}) catch {
         // The connection succeeded; a redirect-build failure is cosmetic, so
         // return 200 rather than a 500 over a missing app_url.
         hx.ok(.ok, .{ .status = "connected" });
