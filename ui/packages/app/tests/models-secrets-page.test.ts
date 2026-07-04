@@ -8,7 +8,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 // mocked at module boundaries, so this asserts the page's composition only:
 // title/description + the switch list mounted under the catalogue provider.
 // Secrets & ENVs is its own page now — this
-// page no longer renders any secrets/credentials content.
+// page no longer renders any secrets-vault content.
 
 const redirect = vi.fn((path: string) => {
   throw new Error(`redirect:${path}`);

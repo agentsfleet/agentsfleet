@@ -60,8 +60,8 @@ export type FleetLibraryVisibility = "platform" | "tenant";
 // as a {path, size_bytes} summary — the bytes live in R2, never in the response.
 export type FleetLibrarySupportFileSummary = { path: string; size_bytes: number };
 
-// A template's declared requirements — drives the install gate's credential
-// preview and the skill-only fallback when no TRIGGER.md shipped.
+// A library entry's declared requirements — drives the install gate's
+// credential preview and the skill-only fallback when no TRIGGER.md shipped.
 export type FleetLibraryRequirements = {
   credentials: string[];
   tools: string[];
@@ -70,8 +70,8 @@ export type FleetLibraryRequirements = {
 };
 
 // One gallery row from GET /v1/workspaces/{ws}/fleet-libraries — a platform or
-// tenant template. Metadata only; `visibility` is the tier the install flow keys
-// the create body off.
+// tenant library entry. Metadata only; `visibility` is the tier the install
+// flow keys the create body off.
 export type FleetLibraryGalleryEntry = {
   id: string;
   name: string;
@@ -95,7 +95,7 @@ export type FleetLibraryGalleryResponse = { items: FleetLibraryGalleryEntry[] };
 export const SOURCE_KIND_GITHUB = "github" as const;
 export const SOURCE_KIND_UPLOAD = "upload" as const;
 
-export type OnboardTemplateRequest =
+export type OnboardLibraryEntryRequest =
   | {
       source_kind: typeof SOURCE_KIND_GITHUB;
       source_ref: string;
@@ -106,7 +106,7 @@ export type OnboardTemplateRequest =
       trigger_markdown?: string;
     };
 
-export type OnboardedTemplate = {
+export type OnboardedLibraryEntry = {
   id: string;
   name: string;
   visibility: "tenant";

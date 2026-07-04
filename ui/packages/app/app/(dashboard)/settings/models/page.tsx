@@ -51,7 +51,7 @@ export default async function ModelsKeysPage() {
       </PageHeader>
 
       <ModelCatalogueProvider>
-        <ProviderSwitchList workspaceId={workspaceId} provider={provider} credentials={secrets} />
+        <ProviderSwitchList workspaceId={workspaceId} provider={provider} secrets={secrets} />
       </ModelCatalogueProvider>
     </div>
   );

@@ -86,7 +86,7 @@ export async function FleetsData() {
 }
 
 // Empty fleets → a centered EmptyState: icon, headline, one line of context,
-// then [Learn more] + the primary Install affordance. The template gallery
+// then [Learn more] + the primary Install affordance. The library gallery
 // itself lives on /fleets/new (the Install fleet button routes there), so the
 // first-run screen stays calm rather than rendering the full picker inline.
 function FleetsEmptyState() {

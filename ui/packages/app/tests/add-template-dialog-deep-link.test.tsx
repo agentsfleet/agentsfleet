@@ -5,13 +5,13 @@ import { resetCommonMocks } from "./helpers/dashboard-mocks";
 
 vi.mock("next/navigation", async () => (await import("./helpers/dashboard-mocks")).nextNavigationMock());
 vi.mock("@/app/(dashboard)/fleets/actions", () => ({
-  onboardTemplateAction: vi.fn(),
+  onboardLibraryEntryAction: vi.fn(),
 }));
 vi.mock("@/lib/analytics/posthog", () => ({
   captureProductEvent: vi.fn(),
 }));
 
-import AddTemplateDialog from "../app/(dashboard)/fleets/new/AddTemplateDialog";
+import AddLibraryDialog from "../app/(dashboard)/fleets/new/AddLibraryDialog";
 import { InstallSourceSelector } from "../app/(dashboard)/fleets/new/InstallSourceSelector";
 
 beforeEach(() => {
@@ -23,14 +23,14 @@ afterEach(() => cleanup());
 // Regression: the dashboard empty-state CTA deep-links /fleets/new?create=1 so
 // the create-template form opens on arrival instead of re-rendering the same
 // empty state behind a second identical button.
-describe("AddTemplateDialog deep link", () => {
+describe("AddLibraryDialog deep link", () => {
   it("opens on first render when defaultOpen is set", async () => {
-    render(React.createElement(AddTemplateDialog, { workspaceId: "ws_1", defaultOpen: true }));
+    render(React.createElement(AddLibraryDialog, { workspaceId: "ws_1", defaultOpen: true }));
     expect(await screen.findByLabelText("Repository")).toBeTruthy();
   });
 
   it("stays closed on first render without defaultOpen", () => {
-    render(React.createElement(AddTemplateDialog, { workspaceId: "ws_1" }));
+    render(React.createElement(AddLibraryDialog, { workspaceId: "ws_1" }));
     expect(screen.queryByLabelText("Repository")).toBeNull();
   });
 });
@@ -40,9 +40,9 @@ describe("InstallSourceSelector deep link", () => {
     render(
       React.createElement(InstallSourceSelector, {
         workspaceId: "ws_1",
-        templates: [],
-        onUseTemplate: () => {},
-        canAddTemplate: true,
+        entries: [],
+        onUseLibraryEntry: () => {},
+        canAddLibraryEntry: true,
         initialCreateOpen: true,
       }),
     );

@@ -8,7 +8,7 @@ import { useProviderAction } from "../lib/use-provider-action";
 
 type Props = {
   workspaceId: string;
-  /** The active credential whose secret is rotated; provider/model are preserved. */
+  /** The active secret being rotated; provider/model are preserved. */
   secretRef: string;
   /** Active provider id — recorded on the key_rotated event (not the secret). */
   provider: string;

@@ -30,7 +30,7 @@ export type ProviderKeyFormProps = {
   workspaceId: string;
   /** Lock the form to one provider (switch-list add); omit for the generic paste-detect add. */
   provider?: string;
-  /** When true, the stored credential is activated as the tenant provider on save. */
+  /** When true, the stored secret is activated as the tenant provider on save. */
   activate?: boolean;
   onDone: () => void;
   onCancel?: () => void;

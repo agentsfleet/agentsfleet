@@ -6,7 +6,7 @@ import { PROVIDER_MODE, type TenantProvider } from "@/lib/types";
 
 // The active-model hero: LIVE vs DEFAULT presentation, the live action set
 // (Change model / Replace key / Switch to platform), Replace-key gating by the
-// active credential's kind, and the context formatter.
+// active secret's kind, and the context formatter.
 
 const routerRefresh = vi.fn();
 const resetProviderAction = vi.hoisted(() => vi.fn());
@@ -75,7 +75,7 @@ describe("ActiveModelHero — live (self-managed)", () => {
       React.createElement(ActiveModelHero, {
         workspaceId: "ws_1",
         provider: selfManaged(),
-        credentials: [providerKeyCred],
+        secrets: [providerKeyCred],
       }),
     );
     const hero = screen.getByTestId("active-model-hero");
@@ -85,7 +85,7 @@ describe("ActiveModelHero — live (self-managed)", () => {
     expect(screen.getByText("Anthropic")).toBeTruthy();
     expect(screen.getByText("256k")).toBeTruthy();
     expect(screen.getByText("Provider direct")).toBeTruthy();
-    expect(screen.getByText("anthropic-prod")).toBeTruthy(); // credential ref (mono span after "via")
+    expect(screen.getByText("anthropic-prod")).toBeTruthy(); // secret ref (mono span after "via")
 
     // Change model panel toggles open then closed (via the toggle button).
     fireEvent.click(screen.getByRole("button", { name: "Change model" }));
@@ -98,7 +98,7 @@ describe("ActiveModelHero — live (self-managed)", () => {
     fireEvent.click(screen.getByTestId("change-close"));
     expect(screen.queryByTestId("hero-change-model")).toBeNull();
 
-    // Replace key is available for a provider_key credential; toggle it open and
+    // Replace key is available for a provider_key secret; toggle it open and
     // closed via the button (covers both toggle branches), then reopen and close
     // via the panel's onClose callback.
     fireEvent.click(screen.getByRole("button", { name: "Replace key" }));
@@ -110,24 +110,24 @@ describe("ActiveModelHero — live (self-managed)", () => {
     expect(screen.queryByTestId("hero-replace-key")).toBeNull();
   });
 
-  it("hides Replace key for a custom_secret active credential (can't rotate as a model key)", () => {
+  it("hides Replace key for a custom_secret active secret (can't rotate as a model key)", () => {
     render(
       React.createElement(ActiveModelHero, {
         workspaceId: "ws_1",
         provider: selfManaged({ secret_ref: "STRIPE" }),
-        credentials: [{ kind: SECRET_KIND.custom_secret, name: "STRIPE", created_at: 1 }],
+        secrets: [{ kind: SECRET_KIND.custom_secret, name: "STRIPE", created_at: 1 }],
       }),
     );
     expect(screen.queryByRole("button", { name: "Replace key" })).toBeNull();
     expect(screen.getByRole("button", { name: "Change model" })).toBeTruthy();
   });
 
-  it("shows Replace key for a custom_endpoint credential and formats sub-1k context raw", () => {
+  it("shows Replace key for a custom_endpoint secret and formats sub-1k context raw", () => {
     render(
       React.createElement(ActiveModelHero, {
         workspaceId: "ws_1",
         provider: selfManaged({ provider: "openai-compatible", context_cap_tokens: 500, secret_ref: "vllm" }),
-        credentials: [
+        secrets: [
           { kind: SECRET_KIND.custom_endpoint, name: "vllm", created_at: 1, provider: "openai-compatible", model: "m1", base_url: "https://x/v1" },
         ],
       }),
@@ -136,17 +136,17 @@ describe("ActiveModelHero — live (self-managed)", () => {
     expect(screen.getByText("500")).toBeTruthy();
   });
 
-  it("falls back to the provider id when there is no credential ref, and shows default context for zero", () => {
+  it("falls back to the provider id when there is no secret ref, and shows default context for zero", () => {
     render(
       React.createElement(ActiveModelHero, {
         workspaceId: "ws_1",
         provider: selfManaged({ secret_ref: null, context_cap_tokens: 0 }),
-        credentials: [],
+        secrets: [],
       }),
     );
-    expect(screen.getByText("anthropic")).toBeTruthy(); // credRef null → provider id after "via"
+    expect(screen.getByText("anthropic")).toBeTruthy(); // secretRef null → provider id after "via"
     expect(screen.getByText("default")).toBeTruthy();
-    // No credential ref → no Replace key, and the change panel can't open.
+    // No secret ref → no Replace key, and the change panel can't open.
     expect(screen.queryByRole("button", { name: "Replace key" })).toBeNull();
   });
 
@@ -155,7 +155,7 @@ describe("ActiveModelHero — live (self-managed)", () => {
       React.createElement(ActiveModelHero, {
         workspaceId: "ws_1",
         provider: selfManaged(),
-        credentials: [providerKeyCred],
+        secrets: [providerKeyCred],
       }),
     );
     fireEvent.click(screen.getByRole("button", { name: "Switch to platform defaults" }));
@@ -171,7 +171,7 @@ describe("ActiveModelHero — live (self-managed)", () => {
       React.createElement(ActiveModelHero, {
         workspaceId: "ws_1",
         provider: selfManaged(),
-        credentials: [providerKeyCred],
+        secrets: [providerKeyCred],
       }),
     );
     fireEvent.click(screen.getByRole("button", { name: "Switch to platform defaults" }));
@@ -190,7 +190,7 @@ describe("ActiveModelHero — default (platform / no provider)", () => {
       React.createElement(ActiveModelHero, {
         workspaceId: "ws_1",
         provider: { ...selfManaged(), mode: PROVIDER_MODE.platform } as TenantProvider,
-        credentials: [],
+        secrets: [],
       }),
     );
     const hero = screen.getByTestId("active-model-hero");
@@ -212,7 +212,7 @@ describe("ActiveModelHero — default (platform / no provider)", () => {
       React.createElement(ActiveModelHero, {
         workspaceId: "ws_1",
         provider: { ...selfManaged(), mode: PROVIDER_MODE.platform } as TenantProvider,
-        credentials: [],
+        secrets: [],
       }),
     );
     const addButton = screen.getByRole("button", { name: "Add key & model" });
@@ -236,7 +236,7 @@ describe("ActiveModelHero — default (platform / no provider)", () => {
 
   it("treats a null provider as the default view", () => {
     render(
-      React.createElement(ActiveModelHero, { workspaceId: "ws_1", provider: null, credentials: [] }),
+      React.createElement(ActiveModelHero, { workspaceId: "ws_1", provider: null, secrets: [] }),
     );
     expect(screen.getByText("DEFAULT")).toBeTruthy();
   });

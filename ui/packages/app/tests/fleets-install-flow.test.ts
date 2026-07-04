@@ -74,24 +74,24 @@ function stubStream(installStep: string | null) {
 }
 
 type FlowProps = {
-  templates?: FleetLibraryGalleryEntry[];
+  entries?: FleetLibraryGalleryEntry[];
   presentCredentialNames?: string[] | null;
-  initialTemplateId?: string;
+  initialLibraryId?: string;
 };
 
 function renderFlow(props: FlowProps = {}) {
   return render(
     React.createElement(InstallFleet, {
       workspaceId: "ws_1",
-      templates: props.templates ?? [TEMPLATE_GH, TEMPLATE_TENANT],
+      entries: props.entries ?? [TEMPLATE_GH, TEMPLATE_TENANT],
       presentCredentialNames:
         props.presentCredentialNames === undefined ? [] : props.presentCredentialNames,
-      initialTemplateId: props.initialTemplateId,
+      initialLibraryId: props.initialLibraryId,
     }),
   );
 }
 
-function useTemplateButton(index: number): HTMLElement {
+function useEntryButton(index: number): HTMLElement {
   const button = screen.getAllByRole("button", { name: "Use entry" })[index];
   if (!button) throw new Error(`no "Use entry" button at index ${index}`);
   return button;
@@ -128,8 +128,8 @@ describe("test_install_template_gallery_render", () => {
     expect(screen.getAllByRole("button", { name: "Use entry" }).length).toBe(2);
   });
 
-  it("shows an empty state when no templates are available", () => {
-    renderFlow({ templates: [] });
+  it("shows an empty state when no library entries are available", () => {
+    renderFlow({ entries: [] });
     expect(screen.getByText("No fleet library yet")).toBeTruthy();
   });
 });
@@ -142,7 +142,7 @@ describe("test_install_inline_state_driven", () => {
     const user = userEvent.setup({ delay: null });
     renderFlow({ presentCredentialNames: ["github"] });
 
-    await user.click(useTemplateButton(0));
+    await user.click(useEntryButton(0));
     await confirmInstall(user);
 
     // Inline states — NOT the retired review page.
@@ -160,7 +160,7 @@ describe("test_install_inline_state_driven", () => {
     const user = userEvent.setup({ delay: null });
     renderFlow({ presentCredentialNames: [] });
 
-    await user.click(useTemplateButton(1)); // TEMPLATE_TENANT
+    await user.click(useEntryButton(1)); // TEMPLATE_TENANT
     await confirmInstall(user);
     await waitFor(() => expect(screen.getByLabelText("Install states")).toBeTruthy());
     await waitFor(() =>
@@ -175,7 +175,7 @@ describe("test_install_inline_state_driven", () => {
     const user = userEvent.setup({ delay: null });
     renderFlow({ presentCredentialNames: ["github"] });
 
-    await user.click(useTemplateButton(0));
+    await user.click(useEntryButton(0));
     await confirmInstall(user, "pr-reviewer-frontend");
     await waitFor(() =>
       expect(installFleetActionMock).toHaveBeenCalledWith("ws_1", {
@@ -190,7 +190,7 @@ describe("test_install_inline_state_driven", () => {
     const user = userEvent.setup({ delay: null });
     renderFlow({ presentCredentialNames: [] });
 
-    await user.click(useTemplateButton(1)); // TEMPLATE_TENANT — installs by UUID
+    await user.click(useEntryButton(1)); // TEMPLATE_TENANT — installs by UUID
     await confirmInstall(user, "ops-frontend");
     await waitFor(() =>
       expect(installFleetActionMock).toHaveBeenCalledWith("ws_1", {
@@ -206,25 +206,25 @@ describe("test_install_inline_state_driven", () => {
     // A template whose SKILL.md carried no `description:` → the confirm panel
     // shows the name but skips the description line (the `: null` branch).
     const noDesc = { ...TEMPLATE_GH, id: "no-desc", name: "No description template", description: "" };
-    renderFlow({ templates: [noDesc], presentCredentialNames: ["github"] });
+    renderFlow({ entries: [noDesc], presentCredentialNames: ["github"] });
 
-    await user.click(useTemplateButton(0));
+    await user.click(useEntryButton(0));
     // Reaching the confirm step (Install button) renders InstallConfirm with a
     // falsy description; the panel still surfaces the template name.
     await waitFor(() => expect(screen.getByRole("button", { name: "Install" })).toBeTruthy());
     expect(screen.getByText("No description template")).toBeTruthy();
   });
 
-  it("preselects a template from a ?template= deep link and lands on the confirm step", async () => {
+  it("preselects a library entry from a ?library= deep link and lands on the confirm step", async () => {
     installFleetActionMock.mockReturnValue(new Promise(() => {}));
     const user = userEvent.setup({ delay: null });
-    renderFlow({ initialTemplateId: "github-pr-reviewer", presentCredentialNames: ["github"] });
+    renderFlow({ initialLibraryId: "github-pr-reviewer", presentCredentialNames: ["github"] });
     await confirmInstall(user);
     await waitFor(() => expect(screen.getByLabelText("Install states")).toBeTruthy());
   });
 
-  it("ignores a ?template= deep link that matches no template", () => {
-    renderFlow({ initialTemplateId: "does-not-exist" });
+  it("ignores a ?library= deep link that matches no library entry", () => {
+    renderFlow({ initialLibraryId: "does-not-exist" });
     expect(screen.getByText("Fleet library")).toBeTruthy();
   });
 
@@ -232,7 +232,7 @@ describe("test_install_inline_state_driven", () => {
     installFleetActionMock.mockReturnValue(new Promise(() => {}));
     const user = userEvent.setup({ delay: null });
     renderFlow({ presentCredentialNames: ["github"] });
-    await user.click(useTemplateButton(0));
+    await user.click(useEntryButton(0));
     await confirmInstall(user);
     await waitFor(() => expect(screen.getByLabelText("Install states")).toBeTruthy());
     await user.click(screen.getByRole("button", { name: /Back to library/ }));

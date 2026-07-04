@@ -8,7 +8,7 @@ import type { ModelCap } from "@/lib/api/model_caps";
 // The "switch anytime" list: a Platform row (live only), one row per named
 // provider (Switch when keyed / Add key & model when not), stored custom
 // endpoints (Switch), an Add-endpoint row, and a generic paste-detect row. The
-// active credential is excluded everywhere (it's the hero).
+// active secret is excluded everywhere (it's the hero).
 
 const routerRefresh = vi.fn();
 const resetProviderAction = vi.hoisted(() => vi.fn());
@@ -67,13 +67,13 @@ const cap = (provider: string): ModelCap => ({
   output_nanos_per_mtok: 1,
 });
 
-function liveProvider(credentialRef = "anthropic-prod"): TenantProvider {
+function liveProvider(secretRef = "anthropic-prod"): TenantProvider {
   return {
     mode: PROVIDER_MODE.self_managed,
     provider: "anthropic",
     model: "claude-sonnet-4-6",
     context_cap_tokens: 256000,
-    secret_ref: credentialRef,
+    secret_ref: secretRef,
   } as TenantProvider;
 }
 
@@ -104,12 +104,12 @@ beforeEach(() => {
 });
 afterEach(() => cleanup());
 
-function renderLive(credentialRef = "anthropic-prod") {
+function renderLive(secretRef = "anthropic-prod") {
   render(
     React.createElement(ProviderSwitchList, {
       workspaceId: "ws_1",
-      provider: liveProvider(credentialRef),
-      credentials: ROSTER,
+      provider: liveProvider(secretRef),
+      secrets: ROSTER,
     }),
   );
 }
@@ -118,7 +118,7 @@ describe("ProviderSwitchList — live roster", () => {
   it("renders the platform row, keyed/unkeyed provider rows, and custom endpoints", () => {
     renderLive();
     expect(screen.getByText("Platform defaults")).toBeTruthy();
-    // anthropic is the active credential → excluded as a separate switch row;
+    // anthropic is the active secret → excluded as a separate switch row;
     // it may still legitimately appear inside the merged hero row's own meta.
     screen.queryAllByText("Anthropic").forEach((el) => {
       expect(el.closest('[data-testid="active-model-hero"]')).toBeTruthy();
@@ -223,7 +223,7 @@ describe("ProviderSwitchList — live roster", () => {
     expect(screen.queryByTestId("provider-key-form")).toBeNull();
   });
 
-  it("excludes a custom endpoint when it is the active credential", () => {
+  it("excludes a custom endpoint when it is the active secret", () => {
     renderLive("vllm");
     // vllm is active → not offered as a switch row; vllm2 still is.
     expect(screen.queryByText("vllm · m1")).toBeNull();
@@ -265,7 +265,7 @@ describe("ProviderSwitchList — not live", () => {
       React.createElement(ProviderSwitchList, {
         workspaceId: "ws_1",
         provider: { ...liveProvider(), mode: PROVIDER_MODE.platform } as TenantProvider,
-        credentials: ROSTER,
+        secrets: ROSTER,
       }),
     );
     expect(screen.queryByText("Platform defaults")).toBeNull();
@@ -275,7 +275,7 @@ describe("ProviderSwitchList — not live", () => {
 
   it("treats a null provider as not live", () => {
     render(
-      React.createElement(ProviderSwitchList, { workspaceId: "ws_1", provider: null, credentials: [] }),
+      React.createElement(ProviderSwitchList, { workspaceId: "ws_1", provider: null, secrets: [] }),
     );
     expect(screen.queryByText("Platform defaults")).toBeNull();
     expect(screen.getByText("Other provider")).toBeTruthy();

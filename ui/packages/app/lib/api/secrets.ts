@@ -1,14 +1,14 @@
 import { request } from "./client";
 import { SECRET_FIELD } from "@/lib/types";
 
-// Workspace credential vault. The plaintext body stays opaque — never returned
+// Workspace secret vault. The plaintext body stays opaque — never returned
 // on read — but the list now carries a non-secret metadata *projection* the
 // server derives by decrypting each body and extracting everything but
-// `api_key` (see src/agentsfleetd/http/handlers/fleets/credential_metadata.zig).
-// The client reads that projection instead of guessing what each credential is.
+// `api_key` (see src/agentsfleetd/http/handlers/fleets/secret_metadata.zig).
+// The client reads that projection instead of guessing what each secret is.
 
 // Secret kinds, keyed off the server's `kind` discriminator. The string
-// values are verbatim with the Zig `@tagName` in credential_metadata.zig's
+// values are verbatim with the Zig `@tagName` in secret_metadata.zig's
 // `Kind` enum (RULE UFS — cross-runtime parity); changing one without the other
 // silently breaks classification.
 export const SECRET_KIND = {
@@ -19,7 +19,7 @@ export const SECRET_KIND = {
 
 export type SecretKind = (typeof SECRET_KIND)[keyof typeof SECRET_KIND];
 
-// Common descriptors every credential carries regardless of kind. Display-only
+// Common descriptors every secret carries regardless of kind. Display-only
 // surfaces (the secret list, the vault table) read just these.
 interface SecretBase {
   name: string;
@@ -28,14 +28,14 @@ interface SecretBase {
 }
 
 /**
- * A vault credential as the list projects it — a tagged union keyed by server
- * `kind`. The server decides what each credential *is* (by the stored `provider`
+ * A vault secret as the list projects it — a tagged union keyed by server
+ * `kind`. The server decides what each secret *is* (by the stored `provider`
  * field, never the user-chosen name), so the client classifies by reading `kind`
  * and never re-derives it from a name or provider string (spec Invariant #3).
  * `api_key` is structurally absent: the projection has no field for it.
  *
  * Optional `model`/`base_url` ride the `emit_null_optional_fields=false` wire
- * shape — a credential that never stored them simply omits the key.
+ * shape — a secret that never stored them simply omits the key.
  */
 export type Secret =
   | ({ kind: typeof SECRET_KIND.provider_key; provider: string; model?: string } & SecretBase)
@@ -55,7 +55,7 @@ export type CustomEndpointSecret = Extract<
 export type CustomSecret = Extract<Secret, { kind: typeof SECRET_KIND.custom_secret }>;
 
 /**
- * The decrypted credential body the vault stores (never returned on read). The
+ * The decrypted secret body the vault stores (never returned on read). The
  * shape is open (`[key: string]: unknown`) because a SKILL.md references
  * arbitrary fields by name, but the self-managed model-provider fields are
  * typed so the own-key + custom-endpoint write paths can't drift: `provider` +
@@ -79,22 +79,22 @@ export interface SecretListResponse {
 // variant type so consumers read `provider`/`model`/`base_url` without a cast.
 
 /** Stored named-provider keys (anthropic, openai, …) — the switch-list rows. */
-export function providerKeysOf(credentials: Secret[]): ProviderKeySecret[] {
-  return credentials.filter(
+export function providerKeysOf(secrets: Secret[]): ProviderKeySecret[] {
+  return secrets.filter(
     (c): c is ProviderKeySecret => c.kind === SECRET_KIND.provider_key,
   );
 }
 
 /** Stored OpenAI-compatible custom endpoints — carry a `base_url`. */
-export function customEndpointsOf(credentials: Secret[]): CustomEndpointSecret[] {
-  return credentials.filter(
+export function customEndpointsOf(secrets: Secret[]): CustomEndpointSecret[] {
+  return secrets.filter(
     (c): c is CustomEndpointSecret => c.kind === SECRET_KIND.custom_endpoint,
   );
 }
 
 /** Opaque named secrets a SKILL.md reads by field path — never model providers. */
-export function customSecretsOf(credentials: Secret[]): CustomSecret[] {
-  return credentials.filter(
+export function customSecretsOf(secrets: Secret[]): CustomSecret[] {
+  return secrets.filter(
     (c): c is CustomSecret => c.kind === SECRET_KIND.custom_secret,
   );
 }
@@ -123,7 +123,7 @@ export async function createSecret(
 }
 
 /**
- * Rotate only the secret of an existing credential — `PATCH …/credentials/{name}`
+ * Rotate only the api_key of an existing secret — `PATCH …/secrets/{name}`
  * with `{ api_key }`. The server preserves every non-secret field
  * (provider/model/base_url), so this is Replace-key-safe for every kind and
  * cannot corrupt a custom endpoint's `base_url`. A missing name returns a typed

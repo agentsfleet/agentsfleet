@@ -6,21 +6,21 @@ import { EVENTS } from "../lib/analytics/events";
 import { SOURCE_KIND_GITHUB } from "../lib/types";
 import { routerRefresh, resetCommonMocks } from "./helpers/dashboard-mocks";
 
-const { onboardTemplateActionMock, captureProductEventMock } = vi.hoisted(() => ({
-  onboardTemplateActionMock: vi.fn(),
+const { onboardLibraryEntryActionMock, captureProductEventMock } = vi.hoisted(() => ({
+  onboardLibraryEntryActionMock: vi.fn(),
   captureProductEventMock: vi.fn(),
 }));
 
 vi.mock("next/navigation", async () => (await import("./helpers/dashboard-mocks")).nextNavigationMock());
 vi.mock("@/app/(dashboard)/fleets/actions", () => ({
-  onboardTemplateAction: onboardTemplateActionMock,
+  onboardLibraryEntryAction: onboardLibraryEntryActionMock,
 }));
 vi.mock("@/lib/analytics/posthog", () => ({
   captureProductEvent: captureProductEventMock,
 }));
 
-import AddTemplateDialog from "../app/(dashboard)/fleets/new/AddTemplateDialog";
-import { CREATE_TEMPLATE_DOC_URL } from "../app/(dashboard)/fleets/new/template-docs";
+import AddLibraryDialog from "../app/(dashboard)/fleets/new/AddLibraryDialog";
+import { CREATE_LIBRARY_DOC_URL } from "../app/(dashboard)/fleets/new/library-docs";
 
 const onboarded = {
   id: "tmpl_1",
@@ -39,7 +39,7 @@ afterEach(() => cleanup());
 
 async function openDialog() {
   const user = userEvent.setup({ delay: null });
-  render(React.createElement(AddTemplateDialog, { workspaceId: "ws_1" }));
+  render(React.createElement(AddLibraryDialog, { workspaceId: "ws_1" }));
   await user.click(screen.getByRole("button", { name: /^add library entry$/i }));
   await screen.findByLabelText("Repository");
   return user;
@@ -51,11 +51,11 @@ function submitDialog() {
   fireEvent.submit(input.form);
 }
 
-describe("AddTemplateDialog", () => {
+describe("AddLibraryDialog", () => {
   it("links to the create-template docs from the dialog", async () => {
     await openDialog();
     const link = screen.getByRole("link", { name: /^learn more/i });
-    expect(link.getAttribute("href")).toBe(CREATE_TEMPLATE_DOC_URL);
+    expect(link.getAttribute("href")).toBe(CREATE_LIBRARY_DOC_URL);
   });
 
   it("rejects an invalid owner/repo source-ref before calling the action", async () => {
@@ -63,17 +63,17 @@ describe("AddTemplateDialog", () => {
     await user.type(screen.getByLabelText("Repository"), "notarepo");
     submitDialog();
     await screen.findByText(/Use owner\/repo/i);
-    expect(onboardTemplateActionMock).not.toHaveBeenCalled();
+    expect(onboardLibraryEntryActionMock).not.toHaveBeenCalled();
   });
 
   it("test_onboard_success_refreshes_gallery and test_onboard_emits_analytics_event", async () => {
-    onboardTemplateActionMock.mockResolvedValueOnce({ ok: true, data: onboarded });
+    onboardLibraryEntryActionMock.mockResolvedValueOnce({ ok: true, data: onboarded });
     const user = await openDialog();
     await user.type(screen.getByLabelText("Repository"), " owner/repo ");
     submitDialog();
 
     await waitFor(() => {
-      expect(onboardTemplateActionMock).toHaveBeenCalledWith("ws_1", {
+      expect(onboardLibraryEntryActionMock).toHaveBeenCalledWith("ws_1", {
         source_kind: SOURCE_KIND_GITHUB,
         source_ref: "owner/repo",
       });
@@ -89,7 +89,7 @@ describe("AddTemplateDialog", () => {
   });
 
   it("test_onboard_failure_surfaces_mapped_error", async () => {
-    onboardTemplateActionMock.mockResolvedValueOnce({
+    onboardLibraryEntryActionMock.mockResolvedValueOnce({
       ok: false,
       error: "forbidden",
       status: 403,
@@ -108,7 +108,7 @@ describe("AddTemplateDialog", () => {
 
   it("shows pending state while adding a template", async () => {
     let finishAction: ((value: typeof onboarded) => void) | undefined;
-    onboardTemplateActionMock.mockReturnValueOnce(
+    onboardLibraryEntryActionMock.mockReturnValueOnce(
       new Promise((resolve) => {
         finishAction = (value) => resolve({ ok: true, data: value });
       }),
@@ -129,7 +129,7 @@ describe("AddTemplateDialog", () => {
 
   it("resets pending state when the dialog closes before the action resolves", async () => {
     let finishAction: ((value: typeof onboarded) => void) | undefined;
-    onboardTemplateActionMock.mockReturnValueOnce(
+    onboardLibraryEntryActionMock.mockReturnValueOnce(
       new Promise((resolve) => {
         finishAction = (value) => resolve({ ok: true, data: value });
       }),
@@ -153,7 +153,7 @@ describe("AddTemplateDialog", () => {
   });
 
   it("renders fallback errors without optional body or code rows", async () => {
-    onboardTemplateActionMock.mockResolvedValueOnce({
+    onboardLibraryEntryActionMock.mockResolvedValueOnce({
       ok: false,
       error: "repo not found",
       status: 404,

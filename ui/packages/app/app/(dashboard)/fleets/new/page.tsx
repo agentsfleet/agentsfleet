@@ -12,7 +12,7 @@ export const dynamic = "force-dynamic";
 type SearchParams = { library?: string | string[]; create?: string | string[] };
 const INSTALL_PAGE_DESCRIPTION = "Start a fleet from the library. Watch it run in a loop.";
 
-// Gallery-first install. Templates + the workspace's existing
+// Gallery-first install. Library entries + the workspace's existing
 // credential names are fetched server-side so the client orchestrator can render
 // the gallery and the credential preview without a client round-trip.
 export default async function InstallFleetPage({
@@ -26,7 +26,7 @@ export default async function InstallFleetPage({
 
   const params = await searchParams;
   const result = await withWorkspaceScope(token, async (workspaceId) => {
-    const [templates, credentialNames] = await Promise.all([
+    const [entries, credentialNames] = await Promise.all([
       listWorkspaceFleetLibraryCached(workspaceId, token)
         .then((response) => response.items)
         .catch(() => []),
@@ -36,7 +36,7 @@ export default async function InstallFleetPage({
         // unreadable vault for an empty one and falsely gate create.
         .catch(orFallback(null)),
     ]);
-    return { workspaceId, templates, credentialNames };
+    return { workspaceId, entries, credentialNames };
   });
   if (!result) {
     return (
@@ -50,8 +50,8 @@ export default async function InstallFleetPage({
       </div>
     );
   }
-  const { workspaceId, templates, credentialNames } = result;
-  const initialTemplateId =
+  const { workspaceId, entries, credentialNames } = result;
+  const initialLibraryId =
     typeof params.library === "string" ? params.library : undefined;
   // ?create=1 (the dashboard empty-state CTA) opens the add-library-entry dialog
   // immediately — no second identical empty state between click and form.
@@ -64,10 +64,10 @@ export default async function InstallFleetPage({
       </PageHeader>
       <InstallFleet
         workspaceId={workspaceId}
-        templates={templates}
+        entries={entries}
         presentCredentialNames={credentialNames}
-        initialTemplateId={initialTemplateId}
-        canAddTemplate={hasLibraryWriteScope(sessionClaims)}
+        initialLibraryId={initialLibraryId}
+        canAddLibraryEntry={hasLibraryWriteScope(sessionClaims)}
         initialCreateOpen={initialCreateOpen}
       />
     </div>

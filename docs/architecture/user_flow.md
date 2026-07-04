@@ -16,25 +16,25 @@ For the full end-to-end install + first-trigger walkthroughs (platform-managed a
 
 ## §8.0 The wedge surface
 
-The MVP's user-facing wedge is the **`agentsfleet` CLI plus the first-party template catalogue**. A user goes from cold machine to a running fleet through the CLI — no host-agent and no markdown-skill install step:
+The MVP's user-facing wedge is the **`agentsfleet` CLI plus the first-party Fleet library**. A user goes from cold machine to a running fleet through the CLI — no host-agent and no markdown-skill install step:
 
 ```bash
 curl -fsSL https://agentsfleet.dev | bash   # installs the agentsfleet CLI
 agentsfleet login                            # Clerk OAuth
-agentsfleet templates                        # browse the first-party catalogue (GET /v1/fleets/bundles)
-agentsfleet install --template github-pr-reviewer
+agentsfleet library                          # browse the first-party Fleet library gallery (GET /v1/fleets/bundles)
+agentsfleet install --library github-pr-reviewer
 ```
 
 `agentsfleet install` takes one of two sources (§8.2.2):
 
-- **`--template <id>`** — a curated, ready-to-run Fleet Bundle from the first-party catalogue (M94; `GET /v1/fleets/bundles`). The pinned `SKILL.md`/`TRIGGER.md` are fetched and validated server-side; the user supplies only the credentials the template declares.
-- **`--from <path>`** — a local bundle the user authored (SKILL.md required, TRIGGER.md optional), often drafted with a coding agent's help (Claude Code, Amp, Codex CLI, OpenCode). This is the path for a fleet customized beyond what a template ships.
+- **`--library <id>`** — a curated, ready-to-run Fleet Bundle from the first-party Fleet library (M94; `GET /v1/fleets/bundles`). The pinned `SKILL.md`/`TRIGGER.md` are fetched and validated server-side; the user supplies only the secrets the library entry declares.
+- **`--from <path>`** — a local bundle the user authored (SKILL.md required, TRIGGER.md optional), often drafted with a coding agent's help (Claude Code, Amp, Codex CLI, OpenCode). This is the path for a fleet customized beyond what a library entry ships.
 
-Configuration — Slack channel, production-branch glob, cron schedule — lives in the bundle's `TRIGGER.md`/`SKILL.md`, version-controlled by design. A template ships sensible defaults; customize by editing a local copy and re-installing with `--from` (or `agentsfleet fleet update`). There are no install-time gating questions: the markdown *is* the configuration.
+Configuration — Slack channel, production-branch glob, cron schedule — lives in the bundle's `TRIGGER.md`/`SKILL.md`, version-controlled by design. A library entry ships sensible defaults; customize by editing a local copy and re-installing with `--from` (or `agentsfleet fleet update`). There are no install-time gating questions: the markdown *is* the configuration.
 
 This matters architecturally: the install surface is the CLI (deterministic, scriptable, host-neutral) and the bundle is portable markdown. The runtime stays prompt-driven; `agentsfleet install` plus the catalogue is what makes it tractable from a cold start.
 
-> **Transitional note.** The earlier wedge was a host-agent markdown skill (`/agentsfleet-install-platform-ops`, added via `npx skills add agentsfleet/skills`) that orchestrated repo detection, gating questions, frontmatter generation, and webhook auto-registration. That onboarding is being retired in favor of the CLI + catalogue flow above, and the public docs lead with the CLI path. Where this file and the scenarios still describe skill-orchestrated steps, read them as the prior approach — the substrate calls (`doctor`, `credential add`, `install --from`, `steer`, the `gh` webhook registration) are unchanged; only the orchestration moved from the skill to the CLI + the user.
+> **Transitional note.** The earlier wedge was a host-agent markdown skill (`/agentsfleet-install-platform-ops`, added via `npx skills add agentsfleet/skills`) that orchestrated repo detection, gating questions, frontmatter generation, and webhook auto-registration. That onboarding is being retired in favor of the CLI + catalogue flow above, and the public docs lead with the CLI path. Where this file and the scenarios still describe skill-orchestrated steps, read them as the prior approach — the substrate calls (`doctor`, `secret add`, `install --from`, `steer`, the `gh` webhook registration) are unchanged; only the orchestration moved from the skill to the CLI + the user.
 
 ## §8.0.1 Deployment posture: hosted-only in v2
 
@@ -68,7 +68,7 @@ This keeps the operational logic editable by changing instructions, not by rewri
 
 A **Fleet Bundle** is the import/template form of those files. It may come from:
 
-- a first-party template card,
+- a first-party Fleet library card,
 - an uploaded folder/archive *(DEFERRED 2026-06-20, Indy-acked — not in the shipping picker)*, or
 - a public GitHub repository/path.
 
@@ -98,7 +98,7 @@ gh auth login -s admin:repo_hook   # one-time; lets you register GitHub webhooks
 
 ### §8.2.2 Per-Fleet create flow
 
-1. The user picks a catalogue template (`agentsfleet install --template <id>`) or authors `SKILL.md` and `TRIGGER.md` for a local bundle (§8.0) — optionally with a coding agent (Claude Code, Amp, Codex CLI, OpenCode) helping draft the markdown.
+1. The user picks a catalogue library entry (`agentsfleet install --library <id>`) or authors `SKILL.md` and `TRIGGER.md` for a local bundle (§8.0) — optionally with a coding agent (Claude Code, Amp, Codex CLI, OpenCode) helping draft the markdown.
 2. **`agentsfleet doctor --json` runs first** as the deterministic readiness gate after login. Doctor is fast and verifies connectivity + workspace health only — `server_reachable`, `workspace_selected`, and `workspace_binding_valid`. It does **not** carry provider or trial posture; that lives in `agentsfleet tenant provider show --json` (mode/provider/model/context cap) and `agentsfleet billing show` (free-trial state), read separately once health passes. The CLI (and any caller) reads `doctor`'s JSON output verbatim and aborts on failure with the user-facing message instead of letting `install` fail with a confusing 401. Doctor is the only sanctioned preflight surface for health — no parallel `preflight` command exists.
 3. The user (or coding agent) creates or updates the Fleet through one of two source paths:
    - **Direct Markdown create** — `agentsfleet install --from <path>` or manual dashboard paste POSTs `{trigger_markdown, source_markdown}` to `POST /v1/workspaces/{ws}/fleets`.
@@ -114,12 +114,12 @@ After creation, the Fleet is no longer tied to the interactive Claude session th
 
 The dashboard create screen is source-first, not paste-first:
 
-1. **Start from template** lists first-party Fleet Bundles such as GitHub Pull Request reviewer and Zoho Recruit outreach.
-2. **Upload bundle** accepts a local folder/archive snapshot. *(DEFERRED 2026-06-20, Indy-acked — not in the shipping picker; ship template + GitHub + paste first.)*
+1. **Start from Fleet library** lists first-party Fleet Bundles such as GitHub Pull Request reviewer and Zoho Recruit outreach.
+2. **Upload bundle** accepts a local folder/archive snapshot. *(DEFERRED 2026-06-20, Indy-acked — not in the shipping picker; ship library + GitHub + paste first.)*
 3. **Import from GitHub** accepts a public repository/path and snapshots the resolved content.
 4. **Manual paste** remains available for power users and existing tests.
 
-Import validation is server-side: required `SKILL.md`, safe paths, size caps, frontmatter parsing, and no resolved secrets. Parsed preview shows required credentials, required tools, network hosts, trigger mode, and whether `TRIGGER.md` is present. Missing workspace credentials block Fleet creation with a clear list and a create action that routes to workspace credentials, not tenant model-provider setup.
+Import validation is server-side: required `SKILL.md`, safe paths, size caps, frontmatter parsing, and no resolved secrets. Parsed preview shows required secrets, required tools, network hosts, trigger mode, and whether `TRIGGER.md` is present. Missing workspace secrets block Fleet creation with a clear list and a create action that routes to Secrets & ENVs, not tenant model-provider setup.
 
 Two first scenarios anchor the product flow:
 

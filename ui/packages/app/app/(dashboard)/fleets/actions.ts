@@ -15,8 +15,8 @@ import {
 import type {
   InstallFleetRequest,
   InstallFleetResponse,
-  OnboardedTemplate,
-  OnboardTemplateRequest,
+  OnboardedLibraryEntry,
+  OnboardLibraryEntryRequest,
 } from "@/lib/types";
 
 export async function listFleetsAction(
@@ -48,10 +48,10 @@ export async function installFleetAction(
   return withToken((t) => apiInstallFleet(workspaceId, body, t));
 }
 
-export async function onboardTemplateAction(
+export async function onboardLibraryEntryAction(
   workspaceId: string,
-  body: OnboardTemplateRequest,
-): Promise<ActionResult<OnboardedTemplate>> {
+  body: OnboardLibraryEntryRequest,
+): Promise<ActionResult<OnboardedLibraryEntry>> {
   return withToken((t) => apiOnboardWorkspaceFleetLibrary(workspaceId, body, t));
 }
 

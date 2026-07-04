@@ -44,7 +44,7 @@ import {
   deleteFleetAction,
   installFleetAction,
   steerFleetAction,
-  onboardTemplateAction,
+  onboardLibraryEntryAction,
 } from "@/app/(dashboard)/fleets/actions";
 
 beforeEach(() => {
@@ -127,7 +127,7 @@ describe("fleet server actions — thin token-forwarders", () => {
     };
     onboardWorkspaceFleetLibraryMock.mockResolvedValueOnce(onboarded);
     const body = { source_kind: "github" as const, source_ref: "owner/repo" };
-    const r = await onboardTemplateAction("ws1", body);
+    const r = await onboardLibraryEntryAction("ws1", body);
     expect(r).toEqual({ ok: true, data: onboarded });
     expect(onboardWorkspaceFleetLibraryMock).toHaveBeenCalledWith("ws1", body, "tok");
   });
@@ -140,7 +140,7 @@ describe("fleet server actions — thin token-forwarders", () => {
       errorCode: "UZ-AUTH-022",
     };
     withTokenMock.mockResolvedValueOnce(error);
-    const r = await onboardTemplateAction("ws1", {
+    const r = await onboardLibraryEntryAction("ws1", {
       source_kind: "github",
       source_ref: "owner/repo",
     });

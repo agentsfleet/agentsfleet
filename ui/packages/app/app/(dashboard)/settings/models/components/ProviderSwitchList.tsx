@@ -28,7 +28,7 @@ import ActiveModelHero, { ADD_KEY_AND_MODEL_LABEL } from "./ActiveModelHero";
 type Props = {
   workspaceId: string;
   provider: TenantProvider | null;
-  credentials: Secret[];
+  secrets: Secret[];
 };
 
 const ADD_ENDPOINT_ROW = "__add_endpoint__";
@@ -38,7 +38,7 @@ const CUSTOM_LABEL = "Custom — OpenAI-compatible";
 const SWITCH_ACTION = "switch providers";
 const SWITCH_PLATFORM_ACTION = "switch to platform defaults";
 
-export default function ProviderSwitchList({ workspaceId, provider, credentials }: Props) {
+export default function ProviderSwitchList({ workspaceId, provider, secrets }: Props) {
   const { models } = useModelCatalogue();
   const [open, setOpen] = useState<string | null>(null);
   const { pending, error, run } = useProviderAction();
@@ -46,8 +46,8 @@ export default function ProviderSwitchList({ workspaceId, provider, credentials 
 
   const live = provider?.mode === PROVIDER_MODE.self_managed;
   const activeRef = live ? provider.secret_ref : null;
-  const providerKeys = providerKeysOf(credentials);
-  const customEndpoints = customEndpointsOf(credentials);
+  const providerKeys = providerKeysOf(secrets);
+  const customEndpoints = customEndpointsOf(secrets);
 
   // Named providers the switch list offers: the catalogue's providers unioned
   // with any the workspace already stored a key for, minus the openai-compatible
@@ -114,7 +114,7 @@ export default function ProviderSwitchList({ workspaceId, provider, credentials 
       <SectionLabel>Providers</SectionLabel>
       {pending ? <Spinner size="sm" srLabel="Switching" /> : null}
       <DashboardRowGroup data-testid="provider-switch-list">
-        <ActiveModelHero workspaceId={workspaceId} provider={provider} credentials={credentials} />
+        <ActiveModelHero workspaceId={workspaceId} provider={provider} secrets={secrets} />
 
         {/* Platform defaults — shown only while a self-managed model is live. */}
         {live ? (

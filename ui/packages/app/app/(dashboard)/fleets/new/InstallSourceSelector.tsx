@@ -3,53 +3,53 @@
 import { Button, EmptyState, SectionLabel } from "@agentsfleet/design-system";
 import { LayoutTemplateIcon } from "lucide-react";
 import type { FleetLibraryGalleryEntry } from "@/lib/types";
-import AddTemplateDialog from "./AddTemplateDialog";
+import AddLibraryDialog from "./AddLibraryDialog";
 import {
-  TemplateDocsLink,
+  LibraryDocsLink,
   FLEET_LIBRARY_EMPTY_DESCRIPTION,
   FLEET_LIBRARY_EMPTY_DESCRIPTION_READONLY,
   FLEET_LIBRARY_EMPTY_TITLE,
-} from "./template-docs";
-import { TemplateCard } from "./TemplateCard";
+} from "./library-docs";
+import { LibraryCard } from "./LibraryCard";
 
 type Props = {
   workspaceId: string;
-  templates: FleetLibraryGalleryEntry[];
-  onUseTemplate: (template: FleetLibraryGalleryEntry) => void;
-  canAddTemplate?: boolean;
-  /** Open the create-template dialog on first render (?create=1 deep link). */
+  entries: FleetLibraryGalleryEntry[];
+  onUseLibraryEntry: (entry: FleetLibraryGalleryEntry) => void;
+  canAddLibraryEntry?: boolean;
+  /** Open the add-library-entry dialog on first render (?create=1 deep link). */
   initialCreateOpen?: boolean;
 };
 
-// Template gallery picker: the workspace's templates (platform ∪ tenant) are the
-// install surface. Picking one proceeds inline to the live install states —
-// there is no review page. Rendered plainly under the page header (same shape
-// as the dashboard's first-run gallery) — the page title/description already
-// frame it, so no wrapping panel and no side guide.
+// Library gallery picker: the workspace's library entries (platform ∪ tenant)
+// are the install surface. Picking one proceeds inline to the live install
+// states — there is no review page. Rendered plainly under the page header
+// (same shape as the dashboard's first-run gallery) — the page
+// title/description already frame it, so no wrapping panel and no side guide.
 export function InstallSourceSelector({
   workspaceId,
-  templates,
-  onUseTemplate,
-  canAddTemplate = false,
+  entries,
+  onUseLibraryEntry,
+  canAddLibraryEntry = false,
   initialCreateOpen = false,
 }: Props) {
-  const showAddTemplate = canAddTemplate;
+  const showAddLibraryEntry = canAddLibraryEntry;
   return (
     <div className="space-y-sm">
       <div className="flex flex-wrap items-baseline justify-between gap-md">
         <SectionLabel>Fleet library</SectionLabel>
-        {showAddTemplate && templates.length > 0 ? (
-          <AddTemplateDialog workspaceId={workspaceId} defaultOpen={initialCreateOpen} />
+        {showAddLibraryEntry && entries.length > 0 ? (
+          <AddLibraryDialog workspaceId={workspaceId} defaultOpen={initialCreateOpen} />
         ) : null}
       </div>
-      {templates.length > 0 ? (
+      {entries.length > 0 ? (
         <div className="grid grid-cols-1 gap-md sm:grid-cols-2 lg:grid-cols-3">
-          {templates.map((template) => (
-            <TemplateCard
-              key={template.id}
-              template={template}
+          {entries.map((entry) => (
+            <LibraryCard
+              key={entry.id}
+              entry={entry}
               action={
-                <Button type="button" onClick={() => onUseTemplate(template)}>
+                <Button type="button" onClick={() => onUseLibraryEntry(entry)}>
                   Use entry
                 </Button>
               }
@@ -60,12 +60,12 @@ export function InstallSourceSelector({
         <EmptyState
           icon={<LayoutTemplateIcon size={28} />}
           title={FLEET_LIBRARY_EMPTY_TITLE}
-          description={showAddTemplate ? FLEET_LIBRARY_EMPTY_DESCRIPTION : FLEET_LIBRARY_EMPTY_DESCRIPTION_READONLY}
+          description={showAddLibraryEntry ? FLEET_LIBRARY_EMPTY_DESCRIPTION : FLEET_LIBRARY_EMPTY_DESCRIPTION_READONLY}
           action={
             <div className="flex flex-wrap items-center justify-center gap-md">
-              <TemplateDocsLink />
-              {showAddTemplate ? (
-                <AddTemplateDialog workspaceId={workspaceId} defaultOpen={initialCreateOpen} />
+              <LibraryDocsLink />
+              {showAddLibraryEntry ? (
+                <AddLibraryDialog workspaceId={workspaceId} defaultOpen={initialCreateOpen} />
               ) : null}
             </div>
           }
