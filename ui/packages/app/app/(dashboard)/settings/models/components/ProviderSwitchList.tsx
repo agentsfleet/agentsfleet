@@ -23,6 +23,7 @@ import { useProviderAction } from "../lib/use-provider-action";
 import { useModelCatalogue } from "./ModelCatalogueProvider";
 import ProviderKeyForm from "./ProviderKeyForm";
 import CustomEndpointForm from "./CustomEndpointForm";
+import ActiveModelHero, { ADD_KEY_AND_MODEL_LABEL } from "./ActiveModelHero";
 
 type Props = {
   workspaceId: string;
@@ -99,10 +100,12 @@ export default function ProviderSwitchList({ workspaceId, provider, credentials 
   }
 
   return (
-    <div id="other-providers" aria-label="Other providers" className="scroll-mt-20">
-      <SectionLabel>Other providers — switch anytime</SectionLabel>
+    <div aria-label="Providers">
+      <SectionLabel>Providers</SectionLabel>
       {pending ? <Spinner size="sm" srLabel="Switching" /> : null}
       <DashboardRowGroup data-testid="provider-switch-list">
+        <ActiveModelHero workspaceId={workspaceId} provider={provider} credentials={credentials} />
+
         {/* Platform defaults — shown only while a self-managed model is live. */}
         {live ? (
           <DashboardRow
@@ -126,7 +129,7 @@ export default function ProviderSwitchList({ workspaceId, provider, credentials 
                 action={
                   storedKey
                     ? switchButton(() => onSwitch(storedKey.name, storedKey.model))
-                    : addButton(p, "Add key & model")
+                    : addButton(p, ADD_KEY_AND_MODEL_LABEL)
                 }
               />
               {open === p ? (
@@ -183,7 +186,7 @@ export default function ProviderSwitchList({ workspaceId, provider, credentials 
             icon={<CpuIcon size={15} />}
             title="Other provider"
             description="Paste a key — we'll detect common providers, or pick one"
-            action={addButton(ADD_GENERIC_ROW, "Add key & model")}
+            action={addButton(ADD_GENERIC_ROW, ADD_KEY_AND_MODEL_LABEL)}
           />
           {open === ADD_GENERIC_ROW ? (
             <div className="border-t border-border bg-surface-deep p-lg">

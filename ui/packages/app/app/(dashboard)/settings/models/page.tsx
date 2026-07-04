@@ -14,7 +14,6 @@ import { getTenantProviderCached, listCredentialsCached } from "./lib/reads";
 import AddCredentialFormDynamic from "@/components/domain/island-dynamic/AddCredentialFormDynamic";
 import CustomSecretsList from "@/app/(dashboard)/credentials/components/CustomSecretsList";
 import { ModelCatalogueProvider } from "./components/ModelCatalogueProvider";
-import ActiveModelHero from "./components/ActiveModelHero";
 import ProviderSwitchList from "./components/ProviderSwitchList";
 
 export const dynamic = "force-dynamic";
@@ -64,10 +63,7 @@ export default async function ModelsKeysPage() {
       </PageHeader>
 
       <ModelCatalogueProvider>
-        <div className="space-y-6">
-          <ActiveModelHero workspaceId={workspaceId} provider={provider} credentials={credentials} />
-          <ProviderSwitchList workspaceId={workspaceId} provider={provider} credentials={credentials} />
-        </div>
+        <ProviderSwitchList workspaceId={workspaceId} provider={provider} credentials={credentials} />
       </ModelCatalogueProvider>
 
       <div aria-label="Custom secrets" data-testid="custom-secrets-group" className="space-y-md">

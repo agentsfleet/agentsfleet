@@ -32,6 +32,15 @@ vi.mock("@/app/(dashboard)/settings/models/components/HeroReplaceKeyPanel", () =
       React.createElement("button", { "data-testid": "replace-close", onClick: onClose }, "close"),
     ),
 }));
+vi.mock("@/app/(dashboard)/settings/models/components/ProviderKeyForm", () => ({
+  default: ({ activate, onDone, onCancel }: { activate?: boolean; onDone: () => void; onCancel?: () => void }) =>
+    React.createElement(
+      "div",
+      { "data-testid": "provider-key-form", "data-activate": String(!!activate) },
+      React.createElement("button", { "data-testid": "pkf-done", onClick: onDone }, "done"),
+      React.createElement("button", { "data-testid": "pkf-cancel", onClick: onCancel }, "cancel"),
+    ),
+}));
 
 import ActiveModelHero from "@/app/(dashboard)/settings/models/components/ActiveModelHero";
 
@@ -173,7 +182,7 @@ describe("ActiveModelHero — live (self-managed)", () => {
 });
 
 describe("ActiveModelHero — default (platform / no provider)", () => {
-  it("renders DEFAULT with the platform copy and a bring-your-own-key anchor", () => {
+  it("renders DEFAULT as a row with no bring-your-own-key anchor", () => {
     render(
       React.createElement(ActiveModelHero, {
         workspaceId: "ws_1",
@@ -187,9 +196,39 @@ describe("ActiveModelHero — default (platform / no provider)", () => {
     expect(screen.getByText("Platform default model")).toBeTruthy();
     expect(screen.getByText("agentsfleet managed")).toBeTruthy();
     expect(screen.getByText("Tenant balance")).toBeTruthy();
-    const link = screen.getByText("Bring your own key").closest("a");
-    expect(link?.getAttribute("href")).toBe("#other-providers");
-    expect(link?.getAttribute("data-size")).toBe("sm");
+    // Dimension 1.3: the pill already states the status, so the old redundant
+    // "Managed by agentsfleet · no key needed" subtext is gone.
+    expect(screen.queryByText("Managed by agentsfleet · no key needed")).toBeNull();
+    // Dimension 1.2: no scroll-anchor button remains at all.
+    expect(screen.queryByRole("button", { name: /bring your own key/i })).toBeNull();
+    expect(screen.queryByRole("link", { name: /bring your own key/i })).toBeNull();
+  });
+
+  it("opens the generic add-key form inline on one click, and closes it again on toggle", () => {
+    render(
+      React.createElement(ActiveModelHero, {
+        workspaceId: "ws_1",
+        provider: { ...selfManaged(), mode: PROVIDER_MODE.platform } as TenantProvider,
+        credentials: [],
+      }),
+    );
+    const addButton = screen.getByRole("button", { name: "Add key & model" });
+    expect(screen.queryByTestId("provider-key-form")).toBeNull();
+
+    fireEvent.click(addButton);
+    const form = screen.getByTestId("provider-key-form");
+    expect(form.getAttribute("data-activate")).toBe("true");
+
+    fireEvent.click(addButton);
+    expect(screen.queryByTestId("provider-key-form")).toBeNull();
+
+    // Re-open, then close via the form's own onDone/onCancel callbacks.
+    fireEvent.click(addButton);
+    fireEvent.click(screen.getByTestId("pkf-done"));
+    expect(screen.queryByTestId("provider-key-form")).toBeNull();
+    fireEvent.click(addButton);
+    fireEvent.click(screen.getByTestId("pkf-cancel"));
+    expect(screen.queryByTestId("provider-key-form")).toBeNull();
   });
 
   it("treats a null provider as the default view", () => {
