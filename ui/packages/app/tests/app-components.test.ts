@@ -459,4 +459,119 @@ describe("app components", () => {
     expect(sources).toContain("app_sidebar_settings_billing");
     cleanup();
   });
+
+  it("should collapse the sidebar and hide nav labels when the toggle is clicked", async () => {
+    const { default: Shell } = await import("../components/layout/Shell");
+    mocks.usePathname.mockReturnValue("/");
+    const user = userEvent.setup();
+    render(React.createElement(Shell, null, React.createElement("div", null, "content")));
+
+    const toggle = screen.getByRole("button", { name: /collapse sidebar/i });
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    // Label text is visible pre-collapse — plain getByText, not getByRole,
+    // since NavItem renders the label as a text node beside the icon.
+    expect(screen.getByText("Dashboard")).toBeTruthy();
+
+    await user.click(toggle);
+
+    // aria-expanded flips and the label swaps to "Expand sidebar" — proves
+    // the button reflects state, not just that a click handler ran.
+    expect(screen.getByRole("button", { name: /expand sidebar/i })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /collapse sidebar/i })).toBeNull();
+    expect(screen.getByRole("button", { name: /expand sidebar/i }).getAttribute("aria-expanded")).toBe(
+      "false",
+    );
+    // The label text node is gone — collapsed renders icon-only.
+    expect(screen.queryByText("Dashboard")).toBeNull();
+    cleanup();
+  });
+
+  it("should expand the sidebar again when the toggle is clicked twice", async () => {
+    const { default: Shell } = await import("../components/layout/Shell");
+    mocks.usePathname.mockReturnValue("/");
+    const user = userEvent.setup();
+    render(React.createElement(Shell, null, React.createElement("div", null, "content")));
+
+    const toggle = screen.getByRole("button", { name: /collapse sidebar/i });
+    await user.click(toggle);
+    expect(screen.queryByText("Dashboard")).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: /expand sidebar/i }));
+    // Round-trip: labels are back, and the button reverts to "Collapse sidebar".
+    expect(screen.getByText("Dashboard")).toBeTruthy();
+    expect(screen.getByRole("button", { name: /collapse sidebar/i })).toBeTruthy();
+    cleanup();
+  });
+
+  it("should keep nav links accessible by name when collapsed (icon-only, no visible text)", async () => {
+    const { default: Shell } = await import("../components/layout/Shell");
+    mocks.usePathname.mockReturnValue("/");
+    const user = userEvent.setup();
+    render(React.createElement(Shell, null, React.createElement("div", null, "content")));
+
+    await user.click(screen.getByRole("button", { name: /collapse sidebar/i }));
+
+    // No visible label text, but the link is still reachable by its accessible
+    // name (title/aria-label) — a screen-reader user isn't stranded by the
+    // icon-only rail. getByRole with `name` matches the accessible name
+    // computation, not textContent, so this fails if aria-label is dropped.
+    const fleetsLink = screen.getByRole("link", { name: "Fleets" });
+    expect(fleetsLink).toBeTruthy();
+    expect(fleetsLink.getAttribute("href")).toBe("/fleets");
+    cleanup();
+  });
+
+  it("should hide section group labels (Automations/Configuration/Organization) when collapsed", async () => {
+    const { default: Shell } = await import("../components/layout/Shell");
+    mocks.usePathname.mockReturnValue("/");
+    const user = userEvent.setup();
+    render(React.createElement(Shell, null, React.createElement("div", null, "content")));
+
+    expect(screen.getByText("Automations")).toBeTruthy();
+    expect(screen.getByText("Configuration")).toBeTruthy();
+
+    await user.click(screen.getByRole("button", { name: /collapse sidebar/i }));
+
+    expect(screen.queryByText("Automations")).toBeNull();
+    expect(screen.queryByText("Configuration")).toBeNull();
+    expect(screen.queryByText("Organization")).toBeNull();
+    cleanup();
+  });
+
+  it("should render the active nav link with the mint/pulse styling classes, not the generic accent", async () => {
+    const { default: Shell } = await import("../components/layout/Shell");
+    mocks.usePathname.mockReturnValue("/fleets");
+    render(React.createElement(Shell, null, React.createElement("div", null, "content")));
+
+    const activeLink = screen.getByRole("link", { name: "Fleets" });
+    expect(activeLink.getAttribute("data-active")).toBe("true");
+    expect(activeLink.className).toContain("data-[active=true]:bg-pulse/10");
+    expect(activeLink.className).toContain("data-[active=true]:text-pulse");
+    // Regression guard: the old generic-accent active styling must not
+    // resurface — a revert to `bg-accent` for the active state would pass a
+    // sloppier assertion that only checks presence of *a* highlight class.
+    expect(activeLink.className).not.toContain("data-[active=true]:bg-accent");
+    cleanup();
+  });
+
+  it("mobile nav dialog always renders expanded, regardless of the desktop collapse state", async () => {
+    const { default: Shell } = await import("../components/layout/Shell");
+    mocks.usePathname.mockReturnValue("/");
+    const user = userEvent.setup();
+    render(React.createElement(Shell, null, React.createElement("div", null, "content")));
+
+    // Collapse the desktop sidebar first.
+    await user.click(screen.getByRole("button", { name: /collapse sidebar/i }));
+    expect(screen.queryByText("Dashboard")).toBeNull();
+
+    // The mobile dialog is a structurally separate SidebarNav instance
+    // hardcoded to collapsed={false} — opening it must show full labels even
+    // though the desktop instance is currently collapsed. This pins that the
+    // two instances never accidentally share the collapsed prop.
+    await user.click(screen.getByRole("button", { name: /open navigation/i }));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText("Dashboard")).toBeTruthy();
+    expect(within(dialog).getByText("Fleets")).toBeTruthy();
+    cleanup();
+  });
 });
