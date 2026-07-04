@@ -50,6 +50,26 @@ const STATUS_VARIANT: Record<string, BadgeVariant> = {
   received: "cyan",
 };
 
+// Friendly labels for the runner's FailureClass tags (src/lib/contract/execution_result.zig).
+// A tag this table doesn't cover renders its raw name rather than throwing —
+// fails soft if the backend ships a new FailureClass this list hasn't caught up to.
+const FAILURE_LABEL: Record<string, string> = {
+  startup_posture: "Failed a startup safety check",
+  policy_deny: "Blocked by fleet policy",
+  timeout_kill: "Timed out",
+  oom_kill: "Ran out of memory",
+  resource_kill: "Hit a resource limit",
+  runner_crash: "The runner crashed",
+  transport_loss: "Lost connection to the runner",
+  landlock_deny: "Blocked by the sandbox policy",
+  lease_expired: "The run's lease expired",
+  renewal_terminate: "Stopped by lease renewal policy",
+};
+
+function failureLabel(tag: string): string {
+  return FAILURE_LABEL[tag] ?? tag;
+}
+
 export function EventsList({
   scope,
   initial,
@@ -165,7 +185,7 @@ function EventCard({ row, showFleetId }: { row: EventRow; showFleetId: boolean }
               {preview}
             </p>
           ) : row.failure_label ? (
-            <p className="text-sm text-warning">Reason: {row.failure_label}</p>
+            <p className="text-sm text-warning">Reason: {failureLabel(row.failure_label)}</p>
           ) : null}
         </CardContent>
       </article>

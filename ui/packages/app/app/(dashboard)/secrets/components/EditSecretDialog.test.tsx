@@ -120,12 +120,12 @@ describe("EditSecretDialog", () => {
     expect(createCredentialActionMock).not.toHaveBeenCalled();
   });
 
-  it("surfaces a create error and does not refresh or close", async () => {
+  it("surfaces a create error as friendly copy (UZ-VAULT-001 curated in CODE_MAP) and does not refresh or close", async () => {
     createCredentialActionMock.mockResolvedValue({
       ok: false,
-      error: "credential store unavailable",
+      error: "POST body must include a 'data' field that is a JSON object with at least one key.",
       errorCode: "UZ-VAULT-001",
-      status: 503,
+      status: 400,
     });
     const onOpenChange = vi.fn();
     renderDialog(onOpenChange);
@@ -133,7 +133,9 @@ describe("EditSecretDialog", () => {
     enterData('{"api_token": "FLY"}');
     fireEvent.click(screen.getByRole("button", { name: /^rotate$/i }));
 
-    await waitFor(() => expect(screen.getAllByText(/credential|unavailable/i).length).toBeGreaterThan(0));
+    await waitFor(() => expect(screen.getAllByText(/needs at least one field/i).length).toBeGreaterThan(0));
+    // The raw backend detail never reaches the DOM — only the curated copy does.
+    expect(screen.queryByText(/POST body must include/i)).toBeNull();
     expect(routerRefresh).not.toHaveBeenCalled();
     expect(onOpenChange).not.toHaveBeenCalledWith(false);
   });

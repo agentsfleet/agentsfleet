@@ -17,6 +17,8 @@ type Props = {
   onClose: () => void;
 };
 
+const REPLACE_KEY_ACTION = "replace the key";
+
 /** Hero "Replace key" — PATCH-rotates only the secret; provider + model stay put. */
 export default function HeroReplaceKeyPanel({
   workspaceId,
@@ -30,12 +32,16 @@ export default function HeroReplaceKeyPanel({
 
   function save() {
     if (key.trim() === "") return;
-    void run(async () => {
-      const res = await rotateSecretAction(workspaceId, secretRef, key.trim());
-      if (!res.ok) return res.error;
-      captureKeyRotated(provider);
-      return null;
-    }, onClose);
+    void run(
+      REPLACE_KEY_ACTION,
+      async () => {
+        const res = await rotateSecretAction(workspaceId, secretRef, key.trim());
+        if (!res.ok) return { message: res.error, errorCode: res.errorCode };
+        captureKeyRotated(provider);
+        return null;
+      },
+      onClose,
+    );
   }
 
   return (

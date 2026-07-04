@@ -232,6 +232,16 @@ describe("approveApproval", () => {
     );
   });
 
+  it("throws an ApiError carrying the real error_code, not a bare Error", async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({ error_code: "UZ-APPROVAL-004", detail: "gate service unavailable" }, 503),
+    );
+    const { ApiError } = await import("./errors");
+    await expect(approveApproval(WORKSPACE_ID, GATE_ID, TOKEN)).rejects.toSatisfy((err: unknown) => {
+      return err instanceof ApiError && err.code === "UZ-APPROVAL-004" && err.status === 503;
+    });
+  });
+
   it("throws when fetch itself rejects (network failure)", async () => {
     fetchMock.mockRejectedValueOnce(new Error("ECONNRESET"));
     await expect(approveApproval(WORKSPACE_ID, GATE_ID, TOKEN)).rejects.toThrow(/ECONNRESET/);

@@ -47,14 +47,28 @@ describe("HeroChangeModelPanel", () => {
     expect(routerRefresh).toHaveBeenCalled();
   });
 
-  it("surfaces an error and keeps the panel open", async () => {
+  it("surfaces a friendly error routed through presentErrorString and keeps the panel open", async () => {
     setProviderSelfManagedAction.mockResolvedValue({ ok: false, error: "model not in catalogue" });
     const onClose = renderPanel();
     fireEvent.change(screen.getByLabelText("Change model"), { target: { value: "ghost" } });
     fireEvent.click(screen.getByRole("button", { name: "Save model" }));
-    await waitFor(() => expect(screen.getByRole("alert").textContent).toMatch(/model not in catalogue/));
+    await waitFor(() => expect(screen.getByRole("alert").textContent).toMatch(/^Couldn't change the model/));
+    expect(screen.getByRole("alert").textContent).toMatch(/model not in catalogue/);
     expect(captureModelChanged).not.toHaveBeenCalled();
     expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it("maps UZ-PROVIDER-004 to the curated catalogue-copy instead of the raw backend string", async () => {
+    setProviderSelfManagedAction.mockResolvedValue({
+      ok: false,
+      error: "The effective model is not present in core.model_caps.",
+      errorCode: "UZ-PROVIDER-004",
+    });
+    const onClose = renderPanel();
+    fireEvent.change(screen.getByLabelText("Change model"), { target: { value: "ghost" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save model" }));
+    await waitFor(() => expect(screen.getByRole("alert").textContent).toMatch(/isn't in our catalogue yet/));
+    expect(screen.getByRole("alert").textContent).not.toMatch(/core\.model_caps/);
   });
 
   it("does not save an empty model and cancels via the Cancel button", () => {
