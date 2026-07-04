@@ -42,7 +42,7 @@ vi.mock("@/app/(dashboard)/settings/models/components/ProviderKeyForm", () => ({
     ),
 }));
 
-import ActiveModelHero from "@/app/(dashboard)/settings/models/components/ActiveModelHero";
+import ActiveModelRow from "@/app/(dashboard)/settings/models/components/ActiveModelRow";
 
 function selfManaged(over: Partial<TenantProvider> = {}): TenantProvider {
   return {
@@ -69,10 +69,10 @@ beforeEach(() => {
 });
 afterEach(() => cleanup());
 
-describe("ActiveModelHero — live (self-managed)", () => {
+describe("ActiveModelRow — live (self-managed)", () => {
   it("renders LIVE with the model + provider-direct meta and toggles both panels", async () => {
     render(
-      React.createElement(ActiveModelHero, {
+      React.createElement(ActiveModelRow, {
         workspaceId: "ws_1",
         provider: selfManaged(),
         secrets: [providerKeyCred],
@@ -112,7 +112,7 @@ describe("ActiveModelHero — live (self-managed)", () => {
 
   it("hides Replace key for a custom_secret active secret (can't rotate as a model key)", () => {
     render(
-      React.createElement(ActiveModelHero, {
+      React.createElement(ActiveModelRow, {
         workspaceId: "ws_1",
         provider: selfManaged({ secret_ref: "STRIPE" }),
         secrets: [{ kind: SECRET_KIND.custom_secret, name: "STRIPE", created_at: 1 }],
@@ -124,7 +124,7 @@ describe("ActiveModelHero — live (self-managed)", () => {
 
   it("shows Replace key for a custom_endpoint secret and formats sub-1k context raw", () => {
     render(
-      React.createElement(ActiveModelHero, {
+      React.createElement(ActiveModelRow, {
         workspaceId: "ws_1",
         provider: selfManaged({ provider: "openai-compatible", context_cap_tokens: 500, secret_ref: "vllm" }),
         secrets: [
@@ -138,7 +138,7 @@ describe("ActiveModelHero — live (self-managed)", () => {
 
   it("falls back to the provider id when there is no secret ref, and shows default context for zero", () => {
     render(
-      React.createElement(ActiveModelHero, {
+      React.createElement(ActiveModelRow, {
         workspaceId: "ws_1",
         provider: selfManaged({ secret_ref: null, context_cap_tokens: 0 }),
         secrets: [],
@@ -152,7 +152,7 @@ describe("ActiveModelHero — live (self-managed)", () => {
 
   it("switches to platform defaults, refreshing on success", async () => {
     render(
-      React.createElement(ActiveModelHero, {
+      React.createElement(ActiveModelRow, {
         workspaceId: "ws_1",
         provider: selfManaged(),
         secrets: [providerKeyCred],
@@ -168,7 +168,7 @@ describe("ActiveModelHero — live (self-managed)", () => {
   it("surfaces a friendly reset error routed through presentErrorString, not the raw string", async () => {
     resetProviderAction.mockResolvedValue({ ok: false, error: "reset failed" });
     render(
-      React.createElement(ActiveModelHero, {
+      React.createElement(ActiveModelRow, {
         workspaceId: "ws_1",
         provider: selfManaged(),
         secrets: [providerKeyCred],
@@ -184,10 +184,10 @@ describe("ActiveModelHero — live (self-managed)", () => {
   });
 });
 
-describe("ActiveModelHero — default (platform / no provider)", () => {
+describe("ActiveModelRow — default (platform / no provider)", () => {
   it("renders DEFAULT as a row with no bring-your-own-key anchor", () => {
     render(
-      React.createElement(ActiveModelHero, {
+      React.createElement(ActiveModelRow, {
         workspaceId: "ws_1",
         provider: { ...selfManaged(), mode: PROVIDER_MODE.platform } as TenantProvider,
         secrets: [],
@@ -209,7 +209,7 @@ describe("ActiveModelHero — default (platform / no provider)", () => {
 
   it("opens the generic add-key form inline on one click, and closes it again on toggle", () => {
     render(
-      React.createElement(ActiveModelHero, {
+      React.createElement(ActiveModelRow, {
         workspaceId: "ws_1",
         provider: { ...selfManaged(), mode: PROVIDER_MODE.platform } as TenantProvider,
         secrets: [],
@@ -236,7 +236,7 @@ describe("ActiveModelHero — default (platform / no provider)", () => {
 
   it("treats a null provider as the default view", () => {
     render(
-      React.createElement(ActiveModelHero, { workspaceId: "ws_1", provider: null, secrets: [] }),
+      React.createElement(ActiveModelRow, { workspaceId: "ws_1", provider: null, secrets: [] }),
     );
     expect(screen.getByText("DEFAULT")).toBeTruthy();
   });

@@ -70,6 +70,7 @@ vi.mock("lucide-react", () => ({
   CpuIcon: (props: Record<string, unknown>) => React.createElement("svg", { ...props, "data-icon": "CpuIcon" }),
   CreditCardIcon: (props: Record<string, unknown>) => React.createElement("svg", { ...props, "data-icon": "CreditCardIcon" }),
   MenuIcon: (props: Record<string, unknown>) => React.createElement("svg", { ...props, "data-icon": "MenuIcon" }),
+  PanelLeftIcon: (props: Record<string, unknown>) => React.createElement("svg", { ...props, "data-icon": "PanelLeftIcon" }),
   SunIcon: (props: Record<string, unknown>) => React.createElement("svg", { ...props, "data-icon": "SunIcon" }),
   MoonIcon: (props: Record<string, unknown>) => React.createElement("svg", { ...props, "data-icon": "MoonIcon" }),
   ChevronDownIcon: (props: Record<string, unknown>) => React.createElement("svg", { ...props, "data-icon": "ChevronDownIcon" }),
@@ -270,8 +271,9 @@ describe("app components", () => {
   it("renders Shell with brand-mark wake-pulse + sidebar nav", async () => {
     const { default: Shell } = await import("../components/layout/Shell");
     mocks.usePathname.mockReturnValue("/fleets");
-    const tree = Shell({ children: React.createElement("div", null, "content") });
-    const markup = renderToStaticMarkup(React.createElement(React.Fragment, null, tree));
+    const markup = renderToStaticMarkup(
+      React.createElement(Shell, null, React.createElement("div", null, "content")),
+    );
     expect(markup).toContain("data-live");
     expect(markup).toContain("agentsfleet");
     // Sidebar nav rendered across the Automations / Configuration / Organization
@@ -300,8 +302,9 @@ describe("app components", () => {
   it("test_nav_config_destinations: nav renders Models→/settings/models, Integrations→/integrations, Secrets & ENVs→/secrets", async () => {
     const { default: Shell } = await import("../components/layout/Shell");
     mocks.usePathname.mockReturnValue("/");
-    const tree = Shell({ children: React.createElement("div", null, "content") });
-    const markup = renderToStaticMarkup(React.createElement(React.Fragment, null, tree));
+    const markup = renderToStaticMarkup(
+      React.createElement(Shell, null, React.createElement("div", null, "content")),
+    );
     // Three distinct Configuration destinations, each at its own route.
     expect(markup).toMatch(/href="\/settings\/models"[\s\S]*?data-icon="CpuIcon"[^>]*><\/svg>Models</);
     expect(markup).toMatch(/href="\/integrations"[\s\S]*?data-icon="LinkIcon"[^>]*><\/svg>Integrations</);
@@ -311,8 +314,7 @@ describe("app components", () => {
   it("Shell sidebar marks the active route via data-active attribute", async () => {
     const { default: Shell } = await import("../components/layout/Shell");
     mocks.usePathname.mockReturnValue("/fleets");
-    const tree = Shell({ children: React.createElement("div") });
-    const markup = renderToStaticMarkup(React.createElement(React.Fragment, null, tree));
+    const markup = renderToStaticMarkup(React.createElement(Shell, null, React.createElement("div")));
     // The active link gets data-active="true" — the sidebar's surface-3 fill
     // is driven from this attribute (no coloured bar per spec).
     expect(markup).toMatch(/data-active="true"[^>]*>\s*<svg[^>]*data-icon="BotIcon"/);
@@ -325,8 +327,14 @@ describe("app components", () => {
     // specific match (a nested /settings/* child beats its parent Settings).
     const activeFor = (pathname: string, operatorScopes: string[] = []) => {
       mocks.usePathname.mockReturnValue(pathname);
-      const tree = Shell({ children: React.createElement("div"), operatorScopes });
-      const markup = renderToStaticMarkup(React.createElement(React.Fragment, null, tree));
+      const markup = renderToStaticMarkup(
+        // createElement's props-plus-rest-children overload can't see that the
+        // third arg below satisfies Shell's required `children` prop (a known
+        // @types/react gap when children is non-optional) — asserting the
+        // props object's shape is safe since Shell reads children from React's
+        // normal children slot regardless of how it arrived.
+        React.createElement(Shell, { operatorScopes } as React.ComponentProps<typeof Shell>, React.createElement("div")),
+      );
       const count = (markup.match(/data-active="true"/g) ?? []).length;
       const icon = markup.match(/data-active="true"[^>]*>\s*<svg[^>]*data-icon="([^"]+)"/)?.[1] ?? null;
       return { count, icon };
@@ -345,8 +353,13 @@ describe("app components", () => {
   it("Shell appends the Runners item only when the session holds runner:read", async () => {
     const { default: Shell } = await import("../components/layout/Shell");
     mocks.usePathname.mockReturnValue("/");
-    const tree = Shell({ children: React.createElement("div"), operatorScopes: ["runner:read"] });
-    const markup = renderToStaticMarkup(React.createElement(React.Fragment, null, tree));
+    const markup = renderToStaticMarkup(
+      React.createElement(
+        Shell,
+        { operatorScopes: ["runner:read"] } as React.ComponentProps<typeof Shell>,
+        React.createElement("div"),
+      ),
+    );
     // Runners joins the Configuration group with its link + ServerIcon glyph.
     expect(markup).toContain("Configuration");
     expect(markup).toContain("Runners");
@@ -363,8 +376,7 @@ describe("app components", () => {
     mocks.usePathname.mockReturnValue("/");
     // Default (no operatorScopes prop) → the platform nav items are absent. This
     // is discoverability only; the backend independently gates the route.
-    const tree = Shell({ children: React.createElement("div") });
-    const markup = renderToStaticMarkup(React.createElement(React.Fragment, null, tree));
+    const markup = renderToStaticMarkup(React.createElement(Shell, null, React.createElement("div")));
     expect(markup).not.toContain('href="/admin/runners"');
     expect(markup).not.toContain('data-icon="ServerIcon"');
   });

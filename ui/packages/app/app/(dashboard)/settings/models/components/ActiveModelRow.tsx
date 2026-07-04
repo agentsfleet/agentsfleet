@@ -39,7 +39,7 @@ function formatContext(tokens: number | undefined): string {
   return tokens >= TOKENS_PER_K ? `${Math.round(tokens / TOKENS_PER_K)}k` : String(tokens);
 }
 
-export default function ActiveModelHero({ workspaceId, provider, secrets }: Props) {
+export default function ActiveModelRow({ workspaceId, provider, secrets }: Props) {
   const [panel, setPanel] = useState<Panel>(PANEL.idle);
   const { pending, error, run } = useProviderAction();
 
