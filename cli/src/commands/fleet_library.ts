@@ -65,7 +65,7 @@ export const libraryEffect: Effect.Effect<
     [
       { key: FIELD_ID, label: "LIBRARY" },
       { key: FIELD_NAME, label: "NAME" },
-      { key: FIELD_CREDENTIALS, label: "CREDENTIALS" },
+      { key: FIELD_CREDENTIALS, label: "SECRETS" },
     ],
     items.map((t) => ({
       id: String(t.id ?? ""),

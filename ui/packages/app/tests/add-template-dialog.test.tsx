@@ -40,7 +40,7 @@ afterEach(() => cleanup());
 async function openDialog() {
   const user = userEvent.setup({ delay: null });
   render(React.createElement(AddTemplateDialog, { workspaceId: "ws_1" }));
-  await user.click(screen.getByRole("button", { name: /^create a template$/i }));
+  await user.click(screen.getByRole("button", { name: /^add library entry$/i }));
   await screen.findByLabelText("Repository");
   return user;
 }
@@ -117,9 +117,9 @@ describe("AddTemplateDialog", () => {
     await user.type(screen.getByLabelText("Repository"), "owner/repo");
     submitDialog();
 
-    await screen.findByText("Creating template");
+    await screen.findByText("Adding entry");
     expect(
-      (screen.getByRole("button", { name: /creating template create template/i }) as HTMLButtonElement)
+      (screen.getByRole("button", { name: /adding entry add entry/i }) as HTMLButtonElement)
         .disabled,
     ).toBe(true);
 
@@ -138,15 +138,15 @@ describe("AddTemplateDialog", () => {
     await user.type(screen.getByLabelText("Repository"), "owner/repo");
     submitDialog();
 
-    await screen.findByText("Creating template");
+    await screen.findByText("Adding entry");
     await user.click(screen.getByRole("button", { name: "Close" }));
-    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Create a template" })).toBeNull());
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Add library entry" })).toBeNull());
     finishAction?.(onboarded);
 
-    await user.click(screen.getByRole("button", { name: /^create a template$/i }));
-    const dialog = await screen.findByRole("dialog", { name: "Create a template" });
+    await user.click(screen.getByRole("button", { name: /^add library entry$/i }));
+    const dialog = await screen.findByRole("dialog", { name: "Add library entry" });
     expect(
-      (within(dialog).getByRole("button", { name: /^create template$/i }) as HTMLButtonElement)
+      (within(dialog).getByRole("button", { name: /^add entry$/i }) as HTMLButtonElement)
         .disabled,
     ).toBe(false);
     expect(routerRefresh).not.toHaveBeenCalled();
@@ -162,7 +162,7 @@ describe("AddTemplateDialog", () => {
     await user.type(screen.getByLabelText("Repository"), "owner/repo");
     submitDialog();
 
-    await screen.findByText("Couldn't add the template — repo not found.");
+    await screen.findByText("Couldn't add the library entry — repo not found.");
     expect(screen.queryByText("Ask an agentsfleet admin to grant the scope this action requires.")).toBeNull();
     expect(screen.queryByText(/^UZ-/)).toBeNull();
     expect(routerRefresh).not.toHaveBeenCalled();

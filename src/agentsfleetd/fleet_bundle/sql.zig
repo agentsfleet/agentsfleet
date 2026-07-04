@@ -1,4 +1,4 @@
-//! Centralised SQL for the Fleet Library domain (M103). Every query against
+//! Centralised SQL for the Fleet library domain (M103). Every query against
 //! `core.fleet_library` / `core.tenant_fleet_library` lives here so table names
 //! are grep-able from one file and queries are testable in isolation.
 

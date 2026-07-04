@@ -1,4 +1,4 @@
-//! Fleet Library onboarding — the two scope-gated write paths (M103 §2):
+//! Fleet library onboarding — the two scope-gated write paths (M103 §2):
 //!   * POST /v1/admin/fleet-libraries                     (platform tier)
 //!   * POST /v1/workspaces/{workspace_id}/fleet-libraries (tenant tier)
 //!

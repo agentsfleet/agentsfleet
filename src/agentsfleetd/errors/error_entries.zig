@@ -122,7 +122,7 @@ pub const ENTRIES = [_]Entry{
     e("UZ-WH-011", .unauthorized, "Stale webhook timestamp", "Webhook request timestamp is outside the allowed 5-minute drift window. " ++
         "This may indicate a replay attack or clock skew."),
     e("UZ-WH-020", .unauthorized, "Webhook credential not configured", "No webhook credential is configured for this fleet's source. Run " ++
-        "`agentsfleet credential add <source> --data='{\"webhook_secret\":\"...\"}'` " ++
+        "`agentsfleet secret add <source> --data='{\"webhook_secret\":\"...\"}'` " ++
         "in the fleet's workspace, then resend."),
     e("UZ-WH-030", .payload_too_large, "Webhook payload too large", "Webhook body exceeds the 1 MiB ingest limit. Reduce the payload size " ++
         "or filter at the source."),
@@ -147,7 +147,7 @@ pub const ENTRIES = [_]Entry{
     // ── TOOL ─────────────────────────────────────────────────────────────────
     e("UZ-TOOL-005", .bad_request, "Unknown tool", "Unknown tool name. Check spelling against the known tools list."),
     // ── AGENT ───────────────────────────────────────────────────────────────
-    e("UZ-AGT-003", .failed_dependency, "Fleet credential missing", "A required credential is not in the vault. Add it with: agentsfleet credential add <name>"),
+    e("UZ-AGT-003", .failed_dependency, "Fleet credential missing", "A required credential is not in the vault. Add it with: agentsfleet secret add <name>"),
     e("UZ-AGT-004", .internal_server_error, "Fleet claim failed", "Fleet could not be claimed from the database. Check that the fleet_id exists and status is 'active'."),
     e("UZ-AGT-006", .conflict, "Fleet name already exists", "A Fleet with this name already exists. Use 'agentsfleet kill <name>' first, then deploy again."),
     // UZ-AGT-007 retired (single-string credential body) → see UZ-VAULT-002.
@@ -159,22 +159,22 @@ pub const ENTRIES = [_]Entry{
     e("UZ-AGT-012", .conflict, "Fleet is paused", "This fleet is not active and refuses new work. Resume it with: agentsfleet resume <fleet>, then retry."),
     // ── Fleet Bundle ───────────────────────────────────────────────────────
     eu("UZ-BUNDLE-001", .bad_request, "Invalid Fleet Bundle", "The supplied Fleet Bundle is missing SKILL.md or contains unsafe, oversized, or malformed files.", "That Fleet Bundle isn't valid. It's missing SKILL.md, or has an unsafe or oversized file — check the source and try again."),
-    eu("UZ-BUNDLE-002", .not_found, "Fleet Bundle not found", "No installable template or stored snapshot matches the request in this workspace.", "We couldn't find that Fleet Bundle. It may not be installed in this workspace yet — check the Fleet Library."),
+    eu("UZ-BUNDLE-002", .not_found, "Fleet Bundle not found", "No installable library entry or stored snapshot matches the request in this workspace.", "We couldn't find that Fleet Bundle. It may not be installed in this workspace yet — check the Fleet library."),
     e("UZ-BUNDLE-003", .failed_dependency, "Fleet Bundle secrets missing", "Add the missing workspace secrets before installing this Fleet Bundle."),
     e("UZ-BUNDLE-004", .bad_gateway, "Fleet Bundle fetch failed", "The Fleet Bundle source could not be fetched from GitHub. The repository may be missing or private, or GitHub may be unreachable. Verify the source reference and retry."),
     e("UZ-BUNDLE-005", .service_unavailable, "Fleet Bundle storage unavailable", "Snapshot storage is not configured or is unavailable, so the validated bundle could not be stored. Retry later or contact the operator."),
     e("UZ-BUNDLE-006", .too_many_requests, "Too many Fleet Bundle imports in flight", "This instance is at its concurrent Fleet Bundle import ceiling. Honor the Retry-After header and retry with backoff."),
     // ── VAULT ────────────────────────────────────────────────────────────────
-    eu("UZ-VAULT-001", .bad_request, "Credential data must be a non-empty JSON object", "POST /credentials body must include a 'data' field that is a JSON object with at least one key. " ++
+    eu("UZ-VAULT-001", .bad_request, "Secret data must be a non-empty JSON object", "POST /secrets body must include a 'data' field that is a JSON object with at least one key. " ++
         "Bare strings, arrays, scalars, and {} are rejected.", "That secret needs at least one field. Enter it as a JSON object with one or more keys — not a bare string or list."),
-    eu("UZ-VAULT-002", .bad_request, "Credential data too large", "Stringified credential data exceeds 4KB. Compose the secret from fewer or shorter fields.", "That secret is too large. Keep it under 4 KB — trim or shorten the fields."),
-    eu("UZ-VAULT-003", .not_found, "Credential not found", "No credential matches this name in the workspace. List the workspace credentials to find a valid name, or create it first.", "We couldn't find that secret. It may have already been deleted — refresh the list."),
+    eu("UZ-VAULT-002", .bad_request, "Secret data too large", "Stringified secret data exceeds 4KB. Compose the secret from fewer or shorter fields.", "That secret is too large. Keep it under 4 KB — trim or shorten the fields."),
+    eu("UZ-VAULT-003", .not_found, "Secret not found", "No secret matches this name in the workspace. List the workspace secrets to find a valid name, or create it first.", "We couldn't find that secret. It may have already been deleted — refresh the list."),
     // ── PROVIDER (PUT /v1/tenants/me/provider) ───────────────────────────────
     eu("UZ-PROVIDER-001", .bad_request, "secret_ref required when mode=self_managed", "PUT body must include `secret_ref` naming a vault credential when `mode` is self_managed.", "Pick a secret to activate. Choose a stored secret before switching to a self-managed model."),
-    eu("UZ-PROVIDER-002", .bad_request, "Credential row not found in vault", "The named secret_ref has no vault row in the tenant's primary workspace. " ++
-        "Run `agentsfleet secret set <name> --data @-` to create it.", "We couldn't find that secret. Store it under Secrets & ENVs, then try again."),
-    eu("UZ-PROVIDER-003", .bad_request, "Credential JSON missing required field", "Stored credential JSON must include `provider` and `model` (non-empty strings); `api_key` is required for a named provider but optional for an `openai-compatible` endpoint. " ++
-        "Re-run `agentsfleet secret set` with the required fields.", "That secret is missing required fields. It needs a provider and model set — edit it under Secrets & ENVs and add them."),
+    eu("UZ-PROVIDER-002", .bad_request, "Secret row not found in vault", "The named secret_ref has no vault row in the tenant's primary workspace. " ++
+        "Run `agentsfleet secret add <name> --data=@-` to create it.", "We couldn't find that secret. Store it under Secrets & ENVs, then try again."),
+    eu("UZ-PROVIDER-003", .bad_request, "Secret JSON missing required field", "Stored secret JSON must include `provider` and `model` (non-empty strings); `api_key` is required for a named provider but optional for an `openai-compatible` endpoint. " ++
+        "Re-run `agentsfleet secret add` with the required fields.", "That secret is missing required fields. It needs a provider and model set — edit it under Secrets & ENVs and add them."),
     eu("UZ-PROVIDER-004", .bad_request, "Model not in cached caps catalogue", "The effective model is not present in core.model_caps. Pick a model from the model-caps endpoint " ++
         "or request the catalogue be extended.", "That model isn't in our catalogue yet. Pick a listed model, or ask us to add support for it."),
     e("UZ-PROVIDER-005", .bad_request, "Custom endpoint base_url invalid or unsafe", "An openai-compatible credential needs a valid `base_url`: it must use https and must not target a " ++

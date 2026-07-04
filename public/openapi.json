@@ -148,10 +148,10 @@
       }
     },
     {
-      "name": "Fleet Library",
-      "description": "Two-tier Fleet Library catalog — platform-wide and tenant-scoped onboarding from a GitHub source, stored once in object storage by content hash.",
+      "name": "Fleet library",
+      "description": "Two-tier Fleet library catalog — platform-wide and tenant-scoped onboarding from a GitHub source, stored once in object storage by content hash.",
       "x-mintlify": {
-        "navigation": "Fleet Library"
+        "navigation": "Fleet library"
       }
     },
     {
@@ -3510,14 +3510,14 @@
     "/v1/fleets/bundles": {
       "get": {
         "operationId": "list_fleet_bundles",
-        "summary": "List the platform Fleet Library catalog",
-        "description": "Returns the first-party (platform) Fleet Library catalog. Rows contain only metadata and requirement hints; they carry no credential values or object-store keys. The workspace gallery union lives at GET /v1/workspaces/{workspace_id}/fleet-libraries.",
+        "summary": "List the platform Fleet library catalog",
+        "description": "Returns the first-party (platform) Fleet library catalog. Rows contain only metadata and requirement hints; they carry no credential values or object-store keys. The workspace gallery union lives at GET /v1/workspaces/{workspace_id}/fleet-libraries.",
         "tags": [
           "Fleet Bundles"
         ],
         "responses": {
           "200": {
-            "description": "Fleet Library entry metadata.",
+            "description": "Fleet library entry metadata.",
             "content": {
               "application/json": {
                 "schema": {
@@ -3546,10 +3546,10 @@
     "/v1/admin/fleet-libraries": {
       "post": {
         "operationId": "onboard_platform_fleet_library",
-        "summary": "Onboard a platform Fleet Library entry",
-        "description": "Onboards a Fleet Library entry into the global platform catalog from a GitHub source reference. Requires the `platform-library:write` scope. The canonical bundle is written to internal object storage keyed by content hash; the response carries metadata only — never an object-store key or support-file content.",
+        "summary": "Onboard a platform Fleet library entry",
+        "description": "Onboards a Fleet library entry into the global platform catalog from a GitHub source reference. Requires the `platform-library:write` scope. The canonical bundle is written to internal object storage keyed by content hash; the response carries metadata only — never an object-store key or support-file content.",
         "tags": [
-          "Fleet Library"
+          "Fleet library"
         ],
         "requestBody": {
           "required": true,
@@ -3599,10 +3599,10 @@
     "/v1/workspaces/{workspace_id}/fleet-libraries": {
       "get": {
         "operationId": "list_workspace_fleet_library",
-        "summary": "List the workspace Fleet Library gallery",
-        "description": "Returns the union of the platform Fleet Library catalog and this workspace's own tenant entries — and nothing from another workspace. Each entry carries identity, source, requirements, and support-file summaries; never an object-store key.",
+        "summary": "List the workspace Fleet library gallery",
+        "description": "Returns the union of the platform Fleet library catalog and this workspace's own tenant entries — and nothing from another workspace. Each entry carries identity, source, requirements, and support-file summaries; never an object-store key.",
         "tags": [
-          "Fleet Library"
+          "Fleet library"
         ],
         "parameters": [
           {
@@ -3618,7 +3618,7 @@
         ],
         "responses": {
           "200": {
-            "description": "The workspace Fleet Library gallery.",
+            "description": "The workspace Fleet library gallery.",
             "content": {
               "application/json": {
                 "schema": {
@@ -3654,10 +3654,10 @@
       },
       "post": {
         "operationId": "onboard_tenant_fleet_library",
-        "summary": "Onboard a tenant Fleet Library entry",
-        "description": "Onboards a Fleet Library entry into the caller's workspace catalog from a GitHub source reference. Requires the `library:write` scope plus ownership of the target workspace. Re-onboarding identical bytes converges on one `(workspace_id, content_hash)` row. The response carries metadata only.",
+        "summary": "Onboard a tenant Fleet library entry",
+        "description": "Onboards a Fleet library entry into the caller's workspace catalog from a GitHub source reference. Requires the `library:write` scope plus ownership of the target workspace. Re-onboarding identical bytes converges on one `(workspace_id, content_hash)` row. The response carries metadata only.",
         "tags": [
-          "Fleet Library"
+          "Fleet library"
         ],
         "parameters": [
           {
@@ -5804,7 +5804,7 @@
       },
       "FleetLibraryOnboardResult": {
         "type": "object",
-        "description": "Result of onboarding a Fleet Library entry (platform or tenant tier). Carries the entry identity, its tier in `visibility`, the content hash, the derived requirements, and support-file summaries — never an object-store key or support-file content.",
+        "description": "Result of onboarding a Fleet library entry (platform or tenant tier). Carries the entry identity, its tier in `visibility`, the content hash, the derived requirements, and support-file summaries — never an object-store key or support-file content.",
         "required": [
           "id",
           "name",
@@ -5846,7 +5846,7 @@
       },
       "FleetLibraryGalleryEntry": {
         "type": "object",
-        "description": "One gallery row — a platform or tenant Fleet Library entry. Carries identity, description, source, derived requirements, per-credential reason copy, and support-file summaries; never an object-store key or support-file content.",
+        "description": "One gallery row — a platform or tenant Fleet library entry. Carries identity, description, source, derived requirements, per-credential reason copy, and support-file summaries; never an object-store key or support-file content.",
         "required": [
           "id",
           "name",

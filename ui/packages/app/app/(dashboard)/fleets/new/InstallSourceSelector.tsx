@@ -37,7 +37,7 @@ export function InstallSourceSelector({
   return (
     <div className="space-y-sm">
       <div className="flex flex-wrap items-baseline justify-between gap-md">
-        <SectionLabel>Fleet Library</SectionLabel>
+        <SectionLabel>Fleet library</SectionLabel>
         {showAddTemplate && templates.length > 0 ? (
           <AddTemplateDialog workspaceId={workspaceId} defaultOpen={initialCreateOpen} />
         ) : null}
@@ -50,7 +50,7 @@ export function InstallSourceSelector({
               template={template}
               action={
                 <Button type="button" onClick={() => onUseTemplate(template)}>
-                  Use template
+                  Use entry
                 </Button>
               }
             />

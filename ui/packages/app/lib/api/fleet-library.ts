@@ -13,9 +13,9 @@ const workspaceFleetLibrariesPath = (workspaceId: string) =>
 //   GET /v1/workspaces/{ws}/fleet-libraries  (platform ∪ own-tenant templates)
 //
 // The gallery returns the union of the platform catalog and the caller-
-// workspace's own tenant templates — and nothing from another workspace. Each
+// workspace's own tenant entries — and nothing from another workspace. Each
 // entry carries `visibility`, so the install flow keys the create body off the
-// chosen tier (platform_template_id vs tenant_template_id). Metadata only — the
+// chosen tier (platform_library_id vs tenant_library_id). Metadata only — the
 // canonical bundle bytes live in R2, never in the response.
 export async function listWorkspaceFleetLibrary(
   workspaceId: string,

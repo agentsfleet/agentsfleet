@@ -47,7 +47,7 @@ const CONNECTOR_READ = [_]S{.connector_read};
 const CONNECTOR_WRITE = [_]S{.connector_write};
 const MODEL_READ = [_]S{.model_read};
 const MODEL_ADMIN = [_]S{.model_admin};
-// Fleet Library onboarding — independent scopes, no hierarchy between them (M103).
+// Fleet library onboarding — independent scopes, no hierarchy between them (M103).
 const LIBRARY_WRITE = [_]S{.library_write};
 const PLATFORM_LIBRARY_WRITE = [_]S{.platform_library_write};
 const PLATFORM_KEY_READ = [_]S{.platform_key_read};
@@ -144,7 +144,7 @@ pub fn requiredScopes(route: router.Route, method: httpz.Method) []const S {
         .fleet_bundles,
         => &FLEET_READ,
 
-        // ── Fleet Library onboarding (M103; independent scopes, no hierarchy) ──
+        // ── Fleet library onboarding (M103; independent scopes, no hierarchy) ──
         .admin_fleet_library => &PLATFORM_LIBRARY_WRITE,
         // GET lists the workspace gallery (read); POST onboards (write).
         .workspace_fleet_library => switch (method) {

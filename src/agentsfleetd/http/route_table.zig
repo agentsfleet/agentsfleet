@@ -146,7 +146,7 @@ pub fn specFor(route: router.Route, registry: *auth_mw.MiddlewareRegistry) Route
         .tenant_provider => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeTenantProvider },
         .fleet_bundles => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeFleetBundles },
 
-        // Fleet Library onboarding (M103). Scope enforced by requireScope from
+        // Fleet library onboarding (M103). Scope enforced by requireScope from
         // route_scopes (platform-library:write / library:write); the tenant
         // handler adds a workspace-ownership check.
         .admin_fleet_library => .{ .middlewares = registry.bearer(), .invoke = library_invoke.invokePlatformLibraryOnboard },

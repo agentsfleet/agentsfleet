@@ -94,7 +94,7 @@ describe("fleet server actions — thin token-forwarders", () => {
   it("installFleetAction forwards ws + platform-template body with token last", async () => {
     const resp = { fleet_id: "z1", status: "installing" };
     installFleetMock.mockResolvedValueOnce(resp);
-    const body = { platform_template_id: "github-pr-reviewer", name: "deploybot" };
+    const body = { platform_library_id: "github-pr-reviewer", name: "deploybot" };
     const r = await installFleetAction("ws1", body);
     expect(r).toEqual({ ok: true, data: resp });
     expect(installFleetMock).toHaveBeenCalledWith("ws1", body, "tok");
@@ -103,7 +103,7 @@ describe("fleet server actions — thin token-forwarders", () => {
   it("installFleetAction forwards a tenant-template body unchanged", async () => {
     const resp = { fleet_id: "z2", status: "installing" };
     installFleetMock.mockResolvedValueOnce(resp);
-    const body = { tenant_template_id: "01932d4e-7c10-7a3a-9f00-000000000001" };
+    const body = { tenant_library_id: "01932d4e-7c10-7a3a-9f00-000000000001" };
     const r = await installFleetAction("ws1", body);
     expect(r).toEqual({ ok: true, data: resp });
     expect(installFleetMock).toHaveBeenCalledWith("ws1", body, "tok");

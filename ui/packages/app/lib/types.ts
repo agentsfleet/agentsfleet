@@ -31,29 +31,29 @@ export type Fleet = {
   triggers?: FleetTrigger[];
 };
 
-// Install a fleet from exactly one onboarded template tier (M103 §4): a platform
-// template (slug id) or this workspace's tenant template (UUIDv7). The `?: never`
+// Install a fleet from exactly one onboarded library tier (M103 §4): a platform
+// entry (slug id) or this workspace's tenant entry (UUIDv7). The `?: never`
 // arms make the two mutually exclusive at compile time; raw-`SKILL.md` paste, the
 // legacy per-workspace `bundle_id`, and github-import-at-create are no longer
 // accepted. An optional `name` overrides the SKILL.md-derived fleet name so one
-// template can back multiple fleets in a workspace.
+// library entry can back multiple fleets in a workspace.
 export type InstallFleetRequest =
-  | { platform_template_id: string; name?: string; tenant_template_id?: never }
-  | { tenant_template_id: string; name?: string; platform_template_id?: never };
+  | { platform_library_id: string; name?: string; tenant_library_id?: never }
+  | { tenant_library_id: string; name?: string; platform_library_id?: never };
 
 export type InstallFleetResponse = {
   fleet_id: string;
   status: string;
 };
 
-// ── Fleet template catalog (two-tier) ──
-// The platform catalog and per-workspace tenant templates, unioned by the
+// ── Fleet library catalog (two-tier) ──
+// The platform catalog and per-workspace tenant entries, unioned by the
 // workspace gallery (M103 §5). R2 holds the canonical tar; these rows are
 // metadata only — never support-file bytes or an object-store key. Mirrors
-// agentsfleetd `http/handlers/templates/gallery.zig` (GalleryEntry).
+// agentsfleetd `http/handlers/library/gallery.zig` (GalleryEntry).
 
-// The catalog tier of a template. The install flow keys the create body off it:
-// platform → `platform_template_id`, tenant → `tenant_template_id`.
+// The catalog tier of a library entry. The install flow keys the create body off it:
+// platform → `platform_library_id`, tenant → `tenant_library_id`.
 export type FleetLibraryVisibility = "platform" | "tenant";
 
 // A non-authoritative support file shipped alongside SKILL.md/TRIGGER.md, shown

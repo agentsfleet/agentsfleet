@@ -1,4 +1,4 @@
-//! GET /v1/fleets/bundles — the first-party Fleet Library catalog (the
+//! GET /v1/fleets/bundles — the first-party Fleet library catalog (the
 //! dashboard gallery + `agentsfleet library` shop-window). Metadata only;
 //! SKILL.md/TRIGGER.md content is fetched + snapshotted at import time.
 //!

@@ -11,7 +11,7 @@ import {
 import { INSTALL_STEP, type InstallStepId } from "@/lib/streaming/install-steps";
 
 // A gallery entry is the only install source in M103 (template-only). These
-// fixtures mirror GET /v1/workspaces/{ws}/fleet-templates: requirements are
+// fixtures mirror GET /v1/workspaces/{ws}/fleet-libraries: requirements are
 // nested, and `visibility` keys the create body off the tier.
 const PLATFORM_ENTRY: InstallSource = {
   id: "github-pr-reviewer",

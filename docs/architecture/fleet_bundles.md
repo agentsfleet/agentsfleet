@@ -8,7 +8,7 @@
 
 A Fleet's definition lives in two distinct objects with different mutability and different runtime roles. Conflating them is the usual source of confusion.
 
-| | **Fleet Library entry** | **Fleet** |
+| | **Fleet library entry** | **Fleet** |
 |---|---|---|
 | What | the onboarded snapshot of `SKILL.md` + `TRIGGER.md` + support files | the live runtime instance installed from a template |
 | Table | `core.fleet_library` (platform) · `core.tenant_fleet_library` (tenant) | `core.fleets` |
@@ -39,7 +39,7 @@ agentsfleetd
 
 The re-pack is deliberate: the runner untars the result **without re-validating**, so the stored tar must be safe by construction. The author's repo framing is normalized away; only validated file *contents* survive. GitHub is the source for this one-time import and is **never** a runtime dependency.
 
-## Two-tier Fleet Library catalog (M103)
+## Two-tier Fleet library catalog (M103)
 
 Templates onboard into one of two catalog tiers, each its own table:
 
@@ -53,14 +53,14 @@ The workspace gallery `GET /v1/workspaces/{ws}/fleet-libraries` returns the unio
 | Where | Key / columns | Holds |
 |---|---|---|
 | **R2** | `fleet-bundles/sha256/{content_hash}.tar` | the canonical tar (SKILL.md + TRIGGER.md + support files) — the **sole** support-file content store. Written only when support files are present. |
-| **Postgres Fleet Library tables** | `skill_markdown`, `trigger_markdown` | the SKILL.md / TRIGGER.md text |
+| **Postgres Fleet library tables** | `skill_markdown`, `trigger_markdown` | the SKILL.md / TRIGGER.md text |
 | | `support_files_json` (JSONB) | a **manifest only** — `[{path, size_bytes, sha256}]`, never file bytes |
 | | `content_hash`, `requirements_json` | the content address + parsed requirements (the R2 key is derived from `content_hash`, never stored as a public field) |
 | **Postgres `core.fleets`** | `source_markdown`, `trigger_markdown`, `bundle_content_hash`, `bundle_snapshot_key` | the live, editable fleet copy + the content identity the runner materializes from |
 
 Caps (`importer.zig`): **32 support files · 64 KiB per file · 256 KiB total.**
 
-**No dual-write.** Support-file bytes live in R2 only; Postgres holds a path/size/hash manifest and the content hash. The legacy per-workspace `core.fleet_bundles` table — which stored full support-file content inline and was installed from by `bundle_id` — was removed; install now resolves from a Fleet Library tier (below).
+**No dual-write.** Support-file bytes live in R2 only; Postgres holds a path/size/hash manifest and the content hash. The legacy per-workspace `core.fleet_bundles` table — which stored full support-file content inline and was installed from by `bundle_id` — was removed; install now resolves from a Fleet library tier (below).
 
 ## Cardinality + dedup
 
