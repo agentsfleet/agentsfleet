@@ -45,7 +45,7 @@ agentsfleet doctor
 | `workspace list` | List workspaces |
 | `workspace use <workspace_id>` | Set the active workspace |
 | `workspace show [<workspace_id>]` | Show workspace details (defaults to the active workspace) |
-| `workspace credentials` | Open the credential vault |
+| `workspace secrets` | Open the workspace secret vault |
 | `workspace delete <workspace_id>` | Delete a workspace (irreversible) |
 | `doctor` | Diagnose CLI configuration and connectivity |
 
@@ -69,7 +69,7 @@ agentsfleet doctor
 | Command | Description |
 |---------|-------------|
 | `tenant provider show` | Show the active provider config |
-| `tenant provider add --credential <name> [--model <name>]` | Use a self-managed credential |
+| `tenant provider add --secret <name> [--model <name>]` | Use a self-managed secret |
 | `tenant provider delete` | Reset to the platform default |
 
 ### Billing
@@ -82,8 +82,8 @@ agentsfleet doctor
 
 | Command | Description |
 |---------|-------------|
-| `templates` | Browse first-party Fleet templates |
-| `install --template <id> [--name <name>]` | Install a Fleet from an onboarded template |
+| `library` | Browse the first-party Fleet library gallery |
+| `install --library <id> [--name <name>]` | Install a Fleet from an onboarded library entry |
 | `list [--cursor <token>] [--limit <n>] [--workspace-id <id>]` | List Fleets (paginated) |
 | `status [<fleet_id>]` | Show Fleet status (workspace-wide if no id) |
 | `stop <fleet_id>` | Halt the session (resumable) |
@@ -106,18 +106,18 @@ Inspect a Fleet's durable memory — newest-first, raw entries (the reader judge
 
 Both verbs accept `--workspace <id>` to override the active workspace. The server caps `--limit` at 100 (defaults: 100 for list, 20 for search). There are no write verbs — durable memory is written only by the runner plane.
 
-### Workspace credentials
+### Workspace secrets
 
-Workspace-scoped tool credentials live in the vault (Slack, GitHub, Fly, Upstash, etc.). Secret bytes are never echoed back.
+Workspace-scoped tool secrets live in the vault (Slack, GitHub, Fly, Upstash, etc.). Secret bytes are never echoed back.
 
 | Command | Description |
 |---------|-------------|
-| `credential add <name> --data=@-` | Add a credential (pipe JSON on stdin; skip if exists) |
-| `credential add <name> --data=@- --force` | Overwrite an existing credential |
-| `credential add <name> --data='<json>'` | Add a credential (inline JSON, exposes secret to shell history) |
-| `credential show <name>` | Check existence and `created_at` (never echoes secret) |
-| `credential list` | List workspace credentials |
-| `credential delete <name>` | Remove a workspace credential |
+| `secret add <name> --data=@-` | Add a secret (pipe JSON on stdin; skip if exists) |
+| `secret add <name> --data=@- --force` | Overwrite an existing secret |
+| `secret add <name> --data='<json>'` | Add a secret (inline JSON, exposes secret to shell history) |
+| `secret show <name>` | Check existence and `created_at` (never echoes secret) |
+| `secret list` | List workspace secrets |
+| `secret delete <name>` | Remove a workspace secret |
 
 ## Global flags
 

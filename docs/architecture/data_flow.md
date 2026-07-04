@@ -349,16 +349,16 @@ A config change never alters a language-model turn already in flight (one lease 
 
 ## End-to-end sequence
 
-### A. INSTALL  (`agentsfleet install --template <id>` from an onboarded template)
+### A. INSTALL  (`agentsfleet install --library <id>` from an onboarded library entry)
 
-Fleet template onboarding is the source-prep step before Fleet creation, not a second runtime creation path:
+Fleet library onboarding is the source-prep step before Fleet creation, not a second runtime creation path:
 
 ```
    dashboard source picker
     │
     ├─► Start from Fleet library
     ├─► Import public GitHub repository/path
-    ├─► Manual SKILL.md paste / local template onboarding
+    ├─► Manual SKILL.md paste / local library onboarding
     └─► Upload bundle archive            (DEFERRED 2026-06-20, Indy-acked — not in the shipping picker)
             │
             ▼
@@ -390,15 +390,15 @@ installed runtime. Runner remains the infrastructure vocabulary.
 ```
    user / agentsfleet CLI
     │  POST /v1/workspaces/{ws}/fleets
-    │  body, platform template:
-    │       { platform_template_id, name? }
-    │  OR body, tenant template:
-    │       { tenant_template_id, name? }
+    │  body, platform library entry:
+    │       { platform_library_id, name? }
+    │  OR body, tenant library entry:
+    │       { tenant_library_id, name? }
     ▼
   agentsfleetd-api (create handler)
     │
     ├─► load normalized SKILL.md/TRIGGER.md + immutable snapshot metadata
-    │    from the selected template tier (platform or tenant)
+    │    from the selected library tier (platform or tenant)
     ├─► if trigger_markdown is absent:
     │      generate default manual/API trigger config
     ├─► check required workspace secrets by key name only; never resolve
