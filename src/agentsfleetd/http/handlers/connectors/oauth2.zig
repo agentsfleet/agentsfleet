@@ -112,13 +112,7 @@ pub fn exchange(
     code: []const u8,
     redirect_uri: []const u8,
 ) !ExchangeResult {
-    const redir = try percentEncode(alloc, redirect_uri);
-    defer alloc.free(redir);
-    const body = try std.fmt.allocPrint(
-        alloc,
-        "grant_type=authorization_code&client_id={s}&client_secret={s}&code={s}&redirect_uri={s}",
-        .{ creds.client_id, creds.client_secret, code, redir },
-    );
+    const body = try buildExchangeForm(alloc, creds, code, redirect_uri);
     defer alloc.free(body);
 
     // The exchange is a rare, request-scoped browser round-trip — the request
@@ -139,6 +133,22 @@ pub fn exchange(
         .class = .token_exchange,
     });
     return .{ .status = res.status, .body = res.body };
+}
+
+fn buildExchangeForm(alloc: std.mem.Allocator, creds: AppCreds, code: []const u8, redirect_uri: []const u8) ![]u8 {
+    const cid = try percentEncode(alloc, creds.client_id);
+    defer alloc.free(cid);
+    const csec = try percentEncode(alloc, creds.client_secret);
+    defer alloc.free(csec);
+    const encoded_code = try percentEncode(alloc, code);
+    defer alloc.free(encoded_code);
+    const redir = try percentEncode(alloc, redirect_uri);
+    defer alloc.free(redir);
+    return std.fmt.allocPrint(
+        alloc,
+        "grant_type=authorization_code&client_id={s}&client_secret={s}&code={s}&redirect_uri={s}",
+        .{ cid, csec, encoded_code, redir },
+    );
 }
 
 pub const APP_VAULT_KEY_SUFFIX = "-app";
@@ -248,4 +258,13 @@ test "percentEncode: unreserved pass through, reserved become %XX" {
     const enc = try percentEncode(testing.allocator, "a-b_c.d~e/f:g h");
     defer testing.allocator.free(enc);
     try testing.expectEqualStrings("a-b_c.d~e%2Ff%3Ag%20h", enc);
+}
+
+test "buildExchangeForm: form-encodes code exchange values" {
+    const form = try buildExchangeForm(testing.allocator, .{ .client_id = "cid+1", .client_secret = "sec&ret=" }, "co+de&x", "https://app.test/cb?x=1&y=2");
+    defer testing.allocator.free(form);
+    try testing.expectEqualStrings(
+        "grant_type=authorization_code&client_id=cid%2B1&client_secret=sec%26ret%3D&code=co%2Bde%26x&redirect_uri=https%3A%2F%2Fapp.test%2Fcb%3Fx%3D1%26y%3D2",
+        form,
+    );
 }
