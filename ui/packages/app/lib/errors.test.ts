@@ -61,13 +61,14 @@ describe("presentErrorString", () => {
 // to the backend's `user_message` (error_entries.zig's eu()) — see
 // client.test.ts's "prefers user_message over detail" for the mechanism.
 // CODE_MAP now holds only what can never be backend-authored.
-describe("CODE_MAP — shrunk to client-minted + dead entries", () => {
+describe("CODE_MAP — shrunk to client-minted entries", () => {
   it("contains exactly the codes that cannot be backend-authored", () => {
     // UZ-AUTH-401/UZ-AUTH-022: client-minted (with-token.ts / require-scope.ts),
     // never round-trip to a real backend response for that code path.
-    // UZ-VALIDATION-001/UZ-CRED-003: dead — no backend code, never client-minted.
+    // UZ-VALIDATION-001/UZ-CRED-003 (dead, no backend code, never client-minted)
+    // were deleted rather than left in place.
     expect([...CURATED_ERROR_CODES].sort()).toEqual(
-      ["UZ-AUTH-401", "UZ-AUTH-022", "UZ-CRED-003", "UZ-VALIDATION-001"].sort(),
+      ["UZ-AUTH-401", "UZ-AUTH-022"].sort(),
     );
   });
 
