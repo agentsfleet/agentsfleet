@@ -37,6 +37,7 @@ export type ProviderKeyFormProps = {
 };
 
 const STORE_ACTION = "store the provider key";
+const ACTIVATE_ACTION = "activate this model";
 
 /**
  * Consolidated "add a provider key" form (supersedes InlineProviderKeyCreate +
@@ -105,7 +106,7 @@ export default function ProviderKeyForm({
       if (activate) {
         const set = await setProviderSelfManagedAction({ secret_ref: name, model: model.trim() });
         if (!set.ok) {
-          setError(set.error);
+          setError(presentErrorString({ errorCode: set.errorCode, message: set.error, action: ACTIVATE_ACTION }));
           return;
         }
         captureModelActivated(set.data);

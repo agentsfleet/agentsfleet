@@ -230,18 +230,22 @@ describe("ProviderSwitchList — live roster", () => {
     expect(screen.getByText("vllm2 · https://y/v1")).toBeTruthy();
   });
 
-  it("surfaces a switch error", async () => {
+  it("surfaces a friendly switch error routed through presentErrorString, not the raw string", async () => {
     setProviderSelfManagedAction.mockResolvedValue({ ok: false, error: "switch failed" });
     renderLive();
     rowOf("Key saved · gpt-4").getByRole("button", { name: "Switch" }).click();
-    await waitFor(() => expect(screen.getByRole("alert").textContent).toMatch(/switch failed/));
+    await waitFor(() => expect(screen.getByRole("alert").textContent).toMatch(/^Couldn't switch providers/));
+    expect(screen.getByRole("alert").textContent).toMatch(/switch failed/);
   });
 
-  it("surfaces a platform-switch error", async () => {
+  it("surfaces a friendly platform-switch error routed through presentErrorString, not the raw string", async () => {
     resetProviderAction.mockResolvedValue({ ok: false, error: "platform reset failed" });
     renderLive();
     rowOf("Built-in provider · no key").getByRole("button", { name: "Switch" }).click();
-    await waitFor(() => expect(screen.getByRole("alert").textContent).toMatch(/platform reset failed/));
+    await waitFor(() =>
+      expect(screen.getByRole("alert").textContent).toMatch(/^Couldn't switch to platform defaults/),
+    );
+    expect(screen.getByRole("alert").textContent).toMatch(/platform reset failed/);
   });
 
   it("shows a switching spinner while an action is in flight", async () => {

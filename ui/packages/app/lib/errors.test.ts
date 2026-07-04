@@ -55,3 +55,31 @@ describe("presentErrorString", () => {
     }
   });
 });
+
+// Every code named in the error-copy spec's reachable-surface audit maps to
+// friendly copy that is NOT the raw backend detail string it was drafted from.
+describe("presentErrorString — reachable-surface codes", () => {
+  const RAW_BACKEND_DETAIL: Record<string, string> = {
+    "UZ-PROVIDER-001": "PUT body must include `secret_ref` naming a vault credential when `mode` is self_managed.",
+    "UZ-PROVIDER-002": "The named secret_ref has no vault row in the tenant's primary workspace.",
+    "UZ-PROVIDER-003": "Stored credential JSON must include `provider` and `model`.",
+    "UZ-PROVIDER-004": "The effective model is not present in core.model_caps.",
+    "UZ-VAULT-001": "body must include a 'data' field that is a JSON object with at least one key.",
+    "UZ-VAULT-002": "Stringified credential data exceeds 4KB.",
+    "UZ-VAULT-003": "No credential matches this name in the workspace.",
+    "UZ-BUNDLE-001": "The supplied Fleet Bundle is missing SKILL.md or contains unsafe, oversized, or malformed files.",
+    "UZ-BUNDLE-002": "No installable template or stored snapshot matches the request in this workspace.",
+    "UZ-APPROVAL-001": "Gate policy in TRIGGER.md config_json has invalid syntax.",
+    "UZ-APPROVAL-002": "Approval action not found or already resolved.",
+    "UZ-APPROVAL-003": "The approval callback signature is invalid.",
+    "UZ-APPROVAL-004": "Gate service unavailable — default-deny applied.",
+    "UZ-APPROVAL-005": "Gate condition expression is invalid.",
+    "UZ-APPROVAL-006": "Resolved earlier by Slack, dashboard, or auto-timeout.",
+  };
+
+  it.each(Object.entries(RAW_BACKEND_DETAIL))("%s renders friendly copy, not the raw backend detail", (code, raw) => {
+    const s = presentErrorString({ errorCode: code, message: raw, action: "x" });
+    expect(s).not.toBe(raw);
+    expect(s.length).toBeGreaterThan(0);
+  });
+});

@@ -92,13 +92,14 @@ describe("CustomEndpointForm", () => {
     expect(setProviderSelfManagedAction).not.toHaveBeenCalled();
   });
 
-  it("surfaces an activation error after a successful store", async () => {
+  it("surfaces a friendly activation error, routed through presentErrorString like the store step", async () => {
     setProviderSelfManagedAction.mockResolvedValue({ ok: false, error: "activation rejected" });
     const onDone = vi.fn();
     render(React.createElement(CustomEndpointForm, { workspaceId: "ws_1", activate: true, onDone }));
     fill("vllm", "https://vllm.corp/v1", "m1");
     fireEvent.click(screen.getByRole("button", { name: "Save & make active" }));
-    await waitFor(() => expect(screen.getByRole("alert").textContent).toMatch(/activation rejected/));
+    await waitFor(() => expect(screen.getByRole("alert").textContent).toMatch(/^Couldn't activate this model/));
+    expect(screen.getByRole("alert").textContent).toMatch(/activation rejected/);
     expect(onDone).not.toHaveBeenCalled();
   });
 

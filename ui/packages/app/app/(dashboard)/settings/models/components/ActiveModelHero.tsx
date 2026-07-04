@@ -28,6 +28,7 @@ const MANAGED_PROVIDER = "agentsfleet managed";
 
 // Shared with ProviderSwitchList — the same add-a-key affordance, named once.
 export const ADD_KEY_AND_MODEL_LABEL = "Add key & model";
+const RESET_ACTION = "switch to platform defaults";
 
 // Threshold + divisor for the "k" context abbreviation (200000 → "200k").
 const TOKENS_PER_K = 1000;
@@ -50,9 +51,9 @@ export default function ActiveModelHero({ workspaceId, provider, credentials }: 
     activeCred?.kind === SECRET_KIND.provider_key || activeCred?.kind === SECRET_KIND.custom_endpoint;
 
   function onReset(fromProvider: string) {
-    void run(async () => {
+    void run(RESET_ACTION, async () => {
       const res = await resetProviderAction();
-      if (!res.ok) return res.error;
+      if (!res.ok) return { message: res.error, errorCode: res.errorCode };
       captureProviderReset(fromProvider);
       return null;
     });

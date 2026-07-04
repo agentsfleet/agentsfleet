@@ -51,12 +51,13 @@ describe("HeroReplaceKeyPanel", () => {
     expect(routerRefresh).toHaveBeenCalled();
   });
 
-  it("surfaces a rotation error and keeps the panel open", async () => {
+  it("surfaces a friendly rotation error routed through presentErrorString and keeps the panel open", async () => {
     rotateSecretAction.mockResolvedValue({ ok: false, error: "key too short" });
     const onClose = renderPanel();
     fireEvent.change(screen.getByLabelText("New API key"), { target: { value: "sk-bad" } });
     fireEvent.click(screen.getByRole("button", { name: "Save key" }));
-    await waitFor(() => expect(screen.getByRole("alert").textContent).toMatch(/key too short/));
+    await waitFor(() => expect(screen.getByRole("alert").textContent).toMatch(/^Couldn't replace the key/));
+    expect(screen.getByRole("alert").textContent).toMatch(/key too short/);
     expect(captureKeyRotated).not.toHaveBeenCalled();
     expect(onClose).not.toHaveBeenCalled();
   });

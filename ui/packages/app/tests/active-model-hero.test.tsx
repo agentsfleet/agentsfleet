@@ -165,7 +165,7 @@ describe("ActiveModelHero — live (self-managed)", () => {
     expect(captureProviderReset).toHaveBeenCalledWith("anthropic");
   });
 
-  it("surfaces a reset error", async () => {
+  it("surfaces a friendly reset error routed through presentErrorString, not the raw string", async () => {
     resetProviderAction.mockResolvedValue({ ok: false, error: "reset failed" });
     render(
       React.createElement(ActiveModelHero, {
@@ -175,7 +175,10 @@ describe("ActiveModelHero — live (self-managed)", () => {
       }),
     );
     fireEvent.click(screen.getByRole("button", { name: "Switch to platform defaults" }));
-    await waitFor(() => expect(screen.getByRole("alert").textContent).toMatch(/reset failed/));
+    await waitFor(() =>
+      expect(screen.getByRole("alert").textContent).toMatch(/^Couldn't switch to platform defaults/),
+    );
+    expect(screen.getByRole("alert").textContent).toMatch(/reset failed/);
     expect(routerRefresh).not.toHaveBeenCalled();
     expect(captureProviderReset).not.toHaveBeenCalled();
   });

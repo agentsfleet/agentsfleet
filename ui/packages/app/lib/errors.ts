@@ -115,6 +115,66 @@ const CODE_MAP = {
     title: "Revoke this key before deleting it",
     body: "Revoke it first, then delete the revoked key.",
   },
+  "UZ-PROVIDER-001": {
+    title: "Pick a secret to activate",
+    body: "Choose a stored secret before switching to a self-managed model.",
+  },
+  "UZ-PROVIDER-002": {
+    title: "We couldn't find that secret",
+    body: "Store it under Secrets & ENVs, then try again.",
+  },
+  "UZ-PROVIDER-003": {
+    title: "That secret is missing required fields",
+    body: "It needs a provider and model set — edit it under Secrets & ENVs and add them.",
+  },
+  "UZ-PROVIDER-004": {
+    title: "That model isn't in our catalogue yet",
+    body: "Pick a listed model, or ask us to add support for it.",
+  },
+  "UZ-VAULT-001": {
+    title: "That secret needs at least one field",
+    body: "Enter it as a JSON object with one or more keys — not a bare string or list.",
+  },
+  "UZ-VAULT-002": {
+    title: "That secret is too large",
+    body: "Keep it under 4 KB — trim or shorten the fields.",
+  },
+  "UZ-VAULT-003": {
+    title: "We couldn't find that secret",
+    body: "It may have already been deleted — refresh the list.",
+  },
+  "UZ-BUNDLE-001": {
+    title: "That Fleet Bundle isn't valid",
+    body: "It's missing SKILL.md, or has an unsafe or oversized file — check the source and try again.",
+  },
+  "UZ-BUNDLE-002": {
+    title: "We couldn't find that Fleet Bundle",
+    body: "It may not be installed in this workspace yet — check the Fleet Library.",
+  },
+  "UZ-APPROVAL-001": {
+    title: "That approval gate's config is invalid",
+    body: "Check the gates section in TRIGGER.md.",
+  },
+  "UZ-APPROVAL-002": {
+    title: "That approval action wasn't found",
+    body: "It may have already timed out or been resolved elsewhere.",
+  },
+  "UZ-APPROVAL-003": {
+    title: "That approval callback couldn't be verified",
+    body: "Check the signing secret configuration.",
+  },
+  "UZ-APPROVAL-004": {
+    title: "Approvals are temporarily unavailable",
+    body: "We default to denying while this is down — try again shortly.",
+  },
+  "UZ-APPROVAL-005": {
+    title: "That approval gate's condition is invalid",
+    body: "Check the gate's condition expression for a supported operator.",
+  },
+  "UZ-APPROVAL-006": {
+    title: "Someone already resolved this",
+    body: "Refresh to see the outcome and who resolved it.",
+  },
 } as const satisfies Record<string, CodeEntry>;
 
 /** Every code the dashboard currently maps to operator-friendly copy. */

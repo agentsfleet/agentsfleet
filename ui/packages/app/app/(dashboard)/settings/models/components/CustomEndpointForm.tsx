@@ -23,6 +23,7 @@ export type CustomEndpointFormProps = {
 };
 
 const STORE_ACTION = "store the custom endpoint";
+const ACTIVATE_ACTION = "activate this model";
 
 /**
  * Consolidated "add an OpenAI-compatible endpoint" form (supersedes the
@@ -79,7 +80,7 @@ export default function CustomEndpointForm({
       if (activate) {
         const set = await setProviderSelfManagedAction({ secret_ref: credName, model: credModel });
         if (!set.ok) {
-          setError(set.error);
+          setError(presentErrorString({ errorCode: set.errorCode, message: set.error, action: ACTIVATE_ACTION }));
           return;
         }
         captureModelActivated(set.data);
