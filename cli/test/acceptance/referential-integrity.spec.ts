@@ -1,19 +1,19 @@
 /**
  * Referential-integrity / cross-resource acceptance scenarios (live,
- * seeded-credentials session). Mirrors lifecycle-with-token / credential-vault
+ * seeded-credentials session). Mirrors lifecycle-with-token / secret-vault
  * / fleet-key-mutation: mint a Clerk session JWT, hydrate workspaces.json from
  * the API, then walk cross-resource deletes whose outcome the suite DISCOVERS
  * and DOCUMENTS against api-dev rather than presumes. The load-bearing contract
  * for each scenario is restated as an inline comment at its `describe` block:
  *
- *   (a) delete a credential a tenant provider references → refused-conflict OR
+ *   (a) delete a secret a tenant provider references → refused-conflict OR
  *       cascade-with-credential_missing disjunction; baseline restored on fail.
  *   (b) `workspace delete` is LOCAL-only (no server DELETE) → the server fleet
  *       survives and stays reachable via `list --workspace-id`.
  *   (c) an `agt_a…` fleet key is NOT a control-plane credential — it is rejected
  *       on a control-plane read (`fleet-key list`) both before AND after revoke.
  *
- * Prefix-scoped: every fleet + credential + key is ACCEPTANCE_RUN_PREFIX-named
+ * Prefix-scoped: every fleet + secret + key is ACCEPTANCE_RUN_PREFIX-named
  * and cleaned in afterAll; no assertion claims global emptiness. Live-only:
  * real tests register only when AGENTSFLEET_ACCEPTANCE_TARGET is an https URL;
  * otherwise the suite skips cleanly (CI runs it live).
@@ -35,7 +35,7 @@ import { attachJwt } from "./fixtures/clerk-admin.ts";
 import { hydrateWorkspacesForToken } from "./fixtures/workspace-hydration.ts";
 import { installPlatformOpsFleet } from "./fixtures/seed.ts";
 import { cleanWorkspaceFleets } from "./fixtures/teardown.ts";
-import { sweepCredentials } from "./fixtures/credential-ops.ts";
+import { sweepSecrets } from "./fixtures/secret-ops.ts";
 import {
   TENANT_PROVIDER_MODE,
   restoreProviderBaseline,
@@ -45,7 +45,7 @@ import type { ProviderSnapshot } from "./fixtures/tenant-provider-ops.ts";
 import {
   AGENT_KEY_SECRET_PREFIX,
   REJECTED_AUTH_RE,
-  assertCredentialDeleteDisjunction,
+  assertSecretDeleteDisjunction,
   mintFleetKey,
   readWithFleetKey,
   revokeFleetKey,
@@ -56,7 +56,7 @@ const target = process.env[ACCEPTANCE_TARGET_ENV] ?? "";
 const isLive = target.startsWith("https://");
 
 // --- command / flag / key wire literals (RULE UFS) -------------------------
-const CMD_CREDENTIAL = "credential" as const;
+const CMD_SECRET = "secret" as const;
 const CMD_TENANT = "tenant" as const;
 const CMD_PROVIDER = "provider" as const;
 const CMD_WORKSPACE = "workspace" as const;
@@ -66,7 +66,7 @@ const SUB_ADD = "add" as const;
 const SUB_DELETE = "delete" as const;
 const SUB_LIST = "list" as const;
 const FLAG_DATA = "--data" as const;
-const FLAG_CREDENTIAL = "--credential" as const;
+const FLAG_SECRET = "--secret" as const;
 const FLAG_MODEL = "--model" as const;
 const FLAG_WORKSPACE_ID = "--workspace-id" as const;
 const FLAG_JSON = "--json" as const;
@@ -83,16 +83,16 @@ const STATE_DIR_PREFIX = "agentsfleet-refint-" as const;
 
 // A throwaway model identifier for the provider-link probe in scenario (a).
 const PROBE_MODEL = "claude-sonnet-refint-probe" as const;
-// Credential-payload secret prefix (never asserted; just a recognisable shape).
-const CREDENTIAL_SECRET_PREFIX = "sk-ref-" as const;
+// Secret-payload prefix (never asserted; just a recognisable shape).
+const SECRET_PAYLOAD_PREFIX = "sk-ref-" as const;
 
 const INSTALL_TIMEOUT_MS = 120_000;
 const SCENARIO_TIMEOUT_MS = 150_000;
 
 const refName = (label: string): string => `${ACCEPTANCE_RUN_PREFIX}-${label}`;
 
-const credentialPayload = (): string =>
-  JSON.stringify({ api_token: `${CREDENTIAL_SECRET_PREFIX}${crypto.randomBytes(12).toString("hex")}` });
+const secretPayload = (): string =>
+  JSON.stringify({ api_token: `${SECRET_PAYLOAD_PREFIX}${crypto.randomBytes(12).toString("hex")}` });
 
 function parseJson<T>(stdout: string, label: string): T {
   const trimmed = stdout.trim();
@@ -150,7 +150,7 @@ if (!isLive) {
     afterAll(async () => {
       // Restore tenant provider posture EVEN ON FAILURE — shared tenant must
       // not carry this run's self_managed posture (with a since-deleted
-      // credential) forward.
+      // secret) forward.
       if (env && sessionJwt && (providerMutated || providerBaseline)) {
         const restoreTo =
           providerBaseline ?? ({ mode: TENANT_PROVIDER_MODE.platform } as ProviderSnapshot);
@@ -162,49 +162,49 @@ if (!isLive) {
         catch { /* best-effort key revoke */ }
       }
       if (apiUrl && sessionJwt && workspaceId) {
-        try { await sweepCredentials({ apiUrl, token: sessionJwt, workspaceId }, { runPrefix: ACCEPTANCE_RUN_PREFIX }); }
-        catch { /* best-effort credential sweep */ }
+        try { await sweepSecrets({ apiUrl, token: sessionJwt, workspaceId }, { runPrefix: ACCEPTANCE_RUN_PREFIX }); }
+        catch { /* best-effort secret sweep */ }
       }
       try { await cleanWorkspaceFleets(env, { workspaceId, runPrefix: ACCEPTANCE_RUN_PREFIX }); }
       catch { /* best-effort fleet cleanup */ }
       if (stateDir) await fs.rm(stateDir, { recursive: true, force: true });
     });
 
-    // ── (a) credential referenced by a tenant provider, then deleted ──────
-    describe("(a) delete a credential a tenant provider references", () => {
-      const credName = refName("provref");
+    // ── (a) secret referenced by a tenant provider, then deleted ──────
+    describe("(a) delete a secret a tenant provider references", () => {
+      const secretName = refName("provref");
 
-      it("add credential → provider references it → delete is refused OR cascades", async () => {
-        // 1. Store the credential.
-        const added = await run([CMD_CREDENTIAL, SUB_ADD, credName, FLAG_DATA, credentialPayload(), FLAG_JSON]);
-        assert.equal(added.code, 0, `credential add exited ${added.code}: ${added.stderr}`);
+      it("add secret → provider references it → delete is refused OR cascades", async () => {
+        // 1. Store the secret.
+        const added = await run([CMD_SECRET, SUB_ADD, secretName, FLAG_DATA, secretPayload(), FLAG_JSON]);
+        assert.equal(added.code, 0, `secret add exited ${added.code}: ${added.stderr}`);
         assert.equal(
-          parseJson<Record<string, unknown>>(added.stdout, "cred-add")[KEY_STATUS],
+          parseJson<Record<string, unknown>>(added.stdout, "secret-add")[KEY_STATUS],
           STATUS_STORED,
-          `unexpected credential add status: ${added.stdout}`,
+          `unexpected secret add status: ${added.stdout}`,
         );
 
         // 2. Point the tenant provider at it. The PUT may accept the posture
         //    (possibly flagging credential_missing) or reject an unknown
-        //    credential — only treat an accepted PUT as a real reference.
+        //    secret — only treat an accepted PUT as a real reference.
         const linked = await run([
-          CMD_TENANT, CMD_PROVIDER, SUB_ADD, FLAG_CREDENTIAL, credName,
+          CMD_TENANT, CMD_PROVIDER, SUB_ADD, FLAG_SECRET, secretName,
           FLAG_MODEL, PROBE_MODEL, FLAG_JSON,
         ]);
         if (linked.code === 0) {
           providerMutated = true;
           const after = await showProvider(env, sessionJwt);
-          assert.equal(after.credential_ref, credName,
-            `provider did not record the credential reference: ${JSON.stringify(after)}`);
+          assert.equal(after.secret_ref, secretName,
+            `provider did not record the secret reference: ${JSON.stringify(after)}`);
         }
 
-        // 3. Delete the referenced credential and DISCOVER the behaviour —
+        // 3. Delete the referenced secret and DISCOVER the behaviour —
         //    refused-conflict OR cascade-with-credential_missing (the helper
         //    pins the disjunction so this body stays under the fn-length bound).
-        const del = await run([CMD_CREDENTIAL, SUB_DELETE, credName, FLAG_JSON]);
-        await assertCredentialDeleteDisjunction({
+        const del = await run([CMD_SECRET, SUB_DELETE, secretName, FLAG_JSON]);
+        await assertSecretDeleteDisjunction({
           del,
-          credName,
+          secretName,
           providerMutated,
           showProvider: () => showProvider(env, sessionJwt),
         });

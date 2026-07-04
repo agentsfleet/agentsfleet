@@ -295,13 +295,13 @@ test "unresolvable provider credential blocks the event: gate_blocked + tenant_r
     const conn = try h.acquireConn();
     defer h.releaseConn(conn);
     try seedFleetWithConfig(conn, AGENTSFLEET_PROVIDER, "lifecycle-prov", CONFIG_PLAIN, "2");
-    // self-managed row whose credential_ref has no vault row →
-    // error.CredentialMissing → permanent refusal (RULE ECL).
+    // self-managed row whose secret_ref has no vault row →
+    // error.SecretMissing → permanent refusal (RULE ECL).
     _ = try conn.exec(
         \\INSERT INTO core.tenant_providers
-        \\  (tenant_id, mode, provider, model, context_cap_tokens, credential_ref, created_at, updated_at)
+        \\  (tenant_id, mode, provider, model, context_cap_tokens, secret_ref, created_at, updated_at)
         \\VALUES ($1::uuid, 'self_managed', 'fireworks', 'test-model', 256000, 'no-such-cred', $2, $2)
-        \\ON CONFLICT (tenant_id) DO UPDATE SET mode = EXCLUDED.mode, credential_ref = EXCLUDED.credential_ref
+        \\ON CONFLICT (tenant_id) DO UPDATE SET mode = EXCLUDED.mode, secret_ref = EXCLUDED.secret_ref
     , .{ base.TEST_TENANT_ID, clock.nowMillis() });
 
     const event_id = try publishEvent(h, AGENTSFLEET_PROVIDER);

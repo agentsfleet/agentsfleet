@@ -1,10 +1,10 @@
 //! /v1/tenants/me/provider — tenant-scoped LLM provider configuration.
 //!
 //! GET    returns the persisted config (no api_key, ever).
-//! PUT    body {mode, credential_ref?, model?} validates eagerly and UPSERTs
+//! PUT    body {mode, secret_ref?, model?} validates eagerly and UPSERTs
 //!        the row. Validation order matches the spec PUT contract:
 //!          1. body shape malformed                          → 400 UZ-REQ-001
-//!          2. mode=self_managed + credential_ref absent     → 400 UZ-PROVIDER-001
+//!          2. mode=self_managed + secret_ref absent     → 400 UZ-PROVIDER-001
 //!          3. mode=self_managed + credential row absent     → 400 UZ-PROVIDER-002
 //!          4. mode=self_managed + JSON shape invalid        → 400 UZ-PROVIDER-003
 //!          5. effective model not in caps catalogue         → 400 UZ-PROVIDER-004
@@ -43,7 +43,7 @@ const CUSTOM_ENDPOINT_CAP_UNKNOWN: u32 = 0;
 
 const PutInput = struct {
     mode: []const u8,
-    credential_ref: ?[]const u8 = null,
+    secret_ref: ?[]const u8 = null,
     model: ?[]const u8 = null,
 };
 
@@ -153,21 +153,21 @@ fn applyPlatform(hx: Hx, conn: *pg.Conn, tenant_id: []const u8) void {
 }
 
 fn applySelfManaged(hx: Hx, conn: *pg.Conn, tenant_id: []const u8, input: PutInput) void {
-    const credential_ref = input.credential_ref orelse {
-        hx.fail(ec.ERR_PROVIDER_CREDENTIAL_REF_REQUIRED, "credential_ref required when mode=self_managed");
+    const secret_ref = input.secret_ref orelse {
+        hx.fail(ec.ERR_PROVIDER_SECRET_REF_REQUIRED, "secret_ref required when mode=self_managed");
         return;
     };
 
-    var probed = tenant_provider.probeSelfManaged(hx.alloc, conn, tenant_id, credential_ref) catch |err| switch (err) {
-        tenant_provider.ResolveError.CredentialMissing => {
-            hx.fail(ec.ERR_PROVIDER_CREDENTIAL_NOT_FOUND, "credential row not found in vault");
+    var probed = tenant_provider.probeSelfManaged(hx.alloc, conn, tenant_id, secret_ref) catch |err| switch (err) {
+        tenant_provider.ResolveError.SecretMissing => {
+            hx.fail(ec.ERR_PROVIDER_SECRET_NOT_FOUND, "credential row not found in vault");
             return;
         },
-        tenant_provider.ResolveError.CredentialDataMalformed => {
-            hx.fail(ec.ERR_PROVIDER_CREDENTIAL_DATA_MALFORMED, "credential JSON missing required field (provider, api_key, or model)");
+        tenant_provider.ResolveError.SecretDataMalformed => {
+            hx.fail(ec.ERR_PROVIDER_SECRET_DATA_MALFORMED, "credential JSON missing required field (provider, api_key, or model)");
             return;
         },
-        tenant_provider.ResolveError.CredentialEndpointInvalid => {
+        tenant_provider.ResolveError.SecretEndpointInvalid => {
             hx.fail(ec.ERR_PROVIDER_BASE_URL_INVALID, "custom endpoint base_url is missing, not https, SSRF-unsafe, or set on a non-openai-compatible provider");
             return;
         },
@@ -191,7 +191,7 @@ fn applySelfManaged(hx: Hx, conn: *pg.Conn, tenant_id: []const u8, input: PutInp
         return;
     };
 
-    tenant_provider.upsertSelfManaged(hx.alloc, conn, tenant_id, credential_ref, effective_model, context_cap_tokens) catch |err| {
+    tenant_provider.upsertSelfManaged(hx.alloc, conn, tenant_id, secret_ref, effective_model, context_cap_tokens) catch |err| {
         log.err("upsert_failed", .{ .error_code = ec.ERR_INTERNAL_DB_UNAVAILABLE, .tenant_id = tenant_id, .err = @errorName(err) });
         common.internalDbUnavailable(hx.res, hx.req_id);
         return;
@@ -226,12 +226,12 @@ const ProviderView = struct {
     provider: []const u8,
     model: []const u8,
     context_cap_tokens: u32,
-    credential_ref: ?[]const u8,
+    secret_ref: ?[]const u8,
 };
 
 fn readProviderView(alloc: std.mem.Allocator, conn: *pg.Conn, tenant_id: []const u8) !ProviderView {
     var q = PgQuery.from(try conn.query(
-        \\SELECT mode, provider, model, context_cap_tokens, credential_ref
+        \\SELECT mode, provider, model, context_cap_tokens, secret_ref
         \\FROM core.tenant_providers
         \\WHERE tenant_id = $1::uuid
     , .{tenant_id}));
@@ -251,7 +251,7 @@ fn readProviderView(alloc: std.mem.Allocator, conn: *pg.Conn, tenant_id: []const
             .provider = provider,
             .model = model,
             .context_cap_tokens = @intCast(@max(cap_i32, 0)),
-            .credential_ref = cred_ref,
+            .secret_ref = cred_ref,
         };
     }
     // No explicit row → the tenant runs on the live platform default. Source it
@@ -268,7 +268,7 @@ fn readProviderView(alloc: std.mem.Allocator, conn: *pg.Conn, tenant_id: []const
             .provider = view.provider,
             .model = view.model,
             .context_cap_tokens = view.context_cap_tokens,
-            .credential_ref = null,
+            .secret_ref = null,
         };
     }
 
@@ -283,7 +283,7 @@ fn readProviderView(alloc: std.mem.Allocator, conn: *pg.Conn, tenant_id: []const
         .provider = provider,
         .model = model,
         .context_cap_tokens = 0,
-        .credential_ref = null,
+        .secret_ref = null,
     };
 }
 
@@ -291,5 +291,5 @@ fn freeView(alloc: std.mem.Allocator, view: ProviderView) void {
     alloc.free(view.mode);
     alloc.free(view.provider);
     alloc.free(view.model);
-    if (view.credential_ref) |c| alloc.free(c);
+    if (view.secret_ref) |c| alloc.free(c);
 }

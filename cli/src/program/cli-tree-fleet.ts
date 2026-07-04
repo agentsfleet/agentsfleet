@@ -7,7 +7,7 @@
 // Shape mirrors the sibling build*Tree helpers in cli-tree.ts — top-level
 // imperative verbs (install / list / status / stop / resume / kill /
 // delete / logs / events / steer) plus the `fleet` group for
-// update-in-place verbs and the `credential` group for the vault.
+// update-in-place verbs and the `secret` group for the vault.
 
 import type { Command } from "commander";
 import {
@@ -34,14 +34,14 @@ export function buildFleetTree(
   { actionFor, runHandler }: ActionDispatch,
 ): void {
   program
-    .command("templates")
-    .description("Browse the first-party Fleet template gallery")
-    .action(actionFor("fleet.templates", (frame) => runHandler(state, frame, handlers.fleet.templates)));
+    .command("library")
+    .description("Browse the first-party Fleet library gallery")
+    .action(actionFor("fleet.library", (frame) => runHandler(state, frame, handlers.fleet.library)));
 
   program
     .command("install")
-    .description("Install a Fleet from an onboarded template (--template <id>)")
-    .option(FLAG_TEMPLATE_ID, TEMPLATE_ID_DESC, parseStringOption)
+    .description("Install a Fleet from an onboarded library (--library <id>)")
+    .option(FLAG_LIBRARY_ID, LIBRARY_ID_DESC, parseStringOption)
     .option(FLAG_NAME, NAME_DESC, parseStringOption)
     .action(actionFor("fleet.install", (frame) => runHandler(state, frame, handlers.fleet.install)));
 
@@ -59,7 +59,7 @@ export function buildFleetTree(
       "",
       "Fleet lifecycle verbs are top-level commands, not under `fleet`:",
       "  agentsfleet list | status | logs | events | steer",
-      "  agentsfleet templates | install | stop | resume | kill | delete",
+      "  agentsfleet library | install | stop | resume | kill | delete",
       "This group holds in-place updates only. Run `agentsfleet --help`",
       "for the full command list.",
     ].join("\n"),
@@ -126,42 +126,42 @@ export function buildFleetTree(
     .description("Send a message; stream the response")
     .action(actionFor("fleet.steer", (frame) => runHandler(state, frame, handlers.fleet.steer)));
 
-  const credential = program
-    .command("credential")
-    .description("Workspace credential vault");
+  const secret = program
+    .command("secret")
+    .description("Workspace secret vault");
 
   // Two ways to supply the body: the generic `--data <json>` blob, or the
   // typed custom-endpoint flags (`--provider openai-compatible --base-url
   // <url> --api-key <key> [--model <m>]`) that compose the same JSON object.
   // `--base-url` runs parseHttpsUrlOption at PARSE time, so a non-https URL
   // exits non-zero with NO network call (full SSRF check stays server-side).
-  credential.command("add <name>")
-    .description("Store a credential JSON object")
-    .option("--data <json>", "Credential JSON object, or @- to read stdin")
+  secret.command("add <name>")
+    .description("Store a secret JSON object")
+    .option("--data <json>", "Secret JSON object, or @- to read stdin")
     .option(FLAG_PROVIDER, `Provider id (use '${OPENAI_COMPATIBLE_PROVIDER}' for a custom endpoint)`, parseStringOption)
     .option(FLAG_BASE_URL, "Custom endpoint base URL (https; required for a custom-endpoint provider)", parseHttpsUrlOption)
     .option(FLAG_API_KEY, "Provider API key for the typed custom-endpoint form")
     .option(FLAG_MODEL_OPT, "Default model identifier for the typed custom-endpoint form", parseStringOption)
-    .option("--force", "Overwrite if a credential with this name already exists")
-    .action(actionFor("fleet.credential.add", (frame) => runHandler(state, frame, handlers.fleet.credential.add)));
+    .option("--force", "Overwrite if a secret with this name already exists")
+    .action(actionFor("fleet.secret.add", (frame) => runHandler(state, frame, handlers.fleet.secret.add)));
 
-  credential.command("show <name>")
-    .description("Confirm a credential exists (never echoes secret bytes)")
-    .action(actionFor("fleet.credential.show", (frame) => runHandler(state, frame, handlers.fleet.credential.show)));
+  secret.command("show <name>")
+    .description("Confirm a secret exists (never echoes secret bytes)")
+    .action(actionFor("fleet.secret.show", (frame) => runHandler(state, frame, handlers.fleet.secret.show)));
 
-  credential.command(COMMAND_LIST)
-    .description("List credentials in the workspace vault")
-    .action(actionFor("fleet.credential.list", (frame) => runHandler(state, frame, handlers.fleet.credential.list)));
+  secret.command(COMMAND_LIST)
+    .description("List secrets in the workspace vault")
+    .action(actionFor("fleet.secret.list", (frame) => runHandler(state, frame, handlers.fleet.secret.list)));
 
-  credential.command("delete <name>")
-    .description("Delete a credential from the workspace vault")
-    .action(actionFor("fleet.credential.delete", (frame) => runHandler(state, frame, handlers.fleet.credential.delete)));
+  secret.command("delete <name>")
+    .description("Delete a secret from the workspace vault")
+    .action(actionFor("fleet.secret.delete", (frame) => runHandler(state, frame, handlers.fleet.secret.delete)));
 }
 const FLAG_CURSOR_TOKEN = "--cursor <token>" as const;
 const FLAG_FROM_PATH = "--from <path>" as const;
-const FLAG_TEMPLATE_ID = "--template <id>" as const;
+const FLAG_LIBRARY_ID = "--library <id>" as const;
 const FLAG_NAME = "--name <name>" as const;
-const TEMPLATE_ID_DESC = "Template id from `agentsfleet templates`" as const;
+const LIBRARY_ID_DESC = "Library id from `agentsfleet library`" as const;
 const NAME_DESC =
   "Override the fleet name (install the same bundle more than once)" as const;
 const FLAG_LIMIT_N = "--limit <n>" as const;

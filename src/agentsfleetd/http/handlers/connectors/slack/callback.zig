@@ -56,7 +56,7 @@ const Handle = struct {
 /// (the pre-exchange conn went back before the vendor call). A malformed or
 /// `{"ok":false}` body is `error.ExchangeFailed` — the generic handler maps
 /// it to the provider's exchange-failed code.
-pub fn postAuth(hx: hx_mod.Hx, workspace_id: []const u8, body: []const u8) anyerror!void {
+pub fn postAuth(hx: hx_mod.Hx, workspace_id: []const u8, body: []const u8, _: ?[]const u8) anyerror!void {
     var parsed = std.json.parseFromSlice(std.json.Value, hx.alloc, body, .{}) catch return error.ExchangeFailed;
     defer parsed.deinit();
     const obj = switch (parsed.value) {

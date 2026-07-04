@@ -104,6 +104,16 @@ describe("ApiKeyList component", () => {
     expect(screen.getByLabelText(/Delete API key old-zapier/i)).toBeTruthy();
   });
 
+  it("renders rows through the standard DataTable primitive, not a hand-rolled list", async () => {
+    // Pins the DataTable migration — a regression back to a bespoke row-list
+    // (no `role=table`, no column headers) must fail this test.
+    await renderList(listResponse([ACTIVE, REVOKED]));
+    expect(screen.getByRole("table")).toBeTruthy();
+    expect(screen.getByRole("columnheader", { name: "Name" })).toBeTruthy();
+    expect(screen.getByRole("columnheader", { name: "Created" })).toBeTruthy();
+    expect(screen.getByRole("columnheader", { name: "Actions" })).toBeTruthy();
+  });
+
   it("revoke happy path: confirm → revokeApiKeyAction(id) → list re-fetched", async () => {
     revokeApiKeyActionMock.mockResolvedValue({ ok: true, data: { id: ACTIVE.id, active: false, revoked_at: 1 } });
     const user = userEvent.setup();
@@ -149,7 +159,13 @@ describe("ApiKeyList component", () => {
   });
 
   it("delete race (key still active) surfaces must-revoke-first and re-fetches", async () => {
-    deleteApiKeyActionMock.mockResolvedValue({ ok: false, error: "revoke first", errorCode: "UZ-APIKEY-008" });
+    // ApiError.message is user_message ?? detail (client.ts) —
+    // UZ-APIKEY-008's friendly copy lives in error_entries_runtime.zig now.
+    deleteApiKeyActionMock.mockResolvedValue({
+      ok: false,
+      error: "Revoke this key before deleting it. Revoke it first, then delete the revoked key.",
+      errorCode: "UZ-APIKEY-008",
+    });
     const user = userEvent.setup();
     await renderList(listResponse([REVOKED]));
     await user.click(screen.getByLabelText(/Delete API key old-zapier/i));

@@ -31,54 +31,54 @@ export type Fleet = {
   triggers?: FleetTrigger[];
 };
 
-// Install a fleet from exactly one onboarded template tier (M103 §4): a platform
-// template (slug id) or this workspace's tenant template (UUIDv7). The `?: never`
+// Install a fleet from exactly one onboarded library tier (M103 §4): a platform
+// entry (slug id) or this workspace's tenant entry (UUIDv7). The `?: never`
 // arms make the two mutually exclusive at compile time; raw-`SKILL.md` paste, the
 // legacy per-workspace `bundle_id`, and github-import-at-create are no longer
 // accepted. An optional `name` overrides the SKILL.md-derived fleet name so one
-// template can back multiple fleets in a workspace.
+// library entry can back multiple fleets in a workspace.
 export type InstallFleetRequest =
-  | { platform_template_id: string; name?: string; tenant_template_id?: never }
-  | { tenant_template_id: string; name?: string; platform_template_id?: never };
+  | { platform_library_id: string; name?: string; tenant_library_id?: never }
+  | { tenant_library_id: string; name?: string; platform_library_id?: never };
 
 export type InstallFleetResponse = {
   fleet_id: string;
   status: string;
 };
 
-// ── Fleet template catalog (two-tier) ──
-// The platform catalog and per-workspace tenant templates, unioned by the
+// ── Fleet library catalog (two-tier) ──
+// The platform catalog and per-workspace tenant entries, unioned by the
 // workspace gallery (M103 §5). R2 holds the canonical tar; these rows are
 // metadata only — never support-file bytes or an object-store key. Mirrors
-// agentsfleetd `http/handlers/templates/gallery.zig` (GalleryEntry).
+// agentsfleetd `http/handlers/library/gallery.zig` (GalleryEntry).
 
-// The catalog tier of a template. The install flow keys the create body off it:
-// platform → `platform_template_id`, tenant → `tenant_template_id`.
-export type FleetTemplateVisibility = "platform" | "tenant";
+// The catalog tier of a library entry. The install flow keys the create body off it:
+// platform → `platform_library_id`, tenant → `tenant_library_id`.
+export type FleetLibraryVisibility = "platform" | "tenant";
 
 // A non-authoritative support file shipped alongside SKILL.md/TRIGGER.md, shown
 // as a {path, size_bytes} summary — the bytes live in R2, never in the response.
-export type FleetTemplateSupportFileSummary = { path: string; size_bytes: number };
+export type FleetLibrarySupportFileSummary = { path: string; size_bytes: number };
 
-// A template's declared requirements — drives the install gate's credential
-// preview and the skill-only fallback when no TRIGGER.md shipped.
-export type FleetTemplateRequirements = {
+// A library entry's declared requirements — drives the install gate's
+// credential preview and the skill-only fallback when no TRIGGER.md shipped.
+export type FleetLibraryRequirements = {
   credentials: string[];
   tools: string[];
   network_hosts: string[];
   trigger_present: boolean;
 };
 
-// One gallery row from GET /v1/workspaces/{ws}/fleet-templates — a platform or
-// tenant template. Metadata only; `visibility` is the tier the install flow keys
-// the create body off.
-export type FleetTemplateGalleryEntry = {
+// One gallery row from GET /v1/workspaces/{ws}/fleet-libraries — a platform or
+// tenant library entry. Metadata only; `visibility` is the tier the install
+// flow keys the create body off.
+export type FleetLibraryGalleryEntry = {
   id: string;
   name: string;
   description: string;
-  visibility: FleetTemplateVisibility;
+  visibility: FleetLibraryVisibility;
   source_ref: string;
-  requirements: FleetTemplateRequirements;
+  requirements: FleetLibraryRequirements;
   // Display-only "why this fleet needs it" copy, keyed by credential name (e.g.
   // { github: "review your pull requests" }). Platform rows carry curated copy;
   // tenant rows are an empty object (the importer derives no per-credential
@@ -87,15 +87,15 @@ export type FleetTemplateGalleryEntry = {
   // response is only cast here, so a stale cache or an old backend may omit it —
   // callers default to {} so the gate degrades to generic copy, never crashes.
   required_credentials_reasons?: Record<string, string>;
-  support_files: FleetTemplateSupportFileSummary[];
+  support_files: FleetLibrarySupportFileSummary[];
 };
 
-export type FleetTemplateGalleryResponse = { items: FleetTemplateGalleryEntry[] };
+export type FleetLibraryGalleryResponse = { items: FleetLibraryGalleryEntry[] };
 
 export const SOURCE_KIND_GITHUB = "github" as const;
 export const SOURCE_KIND_UPLOAD = "upload" as const;
 
-export type OnboardTemplateRequest =
+export type OnboardLibraryEntryRequest =
   | {
       source_kind: typeof SOURCE_KIND_GITHUB;
       source_ref: string;
@@ -106,13 +106,13 @@ export type OnboardTemplateRequest =
       trigger_markdown?: string;
     };
 
-export type OnboardedTemplate = {
+export type OnboardedLibraryEntry = {
   id: string;
   name: string;
   visibility: "tenant";
   content_hash: string;
-  requirements: FleetTemplateRequirements;
-  support_files: FleetTemplateSupportFileSummary[];
+  requirements: FleetLibraryRequirements;
+  support_files: FleetLibrarySupportFileSummary[];
 };
 
 export type FleetListResponse = {
@@ -181,9 +181,9 @@ export const PROVIDER_MODE = {
 // option, and the tests) imports it (RULE UFS).
 export const OPENAI_COMPATIBLE_PROVIDER = "openai-compatible" as const;
 
-// Credential JSON field names (verbatim with the server-side resolver's
+// Secret JSON field names (verbatim with the server-side resolver's
 // `S_API_KEY` / `S_BASE_URL` extraction).
-export const CREDENTIAL_FIELD = {
+export const SECRET_FIELD = {
   provider: "provider",
   apiKey: "api_key",
   baseUrl: "base_url",
@@ -210,7 +210,7 @@ export type TenantProvider = {
   provider: string;
   model: string;
   context_cap_tokens: number;
-  credential_ref: string | null;
+  secret_ref: string | null;
 };
 
 export type TenantBillingChargesResponse = {

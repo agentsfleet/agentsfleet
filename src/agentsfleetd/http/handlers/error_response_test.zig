@@ -188,6 +188,28 @@ test "body has no nested message field" {
     try std.testing.expectEqual(@as(?std.json.Value, null), json.object.get("message"));
 }
 
+// user_message: omitted entirely for codes with no curated
+// override, present verbatim for codes that have one.
+
+test "user_message is omitted (not null-valued) for a code with no curated override" {
+    var ht = httpz.testing.init(.{});
+    defer ht.deinit();
+
+    common.errorResponse(ht.res, error_codes.ERR_UNAUTHORIZED, "d", "r");
+    const json = try ht.getJson();
+    try std.testing.expectEqual(@as(?std.json.Value, null), json.object.get("user_message"));
+}
+
+test "user_message is present verbatim for a code with a curated override" {
+    var ht = httpz.testing.init(.{});
+    defer ht.deinit();
+
+    common.errorResponse(ht.res, error_codes.ERR_FORBIDDEN, "d", "r");
+    const json = try ht.getJson();
+    const expected_entry = error_codes.lookup(error_codes.ERR_FORBIDDEN);
+    try std.testing.expectEqualStrings(expected_entry.user_message.?, json.object.get("user_message").?.string);
+}
+
 // Memory safety: repeated calls do not leak.
 
 test "repeated errorResponse calls with std.testing.allocator do not leak" {

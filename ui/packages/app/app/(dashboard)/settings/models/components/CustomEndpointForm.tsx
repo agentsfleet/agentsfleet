@@ -3,12 +3,12 @@
 import { useState, type KeyboardEvent } from "react";
 import { useRouter } from "next/navigation";
 import { Alert, Button, Input, Label, Spinner } from "@agentsfleet/design-system";
-import { createCredentialAction } from "@/app/(dashboard)/credentials/actions";
+import { createSecretAction } from "@/app/(dashboard)/secrets/actions";
 import { setProviderSelfManagedAction } from "../actions";
 import { isHttpsUrl, BASE_URL_NOT_HTTPS } from "../lib/custom-endpoint";
 import { presentErrorString } from "@/lib/errors";
-import type { CredentialData } from "@/lib/api/credentials";
-import { OPENAI_COMPATIBLE_PROVIDER, CREDENTIAL_FIELD } from "@/lib/types";
+import type { SecretData } from "@/lib/api/secrets";
+import { OPENAI_COMPATIBLE_PROVIDER, SECRET_FIELD } from "@/lib/types";
 import { EVENTS } from "@/lib/analytics/events";
 import { captureProductEvent } from "@/lib/analytics/posthog";
 import { captureModelActivated } from "../lib/track";
@@ -23,12 +23,13 @@ export type CustomEndpointFormProps = {
 };
 
 const STORE_ACTION = "store the custom endpoint";
+const ACTIVATE_ACTION = "activate this model";
 
 /**
  * Consolidated "add an OpenAI-compatible endpoint" form (supersedes the
  * credentials CustomEndpointForm + the own-key custom path). Stores
  * `{ provider: "openai-compatible", base_url, model, api_key? }` — the resolver
- * requires `model` to activate the credential, so it is collected here — then,
+ * requires `model` to activate the secret, so it is collected here — then,
  * when `activate`, points the tenant provider at it. A non-https URL is flagged
  * inline before any request; the server enforces the full SSRF guard.
  */
@@ -57,29 +58,29 @@ export default function CustomEndpointForm({
     }
     setPending(true);
     try {
-      const credName = name.trim();
-      const credModel = model.trim();
-      const data: CredentialData = {
-        [CREDENTIAL_FIELD.provider]: OPENAI_COMPATIBLE_PROVIDER,
-        [CREDENTIAL_FIELD.baseUrl]: baseUrl.trim(),
-        [CREDENTIAL_FIELD.model]: credModel,
+      const secretName = name.trim();
+      const secretModel = model.trim();
+      const data: SecretData = {
+        [SECRET_FIELD.provider]: OPENAI_COMPATIBLE_PROVIDER,
+        [SECRET_FIELD.baseUrl]: baseUrl.trim(),
+        [SECRET_FIELD.model]: secretModel,
       };
       const key = apiKey.trim();
-      if (key !== "") data[CREDENTIAL_FIELD.apiKey] = key;
+      if (key !== "") data[SECRET_FIELD.apiKey] = key;
 
-      const created = await createCredentialAction(workspaceId, { name: credName, data });
+      const created = await createSecretAction(workspaceId, { name: secretName, data });
       if (!created.ok) {
         setError(
           presentErrorString({ errorCode: created.errorCode, message: created.error, action: STORE_ACTION }),
         );
         return;
       }
-      captureProductEvent(EVENTS.credential_added, { credential_name: credName });
+      captureProductEvent(EVENTS.secret_added, { secret_name: secretName });
 
       if (activate) {
-        const set = await setProviderSelfManagedAction({ credential_ref: credName, model: credModel });
+        const set = await setProviderSelfManagedAction({ secret_ref: secretName, model: secretModel });
         if (!set.ok) {
-          setError(set.error);
+          setError(presentErrorString({ errorCode: set.errorCode, message: set.error, action: ACTIVATE_ACTION }));
           return;
         }
         captureModelActivated(set.data);

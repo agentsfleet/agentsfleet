@@ -1,6 +1,6 @@
 // Parser-level unit tests for the fleet subtree of buildProgram —
 // install / list / status / stop / resume / kill / delete / logs / events
-// / steer + the credential vault. Sibling file cli-tree.parse.unit.test.js
+// / steer + the secret vault. Sibling file cli-tree.parse.unit.test.js
 // covers the top-level + non-fleet tree.
 
 import { test, expect } from "bun:test";
@@ -11,21 +11,21 @@ import {
   dispatch,
 } from "./helpers-cli-tree.ts";
 
-test("install accepts --template <id> and --name <name>", async () => {
+test("install accepts --library <id> and --name <name>", async () => {
   const { handlers, calls } = makeSpyTree();
   await dispatch(
-    ["install", "--template", "github-pr-reviewer", "--name", "pr-frontend"],
+    ["install", "--library", "github-pr-reviewer", "--name", "pr-frontend"],
     handlers,
   );
   expect(calls[0]?.name).toBe("fleet.install");
-  expect(calls[0]?.frame.parsed.options.template).toBe("github-pr-reviewer");
+  expect(calls[0]?.frame.parsed.options.library).toBe("github-pr-reviewer");
   expect(calls[0]?.frame.parsed.options.name).toBe("pr-frontend");
 });
 
-test("templates dispatches with no options", async () => {
+test("library dispatches with no options", async () => {
   const { handlers, calls } = makeSpyTree();
-  await dispatch(["templates"], handlers);
-  expect(calls[0]?.name).toBe("fleet.templates");
+  await dispatch(["library"], handlers);
+  expect(calls[0]?.name).toBe("fleet.library");
   expect(calls[0]?.frame.parsed.positionals).toHaveLength(0);
 });
 
@@ -118,29 +118,29 @@ test("steer <id> --tty dispatches without a message", async () => {
   expect(calls[0]?.frame.parsed.options.tty).toBe(true);
 });
 
-test("credential add <name> accepts --data / --force", async () => {
+test("secret add <name> accepts --data / --force", async () => {
   const { handlers, calls } = makeSpyTree();
   await dispatch([
-    "credential", "add", "openai",
+    "secret", "add", "openai",
     "--data", '{"api_key":"sk-test"}',
     "--force",
   ], handlers);
-  expect(calls[0]?.name).toBe("fleet.credential.add");
+  expect(calls[0]?.name).toBe("fleet.secret.add");
   expect(calls[0]?.frame.parsed.positionals[0]).toBe("openai");
   expect(calls[0]?.frame.parsed.options.data).toBe('{"api_key":"sk-test"}');
   expect(calls[0]?.frame.parsed.options.force).toBe(true);
 });
 
-test("credential add <name> accepts the typed custom-endpoint flags", async () => {
+test("secret add <name> accepts the typed custom-endpoint flags", async () => {
   const { handlers, calls } = makeSpyTree();
   await dispatch([
-    "credential", "add", "vllm",
+    "secret", "add", "vllm",
     "--provider", "openai-compatible",
     "--base-url", "https://vllm.corp/v1",
     "--api-key", "sk-custom",
     "--model", "qwen2.5",
   ], handlers);
-  expect(calls[0]?.name).toBe("fleet.credential.add");
+  expect(calls[0]?.name).toBe("fleet.secret.add");
   expect(calls[0]?.frame.parsed.positionals[0]).toBe("vllm");
   expect(calls[0]?.frame.parsed.options.provider).toBe("openai-compatible");
   // commander stores hyphenated flags under their camelCase key.
@@ -149,11 +149,11 @@ test("credential add <name> accepts the typed custom-endpoint flags", async () =
   expect(calls[0]?.frame.parsed.options.model).toBe("qwen2.5");
 });
 
-test("credential add rejects a non-https --base-url at parse time (no dispatch)", async () => {
+test("secret add rejects a non-https --base-url at parse time (no dispatch)", async () => {
   const { handlers, calls } = makeSpyTree();
   await expect(
     dispatch([
-      "credential", "add", "vllm",
+      "secret", "add", "vllm",
       "--provider", "openai-compatible",
       "--base-url", "http://vllm.corp/v1",
       "--api-key", "sk-custom",
@@ -163,22 +163,22 @@ test("credential add rejects a non-https --base-url at parse time (no dispatch)"
   expect(calls).toHaveLength(0);
 });
 
-test("credential show / list / delete each dispatch with the right shape", async () => {
+test("secret show / list / delete each dispatch with the right shape", async () => {
   {
     const { handlers, calls } = makeSpyTree();
-    await dispatch(["credential", "show", "openai"], handlers);
-    expect(calls[0]?.name).toBe("fleet.credential.show");
+    await dispatch(["secret", "show", "openai"], handlers);
+    expect(calls[0]?.name).toBe("fleet.secret.show");
     expect(calls[0]?.frame.parsed.positionals[0]).toBe("openai");
   }
   {
     const { handlers, calls } = makeSpyTree();
-    await dispatch(["credential", "list"], handlers);
-    expect(calls[0]?.name).toBe("fleet.credential.list");
+    await dispatch(["secret", "list"], handlers);
+    expect(calls[0]?.name).toBe("fleet.secret.list");
   }
   {
     const { handlers, calls } = makeSpyTree();
-    await dispatch(["credential", "delete", "openai"], handlers);
-    expect(calls[0]?.name).toBe("fleet.credential.delete");
+    await dispatch(["secret", "delete", "openai"], handlers);
+    expect(calls[0]?.name).toBe("fleet.secret.delete");
     expect(calls[0]?.frame.parsed.positionals[0]).toBe("openai");
   }
 });

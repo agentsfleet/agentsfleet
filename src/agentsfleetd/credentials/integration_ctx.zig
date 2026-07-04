@@ -11,6 +11,9 @@ const std = @import("std");
 /// integration is unconfigured (mint fails closed, never panics).
 pub const PlatformSecrets = struct {
     github: ?GithubApp = null,
+    zoho: ?OauthApp = null,
+    jira: ?OauthApp = null,
+    linear: ?OauthApp = null,
 };
 
 pub const GithubApp = struct {
@@ -22,12 +25,22 @@ pub const GithubApp = struct {
     app_slug: ?[]const u8 = null,
 };
 
+pub const OauthApp = struct {
+    client_id: []const u8,
+    client_secret: []const u8,
+};
+
+/// Default media type for the broker's JSON token exchanges (UFS — one spelling
+/// for both the `accept` and `content_type` defaults).
+const MEDIA_TYPE_JSON: []const u8 = "application/json";
+
 /// An outbound HTTP request the broker performs on the integration's behalf.
 pub const HttpRequest = struct {
     url: []const u8,
-    bearer: []const u8,
-    accept: []const u8,
-    user_agent: []const u8,
+    bearer: ?[]const u8 = null,
+    accept: []const u8 = MEDIA_TYPE_JSON,
+    user_agent: []const u8 = "agentsfleetd",
+    content_type: []const u8 = MEDIA_TYPE_JSON,
     body: []const u8,
 };
 

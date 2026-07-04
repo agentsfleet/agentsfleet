@@ -8,9 +8,13 @@ import {
   SectionLabel,
 } from "@agentsfleet/design-system";
 import { LinkIcon } from "lucide-react";
-import { withWorkspaceScope, orFallback } from "@/lib/workspace";
-import { listCredentials } from "@/lib/api/credentials";
-import { getConnector, CONNECTOR_STATUS } from "@/lib/api/connectors";
+import { withWorkspaceScope } from "@/lib/workspace";
+import {
+  getConnector,
+  getConnectorCatalog,
+  CONNECTOR_STATUS,
+  type ConnectorCatalogEntry,
+} from "@/lib/api/connectors";
 import IntegrationsConnectors from "./components/IntegrationsConnectors";
 
 export const dynamic = "force-dynamic";
@@ -23,13 +27,13 @@ export default async function IntegrationsPage() {
   const token = await getToken();
   if (!token) redirect("/sign-in");
 
-  // One workspace-scoped pass: the connector status and the stored-secret names
-  // (used to mark a planned connector "token stored") are the only two reads,
-  // fetched together. A missing/unbuilt connector endpoint degrades to "not
-  // connected" — the pill never fabricates a connected state.
+  // One workspace-scoped pass: the registry-driven catalog (the card list) plus
+  // the two connectors with a bespoke status route (GitHub/Slack tri-state + the
+  // Slack team), fetched together. A missing/unbuilt endpoint degrades closed — an
+  // empty catalog or "not connected" — never fabricating a connected state.
   const result = await withWorkspaceScope(token, async (workspaceId) => {
-    const [credentialsResp, githubConnector, slackConnector] = await Promise.all([
-      listCredentials(workspaceId, token).catch(orFallback({ credentials: [] })),
+    const [catalog, githubConnector, slackConnector] = await Promise.all([
+      getConnectorCatalog(workspaceId, token).catch(() => [] as ConnectorCatalogEntry[]),
       getConnector("github", workspaceId, token).catch(() => ({
         status: CONNECTOR_STATUS.notConnected,
       })),
@@ -38,7 +42,7 @@ export default async function IntegrationsPage() {
         team: null,
       })),
     ]);
-    return { workspaceId, credentialsResp, githubConnector, slackConnector };
+    return { workspaceId, catalog, githubConnector, slackConnector };
   });
   if (!result) {
     return (
@@ -54,7 +58,7 @@ export default async function IntegrationsPage() {
       </div>
     );
   }
-  const { workspaceId, credentialsResp, githubConnector, slackConnector } = result;
+  const { workspaceId, catalog, githubConnector, slackConnector } = result;
 
   return (
     <div className="space-y-8">
@@ -67,10 +71,10 @@ export default async function IntegrationsPage() {
           <SectionLabel>Connectors</SectionLabel>
           <IntegrationsConnectors
             workspaceId={workspaceId}
+            catalog={catalog}
             githubStatus={githubConnector.status}
             slackStatus={slackConnector.status}
             slackTeam={slackConnector.team}
-            credentialNames={credentialsResp.credentials.map((secret) => secret.name)}
           />
         </section>
       </Section>

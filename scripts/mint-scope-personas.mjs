@@ -45,20 +45,20 @@ const PERSONAS = {
   // Read-only member. Holds no write/admin/credential scope, so it is the
   // canonical "denied" identity for negative-authz assertions.
   VIEWER: { sub: "user_test", scopes: "fleet:read" },
-  // Mid-tier: can write fleets + read credentials, but not manage credentials
+  // Mid-tier: can write fleets + read secrets, but not manage secrets
   // or tenant admin. Exercises the read/write/admin ladder (rbac suite).
-  OPERATOR: { sub: "user_test", scopes: "fleet:write credential:read" },
+  OPERATOR: { sub: "user_test", scopes: "fleet:write secret:read" },
   // Full tenant grant — every tenant-plane capability.
   TENANT_ADMIN: {
     sub: "user_test",
     scopes:
-      "fleet:admin credential:write apikey:admin fleetkey:write grant:write connector:write billing:read approval:resolve workspace:admin template:write",
-  },
-  // Platform plane (runners, models, platform keys, cross-tenant override).
-  PLATFORM_ADMIN: {
-    sub: "user_op_m104",
-    scopes:
-      "runner:enroll runner:read runner:write stream:read model:admin platform-key:admin platform-template:write workspace:any",
+      "fleet:admin secret:write apikey:admin fleetkey:write grant:write connector:write billing:read approval:resolve workspace:admin library:write",
+    },
+    // Platform plane (runners, models, platform keys, cross-tenant override).
+    PLATFORM_ADMIN: {
+      sub: "user_op_m104",
+      scopes:
+        "runner:enroll runner:read runner:write stream:read model:admin platform-key:admin platform-library:write workspace:any",
   },
   // Full tenant scopes but NO tenant_id/workspace_id claim — proves the null-
   // tenant principal is denied workspace authorization (IDOR fail-closed).
@@ -66,7 +66,7 @@ const PERSONAS = {
     sub: "user_m11_006",
     noTenant: true,
     scopes:
-      "fleet:admin credential:write apikey:admin fleetkey:write grant:write connector:write billing:read approval:resolve workspace:admin template:write",
+      "fleet:admin secret:write apikey:admin fleetkey:write grant:write connector:write billing:read approval:resolve workspace:admin library:write",
   },
 };
 
@@ -74,7 +74,7 @@ const PERSONAS = {
 // Keyed by the path tail under agentsfleetd/. The const keeps its file-local
 // name (call sites unchanged); only its definition becomes a persona alias.
 const ALIASES = {
-  "http/credentials_json_integration_test.zig": { TOKEN_USER: "VIEWER", TOKEN_OPERATOR: "TENANT_ADMIN" },
+  "http/secrets_json_integration_test.zig": { TOKEN_USER: "VIEWER", TOKEN_OPERATOR: "TENANT_ADMIN" },
   "http/fleet_operator_integration_test.zig": { PLATFORM_ADMIN_TOKEN: "PLATFORM_ADMIN", TENANT_ADMIN_TOKEN: "TENANT_ADMIN" },
   "http/fleet_runner_events_integration_test.zig": { PLATFORM_ADMIN_TOKEN: "PLATFORM_ADMIN" },
   "http/rbac_http_integration_test.zig": { TEST_USER_TOKEN: "VIEWER", TEST_OPERATOR_TOKEN: "OPERATOR", TEST_ADMIN_TOKEN: "TENANT_ADMIN" },

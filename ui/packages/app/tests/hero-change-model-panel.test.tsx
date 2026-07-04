@@ -2,7 +2,7 @@ import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
-// Hero "Change model" panel: re-point the active credential at a different model
+// Hero "Change model" panel: re-point the active secret at a different model
 // from this provider's catalogue (same key). Save → setProviderSelfManagedAction
 // + model_changed (NOT model_added); onClose runs on success.
 
@@ -29,7 +29,7 @@ afterEach(() => cleanup());
 
 function renderPanel(onClose = vi.fn()) {
   render(
-    React.createElement(HeroChangeModelPanel, { provider: "anthropic", credentialRef: "anthropic-prod", onClose }),
+    React.createElement(HeroChangeModelPanel, { provider: "anthropic", secretRef: "anthropic-prod", onClose }),
   );
   return onClose;
 }
@@ -40,21 +40,39 @@ describe("HeroChangeModelPanel", () => {
     fireEvent.change(screen.getByLabelText("Change model"), { target: { value: "m2" } });
     fireEvent.click(screen.getByRole("button", { name: "Save model" }));
     await waitFor(() =>
-      expect(setProviderSelfManagedAction).toHaveBeenCalledWith({ credential_ref: "anthropic-prod", model: "m2" }),
+      expect(setProviderSelfManagedAction).toHaveBeenCalledWith({ secret_ref: "anthropic-prod", model: "m2" }),
     );
     expect(captureModelChanged).toHaveBeenCalledWith({ provider: "anthropic", mode: "self_managed", model: "m2" });
     await waitFor(() => expect(onClose).toHaveBeenCalled());
     expect(routerRefresh).toHaveBeenCalled();
   });
 
-  it("surfaces an error and keeps the panel open", async () => {
+  it("surfaces a friendly error routed through presentErrorString and keeps the panel open", async () => {
     setProviderSelfManagedAction.mockResolvedValue({ ok: false, error: "model not in catalogue" });
     const onClose = renderPanel();
     fireEvent.change(screen.getByLabelText("Change model"), { target: { value: "ghost" } });
     fireEvent.click(screen.getByRole("button", { name: "Save model" }));
-    await waitFor(() => expect(screen.getByRole("alert").textContent).toMatch(/model not in catalogue/));
+    await waitFor(() => expect(screen.getByRole("alert").textContent).toMatch(/^Couldn't change the model/));
+    expect(screen.getByRole("alert").textContent).toMatch(/model not in catalogue/);
     expect(captureModelChanged).not.toHaveBeenCalled();
     expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it("renders UZ-PROVIDER-004's curated copy (now authored server-side, error_entries.zig) instead of the raw backend string", async () => {
+    // ApiError.message is user_message ?? detail (client.ts) —
+    // the friendly copy for UZ-PROVIDER-004 moved to the backend registry,
+    // so the mock stands in for the already-resolved value a real call
+    // would produce.
+    setProviderSelfManagedAction.mockResolvedValue({
+      ok: false,
+      error: "That model isn't in our catalogue yet. Pick a listed model, or ask us to add support for it.",
+      errorCode: "UZ-PROVIDER-004",
+    });
+    const onClose = renderPanel();
+    fireEvent.change(screen.getByLabelText("Change model"), { target: { value: "ghost" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save model" }));
+    await waitFor(() => expect(screen.getByRole("alert").textContent).toMatch(/isn't in our catalogue yet/));
+    expect(screen.getByRole("alert").textContent).not.toMatch(/core\.model_caps/);
   });
 
   it("does not save an empty model and cancels via the Cancel button", () => {

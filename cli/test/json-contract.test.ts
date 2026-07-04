@@ -24,16 +24,16 @@ function makeStubHandlers(): Handlers {
   return {
     login: noop, logout: noop, doctor: noop,
     auth:      { status: noop },
-    workspace: { add: noop, list: noop, use: noop, show: noop, credentials: noop, delete: noop },
+    workspace: { add: noop, list: noop, use: noop, show: noop, secrets: noop, delete: noop },
     fleetKey:  { add: noop, list: noop, delete: noop },
     grant:     { list: noop, delete: noop },
     tenant:    { provider: { show: noop, add: noop, delete: noop } },
     billing:   { show: noop },
     fleet: {
-      templates: noop,
+      library: noop,
       install: noop, update: noop, list: noop, status: noop, stop: noop, resume: noop,
       kill: noop, delete: noop, logs: noop, events: noop, steer: noop,
-      credential: { add: noop, show: noop, list: noop, delete: noop },
+      secret: { add: noop, show: noop, list: noop, delete: noop },
     },
     memory: { list: noop, search: noop },
   };
@@ -63,14 +63,14 @@ describe("CLI tree — every documented route is reachable through commander", (
   const expectedCommands = [
     ["login"], ["logout"], ["doctor"],
     ["workspace", "add"], ["workspace", "list"], ["workspace", "use"],
-    ["workspace", "show"], ["workspace", "credentials"], ["workspace", "delete"],
+    ["workspace", "show"], ["workspace", "secrets"], ["workspace", "delete"],
     ["fleet-key", "add"], ["fleet-key", "list"], ["fleet-key", "delete"],
     ["grant", "list"], ["grant", "delete"],
     ["tenant", "provider", "show"], ["tenant", "provider", "add"], ["tenant", "provider", "delete"],
     ["billing", "show"],
     ["install"], ["list"], ["status"], ["stop"], ["resume"], ["kill"], ["delete"],
     ["logs"], ["events"], ["steer"],
-    ["credential", "add"], ["credential", "show"], ["credential", "list"], ["credential", "delete"],
+    ["secret", "add"], ["secret", "show"], ["secret", "list"], ["secret", "delete"],
   ];
 
   for (const path of expectedCommands) {

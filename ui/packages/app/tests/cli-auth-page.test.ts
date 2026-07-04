@@ -114,11 +114,11 @@ describe("CliAuthPage — load states", () => {
     });
   });
 
-  it("rejects an unexpected payload shape as an error state", async () => {
+  it("rejects an unexpected payload shape as an error state with a plain sentence", async () => {
     (globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(jsonResponse(200, { status: "weird" }));
     await renderPage();
     await waitFor(() => {
-      expect(screen.getByText("Unexpected session payload.")).toBeTruthy();
+      expect(screen.getByText(/went wrong loading this login session/i)).toBeTruthy();
     });
   });
 
@@ -138,12 +138,13 @@ describe("CliAuthPage — load states", () => {
     });
   });
 
-  it("surfaces unexpected HTTP statuses with the code in the message", async () => {
+  it("surfaces unexpected HTTP statuses as a plain sentence, never the raw status code", async () => {
     (globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(jsonResponse(503, {}));
     await renderPage();
     await waitFor(() => {
-      expect(screen.getByText(/HTTP 503/)).toBeTruthy();
+      expect(screen.getByText(/Couldn't load this login session/i)).toBeTruthy();
     });
+    expect(screen.queryByText(/HTTP 503/)).toBeNull();
   });
 
   it("surfaces fetch network errors", async () => {
@@ -305,7 +306,7 @@ describe("CliAuthPage — approve flow", () => {
     [409, /already approved/i],
     [410, /no longer accepting approval/i],
     [401, /not authorized/i],
-    [500, /HTTP 500/i],
+    [500, /Couldn't approve this login/i],
   ])("maps PATCH /approve %i to the right error message", async (status, pattern) => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(jsonResponse(200, activeBody({ cli_public_key: await samplePeerSpkiBase64Url() })))
@@ -318,6 +319,7 @@ describe("CliAuthPage — approve flow", () => {
       fireEvent.click(screen.getByText("Approve"));
     });
     await waitFor(() => expect(screen.getByText(pattern)).toBeTruthy());
+    if (status === 500) expect(screen.queryByText(/HTTP 500/)).toBeNull();
   });
 
   it("shows the code with a caveat when the PATCH throws — the approve may have landed", async () => {

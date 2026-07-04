@@ -112,7 +112,7 @@ fn seedFleetCredential(
 }
 
 // ── §6 base_url validation (pure — no DB) ───────────────────────────────────
-// validateCredentialEndpoint is the resolver's parse-boundary SSRF gate; these
+// validateSecretEndpoint is the resolver's parse-boundary SSRF gate; these
 // drive every provider⇔base_url branch the Dimensions name without a DB.
 
 const COMPAT = tenant_provider.OPENAI_COMPATIBLE_PROVIDER;
@@ -120,31 +120,31 @@ const COMPAT = tenant_provider.OPENAI_COMPATIBLE_PROVIDER;
 test "test_resolver_extracts_base_url" {
     // 6.1: openai-compatible + valid https base_url → carried through (the bare
     // validated URL is returned for the resolver to dupe onto the credential).
-    const got = try tenant_provider.validateCredentialEndpoint(COMPAT, "https://api.openrouter.ai/v1");
+    const got = try tenant_provider.validateSecretEndpoint(COMPAT, "https://api.openrouter.ai/v1");
     try std.testing.expectEqualStrings("https://api.openrouter.ai/v1", got.?);
     // A self-hosted gateway hostname is equally fine.
-    const gw = try tenant_provider.validateCredentialEndpoint(COMPAT, "https://vllm.corp.internal:8443/v1");
+    const gw = try tenant_provider.validateSecretEndpoint(COMPAT, "https://vllm.corp.internal:8443/v1");
     try std.testing.expectEqualStrings("https://vllm.corp.internal:8443/v1", gw.?);
 }
 
 test "test_resolver_rejects_non_https" {
     // 6.2: http / garbage scheme → typed invalid-endpoint error, no resolution.
     try std.testing.expectError(
-        tenant_provider.ResolveError.CredentialEndpointInvalid,
-        tenant_provider.validateCredentialEndpoint(COMPAT, "http://api.example.com/v1"),
+        tenant_provider.ResolveError.SecretEndpointInvalid,
+        tenant_provider.validateSecretEndpoint(COMPAT, "http://api.example.com/v1"),
     );
     try std.testing.expectError(
-        tenant_provider.ResolveError.CredentialEndpointInvalid,
-        tenant_provider.validateCredentialEndpoint(COMPAT, "ftp://api.example.com"),
+        tenant_provider.ResolveError.SecretEndpointInvalid,
+        tenant_provider.validateSecretEndpoint(COMPAT, "ftp://api.example.com"),
     );
     try std.testing.expectError(
-        tenant_provider.ResolveError.CredentialEndpointInvalid,
-        tenant_provider.validateCredentialEndpoint(COMPAT, "not a url"),
+        tenant_provider.ResolveError.SecretEndpointInvalid,
+        tenant_provider.validateSecretEndpoint(COMPAT, "not a url"),
     );
     // openai-compatible with NO base_url is the mirror mismatch — also rejected.
     try std.testing.expectError(
-        tenant_provider.ResolveError.CredentialEndpointInvalid,
-        tenant_provider.validateCredentialEndpoint(COMPAT, null),
+        tenant_provider.ResolveError.SecretEndpointInvalid,
+        tenant_provider.validateSecretEndpoint(COMPAT, null),
     );
 }
 
@@ -163,8 +163,8 @@ test "test_resolver_blocks_ssrf_hosts" {
     };
     for (blocked) |url| {
         try std.testing.expectError(
-            tenant_provider.ResolveError.CredentialEndpointInvalid,
-            tenant_provider.validateCredentialEndpoint(COMPAT, url),
+            tenant_provider.ResolveError.SecretEndpointInvalid,
+            tenant_provider.validateSecretEndpoint(COMPAT, url),
         );
     }
 }
@@ -174,13 +174,13 @@ test "test_resolver_named_provider_unchanged" {
     // (null endpoint, no error) — the existing path is not regressed.
     try std.testing.expectEqual(
         @as(?[]const u8, null),
-        try tenant_provider.validateCredentialEndpoint("fireworks", null),
+        try tenant_provider.validateSecretEndpoint("fireworks", null),
     );
     // …and a named provider must NOT smuggle a base_url (mismatch → rejected),
     // so the openai-compatible path is the only door to a custom host.
     try std.testing.expectError(
-        tenant_provider.ResolveError.CredentialEndpointInvalid,
-        tenant_provider.validateCredentialEndpoint("fireworks", "https://evil.example.com/v1"),
+        tenant_provider.ResolveError.SecretEndpointInvalid,
+        tenant_provider.validateSecretEndpoint("fireworks", "https://evil.example.com/v1"),
     );
 }
 
@@ -290,7 +290,7 @@ test "resolveActiveProvider with self_managed row returns user provider api_key 
 }
 
 test "resolveActiveProvider reflects an in-place credential update (rotate key, same ref)" {
-    // Case 5: tenant_providers.credential_ref is a pointer, not a copy — every
+    // Case 5: tenant_providers.secret_ref is a pointer, not a copy — every
     // resolve re-reads the vault, so rotating the key (an upsert on the same
     // name) is picked up by the very next resolve with NO re-selection. The only
     // persistent trace is vault.secrets.updated_at — no audit row is written.
@@ -406,7 +406,7 @@ test "resolveActiveProvider rejects an openai-compatible credential with an SSRF
     try base.storeVaultJson(ALLOC, db_ctx.conn, WS_TP_SELF_MANAGED, "ssrf-endpoint", .{ .object = obj });
 
     try std.testing.expectError(
-        tenant_provider.ResolveError.CredentialEndpointInvalid,
+        tenant_provider.ResolveError.SecretEndpointInvalid,
         tenant_provider.upsertSelfManaged(ALLOC, db_ctx.conn, uc1.TENANT_ID, "ssrf-endpoint", "gpt-4o-mini", 128_000),
     );
 }
@@ -420,14 +420,14 @@ test "resolveActiveProvider accepts dashboard fleet-prefixed credential rows" {
     try uc1.seed(db_ctx.conn, WS_TP_SELF_MANAGED);
     defer cleanupTeardown(db_ctx.conn, WS_TP_SELF_MANAGED);
 
-    const credential_ref = "dashboard-provider-key";
-    try seedFleetCredential(db_ctx.conn, ALLOC, WS_TP_SELF_MANAGED, credential_ref, TP_TEST_PROVIDER, "fw_DASHBOARD_abc", "accounts/fireworks/models/kimi-k2.6");
+    const secret_ref = "dashboard-provider-key";
+    try seedFleetCredential(db_ctx.conn, ALLOC, WS_TP_SELF_MANAGED, secret_ref, TP_TEST_PROVIDER, "fw_DASHBOARD_abc", "accounts/fireworks/models/kimi-k2.6");
 
     try tenant_provider.upsertSelfManaged(
         ALLOC,
         db_ctx.conn,
         uc1.TENANT_ID,
-        credential_ref,
+        secret_ref,
         "accounts/fireworks/models/kimi-k2.6",
         256_000,
     );
@@ -441,14 +441,14 @@ test "resolveActiveProvider accepts dashboard fleet-prefixed credential rows" {
     try std.testing.expectEqualStrings("accounts/fireworks/models/kimi-k2.6", rp.model);
 
     var q = PgQuery.from(try db_ctx.conn.query(
-        \\SELECT credential_ref FROM core.tenant_providers WHERE tenant_id = $1::uuid
+        \\SELECT secret_ref FROM core.tenant_providers WHERE tenant_id = $1::uuid
     , .{uc1.TENANT_ID}));
     defer q.deinit();
     const row = (try q.next()).?;
-    try std.testing.expectEqualStrings(credential_ref, try row.get([]const u8, 0));
+    try std.testing.expectEqualStrings(secret_ref, try row.get([]const u8, 0));
 }
 
-test "resolveActiveProvider returns CredentialMissing when self_managed credential row absent" {
+test "resolveActiveProvider returns SecretMissing when self_managed credential row absent" {
     setEncryptionKey();
     const db_ctx = (try base.openTestConn(ALLOC)) orelse return error.SkipZigTest;
     defer db_ctx.pool.deinit();
@@ -464,12 +464,12 @@ test "resolveActiveProvider returns CredentialMissing when self_managed credenti
     _ = try db_ctx.conn.exec("DELETE FROM vault.secrets WHERE workspace_id = $1 AND key_name = $2", .{ WS_TP_SELF_MANAGED, "account-fireworks-self-managed" });
 
     try std.testing.expectError(
-        tenant_provider.ResolveError.CredentialMissing,
+        tenant_provider.ResolveError.SecretMissing,
         tenant_provider.resolveActiveProvider(ALLOC, db_ctx.conn, uc1.TENANT_ID),
     );
 }
 
-test "resolveActiveProvider returns CredentialDataMalformed when JSON lacks api_key" {
+test "resolveActiveProvider returns SecretDataMalformed when JSON lacks api_key" {
     setEncryptionKey();
     const db_ctx = (try base.openTestConn(ALLOC)) orelse return error.SkipZigTest;
     defer db_ctx.pool.deinit();
@@ -486,7 +486,7 @@ test "resolveActiveProvider returns CredentialDataMalformed when JSON lacks api_
     try base.storeVaultJson(ALLOC, db_ctx.conn, WS_TP_SELF_MANAGED, "bad-cred", .{ .object = obj });
 
     try std.testing.expectError(
-        tenant_provider.ResolveError.CredentialDataMalformed,
+        tenant_provider.ResolveError.SecretDataMalformed,
         tenant_provider.upsertSelfManaged(ALLOC, db_ctx.conn, uc1.TENANT_ID, "bad-cred", "any-model", 256_000),
     );
 }
@@ -500,11 +500,11 @@ test "resolveActiveProvider returns CredentialDataMalformed when JSON lacks api_
 // credential is never activated. They tie the dashboard/CLI write-side to the
 // resolver read-side, the seam mocked unit tests left unproven.
 
-test "resolveActiveProvider returns CredentialDataMalformed when JSON lacks model" {
+test "resolveActiveProvider returns SecretDataMalformed when JSON lacks model" {
     // THE regression: the exact credential shape the dashboard shipped before the
     // custom-endpoint fix — provider + api_key, but NO model. The resolver probe
     // requires model (tenant_provider_resolver.zig: obj.get("model") orelse
-    // CredentialDataMalformed), so upsert must refuse it. Coverage missed this
+    // SecretDataMalformed), so upsert must refuse it. Coverage missed this
     // because the dashboard tests mocked the action and every resolver test seeded
     // a credential WITH a model; this asserts the model requirement end-to-end.
     setEncryptionKey();
@@ -522,12 +522,12 @@ test "resolveActiveProvider returns CredentialDataMalformed when JSON lacks mode
     try base.storeVaultJson(ALLOC, db_ctx.conn, WS_TP_SELF_MANAGED, "no-model-cred", .{ .object = obj });
 
     try std.testing.expectError(
-        tenant_provider.ResolveError.CredentialDataMalformed,
+        tenant_provider.ResolveError.SecretDataMalformed,
         tenant_provider.upsertSelfManaged(ALLOC, db_ctx.conn, uc1.TENANT_ID, "no-model-cred", "override-model", 256_000),
     );
 }
 
-test "resolveActiveProvider returns CredentialDataMalformed when model is an empty string" {
+test "resolveActiveProvider returns SecretDataMalformed when model is an empty string" {
     // A present-but-empty model is as unusable as a missing one (resolver:
     // model_v.string.len == 0 → malformed). Guards a dashboard that writes
     // model: "" when the field is submitted blank.
@@ -547,12 +547,12 @@ test "resolveActiveProvider returns CredentialDataMalformed when model is an emp
     try base.storeVaultJson(ALLOC, db_ctx.conn, WS_TP_SELF_MANAGED, "empty-model-cred", .{ .object = obj });
 
     try std.testing.expectError(
-        tenant_provider.ResolveError.CredentialDataMalformed,
+        tenant_provider.ResolveError.SecretDataMalformed,
         tenant_provider.upsertSelfManaged(ALLOC, db_ctx.conn, uc1.TENANT_ID, "empty-model-cred", "override-model", 256_000),
     );
 }
 
-test "resolveActiveProvider returns CredentialDataMalformed when api_key is an empty string" {
+test "resolveActiveProvider returns SecretDataMalformed when api_key is an empty string" {
     // Existing coverage rejects a MISSING api_key; this rejects a present-but-empty
     // one (resolver: api_key_v.string.len == 0 → malformed).
     setEncryptionKey();
@@ -571,7 +571,7 @@ test "resolveActiveProvider returns CredentialDataMalformed when api_key is an e
     try base.storeVaultJson(ALLOC, db_ctx.conn, WS_TP_SELF_MANAGED, "empty-key-cred", .{ .object = obj });
 
     try std.testing.expectError(
-        tenant_provider.ResolveError.CredentialDataMalformed,
+        tenant_provider.ResolveError.SecretDataMalformed,
         tenant_provider.upsertSelfManaged(ALLOC, db_ctx.conn, uc1.TENANT_ID, "empty-key-cred", "any-model", 256_000),
     );
 }
@@ -579,9 +579,9 @@ test "resolveActiveProvider returns CredentialDataMalformed when api_key is an e
 test "resolveActiveProvider rejects an openai-compatible credential that lacks a base_url" {
     // openai-compatible is the ONLY door to a custom host, and it REQUIRES a
     // base_url. A credential that claims the compatible provider but omits base_url
-    // is the mirror mismatch — upsert's probe refuses it (CredentialEndpointInvalid),
+    // is the mirror mismatch — upsert's probe refuses it (SecretEndpointInvalid),
     // so a compatible credential can never resolve to a null endpoint. DB-backed
-    // mirror of the pure validateCredentialEndpoint(COMPAT, null) unit case.
+    // mirror of the pure validateSecretEndpoint(COMPAT, null) unit case.
     setEncryptionKey();
     const db_ctx = (try base.openTestConn(ALLOC)) orelse return error.SkipZigTest;
     defer db_ctx.pool.deinit();
@@ -598,7 +598,7 @@ test "resolveActiveProvider rejects an openai-compatible credential that lacks a
     try base.storeVaultJson(ALLOC, db_ctx.conn, WS_TP_SELF_MANAGED, "compat-no-baseurl-cred", .{ .object = obj });
 
     try std.testing.expectError(
-        tenant_provider.ResolveError.CredentialEndpointInvalid,
+        tenant_provider.ResolveError.SecretEndpointInvalid,
         tenant_provider.upsertSelfManaged(ALLOC, db_ctx.conn, uc1.TENANT_ID, "compat-no-baseurl-cred", "gpt-4o-mini", 128_000),
     );
 }
@@ -606,8 +606,8 @@ test "resolveActiveProvider rejects an openai-compatible credential that lacks a
 test "resolveActiveProvider rejects a named provider that smuggles a base_url" {
     // A named provider must NOT carry a base_url — that would silently widen the
     // egress allowlist to an arbitrary host without going through the
-    // openai-compatible path. upsert's probe refuses it (CredentialEndpointInvalid).
-    // DB-backed mirror of the pure validateCredentialEndpoint("fireworks", url) case.
+    // openai-compatible path. upsert's probe refuses it (SecretEndpointInvalid).
+    // DB-backed mirror of the pure validateSecretEndpoint("fireworks", url) case.
     setEncryptionKey();
     const db_ctx = (try base.openTestConn(ALLOC)) orelse return error.SkipZigTest;
     defer db_ctx.pool.deinit();
@@ -625,14 +625,14 @@ test "resolveActiveProvider rejects a named provider that smuggles a base_url" {
     try base.storeVaultJson(ALLOC, db_ctx.conn, WS_TP_SELF_MANAGED, "named-smuggle-cred", .{ .object = obj });
 
     try std.testing.expectError(
-        tenant_provider.ResolveError.CredentialEndpointInvalid,
+        tenant_provider.ResolveError.SecretEndpointInvalid,
         tenant_provider.upsertSelfManaged(ALLOC, db_ctx.conn, uc1.TENANT_ID, "named-smuggle-cred", "any-model", 256_000),
     );
 }
 
 // ── upsertSelfManaged / upsertPlatform ──────────────────────────────────────────
 
-test "upsertSelfManaged with non-existent credential returns CredentialMissing" {
+test "upsertSelfManaged with non-existent credential returns SecretMissing" {
     setEncryptionKey();
     const db_ctx = (try base.openTestConn(ALLOC)) orelse return error.SkipZigTest;
     defer db_ctx.pool.deinit();
@@ -642,12 +642,12 @@ test "upsertSelfManaged with non-existent credential returns CredentialMissing" 
     defer cleanupTeardown(db_ctx.conn, WS_TP_UPSERT);
 
     try std.testing.expectError(
-        tenant_provider.ResolveError.CredentialMissing,
+        tenant_provider.ResolveError.SecretMissing,
         tenant_provider.upsertSelfManaged(ALLOC, db_ctx.conn, uc1.TENANT_ID, "does-not-exist", "any-model", 256_000),
     );
 }
 
-test "upsertPlatform writes mode=platform with NULL credential_ref" {
+test "upsertPlatform writes mode=platform with NULL secret_ref" {
     setEncryptionKey();
     const db_ctx = (try base.openTestConn(ALLOC)) orelse return error.SkipZigTest;
     defer db_ctx.pool.deinit();
@@ -660,7 +660,7 @@ test "upsertPlatform writes mode=platform with NULL credential_ref" {
     try tenant_provider.upsertPlatform(ALLOC, db_ctx.conn, uc1.TENANT_ID);
 
     var q = PgQuery.from(try db_ctx.conn.query(
-        \\SELECT mode, provider, model, context_cap_tokens, credential_ref
+        \\SELECT mode, provider, model, context_cap_tokens, secret_ref
         \\FROM core.tenant_providers WHERE tenant_id = $1::uuid
     , .{uc1.TENANT_ID}));
     defer q.deinit();

@@ -7,11 +7,13 @@
 //! `integration_ctx.zig` and is re-exported below so callers see one namespace.
 
 const std = @import("std");
+const common = @import("common");
 const ctx = @import("integration_ctx.zig");
 
 // ── Re-exported effect surface (defined in integration_ctx.zig) ──────────────
 pub const PlatformSecrets = ctx.PlatformSecrets;
 pub const GithubApp = ctx.GithubApp;
+pub const OauthApp = ctx.OauthApp;
 pub const HttpRequest = ctx.HttpRequest;
 pub const HttpResponse = ctx.HttpResponse;
 pub const HttpExchange = ctx.HttpExchange;
@@ -31,8 +33,11 @@ const FIELD_TOKEN: []const u8 = "token";
 const STATIC_NEVER_EXPIRES_MS: i64 = std.math.maxInt(i64);
 
 /// Integrations the broker can resolve. The enum field names ARE the wire values
-/// stored in the vault handle (`idFromString` bridges).
-pub const Id = enum { static, github };
+/// stored in the vault handle (`idFromString` bridges). The three refresh-token
+/// providers (zoho/jira/linear) mint via the `oauth2_refresh` strategy; the
+/// api_key connectors (datadog/grafana/fly) never reach the broker — their key
+/// is used directly — so they are deliberately absent here.
+pub const Id = enum { static, github, zoho, jira, linear };
 
 /// A resolved/minted credential and its validity bound (epoch ms).
 pub const Minted = struct {
@@ -59,17 +64,24 @@ pub const MintResult = union(enum) {
     mint_failed: Retry,
 };
 
+/// Config for the `oauth2_refresh` strategy: the provider token endpoint (shared
+/// verbatim with the connect flow via `common`, RULE UFS) plus a selector that
+/// picks this provider's platform app from the injected secrets — a selector, not
+/// a branch on id, so the mint stays data-driven (Invariant 4).
+pub const OAuth2Refresh = struct {
+    token_endpoint: []const u8,
+    app: *const fn (PlatformSecrets) ?OauthApp,
+};
+
 /// How an integration resolves its credential. A tagged union over the mint
 /// STRATEGY (Bun's `SideEffects` / `AllowUnresolved` idiom — data variants for the
 /// common cases, a function-pointer escape hatch for the bespoke one). Dispatch is
 /// the union's own `run` method, so the broker stays strategy-agnostic and adding a
 /// strategy never branches the hot path (RULE CFG / Invariant 4).
 ///
-/// Today: `static` (handle carries a usable token, no network) + `custom` (github's
-/// App-JWT → installation-token exchange). A declarative `oauth2_refresh: …` variant
-/// for refresh-token providers (Zoho, Jira) slots in here as DATA when its first
-/// real caller lands — see the M103 spec; not built now (would be untested dead
-/// code, RULE NDC).
+/// `static` (handle carries a usable token, no network), `custom` (github's
+/// App-JWT → installation-token exchange), and `oauth2_refresh` (a refresh-token →
+/// access-token exchange at the provider token endpoint, for Zoho/Jira/Linear).
 pub const Mint = union(enum) {
     /// The vault handle already carries a directly-usable stored token; resolved
     /// inline (no network). The lease path ships it as a stored value, never a
@@ -78,6 +90,9 @@ pub const Mint = union(enum) {
     /// Bespoke exchange — a function over the injected `MintCtx`. The escape hatch
     /// for anything the declarative strategies don't cover (github).
     custom: *const fn (mint_ctx: MintCtx) anyerror!Outcome,
+    /// Refresh-token exchange: POST the handle's refresh token to the provider
+    /// token endpoint for a fresh short-lived access token (Zoho/Jira/Linear).
+    oauth2_refresh: OAuth2Refresh,
 
     /// Run this strategy against `ctx` (the union owns its dispatch — Bun's
     /// `SideEffects.hasSideEffects` idiom). The broker calls this; it never
@@ -86,6 +101,7 @@ pub const Mint = union(enum) {
         return switch (self) {
             .static => mintStatic(mint_ctx),
             .custom => |mintFn| mintFn(mint_ctx),
+            .oauth2_refresh => |cfg| oauth_refresh.mint(mint_ctx, cfg),
         };
     }
 
@@ -95,7 +111,7 @@ pub const Mint = union(enum) {
     pub fn isOnDemand(self: Mint) bool {
         return switch (self) {
             .static => false,
-            .custom => true,
+            .custom, .oauth2_refresh => true,
         };
     }
 };
@@ -106,12 +122,29 @@ pub const Spec = struct {
     mint: Mint,
 };
 
+const oauth_refresh = @import("integration_oauth_refresh.zig");
+
+// Platform-app selectors for the refresh-mint entries: data, not an id branch —
+// each entry names its own field, so the mint never switches on provider.
+fn selectZoho(p: PlatformSecrets) ?OauthApp {
+    return p.zoho;
+}
+fn selectJira(p: PlatformSecrets) ?OauthApp {
+    return p.jira;
+}
+fn selectLinear(p: PlatformSecrets) ?OauthApp {
+    return p.linear;
+}
+
 const STATIC_SPEC = Spec{ .id = .static, .mint = .static };
 const GITHUB_SPEC = Spec{ .id = .github, .mint = .{ .custom = @import("integration_github.zig").mint } };
+const ZOHO_SPEC = Spec{ .id = .zoho, .mint = .{ .oauth2_refresh = .{ .token_endpoint = common.ZOHO_TOKEN_ENDPOINT, .app = selectZoho } } };
+const JIRA_SPEC = Spec{ .id = .jira, .mint = .{ .oauth2_refresh = .{ .token_endpoint = common.JIRA_TOKEN_ENDPOINT, .app = selectJira } } };
+const LINEAR_SPEC = Spec{ .id = .linear, .mint = .{ .oauth2_refresh = .{ .token_endpoint = common.LINEAR_TOKEN_ENDPOINT, .app = selectLinear } } };
 
 /// All registered integrations. Adding a connector = one entry here (RULE CFG) —
 /// the mint hot path never branches per id (Invariant 4).
-pub const REGISTRY: []const Spec = &.{ STATIC_SPEC, GITHUB_SPEC };
+pub const REGISTRY: []const Spec = &.{ STATIC_SPEC, GITHUB_SPEC, ZOHO_SPEC, JIRA_SPEC, LINEAR_SPEC };
 
 comptime {
     for (REGISTRY, 0..) |a, i| {
@@ -133,6 +166,20 @@ pub fn resolve(registry: []const Spec, id: Id) ?*const Spec {
 /// Map the vault `integration` string to an `Id`; unknown → null.
 pub fn idFromString(s: []const u8) ?Id {
     return std.meta.stringToEnum(Id, s);
+}
+
+/// Does the production registry mint `provider` via the `oauth2_refresh`
+/// strategy? Comptime-usable — the connector registry (`handlers/connectors/
+/// registry.zig`) calls this in a `comptime {}` block to prove every
+/// refresh-capable connector has a matching broker entry, so the two registries
+/// cannot silently drift (finding ①: single source of truth without a
+/// cross-layer merge — the broker stays lower than the handler registry).
+pub fn hasRefreshMint(provider: []const u8) bool {
+    const id = idFromString(provider) orelse return false;
+    for (REGISTRY) |s| {
+        if (s.id == id) return s.mint == .oauth2_refresh;
+    }
+    return false;
 }
 
 /// Whether `id` resolves by an on-demand broker mint (delegates to the strategy's
@@ -166,6 +213,10 @@ const testing = @import("testing.zig");
 test "resolve: finds every registered integration; a registry that omits an id returns null" {
     try std.testing.expectEqual(Id.static, resolve(REGISTRY, .static).?.id);
     try std.testing.expectEqual(Id.github, resolve(REGISTRY, .github).?.id);
+    // The refresh-token providers are registered alongside static/github.
+    try std.testing.expectEqual(Id.zoho, resolve(REGISTRY, .zoho).?.id);
+    try std.testing.expectEqual(Id.jira, resolve(REGISTRY, .jira).?.id);
+    try std.testing.expectEqual(Id.linear, resolve(REGISTRY, .linear).?.id);
     // Dispatch has no implicit ids: a registry without github resolves it to null.
     const only_static: []const Spec = &.{STATIC_SPEC};
     try std.testing.expect(resolve(only_static, .github) == null);
@@ -174,17 +225,37 @@ test "resolve: finds every registered integration; a registry that omits an id r
 test "idFromString: maps wire values, rejects unknown" {
     try std.testing.expectEqual(Id.static, idFromString("static").?);
     try std.testing.expectEqual(Id.github, idFromString("github").?);
-    try std.testing.expect(idFromString("zoho") == null);
+    try std.testing.expectEqual(Id.zoho, idFromString("zoho").?);
+    try std.testing.expectEqual(Id.linear, idFromString("linear").?);
+    // api_key providers never reach the broker, so they are not broker ids.
+    try std.testing.expect(idFromString("datadog") == null);
+}
+
+test "hasRefreshMint: true only for oauth2_refresh providers (the ① drift guard)" {
+    // The connector registry's comptime cross-check keys off this: every
+    // refresh-capable connector must answer true here.
+    try std.testing.expect(hasRefreshMint("zoho"));
+    try std.testing.expect(hasRefreshMint("jira"));
+    try std.testing.expect(hasRefreshMint("linear"));
+    // github mints via `custom` (App JWT), not oauth2_refresh; static is inline.
+    try std.testing.expect(!hasRefreshMint("github"));
+    try std.testing.expect(!hasRefreshMint("static"));
+    // Unknown / api_key ids have no broker entry at all.
+    try std.testing.expect(!hasRefreshMint("datadog"));
+    try std.testing.expect(!hasRefreshMint("nope"));
 }
 
 test "Mint.isOnDemand: only static resolves inline; minted strategies are on-demand" {
     // The lease path keys marker-vs-stored-value off this — a `static` handle is
-    // a stored value (no mint marker), `custom` (github) mints on demand.
+    // a stored value (no mint marker), `custom` (github) + `oauth2_refresh`
+    // (zoho/jira/linear) mint on demand.
     try std.testing.expect(!STATIC_SPEC.mint.isOnDemand());
     try std.testing.expect(GITHUB_SPEC.mint.isOnDemand());
+    try std.testing.expect(ZOHO_SPEC.mint.isOnDemand());
     // …and routed through the registry the lease path actually calls.
     try std.testing.expect(!mintsOnDemand(REGISTRY, .static));
     try std.testing.expect(mintsOnDemand(REGISTRY, .github));
+    try std.testing.expect(mintsOnDemand(REGISTRY, .jira));
 }
 
 test "Mint.run: the strategy union dispatches without a per-id branch" {

@@ -70,6 +70,7 @@ vi.mock("lucide-react", () => ({
   CpuIcon: (props: Record<string, unknown>) => React.createElement("svg", { ...props, "data-icon": "CpuIcon" }),
   CreditCardIcon: (props: Record<string, unknown>) => React.createElement("svg", { ...props, "data-icon": "CreditCardIcon" }),
   MenuIcon: (props: Record<string, unknown>) => React.createElement("svg", { ...props, "data-icon": "MenuIcon" }),
+  PanelLeftIcon: (props: Record<string, unknown>) => React.createElement("svg", { ...props, "data-icon": "PanelLeftIcon" }),
   SunIcon: (props: Record<string, unknown>) => React.createElement("svg", { ...props, "data-icon": "SunIcon" }),
   MoonIcon: (props: Record<string, unknown>) => React.createElement("svg", { ...props, "data-icon": "MoonIcon" }),
   ChevronDownIcon: (props: Record<string, unknown>) => React.createElement("svg", { ...props, "data-icon": "ChevronDownIcon" }),
@@ -270,8 +271,9 @@ describe("app components", () => {
   it("renders Shell with brand-mark wake-pulse + sidebar nav", async () => {
     const { default: Shell } = await import("../components/layout/Shell");
     mocks.usePathname.mockReturnValue("/fleets");
-    const tree = Shell({ children: React.createElement("div", null, "content") });
-    const markup = renderToStaticMarkup(React.createElement(React.Fragment, null, tree));
+    const markup = renderToStaticMarkup(
+      React.createElement(Shell, null, React.createElement("div", null, "content")),
+    );
     expect(markup).toContain("data-live");
     expect(markup).toContain("agentsfleet");
     // Sidebar nav rendered across the Automations / Configuration / Organization
@@ -281,36 +283,38 @@ describe("app components", () => {
     expect(markup).toContain("Organization");
     expect(markup).toContain("Dashboard");
     expect(markup).toContain("Fleets");
-    // Models (the credentials vault folded in) and Integrations
-    // are the two Configuration entries; the standalone Credentials item is gone.
+    // Models, Integrations, and Secrets & ENVs are the three Configuration
+    // entries — Secrets & ENVs is standalone again, not folded into Models.
     expect(markup).toContain(">Models<");
     expect(markup).toContain(">Integrations<");
+    expect(markup).toContain(">Secrets &amp; ENVs<");
     expect(markup).toContain('href="/settings/models"');
-    expect(markup).not.toContain(">Credentials<");
-    expect(markup).not.toContain('href="/credentials"');
     // Integrations is its own connectors destination.
     expect(markup).toContain('href="/integrations"');
+    // Secrets & ENVs is its own standalone destination.
+    expect(markup).toContain('href="/secrets"');
     expect(markup).toContain("Approvals");
     expect(markup).toContain("Events");
     expect(markup).toContain("Workspace");
     expect(markup).toContain("Billing");
   });
 
-  it("test_nav_config_destinations: nav renders Models→/settings/models, Integrations→/integrations", async () => {
+  it("test_nav_config_destinations: nav renders Models→/settings/models, Integrations→/integrations, Secrets & ENVs→/secrets", async () => {
     const { default: Shell } = await import("../components/layout/Shell");
     mocks.usePathname.mockReturnValue("/");
-    const tree = Shell({ children: React.createElement("div", null, "content") });
-    const markup = renderToStaticMarkup(React.createElement(React.Fragment, null, tree));
-    // Two distinct Configuration destinations, each at its own route.
+    const markup = renderToStaticMarkup(
+      React.createElement(Shell, null, React.createElement("div", null, "content")),
+    );
+    // Three distinct Configuration destinations, each at its own route.
     expect(markup).toMatch(/href="\/settings\/models"[\s\S]*?data-icon="CpuIcon"[^>]*><\/svg>Models</);
     expect(markup).toMatch(/href="\/integrations"[\s\S]*?data-icon="LinkIcon"[^>]*><\/svg>Integrations</);
+    expect(markup).toMatch(/href="\/secrets"[\s\S]*?data-icon="KeyRoundIcon"[^>]*><\/svg>Secrets &amp; ENVs</);
   });
 
   it("Shell sidebar marks the active route via data-active attribute", async () => {
     const { default: Shell } = await import("../components/layout/Shell");
     mocks.usePathname.mockReturnValue("/fleets");
-    const tree = Shell({ children: React.createElement("div") });
-    const markup = renderToStaticMarkup(React.createElement(React.Fragment, null, tree));
+    const markup = renderToStaticMarkup(React.createElement(Shell, null, React.createElement("div")));
     // The active link gets data-active="true" — the sidebar's surface-3 fill
     // is driven from this attribute (no coloured bar per spec).
     expect(markup).toMatch(/data-active="true"[^>]*>\s*<svg[^>]*data-icon="BotIcon"/);
@@ -323,8 +327,14 @@ describe("app components", () => {
     // specific match (a nested /settings/* child beats its parent Settings).
     const activeFor = (pathname: string, operatorScopes: string[] = []) => {
       mocks.usePathname.mockReturnValue(pathname);
-      const tree = Shell({ children: React.createElement("div"), operatorScopes });
-      const markup = renderToStaticMarkup(React.createElement(React.Fragment, null, tree));
+      const markup = renderToStaticMarkup(
+        // createElement's props-plus-rest-children overload can't see that the
+        // third arg below satisfies Shell's required `children` prop (a known
+        // @types/react gap when children is non-optional) — asserting the
+        // props object's shape is safe since Shell reads children from React's
+        // normal children slot regardless of how it arrived.
+        React.createElement(Shell, { operatorScopes } as React.ComponentProps<typeof Shell>, React.createElement("div")),
+      );
       const count = (markup.match(/data-active="true"/g) ?? []).length;
       const icon = markup.match(/data-active="true"[^>]*>\s*<svg[^>]*data-icon="([^"]+)"/)?.[1] ?? null;
       return { count, icon };
@@ -343,8 +353,13 @@ describe("app components", () => {
   it("Shell appends the Runners item only when the session holds runner:read", async () => {
     const { default: Shell } = await import("../components/layout/Shell");
     mocks.usePathname.mockReturnValue("/");
-    const tree = Shell({ children: React.createElement("div"), operatorScopes: ["runner:read"] });
-    const markup = renderToStaticMarkup(React.createElement(React.Fragment, null, tree));
+    const markup = renderToStaticMarkup(
+      React.createElement(
+        Shell,
+        { operatorScopes: ["runner:read"] } as React.ComponentProps<typeof Shell>,
+        React.createElement("div"),
+      ),
+    );
     // Runners joins the Configuration group with its link + ServerIcon glyph.
     expect(markup).toContain("Configuration");
     expect(markup).toContain("Runners");
@@ -361,8 +376,7 @@ describe("app components", () => {
     mocks.usePathname.mockReturnValue("/");
     // Default (no operatorScopes prop) → the platform nav items are absent. This
     // is discoverability only; the backend independently gates the route.
-    const tree = Shell({ children: React.createElement("div") });
-    const markup = renderToStaticMarkup(React.createElement(React.Fragment, null, tree));
+    const markup = renderToStaticMarkup(React.createElement(Shell, null, React.createElement("div")));
     expect(markup).not.toContain('href="/admin/runners"');
     expect(markup).not.toContain('data-icon="ServerIcon"');
   });
@@ -443,6 +457,121 @@ describe("app components", () => {
     expect(sources).toContain("app_sidebar_settings");
     expect(sources).toContain("app_sidebar_settings_models");
     expect(sources).toContain("app_sidebar_settings_billing");
+    cleanup();
+  });
+
+  it("should collapse the sidebar and hide nav labels when the toggle is clicked", async () => {
+    const { default: Shell } = await import("../components/layout/Shell");
+    mocks.usePathname.mockReturnValue("/");
+    const user = userEvent.setup();
+    render(React.createElement(Shell, null, React.createElement("div", null, "content")));
+
+    const toggle = screen.getByRole("button", { name: /collapse sidebar/i });
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    // Label text is visible pre-collapse — plain getByText, not getByRole,
+    // since NavItem renders the label as a text node beside the icon.
+    expect(screen.getByText("Dashboard")).toBeTruthy();
+
+    await user.click(toggle);
+
+    // aria-expanded flips and the label swaps to "Expand sidebar" — proves
+    // the button reflects state, not just that a click handler ran.
+    expect(screen.getByRole("button", { name: /expand sidebar/i })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /collapse sidebar/i })).toBeNull();
+    expect(screen.getByRole("button", { name: /expand sidebar/i }).getAttribute("aria-expanded")).toBe(
+      "false",
+    );
+    // The label text node is gone — collapsed renders icon-only.
+    expect(screen.queryByText("Dashboard")).toBeNull();
+    cleanup();
+  });
+
+  it("should expand the sidebar again when the toggle is clicked twice", async () => {
+    const { default: Shell } = await import("../components/layout/Shell");
+    mocks.usePathname.mockReturnValue("/");
+    const user = userEvent.setup();
+    render(React.createElement(Shell, null, React.createElement("div", null, "content")));
+
+    const toggle = screen.getByRole("button", { name: /collapse sidebar/i });
+    await user.click(toggle);
+    expect(screen.queryByText("Dashboard")).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: /expand sidebar/i }));
+    // Round-trip: labels are back, and the button reverts to "Collapse sidebar".
+    expect(screen.getByText("Dashboard")).toBeTruthy();
+    expect(screen.getByRole("button", { name: /collapse sidebar/i })).toBeTruthy();
+    cleanup();
+  });
+
+  it("should keep nav links accessible by name when collapsed (icon-only, no visible text)", async () => {
+    const { default: Shell } = await import("../components/layout/Shell");
+    mocks.usePathname.mockReturnValue("/");
+    const user = userEvent.setup();
+    render(React.createElement(Shell, null, React.createElement("div", null, "content")));
+
+    await user.click(screen.getByRole("button", { name: /collapse sidebar/i }));
+
+    // No visible label text, but the link is still reachable by its accessible
+    // name (title/aria-label) — a screen-reader user isn't stranded by the
+    // icon-only rail. getByRole with `name` matches the accessible name
+    // computation, not textContent, so this fails if aria-label is dropped.
+    const fleetsLink = screen.getByRole("link", { name: "Fleets" });
+    expect(fleetsLink).toBeTruthy();
+    expect(fleetsLink.getAttribute("href")).toBe("/fleets");
+    cleanup();
+  });
+
+  it("should hide section group labels (Automations/Configuration/Organization) when collapsed", async () => {
+    const { default: Shell } = await import("../components/layout/Shell");
+    mocks.usePathname.mockReturnValue("/");
+    const user = userEvent.setup();
+    render(React.createElement(Shell, null, React.createElement("div", null, "content")));
+
+    expect(screen.getByText("Automations")).toBeTruthy();
+    expect(screen.getByText("Configuration")).toBeTruthy();
+
+    await user.click(screen.getByRole("button", { name: /collapse sidebar/i }));
+
+    expect(screen.queryByText("Automations")).toBeNull();
+    expect(screen.queryByText("Configuration")).toBeNull();
+    expect(screen.queryByText("Organization")).toBeNull();
+    cleanup();
+  });
+
+  it("should render the active nav link with the mint/pulse styling classes, not the generic accent", async () => {
+    const { default: Shell } = await import("../components/layout/Shell");
+    mocks.usePathname.mockReturnValue("/fleets");
+    render(React.createElement(Shell, null, React.createElement("div", null, "content")));
+
+    const activeLink = screen.getByRole("link", { name: "Fleets" });
+    expect(activeLink.getAttribute("data-active")).toBe("true");
+    expect(activeLink.className).toContain("data-[active=true]:bg-pulse/10");
+    expect(activeLink.className).toContain("data-[active=true]:text-pulse");
+    // Regression guard: the old generic-accent active styling must not
+    // resurface — a revert to `bg-accent` for the active state would pass a
+    // sloppier assertion that only checks presence of *a* highlight class.
+    expect(activeLink.className).not.toContain("data-[active=true]:bg-accent");
+    cleanup();
+  });
+
+  it("mobile nav dialog always renders expanded, regardless of the desktop collapse state", async () => {
+    const { default: Shell } = await import("../components/layout/Shell");
+    mocks.usePathname.mockReturnValue("/");
+    const user = userEvent.setup();
+    render(React.createElement(Shell, null, React.createElement("div", null, "content")));
+
+    // Collapse the desktop sidebar first.
+    await user.click(screen.getByRole("button", { name: /collapse sidebar/i }));
+    expect(screen.queryByText("Dashboard")).toBeNull();
+
+    // The mobile dialog is a structurally separate SidebarNav instance
+    // hardcoded to collapsed={false} — opening it must show full labels even
+    // though the desktop instance is currently collapsed. This pins that the
+    // two instances never accidentally share the collapsed prop.
+    await user.click(screen.getByRole("button", { name: /open navigation/i }));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText("Dashboard")).toBeTruthy();
+    expect(within(dialog).getByText("Fleets")).toBeTruthy();
     cleanup();
   });
 });

@@ -19,6 +19,11 @@ pub const fake_app = integration.GithubApp{
     .private_key_pem = "FAKE_PRIVATE_KEY_MATERIAL_zzz",
 };
 
+pub const fake_oauth_app = integration.OauthApp{
+    .client_id = "oauth-client-id",
+    .client_secret = "oauth-client-secret",
+};
+
 /// Fake RS256 signer — returns a fixed marker (real signing is proven in
 /// `rs256_sign.zig`); integration tests exercise assembly + exchange, not crypto.
 pub fn fakeSign(out: []u8, private_key_pem: []const u8, signing_input: []const u8) anyerror![]const u8 {
@@ -51,6 +56,7 @@ pub const FakeGitHub = struct {
     calls: usize = 0,
     url: []u8 = &.{},
     bearer: []u8 = &.{},
+    body: []u8 = &.{},
 
     fn post(ptr: *anyopaque, alloc: std.mem.Allocator, req: integration.HttpRequest) anyerror!integration.HttpResponse {
         const self: *FakeGitHub = @ptrCast(@alignCast(ptr));
@@ -58,8 +64,10 @@ pub const FakeGitHub = struct {
         if (self.fail_with) |e| return e;
         if (self.url.len != 0) self.alloc.free(self.url);
         if (self.bearer.len != 0) self.alloc.free(self.bearer);
+        if (self.body.len != 0) self.alloc.free(self.body);
         self.url = try self.alloc.dupe(u8, req.url);
-        self.bearer = try self.alloc.dupe(u8, req.bearer);
+        self.bearer = try self.alloc.dupe(u8, req.bearer orelse "");
+        self.body = try self.alloc.dupe(u8, req.body);
         return .{ .status = self.status, .body = try alloc.dupe(u8, self.resp_body) };
     }
 
@@ -70,6 +78,7 @@ pub const FakeGitHub = struct {
     pub fn deinit(self: *FakeGitHub) void {
         if (self.url.len != 0) self.alloc.free(self.url);
         if (self.bearer.len != 0) self.alloc.free(self.bearer);
+        if (self.body.len != 0) self.alloc.free(self.body);
     }
 };
 
@@ -107,7 +116,7 @@ pub const RecordingMetrics = struct {
 /// sink — for broker wiring / integration-tier tests (#8).
 pub fn brokerDeps(gh: *FakeGitHub, metrics: *RecordingMetrics) Deps {
     return .{
-        .platform = .{ .github = fake_app },
+        .platform = .{ .github = fake_app, .zoho = fake_oauth_app, .jira = fake_oauth_app, .linear = fake_oauth_app },
         .http = gh.exchange(),
         .sign = fakeSign,
         .metrics = metrics.sink(),

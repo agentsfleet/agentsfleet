@@ -241,8 +241,8 @@ fn resolveTenant(alloc: std.mem.Allocator, pool: *pg.Pool, workspace_id: []const
     const resolved = tenant_provider.resolveActiveProvider(alloc, conn, tenant_id) catch |err| {
         log.warn("lease_provider_resolve_failed", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .workspace_id = workspace_id, .err = @errorName(err) });
         return switch (err) {
-            error.CredentialMissing,
-            error.CredentialDataMalformed,
+            error.SecretMissing,
+            error.SecretDataMalformed,
             error.PlatformKeyMissing,
             error.TenantHasNoWorkspace,
             => .{ .failed_permanent = {} },

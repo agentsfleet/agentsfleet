@@ -4,9 +4,9 @@
  * Mints a Clerk session JSON Web Token (JWT) via the admin path, hydrates workspaces.json
  * from the API (matching the lifecycle-with-token spec's identity setup),
  * then drives the failure surface of `agentsfleet install`:
- *   - `install --template <id absent from gallery>` → ConfigError, exit 5,
+ *   - `install --library <id absent from gallery>` → ConfigError, exit 5,
  *     "is not in this workspace's gallery", no fleet created.
- *   - `install` with no `--template`        → ValidationError, exit 4, no network.
+ *   - `install` with no `--library`        → ValidationError, exit 4, no network.
  *   - duplicate name (same onboarded template installed twice) → second install
  *     rejected (UZ-AGT-006, exit 3) — the workspace's `(workspace_id, name)`
  *     uniqueness constraint. The template is the canonical `platform-ops` sample
@@ -47,7 +47,7 @@ import {
   EXIT_VALIDATION_ERROR,
   ERR_AGENTSFLEET_NAME_TAKEN,
   ERR_TEMPLATE_NOT_IN_GALLERY,
-  FLAG_TEMPLATE,
+  FLAG_LIBRARY,
   absentTemplateId,
   onboardDuplicateTemplate,
   type DuplicateTemplate,
@@ -126,10 +126,10 @@ if (!isLive) {
       if (stateDir) await fs.rm(stateDir, { recursive: true, force: true });
     });
 
-    // ── --template absent from the gallery ──────────────────────────
-    describe("--template absent from gallery", () => {
+    // ── --library absent from the gallery ──────────────────────────
+    describe("--library absent from gallery", () => {
       it("exits ConfigError when the id is not in the workspace gallery", async () => {
-        const result = await runWithEnv([INSTALL, FLAG_TEMPLATE, absentTemplateId(), FLAG_JSON]);
+        const result = await runWithEnv([INSTALL, FLAG_LIBRARY, absentTemplateId(), FLAG_JSON]);
         assert.equal(
           result.code,
           EXIT_CONFIG_ERROR,
@@ -143,9 +143,9 @@ if (!isLive) {
       });
     });
 
-    // ── missing required --template flag ────────────────────────────
-    describe("missing --template flag", () => {
-      it("exits ValidationError and names --template without hitting the network", async () => {
+    // ── missing required --library flag ────────────────────────────
+    describe("missing --library flag", () => {
+      it("exits ValidationError and names --library without hitting the network", async () => {
         const result = await runWithEnv([INSTALL, FLAG_JSON]);
         assert.equal(
           result.code,
@@ -153,15 +153,15 @@ if (!isLive) {
           `expected exit ${EXIT_VALIDATION_ERROR}; got ${result.code}: ${merged(result)}`,
         );
         assert.ok(
-          merged(result).includes(FLAG_TEMPLATE),
-          `expected --template mention: ${merged(result)}`,
+          merged(result).includes(FLAG_LIBRARY),
+          `expected --library mention: ${merged(result)}`,
         );
         // Client-side validation precedes any HTTP call — a stack-trace
         // network error would mean the guard never fired.
         assert.doesNotMatch(
           merged(result),
           /ECONNREFUSED|ENOTFOUND|EAI_AGAIN|fetch failed/,
-          `--template guard should precede any network call: ${merged(result)}`,
+          `--library guard should precede any network call: ${merged(result)}`,
         );
       });
     });
@@ -187,7 +187,7 @@ if (!isLive) {
       it("first install of a freshly onboarded template succeeds", async () => {
         tmpl = await onboardDuplicateTemplate(env, ACCEPTANCE_RUN_PREFIX);
         const result = await runFleetctl(
-          [INSTALL, FLAG_TEMPLATE, tmpl.templateId, FLAG_JSON],
+          [INSTALL, FLAG_LIBRARY, tmpl.templateId, FLAG_JSON],
           { env, timeoutMs: 120_000 },
         );
         assertNoSecretLeak(result, sessionJwt);
@@ -200,7 +200,7 @@ if (!isLive) {
         assert.ok(tmpl, "template must be onboarded by the first-install test");
         const target2 = tmpl as DuplicateTemplate;
         const result = await runFleetctl(
-          [INSTALL, FLAG_TEMPLATE, target2.templateId, FLAG_JSON],
+          [INSTALL, FLAG_LIBRARY, target2.templateId, FLAG_JSON],
           { env, timeoutMs: 120_000 },
         );
         assertNoSecretLeak(result, sessionJwt);

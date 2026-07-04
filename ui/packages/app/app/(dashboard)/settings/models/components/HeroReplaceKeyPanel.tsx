@@ -2,14 +2,14 @@
 
 import { useState } from "react";
 import { Alert, Button, DashboardPanel, Input, Spinner } from "@agentsfleet/design-system";
-import { rotateCredentialAction } from "../actions";
+import { rotateSecretAction } from "../actions";
 import { captureKeyRotated } from "../lib/track";
 import { useProviderAction } from "../lib/use-provider-action";
 
 type Props = {
   workspaceId: string;
-  /** The active credential whose secret is rotated; provider/model are preserved. */
-  credentialRef: string;
+  /** The active secret being rotated; provider/model are preserved. */
+  secretRef: string;
   /** Active provider id — recorded on the key_rotated event (not the secret). */
   provider: string;
   /** Shown in the footer so the user knows the model is unchanged. */
@@ -17,10 +17,12 @@ type Props = {
   onClose: () => void;
 };
 
+const REPLACE_KEY_ACTION = "replace the key";
+
 /** Hero "Replace key" — PATCH-rotates only the secret; provider + model stay put. */
 export default function HeroReplaceKeyPanel({
   workspaceId,
-  credentialRef,
+  secretRef,
   provider,
   currentModel,
   onClose,
@@ -30,12 +32,16 @@ export default function HeroReplaceKeyPanel({
 
   function save() {
     if (key.trim() === "") return;
-    void run(async () => {
-      const res = await rotateCredentialAction(workspaceId, credentialRef, key.trim());
-      if (!res.ok) return res.error;
-      captureKeyRotated(provider);
-      return null;
-    }, onClose);
+    void run(
+      REPLACE_KEY_ACTION,
+      async () => {
+        const res = await rotateSecretAction(workspaceId, secretRef, key.trim());
+        if (!res.ok) return { message: res.error, errorCode: res.errorCode };
+        captureKeyRotated(provider);
+        return null;
+      },
+      onClose,
+    );
   }
 
   return (

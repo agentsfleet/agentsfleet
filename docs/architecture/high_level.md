@@ -43,7 +43,7 @@ Three structural pillars carry v2:
 
 **Self-host is deferred to v3.** v2 ships hosted-only on `api.agentsfleet.net` via Clerk OAuth. The architecture admits self-host (the auth substrate, the key-management-service adapter, and process orchestration are the only deployment-specific layers), but validating it on a clean non-Fly Linux host is a v3 workstream.
 
-The `agentsfleet` CLI plus the first-party template catalogue ([`user_flow.md`](./user_flow.md) §8.0) is what makes the v2 pillars reachable from a cold start.
+The `agentsfleet` CLI plus the first-party Fleet library ([`user_flow.md`](./user_flow.md) §8.0) is what makes the v2 pillars reachable from a cold start.
 
 ### The first problem we solve
 

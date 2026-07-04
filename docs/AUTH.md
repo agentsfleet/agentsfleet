@@ -105,7 +105,7 @@ The complete capability vocabulary (`src/agentsfleetd/auth/scopes.zig`). Scope s
 | Scope | Grants |
 |---|---|
 | `fleet:read` / `fleet:write` / `fleet:admin` | view fleets+events+memories / create+update+message fleets / delete a fleet |
-| `credential:read` / `credential:write` | list workspace credentials / store, rotate, delete them (+ tenant LLM provider config) |
+| `secret:read` / `secret:write` | list workspace secrets / store, rotate, delete them (+ tenant LLM provider config) |
 | `apikey:read` / `apikey:write` / `apikey:admin` | list tenant api-keys / create+rotate / delete (revoke) |
 | `fleetkey:read` / `fleetkey:write` | list fleet-keys / create+delete |
 | `grant:read` / `grant:write` | list integration grants / revoke them |
@@ -123,7 +123,7 @@ The complete capability vocabulary (`src/agentsfleetd/auth/scopes.zig`). Scope s
 | `approval:read` / `approval:resolve` | view the approval inbox / decide (approve or deny) an approval gate |
 | `billing:read` | read tenant billing snapshot, charges, metering periods |
 | `workspace:admin` | create workspaces; list the tenant's workspaces |
-| `template:write` | mutate the template catalogue (consumed by M103) |
+| `library:write` | mutate the Fleet library catalogue (consumed by M103) |
 
 **Runner credential** (machine identity — minted onto the `agt_r` token, never granted to a human):
 
@@ -145,14 +145,14 @@ Capabilities reach a principal as an explicit `scopes` claim. Two grants are app
 
 | Source | Scopes provisioned | Applied by |
 |---|---|---|
-| `.tenant` | `fleet:admin`, `credential:write`, `apikey:admin`, `fleetkey:write`, `grant:write`, `connector:write`, `billing:read`, `approval:resolve`, `workspace:admin`, `template:write` | a tenant owner at signup (Clerk `user.created` writeback, `identity_events_clerk.zig`) **and** every `agt_t` tenant api-key (`tenant_api_key.zig`) — every tenant capability, no platform/cross-tenant scope, preserving "an admin api-key cannot enroll a runner" |
+| `.tenant` | `fleet:admin`, `secret:write`, `apikey:admin`, `fleetkey:write`, `grant:write`, `connector:write`, `billing:read`, `approval:resolve`, `workspace:admin`, `library:write` | a tenant owner at signup (Clerk `user.created` writeback, `identity_events_clerk.zig`) **and** every `agt_t` tenant api-key (`tenant_api_key.zig`) — every tenant capability, no platform/cross-tenant scope, preserving "an admin api-key cannot enroll a runner" |
 | `.runner` | `runner:self` | minted onto every `agt_r` runner token (`runner_bearer.zig`) |
 
 **Manually-provisioned scope sets** — written by a human onto `public_metadata.scopes` in Clerk. There is **no code bundle**: these are recommended scope lists, not roles. Copy the exact strings (RULE UFS); each capability is enforced per-scope like any other.
 
 | Recommended for | Scope set |
 |---|---|
-| platform operator (almost no one) | `runner:enroll`, `runner:write`, `stream:read`, `model:admin`, `platform-key:admin`, `platform-template:write`, `workspace:any` |
+| platform operator (almost no one) | `runner:enroll`, `runner:write`, `stream:read`, `model:admin`, `platform-key:admin`, `platform-library:write`, `workspace:any` |
 | read-only collaborator | `fleet:read`, `fleetkey:read`, `grant:read`, `connector:read`, `billing:read`, `approval:read` |
 
 ---
@@ -485,7 +485,7 @@ This is why the UI flow has the extra Clerk hop, and why the SSE path uses a Nex
 
 Per-template audience isolation: a Token-B leak via agentsfleetd logs cannot be replayed against `storage-svc` because the `aud` doesn't match. Each microservice strict-checks only its own audience; cross-service replay is structurally prevented by the JWT verifier, not by application logic.
 
-Templates can also be scope-gated (e.g. "only users whose `scopes` claim carries `template:write` can mint the `fleets` template") via Clerk dashboard configuration. Adding a new microservice = create a new JWT template in Clerk + add a new strict `OIDC_AUDIENCE` value on that service. No new auth middleware code in agentsfleetd (or any sibling service); the existing `bearer_or_api_key.zig` path serves all future Bearer-audience services with config alone.
+Templates can also be scope-gated (e.g. "only users whose `scopes` claim carries `library:write` can mint the `fleets` template") via Clerk dashboard configuration. Adding a new microservice = create a new JWT template in Clerk + add a new strict `OIDC_AUDIENCE` value on that service. No new auth middleware code in agentsfleetd (or any sibling service); the existing `bearer_or_api_key.zig` path serves all future Bearer-audience services with config alone.
 
 ---
 
@@ -552,10 +552,10 @@ Every named credential / token / identifier in the auth surface, with sensitivit
 | `AUTH_SESSION_CODE_PEPPER` | secret (catastrophic if disclosed) | until rotated | 1Password vaults (`op://ops/ZMB_CD_{PROD,DEV,LOCAL_DEV}/AUTH_SESSION_CODE_PEPPER/credential`) · agentsfleetd process memory after Vault load | disk · logs · metrics · client bundles · environment-variable dumps · `op://` URI logged in any audit trail |
 | `AUDIT_LOG_PEPPER` | secret | until rotated | 1Password vaults · agentsfleetd process memory | same as `AUTH_SESSION_CODE_PEPPER` |
 | Fleet-trigger webhook secrets (per-provider HMAC keys) | secret | until rotated | vault items (`fleet:<source>` in workspace vault, field `webhook_secret`) · webhook_sig middleware in agentsfleetd | logs · error bodies · diagnostic bundles · operator screenshots |
-| Connector per-install handle (`fleet:<provider>` in the **workspace** vault, M106) — Slack: `{integration, bot_token (xoxb-…), bot_user_id, team_id, team_name, scopes}`; GitHub: `{integration, installation_id}` | secret | until reconnected / revoked | workspace vault · agentsfleetd process memory (`loadBotToken` for the outbound poster + thread re-fetch, `vault.loadJson` for the status read, the GitHub installation-token mint) · outbound HTTPS `Authorization: Bearer` to the provider | logs · error bodies · client bundles · telemetry · the connector status read (returns only `{status, team}`) |
+| Connector per-install handle (`fleet:<provider>` in the **workspace** vault, M106/M108) — Slack: `{integration, bot_token (xoxb-…), …}`; GitHub: `{integration, installation_id}`; refresh connectors (Zoho/Jira/Linear): `{integration, refresh_token, access_token, expires_at_ms, …}`; api_key connectors (Datadog/Grafana/Fly): `{integration, …submitted key fields}` | secret | until reconnected / revoked | workspace vault · agentsfleetd process memory (`loadBotToken` for the outbound poster + thread re-fetch, `vault.loadJson` for the status read, the installation-token + oauth2-refresh broker mints) · outbound HTTPS `Authorization: Bearer` to the provider | logs · error bodies · client bundles · telemetry · the connector status + catalog reads (return only `{status}` / `{configured, connected}` flags, never key material) |
 | Platform connector-app secret bag (admin-workspace `<provider>-app`, e.g. `slack-app` → `{client_id, client_secret, signing_secret}`, M106) | secret (catastrophic — one OAuth app for every tenant) | until rotated | admin-workspace vault (keyed by `Context.platform_admin_workspace_id`) · agentsfleetd process memory (OAuth code exchange; the events-ingress `loadSigningSecret`) | logs · error bodies · client bundles · any per-tenant surface · metrics labels |
 | Connector OAuth `state` (signed, single-use, M106) | sensitive ephemeral capability | one callback round-trip (consumed on use) | the provider authorize URL · the callback query string it returns on | server-side persistence · reuse after consume · `.auth` logs |
-| LLM provider `api_key` (platform OR self-managed, M80_009) | secret | per-lease ephemeral (resolved at lease, `secureZero`d after serialize) | vault items (`platform_llm_keys` pointer / tenant `credential_ref`) · `agentsfleetd` process memory (`resolveActiveProvider`) · inline on the lease `ExecutionPolicy.api_key` over TLS to a *placed* trusted-fleet runner · the runner's in-process NullClaw session + outbound HTTPS `Authorization: Bearer` to the provider | logs · activity/progress frames · the `fleet.runner_leases` row · `secrets_map` · telemetry · error bodies · `doctor --json` · any user-facing surface |
+| LLM provider `api_key` (platform OR self-managed, M80_009) | secret | per-lease ephemeral (resolved at lease, `secureZero`d after serialize) | vault items (`platform_llm_keys` pointer / tenant `secret_ref`) · `agentsfleetd` process memory (`resolveActiveProvider`) · inline on the lease `ExecutionPolicy.api_key` over TLS to a *placed* trusted-fleet runner · the runner's in-process NullClaw session + outbound HTTPS `Authorization: Bearer` to the provider | logs · activity/progress frames · the `fleet.runner_leases` row · `secrets_map` · telemetry · error bodies · `doctor --json` · any user-facing surface |
 | `clerk-{dev,prod}` publishable key (`pk_test_…`/`pk_live_…`) | non-credential identifier | until Clerk instance is rotated | client bundle (intentionally shipped via `NEXT_PUBLIC_…`) | (none — this is the "non-secret" one) |
 
 ---
@@ -862,7 +862,7 @@ The middleware emits exactly three error codes for webhook auth failures, each w
 
 | Code | When it fires | What the operator should do |
 | --- | --- | --- |
-| `UZ-WH-020 webhook_credential_not_configured` (401) | Provider not recognized OR `fleet:<source>` vault row missing OR row has no `webhook_secret` field OR field is empty | `agentsfleet credential add <source> --data='{"webhook_secret":"<key>"}'` in the workspace |
+| `UZ-WH-020 webhook_credential_not_configured` (401) | Provider not recognized OR `fleet:<source>` vault row missing OR row has no `webhook_secret` field OR field is empty | `agentsfleet secret add <source> --data='{"webhook_secret":"<key>"}'` in the workspace |
 | `UZ-WH-010 invalid_signature` (401) | Provider + secret are both configured, but the signature header is missing OR the body's MAC doesn't match | The webhook secret stored in the workspace vault doesn't match what the provider has registered. Re-rotate. |
 | `UZ-WH-011 stale_timestamp` (401) | Slack-style schemes only — request timestamp is outside the 5-minute drift window | Clock skew or replay attempt. Investigate. |
 
@@ -892,15 +892,21 @@ The dashboard's **connectors** (GitHub App, Slack, and every future registry pro
 
 - **Slack** is a real OAuth-2.0 code exchange: the callback trades the `code` for a bot token using the platform app's `client_id`/`client_secret`, then writes **two** rows — the per-install vault handle and the `core.connector_installs` routing row.
 - **GitHub** is a GitHub App **installation**, not a code exchange (`oauth2.zig:8-9` says so explicitly): its callback carries `installation_id` (no `code`, nothing to exchange) and writes **one** row — the vault handle only. Inbound GitHub traffic routes via the fleet-trigger webhook path, so it needs no `connector_installs` entry.
+- **Zoho Desk, Jira, Linear** (M108) are OAuth-2.0 code exchanges that issue a **refresh token**: the callback trades the `code` for `{access_token, refresh_token, expires_in}` and vaults a refresh handle. Jira's hook additionally resolves the Atlassian **cloud id** via the accessible-resources probe (bounded); Zoho captures its data-center label. The broker later mints fresh access tokens from the refresh handle (see *Broker refresh-mint* below) — the runner never sees the refresh token.
+- **Datadog, Grafana, Fly** (M108) are the **api_key** archetype — no OAuth round-trip. The operator submits their own vendor key at `POST …/connect`; the handler runs a bounded validation probe against the vendor's cheapest authed endpoint and, on success, vaults the key. A rejected key → 400 `UZ-CONN-005`, no write.
 
 The rows themselves:
 
-- **Per-install handle** `fleet:<provider>` in the **workspace** vault (`fleet_runtime/credential_key.zig` composes the `fleet:` prefix) — Slack `{integration, bot_token, bot_user_id, team_id, team_name, scopes}`, GitHub `{integration, installation_id}`. This is the credential the broker/worker mints from. RULE VLT — the token lives only here.
+- **Per-install handle** `fleet:<provider>` in the **workspace** vault (`fleet_runtime/credential_key.zig` composes the `fleet:` prefix) — Slack `{integration, bot_token, bot_user_id, team_id, team_name, scopes}`; GitHub `{integration, installation_id}`; the refresh providers `{integration, refresh_token, access_token, expires_at_ms, …provider-instance fields}` (Jira adds `cloud_id`/`site_url`, Zoho `accounts_base`); the api_key providers `{integration, …submitted key fields}` (Datadog `{api_key, app_key, site}`, Grafana `{instance_url, service_account_token}`, Fly `{org_token}`). This is the credential the broker/worker mints or reads from. RULE VLT — the token lives only here. (The `integration` field names the connector; see the M108 refactor note on renaming it to `connector`.)
 - **`core.connector_installs`** (Slack only) — the `team_id → workspace_id` map that routes inbound events (below).
 
 ### Platform app secrets (`<provider>-app`, admin workspace)
 
-The provider app is **one per connector, shared across every tenant**. Its secrets live in the **admin-workspace** vault under `<provider>-app` (`connectors/oauth2.zig` `APP_VAULT_KEY_SUFFIX = "-app"`), keyed by `Context.platform_admin_workspace_id`. The bag is per-provider: `slack-app` holds `{client_id, client_secret, signing_secret}`; `github-app` holds `{app_id, private_key_pem, app_slug}` (the App mints installation tokens from the private key — there is no client secret). These are catastrophic-if-leaked — they compromise every tenant's connector — so they never touch a per-tenant surface (see the sensitive-data table).
+The provider app is **one per connector, shared across every tenant**. Its secrets live in the **admin-workspace** vault under `<provider>-app` (`connectors/oauth2.zig` `APP_VAULT_KEY_SUFFIX = "-app"`), keyed by `Context.platform_admin_workspace_id`. The bag is per-provider: `slack-app` holds `{client_id, client_secret, signing_secret}`; `github-app` holds `{app_id, private_key_pem, app_slug}` (the App mints installation tokens from the private key — there is no client secret); the OAuth-2.0 refresh connectors `zoho-app`/`jira-app`/`linear-app` hold `{client_id, client_secret}` (the broker posts these to the provider token endpoint on each refresh mint). The **api_key** connectors (Datadog, Grafana, Fly) have **no** platform bag — the operator supplies their own key at connect, so they are always "configured". These bags are catastrophic-if-leaked — they compromise every tenant's connector — so they never touch a per-tenant surface (see the sensitive-data table).
+
+### Broker refresh-mint (M108 — Zoho, Jira, Linear)
+
+The credential broker (`credentials/`) resolves a workspace's `fleet:<provider>` refresh handle to a short-lived access token on demand: it posts a `grant_type=refresh_token` form to the provider token endpoint using the `<provider>-app` client id/secret, caches the result until expiry-minus-skew (mirroring the GitHub installation-token mint), and degrades to `reconnect_required` on a revoked token (`invalid_grant`) — never a crash, never a raw refresh-token egress to the runner. The exchange is **deadline-armed** (`serve_broker.HttpClientExchange`, a per-call `call_deadline` watchdog): a hung vendor token endpoint fails closed, never stalls the broker. The runner-facing mint response carries only the access token + its expiry.
 
 ### Signed events ingress (`POST /v1/connectors/slack/events`)
 

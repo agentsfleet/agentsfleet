@@ -35,11 +35,11 @@ never break the product flow it instruments.
 | `workspace_switched` | the workspace switcher changes the active workspace | `workspace_id` |
 | `runner_token_minted` | the add-runner dialog mints a registration token (the runner goes live later, host-side) | `runner_id`, `sandbox_tier` |
 | `api_key_minted` | the API-key dialog succeeds | `api_key_id` (never the key) |
-| `model_added` | the Models & Keys provider-key form saves a Bring-Your-Own-Key (BYOK) setup (a platform-defaults reset emits nothing) | `provider`, `mode`, `model?` |
-| `model_changed` | the Models & Keys hero switches the active provider/model | `provider`, `model` |
-| `key_rotated` | a provider key is rotated via Replace key (PATCH `…/credentials/{name}`) | `provider` (never the key) |
+| `model_added` | the Models provider-key form saves a Bring-Your-Own-Key (BYOK) setup (a platform-defaults reset emits nothing) | `provider`, `mode`, `model?` |
+| `model_changed` | the Models page's active-model row switches the active provider/model | `provider`, `model` |
+| `key_rotated` | a provider key is rotated via Replace key (PATCH `…/secrets/{name}`) | `provider` (never the key) |
 | `provider_reset` | the active provider is reset to the platform default | `from_provider` |
-| `credential_added` | the Models & Keys custom-secret form succeeds | `credential_name` (never `data_json`) |
+| `secret_added` | the Secrets & ENVs custom-secret form succeeds | `secret_name` (never `data_json`) |
 | `integration_requested` | a fleet requests an integration grant from the integrations surface | `integration_id`, `integration_name` |
 | `approval_resolved` | approve/deny actually resolves the gate (the `already_resolved` race emits nothing) | `gate_id`, `decision`, `has_reason` |
 

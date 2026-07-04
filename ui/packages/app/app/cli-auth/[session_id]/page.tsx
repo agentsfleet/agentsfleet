@@ -121,7 +121,10 @@ export default function CliAuthPage({
             }
             return;
           }
-          setLoad({ kind: LOAD.error, message: "Unexpected session payload." });
+          setLoad({
+            kind: LOAD.error,
+            message: "Something went wrong loading this login session — start over from your terminal.",
+          });
           return;
         }
         if (res.status === 404) {
@@ -132,7 +135,10 @@ export default function CliAuthPage({
           setLoad({ kind: LOAD.terminal, message: "This login session is no longer accepting approval." });
           return;
         }
-        setLoad({ kind: LOAD.error, message: `Could not load the login session (HTTP ${res.status}).` });
+        setLoad({
+          kind: LOAD.error,
+          message: "Couldn't load this login session. Try again, or start over from your terminal.",
+        });
       } catch {
         if (!cancelled) setLoad({ kind: LOAD.error, message: "Network error loading the login session." });
       }
@@ -210,7 +216,10 @@ export default function CliAuthPage({
         setApprove({ kind: APPROVE.failed, message: "Your dashboard session is not authorized for this action." });
         return;
       }
-      setApprove({ kind: APPROVE.failed, message: `Approval failed (HTTP ${res.status}).` });
+      setApprove({
+        kind: APPROVE.failed,
+        message: "Couldn't approve this login. Try again, or start over from your terminal.",
+      });
     } catch {
       // A thrown fetch means no response arrived — but the PATCH may have
       // reached the server and approved against pendingCode. If we got far

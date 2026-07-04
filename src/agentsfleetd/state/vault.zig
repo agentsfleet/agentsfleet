@@ -16,6 +16,7 @@ const pg = @import("pg");
 const logging = @import("log");
 const crypto_store = @import("../secrets/crypto_store.zig");
 const error_codes = @import("../errors/error_registry.zig");
+const PgQuery = @import("../db/pg_query.zig").PgQuery;
 
 const log = logging.scoped(.vault);
 
@@ -90,6 +91,34 @@ pub fn loadJson(
         return Error.NotAnObject;
     }
     return parsed;
+}
+
+/// Which of `candidates` exist as rows for `workspace_id` — a batch existence
+/// check that NEVER decrypts (unlike `loadJson`), for callers that only need
+/// presence (e.g. the connector catalog's configured/connected flags). One
+/// query instead of N `loadJson` decrypts. `present_out[i]` is set for each
+/// `candidates[i]` that has a row; `present_out.len` MUST equal `candidates.len`.
+pub fn markExisting(
+    conn: *pg.Conn,
+    workspace_id: []const u8,
+    candidates: []const []const u8,
+    present_out: []bool,
+) !void {
+    std.debug.assert(present_out.len == candidates.len);
+    @memset(present_out, false);
+    if (candidates.len == 0) return;
+    var q = PgQuery.from(try conn.query(
+        \\SELECT key_name FROM vault.secrets WHERE workspace_id = $1 AND key_name = ANY($2::text[])
+    , .{ workspace_id, candidates }));
+    defer q.deinit();
+    while (try q.next()) |row| {
+        const found = try row.get([]const u8, 0);
+        // candidates is tiny (≤ the registry size); a linear match is trivial and
+        // avoids allocating/duping the borrowed row key into a set.
+        for (candidates, 0..) |c, i| {
+            if (std.mem.eql(u8, c, found)) present_out[i] = true;
+        }
+    }
 }
 
 /// Hard-delete the row at (workspace_id, key_name). Idempotent: `true` if a

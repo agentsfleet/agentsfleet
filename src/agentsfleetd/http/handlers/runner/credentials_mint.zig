@@ -37,6 +37,11 @@ const PgQuery = pg_query.PgQuery;
 // broker can reach the same outcome from either side), single-sourced (RULE UFS).
 const S_INTEGRATION_NOT_CONNECTED = "Integration not connected for this workspace";
 const S_MINT_FAILED = "Credential mint failed";
+// Connector (oauth2 refresh) copy — the github integration is a GitHub App
+// *installation* (its own reconnect semantics), the refresh-token connectors
+// re-mint from a stored refresh token, so their failure copy is provider-neutral.
+const S_CONNECTOR_RECONNECT = "Connector authorization expired — reconnect the integration";
+const S_CONNECTOR_MINT_FAILED = "Connector token refresh failed";
 
 /// The lease's workspace + the connected integration handle, resolved together
 /// under one DB connection so the connection is released before the broker's
@@ -96,11 +101,13 @@ pub fn innerRunnerCredentialsMint(hx: Hx, req: *httpz.Request) void {
         constants.clock.nowMillis(),
     ) catch {
         // mint() only surfaces an error on an OOM-class failure (the integration
-        // failures are tagged-union variants, not errors). Treat as transient.
-        hx.fail(ec.ERR_GH_MINT_FAILED, S_MINT_FAILED);
+        // failures are tagged-union variants, not errors). Treat as transient, with
+        // provider-appropriate copy.
+        const d = dispose(integration.idFromString(mint_req.integration), .{ .mint_failed = .transient });
+        hx.fail(d.code.?, d.detail);
         return;
     };
-    respond(hx, result);
+    respond(hx, integration.idFromString(mint_req.integration), result);
 }
 
 /// Resolve the lease's workspace (scoped to the presenting runner) + load the
@@ -164,25 +171,36 @@ fn resolveLeaseWorkspace(hx: Hx, conn: *pg.Conn, runner_id: []const u8, lease_id
 /// 401) is unit-tested with no live broker or DB. The token is NEVER read here.
 const Disposition = struct { code: ?[]const u8, detail: []const u8 };
 
-fn dispose(result: integration.MintResult) Disposition {
+fn dispose(id: ?integration.Id, result: integration.MintResult) Disposition {
+    // github is a GitHub App installation (its own reconnect + mint copy); the
+    // oauth2-refresh connectors (zoho/jira/linear) surface the shared connector
+    // oauth-exchange code (UZ-CONN-006). unknown_integration is provider-neutral.
+    const is_github = if (id) |i| i == .github else false;
     return switch (result) {
         .ok => .{ .code = null, .detail = "" },
-        .reconnect_required => .{ .code = ec.ERR_GH_RECONNECT_REQUIRED, .detail = "GitHub App installation needs reconnect" },
         .unknown_integration => .{ .code = ec.ERR_CRED_INTEGRATION_NOT_CONNECTED, .detail = S_INTEGRATION_NOT_CONNECTED },
-        .mint_failed => .{ .code = ec.ERR_GH_MINT_FAILED, .detail = S_MINT_FAILED },
+        .reconnect_required => if (is_github)
+            .{ .code = ec.ERR_GH_RECONNECT_REQUIRED, .detail = "GitHub App installation needs reconnect" }
+        else
+            .{ .code = ec.ERR_CONNECTOR_OAUTH_EXCHANGE_FAILED, .detail = S_CONNECTOR_RECONNECT },
+        .mint_failed => if (is_github)
+            .{ .code = ec.ERR_GH_MINT_FAILED, .detail = S_MINT_FAILED }
+        else
+            .{ .code = ec.ERR_CONNECTOR_OAUTH_EXCHANGE_FAILED, .detail = S_CONNECTOR_MINT_FAILED },
     };
 }
 
-/// Map the broker outcome to the response. The minted token appears only in the
-/// 200 body here — never logged, never echoed into a frame (VLT).
-fn respond(hx: Hx, result: integration.MintResult) void {
+/// Map the broker outcome to the response. `id` selects provider-appropriate error
+/// copy. The minted token appears only in the 200 body here — never logged, never
+/// echoed into a frame (VLT).
+fn respond(hx: Hx, id: ?integration.Id, result: integration.MintResult) void {
     switch (result) {
         .ok => |minted| hx.ok(.ok, protocol.MintCredentialResponse{
             .token = minted.token,
             .expires_at_ms = minted.expires_at_ms,
         }),
         else => {
-            const d = dispose(result);
+            const d = dispose(id, result);
             hx.fail(d.code.?, d.detail);
         },
     }
@@ -190,12 +208,23 @@ fn respond(hx: Hx, result: integration.MintResult) void {
 
 test "dispose maps each broker outcome to its typed wire code; ok carries no error" {
     // Success → no error code (the handler writes 200 + the token instead).
-    try std.testing.expect(dispose(.{ .ok = .{ .token = "ghs_x", .expires_at_ms = 1 } }).code == null);
-    // Every failure mode is a distinct typed code — never a silent 401.
-    try std.testing.expectEqualStrings(ec.ERR_GH_RECONNECT_REQUIRED, dispose(.reconnect_required).code.?);
-    try std.testing.expectEqualStrings(ec.ERR_CRED_INTEGRATION_NOT_CONNECTED, dispose(.unknown_integration).code.?);
+    try std.testing.expect(dispose(.github, .{ .ok = .{ .token = "ghs_x", .expires_at_ms = 1 } }).code == null);
+    // github (App installation) keeps its GitHub-specific reconnect/mint copy.
+    try std.testing.expectEqualStrings(ec.ERR_GH_RECONNECT_REQUIRED, dispose(.github, .reconnect_required).code.?);
+    try std.testing.expectEqualStrings(ec.ERR_CRED_INTEGRATION_NOT_CONNECTED, dispose(.github, .unknown_integration).code.?);
     // Both retry classes surface the same mint-failed code (the Retry tag is for
     // the broker's own metrics, not a wire distinction).
-    try std.testing.expectEqualStrings(ec.ERR_GH_MINT_FAILED, dispose(.{ .mint_failed = .transient }).code.?);
-    try std.testing.expectEqualStrings(ec.ERR_GH_MINT_FAILED, dispose(.{ .mint_failed = .permanent }).code.?);
+    try std.testing.expectEqualStrings(ec.ERR_GH_MINT_FAILED, dispose(.github, .{ .mint_failed = .transient }).code.?);
+    try std.testing.expectEqualStrings(ec.ERR_GH_MINT_FAILED, dispose(.github, .{ .mint_failed = .permanent }).code.?);
+}
+
+test "dispose: oauth2-refresh connectors surface UZ-CONN-006, not GitHub copy" {
+    // A zoho/jira/linear refresh failure must NOT tell the runner to reconnect a
+    // GitHub App — both reconnect (revoked refresh) and mint_failed map to the
+    // shared connector oauth-exchange code (Dimension 3.2).
+    try std.testing.expectEqualStrings(ec.ERR_CONNECTOR_OAUTH_EXCHANGE_FAILED, dispose(.zoho, .reconnect_required).code.?);
+    try std.testing.expectEqualStrings(ec.ERR_CONNECTOR_OAUTH_EXCHANGE_FAILED, dispose(.jira, .{ .mint_failed = .transient }).code.?);
+    try std.testing.expectEqualStrings(ec.ERR_CONNECTOR_OAUTH_EXCHANGE_FAILED, dispose(.linear, .reconnect_required).code.?);
+    // unknown_integration stays provider-neutral regardless of id.
+    try std.testing.expectEqualStrings(ec.ERR_CRED_INTEGRATION_NOT_CONNECTED, dispose(null, .unknown_integration).code.?);
 }
