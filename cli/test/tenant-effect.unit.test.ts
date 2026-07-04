@@ -124,7 +124,7 @@ describe("tenantProviderShowEffect", () => {
               provider: "fireworks",
               model: "kimi-k2.6",
               context_cap_tokens: 256000,
-              credential_ref: null,
+              secret_ref: null,
               synthesised_default: true,
             }) as Effect.Effect<unknown, ServerError>,
           rec,
@@ -155,7 +155,7 @@ describe("tenantProviderShowEffect", () => {
               mode: PROVIDER_MODE.self_managed,
               provider: "fireworks",
               error: "credential_missing",
-              credential_ref: "fw-key",
+              secret_ref: "fw-key",
             }) as Effect.Effect<unknown, ServerError>,
           rec,
         ),
@@ -164,7 +164,7 @@ describe("tenantProviderShowEffect", () => {
     );
     await runWith(program);
     expect(
-      rec.stderr.some((line) => /Credential fw-key is missing/.test(line)),
+      rec.stderr.some((line) => /Secret fw-key is missing/.test(line)),
     ).toBe(true);
     expect(
       rec.stdout.some((line) => line.includes("self_managed")),
@@ -183,7 +183,7 @@ describe("tenantProviderShowEffect", () => {
               mode: PROVIDER_MODE.self_managed,
               provider: "fireworks",
               error: "provider_unreachable",
-              credential_ref: "fw-key",
+              secret_ref: "fw-key",
             }) as Effect.Effect<unknown, ServerError>,
           rec,
         ),
@@ -193,7 +193,7 @@ describe("tenantProviderShowEffect", () => {
     await runWith(program);
     expect(
       rec.stderr.some((line) =>
-        /Provider resolver error: provider_unreachable \(credential_ref=fw-key\)/.test(line),
+        /Provider resolver error: provider_unreachable \(secret_ref=fw-key\)/.test(line),
       ),
     ).toBe(true);
   });
@@ -203,7 +203,7 @@ describe("tenantProviderShowEffect", () => {
     const payload = {
       mode: PROVIDER_MODE.self_managed,
       error: "credential_missing",
-      credential_ref: "fw-key",
+      secret_ref: "fw-key",
     };
     const program = tenantProviderShowEffect.pipe(
       Effect.provide(configLayer({ jsonMode: true })),
@@ -223,7 +223,7 @@ describe("tenantProviderShowEffect", () => {
 });
 
 describe("tenantProviderAddEffectFromArgs", () => {
-  test("PUTs mode=self_managed with credential_ref and prints tip", async () => {
+  test("PUTs mode=self_managed with secret_ref and prints tip", async () => {
     const rec = makeRecorder();
     const program = tenantProviderAddEffectFromArgs("fw-key", undefined).pipe(
       Effect.provide(configLayer()),
@@ -236,7 +236,7 @@ describe("tenantProviderAddEffectFromArgs", () => {
               provider: "fireworks",
               model: "kimi-k2.6",
               context_cap_tokens: 256000,
-              credential_ref: "fw-key",
+              secret_ref: "fw-key",
             }) as Effect.Effect<unknown, ServerError>,
           rec,
         ),
@@ -252,7 +252,7 @@ describe("tenantProviderAddEffectFromArgs", () => {
     expect(call.method).toBe("PUT");
     expect(call.body).toEqual({
       mode: PROVIDER_MODE.self_managed,
-      credential_ref: "fw-key",
+      secret_ref: "fw-key",
     });
     expect(
       rec.stdout.some((line) =>
@@ -276,7 +276,7 @@ describe("tenantProviderAddEffectFromArgs", () => {
               mode: PROVIDER_MODE.self_managed,
               provider: "fireworks",
               model: "accounts/fireworks/models/kimi-k2.6",
-              credential_ref: "fw-key",
+              secret_ref: "fw-key",
             }) as Effect.Effect<unknown, ServerError>,
           rec,
         ),
@@ -288,7 +288,7 @@ describe("tenantProviderAddEffectFromArgs", () => {
     if (!call) throw new Error("expected one http call");
     expect(call.body).toEqual({
       mode: PROVIDER_MODE.self_managed,
-      credential_ref: "fw-key",
+      secret_ref: "fw-key",
       model: "accounts/fireworks/models/kimi-k2.6",
     });
   });
@@ -299,7 +299,7 @@ describe("tenantProviderAddEffectFromArgs", () => {
       mode: PROVIDER_MODE.self_managed,
       provider: "fireworks",
       model: "kimi-k2.6",
-      credential_ref: "fw-key",
+      secret_ref: "fw-key",
     };
     const program = tenantProviderAddEffectFromArgs("fw-key", undefined).pipe(
       Effect.provide(configLayer({ jsonMode: true })),
@@ -321,7 +321,7 @@ describe("tenantProviderAddEffectFromArgs", () => {
     );
   });
 
-  test("missing --credential fails ValidationError without making a request", async () => {
+  test("missing --secret fails ValidationError without making a request", async () => {
     const rec = makeRecorder();
     const program = tenantProviderAddEffectFromArgs(undefined, undefined).pipe(
       Effect.provide(configLayer()),

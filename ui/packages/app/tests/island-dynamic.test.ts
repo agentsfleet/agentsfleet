@@ -34,20 +34,20 @@ type Island = {
 
 const ISLANDS: Island[] = [
   {
-    name: "EditCredentialDialog",
-    shim: "EditCredentialDialogDynamic",
-    rawImportFragment: "credentials/components/EditCredentialDialog",
-    callSite: "app/(dashboard)/credentials/components/CredentialsList.tsx",
-    rawComponent: "EditCredentialDialog",
+    name: "EditSecretDialog",
+    shim: "EditSecretDialogDynamic",
+    rawImportFragment: "secrets/components/EditSecretDialog",
+    callSite: "app/(dashboard)/secrets/components/SecretsList.tsx",
+    rawComponent: "EditSecretDialog",
   },
   {
-    name: "AddCredentialForm",
-    shim: "AddCredentialFormDynamic",
-    rawImportFragment: "credentials/components/AddCredentialForm",
-    // /credentials is now a bare redirect; the custom-secrets add form lives on
-    // the consolidated Models page.
-    callSite: "app/(dashboard)/settings/models/page.tsx",
-    rawComponent: "AddCredentialForm",
+    name: "AddSecretForm",
+    shim: "AddSecretFormDynamic",
+    rawImportFragment: "secrets/components/AddSecretForm",
+    // Secrets & ENVs is its own page now; the add
+    // form mounts inside AddSecretDialog, not the page directly.
+    callSite: "app/(dashboard)/secrets/components/AddSecretDialog.tsx",
+    rawComponent: "AddSecretForm",
   },
   {
     name: "CreateWorkspaceDialog",
@@ -97,8 +97,8 @@ describe("interaction-only islands are excluded from the route's initial chunk",
 
 // Stub the heavy inner modules so calling the dynamic loader (below) resolves
 // to a light component without pulling clerk / design-system / form deps.
-vi.mock("@/app/(dashboard)/credentials/components/EditCredentialDialog", () => ({ default: () => null }));
-vi.mock("@/app/(dashboard)/credentials/components/AddCredentialForm", () => ({ default: () => null }));
+vi.mock("@/app/(dashboard)/secrets/components/EditSecretDialog", () => ({ default: () => null }));
+vi.mock("@/app/(dashboard)/secrets/components/AddSecretForm", () => ({ default: () => null }));
 vi.mock("@/components/layout/CreateWorkspaceDialog", () => ({ default: () => null }));
 vi.mock("@/app/(dashboard)/settings/api-keys/components/CreateApiKeyDialog", () => ({ default: () => null }));
 vi.mock("@/app/(dashboard)/admin/runners/components/AddRunnerDialog", () => ({ default: () => null }));
@@ -125,8 +125,8 @@ vi.mock("next/dynamic", () => {
   };
 });
 
-import EditCredentialDialogDynamic from "@/components/domain/island-dynamic/EditCredentialDialogDynamic";
-import AddCredentialFormDynamic from "@/components/domain/island-dynamic/AddCredentialFormDynamic";
+import EditCredentialDialogDynamic from "@/components/domain/island-dynamic/EditSecretDialogDynamic";
+import AddCredentialFormDynamic from "@/components/domain/island-dynamic/AddSecretFormDynamic";
 import CreateWorkspaceDialogDynamic from "@/components/domain/island-dynamic/CreateWorkspaceDialogDynamic";
 import CreateApiKeyDialogDynamic from "@/components/domain/island-dynamic/CreateApiKeyDialogDynamic";
 import AddRunnerDialogDynamic from "@/components/domain/island-dynamic/AddRunnerDialogDynamic";

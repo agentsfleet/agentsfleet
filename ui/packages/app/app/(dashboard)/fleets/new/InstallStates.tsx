@@ -7,7 +7,7 @@ import { Button } from "@agentsfleet/design-system";
 import { EVENTS } from "@/lib/analytics/events";
 import { captureProductEvent } from "@/lib/analytics/posthog";
 import { FLEET_NAME_CONFLICT_MESSAGE } from "@/lib/errors";
-import { WORKSPACE_CREDENTIALS_PATH } from "@/lib/fleet-credentials";
+import { WORKSPACE_SECRETS_PATH } from "@/lib/fleet-secrets";
 import { installFleetAction } from "../actions";
 import {
   flowError,
@@ -192,13 +192,13 @@ function ConnectGate({ unmet, reasons }: { unmet: string[]; reasons: Record<stri
         ) : (
           <>
             Needs <span className="font-mono text-foreground">{unmet.join(", ")}</span>. Add{" "}
-            {objectLabel} in Credentials to run this fleet.
+            {objectLabel} in Secrets & ENVs to run this fleet.
           </>
         )}
       </p>
       <div className="flex flex-wrap items-center gap-2">
         <Button asChild size="sm">
-          <Link href={WORKSPACE_CREDENTIALS_PATH}>{connectLabel}</Link>
+          <Link href={WORKSPACE_SECRETS_PATH}>{connectLabel}</Link>
         </Button>
       </div>
     </div>

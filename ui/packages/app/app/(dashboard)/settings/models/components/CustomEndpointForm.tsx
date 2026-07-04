@@ -3,12 +3,12 @@
 import { useState, type KeyboardEvent } from "react";
 import { useRouter } from "next/navigation";
 import { Alert, Button, Input, Label, Spinner } from "@agentsfleet/design-system";
-import { createCredentialAction } from "@/app/(dashboard)/credentials/actions";
+import { createSecretAction } from "@/app/(dashboard)/secrets/actions";
 import { setProviderSelfManagedAction } from "../actions";
 import { isHttpsUrl, BASE_URL_NOT_HTTPS } from "../lib/custom-endpoint";
 import { presentErrorString } from "@/lib/errors";
-import type { CredentialData } from "@/lib/api/credentials";
-import { OPENAI_COMPATIBLE_PROVIDER, CREDENTIAL_FIELD } from "@/lib/types";
+import type { SecretData } from "@/lib/api/secrets";
+import { OPENAI_COMPATIBLE_PROVIDER, SECRET_FIELD } from "@/lib/types";
 import { EVENTS } from "@/lib/analytics/events";
 import { captureProductEvent } from "@/lib/analytics/posthog";
 import { captureModelActivated } from "../lib/track";
@@ -59,25 +59,25 @@ export default function CustomEndpointForm({
     try {
       const credName = name.trim();
       const credModel = model.trim();
-      const data: CredentialData = {
-        [CREDENTIAL_FIELD.provider]: OPENAI_COMPATIBLE_PROVIDER,
-        [CREDENTIAL_FIELD.baseUrl]: baseUrl.trim(),
-        [CREDENTIAL_FIELD.model]: credModel,
+      const data: SecretData = {
+        [SECRET_FIELD.provider]: OPENAI_COMPATIBLE_PROVIDER,
+        [SECRET_FIELD.baseUrl]: baseUrl.trim(),
+        [SECRET_FIELD.model]: credModel,
       };
       const key = apiKey.trim();
-      if (key !== "") data[CREDENTIAL_FIELD.apiKey] = key;
+      if (key !== "") data[SECRET_FIELD.apiKey] = key;
 
-      const created = await createCredentialAction(workspaceId, { name: credName, data });
+      const created = await createSecretAction(workspaceId, { name: credName, data });
       if (!created.ok) {
         setError(
           presentErrorString({ errorCode: created.errorCode, message: created.error, action: STORE_ACTION }),
         );
         return;
       }
-      captureProductEvent(EVENTS.credential_added, { credential_name: credName });
+      captureProductEvent(EVENTS.secret_added, { secret_name: credName });
 
       if (activate) {
-        const set = await setProviderSelfManagedAction({ credential_ref: credName, model: credModel });
+        const set = await setProviderSelfManagedAction({ secret_ref: credName, model: credModel });
         if (!set.ok) {
           setError(set.error);
           return;

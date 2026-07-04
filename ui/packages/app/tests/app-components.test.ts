@@ -281,29 +281,31 @@ describe("app components", () => {
     expect(markup).toContain("Organization");
     expect(markup).toContain("Dashboard");
     expect(markup).toContain("Fleets");
-    // Models (the credentials vault folded in) and Integrations
-    // are the two Configuration entries; the standalone Credentials item is gone.
+    // Models, Integrations, and Secrets & ENVs are the three Configuration
+    // entries — Secrets & ENVs is standalone again, not folded into Models.
     expect(markup).toContain(">Models<");
     expect(markup).toContain(">Integrations<");
+    expect(markup).toContain(">Secrets &amp; ENVs<");
     expect(markup).toContain('href="/settings/models"');
-    expect(markup).not.toContain(">Credentials<");
-    expect(markup).not.toContain('href="/credentials"');
     // Integrations is its own connectors destination.
     expect(markup).toContain('href="/integrations"');
+    // Secrets & ENVs is its own standalone destination.
+    expect(markup).toContain('href="/secrets"');
     expect(markup).toContain("Approvals");
     expect(markup).toContain("Events");
     expect(markup).toContain("Workspace");
     expect(markup).toContain("Billing");
   });
 
-  it("test_nav_config_destinations: nav renders Models→/settings/models, Integrations→/integrations", async () => {
+  it("test_nav_config_destinations: nav renders Models→/settings/models, Integrations→/integrations, Secrets & ENVs→/secrets", async () => {
     const { default: Shell } = await import("../components/layout/Shell");
     mocks.usePathname.mockReturnValue("/");
     const tree = Shell({ children: React.createElement("div", null, "content") });
     const markup = renderToStaticMarkup(React.createElement(React.Fragment, null, tree));
-    // Two distinct Configuration destinations, each at its own route.
+    // Three distinct Configuration destinations, each at its own route.
     expect(markup).toMatch(/href="\/settings\/models"[\s\S]*?data-icon="CpuIcon"[^>]*><\/svg>Models</);
     expect(markup).toMatch(/href="\/integrations"[\s\S]*?data-icon="LinkIcon"[^>]*><\/svg>Integrations</);
+    expect(markup).toMatch(/href="\/secrets"[\s\S]*?data-icon="KeyRoundIcon"[^>]*><\/svg>Secrets &amp; ENVs</);
   });
 
   it("Shell sidebar marks the active route via data-active attribute", async () => {

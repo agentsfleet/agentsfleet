@@ -132,7 +132,7 @@ pub const matchTenantApiKeyById = billing.matchTenantApiKeyById;
 pub const matchTenantMeteringPeriods = billing.matchTenantMeteringPeriods;
 
 // ── /workspaces/{workspace_id}/{suffix} ────────────────────────────────────
-// suffix ∈ {"fleets", "credentials", "fleet-keys", "events", "approvals"}.
+// suffix ∈ {"fleets", "secrets", "fleet-keys", "events", "approvals"}.
 
 pub fn matchWorkspaceSuffix(p: Path, suffix: []const u8) ?[]const u8 {
     if (p.segs.len != 3) return null;
@@ -145,19 +145,19 @@ fn isFleetRuntimeSegment(p: Path, idx: usize) bool {
     return p.eq(idx, S_FLEETS) and (idx + 1 >= p.segs.len or !p.eq(idx + 1, S_BUNDLES));
 }
 
-// ── /workspaces/{ws}/credentials/{name} ────────────────────────────────────
+// ── /workspaces/{ws}/secrets/{name} ────────────────────────────────────────
 
-pub const WorkspaceCredentialRoute = struct {
+pub const WorkspaceSecretRoute = struct {
     workspace_id: []const u8,
-    credential_name: []const u8,
+    secret_name: []const u8,
 };
 
-pub fn matchWorkspaceCredential(p: Path) ?WorkspaceCredentialRoute {
+pub fn matchWorkspaceSecret(p: Path) ?WorkspaceSecretRoute {
     if (p.segs.len != 4) return null;
-    if (!p.eq(0, S_WORKSPACES) or !p.eq(2, "credentials")) return null;
+    if (!p.eq(0, S_WORKSPACES) or !p.eq(2, "secrets")) return null;
     const ws = p.param(1) orelse return null;
     const name = p.param(3) orelse return null;
-    return .{ .workspace_id = ws, .credential_name = name };
+    return .{ .workspace_id = ws, .secret_name = name };
 }
 
 // Connector matchers (the generic `{provider}` trio resolved against the

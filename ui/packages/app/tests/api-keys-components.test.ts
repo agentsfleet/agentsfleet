@@ -104,6 +104,16 @@ describe("ApiKeyList component", () => {
     expect(screen.getByLabelText(/Delete API key old-zapier/i)).toBeTruthy();
   });
 
+  it("renders rows through the standard DataTable primitive, not a hand-rolled list", async () => {
+    // Pins the DataTable migration — a regression back to a bespoke row-list
+    // (no `role=table`, no column headers) must fail this test.
+    await renderList(listResponse([ACTIVE, REVOKED]));
+    expect(screen.getByRole("table")).toBeTruthy();
+    expect(screen.getByRole("columnheader", { name: "Name" })).toBeTruthy();
+    expect(screen.getByRole("columnheader", { name: "Created" })).toBeTruthy();
+    expect(screen.getByRole("columnheader", { name: "Actions" })).toBeTruthy();
+  });
+
   it("revoke happy path: confirm → revokeApiKeyAction(id) → list re-fetched", async () => {
     revokeApiKeyActionMock.mockResolvedValue({ ok: true, data: { id: ACTIVE.id, active: false, revoked_at: 1 } });
     const user = userEvent.setup();

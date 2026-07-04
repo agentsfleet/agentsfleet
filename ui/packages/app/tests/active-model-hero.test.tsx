@@ -1,7 +1,7 @@
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { CREDENTIAL_KIND, type Credential } from "@/lib/api/credentials";
+import { SECRET_KIND, type Secret } from "@/lib/api/secrets";
 import { PROVIDER_MODE, type TenantProvider } from "@/lib/types";
 
 // The active-model hero: LIVE vs DEFAULT presentation, the live action set
@@ -50,13 +50,13 @@ function selfManaged(over: Partial<TenantProvider> = {}): TenantProvider {
     provider: "anthropic",
     model: "claude-sonnet-4-6",
     context_cap_tokens: 256000,
-    credential_ref: "anthropic-prod",
+    secret_ref: "anthropic-prod",
     ...over,
   } as TenantProvider;
 }
 
-const providerKeyCred: Credential = {
-  kind: CREDENTIAL_KIND.provider_key,
+const providerKeyCred: Secret = {
+  kind: SECRET_KIND.provider_key,
   name: "anthropic-prod",
   created_at: 1,
   provider: "anthropic",
@@ -114,8 +114,8 @@ describe("ActiveModelHero — live (self-managed)", () => {
     render(
       React.createElement(ActiveModelHero, {
         workspaceId: "ws_1",
-        provider: selfManaged({ credential_ref: "STRIPE" }),
-        credentials: [{ kind: CREDENTIAL_KIND.custom_secret, name: "STRIPE", created_at: 1 }],
+        provider: selfManaged({ secret_ref: "STRIPE" }),
+        credentials: [{ kind: SECRET_KIND.custom_secret, name: "STRIPE", created_at: 1 }],
       }),
     );
     expect(screen.queryByRole("button", { name: "Replace key" })).toBeNull();
@@ -126,9 +126,9 @@ describe("ActiveModelHero — live (self-managed)", () => {
     render(
       React.createElement(ActiveModelHero, {
         workspaceId: "ws_1",
-        provider: selfManaged({ provider: "openai-compatible", context_cap_tokens: 500, credential_ref: "vllm" }),
+        provider: selfManaged({ provider: "openai-compatible", context_cap_tokens: 500, secret_ref: "vllm" }),
         credentials: [
-          { kind: CREDENTIAL_KIND.custom_endpoint, name: "vllm", created_at: 1, provider: "openai-compatible", model: "m1", base_url: "https://x/v1" },
+          { kind: SECRET_KIND.custom_endpoint, name: "vllm", created_at: 1, provider: "openai-compatible", model: "m1", base_url: "https://x/v1" },
         ],
       }),
     );
@@ -140,7 +140,7 @@ describe("ActiveModelHero — live (self-managed)", () => {
     render(
       React.createElement(ActiveModelHero, {
         workspaceId: "ws_1",
-        provider: selfManaged({ credential_ref: null, context_cap_tokens: 0 }),
+        provider: selfManaged({ secret_ref: null, context_cap_tokens: 0 }),
         credentials: [],
       }),
     );

@@ -11,12 +11,12 @@
  *
  * The CLI surface is confirmed against `cli/src/program/cli-tree.ts`:
  *   tenant provider show            (GET  /v1/tenants/me/provider)
- *   tenant provider add --credential <name> [--model <name>]
+ *   tenant provider add --secret <name> [--model <name>]
  *                                   (PUT, mode=self_managed)
  *   tenant provider delete          (DELETE → platform default)
  *
  * JSON keys mirror `ProviderResponse` in `cli/src/commands/tenant.ts`:
- *   mode, provider, model, context_cap_tokens, credential_ref,
+ *   mode, provider, model, context_cap_tokens, secret_ref,
  *   synthesised_default, error.
  */
 
@@ -29,36 +29,36 @@ import { OPENAI_COMPATIBLE_PROVIDER } from "../../../src/constants/custom-endpoi
 
 type Env = Readonly<Record<string, string>>;
 
-// Custom-endpoint credential argv heads — the typed credential-add form
+// Custom-endpoint secret argv heads — the typed secret-add form
 // (`--provider openai-compatible --base-url <url> --api-key <key>`). UFS: the
 // flag literals live once here, reused by the provider-set scenario.
-const CMD_CREDENTIAL = "credential" as const;
+const CMD_SECRET = "secret" as const;
 const SUB_ADD = "add" as const;
 const SUB_DELETE = "delete" as const;
 export const FLAG_PROVIDER = "--provider" as const;
 export const FLAG_BASE_URL = "--base-url" as const;
 export const FLAG_API_KEY = "--api-key" as const;
 
-export interface CustomCredentialOptions {
+export interface CustomSecretOptions {
   readonly name: string;
   readonly baseUrl: string;
   readonly apiKey: string;
 }
 
 /**
- * `credential add <name> --provider openai-compatible --base-url <url>
- * --api-key <key> --json`. Stores a custom OpenAI-compatible credential so a
- * subsequent `tenant provider add --credential <name>` can target it. Returns
+ * `secret add <name> --provider openai-compatible --base-url <url>
+ * --api-key <key> --json`. Stores a custom OpenAI-compatible secret so a
+ * subsequent `tenant provider add --secret <name>` can target it. Returns
  * the raw run result; the secret-leak regression fires against the JWT.
  */
-export async function addCustomEndpointCredential(
+export async function addCustomEndpointSecret(
   env: Env,
   sessionJwt: string,
-  opts: CustomCredentialOptions,
+  opts: CustomSecretOptions,
 ): Promise<RunResult> {
   const result = await runFleetctl(
     [
-      CMD_CREDENTIAL, SUB_ADD, opts.name,
+      CMD_SECRET, SUB_ADD, opts.name,
       FLAG_PROVIDER, OPENAI_COMPATIBLE_PROVIDER,
       FLAG_BASE_URL, opts.baseUrl,
       FLAG_API_KEY, opts.apiKey,
@@ -70,15 +70,15 @@ export async function addCustomEndpointCredential(
   // The api_key must never echo to stdout/stderr (VLT).
   assert.ok(
     !`${result.stdout}\n${result.stderr}`.includes(opts.apiKey),
-    "custom-endpoint credential api_key leaked into CLI output",
+    "custom-endpoint secret api_key leaked into CLI output",
   );
   return result;
 }
 
-/** Best-effort delete of a named credential (afterAll cleanup). */
-export async function deleteCredentialByName(env: Env, name: string): Promise<void> {
+/** Best-effort delete of a named secret (afterAll cleanup). */
+export async function deleteSecretByName(env: Env, name: string): Promise<void> {
   try {
-    await runFleetctl([CMD_CREDENTIAL, SUB_DELETE, name, FLAG_JSON], { env });
+    await runFleetctl([CMD_SECRET, SUB_DELETE, name, FLAG_JSON], { env });
   } catch {
     /* best-effort teardown — never throw out of afterAll */
   }
@@ -105,12 +105,12 @@ export const TENANT_PROVIDER_ADD_ARGS: ReadonlyArray<string> = [...TENANT_PROVID
 export const TENANT_PROVIDER_DELETE_ARGS: ReadonlyArray<string> = [...TENANT_PROVIDER_BASE, SUBCOMMAND_DELETE];
 
 export const FLAG_JSON = "--json" as const;
-export const FLAG_CREDENTIAL = "--credential" as const;
+export const FLAG_SECRET = "--secret" as const;
 export const FLAG_MODEL = "--model" as const;
 
-// Backend surfaces an unresolved credential via the `error` field rather
+// Backend surfaces an unresolved secret via the `error` field rather
 // than failing the PUT — the posture row is still written. The spec
-// tolerates this because no CLI command seeds a named vault credential;
+// tolerates this because no CLI command seeds a named vault secret;
 // the load-bearing assertion is the `mode` transition, not key resolution.
 export const CREDENTIAL_MISSING_ERROR = "credential_missing" as const;
 
@@ -119,7 +119,7 @@ export interface ProviderSnapshot {
   readonly provider?: string;
   readonly model?: string;
   readonly context_cap_tokens?: number;
-  readonly credential_ref?: string | null;
+  readonly secret_ref?: string | null;
   readonly synthesised_default?: boolean;
   readonly error?: string;
 }
@@ -142,22 +142,22 @@ export async function showProvider(env: Env, sessionJwt: string): Promise<Provid
 }
 
 export interface AddProviderOptions {
-  readonly credential: string;
+  readonly secret: string;
   readonly model?: string | undefined;
 }
 
 /**
- * `tenant provider add --credential <name> [--model <name>] --json`. Returns
+ * `tenant provider add --secret <name> [--model <name>] --json`. Returns
  * the raw run result so the caller can branch on exit code (the backend may
  * accept the PUT and report `credential_missing`, or reject an unknown
- * credential outright — both are legitimate and the spec handles each).
+ * secret outright — both are legitimate and the spec handles each).
  */
 export async function addProvider(
   env: Env,
   sessionJwt: string,
   opts: AddProviderOptions,
 ): Promise<RunResult> {
-  const args = [...TENANT_PROVIDER_ADD_ARGS, FLAG_CREDENTIAL, opts.credential];
+  const args = [...TENANT_PROVIDER_ADD_ARGS, FLAG_SECRET, opts.secret];
   if (opts.model) args.push(FLAG_MODEL, opts.model);
   args.push(FLAG_JSON);
   const result = await runFleetctl(args, { env });
@@ -178,14 +178,14 @@ export async function deleteProvider(env: Env, sessionJwt: string): Promise<Prov
 
 /**
  * Assert a snapshot is a well-formed self-managed posture: mode flipped,
- * credential_ref echoes the supplied name, not flagged as the synthesised
+ * secret_ref echoes the supplied name, not flagged as the synthesised
  * default, and any `error` field is exactly the known credential-missing
  * marker (anything else is a resolver regression). Keeps the spec's `add`
  * test body inside the 50-line function bound.
  */
 export function assertSelfManagedSnapshot(
   after: ProviderSnapshot,
-  expectedCredentialRef: string,
+  expectedSecretRef: string,
 ): void {
   assert.equal(
     after.mode,
@@ -193,9 +193,9 @@ export function assertSelfManagedSnapshot(
     `expected mode=${TENANT_PROVIDER_MODE.selfManaged} after add; got ${JSON.stringify(after)}`,
   );
   assert.equal(
-    after.credential_ref,
-    expectedCredentialRef,
-    `credential_ref should echo the supplied name; got ${JSON.stringify(after)}`,
+    after.secret_ref,
+    expectedSecretRef,
+    `secret_ref should echo the supplied name; got ${JSON.stringify(after)}`,
   );
   assert.notEqual(
     after.synthesised_default,
@@ -224,7 +224,7 @@ export async function assertRejectedAddLeftBaseline(
 ): Promise<void> {
   assert.match(
     `${added.stderr}\n${added.stdout}`,
-    /credential|not found|HTTP_4\d\d|UZ-|invalid/i,
+    /credential|secret|not found|HTTP_4\d\d|UZ-|invalid/i,
     `add failed with an unexpected error shape: ${added.stderr || added.stdout}`,
   );
   const stillBaseline = await showProvider(env, sessionJwt);
@@ -246,9 +246,9 @@ export async function restoreProviderBaseline(
   baseline: ProviderSnapshot,
 ): Promise<void> {
   try {
-    if (baseline.mode === TENANT_PROVIDER_MODE.selfManaged && baseline.credential_ref) {
+    if (baseline.mode === TENANT_PROVIDER_MODE.selfManaged && baseline.secret_ref) {
       await addProvider(env, sessionJwt, {
-        credential: baseline.credential_ref,
+        secret: baseline.secret_ref,
         model: baseline.model,
       });
       return;

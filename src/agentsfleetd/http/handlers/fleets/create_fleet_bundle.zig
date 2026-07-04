@@ -116,27 +116,27 @@ pub fn ensureBundleCredentials(
     credentials: []const []const u8,
 ) bool {
     if (bundle_ref == null or credentials.len == 0) return true;
-    const missing = store.missingCredentialNames(conn, hx.alloc, workspace_id, credentials) catch {
+    const missing = store.missingSecretNames(conn, hx.alloc, workspace_id, credentials) catch {
         common.internalDbError(hx.res, hx.req_id);
         return false;
     };
     defer store.freeStringSlice(hx.alloc, missing);
     if (missing.len == 0) return true;
-    writeMissingCredentials(hx.res, hx.req_id, missing);
+    writeMissingSecrets(hx.res, hx.req_id, missing);
     return false;
 }
 
-fn writeMissingCredentials(res: *httpz.Response, request_id: []const u8, missing: []const []const u8) void {
-    const entry = ec.lookup(ec.ERR_FLEET_BUNDLE_CREDENTIALS_MISSING);
+fn writeMissingSecrets(res: *httpz.Response, request_id: []const u8, missing: []const []const u8) void {
+    const entry = ec.lookup(ec.ERR_FLEET_BUNDLE_SECRETS_MISSING);
     res.status = @intFromEnum(entry.http_status);
     res.header(common.HEADER_CONTENT_TYPE, common.CONTENT_TYPE_PROBLEM_JSON);
     res.json(.{
         .docs_uri = entry.docs_uri,
         .title = entry.title,
-        .detail = "Fleet Bundle requires workspace credentials that are not present",
-        .error_code = ec.ERR_FLEET_BUNDLE_CREDENTIALS_MISSING,
+        .detail = "Fleet Bundle requires workspace secrets that are not present",
+        .error_code = ec.ERR_FLEET_BUNDLE_SECRETS_MISSING,
         .request_id = request_id,
-        .missing_credentials = missing,
+        .missing_secrets = missing,
     }, .{}) catch {
         res.status = 500;
         res.body = "{}";

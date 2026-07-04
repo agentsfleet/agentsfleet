@@ -11,19 +11,19 @@ type Props = {
   /** Provider id of the active credential — scopes the model picker. */
   provider: string;
   /** The active credential's ref; the model is re-pointed against the same key. */
-  credentialRef: string;
+  secretRef: string;
   onClose: () => void;
 };
 
 /** Hero "Change model" — same key, a different model from this provider's catalogue. */
-export default function HeroChangeModelPanel({ provider, credentialRef, onClose }: Props) {
+export default function HeroChangeModelPanel({ provider, secretRef, onClose }: Props) {
   const [model, setModel] = useState("");
   const { pending, error, run } = useProviderAction();
 
   function save() {
     if (model.trim() === "") return;
     void run(async () => {
-      const res = await setProviderSelfManagedAction({ credential_ref: credentialRef, model: model.trim() });
+      const res = await setProviderSelfManagedAction({ secret_ref: secretRef, model: model.trim() });
       if (!res.ok) return res.error;
       captureModelChanged(res.data);
       return null;

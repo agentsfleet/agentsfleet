@@ -86,7 +86,7 @@ pub fn innerPutAdminPlatformKey(hx: hx_mod.Hx, req: *httpz.Request) void {
 
     // base_url ⇔ provider pairing (same SSRF/https rule as self-managed creds):
     // required for openai-compatible, forbidden for named providers.
-    const validated_base_url = tenant_provider.validateCredentialEndpoint(input.provider, input.base_url) catch {
+    const validated_base_url = tenant_provider.validateSecretEndpoint(input.provider, input.base_url) catch {
         hx.fail(error_codes.ERR_PROVIDER_BASE_URL_INVALID, "base_url invalid: openai-compatible needs an https SSRF-safe URL; a named provider must omit it");
         return;
     };

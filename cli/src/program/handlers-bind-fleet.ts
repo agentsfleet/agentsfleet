@@ -26,11 +26,11 @@ import { logsEffectFromFlags } from "../commands/fleet_logs.ts";
 import { eventsEffectFromFlags } from "../commands/fleet_events.ts";
 import { steerEffectFromArgs } from "../commands/fleet_steer.ts";
 import {
-  credentialAddEffectFromFlags,
-  credentialShowEffectFromName,
-  credentialListEffect,
-  credentialDeleteEffectFromName,
-} from "../commands/fleet_credential.ts";
+  secretAddEffectFromFlags,
+  secretShowEffectFromName,
+  secretListEffect,
+  secretDeleteEffectFromName,
+} from "../commands/fleet_secret.ts";
 
 export type WrapE = <E extends CliError, R extends MainLayerServices>(
   name: string,
@@ -123,11 +123,11 @@ export const buildFleetHandlers = (
         { forceTty: frame.parsed.options[OPT_TTY] === true },
       ),
   ),
-  credential: {
+  secret: {
     add: wrapEFn(
-      "fleet.credential.add",
+      "fleet.secret.add",
       (frame) =>
-        credentialAddEffectFromFlags({
+        secretAddEffectFromFlags({
           name: frame.parsed.positionals[0],
           data: optString(frame.parsed.options, "data"),
           provider: optString(frame.parsed.options, FIELD_PROVIDER),
@@ -144,13 +144,13 @@ export const buildFleetHandlers = (
         }),
     ),
     show: wrapEFn(
-      "fleet.credential.show",
-      (frame) => credentialShowEffectFromName(frame.parsed.positionals[0]),
+      "fleet.secret.show",
+      (frame) => secretShowEffectFromName(frame.parsed.positionals[0]),
     ),
-    list: wrapE("fleet.credential.list", credentialListEffect),
+    list: wrapE("fleet.secret.list", secretListEffect),
     delete: wrapEFn(
-      "fleet.credential.delete",
-      (frame) => credentialDeleteEffectFromName(frame.parsed.positionals[0]),
+      "fleet.secret.delete",
+      (frame) => secretDeleteEffectFromName(frame.parsed.positionals[0]),
     ),
   },
 });

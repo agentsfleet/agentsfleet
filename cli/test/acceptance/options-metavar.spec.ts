@@ -128,7 +128,7 @@ describe("--help bodies use angle-bracket metavar convention", () => {
     ["agentsfleet login --help",                ["login", "--help"],                ["--token <token>", "--token-name <label>"]],
     ["agentsfleet billing show --help",         ["billing", "show", "--help"],      ["--limit <n>", "--cursor <token>"]],
     ["agentsfleet fleet-key add --help",        ["fleet-key", "add", "--help"],     ["--workspace <id>", "--fleet <id>", "--name <name>"]],
-    ["agentsfleet tenant provider add --help",  ["tenant", "provider", "add", "--help"], ["--credential <name>", "--model <name>"]],
+    ["agentsfleet tenant provider add --help",  ["tenant", "provider", "add", "--help"], ["--secret <name>", "--model <name>"]],
   ];
 
   for (const [name, argv, metavars] of cases) {
@@ -255,18 +255,18 @@ describe("option values flow end-to-end into the wire request", () => {
     assert.equal(body.fleet_id, FIXTURE_UUIDV7_B, `expected fleet_id in POST body; body=${post.body}`);
   });
 
-  it("tenant provider add --credential keyname --model gpt-x → PUT body has credential + model", async () => {
+  it("tenant provider add --secret keyname --model gpt-x → PUT body has secret_ref + model", async () => {
     clear();
     const result = await runFleetctl(
-      ["tenant", "provider", "add", "--credential", "keyname", "--model", "gpt-x", "--json"],
+      ["tenant", "provider", "add", "--secret", "keyname", "--model", "gpt-x", "--json"],
       { env: apiEnv() },
     );
     assert.equal(result.code, 0, `stderr=${result.stderr}`);
     const captured = requireStub().captured;
     const put = captured.find((c) => c.method === "PUT" && c.url.includes("/tenants/me/provider"));
     assert.ok(put, `no provider PUT captured: ${JSON.stringify(captured)}`);
-    const body = JSON.parse(put.body) as { credential_ref?: string; model?: string };
-    assert.equal(body.credential_ref, "keyname", `expected credential_ref=keyname in body; body=${put.body}`);
+    const body = JSON.parse(put.body) as { secret_ref?: string; model?: string };
+    assert.equal(body.secret_ref, "keyname", `expected secret_ref=keyname in body; body=${put.body}`);
     assert.equal(body.model, "gpt-x", `expected model=gpt-x in body; body=${put.body}`);
   });
 });

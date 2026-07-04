@@ -2,7 +2,7 @@
  * Shared template-onboarding helpers for the acceptance seed + negative paths.
  *
  * The two-tier model has no CLI onboard verb, so fixtures onboard templates over
- * HTTP directly (mirrors `credential-ops.ts`), reading auth — API URL, bearer
+ * HTTP directly (mirrors `secret-ops.ts`), reading auth — API URL, bearer
  * token, workspace — from the same state dir the CLI run authenticates against
  * (`AGENTSFLEET_STATE_DIR`). Both the seed (`install --template`) and the
  * duplicate-name negative onboard the canonical `platform-ops` sample as a tenant

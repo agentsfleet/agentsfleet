@@ -135,18 +135,18 @@ pub const ERR_AGENTSFLEET_PAUSED_INGRESS = "UZ-AGT-012";
 // Fleet Bundle
 pub const ERR_FLEET_BUNDLE_INVALID = "UZ-BUNDLE-001";
 pub const ERR_FLEET_BUNDLE_NOT_FOUND = "UZ-BUNDLE-002";
-pub const ERR_FLEET_BUNDLE_CREDENTIALS_MISSING = "UZ-BUNDLE-003";
+pub const ERR_FLEET_BUNDLE_SECRETS_MISSING = "UZ-BUNDLE-003";
 pub const ERR_FLEET_BUNDLE_FETCH_FAILED = "UZ-BUNDLE-004";
 pub const ERR_FLEET_BUNDLE_STORAGE_UNAVAILABLE = "UZ-BUNDLE-005";
 pub const ERR_FLEET_BUNDLE_TOO_MANY_IMPORTS = "UZ-BUNDLE-006";
 // VAULT (structured-credential JSON shape)
 pub const ERR_VAULT_DATA_INVALID = "UZ-VAULT-001";
 pub const ERR_VAULT_DATA_TOO_LARGE = "UZ-VAULT-002";
-pub const ERR_CREDENTIAL_NOT_FOUND = "UZ-VAULT-003";
+pub const ERR_SECRET_NOT_FOUND = "UZ-VAULT-003";
 // PROVIDER (tenant-scoped LLM provider config — PUT /v1/tenants/me/provider)
-pub const ERR_PROVIDER_CREDENTIAL_REF_REQUIRED = "UZ-PROVIDER-001";
-pub const ERR_PROVIDER_CREDENTIAL_NOT_FOUND = "UZ-PROVIDER-002";
-pub const ERR_PROVIDER_CREDENTIAL_DATA_MALFORMED = "UZ-PROVIDER-003";
+pub const ERR_PROVIDER_SECRET_REF_REQUIRED = "UZ-PROVIDER-001";
+pub const ERR_PROVIDER_SECRET_NOT_FOUND = "UZ-PROVIDER-002";
+pub const ERR_PROVIDER_SECRET_DATA_MALFORMED = "UZ-PROVIDER-003";
 pub const ERR_PROVIDER_MODEL_NOT_IN_CATALOGUE = "UZ-PROVIDER-004";
 pub const ERR_PROVIDER_BASE_URL_INVALID = "UZ-PROVIDER-005";
 pub const ERR_MODEL_CAP_NOT_FOUND = "UZ-PROVIDER-006";
@@ -238,11 +238,11 @@ pub const MSG_AGENTSFLEET_SOURCE_REQUIRED = "source_markdown is required (max 64
 pub const MSG_AGENTSFLEET_TRIGGER_REQUIRED = "trigger_markdown is required (max 64KB)";
 pub const MSG_AGENTSFLEET_CONFIG_REQUIRED = "config_json is required";
 pub const MSG_WORKSPACE_ID_REQUIRED = "workspace_id is required (UUIDv7)";
-pub const MSG_CREDENTIAL_NAME_REQUIRED = "credential name is required (max 64 chars)";
-pub const MSG_CREDENTIAL_DATA_REQUIRED = "credential data must be a non-empty JSON object";
-pub const MSG_CREDENTIAL_DATA_TOO_LARGE = "credential data exceeds 4KB when stringified";
-pub const MSG_CREDENTIAL_KEY_REQUIRED = "api_key is required and must be a non-empty string";
-pub const MSG_CREDENTIAL_NOT_FOUND = "credential not found in this workspace";
+pub const MSG_SECRET_NAME_REQUIRED = "secret name is required (max 64 chars)";
+pub const MSG_SECRET_DATA_REQUIRED = "secret data must be a non-empty JSON object";
+pub const MSG_SECRET_DATA_TOO_LARGE = "secret data exceeds 4KB when stringified";
+pub const MSG_SECRET_KEY_REQUIRED = "api_key is required and must be a non-empty string";
+pub const MSG_SECRET_NOT_FOUND = "secret not found in this workspace";
 // Serving-plane backpressure messages
 pub const MSG_API_BACKPRESSURE = "Server is at its in-flight request ceiling";
 pub const MSG_SSE_STREAM_CAP = "Concurrent event-stream limit reached on this instance";

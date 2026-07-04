@@ -4,7 +4,7 @@ import { withToken, type ActionResult } from "@/lib/actions/with-token";
 import { requireScope } from "@/lib/actions/require-scope";
 import { SCOPE } from "@/lib/auth/scopes";
 import { withWorkspaceScope } from "@/lib/workspace";
-import { createCredential as apiCreateCredential } from "@/lib/api/credentials";
+import { createSecret as apiCreateCredential } from "@/lib/api/secrets";
 import {
   listAdminModels,
   createAdminModel,

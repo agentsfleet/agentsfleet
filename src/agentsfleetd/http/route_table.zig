@@ -76,8 +76,8 @@ pub fn classFor(route: router.Route) RouteClass {
         .admin_model_by_id,
         .workspace_fleets,
         .patch_workspace_fleet,
-        .workspace_credentials,
-        .workspace_credential,
+        .workspace_secrets,
+        .workspace_secret,
         .workspace_fleet_messages,
         .workspace_fleet_events,
         .workspace_events,
@@ -193,8 +193,8 @@ pub fn specFor(route: router.Route, registry: *auth_mw.MiddlewareRegistry) Route
         // Fleet create/read/update/delete + activity + credentials
         .workspace_fleets => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeWorkspaceFleets },
         .patch_workspace_fleet => .{ .middlewares = registry.bearer(), .invoke = invoke.invokePatchWorkspaceFleet },
-        .workspace_credentials => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeWorkspaceCredentials },
-        .workspace_credential => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeWorkspaceCredentialItem },
+        .workspace_secrets => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeWorkspaceSecrets },
+        .workspace_secret => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeWorkspaceSecretItem },
         // Chat ingress (workspace-scoped) — POST /messages
         .workspace_fleet_messages => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeFleetMessagesPost },
         // Per-Fleet event history + Server-Sent Events live tail (Bearer this slice;
@@ -285,7 +285,7 @@ test "specFor resolves a RouteSpec for a representative sample of every route fa
     _ = specFor(.get_tenant_billing_charges, &reg);
     _ = specFor(.{ .workspace_fleets = "ws1" }, &reg);
     _ = specFor(.{ .patch_workspace_fleet = .{ .workspace_id = "ws1", .fleet_id = "z1" } }, &reg);
-    _ = specFor(.{ .workspace_credentials = "ws1" }, &reg);
+    _ = specFor(.{ .workspace_secrets = "ws1" }, &reg);
     _ = specFor(.{ .workspace_fleet_messages = .{ .workspace_id = "ws1", .fleet_id = "z1" } }, &reg);
     _ = specFor(.admin_platform_keys, &reg);
     _ = specFor(.{ .delete_admin_platform_key = "anthropic" }, &reg);

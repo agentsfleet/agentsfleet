@@ -181,9 +181,9 @@ export const PROVIDER_MODE = {
 // option, and the tests) imports it (RULE UFS).
 export const OPENAI_COMPATIBLE_PROVIDER = "openai-compatible" as const;
 
-// Credential JSON field names (verbatim with the server-side resolver's
+// Secret JSON field names (verbatim with the server-side resolver's
 // `S_API_KEY` / `S_BASE_URL` extraction).
-export const CREDENTIAL_FIELD = {
+export const SECRET_FIELD = {
   provider: "provider",
   apiKey: "api_key",
   baseUrl: "base_url",
@@ -210,7 +210,7 @@ export type TenantProvider = {
   provider: string;
   model: string;
   context_cap_tokens: number;
-  credential_ref: string | null;
+  secret_ref: string | null;
 };
 
 export type TenantBillingChargesResponse = {

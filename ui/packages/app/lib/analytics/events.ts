@@ -16,7 +16,7 @@ export const EVENTS = {
   key_rotated: "key_rotated",
   provider_reset: "provider_reset",
   platform_default_set: "platform_default_set",
-  credential_added: "credential_added",
+  secret_added: "secret_added",
   fleet_template_onboarded: "fleet_template_onboarded",
   fleet_viewed: "fleet_viewed",
   integration_requested: "integration_requested",
@@ -35,7 +35,7 @@ export type EventProps = {
   [EVENTS.key_rotated]: { provider: string };
   [EVENTS.provider_reset]: { from_provider: string };
   [EVENTS.platform_default_set]: { provider: string; model: string; is_custom: boolean };
-  [EVENTS.credential_added]: { credential_name: string };
+  [EVENTS.secret_added]: { secret_name: string };
   [EVENTS.fleet_template_onboarded]: {
     workspace_id: string;
     visibility: string;
@@ -60,7 +60,7 @@ export const EVENT_PROP_KEYS = {
   [EVENTS.key_rotated]: ["provider"],
   [EVENTS.provider_reset]: ["from_provider"],
   [EVENTS.platform_default_set]: ["provider", "model", "is_custom"],
-  [EVENTS.credential_added]: ["credential_name"],
+  [EVENTS.secret_added]: ["secret_name"],
   [EVENTS.fleet_template_onboarded]: ["workspace_id", "visibility", "source_kind", "outcome"],
   [EVENTS.fleet_viewed]: ["fleet_id", "status"],
   [EVENTS.integration_requested]: ["integration_id", "integration_name"],

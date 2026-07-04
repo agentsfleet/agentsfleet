@@ -3,16 +3,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 // Hero "Replace key" panel: PATCH-rotates only the secret of the active
-// credential — provider + model are preserved. Save → rotateCredentialAction +
+// credential — provider + model are preserved. Save → rotateSecretAction +
 // key_rotated (provider id only, no secret); onClose runs on success. The footer
 // reassures the model is unchanged.
 
 const routerRefresh = vi.fn();
-const rotateCredentialAction = vi.hoisted(() => vi.fn());
+const rotateSecretAction = vi.hoisted(() => vi.fn());
 const captureKeyRotated = vi.hoisted(() => vi.fn());
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: routerRefresh, push: vi.fn() }) }));
-vi.mock("@/app/(dashboard)/settings/models/actions", () => ({ rotateCredentialAction }));
+vi.mock("@/app/(dashboard)/settings/models/actions", () => ({ rotateSecretAction }));
 vi.mock("@/app/(dashboard)/settings/models/lib/track", () => ({ captureKeyRotated }));
 vi.mock("@agentsfleet/design-system", async () => (await import("./helpers/models-component-mocks")).designSystemStub());
 
@@ -20,7 +20,7 @@ import HeroReplaceKeyPanel from "@/app/(dashboard)/settings/models/components/He
 
 beforeEach(() => {
   vi.clearAllMocks();
-  rotateCredentialAction.mockResolvedValue({ ok: true, data: { name: "anthropic-prod" } });
+  rotateSecretAction.mockResolvedValue({ ok: true, data: { name: "anthropic-prod" } });
 });
 afterEach(() => cleanup());
 
@@ -28,7 +28,7 @@ function renderPanel(onClose = vi.fn()) {
   render(
     React.createElement(HeroReplaceKeyPanel, {
       workspaceId: "ws_1",
-      credentialRef: "anthropic-prod",
+      secretRef: "anthropic-prod",
       provider: "anthropic",
       currentModel: "claude-sonnet-4-6",
       onClose,
@@ -44,7 +44,7 @@ describe("HeroReplaceKeyPanel", () => {
     fireEvent.change(screen.getByLabelText("New API key"), { target: { value: "sk-ant-new" } });
     fireEvent.click(screen.getByRole("button", { name: "Save key" }));
     await waitFor(() =>
-      expect(rotateCredentialAction).toHaveBeenCalledWith("ws_1", "anthropic-prod", "sk-ant-new"),
+      expect(rotateSecretAction).toHaveBeenCalledWith("ws_1", "anthropic-prod", "sk-ant-new"),
     );
     expect(captureKeyRotated).toHaveBeenCalledWith("anthropic");
     await waitFor(() => expect(onClose).toHaveBeenCalled());
@@ -52,7 +52,7 @@ describe("HeroReplaceKeyPanel", () => {
   });
 
   it("surfaces a rotation error and keeps the panel open", async () => {
-    rotateCredentialAction.mockResolvedValue({ ok: false, error: "key too short" });
+    rotateSecretAction.mockResolvedValue({ ok: false, error: "key too short" });
     const onClose = renderPanel();
     fireEvent.change(screen.getByLabelText("New API key"), { target: { value: "sk-bad" } });
     fireEvent.click(screen.getByRole("button", { name: "Save key" }));
@@ -64,7 +64,7 @@ describe("HeroReplaceKeyPanel", () => {
   it("does not rotate an empty key and cancels via the Cancel button", () => {
     const onClose = renderPanel();
     fireEvent.click(screen.getByRole("button", { name: "Save key" }));
-    expect(rotateCredentialAction).not.toHaveBeenCalled();
+    expect(rotateSecretAction).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     expect(onClose).toHaveBeenCalled();
   });

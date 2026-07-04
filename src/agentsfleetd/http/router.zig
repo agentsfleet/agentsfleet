@@ -120,7 +120,7 @@ fn matchV1(p: matchers.Path, method: httpz.Method) ?Route {
     // ── Slack events ingress (M106 §2) — POST-only (invoke fn 405s others) ─
     if (matchers.matchSlackEvents(p)) return .{ .slack_events = {} };
     // ── Workspace + leaf ──────────────────────────────────────────────────
-    if (matchers.matchWorkspaceCredential(p)) |r| return .{ .workspace_credential = r };
+    if (matchers.matchWorkspaceSecret(p)) |r| return .{ .workspace_secret = r };
     if (matchers.matchWorkspaceFleetKeyDelete(p)) |r| return .{ .delete_fleet_key = r };
     if (matchers.matchWorkspaceFleet(p)) |r| return .{ .patch_workspace_fleet = r };
 
@@ -131,7 +131,7 @@ fn matchV1(p: matchers.Path, method: httpz.Method) ?Route {
     // ── Workspace + suffix collections ────────────────────────────────────
     if (matchers.matchWorkspaceSuffix(p, S_FLEETS)) |ws_id| return .{ .workspace_fleets = ws_id };
     if (matchers.matchWorkspaceSuffix(p, "fleet-templates")) |ws_id| return .{ .workspace_fleet_templates = ws_id };
-    if (matchers.matchWorkspaceSuffix(p, "credentials")) |ws_id| return .{ .workspace_credentials = ws_id };
+    if (matchers.matchWorkspaceSuffix(p, "secrets")) |ws_id| return .{ .workspace_secrets = ws_id };
     if (matchers.matchWorkspaceSuffix(p, "fleet-keys")) |ws_id| return .{ .fleet_keys = ws_id };
     if (matchers.matchWorkspaceSuffix(p, S_EVENTS)) |ws_id| return .{ .workspace_events = ws_id };
     if (matchers.matchWorkspaceSuffix(p, "approvals")) |ws_id| return .{ .workspace_approvals = ws_id };

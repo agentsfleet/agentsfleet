@@ -14,11 +14,11 @@ import {
   SelectValue,
   Spinner,
 } from "@agentsfleet/design-system";
-import { createCredentialAction } from "@/app/(dashboard)/credentials/actions";
+import { createSecretAction } from "@/app/(dashboard)/secrets/actions";
 import { setProviderSelfManagedAction } from "../actions";
 import { detectProviderFromKey } from "../lib/detect-provider";
 import { presentErrorString } from "@/lib/errors";
-import { CREDENTIAL_FIELD } from "@/lib/types";
+import { SECRET_FIELD } from "@/lib/types";
 import { EVENTS } from "@/lib/analytics/events";
 import { captureProductEvent } from "@/lib/analytics/posthog";
 import { captureModelActivated } from "../lib/track";
@@ -86,12 +86,12 @@ export default function ProviderKeyForm({
     setError(null);
     setPending(true);
     try {
-      const created = await createCredentialAction(workspaceId, {
+      const created = await createSecretAction(workspaceId, {
         name,
         data: {
-          [CREDENTIAL_FIELD.provider]: name,
-          [CREDENTIAL_FIELD.apiKey]: apiKey.trim(),
-          [CREDENTIAL_FIELD.model]: model.trim(),
+          [SECRET_FIELD.provider]: name,
+          [SECRET_FIELD.apiKey]: apiKey.trim(),
+          [SECRET_FIELD.model]: model.trim(),
         },
       });
       if (!created.ok) {
@@ -100,10 +100,10 @@ export default function ProviderKeyForm({
         );
         return;
       }
-      captureProductEvent(EVENTS.credential_added, { credential_name: name });
+      captureProductEvent(EVENTS.secret_added, { secret_name: name });
 
       if (activate) {
-        const set = await setProviderSelfManagedAction({ credential_ref: name, model: model.trim() });
+        const set = await setProviderSelfManagedAction({ secret_ref: name, model: model.trim() });
         if (!set.ok) {
           setError(set.error);
           return;

@@ -4,10 +4,10 @@
  * Walks the tenant LLM-provider posture through a full mutate-and-restore
  * cycle against a real API:
  *   - show baseline          (GET  /v1/tenants/me/provider)
- *   - add self-managed       (PUT  mode=self_managed, --credential, --model)
+ *   - add self-managed       (PUT  mode=self_managed, --secret, --model)
  *   - show reflects new mode  (mode flips to self_managed)
  *   - delete                 (DELETE → platform default)
- *   - show returns to baseline (mode/credential back to where we started)
+ *   - show returns to baseline (mode/secret back to where we started)
  *
  * Tenant provider posture is TENANT-scoped shared state — there is no
  * per-run prefix to isolate it the way agents get ACCEPTANCE_RUN_PREFIX.
@@ -45,11 +45,11 @@ import { attachJwt } from "./fixtures/clerk-admin.ts";
 import { hydrateWorkspacesForToken } from "./fixtures/workspace-hydration.ts";
 import {
   TENANT_PROVIDER_MODE,
-  addCustomEndpointCredential,
+  addCustomEndpointSecret,
   addProvider,
   assertRejectedAddLeftBaseline,
   assertSelfManagedSnapshot,
-  deleteCredentialByName,
+  deleteSecretByName,
   deleteProvider,
   restoreProviderBaseline,
   showProvider,
@@ -62,20 +62,20 @@ const isLive = target.startsWith("https://");
 const STATE_DIR_PREFIX = "agentsfleet-tenant-provider-";
 const NO_COLOR_ON = "1" as const;
 
-// A vault credential name that no fixture seeds — proves the posture
+// A vault secret name that no fixture seeds — proves the posture
 // transition is independent of key resolution. Unique per run so a parallel
 // suite can't observe a half-written record. Kept far from a real op://
 // reference so a leak is obvious in any diff.
-const ACCEPTANCE_CREDENTIAL_REF = `acc-prov-${crypto.randomBytes(4).toString("hex")}`;
+const ACCEPTANCE_SECRET_REF = `acc-prov-${crypto.randomBytes(4).toString("hex")}`;
 
 // Model override exercises the second PUT branch (`ProviderAddBody.model`).
 const ACCEPTANCE_MODEL_OVERRIDE = "claude-sonnet-acceptance-probe" as const;
 
-// Custom-endpoint credential: a real openai-compatible credential the
+// Custom-endpoint secret: a real openai-compatible secret the
 // provider-set scenario targets. Prefix-scoped so the afterAll sweep (and a
 // crashed run) can't strand it; the host is a clearly-bogus example domain so
-// no real endpoint is ever dialed (the credential is never run, only selected).
-const CUSTOM_CREDENTIAL_NAME = `${ACCEPTANCE_RUN_PREFIX}-custom-endpoint`;
+// no real endpoint is ever dialed (the secret is never run, only selected).
+const CUSTOM_SECRET_NAME = `${ACCEPTANCE_RUN_PREFIX}-custom-endpoint`;
 const CUSTOM_BASE_URL = "https://vllm.acceptance.example/v1" as const;
 const CUSTOM_API_KEY = "sk-acceptance-custom-do-not-log" as const;
 
@@ -137,12 +137,12 @@ if (!isLive) {
 
     it("add self-managed → show reflects mode=self_managed", async () => {
       const added = await addProvider(env, sessionJwt, {
-        credential: ACCEPTANCE_CREDENTIAL_REF,
+        secret: ACCEPTANCE_SECRET_REF,
         model: ACCEPTANCE_MODEL_OVERRIDE,
       });
       // The PUT either succeeds (posture written, possibly with a
       // credential_missing marker) or is rejected outright for an unknown
-      // credential. A rejection means the posture was NOT changed — record
+      // secret. A rejection means the posture was NOT changed — record
       // `mutated` only on success so teardown matches reality.
       if (added.code !== 0) {
         await assertRejectedAddLeftBaseline(env, sessionJwt, added, baseline?.mode);
@@ -151,7 +151,7 @@ if (!isLive) {
 
       mutated = true;
       const after = await showProvider(env, sessionJwt);
-      assertSelfManagedSnapshot(after, ACCEPTANCE_CREDENTIAL_REF);
+      assertSelfManagedSnapshot(after, ACCEPTANCE_SECRET_REF);
     }, 30_000);
 
     it("delete resets to the platform default and show returns to baseline", async () => {
@@ -178,9 +178,9 @@ if (!isLive) {
         `post-delete mode must match the captured baseline; baseline=${JSON.stringify(baseline)} got=${JSON.stringify(restored)}`,
       );
       assert.equal(
-        restored.credential_ref,
-        baseline?.credential_ref ?? null,
-        `post-delete credential_ref must match baseline; got ${JSON.stringify(restored)}`,
+        restored.secret_ref,
+        baseline?.secret_ref ?? null,
+        `post-delete secret_ref must match baseline; got ${JSON.stringify(restored)}`,
       );
     }, 30_000);
 
@@ -205,12 +205,12 @@ if (!isLive) {
   });
 
   // test_cli_provider_set_custom — set the tenant provider to a real
-  // openai-compatible credential and assert `--json` reflects the custom setup.
-  // The PUT body is unchanged (mode=self_managed, credential_ref) — the base_url
-  // rides in the referenced credential, set at credential-create time. Tenant
+  // openai-compatible secret and assert `--json` reflects the custom setup.
+  // The PUT body is unchanged (mode=self_managed, secret_ref) — the base_url
+  // rides in the referenced secret, set at secret-create time. Tenant
   // posture is shared, so we snapshot a baseline, mutate, then restore (and
-  // delete the credential) even on failure.
-  describe("tenant-provider-mutation — sets a custom openai-compatible credential", () => {
+  // delete the secret) even on failure.
+  describe("tenant-provider-mutation — sets a custom openai-compatible secret", () => {
     let sessionJwt = "";
     let stateDir = "";
     let env: Record<string, string> = {};
@@ -237,25 +237,25 @@ if (!isLive) {
       if (env && sessionJwt && baseline) {
         await restoreProviderBaseline(env, sessionJwt, baseline);
       }
-      if (env) await deleteCredentialByName(env, CUSTOM_CREDENTIAL_NAME);
+      if (env) await deleteSecretByName(env, CUSTOM_SECRET_NAME);
       if (stateDir) await fs.rm(stateDir, { recursive: true, force: true });
     });
 
-    it("credential add (openai-compatible + base_url) → provider add → show reflects the custom credential", async () => {
-      // 1. Store the custom-endpoint credential (typed flags; api_key never logged).
-      const added = await addCustomEndpointCredential(env, sessionJwt, {
-        name: CUSTOM_CREDENTIAL_NAME,
+    it("secret add (openai-compatible + base_url) → provider add → show reflects the custom secret", async () => {
+      // 1. Store the custom-endpoint secret (typed flags; api_key never logged).
+      const added = await addCustomEndpointSecret(env, sessionJwt, {
+        name: CUSTOM_SECRET_NAME,
         baseUrl: CUSTOM_BASE_URL,
         apiKey: CUSTOM_API_KEY,
       });
-      assert.equal(added.code, 0, `custom credential add exited ${added.code}: ${added.stderr}`);
+      assert.equal(added.code, 0, `custom secret add exited ${added.code}: ${added.stderr}`);
 
       // 2. Point the tenant provider at it. PUT body is unchanged — the URL
-      //    lives in the referenced credential.
-      const set = await addProvider(env, sessionJwt, { credential: CUSTOM_CREDENTIAL_NAME });
-      // The credential exists, so the PUT should be accepted (mode flips). If
+      //    lives in the referenced secret.
+      const set = await addProvider(env, sessionJwt, { secret: CUSTOM_SECRET_NAME });
+      // The secret exists, so the PUT should be accepted (mode flips). If
       // the upstream rejects an unresolved key it leaves the baseline intact —
-      // either is recorded, but the custom credential we just stored should
+      // either is recorded, but the custom secret we just stored should
       // resolve.
       if (set.code !== 0) {
         await assertRejectedAddLeftBaseline(env, sessionJwt, set, baseline?.mode);
@@ -264,7 +264,7 @@ if (!isLive) {
 
       // 3. show --json reflects the custom setup.
       const after = await showProvider(env, sessionJwt);
-      assertSelfManagedSnapshot(after, CUSTOM_CREDENTIAL_NAME);
+      assertSelfManagedSnapshot(after, CUSTOM_SECRET_NAME);
     }, 30_000);
   });
 }
