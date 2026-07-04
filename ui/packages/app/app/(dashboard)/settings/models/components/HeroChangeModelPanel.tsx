@@ -8,9 +8,9 @@ import { useProviderAction } from "../lib/use-provider-action";
 import ProviderModelSelect from "./ProviderModelSelect";
 
 type Props = {
-  /** Provider id of the active credential — scopes the model picker. */
+  /** Provider id of the active secret — scopes the model picker. */
   provider: string;
-  /** The active credential's ref; the model is re-pointed against the same key. */
+  /** The active secret's ref; the model is re-pointed against the same key. */
   secretRef: string;
   onClose: () => void;
 };

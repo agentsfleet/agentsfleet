@@ -45,7 +45,7 @@ export async function StatusTiles() {
   const stopped = fleets.filter((z) => z.status === AGENTSFLEET_STATUS.STOPPED).length;
 
   if (fleets.length === 0) {
-    const templates = await listWorkspaceFleetLibraryCached(workspaceId, token)
+    const entries = await listWorkspaceFleetLibraryCached(workspaceId, token)
       .then((response) => response.items)
       .catch(() => []);
     return (
@@ -53,8 +53,8 @@ export async function StatusTiles() {
         <ExhaustionBanner billing={billing} />
         <FirstInstall
           balanceNanos={billing?.balance_nanos ?? null}
-          templates={templates}
-          canAddTemplate={hasLibraryWriteScope(sessionClaims)}
+          entries={entries}
+          canAddLibraryEntry={hasLibraryWriteScope(sessionClaims)}
         />
       </>
     );
@@ -85,12 +85,12 @@ export async function StatusTiles() {
 // starter credit is announced.
 function FirstInstall({
   balanceNanos,
-  templates,
-  canAddTemplate,
+  entries,
+  canAddLibraryEntry,
 }: {
   balanceNanos: number | null;
-  templates: FleetLibraryGalleryEntry[];
-  canAddTemplate: boolean;
+  entries: FleetLibraryGalleryEntry[];
+  canAddLibraryEntry: boolean;
 }) {
   const credits = balanceNanos != null ? Math.floor(balanceNanos / NANOS_PER_USD) : null;
   return (
@@ -101,10 +101,10 @@ function FirstInstall({
         </div>
       ) : null}
       <InstallEntry
-        templates={templates}
-        maxTemplates={3}
+        entries={entries}
+        maxEntries={3}
         compact
-        canAddTemplate={canAddTemplate}
+        canAddLibraryEntry={canAddLibraryEntry}
       />
     </Section>
   );

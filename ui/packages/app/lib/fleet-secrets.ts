@@ -1,13 +1,13 @@
-// Secret routing for the template install preview.
+// Secret routing for the library-entry install preview.
 //
-// A template's required credentials (`FleetLibraryGalleryEntry.requirements
+// A library entry's required credentials (`FleetLibraryGalleryEntry.requirements
 // .credentials`) are TRIGGER.md vault references — workspace service credentials
 // by construction. They are resolved by exact name against the workspace vault,
 // so a missing one always routes to the workspace credentials flow. The tenant
 // model provider is a separate surface
-// (`/settings/models`) and never appears in template requirements, so the preview
-// links service credentials here and only here — it must not imply the two are
-// the same thing.
+// (`/settings/models`) and never appears in library-entry requirements, so the
+// preview links service credentials here and only here — it must not imply the
+// two are the same thing.
 //
 // `/secrets` is the semantic write-only secret-vault route — a real standalone
 // page (Secrets & ENVs), not a redirect. The deep-link points at this route

@@ -6,7 +6,7 @@ import type { TenantProvider } from "@/lib/types";
 // shape. captureProductEvent is fire-and-forget + error-safe, so callers never
 // await or guard these.
 
-/** A credential was activated as the tenant model — new key, custom endpoint, or switch-list switch. */
+/** A secret was activated as the tenant model — new key, custom endpoint, or switch-list switch. */
 export function captureModelActivated(p: Pick<TenantProvider, "provider" | "mode" | "model">): void {
   captureProductEvent(EVENTS.model_added, { provider: p.provider, mode: p.mode, model: p.model });
 }
@@ -16,7 +16,7 @@ export function captureModelChanged(p: Pick<TenantProvider, "provider" | "model"
   captureProductEvent(EVENTS.model_changed, { provider: p.provider, model: p.model });
 }
 
-/** The active credential's secret was rotated (hero "Replace key"); no secret in the payload. */
+/** The active secret's value was rotated (hero "Replace key"); no secret in the payload. */
 export function captureKeyRotated(provider: string): void {
   captureProductEvent(EVENTS.key_rotated, { provider });
 }

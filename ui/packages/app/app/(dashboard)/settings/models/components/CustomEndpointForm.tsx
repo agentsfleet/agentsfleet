@@ -29,7 +29,7 @@ const ACTIVATE_ACTION = "activate this model";
  * Consolidated "add an OpenAI-compatible endpoint" form (supersedes the
  * credentials CustomEndpointForm + the own-key custom path). Stores
  * `{ provider: "openai-compatible", base_url, model, api_key? }` — the resolver
- * requires `model` to activate the credential, so it is collected here — then,
+ * requires `model` to activate the secret, so it is collected here — then,
  * when `activate`, points the tenant provider at it. A non-https URL is flagged
  * inline before any request; the server enforces the full SSRF guard.
  */
@@ -58,27 +58,27 @@ export default function CustomEndpointForm({
     }
     setPending(true);
     try {
-      const credName = name.trim();
-      const credModel = model.trim();
+      const secretName = name.trim();
+      const secretModel = model.trim();
       const data: SecretData = {
         [SECRET_FIELD.provider]: OPENAI_COMPATIBLE_PROVIDER,
         [SECRET_FIELD.baseUrl]: baseUrl.trim(),
-        [SECRET_FIELD.model]: credModel,
+        [SECRET_FIELD.model]: secretModel,
       };
       const key = apiKey.trim();
       if (key !== "") data[SECRET_FIELD.apiKey] = key;
 
-      const created = await createSecretAction(workspaceId, { name: credName, data });
+      const created = await createSecretAction(workspaceId, { name: secretName, data });
       if (!created.ok) {
         setError(
           presentErrorString({ errorCode: created.errorCode, message: created.error, action: STORE_ACTION }),
         );
         return;
       }
-      captureProductEvent(EVENTS.secret_added, { secret_name: credName });
+      captureProductEvent(EVENTS.secret_added, { secret_name: secretName });
 
       if (activate) {
-        const set = await setProviderSelfManagedAction({ secret_ref: credName, model: credModel });
+        const set = await setProviderSelfManagedAction({ secret_ref: secretName, model: secretModel });
         if (!set.ok) {
           setError(presentErrorString({ errorCode: set.errorCode, message: set.error, action: ACTIVATE_ACTION }));
           return;

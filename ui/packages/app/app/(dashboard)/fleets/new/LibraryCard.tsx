@@ -5,7 +5,7 @@ import type { FleetLibraryGalleryEntry } from "@/lib/types";
 const NEEDS_PREFIX = "needs:";
 
 type Props = {
-  template: FleetLibraryGalleryEntry;
+  entry: FleetLibraryGalleryEntry;
   compact?: boolean;
   // The call-to-action slot — a link on the dashboard gallery
   // (/fleets/new?library=<id>) or an in-page "Use entry" button on the
@@ -14,18 +14,18 @@ type Props = {
   action: ReactNode;
 };
 
-// Presentational template card: name, description, the credentials it needs,
-// and a caller-supplied action.
-export function TemplateCard({ template, compact = false, action }: Props) {
+// Presentational library-entry card: name, description, the credentials it
+// needs, and a caller-supplied action.
+export function LibraryCard({ entry, compact = false, action }: Props) {
   return (
     <Card className={compact ? "flex flex-col gap-2 p-md" : "flex flex-col gap-3 p-lg"}>
       <div className={compact ? "space-y-0.5" : "space-y-1"}>
-        <h3 className="font-medium text-foreground">{template.name}</h3>
-        <p className="text-body-sm leading-body-sm text-muted-foreground">{template.description}</p>
+        <h3 className="font-medium text-foreground">{entry.name}</h3>
+        <p className="text-body-sm leading-body-sm text-muted-foreground">{entry.description}</p>
       </div>
-      {template.requirements.credentials.length > 0 ? (
+      {entry.requirements.credentials.length > 0 ? (
         <div className="flex flex-wrap gap-1.5">
-          {template.requirements.credentials.map((name) => (
+          {entry.requirements.credentials.map((name) => (
             <Badge key={name} variant="amber">
               {NEEDS_PREFIX} {name}
             </Badge>

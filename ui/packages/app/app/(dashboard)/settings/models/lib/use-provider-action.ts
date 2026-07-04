@@ -8,7 +8,7 @@ import { presentErrorString } from "@/lib/errors";
 export type ProviderActionError = { message: string; errorCode?: string };
 
 // Shared action-runner for the Models client surfaces (hero, switch list,
-// panels). Every model/credential mutation follows the same shape: clear error,
+// panels). Every model/secret mutation follows the same shape: clear error,
 // flip pending, await a server action that returns a ProviderActionError or null,
 // surface the friendly copy or run an optional success step + router.refresh().
 // Centralised here so every call site's error routes through presentErrorString

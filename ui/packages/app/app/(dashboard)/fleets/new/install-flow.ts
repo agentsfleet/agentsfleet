@@ -8,27 +8,28 @@ import { missingSecrets } from "@/lib/fleet-secrets";
 import { presentErrorString } from "@/lib/errors";
 import { INSTALL_STEP, type InstallStepId } from "@/lib/streaming/install-steps";
 
-// The chosen template to install — a single gallery entry. The flow keys the
-// create body off its `visibility` (platform vs tenant). github-import and paste
-// sources were removed in M103; install is template-only.
+// The chosen library entry to install — a single gallery entry. The flow keys
+// the create body off its `visibility` (platform vs tenant). github-import and
+// paste sources were removed in M103; install is library-entry-only.
 export type InstallSource = FleetLibraryGalleryEntry;
 
-// What a template needs before it can run, normalised for the install gate.
+// What a library entry needs before it can run, normalised for the install gate.
 export type SourceRequirements = {
   name: string;
   credentials: string[];
   // Why each credential is needed, keyed by name (e.g. github → "review your
-  // pull requests"). Platform templates carry curated copy; tenant templates
+  // pull requests"). Platform entries carry curated copy; tenant entries
   // report an empty map and the gate falls back to its generic connect copy.
   credentialReasons: Record<string, string>;
   tools: string[];
   networkHosts: string[];
-  // False when the template shipped no TRIGGER.md — create still succeeds, but
-  // the skill-only state tells the operator a manual / API wake was generated.
+  // False when the library entry shipped no TRIGGER.md — create still
+  // succeeds, but the skill-only state tells the operator a manual / API wake
+  // was generated.
   triggerPresent: boolean;
 };
 
-// Normalise a template's declared requirements for the install gate.
+// Normalise a library entry's declared requirements for the install gate.
 export function requirementsOf(source: InstallSource): SourceRequirements {
   return {
     name: source.name,

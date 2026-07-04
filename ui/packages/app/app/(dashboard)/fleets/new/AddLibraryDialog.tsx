@@ -30,8 +30,8 @@ import { captureProductEvent } from "@/lib/analytics/posthog";
 import { EVENTS } from "@/lib/analytics/events";
 import { presentError, type ErrorPresentation } from "@/lib/errors";
 import { SOURCE_KIND_GITHUB } from "@/lib/types";
-import { onboardTemplateAction } from "../actions";
-import { CREATE_TEMPLATE_DOC_URL } from "./template-docs";
+import { onboardLibraryEntryAction } from "../actions";
+import { CREATE_LIBRARY_DOC_URL } from "./library-docs";
 
 const SOURCE_REF_PATTERN = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
 const ONBOARD_ACTION = "add the library entry";
@@ -52,7 +52,7 @@ type Props = {
   defaultOpen?: boolean;
 };
 
-export default function AddTemplateDialog({
+export default function AddLibraryDialog({
   workspaceId,
   triggerLabel = "Add library entry",
   defaultOpen = false,
@@ -83,7 +83,7 @@ export default function AddTemplateDialog({
     setPending(true);
     const sourceRef = values.source_ref;
     try {
-      const result = await onboardTemplateAction(workspaceId, {
+      const result = await onboardLibraryEntryAction(workspaceId, {
         source_kind: SOURCE_KIND_GITHUB,
         source_ref: sourceRef,
       });
@@ -137,7 +137,7 @@ export default function AddTemplateDialog({
                   </FormControl>
                   <FormDescription>
                     <a
-                      href={CREATE_TEMPLATE_DOC_URL}
+                      href={CREATE_LIBRARY_DOC_URL}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="text-pulse underline-offset-2 hover:underline focus-visible:underline"

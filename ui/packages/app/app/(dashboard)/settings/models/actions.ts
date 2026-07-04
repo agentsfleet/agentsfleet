@@ -18,7 +18,7 @@ export async function resetProviderAction(): Promise<ActionResult<TenantProvider
   return withToken((t) => apiResetTenantProvider(t));
 }
 
-// Rotate only the secret of a stored credential (PATCH …/credentials/{name}).
+// Rotate only the api_key of a stored secret (PATCH …/secrets/{name}).
 // The server preserves provider/model/base_url, so this is the Replace-key
 // action for the active-model hero — safe for every kind.
 export async function rotateSecretAction(

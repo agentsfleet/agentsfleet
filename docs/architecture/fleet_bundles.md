@@ -10,17 +10,17 @@ A Fleet's definition lives in two distinct objects with different mutability and
 
 | | **Fleet library entry** | **Fleet** |
 |---|---|---|
-| What | the onboarded snapshot of `SKILL.md` + `TRIGGER.md` + support files | the live runtime instance installed from a template |
+| What | the onboarded snapshot of `SKILL.md` + `TRIGGER.md` + support files | the live runtime instance installed from a library entry |
 | Table | `core.fleet_library` (platform) · `core.tenant_fleet_library` (tenant) | `core.fleets` |
 | Mutability | **immutable** content — content-addressed; a re-onboard mints a new snapshot | **live** — `SKILL.md`/`TRIGGER.md` editable via `PATCH` |
 | Object store | the canonical tar in R2 | — (records the content identity as `bundle_content_hash`) |
 | Runtime role | source of **support files** (untarred into the sandbox) | source of **`SKILL.md`/`TRIGGER.md`** (ride every lease as `instructions`/`policy`) |
 
-A fleet's `source_markdown`/`trigger_markdown` start as copies of the template's, but diverge the moment the user PATCHes them. The runner always executes the **fleet's** copy, not the template's onboard-time copy.
+A fleet's `source_markdown`/`trigger_markdown` start as copies of the library entry's, but diverge the moment the user PATCHes them. The runner always executes the **fleet's** copy, not the library entry's onboard-time copy.
 
 ## Onboard: fetch, validate, re-pack (agentsfleet builds its own tar)
 
-A template onboarded from a GitHub source is **not** a passthrough of GitHub's archive. The daemon fetches, validates, and **re-packs a fresh canonical tar**:
+A Fleet library entry onboarded from a GitHub source is **not** a passthrough of GitHub's archive. The daemon fetches, validates, and **re-packs a fresh canonical tar**:
 
 ```
 GitHub repo (author's source of truth)
@@ -41,10 +41,10 @@ The re-pack is deliberate: the runner untars the result **without re-validating*
 
 ## Two-tier Fleet library catalog (M103)
 
-Templates onboard into one of two catalog tiers, each its own table:
+Fleet library entries onboard into one of two catalog tiers, each its own table:
 
 - **Platform tier — `core.fleet_library`** (slug id, e.g. `github-pr-reviewer`). The global shop-window; a platform operator holding the `platform-library:write` scope onboards via `POST /v1/admin/fleet-libraries`. Migration-seeded rows bootstrap the catalog and become installable once onboarded (which populates their content hash + snapshot).
-- **Tenant tier — `core.tenant_fleet_library`** (UUIDv7 id + `workspace_id` FK CASCADE). A workspace's own templates; a tenant admin holding `library:write` onboards via `POST /v1/workspaces/{ws}/fleet-libraries`, deduped on `(workspace_id, content_hash)`.
+- **Tenant tier — `core.tenant_fleet_library`** (UUIDv7 id + `workspace_id` FK CASCADE). A workspace's own library entries; a tenant admin holding `library:write` onboards via `POST /v1/workspaces/{ws}/fleet-libraries`, deduped on `(workspace_id, content_hash)`.
 
 The workspace gallery `GET /v1/workspaces/{ws}/fleet-libraries` returns the union of all platform rows and that workspace's tenant rows, and nothing from another workspace.
 
@@ -65,9 +65,9 @@ Caps (`importer.zig`): **32 support files · 64 KiB per file · 256 KiB total.**
 ## Cardinality + dedup
 
 - **R2: one object per unique content, globally.** Identical bytes from any source dedup to one `fleet-bundles/sha256/{hash}.tar`.
-- **Tenant templates: one row per `(workspace_id, content_hash)`.** Re-onboarding identical bytes into a workspace converges on one row, one R2 object.
-- **Platform templates: one row per slug id.** Re-onboarding refreshes the snapshot in place.
-- **`core.fleets`: one row per fleet.** Many fleets may install from one template; the fleet stores the content hash, not a template reference.
+- **Tenant library entries: one row per `(workspace_id, content_hash)`.** Re-onboarding identical bytes into a workspace converges on one row, one R2 object.
+- **Platform library entries: one row per slug id.** Re-onboarding refreshes the snapshot in place.
+- **`core.fleets`: one row per fleet.** Many fleets may install from one library entry; the fleet stores the content hash, not a library reference.
 
 ## Runtime read path
 
@@ -78,15 +78,15 @@ At lease time (see [`data_flow.md` §C](./data_flow.md)):
 
 ## Update + sync
 
-- **SKILL.md / TRIGGER.md are editable** via `PATCH /v1/workspaces/{ws}/fleets/{id}` (`source_markdown` / `trigger_markdown`). The edit is **in place on `core.fleets`** (reparse, validate the name still matches, bump revision). It does **not** mint a new template and does **not** change the fleet's `bundle_content_hash`.
-- **Templates are immutable content** — a re-onboard with changed bytes mints a new snapshot (new `content_hash`); existing fleets are unaffected.
-- **Install is from a template only** — `POST /v1/workspaces/{ws}/fleets` accepts exactly `{platform_library_id}` or `{tenant_library_id}`. Raw-SKILL paste and the legacy `bundle_id` install were removed (M103 §4).
-- **Support files are NOT editable in place.** They live only in the immutable R2 snapshot, so changing one requires re-onboarding the template (new `content_hash`) and re-installing. No fleet-level support-file override today. 🟡 gap.
-- **No GitHub → template sync.** Onboard is one-time; pushing a new commit to the source repo does nothing. Re-sync is a manual re-onboard. 🟡 gap.
+- **SKILL.md / TRIGGER.md are editable** via `PATCH /v1/workspaces/{ws}/fleets/{id}` (`source_markdown` / `trigger_markdown`). The edit is **in place on `core.fleets`** (reparse, validate the name still matches, bump revision). It does **not** mint a new library entry and does **not** change the fleet's `bundle_content_hash`.
+- **Library entries are immutable content** — a re-onboard with changed bytes mints a new snapshot (new `content_hash`); existing fleets are unaffected.
+- **Install is from a library entry only** — `POST /v1/workspaces/{ws}/fleets` accepts exactly `{platform_library_id}` or `{tenant_library_id}`. Raw-SKILL paste and the legacy `bundle_id` install were removed (M103 §4).
+- **Support files are NOT editable in place.** They live only in the immutable R2 snapshot, so changing one requires re-onboarding the library entry (new `content_hash`) and re-installing. No fleet-level support-file override today. 🟡 gap.
+- **No GitHub → library sync.** Onboard is one-time; pushing a new commit to the source repo does nothing. Re-sync is a manual re-onboard. 🟡 gap.
 
 ## Notable invariants
 
 - **The stored tar is agentsfleet's canonical re-pack, never GitHub's archive.** Safe-by-construction so the runner untars without re-validating.
-- **The runner's behaviour comes from the fleet's live SKILL.md, not the template's.** A PATCH takes effect on the next lease; the tar's onboard-time copies are inert.
+- **The runner's behaviour comes from the fleet's live SKILL.md, not the library entry's.** A PATCH takes effect on the next lease; the tar's onboard-time copies are inert.
 - **Secrets never enter R2 or the snapshot.** Credentials are vault refs (`fleet:<source>`), resolved at lease and delivered inline; the tar carries only author-authored files.
-- **Content-addressing makes onboarding idempotent.** Re-onboarding identical bytes reuses the same R2 object and (per workspace, for the tenant tier) the same template row.
+- **Content-addressing makes onboarding idempotent.** Re-onboarding identical bytes reuses the same R2 object and (per workspace, for the tenant tier) the same library row.

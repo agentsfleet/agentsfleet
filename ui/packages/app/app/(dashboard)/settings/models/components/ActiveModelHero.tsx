@@ -16,7 +16,7 @@ import ProviderKeyForm from "./ProviderKeyForm";
 type Props = {
   workspaceId: string;
   provider: TenantProvider | null;
-  credentials: Secret[];
+  secrets: Secret[];
 };
 
 const PANEL = { idle: "idle", changeModel: "changeModel", replaceKey: "replaceKey", addKey: "addKey" } as const;
@@ -39,16 +39,16 @@ function formatContext(tokens: number | undefined): string {
   return tokens >= TOKENS_PER_K ? `${Math.round(tokens / TOKENS_PER_K)}k` : String(tokens);
 }
 
-export default function ActiveModelHero({ workspaceId, provider, credentials }: Props) {
+export default function ActiveModelHero({ workspaceId, provider, secrets }: Props) {
   const [panel, setPanel] = useState<Panel>(PANEL.idle);
   const { pending, error, run } = useProviderAction();
 
   const live = provider?.mode === PROVIDER_MODE.self_managed;
-  const credRef = live ? provider.secret_ref : null;
-  const activeCred = credentials.find((c) => c.name === credRef) ?? null;
-  // A custom secret can't be rotated as a model key; only real model credentials show Replace key.
+  const secretRef = live ? provider.secret_ref : null;
+  const activeSecret = secrets.find((c) => c.name === secretRef) ?? null;
+  // A custom secret can't be rotated as a model key; only provider-key/custom-endpoint secrets show Replace key.
   const canRotate =
-    activeCred?.kind === SECRET_KIND.provider_key || activeCred?.kind === SECRET_KIND.custom_endpoint;
+    activeSecret?.kind === SECRET_KIND.provider_key || activeSecret?.kind === SECRET_KIND.custom_endpoint;
 
   function onReset(fromProvider: string) {
     void run(RESET_ACTION, async () => {
@@ -80,7 +80,7 @@ export default function ActiveModelHero({ workspaceId, provider, credentials }: 
       description={
         live ? (
           <>
-            via <span className="font-mono">{credRef ?? provider.provider}</span>
+            via <span className="font-mono">{secretRef ?? provider.provider}</span>
           </>
         ) : null
       }
@@ -133,18 +133,18 @@ export default function ActiveModelHero({ workspaceId, provider, credentials }: 
             </div>
           )}
 
-          {live && credRef && panel === PANEL.changeModel ? (
+          {live && secretRef && panel === PANEL.changeModel ? (
             <HeroChangeModelPanel
               provider={provider.provider}
-              secretRef={credRef}
+              secretRef={secretRef}
               onClose={() => setPanel(PANEL.idle)}
             />
           ) : null}
 
-          {live && credRef && panel === PANEL.replaceKey ? (
+          {live && secretRef && panel === PANEL.replaceKey ? (
             <HeroReplaceKeyPanel
               workspaceId={workspaceId}
-              secretRef={credRef}
+              secretRef={secretRef}
               provider={provider.provider}
               currentModel={provider.model}
               onClose={() => setPanel(PANEL.idle)}

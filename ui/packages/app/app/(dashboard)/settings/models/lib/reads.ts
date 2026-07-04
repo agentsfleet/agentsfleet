@@ -4,7 +4,7 @@ import { listSecrets } from "@/lib/api/secrets";
 
 // Server-only read wrappers for the Models page. React's `cache()` is an
 // RSC primitive that collapses repeat reads within ONE server render — the hero
-// and the switch list both need the tenant provider + the credential list, and
+// and the switch list both need the tenant provider + the secret list, and
 // without this they would each trigger a separate backend round-trip. Same
 // convention as lib/workspace.ts / lib/api/tenant_billing.ts.
 //

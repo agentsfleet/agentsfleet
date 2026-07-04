@@ -9,25 +9,26 @@ import type { InstallSource } from "./install-flow";
 
 type Props = {
   workspaceId: string;
-  templates: FleetLibraryGalleryEntry[];
+  entries: FleetLibraryGalleryEntry[];
   presentCredentialNames: string[] | null;
-  initialTemplateId?: string;
-  canAddTemplate?: boolean;
-  /** Open the create-template dialog on first render (?create=1 deep link). */
+  initialLibraryId?: string;
+  canAddLibraryEntry?: boolean;
+  /** Open the add-library-entry dialog on first render (?create=1 deep link). */
   initialCreateOpen?: boolean;
 };
 
-// Orchestrates the template-only install flow: pick a template from the gallery
-// (platform ∪ this workspace's tenant templates), optionally name the fleet on
-// the confirm step (so one template can back several fleets), then proceed inline
-// to the live install states. Create auto-proceeds once the instant connect gate
-// is satisfied. The states own connect → creating → done and land "Open fleet".
+// Orchestrates the library-entry-only install flow: pick a library entry from
+// the gallery (platform ∪ this workspace's tenant entries), optionally name
+// the fleet on the confirm step (so one library entry can back several
+// fleets), then proceed inline to the live install states. Create
+// auto-proceeds once the instant connect gate is satisfied. The states own
+// connect → creating → done and land "Open fleet".
 export function InstallFleet({
   workspaceId,
-  templates,
+  entries,
   presentCredentialNames,
-  initialTemplateId,
-  canAddTemplate = false,
+  initialLibraryId,
+  canAddLibraryEntry = false,
   initialCreateOpen = false,
 }: Props) {
   const [selection, setSelection] = useState<InstallSource | null>(null);
@@ -39,11 +40,11 @@ export function InstallFleet({
   // library entry and lands on the confirm step on first render.
   const preselected = useRef(false);
   useEffect(() => {
-    if (preselected.current || !initialTemplateId) return;
+    if (preselected.current || !initialLibraryId) return;
     preselected.current = true;
-    const match = templates.find((template) => template.id === initialTemplateId);
+    const match = entries.find((entry) => entry.id === initialLibraryId);
     if (match) setSelection(match);
-  }, [initialTemplateId, templates]);
+  }, [initialLibraryId, entries]);
 
   function reset() {
     setSelection(null);
@@ -65,7 +66,7 @@ export function InstallFleet({
   if (selection) {
     return (
       <InstallConfirm
-        template={selection}
+        entry={selection}
         onInstall={(name) => setInstallName(name)}
         onBack={reset}
       />
@@ -75,9 +76,9 @@ export function InstallFleet({
   return (
     <InstallSourceSelector
       workspaceId={workspaceId}
-      templates={templates}
-      onUseTemplate={(template) => setSelection(template)}
-      canAddTemplate={canAddTemplate}
+      entries={entries}
+      onUseLibraryEntry={(entry) => setSelection(entry)}
+      canAddLibraryEntry={canAddLibraryEntry}
       initialCreateOpen={initialCreateOpen}
     />
   );
