@@ -123,7 +123,7 @@ The complete capability vocabulary (`src/agentsfleetd/auth/scopes.zig`). Scope s
 | `approval:read` / `approval:resolve` | view the approval inbox / decide (approve or deny) an approval gate |
 | `billing:read` | read tenant billing snapshot, charges, metering periods |
 | `workspace:admin` | create workspaces; list the tenant's workspaces |
-| `template:write` | mutate the template catalogue (consumed by M103) |
+| `library:write` | mutate the Fleet Library catalogue (consumed by M103) |
 
 **Runner credential** (machine identity — minted onto the `agt_r` token, never granted to a human):
 
@@ -145,14 +145,14 @@ Capabilities reach a principal as an explicit `scopes` claim. Two grants are app
 
 | Source | Scopes provisioned | Applied by |
 |---|---|---|
-| `.tenant` | `fleet:admin`, `secret:write`, `apikey:admin`, `fleetkey:write`, `grant:write`, `connector:write`, `billing:read`, `approval:resolve`, `workspace:admin`, `template:write` | a tenant owner at signup (Clerk `user.created` writeback, `identity_events_clerk.zig`) **and** every `agt_t` tenant api-key (`tenant_api_key.zig`) — every tenant capability, no platform/cross-tenant scope, preserving "an admin api-key cannot enroll a runner" |
+| `.tenant` | `fleet:admin`, `secret:write`, `apikey:admin`, `fleetkey:write`, `grant:write`, `connector:write`, `billing:read`, `approval:resolve`, `workspace:admin`, `library:write` | a tenant owner at signup (Clerk `user.created` writeback, `identity_events_clerk.zig`) **and** every `agt_t` tenant api-key (`tenant_api_key.zig`) — every tenant capability, no platform/cross-tenant scope, preserving "an admin api-key cannot enroll a runner" |
 | `.runner` | `runner:self` | minted onto every `agt_r` runner token (`runner_bearer.zig`) |
 
 **Manually-provisioned scope sets** — written by a human onto `public_metadata.scopes` in Clerk. There is **no code bundle**: these are recommended scope lists, not roles. Copy the exact strings (RULE UFS); each capability is enforced per-scope like any other.
 
 | Recommended for | Scope set |
 |---|---|
-| platform operator (almost no one) | `runner:enroll`, `runner:write`, `stream:read`, `model:admin`, `platform-key:admin`, `platform-template:write`, `workspace:any` |
+| platform operator (almost no one) | `runner:enroll`, `runner:write`, `stream:read`, `model:admin`, `platform-key:admin`, `platform-library:write`, `workspace:any` |
 | read-only collaborator | `fleet:read`, `fleetkey:read`, `grant:read`, `connector:read`, `billing:read`, `approval:read` |
 
 ---
@@ -485,7 +485,7 @@ This is why the UI flow has the extra Clerk hop, and why the SSE path uses a Nex
 
 Per-template audience isolation: a Token-B leak via agentsfleetd logs cannot be replayed against `storage-svc` because the `aud` doesn't match. Each microservice strict-checks only its own audience; cross-service replay is structurally prevented by the JWT verifier, not by application logic.
 
-Templates can also be scope-gated (e.g. "only users whose `scopes` claim carries `template:write` can mint the `fleets` template") via Clerk dashboard configuration. Adding a new microservice = create a new JWT template in Clerk + add a new strict `OIDC_AUDIENCE` value on that service. No new auth middleware code in agentsfleetd (or any sibling service); the existing `bearer_or_api_key.zig` path serves all future Bearer-audience services with config alone.
+Templates can also be scope-gated (e.g. "only users whose `scopes` claim carries `library:write` can mint the `fleets` template") via Clerk dashboard configuration. Adding a new microservice = create a new JWT template in Clerk + add a new strict `OIDC_AUDIENCE` value on that service. No new auth middleware code in agentsfleetd (or any sibling service); the existing `bearer_or_api_key.zig` path serves all future Bearer-audience services with config alone.
 
 ---
 

@@ -14,8 +14,8 @@ export const WORKSPACES_COLLECTION_PATH = "/v1/workspaces";
 export const TENANT_BILLING_PATH = "/v1/tenants/me/billing";
 export const TENANT_PROVIDER_PATH = "/v1/tenants/me/provider";
 
-// First-party Fleet template catalog — global (not workspace-scoped),
-// metadata only. Backs `agentsfleet templates` (the platform shop-window).
+// First-party Fleet library catalog — global (not workspace-scoped),
+// metadata only. Backs `agentsfleet library` (the platform shop-window).
 // The SKILL.md/TRIGGER.md content is fetched server-side at onboard time.
 export const FLEET_BUNDLES_PATH = "/v1/fleets/bundles";
 
@@ -32,12 +32,12 @@ export const wsFleetsPath = (wsId: string): string =>
 export const wsFleetPath = (wsId: string, fleetId: string): string =>
   `${WORKSPACES_PATH}${enc(wsId)}/fleets/${enc(fleetId)}`;
 
-// Workspace-scoped Fleet template gallery (GET → platform ∪ this workspace's
-// tenant templates, each carrying `visibility` + declared requirements). The
-// install flow resolves `--template <id>` here, then keys the create body off
+// Workspace-scoped Fleet library gallery (GET → platform ∪ this workspace's
+// tenant libraries, each carrying `visibility` + declared requirements). The
+// install flow resolves `--library <id>` here, then keys the create body off
 // the entry's tier (M103 §5).
-export const wsFleetTemplatesPath = (wsId: string): string =>
-  `${WORKSPACES_PATH}${enc(wsId)}/fleet-templates`;
+export const wsFleetLibrariesPath = (wsId: string): string =>
+  `${WORKSPACES_PATH}${enc(wsId)}/fleet-libraries`;
 
 // Workspace-scoped per-fleet chat messages (POST → 202 with event_id).
 export const wsFleetMessagesPath = (wsId: string, fleetId: string): string =>

@@ -52,7 +52,7 @@ test "integration: template catalog lists seeded first-party templates from the 
     // Seed one PUBLIC template with NO per-credential reasons, to exercise the
     // empty-map round-trip. Removed at the end so the curated set is left intact.
     _ = try conn.exec(
-        \\INSERT INTO core.fleet_bundle_templates
+        \\INSERT INTO core.fleet_library
         \\    (id, name, description, source_repo, source_path, source_ref,
         \\     required_credentials, required_credentials_reasons, required_tools, network_hosts, visibility,
         \\     created_at, updated_at)
@@ -76,7 +76,7 @@ test "integration: template catalog lists seeded first-party templates from the 
     try std.testing.expect(res.bodyContains(EMPTY_REASONS_ID));
     try std.testing.expect(res.bodyContains("\"required_credentials_reasons\":{}"));
 
-    _ = try conn.exec("DELETE FROM core.fleet_bundle_templates WHERE id = $1", .{EMPTY_REASONS_ID});
+    _ = try conn.exec("DELETE FROM core.fleet_library WHERE id = $1", .{EMPTY_REASONS_ID});
 }
 
 test "integration: catalog hides non-public templates (visibility filter)" {
@@ -94,7 +94,7 @@ test "integration: catalog hides non-public templates (visibility filter)" {
     // Seed a private-visibility row directly — the catalog filters
     // `WHERE visibility = 'public'`, so this probe must NOT surface.
     _ = try conn.exec(
-        \\INSERT INTO core.fleet_bundle_templates
+        \\INSERT INTO core.fleet_library
         \\    (id, name, description, source_repo, source_path, source_ref,
         \\     required_credentials, required_credentials_reasons, required_tools, network_hosts, visibility,
         \\     created_at, updated_at)
@@ -111,5 +111,5 @@ test "integration: catalog hides non-public templates (visibility filter)" {
     try std.testing.expect(!res.bodyContains(PRIVATE_PROBE_ID)); // private hidden
     try std.testing.expect(res.bodyContains("\"github-pr-reviewer\"")); // public still shown
 
-    _ = try conn.exec("DELETE FROM core.fleet_bundle_templates WHERE id = $1", .{PRIVATE_PROBE_ID});
+    _ = try conn.exec("DELETE FROM core.fleet_library WHERE id = $1", .{PRIVATE_PROBE_ID});
 }

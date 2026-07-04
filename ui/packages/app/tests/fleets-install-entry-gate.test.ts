@@ -63,7 +63,7 @@ describe("InstallEntry", () => {
     expect(m).toContain("GitHub PR reviewer");
   });
 
-  it("falls back to an empty state with Learn-more + Create-a-template when template:write is available", () => {
+  it("falls back to an empty state with Learn-more + Create-a-template when library:write is available", () => {
     const m = renderToStaticMarkup(
       React.createElement(InstallEntry, { templates: [], canAddTemplate: true }),
     );
@@ -74,7 +74,7 @@ describe("InstallEntry", () => {
     expect(m).not.toContain("?template=");
   });
 
-  it("omits Create-a-template (and its copy) when template:write is absent — matches InstallSourceSelector's own gate", () => {
+  it("omits Create-a-template (and its copy) when library:write is absent — matches InstallSourceSelector's own gate", () => {
     const m = renderToStaticMarkup(React.createElement(InstallEntry, { templates: [] }));
     expect(m).toContain("No fleet library yet");
     expect(m).toContain("Ask a workspace admin");
@@ -95,7 +95,7 @@ describe("InstallEntry", () => {
 // ── InstallSourceSelector — full install page template picker ───────────────
 
 describe("InstallSourceSelector", () => {
-  it("renders Create-a-template in the populated gallery when template:write is available", async () => {
+  it("renders Create-a-template in the populated gallery when library:write is available", async () => {
     const onUseTemplate = vi.fn();
     const user = userEvent.setup({ delay: null });
     render(
@@ -112,7 +112,7 @@ describe("InstallSourceSelector", () => {
     expect(onUseTemplate).toHaveBeenCalledWith(TEMPLATE);
   });
 
-  it("renders the empty selector without Create-a-template when template:write is absent", () => {
+  it("renders the empty selector without Create-a-template when library:write is absent", () => {
     render(
       React.createElement(InstallSourceSelector, {
         workspaceId: "ws_1",
@@ -140,7 +140,7 @@ describe("InstallSourceSelector", () => {
     expect(screen.queryByRole("button", { name: "Create a template" })).toBeNull();
   });
 
-  it("renders Create-a-template in the empty selector when template:write is available", () => {
+  it("renders Create-a-template in the empty selector when library:write is available", () => {
     render(
       React.createElement(InstallSourceSelector, {
         workspaceId: "ws_1",

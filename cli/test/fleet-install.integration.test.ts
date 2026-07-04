@@ -28,7 +28,7 @@ async function makeBundleDir(name: string): Promise<string> {
 }
 
 // A gallery (GET) route returning one platform-tier entry whose id matches,
-// paired with the create (POST) route. A `--template` install makes both calls:
+// paired with the create (POST) route. A `--library` install makes both calls:
 // resolve the gallery, then create the fleet keyed off the entry's tier.
 const TEMPLATE_ID = "github-pr-reviewer";
 
@@ -38,17 +38,17 @@ function galleryRoute(
   requirements: Record<string, unknown> = { trigger_present: true },
 ): MockRoutes {
   return {
-    [`GET /v1/workspaces/${WS_ID}/fleet-templates`]: () =>
+    [`GET /v1/workspaces/${WS_ID}/fleet-libraries`]: () =>
       jsonResponse(200, {
         items: [{ id, ...(name ? { name } : {}), visibility: "platform", requirements }],
       }),
   };
 }
 
-// ── install: missing --template ─────────────────────────────────────────────
+// ── install: missing --library ─────────────────────────────────────────────
 
-describe("install — missing --template flag", () => {
-  test("install without --template exits with validation error", async () => {
+describe("install — missing --library flag", () => {
+  test("install without --library exits with validation error", async () => {
     await authedScope(async () => {
       await withMockApi({}, async (apiUrl, calls) => {
         const out = bufferStream();
@@ -58,7 +58,7 @@ describe("install — missing --template flag", () => {
           { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
         );
         expect(code).toBe(4);
-        expect(err.read()).toContain("--template");
+        expect(err.read()).toContain("--library");
         expect(calls).toHaveLength(0);
       });
     });
@@ -71,14 +71,14 @@ describe("install — template absent from gallery", () => {
   test("an unknown template id exits ConfigError (exit 5)", async () => {
     await authedScope(async () => {
       const routes: MockRoutes = {
-        [`GET /v1/workspaces/${WS_ID}/fleet-templates`]: () =>
+        [`GET /v1/workspaces/${WS_ID}/fleet-libraries`]: () =>
           jsonResponse(200, { items: [] }),
       };
       await withMockApi(routes, async (apiUrl) => {
         const out = bufferStream();
         const err = bufferStream();
         const code = await runCli(
-          ["install", "--template", "no-such-template"],
+          ["install", "--library", "no-such-template"],
           { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
         );
         expect(code).toBe(5);
@@ -102,7 +102,7 @@ describe("install — text-mode success", () => {
         const out = bufferStream();
         const err = bufferStream();
         const code = await runCli(
-          ["install", "--template", TEMPLATE_ID],
+          ["install", "--library", TEMPLATE_ID],
           { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
         );
         expect(code).toBe(0);
@@ -127,7 +127,7 @@ describe("install — JSON-mode success", () => {
         const out = bufferStream();
         const err = bufferStream();
         const code = await runCli(
-          ["--json", "install", "--template", TEMPLATE_ID],
+          ["--json", "install", "--library", TEMPLATE_ID],
           { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
         );
         expect(code).toBe(0);
@@ -161,7 +161,7 @@ describe("install — webhook URL output", () => {
         const out = bufferStream();
         const err = bufferStream();
         const code = await runCli(
-          ["install", "--template", TEMPLATE_ID],
+          ["install", "--library", TEMPLATE_ID],
           { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
         );
         expect(code).toBe(0);
@@ -184,7 +184,7 @@ describe("install — webhook URL output", () => {
       await withMockApi(routes, async (apiUrl) => {
         const out = bufferStream();
         const code = await runCli(
-          ["install", "--template", fallbackTemplateId],
+          ["install", "--library", fallbackTemplateId],
           { stdout: out.stream, stderr: bufferStream().stream, env: { AGENTSFLEET_API_URL: apiUrl } },
         );
         expect(code).toBe(0);

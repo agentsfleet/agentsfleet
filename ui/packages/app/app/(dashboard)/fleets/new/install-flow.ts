@@ -3,7 +3,7 @@
 // rendered state-line model live here so InstallStates stays under the length
 // cap and the gating logic is unit-testable in isolation.
 
-import type { FleetTemplateGalleryEntry } from "@/lib/types";
+import type { FleetLibraryGalleryEntry } from "@/lib/types";
 import { missingSecrets } from "@/lib/fleet-secrets";
 import { presentErrorString } from "@/lib/errors";
 import { INSTALL_STEP, type InstallStepId } from "@/lib/streaming/install-steps";
@@ -11,7 +11,7 @@ import { INSTALL_STEP, type InstallStepId } from "@/lib/streaming/install-steps"
 // The chosen template to install — a single gallery entry. The flow keys the
 // create body off its `visibility` (platform vs tenant). github-import and paste
 // sources were removed in M103; install is template-only.
-export type InstallSource = FleetTemplateGalleryEntry;
+export type InstallSource = FleetLibraryGalleryEntry;
 
 // What a template needs before it can run, normalised for the install gate.
 export type SourceRequirements = {

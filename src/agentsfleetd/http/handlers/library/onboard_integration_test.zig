@@ -17,9 +17,9 @@ const TestHarness = harness_mod.TestHarness;
 const TEST_ISSUER = scope_fixtures.ISSUER;
 const TEST_AUDIENCE = scope_fixtures.AUDIENCE;
 const TEST_JWKS = scope_fixtures.JWKS;
-// TENANT_ADMIN holds template:write (tenant tier), not platform-template:write.
+// TENANT_ADMIN holds library:write (tenant tier), not platform-library:write.
 const TOKEN_TENANT = scope_fixtures.TENANT_ADMIN;
-// PLATFORM_ADMIN holds platform-template:write, not template:write.
+// PLATFORM_ADMIN holds platform-library:write, not library:write.
 const TOKEN_PLATFORM = scope_fixtures.PLATFORM_ADMIN;
 
 const PROBE_NAME = "onboard-probe";
@@ -32,7 +32,7 @@ const PROBE_SKILL =
     \\Body for the onboarding probe.
 ;
 
-const PLATFORM_URL = "/v1/admin/fleet-templates";
+const PLATFORM_URL = "/v1/admin/fleet-libraries";
 
 fn configureRegistry(_: *auth_mw.MiddlewareRegistry, _: *TestHarness) anyerror!void {}
 
@@ -46,13 +46,13 @@ fn makeHarness(alloc: std.mem.Allocator) !*TestHarness {
 }
 
 fn resetAndSeed(conn: *pg.Conn) !void {
-    _ = try conn.exec("DELETE FROM core.tenant_fleet_bundle_templates WHERE workspace_id = $1::uuid", .{http_auth.WS_PRIMARY});
-    _ = try conn.exec("DELETE FROM core.tenant_fleet_bundle_templates WHERE workspace_id = $1::uuid", .{http_auth.WS_SECONDARY});
-    _ = try conn.exec("DELETE FROM core.fleet_bundle_templates WHERE id = $1", .{PROBE_NAME});
+    _ = try conn.exec("DELETE FROM core.tenant_fleet_library WHERE workspace_id = $1::uuid", .{http_auth.WS_PRIMARY});
+    _ = try conn.exec("DELETE FROM core.tenant_fleet_library WHERE workspace_id = $1::uuid", .{http_auth.WS_SECONDARY});
+    _ = try conn.exec("DELETE FROM core.fleet_library WHERE id = $1", .{PROBE_NAME});
     // Restore the migration-seeded platform rows to their un-onboarded
     // (metadata-only) state, so a test that onboards one — setting content_hash,
     // which makes it gallery-visible — never leaks into the next test.
-    _ = try conn.exec("UPDATE core.fleet_bundle_templates SET content_hash = NULL, skill_markdown = NULL, trigger_markdown = NULL", .{});
+    _ = try conn.exec("UPDATE core.fleet_library SET content_hash = NULL, skill_markdown = NULL, trigger_markdown = NULL", .{});
     http_auth.cleanup(conn);
     try http_auth.seedTenant(conn);
     try http_auth.seedScopeWorkspace(conn, http_auth.WS_PRIMARY);
@@ -84,7 +84,7 @@ fn onboardPlatform(h: *TestHarness, alloc: std.mem.Allocator, skill: []const u8)
 }
 
 fn tenantUrl(alloc: std.mem.Allocator, workspace_id: []const u8) ![]const u8 {
-    return std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/fleet-templates", .{workspace_id});
+    return std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/fleet-libraries", .{workspace_id});
 }
 
 /// Upload (paste) onboarding body — skill-only, no support files, so no fetch
@@ -99,7 +99,7 @@ fn onboardBody(alloc: std.mem.Allocator) ![]const u8 {
 
 fn platformCount(conn: *pg.Conn) !i64 {
     var q = PgQuery.from(try conn.query(
-        \\SELECT count(*)::bigint FROM core.fleet_bundle_templates WHERE id = $1
+        \\SELECT count(*)::bigint FROM core.fleet_library WHERE id = $1
     , .{PROBE_NAME}));
     defer q.deinit();
     const row = try q.next() orelse return error.CountMissing;
@@ -108,14 +108,14 @@ fn platformCount(conn: *pg.Conn) !i64 {
 
 fn tenantCount(conn: *pg.Conn) !i64 {
     var q = PgQuery.from(try conn.query(
-        \\SELECT count(*)::bigint FROM core.tenant_fleet_bundle_templates WHERE workspace_id = $1::uuid
+        \\SELECT count(*)::bigint FROM core.tenant_fleet_library WHERE workspace_id = $1::uuid
     , .{http_auth.WS_PRIMARY}));
     defer q.deinit();
     const row = try q.next() orelse return error.CountMissing;
     return try row.get(i64, 0);
 }
 
-test "integration: platform onboard requires platform-template:write" {
+test "integration: platform onboard requires platform-library:write" {
     const alloc = std.testing.allocator;
     const h = makeHarness(alloc) catch |err| switch (err) {
         error.SkipZigTest => return error.SkipZigTest,
@@ -129,7 +129,7 @@ test "integration: platform onboard requires platform-template:write" {
     const body = try onboardBody(alloc);
     defer alloc.free(body);
 
-    // TENANT_ADMIN lacks platform-template:write → 403, nothing written.
+    // TENANT_ADMIN lacks platform-library:write → 403, nothing written.
     const denied = try (try (try h.post(PLATFORM_URL).bearer(TOKEN_TENANT)).json(body)).send();
     defer denied.deinit();
     try denied.expectStatus(.forbidden);
@@ -145,7 +145,7 @@ test "integration: platform onboard requires platform-template:write" {
     try std.testing.expectEqual(@as(i64, 1), try platformCount(conn));
 }
 
-test "integration: tenant onboard requires template:write plus workspace ownership" {
+test "integration: tenant onboard requires library:write plus workspace ownership" {
     const alloc = std.testing.allocator;
     const h = makeHarness(alloc) catch |err| switch (err) {
         error.SkipZigTest => return error.SkipZigTest,
@@ -161,12 +161,12 @@ test "integration: tenant onboard requires template:write plus workspace ownersh
     const owned_url = try tenantUrl(alloc, http_auth.WS_PRIMARY);
     defer alloc.free(owned_url);
 
-    // PLATFORM_ADMIN lacks template:write → 403 even with workspace:any.
+    // PLATFORM_ADMIN lacks library:write → 403 even with workspace:any.
     const no_scope = try (try (try h.post(owned_url).bearer(TOKEN_PLATFORM)).json(body)).send();
     defer no_scope.deinit();
     try no_scope.expectStatus(.forbidden);
 
-    // TENANT_ADMIN holds template:write but does not own WS_ABSENT → 403.
+    // TENANT_ADMIN holds library:write but does not own WS_ABSENT → 403.
     const foreign_url = try tenantUrl(alloc, http_auth.WS_ABSENT);
     defer alloc.free(foreign_url);
     const not_owned = try (try (try h.post(foreign_url).bearer(TOKEN_TENANT)).json(body)).send();
@@ -205,7 +205,7 @@ test "integration: skill-only template onboards without an R2 object" {
     try ok.expectStatus(.created);
 
     var q = PgQuery.from(try conn.query(
-        \\SELECT support_files_json::text FROM core.tenant_fleet_bundle_templates
+        \\SELECT support_files_json::text FROM core.tenant_fleet_library
         \\WHERE workspace_id = $1::uuid
     , .{http_auth.WS_PRIMARY}));
     defer q.deinit();
@@ -263,7 +263,7 @@ const FOREIGN_TEMPLATE_NAME = "foreign-workspace-template";
 fn seedForeignTenantTemplate(conn: *pg.Conn) !void {
     try http_auth.seedScopeWorkspace(conn, http_auth.WS_SECONDARY);
     _ = try conn.exec(
-        \\INSERT INTO core.tenant_fleet_bundle_templates
+        \\INSERT INTO core.tenant_fleet_library
         \\  (id, workspace_id, name, description, source_kind, source_ref, visibility,
         \\   content_hash, skill_markdown, trigger_markdown, support_files_json,
         \\   requirements_json, created_at, updated_at)

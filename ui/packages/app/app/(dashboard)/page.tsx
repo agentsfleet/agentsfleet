@@ -10,14 +10,14 @@ import {
   Skeleton,
 } from "@agentsfleet/design-system";
 import { listFleets, AGENTSFLEET_STATUS } from "@/lib/api/fleets";
-import { listWorkspaceFleetTemplatesCached } from "@/lib/api/fleet-templates";
+import { listWorkspaceFleetLibraryCached } from "@/lib/api/fleet-library";
 import { getTenantBillingCached } from "@/lib/api/tenant_billing";
 import { NANOS_PER_USD } from "@/lib/types";
-import type { FleetTemplateGalleryEntry } from "@/lib/types";
+import type { FleetLibraryGalleryEntry } from "@/lib/types";
 import { withWorkspaceScope, orFallback } from "@/lib/workspace";
 import ExhaustionBanner from "@/components/domain/ExhaustionBanner";
 import { InstallEntry } from "./fleets/new/InstallEntry";
-import { hasTemplateWriteScope } from "./fleets/scope";
+import { hasLibraryWriteScope } from "./fleets/scope";
 
 export const dynamic = "force-dynamic";
 
@@ -45,7 +45,7 @@ export async function StatusTiles() {
   const stopped = fleets.filter((z) => z.status === AGENTSFLEET_STATUS.STOPPED).length;
 
   if (fleets.length === 0) {
-    const templates = await listWorkspaceFleetTemplatesCached(workspaceId, token)
+    const templates = await listWorkspaceFleetLibraryCached(workspaceId, token)
       .then((response) => response.items)
       .catch(() => []);
     return (
@@ -54,7 +54,7 @@ export async function StatusTiles() {
         <FirstInstall
           balanceNanos={billing?.balance_nanos ?? null}
           templates={templates}
-          canAddTemplate={hasTemplateWriteScope(sessionClaims)}
+          canAddTemplate={hasLibraryWriteScope(sessionClaims)}
         />
       </>
     );
@@ -89,7 +89,7 @@ function FirstInstall({
   canAddTemplate,
 }: {
   balanceNanos: number | null;
-  templates: FleetTemplateGalleryEntry[];
+  templates: FleetLibraryGalleryEntry[];
   canAddTemplate: boolean;
 }) {
   const credits = balanceNanos != null ? Math.floor(balanceNanos / NANOS_PER_USD) : null;

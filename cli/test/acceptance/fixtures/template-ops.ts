@@ -4,7 +4,7 @@
  * The two-tier model has no CLI onboard verb, so fixtures onboard templates over
  * HTTP directly (mirrors `secret-ops.ts`), reading auth — API URL, bearer
  * token, workspace — from the same state dir the CLI run authenticates against
- * (`AGENTSFLEET_STATE_DIR`). Both the seed (`install --template`) and the
+ * (`AGENTSFLEET_STATE_DIR`). Both the seed (`install --library`) and the
  * duplicate-name negative onboard the canonical `platform-ops` sample as a tenant
  * template (`source_kind: "upload"`), differing only in whether the name is
  * randomized per call or held stable across the duplicate installs.
@@ -79,7 +79,7 @@ export async function onboardUploadTemplate(
   content: SampleContent,
 ): Promise<string> {
   const res = await fetch(
-    `${ctx.apiUrl}/v1/workspaces/${encodeURIComponent(ctx.workspaceId)}/fleet-templates`,
+    `${ctx.apiUrl}/v1/workspaces/${encodeURIComponent(ctx.workspaceId)}/fleet-libraries`,
     {
       method: "POST",
       headers: {

@@ -17,7 +17,7 @@ const auth_mw = @import("../auth/middleware/mod.zig");
 const hx_mod = @import("handlers/hx.zig");
 const invoke = @import("route_table_invoke.zig");
 const connectors_invoke = @import("route_table_invoke_connectors.zig");
-const template_invoke = @import("route_table_invoke_templates.zig");
+const library_invoke = @import("route_table_invoke_library.zig");
 
 // ── Types ─────────────────────────────────────────────────────────────────
 
@@ -62,8 +62,8 @@ pub fn classFor(route: router.Route) RouteClass {
         .list_tenant_workspaces,
         .tenant_provider,
         .fleet_bundles,
-        .admin_fleet_templates,
-        .workspace_fleet_templates,
+        .admin_fleet_library,
+        .workspace_fleet_library,
         .receive_webhook,
         .receive_svix_webhook,
         .auth_identity_event_clerk,
@@ -146,11 +146,11 @@ pub fn specFor(route: router.Route, registry: *auth_mw.MiddlewareRegistry) Route
         .tenant_provider => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeTenantProvider },
         .fleet_bundles => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeFleetBundles },
 
-        // Template onboarding (M103). Scope enforced by requireScope from
-        // route_scopes (platform-template:write / template:write); the tenant
+        // Fleet Library onboarding (M103). Scope enforced by requireScope from
+        // route_scopes (platform-library:write / library:write); the tenant
         // handler adds a workspace-ownership check.
-        .admin_fleet_templates => .{ .middlewares = registry.bearer(), .invoke = template_invoke.invokePlatformTemplateOnboard },
-        .workspace_fleet_templates => .{ .middlewares = registry.bearer(), .invoke = template_invoke.invokeWorkspaceFleetTemplates },
+        .admin_fleet_library => .{ .middlewares = registry.bearer(), .invoke = library_invoke.invokePlatformLibraryOnboard },
+        .workspace_fleet_library => .{ .middlewares = registry.bearer(), .invoke = library_invoke.invokeWorkspaceFleetLibrary },
 
         // Admin platform keys + model catalogue — platform-plane scopes
         // (`platform-key:{read,admin}`, `model:{read,admin}`) resolved per-method

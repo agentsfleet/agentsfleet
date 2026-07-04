@@ -1,8 +1,8 @@
-// `agentsfleet templates` — browse the first-party Fleet template catalog
+// `agentsfleet library` — browse the first-party Fleet library catalog
 // (the CLI peer of the dashboard's install gallery). Global, not workspace-
 // scoped: GET /v1/fleets/bundles returns metadata only (id/name/description +
 // declared requirement names); the SKILL.md/TRIGGER.md content is fetched
-// server-side at snapshot time. Pick one with `agentsfleet install --template <id>`.
+// server-side at snapshot time. Pick one with `agentsfleet install --library <id>`.
 
 import { Effect } from "effect";
 import { CliConfig } from "../services/config.ts";
@@ -14,7 +14,7 @@ import { FLEET_BUNDLES_PATH } from "../lib/api-paths.ts";
 import { ui } from "../output/index.ts";
 import type { CliError } from "../errors/index.ts";
 
-interface FleetTemplate {
+interface FleetLibrary {
   readonly id?: string;
   readonly name?: string;
   readonly description?: string;
@@ -23,8 +23,8 @@ interface FleetTemplate {
   readonly network_hosts?: ReadonlyArray<string>;
 }
 
-interface FleetTemplateListResponse {
-  readonly items?: ReadonlyArray<FleetTemplate>;
+interface FleetLibraryListResponse {
+  readonly items?: ReadonlyArray<FleetLibrary>;
 }
 
 const FIELD_ID = "id" as const;
@@ -35,7 +35,7 @@ const EMPTY_REQUIREMENT = "—" as const;
 const joinNames = (names: ReadonlyArray<string> | undefined): string =>
   names && names.length > 0 ? names.join(", ") : EMPTY_REQUIREMENT;
 
-export const templatesEffect: Effect.Effect<
+export const libraryEffect: Effect.Effect<
   void,
   CliError,
   CliConfig | Credentials | HttpClient | Output
@@ -45,7 +45,7 @@ export const templatesEffect: Effect.Effect<
   const http = yield* HttpClient;
 
   const token = yield* resolveAuthToken;
-  const res = yield* http.request<FleetTemplateListResponse>({
+  const res = yield* http.request<FleetLibraryListResponse>({
     path: FLEET_BUNDLES_PATH,
     token,
   });
@@ -63,7 +63,7 @@ export const templatesEffect: Effect.Effect<
 
   yield* output.printTable(
     [
-      { key: FIELD_ID, label: "TEMPLATE" },
+      { key: FIELD_ID, label: "LIBRARY" },
       { key: FIELD_NAME, label: "NAME" },
       { key: FIELD_CREDENTIALS, label: "CREDENTIALS" },
     ],
@@ -74,6 +74,6 @@ export const templatesEffect: Effect.Effect<
     })),
   );
   yield* output.info(
-    ui.dim("Install one with: agentsfleet install --template <template>"),
+    ui.dim("Install one with: agentsfleet install --library <library>"),
   );
 });

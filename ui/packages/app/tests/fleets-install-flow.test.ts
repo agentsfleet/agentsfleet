@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { resetCommonMocks } from "./helpers/dashboard-mocks";
-import type { FleetTemplateGalleryEntry } from "@/lib/types";
+import type { FleetLibraryGalleryEntry } from "@/lib/types";
 
 // The template-only install flow's boundaries are the install server action,
 // analytics, and the SSE hook (post-create). Mock those; render the real source
@@ -33,8 +33,8 @@ vi.mock("@/components/domain/useFleetEventStream", () => ({
 import { InstallFleet } from "../app/(dashboard)/fleets/new/InstallFleet";
 
 // A platform gallery entry (installs by slug) and a tenant one (installs by
-// UUID). Mirrors GET /v1/workspaces/{ws}/fleet-templates.
-const TEMPLATE_GH: FleetTemplateGalleryEntry = {
+// UUID). Mirrors GET /v1/workspaces/{ws}/fleet-libraries.
+const TEMPLATE_GH: FleetLibraryGalleryEntry = {
   id: "github-pr-reviewer",
   name: "GitHub PR reviewer",
   description: "Reviews pull requests.",
@@ -49,7 +49,7 @@ const TEMPLATE_GH: FleetTemplateGalleryEntry = {
   required_credentials_reasons: { github: "review your pull requests" },
   support_files: [],
 };
-const TEMPLATE_TENANT: FleetTemplateGalleryEntry = {
+const TEMPLATE_TENANT: FleetLibraryGalleryEntry = {
   id: "01932d4e-7c10-7a3a-9f00-000000000001",
   name: "Internal ops",
   description: "Tenant-authored ops fleet.",
@@ -74,7 +74,7 @@ function stubStream(installStep: string | null) {
 }
 
 type FlowProps = {
-  templates?: FleetTemplateGalleryEntry[];
+  templates?: FleetLibraryGalleryEntry[];
   presentCredentialNames?: string[] | null;
   initialTemplateId?: string;
 };

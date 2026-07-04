@@ -19,7 +19,7 @@ fn freeClaims(result: IdentityClaims) void {
 
 test "extractClerkClaims from metadata.tenant_id + space-delimited scope claim" {
     const json =
-        \\{"sub":"user_1","iss":"https://clerk.example.com","aud":"https://api.agentsfleet.net","scope":"fleet:read credential:write","exp":9999999999,"org_id":"org_1","metadata":{"tenant_id":"tenant_a","workspace_id":"ws_a"}}
+        \\{"sub":"user_1","iss":"https://clerk.example.com","aud":"https://api.agentsfleet.net","scope":"fleet:read secret:write","exp":9999999999,"org_id":"org_1","metadata":{"tenant_id":"tenant_a","workspace_id":"ws_a"}}
     ;
     const result = try extractClerkClaims(std.testing.allocator, json);
     defer freeClaims(result);
@@ -27,7 +27,7 @@ test "extractClerkClaims from metadata.tenant_id + space-delimited scope claim" 
     try std.testing.expectEqualStrings("org_1", result.org_id.?);
     try std.testing.expectEqualStrings("ws_a", result.workspace_id.?);
     try std.testing.expectEqualStrings("https://api.agentsfleet.net", result.audience.?);
-    try std.testing.expectEqualStrings("fleet:read credential:write", result.scopes.?);
+    try std.testing.expectEqualStrings("fleet:read secret:write", result.scopes.?);
 }
 
 test "extractClerkClaims from top-level tenant_id, no scopes" {

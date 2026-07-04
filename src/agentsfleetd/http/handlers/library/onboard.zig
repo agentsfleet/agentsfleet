@@ -1,11 +1,11 @@
-//! Fleet template onboarding — the two scope-gated write paths (M103 §2):
-//!   * POST /v1/admin/fleet-templates                     (platform tier)
-//!   * POST /v1/workspaces/{workspace_id}/fleet-templates (tenant tier)
+//! Fleet Library onboarding — the two scope-gated write paths (M103 §2):
+//!   * POST /v1/admin/fleet-libraries                     (platform tier)
+//!   * POST /v1/workspaces/{workspace_id}/fleet-libraries (tenant tier)
 //!
 //! Both run the same resolve → prepare → R2 → metadata pipeline as the bundle
 //! importer, writing the canonical tar to Cloudflare R2 (R2) before any row is
 //! committed (Dimension 2.3), then persisting a metadata-only catalog row. The
-//! capability scope (`platform-template:write` / `template:write`) is enforced by
+//! capability scope (`platform-library:write` / `library:write`) is enforced by
 //! the requireScope middleware ahead of these handlers; the tenant path adds a
 //! workspace-ownership check. Responses carry the tier in `visibility`
 //! ("platform"/"tenant") and never an R2 key (Invariant 7).
@@ -19,13 +19,13 @@ const hx_mod = @import("../hx.zig");
 const ec = @import("../../../errors/error_registry.zig");
 const id_format = @import("../../../types/id_format.zig");
 const importer = @import("../../../fleet_bundle/importer.zig");
-const template_store = @import("../../../fleet_bundle/template_store.zig");
+const library_store = @import("../../../fleet_bundle/library_store.zig");
 const resolve = @import("../fleet_bundles/resolve.zig");
 const pipeline = @import("pipeline.zig");
 const clock = @import("common").clock;
 
 const Hx = hx_mod.Hx;
-const log = logging.scoped(.fleet_template_api);
+const log = logging.scoped(.fleet_library_api);
 
 /// Parsed request + resolved source + prepared bundle for one onboarding call.
 /// Owns all three; `deinit` frees prepared → resolved → parsed (prepared holds
@@ -42,18 +42,18 @@ const OnboardCtx = struct {
     }
 };
 
-/// POST /v1/admin/fleet-templates — platform onboarding. The
-/// `platform-template:write` scope is enforced upstream; there is no workspace.
+/// POST /v1/admin/fleet-libraries — platform onboarding. The
+/// `platform-library:write` scope is enforced upstream; there is no workspace.
 pub fn innerPlatformOnboard(hx: Hx, req: *httpz.Request) void {
     var ctx = prepareOnboard(hx, req) orelse return;
     defer ctx.deinit(hx.alloc);
     const id = insertPlatform(hx, ctx.resolved.body, ctx.prepared) orelse return;
     defer hx.alloc.free(id);
-    respond(hx, ctx.resolved.body, ctx.prepared, id, template_store.TIER_PLATFORM);
+    respond(hx, ctx.resolved.body, ctx.prepared, id, library_store.TIER_PLATFORM);
 }
 
-/// POST /v1/workspaces/{workspace_id}/fleet-templates — tenant onboarding. The
-/// `template:write` scope is enforced upstream; ownership of the target workspace
+/// POST /v1/workspaces/{workspace_id}/fleet-libraries — tenant onboarding. The
+/// `library:write` scope is enforced upstream; ownership of the target workspace
 /// is checked here, and the row is written only under that workspace_id.
 pub fn innerTenantOnboard(hx: Hx, req: *httpz.Request, workspace_id: []const u8) void {
     if (!id_format.isSupportedWorkspaceId(workspace_id)) {
@@ -65,7 +65,7 @@ pub fn innerTenantOnboard(hx: Hx, req: *httpz.Request, workspace_id: []const u8)
     defer ctx.deinit(hx.alloc);
     const id = insertTenant(hx, workspace_id, ctx.resolved.body, ctx.prepared) orelse return;
     defer hx.alloc.free(id);
-    respond(hx, ctx.resolved.body, ctx.prepared, id, template_store.TIER_TENANT);
+    respond(hx, ctx.resolved.body, ctx.prepared, id, library_store.TIER_TENANT);
 }
 
 /// Parse the request, fetch + validate the source, derive the content hash, and
@@ -106,12 +106,9 @@ fn parseRequest(hx: Hx, req: *httpz.Request) ?std.json.Parsed(resolve.ImportRequ
 }
 
 fn authorizeWs(hx: Hx, workspace_id: []const u8) bool {
-    const conn = hx.ctx.pool.acquire() catch {
-        common.internalDbUnavailable(hx.res, hx.req_id);
-        return false;
-    };
-    defer hx.ctx.pool.release(conn);
-    if (!common.authorizeWorkspace(conn, hx.principal, workspace_id)) {
+    var db = hx.db() orelse return false;
+    defer db.end();
+    if (!common.authorizeWorkspace(db.conn, hx.principal, workspace_id)) {
         hx.fail(ec.ERR_FORBIDDEN, "Workspace access denied");
         return false;
     }
@@ -119,12 +116,9 @@ fn authorizeWs(hx: Hx, workspace_id: []const u8) bool {
 }
 
 fn insertPlatform(hx: Hx, body: importer.ImportBody, prepared: importer.PreparedBundle) ?[]const u8 {
-    const conn = hx.ctx.pool.acquire() catch {
-        common.internalDbUnavailable(hx.res, hx.req_id);
-        return null;
-    };
-    defer hx.ctx.pool.release(conn);
-    return template_store.insertOrUpdatePlatform(conn, hx.alloc, .{
+    var db = hx.db() orelse return null;
+    defer db.end();
+    return library_store.insertOrUpdatePlatform(db.conn, hx.alloc, .{
         .id = prepared.name,
         .name = prepared.name,
         .description = prepared.description,
@@ -143,18 +137,15 @@ fn insertPlatform(hx: Hx, body: importer.ImportBody, prepared: importer.Prepared
 }
 
 fn insertTenant(hx: Hx, workspace_id: []const u8, body: importer.ImportBody, prepared: importer.PreparedBundle) ?[]const u8 {
-    const conn = hx.ctx.pool.acquire() catch {
-        common.internalDbUnavailable(hx.res, hx.req_id);
-        return null;
-    };
-    defer hx.ctx.pool.release(conn);
-    const template_id = id_format.generateFleetTemplateId(hx.alloc) catch {
+    var db = hx.db() orelse return null;
+    defer db.end();
+    const entry_id = id_format.generateFleetLibraryId(hx.alloc) catch {
         common.internalOperationError(hx.res, "identifier generation failed", hx.req_id);
         return null;
     };
-    defer hx.alloc.free(template_id);
-    return template_store.insertOrFetchTenant(conn, hx.alloc, .{
-        .id = template_id,
+    defer hx.alloc.free(entry_id);
+    return library_store.insertOrFetchTenant(db.conn, hx.alloc, .{
+        .id = entry_id,
         .workspace_id = workspace_id,
         .name = prepared.name,
         .description = prepared.description,
@@ -175,7 +166,7 @@ fn insertTenant(hx: Hx, workspace_id: []const u8, body: importer.ImportBody, pre
 
 fn respond(hx: Hx, body: importer.ImportBody, prepared: importer.PreparedBundle, id: []const u8, tier: []const u8) void {
     const requirements = std.json.parseFromSlice(std.json.Value, hx.alloc, prepared.requirements_json, .{}) catch {
-        common.internalOperationError(hx.res, "template requirements serialization failed", hx.req_id);
+        common.internalOperationError(hx.res, "library entry requirements serialization failed", hx.req_id);
         return;
     };
     defer requirements.deinit();

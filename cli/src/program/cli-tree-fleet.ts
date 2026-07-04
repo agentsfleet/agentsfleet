@@ -34,14 +34,14 @@ export function buildFleetTree(
   { actionFor, runHandler }: ActionDispatch,
 ): void {
   program
-    .command("templates")
-    .description("Browse the first-party Fleet template gallery")
-    .action(actionFor("fleet.templates", (frame) => runHandler(state, frame, handlers.fleet.templates)));
+    .command("library")
+    .description("Browse the first-party Fleet library gallery")
+    .action(actionFor("fleet.library", (frame) => runHandler(state, frame, handlers.fleet.library)));
 
   program
     .command("install")
-    .description("Install a Fleet from an onboarded template (--template <id>)")
-    .option(FLAG_TEMPLATE_ID, TEMPLATE_ID_DESC, parseStringOption)
+    .description("Install a Fleet from an onboarded library (--library <id>)")
+    .option(FLAG_LIBRARY_ID, LIBRARY_ID_DESC, parseStringOption)
     .option(FLAG_NAME, NAME_DESC, parseStringOption)
     .action(actionFor("fleet.install", (frame) => runHandler(state, frame, handlers.fleet.install)));
 
@@ -59,7 +59,7 @@ export function buildFleetTree(
       "",
       "Fleet lifecycle verbs are top-level commands, not under `fleet`:",
       "  agentsfleet list | status | logs | events | steer",
-      "  agentsfleet templates | install | stop | resume | kill | delete",
+      "  agentsfleet library | install | stop | resume | kill | delete",
       "This group holds in-place updates only. Run `agentsfleet --help`",
       "for the full command list.",
     ].join("\n"),
@@ -159,9 +159,9 @@ export function buildFleetTree(
 }
 const FLAG_CURSOR_TOKEN = "--cursor <token>" as const;
 const FLAG_FROM_PATH = "--from <path>" as const;
-const FLAG_TEMPLATE_ID = "--template <id>" as const;
+const FLAG_LIBRARY_ID = "--library <id>" as const;
 const FLAG_NAME = "--name <name>" as const;
-const TEMPLATE_ID_DESC = "Template id from `agentsfleet templates`" as const;
+const LIBRARY_ID_DESC = "Library id from `agentsfleet library`" as const;
 const NAME_DESC =
   "Override the fleet name (install the same bundle more than once)" as const;
 const FLAG_LIMIT_N = "--limit <n>" as const;

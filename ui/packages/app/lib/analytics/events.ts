@@ -17,7 +17,7 @@ export const EVENTS = {
   provider_reset: "provider_reset",
   platform_default_set: "platform_default_set",
   secret_added: "secret_added",
-  fleet_template_onboarded: "fleet_template_onboarded",
+  fleet_library_onboarded: "fleet_library_onboarded",
   fleet_viewed: "fleet_viewed",
   integration_requested: "integration_requested",
   approval_resolved: "approval_resolved",
@@ -36,7 +36,7 @@ export type EventProps = {
   [EVENTS.provider_reset]: { from_provider: string };
   [EVENTS.platform_default_set]: { provider: string; model: string; is_custom: boolean };
   [EVENTS.secret_added]: { secret_name: string };
-  [EVENTS.fleet_template_onboarded]: {
+  [EVENTS.fleet_library_onboarded]: {
     workspace_id: string;
     visibility: string;
     source_kind: string;
@@ -61,7 +61,7 @@ export const EVENT_PROP_KEYS = {
   [EVENTS.provider_reset]: ["from_provider"],
   [EVENTS.platform_default_set]: ["provider", "model", "is_custom"],
   [EVENTS.secret_added]: ["secret_name"],
-  [EVENTS.fleet_template_onboarded]: ["workspace_id", "visibility", "source_kind", "outcome"],
+  [EVENTS.fleet_library_onboarded]: ["workspace_id", "visibility", "source_kind", "outcome"],
   [EVENTS.fleet_viewed]: ["fleet_id", "status"],
   [EVENTS.integration_requested]: ["integration_id", "integration_name"],
   [EVENTS.approval_resolved]: ["gate_id", "decision", "has_reason"],

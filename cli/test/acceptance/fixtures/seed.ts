@@ -3,7 +3,7 @@
  *
  * Onboards the worktree's canonical sample bundle as a tenant template
  * (`source_kind: "upload"`, via `template-ops.ts`), then drives
- * `agentsfleet install --template <id> --json`. Local-directory install
+ * `agentsfleet install --library <id> --json`. Local-directory install
  * (`--from`) was removed with the two-tier model, so the seed path
  * onboards-then-installs. A unique name per call keeps each onboarded template
  * (and its fleet) distinct. Returns the parsed JSON envelope the CLI emits with
@@ -44,7 +44,7 @@ export async function installPlatformOpsFleet(opts: InstallOptions): Promise<Ins
   const content = await buildPlatformOpsContent(uniqueName(runPrefix));
   const templateId = await onboardUploadTemplate(ctx, content);
   const result = await runFleetctl(
-    ["install", "--template", templateId, "--json"],
+    ["install", "--library", templateId, "--json"],
     { env: opts.env, timeoutMs: opts.timeoutMs ?? 120_000 },
   );
   if (result.code !== 0) {

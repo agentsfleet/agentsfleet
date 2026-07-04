@@ -14,7 +14,7 @@ const {
   deleteFleetMock,
   installFleetMock,
   steerFleetMock,
-  onboardWorkspaceFleetTemplateMock,
+  onboardWorkspaceFleetLibraryMock,
 } =
   vi.hoisted(() => ({
     withTokenMock: vi.fn(),
@@ -23,7 +23,7 @@ const {
     deleteFleetMock: vi.fn(),
     installFleetMock: vi.fn(),
     steerFleetMock: vi.fn(),
-    onboardWorkspaceFleetTemplateMock: vi.fn(),
+    onboardWorkspaceFleetLibraryMock: vi.fn(),
   }));
 
 vi.mock("@/lib/actions/with-token", () => ({ withToken: withTokenMock }));
@@ -34,8 +34,8 @@ vi.mock("@/lib/api/fleets", () => ({
   installFleet: installFleetMock,
   steerFleet: steerFleetMock,
 }));
-vi.mock("@/lib/api/fleet-templates", () => ({
-  onboardWorkspaceFleetTemplate: onboardWorkspaceFleetTemplateMock,
+vi.mock("@/lib/api/fleet-library", () => ({
+  onboardWorkspaceFleetLibrary: onboardWorkspaceFleetLibraryMock,
 }));
 
 import {
@@ -125,11 +125,11 @@ describe("fleet server actions — thin token-forwarders", () => {
       requirements: { credentials: [], tools: [], network_hosts: [], trigger_present: true },
       support_files: [],
     };
-    onboardWorkspaceFleetTemplateMock.mockResolvedValueOnce(onboarded);
+    onboardWorkspaceFleetLibraryMock.mockResolvedValueOnce(onboarded);
     const body = { source_kind: "github" as const, source_ref: "owner/repo" };
     const r = await onboardTemplateAction("ws1", body);
     expect(r).toEqual({ ok: true, data: onboarded });
-    expect(onboardWorkspaceFleetTemplateMock).toHaveBeenCalledWith("ws1", body, "tok");
+    expect(onboardWorkspaceFleetLibraryMock).toHaveBeenCalledWith("ws1", body, "tok");
   });
 
   it("test_onboard_action_maps_apierror_to_errorcode: returns withToken's error shape unchanged", async () => {
@@ -145,6 +145,6 @@ describe("fleet server actions — thin token-forwarders", () => {
       source_ref: "owner/repo",
     });
     expect(r).toEqual(error);
-    expect(onboardWorkspaceFleetTemplateMock).not.toHaveBeenCalled();
+    expect(onboardWorkspaceFleetLibraryMock).not.toHaveBeenCalled();
   });
 });

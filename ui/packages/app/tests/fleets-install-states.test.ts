@@ -4,7 +4,7 @@ import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { routerPush, routerRefresh, resetCommonMocks } from "./helpers/dashboard-mocks";
 import { INSTALL_STEP } from "@/lib/streaming/install-steps";
-import type { FleetTemplateGalleryEntry } from "@/lib/types";
+import type { FleetLibraryGalleryEntry } from "@/lib/types";
 
 // InstallStates drives the inline template-only flow; its only boundaries are
 // the install server action, analytics, and the Server-Sent Events (SSE) hook.
@@ -37,7 +37,7 @@ import { InstallStreamSteps } from "../app/(dashboard)/fleets/new/InstallStreamS
 import type { InstallSource } from "../app/(dashboard)/fleets/new/install-flow";
 
 // A platform gallery entry — installs by slug (`platform_template_id`).
-const TEMPLATE_GH: FleetTemplateGalleryEntry = {
+const TEMPLATE_GH: FleetLibraryGalleryEntry = {
   id: "github-pr-reviewer",
   name: "GitHub PR reviewer",
   description: "Reviews pull requests.",
@@ -55,7 +55,7 @@ const TEMPLATE_GH: FleetTemplateGalleryEntry = {
 
 // A tenant gallery entry — installs by UUID (`tenant_template_id`), carries no
 // per-credential reasons, and ships no TRIGGER.md (skill-only fallback).
-const TEMPLATE_TENANT: FleetTemplateGalleryEntry = {
+const TEMPLATE_TENANT: FleetLibraryGalleryEntry = {
   id: "01932d4e-7c10-7a3a-9f00-000000000001",
   name: "Internal ops",
   description: "Tenant-authored ops fleet.",
@@ -67,7 +67,7 @@ const TEMPLATE_TENANT: FleetTemplateGalleryEntry = {
 };
 
 // Build a gallery entry with the given requirements overrides on the platform base.
-function entry(overrides: Partial<FleetTemplateGalleryEntry> = {}): FleetTemplateGalleryEntry {
+function entry(overrides: Partial<FleetLibraryGalleryEntry> = {}): FleetLibraryGalleryEntry {
   return {
     ...TEMPLATE_GH,
     ...overrides,

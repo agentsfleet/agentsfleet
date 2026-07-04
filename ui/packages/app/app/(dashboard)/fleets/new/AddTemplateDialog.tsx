@@ -96,7 +96,7 @@ export default function AddTemplateDialog({
         }));
         return;
       }
-      captureProductEvent(EVENTS.fleet_template_onboarded, {
+      captureProductEvent(EVENTS.fleet_library_onboarded, {
         workspace_id: workspaceId,
         visibility: result.data.visibility,
         source_kind: SOURCE_KIND_GITHUB,

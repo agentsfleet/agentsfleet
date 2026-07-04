@@ -1,7 +1,7 @@
 "use server";
 
 import { withToken, type ActionResult } from "@/lib/actions/with-token";
-import { onboardWorkspaceFleetTemplate as apiOnboardWorkspaceFleetTemplate } from "@/lib/api/fleet-templates";
+import { onboardWorkspaceFleetLibrary as apiOnboardWorkspaceFleetLibrary } from "@/lib/api/fleet-library";
 import {
   deleteFleet as apiDeleteFleet,
   installFleet as apiInstallFleet,
@@ -52,7 +52,7 @@ export async function onboardTemplateAction(
   workspaceId: string,
   body: OnboardTemplateRequest,
 ): Promise<ActionResult<OnboardedTemplate>> {
-  return withToken((t) => apiOnboardWorkspaceFleetTemplate(workspaceId, body, t));
+  return withToken((t) => apiOnboardWorkspaceFleetLibrary(workspaceId, body, t));
 }
 
 // Submits a steer message server-side so the browser never holds the

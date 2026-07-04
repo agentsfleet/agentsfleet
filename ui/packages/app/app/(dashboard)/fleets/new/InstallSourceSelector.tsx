@@ -2,7 +2,7 @@
 
 import { Button, EmptyState, SectionLabel } from "@agentsfleet/design-system";
 import { LayoutTemplateIcon } from "lucide-react";
-import type { FleetTemplateGalleryEntry } from "@/lib/types";
+import type { FleetLibraryGalleryEntry } from "@/lib/types";
 import AddTemplateDialog from "./AddTemplateDialog";
 import {
   TemplateDocsLink,
@@ -14,8 +14,8 @@ import { TemplateCard } from "./TemplateCard";
 
 type Props = {
   workspaceId: string;
-  templates: FleetTemplateGalleryEntry[];
-  onUseTemplate: (template: FleetTemplateGalleryEntry) => void;
+  templates: FleetLibraryGalleryEntry[];
+  onUseTemplate: (template: FleetLibraryGalleryEntry) => void;
   canAddTemplate?: boolean;
   /** Open the create-template dialog on first render (?create=1 deep link). */
   initialCreateOpen?: boolean;

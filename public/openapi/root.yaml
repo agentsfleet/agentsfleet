@@ -40,10 +40,10 @@ tags:
   description: Persistent Fleet memory — list and search key-value entries scoped to a Fleet (read-only; entries are written by the runner plane, not this API)
   x-mintlify:
     navigation: Memory
-- name: Credentials
-  description: self-managed (Bring Your Own Key) LLM provider credentials
+- name: Secrets
+  description: Workspace secret vault — self-managed (Bring Your Own Key) LLM provider keys and arbitrary named secrets a Fleet interpolates as `${secrets.<name>.<field>}`
   x-mintlify:
-    navigation: Credentials
+    navigation: Secrets
 - name: Admin
   description: Platform-wide configuration — manage shared LLM provider keys
   x-mintlify:
@@ -86,10 +86,10 @@ tags:
   description: Workspace-scoped fleet source bundles imported from templates, uploads, or GitHub.
   x-mintlify:
     navigation: Fleet Bundles
-- name: Fleet Templates
-  description: Two-tier Fleet template catalog — platform-wide and tenant-scoped onboarding from a GitHub source, stored once in object storage by content hash.
+- name: Fleet Library
+  description: Two-tier Fleet Library catalog — platform-wide and tenant-scoped onboarding from a GitHub source, stored once in object storage by content hash.
   x-mintlify:
-    navigation: Fleet Templates
+    navigation: Fleet Library
 - name: Model Catalogue
   description: Public model→capability catalogue consumed at provisioning time.
   x-mintlify:
@@ -151,10 +151,10 @@ paths:
     $ref: ./paths/tenant-workspaces.yaml#/~1v1~1tenants~1me~1workspaces
   /v1/tenants/me/provider:
     $ref: ./paths/tenant-provider.yaml#/~1v1~1tenants~1me~1provider
-  /v1/workspaces/{workspace_id}/credentials:
-    $ref: ./paths/credentials.yaml#/~1v1~1workspaces~1{workspace_id}~1credentials
-  /v1/workspaces/{workspace_id}/credentials/{credential_name}:
-    $ref: ./paths/credentials.yaml#/~1v1~1workspaces~1{workspace_id}~1credentials~1{credential_name}
+  /v1/workspaces/{workspace_id}/secrets:
+    $ref: ./paths/secrets.yaml#/~1v1~1workspaces~1{workspace_id}~1secrets
+  /v1/workspaces/{workspace_id}/secrets/{secret_name}:
+    $ref: ./paths/secrets.yaml#/~1v1~1workspaces~1{workspace_id}~1secrets~1{secret_name}
   /v1/api-keys:
     $ref: ./paths/api-keys.yaml#/~1v1~1api-keys
   /v1/api-keys/{id}:
@@ -167,10 +167,10 @@ paths:
     $ref: ./paths/fleets.yaml#/~1v1~1workspaces~1{workspace_id}~1fleets
   /v1/fleets/bundles:
     $ref: ./paths/fleet-bundles.yaml#/~1v1~1fleets~1bundles
-  /v1/admin/fleet-templates:
-    $ref: ./paths/fleet-templates.yaml#/~1v1~1admin~1fleet-templates
-  /v1/workspaces/{workspace_id}/fleet-templates:
-    $ref: ./paths/fleet-templates.yaml#/~1v1~1workspaces~1{workspace_id}~1fleet-templates
+  /v1/admin/fleet-libraries:
+    $ref: ./paths/fleet-library.yaml#/~1v1~1admin~1fleet-libraries
+  /v1/workspaces/{workspace_id}/fleet-libraries:
+    $ref: ./paths/fleet-library.yaml#/~1v1~1workspaces~1{workspace_id}~1fleet-libraries
   /v1/workspaces/{workspace_id}/fleets/{fleet_id}:
     $ref: ./paths/fleets.yaml#/~1v1~1workspaces~1{workspace_id}~1fleets~1{fleet_id}
   /v1/workspaces/{workspace_id}/fleets/{fleet_id}/integration-grants:
