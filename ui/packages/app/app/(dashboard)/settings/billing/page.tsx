@@ -13,7 +13,6 @@ import { auth } from "@clerk/nextjs/server";
 import { getTenantBilling, listTenantBillingCharges } from "@/lib/api/tenant_billing";
 import BillingBalanceCard from "./components/BillingBalanceCard";
 import BillingUsageTab from "./components/BillingUsageTab";
-import BillingPlanRow from "./components/BillingPlanRow";
 import { summarizeCharges } from "./lib/charges";
 
 export const dynamic = "force-dynamic";
@@ -74,7 +73,6 @@ export default async function BillingSettingsPage() {
 
         <TabsContent value="usage" className="mt-4 space-y-6">
           <BillingUsageTab initialCharges={charges} initialCursor={chargesResp.next_cursor} />
-          <BillingPlanRow />
         </TabsContent>
 
         <TabsContent value="invoices" className="mt-4">

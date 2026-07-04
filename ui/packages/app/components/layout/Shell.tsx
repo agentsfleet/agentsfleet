@@ -298,8 +298,11 @@ type NavItemProps = {
 
 // `transition` (not just -colors) so the motion-safe hover nudge animates;
 // `motion-safe:` drops the nudge entirely under prefers-reduced-motion.
+// text-body-sm (13px), not text-eyebrow (12px, section-label scale) — a nav
+// link is primary interactive content, so it must render a step above the
+// group header labelling it, never level with or under it.
 const NAV_ITEM_CLASSES =
-  "flex items-center gap-2.5 px-3 py-2 rounded-md font-mono text-eyebrow text-muted-foreground no-underline transition duration-snap ease-snap motion-safe:hover:translate-x-px hover:bg-accent hover:text-foreground data-[active=true]:bg-accent data-[active=true]:text-foreground";
+  "flex items-center gap-2.5 px-3 py-2 rounded-md font-mono text-body-sm text-muted-foreground no-underline transition duration-snap ease-snap motion-safe:hover:translate-x-px hover:bg-accent hover:text-foreground data-[active=true]:bg-accent data-[active=true]:text-foreground";
 
 function NavItem({ href, label, Icon, active, external, onClick }: NavItemProps) {
   if (external) {
