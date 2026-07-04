@@ -305,6 +305,8 @@ The boundary is "process-internal vs user-facing," not "in memory vs not in memo
 
 Both endpoints honour §8.2: the metadata is a read-time *projection*, not a new stored column, so the M45 opaque-body invariant (§8.1) is unchanged; `api_key` is structurally absent from the list response and is the only field the rotate accepts but never returns or logs. (A non-secret metadata sidecar column — which would let the list avoid decrypting at all — is the named Option B follow-up, deferred to keep the M45 invariant.)
 
+**Nav placement history:** M87 (`docs/v2/done/M87_001_P1_UI_MODELS_CREDENTIALS_REDESIGN.md`) deliberately collapsed Models and Credentials into one dashboard nav entry. M113 reverses that — Secrets & ENVs gets its own nav entry and route again. M87's spec is left as-written (a historical record of the reasoning at the time); this note is the pointer for anyone reading it cold.
+
 ---
 
 ## 9. Provider routing — what makes Fireworks + Kimi K2.6 work today
