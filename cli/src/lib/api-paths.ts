@@ -59,12 +59,12 @@ export const wsFleetMemoriesPath = (wsId: string, fleetId: string): string =>
 export const wsEventsPath = (wsId: string): string =>
   `${WORKSPACES_PATH}${enc(wsId)}/events`;
 
-// Workspace-scoped credentials vault (workspace-level, not per-fleet).
-export const wsCredentialsPath = (wsId: string): string =>
-  `${WORKSPACES_PATH}${enc(wsId)}/credentials`;
+// Workspace-scoped secrets vault (workspace-level, not per-fleet).
+export const wsSecretsPath = (wsId: string): string =>
+  `${WORKSPACES_PATH}${enc(wsId)}/secrets`;
 
-export const wsCredentialPath = (wsId: string, name: string): string =>
-  `${WORKSPACES_PATH}${enc(wsId)}/credentials/${enc(name)}`;
+export const wsSecretPath = (wsId: string, name: string): string =>
+  `${WORKSPACES_PATH}${enc(wsId)}/secrets/${enc(name)}`;
 
 // Workspace-scoped integration grant routes (per fleet).
 export const wsGrantsListPath = (wsId: string, fleetId: string): string =>

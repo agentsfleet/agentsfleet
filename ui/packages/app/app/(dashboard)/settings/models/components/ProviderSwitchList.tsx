@@ -14,8 +14,8 @@ import { resetProviderAction, setProviderSelfManagedAction } from "../actions";
 import {
   customEndpointsOf,
   providerKeysOf,
-  type Credential,
-} from "@/lib/api/credentials";
+  type Secret,
+} from "@/lib/api/secrets";
 import { providerLabel, uniqueProviders } from "@/lib/api/model_caps";
 import { OPENAI_COMPATIBLE_PROVIDER, PROVIDER_MODE, type TenantProvider } from "@/lib/types";
 import { captureModelActivated, captureProviderReset } from "../lib/track";
@@ -28,7 +28,7 @@ import ActiveModelHero, { ADD_KEY_AND_MODEL_LABEL } from "./ActiveModelHero";
 type Props = {
   workspaceId: string;
   provider: TenantProvider | null;
-  credentials: Credential[];
+  credentials: Secret[];
 };
 
 const ADD_ENDPOINT_ROW = "__add_endpoint__";
@@ -43,7 +43,7 @@ export default function ProviderSwitchList({ workspaceId, provider, credentials 
   const closeOpen = () => setOpen(null);
 
   const live = provider?.mode === PROVIDER_MODE.self_managed;
-  const activeRef = live ? provider.credential_ref : null;
+  const activeRef = live ? provider.secret_ref : null;
   const providerKeys = providerKeysOf(credentials);
   const customEndpoints = customEndpointsOf(credentials);
 
@@ -54,9 +54,9 @@ export default function ProviderSwitchList({ workspaceId, provider, credentials 
     new Set([...uniqueProviders(models), ...providerKeys.map((k) => k.provider)]),
   ).filter((p) => p !== OPENAI_COMPATIBLE_PROVIDER);
 
-  function onSwitch(credentialRef: string, model?: string) {
+  function onSwitch(secretRef: string, model?: string) {
     void run(async () => {
-      const res = await setProviderSelfManagedAction({ credential_ref: credentialRef, model });
+      const res = await setProviderSelfManagedAction({ secret_ref: secretRef, model });
       if (!res.ok) return res.error;
       captureModelActivated(res.data);
       return null;

@@ -8,7 +8,7 @@
 -- so the dashboard can distinguish "never configured" from
 -- "explicitly reset".
 --
--- Value constraints (mode ∈ {platform, self_managed}; credential_ref nullability
+-- Value constraints (mode ∈ {platform, self_managed}; secret_ref nullability
 -- tied to mode) are enforced in application code via constants in
 -- src/state/tenant_provider.zig — RULE STS forbids static-string CHECKs.
 
@@ -22,7 +22,7 @@ CREATE TABLE IF NOT EXISTS core.tenant_providers (
     provider           TEXT    NOT NULL,
     model              TEXT    NOT NULL,
     context_cap_tokens INTEGER NOT NULL,
-    credential_ref     TEXT,
+    secret_ref         TEXT,
     created_at         BIGINT  NOT NULL,
     updated_at         BIGINT  NOT NULL
 );

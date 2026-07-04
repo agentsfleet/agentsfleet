@@ -1,7 +1,7 @@
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { CREDENTIAL_KIND, type Credential } from "@/lib/api/credentials";
+import { SECRET_KIND, type Secret } from "@/lib/api/secrets";
 import { PROVIDER_MODE, type TenantProvider } from "@/lib/types";
 import type { ModelCap } from "@/lib/api/model_caps";
 
@@ -73,17 +73,17 @@ function liveProvider(credentialRef = "anthropic-prod"): TenantProvider {
     provider: "anthropic",
     model: "claude-sonnet-4-6",
     context_cap_tokens: 256000,
-    credential_ref: credentialRef,
+    secret_ref: credentialRef,
   } as TenantProvider;
 }
 
-const ROSTER: Credential[] = [
-  { kind: CREDENTIAL_KIND.provider_key, name: "anthropic-prod", created_at: 1, provider: "anthropic", model: "claude-sonnet-4-6" },
-  { kind: CREDENTIAL_KIND.provider_key, name: "openai-key", created_at: 1, provider: "openai", model: "gpt-4" },
-  { kind: CREDENTIAL_KIND.provider_key, name: "groq-key", created_at: 1, provider: "groq" },
-  { kind: CREDENTIAL_KIND.custom_endpoint, name: "vllm", created_at: 1, provider: "openai-compatible", model: "m1", base_url: "https://x/v1" },
-  { kind: CREDENTIAL_KIND.custom_endpoint, name: "vllm2", created_at: 1, provider: "openai-compatible", base_url: "https://y/v1" },
-  { kind: CREDENTIAL_KIND.custom_endpoint, name: "vllm3", created_at: 1, provider: "openai-compatible" },
+const ROSTER: Secret[] = [
+  { kind: SECRET_KIND.provider_key, name: "anthropic-prod", created_at: 1, provider: "anthropic", model: "claude-sonnet-4-6" },
+  { kind: SECRET_KIND.provider_key, name: "openai-key", created_at: 1, provider: "openai", model: "gpt-4" },
+  { kind: SECRET_KIND.provider_key, name: "groq-key", created_at: 1, provider: "groq" },
+  { kind: SECRET_KIND.custom_endpoint, name: "vllm", created_at: 1, provider: "openai-compatible", model: "m1", base_url: "https://x/v1" },
+  { kind: SECRET_KIND.custom_endpoint, name: "vllm2", created_at: 1, provider: "openai-compatible", base_url: "https://y/v1" },
+  { kind: SECRET_KIND.custom_endpoint, name: "vllm3", created_at: 1, provider: "openai-compatible" },
 ];
 
 function rowOf(text: string | RegExp) {
@@ -152,18 +152,18 @@ describe("ProviderSwitchList — live roster", () => {
     renderLive();
     rowOf("Key saved · gpt-4").getByRole("button", { name: "Switch" }).click();
     await waitFor(() =>
-      expect(setProviderSelfManagedAction).toHaveBeenCalledWith({ credential_ref: "openai-key", model: "gpt-4" }),
+      expect(setProviderSelfManagedAction).toHaveBeenCalledWith({ secret_ref: "openai-key", model: "gpt-4" }),
     );
     expect(captureModelActivated).toHaveBeenCalled();
 
     rowOf("Key saved · model not set").getByRole("button", { name: "Switch" }).click();
     await waitFor(() =>
-      expect(setProviderSelfManagedAction).toHaveBeenCalledWith({ credential_ref: "groq-key", model: undefined }),
+      expect(setProviderSelfManagedAction).toHaveBeenCalledWith({ secret_ref: "groq-key", model: undefined }),
     );
 
     rowOf("vllm · m1").getByRole("button", { name: "Switch" }).click();
     await waitFor(() =>
-      expect(setProviderSelfManagedAction).toHaveBeenCalledWith({ credential_ref: "vllm", model: "m1" }),
+      expect(setProviderSelfManagedAction).toHaveBeenCalledWith({ secret_ref: "vllm", model: "m1" }),
     );
   });
 

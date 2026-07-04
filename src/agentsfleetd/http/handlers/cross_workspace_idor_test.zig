@@ -386,7 +386,7 @@ test "IDOR: GET /workspaces/{foreign}/credentials returns 403" {
         ALLOC.destroy(srv);
     }
 
-    const url = try urlJoin(ALLOC, srv.port, "/v1/workspaces/{s}/credentials", .{OTHER_WS_ID});
+    const url = try urlJoin(ALLOC, srv.port, "/v1/workspaces/{s}/secrets", .{OTHER_WS_ID});
     defer ALLOC.free(url);
 
     const r = try sendReq(ALLOC, url, .GET, TOKEN_OPERATOR, null);

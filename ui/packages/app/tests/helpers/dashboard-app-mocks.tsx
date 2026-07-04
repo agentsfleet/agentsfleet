@@ -29,9 +29,9 @@ export const listTenantBillingChargesMock = vi.fn();
 export const getTenantProviderMock = vi.fn();
 export const setTenantProviderSelfManagedMock = vi.fn();
 export const resetTenantProviderMock = vi.fn();
-export const listCredentialsMock = vi.fn();
-export const createCredentialMock = vi.fn();
-export const deleteCredentialMock = vi.fn();
+export const listSecretsMock = vi.fn();
+export const createSecretMock = vi.fn();
+export const deleteSecretMock = vi.fn();
 export const getModelCapsMock = vi.fn();
 export const listWorkspaceFleetTemplatesMock = vi.fn();
 export const onboardWorkspaceFleetTemplateMock = vi.fn();
@@ -119,26 +119,26 @@ export function eventsMock() {
   return { listWorkspaceEvents: listWorkspaceEventsMock, listFleetEvents: listFleetEventsMock };
 }
 
-const CREDENTIAL_KIND = {
+const SECRET_KIND = {
   provider_key: "provider_key",
   custom_endpoint: "custom_endpoint",
   custom_secret: "custom_secret",
 } as const;
 
-export function credentialsApiMock() {
+export function secretsApiMock() {
   // The vault API calls are mocked fns; the kind discriminator + narrowing
   // helpers (read by the Models page + its client children) keep their
   // real behaviour so the full module mock doesn't strip them to undefined.
   type C = { kind?: string };
   return {
-    listCredentials: listCredentialsMock,
-    createCredential: createCredentialMock,
-    deleteCredential: deleteCredentialMock,
-    rotateCredential: vi.fn(),
-    CREDENTIAL_KIND,
-    providerKeysOf: (credentials: C[]) => credentials.filter((c) => c.kind === CREDENTIAL_KIND.provider_key),
-    customEndpointsOf: (credentials: C[]) => credentials.filter((c) => c.kind === CREDENTIAL_KIND.custom_endpoint),
-    customSecretsOf: (credentials: C[]) => credentials.filter((c) => c.kind === CREDENTIAL_KIND.custom_secret),
+    listSecrets: listSecretsMock,
+    createSecret: createSecretMock,
+    deleteSecret: deleteSecretMock,
+    rotateSecret: vi.fn(),
+    SECRET_KIND,
+    providerKeysOf: (secrets: C[]) => secrets.filter((c) => c.kind === SECRET_KIND.provider_key),
+    customEndpointsOf: (secrets: C[]) => secrets.filter((c) => c.kind === SECRET_KIND.custom_endpoint),
+    customSecretsOf: (secrets: C[]) => secrets.filter((c) => c.kind === SECRET_KIND.custom_secret),
   };
 }
 
@@ -173,19 +173,19 @@ export function modelCapsMock() {
   };
 }
 
-export function addCredentialFormMock() {
-  return { default: ({ workspaceId }: { workspaceId: string }) => React.createElement("div", { "data-add-credential-form": workspaceId }) };
+export function addSecretFormMock() {
+  return { default: ({ workspaceId }: { workspaceId: string }) => React.createElement("div", { "data-add-secret-form": workspaceId }) };
 }
 
-export function credentialsListMock() {
+export function secretsListMock() {
   return {
-    default: ({ workspaceId, credentials }: { workspaceId: string; credentials: { name: string; created_at: number }[] }) =>
-      credentials.length === 0
-        ? React.createElement("p", { "data-credentials-empty": workspaceId }, "No credentials stored yet")
+    default: ({ workspaceId, secrets }: { workspaceId: string; secrets: { name: string; created_at: number }[] }) =>
+      secrets.length === 0
+        ? React.createElement("p", { "data-secrets-empty": workspaceId }, "No secrets stored yet")
         : React.createElement(
             "div",
-            { "data-credentials-list": workspaceId },
-            ...credentials.map((c) => React.createElement("div", { key: c.name, "data-credential-name": c.name }, c.name)),
+            { "data-secrets-list": workspaceId },
+            ...secrets.map((c) => React.createElement("div", { key: c.name, "data-secret-name": c.name }, c.name)),
           ),
   };
 }

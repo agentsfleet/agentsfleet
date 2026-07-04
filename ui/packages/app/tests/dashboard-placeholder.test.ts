@@ -35,9 +35,6 @@ vi.mock("@/lib/api/model_caps", async () => (await import("./helpers/dashboard-a
 vi.mock("@/app/(dashboard)/settings/billing/components/BillingBalanceCard", async () => (await import("./helpers/dashboard-app-mocks")).billingBalanceCardMock());
 vi.mock("@/app/(dashboard)/settings/billing/components/BillingUsageTab", async () => (await import("./helpers/dashboard-app-mocks")).billingUsageTabMock());
 vi.mock("@/lib/api/events", async () => (await import("./helpers/dashboard-app-mocks")).eventsMock());
-vi.mock("@/lib/api/credentials", async () => (await import("./helpers/dashboard-app-mocks")).credentialsApiMock());
-vi.mock("@/app/(dashboard)/credentials/components/AddCredentialForm", async () => (await import("./helpers/dashboard-app-mocks")).addCredentialFormMock());
-vi.mock("@/app/(dashboard)/credentials/components/CredentialsList", async () => (await import("./helpers/dashboard-app-mocks")).credentialsListMock());
 vi.mock("@/app/(dashboard)/actions", async () => (await import("./helpers/dashboard-app-mocks")).dashboardActionsMock());
 
 beforeEach(() => {
@@ -49,15 +46,6 @@ afterEach(() => {
 });
 
 describe("placeholder pages", () => {
-  it("credentials route redirects to the consolidated Models page", async () => {
-    // /credentials was folded into Models: the route is now a
-    // bare redirect. In the test harness `redirect()` throws `redirect:<path>`.
-    const { default: Page } = await import("../app/(dashboard)/credentials/page");
-    // CredentialsPage is a synchronous component: redirect() throws inline, so
-    // the throw surfaces from the call itself rather than a rejected promise.
-    expect(() => Page()).toThrow("redirect:/settings/models");
-  });
-
   it("settings page redirects to /sign-in when no token", async () => {
     mockAuth({ token: null, userId: null });
     const { default: Page } = await import("../app/(dashboard)/settings/page");

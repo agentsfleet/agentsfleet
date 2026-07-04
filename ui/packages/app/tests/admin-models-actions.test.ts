@@ -17,7 +17,7 @@ const {
   hasScopeMock,
   withTokenMock,
   withWorkspaceScopeMock,
-  createCredentialMock,
+  createSecretMock,
   listAdminModelsMock,
   createAdminModelMock,
   updateAdminModelMock,
@@ -27,7 +27,7 @@ const {
   hasScopeMock: vi.fn(),
   withTokenMock: vi.fn(),
   withWorkspaceScopeMock: vi.fn(),
-  createCredentialMock: vi.fn(),
+  createSecretMock: vi.fn(),
   listAdminModelsMock: vi.fn(),
   createAdminModelMock: vi.fn(),
   updateAdminModelMock: vi.fn(),
@@ -38,7 +38,7 @@ const {
 vi.mock("@/lib/auth/platform", () => ({ hasScope: hasScopeMock }));
 vi.mock("@/lib/actions/with-token", () => ({ withToken: withTokenMock }));
 vi.mock("@/lib/workspace", () => ({ withWorkspaceScope: withWorkspaceScopeMock }));
-vi.mock("@/lib/api/credentials", () => ({ createCredential: createCredentialMock }));
+vi.mock("@/lib/api/secrets", () => ({ createSecret: createSecretMock }));
 vi.mock("@/lib/api/admin_models", () => ({
   listAdminModels: listAdminModelsMock,
   createAdminModel: createAdminModelMock,
@@ -106,7 +106,7 @@ describe("admin/models server actions — per-scope gate (defence-in-depth)", ()
     expect(r).toEqual(notScoped(SCOPE.MODEL_ADMIN));
     expect(hasScopeMock).toHaveBeenCalledWith(SCOPE.MODEL_ADMIN);
     // The api_key never reaches the vault when the gate fails closed.
-    expect(createCredentialMock).not.toHaveBeenCalled();
+    expect(createSecretMock).not.toHaveBeenCalled();
     expect(setPlatformDefaultMock).not.toHaveBeenCalled();
   });
 });
@@ -167,7 +167,7 @@ describe("setPlatformDefaultAction — two-step vault write + activation", () =>
     expect(r).toEqual({ ok: true, data: { provider: "fireworks", model: "glm-5.2", active: true } });
     // The key is written to the acting admin's workspace under the provider name;
     // base_url is omitted from the vault payload when not provided.
-    expect(createCredentialMock).toHaveBeenCalledWith(
+    expect(createSecretMock).toHaveBeenCalledWith(
       "ws-1",
       { name: "fireworks", data: { provider: "fireworks", api_key: "sk-secret", model: "glm-5.2" } },
       "tok",
@@ -194,7 +194,7 @@ describe("setPlatformDefaultAction — two-step vault write + activation", () =>
     });
 
     expect(r.ok).toBe(true);
-    expect(createCredentialMock).toHaveBeenCalledWith(
+    expect(createSecretMock).toHaveBeenCalledWith(
       "ws-9",
       {
         name: "openai-compatible",
@@ -222,7 +222,7 @@ describe("setPlatformDefaultAction — two-step vault write + activation", () =>
 
     expect(r).toEqual({ ok: false, error: "No active workspace to store the platform key in" });
     // No vault write, no activation when the workspace can't be resolved.
-    expect(createCredentialMock).not.toHaveBeenCalled();
+    expect(createSecretMock).not.toHaveBeenCalled();
     expect(setPlatformDefaultMock).not.toHaveBeenCalled();
   });
 });

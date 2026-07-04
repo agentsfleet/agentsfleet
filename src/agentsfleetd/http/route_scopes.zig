@@ -34,8 +34,8 @@ const NONE = [_]S{};
 const FLEET_READ = [_]S{.fleet_read};
 const FLEET_WRITE = [_]S{.fleet_write};
 const FLEET_ADMIN = [_]S{.fleet_admin};
-const CREDENTIAL_READ = [_]S{.credential_read};
-const CREDENTIAL_WRITE = [_]S{.credential_write};
+const SECRET_READ = [_]S{.secret_read};
+const SECRET_WRITE = [_]S{.secret_write};
 const APIKEY_READ = [_]S{.apikey_read};
 const APIKEY_WRITE = [_]S{.apikey_write};
 const APIKEY_ADMIN = [_]S{.apikey_admin};
@@ -107,8 +107,8 @@ pub fn requiredScopes(route: router.Route, method: httpz.Method) []const S {
 
         // ── Tenant LLM-provider config (provider credential) ──
         .tenant_provider => switch (method) {
-            .GET => &CREDENTIAL_READ,
-            else => &CREDENTIAL_WRITE,
+            .GET => &SECRET_READ,
+            else => &SECRET_WRITE,
         },
 
         // ── Platform plane (former platform_admin) ──
@@ -153,11 +153,11 @@ pub fn requiredScopes(route: router.Route, method: httpz.Method) []const S {
         },
 
         // ── Credentials ──
-        .workspace_credentials => switch (method) {
-            .GET => &CREDENTIAL_READ,
-            else => &CREDENTIAL_WRITE,
+        .workspace_secrets => switch (method) {
+            .GET => &SECRET_READ,
+            else => &SECRET_WRITE,
         },
-        .workspace_credential => &CREDENTIAL_WRITE,
+        .workspace_secret => &SECRET_WRITE,
 
         // ── Fleet keys ──
         .fleet_keys => switch (method) {

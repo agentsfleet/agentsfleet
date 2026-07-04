@@ -279,13 +279,13 @@ test "FleetSession size pinned at 336 bytes" {
     try std.testing.expectEqual(@as(usize, 336), @sizeOf(FleetSession));
 }
 
-// ── UZ-PROVIDER-003 hint must match credential_probe.zig's
-//    ACTUAL rule (probeSelfManagedCredential): provider + model always required,
+// ── UZ-PROVIDER-003 hint must match secret_probe.zig's
+//    ACTUAL rule (probeSelfManagedSecret): provider + model always required,
 //    api_key required for a named provider but OPTIONAL for an openai-compatible
 //    endpoint. Regression guard against the old unconditional
 //    "provider, api_key, and model (all required)" phrasing that misled clients.
 test "UZ-PROVIDER-003 hint states api_key is conditional, not unconditionally required" {
-    const hint = reg.lookup(reg.ERR_PROVIDER_CREDENTIAL_DATA_MALFORMED).hint;
+    const hint = reg.lookup(reg.ERR_PROVIDER_SECRET_DATA_MALFORMED).hint;
     // Positive: the conditional rule the validator enforces.
     try std.testing.expect(std.mem.indexOf(u8, hint, "required for a named provider") != null);
     try std.testing.expect(std.mem.indexOf(u8, hint, "optional for an `openai-compatible`") != null);

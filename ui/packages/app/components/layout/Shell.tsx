@@ -11,6 +11,7 @@ import {
   BotIcon,
   CheckCircle2Icon,
   CpuIcon,
+  KeyRoundIcon,
   LinkIcon,
   CreditCardIcon,
   ServerIcon,
@@ -66,6 +67,7 @@ const OPERATIONS_NAV: NavEntry[] = [
 const CONFIGURATION_NAV: NavEntry[] = [
   { label: "Models", href: "/settings/models", icon: CpuIcon },
   { label: "Integrations", href: "/integrations", icon: LinkIcon },
+  { label: "Secrets & ENVs", href: "/secrets", icon: KeyRoundIcon },
 ];
 
 // Platform-operator surfaces — each appended to the Configuration group only

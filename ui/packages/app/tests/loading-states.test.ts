@@ -33,7 +33,7 @@ describe("dashboard segment loading states", () => {
       // /credentials redirects to /settings/models, so its loader paints the
       // DESTINATION title (no flash) — see credentials/loading.
       name: "credentials",
-      importer: () => import("../app/(dashboard)/credentials/loading"),
+      importer: () => import("../app/(dashboard)/secrets/loading"),
       expectsTitle: "Models",
     },
     {

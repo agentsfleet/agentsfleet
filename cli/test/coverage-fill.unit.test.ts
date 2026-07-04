@@ -12,8 +12,8 @@ import {
   wsFleetEventsPath,
   wsFleetEventsStreamPath,
   wsEventsPath,
-  wsCredentialsPath,
-  wsCredentialPath,
+  wsSecretsPath,
+  wsSecretPath,
   wsGrantsListPath,
   wsGrantPath,
 } from "../src/lib/api-paths.ts";
@@ -121,8 +121,8 @@ test("path helpers URL-encode workspace id and fleet id components", () => {
   expect(wsFleetEventsPath(ws, z)).toBe("/v1/workspaces/ws%2Fwith%20slash/fleets/agt%20spaces/events");
   expect(wsFleetEventsStreamPath(ws, z)).toBe("/v1/workspaces/ws%2Fwith%20slash/fleets/agt%20spaces/events/stream");
   expect(wsEventsPath(ws)).toBe("/v1/workspaces/ws%2Fwith%20slash/events");
-  expect(wsCredentialsPath(ws)).toBe("/v1/workspaces/ws%2Fwith%20slash/credentials");
-  expect(wsCredentialPath(ws, "github_token")).toBe("/v1/workspaces/ws%2Fwith%20slash/credentials/github_token");
+  expect(wsSecretsPath(ws)).toBe("/v1/workspaces/ws%2Fwith%20slash/secrets");
+  expect(wsSecretPath(ws, "github_token")).toBe("/v1/workspaces/ws%2Fwith%20slash/secrets/github_token");
   expect(wsGrantsListPath(ws, z)).toBe("/v1/workspaces/ws%2Fwith%20slash/fleets/agt%20spaces/integration-grants");
   expect(wsGrantPath(ws, z, "grant_x")).toBe("/v1/workspaces/ws%2Fwith%20slash/fleets/agt%20spaces/integration-grants/grant_x");
 });

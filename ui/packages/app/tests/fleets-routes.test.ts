@@ -4,7 +4,7 @@ import { cleanup, render, screen } from "@testing-library/react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { NANOS_PER_USD } from "@/lib/types";
 import { resolveActiveWorkspace, fetchMock, resetCommonMocks, authMock as auth } from "./helpers/dashboard-mocks";
-import { listWorkspaceFleetTemplatesMock, listCredentialsMock } from "./helpers/dashboard-app-mocks";
+import { listWorkspaceFleetTemplatesMock, listSecretsMock } from "./helpers/dashboard-app-mocks";
 
 type BillingSnapshot = {
   balance_nanos: number;
@@ -29,7 +29,7 @@ vi.mock("@agentsfleet/design-system", async (orig) => {
   return { ...h.designSystemCore(await orig<Record<string, unknown>>()), ...h.designSystemTabs() };
 });
 vi.mock("@/lib/api/fleet-templates", async () => (await import("./helpers/dashboard-app-mocks")).fleetTemplatesMock());
-vi.mock("@/lib/api/credentials", async () => (await import("./helpers/dashboard-app-mocks")).credentialsApiMock());
+vi.mock("@/lib/api/secrets", async () => (await import("./helpers/dashboard-app-mocks")).secretsApiMock());
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -219,7 +219,7 @@ describe("fleets routes", () => {
   it("fleets new page renders the gallery-first install flow when a workspace exists", async () => {
     resolveActiveWorkspace.mockResolvedValueOnce({ id: "ws_1" });
     listWorkspaceFleetTemplatesMock.mockResolvedValue({ items: SAMPLE_TEMPLATES });
-    listCredentialsMock.mockResolvedValue({ credentials: [{ kind: "custom_secret", name: "github", created_at: 1 }] });
+    listSecretsMock.mockResolvedValue({ secrets: [{ kind: "custom_secret", name: "github", created_at: 1 }] });
     const { default: Page } = await import("../app/(dashboard)/fleets/new/page");
     const markup = renderToStaticMarkup(await Page({ searchParams: Promise.resolve({}) }));
     expect(markup).toContain("Install fleet"); // page title
@@ -228,10 +228,10 @@ describe("fleets routes", () => {
     expect(markup).toContain("Use template"); // the gallery card's install action
   });
 
-  it("fleets new page swallows failed template + credential fetches", async () => {
+  it("fleets new page swallows failed template + secret fetches", async () => {
     resolveActiveWorkspace.mockResolvedValueOnce({ id: "ws_1" });
     listWorkspaceFleetTemplatesMock.mockRejectedValue(new Error("catalog down"));
-    listCredentialsMock.mockRejectedValue(new Error("vault down"));
+    listSecretsMock.mockRejectedValue(new Error("vault down"));
     const { default: Page } = await import("../app/(dashboard)/fleets/new/page");
     const markup = renderToStaticMarkup(await Page({ searchParams: Promise.resolve({}) }));
     expect(markup).toContain("No fleet library yet"); // empty gallery
@@ -240,7 +240,7 @@ describe("fleets routes", () => {
   it("fleets new page accepts a ?template= deep link", async () => {
     resolveActiveWorkspace.mockResolvedValueOnce({ id: "ws_1" });
     listWorkspaceFleetTemplatesMock.mockResolvedValue({ items: [] });
-    listCredentialsMock.mockResolvedValue({ credentials: [] });
+    listSecretsMock.mockResolvedValue({ secrets: [] });
     const { default: Page } = await import("../app/(dashboard)/fleets/new/page");
     const markup = renderToStaticMarkup(
       await Page({ searchParams: Promise.resolve({ template: "github-pr-reviewer" }) }),

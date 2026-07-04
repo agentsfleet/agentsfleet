@@ -4,14 +4,14 @@
 //! load them, and the resolve* helpers that turn a tenant_providers row (or its
 //! absence) into a fully-populated ResolvedProvider including the api_key
 //! fetched from vault. The self-managed credential probe + endpoint SSRF gate
-//! live in credential_probe.zig (split out per RULE FLL).
+//! live in secret_probe.zig (split out per RULE FLL).
 
 const std = @import("std");
 const pg = @import("pg");
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
 const vault = @import("vault.zig");
 const logging = @import("log");
-const credential_probe = @import("credential_probe.zig");
+const secret_probe = @import("secret_probe.zig");
 
 const tenant_provider = @import("tenant_provider.zig");
 pub const Mode = tenant_provider.Mode;
@@ -29,12 +29,12 @@ pub const ProviderRow = struct {
     provider: []u8,
     model: []u8,
     context_cap_tokens: u32,
-    credential_ref: ?[]u8,
+    secret_ref: ?[]u8,
 
     pub fn deinit(self: *Self, alloc: std.mem.Allocator) void {
         alloc.free(self.provider);
         alloc.free(self.model);
-        if (self.credential_ref) |c| alloc.free(c);
+        if (self.secret_ref) |c| alloc.free(c);
     }
 };
 
@@ -65,7 +65,7 @@ pub fn loadProviderRow(
     tenant_id: []const u8,
 ) !?ProviderRow {
     var q = PgQuery.from(try conn.query(
-        \\SELECT mode, provider, model, context_cap_tokens, credential_ref
+        \\SELECT mode, provider, model, context_cap_tokens, secret_ref
         \\FROM core.tenant_providers
         \\WHERE tenant_id = $1::uuid
     , .{tenant_id}));
@@ -75,7 +75,7 @@ pub fn loadProviderRow(
     const mode_label = try row.get([]const u8, 0);
     const mode = parseMode(mode_label) orelse {
         log.warn("bad_mode", .{ .tenant_id = tenant_id, .mode = mode_label });
-        return ResolveError.CredentialDataMalformed;
+        return ResolveError.SecretDataMalformed;
     };
     const provider = try alloc.dupe(u8, try row.get([]const u8, 1));
     errdefer alloc.free(provider);
@@ -83,14 +83,14 @@ pub fn loadProviderRow(
     errdefer alloc.free(model);
     const cap_i32 = try row.get(i32, 3);
     const cred_ref_opt = try row.get(?[]const u8, 4);
-    const credential_ref: ?[]u8 = if (cred_ref_opt) |c| try alloc.dupe(u8, c) else null;
+    const secret_ref: ?[]u8 = if (cred_ref_opt) |c| try alloc.dupe(u8, c) else null;
 
     return .{
         .mode = mode,
         .provider = provider,
         .model = model,
         .context_cap_tokens = @intCast(@max(cap_i32, 0)),
-        .credential_ref = credential_ref,
+        .secret_ref = secret_ref,
     };
 }
 
@@ -201,8 +201,8 @@ pub fn resolveSelfManaged(
     tenant_id: []const u8,
     row: ProviderRow,
 ) (ResolveError || anyerror)!ResolvedProvider {
-    const credential_ref = row.credential_ref orelse return ResolveError.CredentialDataMalformed;
-    var cred = try credential_probe.probeSelfManagedCredential(alloc, conn, tenant_id, credential_ref);
+    const secret_ref = row.secret_ref orelse return ResolveError.SecretDataMalformed;
+    var cred = try secret_probe.probeSelfManagedSecret(alloc, conn, tenant_id, secret_ref);
     defer cred.deinit(alloc);
 
     const provider = try alloc.dupe(u8, cred.provider);

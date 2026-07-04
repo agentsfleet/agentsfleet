@@ -25,7 +25,7 @@ export interface WorkspaceHandlers {
   list: CommandHandlerFn;
   use: CommandHandlerFn;
   show: CommandHandlerFn;
-  credentials: CommandHandlerFn;
+  secrets: CommandHandlerFn;
   delete: CommandHandlerFn;
 }
 
@@ -54,7 +54,7 @@ export interface BillingHandlers {
   show: CommandHandlerFn;
 }
 
-export interface FleetCredentialHandlers {
+export interface FleetSecretHandlers {
   add: CommandHandlerFn;
   show: CommandHandlerFn;
   list: CommandHandlerFn;
@@ -74,7 +74,7 @@ export interface FleetHandlers {
   logs: CommandHandlerFn;
   events: CommandHandlerFn;
   steer: CommandHandlerFn;
-  credential: FleetCredentialHandlers;
+  secret: FleetSecretHandlers;
 }
 
 export interface MemoryHandlers {

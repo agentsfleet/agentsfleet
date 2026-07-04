@@ -16,8 +16,8 @@ test "test_scope_catalog_covers_every_enumerated_gate" {
         "platform-key:read", "platform-key:admin", "model:read",     "model:admin",
         "runner:enroll",     "runner:read",        "runner:write",   "stream:read",
         // Tenant plane (former bearer + operator-role + enforce routes).
-        "fleet:read",        "fleet:write",        "fleet:admin",    "credential:read",
-        "credential:write",  "apikey:read",        "apikey:write",   "apikey:admin",
+        "fleet:read",        "fleet:write",        "fleet:admin",    "secret:read",
+        "secret:write",  "apikey:read",        "apikey:write",   "apikey:admin",
         "fleetkey:read",     "fleetkey:write",     "grant:read",     "grant:write",
         "connector:read",    "connector:write",    "billing:read",   "approval:read",
         "approval:resolve",  "workspace:admin",    "template:write", "platform-template:write",
@@ -69,10 +69,10 @@ test "test_scope_hierarchy_subsumes_lower" {
 
 test "test_principal_scopes_populated_from_claim" {
     // Space-delimited multi-scope claim → exactly those (+ their closure).
-    const held = scopes.parseClaim("fleet:read credential:write");
+    const held = scopes.parseClaim("fleet:read secret:write");
     try testing.expect(held.contains(.fleet_read));
-    try testing.expect(held.contains(.credential_write));
-    try testing.expect(held.contains(.credential_read)); // write ⊇ read
+    try testing.expect(held.contains(.secret_write));
+    try testing.expect(held.contains(.secret_read)); // write ⊇ read
     try testing.expect(!held.contains(.fleet_write));
 
     // Absent claim → empty set (every capability gate then fails closed).
@@ -110,7 +110,7 @@ test "test_default_grants_provision_and_are_not_enforced" {
     const owner = scopes.defaultScopes(.tenant);
     try testing.expect(owner.contains(.fleet_admin));
     try testing.expect(owner.contains(.fleet_read)); // closure
-    try testing.expect(owner.contains(.credential_write));
+    try testing.expect(owner.contains(.secret_write));
     try testing.expect(owner.contains(.workspace_admin));
     try testing.expect(owner.contains(.template_write));
     try testing.expect(!owner.contains(.platform_template_write)); // tenant tier only

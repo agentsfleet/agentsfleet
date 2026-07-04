@@ -140,11 +140,11 @@ describe("test_install_states_render", () => {
     resolveCreate({ ok: true, data: { fleet_id: "zom_t" } });
   });
 
-  it("holds at the connect gate when a required credential is missing", async () => {
+  it("holds at the connect gate when a required secret is missing", async () => {
     renderStates(TEMPLATE_GH, []); // github not present
     await waitFor(() => expect(screen.getByText(/first run: connect github/i)).toBeTruthy());
     const link = screen.getByRole("link", { name: /connect github/i });
-    expect(link.getAttribute("href")).toBe("/credentials");
+    expect(link.getAttribute("href")).toBe("/secrets");
     // Purpose-driven copy from the template's per-credential reason (data-driven).
     expect(screen.getByText(/review your pull requests/i)).toBeTruthy();
     // Create is gated — no fleet created yet.
@@ -161,7 +161,7 @@ describe("test_install_states_render", () => {
     await waitFor(() => expect(screen.getByText(/first run: connect github, zoho/i)).toBeTruthy());
     // github has a reason but zoho does not → not every credential has one, so
     // the gate falls back to the generic copy rather than a half-listed purpose.
-    expect(screen.getByText(/Add them in Credentials/i)).toBeTruthy();
+    expect(screen.getByText(/Add them in Secrets & ENVs/i)).toBeTruthy();
   });
 
   it("joins per-credential reasons with \"and\" when every unmet credential has one", async () => {
@@ -176,16 +176,16 @@ describe("test_install_states_render", () => {
       [],
     );
     // Every unmet credential carries a reason → the purpose-driven sentence
-    // joins them with "and"; the generic "Add them in Credentials" copy is gone.
+    // joins them with "and"; the generic "Add them in Secrets & ENVs" copy is gone.
     await waitFor(() =>
       expect(
         screen.getByText(/review your pull requests and read your zoho activity/i),
       ).toBeTruthy(),
     );
-    expect(screen.queryByText(/Add them in Credentials/i)).toBeNull();
+    expect(screen.queryByText(/Add them in Secrets & ENVs/i)).toBeNull();
   });
 
-  it("uses Add token when the missing credential is not GitHub", async () => {
+  it("uses Add token when the missing secret is not GitHub", async () => {
     renderStates(
       entry({ requirements: { ...TEMPLATE_GH.requirements, credentials: ["zoho"] } }),
       [],
@@ -193,7 +193,7 @@ describe("test_install_states_render", () => {
 
     await waitFor(() => expect(screen.getByText(/first run: connect zoho/i)).toBeTruthy());
     expect(screen.getByRole("link", { name: /add token/i }).getAttribute("href")).toBe(
-      "/credentials",
+      "/secrets",
     );
   });
 

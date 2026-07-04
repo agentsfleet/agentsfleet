@@ -1,4 +1,4 @@
-// Workspace command Effects — add / list / use / show / credentials / delete.
+// Workspace command Effects — add / list / use / show / secrets / delete.
 //
 // Only `workspace add` hits the API (POST /v1/workspaces). The other five
 // commands operate against the on-disk Workspaces store (services/workspaces.ts).
@@ -38,8 +38,8 @@ import {
 const WORKSPACE_ID_FIELD = "workspace_id";
 // The real, registered top-level command group (cli-tree-fleet.ts). One const
 // so the JSON-mode and human-readable redirects can never re-diverge onto a
-// phantom `agentsfleet agent credential` that has no CLI registration.
-const CREDENTIAL_COMMAND = "agentsfleet credential" as const;
+// phantom `agentsfleet agent secret` that has no CLI registration.
+const SECRET_COMMAND = "agentsfleet secret" as const;
 
 interface WorkspaceCreateResponse {
   readonly workspace_id: string;
@@ -262,7 +262,7 @@ export const workspaceShowEffectFromArgs = (
     });
   });
 
-export const workspaceCredentialsEffect: Effect.Effect<
+export const workspaceSecretsEffect: Effect.Effect<
   void,
   CliError,
   CliConfig | Output
@@ -272,13 +272,13 @@ export const workspaceCredentialsEffect: Effect.Effect<
   if (config.jsonMode) {
     yield* output.printJson({
       status: "redirect",
-      message: `use \`${CREDENTIAL_COMMAND}\` from the CLI, or manage workspace credentials at /credentials in the dashboard`,
+      message: `use \`${SECRET_COMMAND}\` from the CLI, or manage workspace secrets at /secrets in the dashboard`,
     });
     return;
   }
-  yield* output.printSection("Workspace credentials");
+  yield* output.printSection("Workspace secrets");
   yield* output.info(
-    `Manage credentials at /credentials in the dashboard, or run: ${CREDENTIAL_COMMAND}`,
+    `Manage secrets at /secrets in the dashboard, or run: ${SECRET_COMMAND}`,
   );
 });
 

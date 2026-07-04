@@ -2,7 +2,7 @@ import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
-// Hero "Change model" panel: re-point the active credential at a different model
+// Hero "Change model" panel: re-point the active secret at a different model
 // from this provider's catalogue (same key). Save → setProviderSelfManagedAction
 // + model_changed (NOT model_added); onClose runs on success.
 
@@ -29,7 +29,7 @@ afterEach(() => cleanup());
 
 function renderPanel(onClose = vi.fn()) {
   render(
-    React.createElement(HeroChangeModelPanel, { provider: "anthropic", credentialRef: "anthropic-prod", onClose }),
+    React.createElement(HeroChangeModelPanel, { provider: "anthropic", secretRef: "anthropic-prod", onClose }),
   );
   return onClose;
 }
@@ -40,7 +40,7 @@ describe("HeroChangeModelPanel", () => {
     fireEvent.change(screen.getByLabelText("Change model"), { target: { value: "m2" } });
     fireEvent.click(screen.getByRole("button", { name: "Save model" }));
     await waitFor(() =>
-      expect(setProviderSelfManagedAction).toHaveBeenCalledWith({ credential_ref: "anthropic-prod", model: "m2" }),
+      expect(setProviderSelfManagedAction).toHaveBeenCalledWith({ secret_ref: "anthropic-prod", model: "m2" }),
     );
     expect(captureModelChanged).toHaveBeenCalledWith({ provider: "anthropic", mode: "self_managed", model: "m2" });
     await waitFor(() => expect(onClose).toHaveBeenCalled());

@@ -4,7 +4,7 @@
 // cap and the gating logic is unit-testable in isolation.
 
 import type { FleetTemplateGalleryEntry } from "@/lib/types";
-import { missingCredentials } from "@/lib/fleet-credentials";
+import { missingSecrets } from "@/lib/fleet-secrets";
 import { presentErrorString } from "@/lib/errors";
 import { INSTALL_STEP, type InstallStepId } from "@/lib/streaming/install-steps";
 
@@ -51,7 +51,7 @@ export function unmetCredentials(
   present: readonly string[] | null,
 ): string[] {
   if (present === null) return [];
-  return missingCredentials(required, present);
+  return missingSecrets(required, present);
 }
 
 // True when the source can create immediately with no connect-gate beat.

@@ -136,7 +136,7 @@ pub const ENTRIES = [_]Entry{
     // ── Fleet Bundle ───────────────────────────────────────────────────────
     e("UZ-BUNDLE-001", .bad_request, "Invalid Fleet Bundle", "The supplied Fleet Bundle is missing SKILL.md or contains unsafe, oversized, or malformed files."),
     e("UZ-BUNDLE-002", .not_found, "Fleet Bundle not found", "No installable template or stored snapshot matches the request in this workspace."),
-    e("UZ-BUNDLE-003", .failed_dependency, "Fleet Bundle credentials missing", "Add the missing workspace credentials before installing this Fleet Bundle."),
+    e("UZ-BUNDLE-003", .failed_dependency, "Fleet Bundle secrets missing", "Add the missing workspace secrets before installing this Fleet Bundle."),
     e("UZ-BUNDLE-004", .bad_gateway, "Fleet Bundle fetch failed", "The Fleet Bundle source could not be fetched from GitHub. The repository may be missing or private, or GitHub may be unreachable. Verify the source reference and retry."),
     e("UZ-BUNDLE-005", .service_unavailable, "Fleet Bundle storage unavailable", "Snapshot storage is not configured or is unavailable, so the validated bundle could not be stored. Retry later or contact the operator."),
     e("UZ-BUNDLE-006", .too_many_requests, "Too many Fleet Bundle imports in flight", "This instance is at its concurrent Fleet Bundle import ceiling. Honor the Retry-After header and retry with backoff."),
@@ -146,8 +146,8 @@ pub const ENTRIES = [_]Entry{
     e("UZ-VAULT-002", .bad_request, "Credential data too large", "Stringified credential data exceeds 4KB. Compose the secret from fewer or shorter fields."),
     e("UZ-VAULT-003", .not_found, "Credential not found", "No credential matches this name in the workspace. List the workspace credentials to find a valid name, or create it first."),
     // ── PROVIDER (PUT /v1/tenants/me/provider) ───────────────────────────────
-    e("UZ-PROVIDER-001", .bad_request, "credential_ref required when mode=self_managed", "PUT body must include `credential_ref` naming a vault credential when `mode` is self_managed."),
-    e("UZ-PROVIDER-002", .bad_request, "Credential row not found in vault", "The named credential_ref has no vault row in the tenant's primary workspace. " ++
+    e("UZ-PROVIDER-001", .bad_request, "secret_ref required when mode=self_managed", "PUT body must include `secret_ref` naming a vault credential when `mode` is self_managed."),
+    e("UZ-PROVIDER-002", .bad_request, "Credential row not found in vault", "The named secret_ref has no vault row in the tenant's primary workspace. " ++
         "Run `agentsfleet credential set <name> --data @-` to create it."),
     e("UZ-PROVIDER-003", .bad_request, "Credential JSON missing required field", "Stored credential JSON must include `provider` and `model` (non-empty strings); `api_key` is required for a named provider but optional for an `openai-compatible` endpoint. " ++
         "Re-run `agentsfleet credential set` with the required fields."),

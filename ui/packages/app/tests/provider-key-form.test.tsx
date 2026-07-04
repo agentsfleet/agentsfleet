@@ -13,7 +13,7 @@ import type { ModelCap } from "@/lib/api/model_caps";
 // the Model field's ProviderModelSelect.
 
 const routerRefresh = vi.fn();
-const createCredentialAction = vi.hoisted(() => vi.fn());
+const createSecretAction = vi.hoisted(() => vi.fn());
 const setProviderSelfManagedAction = vi.hoisted(() => vi.fn());
 const captureModelActivated = vi.hoisted(() => vi.fn());
 const captureProductEvent = vi.hoisted(() => vi.fn());
@@ -22,7 +22,7 @@ const { catalogueState } = vi.hoisted(() => ({
 }));
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: routerRefresh, push: vi.fn() }) }));
-vi.mock("@/app/(dashboard)/credentials/actions", () => ({ createCredentialAction }));
+vi.mock("@/app/(dashboard)/secrets/actions", () => ({ createSecretAction }));
 vi.mock("@/app/(dashboard)/settings/models/actions", () => ({ setProviderSelfManagedAction }));
 vi.mock("@/app/(dashboard)/settings/models/lib/track", () => ({ captureModelActivated }));
 vi.mock("@/lib/analytics/posthog", () => ({ captureProductEvent }));
@@ -37,7 +37,7 @@ import ProviderKeyForm from "@/app/(dashboard)/settings/models/components/Provid
 beforeEach(() => {
   vi.clearAllMocks();
   catalogueState.models = [];
-  createCredentialAction.mockResolvedValue({ ok: true, data: { name: "anthropic" } });
+  createSecretAction.mockResolvedValue({ ok: true, data: { name: "anthropic" } });
   setProviderSelfManagedAction.mockResolvedValue({
     ok: true,
     data: { provider: "anthropic", mode: "self_managed", model: "m1" },
@@ -58,18 +58,18 @@ describe("ProviderKeyForm — locked mode", () => {
     fill("sk-x", "m1");
     fireEvent.click(screen.getByRole("button", { name: "Save key" }));
     await waitFor(() =>
-      expect(createCredentialAction).toHaveBeenCalledWith("ws_1", {
+      expect(createSecretAction).toHaveBeenCalledWith("ws_1", {
         name: "anthropic",
         data: { provider: "anthropic", api_key: "sk-x", model: "m1" },
       }),
     );
-    expect(captureProductEvent).toHaveBeenCalledWith(EVENTS.credential_added, { credential_name: "anthropic" });
+    expect(captureProductEvent).toHaveBeenCalledWith(EVENTS.secret_added, { secret_name: "anthropic" });
     expect(setProviderSelfManagedAction).not.toHaveBeenCalled();
     await waitFor(() => expect(onDone).toHaveBeenCalled());
     expect(routerRefresh).toHaveBeenCalled();
   });
 
-  it("activates the credential as the tenant provider when `activate`", async () => {
+  it("activates the secret as the tenant provider when `activate`", async () => {
     const onDone = vi.fn();
     render(
       React.createElement(ProviderKeyForm, { workspaceId: "ws_1", provider: "anthropic", activate: true, onDone }),
@@ -77,14 +77,14 @@ describe("ProviderKeyForm — locked mode", () => {
     fill("sk-x", "m1");
     fireEvent.click(screen.getByRole("button", { name: "Save & make active" }));
     await waitFor(() =>
-      expect(setProviderSelfManagedAction).toHaveBeenCalledWith({ credential_ref: "anthropic", model: "m1" }),
+      expect(setProviderSelfManagedAction).toHaveBeenCalledWith({ secret_ref: "anthropic", model: "m1" }),
     );
     expect(captureModelActivated).toHaveBeenCalledWith({ provider: "anthropic", mode: "self_managed", model: "m1" });
     await waitFor(() => expect(onDone).toHaveBeenCalled());
   });
 
   it("surfaces a store error and does not activate", async () => {
-    createCredentialAction.mockResolvedValue({ ok: false, error: "boom" });
+    createSecretAction.mockResolvedValue({ ok: false, error: "boom" });
     const onDone = vi.fn();
     render(
       React.createElement(ProviderKeyForm, { workspaceId: "ws_1", provider: "anthropic", activate: true, onDone }),
@@ -112,7 +112,7 @@ describe("ProviderKeyForm — locked mode", () => {
   it("does nothing when the form is incomplete (Enter on an empty field)", () => {
     render(React.createElement(ProviderKeyForm, { workspaceId: "ws_1", provider: "anthropic", onDone: vi.fn() }));
     fireEvent.keyDown(screen.getByLabelText("API key"), { key: "Enter" });
-    expect(createCredentialAction).not.toHaveBeenCalled();
+    expect(createSecretAction).not.toHaveBeenCalled();
   });
 
   it("renders a Cancel affordance when onCancel is provided", () => {
@@ -139,7 +139,7 @@ describe("ProviderKeyForm — generic mode", () => {
     // Submit via Enter on the model-less path is fine; use the api-key field.
     fireEvent.keyDown(screen.getByLabelText("API key"), { key: "Enter" });
     await waitFor(() =>
-      expect(createCredentialAction).toHaveBeenCalledWith("ws_1", {
+      expect(createSecretAction).toHaveBeenCalledWith("ws_1", {
         name: "anthropic",
         data: { provider: "anthropic", api_key: "sk-ant-xyz", model: "m1" },
       }),
@@ -156,7 +156,7 @@ describe("ProviderKeyForm — generic mode", () => {
     expect((screen.getByLabelText("Model") as HTMLInputElement).value).toBe("");
     // A non-Enter key in a field is ignored.
     fireEvent.keyDown(screen.getByLabelText("API key"), { key: "a" });
-    expect(createCredentialAction).not.toHaveBeenCalled();
+    expect(createSecretAction).not.toHaveBeenCalled();
   });
 
   it("leaves the provider untouched for an unrecognised key, and when re-detecting the same provider", () => {

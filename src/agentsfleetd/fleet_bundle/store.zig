@@ -5,9 +5,9 @@ const PgQuery = @import("../db/pg_query.zig").PgQuery;
 const credential_key = @import("../fleet_runtime/credential_key.zig");
 
 /// Return the subset of `names` for which the workspace holds no vault secret —
-/// the install-gate credential check (used by fleet create when installing a
-/// template that declares required credentials).
-pub fn missingCredentialNames(
+/// the install-gate secret check (used by fleet create when installing a
+/// template that declares required secrets).
+pub fn missingSecretNames(
     conn: *pg.Conn,
     alloc: std.mem.Allocator,
     workspace_id: []const u8,
@@ -19,7 +19,7 @@ pub fn missingCredentialNames(
         missing.deinit(alloc);
     }
     for (names) |name| {
-        if (!try credentialExists(conn, alloc, workspace_id, name)) {
+        if (!try secretExists(conn, alloc, workspace_id, name)) {
             try missing.append(alloc, try alloc.dupe(u8, name));
         }
     }
@@ -31,7 +31,7 @@ pub fn freeStringSlice(alloc: std.mem.Allocator, values: []const []const u8) voi
     alloc.free(values);
 }
 
-fn credentialExists(conn: *pg.Conn, alloc: std.mem.Allocator, workspace_id: []const u8, name: []const u8) !bool {
+fn secretExists(conn: *pg.Conn, alloc: std.mem.Allocator, workspace_id: []const u8, name: []const u8) !bool {
     const key_name = try credential_key.allocKeyName(alloc, name);
     defer alloc.free(key_name);
     var q = PgQuery.from(try conn.query(

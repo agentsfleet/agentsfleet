@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { PageHeader, PageTitle } from "@agentsfleet/design-system";
 import { withWorkspaceScope, orFallback } from "@/lib/workspace";
 import { listWorkspaceFleetTemplatesCached } from "@/lib/api/fleet-templates";
-import { listCredentials } from "@/lib/api/credentials";
+import { listSecrets } from "@/lib/api/secrets";
 import { InstallFleet } from "./InstallFleet";
 import { hasTemplateWriteScope } from "../scope";
 
@@ -30,8 +30,8 @@ export default async function InstallFleetPage({
       listWorkspaceFleetTemplatesCached(workspaceId, token)
         .then((response) => response.items)
         .catch(() => []),
-      listCredentials(workspaceId, token)
-        .then((response) => response.credentials.map((credential) => credential.name))
+      listSecrets(workspaceId, token)
+        .then((response) => response.secrets.map((secret) => secret.name))
         // null (not []) when the vault read fails: the preview must not mistake an
         // unreadable vault for an empty one and falsely gate create.
         .catch(orFallback(null)),
