@@ -14,11 +14,12 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Milestone:** M113
 **Workstream:** 002
 **Date:** Jul 04, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — "model not in cached caps catalogue" was reported directly as a user-facing bug; a full-codebase audit this session found it is one instance of a systemic gap, not an isolated string.
 **Categories:** UI
 **Batch:** B1 — independent of M113_001 and M113_003.
 **Branch:** feat/m108-connector-platform — folded into the SAME branch/PR (#477) as M108/M112, by Indy's explicit instruction this session.
+**Test Baseline:** unit=2319 integration=249
 **Depends on:** none
 **Provenance:** LLM-drafted (Claude Sonnet 5, Jul 04, 2026) from a dedicated full-codebase error-copy audit this session (`lib/errors.ts`, every call site rendering an API error, and the backend error registries `error_entries.zig`/`error_entries_runtime.zig`).
 
