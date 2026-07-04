@@ -14,11 +14,12 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Milestone:** M113
 **Workstream:** 003
 **Date:** Jul 04, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — Indy's explicit decision this session to reverse M87's Models/Credentials unification, after weighing the regression-test cost against the UX cost of the merged page.
 **Categories:** UI
 **Batch:** B1 — independent of M113_001/002; shares the Models page file tree with M113_001 (removes the section M113_001's row-list otherwise sits alone below).
 **Branch:** feat/m108-connector-platform — folded into the SAME branch/PR (#477) as M108/M112, by Indy's explicit instruction this session.
+**Test Baseline:** unit=2309 integration=249
 **Depends on:** none (sequencing note: land after or alongside M113_001 to avoid two specs editing `settings/models/page.tsx`'s composition in the same window)
 **Provenance:** LLM-drafted (Claude Sonnet 5, Jul 04, 2026) from a targeted investigation this session of the current Models/Credentials merge (`page.tsx` composition, `CustomSecretsList.tsx` vs. the unused `CredentialsList.tsx`, the M87 regression test) plus Indy's explicit UX steer: standard empty-state ("No secrets yet"), a real "Add Secret" dialog (not an always-inline form), and consistency with the table pattern used elsewhere in the product.
 
