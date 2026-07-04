@@ -923,7 +923,7 @@ Both surfaces HMAC-verify inbound Slack traffic, so keep them straight:
 
 | | Fleet-trigger webhook (§Webhook auth) | OAuth connector events (here) |
 | --- | --- | --- |
-| Route | `/v1/webhooks/{fleet_id}` | `/v1/connectors/slack/events` |
+| Route | `/v1/webhooks/{fleet_id}` (`/v1/webhooks/{fleet_id}/github` for GitHub) | `/v1/connectors/slack/events` |
 | Middleware | `webhook_sig` | `none` (verifies in-handler) |
 | Secret | workspace `fleet:<source>` field `webhook_secret` | admin `slack-app` field `signing_secret` |
 | Secret scope | per workspace (rotate once per source) | per platform (one app, all tenants) |

@@ -349,22 +349,24 @@ A config change never alters a language-model turn already in flight (one lease 
 
 ## End-to-end sequence
 
-### A. INSTALL  (`agentsfleet install --from <path>` or Fleet Bundle)
+### A. INSTALL  (`agentsfleet install --library <id>` from an onboarded library entry)
 
-Fleet Bundle import is a source-prep step before Fleet creation, not a second runtime creation path:
+Fleet library onboarding is the source-prep step before Fleet creation, not a second runtime creation path:
 
 ```
    dashboard source picker
     │
     ├─► Start from Fleet library
     ├─► Import public GitHub repository/path
-    ├─► Manual SKILL.md paste / local command-line install
+    ├─► Manual SKILL.md paste / local library onboarding
     └─► Upload bundle archive            (DEFERRED 2026-06-20, Indy-acked — not in the shipping picker)
             │
             ▼
    agentsfleetd-api
-    │  GET  /v1/fleets/bundles                (first-party Fleet library list)
-    │  POST /v1/workspaces/{ws}/fleets/bundles/snapshots
+    │  GET  /v1/fleets/bundles                (first-party catalog metadata)
+    │  GET  /v1/workspaces/{ws}/fleet-libraries
+    │       (platform ∪ workspace tenant library gallery)
+    │  POST /v1/workspaces/{ws}/fleet-libraries
     │       body: { source_kind, source_ref }   (upload_ref DEFERRED 2026-06-20)
     │
     ├─► validate archive/path names, size caps, required SKILL.md,
@@ -388,16 +390,15 @@ installed runtime. Runner remains the infrastructure vocabulary.
 ```
    user / agentsfleet CLI
     │  POST /v1/workspaces/{ws}/fleets
-    │  body, direct Markdown:
-    │       { name, trigger_markdown?, source_markdown }
-    │  OR body, validated bundle:
-    │       { name, bundle_id, overrides? }
+    │  body, platform library entry:
+    │       { platform_library_id, name? }
+    │  OR body, tenant library entry:
+    │       { tenant_library_id, name? }
     ▼
   agentsfleetd-api (create handler)
     │
-    ├─► if bundle_id present:
-    │      load validated bundle metadata + normalized SKILL.md/TRIGGER.md
-    │      from Postgres and immutable snapshot metadata from object storage
+    ├─► load normalized SKILL.md/TRIGGER.md + immutable snapshot metadata
+    │    from the selected library tier (platform or tenant)
     ├─► if trigger_markdown is absent:
     │      generate default manual/API trigger config
     ├─► check required workspace secrets by key name only; never resolve

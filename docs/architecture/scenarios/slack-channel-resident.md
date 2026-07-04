@@ -6,7 +6,7 @@
 
 **Outcome under test:** a fact a user tells `@agentsfleet` in one Slack thread is recalled by the bot in a *different thread of the same channel* — because the memory namespace is the per-channel resident fleet, not the thread — with the bot read-only and never acting unattended.
 
-Legend: ✅ built today (reused) · 🔨 to-build (M106).
+Legend: ✅ shipped · ♻️ reused substrate.
 
 ```mermaid
 sequenceDiagram
@@ -17,27 +17,27 @@ sequenceDiagram
   participant PG as Postgres
   participant Runner as agentsfleet-runner
 
-  Note over Lead,Runner: one-time — admin connects Slack (OAuth) → vault handle + core.connector_installs 🔨
+  Note over Lead,Runner: one-time — admin connects Slack (Open Authorization (OAuth)) → vault handle + core.connector_installs ✅
   Lead->>Slack: @agentsfleet what's our prod called? (thread A)
-  Slack->>API: POST /v1/connectors/slack/events (v0 HMAC) 🔨
-  API->>PG: resolve team→workspace; materialize channel fleet via innerCreateFleet (default skill.md) 🔨
-  API->>API: XADD fleet:{channel_fleet_id}:events actor=slack:<user> (webhook-producer shape) ✅ reused
-  Runner->>API: lease → run; GET /me/memory/{channel_fleet_id} (empty) ✅
-  Runner->>Slack: chat.postMessage thread_ts=A "don't know yet — tell me?" 🔨
+  Slack->>API: POST /v1/connectors/slack/events (v0 Hash-based Message Authentication Code (HMAC)) ✅
+  API->>PG: resolve team→workspace; materialize channel fleet via innerCreateFleet (default skill.md) ✅
+  API->>API: XADD fleet:{channel_fleet_id}:events actor=slack:<user> (webhook-producer shape) ♻️
+  Runner->>API: lease → run; GET /me/memory/{channel_fleet_id} (empty) ♻️
+  Runner->>Slack: chat.postMessage thread_ts=A "don't know yet — tell me?" ✅
   Lead->>Slack: it's "aurora" (thread A)
-  Runner->>API: POST /me/memory/{channel_fleet_id} {prod: aurora} ✅
+  Runner->>API: POST /me/memory/{channel_fleet_id} {prod: aurora} ♻️
   Note over Lead,Runner: …days later, a different thread…
   Lead->>Slack: @agentsfleet is aurora healthy? (thread B)
   API->>API: SAME channel_fleet_id (core.connector_channels)
   Runner->>API: lease → GET /me/memory/{channel_fleet_id} → {prod: aurora} ✅
-  Runner->>Slack: chat.postMessage thread_ts=B (uses "aurora") 🔨
+  Runner->>Slack: chat.postMessage thread_ts=B (uses "aurora") ✅
 ```
 
 ---
 
-## 1. Install — one OAuth, multi-tenant
+## 1. Install — one Open Authorization (OAuth), multi-tenant
 
-A workspace admin clicks **Connect Slack** in the dashboard. `agentsfleetd` runs the OAuth (Open Authorization) code-exchange, persists the install as a `(workspace_id,'slack')` **vault handle** carrying the bot token + metadata (`bot_user_id`, `scopes`) — mirroring the GitHub connector (`github/callback.zig`, zero entity tables) — plus a generic `core.connector_installs (provider='slack', external_account_id=team_id → workspace_id)` row that makes the inbound `team_id → workspace` lookup resolvable. The platform app credentials (`client_id`/`client_secret`/`signing_secret`) were registered once via [`../../../playbooks/operations/slack_app_registration/001_playbook.md`](../../../playbooks/operations/slack_app_registration/001_playbook.md). One app serves every tenant; `team_id` is the routing key. 🔨
+A workspace admin clicks **Connect Slack** in the dashboard. `agentsfleetd` runs the Open Authorization (OAuth) code-exchange, persists the install as a `(workspace_id,'slack')` **vault handle** carrying the bot token + metadata (`bot_user_id`, `scopes`) — mirroring the GitHub connector (`github/callback.zig`, zero entity tables) — plus a generic `core.connector_installs (provider='slack', external_account_id=team_id → workspace_id)` row that makes the inbound `team_id → workspace` lookup resolvable. The platform app credentials (`client_id`/`client_secret`/`signing_secret`) were registered once via [`../../../playbooks/operations/slack_app_registration/001_playbook.md`](../../../playbooks/operations/slack_app_registration/001_playbook.md). One app serves every tenant; `team_id` is the routing key. ✅
 
 ## 2. The channel is the memory namespace
 
@@ -56,16 +56,16 @@ A mention is a `slack:<user>` event XADDed via the webhook-producer shape (signa
 
 Thread A stored `prod=aurora`. Thread B — a different thread, possibly days later — hydrates the **same** `channel_fleet_id` namespace and recalls `aurora`. Memory persisted **not because anything was stored in the thread**, but because the resident fleet owns the namespace and the ephemeral run borrows it. The compute is ephemeral (`:memory:` SQLite, gone on child exit); the channel store is durable in Postgres.
 
-## 5. Built vs to-build
+## 5. Shipped surface
 
 | Step | Status |
 |---|---|
-| Memory hydrate/capture loop (keyed by `fleet_id`) | ✅ reused |
-| Single ingress / lease / execute / report | ✅ reused |
-| Slack OAuth install — vault handle + generic `core.connector_installs` | 🔨 M106 |
-| Signed events ingress + `(team,channel)→fleet` routing (`core.connector_channels`) | 🔨 M106 |
-| Per-channel resident fleet — via `innerCreateFleet` + default skill.md, code-set reactive config | 🔨 M106 |
-| In-thread answer (`chat.postMessage thread_ts`) | 🔨 M106 |
+| Memory hydrate/capture loop (keyed by `fleet_id`) | ♻️ reused |
+| Single ingress / lease / execute / report | ♻️ reused |
+| Slack OAuth install — vault handle + generic `core.connector_installs` | ✅ shipped in M106 |
+| Signed events ingress + `(team,channel)→fleet` routing (`core.connector_channels`) | ✅ shipped in M106 |
+| Per-channel resident fleet — via `innerCreateFleet` + default skill.md, code-set reactive config | ✅ shipped in M106 |
+| In-thread answer (`chat.postMessage thread_ts`) | ✅ shipped in M106 |
 
 ## 6. What this scenario proves
 
