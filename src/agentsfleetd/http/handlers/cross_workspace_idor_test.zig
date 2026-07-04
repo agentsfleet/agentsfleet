@@ -13,7 +13,7 @@
 //   | GET    /v1/workspaces/{foreign_ws}/fleets              | 403      |
 //   | DELETE /v1/workspaces/{my_ws}/fleets/{foreign_agent}  | 404      |
 //   | GET    /v1/workspaces/{my_ws}/fleets/{foreign}/activity| 404      |
-//   | GET    /v1/workspaces/{foreign_ws}/credentials          | 403      |
+//   | GET    /v1/workspaces/{foreign_ws}/secrets              | 403      |
 //   | GET    /v1/workspaces/{my_ws}/fleets/{foreign}/ig      | 404      |
 //   | DELETE /v1/workspaces/{my_ws}/fleets/{foreign}/ig/{g}  | 404      |
 //
@@ -375,7 +375,7 @@ test "IDOR: GET /workspaces/{my}/fleets/{foreign}/activity returns 404" {
     try std.testing.expectEqual(@as(u16, 404), r.status);
 }
 
-test "IDOR: GET /workspaces/{foreign}/credentials returns 403" {
+test "IDOR: GET /workspaces/{foreign}/secrets returns 403" {
     const srv = try startTestServer(ALLOC);
     defer {
         if (srv.pool.acquire()) |c| {
