@@ -74,9 +74,14 @@ describe("IntegrationsConnectors (test_ui_connectors_cards_from_catalog)", () =>
     expect(screen.queryByTestId("integration-jira")).toBeNull();
   });
 
-  it("shows an empty state when the catalog is empty (degraded closed)", () => {
+  it("shows a load-failure empty state when the catalog is empty (degraded closed)", () => {
+    // The catalog is registry-driven and never legitimately empty — an empty
+    // list always means the fetch failed and degraded via the page's
+    // catch-all, so the copy must say so plainly (not an ambiguous "no
+    // connectors" framing a real empty state would use).
     renderConnectors([]);
     expect(screen.getByTestId("connectors-empty")).toBeTruthy();
+    expect(screen.getByText(/couldn't load connectors/i)).toBeTruthy();
     expect(screen.queryByTestId("integration-github")).toBeNull();
   });
 

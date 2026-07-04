@@ -29,6 +29,7 @@ const github_callback = @import("github/callback.zig");
 const github_status = @import("github/status.zig");
 const zoho_spec = @import("zoho/spec.zig");
 const zoho_callback = @import("zoho/callback.zig");
+const zoho_multi_dc = @import("zoho/multi_dc.zig");
 const jira_spec = @import("jira/spec.zig");
 const jira_callback = @import("jira/callback.zig");
 const linear_spec = @import("linear/spec.zig");
@@ -37,8 +38,11 @@ const linear_callback = @import("linear/callback.zig");
 const Hx = hx_mod.Hx;
 
 /// oauth2 post-auth hook: parse the exchange body + persist the install rows.
-/// Never writes the response — the generic callback owns response mapping.
-pub const PostAuthFn = *const fn (hx: Hx, workspace_id: []const u8, exchange_body: []const u8) anyerror!void;
+/// `location` is the callback's `location` query param, when the provider's
+/// redirect carries one (Zoho multi-DC: "us"/"eu"/"in"/"au"/"cn"/"jp"/"ca");
+/// null for every other provider. Never writes the response — the generic
+/// callback owns response mapping.
+pub const PostAuthFn = *const fn (hx: Hx, workspace_id: []const u8, exchange_body: []const u8, location: ?[]const u8) anyerror!void;
 /// app_install completion hook: validates + persists AND owns its failure
 /// responses (an installation callback's inputs are provider-bespoke).
 /// Returns true on success; false after having responded.
@@ -62,6 +66,13 @@ pub const Oauth2Data = struct {
     /// Provider-specific error code for a rejected/malformed exchange.
     exchange_failed_code: []const u8,
     post_auth: PostAuthFn,
+    /// Multi-DC providers (Zoho) override the exchange's effective token
+    /// endpoint from the callback's `location` query param — the code is
+    /// only redeemable at the data-center-specific accounts server that
+    /// issued it, not the single-region `flow.token_endpoint`. Single-region
+    /// providers (Slack/Jira/Linear) leave this null and always use
+    /// `flow.token_endpoint`.
+    resolve_token_endpoint: ?*const fn (location: ?[]const u8) []const u8 = null,
 };
 
 /// App-installation archetype (GitHub App shape): no code exchange — the
@@ -123,6 +134,7 @@ pub const REGISTRY = [_]ConnectorSpec{
             .refresh = true,
             .exchange_failed_code = ec.ERR_CONNECTOR_OAUTH_EXCHANGE_FAILED,
             .post_auth = zoho_callback.postAuth,
+            .resolve_token_endpoint = zoho_multi_dc.tokenEndpoint,
         } },
         .respond_status = oauth_status.respondStatus,
     },

@@ -142,12 +142,25 @@ fn deleteFleetHandle(alloc: std.mem.Allocator, conn: *pg.Conn, ws: []const u8, p
 }
 
 fn driveCallback(h: *TestHarness, alloc: std.mem.Allocator, flow: oauth2.Spec, provider: []const u8, token_url: []const u8) !void {
+    return driveCallbackWithLocation(h, alloc, flow, provider, token_url, null);
+}
+
+/// Same as `driveCallback`, plus an optional `location` query param — Zoho
+/// multi-DC's callback signal. `connector_oauth_token_endpoint_override`
+/// always wins for the exchange call itself (so tests never dial a real
+/// vendor); `location` still flows through to `post_auth`, so the STORED
+/// `accounts_base` reflects it end-to-end (the resolver itself is unit-tested
+/// directly in `zoho/multi_dc.zig`).
+fn driveCallbackWithLocation(h: *TestHarness, alloc: std.mem.Allocator, flow: oauth2.Spec, provider: []const u8, token_url: []const u8, location: ?[]const u8) !void {
     h.ctx.approval_signing_secret = SIGNING_SECRET;
     h.ctx.platform_admin_workspace_id = ADMIN_WS;
     h.ctx.connector_oauth_token_endpoint_override = token_url;
     const state = try oauth2.mintState(alloc, &h.queue, flow, SIGNING_SECRET, TARGET_WS, common.clock.nowMillis());
     defer alloc.free(state);
-    const path = try std.fmt.allocPrint(alloc, "/v1/connectors/{s}/callback?code=fake-code&state={s}", .{ provider, state });
+    const path = if (location) |loc|
+        try std.fmt.allocPrint(alloc, "/v1/connectors/{s}/callback?code=fake-code&state={s}&location={s}", .{ provider, state, loc })
+    else
+        try std.fmt.allocPrint(alloc, "/v1/connectors/{s}/callback?code=fake-code&state={s}", .{ provider, state });
     defer alloc.free(path);
     const r = try h.get(path).redirectBehavior(.unhandled).send();
     defer r.deinit();
@@ -183,6 +196,58 @@ test "test_zoho_callback_vaults_refresh_handle" {
     try testing.expectEqualStrings(common.PROVIDER_ZOHO, obj.get("integration").?.string);
     try testing.expectEqualStrings(ZOHO_REFRESH, obj.get("refresh_token").?.string);
     try testing.expectEqualStrings("https://accounts.zoho.com", obj.get("accounts_base").?.string);
+}
+
+test "test_zoho_callback_stores_the_eu_accounts_base_from_location" {
+    const alloc = testing.allocator;
+    const h = TestHarness.start(alloc, .{ .configureRegistry = noopRegistry }) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    try seedFixtures(alloc, conn, common.PROVIDER_ZOHO);
+    var fake: FakeVendor = undefined;
+    try fake.start(&.{ZOHO_TOKEN_BODY});
+    defer fake.shutdown();
+    const token_url = try fake.tokenUrl(alloc);
+    defer alloc.free(token_url);
+    try driveCallbackWithLocation(h, alloc, zoho_spec.SPEC, common.PROVIDER_ZOHO, token_url, "eu");
+
+    var parsed = try loadHandle(alloc, conn, common.PROVIDER_ZOHO);
+    defer parsed.deinit();
+    const obj = parsed.value.object;
+    // The regression this test pins: before the fix, accounts_base was
+    // unconditionally "https://accounts.zoho.com" regardless of location —
+    // every non-US Zoho refresh would fail invalid_grant.
+    try testing.expectEqualStrings("https://accounts.zoho.eu", obj.get("accounts_base").?.string);
+}
+
+test "test_zoho_callback_stores_the_irregular_canada_accounts_base" {
+    const alloc = testing.allocator;
+    const h = TestHarness.start(alloc, .{ .configureRegistry = noopRegistry }) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    try seedFixtures(alloc, conn, common.PROVIDER_ZOHO);
+    var fake: FakeVendor = undefined;
+    try fake.start(&.{ZOHO_TOKEN_BODY});
+    defer fake.shutdown();
+    const token_url = try fake.tokenUrl(alloc);
+    defer alloc.free(token_url);
+    try driveCallbackWithLocation(h, alloc, zoho_spec.SPEC, common.PROVIDER_ZOHO, token_url, "ca");
+
+    var parsed = try loadHandle(alloc, conn, common.PROVIDER_ZOHO);
+    defer parsed.deinit();
+    const obj = parsed.value.object;
+    // Canada is the one Zoho DC whose accounts server is NOT a `zoho.<tld>`
+    // suffix — a naive suffix-swap derivation would produce the wrong
+    // (nonexistent) "accounts.zoho.ca" here instead.
+    try testing.expectEqualStrings("https://accounts.zohocloud.ca", obj.get("accounts_base").?.string);
 }
 
 test "test_jira_callback_resolves_cloud_id" {

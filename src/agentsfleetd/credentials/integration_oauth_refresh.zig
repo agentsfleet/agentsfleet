@@ -18,6 +18,13 @@ const OauthApp = integration.OauthApp;
 
 /// Vault-handle field carrying the refresh token to exchange.
 const FIELD_REFRESH_TOKEN: []const u8 = "refresh_token";
+/// Vault-handle field carrying the data-center accounts server this refresh
+/// token is redeemable at (Zoho multi-DC only; absent for single-region
+/// providers, which fall back to `cfg.token_endpoint`). Refreshing at the
+/// wrong data center's accounts server fails `invalid_grant` exactly like the
+/// initial exchange would.
+const FIELD_ACCOUNTS_BASE: []const u8 = "accounts_base";
+const ZOHO_TOKEN_PATH: []const u8 = "/oauth/v2/token";
 
 /// Token-endpoint response fields.
 const RESP_FIELD_ACCESS_TOKEN: []const u8 = "access_token";
@@ -57,8 +64,18 @@ pub fn mint(ctx: MintCtx, cfg: OAuth2Refresh) anyerror!Outcome {
     const body = try buildForm(ctx.alloc, refresh_token, app);
     defer ctx.alloc.free(body);
 
+    // The handle's own accounts_base (multi-DC providers) wins over the
+    // single-region default — refreshing at the wrong data center fails
+    // invalid_grant exactly like the initial exchange would.
+    const owned_endpoint: ?[]u8 = if (strField(obj, FIELD_ACCOUNTS_BASE)) |base|
+        try std.fmt.allocPrint(ctx.alloc, "{s}{s}", .{ base, ZOHO_TOKEN_PATH })
+    else
+        null;
+    defer if (owned_endpoint) |ep| ctx.alloc.free(ep);
+    const effective_endpoint = owned_endpoint orelse cfg.token_endpoint;
+
     const resp = ctx.http.post(ctx.alloc, .{
-        .url = cfg.token_endpoint,
+        .url = effective_endpoint,
         .bearer = null, // token-endpoint auth rides the form body, not a bearer header
         .accept = ACCEPT_JSON,
         .content_type = CONTENT_TYPE_FORM,
@@ -138,6 +155,7 @@ const TEST_NOW_MS: i64 = 1_700_000_000_000;
 const TEST_EXPIRES_IN_S: i64 = 3600;
 const TEST_EXPIRES_IN_TEXT = std.fmt.comptimePrint("{d}", .{TEST_EXPIRES_IN_S});
 const HANDLE_ZOHO = "{\"integration\":\"zoho\",\"refresh_token\":\"rt_zoho_abc\"}";
+const HANDLE_ZOHO_EU = "{\"integration\":\"zoho\",\"refresh_token\":\"rt_zoho_abc\",\"accounts_base\":\"https://accounts.zoho.eu\"}";
 const TEST_CFG = OAuth2Refresh{ .token_endpoint = "https://accounts.test/oauth/v2/token", .app = testAppSelector };
 
 fn testAppSelector(p: integration.PlatformSecrets) ?OauthApp {
@@ -174,6 +192,35 @@ test "oauth2_refresh mint: 200 → access token with local expiry; refresh token
     try std.testing.expect(std.mem.indexOf(u8, out.ok.token, "rt_zoho_abc") == null);
     // Auth is in the body, not a bearer header (the broker sends no bearer).
     try std.testing.expectEqual(@as(usize, 0), vendor.bearer.len);
+}
+
+test "oauth2_refresh mint: a handle with accounts_base refreshes at ITS data center, not cfg.token_endpoint" {
+    const alloc = std.testing.allocator;
+    var vendor = testing.FakeGitHub{ .alloc = alloc, .status = 200, .resp_body = "{\"access_token\":\"at_eu\",\"expires_in\":" ++ TEST_EXPIRES_IN_TEXT ++ "}" };
+    defer vendor.deinit();
+    var h = try testing.parse(alloc, HANDLE_ZOHO_EU);
+    defer h.deinit();
+
+    const out = try mint(refreshCtx(alloc, h.value, &vendor), TEST_CFG);
+    try std.testing.expect(out == .ok);
+    defer alloc.free(out.ok.token);
+    // The EU handle's stored accounts_base wins over TEST_CFG's single-region
+    // default — this is the exact bug class greptile flagged: a hardcoded
+    // token_endpoint means every non-US refresh dies invalid_grant.
+    try std.testing.expectEqualStrings("https://accounts.zoho.eu/oauth/v2/token", vendor.url);
+}
+
+test "oauth2_refresh mint: a handle without accounts_base falls back to cfg.token_endpoint" {
+    const alloc = std.testing.allocator;
+    var vendor = testing.FakeGitHub{ .alloc = alloc, .status = 200, .resp_body = "{\"access_token\":\"at_default\",\"expires_in\":" ++ TEST_EXPIRES_IN_TEXT ++ "}" };
+    defer vendor.deinit();
+    var h = try testing.parse(alloc, HANDLE_ZOHO);
+    defer h.deinit();
+
+    const out = try mint(refreshCtx(alloc, h.value, &vendor), TEST_CFG);
+    try std.testing.expect(out == .ok);
+    defer alloc.free(out.ok.token);
+    try std.testing.expectEqualStrings(TEST_CFG.token_endpoint, vendor.url);
 }
 
 test "oauth2_refresh mint: missing expires_in falls back to the conservative floor" {

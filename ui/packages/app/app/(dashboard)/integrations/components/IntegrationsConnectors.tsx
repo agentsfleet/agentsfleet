@@ -40,11 +40,15 @@ export default function IntegrationsConnectors({
         Connect a tool in one click — no token to paste.
       </p>
       {catalog.length === 0 ? (
+        // The catalog is registry-driven (Slack/GitHub/Zoho/Jira/Linear/…),
+        // never legitimately empty — an empty list here always means the
+        // fetch failed and degraded via the page's catch-all. Say so
+        // plainly instead of the ambiguous "no connectors" framing.
         <EmptyState
           data-testid="connectors-empty"
           icon={<PlugIcon size={32} />}
-          title="No connectors available"
-          description="Connectors couldn't be loaded right now — refresh to try again."
+          title="Couldn't load connectors"
+          description="Something went wrong fetching the connector list — refresh to try again."
         />
       ) : (
         <DashboardRowGroup>
