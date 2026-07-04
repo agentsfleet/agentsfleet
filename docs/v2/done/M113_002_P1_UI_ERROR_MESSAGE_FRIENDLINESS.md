@@ -14,7 +14,7 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Milestone:** M113
 **Workstream:** 002
 **Date:** Jul 04, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — "model not in cached caps catalogue" was reported directly as a user-facing bug; a full-codebase audit this session found it is one instance of a systemic gap, not an isolated string.
 **Categories:** UI
 **Batch:** B1 — independent of M113_001 and M113_003.
@@ -292,7 +292,7 @@ Standard chain — `/write-unit-test` → `/review` → `/review-pr`, per `AGENT
 | Zig unit tests | `zig build test` | same 2 pre-existing unrelated failures (webhook-sig `UZ-WH-010`, worker-pool `.worker_started`/`.server_started`) documented in the M108/M112/M113 handoff, nothing new | ✅ |
 | Zig lint | `make lint-zig` | clean (ZLint, pg-drain, test-depth, schema-gate, 350-line cap, orphan sweep) | ✅ |
 | OpenAPI | `make check-openapi` | bundle + Redocly lint + ErrorBody schema check + REST §1 URL-shape all green | ✅ |
-| Integration tests | `make test-integration` | pending at time of writing — re-run after the wire-contract change, see PR Session Notes for final result | — |
+| Integration tests | `make test-integration` | passed against a real Postgres + Redis; same 2 pre-existing unrelated failures (webhook-sig `UZ-WH-010`, worker-pool `.worker_started`/`.server_started`), nothing new from the wire-contract change | ✅ |
 | Gitleaks | `gitleaks detect` (pre-commit hook) | clean | ✅ |
 | Dead code sweep | N/A | no files deleted this section | — |
 
