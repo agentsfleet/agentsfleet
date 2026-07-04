@@ -16,7 +16,7 @@ For the full end-to-end install + first-trigger walkthroughs (platform-managed a
 
 ## §8.0 The wedge surface
 
-The MVP's user-facing wedge is the **`agentsfleet` CLI plus the first-party Fleet library**. A user goes from cold machine to a running fleet through the CLI — no host-agent and no markdown-skill install step:
+The MVP's user-facing wedge is the **`agentsfleet` Command-Line Interface (CLI) plus the first-party Fleet library**. A user goes from cold machine to a running fleet through the CLI — no host-agent and no markdown-skill install step:
 
 ```bash
 curl -fsSL https://agentsfleet.dev | bash   # installs the agentsfleet CLI
@@ -25,16 +25,16 @@ agentsfleet library                          # browse the first-party Fleet libr
 agentsfleet install --library github-pr-reviewer
 ```
 
-`agentsfleet install` takes one of two sources (§8.2.2):
+`agentsfleet install` installs one already-onboarded template (§8.2.2):
 
-- **`--library <id>`** — a curated, ready-to-run Fleet Bundle from the first-party Fleet library (M94; `GET /v1/fleets/bundles`). The pinned `SKILL.md`/`TRIGGER.md` are fetched and validated server-side; the user supplies only the secrets the library entry declares.
-- **`--from <path>`** — a local bundle the user authored (SKILL.md required, TRIGGER.md optional), often drafted with a coding agent's help (Claude Code, Amp, Codex CLI, OpenCode). This is the path for a fleet customized beyond what a library entry ships.
+- **`--library <id>`** — a curated, ready-to-run Fleet Bundle from the workspace gallery (platform library entries plus any tenant library entries). The pinned `SKILL.md`/`TRIGGER.md` are read server-side from the onboarded library row; the user supplies only the secrets the library entry declares.
+- **Local or GitHub-authored bundles** — onboard first as a tenant library entry through the dashboard or `POST /v1/workspaces/{ws}/fleet-libraries`, then install by that tenant library id. There is no direct local-file install path — `install` only accepts `--library <id>`. Existing Fleets can still be live-edited from disk with `agentsfleet fleet update <fleet_id> --from <path>`.
 
-Configuration — Slack channel, production-branch glob, cron schedule — lives in the bundle's `TRIGGER.md`/`SKILL.md`, version-controlled by design. A library entry ships sensible defaults; customize by editing a local copy and re-installing with `--from` (or `agentsfleet fleet update`). There are no install-time gating questions: the markdown *is* the configuration.
+Configuration — Slack channel, production-branch glob, cron schedule — lives in the bundle's `TRIGGER.md`/`SKILL.md`, version-controlled by design. A library entry ships sensible defaults; customize by editing a local copy, onboarding it as a tenant library entry, or updating an installed Fleet with `agentsfleet fleet update`. There are no install-time gating questions: the markdown *is* the configuration.
 
 This matters architecturally: the install surface is the CLI (deterministic, scriptable, host-neutral) and the bundle is portable markdown. The runtime stays prompt-driven; `agentsfleet install` plus the catalogue is what makes it tractable from a cold start.
 
-> **Transitional note.** The earlier wedge was a host-agent markdown skill (`/agentsfleet-install-platform-ops`, added via `npx skills add agentsfleet/skills`) that orchestrated repo detection, gating questions, frontmatter generation, and webhook auto-registration. That onboarding is being retired in favor of the CLI + catalogue flow above, and the public docs lead with the CLI path. Where this file and the scenarios still describe skill-orchestrated steps, read them as the prior approach — the substrate calls (`doctor`, `secret add`, `install --from`, `steer`, the `gh` webhook registration) are unchanged; only the orchestration moved from the skill to the CLI + the user.
+> **Transitional note.** The earlier wedge was a host-agent markdown skill (`/agentsfleet-install-platform-ops`, added via `npx skills add agentsfleet/skills`) that orchestrated repo detection, gating questions, frontmatter generation, and webhook auto-registration. That onboarding is being retired in favor of the CLI + catalogue flow above, and the public docs lead with the CLI path. Where this file and the scenarios still describe skill-orchestrated steps, read them as the prior approach — the substrate calls (`doctor`, `secret add`, `install --library`, `fleet update --from`, `steer`, the `gh` webhook registration) are unchanged; only the orchestration moved from the skill to the CLI + the user.
 
 ## §8.0.1 Deployment posture: hosted-only in v2
 
@@ -100,11 +100,12 @@ gh auth login -s admin:repo_hook   # one-time; lets you register GitHub webhooks
 
 1. The user picks a catalogue library entry (`agentsfleet install --library <id>`) or authors `SKILL.md` and `TRIGGER.md` for a local bundle (§8.0) — optionally with a coding agent (Claude Code, Amp, Codex CLI, OpenCode) helping draft the markdown.
 2. **`agentsfleet doctor --json` runs first** as the deterministic readiness gate after login. Doctor is fast and verifies connectivity + workspace health only — `server_reachable`, `workspace_selected`, and `workspace_binding_valid`. It does **not** carry provider or trial posture; that lives in `agentsfleet tenant provider show --json` (mode/provider/model/context cap) and `agentsfleet billing show` (free-trial state), read separately once health passes. The CLI (and any caller) reads `doctor`'s JSON output verbatim and aborts on failure with the user-facing message instead of letting `install` fail with a confusing 401. Doctor is the only sanctioned preflight surface for health — no parallel `preflight` command exists.
-3. The user (or coding agent) creates or updates the Fleet through one of two source paths:
-   - **Direct Markdown create** — `agentsfleet install --from <path>` or manual dashboard paste POSTs `{trigger_markdown, source_markdown}` to `POST /v1/workspaces/{ws}/fleets`.
-   - **Fleet Bundle create** — the dashboard imports/uploads/selects a validated bundle snapshot, previews required credentials/tools/network, then POSTs `bundle_id` to the same Fleet creation handler. There is no bundle-specific install route.
-4. The API parses frontmatter, derives `name` + `config_json`, persists the Fleet row, and synchronously creates the events stream + consumer group before returning 201. When a bundle lacks `TRIGGER.md`, the API generates a default manual/API trigger with no tools, no credentials, and no network. The 201 response carries `fleet_id` and `webhook_urls: { <source>: <url> }` — one entry per webhook trigger declared by `TRIGGER.md` or the imported bundle metadata. See [`data_flow.md`](./data_flow.md) for the create-to-lease sequence.
-5. The API stores the Fleet config, linked credentials reference, approval policy, trigger declarations (`triggers: [...]` array), and optional bundle snapshot reference.
+3. The user (or coding agent) creates the Fleet from an onboarded library entry:
+   - **Platform library entry** — `POST /v1/workspaces/{ws}/fleets` with `{platform_library_id, name?}`.
+   - **Tenant library entry** — `POST /v1/workspaces/{ws}/fleets` with `{tenant_library_id, name?}` after the local/GitHub source has been onboarded through `POST /v1/workspaces/{ws}/fleet-libraries` or the dashboard.
+   - **Existing Fleet edit** — `agentsfleet fleet update <fleet_id> --from <path>` PATCHes `source_markdown` / `trigger_markdown` in place; it is not a create path.
+4. The API reads the library entry's `SKILL.md` / `TRIGGER.md`, parses frontmatter, derives `name` + `config_json`, persists the Fleet row, and synchronously creates the events stream + consumer group before returning 201. When a library entry lacks `TRIGGER.md`, the API generates a default manual/API trigger with no tools, no secrets, and no network. The 201 response carries `fleet_id` and `webhook_urls: { <source>: <url> }` — one entry per webhook trigger declared by `TRIGGER.md` or the library entry's metadata. See [`data_flow.md`](./data_flow.md) for the create-to-lease sequence.
+5. The API stores the Fleet config, linked secret reference, approval policy, trigger declarations (`triggers: [...]` array), and optional bundle snapshot reference.
 6. **Webhook registration on the upstream provider runs from the user's own machine** — `agentsfleet install` prints the webhook URL(s) from the 201 response, and the user registers each on the provider with `gh api repos/.../hooks` (for GitHub) or the equivalent command, using their existing `gh` auth or stored API token. The platform never holds the user's Personal Access Token (PAT) for this step; the registration is logged on the provider side by the user. For dashboard-only creates, the Trigger panel on `/fleets/{id}` renders the exact terminal command pre-filled with the webhook URL and event list, ready to copy.
 7. Future triggers are served with no restart and no watcher thread: creation made the Fleet's events stream + consumer group up front (step 4), so each later trigger `XADD`s to the canonical stream name `fleet:{id}:events` and the control plane hands that event to whichever `agentsfleet-runner` leases next (`POST /v1/runners/me/leases`).
 
@@ -123,14 +124,14 @@ Import validation is server-side: required `SKILL.md`, safe paths, size caps, fr
 
 Two first scenarios anchor the product flow:
 
-- **GitHub Pull Request reviewer.** Wakes on GitHub pull request events, reads diff/context through `api.github.com`, and posts review comments using the workspace `github` credential.
-- **Zoho Recruit outreach.** Reads Zoho Recruit data, optionally sends mail through a separate credential, and uses support files such as `ZOHO.md` for provider-specific instructions.
+- **GitHub Pull Request reviewer.** Wakes on GitHub pull request events, reads diff/context through `api.github.com`, and posts review comments using the workspace `github` secret.
+- **Zoho Recruit outreach.** Reads Zoho Recruit data, optionally sends mail through a separate secret, and uses support files such as `ZOHO.md` for provider-specific instructions.
 
 ## §8.3 Triggering the Fleet
 
 A Fleet's `TRIGGER.md` declares `triggers: [...]` — an array of 1–8 trigger entries (unique on `(type, source)` tuple). Each entry is one of:
 
-- **Webhook trigger.** Type `webhook`, `source` from M28's `PROVIDER_REGISTRY` (`github`, `linear`, `jira`, `grafana`, `slack`, `agentmail`, `clerk`), and `events: [...]` listing the provider-specific subscriptions. An external system POSTs to `POST /v1/webhooks/{fleet_id}/{source}`; `fleet_id` is the canonical Fleet identifier. The receiver verifies the HMAC signature via M28's middleware (per provider), normalises the payload, and lands a synthetic event on `fleet:{id}:events` with `actor=webhook:<source>`.
+- **Webhook trigger.** Type `webhook`, `source` from M28's `PROVIDER_REGISTRY` (`github`, `linear`, `jira`, `grafana`, `slack`, `agentmail`, `clerk`), and `events: [...]` listing the provider-specific subscriptions. An external system POSTs to `POST /v1/webhooks/{fleet_id}` (GitHub gets its own `POST /v1/webhooks/{fleet_id}/github`; every other provider posts to the bare route, `source` resolved server-side from the fleet's `triggers[]` config, not the URL); `fleet_id` is the canonical Fleet identifier. The receiver verifies the HMAC signature via M28's middleware (per provider), normalises the payload, and lands a synthetic event on `fleet:{id}:events` with `actor=webhook:<source>`.
 - **Cron trigger.** Type `cron`, `schedule` as a 5-field cron expression. NullClaw's in-runner cron tool fires on time. Each fire arrives as a synthetic event with `actor=cron:<schedule>`. At most one cron entry per Fleet.
 
 In addition to the declared triggers, every Fleet always accepts:
@@ -150,7 +151,7 @@ The user experience inside Claude (or Amp / Codex CLI / OpenCode) feels like thi
 1. The user is already in their project.
 2. The user asks Claude to create or refine an operational fleet.
 3. Claude edits `SKILL.md`, `TRIGGER.md`, and related project instructions.
-4. Claude installs or updates the fleet. The skill captures `webhook_urls` from the install response, parses the rendered `TRIGGER.md` for `triggers[].events`, and shells out to `gh api repos/.../hooks` per webhook trigger — registration happens without leaving the terminal.
+4. Claude installs or updates the fleet through the CLI. The install response carries `webhook_urls`; the rendered `TRIGGER.md` carries `triggers[].events`; `gh api repos/.../hooks` registers each webhook trigger without leaving the terminal.
 5. Claude can also manually invoke the fleet via `agentsfleet steer` for one-off user-triggered tasks.
 6. Later, the fleet wakes on webhook or cron without the user staying in the terminal.
 7. When the user returns to Claude, they inspect what happened from durable history (`agentsfleet events {id}` or the dashboard Events tab) instead of reconstructing it from memory.
@@ -172,13 +173,13 @@ While working in Claude, the user defines a `platform-ops` fleet that:
 
 When a GH Actions deploy fails:
 
-1. GitHub posts to the fleet's webhook ingest URL `POST /v1/webhooks/{fleet_id}/github` with the failed `workflow_run` payload. The URL was registered earlier by the user running `gh api repos/{repo}/hooks` from their machine; the platform never held the user's PAT for that step.
-2. The webhook receiver verifies the HMAC signature against the workspace's stored credential (vault credential `github`, field `webhook_secret`). The credential is workspace-scoped — every fleet in the workspace whose `triggers[]` contains a `source: github` entry shares it by default; rotating it once rotates everywhere. Resolver: `vault.loadJson(workspace_id, name=trigger.source)` (where `trigger` is the matching `triggers[]` entry); an optional `x-agentsfleet.triggers[].credential_name:` frontmatter override scopes a distinct vault row per fleet for the per-fleet credential-isolation case (multi-org GitHub, multi-app Slack, multi-tenant B2B-on-agentsfleet).
+1. GitHub posts to the fleet's webhook ingest URL `POST /v1/webhooks/{fleet_id}/github` with the failed `workflow_run` payload. The URL was registered earlier by the user running `gh api repos/{repo}/hooks` from their machine, using their existing `gh` auth or stored API token; the platform never held it for that step.
+2. The webhook receiver verifies the HMAC signature against the workspace's stored secret (vault secret `github`, field `webhook_secret`). The secret is workspace-scoped — every fleet in the workspace whose `triggers[]` contains a `source: github` entry shares it by default; rotating it once rotates everywhere. Resolver: `vault.loadJson(workspace_id, name=trigger.source)` (where `trigger` is the matching `triggers[]` entry); an optional `x-agentsfleet.triggers[].credential_name:` frontmatter override (key name unchanged) scopes a distinct vault row per fleet for the per-fleet secret-isolation case (multi-org GitHub, multi-app Slack, multi-tenant B2B-on-agentsfleet).
 3. The receiver normalizes the payload into a synthetic event and `XADD`s to `fleet:{id}:events` with `actor=webhook:github`, `type=webhook`, `workspace_id={ws}`, `request={run_url, head_sha, conclusion, ref, repo, attempt}`, `created_at=<epoch_ms>`.
 4. A `agentsfleet-runner` long-polls `POST /v1/runners/me/leases`; on the lease path `agentsfleetd`:
    - INSERTs `core.fleet_events` (status='received')
    - passes the balance + approval gates
-   - resolves credentials from the vault (GitHub PAT, Fly token, Slack bot token)
+   - resolves secrets from the vault (GitHub PAT, Fly token, Slack bot token)
    - resolves provider config (`tenant_provider.resolveActiveProvider`) — platform-managed key OR self-managed key, depending on tenant posture
    - returns the lease carrying `secrets_map`, `network_policy`, `tools` list, `context` knobs, and provider config
 
@@ -240,16 +241,16 @@ install flow   →   doctor --json (health)                  doctor --json (heal
                     context_cap_tokens: 256000              context_cap_tokens: 0
 
 tenant provider → (nothing — synth-default                → agentsfleet tenant provider add
-add                stays in place)                            --credential account-fireworks-key
+add                stays in place)                            --secret account-fireworks-key
                                                               → API loads vault row
                                                               → API GETs /_um/.../cap.json
                                                               → upsert tenant_providers row
                                                                 {mode=self_managed, provider, model,
-                                                                 context_cap_tokens, credential_ref}
+                                                                 context_cap_tokens, secret_ref}
 
 trigger fires  → lease resolve:                            → lease resolve:
                    resolveActiveProvider()                    resolveActiveProvider()
-                     no row → synth-default                    follows credential_ref to vault
+                     no row → synth-default                    follows secret_ref to vault
                    frontmatter has resolved cap →              returns mode=self_managed + cap + key
                    use it directly.                          frontmatter sentinels overlay:
                                                                model "" or absent → overlay
@@ -269,7 +270,7 @@ The parser-side companion to this rule landed with M49: `x-agentsfleet.model` an
 
 Single source of truth for caps: `https://api.agentsfleet.net/_um/da5b6b3810543fe108d816ee972e4ff8/cap.json`. Resolved at `tenant provider add` time (self-managed path) or hardcoded as a server-side synth-default constant (platform path). **Never resolved at trigger time** — would add a network dependency to the hot path. See [`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §9 for the endpoint shape and §1 for the full self-managed posture.
 
-**Dashboard equivalent — the Models & Keys page (`/settings/models`).** A browser user manages the same self-managed posture there instead of the CLI. The **Active-Model hero** shows the resolved `provider` · `model` with a LIVE/DEFAULT pill — the dashboard read of `tenant provider show` — and the credential-driven **switch-list** flips the active provider in one click, calling the same self-managed provider-set as `tenant provider add`, keyed off the server-projected credential `kind` (see [`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §8.3). The hero's **Replace key** rotates a provider key in place via PATCH (§8.3) without re-entering model or endpoint. The legacy `/credentials` page now redirects here; custom (non-provider) secrets live in the same page's custom-secrets section.
+**Dashboard equivalent — the Models page (`/settings/models`).** A browser user manages the same self-managed posture there instead of the CLI. The **active-model row** shows the resolved `provider` · `model` with a LIVE/DEFAULT pill — the dashboard read of `tenant provider show` — and the secret-driven **switch-list** flips the active provider in one click, calling the same self-managed provider-set as `tenant provider add`, keyed off the server-projected secret `kind` (see [`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §8.3). The row's **Replace key** rotates a provider key in place via PATCH (§8.3) without re-entering model or endpoint. The legacy `/credentials` page was removed outright (not redirected) — provider keys live here; custom (non-provider) secrets moved to the standalone Secrets & ENVs page (`/secrets`).
 
 ## §8.8 Slack as a resident surface (Rung 0) — M106
 
