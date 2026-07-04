@@ -1,6 +1,6 @@
-//! GET /v1/workspaces/{workspace_id}/fleet-templates — the workspace gallery
+//! GET /v1/workspaces/{workspace_id}/fleet-libraries — the workspace gallery
 //! (M103 §5). Returns the union of the platform catalog and the requesting
-//! workspace's own tenant templates, and nothing from another workspace
+//! workspace's own tenant entries, and nothing from another workspace
 //! (Dimensions 5.1/5.2). Each entry carries identity, source, requirements, and
 //! support-file summaries — never an object-store key (Dimension 5.3).
 
@@ -12,7 +12,8 @@ const common = @import("../common.zig");
 const hx_mod = @import("../hx.zig");
 const ec = @import("../../../errors/error_registry.zig");
 const id_format = @import("../../../types/id_format.zig");
-const template_store = @import("../../../fleet_bundle/template_store.zig");
+const library_store = @import("../../../fleet_bundle/library_store.zig");
+const sql = @import("../../../fleet_bundle/sql.zig");
 
 const Hx = hx_mod.Hx;
 
@@ -64,43 +65,24 @@ const ResponseBody = struct {
 // installable — `fetchPlatformInstall` enforces the same. A migration-seeded
 // row with no snapshot yet would otherwise show in the gallery but dead-end at
 // install with "not installable", so the gallery hides it until onboarded.
-const SELECT_PLATFORM =
-    \\SELECT id, name, description, source_repo,
-    \\       required_credentials::text, required_tools::text, network_hosts::text,
-    \\       required_credentials_reasons::text,
-    \\       COALESCE(support_files_json::text, '[]'), (trigger_markdown IS NOT NULL)
-    \\  FROM core.fleet_bundle_templates
-    \\ WHERE visibility = $1 AND content_hash IS NOT NULL
-    \\ ORDER BY id
-;
+const SELECT_PLATFORM = sql.SELECT_GALLERY_PLATFORM;
 
-// Tenant tier: requirements ride a single JSONB object; scope to the caller's
-// workspace only (Dimension 5.2).
-const SELECT_TENANT =
-    \\SELECT id::text, name, description, source_ref,
-    \\       requirements_json::text, support_files_json::text
-    \\  FROM core.tenant_fleet_bundle_templates
-    \\ WHERE workspace_id = $1::uuid
-    \\ ORDER BY created_at DESC
-;
+const SELECT_TENANT = sql.SELECT_GALLERY_TENANT;
 
 pub fn innerGallery(hx: Hx, workspace_id: []const u8) void {
     if (!id_format.isSupportedWorkspaceId(workspace_id)) {
         hx.fail(ec.ERR_INVALID_REQUEST, ec.MSG_WORKSPACE_ID_REQUIRED);
         return;
     }
-    const conn = hx.ctx.pool.acquire() catch {
-        common.internalDbUnavailable(hx.res, hx.req_id);
-        return;
-    };
-    defer hx.ctx.pool.release(conn);
+    var db = hx.db() orelse return;
+    defer db.end();
 
-    if (!common.authorizeWorkspace(conn, hx.principal, workspace_id)) {
+    if (!common.authorizeWorkspace(db.conn, hx.principal, workspace_id)) {
         hx.fail(ec.ERR_FORBIDDEN, "Workspace access denied");
         return;
     }
 
-    const items = buildGallery(hx.alloc, conn, workspace_id) catch {
+    const items = buildGallery(hx.alloc, db.conn, workspace_id) catch {
         common.internalDbError(hx.res, hx.req_id);
         return;
     };
@@ -123,7 +105,7 @@ fn appendPlatform(alloc: std.mem.Allocator, conn: *pg.Conn, rows: *std.ArrayList
             .id = try alloc.dupe(u8, try row.get([]const u8, 0)),
             .name = try alloc.dupe(u8, try row.get([]const u8, 1)),
             .description = try alloc.dupe(u8, try row.get([]const u8, 2)),
-            .visibility = template_store.TIER_PLATFORM,
+            .visibility = library_store.TIER_PLATFORM,
             .source_ref = try alloc.dupe(u8, try row.get([]const u8, 3)),
             .requirements = .{
                 .credentials = try decodeStrings(alloc, try row.get([]const u8, 4)),
@@ -146,10 +128,10 @@ fn appendTenant(alloc: std.mem.Allocator, conn: *pg.Conn, workspace_id: []const 
             .id = try alloc.dupe(u8, try row.get([]const u8, 0)),
             .name = try alloc.dupe(u8, try row.get([]const u8, 1)),
             .description = try alloc.dupe(u8, try row.get([]const u8, 2)),
-            .visibility = template_store.TIER_TENANT,
+            .visibility = library_store.TIER_TENANT,
             .source_ref = try alloc.dupe(u8, try row.get([]const u8, 3)),
             .requirements = req,
-            .required_credentials_reasons = try decodeReasons(alloc, template_store.EMPTY_REASONS_JSON),
+            .required_credentials_reasons = try decodeReasons(alloc, library_store.EMPTY_REASONS_JSON),
             .support_files = try decodeSummaries(alloc, try row.get([]const u8, 5)),
         });
     }

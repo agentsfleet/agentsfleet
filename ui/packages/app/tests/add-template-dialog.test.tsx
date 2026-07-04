@@ -79,7 +79,7 @@ describe("AddTemplateDialog", () => {
       });
     });
     await waitFor(() => expect(routerRefresh).toHaveBeenCalledTimes(1));
-    expect(captureProductEventMock).toHaveBeenCalledWith(EVENTS.fleet_template_onboarded, {
+    expect(captureProductEventMock).toHaveBeenCalledWith(EVENTS.fleet_library_onboarded, {
       workspace_id: "ws_1",
       visibility: "tenant",
       source_kind: SOURCE_KIND_GITHUB,

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Button, EmptyState } from "@agentsfleet/design-system";
 import { LayoutTemplateIcon, PlusIcon } from "lucide-react";
-import type { FleetTemplateGalleryEntry } from "@/lib/types";
+import type { FleetLibraryGalleryEntry } from "@/lib/types";
 import {
   TemplateDocsLink,
   FLEET_LIBRARY_EMPTY_DESCRIPTION,
@@ -11,13 +11,13 @@ import {
 import { TemplateCard } from "./TemplateCard";
 
 type Props = {
-  templates: FleetTemplateGalleryEntry[];
+  templates: FleetLibraryGalleryEntry[];
   /** Dashboard shows the primary cards; the full install page passes all. */
   maxTemplates?: number;
   /** Dashboard embed uses a denser card treatment. */
   compact?: boolean;
   /** Gates the Create-a-template affordance — mirrors InstallSourceSelector's
-   * own gate so a viewer without template:write never sees an invitation to
+   * own gate so a viewer without library:write never sees an invitation to
    * do something the backend will reject. */
   canAddTemplate?: boolean;
 };

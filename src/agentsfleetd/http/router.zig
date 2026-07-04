@@ -22,7 +22,7 @@ pub fn match(path: []const u8, method: httpz.Method) ?Route {
     if (std.mem.eql(u8, path, "/v1/tenants/me/provider")) return .tenant_provider;
     if (std.mem.eql(u8, path, "/v1/fleets/bundles")) return .fleet_bundles;
     if (std.mem.eql(u8, path, "/v1/workspaces")) return .create_workspace;
-    if (std.mem.eql(u8, path, "/v1/admin/fleet-templates")) return .admin_fleet_templates;
+    if (std.mem.eql(u8, path, "/v1/admin/fleet-libraries")) return .admin_fleet_library;
     if (std.mem.eql(u8, path, "/v1/admin/platform-keys")) return .admin_platform_keys;
     if (std.mem.eql(u8, path, "/v1/admin/models")) return .admin_models;
     if (std.mem.eql(u8, path, "/v1/api-keys")) return .tenant_api_keys;
@@ -130,7 +130,7 @@ fn matchV1(p: matchers.Path, method: httpz.Method) ?Route {
 
     // ── Workspace + suffix collections ────────────────────────────────────
     if (matchers.matchWorkspaceSuffix(p, S_FLEETS)) |ws_id| return .{ .workspace_fleets = ws_id };
-    if (matchers.matchWorkspaceSuffix(p, "fleet-templates")) |ws_id| return .{ .workspace_fleet_templates = ws_id };
+    if (matchers.matchWorkspaceSuffix(p, "fleet-libraries")) |ws_id| return .{ .workspace_fleet_library = ws_id };
     if (matchers.matchWorkspaceSuffix(p, "secrets")) |ws_id| return .{ .workspace_secrets = ws_id };
     if (matchers.matchWorkspaceSuffix(p, "fleet-keys")) |ws_id| return .{ .fleet_keys = ws_id };
     if (matchers.matchWorkspaceSuffix(p, S_EVENTS)) |ws_id| return .{ .workspace_events = ws_id };
@@ -215,14 +215,14 @@ test "match resolves auth routes" {
     try std.testing.expect(match("/v1/runs/run_1", .GET) == null);
 }
 
-test "match resolves the two template onboarding routes (M103)" {
-    try std.testing.expectEqualDeep(Route.admin_fleet_templates, match("/v1/admin/fleet-templates", .POST).?);
-    switch (match("/v1/workspaces/ws_abc/fleet-templates", .POST).?) {
-        .workspace_fleet_templates => |ws_id| try std.testing.expectEqualStrings("ws_abc", ws_id),
+test "match resolves the two Fleet Library onboarding routes (M103)" {
+    try std.testing.expectEqualDeep(Route.admin_fleet_library, match("/v1/admin/fleet-libraries", .POST).?);
+    switch (match("/v1/workspaces/ws_abc/fleet-libraries", .POST).?) {
+        .workspace_fleet_library => |ws_id| try std.testing.expectEqualStrings("ws_abc", ws_id),
         else => return error.TestExpectedEqual,
     }
     // A deeper path under the platform route must not match the static prong.
-    try std.testing.expect(match("/v1/admin/fleet-templates/x", .POST) == null);
+    try std.testing.expect(match("/v1/admin/fleet-libraries/x", .POST) == null);
 }
 
 test "match resolves admin platform key routes" {

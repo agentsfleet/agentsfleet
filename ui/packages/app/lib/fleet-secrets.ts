@@ -1,6 +1,6 @@
 // Secret routing for the template install preview.
 //
-// A template's required credentials (`FleetTemplateGalleryEntry.requirements
+// A template's required credentials (`FleetLibraryGalleryEntry.requirements
 // .credentials`) are TRIGGER.md vault references — workspace service credentials
 // by construction. They are resolved by exact name against the workspace vault,
 // so a missing one always routes to the workspace credentials flow. The tenant

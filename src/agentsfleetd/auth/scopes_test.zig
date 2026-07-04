@@ -20,7 +20,7 @@ test "test_scope_catalog_covers_every_enumerated_gate" {
         "secret:write",  "apikey:read",        "apikey:write",   "apikey:admin",
         "fleetkey:read",     "fleetkey:write",     "grant:read",     "grant:write",
         "connector:read",    "connector:write",    "billing:read",   "approval:read",
-        "approval:resolve",  "workspace:admin",    "template:write", "platform-template:write",
+        "approval:resolve",  "workspace:admin",    "library:write", "platform-library:write",
         // Runner credential.
         "runner:self",
         // Cross-tenant override (single scope covering read + write).
@@ -55,10 +55,10 @@ test "test_scope_hierarchy_subsumes_lower" {
     try testing.expect(w.contains(.apikey_read));
     try testing.expect(!w.contains(.apikey_admin));
 
-    // platform-template:write and template:write are independent (no hierarchy).
-    const ptw = scopes.parseClaim("platform-template:write");
-    try testing.expect(ptw.contains(.platform_template_write));
-    try testing.expect(!ptw.contains(.template_write)); // independent, not laddered
+    // platform-library:write and library:write are independent (no hierarchy).
+    const ptw = scopes.parseClaim("platform-library:write");
+    try testing.expect(ptw.contains(.platform_library_write));
+    try testing.expect(!ptw.contains(.library_write)); // independent, not laddered
 
     // A discrete verb subsumes nothing.
     const enroll = scopes.parseClaim("runner:enroll");
@@ -112,8 +112,8 @@ test "test_default_grants_provision_and_are_not_enforced" {
     try testing.expect(owner.contains(.fleet_read)); // closure
     try testing.expect(owner.contains(.secret_write));
     try testing.expect(owner.contains(.workspace_admin));
-    try testing.expect(owner.contains(.template_write));
-    try testing.expect(!owner.contains(.platform_template_write)); // tenant tier only
+    try testing.expect(owner.contains(.library_write));
+    try testing.expect(!owner.contains(.platform_library_write)); // tenant tier only
     try testing.expect(!owner.contains(.runner_enroll));
     try testing.expect(!owner.contains(.workspace_any));
     try testing.expect(!owner.contains(.model_admin));

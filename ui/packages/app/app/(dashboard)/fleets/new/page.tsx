@@ -2,10 +2,10 @@ import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import { PageHeader, PageTitle } from "@agentsfleet/design-system";
 import { withWorkspaceScope, orFallback } from "@/lib/workspace";
-import { listWorkspaceFleetTemplatesCached } from "@/lib/api/fleet-templates";
+import { listWorkspaceFleetLibraryCached } from "@/lib/api/fleet-library";
 import { listSecrets } from "@/lib/api/secrets";
 import { InstallFleet } from "./InstallFleet";
-import { hasTemplateWriteScope } from "../scope";
+import { hasLibraryWriteScope } from "../scope";
 
 export const dynamic = "force-dynamic";
 
@@ -27,7 +27,7 @@ export default async function InstallFleetPage({
   const params = await searchParams;
   const result = await withWorkspaceScope(token, async (workspaceId) => {
     const [templates, credentialNames] = await Promise.all([
-      listWorkspaceFleetTemplatesCached(workspaceId, token)
+      listWorkspaceFleetLibraryCached(workspaceId, token)
         .then((response) => response.items)
         .catch(() => []),
       listSecrets(workspaceId, token)
@@ -67,7 +67,7 @@ export default async function InstallFleetPage({
         templates={templates}
         presentCredentialNames={credentialNames}
         initialTemplateId={initialTemplateId}
-        canAddTemplate={hasTemplateWriteScope(sessionClaims)}
+        canAddTemplate={hasLibraryWriteScope(sessionClaims)}
         initialCreateOpen={initialCreateOpen}
       />
     </div>

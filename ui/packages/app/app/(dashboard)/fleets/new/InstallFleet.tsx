@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import type { FleetTemplateGalleryEntry } from "@/lib/types";
+import type { FleetLibraryGalleryEntry } from "@/lib/types";
 import { InstallConfirm } from "./InstallConfirm";
 import { InstallSourceSelector } from "./InstallSourceSelector";
 import { InstallStates } from "./InstallStates";
@@ -9,7 +9,7 @@ import type { InstallSource } from "./install-flow";
 
 type Props = {
   workspaceId: string;
-  templates: FleetTemplateGalleryEntry[];
+  templates: FleetLibraryGalleryEntry[];
   presentCredentialNames: string[] | null;
   initialTemplateId?: string;
   canAddTemplate?: boolean;

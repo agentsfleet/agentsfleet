@@ -1,7 +1,7 @@
 // Install source resolution + body shaping — split out of fleet_install.ts to
 // keep that file under the 350-line FLL cap. The install/update Effects compose
 // these helpers; nothing here performs IO beyond the requirements print, so the
-// source-selection rules (exactly one of --from / --template) and the
+// source-selection rules (exactly one of --from / --library) and the
 // create-body shaping stay unit-testable in isolation.
 
 import { Effect } from "effect";
@@ -19,9 +19,9 @@ export interface UpdateResponse {
   readonly config_revision?: number | string | null;
 }
 
-// A template's declared requirements — drives the install preview (mirrors the
+// A library entry's declared requirements — drives the install preview (mirrors the
 // dashboard's install states). `trigger_present: false` means the server will
-// generate a default API wake because the template shipped no TRIGGER.md.
+// generate a default API wake because the library entry shipped no TRIGGER.md.
 export interface BundleRequirements {
   readonly credentials?: ReadonlyArray<string>;
   readonly tools?: ReadonlyArray<string>;
@@ -29,32 +29,32 @@ export interface BundleRequirements {
   readonly trigger_present?: boolean;
 }
 
-// A Fleet template gallery row (GET /v1/workspaces/{ws}/fleet-templates).
+// A Fleet library gallery row (GET /v1/workspaces/{ws}/fleet-libraries).
 // `visibility` is the tier the install keys the create body off; `requirements`
 // drives the preview. Metadata only — never an object-store key.
-export interface FleetTemplateGalleryEntry {
+export interface FleetLibraryGalleryEntry {
   readonly id: string;
   readonly name?: string;
   readonly visibility?: string;
   readonly requirements?: BundleRequirements;
 }
 
-export interface FleetTemplateGalleryResponse {
-  readonly items?: ReadonlyArray<FleetTemplateGalleryEntry>;
+export interface FleetLibraryGalleryResponse {
+  readonly items?: ReadonlyArray<FleetLibraryGalleryEntry>;
 }
 
 // Tier literals carried in a gallery entry's `visibility` field.
 export const VISIBILITY_PLATFORM = "platform" as const;
 export const VISIBILITY_TENANT = "tenant" as const;
 
-// Fleet create body. Install keys off exactly one template tier —
-// `platform_template_id` (slug) or `tenant_template_id` (UUIDv7). The live-edit
+// Fleet create body. Install keys off exactly one library tier —
+// `platform_library_id` (slug) or `tenant_library_id` (UUIDv7). The live-edit
 // update path (`fleet update --from`) still posts `source_markdown`/
 // `trigger_markdown` to PATCH the fleet; those never ride a create. `name` is the
-// optional operator override that lets one template back many fleets.
+// optional operator override that lets one library entry back many fleets.
 export interface CreateFleetBody {
-  readonly platform_template_id?: string;
-  readonly tenant_template_id?: string;
+  readonly platform_library_id?: string;
+  readonly tenant_library_id?: string;
   readonly source_markdown?: string;
   readonly trigger_markdown?: string;
   readonly name?: string;
@@ -68,7 +68,7 @@ const TYPE_STRING = "string" as const;
 // the call site — typeof-narrowing only fires on the string literal, not a const.
 export const isString = (value: unknown): value is string => typeof value === TYPE_STRING;
 
-export const USAGE_INSTALL = "agentsfleet install --template <id>";
+export const USAGE_INSTALL = "agentsfleet install --library <id>";
 export const USAGE_UPDATE = "agentsfleet fleet update <fleet_id> --from <path>";
 
 export const bodyFromBundle = (
@@ -98,22 +98,22 @@ export const requireFromPath = (
   return Effect.succeed(fromPath);
 };
 
-// Install requires a template id — a platform slug or a tenant UUID, resolved in
+// Install requires a library id — a platform slug or a tenant UUID, resolved in
 // the workspace gallery. Local-directory install was removed with the two-tier
 // model; iterate on an installed fleet with `agentsfleet fleet update
 // <fleet_id> --from <path>` instead.
-export const requireTemplateId = (
-  templateId: string | null | undefined,
+export const requireLibraryId = (
+  libraryId: string | null | undefined,
 ): Effect.Effect<string, ValidationError> => {
-  if (!isString(templateId) || templateId.length === 0) {
+  if (!isString(libraryId) || libraryId.length === 0) {
     return Effect.fail(
       new ValidationError({
-        detail: "--template <id> is required",
+        detail: "--library <id> is required",
         suggestion: `usage: ${USAGE_INSTALL}`,
       }),
     );
   }
-  return Effect.succeed(templateId);
+  return Effect.succeed(libraryId);
 };
 
 // Fold an optional operator name override into a create body. A blank/whitespace

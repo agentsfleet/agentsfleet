@@ -62,7 +62,7 @@ export interface FleetSecretHandlers {
 }
 
 export interface FleetHandlers {
-  templates: CommandHandlerFn;
+  library: CommandHandlerFn;
   install: CommandHandlerFn;
   update: CommandHandlerFn;
   list: CommandHandlerFn;

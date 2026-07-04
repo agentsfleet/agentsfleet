@@ -33,8 +33,8 @@ export const listSecretsMock = vi.fn();
 export const createSecretMock = vi.fn();
 export const deleteSecretMock = vi.fn();
 export const getModelCapsMock = vi.fn();
-export const listWorkspaceFleetTemplatesMock = vi.fn();
-export const onboardWorkspaceFleetTemplateMock = vi.fn();
+export const listWorkspaceFleetLibraryMock = vi.fn();
+export const onboardWorkspaceFleetLibraryMock = vi.fn();
 
 export const setFleetStatusActionMock = vi.fn<
   (ws: string, zid: string, status: string) => Promise<ActionResult<unknown>>
@@ -142,15 +142,15 @@ export function secretsApiMock() {
   };
 }
 
-// Mocks the fleet-template gallery client (`@/lib/api/fleet-templates`). Both the
+// Mocks the fleet-template gallery client (`@/lib/api/fleet-library`). Both the
 // raw reader and its React cache() wrapper resolve to the same vi.fn so a test
 // can drive either entry point through one mock. M103 replaced the legacy
 // bundle client (github-import / paste) with this template-only gallery read.
-export function fleetTemplatesMock() {
+export function fleetLibraryMock() {
   return {
-    listWorkspaceFleetTemplates: listWorkspaceFleetTemplatesMock,
-    listWorkspaceFleetTemplatesCached: listWorkspaceFleetTemplatesMock,
-    onboardWorkspaceFleetTemplate: onboardWorkspaceFleetTemplateMock,
+    listWorkspaceFleetLibrary: listWorkspaceFleetLibraryMock,
+    listWorkspaceFleetLibraryCached: listWorkspaceFleetLibraryMock,
+    onboardWorkspaceFleetLibrary: onboardWorkspaceFleetLibraryMock,
   };
 }
 
@@ -222,8 +222,8 @@ export function resetDashboardMocks() {
     billing: { starter_credit_nanos: 0, free_trial_end_ms: 0, free_trial_stage_nanos: 0 },
   });
   stopFleetMock.mockResolvedValue(undefined);
-  listWorkspaceFleetTemplatesMock.mockResolvedValue({ items: [] });
-  onboardWorkspaceFleetTemplateMock.mockResolvedValue({
+  listWorkspaceFleetLibraryMock.mockResolvedValue({ items: [] });
+  onboardWorkspaceFleetLibraryMock.mockResolvedValue({
     id: "tmpl_1",
     name: "Template",
     visibility: "tenant",

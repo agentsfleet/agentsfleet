@@ -53,11 +53,11 @@ pub const Scope = enum {
     approval_resolve, // decide an approval gate (approve/deny)
     billing_read,
     workspace_admin,
-    // Template catalogue (M103 consumes these): write = tenant-tier onboarding
-    // (held by a workspace owner), platform_template_write = platform-tier
+    // Fleet Library (M103 consumes these): write = tenant-tier onboarding
+    // (held by a workspace owner), platform_library_write = platform-tier
     // onboarding (held by a platform operator). Independent — no hierarchy.
-    template_write,
-    platform_template_write,
+    library_write,
+    platform_library_write,
     // ── Runner credential (machine identity — minted onto the agt_r token) ─
     runner_self,
     // ── Cross-tenant override (held by almost no one; every use audited) ──
@@ -104,7 +104,7 @@ fn grantMembers(src: DefaultGrant) []const Scope {
             .billing_read,
             .approval_resolve,
             .workspace_admin,
-            .template_write,
+            .library_write,
         },
         // Host-resident runner credential — self-plane only.
         .runner => &.{.runner_self},
@@ -169,8 +169,8 @@ const WIRE = [_]ScopeWire{
     .{ .scope = .approval_resolve, .str = "approval:resolve" },
     .{ .scope = .billing_read, .str = "billing:read" },
     .{ .scope = .workspace_admin, .str = "workspace:admin" },
-    .{ .scope = .template_write, .str = "template:write" },
-    .{ .scope = .platform_template_write, .str = "platform-template:write" },
+    .{ .scope = .library_write, .str = "library:write" },
+    .{ .scope = .platform_library_write, .str = "platform-library:write" },
     .{ .scope = .runner_self, .str = "runner:self" },
     .{ .scope = .workspace_any, .str = "workspace:any" },
 };

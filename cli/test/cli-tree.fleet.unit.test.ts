@@ -11,21 +11,21 @@ import {
   dispatch,
 } from "./helpers-cli-tree.ts";
 
-test("install accepts --template <id> and --name <name>", async () => {
+test("install accepts --library <id> and --name <name>", async () => {
   const { handlers, calls } = makeSpyTree();
   await dispatch(
-    ["install", "--template", "github-pr-reviewer", "--name", "pr-frontend"],
+    ["install", "--library", "github-pr-reviewer", "--name", "pr-frontend"],
     handlers,
   );
   expect(calls[0]?.name).toBe("fleet.install");
-  expect(calls[0]?.frame.parsed.options.template).toBe("github-pr-reviewer");
+  expect(calls[0]?.frame.parsed.options.library).toBe("github-pr-reviewer");
   expect(calls[0]?.frame.parsed.options.name).toBe("pr-frontend");
 });
 
-test("templates dispatches with no options", async () => {
+test("library dispatches with no options", async () => {
   const { handlers, calls } = makeSpyTree();
-  await dispatch(["templates"], handlers);
-  expect(calls[0]?.name).toBe("fleet.templates");
+  await dispatch(["library"], handlers);
+  expect(calls[0]?.name).toBe("fleet.library");
   expect(calls[0]?.frame.parsed.positionals).toHaveLength(0);
 });
 

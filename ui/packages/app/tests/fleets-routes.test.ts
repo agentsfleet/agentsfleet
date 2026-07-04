@@ -4,7 +4,7 @@ import { cleanup, render, screen } from "@testing-library/react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { NANOS_PER_USD } from "@/lib/types";
 import { resolveActiveWorkspace, fetchMock, resetCommonMocks, authMock as auth } from "./helpers/dashboard-mocks";
-import { listWorkspaceFleetTemplatesMock, listSecretsMock } from "./helpers/dashboard-app-mocks";
+import { listWorkspaceFleetLibraryMock, listSecretsMock } from "./helpers/dashboard-app-mocks";
 
 type BillingSnapshot = {
   balance_nanos: number;
@@ -28,7 +28,7 @@ vi.mock("@agentsfleet/design-system", async (orig) => {
   const h = await import("./helpers/dashboard-mocks");
   return { ...h.designSystemCore(await orig<Record<string, unknown>>()), ...h.designSystemTabs() };
 });
-vi.mock("@/lib/api/fleet-templates", async () => (await import("./helpers/dashboard-app-mocks")).fleetTemplatesMock());
+vi.mock("@/lib/api/fleet-library", async () => (await import("./helpers/dashboard-app-mocks")).fleetLibraryMock());
 vi.mock("@/lib/api/secrets", async () => (await import("./helpers/dashboard-app-mocks")).secretsApiMock());
 
 beforeEach(() => {
@@ -38,7 +38,7 @@ beforeEach(() => {
   // empty catalog so tests that don't care about templates don't crash on the
   // unmocked promise (individual tests override as needed). The Fleets list
   // empty-state no longer fetches — it routes to /fleets/new instead.
-  listWorkspaceFleetTemplatesMock.mockResolvedValue({ items: [] });
+  listWorkspaceFleetLibraryMock.mockResolvedValue({ items: [] });
 });
 afterEach(() => {
   cleanup();
@@ -218,7 +218,7 @@ describe("fleets routes", () => {
 
   it("fleets new page renders the gallery-first install flow when a workspace exists", async () => {
     resolveActiveWorkspace.mockResolvedValueOnce({ id: "ws_1" });
-    listWorkspaceFleetTemplatesMock.mockResolvedValue({ items: SAMPLE_TEMPLATES });
+    listWorkspaceFleetLibraryMock.mockResolvedValue({ items: SAMPLE_TEMPLATES });
     listSecretsMock.mockResolvedValue({ secrets: [{ kind: "custom_secret", name: "github", created_at: 1 }] });
     const { default: Page } = await import("../app/(dashboard)/fleets/new/page");
     const markup = renderToStaticMarkup(await Page({ searchParams: Promise.resolve({}) }));
@@ -230,7 +230,7 @@ describe("fleets routes", () => {
 
   it("fleets new page swallows failed template + secret fetches", async () => {
     resolveActiveWorkspace.mockResolvedValueOnce({ id: "ws_1" });
-    listWorkspaceFleetTemplatesMock.mockRejectedValue(new Error("catalog down"));
+    listWorkspaceFleetLibraryMock.mockRejectedValue(new Error("catalog down"));
     listSecretsMock.mockRejectedValue(new Error("vault down"));
     const { default: Page } = await import("../app/(dashboard)/fleets/new/page");
     const markup = renderToStaticMarkup(await Page({ searchParams: Promise.resolve({}) }));
@@ -239,7 +239,7 @@ describe("fleets routes", () => {
 
   it("fleets new page accepts a ?template= deep link", async () => {
     resolveActiveWorkspace.mockResolvedValueOnce({ id: "ws_1" });
-    listWorkspaceFleetTemplatesMock.mockResolvedValue({ items: [] });
+    listWorkspaceFleetLibraryMock.mockResolvedValue({ items: [] });
     listSecretsMock.mockResolvedValue({ secrets: [] });
     const { default: Page } = await import("../app/(dashboard)/fleets/new/page");
     const markup = renderToStaticMarkup(

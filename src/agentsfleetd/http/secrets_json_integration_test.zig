@@ -1,4 +1,4 @@
-// HTTP integration tests for the structured-credential vault endpoints.
+// HTTP integration tests for the structured-secret vault endpoints.
 //
 // Requires DATABASE_URL (or TEST_DATABASE_URL) — skipped otherwise via
 // `TestHarness.start` returning `error.SkipZigTest`. Vault tests also
@@ -54,7 +54,7 @@ fn setTestEncryptionKey() void {
 
 fn setupSeedData(conn: *pg.Conn) !void {
     const now_ms = clock.nowMillis();
-    // Catalogue the model the self-managed credential names (anthropic /
+    // Catalogue the model the self-managed secret names (anthropic /
     // claude-sonnet-4-6) so the PUT /provider catalogue-gate (UZ-PROVIDER-004)
     // passes. core.model_caps ships seedless (M100), so a test that sets a
     // provider must seed the priced row it resolves against, then repopulate the
@@ -99,7 +99,7 @@ fn seedAndHarness(alloc: std.mem.Allocator) !*TestHarness {
 
 const SENTINEL_TOKEN = "SENTINEL_TOKEN_DO_NOT_LEAK_8a72c3";
 
-test "integration: credential POST + GET + DELETE roundtrip never echoes value" {
+test "integration: secret POST + GET + DELETE roundtrip never echoes value" {
     setTestEncryptionKey();
     const alloc = std.testing.allocator;
     const h = seedAndHarness(alloc) catch |err| switch (err) {
@@ -158,7 +158,7 @@ test "integration: credential POST + GET + DELETE roundtrip never echoes value" 
     cleanupRows(conn);
 }
 
-test "integration: tenant provider accepts credential POST rows by raw name" {
+test "integration: tenant provider accepts secret POST rows by raw name" {
     setTestEncryptionKey();
     const alloc = std.testing.allocator;
     const h = seedAndHarness(alloc) catch |err| switch (err) {
@@ -167,24 +167,24 @@ test "integration: tenant provider accepts credential POST rows by raw name" {
     };
     defer h.deinit();
 
-    const credentials_path = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/secrets", .{TEST_WS_ID});
-    defer alloc.free(credentials_path);
+    const secrets_path = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/secrets", .{TEST_WS_ID});
+    defer alloc.free(secrets_path);
 
     const secret_name = "provider-posted-key";
-    const credential_token = "provider-token-not-real";
-    const credential_body = try std.fmt.allocPrint(
+    const secret_token = "provider-token-not-real";
+    const secret_body = try std.fmt.allocPrint(
         alloc,
         "{{\"name\":\"{s}\",\"data\":{{\"provider\":\"anthropic\",\"api_key\":\"{s}\",\"model\":\"claude-sonnet-4-6\"}}}}",
-        .{ secret_name, credential_token },
+        .{ secret_name, secret_token },
     );
-    defer alloc.free(credential_body);
+    defer alloc.free(secret_body);
 
     {
-        const r = try (try (try h.post(credentials_path).bearer(TOKEN_OPERATOR)).json(credential_body)).send();
+        const r = try (try (try h.post(secrets_path).bearer(TOKEN_OPERATOR)).json(secret_body)).send();
         defer r.deinit();
         try r.expectStatus(.created);
         try std.testing.expect(r.bodyContains(secret_name));
-        try std.testing.expect(!r.bodyContains(credential_token));
+        try std.testing.expect(!r.bodyContains(secret_token));
     }
 
     const provider_body = try std.fmt.allocPrint(
@@ -202,7 +202,7 @@ test "integration: tenant provider accepts credential POST rows by raw name" {
         try std.testing.expect(r.bodyContains("\"provider\":\"anthropic\""));
         try std.testing.expect(r.bodyContains("\"model\":\"claude-sonnet-4-6\""));
         try std.testing.expect(r.bodyContains("\"secret_ref\":\"provider-posted-key\""));
-        try std.testing.expect(!r.bodyContains(credential_token));
+        try std.testing.expect(!r.bodyContains(secret_token));
     }
 
     const conn = try h.acquireConn();
@@ -210,9 +210,9 @@ test "integration: tenant provider accepts credential POST rows by raw name" {
     cleanupRows(conn);
 }
 
-test "integration: custom openai-compatible credential activates end-to-end" {
+test "integration: custom openai-compatible secret activates end-to-end" {
     // The cross-tier seam the resolver-direct tests cannot see: POST a custom
-    // openai-compatible credential, then PUT /provider to activate it, and assert
+    // openai-compatible secret, then PUT /provider to activate it, and assert
     // the activate SUCCEEDS (200) with the resolved view. This drives the real
     // handler path — body parse, probe, AND the model_rate_cache catalogue gate —
     // which the upsertSelfManaged-direct unit tests skip.
@@ -224,15 +224,15 @@ test "integration: custom openai-compatible credential activates end-to-end" {
     };
     defer h.deinit();
 
-    const credentials_path = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/secrets", .{TEST_WS_ID});
-    defer alloc.free(credentials_path);
+    const secrets_path = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/secrets", .{TEST_WS_ID});
+    defer alloc.free(secrets_path);
 
     const cred_body =
         "{\"name\":\"compat-key\",\"data\":{\"provider\":\"openai-compatible\"," ++
         "\"base_url\":\"https://api.openrouter.ai/v1\",\"model\":\"kimi-k2.6\"," ++
         "\"api_key\":\"sk-compat-not-real\"}}";
     {
-        const r = try (try (try h.post(credentials_path).bearer(TOKEN_OPERATOR)).json(cred_body)).send();
+        const r = try (try (try h.post(secrets_path).bearer(TOKEN_OPERATOR)).json(cred_body)).send();
         defer r.deinit();
         try r.expectStatus(.created);
     }
@@ -259,7 +259,7 @@ test "integration: custom openai-compatible credential activates end-to-end" {
     cleanupRows(conn);
 }
 
-test "integration: credential POST rejects non-object data" {
+test "integration: secret POST rejects non-object data" {
     setTestEncryptionKey();
     const alloc = std.testing.allocator;
     const h = seedAndHarness(alloc) catch |err| switch (err) {
@@ -291,7 +291,7 @@ test "integration: credential POST rejects non-object data" {
     cleanupRows(conn);
 }
 
-test "integration: credential POST rejects oversized stringified data" {
+test "integration: secret POST rejects oversized stringified data" {
     setTestEncryptionKey();
     const alloc = std.testing.allocator;
     const h = seedAndHarness(alloc) catch |err| switch (err) {
@@ -320,7 +320,7 @@ test "integration: credential POST rejects oversized stringified data" {
     cleanupRows(conn);
 }
 
-test "integration: credential endpoints enforce operator role" {
+test "integration: secret endpoints enforce operator role" {
     setTestEncryptionKey();
     const alloc = std.testing.allocator;
     const h = seedAndHarness(alloc) catch |err| switch (err) {
@@ -384,7 +384,7 @@ test "integration: list projects kind + non-secret metadata, never the api_key" 
     const r = try (try h.get(creds_path).bearer(TOKEN_OPERATOR)).send();
     defer r.deinit();
     try r.expectStatus(.ok);
-    // Each credential is classified by the server.
+    // Each secret is classified by the server.
     try std.testing.expect(r.bodyContains("\"kind\":\"provider_key\""));
     try std.testing.expect(r.bodyContains("\"kind\":\"custom_endpoint\""));
     try std.testing.expect(r.bodyContains("\"kind\":\"custom_secret\""));
@@ -434,7 +434,7 @@ test "integration: GET list requires operator role" {
     cleanupRows(conn);
 }
 
-// ── §2: key-only credential rotate (PATCH) ──────────────────────────────────
+// ── §2: key-only secret rotate (PATCH) ──────────────────────────────────
 
 test "integration: rotate replaces only the api_key, preserving provider/model/base_url" {
     setTestEncryptionKey();
@@ -497,7 +497,7 @@ test "integration: rotate replaces only the api_key, preserving provider/model/b
     cleanupRows(conn);
 }
 
-test "integration: rotate a missing credential returns typed 404" {
+test "integration: rotate a missing secret returns typed 404" {
     setTestEncryptionKey();
     const alloc = std.testing.allocator;
     const h = seedAndHarness(alloc) catch |err| switch (err) {
@@ -580,7 +580,7 @@ test "integration: cross-workspace DELETE is rejected (IDOR guard)" {
     // TOKEN_OPERATOR's JWT claim binds it to TEST_WS_ID. Issue a DELETE
     // against a *different* workspace UUID — workspace_guards.enforce
     // must reject (4xx), never 204. Without this check, a workspace-A
-    // operator could nuke a workspace-B credential just by URL editing.
+    // operator could nuke a workspace-B secret just by URL editing.
     const other_ws = "0195b4ba-8d3a-7f13-8abc-deadbeef0001";
     const path = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/secrets/fly", .{other_ws});
     defer alloc.free(path);

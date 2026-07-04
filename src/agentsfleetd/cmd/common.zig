@@ -19,37 +19,15 @@ const ServeMigrationDecision = enum {
     run_required,
 };
 
-pub fn canonicalMigrations() [26]db.Migration {
-    const schema = @import("schema");
-    return .{
-        .{ .version = 1, .sql = schema.core_foundation_sql },
-        .{ .version = 2, .sql = schema.vault_sql },
-        // model_caps before platform_llm_keys: the latter's inline FK references it.
-        .{ .version = 5, .sql = schema.model_caps_sql },
-        .{ .version = 6, .sql = schema.platform_llm_keys_sql },
-        .{ .version = 7, .sql = schema.core_fleets_sql },
-        .{ .version = 8, .sql = schema.core_fleet_sessions_sql },
-        .{ .version = 9, .sql = schema.core_fleet_approval_gates_sql },
-        .{ .version = 10, .sql = schema.core_integration_grants_sql },
-        .{ .version = 11, .sql = schema.core_fleet_keys_sql },
-        .{ .version = 13, .sql = schema.memory_entries_sql },
-        .{ .version = 14, .sql = schema.fleet_execution_telemetry_sql },
-        .{ .version = 15, .sql = schema.api_keys_sql },
-        .{ .version = 16, .sql = schema.core_users_sql },
-        .{ .version = 17, .sql = schema.tenant_billing_sql },
-        .{ .version = 18, .sql = schema.fleet_events_sql },
-        .{ .version = 20, .sql = schema.tenant_providers_sql },
-        .{ .version = 21, .sql = schema.fleet_runners_sql },
-        .{ .version = 22, .sql = schema.fleet_runner_leases_sql },
-        .{ .version = 23, .sql = schema.fleet_runner_affinity_sql },
-        .{ .version = 24, .sql = schema.fleet_metering_periods_sql },
-        .{ .version = 25, .sql = schema.fleet_runner_events_sql },
-        .{ .version = 26, .sql = schema.account_purge_gate_bypass_sql },
-        .{ .version = 28, .sql = schema.fleet_bundle_templates_sql },
-        .{ .version = 29, .sql = schema.tenant_fleet_bundle_templates_sql },
-        .{ .version = 30, .sql = schema.connector_installs_sql },
-        .{ .version = 31, .sql = schema.connector_channels_sql },
-    };
+const schema_mod = @import("schema");
+const schema_migrations = schema_mod.migrations;
+
+pub fn canonicalMigrations() [schema_migrations.len]db.Migration {
+    var result: [schema_migrations.len]db.Migration = undefined;
+    for (schema_migrations, 0..) |m, i| {
+        result[i] = .{ .version = m.version, .sql = m.sql };
+    }
+    return result;
 }
 
 pub fn migrateOnStartEnabledFromEnv(env_map: *const EnvMap, alloc: std.mem.Allocator) !bool {
@@ -129,14 +107,14 @@ pub fn runCanonicalMigrations(pool: *db.Pool) !void {
     try db.runMigrations(pool, &migrations);
 }
 
-test "canonical migrations: connector install + channel tables registered (v29, v30)" {
+test "canonical migrations: connector install + channel tables registered (v25, v26)" {
     const migrations = canonicalMigrations();
     try std.testing.expectEqual(@as(usize, 26), migrations.len);
     var has_installs = false;
     var has_channels = false;
     for (migrations) |m| {
-        if (m.version == 29) has_installs = true;
-        if (m.version == 30) has_channels = true;
+        if (m.version == 25) has_installs = true;
+        if (m.version == 26) has_channels = true;
     }
     try std.testing.expect(has_installs);
     try std.testing.expect(has_channels);
@@ -245,9 +223,9 @@ test "integration: startup with pending migrations proceeds when enabled and loc
     try std.testing.expectEqual(.run_required, decision);
 }
 
-test "canonical schema bootstrap: last version is 29" {
+test "canonical schema bootstrap: last version is 26" {
     const migrations = canonicalMigrations();
-    try std.testing.expectEqual(@as(i32, 29), migrations[migrations.len - 1].version);
+    try std.testing.expectEqual(@as(i32, 26), migrations[migrations.len - 1].version);
 }
 
 test "every migration SQL is parseable by SqlStatementSplitter" {

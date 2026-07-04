@@ -1,11 +1,11 @@
-// Unit coverage for src/commands/fleet_templates.ts — the `agentsfleet
-// templates` catalog list. Exercises the table render, JSON mode, the empty
+// Unit coverage for src/commands/fleet_library.ts — the `agentsfleet
+// library` catalog list. Exercises the table render, JSON mode, the empty
 // catalog, and both joinNames branches (credentials present vs none).
 
 import { describe, test, expect } from "bun:test";
 import { Effect, Exit, Layer, Option, Redacted } from "effect";
 
-import { templatesEffect } from "../src/commands/fleet_templates.ts";
+import { libraryEffect } from "../src/commands/fleet_library.ts";
 import { CliConfig } from "../src/services/config.ts";
 import { Credentials } from "../src/services/credentials.ts";
 import { HttpClient, type HttpRequestInput } from "../src/services/http-client.ts";
@@ -66,13 +66,13 @@ const makeLayer = (
     }),
   );
 
-describe("templatesEffect — table render", () => {
+describe("libraryEffect — table render", () => {
   test("lists templates and joins credentials (and renders — for none)", async () => {
     const captured: string[] = [];
     const tables: TableCapture[] = [];
     const requests: HttpRequestInput[] = [];
     const exit = await Effect.runPromiseExit(
-      templatesEffect.pipe(
+      libraryEffect.pipe(
         Effect.provide(
           makeLayer(captured, tables, false, requests, {
             items: [
@@ -96,14 +96,14 @@ describe("templatesEffect — table render", () => {
   });
 });
 
-describe("templatesEffect — JSON mode", () => {
+describe("libraryEffect — JSON mode", () => {
   test("prints the raw response and skips the table", async () => {
     const captured: string[] = [];
     const tables: TableCapture[] = [];
     const requests: HttpRequestInput[] = [];
     const payload = { items: [{ id: "x", name: "X", required_credentials: [] }] };
     const exit = await Effect.runPromiseExit(
-      templatesEffect.pipe(
+      libraryEffect.pipe(
         Effect.provide(makeLayer(captured, tables, true, requests, payload)),
       ),
     );
@@ -113,13 +113,13 @@ describe("templatesEffect — JSON mode", () => {
   });
 });
 
-describe("templatesEffect — empty catalog", () => {
+describe("libraryEffect — empty catalog", () => {
   test("prints a message and skips the table when items is empty", async () => {
     const captured: string[] = [];
     const tables: TableCapture[] = [];
     const requests: HttpRequestInput[] = [];
     const exit = await Effect.runPromiseExit(
-      templatesEffect.pipe(
+      libraryEffect.pipe(
         Effect.provide(makeLayer(captured, tables, false, requests, { items: [] })),
       ),
     );
@@ -133,7 +133,7 @@ describe("templatesEffect — empty catalog", () => {
     const tables: TableCapture[] = [];
     const requests: HttpRequestInput[] = [];
     const exit = await Effect.runPromiseExit(
-      templatesEffect.pipe(
+      libraryEffect.pipe(
         Effect.provide(makeLayer(captured, tables, false, requests, {})),
       ),
     );

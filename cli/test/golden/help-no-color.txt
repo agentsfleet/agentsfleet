@@ -21,9 +21,9 @@ Commands:
   grant                        Manage integration grants
   tenant                       Tenant-scoped commands
   billing                      Tenant billing dashboard
-  templates                    Browse the first-party Fleet template gallery
-  install [options]            Install a Fleet from an onboarded template
-                               (--template <id>)
+  library                      Browse the first-party Fleet library gallery
+  install [options]            Install a Fleet from an onboarded library
+                               (--library <id>)
   fleet                        Fleet management subcommands
   list [options]               List fleets in the active workspace (paginated)
   status [fleet_id]            Show fleet status (workspace-wide if no id)

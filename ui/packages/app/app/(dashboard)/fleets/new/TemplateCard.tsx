@@ -1,11 +1,11 @@
 import type { ReactNode } from "react";
 import { Badge, Card } from "@agentsfleet/design-system";
-import type { FleetTemplateGalleryEntry } from "@/lib/types";
+import type { FleetLibraryGalleryEntry } from "@/lib/types";
 
 const NEEDS_PREFIX = "needs:";
 
 type Props = {
-  template: FleetTemplateGalleryEntry;
+  template: FleetLibraryGalleryEntry;
   compact?: boolean;
   // The call-to-action slot — a link on the dashboard gallery
   // (/fleets/new?template=<id>) or an in-page "Use template" button on the

@@ -11,17 +11,17 @@ import {
   Input,
   SectionLabel,
 } from "@agentsfleet/design-system";
-import type { FleetTemplateGalleryEntry } from "@/lib/types";
+import type { FleetLibraryGalleryEntry } from "@/lib/types";
 
 type Props = {
-  template: FleetTemplateGalleryEntry;
+  template: FleetLibraryGalleryEntry;
   onInstall: (name: string) => void;
   onBack: () => void;
 };
 
 // Confirm step between picking a template and the live install states. Lets the
 // operator optionally name the fleet so one template can back several fleets in a
-// workspace (parity with `agentsfleet install --template <id> --name`). A blank
+// workspace (parity with `agentsfleet install --library <id> --name`). A blank
 // name falls back to the template's SKILL.md `name:`.
 export function InstallConfirm({ template, onInstall, onBack }: Props) {
   const [name, setName] = useState("");

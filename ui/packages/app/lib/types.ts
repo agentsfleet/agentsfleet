@@ -54,31 +54,31 @@ export type InstallFleetResponse = {
 
 // The catalog tier of a template. The install flow keys the create body off it:
 // platform → `platform_template_id`, tenant → `tenant_template_id`.
-export type FleetTemplateVisibility = "platform" | "tenant";
+export type FleetLibraryVisibility = "platform" | "tenant";
 
 // A non-authoritative support file shipped alongside SKILL.md/TRIGGER.md, shown
 // as a {path, size_bytes} summary — the bytes live in R2, never in the response.
-export type FleetTemplateSupportFileSummary = { path: string; size_bytes: number };
+export type FleetLibrarySupportFileSummary = { path: string; size_bytes: number };
 
 // A template's declared requirements — drives the install gate's credential
 // preview and the skill-only fallback when no TRIGGER.md shipped.
-export type FleetTemplateRequirements = {
+export type FleetLibraryRequirements = {
   credentials: string[];
   tools: string[];
   network_hosts: string[];
   trigger_present: boolean;
 };
 
-// One gallery row from GET /v1/workspaces/{ws}/fleet-templates — a platform or
+// One gallery row from GET /v1/workspaces/{ws}/fleet-libraries — a platform or
 // tenant template. Metadata only; `visibility` is the tier the install flow keys
 // the create body off.
-export type FleetTemplateGalleryEntry = {
+export type FleetLibraryGalleryEntry = {
   id: string;
   name: string;
   description: string;
-  visibility: FleetTemplateVisibility;
+  visibility: FleetLibraryVisibility;
   source_ref: string;
-  requirements: FleetTemplateRequirements;
+  requirements: FleetLibraryRequirements;
   // Display-only "why this fleet needs it" copy, keyed by credential name (e.g.
   // { github: "review your pull requests" }). Platform rows carry curated copy;
   // tenant rows are an empty object (the importer derives no per-credential
@@ -87,10 +87,10 @@ export type FleetTemplateGalleryEntry = {
   // response is only cast here, so a stale cache or an old backend may omit it —
   // callers default to {} so the gate degrades to generic copy, never crashes.
   required_credentials_reasons?: Record<string, string>;
-  support_files: FleetTemplateSupportFileSummary[];
+  support_files: FleetLibrarySupportFileSummary[];
 };
 
-export type FleetTemplateGalleryResponse = { items: FleetTemplateGalleryEntry[] };
+export type FleetLibraryGalleryResponse = { items: FleetLibraryGalleryEntry[] };
 
 export const SOURCE_KIND_GITHUB = "github" as const;
 export const SOURCE_KIND_UPLOAD = "upload" as const;
@@ -111,8 +111,8 @@ export type OnboardedTemplate = {
   name: string;
   visibility: "tenant";
   content_hash: string;
-  requirements: FleetTemplateRequirements;
-  support_files: FleetTemplateSupportFileSummary[];
+  requirements: FleetLibraryRequirements;
+  support_files: FleetLibrarySupportFileSummary[];
 };
 
 export type FleetListResponse = {
