@@ -6,11 +6,15 @@ import { Button } from "@agentsfleet/design-system";
 export const CREATE_TEMPLATE_DOC_URL =
   "https://docs.agentsfleet.net/fleets/templates#writing-your-own";
 
-// Shared copy for the template-gallery empty state (dashboard embed + install
+// Shared copy for the Fleet Library empty state (dashboard embed + install
 // picker) so the two surfaces can never drift apart.
-export const TEMPLATES_EMPTY_TITLE = "No templates found";
-export const TEMPLATES_EMPTY_DESCRIPTION =
-  "Write your own template to install your first fleet.";
+export const FLEET_LIBRARY_EMPTY_TITLE = "No fleet library yet";
+// Only shown alongside the Create-a-template action — a viewer without
+// template:write never sees an invitation to do something they can't.
+export const FLEET_LIBRARY_EMPTY_DESCRIPTION =
+  "Write your own template to start your Fleet Library.";
+export const FLEET_LIBRARY_EMPTY_DESCRIPTION_READONLY =
+  "Ask a workspace admin to add one.";
 
 // Shared "Learn more" docs affordance across the install surfaces (dashboard
 // gallery empty-state, install picker). Secondary by design — the primary CTA

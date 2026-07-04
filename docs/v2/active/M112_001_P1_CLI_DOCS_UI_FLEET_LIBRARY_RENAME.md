@@ -14,11 +14,12 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Milestone:** M112
 **Workstream:** 001
 **Date:** Jul 04, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — user-facing naming clarity ahead of the v2.0.0 cut; flagged as a drab section name during a live design pass.
 **Categories:** CLI, DOCS, UI
 **Batch:** B1 — independent of M108's connector work; shares the branch/PR by explicit instruction (see Branch), not a sequencing dependency.
 **Branch:** feat/m108-connector-platform — continues on the SAME branch/PR (#477) as M108_001/M108_002, by Indy's explicit instruction this session ("I want all the M112, M113 folded in this PR"), not the default one-worktree-per-milestone convention.
+**Test Baseline:** unit=2309 integration=249
 **Depends on:** none
 **Provenance:** LLM-drafted (Claude Sonnet 5, Jul 04, 2026) from a blast-radius audit run earlier this session — treat the audit's file list as a starting point, not a final inventory; re-grep at EXECUTE since the audit predates several intervening commits.
 
@@ -136,21 +137,22 @@ Not touched (Product Clarity #6): route paths, authz scope strings, Postgres tab
 
 ## Sections (implementation slices)
 
-### §1 — UI copy: fleet-install flow reads "Fleet Library"
+### §1 — UI copy: fleet-install flow reads "Fleet Library" — DONE
 
 The section/page-level naming the complaint targeted. **Implementation default:** "Fleet Library" is the section/nav/page-title proper noun; "template" remains the natural common noun for an individual catalog entry in body copy (e.g. "Browse the Fleet Library" as a heading, "pick a template to start" mid-sentence) — the agent uses judgment per string for natural phrasing, not mechanical find-replace, re-reading each file's surrounding sentence before changing it.
 
-- **Dimension 1.1** — `InstallSourceSelector`'s section label reads "Fleet Library" → Test `test_install_source_selector_section_label_reads_fleet_library`
-- **Dimension 1.2** — `template-docs.tsx`'s empty-state and doc-link copy is voice-consistent with the renamed section → Test `test_template_docs_empty_state_copy_updated`
-- **Dimension 1.3** — `AddTemplateDialog`, `InstallEntry`, `InstallConfirm`, and the three page-description strings read consistently with the new name → Test `test_install_flow_copy_consistent_with_fleet_library`
-- **Dimension 1.4** — every existing test asserting the old "Templates" copy is updated to assert the new copy; the `?template=` query param, route, and deep-link mechanics assert unchanged → Test `test_template_deep_link_query_param_unchanged` (regression)
+- **Dimension 1.1** — DONE — `InstallSourceSelector`'s section label reads "Fleet Library" → Test `test_install_source_selector_section_label_reads_fleet_library`
+- **Dimension 1.2** — DONE — `template-docs.tsx`'s empty-state and doc-link copy is voice-consistent with the renamed section ("No fleet library yet" / "Write your own template to start your Fleet Library." / readonly variant "Ask a workspace admin to add one.", constants renamed `FLEET_LIBRARY_EMPTY_*`) → Test `test_template_docs_empty_state_copy_updated`
+- **Dimension 1.3** — DONE — `AddTemplateDialog`, `InstallEntry`, `InstallConfirm`, and the two page-description strings (`fleets/new/page.tsx`, `fleets/page.tsx`) read consistently with the new name; `app/(dashboard)/page.tsx`'s terse tagline ("Start a fleet from a template.") deliberately left as natural common-noun usage → Test `test_install_flow_copy_consistent_with_fleet_library`
+- **Dimension 1.4** — DONE — every existing test asserting the old "Templates" copy is updated to assert the new copy; the `?template=` query param, route, and deep-link mechanics assert unchanged → Test `test_template_deep_link_query_param_unchanged` (regression)
+- **Dimension 1.5 (added mid-EXECUTE)** — DONE — `InstallEntry`'s Create-a-template CTA now gates on `canAddTemplate` (threaded from `hasTemplateWriteScope(sessionClaims)` in the dashboard `page.tsx`), matching `InstallSourceSelector`'s pre-existing gate; both components' empty-state description is now conditional on the same flag so a viewer without `template:write` is never invited to do something the backend would reject → Test `test_install_entry_gates_create_template_on_scope` (see Discovery)
 
-### §2 — CLI help/output copy reads "Fleet Library"
+### §2 — CLI help/output copy reads "Fleet Library" — DONE
 
 The `agentsfleet templates` and `agentsfleet install --template` commands print updated copy; the command name and flag name themselves are unchanged.
 
-- **Dimension 2.1** — `fleet_templates.ts` output strings ("No templates available.", table header, suggestion text) read consistently with "Fleet Library" → Test `test_cli_templates_output_copy_updated`
-- **Dimension 2.2** — the command name `templates` and the `--template` flag are byte-identical to before (regression) → Test `test_cli_template_command_and_flag_unchanged`
+- **Dimension 2.1** — DONE — `fleet_templates.ts` empty-state output string ("No fleet library yet.") reads consistently with "Fleet Library"; table header `TEMPLATE` and the `--template` suggestion text deliberately kept (individual catalog entries, common-noun usage) → Test `test_cli_templates_output_copy_updated`
+- **Dimension 2.2** — DONE — the command name `templates` and the `--template` flag are byte-identical to before (regression) → Test `test_cli_template_command_and_flag_unchanged`
 
 ### §3 — Docs prose reads "Fleet Library" (gated on Indy's go-ahead)
 
@@ -240,7 +242,7 @@ N/A — no files deleted, no symbols removed. Const identifiers renamed alongsid
 
 ## Discovery (consult log)
 
-- **Consults:** none yet — populated during EXECUTE/VERIFY.
+- **Consults:** Indy caught, mid-EXECUTE, that `TEMPLATES_EMPTY_DESCRIPTION` ("Write your own template...") rendered unconditionally in both `InstallSourceSelector.tsx` and `InstallEntry.tsx`, even when their paired "Create a template" button was hidden for lack of `template:write` scope — inviting an action the backend would reject. `InstallSourceSelector` already gated the button correctly (pre-existing); `InstallEntry` (the dashboard first-run embed) had no gating at all. Fixed in the same commit as the rename since it's the identical surface already in scope: added `TEMPLATES_EMPTY_DESCRIPTION_READONLY`, gated both components' description on their existing/new `canAddTemplate` flag, threaded `hasTemplateWriteScope(sessionClaims)` from the dashboard page (`page.tsx`) through `FirstInstall` into `InstallEntry` (previously never computed there). Backend (`route_scopes.zig`'s `TEMPLATE_WRITE` gate) was already the real security boundary — this is a discoverability fix, not a security fix.
 - **Metrics review:** not applicable — no product/operator signal changes (see Metrics & Observability).
 - **Skill chain outcomes:** populated after `/write-unit-test` and `/review` run.
 - **Deferrals:** none yet.

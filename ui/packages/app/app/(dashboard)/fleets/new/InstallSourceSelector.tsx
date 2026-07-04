@@ -6,8 +6,9 @@ import type { FleetTemplateGalleryEntry } from "@/lib/types";
 import AddTemplateDialog from "./AddTemplateDialog";
 import {
   TemplateDocsLink,
-  TEMPLATES_EMPTY_DESCRIPTION,
-  TEMPLATES_EMPTY_TITLE,
+  FLEET_LIBRARY_EMPTY_DESCRIPTION,
+  FLEET_LIBRARY_EMPTY_DESCRIPTION_READONLY,
+  FLEET_LIBRARY_EMPTY_TITLE,
 } from "./template-docs";
 import { TemplateCard } from "./TemplateCard";
 
@@ -36,7 +37,7 @@ export function InstallSourceSelector({
   return (
     <div className="space-y-sm">
       <div className="flex flex-wrap items-baseline justify-between gap-md">
-        <SectionLabel>Templates</SectionLabel>
+        <SectionLabel>Fleet Library</SectionLabel>
         {showAddTemplate && templates.length > 0 ? (
           <AddTemplateDialog workspaceId={workspaceId} defaultOpen={initialCreateOpen} />
         ) : null}
@@ -58,8 +59,8 @@ export function InstallSourceSelector({
       ) : (
         <EmptyState
           icon={<LayoutTemplateIcon size={28} />}
-          title={TEMPLATES_EMPTY_TITLE}
-          description={TEMPLATES_EMPTY_DESCRIPTION}
+          title={FLEET_LIBRARY_EMPTY_TITLE}
+          description={showAddTemplate ? FLEET_LIBRARY_EMPTY_DESCRIPTION : FLEET_LIBRARY_EMPTY_DESCRIPTION_READONLY}
           action={
             <div className="flex flex-wrap items-center justify-center gap-md">
               <TemplateDocsLink />

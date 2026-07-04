@@ -63,12 +63,23 @@ describe("InstallEntry", () => {
     expect(m).toContain("GitHub PR reviewer");
   });
 
-  it("falls back to an empty state with Learn-more + Create-a-template when there are no templates", () => {
-    const m = renderToStaticMarkup(React.createElement(InstallEntry, { templates: [] }));
-    expect(m).toContain("No templates found");
+  it("falls back to an empty state with Learn-more + Create-a-template when template:write is available", () => {
+    const m = renderToStaticMarkup(
+      React.createElement(InstallEntry, { templates: [], canAddTemplate: true }),
+    );
+    expect(m).toContain("No fleet library yet");
+    expect(m).toContain("Write your own template");
     expect(m).toContain("Create a template");
     expect(m).toContain("Learn more");
     expect(m).not.toContain("?template=");
+  });
+
+  it("omits Create-a-template (and its copy) when template:write is absent — matches InstallSourceSelector's own gate", () => {
+    const m = renderToStaticMarkup(React.createElement(InstallEntry, { templates: [] }));
+    expect(m).toContain("No fleet library yet");
+    expect(m).toContain("Ask a workspace admin");
+    expect(m).not.toContain("Create a template");
+    expect(m).toContain("Learn more");
   });
 
   it("caps the gallery at maxTemplates", () => {
@@ -111,7 +122,7 @@ describe("InstallSourceSelector", () => {
       }),
     );
 
-    expect(screen.getByText("No templates found")).toBeTruthy();
+    expect(screen.getByText("No fleet library yet")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Create a template" })).toBeNull();
     expect(screen.getByRole("link", { name: "Learn more" })).toBeTruthy();
   });
@@ -125,7 +136,7 @@ describe("InstallSourceSelector", () => {
       }),
     );
 
-    expect(screen.getByText("No templates found")).toBeTruthy();
+    expect(screen.getByText("No fleet library yet")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Create a template" })).toBeNull();
   });
 
@@ -139,7 +150,7 @@ describe("InstallSourceSelector", () => {
       }),
     );
 
-    expect(screen.getByText("No templates found")).toBeTruthy();
+    expect(screen.getByText("No fleet library yet")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Create a template" })).toBeTruthy();
   });
 });
