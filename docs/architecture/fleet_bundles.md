@@ -80,7 +80,7 @@ At lease time (see [`data_flow.md` §C](./data_flow.md)):
 
 - **SKILL.md / TRIGGER.md are editable** via `PATCH /v1/workspaces/{ws}/fleets/{id}` (`source_markdown` / `trigger_markdown`). The edit is **in place on `core.fleets`** (reparse, validate the name still matches, bump revision). It does **not** mint a new template and does **not** change the fleet's `bundle_content_hash`.
 - **Templates are immutable content** — a re-onboard with changed bytes mints a new snapshot (new `content_hash`); existing fleets are unaffected.
-- **Install is from a template only** — `POST /v1/workspaces/{ws}/fleets` accepts exactly `{platform_template_id}` or `{tenant_template_id}`. Raw-SKILL paste and the legacy `bundle_id` install were removed (M103 §4).
+- **Install is from a template only** — `POST /v1/workspaces/{ws}/fleets` accepts exactly `{platform_library_id}` or `{tenant_library_id}`. Raw-SKILL paste and the legacy `bundle_id` install were removed (M103 §4).
 - **Support files are NOT editable in place.** They live only in the immutable R2 snapshot, so changing one requires re-onboarding the template (new `content_hash`) and re-installing. No fleet-level support-file override today. 🟡 gap.
 - **No GitHub → template sync.** Onboard is one-time; pushing a new commit to the source repo does nothing. Re-sync is a manual re-onboard. 🟡 gap.
 
