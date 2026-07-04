@@ -135,9 +135,17 @@ async function resolveAction(
   // RFC 7807 problem+json, same shape `request()` throws on — see client.ts.
   // A bare `Error` here would discard `error_code` before `presentErrorString`
   // ever runs (withToken only reads `.code` off an `ApiError` instance).
-  const errBody = json as { detail?: string; title?: string; error_code?: string; request_id?: string };
+  // `user_message` (curated dashboard-safe copy) is preferred over `detail`/
+  // `title`, same precedence as client.ts's request().
+  const errBody = json as {
+    detail?: string;
+    title?: string;
+    error_code?: string;
+    request_id?: string;
+    user_message?: string;
+  };
   throw new ApiError(
-    errBody.detail ?? errBody.title ?? `Resolve failed: HTTP ${res.status}`,
+    errBody.user_message ?? errBody.detail ?? errBody.title ?? `Resolve failed: HTTP ${res.status}`,
     res.status,
     errBody.error_code ?? "UZ-UNKNOWN",
     errBody.request_id,

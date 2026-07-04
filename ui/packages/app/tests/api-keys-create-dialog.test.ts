@@ -84,7 +84,13 @@ describe("CreateApiKeyDialog component", () => {
   });
 
   it("name collision keeps the dialog open and reveals no key", async () => {
-    createApiKeyActionMock.mockResolvedValue({ ok: false, error: "name taken", errorCode: "UZ-APIKEY-005" });
+    // ApiError.message is user_message ?? detail (client.ts) —
+    // UZ-APIKEY-005's friendly copy lives in error_entries_runtime.zig now.
+    createApiKeyActionMock.mockResolvedValue({
+      ok: false,
+      error: "An API key with that name already exists. Pick a different name for this tenant.",
+      errorCode: "UZ-APIKEY-005",
+    });
     const { user, onCreated } = await openDialog();
     await user.type(screen.getByLabelText(/^name$/i), "ci-runner");
     await user.click(screen.getByRole("button", { name: /create key/i }));

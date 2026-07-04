@@ -159,7 +159,13 @@ describe("ApiKeyList component", () => {
   });
 
   it("delete race (key still active) surfaces must-revoke-first and re-fetches", async () => {
-    deleteApiKeyActionMock.mockResolvedValue({ ok: false, error: "revoke first", errorCode: "UZ-APIKEY-008" });
+    // ApiError.message is user_message ?? detail (client.ts) —
+    // UZ-APIKEY-008's friendly copy lives in error_entries_runtime.zig now.
+    deleteApiKeyActionMock.mockResolvedValue({
+      ok: false,
+      error: "Revoke this key before deleting it. Revoke it first, then delete the revoked key.",
+      errorCode: "UZ-APIKEY-008",
+    });
     const user = userEvent.setup();
     await renderList(listResponse([REVOKED]));
     await user.click(screen.getByLabelText(/Delete API key old-zapier/i));

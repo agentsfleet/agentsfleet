@@ -33,8 +33,8 @@ describe("presentError", () => {
 
 describe("presentErrorString", () => {
   it("joins title and body with a sentence-final period when the title lacks one", () => {
-    const s = presentErrorString({ errorCode: "UZ-INTERNAL-002", action: "store the credential" });
-    expect(s).toBe("We're under load and dropped your request. Try again in a few seconds.");
+    const s = presentErrorString({ errorCode: "UZ-AUTH-401", action: "load the dashboard" });
+    expect(s).toBe("Your session expired. Sign in again to keep going.");
   });
 
   it("returns just the title when no body is provided", () => {
@@ -56,30 +56,33 @@ describe("presentErrorString", () => {
   });
 });
 
-// Every code named in the error-copy spec's reachable-surface audit maps to
-// friendly copy that is NOT the raw backend detail string it was drafted from.
-describe("presentErrorString — reachable-surface codes", () => {
-  const RAW_BACKEND_DETAIL: Record<string, string> = {
-    "UZ-PROVIDER-001": "PUT body must include `secret_ref` naming a vault credential when `mode` is self_managed.",
-    "UZ-PROVIDER-002": "The named secret_ref has no vault row in the tenant's primary workspace.",
-    "UZ-PROVIDER-003": "Stored credential JSON must include `provider` and `model`.",
-    "UZ-PROVIDER-004": "The effective model is not present in core.model_caps.",
-    "UZ-VAULT-001": "body must include a 'data' field that is a JSON object with at least one key.",
-    "UZ-VAULT-002": "Stringified credential data exceeds 4KB.",
-    "UZ-VAULT-003": "No credential matches this name in the workspace.",
-    "UZ-BUNDLE-001": "The supplied Fleet Bundle is missing SKILL.md or contains unsafe, oversized, or malformed files.",
-    "UZ-BUNDLE-002": "No installable template or stored snapshot matches the request in this workspace.",
-    "UZ-APPROVAL-001": "Gate policy in TRIGGER.md config_json has invalid syntax.",
-    "UZ-APPROVAL-002": "Approval action not found or already resolved.",
-    "UZ-APPROVAL-003": "The approval callback signature is invalid.",
-    "UZ-APPROVAL-004": "Gate service unavailable — default-deny applied.",
-    "UZ-APPROVAL-005": "Gate condition expression is invalid.",
-    "UZ-APPROVAL-006": "Resolved earlier by Slack, dashboard, or auto-timeout.",
-  };
+// The codes this session's audit curated (UZ-PROVIDER-*, UZ-VAULT-*,
+// UZ-BUNDLE-*, UZ-APPROVAL-*, plus most of the pre-existing entries) moved
+// to the backend's `user_message` (error_entries.zig's eu()) — see
+// client.test.ts's "prefers user_message over detail" for the mechanism.
+// CODE_MAP now holds only what can never be backend-authored.
+describe("CODE_MAP — shrunk to client-minted + dead entries", () => {
+  it("contains exactly the codes that cannot be backend-authored", () => {
+    // UZ-AUTH-401/UZ-AUTH-022: client-minted (with-token.ts / require-scope.ts),
+    // never round-trip to a real backend response for that code path.
+    // UZ-VALIDATION-001/UZ-CRED-003: dead — no backend code, never client-minted.
+    expect([...CURATED_ERROR_CODES].sort()).toEqual(
+      ["UZ-AUTH-401", "UZ-AUTH-022", "UZ-CRED-003", "UZ-VALIDATION-001"].sort(),
+    );
+  });
 
-  it.each(Object.entries(RAW_BACKEND_DETAIL))("%s renders friendly copy, not the raw backend detail", (code, raw) => {
-    const s = presentErrorString({ errorCode: code, message: raw, action: "x" });
-    expect(s).not.toBe(raw);
-    expect(s.length).toBeGreaterThan(0);
+  it("no longer maps any of the 26 codes migrated to the backend registry", () => {
+    const migrated = [
+      "UZ-INTERNAL-001", "UZ-INTERNAL-002", "UZ-AGT-009", "UZ-AUTH-001", "UZ-REQ-001",
+      "UZ-APIKEY-003", "UZ-APIKEY-005", "UZ-APIKEY-006", "UZ-APIKEY-007", "UZ-APIKEY-008",
+      "UZ-CRED-001", "UZ-PROVIDER-001", "UZ-PROVIDER-002", "UZ-PROVIDER-003", "UZ-PROVIDER-004",
+      "UZ-VAULT-001", "UZ-VAULT-002", "UZ-VAULT-003", "UZ-BUNDLE-001", "UZ-BUNDLE-002",
+      "UZ-APPROVAL-001", "UZ-APPROVAL-002", "UZ-APPROVAL-003", "UZ-APPROVAL-004",
+      "UZ-APPROVAL-005", "UZ-APPROVAL-006",
+    ];
+    expect(migrated.length).toBe(26);
+    for (const code of migrated) {
+      expect((CURATED_ERROR_CODES as readonly string[]).includes(code), code).toBe(false);
+    }
   });
 });

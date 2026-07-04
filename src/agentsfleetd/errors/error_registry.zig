@@ -25,6 +25,10 @@ comptime {
             @compileError("Entry has empty hint: " ++ entry.code);
         if (entry.code.len < 4 or !std.mem.startsWith(u8, entry.code, "UZ-"))
             @compileError("Entry code must start with UZ-: " ++ entry.code);
+        if (entry.user_message) |um| {
+            if (um.len == 0)
+                @compileError("Entry has empty user_message (omit the field instead of authoring an empty string): " ++ entry.code);
+        }
     }
     // Invariant 3: no sentinel collision
     for (REGISTRY) |entry| {

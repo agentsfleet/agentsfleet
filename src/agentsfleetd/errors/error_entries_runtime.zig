@@ -22,6 +22,20 @@ fn e(
     };
 }
 
+/// Like e(), plus a curated `user_message` — see error_entries.zig's module
+/// doc for when to reach for this instead of e().
+fn eu(
+    comptime code: []const u8,
+    comptime status: std.http.Status,
+    comptime title: []const u8,
+    comptime hint_text: []const u8,
+    comptime user_message_text: []const u8,
+) Entry {
+    var entry = e(code, status, title, hint_text);
+    entry.user_message = user_message_text;
+    return entry;
+}
+
 pub const ENTRIES_RUNTIME = [_]Entry{
     // ── SANDBOX ──────────────────────────────────────────────────────────────
     // ── RUNNER ─────────────────────────────────────────────────────────────
@@ -41,13 +55,13 @@ pub const ENTRIES_RUNTIME = [_]Entry{
     e("UZ-EXEC-014", .bad_request, "Runner invalid config", "Runner configuration is invalid. Check config_json fields."),
     // ── RELAY ────────────────────────────────────────────────────────────────
     // ── APPROVAL GATE ────────────────────────────────────────────────────────
-    e("UZ-APPROVAL-001", .bad_request, "Approval parse failed", "Gate policy in TRIGGER.md config_json has invalid syntax. Check the 'gates' section."),
-    e("UZ-APPROVAL-002", .not_found, "Approval not found", "Approval action not found or already resolved. " ++
-        "The action may have timed out or been handled by another click."),
-    e("UZ-APPROVAL-003", .unauthorized, "Approval invalid signature", "The approval callback signature is invalid. Check the signing secret."),
-    e("UZ-APPROVAL-004", .service_unavailable, "Approval Redis unavailable", "Gate service unavailable \u{2014} default-deny applied. Check Redis connectivity."),
-    e("UZ-APPROVAL-005", .bad_request, "Approval condition invalid", "Gate condition expression is invalid. Supported operators: == and != with single-quoted values."),
-    e("UZ-APPROVAL-006", .conflict, "Approval already resolved", "Resolved earlier by Slack, dashboard, or auto-timeout. Original outcome + resolver in body."),
+    eu("UZ-APPROVAL-001", .bad_request, "Approval parse failed", "Gate policy in TRIGGER.md config_json has invalid syntax. Check the 'gates' section.", "That approval gate's config is invalid. Check the gates section in TRIGGER.md."),
+    eu("UZ-APPROVAL-002", .not_found, "Approval not found", "Approval action not found or already resolved. " ++
+        "The action may have timed out or been handled by another click.", "That approval action wasn't found. It may have already timed out or been resolved elsewhere."),
+    eu("UZ-APPROVAL-003", .unauthorized, "Approval invalid signature", "The approval callback signature is invalid. Check the signing secret.", "That approval callback couldn't be verified. Check the signing secret configuration."),
+    eu("UZ-APPROVAL-004", .service_unavailable, "Approval Redis unavailable", "Gate service unavailable \u{2014} default-deny applied. Check Redis connectivity.", "Approvals are temporarily unavailable. We default to denying while this is down — try again shortly."),
+    eu("UZ-APPROVAL-005", .bad_request, "Approval condition invalid", "Gate condition expression is invalid. Supported operators: == and != with single-quoted values.", "That approval gate's condition is invalid. Check the gate's condition expression for a supported operator."),
+    eu("UZ-APPROVAL-006", .conflict, "Approval already resolved", "Resolved earlier by Slack, dashboard, or auto-timeout. Original outcome + resolver in body.", "Someone already resolved this. Refresh to see the outcome and who resolved it."),
     // ── MEMORY ───────────────────────────────────────────────────────────────
     e("UZ-MEM-002", .not_found, "Fleet not found for memory op", "The fleet_id does not exist or does not belong to the requesting workspace. " ++
         "Verify the fleet_id and workspace scope."),
@@ -56,12 +70,12 @@ pub const ENTRIES_RUNTIME = [_]Entry{
     // ── AGENT KEYS (workspace-scoped, agt_a prefix) ────────────────────────────
     e("UZ-APIKEY-001", .unauthorized, "Invalid API key", "API key is invalid or revoked. Create one with: agentsfleet fleet create --workspace {ws} --name my-fleet"),
     // ── TENANT API KEYS (tenant-scoped, agt_t prefix) ────────────────────────
-    e("UZ-APIKEY-003", .not_found, "API key not found", "No API key matches the supplied id for this tenant. Verify the id with: GET /v1/api-keys"),
+    eu("UZ-APIKEY-003", .not_found, "API key not found", "No API key matches the supplied id for this tenant. Verify the id with: GET /v1/api-keys", "We couldn't find that API key. It may have already been deleted — refresh the list."),
     e("UZ-APIKEY-004", .unauthorized, "API key has been revoked", "This key was revoked and can no longer authenticate. Mint a replacement with: POST /v1/api-keys"),
-    e("UZ-APIKEY-005", .conflict, "Key name already exists in this tenant", "key_name must be unique per tenant. Pick a different name or revoke the existing key first."),
-    e("UZ-APIKEY-006", .conflict, "API key is already revoked", "This key is already revoked. No further action is required."),
-    e("UZ-APIKEY-007", .conflict, "active cannot be set to true; mint a new key instead", "Re-activation is not supported. Create a new key via POST /v1/api-keys and revoke the old one."),
-    e("UZ-APIKEY-008", .conflict, "Active API key must be revoked before deletion", "Revoke the key first with PATCH /v1/api-keys/{id} body {\"active\": false}, then retry DELETE."),
+    eu("UZ-APIKEY-005", .conflict, "Key name already exists in this tenant", "key_name must be unique per tenant. Pick a different name or revoke the existing key first.", "An API key with that name already exists. Pick a different name for this tenant."),
+    eu("UZ-APIKEY-006", .conflict, "API key is already revoked", "This key is already revoked. No further action is required.", "That API key is already revoked. Refresh the list to see its current state."),
+    eu("UZ-APIKEY-007", .conflict, "active cannot be set to true; mint a new key instead", "Re-activation is not supported. Create a new key via POST /v1/api-keys and revoke the old one.", "A revoked key can't be reactivated. Mint a new key instead."),
+    eu("UZ-APIKEY-008", .conflict, "Active API key must be revoked before deletion", "Revoke the key first with PATCH /v1/api-keys/{id} body {\"active\": false}, then retry DELETE.", "Revoke this key before deleting it. Revoke it first, then delete the revoked key."),
     // ── INTEGRATION GRANTS ────────────────────────────────────────────────────
     e("UZ-GRANT-001", .forbidden, "No integration grant for service", "This fleet has no approved grant for the target service. " ++
         "Request one with: POST /v1/fleets/{id}/integration-requests"),
@@ -73,8 +87,8 @@ pub const ENTRIES_RUNTIME = [_]Entry{
     // Surfaced first at POST /v1/runners/me/credentials/mint (the mint endpoint
     // is the first caller — registering them earlier would be caller-less, NDC).
     // No secret ever appears in these messages (VLT) — host/status only.
-    e("UZ-CRED-001", .not_found, "Integration not connected", "No connected integration matches this id for the fleet's workspace. " ++
-        "Connect it first (e.g. GitHub via the dashboard \u{201c}Connect\u{201d} flow) before a fleet can mint a token for it."),
+    eu("UZ-CRED-001", .not_found, "Integration not connected", "No connected integration matches this id for the fleet's workspace. " ++
+        "Connect it first (e.g. GitHub via the dashboard \u{201c}Connect\u{201d} flow) before a fleet can mint a token for it.", "That integration isn't connected. Connect it from the Integrations page, then try again."),
     e("UZ-GH-001", .conflict, "GitHub App reconnect required", "The GitHub App installation is gone (uninstalled or revoked), so no token can be minted. " ++
         "Reconnect GitHub from the dashboard \u{2014} the fleet stays blocked until the App is reinstalled."),
     e("UZ-GH-002", .bad_gateway, "GitHub token mint failed", "GitHub did not return an installation token (upstream 5xx, network, or a malformed exchange response). " ++

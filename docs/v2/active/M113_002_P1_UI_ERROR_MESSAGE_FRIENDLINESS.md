@@ -71,12 +71,13 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 
 | Gate | Fires? | Satisfaction strategy |
 |------|--------|-----------------------|
-| ZIG GATE | no | no `.zig` touched — this is a frontend presentation fix |
-| PUB / Struct-Shape | possible | if `use-provider-action.ts`'s hook signature changes to accept a `presentErrorString` call, shape-verdict at PLAN |
-| File & Function Length | no | copy/lookup-table additions only |
-| UFS | yes | every new friendly string lives in `CODE_MAP` (or the new `FailureClass` label table), never inlined at a call site |
+| ZIG GATE | yes (§4) | `Entry.user_message` is a plain optional field, no lifecycle/ownership change; `eu()` mirrors `e()`'s existing comptime shape |
+| PUB / Struct-Shape | possible | `use-provider-action.ts`'s hook signature changed (§1.1, `run(action, fn, onSuccess)`) — shape-verdict at PLAN: additive, backward-incompatible only within this file's own 5 call sites (all updated in the same diff) |
+| File & Function Length | no | copy/lookup-table additions + one new struct field + one new helper fn, all within existing file budgets |
+| UFS | yes | every friendly string lives in `CODE_MAP`, the new `FailureClass` label table, or (§4) the backend registry's `user_message` — never inlined at a call site |
 | UI Substitution / DESIGN TOKEN | no | no new markup |
-| LOGGING / LIFECYCLE / ERROR REGISTRY / SCHEMA | no | frontend-only; the backend `error_entries.zig` registry itself is unchanged |
+| ERROR REGISTRY | yes (§4) | `error_registry.zig`'s comptime validation extended: non-empty `user_message` when present, mirroring the existing non-empty-`hint` invariant |
+| LOGGING / LIFECYCLE / SCHEMA | no | no logging surface, no init/deinit lifecycle, no `schema/*.sql` touched |
 
 ---
 
@@ -110,6 +111,13 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 | `ui/packages/app/components/domain/EventsList.tsx` | EDIT | `failure_label` rendered through a new small friendly-label table instead of the raw Zig tag name |
 | `ui/packages/app/app/cli-auth/[session_id]/page.tsx` | EDIT | replace "Unexpected session payload." and raw `HTTP ${status}` strings with plain sentences |
 | `ui/packages/app/tests/*.test.tsx` (the ones this session's audit found pinning raw-passthrough as expected behavior, e.g. `hero-change-model-panel.test.tsx:51-58`, `provider-key-form.test.tsx:88-99`, `provider-switch-list.test.tsx:219-231`) | EDIT | assertions move from raw string to friendly string |
+| `src/agentsfleetd/errors/error_entries.zig` | EDIT | `Entry` gains `user_message`; `eu()` helper; 15 codes migrated to `eu()` (`UZ-INTERNAL-*`, `UZ-AGT-009`, `UZ-AUTH-001`, `UZ-AUTH-022`, `UZ-REQ-001`, `UZ-PROVIDER-*`, `UZ-VAULT-*`, `UZ-BUNDLE-*`) |
+| `src/agentsfleetd/errors/error_entries_runtime.zig` | EDIT | 12 codes migrated to `eu()` (`UZ-CRED-001`, `UZ-APIKEY-*`, `UZ-APPROVAL-*`) |
+| `src/agentsfleetd/http/handlers/common.zig` | EDIT | `writeProblem` serializes `user_message` when non-null |
+| `ui/packages/app/lib/api/client.ts` | EDIT | `request()` prefers `body.user_message` when constructing the thrown `ApiError` |
+| `ui/packages/app/lib/api/approvals.ts` | EDIT | `resolveAction`'s error path (already fixed in §1.3) also prefers `errBody.user_message` |
+| `public/openapi/components/schemas.yaml` | EDIT | `ErrorBody` gains optional `user_message` |
+| `public/openapi.json` | EDIT | regenerated (`make check-openapi`) |
 
 ---
 
@@ -144,6 +152,21 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 - **Dimension 3.1** — `EventsList.tsx`'s `failure_label` renders through a small friendly-label table (e.g. `oom_kill` → "Ran out of memory", `landlock_deny` → "Blocked by the sandbox policy") instead of the raw Zig enum tag name → Test `test_events_list_failure_reason_is_friendly`
 - **Dimension 3.2** — `cli-auth/[session_id]/page.tsx`'s "Unexpected session payload." and raw `HTTP ${status}` strings become plain sentences → Test `test_cli_auth_page_errors_are_friendly`
 
+### §4 — Durable fix: move friendly copy into the backend error registry (scope expansion, Indy-directed)
+
+**Why this section exists:** §1-§3 are a frontend presentation patch — `CODE_MAP` duplicates knowledge the backend's `error_entries.zig`/`error_entries_runtime.zig` registry already owns (code, status, title, detail), and this spec's own flagship bug (`UZ-PROVIDER-004` shown raw) is exactly what happens when that duplication drifts. Patching the frontend again doesn't fix the drift risk for the *next* code. The durable fix moves authorship to the one place every error response already funnels through (`writeProblem` in `src/agentsfleetd/http/handlers/common.zig`, reached by every `hx.fail()` call in the codebase) so a new code can never again reach a dashboard user unmapped without a build-time author having to remember a second, frontend-only list.
+
+- **Dimension 4.1** — `error_entries.zig`'s `Entry` struct gains an optional `user_message: ?[]const u8 = null` field; a new `eu()` helper (mirrors `e()` plus the new param) is used only where a friendly override is authored. Every existing `e()` call site is untouched (defaults `user_message` to `null`) → Test `test_entry_user_message_defaults_null`
+- **Dimension 4.2** — `writeProblem` (`common.zig`) serializes `user_message` into the RFC 7807 body when non-null (`emit_null_optional_fields=false` keeps every untouched code's wire shape byte-identical) → Test `test_error_response_includes_user_message_when_present`
+- **Dimension 4.3** — the 27 reachable codes this spec curated (12 pre-existing `CODE_MAP` entries this session confirmed are real, still-firing codes, plus the 15 named in §2) get `eu()` entries carrying the same friendly text, migrated verbatim from `CODE_MAP` → Test `test_migrated_codes_carry_user_message`
+- **Dimension 4.4** — `public/openapi/components/schemas.yaml`'s `ErrorBody` schema documents the new optional `user_message` field; `public/openapi.json` regenerated (`make check-openapi` green)
+- **Dimension 4.5** — frontend `client.ts`'s `request()` and `approvals.ts`'s `resolveAction` prefer `body.user_message` when constructing the thrown `ApiError`'s message (`user_message ?? detail ?? title ?? fallback`) — every existing call site that already threads `message: result.error` into `presentErrorString` benefits with zero further edits, since `presentError`'s existing precedence (`CODE_MAP` first, then `message`) is unchanged → Test `test_api_error_prefers_user_message`
+- **Dimension 4.6** — `CODE_MAP` shrinks to the entries that can never be (fully) backend-authored: `UZ-AUTH-401` (client-minted in `with-token.ts` when no Bearer token exists) and `UZ-AUTH-022` (ALSO client-minted, separately, by `lib/actions/require-scope.ts`'s fail-fast pre-check — caught mid-migration: removing it from `CODE_MAP` would have regressed that specific path back to a raw `"Operator scope required: {scope}"` string; it also got a backend `eu()` entry for the real-HTTP-403 path, which is harmless since `presentError` checks `CODE_MAP` first regardless) — plus the two dead/unreachable entries found during migration (`UZ-VALIDATION-001`, `UZ-CRED-003` — no backend code with either string exists anywhere in `src/`; left as-is, not in scope to remove) → Test `test_code_map_shrunk_to_unmappable_codes`
+
+**Migration note (found during Dimension 4.1's audit):** two of the 15 pre-existing `CODE_MAP` entries — `UZ-VALIDATION-001` and `UZ-CRED-003` — do not exist anywhere in the backend registry and are never client-minted; they are dead entries that can never fire. Left in place (removing dead code is a distinct, smaller cleanup not requested this session) but noted here so the next reader doesn't assume they're real.
+
+**Not migrated:** the ~85 backend codes outside this spec's audited reachable-surface — same rationale as §2's Out of Scope, unchanged by this section.
+
 ---
 
 ## Metrics & Observability
@@ -154,7 +177,21 @@ Not applicable — no product/operator signal changes; this is error-copy correc
 
 ## Interfaces
 
-Not applicable — no backend change; `CODE_MAP`'s shape (`Record<string, string>` or equivalent) is unchanged, only its entries grow.
+**§4 adds a backend wire-contract field** (pre-2.0.0, no-compat-shim convention — same as the M113_003 credential→secret rename): the RFC 7807 error body gains an optional `user_message: ?[]const u8` — `null`/omitted (`emit_null_optional_fields=false`) for every code this spec doesn't curate, so every untouched code's wire shape is byte-identical to today.
+
+```zig
+// error_entries.zig
+pub const Entry = struct {
+    code: []const u8,
+    http_status: std.http.Status,
+    title: []const u8,
+    hint: []const u8,
+    docs_uri: []const u8,
+    user_message: ?[]const u8 = null, // NEW
+};
+```
+
+§1-§3's frontend `CODE_MAP` shape is otherwise unchanged, just shrunk (Dimension 4.6).
 
 ---
 
@@ -185,6 +222,11 @@ Not applicable — no backend change; `CODE_MAP`'s shape (`Record<string, string
 | 2.1-2.4 | unit | `test_{provider,vault,bundle,approval}_error_codes_have_friendly_copy` | for each named code, `presentErrorString({errorCode: "UZ-...", message: <raw>})` returns text that does not equal the raw backend string |
 | 3.1 | unit | `test_events_list_failure_reason_is_friendly` | `failure_label: "oom_kill"` renders a friendly sentence; an unmapped tag renders its raw name (negative case) |
 | 3.2 | unit | `test_cli_auth_page_errors_are_friendly` | a non-200 session-load response renders a plain sentence, no raw HTTP status leaked |
+| 4.1 | unit (zig) | `test_entry_user_message_defaults_null` | an `e()`-constructed `Entry` has `user_message == null` |
+| 4.2 | unit (zig) | `test_error_response_includes_user_message_when_present` | `writeProblem` on a code with `user_message` set → response JSON has the field; on a code without → field is omitted entirely (not `null`-valued) |
+| 4.3 | unit (zig) | `test_migrated_codes_carry_user_message` | each of the 27 migrated codes' `lookup(code).user_message` is non-null and does not equal `hint` verbatim |
+| 4.5 | unit | `test_api_error_prefers_user_message` | a response with both `detail` and `user_message` → the thrown `ApiError.message` is `user_message`, not `detail` |
+| 4.6 | unit | `test_code_map_shrunk_to_unmappable_codes` | `CURATED_ERROR_CODES` no longer contains any of the 27 migrated codes |
 
 Regression: existing tests pinning raw-passthrough as expected (named in Files Changed) are updated to assert the new friendly copy, not deleted — the underlying error-triggering scenario they cover stays tested.
 
@@ -226,7 +268,8 @@ N/A — no files deleted.
 
 ## Discovery (consult log)
 
-- **Consults:** none yet — populated during EXECUTE/VERIFY.
+- **Consults:**
+  > Indy (2026-07-04 22:xx): "I think refactor your M113_002 spec to provide a durable fix and ship in this PR." — context: after reviewing the §1-§3 frontend-only patch (already committed, `7f56cb68`) and a follow-up discussion of the `CODE_MAP`/backend-registry duplication risk (this same class of drift caused the M113_003 scope-fixture regression found earlier this session). Directed adding §4 (backend `user_message` field) rather than leaving the frontend-only patch as the final state.
 - **Metrics review:** not applicable — no product/operator signal changes.
 - **Skill chain outcomes:** populated after `/write-unit-test` and `/review` run.
 - **Deferrals:** none yet.
@@ -243,10 +286,14 @@ Standard chain — `/write-unit-test` → `/review` → `/review-pr`, per `AGENT
 
 | Check | Command | Result | Pass? |
 |-------|---------|--------|-------|
-| Unit tests | `make test-unit-app` | | |
-| Lint | `make lint-app` | | |
-| Gitleaks | `gitleaks detect` | | |
-| Dead code sweep | N/A | | |
+| App unit tests | `make test-unit-app` | 1191/1191 | ✅ |
+| App lint | `make lint-app` (Oxlint + tsc) | clean | ✅ |
+| Zig unit tests | `zig build test` | same 2 pre-existing unrelated failures (webhook-sig `UZ-WH-010`, worker-pool `.worker_started`/`.server_started`) documented in the M108/M112/M113 handoff, nothing new | ✅ |
+| Zig lint | `make lint-zig` | clean (ZLint, pg-drain, test-depth, schema-gate, 350-line cap, orphan sweep) | ✅ |
+| OpenAPI | `make check-openapi` | bundle + Redocly lint + ErrorBody schema check + REST §1 URL-shape all green | ✅ |
+| Integration tests | `make test-integration` | pending at time of writing — re-run after the wire-contract change, see PR Session Notes for final result | — |
+| Gitleaks | `gitleaks detect` (pre-commit hook) | clean | ✅ |
+| Dead code sweep | N/A | no files deleted this section | — |
 
 ---
 
