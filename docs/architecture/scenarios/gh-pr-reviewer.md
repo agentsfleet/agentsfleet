@@ -4,7 +4,7 @@
 >
 > This is the single end-to-end walkthrough. It follows one persona — **John Doe** — installing the `github-pr-reviewer` fleet from a GitHub repo, wiring the webhook, and watching a Pull Request (PR) get reviewed. Provider posture, billing math, and the credit gate are **not** re-narrated here — those facts live in their topic docs (linked above); this scenario references them instead of duplicating them.
 
-**Outcome under test:** from a GitHub bundle to a posted PR review comment, with GitHub never on the runtime path and the fleet running its installed `SKILL.md` against each event.
+**Outcome under test:** from a GitHub Pull Request (PR) reviewer template to a posted PR review comment, with GitHub used only for template onboarding and runtime PR API calls, and the fleet running its installed `SKILL.md` against each event. The final trigger leg waits on `pull_request` webhook acceptance; until that lands the scenario is the target golden path, not fully green.
 
 Legend: ✅ built today · 🔨 to-build.
 
@@ -19,19 +19,16 @@ sequenceDiagram
   participant PG as Postgres
   participant Runner as agentsfleet-runner
 
+  Note over Op,PG: admin already onboarded github-pr-reviewer → R2 + core.fleet_bundle_templates
   Op->>CLI: install --template github-pr-reviewer
-  CLI->>API: POST /fleets/bundles/snapshots { source_kind:"template" }
-  API->>GH: GET /repos/agentsfleet/github-pr-reviewer/tarball/main
-  GH-->>API: repo tarball
-  API->>API: validate + RE-PACK canonical tar + sha256
-  API->>R2: PUT fleet-bundles/sha256/{hash}.tar
-  API->>PG: INSERT core.fleet_bundles
-  CLI->>API: POST /fleets { bundle_id }
+  CLI->>API: GET /v1/workspaces/{ws}/fleet-templates
+  API-->>CLI: platform row { id:"github-pr-reviewer", visibility:"platform" }
+  CLI->>API: POST /v1/workspaces/{ws}/fleets { platform_template_id:"github-pr-reviewer" }
   API->>PG: INSERT core.fleets
   API-->>CLI: { fleet_id, webhook_urls:{ github } }
   Op->>GH: register webhook (events: pull_request)
   Note over Op,Runner: …a PR is opened…
-  GH->>API: POST /v1/webhooks/{fleet_id}/github (HMAC)
+  GH->>API: POST /v1/webhooks/{fleet_id}/github (Hash-based Message Authentication Code (HMAC))
   API->>API: verify + accept pull_request 🔨 + XADD fleet:{id}:events
   Runner->>API: lease → { instructions:<SKILL>, event, bundle:{hash} }
   Runner->>R2: GET bundle tar → untar support files into sandbox
@@ -47,7 +44,7 @@ sequenceDiagram
 Two roles, two API calls (M103): a platform admin **onboards** the template once; every user **installs** from it.
 
 1. **Onboard (admin, once).** `POST /v1/admin/fleet-templates { source_kind:"template", source_ref:"github-pr-reviewer" }` (scope `platform-template:write`). The template id maps to the repo `agentsfleet/github-pr-reviewer`. `agentsfleetd`: `GET api.github.com/repos/.../tarball/main` → **validate** (strip wrapper, reject symlinks/`..`/dotfiles, cap 16 MiB / 4096 entries) → **re-pack a NEW canonical tar** (`canonicalTar()`, root-level, deterministic — agentsfleet's own tar, not GitHub's archive) → `content_hash = sha256(skill + trigger + support files)` → `R2.put("fleet-bundles/sha256/{hash}.tar")` → `INSERT core.fleet_bundle_templates (skill_markdown, trigger_markdown, support_files_json [manifest only], content_hash, requirements_json)`. Caps: **32 files · 64 KiB each · 256 KiB total**. (A tenant can do the same into its own catalog via `POST /v1/workspaces/{ws}/fleet-templates`.)
-2. **Install (user).** `POST /v1/workspaces/{ws}/fleets { platform_template_id:"github-pr-reviewer", name }` → reads SKILL/TRIGGER + content hash from the template → `INSERT core.fleets (source_markdown, trigger_markdown, bundle_content_hash, bundle_snapshot_key)` + `XGROUP CREATE fleet:{id}:events`. Returns `{ fleet_id, webhook_urls:{ github } }`. No GitHub fetch and no bytes uploaded at install.
+2. **Install (user).** `POST /v1/workspaces/{ws}/fleets { platform_template_id:"github-pr-reviewer", name? }` → reads SKILL/TRIGGER + content hash from the template → `INSERT core.fleets (source_markdown, trigger_markdown, bundle_content_hash, bundle_snapshot_key)` + `XGROUP CREATE fleet:{id}:events`. Returns `{ fleet_id, webhook_urls:{ github } }`. No GitHub fetch and no bytes uploaded at install.
 
 Full storage detail: [`../fleet_bundles.md`](../fleet_bundles.md).
 
@@ -75,7 +72,7 @@ A runner leases the event (one active lease per fleet). The lease carries `instr
 
 The gate + billing path is identical to every other event — see [`../billing_and_provider_keys.md`](../billing_and_provider_keys.md) for the credit-pool deductions and the gate.
 
-## 5. What John sees
+## 5. What John sees after `pull_request` acceptance lands
 
 - The PR carries the fleet's review comments.
 - `agentsfleet events {id}` / the dashboard `/fleets/{id}` thread shows the run: the `http_request` tool calls and the response, streamed over Server-Sent Events (SSE), durable in `core.fleet_events`.

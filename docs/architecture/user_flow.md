@@ -16,7 +16,7 @@ For the full end-to-end install + first-trigger walkthroughs (platform-managed a
 
 ## §8.0 The wedge surface
 
-The MVP's user-facing wedge is the **`agentsfleet` CLI plus the first-party template catalogue**. A user goes from cold machine to a running fleet through the CLI — no host-agent and no markdown-skill install step:
+The MVP's user-facing wedge is the **`agentsfleet` Command-Line Interface (CLI) plus the first-party template catalogue**. A user goes from cold machine to a running fleet through the CLI — no host-agent and no markdown-skill install step:
 
 ```bash
 curl -fsSL https://agentsfleet.dev | bash   # installs the agentsfleet CLI
@@ -25,16 +25,16 @@ agentsfleet templates                        # browse the first-party catalogue 
 agentsfleet install --template github-pr-reviewer
 ```
 
-`agentsfleet install` takes one of two sources (§8.2.2):
+`agentsfleet install` installs one already-onboarded template (§8.2.2):
 
-- **`--template <id>`** — a curated, ready-to-run Fleet Bundle from the first-party catalogue (M94; `GET /v1/fleets/bundles`). The pinned `SKILL.md`/`TRIGGER.md` are fetched and validated server-side; the user supplies only the credentials the template declares.
-- **`--from <path>`** — a local bundle the user authored (SKILL.md required, TRIGGER.md optional), often drafted with a coding agent's help (Claude Code, Amp, Codex CLI, OpenCode). This is the path for a fleet customized beyond what a template ships.
+- **`--template <id>`** — a curated, ready-to-run Fleet Bundle from the workspace gallery (platform templates plus any tenant templates). The pinned `SKILL.md`/`TRIGGER.md` are read server-side from the onboarded template row; the user supplies only the credentials the template declares.
+- **Local or GitHub-authored bundles** — onboard first as a tenant template through the dashboard or `POST /v1/workspaces/{ws}/fleet-templates`, then install by that tenant template id. Existing Fleets can still be live-edited from disk with `agentsfleet fleet update <fleet_id> --from <path>`.
 
-Configuration — Slack channel, production-branch glob, cron schedule — lives in the bundle's `TRIGGER.md`/`SKILL.md`, version-controlled by design. A template ships sensible defaults; customize by editing a local copy and re-installing with `--from` (or `agentsfleet fleet update`). There are no install-time gating questions: the markdown *is* the configuration.
+Configuration — Slack channel, production-branch glob, cron schedule — lives in the bundle's `TRIGGER.md`/`SKILL.md`, version-controlled by design. A template ships sensible defaults; customize by editing a local copy, onboarding it as a tenant template, or updating an installed Fleet with `agentsfleet fleet update`. There are no install-time gating questions: the markdown *is* the configuration.
 
 This matters architecturally: the install surface is the CLI (deterministic, scriptable, host-neutral) and the bundle is portable markdown. The runtime stays prompt-driven; `agentsfleet install` plus the catalogue is what makes it tractable from a cold start.
 
-> **Transitional note.** The earlier wedge was a host-agent markdown skill (`/agentsfleet-install-platform-ops`, added via `npx skills add agentsfleet/skills`) that orchestrated repo detection, gating questions, frontmatter generation, and webhook auto-registration. That onboarding is being retired in favor of the CLI + catalogue flow above, and the public docs lead with the CLI path. Where this file and the scenarios still describe skill-orchestrated steps, read them as the prior approach — the substrate calls (`doctor`, `credential add`, `install --from`, `steer`, the `gh` webhook registration) are unchanged; only the orchestration moved from the skill to the CLI + the user.
+> **Transitional note.** The earlier wedge was a host-agent markdown skill (`/agentsfleet-install-platform-ops`, added via `npx skills add agentsfleet/skills`) that orchestrated repo detection, gating questions, frontmatter generation, and webhook auto-registration. That onboarding is being retired in favor of the CLI + catalogue flow above, and the public docs lead with the CLI path. Where this file and the scenarios still describe skill-orchestrated steps, read them as the prior approach — the substrate calls (`doctor`, `credential add`, `install --template`, `fleet update --from`, `steer`, the `gh` webhook registration) are unchanged; only the orchestration moved from the skill to the CLI + the user.
 
 ## §8.0.1 Deployment posture: hosted-only in v2
 
@@ -100,10 +100,11 @@ gh auth login -s admin:repo_hook   # one-time; lets you register GitHub webhooks
 
 1. The user picks a catalogue template (`agentsfleet install --template <id>`) or authors `SKILL.md` and `TRIGGER.md` for a local bundle (§8.0) — optionally with a coding agent (Claude Code, Amp, Codex CLI, OpenCode) helping draft the markdown.
 2. **`agentsfleet doctor --json` runs first** as the deterministic readiness gate after login. Doctor is fast and verifies connectivity + workspace health only — `server_reachable`, `workspace_selected`, and `workspace_binding_valid`. It does **not** carry provider or trial posture; that lives in `agentsfleet tenant provider show --json` (mode/provider/model/context cap) and `agentsfleet billing show` (free-trial state), read separately once health passes. The CLI (and any caller) reads `doctor`'s JSON output verbatim and aborts on failure with the user-facing message instead of letting `install` fail with a confusing 401. Doctor is the only sanctioned preflight surface for health — no parallel `preflight` command exists.
-3. The user (or coding agent) creates or updates the Fleet through one of two source paths:
-   - **Direct Markdown create** — `agentsfleet install --from <path>` or manual dashboard paste POSTs `{trigger_markdown, source_markdown}` to `POST /v1/workspaces/{ws}/fleets`.
-   - **Fleet Bundle create** — the dashboard imports/uploads/selects a validated bundle snapshot, previews required credentials/tools/network, then POSTs `bundle_id` to the same Fleet creation handler. There is no bundle-specific install route.
-4. The API parses frontmatter, derives `name` + `config_json`, persists the Fleet row, and synchronously creates the events stream + consumer group before returning 201. When a bundle lacks `TRIGGER.md`, the API generates a default manual/API trigger with no tools, no credentials, and no network. The 201 response carries `fleet_id` and `webhook_urls: { <source>: <url> }` — one entry per webhook trigger declared by `TRIGGER.md` or the imported bundle metadata. See [`data_flow.md`](./data_flow.md) for the create-to-lease sequence.
+3. The user (or coding agent) creates the Fleet from an onboarded template:
+   - **Platform template** — `POST /v1/workspaces/{ws}/fleets` with `{platform_template_id, name?}`.
+   - **Tenant template** — `POST /v1/workspaces/{ws}/fleets` with `{tenant_template_id, name?}` after the local/GitHub source has been onboarded through `POST /v1/workspaces/{ws}/fleet-templates` or the dashboard.
+   - **Existing Fleet edit** — `agentsfleet fleet update <fleet_id> --from <path>` PATCHes `source_markdown` / `trigger_markdown` in place; it is not a create path.
+4. The API reads the template's `SKILL.md` / `TRIGGER.md`, parses frontmatter, derives `name` + `config_json`, persists the Fleet row, and synchronously creates the events stream + consumer group before returning 201. When a template lacks `TRIGGER.md`, the API generates a default manual/API trigger with no tools, no credentials, and no network. The 201 response carries `fleet_id` and `webhook_urls: { <source>: <url> }` — one entry per webhook trigger declared by `TRIGGER.md` or the template metadata. See [`data_flow.md`](./data_flow.md) for the create-to-lease sequence.
 5. The API stores the Fleet config, linked credentials reference, approval policy, trigger declarations (`triggers: [...]` array), and optional bundle snapshot reference.
 6. **Webhook registration on the upstream provider runs from the user's own machine** — `agentsfleet install` prints the webhook URL(s) from the 201 response, and the user registers each on the provider with `gh api repos/.../hooks` (for GitHub) or the equivalent command, using their existing `gh` auth or stored API token. The platform never holds the user's Personal Access Token (PAT) for this step; the registration is logged on the provider side by the user. For dashboard-only creates, the Trigger panel on `/fleets/{id}` renders the exact terminal command pre-filled with the webhook URL and event list, ready to copy.
 7. Future triggers are served with no restart and no watcher thread: creation made the Fleet's events stream + consumer group up front (step 4), so each later trigger `XADD`s to the canonical stream name `fleet:{id}:events` and the control plane hands that event to whichever `agentsfleet-runner` leases next (`POST /v1/runners/me/leases`).
@@ -150,7 +151,7 @@ The user experience inside Claude (or Amp / Codex CLI / OpenCode) feels like thi
 1. The user is already in their project.
 2. The user asks Claude to create or refine an operational fleet.
 3. Claude edits `SKILL.md`, `TRIGGER.md`, and related project instructions.
-4. Claude installs or updates the fleet. The skill captures `webhook_urls` from the install response, parses the rendered `TRIGGER.md` for `triggers[].events`, and shells out to `gh api repos/.../hooks` per webhook trigger — registration happens without leaving the terminal.
+4. Claude installs or updates the fleet through the CLI. The install response carries `webhook_urls`; the rendered `TRIGGER.md` carries `triggers[].events`; `gh api repos/.../hooks` registers each webhook trigger without leaving the terminal.
 5. Claude can also manually invoke the fleet via `agentsfleet steer` for one-off user-triggered tasks.
 6. Later, the fleet wakes on webhook or cron without the user staying in the terminal.
 7. When the user returns to Claude, they inspect what happened from durable history (`agentsfleet events {id}` or the dashboard Events tab) instead of reconstructing it from memory.
