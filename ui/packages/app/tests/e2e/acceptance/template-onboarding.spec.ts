@@ -45,7 +45,7 @@ test.describe("template onboarding", () => {
     const templateName = `tmpl-${crypto.randomBytes(4).toString("hex")}`;
     const client = clientFor(FIXTURE_KEY.regular);
     const resp = await client.post<OnboardTemplateResp>(
-      `/v1/workspaces/${workspaceId}/fleet-templates`,
+      `/v1/workspaces/${workspaceId}/fleet-libraries`,
       {
         source_kind: SOURCE_KIND_UPLOAD,
         skill_markdown: fixtureSkillMd(templateName),

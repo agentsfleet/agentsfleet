@@ -233,6 +233,7 @@ fn writeProblem(
         .error_code = code,
         .request_id = request_id,
         .current_state = current_state,
+        .user_message = entry.user_message,
     };
     // emit_null_optional_fields=false keeps the non-409 wire shape unchanged.
     const json_formatter = std.json.fmt(body, .{ .emit_null_optional_fields = false });

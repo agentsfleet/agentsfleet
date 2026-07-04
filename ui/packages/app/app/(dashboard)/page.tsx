@@ -10,18 +10,19 @@ import {
   Skeleton,
 } from "@agentsfleet/design-system";
 import { listFleets, AGENTSFLEET_STATUS } from "@/lib/api/fleets";
-import { listWorkspaceFleetTemplatesCached } from "@/lib/api/fleet-templates";
+import { listWorkspaceFleetLibraryCached } from "@/lib/api/fleet-library";
 import { getTenantBillingCached } from "@/lib/api/tenant_billing";
 import { NANOS_PER_USD } from "@/lib/types";
-import type { FleetTemplateGalleryEntry } from "@/lib/types";
+import type { FleetLibraryGalleryEntry } from "@/lib/types";
 import { withWorkspaceScope, orFallback } from "@/lib/workspace";
 import ExhaustionBanner from "@/components/domain/ExhaustionBanner";
 import { InstallEntry } from "./fleets/new/InstallEntry";
+import { hasLibraryWriteScope } from "./fleets/scope";
 
 export const dynamic = "force-dynamic";
 
 export async function StatusTiles() {
-  const { getToken } = await auth();
+  const { getToken, sessionClaims } = await auth();
   const token = await getToken();
   if (!token) return null;
 
@@ -44,13 +45,17 @@ export async function StatusTiles() {
   const stopped = fleets.filter((z) => z.status === AGENTSFLEET_STATUS.STOPPED).length;
 
   if (fleets.length === 0) {
-    const templates = await listWorkspaceFleetTemplatesCached(workspaceId, token)
+    const entries = await listWorkspaceFleetLibraryCached(workspaceId, token)
       .then((response) => response.items)
       .catch(() => []);
     return (
       <>
         <ExhaustionBanner billing={billing} />
-        <FirstInstall balanceNanos={billing?.balance_nanos ?? null} templates={templates} />
+        <FirstInstall
+          balanceNanos={billing?.balance_nanos ?? null}
+          entries={entries}
+          canAddLibraryEntry={hasLibraryWriteScope(sessionClaims)}
+        />
       </>
     );
   }
@@ -80,10 +85,12 @@ export async function StatusTiles() {
 // starter credit is announced.
 function FirstInstall({
   balanceNanos,
-  templates,
+  entries,
+  canAddLibraryEntry,
 }: {
   balanceNanos: number | null;
-  templates: FleetTemplateGalleryEntry[];
+  entries: FleetLibraryGalleryEntry[];
+  canAddLibraryEntry: boolean;
 }) {
   const credits = balanceNanos != null ? Math.floor(balanceNanos / NANOS_PER_USD) : null;
   return (
@@ -93,7 +100,12 @@ function FirstInstall({
           <StatusPill variant="pulse">${credits} free credit ready</StatusPill>
         </div>
       ) : null}
-      <InstallEntry templates={templates} maxTemplates={3} compact />
+      <InstallEntry
+        entries={entries}
+        maxEntries={3}
+        compact
+        canAddLibraryEntry={canAddLibraryEntry}
+      />
     </Section>
   );
 }

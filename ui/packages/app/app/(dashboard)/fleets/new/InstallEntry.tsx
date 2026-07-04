@@ -1,45 +1,57 @@
 import Link from "next/link";
 import { Button, EmptyState } from "@agentsfleet/design-system";
 import { LayoutTemplateIcon, PlusIcon } from "lucide-react";
-import type { FleetTemplateGalleryEntry } from "@/lib/types";
+import type { FleetLibraryGalleryEntry } from "@/lib/types";
 import {
-  TemplateDocsLink,
-  TEMPLATES_EMPTY_DESCRIPTION,
-  TEMPLATES_EMPTY_TITLE,
-} from "./template-docs";
-import { TemplateCard } from "./TemplateCard";
+  LibraryDocsLink,
+  FLEET_LIBRARY_EMPTY_DESCRIPTION,
+  FLEET_LIBRARY_EMPTY_DESCRIPTION_READONLY,
+  FLEET_LIBRARY_EMPTY_TITLE,
+} from "./library-docs";
+import { LibraryCard } from "./LibraryCard";
 
 type Props = {
-  templates: FleetTemplateGalleryEntry[];
+  entries: FleetLibraryGalleryEntry[];
   /** Dashboard shows the primary cards; the full install page passes all. */
-  maxTemplates?: number;
+  maxEntries?: number;
   /** Dashboard embed uses a denser card treatment. */
   compact?: boolean;
+  /** Gates the Add-library-entry affordance — mirrors InstallSourceSelector's
+   * own gate so a viewer without library:write never sees an invitation to
+   * do something the backend will reject. */
+  canAddLibraryEntry?: boolean;
 };
 
-// Template gallery for the Dashboard first-run surface. A Server Component:
+// Library gallery for the Dashboard first-run surface. A Server Component:
 // each card deep-links into the install page (which proceeds inline to live
 // states), so it carries no client callbacks. When the catalogue is empty it
-// falls back to a centered EmptyState with [Learn more] + [Create a template]
+// falls back to a centered EmptyState with [Learn more] + [Add library entry]
 // — authoring itself lives on /fleets/new.
-export function InstallEntry({ templates, maxTemplates, compact = false }: Props) {
-  const visibleTemplates =
-    maxTemplates == null ? templates : templates.slice(0, maxTemplates);
+export function InstallEntry({
+  entries,
+  maxEntries,
+  compact = false,
+  canAddLibraryEntry = false,
+}: Props) {
+  const visibleEntries =
+    maxEntries == null ? entries : entries.slice(0, maxEntries);
 
-  if (visibleTemplates.length === 0) {
+  if (visibleEntries.length === 0) {
     return (
       <EmptyState
         icon={<LayoutTemplateIcon size={28} />}
-        title={TEMPLATES_EMPTY_TITLE}
-        description={TEMPLATES_EMPTY_DESCRIPTION}
+        title={FLEET_LIBRARY_EMPTY_TITLE}
+        description={canAddLibraryEntry ? FLEET_LIBRARY_EMPTY_DESCRIPTION : FLEET_LIBRARY_EMPTY_DESCRIPTION_READONLY}
         action={
           <div className="flex flex-wrap items-center justify-center gap-md">
-            <TemplateDocsLink />
-            <Button asChild size="sm">
-              <Link href="/fleets/new?create=1">
-                <PlusIcon size={14} /> Create a template
-              </Link>
-            </Button>
+            <LibraryDocsLink />
+            {canAddLibraryEntry ? (
+              <Button asChild size="sm">
+                <Link href="/fleets/new?create=1">
+                  <PlusIcon size={14} /> Add library entry
+                </Link>
+              </Button>
+            ) : null}
           </div>
         }
       />
@@ -49,14 +61,14 @@ export function InstallEntry({ templates, maxTemplates, compact = false }: Props
   return (
     <div className={compact ? "space-y-md" : "space-y-lg"}>
       <div className="grid grid-cols-1 gap-md sm:grid-cols-2 lg:grid-cols-3">
-        {visibleTemplates.map((template) => (
-          <TemplateCard
-            key={template.id}
-            template={template}
+        {visibleEntries.map((entry) => (
+          <LibraryCard
+            key={entry.id}
+            entry={entry}
             compact={compact}
             action={
               <Button asChild>
-                <Link href={`/fleets/new?template=${template.id}`}>Use template</Link>
+                <Link href={`/fleets/new?library=${entry.id}`}>Use entry</Link>
               </Button>
             }
           />

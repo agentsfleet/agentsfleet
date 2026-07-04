@@ -90,11 +90,11 @@ async function makeSkillOnlyDir(): Promise<string> {
   return dir;
 }
 
-const TEMPLATE_FLEET_ID = "01900000-0000-7000-8000-0000000f1ee7";
+const LIBRARY_FLEET_ID = "01900000-0000-7000-8000-0000000f1ee7";
 
-// A gallery+create stub for a `--template` run: `items` answers the gallery GET,
+// A gallery+create stub for a `--library` run: `items` answers the gallery GET,
 // the create fields answer the POST (the mock returns the same object for both).
-const templateResponse = (
+const libraryResponse = (
   id: string,
   visibility: string,
   requirements: Record<string, unknown> | undefined,
@@ -102,7 +102,7 @@ const templateResponse = (
   webhookUrls: Record<string, string> = {},
 ) => ({
   items: [{ id, name: createName, visibility, ...(requirements ? { requirements } : {}) }],
-  fleet_id: TEMPLATE_FLEET_ID,
+  fleet_id: LIBRARY_FLEET_ID,
   name: createName,
   webhook_urls: webhookUrls,
 });
@@ -156,8 +156,8 @@ describe("loadSkillFromPath — optional TRIGGER.md", () => {
   });
 });
 
-describe("installEffectFromFlags — missing --template", () => {
-  test("no template id produces a ValidationError requiring --template", async () => {
+describe("installEffectFromFlags — missing --library", () => {
+  test("no library id produces a ValidationError requiring --library", async () => {
     const captured: string[] = [];
     const requests: HttpRequestInput[] = [];
     const exit = await Effect.runPromiseExit(
@@ -167,7 +167,7 @@ describe("installEffectFromFlags — missing --template", () => {
     );
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
-      expect(JSON.stringify(exit.cause)).toContain("--template <id> is required");
+      expect(JSON.stringify(exit.cause)).toContain("--library <id> is required");
     }
     // The required-flag guard fires before any API call.
     expect(requests.length).toBe(0);
@@ -179,9 +179,9 @@ describe("installEffectFromFlags — template JSON mode", () => {
     const captured: string[] = [];
     const requests: HttpRequestInput[] = [];
     const exit = await Effect.runPromiseExit(
-      installEffectFromFlags({ templateId: "t1" }).pipe(
+      installEffectFromFlags({ libraryId: "t1" }).pipe(
         Effect.provide(makeLayer(captured, true, requests,
-          templateResponse("t1", "platform", { trigger_present: true }, "t1"))),
+          libraryResponse("t1", "platform", { trigger_present: true }, "t1"))),
       ),
     );
     expect(Exit.isSuccess(exit)).toBe(true);
@@ -194,9 +194,9 @@ describe("installEffectFromFlags — template webhook URLs", () => {
     const captured: string[] = [];
     const requests: HttpRequestInput[] = [];
     const exit = await Effect.runPromiseExit(
-      installEffectFromFlags({ templateId: "t1" }).pipe(
+      installEffectFromFlags({ libraryId: "t1" }).pipe(
         Effect.provide(makeLayer(captured, false, requests,
-          templateResponse("t1", "platform", { trigger_present: true }, "t1",
+          libraryResponse("t1", "platform", { trigger_present: true }, "t1",
             { github: "https://api.example/webhooks/github" }))),
       ),
     );
@@ -212,9 +212,9 @@ describe("installEffectFromFlags — template requirements preview", () => {
     const captured: string[] = [];
     const requests: HttpRequestInput[] = [];
     const exit = await Effect.runPromiseExit(
-      installEffectFromFlags({ templateId: "t1" }).pipe(
+      installEffectFromFlags({ libraryId: "t1" }).pipe(
         Effect.provide(makeLayer(captured, false, requests,
-          templateResponse("t1", "platform", {
+          libraryResponse("t1", "platform", {
             credentials: ["github"],
             tools: ["github_review_comment"],
             network_hosts: ["api.github.com"],
@@ -224,7 +224,7 @@ describe("installEffectFromFlags — template requirements preview", () => {
     );
     expect(Exit.isSuccess(exit)).toBe(true);
     const out = captured.join("\n");
-    expect(out).toContain("Credentials: github");
+    expect(out).toContain("Secrets: github");
     expect(out).toContain("Tools: github_review_comment");
     expect(out).toContain("Network hosts: api.github.com");
     expect(out).toContain("Generated default API wake");
@@ -234,9 +234,9 @@ describe("installEffectFromFlags — template requirements preview", () => {
     const captured: string[] = [];
     const requests: HttpRequestInput[] = [];
     const exit = await Effect.runPromiseExit(
-      installEffectFromFlags({ templateId: "t1" }).pipe(
+      installEffectFromFlags({ libraryId: "t1" }).pipe(
         Effect.provide(makeLayer(captured, false, requests,
-          templateResponse("t1", "platform", undefined, "t1"))),
+          libraryResponse("t1", "platform", undefined, "t1"))),
       ),
     );
     expect(Exit.isSuccess(exit)).toBe(true);
@@ -249,7 +249,7 @@ describe("installEffectFromFlags — template not in the gallery", () => {
     const captured: string[] = [];
     const requests: HttpRequestInput[] = [];
     const exit = await Effect.runPromiseExit(
-      installEffectFromFlags({ templateId: "t1" }).pipe(
+      installEffectFromFlags({ libraryId: "t1" }).pipe(
         Effect.provide(makeLayer(captured, false, requests, { items: [] })),
       ),
     );
@@ -265,9 +265,9 @@ describe("installEffectFromFlags — unrecognized template tier", () => {
     const captured: string[] = [];
     const requests: HttpRequestInput[] = [];
     const exit = await Effect.runPromiseExit(
-      installEffectFromFlags({ templateId: "t1" }).pipe(
+      installEffectFromFlags({ libraryId: "t1" }).pipe(
         Effect.provide(makeLayer(captured, false, requests,
-          templateResponse("t1", "weird", { trigger_present: true }, "t1"))),
+          libraryResponse("t1", "weird", { trigger_present: true }, "t1"))),
       ),
     );
     expect(Exit.isFailure(exit)).toBe(true);
@@ -282,10 +282,10 @@ describe("installEffectFromFlags — resolves the gallery then installs by tier"
     const captured: string[] = [];
     const requests: HttpRequestInput[] = [];
     const exit = await Effect.runPromiseExit(
-      installEffectFromFlags({ templateId: "github-pr-reviewer", name: "pr-reviewer-frontend" }).pipe(
+      installEffectFromFlags({ libraryId: "github-pr-reviewer", name: "pr-reviewer-frontend" }).pipe(
         Effect.provide(
           makeLayer(captured, false, requests,
-            templateResponse("github-pr-reviewer", "platform",
+            libraryResponse("github-pr-reviewer", "platform",
               { credentials: ["github"], trigger_present: true }, "pr-reviewer-frontend")),
         ),
       ),
@@ -293,10 +293,10 @@ describe("installEffectFromFlags — resolves the gallery then installs by tier"
     expect(Exit.isSuccess(exit)).toBe(true);
     // first request resolves the workspace gallery (GET)
     expect(requests[0]?.method).toBe("GET");
-    expect(requests[0]?.path).toContain("/fleet-templates");
+    expect(requests[0]?.path).toContain("/fleet-libraries");
     // second request creates the fleet keyed off the platform tier, with override
     expect(requests[1]?.body).toEqual({
-      platform_template_id: "github-pr-reviewer",
+      platform_library_id: "github-pr-reviewer",
       name: "pr-reviewer-frontend",
     });
   });
@@ -306,14 +306,14 @@ describe("installEffectFromFlags — resolves the gallery then installs by tier"
     const requests: HttpRequestInput[] = [];
     const tenantId = "0195b4ba-8d3a-7f13-8abc-0000000000a1";
     const exit = await Effect.runPromiseExit(
-      installEffectFromFlags({ templateId: tenantId }).pipe(
+      installEffectFromFlags({ libraryId: tenantId }).pipe(
         Effect.provide(
           makeLayer(captured, false, requests,
-            templateResponse(tenantId, "tenant", { trigger_present: true }, "my-tenant-fleet")),
+            libraryResponse(tenantId, "tenant", { trigger_present: true }, "my-tenant-fleet")),
         ),
       ),
     );
     expect(Exit.isSuccess(exit)).toBe(true);
-    expect(requests[1]?.body).toEqual({ tenant_template_id: tenantId });
+    expect(requests[1]?.body).toEqual({ tenant_library_id: tenantId });
   });
 });

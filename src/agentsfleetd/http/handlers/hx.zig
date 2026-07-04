@@ -13,6 +13,19 @@
 const std = @import("std");
 const httpz = @import("httpz");
 const common = @import("common.zig");
+const pg = @import("pg");
+
+/// Scoped DB connection — acquire-on-construct, release-on-end. Use via
+/// `hx.db()` so the acquire+release pair can never be separated by an early
+/// return that forgets the defer.
+pub const DbScope = struct {
+    conn: *pg.Conn,
+    pool: *pg.Pool,
+
+    pub fn end(self: *DbScope) void {
+        self.pool.release(self.conn);
+    }
+};
 
 pub const Hx = struct {
     const Self = @This();
@@ -25,6 +38,19 @@ pub const Hx = struct {
     req_id: []const u8,
     ctx: *common.Context,
     res: *httpz.Response,
+
+    /// Acquire a pooled DB connection with a scoped lifetime. Returns null
+    /// (error response already written) when the pool is exhausted. Use:
+    ///   var db = hx.db() orelse return;
+    ///   defer db.end();
+    /// The connection is released unconditionally — no early return can leak it.
+    pub fn db(self: Self) ?DbScope {
+        const conn = self.ctx.pool.acquire() catch {
+            common.internalDbUnavailable(self.res, self.req_id);
+            return null;
+        };
+        return .{ .conn = conn, .pool = self.ctx.pool };
+    }
 
     /// Write a successful JSON response.
     pub fn ok(self: Self, status: std.http.Status, body: anytype) void {

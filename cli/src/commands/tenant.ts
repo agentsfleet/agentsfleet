@@ -1,10 +1,10 @@
 // Tenant provider configuration: show / add / delete the active LLM
 // posture (platform-managed default vs self-managed key with a named
-// credential).
+// secret).
 //
 // Backed by /v1/tenants/me/provider — the api_key is never returned in
 // responses; this CLI only ever displays the resolved metadata (mode,
-// provider, model, credential_ref, context_cap_tokens).
+// provider, model, secret_ref, context_cap_tokens).
 
 import { Effect } from "effect";
 import { CliConfig } from "../services/config.ts";
@@ -37,7 +37,7 @@ interface ProviderResponse {
   readonly provider?: string;
   readonly model?: string;
   readonly context_cap_tokens?: number;
-  readonly credential_ref?: string | null;
+  readonly secret_ref?: string | null;
   readonly synthesised_default?: boolean;
   readonly error?: string;
 }
@@ -48,7 +48,7 @@ interface BillingResponse {
 
 interface ProviderAddBody {
   readonly mode: string;
-  readonly credential_ref: string;
+  readonly secret_ref: string;
   readonly model?: string;
 }
 
@@ -73,7 +73,7 @@ const renderProviderTable = (
               ? String(res.context_cap_tokens)
               : LITERAL,
         },
-        { field: "credential_ref", value: res?.credential_ref ?? LITERAL },
+        { field: "secret_ref", value: res?.secret_ref ?? LITERAL },
       ],
     );
   });
@@ -101,11 +101,11 @@ export const tenantProviderShowEffect: Effect.Effect<
   // The handler surfaces resolver failures via an `error` field — surface
   // it before the table so the operator sees the broken state immediately.
   if (isString(res.error) && res.error.length > 0) {
-    const ref = res.credential_ref ?? "(unknown)";
+    const ref = res.secret_ref ?? "(unknown)";
     const msg =
       res.error === "credential_missing"
-        ? `⚠ Credential ${ref} is missing from vault — re-add under the same name OR run 'agentsfleet tenant provider delete'.`
-        : `⚠ Provider resolver error: ${res.error} (credential_ref=${ref})`;
+        ? `⚠ Secret ${ref} is missing from vault — re-add under the same name OR run 'agentsfleet tenant provider delete'.`
+        : `⚠ Provider resolver error: ${res.error} (secret_ref=${ref})`;
     yield* output.error(msg);
   }
 
@@ -118,7 +118,7 @@ export const tenantProviderShowEffect: Effect.Effect<
 });
 
 export const tenantProviderAddEffectFromArgs = (
-  credentialRef: string | undefined,
+  secretRef: string | undefined,
   modelOverride: string | undefined,
 ): Effect.Effect<
   void,
@@ -130,12 +130,12 @@ export const tenantProviderAddEffectFromArgs = (
     const output = yield* Output;
     const http = yield* HttpClient;
 
-    if (!credentialRef) {
+    if (!secretRef) {
       return yield* Effect.fail(
         new ValidationError({
-          detail: "tenant provider add requires --credential <name>",
+          detail: "tenant provider add requires --secret <name>",
           suggestion:
-            "pick the credential explicitly so the link to your vault entry is clear",
+            "pick the secret explicitly so the link to your vault entry is clear",
         }),
       );
     }
@@ -144,12 +144,12 @@ export const tenantProviderAddEffectFromArgs = (
     const body: ProviderAddBody = modelOverride
       ? {
           mode: PROVIDER_MODE.self_managed,
-          credential_ref: credentialRef,
+          secret_ref: secretRef,
           model: modelOverride,
         }
       : {
           mode: PROVIDER_MODE.self_managed,
-          credential_ref: credentialRef,
+          secret_ref: secretRef,
         };
 
     const res = yield* http.request<ProviderResponse>({
@@ -164,13 +164,13 @@ export const tenantProviderAddEffectFromArgs = (
       return;
     }
     yield* output.success(
-      `Tenant provider added: mode=${PROVIDER_MODE.self_managed} credential=${credentialRef}`,
+      `Tenant provider added: mode=${PROVIDER_MODE.self_managed} secret=${secretRef}`,
     );
     yield* output.info("");
     yield* renderProviderTable(res);
     yield* output.info("");
     yield* output.info(
-      `Tip: run a test event to verify the key works against ${res.provider ?? credentialRef}.`,
+      `Tip: run a test event to verify the key works against ${res.provider ?? secretRef}.`,
     );
   });
 

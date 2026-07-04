@@ -2,17 +2,17 @@ import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import { PageHeader, PageTitle } from "@agentsfleet/design-system";
 import { withWorkspaceScope, orFallback } from "@/lib/workspace";
-import { listWorkspaceFleetTemplatesCached } from "@/lib/api/fleet-templates";
-import { listCredentials } from "@/lib/api/credentials";
+import { listWorkspaceFleetLibraryCached } from "@/lib/api/fleet-library";
+import { listSecrets } from "@/lib/api/secrets";
 import { InstallFleet } from "./InstallFleet";
-import { hasTemplateWriteScope } from "../scope";
+import { hasLibraryWriteScope } from "../scope";
 
 export const dynamic = "force-dynamic";
 
-type SearchParams = { template?: string | string[]; create?: string | string[] };
-const INSTALL_PAGE_DESCRIPTION = "Pick a template. Watch live states.";
+type SearchParams = { library?: string | string[]; create?: string | string[] };
+const INSTALL_PAGE_DESCRIPTION = "Start a fleet from the library. Watch it run in a loop.";
 
-// Gallery-first install. Templates + the workspace's existing
+// Gallery-first install. Library entries + the workspace's existing
 // credential names are fetched server-side so the client orchestrator can render
 // the gallery and the credential preview without a client round-trip.
 export default async function InstallFleetPage({
@@ -26,17 +26,17 @@ export default async function InstallFleetPage({
 
   const params = await searchParams;
   const result = await withWorkspaceScope(token, async (workspaceId) => {
-    const [templates, credentialNames] = await Promise.all([
-      listWorkspaceFleetTemplatesCached(workspaceId, token)
+    const [entries, credentialNames] = await Promise.all([
+      listWorkspaceFleetLibraryCached(workspaceId, token)
         .then((response) => response.items)
         .catch(() => []),
-      listCredentials(workspaceId, token)
-        .then((response) => response.credentials.map((credential) => credential.name))
+      listSecrets(workspaceId, token)
+        .then((response) => response.secrets.map((secret) => secret.name))
         // null (not []) when the vault read fails: the preview must not mistake an
         // unreadable vault for an empty one and falsely gate create.
         .catch(orFallback(null)),
     ]);
-    return { workspaceId, templates, credentialNames };
+    return { workspaceId, entries, credentialNames };
   });
   if (!result) {
     return (
@@ -50,10 +50,10 @@ export default async function InstallFleetPage({
       </div>
     );
   }
-  const { workspaceId, templates, credentialNames } = result;
-  const initialTemplateId =
-    typeof params.template === "string" ? params.template : undefined;
-  // ?create=1 (the dashboard empty-state CTA) opens the create-template dialog
+  const { workspaceId, entries, credentialNames } = result;
+  const initialLibraryId =
+    typeof params.library === "string" ? params.library : undefined;
+  // ?create=1 (the dashboard empty-state CTA) opens the add-library-entry dialog
   // immediately — no second identical empty state between click and form.
   const initialCreateOpen = params.create === "1";
 
@@ -64,10 +64,10 @@ export default async function InstallFleetPage({
       </PageHeader>
       <InstallFleet
         workspaceId={workspaceId}
-        templates={templates}
+        entries={entries}
         presentCredentialNames={credentialNames}
-        initialTemplateId={initialTemplateId}
-        canAddTemplate={hasTemplateWriteScope(sessionClaims)}
+        initialLibraryId={initialLibraryId}
+        canAddLibraryEntry={hasLibraryWriteScope(sessionClaims)}
         initialCreateOpen={initialCreateOpen}
       />
     </div>

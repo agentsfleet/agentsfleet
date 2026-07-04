@@ -76,13 +76,13 @@ fn freeIds(alloc: std.mem.Allocator, ids: [][]const u8) void {
 const TEMPLATE_REQUIREMENTS = "{\"credentials\":[],\"tools\":[],\"network_hosts\":[],\"support_files\":[],\"trigger_present\":false}";
 
 fn seedTenantTemplate(conn: *pg.Conn, alloc: std.mem.Allocator, name: []const u8, skill_md: []const u8, trigger_md: ?[]const u8) ![]const u8 {
-    const id = try id_format.generateFleetTemplateId(alloc);
+    const id = try id_format.generateFleetLibraryId(alloc);
     errdefer alloc.free(id);
     var digest: [32]u8 = undefined;
     std.crypto.hash.sha2.Sha256.hash(skill_md, &digest, .{});
     const content_hash = std.fmt.bytesToHex(digest, .lower);
     _ = try conn.exec(
-        \\INSERT INTO core.tenant_fleet_bundle_templates
+        \\INSERT INTO core.tenant_fleet_library
         \\  (id, workspace_id, name, description, source_kind, source_ref, visibility,
         \\   content_hash, skill_markdown, trigger_markdown, support_files_json,
         \\   requirements_json, created_at, updated_at)
@@ -94,14 +94,14 @@ fn seedTenantTemplate(conn: *pg.Conn, alloc: std.mem.Allocator, name: []const u8
 }
 
 /// Seed `skill_md`/`trigger_md` as a tenant template and return the install body
-/// `{"tenant_template_id": "<id>"[, "name": "<override>"]}`. Caller frees both.
+/// `{"tenant_library_id": "<id>"[, "name": "<override>"]}`. Caller frees both.
 fn templateInstallBody(conn: *pg.Conn, alloc: std.mem.Allocator, name: []const u8, skill_md: []const u8, trigger_md: ?[]const u8, override_name: ?[]const u8) !struct { id: []const u8, body: []const u8 } {
     const id = try seedTenantTemplate(conn, alloc, name, skill_md, trigger_md);
     errdefer alloc.free(id);
     const body = if (override_name) |n|
-        try std.fmt.allocPrint(alloc, "{{\"tenant_template_id\":\"{s}\",\"name\":\"{s}\"}}", .{ id, n })
+        try std.fmt.allocPrint(alloc, "{{\"tenant_library_id\":\"{s}\",\"name\":\"{s}\"}}", .{ id, n })
     else
-        try std.fmt.allocPrint(alloc, "{{\"tenant_template_id\":\"{s}\"}}", .{id});
+        try std.fmt.allocPrint(alloc, "{{\"tenant_library_id\":\"{s}\"}}", .{id});
     return .{ .id = id, .body = body };
 }
 
@@ -650,9 +650,9 @@ test "integration: fleet create name override enables same-source multi-instance
     ;
     const tid = try seedTenantTemplate(conn, alloc, "pr-reviewer", skill, trigger);
     defer alloc.free(tid);
-    const body_a = try std.fmt.allocPrint(alloc, "{{\"tenant_template_id\":\"{s}\",\"name\":\"pr-reviewer-acme\"}}", .{tid});
+    const body_a = try std.fmt.allocPrint(alloc, "{{\"tenant_library_id\":\"{s}\",\"name\":\"pr-reviewer-acme\"}}", .{tid});
     defer alloc.free(body_a);
-    const body_b = try std.fmt.allocPrint(alloc, "{{\"tenant_template_id\":\"{s}\",\"name\":\"pr-reviewer-blog\"}}", .{tid});
+    const body_b = try std.fmt.allocPrint(alloc, "{{\"tenant_library_id\":\"{s}\",\"name\":\"pr-reviewer-blog\"}}", .{tid});
     defer alloc.free(body_b);
 
     const url = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/fleets", .{TEST_WORKSPACE_ID});
@@ -895,7 +895,7 @@ test "integration: fleet create 404s an unknown tenant template" {
     const url = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/fleets", .{TEST_WORKSPACE_ID});
     defer alloc.free(url);
     // A well-formed UUIDv7 that was never onboarded into this workspace.
-    const body = "{\"tenant_template_id\":\"0195b4ba-8d3a-7f13-8abc-0000000000ee\"}";
+    const body = "{\"tenant_library_id\":\"0195b4ba-8d3a-7f13-8abc-0000000000ee\"}";
     const r = try (try (try h.post(url).bearer(TOKEN_USER)).json(body)).send();
     defer r.deinit();
     try std.testing.expectEqual(@as(u16, 404), r.status);

@@ -168,9 +168,9 @@ function buildWorkspaceTree(program: Command, handlers: Handlers, state: Program
     .option("--workspace-id <id>", "Workspace ID (alternative to positional)", parseIdOption)
     .action(actionFor("workspace.show", (frame) => runHandler(state, frame, handlers.workspace.show)));
 
-  ws.command("credentials")
-    .description("Open the workspace credential vault")
-    .action(actionFor("workspace.credentials", (frame) => runHandler(state, frame, handlers.workspace.credentials)));
+  ws.command("secrets")
+    .description("Open the workspace secret vault")
+    .action(actionFor("workspace.secrets", (frame) => runHandler(state, frame, handlers.workspace.secrets)));
 
   ws.command("delete <workspace_id>")
     .description("Delete a workspace (irreversible)")
@@ -230,8 +230,8 @@ function buildTenantTree(program: Command, handlers: Handlers, state: ProgramSta
     .action(actionFor("tenant.provider.show", (frame) => runHandler(state, frame, handlers.tenant.provider.show)));
 
   provider.command(COMMAND_ADD)
-    .description("Use a self-managed credential")
-    .option("--credential <name>", "Named credential from the workspace vault")
+    .description("Use a self-managed secret")
+    .option("--secret <name>", "Named secret from the workspace vault")
     .option("--model <name>", "Override the default model identifier")
     .action(actionFor("tenant.provider.add", (frame) => runHandler(state, frame, handlers.tenant.provider.add)));
 

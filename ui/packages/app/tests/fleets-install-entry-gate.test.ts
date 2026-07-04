@@ -57,90 +57,101 @@ afterEach(() => cleanup());
 // ── InstallEntry — the shared entry surface (both empty states compose it) ───
 
 describe("InstallEntry", () => {
-  it("renders the template grid with a deep link", () => {
-    const m = renderToStaticMarkup(React.createElement(InstallEntry, { templates: [TEMPLATE] }));
-    expect(m).toContain('href="/fleets/new?template=github-pr-reviewer"');
+  it("renders the library-entry grid with a deep link", () => {
+    const m = renderToStaticMarkup(React.createElement(InstallEntry, { entries: [TEMPLATE] }));
+    expect(m).toContain('href="/fleets/new?library=github-pr-reviewer"');
     expect(m).toContain("GitHub PR reviewer");
   });
 
-  it("falls back to an empty state with Learn-more + Create-a-template when there are no templates", () => {
-    const m = renderToStaticMarkup(React.createElement(InstallEntry, { templates: [] }));
-    expect(m).toContain("No templates found");
-    expect(m).toContain("Create a template");
+  it("falls back to an empty state with Learn-more + Add-library-entry when library:write is available", () => {
+    const m = renderToStaticMarkup(
+      React.createElement(InstallEntry, { entries: [], canAddLibraryEntry: true }),
+    );
+    expect(m).toContain("No fleet library yet");
+    expect(m).toContain("Write your own template");
+    expect(m).toContain("Add library entry");
     expect(m).toContain("Learn more");
-    expect(m).not.toContain("?template=");
+    expect(m).not.toContain("?library=");
   });
 
-  it("caps the gallery at maxTemplates", () => {
+  it("omits Add-library-entry (and its copy) when library:write is absent — matches InstallSourceSelector's own gate", () => {
+    const m = renderToStaticMarkup(React.createElement(InstallEntry, { entries: [] }));
+    expect(m).toContain("No fleet library yet");
+    expect(m).toContain("Ask a workspace admin");
+    expect(m).not.toContain("Add library entry");
+    expect(m).toContain("Learn more");
+  });
+
+  it("caps the gallery at maxEntries", () => {
     const many = [TEMPLATE, { ...TEMPLATE, id: "second", name: "Second template" }];
     const m = renderToStaticMarkup(
-      React.createElement(InstallEntry, { templates: many, maxTemplates: 1 }),
+      React.createElement(InstallEntry, { entries: many, maxEntries: 1 }),
     );
     expect(m).toContain("GitHub PR reviewer");
     expect(m).not.toContain("Second template");
   });
 });
 
-// ── InstallSourceSelector — full install page template picker ───────────────
+// ── InstallSourceSelector — full install page library-entry picker ──────────
 
 describe("InstallSourceSelector", () => {
-  it("renders Create-a-template in the populated gallery when template:write is available", async () => {
-    const onUseTemplate = vi.fn();
+  it("renders Add-library-entry in the populated gallery when library:write is available", async () => {
+    const onUseLibraryEntry = vi.fn();
     const user = userEvent.setup({ delay: null });
     render(
       React.createElement(InstallSourceSelector, {
         workspaceId: "ws_1",
-        templates: [TEMPLATE],
-        onUseTemplate,
-        canAddTemplate: true,
+        entries: [TEMPLATE],
+        onUseLibraryEntry,
+        canAddLibraryEntry: true,
       }),
     );
 
-    expect(screen.getByRole("button", { name: "Create a template" })).toBeTruthy();
-    await user.click(screen.getByRole("button", { name: "Use template" }));
-    expect(onUseTemplate).toHaveBeenCalledWith(TEMPLATE);
+    expect(screen.getByRole("button", { name: "Add library entry" })).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Use entry" }));
+    expect(onUseLibraryEntry).toHaveBeenCalledWith(TEMPLATE);
   });
 
-  it("renders the empty selector without Create-a-template when template:write is absent", () => {
+  it("renders the empty selector without Add-library-entry when library:write is absent", () => {
     render(
       React.createElement(InstallSourceSelector, {
         workspaceId: "ws_1",
-        templates: [],
-        onUseTemplate: vi.fn(),
-        canAddTemplate: false,
+        entries: [],
+        onUseLibraryEntry: vi.fn(),
+        canAddLibraryEntry: false,
       }),
     );
 
-    expect(screen.getByText("No templates found")).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Create a template" })).toBeNull();
+    expect(screen.getByText("No fleet library yet")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Add library entry" })).toBeNull();
     expect(screen.getByRole("link", { name: "Learn more" })).toBeTruthy();
   });
 
-  it("defaults the selector to no Create-a-template access", () => {
+  it("defaults the selector to no Add-library-entry access", () => {
     render(
       React.createElement(InstallSourceSelector, {
         workspaceId: "ws_1",
-        templates: [],
-        onUseTemplate: vi.fn(),
+        entries: [],
+        onUseLibraryEntry: vi.fn(),
       }),
     );
 
-    expect(screen.getByText("No templates found")).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Create a template" })).toBeNull();
+    expect(screen.getByText("No fleet library yet")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Add library entry" })).toBeNull();
   });
 
-  it("renders Create-a-template in the empty selector when template:write is available", () => {
+  it("renders Add-library-entry in the empty selector when library:write is available", () => {
     render(
       React.createElement(InstallSourceSelector, {
         workspaceId: "ws_1",
-        templates: [],
-        onUseTemplate: vi.fn(),
-        canAddTemplate: true,
+        entries: [],
+        onUseLibraryEntry: vi.fn(),
+        canAddLibraryEntry: true,
       }),
     );
 
-    expect(screen.getByText("No templates found")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Create a template" })).toBeTruthy();
+    expect(screen.getByText("No fleet library yet")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Add library entry" })).toBeTruthy();
   });
 });
 
@@ -194,7 +205,7 @@ describe("FleetInstallGate", () => {
     stubStream(INSTALL_STEP.CREATING);
     const user = userEvent.setup({ delay: null });
     renderGate("installing");
-    await user.click(screen.getByRole("button", { name: /back to templates/i }));
+    await user.click(screen.getByRole("button", { name: /back to library/i }));
     expect(routerPush).toHaveBeenCalledWith("/fleets");
   });
 });

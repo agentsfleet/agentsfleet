@@ -182,13 +182,13 @@ test "retired path: /v1/workspaces/{ws}/fleets/{id}/kill no longer resolves" {
     try std.testing.expect(match("/v1/workspaces/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11/fleets/019abc12-8d3a-7f13-8abc-2b3e1e0a6f11/kill", .POST) == null);
 }
 
-test "match resolves workspace-scoped credentials collection" {
+test "match resolves workspace-scoped secrets collection" {
     const ws_id = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11";
-    try std.testing.expectEqualStrings(ws_id, switch (match("/v1/workspaces/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11/credentials", .GET).?) {
-        .workspace_credentials => |id| id,
+    try std.testing.expectEqualStrings(ws_id, switch (match("/v1/workspaces/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11/secrets", .GET).?) {
+        .workspace_secrets => |id| id,
         else => return error.TestExpectedEqual,
     });
-    try std.testing.expect(match("/v1/fleets/credentials", .GET) == null);
+    try std.testing.expect(match("/v1/fleets/secrets", .GET) == null);
 }
 
 test "match: flat /v1/fleets/{id} DELETE path is removed (bare 404 per RULE EP4)" {

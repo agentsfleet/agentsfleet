@@ -36,17 +36,14 @@ pub const MAX_SOURCE_LEN = markdown_limits.MAX_SOURCE_LEN;
 pub const MAX_TRIGGER_LEN = markdown_limits.MAX_TRIGGER_LEN;
 
 /// Install request shape (M103 §4). A fleet is installed from exactly one
-/// onboarded template tier — a platform template (slug id) or a tenant template
-/// (this workspace's, UUIDv7). The server reads the SKILL/TRIGGER markdown and
-/// content identity from the template row; raw-SKILL paste and the legacy
+/// onboarded Fleet library tier — platform (slug id) or tenant (this
+/// workspace's, UUIDv7). The server reads the SKILL/TRIGGER markdown and
+/// content identity from the library row; raw-SKILL paste and the legacy
 /// per-workspace bundle_id are no longer accepted. The CLI stays zero-dep (no
 /// frontmatter parser in JavaScript (JS)) — the server parses TRIGGER.md.
 const CreateBody = struct {
-    platform_template_id: ?[]const u8 = null,
-    tenant_template_id: ?[]const u8 = null,
-    // Optional operator-supplied name. Absent ⇒ the SKILL.md `name:` is used.
-    // Present ⇒ overrides the persisted fleet name so one template can back many
-    // fleets in a workspace (each with its own name + webhooks/cron).
+    platform_library_id: ?[]const u8 = null,
+    tenant_library_id: ?[]const u8 = null,
     name: ?[]const u8 = null,
 };
 
@@ -70,21 +67,25 @@ pub fn innerCreateFleet(hx: Hx, req: *httpz.Request, workspace_id: []const u8) v
     }
     const body = parseCreateBody(hx, req) orelse return;
 
-    const conn = hx.ctx.pool.acquire() catch {
-        common.internalDbUnavailable(hx.res, hx.req_id);
-        return;
-    };
-    defer hx.ctx.pool.release(conn);
+    var db = hx.db() orelse return;
+    defer db.end();
 
-    if (!common.authorizeWorkspace(conn, hx.principal, workspace_id)) {
+    if (!common.authorizeWorkspace(db.conn, hx.principal, workspace_id)) {
         hx.fail(ec.ERR_FORBIDDEN, "Workspace access denied");
         return;
     }
 
-    const source = create_fleet_bundle.resolveSource(hx, conn, workspace_id, .{
-        .platform_template_id = body.platform_template_id,
-        .tenant_template_id = body.tenant_template_id,
-    }) orelse return;
+    const source_input: create_fleet_bundle.SourceInput = blk: {
+        if (body.platform_library_id) |id| break :blk .{ .platform = id };
+        if (body.tenant_library_id) |id| break :blk .{ .tenant = id };
+        hx.fail(ec.ERR_INVALID_REQUEST, "install requires platform_library_id or tenant_library_id");
+        return;
+    };
+    if (body.platform_library_id != null and body.tenant_library_id != null) {
+        hx.fail(ec.ERR_INVALID_REQUEST, "install accepts exactly one of platform_library_id or tenant_library_id");
+        return;
+    }
+    const source = create_fleet_bundle.resolveSource(hx, db.conn, workspace_id, source_input) catch return orelse return;
     defer source.deinit(hx.alloc);
     if (!create_fleet_bundle.validateFields(hx, source.source_markdown, source.trigger_markdown)) return;
 
@@ -153,7 +154,7 @@ pub fn innerCreateFleet(hx: Hx, req: *httpz.Request, workspace_id: []const u8) v
         return;
     }
 
-    if (!create_fleet_bundle.ensureBundleCredentials(hx, conn, workspace_id, source.bundle_ref, parsed.config.credentials)) return;
+    if (!create_fleet_bundle.ensureBundleCredentials(hx, db.conn, workspace_id, source.bundle_ref, parsed.config.credentials)) return;
 
     const fleet_id = id_format.generateFleetId(hx.alloc) catch {
         common.internalOperationError(hx.res, "identifier generation failed", hx.req_id);
@@ -161,8 +162,8 @@ pub fn innerCreateFleet(hx: Hx, req: *httpz.Request, workspace_id: []const u8) v
     };
     const now_ms = clock.nowMillis();
 
-    fleet_row.insertFleetOnConn(conn, workspace_id, source.source_markdown, trigger_markdown, parsed, skill_meta.tags, source.bundle_ref, fleet_id, now_ms) catch |err| {
-        if (fleet_row.isUniqueViolation(conn)) {
+    fleet_row.insertFleetOnConn(db.conn, workspace_id, source.source_markdown, trigger_markdown, parsed, skill_meta.tags, source.bundle_ref, fleet_id, now_ms) catch |err| {
+        if (fleet_row.isUniqueViolation(db.conn)) {
             hx.fail(ec.ERR_AGENTSFLEET_NAME_EXISTS, ec.MSG_AGENTSFLEET_NAME_EXISTS);
             return;
         }
@@ -180,7 +181,7 @@ pub fn innerCreateFleet(hx: Hx, req: *httpz.Request, workspace_id: []const u8) v
         // an orphan behind. If the rollback also fails (rare — PG flapping in
         // the same handler), the orphan is not auto-healed: a control-plane
         // reconcile job is the planned replacement for the deleted watcher.
-        fleet_row.deleteFleetRow(conn, workspace_id, fleet_id) catch |rollback_err| {
+        fleet_row.deleteFleetRow(db.conn, workspace_id, fleet_id) catch |rollback_err| {
             log.err(
                 "create_rollback_failed",
                 .{ .error_code = ec.ERR_INTERNAL_DB_QUERY, .err = @errorName(rollback_err), .fleet_id = fleet_id, .req_id = hx.req_id, .hint = "row_orphaned_manual_recovery" },

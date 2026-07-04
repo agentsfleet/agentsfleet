@@ -301,7 +301,13 @@ describe("RunnerList activity dialog", () => {
   });
 
   it("surfaces runner activity load errors inside the activity dialog", async () => {
-    listRunnerEventsActionMock.mockResolvedValueOnce({ ok: false, error: "boom", errorCode: "UZ-INTERNAL-001" });
+    // ApiError.message is user_message ?? detail (client.ts) —
+    // UZ-INTERNAL-001's friendly copy lives in error_entries.zig now.
+    listRunnerEventsActionMock.mockResolvedValueOnce({
+      ok: false,
+      error: "Something broke on our end. Give it another shot — if it keeps failing, send us the code below.",
+      errorCode: "UZ-INTERNAL-001",
+    });
     const user = userEvent.setup();
     await renderList(listResponse([ONLINE]));
     await user.click(screen.getByRole("button", { name: /activity/i }));

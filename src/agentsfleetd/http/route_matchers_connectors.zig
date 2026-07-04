@@ -41,6 +41,15 @@ pub fn matchWorkspaceConnectorConnect(p: Path) ?WorkspaceConnectorRoute {
     return .{ .workspace_id = ws, .provider = provider };
 }
 
+/// GET /v1/workspaces/{ws}/connectors — the registry-driven catalog, scoped to
+/// the workspace (its `connected` flags are per-workspace). The collection whose
+/// items are the `/v1/workspaces/{ws}/connectors/{provider}` status routes.
+pub fn matchWorkspaceConnectorCatalog(p: Path) ?[]const u8 {
+    if (p.segs.len != 3) return null;
+    if (!p.eq(0, S_WORKSPACES) or !p.eq(2, S_CONNECTORS)) return null;
+    return p.param(1);
+}
+
 /// GET /v1/connectors/{provider}/callback — Bearer-less; the workspace comes
 /// from the signed state.
 pub fn matchConnectorCallback(p: Path) ?[]const u8 {

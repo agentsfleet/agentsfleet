@@ -21,7 +21,7 @@ import { requireWorkspaceId, resolveAuthToken } from "./workspace-guards.ts";
 import {
   wsFleetsPath,
   wsFleetPath,
-  wsFleetTemplatesPath,
+  wsFleetLibrariesPath,
 } from "../lib/api-paths.ts";
 import {
   loadSkillFromPath,
@@ -41,19 +41,19 @@ import {
   METHOD_POST,
   printRequirements,
   requireFromPath,
-  requireTemplateId,
+  requireLibraryId,
   USAGE_UPDATE,
   VISIBILITY_PLATFORM,
   VISIBILITY_TENANT,
   withName,
   type CreateFleetBody,
-  type FleetTemplateGalleryResponse,
+  type FleetLibraryGalleryResponse,
   type InstallResponse,
   type UpdateResponse,
 } from "./fleet_install_source.ts";
 
 export interface InstallFlags {
-  readonly templateId?: string | null | undefined;
+  readonly libraryId?: string | null | undefined;
   readonly name?: string | null | undefined;
 }
 
@@ -83,7 +83,7 @@ export const loadBundle = (
 
 // POST the create + render the install result. Shared by both sources so the
 // success / JSON output stays identical whether the bundle came from a path or
-// a template snapshot.
+// a library entry snapshot.
 const createAndRender = (
   wsId: string,
   token: Redacted.Redacted<string>,
@@ -141,25 +141,25 @@ export const installEffectFromFlags = (
   Effect.gen(function* () {
     const http = yield* HttpClient;
 
-    const templateId = yield* requireTemplateId(flags.templateId);
+    const libraryId = yield* requireLibraryId(flags.libraryId);
     const wsId = yield* requireWorkspaceId;
     const token = yield* resolveAuthToken;
 
-    // Resolve the template in the workspace gallery (platform ∪ tenant). The
+    // Resolve the library entry in the workspace gallery (platform ∪ tenant). The
     // entry carries its tier + declared requirements; the create body keys off
     // `visibility` (M103 §4). No snapshot import — the server reads SKILL/TRIGGER
-    // from the onboarded template row.
-    const gallery = yield* http.request<FleetTemplateGalleryResponse>({
-      path: wsFleetTemplatesPath(wsId),
+    // from the onboarded library entry row.
+    const gallery = yield* http.request<FleetLibraryGalleryResponse>({
+      path: wsFleetLibrariesPath(wsId),
       method: METHOD_GET,
       token,
     });
-    const entry = (gallery.items ?? []).find((e) => e.id === templateId);
+    const entry = (gallery.items ?? []).find((e) => e.id === libraryId);
     if (!entry) {
       return yield* Effect.fail(
         new ConfigError({
-          detail: `template '${templateId}' is not in this workspace's gallery`,
-          suggestion: "run `agentsfleet templates` for platform ids; tenant template ids come from your workspace gallery in the dashboard",
+          detail: `library entry '${libraryId}' is not in this workspace's gallery`,
+          suggestion: "run `agentsfleet library` for platform ids; tenant library ids come from your workspace gallery in the dashboard",
         }),
       );
     }
@@ -169,18 +169,18 @@ export const installEffectFromFlags = (
     if (entry.visibility !== VISIBILITY_PLATFORM && entry.visibility !== VISIBILITY_TENANT) {
       return yield* Effect.fail(
         new ConfigError({
-          detail: `template '${templateId}' has an unrecognized tier '${entry.visibility ?? ""}'`,
-          suggestion: "update the CLI to a version that understands this template tier",
+          detail: `library entry '${libraryId}' has an unrecognized tier '${entry.visibility ?? ""}'`,
+          suggestion: "update the CLI to a version that understands this library tier",
         }),
       );
     }
     const idBody: CreateFleetBody =
       entry.visibility === VISIBILITY_PLATFORM
-        ? { platform_template_id: entry.id }
-        : { tenant_template_id: entry.id };
+        ? { platform_library_id: entry.id }
+        : { tenant_library_id: entry.id };
     const body = withName(idBody, flags.name);
     const generatedTrigger = entry.requirements?.trigger_present === false;
-    const fallbackName = entry.name || templateId;
+    const fallbackName = entry.name || libraryId;
     yield* createAndRender(wsId, token, body, generatedTrigger, fallbackName);
   });
 

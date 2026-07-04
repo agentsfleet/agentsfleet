@@ -1,4 +1,5 @@
 import { request } from "./client";
+import { ApiError } from "./errors";
 
 // Mirrors the server's PendingRow envelope
 // (src/agentsfleetd/fleet_runtime/approval_gate_db_reads.zig)
@@ -131,7 +132,24 @@ async function resolveAction(
   if (res.status === 409) {
     return { kind: "already_resolved", data: json as AlreadyResolvedResponse };
   }
-  throw new Error((json as { detail?: string }).detail ?? `Resolve failed: HTTP ${res.status}`);
+  // RFC 7807 problem+json, same shape `request()` throws on — see client.ts.
+  // A bare `Error` here would discard `error_code` before `presentErrorString`
+  // ever runs (withToken only reads `.code` off an `ApiError` instance).
+  // `user_message` (curated dashboard-safe copy) is preferred over `detail`/
+  // `title`, same precedence as client.ts's request().
+  const errBody = json as {
+    detail?: string;
+    title?: string;
+    error_code?: string;
+    request_id?: string;
+    user_message?: string;
+  };
+  throw new ApiError(
+    errBody.user_message ?? errBody.detail ?? errBody.title ?? `Resolve failed: HTTP ${res.status}`,
+    res.status,
+    errBody.error_code ?? "UZ-UNKNOWN",
+    errBody.request_id,
+  );
 }
 
 export function approveApproval(workspaceId: string, gateId: string, token: string, reason?: string) {

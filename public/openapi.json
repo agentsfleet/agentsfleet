@@ -71,10 +71,10 @@
       }
     },
     {
-      "name": "Credentials",
-      "description": "self-managed (Bring Your Own Key) LLM provider credentials",
+      "name": "Secrets",
+      "description": "Workspace secret vault — self-managed (Bring Your Own Key) LLM provider keys and arbitrary named secrets a Fleet interpolates as `${secrets.<name>.<field>}`",
       "x-mintlify": {
-        "navigation": "Credentials"
+        "navigation": "Secrets"
       }
     },
     {
@@ -148,10 +148,10 @@
       }
     },
     {
-      "name": "Fleet Templates",
-      "description": "Two-tier Fleet template catalog — platform-wide and tenant-scoped onboarding from a GitHub source, stored once in object storage by content hash.",
+      "name": "Fleet library",
+      "description": "Two-tier Fleet library catalog — platform-wide and tenant-scoped onboarding from a GitHub source, stored once in object storage by content hash.",
       "x-mintlify": {
-        "navigation": "Fleet Templates"
+        "navigation": "Fleet library"
       }
     },
     {
@@ -1586,6 +1586,86 @@
         "security": []
       }
     },
+    "/v1/workspaces/{workspace_id}/connectors": {
+      "get": {
+        "operationId": "connector_catalog",
+        "summary": "List the connector catalog for a workspace",
+        "description": "Renders the deployment's connector registry as data for the dashboard (requires the `connector:read` scope) — every provider with its archetype, display name, whether the platform side is `configured` (the `<provider>-app` platform bag exists), and whether this workspace is `connected` (holds a `fleet:<provider>` vault handle). The dashboard renders its cards from this — there is no hard-coded provider list. This is the collection whose items are the per-provider status routes below.",
+        "tags": [
+          "Connectors"
+        ],
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "description": "UUIDv7 of the workspace to report connected state for.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The connector catalog — one entry per registry provider.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "id",
+                      "archetype",
+                      "display_name",
+                      "configured",
+                      "connected"
+                    ],
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "description": "Connector registry id / route segment (`slack`, `github`, `zoho`, `jira`, `linear`)."
+                      },
+                      "archetype": {
+                        "type": "string",
+                        "enum": [
+                          "oauth2",
+                          "app_install"
+                        ]
+                      },
+                      "display_name": {
+                        "type": "string"
+                      },
+                      "configured": {
+                        "type": "boolean",
+                        "description": "Platform side ready — the `<provider>-app` bag exists."
+                      },
+                      "connected": {
+                        "type": "boolean",
+                        "description": "This workspace holds a `fleet:<provider>` vault handle."
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/v1/workspaces/{workspace_id}/connectors/{provider}/connect": {
       "post": {
         "operationId": "connector_connect",
@@ -1609,7 +1689,7 @@
             "name": "provider",
             "in": "path",
             "required": true,
-            "description": "Connector registry id (`slack`, `github`). The id is also the `{provider}` segment of the callback URL and the vault-key stem.",
+            "description": "Connector registry id (`slack`, `github`, `zoho`, `jira`, `linear`). The id is also the `{provider}` segment of the callback URL and the vault-key stem.",
             "schema": {
               "type": "string"
             }
@@ -1660,7 +1740,7 @@
       "get": {
         "operationId": "connector_status",
         "summary": "Read a connector's status",
-        "description": "Reports whether the workspace holds a live `fleet:{provider}` vault handle (requires the `connector:read` scope). Never fabricates a connected state — a missing or unreadable handle reads as `not_connected`. Provider-specific extras ride alongside (`slack` adds `team`, the connected Slack workspace name). Unknown provider → 404 `UZ-CONN-004`.",
+        "description": "Reports whether the workspace holds a live `fleet:{provider}` vault handle (requires the `connector:read` scope). Never fabricates a connected state — a missing or unreadable handle reads as `not_connected`. Provider-specific extras ride alongside (`slack` adds `team`, generic OAuth providers add `label`). Unknown provider → 404 `UZ-CONN-004`.",
         "tags": [
           "Connectors"
         ],
@@ -1679,7 +1759,7 @@
             "name": "provider",
             "in": "path",
             "required": true,
-            "description": "Connector registry id (`slack`, `github`).",
+            "description": "Connector registry id (`slack`, `github`, `zoho`, `jira`, `linear`).",
             "schema": {
               "type": "string"
             }
@@ -1709,6 +1789,13 @@
                         "null"
                       ],
                       "description": "Slack only — the connected Slack workspace name (absent for other providers)."
+                    },
+                    "label": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "description": "Generic OAuth providers only — display label from the provider handle, when available."
                     }
                   }
                 }
@@ -1746,7 +1833,7 @@
             "name": "provider",
             "in": "path",
             "required": true,
-            "description": "Connector registry id (`slack`, `github`).",
+            "description": "Connector registry id (`slack`, `github`, `zoho`, `jira`, `linear`).",
             "schema": {
               "type": "string"
             }
@@ -2438,13 +2525,13 @@
         }
       }
     },
-    "/v1/workspaces/{workspace_id}/credentials": {
+    "/v1/workspaces/{workspace_id}/secrets": {
       "get": {
-        "operationId": "list_workspace_credentials",
-        "summary": "List credentials stored for a workspace",
-        "description": "Returns credential names. Values are never returned — they live encrypted in `vault.secrets`.",
+        "operationId": "list_workspace_secrets",
+        "summary": "List secrets stored for a workspace",
+        "description": "Returns secret names and non-secret descriptors. Values are never returned — they live encrypted in `vault.secrets`.",
         "tags": [
-          "Credentials"
+          "Secrets"
         ],
         "parameters": [
           {
@@ -2466,10 +2553,10 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "credentials": {
+                    "secrets": {
                       "type": "array",
                       "items": {
-                        "$ref": "#/components/schemas/CredentialSummary"
+                        "$ref": "#/components/schemas/SecretSummary"
                       }
                     }
                   }
@@ -2492,11 +2579,11 @@
         }
       },
       "post": {
-        "operationId": "store_workspace_credential",
-        "summary": "Store a credential in the workspace vault",
+        "operationId": "store_workspace_secret",
+        "summary": "Store a secret in the workspace vault",
         "description": "Plaintext is the canonical-stringified form of the supplied JSON object,\nenvelope-encrypted with the KEK (master key v1) and persisted to\n`vault.secrets`. The raw value is never stored unencrypted and never\nreturned. `data` must be a non-empty JSON object whose stringified form\nis ≤ 4 KiB; a stringified form over 4 KiB is rejected with `UZ-VAULT-002`,\nand bare strings, arrays, scalars, and `{}` are rejected with\n`UZ-VAULT-001`.\n",
         "tags": [
-          "Credentials"
+          "Secrets"
         ],
         "parameters": [
           {
@@ -2524,7 +2611,7 @@
                   "name": {
                     "type": "string",
                     "maxLength": 64,
-                    "description": "Credential identifier referenced from a Fleet's `credentials:` list."
+                    "description": "Secret identifier a Fleet interpolates as `${secrets.<name>.<field>}`."
                   },
                   "data": {
                     "type": "object",
@@ -2568,13 +2655,13 @@
         }
       }
     },
-    "/v1/workspaces/{workspace_id}/credentials/{credential_name}": {
-      "delete": {
-        "operationId": "delete_workspace_credential",
-        "summary": "Delete a credential from the workspace vault",
-        "description": "Idempotent — returns 204 whether or not the credential existed.\n",
+    "/v1/workspaces/{workspace_id}/secrets/{secret_name}": {
+      "patch": {
+        "operationId": "rotate_workspace_secret",
+        "summary": "Rotate a secret's api_key field",
+        "description": "Replaces only the stored `api_key` field; `provider`/`model`/`base_url`\n(and any other stored fields) are preserved by loading the existing\nobject and swapping the single field. A missing secret returns\n`UZ-VAULT-003`.\n",
         "tags": [
-          "Credentials"
+          "Secrets"
         ],
         "parameters": [
           {
@@ -2588,19 +2675,50 @@
             }
           },
           {
-            "name": "credential_name",
+            "name": "secret_name",
             "in": "path",
             "required": true,
-            "description": "Credential name.",
+            "description": "Secret name.",
             "schema": {
               "type": "string",
               "maxLength": 64
             }
           }
         ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "api_key"
+                ],
+                "properties": {
+                  "api_key": {
+                    "type": "string",
+                    "description": "The new key. Rejected empty or over the 4 KiB stored-object limit (`UZ-VAULT-002`), and never echoed back or logged."
+                  }
+                }
+              }
+            }
+          }
+        },
         "responses": {
-          "204": {
-            "description": "Credential deleted (or already absent)"
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
           },
           "400": {
             "$ref": "#/components/responses/Error"
@@ -2609,6 +2727,56 @@
             "$ref": "#/components/responses/Error"
           },
           "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "delete_workspace_secret",
+        "summary": "Delete a secret from the workspace vault",
+        "description": "Idempotent — returns 204 whether or not the secret existed.\n",
+        "tags": [
+          "Secrets"
+        ],
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "description": "UUIDv7 of the workspace.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "secret_name",
+            "in": "path",
+            "required": true,
+            "description": "Secret name.",
+            "schema": {
+              "type": "string",
+              "maxLength": 64
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Secret deleted (or already absent)"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
             "$ref": "#/components/responses/Error"
           }
         }
@@ -3242,7 +3410,7 @@
         ],
         "requestBody": {
           "required": true,
-          "description": "Install a fleet from exactly one onboarded template tier (M103 §4): a platform template (slug id) or this workspace's tenant template (UUIDv7). The server reads SKILL/TRIGGER + content identity from the template row; raw-SKILL paste and the legacy per-workspace bundle_id are not accepted.",
+          "description": "Install a fleet from exactly one onboarded Fleet library tier (M103 §4): a platform library entry (slug id) or this workspace's tenant library entry (UUIDv7). The server reads SKILL/TRIGGER + content identity from the library row; raw-SKILL paste and the legacy per-workspace bundle_id are not accepted.",
           "content": {
             "application/json": {
               "schema": {
@@ -3250,29 +3418,29 @@
                 "anyOf": [
                   {
                     "required": [
-                      "platform_template_id"
+                      "platform_library_id"
                     ]
                   },
                   {
                     "required": [
-                      "tenant_template_id"
+                      "tenant_library_id"
                     ]
                   }
                 ],
                 "properties": {
-                  "platform_template_id": {
+                  "platform_library_id": {
                     "type": "string",
-                    "description": "Slug id of a platform catalog template to install."
+                    "description": "Slug id of a platform catalog library entry to install."
                   },
-                  "tenant_template_id": {
+                  "tenant_library_id": {
                     "type": "string",
                     "format": "uuid",
-                    "description": "UUIDv7 of one of this workspace's tenant templates to install."
+                    "description": "UUIDv7 of one of this workspace's tenant library entries to install."
                   },
                   "name": {
                     "type": "string",
                     "maxLength": 64,
-                    "description": "Optional operator-supplied fleet name (slug-safe, lowercase/digits/hyphen, max 64 chars). Overrides the SKILL.md-derived name so one template can back multiple fleets in a workspace, each with its own name + webhooks. Absent ⇒ the SKILL.md `name:`."
+                    "description": "Optional operator-supplied fleet name (slug-safe, lowercase/digits/hyphen, max 64 chars). Overrides the SKILL.md-derived name so one library entry can back multiple fleets in a workspace, each with its own name + webhooks. Absent ⇒ the SKILL.md `name:`."
                   }
                 }
               }
@@ -3342,14 +3510,14 @@
     "/v1/fleets/bundles": {
       "get": {
         "operationId": "list_fleet_bundles",
-        "summary": "List the platform Fleet template catalog",
-        "description": "Returns the first-party (platform) Fleet template catalog. Rows contain only metadata and requirement hints; they carry no credential values or object-store keys. The workspace gallery union lives at GET /v1/workspaces/{workspace_id}/fleet-templates.",
+        "summary": "List the platform Fleet library catalog",
+        "description": "Returns the first-party (platform) Fleet library catalog. Rows contain only metadata and requirement hints; they carry no credential values or object-store keys. The workspace gallery union lives at GET /v1/workspaces/{workspace_id}/fleet-libraries.",
         "tags": [
           "Fleet Bundles"
         ],
         "responses": {
           "200": {
-            "description": "Template metadata.",
+            "description": "Fleet library entry metadata.",
             "content": {
               "application/json": {
                 "schema": {
@@ -3375,31 +3543,31 @@
         }
       }
     },
-    "/v1/admin/fleet-templates": {
+    "/v1/admin/fleet-libraries": {
       "post": {
-        "operationId": "onboard_platform_fleet_template",
-        "summary": "Onboard a platform Fleet template",
-        "description": "Onboards a Fleet template into the global platform catalog from a GitHub source reference. Requires the `platform-template:write` scope. The canonical bundle is written to internal object storage keyed by content hash; the response carries metadata only — never an object-store key or support-file content.",
+        "operationId": "onboard_platform_fleet_library",
+        "summary": "Onboard a platform Fleet library entry",
+        "description": "Onboards a Fleet library entry into the global platform catalog from a GitHub source reference. Requires the `platform-library:write` scope. The canonical bundle is written to internal object storage keyed by content hash; the response carries metadata only — never an object-store key or support-file content.",
         "tags": [
-          "Fleet Templates"
+          "Fleet library"
         ],
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/FleetTemplateOnboardRequest"
+                "$ref": "#/components/schemas/FleetLibraryOnboardRequest"
               }
             }
           }
         },
         "responses": {
           "201": {
-            "description": "Template onboarded into the platform catalog.",
+            "description": "Entry onboarded into the platform catalog.",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/FleetTemplateOnboardResult"
+                  "$ref": "#/components/schemas/FleetLibraryOnboardResult"
                 }
               }
             }
@@ -3428,13 +3596,13 @@
         }
       }
     },
-    "/v1/workspaces/{workspace_id}/fleet-templates": {
+    "/v1/workspaces/{workspace_id}/fleet-libraries": {
       "get": {
-        "operationId": "list_workspace_fleet_templates",
-        "summary": "List the workspace Fleet template gallery",
-        "description": "Returns the union of the platform Fleet template catalog and this workspace's own tenant templates — and nothing from another workspace. Each entry carries identity, source, requirements, and support-file summaries; never an object-store key.",
+        "operationId": "list_workspace_fleet_library",
+        "summary": "List the workspace Fleet library gallery",
+        "description": "Returns the union of the platform Fleet library catalog and this workspace's own tenant entries — and nothing from another workspace. Each entry carries identity, source, requirements, and support-file summaries; never an object-store key.",
         "tags": [
-          "Fleet Templates"
+          "Fleet library"
         ],
         "parameters": [
           {
@@ -3450,7 +3618,7 @@
         ],
         "responses": {
           "200": {
-            "description": "The workspace template gallery.",
+            "description": "The workspace Fleet library gallery.",
             "content": {
               "application/json": {
                 "schema": {
@@ -3462,7 +3630,7 @@
                     "items": {
                       "type": "array",
                       "items": {
-                        "$ref": "#/components/schemas/FleetTemplateGalleryEntry"
+                        "$ref": "#/components/schemas/FleetLibraryGalleryEntry"
                       }
                     }
                   }
@@ -3485,11 +3653,11 @@
         }
       },
       "post": {
-        "operationId": "onboard_tenant_fleet_template",
-        "summary": "Onboard a tenant Fleet template",
-        "description": "Onboards a Fleet template into the caller's workspace catalog from a GitHub source reference. Requires the `template:write` scope plus ownership of the target workspace. Re-onboarding identical bytes converges on one `(workspace_id, content_hash)` row. The response carries metadata only.",
+        "operationId": "onboard_tenant_fleet_library",
+        "summary": "Onboard a tenant Fleet library entry",
+        "description": "Onboards a Fleet library entry into the caller's workspace catalog from a GitHub source reference. Requires the `library:write` scope plus ownership of the target workspace. Re-onboarding identical bytes converges on one `(workspace_id, content_hash)` row. The response carries metadata only.",
         "tags": [
-          "Fleet Templates"
+          "Fleet library"
         ],
         "parameters": [
           {
@@ -3508,18 +3676,18 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/FleetTemplateOnboardRequest"
+                "$ref": "#/components/schemas/FleetLibraryOnboardRequest"
               }
             }
           }
         },
         "responses": {
           "201": {
-            "description": "Template onboarded into the workspace catalog.",
+            "description": "Entry onboarded into the workspace catalog.",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/FleetTemplateOnboardResult"
+                  "$ref": "#/components/schemas/FleetLibraryOnboardResult"
                 }
               }
             }
@@ -5154,6 +5322,11 @@
             "type": "string",
             "description": "Present only on 409 conflict responses (RFC 7807 extension). Names the resource state that forbade the requested transition, e.g. `paused` when steering a paused fleet (UZ-AGT-012).",
             "example": "paused"
+          },
+          "user_message": {
+            "type": "string",
+            "description": "Present only for error codes with a curated dashboard-safe rendering\n(RFC 7807 extension). One plain sentence with no snake_case tokens,\ninternal nouns, or HTTP jargon — safe to render directly to an\nend user, unlike `detail`/`title` which are written for the\nCLI/API-integrator audience and may reference internal state.\nOmitted (not `null`) for every code without a curated override;\nclients should fall back to `detail`/`title` in that case.\n",
+            "example": "We couldn't find that Fleet. It may have been deleted, or the ID doesn't match one in this workspace."
           }
         }
       },
@@ -5265,11 +5438,13 @@
           }
         }
       },
-      "CredentialSummary": {
+      "SecretSummary": {
         "type": "object",
+        "description": "A workspace secret's non-secret descriptors — the `api_key`/`data`\npayload is never projected here.\n",
         "required": [
           "name",
-          "created_at"
+          "created_at",
+          "kind"
         ],
         "properties": {
           "name": {
@@ -5278,6 +5453,28 @@
           "created_at": {
             "type": "integer",
             "format": "int64"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "provider_key",
+              "custom_endpoint",
+              "custom_secret"
+            ],
+            "description": "Server-derived classification from the stored body's `provider`\nfield — the client reads this, it never re-guesses from the name.\n`custom_secret` also covers legacy/corrupt bodies that fail to\ndecrypt or parse, so listing always returns 200.\n"
+          },
+          "provider": {
+            "type": "string",
+            "nullable": true,
+            "description": "Present for `provider_key`/`custom_endpoint` kinds only."
+          },
+          "model": {
+            "type": "string",
+            "nullable": true
+          },
+          "base_url": {
+            "type": "string",
+            "nullable": true
           }
         }
       },
@@ -5518,7 +5715,7 @@
           }
         }
       },
-      "FleetTemplateOnboardRequest": {
+      "FleetLibraryOnboardRequest": {
         "type": "object",
         "required": [
           "source_kind"
@@ -5526,7 +5723,7 @@
         "properties": {
           "source_kind": {
             "type": "string",
-            "description": "Where the template comes from. `github` and `template` are fetched and validated server-side; `upload` carries the SKILL.md (and optional TRIGGER.md) Markdown inline for a skill-only template.",
+            "description": "Where the entry comes from. `github` and `template` are fetched and validated server-side; `upload` carries the SKILL.md (and optional TRIGGER.md) Markdown inline for a skill-only entry.",
             "enum": [
               "template",
               "upload",
@@ -5605,9 +5802,9 @@
           }
         }
       },
-      "FleetTemplateOnboardResult": {
+      "FleetLibraryOnboardResult": {
         "type": "object",
-        "description": "Result of onboarding a Fleet template (platform or tenant tier). Carries the template identity, its tier in `visibility`, the content hash, the derived requirements, and support-file summaries — never an object-store key or support-file content.",
+        "description": "Result of onboarding a Fleet library entry (platform or tenant tier). Carries the entry identity, its tier in `visibility`, the content hash, the derived requirements, and support-file summaries — never an object-store key or support-file content.",
         "required": [
           "id",
           "name",
@@ -5619,14 +5816,14 @@
         "properties": {
           "id": {
             "type": "string",
-            "description": "Template id — the slug for platform templates, a UUIDv7 for tenant templates."
+            "description": "Entry id — the slug for platform entries, a UUIDv7 for tenant entries."
           },
           "name": {
             "type": "string"
           },
           "visibility": {
             "type": "string",
-            "description": "The catalog tier the template was onboarded into.",
+            "description": "The catalog tier the entry was onboarded into.",
             "enum": [
               "platform",
               "tenant"
@@ -5647,9 +5844,9 @@
           }
         }
       },
-      "FleetTemplateGalleryEntry": {
+      "FleetLibraryGalleryEntry": {
         "type": "object",
-        "description": "One gallery row — a platform or tenant Fleet template. Carries identity, description, source, derived requirements, per-credential reason copy, and support-file summaries; never an object-store key or support-file content.",
+        "description": "One gallery row — a platform or tenant Fleet library entry. Carries identity, description, source, derived requirements, per-credential reason copy, and support-file summaries; never an object-store key or support-file content.",
         "required": [
           "id",
           "name",
@@ -5669,7 +5866,7 @@
           },
           "description": {
             "type": "string",
-            "description": "The template's SKILL.md description, rendered on the gallery card. Platform rows carry their curated copy; tenant rows carry the description derived from the onboarded SKILL frontmatter."
+            "description": "The entry's SKILL.md description, rendered on the gallery card. Platform rows carry their curated copy; tenant rows carry the description derived from the onboarded SKILL frontmatter."
           },
           "visibility": {
             "type": "string",

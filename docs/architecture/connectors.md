@@ -23,7 +23,6 @@ A workspace *connects* a provider once (connector); everything fleets then do wi
             │   { provider, display_name, archetype: union(enum){              │
             │       oauth2:      {flow, refresh, exchange_failed_code, post_auth}, │
             │       app_install: {state, build_install_url, complete},          │
-            │       api_key:     {key_field},                                   │
             │   }, respond_status }                                             │
             │ }  + comptime validation (dup ids, scopes, id agreement…)         │
             └──────────────────────────────┬────────────────────────────────────┘
@@ -32,24 +31,25 @@ A workspace *connects* a provider once (connector); everything fleets then do wi
             ┌──────────────────────────────┴────────────────────────────────────┐
             │ generic {provider} handlers: connect.zig · callback.zig · status.zig │
             │ per-provider deltas: slack/{spec,callback,status}.zig,              │
-            │                      github/{spec,connect,callback,status}.zig      │
+            │                      github/{spec,connect,callback,status}.zig,     │
+            │                      zoho/{spec,callback,multi_dc}.zig,             │
+            │                      jira/{spec,callback}.zig, linear/{spec,callback}.zig │
             └─────────────────────────────────────────────────────────────────────┘
 ```
 
 - **Routes are generic.** `POST /v1/workspaces/{ws}/connectors/{provider}/connect`, `GET /v1/workspaces/{ws}/connectors/{provider}`, `GET /v1/connectors/{provider}/callback` — three matchers serve every provider (`route_matchers_connectors.zig`); scopes stay `connector:write`/`connector:read` on the generic variants. The shipped Slack/GitHub URLs are preserved verbatim because `slack`/`github` are registry ids.
 - **Dispatch is on SHAPE, never on provider id.** The archetype tagged-union owns which flow runs; handlers switch exhaustively on it (a new archetype cannot land half-wired — the compiler forces every arm). No `if provider == "slack"` exists anywhere in the flow.
-- **Invariants are compile-time facts.** Duplicate/empty provider ids, an oauth2 entry without scopes or an exchange-failed code, a flow whose embedded provider id disagrees with its entry, or any api_key entry before the api_key arms are implemented — all `@compileError`, not review vigilance.
+- **Invariants are compile-time facts.** Duplicate/empty provider ids, an oauth2 entry without scopes or an exchange-failed code, or a flow whose embedded provider id disagrees with its entry — all `@compileError`, not review vigilance.
 - **Inbound event ingress stays bespoke on purpose.** Each provider's inbound surface has its own shape (Slack's signed events ingress at `POST /v1/connectors/slack/events` is load-bearing for Slack's retry semantics); the registry generalizes the *connect* plumbing only.
 
 ## Archetypes
 
-| Archetype | Flow | Callback carries | Writes | Shipped instance |
+| Archetype | Flow | Callback carries | Writes | Shipped instances |
 |---|---|---|---|---|
-| `oauth2` | authorize-redirect → code exchange (deadline-armed) → `post_auth` hook parses + persists | `code` + `state` | vault handle (+ provider-specific rows, e.g. Slack's `connector_installs`) | `slack` |
+| `oauth2` | authorize-redirect → code exchange (deadline-armed) → `post_auth` hook parses + persists | `code` + `state` | vault handle (+ provider-specific rows, e.g. Slack's `connector_installs`) | `slack`, `zoho` (multi-DC — the callback's `location` resolves the effective token endpoint), `jira`, `linear` |
 | `app_install` | vendor install page → callback validates via `complete` hook | `installation_id` + `state` | vault handle only | `github` |
-| `api_key` | operator pastes their own vendor key at connect — no platform app, no browser round-trip, no callback | — (no callback exists) | vault handle only | none yet (M108_002) |
 
-`api_key` ships as a comptime-asserted shape with **zero entries**: the generic handlers' `.api_key => unreachable` arms are provably safe only because the registry refuses api_key entries at compile time. The first api_key provider's diff must (1) delete that assert, (2) implement the connect arm (key intake → vault write) **without** the signing-secret requirement (there is no state to sign), and (3) turn the callback's arm into a 404 — the URL becomes reachable the moment the id resolves. All three obligations are documented at the code sites.
+**There is no `api_key` archetype.** One was considered for operator-pasted vendor keys (Datadog, Grafana, Fly) and dropped (M108_002): a static vendor key is just a workspace secret referenced as `${secrets.<name>.<field>}`, not a connector — it never had a connect/callback round-trip or a platform app secret to protect. Those three providers are plain `agentsfleet secret add` entries, never registry entries. `REGISTRY.len` is pinned at 5 (`registry.zig`'s own pin test) — five OAuth/app-install connectors, not eight.
 
 ## Trust anchors (two — unchanged from M102/M106)
 
@@ -82,7 +82,7 @@ Deadline fired, watchdog unarmable, or vendor unreachable → `UZ-CONN-003` (502
 1. Provider id as a `common` constant (RULE UFS) — it is simultaneously the route segment, the vault-key stem (`<provider>-app`, `fleet:<provider>`), and the registry id.
 2. A `<provider>/spec.zig` data file (oauth2: endpoints/scopes; app_install: state binding) + the archetype's hook functions (oauth2: `post_auth` body parse + rows; app_install: `build_install_url` + `complete`).
 3. One `ConnectorSpec` entry in `registry.zig`.
-4. Provision the `<provider>-app` bag in the admin vault (oauth2/app_install) — api_key providers need nothing.
+4. Provision the `<provider>-app` bag in the admin vault. (An operator-supplied vendor key with no browser round-trip — Datadog/Grafana/Fly's shape — isn't a connector at all; it's a plain workspace secret, `agentsfleet secret add`, never a registry entry.)
 5. Tests: the generic-route suites already cover the flow; add hook-level tests for the provider's parse/persist deltas.
 
 No route, matcher, scope, invoke, or OpenAPI edit — the `{provider}` form already covers the new id.

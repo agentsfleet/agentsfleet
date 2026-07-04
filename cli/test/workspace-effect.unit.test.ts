@@ -7,7 +7,7 @@ import { describe, test, expect } from "bun:test";
 import { Cause, Effect, Exit, Layer, Option, Redacted } from "effect";
 import {
   workspaceAddEffect,
-  workspaceCredentialsEffect,
+  workspaceSecretsEffect,
   workspaceDeleteEffectFromArgs,
   workspaceListEffect,
   workspaceShowEffectFromArgs,
@@ -484,10 +484,10 @@ describe("workspaceShowEffectFromArgs", () => {
   });
 });
 
-describe("workspaceCredentialsEffect", () => {
+describe("workspaceSecretsEffect", () => {
   test("emits redirect JSON envelope in jsonMode", async () => {
     const rec = makeRecorder();
-    const program = workspaceCredentialsEffect.pipe(
+    const program = workspaceSecretsEffect.pipe(
       Effect.provide(configLayer({ jsonMode: true })),
       Effect.provide(outputLayer(rec)),
     );
@@ -497,24 +497,24 @@ describe("workspaceCredentialsEffect", () => {
 
   test("emits info line in human mode", async () => {
     const rec = makeRecorder();
-    const program = workspaceCredentialsEffect.pipe(
+    const program = workspaceSecretsEffect.pipe(
       Effect.provide(configLayer()),
       Effect.provide(outputLayer(rec)),
     );
     await runWith(program);
-    expect(rec.stdout).toContain("# Workspace credentials");
-    expect(rec.stdout.some((line) => line.includes("/credentials"))).toBe(true);
+    expect(rec.stdout).toContain("# Workspace secrets");
+    expect(rec.stdout.some((line) => line.includes("/secrets"))).toBe(true);
   });
 
-  // The redirect must name the real top-level `credential` group
-  // (cli-tree-fleet.ts), not the phantom `agentsfleet agent credential` that has
+  // The redirect must name the real top-level `secret` group
+  // (cli-tree-fleet.ts), not the phantom `agentsfleet agent secret` that has
   // no registration anywhere in the CLI tree.
-  const REAL_COMMAND = "agentsfleet credential";
-  const PHANTOM_COMMAND = "agentsfleet agent credential";
+  const REAL_COMMAND = "agentsfleet secret";
+  const PHANTOM_COMMAND = "agentsfleet agent secret";
 
-  test("JSON-mode redirect names the real credential command", async () => {
+  test("JSON-mode redirect names the real secret command", async () => {
     const rec = makeRecorder();
-    const program = workspaceCredentialsEffect.pipe(
+    const program = workspaceSecretsEffect.pipe(
       Effect.provide(configLayer({ jsonMode: true })),
       Effect.provide(outputLayer(rec)),
     );
@@ -523,9 +523,9 @@ describe("workspaceCredentialsEffect", () => {
     expect(rec.stdout.some((line) => line.includes(PHANTOM_COMMAND))).toBe(false);
   });
 
-  test("human-mode redirect names the real credential command", async () => {
+  test("human-mode redirect names the real secret command", async () => {
     const rec = makeRecorder();
-    const program = workspaceCredentialsEffect.pipe(
+    const program = workspaceSecretsEffect.pipe(
       Effect.provide(configLayer()),
       Effect.provide(outputLayer(rec)),
     );

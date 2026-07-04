@@ -5,8 +5,8 @@
  * `platform-ops` sample as a tenant template (via `template-ops.ts`) and
  * exercise the install failure surface:
  *
- *   - a `--template` id absent from the workspace gallery → ConfigError, exit 5;
- *   - `install` with no `--template` → ValidationError, exit 4, no network;
+ *   - a `--library` id absent from the workspace gallery → ConfigError, exit 5;
+ *   - `install` with no `--library` → ValidationError, exit 4, no network;
  *   - the SAME onboarded template installed twice → the second trips the
  *     `(workspace_id, name)` uniqueness constraint (UZ-AGT-006, exit 3), since
  *     both installs take the template's frontmatter `name:`.
@@ -31,14 +31,14 @@ export const EXIT_CONFIG_ERROR = 5;
 export const EXIT_VALIDATION_ERROR = 4;
 export const EXIT_SERVER_ERROR = 3;
 
-export const FLAG_TEMPLATE = "--template";
+export const FLAG_LIBRARY = "--library";
 
 // Server conflict code for a duplicate fleet name within a workspace (mirrors
 // `core` schema `uq_fleets_workspace_id_name` → `error_registry.zig` UZ-AGT-006,
 // a 409). The CLI surfaces it as a ServerError (exit 3) carrying this code.
 export const ERR_AGENTSFLEET_NAME_TAKEN = "UZ-AGT-006";
 
-// Substring the CLI prints when `--template` resolves to no gallery entry
+// Substring the CLI prints when `--library` resolves to no gallery entry
 // (mirrors `fleet_install.ts`'s ConfigError detail).
 export const ERR_TEMPLATE_NOT_IN_GALLERY = "is not in this workspace's gallery";
 

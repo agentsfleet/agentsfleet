@@ -60,6 +60,12 @@ test "router: the generic connector trio captures workspace + provider" {
     const callback = router.match("/v1/connectors/slack/callback", .GET) orelse return error.TestUnexpectedResult;
     try testing.expectEqualStrings("slack", callback.connector_callback);
 
+    // The catalog is the workspace-nested collection whose items are the status
+    // routes; its capture is the workspace id (workspace_id is a PATH param, per
+    // the universal standard — never a query).
+    const catalog = router.match("/v1/workspaces/ws-1/connectors", .GET) orelse return error.TestUnexpectedResult;
+    try testing.expectEqualStrings("ws-1", catalog.connector_catalog);
+
     // An unknown id still ROUTES (the registry 404s it with a naming body —
     // proven end-to-end below); the events ingress stays bespoke.
     const unknown = router.match("/v1/workspaces/ws-1/connectors/nope/connect", .POST) orelse return error.TestUnexpectedResult;
@@ -370,6 +376,88 @@ test "integration: slack status flips not_connected → connected and surfaces t
     }
 
     deleteFleetHandle(alloc, conn, AUTHED_WS, common.PROVIDER_SLACK);
+}
+
+test "integration: catalog reflects the registry with correct configured/connected flags (Dimension 4.1)" {
+    const alloc = testing.allocator;
+    const h = startAuthedHarness(alloc) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    test_fixtures.setTestEncryptionKey();
+    try seedAuthedFixtures(conn);
+    // The catalog's "configured" lookup targets the platform-admin workspace; wire
+    // it (every sibling test does) so the seed/delete of `slack-app` at ADMIN_WS is
+    // what that lookup reads. Without it the ctx default "" hits an invalid-UUID cast.
+    h.ctx.platform_admin_workspace_id = ADMIN_WS;
+    // Clean slate: no slack platform bag, no slack handle for this workspace.
+    _ = vault.deleteCredential(conn, ADMIN_WS, "slack-app") catch {};
+    deleteFleetHandle(alloc, conn, AUTHED_WS, common.PROVIDER_SLACK);
+
+    const path = "/v1/workspaces/" ++ AUTHED_WS ++ "/connectors";
+
+    // Baseline — registry-driven (every provider present), slack unconfigured +
+    // not connected.
+    {
+        const r = try (try h.get(path).bearer(scope_tokens.TENANT_ADMIN)).send();
+        defer r.deinit();
+        try r.expectStatus(.ok);
+        // No hard-coded list — every registry provider appears.
+        inline for (.{ "slack", "github", "zoho", "jira", "linear" }) |id| {
+            try testing.expect(r.bodyContains("\"id\":\"" ++ id ++ "\""));
+        }
+        // Field order is CatalogEntry declaration order (compact JSON).
+        try testing.expect(r.bodyContains("\"id\":\"slack\",\"archetype\":\"oauth2\",\"display_name\":\"Slack\",\"configured\":false,\"connected\":false"));
+    }
+
+    // Provision slack's platform bag + connect this workspace.
+    try seedSlackAppCreds(alloc, conn);
+    const key = try credential_key.allocKeyName(alloc, common.PROVIDER_SLACK);
+    defer alloc.free(key);
+    var handle: std.json.ObjectMap = .empty;
+    defer handle.deinit(alloc);
+    try handle.put(alloc, "bot_token", .{ .string = "xoxb-m108-catalog-tok" });
+    try test_fixtures.storeVaultJson(alloc, conn, AUTHED_WS, key, .{ .object = handle });
+
+    // slack now flips to configured (platform bag) AND connected (handle).
+    {
+        const r = try (try h.get(path).bearer(scope_tokens.TENANT_ADMIN)).send();
+        defer r.deinit();
+        try r.expectStatus(.ok);
+        try testing.expect(r.bodyContains("\"id\":\"slack\",\"archetype\":\"oauth2\",\"display_name\":\"Slack\",\"configured\":true,\"connected\":true"));
+    }
+
+    // Foreign workspace / no scope is already covered by the IDOR + scope tests;
+    // clean up this suite's shared platform bag + handle.
+    _ = vault.deleteCredential(conn, ADMIN_WS, "slack-app") catch {};
+    deleteFleetHandle(alloc, conn, AUTHED_WS, common.PROVIDER_SLACK);
+}
+
+// An unconfigured deployment leaves the platform-admin workspace unset. The
+// catalog must degrade to configured:false, never 500 on the invalid-UUID cast.
+test "integration: catalog degrades to configured:false when the platform-admin workspace is unset (no 500)" {
+    const alloc = testing.allocator;
+    const h = startAuthedHarness(alloc) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    test_fixtures.setTestEncryptionKey();
+    try seedAuthedFixtures(conn);
+    // Deliberately DO NOT set h.ctx.platform_admin_workspace_id — it stays "" (the
+    // unconfigured-deployment default). The configured lookup must be skipped.
+
+    const path = "/v1/workspaces/" ++ AUTHED_WS ++ "/connectors";
+    const r = try (try h.get(path).bearer(scope_tokens.TENANT_ADMIN)).send();
+    defer r.deinit();
+    try r.expectStatus(.ok); // not 500
+    // Every oauth2/app_install provider reads not-configured (no admin bag to check).
+    try testing.expect(r.bodyContains("\"id\":\"slack\",\"archetype\":\"oauth2\",\"display_name\":\"Slack\",\"configured\":false"));
 }
 
 test "integration: github status reads the installation handle" {
