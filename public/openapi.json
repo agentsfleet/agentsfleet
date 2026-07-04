@@ -1689,7 +1689,7 @@
             "name": "provider",
             "in": "path",
             "required": true,
-            "description": "Connector registry id (`slack`, `github`). The id is also the `{provider}` segment of the callback URL and the vault-key stem.",
+            "description": "Connector registry id (`slack`, `github`, `zoho`, `jira`, `linear`). The id is also the `{provider}` segment of the callback URL and the vault-key stem.",
             "schema": {
               "type": "string"
             }
@@ -1740,7 +1740,7 @@
       "get": {
         "operationId": "connector_status",
         "summary": "Read a connector's status",
-        "description": "Reports whether the workspace holds a live `fleet:{provider}` vault handle (requires the `connector:read` scope). Never fabricates a connected state — a missing or unreadable handle reads as `not_connected`. Provider-specific extras ride alongside (`slack` adds `team`, the connected Slack workspace name). Unknown provider → 404 `UZ-CONN-004`.",
+        "description": "Reports whether the workspace holds a live `fleet:{provider}` vault handle (requires the `connector:read` scope). Never fabricates a connected state — a missing or unreadable handle reads as `not_connected`. Provider-specific extras ride alongside (`slack` adds `team`, generic OAuth providers add `label`). Unknown provider → 404 `UZ-CONN-004`.",
         "tags": [
           "Connectors"
         ],
@@ -1759,7 +1759,7 @@
             "name": "provider",
             "in": "path",
             "required": true,
-            "description": "Connector registry id (`slack`, `github`).",
+            "description": "Connector registry id (`slack`, `github`, `zoho`, `jira`, `linear`).",
             "schema": {
               "type": "string"
             }
@@ -1789,6 +1789,13 @@
                         "null"
                       ],
                       "description": "Slack only — the connected Slack workspace name (absent for other providers)."
+                    },
+                    "label": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "description": "Generic OAuth providers only — display label from the provider handle, when available."
                     }
                   }
                 }
@@ -1826,7 +1833,7 @@
             "name": "provider",
             "in": "path",
             "required": true,
-            "description": "Connector registry id (`slack`, `github`).",
+            "description": "Connector registry id (`slack`, `github`, `zoho`, `jira`, `linear`).",
             "schema": {
               "type": "string"
             }

@@ -87,15 +87,41 @@ pub fn mint(ctx: MintCtx, cfg: OAuth2Refresh) anyerror!Outcome {
     return classifyFailure(ctx.alloc, resp.status, resp.body);
 }
 
-/// Build the form-encoded refresh grant. Provider-issued opaque values are sent
-/// verbatim, exactly as `connectors/oauth2.zig`'s code exchange does against these
-/// same token endpoints — the refresh grant is that exchange's twin.
+/// Build the form-encoded refresh grant. Provider-issued opaque values are
+/// percent-encoded before insertion so `+`, `&`, `=`, and `%` stay inside their
+/// fields instead of changing the form shape at the token endpoint.
 fn buildForm(alloc: std.mem.Allocator, refresh_token: []const u8, app: OauthApp) ![]u8 {
+    const rt = try percentEncode(alloc, refresh_token);
+    defer alloc.free(rt);
+    const cid = try percentEncode(alloc, app.client_id);
+    defer alloc.free(cid);
+    const csec = try percentEncode(alloc, app.client_secret);
+    defer alloc.free(csec);
     return std.fmt.allocPrint(
         alloc,
         "grant_type=refresh_token&refresh_token={s}&client_id={s}&client_secret={s}",
-        .{ refresh_token, app.client_id, app.client_secret },
+        .{ rt, cid, csec },
     );
+}
+
+fn percentEncode(alloc: std.mem.Allocator, raw: []const u8) ![]const u8 {
+    var out: std.ArrayList(u8) = .empty;
+    errdefer out.deinit(alloc);
+    for (raw) |c| {
+        if (isUnreserved(c)) {
+            try out.append(alloc, c);
+        } else {
+            var buf: [3]u8 = undefined;
+            const enc = try std.fmt.bufPrint(&buf, "%{X:0>2}", .{c});
+            try out.appendSlice(alloc, enc);
+        }
+    }
+    return out.toOwnedSlice(alloc);
+}
+
+fn isUnreserved(c: u8) bool {
+    return (c >= 'A' and c <= 'Z') or (c >= 'a' and c <= 'z') or
+        (c >= '0' and c <= '9') or c == '-' or c == '.' or c == '_' or c == '~';
 }
 
 fn parseAccess(ctx: MintCtx, body: []const u8) anyerror!Outcome {
@@ -192,6 +218,16 @@ test "oauth2_refresh mint: 200 → access token with local expiry; refresh token
     try std.testing.expect(std.mem.indexOf(u8, out.ok.token, "rt_zoho_abc") == null);
     // Auth is in the body, not a bearer header (the broker sends no bearer).
     try std.testing.expectEqual(@as(usize, 0), vendor.bearer.len);
+}
+
+test "oauth2_refresh mint: form-encodes refresh grant values" {
+    const alloc = std.testing.allocator;
+    const form = try buildForm(alloc, "rt+a&b=c%", .{ .client_id = "cid+1", .client_secret = "sec&ret=" });
+    defer alloc.free(form);
+    try std.testing.expectEqualStrings(
+        "grant_type=refresh_token&refresh_token=rt%2Ba%26b%3Dc%25&client_id=cid%2B1&client_secret=sec%26ret%3D",
+        form,
+    );
 }
 
 test "oauth2_refresh mint: a handle with accounts_base refreshes at ITS data center, not cfg.token_endpoint" {
