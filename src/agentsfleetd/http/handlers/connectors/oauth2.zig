@@ -22,6 +22,10 @@ pub const Spec = struct {
     authorize_endpoint: []const u8,
     token_endpoint: []const u8,
     scopes: []const u8,
+    /// Provider-specific authorization query tail, without a leading `&`.
+    /// Values are compile-time constants that are already URL-safe (for
+    /// example Atlassian's `audience=api.atlassian.com`).
+    authorize_extra_query: []const u8 = "",
     state: connector_state.Config,
 };
 
@@ -82,8 +86,15 @@ pub fn authorizeUrl(
 ) ![]const u8 {
     const redir = try percentEncode(alloc, redirect_uri);
     defer alloc.free(redir);
-    return std.fmt.allocPrint(alloc, "{s}?client_id={s}&scope={s}&redirect_uri={s}&state={s}", .{
-        spec.authorize_endpoint, client_id, spec.scopes, redir, state,
+    const scope = try percentEncode(alloc, spec.scopes);
+    defer alloc.free(scope);
+    if (spec.authorize_extra_query.len > 0) {
+        return std.fmt.allocPrint(alloc, "{s}?response_type=code&client_id={s}&scope={s}&redirect_uri={s}&state={s}&{s}", .{
+            spec.authorize_endpoint, client_id, scope, redir, state, spec.authorize_extra_query,
+        });
+    }
+    return std.fmt.allocPrint(alloc, "{s}?response_type=code&client_id={s}&scope={s}&redirect_uri={s}&state={s}", .{
+        spec.authorize_endpoint, client_id, scope, redir, state,
     });
 }
 
@@ -101,13 +112,7 @@ pub fn exchange(
     code: []const u8,
     redirect_uri: []const u8,
 ) !ExchangeResult {
-    const redir = try percentEncode(alloc, redirect_uri);
-    defer alloc.free(redir);
-    const body = try std.fmt.allocPrint(
-        alloc,
-        "client_id={s}&client_secret={s}&code={s}&redirect_uri={s}",
-        .{ creds.client_id, creds.client_secret, code, redir },
-    );
+    const body = try buildExchangeForm(alloc, creds, code, redirect_uri);
     defer alloc.free(body);
 
     // The exchange is a rare, request-scoped browser round-trip — the request
@@ -128,6 +133,22 @@ pub fn exchange(
         .class = .token_exchange,
     });
     return .{ .status = res.status, .body = res.body };
+}
+
+fn buildExchangeForm(alloc: std.mem.Allocator, creds: AppCreds, code: []const u8, redirect_uri: []const u8) ![]u8 {
+    const cid = try percentEncode(alloc, creds.client_id);
+    defer alloc.free(cid);
+    const csec = try percentEncode(alloc, creds.client_secret);
+    defer alloc.free(csec);
+    const encoded_code = try percentEncode(alloc, code);
+    defer alloc.free(encoded_code);
+    const redir = try percentEncode(alloc, redirect_uri);
+    defer alloc.free(redir);
+    return std.fmt.allocPrint(
+        alloc,
+        "grant_type=authorization_code&client_id={s}&client_secret={s}&code={s}&redirect_uri={s}",
+        .{ cid, csec, encoded_code, redir },
+    );
 }
 
 pub const APP_VAULT_KEY_SUFFIX = "-app";
@@ -228,7 +249,7 @@ test "authorizeUrl: composes endpoint + params, percent-encodes redirect_uri" {
     const url = try authorizeUrl(testing.allocator, T_SPEC, "CID123", "https://app.test/cb", "st.mac");
     defer testing.allocator.free(url);
     try testing.expectEqualStrings(
-        "https://example.test/authorize?client_id=CID123&scope=read,write&redirect_uri=https%3A%2F%2Fapp.test%2Fcb&state=st.mac",
+        "https://example.test/authorize?response_type=code&client_id=CID123&scope=read%2Cwrite&redirect_uri=https%3A%2F%2Fapp.test%2Fcb&state=st.mac",
         url,
     );
 }
@@ -237,4 +258,13 @@ test "percentEncode: unreserved pass through, reserved become %XX" {
     const enc = try percentEncode(testing.allocator, "a-b_c.d~e/f:g h");
     defer testing.allocator.free(enc);
     try testing.expectEqualStrings("a-b_c.d~e%2Ff%3Ag%20h", enc);
+}
+
+test "buildExchangeForm: form-encodes code exchange values" {
+    const form = try buildExchangeForm(testing.allocator, .{ .client_id = "cid+1", .client_secret = "sec&ret=" }, "co+de&x", "https://app.test/cb?x=1&y=2");
+    defer testing.allocator.free(form);
+    try testing.expectEqualStrings(
+        "grant_type=authorization_code&client_id=cid%2B1&client_secret=sec%26ret%3D&code=co%2Bde%26x&redirect_uri=https%3A%2F%2Fapp.test%2Fcb%3Fx%3D1%26y%3D2",
+        form,
+    );
 }

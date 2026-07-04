@@ -46,20 +46,15 @@ pub fn innerConnect(hx: hx_mod.Hx, route: matchers.WorkspaceConnectorRoute) void
         return;
     }
 
-    // The state signing secret is platform config resolved at boot; absent it,
-    // connect degrades closed rather than minting a state that can never
-    // complete (fail-loud UZ-CONN-001). Both LIVE archetypes need it; the
-    // api_key diff moves this check into the two state-minting arms (an
-    // api_key connect has no state, so no secret requirement).
-    const secret = hx.ctx.approval_signing_secret orelse return failNotConfigured(hx, spec);
-
     switch (spec.archetype) {
-        .oauth2 => |o| connectOauth2(hx, conn, spec, o, route.workspace_id, secret),
-        .app_install => |a| connectAppInstall(hx, spec, a, route.workspace_id, secret),
-        // Comptime-asserted: the registry carries no api_key entry yet; the
-        // first api_key provider implements this arm in the same diff that
-        // removes that assert.
-        .api_key => unreachable,
+        .oauth2 => |o| {
+            const secret = hx.ctx.approval_signing_secret orelse return failNotConfigured(hx, spec);
+            connectOauth2(hx, conn, spec, o, route.workspace_id, secret);
+        },
+        .app_install => |a| {
+            const secret = hx.ctx.approval_signing_secret orelse return failNotConfigured(hx, spec);
+            connectAppInstall(hx, spec, a, route.workspace_id, secret);
+        },
     }
 }
 

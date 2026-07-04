@@ -11,7 +11,7 @@ const health = @import("handlers/health.zig");
 const model_caps_h = @import("handlers/model_caps.zig");
 const auth_sessions = @import("handlers/auth/sessions.zig");
 const fleet_api = @import("handlers/fleets/api.zig");
-const fleet_creds = @import("handlers/fleets/credentials.zig");
+const fleet_secrets = @import("handlers/fleets/secrets.zig");
 const ws_lifecycle = @import("handlers/workspaces/lifecycle.zig");
 const tenant_billing_h = @import("handlers/tenant_billing.zig");
 const tenant_workspaces_h = @import("handlers/tenant_workspaces.zig");
@@ -204,20 +204,20 @@ pub fn invokePatchWorkspaceFleet(hx: *Hx, req: *httpz.Request, route: router.Rou
     }
 }
 
-pub fn invokeWorkspaceCredentials(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    const workspace_id = route.workspace_credentials;
+pub fn invokeWorkspaceSecrets(hx: *Hx, req: *httpz.Request, route: router.Route) void {
+    const workspace_id = route.workspace_secrets;
     switch (req.method) {
-        .POST => fleet_creds.innerStoreCredential(hx.*, req, workspace_id),
-        .GET => fleet_creds.innerListCredentials(hx.*, req, workspace_id),
+        .POST => fleet_secrets.innerStoreSecret(hx.*, req, workspace_id),
+        .GET => fleet_secrets.innerListSecrets(hx.*, req, workspace_id),
         else => common.respondMethodNotAllowed(hx.res),
     }
 }
 
-pub fn invokeWorkspaceCredentialItem(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    const r = route.workspace_credential;
+pub fn invokeWorkspaceSecretItem(hx: *Hx, req: *httpz.Request, route: router.Route) void {
+    const r = route.workspace_secret;
     switch (req.method) {
-        .PATCH => fleet_creds.innerRotateCredential(hx.*, req, r.workspace_id, r.credential_name),
-        .DELETE => fleet_creds.innerDeleteCredential(hx.*, req, r.workspace_id, r.credential_name),
+        .PATCH => fleet_secrets.innerRotateSecret(hx.*, req, r.workspace_id, r.secret_name),
+        .DELETE => fleet_secrets.innerDeleteSecret(hx.*, req, r.workspace_id, r.secret_name),
         else => common.respondMethodNotAllowed(hx.res),
     }
 }

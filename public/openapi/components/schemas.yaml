@@ -1,16 +1,41 @@
 components:
   schemas:
-    CredentialSummary:
+    SecretSummary:
       type: object
+      description: |
+        A workspace secret's non-secret descriptors — the `api_key`/`data`
+        payload is never projected here.
       required:
       - name
       - created_at
+      - kind
       properties:
         name:
           type: string
         created_at:
           type: integer
           format: int64
+        kind:
+          type: string
+          enum:
+          - provider_key
+          - custom_endpoint
+          - custom_secret
+          description: |
+            Server-derived classification from the stored body's `provider`
+            field — the client reads this, it never re-guesses from the name.
+            `custom_secret` also covers legacy/corrupt bodies that fail to
+            decrypt or parse, so listing always returns 200.
+        provider:
+          type: string
+          nullable: true
+          description: Present for `provider_key`/`custom_endpoint` kinds only.
+        model:
+          type: string
+          nullable: true
+        base_url:
+          type: string
+          nullable: true
     ErrorBody:
       type: object
       description: RFC 7807 problem detail error response (application/problem+json)
@@ -46,6 +71,17 @@ components:
           description: Present only on 409 conflict responses (RFC 7807 extension). Names the resource state that
             forbade the requested transition, e.g. `paused` when steering a paused fleet (UZ-AGT-012).
           example: paused
+        user_message:
+          type: string
+          description: |
+            Present only for error codes with a curated dashboard-safe rendering
+            (RFC 7807 extension). One plain sentence with no snake_case tokens,
+            internal nouns, or HTTP jargon — safe to render directly to an
+            end user, unlike `detail`/`title` which are written for the
+            CLI/API-integrator audience and may reference internal state.
+            Omitted (not `null`) for every code without a curated override;
+            clients should fall back to `detail`/`title` in that case.
+          example: We couldn't find that Fleet. It may have been deleted, or the ID doesn't match one in this workspace.
     TenantApiKey:
       type: object
       description: Metadata for a tenant API key. `key_hash` and the raw key are never returned.
@@ -314,7 +350,7 @@ components:
             type: string
         trigger_present:
           type: boolean
-    FleetTemplateOnboardRequest:
+    FleetLibraryOnboardRequest:
       type: object
       required:
       - source_kind
@@ -322,9 +358,9 @@ components:
         source_kind:
           type: string
           description: >-
-            Where the template comes from. `github` and `template` are fetched
+            Where the entry comes from. `github` and `template` are fetched
             and validated server-side; `upload` carries the SKILL.md (and optional
-            TRIGGER.md) Markdown inline for a skill-only template.
+            TRIGGER.md) Markdown inline for a skill-only entry.
           enum:
           - template
           - upload
@@ -343,10 +379,10 @@ components:
           type: string
           maxLength: 204800
           description: Optional raw TRIGGER.md bytes for `upload`. Ignored for fetched sources.
-    FleetTemplateGalleryEntry:
+    FleetLibraryGalleryEntry:
       type: object
       description: >-
-        One gallery row — a platform or tenant Fleet template. Carries identity,
+        One gallery row — a platform or tenant Fleet library entry. Carries identity,
         description, source, derived requirements, per-credential reason copy, and
         support-file summaries; never an object-store key or support-file content.
       required:
@@ -366,7 +402,7 @@ components:
         description:
           type: string
           description: >-
-            The template's SKILL.md description, rendered on the gallery card.
+            The entry's SKILL.md description, rendered on the gallery card.
             Platform rows carry their curated copy; tenant rows carry the
             description derived from the onboarded SKILL frontmatter.
         visibility:
@@ -411,11 +447,11 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/FleetBundleSupportFileSummary'
-    FleetTemplateOnboardResult:
+    FleetLibraryOnboardResult:
       type: object
       description: >-
-        Result of onboarding a Fleet template (platform or tenant tier). Carries
-        the template identity, its tier in `visibility`, the content hash, the
+        Result of onboarding a Fleet library entry (platform or tenant tier). Carries
+        the entry identity, its tier in `visibility`, the content hash, the
         derived requirements, and support-file summaries — never an object-store
         key or support-file content.
       required:
@@ -428,12 +464,12 @@ components:
       properties:
         id:
           type: string
-          description: Template id — the slug for platform templates, a UUIDv7 for tenant templates.
+          description: Entry id — the slug for platform entries, a UUIDv7 for tenant entries.
         name:
           type: string
         visibility:
           type: string
-          description: The catalog tier the template was onboarded into.
+          description: The catalog tier the entry was onboarded into.
           enum:
           - platform
           - tenant

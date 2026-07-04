@@ -1,11 +1,17 @@
 /// error_entries.zig — single source of truth for all error code entries.
 ///
-/// Each Entry has 5 required fields: code, http_status, title, hint, docs_uri.
+/// Each Entry has 5 required fields: code, http_status, title, hint, docs_uri,
+/// plus an optional `user_message` (null unless authored via `eu()`).
 /// The ENTRIES array is imported by error_registry.zig which builds the
 /// comptime lookup map and re-exports ERR_* constants.
 ///
 /// To add a new error code: add one e() call to ENTRIES, then add the
-/// corresponding ERR_* constant in error_registry.zig.
+/// corresponding ERR_* constant in error_registry.zig. If the code is
+/// reachable from a dashboard surface, use eu() instead and author a
+/// `user_message`: `hint` is written for the CLI/API-integrator audience
+/// (precise, technical) and is often jargon for a dashboard end user;
+/// `user_message` is the one-sentence, dashboard-safe alternative,
+/// authored once here rather than duplicated in the frontend's CODE_MAP.
 const std = @import("std");
 
 pub const ERROR_DOCS_BASE = "https://docs.agentsfleet.net/api-reference/error-codes#";
@@ -18,6 +24,10 @@ pub const Entry = struct {
     title: []const u8,
     hint: []const u8,
     docs_uri: []const u8,
+    /// Dashboard-safe one-sentence alternative to `hint`/`title`. Null for
+    /// every code not curated via eu() — the RFC 7807 body omits the field
+    /// entirely rather than serializing `user_message: null`.
+    user_message: ?[]const u8 = null,
 };
 
 /// Sentinel for unrecognized codes. Defined OUTSIDE ENTRIES — collision
@@ -45,19 +55,33 @@ fn e(
     };
 }
 
+/// Like e(), plus a curated `user_message` — see the module doc for when to
+/// reach for this instead of e().
+fn eu(
+    comptime code: []const u8,
+    comptime status: std.http.Status,
+    comptime title: []const u8,
+    comptime hint_text: []const u8,
+    comptime user_message_text: []const u8,
+) Entry {
+    var entry = e(code, status, title, hint_text);
+    entry.user_message = user_message_text;
+    return entry;
+}
+
 pub const ENTRIES = [_]Entry{
     // ── UUIDV7 ──────────────────────────────────────────────────────────────
     e("UZ-UUIDV7-009", .bad_request, "Invalid ID shape", "The supplied ID does not match the expected UUIDv7 shape."),
     // ── INTERNAL ─────────────────────────────────────────────────────────────
-    e("UZ-INTERNAL-001", .service_unavailable, "Database unavailable", "Check that DATABASE_URL is set and the database server is reachable. Run 'agentsfleetd doctor' to verify."),
-    e("UZ-INTERNAL-002", .internal_server_error, "Database error", "A database query failed. Check the err= field and database logs."),
+    eu("UZ-INTERNAL-001", .service_unavailable, "Database unavailable", "Check that DATABASE_URL is set and the database server is reachable. Run 'agentsfleetd doctor' to verify.", "Something broke on our end. Give it another shot — if it keeps failing, send us the code below."),
+    eu("UZ-INTERNAL-002", .internal_server_error, "Database error", "A database query failed. Check the err= field and database logs.", "We're under load and dropped your request. Try again in a few seconds."),
     e(S_UZ_INTERNAL_003, .internal_server_error, "Internal operation failed", "An internal operation failed. Check the err= field for details. " ++
         "If persistent, check service connectivity and run 'agentsfleetd doctor'."),
     // ── REQUEST ──────────────────────────────────────────────────────────────
-    e("UZ-REQ-001", .bad_request, "Invalid request", "The request body or parameters are invalid. Check the API documentation."),
+    eu("UZ-REQ-001", .bad_request, "Invalid request", "The request body or parameters are invalid. Check the API documentation.", "That request wasn't valid. Double-check the values you entered and try again."),
     e("UZ-REQ-002", .payload_too_large, "Payload too large", "Request body exceeds the maximum allowed size."),
     // ── AUTH ─────────────────────────────────────────────────────────────────
-    e("UZ-AUTH-001", .forbidden, "Forbidden", "Access denied. Check that your API key has the required role."),
+    eu("UZ-AUTH-001", .forbidden, "Forbidden", "Access denied. Check that your API key has the required role.", "You need operator access for that. Ask a tenant operator or admin to manage API keys."),
     e("UZ-AUTH-002", .unauthorized, "Unauthorized", "Authentication required. Provide a valid Bearer token."),
     e("UZ-AUTH-003", .unauthorized, "Token expired", "Your authentication token has expired. Re-authenticate."),
     e("UZ-AUTH-004", .service_unavailable, "Authentication service unavailable", "Authentication service is temporarily unavailable. Retry shortly."),
@@ -76,7 +100,7 @@ pub const ENTRIES = [_]Entry{
     e("UZ-AUTH-018", .bad_request, "Invalid verification code shape", "verification_code must be exactly 6 ASCII digits."),
     e("UZ-AUTH-019", .bad_request, "Invalid ciphertext", "ciphertext is missing or empty. Expect a base64url-encoded AES-256-GCM output."),
     e("UZ-AUTH-020", .bad_request, "Invalid nonce", "nonce is missing, empty, or the wrong length. Expect a base64url-encoded 12-byte value."),
-    e("UZ-AUTH-022", .forbidden, "Insufficient scope", "Your token does not carry a scope required for this action. The required scope is named in the error detail; see docs/AUTH.md for the scope catalogue."),
+    eu("UZ-AUTH-022", .forbidden, "Insufficient scope", "Your token does not carry a scope required for this action. The required scope is named in the error detail; see docs/AUTH.md for the scope catalogue.", "You need an additional scope for that. Ask an agentsfleet admin to grant the scope this action requires."),
     // ── API (serving-plane backpressure) ─────────────────────────────────────
     e("UZ-API-001", .too_many_requests, "Too many in-flight requests", "This API instance is at its in-flight request ceiling and is shedding load. " ++
         "Honor the Retry-After header and retry with backoff. Operators: raise API_MAX_IN_FLIGHT_REQUESTS or add replicas."),
@@ -98,7 +122,7 @@ pub const ENTRIES = [_]Entry{
     e("UZ-WH-011", .unauthorized, "Stale webhook timestamp", "Webhook request timestamp is outside the allowed 5-minute drift window. " ++
         "This may indicate a replay attack or clock skew."),
     e("UZ-WH-020", .unauthorized, "Webhook credential not configured", "No webhook credential is configured for this fleet's source. Run " ++
-        "`agentsfleet credential add <source> --data='{\"webhook_secret\":\"...\"}'` " ++
+        "`agentsfleet secret add <source> --data='{\"webhook_secret\":\"...\"}'` " ++
         "in the fleet's workspace, then resend."),
     e("UZ-WH-030", .payload_too_large, "Webhook payload too large", "Webhook body exceeds the 1 MiB ingest limit. Reduce the payload size " ++
         "or filter at the source."),
@@ -123,36 +147,36 @@ pub const ENTRIES = [_]Entry{
     // ── TOOL ─────────────────────────────────────────────────────────────────
     e("UZ-TOOL-005", .bad_request, "Unknown tool", "Unknown tool name. Check spelling against the known tools list."),
     // ── AGENT ───────────────────────────────────────────────────────────────
-    e("UZ-AGT-003", .failed_dependency, "Fleet credential missing", "A required credential is not in the vault. Add it with: agentsfleet credential add <name>"),
+    e("UZ-AGT-003", .failed_dependency, "Fleet credential missing", "A required credential is not in the vault. Add it with: agentsfleet secret add <name>"),
     e("UZ-AGT-004", .internal_server_error, "Fleet claim failed", "Fleet could not be claimed from the database. Check that the fleet_id exists and status is 'active'."),
     e("UZ-AGT-006", .conflict, "Fleet name already exists", "A Fleet with this name already exists. Use 'agentsfleet kill <name>' first, then deploy again."),
     // UZ-AGT-007 retired (single-string credential body) → see UZ-VAULT-002.
     e("UZ-AGT-008", .bad_request, "Invalid fleet config", "Config JSON is malformed. Verify trigger, tools, credentials, and budget fields " ++
         "in your TRIGGER.md frontmatter. See tests/fixtures/fleetbundle/platform-ops/TRIGGER.md for a working example."),
-    e("UZ-AGT-009", .not_found, "Fleet not found", "Fleet not found. Verify the fleet_id and that it has not been killed."),
+    eu("UZ-AGT-009", .not_found, "Fleet not found", "Fleet not found. Verify the fleet_id and that it has not been killed.", "We couldn't find that Fleet. It may have been deleted, or the ID doesn't match one in this workspace."),
     e("UZ-AGT-010", .conflict, "Fleet state transition not allowed", "The requested lifecycle action is not valid from the fleet's current state. The response detail names the specific transition that was refused."),
     e("UZ-AGT-011", .bad_request, "SKILL.md and TRIGGER.md disagree on `name:`", "Top-level `name:` in SKILL.md must match `name:` in TRIGGER.md. One identity per Fleet Bundle."),
     e("UZ-AGT-012", .conflict, "Fleet is paused", "This fleet is not active and refuses new work. Resume it with: agentsfleet resume <fleet>, then retry."),
     // ── Fleet Bundle ───────────────────────────────────────────────────────
-    e("UZ-BUNDLE-001", .bad_request, "Invalid Fleet Bundle", "The supplied Fleet Bundle is missing SKILL.md or contains unsafe, oversized, or malformed files."),
-    e("UZ-BUNDLE-002", .not_found, "Fleet Bundle not found", "No installable template or stored snapshot matches the request in this workspace."),
-    e("UZ-BUNDLE-003", .failed_dependency, "Fleet Bundle credentials missing", "Add the missing workspace credentials before installing this Fleet Bundle."),
+    eu("UZ-BUNDLE-001", .bad_request, "Invalid Fleet Bundle", "The supplied Fleet Bundle is missing SKILL.md or contains unsafe, oversized, or malformed files.", "That Fleet Bundle isn't valid. It's missing SKILL.md, or has an unsafe or oversized file — check the source and try again."),
+    eu("UZ-BUNDLE-002", .not_found, "Fleet Bundle not found", "No installable library entry or stored snapshot matches the request in this workspace.", "We couldn't find that Fleet Bundle. It may not be installed in this workspace yet — check the Fleet library."),
+    e("UZ-BUNDLE-003", .failed_dependency, "Fleet Bundle secrets missing", "Add the missing workspace secrets before installing this Fleet Bundle."),
     e("UZ-BUNDLE-004", .bad_gateway, "Fleet Bundle fetch failed", "The Fleet Bundle source could not be fetched from GitHub. The repository may be missing or private, or GitHub may be unreachable. Verify the source reference and retry."),
     e("UZ-BUNDLE-005", .service_unavailable, "Fleet Bundle storage unavailable", "Snapshot storage is not configured or is unavailable, so the validated bundle could not be stored. Retry later or contact the operator."),
     e("UZ-BUNDLE-006", .too_many_requests, "Too many Fleet Bundle imports in flight", "This instance is at its concurrent Fleet Bundle import ceiling. Honor the Retry-After header and retry with backoff."),
     // ── VAULT ────────────────────────────────────────────────────────────────
-    e("UZ-VAULT-001", .bad_request, "Credential data must be a non-empty JSON object", "POST /credentials body must include a 'data' field that is a JSON object with at least one key. " ++
-        "Bare strings, arrays, scalars, and {} are rejected."),
-    e("UZ-VAULT-002", .bad_request, "Credential data too large", "Stringified credential data exceeds 4KB. Compose the secret from fewer or shorter fields."),
-    e("UZ-VAULT-003", .not_found, "Credential not found", "No credential matches this name in the workspace. List the workspace credentials to find a valid name, or create it first."),
+    eu("UZ-VAULT-001", .bad_request, "Secret data must be a non-empty JSON object", "POST /secrets body must include a 'data' field that is a JSON object with at least one key. " ++
+        "Bare strings, arrays, scalars, and {} are rejected.", "That secret needs at least one field. Enter it as a JSON object with one or more keys — not a bare string or list."),
+    eu("UZ-VAULT-002", .bad_request, "Secret data too large", "Stringified secret data exceeds 4KB. Compose the secret from fewer or shorter fields.", "That secret is too large. Keep it under 4 KB — trim or shorten the fields."),
+    eu("UZ-VAULT-003", .not_found, "Secret not found", "No secret matches this name in the workspace. List the workspace secrets to find a valid name, or create it first.", "We couldn't find that secret. It may have already been deleted — refresh the list."),
     // ── PROVIDER (PUT /v1/tenants/me/provider) ───────────────────────────────
-    e("UZ-PROVIDER-001", .bad_request, "credential_ref required when mode=self_managed", "PUT body must include `credential_ref` naming a vault credential when `mode` is self_managed."),
-    e("UZ-PROVIDER-002", .bad_request, "Credential row not found in vault", "The named credential_ref has no vault row in the tenant's primary workspace. " ++
-        "Run `agentsfleet credential set <name> --data @-` to create it."),
-    e("UZ-PROVIDER-003", .bad_request, "Credential JSON missing required field", "Stored credential JSON must include `provider` and `model` (non-empty strings); `api_key` is required for a named provider but optional for an `openai-compatible` endpoint. " ++
-        "Re-run `agentsfleet credential set` with the required fields."),
-    e("UZ-PROVIDER-004", .bad_request, "Model not in cached caps catalogue", "The effective model is not present in core.model_caps. Pick a model from the model-caps endpoint " ++
-        "or request the catalogue be extended."),
+    eu("UZ-PROVIDER-001", .bad_request, "secret_ref required when mode=self_managed", "PUT body must include `secret_ref` naming a vault credential when `mode` is self_managed.", "Pick a secret to activate. Choose a stored secret before switching to a self-managed model."),
+    eu("UZ-PROVIDER-002", .bad_request, "Secret row not found in vault", "The named secret_ref has no vault row in the tenant's primary workspace. " ++
+        "Run `agentsfleet secret add <name> --data=@-` to create it.", "We couldn't find that secret. Store it under Secrets & ENVs, then try again."),
+    eu("UZ-PROVIDER-003", .bad_request, "Secret JSON missing required field", "Stored secret JSON must include `provider` and `model` (non-empty strings); `api_key` is required for a named provider but optional for an `openai-compatible` endpoint. " ++
+        "Re-run `agentsfleet secret add` with the required fields.", "That secret is missing required fields. It needs a provider and model set — edit it under Secrets & ENVs and add them."),
+    eu("UZ-PROVIDER-004", .bad_request, "Model not in cached caps catalogue", "The effective model is not present in core.model_caps. Pick a model from the model-caps endpoint " ++
+        "or request the catalogue be extended.", "That model isn't in our catalogue yet. Pick a listed model, or ask us to add support for it."),
     e("UZ-PROVIDER-005", .bad_request, "Custom endpoint base_url invalid or unsafe", "An openai-compatible credential needs a valid `base_url`: it must use https and must not target a " ++
         "loopback, private, link-local, or cloud-metadata host. A non-openai-compatible provider must not carry a `base_url`."),
     e("UZ-PROVIDER-006", .not_found, "Catalogue model not found", "No core.model_caps row matches this id. List the catalogue to find a valid id, or add the model first."),

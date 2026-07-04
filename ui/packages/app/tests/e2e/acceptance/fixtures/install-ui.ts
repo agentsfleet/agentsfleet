@@ -9,7 +9,7 @@
  * walk is browser-driven end-to-end.
  *
  * The onboard is the same wire as `agentsfleet install` resolves against:
- * POST /v1/workspaces/{ws}/fleet-templates with `{source_kind:"upload",
+ * POST /v1/workspaces/{ws}/fleet-libraries with `{source_kind:"upload",
  * skill_markdown, trigger_markdown}`. agentsfleetd parses the markdown
  * frontmatter server-side and, by the seed convention, the returned template
  * `id` equals the SKILL.md `name:` — which is also the name the gallery card
@@ -85,7 +85,7 @@ interface OnboardTemplateResp {
 async function onboardTemplate(auth: InstallAuth, templateName: string): Promise<string> {
   const client = clientFor(auth.handle);
   const resp = await client.post<OnboardTemplateResp>(
-    `/v1/workspaces/${auth.workspaceId}/fleet-templates`,
+    `/v1/workspaces/${auth.workspaceId}/fleet-libraries`,
     {
       source_kind: SOURCE_KIND_UPLOAD,
       skill_markdown: fixtureSkillMd(templateName),

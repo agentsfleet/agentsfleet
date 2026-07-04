@@ -44,7 +44,7 @@ export function makeSpyTree(): SpyTree {
       list: spy("workspace.list"),
       use: spy("workspace.use"),
       show: spy("workspace.show"),
-      credentials: spy("workspace.credentials"),
+      secrets: spy("workspace.secrets"),
       delete: spy("workspace.delete"),
     },
     fleetKey: {
@@ -67,7 +67,7 @@ export function makeSpyTree(): SpyTree {
       show: spy("billing.show"),
     },
     fleet: {
-      templates: spy("fleet.templates"),
+      library: spy("fleet.library"),
       install: spy("fleet.install"),
       update: spy("fleet.update"),
       list: spy("fleet.list"),
@@ -79,11 +79,11 @@ export function makeSpyTree(): SpyTree {
       logs: spy("fleet.logs"),
       events: spy("fleet.events"),
       steer: spy("fleet.steer"),
-      credential: {
-        add: spy("fleet.credential.add"),
-        show: spy("fleet.credential.show"),
-        list: spy("fleet.credential.list"),
-        delete: spy("fleet.credential.delete"),
+      secret: {
+        add: spy("fleet.secret.add"),
+        show: spy("fleet.secret.show"),
+        list: spy("fleet.secret.list"),
+        delete: spy("fleet.secret.delete"),
       },
     },
     memory: {

@@ -37,7 +37,7 @@ async function resetProviderDirect(): Promise<void> {
 async function deleteCredentialDirect(name: string): Promise<void> {
   const ws = await getDefaultWorkspaceId(FIXTURE_KEY.regular);
   await clientFor(FIXTURE_KEY.regular)
-    .delete(`/v1/workspaces/${ws}/credentials/${encodeURIComponent(name)}`)
+    .delete(`/v1/workspaces/${ws}/secrets/${encodeURIComponent(name)}`)
     .catch(() => undefined);
 }
 
@@ -67,7 +67,7 @@ test.describe("provider credential reference guard", () => {
 
     await signInAs(page, FIXTURE_KEY.regular);
     await page.goto("/settings/models");
-    await expect(page.getByRole("heading", { name: /^models & keys$/i })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /^models$/i })).toBeVisible();
 
     // Open the generic "Other provider" add-key form — it is the last
     // "Add key & model" affordance in the switch list (rendered after every

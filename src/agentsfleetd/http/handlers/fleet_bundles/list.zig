@@ -1,9 +1,9 @@
-//! GET /v1/fleets/bundles — the first-party Fleet template catalog (the
-//! dashboard gallery + `agentsfleet templates` shop-window). Metadata only;
+//! GET /v1/fleets/bundles — the first-party Fleet library catalog (the
+//! dashboard gallery + `agentsfleet library` shop-window). Metadata only;
 //! SKILL.md/TRIGGER.md content is fetched + snapshotted at import time.
 //!
-//! Source of truth is the curated `core.fleet_bundle_templates` table (seeded
-//! by migration, read-only at runtime). Adding a template is a data write — no
+//! Source of truth is the curated `core.fleet_library` table (seeded
+//! by migration, read-only at runtime). Adding an entry is a data write — no
 //! code change. JSONB requirement arrays are decoded into string slices so the
 //! response emits JSON arrays, not quoted JSONB text.
 
@@ -14,6 +14,7 @@ const pg = @import("pg");
 const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
 const common = @import("../common.zig");
 const hx_mod = @import("../hx.zig");
+const sql = @import("../../../fleet_bundle/sql.zig");
 
 const Hx = hx_mod.Hx;
 
@@ -25,14 +26,7 @@ const VISIBILITY_PUBLIC: []const u8 = "public";
 // which cap + cursor because they grow with usage), this is a curated catalog
 // that only grows via migration — no runtime or attacker write path. The
 // gallery must show every public template, so a cap would silently truncate it.
-const SELECT_PUBLIC =
-    \\SELECT id, name, description,
-    \\       required_credentials::text, required_tools::text, network_hosts::text,
-    \\       required_credentials_reasons::text
-    \\  FROM core.fleet_bundle_templates
-    \\ WHERE visibility = $1
-    \\ ORDER BY id
-;
+const SELECT_PUBLIC = sql.SELECT_BUNDLES_LIST;
 
 const CatalogRow = struct {
     id: []const u8,
@@ -52,16 +46,10 @@ const ResponseBody = struct {
 
 pub fn innerList(hx: Hx, req: *httpz.Request) void {
     _ = req;
-    const conn = hx.ctx.pool.acquire() catch {
-        common.internalDbUnavailable(hx.res, hx.req_id);
-        return;
-    };
-    defer hx.ctx.pool.release(conn);
+    var db = hx.db() orelse return;
+    defer db.end();
 
-    // A query or JSONB-decode failure here is a data/query fault, not lost
-    // connectivity — route it to the query-error code, not "DB unavailable",
-    // so on-call triage isn't misdirected to a connectivity hunt.
-    const items = buildCatalog(hx.alloc, conn) catch {
+    const items = buildCatalog(hx.alloc, db.conn) catch {
         common.internalDbError(hx.res, hx.req_id);
         return;
     };

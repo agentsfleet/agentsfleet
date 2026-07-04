@@ -7,7 +7,7 @@ import { Button } from "@agentsfleet/design-system";
 import { EVENTS } from "@/lib/analytics/events";
 import { captureProductEvent } from "@/lib/analytics/posthog";
 import { FLEET_NAME_CONFLICT_MESSAGE } from "@/lib/errors";
-import { WORKSPACE_CREDENTIALS_PATH } from "@/lib/fleet-credentials";
+import { WORKSPACE_SECRETS_PATH } from "@/lib/fleet-secrets";
 import { installFleetAction } from "../actions";
 import {
   flowError,
@@ -28,9 +28,10 @@ type Props = {
   // failed — in which case the connect gate holds nothing back (the server's 424
   // stays authoritative).
   presentCredentialNames: string[] | null;
-  // Optional operator-supplied fleet name. Absent ⇒ the template's SKILL.md
-  // `name:` is used, so two installs of one template collide; present ⇒ overrides
-  // it so one template can back several fleets in the workspace.
+  // Optional operator-supplied fleet name. Absent ⇒ the library entry's
+  // SKILL.md `name:` is used, so two installs of one library entry collide;
+  // present ⇒ overrides it so one library entry can back several fleets in
+  // the workspace.
   name?: string;
   onBack: () => void;
 };
@@ -46,7 +47,7 @@ export function InstallStates({ workspaceId, source, presentCredentialNames, nam
   // Pre-create stages the flow drives directly. Post-create, InstallStreamSteps
   // owns the rendered steps (it reads the fleet event stream), so this component only
   // tracks up to the point a fleet exists. Initial stage is computed from the gate
-  // so a ready template never flashes the connect copy before the effect runs.
+  // so a ready library entry never flashes the connect copy before the effect runs.
   const [installStage, setInstallStage] = useState<"connect" | "creating" | "error">(() =>
     readyToCreate(requirements.credentials, presentCredentialNames) ? "creating" : "connect",
   );
@@ -54,20 +55,20 @@ export function InstallStates({ workspaceId, source, presentCredentialNames, nam
   const [errorText, setErrorText] = useState<string | null>(null);
   const started = useRef(false);
 
-  // The create body keys off the template's tier: a platform template installs
-  // by slug `platform_template_id`, a tenant template by its UUID
-  // `tenant_template_id`. No import step — the server reads SKILL/TRIGGER from
-  // the onboarded template row.
+  // The create body keys off the entry's tier: a platform entry installs
+  // by slug `platform_library_id`, a tenant entry by its UUID
+  // `tenant_library_id`. No import step — the server reads SKILL/TRIGGER from
+  // the onboarded library row.
   const resolveCreateBody = useCallback((): Parameters<typeof installFleetAction>[1] => {
     const override = name?.trim();
     if (source.visibility === "platform") {
       return override
-        ? { platform_template_id: source.id, name: override }
-        : { platform_template_id: source.id };
+        ? { platform_library_id: source.id, name: override }
+        : { platform_library_id: source.id };
     }
     return override
-      ? { tenant_template_id: source.id, name: override }
-      : { tenant_template_id: source.id };
+      ? { tenant_library_id: source.id, name: override }
+      : { tenant_library_id: source.id };
   }, [source, name]);
 
   const runCreate = useCallback(async () => {
@@ -146,8 +147,8 @@ function PreCreateLines({
   errorText: string | null;
 }) {
   const lines: StateLine[] = [];
-  // No import step: the template is already onboarded, so the flow opens on the
-  // selected template, then gates on credentials before create.
+  // No import step: the library entry is already onboarded, so the flow opens
+  // on the selected library entry, then gates on credentials before create.
   lines.push({ id: "selected", tone: "ok", glyph: STATE_GLYPH.ok, text: `template · ${requirements.name}` });
   if (!requirements.triggerPresent) {
     lines.push({ id: "skill-only", tone: "wait", glyph: STATE_GLYPH.wait, text: "manual API wake will be generated" });
@@ -175,7 +176,7 @@ function ConnectGate({ unmet, reasons }: { unmet: string[]; reasons: Record<stri
     ? "Connect GitHub"
     : "Add token";
   const objectLabel = unmet.length === 1 ? "it" : "them";
-  // Purpose-driven copy when the template declares why each credential is needed
+  // Purpose-driven copy when the library entry declares why each credential is needed
   // (e.g. "to review your pull requests"); otherwise the generic connect prompt.
   // Only when EVERY unmet credential has a reason, so the sentence never lists a
   // credential whose purpose is missing.
@@ -192,13 +193,13 @@ function ConnectGate({ unmet, reasons }: { unmet: string[]; reasons: Record<stri
         ) : (
           <>
             Needs <span className="font-mono text-foreground">{unmet.join(", ")}</span>. Add{" "}
-            {objectLabel} in Credentials to run this fleet.
+            {objectLabel} in Secrets & ENVs to run this fleet.
           </>
         )}
       </p>
       <div className="flex flex-wrap items-center gap-2">
         <Button asChild size="sm">
-          <Link href={WORKSPACE_CREDENTIALS_PATH}>{connectLabel}</Link>
+          <Link href={WORKSPACE_SECRETS_PATH}>{connectLabel}</Link>
         </Button>
       </div>
     </div>

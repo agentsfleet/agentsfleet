@@ -20,17 +20,17 @@ import {
   installEffectFromFlags,
   updateEffectFromArgs,
 } from "../commands/fleet_install.ts";
-import { templatesEffect } from "../commands/fleet_templates.ts";
+import { libraryEffect } from "../commands/fleet_library.ts";
 import { listEffectFromFlags } from "../commands/fleet_list.ts";
 import { logsEffectFromFlags } from "../commands/fleet_logs.ts";
 import { eventsEffectFromFlags } from "../commands/fleet_events.ts";
 import { steerEffectFromArgs } from "../commands/fleet_steer.ts";
 import {
-  credentialAddEffectFromFlags,
-  credentialShowEffectFromName,
-  credentialListEffect,
-  credentialDeleteEffectFromName,
-} from "../commands/fleet_credential.ts";
+  secretAddEffectFromFlags,
+  secretShowEffectFromName,
+  secretListEffect,
+  secretDeleteEffectFromName,
+} from "../commands/fleet_secret.ts";
 
 export type WrapE = <E extends CliError, R extends MainLayerServices>(
   name: string,
@@ -46,12 +46,12 @@ export const buildFleetHandlers = (
   wrapE: WrapE,
   wrapEFn: WrapEFn,
 ): Handlers[typeof AGENT] => ({
-  templates: wrapE("fleet.templates", templatesEffect),
+  library: wrapE("fleet.library", libraryEffect),
   install: wrapEFn(
     "fleet.install",
     (frame) =>
       installEffectFromFlags({
-        templateId: optString(frame.parsed.options, FIELD_TEMPLATE),
+        libraryId: optString(frame.parsed.options, FIELD_LIBRARY),
         name: optString(frame.parsed.options, FIELD_NAME),
       }),
   ),
@@ -123,11 +123,11 @@ export const buildFleetHandlers = (
         { forceTty: frame.parsed.options[OPT_TTY] === true },
       ),
   ),
-  credential: {
+  secret: {
     add: wrapEFn(
-      "fleet.credential.add",
+      "fleet.secret.add",
       (frame) =>
-        credentialAddEffectFromFlags({
+        secretAddEffectFromFlags({
           name: frame.parsed.positionals[0],
           data: optString(frame.parsed.options, "data"),
           provider: optString(frame.parsed.options, FIELD_PROVIDER),
@@ -144,19 +144,19 @@ export const buildFleetHandlers = (
         }),
     ),
     show: wrapEFn(
-      "fleet.credential.show",
-      (frame) => credentialShowEffectFromName(frame.parsed.positionals[0]),
+      "fleet.secret.show",
+      (frame) => secretShowEffectFromName(frame.parsed.positionals[0]),
     ),
-    list: wrapE("fleet.credential.list", credentialListEffect),
+    list: wrapE("fleet.secret.list", secretListEffect),
     delete: wrapEFn(
-      "fleet.credential.delete",
-      (frame) => credentialDeleteEffectFromName(frame.parsed.positionals[0]),
+      "fleet.secret.delete",
+      (frame) => secretDeleteEffectFromName(frame.parsed.positionals[0]),
     ),
   },
 });
 const FIELD_CURSOR = "cursor" as const;
 const FIELD_FROM = "from" as const;
-const FIELD_TEMPLATE = "template" as const;
+const FIELD_LIBRARY = "library" as const;
 const FIELD_NAME = "name" as const;
 const FIELD_LIMIT = "limit" as const;
 const FIELD_PROVIDER = "provider" as const;

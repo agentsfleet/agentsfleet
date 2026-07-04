@@ -19,7 +19,7 @@ test {
     _ = @import("fleet_runtime/config.zig");
     _ = @import("fleet_runtime/yaml_frontmatter.zig");
     _ = @import("http/route_matchers.zig");
-    _ = @import("http/handlers/fleets/credential_metadata.zig");
+    _ = @import("http/handlers/fleets/secret_metadata.zig");
     _ = @import("fleet_runtime/activity_publisher.zig");
     _ = @import("fleet_runtime/metering.zig");
     _ = @import("util/strings/string_builder.zig");
@@ -35,15 +35,23 @@ test {
     _ = @import("credentials/integration.zig");
     _ = @import("credentials/integration_ctx.zig");
     _ = @import("credentials/integration_github.zig");
+    _ = @import("credentials/integration_oauth_refresh.zig");
     _ = @import("credentials/broker.zig");
     _ = @import("credentials/broker_test.zig");
     _ = @import("credentials/serve_broker.zig");
+    _ = @import("credentials/serve_broker_test.zig");
     _ = @import("http/handlers/connectors/state.zig");
     _ = @import("http/handlers/connectors/oauth2.zig");
+    _ = @import("http/handlers/connectors/oauth_status.zig");
     _ = @import("http/handlers/connectors/registry.zig");
     _ = @import("http/handlers/connectors/registry_integration_test.zig");
     _ = @import("http/handlers/connectors/slack/callback.zig");
+    _ = @import("http/handlers/connectors/oauth_refresh.zig");
+    _ = @import("http/handlers/connectors/zoho/callback.zig");
+    _ = @import("http/handlers/connectors/jira/callback.zig");
+    _ = @import("http/handlers/connectors/linear/callback.zig");
     _ = @import("http/handlers/connectors/github/callback.zig");
+    _ = @import("http/handlers/connectors/oauth_providers_integration_test.zig");
     _ = @import("http/handlers/connectors/slack/oauth_callback_integration_test.zig");
     _ = @import("http/handlers/connectors/slack/events_integration_test.zig");
     _ = @import("http/handlers/connectors/slack/outbound_integration_test.zig");
@@ -129,10 +137,10 @@ test {
     _ = @import("http/handlers/fleet_bundles/api_integration_test.zig");
     _ = @import("http/handlers/fleet_bundles/resolve.zig");
     // Two-tier template onboarding + gallery (M103)
-    _ = @import("http/handlers/templates/onboard.zig");
-    _ = @import("http/handlers/templates/gallery.zig");
-    _ = @import("http/handlers/templates/onboard_integration_test.zig");
-    _ = @import("fleet_bundle/template_store.zig");
+    _ = @import("http/handlers/library/onboard.zig");
+    _ = @import("http/handlers/library/gallery.zig");
+    _ = @import("http/handlers/library/onboard_integration_test.zig");
+    _ = @import("fleet_bundle/library_store.zig");
     _ = @import("fleet_bundle/importer.zig");
     _ = @import("fleet_bundle/github_source.zig");
     _ = @import("fleet_bundle/github_net.zig");

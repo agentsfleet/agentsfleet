@@ -5,11 +5,11 @@ import {
   resetTenantProvider as apiResetTenantProvider,
   setTenantProviderSelfManaged as apiSetTenantProviderSelfManaged,
 } from "@/lib/api/tenant_provider";
-import { rotateCredential as apiRotateCredential } from "@/lib/api/credentials";
+import { rotateSecret as apiRotateSecret } from "@/lib/api/secrets";
 import type { TenantProvider } from "@/lib/types";
 
 export async function setProviderSelfManagedAction(
-  body: { credential_ref: string; model?: string },
+  body: { secret_ref: string; model?: string },
 ): Promise<ActionResult<TenantProvider>> {
   return withToken((t) => apiSetTenantProviderSelfManaged(body, t));
 }
@@ -18,13 +18,13 @@ export async function resetProviderAction(): Promise<ActionResult<TenantProvider
   return withToken((t) => apiResetTenantProvider(t));
 }
 
-// Rotate only the secret of a stored credential (PATCH …/credentials/{name}).
+// Rotate only the api_key of a stored secret (PATCH …/secrets/{name}).
 // The server preserves provider/model/base_url, so this is the Replace-key
 // action for the active-model hero — safe for every kind.
-export async function rotateCredentialAction(
+export async function rotateSecretAction(
   workspaceId: string,
   name: string,
   apiKey: string,
 ): Promise<ActionResult<{ name: string }>> {
-  return withToken((t) => apiRotateCredential(workspaceId, name, apiKey, t));
+  return withToken((t) => apiRotateSecret(workspaceId, name, apiKey, t));
 }

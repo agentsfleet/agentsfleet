@@ -21,7 +21,7 @@ Read this when you need to know where a webhook, a steer, or a cron fire ends up
 | `core.fleets` | `agentsfleetd-api` only | Canonical Fleet runtime table; `agentsfleetd` reads it at lease so config resolves fresh per lease |
 | `core.fleet_sessions` | `agentsfleetd` lease path (mark busy) + report path (checkpoint) | `agentsfleetd` at lease + `agentsfleet status` |
 | `fleet.runner_leases` / `fleet.runner_affinity` | `agentsfleetd` lease path (issue) + report/reclaim (flip / release) | `agentsfleetd` assignment + fencing + reclaim |
-| `vault.secrets` | `agentsfleetd-api` on `credential add` (upsert) | `agentsfleetd` resolves just-in-time at `lease`, ships inline in the lease reply |
+| `vault.secrets` | `agentsfleetd-api` on `secret add` (upsert) | `agentsfleetd` resolves just-in-time at `lease`, ships inline in the lease reply |
 | `fleet:control` | — (removed at the cutover) | — (removed at the cutover) |
 
 ---
@@ -356,21 +356,21 @@ Fleet Bundle import is a source-prep step before Fleet creation, not a second ru
 ```
    dashboard source picker
     │
-    ├─► Start from template
+    ├─► Start from Fleet library
     ├─► Import public GitHub repository/path
     ├─► Manual SKILL.md paste / local command-line install
     └─► Upload bundle archive            (DEFERRED 2026-06-20, Indy-acked — not in the shipping picker)
             │
             ▼
    agentsfleetd-api
-    │  GET  /v1/fleets/bundles                (first-party template list)
+    │  GET  /v1/fleets/bundles                (first-party Fleet library list)
     │  POST /v1/workspaces/{ws}/fleets/bundles/snapshots
-    │       body: { source_kind, source_url? | template_id? }   (upload_ref DEFERRED 2026-06-20)
+    │       body: { source_kind, source_ref }   (upload_ref DEFERRED 2026-06-20)
     │
     ├─► validate archive/path names, size caps, required SKILL.md,
     │    frontmatter, secret-shaped content, and path traversal
     ├─► if TRIGGER.md is missing, keep import valid; install will create
-    │    a default manual/API trigger with no tools, credentials, or network
+    │    a default manual/API trigger with no tools, secrets, or network
     ├─► [Postgres] store searchable bundle metadata, parsed requirements,
     │    source kind, validation status, and content hash
     ├─► [object storage / R2] store the immutable canonical tar (agentsfleet re-packs the validated files, not GitHub's raw archive), content-hash-addressed
@@ -378,7 +378,7 @@ Fleet Bundle import is a source-prep step before Fleet creation, not a second ru
     │    for support files; the parsed SKILL.md/TRIGGER.md live in Postgres (above) and ride every
     │    lease. R2 is the SOLE support-file content store (M103); `support_files_json` holds a
     │    path/size/hash manifest only. See [`fleet_bundles.md`](./fleet_bundles.md) for the
-    │    two-tier template/fleet split.
+    │    two-tier Fleet library/fleet split.
     └─► 201 { id, visibility, requirements, content_hash }   (onboarding; install is a separate POST /fleets)
 ```
 
@@ -400,7 +400,7 @@ installed runtime. Runner remains the infrastructure vocabulary.
     │      from Postgres and immutable snapshot metadata from object storage
     ├─► if trigger_markdown is absent:
     │      generate default manual/API trigger config
-    ├─► check required workspace credentials by key name only; never resolve
+    ├─► check required workspace secrets by key name only; never resolve
     │      raw secret values during install
     ├─► [Postgres] INSERT core.fleets          (Row-Level Security (RLS): tenant boundary)
     ├─► [Postgres] INSERT core.fleet_sessions  (checkpoint row:
@@ -446,7 +446,7 @@ installed runtime. Runner remains the infrastructure vocabulary.
 
    WEBHOOK   GH Actions posts workflow_run failure
                → POST /v1/webhooks/{fleet_id}/github   (HMAC-SHA256
-                 verified against workspace credential
+                 verified against workspace secret
                  `github`.webhook_secret)
                → XADD fleet:{id}:events *
                       actor=webhook:github  type=webhook
@@ -520,11 +520,11 @@ installed runtime. Runner remains the infrastructure vocabulary.
 inbound rejection into one of three error codes, each with a distinct
 user action:
 
-- `UZ-WH-020 webhook_credential_not_configured` — the matching
-  `triggers[].source` is unknown to the provider registry, OR the
-  workspace has no `fleet:<source>` vault credential (vault row missing
-  OR `webhook_secret` field absent). User-recoverable misconfig — fix
-  with `agentsfleet credential add <source> --data @-` and pipe JSON on stdin.
+- `UZ-WH-020 webhook_credential_not_configured` (error code name unchanged — M112_001
+  deferred renaming this constant) — the matching `triggers[].source` is unknown
+  to the provider registry, OR the workspace has no `fleet:<source>` vault secret
+  (vault row missing OR `webhook_secret` field absent). User-recoverable misconfig
+  — fix with `agentsfleet secret add <source> --data @-` and pipe JSON on stdin.
 - `UZ-WH-010 invalid_signature` — provider + secret both configured but
   the request is unsigned, mis-signed, or the body was tampered with.
   Either an attack or a real drift between what the provider has
@@ -568,7 +568,7 @@ The deleted worker's single in-process `processEvent` loop is now split across t
                       gate_blocked rows are NEVER reopened. When the gate
                       resolves, a fresh XADD lands with
                       actor=continuation:<original>, producing a NEW row.
-     4. resolveSecretsMap from vault (per-fleet tool credentials,
+     4. resolveSecretsMap from vault (per-fleet tool secrets,
         workspace-scoped). The provider api_key is resolved separately
         (resolveActiveProvider, fresh + reclaim) and delivered on the lease via
         ExecutionPolicy.provider + ExecutionPolicy.api_key; it does NOT join
@@ -587,7 +587,7 @@ The deleted worker's single in-process `processEvent` loop is now split across t
         not a generic chat — soft reasoning input, never a secret. M84_008.)
        (`bundle_manifest` appears only for fleets installed from a Fleet Bundle. It
         names the immutable snapshot and support-file paths the runner must
-        materialize; it never contains resolved credential values.)
+        materialize; it never contains resolved secret values.)
 
    agentsfleet-runner — parent (child_supervisor.zig):
        establish cgroup → fork → exec self as `agentsfleet-runner __execute`
@@ -603,7 +603,7 @@ The deleted worker's single in-process `processEvent` loop is now split across t
        Bundle files such as SOUL.md, provider playbooks, scripts, examples, or
        assets are ordinary workspace files inside the sandbox. SKILL.md can tell
        the fleet to read them, but capability still comes only from ExecutionPolicy
-       and workspace credential grants.
+       and workspace secret grants.
        (fail-closed: an empty installed playbook OR a config-build allocation
         failure reports startup_posture and never invokes the model — the
         provider/key pair is assembled atomically, so a half-built config
@@ -755,7 +755,7 @@ Failure mode: if the runner holding a lease dies, no other runner can claim that
 ## What the coding fleet never does
 
 - Never sees the fleet's LLM tokens or reasoning state
-- Never holds the fleet's credentials in its own context
+- Never holds the fleet's secrets in its own context
 - Never executes the fleet's tool calls in its own session
 - Never persists across the user's laptop being closed
 
@@ -797,7 +797,7 @@ A future reconcile job (a control-plane sweep over `core.fleets` for `active` ro
 
 - **No race on stream / group creation.** `innerCreateFleet` does INSERT + `XGROUP CREATE` synchronously before returning 201. Any event arriving within microseconds of the 201 finds the stream already there, ready to be leased.
 - **All triggers funnel into one ingress.** Webhook, cron, steer, and continuation are different *producers* into `fleet:{id}:events`; the lease path doesn't branch on actor type.
-- **Credentials never enter fleet context.** Substitution happens at the tool bridge, inside the runner's sandboxed child, after sandbox entry. The fleet sees `${secrets.fly.api_token}`; HTTPS request headers get real bytes; responses never echo the token; the bytes never cross the activity pipe.
+- **Secrets never enter fleet context.** Substitution happens at the tool bridge, inside the runner's sandboxed child, after sandbox entry. The fleet sees `${secrets.fly.api_token}`; HTTPS request headers get real bytes; responses never echo the token; the bytes never cross the activity pipe.
 - **Exactly one active lease per fleet.** The atomic affinity claim + monotonic fencing token guarantee a single in-flight lease per fleet no matter how many runners poll.
 - **Reclaim is lease-layer, not Redis-consumer.** A dead runner is reclaimed via `lease_expires_at` + `fencing_token`, never `XAUTOCLAIM` — Redis cannot observe an off-platform processor's death.
 - **Late writers are fenced.** A reclaimed or killed runner's `report` is rejected by the `fencing_token` CAS, so it cannot mutate state. Negative-tested.

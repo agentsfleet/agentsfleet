@@ -40,7 +40,7 @@ describe("lib/api/fleets", () => {
       json: async () => ({ fleet_id: "zom_2", status: "active" }),
     });
     const mod = await import("../lib/api/fleets");
-    const body = { platform_template_id: "github-pr-reviewer", name: "platform-ops" };
+    const body = { platform_library_id: "github-pr-reviewer", name: "platform-ops" };
     const res = await mod.installFleet("ws_1", body, "tkn");
     expect(fetchMock).toHaveBeenCalledWith(
       expect.stringContaining("/v1/workspaces/ws_1/fleets"),
@@ -63,7 +63,7 @@ describe("lib/api/fleets", () => {
     await expect(
       mod.installFleet(
         "ws_1",
-        { platform_template_id: "github-pr-reviewer", name: "dup" },
+        { platform_library_id: "github-pr-reviewer", name: "dup" },
         "tkn",
       ),
     ).rejects.toMatchObject({ status: 409, code: "UZ-ZOM-002", message: "name taken" });
@@ -82,7 +82,7 @@ describe("lib/api/fleets", () => {
     await expect(
       mod.installFleet(
         "ws_1",
-        { tenant_template_id: "01932d4e-7c10-7a3a-9f00-000000000001" },
+        { tenant_library_id: "01932d4e-7c10-7a3a-9f00-000000000001" },
         "tkn",
       ),
     ).rejects.toMatchObject({ status: 500, message: "Server Error" });

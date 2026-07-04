@@ -95,7 +95,7 @@ describe("failure modes — install surface (server)", () => {
       const routes: MockRoutes = {
         // The gallery resolves so the create POST is reached; the create
         // then returns the 409 name conflict.
-        [`GET /v1/workspaces/${WS_ID}/fleet-templates`]: () => jsonResponse(200, {
+        [`GET /v1/workspaces/${WS_ID}/fleet-libraries`]: () => jsonResponse(200, {
           items: [{ id: templateId, name: "test-fleet", visibility: "platform",
             requirements: { trigger_present: true } }],
         }),
@@ -106,7 +106,7 @@ describe("failure modes — install surface (server)", () => {
         const out = bufferStream();
         const err = bufferStream();
         const code = await runCli(
-          ["install", "--template", templateId],
+          ["install", "--library", templateId],
           { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
         );
         // Effect-shape contract: HTTP 4xx → ServerError → exit 3.
@@ -126,7 +126,7 @@ describe("failure modes — runtime / observability surface", () => {
       const templateId = "runner-test";
       const routes: MockRoutes = {
         // The gallery resolves so the create POST is reached.
-        [`GET /v1/workspaces/${WS_ID}/fleet-templates`]: () => jsonResponse(200, {
+        [`GET /v1/workspaces/${WS_ID}/fleet-libraries`]: () => jsonResponse(200, {
           items: [{ id: templateId, name: "runner-test", visibility: "platform",
             requirements: { trigger_present: true } }],
         }),
@@ -158,7 +158,7 @@ describe("failure modes — runtime / observability surface", () => {
         const installOut = bufferStream();
         const installErr = bufferStream();
         const installCode = await runCli(
-          ["install", "--template", templateId],
+          ["install", "--library", templateId],
           { stdout: installOut.stream, stderr: installErr.stream,
             env: { AGENTSFLEET_API_URL: apiUrl } },
         );

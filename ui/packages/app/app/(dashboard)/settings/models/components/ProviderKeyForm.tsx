@@ -1,29 +1,43 @@
 "use client";
 
-import { useState, type KeyboardEvent } from "react";
+import { useId, useState, type KeyboardEvent } from "react";
 import { useRouter } from "next/navigation";
-import { Alert, Button, Input, Label, Spinner } from "@agentsfleet/design-system";
-import { createCredentialAction } from "@/app/(dashboard)/credentials/actions";
+import {
+  Alert,
+  Button,
+  Input,
+  Label,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+  Spinner,
+} from "@agentsfleet/design-system";
+import { createSecretAction } from "@/app/(dashboard)/secrets/actions";
 import { setProviderSelfManagedAction } from "../actions";
 import { detectProviderFromKey } from "../lib/detect-provider";
 import { presentErrorString } from "@/lib/errors";
-import { CREDENTIAL_FIELD } from "@/lib/types";
+import { SECRET_FIELD } from "@/lib/types";
 import { EVENTS } from "@/lib/analytics/events";
 import { captureProductEvent } from "@/lib/analytics/posthog";
 import { captureModelActivated } from "../lib/track";
+import { providerLabel, uniqueProviders } from "@/lib/api/model_caps";
+import { useModelCatalogue } from "./ModelCatalogueProvider";
 import ProviderModelSelect from "./ProviderModelSelect";
 
 export type ProviderKeyFormProps = {
   workspaceId: string;
   /** Lock the form to one provider (switch-list add); omit for the generic paste-detect add. */
   provider?: string;
-  /** When true, the stored credential is activated as the tenant provider on save. */
+  /** When true, the stored secret is activated as the tenant provider on save. */
   activate?: boolean;
   onDone: () => void;
   onCancel?: () => void;
 };
 
 const STORE_ACTION = "store the provider key";
+const ACTIVATE_ACTION = "activate this model";
 
 /**
  * Consolidated "add a provider key" form (supersedes InlineProviderKeyCreate +
@@ -41,6 +55,12 @@ export default function ProviderKeyForm({
   onCancel,
 }: ProviderKeyFormProps) {
   const router = useRouter();
+  const { models } = useModelCatalogue();
+  const providerOptions = uniqueProviders(models);
+  const uid = useId();
+  const apiKeyFieldId = `${uid}-api-key`;
+  const providerFieldId = `${uid}-provider`;
+  const modelFieldId = `${uid}-model`;
   const locked = lockedProvider !== undefined;
   const [provider, setProvider] = useState(lockedProvider ?? "");
   const [apiKey, setApiKey] = useState("");
@@ -67,12 +87,12 @@ export default function ProviderKeyForm({
     setError(null);
     setPending(true);
     try {
-      const created = await createCredentialAction(workspaceId, {
+      const created = await createSecretAction(workspaceId, {
         name,
         data: {
-          [CREDENTIAL_FIELD.provider]: name,
-          [CREDENTIAL_FIELD.apiKey]: apiKey.trim(),
-          [CREDENTIAL_FIELD.model]: model.trim(),
+          [SECRET_FIELD.provider]: name,
+          [SECRET_FIELD.apiKey]: apiKey.trim(),
+          [SECRET_FIELD.model]: model.trim(),
         },
       });
       if (!created.ok) {
@@ -81,12 +101,12 @@ export default function ProviderKeyForm({
         );
         return;
       }
-      captureProductEvent(EVENTS.credential_added, { credential_name: name });
+      captureProductEvent(EVENTS.secret_added, { secret_name: name });
 
       if (activate) {
-        const set = await setProviderSelfManagedAction({ credential_ref: name, model: model.trim() });
+        const set = await setProviderSelfManagedAction({ secret_ref: name, model: model.trim() });
         if (!set.ok) {
-          setError(set.error);
+          setError(presentErrorString({ errorCode: set.errorCode, message: set.error, action: ACTIVATE_ACTION }));
           return;
         }
         captureModelActivated(set.data);
@@ -108,9 +128,9 @@ export default function ProviderKeyForm({
   return (
     <div className="space-y-3" data-testid="provider-key-form">
       <div className="space-y-2">
-        <Label htmlFor="provider-key-api-key">API key</Label>
+        <Label htmlFor={apiKeyFieldId}>API key</Label>
         <Input
-          id="provider-key-api-key"
+          id={apiKeyFieldId}
           type="password"
           value={apiKey}
           onChange={(e) => onApiKeyChange(e.target.value)}
@@ -122,22 +142,43 @@ export default function ProviderKeyForm({
       </div>
       {locked ? null : (
         <div className="space-y-2">
-          <Label htmlFor="provider-key-provider">Provider</Label>
-          <Input
-            id="provider-key-provider"
-            value={provider}
-            onChange={(e) => {
-              setProvider(e.target.value);
-              setModel("");
-            }}
-            onKeyDown={onFieldKeyDown}
-            placeholder="anthropic"
-            spellCheck={false}
-            autoComplete="off"
-          />
+          <Label htmlFor={providerFieldId}>Provider</Label>
+          {providerOptions.length > 0 ? (
+            <Select
+              value={provider}
+              onValueChange={(value) => {
+                setProvider(value);
+                setModel("");
+              }}
+            >
+              <SelectTrigger id={providerFieldId} aria-label="Provider">
+                <SelectValue placeholder="Select a provider" />
+              </SelectTrigger>
+              <SelectContent>
+                {providerOptions.map((p) => (
+                  <SelectItem key={p} value={p}>
+                    {providerLabel(p)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          ) : (
+            <Input
+              id={providerFieldId}
+              value={provider}
+              onChange={(e) => {
+                setProvider(e.target.value);
+                setModel("");
+              }}
+              onKeyDown={onFieldKeyDown}
+              placeholder="anthropic"
+              spellCheck={false}
+              autoComplete="off"
+            />
+          )}
         </div>
       )}
-      <ProviderModelSelect id="provider-key-model" provider={name || undefined} model={model} onModelChange={setModel} />
+      <ProviderModelSelect id={modelFieldId} provider={name || undefined} model={model} onModelChange={setModel} />
       {error ? (
         <Alert variant="destructive" className="text-xs">
           {error}

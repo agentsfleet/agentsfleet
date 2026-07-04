@@ -1,16 +1,18 @@
 /**
  * settings-models.spec.ts — /settings/models (Models) renders for an
- * authed user, and the legacy /credentials route redirects into it.
+ * authed user.
  *
  * Asserts the page resolves the active workspace, calls GET
- * /v1/tenants/me/provider (resolved server-side), and renders its three
- * stable regions: the Active-Model hero, the provider switch list, and the
- * custom-secrets group. Does NOT mutate tenant provider state — that races
- * other specs against the same fixture tenant; the switch/rotate flows are
- * covered by unit tests and by provider-credential-reference.spec.ts.
+ * /v1/tenants/me/provider (resolved server-side), and renders its two
+ * stable regions: the Active-Model hero and the provider switch list. The
+ * custom-secrets group moved out to its own /secrets page (see
+ * secrets-lifecycle.spec.ts), so this page renders no secrets content at all.
+ * Does NOT mutate tenant provider state — that races other specs against the
+ * same fixture tenant; the switch/rotate flows are covered by unit tests and
+ * by provider-credential-reference.spec.ts.
  *
  * Page render alone is a useful signal because the provider resolver has
- * multiple failure modes (synthesised default, credential-ref mismatch,
+ * multiple failure modes (synthesised default, secret-ref mismatch,
  * backend 5xx) that all degrade to visible chrome here — the hero renders in
  * both the LIVE (self-managed) and DEFAULT (platform) branches.
  */
@@ -19,7 +21,7 @@ import { signInAs } from "./fixtures/auth";
 import { FIXTURE_KEY } from "./fixtures/constants";
 
 test.describe("Models page", () => {
-  test("Models renders the hero, switch list, and custom secrets", async ({ page }) => {
+  test("Models renders the hero and switch list, with no secrets content", async ({ page }) => {
     await signInAs(page, FIXTURE_KEY.regular);
     await page.goto("/settings/models");
     await expect(page).toHaveURL(/\/settings\/models(\?|$)/);
@@ -27,15 +29,6 @@ test.describe("Models page", () => {
     await expect(page.getByRole("heading", { name: /^models$/i })).toBeVisible();
     await expect(page.getByTestId("active-model-hero")).toBeVisible();
     await expect(page.getByTestId("provider-switch-list")).toBeVisible();
-    await expect(page.getByTestId("custom-secrets-group")).toBeVisible();
-  });
-
-  test("the legacy /credentials route redirects into Models", async ({ page }) => {
-    await signInAs(page, FIXTURE_KEY.regular);
-    await page.goto("/credentials");
-    // The standalone credentials vault was folded into Models; the route
-    // is a server redirect that keeps install-preview deep-links resolving.
-    await expect(page).toHaveURL(/\/settings\/models(\?|$)/);
-    await expect(page.getByTestId("custom-secrets-group")).toBeVisible();
+    await expect(page.getByTestId("custom-secrets-group")).toHaveCount(0);
   });
 });

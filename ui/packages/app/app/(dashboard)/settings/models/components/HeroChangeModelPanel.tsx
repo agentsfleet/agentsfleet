@@ -8,26 +8,32 @@ import { useProviderAction } from "../lib/use-provider-action";
 import ProviderModelSelect from "./ProviderModelSelect";
 
 type Props = {
-  /** Provider id of the active credential — scopes the model picker. */
+  /** Provider id of the active secret — scopes the model picker. */
   provider: string;
-  /** The active credential's ref; the model is re-pointed against the same key. */
-  credentialRef: string;
+  /** The active secret's ref; the model is re-pointed against the same key. */
+  secretRef: string;
   onClose: () => void;
 };
 
+const CHANGE_MODEL_ACTION = "change the model";
+
 /** Hero "Change model" — same key, a different model from this provider's catalogue. */
-export default function HeroChangeModelPanel({ provider, credentialRef, onClose }: Props) {
+export default function HeroChangeModelPanel({ provider, secretRef, onClose }: Props) {
   const [model, setModel] = useState("");
   const { pending, error, run } = useProviderAction();
 
   function save() {
     if (model.trim() === "") return;
-    void run(async () => {
-      const res = await setProviderSelfManagedAction({ credential_ref: credentialRef, model: model.trim() });
-      if (!res.ok) return res.error;
-      captureModelChanged(res.data);
-      return null;
-    }, onClose);
+    void run(
+      CHANGE_MODEL_ACTION,
+      async () => {
+        const res = await setProviderSelfManagedAction({ secret_ref: secretRef, model: model.trim() });
+        if (!res.ok) return { message: res.error, errorCode: res.errorCode };
+        captureModelChanged(res.data);
+        return null;
+      },
+      onClose,
+    );
   }
 
   return (

@@ -48,13 +48,13 @@ test("--help lists the fleet subcommand group", async () => {
   const text = out.read();
   // Commander emits a flat Commands list — each fleet op gets its
   // own line in the top-level body. The added Subcommands block lists
-  // the namespaced credential vault.
+  // the namespaced secret vault.
   assert.ok(text.includes("install"), "install line missing");
   assert.ok(text.includes("list"),    "list line missing");
   assert.ok(text.includes("status"),  "status line missing");
   assert.ok(text.includes("kill"),    "kill line missing");
   assert.ok(text.includes("logs"),    "logs line missing");
-  assert.ok(text.includes("credential"), "credential line missing");
+  assert.ok(text.includes("secret"), "secret line missing");
 });
 
 test("--help lists the workspace group; its subcommands appear under `workspace --help`", async () => {
@@ -78,7 +78,7 @@ test("--help lists the workspace group; its subcommands appear under `workspace 
   const text = sub.read();
   assert.ok(text.includes("use"), "workspace use subcommand missing");
   assert.ok(text.includes("show"), "workspace show subcommand missing");
-  assert.ok(text.includes("credentials"), "workspace credentials subcommand missing");
+  assert.ok(text.includes("secrets"), "workspace secrets subcommand missing");
 });
 
 test("--help lists the memory group; its read verbs appear under `memory --help`", async () => {
@@ -215,34 +215,36 @@ test("workspace show errors when no active workspace and no --workspace-id", asy
   });
 });
 
-// ── workspace credentials redirect ───────────────────────────────────────
+// ── workspace secrets redirect ───────────────────────────────────────
 
-test("workspace credentials prints the redirect message", async () => {
+test("workspace secrets prints the redirect message", async () => {
   await withStateDir(async () => {
     const out = bufferStream();
     const err = bufferStream();
-    const code = await runCli(["workspace", "credentials"], {
+    const code = await runCli(["workspace", "secrets"], {
       stdout: out.stream,
       stderr: err.stream,
       env: { NO_COLOR: "1", AGENTSFLEET_API_KEY: "agt_t_test" },
     });
     assert.equal(code, 0);
-    assert.ok(out.read().includes("/credentials"));
+    // The dashboard route is `/secrets` (Secrets & ENVs standalone page) —
+    // the CLI's redirect message points at the real, live URL.
+    assert.ok(out.read().includes("/secrets"));
   });
 });
 
-test("workspace credentials --json returns status=redirect", async () => {
+test("workspace secrets --json returns status=redirect", async () => {
   await withStateDir(async () => {
     const out = bufferStream();
     const err = bufferStream();
-    await runCli(["--json", "workspace", "credentials"], {
+    await runCli(["--json", "workspace", "secrets"], {
       stdout: out.stream,
       stderr: err.stream,
       env: { NO_COLOR: "1", AGENTSFLEET_API_KEY: "agt_t_test" },
     });
     const parsed = JSON.parse(out.read());
     assert.equal(parsed.status, "redirect");
-    assert.ok(parsed.message.includes("/credentials"));
+    assert.ok(parsed.message.includes("/secrets"));
   });
 });
 

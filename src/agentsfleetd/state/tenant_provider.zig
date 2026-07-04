@@ -12,7 +12,7 @@
 //! under platform mode the resolver follows core.platform_llm_keys into
 //! the admin tenant's workspace vault; under self-managed it loads the user's
 //! tenant-primary workspace vault by first trying the raw user-named
-//! credential_ref, then the dashboard workspace credential key derived from it.
+//! secret_ref, then the dashboard workspace credential key derived from it.
 //! The vault itself is keyed (workspace_id, key_name); the resolver
 //! bridges tenant_id → primary_workspace_id at lookup time via the same
 //! earliest-named-workspace pattern signup_bootstrap_store uses.
@@ -24,7 +24,7 @@ const std = @import("std");
 const clock = @import("common").clock;
 const pg = @import("pg");
 const resolver = @import("tenant_provider_resolver.zig");
-const credential_probe = @import("credential_probe.zig");
+const secret_probe = @import("secret_probe.zig");
 
 pub const Mode = enum {
     const Self = @This();
@@ -71,16 +71,16 @@ pub const ResolvedProvider = struct {
 };
 
 pub const ResolveError = error{
-    /// self-managed row points at a credential_ref that has no vault row.
-    CredentialMissing,
+    /// self-managed row points at a secret_ref that has no vault row.
+    SecretMissing,
     /// Vault row decrypted but the JSON object is missing required fields
     /// (provider, api_key, model).
-    CredentialDataMalformed,
+    SecretDataMalformed,
     /// An openai-compatible credential's `base_url` is missing, not https, or
     /// targets an SSRF-unsafe host; OR a non-openai-compatible credential
     /// carries a `base_url`. Validated at the parse boundary by base_url_guard
     /// (Invariant 5) — never dialed.
-    CredentialEndpointInvalid,
+    SecretEndpointInvalid,
     /// Platform mode, but core.platform_llm_keys has no active row OR the
     /// admin workspace's vault is missing the referenced key. Operator-side
     /// incident; surfaced via dead-letter on the next event.
@@ -124,24 +124,24 @@ pub fn upsertSelfManaged(
     alloc: std.mem.Allocator,
     conn: *pg.Conn,
     tenant_id: []const u8,
-    credential_ref: []const u8,
+    secret_ref: []const u8,
     model: []const u8,
     context_cap_tokens: u32,
 ) (ResolveError || anyerror)!void {
-    var probe = try credential_probe.probeSelfManagedCredential(alloc, conn, tenant_id, credential_ref);
+    var probe = try secret_probe.probeSelfManagedSecret(alloc, conn, tenant_id, secret_ref);
     defer probe.deinit(alloc);
 
     const now_ms: i64 = clock.nowMillis();
     _ = try conn.exec(
         \\INSERT INTO core.tenant_providers
-        \\  (tenant_id, mode, provider, model, context_cap_tokens, credential_ref, created_at, updated_at)
+        \\  (tenant_id, mode, provider, model, context_cap_tokens, secret_ref, created_at, updated_at)
         \\VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $7)
         \\ON CONFLICT (tenant_id) DO UPDATE SET
         \\  mode               = EXCLUDED.mode,
         \\  provider           = EXCLUDED.provider,
         \\  model              = EXCLUDED.model,
         \\  context_cap_tokens = EXCLUDED.context_cap_tokens,
-        \\  credential_ref     = EXCLUDED.credential_ref,
+        \\  secret_ref     = EXCLUDED.secret_ref,
         \\  updated_at         = EXCLUDED.updated_at
     , .{
         tenant_id,
@@ -149,7 +149,7 @@ pub fn upsertSelfManaged(
         probe.provider,
         model,
         @as(i32, @intCast(context_cap_tokens)),
-        credential_ref,
+        secret_ref,
         now_ms,
     });
 }
@@ -170,14 +170,14 @@ pub fn upsertPlatform(
     const now_ms: i64 = clock.nowMillis();
     _ = try conn.exec(
         \\INSERT INTO core.tenant_providers
-        \\  (tenant_id, mode, provider, model, context_cap_tokens, credential_ref, created_at, updated_at)
+        \\  (tenant_id, mode, provider, model, context_cap_tokens, secret_ref, created_at, updated_at)
         \\VALUES ($1::uuid, $2, $3, $4, $5, NULL, $6, $6)
         \\ON CONFLICT (tenant_id) DO UPDATE SET
         \\  mode               = EXCLUDED.mode,
         \\  provider           = EXCLUDED.provider,
         \\  model              = EXCLUDED.model,
         \\  context_cap_tokens = EXCLUDED.context_cap_tokens,
-        \\  credential_ref     = NULL,
+        \\  secret_ref     = NULL,
         \\  updated_at         = EXCLUDED.updated_at
     , .{
         tenant_id,
@@ -222,17 +222,17 @@ pub fn platformDefaultView(
     return .{ .provider = provider, .model = model, .context_cap_tokens = plk.context_cap_tokens };
 }
 
-pub const ProbedCredential = credential_probe.ProbedCredential;
+pub const ProbedSecret = secret_probe.ProbedSecret;
 
 /// The provider id that opts a self-managed credential into a custom
-/// OpenAI-compatible endpoint (re-exported from credential_probe — the
+/// OpenAI-compatible endpoint (re-exported from secret_probe — the
 /// credential JSON's `provider` value, distinct from the runner's `custom:<url>`
 /// wire name).
-pub const OPENAI_COMPATIBLE_PROVIDER = credential_probe.OPENAI_COMPATIBLE_PROVIDER;
+pub const OPENAI_COMPATIBLE_PROVIDER = secret_probe.OPENAI_COMPATIBLE_PROVIDER;
 
 /// Validate a self-managed credential's provider⇔base_url pairing (pure; SSRF +
 /// https-checked). Re-exported for the §6 validation unit tests.
-pub const validateCredentialEndpoint = credential_probe.validateCredentialEndpoint;
+pub const validateSecretEndpoint = secret_probe.validateSecretEndpoint;
 
 /// Probe the tenant's self-managed credential and return the {provider, api_key,
 /// model} triplet. Used by the HTTP PUT handler to read the effective
@@ -243,9 +243,9 @@ pub fn probeSelfManaged(
     alloc: std.mem.Allocator,
     conn: *pg.Conn,
     tenant_id: []const u8,
-    credential_ref: []const u8,
-) (ResolveError || anyerror)!ProbedCredential {
-    return credential_probe.probeSelfManagedCredential(alloc, conn, tenant_id, credential_ref);
+    secret_ref: []const u8,
+) (ResolveError || anyerror)!ProbedSecret {
+    return secret_probe.probeSelfManagedSecret(alloc, conn, tenant_id, secret_ref);
 }
 
 test {

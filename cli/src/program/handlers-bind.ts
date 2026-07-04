@@ -278,7 +278,7 @@ export function buildHandlers(lifecycle: Lifecycle): Handlers {
           "tenant.provider.add",
           (frame) =>
             tenantProviderAddEffectFromArgs(
-              optString(frame.parsed.options, "credential"),
+              optString(frame.parsed.options, "secret"),
               optString(frame.parsed.options, "model"),
             ),
           lifecycle,

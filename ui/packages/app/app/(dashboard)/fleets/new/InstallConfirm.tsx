@@ -11,28 +11,28 @@ import {
   Input,
   SectionLabel,
 } from "@agentsfleet/design-system";
-import type { FleetTemplateGalleryEntry } from "@/lib/types";
+import type { FleetLibraryGalleryEntry } from "@/lib/types";
 
 type Props = {
-  template: FleetTemplateGalleryEntry;
+  entry: FleetLibraryGalleryEntry;
   onInstall: (name: string) => void;
   onBack: () => void;
 };
 
-// Confirm step between picking a template and the live install states. Lets the
-// operator optionally name the fleet so one template can back several fleets in a
-// workspace (parity with `agentsfleet install --template <id> --name`). A blank
-// name falls back to the template's SKILL.md `name:`.
-export function InstallConfirm({ template, onInstall, onBack }: Props) {
+// Confirm step between picking a library entry and the live install states.
+// Lets the operator optionally name the fleet so one library entry can back
+// several fleets in a workspace (parity with `agentsfleet install --library
+// <id> --name`). A blank name falls back to the entry's SKILL.md `name:`.
+export function InstallConfirm({ entry, onInstall, onBack }: Props) {
   const [name, setName] = useState("");
   return (
     <DashboardPanel padding="compact" className="max-w-prose">
       <DashboardPanelHeader>
         <div className="space-y-2">
           <SectionLabel>Install</SectionLabel>
-          <DashboardPanelTitle>{template.name}</DashboardPanelTitle>
-          {template.description ? (
-            <DashboardPanelDescription>{template.description}</DashboardPanelDescription>
+          <DashboardPanelTitle>{entry.name}</DashboardPanelTitle>
+          {entry.description ? (
+            <DashboardPanelDescription>{entry.description}</DashboardPanelDescription>
           ) : null}
         </div>
       </DashboardPanelHeader>
@@ -49,7 +49,7 @@ export function InstallConfirm({ template, onInstall, onBack }: Props) {
             <Input
               value={name}
               onChange={(event) => setName(event.target.value)}
-              placeholder={template.name}
+              placeholder={entry.name}
               aria-label="Fleet name"
               autoComplete="off"
               spellCheck={false}

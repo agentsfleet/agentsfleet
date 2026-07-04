@@ -51,6 +51,7 @@ vi.mock("lucide-react", () => ({
   CpuIcon: () => React.createElement("svg", { "data-icon": "CpuIcon" }),
   CreditCardIcon: () => React.createElement("svg", { "data-icon": "CreditCardIcon" }),
   MenuIcon: () => React.createElement("svg", { "data-icon": "MenuIcon" }),
+  PanelLeftIcon: () => React.createElement("svg", { "data-icon": "PanelLeftIcon" }),
   SunIcon: () => React.createElement("svg", { "data-icon": "SunIcon" }),
   MoonIcon: () => React.createElement("svg", { "data-icon": "MoonIcon" }),
   ChevronDownIcon: () => React.createElement("svg", { "data-icon": "ChevronDownIcon" }),

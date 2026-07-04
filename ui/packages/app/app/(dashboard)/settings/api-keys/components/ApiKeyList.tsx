@@ -4,6 +4,8 @@ import { type Ref, useImperativeHandle, useState, useTransition } from "react";
 import {
   Badge,
   Button,
+  DataTable,
+  type DataTableColumn,
   EmptyState,
   Select,
   SelectContent,
@@ -140,11 +142,16 @@ export default function ApiKeyList({
           description="Create one for outside tools."
         />
       ) : (
-        <div className="divide-y rounded-md border">
-          {items.map((k) => (
-            <Row key={k.id} k={k} pending={pending} onRevoke={() => setTarget({ ...k, mode: "revoke" })} onDelete={() => setTarget({ ...k, mode: "delete" })} />
-          ))}
-        </div>
+        <DataTable
+          columns={buildColumns({
+            pending,
+            onRevoke: (k) => setTarget({ ...k, mode: "revoke" }),
+            onDelete: (k) => setTarget({ ...k, mode: "delete" }),
+          })}
+          rows={items}
+          rowKey={(k) => k.id}
+          caption="API keys"
+        />
       )}
 
       {error && target === null ? <p className="text-sm text-destructive">{error}</p> : null}
@@ -172,28 +179,73 @@ export default function ApiKeyList({
   );
 }
 
-function Row({ k, pending, onRevoke, onDelete }: { k: ApiKeyRow; pending: boolean; onRevoke: () => void; onDelete: () => void }) {
+function KeyNameCell({ k }: { k: ApiKeyRow }) {
   return (
-    <div className="flex items-center justify-between gap-3 p-3">
-      <div className="min-w-0">
-        <div className="flex items-center gap-2">
-          <span className="truncate font-mono text-sm">{k.key_name}</span>
-          <Badge variant={k.active ? "green" : "amber"}>{k.active ? "active" : "revoked"}</Badge>
-        </div>
-        <div className="font-mono text-xs tabular-nums text-muted-foreground">
-          created {fmt(k.created_at)} · {k.last_used_at ? `last used ${fmt(k.last_used_at)}` : "never used"}
-          {k.revoked_at ? ` · revoked ${fmt(k.revoked_at)}` : ""}
-        </div>
-      </div>
-      {k.active ? (
-        <Button type="button" variant="ghost" size="sm" disabled={pending} onClick={onRevoke} aria-label={`Revoke API key ${k.key_name}`}>
-          Revoke
-        </Button>
-      ) : (
-        <Button type="button" variant="ghost" size="sm" disabled={pending} onClick={onDelete} aria-label={`Delete API key ${k.key_name}`}>
-          Delete
-        </Button>
-      )}
+    <div className="flex items-center gap-2 min-w-0">
+      <span className="truncate font-mono text-sm">{k.key_name}</span>
+      <Badge variant={k.active ? "green" : "amber"}>{k.active ? "active" : "revoked"}</Badge>
     </div>
   );
+}
+
+function KeyActivityCell({ k }: { k: ApiKeyRow }) {
+  return (
+    <span className="font-mono text-xs tabular-nums text-muted-foreground">
+      created {fmt(k.created_at)} · {k.last_used_at ? `last used ${fmt(k.last_used_at)}` : "never used"}
+      {k.revoked_at ? ` · revoked ${fmt(k.revoked_at)}` : ""}
+    </span>
+  );
+}
+
+function KeyActionsCell({
+  k,
+  pending,
+  onRevoke,
+  onDelete,
+}: {
+  k: ApiKeyRow;
+  pending: boolean;
+  onRevoke: () => void;
+  onDelete: () => void;
+}) {
+  return k.active ? (
+    <Button type="button" variant="ghost" size="sm" disabled={pending} onClick={onRevoke} aria-label={`Revoke API key ${k.key_name}`}>
+      Revoke
+    </Button>
+  ) : (
+    <Button type="button" variant="ghost" size="sm" disabled={pending} onClick={onDelete} aria-label={`Delete API key ${k.key_name}`}>
+      Delete
+    </Button>
+  );
+}
+
+function buildColumns({
+  pending,
+  onRevoke,
+  onDelete,
+}: {
+  pending: boolean;
+  onRevoke: (k: ApiKeyRow) => void;
+  onDelete: (k: ApiKeyRow) => void;
+}): DataTableColumn<ApiKeyRow>[] {
+  return [
+    {
+      key: "name",
+      header: "Name",
+      cell: (k) => <KeyNameCell k={k} />,
+    },
+    {
+      key: "activity",
+      header: "Created",
+      cell: (k) => <KeyActivityCell k={k} />,
+    },
+    {
+      key: "actions",
+      header: "Actions",
+      numeric: true,
+      cell: (k) => (
+        <KeyActionsCell k={k} pending={pending} onRevoke={() => onRevoke(k)} onDelete={() => onDelete(k)} />
+      ),
+    },
+  ];
 }

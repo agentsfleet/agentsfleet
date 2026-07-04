@@ -8,7 +8,7 @@ import type { WrapE, WrapEFn } from "./handlers-bind-fleet.ts";
 import { readStringOpt as optString } from "../commands/types.ts";
 import {
   workspaceAddEffect,
-  workspaceCredentialsEffect,
+  workspaceSecretsEffect,
   workspaceDeleteEffectFromArgs,
   workspaceListEffect,
   workspaceShowEffectFromArgs,
@@ -42,7 +42,7 @@ export const buildWorkspaceHandlers = (
           optString(frame.parsed.options, FIELD_WORKSPACE_ID_DASHED),
       ),
   ),
-  credentials: wrapE("workspace.credentials", workspaceCredentialsEffect),
+  secrets: wrapE("workspace.secrets", workspaceSecretsEffect),
   delete: wrapEFn(
     "workspace.delete",
     (frame) =>

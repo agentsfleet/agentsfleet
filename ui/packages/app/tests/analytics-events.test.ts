@@ -7,7 +7,7 @@ const APP_ROOT = resolve(__dirname, "..");
 
 // Exact prop-key names that would indicate a secret-bearing payload. Event
 // props carry IDs, names, and enums only; suffixed forms (api_key_id,
-// credential_name, has_reason) are the allowed ID/name/flag shapes.
+// secret_name, has_reason) are the allowed ID/name/flag shapes.
 const FORBIDDEN_PROP_KEYS = [
   "token",
   "key",

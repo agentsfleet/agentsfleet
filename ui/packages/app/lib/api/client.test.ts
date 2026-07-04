@@ -107,6 +107,31 @@ describe("request", () => {
     expect(err.requestId).toBe("req_1");
   });
 
+  it("prefers user_message over detail when the error body carries a curated override", async () => {
+    fetchMock.mockResolvedValue({
+      ok: false,
+      status: 400,
+      json: async () => ({
+        detail: "The effective model is not present in core.model_caps.",
+        error_code: "UZ-PROVIDER-004",
+        user_message: "That model isn't in our catalogue yet. Pick a listed model, or ask us to add support for it.",
+      }),
+    });
+    const err = await request("/v1/test", { method: "PUT" }, "tok").catch((e) => e) as ApiError;
+    expect(err.message).toBe("That model isn't in our catalogue yet. Pick a listed model, or ask us to add support for it.");
+    expect(err.code).toBe("UZ-PROVIDER-004");
+  });
+
+  it("falls back to detail when the error body has no user_message", async () => {
+    fetchMock.mockResolvedValue({
+      ok: false,
+      status: 409,
+      json: async () => ({ detail: "already stopped", error_code: "UZ-AGT-010" }),
+    });
+    const err = await request("/v1/test", { method: "DELETE" }, "tok").catch((e) => e) as ApiError;
+    expect(err.message).toBe("already stopped");
+  });
+
   it("falls back to the title when the error body omits detail", async () => {
     fetchMock.mockResolvedValue({
       ok: false,

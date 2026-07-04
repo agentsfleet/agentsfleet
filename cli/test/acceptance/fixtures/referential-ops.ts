@@ -86,55 +86,55 @@ export const AGENT_KEY_SECRET_PREFIX = "agt_a" as const;
 // pass as an auth rejection.
 export const REJECTED_AUTH_RE = /HTTP_401|HTTP_403|\b401\b|\b403\b|unauthor|forbidden/i;
 
-// A credential delete refused for referential reasons surfaces as a conflict
+// A secret delete refused for referential reasons surfaces as a conflict
 // (HTTP_409); the alternative is a clean cascade (exit 0). Dropped the bare
 // `UZ-` alternative — it matched any UZ-* code, including unrelated ones.
 const CONFLICT_RE = /HTTP_409|\b409\b|conflict|in[_ -]?use|referenced/i;
 // `tenant provider show` flags a dangling credential reference via this marker
 // (per cli/src/commands/tenant.ts).
 const CREDENTIAL_MISSING = "credential_missing" as const;
-// credential-delete JSON envelope key + the success status it carries.
+// secret-delete JSON envelope key + the success status it carries.
 const KEY_DELETE_STATUS = "status" as const;
 const STATUS_DELETED = "deleted" as const;
 
 /**
- * Discover-and-assert the credential-delete-under-reference disjunction so the
+ * Discover-and-assert the secret-delete-under-reference disjunction so the
  * spec's `it` body stays thin (RULE: fn ≤ 50). `del` is the raw delete result;
  * `showProvider` re-reads the live posture; `providerMutated` says whether the
  * provider actually recorded a reference (only then is the posture re-checked).
  *
  *   REFUSED  : non-zero exit with a recognisable conflict; the provider still
- *              references the (still-present) credential.
- *   CASCADES : exit 0; the provider no longer hard-references a LIVE credential
+ *              references the (still-present) secret.
+ *   CASCADES : exit 0; the provider no longer hard-references a LIVE secret
  *              — the ref was dropped OR it dangles WITH a credential_missing
  *              flag. A silently-healthy posture pointing at a vanished secret is
  *              the one outcome rejected.
  */
-export async function assertCredentialDeleteDisjunction(opts: {
+export async function assertSecretDeleteDisjunction(opts: {
   readonly del: RunResult;
-  readonly credName: string;
+  readonly secretName: string;
   readonly providerMutated: boolean;
   readonly showProvider: () => Promise<ProviderSnapshot>;
 }): Promise<void> {
-  const { del, credName, providerMutated, showProvider } = opts;
+  const { del, secretName, providerMutated, showProvider } = opts;
   if (del.code !== 0) {
     assert.match(`${del.stdout}\n${del.stderr}`, CONFLICT_RE,
       `refused delete had an unexpected error shape: ${del.stdout}\n${del.stderr}`);
     if (providerMutated) {
       const still = await showProvider();
-      assert.equal(still.credential_ref, credName,
+      assert.equal(still.secret_ref, secretName,
         `refused delete must leave the provider reference intact: ${JSON.stringify(still)}`);
     }
     return;
   }
   const status = (JSON.parse(del.stdout.trim() || "{}") as Record<string, unknown>)[KEY_DELETE_STATUS];
-  assert.equal(status, STATUS_DELETED, `unexpected credential delete status: ${del.stdout}`);
+  assert.equal(status, STATUS_DELETED, `unexpected secret delete status: ${del.stdout}`);
   if (!providerMutated) return;
   const after = await showProvider();
-  const danglingButFlagged = after.credential_ref === credName && after.error === CREDENTIAL_MISSING;
-  const refDropped = after.credential_ref !== credName;
+  const danglingButFlagged = after.secret_ref === secretName && after.error === CREDENTIAL_MISSING;
+  const refDropped = after.secret_ref !== secretName;
   assert.ok(danglingButFlagged || refDropped,
-    `cascading credential delete left an unflagged dangling provider reference: ${JSON.stringify(after)}`);
+    `cascading secret delete left an unflagged dangling provider reference: ${JSON.stringify(after)}`);
 }
 
 export interface MintedFleetKey {

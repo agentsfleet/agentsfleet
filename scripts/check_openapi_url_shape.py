@@ -40,10 +40,10 @@ NOUN_FINAL_SEGMENT_ALLOW: set[str] = {
     "events",            # fleet_events resource
     "messages",          # chat messages collection (per-fleet ingress)
     "memories",          # memory entries collection (per-fleet scratchpad)
-    "credentials",       # core.credentials
+    "secrets",           # vault.secrets (renamed from "credentials")
     "fleets",           # core.fleets
     "bundles",           # Fleet Bundle catalog/import nested under /fleets by product vocabulary
-    "fleet-templates",   # two-tier Fleet template catalog onboarding (M103)
+    "fleet-libraries",   # two-tier Fleet Library catalog onboarding (M103)
     "snapshots",         # immutable workspace-owned Fleet Bundle source copies
     "workspaces",        # core.workspaces
     "runners",           # core runner fleet — enrollment (POST /v1/runners) + operator plane (GET /v1/fleets/runners)
@@ -60,6 +60,7 @@ NOUN_FINAL_SEGMENT_ALLOW: set[str] = {
     "integration-grants",
     "integration-requests",
     "approvals",         # approval-gate inbox collection
+    "connectors",        # connector catalog collection — GET /v1/workspaces/{ws}/connectors (M108); the registry rendered as data
     # Sub-resource leaves that are operator-facing nouns:
     "stream",            # SSE sub-resource of /events; not "to stream", a thing
     "current-run",       # the active run record (read-only resource)

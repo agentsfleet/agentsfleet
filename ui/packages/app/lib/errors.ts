@@ -50,70 +50,27 @@ interface CodeEntry {
 // `CURATED_ERROR_CODES` (below) is the public-facing key list — exported so
 // the invariant test in errors.test.ts iterates the live set instead of a
 // hand-typed shadow that goes stale the next time someone adds an entry.
+//
+// Every code that CAN be backend-authored now carries its friendly copy as
+// `user_message` on the RFC 7807 error body (see
+// src/agentsfleetd/errors/error_entries.zig's eu()) instead of living here —
+// client.ts/approvals.ts prefer it automatically, no call-site changes
+// needed. What's left below is exactly the set that can't be: codes minted
+// client-side that never round-trip to a real backend response, plus two
+// dead entries kept as-is (see the note below).
 const CODE_MAP = {
+  // Minted in with-token.ts when no Bearer token exists at all.
   "UZ-AUTH-401": {
     title: "Your session expired",
     body: "Sign in again to keep going.",
   },
-  "UZ-INTERNAL-001": {
-    title: "Something broke on our end",
-    body: "Give it another shot — if it keeps failing, send us the code below.",
-  },
-  "UZ-INTERNAL-002": {
-    title: "We're under load and dropped your request",
-    body: "Try again in a few seconds.",
-  },
-  "UZ-VALIDATION-001": {
-    title: "That didn't pass validation",
-    body: "Double-check the fields above and resubmit.",
-  },
-  "UZ-CRED-001": {
-    title: "We couldn't look up that credential",
-    body: "Re-store the credential under the same name, or pick a different one.",
-  },
-  "UZ-CRED-003": {
-    title: "That credential already exists",
-    body: "Pick a different name, or delete the existing one first.",
-  },
-  "UZ-AGT-009": {
-    title: "That Fleet is in a state that blocks this action",
-    body: "Check the current status on the detail page and try the right transition.",
-  },
-  "UZ-AUTH-001": {
-    title: "You need operator access for that",
-    body: "Ask a tenant operator or admin to manage API keys.",
-  },
-  // UZ-AUTH-022 is the shared insufficient-scope code across every scope gate
-  // (runner/model operator surfaces, template onboarding, …). One generic copy
-  // — the backend `detail` names the specific scope required. (Reconciled from
-  // two domain-specific entries — operator + template — that collided here.)
+  // ALSO minted client-side (lib/actions/require-scope.ts's fail-fast
+  // pre-check, before any request reaches the backend) — that path can't
+  // read a backend user_message, so this entry has to stay even though
+  // UZ-AUTH-022 also has one now for the real-HTTP-403 path.
   "UZ-AUTH-022": {
     title: "You need an additional scope for that",
     body: "Ask an agentsfleet admin to grant the scope this action requires.",
-  },
-  "UZ-REQ-001": {
-    title: "That request wasn't valid",
-    body: "We reset to the defaults — try again.",
-  },
-  "UZ-APIKEY-003": {
-    title: "We couldn't find that API key",
-    body: "It may have already been deleted — refresh the list.",
-  },
-  "UZ-APIKEY-005": {
-    title: "An API key with that name already exists",
-    body: "Pick a different name for this tenant.",
-  },
-  "UZ-APIKEY-006": {
-    title: "That API key is already revoked",
-    body: "Refresh the list to see its current state.",
-  },
-  "UZ-APIKEY-007": {
-    title: "A revoked key can't be reactivated",
-    body: "Mint a new key instead.",
-  },
-  "UZ-APIKEY-008": {
-    title: "Revoke this key before deleting it",
-    body: "Revoke it first, then delete the revoked key.",
   },
 } as const satisfies Record<string, CodeEntry>;
 

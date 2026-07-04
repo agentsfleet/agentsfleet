@@ -17,11 +17,11 @@ pub fn validateCredentials(
     credentials: []const []const u8,
 ) FleetConfigError!void {
     for (credentials) |cred| {
-        try validateCredentialName(cred);
+        try validateSecretName(cred);
     }
 }
 
-fn validateCredentialName(cred: []const u8) FleetConfigError!void {
+fn validateSecretName(cred: []const u8) FleetConfigError!void {
     if (cred.len == 0 or cred.len > MAX_CREDENTIAL_NAME_LEN) {
         return FleetConfigError.InvalidCredentialRef;
     }

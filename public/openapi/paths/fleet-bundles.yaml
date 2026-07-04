@@ -1,13 +1,13 @@
 /v1/fleets/bundles:
   get:
     operationId: list_fleet_bundles
-    summary: List the platform Fleet template catalog
-    description: Returns the first-party (platform) Fleet template catalog. Rows contain only metadata and requirement hints; they carry no credential values or object-store keys. The workspace gallery union lives at GET /v1/workspaces/{workspace_id}/fleet-templates.
+    summary: List the platform Fleet library catalog
+    description: Returns the first-party (platform) Fleet library catalog. Rows contain only metadata and requirement hints; they carry no credential values or object-store keys. The workspace gallery union lives at GET /v1/workspaces/{workspace_id}/fleet-libraries.
     tags:
     - Fleet Bundles
     responses:
       '200':
-        description: Template metadata.
+        description: Fleet library entry metadata.
         content:
           application/json:
             schema:
