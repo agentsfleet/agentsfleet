@@ -34,7 +34,7 @@ import { onboardTemplateAction } from "../actions";
 import { CREATE_TEMPLATE_DOC_URL } from "./template-docs";
 
 const SOURCE_REF_PATTERN = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
-const ONBOARD_ACTION = "add the template";
+const ONBOARD_ACTION = "add the library entry";
 
 const schema = z.object({
   source_ref: z
@@ -54,7 +54,7 @@ type Props = {
 
 export default function AddTemplateDialog({
   workspaceId,
-  triggerLabel = "Create a template",
+  triggerLabel = "Add library entry",
   defaultOpen = false,
 }: Props) {
   const router = useRouter();
@@ -119,9 +119,9 @@ export default function AddTemplateDialog({
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Create a template</DialogTitle>
+          <DialogTitle>Add library entry</DialogTitle>
           <DialogDescription>
-            Add a GitHub repository that contains a Fleet template.
+            Add a GitHub repository that contains a Fleet library entry.
           </DialogDescription>
         </DialogHeader>
         <Form {...form}>
@@ -142,7 +142,7 @@ export default function AddTemplateDialog({
                       rel="noopener noreferrer"
                       className="text-pulse underline-offset-2 hover:underline focus-visible:underline"
                     >
-                      Learn more<span className="sr-only"> about writing templates (opens in a new tab)</span>
+                      Learn more<span className="sr-only"> about writing library entries (opens in a new tab)</span>
                     </a>
                   </FormDescription>
                   <FormMessage />
@@ -158,8 +158,8 @@ export default function AddTemplateDialog({
             ) : null}
             <DialogFooter>
               <Button type="submit" disabled={pending}>
-                {pending ? <Spinner size="sm" srLabel="Creating template" /> : null}
-                Create template
+                {pending ? <Spinner size="sm" srLabel="Adding entry" /> : null}
+                Add entry
               </Button>
             </DialogFooter>
           </form>

@@ -215,7 +215,7 @@ test "match resolves auth routes" {
     try std.testing.expect(match("/v1/runs/run_1", .GET) == null);
 }
 
-test "match resolves the two Fleet Library onboarding routes (M103)" {
+test "match resolves the two Fleet library onboarding routes (M103)" {
     try std.testing.expectEqualDeep(Route.admin_fleet_library, match("/v1/admin/fleet-libraries", .POST).?);
     switch (match("/v1/workspaces/ws_abc/fleet-libraries", .POST).?) {
         .workspace_fleet_library => |ws_id| try std.testing.expectEqualStrings("ws_abc", ws_id),

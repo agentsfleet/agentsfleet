@@ -86,10 +86,10 @@ tags:
   description: Workspace-scoped fleet source bundles imported from templates, uploads, or GitHub.
   x-mintlify:
     navigation: Fleet Bundles
-- name: Fleet Library
-  description: Two-tier Fleet Library catalog — platform-wide and tenant-scoped onboarding from a GitHub source, stored once in object storage by content hash.
+- name: Fleet library
+  description: Two-tier Fleet library catalog — platform-wide and tenant-scoped onboarding from a GitHub source, stored once in object storage by content hash.
   x-mintlify:
-    navigation: Fleet Library
+    navigation: Fleet library
 - name: Model Catalogue
   description: Public model→capability catalogue consumed at provisioning time.
   x-mintlify:

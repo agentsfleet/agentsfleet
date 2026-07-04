@@ -59,7 +59,7 @@ afterEach(() => cleanup());
 describe("InstallEntry", () => {
   it("renders the template grid with a deep link", () => {
     const m = renderToStaticMarkup(React.createElement(InstallEntry, { templates: [TEMPLATE] }));
-    expect(m).toContain('href="/fleets/new?template=github-pr-reviewer"');
+    expect(m).toContain('href="/fleets/new?library=github-pr-reviewer"');
     expect(m).toContain("GitHub PR reviewer");
   });
 
@@ -69,16 +69,16 @@ describe("InstallEntry", () => {
     );
     expect(m).toContain("No fleet library yet");
     expect(m).toContain("Write your own template");
-    expect(m).toContain("Create a template");
+    expect(m).toContain("Add library entry");
     expect(m).toContain("Learn more");
-    expect(m).not.toContain("?template=");
+    expect(m).not.toContain("?library=");
   });
 
   it("omits Create-a-template (and its copy) when library:write is absent — matches InstallSourceSelector's own gate", () => {
     const m = renderToStaticMarkup(React.createElement(InstallEntry, { templates: [] }));
     expect(m).toContain("No fleet library yet");
     expect(m).toContain("Ask a workspace admin");
-    expect(m).not.toContain("Create a template");
+    expect(m).not.toContain("Add library entry");
     expect(m).toContain("Learn more");
   });
 
@@ -107,8 +107,8 @@ describe("InstallSourceSelector", () => {
       }),
     );
 
-    expect(screen.getByRole("button", { name: "Create a template" })).toBeTruthy();
-    await user.click(screen.getByRole("button", { name: "Use template" }));
+    expect(screen.getByRole("button", { name: "Add library entry" })).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Use entry" }));
     expect(onUseTemplate).toHaveBeenCalledWith(TEMPLATE);
   });
 
@@ -123,7 +123,7 @@ describe("InstallSourceSelector", () => {
     );
 
     expect(screen.getByText("No fleet library yet")).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Create a template" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Add library entry" })).toBeNull();
     expect(screen.getByRole("link", { name: "Learn more" })).toBeTruthy();
   });
 
@@ -137,7 +137,7 @@ describe("InstallSourceSelector", () => {
     );
 
     expect(screen.getByText("No fleet library yet")).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Create a template" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Add library entry" })).toBeNull();
   });
 
   it("renders Create-a-template in the empty selector when library:write is available", () => {
@@ -151,7 +151,7 @@ describe("InstallSourceSelector", () => {
     );
 
     expect(screen.getByText("No fleet library yet")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Create a template" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Add library entry" })).toBeTruthy();
   });
 });
 
@@ -205,7 +205,7 @@ describe("FleetInstallGate", () => {
     stubStream(INSTALL_STEP.CREATING);
     const user = userEvent.setup({ delay: null });
     renderGate("installing");
-    await user.click(screen.getByRole("button", { name: /back to templates/i }));
+    await user.click(screen.getByRole("button", { name: /back to library/i }));
     expect(routerPush).toHaveBeenCalledWith("/fleets");
   });
 });

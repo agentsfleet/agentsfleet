@@ -8,7 +8,7 @@ type Props = {
   template: FleetLibraryGalleryEntry;
   compact?: boolean;
   // The call-to-action slot — a link on the dashboard gallery
-  // (/fleets/new?template=<id>) or an in-page "Use template" button on the
+  // (/fleets/new?library=<id>) or an in-page "Use entry" button on the
   // install flow. Kept as a slot so this card stays presentational and shared
   // across the server (dashboard) and client (install) trees.
   action: ReactNode;

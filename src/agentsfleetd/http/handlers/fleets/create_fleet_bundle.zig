@@ -9,7 +9,7 @@ const library_store = @import("../../../fleet_bundle/library_store.zig");
 const importer = @import("../../../fleet_bundle/importer.zig");
 const markdown_limits = @import("../../../fleet_runtime/markdown_limits.zig");
 
-/// Install source — exactly one of the two onboarded Fleet Library tiers
+/// Install source — exactly one of the two onboarded Fleet library tiers
 /// (M103 §4). A tagged union makes "exactly one" a compile-time guarantee —
 /// the "both set" / "neither set" states cannot exist at the type level.
 pub const SourceInput = union(enum) {
@@ -39,7 +39,7 @@ pub const ResolvedSource = struct {
 };
 
 /// Resolve the install source to the SKILL/TRIGGER markdown + content identity of
-/// an already-onboarded Fleet Library entry. Returns `!?ResolvedSource`:
+/// an already-onboarded Fleet library entry. Returns `!?ResolvedSource`:
 /// - `null` = entry not found (response already written via `hx.fail`)
 /// - `error.Abort` = a post-acquire step failed (response written, entry cleaned
 ///   up by `errdefer` — the leak class this function previously had)

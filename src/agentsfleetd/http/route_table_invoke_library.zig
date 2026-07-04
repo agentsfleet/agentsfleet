@@ -1,4 +1,4 @@
-//! Invoke wrappers for the two Fleet Library onboarding routes (M103). Each
+//! Invoke wrappers for the two Fleet library onboarding routes (M103). Each
 //! enforces POST, extracts path params from `route`, and calls the inner handler
 //! (the capability scope is already enforced by requireScope middleware).
 

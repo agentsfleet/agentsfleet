@@ -224,7 +224,7 @@ describe("installEffectFromFlags — template requirements preview", () => {
     );
     expect(Exit.isSuccess(exit)).toBe(true);
     const out = captured.join("\n");
-    expect(out).toContain("Credentials: github");
+    expect(out).toContain("Secrets: github");
     expect(out).toContain("Tools: github_review_comment");
     expect(out).toContain("Network hosts: api.github.com");
     expect(out).toContain("Generated default API wake");

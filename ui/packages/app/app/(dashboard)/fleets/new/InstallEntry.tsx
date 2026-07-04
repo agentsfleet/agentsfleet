@@ -48,7 +48,7 @@ export function InstallEntry({
             {canAddTemplate ? (
               <Button asChild size="sm">
                 <Link href="/fleets/new?create=1">
-                  <PlusIcon size={14} /> Create a template
+                  <PlusIcon size={14} /> Add library entry
                 </Link>
               </Button>
             ) : null}
@@ -68,7 +68,7 @@ export function InstallEntry({
             compact={compact}
             action={
               <Button asChild>
-                <Link href={`/fleets/new?template=${template.id}`}>Use template</Link>
+                <Link href={`/fleets/new?library=${template.id}`}>Use entry</Link>
               </Button>
             }
           />

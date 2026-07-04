@@ -135,7 +135,7 @@ export const printRequirements = (
     if (!req) return;
     const output = yield* Output;
     const rows: ReadonlyArray<readonly [string, ReadonlyArray<string> | undefined]> = [
-      ["Credentials", req.credentials],
+      ["Secrets", req.credentials],
       ["Tools", req.tools],
       ["Network hosts", req.network_hosts],
     ];

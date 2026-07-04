@@ -123,7 +123,7 @@ The complete capability vocabulary (`src/agentsfleetd/auth/scopes.zig`). Scope s
 | `approval:read` / `approval:resolve` | view the approval inbox / decide (approve or deny) an approval gate |
 | `billing:read` | read tenant billing snapshot, charges, metering periods |
 | `workspace:admin` | create workspaces; list the tenant's workspaces |
-| `library:write` | mutate the Fleet Library catalogue (consumed by M103) |
+| `library:write` | mutate the Fleet library catalogue (consumed by M103) |
 
 **Runner credential** (machine identity — minted onto the `agt_r` token, never granted to a human):
 

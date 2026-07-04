@@ -53,7 +53,7 @@ pub const Scope = enum {
     approval_resolve, // decide an approval gate (approve/deny)
     billing_read,
     workspace_admin,
-    // Fleet Library (M103 consumes these): write = tenant-tier onboarding
+    // Fleet library (M103 consumes these): write = tenant-tier onboarding
     // (held by a workspace owner), platform_library_write = platform-tier
     // onboarding (held by a platform operator). Independent — no hierarchy.
     library_write,

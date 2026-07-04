@@ -35,8 +35,8 @@ export function InstallFleet({
   // showing); a string (possibly empty) ⇒ confirmed, carrying the optional name.
   const [installName, setInstallName] = useState<string | null>(null);
 
-  // A ?template=<id> deep link (from the dashboard gallery) preselects the
-  // template and lands on the confirm step on first render.
+  // A ?library=<id> deep link (from the dashboard gallery) preselects the
+  // library entry and lands on the confirm step on first render.
   const preselected = useRef(false);
   useEffect(() => {
     if (preselected.current || !initialTemplateId) return;

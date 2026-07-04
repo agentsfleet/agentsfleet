@@ -54,20 +54,20 @@ export function InstallStates({ workspaceId, source, presentCredentialNames, nam
   const [errorText, setErrorText] = useState<string | null>(null);
   const started = useRef(false);
 
-  // The create body keys off the template's tier: a platform template installs
-  // by slug `platform_template_id`, a tenant template by its UUID
-  // `tenant_template_id`. No import step — the server reads SKILL/TRIGGER from
-  // the onboarded template row.
+  // The create body keys off the entry's tier: a platform entry installs
+  // by slug `platform_library_id`, a tenant entry by its UUID
+  // `tenant_library_id`. No import step — the server reads SKILL/TRIGGER from
+  // the onboarded library row.
   const resolveCreateBody = useCallback((): Parameters<typeof installFleetAction>[1] => {
     const override = name?.trim();
     if (source.visibility === "platform") {
       return override
-        ? { platform_template_id: source.id, name: override }
-        : { platform_template_id: source.id };
+        ? { platform_library_id: source.id, name: override }
+        : { platform_library_id: source.id };
     }
     return override
-      ? { tenant_template_id: source.id, name: override }
-      : { tenant_template_id: source.id };
+      ? { tenant_library_id: source.id, name: override }
+      : { tenant_library_id: source.id };
   }, [source, name]);
 
   const runCreate = useCallback(async () => {

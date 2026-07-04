@@ -1,4 +1,4 @@
-//! Metadata-only writes for the two Fleet Library catalog tiers (M103):
+//! Metadata-only writes for the two Fleet library catalog tiers (M103):
 //!   * platform — `core.fleet_library`, slug-keyed, UPSERT by id;
 //!   * tenant   — `core.tenant_fleet_library`, workspace-scoped,
 //!                INSERT deduped on `(workspace_id, content_hash)`.

@@ -142,7 +142,7 @@ describe("dashboard overview page", () => {
     const m = renderToStaticMarkup(React.createElement(React.Fragment, null, await StatusTiles()));
     expect(m).toContain("GitHub PR reviewer");
     expect(m).toContain("needs: github");
-    expect(m).toContain('href="/fleets/new?template=github-pr-reviewer"');
+    expect(m).toContain('href="/fleets/new?library=github-pr-reviewer"');
   });
 
   it("StatusTiles first-install card swallows a failed template fetch", async () => {
@@ -187,7 +187,7 @@ describe("dashboard overview page", () => {
       ],
     };
     const noFleets = { items: [], total: 0, cursor: null };
-    const SHARED_LINK = 'href="/fleets/new?template=github-pr-reviewer"';
+    const SHARED_LINK = 'href="/fleets/new?library=github-pr-reviewer"';
 
     // Dashboard first-run (StatusTiles → FirstInstall → InstallEntry, compact).
     listFleetsMock.mockResolvedValue(noFleets);

@@ -170,9 +170,9 @@ describe("fleets routes", () => {
     expect(markup).toContain('href="/fleets/new"');
     expect(markup).toContain("Install fleet");
     expect(markup).toContain("Learn more");
-    expect(markup).not.toContain("Create a template");
+    expect(markup).not.toContain("Add library entry");
     expect(markup).not.toContain("Quick start");
-    expect(markup).not.toContain("?template=");
+    expect(markup).not.toContain("?library=");
     expect(markup).not.toContain("credit balance is exhausted");
   });
 
@@ -223,9 +223,9 @@ describe("fleets routes", () => {
     const { default: Page } = await import("../app/(dashboard)/fleets/new/page");
     const markup = renderToStaticMarkup(await Page({ searchParams: Promise.resolve({}) }));
     expect(markup).toContain("Install fleet"); // page title
-    expect(markup).toContain("Fleet Library");
+    expect(markup).toContain("Fleet library");
     expect(markup).toContain("GitHub PR reviewer");
-    expect(markup).toContain("Use template"); // the gallery card's install action
+    expect(markup).toContain("Use entry"); // the gallery card's install action
   });
 
   it("fleets new page swallows failed template + secret fetches", async () => {
@@ -237,15 +237,15 @@ describe("fleets routes", () => {
     expect(markup).toContain("No fleet library yet"); // empty gallery
   });
 
-  it("fleets new page accepts a ?template= deep link", async () => {
+  it("fleets new page accepts a ?library= deep link", async () => {
     resolveActiveWorkspace.mockResolvedValueOnce({ id: "ws_1" });
     listWorkspaceFleetLibraryMock.mockResolvedValue({ items: [] });
     listSecretsMock.mockResolvedValue({ secrets: [] });
     const { default: Page } = await import("../app/(dashboard)/fleets/new/page");
     const markup = renderToStaticMarkup(
-      await Page({ searchParams: Promise.resolve({ template: "github-pr-reviewer" }) }),
+      await Page({ searchParams: Promise.resolve({ library: "github-pr-reviewer" }) }),
     );
-    expect(markup).toContain("Fleet Library");
+    expect(markup).toContain("Fleet library");
   });
 
   it("fleets detail page redirects to /sign-in when no token", async () => {

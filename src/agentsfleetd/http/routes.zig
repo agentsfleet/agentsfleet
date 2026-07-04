@@ -46,10 +46,10 @@ pub const Route = union(enum) {
     // Tenant-scoped LLM provider config — GET/PUT/DELETE /v1/tenants/me/provider
     tenant_provider,
     fleet_bundles, // GET /v1/fleets/bundles
-    // Platform Fleet Library onboarding — POST /v1/admin/fleet-libraries
+    // Platform Fleet library onboarding — POST /v1/admin/fleet-libraries
     // (platform-library:write). No workspace context.
     admin_fleet_library,
-    // Tenant Fleet Library onboarding — POST /v1/workspaces/{ws}/fleet-libraries
+    // Tenant Fleet library onboarding — POST /v1/workspaces/{ws}/fleet-libraries
     // (library:write + workspace ownership). Carries workspace_id.
     workspace_fleet_library: []const u8,
     /// POST /v1/webhooks/{fleet_id} — generic per-fleet webhook receiver.

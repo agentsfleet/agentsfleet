@@ -92,8 +92,8 @@ function renderFlow(props: FlowProps = {}) {
 }
 
 function useTemplateButton(index: number): HTMLElement {
-  const button = screen.getAllByRole("button", { name: "Use template" })[index];
-  if (!button) throw new Error(`no "Use template" button at index ${index}`);
+  const button = screen.getAllByRole("button", { name: "Use entry" })[index];
+  if (!button) throw new Error(`no "Use entry" button at index ${index}`);
   return button;
 }
 
@@ -122,10 +122,10 @@ afterEach(() => cleanup());
 describe("test_install_template_gallery_render", () => {
   it("renders the template grid with one Use template button per template", () => {
     renderFlow();
-    expect(screen.getByText("Fleet Library")).toBeTruthy();
+    expect(screen.getByText("Fleet library")).toBeTruthy();
     expect(screen.getByText("GitHub PR reviewer")).toBeTruthy();
     expect(screen.getByText("needs: github")).toBeTruthy();
-    expect(screen.getAllByRole("button", { name: "Use template" }).length).toBe(2);
+    expect(screen.getAllByRole("button", { name: "Use entry" }).length).toBe(2);
   });
 
   it("shows an empty state when no templates are available", () => {
@@ -150,7 +150,7 @@ describe("test_install_inline_state_driven", () => {
     expect(screen.queryByText("Review what it needs")).toBeNull();
     await waitFor(() =>
       expect(installFleetActionMock).toHaveBeenCalledWith("ws_1", {
-        platform_template_id: "github-pr-reviewer",
+        platform_library_id: "github-pr-reviewer",
       }),
     );
   });
@@ -165,7 +165,7 @@ describe("test_install_inline_state_driven", () => {
     await waitFor(() => expect(screen.getByLabelText("Install states")).toBeTruthy());
     await waitFor(() =>
       expect(installFleetActionMock).toHaveBeenCalledWith("ws_1", {
-        tenant_template_id: "01932d4e-7c10-7a3a-9f00-000000000001",
+        tenant_library_id: "01932d4e-7c10-7a3a-9f00-000000000001",
       }),
     );
   });
@@ -179,7 +179,7 @@ describe("test_install_inline_state_driven", () => {
     await confirmInstall(user, "pr-reviewer-frontend");
     await waitFor(() =>
       expect(installFleetActionMock).toHaveBeenCalledWith("ws_1", {
-        platform_template_id: "github-pr-reviewer",
+        platform_library_id: "github-pr-reviewer",
         name: "pr-reviewer-frontend",
       }),
     );
@@ -194,7 +194,7 @@ describe("test_install_inline_state_driven", () => {
     await confirmInstall(user, "ops-frontend");
     await waitFor(() =>
       expect(installFleetActionMock).toHaveBeenCalledWith("ws_1", {
-        tenant_template_id: "01932d4e-7c10-7a3a-9f00-000000000001",
+        tenant_library_id: "01932d4e-7c10-7a3a-9f00-000000000001",
         name: "ops-frontend",
       }),
     );
@@ -225,7 +225,7 @@ describe("test_install_inline_state_driven", () => {
 
   it("ignores a ?template= deep link that matches no template", () => {
     renderFlow({ initialTemplateId: "does-not-exist" });
-    expect(screen.getByText("Fleet Library")).toBeTruthy();
+    expect(screen.getByText("Fleet library")).toBeTruthy();
   });
 
   it("Back from the states returns to the selector", async () => {
@@ -235,7 +235,7 @@ describe("test_install_inline_state_driven", () => {
     await user.click(useTemplateButton(0));
     await confirmInstall(user);
     await waitFor(() => expect(screen.getByLabelText("Install states")).toBeTruthy());
-    await user.click(screen.getByRole("button", { name: /Back to templates/ }));
-    expect(screen.getByText("Fleet Library")).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: /Back to library/ }));
+    expect(screen.getByText("Fleet library")).toBeTruthy();
   });
 });

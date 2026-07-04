@@ -9,7 +9,7 @@ import { hasLibraryWriteScope } from "../scope";
 
 export const dynamic = "force-dynamic";
 
-type SearchParams = { template?: string | string[]; create?: string | string[] };
+type SearchParams = { library?: string | string[]; create?: string | string[] };
 const INSTALL_PAGE_DESCRIPTION = "Start a fleet from the library. Watch it run in a loop.";
 
 // Gallery-first install. Templates + the workspace's existing
@@ -52,8 +52,8 @@ export default async function InstallFleetPage({
   }
   const { workspaceId, templates, credentialNames } = result;
   const initialTemplateId =
-    typeof params.template === "string" ? params.template : undefined;
-  // ?create=1 (the dashboard empty-state CTA) opens the create-template dialog
+    typeof params.library === "string" ? params.library : undefined;
+  // ?create=1 (the dashboard empty-state CTA) opens the add-library-entry dialog
   // immediately — no second identical empty state between click and form.
   const initialCreateOpen = params.create === "1";
 

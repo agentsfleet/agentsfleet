@@ -36,7 +36,7 @@ import { InstallStates } from "../app/(dashboard)/fleets/new/InstallStates";
 import { InstallStreamSteps } from "../app/(dashboard)/fleets/new/InstallStreamSteps";
 import type { InstallSource } from "../app/(dashboard)/fleets/new/install-flow";
 
-// A platform gallery entry — installs by slug (`platform_template_id`).
+// A platform gallery entry — installs by slug (`platform_library_id`).
 const TEMPLATE_GH: FleetLibraryGalleryEntry = {
   id: "github-pr-reviewer",
   name: "GitHub PR reviewer",
@@ -53,7 +53,7 @@ const TEMPLATE_GH: FleetLibraryGalleryEntry = {
   support_files: [],
 };
 
-// A tenant gallery entry — installs by UUID (`tenant_template_id`), carries no
+// A tenant gallery entry — installs by UUID (`tenant_library_id`), carries no
 // per-credential reasons, and ships no TRIGGER.md (skill-only fallback).
 const TEMPLATE_TENANT: FleetLibraryGalleryEntry = {
   id: "01932d4e-7c10-7a3a-9f00-000000000001",
@@ -124,18 +124,18 @@ describe("test_install_states_render", () => {
     expect(screen.getByText(/template · GitHub PR reviewer/i)).toBeTruthy();
     expect(screen.queryByText(/Review what it needs/i)).toBeNull();
     expect(installFleetActionMock).toHaveBeenCalledWith("ws_1", {
-      platform_template_id: "github-pr-reviewer",
+      platform_library_id: "github-pr-reviewer",
     });
     resolveCreate({ ok: true, data: { fleet_id: "zom_x" } });
   });
 
-  it("a tenant template installs by tenant_template_id", async () => {
+  it("a tenant template installs by tenant_library_id", async () => {
     let resolveCreate: (v: unknown) => void = () => {};
     installFleetActionMock.mockReturnValue(new Promise((r) => { resolveCreate = r; }));
     renderStates(TEMPLATE_TENANT, []);
     await waitFor(() => expect(installFleetActionMock).toHaveBeenCalled());
     expect(installFleetActionMock).toHaveBeenCalledWith("ws_1", {
-      tenant_template_id: "01932d4e-7c10-7a3a-9f00-000000000001",
+      tenant_library_id: "01932d4e-7c10-7a3a-9f00-000000000001",
     });
     resolveCreate({ ok: true, data: { fleet_id: "zom_t" } });
   });

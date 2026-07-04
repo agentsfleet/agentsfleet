@@ -36,7 +36,7 @@ pub const MAX_SOURCE_LEN = markdown_limits.MAX_SOURCE_LEN;
 pub const MAX_TRIGGER_LEN = markdown_limits.MAX_TRIGGER_LEN;
 
 /// Install request shape (M103 §4). A fleet is installed from exactly one
-/// onboarded Fleet Library tier — platform (slug id) or tenant (this
+/// onboarded Fleet library tier — platform (slug id) or tenant (this
 /// workspace's, UUIDv7). The server reads the SKILL/TRIGGER markdown and
 /// content identity from the library row; raw-SKILL paste and the legacy
 /// per-workspace bundle_id are no longer accepted. The CLI stays zero-dep (no
