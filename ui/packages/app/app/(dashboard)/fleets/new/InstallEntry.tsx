@@ -4,8 +4,9 @@ import { LayoutTemplateIcon, PlusIcon } from "lucide-react";
 import type { FleetTemplateGalleryEntry } from "@/lib/types";
 import {
   TemplateDocsLink,
-  TEMPLATES_EMPTY_DESCRIPTION,
-  TEMPLATES_EMPTY_TITLE,
+  FLEET_LIBRARY_EMPTY_DESCRIPTION,
+  FLEET_LIBRARY_EMPTY_DESCRIPTION_READONLY,
+  FLEET_LIBRARY_EMPTY_TITLE,
 } from "./template-docs";
 import { TemplateCard } from "./TemplateCard";
 
@@ -15,6 +16,10 @@ type Props = {
   maxTemplates?: number;
   /** Dashboard embed uses a denser card treatment. */
   compact?: boolean;
+  /** Gates the Create-a-template affordance — mirrors InstallSourceSelector's
+   * own gate so a viewer without template:write never sees an invitation to
+   * do something the backend will reject. */
+  canAddTemplate?: boolean;
 };
 
 // Template gallery for the Dashboard first-run surface. A Server Component:
@@ -22,7 +27,12 @@ type Props = {
 // states), so it carries no client callbacks. When the catalogue is empty it
 // falls back to a centered EmptyState with [Learn more] + [Create a template]
 // — authoring itself lives on /fleets/new.
-export function InstallEntry({ templates, maxTemplates, compact = false }: Props) {
+export function InstallEntry({
+  templates,
+  maxTemplates,
+  compact = false,
+  canAddTemplate = false,
+}: Props) {
   const visibleTemplates =
     maxTemplates == null ? templates : templates.slice(0, maxTemplates);
 
@@ -30,16 +40,18 @@ export function InstallEntry({ templates, maxTemplates, compact = false }: Props
     return (
       <EmptyState
         icon={<LayoutTemplateIcon size={28} />}
-        title={TEMPLATES_EMPTY_TITLE}
-        description={TEMPLATES_EMPTY_DESCRIPTION}
+        title={FLEET_LIBRARY_EMPTY_TITLE}
+        description={canAddTemplate ? FLEET_LIBRARY_EMPTY_DESCRIPTION : FLEET_LIBRARY_EMPTY_DESCRIPTION_READONLY}
         action={
           <div className="flex flex-wrap items-center justify-center gap-md">
             <TemplateDocsLink />
-            <Button asChild size="sm">
-              <Link href="/fleets/new?create=1">
-                <PlusIcon size={14} /> Create a template
-              </Link>
-            </Button>
+            {canAddTemplate ? (
+              <Button asChild size="sm">
+                <Link href="/fleets/new?create=1">
+                  <PlusIcon size={14} /> Create a template
+                </Link>
+              </Button>
+            ) : null}
           </div>
         }
       />

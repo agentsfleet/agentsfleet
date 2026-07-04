@@ -57,7 +57,7 @@ export const templatesEffect: Effect.Effect<
 
   const items = res.items ?? [];
   if (items.length === 0) {
-    yield* output.info("No templates available.");
+    yield* output.info("No fleet library yet.");
     return;
   }
 

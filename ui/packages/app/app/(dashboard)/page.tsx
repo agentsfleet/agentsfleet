@@ -17,11 +17,12 @@ import type { FleetTemplateGalleryEntry } from "@/lib/types";
 import { withWorkspaceScope, orFallback } from "@/lib/workspace";
 import ExhaustionBanner from "@/components/domain/ExhaustionBanner";
 import { InstallEntry } from "./fleets/new/InstallEntry";
+import { hasTemplateWriteScope } from "./fleets/scope";
 
 export const dynamic = "force-dynamic";
 
 export async function StatusTiles() {
-  const { getToken } = await auth();
+  const { getToken, sessionClaims } = await auth();
   const token = await getToken();
   if (!token) return null;
 
@@ -50,7 +51,11 @@ export async function StatusTiles() {
     return (
       <>
         <ExhaustionBanner billing={billing} />
-        <FirstInstall balanceNanos={billing?.balance_nanos ?? null} templates={templates} />
+        <FirstInstall
+          balanceNanos={billing?.balance_nanos ?? null}
+          templates={templates}
+          canAddTemplate={hasTemplateWriteScope(sessionClaims)}
+        />
       </>
     );
   }
@@ -81,9 +86,11 @@ export async function StatusTiles() {
 function FirstInstall({
   balanceNanos,
   templates,
+  canAddTemplate,
 }: {
   balanceNanos: number | null;
   templates: FleetTemplateGalleryEntry[];
+  canAddTemplate: boolean;
 }) {
   const credits = balanceNanos != null ? Math.floor(balanceNanos / NANOS_PER_USD) : null;
   return (
@@ -93,7 +100,12 @@ function FirstInstall({
           <StatusPill variant="pulse">${credits} free credit ready</StatusPill>
         </div>
       ) : null}
-      <InstallEntry templates={templates} maxTemplates={3} compact />
+      <InstallEntry
+        templates={templates}
+        maxTemplates={3}
+        compact
+        canAddTemplate={canAddTemplate}
+      />
     </Section>
   );
 }

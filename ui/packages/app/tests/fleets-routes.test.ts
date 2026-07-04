@@ -223,7 +223,7 @@ describe("fleets routes", () => {
     const { default: Page } = await import("../app/(dashboard)/fleets/new/page");
     const markup = renderToStaticMarkup(await Page({ searchParams: Promise.resolve({}) }));
     expect(markup).toContain("Install fleet"); // page title
-    expect(markup).toContain("Templates");
+    expect(markup).toContain("Fleet Library");
     expect(markup).toContain("GitHub PR reviewer");
     expect(markup).toContain("Use template"); // the gallery card's install action
   });
@@ -234,7 +234,7 @@ describe("fleets routes", () => {
     listCredentialsMock.mockRejectedValue(new Error("vault down"));
     const { default: Page } = await import("../app/(dashboard)/fleets/new/page");
     const markup = renderToStaticMarkup(await Page({ searchParams: Promise.resolve({}) }));
-    expect(markup).toContain("No templates found"); // empty gallery
+    expect(markup).toContain("No fleet library yet"); // empty gallery
   });
 
   it("fleets new page accepts a ?template= deep link", async () => {
@@ -245,7 +245,7 @@ describe("fleets routes", () => {
     const markup = renderToStaticMarkup(
       await Page({ searchParams: Promise.resolve({ template: "github-pr-reviewer" }) }),
     );
-    expect(markup).toContain("Templates");
+    expect(markup).toContain("Fleet Library");
   });
 
   it("fleets detail page redirects to /sign-in when no token", async () => {

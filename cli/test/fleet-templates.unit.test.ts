@@ -125,7 +125,7 @@ describe("templatesEffect — empty catalog", () => {
     );
     expect(Exit.isSuccess(exit)).toBe(true);
     expect(tables).toHaveLength(0);
-    expect(captured.join("\n")).toContain("No templates available.");
+    expect(captured.join("\n")).toContain("No fleet library yet.");
   });
 
   test("treats a missing items field as empty", async () => {
@@ -138,6 +138,6 @@ describe("templatesEffect — empty catalog", () => {
       ),
     );
     expect(Exit.isSuccess(exit)).toBe(true);
-    expect(captured.join("\n")).toContain("No templates available.");
+    expect(captured.join("\n")).toContain("No fleet library yet.");
   });
 });

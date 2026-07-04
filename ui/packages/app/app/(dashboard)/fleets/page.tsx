@@ -94,7 +94,7 @@ function FleetsEmptyState() {
     <EmptyState
       icon={<BotIcon size={28} />}
       title="No fleets yet"
-      description="Pick a template to install your first fleet — connect its tool and it runs on every matching event."
+      description="Pick from the fleet library to install your first fleet."
       action={
         <div className="flex flex-wrap items-center justify-center gap-md">
           <a

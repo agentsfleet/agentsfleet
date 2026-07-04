@@ -122,7 +122,7 @@ afterEach(() => cleanup());
 describe("test_install_template_gallery_render", () => {
   it("renders the template grid with one Use template button per template", () => {
     renderFlow();
-    expect(screen.getByText("Templates")).toBeTruthy();
+    expect(screen.getByText("Fleet Library")).toBeTruthy();
     expect(screen.getByText("GitHub PR reviewer")).toBeTruthy();
     expect(screen.getByText("needs: github")).toBeTruthy();
     expect(screen.getAllByRole("button", { name: "Use template" }).length).toBe(2);
@@ -130,7 +130,7 @@ describe("test_install_template_gallery_render", () => {
 
   it("shows an empty state when no templates are available", () => {
     renderFlow({ templates: [] });
-    expect(screen.getByText("No templates found")).toBeTruthy();
+    expect(screen.getByText("No fleet library yet")).toBeTruthy();
   });
 });
 
@@ -225,7 +225,7 @@ describe("test_install_inline_state_driven", () => {
 
   it("ignores a ?template= deep link that matches no template", () => {
     renderFlow({ initialTemplateId: "does-not-exist" });
-    expect(screen.getByText("Templates")).toBeTruthy();
+    expect(screen.getByText("Fleet Library")).toBeTruthy();
   });
 
   it("Back from the states returns to the selector", async () => {
@@ -236,6 +236,6 @@ describe("test_install_inline_state_driven", () => {
     await confirmInstall(user);
     await waitFor(() => expect(screen.getByLabelText("Install states")).toBeTruthy());
     await user.click(screen.getByRole("button", { name: /Back to templates/ }));
-    expect(screen.getByText("Templates")).toBeTruthy();
+    expect(screen.getByText("Fleet Library")).toBeTruthy();
   });
 });
