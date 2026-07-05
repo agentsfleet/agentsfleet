@@ -7,7 +7,7 @@ import CatalogueList from "./CatalogueList";
 import AddModelDialog from "./AddModelDialog";
 import PlatformDefaultCard from "./PlatformDefaultCard";
 
-// One trimmed line — the per-token pricing detail lives in the Create-model-rate
+// One trimmed line — the per-token pricing detail lives in the Create-model
 // dialog, not repeated on the page.
 const MODELS_DESCRIPTION =
   "Every model your team can run, priced per token — the platform default runs for users without their own key.";
@@ -22,13 +22,13 @@ export default function ModelsView({ initial }: { initial: AdminModelList }) {
   return (
     <div className="space-y-8">
       <PageHeader description={MODELS_DESCRIPTION}>
-        <PageTitle>Model rates</PageTitle>
+        <PageTitle>Model library</PageTitle>
       </PageHeader>
 
       <Section asChild>
         <section aria-label="Model catalogue">
           <div className="flex flex-wrap items-baseline justify-between gap-md">
-            <SectionLabel>Manage model rates</SectionLabel>
+            <SectionLabel>Manage model library</SectionLabel>
             <AddModelDialog onCreated={(m) => setModels((prev) => [...prev, m])} />
           </div>
           <CatalogueList

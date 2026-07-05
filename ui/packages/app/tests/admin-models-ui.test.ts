@@ -62,7 +62,7 @@ describe("AddModelDialog", () => {
     const onCreated = vi.fn();
     render(React.createElement(AddModelDialog, { onCreated }));
 
-    await user.click(screen.getByRole("button", { name: "Create model rate" }));
+    await user.click(screen.getByRole("button", { name: "Create model library" }));
     // Set values directly: happy-dom drops the intermediate invalid state when
     // typing decimals char-by-char into a type=number input. fireEvent.change
     // still drives react-hook-form's onChange — exactly what a paste would.
@@ -84,10 +84,10 @@ describe("AddModelDialog", () => {
   it("should reject an empty provider and not call the create action", async () => {
     const user = userEvent.setup();
     render(React.createElement(AddModelDialog, { onCreated: vi.fn() }));
-    await user.click(screen.getByRole("button", { name: "Create model rate" }));
+    await user.click(screen.getByRole("button", { name: "Create model library" }));
     await user.type(screen.getByLabelText("Model id"), "glm-5.2"); // provider left blank
     const dialog = screen.getByRole("dialog");
-    await user.click(within(dialog).getByRole("button", { name: "Create model rate" }));
+    await user.click(within(dialog).getByRole("button", { name: "Create model library" }));
     // Zod min(1) on provider blocks submit; the action never fires.
     await new Promise((r) => setTimeout(r, 50));
     expect(createAdminModelActionMock).not.toHaveBeenCalled();
@@ -99,7 +99,7 @@ describe("AddModelDialog", () => {
     const onCreated = vi.fn();
     render(React.createElement(AddModelDialog, { onCreated }));
 
-    await userEvent.setup().click(screen.getByRole("button", { name: "Create model rate" }));
+    await userEvent.setup().click(screen.getByRole("button", { name: "Create model library" }));
     fireEvent.change(screen.getByLabelText("Provider"), { target: { value: "fireworks" } });
     fireEvent.change(screen.getByLabelText("Model id"), { target: { value: "glm-5.2" } });
 
@@ -224,9 +224,9 @@ describe("CatalogueList", () => {
 
   it("shows the empty state when there are no models", () => {
     render(React.createElement(CatalogueList, { models: [], onDeleted: vi.fn() }));
-    expect(screen.getByText("No model rates yet")).toBeTruthy();
+    expect(screen.getByText("No models yet")).toBeTruthy();
     expect(
-      screen.getByText("Add a model rate to price it and make it selectable as the platform default."),
+      screen.getByText("Add a model to price it and make it selectable as the platform default."),
     ).toBeTruthy();
     // The empty state replaces the table entirely.
     expect(screen.queryByTestId("data-table")).toBeNull();
@@ -303,9 +303,9 @@ describe("ModelsView", () => {
 
   it("renders the catalogue and the platform-default surface from the seeded list", () => {
     render(React.createElement(ModelsView, { initial }));
-    // PageTitle now reads "Model rates" (h1); the DataTable caption carries the
+    // PageTitle now reads "Model library" (h1); the DataTable caption carries the
     // same text (sr-only), so scope to the heading.
-    expect(screen.getByRole("heading", { level: 1, name: "Model rates" })).toBeTruthy();
+    expect(screen.getByRole("heading", { level: 1, name: "Model library" })).toBeTruthy();
     expect(screen.getByText("glm-5.2")).toBeTruthy();
     expect(screen.getByText("claude-opus-4-8")).toBeTruthy();
     // The platform-default card reads the same catalogue for its picker.
@@ -320,7 +320,7 @@ describe("ModelsView", () => {
     createAdminModelActionMock.mockResolvedValue({ ok: true, data: created });
     render(React.createElement(ModelsView, { initial }));
 
-    await userEvent.setup().click(screen.getByRole("button", { name: "Create model rate" }));
+    await userEvent.setup().click(screen.getByRole("button", { name: "Create model library" }));
     // Scope to the dialog: PlatformDefaultCard also renders a "Provider" label.
     const dialog = within(screen.getByRole("dialog"));
     fireEvent.change(dialog.getByLabelText("Provider"), { target: { value: "moonshot" } });

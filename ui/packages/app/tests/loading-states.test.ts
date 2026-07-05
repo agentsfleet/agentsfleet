@@ -44,6 +44,11 @@ describe("dashboard segment loading states", () => {
       expectsTitle: "Runners",
     },
     {
+      name: "admin/models",
+      importer: () => import("../app/(dashboard)/admin/models/loading"),
+      expectsTitle: "Model library",
+    },
+    {
       name: "integrations",
       importer: () => import("../app/(dashboard)/integrations/loading"),
       expectsTitle: "Integrations",

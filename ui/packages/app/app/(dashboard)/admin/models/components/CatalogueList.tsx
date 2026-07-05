@@ -110,12 +110,12 @@ export default function CatalogueList({
         columns={columns}
         rows={models}
         rowKey={(m) => m.uid}
-        caption="Model rates"
+        caption="Model library"
         empty={
           <EmptyState
             icon={<CoinsIcon size={28} />}
-            title="No model rates yet"
-            description="Add a model rate to price it and make it selectable as the platform default."
+            title="No models yet"
+            description="Add a model to price it and make it selectable as the platform default."
           />
         }
       />
@@ -126,8 +126,8 @@ export default function CatalogueList({
           setTarget(null);
           setError(null);
         }}
-        title={`Delete "${target?.model_id ?? ""}" from the catalogue?`}
-        description="Removes this model from the platform catalogue. Tenants can no longer select it as the platform default. This cannot be undone."
+        title={`Delete "${target?.model_id ?? ""}" from the library?`}
+        description="Removes this model from the platform library. Tenants can no longer select it as the platform default. This cannot be undone."
         confirmLabel="Delete"
         intent="destructive"
         errorMessage={error}

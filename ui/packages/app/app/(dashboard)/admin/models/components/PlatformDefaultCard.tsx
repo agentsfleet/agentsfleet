@@ -89,7 +89,7 @@ export default function PlatformDefaultCard({ models }: { models: AdminModel[] }
             <label className={LABEL} htmlFor="pd-model">Model</label>
             <Select value={model} onValueChange={setModel} disabled={provider === ""}>
               <SelectTrigger id="pd-model" aria-label="Default model">
-                <SelectValue placeholder="Select a catalogued model" />
+                <SelectValue placeholder="Select a model" />
               </SelectTrigger>
               <SelectContent>
                 {modelsForProvider.map((m) => <SelectItem key={m.uid} value={m.model_id}>{m.model_id}</SelectItem>)}
