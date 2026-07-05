@@ -16,15 +16,15 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M117
 **Workstream:** 001
 **Date:** Jul 06, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P2 — post-deploy dashboard polish: verbose copy, a mislabeled affordance that reads like a privilege it isn't, and a swallowed fetch error that hides the connectors failure.
 **Categories:** UI
 **Batch:** B1 — standalone UI workstream; independent of the connectors runtime bug and the M116 error-registry work.
 **Depends on:** none.
 **Provenance:** agent-generated (pre-spec, this session's post-deploy dashboard review)
 **Canonical architecture:** no architecture change — UI copy + presentation only. Scope model of record: `docs/AUTH.md` §scopes (confirms the tenant provider switch is correctly tenant-scoped).
-**Branch:** {feat/mNN-name — added at CHORE(open)}
-**Test Baseline:** set at CHORE(open) — `unit=<N> integration=<M>` via `make _lint_zig_test_depth`
+**Branch:** feat/m117-dashboard-polish
+**Test Baseline:** unit=2327 integration=249 (via `make _lint_zig_test_depth`; UI-only scope — Zig counts are the pin, not expected to move)
 
 ---
 
