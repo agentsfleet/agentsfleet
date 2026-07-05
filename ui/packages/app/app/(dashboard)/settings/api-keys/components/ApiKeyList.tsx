@@ -209,11 +209,11 @@ function KeyActionsCell({
   onDelete: () => void;
 }) {
   return k.active ? (
-    <Button type="button" variant="ghost" size="sm" disabled={pending} onClick={onRevoke} aria-label={`Revoke API key ${k.key_name}`}>
+    <Button type="button" variant="destructive" size="sm" disabled={pending} onClick={onRevoke} aria-label={`Revoke API key ${k.key_name}`}>
       Revoke
     </Button>
   ) : (
-    <Button type="button" variant="ghost" size="sm" disabled={pending} onClick={onDelete} aria-label={`Delete API key ${k.key_name}`}>
+    <Button type="button" variant="destructive" size="sm" disabled={pending} onClick={onDelete} aria-label={`Delete API key ${k.key_name}`}>
       Delete
     </Button>
   );

@@ -19,21 +19,21 @@ test.describe("settings api-keys page", () => {
     await signInAs(page, FIXTURE_KEY.admin);
     await page.goto("/settings/api-keys");
     await expect(page).toHaveURL(/\/settings\/api-keys(\?|$)/);
-    // API keys is a tab within the settings area: the area heading stays
-    // "Settings" and the active section is marked on the tab, not a per-tab h1.
-    await expect(page.getByRole("heading", { name: /^settings$/i })).toBeVisible();
+    // The Workspace tab folded into this page — it's the API
+    // Keys page's own heading now, not a shared "Settings" area heading, and
+    // the sidebar (not a tab strip) marks the active destination.
+    await expect(page.getByRole("heading", { name: /^api keys$/i })).toBeVisible();
     await expect(
-      page
-        .getByRole("navigation", { name: /settings sections/i })
-        .getByRole("link", { name: /api keys/i }),
-    ).toHaveAttribute("aria-current", "page");
+      page.getByRole("navigation", { name: /primary/i }).getByRole("link", { name: /^api keys$/i }),
+    ).toHaveAttribute("data-active", "true");
 
     const name = `e2e-${Date.now()}`;
 
-    // Mint
-    await page.getByRole("button", { name: /new api key/i }).click();
+    // Mint. Trigger and dialog submit share the "Create key" label — only the
+    // trigger matches before the dialog opens.
+    await page.getByRole("button", { name: /^create key$/i }).click();
     await page.getByLabel(/^name$/i).fill(name);
-    await page.getByRole("button", { name: /create key/i }).click();
+    await page.getByRole("dialog").getByRole("button", { name: /^create key$/i }).click();
 
     // Reveal exactly once — the raw value starts with the tenant key prefix.
     const field = page.getByLabel(/api key value/i);

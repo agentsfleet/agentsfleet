@@ -133,8 +133,12 @@ pub fn innerDeleteTenantProvider(hx: Hx, req: *httpz.Request) void {
 fn applyPlatform(hx: Hx, conn: *pg.Conn, tenant_id: []const u8) void {
     tenant_provider.upsertPlatform(hx.alloc, conn, tenant_id) catch |err| switch (err) {
         tenant_provider.ResolveError.PlatformKeyMissing => {
-            log.err("platform_missing", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .tenant_id = tenant_id });
-            common.internalOperationError(hx.res, "Platform LLM key not configured — operator action required", hx.req_id);
+            log.err("platform_missing", .{ .error_code = ec.ERR_PROVIDER_PLATFORM_KEY_MISSING, .tenant_id = tenant_id });
+            // `detail` is wire-visible (writeProblem's JSON body) — unlike the
+            // registry entry's `hint`, it must not leak internal schema/table
+            // names to a tenant-scoped caller (this handler only requires
+            // SECRET_WRITE, not a platform-operator scope).
+            common.errorResponse(hx.res, ec.ERR_PROVIDER_PLATFORM_KEY_MISSING, "Platform LLM key not configured", hx.req_id);
             return;
         },
         else => {

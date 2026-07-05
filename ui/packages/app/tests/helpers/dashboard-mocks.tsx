@@ -94,7 +94,7 @@ export function workspaceMock() {
 // stub <svg data-icon="…"> so name-based queries keep working.
 const LUCIDE_ICONS = [
   "AlertTriangleIcon", "CheckIcon", "CopyIcon", "Loader2Icon", "PlusIcon", "ShieldIcon",
-  "KeyRoundIcon", "Trash2Icon", "ChevronDownIcon", "ChevronRightIcon", "SettingsIcon",
+  "KeyRoundIcon", "KeyIcon", "Trash2Icon", "ChevronDownIcon", "ChevronRightIcon", "SettingsIcon",
   "WalletIcon", "ZapIcon", "ReceiptIcon", "CreditCardIcon", "ActivityIcon", "CpuIcon",
   "SlidersHorizontalIcon", "PencilIcon", "GitPullRequestIcon", "BriefcaseIcon", "HashIcon",
   "BotIcon", "LinkIcon", "CheckCircle2Icon", "LayoutTemplateIcon",

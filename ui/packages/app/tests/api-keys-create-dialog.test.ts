@@ -1,6 +1,6 @@
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { EVENTS } from "../lib/analytics/events";
 
@@ -48,15 +48,23 @@ describe("CreateApiKeyDialog component", () => {
     );
     const user = userEvent.setup({ delay: null });
     render(React.createElement(CreateApiKeyDialog, { onCreated } as never));
-    await user.click(screen.getByRole("button", { name: /new api key/i }));
+    // Trigger and dialog submit share the "Create key" label — only the
+    // trigger matches before the dialog opens.
+    await user.click(screen.getByRole("button", { name: /create key/i }));
     await waitFor(() => expect(screen.getByLabelText(/^name$/i)).toBeTruthy());
     return { user, onCreated };
+  }
+
+  // Once open, the trigger stays mounted behind the dialog, so scope to the
+  // dialog to disambiguate the submit button from it.
+  function submitButton() {
+    return within(screen.getByRole("dialog")).getByRole("button", { name: /create key/i });
   }
 
   it("client-side rejects an invalid key name and never calls the action", async () => {
     const { user } = await openDialog();
     await user.type(screen.getByLabelText(/^name$/i), "bad name!");
-    await user.click(screen.getByRole("button", { name: /create key/i }));
+    await user.click(submitButton());
     await waitFor(() => expect(screen.getByText(/letters, digits, hyphen, underscore/i)).toBeTruthy());
     expect(createApiKeyActionMock).not.toHaveBeenCalled();
   });
@@ -68,7 +76,7 @@ describe("CreateApiKeyDialog component", () => {
     });
     const { user, onCreated } = await openDialog();
     await user.type(screen.getByLabelText(/^name$/i), "ci-runner");
-    await user.click(screen.getByRole("button", { name: /create key/i }));
+    await user.click(submitButton());
 
     const field = await screen.findByLabelText(/API key value/i);
     expect((field as HTMLInputElement).value).toBe("agt_tdeadbeef");
@@ -93,7 +101,7 @@ describe("CreateApiKeyDialog component", () => {
     });
     const { user, onCreated } = await openDialog();
     await user.type(screen.getByLabelText(/^name$/i), "ci-runner");
-    await user.click(screen.getByRole("button", { name: /create key/i }));
+    await user.click(submitButton());
     await waitFor(() => expect(screen.getByText(/already exists/i)).toBeTruthy());
     expect(screen.queryByLabelText(/API key value/i)).toBeNull();
     expect(onCreated).not.toHaveBeenCalled();
@@ -106,7 +114,7 @@ describe("CreateApiKeyDialog component", () => {
       data: { id: "k", key_name: "ci-runner", key: "agt_tdeadbeef", created_at: 1 },
     });
     await user.type(screen.getByLabelText(/^name$/i), "ci-runner");
-    await user.click(screen.getByRole("button", { name: /create key/i }));
+    await user.click(submitButton());
     await screen.findByLabelText(/API key value/i);
   }
 

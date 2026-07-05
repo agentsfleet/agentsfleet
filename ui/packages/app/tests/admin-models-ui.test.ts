@@ -225,27 +225,68 @@ describe("CatalogueList", () => {
     expect(screen.queryByText(/catalogue row/)).toBeNull();
   });
 
-  it("removes a row from the parent on a successful delete", async () => {
-    deleteAdminModelActionMock.mockResolvedValue({ ok: true, data: undefined });
+  it("does not delete on the row click alone — a confirm dialog gates the irreversible action", async () => {
     const onDeleted = vi.fn();
     render(React.createElement(CatalogueList, { models: CATALOGUE, onDeleted }));
 
     const row = screen.getByLabelText("fireworks glm-5.2 catalogue row");
     fireEvent.click(within(row).getByRole("button", { name: "Delete" }));
 
+    await waitFor(() => expect(screen.getByRole("alertdialog")).toBeTruthy());
+    expect(deleteAdminModelActionMock).not.toHaveBeenCalled();
+    expect(onDeleted).not.toHaveBeenCalled();
+  });
+
+  it("removes a row from the parent on a successful delete, after confirming", async () => {
+    deleteAdminModelActionMock.mockResolvedValue({ ok: true, data: undefined });
+    const onDeleted = vi.fn();
+    render(React.createElement(CatalogueList, { models: CATALOGUE, onDeleted }));
+
+    const row = screen.getByLabelText("fireworks glm-5.2 catalogue row");
+    fireEvent.click(within(row).getByRole("button", { name: "Delete" }));
+    await waitFor(() => expect(screen.getByRole("alertdialog")).toBeTruthy());
+    fireEvent.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: "Delete" }));
+
     await waitFor(() => expect(deleteAdminModelActionMock).toHaveBeenCalledWith("u1"));
     await waitFor(() => expect(onDeleted).toHaveBeenCalledWith("u1"));
   });
 
-  it("surfaces the error and keeps the row when the delete fails", async () => {
+  it("delete failure surfaces errorMessage inline and keeps the dialog open", async () => {
     deleteAdminModelActionMock.mockResolvedValue({ ok: false, error: "model is the active platform default" });
     const onDeleted = vi.fn();
     render(React.createElement(CatalogueList, { models: CATALOGUE, onDeleted }));
 
     const row = screen.getByLabelText("anthropic claude-opus-4-8 catalogue row");
     fireEvent.click(within(row).getByRole("button", { name: "Delete" }));
+    await waitFor(() => expect(screen.getByRole("alertdialog")).toBeTruthy());
+    fireEvent.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: "Delete" }));
 
-    await waitFor(() => expect(screen.getByText(/model is the active platform default/i)).toBeTruthy());
+    await waitFor(() =>
+      expect(screen.getByRole("alert").textContent).toMatch(/model is the active platform default/i),
+    );
+    // The dialog is still open (not silently closed on failure) and the row
+    // is untouched — matches SecretsList's "keeps the dialog open" pattern.
+    expect(screen.queryByRole("alertdialog")).toBeTruthy();
+    expect(onDeleted).not.toHaveBeenCalled();
+  });
+
+  it("renders the Delete button with the destructive variant, matching RunnerList's row-action pattern", () => {
+    render(React.createElement(CatalogueList, { models: CATALOGUE, onDeleted: vi.fn() }));
+    const row = screen.getByLabelText("fireworks glm-5.2 catalogue row");
+    expect(within(row).getByRole("button", { name: "Delete" }).className).toContain("bg-destructive");
+  });
+
+  it("cancel on the dialog clears the target without invoking the delete action", async () => {
+    const user = userEvent.setup();
+    const onDeleted = vi.fn();
+    render(React.createElement(CatalogueList, { models: CATALOGUE, onDeleted }));
+
+    const row = screen.getByLabelText("fireworks glm-5.2 catalogue row");
+    await user.click(within(row).getByRole("button", { name: "Delete" }));
+    await waitFor(() => expect(screen.getByRole("alertdialog")).toBeTruthy());
+    await user.click(screen.getByRole("button", { name: /^cancel$/i }));
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+    expect(deleteAdminModelActionMock).not.toHaveBeenCalled();
     expect(onDeleted).not.toHaveBeenCalled();
   });
 });
@@ -287,6 +328,8 @@ describe("ModelsView", () => {
 
     const row = screen.getByLabelText("fireworks glm-5.2 catalogue row");
     fireEvent.click(within(row).getByRole("button", { name: "Delete" }));
+    await waitFor(() => expect(screen.getByRole("alertdialog")).toBeTruthy());
+    fireEvent.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: "Delete" }));
 
     // ModelsView's onDeleted callback filters the row out → count goes 2 → 1.
     await waitFor(() => expect(screen.getByText("Model rates · 1 model")).toBeTruthy());

@@ -170,7 +170,7 @@ describe("fleets routes", () => {
     expect(markup).toContain('href="/fleets/new"');
     expect(markup).toContain("Install fleet");
     expect(markup).toContain("Learn more");
-    expect(markup).not.toContain("Add library entry");
+    expect(markup).not.toContain("Create fleet library");
     expect(markup).not.toContain("Quick start");
     expect(markup).not.toContain("?library=");
     expect(markup).not.toContain("credit balance is exhausted");
@@ -234,7 +234,7 @@ describe("fleets routes", () => {
     listSecretsMock.mockRejectedValue(new Error("vault down"));
     const { default: Page } = await import("../app/(dashboard)/fleets/new/page");
     const markup = renderToStaticMarkup(await Page({ searchParams: Promise.resolve({}) }));
-    expect(markup).toContain("No fleet library yet"); // empty gallery
+    expect(markup).toContain("No prebuilt fleet library found"); // empty gallery
   });
 
   it("fleets new page accepts a ?library= deep link", async () => {

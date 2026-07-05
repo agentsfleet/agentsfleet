@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Badge, Button, EmptyState } from "@agentsfleet/design-system";
+import { Badge, Button, ConfirmDialog, EmptyState } from "@agentsfleet/design-system";
 import { LayersIcon } from "lucide-react";
 import { type AdminModel, nanosToUsdPerMtok } from "@/lib/api/admin_models";
 import { presentErrorString } from "@/lib/errors";
@@ -23,6 +23,7 @@ export default function CatalogueList({
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [busyUid, setBusyUid] = useState<string | null>(null);
+  const [target, setTarget] = useState<AdminModel | null>(null);
 
   function remove(m: AdminModel) {
     setError(null);
@@ -34,6 +35,7 @@ export default function CatalogueList({
         setError(presentErrorString({ errorCode: r.errorCode, message: r.error, action: "delete this model" }));
         return;
       }
+      setTarget(null);
       onDeleted(m.uid);
     });
   }
@@ -76,10 +78,10 @@ export default function CatalogueList({
               <span className="sm:justify-self-end">
                 <Button
                   type="button"
-                  variant="ghost"
+                  variant="destructive"
                   size="sm"
                   disabled={pending && busyUid === m.uid}
-                  onClick={() => remove(m)}
+                  onClick={() => setTarget(m)}
                 >
                   Delete
                 </Button>
@@ -89,7 +91,19 @@ export default function CatalogueList({
         </div>
       )}
 
-      {error ? <p className="text-sm text-destructive">{error}</p> : null}
+      <ConfirmDialog
+        open={target !== null}
+        onOpenChange={() => {
+          setTarget(null);
+          setError(null);
+        }}
+        title={`Delete "${target?.model_id ?? ""}" from the catalogue?`}
+        description="Removes this model from the platform catalogue. Tenants can no longer select it as the platform default. This cannot be undone."
+        confirmLabel="Delete"
+        intent="destructive"
+        errorMessage={error}
+        onConfirm={target ? () => remove(target) : undefined}
+      />
     </div>
   );
 }

@@ -2,7 +2,9 @@ import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 
-vi.mock("lucide-react", () => ({}));
+vi.mock("lucide-react", () => ({
+  CoinsIcon: () => React.createElement("svg", { "data-icon": "CoinsIcon" }),
+}));
 
 import BillingBalanceCard from "@/app/(dashboard)/settings/billing/components/BillingBalanceCard";
 import type { ChargeSummary } from "@/app/(dashboard)/settings/billing/lib/charges";
@@ -43,9 +45,8 @@ describe("BillingBalanceCard", () => {
     expect(fill.style.width).toBe("6%");
     // caption: spent + events ride the meter's end
     expect(screen.getByTestId("balance-usage").textContent).toMatch(/spent\s*\$0\.29\s*·\s*4\s*events/);
-    expect(screen.getByText("pay as you go")).toBeTruthy();
     // header CTA present (in the head row, not a stranded control)
-    expect(screen.getByTestId("purchase-credits-trigger")).toBeTruthy();
+    expect(screen.getByTestId("buy-credits-trigger")).toBeTruthy();
   });
 
   it("singularizes the event caption when exactly one event", () => {
@@ -55,11 +56,12 @@ describe("BillingBalanceCard", () => {
     expect(usage).not.toMatch(/events/);
   });
 
-  it("renders a disabled Purchase credits button (self-serve top-up deferred)", () => {
+  it("renders Buy credits as a live mailto link, not a disabled button", () => {
     renderCard(HEALTHY);
-    const btn = screen.getByRole("button", { name: /purchase credits/i }) as HTMLButtonElement;
-    expect(btn.disabled).toBe(true);
-    expect(btn.getAttribute("aria-disabled")).toBe("true");
+    const link = screen.getByRole("link", { name: /buy credits/i }) as HTMLAnchorElement;
+    expect(link.getAttribute("href")).toBe("mailto:agentsfleet@agentmail.to");
+    expect(link.hasAttribute("disabled")).toBe(false);
+    expect(link.getAttribute("aria-disabled")).toBeNull();
   });
 
   it("surfaces an alert banner when the balance is exhausted", () => {
@@ -83,11 +85,11 @@ describe("BillingBalanceCard", () => {
     expect(headline.className).not.toContain("text-destructive");
   });
 
-  it("Purchase credits trigger is keyboard-reachable (a11y)", () => {
+  it("Buy credits trigger is a real anchor — natively keyboard-reachable, tooltip-described", () => {
     renderCard(HEALTHY);
-    const trigger = screen.getByTestId("purchase-credits-trigger");
-    expect(trigger.getAttribute("tabindex")).toBe("0");
-    expect(trigger.getAttribute("aria-describedby")).toBe("purchase-credits-tooltip");
+    const trigger = screen.getByTestId("buy-credits-trigger");
+    expect(trigger.tagName).toBe("A");
+    expect(trigger.getAttribute("aria-describedby")).toBe("buy-credits-tooltip");
   });
 
   it("renders the support email link using SUPPORT_EMAIL when exhausted", () => {

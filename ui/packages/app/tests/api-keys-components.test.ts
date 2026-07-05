@@ -18,11 +18,7 @@ vi.mock("@/app/(dashboard)/settings/api-keys/actions", () => ({
   deleteApiKeyAction: deleteApiKeyActionMock,
 }));
 
-// SettingsTabs pulls usePathname/Link; the ApiKeysView wrapper only needs the
-// dialog + list for this flow, so stub the tab chrome out.
-vi.mock("@/components/layout/SettingsTabs", () => ({ default: () => null }));
-
-// The "New API key" trigger ships behind a next/dynamic shim (M101 §5). For
+// The "Create key" trigger ships behind a next/dynamic shim (M101 §5). For
 // these interaction tests, alias the shim back to the real dialog so the
 // trigger + form mount synchronously instead of behind the loading skeleton.
 vi.mock("@/components/domain/island-dynamic/CreateApiKeyDialogDynamic", async () => ({
@@ -102,6 +98,12 @@ describe("ApiKeyList component", () => {
     await renderList(listResponse([ACTIVE, REVOKED]));
     expect(screen.getByLabelText(/Revoke API key ci-runner/i)).toBeTruthy();
     expect(screen.getByLabelText(/Delete API key old-zapier/i)).toBeTruthy();
+  });
+
+  it("Revoke and Delete row triggers render the destructive button variant, matching RunnerList's pattern", async () => {
+    await renderList(listResponse([ACTIVE, REVOKED]));
+    expect(screen.getByLabelText(/Revoke API key ci-runner/i).className).toContain("bg-destructive");
+    expect(screen.getByLabelText(/Delete API key old-zapier/i).className).toContain("bg-destructive");
   });
 
   it("renders rows through the standard DataTable primitive, not a hand-rolled list", async () => {
@@ -229,14 +231,23 @@ describe("ApiKeyList component", () => {
     const { default: ApiKeysView } = await import(
       "../app/(dashboard)/settings/api-keys/components/ApiKeysView"
     );
-    render(React.createElement(ApiKeysView, { initial: listResponse([ACTIVE]) } as never));
+    render(
+      React.createElement(ApiKeysView, {
+        initial: listResponse([ACTIVE]),
+        operatorOnly: false,
+      } as never),
+    );
     createApiKeyActionMock.mockResolvedValue({
       ok: true,
       data: { id: "k", key_name: "ci-runner", key: "agt_tnew", created_at: 1 },
     });
-    await user.click(screen.getByRole("button", { name: /new api key/i }));
-    await user.type(screen.getByLabelText(/^name$/i), "ci-runner");
+    // Trigger and dialog submit share the "Create key" label — only the
+    // trigger matches before the dialog opens.
     await user.click(screen.getByRole("button", { name: /create key/i }));
+    await user.type(screen.getByLabelText(/^name$/i), "ci-runner");
+    // Once open, scope to the dialog to disambiguate the submit from the
+    // still-mounted trigger.
+    await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: /create key/i }));
     await screen.findByLabelText(/API key value/i);
     const before = listApiKeysActionMock.mock.calls.length;
     await user.click(screen.getByRole("button", { name: /done/i }));

@@ -156,6 +156,7 @@ pub const ERR_PROVIDER_BASE_URL_INVALID = "UZ-PROVIDER-005";
 pub const ERR_MODEL_CAP_NOT_FOUND = "UZ-PROVIDER-006";
 pub const ERR_MODEL_CAP_IN_USE = "UZ-PROVIDER-007";
 pub const ERR_MODEL_CAP_EXISTS = "UZ-PROVIDER-008";
+pub const ERR_PROVIDER_PLATFORM_KEY_MISSING = "UZ-PROVIDER-009";
 // MEMORY
 pub const ERR_MEM_AGENTSFLEET_NOT_FOUND = "UZ-MEM-002";
 pub const ERR_MEM_UNAVAILABLE = "UZ-MEM-003";
@@ -341,4 +342,5 @@ comptime {
 test {
     _ = @import("codes_test.zig");
     _ = @import("error_registry_test.zig");
+    _ = @import("internal_op_error_sweep_test.zig");
 }

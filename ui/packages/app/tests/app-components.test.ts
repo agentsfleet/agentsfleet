@@ -60,6 +60,7 @@ vi.mock("lucide-react", () => ({
   BoxIcon: (props: Record<string, unknown>) => React.createElement("svg", { ...props, "data-icon": "BoxIcon" }),
   BotIcon: (props: Record<string, unknown>) => React.createElement("svg", { ...props, "data-icon": "BotIcon" }),
   SettingsIcon: (props: Record<string, unknown>) => React.createElement("svg", { ...props, "data-icon": "SettingsIcon" }),
+  KeyIcon: (props: Record<string, unknown>) => React.createElement("svg", { ...props, "data-icon": "KeyIcon" }),
   BookOpenIcon: (props: Record<string, unknown>) => React.createElement("svg", { ...props, "data-icon": "BookOpenIcon" }),
   ZapIcon: (props: Record<string, unknown>) => React.createElement("svg", { ...props, "data-icon": "ZapIcon" }),
   ShieldIcon: (props: Record<string, unknown>) => React.createElement("svg", { ...props, "data-icon": "ShieldIcon" }),
@@ -295,7 +296,7 @@ describe("app components", () => {
     expect(markup).toContain('href="/secrets"');
     expect(markup).toContain("Approvals");
     expect(markup).toContain("Events");
-    expect(markup).toContain("Workspace");
+    expect(markup).toContain("API Keys");
     expect(markup).toContain("Billing");
   });
 
@@ -316,15 +317,15 @@ describe("app components", () => {
     mocks.usePathname.mockReturnValue("/fleets");
     const markup = renderToStaticMarkup(React.createElement(Shell, null, React.createElement("div")));
     // The active link gets data-active="true" — the sidebar's surface-3 fill
-    // is driven from this attribute (no coloured bar per spec).
+    // and the left accent bar are both driven from this attribute.
     expect(markup).toMatch(/data-active="true"[^>]*>\s*<svg[^>]*data-icon="BotIcon"/);
   });
 
-  it("Shell active-link resolves the longest-matching prefix (Settings collision)", async () => {
+  it("Shell active-link resolves the longest-matching prefix (nested /settings/* routes)", async () => {
     const { default: Shell } = await import("../components/layout/Shell");
     // Render at a pathname and report how many items are active + the active
     // item's icon — exactly one item must light, and it must be the most
-    // specific match (a nested /settings/* child beats its parent Settings).
+    // specific match.
     const activeFor = (pathname: string, operatorScopes: string[] = []) => {
       mocks.usePathname.mockReturnValue(pathname);
       const markup = renderToStaticMarkup(
@@ -339,12 +340,15 @@ describe("app components", () => {
       const icon = markup.match(/data-active="true"[^>]*>\s*<svg[^>]*data-icon="([^"]+)"/)?.[1] ?? null;
       return { count, icon };
     };
-    // Nested children win over the parent Settings (the bug the resolver fixes).
     expect(activeFor("/settings/models")).toEqual({ count: 1, icon: "CpuIcon" });
     expect(activeFor("/settings/billing")).toEqual({ count: 1, icon: "CreditCardIcon" });
-    // Parent Settings lights on its own route and on unclaimed children only.
-    expect(activeFor("/settings")).toEqual({ count: 1, icon: "SettingsIcon" });
-    expect(activeFor("/settings/api-keys")).toEqual({ count: 1, icon: "SettingsIcon" });
+    // API Keys now owns its own distinct href — nested children (mint/reveal
+    // detail routes, if any) still resolve to it via prefix match; a nested
+    // child under Models must not spuriously light up API Keys instead.
+    expect(activeFor("/settings/api-keys")).toEqual({ count: 1, icon: "KeyIcon" });
+    // /settings on its own has no nav entry (it's a redirect-only route, the
+    // Workspace tab folded into API Keys) — nothing lights up.
+    expect(activeFor("/settings")).toEqual({ count: 0, icon: null });
     // Other groups resolve to their own item; root and admin-gated paths too.
     expect(activeFor("/")).toEqual({ count: 1, icon: "LayoutDashboardIcon" });
     expect(activeFor("/admin/runners", ["runner:read"])).toEqual({ count: 1, icon: "ServerIcon" });
@@ -440,9 +444,9 @@ describe("app components", () => {
     // 'Fleets' (href /fleets) exercises the path-to-slug replaceAll branch.
     await user.click(screen.getByText("Dashboard"));
     await user.click(screen.getByText("Fleets"));
-    // Footer 'Docs' is external; 'Workspace' is internal.
+    // Footer 'Docs' is external; 'API Keys' is internal.
     await user.click(screen.getByText("Docs"));
-    await user.click(screen.getByText("Workspace"));
+    await user.click(screen.getByText("API Keys"));
     // The Models Configuration entry — a nested route exercises the
     // multi-segment slug branch.
     await user.click(screen.getByText("Models"));
@@ -454,7 +458,7 @@ describe("app components", () => {
     expect(sources).toContain("app_sidebar_root");
     expect(sources).toContain("app_sidebar_fleets");
     expect(sources).toContain("app_sidebar_docs");
-    expect(sources).toContain("app_sidebar_settings");
+    expect(sources).toContain("app_sidebar_settings_api-keys");
     expect(sources).toContain("app_sidebar_settings_models");
     expect(sources).toContain("app_sidebar_settings_billing");
     cleanup();
@@ -551,6 +555,22 @@ describe("app components", () => {
     // resurface — a revert to `bg-accent` for the active state would pass a
     // sloppier assertion that only checks presence of *a* highlight class.
     expect(activeLink.className).not.toContain("data-[active=true]:bg-accent");
+    cleanup();
+  });
+
+  it("should render a left accent bar on the active nav item, on top of the fill", async () => {
+    const { default: Shell } = await import("../components/layout/Shell");
+    mocks.usePathname.mockReturnValue("/fleets");
+    render(React.createElement(Shell, null, React.createElement("div", null, "content")));
+
+    const activeLink = screen.getByRole("link", { name: "Fleets" });
+    expect(activeLink.className).toContain("border-l-2");
+    expect(activeLink.className).toContain("border-transparent");
+    expect(activeLink.className).toContain("data-[active=true]:border-pulse");
+
+    const inactiveLink = screen.getByRole("link", { name: "Events" });
+    expect(inactiveLink.getAttribute("data-active")).toBeNull();
+    expect(inactiveLink.className).toContain("border-l-2");
     cleanup();
   });
 

@@ -1,8 +1,7 @@
 import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
-import { EmptyState } from "@agentsfleet/design-system";
+import { EmptyState, PageHeader, PageTitle } from "@agentsfleet/design-system";
 import { SlidersHorizontalIcon } from "lucide-react";
-import SettingsTabs from "@/components/layout/SettingsTabs";
 
 export const dynamic = "force-dynamic";
 
@@ -13,7 +12,9 @@ export default async function SettingsDefaultsPage() {
 
   return (
     <div className="space-y-8">
-      <SettingsTabs />
+      <PageHeader>
+        <PageTitle>Defaults</PageTitle>
+      </PageHeader>
       <EmptyState
         icon={<SlidersHorizontalIcon size={32} />}
         title="Defaults"
