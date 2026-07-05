@@ -130,7 +130,7 @@ describe("test_install_template_gallery_render", () => {
 
   it("shows an empty state when no library entries are available", () => {
     renderFlow({ entries: [] });
-    expect(screen.getByText("No fleet library yet")).toBeTruthy();
+    expect(screen.getByText("No prebuilt fleet library found")).toBeTruthy();
   });
 });
 

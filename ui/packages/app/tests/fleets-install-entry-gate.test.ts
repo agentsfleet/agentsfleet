@@ -63,22 +63,22 @@ describe("InstallEntry", () => {
     expect(m).toContain("GitHub PR reviewer");
   });
 
-  it("falls back to an empty state with Learn-more + Add-library-entry when library:write is available", () => {
+  it("falls back to an empty state with Learn-more + Create-fleet-library when library:write is available", () => {
     const m = renderToStaticMarkup(
       React.createElement(InstallEntry, { entries: [], canAddLibraryEntry: true }),
     );
-    expect(m).toContain("No fleet library yet");
-    expect(m).toContain("Write your own template");
-    expect(m).toContain("Add library entry");
+    expect(m).toContain("No prebuilt fleet library found");
+    expect(m).toContain("Write your own fleet library");
+    expect(m).toContain("Create fleet library");
     expect(m).toContain("Learn more");
     expect(m).not.toContain("?library=");
   });
 
-  it("omits Add-library-entry (and its copy) when library:write is absent — matches InstallSourceSelector's own gate", () => {
+  it("omits Create-fleet-library (and its copy) when library:write is absent — matches InstallSourceSelector's own gate", () => {
     const m = renderToStaticMarkup(React.createElement(InstallEntry, { entries: [] }));
-    expect(m).toContain("No fleet library yet");
+    expect(m).toContain("No prebuilt fleet library found");
     expect(m).toContain("Ask a workspace admin");
-    expect(m).not.toContain("Add library entry");
+    expect(m).not.toContain("Create fleet library");
     expect(m).toContain("Learn more");
   });
 
@@ -95,7 +95,7 @@ describe("InstallEntry", () => {
 // ── InstallSourceSelector — full install page library-entry picker ──────────
 
 describe("InstallSourceSelector", () => {
-  it("renders Add-library-entry in the populated gallery when library:write is available", async () => {
+  it("renders Create-fleet-library in the populated gallery when library:write is available", async () => {
     const onUseLibraryEntry = vi.fn();
     const user = userEvent.setup({ delay: null });
     render(
@@ -107,12 +107,12 @@ describe("InstallSourceSelector", () => {
       }),
     );
 
-    expect(screen.getByRole("button", { name: "Add library entry" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Create fleet library" })).toBeTruthy();
     await user.click(screen.getByRole("button", { name: "Use entry" }));
     expect(onUseLibraryEntry).toHaveBeenCalledWith(TEMPLATE);
   });
 
-  it("renders the empty selector without Add-library-entry when library:write is absent", () => {
+  it("renders the empty selector without Create-fleet-library when library:write is absent", () => {
     render(
       React.createElement(InstallSourceSelector, {
         workspaceId: "ws_1",
@@ -122,12 +122,12 @@ describe("InstallSourceSelector", () => {
       }),
     );
 
-    expect(screen.getByText("No fleet library yet")).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Add library entry" })).toBeNull();
+    expect(screen.getByText("No prebuilt fleet library found")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Create fleet library" })).toBeNull();
     expect(screen.getByRole("link", { name: "Learn more" })).toBeTruthy();
   });
 
-  it("defaults the selector to no Add-library-entry access", () => {
+  it("defaults the selector to no Create-fleet-library access", () => {
     render(
       React.createElement(InstallSourceSelector, {
         workspaceId: "ws_1",
@@ -136,11 +136,11 @@ describe("InstallSourceSelector", () => {
       }),
     );
 
-    expect(screen.getByText("No fleet library yet")).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Add library entry" })).toBeNull();
+    expect(screen.getByText("No prebuilt fleet library found")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Create fleet library" })).toBeNull();
   });
 
-  it("renders Add-library-entry in the empty selector when library:write is available", () => {
+  it("renders Create-fleet-library in the empty selector when library:write is available", () => {
     render(
       React.createElement(InstallSourceSelector, {
         workspaceId: "ws_1",
@@ -150,8 +150,8 @@ describe("InstallSourceSelector", () => {
       }),
     );
 
-    expect(screen.getByText("No fleet library yet")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Add library entry" })).toBeTruthy();
+    expect(screen.getByText("No prebuilt fleet library found")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Create fleet library" })).toBeTruthy();
   });
 });
 

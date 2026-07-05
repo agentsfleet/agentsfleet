@@ -1,20 +1,19 @@
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { SECRET_KIND, type Secret } from "@/lib/api/secrets";
 import { PROVIDER_MODE, type TenantProvider } from "@/lib/types";
 
 // The active-model hero: LIVE vs DEFAULT presentation, the live action set
-// (Change model / Replace key / Switch to platform), Replace-key gating by the
-// active secret's kind, and the context formatter.
+// (Change model / Replace key — the platform-defaults switch lives only in
+// ProviderSwitchList now), Replace-key gating by the active
+// secret's kind, and the context formatter.
 
 const routerRefresh = vi.fn();
-const resetProviderAction = vi.hoisted(() => vi.fn());
-const captureProviderReset = vi.hoisted(() => vi.fn());
 
+// useProviderAction() calls useRouter() unconditionally even though this
+// component no longer invokes run() itself (§7 removed the one call site).
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: routerRefresh, push: vi.fn() }) }));
-vi.mock("@/app/(dashboard)/settings/models/actions", () => ({ resetProviderAction }));
-vi.mock("@/app/(dashboard)/settings/models/lib/track", () => ({ captureProviderReset }));
 vi.mock("@agentsfleet/design-system", async () => (await import("./helpers/models-component-mocks")).designSystemStub());
 vi.mock("@/app/(dashboard)/settings/models/components/HeroChangeModelPanel", () => ({
   default: ({ onClose }: { onClose: () => void }) =>
@@ -65,7 +64,6 @@ const providerKeyCred: Secret = {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  resetProviderAction.mockResolvedValue({ ok: true, data: {} });
 });
 afterEach(() => cleanup());
 
@@ -79,13 +77,20 @@ describe("ActiveModelRow — live (self-managed)", () => {
       }),
     );
     const hero = screen.getByTestId("active-model-hero");
-    expect(hero.getAttribute("data-live")).toBe("true");
+    // No data-live attribute at all — the wake-pulse selector
+    // only fires on the literal value "true", and this row never sets it;
+    // StatusPill's LIVE/DEFAULT dot is the sole live-status signal now.
+    expect(hero.hasAttribute("data-live")).toBe(false);
     expect(screen.getByText("LIVE")).toBeTruthy();
     expect(screen.getByText("claude-sonnet-4-6")).toBeTruthy();
     expect(screen.getByText("Anthropic")).toBeTruthy();
     expect(screen.getByText("256k")).toBeTruthy();
     expect(screen.getByText("Provider direct")).toBeTruthy();
     expect(screen.getByText("anthropic-prod")).toBeTruthy(); // secret ref (mono span after "via")
+    // No redundant reset control on the hero row — the
+    // equivalent "Platform defaults" row in ProviderSwitchList is the one
+    // switch path now.
+    expect(screen.queryByRole("button", { name: /switch to platform defaults/i })).toBeNull();
 
     // Change model panel toggles open then closed (via the toggle button).
     fireEvent.click(screen.getByRole("button", { name: "Change model" }));
@@ -150,38 +155,6 @@ describe("ActiveModelRow — live (self-managed)", () => {
     expect(screen.queryByRole("button", { name: "Replace key" })).toBeNull();
   });
 
-  it("switches to platform defaults, refreshing on success", async () => {
-    render(
-      React.createElement(ActiveModelRow, {
-        workspaceId: "ws_1",
-        provider: selfManaged(),
-        secrets: [providerKeyCred],
-      }),
-    );
-    fireEvent.click(screen.getByRole("button", { name: "Switch to platform defaults" }));
-    await waitFor(() => expect(resetProviderAction).toHaveBeenCalled());
-    await waitFor(() => expect(routerRefresh).toHaveBeenCalled());
-    // provider_reset records the provider being left behind.
-    expect(captureProviderReset).toHaveBeenCalledWith("anthropic");
-  });
-
-  it("surfaces a friendly reset error routed through presentErrorString, not the raw string", async () => {
-    resetProviderAction.mockResolvedValue({ ok: false, error: "reset failed" });
-    render(
-      React.createElement(ActiveModelRow, {
-        workspaceId: "ws_1",
-        provider: selfManaged(),
-        secrets: [providerKeyCred],
-      }),
-    );
-    fireEvent.click(screen.getByRole("button", { name: "Switch to platform defaults" }));
-    await waitFor(() =>
-      expect(screen.getByRole("alert").textContent).toMatch(/^Couldn't switch to platform defaults/),
-    );
-    expect(screen.getByRole("alert").textContent).toMatch(/reset failed/);
-    expect(routerRefresh).not.toHaveBeenCalled();
-    expect(captureProviderReset).not.toHaveBeenCalled();
-  });
 });
 
 describe("ActiveModelRow — default (platform / no provider)", () => {
@@ -194,7 +167,7 @@ describe("ActiveModelRow — default (platform / no provider)", () => {
       }),
     );
     const hero = screen.getByTestId("active-model-hero");
-    expect(hero.getAttribute("data-live")).toBe("false");
+    expect(hero.hasAttribute("data-live")).toBe(false);
     expect(screen.getByText("DEFAULT")).toBeTruthy();
     expect(screen.getByText("Platform default model")).toBeTruthy();
     expect(screen.getByText("agentsfleet managed")).toBeTruthy();

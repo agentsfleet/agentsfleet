@@ -46,7 +46,7 @@ test.describe("workspace create", () => {
     await switcher.click();
     await page.getByTestId("workspace-new").click();
 
-    const dialog = page.getByRole("dialog", { name: "New workspace" });
+    const dialog = page.getByRole("dialog", { name: "Create workspace" });
     await expect(dialog).toBeVisible();
     await dialog.getByLabel("Name (optional)").fill(workspaceName);
     await dialog.getByRole("button", { name: "Create workspace" }).click();

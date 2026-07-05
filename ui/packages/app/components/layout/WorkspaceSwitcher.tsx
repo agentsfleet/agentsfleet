@@ -2,9 +2,8 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronDownIcon, PlusIcon, SettingsIcon } from "lucide-react";
+import { ChevronDownIcon, PlusIcon } from "lucide-react";
 import {
-  Button,
   DropdownMenu,
   DropdownMenuTrigger,
   DropdownMenuContent,
@@ -24,8 +23,6 @@ type Props = {
   workspaces: TenantWorkspace[];
   activeId: string | null;
   onSwitch: (id: string) => void | Promise<void>;
-  showCreateButton?: boolean;
-  showManageItem?: boolean;
 };
 
 const WORKSPACE_NOTICE_MS = 2800;
@@ -39,8 +36,6 @@ export default function WorkspaceSwitcher({
   workspaces,
   activeId,
   onSwitch,
-  showCreateButton = false,
-  showManageItem = true,
 }: Props) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -106,24 +101,12 @@ export default function WorkspaceSwitcher({
               </DropdownMenuItem>
             ))}
             {workspaces.length > 0 ? <DropdownMenuSeparator /> : null}
-            {showManageItem ? (
-              <DropdownMenuItem onSelect={() => router.push("/settings")} data-testid="workspace-manage">
-                <SettingsIcon size={14} aria-hidden="true" />
-                <span className="flex-1">Manage workspace</span>
-              </DropdownMenuItem>
-            ) : null}
             <DropdownMenuItem onSelect={() => setCreateOpen(true)} data-testid="workspace-new">
               <PlusIcon size={14} aria-hidden="true" />
-              <span className="flex-1">New workspace</span>
+              <span className="flex-1">Create workspace</span>
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
-        {showCreateButton ? (
-          <Button type="button" variant="secondary" onClick={() => setCreateOpen(true)}>
-            <PlusIcon size={14} aria-hidden="true" />
-            New workspace
-          </Button>
-        ) : null}
       </div>
       <CreateWorkspaceDialogDynamic
         open={createOpen}

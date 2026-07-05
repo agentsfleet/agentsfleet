@@ -1,11 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { Alert, Button, DashboardRow, MetaGrid, StatusPill } from "@agentsfleet/design-system";
+import { Button, DashboardRow, MetaGrid, StatusPill } from "@agentsfleet/design-system";
 import { CpuIcon, ServerIcon } from "lucide-react";
-import { resetProviderAction } from "../actions";
-import { captureProviderReset } from "../lib/track";
-import { useProviderAction } from "../lib/use-provider-action";
 import { providerLabel } from "@/lib/api/model_caps";
 import { SECRET_KIND, type Secret } from "@/lib/api/secrets";
 import { PROVIDER_MODE, type TenantProvider } from "@/lib/types";
@@ -28,7 +25,6 @@ const MANAGED_PROVIDER = "agentsfleet managed";
 
 // Shared with ProviderSwitchList — the same add-a-key affordance, named once.
 export const ADD_KEY_AND_MODEL_LABEL = "Add key & model";
-const RESET_ACTION = "switch to platform defaults";
 
 // Threshold + divisor for the "k" context abbreviation (200000 → "200k").
 const TOKENS_PER_K = 1000;
@@ -41,7 +37,6 @@ function formatContext(tokens: number | undefined): string {
 
 export default function ActiveModelRow({ workspaceId, provider, secrets }: Props) {
   const [panel, setPanel] = useState<Panel>(PANEL.idle);
-  const { pending, error, run } = useProviderAction();
 
   const live = provider?.mode === PROVIDER_MODE.self_managed;
   const secretRef = live ? provider.secret_ref : null;
@@ -49,15 +44,6 @@ export default function ActiveModelRow({ workspaceId, provider, secrets }: Props
   // A custom secret can't be rotated as a model key; only provider-key/custom-endpoint secrets show Replace key.
   const canRotate =
     activeSecret?.kind === SECRET_KIND.provider_key || activeSecret?.kind === SECRET_KIND.custom_endpoint;
-
-  function onReset(fromProvider: string) {
-    void run(RESET_ACTION, async () => {
-      const res = await resetProviderAction();
-      if (!res.ok) return { message: res.error, errorCode: res.errorCode };
-      captureProviderReset(fromProvider);
-      return null;
-    });
-  }
 
   const metaItems = live
     ? [
@@ -74,7 +60,6 @@ export default function ActiveModelRow({ workspaceId, provider, secrets }: Props
   return (
     <DashboardRow
       data-testid="active-model-hero"
-      data-live={live}
       icon={live ? <CpuIcon size={15} /> : <ServerIcon size={15} />}
       title={live ? provider.model : "Platform default model"}
       description={
@@ -98,7 +83,6 @@ export default function ActiveModelRow({ workspaceId, provider, secrets }: Props
               <Button
                 type="button"
                 variant="outline"
-                disabled={pending}
                 aria-expanded={panel === PANEL.changeModel}
                 onClick={() => setPanel((p) => (p === PANEL.changeModel ? PANEL.idle : PANEL.changeModel))}
               >
@@ -108,23 +92,18 @@ export default function ActiveModelRow({ workspaceId, provider, secrets }: Props
                 <Button
                   type="button"
                   variant="outline"
-                  disabled={pending}
                   aria-expanded={panel === PANEL.replaceKey}
                   onClick={() => setPanel((p) => (p === PANEL.replaceKey ? PANEL.idle : PANEL.replaceKey))}
                 >
                   Replace key
                 </Button>
               ) : null}
-              <Button type="button" variant="ghost" disabled={pending} onClick={() => onReset(provider.provider)}>
-                Switch to platform defaults
-              </Button>
             </div>
           ) : (
             <div>
               <Button
                 type="button"
                 size="sm"
-                disabled={pending}
                 aria-expanded={panel === PANEL.addKey}
                 onClick={() => setPanel((p) => (p === PANEL.addKey ? PANEL.idle : PANEL.addKey))}
               >
@@ -158,12 +137,6 @@ export default function ActiveModelRow({ workspaceId, provider, secrets }: Props
               onDone={() => setPanel(PANEL.idle)}
               onCancel={() => setPanel(PANEL.idle)}
             />
-          ) : null}
-
-          {error ? (
-            <Alert variant="destructive" className="text-xs">
-              {error}
-            </Alert>
           ) : null}
         </div>
       }

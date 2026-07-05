@@ -17,8 +17,7 @@ import { summarizeCharges } from "./lib/charges";
 
 export const dynamic = "force-dynamic";
 
-const BILLING_DESCRIPTION =
-  "Manage credits and usage. No seats or monthly minimum.";
+const BILLING_DESCRIPTION = "Manage credits and usage.";
 
 export default async function BillingSettingsPage() {
   const { getToken } = await auth();
@@ -68,7 +67,7 @@ export default async function BillingSettingsPage() {
         <TabsList>
           <TabsTrigger value="usage">Usage</TabsTrigger>
           <TabsTrigger value="invoices">Invoices</TabsTrigger>
-          <TabsTrigger value="payment">Payment Method</TabsTrigger>
+          <TabsTrigger value="payment">Payment method</TabsTrigger>
         </TabsList>
 
         <TabsContent value="usage" className="mt-4 space-y-6">

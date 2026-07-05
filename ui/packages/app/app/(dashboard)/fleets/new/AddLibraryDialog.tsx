@@ -34,7 +34,7 @@ import { onboardLibraryEntryAction } from "../actions";
 import { CREATE_LIBRARY_DOC_URL } from "./library-docs";
 
 const SOURCE_REF_PATTERN = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
-const ONBOARD_ACTION = "add the library entry";
+const ONBOARD_ACTION = "create the fleet library";
 
 const schema = z.object({
   source_ref: z
@@ -54,7 +54,7 @@ type Props = {
 
 export default function AddLibraryDialog({
   workspaceId,
-  triggerLabel = "Add library entry",
+  triggerLabel = "Create fleet library",
   defaultOpen = false,
 }: Props) {
   const router = useRouter();
@@ -119,9 +119,9 @@ export default function AddLibraryDialog({
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Add library entry</DialogTitle>
+          <DialogTitle>Create fleet library</DialogTitle>
           <DialogDescription>
-            Add a GitHub repository that contains a Fleet library entry.
+            Add a GitHub repository that contains a fleet library entry.
           </DialogDescription>
         </DialogHeader>
         <Form {...form}>
@@ -158,8 +158,8 @@ export default function AddLibraryDialog({
             ) : null}
             <DialogFooter>
               <Button type="submit" disabled={pending}>
-                {pending ? <Spinner size="sm" srLabel="Adding entry" /> : null}
-                Add entry
+                {pending ? <Spinner size="sm" srLabel="Creating fleet library" /> : null}
+                Create
               </Button>
             </DialogFooter>
           </form>

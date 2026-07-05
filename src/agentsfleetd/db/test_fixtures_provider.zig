@@ -21,7 +21,7 @@ const TEST_PROVIDER_API_KEY = "fw_test_stub_not_real";
 /// PLATFORM_DEFAULT_CAP_TOKENS constants were deleted), so a row without them
 /// resolves to PlatformKeyMissing → tenant_resolve_failed. These values match
 /// what the pre-M100 constants resolved to, keeping every lease-path test stable.
-/// A matching core.model_caps row (zero token rates) is seeded first so the
+/// A matching core.model_library row (zero token rates) is seeded first so the
 /// fk_platform_llm_keys_model FK is satisfied. Zero rates keep the lease billed
 /// run-fee-only (the cache resolves run-fee + 0 token nanos) — identical $ to the
 /// pre-FK rate-cache-MISS behaviour, minus the latent lease-issue panic. A
@@ -72,7 +72,7 @@ pub fn seedPlatformProviderWithKey(
     const caps_uid = try id_format.generateFleetId(alloc);
     defer alloc.free(caps_uid);
     _ = try conn.exec(
-        \\INSERT INTO core.model_caps
+        \\INSERT INTO core.model_library
         \\  (uid, model_id, provider, context_cap_tokens,
         \\   input_nanos_per_mtok, cached_input_nanos_per_mtok, output_nanos_per_mtok,
         \\   created_at_ms, updated_at_ms)
@@ -80,7 +80,7 @@ pub fn seedPlatformProviderWithKey(
         \\ON CONFLICT (provider, model_id) DO NOTHING
     , .{ caps_uid, TEST_PLATFORM_MODEL, TEST_PROVIDER_NAME, TEST_PLATFORM_CAP_TOKENS, clock.nowMillis() });
 
-    // Populate the process-global model rate cache from core.model_caps so
+    // Populate the process-global model rate cache from core.model_library so
     // computeStageCharge() can resolve the platform default model. The
     // production server boots this from serve.zig; integration tests don't
     // hit that path. populate() owns the cache's process-lifetime memory

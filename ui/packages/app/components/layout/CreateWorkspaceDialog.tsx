@@ -72,7 +72,7 @@ export default function CreateWorkspaceDialog({ open, onOpenChange, onCreated }:
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>New workspace</DialogTitle>
+          <DialogTitle>Create workspace</DialogTitle>
           <DialogDescription>
             A workspace isolates teammates and credentials; billing rolls up to
             your tenant. Leave the name blank to have one generated.

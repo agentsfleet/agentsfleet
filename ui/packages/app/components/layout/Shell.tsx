@@ -6,11 +6,12 @@ import Link from "next/link";
 import {
   LayoutDashboardIcon,
   ActivityIcon,
-  SettingsIcon,
   BookOpenIcon,
   BotIcon,
   CheckCircle2Icon,
   CpuIcon,
+  CoinsIcon,
+  KeyIcon,
   KeyRoundIcon,
   LinkIcon,
   CreditCardIcon,
@@ -75,7 +76,7 @@ const OPERATIONS_NAV: NavEntry[] = [
 const CONFIGURATION_NAV: NavEntry[] = [
   { label: "Models", href: "/settings/models", icon: CpuIcon },
   { label: "Integrations", href: "/integrations", icon: LinkIcon },
-  { label: "Secrets & ENVs", href: "/secrets", icon: KeyRoundIcon },
+  { label: "Secrets", href: "/secrets", icon: KeyRoundIcon },
 ];
 
 // Platform-operator surfaces — each appended to the Configuration group only
@@ -85,11 +86,11 @@ const CONFIGURATION_NAV: NavEntry[] = [
 // catalogue; a token with neither sees neither.
 const PLATFORM_NAV: PlatformNavEntry[] = [
   { label: "Runners", href: "/admin/runners", icon: ServerIcon, scope: SCOPE.RUNNER_READ },
-  { label: "Model rates", href: "/admin/models", icon: CpuIcon, scope: SCOPE.MODEL_READ },
+  { label: "Model library", href: "/admin/models", icon: CoinsIcon, scope: SCOPE.MODEL_READ },
 ];
 
 const ORGANIZATION_NAV: NavEntry[] = [
-  { label: "Workspace", href: "/settings", icon: SettingsIcon },
+  { label: "API Keys", href: "/settings/api-keys", icon: KeyIcon },
   { label: "Billing", href: "/settings/billing", icon: CreditCardIcon },
 ];
 
@@ -366,9 +367,14 @@ type NavItemProps = {
 // docs/DESIGN_SYSTEM.md and tokens.css both reserve mint for "accents / links
 // / active / glow"; this is the one spot in the nav that's actually meant to
 // claim it. `bg-pulse/10` mirrors the same opacity-modifier pattern Alert's
-// `success` variant already uses for a soft (not solid) status fill.
+// `success` variant already uses for a soft (not solid) status fill. The left
+// accent bar mirrors tab-styles.ts's `border-b-2 … data-[active=true]:border-pulse`
+// pattern so the fill isn't the only active signal. `rounded-r-md` (not
+// `rounded-md`) — rounding the left corners too would curve the accent bar's
+// top/bottom ends instead of a crisp straight vertical line flush against
+// the sidebar edge.
 const NAV_ITEM_CLASSES =
-  "flex items-center gap-2.5 px-3 py-2 rounded-md font-mono text-body-sm text-muted-foreground no-underline transition duration-snap ease-snap motion-safe:hover:translate-x-px hover:bg-accent hover:text-foreground data-[active=true]:bg-pulse/10 data-[active=true]:text-pulse data-[active=true]:font-medium";
+  "flex items-center gap-2.5 px-3 py-2 rounded-r-md border-l-2 border-transparent font-mono text-body-sm text-muted-foreground no-underline transition duration-snap ease-snap motion-safe:hover:translate-x-px hover:bg-accent hover:text-foreground data-[active=true]:border-pulse data-[active=true]:bg-pulse/10 data-[active=true]:text-pulse data-[active=true]:font-medium";
 
 function NavItem({ href, label, Icon, active, external, collapsed, onClick }: NavItemProps) {
   if (external) {

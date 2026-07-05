@@ -13,6 +13,16 @@ export const LABEL_REGEX = /^[A-Za-z0-9_.-]{1,64}$/;
 export const SANDBOX_TIERS = ["landlock_full", "container_nested", "macos_seatbelt", "dev_none"] as const;
 export type SandboxTier = (typeof SANDBOX_TIERS)[number];
 
+// Operator-facing labels for the self-reported isolation stack — the raw enum
+// tags are the wire shape (sent verbatim), these are the human strings the
+// dropdown and list render. Keyed so a new tier can't be added without a label.
+export const SANDBOX_TIER_LABELS: Record<SandboxTier, string> = {
+  landlock_full: "Linux · Landlock (full)",
+  container_nested: "Nested container",
+  macos_seatbelt: "macOS · Seatbelt",
+  dev_none: "None (dev only)",
+};
+
 // Derived runtime liveness — mirrors `protocol.RunnerLiveness` tag names. Never
 // stored; computed server-side from last_seen_at + the live-lease join.
 export const RUNNER_LIVENESS = ["registered", "busy", "online", "offline"] as const;

@@ -15,9 +15,11 @@ describe("dashboard segment loading states", () => {
       expectsTitle: null, // skeleton title, no static text
     },
     {
-      name: "settings",
-      importer: () => import("../app/(dashboard)/settings/loading"),
-      expectsTitle: "Workspace",
+      // /settings is a bare redirect to /settings/api-keys now,
+      // no loading.tsx of its own — its former loader was the Workspace tab's.
+      name: "settings/api-keys",
+      importer: () => import("../app/(dashboard)/settings/api-keys/loading"),
+      expectsTitle: "API Keys",
     },
     {
       name: "settings/models",
@@ -30,11 +32,21 @@ describe("dashboard segment loading states", () => {
       expectsTitle: "Billing",
     },
     {
-      // /credentials redirects to /settings/models, so its loader paints the
-      // DESTINATION title (no flash) — see credentials/loading.
-      name: "credentials",
+      // Secrets is its own standalone page — its loader paints the real
+      // title, not the stale "Models" it borrowed when /credentials redirected.
+      name: "secrets",
       importer: () => import("../app/(dashboard)/secrets/loading"),
-      expectsTitle: "Models",
+      expectsTitle: "Secrets",
+    },
+    {
+      name: "admin/runners",
+      importer: () => import("../app/(dashboard)/admin/runners/loading"),
+      expectsTitle: "Runners",
+    },
+    {
+      name: "admin/models",
+      importer: () => import("../app/(dashboard)/admin/models/loading"),
+      expectsTitle: "Model library",
     },
     {
       name: "integrations",

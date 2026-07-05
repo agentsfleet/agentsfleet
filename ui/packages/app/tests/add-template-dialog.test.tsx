@@ -40,7 +40,7 @@ afterEach(() => cleanup());
 async function openDialog() {
   const user = userEvent.setup({ delay: null });
   render(React.createElement(AddLibraryDialog, { workspaceId: "ws_1" }));
-  await user.click(screen.getByRole("button", { name: /^add library entry$/i }));
+  await user.click(screen.getByRole("button", { name: /^create fleet library$/i }));
   await screen.findByLabelText("Repository");
   return user;
 }
@@ -117,9 +117,9 @@ describe("AddLibraryDialog", () => {
     await user.type(screen.getByLabelText("Repository"), "owner/repo");
     submitDialog();
 
-    await screen.findByText("Adding entry");
+    await screen.findByText("Creating fleet library");
     expect(
-      (screen.getByRole("button", { name: /adding entry add entry/i }) as HTMLButtonElement)
+      (screen.getByRole("button", { name: /creating fleet library create/i }) as HTMLButtonElement)
         .disabled,
     ).toBe(true);
 
@@ -138,15 +138,15 @@ describe("AddLibraryDialog", () => {
     await user.type(screen.getByLabelText("Repository"), "owner/repo");
     submitDialog();
 
-    await screen.findByText("Adding entry");
+    await screen.findByText("Creating fleet library");
     await user.click(screen.getByRole("button", { name: "Close" }));
-    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Add library entry" })).toBeNull());
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Create fleet library" })).toBeNull());
     finishAction?.(onboarded);
 
-    await user.click(screen.getByRole("button", { name: /^add library entry$/i }));
-    const dialog = await screen.findByRole("dialog", { name: "Add library entry" });
+    await user.click(screen.getByRole("button", { name: /^create fleet library$/i }));
+    const dialog = await screen.findByRole("dialog", { name: "Create fleet library" });
     expect(
-      (within(dialog).getByRole("button", { name: /^add entry$/i }) as HTMLButtonElement)
+      (within(dialog).getByRole("button", { name: /^create$/i }) as HTMLButtonElement)
         .disabled,
     ).toBe(false);
     expect(routerRefresh).not.toHaveBeenCalled();
@@ -162,7 +162,7 @@ describe("AddLibraryDialog", () => {
     await user.type(screen.getByLabelText("Repository"), "owner/repo");
     submitDialog();
 
-    await screen.findByText("Couldn't add the library entry — repo not found.");
+    await screen.findByText("Couldn't create the fleet library — repo not found.");
     expect(screen.queryByText("Ask an agentsfleet admin to grant the scope this action requires.")).toBeNull();
     expect(screen.queryByText(/^UZ-/)).toBeNull();
     expect(routerRefresh).not.toHaveBeenCalled();

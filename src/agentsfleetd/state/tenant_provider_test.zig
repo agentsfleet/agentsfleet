@@ -40,7 +40,7 @@ fn cleanupTeardown(conn: *pg.Conn, ws_id: []const u8) void {
     _ = conn.exec("DELETE FROM core.tenant_providers WHERE tenant_id = $1::uuid", .{uc1.TENANT_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
     _ = conn.exec("DELETE FROM core.platform_llm_keys WHERE source_workspace_id = $1::uuid", .{ws_id}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
     // After platform_llm_keys (the FK referrer) is gone, the catalogue row is free to drop.
-    _ = conn.exec("DELETE FROM core.model_caps WHERE provider = $1", .{TP_TEST_PROVIDER}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
+    _ = conn.exec("DELETE FROM core.model_library WHERE provider = $1", .{TP_TEST_PROVIDER}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
     _ = conn.exec("DELETE FROM vault.secrets WHERE workspace_id = $1", .{ws_id}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
     uc1.teardown(conn, ws_id);
 }
@@ -63,7 +63,7 @@ fn seedPlatformLlmKey(conn: *pg.Conn, alloc: std.mem.Allocator, ws_id: []const u
     const caps_uid = try id_format.generateFleetId(alloc);
     defer alloc.free(caps_uid);
     _ = try conn.exec(
-        \\INSERT INTO core.model_caps
+        \\INSERT INTO core.model_library
         \\  (uid, model_id, provider, context_cap_tokens,
         \\   input_nanos_per_mtok, cached_input_nanos_per_mtok, output_nanos_per_mtok,
         \\   created_at_ms, updated_at_ms)

@@ -10,11 +10,12 @@ import {
   Spinner,
   type DataTableColumn,
 } from "@agentsfleet/design-system";
-import { KeyRoundIcon, PencilIcon, Trash2Icon } from "lucide-react";
+import { KeyRoundIcon, PencilIcon, PencilLineIcon, Trash2Icon } from "lucide-react";
 import { deleteSecretAction } from "../actions";
 import type { Secret } from "@/lib/api/secrets";
 import { presentErrorString } from "@/lib/errors";
 import EditSecretDialogDynamic from "@/components/domain/island-dynamic/EditSecretDialogDynamic";
+import RenameSecretDialogDynamic from "@/components/domain/island-dynamic/RenameSecretDialogDynamic";
 
 type Props = {
   workspaceId: string;
@@ -63,7 +64,7 @@ function SecretActions({
       </Button>
       <Button
         type="button"
-        variant="ghost"
+        variant="destructive"
         size="sm"
         onClick={() => onDelete(secret.name)}
         disabled={deleteDisabled}
@@ -84,11 +85,32 @@ function SecretActions({
   );
 }
 
-function SecretNameCell({ secret }: { secret: Secret }) {
+function SecretNameCell({
+  secret,
+  pending,
+  onRename,
+}: {
+  secret: Secret;
+  pending: boolean;
+  onRename: (name: string) => void;
+}) {
   return (
-    <div className="min-w-0">
-      <div className="truncate font-mono text-sm">{secret.name}</div>
-      <div className="text-xs text-muted-foreground">Write-only encrypted secret</div>
+    <div className="flex min-w-0 items-start gap-1">
+      <div className="min-w-0">
+        <div className="truncate font-mono text-sm">{secret.name}</div>
+        <div className="text-xs text-muted-foreground">Write-only encrypted secret</div>
+      </div>
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        onClick={() => onRename(secret.name)}
+        disabled={pending}
+        aria-label={`Rename secret ${secret.name}`}
+        title="Rename"
+      >
+        <PencilLineIcon size={14} />
+      </Button>
     </div>
   );
 }
@@ -106,19 +128,21 @@ function buildColumns({
   target,
   protectedSecretName,
   onEdit,
+  onRename,
   onDelete,
 }: {
   pending: boolean;
   target: string | null;
   protectedSecretName: string | null;
   onEdit: (name: string) => void;
+  onRename: (name: string) => void;
   onDelete: (name: string) => void;
 }): DataTableColumn<Secret>[] {
   return [
     {
       key: "name",
       header: "Name",
-      cell: (c) => <SecretNameCell secret={c} />,
+      cell: (c) => <SecretNameCell secret={c} pending={pending} onRename={onRename} />,
     },
     {
       key: "created_at",
@@ -147,17 +171,23 @@ function buildColumns({
 function SecretDialogs({
   workspaceId,
   editTarget,
+  renameTarget,
+  existingNames,
   target,
   error,
   onEditClose,
+  onRenameClose,
   onDeleteClose,
   onConfirmDelete,
 }: {
   workspaceId: string;
   editTarget: string | null;
+  renameTarget: string | null;
+  existingNames: readonly string[];
   target: string | null;
   error: string | null;
   onEditClose: () => void;
+  onRenameClose: () => void;
   onDeleteClose: () => void;
   onConfirmDelete: (name: string) => void;
 }) {
@@ -168,6 +198,13 @@ function SecretDialogs({
         name={editTarget ?? ""}
         open={editTarget !== null}
         onOpenChange={onEditClose}
+      />
+      <RenameSecretDialogDynamic
+        workspaceId={workspaceId}
+        name={renameTarget ?? ""}
+        existingNames={existingNames}
+        open={renameTarget !== null}
+        onOpenChange={onRenameClose}
       />
       <ConfirmDialog
         open={target !== null}
@@ -191,6 +228,7 @@ function SecretTable({
   target,
   protectedSecretName,
   onEdit,
+  onRename,
   onDelete,
 }: {
   secrets: Secret[];
@@ -198,9 +236,10 @@ function SecretTable({
   target: string | null;
   protectedSecretName: string | null;
   onEdit: (name: string) => void;
+  onRename: (name: string) => void;
   onDelete: (name: string) => void;
 }) {
-  const columns = buildColumns({ pending, target, protectedSecretName, onEdit, onDelete });
+  const columns = buildColumns({ pending, target, protectedSecretName, onEdit, onRename, onDelete });
   return (
     <DataTable
       columns={columns}
@@ -220,14 +259,15 @@ export default function SecretsList({
   const [pending, startTransition] = useTransition();
   const [target, setTarget] = useState<string | null>(null);
   const [editTarget, setEditTarget] = useState<string | null>(null);
+  const [renameTarget, setRenameTarget] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   if (secrets.length === 0) {
     return (
       <EmptyState
         icon={<KeyRoundIcon size={28} />}
-        title="No secrets yet"
-        description="Add a secret your fleets can use to reach other services."
+        title="No secrets"
+        description="Create secret to have your fleets reach other services securely."
       />
     );
   }
@@ -263,6 +303,10 @@ export default function SecretsList({
           setError(null);
           setEditTarget(name);
         }}
+        onRename={(name) => {
+          setError(null);
+          setRenameTarget(name);
+        }}
         onDelete={(name) => {
           setError(null);
           setTarget(name);
@@ -271,9 +315,12 @@ export default function SecretsList({
       <SecretDialogs
         workspaceId={workspaceId}
         editTarget={editTarget}
+        renameTarget={renameTarget}
+        existingNames={secrets.map((s) => s.name)}
         target={target}
         error={error}
         onEditClose={() => setEditTarget(null)}
+        onRenameClose={() => setRenameTarget(null)}
         onDeleteClose={() => {
           setTarget(null);
           setError(null);

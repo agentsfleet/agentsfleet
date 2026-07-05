@@ -9,8 +9,6 @@ const redirect = vi.fn((path: string) => {
   throw new Error(`redirect:${path}`);
 });
 const authMock = vi.fn();
-const resolveActiveWorkspaceMock = vi.fn().mockResolvedValue({ id: "ws_1", name: "Prod" });
-const listTenantWorkspacesCachedMock = vi.fn().mockResolvedValue({ items: [], total: 0 });
 const listApiKeysMock = vi.fn();
 
 vi.mock("next/navigation", () => ({ redirect, usePathname: () => "/", useRouter: () => ({ refresh: vi.fn() }) }));
@@ -19,16 +17,6 @@ vi.mock("next/link", () => ({
     React.createElement("a", { href, ...rest }, children),
 }));
 vi.mock("@clerk/nextjs/server", () => ({ auth: authMock }));
-vi.mock("@/lib/workspace", () => ({
-  listTenantWorkspacesCached: listTenantWorkspacesCachedMock,
-  resolveActiveWorkspace: resolveActiveWorkspaceMock,
-  // The settings index renders via resolveActiveWorkspaceId — derive it from
-  // the legacy mock so existing `.mockResolvedValue({ id })` setups still drive it.
-  resolveActiveWorkspaceId: async (token: string) => {
-    const ws = (await resolveActiveWorkspaceMock(token)) as { id: string } | null;
-    return ws ? { id: ws.id, source: "cookie" as const } : null;
-  },
-}));
 
 // Partial mock — keep the real DEFAULT_SORT / DEFAULT_PAGE_SIZE the page passes.
 vi.mock("@/lib/api/api_keys", async (orig) => ({
@@ -46,85 +34,50 @@ vi.mock("@/app/(dashboard)/settings/api-keys/components/ApiKeyList", () => ({
     ),
 }));
 
+// The "Create key" trigger ships behind a next/dynamic shim (M101 §5) — stub
+// it out so the page test stays focused on page-level behaviour.
+vi.mock("@/components/domain/island-dynamic/CreateApiKeyDialogDynamic", () => ({
+  default: () => React.createElement("button", { type: "button" }, "Create key"),
+}));
+
 function mockAuth(token: string | null = "tok") {
   authMock.mockResolvedValueOnce({ getToken: vi.fn().mockResolvedValue(token), userId: "usr_1" });
 }
 
 beforeEach(() => vi.clearAllMocks());
 
-// ── Settings index card ──────────────────────────────────────────────────
+// ── /settings redirect ────────────────────────────────────────────────────
 
-describe("settings index", () => {
-  it("renders a card linking to /settings/api-keys", async () => {
+describe("settings index redirect", () => {
+  it("redirects /settings to /settings/api-keys (Workspace tab folded in)", async () => {
     mockAuth();
     const { default: SettingsPage } = await import("../app/(dashboard)/settings/page");
-    const html = renderToStaticMarkup(await SettingsPage());
-    expect(html).toContain('href="/settings/api-keys"');
-    expect(html).toMatch(/API keys/i);
-    expect(html).toMatch(/Manage workspace/i);
+    await expect(SettingsPage()).rejects.toThrow("redirect:/settings/api-keys");
   });
 
-  it("renders the standard workspace subtitle and a copy control for the workspace ID", async () => {
-    // The Workspace page carries a PageHeader subtitle like every other page,
-    // and the workspace ID (what the CLI/API target) gets a one-click copy
-    // affordance. The mocked workspace resolves an id (name null), so the ID
-    // copy control renders even when the name is absent.
-    mockAuth();
+  it("redirects /settings straight to /sign-in when there is no token (no double redirect)", async () => {
+    mockAuth(null);
     const { default: SettingsPage } = await import("../app/(dashboard)/settings/page");
-    const html = renderToStaticMarkup(await SettingsPage());
-    expect(html).toContain("Switch workspaces or create one.");
-    expect(html).toContain("Copy workspace ID");
-  });
-
-  it("shows the admin-access notice when redirected from the api-keys guard", async () => {
-    mockAuth();
-    const { default: SettingsPage } = await import("../app/(dashboard)/settings/page");
-    const html = renderToStaticMarkup(
-      await SettingsPage({ searchParams: Promise.resolve({ notice: "api-keys-operator-only" }) }),
-    );
-    expect(html).toMatch(/API keys need admin access/i);
-  });
-
-  it("omits the notice when no redirect param is present", async () => {
-    mockAuth();
-    const { default: SettingsPage } = await import("../app/(dashboard)/settings/page");
-    const html = renderToStaticMarkup(await SettingsPage({ searchParams: Promise.resolve({}) }));
-    expect(html).not.toMatch(/need admin access/i);
+    await expect(SettingsPage()).rejects.toThrow("redirect:/sign-in");
   });
 });
 
 // ── /settings/api-keys page ───────────────────────────────────────────────
 
 describe("api-keys page", () => {
-  it("redirects a user-role principal (backend 403) to /settings with a notice", async () => {
-    mockAuth();
-    listApiKeysMock.mockRejectedValueOnce(new ApiError("forbidden", 403, "UZ-AUTH-001"));
-    const { default: Page } = await import("../app/(dashboard)/settings/api-keys/page");
-    await expect(Page()).rejects.toThrow("redirect:/settings?notice=api-keys-operator-only");
-  });
-
   it("redirects to /sign-in when there is no token", async () => {
     mockAuth(null);
     const { default: Page } = await import("../app/(dashboard)/settings/api-keys/page");
     await expect(Page()).rejects.toThrow("redirect:/sign-in");
   });
 
-  it("operator: lists keys, requesting the default newest-first sort", async () => {
+  it("shows the API keys need admin access notice inline on a 403 — no redirect", async () => {
     mockAuth();
-    listApiKeysMock.mockResolvedValueOnce({
-      items: [
-        { id: "a", key_name: "ci-runner", active: true, created_at: 2, last_used_at: null, revoked_at: null },
-        { id: "b", key_name: "old-zapier", active: false, created_at: 1, last_used_at: null, revoked_at: 1 },
-      ],
-      total: 2,
-      page: 1,
-      page_size: 25,
-    });
+    listApiKeysMock.mockRejectedValueOnce(new ApiError("forbidden", 403, "UZ-AUTH-001"));
     const { default: Page } = await import("../app/(dashboard)/settings/api-keys/page");
     const html = renderToStaticMarkup(await Page());
-    expect(html).toContain("ci-runner");
-    expect(html).toContain("old-zapier");
-    expect(listApiKeysMock).toHaveBeenCalledWith("tok", expect.objectContaining({ sort: "-created_at" }));
+    expect(html).toMatch(/API keys need admin access/i);
+    expect(redirect).not.toHaveBeenCalled();
   });
 
   it("redirects to /sign-in when the backend returns 401", async () => {
@@ -139,6 +92,25 @@ describe("api-keys page", () => {
     listApiKeysMock.mockRejectedValueOnce(new ApiError("backend exploded", 500, "UZ-INTERNAL-003"));
     const { default: Page } = await import("../app/(dashboard)/settings/api-keys/page");
     await expect(Page()).rejects.toThrow("backend exploded");
+  });
+
+  it("operator: renders the API Keys title and lists keys newest-first", async () => {
+    mockAuth();
+    listApiKeysMock.mockResolvedValueOnce({
+      items: [
+        { id: "a", key_name: "ci-runner", active: true, created_at: 2, last_used_at: null, revoked_at: null },
+        { id: "b", key_name: "old-zapier", active: false, created_at: 1, last_used_at: null, revoked_at: 1 },
+      ],
+      total: 2,
+      page: 1,
+      page_size: 25,
+    });
+    const { default: Page } = await import("../app/(dashboard)/settings/api-keys/page");
+    const html = renderToStaticMarkup(await Page());
+    expect(html).toMatch(/API Keys/);
+    expect(html).toContain("ci-runner");
+    expect(html).toContain("old-zapier");
+    expect(listApiKeysMock).toHaveBeenCalledWith("tok", expect.objectContaining({ sort: "-created_at" }));
   });
 });
 

@@ -2,7 +2,7 @@ import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { routerPush, routerRefresh } from "./helpers/dashboard-mocks";
+import { routerRefresh } from "./helpers/dashboard-mocks";
 import { resetDashboardMocks, setActiveWorkspaceMock, createWorkspaceActionMock } from "./helpers/dashboard-app-mocks";
 import { EVENTS } from "@/lib/analytics/events";
 
@@ -53,8 +53,6 @@ describe("WorkspaceSwitcher component", () => {
     workspaces?: Array<{ id: string; name: string | null }>;
     activeId?: string | null;
     onSwitch?: (id: string) => void | Promise<void>;
-    showCreateButton?: boolean;
-    showManageItem?: boolean;
   } = {}) {
     const { default: WorkspaceSwitcher } = await import(
       "../components/layout/WorkspaceSwitcher"
@@ -67,13 +65,11 @@ describe("WorkspaceSwitcher component", () => {
         ],
         activeId: props.activeId ?? "ws_1",
         onSwitch: props.onSwitch ?? setActiveWorkspaceMock,
-        showCreateButton: props.showCreateButton,
-        showManageItem: props.showManageItem,
       } as never),
     );
   }
 
-  it("still renders with a New workspace affordance when workspaces is empty", async () => {
+  it("still renders with a Create workspace affordance when workspaces is empty", async () => {
     render(
       React.createElement(
         (await import("../components/layout/WorkspaceSwitcher")).default,
@@ -85,7 +81,7 @@ describe("WorkspaceSwitcher component", () => {
     expect(screen.getByTestId("workspace-new")).toBeTruthy();
   });
 
-  it("opens the create dialog from the New workspace item", async () => {
+  it("opens the create dialog from the Create workspace item", async () => {
     const user = userEvent.setup({ delay: null });
     await renderSwitcher();
     await user.click(screen.getByTestId("workspace-new"));
@@ -210,21 +206,21 @@ describe("WorkspaceSwitcher component", () => {
     expect(routerRefresh).not.toHaveBeenCalled();
   });
 
-  it("navigates to Settings from Manage workspace", async () => {
-    const user = userEvent.setup({ delay: null });
+  it("has no Manage workspace item — switching/creating are the only actions", async () => {
+    // The dropdown menu is entirely switch-or-create; there's nothing left to
+    // "manage" once workspace identity moved to the API Keys page.
     await renderSwitcher();
-    await user.click(screen.getByTestId("workspace-manage"));
-    expect(routerPush).toHaveBeenCalledWith("/settings");
+    expect(screen.queryByTestId("workspace-manage")).toBeNull();
   });
 
-  it("creates a workspace from the inline button and shows the created toast", async () => {
+  it("creates a workspace from the dropdown item and shows the created toast", async () => {
     const user = userEvent.setup({ delay: null });
     createWorkspaceActionMock.mockResolvedValueOnce({
       ok: true,
       data: { workspace_id: "ws_inline", name: "inline-prod" },
     });
-    await renderSwitcher({ showCreateButton: true });
-    await user.click(screen.getByRole("button", { name: /new workspace/i }));
+    await renderSwitcher();
+    await user.click(screen.getByTestId("workspace-new"));
     await user.type(screen.getByTestId("workspace-name-input"), "inline-prod");
     await user.click(screen.getByTestId("workspace-create-submit"));
     await waitFor(() =>

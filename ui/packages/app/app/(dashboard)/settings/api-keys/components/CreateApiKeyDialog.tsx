@@ -83,7 +83,7 @@ export default function CreateApiKeyDialog({ onCreated }: { onCreated: () => voi
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
         <Button type="button" size="sm">
-          New API key
+          Create key
         </Button>
       </DialogTrigger>
       <DialogContent
@@ -95,7 +95,7 @@ export default function CreateApiKeyDialog({ onCreated }: { onCreated: () => voi
         ) : (
           <>
             <DialogHeader>
-              <DialogTitle>New API key</DialogTitle>
+              <DialogTitle>Create API key</DialogTitle>
               <DialogDescription>
                 The raw key is shown once. Name it so you can recognise it later in the list.
               </DialogDescription>

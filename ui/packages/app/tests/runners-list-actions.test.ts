@@ -109,7 +109,11 @@ function eventResponse(
 }
 
 function rowFor(hostId: string) {
-  return screen.getByLabelText(`${hostId} runner row`);
+  // DataTable rows are plain <tr> without a custom aria-label — locate the row
+  // by its host_id cell text and walk up to the enclosing row.
+  const row = screen.getByText(hostId).closest("tr");
+  if (!row) throw new Error(`no runner row for ${hostId}`);
+  return row as HTMLElement;
 }
 
 async function renderList(initial: RunnerListResponse) {

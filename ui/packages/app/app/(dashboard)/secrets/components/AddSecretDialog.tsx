@@ -12,7 +12,7 @@ import {
 } from "@agentsfleet/design-system";
 import AddSecretFormDynamic from "@/components/domain/island-dynamic/AddSecretFormDynamic";
 
-const ADD_SECRET_TRIGGER_LABEL = "Add Secret";
+const ADD_SECRET_TRIGGER_LABEL = "Create secret";
 
 export default function AddSecretDialog({ workspaceId }: { workspaceId: string }) {
   const [open, setOpen] = useState(false);
@@ -26,7 +26,7 @@ export default function AddSecretDialog({ workspaceId }: { workspaceId: string }
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Add a secret</DialogTitle>
+          <DialogTitle>Create secret</DialogTitle>
           <DialogDescription>
             Name it and add one or more fields (like api_key). Values are encrypted on save — you
             can replace them later, but never view them again.{" "}

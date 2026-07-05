@@ -1,10 +1,15 @@
 // Single source of truth for the credential-body contract shared by every
 // write path: a credential's `data` must be a non-empty JSON object, and a
-// credential name is at most SECRET_NAME_MAX chars. AddSecretForm (zod)
-// and EditSecretDialog (plain state) both validate against this so the two
-// can never drift on what they accept or the messages they show.
+// credential name is at most SECRET_NAME_MAX chars. AddSecretForm (zod),
+// EditSecretDialog (rotate), and RenameSecretDialog (plain state) all validate
+// against this so the write paths can never drift on what they accept or the
+// messages they show.
 
 export const SECRET_NAME_MAX = 64;
+// The vault never returns plaintext, so every write path that re-stores an
+// existing secret (Edit/rotate, Rename) asks the user to re-enter the value.
+// Shared so the rotate and rename dialogs never drift on the empty-input copy.
+export const SECRET_DATA_REENTER_REQUIRED = "Re-enter the secret as a JSON object";
 export const SECRET_DATA_NOT_OBJECT =
   "Data must be a JSON object — strings, arrays, and scalars are rejected";
 export const SECRET_DATA_EMPTY_OBJECT = "Object must have at least one field";

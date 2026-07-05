@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { EmptyState, PageHeader, PageTitle } from "@agentsfleet/design-system";
+import { EmptyState, PageHeader, PageTitle, SectionLabel } from "@agentsfleet/design-system";
 import { ZapIcon } from "lucide-react";
 import { auth } from "@clerk/nextjs/server";
 import { withWorkspaceScope, orFallback } from "@/lib/workspace";
@@ -10,7 +10,7 @@ import AddSecretDialog from "./components/AddSecretDialog";
 
 export const dynamic = "force-dynamic";
 
-const PAGE_TITLE = "Secrets & ENVs";
+const PAGE_TITLE = "Secrets";
 const PAGE_DESCRIPTION = "Encrypted secrets your fleets can use — write-only once saved.";
 
 export default async function SecretsPage() {
@@ -55,7 +55,8 @@ export default async function SecretsPage() {
         <PageTitle>{PAGE_TITLE}</PageTitle>
       </PageHeader>
 
-      <div className="flex justify-end">
+      <div className="flex flex-wrap items-baseline justify-between gap-md">
+        <SectionLabel>Manage secrets</SectionLabel>
         <AddSecretDialog workspaceId={workspaceId} />
       </div>
 

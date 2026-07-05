@@ -118,7 +118,7 @@ describe("Secrets page", () => {
     const { default: Page } = await import("../app/(dashboard)/secrets/page");
     const markup = renderToStaticMarkup(await Page());
 
-    expect(markup).toContain("Secrets &amp; ENVs");
+    expect(markup).toContain("Secrets");
     expect(markup).toContain("Encrypted secrets your fleets can use");
     expect(markup).toContain('data-testid="add-secret-dialog"');
     expect(markup).toContain('data-workspace="ws_1"');
@@ -173,11 +173,11 @@ describe("Secrets page", () => {
     expect(markup).toContain('data-protected-secret=""');
   });
 
-  it("renders the no-workspace empty state under the Secrets & ENVs title", async () => {
+  it("renders the no-workspace empty state under the Secrets title", async () => {
     vi.mocked(withWorkspaceScope).mockResolvedValue(null);
     const { default: Page } = await import("../app/(dashboard)/secrets/page");
     const markup = renderToStaticMarkup(await Page());
-    expect(markup).toContain("Secrets &amp; ENVs");
+    expect(markup).toContain("Secrets");
     expect(markup).toContain("No workspace yet");
   });
 

@@ -41,7 +41,7 @@ const LEASE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0e9f01";
 const MODEL_CAPS_UID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0e9d01";
 const EVENT_ID = "evt-wire-splits-1";
 const RUNNER_TOKEN = auth_mw.runner_bearer.RUNNER_TOKEN_PREFIX ++ "d" ** 64;
-// Suite-private (provider, model) pair with its own seeded core.model_caps
+// Suite-private (provider, model) pair with its own seeded core.model_library
 // row, so post-trial the registry resolves REAL non-zero rates for this lease
 // (the global test-provider pair has no catalogue row — resolution would fall
 // back to run-fee-only and the armed >0 assertions could never pass).
@@ -134,7 +134,7 @@ fn seedBalance(conn: *pg.Conn) !void {
 fn seedModelRates(conn: *pg.Conn) !void {
     const now_ms: i64 = clock.nowMillis();
     _ = try conn.exec(
-        \\INSERT INTO core.model_caps
+        \\INSERT INTO core.model_library
         \\  (uid, model_id, provider, context_cap_tokens, input_nanos_per_mtok,
         \\   cached_input_nanos_per_mtok, output_nanos_per_mtok, created_at_ms, updated_at_ms)
         \\VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $8)
@@ -159,7 +159,7 @@ fn teardown(conn: *pg.Conn) void {
     execIgnore(conn, "DELETE FROM fleet.runners WHERE id = $1::uuid", .{RUNNER_ID});
     // Drop this suite's catalogue row and reseat the process-global cache so
     // later suites in the same run never see the private pair.
-    execIgnore(conn, "DELETE FROM core.model_caps WHERE provider = $1 AND model_id = $2", .{ PROVIDER, MODEL });
+    execIgnore(conn, "DELETE FROM core.model_library WHERE provider = $1 AND model_id = $2", .{ PROVIDER, MODEL });
     model_rate_cache.populate(conn) catch |err|
         std.log.warn("cleanup ignored: {s}", .{@errorName(err)});
     base.teardownTenant(conn);

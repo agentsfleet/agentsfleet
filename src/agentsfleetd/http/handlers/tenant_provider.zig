@@ -35,7 +35,7 @@ const S_TENANT_CONTEXT_REQUIRED = "Tenant context required";
 /// Context-cap persisted for a custom (openai-compatible) self-managed endpoint.
 /// A custom endpoint bills provider-direct — self_managed posture charges a
 /// run-fee only and never reads the per-token rate cache — so its user-hosted
-/// model is absent from core.model_caps by design and there is no platform rate
+/// model is absent from core.model_library by design and there is no platform rate
 /// to catalogue. The activation gate stores this "unknown/auto" sentinel instead
 /// of a catalogue lookup; execution_policy.autoToolWindow + the per-fleet
 /// frontmatter overlay resolve the effective context window at run time.
@@ -133,8 +133,12 @@ pub fn innerDeleteTenantProvider(hx: Hx, req: *httpz.Request) void {
 fn applyPlatform(hx: Hx, conn: *pg.Conn, tenant_id: []const u8) void {
     tenant_provider.upsertPlatform(hx.alloc, conn, tenant_id) catch |err| switch (err) {
         tenant_provider.ResolveError.PlatformKeyMissing => {
-            log.err("platform_missing", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .tenant_id = tenant_id });
-            common.internalOperationError(hx.res, "Platform LLM key not configured — operator action required", hx.req_id);
+            log.err("platform_missing", .{ .error_code = ec.ERR_PROVIDER_PLATFORM_KEY_MISSING, .tenant_id = tenant_id });
+            // `detail` is wire-visible (writeProblem's JSON body) — unlike the
+            // registry entry's `hint`, it must not leak internal schema/table
+            // names to a tenant-scoped caller (this handler only requires
+            // SECRET_WRITE, not a platform-operator scope).
+            common.errorResponse(hx.res, ec.ERR_PROVIDER_PLATFORM_KEY_MISSING, "Platform LLM key not configured", hx.req_id);
             return;
         },
         else => {

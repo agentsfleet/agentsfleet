@@ -287,6 +287,22 @@ test "every code migrated to eu() this spec has a non-empty user_message distinc
     }
 }
 
+// The platform-key-missing case (tenant_provider.zig's
+// applyPlatform) previously bypassed the registry entirely via a raw
+// internalOperationError() string, leaking "operator action required" into a
+// dashboard toast. It now has its own dedicated eu()-curated entry rather
+// than sharing the generic UZ-INTERNAL-003 bucket (which many unrelated
+// internal-failure call sites also use, so one shared user_message couldn't
+// fit them all).
+test "UZ-PROVIDER-009 (platform key missing) has a curated user_message distinct from its hint" {
+    const entry = reg.lookup(reg.ERR_PROVIDER_PLATFORM_KEY_MISSING);
+    const um = entry.user_message orelse return error.TestExpectedUserMessage;
+    try std.testing.expect(um.len > 0);
+    try std.testing.expect(!std.mem.eql(u8, um, entry.hint));
+    // Must not leak operator-facing jargon into the dashboard-safe message.
+    try std.testing.expect(std.mem.indexOf(u8, um, "operator") == null);
+}
+
 // ── Canary: deleted files must not be importable ─────────────────────────
 // If someone re-creates codes.zig or error_table.zig, these comptime checks
 // will fail because the test expects the imports to NOT exist.

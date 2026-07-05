@@ -2,13 +2,13 @@
  * secrets-lifecycle.spec.ts — custom-secret add (field builder, via dialog) →
  * list → rotate, on the standalone /secrets page.
  *
- * Secrets & ENVs is a real standalone page again, not a
+ * Secrets is a real standalone page again, not a
  * section on /settings/models. This drives the field/value AddSecretForm the
- * way a real operator would: open the "Add Secret" dialog, fill a secret name
- * plus a field+value row, click Add secret, assert the row appears in the
+ * way a real operator would: open the "Create secret" dialog, fill a secret name
+ * plus a field+value row, click Create secret, assert the row appears in the
  * DataTable-based SecretsList, then rotate it through the Edit dialog and
  * assert it is still listed under the same name. The UI has no standalone
- * delete assertion here (rotate/rename only) — delete is covered elsewhere;
+ * delete assertion here (rotate only; rename is its own dialog now) — delete is covered elsewhere;
  * cleanup runs against the API in afterEach regardless of where the test
  * fails.
  */
@@ -50,13 +50,13 @@ test.describe("secrets lifecycle", () => {
     await expect(page.getByRole("heading", { name: /^secrets & envs$/i })).toBeVisible();
 
     // Add via the field/value builder, opened in a dialog.
-    await page.getByRole("button", { name: "Add Secret", exact: true }).click();
+    await page.getByRole("button", { name: "Create secret", exact: true }).click();
     const addDialog = page.getByRole("dialog");
     await expect(addDialog).toBeVisible();
     await addDialog.getByLabel("Secret name").fill(name);
     await addDialog.getByLabel("Field 1 name").fill("api_key");
     await addDialog.getByLabel("Field 1 value").fill("FLY_API_TOKEN");
-    await addDialog.getByRole("button", { name: "Add secret", exact: true }).click();
+    await addDialog.getByRole("button", { name: "Create secret", exact: true }).click();
 
     // Successful submit closes the dialog and refreshes the list.
     await expect(addDialog).toBeHidden({ timeout: ACTION_TIMEOUT_MS });
