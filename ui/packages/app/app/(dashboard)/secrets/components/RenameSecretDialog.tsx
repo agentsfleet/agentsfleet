@@ -28,6 +28,13 @@ export type RenameSecretDialogProps = {
   workspaceId: string;
   /** The secret being renamed. Its current name is the reference key Fleets resolve. */
   name: string;
+  /**
+   * Every existing secret name in the workspace. Renaming to one of these would
+   * upsert (overwrite) that secret's value before the old name is deleted —
+   * collapsing two secrets into one and destroying the collided secret. Guarded
+   * against here so the rename never silently clobbers another secret.
+   */
+  existingNames: readonly string[];
   open: boolean;
   onOpenChange: (open: boolean) => void;
 };
@@ -41,6 +48,8 @@ const RENAME_WARNING =
   "Renaming breaks Fleets that reference this secret until you update them — the old name is removed once the new one is saved.";
 const NAME_LENGTH_INVALID = `New name must be 1–${SECRET_NAME_MAX} characters`;
 const NAME_UNCHANGED = "New name matches the current name — use Edit to replace the value instead";
+const nameTakenMessage = (n: string) =>
+  `A secret named "${n}" already exists — delete it or pick a different name`;
 
 /**
  * Rename a stored secret. There is no in-place rename, so this creates the new
@@ -52,6 +61,7 @@ const NAME_UNCHANGED = "New name matches the current name — use Edit to replac
 export default function RenameSecretDialog({
   workspaceId,
   name,
+  existingNames,
   open,
   onOpenChange,
 }: RenameSecretDialogProps) {
@@ -89,6 +99,12 @@ export default function RenameSecretDialog({
     }
     if (target === name) {
       setError(NAME_UNCHANGED);
+      return;
+    }
+    // Renaming to another existing name would upsert (overwrite) that secret
+    // then delete this one — silent data loss. Reject before touching the API.
+    if (existingNames.includes(target)) {
+      setError(nameTakenMessage(target));
       return;
     }
 

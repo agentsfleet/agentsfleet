@@ -172,6 +172,7 @@ function SecretDialogs({
   workspaceId,
   editTarget,
   renameTarget,
+  existingNames,
   target,
   error,
   onEditClose,
@@ -182,6 +183,7 @@ function SecretDialogs({
   workspaceId: string;
   editTarget: string | null;
   renameTarget: string | null;
+  existingNames: readonly string[];
   target: string | null;
   error: string | null;
   onEditClose: () => void;
@@ -200,6 +202,7 @@ function SecretDialogs({
       <RenameSecretDialogDynamic
         workspaceId={workspaceId}
         name={renameTarget ?? ""}
+        existingNames={existingNames}
         open={renameTarget !== null}
         onOpenChange={onRenameClose}
       />
@@ -313,6 +316,7 @@ export default function SecretsList({
         workspaceId={workspaceId}
         editTarget={editTarget}
         renameTarget={renameTarget}
+        existingNames={secrets.map((s) => s.name)}
         target={target}
         error={error}
         onEditClose={() => setEditTarget(null)}

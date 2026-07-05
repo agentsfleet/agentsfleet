@@ -160,6 +160,7 @@ describe("dynamic island shims mount their inner component", () => {
       React.createElement(RenameCredentialDialogDynamic, {
         workspaceId: "ws_1",
         name: "github",
+        existingNames: [],
         open: true,
         onOpenChange: noop,
       }),

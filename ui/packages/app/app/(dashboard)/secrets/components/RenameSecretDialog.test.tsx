@@ -18,11 +18,12 @@ import RenameSecretDialog from "./RenameSecretDialog";
 
 const WORKSPACE_ID = "ws_rename_test";
 
-function renderDialog(onOpenChange = vi.fn()) {
+function renderDialog(onOpenChange = vi.fn(), existingNames: string[] = ["fly", "slack"]) {
   return render(
     React.createElement(RenameSecretDialog, {
       workspaceId: WORKSPACE_ID,
       name: "fly",
+      existingNames,
       open: true,
       onOpenChange,
     }),
@@ -101,6 +102,18 @@ describe("RenameSecretDialog", () => {
     fireEvent.click(screen.getByRole("button", { name: /^rename$/i }));
     expect(screen.getByText(/new name must be 1.?64 characters/i)).toBeTruthy();
     expect(createCredentialActionMock).not.toHaveBeenCalled();
+  });
+
+  it("rename to another existing secret name is rejected before any API call (no overwrite)", () => {
+    // "slack" is an existing secret — renaming "fly" onto it would upsert
+    // (overwrite) slack then delete fly, silently destroying slack's value.
+    renderDialog();
+    enterData('{"api_token": "FLY"}');
+    enterNewName("slack");
+    fireEvent.click(screen.getByRole("button", { name: /^rename$/i }));
+    expect(screen.getByText(/a secret named "slack" already exists/i)).toBeTruthy();
+    expect(createCredentialActionMock).not.toHaveBeenCalled();
+    expect(deleteCredentialActionMock).not.toHaveBeenCalled();
   });
 
   it("rejects non-object / unparseable data before validating the name or calling the API", () => {
