@@ -25,7 +25,7 @@ type Props = {
 // Library gallery for the Dashboard first-run surface. A Server Component:
 // each card deep-links into the install page (which proceeds inline to live
 // states), so it carries no client callbacks. When the catalogue is empty it
-// falls back to a centered EmptyState with [Learn more] + [Add library entry]
+// falls back to a centered EmptyState with [Learn more] + [Create fleet library]
 // — authoring itself lives on /fleets/new.
 export function InstallEntry({
   entries,
@@ -48,7 +48,7 @@ export function InstallEntry({
             {canAddLibraryEntry ? (
               <Button asChild size="sm">
                 <Link href="/fleets/new?create=1">
-                  <PlusIcon size={14} /> Add library entry
+                  <PlusIcon size={14} /> Create fleet library
                 </Link>
               </Button>
             ) : null}

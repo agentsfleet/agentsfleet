@@ -41,10 +41,17 @@ const ISLANDS: Island[] = [
     rawComponent: "EditSecretDialog",
   },
   {
+    name: "RenameSecretDialog",
+    shim: "RenameSecretDialogDynamic",
+    rawImportFragment: "secrets/components/RenameSecretDialog",
+    callSite: "app/(dashboard)/secrets/components/SecretsList.tsx",
+    rawComponent: "RenameSecretDialog",
+  },
+  {
     name: "AddSecretForm",
     shim: "AddSecretFormDynamic",
     rawImportFragment: "secrets/components/AddSecretForm",
-    // Secrets & ENVs is its own page now; the add
+    // Secrets is its own page now; the add
     // form mounts inside AddSecretDialog, not the page directly.
     callSite: "app/(dashboard)/secrets/components/AddSecretDialog.tsx",
     rawComponent: "AddSecretForm",
@@ -98,6 +105,7 @@ describe("interaction-only islands are excluded from the route's initial chunk",
 // Stub the heavy inner modules so calling the dynamic loader (below) resolves
 // to a light component without pulling clerk / design-system / form deps.
 vi.mock("@/app/(dashboard)/secrets/components/EditSecretDialog", () => ({ default: () => null }));
+vi.mock("@/app/(dashboard)/secrets/components/RenameSecretDialog", () => ({ default: () => null }));
 vi.mock("@/app/(dashboard)/secrets/components/AddSecretForm", () => ({ default: () => null }));
 vi.mock("@/components/layout/CreateWorkspaceDialog", () => ({ default: () => null }));
 vi.mock("@/app/(dashboard)/settings/api-keys/components/CreateApiKeyDialog", () => ({ default: () => null }));
@@ -126,6 +134,7 @@ vi.mock("next/dynamic", () => {
 });
 
 import EditCredentialDialogDynamic from "@/components/domain/island-dynamic/EditSecretDialogDynamic";
+import RenameCredentialDialogDynamic from "@/components/domain/island-dynamic/RenameSecretDialogDynamic";
 import AddCredentialFormDynamic from "@/components/domain/island-dynamic/AddSecretFormDynamic";
 import CreateWorkspaceDialogDynamic from "@/components/domain/island-dynamic/CreateWorkspaceDialogDynamic";
 import CreateApiKeyDialogDynamic from "@/components/domain/island-dynamic/CreateApiKeyDialogDynamic";
@@ -142,6 +151,16 @@ describe("dynamic island shims mount their inner component", () => {
       React.createElement(EditCredentialDialogDynamic, {
         workspaceId: "ws_1",
         name: "github",
+        open: true,
+        onOpenChange: noop,
+      }),
+    ],
+    [
+      "RenameCredentialDialogDynamic",
+      React.createElement(RenameCredentialDialogDynamic, {
+        workspaceId: "ws_1",
+        name: "github",
+        existingNames: [],
         open: true,
         onOpenChange: noop,
       }),

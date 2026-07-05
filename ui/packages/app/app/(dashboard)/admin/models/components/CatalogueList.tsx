@@ -1,8 +1,15 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Badge, Button, EmptyState } from "@agentsfleet/design-system";
-import { LayersIcon } from "lucide-react";
+import {
+  Badge,
+  Button,
+  ConfirmDialog,
+  DataTable,
+  type DataTableColumn,
+  EmptyState,
+} from "@agentsfleet/design-system";
+import { CoinsIcon } from "lucide-react";
 import { type AdminModel, nanosToUsdPerMtok } from "@/lib/api/admin_models";
 import { presentErrorString } from "@/lib/errors";
 import { deleteAdminModelAction } from "../actions";
@@ -11,6 +18,61 @@ import { deleteAdminModelAction } from "../actions";
 // how every provider quotes), so the rates paste straight from a pricing page.
 function usd(nanos: number): string {
   return nanosToUsdPerMtok(nanos).toFixed(2);
+}
+
+function buildColumns({
+  pending,
+  busyUid,
+  onDelete,
+}: {
+  pending: boolean;
+  busyUid: string | null;
+  onDelete: (m: AdminModel) => void;
+}): DataTableColumn<AdminModel>[] {
+  return [
+    { key: "provider", header: "Provider", cell: (m) => <Badge variant="cyan">{m.provider}</Badge> },
+    { key: "model", header: "Model", cell: (m) => <span className="font-mono text-sm">{m.model_id}</span> },
+    {
+      key: "context",
+      header: "Context",
+      hideOnMobile: true,
+      numeric: true,
+      cell: (m) => (
+        <span className="font-mono text-xs tabular-nums text-muted-foreground">
+          {/* Pin the locale — a bare toLocaleString() groups digits per the
+              viewer's locale (en-IN "1,28,000" vs en-US "128,000"), so SSR and
+              client disagree and React throws a hydration mismatch. */}
+          {m.context_cap_tokens.toLocaleString("en-US")}
+        </span>
+      ),
+    },
+    {
+      key: "rates",
+      header: "Rates ($ / 1M · in / cached / out)",
+      numeric: true,
+      cell: (m) => (
+        <span className="font-mono text-xs tabular-nums text-muted-foreground">
+          {usd(m.input_nanos_per_mtok)} / {usd(m.cached_input_nanos_per_mtok)} / {usd(m.output_nanos_per_mtok)}
+        </span>
+      ),
+    },
+    {
+      key: "actions",
+      header: "Actions",
+      numeric: true,
+      cell: (m) => (
+        <Button
+          type="button"
+          variant="destructive"
+          size="sm"
+          disabled={pending && busyUid === m.uid}
+          onClick={() => onDelete(m)}
+        >
+          Delete
+        </Button>
+      ),
+    },
+  ];
 }
 
 export default function CatalogueList({
@@ -23,6 +85,7 @@ export default function CatalogueList({
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [busyUid, setBusyUid] = useState<string | null>(null);
+  const [target, setTarget] = useState<AdminModel | null>(null);
 
   function remove(m: AdminModel) {
     setError(null);
@@ -34,62 +97,42 @@ export default function CatalogueList({
         setError(presentErrorString({ errorCode: r.errorCode, message: r.error, action: "delete this model" }));
         return;
       }
+      setTarget(null);
       onDeleted(m.uid);
     });
   }
 
+  const columns = buildColumns({ pending, busyUid, onDelete: setTarget });
+
   return (
     <div className="space-y-4">
-      <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-        Model rates · {models.length} {models.length === 1 ? "model" : "models"}
-      </p>
+      <DataTable
+        columns={columns}
+        rows={models}
+        rowKey={(m) => m.uid}
+        caption="Model library"
+        empty={
+          <EmptyState
+            icon={<CoinsIcon size={28} />}
+            title="No models yet"
+            description="Add a model to price it and make it selectable as the platform default."
+          />
+        }
+      />
 
-      {models.length === 0 ? (
-        <EmptyState
-          icon={<LayersIcon size={28} />}
-          title="No models yet"
-          description="Add a model to price it and make it selectable as the platform default."
-        />
-      ) : (
-        <div className="divide-y rounded-md border">
-          <div className="hidden grid-cols-[1fr_1.6fr_0.8fr_1.6fr_auto] gap-3 px-3 py-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground sm:grid">
-            <span>Provider</span>
-            <span>Model</span>
-            <span>Context</span>
-            <span>Rates ($ / 1M · in / cached / out)</span>
-            <span className="sr-only">Actions</span>
-          </div>
-          {models.map((m) => (
-            <div
-              key={m.uid}
-              className="grid grid-cols-1 gap-2 p-3 sm:grid-cols-[1fr_1.6fr_0.8fr_1.6fr_auto] sm:items-center sm:gap-3"
-              aria-label={`${m.provider} ${m.model_id} catalogue row`}
-            >
-              <span><Badge variant="cyan">{m.provider}</Badge></span>
-              <span className="truncate font-mono text-sm">{m.model_id}</span>
-              <span className="font-mono text-xs tabular-nums text-muted-foreground">
-                {m.context_cap_tokens.toLocaleString()}
-              </span>
-              <span className="font-mono text-xs tabular-nums text-muted-foreground">
-                {usd(m.input_nanos_per_mtok)} / {usd(m.cached_input_nanos_per_mtok)} / {usd(m.output_nanos_per_mtok)}
-              </span>
-              <span className="sm:justify-self-end">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  disabled={pending && busyUid === m.uid}
-                  onClick={() => remove(m)}
-                >
-                  Delete
-                </Button>
-              </span>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {error ? <p className="text-sm text-destructive">{error}</p> : null}
+      <ConfirmDialog
+        open={target !== null}
+        onOpenChange={() => {
+          setTarget(null);
+          setError(null);
+        }}
+        title={`Delete "${target?.model_id ?? ""}" from the library?`}
+        description="Removes this model from the platform library. Tenants can no longer select it as the platform default. This cannot be undone."
+        confirmLabel="Delete"
+        intent="destructive"
+        errorMessage={error}
+        onConfirm={target ? () => remove(target) : undefined}
+      />
     </div>
   );
 }

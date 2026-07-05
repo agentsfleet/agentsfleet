@@ -117,7 +117,7 @@ export default async function DashboardPage() {
 
   return (
     <div>
-      <PageHeader description="Start a fleet from a template.">
+      <PageHeader description="Start a fleet from the prebuilt fleet library.">
         <PageTitle>Dashboard</PageTitle>
       </PageHeader>
 

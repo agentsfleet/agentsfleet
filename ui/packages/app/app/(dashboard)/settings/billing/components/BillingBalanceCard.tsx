@@ -9,12 +9,13 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@agentsfleet/design-system";
+import { CoinsIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { TenantBilling } from "@/lib/types";
 import { SUPPORT_EMAIL } from "@/lib/contact";
 import { formatDollars, type ChargeSummary } from "../lib/charges";
 
-const PURCHASE_TOOLTIP = "Contact support to top up your balance.";
+const BUY_CREDITS_TOOLTIP = `Email ${SUPPORT_EMAIL} to top up your balance.`;
 
 export type BillingBalanceCardProps = {
   billing: TenantBilling;
@@ -23,7 +24,7 @@ export type BillingBalanceCardProps = {
 
 /**
  * Top-of-page balance card: amount + a full-width consumption meter (fills on
- * load) + a caption that rides the meter's end, with the Purchase CTA pinned
+ * load) + a caption that rides the meter's end, with the Buy credits CTA pinned
  * top-right of the head row (no stranded gap). When the balance is exhausted
  * the headline switches to a destructive treatment and an alert appears.
  */
@@ -51,17 +52,14 @@ export default function BillingBalanceCard({ billing, summary }: BillingBalanceC
               </span>
             </div>
           </div>
-          <PurchaseCreditsButton />
+          <BuyCreditsButton />
         </div>
 
         <div className="app-meter" data-testid="balance-meter" aria-hidden="true">
           <span style={{ width: `${summary.meterPct}%` }} />
         </div>
 
-        <div className="flex items-center justify-between gap-4 text-sm text-muted-foreground">
-          <div>
-            Covers all Fleet events · <span className="font-medium text-foreground">pay as you go</span>
-          </div>
+        <div className="flex items-center justify-end gap-4 text-sm text-muted-foreground">
           <div className="font-mono text-xs" data-testid="balance-usage">
             spent <span className="text-foreground">{formatDollars(summary.spentNanos)}</span> ·{" "}
             <span className="text-foreground">{summary.eventCount}</span>{" "}
@@ -83,29 +81,23 @@ export default function BillingBalanceCard({ billing, summary }: BillingBalanceC
   );
 }
 
-function PurchaseCreditsButton() {
+function BuyCreditsButton() {
   return (
     <TooltipProvider delayDuration={150}>
       <Tooltip>
         <TooltipTrigger asChild>
-          {/* Disabled-button-with-tooltip a11y workaround: a disabled <Button>
-           * can't receive focus, so a non-interactive span wrapper carries the
-           * focus + describedby. jsx-a11y/no-noninteractive-tabindex flags this;
-           * the wrapper is the recommended ARIA pattern for keyboard-reachable
-           * disabled affordances. */}
-          <span
-            // oxlint-disable-next-line jsx-a11y/no-noninteractive-tabindex
-            tabIndex={0}
-            aria-describedby="purchase-credits-tooltip"
-            className="inline-block cursor-not-allowed rounded-md focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            data-testid="purchase-credits-trigger"
-          >
-            <Button variant="outline" disabled aria-disabled tabIndex={-1} className="pointer-events-none">
-              Purchase credits
-            </Button>
-          </span>
+          {/* A real mailto link, not a disabled control — a control that acts
+           * must not claim `disabled`/`aria-disabled` to assistive tech. Kept
+           * visually muted (outline variant) since there's no in-app purchase
+           * flow yet; the tooltip states exactly what clicking does. */}
+          <Button variant="outline" asChild data-testid="buy-credits-trigger">
+            <a href={`mailto:${SUPPORT_EMAIL}`} aria-describedby="buy-credits-tooltip">
+              <CoinsIcon size={14} aria-hidden="true" />
+              Buy credits
+            </a>
+          </Button>
         </TooltipTrigger>
-        <TooltipContent id="purchase-credits-tooltip">{PURCHASE_TOOLTIP}</TooltipContent>
+        <TooltipContent id="buy-credits-tooltip">{BUY_CREDITS_TOOLTIP}</TooltipContent>
       </Tooltip>
     </TooltipProvider>
   );

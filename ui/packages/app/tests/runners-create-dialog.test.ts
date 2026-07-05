@@ -1,6 +1,6 @@
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { EVENTS } from "../lib/analytics/events";
 
@@ -50,31 +50,31 @@ describe("AddRunnerDialog component", () => {
     );
     const user = userEvent.setup({ delay: null });
     render(React.createElement(AddRunnerDialog, { onCreated } as never));
-    await user.click(screen.getByRole("button", { name: /add runner/i }));
-    await waitFor(() => expect(screen.getByLabelText(/host id/i)).toBeTruthy());
+    await user.click(screen.getByRole("button", { name: /create runner/i }));
+    await waitFor(() => expect(screen.getByLabelText(/host name/i)).toBeTruthy());
     return { user, onCreated };
   }
 
   async function reachReveal(user: ReturnType<typeof userEvent.setup>) {
     createRunnerActionMock.mockResolvedValue(MINTED);
-    await user.type(screen.getByLabelText(/host id/i), "web-prod-1");
-    await user.click(screen.getByRole("button", { name: /create runner/i }));
+    await user.type(screen.getByLabelText(/host name/i), "web-prod-1");
+    await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: /create runner/i }));
     await screen.findByLabelText("Runner token");
   }
 
   it("client-side rejects an invalid host id and never calls the action", async () => {
     const { user } = await openDialog();
-    await user.type(screen.getByLabelText(/host id/i), "bad host!");
-    await user.click(screen.getByRole("button", { name: /create runner/i }));
+    await user.type(screen.getByLabelText(/host name/i), "bad host!");
+    await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: /create runner/i }));
     await waitFor(() => expect(screen.getByText(/letters, digits, dot, hyphen, underscore/i)).toBeTruthy());
     expect(createRunnerActionMock).not.toHaveBeenCalled();
   });
 
   it("rejects a malformed label before the round-trip, naming the offender", async () => {
     const { user } = await openDialog();
-    await user.type(screen.getByLabelText(/host id/i), "web-prod-1");
+    await user.type(screen.getByLabelText(/host name/i), "web-prod-1");
     await user.type(screen.getByLabelText(/labels/i), "gpu, bad label!");
-    await user.click(screen.getByRole("button", { name: /create runner/i }));
+    await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: /create runner/i }));
     await waitFor(() => expect(screen.getByText(/must be 1.64 chars/i)).toBeTruthy());
     expect(screen.getByText(/bad label!/)).toBeTruthy();
     expect(createRunnerActionMock).not.toHaveBeenCalled();
@@ -83,9 +83,9 @@ describe("AddRunnerDialog component", () => {
   it("happy path: mints with the trimmed host + parsed labels, reveals once, then discards on close", async () => {
     createRunnerActionMock.mockResolvedValue(MINTED);
     const { user, onCreated } = await openDialog();
-    await user.type(screen.getByLabelText(/host id/i), "web-prod-1");
+    await user.type(screen.getByLabelText(/host name/i), "web-prod-1");
     await user.type(screen.getByLabelText(/labels/i), "gpu, us-east, gpu");
-    await user.click(screen.getByRole("button", { name: /create runner/i }));
+    await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: /create runner/i }));
 
     const field = await screen.findByLabelText("Runner token");
     expect((field as HTMLInputElement).value).toBe("agt_rdeadbeef");
@@ -116,8 +116,8 @@ describe("AddRunnerDialog component", () => {
       errorCode: "UZ-AUTH-022",
     });
     const { user, onCreated } = await openDialog();
-    await user.type(screen.getByLabelText(/host id/i), "web-prod-1");
-    await user.click(screen.getByRole("button", { name: /create runner/i }));
+    await user.type(screen.getByLabelText(/host name/i), "web-prod-1");
+    await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: /create runner/i }));
     await waitFor(() => expect(screen.getByText(/additional scope/i)).toBeTruthy());
     expect(screen.queryByLabelText("Runner token")).toBeNull();
     expect(onCreated).not.toHaveBeenCalled();
@@ -174,19 +174,19 @@ describe("AddRunnerDialog component", () => {
 
   it("closes on Escape before a token is minted (no overlay lock yet)", async () => {
     const { user, onCreated } = await openDialog();
-    await screen.findByLabelText(/host id/i);
+    await screen.findByLabelText(/host name/i);
     await user.keyboard("{Escape}");
-    await waitFor(() => expect(screen.queryByLabelText(/host id/i)).toBeNull());
+    await waitFor(() => expect(screen.queryByLabelText(/host name/i)).toBeNull());
     // Closing before a mint must not fire the parent's refresh.
     expect(onCreated).not.toHaveBeenCalled();
   });
 
   it("closes on an outside click before a token is minted (no overlay lock yet)", async () => {
     await openDialog();
-    await screen.findByLabelText(/host id/i);
+    await screen.findByLabelText(/host name/i);
     // created is still null → onInteractOutside does NOT preventDefault → closes.
     fireEvent.pointerDown(document.body);
     fireEvent.click(document.body);
-    await waitFor(() => expect(screen.queryByLabelText(/host id/i)).toBeNull());
+    await waitFor(() => expect(screen.queryByLabelText(/host name/i)).toBeNull());
   });
 });

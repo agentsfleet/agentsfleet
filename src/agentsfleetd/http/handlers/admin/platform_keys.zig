@@ -6,7 +6,7 @@
 //! handler-internal capability re-check), mirroring register_runner.
 //!
 //! PUT sets the one active default: it validates the (provider, model) is a
-//! priced core.model_caps row (the billing spine — a free-text default would
+//! priced core.model_library row (the billing spine — a free-text default would
 //! silently bill run-fee-only), records model/base_url/context_cap, and
 //! deactivates every other provider's row so exactly one row stays active. The
 //! api_key itself is NOT in this row — it lives in the source workspace's vault

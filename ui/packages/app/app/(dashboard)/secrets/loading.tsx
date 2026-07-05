@@ -1,13 +1,13 @@
 import RouteLoading from "@/components/layout/RouteLoading";
 
-// /credentials is a pure redirect to /settings/models (see page.tsx). Paint the
-// DESTINATION header — "Models" — not "Credentials", so the redirect hop
-// doesn't flash a title the user never lands on (matches settings/models/loading).
-export default function CredentialsLoading() {
+// Secrets is its own standalone page now — it no longer redirects to
+// /settings/models, so paint its real header. Without this it borrowed the stale
+// "Models" title and flashed "Loading Models…" before the Secrets page resolved.
+export default function SecretsLoading() {
   return (
     <RouteLoading
-      title="Models"
-      description="The model your fleets run on, and the key behind it."
+      title="Secrets"
+      description="Encrypted secrets your fleets can use — write-only once saved."
     />
   );
 }

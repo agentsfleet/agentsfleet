@@ -5,6 +5,8 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import {
+  Alert,
+  AlertDescription,
   Button,
   Dialog,
   DialogContent,
@@ -31,6 +33,7 @@ import {
 import {
   HOST_ID_REGEX,
   SANDBOX_TIERS,
+  SANDBOX_TIER_LABELS,
   parseLabels,
   type CreatedRunner,
   type SandboxTier,
@@ -106,7 +109,7 @@ export default function AddRunnerDialog({ onCreated }: { onCreated: () => void }
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
         <Button type="button" size="sm">
-          Add runner
+          Create runner
         </Button>
       </DialogTrigger>
       <DialogContent
@@ -122,11 +125,16 @@ export default function AddRunnerDialog({ onCreated }: { onCreated: () => void }
         ) : (
           <>
             <DialogHeader>
-              <DialogTitle>Add runner</DialogTitle>
+              <DialogTitle>Create runner</DialogTitle>
               <DialogDescription>
-                The runner token is shown once. Name the host so you can recognise it in the fleet.
+                A runner is a host you enroll to run fleet work.
               </DialogDescription>
             </DialogHeader>
+            <Alert variant="warning">
+              <AlertDescription>
+                Creating a runner mints an install token shown only once — copy it when it appears.
+              </AlertDescription>
+            </Alert>
             <Form {...form}>
               <form
                 onSubmit={(e) => {
@@ -139,11 +147,11 @@ export default function AddRunnerDialog({ onCreated }: { onCreated: () => void }
                   name="host_id"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Host id</FormLabel>
+                      <FormLabel>Host name</FormLabel>
                       <FormControl>
                         <Input placeholder="web-prod-1" autoComplete="off" {...field} />
                       </FormControl>
-                      <FormDescription>A stable identifier for the host.</FormDescription>
+                      <FormDescription>A name to recognise this host in the list.</FormDescription>
                       <FormMessage />
                     </FormItem>
                   )}
@@ -153,7 +161,7 @@ export default function AddRunnerDialog({ onCreated }: { onCreated: () => void }
                   name="sandbox_tier"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Sandbox tier</FormLabel>
+                      <FormLabel>Isolation mode</FormLabel>
                       <Select value={field.value} onValueChange={field.onChange}>
                         <FormControl>
                           <SelectTrigger>
@@ -163,12 +171,12 @@ export default function AddRunnerDialog({ onCreated }: { onCreated: () => void }
                         <SelectContent>
                           {SANDBOX_TIERS.map((t) => (
                             <SelectItem key={t} value={t}>
-                              {t}
+                              {SANDBOX_TIER_LABELS[t]}
                             </SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
-                      <FormDescription>The host's isolation strength.</FormDescription>
+                      <FormDescription>How the host isolates fleet work — self-reported.</FormDescription>
                       <FormMessage />
                     </FormItem>
                   )}

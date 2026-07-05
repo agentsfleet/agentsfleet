@@ -27,6 +27,7 @@ vi.mock("lucide-react", () => {
     Loader2Icon: make("Loader2Icon"),
     KeyRoundIcon: make("KeyRoundIcon"),
     PencilIcon: make("PencilIcon"),
+    PencilLineIcon: make("PencilLineIcon"),
   };
 });
 
@@ -95,7 +96,7 @@ describe("SecretsList component", () => {
 
   it("renders the empty-state message when no secrets", async () => {
     await renderList([]);
-    expect(screen.getByText(/No secrets yet/i)).toBeTruthy();
+    expect(screen.getByText(/^No secrets$/i)).toBeTruthy();
   });
 
   it("renders one row per secret with name and a human timestamp", async () => {
@@ -104,6 +105,11 @@ describe("SecretsList component", () => {
     expect(screen.getByText("slack")).toBeTruthy();
     expect(screen.getAllByText("Write-only encrypted secret")).toHaveLength(2);
     expect(screen.getAllByText(/Apr 26, 2026/)).toHaveLength(2);
+  });
+
+  it("delete row trigger renders the destructive button variant, matching RunnerList's pattern", async () => {
+    await renderList();
+    expect(screen.getByLabelText(/Delete secret fly/i).className).toContain("bg-destructive");
   });
 
   it("test_secret_write_only_masked: stored secret is masked (suffix only), Replace present, never re-revealed", async () => {
@@ -188,15 +194,27 @@ describe("SecretsList component", () => {
     expect(deleteSecretActionMock).not.toHaveBeenCalled();
   });
 
-  it("clicking edit opens the edit dialog, and Cancel closes it", async () => {
+  it("clicking edit opens the rotate-only edit dialog, and Cancel closes it", async () => {
     const user = userEvent.setup();
     await renderList();
     await user.click(screen.getByLabelText(/Edit secret fly/i));
     await waitFor(() => expect(screen.getByText(/Edit secret .*fly/i)).toBeTruthy());
     expect(screen.getByRole("button", { name: /^rotate$/i })).toBeTruthy();
-    expect(screen.getByRole("button", { name: /advanced — rename/i })).toBeTruthy();
+    // Rename is no longer inside the edit dialog — it has its own trigger.
+    expect(screen.queryByRole("button", { name: /rename/i })).toBeNull();
     await user.click(screen.getByRole("button", { name: /^cancel$/i }));
     await waitFor(() => expect(screen.queryByText(/Edit secret .*fly/i)).toBeNull());
+  });
+
+  it("clicking rename in the Name column opens the rename dialog, and Cancel closes it", async () => {
+    const user = userEvent.setup();
+    await renderList();
+    await user.click(screen.getByLabelText(/Rename secret fly/i));
+    await waitFor(() => expect(screen.getByText(/Rename secret .*fly/i)).toBeTruthy());
+    expect(screen.getByRole("button", { name: /^rename$/i })).toBeTruthy();
+    expect(screen.getByLabelText(/new name/i)).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: /^cancel$/i }));
+    await waitFor(() => expect(screen.queryByText(/Rename secret .*fly/i)).toBeNull());
   });
 
   it("error from a previous attempt clears when reopening another secret", async () => {

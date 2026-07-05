@@ -33,7 +33,7 @@ type Props = {
 
 const STORE_ACTION = "store the secret";
 const ADD_FIELD_LABEL = "Add field";
-const ADD_SECRET_LABEL = "Add secret";
+const ADD_SECRET_LABEL = "Create secret";
 // Secret names become a vault key; field names become JSON object keys resolved
 // at runtime as ${secrets.<name>.<field>}, so both must be reference-safe.
 const NAME_PATTERN = /^[A-Za-z0-9_-]+$/;
@@ -213,7 +213,7 @@ export default function AddSecretForm({ workspaceId, onDone }: Props) {
         </div>
 
         <Button type="submit" disabled={pending} variant="outline">
-          {pending ? <Spinner size="sm" srLabel="Adding" /> : null}
+          {pending ? <Spinner size="sm" srLabel="Creating" /> : null}
           {ADD_SECRET_LABEL}
         </Button>
         {apiError ? <p className="text-body-sm text-destructive">{apiError}</p> : null}

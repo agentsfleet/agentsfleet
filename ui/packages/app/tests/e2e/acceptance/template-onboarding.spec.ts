@@ -59,7 +59,7 @@ test.describe("template onboarding", () => {
 
     const card = page.getByRole("article").filter({ hasText: templateName });
     await expect(card).toBeVisible({ timeout: FLOW_TIMEOUT_MS });
-    await expect(card.getByRole("button", { name: "Use template" })).toBeVisible();
+    await expect(card.getByRole("button", { name: "Use entry" })).toBeVisible();
   });
 
   test("test_github_source_error_stays_in_dialog", async ({ page }) => {
@@ -67,13 +67,13 @@ test.describe("template onboarding", () => {
     await page.goto("/fleets/new");
     await expect(page).toHaveURL(/\/fleets\/new(\?|$)/);
 
-    await page.getByRole("button", { name: "Create a template" }).first().click();
-    const dialog = page.getByRole("dialog", { name: "Create a template" });
+    await page.getByRole("button", { name: "Create fleet library" }).first().click();
+    const dialog = page.getByRole("dialog", { name: "Create fleet library" });
     await expect(dialog).toBeVisible();
     await dialog.getByLabel("Repository").fill(INVALID_GITHUB_SOURCE_REF);
-    await dialog.getByRole("button", { name: /^create template$/i }).click();
+    await dialog.getByRole("button", { name: /^create$/i }).click();
 
     await expect(dialog).toBeVisible({ timeout: FLOW_TIMEOUT_MS });
-    await expect(dialog.getByRole("alert")).toContainText("Couldn't add the template");
+    await expect(dialog.getByRole("alert")).toContainText("Couldn't create the fleet library");
   });
 });

@@ -258,6 +258,27 @@ pub fn satisfiesAny(held: Set, required: []const Scope) bool {
 }
 
 const std = @import("std");
+const common = @import("common");
+
+// docs/AUTH.md's Scope catalogue must list every wire string
+// this file defines (found missing: platform-library:write, now added).
+// Reads WIRE directly (private to this file) rather than duplicating a
+// hand-typed list, so a future scope addition here fails this test the
+// moment the doc goes stale instead of drifting silently.
+test "every WIRE scope string appears in docs/AUTH.md" {
+    const alloc = std.testing.allocator;
+    // Tests run from the repo root (zig build sets cwd), so the path is
+    // relative to the project root — same convention as
+    // fleet_runtime/frontmatter_fixtures_test.zig's fixture reads.
+    const doc = try std.Io.Dir.cwd().readFileAlloc(common.globalIo(), "docs/AUTH.md", alloc, .limited(256 * 1024));
+    defer alloc.free(doc);
+    for (WIRE) |w| {
+        if (std.mem.indexOf(u8, doc, w.str) == null) {
+            std.debug.print("scope missing from docs/AUTH.md: {s}\n", .{w.str});
+            return error.TestUnexpectedResult;
+        }
+    }
+}
 
 test {
     _ = @import("scopes_test.zig");

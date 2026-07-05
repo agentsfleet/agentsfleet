@@ -36,9 +36,6 @@ export default function IntegrationsConnectors({
 
   return (
     <div className="space-y-md" data-testid="integrations-connectors">
-      <p className="text-body-sm leading-body-sm text-muted-foreground">
-        Connect a tool in one click — no token to paste.
-      </p>
       {catalog.length === 0 ? (
         // The catalog is registry-driven (Slack/GitHub/Zoho/Jira/Linear/…),
         // never legitimately empty — an empty list here always means the

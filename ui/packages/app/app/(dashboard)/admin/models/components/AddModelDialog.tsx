@@ -88,13 +88,14 @@ export default function AddModelDialog({ onCreated }: { onCreated: (m: AdminMode
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
-        <Button type="button" size="sm">Add model</Button>
+        <Button type="button" size="sm">Create model library</Button>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Add model to catalogue</DialogTitle>
+          <DialogTitle>Create model library</DialogTitle>
           <DialogDescription>
-            Pricing here is what teammates running this model are billed. Rates are per 1M tokens.
+            A model library entry prices a model per token for everyone on your team and can be
+            the platform default. Rates are per 1M tokens.
           </DialogDescription>
         </DialogHeader>
         <Form {...form}>
@@ -147,8 +148,8 @@ export default function AddModelDialog({ onCreated }: { onCreated: (m: AdminMode
             {apiError ? <p className="text-sm text-destructive">{apiError}</p> : null}
             <DialogFooter>
               <Button type="submit" disabled={pending}>
-                {pending ? <Spinner size="sm" srLabel="Adding" /> : null}
-                Add model
+                {pending ? <Spinner size="sm" srLabel="Creating" /> : null}
+                Create model library
               </Button>
             </DialogFooter>
           </form>

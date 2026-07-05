@@ -34,9 +34,9 @@
 -- Rates are expressed in nanos per million tokens (1 nano = 1/1,000,000,000
 -- USD). Type is BIGINT because $30/M tokens in nanos = 3e10, beyond INT32_MAX.
 
-CREATE TABLE IF NOT EXISTS core.model_caps (
+CREATE TABLE IF NOT EXISTS core.model_library (
     uid                            UUID    PRIMARY KEY,
-    CONSTRAINT ck_model_caps_uid_uuidv7 CHECK (substring(uid::text from 15 for 1) = '7'),
+    CONSTRAINT ck_model_library_uid_uuidv7 CHECK (substring(uid::text from 15 for 1) = '7'),
     model_id                       TEXT    NOT NULL,
     provider                       TEXT    NOT NULL,
     context_cap_tokens             INTEGER NOT NULL,
@@ -48,7 +48,7 @@ CREATE TABLE IF NOT EXISTS core.model_caps (
     -- Unique domain key: the same base model is hosted by more than one provider
     -- at different rates (e.g. claude-opus-4-8 direct from Anthropic vs on
     -- Pioneer), so (provider, model_id) — not model_id alone — identifies a row.
-    CONSTRAINT uq_model_caps_provider_model UNIQUE (provider, model_id)
+    CONSTRAINT uq_model_library_provider_model UNIQUE (provider, model_id)
 );
 
 -- api_runtime serves the public read endpoint + the rate-cache populator at API
@@ -56,4 +56,4 @@ CREATE TABLE IF NOT EXISTS core.model_caps (
 -- catalogue. No worker access — the worker never queries this table directly;
 -- tenant_providers carries the resolved cap under self-managed, frontmatter
 -- carries it under platform-managed.
-GRANT SELECT, INSERT, UPDATE, DELETE ON core.model_caps TO api_runtime;
+GRANT SELECT, INSERT, UPDATE, DELETE ON core.model_library TO api_runtime;

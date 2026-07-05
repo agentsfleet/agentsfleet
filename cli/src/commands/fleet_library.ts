@@ -57,7 +57,7 @@ export const libraryEffect: Effect.Effect<
 
   const items = res.items ?? [];
   if (items.length === 0) {
-    yield* output.info("No fleet library yet.");
+    yield* output.info("No prebuilt fleet library found.");
     return;
   }
 

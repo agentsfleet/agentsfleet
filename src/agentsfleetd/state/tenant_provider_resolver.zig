@@ -44,7 +44,7 @@ pub const PlatformKey = struct {
     provider: []u8,
     source_workspace_id: []u8,
     /// The priced catalogue model this default resolves to (set by
-    /// PUT /v1/admin/platform-keys, validated ∈ core.model_caps at write time).
+    /// PUT /v1/admin/platform-keys, validated ∈ core.model_library at write time).
     model: []u8,
     /// Custom OpenAI-compatible endpoint for a non-named default; null for named
     /// providers (which dial a built-in host). Threaded to the runner dial.

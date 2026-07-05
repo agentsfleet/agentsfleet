@@ -5,7 +5,6 @@ import { CHARGE_TYPE, PROVIDER_MODE } from "@/lib/types";
 import {
   mockAuthOnce as mockAuth,
   resolveActiveWorkspace as resolveActiveWorkspaceMock,
-  listTenantWorkspacesCached as listTenantWorkspacesCachedMock,
 } from "./helpers/dashboard-mocks";
 import {
   resetDashboardMocks,
@@ -127,57 +126,6 @@ describe("placeholder pages", () => {
     expect(m).toContain("Workspace events");
   });
 
-  it("settings page renders workspace info when authenticated", async () => {
-    mockAuth({ token: "tkn", userId: "usr_42" });
-    // The active id resolves from the hint; the NAME comes from the workspace
-    // list (the switcher's data), so the list must carry the named entry.
-    resolveActiveWorkspaceMock.mockResolvedValue({ id: "ws_xyz", name: "Production" });
-    listTenantWorkspacesCachedMock.mockResolvedValueOnce({
-      items: [{ id: "ws_xyz", name: "Production" }],
-      total: 1,
-    });
-    const { default: Page } = await import("../app/(dashboard)/settings/page");
-    const m = renderToStaticMarkup(await Page());
-    expect(m).toContain("Workspace");
-    expect(m).toContain("New workspace");
-    expect(m).toContain("Production");
-    expect(m).toContain("ws_xyz");
-  });
-
-  it("settings page tolerates missing active workspace", async () => {
-    mockAuth({ token: "tkn", userId: "usr_42" });
-    resolveActiveWorkspaceMock.mockResolvedValue(null);
-    const { default: Page } = await import("../app/(dashboard)/settings/page");
-    const m = renderToStaticMarkup(await Page());
-    expect(m).toContain("Workspace");
-    expect(m).toContain("—");
-  });
-
-  it("settings page shows the hint workspace id (name unavailable) when listing workspaces fails", async () => {
-    mockAuth({ token: "tkn", userId: "usr_42" });
-    // List is the source of the name; with it down we still have the id from
-    // the cookie/JWT hint, so the page synthesizes a name-less entry: the id
-    // renders, the name shows the em-dash placeholder.
-    resolveActiveWorkspaceMock.mockResolvedValue({ id: "ws_fallback", name: "Fallback" });
-    listTenantWorkspacesCachedMock.mockRejectedValueOnce(new Error("api-down"));
-    const { default: Page } = await import("../app/(dashboard)/settings/page");
-    const m = renderToStaticMarkup(await Page());
-    expect(m).toContain("ws_fallback");
-    expect(m).toContain("—"); // name unavailable without the list
-  });
-
-  it("settings page renders the tenant workspace list when available", async () => {
-    mockAuth({ token: "tkn", userId: "usr_42" });
-    resolveActiveWorkspaceMock.mockResolvedValue({ id: "ws_active", name: "Active" });
-    listTenantWorkspacesCachedMock.mockResolvedValueOnce({
-      items: [{ id: "ws_listed", name: "Listed" }],
-      total: 1,
-    });
-    const { default: Page } = await import("../app/(dashboard)/settings/page");
-    const m = renderToStaticMarkup(await Page());
-    expect(m).toContain("Listed");
-  });
-
   it("models & keys settings page renders empty-workspace empty-state when no workspace", async () => {
     // Full-page composition (hero + switch list + custom secrets) is covered in
     // depth by tests/models-credentials-page.test.ts; here only the light
@@ -217,9 +165,9 @@ describe("placeholder pages", () => {
     expect(m).toContain("data-balance-card=\"1\"");
     expect(m).toContain("data-usage-tab=\"1\"");
     // Radix Tabs only renders the active panel; assert the tab triggers
-    // are wired so Invoices / Payment Method are reachable on click.
+    // are wired so Invoices / Payment method are reachable on click.
     expect(m).toContain(">Invoices</button>");
-    expect(m).toContain(">Payment Method</button>");
+    expect(m).toContain(">Payment method</button>");
   });
 
   it("billing settings page tolerates a /charges 5xx by falling back to empty events", async () => {

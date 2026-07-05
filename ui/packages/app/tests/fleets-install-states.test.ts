@@ -161,7 +161,7 @@ describe("test_install_states_render", () => {
     await waitFor(() => expect(screen.getByText(/first run: connect github, zoho/i)).toBeTruthy());
     // github has a reason but zoho does not → not every credential has one, so
     // the gate falls back to the generic copy rather than a half-listed purpose.
-    expect(screen.getByText(/Add them in Secrets & ENVs/i)).toBeTruthy();
+    expect(screen.getByText(/Add them in Secrets/i)).toBeTruthy();
   });
 
   it("joins per-credential reasons with \"and\" when every unmet credential has one", async () => {
@@ -176,13 +176,13 @@ describe("test_install_states_render", () => {
       [],
     );
     // Every unmet credential carries a reason → the purpose-driven sentence
-    // joins them with "and"; the generic "Add them in Secrets & ENVs" copy is gone.
+    // joins them with "and"; the generic "Add them in Secrets" copy is gone.
     await waitFor(() =>
       expect(
         screen.getByText(/review your pull requests and read your zoho activity/i),
       ).toBeTruthy(),
     );
-    expect(screen.queryByText(/Add them in Secrets & ENVs/i)).toBeNull();
+    expect(screen.queryByText(/Add them in Secrets/i)).toBeNull();
   });
 
   it("uses Add token when the missing secret is not GitHub", async () => {
