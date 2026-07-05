@@ -81,7 +81,12 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 | `src/agentsfleetd/auth/middleware/bearer_or_api_key.zig` | EDIT | fix the stale line-6 comment (still describes `publicMetadata.role` gating; gating is scope-based) |
 | `src/agentsfleetd/auth/scopes_test.zig` (or a new `auth_md_parity_test.zig`) | EDIT/CREATE | parity test: every `scopes.zig` `WIRE` string appears in `docs/AUTH.md` |
 | `~/Projects/docs/scopes.mdx` (separate repo, own branch `chore/m114-scopes-docs-changelog`) | CREATE | public scopes reference page linked from the existing `api-reference/error-codes` page |
-| test files: `app-components.test.ts`, `settings-tabs.test.ts` (deleted with the component), `api-keys-page.test.ts`, `api-keys-components.test.ts`, `dashboard-workspace.test.ts`, `billing-card.test.ts`, `billing-tabs.test.ts`, `dashboard-placeholder.test.ts`, `fleets-install-entry-gate.test.ts`, `fleets-routes.test.ts`, `add-template-dialog.test.tsx`, `add-template-dialog-deep-link.test.tsx`, `fleets-install-flow.test.ts`, `active-model-row.test.tsx`, `provider-switch-list.test.tsx`, `cli/test/fleet-library.unit.test.ts`; e2e `settings-api-keys.spec.ts`, `settings-billing.spec.ts` | EDIT | assertions updated to the new copy/structure named above |
+| test files: `app-components.test.ts`, `settings-tabs.test.ts` (deleted with the component), `api-keys-page.test.ts`, `api-keys-components.test.ts`, `dashboard-workspace.test.ts`, `billing-card.test.ts`, `billing-tabs.test.ts`, `dashboard-placeholder.test.ts`, `fleets-install-entry-gate.test.ts`, `fleets-routes.test.ts`, `add-template-dialog.test.tsx`, `add-template-dialog-deep-link.test.tsx`, `fleets-install-flow.test.ts`, `active-model-row.test.tsx`, `provider-switch-list.test.tsx`, `cli/test/fleet-library.unit.test.ts` | EDIT | assertions updated to the new copy/structure named above |
+| `ui/packages/app/tests/e2e/acceptance/settings-api-keys.spec.ts` | EDIT | heading assertion `/^settings$/i` → `/^api keys$/i`; the `"settings sections"` nav-landmark lookup (`SettingsTabs`'s nav, deleted in §1) reworked to look up the sidebar link directly; `"new api key"` button name → `"create key"` |
+| `ui/packages/app/tests/e2e/acceptance/workspace-create.spec.ts` | EDIT | `getByTestId("workspace-new")`'s accessible name / the "New workspace" dialog name updated to "Create workspace" (§2) |
+| `ui/packages/app/tests/e2e/acceptance/settings-billing.spec.ts` | EDIT | line ~35's `toBeDisabled()` assertion on `{name: "Purchase Credits"}` replaced with an enabled-link assertion on `{name: "Buy credits"}` with `href="mailto:agentsfleet@agentsmail.to"` |
+| `ui/packages/app/tests/e2e/acceptance/template-onboarding.spec.ts` | EDIT | **pre-existing bug found during spec authoring, unrelated to but touched by §5**: `test_github_source_error_stays_in_dialog` asserts button/dialog name `"Create a template"` and error text `"Couldn't add the template"` — neither matches the current `AddLibraryDialog.tsx` copy ("Add library entry"/"Couldn't add the library entry"), so this test is already stale pre-M112. Fixed to assert the new "Create fleet library"/"Couldn't create the fleet library" copy (RULE NLR, touch-it-fix-it — this spec edits the same dialog) |
+| `ui/packages/app/tests/e2e/acceptance/settings-models.spec.ts` | EDIT | new assertions added: no wake-pulse animation state when not live, no "Switch to platform defaults" button on the hero row (this file does not test either today) |
 
 ---
 
@@ -221,24 +226,31 @@ Not applicable — no product/operator signal changes; this spec is copy, a CSS 
 | Dimension | Tier | Test | Asserts (concrete inputs → expected output) |
 |-----------|------|------|---------------------------------------------|
 | 1.1 | unit | `test_nav_api_keys_replaces_workspace` | sidebar renders "API Keys" not "Workspace"; visiting `/settings` redirects to `/settings/api-keys` |
+| 1.1 | e2e | `settings-api-keys.spec.ts` (existing) | the sidebar link `/api keys/i` navigates to `/settings/api-keys` in a real rendered session — no `"settings sections"` nav landmark remains (that landmark belonged to the deleted `SettingsTabs`) |
 | 1.2 | unit | `test_api_keys_page_shows_workspace_identity_and_create_key` | render → title "API Keys", workspace name/ID with copy buttons present, "Create key" button, no "New API key" string |
+| 1.2 | e2e | `settings-api-keys.spec.ts` (existing) | heading assertion updated `/^api keys$/i`; `getByRole("button", {name: /new api key/i})` → `/create key/i` in the real mint/reveal/revoke/delete round-trip |
 | 1.3 | unit | `test_api_keys_operator_gate_renders_inline` | mock a 403 list response → alert renders on the same page, no navigation occurs |
 | 2.1 | unit | `test_workspace_switcher_create_label` | dropdown shows "Create workspace"; clicking it still opens the existing create-workspace dialog |
+| 2.1 | e2e | `workspace-create.spec.ts` (existing) | `getByTestId("workspace-new")`'s accessible name and the dialog's name reflect "Create workspace" end-to-end in a fresh-signup session |
 | 2.2 | unit | `test_workspace_switcher_manage_item_removed` | `queryByTestId("workspace-manage")` is null |
 | 3.1 | unit | `test_nav_active_item_shows_accent_bar` | active nav link's class list includes the accent-bar utility alongside the existing `bg-pulse/10` |
 | 4.1 | unit | `test_billing_copy_updated` | Billing page renders "Manage credits and usage." and "Payment method" |
 | 4.2 | unit | `test_buy_credits_is_mailto_link` | "Buy credits" renders as `<a href="mailto:agentsfleet@agentsmail.to">` with a leading icon, not `disabled` |
+| 4.2 | e2e | `settings-billing.spec.ts` (existing) | the real Billing page's "Buy credits" control is an enabled link to the mailto address, replacing the prior `toBeDisabled()` assertion |
 | 5.1 | unit | `test_dashboard_library_copy_updated` | dashboard/library empty-state and description strings match the four agreed strings verbatim |
 | 5.2 | unit | `test_library_entry_action_renamed` | every named "Add library entry" surface (dialog, InstallEntry, CLI) renders "Create fleet library"; no surviving "Add library entry" string |
+| 5.2 | e2e | `template-onboarding.spec.ts` (existing, currently stale — see Discovery) | `test_github_source_error_stays_in_dialog` opens the real dialog via "Create fleet library", submits an invalid GitHub source, and sees "Couldn't create the fleet library" in the still-open dialog |
 | 6.1 | unit | `test_hero_row_no_glow_when_not_live` | render with `live=false` → no wake-pulse animation class/selector match applies |
+| 6.1 | e2e | `settings-models.spec.ts` (existing, new assertion) | the real hero row never carries `data-live="false"`-driven animation styling on page load |
 | 7.1 | unit | `test_hero_reset_button_removed_switch_list_unaffected` | `queryByRole("button", {name: /switch to platform defaults/i})` on the hero row is null; `ProviderSwitchList`'s own row still calls `resetProviderAction` |
+| 7.1 | e2e | `settings-models.spec.ts` (existing, new assertion) | the real Models page has no "Switch to platform defaults" button on the hero row |
 | 8.1 | integration | `test_platform_key_missing_error_has_curated_message` | trigger the platform-key-missing path → response `user_message` is the curated sentence, not the raw "operator action required" string |
 | 8.2 | unit | `test_internal_error_bypass_sweep_closed` | grep-style check: no handler outside `error_entries.zig`'s registry constructs a raw literal for `internalOperationError` beyond the codes this sweep dispositioned |
 | 9.1 | unit (zig) | `test_auth_md_scope_parity` | every `scopes.zig` `WIRE` string is a substring of `docs/AUTH.md`'s contents |
 | 9.2 | unit | `test_bearer_or_api_key_comment_current` | file's header comment no longer contains the string `publicMetadata.role` |
 | 9.3 | manual/cross-repo | `test_public_docs_scopes_page_exists` | `~/Projects/docs/scopes.mdx` exists, non-empty, and is linked from the error-codes page |
 
-Regression: every existing test file named in Files Changed keeps its underlying scenario coverage — assertions move to the new copy/structure, none are deleted outright except the ones testing a deleted component (`settings-tabs.test.ts`).
+Regression: every existing test file named in Files Changed keeps its underlying scenario coverage — assertions move to the new copy/structure, none are deleted outright except the ones testing a deleted component (`settings-tabs.test.ts`). `template-onboarding.spec.ts`'s `test_github_source_error_stays_in_dialog` was already asserting stale pre-M112 copy (see Discovery) — this spec fixes it rather than leaving it silently broken.
 
 Idempotency/replay: N/A — no retry semantics touched.
 
@@ -257,6 +269,7 @@ Idempotency/replay: N/A — no retry semantics touched.
 | S1 | Unit tests pass | `make test` | exit 0 | P0 | |
 | S2 | Lint clean | `make lint` | exit 0 | P0 | |
 | S3 | Integration passes (§8 backend touched) | `make test-integration` | exit 0 | P0 | |
+| S4 | e2e walks the real path (UI category, five existing specs touched) | `make acceptance-e2e` | exit 0 | P0 | |
 | S6 | Cross-compile (§8/§9 Zig touched) | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` | exit 0 | P0 | |
 | S7 | No secrets | `gitleaks detect` | exit 0 | P0 | |
 | S8 | No oversize source file | `git diff --name-only origin/main \| grep -v '\.md$' \| xargs wc -l 2>/dev/null \| awk '$1>350 && $2!="total"'` | no output | P0 | |
@@ -327,6 +340,8 @@ Idempotency/replay: N/A — no retry semantics touched.
   > Indy (2026-07-05): public docs scope documentation — chose to add a public scopes reference page (§9, Dimension 9.3) over linking to the private repo's `AUTH.md` or skipping public documentation entirely.
   > Indy (2026-07-05): "well i dont see 5 spec files, 1 spec with 1 workstream that covers all" — collapsed the initially-drafted five-workstream-file structure into this single spec.
   > Indy (2026-07-05): "5 or more sections" / "no hard stop on sections" — expanded from 5 to 9 Sections so each maps to one originally-reported item instead of bundling several concerns per section.
+  > Indy (2026-07-05): "yes continue, i think it would be more than 1 test, based on the chore(close)" — Test Specification was unit-only per Dimension; per the template's own rule ("any user-facing Category gets at least one user-centric scenario via test-e2e* … a unit test is not a substitute"), added e2e rows against five *existing* Playwright specs (`settings-api-keys.spec.ts`, `workspace-create.spec.ts`, `settings-billing.spec.ts`, `template-onboarding.spec.ts`, `settings-models.spec.ts`) verified to exist and read line-by-line before citing them.
+- **Verification-pass finding (pre-existing bug, unrelated to this milestone's intent but touched by §5):** `template-onboarding.spec.ts`'s `test_github_source_error_stays_in_dialog` asserts button/dialog name `"Create a template"` and error text `"Couldn't add the template"` — neither matches `AddLibraryDialog.tsx`'s actual current copy ("Add library entry"/"Couldn't add the library entry"), meaning this e2e test has been silently stale since at least M112's fleet-library rename. `settings-api-keys.spec.ts:24`'s heading assertion (`/^settings$/i`) is similarly inconsistent with the page's actual current title ("Workspace" via `SettingsTabs`). Both are fixed in this spec's Files Changed under RULE NLR (touch-it-fix-it) since both dialogs/pages are directly edited here — not scope creep.
 - **Metrics review:** not applicable — no product/operator signal changes (stated in Metrics & Observability).
 - **Skill-chain outcomes:** populated after `/write-unit-test` and `/review` run at VERIFY/CHORE(close).
 - **Deferrals:** none yet — the http/loopback item above is a Kishore-directed park, not an agent-unilateral deferral, and is fully out of Dimension scope (Out of Scope), not a deferred Dimension within scope.
