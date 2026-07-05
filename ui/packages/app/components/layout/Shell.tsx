@@ -86,7 +86,7 @@ const CONFIGURATION_NAV: NavEntry[] = [
 // catalogue; a token with neither sees neither.
 const PLATFORM_NAV: PlatformNavEntry[] = [
   { label: "Runners", href: "/admin/runners", icon: ServerIcon, scope: SCOPE.RUNNER_READ },
-  { label: "Model rates", href: "/admin/models", icon: CoinsIcon, scope: SCOPE.MODEL_READ },
+  { label: "Model library", href: "/admin/models", icon: CoinsIcon, scope: SCOPE.MODEL_READ },
 ];
 
 const ORGANIZATION_NAV: NavEntry[] = [
