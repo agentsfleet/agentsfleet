@@ -35,7 +35,7 @@ fn seedCaps(h: *TestHarness) !void {
     defer h.releaseConn(conn);
     const now = clock.nowMillis();
     _ = try conn.exec(
-        \\INSERT INTO core.model_caps
+        \\INSERT INTO core.model_library
         \\  (uid, model_id, provider, context_cap_tokens, input_nanos_per_mtok, cached_input_nanos_per_mtok, output_nanos_per_mtok, created_at_ms, updated_at_ms)
         \\VALUES ($1::uuid, 'claude-sonnet-4-6', 'anthropic', 256000, 3000000000, 300000000, 15000000000, $3, $3),
         \\       ($2::uuid, 'kimi-k2.6', 'moonshot', 256000, 0, 0, 0, $3, $3)
@@ -46,7 +46,7 @@ fn seedCaps(h: *TestHarness) !void {
 fn cleanupCaps(h: *TestHarness) void {
     const conn = h.acquireConn() catch return;
     defer h.releaseConn(conn);
-    _ = conn.exec("DELETE FROM core.model_caps WHERE uid IN ($1::uuid, $2::uuid)", .{ UID_SONNET, UID_KIMI }) catch |err| std.log.warn("cleanup ignored: {s}", .{@errorName(err)});
+    _ = conn.exec("DELETE FROM core.model_library WHERE uid IN ($1::uuid, $2::uuid)", .{ UID_SONNET, UID_KIMI }) catch |err| std.log.warn("cleanup ignored: {s}", .{@errorName(err)});
 }
 
 test "integration(model_caps): GET returns the catalogue with claude-sonnet-4-6" {

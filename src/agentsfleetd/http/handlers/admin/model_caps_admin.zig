@@ -1,5 +1,5 @@
 //! Admin model-caps CRUD — `model:{read,admin}`-gated management of the priced
-//! model catalogue (core.model_caps), the billing spine.
+//! model catalogue (core.model_library), the billing spine.
 //!
 //! Routes (gated by the `model:read` (GET) / `model:admin` (write) scope in
 //! route_scopes.zig → requireScope — the middleware is the sole gate, mirroring

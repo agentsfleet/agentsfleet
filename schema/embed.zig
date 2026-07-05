@@ -9,7 +9,7 @@ pub const migrations = [_]MigrationEntry{
     .{ .version = 1, .sql = @embedFile("001_core_foundation.sql") },
     .{ .version = 2, .sql = @embedFile("002_vault_schema.sql") },
     // model_caps before platform_llm_keys: the latter's inline FK references it.
-    .{ .version = 3, .sql = @embedFile("003_model_caps.sql") },
+    .{ .version = 3, .sql = @embedFile("003_model_library.sql") },
     .{ .version = 4, .sql = @embedFile("004_platform_llm_keys.sql") },
     .{ .version = 5, .sql = @embedFile("005_core_fleets.sql") },
     .{ .version = 6, .sql = @embedFile("006_core_fleet_sessions.sql") },

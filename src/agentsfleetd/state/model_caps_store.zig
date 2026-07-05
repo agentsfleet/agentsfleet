@@ -1,4 +1,4 @@
-//! Single owner of core.model_caps SQL — the priced model catalogue (the
+//! Single owner of core.model_library SQL — the priced model catalogue (the
 //! billing spine). The public caps endpoint, the admin CRUD handler, and the
 //! platform-default cap snapshot call these helpers instead of embedding the
 //! table name, column lists, or row mapping themselves. Consolidated here (M100)
@@ -16,8 +16,8 @@ const std = @import("std");
 const pg = @import("pg");
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
 
-/// The catalogue table — single source for every core.model_caps reference.
-pub const TABLE = "core.model_caps";
+/// The catalogue table — single source for every core.model_library reference.
+pub const TABLE = "core.model_library";
 
 /// Mutable caps + rates of one row (no identity columns). Shared by create and
 /// update inputs and by the rate projection.
@@ -164,7 +164,7 @@ pub fn capFor(conn: anytype, provider: []const u8, model: []const u8) ?i32 {
 pub fn isReferencedByActiveDefault(conn: anytype, uid: []const u8) !bool {
     var q = PgQuery.from(try conn.query(
         \\SELECT 1
-        \\  FROM core.model_caps mc
+        \\  FROM core.model_library mc
         \\  JOIN core.platform_llm_keys plk
         \\    ON plk.provider = mc.provider AND plk.model = mc.model_id AND plk.active = true
         \\ WHERE mc.uid = $1::uuid
