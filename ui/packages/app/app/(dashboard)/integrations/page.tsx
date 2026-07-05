@@ -15,7 +15,10 @@ import {
   CONNECTOR_STATUS,
   type ConnectorCatalogEntry,
 } from "@/lib/api/connectors";
-import IntegrationsConnectors from "./components/IntegrationsConnectors";
+import { ApiError } from "@/lib/api/errors";
+import IntegrationsConnectors, {
+  type ConnectorFetchError,
+} from "./components/IntegrationsConnectors";
 
 export const dynamic = "force-dynamic";
 
@@ -32,8 +35,19 @@ export default async function IntegrationsPage() {
   // Slack team), fetched together. A missing/unbuilt endpoint degrades closed — an
   // empty catalog or "not connected" — never fabricating a connected state.
   const result = await withWorkspaceScope(token, async (workspaceId) => {
-    const [catalog, githubConnector, slackConnector] = await Promise.all([
-      getConnectorCatalog(workspaceId, token).catch(() => [] as ConnectorCatalogEntry[]),
+    const [catalogResult, githubConnector, slackConnector] = await Promise.all([
+      // Capture the failure instead of swallowing it to []: an empty catalog is
+      // rendered as "Couldn't load", and the code/status is what makes it
+      // diagnosable (console logging is lint-banned in app source).
+      getConnectorCatalog(workspaceId, token)
+        .then((entries) => ({ entries, error: null as ConnectorFetchError | null }))
+        .catch((err: unknown) => ({
+          entries: [] as ConnectorCatalogEntry[],
+          error:
+            err instanceof ApiError
+              ? { code: err.code, status: err.status }
+              : { code: "UZ-UNKNOWN", status: 0 },
+        })),
       getConnector("github", workspaceId, token).catch(() => ({
         status: CONNECTOR_STATUS.notConnected,
       })),
@@ -42,7 +56,13 @@ export default async function IntegrationsPage() {
         team: null,
       })),
     ]);
-    return { workspaceId, catalog, githubConnector, slackConnector };
+    return {
+      workspaceId,
+      catalog: catalogResult.entries,
+      catalogError: catalogResult.error,
+      githubConnector,
+      slackConnector,
+    };
   });
   if (!result) {
     return (
@@ -58,7 +78,7 @@ export default async function IntegrationsPage() {
       </div>
     );
   }
-  const { workspaceId, catalog, githubConnector, slackConnector } = result;
+  const { workspaceId, catalog, catalogError, githubConnector, slackConnector } = result;
 
   return (
     <div className="space-y-8">
@@ -72,6 +92,7 @@ export default async function IntegrationsPage() {
           <IntegrationsConnectors
             workspaceId={workspaceId}
             catalog={catalog}
+            catalogError={catalogError}
             githubStatus={githubConnector.status}
             slackStatus={slackConnector.status}
             slackTeam={slackConnector.team}

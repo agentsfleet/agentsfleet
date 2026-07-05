@@ -9,15 +9,29 @@ import {
 } from "@/lib/api/connectors";
 import { OAuthConnectorRow, type ConnectorStatusOverride } from "./connector-rows";
 
+// The diagnosable shape of a failed catalog fetch, captured server-side in
+// page.tsx (console logging is lint-banned in app source, so the code/status is
+// surfaced here instead — the RFC 7807 error_code is the public, documented id).
+export type ConnectorFetchError = { code: string; status: number };
+
+// Empty catalog always means the fetch failed (the list is registry-driven and
+// never legitimately empty), so name the cause when we have it.
+function connectorsLoadFailedDescription(err: ConnectorFetchError | null | undefined): string {
+  const detail = err ? ` (${err.code} · ${err.status})` : "";
+  return `Something went wrong fetching the connector list${detail} — refresh to try again.`;
+}
+
 export default function IntegrationsConnectors({
   workspaceId,
   catalog,
+  catalogError = null,
   githubStatus,
   slackStatus = CONNECTOR_STATUS.notConnected,
   slackTeam = null,
 }: {
   workspaceId: string;
   catalog: readonly ConnectorCatalogEntry[];
+  catalogError?: ConnectorFetchError | null;
   githubStatus: ConnectorStatus;
   slackStatus?: ConnectorStatus;
   slackTeam?: string | null;
@@ -45,7 +59,7 @@ export default function IntegrationsConnectors({
           data-testid="connectors-empty"
           icon={<PlugIcon size={32} />}
           title="Couldn't load connectors"
-          description="Something went wrong fetching the connector list — refresh to try again."
+          description={connectorsLoadFailedDescription(catalogError)}
         />
       ) : (
         <DashboardRowGroup>
