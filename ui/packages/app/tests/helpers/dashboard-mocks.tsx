@@ -95,7 +95,7 @@ export function workspaceMock() {
 const LUCIDE_ICONS = [
   "AlertTriangleIcon", "CheckIcon", "CopyIcon", "Loader2Icon", "PlusIcon", "ShieldIcon",
   "KeyRoundIcon", "KeyIcon", "Trash2Icon", "ChevronDownIcon", "ChevronRightIcon", "SettingsIcon",
-  "WalletIcon", "ZapIcon", "ReceiptIcon", "CreditCardIcon", "ActivityIcon", "CpuIcon",
+  "WalletIcon", "ZapIcon", "ReceiptIcon", "CreditCardIcon", "ActivityIcon", "CpuIcon", "CoinsIcon",
   "SlidersHorizontalIcon", "PencilIcon", "GitPullRequestIcon", "BriefcaseIcon", "HashIcon",
   "BotIcon", "LinkIcon", "CheckCircle2Icon", "LayoutTemplateIcon",
 ] as const;
