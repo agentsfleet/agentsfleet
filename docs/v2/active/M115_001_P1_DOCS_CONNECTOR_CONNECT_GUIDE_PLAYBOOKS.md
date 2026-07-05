@@ -16,12 +16,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M115
 **Workstream:** 001
 **Date:** Jul 05, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — customer- and operator-facing documentation; today the connect flow is undocumented and three of five providers have no operator runbook.
 **Categories:** DOCS
 **Batch:** B1 — standalone documentation workstream, no code dependency.
-**Branch:** {feat/mNN-name — added at CHORE(open)}
-**Test Baseline:** set at CHORE(open) — `unit=<N> integration=<M>` via `make _lint_zig_test_depth`
+**Branch:** feat/m115-connector-docs
+**Test Baseline:** unit=2327 integration=249 via `make _lint_zig_test_depth`
 **Depends on:** none — connector platform shipped (M106, M108); this documents what exists.
 **Provenance:** agent-generated (pre-spec, this session's connector documentation-gap audit)
 **Canonical architecture:** `docs/architecture/connectors.md` §archetypes, §trust-anchors
