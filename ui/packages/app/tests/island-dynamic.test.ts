@@ -51,7 +51,7 @@ const ISLANDS: Island[] = [
     name: "AddSecretForm",
     shim: "AddSecretFormDynamic",
     rawImportFragment: "secrets/components/AddSecretForm",
-    // Secrets & ENVs is its own page now; the add
+    // Secrets is its own page now; the add
     // form mounts inside AddSecretDialog, not the page directly.
     callSite: "app/(dashboard)/secrets/components/AddSecretDialog.tsx",
     rawComponent: "AddSecretForm",

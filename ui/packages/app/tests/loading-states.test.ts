@@ -32,11 +32,16 @@ describe("dashboard segment loading states", () => {
       expectsTitle: "Billing",
     },
     {
-      // /credentials redirects to /settings/models, so its loader paints the
-      // DESTINATION title (no flash) — see credentials/loading.
-      name: "credentials",
+      // Secrets is its own standalone page — its loader paints the real
+      // title, not the stale "Models" it borrowed when /credentials redirected.
+      name: "secrets",
       importer: () => import("../app/(dashboard)/secrets/loading"),
-      expectsTitle: "Models",
+      expectsTitle: "Secrets",
+    },
+    {
+      name: "admin/runners",
+      importer: () => import("../app/(dashboard)/admin/runners/loading"),
+      expectsTitle: "Runners",
     },
     {
       name: "integrations",

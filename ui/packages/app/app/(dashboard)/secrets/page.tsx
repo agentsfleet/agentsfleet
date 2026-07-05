@@ -10,7 +10,7 @@ import AddSecretDialog from "./components/AddSecretDialog";
 
 export const dynamic = "force-dynamic";
 
-const PAGE_TITLE = "Secrets & ENVs";
+const PAGE_TITLE = "Secrets";
 const PAGE_DESCRIPTION = "Encrypted secrets your fleets can use — write-only once saved.";
 
 export default async function SecretsPage() {
