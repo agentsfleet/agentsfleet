@@ -20,8 +20,6 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Priority:** P1 — one dimension is a **live security gap** (a mint currently needs no approved grant — M102_001 Invariant 3 is not enforced on main); the rest is operator-facing (App-webhook receipt, `agentsfleet connector` status) + doc-truth.
 **Categories:** API, CLI, DOCS
 **Batch:** B1 — §2 (grant-gate) is the priority and independent; §1 (ingress), §3 (CLI), §4 (docs) each touch disjoint surfaces and may land in any order after §2.
-**Branch:** {feat/mNN-name — added at CHORE(open)}
-**Test Baseline:** set at CHORE(open) — `unit=<N> integration=<M>` via `make _lint_zig_test_depth`
 **Depends on:** M102_001 (MERGED, PR #458 — shipped §1–§4 mint broker + §5-connect; this workstream carries its explicitly-deferred tail: §5.2/§5.4 ingress, §6 grant enforcement, §7 CLI, §8 docs). M102_004 was attempted and abandoned (PRs #462/#464 closed, no file landed) — 005 avoids reusing a burned number.
 **Provenance:** LLM-drafted (Claude, Jul 05, 2026) — carved from M102_001's Discovery log + a live main-tree audit this session that found §6 grant enforcement absent (mint calls `broker.mint` with no grant check; `secrets_resolve.mintableId` classifies without a grant read).
 **Canonical architecture:** `docs/AUTH.md` (credential boundary + the `agt_r` plane + webhook verifier) + `docs/architecture/data_flow.md` §B/§C + `docs/architecture/runner_fleet.md` (the `agt_r` plane). Introduces no new trust plane — the ingress rides the existing verifier, the grant-gate rides the existing mint route.
