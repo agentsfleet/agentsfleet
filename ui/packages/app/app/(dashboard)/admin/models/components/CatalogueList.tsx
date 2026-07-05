@@ -39,7 +39,10 @@ function buildColumns({
       numeric: true,
       cell: (m) => (
         <span className="font-mono text-xs tabular-nums text-muted-foreground">
-          {m.context_cap_tokens.toLocaleString()}
+          {/* Pin the locale — a bare toLocaleString() groups digits per the
+              viewer's locale (en-IN "1,28,000" vs en-US "128,000"), so SSR and
+              client disagree and React throws a hydration mismatch. */}
+          {m.context_cap_tokens.toLocaleString("en-US")}
         </span>
       ),
     },

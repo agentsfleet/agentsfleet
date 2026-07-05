@@ -10,7 +10,7 @@
 // two are the same thing.
 //
 // `/secrets` is the semantic write-only secret-vault route — a real standalone
-// page (Secrets & ENVs), not a redirect. The deep-link points at this route
+// page (Secrets), not a redirect. The deep-link points at this route
 // name rather than any page's internal layout, so the preview stays decoupled
 // from the vault section and survives further relocation.
 export const WORKSPACE_SECRETS_PATH = "/secrets";

@@ -75,8 +75,11 @@ const ACTION_CONFIG: Record<RunnerAdminAction, {
   },
 };
 
+// Pin the locale so SSR (server locale) and the client (viewer locale) format
+// the timestamp identically — a bare toLocaleString() hydration-mismatches the
+// same way the catalogue's token count did.
 function fmt(ms: number): string {
-  return new Date(ms).toLocaleString();
+  return new Date(ms).toLocaleString("en-US");
 }
 
 function actionsFor(state: RunnerAdminState): RunnerAdminAction[] {

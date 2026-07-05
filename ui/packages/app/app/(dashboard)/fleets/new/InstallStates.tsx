@@ -193,7 +193,7 @@ function ConnectGate({ unmet, reasons }: { unmet: string[]; reasons: Record<stri
         ) : (
           <>
             Needs <span className="font-mono text-foreground">{unmet.join(", ")}</span>. Add{" "}
-            {objectLabel} in Secrets & ENVs to run this fleet.
+            {objectLabel} in Secrets to run this fleet.
           </>
         )}
       </p>

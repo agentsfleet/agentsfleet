@@ -2,7 +2,7 @@
  * secrets-lifecycle.spec.ts — custom-secret add (field builder, via dialog) →
  * list → rotate, on the standalone /secrets page.
  *
- * Secrets & ENVs is a real standalone page again, not a
+ * Secrets is a real standalone page again, not a
  * section on /settings/models. This drives the field/value AddSecretForm the
  * way a real operator would: open the "Create secret" dialog, fill a secret name
  * plus a field+value row, click Create secret, assert the row appears in the
