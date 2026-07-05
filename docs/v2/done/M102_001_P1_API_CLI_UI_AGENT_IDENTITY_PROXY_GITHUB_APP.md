@@ -12,7 +12,7 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Milestone:** M102
 **Workstream:** 001
 **Date:** Jun 26, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE — §1–§4 (mint broker + tool boundary) + §5-connect shipped (PR #458). The four deferred dimensions (§5.2/§5.4 ingress, §6 grant enforcement, §7 CLI, §8 docs) are carved into **M102_005** (Indy's "split + defer the tail", Jul 05, 2026 — see Discovery). Marked per-Dimension below.
 **Priority:** P1 — operator-facing: one-click "Connect GitHub" replaces the hand-pasted long-lived Personal Access Token (PAT); the broker forestalls a per-connector minter junk drawer in `agentsfleetd`.
 **Categories:** API, CLI, UI
 **Batch:** B1 — backend mint wire (§1–§4) before the UI-first connect surface (§5–§6); CLI ops + docs sweep (§7–§8) ride after.
@@ -190,25 +190,26 @@ When `PolicyHttpRequestTool` resolves `${secrets.<integration>.token}` for a **m
 
 ### §5 — GitHub App connect surface (UI-first) + generic webhook ingress
 A live GitHub **Connect** runs the App-install flow, storing `{integration:"github", installation_id}` (no token) and mapping `installation_id ↔ workspace`. The ingress is **generic — `POST /v1/ingress/{provider}`** — backed by an inbound verifier/router registry (RULE CFG, mirrors the outbound broker; extends the existing `webhook_verify.PROVIDER_REGISTRY`). A provider entry is a descriptor: `{scheme, header(s), prefix, timestamp_window?, routing_key_path, lifecycle_hook?}`. M102 ships ONE entry (`github`); Slack/Linear/Jira/Zoho are later descriptors (a new scheme impl or lifecycle hook only when the signature *family* is new — `hmac_sha256_body`, `hmac_sha256_ts_body`, `atlassian_jwt`). The receiver verifies the provider signature and routes by the descriptor's routing-key (`installation_id` for github) → workspace → matching fleet(s).
-- **Dimension 5.1** — Connect → install → callback stores the handle (no token) + the `installation_id ↔ workspace` map → `test_github_connect_stores_handle`
-- **Dimension 5.2** — App webhook at `/v1/ingress/github` → verify App HMAC → route by `installation_id` to the matching fleet's events stream → `test_ingress_routes_by_installation_id`
-- **Dimension 5.3** — connected shows; uninstalled shows **Reconnect**; Slack/Zoho render "Planned" → `test_github_states_and_planned`
-- **Dimension 5.4** — adding a provider is a registry descriptor; the `/v1/ingress/{provider}` route + dispatch carry no per-provider branch (a fake provider entry verifies + routes with no handler edit) → `test_ingress_registry_is_data_driven`
+- **Dimension 5.1** — Connect → install → callback stores the handle (no token) + the `installation_id ↔ workspace` map → `test_github_connect_stores_handle` — ✅ **DONE** (PR #458; `connectors/github/{connect,callback,status,state}.zig`)
+- **Dimension 5.2** — App webhook at `/v1/ingress/github` → verify App HMAC → route by `installation_id` to the matching fleet's events stream → `test_ingress_routes_by_installation_id` — ⏭️ **DEFERRED → M102_005 §1** (event receipt is separable from connect; not built in PR #458)
+- **Dimension 5.3** — connected shows; uninstalled shows **Reconnect**; Slack/Zoho render "Planned" → `test_github_states_and_planned` — ✅ **DONE** (PR #458; `IntegrationsConnectors.tsx`)
+- **Dimension 5.4** — adding a provider is a registry descriptor; the `/v1/ingress/{provider}` route + dispatch carry no per-provider branch (a fake provider entry verifies + routes with no handler edit) → `test_ingress_registry_is_data_driven` — ⏭️ **DEFERRED → M102_005 §1**
 
 ### §6 — Grant + approval placement
 The standing **integration grant** (`core.integration_grants`) gates whether a fleet may use `github` at all — checked at lease-issue (no mintable handle without an approved grant) and re-checked at mint. The existing **approval gate** stays the per-write gate (poll/continuation), unchanged.
-- **Dimension 6.1** — mint refused when the fleet has no approved `github` grant → `test_mint_requires_approved_grant`
-- **Dimension 6.2** — lease attaches a mintable `github` handle only when the grant is approved → `test_lease_gates_mintable_on_grant`
+> **Split note (Jul 05, 2026):** the grant **lifecycle** (schema `008_core_integration_grants.sql`, the request/approve/revoke/list routes + `webhooks/grant_approval.zig`) shipped, but the **enforcement** below never wired — `credentials_mint.zig` calls `broker.mint` with no grant read and `secrets_resolve.mintableId` classifies without one. **Invariant 3 is not upheld on main.** Both dimensions carry to M102_005 §2.
+- **Dimension 6.1** — mint refused when the fleet has no approved `github` grant → `test_mint_requires_approved_grant` — ⏭️ **DEFERRED → M102_005 §2** (enforcement absent on main)
+- **Dimension 6.2** — lease attaches a mintable `github` handle only when the grant is approved → `test_lease_gates_mintable_on_grant` — ⏭️ **DEFERRED → M102_005 §2**
 
 ### §7 — CLI connector ops + vault surfacing (fast-follow)
 `agentsfleet connector` lists status (connected / needs-reconnect) as human + structured JSON; a disconnected connector returns a structured-JSON error with a non-zero exit (RULE JCL).
-- **Dimension 7.1** — `connector list`/`status` reflects github state; `--json` shape is stable → `test_cli_connector_status`
-- **Dimension 7.2** — acting through a disconnected connector → structured-JSON error + non-zero exit + reconnect suggestion → `test_cli_connector_disconnected_error`
+- **Dimension 7.1** — `connector list`/`status` reflects github state; `--json` shape is stable → `test_cli_connector_status` — ⏭️ **DEFERRED → M102_005 §3** (connect shipped UI-only; CLI signpost fast-follow, Discovery §5-connect note)
+- **Dimension 7.2** — acting through a disconnected connector → structured-JSON error + non-zero exit + reconnect suggestion → `test_cli_connector_disconnected_error` — ⏭️ **DEFERRED → M102_005 §3**
 
 ### §8 — Docs sweep (absorb C1–C9)
 Update the architecture docs the new model changes, owners before echoes (review companion): `user_flow.md` §8.2–8.5, `data_flow.md` §B/§C, `capabilities.md` §2–3 first; then `README.md` glossary, `high_level.md` §5.1, `scenarios/gh-pr-reviewer.md`, `runner_fleet.md` (one `agt_r` route), `roadmap.md`.
-- **Dimension 8.1** — the manual-`gh-api-hooks` registration model is replaced by App-connect; no doc still asserts "user registers the webhook" for the App path → `test_docs_no_manual_gh_hook_for_app` (grep-based)
-- **Dimension 8.2** — the "platform never holds the user's PAT" claim is reworded to distinguish the platform App key → `test_docs_app_key_vs_user_pat` (grep-based)
+- **Dimension 8.1** — the manual-`gh-api-hooks` registration model is replaced by App-connect; no doc still asserts "user registers the webhook" for the App path → `test_docs_no_manual_gh_hook_for_app` (grep-based) — ⏭️ **DEFERRED → M102_005 §4** (owner docs updated early — commits `2bd6bc2f`/`b8a641e9`; the echo sweep + grep tests carry over)
+- **Dimension 8.2** — the "platform never holds the user's PAT" claim is reworded to distinguish the platform App key → `test_docs_app_key_vs_user_pat` (grep-based) — ⏭️ **DEFERRED → M102_005 §4**
 
 ---
 
@@ -265,6 +266,19 @@ Mint result is a tagged union; `${secrets.…}` shape + integration ids are name
 6. **Mint result is a tagged union** — no fatal-silent path; compile-checked exhaustiveness.
 7. **No new trust plane** — the mint route rides the existing `agt_r` plane; the App webhook rides the existing verifier; no new network surface from the sandbox (`test_child_requests_token_via_runner`).
 8. **Secrets never logged or returned** — VLT; only host/status/expiry-bool appear in any frame or log.
+
+---
+
+## Metrics & Observability
+
+> Added Jul 05, 2026 at close (template gained this required section after this spec's Jun 26 authoring; filled honestly at CHORE(close) per RULE NLR).
+
+| Metric / event | Owner | Fires when | Properties allowed | Privacy guard | Test proof |
+|----------------|-------|------------|--------------------|---------------|------------|
+| mint outcome log line | ops | each `broker.mint` resolves (ok / reconnect_required / mint_failed / unknown_integration) | integration id, workspace id, outcome, latency | no token/handle/App-key bytes (VLT) | `test_github_key_never_leaves_broker` |
+| connect callback log line | ops | a GitHub App connect callback stores a handle | workspace id, installation-present bool | no token, no installation_id in product analytics | `test_github_connect_stores_handle` (via M102_005 §1 for ingress receipt) |
+
+Operator/security-plane observability only — no product analytics or funnel change. Metrics review: no analytics/funnel playbook update required (credential-plane work; the mint/connect signals are operator logs, not product events).
 
 ---
 
@@ -366,6 +380,8 @@ grep -rn "private_key\|app_private" src/agentsfleetd/runner src/runner --include
 - **§5 connect surface landed (Jun 27, Orly) — UI-first, no token paste; ingress deferred.** The "connect once" loop is built end to end and compiles green; the App-webhook **ingress** (Dims 5.2/5.4, `/v1/ingress/{provider}`) is NOT in this slice — it is event *receipt*, separable from connect, and rides a follow-up. **Decisions (Indy, Jun 27):** connect is **installation-only** (the App install IS the auth; no user-OAuth identify — only `installation_id` is needed); the callback is **Bearer-less** (a github.com redirect), so a **signed `state`** is the sole trust anchor — HMAC-SHA256 over `workspace_id|nonce|exp` with the existing `approval_signing_secret` (domain-separated `ghconnect:v1:`, no new secret) + a **Redis single-use nonce** (`DEL` integer reply) + expiry; the callback writes the EXACT `fleet:github = {integration,installation_id}` handle the broker already reads (`credential_key.allocKeyName`), so the live broker mints from it with zero new mint code. **No token-paste:** the UI catalog's GitHub `requiredSecret: GITHUB_TOKEN` model is removed — GitHub is now `auth: app_connect`. **Files** — UI: `lib/integrations/catalog.ts`, `credentials/components/IntegrationsConnectors.tsx` (replaces the deleted token-paste `IntegrationsComingSoon.tsx`), `lib/api/connectors.ts`, `credentials/connector-actions.ts`, `credentials/page.tsx`; backend: `http/handlers/connectors/github/{connect,callback,status,state}.zig`, `route_table_invoke_connectors.zig` + matchers/routes/dispatch (bearer for connect+status, **none** for callback), `Context.github_app_slug` resolved at boot from the admin `github-app` vault entry's **`app_slug`** field (new field — `serve_broker.loadGithubAppSlug`), error codes `UZ-CONN-001/002`. **Gates:** `zig build` + both linux cross-compiles green; daemon unit suite green (state crypto: 5 tests — round-trip, tampered-mac, foreign-secret, expiry, malformed); UI `tsc` + 6/6 vitest. **F1 (CLI signpost):** not in this slice — connect is UI-only by Indy's call; the CLI `connector status`/signpost is a separate fast-follow. **Operational:** the admin `github-app` vault entry must carry `app_slug` alongside `app_id`/`private_key_pem`, else connect degrades closed (`UZ-CONN-001`).
 - **Open to confirm at PLAN:** App registration ownership + admin-vault key storage; whether the App webhook reuses `/v1/webhooks/{fleet_id}` internally or a new `/v1/ingress/github` path.
 - **Deferrals:** `oauth_refresh` integration, per-fleet cryptographic identity / Agent Auth wire format, Stripe Agentic Commerce Protocol, exact-action approval-hash binding — Out of Scope, not dropped Dimensions; custom secrets bridge the non-GitHub connectors until then.
+- **Tail split → M102_005 (Jul 05, 2026, Orly + Indy):** during post-merge cleanup a live main-tree audit found four dimensions unshipped: §5.2/§5.4 (the `/v1/ingress/{provider}` App-webhook receiver was never built — connect landed, event receipt did not), §6.1/§6.2 (the grant **lifecycle** shipped but the mint/lease **enforcement** did not — `credentials_mint.zig` mints with no grant read; **Invariant 3 is not upheld on main**), §7 (CLI `connector` — connect was UI-only by design), §8 (the C1–C9 docs echo sweep). Indy chose to close M102_001 for the shipped core and carve the tail into a fast-follow. §6 enforcement was NOT in Indy's initial carve framing — it surfaced during the audit as a security gap and was folded into M102_005 §2 (P0). Reactivation: none — M102_005 (`docs/v2/pending/`) owns the tail.
+  > Indy (2026-07-05 22:43): "Split + defer the tail — Mark §1–§6 DONE, carve §5-ingress/§7-CLI/§8-docs into a new fast-follow spec (M102_005)" — context: M102_001 tail after PR #458 merge; §6 grant enforcement additionally deferred to M102_005 §2 (found un-shipped during the same audit, Invariant 3 gap).
 
 ---
 
