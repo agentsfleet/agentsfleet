@@ -14,12 +14,12 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Milestone:** M114
 **Workstream:** 001
 **Date:** Jul 05, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — concretely-reported dashboard issues from a live product walkthrough this session (redundant nav surface, stale copy, a visibly-broken animation, an operator-jargon error toast); none blocks another, none needs new architecture.
 **Categories:** API, DOCS, UI
 **Batch:** B1 — single workstream; §1-§3 (nav/API Keys/WorkspaceSwitcher/accent bar) share `Shell.tsx` and `WorkspaceSwitcher.tsx`, §4-§9 each touch disjoint files.
-**Branch:** set at CHORE(open)
-**Test Baseline:** set at CHORE(open) — `unit=<N> integration=<M>` via `make _lint_zig_test_depth`
+**Branch:** feat/m114-dashboard-ux-polish
+**Test Baseline:** unit=2323 integration=249
 **Depends on:** none
 **Provenance:** LLM-drafted (Claude, Jul 05, 2026) from a live plan-mode product review this session — three parallel Explore agents traced exact file:line locations across `ui/packages/app/`, `cli/`, and `src/agentsfleetd/`; Kishore made explicit calls on naming/removal/structure recorded in Discovery.
 **Canonical architecture:** `docs/AUTH.md` §Scope catalogue (§9 only) — §1-§8 are presentation-layer fixes with no dedicated architecture doc, same citation pattern as M113_001/M113_003 ("layout/presentation only, data model unchanged").
