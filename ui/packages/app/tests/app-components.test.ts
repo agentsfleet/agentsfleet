@@ -69,6 +69,7 @@ vi.mock("lucide-react", () => ({
   CheckCircle2Icon: (props: Record<string, unknown>) => React.createElement("svg", { ...props, "data-icon": "CheckCircle2Icon" }),
   ServerIcon: (props: Record<string, unknown>) => React.createElement("svg", { ...props, "data-icon": "ServerIcon" }),
   CpuIcon: (props: Record<string, unknown>) => React.createElement("svg", { ...props, "data-icon": "CpuIcon" }),
+  CoinsIcon: (props: Record<string, unknown>) => React.createElement("svg", { ...props, "data-icon": "CoinsIcon" }),
   CreditCardIcon: (props: Record<string, unknown>) => React.createElement("svg", { ...props, "data-icon": "CreditCardIcon" }),
   MenuIcon: (props: Record<string, unknown>) => React.createElement("svg", { ...props, "data-icon": "MenuIcon" }),
   PanelLeftIcon: (props: Record<string, unknown>) => React.createElement("svg", { ...props, "data-icon": "PanelLeftIcon" }),

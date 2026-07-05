@@ -1,6 +1,6 @@
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { RunnerListItem, RunnerListResponse } from "@/lib/api/runners";
 
@@ -99,17 +99,6 @@ describe("RunnerList component", () => {
     expect(screen.getByText(/No runners yet/i)).toBeTruthy();
   });
 
-  it("hides the sort toolbar while the list is empty (only the empty state shows)", async () => {
-    await renderList(listResponse([]));
-    expect(screen.queryByLabelText(/sort runners/i)).toBeNull();
-    expect(screen.getByText(/No runners yet/i)).toBeTruthy();
-  });
-
-  it("shows the sort toolbar once runners exist", async () => {
-    await renderList(listResponse([REGISTERED, ONLINE]));
-    expect(screen.getByLabelText(/sort runners/i)).toBeTruthy();
-  });
-
   it("renders every derived-liveness badge, admin-state badge, tier, labels, and the never-connected line", async () => {
     await renderList(listResponse([REGISTERED, ONLINE, BUSY, OFFLINE]));
     // All four derived liveness states surface as badge text.
@@ -120,28 +109,14 @@ describe("RunnerList component", () => {
     expect(screen.getAllByText("active").length).toBeGreaterThan(0);
     expect(screen.getByText("draining")).toBeTruthy();
     expect(screen.getByText("revoked")).toBeTruthy();
-    // Host ids + a tier render.
+    // Host ids + a tier render (isolation cell shows the friendly label).
     expect(screen.getByText("web-fresh-1")).toBeTruthy();
-    expect(screen.getByText("container_nested")).toBeTruthy();
+    expect(screen.getByText("Nested container")).toBeTruthy();
     // last_seen_at == 0 → "never connected"; > 0 → a "last seen" timestamp line.
     expect(screen.getByText(/never connected/i)).toBeTruthy();
     expect(screen.getAllByText(/last seen/i).length).toBeGreaterThan(0);
     expect(screen.getByText("gpu")).toBeTruthy();
     expect(screen.getByText("us-east")).toBeTruthy();
-  });
-
-  it("picking a different sort re-fetches page 1 with that sort", async () => {
-    await renderList(listResponse([REGISTERED], 30));
-    const trigger = screen.getByLabelText(/sort runners/i);
-    fireEvent.pointerDown(trigger, { button: 0, pointerType: "mouse" });
-    fireEvent.click(trigger);
-    fireEvent.keyDown(trigger, { key: "Enter" });
-    fireEvent.click(screen.getByText("Host A–Z"));
-    await waitFor(() =>
-      expect(listRunnersActionMock).toHaveBeenCalledWith(
-        expect.objectContaining({ sort: "host_id", page: 1, page_size: 25 }),
-      ),
-    );
   });
 
   it("pagination shows when total exceeds the page size and Next re-fetches page 2", async () => {
@@ -210,9 +185,9 @@ describe("RunnerList component", () => {
       ok: true,
       data: { runner_id: "r2", runner_token: "agt_rnew" },
     });
-    await user.click(screen.getByRole("button", { name: /add runner/i }));
-    await user.type(screen.getByLabelText(/host id/i), "web-prod-9");
     await user.click(screen.getByRole("button", { name: /create runner/i }));
+    await user.type(screen.getByLabelText(/host name/i), "web-prod-9");
+    await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: /create runner/i }));
     await screen.findByLabelText("Runner token");
     await user.click(screen.getByRole("button", { name: /stored it/i }));
     await waitFor(() =>

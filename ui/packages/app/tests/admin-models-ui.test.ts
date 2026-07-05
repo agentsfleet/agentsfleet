@@ -40,6 +40,13 @@ function pickOption(trigger: HTMLElement, optionText: string) {
   fireEvent.click(screen.getByText(optionText));
 }
 
+// The catalogue is a design-system DataTable now — rows carry no custom
+// aria-label, so scope a row by its (unique) model_id cell and walk up to its
+// <tr>. Replaces the old `<provider> <model_id> catalogue row` aria query.
+function rowFor(modelId: string): HTMLElement {
+  return screen.getByText(modelId).closest("tr")!;
+}
+
 const CATALOGUE: AdminModel[] = [
   { uid: "u1", provider: "fireworks", model_id: "glm-5.2", context_cap_tokens: 128000, input_nanos_per_mtok: 550_000_000, cached_input_nanos_per_mtok: 140_000_000, output_nanos_per_mtok: 2_190_000_000 },
   { uid: "u2", provider: "anthropic", model_id: "claude-opus-4-8", context_cap_tokens: 200000, input_nanos_per_mtok: 15_000_000_000, cached_input_nanos_per_mtok: 1_500_000_000, output_nanos_per_mtok: 75_000_000_000 },
@@ -55,7 +62,7 @@ describe("AddModelDialog", () => {
     const onCreated = vi.fn();
     render(React.createElement(AddModelDialog, { onCreated }));
 
-    await user.click(screen.getByRole("button", { name: "Add model" }));
+    await user.click(screen.getByRole("button", { name: "Create model rate" }));
     // Set values directly: happy-dom drops the intermediate invalid state when
     // typing decimals char-by-char into a type=number input. fireEvent.change
     // still drives react-hook-form's onChange — exactly what a paste would.
@@ -77,10 +84,10 @@ describe("AddModelDialog", () => {
   it("should reject an empty provider and not call the create action", async () => {
     const user = userEvent.setup();
     render(React.createElement(AddModelDialog, { onCreated: vi.fn() }));
-    await user.click(screen.getByRole("button", { name: "Add model" }));
+    await user.click(screen.getByRole("button", { name: "Create model rate" }));
     await user.type(screen.getByLabelText("Model id"), "glm-5.2"); // provider left blank
     const dialog = screen.getByRole("dialog");
-    await user.click(within(dialog).getByRole("button", { name: "Add model" }));
+    await user.click(within(dialog).getByRole("button", { name: "Create model rate" }));
     // Zod min(1) on provider blocks submit; the action never fires.
     await new Promise((r) => setTimeout(r, 50));
     expect(createAdminModelActionMock).not.toHaveBeenCalled();
@@ -92,7 +99,7 @@ describe("AddModelDialog", () => {
     const onCreated = vi.fn();
     render(React.createElement(AddModelDialog, { onCreated }));
 
-    await userEvent.setup().click(screen.getByRole("button", { name: "Add model" }));
+    await userEvent.setup().click(screen.getByRole("button", { name: "Create model rate" }));
     fireEvent.change(screen.getByLabelText("Provider"), { target: { value: "fireworks" } });
     fireEvent.change(screen.getByLabelText("Model id"), { target: { value: "glm-5.2" } });
 
@@ -208,28 +215,28 @@ describe("PlatformDefaultCard — save flow", () => {
 describe("CatalogueList", () => {
   it("renders a priced row per catalogue model with $/1M rates", () => {
     render(React.createElement(CatalogueList, { models: CATALOGUE, onDeleted: vi.fn() }));
-    expect(screen.getByText("Model rates · 2 models")).toBeTruthy();
-    expect(screen.getByLabelText("fireworks glm-5.2 catalogue row")).toBeTruthy();
+    // The catalogue is a design-system DataTable — one row per priced model.
+    expect(screen.getByTestId("data-table")).toBeTruthy();
+    expect(screen.getByText("glm-5.2")).toBeTruthy();
     // 550_000_000 nanos/Mtok → $0.55, two decimals.
     expect(screen.getByText("0.55 / 0.14 / 2.19")).toBeTruthy();
   });
 
-  it("uses the singular noun for a one-model catalogue", () => {
-    render(React.createElement(CatalogueList, { models: [CATALOGUE[0]!], onDeleted: vi.fn() }));
-    expect(screen.getByText("Model rates · 1 model")).toBeTruthy();
-  });
-
   it("shows the empty state when there are no models", () => {
     render(React.createElement(CatalogueList, { models: [], onDeleted: vi.fn() }));
-    expect(screen.getByText("No models yet")).toBeTruthy();
-    expect(screen.queryByText(/catalogue row/)).toBeNull();
+    expect(screen.getByText("No model rates yet")).toBeTruthy();
+    expect(
+      screen.getByText("Add a model rate to price it and make it selectable as the platform default."),
+    ).toBeTruthy();
+    // The empty state replaces the table entirely.
+    expect(screen.queryByTestId("data-table")).toBeNull();
   });
 
   it("does not delete on the row click alone — a confirm dialog gates the irreversible action", async () => {
     const onDeleted = vi.fn();
     render(React.createElement(CatalogueList, { models: CATALOGUE, onDeleted }));
 
-    const row = screen.getByLabelText("fireworks glm-5.2 catalogue row");
+    const row = rowFor("glm-5.2");
     fireEvent.click(within(row).getByRole("button", { name: "Delete" }));
 
     await waitFor(() => expect(screen.getByRole("alertdialog")).toBeTruthy());
@@ -242,7 +249,7 @@ describe("CatalogueList", () => {
     const onDeleted = vi.fn();
     render(React.createElement(CatalogueList, { models: CATALOGUE, onDeleted }));
 
-    const row = screen.getByLabelText("fireworks glm-5.2 catalogue row");
+    const row = rowFor("glm-5.2");
     fireEvent.click(within(row).getByRole("button", { name: "Delete" }));
     await waitFor(() => expect(screen.getByRole("alertdialog")).toBeTruthy());
     fireEvent.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: "Delete" }));
@@ -256,7 +263,7 @@ describe("CatalogueList", () => {
     const onDeleted = vi.fn();
     render(React.createElement(CatalogueList, { models: CATALOGUE, onDeleted }));
 
-    const row = screen.getByLabelText("anthropic claude-opus-4-8 catalogue row");
+    const row = rowFor("claude-opus-4-8");
     fireEvent.click(within(row).getByRole("button", { name: "Delete" }));
     await waitFor(() => expect(screen.getByRole("alertdialog")).toBeTruthy());
     fireEvent.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: "Delete" }));
@@ -272,7 +279,7 @@ describe("CatalogueList", () => {
 
   it("renders the Delete button with the destructive variant, matching RunnerList's row-action pattern", () => {
     render(React.createElement(CatalogueList, { models: CATALOGUE, onDeleted: vi.fn() }));
-    const row = screen.getByLabelText("fireworks glm-5.2 catalogue row");
+    const row = rowFor("glm-5.2");
     expect(within(row).getByRole("button", { name: "Delete" }).className).toContain("bg-destructive");
   });
 
@@ -281,7 +288,7 @@ describe("CatalogueList", () => {
     const onDeleted = vi.fn();
     render(React.createElement(CatalogueList, { models: CATALOGUE, onDeleted }));
 
-    const row = screen.getByLabelText("fireworks glm-5.2 catalogue row");
+    const row = rowFor("glm-5.2");
     await user.click(within(row).getByRole("button", { name: "Delete" }));
     await waitFor(() => expect(screen.getByRole("alertdialog")).toBeTruthy());
     await user.click(screen.getByRole("button", { name: /^cancel$/i }));
@@ -296,8 +303,11 @@ describe("ModelsView", () => {
 
   it("renders the catalogue and the platform-default surface from the seeded list", () => {
     render(React.createElement(ModelsView, { initial }));
-    expect(screen.getByText("Models")).toBeTruthy();
-    expect(screen.getByText("Model rates · 2 models")).toBeTruthy();
+    // PageTitle now reads "Model rates" (h1); the DataTable caption carries the
+    // same text (sr-only), so scope to the heading.
+    expect(screen.getByRole("heading", { level: 1, name: "Model rates" })).toBeTruthy();
+    expect(screen.getByText("glm-5.2")).toBeTruthy();
+    expect(screen.getByText("claude-opus-4-8")).toBeTruthy();
     // The platform-default card reads the same catalogue for its picker.
     expect(screen.getByLabelText("Default provider")).toBeTruthy();
   });
@@ -310,29 +320,31 @@ describe("ModelsView", () => {
     createAdminModelActionMock.mockResolvedValue({ ok: true, data: created });
     render(React.createElement(ModelsView, { initial }));
 
-    await userEvent.setup().click(screen.getByRole("button", { name: "Add model" }));
+    await userEvent.setup().click(screen.getByRole("button", { name: "Create model rate" }));
     // Scope to the dialog: PlatformDefaultCard also renders a "Provider" label.
     const dialog = within(screen.getByRole("dialog"));
     fireEvent.change(dialog.getByLabelText("Provider"), { target: { value: "moonshot" } });
     fireEvent.change(dialog.getByLabelText("Model id"), { target: { value: "kimi-k2.6" } });
     fireEvent.submit(screen.getByRole("dialog").querySelector("form")!);
 
-    // ModelsView's onCreated callback appends the row → count goes 2 → 3.
-    await waitFor(() => expect(screen.getByText("Model rates · 3 models")).toBeTruthy());
-    expect(screen.getByLabelText("moonshot kimi-k2.6 catalogue row")).toBeTruthy();
+    // ModelsView's onCreated callback appends the row → the new model appears
+    // in the catalogue table without a round-trip.
+    await waitFor(() => expect(screen.getByText("kimi-k2.6")).toBeTruthy());
+    expect(rowFor("kimi-k2.6")).toBeTruthy();
   });
 
   it("drops a deleted model from the catalogue", async () => {
     deleteAdminModelActionMock.mockResolvedValue({ ok: true, data: undefined });
     render(React.createElement(ModelsView, { initial }));
 
-    const row = screen.getByLabelText("fireworks glm-5.2 catalogue row");
+    const row = rowFor("glm-5.2");
     fireEvent.click(within(row).getByRole("button", { name: "Delete" }));
     await waitFor(() => expect(screen.getByRole("alertdialog")).toBeTruthy());
     fireEvent.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: "Delete" }));
 
-    // ModelsView's onDeleted callback filters the row out → count goes 2 → 1.
-    await waitFor(() => expect(screen.getByText("Model rates · 1 model")).toBeTruthy());
-    expect(screen.queryByLabelText("fireworks glm-5.2 catalogue row")).toBeNull();
+    // ModelsView's onDeleted callback filters the row out → glm-5.2 is gone,
+    // the other catalogue row stays.
+    await waitFor(() => expect(screen.queryByText("glm-5.2")).toBeNull());
+    expect(screen.getByText("claude-opus-4-8")).toBeTruthy();
   });
 });

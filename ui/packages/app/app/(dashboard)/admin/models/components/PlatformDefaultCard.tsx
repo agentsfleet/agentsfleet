@@ -66,8 +66,9 @@ export default function PlatformDefaultCard({ models }: { models: AdminModel[] }
       <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Platform default</p>
       <Card className="space-y-5 p-5">
         <p className="max-w-xl text-sm text-muted-foreground">
-          Users without their own key run this model, billed at its catalogue rate. The key stays
-          in your vault — they never see it.
+          As a platform admin, set the default model teammates run when they haven&apos;t brought
+          their own key. It&apos;s billed at the catalogue rate above; the key you provide stays in
+          your vault, so teammates never see it.
         </p>
 
         <div className="grid gap-4 sm:grid-cols-2">
