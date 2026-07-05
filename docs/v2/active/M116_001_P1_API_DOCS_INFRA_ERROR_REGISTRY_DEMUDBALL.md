@@ -16,15 +16,15 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M116
 **Workstream:** 001
 **Date:** Jul 05, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — a raw internal error name leaks to callers, 35 sites leak jargon, 5 codes are dead, and nothing stops the mudball recurring; all are user/operator hygiene.
 **Categories:** API, DOCS, INFRA
 **Batch:** B1 — standalone cleanup workstream.
 **Depends on:** none — follow-up to M114_001 §8 (the error-registry curation review artifact).
 **Provenance:** agent-generated (pre-spec, the M114_001 §8 "agentsfleetd error registry — full inventory & curation review" artifact)
 **Canonical architecture:** `src/agentsfleetd/errors/error_entries.zig` (registry source of truth); `docs/LOGGING_STANDARD.md` §error-codes (authoring rule home). No dedicated errors architecture doc exists.
-**Branch:** {feat/mNN-name — added at CHORE(open)}
-**Test Baseline:** set at CHORE(open) — `unit=<N> integration=<M>` via `make _lint_zig_test_depth`
+**Branch:** feat/m116-error-registry-demudball
+**Test Baseline:** unit=2327 integration=249 via `make _lint_zig_test_depth`
 
 ---
 
