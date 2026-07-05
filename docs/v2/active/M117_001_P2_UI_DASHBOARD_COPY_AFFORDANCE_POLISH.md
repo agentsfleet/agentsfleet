@@ -57,7 +57,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `ui/packages/app/app/(dashboard)/admin/runners/components/AddRunnerDialog.tsx` | EDIT | Align the sibling one-time-secret copy if still verbose |
 | `ui/packages/app/app/(dashboard)/settings/models/components/ActiveModelRow.tsx` | EDIT | Relabel so "platform default" vs "your own key" is unambiguous |
 | `ui/packages/app/app/(dashboard)/settings/models/components/ProviderSwitchList.tsx` | EDIT | Same affordance clarity where the switch/add copy renders |
-| `ui/packages/app/app/(dashboard)/integrations/page.tsx` | EDIT | Log the `ApiError` server-side before degrading the catalog to `[]` |
+| `ui/packages/app/app/(dashboard)/integrations/page.tsx` | EDIT | Capture the `ApiError` before degrading the catalog to `[]`, thread its code/status through |
+| `ui/packages/app/app/(dashboard)/integrations/components/IntegrationsConnectors.tsx` | EDIT | Accept `catalogError` and surface code/status in the empty state (console is lint-banned) |
 | `**/*.test.tsx` (co-located) | EDIT/CREATE | Assert the new copy + the error-logging path |
 
 ## Applicable Rules
@@ -82,33 +83,34 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ## Sections (implementation slices)
 
-### §1 — Trim the one-time-secret copy
+### §1 — Trim the one-time-secret copy ✅ DONE (all Dimensions)
 
 Removes verbose/duplicated copy from the secret-creation dialogs. **Implementation default:** the pre-create line drops the "shown once" it repeats at reveal and keeps only the naming guidance — e.g. "Name it so you can find it later." Verify the AddRunner sibling and tighten only if still verbose (its `FormDescription` may already be concise).
 
 - **Dimension 1.1** — the Create-API-Key pre-create copy is one clause, no "shown once" duplication → Test `test_api_key_copy_trimmed`
 - **Dimension 1.2** — the AddRunner one-time-secret copy is consistent (concise, no redundant "shown once") → Test `test_add_runner_copy_consistent`
 
-### §2 — Clarify the tenant Models "platform default" affordance
+### §2 — Clarify the tenant Models "platform default" affordance ✅ DONE (all Dimensions)
 
 Makes the tenant Models card honestly represent what it does. **Implementation default:** this is a **labeling change, not an authorization change** — `setProviderSelfManagedAction`/`resetProviderAction` are correctly tenant-scoped (the tenant sets their *own* provider; the global platform default is edited only under `admin/models`, `MODEL_ADMIN`-gated). Relabel so the card reads "Running on the platform default — add your own key to override," never implying the tenant edits the global default. Only if a control here is found to call the platform-admin route → add a `hasScope(MODEL_ADMIN)` guard (Discovery records which).
 
 - **Dimension 2.1** — the tenant Models card/button copy distinguishes "on the platform default" from "use your own key" without implying global-default editing → Test `test_models_affordance_copy_clear`
 - **Dimension 2.2** — no tenant-surface control mutates the global platform default (grep: no `admin/platform-keys` call from `settings/models`) → Test `test_no_platform_default_mutation_from_tenant`
 
-### §3 — Surface the swallowed connector-fetch error
+### §3 — Surface the swallowed connector-fetch error ✅ DONE (all Dimensions)
 
-Stops the catalog fetch failure from vanishing. **Implementation default:** replace `.catch(() => [])` with a catch that logs the caught `ApiError` (status, `error_code`, detail, request path) via the server-side logger before returning the empty degrade — the empty-list UX stays, but the cause is now one grep away.
+Stops the catalog fetch failure from vanishing. **Implementation default (reconciled — see Discovery):** `console` is lint-banned in app source (`.oxlintrc.json` `no-console: error`) and there is no logger util, so instead of a server log, **capture** the caught `ApiError` and **surface** its `code`/`status` in the connectors empty state — the RFC 7807 `error_code` is the public, documented id, so it's diagnosable without server access and lint-clean. The empty-list degrade is preserved.
 
-- **Dimension 3.1** — a failing `getConnectorCatalog` logs the error server-side (status + code + detail) before degrading to `[]`; the page still renders the empty-state, not a crash → Test `test_connector_fetch_error_logged`
+- **Dimension 3.1** — a failing `getConnectorCatalog` captures the error and the empty state shows its `code` + `status`; the page still renders the empty-state, not a crash → Test `test_connector_fetch_error_logged`
 
 ## Interfaces
 
 ```
 No API/route change. Server actions unchanged (setProviderSelfManagedAction, resetProviderAction).
 integrations/page.tsx degrade contract UNCHANGED: a failed catalog fetch still yields [] →
-  IntegrationsConnectors renders "Couldn't load connectors". The ONLY delta is a server-side
-  log line emitted before the degrade. No new user-visible error surface.
+  IntegrationsConnectors renders "Couldn't load connectors". The delta: the captured ApiError's
+  code+status is threaded to the empty state (a new `catalogError` prop; RFC 7807 code only —
+  no body/token). Console logging is lint-banned, so surfacing replaces a server log.
 ```
 
 ## Failure Modes
@@ -147,14 +149,14 @@ integrations/page.tsx degrade contract UNCHANGED: a failed catalog fetch still y
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | API-key copy trimmed (§1) | `grep -c 'shown once' 'ui/packages/app/app/(dashboard)/settings/api-keys/components/CreateApiKeyDialog.tsx'` | ≤1 | P2 | |
-| R2 | Models affordance not authz-changed, only relabeled (§2) | `grep -rn 'platform-keys' 'ui/packages/app/app/(dashboard)/settings/models/'` | no output | P2 | |
-| R3 | Connector-fetch error is logged (§3) | inspect `integrations/page.tsx` catch | logs before returning `[]`; no bare `.catch(() => [])` | P2 | |
-| R4 | Diff inside Files Changed | `git diff --name-only origin/main` | 0 paths missing from the table | P0 | |
-| S1 | UI unit tests pass | `make test-unit-agentsfleet` (or the ui package test runner) | exit 0 | P0 | |
-| S2 | Lint clean | `make lint` | exit 0 | P0 | |
-| S3 | No secrets | `gitleaks detect` | exit 0 | P0 | |
-| S4 | No oversize file | `git diff --name-only origin/main \| grep '\.tsx\?$' \| xargs wc -l 2>/dev/null \| awk '$1>350 && $2!="total"'` | no output | P0 | |
+| R1 | API-key copy trimmed (§1) | `grep -c 'shown once' 'ui/packages/app/app/(dashboard)/settings/api-keys/components/CreateApiKeyDialog.tsx'` | ≤1 | P2 | ✅ 1 (reveal step only) |
+| R2 | Models affordance not authz-changed, only relabeled (§2) | `grep -rn 'platform-keys' 'ui/packages/app/app/(dashboard)/settings/models/'` | no output | P2 | ✅ no output |
+| R3 | Connector-fetch error surfaced (§3) | inspect `integrations/page.tsx` catch | captures before returning `[]`; no bare `.catch(() => [])` | P2 | ✅ no bare swallow; code+status threaded |
+| R4 | Diff inside Files Changed | `git diff --name-only origin/main` | 0 paths missing from the table | P0 | ✅ 7 files, all in scope |
+| S1 | UI unit tests pass | ui package `vitest run` | exit 0 | P0 | ✅ 1201 passed (128 files) |
+| S2 | Lint clean | `bun run lint` (oxlint) + typecheck + design-token + msid-ui | exit 0 | P0 | ✅ all clean |
+| S3 | No secrets | `gitleaks detect` | exit 0 | P0 | ✅ no leaks found |
+| S4 | No oversize file | `git diff --name-only origin/main \| grep '\.tsx\?$' \| xargs wc -l 2>/dev/null \| awk '$1>350 && $2!="total"'` | no output | P0 | ✅ no output |
 
 **Grading protocol (VERIFY):** run the Verify command verbatim; grade ONLY from its output. Graded = ✅/❌ + the one decisive output line. **Ship gate:** every row graded, every P0 ✅ → eligible for CHORE(close); any ❌ or empty cell → return to EXECUTE; a P2 ❌ ships only with an Indy-acked deferral quote in Discovery.
 
@@ -201,7 +203,8 @@ integrations/page.tsx degrade contract UNCHANGED: a failed catalog fetch still y
 
 ## Discovery (consult log)
 
-- **Consults** — Indy directed each item this session: API-key copy verbose ("this is verbose"); Models platform-default reads as tenant-editable ("which is incorrect?") — resolved to labeling, backend correctly scoped; connectors swallow surfaced during the RSC trace. §2 authz-vs-label verdict recorded at EXECUTE (2.2 result).
+- **Consults** — Indy directed each item this session: API-key copy verbose ("this is verbose"); Models platform-default reads as tenant-editable ("which is incorrect?") — resolved to labeling, backend correctly scoped; connectors swallow surfaced during the RSC trace.
+- **EXECUTE reconciliations** — (1) §3 spec default said "log server-side"; `no-console` is lint-`error` in `.oxlintrc.json` and no logger util exists, so reconciled to **capture-and-surface** the code/status (the codebase idiom, e.g. `settings/models/page.tsx:22`); Files Changed amended to add `IntegrationsConnectors.tsx` (the surfacing needs it). (2) §1.2 — `AddRunnerDialog` copy was **already concise** ("…install token shown only once — copy it when it appears"), so no edit; only `CreateApiKeyDialog` was verbose. (3) §2 — only `ActiveModelRow`'s default-card needed the clarifying subtitle; `ProviderSwitchList` copy was already unambiguous, so unedited. (4) §2 authz verdict: the tenant action (`setProviderSelfManagedAction`) is correctly tenant-scoped — labeling fix, no `hasScope` guard added (2.2 grep clean).
 - **Metrics review** — one ops log added (§3); no analytics/funnel playbook change.
 - **Skill-chain outcomes** — `/write-unit-test`, `/review`, `kishore-babysit-prs`: {empty at creation}
 - **Deferrals** — {empty at creation}
