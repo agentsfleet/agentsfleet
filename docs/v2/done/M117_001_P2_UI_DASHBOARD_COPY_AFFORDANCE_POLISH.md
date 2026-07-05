@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M117
 **Workstream:** 001
 **Date:** Jul 06, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P2 — post-deploy dashboard polish: verbose copy, a mislabeled affordance that reads like a privilege it isn't, and a swallowed fetch error that hides the connectors failure.
 **Categories:** UI
 **Batch:** B1 — standalone UI workstream; independent of the connectors runtime bug and the M116 error-registry work.
