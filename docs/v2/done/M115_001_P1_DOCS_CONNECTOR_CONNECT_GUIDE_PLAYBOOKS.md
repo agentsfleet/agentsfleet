@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M115
 **Workstream:** 001
 **Date:** Jul 05, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — customer- and operator-facing documentation; today the connect flow is undocumented and three of five providers have no operator runbook.
 **Categories:** DOCS
 **Batch:** B1 — standalone documentation workstream, no code dependency.
@@ -225,3 +225,4 @@ Vault bag shapes documented (source of truth = integration_ctx.zig, NOT this spe
 - **S4 false-positive (Dead Code Sweep grep):** `grep -rn 'api_key' docs/AUTH.md | grep -i 'archetype|connector'` still returns line 149 — a pre-existing, unrelated scope-table row where `tenant_api_key.zig` (filename citation) and `connector:write` (scope name) coincidentally co-occur. Not a dangling reference to the dropped `api_key` archetype; manually confirmed all four actual drift sites (905/909/914/564) are reconciled. Left as-is rather than editing unrelated scope-table prose to dodge a coincidental grep match.
 - **Skill-chain outcomes** — `/write-unit-test`: no source-code diff exists (docs-only workstream); the spec's own Test Specification table (grep-based, run verbatim above) is the verification surface. `/review`, `kishore-babysit-prs`: pending, run next.
 - **Deferrals** — none.
+- **Architecture diff** — none. This workstream documents shipped behaviour only (no flow, route, archetype, or trust-anchor change); `docs/architecture/connectors.md` stays the unmodified source of truth the new guide summarizes.
