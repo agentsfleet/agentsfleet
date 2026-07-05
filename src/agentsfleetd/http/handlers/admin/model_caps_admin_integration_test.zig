@@ -66,7 +66,7 @@ fn seedModel(h: *TestHarness, uid: []const u8, provider: []const u8, model_id: [
     defer h.releaseConn(conn);
     const now = clock.nowMillis();
     _ = try conn.exec(
-        \\INSERT INTO core.model_caps
+        \\INSERT INTO core.model_library
         \\  (uid, model_id, provider, context_cap_tokens, input_nanos_per_mtok, cached_input_nanos_per_mtok, output_nanos_per_mtok, created_at_ms, updated_at_ms)
         \\VALUES ($1::uuid, $2, $3, 128000, 1, 0, 2, $4, $4)
         \\ON CONFLICT (provider, model_id) DO NOTHING
@@ -77,7 +77,7 @@ fn cleanup(h: *TestHarness) void {
     const conn = h.acquireConn() catch return;
     defer h.releaseConn(conn);
     _ = conn.exec("DELETE FROM core.platform_llm_keys WHERE source_workspace_id = $1::uuid", .{WORKSPACE_ID}) catch |err| std.log.warn("cleanup ignored: {s}", .{@errorName(err)});
-    _ = conn.exec("DELETE FROM core.model_caps WHERE provider IN ('fireworks','anthropic','m100test')", .{}) catch |err| std.log.warn("cleanup ignored: {s}", .{@errorName(err)});
+    _ = conn.exec("DELETE FROM core.model_library WHERE provider IN ('fireworks','anthropic','m100test')", .{}) catch |err| std.log.warn("cleanup ignored: {s}", .{@errorName(err)});
     _ = conn.exec("DELETE FROM core.workspaces WHERE workspace_id = $1::uuid", .{WORKSPACE_ID}) catch |err| std.log.warn("cleanup ignored: {s}", .{@errorName(err)});
 }
 
@@ -230,7 +230,7 @@ test "platform default FK: a platform_llm_keys row cannot reference an uncatalog
     defer h.releaseConn(conn);
     const now = clock.nowMillis();
     // Direct insert, bypassing the handler's capFor pre-check: (ghostprov,
-    // ghost-model) is not a core.model_caps row, so fk_platform_llm_keys_model
+    // ghost-model) is not a core.model_library row, so fk_platform_llm_keys_model
     // must reject it. This is the DB-level guarantee that makes the model-delete
     // vs default-set race unwinnable — the app guard alone is not race-tight.
     if (conn.exec(

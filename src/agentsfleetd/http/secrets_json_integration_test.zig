@@ -56,11 +56,11 @@ fn setupSeedData(conn: *pg.Conn) !void {
     const now_ms = clock.nowMillis();
     // Catalogue the model the self-managed secret names (anthropic /
     // claude-sonnet-4-6) so the PUT /provider catalogue-gate (UZ-PROVIDER-004)
-    // passes. core.model_caps ships seedless (M100), so a test that sets a
+    // passes. core.model_library ships seedless (M100), so a test that sets a
     // provider must seed the priced row it resolves against, then repopulate the
     // rate cache below from it.
     _ = try conn.exec(
-        \\INSERT INTO core.model_caps
+        \\INSERT INTO core.model_library
         \\  (uid, model_id, provider, context_cap_tokens, input_nanos_per_mtok,
         \\   cached_input_nanos_per_mtok, output_nanos_per_mtok, created_at_ms, updated_at_ms)
         \\VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0ac001'::uuid, 'claude-sonnet-4-6', 'anthropic',
@@ -243,7 +243,7 @@ test "integration: custom openai-compatible secret activates end-to-end" {
         defer r.deinit();
         // A custom (openai-compatible) endpoint bills provider-direct, so it must
         // BYPASS the platform model-rate catalogue gate — its user-hosted model is
-        // absent from core.model_caps by design — and activate. Regression guard for
+        // absent from core.model_library by design — and activate. Regression guard for
         // the catalogue-gate fix: the activate SUCCEEDS with the resolved view, and
         // the api_key never echoes back (vault-only).
         try r.expectStatus(.ok);

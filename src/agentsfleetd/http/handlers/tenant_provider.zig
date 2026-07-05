@@ -35,7 +35,7 @@ const S_TENANT_CONTEXT_REQUIRED = "Tenant context required";
 /// Context-cap persisted for a custom (openai-compatible) self-managed endpoint.
 /// A custom endpoint bills provider-direct — self_managed posture charges a
 /// run-fee only and never reads the per-token rate cache — so its user-hosted
-/// model is absent from core.model_caps by design and there is no platform rate
+/// model is absent from core.model_library by design and there is no platform rate
 /// to catalogue. The activation gate stores this "unknown/auto" sentinel instead
 /// of a catalogue lookup; execution_policy.autoToolWindow + the per-fleet
 /// frontmatter overlay resolve the effective context window at run time.

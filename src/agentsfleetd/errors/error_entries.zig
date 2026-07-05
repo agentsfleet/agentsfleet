@@ -175,11 +175,11 @@ pub const ENTRIES = [_]Entry{
         "Run `agentsfleet secret add <name> --data=@-` to create it.", "We couldn't find that secret. Store it under Secrets & ENVs, then try again."),
     eu("UZ-PROVIDER-003", .bad_request, "Secret JSON missing required field", "Stored secret JSON must include `provider` and `model` (non-empty strings); `api_key` is required for a named provider but optional for an `openai-compatible` endpoint. " ++
         "Re-run `agentsfleet secret add` with the required fields.", "That secret is missing required fields. It needs a provider and model set — edit it under Secrets & ENVs and add them."),
-    eu("UZ-PROVIDER-004", .bad_request, "Model not in cached caps catalogue", "The effective model is not present in core.model_caps. Pick a model from the model-caps endpoint " ++
+    eu("UZ-PROVIDER-004", .bad_request, "Model not in cached caps catalogue", "The effective model is not present in core.model_library. Pick a model from the model-caps endpoint " ++
         "or request the catalogue be extended.", "That model isn't in our catalogue yet. Pick a listed model, or ask us to add support for it."),
     e("UZ-PROVIDER-005", .bad_request, "Custom endpoint base_url invalid or unsafe", "An openai-compatible credential needs a valid `base_url`: it must use https and must not target a " ++
         "loopback, private, link-local, or cloud-metadata host. A non-openai-compatible provider must not carry a `base_url`."),
-    e("UZ-PROVIDER-006", .not_found, "Catalogue model not found", "No core.model_caps row matches this id. List the catalogue to find a valid id, or add the model first."),
+    e("UZ-PROVIDER-006", .not_found, "Catalogue model not found", "No core.model_library row matches this id. List the catalogue to find a valid id, or add the model first."),
     e("UZ-PROVIDER-007", .conflict, "Catalogue model is the active platform default", "This model is the active platform default. Point the default at another catalogued model before deleting it."),
     e("UZ-PROVIDER-008", .conflict, "Catalogue model already exists", "A catalogue row for this provider and model already exists. Edit the existing row instead of adding a duplicate."),
     eu("UZ-PROVIDER-009", .internal_server_error, "Platform LLM key not configured", "No active row in core.platform_llm_keys. An operator must set one via PUT /admin/platform-keys before tenants can switch to platform defaults.", "Platform defaults aren't set up on this deployment yet. Keep your current provider for now, or contact support."),

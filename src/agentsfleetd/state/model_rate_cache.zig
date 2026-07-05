@@ -1,6 +1,6 @@
 //! Process-singleton cache of per-model token rates.
 //!
-//! Populated at API server boot from core.model_caps; read on the hot path by
+//! Populated at API server boot from core.model_library; read on the hot path by
 //! tenant_billing.computeStageCharge under platform-managed posture. The admin
 //! model-caps CRUD API calls populate() again after every mutation so a rate
 //! change is live with no restart.
@@ -105,7 +105,7 @@ pub const Cache = struct {
 var global: ?Cache = null;
 var global_lock: common.Mutex = .{};
 
-/// (Re)build the rate cache from core.model_caps. Safe to call at runtime under
+/// (Re)build the rate cache from core.model_library. Safe to call at runtime under
 /// concurrent readers: the fresh Cache is built before the lock is taken, so the
 /// DB query never blocks the hot path, and a failed rebuild leaves the live
 /// cache in place. Called at boot (serve.zig) and after every admin model-caps

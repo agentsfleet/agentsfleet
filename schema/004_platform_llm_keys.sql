@@ -12,7 +12,7 @@
 -- (PUT /v1/admin/platform-keys) propagates to every platform-mode tenant on
 -- their next lease, no redeploy. All three are NULLABLE (a row may predate a
 -- proper default-set); presence is enforced in the app write path (the admin PUT
--- validates `model` is a priced core.model_caps row before activating) AND, since
+-- validates `model` is a priced core.model_library row before activating) AND, since
 -- M100, by the fk_platform_llm_keys_model FK below — the DB makes the model-delete
 -- vs default-set race unwinnable so the active default can never reference a
 -- deleted catalogue row. No DEFAULT literal / no CHECK list (RULE STS): the
@@ -43,7 +43,7 @@ CREATE TABLE IF NOT EXISTS core.platform_llm_keys (
     -- silently run-fee-only on renewal). MATCH SIMPLE: a NULL model is exempt, so
     -- deactivation NULLs model to release this reference.
     CONSTRAINT fk_platform_llm_keys_model
-        FOREIGN KEY (provider, model) REFERENCES core.model_caps (provider, model_id)
+        FOREIGN KEY (provider, model) REFERENCES core.model_library (provider, model_id)
         ON DELETE RESTRICT
 );
 
