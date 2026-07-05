@@ -1,8 +1,7 @@
 import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
-import { EmptyState } from "@agentsfleet/design-system";
+import { EmptyState, PageHeader, PageTitle } from "@agentsfleet/design-system";
 import { ShieldIcon } from "lucide-react";
-import SettingsTabs from "@/components/layout/SettingsTabs";
 
 export const dynamic = "force-dynamic";
 
@@ -13,7 +12,9 @@ export default async function SettingsSecurityPage() {
 
   return (
     <div className="space-y-8">
-      <SettingsTabs />
+      <PageHeader>
+        <PageTitle>Security</PageTitle>
+      </PageHeader>
       <EmptyState
         icon={<ShieldIcon size={32} />}
         title="Security"

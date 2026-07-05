@@ -20,7 +20,7 @@ export interface WakePulseProps extends ComponentProps<"span"> {
  * design system; the other is the <Terminal animate> install-demo reveal).
  *
  * Sets `data-live` on the rendered element when `live` is true; the
- * `[data-live]` rule in tokens.css drives the keyframe (2.4s ease-in-out
+ * `[data-live="true"]` rule in tokens.css drives the keyframe (2.4s ease-in-out
  * infinite, expanding glow ring in --pulse-glow). When `live` flips to
  * false the attribute is removed and the animation stops the same frame.
  *

@@ -3,7 +3,9 @@
 //! Accepts a valid OIDC JWT or a tenant-minted `agt_t` API key via
 //! `Authorization: Bearer <token>`. The env-var `API_KEY` bootstrap path
 //! was deleted in M11_006 — there is no longer a global admin-by-env-var
-//! principal. Admin gating now flows through Clerk `publicMetadata.role`.
+//! principal. Admin gating is scope-based (see docs/AUTH.md's Scope
+//! catalogue): a top-level `scopes` claim, projected by the Clerk
+//! session-token template from `public_metadata.scopes`.
 //!
 //! Resolution order:
 //!   1. Bearer token is parsed.

@@ -15,9 +15,11 @@ describe("dashboard segment loading states", () => {
       expectsTitle: null, // skeleton title, no static text
     },
     {
-      name: "settings",
-      importer: () => import("../app/(dashboard)/settings/loading"),
-      expectsTitle: "Workspace",
+      // /settings is a bare redirect to /settings/api-keys now,
+      // no loading.tsx of its own — its former loader was the Workspace tab's.
+      name: "settings/api-keys",
+      importer: () => import("../app/(dashboard)/settings/api-keys/loading"),
+      expectsTitle: "API Keys",
     },
     {
       name: "settings/models",

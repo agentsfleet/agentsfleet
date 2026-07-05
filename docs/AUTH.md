@@ -123,7 +123,8 @@ The complete capability vocabulary (`src/agentsfleetd/auth/scopes.zig`). Scope s
 | `approval:read` / `approval:resolve` | view the approval inbox / decide (approve or deny) an approval gate |
 | `billing:read` | read tenant billing snapshot, charges, metering periods |
 | `workspace:admin` | create workspaces; list the tenant's workspaces |
-| `library:write` | mutate the Fleet library catalogue (consumed by M103) |
+| `library:write` | mutate the Fleet library catalogue — tenant-tier onboarding, held by a workspace owner (consumed by M103) |
+| `platform-library:write` | mutate the Fleet library catalogue — platform-tier onboarding (`POST /v1/admin/fleet-libraries`), held by a platform operator. Independent of `library:write` — no hierarchy between the two |
 
 **Runner credential** (machine identity — minted onto the `agt_r` token, never granted to a human):
 
@@ -154,6 +155,14 @@ Capabilities reach a principal as an explicit `scopes` claim. Two grants are app
 |---|---|
 | platform operator (almost no one) | `runner:enroll`, `runner:write`, `stream:read`, `model:admin`, `platform-key:admin`, `platform-library:write`, `workspace:any` |
 | read-only collaborator | `fleet:read`, `fleetkey:read`, `grant:read`, `connector:read`, `billing:read`, `approval:read` |
+
+**Development provisioning.** To unlock the Runners page and Model rates page for a local/dev user, grant only the read scopes those views need — set this onto that user's Clerk Public metadata:
+
+```json
+{ "tenant_id": "<their-tenant-uuid>", "scopes": "runner:read model:read" }
+```
+
+This requires the Clerk **session-token template** to project `public_metadata.scopes` → the top-level `scopes` claim (and `public_metadata.tenant_id` → `tenant_id`) — setting Public metadata alone does nothing if the JWT template doesn't map it. Only grant the full platform-operator bundle (`runner:enroll runner:write stream:read model:admin platform-key:admin platform-library:write workspace:any`, shown in the table above) to a dev user who genuinely needs to exercise write/admin actions — it carries `platform-key:admin` (can rotate the platform LLM key) and `workspace:any` (cross-tenant workspace access), so it is not the right default for "just let me see the page."
 
 ---
 

@@ -110,6 +110,7 @@ test {
     _ = @import("http/handlers/auth/sessions_log_redaction_test.zig");
     _ = @import("http/handlers/error_response_test.zig");
     _ = @import("http/handlers/hx_test.zig");
+    _ = @import("http/handlers/tenant_provider_dispatch_test.zig");
     _ = @import("http/handlers/memory/handler_test.zig");
     _ = @import("http/handlers/memory/shapes_test.zig");
     _ = @import("cmd/serve_test.zig");

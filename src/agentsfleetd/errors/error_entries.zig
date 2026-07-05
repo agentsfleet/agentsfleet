@@ -182,6 +182,7 @@ pub const ENTRIES = [_]Entry{
     e("UZ-PROVIDER-006", .not_found, "Catalogue model not found", "No core.model_caps row matches this id. List the catalogue to find a valid id, or add the model first."),
     e("UZ-PROVIDER-007", .conflict, "Catalogue model is the active platform default", "This model is the active platform default. Point the default at another catalogued model before deleting it."),
     e("UZ-PROVIDER-008", .conflict, "Catalogue model already exists", "A catalogue row for this provider and model already exists. Edit the existing row instead of adding a duplicate."),
+    eu("UZ-PROVIDER-009", .internal_server_error, "Platform LLM key not configured", "No active row in core.platform_llm_keys. An operator must set one via PUT /admin/platform-keys before tenants can switch to platform defaults.", "Platform defaults aren't set up on this deployment yet. Keep your current provider for now, or contact support."),
     // ── GATE ─────────────────────────────────────────────────────────────────
     // ── STARTUP ──────────────────────────────────────────────────────────────
     e("UZ-STARTUP-001", .internal_server_error, "Environment check failed", "Required environment variables are missing. Run 'agentsfleetd doctor' to see which ones."),

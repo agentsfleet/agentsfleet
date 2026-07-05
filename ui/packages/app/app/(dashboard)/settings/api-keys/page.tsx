@@ -14,15 +14,22 @@ export default async function ApiKeysPage() {
   // RBAC guard via defense-in-depth: the dashboard session token carries no
   // role claim (AUTH.md — role lives only in the api-template token the backend
   // verifies), so we mirror route_table.zig's operator() policy by letting the
-  // backend arbitrate. A `user`-role principal gets 403; redirect to /settings.
-  let data;
+  // backend arbitrate. A `user`-role principal gets 403 — render this same
+  // page with the operator-only notice inline rather than redirecting to a
+  // route that no longer exists.
+  let data = null;
+  let operatorOnly = false;
   try {
     data = await listApiKeys(token, { page: 1, page_size: DEFAULT_PAGE_SIZE, sort: DEFAULT_SORT });
   } catch (e) {
-    if (e instanceof ApiError && e.status === 403) redirect("/settings?notice=api-keys-operator-only");
-    if (e instanceof ApiError && e.status === 401) redirect("/sign-in");
-    throw e;
+    if (e instanceof ApiError && e.status === 403) {
+      operatorOnly = true;
+    } else if (e instanceof ApiError && e.status === 401) {
+      redirect("/sign-in");
+    } else {
+      throw e;
+    }
   }
 
-  return <ApiKeysView initial={data} />;
+  return <ApiKeysView initial={data} operatorOnly={operatorOnly} />;
 }

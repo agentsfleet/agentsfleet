@@ -239,11 +239,14 @@
 /* ── The wake pulse — the signature live-signal animation ──
  *
  * One of two sanctioned animations in the system (the other is the
- * terminal install-demo line reveal below). Fires on `[data-live]`.
- * Only the <WakePulse live={true}> primitive sets that attribute;
- * consumers cannot accidentally pulse non-live entities. Stops the
- * instant live flips false (attribute removed → no rule matches → no
- * animation). 2.4s ease-in-out infinite per docs/DESIGN_SYSTEM.md §Motion. */
+ * terminal install-demo line reveal below). Fires on `[data-live="true"]`
+ * only — the selector requires the literal value, not merely the
+ * attribute's presence, so a consumer that sets `data-live={live}`
+ * unconditionally (rendering `data-live="false"` when not live) still
+ * can't accidentally pulse a non-live entity. The
+ * <WakePulse live={true}> primitive sets the attribute only when live and
+ * omits it otherwise; this selector stays correct either way. 2.4s
+ * ease-in-out infinite per docs/DESIGN_SYSTEM.md §Motion. */
 @keyframes wake-pulse {
   0% {
     box-shadow: 0 0 0 0 var(--pulse-glow);
@@ -256,7 +259,7 @@
   }
 }
 
-[data-live] {
+[data-live="true"] {
   animation: wake-pulse 2.4s ease-in-out infinite;
 }
 
@@ -264,7 +267,7 @@
  * wakes) survives without violating the user's preference. Hover
  * transitions stay at 50ms — functional, not decorative. */
 @media (prefers-reduced-motion: reduce) {
-  [data-live] {
+  [data-live="true"] {
     animation: none;
     box-shadow: 0 0 0 4px var(--pulse-glow);
     opacity: 0.6;

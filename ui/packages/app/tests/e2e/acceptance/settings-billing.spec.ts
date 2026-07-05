@@ -5,9 +5,8 @@
  *   1. The balance headline (`data-testid="balance-headline"`) renders.
  *   2. The headline carries `tabular-nums` so digits don't jitter when the
  *      balance updates between polls.
- *   3. The Purchase Credits trigger renders disabled with the
- *      "Coming in v2.1" tooltip wiring (the disabled-button + ARIA
- *      describedby pattern from BillingBalanceCard.tsx).
+ *   3. The Buy credits trigger renders as a live mailto link (
+ *      not a disabled button), with its tooltip wiring intact.
  *
  * Plan-tier badge intentionally not asserted — dropped in M65_001.
  */
@@ -30,8 +29,11 @@ test.describe("settings billing", () => {
     await expect(tabular).toBeVisible();
     await expect(tabular).toContainText(/\$\d/);
 
-    const purchase = page.getByTestId("purchase-credits-trigger");
-    await expect(purchase).toBeVisible();
-    await expect(purchase.getByRole("button", { name: "Purchase Credits" })).toBeDisabled();
+    const buyCredits = page.getByTestId("buy-credits-trigger");
+    await expect(buyCredits).toBeVisible();
+    await expect(page.getByRole("link", { name: "Buy credits" })).toHaveAttribute(
+      "href",
+      "mailto:agentsfleet@agentmail.to",
+    );
   });
 });

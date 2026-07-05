@@ -1,6 +1,6 @@
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { EVENTS } from "../lib/analytics/events";
 
@@ -96,9 +96,13 @@ describe("EditSecretDialog dismiss guard", () => {
 });
 
 // ── AddSecretDialog — trigger open/close wiring ─────────────────────────
-// The trigger label is "Add Secret" (capital S) and the form's own submit
-// button is "Add secret" (lowercase s) — both are on screen at once once the
-// dialog is open, so tests below rely on that exact casing to disambiguate.
+// Trigger, dialog title, and the form's own submit button all share the
+// label "Create secret" (a follow-up: consistent with "Create key" /
+// "Create workspace" / "Create fleet library" elsewhere in the product) —
+// once the dialog is open, both the still-mounted trigger and the submit
+// button match by that name, so tests scope to `within(dialog)` to
+// disambiguate the submit, same pattern as api-keys-components.test.ts's
+// "Create key" trigger/submit pair.
 
 describe("AddSecretDialog", () => {
   afterEach(() => createSecretActionMock.mockReset());
@@ -112,16 +116,16 @@ describe("AddSecretDialog", () => {
 
   it("does not mount dialog content until the trigger is clicked", async () => {
     await renderDialog();
-    expect(screen.getByRole("button", { name: "Add Secret" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Create secret" })).toBeTruthy();
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 
   it("opens the add-secret form when the trigger is clicked", async () => {
     const user = userEvent.setup();
     await renderDialog();
-    await user.click(screen.getByRole("button", { name: "Add Secret" }));
+    await user.click(screen.getByRole("button", { name: "Create secret" }));
     await waitFor(() => expect(screen.getByRole("dialog")).toBeTruthy());
-    expect(screen.getByText(/^add a secret$/i)).toBeTruthy();
+    expect(within(screen.getByRole("dialog")).getByText(/^create secret$/i)).toBeTruthy();
     // AddSecretFormDynamic (`next/dynamic`, ssr:false) mounts async — wait for
     // the lazy-loaded form to land inside the now-open dialog.
     await waitFor(() => expect(screen.getByLabelText(/secret name/i)).toBeTruthy());
@@ -130,7 +134,7 @@ describe("AddSecretDialog", () => {
   it("links out to the docs from the dialog description", async () => {
     const user = userEvent.setup();
     await renderDialog();
-    await user.click(screen.getByRole("button", { name: "Add Secret" }));
+    await user.click(screen.getByRole("button", { name: "Create secret" }));
     const link = await screen.findByRole("link", { name: /learn more/i });
     expect(link.getAttribute("href")).toBe("https://docs.agentsfleet.net/fleets/credentials");
     expect(link.getAttribute("target")).toBe("_blank");
@@ -140,12 +144,12 @@ describe("AddSecretDialog", () => {
     createSecretActionMock.mockResolvedValue({ ok: true, data: { name: "stripe" } });
     const user = userEvent.setup();
     await renderDialog();
-    await user.click(screen.getByRole("button", { name: "Add Secret" }));
+    await user.click(screen.getByRole("button", { name: "Create secret" }));
     await waitFor(() => expect(screen.getByLabelText(/secret name/i)).toBeTruthy());
     await user.type(screen.getByLabelText(/secret name/i), "stripe");
     await user.type(screen.getByLabelText("Field 1 name"), "api_key");
     await user.type(screen.getByLabelText("Field 1 value"), "sk-test");
-    await user.click(screen.getByRole("button", { name: "Add secret" }));
+    await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Create secret" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(routerRefresh).toHaveBeenCalled();
   });
@@ -153,7 +157,7 @@ describe("AddSecretDialog", () => {
   it("stays open and never calls the action when dismissed via Close", async () => {
     const user = userEvent.setup();
     await renderDialog();
-    await user.click(screen.getByRole("button", { name: "Add Secret" }));
+    await user.click(screen.getByRole("button", { name: "Create secret" }));
     await waitFor(() => expect(screen.getByRole("dialog")).toBeTruthy());
     await user.click(screen.getByRole("button", { name: "Close" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
@@ -173,7 +177,7 @@ describe("AddSecretForm component", () => {
     render(React.createElement(AddSecretForm, { workspaceId: "ws_1" } as never));
   }
 
-  const ADD_SECRET = { name: /^add secret$/i } as const;
+  const ADD_SECRET = { name: /^create secret$/i } as const;
   const ADD_FIELD = { name: /\+ add field/i } as const;
 
   it("renders secret name, one field row, add-field, and submit", async () => {
