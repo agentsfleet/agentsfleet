@@ -3,7 +3,8 @@
 //! Workspace-auth operations (list/revoke) are in integration_grants_workspace.zig.
 
 const std = @import("std");
-const clock = @import("common").clock;
+const shared = @import("common");
+const clock = shared.clock;
 const logging = @import("log");
 const httpz = @import("httpz");
 const pg = @import("pg");
@@ -14,35 +15,22 @@ const ec = @import("../../../errors/error_registry.zig");
 const id_format = @import("../../../types/id_format.zig");
 const grant_notifier = @import("../../../fleet_runtime/notifications/grant_notifier.zig");
 const api_key = @import("../../../auth/api_key.zig");
+const grant_lookup = @import("../../../state/integration_grant_lookup.zig");
 
 const log = logging.scoped(.integration_grants);
 
 pub const Context = common.Context;
 
-/// core.integration_grants.status values. Owned here because handler.zig
-/// is the only writer that creates rows; the webhook approval flow imports
-/// these to drive its own UPDATE precondition.
-const S_PENDING = "pending";
+/// Status vocabulary is owned by the enforcement-side lookup module
+/// (`state/integration_grant_lookup.zig`) so http imports state,
+/// never the reverse; re-exported here so the webhook approval flow's
+/// existing `grants.GrantStatus` imports keep working.
+pub const GrantStatus = grant_lookup.GrantStatus;
+
 const S_SESSION = "Session ";
-const S_REVOKED = "revoked";
-
-pub const GrantStatus = enum {
-    const Self = @This();
-
-    pending,
-    approved,
-    revoked,
-
-    pub fn toSlice(self: Self) []const u8 {
-        return switch (self) {
-            .pending => S_PENDING,
-            .approved => "approved",
-            .revoked => S_REVOKED,
-        };
-    }
-};
 
 const STATUS_PENDING = GrantStatus.pending.toSlice();
+const STATUS_REVOKED = GrantStatus.revoked.toSlice();
 
 // ── Fleet auth helpers (Path A + Path B) ─────────────────────────────────
 // Mirrors execute.zig auth — caller must prove fleet identity.
@@ -113,8 +101,32 @@ fn authenticateFleet(alloc: std.mem.Allocator, conn: *pg.Conn, req: *httpz.Reque
 }
 
 // ── Supported services ────────────────────────────────────────────────────
+// Connector providers reference the shared `common` ids (RULE UFS); the four
+// notification-side services predate the connector registry and are owned here.
 
-const SUPPORTED_SERVICES = [_][]const u8{ "slack", "gmail", "agentmail", "discord", "grafana" };
+const SUPPORTED_SERVICES = [_][]const u8{
+    shared.PROVIDER_SLACK,
+    "gmail",
+    "agentmail",
+    "discord",
+    "grafana",
+    shared.PROVIDER_GITHUB,
+    shared.PROVIDER_ZOHO,
+    shared.PROVIDER_JIRA,
+    shared.PROVIDER_LINEAR,
+};
+
+/// Comptime-derived from SUPPORTED_SERVICES so the rejection copy can never
+/// drift from the list it describes.
+const S_UNSUPPORTED_SERVICE = blk: {
+    var s: []const u8 = "service must be one of: ";
+    for (SUPPORTED_SERVICES, 0..) |svc, i| {
+        if (i != 0) s = s ++ ", ";
+        s = s ++ svc;
+    }
+    break :blk s;
+};
+
 const MAX_REASON_LEN: usize = 512;
 
 fn isSupportedService(service: []const u8) bool {
@@ -176,7 +188,7 @@ pub fn innerRequestGrant(hx: hx_mod.Hx, req: *httpz.Request, workspace_id: []con
     const body = parsed.value;
 
     if (!isSupportedService(body.service)) {
-        hx.fail(ec.ERR_INVALID_REQUEST, "service must be one of: slack, gmail, agentmail, discord, grafana");
+        hx.fail(ec.ERR_INVALID_REQUEST, S_UNSUPPORTED_SERVICE);
         return;
     }
     if (body.reason.len == 0 or body.reason.len > MAX_REASON_LEN) {
@@ -198,7 +210,7 @@ pub fn innerRequestGrant(hx: hx_mod.Hx, req: *httpz.Request, workspace_id: []con
         const existing_st = existing.status;
         const existing_at = existing.requested_at;
 
-        const is_terminal = std.mem.eql(u8, existing_st, S_REVOKED);
+        const is_terminal = std.mem.eql(u8, existing_st, STATUS_REVOKED);
         if (!is_terminal) {
             // pending or approved — idempotent return.
             log.debug("already_exists", .{ .fleet_id = fleet_id, .service = body.service, .status = existing_st });
@@ -283,7 +295,7 @@ pub fn innerRequestGrant(hx: hx_mod.Hx, req: *httpz.Request, workspace_id: []con
         .grant_id = grant_id,
         .fleet_id = fleet_id,
         .service = body.service,
-        .status = S_PENDING,
+        .status = STATUS_PENDING,
         .requested_at = now_ms,
         .message = "Grant request submitted. Awaiting workspace owner approval via Slack, Discord, or dashboard.",
     });
@@ -314,4 +326,19 @@ fn fetchExistingGrant(hx: hx_mod.Hx, conn: *pg.Conn, fleet_id: []const u8, servi
         .status = hx.alloc.dupe(u8, existing_row.get([]u8, 2) catch "") catch "",
         .requested_at = existing_row.get(i64, 3) catch 0,
     };
+}
+
+test "test_supported_services_include_connectors" {
+    // Grant-gate dimension — the connector providers are requestable; ids
+    // come from the shared `common` constants, never fresh literals.
+    try std.testing.expect(isSupportedService(shared.PROVIDER_GITHUB));
+    try std.testing.expect(isSupportedService(shared.PROVIDER_ZOHO));
+    try std.testing.expect(isSupportedService(shared.PROVIDER_JIRA));
+    try std.testing.expect(isSupportedService(shared.PROVIDER_LINEAR));
+    try std.testing.expect(isSupportedService(shared.PROVIDER_SLACK));
+    try std.testing.expect(!isSupportedService("datadog"));
+    // The rejection copy is comptime-derived from the list — pin both halves so
+    // a list edit that forgets neither side can drift.
+    try std.testing.expect(std.mem.indexOf(u8, S_UNSUPPORTED_SERVICE, "gmail") != null);
+    try std.testing.expect(std.mem.indexOf(u8, S_UNSUPPORTED_SERVICE, shared.PROVIDER_LINEAR) != null);
 }

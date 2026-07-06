@@ -28,10 +28,14 @@ const pg_query = @import("../../../db/pg_query.zig");
 const credential_key = @import("../../../fleet_runtime/credential_key.zig");
 const vault = @import("../../../state/vault.zig");
 const integration = @import("../../../credentials/integration.zig");
+const grant_lookup = @import("../../../state/integration_grant_lookup.zig");
+const logging = @import("log");
 const protocol = @import("contract").protocol;
 
 const Hx = hx_mod.Hx;
 const PgQuery = pg_query.PgQuery;
+
+const log = logging.scoped(.credential_mint);
 
 // Detail strings shared between the early-resolve fail paths and `dispose` (the
 // broker can reach the same outcome from either side), single-sourced (RULE UFS).
@@ -42,6 +46,9 @@ const S_MINT_FAILED = "Credential mint failed";
 // re-mint from a stored refresh token, so their failure copy is provider-neutral.
 const S_CONNECTOR_RECONNECT = "Connector authorization expired — reconnect the integration";
 const S_CONNECTOR_MINT_FAILED = "Connector token refresh failed";
+// Grant-gate refusal (invariant: no token without an approved
+// grant). The registered UZ-GRANT-001 hint carries the request-grant recovery.
+const S_GRANT_REQUIRED = "No approved integration grant for this fleet and integration";
 
 /// The lease's workspace + the connected integration handle, resolved together
 /// under one DB connection so the connection is released before the broker's
@@ -110,9 +117,10 @@ pub fn innerRunnerCredentialsMint(hx: Hx, req: *httpz.Request) void {
     respond(hx, integration.idFromString(mint_req.integration), result);
 }
 
-/// Resolve the lease's workspace (scoped to the presenting runner) + load the
-/// connected integration handle, both under one connection. Writes the typed
-/// error and returns null on any failure; the caller just returns.
+/// Resolve the lease's workspace+fleet (scoped to the presenting runner), gate
+/// on the fleet's approved grant, then load the connected integration handle —
+/// all under one connection. Writes the typed error and returns null on any
+/// failure; the caller just returns.
 fn loadMintInputs(hx: Hx, runner_id: []const u8, mint_req: protocol.MintCredentialRequest) ?MintInputs {
     const conn = hx.ctx.pool.acquire() catch {
         common.internalDbUnavailable(hx.res, hx.req_id);
@@ -120,7 +128,7 @@ fn loadMintInputs(hx: Hx, runner_id: []const u8, mint_req: protocol.MintCredenti
     };
     defer hx.ctx.pool.release(conn);
 
-    const workspace_id = (resolveLeaseWorkspace(hx, conn, runner_id, mint_req.lease_id) catch {
+    const scope = (resolveLeaseScope(hx, conn, runner_id, mint_req.lease_id) catch {
         common.internalDbError(hx.res, hx.req_id);
         return null;
     }) orelse {
@@ -128,13 +136,26 @@ fn loadMintInputs(hx: Hx, runner_id: []const u8, mint_req: protocol.MintCredenti
         return null;
     };
 
+    // Grant-gate invariant — the grant read precedes the vault load: an
+    // ungranted request never touches handle bytes. A DB failure here fails
+    // CLOSED (500, no token), never open.
+    const approved = grant_lookup.isApproved(conn, scope.fleet_id, mint_req.integration) catch {
+        common.internalDbError(hx.res, hx.req_id);
+        return null;
+    };
+    if (!approved) {
+        log.warn("credential_mint_denied", .{ .error_code = ec.ERR_GRANT_NOT_FOUND, .fleet_id = scope.fleet_id, .integration = mint_req.integration });
+        hx.fail(ec.ERR_GRANT_NOT_FOUND, S_GRANT_REQUIRED);
+        return null;
+    }
+
     const key_name = credential_key.allocKeyName(hx.alloc, mint_req.integration) catch {
         common.internalOperationError(hx.res, "failed to build credential key", hx.req_id);
         return null;
     };
     defer hx.alloc.free(key_name);
 
-    const handle = vault.loadJson(hx.alloc, conn, workspace_id, key_name) catch |err| {
+    const handle = vault.loadJson(hx.alloc, conn, scope.workspace_id, key_name) catch |err| {
         if (err == error.NotFound) {
             // No handle for this workspace → the integration was never connected.
             hx.fail(ec.ERR_CRED_INTEGRATION_NOT_CONNECTED, S_INTEGRATION_NOT_CONNECTED);
@@ -143,8 +164,14 @@ fn loadMintInputs(hx: Hx, runner_id: []const u8, mint_req: protocol.MintCredenti
         common.internalOperationError(hx.res, "failed to load integration handle", hx.req_id);
         return null;
     };
-    return .{ .workspace_id = workspace_id, .handle = handle };
+    return .{ .workspace_id = scope.workspace_id, .handle = handle };
 }
+
+/// The lease's workspace + fleet, both arena-duped (survive the conn release).
+const LeaseScope = struct {
+    workspace_id: []const u8,
+    fleet_id: []const u8,
+};
 
 /// Resolve the lease scoped to the presenting runner (Invariant 2: the runner-id
 /// scope is the ownership check) AND still live — `status = active` and unexpired.
@@ -152,17 +179,20 @@ fn loadMintInputs(hx: Hx, runner_id: []const u8, mint_req: protocol.MintCredenti
 /// bound to the lease's lifetime, not the runner's: a cancelled/expired run, or a
 /// compromised runner replaying a stale `lease_id`, cannot mint past the lease.
 /// Mirrors the active-lease predicate the sibling `memory.zig` already enforces.
-/// Returns the workspace id arena-duped (survives the connection release).
-fn resolveLeaseWorkspace(hx: Hx, conn: *pg.Conn, runner_id: []const u8, lease_id: []const u8) !?[]const u8 {
+/// Also returns the lease's fleet id — the scope the grant-gate checks (the grant gate).
+fn resolveLeaseScope(hx: Hx, conn: *pg.Conn, runner_id: []const u8, lease_id: []const u8) !?LeaseScope {
     var q = PgQuery.from(try conn.query(
-        \\SELECT workspace_id::text
+        \\SELECT workspace_id::text, fleet_id::text
         \\FROM fleet.runner_leases
         \\WHERE id = $1::uuid AND runner_id = $2::uuid
         \\  AND status = $3 AND lease_expires_at > $4
     , .{ lease_id, runner_id, protocol.RUNNER_LEASE_STATUS_ACTIVE, constants.clock.nowMillis() }));
     defer q.deinit();
     const row = try q.next() orelse return null;
-    return try hx.alloc.dupe(u8, try row.get([]const u8, 0));
+    const workspace_id = try hx.alloc.dupe(u8, try row.get([]const u8, 0));
+    errdefer hx.alloc.free(workspace_id);
+    const fleet_id = try hx.alloc.dupe(u8, try row.get([]const u8, 1));
+    return .{ .workspace_id = workspace_id, .fleet_id = fleet_id };
 }
 
 /// The wire disposition of a broker outcome: a `null` code means success (200 with
