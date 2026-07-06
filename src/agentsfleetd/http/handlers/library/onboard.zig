@@ -166,12 +166,12 @@ fn insertTenant(hx: Hx, workspace_id: []const u8, body: importer.ImportBody, pre
 
 fn respond(hx: Hx, body: importer.ImportBody, prepared: importer.PreparedBundle, id: []const u8, tier: []const u8) void {
     const requirements = std.json.parseFromSlice(std.json.Value, hx.alloc, prepared.requirements_json, .{}) catch {
-        common.internalOperationError(hx.res, "library entry requirements serialization failed", hx.req_id);
+        common.internalOperationError(hx.res, "Failed to build the library entry's requirements", hx.req_id);
         return;
     };
     defer requirements.deinit();
     const summaries = pipeline.supportSummaries(hx.alloc, body.support_files) catch {
-        common.internalOperationError(hx.res, "support summary allocation failed", hx.req_id);
+        common.internalOperationError(hx.res, "Failed to build the support-file summary", hx.req_id);
         return;
     };
     defer hx.alloc.free(summaries);

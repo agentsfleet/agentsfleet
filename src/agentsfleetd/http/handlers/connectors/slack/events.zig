@@ -149,7 +149,7 @@ fn resolveSigningSecret(hx: Hx, maybe_conn: *?*pg.Conn) ?[]const u8 {
         return null;
     };
     return hx.ctx.publishSlackSigningSecret(loaded) orelse {
-        common.internalOperationError(hx.res, "signing-secret cache publish failed", hx.req_id);
+        common.internalOperationError(hx.res, "Failed to prepare Slack request verification", hx.req_id);
         return null;
     };
 }
@@ -174,7 +174,7 @@ fn dispatchMention(hx: Hx, maybe_conn: *?*pg.Conn, m: Mention) void {
 
     const channel_fleet_id = channel_fleet.resolveOrCreate(hx.alloc, conn, hx.ctx.queue, workspace_id, m.team_id, m.channel) catch |err| {
         log.err("slack_channel_fleet_failed", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .team_id = m.team_id, .channel_id = m.channel, .err = @errorName(err) });
-        common.internalOperationError(hx.res, "channel fleet resolve failed", hx.req_id);
+        common.internalOperationError(hx.res, "Failed to resolve the fleet for this Slack channel", hx.req_id);
         return;
     };
     defer hx.alloc.free(channel_fleet_id);
@@ -201,12 +201,12 @@ fn dispatchMention(hx: Hx, maybe_conn: *?*pg.Conn, m: Mention) void {
 fn enqueueMention(hx: Hx, bot_token: ?[]const u8, workspace_id: []const u8, channel_fleet_id: []const u8, m: Mention) void {
     var dedup_buf: [256]u8 = undefined;
     const dedup_key = std.fmt.bufPrint(&dedup_buf, "{s}{s}:{s}", .{ ec.SLACK_DEDUP_KEY_PREFIX, channel_fleet_id, m.ts }) catch {
-        common.internalOperationError(hx.res, "dedup key overflow", hx.req_id);
+        common.internalOperationError(hx.res, "Failed to build the duplicate-event check", hx.req_id);
         return;
     };
     const is_new = hx.ctx.queue.setNx(dedup_key, "1", ec.DEDUP_TTL_SECONDS) catch |err| {
         log.err("slack_dedup_error", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .channel_fleet_id = channel_fleet_id, .err = @errorName(err) });
-        common.internalOperationError(hx.res, "Idempotency check failed", hx.req_id);
+        common.internalOperationError(hx.res, "Failed to check for a duplicate event", hx.req_id);
         return;
     };
     if (!is_new) {
@@ -225,7 +225,7 @@ fn enqueueMention(hx: Hx, bot_token: ?[]const u8, workspace_id: []const u8, chan
 
     const request_json = buildRequestJson(hx.alloc, m, recent.msgs) catch {
         releaseDedup(hx, channel_fleet_id, dedup_key);
-        common.internalOperationError(hx.res, "request serialization failed", hx.req_id);
+        common.internalOperationError(hx.res, "Failed to prepare the mention for delivery", hx.req_id);
         return;
     };
     defer hx.alloc.free(request_json);

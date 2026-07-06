@@ -179,18 +179,18 @@ fn readSecret(hx: Hx) ?[]const u8 {
     // context, not the primary alert.
     const secret = hx.ctx.clerk_webhook_secret orelse {
         log.warn("secret_missing", .{
-            .error_code = ec.ERR_INTERNAL_OPERATION_FAILED,
+            .error_code = ec.ERR_CLERK_WEBHOOK_SECRET_NOT_CONFIGURED,
             .req_id = hx.req_id,
         });
-        common.internalOperationError(hx.res, "CLERK_WEBHOOK_SECRET not configured", hx.req_id);
+        common.errorResponse(hx.res, ec.ERR_CLERK_WEBHOOK_SECRET_NOT_CONFIGURED, "CLERK_WEBHOOK_SECRET not configured", hx.req_id);
         return null;
     };
     if (secret.len == 0) {
         log.warn("secret_empty", .{
-            .error_code = ec.ERR_INTERNAL_OPERATION_FAILED,
+            .error_code = ec.ERR_CLERK_WEBHOOK_SECRET_NOT_CONFIGURED,
             .req_id = hx.req_id,
         });
-        common.internalOperationError(hx.res, "CLERK_WEBHOOK_SECRET is empty", hx.req_id);
+        common.errorResponse(hx.res, ec.ERR_CLERK_WEBHOOK_SECRET_NOT_CONFIGURED, "CLERK_WEBHOOK_SECRET is empty", hx.req_id);
         return null;
     }
     return secret;
@@ -257,7 +257,7 @@ fn runBootstrap(hx: Hx, oidc_subject: []const u8, email: []const u8, display_nam
             .req_id = hx.req_id,
         });
         metrics.incSignupFailed(.db_error);
-        common.internalOperationError(hx.res, "Signup bootstrap failed", hx.req_id);
+        common.internalOperationError(hx.res, "Failed to finish setting up the new account", hx.req_id);
         return;
     };
     defer bootstrap.deinit(hx.alloc);

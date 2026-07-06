@@ -80,7 +80,7 @@ pub fn innerResolveApproval(
     defer row.deinit(hx.alloc);
 
     const by = formatResolverAttribution(hx) catch {
-        common.internalOperationError(hx.res, "resolver formatting failed", hx.req_id);
+        common.internalOperationError(hx.res, "Failed to record who resolved this approval", hx.req_id);
         return;
     };
     defer hx.alloc.free(by);
@@ -139,7 +139,7 @@ fn parseReason(hx: hx_mod.Hx, req: *httpz.Request) ?[]const u8 {
     // The parsed body is freed when this function returns; dupe so the
     // resolve call has a stable slice.
     return hx.alloc.dupe(u8, reason) catch {
-        common.internalOperationError(hx.res, "alloc failed", hx.req_id);
+        common.internalOperationError(hx.res, "Failed to process the approval reason", hx.req_id);
         return null;
     };
 }

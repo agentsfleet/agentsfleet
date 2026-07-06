@@ -18,7 +18,7 @@ const oauth2 = @import("oauth2.zig");
 const registry = @import("registry.zig");
 
 const S_WORKSPACE_ACCESS_DENIED = "Workspace access denied";
-const S_KEY_ALLOC_FAILED = "catalog key alloc failed";
+const S_CATALOG_KEY_BUILD_FAILED = "Failed to build the connector catalog key";
 
 /// One catalog row (wire shape). `configured` is platform-global; `connected` is
 /// scoped to the requested workspace. No secret material — only status flags.
@@ -60,12 +60,12 @@ pub fn innerCatalog(hx: hx_mod.Hx, workspace_id: []const u8) void {
     };
     for (registry.REGISTRY, 0..) |spec, i| {
         app_keys[i] = std.fmt.allocPrint(hx.alloc, "{s}" ++ oauth2.APP_VAULT_KEY_SUFFIX, .{spec.provider}) catch {
-            common.internalOperationError(hx.res, S_KEY_ALLOC_FAILED, hx.req_id);
+            common.internalOperationError(hx.res, S_CATALOG_KEY_BUILD_FAILED, hx.req_id);
             return;
         };
         fleet_keys[i] = credential_key.allocKeyName(hx.alloc, spec.provider) catch {
             hx.alloc.free(app_keys[i]); // this pair is not yet counted in `made`
-            common.internalOperationError(hx.res, S_KEY_ALLOC_FAILED, hx.req_id);
+            common.internalOperationError(hx.res, S_CATALOG_KEY_BUILD_FAILED, hx.req_id);
             return;
         };
         made = i + 1;
@@ -85,12 +85,12 @@ pub fn innerCatalog(hx: hx_mod.Hx, workspace_id: []const u8) void {
     @memset(app_present[0..], false);
     if (hx.ctx.platform_admin_workspace_id.len != 0) {
         vault.markExisting(conn, hx.ctx.platform_admin_workspace_id, app_keys[0..], app_present[0..]) catch {
-            common.internalOperationError(hx.res, "catalog configured lookup failed", hx.req_id);
+            common.errorResponse(hx.res, ec.ERR_CONNECTOR_CATALOG_LOOKUP_FAILED, "catalog configured lookup failed", hx.req_id);
             return;
         };
     }
     vault.markExisting(conn, workspace_id, fleet_keys[0..], fleet_present[0..]) catch {
-        common.internalOperationError(hx.res, "catalog connected lookup failed", hx.req_id);
+        common.errorResponse(hx.res, ec.ERR_CONNECTOR_CATALOG_LOOKUP_FAILED, "catalog connected lookup failed", hx.req_id);
         return;
     };
 

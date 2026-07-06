@@ -92,16 +92,12 @@ pub const ERR_INVALID_VERIFICATION_CODE = "UZ-AUTH-018";
 pub const ERR_INVALID_CIPHERTEXT = "UZ-AUTH-019";
 pub const ERR_INVALID_NONCE = "UZ-AUTH-020";
 pub const ERR_INSUFFICIENT_SCOPE = "UZ-AUTH-022";
+pub const ERR_CLERK_WEBHOOK_SECRET_NOT_CONFIGURED = "UZ-AUTH-023";
 // API (serving-plane backpressure)
 pub const ERR_API_BACKPRESSURE = "UZ-API-001";
 pub const ERR_SSE_STREAM_CAP = "UZ-API-002";
-// WORKSPACE
-// BILLING
-// SCORING
-// ENTITLEMENT
 // AGENT
 pub const ERR_FLEET_KEY_NOT_FOUND = "UZ-FLEETKEY-001";
-// PROFILE
 // WEBHOOK
 pub const ERR_WEBHOOK_NO_AGENT = "UZ-WH-001";
 pub const ERR_WEBHOOK_MALFORMED = "UZ-WH-002";
@@ -130,19 +126,19 @@ pub const ERR_TOOL_UNKNOWN = "UZ-TOOL-005";
 pub const ERR_AGENTSFLEET_CREDENTIAL_MISSING = "UZ-AGT-003";
 pub const ERR_AGENTSFLEET_CLAIM_FAILED = "UZ-AGT-004";
 pub const ERR_AGENTSFLEET_NAME_EXISTS = "UZ-AGT-006";
-// UZ-AGT-007 retired — superseded by UZ-VAULT-002 (credential data too large).
-pub const ERR_AGENTSFLEET_INVALID_CONFIG = "UZ-AGT-008";
+pub const ERR_AGENTSFLEET_INVALID_CONFIG = "UZ-AGT-008"; // UZ-AGT-007 retired — superseded by UZ-VAULT-002.
 pub const ERR_AGENTSFLEET_NOT_FOUND = "UZ-AGT-009";
 pub const ERR_AGENTSFLEET_ALREADY_TERMINAL = "UZ-AGT-010";
 pub const ERR_AGENTSFLEET_NAME_MISMATCH = "UZ-AGT-011";
 pub const ERR_AGENTSFLEET_PAUSED_INGRESS = "UZ-AGT-012";
+pub const ERR_AGENTSFLEET_INSTALL_ROLLED_BACK = "UZ-AGT-013";
 // Fleet Bundle
 pub const ERR_FLEET_BUNDLE_INVALID = "UZ-BUNDLE-001";
 pub const ERR_FLEET_BUNDLE_NOT_FOUND = "UZ-BUNDLE-002";
 pub const ERR_FLEET_BUNDLE_SECRETS_MISSING = "UZ-BUNDLE-003";
 pub const ERR_FLEET_BUNDLE_FETCH_FAILED = "UZ-BUNDLE-004";
 pub const ERR_FLEET_BUNDLE_STORAGE_UNAVAILABLE = "UZ-BUNDLE-005";
-pub const ERR_FLEET_BUNDLE_TOO_MANY_IMPORTS = "UZ-BUNDLE-006";
+// UZ-BUNDLE-006 retired — no producer ever emitted it.
 // VAULT (structured-credential JSON shape)
 pub const ERR_VAULT_DATA_INVALID = "UZ-VAULT-001";
 pub const ERR_VAULT_DATA_TOO_LARGE = "UZ-VAULT-002";
@@ -157,6 +153,7 @@ pub const ERR_MODEL_CAP_NOT_FOUND = "UZ-PROVIDER-006";
 pub const ERR_MODEL_CAP_IN_USE = "UZ-PROVIDER-007";
 pub const ERR_MODEL_CAP_EXISTS = "UZ-PROVIDER-008";
 pub const ERR_PROVIDER_PLATFORM_KEY_MISSING = "UZ-PROVIDER-009";
+pub const ERR_TENANT_NO_PRIMARY_WORKSPACE = "UZ-PROVIDER-010";
 // MEMORY
 pub const ERR_MEM_AGENTSFLEET_NOT_FOUND = "UZ-MEM-002";
 pub const ERR_MEM_UNAVAILABLE = "UZ-MEM-003";
@@ -168,11 +165,8 @@ pub const ERR_STARTUP_DB_CONNECT = "UZ-STARTUP-003";
 pub const ERR_STARTUP_REDIS_CONNECT = "UZ-STARTUP-004";
 pub const ERR_STARTUP_MIGRATION_CHECK = "UZ-STARTUP-005";
 pub const ERR_STARTUP_ENV_ALLOC = "UZ-STARTUP-006";
-// SANDBOX
 // RUNNER
-pub const ERR_EXEC_SESSION_CREATE_FAILED = "UZ-EXEC-001";
-pub const ERR_EXEC_STAGE_START_FAILED = "UZ-EXEC-002";
-pub const ERR_EXEC_TIMEOUT_KILL = "UZ-EXEC-003";
+pub const ERR_EXEC_TIMEOUT_KILL = "UZ-EXEC-003"; // UZ-EXEC-001 retired: no producer. UZ-EXEC-002 retired: no producer.
 pub const ERR_EXEC_OOM_KILL = "UZ-EXEC-004";
 pub const ERR_EXEC_RESOURCE_KILL = "UZ-EXEC-005";
 pub const ERR_EXEC_TRANSPORT_LOSS = "UZ-EXEC-006";
@@ -184,7 +178,6 @@ pub const ERR_EXEC_LANDLOCK_DENY = "UZ-EXEC-011";
 pub const ERR_EXEC_RUNNER_FLEET_INIT = "UZ-EXEC-012";
 pub const ERR_EXEC_RUNNER_FLEET_RUN = "UZ-EXEC-013";
 pub const ERR_EXEC_RUNNER_INVALID_CONFIG = "UZ-EXEC-014";
-// RELAY
 // APPROVAL
 pub const ERR_APPROVAL_PARSE_FAILED = "UZ-APPROVAL-001";
 pub const ERR_APPROVAL_NOT_FOUND = "UZ-APPROVAL-002";
@@ -199,14 +192,13 @@ pub const ERR_APIKEY_NAME_TAKEN = "UZ-APIKEY-005";
 pub const ERR_APIKEY_ALREADY_REVOKED = "UZ-APIKEY-006";
 pub const ERR_APIKEY_READONLY_FIELD = "UZ-APIKEY-007";
 pub const ERR_APIKEY_MUST_REVOKE_FIRST = "UZ-APIKEY-008";
-pub const ERR_GRANT_NOT_FOUND = "UZ-GRANT-001";
-pub const ERR_GRANT_REVOKE_NOT_FOUND = "UZ-GRANT-002";
+pub const ERR_GRANT_REVOKE_NOT_FOUND = "UZ-GRANT-002"; // UZ-GRANT-001 retired: no producer.
 pub const ERR_GRANT_ALREADY_RESOLVED = "UZ-GRANT-003";
 // RUNNER (agentsfleet-runner /v1/runners control contract)
 pub const ERR_RUN_INVALID_RUNNER_TOKEN = "UZ-RUN-001";
 pub const ERR_RUN_STALE_FENCING_TOKEN = "UZ-RUN-005";
 pub const ERR_RUN_LEASE_NOT_FOUND = "UZ-RUN-006";
-pub const ERR_RUN_SANDBOX_ESTABLISH_FAILED = "UZ-RUN-007";
+// UZ-RUN-007 retired — no agentsfleetd producer ever emitted it.
 pub const ERR_RUN_ADMIN_STATE_BLOCKED = "UZ-RUN-009";
 pub const ERR_RUN_LEASE_EXCEEDED_MAX_RUNTIME = "UZ-RUN-010";
 pub const ERR_RUN_LEASE_LOST = "UZ-RUN-011";
@@ -215,6 +207,7 @@ pub const ERR_RUN_RENEW_BODY_INVALID = "UZ-RUN-013";
 pub const ERR_RUNNER_NOT_FOUND = "UZ-RUN-014";
 // CREDENTIAL BROKER (M102 — on-demand mint via POST /v1/runners/me/credentials/mint)
 pub const ERR_CRED_INTEGRATION_NOT_CONNECTED = "UZ-CRED-001";
+pub const ERR_CRED_BROKER_NOT_CONFIGURED = "UZ-CRED-002";
 pub const ERR_GH_RECONNECT_REQUIRED = "UZ-GH-001";
 pub const ERR_GH_MINT_FAILED = "UZ-GH-002";
 // CONNECTOR PLATFORM (the connect round-trip + bounded vendor calls — any provider)
@@ -225,6 +218,7 @@ pub const ERR_CONNECTOR_UNKNOWN = "UZ-CONN-004";
 // UZ-CONN-005 (connector probe rejected) retired — the api_key connect probe was
 // removed when api-key providers became custom secrets rather than connectors.
 pub const ERR_CONNECTOR_OAUTH_EXCHANGE_FAILED = "UZ-CONN-006";
+pub const ERR_CONNECTOR_CATALOG_LOOKUP_FAILED = "UZ-CONN-007";
 
 // ── Non-error constants (migrated from codes.zig) ──────────────────────────
 // Webhook user-facing messages
@@ -339,8 +333,16 @@ comptime {
     }
 }
 
+// Not imported by gen_error_codes.zig's narrow exe module (deliberately —
+// that tool imports error_entries*.zig directly to avoid this test graph).
 test {
     _ = @import("codes_test.zig");
     _ = @import("error_registry_test.zig");
+    _ = @import("error_registry_promoted_test.zig");
     _ = @import("internal_op_error_sweep_test.zig");
+    _ = @import("gen_error_codes_test.zig");
+    _ = @import("mudball_guard_test.zig");
+    _ = @import("error_entries_reachability_test.zig");
+    _ = @import("error_registry_hygiene_test.zig");
+    _ = @import("error_registry_reachability_fix_test.zig");
 }

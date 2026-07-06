@@ -13,12 +13,12 @@ const hx_mod = @import("../hx.zig");
 
 const Hx = hx_mod.Hx;
 
-const MSG_OUT_OF_MEMORY = "Out of memory";
+const MSG_STREAM_LIST_BUILD_FAILED = "Failed to build the stream list";
 
 pub fn innerListFleetStreams(hx: Hx, req: *httpz.Request) void {
     _ = req;
     const rows = hx.ctx.stream_registry.listAlloc(hx.alloc) catch {
-        common.internalOperationError(hx.res, MSG_OUT_OF_MEMORY, hx.req_id);
+        common.internalOperationError(hx.res, MSG_STREAM_LIST_BUILD_FAILED, hx.req_id);
         return;
     };
     // List envelope per the REST guidelines and the fleet-plane sibling
