@@ -16,15 +16,15 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M116
 **Workstream:** 001
 **Date:** Jul 05, 2026
-**Status:** PENDING
+**Status:** DONE
 **Priority:** P1 — a raw internal error name leaks to callers, 35 sites leak jargon, 5 codes are dead, and nothing stops the mudball recurring; all are user/operator hygiene.
 **Categories:** API, DOCS, INFRA
 **Batch:** B1 — standalone cleanup workstream.
 **Depends on:** none — follow-up to M114_001 §8 (the error-registry curation review artifact).
 **Provenance:** agent-generated (pre-spec, the M114_001 §8 "agentsfleetd error registry — full inventory & curation review" artifact)
 **Canonical architecture:** `src/agentsfleetd/errors/error_entries.zig` (registry source of truth); `docs/LOGGING_STANDARD.md` §error-codes (authoring rule home). No dedicated errors architecture doc exists.
-**Branch:** {feat/mNN-name — added at CHORE(open)}
-**Test Baseline:** set at CHORE(open) — `unit=<N> integration=<M>` via `make _lint_zig_test_depth`
+**Branch:** feat/m116-error-registry-demudball
+**Test Baseline:** unit=2327 integration=249 via `make _lint_zig_test_depth`
 
 ---
 
@@ -97,40 +97,40 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 Removes codes no producer emits and corrects user-facing terminology to match the entity. **Implementation default:** delete `UZ-BUNDLE-006`, `UZ-GRANT-001`, `UZ-RUN-007`, `UZ-EXEC-001`, `UZ-EXEC-002` + their `ERR_*`; the other 50 REACHABLE=No rows are **live** non-dashboard paths — kept, marked out-of-curation-scope. Rename "catalogue"→"library" in `UZ-PROVIDER-004/006/007/008` (title + hint + `user_message`), matching `core.model_library`.
 
-- **Dimension 1.1** — the 5 dead codes are absent from the registry and have no producer in `src/**` → Test `test_dead_codes_removed`
-- **Dimension 1.2** — the ERROR REGISTRY gate stays green (declared==used) after deletion → Test `test_registry_gate_declared_equals_used`
-- **Dimension 1.3** — no user-facing PROVIDER copy says "catalogue"; the activate-failure message reads "…isn't in our library yet" → Test `test_model_copy_says_library`
+- **Dimension 1.1** — the 5 dead codes are absent from the registry and have no producer in `src/**` → Test `test_dead_codes_removed` — ✅ **DONE**
+- **Dimension 1.2** — the ERROR REGISTRY gate stays green (declared==used) after deletion → Test `test_registry_gate_declared_equals_used` — ✅ **DONE**
+- **Dimension 1.3** — no user-facing PROVIDER copy says "catalogue"; the activate-failure message reads "…isn't in our library yet" → Test `test_model_copy_says_library` — ✅ **DONE**
 
 ### §2 — Stop the raw-Zig-tag leak (server.zig:247)
 
 The auth-middleware failure path passes `@errorName(e)` as `detail`, exposing the internal Zig error identifier to every scoped route's caller. **Implementation default:** map middleware failure to a stable, non-leaking detail (or a dedicated code); the raw tag goes to logs only.
 
-- **Dimension 2.1** — `server.zig` no longer passes `@errorName(e)` (or any raw tag) as a caller-visible `detail` → Test `test_no_raw_error_tag_in_response`
-- **Dimension 2.2** — the middleware-failure response is deterministic (stable code + message; raw tag logged, not returned) → Test `test_auth_mw_failure_response_stable`
+- **Dimension 2.1** — `server.zig` no longer passes `@errorName(e)` (or any raw tag) as a caller-visible `detail` → Test `test_no_raw_error_tag_in_response` — ✅ **DONE**
+- **Dimension 2.2** — the middleware-failure response is deterministic (stable code + message; raw tag logged, not returned) → Test `test_auth_mw_failure_response_stable` — ✅ **DONE**
 
 ### §3 — Triage & de-mudball the 35 Jargon sites
 
 Every Jargon site stops leaking internal language. **Implementation default — the triage rule:** **promote** a site to its own `UZ-<CAT>-<NNN>` when dashboard-reachable OR operator-actionable OR semantically distinct (config/secret-not-configured, invariant violation, install rollback, broker-not-configured); **scrub** it in place to a clean generic `detail` when pure internal-transient (alloc / OOM / serialization / dedup-key overflow / idempotency-check). The `connectors/catalog.zig` sites ("catalog configured/connected lookup failed") are the live example behind the current dashboard "Couldn't load connectors" — promote to a distinct connector-catalog code so the failure is diagnosable.
 
-- **Dimension 3.1** — each promoted code has a registry entry, `ERR_*` constant, and a negative test asserting the code + non-jargon message → Test `test_promoted_codes_have_negative_tests`
-- **Dimension 3.2** — no surviving `internalOperationError()` `detail` across the 35 sites contains jargon (component/schema names, "alloc"/"OOM", state-machine phrasing) → Test `test_no_jargon_in_internal_details`
-- **Dimension 3.3** — `BASELINE_CALL_SITE_COUNT` recomputed to the post-promotion count; sweep test green → Test `test_sweep_baseline_recomputed`
+- **Dimension 3.1** — each promoted code has a registry entry, `ERR_*` constant, and a negative test asserting the code + non-jargon message → Test `test_promoted_codes_have_negative_tests` — ✅ **DONE**
+- **Dimension 3.2** — no surviving `internalOperationError()` `detail` across the 35 sites contains jargon (component/schema names, "alloc"/"OOM", state-machine phrasing) → Test `test_no_jargon_in_internal_details` — ✅ **DONE**
+- **Dimension 3.3** — `BASELINE_CALL_SITE_COUNT` recomputed to the post-promotion count; sweep test green → Test `test_sweep_baseline_recomputed` — ✅ **DONE**
 
 ### §4 — Generate error-codes.mdx from the registry
 
 The page has no generator and silently drifts; the `<Note>` claiming generation is aspirational. **Implementation default:** a `make gen-error-codes` target renders the mdx from `error_entries.zig` (the registry holds every field: code, http_status, title, hint, docs_uri, user_message), plus a parity check that fails on divergence. Generation, not hand-sync — drift becomes impossible.
 
-- **Dimension 4.1** — `make gen-error-codes` renders `error-codes.mdx` from the registry; re-running on a clean tree is a no-op → Test `test_gen_error_codes_idempotent`
-- **Dimension 4.2** — the set of `UZ-` codes in the mdx equals the registry set (no dead rows, all promoted present) → Test `test_mdx_registry_parity`
+- **Dimension 4.1** — `make gen-error-codes` renders `error-codes.mdx` from the registry; re-running on a clean tree is a no-op → Test `test_gen_error_codes_idempotent` — ✅ **DONE**
+- **Dimension 4.2** — the set of `UZ-` codes in the mdx equals the registry set (no dead rows, all promoted present) → Test `test_mdx_registry_parity` — ✅ **DONE**
 
 ### §5 — Fence the mudball (standing authoring guards)
 
 Turns the one-shot cleanup into permanent gates so the leak and the mudball cannot recur. **Implementation default:** extend `audits/error-codes.sh` (already run pre-commit + in HARNESS VERIFY) with three checks, and record the authoring rule in `docs/LOGGING_STANDARD.md`. All repo-local — no `dispatch/`/`AGENTS.md` edit, so the Invariance Suite does not fire.
 
-- **Dimension 5.1** — the audit blocks any caller-visible `detail` matching the raw-tag/jargon denylist (`@errorName`, `alloc`, `OOM`, schema/component tokens) → Test `test_guard_blocks_jargon_detail`
-- **Dimension 5.2** — a new `internalOperationError()` call added without an inline `// mudball-ok: <reason>` fails the sweep (justify-per-add, not a silent baseline bump) → Test `test_guard_requires_mudball_justification`
-- **Dimension 5.3** — every `e()` entry carries a `// reachable: no — <reason>` annotation; a `reachable: yes` entry without a `user_message` (i.e. not `eu()`) fails the audit → Test `test_guard_reachable_requires_user_message`
-- **Dimension 5.4** — `docs/LOGGING_STANDARD.md` §error-codes states the rule (distinct failure ⇒ distinct code; reachable ⇒ `user_message`; `error-codes.mdx` is generated) → Test `test_authoring_rule_documented`
+- **Dimension 5.1** — the audit blocks any caller-visible `detail` matching the raw-tag/jargon denylist (`@errorName`, `alloc`, `OOM`, schema/component tokens) → Test `test_guard_blocks_jargon_detail` — ✅ **DONE** (implemented as a project-local Zig test, not `audits/error-codes.sh` — see Discovery)
+- **Dimension 5.2** — a new `internalOperationError()` call added without an inline `// mudball-ok: <reason>` fails the sweep (justify-per-add, not a silent baseline bump) → Test `test_guard_requires_mudball_justification` — ✅ **DONE**
+- **Dimension 5.3** — every `e()` entry carries a `// reachable: no — <reason>` annotation; a `reachable: yes` entry without a `user_message` (i.e. not `eu()`) fails the audit → Test `test_guard_reachable_requires_user_message` — ✅ **DONE** (caught 18 pre-existing uncurated codes — see Discovery)
+- **Dimension 5.4** — `docs/LOGGING_STANDARD.md` §error-codes states the rule (distinct failure ⇒ distinct code; reachable ⇒ `user_message`; `error-codes.mdx` is generated) → Test `test_authoring_rule_documented` — ✅ **DONE** (documented in `error_entries.zig`'s own module doc, not `LOGGING_STANDARD.md` — a dotfiles symlink, see Discovery)
 
 ## Interfaces
 
@@ -193,7 +193,7 @@ New tooling: `make gen-error-codes` (registry → error-codes.mdx); audits/error
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | 5 dead codes gone, no producer (§1) | `grep -rEo 'UZ-BUNDLE-006\|UZ-GRANT-001\|UZ-RUN-007\|UZ-EXEC-001\|UZ-EXEC-002' src --include='*.zig' \| grep -v _test.zig` | no output | P1 | |
+| R1 | 4 of 5 dead codes gone, no producer (§1) | `grep -rEo 'UZ-BUNDLE-006\|UZ-RUN-007\|UZ-EXEC-001\|UZ-EXEC-002' src --include='*.zig' \| grep -v _test.zig` | no output | P1 | ✅ (UZ-GRANT-001 restored — see Discovery) |
 | R2 | Model copy says "library" (§1) | `grep -in 'catalogue' src/agentsfleetd/errors/error_entries*.zig` | 0 user-facing matches | P1 | |
 | R3 | No raw error tag returned (§2) | `grep -n '@errorName' src/agentsfleetd/http/server.zig` | 0 in a caller-visible detail | P1 | |
 | R4 | No jargon / sweep intact (§3) | `make test-unit-agentsfleetd` | exit 0 | P0 | |
@@ -202,7 +202,7 @@ New tooling: `make gen-error-codes` (registry → error-codes.mdx); audits/error
 | R7 | Diff inside Files Changed | `git diff --name-only origin/main` (both repos) | 0 paths missing from the table | P0 | |
 | S1 | Unit tests pass | `make test` | exit 0 | P0 | |
 | S2 | Lint clean | `make lint` | exit 0 | P0 | |
-| S3 | Integration passes | `make test-integration` | exit 0 | P0 | |
+| S3 | Integration passes | `make test-integration` | exit 0 | P0 | ❌→environment-constraint (see Discovery) |
 | S4 | No leaks | `make memleak` | exit 0 | P0 | |
 | S5 | Cross-compile | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` | exit 0 | P0 | |
 | S6 | No secrets | `gitleaks detect` | exit 0 | P0 | |
@@ -260,6 +260,10 @@ New tooling: `make gen-error-codes` (registry → error-codes.mdx); audits/error
 ## Discovery (consult log)
 
 - **Consults** — Indy decided at authoring (capture verbatim at CHORE(open)): §1 delete scope = 5 dead only; §3 depth = Critical + all 35 Jargon; §5 fold-in approved ("Yes A) fold into M116"); §1.3 copy fix directed ("error message should use library as opposed to catalogue"); §5 rule homed in `LOGGING_STANDARD.md` to avoid the dotfiles Invariance Suite.
-- **Metrics review** — {empty at creation — expected "no analytics/funnel change; error-hygiene + tooling only"}
-- **Skill-chain outcomes** — `/write-unit-test`, `/review`, `kishore-babysit-prs`: {empty at creation}
-- **Deferrals** — {empty at creation}
+- **§5/§5.4 premise correction (discovered during EXECUTE)** — both `audits/error-codes.sh` and `docs/LOGGING_STANDARD.md` turned out to be `~/Projects/dotfiles` symlinks, not repo-local files, contradicting the spec's own "repo-local by design" framing in §5 and the Implementing-agent reading list. Indy confirmed (twice, matching the M114_001 precedent): implement the three §5 guards as project-local Zig tests instead (`error_entries_reachability_test.zig`, `mudball_guard_test.zig`, `internal_op_error_sweep_test.zig`), and document the authoring rule in `error_entries.zig`'s own module doc instead of `LOGGING_STANDARD.md`. Neither dotfiles file was touched for this spec.
+- **§5.3 scope collision** — turning on the reachable⇒`user_message` guard immediately caught 18 pre-existing dashboard-reachable-but-uncurated codes that M114_001 had already flagged (`UZ-CONN-001/002/003/004/006`, `UZ-AGT-008/010/011/012`, `UZ-BUNDLE-003/004/005`, `UZ-PROVIDER-005/006/007/008`, `UZ-RUN-014`, `UZ-GRANT-002/003`). Indy's call: curate all 18 now rather than defer or grandfather — done, with negative tests in `error_registry_promoted_test.zig` and `error_registry_reachability_fix_test.zig`.
+- **Metrics review** — empty; confirmed "no analytics/funnel change; error-hygiene + tooling only" holds.
+- **Skill-chain outcomes** — `/write-unit-test`: ran mid-EXECUTE, found and closed real gaps in Dimensions 1.1/1.2/1.3 plus the missed `UZ-CONN-006`/`UZ-GRANT-003` negative tests and a Generic-sites regression test. `/review` (8-angle adversarial): found and fixed 2 real bugs — the §5.3 reachability scanner only checked an `e()` entry's opening line for the `// reachable: no` annotation (multi-line hints put it on the closing line; fixed by reusing `matchingCloseParen`), and `server.zig`'s `// mudball-ok:` comment sat 2 lines above the actual call (fixed by moving it onto the call line). Also fixed a MILESTONE-ID gate violation (spec-ID/§-tokens sprinkled through source/test files, scrubbed) and a UFS violation (a test duplicated a private detail-string literal, fixed by making the constant `pub`). Rejected one of its own suggestions as a false positive (a denylist-generalization test that would have flagged `UZ-AUTH-022`'s legitimate "scope catalogue" wording). `kishore-babysit-prs`: to run after push.
+- **CHORE(close) `/review` pass (this session)** — dispatched 4 independent reviewers (testing, maintainability, security specialists + a Claude adversarial pass) against the final diff. Found and fixed one real gap: 5 call sites promoted off the generic catch-all (in `tenant_provider.zig`, `fleets/create.zig`, `connectors/catalog.zig` x2, `runner/credentials_mint.zig`) kept their original jargon `detail` string verbatim when switching from `internalOperationError()` to `common.errorResponse()` — structurally invisible to the sweep-test guard, which only scans `internalOperationError(` call sites; `tenant_provider.zig`'s literal even contained two words ("invariant", "bootstrap") on this diff's own `JARGON_DENYLIST`. All 5 rewritten to plain English. Also fixed 3 registry `hint` strings (`UZ-AGT-003/006/012`) with bare `<name>`/`<fleet>` CLI placeholders that would parse as unclosed JSX tags in the generated `error-codes.mdx` — wrapped in backticks, docs PR regenerated and re-pushed. Separately, security review flagged that promoting the Clerk-webhook-secret-missing path to its own `UZ-AUTH-023` code (with a title naming the missing env var) would confirm to an unauthenticated caller exactly what `identity_events_clerk.zig`'s own header comment says must not be confirmed ("responding 401 would leak 'no secret configured' to attackers") — Indy's call: revert that one path to the generic `UZ-INTERNAL-003` catch-all with a scrubbed detail, justified via `// mudball-ok:` rather than promoted (the other 4 promoted codes — `UZ-CONN-007`, `UZ-AGT-013`, `UZ-CRED-002`, `UZ-PROVIDER-010` — stand as-is; none carry the same pre-auth-exposure risk). Also flagged, NOT fixed here (pre-existing, unrelated file, out of this spec's Files-Changed scope): `session_helpers.zig:231`'s `hx.fail(code, @errorName(err))` leaks a raw Zig error tag on the CLI-login session endpoints — same bug class this spec fixed in `server.zig`, dated to a May 18, 2026 commit, well before this spec existed. Flagged to Indy as a separate follow-up.
+- **Cross-PR collision: UZ-GRANT-001 restored (post-push, this session)** — CI on PR #488 turned red across `test-unit-agentsfleetd`, `test-integration`, `memleak`, and all 3 cross-compile checks with `error: root source file struct 'errors.error_registry' has no member named 'ERR_GRANT_NOT_FOUND'` in `fleet/service.zig` and `http/handlers/runner/credentials_mint.zig`. Root cause: `M102_006` (PR #487, "grant-gated mint/lease") merged into `main` *after* this branch's prior rebase, adding two genuine, wire-level producers of `UZ-GRANT-001`/`ERR_GRANT_NOT_FOUND` (a 403 "no approved grant" denial on the on-demand credential-mint gate and the lease-secret grant check) — concurrently with this spec deleting that exact code as believed-dead. Both branches were correct in isolation against the `main` each was based on; incompatible only once merged. Not a mistake in the original R1 verification (the string-literal grep and `zig build` both genuinely found zero producers at every point this session checked, because M102's code didn't exist in this branch's tree until the second rebase pulled it in) — a live cross-PR race, not a process gap. **Fix:** rebased onto the new `main` tip (`339e8f43`, PR #487's merge commit) to surface the real conflict, then restored `UZ-GRANT-001` verbatim (registry entry + `ERR_GRANT_NOT_FOUND` constant + `error-codes.mdx` regenerated) and dropped it from `DEAD_CODES` in `error_registry_hygiene_test.zig` (now 4, not 5) — R1's grading updated to reflect the correction rather than silently rewritten. Re-verified clean: `zig build` (native + both cross-compile targets), `make test-unit-agentsfleetd` (unit=2371, integration=255 — up from 2362/249, pulling in M102_006's own test suite), `bash audits/error-codes.sh` (127 declared/used), `gitleaks detect` (3245 commits, clean).
+- **Deferrals** — `make test-integration` (S3): a prior session's attempt hit a Docker-unavailable gap; this session Docker was up, so it was run for real: `1614/1964 pass, 330 skip, 20 fail`, exit 2. All 20 failures are `error.CertificateSignatureInvalid` on `rediss://` TLS handshakes, exclusively in `session_store_redis*_test.zig`, `queue/redis_pool_test.zig`, `queue/redis_test.zig`, and `events/subscription_hub_test.zig` — none of which this spec's diff touches. This is a pre-existing local-environment issue (Zig `std.crypto.tls` failing to verify the self-signed cert `redis:7-alpine` mints; confirmed the cert itself is a normal 2048-bit `sha256WithRSAEncryption` self-signed leaf via `openssl x509`/`s_client`, ruling out an expired/malformed cert), with exact precedent already on record in `docs/v2/done/M80_004_P1_API_CLI_RUNNER_OPERATOR_CLI.md` (Jun 02, 2026: "this env's `rediss://` cert is untrusted by Zig `std.crypto.tls`... 19 failures in a full local `make test-integration` are pre-existing infra issues... in subsystems this branch never touched"). CI runs these against a real TLS Redis and passes. `VERIFY GATE: test-integration S3 graded ❌ on raw output, downgraded to environment-constraint per the M80_004 precedent — not an Indy-acked scope deferral (no P0/P1 Dimension in this spec is unimplemented or untested; the gap is a local-only TLS-verification tooling limitation reproduced identically on unrelated code paths)`.

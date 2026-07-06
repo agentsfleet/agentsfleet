@@ -2,7 +2,17 @@
 # QUALITY — code quality, formatting, analysis
 # =============================================================================
 
-.PHONY: lint-all lint-zig lint-website lint-apps-ds-ctl lint-app lint-design-system lint-cli lint-shell check-openapi check-schema-gate check-gh-actions-valid check-playbooks check-route-registration-doc _fmt _fmt_check _zlint_check _lint_zig_pg_drain _lint_zig_test_depth _schema_gate_check _zig_target_lint _zig_line_limit_check _hardcoded_role_check _legacy_symbols_check _website_lint _app_lint _design_system_lint _cli_lint _shell_lint
+.PHONY: lint-all lint-zig lint-website lint-apps-ds-ctl lint-app lint-design-system lint-cli lint-shell check-openapi check-schema-gate check-gh-actions-valid check-playbooks check-route-registration-doc gen-error-codes _fmt _fmt_check _zlint_check _lint_zig_pg_drain _lint_zig_test_depth _schema_gate_check _zig_target_lint _zig_line_limit_check _hardcoded_role_check _legacy_symbols_check _website_lint _app_lint _design_system_lint _cli_lint _shell_lint
+
+# Regenerate docs/api-reference/error-codes.mdx (own repo, ~/Projects/docs)
+# from the agentsfleetd error registry. No default target path on purpose —
+# cross-repo writes to ~/Projects/docs/ need an explicit per-session path
+# (own-branch workflow), never a silent default.
+gen-error-codes:  ## Regenerate error-codes.mdx from the error registry — usage: make gen-error-codes ERROR_CODES_MDX=/path/to/error-codes.mdx
+	@test -n "$(ERROR_CODES_MDX)" || { echo "usage: make gen-error-codes ERROR_CODES_MDX=/path/to/error-codes.mdx"; exit 1; }
+	@echo "→ [errors] generating $(ERROR_CODES_MDX) from the registry..."
+	@zig build gen-error-codes > "$(ERROR_CODES_MDX).tmp" && mv "$(ERROR_CODES_MDX).tmp" "$(ERROR_CODES_MDX)"
+	@echo "✓ [errors] $(ERROR_CODES_MDX) regenerated"
 
 ZLINT ?= zlint
 ACTIONLINT ?= actionlint

@@ -38,11 +38,11 @@ pub fn putSnapshot(hx: Hx, resolved: *const resolve.Resolved, prepared: importer
         return false;
     };
     const fb = if (resolved.fetched) |*f| f else {
-        common.internalOperationError(hx.res, "bundle has support files but no fetched content", hx.req_id);
+        common.internalOperationError(hx.res, "Failed to process the Fleet Bundle's support files", hx.req_id);
         return false;
     };
     const canonical = fb.canonicalTar(hx.alloc) catch {
-        common.internalOperationError(hx.res, "bundle canonicalization failed", hx.req_id);
+        common.internalOperationError(hx.res, "Failed to process the Fleet Bundle", hx.req_id);
         return false;
     };
     defer hx.alloc.free(canonical);
@@ -76,7 +76,7 @@ pub fn failImport(hx: Hx, err: anyerror) void {
         error.FetchFailed, error.InvalidUrl => common.errorResponse(hx.res, ec.ERR_FLEET_BUNDLE_FETCH_FAILED, "the Fleet Bundle source could not be fetched from GitHub", hx.req_id),
         error.DisallowedRedirect => common.errorResponse(hx.res, ec.ERR_FLEET_BUNDLE_FETCH_FAILED, "the GitHub source redirected to a disallowed host", hx.req_id),
         error.CorruptArchive => common.errorResponse(hx.res, ec.ERR_FLEET_BUNDLE_FETCH_FAILED, "the fetched Fleet Bundle archive could not be read", hx.req_id),
-        error.OutOfMemory => common.internalOperationError(hx.res, "bundle import allocation failed", hx.req_id),
+        error.OutOfMemory => common.internalOperationError(hx.res, "Failed to import the Fleet Bundle", hx.req_id),
         else => common.internalOperationError(hx.res, "bundle import failed", hx.req_id),
     }
 }

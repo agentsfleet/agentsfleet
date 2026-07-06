@@ -76,13 +76,13 @@ pub fn innerFleetMessagesPost(hx: Hx, req: *httpz.Request, workspace_id: []const
         "{{\"message\":{f}}}",
         .{std.json.fmt(msg, .{})},
     ) catch {
-        common.internalOperationError(hx.res, "OOM building steer request payload", hx.req_id);
+        common.internalOperationError(hx.res, "Failed to build the message payload", hx.req_id);
         return;
     };
     defer hx.alloc.free(request_json);
 
     const actor = buildSteerActor(hx.alloc, hx.principal) catch {
-        common.internalOperationError(hx.res, "OOM building steer actor", hx.req_id);
+        common.internalOperationError(hx.res, "Failed to prepare the fleet to receive the message", hx.req_id);
         return;
     };
     defer hx.alloc.free(actor);

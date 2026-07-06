@@ -187,7 +187,7 @@ pub fn innerCreateFleet(hx: Hx, req: *httpz.Request, workspace_id: []const u8) v
                 .{ .error_code = ec.ERR_INTERNAL_DB_QUERY, .err = @errorName(rollback_err), .fleet_id = fleet_id, .req_id = hx.req_id, .hint = "row_orphaned_manual_recovery" },
             );
         };
-        common.internalOperationError(hx.res, "event-stream setup failed; install rolled back", hx.req_id);
+        common.errorResponse(hx.res, ec.ERR_AGENTSFLEET_INSTALL_ROLLED_BACK, "Failed to finish setting up the fleet; nothing was created", hx.req_id);
         return;
     };
 

@@ -80,7 +80,7 @@ fn insertAndProvision(conn: anytype, hx: hx_mod.Hx, workspace_id: []const u8, te
             return null;
         }
     }
-    common.internalOperationError(hx.res, "Workspace name generator exhausted retries", hx.req_id);
+    common.internalOperationError(hx.res, "Failed to generate a unique workspace name", hx.req_id);
     return null;
 }
 
@@ -136,7 +136,7 @@ pub fn innerCreateWorkspace(hx: hx_mod.Hx, req: *httpz.Request) void {
     }
 
     const workspace_id = generateWorkspaceId(hx.alloc) catch {
-        common.internalOperationError(hx.res, "Failed to allocate workspace id", hx.req_id);
+        common.internalOperationError(hx.res, "Failed to generate workspace id", hx.req_id);
         return;
     };
     const final_name = insertAndProvision(conn, hx, workspace_id, tenant_id, name, now_ms) orelse return;
