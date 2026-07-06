@@ -2,10 +2,10 @@
 
 **Milestone:** M106
 **Workstream:** 001 (§6.2 deliverable — documents the GitHub App used by M102_001 agent-identity proxy)
-**Updated:** Jul 04, 2026
+**Updated:** Jul 06, 2026
 **Prerequisite:** `op` CLI authenticated; the `agentsfleet-admin` tenant API key in vault (`operations/admin_bootstrap/001_playbook.md`). A GitHub user or org where you may create a GitHub App.
 
-Registers **one** GitHub App and stores its **platform secrets** — App Identifier (ID), the RS256 (RSA Signature with SHA-256) private key, `client_id`, `client_secret` — in the `agentsfleet-admin` workspace vault, resolved daemon-side via `crypto_store.load`. The daemon signs an App JSON Web Token (JWT) with the private key and exchanges it at GitHub for a short-lived installation access token at the credential broker (`POST /v1/runners/me/credentials/mint`); **the App private key never leaves the daemon** — not the lease envelope, not the `secrets_map`, not the sandbox child (see `docs/architecture/capabilities.md` §3, broker row). Only the `ENCRYPTION_MASTER_KEY` Key-Encryption Key (KEK) lives in env; the App private key is real bytes in `vault.secrets` under the admin workspace.
+Registers **one** GitHub App and stores its **platform secrets** — App Identifier (ID), the RS256 (RSA Signature with SHA-256) private key, and the App's public slug — in the `agentsfleet-admin` workspace vault as `github-app` `{app_id, private_key_pem, app_slug}`, resolved daemon-side via `crypto_store.load` (`credentials/integration_ctx.zig`'s `GithubApp` struct — there is no `client_id`/`client_secret` field; the App mints installation tokens from the private key alone, never a code exchange). The daemon signs an App JSON Web Token (JWT) with `private_key_pem` and exchanges it at GitHub for a short-lived installation access token at the credential broker (`POST /v1/runners/me/credentials/mint`); **the App private key never leaves the daemon** — not the lease envelope, not the `secrets_map`, not the sandbox child (see `docs/architecture/capabilities.md` §3, broker row). Only the `ENCRYPTION_MASTER_KEY` Key-Encryption Key (KEK) lives in env; the App private key is real bytes in `vault.secrets` under the admin workspace. `app_slug` is non-secret — it is only the public App handle the connect flow uses to build the install URL (`github.com/apps/{app_slug}/installations/new`, `connectors/github/connect.zig`); connect degrades closed (not configured) if it's absent.
 
 > **Run once per environment.** This is the Stage-0 platform setup behind the GitHub mintable integration; the per-customer **installation** of the App on the customer's repos is a separate, customer-driven step.
 
@@ -17,8 +17,8 @@ Registers **one** GitHub App and stores its **platform secrets** — App Identif
 |------|-------|------|
 | 0.0 | Agent | Resolve environment; load the admin API key |
 | 1.0 | Human | Create the GitHub App (permissions, callback, webhook posture) |
-| 2.0 | Human | Generate the private key; note App ID / client_id / client_secret |
-| 3.0 | Agent | Store App ID + private key + client creds as platform secret `github-app` |
+| 2.0 | Human | Generate the private key; note App ID + the App's public slug |
+| 3.0 | Agent | Store App ID + private key + app slug as platform secret `github-app` |
 | 4.0 | Agent | Verify the broker can mint an installation token (or resolve the secret) |
 
 ---
@@ -66,28 +66,29 @@ App created; webhook **inactive**; permissions match the shipped fleet set.
 
 **Goal:** capture the App identity + a fresh signing key. On the App's page:
 
-1. Note the **App ID** (integer) and **Client ID**.
-2. **Generate a new client secret** — note `client_secret`.
+1. Note the **App ID** (integer) — shown at the top of the App's settings page.
+2. Note the **App's public slug** — the handle in the App's own public page URL, `github.com/apps/{app_slug}`. This is what the connect flow uses to build the install URL; it is not secret.
 3. **Generate a private key** — downloads a `.pem` (Privacy-Enhanced Mail) RSA key. This file is the only copy; it goes to vault in §3 and is then shredded.
+
+> No `client_id`/`client_secret` are needed — the App-installation archetype never runs an OAuth code exchange (`registry.zig`'s `app_install` archetype), so skip the App's OAuth-credential generation entirely.
 
 ### Acceptance
 
-App ID, Client ID, `client_secret`, and a downloaded `.pem` in hand.
+App ID, the App's public slug, and a downloaded `.pem` in hand.
 
 ---
 
 ## 3.0 Agent: Store the platform secret in the admin vault
 
-**Goal:** persist the App identity + private key as one platform secret `github-app` in the `agentsfleet-admin` workspace vault. The multi-line PEM flows via a file → `jq` → stdin, never argv (RULE VLT). Then destroy the local key file.
+**Goal:** persist the App identity + private key + app slug as one platform secret `github-app` in the `agentsfleet-admin` workspace vault — field names matching `credentials/integration_ctx.zig`'s `GithubApp` struct exactly: `{app_id, private_key_pem, app_slug}`. The multi-line PEM flows via a file → `jq` → stdin, never argv (RULE VLT). Then destroy the local key file.
 
 ```bash
 PEM_PATH="${1:?path to the downloaded .pem}"
 jq -n \
   --arg app_id "$(read -rp 'App ID: ' v; echo "$v")" \
-  --arg client_id "$(read -rp 'Client ID: ' v; echo "$v")" \
-  --arg client_secret "$(read -rsp 'client_secret: ' v; echo "$v")" \
-  --arg private_key "$(cat "$PEM_PATH")" \
-  '{app_id:$app_id, client_id:$client_id, client_secret:$client_secret, private_key:$private_key}' |
+  --arg app_slug "$(read -rp 'App public slug: ' v; echo "$v")" \
+  --arg private_key_pem "$(cat "$PEM_PATH")" \
+  '{app_id:$app_id, private_key_pem:$private_key_pem, app_slug:$app_slug}' |
   AGENTSFLEET_API_KEY="$ADMIN_KEY" agentsfleet secret add github-app --data @-
 
 # Destroy the local key copy — vault is now the only source of truth.

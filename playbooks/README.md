@@ -47,6 +47,12 @@ playbooks/
     │   └── 001_playbook.md
     ├── github_app_registration/       ← register the agentsfleet GitHub App + vault the App private key
     │   └── 001_playbook.md
+    ├── zoho_app_registration/         ← register the agentsfleet Zoho Desk OAuth app + vault platform secrets
+    │   └── 001_playbook.md
+    ├── jira_app_registration/         ← register the agentsfleet Jira OAuth (3LO) app + vault platform secrets
+    │   └── 001_playbook.md
+    ├── linear_app_registration/       ← register the agentsfleet Linear OAuth app + vault platform secrets
+    │   └── 001_playbook.md
     ├── credential_rotation/           ← rotate an exposed DEV credential
     │   ├── 001_playbook.md
     │   ├── 00_gate.sh
