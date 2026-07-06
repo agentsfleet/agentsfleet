@@ -113,6 +113,14 @@ test "UZ-AGT-012 is 409 (paused steer = conflict, with a resume hint)" {
     try std.testing.expect(std.mem.indexOf(u8, entry.hint, "agentsfleet resume") != null);
 }
 
+test "UZ-AUTH-014 is 409 (pending session is still approvable — not 410 Gone)" {
+    // session_verify_consume.lua returns not_approved WITHOUT consuming the
+    // session; the caller can still approve it in the dashboard and retry.
+    const entry = reg.lookup(reg.ERR_SESSION_NOT_APPROVED);
+    try std.testing.expectEqual(std.http.Status.conflict, entry.http_status);
+    try std.testing.expect(@intFromEnum(entry.http_status) != @intFromEnum(std.http.Status.gone));
+}
+
 // ── REGISTRY format invariants ─────────────────────────────────────────────
 
 test "all REGISTRY codes start with 'UZ-' prefix" {
