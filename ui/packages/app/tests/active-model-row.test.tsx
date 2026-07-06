@@ -175,6 +175,9 @@ describe("ActiveModelRow — default (platform / no provider)", () => {
     // Dimension 1.3: the pill already states the status, so the old redundant
     // "Managed by agentsfleet · no key needed" subtext is gone.
     expect(screen.queryByText("Managed by agentsfleet · no key needed")).toBeNull();
+    // M117 §2: the default card clarifies that "Add key & model" switches to the
+    // tenant's own provider — it does not edit the global platform default.
+    expect(screen.getByText("Add your own key to run on a different provider.")).toBeTruthy();
     // Dimension 1.2: no scroll-anchor button remains at all.
     expect(screen.queryByRole("button", { name: /bring your own key/i })).toBeNull();
     expect(screen.queryByRole("link", { name: /bring your own key/i })).toBeNull();
