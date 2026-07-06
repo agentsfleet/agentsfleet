@@ -210,25 +210,31 @@ fn onVerifyNotApproved(hx: hx_mod.Hx, session_id: []const u8, scratch: RequestSc
 
 // ── Store-error → HTTP mapping ───────────────────────────────────────────
 
+// Deliberately generic — the `else` branch is an unclassified session_store
+// failure (Redis, allocation, or another internal fault); a raw Zig error
+// tag here would leak internals to an unauthenticated CLI-login caller (see
+// the same fix in server.zig's auth-middleware-chain failure path).
+const S_SESSION_STORE_INTERNAL_DETAIL = "Failed to process the login session";
+
 pub fn failFromStoreError(hx: hx_mod.Hx, err: anyerror, session_id: ?[]const u8) void {
     var rbuf: [REDACT_BUF_LEN]u8 = undefined;
     const redacted = if (session_id) |sid| redactSid(&rbuf, sid) else "";
 
-    const code: []const u8 = switch (err) {
-        session_store.Error.InvalidPublicKey => error_codes.ERR_INVALID_PUBLIC_KEY,
-        session_store.Error.InvalidTokenName => error_codes.ERR_INVALID_TOKEN_NAME,
-        session_store.Error.InvalidCipherText => error_codes.ERR_INVALID_CIPHERTEXT,
-        session_store.Error.InvalidNonce => error_codes.ERR_INVALID_NONCE,
-        session_store.Error.InvalidVerificationCode => error_codes.ERR_INVALID_VERIFICATION_CODE,
-        session_store.Error.AlreadyApproved => error_codes.ERR_SESSION_ALREADY_APPROVED,
-        session_store.Error.SessionMissing => error_codes.ERR_SESSION_NOT_FOUND,
-        session_store.Error.NotOwner => error_codes.ERR_FORBIDDEN,
-        session_store.Error.SessionConsumed => error_codes.ERR_SESSION_CONSUMED,
-        session_store.Error.SessionAborted => error_codes.ERR_SESSION_ABORTED,
-        else => error_codes.ERR_INTERNAL_OPERATION_FAILED,
+    const mapped: struct { code: []const u8, detail: []const u8 } = switch (err) {
+        session_store.Error.InvalidPublicKey => .{ .code = error_codes.ERR_INVALID_PUBLIC_KEY, .detail = "The supplied public_key is malformed" },
+        session_store.Error.InvalidTokenName => .{ .code = error_codes.ERR_INVALID_TOKEN_NAME, .detail = "token_name must be 1-64 characters of printable ASCII" },
+        session_store.Error.InvalidCipherText => .{ .code = error_codes.ERR_INVALID_CIPHERTEXT, .detail = "ciphertext is missing, empty, or malformed" },
+        session_store.Error.InvalidNonce => .{ .code = error_codes.ERR_INVALID_NONCE, .detail = "nonce is missing, empty, or the wrong length" },
+        session_store.Error.InvalidVerificationCode => .{ .code = error_codes.ERR_INVALID_VERIFICATION_CODE, .detail = "verification_code must be exactly 6 ASCII digits" },
+        session_store.Error.AlreadyApproved => .{ .code = error_codes.ERR_SESSION_ALREADY_APPROVED, .detail = "This login session has already been approved" },
+        session_store.Error.SessionMissing => .{ .code = error_codes.ERR_SESSION_NOT_FOUND, .detail = "Session was not found. It may have expired or been invalidated" },
+        session_store.Error.NotOwner => .{ .code = error_codes.ERR_FORBIDDEN, .detail = "You do not own this login session" },
+        session_store.Error.SessionConsumed => .{ .code = error_codes.ERR_SESSION_CONSUMED, .detail = "This login session has already been consumed" },
+        session_store.Error.SessionAborted => .{ .code = error_codes.ERR_SESSION_ABORTED, .detail = "This login session was aborted" },
+        else => .{ .code = error_codes.ERR_INTERNAL_OPERATION_FAILED, .detail = S_SESSION_STORE_INTERNAL_DETAIL },
     };
-    log.warn("auth_session_store_error", .{ .error_code = code, .err = @errorName(err), .session_id = redacted, .req_id = hx.req_id });
-    hx.fail(code, @errorName(err));
+    log.warn("auth_session_store_error", .{ .error_code = mapped.code, .err = @errorName(err), .session_id = redacted, .req_id = hx.req_id });
+    hx.fail(mapped.code, mapped.detail); // mudball-ok: raw @errorName tag logged above, never returned
 }
 
 // ── Tests ────────────────────────────────────────────────────────────────
