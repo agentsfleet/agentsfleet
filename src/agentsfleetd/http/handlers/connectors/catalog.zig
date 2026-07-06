@@ -85,12 +85,12 @@ pub fn innerCatalog(hx: hx_mod.Hx, workspace_id: []const u8) void {
     @memset(app_present[0..], false);
     if (hx.ctx.platform_admin_workspace_id.len != 0) {
         vault.markExisting(conn, hx.ctx.platform_admin_workspace_id, app_keys[0..], app_present[0..]) catch {
-            common.errorResponse(hx.res, ec.ERR_CONNECTOR_CATALOG_LOOKUP_FAILED, "catalog configured lookup failed", hx.req_id);
+            common.errorResponse(hx.res, ec.ERR_CONNECTOR_CATALOG_LOOKUP_FAILED, "Failed to check which connectors are configured", hx.req_id);
             return;
         };
     }
     vault.markExisting(conn, workspace_id, fleet_keys[0..], fleet_present[0..]) catch {
-        common.errorResponse(hx.res, ec.ERR_CONNECTOR_CATALOG_LOOKUP_FAILED, "catalog connected lookup failed", hx.req_id);
+        common.errorResponse(hx.res, ec.ERR_CONNECTOR_CATALOG_LOOKUP_FAILED, "Failed to check which connectors are connected", hx.req_id);
         return;
     };
 

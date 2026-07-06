@@ -63,7 +63,7 @@ pub fn innerRunnerCredentialsMint(hx: Hx, req: *httpz.Request) void {
     const broker = hx.ctx.broker orelse {
         // The broker is a boot-wired daemon singleton; a null here is a
         // deployment misconfiguration, not a client error. Fail loud.
-        common.errorResponse(hx.res, ec.ERR_CRED_BROKER_NOT_CONFIGURED, "credential broker not configured", hx.req_id);
+        common.errorResponse(hx.res, ec.ERR_CRED_BROKER_NOT_CONFIGURED, "This deployment isn't set up to mint credentials yet", hx.req_id);
         return;
     };
 
