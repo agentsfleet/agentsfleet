@@ -11,7 +11,7 @@
 gen-error-codes:  ## Regenerate error-codes.mdx from the error registry — usage: make gen-error-codes ERROR_CODES_MDX=/path/to/error-codes.mdx
 	@test -n "$(ERROR_CODES_MDX)" || { echo "usage: make gen-error-codes ERROR_CODES_MDX=/path/to/error-codes.mdx"; exit 1; }
 	@echo "→ [errors] generating $(ERROR_CODES_MDX) from the registry..."
-	@zig build gen-error-codes > $(ERROR_CODES_MDX)
+	@zig build gen-error-codes > "$(ERROR_CODES_MDX).tmp" && mv "$(ERROR_CODES_MDX).tmp" "$(ERROR_CODES_MDX)"
 	@echo "✓ [errors] $(ERROR_CODES_MDX) regenerated"
 
 ZLINT ?= zlint
