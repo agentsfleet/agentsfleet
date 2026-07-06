@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useId, useState, useTransition } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -23,16 +23,14 @@ import {
   FormLabel,
   FormMessage,
   Input,
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
+  OptionCard,
+  RadioGroup,
   Spinner,
 } from "@agentsfleet/design-system";
 import {
   HOST_ID_REGEX,
   SANDBOX_TIERS,
+  SANDBOX_TIER_DESCRIPTIONS,
   SANDBOX_TIER_LABELS,
   parseLabels,
   type CreatedRunner,
@@ -57,6 +55,7 @@ export default function AddRunnerDialog({ onCreated }: { onCreated: () => void }
   const [created, setCreated] = useState<CreatedRunner | null>(null);
   const [apiError, setApiError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const isolationModeLabelId = useId();
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: { host_id: "", sandbox_tier: DEFAULT_TIER, labels: "" },
@@ -161,21 +160,27 @@ export default function AddRunnerDialog({ onCreated }: { onCreated: () => void }
                   name="sandbox_tier"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Isolation mode</FormLabel>
-                      <Select value={field.value} onValueChange={field.onChange}>
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
+                      {/* RadioGroup's root renders a <div role="radiogroup">, not a
+                          labelable HTML element — FormLabel's htmlFor (built for a
+                          single input/button/select) can't auto-focus it, so the
+                          group is named directly via aria-labelledby instead. */}
+                      <FormLabel id={isolationModeLabelId}>Isolation mode</FormLabel>
+                      <FormControl>
+                        <RadioGroup
+                          value={field.value}
+                          onValueChange={field.onChange}
+                          aria-labelledby={isolationModeLabelId}
+                        >
                           {SANDBOX_TIERS.map((t) => (
-                            <SelectItem key={t} value={t}>
-                              {SANDBOX_TIER_LABELS[t]}
-                            </SelectItem>
+                            <OptionCard
+                              key={t}
+                              value={t}
+                              label={SANDBOX_TIER_LABELS[t]}
+                              description={SANDBOX_TIER_DESCRIPTIONS[t]}
+                            />
                           ))}
-                        </SelectContent>
-                      </Select>
+                        </RadioGroup>
+                      </FormControl>
                       <FormDescription>How the host isolates fleet work — self-reported.</FormDescription>
                       <FormMessage />
                     </FormItem>

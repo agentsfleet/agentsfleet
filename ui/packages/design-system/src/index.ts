@@ -152,6 +152,8 @@ export {
   type DataTableProps,
   UsageBar,
   type UsageBarProps,
+  OptionCard,
+  type OptionCardProps,
   Alert,
   AlertTitle,
   AlertDescription,
