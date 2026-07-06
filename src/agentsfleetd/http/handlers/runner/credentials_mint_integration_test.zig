@@ -168,7 +168,7 @@ fn cleanupAll(h: *TestHarness) void {
     teardown(conn);
 }
 
-test "test_mint_scoped_to_lease_workspace" {
+test "integration: test_mint_scoped_to_lease_workspace" {
     crypto_primitives.setTestKek();
     const h = startHarness() catch |err| switch (err) {
         error.SkipZigTest => return error.SkipZigTest,
@@ -254,7 +254,7 @@ test "test_mint_scoped_to_lease_workspace" {
     }
 }
 
-test "test_mint_rejects_cancelled_or_expired_lease" {
+test "integration: test_mint_rejects_cancelled_or_expired_lease" {
     // Mint authority is bound to the lease's lifetime, not the runner's. The lease
     // lookup gates on `status = active AND lease_expires_at > now`, so a runner that
     // legitimately held a lease cannot mint once that lease is no longer live —
@@ -315,7 +315,7 @@ test "test_mint_rejects_cancelled_or_expired_lease" {
     }
 }
 
-test "test_mint_requires_approved_grant" {
+test "integration: test_mint_requires_approved_grant" {
     // Grant-gate dimension 2.1 — the grant gate precedes everything vault-shaped:
     // a live lease + a CONNECTED handle still refuse (403 UZ-GRANT-001) when the
     // fleet holds no approved grant, and a PENDING grant is equally refused. No
@@ -375,7 +375,7 @@ test "test_mint_requires_approved_grant" {
     }
 }
 
-test "test_mint_rechecks_revoked_grant" {
+test "integration: test_mint_rechecks_revoked_grant" {
     // Grant-gate dimension 2.2 — mint-time re-check, not just lease-time: the
     // SAME live lease mints while approved, refuses after a revoke, and mints
     // again after re-approval. Proves grant authority is read fresh per mint
