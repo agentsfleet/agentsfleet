@@ -16,7 +16,9 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M118
 **Workstream:** 001
 **Date:** Jul 06, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
+**Branch:** feat/m118-workspace-url
+**Test Baseline:** unit=2327 integration=249
 **Priority:** P1 — the "Couldn't load connectors" class of bug: the dashboard guesses the active workspace from an unvalidated cookie/claim; making it explicit in the URL removes the guess.
 **Categories:** UI
 **Batch:** B1 — coordinated single-PR route move (nav + layout + pages must move together or nav breaks).
