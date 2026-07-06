@@ -61,6 +61,15 @@ describe("CreateApiKeyDialog component", () => {
     return within(screen.getByRole("dialog")).getByRole("button", { name: /create key/i });
   }
 
+  it("uses trimmed copy that does not repeat the reveal step's 'shown once' (test_api_key_copy_trimmed)", async () => {
+    await openDialog();
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByText("Name it so you can find it later.")).toBeTruthy();
+    // The reveal step already says "shown once" — the pre-create copy must not.
+    expect(dialog.textContent).not.toMatch(/shown once/i);
+    expect(dialog.textContent).not.toMatch(/recognise it later in the list/i);
+  });
+
   it("client-side rejects an invalid key name and never calls the action", async () => {
     const { user } = await openDialog();
     await user.type(screen.getByLabelText(/^name$/i), "bad name!");

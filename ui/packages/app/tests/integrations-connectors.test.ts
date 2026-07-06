@@ -47,12 +47,20 @@ const ZOHO = entry({ id: "zoho", archetype: "oauth2", display_name: "Zoho Desk" 
 
 function renderConnectors(
   catalog: ConnectorCatalogEntry[],
-  props: Partial<{ githubStatus: ConnectorStatus; slackStatus: ConnectorStatus; slackTeam: string | null }> = {},
+  props: Partial<{
+    githubStatus: ConnectorStatus;
+    slackStatus: ConnectorStatus;
+    slackTeam: string | null;
+    catalogError: { code: string; status: number | null } | null;
+  }> = {},
 ) {
   return render(
     React.createElement(IntegrationsConnectors, {
       workspaceId: WS,
       catalog,
+      // Passed through as-is: omitting it (undefined) exercises the
+      // component's own `catalogError = null` default.
+      catalogError: props.catalogError,
       githubStatus: props.githubStatus ?? CONNECTOR_STATUS.notConnected,
       slackStatus: props.slackStatus,
       slackTeam: props.slackTeam,
@@ -83,6 +91,24 @@ describe("IntegrationsConnectors (test_ui_connectors_cards_from_catalog)", () =>
     expect(screen.getByTestId("connectors-empty")).toBeTruthy();
     expect(screen.getByText(/couldn't load connectors/i)).toBeTruthy();
     expect(screen.queryByTestId("integration-github")).toBeNull();
+  });
+
+  it("surfaces the fetch error code + status in the empty state when captured (test_connector_fetch_error_logged)", () => {
+    // The page captures the ApiError instead of swallowing it; the code/status
+    // is what makes the failure diagnosable (console logging is lint-banned).
+    renderConnectors([], { catalogError: { code: "UZ-INTERNAL-003", status: 500 } });
+    const empty = screen.getByTestId("connectors-empty");
+    expect(empty.textContent).toContain("UZ-INTERNAL-003");
+    expect(empty.textContent).toContain("500");
+  });
+
+  it("omits the status segment when the failure carried no HTTP status (non-ApiError)", () => {
+    // A thrown non-ApiError has no HTTP status; the detail must render the
+    // code alone — "(UZ-UNKNOWN)" — never a fabricated "· 0".
+    renderConnectors([], { catalogError: { code: "UZ-UNKNOWN", status: null } });
+    const empty = screen.getByTestId("connectors-empty");
+    expect(empty.textContent).toContain("(UZ-UNKNOWN)");
+    expect(empty.textContent).not.toContain("·");
   });
 
   it("renders a card for a provider with no bespoke icon (generic plug fallback)", () => {
