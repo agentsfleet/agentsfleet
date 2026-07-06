@@ -57,6 +57,14 @@ describe("dashboard overview page", () => {
     expect(m).toContain("data-skeleton");
   });
 
+  it("the workspace home redirects to /sign-in without a token", async () => {
+    mockAuth({ token: null });
+    const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/page");
+    await expect(
+      Page({ params: Promise.resolve({ workspaceId: "ws_1" }) }),
+    ).rejects.toThrow("redirect:/sign-in");
+  });
+
   it("root page redirects unauthenticated to sign-in, else to the first owned workspace", async () => {
     // The bare `(dashboard)` root is the one place a default workspace is chosen:
     // no token → redirect to sign-in; authenticated → resolve the first owned
