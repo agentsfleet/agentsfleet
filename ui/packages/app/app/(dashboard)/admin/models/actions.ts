@@ -56,10 +56,15 @@ export async function setPlatformDefaultAction(body: {
     withToken(async (t) => {
       // admin/models is a platform surface with no workspace URL segment, so the
       // storage workspace is resolved explicitly from the authoritative tenant
-      // list (first owned) rather than a cookie/claim hint. Both writes run
-      // under the same id; an empty list is the genuine "no workspace" error.
+      // list rather than a cookie/claim hint. Pick the earliest-created workspace
+      // deterministically (tie-broken by id) so the target never depends on the
+      // backend's list ordering — a rename-triggered re-sort must not move the
+      // platform key. Both writes run under the same id; an empty list is the
+      // genuine "no workspace" error.
       const { items } = await listTenantWorkspacesCached(t);
-      const workspaceId = items[0]?.id;
+      const workspaceId = [...items].sort(
+        (a, b) => a.created_at - b.created_at || (a.id < b.id ? -1 : 1),
+      )[0]?.id;
       if (!workspaceId) throw new Error("No active workspace to store the platform key in");
 
       const data: Record<string, unknown> = { provider: body.provider, api_key: body.api_key, model: body.model };

@@ -16,7 +16,12 @@ export default async function DashboardIndexPage() {
   const token = await getToken();
   if (!token) redirect("/sign-in");
 
-  const { items } = await listTenantWorkspacesCached(token).catch(() => ({ items: [] }));
+  // No `.catch` here: a transient list failure must NOT fall through to the
+  // create-first empty state — an operator who already owns workspaces would be
+  // shown "create a workspace" and could make a duplicate. The error propagates
+  // to `(dashboard)/error.tsx` (a retry surface) instead; the empty state renders
+  // only on a genuinely empty list (a successful 200 with no items).
+  const { items } = await listTenantWorkspacesCached(token);
   const first = items[0];
   if (first) redirect(workspacePath(first.id));
 
