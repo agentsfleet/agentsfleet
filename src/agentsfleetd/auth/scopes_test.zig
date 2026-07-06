@@ -13,13 +13,13 @@ test "test_scope_catalog_covers_every_enumerated_gate" {
     // proving the catalog is a superset of the enumeration checklist (Invariant 5).
     const enumerated = [_][]const u8{
         // Platform plane (former platform_admin routes).
-        "platform-key:read", "platform-key:admin", "model:read",    "model:admin",
-        "runner:enroll",     "runner:read",        "runner:write",  "stream:read",
+        "platform-key:read", "platform-key:admin", "model:read",     "model:admin",
+        "runner:enroll",     "runner:read",        "runner:write",   "stream:read",
         // Tenant plane (former bearer + operator-role + enforce routes).
-        "fleet:read",        "fleet:write",        "fleet:admin",   "secret:read",
-        "secret:write",      "apikey:read",        "apikey:write",  "apikey:admin",
-        "fleetkey:read",     "fleetkey:write",     "grant:read",    "grant:write",
-        "connector:read",    "connector:write",    "billing:read",  "approval:read",
+        "fleet:read",        "fleet:write",        "fleet:admin",    "secret:read",
+        "secret:write",  "apikey:read",        "apikey:write",   "apikey:admin",
+        "fleetkey:read",     "fleetkey:write",     "grant:read",     "grant:write",
+        "connector:read",    "connector:write",    "billing:read",   "approval:read",
         "approval:resolve",  "workspace:admin",    "library:write", "platform-library:write",
         // Runner credential.
         "runner:self",
