@@ -39,6 +39,7 @@ const lease_row = @import("service_lease_row.zig");
 const FleetSession = @import("fleet_session.zig");
 const secrets_resolve = @import("secrets_resolve.zig");
 const grant_lookup = @import("../state/integration_grant_lookup.zig");
+const integration = @import("../credentials/integration.zig");
 const service_endpoint = @import("service_endpoint.zig");
 const context_resolve = @import("context_resolve.zig");
 const rows = @import("event_rows.zig");
@@ -235,13 +236,16 @@ fn resolveExecutionPolicy(hx: Hx, session: *FleetSession, resolved: ?tenant_prov
                 // fleet's grant is approved. An ungranted one is dropped from
                 // BOTH surfaces — falling through to `secrets_map` would ship
                 // the raw handle config to the child (Invariant 3, VLT).
-                if (!grant_lookup.contains(approved_services, @tagName(id))) {
-                    log.warn("lease_secret_grant_missing", .{ .error_code = ec.ERR_GRANT_NOT_FOUND, .fleet_id = fleet_id, .name = entry.name, .integration = @tagName(id) });
+                // `id.toString()` (not `@tagName`) is the audited enum→service
+                // string, comptime-proven to match the DB `service` column.
+                const service = integration.toString(id);
+                if (!grant_lookup.contains(approved_services, service)) {
+                    log.warn("lease_secret_grant_missing", .{ .error_code = ec.ERR_GRANT_NOT_FOUND, .fleet_id = fleet_id, .name = entry.name, .integration = service });
                     continue;
                 }
-                // `@tagName` is the static wire id; `entry.name` is arena-owned and
-                // outlives the hx.ok serialization — both safe for the response.
-                mints.append(alloc, .{ .name = entry.name, .integration = @tagName(id) }) catch |err|
+                // `entry.name` is arena-owned and outlives the hx.ok
+                // serialization; `service` is a static const — both safe.
+                mints.append(alloc, .{ .name = entry.name, .integration = service }) catch |err|
                     log.warn("lease_secret_mintable_failed", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .err = @errorName(err) });
             } else {
                 obj.put(alloc, entry.name, entry.parsed.value) catch |err|
