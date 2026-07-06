@@ -107,7 +107,7 @@ pub const ENTRIES = [_]Entry{
     e("UZ-AUTH-012", .gone, "Login session already consumed", "This login session has already been consumed. Start over with `agentsfleet login`."), // reachable: no — CLI login flow
     e("UZ-AUTH-013", .gone, "Login session aborted", "This login session was aborted (too many wrong codes, explicit cancel, or replaced by a newer session). " ++
         "Start over with `agentsfleet login`."), // reachable: no — CLI login flow
-    e("UZ-AUTH-014", .gone, "Login session not approved", "This login session has not been approved in the dashboard yet. " ++
+    e("UZ-AUTH-014", .conflict, "Login session not approved", "This login session has not been approved in the dashboard yet. " ++
         "Approve it in your browser before submitting a verification code."), // reachable: no — CLI login flow (the dashboard side is an approve action, not a fetch of this code)
     e("UZ-AUTH-015", .conflict, "Login session already approved", "This login session has already been approved. Do not call /approve a second time."), // reachable: no — CLI login flow
     e("UZ-AUTH-016", .bad_request, "Invalid CLI public key", "The supplied public_key is malformed. Expect base64url-encoded P-256 SubjectPublicKeyInfo."), // reachable: no — CLI login flow
@@ -183,7 +183,7 @@ pub const ENTRIES = [_]Entry{
     // UZ-BUNDLE-006 retired: no producer ever emitted it.
     // ── VAULT ────────────────────────────────────────────────────────────────
     eu("UZ-VAULT-001", .bad_request, "Secret data must be a non-empty JSON object", "POST /secrets body must include a 'data' field that is a JSON object with at least one key. " ++
-        "Bare strings, arrays, scalars, and {} are rejected.", "That secret needs at least one field. Enter it as a JSON object with one or more keys — not a bare string or list."),
+        "Bare strings, arrays, scalars, and `{}` are rejected.", "That secret needs at least one field. Enter it as a JSON object with one or more keys — not a bare string or list."),
     eu("UZ-VAULT-002", .bad_request, "Secret data too large", "Stringified secret data exceeds 4KB. Compose the secret from fewer or shorter fields.", "That secret is too large. Keep it under 4 KB — trim or shorten the fields."),
     eu("UZ-VAULT-003", .not_found, "Secret not found", "No secret matches this name in the workspace. List the workspace secrets to find a valid name, or create it first.", "We couldn't find that secret. It may have already been deleted — refresh the list."),
     // ── PROVIDER (PUT /v1/tenants/me/provider) ───────────────────────────────
