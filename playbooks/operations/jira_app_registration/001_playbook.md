@@ -17,7 +17,7 @@ Registers **one** multi-tenant Jira Cloud OAuth 2.0 (3LO — three-legged OAuth)
 |------|-------|------|
 | 0.0 | Agent | Resolve environment; load the admin API key from vault |
 | 1.0 | Human | Create an OAuth 2.0 (3LO) app in the Atlassian Developer Console |
-| 2.0 | Human | Add the Jira platform permissions/scopes and the callback URL |
+| 2.0 | Human | Add the Jira platform permissions/scopes |
 | 3.0 | Human | Copy `client_id` · `client_secret` from the app's Settings |
 | 4.0 | Agent | Store the two as a platform secret `jira-app` in the `agentsfleet-admin` vault |
 | 5.0 | Agent | Verify the daemon resolves `jira-app` and a live connect completes |
