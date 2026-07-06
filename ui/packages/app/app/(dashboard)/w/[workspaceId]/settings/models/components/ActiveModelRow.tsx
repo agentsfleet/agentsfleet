@@ -26,6 +26,12 @@ const MANAGED_PROVIDER = "agentsfleet managed";
 // Shared with ProviderSwitchList — the same add-a-key affordance, named once.
 export const ADD_KEY_AND_MODEL_LABEL = "Add key & model";
 
+// Default-card subtitle. The DEFAULT pill + "agentsfleet managed" meta already
+// state the status, so this says only what's non-obvious: the button switches
+// the tenant to *their own* provider — it does not edit the global platform
+// default (which is operator-only). Purely the affordance, no status restatement.
+export const DEFAULT_MODEL_DESCRIPTION = "Add your own key to run on a different provider.";
+
 // Threshold + divisor for the "k" context abbreviation (200000 → "200k").
 const TOKENS_PER_K = 1000;
 
@@ -67,7 +73,9 @@ export default function ActiveModelRow({ workspaceId, provider, secrets }: Props
           <>
             via <span className="font-mono">{secretRef ?? provider.provider}</span>
           </>
-        ) : null
+        ) : (
+          DEFAULT_MODEL_DESCRIPTION
+        )
       }
       action={
         <StatusPill variant={live ? "pulse" : "neutral"} dot>
