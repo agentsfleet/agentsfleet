@@ -12,12 +12,14 @@ import { OAuthConnectorRow, type ConnectorStatusOverride } from "./connector-row
 // The diagnosable shape of a failed catalog fetch, captured server-side in
 // page.tsx (console logging is lint-banned in app source, so the code/status is
 // surfaced here instead — the RFC 7807 error_code is the public, documented id).
-export type ConnectorFetchError = { code: string; status: number };
+// `status` is null when the failure wasn't an ApiError (no HTTP status to show).
+export type ConnectorFetchError = { code: string; status: number | null };
 
 // Empty catalog always means the fetch failed (the list is registry-driven and
-// never legitimately empty), so name the cause when we have it.
+// never legitimately empty), so name the cause when we have it. A null status
+// renders as the code alone — never a fabricated "· 0".
 function connectorsLoadFailedDescription(err: ConnectorFetchError | null | undefined): string {
-  const detail = err ? ` (${err.code} · ${err.status})` : "";
+  const detail = err ? ` (${err.code}${err.status === null ? "" : ` · ${err.status}`})` : "";
   return `Something went wrong fetching the connector list${detail} — refresh to try again.`;
 }
 

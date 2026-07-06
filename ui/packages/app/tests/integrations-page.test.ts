@@ -28,12 +28,14 @@ vi.mock("@/app/(dashboard)/integrations/components/IntegrationsConnectors", () =
   default: ({
     workspaceId,
     catalog,
+    catalogError,
     githubStatus,
     slackStatus,
     slackTeam,
   }: {
     workspaceId: string;
     catalog: ReadonlyArray<{ id: string }>;
+    catalogError: { code: string; status: number | null } | null;
     githubStatus: string;
     slackStatus: string;
     slackTeam: string | null;
@@ -44,6 +46,9 @@ vi.mock("@/app/(dashboard)/integrations/components/IntegrationsConnectors", () =
       "data-slack-status": slackStatus,
       "data-slack-team": slackTeam ?? "",
       "data-catalog": catalog.map((e) => e.id).join(","),
+      // "none" stands in for a null status so the wiring of the non-ApiError
+      // branch (no HTTP status) is assertable in markup.
+      "data-catalog-error": catalogError ? `${catalogError.code}:${catalogError.status ?? "none"}` : "",
     }),
 }));
 vi.mock("lucide-react", () => ({
@@ -52,6 +57,7 @@ vi.mock("lucide-react", () => ({
 
 import { withWorkspaceScope } from "@/lib/workspace";
 import { getConnector, getConnectorCatalog, CONNECTOR_STATUS } from "@/lib/api/connectors";
+import { ApiError } from "@/lib/api/errors";
 
 // The page reads both bespoke-status connectors through one getConnector(provider,
 // …); dispatch the stub on the provider argument so each row's status/team (and
@@ -122,6 +128,21 @@ describe("Integrations page", () => {
     const markup = renderToStaticMarkup(await Page());
 
     expect(markup).toContain('data-catalog=""');
+    // A non-ApiError failure carries no HTTP status — the captured error is
+    // the UZ-UNKNOWN sentinel with a null status, never a fabricated 0.
+    expect(markup).toContain('data-catalog-error="UZ-UNKNOWN:none"');
+  });
+
+  it("captures the ApiError code + status when the catalog read fails diagnosably", async () => {
+    vi.mocked(getConnectorCatalog).mockRejectedValue(
+      new ApiError("catalog exploded", 500, "UZ-INTERNAL-003"),
+    );
+
+    const { default: Page } = await import("../app/(dashboard)/integrations/page");
+    const markup = renderToStaticMarkup(await Page());
+
+    expect(markup).toContain('data-catalog=""');
+    expect(markup).toContain('data-catalog-error="UZ-INTERNAL-003:500"');
   });
 
   it("degrades the Slack connector to not-connected when the status read errors", async () => {

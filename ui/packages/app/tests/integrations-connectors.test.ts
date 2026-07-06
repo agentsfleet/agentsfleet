@@ -51,14 +51,16 @@ function renderConnectors(
     githubStatus: ConnectorStatus;
     slackStatus: ConnectorStatus;
     slackTeam: string | null;
-    catalogError: { code: string; status: number } | null;
+    catalogError: { code: string; status: number | null } | null;
   }> = {},
 ) {
   return render(
     React.createElement(IntegrationsConnectors, {
       workspaceId: WS,
       catalog,
-      catalogError: props.catalogError ?? null,
+      // Passed through as-is: omitting it (undefined) exercises the
+      // component's own `catalogError = null` default.
+      catalogError: props.catalogError,
       githubStatus: props.githubStatus ?? CONNECTOR_STATUS.notConnected,
       slackStatus: props.slackStatus,
       slackTeam: props.slackTeam,
@@ -98,6 +100,15 @@ describe("IntegrationsConnectors (test_ui_connectors_cards_from_catalog)", () =>
     const empty = screen.getByTestId("connectors-empty");
     expect(empty.textContent).toContain("UZ-INTERNAL-003");
     expect(empty.textContent).toContain("500");
+  });
+
+  it("omits the status segment when the failure carried no HTTP status (non-ApiError)", () => {
+    // A thrown non-ApiError has no HTTP status; the detail must render the
+    // code alone — "(UZ-UNKNOWN)" — never a fabricated "· 0".
+    renderConnectors([], { catalogError: { code: "UZ-UNKNOWN", status: null } });
+    const empty = screen.getByTestId("connectors-empty");
+    expect(empty.textContent).toContain("(UZ-UNKNOWN)");
+    expect(empty.textContent).not.toContain("·");
   });
 
   it("renders a card for a provider with no bespoke icon (generic plug fallback)", () => {
