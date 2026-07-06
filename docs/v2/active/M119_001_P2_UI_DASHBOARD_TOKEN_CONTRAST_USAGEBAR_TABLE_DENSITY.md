@@ -16,15 +16,15 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M119
 **Workstream:** 001
 **Date:** Jul 07, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P2 — dashboard visual polish, benchmarked against PlanetScale's dashboard; no functional or data-model change.
 **Categories:** UI
 **Batch:** B1 — standalone UI workstream; independent of M117/M118.
 **Depends on:** none.
 **Provenance:** agent-generated (pre-spec, this session's design proposal, agreed by Indy)
 **Canonical architecture:** no architecture change — UI tokens + presentation only. Model of record: `docs/architecture/billing_and_provider_keys.md` §6 (confirms the credit-exhausted UX contract touched by §2 is unchanged).
-**Branch:** {feat/mNN-name — added at CHORE(open)}
-**Test Baseline:** set at CHORE(open) — `unit=<N> integration=<M>` via `make _lint_zig_test_depth`
+**Branch:** feat/m119-dashboard-polish
+**Test Baseline:** unit=2377 integration=255 (via `make _lint_zig_test_depth`; UI-only scope — Zig counts are the pin, not expected to move)
 
 ---
 
