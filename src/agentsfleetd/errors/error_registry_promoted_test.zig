@@ -10,12 +10,6 @@ const reachability_fix = @import("error_registry_reachability_fix_test.zig");
 
 const expectCuratedDistinct = reachability_fix.expectCuratedDistinct;
 
-test "UZ-AUTH-023 (Clerk webhook secret not configured) is registered" {
-    const entry = reg.lookup(reg.ERR_CLERK_WEBHOOK_SECRET_NOT_CONFIGURED);
-    try std.testing.expect(entry.hint.len > 0);
-    try std.testing.expect(entry.user_message == null); // operator-only path, not dashboard-reachable
-}
-
 test "UZ-CONN-007 (connector catalog lookup failed) has a curated user_message" {
     try expectCuratedDistinct(reg.ERR_CONNECTOR_CATALOG_LOOKUP_FAILED);
     const um = reg.lookup(reg.ERR_CONNECTOR_CATALOG_LOOKUP_FAILED).user_message.?;

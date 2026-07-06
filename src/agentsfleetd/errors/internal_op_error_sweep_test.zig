@@ -14,15 +14,27 @@
 // fixed none of them, pinning the count instead.
 //
 // A de-mudball pass then closed that backlog: server.zig's raw @errorName leak
-// now maps to a stable detail (never the raw tag); of the 35 jargon sites, 7
-// were promoted to their own eu()/e() registry codes (UZ-AUTH-023,
-// UZ-CONN-007, UZ-AGT-013, UZ-CRED-002, UZ-PROVIDER-010) and now call
+// now maps to a stable detail (never the raw tag); of the 35 jargon sites, 5
+// call sites were promoted to their own eu()/e() registry codes (UZ-CONN-007
+// x2, UZ-AGT-013, UZ-CRED-002, UZ-PROVIDER-010) and now call
 // common.errorResponse() directly instead of internalOperationError() — hence
-// the baseline below dropped by 7 (86 -> 79); the rest were scrubbed in place
-// to plain-English details. This test still only pins the count: a new call
-// site under http/handlers/** forces whoever adds it to consciously bump
-// BASELINE below, at which point they should ask whether the new `detail`
-// string reads like plain English to a dashboard end user or needs its own
+// the baseline below dropped by 5 (86 -> 81); the rest were scrubbed in place
+// to plain-English details.
+//
+// identity_events_clerk.zig's Clerk-webhook-secret-missing/empty path (2 call
+// sites) was deliberately NOT promoted to its own code, unlike the other
+// jargon sites: `/review` caught that a distinct code/title there would
+// confirm to an unauthenticated caller that this deployment has no
+// CLERK_WEBHOOK_SECRET configured — exactly what that file's own header
+// comment says must not happen. Those 2 sites stay on the generic
+// UZ-INTERNAL-003 catch-all with a scrubbed detail, justified via
+// `// mudball-ok:` rather than counted against BASELINE (81 - 2 justified =
+// 79, unchanged from the pre-revert count).
+//
+// This test still only pins the count: a new call site under
+// http/handlers/** forces whoever adds it to consciously bump BASELINE
+// below, at which point they should ask whether the new `detail` string
+// reads like plain English to a dashboard end user or needs its own
 // eu()-curated registry code instead of piggybacking on UZ-INTERNAL-003.
 const std = @import("std");
 const common = @import("common");
