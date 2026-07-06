@@ -109,6 +109,37 @@ describe("AddRunnerDialog component", () => {
     expect(JSON.stringify(captureProductEventMock.mock.calls)).not.toContain("agt_rdeadbeef");
   });
 
+  it("isolation mode's radiogroup has an accessible name and keeps its self-reported disclaimer", async () => {
+    await openDialog();
+    // Named via aria-labelledby (a div[role=radiogroup] isn't a labelable
+    // HTML element, so FormLabel's htmlFor can't reach it) — not a duplicated
+    // literal aria-label string.
+    expect(screen.getByRole("radiogroup", { name: /isolation mode/i })).toBeTruthy();
+    expect(screen.getByText(/how the host isolates fleet work — self-reported/i)).toBeTruthy();
+  });
+
+  it("isolation mode renders as four OptionCards; picking one is passed to the create call", async () => {
+    createRunnerActionMock.mockResolvedValue(MINTED);
+    const { user } = await openDialog();
+    const allRadios = screen.getAllByRole("radio");
+    expect(allRadios).toHaveLength(4);
+    // Length just asserted above — the indexed access is safe.
+    expect(allRadios[0]!.getAttribute("data-state")).toBe("checked"); // default: landlock_full
+
+    await user.click(screen.getByText("Nested container"));
+    expect(screen.getByText("Nested container").closest('[role="radio"]')?.getAttribute("data-state")).toBe(
+      "checked",
+    );
+
+    await user.type(screen.getByLabelText(/host name/i), "web-prod-1");
+    await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: /create runner/i }));
+    expect(createRunnerActionMock).toHaveBeenCalledWith({
+      host_id: "web-prod-1",
+      sandbox_tier: "container_nested",
+      labels: [],
+    });
+  });
+
   it("a server 403 keeps the dialog open, reveals no token, and does not signal onCreated", async () => {
     createRunnerActionMock.mockResolvedValue({
       ok: false,

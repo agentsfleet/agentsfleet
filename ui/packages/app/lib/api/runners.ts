@@ -23,6 +23,17 @@ export const SANDBOX_TIER_LABELS: Record<SandboxTier, string> = {
   dev_none: "None (dev only)",
 };
 
+// One-line descriptions for the isolation-mode OptionCard picker. Keyed by
+// the same SandboxTier so a new tier can't be added without one. Mirrors
+// docs/architecture/runner_fleet.md §Sandbox tiers — do not restate from the
+// label alone; that table is the source of truth for what each tier means.
+export const SANDBOX_TIER_DESCRIPTIONS: Record<SandboxTier, string> = {
+  landlock_full: "Bare Linux host with kernel-level Landlock sandboxing — full isolation, eligible for any work.",
+  container_nested: "Runner runs inside a container on a Linux host or VM — same full-isolation tier as Landlock.",
+  macos_seatbelt: "macOS's Seatbelt sandbox — weaker isolation; limited to your own workspace's dev work.",
+  dev_none: "No real sandbox — for local development builds only; a non-debug runner build refuses to start with this tier.",
+};
+
 // Derived runtime liveness — mirrors `protocol.RunnerLiveness` tag names. Never
 // stored; computed server-side from last_seen_at + the live-lease join.
 export const RUNNER_LIVENESS = ["registered", "busy", "online", "offline"] as const;

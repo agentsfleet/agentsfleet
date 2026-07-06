@@ -163,6 +163,7 @@ export {
   type DataTableProps,
 } from "./DataTable";
 export { UsageBar, type UsageBarProps } from "./UsageBar";
+export { OptionCard, type OptionCardProps } from "./OptionCard";
 export {
   Alert,
   AlertTitle,
