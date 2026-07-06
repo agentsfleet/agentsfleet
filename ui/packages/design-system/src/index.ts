@@ -150,6 +150,8 @@ export {
   DataTable,
   type DataTableColumn,
   type DataTableProps,
+  UsageBar,
+  type UsageBarProps,
   Alert,
   AlertTitle,
   AlertDescription,

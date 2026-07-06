@@ -111,6 +111,7 @@ export default function BillingUsageTab({ initialCharges, initialCursor }: Billi
         rows={charges}
         rowKey={(c) => c.id}
         caption="usage history"
+        stickyHeader
       />
       <div className="flex items-center gap-3 text-xs">
         {cursor ? (

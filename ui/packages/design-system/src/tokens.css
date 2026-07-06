@@ -24,12 +24,14 @@
    * canonical preview (line 195: `background: #06090A`). */
   --surface-deep: #06090a;
   --bg: #0a0d0e;
-  --surface-1: #11161a;
+  --surface-1: #141a1f;
   --surface-2: #181e22;
   --surface-3: #1f262c;
 
-  /* ── Borders ── */
-  --border: #23292e;
+  /* ── Borders ──
+   * --border sits one step brighter than the earlier #23292e so cards
+   * read defined at rest, not only on --border-strong hover. */
+  --border: #2b333a;
   --border-strong: #2e373e;
 
   /* ── Text ──
