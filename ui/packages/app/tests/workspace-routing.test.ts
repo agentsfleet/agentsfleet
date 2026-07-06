@@ -129,6 +129,15 @@ describe("dashboard entry page", () => {
     expect(redirect).not.toHaveBeenCalledWith(expect.stringMatching(/^\/w\//));
   });
 
+  it("a transient list failure propagates (does NOT render the create-first empty state)", async () => {
+    // Symmetric with the guard's fail-open: an operator who owns workspaces must
+    // never be shown "create a workspace" on a blip (→ duplicate). The error
+    // propagates to (dashboard)/error.tsx instead.
+    listTenantWorkspacesCached.mockRejectedValue(new Error("list endpoint down"));
+    const Page = await importEntry();
+    await expect(Page()).rejects.toThrow("list endpoint down");
+  });
+
   it("redirects to /sign-in without a token", async () => {
     auth.mockResolvedValue({ getToken: vi.fn().mockResolvedValue(null) });
     const Page = await importEntry();
