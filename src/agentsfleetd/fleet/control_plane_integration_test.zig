@@ -595,7 +595,7 @@ fn leaseBodyAs(h: *TestHarness, token: []const u8) ![]u8 {
     return ALLOC.dupe(u8, resp.body);
 }
 
-test "test_lease_gates_mintable_on_grant" {
+test "integration: test_lease_gates_mintable_on_grant" {
     // Grant-gate dimension 3.1 — a connected-but-ungranted mintable credential is
     // omitted from BOTH policy surfaces (`mintable` and `secrets_map`); the same
     // config with an approved grant emits the mintable. Two fleets share the
@@ -649,7 +649,7 @@ test "test_lease_gates_mintable_on_grant" {
     try std.testing.expect(checked_granted);
 }
 
-test "test_static_secrets_unaffected_by_grant_gate" {
+test "integration: test_static_secrets_unaffected_by_grant_gate" {
     // Grant-gate dimension 3.2 — a static custom secret (no `integration` field)
     // resolves into secrets_map exactly as before, with zero grant rows present.
     crypto_primitives.setTestKek();
