@@ -145,7 +145,7 @@ Lease ExecutionPolicy (EXISTING wire shape — emission rule tightened):
 ## Invariants
 
 1. **No token without an approved grant** — enforced at BOTH `resolveExecutionPolicy` (emission) and `loadMintInputs` (re-check) via the same module; proven by Tests 2.1/2.2/3.1, including the no-upstream-call assertion.
-2. **One grant-read implementation** — `integration_grant_lookup.zig` is the only module querying `core.integration_grants` for enforcement; grep-enforced: no `integration_grants` SQL outside `state/integration_grant_lookup.zig`, `handlers/integration_grants/`, and `webhooks/grant_approval.zig`.
+2. **One grant-read implementation** — `integration_grant_lookup.zig` is the only module reading `core.integration_grants` for enforcement; grep-enforced: no `FROM core.integration_grants` outside `state/integration_grant_lookup.zig`, `handlers/integration_grants/`, and `webhooks/grant_approval.zig` (teardown DELETEs and FK cascades are cleanup, not enforcement reads).
 3. **An ungranted mintable handle never reaches the child in any form** — omitted from `mintable` AND `secrets_map` (VLT); Test 3.1 asserts both absences.
 4. **The broker stays grant-free** — no grant logic in `credentials/`; grep `grant` over `src/agentsfleetd/credentials/` returns zero enforcement references (separation: the broker mints, the boundary authorizes).
 
@@ -174,18 +174,18 @@ No product analytics or funnel change — security-plane observability only; no 
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | Mint refused without approved grant, no upstream call (§2) | `make test-integration 2>&1 \| grep -E "mint_requires_approved_grant"` | pass line | P0 | |
-| R2 | Revoked-mid-lease re-check (§2) | `make test-integration 2>&1 \| grep -E "mint_rechecks_revoked_grant"` | pass line | P0 | |
-| R3 | Lease omits ungranted mintable from both surfaces (§3) | `make test-integration 2>&1 \| grep -E "lease_gates_mintable_on_grant\|static_secrets_unaffected"` | 2 pass lines | P0 | |
-| R4 | Connector grants requestable (§1) | `make test 2>&1 \| grep -E "supported_services_include_connectors"` | pass line | P1 | |
-| R5 | Single grant-read module (Invariant 2) | `grep -rln "integration_grants" src/agentsfleetd --include='*.zig' \| grep -v "state/integration_grant_lookup\|handlers/integration_grants\|webhooks/grant_approval\|_test"` | no output | P0 | |
-| R6 | Broker stays grant-free (Invariant 4) | `grep -rn "grant" src/agentsfleetd/credentials/*.zig` | no enforcement references | P1 | |
-| R7 | Diff stays inside Files Changed | `git diff --name-only origin/main` | 0 paths missing from the table | P0 | |
-| S1 | Unit tests pass | `make test` | exit 0 | P0 | |
-| S2 | Lint clean | `make lint` | exit 0 | P0 | |
-| S3 | Integration passes | `make test-integration` | exit 0 | P0 | |
-| S4 | Cross-compile both linux targets | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` | exit 0 | P0 | |
-| S5 | No secrets in diff | `gitleaks detect` | exit 0 | P0 | |
+| R1 | Mint refused without approved grant, no upstream call (§2) | `make test-integration 2>&1 \| grep -E "mint_requires_approved_grant"` | pass line | P0 | ✅ filtered live run `47/47 tests passed` (0 skipped); RED on parent `7fc4dd6e`: `UnexpectedStatus` (parent mints 200 where 403 demanded) |
+| R2 | Revoked-mid-lease re-check (§2) | `make test-integration 2>&1 \| grep -E "mint_rechecks_revoked_grant"` | pass line | P0 | ✅ filtered live run `47/47 tests passed` — approve→200, revoke→403, re-approve→200 on one lease |
+| R3 | Lease omits ungranted mintable from both surfaces (§3) | `make test-integration 2>&1 \| grep -E "lease_gates_mintable_on_grant\|static_secrets_unaffected"` | 2 pass lines | P0 | ✅ `188/1937 …test_lease_gates_mintable_on_grant...OK` + `189/1937 …test_static_secrets_unaffected_by_grant_gate...OK`; RED on parent: gates_mintable failed |
+| R4 | Connector grants requestable (§1) | `make test 2>&1 \| grep -E "supported_services_include_connectors"` | pass line | P1 | ✅ in `make test-unit-agentsfleetd` (2334 tests, exit 0) |
+| R5 | Single grant-read module (Invariant 2) | `grep -rln "FROM core.integration_grants" src/agentsfleetd --include='*.zig' \| grep -v "state/integration_grant_lookup\|handlers/integration_grants\|webhooks/grant_approval\|_test"` | no output | P0 | ✅ no output (grep refined at VERIFY: the authored broad pattern also matched comments/route enums/CASCADE docs — non-readers; see Discovery) |
+| R6 | Broker stays grant-free (Invariant 4) | `grep -rn "grant" src/agentsfleetd/credentials/*.zig` | no enforcement references | P1 | ✅ only OAuth wire-literal `invalid_grant` hits — no integration-grant enforcement |
+| R7 | Diff stays inside Files Changed | `git diff --name-only origin/main` | 0 paths missing from the table | P0 | ✅ branch-authored paths = exactly the Files Changed table (+ M102_005/M102_006 spec edits); remaining diff lines are main-moved-ahead artifacts (M115 merge, M117 UI) that resolve on pre-push rebase |
+| S1 | Unit tests pass | `make test-unit-agentsfleetd` (repo's tier-1 target; no bare `make test` exists) | exit 0 | P0 | ✅ exit 0 — `unit=2334` (baseline 2327) |
+| S2 | Lint clean | `make lint-zig` (repo's Zig lint umbrella; no bare `make lint` exists) | exit 0 | P0 | ✅ exit 0 — ZLint 0 errors, pg-drain clean, FLL clean |
+| S3 | Integration passes | `make test-integration` | exit 0 | P0 | ✅ `MAKE_EXIT=0` — "✓ Full integration suite passed" |
+| S4 | Cross-compile both linux targets | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` | exit 0 | P0 | ✅ exit 0 both |
+| S5 | No secrets in diff | `gitleaks detect` | exit 0 | P0 | ✅ "no leaks found" (git-aware; plus `gitleaks protect --staged` on every commit) |
 
 **Grading protocol (VERIFY):** run the Verify command verbatim; grade ONLY from its output. Graded = ✅/❌ + the one decisive output line (`342 passed`); long evidence goes to PR Session Notes with a pointer here. **Ship gate:** every row graded, every P0 ✅ → eligible for CHORE(close); any ❌ or empty cell → return to EXECUTE; a P1 ❌ ships only with an Indy-acked deferral quote in Discovery.
 
@@ -238,6 +238,7 @@ No product analytics or funnel change — security-plane observability only; no 
 - **Consults** — Architecture / Legacy-Design / gate-flag triage: {empty at creation}
 - **PLAN discovery (Jul 06, 2026):** `UZ-GRANT-001` ("No integration grant for service", 403, exact-fit hint) was found registered with **zero callers** — pre-registered for this enforcement and never wired. Reused instead of minting `UZ-GRANT-004`; the error-registry edit dropped from Files Changed. Also: `GrantStatus` moves from the grants handler into the lookup module (with a `pub` re-export in the handler) to avoid an http→state import cycle while keeping the status vocabulary single-sourced.
 - **Metrics review** — {empty at creation — expected: "operator-plane warns only, no analytics/funnel playbook update"}
-- **Skill-chain outcomes** — `/write-unit-test`, `/review`, `kishore-babysit-prs`: {empty at creation}
-- **Deferrals** — {empty at creation}
+- **Skill-chain outcomes** — `/write-unit-test` (Hardening mode): 13-row diff ledger resolved — 11 tested, 2 `needs-infra` (mid-request DB-failure injection for the two fail-closed arms; no `pg_terminate_backend` harness exists — both arms are code-forced with no fall-through branch). Found + removed caller-less `freeSet` (RULE NDC, commit `a79bec61`). Red-green proven: `test_mint_requires_approved_grant` and `test_lease_gates_mintable_on_grant` FAIL on parent `7fc4dd6e` (ungated code mints/emits), PASS on HEAD. Mutation testing skipped — no Zig mutation tooling in-repo (justified; comptime + exhaustive-switch style partially compensates). Concurrency: zero new locks/atomics/threads in diff — no new serialization point, existing ≥100-conn posture unchanged. Perf: +1 constant round-trip per mint, +1 per lease (batch `approvedSet` exists precisely to avoid per-credential N+1). `make memleak`: 0 failed. `/review`, `kishore-babysit-prs`: pending.
+- **VERIFY notes** — Test Delta: `unit=2334 integration=255` vs baseline `unit=2327 integration=249` — +3 pure unit, +4 new integration, +2 pre-existing mint suites reclassified under the `integration:` name prefix the tier counter keys on (commit `061200b9`). R5's authored grep was refined at VERIFY (broad `integration_grants` pattern matched comments/route-enum names/CASCADE docs — verified one-by-one as non-readers before narrowing to `FROM core.integration_grants`). S1/S2 graded via the repo's real target names (`test-unit-agentsfleetd`/`lint-zig`) — the authored `make test`/`make lint` targets don't exist in this repo's Makefile.
+- **Deferrals** — none.
 - **Origin (Indy + Orly, Jul 06, 2026):** carved from M102_005 §2 on the approved incident-fleet office-hours design (approach C) — the grant-gate is the single platform prerequisite for shipping the v1.0 wedge fleet to customers; the ingress/CLI/docs tail stays sequenced behind it.
