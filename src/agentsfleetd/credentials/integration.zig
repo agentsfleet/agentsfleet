@@ -168,6 +168,38 @@ pub fn idFromString(s: []const u8) ?Id {
     return std.meta.stringToEnum(Id, s);
 }
 
+/// The `static` integration's wire id — never a grant `service` (static is
+/// resolved inline, not minted), but `toString` must be total.
+const PROVIDER_STATIC: []const u8 = "static";
+
+/// The canonical wire/DB `service` string for `id` — the value stored in
+/// `core.integration_grants.service` (via the grant handler's `common.PROVIDER_*`)
+/// AND emitted on `ExecutionPolicy.mintable`. Explicit, not `@tagName`, so the
+/// grant gate's string comparison against the DB column has one audited source.
+/// The `comptime` block below proves it round-trips through `idFromString`, so a
+/// renamed enum tag or a changed `PROVIDER_*` constant is a COMPILE error — never
+/// a silent grant-check miss that drops a connector's mintable without an error.
+pub fn toString(id: Id) []const u8 {
+    return switch (id) {
+        .static => PROVIDER_STATIC,
+        .github => common.PROVIDER_GITHUB,
+        .zoho => common.PROVIDER_ZOHO,
+        .jira => common.PROVIDER_JIRA,
+        .linear => common.PROVIDER_LINEAR,
+    };
+}
+
+comptime {
+    for (std.enums.values(Id)) |id| {
+        const s = toString(id);
+        if (idFromString(s)) |round| {
+            if (round != id) @compileError("integration.Id.toString/idFromString desync: " ++ @tagName(id));
+        } else {
+            @compileError("integration.Id.toString produced a string idFromString cannot resolve: " ++ @tagName(id));
+        }
+    }
+}
+
 /// Does the production registry mint `provider` via the `oauth2_refresh`
 /// strategy? Comptime-usable — the connector registry (`handlers/connectors/
 /// registry.zig`) calls this in a `comptime {}` block to prove every
@@ -229,6 +261,20 @@ test "idFromString: maps wire values, rejects unknown" {
     try std.testing.expectEqual(Id.linear, idFromString("linear").?);
     // api_key providers never reach the broker, so they are not broker ids.
     try std.testing.expect(idFromString("datadog") == null);
+}
+
+test "toString: the audited enum→service string round-trips through idFromString" {
+    // pin test: these literals ARE the DB `service` column contract + the wire
+    // `mintable.integration` value — the comptime block guards drift, this pins
+    // the exact strings a grant row must carry.
+    try std.testing.expectEqualStrings("static", toString(.static));
+    try std.testing.expectEqualStrings("github", toString(.github));
+    try std.testing.expectEqualStrings("zoho", toString(.zoho));
+    try std.testing.expectEqualStrings("jira", toString(.jira));
+    try std.testing.expectEqualStrings("linear", toString(.linear));
+    inline for (std.enums.values(Id)) |id| {
+        try std.testing.expectEqual(id, idFromString(toString(id)).?);
+    }
 }
 
 test "hasRefreshMint: true only for oauth2_refresh providers (the ① drift guard)" {
