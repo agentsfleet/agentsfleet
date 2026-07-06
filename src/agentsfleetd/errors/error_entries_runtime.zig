@@ -70,14 +70,14 @@ pub const ENTRIES_RUNTIME = [_]Entry{
     e("UZ-MEM-003", .service_unavailable, "Memory backend unavailable", "The memory backend (Postgres memory schema) is unreachable. " ++
         "The fleet falls back to ephemeral workspace memory. Check MEMORY_RUNTIME_URL."), // reachable: no — runner memory-push endpoint (fleet-side), not fetched by ui/packages/app
     // ── AGENT KEYS (workspace-scoped, agt_a prefix) ────────────────────────────
-    e("UZ-APIKEY-001", .unauthorized, "Invalid API key", "API key is invalid or revoked. Mint a replacement with: POST /v1/workspaces/{ws}/fleet-keys"), // reachable: no — fleet-scoped agt_a bearer auth (CLI/runner), not a browser session
+    e("UZ-APIKEY-001", .unauthorized, "Invalid API key", "API key is invalid or revoked. Mint a replacement with: `POST /v1/workspaces/{ws}/fleet-keys`"), // reachable: no — fleet-scoped agt_a bearer auth (CLI/runner), not a browser session
     // ── TENANT API KEYS (tenant-scoped, agt_t prefix) ────────────────────────
     eu("UZ-APIKEY-003", .not_found, "API key not found", "No API key matches the supplied id for this tenant. Verify the id with: GET /v1/api-keys", "We couldn't find that API key. It may have already been deleted — refresh the list."),
     e("UZ-APIKEY-004", .unauthorized, "API key has been revoked", "This key was revoked and can no longer authenticate. Mint a replacement with: POST /v1/api-keys"), // reachable: no — CLI/API-key bearer-auth surface, not a browser session
     eu("UZ-APIKEY-005", .conflict, "Key name already exists in this tenant", "key_name must be unique per tenant. Pick a different name or revoke the existing key first.", "An API key with that name already exists. Pick a different name for this tenant."),
     eu("UZ-APIKEY-006", .conflict, "API key is already revoked", "This key is already revoked. No further action is required.", "That API key is already revoked. Refresh the list to see its current state."),
     eu("UZ-APIKEY-007", .conflict, "active cannot be set to true; mint a new key instead", "Re-activation is not supported. Create a new key via POST /v1/api-keys and revoke the old one.", "A revoked key can't be reactivated. Mint a new key instead."),
-    eu("UZ-APIKEY-008", .conflict, "Active API key must be revoked before deletion", "Revoke the key first with PATCH /v1/api-keys/{id} body {\"active\": false}, then retry DELETE.", "Revoke this key before deleting it. Revoke it first, then delete the revoked key."),
+    eu("UZ-APIKEY-008", .conflict, "Active API key must be revoked before deletion", "Revoke the key first with `PATCH /v1/api-keys/{id}` body `{\"active\": false}`, then retry DELETE.", "Revoke this key before deleting it. Revoke it first, then delete the revoked key."),
     // ── INTEGRATION GRANTS ────────────────────────────────────────────────────
     // UZ-GRANT-001 restored (Jul 06, 2026): believed dead when M116 authored
     // its Dead Code Sweep — that grep matched the code STRING "UZ-GRANT-001",
@@ -88,9 +88,9 @@ pub const ENTRIES_RUNTIME = [_]Entry{
     // merged concurrently with this branch). Restored verbatim; see this
     // spec's Discovery for the cross-PR collision this exposed.
     e("UZ-GRANT-001", .forbidden, "No integration grant for service", "This fleet has no approved grant for the target service. " ++
-        "Request one with: POST /v1/fleets/{id}/integration-requests"), // reachable: no — runner-only mint/lease gate, not fetched by ui/packages/app
+        "Request one with: `POST /v1/workspaces/{ws}/fleets/{id}/integration-requests`"), // reachable: no — runner-only mint/lease gate, not fetched by ui/packages/app
     eu("UZ-GRANT-002", .not_found, "Integration grant not found", "No grant with that id exists for this fleet, or it was already revoked. " ++
-        "List current grants with: GET /v1/workspaces/{ws}/fleets/{id}/integration-grants", "We couldn't find that grant request. It may have already been resolved — refresh the list."),
+        "List current grants with: `GET /v1/workspaces/{ws}/fleets/{id}/integration-grants`", "We couldn't find that grant request. It may have already been resolved — refresh the list."),
     eu("UZ-GRANT-003", .conflict, "Grant already resolved", "This grant was already approved or denied \u{2014} by an earlier click, the dashboard, or an auto-timeout. " ++
         "The original decision stands; this request changed nothing.", S_ALREADY_RESOLVED_USER_MSG),
     // ── CREDENTIAL BROKER (M102 — on-demand mint) ─────────────────────────────
@@ -111,7 +111,7 @@ pub const ENTRIES_RUNTIME = [_]Entry{
         "Start the connect again from the dashboard \u{2014} each attempt issues a fresh single-use state.", "That connection attempt expired or was already used. Start connecting again from the dashboard."),
     eu("UZ-CONN-003", .bad_gateway, "Connector vendor call exceeded its deadline", "An outbound call to the connector's vendor hit its enforced deadline (the vendor accepted the connection, then stalled), could not be deadline-armed and was refused (watchdog unavailable), or the vendor was unreachable (dial/transport failure) \u{2014} the call never runs unbounded. " ++
         "Transient \u{2014} retry; if it persists, check the vendor's status page and this deployment's egress.", "We couldn't reach that service right now. Try again shortly."),
-    eu("UZ-CONN-004", .not_found, "Unknown connector provider", "The {provider} segment does not match any provider in this deployment's connector registry. " ++
+    eu("UZ-CONN-004", .not_found, "Unknown connector provider", "The `{provider}` segment does not match any provider in this deployment's connector registry. " ++
         "List the available providers from the dashboard connectors page (or the catalog endpoint once it ships).", "We don't recognize that connector. Check the available connectors on the dashboard."),
     eu("UZ-CONN-006", .bad_gateway, "Connector OAuth exchange failed", "The connector's OAuth code exchange or provider callback body was rejected. " ++
         "Start the connect again from the dashboard; if it repeats, verify the provider app credentials and redirect URL.", "That connection didn't go through. Try connecting again from the dashboard."),
