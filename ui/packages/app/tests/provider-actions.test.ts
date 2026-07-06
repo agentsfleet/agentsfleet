@@ -26,7 +26,7 @@ import {
   setProviderSelfManagedAction,
   resetProviderAction,
   rotateSecretAction,
-} from "@/app/(dashboard)/settings/models/actions";
+} from "@/app/(dashboard)/w/[workspaceId]/settings/models/actions";
 
 beforeEach(() => {
   vi.clearAllMocks();

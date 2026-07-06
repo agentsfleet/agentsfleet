@@ -2,8 +2,8 @@ import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { routerRefresh } from "./helpers/dashboard-mocks";
-import { resetDashboardMocks, setActiveWorkspaceMock, createWorkspaceActionMock } from "./helpers/dashboard-app-mocks";
+import { routerPush, usePathname } from "./helpers/dashboard-mocks";
+import { resetDashboardMocks, createWorkspaceActionMock } from "./helpers/dashboard-app-mocks";
 import { EVENTS } from "@/lib/analytics/events";
 
 // WorkspaceSwitcher emits the workspace-switched product event after a
@@ -29,15 +29,15 @@ vi.mock("@agentsfleet/design-system", async (orig) => {
 
 // App-specific dashboard mocks — see tests/helpers/dashboard-app-mocks.tsx.
 vi.mock("@/lib/api/fleets", async () => (await import("./helpers/dashboard-app-mocks")).fleetsApiMock());
-vi.mock("@/app/(dashboard)/fleets/actions", async () => (await import("./helpers/dashboard-app-mocks")).fleetActionsMock());
+vi.mock("@/app/(dashboard)/w/[workspaceId]/fleets/actions", async () => (await import("./helpers/dashboard-app-mocks")).fleetActionsMock());
 vi.mock("@/lib/api/tenant_billing", async () => (await import("./helpers/dashboard-app-mocks")).tenantBillingMock());
 vi.mock("@/lib/api/tenant_provider", async () => (await import("./helpers/dashboard-app-mocks")).tenantProviderMock());
 vi.mock("@/app/(dashboard)/settings/billing/components/BillingBalanceCard", async () => (await import("./helpers/dashboard-app-mocks")).billingBalanceCardMock());
 vi.mock("@/app/(dashboard)/settings/billing/components/BillingUsageTab", async () => (await import("./helpers/dashboard-app-mocks")).billingUsageTabMock());
 vi.mock("@/lib/api/events", async () => (await import("./helpers/dashboard-app-mocks")).eventsMock());
 vi.mock("@/lib/api/secrets", async () => (await import("./helpers/dashboard-app-mocks")).secretsApiMock());
-vi.mock("@/app/(dashboard)/secrets/components/AddSecretForm", async () => (await import("./helpers/dashboard-app-mocks")).addSecretFormMock());
-vi.mock("@/app/(dashboard)/secrets/components/SecretsList", async () => (await import("./helpers/dashboard-app-mocks")).secretsListMock());
+vi.mock("@/app/(dashboard)/w/[workspaceId]/secrets/components/AddSecretForm", async () => (await import("./helpers/dashboard-app-mocks")).addSecretFormMock());
+vi.mock("@/app/(dashboard)/w/[workspaceId]/secrets/components/SecretsList", async () => (await import("./helpers/dashboard-app-mocks")).secretsListMock());
 vi.mock("@/app/(dashboard)/actions", async () => (await import("./helpers/dashboard-app-mocks")).dashboardActionsMock());
 
 beforeEach(() => {
@@ -52,7 +52,6 @@ describe("WorkspaceSwitcher component", () => {
   async function renderSwitcher(props: {
     workspaces?: Array<{ id: string; name: string | null }>;
     activeId?: string | null;
-    onSwitch?: (id: string) => void | Promise<void>;
   } = {}) {
     const { default: WorkspaceSwitcher } = await import(
       "../components/layout/WorkspaceSwitcher"
@@ -64,7 +63,6 @@ describe("WorkspaceSwitcher component", () => {
           { id: "ws_2", name: "Beta" },
         ],
         activeId: props.activeId ?? "ws_1",
-        onSwitch: props.onSwitch ?? setActiveWorkspaceMock,
       } as never),
     );
   }
@@ -73,7 +71,7 @@ describe("WorkspaceSwitcher component", () => {
     render(
       React.createElement(
         (await import("../components/layout/WorkspaceSwitcher")).default,
-        { workspaces: [], activeId: null, onSwitch: setActiveWorkspaceMock } as never,
+        { workspaces: [], activeId: null } as never,
       ),
     );
     // The empty case is exactly when create matters most — switcher must show.
@@ -99,7 +97,6 @@ describe("WorkspaceSwitcher component", () => {
         {
           workspaces: manyWorkspaces,
           activeId: "ws_0",
-          onSwitch: setActiveWorkspaceMock,
         } as never,
       ),
     );
@@ -132,21 +129,45 @@ describe("WorkspaceSwitcher component", () => {
     expect(screen.getByLabelText(/select workspace/i).textContent).toContain("Alpha");
   });
 
-  it("picking a different workspace invokes the onSwitch callback", async () => {
+  it("picking a different workspace navigates to its URL (same sub-path), writes no cookie", async () => {
     const user = userEvent.setup({ delay: null });
+    // Switching preserves the current sub-page: /w/ws_1/fleets → /w/ws_2/fleets.
+    usePathname.mockReturnValue("/w/ws_1/fleets");
     await renderSwitcher();
     const items = screen.getAllByRole("menuitem");
     // Second item = Beta (different from active ws_1)
     await user.click(items[1]!);
     await waitFor(() =>
-      expect(setActiveWorkspaceMock).toHaveBeenCalledWith("ws_2"),
+      expect(routerPush).toHaveBeenCalledWith("/w/ws_2/fleets"),
     );
-    expect(routerRefresh).toHaveBeenCalled();
     // The product event fires with the picked workspace id after the switch.
     expect(captureProductEventMock).toHaveBeenCalledWith(EVENTS.workspace_switched, { workspace_id: "ws_2" });
     await waitFor(() =>
       expect(screen.getByText("Workspace changed to Beta.")).toBeTruthy(),
     );
+  });
+
+  it("collapses a resource-detail path to its section on switch (avoids a guaranteed 404)", async () => {
+    const user = userEvent.setup({ delay: null });
+    // On /w/ws_1/fleets/fleet_abc the fleet id belongs to ws_1; switching to ws_2
+    // lands on ws_2's fleets list, not /w/ws_2/fleets/fleet_abc (which would 404).
+    usePathname.mockReturnValue("/w/ws_1/fleets/fleet_abc");
+    await renderSwitcher();
+    const items = screen.getAllByRole("menuitem");
+    await user.click(items[1]!);
+    await waitFor(() => expect(routerPush).toHaveBeenCalledWith("/w/ws_2/fleets"));
+  });
+
+  it("navigates into the displayed workspace from a tenant page (activeId is only a display fallback)", async () => {
+    const user = userEvent.setup({ delay: null });
+    // On /settings/billing there is no /w/ segment, so `activeId` is the fallback
+    // first workspace. Picking it must still navigate (not no-op) into its home.
+    usePathname.mockReturnValue("/settings/billing");
+    await renderSwitcher({ activeId: "ws_1" });
+    const items = screen.getAllByRole("menuitem");
+    // First item = Alpha (the displayed-active fallback)
+    await user.click(items[0]!);
+    await waitFor(() => expect(routerPush).toHaveBeenCalledWith("/w/ws_1"));
   });
 
   it("uses the workspace id in the switch toast when the workspace has no name", async () => {
@@ -180,20 +201,6 @@ describe("WorkspaceSwitcher component", () => {
     );
   });
 
-  it("shows a failure toast when switching workspaces rejects", async () => {
-    const user = userEvent.setup({ delay: null });
-    const onSwitch = vi.fn().mockRejectedValue(new Error("nope"));
-    await renderSwitcher({ onSwitch });
-    const items = screen.getAllByRole("menuitem");
-    await user.click(items[1]!);
-    await waitFor(() =>
-      expect(screen.getByText("Workspace switch failed.")).toBeTruthy(),
-    );
-    expect(routerRefresh).not.toHaveBeenCalled();
-    // A failed switch must not emit the product event.
-    expect(captureProductEventMock).not.toHaveBeenCalled();
-  });
-
   it("picking the active workspace is a no-op", async () => {
     const user = userEvent.setup({ delay: null });
     await renderSwitcher();
@@ -202,8 +209,8 @@ describe("WorkspaceSwitcher component", () => {
     await user.click(items[0]!);
     // Give transition a tick
     await new Promise((r) => setTimeout(r, 10));
-    expect(setActiveWorkspaceMock).not.toHaveBeenCalled();
-    expect(routerRefresh).not.toHaveBeenCalled();
+    expect(routerPush).not.toHaveBeenCalled();
+    expect(captureProductEventMock).not.toHaveBeenCalled();
   });
 
   it("has no Manage workspace item — switching/creating are the only actions", async () => {
@@ -253,7 +260,7 @@ describe("CreateWorkspaceDialog component", () => {
     return { onOpenChange };
   }
 
-  it("submits the trimmed name, then closes and refreshes on success", async () => {
+  it("submits the trimmed name, then closes and routes to the new workspace on success", async () => {
     const user = userEvent.setup({ delay: null });
     const onCreated = vi.fn();
     createWorkspaceActionMock.mockResolvedValueOnce({
@@ -268,7 +275,8 @@ describe("CreateWorkspaceDialog component", () => {
     );
     expect(onCreated).toHaveBeenCalledWith("acme-prod");
     expect(onOpenChange).toHaveBeenCalledWith(false);
-    expect(routerRefresh).toHaveBeenCalled();
+    // Selection is the URL: on success we navigate to the new workspace's home.
+    expect(routerPush).toHaveBeenCalledWith("/w/ws_x");
   });
 
   it("omits a blank name so the server generates a Heroku-style one", async () => {
@@ -298,7 +306,7 @@ describe("CreateWorkspaceDialog component", () => {
       expect(screen.getByTestId("workspace-create-error")).toBeTruthy(),
     );
     expect(onOpenChange).not.toHaveBeenCalledWith(false);
-    expect(routerRefresh).not.toHaveBeenCalled();
+    expect(routerPush).not.toHaveBeenCalled();
   });
 
   it("submits when Enter is pressed inside the name field", async () => {

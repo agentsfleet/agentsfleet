@@ -18,7 +18,7 @@ const { approveActionMock, denyActionMock, routerPush, routerRefresh, capturePro
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: routerPush, refresh: routerRefresh }),
 }));
-vi.mock("@/app/(dashboard)/approvals/actions", () => ({
+vi.mock("@/app/(dashboard)/w/[workspaceId]/approvals/actions", () => ({
   approveApprovalAction: approveActionMock,
   denyApprovalAction: denyActionMock,
 }));
@@ -26,7 +26,7 @@ vi.mock("@/lib/analytics/posthog", () => ({
   captureProductEvent: captureProductEventMock,
 }));
 
-import ResolveButtons from "@/app/(dashboard)/approvals/[gateId]/ResolveButtons";
+import ResolveButtons from "@/app/(dashboard)/w/[workspaceId]/approvals/[gateId]/ResolveButtons";
 import { APPROVAL_DECISION } from "@/lib/api/approvals";
 import { EVENTS } from "@/lib/analytics/events";
 
@@ -75,7 +75,7 @@ describe("ResolveButtons — approve happy path", () => {
     fireEvent.click(screen.getByRole("button", { name: /^approve$/i }));
     await waitFor(() => {
       expect(approveActionMock).toHaveBeenCalledWith(WORKSPACE_ID, GATE_ID, "looks good");
-      expect(routerPush).toHaveBeenCalledWith("/approvals");
+      expect(routerPush).toHaveBeenCalledWith(`/w/${WORKSPACE_ID}/approvals`);
       expect(routerRefresh).toHaveBeenCalled();
     });
     expect(captureProductEventMock).toHaveBeenCalledTimes(1);
@@ -138,7 +138,7 @@ describe("ResolveButtons — deny happy path", () => {
     fireEvent.click(screen.getByRole("button", { name: /^deny$/i }));
     await waitFor(() => {
       expect(denyActionMock).toHaveBeenCalled();
-      expect(routerPush).toHaveBeenCalledWith("/approvals");
+      expect(routerPush).toHaveBeenCalledWith(`/w/${WORKSPACE_ID}/approvals`);
     });
     expect(captureProductEventMock).toHaveBeenCalledWith(EVENTS.approval_resolved, {
       gate_id: GATE_ID,

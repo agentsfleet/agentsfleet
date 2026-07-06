@@ -11,11 +11,13 @@ test.describe("App smoke", () => {
   });
 
   test("protected route stays on first-party app surfaces", async ({ page }) => {
-    await page.goto("/fleets");
+    // `/` is the dashboard entry (redirects to `/w/<id>` when authed, `/sign-in`
+    // when not). Unauthenticated here, so clerkMiddleware bounces to /sign-in.
+    await page.goto("/");
     await page.waitForTimeout(MS_PER_SECOND);
     const redirected = new URL(page.url());
     expect(redirected.hostname).toBe(EXPECTED_HOSTNAME);
-    expect(["/sign-in", "/fleets", "/"]).toContain(redirected.pathname);
+    expect(["/sign-in", "/"]).toContain(redirected.pathname);
     expect(page.url()).not.toContain("accounts.dev");
     await expect(page.locator("body")).toContainText(/agentsfleet|Fleets|Dashboard/);
   });

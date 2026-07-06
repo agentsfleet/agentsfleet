@@ -45,7 +45,7 @@ import {
   installFleetAction,
   steerFleetAction,
   onboardLibraryEntryAction,
-} from "@/app/(dashboard)/fleets/actions";
+} from "@/app/(dashboard)/w/[workspaceId]/fleets/actions";
 
 beforeEach(() => {
   vi.clearAllMocks();

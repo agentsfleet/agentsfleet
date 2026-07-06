@@ -5,7 +5,7 @@ import {
   SECRET_DATA_NOT_OBJECT,
   jsonParseErrorMessage,
   parseSecretDataObject,
-} from "../app/(dashboard)/secrets/lib/secret-data";
+} from "../app/(dashboard)/w/[workspaceId]/secrets/lib/secret-data";
 
 // credential-data is the shared credential-body contract used by both
 // EditCredentialDialog (JSON edit) and the credential write paths. The

@@ -21,7 +21,6 @@ export const routerPush = vi.fn();
 export const routerRefresh = vi.fn();
 export const authMock = vi.fn();
 export const getTokenFn = vi.fn().mockResolvedValue("token_abc");
-export const resolveActiveWorkspace = vi.fn();
 export const listTenantWorkspacesCached = vi.fn().mockResolvedValue({ items: [], total: 0 });
 export const fetchMock = vi.fn();
 export const clipboardWriteText = vi.fn().mockResolvedValue(undefined);
@@ -53,40 +52,13 @@ export function clerkServerMock() {
   return { auth: authMock };
 }
 
-// `@/lib/workspace` mock. The M101 resolver split (`resolveActiveWorkspaceId`
-// + `withWorkspaceScope`) is derived from the legacy `resolveActiveWorkspace`
-// mock so the dozens of shards that configure `resolveActiveWorkspace
-// .mockResolvedValue({ id })` / `.mockResolvedValue(null)` keep working
-// unchanged: an object → that workspace id is active; `null` → no workspace.
-// `orFallback` mirrors the real impl (rethrow a 403/404 so the scope retry can
-// fire, degrade everything else).
-function isWorkspaceRejection(err: unknown): boolean {
-  return (
-    !!err &&
-    typeof err === "object" &&
-    "status" in err &&
-    ((err as { status: number }).status === 403 || (err as { status: number }).status === 404)
-  );
-}
-
+// `@/lib/workspace` mock (M118). The module is slimmed to a single survivor —
+// `listTenantWorkspacesCached` — now that the active workspace is an explicit
+// URL segment rather than a resolved cookie/claim. Pages read
+// `params.workspaceId`; the switcher/nav derive it from the route.
 export function workspaceMock() {
   return {
-    resolveActiveWorkspace,
     listTenantWorkspacesCached,
-    resolveActiveWorkspaceId: async (token: string) => {
-      const ws = (await resolveActiveWorkspace(token)) as { id: string } | null;
-      return ws ? { id: ws.id, source: "cookie" as const } : null;
-    },
-    withWorkspaceScope: async <T,>(token: string, fn: (workspaceId: string) => Promise<T>) => {
-      const ws = (await resolveActiveWorkspace(token)) as { id: string } | null;
-      return ws ? fn(ws.id) : null;
-    },
-    orFallback:
-      <T,>(fallback: T) =>
-      (err: unknown): T => {
-        if (isWorkspaceRejection(err)) throw err;
-        return fallback;
-      },
   };
 }
 

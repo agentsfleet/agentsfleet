@@ -9,7 +9,10 @@ const EXPECTED_HOSTNAME = new URL(
   process.env.BASE_URL ?? "http://localhost:3000",
 ).hostname;
 
-const M27_ROUTES = ["/", "/fleets", "/secrets", "/settings"];
+// Workspace-scoped routes now live under `/w/<id>/…`; a synthetic id suffices
+// here because these are unauthenticated probes — clerkMiddleware bounces to
+// /sign-in before the ownership guard runs. `/` and `/settings` stay at root.
+const M27_ROUTES = ["/", "/w/ws_probe/fleets", "/w/ws_probe/secrets", "/settings"];
 
 test.describe("M27 dashboard routes — unauthenticated smoke", () => {
   for (const route of M27_ROUTES) {

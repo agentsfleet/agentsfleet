@@ -22,7 +22,7 @@ import { ActivityIcon } from "lucide-react";
 import {
   listWorkspaceEventsAction,
   listFleetEventsAction,
-} from "@/app/(dashboard)/events/actions";
+} from "@/app/(dashboard)/w/[workspaceId]/events/actions";
 import type { EventRow, EventsPage } from "@/lib/api/events";
 import { presentErrorString } from "@/lib/errors";
 

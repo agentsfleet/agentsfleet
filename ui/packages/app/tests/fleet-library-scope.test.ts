@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { hasLibraryWriteScope } from "../app/(dashboard)/fleets/scope";
+import { hasLibraryWriteScope } from "../app/(dashboard)/w/[workspaceId]/fleets/scope";
 
 describe("test_add_template_hidden_without_scope", () => {
   it("accepts a space-delimited library:write scope string", () => {

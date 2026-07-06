@@ -24,7 +24,7 @@ const {
 
 vi.mock("next/navigation", async () => (await import("./helpers/dashboard-mocks")).nextNavigationMock());
 vi.mock("next/link", async () => (await import("./helpers/dashboard-mocks")).nextLinkMock());
-vi.mock("@/app/(dashboard)/fleets/actions", () => ({
+vi.mock("@/app/(dashboard)/w/[workspaceId]/fleets/actions", () => ({
   installFleetAction: installFleetActionMock,
 }));
 vi.mock("@/lib/analytics/posthog", () => ({ captureProductEvent: captureProductEventMock }));
@@ -32,9 +32,9 @@ vi.mock("@/components/domain/useFleetEventStream", () => ({
   useFleetEventStream: useFleetEventStreamMock,
 }));
 
-import { InstallStates } from "../app/(dashboard)/fleets/new/InstallStates";
-import { InstallStreamSteps } from "../app/(dashboard)/fleets/new/InstallStreamSteps";
-import type { InstallSource } from "../app/(dashboard)/fleets/new/install-flow";
+import { InstallStates } from "../app/(dashboard)/w/[workspaceId]/fleets/new/InstallStates";
+import { InstallStreamSteps } from "../app/(dashboard)/w/[workspaceId]/fleets/new/InstallStreamSteps";
+import type { InstallSource } from "../app/(dashboard)/w/[workspaceId]/fleets/new/install-flow";
 
 // A platform gallery entry — installs by slug (`platform_library_id`).
 const TEMPLATE_GH: FleetLibraryGalleryEntry = {
@@ -144,7 +144,7 @@ describe("test_install_states_render", () => {
     renderStates(TEMPLATE_GH, []); // github not present
     await waitFor(() => expect(screen.getByText(/first run: connect github/i)).toBeTruthy());
     const link = screen.getByRole("link", { name: /connect github/i });
-    expect(link.getAttribute("href")).toBe("/secrets");
+    expect(link.getAttribute("href")).toBe("/w/ws_1/secrets");
     // Purpose-driven copy from the template's per-credential reason (data-driven).
     expect(screen.getByText(/review your pull requests/i)).toBeTruthy();
     // Create is gated — no fleet created yet.
@@ -193,7 +193,7 @@ describe("test_install_states_render", () => {
 
     await waitFor(() => expect(screen.getByText(/first run: connect zoho/i)).toBeTruthy());
     expect(screen.getByRole("link", { name: /add token/i }).getAttribute("href")).toBe(
-      "/secrets",
+      "/w/ws_1/secrets",
     );
   });
 
@@ -315,7 +315,7 @@ describe("test_install_status_stream — InstallStreamSteps consumes the SSE str
 // ── 9.6: install done routes into the fleet (the steer/chat) ─────────────────
 
 describe("test_install_lands_in_steer", () => {
-  it("create → ready → Open fleet pushes to /fleets/{id} (the full-height steer/chat)", async () => {
+  it("create → ready → Open fleet pushes to /w/ws_1/fleets/{id} (the full-height steer/chat)", async () => {
     installFleetActionMock.mockResolvedValue({ ok: true, data: { fleet_id: "zom_steer" } });
     // The fleet exists and the stream reports ready → Open fleet is offered.
     stubStream(INSTALL_STEP.READY);
@@ -324,7 +324,7 @@ describe("test_install_lands_in_steer", () => {
 
     await waitFor(() => expect(screen.getByRole("button", { name: /open fleet/i })).toBeTruthy());
     await user.click(screen.getByRole("button", { name: /open fleet/i }));
-    expect(routerPush).toHaveBeenCalledWith("/fleets/zom_steer");
+    expect(routerPush).toHaveBeenCalledWith("/w/ws_1/fleets/zom_steer");
     expect(captureProductEventMock).toHaveBeenCalled();
     expect(routerRefresh).not.toHaveBeenCalled();
   });

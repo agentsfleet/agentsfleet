@@ -12,15 +12,15 @@ const { onboardLibraryEntryActionMock, captureProductEventMock } = vi.hoisted(()
 }));
 
 vi.mock("next/navigation", async () => (await import("./helpers/dashboard-mocks")).nextNavigationMock());
-vi.mock("@/app/(dashboard)/fleets/actions", () => ({
+vi.mock("@/app/(dashboard)/w/[workspaceId]/fleets/actions", () => ({
   onboardLibraryEntryAction: onboardLibraryEntryActionMock,
 }));
 vi.mock("@/lib/analytics/posthog", () => ({
   captureProductEvent: captureProductEventMock,
 }));
 
-import AddLibraryDialog from "../app/(dashboard)/fleets/new/AddLibraryDialog";
-import { CREATE_LIBRARY_DOC_URL } from "../app/(dashboard)/fleets/new/library-docs";
+import AddLibraryDialog from "../app/(dashboard)/w/[workspaceId]/fleets/new/AddLibraryDialog";
+import { CREATE_LIBRARY_DOC_URL } from "../app/(dashboard)/w/[workspaceId]/fleets/new/library-docs";
 
 const onboarded = {
   id: "tmpl_1",

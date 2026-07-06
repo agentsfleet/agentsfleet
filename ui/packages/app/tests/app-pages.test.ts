@@ -8,7 +8,7 @@ const redirect = vi.fn((path: string) => {
 const notFound = vi.fn(() => {
   throw new Error("notFound");
 });
-const usePathname = vi.fn(() => "/");
+const usePathname = vi.fn(() => "/w/ws_1");
 const auth = vi.fn();
 const useUser = vi.fn(() => ({ isLoaded: false, user: null }));
 
@@ -59,11 +59,14 @@ vi.mock("lucide-react", () => ({
   ChevronDownIcon: () => React.createElement("svg", { "data-icon": "ChevronDownIcon" }),
 }));
 
+// M118: `lib/workspace` is slimmed to a single survivor — the active workspace
+// is now an explicit `/w/<id>` URL segment, not a resolved cookie/claim. The
+// dashboard layout still fetches the full owned list for the switcher; seed one
+// so the nav resolves its workspace-scoped hrefs under `/w/ws_1/…`.
 vi.mock("@/lib/workspace", () => ({
-  resolveActiveWorkspace: vi.fn().mockResolvedValue(null),
-  resolveActiveWorkspaceId: vi.fn().mockResolvedValue(null),
-  withWorkspaceScope: vi.fn().mockResolvedValue(null),
-  listTenantWorkspacesCached: vi.fn().mockResolvedValue({ items: [], total: 0 }),
+  listTenantWorkspacesCached: vi
+    .fn()
+    .mockResolvedValue({ items: [{ id: "ws_1", name: "Alpha", created_at: 1 }], total: 1 }),
 }));
 
 // RootLayout reads the theme cookie server-side (SSR data-theme stamp).
@@ -100,13 +103,20 @@ describe("app layouts and pages", () => {
     // Configuration nav carries the consolidated Models destination
     // (the standalone Credentials vault was folded into it).
     expect(dashboardMarkup).toContain(">Models<");
-    expect(dashboardMarkup).toContain('href="/settings/models"');
+    // M118: the Models destination is workspace-scoped — it carries the `/w/<id>`
+    // segment (the switcher-seeded first workspace) rather than a bare root path.
+    expect(dashboardMarkup).toContain('href="/w/ws_1/settings/models"');
     expect(dashboardMarkup).not.toContain('href="/credentials"');
   });
 
-  it("dashboard entry page renders page header when authenticated", async () => {
-    const { default: DashboardPage } = await import("../app/(dashboard)/page");
-    const markup = renderToStaticMarkup(await DashboardPage());
+  it("workspace entry page renders page header when authenticated", async () => {
+    // M118: the dashboard home moved under `/w/[workspaceId]` and reads its
+    // workspace from the route param; the bare `(dashboard)` root now only
+    // redirects to the first owned workspace.
+    const { default: DashboardPage } = await import("../app/(dashboard)/w/[workspaceId]/page");
+    const markup = renderToStaticMarkup(
+      await DashboardPage({ params: Promise.resolve({ workspaceId: "ws_1" }) }),
+    );
     expect(markup).toContain("Dashboard");
   });
 

@@ -23,40 +23,21 @@ vi.mock("next/navigation", () => ({
 }));
 vi.mock("@clerk/nextjs/server", () => ({ auth }));
 
-// Stub the scope wrapper; provide a self-contained `orFallback` that mirrors the
-// real one (rethrow a 403/404, degrade everything else). Not importOriginal —
-// the real module pulls in clerk/next-headers which collides with hoisting.
-vi.mock("@/lib/workspace", () => ({
-  withWorkspaceScope: vi.fn(),
-  orFallback:
-    <T,>(fallback: T) =>
-    (err: unknown): T => {
-      if (
-        err &&
-        typeof err === "object" &&
-        "status" in err &&
-        ((err as { status: number }).status === 403 || (err as { status: number }).status === 404)
-      )
-        throw err;
-      return fallback;
-    },
-}));
-
 // The page's data reads come from the cache()-wrapped helpers; mock those rather
 // than the underlying API so the React `cache()` primitive isn't exercised here
 // (it has its own direct test in tests/reads-cache.test.ts).
-vi.mock("@/app/(dashboard)/settings/models/lib/reads", () => ({
+vi.mock("@/app/(dashboard)/w/[workspaceId]/settings/models/lib/reads", () => ({
   getTenantProviderCached,
   listSecretsCached,
 }));
 
-vi.mock("@/app/(dashboard)/settings/models/components/ModelCatalogueProvider", () => ({
+vi.mock("@/app/(dashboard)/w/[workspaceId]/settings/models/components/ModelCatalogueProvider", () => ({
   ModelCatalogueProvider: ({ children }: React.PropsWithChildren) =>
     React.createElement("div", { "data-catalogue-provider": "1" }, children),
 }));
 // The page's own contract is just: pass workspaceId/provider/secrets through
 // to ProviderSwitchList, which owns rendering the hero row internally.
-vi.mock("@/app/(dashboard)/settings/models/components/ProviderSwitchList", () => ({
+vi.mock("@/app/(dashboard)/w/[workspaceId]/settings/models/components/ProviderSwitchList", () => ({
   default: ({ workspaceId, provider }: { workspaceId: string; provider: unknown }) =>
     React.createElement("div", {
       "data-testid": "provider-switch-list",
@@ -71,8 +52,14 @@ vi.mock("lucide-react", () => {
   return { ZapIcon: make("ZapIcon") };
 });
 
-import { withWorkspaceScope } from "@/lib/workspace";
 import { PROVIDER_MODE } from "@/lib/types";
+
+// The workspace id now comes from the route param; the page reads it from
+// `params` and forwards it to its data reads.
+const WORKSPACE_ID = "ws_1";
+function renderPage(Page: (args: { params: Promise<{ workspaceId: string }> }) => Promise<React.ReactElement>) {
+  return Page({ params: Promise.resolve({ workspaceId: WORKSPACE_ID }) });
+}
 
 const ANTHROPIC_SECRET_NAME = "anthropic-prod";
 
@@ -89,10 +76,6 @@ function selfManagedProvider() {
 beforeEach(() => {
   vi.clearAllMocks();
   auth.mockResolvedValue({ getToken: vi.fn().mockResolvedValue("token_123") });
-  // Default: a workspace exists — run the page's data fn against `ws_1`.
-  vi.mocked(withWorkspaceScope).mockImplementation(
-    async (_token: string, fn: (workspaceId: string) => Promise<unknown>) => fn("ws_1"),
-  );
 });
 afterEach(() => vi.clearAllMocks());
 
@@ -105,8 +88,8 @@ describe("Models page", () => {
       ],
     });
 
-    const { default: Page } = await import("../app/(dashboard)/settings/models/page");
-    const markup = renderToStaticMarkup(await Page());
+    const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/settings/models/page");
+    const markup = renderToStaticMarkup(await renderPage(Page));
 
     // Title + description.
     expect(markup).toContain("Models");
@@ -123,8 +106,8 @@ describe("Models page", () => {
     getTenantProviderCached.mockRejectedValue(new Error("503"));
     listSecretsCached.mockResolvedValue({ secrets: [] });
 
-    const { default: Page } = await import("../app/(dashboard)/settings/models/page");
-    const markup = renderToStaticMarkup(await Page());
+    const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/settings/models/page");
+    const markup = renderToStaticMarkup(await renderPage(Page));
 
     // Provider error → `provider` is null; the page still renders, passing
     // null through to the switch list (which degrades its hero row to DEFAULT).
@@ -136,24 +119,16 @@ describe("Models page", () => {
     getTenantProviderCached.mockResolvedValue(selfManagedProvider());
     listSecretsCached.mockRejectedValue(new Error("503"));
 
-    const { default: Page } = await import("../app/(dashboard)/settings/models/page");
-    const markup = renderToStaticMarkup(await Page());
+    const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/settings/models/page");
+    const markup = renderToStaticMarkup(await renderPage(Page));
 
     expect(markup).toContain('data-testid="provider-switch-list"');
     expect(markup).toContain('data-provider="present"');
   });
 
-  it("renders the no-workspace empty state under the Models title", async () => {
-    vi.mocked(withWorkspaceScope).mockResolvedValue(null);
-    const { default: Page } = await import("../app/(dashboard)/settings/models/page");
-    const markup = renderToStaticMarkup(await Page());
-    expect(markup).toContain("Models");
-    expect(markup).toContain("No workspace yet");
-  });
-
   it("redirects to /sign-in when unauthenticated", async () => {
     auth.mockResolvedValue({ getToken: vi.fn().mockResolvedValue(null) });
-    const { default: Page } = await import("../app/(dashboard)/settings/models/page");
-    await expect(Page()).rejects.toThrow("redirect:/sign-in");
+    const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/settings/models/page");
+    await expect(renderPage(Page)).rejects.toThrow("redirect:/sign-in");
   });
 });

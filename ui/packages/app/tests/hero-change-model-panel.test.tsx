@@ -11,12 +11,12 @@ const setProviderSelfManagedAction = vi.hoisted(() => vi.fn());
 const captureModelChanged = vi.hoisted(() => vi.fn());
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: routerRefresh, push: vi.fn() }) }));
-vi.mock("@/app/(dashboard)/settings/models/actions", () => ({ setProviderSelfManagedAction }));
-vi.mock("@/app/(dashboard)/settings/models/lib/track", () => ({ captureModelChanged }));
+vi.mock("@/app/(dashboard)/w/[workspaceId]/settings/models/actions", () => ({ setProviderSelfManagedAction }));
+vi.mock("@/app/(dashboard)/w/[workspaceId]/settings/models/lib/track", () => ({ captureModelChanged }));
 vi.mock("@agentsfleet/design-system", async () => (await import("./helpers/models-component-mocks")).designSystemStub());
-vi.mock("@/app/(dashboard)/settings/models/components/ProviderModelSelect", async () => (await import("./helpers/models-component-mocks")).providerModelSelectStub());
+vi.mock("@/app/(dashboard)/w/[workspaceId]/settings/models/components/ProviderModelSelect", async () => (await import("./helpers/models-component-mocks")).providerModelSelectStub());
 
-import HeroChangeModelPanel from "@/app/(dashboard)/settings/models/components/HeroChangeModelPanel";
+import HeroChangeModelPanel from "@/app/(dashboard)/w/[workspaceId]/settings/models/components/HeroChangeModelPanel";
 
 beforeEach(() => {
   vi.clearAllMocks();

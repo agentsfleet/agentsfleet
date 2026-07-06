@@ -4,15 +4,15 @@ import { cleanup, render, screen } from "@testing-library/react";
 import { resetCommonMocks } from "./helpers/dashboard-mocks";
 
 vi.mock("next/navigation", async () => (await import("./helpers/dashboard-mocks")).nextNavigationMock());
-vi.mock("@/app/(dashboard)/fleets/actions", () => ({
+vi.mock("@/app/(dashboard)/w/[workspaceId]/fleets/actions", () => ({
   onboardLibraryEntryAction: vi.fn(),
 }));
 vi.mock("@/lib/analytics/posthog", () => ({
   captureProductEvent: vi.fn(),
 }));
 
-import AddLibraryDialog from "../app/(dashboard)/fleets/new/AddLibraryDialog";
-import { InstallSourceSelector } from "../app/(dashboard)/fleets/new/InstallSourceSelector";
+import AddLibraryDialog from "../app/(dashboard)/w/[workspaceId]/fleets/new/AddLibraryDialog";
+import { InstallSourceSelector } from "../app/(dashboard)/w/[workspaceId]/fleets/new/InstallSourceSelector";
 
 beforeEach(() => {
   vi.clearAllMocks();

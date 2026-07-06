@@ -18,6 +18,7 @@ import { signInAs } from "./fixtures/auth";
 import { clientFor } from "./fixtures/api-client";
 import { getDefaultWorkspaceId } from "./fixtures/seed";
 import { FIXTURE_KEY } from "./fixtures/constants";
+import { gotoWorkspace } from "./fixtures/nav";
 
 const ACTION_TIMEOUT_MS = 15_000;
 
@@ -46,7 +47,7 @@ test.describe("secrets lifecycle", () => {
     createdName = name;
 
     await signInAs(page, FIXTURE_KEY.regular);
-    await page.goto("/secrets");
+    await gotoWorkspace(page, FIXTURE_KEY.regular, "secrets");
     await expect(page.getByRole("heading", { name: /^secrets & envs$/i })).toBeVisible();
 
     // Add via the field/value builder, opened in a dialog.

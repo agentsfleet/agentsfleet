@@ -22,7 +22,7 @@ const {
 
 vi.mock("next/navigation", async () => (await import("./helpers/dashboard-mocks")).nextNavigationMock());
 vi.mock("next/link", async () => (await import("./helpers/dashboard-mocks")).nextLinkMock());
-vi.mock("@/app/(dashboard)/fleets/actions", () => ({
+vi.mock("@/app/(dashboard)/w/[workspaceId]/fleets/actions", () => ({
   installFleetAction: installFleetActionMock,
 }));
 vi.mock("@/lib/analytics/posthog", () => ({ captureProductEvent: captureProductEventMock }));
@@ -30,7 +30,7 @@ vi.mock("@/components/domain/useFleetEventStream", () => ({
   useFleetEventStream: useFleetEventStreamMock,
 }));
 
-import { InstallFleet } from "../app/(dashboard)/fleets/new/InstallFleet";
+import { InstallFleet } from "../app/(dashboard)/w/[workspaceId]/fleets/new/InstallFleet";
 
 // A platform gallery entry (installs by slug) and a tenant one (installs by
 // UUID). Mirrors GET /v1/workspaces/{ws}/fleet-libraries.

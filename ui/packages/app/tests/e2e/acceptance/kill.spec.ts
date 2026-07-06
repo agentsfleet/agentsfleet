@@ -1,11 +1,11 @@
 /**
  * kill.spec.ts — operator kills a running fleet via the dashboard.
  *
- * Wire: API-seed → /fleets/[id] → KillSwitch "Kill" → ConfirmDialog
- * confirm → return to /fleets and assert the row's `data-state` is
+ * Wire: API-seed → /w/[workspaceId]/fleets/[id] → KillSwitch "Kill" → ConfirmDialog
+ * confirm → return to /w/[workspaceId]/fleets and assert the row's `data-state` is
  * `failed` (the dashboard's translation of agentsfleetd's `killed` status,
  * per `liveStateOf` in
- * `app/(dashboard)/fleets/components/FleetsList.tsx:19`).
+ * `app/(dashboard)/w/[workspaceId]/fleets/components/FleetsList.tsx:19`).
  *
  * Sister to lifecycle.spec.ts; both exercise the same KillSwitch +
  * ConfirmDialog wiring but with different target statuses. Killing is
@@ -19,6 +19,7 @@ import { expectDetailKilled, expectRowState, killFleet } from "./fixtures/lifecy
 import { getDefaultWorkspaceId, seedFleet } from "./fixtures/seed";
 import { cleanWorkspaceFleets } from "./fixtures/teardown";
 import { FIXTURE_KEY } from "./fixtures/constants";
+import { workspaceHref, workspaceUrlPattern } from "./fixtures/nav";
 
 test.describe("kill", () => {
   test("Kill transitions the row's data-state from live to failed (terminal)", async ({
@@ -30,15 +31,15 @@ test.describe("kill", () => {
     const seeded = await seedFleet(FIXTURE_KEY.regular, ws, { name });
 
     await signInAs(page, FIXTURE_KEY.regular);
-    await page.goto(`/fleets/${seeded.id}`);
-    await expect(page).toHaveURL(new RegExp(`/fleets/${seeded.id}(\\?|$)`));
+    await page.goto(workspaceHref(ws, `fleets/${seeded.id}`));
+    await expect(page).toHaveURL(workspaceUrlPattern(`fleets/${seeded.id}`));
 
     await killFleet(page);
     await expectDetailKilled(page);
 
     // Dashboard listing: row still appears (list.zig does not filter killed
     // rows) but state dot is `failed`.
-    await page.goto("/fleets");
+    await page.goto(workspaceHref(ws, "fleets"));
     await expectRowState(page, seeded.id, "failed");
   });
 
