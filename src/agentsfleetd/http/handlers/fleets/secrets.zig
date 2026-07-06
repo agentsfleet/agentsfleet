@@ -137,7 +137,7 @@ pub fn innerDeleteSecret(
     defer access.deinit(hx.alloc);
 
     const key_name = credential_key.allocKeyName(hx.alloc, secret_name) catch {
-        common.internalOperationError(hx.res, "Allocation failed", hx.req_id);
+        common.internalOperationError(hx.res, "Failed to process the secret name", hx.req_id);
         return;
     };
     defer hx.alloc.free(key_name);
@@ -185,7 +185,7 @@ pub fn innerListSecrets(hx: hx_mod.Hx, req: *httpz.Request, workspace_id: []cons
 fn respondSecretList(hx: hx_mod.Hx, creds: []const secret_list.SecretListRow) void {
     hx.res.status = @intFromEnum(std.http.Status.ok);
     hx.res.json(.{ .secrets = creds }, .{ .emit_null_optional_fields = false }) catch {
-        common.internalOperationError(hx.res, "Failed to serialize secret list", hx.req_id);
+        common.internalOperationError(hx.res, "Failed to build the secret list", hx.req_id);
     };
 }
 

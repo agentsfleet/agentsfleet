@@ -20,6 +20,7 @@ const logging = @import("log");
 const log = logging.scoped(.http);
 
 const DEFAULT_MAX_CLIENTS = 1024;
+pub const S_AUTH_MW_FAILURE_DETAIL = "Could not verify the request. Try again; if it persists, contact support.";
 
 // 429 shed headers — the REST guidelines bind 429 to Retry-After + X-RateLimit-*.
 // Semantics here are the instance-wide in-flight ceiling, not a per-client
@@ -244,7 +245,8 @@ fn dispatchMatchedRoute(ctx: *handler.Context, registry: *auth_mw.MiddlewareRegi
     }
 
     const outcome = auth_mw.run(auth_mw.AuthCtx, spec.middlewares, &auth, req) catch |e| {
-        common.internalOperationError(res, @errorName(e), req_id);
+        log.err("auth_mw_chain_failed", .{ .error_code = error_codes.ERR_INTERNAL_OPERATION_FAILED, .err = @errorName(e) });
+        common.internalOperationError(res, S_AUTH_MW_FAILURE_DETAIL, req_id); // mudball-ok: tag logged above, never returned
         return;
     };
     if (outcome == .short_circuit) return;
@@ -339,6 +341,7 @@ test {
     _ = @import("webhook_test_signers.zig");
     _ = @import("webhook_test_fixtures.zig");
     _ = @import("webhook_http_integration_test.zig");
+    _ = @import("auth_mw_failure_integration_test.zig");
     _ = @import("test_port.zig");
     // M102 §3 — credential-mint handler unit tests (outcome→wire mapping).
     _ = @import("handlers/runner/credentials_mint.zig");

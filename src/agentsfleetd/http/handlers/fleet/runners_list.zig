@@ -30,7 +30,7 @@ const Hx = hx_mod.Hx;
 
 const S_CREATED_AT_DESC = "r.created_at DESC, r.id DESC";
 
-const MSG_OUT_OF_MEMORY = "Out of memory";
+const MSG_RUNNER_LIST_BUILD_FAILED = "Failed to build the runner list";
 
 /// One fleet row as returned to the operator — no `token_hash`, no stored
 /// `status`; `liveness` is derived, `labels` parsed from the stored JSONB.
@@ -152,7 +152,7 @@ fn fetchPage(hx: Hx, conn: anytype, q: ListQuery, now_ms: i64) ?PageRows {
 
     return collectItems(hx.alloc, &rows_q, now_ms) catch |err| switch (err) {
         error.OutOfMemory => {
-            common.internalOperationError(hx.res, MSG_OUT_OF_MEMORY, hx.req_id);
+            common.internalOperationError(hx.res, MSG_RUNNER_LIST_BUILD_FAILED, hx.req_id);
             return null;
         },
         else => {

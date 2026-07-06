@@ -166,7 +166,7 @@ pub fn innerInvokeGithubWebhook(hx: Hx, req: *httpz.Request, fleet_id: []const u
     // failure below — see file header for why.
     var dedup_key_buf: [256]u8 = undefined;
     const dedup_key = std.fmt.bufPrint(&dedup_key_buf, "{s}{s}:{s}:{s}", .{ ec.WEBHOOK_DEDUP_KEY_PREFIX, fleet_id, PROVIDER_DEDUP_NAMESPACE, delivery }) catch {
-        common.internalOperationError(hx.res, "dedup key overflow", hx.req_id);
+        common.internalOperationError(hx.res, "Failed to build the duplicate-event check", hx.req_id);
         return;
     };
     if (!claimDedupSlot(hx, fleet_id, delivery, dedup_key)) return;
@@ -230,7 +230,7 @@ fn claimDedupSlot(hx: Hx, fleet_id: []const u8, delivery: []const u8, dedup_key:
             .delivery = delivery,
             .err = @errorName(err),
         });
-        common.internalOperationError(hx.res, "Idempotency check failed", hx.req_id);
+        common.internalOperationError(hx.res, "Failed to check for a duplicate event", hx.req_id);
         return false;
     };
     if (!is_new) {

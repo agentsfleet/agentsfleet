@@ -42,6 +42,11 @@ const DEFAULT_SIGNUP_SCOPES = scopes.defaultClaim(.tenant);
 
 const log = logging.scoped(.auth_identity_events);
 
+// Deliberately generic — see readSecret()'s missing/empty branches: a distinct
+// code or detail here would confirm to an unauthenticated caller that this
+// deployment has no CLERK_WEBHOOK_SECRET configured.
+const S_SECRET_CHECK_FAILED = "Failed to verify this request";
+
 const Hx = hx_mod.Hx;
 
 /// Clerk's `user.created` payload, tolerant of unknown fields. See
@@ -182,7 +187,7 @@ fn readSecret(hx: Hx) ?[]const u8 {
             .error_code = ec.ERR_INTERNAL_OPERATION_FAILED,
             .req_id = hx.req_id,
         });
-        common.internalOperationError(hx.res, "CLERK_WEBHOOK_SECRET not configured", hx.req_id);
+        common.internalOperationError(hx.res, S_SECRET_CHECK_FAILED, hx.req_id); // mudball-ok: pre-auth path, see S_SECRET_CHECK_FAILED's doc comment
         return null;
     };
     if (secret.len == 0) {
@@ -190,7 +195,7 @@ fn readSecret(hx: Hx) ?[]const u8 {
             .error_code = ec.ERR_INTERNAL_OPERATION_FAILED,
             .req_id = hx.req_id,
         });
-        common.internalOperationError(hx.res, "CLERK_WEBHOOK_SECRET is empty", hx.req_id);
+        common.internalOperationError(hx.res, S_SECRET_CHECK_FAILED, hx.req_id); // mudball-ok: pre-auth path, see S_SECRET_CHECK_FAILED's doc comment
         return null;
     }
     return secret;
@@ -257,7 +262,7 @@ fn runBootstrap(hx: Hx, oidc_subject: []const u8, email: []const u8, display_nam
             .req_id = hx.req_id,
         });
         metrics.incSignupFailed(.db_error);
-        common.internalOperationError(hx.res, "Signup bootstrap failed", hx.req_id);
+        common.internalOperationError(hx.res, "Failed to finish setting up the new account", hx.req_id);
         return;
     };
     defer bootstrap.deinit(hx.alloc);

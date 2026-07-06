@@ -26,6 +26,7 @@ const S_CONTRACT = "contract";
 const S_COMMON = "common";
 const S_CALL_DEADLINE = "call_deadline";
 const S_S3 = "s3";
+const S_GEN_ERROR_CODES = "gen-error-codes";
 
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
@@ -194,6 +195,22 @@ pub fn build(b: *std.Build) void {
     run_cmd.step.dependOn(b.getInstallStep());
     if (b.args) |args| run_cmd.addArgs(args);
     b.step("run", "Run agentsfleetd").dependOn(&run_cmd.step);
+
+    // ── error-codes.mdx generator ─────────────────────────────────────────────
+    // Mechanical, registry-only: no external deps beyond error_registry.zig +
+    // globalIo(), so it's rooted directly in errors/ (sibling relative import)
+    // rather than needing the bench bridge module's cross-boundary shape.
+    const gen_error_codes = b.addExecutable(.{
+        .name = S_GEN_ERROR_CODES,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/agentsfleetd/errors/gen_error_codes.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{.{ .name = S_COMMON, .module = common_mod }},
+        }),
+    });
+    const run_gen_error_codes = b.addRunArtifact(gen_error_codes);
+    b.step(S_GEN_ERROR_CODES, "Render error-codes.mdx from the registry to stdout").dependOn(&run_gen_error_codes.step);
 
     // ── Test step ─────────────────────────────────────────────────────────────
     const tests = b.addTest(.{
