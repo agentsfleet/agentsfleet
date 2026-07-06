@@ -176,8 +176,8 @@ fn applySelfManaged(hx: Hx, conn: *pg.Conn, tenant_id: []const u8, input: PutInp
             return;
         },
         tenant_provider.ResolveError.TenantHasNoWorkspace => {
-            log.err("no_workspace", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .tenant_id = tenant_id });
-            common.internalOperationError(hx.res, "Tenant has no primary workspace — bootstrap invariant violated", hx.req_id);
+            log.err("no_workspace", .{ .error_code = ec.ERR_TENANT_NO_PRIMARY_WORKSPACE, .tenant_id = tenant_id });
+            common.errorResponse(hx.res, ec.ERR_TENANT_NO_PRIMARY_WORKSPACE, "Tenant has no primary workspace — bootstrap invariant violated", hx.req_id);
             return;
         },
         else => {

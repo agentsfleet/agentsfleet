@@ -28,7 +28,7 @@ const MemoryEntry = h.MemoryEntry;
 
 pub const Context = common.Context;
 
-const S_OOM = "OOM";
+const S_MEMORY_UPDATE_FAILED = "Failed to process the memory update";
 const S_MEMORY_BACKEND_ROLE_SWITCH_FAILED = "memory backend role switch failed";
 const S_MEMORY_LIST_FAILED = "memory list failed";
 
@@ -83,11 +83,11 @@ pub fn innerListMemories(
 
     if (query_text) |qt| {
         const escaped = h.escapeLikePattern(hx.alloc, qt) catch {
-            common.internalOperationError(hx.res, S_OOM, hx.req_id);
+            common.internalOperationError(hx.res, S_MEMORY_UPDATE_FAILED, hx.req_id);
             return;
         };
         const like_pat = std.fmt.allocPrint(hx.alloc, "%{s}%", .{escaped}) catch {
-            common.internalOperationError(hx.res, S_OOM, hx.req_id);
+            common.internalOperationError(hx.res, S_MEMORY_UPDATE_FAILED, hx.req_id);
             return;
         };
         var q = PgQuery.from(conn.query(

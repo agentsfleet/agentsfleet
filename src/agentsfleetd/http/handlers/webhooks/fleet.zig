@@ -75,7 +75,7 @@ fn fetchFleetById(pool: *pg.Pool, alloc: std.mem.Allocator, fleet_id: []const u8
 fn dedupAndEnqueue(hx: Hx, fleet_id: []const u8, workspace_id: []const u8, payload: WebhookPayload, source_label: []const u8) bool {
     var dedup_key_buf: [256]u8 = undefined;
     const dedup_key = std.fmt.bufPrint(&dedup_key_buf, "{s}{s}:{s}", .{ ec.WEBHOOK_DEDUP_KEY_PREFIX, fleet_id, payload.event_id }) catch {
-        common.internalOperationError(hx.res, "dedup key overflow", hx.req_id);
+        common.internalOperationError(hx.res, "Failed to build the duplicate-event check", hx.req_id);
         return false;
     };
     const is_new = hx.ctx.queue.setNx(dedup_key, "1", ec.DEDUP_TTL_SECONDS) catch |err| {
@@ -85,7 +85,7 @@ fn dedupAndEnqueue(hx: Hx, fleet_id: []const u8, workspace_id: []const u8, paylo
             .event_id = payload.event_id,
             .err = @errorName(err),
         });
-        common.internalOperationError(hx.res, "Idempotency check failed", hx.req_id);
+        common.internalOperationError(hx.res, "Failed to check for a duplicate event", hx.req_id);
         return false;
     };
     if (!is_new) {
@@ -95,7 +95,7 @@ fn dedupAndEnqueue(hx: Hx, fleet_id: []const u8, workspace_id: []const u8, paylo
     }
     const data_json = std.fmt.allocPrint(hx.alloc, "{f}", .{std.json.fmt(payload.data, .{})}) catch {
         releaseDedupSlot(hx, fleet_id, dedup_key);
-        common.internalOperationError(hx.res, "Failed to serialize event data", hx.req_id);
+        common.internalOperationError(hx.res, "Failed to build the event data", hx.req_id);
         return false;
     };
     defer hx.alloc.free(data_json);
