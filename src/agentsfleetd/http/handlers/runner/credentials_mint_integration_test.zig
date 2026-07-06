@@ -37,6 +37,7 @@ const harness_mod = @import("../../test_harness.zig");
 const TestHarness = harness_mod.TestHarness;
 const protocol = @import("contract").protocol;
 const grant_lookup = @import("../../../state/integration_grant_lookup.zig");
+const cred_testing = @import("../../../credentials/testing.zig");
 
 const GrantStatus = grant_lookup.GrantStatus;
 
@@ -71,6 +72,9 @@ const SENTINEL_OWNER = "ghs_owner_workspace_token";
 const SENTINEL_FOREIGN = "ghs_foreign_workspace_token";
 
 const INTEGRATION_STATIC = "static";
+const INTEGRATION_GITHUB = "github";
+// The token the FakeGitHub exchange returns on a successful installation mint.
+const GITHUB_MINTED = "ghs_minted";
 
 // SAFETY: populated by configureRegistry before the runner_bearer middleware
 // (and thus the lookup) ever reads it.
@@ -118,16 +122,16 @@ fn seedLease(conn: *pg.Conn, lease_id: []const u8, runner_id: []const u8, fleet_
     return seedLeaseFull(conn, lease_id, runner_id, fleet_id, workspace_id, NOW_MS + 30_000, protocol.RUNNER_LEASE_STATUS_ACTIVE);
 }
 
-/// Upsert the fleet's grant row for `static` at the given status — the
-/// grant gate reads it before any vault load. Idempotent across the
-/// suite's shared-id reruns.
-fn setGrantStatus(conn: *pg.Conn, fleet_id: []const u8, status: GrantStatus) !void {
+/// Upsert the fleet's grant row for `service` at the given status — the grant
+/// gate reads it before any vault load (on-demand integrations only). Idempotent
+/// across the suite's shared-id reruns.
+fn setGrantStatus(conn: *pg.Conn, fleet_id: []const u8, service: []const u8, status: GrantStatus) !void {
     _ = try conn.exec(
         \\INSERT INTO core.integration_grants
         \\  (uid, grant_id, fleet_id, service, status, requested_at, requested_reason)
         \\VALUES ($1::uuid, $1, $2::uuid, $3, $4, 0, 'mint integration test')
         \\ON CONFLICT (fleet_id, service) DO UPDATE SET status = EXCLUDED.status
-    , .{ GRANT_OWNER, fleet_id, INTEGRATION_STATIC, status.toSlice() });
+    , .{ GRANT_OWNER, fleet_id, service, status.toSlice() });
 }
 
 /// Store a `static` integration handle `{integration, token}` at (workspace, key)
@@ -138,6 +142,18 @@ fn seedStaticHandle(conn: *pg.Conn, workspace_id: []const u8, token: []const u8)
     const handle = try std.fmt.allocPrint(ALLOC, "{{\"integration\":\"static\",\"token\":\"{s}\"}}", .{token});
     defer ALLOC.free(handle);
     try vault.storeJsonPlaintext(ALLOC, conn, workspace_id, key_name, handle);
+}
+
+/// Store a `fleet:github` App-installation handle — the shape the connect
+/// callback writes; the broker mints an installation token from it.
+fn seedGithubHandle(conn: *pg.Conn, workspace_id: []const u8) !void {
+    const key_name = try credential_key.allocKeyName(ALLOC, INTEGRATION_GITHUB);
+    defer ALLOC.free(key_name);
+    try vault.storeJsonPlaintext(ALLOC, conn, workspace_id, key_name, "{\"integration\":\"github\",\"installation_id\":\"42\"}");
+}
+
+fn githubMintBody(lease_id: []const u8) ![]u8 {
+    return std.fmt.allocPrint(ALLOC, "{{\"lease_id\":\"{s}\",\"integration\":\"{s}\"}}", .{ lease_id, INTEGRATION_GITHUB });
 }
 
 fn execIgnore(conn: *pg.Conn, sql: []const u8, args: anytype) void {
@@ -199,10 +215,9 @@ test "integration: test_mint_scoped_to_lease_workspace" {
         try seedLease(conn, LEASE_FOREIGN, RUNNER_ATTACKER, FLEET_FOREIGN, WORKSPACE_FOREIGN);
         // Seed ONLY the foreign workspace's handle for now: the first mint below
         // proves the owner's missing-handle path, then we seed the owner's.
+        // No grant row: `static` is not on-demand, so the grant gate does not
+        // apply — this suite also proves static mints without a grant.
         try seedStaticHandle(conn, WORKSPACE_FOREIGN, SENTINEL_FOREIGN);
-        // The grant gate precedes the vault load, so the owner fleet
-        // needs an approved grant for the legs below to reach the handle paths.
-        try setGrantStatus(conn, FLEET_OWNER, .approved);
     }
     defer cleanupAll(h);
 
@@ -283,12 +298,11 @@ test "integration: test_mint_rejects_cancelled_or_expired_lease" {
         try base.seedWorkspace(conn, WORKSPACE_OWNER);
         try base.seedFleet(conn, FLEET_OWNER, WORKSPACE_OWNER, "cred-owner", "{}", "# z");
         try seedRunner(conn, RUNNER_OWNER, TOKEN_OWNER);
-        // Only the lifecycle differs between the two leases. The grant is
-        // approved (grant gate) so a 404 can only be the live-lease gate.
+        // Only the lifecycle differs between the two leases. `static` is
+        // ungated, so a 404 can only be the live-lease gate.
         try seedLeaseFull(conn, LEASE_OWNER, RUNNER_OWNER, FLEET_OWNER, WORKSPACE_OWNER, PAST_MS, protocol.RUNNER_LEASE_STATUS_ACTIVE);
         try seedLeaseFull(conn, LEASE_STALE, RUNNER_OWNER, FLEET_OWNER, WORKSPACE_OWNER, NOW_MS + 30_000, protocol.RUNNER_LEASE_STATUS_EXPIRED);
         try seedStaticHandle(conn, WORKSPACE_OWNER, SENTINEL_OWNER);
-        try setGrantStatus(conn, FLEET_OWNER, .approved);
     }
     defer cleanupAll(h);
 
@@ -317,11 +331,11 @@ test "integration: test_mint_rejects_cancelled_or_expired_lease" {
 
 test "integration: test_mint_requires_approved_grant" {
     // Grant-gate dimension 2.1 — the grant gate precedes everything vault-shaped:
-    // a live lease + a CONNECTED handle still refuse (403 UZ-GRANT-001) when the
-    // fleet holds no approved grant, and a PENDING grant is equally refused. No
-    // token value appears in any refusal body, and the broker is never reached
-    // (the refusal happens before broker.mint — with a live grant the same
-    // setup mints, proving the only variable is the grant row).
+    // a live lease + a CONNECTED github handle still refuse (403 UZ-GRANT-001)
+    // when the fleet holds no approved grant, and a PENDING grant is equally
+    // refused. The fake GitHub exchange would return GITHUB_MINTED on a real
+    // mint; asserting its absence proves the broker is never reached (refusal
+    // precedes broker.mint). github is on-demand, so the gate applies.
     crypto_primitives.setTestKek();
     const h = startHarness() catch |err| switch (err) {
         error.SkipZigTest => return error.SkipZigTest,
@@ -329,7 +343,10 @@ test "integration: test_mint_requires_approved_grant" {
     };
     defer h.deinit();
 
-    var broker = try CredentialBroker.init(ALLOC, integration.REGISTRY, integration.nullDeps());
+    var gh = cred_testing.FakeGitHub{ .alloc = ALLOC };
+    defer gh.deinit();
+    var metrics = cred_testing.RecordingMetrics{};
+    var broker = try CredentialBroker.init(ALLOC, integration.REGISTRY, cred_testing.brokerDeps(&gh, &metrics));
     defer broker.deinit();
     h.ctx.broker = &broker;
 
@@ -342,44 +359,47 @@ test "integration: test_mint_requires_approved_grant" {
         try base.seedFleet(conn, FLEET_OWNER, WORKSPACE_OWNER, "cred-owner", "{}", "# z");
         try seedRunner(conn, RUNNER_OWNER, TOKEN_OWNER);
         try seedLease(conn, LEASE_OWNER, RUNNER_OWNER, FLEET_OWNER, WORKSPACE_OWNER);
-        try seedStaticHandle(conn, WORKSPACE_OWNER, SENTINEL_OWNER);
+        try seedGithubHandle(conn, WORKSPACE_OWNER); // connected, but ungranted
         // Deliberately NO grant row.
     }
     defer cleanupAll(h);
 
-    // (1) No grant row at all → 403 UZ-GRANT-001, no token bytes.
+    // (1) No grant row at all → 403 UZ-GRANT-001; broker never called (no token).
     {
-        const body = try mintBody(LEASE_OWNER);
+        const body = try githubMintBody(LEASE_OWNER);
         defer ALLOC.free(body);
         const resp = try (try (try h.post(protocol.PATH_RUNNER_CREDENTIALS_MINT).bearer(TOKEN_OWNER)).json(body)).send();
         defer resp.deinit();
         try resp.expectStatus(.forbidden);
         try std.testing.expect(resp.bodyContains(ec.ERR_GRANT_NOT_FOUND));
-        try std.testing.expect(!resp.bodyContains(SENTINEL_OWNER));
+        try std.testing.expect(!resp.bodyContains(GITHUB_MINTED));
     }
 
     // (2) A PENDING grant is not an approval — still 403, still no token.
     {
         const conn = try h.acquireConn();
         defer h.releaseConn(conn);
-        try setGrantStatus(conn, FLEET_OWNER, .pending);
+        try setGrantStatus(conn, FLEET_OWNER, INTEGRATION_GITHUB, .pending);
     }
     {
-        const body = try mintBody(LEASE_OWNER);
+        const body = try githubMintBody(LEASE_OWNER);
         defer ALLOC.free(body);
         const resp = try (try (try h.post(protocol.PATH_RUNNER_CREDENTIALS_MINT).bearer(TOKEN_OWNER)).json(body)).send();
         defer resp.deinit();
         try resp.expectStatus(.forbidden);
         try std.testing.expect(resp.bodyContains(ec.ERR_GRANT_NOT_FOUND));
-        try std.testing.expect(!resp.bodyContains(SENTINEL_OWNER));
+        try std.testing.expect(!resp.bodyContains(GITHUB_MINTED));
     }
+
+    // The broker was never reached across either refusal.
+    try std.testing.expectEqual(@as(usize, 0), gh.calls);
 }
 
 test "integration: test_mint_rechecks_revoked_grant" {
     // Grant-gate dimension 2.2 — mint-time re-check, not just lease-time: the
-    // SAME live lease mints while approved, refuses after a revoke, and mints
-    // again after re-approval. Proves grant authority is read fresh per mint
-    // (a revoke mid-lease bites on the very next token request).
+    // SAME live lease mints an installation token while approved, refuses after
+    // a revoke, and mints again after re-approval. Proves grant authority is
+    // read fresh per mint (a revoke mid-lease bites on the very next request).
     crypto_primitives.setTestKek();
     const h = startHarness() catch |err| switch (err) {
         error.SkipZigTest => return error.SkipZigTest,
@@ -387,7 +407,10 @@ test "integration: test_mint_rechecks_revoked_grant" {
     };
     defer h.deinit();
 
-    var broker = try CredentialBroker.init(ALLOC, integration.REGISTRY, integration.nullDeps());
+    var gh = cred_testing.FakeGitHub{ .alloc = ALLOC };
+    defer gh.deinit();
+    var metrics = cred_testing.RecordingMetrics{};
+    var broker = try CredentialBroker.init(ALLOC, integration.REGISTRY, cred_testing.brokerDeps(&gh, &metrics));
     defer broker.deinit();
     h.ctx.broker = &broker;
 
@@ -400,49 +423,49 @@ test "integration: test_mint_rechecks_revoked_grant" {
         try base.seedFleet(conn, FLEET_OWNER, WORKSPACE_OWNER, "cred-owner", "{}", "# z");
         try seedRunner(conn, RUNNER_OWNER, TOKEN_OWNER);
         try seedLease(conn, LEASE_OWNER, RUNNER_OWNER, FLEET_OWNER, WORKSPACE_OWNER);
-        try seedStaticHandle(conn, WORKSPACE_OWNER, SENTINEL_OWNER);
-        try setGrantStatus(conn, FLEET_OWNER, .approved);
+        try seedGithubHandle(conn, WORKSPACE_OWNER);
+        try setGrantStatus(conn, FLEET_OWNER, INTEGRATION_GITHUB, .approved);
     }
     defer cleanupAll(h);
 
-    // (1) Approved → 200 with the owner token.
+    // (1) Approved → 200 with the minted installation token.
     {
-        const body = try mintBody(LEASE_OWNER);
+        const body = try githubMintBody(LEASE_OWNER);
         defer ALLOC.free(body);
         const resp = try (try (try h.post(protocol.PATH_RUNNER_CREDENTIALS_MINT).bearer(TOKEN_OWNER)).json(body)).send();
         defer resp.deinit();
         try resp.expectStatus(.ok);
-        try std.testing.expect(resp.bodyContains(SENTINEL_OWNER));
+        try std.testing.expect(resp.bodyContains(GITHUB_MINTED));
     }
 
     // (2) Revoked mid-lease → the next mint refuses; no token bytes leak.
     {
         const conn = try h.acquireConn();
         defer h.releaseConn(conn);
-        try setGrantStatus(conn, FLEET_OWNER, .revoked);
+        try setGrantStatus(conn, FLEET_OWNER, INTEGRATION_GITHUB, .revoked);
     }
     {
-        const body = try mintBody(LEASE_OWNER);
+        const body = try githubMintBody(LEASE_OWNER);
         defer ALLOC.free(body);
         const resp = try (try (try h.post(protocol.PATH_RUNNER_CREDENTIALS_MINT).bearer(TOKEN_OWNER)).json(body)).send();
         defer resp.deinit();
         try resp.expectStatus(.forbidden);
         try std.testing.expect(resp.bodyContains(ec.ERR_GRANT_NOT_FOUND));
-        try std.testing.expect(!resp.bodyContains(SENTINEL_OWNER));
+        try std.testing.expect(!resp.bodyContains(GITHUB_MINTED));
     }
 
     // (3) Re-approved → minting resumes on the same lease.
     {
         const conn = try h.acquireConn();
         defer h.releaseConn(conn);
-        try setGrantStatus(conn, FLEET_OWNER, .approved);
+        try setGrantStatus(conn, FLEET_OWNER, INTEGRATION_GITHUB, .approved);
     }
     {
-        const body = try mintBody(LEASE_OWNER);
+        const body = try githubMintBody(LEASE_OWNER);
         defer ALLOC.free(body);
         const resp = try (try (try h.post(protocol.PATH_RUNNER_CREDENTIALS_MINT).bearer(TOKEN_OWNER)).json(body)).send();
         defer resp.deinit();
         try resp.expectStatus(.ok);
-        try std.testing.expect(resp.bodyContains(SENTINEL_OWNER));
+        try std.testing.expect(resp.bodyContains(GITHUB_MINTED));
     }
 }

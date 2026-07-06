@@ -136,17 +136,25 @@ fn loadMintInputs(hx: Hx, runner_id: []const u8, mint_req: protocol.MintCredenti
         return null;
     };
 
-    // Grant-gate invariant — the grant read precedes the vault load: an
-    // ungranted request never touches handle bytes. A DB failure here fails
-    // CLOSED (500, no token), never open.
-    const approved = grant_lookup.isApproved(conn, scope.fleet_id, mint_req.integration) catch {
-        common.internalDbError(hx.res, hx.req_id);
-        return null;
-    };
-    if (!approved) {
-        log.warn("credential_mint_denied", .{ .error_code = ec.ERR_GRANT_NOT_FOUND, .fleet_id = scope.fleet_id, .integration = mint_req.integration });
-        hx.fail(ec.ERR_GRANT_NOT_FOUND, S_GRANT_REQUIRED);
-        return null;
+    // Grant-gate invariant — on-demand connector mints (github/zoho/jira/linear)
+    // require an approved grant; the read precedes the vault load so an ungranted
+    // request never touches handle bytes. A DB failure here fails CLOSED (500, no
+    // token), never open. Gating ONLY on-demand integrations mirrors the lease
+    // classifier (`secrets_resolve.mintableId`) and the spec scope: a `static`
+    // handle (token carried inline, never minted in production) and an unknown id
+    // fall through to the existing not-connected/vault path — so a typo'd or
+    // unconnected id still surfaces UZ-CRED-* / unknown_integration, not a
+    // misleading grant-required for a grant that can never be requested.
+    if (isOnDemand(mint_req.integration)) {
+        const approved = grant_lookup.isApproved(conn, scope.fleet_id, mint_req.integration) catch {
+            common.internalDbError(hx.res, hx.req_id);
+            return null;
+        };
+        if (!approved) {
+            log.warn("credential_mint_denied", .{ .error_code = ec.ERR_GRANT_NOT_FOUND, .fleet_id = scope.fleet_id, .integration = mint_req.integration });
+            hx.fail(ec.ERR_GRANT_NOT_FOUND, S_GRANT_REQUIRED);
+            return null;
+        }
     }
 
     const key_name = credential_key.allocKeyName(hx.alloc, mint_req.integration) catch {
@@ -165,6 +173,14 @@ fn loadMintInputs(hx: Hx, runner_id: []const u8, mint_req: protocol.MintCredenti
         return null;
     };
     return .{ .workspace_id = scope.workspace_id, .handle = handle };
+}
+
+/// True when the integration mints a short-lived token on demand (github App
+/// installation + the oauth2-refresh connectors) — the set the grant gate
+/// covers. Unknown ids and the `static` inline-token integration are false.
+fn isOnDemand(integration_id: []const u8) bool {
+    const id = integration.idFromString(integration_id) orelse return false;
+    return integration.mintsOnDemand(integration.REGISTRY, id);
 }
 
 /// The lease's workspace + fleet, both arena-duped (survive the conn release).
@@ -234,6 +250,18 @@ fn respond(hx: Hx, id: ?integration.Id, result: integration.MintResult) void {
             hx.fail(d.code.?, d.detail);
         },
     }
+}
+
+test "isOnDemand gates the connector integrations, not static or unknown ids" {
+    // The grant gate covers exactly the on-demand connector mints — static
+    // (inline token) and unknown ids fall through to the existing paths.
+    try std.testing.expect(isOnDemand("github"));
+    try std.testing.expect(isOnDemand("zoho"));
+    try std.testing.expect(isOnDemand("jira"));
+    try std.testing.expect(isOnDemand("linear"));
+    try std.testing.expect(!isOnDemand("static"));
+    try std.testing.expect(!isOnDemand("nope")); // unknown id → not gated
+    try std.testing.expect(!isOnDemand("")); // empty → not gated
 }
 
 test "dispose maps each broker outcome to its typed wire code; ok carries no error" {
