@@ -40,3 +40,35 @@ test "gen_error_codes.render() output contains every REGISTRY code exactly once"
         try std.testing.expect(second == null);
     }
 }
+
+// Regression guard for the Greptile finding on the docs PR: section headings
+// were raw registry namespace tokens ("Wh", "Slk", "Agt", …), opaque to an
+// external reader. Every category token currently in REGISTRY must render as
+// its friendly CATEGORY_LABELS entry, not the bare capitalized token.
+test "gen_error_codes.render() section headings are friendly labels, not raw namespace tokens" {
+    const alloc = std.testing.allocator;
+    var run: std.Io.Writer.Allocating = .init(alloc);
+    defer run.deinit();
+    try gen.render(alloc, &run.writer);
+    const out = run.written();
+
+    // Excludes STARTUP: its friendly label ("Startup") happens to be
+    // identical to the naive capitalized-token fallback — nothing to
+    // distinguish there, so it's not part of this regression check.
+    const RAW_TOKEN_HEADINGS = [_][]const u8{
+        "\n## Wh\n",   "\n## Slk\n",     "\n## Agt\n",      "\n## Gh\n",
+        "\n## Conn\n", "\n## Mem\n",     "\n## Req\n",      "\n## Cred\n",
+        "\n## Exec\n", "\n## Run\n",     "\n## Uuidv7\n",   "\n## Apikey\n",
+        "\n## Vault\n", "\n## Grant\n",  "\n## Bundle\n",   "\n## Provider\n",
+        "\n## Tool\n", "\n## Fleetkey\n", "\n## Approval\n",
+        "\n## Auth\n",
+    };
+    for (RAW_TOKEN_HEADINGS) |needle| {
+        if (std.mem.indexOf(u8, out, needle) != null) {
+            std.debug.print("raw namespace token used as a section heading: \"{s}\"\n", .{needle});
+            return error.TestUnexpectedResult;
+        }
+    }
+    try std.testing.expect(std.mem.indexOf(u8, out, "\n## Webhooks\n") != null);
+    try std.testing.expect(std.mem.indexOf(u8, out, "\n## Fleets\n") != null);
+}
