@@ -40,7 +40,9 @@ test.describe("Auth theming", () => {
   });
 
   test("protected route redirects to local sign-in instead of hosted clerk", async ({ page }) => {
-    await page.goto("/fleets");
+    // `/` is the protected dashboard entry; unauthenticated it bounces to the
+    // local /sign-in (post-M118 the old `/fleets` root no longer exists).
+    await page.goto("/");
     await page.waitForTimeout(MS_PER_SECOND);
 
     expect(new URL(page.url()).hostname).toBe(EXPECTED_HOSTNAME);

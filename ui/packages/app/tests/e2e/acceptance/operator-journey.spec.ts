@@ -5,6 +5,7 @@ import { signInAs } from "./fixtures/auth";
 import { FIXTURE_KEY } from "./fixtures/constants";
 import { clientFor } from "./fixtures/api-client";
 import { listWorkspaces } from "./fixtures/seed";
+import { gotoWorkspace, workspaceHref, workspaceUrlPattern } from "./fixtures/nav";
 import { installViaUI } from "./fixtures/install-ui";
 import {
   expectDetailKilled,
@@ -22,7 +23,6 @@ import {
 
 const JOURNEY_TIMEOUT_MS = 300_000;
 const ACTION_TIMEOUT_MS = 60_000;
-const WORKSPACE_ID_PATTERN = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|ws_[A-Za-z0-9_-]+/i;
 const TEMP_DIR_PREFIX = "agentsfleet-operator-journey-";
 
 interface CliFleetListResponse {
@@ -69,17 +69,6 @@ async function switchWorkspace(page: Page, name: string): Promise<void> {
   await switcher.click();
   await page.getByRole("menuitem", { name }).click();
   await expect(switcher).toContainText(name, { timeout: ACTION_TIMEOUT_MS });
-}
-
-async function activeWorkspaceIdFromSettings(page: Page): Promise<string> {
-  const workspaceSection = page.getByLabel("Workspace", { exact: true });
-  await expect(workspaceSection).toBeVisible();
-  const text = await workspaceSection.textContent();
-  const match = text?.match(WORKSPACE_ID_PATTERN);
-  if (!match) {
-    throw new Error(`Workspace section did not expose an id: ${text ?? "<empty>"}`);
-  }
-  return match[0];
 }
 
 function combinedOutput(result: { stdout: string; stderr: string }): string {
@@ -153,7 +142,7 @@ test.describe("operator journey", () => {
     const apiKeyName = uniqueName("journey-key");
 
     await signInAs(page, FIXTURE_KEY.admin);
-    await page.goto("/fleets");
+    await gotoWorkspace(page, FIXTURE_KEY.admin, "fleets");
     await expect(page.getByRole("heading", { name: /^fleets$/i }).first()).toBeVisible();
 
     await createWorkspaceFromSwitcher(page, primaryWorkspaceName);
@@ -161,37 +150,41 @@ test.describe("operator journey", () => {
     await switchWorkspace(page, primaryWorkspaceName);
     await switchWorkspace(page, secondaryWorkspaceName);
 
-    await clickSidebarLink(page, "/fleets", /\/fleets(\?|$)/);
-    await page.getByRole("link", { name: /install teammate/i }).first().click();
-    await expect(page).toHaveURL(/\/fleets\/new(\?|$)/);
-    // Resolve the active (secondary) workspace id so the onboard targets the
-    // same workspace the browser switched to — its card must render here.
+    // Resolve the active (secondary) workspace id via the API so the nav hrefs,
+    // the onboard, and the CLI all target the same workspace the browser
+    // switched to. Post-M118 the workspace is the URL segment (`/w/<id>/…`) —
+    // there is no implicit "active workspace" to read from a settings page.
     const installWorkspace = (await listWorkspaces(FIXTURE_KEY.admin)).find(
       (workspace) => workspace.name === secondaryWorkspaceName,
     );
     if (!installWorkspace) {
       throw new Error(`operator-journey: workspace '${secondaryWorkspaceName}' not found via API`);
     }
+    const wsId = installWorkspace.id;
+    activeWorkspaceId = wsId;
+
+    await clickSidebarLink(page, workspaceHref(wsId, "fleets"), workspaceUrlPattern("fleets"));
+    await page.getByRole("link", { name: /install teammate/i }).first().click();
+    await expect(page).toHaveURL(workspaceUrlPattern("fleets/new"));
     const fleetId = await installViaUI(page, fleetName, {
       handle: FIXTURE_KEY.admin,
-      workspaceId: installWorkspace.id,
+      workspaceId: wsId,
     });
     createdFleetId = fleetId;
     await expect(page.getByRole("region", { name: "Recent Activity" })).toBeVisible();
 
-    await clickSidebarLink(page, "/events", /\/events(\?|$)/);
+    await clickSidebarLink(page, workspaceHref(wsId, "events"), workspaceUrlPattern("events"));
     await expect(page.getByRole("heading", { name: /^events$/i })).toBeVisible();
     await expect(page.getByLabel("Workspace events")).toBeVisible();
 
-    await clickSidebarLink(page, "/approvals", /\/approvals(\?|$)/);
+    await clickSidebarLink(page, workspaceHref(wsId, "approvals"), workspaceUrlPattern("approvals"));
     await expect(page.getByRole("heading", { name: /^approvals$/i })).toBeVisible();
     await expect(page.getByLabel("Pending approval gates")).toBeVisible();
 
-    await clickSidebarLink(page, "/settings", /\/settings(\?|$)/);
-    await expect(page.getByRole("heading", { name: /^workspace$/i })).toBeVisible();
-    await expect(page.getByLabel("Workspace", { exact: true })).toContainText(secondaryWorkspaceName);
-    activeWorkspaceId = await activeWorkspaceIdFromSettings(page);
-
+    // The standalone workspace-settings page was folded into API Keys post-M118
+    // (no `/settings` sidebar link, no workspace-settings index route), so the
+    // active-workspace id now comes from the API-resolved id above rather than
+    // scraped from a settings page. Billing stays a tenant-scoped root route.
     await clickSidebarLink(page, "/settings/billing", /\/settings\/billing(\?|$)/);
     await expect(page.getByTestId("balance-headline")).toBeVisible();
 
@@ -223,20 +216,20 @@ test.describe("operator journey", () => {
     const cliList = JSON.parse(cli.stdout) as CliFleetListResponse;
     expect(cliList.items?.some((fleet) => fleet.id === fleetId && fleet.name === fleetName)).toBe(true);
 
-    await page.goto(`/fleets/${fleetId}`);
+    await page.goto(workspaceHref(wsId, `fleets/${fleetId}`));
     await stopFleet(page);
     await clickSidebarLink(page, "/settings/billing", /\/settings\/billing(\?|$)/);
     await expect(page.getByTestId("balance-headline")).toBeVisible();
 
-    await page.goto(`/fleets/${fleetId}`);
+    await page.goto(workspaceHref(wsId, `fleets/${fleetId}`));
     await resumeFleet(page);
-    await page.goto("/fleets");
+    await page.goto(workspaceHref(wsId, "fleets"));
     await expectRowState(page, fleetId, "live");
 
-    await page.goto(`/fleets/${fleetId}`);
+    await page.goto(workspaceHref(wsId, `fleets/${fleetId}`));
     await killFleet(page);
     await expectDetailKilled(page);
-    await page.goto("/fleets");
+    await page.goto(workspaceHref(wsId, "fleets"));
     await expectRowState(page, fleetId, "failed");
     await deleteFleetWithApiKey(apiUrl, rawApiKey, activeWorkspaceId, fleetId);
     createdFleetId = null;

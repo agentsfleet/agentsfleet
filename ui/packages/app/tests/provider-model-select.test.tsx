@@ -12,12 +12,12 @@ const { catalogueState } = vi.hoisted(() => ({
   catalogueState: { models: [] as ModelCap[], loading: false, error: false },
 }));
 
-vi.mock("@/app/(dashboard)/settings/models/components/ModelCatalogueProvider", () => ({
+vi.mock("@/app/(dashboard)/w/[workspaceId]/settings/models/components/ModelCatalogueProvider", () => ({
   useModelCatalogue: () => catalogueState,
 }));
 vi.mock("@agentsfleet/design-system", async () => (await import("./helpers/models-component-mocks")).designSystemStub());
 
-import ProviderModelSelect from "@/app/(dashboard)/settings/models/components/ProviderModelSelect";
+import ProviderModelSelect from "@/app/(dashboard)/w/[workspaceId]/settings/models/components/ProviderModelSelect";
 
 const cap = (id: string, provider: string): ModelCap => ({
   id,

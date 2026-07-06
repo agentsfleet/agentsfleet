@@ -2,35 +2,40 @@
  * multi-workspace.spec.ts — WorkspaceSwitcher dropdown round-trip.
  *
  * Ensures the fixture user has at least two workspaces, then exercises the
- * header WorkspaceSwitcher: open the menu, pick the non-active workspace,
- * and assert the active label updates and the URL stays `/fleets` (the
- * switch is a cookie write + revalidate, not a route change).
+ * header WorkspaceSwitcher: open the menu, pick the non-active workspace, and
+ * assert the active label updates AND the URL navigates from the primary
+ * workspace to the secondary. Post-M118 the workspace lives in the URL
+ * (`/w/<id>/…`), so picking a workspace is a `router.push` navigation — the
+ * path segment swaps from `/w/<primary>/fleets` to `/w/<secondary>/fleets`,
+ * preserving the current sub-path — not a cookie write + revalidate.
  *
  * Spec calls for the `admin` fixture (memberships in both fixture tenants)
  * but the M64_005 harness only provisions one tenant per Clerk user, so we
  * pragmatically seed a second workspace inside the regular fixture's tenant
  * via POST /v1/workspaces. Same UI surface — same WorkspaceSwitcher render
- * path, same `setActiveWorkspace` server action — without depending on
- * cross-tenant membership wiring that the harness doesn't yet ship.
+ * path, same navigation — without depending on cross-tenant membership wiring
+ * that the harness doesn't yet ship.
  */
 import { expect, test } from "@playwright/test";
 import { signInAs } from "./fixtures/auth";
 import { ensureSecondWorkspace, getDefaultWorkspaceId } from "./fixtures/seed";
 import { cleanWorkspaceFleets } from "./fixtures/teardown";
+import { gotoWorkspace, workspaceUrlPattern } from "./fixtures/nav";
 import { FIXTURE_KEY } from "./fixtures/constants";
 
 const SECOND_WORKSPACE_NAME = "fixture-secondary";
 const SWITCH_TIMEOUT_MS = 10_000;
 
 test.describe("multi-workspace switcher", () => {
-  test("switcher swaps workspace + URL stays /fleets", async ({ page }) => {
+  test("switcher navigates from the primary workspace URL to the secondary", async ({ page }) => {
     const primary = await getDefaultWorkspaceId(FIXTURE_KEY.regular);
     const secondary = await ensureSecondWorkspace(FIXTURE_KEY.regular, SECOND_WORKSPACE_NAME);
     expect(secondary.id).not.toEqual(primary);
 
     await signInAs(page, FIXTURE_KEY.regular);
-    await page.goto("/fleets");
-    await expect(page).toHaveURL(/\/fleets(\?|$)/);
+    const landed = await gotoWorkspace(page, FIXTURE_KEY.regular, "fleets");
+    expect(landed).toEqual(primary);
+    await expect(page).toHaveURL(workspaceUrlPattern("fleets"));
 
     // The switcher's visible text is the *active* workspace name (e.g.
     // "default", "fixture-secondary"), so a getByRole({ name: ... }) match
@@ -44,9 +49,12 @@ test.describe("multi-workspace switcher", () => {
     await switcher.click();
     await page.getByRole("menuitem", { name: secondary.name ?? secondary.id }).click();
 
-    // The Server Action writes the cookie + revalidatePath('/'); the
-    // listing re-fetches but the URL stays /fleets.
-    await expect(page).toHaveURL(/\/fleets(\?|$)/, { timeout: SWITCH_TIMEOUT_MS });
+    // Picking the secondary workspace is a `router.push` that swaps the
+    // workspace segment while preserving the sub-path: /w/<primary>/fleets →
+    // /w/<secondary>/fleets. The listing re-fetches against the new workspace.
+    await expect(page).toHaveURL(new RegExp(`/w/${secondary.id}/fleets(\\?|$)`), {
+      timeout: SWITCH_TIMEOUT_MS,
+    });
     await expect(switcher).toContainText(secondary.name ?? secondary.id, {
       timeout: SWITCH_TIMEOUT_MS,
     });

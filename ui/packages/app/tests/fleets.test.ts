@@ -19,7 +19,7 @@ vi.mock("@agentsfleet/design-system", async (orig) => {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  resetCommonMocks({ pathname: "/fleets" });
+  resetCommonMocks({ pathname: "/w/ws_1/fleets" });
 });
 afterEach(() => {
   cleanup();
@@ -121,10 +121,10 @@ describe("exhaustion components", () => {
 // ── FleetConfig — delete flow ─────────────────────────────────────────────
 
 describe("FleetConfig interactions", () => {
-  it("delete flow: confirm dialog → DELETE call → push to /fleets", async () => {
+  it("delete flow: confirm dialog → DELETE call → push to /w/ws_1/fleets", async () => {
     fetchMock.mockResolvedValue({ ok: true, status: 204 });
     const { default: FleetConfig } = await import(
-      "../app/(dashboard)/fleets/[id]/components/FleetConfig"
+      "../app/(dashboard)/w/[workspaceId]/fleets/[id]/components/FleetConfig"
     );
     const user = userEvent.setup({ delay: null });
     render(
@@ -146,10 +146,10 @@ describe("FleetConfig interactions", () => {
         expect.objectContaining({ method: "DELETE" }),
       ),
     );
-    expect(routerPush).toHaveBeenCalledWith("/fleets");
+    expect(routerPush).toHaveBeenCalledWith("/w/ws_1/fleets");
     // router.refresh() is intentionally NOT called — refresh-after-push races
     // the current-route refetch against push's URL commit (same race the
-    // install flow hits). /fleets is `force-dynamic` so refresh isn't
+    // install flow hits). The fleets list is `force-dynamic` so refresh isn't
     // needed.
     expect(routerRefresh).not.toHaveBeenCalled();
   });
@@ -159,7 +159,7 @@ describe("FleetConfig interactions", () => {
     // Null getToken there is what the harness sees in the unauthenticated path.
     auth.mockResolvedValueOnce({ getToken: vi.fn().mockResolvedValue(null) });
     const { default: FleetConfig } = await import(
-      "../app/(dashboard)/fleets/[id]/components/FleetConfig"
+      "../app/(dashboard)/w/[workspaceId]/fleets/[id]/components/FleetConfig"
     );
     const user = userEvent.setup({ delay: null });
     render(
@@ -188,7 +188,7 @@ describe("FleetConfig interactions", () => {
       json: async () => ({ detail: "run in progress", error_code: "UZ-ZOM-004" }),
     });
     const { default: FleetConfig } = await import(
-      "../app/(dashboard)/fleets/[id]/components/FleetConfig"
+      "../app/(dashboard)/w/[workspaceId]/fleets/[id]/components/FleetConfig"
     );
     const user = userEvent.setup({ delay: null });
     render(
@@ -208,7 +208,7 @@ describe("FleetConfig interactions", () => {
 
   it("delete flow: Cancel dismisses the confirm dialog", async () => {
     const { default: FleetConfig } = await import(
-      "../app/(dashboard)/fleets/[id]/components/FleetConfig"
+      "../app/(dashboard)/w/[workspaceId]/fleets/[id]/components/FleetConfig"
     );
     const user = userEvent.setup({ delay: null });
     render(

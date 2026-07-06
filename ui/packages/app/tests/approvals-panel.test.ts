@@ -17,7 +17,7 @@ vi.mock("@/lib/api/approvals", () => ({
 // ApprovalsList (rendered inside the panel) imports its server actions; mock
 // the module so the client-side polling effect doesn't try to call into
 // Clerk's server-side auth() during the test.
-vi.mock("@/app/(dashboard)/approvals/actions", () => ({
+vi.mock("@/app/(dashboard)/w/[workspaceId]/approvals/actions", () => ({
   listApprovalsAction: listApprovalsActionMock,
   approveApprovalAction: vi.fn(),
   denyApprovalAction: vi.fn(),

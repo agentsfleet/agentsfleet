@@ -1,53 +1,26 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // ── Shared mocks ───────────────────────────────────────────────────────────
-// The (dashboard)/actions module is a thin server-action layer, but NOT a pure
-// forwarder: setActiveWorkspace and the create flow both write the
-// active-workspace cookie and revalidate the dashboard. We mock the Next.js
-// cookie store, revalidatePath, the token wrapper, and the workspaces API
-// client so the only behaviour under test is the cookie write + the
-// if (result.ok) switch. @/lib/workspace stays REAL so the cookie name
-// (ACTIVE_WORKSPACE_COOKIE) is the production constant, not a fixture.
+// (dashboard)/actions is now a thin server-action forwarder. Post-M118 it no
+// longer writes the active-workspace cookie or revalidates — selection is a
+// client navigation (router.push('/w/<newId>'), see CreateWorkspaceDialog).
+// createWorkspaceAction just threads createTenantWorkspace through withToken and
+// returns the {ok,data} envelope. We mock the token wrapper and the workspaces
+// API client so the only behaviour under test is the forward + envelope
+// passthrough.
 
 // vi.mock factories are hoisted above the static actions import, so every fn a
 // factory references must be created via vi.hoisted() to exist when the
-// factory runs (see runners-actions.test.ts).
-const {
-  cookiesMock,
-  setSpy,
-  revalidatePathMock,
-  withTokenMock,
-  createTenantWorkspaceMock,
-  listTenantWorkspacesMock,
-} = vi.hoisted(() => {
-  const setSpy = vi.fn();
-  return {
-    setSpy,
-    cookiesMock: vi.fn(async () => ({ set: setSpy })),
-    revalidatePathMock: vi.fn(),
-    withTokenMock: vi.fn(),
-    createTenantWorkspaceMock: vi.fn(),
-    listTenantWorkspacesMock: vi.fn(),
-  };
-});
-
-vi.mock("next/headers", () => ({ cookies: cookiesMock }));
-vi.mock("next/cache", () => ({ revalidatePath: revalidatePathMock }));
-vi.mock("@/lib/actions/with-token", () => ({ withToken: withTokenMock }));
-// The source only uses createTenantWorkspace, but @/lib/workspace (kept real)
-// value-imports listTenantWorkspaces at module-eval (cache(listTenantWorkspaces)),
-// so the factory must export it too or the real workspace.ts import throws.
-vi.mock("@/lib/api/workspaces", () => ({
-  createTenantWorkspace: createTenantWorkspaceMock,
-  listTenantWorkspaces: listTenantWorkspacesMock,
+// factory runs.
+const { withTokenMock, createTenantWorkspaceMock } = vi.hoisted(() => ({
+  withTokenMock: vi.fn(),
+  createTenantWorkspaceMock: vi.fn(),
 }));
 
-import { setActiveWorkspace, createWorkspaceAction } from "@/app/(dashboard)/actions";
-import { ACTIVE_WORKSPACE_COOKIE } from "@/lib/workspace";
+vi.mock("@/lib/actions/with-token", () => ({ withToken: withTokenMock }));
+vi.mock("@/lib/api/workspaces", () => ({ createTenantWorkspace: createTenantWorkspaceMock }));
 
-// 60 * 60 * 24 * 365 — the cookie's one-year max-age, mirrored from the source
-// so a drift in the constant fails this assertion loudly.
-const ONE_YEAR_S = 31_536_000;
+import { createWorkspaceAction } from "@/app/(dashboard)/actions";
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -60,24 +33,8 @@ beforeEach(() => {
 });
 afterEach(() => vi.resetAllMocks());
 
-describe("setActiveWorkspace — server-side cookie write", () => {
-  it("writes the active-workspace cookie with a year max-age and revalidates the layout", async () => {
-    await setActiveWorkspace("ws42");
-
-    expect(setSpy).toHaveBeenCalledTimes(1);
-    expect(setSpy).toHaveBeenCalledWith({
-      name: ACTIVE_WORKSPACE_COOKIE,
-      value: "ws42",
-      path: "/",
-      sameSite: "lax",
-      maxAge: ONE_YEAR_S,
-    });
-    expect(revalidatePathMock).toHaveBeenCalledWith("/", "layout");
-  });
-});
-
-describe("createWorkspaceAction — create then switch (no half-switch on failure)", () => {
-  it("ok-branch: creates the workspace, switches the cookie to the new id, returns the envelope", async () => {
+describe("createWorkspaceAction — forwards create through withToken", () => {
+  it("creates the workspace under the resolved token and returns the envelope", async () => {
     const data = { workspace_id: "ws9", name: "scrappy-otter", request_id: "req-1" };
     createTenantWorkspaceMock.mockResolvedValueOnce(data);
 
@@ -86,34 +43,23 @@ describe("createWorkspaceAction — create then switch (no half-switch on failur
 
     // token threaded first, body second — the order the source uses.
     expect(createTenantWorkspaceMock).toHaveBeenCalledWith("tok", body);
-    // the cookie is switched to the freshly-minted workspace id.
-    expect(setSpy).toHaveBeenCalledTimes(1);
-    expect(setSpy).toHaveBeenCalledWith({
-      name: ACTIVE_WORKSPACE_COOKIE,
-      value: "ws9",
-      path: "/",
-      sameSite: "lax",
-      maxAge: ONE_YEAR_S,
-    });
-    expect(revalidatePathMock).toHaveBeenCalledWith("/", "layout");
     expect(r).toEqual({ ok: true, data });
   });
 
-  it("failure-branch: leaves the cookie untouched and forwards the failure envelope", async () => {
+  it("forwards a withToken failure envelope untouched, without attempting the create", async () => {
     const failure = {
       ok: false as const,
       error: "Workspace limit reached",
       status: 409,
       errorCode: "UZ-WSP-009",
     };
-    // withToken resolves to a failure envelope; the inner client never resolves
-    // a workspace id, so the action must NOT write or revalidate.
+    // withToken resolves to a failure envelope (e.g. missing token); the inner
+    // client never runs, so the action just threads the failure straight back.
     withTokenMock.mockResolvedValueOnce(failure);
 
     const r = await createWorkspaceAction({ name: "doomed" });
 
     expect(r).toEqual(failure);
-    expect(setSpy).not.toHaveBeenCalled();
-    expect(revalidatePathMock).not.toHaveBeenCalled();
+    expect(createTenantWorkspaceMock).not.toHaveBeenCalled();
   });
 });

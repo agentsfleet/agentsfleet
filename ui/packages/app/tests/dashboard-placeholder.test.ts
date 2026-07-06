@@ -2,10 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup } from "@testing-library/react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { CHARGE_TYPE, PROVIDER_MODE } from "@/lib/types";
-import {
-  mockAuthOnce as mockAuth,
-  resolveActiveWorkspace as resolveActiveWorkspaceMock,
-} from "./helpers/dashboard-mocks";
+import { mockAuthOnce as mockAuth } from "./helpers/dashboard-mocks";
 import {
   resetDashboardMocks,
   listWorkspaceEventsMock,
@@ -27,7 +24,7 @@ vi.mock("@agentsfleet/design-system", async (orig) => {
 
 // App-specific dashboard mocks — see tests/helpers/dashboard-app-mocks.tsx.
 vi.mock("@/lib/api/fleets", async () => (await import("./helpers/dashboard-app-mocks")).fleetsApiMock());
-vi.mock("@/app/(dashboard)/fleets/actions", async () => (await import("./helpers/dashboard-app-mocks")).fleetActionsMock());
+vi.mock("@/app/(dashboard)/w/[workspaceId]/fleets/actions", async () => (await import("./helpers/dashboard-app-mocks")).fleetActionsMock());
 vi.mock("@/lib/api/tenant_billing", async () => (await import("./helpers/dashboard-app-mocks")).tenantBillingMock());
 vi.mock("@/lib/api/tenant_provider", async () => (await import("./helpers/dashboard-app-mocks")).tenantProviderMock());
 vi.mock("@/lib/api/model_caps", async () => (await import("./helpers/dashboard-app-mocks")).modelCapsMock());
@@ -53,34 +50,34 @@ describe("placeholder pages", () => {
 
   it("settings defaults page renders the masked placeholder when authenticated", async () => {
     mockAuth({ token: "tkn" });
-    const { default: Page } = await import("../app/(dashboard)/settings/defaults/page");
-    const m = renderToStaticMarkup(await Page());
+    const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/settings/defaults/page");
+    const m = renderToStaticMarkup(await Page({ params: Promise.resolve({ workspaceId: "ws_1" }) }));
     expect(m).toContain("Defaults");
   });
 
   it("settings defaults page redirects to /sign-in when no token", async () => {
     mockAuth({ token: null });
-    const { default: Page } = await import("../app/(dashboard)/settings/defaults/page");
-    await expect(Page()).rejects.toThrow("redirect:/sign-in");
+    const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/settings/defaults/page");
+    await expect(Page({ params: Promise.resolve({ workspaceId: "ws_1" }) })).rejects.toThrow("redirect:/sign-in");
   });
 
   it("settings security page renders the masked placeholder when authenticated", async () => {
     mockAuth({ token: "tkn" });
-    const { default: Page } = await import("../app/(dashboard)/settings/security/page");
-    const m = renderToStaticMarkup(await Page());
+    const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/settings/security/page");
+    const m = renderToStaticMarkup(await Page({ params: Promise.resolve({ workspaceId: "ws_1" }) }));
     expect(m).toContain("Security");
   });
 
   it("settings security page redirects to /sign-in when no token", async () => {
     mockAuth({ token: null });
-    const { default: Page } = await import("../app/(dashboard)/settings/security/page");
-    await expect(Page()).rejects.toThrow("redirect:/sign-in");
+    const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/settings/security/page");
+    await expect(Page({ params: Promise.resolve({ workspaceId: "ws_1" }) })).rejects.toThrow("redirect:/sign-in");
   });
 
   it("events page redirects to /sign-in when no token", async () => {
     mockAuth({ token: null });
-    const { default: Page } = await import("../app/(dashboard)/events/page");
-    await expect(Page()).rejects.toThrow("redirect:/sign-in");
+    const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/events/page");
+    await expect(Page({ params: Promise.resolve({ workspaceId: "ws_1" }) })).rejects.toThrow("redirect:/sign-in");
   });
 
   it("events page shell streams the header + skeleton before data", async () => {
@@ -88,8 +85,8 @@ describe("placeholder pages", () => {
     // skeleton in its place — the events section stays absent until it streams
     // in, but the header title paints immediately.
     mockAuth({ token: "token_abc" });
-    const { default: Page } = await import("../app/(dashboard)/events/page");
-    const m = renderToStaticMarkup(await Page());
+    const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/events/page");
+    const m = renderToStaticMarkup(await Page({ params: Promise.resolve({ workspaceId: "ws_1" }) }));
     expect(m).toContain("Events"); // PageTitle in the shell
     expect(m).toContain("data-skeleton"); // Skeleton fallback
     expect(m).not.toContain("Workspace events"); // data not yet resolved
@@ -97,50 +94,32 @@ describe("placeholder pages", () => {
 
   it("EventsData returns null when the token is missing", async () => {
     mockAuth({ token: null });
-    const { EventsData } = await import("../app/(dashboard)/events/page");
-    expect(await EventsData()).toBeNull();
-  });
-
-  it("events page calls notFound when no active workspace", async () => {
-    mockAuth({ token: "token_abc" });
-    resolveActiveWorkspaceMock.mockResolvedValue(null);
-    const { EventsData } = await import("../app/(dashboard)/events/page");
-    await expect(EventsData()).rejects.toThrow("notFound");
+    const { EventsData } = await import("../app/(dashboard)/w/[workspaceId]/events/page");
+    expect(await EventsData({ workspaceId: "ws_1" })).toBeNull();
   });
 
   it("events page renders Workspace events section with EventsList", async () => {
+    // M118: EventsData reads `workspaceId` from the route param (its prop); the
+    // no-workspace `notFound()` is gone (the `[workspaceId]` layout guards it).
     mockAuth({ token: "token_abc" });
-    resolveActiveWorkspaceMock.mockResolvedValue({ id: "ws_1", name: "Default" });
     listWorkspaceEventsMock.mockResolvedValue({ items: [], next_cursor: null });
-    const { EventsData } = await import("../app/(dashboard)/events/page");
-    const m = renderToStaticMarkup(await EventsData());
+    const { EventsData } = await import("../app/(dashboard)/w/[workspaceId]/events/page");
+    const m = renderToStaticMarkup(await EventsData({ workspaceId: "ws_1" }));
     expect(m).toContain("Workspace events");
   });
 
   it("events page falls back to empty page when listWorkspaceEvents errors", async () => {
     mockAuth({ token: "token_abc" });
-    resolveActiveWorkspaceMock.mockResolvedValue({ id: "ws_1", name: "Default" });
     listWorkspaceEventsMock.mockRejectedValue(new Error("boom"));
-    const { EventsData } = await import("../app/(dashboard)/events/page");
-    const m = renderToStaticMarkup(await EventsData());
+    const { EventsData } = await import("../app/(dashboard)/w/[workspaceId]/events/page");
+    const m = renderToStaticMarkup(await EventsData({ workspaceId: "ws_1" }));
     expect(m).toContain("Workspace events");
-  });
-
-  it("models & keys settings page renders empty-workspace empty-state when no workspace", async () => {
-    // Full-page composition (hero + switch list + custom secrets) is covered in
-    // depth by tests/models-credentials-page.test.ts; here only the light
-    // early-return branches that don't mount the heavy client children.
-    mockAuth({ token: "token_provider" });
-    resolveActiveWorkspaceMock.mockResolvedValue(null);
-    const { default: Page } = await import("../app/(dashboard)/settings/models/page");
-    const m = renderToStaticMarkup(await Page());
-    expect(m).toContain("No workspace yet");
   });
 
   it("models & keys settings page redirects to /sign-in when no token", async () => {
     mockAuth({ token: null });
-    const { default: Page } = await import("../app/(dashboard)/settings/models/page");
-    await expect(Page()).rejects.toThrow("redirect:/sign-in");
+    const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/settings/models/page");
+    await expect(Page({ params: Promise.resolve({ workspaceId: "ws_1" }) })).rejects.toThrow("redirect:/sign-in");
   });
 
   it("billing settings page renders balance card + usage tab + invoice/payment empty states", async () => {

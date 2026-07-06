@@ -27,7 +27,6 @@ import { FIXTURE_KEY, type FixtureKey } from "./constants";
 const TEST_OTP = "424242";
 const SESSION_METADATA_TIMEOUT_MS = 30_000;
 const SESSION_METADATA_POLL_MS = 1_000;
-const NO_WORKSPACE_TEXT = /no workspace yet/i;
 const WORKSPACES_PATH = "/v1/tenants/me/workspaces";
 
 interface ClerkSignUpAttempt {
@@ -116,12 +115,22 @@ async function waitForTenantWorkspace(page: Page, email: string, sessionJwt: str
   const deadline = Date.now() + SESSION_METADATA_TIMEOUT_MS;
   let lastApiState = "not checked";
   while (Date.now() < deadline) {
-    await page.goto("/fleets");
-    await page.getByRole("heading", { name: /fleets/i }).first().waitFor({ timeout: 5_000 });
+    // The authoritative signal that provisioning finished is the workspace
+    // list; the tenant's default workspace is its first item. Once it's there,
+    // deep-link the browser to that workspace's fleets page (post-M118 the
+    // workspace lives in the URL — there is no implicit-active-workspace root
+    // route) and confirm the session renders it before returning.
     const apiState = await readWorkspaceApiState(page, sessionJwt);
     lastApiState = apiState.label;
-    if ((await page.getByText(NO_WORKSPACE_TEXT).count()) === 0 && apiState.workspaceId) {
-      return apiState.workspaceId;
+    if (apiState.workspaceId) {
+      await page.goto(`/w/${apiState.workspaceId}/fleets`);
+      const rendered = await page
+        .getByRole("heading", { name: /fleets/i })
+        .first()
+        .waitFor({ timeout: 5_000 })
+        .then(() => true)
+        .catch(() => false);
+      if (rendered) return apiState.workspaceId;
     }
     await new Promise((resolve) => setTimeout(resolve, SESSION_METADATA_POLL_MS));
   }

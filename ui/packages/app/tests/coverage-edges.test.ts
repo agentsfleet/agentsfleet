@@ -70,15 +70,11 @@ describe("dashboard page inner async components", () => {
 
   async function withMocks(overrides: {
     token?: string | null;
-    workspace?: { id: string; name: string } | null;
     listFleets?: () => Promise<unknown>;
     billing?: () => Promise<unknown>;
     activity?: () => Promise<unknown>;
   } = {}) {
     const token = overrides.token === undefined ? "tkn_1" : overrides.token;
-    const workspace = overrides.workspace === undefined
-      ? { id: "ws_1", name: "Alpha" }
-      : overrides.workspace;
 
     authMock.mockReset();
     authMock.mockResolvedValue({
@@ -86,26 +82,18 @@ describe("dashboard page inner async components", () => {
       userId: "u_1",
       sessionClaims: null,
     });
+    // M118: `lib/workspace` is slimmed to `listTenantWorkspacesCached`. StatusTiles
+    // no longer resolves a workspace — it reads `workspaceId` straight from the
+    // page's route param, so the tests pass it as a prop instead.
     vi.doMock("@/lib/workspace", () => ({
-      resolveActiveWorkspace: vi.fn().mockResolvedValue(workspace),
-      resolveActiveWorkspaceId: vi.fn().mockResolvedValue(
-        workspace ? { id: workspace.id, source: "cookie" } : null,
-      ),
-      withWorkspaceScope: async (_t: string, fn: (id: string) => Promise<unknown>) =>
-        workspace ? fn(workspace.id) : null,
-      orFallback:
-        <T,>(fallback: T) =>
-        (err: unknown): T => {
-          if (
-            err &&
-            typeof err === "object" &&
-            "status" in err &&
-            ((err as { status: number }).status === 403 || (err as { status: number }).status === 404)
-          )
-            throw err;
-          return fallback;
-        },
       listTenantWorkspacesCached: vi.fn().mockResolvedValue({ items: [], total: 0 }),
+    }));
+    // The empty-fleets branch pulls the first-run library gallery; mock it so the
+    // catch path is deterministic rather than a real (failing) fetch.
+    vi.doMock("@/lib/api/fleet-library", () => ({
+      listWorkspaceFleetLibrary: vi.fn().mockResolvedValue({ items: [] }),
+      listWorkspaceFleetLibraryCached: vi.fn().mockResolvedValue({ items: [] }),
+      onboardWorkspaceFleetLibrary: vi.fn(),
     }));
     vi.doMock("@/lib/api/fleets", () => ({
       listFleets: overrides.listFleets ?? vi.fn().mockResolvedValue({ items: [], cursor: null }),
@@ -142,27 +130,21 @@ describe("dashboard page inner async components", () => {
 
   it("StatusTiles returns null when token missing", async () => {
     await withMocks({ token: null });
-    const { StatusTiles } = await import("../app/(dashboard)/page");
-    expect(await StatusTiles()).toBeNull();
-  });
-
-  it("StatusTiles returns null when workspace missing", async () => {
-    await withMocks({ workspace: null });
-    const { StatusTiles } = await import("../app/(dashboard)/page");
-    expect(await StatusTiles()).toBeNull();
+    const { StatusTiles } = await import("../app/(dashboard)/w/[workspaceId]/page");
+    expect(await StatusTiles({ workspaceId: "ws_1" })).toBeNull();
   });
 
   it("StatusTiles renders counts and hits the listFleets catch branch", async () => {
     await withMocks({ listFleets: () => Promise.reject(new Error("boom")) });
-    const { StatusTiles } = await import("../app/(dashboard)/page");
-    const element = await StatusTiles();
+    const { StatusTiles } = await import("../app/(dashboard)/w/[workspaceId]/page");
+    const element = await StatusTiles({ workspaceId: "ws_1" });
     expect(element).not.toBeNull();
   });
 
   it("StatusTiles tolerates getTenantBilling failure (billing catch arrow)", async () => {
     await withMocks({ billing: () => Promise.reject(new Error("billing-down")) });
-    const { StatusTiles } = await import("../app/(dashboard)/page");
-    const element = await StatusTiles();
+    const { StatusTiles } = await import("../app/(dashboard)/w/[workspaceId]/page");
+    const element = await StatusTiles({ workspaceId: "ws_1" });
     expect(element).not.toBeNull();
   });
 
@@ -178,8 +160,8 @@ describe("dashboard page inner async components", () => {
         balance_nanos: 4_710_000_000, is_exhausted: false, exhausted_at: null,
       }),
     });
-    const { StatusTiles } = await import("../app/(dashboard)/page");
-    const element = await StatusTiles();
+    const { StatusTiles } = await import("../app/(dashboard)/w/[workspaceId]/page");
+    const element = await StatusTiles({ workspaceId: "ws_1" });
     expect(element).not.toBeNull();
     const html = renderToStaticMarkup(element as React.ReactElement);
     expect(html).toContain("$4.71");
@@ -195,8 +177,8 @@ describe("dashboard page inner async components", () => {
       }),
       billing: () => Promise.reject(new Error("billing-down")),
     });
-    const { StatusTiles } = await import("../app/(dashboard)/page");
-    const element = await StatusTiles();
+    const { StatusTiles } = await import("../app/(dashboard)/w/[workspaceId]/page");
+    const element = await StatusTiles({ workspaceId: "ws_1" });
     expect(element).not.toBeNull();
     const html = renderToStaticMarkup(element as React.ReactElement);
     expect(html).toContain("—");
@@ -214,8 +196,6 @@ describe("DashboardLayout edge branches", () => {
   it("falls back to empty list + null active when there is no token", async () => {
     authMock.mockResolvedValue({ getToken: vi.fn().mockResolvedValue(null) });
     vi.doMock("@/lib/workspace", () => ({
-      resolveActiveWorkspace: vi.fn(),
-      resolveActiveWorkspaceId: vi.fn(),
       listTenantWorkspacesCached: vi.fn(),
     }));
     vi.doMock("@/components/layout/Shell", () => ({
@@ -237,8 +217,6 @@ describe("DashboardLayout edge branches", () => {
   it("recovers via catch when listTenantWorkspacesCached rejects", async () => {
     authMock.mockResolvedValue({ getToken: vi.fn().mockResolvedValue("tkn") });
     vi.doMock("@/lib/workspace", () => ({
-      resolveActiveWorkspace: vi.fn().mockResolvedValue(null),
-      resolveActiveWorkspaceId: vi.fn().mockResolvedValue(null),
       listTenantWorkspacesCached: vi.fn().mockRejectedValue(new Error("api-down")),
     }));
     vi.doMock("@/components/layout/Shell", () => ({

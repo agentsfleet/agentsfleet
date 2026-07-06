@@ -9,7 +9,7 @@
  * (button label, copy, dialog role) has to be tracked across four files.
  *
  * State assertions key on the dashboard listing's `data-state` attribute
- * (canonical mapping in app/(dashboard)/fleets/components/FleetsList.tsx:
+ * (canonical mapping in app/(dashboard)/w/[workspaceId]/fleets/components/FleetsList.tsx:
  * active → live, paused/stopped → parked, killed/errored → failed).
  */
 import { expect, type Page } from "@playwright/test";
@@ -43,7 +43,10 @@ export async function expectRowState(
   fleetId: string,
   state: RowState,
 ): Promise<void> {
-  const row = page.locator(`a[href="/fleets/${fleetId}"]`);
+  // The FleetsList row anchor is now workspace-scoped
+  // (`/w/<workspaceId>/fleets/<id>`); match on the stable suffix so this shared
+  // helper needn't thread the workspace id through every caller.
+  const row = page.locator(`a[href$="/fleets/${fleetId}"]`);
   await expect(row).toBeVisible();
   await expect(row).toHaveAttribute("data-state", state, {
     timeout: ROW_STATE_TIMEOUT_MS,

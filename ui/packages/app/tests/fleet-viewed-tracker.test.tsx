@@ -5,7 +5,7 @@ import { cleanup, render } from "@testing-library/react";
 const { captureProductEventMock } = vi.hoisted(() => ({ captureProductEventMock: vi.fn() }));
 vi.mock("@/lib/analytics/posthog", () => ({ captureProductEvent: captureProductEventMock }));
 
-import { FleetViewedTracker } from "../app/(dashboard)/fleets/[id]/components/FleetViewedTracker";
+import { FleetViewedTracker } from "../app/(dashboard)/w/[workspaceId]/fleets/[id]/components/FleetViewedTracker";
 import { EVENTS } from "../lib/analytics/events";
 
 afterEach(() => {

@@ -15,6 +15,7 @@ import * as crypto from "node:crypto";
 import { expect, test } from "@playwright/test";
 import { deleteUser, findUserIdByEmail } from "./fixtures/clerk-admin";
 import { signUpAs } from "./fixtures/signup";
+import { workspaceHref, workspaceUrlPattern } from "./fixtures/nav";
 
 const PASSWORD = "SignupFixture!2026-live";
 const LIVE_WEBHOOK_FLAG = "E2E_LIVE_SIGNUP_WEBHOOK";
@@ -53,13 +54,14 @@ test.describe("signup webhook live", () => {
     const email = uniqueEmail();
     createdEmail = email;
 
-    await signUpAs(page, email, PASSWORD, {
+    const signup = await signUpAs(page, email, PASSWORD, {
       bootstrap: false,
       requireWorkspaceSession: true,
     });
+    if (!signup.workspaceId) throw new Error("signup did not resolve a workspace id");
 
-    await page.goto("/fleets");
-    await expect(page).toHaveURL((url) => url.pathname === "/fleets");
+    await page.goto(workspaceHref(signup.workspaceId, "fleets"));
+    await expect(page).toHaveURL(workspaceUrlPattern("fleets"));
     await expect(page.getByRole("heading", { name: /fleets/i }).first()).toBeVisible();
     await expect(page.getByTestId("workspace-switcher")).toBeVisible();
     await expect(page.getByText(/no fleets yet/i)).toBeVisible();

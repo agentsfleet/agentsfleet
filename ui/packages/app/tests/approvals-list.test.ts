@@ -18,7 +18,7 @@ const { listApprovalsActionMock, approveApprovalActionMock, denyApprovalActionMo
     denyApprovalActionMock: vi.fn(),
   }));
 
-vi.mock("@/app/(dashboard)/approvals/actions", () => ({
+vi.mock("@/app/(dashboard)/w/[workspaceId]/approvals/actions", () => ({
   listApprovalsAction: listApprovalsActionMock,
   approveApprovalAction: approveApprovalActionMock,
   denyApprovalAction: denyApprovalActionMock,
@@ -28,7 +28,7 @@ vi.mock("next/link", () => ({
     React.createElement("a", { href, ...rest }, children),
 }));
 
-import ApprovalsList from "@/app/(dashboard)/approvals/components/ApprovalsList";
+import ApprovalsList from "@/app/(dashboard)/w/[workspaceId]/approvals/components/ApprovalsList";
 import type { ApprovalGate } from "@/lib/api/approvals";
 
 beforeEach(() => {

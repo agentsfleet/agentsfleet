@@ -1,5 +1,5 @@
 /**
- * Dashboard template-gallery install: drives the `/fleets/new` template-only
+ * Dashboard template-gallery install: drives the `/w/<id>/fleets/new` template-only
  * flow like a real human. M103 removed paste/github-import authoring — a fleet
  * is now installed from a template card, so this helper first onboards a tenant
  * template over the API (there is no UI/CLI onboard verb), then drives the
@@ -16,13 +16,14 @@
  * renders, so the click below targets exactly the card we just onboarded.
  *
  * On `install:ready` the live states surface "Open fleet →", whose click calls
- * `router.push("/fleets/${fleet_id}")`; this helper waits for that navigation
- * and returns the new fleet id.
+ * `router.push("/w/${workspaceId}/fleets/${fleet_id}")`; this helper waits for
+ * that navigation and returns the new fleet id.
  */
 import * as crypto from "node:crypto";
 import { expect, type Page } from "@playwright/test";
 import { SOURCE_KIND_UPLOAD } from "@/lib/types";
 import { clientFor, type ClientHandle } from "./api-client";
+import { workspaceHref, workspaceUrlPattern } from "./nav";
 
 // 60s, not 30s — the install now runs inline through the live SSE state stream
 // (creating → provisioning → ready) before "Open fleet →" appears, not just a
@@ -35,7 +36,7 @@ const INSTALL_TIMEOUT_MS = 60_000;
 // (a cached FixtureKey or an ephemeral `{sessionJwt}` handle) and the workspace
 // whose gallery the install will then resolve the template from. The workspace
 // MUST be the one active in the browser at install time, or the onboarded card
-// will not render on `/fleets/new`.
+// will not render on `/w/<workspaceId>/fleets/new`.
 export interface InstallAuth {
   handle: ClientHandle;
   workspaceId: string;
@@ -106,8 +107,8 @@ export async function installViaUI(page: Page, name: string, auth: InstallAuth):
   const templateName = `tmpl-${crypto.randomBytes(4).toString("hex")}`;
   await onboardTemplate(auth, templateName);
 
-  await page.goto("/fleets/new");
-  await expect(page).toHaveURL(/\/fleets\/new(\?|$)/);
+  await page.goto(workspaceHref(auth.workspaceId, "fleets/new"));
+  await expect(page).toHaveURL(workspaceUrlPattern("fleets/new"));
 
   // Gallery → confirm: click this template's card action, then name the fleet
   // and Install. Scope to the card's <article> so the click targets the right
@@ -123,14 +124,16 @@ export async function installViaUI(page: Page, name: string, auth: InstallAuth):
   // slow beat), then click through to the detail page.
   await page.getByRole("button", { name: /open fleet/i }).click({ timeout: INSTALL_TIMEOUT_MS });
 
-  // Success path: router.push(`/fleets/${fleet_id}`). Exclude the
-  // /fleets/new sentinel so we don't false-match an install that failed and
+  // Success path: router.push(`/w/${workspaceId}/fleets/${fleet_id}`). Exclude
+  // the /fleets/new sentinel so we don't false-match an install that failed and
   // stayed on the form. Use expect.toHaveURL (URL-polling) rather than
   // waitForURL: Next App Router's router.push is a soft Single-Page
   // Application navigation that mutates history without re-firing the
   // document `load` event, so waitForURL's default waitUntil:"load" hangs
   // even after the URL changes.
-  await expect(page).toHaveURL(/\/fleets\/(?!new)[a-z0-9-]+(\?|$)/, { timeout: INSTALL_TIMEOUT_MS });
+  await expect(page).toHaveURL(/\/w\/[^/]+\/fleets\/(?!new)[a-z0-9-]+(\?|$)/, {
+    timeout: INSTALL_TIMEOUT_MS,
+  });
   const id = new URL(page.url()).pathname.split("/").pop();
   if (!id) throw new Error(`installViaUI: could not extract fleet id from ${page.url()}`);
   return id;

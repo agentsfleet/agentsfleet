@@ -25,7 +25,7 @@ vi.mock("@/lib/api/secrets", () => ({
 import {
   createSecretAction,
   deleteSecretAction,
-} from "@/app/(dashboard)/secrets/actions";
+} from "@/app/(dashboard)/w/[workspaceId]/secrets/actions";
 
 beforeEach(() => {
   vi.clearAllMocks();

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   isHttpsUrl,
   BASE_URL_NOT_HTTPS,
-} from "@/app/(dashboard)/settings/models/lib/custom-endpoint";
+} from "@/app/(dashboard)/w/[workspaceId]/settings/models/lib/custom-endpoint";
 
 // Covers the shared custom-endpoint client validation extracted for the
 // consolidated Models forms. The server re-validates and additionally

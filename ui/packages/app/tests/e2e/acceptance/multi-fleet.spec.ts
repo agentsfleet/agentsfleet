@@ -21,6 +21,7 @@ import { signInAs } from "./fixtures/auth";
 import { getDefaultWorkspaceId, seedFleet } from "./fixtures/seed";
 import { cleanWorkspaceFleets } from "./fixtures/teardown";
 import { FIXTURE_KEY } from "./fixtures/constants";
+import { workspaceHref, workspaceUrlPattern } from "./fixtures/nav";
 
 const SEED_COUNT = 6;
 const PULSE_CAP = 5;
@@ -40,19 +41,20 @@ test.describe("multi-fleet pulse cap", () => {
       }
 
       await signInAs(page, FIXTURE_KEY.regular);
-      await page.goto("/fleets");
-      await expect(page).toHaveURL(/\/fleets(\?|$)/);
+      await page.goto(workspaceHref(ws, "fleets"));
+      await expect(page).toHaveURL(workspaceUrlPattern("fleets"));
 
-      const rows = page.locator('a[href^="/fleets/"][data-state]');
+      const hrefPrefix = workspaceHref(ws, "fleets/");
+      const rows = page.locator(`a[href^="${hrefPrefix}"][data-state]`);
       await expect(rows).toHaveCount(SEED_COUNT, { timeout: RENDER_TIMEOUT_MS });
 
       // Every seeded row's data-state is "live" (active status).
-      const liveRows = page.locator('a[href^="/fleets/"][data-state="live"]');
+      const liveRows = page.locator(`a[href^="${hrefPrefix}"][data-state="live"]`);
       await expect(liveRows).toHaveCount(SEED_COUNT);
 
       // Pulse cap: only the first N rows have a child WakePulse with
       // data-live="true". The remainder render the static glow variant.
-      const pulsing = page.locator('a[href^="/fleets/"][data-state="live"] [data-live]');
+      const pulsing = page.locator(`a[href^="${hrefPrefix}"][data-state="live"] [data-live]`);
       await expect(pulsing).toHaveCount(PULSE_CAP);
 
       // Header label consolidates: "{N} live · capped at {PULSE_CAP}" when

@@ -10,7 +10,7 @@ vi.mock("next/navigation", () => ({
 }));
 
 const deleteSecretActionMock = vi.fn();
-vi.mock("@/app/(dashboard)/secrets/actions", () => ({
+vi.mock("@/app/(dashboard)/w/[workspaceId]/secrets/actions", () => ({
   createSecretAction: vi.fn(),
   deleteSecretAction: deleteSecretActionMock,
 }));
@@ -46,7 +46,7 @@ describe("SecretsList component", () => {
     protectedSecretName?: string | null,
   ) {
     const { default: SecretsList } = await import(
-      "../app/(dashboard)/secrets/components/SecretsList"
+      "../app/(dashboard)/w/[workspaceId]/secrets/components/SecretsList"
     );
     const props = {
       workspaceId: "ws_1",

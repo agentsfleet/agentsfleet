@@ -22,17 +22,17 @@ const { catalogueState } = vi.hoisted(() => ({
 }));
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: routerRefresh, push: vi.fn() }) }));
-vi.mock("@/app/(dashboard)/secrets/actions", () => ({ createSecretAction }));
-vi.mock("@/app/(dashboard)/settings/models/actions", () => ({ setProviderSelfManagedAction }));
-vi.mock("@/app/(dashboard)/settings/models/lib/track", () => ({ captureModelActivated }));
+vi.mock("@/app/(dashboard)/w/[workspaceId]/secrets/actions", () => ({ createSecretAction }));
+vi.mock("@/app/(dashboard)/w/[workspaceId]/settings/models/actions", () => ({ setProviderSelfManagedAction }));
+vi.mock("@/app/(dashboard)/w/[workspaceId]/settings/models/lib/track", () => ({ captureModelActivated }));
 vi.mock("@/lib/analytics/posthog", () => ({ captureProductEvent }));
 vi.mock("@agentsfleet/design-system", async () => (await import("./helpers/models-component-mocks")).designSystemStub());
-vi.mock("@/app/(dashboard)/settings/models/components/ProviderModelSelect", async () => (await import("./helpers/models-component-mocks")).providerModelSelectStub());
-vi.mock("@/app/(dashboard)/settings/models/components/ModelCatalogueProvider", () => ({
+vi.mock("@/app/(dashboard)/w/[workspaceId]/settings/models/components/ProviderModelSelect", async () => (await import("./helpers/models-component-mocks")).providerModelSelectStub());
+vi.mock("@/app/(dashboard)/w/[workspaceId]/settings/models/components/ModelCatalogueProvider", () => ({
   useModelCatalogue: () => catalogueState,
 }));
 
-import ProviderKeyForm from "@/app/(dashboard)/settings/models/components/ProviderKeyForm";
+import ProviderKeyForm from "@/app/(dashboard)/w/[workspaceId]/settings/models/components/ProviderKeyForm";
 
 beforeEach(() => {
   vi.clearAllMocks();

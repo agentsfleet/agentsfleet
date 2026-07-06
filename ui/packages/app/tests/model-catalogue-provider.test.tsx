@@ -8,7 +8,7 @@ vi.mock("@/lib/api/model_caps", () => ({ getModelCaps: getModelCapsMock }));
 import {
   ModelCatalogueProvider,
   useModelCatalogue,
-} from "@/app/(dashboard)/settings/models/components/ModelCatalogueProvider";
+} from "@/app/(dashboard)/w/[workspaceId]/settings/models/components/ModelCatalogueProvider";
 
 const cap = (id: string, provider: string) => ({
   id,

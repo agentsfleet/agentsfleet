@@ -37,14 +37,14 @@ const ISLANDS: Island[] = [
     name: "EditSecretDialog",
     shim: "EditSecretDialogDynamic",
     rawImportFragment: "secrets/components/EditSecretDialog",
-    callSite: "app/(dashboard)/secrets/components/SecretsList.tsx",
+    callSite: "app/(dashboard)/w/[workspaceId]/secrets/components/SecretsList.tsx",
     rawComponent: "EditSecretDialog",
   },
   {
     name: "RenameSecretDialog",
     shim: "RenameSecretDialogDynamic",
     rawImportFragment: "secrets/components/RenameSecretDialog",
-    callSite: "app/(dashboard)/secrets/components/SecretsList.tsx",
+    callSite: "app/(dashboard)/w/[workspaceId]/secrets/components/SecretsList.tsx",
     rawComponent: "RenameSecretDialog",
   },
   {
@@ -53,7 +53,7 @@ const ISLANDS: Island[] = [
     rawImportFragment: "secrets/components/AddSecretForm",
     // Secrets is its own page now; the add
     // form mounts inside AddSecretDialog, not the page directly.
-    callSite: "app/(dashboard)/secrets/components/AddSecretDialog.tsx",
+    callSite: "app/(dashboard)/w/[workspaceId]/secrets/components/AddSecretDialog.tsx",
     rawComponent: "AddSecretForm",
   },
   {
@@ -104,9 +104,9 @@ describe("interaction-only islands are excluded from the route's initial chunk",
 
 // Stub the heavy inner modules so calling the dynamic loader (below) resolves
 // to a light component without pulling clerk / design-system / form deps.
-vi.mock("@/app/(dashboard)/secrets/components/EditSecretDialog", () => ({ default: () => null }));
-vi.mock("@/app/(dashboard)/secrets/components/RenameSecretDialog", () => ({ default: () => null }));
-vi.mock("@/app/(dashboard)/secrets/components/AddSecretForm", () => ({ default: () => null }));
+vi.mock("@/app/(dashboard)/w/[workspaceId]/secrets/components/EditSecretDialog", () => ({ default: () => null }));
+vi.mock("@/app/(dashboard)/w/[workspaceId]/secrets/components/RenameSecretDialog", () => ({ default: () => null }));
+vi.mock("@/app/(dashboard)/w/[workspaceId]/secrets/components/AddSecretForm", () => ({ default: () => null }));
 vi.mock("@/components/layout/CreateWorkspaceDialog", () => ({ default: () => null }));
 vi.mock("@/app/(dashboard)/settings/api-keys/components/CreateApiKeyDialog", () => ({ default: () => null }));
 vi.mock("@/app/(dashboard)/admin/runners/components/AddRunnerDialog", () => ({ default: () => null }));

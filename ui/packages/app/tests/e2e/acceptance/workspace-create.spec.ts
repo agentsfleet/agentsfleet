@@ -2,6 +2,7 @@ import * as crypto from "node:crypto";
 import { expect, test } from "@playwright/test";
 import { deleteUser, findUserIdByEmail } from "./fixtures/clerk-admin";
 import { signUpAs } from "./fixtures/signup";
+import { workspaceHref } from "./fixtures/nav";
 
 const PASSWORD = "SignupFixture!2026-stable";
 const WORKSPACE_CREATE_TIMEOUT_MS = 30_000;
@@ -38,8 +39,12 @@ test.describe("workspace create", () => {
     const workspaceName = uniqueWorkspaceName();
     createdEmail = email;
 
-    await signUpAs(page, email, PASSWORD, { requireWorkspaceSession: true });
-    await page.goto("/fleets");
+    // Fresh signup lands on its OWN default workspace (not the fixture user's),
+    // so navigate using the workspace id the signup helper resolved for this
+    // brand-new tenant. The dialog then creates a *second* workspace.
+    const { workspaceId } = await signUpAs(page, email, PASSWORD, { requireWorkspaceSession: true });
+    if (!workspaceId) throw new Error("signup did not resolve a default workspace id");
+    await page.goto(workspaceHref(workspaceId, "fleets"));
 
     const switcher = page.getByTestId("workspace-switcher");
     await expect(switcher).toBeVisible();

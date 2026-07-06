@@ -31,6 +31,7 @@ import { signInAs } from "./fixtures/auth";
 import { getDefaultWorkspaceId } from "./fixtures/seed";
 import { cleanWorkspaceFleets } from "./fixtures/teardown";
 import { FIXTURE_KEY } from "./fixtures/constants";
+import { workspaceHref, workspaceUrlPattern } from "./fixtures/nav";
 
 // Worktree root, derived from this file's path. This file lives at
 // `ui/packages/app/tests/e2e/acceptance/install-fleet-cli.spec.ts`; the
@@ -107,7 +108,7 @@ async function spawnFleetctl(args: string[], env: Record<string, string>): Promi
 }
 
 test.describe("install-fleet-cli", () => {
-  test("agentsfleet install lands a row on /fleets with live state", async ({ page }) => {
+  test("agentsfleet install lands a row on /w/[workspaceId]/fleets with live state", async ({ page }) => {
     // Drive the CLI and the workspace-id fetch against the SAME agentsfleetd —
     // splitting them lands the install at a 404 (workspace from server A,
     // install to server B) with no clear hint about the URL mismatch.
@@ -163,10 +164,10 @@ test.describe("install-fleet-cli", () => {
     expect(payload.fleet_id).toBeTruthy();
 
     await signInAs(page, FIXTURE_KEY.regular);
-    await page.goto("/fleets");
-    await expect(page).toHaveURL(/\/fleets(\?|$)/);
+    await page.goto(workspaceHref(ws, "fleets"));
+    await expect(page).toHaveURL(workspaceUrlPattern("fleets"));
 
-    const row = page.locator(`a[href="/fleets/${payload.fleet_id}"]`);
+    const row = page.locator(`a[href="${workspaceHref(ws, `fleets/${payload.fleet_id}`)}"]`);
     await expect(row).toBeVisible();
     await expect(row).toHaveAttribute("data-state", "live");
     await expect(row.getByText(name)).toBeVisible();
