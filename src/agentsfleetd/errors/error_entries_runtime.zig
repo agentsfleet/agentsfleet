@@ -79,7 +79,16 @@ pub const ENTRIES_RUNTIME = [_]Entry{
     eu("UZ-APIKEY-007", .conflict, "active cannot be set to true; mint a new key instead", "Re-activation is not supported. Create a new key via POST /v1/api-keys and revoke the old one.", "A revoked key can't be reactivated. Mint a new key instead."),
     eu("UZ-APIKEY-008", .conflict, "Active API key must be revoked before deletion", "Revoke the key first with PATCH /v1/api-keys/{id} body {\"active\": false}, then retry DELETE.", "Revoke this key before deleting it. Revoke it first, then delete the revoked key."),
     // ── INTEGRATION GRANTS ────────────────────────────────────────────────────
-    // UZ-GRANT-001 retired: no producer ever emitted it.
+    // UZ-GRANT-001 restored (Jul 06, 2026): believed dead when M116 authored
+    // its Dead Code Sweep — that grep matched the code STRING "UZ-GRANT-001",
+    // which is correct for finding e()/eu() registry entries but blind to a
+    // caller that references the derived ERR_* constant by name instead
+    // (fleet/service.zig's grant-gate lease check, credentials_mint.zig's
+    // on-demand mint gate — both landed in the grant-gated mint/lease PR,
+    // merged concurrently with this branch). Restored verbatim; see this
+    // spec's Discovery for the cross-PR collision this exposed.
+    e("UZ-GRANT-001", .forbidden, "No integration grant for service", "This fleet has no approved grant for the target service. " ++
+        "Request one with: POST /v1/fleets/{id}/integration-requests"), // reachable: no — runner-only mint/lease gate, not fetched by ui/packages/app
     eu("UZ-GRANT-002", .not_found, "Integration grant not found", "No grant with that id exists for this fleet, or it was already revoked. " ++
         "List current grants with: GET /v1/workspaces/{ws}/fleets/{id}/integration-grants", "We couldn't find that grant request. It may have already been resolved — refresh the list."),
     eu("UZ-GRANT-003", .conflict, "Grant already resolved", "This grant was already approved or denied \u{2014} by an earlier click, the dashboard, or an auto-timeout. " ++

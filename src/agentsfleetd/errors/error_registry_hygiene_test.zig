@@ -5,8 +5,16 @@ const std = @import("std");
 const common = @import("common");
 const reg = @import("error_registry.zig");
 
+// UZ-GRANT-001 is NOT in this list — believed dead when M116 was authored,
+// but the grant-gated mint/lease PR (#487) merged a live producer (fleet/service.zig's
+// lease-grant check, credentials_mint.zig's on-demand mint gate) concurrently
+// with this branch. This check greps for the code STRING, which is exactly
+// right for e()/eu() registry entries but can't see a caller that references
+// the derived ERR_* Zig constant by name without ever spelling out the code
+// string — that's what `zig build` catches instead (a missing-member compile
+// error), which is how the collision surfaced. Restored, not deleted.
 const DEAD_CODES = [_][]const u8{
-    "UZ-BUNDLE-006", "UZ-GRANT-001", "UZ-RUN-007", "UZ-EXEC-001", "UZ-EXEC-002",
+    "UZ-BUNDLE-006", "UZ-RUN-007", "UZ-EXEC-001", "UZ-EXEC-002",
 };
 
 /// A retired code's breadcrumb comment — a whole-line comment
@@ -33,7 +41,7 @@ fn hasNonCommentReference(content: []const u8, code: []const u8) bool {
     return false;
 }
 
-test "the 5 dead codes have no producer anywhere in src/agentsfleetd/" {
+test "the 4 dead codes have no producer anywhere in src/agentsfleetd/" {
     const alloc = std.testing.allocator;
     const io = common.globalIo();
 
@@ -59,7 +67,7 @@ test "the 5 dead codes have no producer anywhere in src/agentsfleetd/" {
     }
 }
 
-test "the 5 dead codes are absent from the registry" {
+test "the 4 dead codes are absent from the registry" {
     for (DEAD_CODES) |code| {
         const entry = reg.lookup(code);
         try std.testing.expect(!std.mem.eql(u8, entry.code, code)); // lookup() falls back to UNKNOWN
