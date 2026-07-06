@@ -45,8 +45,8 @@ pub fn isApproved(conn: *pg.Conn, fleet_id: []const u8, service: []const u8) !bo
 
 /// The fleet's approved services in one batch read — called once per
 /// lease-issue so the classification loop never queries per credential.
-/// Slice + entries are owned by `alloc` (the lease path passes its request
-/// arena, freeing wholesale; non-arena callers use `freeSet`).
+/// Slice + entries are owned by `alloc` — the lease path passes its request
+/// arena and frees wholesale.
 pub fn approvedSet(alloc: std.mem.Allocator, conn: *pg.Conn, fleet_id: []const u8) ![]const []const u8 {
     var out: std.ArrayList([]const u8) = .empty;
     errdefer {
@@ -71,12 +71,6 @@ pub fn approvedSet(alloc: std.mem.Allocator, conn: *pg.Conn, fleet_id: []const u
 pub fn contains(set: []const []const u8, service: []const u8) bool {
     for (set) |s| if (std.mem.eql(u8, s, service)) return true;
     return false;
-}
-
-/// Release a non-arena `approvedSet` result.
-pub fn freeSet(alloc: std.mem.Allocator, set: []const []const u8) void {
-    for (set) |s| alloc.free(s);
-    alloc.free(set);
 }
 
 // ── Tests ────────────────────────────────────────────────────────────────────
