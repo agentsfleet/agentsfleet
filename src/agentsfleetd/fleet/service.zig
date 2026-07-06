@@ -38,6 +38,9 @@ const billing = @import("service_billing.zig");
 const lease_row = @import("service_lease_row.zig");
 const FleetSession = @import("fleet_session.zig");
 const secrets_resolve = @import("secrets_resolve.zig");
+const grant_lookup = @import("../state/integration_grant_lookup.zig");
+const integration = @import("../credentials/integration.zig");
+const service_endpoint = @import("service_endpoint.zig");
 const context_resolve = @import("context_resolve.zig");
 const rows = @import("event_rows.zig");
 const tenant_provider = @import("../state/tenant_provider.zig");
@@ -117,6 +120,17 @@ fn issueLease(hx: Hx, runner_id: []const u8, session: *FleetSession, acq: assign
             return replyNoWork(hx);
         };
     };
+    // Approved-grant set for the classification gate (grant gate): fetched
+    // once per lease, only when credentials resolved at all. A transient DB
+    // failure mirrors the secrets-resolve transient path — refuse the lease,
+    // keep the delivery leasable — never a lease with an ungated mintable.
+    const approved_services: []const []const u8 = blk: {
+        if (secret_entries == null) break :blk &.{};
+        break :blk fetchApprovedServices(hx, acq.fleet_id) orelse {
+            releaseClaim(hx, acq.fleet_id, acq.fencing_token);
+            return replyNoWork(hx);
+        };
+    };
     const envelope = event_envelope{
         .event_id = acq.event_id,
         .fleet_id = acq.fleet_id,
@@ -139,7 +153,7 @@ fn issueLease(hx: Hx, runner_id: []const u8, session: *FleetSession, acq: assign
             .lease_expires_at = acq.leased_until,
             .secret_delivery = .@"inline",
             .event = envelope,
-            .policy = resolveExecutionPolicy(hx, session, resolved, secret_entries),
+            .policy = resolveExecutionPolicy(hx, session, resolved, secret_entries, approved_services, acq.fleet_id),
             // The installed SKILL.md body (extracted by FleetSession), so the runner
             // delivers it to NullClaw. `claimFleet` resolves the session before the
             // fresh/reclaim split, so this is set identically on both paths. Borrowed
@@ -150,6 +164,21 @@ fn issueLease(hx: Hx, runner_id: []const u8, session: *FleetSession, acq: assign
             .bundle = if (session.bundle_content_hash) |hash| .{ .content_hash = hash } else null,
         },
     });
+}
+
+/// The fleet's approved integration-grant services, one batch read per lease
+/// (grant gate) — arena-owned via `hx.alloc`. Returns null on any DB failure
+/// so the caller refuses the lease (fail closed; the delivery stays leasable).
+fn fetchApprovedServices(hx: Hx, fleet_id: []const u8) ?[]const []const u8 {
+    const conn = hx.ctx.pool.acquire() catch |err| {
+        log.warn("lease_grants_acquire_failed", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .fleet_id = fleet_id, .err = @errorName(err) });
+        return null;
+    };
+    defer hx.ctx.pool.release(conn);
+    return grant_lookup.approvedSet(hx.alloc, conn, fleet_id) catch |err| {
+        log.warn("lease_grants_resolve_failed", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .fleet_id = fleet_id, .err = @errorName(err) });
+        return null;
+    };
 }
 
 /// Resolve the tenant's active provider+key for the lease. Called for BOTH
@@ -178,7 +207,7 @@ fn resolveProviderForLease(hx: Hx, tenant_id: []const u8) ?tenant_provider.Resol
 /// by `hx.ok`; they are never logged (Invariant: no secret bytes in logs).
 /// `resolved` is owned by the caller and outlives `hx.ok`. Resolution failures
 /// refused the lease upstream — by here `entries` is complete or absent.
-fn resolveExecutionPolicy(hx: Hx, session: *FleetSession, resolved: ?tenant_provider.ResolvedProvider, entries: ?[]secrets_resolve.ResolvedSecret) execution_policy.ExecutionPolicy {
+fn resolveExecutionPolicy(hx: Hx, session: *FleetSession, resolved: ?tenant_provider.ResolvedProvider, entries: ?[]secrets_resolve.ResolvedSecret, approved_services: []const []const u8, fleet_id: []const u8) execution_policy.ExecutionPolicy {
     const alloc = hx.alloc;
     // Lease-time overlay (see user_flow.md): sentinel frontmatter (cap 0 /
     // model "") inherits the cap+model the control plane resolved into
@@ -203,9 +232,20 @@ fn resolveExecutionPolicy(hx: Hx, session: *FleetSession, resolved: ?tenant_prov
         var mints: std.ArrayList(execution_policy.Mintable) = .empty;
         for (list) |entry| {
             if (secrets_resolve.mintableId(entry.parsed.value)) |id| {
-                // `@tagName` is the static wire id; `entry.name` is arena-owned and
-                // outlives the hx.ok serialization — both safe for the response.
-                mints.append(alloc, .{ .name = entry.name, .integration = @tagName(id) }) catch |err|
+                // Grant gate: a mintable is emitted ONLY when the
+                // fleet's grant is approved. An ungranted one is dropped from
+                // BOTH surfaces — falling through to `secrets_map` would ship
+                // the raw handle config to the child (Invariant 3, VLT).
+                // `id.toString()` (not `@tagName`) is the audited enum→service
+                // string, comptime-proven to match the DB `service` column.
+                const service = integration.toString(id);
+                if (!grant_lookup.contains(approved_services, service)) {
+                    log.warn("lease_secret_grant_missing", .{ .error_code = ec.ERR_GRANT_NOT_FOUND, .fleet_id = fleet_id, .name = entry.name, .integration = service });
+                    continue;
+                }
+                // `entry.name` is arena-owned and outlives the hx.ok
+                // serialization; `service` is a static const — both safe.
+                mints.append(alloc, .{ .name = entry.name, .integration = service }) catch |err|
                     log.warn("lease_secret_mintable_failed", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .err = @errorName(err) });
             } else {
                 obj.put(alloc, entry.name, entry.parsed.value) catch |err|
@@ -215,7 +255,7 @@ fn resolveExecutionPolicy(hx: Hx, session: *FleetSession, resolved: ?tenant_prov
         if (obj.count() > 0) secrets_map = .{ .object = obj };
         mintable = mints.toOwnedSlice(alloc) catch &.{};
     }
-    const endpoint = customEndpoint(alloc, resolved);
+    const endpoint = service_endpoint.customEndpoint(alloc, resolved);
     return .{
         .secrets_map = secrets_map,
         .mintable = mintable,
@@ -225,37 +265,6 @@ fn resolveExecutionPolicy(hx: Hx, session: *FleetSession, resolved: ?tenant_prov
         .inference_host = endpoint.inference_host,
         .base_url = endpoint.base_url,
     };
-}
-
-/// The lease's provider name + egress host + dialed URL, branching on whether the
-/// resolved credential is a custom OpenAI-compatible endpoint:
-///   - custom (base_url set): hand nullclaw the `custom:<url>` provider name (so
-///     it classifies as `.compatible_provider` and honours the URL override —
-///     NEVER "openai"), carry the URL as `base_url`, and derive the egress
-///     `inference_host` from the SAME URL so the allowlist permits exactly it.
-///   - named provider (base_url null): pass the provider through unchanged with
-///     no base_url; `inference_host` stays "" exactly as before — named-provider
-///     leases are byte-for-byte unchanged (Invariant 7).
-/// Arena-scoped (`alloc` is `hx.alloc`); the `custom:<url>` name + host live until
-/// `hx.ok` serializes. An OOM building the custom name degrades to the SAME shape
-/// the named-provider branch returns — the raw provider with NO base_url and an
-/// empty inference_host — so nullclaw never receives the bare `openai-compatible`
-/// id paired with a URL (an undefined route: `classifyProvider` maps it to no
-/// documented provider). With no base_url it classifies as a plain unknown named
-/// provider and the engine fails authentication predictably, matching the clean
-/// failure of the `resolved == null` / no-custom-endpoint branches above.
-fn customEndpoint(
-    alloc: std.mem.Allocator,
-    resolved: ?tenant_provider.ResolvedProvider,
-) struct { provider: []const u8, base_url: ?[]const u8, inference_host: []const u8 } {
-    const r = resolved orelse return .{ .provider = "", .base_url = null, .inference_host = "" };
-    const base_url = r.base_url orelse return .{ .provider = r.provider, .base_url = null, .inference_host = "" };
-
-    const custom_name = std.fmt.allocPrint(alloc, "{s}{s}", .{ execution_policy.CUSTOM_PROVIDER_PREFIX, base_url }) catch {
-        log.warn("lease_custom_provider_name_alloc_failed", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .inference_host = execution_policy.hostFromUrl(base_url) });
-        return .{ .provider = r.provider, .base_url = null, .inference_host = "" };
-    };
-    return .{ .provider = custom_name, .base_url = base_url, .inference_host = execution_policy.hostFromUrl(base_url) };
 }
 
 /// Free the affinity claim won by `assign` when this lease cannot be issued
@@ -273,55 +282,6 @@ fn replyNoWork(hx: Hx) void {
     hx.ok(.ok, protocol.LeaseResponse{ .lease = null, .retry_after_ms = constants.NO_WORK_RETRY_AFTER_MS });
 }
 
-// `customEndpoint` only reads `provider` / `base_url`, so the test builds a
-// ResolvedProvider from borrowed literals (api_key/model are unused here) and
-// never deinits it — no allocation owns these bytes.
-fn fixedProvider(provider: []const u8, base_url: ?[]const u8) tenant_provider.ResolvedProvider {
-    return .{
-        .mode = .self_managed,
-        .provider = @constCast(provider),
-        .api_key = @constCast(""),
-        .model = @constCast(""),
-        .context_cap_tokens = 0,
-        .base_url = if (base_url) |u| @constCast(u) else null,
-    };
-}
-
-test "customEndpoint: no resolved provider yields an empty, no-endpoint result" {
-    const out = customEndpoint(std.testing.allocator, null);
-    try std.testing.expectEqualStrings("", out.provider);
-    try std.testing.expect(out.base_url == null);
-    try std.testing.expectEqualStrings("", out.inference_host);
-}
-
-test "customEndpoint: a named provider passes through with no base_url" {
-    const out = customEndpoint(std.testing.allocator, fixedProvider("anthropic", null));
-    try std.testing.expectEqualStrings("anthropic", out.provider);
-    try std.testing.expect(out.base_url == null);
-    try std.testing.expectEqualStrings("", out.inference_host);
-}
-
-test "customEndpoint: a custom endpoint becomes the custom: provider name + egress host" {
-    const out = customEndpoint(std.testing.allocator, fixedProvider(
-        tenant_provider.OPENAI_COMPATIBLE_PROVIDER,
-        "https://vllm.corp/v1",
-    ));
-    defer std.testing.allocator.free(out.provider); // the only allocated field
-    try std.testing.expectEqualStrings("custom:https://vllm.corp/v1", out.provider);
-    try std.testing.expectEqualStrings("https://vllm.corp/v1", out.base_url.?);
-    try std.testing.expectEqualStrings("vllm.corp", out.inference_host);
-}
-
-test "customEndpoint: an OOM building the custom name fails predictably (no base_url smuggled)" {
-    // failing_allocator OOMs the allocPrint; the branch must degrade to the
-    // named-provider shape — the bare provider with NO base_url and an empty
-    // host — so nullclaw never receives `openai-compatible` paired with a URL
-    // (an undefined route). This is the clean failure the doc comment promises.
-    const out = customEndpoint(std.testing.failing_allocator, fixedProvider(
-        tenant_provider.OPENAI_COMPATIBLE_PROVIDER,
-        "https://vllm.corp/v1",
-    ));
-    try std.testing.expectEqualStrings(tenant_provider.OPENAI_COMPATIBLE_PROVIDER, out.provider);
-    try std.testing.expect(out.base_url == null);
-    try std.testing.expectEqualStrings("", out.inference_host);
+test {
+    _ = service_endpoint; // pull the split module's tests into discovery
 }
