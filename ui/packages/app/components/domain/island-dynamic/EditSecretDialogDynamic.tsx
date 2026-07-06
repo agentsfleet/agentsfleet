@@ -12,7 +12,7 @@ import type { ComponentProps } from "react";
 // dialog's own open/close (and its exit animation) is unaffected.
 const InnerEditCredentialDialog = nextDynamic(
   () =>
-    import("@/app/(dashboard)/secrets/components/EditSecretDialog").then(
+    import("@/app/(dashboard)/w/[workspaceId]/secrets/components/EditSecretDialog").then(
       (mod) => ({ default: mod.default }),
     ),
   { ssr: false, loading: () => null },

@@ -15,7 +15,7 @@ const routerRefresh = vi.fn();
 // component no longer invokes run() itself (§7 removed the one call site).
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: routerRefresh, push: vi.fn() }) }));
 vi.mock("@agentsfleet/design-system", async () => (await import("./helpers/models-component-mocks")).designSystemStub());
-vi.mock("@/app/(dashboard)/settings/models/components/HeroChangeModelPanel", () => ({
+vi.mock("@/app/(dashboard)/w/[workspaceId]/settings/models/components/HeroChangeModelPanel", () => ({
   default: ({ onClose }: { onClose: () => void }) =>
     React.createElement(
       "div",
@@ -23,7 +23,7 @@ vi.mock("@/app/(dashboard)/settings/models/components/HeroChangeModelPanel", () 
       React.createElement("button", { "data-testid": "change-close", onClick: onClose }, "close"),
     ),
 }));
-vi.mock("@/app/(dashboard)/settings/models/components/HeroReplaceKeyPanel", () => ({
+vi.mock("@/app/(dashboard)/w/[workspaceId]/settings/models/components/HeroReplaceKeyPanel", () => ({
   default: ({ onClose }: { onClose: () => void }) =>
     React.createElement(
       "div",
@@ -31,7 +31,7 @@ vi.mock("@/app/(dashboard)/settings/models/components/HeroReplaceKeyPanel", () =
       React.createElement("button", { "data-testid": "replace-close", onClick: onClose }, "close"),
     ),
 }));
-vi.mock("@/app/(dashboard)/settings/models/components/ProviderKeyForm", () => ({
+vi.mock("@/app/(dashboard)/w/[workspaceId]/settings/models/components/ProviderKeyForm", () => ({
   default: ({ activate, onDone, onCancel }: { activate?: boolean; onDone: () => void; onCancel?: () => void }) =>
     React.createElement(
       "div",
@@ -41,7 +41,7 @@ vi.mock("@/app/(dashboard)/settings/models/components/ProviderKeyForm", () => ({
     ),
 }));
 
-import ActiveModelRow from "@/app/(dashboard)/settings/models/components/ActiveModelRow";
+import ActiveModelRow from "@/app/(dashboard)/w/[workspaceId]/settings/models/components/ActiveModelRow";
 
 function selfManaged(over: Partial<TenantProvider> = {}): TenantProvider {
   return {

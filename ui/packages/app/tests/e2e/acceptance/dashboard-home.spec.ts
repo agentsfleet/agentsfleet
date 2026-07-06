@@ -1,5 +1,6 @@
 /**
- * dashboard-home.spec.ts — `/` renders for the fixture user.
+ * dashboard-home.spec.ts — `/` redirects to the workspace home (`/w/<id>`),
+ * which renders for the fixture user.
  *
  * Two render modes worth covering, both via the same authed fixture:
  *   - Empty: no Fleets → the FirstInstall gallery renders ("Start your fleet").
@@ -14,13 +15,15 @@
  */
 import { expect, test } from "@playwright/test";
 import { signInAs } from "./fixtures/auth";
+import { workspaceUrlPattern } from "./fixtures/nav";
 import { FIXTURE_KEY } from "./fixtures/constants";
 
 test.describe("dashboard home", () => {
   test("`/` renders header + status tiles or first-install card", async ({ page }) => {
     await signInAs(page, FIXTURE_KEY.regular);
+    // `/` redirects to the first owned workspace home (`/w/<id>`).
     await page.goto("/");
-    await expect(page).toHaveURL(/\/$|\/(\?|$)/);
+    await expect(page).toHaveURL(workspaceUrlPattern());
 
     await expect(page.getByRole("heading", { name: /^dashboard$/i })).toBeVisible();
 

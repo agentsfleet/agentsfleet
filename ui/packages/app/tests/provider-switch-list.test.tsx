@@ -20,14 +20,14 @@ const { catalogueState } = vi.hoisted(() => ({
 }));
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: routerRefresh, push: vi.fn() }) }));
-vi.mock("@/app/(dashboard)/settings/models/actions", () => ({ resetProviderAction, setProviderSelfManagedAction }));
-vi.mock("@/app/(dashboard)/settings/models/lib/track", () => ({ captureModelActivated, captureProviderReset }));
-vi.mock("@/app/(dashboard)/settings/models/components/ModelCatalogueProvider", () => ({
+vi.mock("@/app/(dashboard)/w/[workspaceId]/settings/models/actions", () => ({ resetProviderAction, setProviderSelfManagedAction }));
+vi.mock("@/app/(dashboard)/w/[workspaceId]/settings/models/lib/track", () => ({ captureModelActivated, captureProviderReset }));
+vi.mock("@/app/(dashboard)/w/[workspaceId]/settings/models/components/ModelCatalogueProvider", () => ({
   useModelCatalogue: () => catalogueState,
 }));
 vi.mock("@agentsfleet/design-system", async () => (await import("./helpers/models-component-mocks")).designSystemStub());
 vi.mock("lucide-react", async () => (await import("./helpers/models-component-mocks")).lucideStub());
-vi.mock("@/app/(dashboard)/settings/models/components/ProviderKeyForm", () => ({
+vi.mock("@/app/(dashboard)/w/[workspaceId]/settings/models/components/ProviderKeyForm", () => ({
   default: ({
     provider,
     activate,
@@ -46,7 +46,7 @@ vi.mock("@/app/(dashboard)/settings/models/components/ProviderKeyForm", () => ({
       React.createElement("button", { "data-testid": "pkf-cancel", onClick: onCancel }, "cancel"),
     ),
 }));
-vi.mock("@/app/(dashboard)/settings/models/components/CustomEndpointForm", () => ({
+vi.mock("@/app/(dashboard)/w/[workspaceId]/settings/models/components/CustomEndpointForm", () => ({
   default: ({ activate, onDone, onCancel }: { activate?: boolean; onDone: () => void; onCancel?: () => void }) =>
     React.createElement(
       "div",
@@ -56,7 +56,7 @@ vi.mock("@/app/(dashboard)/settings/models/components/CustomEndpointForm", () =>
     ),
 }));
 
-import ProviderSwitchList from "@/app/(dashboard)/settings/models/components/ProviderSwitchList";
+import ProviderSwitchList from "@/app/(dashboard)/w/[workspaceId]/settings/models/components/ProviderSwitchList";
 
 const cap = (provider: string): ModelCap => ({
   id: `${provider}-model`,

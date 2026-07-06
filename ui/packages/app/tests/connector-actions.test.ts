@@ -16,7 +16,7 @@ vi.mock("@/lib/api/connectors", () => ({
   startConnect: startConnectMock,
 }));
 
-import { startConnectAction } from "@/app/(dashboard)/integrations/connector-actions";
+import { startConnectAction } from "@/app/(dashboard)/w/[workspaceId]/integrations/connector-actions";
 
 beforeEach(() => {
   vi.clearAllMocks();

@@ -5,9 +5,9 @@
  *   1. Ensure a 2nd workspace exists (API; the dashboard has no Create-
  *      workspace UI yet — same posture multi-workspace.spec.ts takes).
  *   2. Sign in, switch to the 2nd workspace via the header switcher (UI).
- *   3. Install a fleet via /fleets/new (UI).
+ *   3. Install a fleet via /w/<secondary>/fleets/new (UI).
  *   4. Kill it (UI confirm dialog).
- *   5. Assert /fleets marks the row failed (terminal).
+ *   5. Assert /w/<secondary>/fleets marks the row failed (terminal).
  *
  * UI-delete is deliberately NOT asserted here pending a known backend bug
  * (UZ-INTERNAL-002 ConnectionBusy on DELETE for killed rows — see PR
@@ -30,6 +30,7 @@ import { installViaUI } from "./fixtures/install-ui";
 import { expectDetailKilled, expectRowState, killFleet } from "./fixtures/lifecycle";
 import { cleanWorkspaceFleets } from "./fixtures/teardown";
 import { FIXTURE_KEY } from "./fixtures/constants";
+import { gotoWorkspace, workspaceHref, workspaceUrlPattern } from "./fixtures/nav";
 
 const SECONDARY_NAME = "fixture-secondary";
 const SWITCH_TIMEOUT_MS = 10_000;
@@ -44,7 +45,9 @@ test.describe("multi-workspace + fleet lifecycle", () => {
     expect(secondary.id).not.toEqual(primary);
 
     await signInAs(page, FIXTURE_KEY.regular);
-    await page.goto("/fleets");
+    // Land on the primary (default) workspace first; the switcher then
+    // navigates to the secondary workspace's URL segment.
+    await gotoWorkspace(page, FIXTURE_KEY.regular, "fleets");
 
     const switcher = page.getByTestId("workspace-switcher");
     await switcher.click();
@@ -54,27 +57,27 @@ test.describe("multi-workspace + fleet lifecycle", () => {
     });
 
     // Onboard + install against the secondary workspace — the one now active
-    // in the browser, so the onboarded card renders on /fleets/new.
+    // in the browser, so the onboarded card renders on /w/<secondary>/fleets/new.
     const name = `ws-life-${Math.random().toString(36).slice(2, 8)}`;
     const fleetId = await installViaUI(page, name, {
       handle: FIXTURE_KEY.regular,
       workspaceId: secondary.id,
     });
-    await expect(page).toHaveURL(new RegExp(`/fleets/${fleetId}(\\?|$)`));
+    await expect(page).toHaveURL(workspaceUrlPattern(`fleets/${fleetId}`));
 
-    await page.goto("/fleets");
+    await page.goto(workspaceHref(secondary.id, "fleets"));
     await expectRowState(page, fleetId, "live");
 
-    await page.goto(`/fleets/${fleetId}`);
+    await page.goto(workspaceHref(secondary.id, `fleets/${fleetId}`));
     await killFleet(page);
     await expectDetailKilled(page);
 
     // UI-delete intentionally skipped: api-dev currently 500s on DELETE
     // for killed rows (UZ-INTERNAL-002 ConnectionBusy). Once the backend
     // fix lands, this branch graduates to clicking "Delete fleet" →
-    // confirming the dialog → asserting redirect to /fleets and row
+    // confirming the dialog → asserting redirect to /w/<secondary>/fleets and row
     // absence. Cleanup still runs via the afterEach below.
-    await page.goto("/fleets");
+    await page.goto(workspaceHref(secondary.id, "fleets"));
     await expectRowState(page, fleetId, "failed");
   });
 

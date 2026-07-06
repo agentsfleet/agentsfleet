@@ -3,7 +3,7 @@
  * install via dashboard UI → observe → bill → halt.
  *
  * End-to-end UI-driven: the operator never leaves the browser. signup goes
- * through Clerk's hosted form, install goes through /fleets/new, every
+ * through Clerk's hosted form, install goes through /w/<id>/fleets/new, every
  * lifecycle transition is a real click in the dashboard. No API short-cuts.
  *
  * DEV-only — Clerk PROD almost certainly does not have test mode enabled, so
@@ -30,6 +30,7 @@ import {
 } from "./fixtures/lifecycle";
 import { signUpAs } from "./fixtures/signup";
 import { cleanWorkspaceFleets } from "./fixtures/teardown";
+import { workspaceHref, workspaceUrlPattern } from "./fixtures/nav";
 
 const PASSWORD = "SignupFixture!2026-stable";
 const FLOW_TIMEOUT_MS = 120_000;
@@ -79,12 +80,13 @@ test.describe("signup → install → lifecycle", () => {
     // fixtures/signup.ts for why this is equivalent to a real signup.
     const signup = await signUpAs(page, email, PASSWORD, { requireWorkspaceSession: true });
     if (!signup.workspaceId) throw new Error("signup did not return a workspace id");
-    cleanupSession = { sessionJwt: signup.sessionJwt, workspaceId: signup.workspaceId };
+    const workspaceId = signup.workspaceId;
+    cleanupSession = { sessionJwt: signup.sessionJwt, workspaceId };
 
-    // Dashboard /fleets renders auto-provisioned workspace + empty state.
+    // Dashboard /w/<id>/fleets renders auto-provisioned workspace + empty state.
     // First-deploy regression surface lives here (route-guard chain on a
     // brand-new tenant, WorkspaceSwitcher with the auto-provisioned default).
-    await page.goto("/fleets");
+    await page.goto(workspaceHref(workspaceId, "fleets"));
     await expect(page.getByRole("heading", { name: /fleets/i }).first()).toBeVisible();
     await expect(page.getByTestId("workspace-switcher")).toBeVisible();
     await expect(page.getByText(/no fleets yet/i)).toBeVisible();
@@ -96,17 +98,17 @@ test.describe("signup → install → lifecycle", () => {
     const name = uniqueName();
     const fleetId = await installViaUI(page, name, {
       handle: { sessionJwt: signup.sessionJwt },
-      workspaceId: signup.workspaceId,
+      workspaceId,
     });
 
-    // Post-install: the form redirects to /fleets/${id}. Recent Activity
+    // Post-install: the form redirects to /w/<id>/fleets/${id}. Recent Activity
     // section is the section-scaffolding assertion (matches logs-detail's
     // downgrade — section presence, not payload contents).
-    await expect(page).toHaveURL(new RegExp(`/fleets/${fleetId}(\\?|$)`));
+    await expect(page).toHaveURL(workspaceUrlPattern(`fleets/${fleetId}`));
     await expect(page.getByRole("region", { name: "Recent Activity" })).toBeVisible();
 
     // Listing shows the new row live.
-    await page.goto("/fleets");
+    await page.goto(workspaceHref(workspaceId, "fleets"));
     await expectRowState(page, fleetId, "live");
 
     // Billing page renders the balance card (starter credit).
@@ -114,20 +116,20 @@ test.describe("signup → install → lifecycle", () => {
     await expect(page.getByTestId("balance-headline")).toBeVisible();
 
     // Lifecycle: Stop → Resume → Kill, each via the AlertDialog confirm.
-    await page.goto(`/fleets/${fleetId}`);
+    await page.goto(workspaceHref(workspaceId, `fleets/${fleetId}`));
     await stopFleet(page);
-    await page.goto("/fleets");
+    await page.goto(workspaceHref(workspaceId, "fleets"));
     await expectRowState(page, fleetId, "parked");
 
-    await page.goto(`/fleets/${fleetId}`);
+    await page.goto(workspaceHref(workspaceId, `fleets/${fleetId}`));
     await resumeFleet(page);
-    await page.goto("/fleets");
+    await page.goto(workspaceHref(workspaceId, "fleets"));
     await expectRowState(page, fleetId, "live");
 
-    await page.goto(`/fleets/${fleetId}`);
+    await page.goto(workspaceHref(workspaceId, `fleets/${fleetId}`));
     await killFleet(page);
     await expectDetailKilled(page);
-    await page.goto("/fleets");
+    await page.goto(workspaceHref(workspaceId, "fleets"));
     await expectRowState(page, fleetId, "failed");
   });
 });

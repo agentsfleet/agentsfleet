@@ -10,7 +10,7 @@ const { listFleetEventsActionMock, listWorkspaceEventsActionMock } = vi.hoisted(
   listWorkspaceEventsActionMock: vi.fn(),
 }));
 
-vi.mock("@/app/(dashboard)/events/actions", () => ({
+vi.mock("@/app/(dashboard)/w/[workspaceId]/events/actions", () => ({
   listFleetEventsAction: listFleetEventsActionMock,
   listWorkspaceEventsAction: listWorkspaceEventsActionMock,
 }));

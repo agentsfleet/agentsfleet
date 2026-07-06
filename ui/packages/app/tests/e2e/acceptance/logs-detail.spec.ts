@@ -24,6 +24,7 @@ import { signInAs } from "./fixtures/auth";
 import { getDefaultWorkspaceId, seedFleet } from "./fixtures/seed";
 import { cleanWorkspaceFleets } from "./fixtures/teardown";
 import { FIXTURE_KEY } from "./fixtures/constants";
+import { workspaceHref, workspaceUrlPattern } from "./fixtures/nav";
 
 const RENDER_TIMEOUT_MS = 15_000;
 
@@ -34,8 +35,8 @@ test.describe("fleet detail logs", () => {
     const seeded = await seedFleet(FIXTURE_KEY.regular, ws, { name: `logs-${tag}` });
 
     await signInAs(page, FIXTURE_KEY.regular);
-    await page.goto(`/fleets/${seeded.id}`);
-    await expect(page).toHaveURL(new RegExp(`/fleets/${seeded.id}(\\?|$)`));
+    await page.goto(workspaceHref(ws, `fleets/${seeded.id}`));
+    await expect(page).toHaveURL(workspaceUrlPattern(`fleets/${seeded.id}`));
 
     // Header status indicator — `data-state="active"` carries the WakePulse
     // child with `data-live` set when the fleet is live.

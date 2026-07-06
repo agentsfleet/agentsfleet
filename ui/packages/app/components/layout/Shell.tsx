@@ -32,7 +32,7 @@ import {
 import { cn } from "@/lib/utils";
 import { setAnalyticsContext, trackNavigationClicked } from "@/lib/analytics/posthog";
 import { SCOPE } from "@/lib/auth/scopes";
-import { setActiveWorkspace } from "@/app/(dashboard)/actions";
+import { workspaceIdFromPath, workspacePath } from "@/lib/workspace-routes";
 import type { TenantWorkspace } from "@/lib/api/workspaces";
 import WorkspaceSwitcher from "./WorkspaceSwitcher";
 import ThemeToggle from "./ThemeToggle";
@@ -40,8 +40,14 @@ import ClientOnlyAuthUserButton from "./ClientOnlyAuthUserButton";
 
 type NavEntry = {
   label: string;
-  href: string;
+  // Workspace-scoped items store their sub-path under `/w/<id>/` ("" = the
+  // workspace home, "fleets", "settings/models"); tenant/platform items store
+  // an absolute root path ("/settings/api-keys"); external items store a URL.
+  path: string;
   icon: React.ComponentType<{ size?: number }>;
+  workspaceScoped?: boolean;
+  // Home matches its resolved path exactly (else it'd claim every deeper route).
+  exact?: boolean;
   external?: boolean;
 };
 
@@ -60,73 +66,91 @@ const SIDEBAR_NAV_ID = "app-sidebar-nav";
 
 // Dashboard sits above the labelled groups as a headerless overview entry.
 const TOP_NAV: NavEntry[] = [
-  { label: "Dashboard", href: "/", icon: LayoutDashboardIcon },
+  { label: "Dashboard", path: "", icon: LayoutDashboardIcon, workspaceScoped: true, exact: true },
 ];
 
 // The live work — what the fleets do.
 const OPERATIONS_NAV: NavEntry[] = [
-  { label: "Fleets", href: "/fleets", icon: BotIcon },
-  { label: "Approvals", href: "/approvals", icon: CheckCircle2Icon },
-  { label: "Events", href: "/events", icon: ActivityIcon },
+  { label: "Fleets", path: "fleets", icon: BotIcon, workspaceScoped: true },
+  { label: "Approvals", path: "approvals", icon: CheckCircle2Icon, workspaceScoped: true },
+  { label: "Events", path: "events", icon: ActivityIcon, workspaceScoped: true },
 ];
 
 // What the fleets are wired to — the model brain (which now also hosts the
 // write-only secret vault) and the tool connectors, each its own destination;
 // plus the execution fleet for platform admins.
 const CONFIGURATION_NAV: NavEntry[] = [
-  { label: "Models", href: "/settings/models", icon: CpuIcon },
-  { label: "Integrations", href: "/integrations", icon: LinkIcon },
-  { label: "Secrets", href: "/secrets", icon: KeyRoundIcon },
+  { label: "Models", path: "settings/models", icon: CpuIcon, workspaceScoped: true },
+  { label: "Integrations", path: "integrations", icon: LinkIcon, workspaceScoped: true },
+  { label: "Secrets", path: "secrets", icon: KeyRoundIcon, workspaceScoped: true },
 ];
 
 // Platform-operator surfaces — each appended to the Configuration group only
 // when the session token carries that surface's read scope (the backend
 // independently gates the routes, so this is discoverability, not the security
-// boundary). A runner operator sees Runners; a model operator sees the
-// catalogue; a token with neither sees neither.
+// boundary). Platform surfaces are tenant-wide: they stay at the root path,
+// carrying no workspace segment.
 const PLATFORM_NAV: PlatformNavEntry[] = [
-  { label: "Runners", href: "/admin/runners", icon: ServerIcon, scope: SCOPE.RUNNER_READ },
-  { label: "Model library", href: "/admin/models", icon: CoinsIcon, scope: SCOPE.MODEL_READ },
+  { label: "Runners", path: "/admin/runners", icon: ServerIcon, scope: SCOPE.RUNNER_READ },
+  { label: "Model library", path: "/admin/models", icon: CoinsIcon, scope: SCOPE.MODEL_READ },
 ];
 
+// Tenant-scoped surfaces — one billing/key surface per tenant, so they too stay
+// at the root path with no workspace segment.
 const ORGANIZATION_NAV: NavEntry[] = [
-  { label: "API Keys", href: "/settings/api-keys", icon: KeyIcon },
-  { label: "Billing", href: "/settings/billing", icon: CreditCardIcon },
+  { label: "API Keys", path: "/settings/api-keys", icon: KeyIcon },
+  { label: "Billing", path: "/settings/billing", icon: CreditCardIcon },
 ];
 
 const BOTTOM_NAV: NavEntry[] = [
-  { label: "Docs", href: "https://docs.agentsfleet.net", icon: BookOpenIcon, external: true },
+  { label: "Docs", path: "https://docs.agentsfleet.net", icon: BookOpenIcon, external: true },
 ];
 
-// Every internal destination, longest first so a nested route (e.g.
-// /settings/models) resolves to its own item rather than its parent Settings.
-const INTERNAL_HREFS: string[] = [
+const INTERNAL_NAV: NavEntry[] = [
   ...TOP_NAV,
   ...OPERATIONS_NAV,
   ...CONFIGURATION_NAV,
   ...PLATFORM_NAV,
   ...ORGANIZATION_NAV,
-].map((entry) => entry.href);
+];
 
-function resolveActiveHref(pathname: string): string {
+// Resolves an entry to its concrete href. Workspace-scoped items are prefixed
+// with `/w/<id>` when a workspace is in scope; with no workspace at all they
+// fall back to `/` (the entry redirect). Tenant/platform/external items are
+// their path verbatim.
+function resolveHref(entry: NavEntry, workspaceId: string | null): string {
+  if (entry.external || !entry.workspaceScoped) return entry.path;
+  return workspaceId ? workspacePath(workspaceId, entry.path) : "/";
+}
+
+// The stable analytics slug for an entry — derived from its canonical absolute
+// path so the workspace id never leaks into the event name and the slug is
+// unchanged from the pre-URL nav (root / fleets / settings_models / …).
+function navSource(entry: NavEntry): string {
+  if (entry.external) return `${NAV_SURFACE}_${entry.label.toLowerCase()}`;
+  const canonical = entry.workspaceScoped
+    ? (entry.path === "" ? "/" : `/${entry.path}`)
+    : entry.path;
+  return `${NAV_SURFACE}_${canonical === "/" ? "root" : canonical.replaceAll("/", "_").replace(/^_+/, "")}`;
+}
+
+function resolveActiveHref(
+  entries: { href: string; exact?: boolean }[],
+  pathname: string,
+): string {
   let active = "";
-  for (const href of INTERNAL_HREFS) {
-    const hit =
-      href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(`${href}/`);
+  for (const { href, exact } of entries) {
+    const hit = exact
+      ? pathname === href
+      : pathname === href || pathname.startsWith(`${href}/`);
     if (hit && href.length > active.length) active = href;
   }
   return active;
 }
 
-function navSource(href: string, label: string, external?: boolean): string {
-  if (external) return `${NAV_SURFACE}_${label.toLowerCase()}`;
-  return `${NAV_SURFACE}_${href === "/" ? "root" : href.replaceAll("/", "_").replace(/^_+/, "")}`;
-}
-
 type ShellProps = {
   children: React.ReactNode;
   workspaces?: TenantWorkspace[];
-  activeWorkspaceId?: string | null;
   /** Operator scopes on the session token; gate the platform nav per-surface. */
   operatorScopes?: string[];
 };
@@ -134,12 +158,24 @@ type ShellProps = {
 export default function Shell({
   children,
   workspaces = [],
-  activeWorkspaceId = null,
   operatorScopes = [],
 }: ShellProps) {
   const pathname = usePathname();
-  const activeHref = resolveActiveHref(pathname);
-  const isActive = (href: string) => href === activeHref;
+  // The workspace in view comes from the route (`/w/<id>/…`); `null` on
+  // tenant/platform pages. The link target for workspace nav items falls back to
+  // the first owned workspace so those links still resolve from a tenant page.
+  const activeWorkspaceId = workspaceIdFromPath(pathname);
+  const linkWorkspaceId = activeWorkspaceId ?? workspaces[0]?.id ?? null;
+
+  const activeHref = resolveActiveHref(
+    INTERNAL_NAV.map((entry) => ({ href: resolveHref(entry, linkWorkspaceId), exact: entry.exact })),
+    pathname,
+  );
+  // `/` is only ever a resolved href for workspace items when the tenant owns no
+  // workspace (the entry-redirect stub) — it must never light up a nav item, or
+  // the whole sidebar reads active on the empty state.
+  const isActive = (href: string) => href !== "" && href !== "/" && href === activeHref;
+
   // Not persisted — every dashboard load starts expanded, matching the
   // reference product's behavior (Supabase Studio's sidebar also resets on
   // reload rather than remembering a per-user preference).
@@ -168,7 +204,7 @@ export default function Shell({
       data-glow="dashboard"
     >
       <header className="col-span-full sticky top-0 z-40 flex items-center gap-4 px-4 md:px-6 border-b border-border bg-background/85 backdrop-blur">
-        <MobileNav isActive={isActive} operatorScopes={operatorScopes} />
+        <MobileNav isActive={isActive} workspaceId={linkWorkspaceId} operatorScopes={operatorScopes} />
 
         <Button
           type="button"
@@ -184,7 +220,7 @@ export default function Shell({
         </Button>
 
         <Link
-          href="/"
+          href={linkWorkspaceId ? workspacePath(linkWorkspaceId) : "/"}
           className="inline-flex items-center gap-2 font-mono text-sm font-medium tracking-tight text-foreground no-underline"
           aria-label="agentsfleet home"
         >
@@ -198,11 +234,7 @@ export default function Shell({
 
         <div className="flex-1" />
 
-        <WorkspaceSwitcher
-          workspaces={workspaces}
-          activeId={activeWorkspaceId}
-          onSwitch={setActiveWorkspace}
-        />
+        <WorkspaceSwitcher workspaces={workspaces} activeId={linkWorkspaceId} />
 
         <ThemeToggle />
 
@@ -215,6 +247,7 @@ export default function Shell({
       >
         <SidebarNav
           isActive={isActive}
+          workspaceId={linkWorkspaceId}
           onNavigate={() => {}}
           operatorScopes={operatorScopes}
           collapsed={collapsed}
@@ -234,9 +267,11 @@ export default function Shell({
 
 function MobileNav({
   isActive,
+  workspaceId,
   operatorScopes,
 }: {
   isActive: (href: string) => boolean;
+  workspaceId: string | null;
   operatorScopes: string[];
 }) {
   const [open, setOpen] = useState(false);
@@ -258,7 +293,7 @@ function MobileNav({
         {/* The mobile dialog always renders expanded — there's no width
          * constraint driving a collapse here, and hiding labels in a picker
          * the user just opened to find something would be counterproductive. */}
-        <SidebarNav isActive={isActive} onNavigate={() => setOpen(false)} operatorScopes={operatorScopes} collapsed={false} />
+        <SidebarNav isActive={isActive} workspaceId={workspaceId} onNavigate={() => setOpen(false)} operatorScopes={operatorScopes} collapsed={false} />
       </DialogContent>
     </Dialog>
   );
@@ -266,24 +301,25 @@ function MobileNav({
 
 type NavProps = {
   isActive: (href: string) => boolean;
+  workspaceId: string | null;
   onNavigate: () => void;
   operatorScopes: string[];
   collapsed: boolean;
 };
 
-function SidebarNav({ isActive, onNavigate, operatorScopes, collapsed }: NavProps) {
+function SidebarNav({ isActive, workspaceId, onNavigate, operatorScopes, collapsed }: NavProps) {
   // Each platform surface appears iff the session token holds its read scope;
   // a token with neither scope sees the plain Configuration group.
   const platformItems = PLATFORM_NAV.filter((entry) => operatorScopes.includes(entry.scope));
   const configItems = [...CONFIGURATION_NAV, ...platformItems];
   return (
     <Nav aria-label="Primary" className="flex flex-col h-full">
-      <NavSection items={TOP_NAV} isActive={isActive} onNavigate={onNavigate} collapsed={collapsed} />
-      <NavSection label="Automations" items={OPERATIONS_NAV} isActive={isActive} onNavigate={onNavigate} collapsed={collapsed} />
-      <NavSection label="Configuration" items={configItems} isActive={isActive} onNavigate={onNavigate} collapsed={collapsed} />
-      <NavSection label="Organization" items={ORGANIZATION_NAV} isActive={isActive} onNavigate={onNavigate} collapsed={collapsed} />
+      <NavSection items={TOP_NAV} isActive={isActive} workspaceId={workspaceId} onNavigate={onNavigate} collapsed={collapsed} />
+      <NavSection label="Automations" items={OPERATIONS_NAV} isActive={isActive} workspaceId={workspaceId} onNavigate={onNavigate} collapsed={collapsed} />
+      <NavSection label="Configuration" items={configItems} isActive={isActive} workspaceId={workspaceId} onNavigate={onNavigate} collapsed={collapsed} />
+      <NavSection label="Organization" items={ORGANIZATION_NAV} isActive={isActive} workspaceId={workspaceId} onNavigate={onNavigate} collapsed={collapsed} />
       <div className="mt-auto">
-        <NavSection items={BOTTOM_NAV} isActive={isActive} onNavigate={onNavigate} collapsed={collapsed} />
+        <NavSection items={BOTTOM_NAV} isActive={isActive} workspaceId={workspaceId} onNavigate={onNavigate} collapsed={collapsed} />
       </div>
     </Nav>
   );
@@ -293,36 +329,41 @@ function NavSection({
   label,
   items,
   isActive,
+  workspaceId,
   onNavigate,
   collapsed,
 }: {
   label?: string;
   items: NavEntry[];
   isActive: (href: string) => boolean;
+  workspaceId: string | null;
   onNavigate: () => void;
   collapsed: boolean;
 }) {
   return (
     <NavGroup label={label} collapsed={collapsed}>
-      {items.map(({ label: itemLabel, href, icon: Icon, external }) => (
-        <NavItem
-          key={href}
-          href={href}
-          label={itemLabel}
-          Icon={Icon}
-          external={external}
-          active={external ? false : isActive(href)}
-          collapsed={collapsed}
-          onClick={() => {
-            onNavigate();
-            trackNavigationClicked({
-              source: navSource(href, itemLabel, external),
-              surface: NAV_SURFACE,
-              target: href,
-            });
-          }}
-        />
-      ))}
+      {items.map((entry) => {
+        const href = resolveHref(entry, workspaceId);
+        return (
+          <NavItem
+            key={entry.label}
+            href={href}
+            label={entry.label}
+            Icon={entry.icon}
+            external={entry.external}
+            active={entry.external ? false : isActive(href)}
+            collapsed={collapsed}
+            onClick={() => {
+              onNavigate();
+              trackNavigationClicked({
+                source: navSource(entry),
+                surface: NAV_SURFACE,
+                target: href,
+              });
+            }}
+          />
+        );
+      })}
     </NavGroup>
   );
 }

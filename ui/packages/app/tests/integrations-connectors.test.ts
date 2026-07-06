@@ -9,7 +9,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 // connectors). The connect action is mocked; the real security boundary is the
 // backend, proven by its own suite.
 const { startConnectActionMock } = vi.hoisted(() => ({ startConnectActionMock: vi.fn() }));
-vi.mock("@/app/(dashboard)/integrations/connector-actions", () => ({
+vi.mock("@/app/(dashboard)/w/[workspaceId]/integrations/connector-actions", () => ({
   startConnectAction: startConnectActionMock,
 }));
 vi.mock("lucide-react", () => {
@@ -25,7 +25,7 @@ vi.mock("lucide-react", () => {
   };
 });
 
-import IntegrationsConnectors from "@/app/(dashboard)/integrations/components/IntegrationsConnectors";
+import IntegrationsConnectors from "@/app/(dashboard)/w/[workspaceId]/integrations/components/IntegrationsConnectors";
 import {
   CONNECTOR_STATUS,
   CONNECTOR_NOT_CONFIGURED_DOCS_URI,

@@ -19,7 +19,7 @@ vi.mock("@/lib/api/events", () => ({
   listWorkspaceEvents: listWorkspaceEventsMock,
 }));
 
-import { listFleetEventsAction, listWorkspaceEventsAction } from "@/app/(dashboard)/events/actions";
+import { listFleetEventsAction, listWorkspaceEventsAction } from "@/app/(dashboard)/w/[workspaceId]/events/actions";
 
 const PAGE = { items: [], next_cursor: null };
 

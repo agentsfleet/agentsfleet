@@ -14,7 +14,6 @@ const redirect = vi.fn((path: string) => {
 const auth = vi.fn();
 vi.mock("next/navigation", () => ({ redirect }));
 vi.mock("@clerk/nextjs/server", () => ({ auth }));
-vi.mock("@/lib/workspace", () => ({ withWorkspaceScope: vi.fn() }));
 vi.mock("@/lib/api/connectors", () => ({
   getConnector: vi.fn(),
   getConnectorCatalog: vi.fn(),
@@ -24,7 +23,7 @@ vi.mock("@/lib/api/connectors", () => ({
     notConnected: "not_connected",
   },
 }));
-vi.mock("@/app/(dashboard)/integrations/components/IntegrationsConnectors", () => ({
+vi.mock("@/app/(dashboard)/w/[workspaceId]/integrations/components/IntegrationsConnectors", () => ({
   default: ({
     workspaceId,
     catalog,
@@ -50,8 +49,14 @@ vi.mock("lucide-react", () => ({
   LinkIcon: (p: Record<string, unknown>) => React.createElement("svg", { ...p, "data-icon": "LinkIcon" }),
 }));
 
-import { withWorkspaceScope } from "@/lib/workspace";
 import { getConnector, getConnectorCatalog, CONNECTOR_STATUS } from "@/lib/api/connectors";
+
+// The workspace id now comes from the route param; every page invocation passes
+// it explicitly and the page forwards it to its data clients.
+const WORKSPACE_ID = "ws_1";
+function renderPage(Page: (args: { params: Promise<{ workspaceId: string }> }) => Promise<React.ReactElement>) {
+  return Page({ params: Promise.resolve({ workspaceId: WORKSPACE_ID }) });
+}
 
 // The page reads both bespoke-status connectors through one getConnector(provider,
 // …); dispatch the stub on the provider argument so each row's status/team (and
@@ -67,9 +72,6 @@ function stubConnectors(github: StubResult, slack: StubResult) {
 beforeEach(() => {
   vi.clearAllMocks();
   auth.mockResolvedValue({ getToken: vi.fn().mockResolvedValue("token_123") });
-  vi.mocked(withWorkspaceScope).mockImplementation(
-    async (_token: string, fn: (workspaceId: string) => Promise<unknown>) => fn("ws_1"),
-  );
   // Defaults: a two-entry catalog, both bespoke connectors not connected.
   vi.mocked(getConnectorCatalog).mockResolvedValue([
     { id: "github", archetype: "app_install", display_name: "GitHub", configured: true, connected: false },
@@ -93,8 +95,8 @@ describe("Integrations page", () => {
       { status: CONNECTOR_STATUS.notConnected, team: null },
     );
 
-    const { default: Page } = await import("../app/(dashboard)/integrations/page");
-    const markup = renderToStaticMarkup(await Page());
+    const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/integrations/page");
+    const markup = renderToStaticMarkup(await renderPage(Page));
 
     expect(markup).toContain(">Integrations<");
     expect(markup).toContain('data-integrations-connectors="ws_1"');
@@ -108,8 +110,8 @@ describe("Integrations page", () => {
       { status: CONNECTOR_STATUS.connected, team: "Acme Corp" },
     );
 
-    const { default: Page } = await import("../app/(dashboard)/integrations/page");
-    const markup = renderToStaticMarkup(await Page());
+    const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/integrations/page");
+    const markup = renderToStaticMarkup(await renderPage(Page));
 
     expect(markup).toContain('data-slack-status="connected"');
     expect(markup).toContain('data-slack-team="Acme Corp"');
@@ -118,8 +120,8 @@ describe("Integrations page", () => {
   it("degrades to an empty catalog when the catalog read errors (never fabricates cards)", async () => {
     vi.mocked(getConnectorCatalog).mockRejectedValue(new Error("catalog endpoint down"));
 
-    const { default: Page } = await import("../app/(dashboard)/integrations/page");
-    const markup = renderToStaticMarkup(await Page());
+    const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/integrations/page");
+    const markup = renderToStaticMarkup(await renderPage(Page));
 
     expect(markup).toContain('data-catalog=""');
   });
@@ -130,8 +132,8 @@ describe("Integrations page", () => {
       new Error("connector endpoint down"),
     );
 
-    const { default: Page } = await import("../app/(dashboard)/integrations/page");
-    const markup = renderToStaticMarkup(await Page());
+    const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/integrations/page");
+    const markup = renderToStaticMarkup(await renderPage(Page));
 
     expect(markup).toContain('data-slack-status="not_connected"');
   });
@@ -142,24 +144,16 @@ describe("Integrations page", () => {
       { status: CONNECTOR_STATUS.notConnected, team: null },
     );
 
-    const { default: Page } = await import("../app/(dashboard)/integrations/page");
-    const markup = renderToStaticMarkup(await Page());
+    const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/integrations/page");
+    const markup = renderToStaticMarkup(await renderPage(Page));
 
     // Never fabricate a connected pill: a failed status read reads as not-connected.
     expect(markup).toContain('data-github-status="not_connected"');
   });
 
-  it("renders the no-workspace empty state under the Integrations title", async () => {
-    vi.mocked(withWorkspaceScope).mockResolvedValue(null);
-    const { default: Page } = await import("../app/(dashboard)/integrations/page");
-    const markup = renderToStaticMarkup(await Page());
-    expect(markup).toContain(">Integrations<");
-    expect(markup).toContain("No workspace yet");
-  });
-
   it("redirects to /sign-in when unauthenticated", async () => {
     auth.mockResolvedValue({ getToken: vi.fn().mockResolvedValue(null) });
-    const { default: Page } = await import("../app/(dashboard)/integrations/page");
-    await expect(Page()).rejects.toThrow("redirect:/sign-in");
+    const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/integrations/page");
+    await expect(renderPage(Page)).rejects.toThrow("redirect:/sign-in");
   });
 });

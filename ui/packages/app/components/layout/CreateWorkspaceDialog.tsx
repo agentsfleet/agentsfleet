@@ -16,6 +16,7 @@ import {
   Spinner,
 } from "@agentsfleet/design-system";
 import { createWorkspaceAction } from "@/app/(dashboard)/actions";
+import { workspacePath } from "@/lib/workspace-routes";
 import { presentErrorString } from "@/lib/errors";
 
 type Props = {
@@ -62,9 +63,9 @@ export default function CreateWorkspaceDialog({ open, onOpenChange, onCreated }:
       setName("");
       onCreated?.(result.data.name);
       onOpenChange(false);
-      // The action already revalidated the layout (active-workspace switch);
-      // refresh the client tree so the switcher reflects the new workspace.
-      router.refresh();
+      // Selection is the URL: navigate straight to the new workspace's home so
+      // the switcher, nav, and pages all key off it — no cookie, no refresh.
+      router.push(workspacePath(result.data.workspace_id));
     });
   }
 

@@ -11,7 +11,7 @@ import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 const routerRefresh = vi.fn();
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: routerRefresh, push: vi.fn() }) }));
 
-import { useProviderAction, type ProviderActionError } from "@/app/(dashboard)/settings/models/lib/use-provider-action";
+import { useProviderAction, type ProviderActionError } from "@/app/(dashboard)/w/[workspaceId]/settings/models/lib/use-provider-action";
 
 const ACTION = "do the thing";
 

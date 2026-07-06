@@ -106,6 +106,10 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  // Tear the rendered tree down between tests: a `render`-based test that fails
+  // an assertion before its trailing `cleanup()` would otherwise leave a second
+  // Shell in the DOM and turn every later `getByRole` into an ambiguous match.
+  cleanup();
   vi.clearAllMocks();
 });
 
@@ -131,7 +135,9 @@ describe("app components", () => {
 
   it("binds the analytics workspace context from the active workspace + count", async () => {
     const { default: Shell } = await import("../components/layout/Shell");
-    mocks.usePathname.mockReturnValue("/");
+    // M118: Shell derives the active workspace from the route (`/w/<id>/…`), not
+    // an `activeWorkspaceId` prop — the pathname is the single source of truth.
+    mocks.usePathname.mockReturnValue("/w/ws_1");
     render(
       React.createElement(
         Shell,
@@ -140,7 +146,6 @@ describe("app components", () => {
             { id: "ws_1", name: "Alpha", created_at: 1 },
             { id: "ws_2", name: "Beta", created_at: 2 },
           ],
-          activeWorkspaceId: "ws_1",
         } as never,
         React.createElement("div", null, "content"),
       ),
@@ -272,7 +277,9 @@ describe("app components", () => {
 
   it("renders Shell with brand-mark wake-pulse + sidebar nav", async () => {
     const { default: Shell } = await import("../components/layout/Shell");
-    mocks.usePathname.mockReturnValue("/fleets");
+    // M118: a workspace is in the route, so workspace-scoped nav hrefs carry the
+    // `/w/<id>` segment; tenant/platform items (API Keys, Billing) stay at root.
+    mocks.usePathname.mockReturnValue("/w/ws_1/fleets");
     const markup = renderToStaticMarkup(
       React.createElement(Shell, null, React.createElement("div", null, "content")),
     );
@@ -290,32 +297,33 @@ describe("app components", () => {
     expect(markup).toContain(">Models<");
     expect(markup).toContain(">Integrations<");
     expect(markup).toContain(">Secrets<");
-    expect(markup).toContain('href="/settings/models"');
+    expect(markup).toContain('href="/w/ws_1/settings/models"');
     // Integrations is its own connectors destination.
-    expect(markup).toContain('href="/integrations"');
+    expect(markup).toContain('href="/w/ws_1/integrations"');
     // Secrets is its own standalone destination.
-    expect(markup).toContain('href="/secrets"');
+    expect(markup).toContain('href="/w/ws_1/secrets"');
     expect(markup).toContain("Approvals");
     expect(markup).toContain("Events");
     expect(markup).toContain("API Keys");
     expect(markup).toContain("Billing");
   });
 
-  it("test_nav_config_destinations: nav renders Models→/settings/models, Integrations→/integrations, Secrets→/secrets", async () => {
+  it("test_nav_config_destinations: nav renders Models→/w/<id>/settings/models, Integrations→/w/<id>/integrations, Secrets→/w/<id>/secrets", async () => {
     const { default: Shell } = await import("../components/layout/Shell");
-    mocks.usePathname.mockReturnValue("/");
+    // M118: the workspace in the route prefixes every Configuration destination.
+    mocks.usePathname.mockReturnValue("/w/ws_1");
     const markup = renderToStaticMarkup(
       React.createElement(Shell, null, React.createElement("div", null, "content")),
     );
-    // Three distinct Configuration destinations, each at its own route.
-    expect(markup).toMatch(/href="\/settings\/models"[\s\S]*?data-icon="CpuIcon"[^>]*><\/svg>Models</);
-    expect(markup).toMatch(/href="\/integrations"[\s\S]*?data-icon="LinkIcon"[^>]*><\/svg>Integrations</);
-    expect(markup).toMatch(/href="\/secrets"[\s\S]*?data-icon="KeyRoundIcon"[^>]*><\/svg>Secrets</);
+    // Three distinct Configuration destinations, each at its own workspace route.
+    expect(markup).toMatch(/href="\/w\/ws_1\/settings\/models"[\s\S]*?data-icon="CpuIcon"[^>]*><\/svg>Models</);
+    expect(markup).toMatch(/href="\/w\/ws_1\/integrations"[\s\S]*?data-icon="LinkIcon"[^>]*><\/svg>Integrations</);
+    expect(markup).toMatch(/href="\/w\/ws_1\/secrets"[\s\S]*?data-icon="KeyRoundIcon"[^>]*><\/svg>Secrets</);
   });
 
   it("Shell sidebar marks the active route via data-active attribute", async () => {
     const { default: Shell } = await import("../components/layout/Shell");
-    mocks.usePathname.mockReturnValue("/fleets");
+    mocks.usePathname.mockReturnValue("/w/ws_1/fleets");
     const markup = renderToStaticMarkup(React.createElement(Shell, null, React.createElement("div")));
     // The active link gets data-active="true" — the sidebar's surface-3 fill
     // and the left accent bar are both driven from this attribute.
@@ -327,6 +335,9 @@ describe("app components", () => {
     // Render at a pathname and report how many items are active + the active
     // item's icon — exactly one item must light, and it must be the most
     // specific match.
+    // M118: seed one owned workspace so the Shell resolves workspace-scoped nav
+    // hrefs (its `linkWorkspaceId` falls back to `workspaces[0]` on tenant pages);
+    // workspace routes now carry the `/w/<id>` prefix, tenant/platform stay root.
     const activeFor = (pathname: string, operatorScopes: string[] = []) => {
       mocks.usePathname.mockReturnValue(pathname);
       const markup = renderToStaticMarkup(
@@ -335,13 +346,17 @@ describe("app components", () => {
         // @types/react gap when children is non-optional) — asserting the
         // props object's shape is safe since Shell reads children from React's
         // normal children slot regardless of how it arrived.
-        React.createElement(Shell, { operatorScopes } as React.ComponentProps<typeof Shell>, React.createElement("div")),
+        React.createElement(
+          Shell,
+          { operatorScopes, workspaces: [{ id: "ws_1", name: "Alpha", created_at: 1 }] } as React.ComponentProps<typeof Shell>,
+          React.createElement("div"),
+        ),
       );
       const count = (markup.match(/data-active="true"/g) ?? []).length;
       const icon = markup.match(/data-active="true"[^>]*>\s*<svg[^>]*data-icon="([^"]+)"/)?.[1] ?? null;
       return { count, icon };
     };
-    expect(activeFor("/settings/models")).toEqual({ count: 1, icon: "CpuIcon" });
+    expect(activeFor("/w/ws_1/settings/models")).toEqual({ count: 1, icon: "CpuIcon" });
     expect(activeFor("/settings/billing")).toEqual({ count: 1, icon: "CreditCardIcon" });
     // API Keys now owns its own distinct href — nested children (mint/reveal
     // detail routes, if any) still resolve to it via prefix match; a nested
@@ -350,8 +365,9 @@ describe("app components", () => {
     // /settings on its own has no nav entry (it's a redirect-only route, the
     // Workspace tab folded into API Keys) — nothing lights up.
     expect(activeFor("/settings")).toEqual({ count: 0, icon: null });
-    // Other groups resolve to their own item; root and admin-gated paths too.
-    expect(activeFor("/")).toEqual({ count: 1, icon: "LayoutDashboardIcon" });
+    // The workspace home (`/w/<id>`) lights the Dashboard overview entry; other
+    // groups resolve to their own item; root admin-gated paths too.
+    expect(activeFor("/w/ws_1")).toEqual({ count: 1, icon: "LayoutDashboardIcon" });
     expect(activeFor("/admin/runners", ["runner:read"])).toEqual({ count: 1, icon: "ServerIcon" });
   });
 
@@ -510,7 +526,7 @@ describe("app components", () => {
 
   it("should keep nav links accessible by name when collapsed (icon-only, no visible text)", async () => {
     const { default: Shell } = await import("../components/layout/Shell");
-    mocks.usePathname.mockReturnValue("/");
+    mocks.usePathname.mockReturnValue("/w/ws_1");
     const user = userEvent.setup();
     render(React.createElement(Shell, null, React.createElement("div", null, "content")));
 
@@ -522,7 +538,8 @@ describe("app components", () => {
     // computation, not textContent, so this fails if aria-label is dropped.
     const fleetsLink = screen.getByRole("link", { name: "Fleets" });
     expect(fleetsLink).toBeTruthy();
-    expect(fleetsLink.getAttribute("href")).toBe("/fleets");
+    // M118: the Fleets destination is workspace-scoped — `/w/<id>/fleets`.
+    expect(fleetsLink.getAttribute("href")).toBe("/w/ws_1/fleets");
     cleanup();
   });
 
@@ -545,7 +562,7 @@ describe("app components", () => {
 
   it("should render the active nav link with the mint/pulse styling classes, not the generic accent", async () => {
     const { default: Shell } = await import("../components/layout/Shell");
-    mocks.usePathname.mockReturnValue("/fleets");
+    mocks.usePathname.mockReturnValue("/w/ws_1/fleets");
     render(React.createElement(Shell, null, React.createElement("div", null, "content")));
 
     const activeLink = screen.getByRole("link", { name: "Fleets" });
@@ -561,7 +578,7 @@ describe("app components", () => {
 
   it("should render a left accent bar on the active nav item, on top of the fill", async () => {
     const { default: Shell } = await import("../components/layout/Shell");
-    mocks.usePathname.mockReturnValue("/fleets");
+    mocks.usePathname.mockReturnValue("/w/ws_1/fleets");
     render(React.createElement(Shell, null, React.createElement("div", null, "content")));
 
     const activeLink = screen.getByRole("link", { name: "Fleets" });

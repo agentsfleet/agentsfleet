@@ -9,12 +9,22 @@
 import { expect, test } from "@playwright/test";
 import { clerk } from "@clerk/testing/playwright";
 import { signInAs } from "./fixtures/auth";
+import { gotoWorkspace, workspaceUrlPattern } from "./fixtures/nav";
 import { FIXTURE_KEY } from "./fixtures/constants";
 
 const ROUTING_TEST_TIMEOUT_MS = 90_000;
 const ROUTING_TIMEOUT_MS = 30_000;
 const PUBLIC_AUTH_ROUTES = ["/sign-in", "/sign-up"] as const;
-const PROTECTED_ROUTES = ["/", "/fleets", "/events", "/settings/billing"] as const;
+// Post-M118 the workspace pages live under `/w/<id>/…`. clerkMiddleware gates
+// auth before routing, so a signed-out visit to any workspace-scoped path (a
+// synthetic id is fine — the auth bounce fires before the ownership guard) and
+// to the tenant-scoped root/billing routes all redirect to /sign-in.
+const PROTECTED_ROUTES = [
+  "/",
+  "/w/ws_probe/fleets",
+  "/w/ws_probe/events",
+  "/settings/billing",
+] as const;
 
 test.describe("auth routing", () => {
   test.setTimeout(ROUTING_TEST_TIMEOUT_MS);
@@ -29,8 +39,8 @@ test.describe("auth routing", () => {
       });
     }
 
-    await page.goto("/events", { waitUntil: "domcontentloaded", timeout: ROUTING_TIMEOUT_MS });
-    await expect(page).toHaveURL(/\/events(\?|$)/, { timeout: ROUTING_TIMEOUT_MS });
+    await gotoWorkspace(page, FIXTURE_KEY.regular, "events");
+    await expect(page).toHaveURL(workspaceUrlPattern("events"), { timeout: ROUTING_TIMEOUT_MS });
     await expect(page.getByRole("heading", { name: /^events$/i })).toBeVisible();
   });
 

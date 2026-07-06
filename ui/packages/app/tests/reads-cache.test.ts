@@ -18,11 +18,11 @@ vi.mock("@/lib/api/secrets", () => ({ listSecrets }));
 import {
   getTenantProviderCached as getTenantProviderCachedModels,
   listSecretsCached as listSecretsCachedModels,
-} from "@/app/(dashboard)/settings/models/lib/reads";
+} from "@/app/(dashboard)/w/[workspaceId]/settings/models/lib/reads";
 import {
   getTenantProviderCached as getTenantProviderCachedSecrets,
   listSecretsCached as listSecretsCachedSecrets,
-} from "@/app/(dashboard)/secrets/lib/reads";
+} from "@/app/(dashboard)/w/[workspaceId]/secrets/lib/reads";
 
 describe("Models cached reads", () => {
   it("getTenantProviderCached forwards the token to getTenantProvider", async () => {

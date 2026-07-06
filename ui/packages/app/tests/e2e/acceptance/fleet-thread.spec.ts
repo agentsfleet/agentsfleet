@@ -12,7 +12,7 @@
  * frame-emit hooks the M68 harness doesn't yet expose. Filing those as
  * §6 follow-ups in this milestone's spec. What this spec pins now is
  * the load-bearing assertion: an authenticated user lands on
- * /fleets/[id], the thread surface mounts, the live-activity panel is
+ * /w/[workspaceId]/fleets/[id], the thread surface mounts, the live-activity panel is
  * present, the composer renders, and SSE handshake at least starts.
  * A regression here lands either as a /sign-in redirect (server-side
  * token resolution broke) or as a missing Card / missing composer
@@ -22,6 +22,7 @@ import { expect, test } from "@playwright/test";
 import { signInAs } from "./fixtures/auth";
 import { FIXTURE_KEY } from "./fixtures/constants";
 import { getDefaultWorkspaceId, listFleets, seedFleet } from "./fixtures/seed";
+import { workspaceHref, workspaceUrlPattern } from "./fixtures/nav";
 
 const PANEL_LABEL = /^Live activity$/;
 const COMPOSER_LABEL = "Steer composer";
@@ -43,8 +44,8 @@ test.describe("fleet thread surface", () => {
         name: "thread-spec-target",
       }));
 
-    await page.goto(`/fleets/${fleet.id}`);
-    await expect(page).toHaveURL(new RegExp(`/fleets/${fleet.id}(\\?|$)`));
+    await page.goto(workspaceHref(workspaceId, `fleets/${fleet.id}`));
+    await expect(page).toHaveURL(workspaceUrlPattern(`fleets/${fleet.id}`));
 
     // Page-level header rendered server-side.
     await expect(
@@ -78,7 +79,7 @@ test.describe("fleet thread surface", () => {
     await expect(placeholder).toBeVisible();
   });
 
-  test("survives a /dashboard ↔ /fleets/[id] round-trip without unmounting the surface", async ({
+  test("survives a /w/[workspaceId]/fleets ↔ /w/[workspaceId]/fleets/[id] round-trip without unmounting the surface", async ({
     page,
   }) => {
     // Pins the registry behavior end-to-end: navigating away and back
@@ -95,19 +96,19 @@ test.describe("fleet thread surface", () => {
         name: "thread-revisit-target",
       }));
 
-    await page.goto(`/fleets/${fleet.id}`);
+    await page.goto(workspaceHref(workspaceId, `fleets/${fleet.id}`));
     await expect(page.getByLabel("Live activity stream")).toBeVisible({
       timeout: 10_000,
     });
 
-    await page.goto("/fleets");
-    await expect(page).toHaveURL(/\/fleets(\?|$)/);
+    await page.goto(workspaceHref(workspaceId, "fleets"));
+    await expect(page).toHaveURL(workspaceUrlPattern("fleets"));
 
     // Return. The thread surface must re-render; behavior parity with the
     // first mount is the assertion — we don't claim "no reconnect" at the
     // network layer from a Playwright test (that's the registry unit-test
     // surface), only that the user-visible surface comes back cleanly.
-    await page.goto(`/fleets/${fleet.id}`);
+    await page.goto(workspaceHref(workspaceId, `fleets/${fleet.id}`));
     await expect(page.getByLabel("Live activity stream")).toBeVisible({
       timeout: 10_000,
     });
@@ -145,7 +146,7 @@ test.describe("fleet thread surface", () => {
       });
     });
 
-    await page.goto(`/fleets/${fleet.id}`);
+    await page.goto(workspaceHref(workspaceId, `fleets/${fleet.id}`));
     const appOrigin = new URL(page.url()).origin;
     const threadCard = page.getByLabel("Live activity stream");
     await expect(threadCard).toBeVisible({ timeout: 10_000 });

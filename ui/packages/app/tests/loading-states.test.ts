@@ -11,7 +11,7 @@ describe("dashboard segment loading states", () => {
   const cases: Array<{ name: string; importer: () => Promise<{ default: React.ComponentType }>; expectsTitle: string | null }> = [
     {
       name: "fleets/[id]",
-      importer: () => import("../app/(dashboard)/fleets/[id]/loading"),
+      importer: () => import("../app/(dashboard)/w/[workspaceId]/fleets/[id]/loading"),
       expectsTitle: null, // skeleton title, no static text
     },
     {
@@ -23,7 +23,7 @@ describe("dashboard segment loading states", () => {
     },
     {
       name: "settings/models",
-      importer: () => import("../app/(dashboard)/settings/models/loading"),
+      importer: () => import("../app/(dashboard)/w/[workspaceId]/settings/models/loading"),
       expectsTitle: "Models",
     },
     {
@@ -35,7 +35,7 @@ describe("dashboard segment loading states", () => {
       // Secrets is its own standalone page — its loader paints the real
       // title, not the stale "Models" it borrowed when /credentials redirected.
       name: "secrets",
-      importer: () => import("../app/(dashboard)/secrets/loading"),
+      importer: () => import("../app/(dashboard)/w/[workspaceId]/secrets/loading"),
       expectsTitle: "Secrets",
     },
     {
@@ -50,28 +50,28 @@ describe("dashboard segment loading states", () => {
     },
     {
       name: "integrations",
-      importer: () => import("../app/(dashboard)/integrations/loading"),
+      importer: () => import("../app/(dashboard)/w/[workspaceId]/integrations/loading"),
       expectsTitle: "Integrations",
     },
     {
       name: "events",
-      importer: () => import("../app/(dashboard)/events/loading"),
+      importer: () => import("../app/(dashboard)/w/[workspaceId]/events/loading"),
       expectsTitle: "Events",
     },
     {
       name: "approvals",
-      importer: () => import("../app/(dashboard)/approvals/loading"),
+      importer: () => import("../app/(dashboard)/w/[workspaceId]/approvals/loading"),
       expectsTitle: "Approvals",
     },
     {
       name: "approvals/[gateId]",
-      importer: () => import("../app/(dashboard)/approvals/[gateId]/loading"),
+      importer: () => import("../app/(dashboard)/w/[workspaceId]/approvals/[gateId]/loading"),
       expectsTitle: null, // skeleton title
     },
     {
-      name: "(dashboard) root",
-      importer: () => import("../app/(dashboard)/loading"),
-      expectsTitle: null, // dashboard-wide fallback — spinner only, no static text
+      name: "workspace home",
+      importer: () => import("../app/(dashboard)/w/[workspaceId]/loading"),
+      expectsTitle: null, // workspace-home fallback — spinner only, no static text
     },
   ];
 

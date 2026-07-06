@@ -1,5 +1,5 @@
 import { listApprovals } from "@/lib/api/approvals";
-import ApprovalsList from "@/app/(dashboard)/approvals/components/ApprovalsList";
+import ApprovalsList from "@/app/(dashboard)/w/[workspaceId]/approvals/components/ApprovalsList";
 
 // Server-side wrapper that pre-fetches pending approvals scoped to one fleet
 // and hands them to the same client list component used by /approvals. The
