@@ -97,7 +97,7 @@ export default function CreateApiKeyDialog({ onCreated }: { onCreated: () => voi
             <DialogHeader>
               <DialogTitle>Create API key</DialogTitle>
               <DialogDescription>
-                The raw key is shown once. Name it so you can recognise it later in the list.
+                Name it so you can find it later.
               </DialogDescription>
             </DialogHeader>
             <Form {...form}>
