@@ -3,7 +3,7 @@
 import { withToken, type ActionResult } from "@/lib/actions/with-token";
 import { requireScope } from "@/lib/actions/require-scope";
 import { SCOPE } from "@/lib/auth/scopes";
-import { withWorkspaceScope } from "@/lib/workspace";
+import { listTenantWorkspacesCached } from "@/lib/workspace";
 import { createSecret } from "@/lib/api/secrets";
 import {
   listAdminModels,
@@ -54,24 +54,24 @@ export async function setPlatformDefaultAction(body: {
 }): Promise<ActionResult<{ provider: string; model: string; active: boolean }>> {
   return requireScope(SCOPE.MODEL_ADMIN, () =>
     withToken(async (t) => {
-      // withWorkspaceScope resolves the active workspace from the 0-RTT
-      // cookie/claim hint and self-heals a stale hint against the authoritative
-      // list (M101 §2) — preserving the pre-M101 "always a valid workspace"
-      // contract this action relied on. Both writes run under the same id.
-      const result = await withWorkspaceScope(t, async (workspaceId) => {
-        const data: Record<string, unknown> = { provider: body.provider, api_key: body.api_key, model: body.model };
-        if (body.base_url) data.base_url = body.base_url;
-        await createSecret(workspaceId, { name: body.provider, data }, t);
+      // admin/models is a platform surface with no workspace URL segment, so the
+      // storage workspace is resolved explicitly from the authoritative tenant
+      // list (first owned) rather than a cookie/claim hint. Both writes run
+      // under the same id; an empty list is the genuine "no workspace" error.
+      const { items } = await listTenantWorkspacesCached(t);
+      const workspaceId = items[0]?.id;
+      if (!workspaceId) throw new Error("No active workspace to store the platform key in");
 
-        return setPlatformDefault(t, {
-          provider: body.provider,
-          source_workspace_id: workspaceId,
-          model: body.model,
-          base_url: body.base_url,
-        });
+      const data: Record<string, unknown> = { provider: body.provider, api_key: body.api_key, model: body.model };
+      if (body.base_url) data.base_url = body.base_url;
+      await createSecret(workspaceId, { name: body.provider, data }, t);
+
+      return setPlatformDefault(t, {
+        provider: body.provider,
+        source_workspace_id: workspaceId,
+        model: body.model,
+        base_url: body.base_url,
       });
-      if (!result) throw new Error("No active workspace to store the platform key in");
-      return result;
     }),
   );
 }

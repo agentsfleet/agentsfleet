@@ -1,11 +1,11 @@
 /**
  * lifecycle.spec.ts — operator stops a running fleet via the dashboard.
  *
- * Wire: API-seed → /fleets/[id] → KillSwitch "Stop" → ConfirmDialog
- * confirm → return to /fleets and assert the row's `data-state` is
+ * Wire: API-seed → /w/[workspaceId]/fleets/[id] → KillSwitch "Stop" → ConfirmDialog
+ * confirm → return to /w/[workspaceId]/fleets and assert the row's `data-state` is
  * `parked` (the dashboard's translation of agentsfleetd's `stopped` status,
  * per `liveStateOf` in
- * `app/(dashboard)/fleets/components/FleetsList.tsx:19`).
+ * `app/(dashboard)/w/[workspaceId]/fleets/components/FleetsList.tsx:19`).
  *
  * Sister to kill.spec.ts; both exercise the same KillSwitch + ConfirmDialog
  * wiring but with different target statuses (`stopped` vs `killed`). The
@@ -23,6 +23,7 @@ import { expectRowState, stopFleet } from "./fixtures/lifecycle";
 import { getDefaultWorkspaceId, seedFleet } from "./fixtures/seed";
 import { cleanWorkspaceFleets } from "./fixtures/teardown";
 import { FIXTURE_KEY } from "./fixtures/constants";
+import { workspaceHref, workspaceUrlPattern } from "./fixtures/nav";
 
 test.describe("lifecycle", () => {
   test("Stop transitions the row's data-state from live to parked", async ({ page }) => {
@@ -32,12 +33,12 @@ test.describe("lifecycle", () => {
     const seeded = await seedFleet(FIXTURE_KEY.regular, ws, { name });
 
     await signInAs(page, FIXTURE_KEY.regular);
-    await page.goto(`/fleets/${seeded.id}`);
-    await expect(page).toHaveURL(new RegExp(`/fleets/${seeded.id}(\\?|$)`));
+    await page.goto(workspaceHref(ws, `fleets/${seeded.id}`));
+    await expect(page).toHaveURL(workspaceUrlPattern(`fleets/${seeded.id}`));
 
     await stopFleet(page);
 
-    await page.goto("/fleets");
+    await page.goto(workspaceHref(ws, "fleets"));
     await expectRowState(page, seeded.id, "parked");
   });
 

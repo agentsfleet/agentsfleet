@@ -29,7 +29,7 @@ const { steerFleetActionMock, useFleetEventStreamMock, capturedOnNew } =
     capturedOnNew: { current: null as ((msg: AppendMessage) => Promise<void>) | null },
   }));
 
-vi.mock("@/app/(dashboard)/fleets/actions", () => ({
+vi.mock("@/app/(dashboard)/w/[workspaceId]/fleets/actions", () => ({
   steerFleetAction: steerFleetActionMock,
 }));
 

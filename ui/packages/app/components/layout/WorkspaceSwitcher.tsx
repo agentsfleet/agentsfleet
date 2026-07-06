@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { ChevronDownIcon, PlusIcon } from "lucide-react";
 import {
   DropdownMenu,
@@ -17,12 +17,17 @@ import {
 import type { TenantWorkspace } from "@/lib/api/workspaces";
 import { EVENTS } from "@/lib/analytics/events";
 import { captureProductEvent } from "@/lib/analytics/posthog";
+import {
+  workspaceIdFromPath,
+  workspacePath,
+  workspaceSubpath,
+  workspaceSwitchSubpath,
+} from "@/lib/workspace-routes";
 import CreateWorkspaceDialogDynamic from "@/components/domain/island-dynamic/CreateWorkspaceDialogDynamic";
 
 type Props = {
   workspaces: TenantWorkspace[];
   activeId: string | null;
-  onSwitch: (id: string) => void | Promise<void>;
 };
 
 const WORKSPACE_NOTICE_MS = 2800;
@@ -35,9 +40,9 @@ type Notice = {
 export default function WorkspaceSwitcher({
   workspaces,
   activeId,
-  onSwitch,
 }: Props) {
   const router = useRouter();
+  const pathname = usePathname();
   const [pending, startTransition] = useTransition();
   const [createOpen, setCreateOpen] = useState(false);
   const [notice, setNotice] = useState<Notice | null>(null);
@@ -57,19 +62,22 @@ export default function WorkspaceSwitcher({
     noticeTimer.start(() => setNotice(null), WORKSPACE_NOTICE_MS);
   }
 
+  // Switching a workspace is a navigation: push `/w/{id}/{section}` so the user
+  // stays in the same section of the new workspace. No cookie, no server action —
+  // the URL is authoritative. A resource-detail path (`fleets/{id}`) collapses to
+  // its section (`fleets`) since the target workspace won't own that resource;
+  // from a tenant page (no `/w/` segment) the sub-path is empty → the home.
   function pick(id: string) {
-    if (id === activeId) return;
+    // No-op only when we're already ON this workspace's route — `activeId` is a
+    // display fallback (the first workspace) on tenant pages, so comparing to it
+    // would wrongly block navigating into the default from e.g. /settings/billing.
+    if (id === workspaceIdFromPath(pathname)) return;
     const label = workspaceLabel(id);
-    startTransition(async () => {
-      try {
-        await onSwitch(id);
-        captureProductEvent(EVENTS.workspace_switched, { workspace_id: id });
-        router.refresh();
-        showNotice("success", `Workspace changed to ${label}.`);
-      } catch {
-        showNotice("destructive", "Workspace switch failed.");
-      }
+    captureProductEvent(EVENTS.workspace_switched, { workspace_id: id });
+    startTransition(() => {
+      router.push(workspacePath(id, workspaceSwitchSubpath(workspaceSubpath(pathname))));
     });
+    showNotice("success", `Workspace changed to ${label}.`);
   }
 
   return (

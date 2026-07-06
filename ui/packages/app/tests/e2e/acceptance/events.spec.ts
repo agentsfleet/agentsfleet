@@ -25,12 +25,13 @@
 import { expect, test } from "@playwright/test";
 import { signInAs } from "./fixtures/auth";
 import { FIXTURE_KEY } from "./fixtures/constants";
+import { gotoWorkspace, workspaceUrlPattern } from "./fixtures/nav";
 
 test.describe("events page", () => {
   test("workspace events page renders authenticated content", async ({ page }) => {
     await signInAs(page, FIXTURE_KEY.regular);
-    await page.goto("/events");
-    await expect(page).toHaveURL(/\/events(\?|$)/);
+    await gotoWorkspace(page, FIXTURE_KEY.regular, "events");
+    await expect(page).toHaveURL(workspaceUrlPattern("events"));
 
     await expect(page.getByRole("heading", { name: /^events$/i })).toBeVisible();
 

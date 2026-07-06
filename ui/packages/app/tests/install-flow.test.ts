@@ -7,7 +7,7 @@ import {
   stepLine,
   unmetCredentials,
   type InstallSource,
-} from "@/app/(dashboard)/fleets/new/install-flow";
+} from "@/app/(dashboard)/w/[workspaceId]/fleets/new/install-flow";
 import { INSTALL_STEP, type InstallStepId } from "@/lib/streaming/install-steps";
 
 // A gallery entry is the only install source in M103 (template-only). These

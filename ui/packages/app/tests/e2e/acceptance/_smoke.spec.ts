@@ -21,6 +21,7 @@ import * as path from "node:path";
 import { expect, test } from "@playwright/test";
 import { signInAs } from "./fixtures/auth";
 import { getDefaultWorkspaceId, listFleets, seedFleet } from "./fixtures/seed";
+import { gotoWorkspace, workspaceUrlPattern } from "./fixtures/nav";
 import { cleanWorkspaceFleets } from "./fixtures/teardown";
 import { CLERK_NEXTJS_PINNED_MAJOR, FIXTURE_KEY } from "./fixtures/constants";
 
@@ -77,16 +78,16 @@ test.describe("auth e2e wire", () => {
 
   test("signInAs('regular') produces an accepted Clerk session", async ({ page }) => {
     await signInAs(page, FIXTURE_KEY.regular);
-    await page.goto("/fleets");
-    await expect(page).toHaveURL(/\/fleets(\?|$)/);
+    await gotoWorkspace(page, FIXTURE_KEY.regular, "fleets");
+    await expect(page).toHaveURL(workspaceUrlPattern("fleets"));
   });
 
   test(
     "post-bootstrap dashboard renders authenticated content for fixture user",
     async ({ page }) => {
       await signInAs(page, FIXTURE_KEY.regular);
-      await page.goto("/fleets");
-      await expect(page).toHaveURL(/\/fleets(\?|$)/);
+      await gotoWorkspace(page, FIXTURE_KEY.regular, "fleets");
+      await expect(page).toHaveURL(workspaceUrlPattern("fleets"));
       await expect(page.getByRole("heading", { name: /fleets/i }).first()).toBeVisible();
     },
   );

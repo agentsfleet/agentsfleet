@@ -17,6 +17,7 @@ import { signInAs } from "./fixtures/auth";
 import { getDefaultWorkspaceId, seedFleet } from "./fixtures/seed";
 import { cleanWorkspaceFleets } from "./fixtures/teardown";
 import { FIXTURE_KEY } from "./fixtures/constants";
+import { workspaceHref } from "./fixtures/nav";
 
 const COUNTER_TIMEOUT_MS = 10_000;
 
@@ -30,7 +31,7 @@ test.describe("live counter increments on install", () => {
 
     for (let i = 1; i <= 3; i++) {
       await seedFleet(FIXTURE_KEY.regular, ws, { name: `count-${tag}-${i}` });
-      await page.goto("/fleets");
+      await page.goto(workspaceHref(ws, "fleets"));
       await expect(page.getByLabel(`${i} live`)).toBeVisible({ timeout: COUNTER_TIMEOUT_MS });
     }
   });

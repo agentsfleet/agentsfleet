@@ -14,9 +14,9 @@ vi.mock("@/components/domain/useFleetEventStream", () => ({
   useFleetEventStream: useFleetEventStreamMock,
 }));
 
-import { InstallEntry } from "../app/(dashboard)/fleets/new/InstallEntry";
-import { FleetInstallGate } from "../app/(dashboard)/fleets/[id]/components/FleetInstallGate";
-import { InstallSourceSelector } from "../app/(dashboard)/fleets/new/InstallSourceSelector";
+import { InstallEntry } from "../app/(dashboard)/w/[workspaceId]/fleets/new/InstallEntry";
+import { FleetInstallGate } from "../app/(dashboard)/w/[workspaceId]/fleets/[id]/components/FleetInstallGate";
+import { InstallSourceSelector } from "../app/(dashboard)/w/[workspaceId]/fleets/new/InstallSourceSelector";
 
 const TEMPLATE = {
   id: "github-pr-reviewer",
@@ -58,14 +58,14 @@ afterEach(() => cleanup());
 
 describe("InstallEntry", () => {
   it("renders the library-entry grid with a deep link", () => {
-    const m = renderToStaticMarkup(React.createElement(InstallEntry, { entries: [TEMPLATE] }));
-    expect(m).toContain('href="/fleets/new?library=github-pr-reviewer"');
+    const m = renderToStaticMarkup(React.createElement(InstallEntry, { workspaceId: "ws_1", entries: [TEMPLATE] }));
+    expect(m).toContain('href="/w/ws_1/fleets/new?library=github-pr-reviewer"');
     expect(m).toContain("GitHub PR reviewer");
   });
 
   it("falls back to an empty state with Learn-more + Create-fleet-library when library:write is available", () => {
     const m = renderToStaticMarkup(
-      React.createElement(InstallEntry, { entries: [], canAddLibraryEntry: true }),
+      React.createElement(InstallEntry, { workspaceId: "ws_1", entries: [], canAddLibraryEntry: true }),
     );
     expect(m).toContain("No prebuilt fleet library found");
     expect(m).toContain("Write your own fleet library");
@@ -75,7 +75,7 @@ describe("InstallEntry", () => {
   });
 
   it("omits Create-fleet-library (and its copy) when library:write is absent — matches InstallSourceSelector's own gate", () => {
-    const m = renderToStaticMarkup(React.createElement(InstallEntry, { entries: [] }));
+    const m = renderToStaticMarkup(React.createElement(InstallEntry, { workspaceId: "ws_1", entries: [] }));
     expect(m).toContain("No prebuilt fleet library found");
     expect(m).toContain("Ask a workspace admin");
     expect(m).not.toContain("Create fleet library");
@@ -85,7 +85,7 @@ describe("InstallEntry", () => {
   it("caps the gallery at maxEntries", () => {
     const many = [TEMPLATE, { ...TEMPLATE, id: "second", name: "Second template" }];
     const m = renderToStaticMarkup(
-      React.createElement(InstallEntry, { entries: many, maxEntries: 1 }),
+      React.createElement(InstallEntry, { workspaceId: "ws_1", entries: many, maxEntries: 1 }),
     );
     expect(m).toContain("GitHub PR reviewer");
     expect(m).not.toContain("Second template");
@@ -206,6 +206,6 @@ describe("FleetInstallGate", () => {
     const user = userEvent.setup({ delay: null });
     renderGate("installing");
     await user.click(screen.getByRole("button", { name: /back to library/i }));
-    expect(routerPush).toHaveBeenCalledWith("/fleets");
+    expect(routerPush).toHaveBeenCalledWith("/w/ws_1/fleets");
   });
 });

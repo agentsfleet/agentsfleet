@@ -1,7 +1,7 @@
 import React from "react";
 import { vi } from "vitest";
 import { NANOS_PER_USD } from "@/lib/types";
-import { authMock, getTokenFn, resolveActiveWorkspace, usePathname } from "./dashboard-mocks";
+import { authMock, getTokenFn, usePathname } from "./dashboard-mocks";
 
 // App-specific mock harness for the dashboard-coverage shards. Mirrors
 // tests/helpers/dashboard-mocks.tsx: the shared mock-fn instances + the
@@ -18,7 +18,6 @@ export type ActionResult<T> =
   | { ok: false; error: string; status?: number };
 
 // ── Shared mock fns ─────────────────────────────────────────────────────────
-export const setActiveWorkspaceMock = vi.fn().mockResolvedValue(undefined);
 export const createWorkspaceActionMock = vi.fn().mockResolvedValue({ ok: true, data: { workspace_id: "ws_new", name: "fresh-name" } });
 export const stopFleetMock = vi.fn();
 export const listFleetsMock = vi.fn();
@@ -191,18 +190,17 @@ export function secretsListMock() {
 }
 
 export function dashboardActionsMock() {
-  return { setActiveWorkspace: setActiveWorkspaceMock, createWorkspaceAction: createWorkspaceActionMock };
+  return { createWorkspaceAction: createWorkspaceActionMock };
 }
 
 // Re-apply default return values after `vi.clearAllMocks()` in beforeEach.
 // Owns the dashboard auth default (carries userId + sessionClaims, which the
 // common resetCommonMocks omits).
 export function resetDashboardMocks() {
-  usePathname.mockReturnValue("/");
+  usePathname.mockReturnValue("/w/ws_1");
   getTokenFn.mockResolvedValue("token_abc");
   authMock.mockReset();
   authMock.mockResolvedValue({ getToken: vi.fn().mockResolvedValue("token_abc"), userId: "usr_1", sessionClaims: null });
-  resolveActiveWorkspace.mockResolvedValue({ id: "ws_1", name: "Alpha" });
   listFleetsMock.mockResolvedValue({
     items: [
       { id: "zom_1", name: "alpha-bot", status: "active", created_at: "2026-04-22T00:00:00Z" },

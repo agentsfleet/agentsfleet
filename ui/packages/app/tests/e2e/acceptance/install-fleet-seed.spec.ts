@@ -17,6 +17,7 @@ import { signInAs } from "./fixtures/auth";
 import { getDefaultWorkspaceId, seedFleet } from "./fixtures/seed";
 import { cleanWorkspaceFleets } from "./fixtures/teardown";
 import { FIXTURE_KEY } from "./fixtures/constants";
+import { workspaceHref, workspaceUrlPattern } from "./fixtures/nav";
 
 test.describe("install-fleet-seed", () => {
   test("API-seeded fleet renders on /fleets with live state", async ({ page }) => {
@@ -30,15 +31,15 @@ test.describe("install-fleet-seed", () => {
     expect(seeded.id).toBeTruthy();
 
     await signInAs(page, FIXTURE_KEY.regular);
-    await page.goto("/fleets");
-    await expect(page).toHaveURL(/\/fleets(\?|$)/);
+    await page.goto(workspaceHref(ws, "fleets"));
+    await expect(page).toHaveURL(workspaceUrlPattern("fleets"));
 
-    // The row is an anchor `<Link href="/fleets/{id}" data-state="live">`
+    // The row is an anchor `<Link href="/w/{ws}/fleets/{id}" data-state="live">`
     // wrapping a `<div class="font-medium truncate">{name}</div>`. Match by
     // visible name (accessible to a Playwright user) and assert data-state
     // is "live" (the dashboard's translation of agentsfleetd's "active" status —
-    // canonical mapping at app/(dashboard)/fleets/components/FleetsList.tsx).
-    const row = page.locator(`a[href="/fleets/${seeded.id}"]`);
+    // canonical mapping at app/(dashboard)/w/[workspaceId]/fleets/components/FleetsList.tsx).
+    const row = page.locator(`a[href="${workspaceHref(ws, `fleets/${seeded.id}`)}"]`);
     await expect(row).toBeVisible();
     await expect(row).toHaveAttribute("data-state", "live");
     await expect(row.getByText(name)).toBeVisible();

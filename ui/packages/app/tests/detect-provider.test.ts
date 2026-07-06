@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   detectProviderFromKey,
   PROVIDER_KEY_PREFIXES,
-} from "../app/(dashboard)/settings/models/lib/detect-provider";
+} from "../app/(dashboard)/w/[workspaceId]/settings/models/lib/detect-provider";
 
 // NOTE: this covers ONLY the paste-to-fill key-format hint. The provider list,
 // model list, and defaults are catalogue-driven (model-caps API) and are NOT

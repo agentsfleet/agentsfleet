@@ -11,7 +11,7 @@ import type { ComponentProps } from "react";
 // hydration; the dialog's own open/close (and its exit animation) is unaffected.
 const InnerRenameSecretDialog = nextDynamic(
   () =>
-    import("@/app/(dashboard)/secrets/components/RenameSecretDialog").then(
+    import("@/app/(dashboard)/w/[workspaceId]/secrets/components/RenameSecretDialog").then(
       (mod) => ({ default: mod.default }),
     ),
   { ssr: false, loading: () => null },

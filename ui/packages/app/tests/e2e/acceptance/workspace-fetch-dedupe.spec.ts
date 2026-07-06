@@ -8,6 +8,7 @@ import { signInAs } from "./fixtures/auth";
 import { FIXTURE_KEY } from "./fixtures/constants";
 import { ensureSecondWorkspace, getDefaultWorkspaceId } from "./fixtures/seed";
 import { cleanWorkspaceFleets } from "./fixtures/teardown";
+import { workspaceHref, workspaceUrlPattern } from "./fixtures/nav";
 
 const AUDIT_URL = "/acceptance-audit/workspace-fetches";
 const NOT_FOUND_STATUS = 404;
@@ -47,14 +48,14 @@ test.describe("workspace fetch dedupe", () => {
     await signInAs(page, FIXTURE_KEY.regular);
 
     test.skip(!(await resetAudit(page)), "workspace fetch audit route is disabled");
-    await page.goto("/fleets");
-    await expect(page).toHaveURL(/\/fleets(\?|$)/);
+    await page.goto(workspaceHref(primary, "fleets"));
+    await expect(page).toHaveURL(workspaceUrlPattern("fleets"));
     await expect(page.getByTestId("workspace-switcher")).toBeVisible();
     await expectWorkspaceFetchesWithinLimit(page, "fleets render");
 
     await resetAudit(page);
     await page.getByRole("link", { name: "Events" }).click();
-    await expect(page).toHaveURL(/\/events(\?|$)/);
+    await expect(page).toHaveURL(workspaceUrlPattern("events"));
     await expect(page.getByRole("heading", { name: /^events$/i })).toBeVisible();
     await expectWorkspaceFetchesWithinLimit(page, "events navigation");
 

@@ -8,7 +8,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 // children (SecretsList, AddSecretDialog) are mocked at module boundaries, so
 // this asserts the page's own composition only: title/description, the
 // resolved secrets + delete-protection guard passed through to the list, and
-// the empty-workspace/unauthenticated branches.
+// the unauthenticated branch.
 
 const redirect = vi.fn((path: string) => {
   throw new Error(`redirect:${path}`);
@@ -23,27 +23,11 @@ vi.mock("next/navigation", () => ({
 }));
 vi.mock("@clerk/nextjs/server", () => ({ auth }));
 
-vi.mock("@/lib/workspace", () => ({
-  withWorkspaceScope: vi.fn(),
-  orFallback:
-    <T,>(fallback: T) =>
-    (err: unknown): T => {
-      if (
-        err &&
-        typeof err === "object" &&
-        "status" in err &&
-        ((err as { status: number }).status === 403 || (err as { status: number }).status === 404)
-      )
-        throw err;
-      return fallback;
-    },
-}));
-
-vi.mock("@/app/(dashboard)/secrets/lib/reads", () => ({ listSecretsCached, getTenantProviderCached }));
+vi.mock("@/app/(dashboard)/w/[workspaceId]/secrets/lib/reads", () => ({ listSecretsCached, getTenantProviderCached }));
 
 // The page's own contract is just: pass workspaceId/secrets/protectedSecretName
 // through to SecretsList, and workspaceId through to AddSecretDialog.
-vi.mock("@/app/(dashboard)/secrets/components/SecretsList", () => ({
+vi.mock("@/app/(dashboard)/w/[workspaceId]/secrets/components/SecretsList", () => ({
   default: ({
     workspaceId,
     secrets,
@@ -60,7 +44,7 @@ vi.mock("@/app/(dashboard)/secrets/components/SecretsList", () => ({
       "data-protected-secret": protectedSecretName ?? "",
     }),
 }));
-vi.mock("@/app/(dashboard)/secrets/components/AddSecretDialog", () => ({
+vi.mock("@/app/(dashboard)/w/[workspaceId]/secrets/components/AddSecretDialog", () => ({
   default: ({ workspaceId }: { workspaceId: string }) =>
     React.createElement("div", { "data-testid": "add-secret-dialog", "data-workspace": workspaceId }),
 }));
@@ -71,8 +55,14 @@ vi.mock("lucide-react", () => {
   return { ZapIcon: make("ZapIcon") };
 });
 
-import { withWorkspaceScope } from "@/lib/workspace";
 import { PROVIDER_MODE } from "@/lib/types";
+
+// The workspace id now comes from the route param; the page reads it from
+// `params` and forwards it to its data reads.
+const WORKSPACE_ID = "ws_1";
+function renderPage(Page: (args: { params: Promise<{ workspaceId: string }> }) => Promise<React.ReactElement>) {
+  return Page({ params: Promise.resolve({ workspaceId: WORKSPACE_ID }) });
+}
 
 function selfManagedProvider(secretRef: string | null) {
   return {
@@ -97,9 +87,6 @@ function platformProvider() {
 beforeEach(() => {
   vi.clearAllMocks();
   auth.mockResolvedValue({ getToken: vi.fn().mockResolvedValue("token_123") });
-  vi.mocked(withWorkspaceScope).mockImplementation(
-    async (_token: string, fn: (workspaceId: string) => Promise<unknown>) => fn("ws_1"),
-  );
   // Default: platform mode, no protected secret — most tests below override
   // listSecretsCached only and don't care about the provider branch.
   getTenantProviderCached.mockResolvedValue(platformProvider());
@@ -115,8 +102,8 @@ describe("Secrets page", () => {
       ],
     });
 
-    const { default: Page } = await import("../app/(dashboard)/secrets/page");
-    const markup = renderToStaticMarkup(await Page());
+    const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/secrets/page");
+    const markup = renderToStaticMarkup(await renderPage(Page));
 
     expect(markup).toContain("Secrets");
     expect(markup).toContain("Encrypted secrets your fleets can use");
@@ -129,8 +116,8 @@ describe("Secrets page", () => {
   it("falls back to an empty secrets list when listSecretsCached rejects", async () => {
     listSecretsCached.mockRejectedValue(new Error("503"));
 
-    const { default: Page } = await import("../app/(dashboard)/secrets/page");
-    const markup = renderToStaticMarkup(await Page());
+    const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/secrets/page");
+    const markup = renderToStaticMarkup(await renderPage(Page));
 
     expect(markup).toContain('data-testid="secrets-list"');
     expect(markup).toContain('data-secret-count="0"');
@@ -142,8 +129,8 @@ describe("Secrets page", () => {
     });
     getTenantProviderCached.mockResolvedValue(selfManagedProvider("anthropic-prod"));
 
-    const { default: Page } = await import("../app/(dashboard)/secrets/page");
-    const markup = renderToStaticMarkup(await Page());
+    const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/secrets/page");
+    const markup = renderToStaticMarkup(await renderPage(Page));
 
     // The secret backing the active model can't be deleted from this page —
     // regression pin for the delete-protection guard being wired at all.
@@ -154,8 +141,8 @@ describe("Secrets page", () => {
     listSecretsCached.mockResolvedValue({ secrets: [] });
     getTenantProviderCached.mockResolvedValue(platformProvider());
 
-    const { default: Page } = await import("../app/(dashboard)/secrets/page");
-    const markup = renderToStaticMarkup(await Page());
+    const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/secrets/page");
+    const markup = renderToStaticMarkup(await renderPage(Page));
 
     expect(markup).toContain('data-protected-secret=""');
   });
@@ -166,24 +153,16 @@ describe("Secrets page", () => {
     });
     getTenantProviderCached.mockRejectedValue(new Error("503"));
 
-    const { default: Page } = await import("../app/(dashboard)/secrets/page");
-    const markup = renderToStaticMarkup(await Page());
+    const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/secrets/page");
+    const markup = renderToStaticMarkup(await renderPage(Page));
 
     expect(markup).toContain('data-testid="secrets-list"');
     expect(markup).toContain('data-protected-secret=""');
   });
 
-  it("renders the no-workspace empty state under the Secrets title", async () => {
-    vi.mocked(withWorkspaceScope).mockResolvedValue(null);
-    const { default: Page } = await import("../app/(dashboard)/secrets/page");
-    const markup = renderToStaticMarkup(await Page());
-    expect(markup).toContain("Secrets");
-    expect(markup).toContain("No workspace yet");
-  });
-
   it("redirects to /sign-in when unauthenticated", async () => {
     auth.mockResolvedValue({ getToken: vi.fn().mockResolvedValue(null) });
-    const { default: Page } = await import("../app/(dashboard)/secrets/page");
-    await expect(Page()).rejects.toThrow("redirect:/sign-in");
+    const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/secrets/page");
+    await expect(renderPage(Page)).rejects.toThrow("redirect:/sign-in");
   });
 });

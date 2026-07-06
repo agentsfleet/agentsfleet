@@ -7,10 +7,9 @@ const GATE_ID = "01999999-0000-7000-8000-000000000001";
 const FLEET_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0aa701";
 const TOKEN = "token_pages";
 
-const { getTokenMock, resolveActiveWorkspace, listApprovalsMock, getApprovalMock, notFound, redirect } =
+const { getTokenMock, listApprovalsMock, getApprovalMock, notFound, redirect } =
   vi.hoisted(() => ({
     getTokenMock: vi.fn(),
-    resolveActiveWorkspace: vi.fn(),
     listApprovalsMock: vi.fn(),
     getApprovalMock: vi.fn(),
     notFound: vi.fn(() => {
@@ -25,33 +24,6 @@ vi.mock("next/navigation", () => ({ notFound, redirect }));
 vi.mock("@clerk/nextjs/server", () => ({
   auth: vi.fn(async () => ({ getToken: getTokenMock })),
 }));
-// Derive the M101 resolver split from the legacy `resolveActiveWorkspace` mock
-// so the existing `.mockResolvedValue({ id })` / `.mockResolvedValueOnce(null)`
-// setups drive both the list route (withWorkspaceScope) and the detail route
-// (resolveActiveWorkspaceId) unchanged.
-vi.mock("@/lib/workspace", () => ({
-  resolveActiveWorkspace,
-  resolveActiveWorkspaceId: async (token: string) => {
-    const ws = (await resolveActiveWorkspace(token)) as { id: string } | null;
-    return ws ? { id: ws.id, source: "cookie" as const } : null;
-  },
-  withWorkspaceScope: async <T,>(token: string, fn: (workspaceId: string) => Promise<T>) => {
-    const ws = (await resolveActiveWorkspace(token)) as { id: string } | null;
-    return ws ? fn(ws.id) : null;
-  },
-  orFallback:
-    <T,>(fallback: T) =>
-    (err: unknown): T => {
-      if (
-        err &&
-        typeof err === "object" &&
-        "status" in err &&
-        ((err as { status: number }).status === 403 || (err as { status: number }).status === 404)
-      )
-        throw err;
-      return fallback;
-    },
-}));
 vi.mock("@/lib/api/approvals", () => ({
   listApprovals: listApprovalsMock,
   getApproval: getApprovalMock,
@@ -61,7 +33,7 @@ vi.mock("next/link", () => ({
     React.createElement("a", { href, ...rest }, children),
 }));
 // Client child components — stub to keep server-component tests synchronous.
-vi.mock("@/app/(dashboard)/approvals/components/ApprovalsList", () => ({
+vi.mock("@/app/(dashboard)/w/[workspaceId]/approvals/components/ApprovalsList", () => ({
   default: (props: { initialItems: unknown[] }) =>
     React.createElement(
       "div",
@@ -69,19 +41,17 @@ vi.mock("@/app/(dashboard)/approvals/components/ApprovalsList", () => ({
       "approvals-list-stub",
     ),
 }));
-vi.mock("@/app/(dashboard)/approvals/[gateId]/ResolveButtons", () => ({
+vi.mock("@/app/(dashboard)/w/[workspaceId]/approvals/[gateId]/ResolveButtons", () => ({
   default: () => React.createElement("div", { "data-stub": "ResolveButtons" }, "resolve-stub"),
 }));
 
 beforeEach(() => {
   getTokenMock.mockResolvedValue(TOKEN);
-  resolveActiveWorkspace.mockResolvedValue({ id: WORKSPACE_ID });
   listApprovalsMock.mockResolvedValue({ items: [], next_cursor: null });
 });
 
 afterEach(() => {
   getTokenMock.mockReset();
-  resolveActiveWorkspace.mockReset();
   listApprovalsMock.mockReset();
   getApprovalMock.mockReset();
   notFound.mockClear();
@@ -92,16 +62,18 @@ afterEach(() => {
 describe("ApprovalsPage (workspace inbox)", () => {
   it("redirects to /sign-in when no token", async () => {
     getTokenMock.mockResolvedValueOnce(null);
-    const { default: Page } = await import("../app/(dashboard)/approvals/page");
-    await expect(Page()).rejects.toThrow("redirect:/sign-in");
+    const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/approvals/page");
+    await expect(Page({ params: Promise.resolve({ workspaceId: WORKSPACE_ID }) })).rejects.toThrow(
+      "redirect:/sign-in",
+    );
   });
 
   it("page shell streams the header + skeleton before the inbox", async () => {
     // ApprovalsData is an async child, so renderToStaticMarkup renders the
     // Suspense skeleton in its place — the list stub stays absent until it
     // streams in, but the header title paints immediately.
-    const { default: Page } = await import("../app/(dashboard)/approvals/page");
-    const markup = renderToStaticMarkup(await Page());
+    const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/approvals/page");
+    const markup = renderToStaticMarkup(await Page({ params: Promise.resolve({ workspaceId: WORKSPACE_ID }) }));
     expect(markup).toContain("Approvals"); // PageTitle in the shell
     expect(markup).toContain("animate-pulse"); // Skeleton fallback
     expect(markup).not.toContain("approvals-list-stub"); // data not yet resolved
@@ -109,14 +81,8 @@ describe("ApprovalsPage (workspace inbox)", () => {
 
   it("ApprovalsData returns null when the token is missing", async () => {
     getTokenMock.mockResolvedValueOnce(null);
-    const { ApprovalsData } = await import("../app/(dashboard)/approvals/page");
-    expect(await ApprovalsData()).toBeNull();
-  });
-
-  it("notFound when no active workspace", async () => {
-    resolveActiveWorkspace.mockResolvedValueOnce(null);
-    const { ApprovalsData } = await import("../app/(dashboard)/approvals/page");
-    await expect(ApprovalsData()).rejects.toThrow("notFound");
+    const { ApprovalsData } = await import("../app/(dashboard)/w/[workspaceId]/approvals/page");
+    expect(await ApprovalsData({ workspaceId: WORKSPACE_ID })).toBeNull();
   });
 
   it("renders the inbox section and forwards items to the list stub", async () => {
@@ -144,8 +110,10 @@ describe("ApprovalsPage (workspace inbox)", () => {
       ],
       next_cursor: null,
     });
-    const { ApprovalsData } = await import("../app/(dashboard)/approvals/page");
-    const markup = renderToStaticMarkup(React.createElement(React.Fragment, null, await ApprovalsData()));
+    const { ApprovalsData } = await import("../app/(dashboard)/w/[workspaceId]/approvals/page");
+    const markup = renderToStaticMarkup(
+      React.createElement(React.Fragment, null, await ApprovalsData({ workspaceId: WORKSPACE_ID })),
+    );
     expect(markup).toContain("Pending"); // section aria-label
     expect(markup).toContain("approvals-list-stub");
     expect(markup).toContain('data-initial-items="1"');
@@ -153,8 +121,10 @@ describe("ApprovalsPage (workspace inbox)", () => {
 
   it("falls back to empty initial list when listApprovals rejects", async () => {
     listApprovalsMock.mockRejectedValueOnce(new Error("upstream 503"));
-    const { ApprovalsData } = await import("../app/(dashboard)/approvals/page");
-    const markup = renderToStaticMarkup(React.createElement(React.Fragment, null, await ApprovalsData()));
+    const { ApprovalsData } = await import("../app/(dashboard)/w/[workspaceId]/approvals/page");
+    const markup = renderToStaticMarkup(
+      React.createElement(React.Fragment, null, await ApprovalsData({ workspaceId: WORKSPACE_ID })),
+    );
     expect(markup).toContain('data-initial-items="0"');
   });
 });
@@ -187,32 +157,24 @@ describe("ApprovalDetailPage", () => {
 
   it("redirects to /sign-in when no token", async () => {
     getTokenMock.mockResolvedValueOnce(null);
-    const { default: Page } = await import("../app/(dashboard)/approvals/[gateId]/page");
-    await expect(Page({ params: Promise.resolve({ gateId: GATE_ID }) })).rejects.toThrow(
+    const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/approvals/[gateId]/page");
+    await expect(Page({ params: Promise.resolve({ workspaceId: WORKSPACE_ID, gateId: GATE_ID }) })).rejects.toThrow(
       "redirect:/sign-in",
-    );
-  });
-
-  it("notFound when no active workspace", async () => {
-    resolveActiveWorkspace.mockResolvedValueOnce(null);
-    const { default: Page } = await import("../app/(dashboard)/approvals/[gateId]/page");
-    await expect(Page({ params: Promise.resolve({ gateId: GATE_ID }) })).rejects.toThrow(
-      "notFound",
     );
   });
 
   it("notFound when getApproval returns null", async () => {
     getApprovalMock.mockRejectedValueOnce(new Error("404"));
-    const { default: Page } = await import("../app/(dashboard)/approvals/[gateId]/page");
-    await expect(Page({ params: Promise.resolve({ gateId: GATE_ID }) })).rejects.toThrow(
+    const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/approvals/[gateId]/page");
+    await expect(Page({ params: Promise.resolve({ workspaceId: WORKSPACE_ID, gateId: GATE_ID }) })).rejects.toThrow(
       "notFound",
     );
   });
 
   it("renders proposed action, evidence JSON, and Resolve panel for pending gates", async () => {
     getApprovalMock.mockResolvedValueOnce(gateFixture());
-    const { default: Page } = await import("../app/(dashboard)/approvals/[gateId]/page");
-    const markup = renderToStaticMarkup(await Page({ params: Promise.resolve({ gateId: GATE_ID }) }));
+    const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/approvals/[gateId]/page");
+    const markup = renderToStaticMarkup(await Page({ params: Promise.resolve({ workspaceId: WORKSPACE_ID, gateId: GATE_ID }) }));
     expect(markup).toContain("Open PR titled wire approval inbox");
     expect(markup).toContain("approvals-a");
     expect(markup).toContain("destructive_action");
@@ -231,8 +193,8 @@ describe("ApprovalDetailPage", () => {
         updated_at: 1_700_000_001_000,
       }),
     );
-    const { default: Page } = await import("../app/(dashboard)/approvals/[gateId]/page");
-    const markup = renderToStaticMarkup(await Page({ params: Promise.resolve({ gateId: GATE_ID }) }));
+    const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/approvals/[gateId]/page");
+    const markup = renderToStaticMarkup(await Page({ params: Promise.resolve({ workspaceId: WORKSPACE_ID, gateId: GATE_ID }) }));
     expect(markup).toContain("Resolution");
     expect(markup).toContain("approved");
     expect(markup).toContain("user:user_x");
@@ -243,8 +205,8 @@ describe("ApprovalDetailPage", () => {
     getApprovalMock.mockResolvedValueOnce(
       gateFixture({ status: "denied", resolved_by: "user:user_x", updated_at: null }),
     );
-    const { default: Page } = await import("../app/(dashboard)/approvals/[gateId]/page");
-    const markup = renderToStaticMarkup(await Page({ params: Promise.resolve({ gateId: GATE_ID }) }));
+    const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/approvals/[gateId]/page");
+    const markup = renderToStaticMarkup(await Page({ params: Promise.resolve({ workspaceId: WORKSPACE_ID, gateId: GATE_ID }) }));
     expect(markup).toContain("denied");
   });
 
@@ -252,8 +214,8 @@ describe("ApprovalDetailPage", () => {
     getApprovalMock.mockResolvedValueOnce(
       gateFixture({ status: "timed_out", resolved_by: "system:timeout" }),
     );
-    const { default: Page } = await import("../app/(dashboard)/approvals/[gateId]/page");
-    const markup = renderToStaticMarkup(await Page({ params: Promise.resolve({ gateId: GATE_ID }) }));
+    const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/approvals/[gateId]/page");
+    const markup = renderToStaticMarkup(await Page({ params: Promise.resolve({ workspaceId: WORKSPACE_ID, gateId: GATE_ID }) }));
     expect(markup).toContain("timed_out");
     expect(markup).toContain("system:timeout");
   });
@@ -262,8 +224,8 @@ describe("ApprovalDetailPage", () => {
     getApprovalMock.mockResolvedValueOnce(
       gateFixture({ proposed_action: "", tool_name: "write_repo", action_name: "create_pr" }),
     );
-    const { default: Page } = await import("../app/(dashboard)/approvals/[gateId]/page");
-    const markup = renderToStaticMarkup(await Page({ params: Promise.resolve({ gateId: GATE_ID }) }));
+    const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/approvals/[gateId]/page");
+    const markup = renderToStaticMarkup(await Page({ params: Promise.resolve({ workspaceId: WORKSPACE_ID, gateId: GATE_ID }) }));
     expect(markup).toContain("write_repo:create_pr");
   });
 
@@ -271,8 +233,8 @@ describe("ApprovalDetailPage", () => {
     getApprovalMock.mockResolvedValueOnce(
       gateFixture({ gate_kind: "", blast_radius: "" }),
     );
-    const { default: Page } = await import("../app/(dashboard)/approvals/[gateId]/page");
-    const markup = renderToStaticMarkup(await Page({ params: Promise.resolve({ gateId: GATE_ID }) }));
+    const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/approvals/[gateId]/page");
+    const markup = renderToStaticMarkup(await Page({ params: Promise.resolve({ workspaceId: WORKSPACE_ID, gateId: GATE_ID }) }));
     expect(markup).not.toContain(">Kind<");
     expect(markup).not.toContain(">Blast radius<");
   });
@@ -286,8 +248,8 @@ describe("ApprovalDetailPage", () => {
         detail: "approved with caveat",
       }),
     );
-    const { default: Page } = await import("../app/(dashboard)/approvals/[gateId]/page");
-    const markup = renderToStaticMarkup(await Page({ params: Promise.resolve({ gateId: GATE_ID }) }));
+    const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/approvals/[gateId]/page");
+    const markup = renderToStaticMarkup(await Page({ params: Promise.resolve({ workspaceId: WORKSPACE_ID, gateId: GATE_ID }) }));
     expect(markup).toContain("(unknown)");
     expect(markup).toContain("approved with caveat");
   });

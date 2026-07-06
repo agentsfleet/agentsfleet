@@ -22,6 +22,7 @@ import { signInAs } from "./fixtures/auth";
 import { clientFor } from "./fixtures/api-client";
 import { FIXTURE_KEY } from "./fixtures/constants";
 import { getDefaultWorkspaceId } from "./fixtures/seed";
+import { gotoWorkspace } from "./fixtures/nav";
 
 const ACTION_TIMEOUT_MS = 15_000;
 // A pasted anthropic-shaped key paste-detects to provider "anthropic"; the
@@ -66,7 +67,7 @@ test.describe("provider credential reference guard", () => {
     await deleteCredentialDirect(DETECTED_PROVIDER);
 
     await signInAs(page, FIXTURE_KEY.regular);
-    await page.goto("/settings/models");
+    await gotoWorkspace(page, FIXTURE_KEY.regular, "settings/models");
     await expect(page.getByRole("heading", { name: /^models$/i })).toBeVisible();
 
     // Open the generic "Other provider" add-key form — it is the last

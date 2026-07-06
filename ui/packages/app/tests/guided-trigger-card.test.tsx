@@ -2,8 +2,8 @@ import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { GuidanceCard } from "@/app/(dashboard)/fleets/[id]/components/provider-guidance";
-import GuidedTriggerCard from "@/app/(dashboard)/fleets/[id]/components/GuidedTriggerCard";
+import type { GuidanceCard } from "@/app/(dashboard)/w/[workspaceId]/fleets/[id]/components/provider-guidance";
+import GuidedTriggerCard from "@/app/(dashboard)/w/[workspaceId]/fleets/[id]/components/GuidedTriggerCard";
 
 vi.mock("lucide-react", () => {
   const make = (name: string) => (p: Record<string, unknown>) =>

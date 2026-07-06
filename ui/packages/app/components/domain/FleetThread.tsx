@@ -25,7 +25,7 @@ import {
   type FleetEvent,
 } from "./useFleetEventStream";
 import type { EventRow } from "@/lib/api/events";
-import { steerFleetAction } from "@/app/(dashboard)/fleets/actions";
+import { steerFleetAction } from "@/app/(dashboard)/w/[workspaceId]/fleets/actions";
 import { SteerComposer } from "./SteerComposer";
 import { renderFleetMessage } from "./fleetMessageRenderers";
 

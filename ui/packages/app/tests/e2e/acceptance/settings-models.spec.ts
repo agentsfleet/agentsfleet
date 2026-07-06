@@ -19,12 +19,13 @@
 import { expect, test } from "@playwright/test";
 import { signInAs } from "./fixtures/auth";
 import { FIXTURE_KEY } from "./fixtures/constants";
+import { gotoWorkspace, workspaceUrlPattern } from "./fixtures/nav";
 
 test.describe("Models page", () => {
   test("Models renders the hero and switch list, with no secrets content", async ({ page }) => {
     await signInAs(page, FIXTURE_KEY.regular);
-    await page.goto("/settings/models");
-    await expect(page).toHaveURL(/\/settings\/models(\?|$)/);
+    await gotoWorkspace(page, FIXTURE_KEY.regular, "settings/models");
+    await expect(page).toHaveURL(workspaceUrlPattern("settings/models"));
 
     await expect(page.getByRole("heading", { name: /^models$/i })).toBeVisible();
     await expect(page.getByTestId("active-model-hero")).toBeVisible();

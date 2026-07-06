@@ -5,7 +5,7 @@ import { Skeleton } from "@agentsfleet/design-system";
 import type { FleetThreadProps } from "./FleetThread";
 
 // Client-Component shim around `next/dynamic` so the parent Server
-// Component (`app/(dashboard)/fleets/[id]/page.tsx`) can opt the chat
+// Component (`app/(dashboard)/w/[workspaceId]/fleets/[id]/page.tsx`) can opt the chat
 // surface out of SSR without itself becoming client-side. Next.js 16
 // forbids `ssr: false` directly in Server Components.
 //

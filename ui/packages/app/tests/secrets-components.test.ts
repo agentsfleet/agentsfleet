@@ -14,7 +14,7 @@ vi.mock("next/navigation", () => ({
 
 const createSecretActionMock = vi.fn();
 const deleteSecretActionMock = vi.fn();
-vi.mock("@/app/(dashboard)/secrets/actions", () => ({
+vi.mock("@/app/(dashboard)/w/[workspaceId]/secrets/actions", () => ({
   createSecretAction: createSecretActionMock,
   deleteSecretAction: deleteSecretActionMock,
 }));
@@ -66,7 +66,7 @@ describe("EditSecretDialog dismiss guard", () => {
       }),
     );
     const { default: EditSecretDialog } = await import(
-      "../app/(dashboard)/secrets/components/EditSecretDialog"
+      "../app/(dashboard)/w/[workspaceId]/secrets/components/EditSecretDialog"
     );
     render(
       React.createElement(EditSecretDialog, {
@@ -109,7 +109,7 @@ describe("AddSecretDialog", () => {
 
   async function renderDialog() {
     const { default: AddSecretDialog } = await import(
-      "../app/(dashboard)/secrets/components/AddSecretDialog"
+      "../app/(dashboard)/w/[workspaceId]/secrets/components/AddSecretDialog"
     );
     render(React.createElement(AddSecretDialog, { workspaceId: "ws_1" }));
   }
@@ -172,7 +172,7 @@ describe("AddSecretDialog", () => {
 describe("AddSecretForm component", () => {
   async function renderForm() {
     const { default: AddSecretForm } = await import(
-      "../app/(dashboard)/secrets/components/AddSecretForm"
+      "../app/(dashboard)/w/[workspaceId]/secrets/components/AddSecretForm"
     );
     render(React.createElement(AddSecretForm, { workspaceId: "ws_1" } as never));
   }

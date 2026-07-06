@@ -12,11 +12,11 @@ const rotateSecretAction = vi.hoisted(() => vi.fn());
 const captureKeyRotated = vi.hoisted(() => vi.fn());
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: routerRefresh, push: vi.fn() }) }));
-vi.mock("@/app/(dashboard)/settings/models/actions", () => ({ rotateSecretAction }));
-vi.mock("@/app/(dashboard)/settings/models/lib/track", () => ({ captureKeyRotated }));
+vi.mock("@/app/(dashboard)/w/[workspaceId]/settings/models/actions", () => ({ rotateSecretAction }));
+vi.mock("@/app/(dashboard)/w/[workspaceId]/settings/models/lib/track", () => ({ captureKeyRotated }));
 vi.mock("@agentsfleet/design-system", async () => (await import("./helpers/models-component-mocks")).designSystemStub());
 
-import HeroReplaceKeyPanel from "@/app/(dashboard)/settings/models/components/HeroReplaceKeyPanel";
+import HeroReplaceKeyPanel from "@/app/(dashboard)/w/[workspaceId]/settings/models/components/HeroReplaceKeyPanel";
 
 beforeEach(() => {
   vi.clearAllMocks();

@@ -27,6 +27,7 @@ import {
 } from "./fixtures/lifecycle";
 import { getDefaultWorkspaceId } from "./fixtures/seed";
 import { cleanWorkspaceFleets } from "./fixtures/teardown";
+import { workspaceHref, workspaceUrlPattern } from "./fixtures/nav";
 
 const FLOW_TIMEOUT_MS = 120_000;
 
@@ -59,11 +60,11 @@ test.describe("login → install → lifecycle", () => {
 
     // Post-install: form redirects to detail page. Recent Activity section
     // is the section-scaffolding assertion (matches logs-detail downgrade).
-    await expect(page).toHaveURL(new RegExp(`/fleets/${fleetId}(\\?|$)`));
+    await expect(page).toHaveURL(workspaceUrlPattern(`fleets/${fleetId}`));
     await expect(page.getByRole("region", { name: "Recent Activity" })).toBeVisible();
 
     // Listing shows the new row live.
-    await page.goto("/fleets");
+    await page.goto(workspaceHref(workspaceId, "fleets"));
     await expectRowState(page, fleetId, "live");
 
     // Billing page renders the balance card.
@@ -71,20 +72,20 @@ test.describe("login → install → lifecycle", () => {
     await expect(page.getByTestId("balance-headline")).toBeVisible();
 
     // Lifecycle: Stop → Resume → Kill.
-    await page.goto(`/fleets/${fleetId}`);
+    await page.goto(workspaceHref(workspaceId, `fleets/${fleetId}`));
     await stopFleet(page);
-    await page.goto("/fleets");
+    await page.goto(workspaceHref(workspaceId, "fleets"));
     await expectRowState(page, fleetId, "parked");
 
-    await page.goto(`/fleets/${fleetId}`);
+    await page.goto(workspaceHref(workspaceId, `fleets/${fleetId}`));
     await resumeFleet(page);
-    await page.goto("/fleets");
+    await page.goto(workspaceHref(workspaceId, "fleets"));
     await expectRowState(page, fleetId, "live");
 
-    await page.goto(`/fleets/${fleetId}`);
+    await page.goto(workspaceHref(workspaceId, `fleets/${fleetId}`));
     await killFleet(page);
     await expectDetailKilled(page);
-    await page.goto("/fleets");
+    await page.goto(workspaceHref(workspaceId, "fleets"));
     await expectRowState(page, fleetId, "failed");
   });
 });

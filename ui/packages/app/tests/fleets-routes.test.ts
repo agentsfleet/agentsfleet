@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { NANOS_PER_USD } from "@/lib/types";
-import { resolveActiveWorkspace, fetchMock, resetCommonMocks, authMock as auth } from "./helpers/dashboard-mocks";
+import { fetchMock, resetCommonMocks, authMock as auth } from "./helpers/dashboard-mocks";
 import { listWorkspaceFleetLibraryMock, listSecretsMock } from "./helpers/dashboard-app-mocks";
 
 type BillingSnapshot = {
@@ -33,7 +33,7 @@ vi.mock("@/lib/api/secrets", async () => (await import("./helpers/dashboard-app-
 
 beforeEach(() => {
   vi.clearAllMocks();
-  resetCommonMocks({ pathname: "/fleets" });
+  resetCommonMocks({ pathname: "/w/ws_1/fleets" });
   // The /fleets/new install page fetches the template gallery; default it to an
   // empty catalog so tests that don't care about templates don't crash on the
   // unmocked promise (individual tests override as needed). The Fleets list
@@ -108,7 +108,7 @@ describe("fleets routes", () => {
   }
 
   it("loading.tsx renders a spinner with status role", async () => {
-    const { default: Loading } = await import("../app/(dashboard)/fleets/loading");
+    const { default: Loading } = await import("../app/(dashboard)/w/[workspaceId]/fleets/loading");
     render(React.createElement(Loading));
     const el = screen.getByRole("status");
     expect(el.textContent).toContain("Loading Fleets");
@@ -120,16 +120,18 @@ describe("fleets routes", () => {
 
   it("fleets list page redirects to /sign-in when no token", async () => {
     auth.mockResolvedValueOnce({ getToken: vi.fn().mockResolvedValue(null) });
-    const { default: Page } = await import("../app/(dashboard)/fleets/page");
-    await expect(Page()).rejects.toThrow("redirect:/sign-in");
+    const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/fleets/page");
+    await expect(Page({ params: Promise.resolve({ workspaceId: "ws_1" }) })).rejects.toThrow(
+      "redirect:/sign-in",
+    );
   });
 
   it("fleets list page shell streams the header + skeleton before data", async () => {
     // The shell paints the header synchronously; FleetsData is an async child,
     // so renderToStaticMarkup renders the Suspense skeleton in its place and the
     // data content stays absent until it streams in.
-    const { default: Page } = await import("../app/(dashboard)/fleets/page");
-    const markup = renderToStaticMarkup(await Page());
+    const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/fleets/page");
+    const markup = renderToStaticMarkup(await Page({ params: Promise.resolve({ workspaceId: "ws_1" }) }));
     expect(markup).toContain("Fleets"); // PageTitle in the shell
     expect(markup).toContain("animate-pulse"); // Skeleton fallback
     expect(markup).not.toContain("platform-ops"); // data not yet resolved
@@ -137,19 +139,11 @@ describe("fleets routes", () => {
 
   it("FleetsData returns null when the token is missing", async () => {
     auth.mockResolvedValueOnce({ getToken: vi.fn().mockResolvedValue(null) });
-    const { FleetsData } = await import("../app/(dashboard)/fleets/page");
-    expect(await FleetsData()).toBeNull();
-  });
-
-  it("fleets list page renders empty-workspace state", async () => {
-    resolveActiveWorkspace.mockResolvedValueOnce(null);
-    const { FleetsData } = await import("../app/(dashboard)/fleets/page");
-    const markup = renderToStaticMarkup(React.createElement(React.Fragment, null, await FleetsData()));
-    expect(markup).toContain("No workspace yet");
+    const { FleetsData } = await import("../app/(dashboard)/w/[workspaceId]/fleets/page");
+    expect(await FleetsData({ workspaceId: "ws_1" })).toBeNull();
   });
 
   it("fleets list page renders the empty-fleets state (centered EmptyState), banner suppressed", async () => {
-    resolveActiveWorkspace.mockResolvedValueOnce({ id: "ws_1" });
     fetchMock.mockImplementation(async (url: string) => {
       if (url.endsWith("/v1/tenants/me/billing")) {
         return { ok: true, status: 200, json: async () => happyBilling };
@@ -160,14 +154,14 @@ describe("fleets routes", () => {
         json: async () => ({ items: [], total: 0, next_cursor: null }),
       };
     });
-    const { FleetsData } = await import("../app/(dashboard)/fleets/page");
-    const markup = renderToStaticMarkup(React.createElement(React.Fragment, null, await FleetsData()));
+    const { FleetsData } = await import("../app/(dashboard)/w/[workspaceId]/fleets/page");
+    const markup = renderToStaticMarkup(React.createElement(React.Fragment, null, await FleetsData({ workspaceId: "ws_1" })));
     expect(markup).toContain("No fleets yet");
-    // The empty state is a centered EmptyState that routes to /fleets/new (where
-    // the template gallery lives) — no inline gallery, no quickstart here. The
-    // action pair is [Learn more] + [Install fleet]; template authoring lives on
-    // the install page, not here.
-    expect(markup).toContain('href="/fleets/new"');
+    // The empty state is a centered EmptyState that routes to /w/ws_1/fleets/new
+    // (where the template gallery lives) — no inline gallery, no quickstart here.
+    // The action pair is [Learn more] + [Install fleet]; template authoring lives
+    // on the install page, not here.
+    expect(markup).toContain('href="/w/ws_1/fleets/new"');
     expect(markup).toContain("Install fleet");
     expect(markup).toContain("Learn more");
     expect(markup).not.toContain("Create fleet library");
@@ -177,17 +171,15 @@ describe("fleets routes", () => {
   });
 
   it("fleets list page renders populated list + exhaustion banner", async () => {
-    resolveActiveWorkspace.mockResolvedValueOnce({ id: "ws_1" });
     mockFetchBilling(exhaustedBilling);
-    const { FleetsData } = await import("../app/(dashboard)/fleets/page");
-    const markup = renderToStaticMarkup(React.createElement(React.Fragment, null, await FleetsData()));
-    expect(markup).toContain("href=\"/fleets/zom_1\"");
+    const { FleetsData } = await import("../app/(dashboard)/w/[workspaceId]/fleets/page");
+    const markup = renderToStaticMarkup(React.createElement(React.Fragment, null, await FleetsData({ workspaceId: "ws_1" })));
+    expect(markup).toContain("href=\"/w/ws_1/fleets/zom_1\"");
     expect(markup).toContain("platform-ops");
     expect(markup).toContain("credit balance is exhausted");
   });
 
   it("fleets list page swallows a failed billing fetch and still renders", async () => {
-    resolveActiveWorkspace.mockResolvedValueOnce({ id: "ws_1" });
     fetchMock.mockImplementation(async (url: string) => {
       if (url.endsWith("/v1/tenants/me/billing")) {
         return { ok: false, status: 500, statusText: "err", json: async () => ({}) };
@@ -198,30 +190,26 @@ describe("fleets routes", () => {
         json: async () => ({ items: [], total: 0, next_cursor: null }),
       };
     });
-    const { FleetsData } = await import("../app/(dashboard)/fleets/page");
-    const markup = renderToStaticMarkup(React.createElement(React.Fragment, null, await FleetsData()));
+    const { FleetsData } = await import("../app/(dashboard)/w/[workspaceId]/fleets/page");
+    const markup = renderToStaticMarkup(React.createElement(React.Fragment, null, await FleetsData({ workspaceId: "ws_1" })));
     expect(markup).toContain("No fleets yet");
   });
 
   it("fleets new page redirects to /sign-in when no token", async () => {
     auth.mockResolvedValueOnce({ getToken: vi.fn().mockResolvedValue(null) });
-    const { default: Page } = await import("../app/(dashboard)/fleets/new/page");
-    await expect(Page({ searchParams: Promise.resolve({}) })).rejects.toThrow("redirect:/sign-in");
-  });
-
-  it("fleets new page renders empty-workspace guard", async () => {
-    resolveActiveWorkspace.mockResolvedValueOnce(null);
-    const { default: Page } = await import("../app/(dashboard)/fleets/new/page");
-    const markup = renderToStaticMarkup(await Page({ searchParams: Promise.resolve({}) }));
-    expect(markup).toContain("Create a workspace first");
+    const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/fleets/new/page");
+    await expect(
+      Page({ params: Promise.resolve({ workspaceId: "ws_1" }), searchParams: Promise.resolve({}) }),
+    ).rejects.toThrow("redirect:/sign-in");
   });
 
   it("fleets new page renders the gallery-first install flow when a workspace exists", async () => {
-    resolveActiveWorkspace.mockResolvedValueOnce({ id: "ws_1" });
     listWorkspaceFleetLibraryMock.mockResolvedValue({ items: SAMPLE_TEMPLATES });
     listSecretsMock.mockResolvedValue({ secrets: [{ kind: "custom_secret", name: "github", created_at: 1 }] });
-    const { default: Page } = await import("../app/(dashboard)/fleets/new/page");
-    const markup = renderToStaticMarkup(await Page({ searchParams: Promise.resolve({}) }));
+    const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/fleets/new/page");
+    const markup = renderToStaticMarkup(
+      await Page({ params: Promise.resolve({ workspaceId: "ws_1" }), searchParams: Promise.resolve({}) }),
+    );
     expect(markup).toContain("Install fleet"); // page title
     expect(markup).toContain("Fleet library");
     expect(markup).toContain("GitHub PR reviewer");
@@ -229,56 +217,49 @@ describe("fleets routes", () => {
   });
 
   it("fleets new page swallows failed template + secret fetches", async () => {
-    resolveActiveWorkspace.mockResolvedValueOnce({ id: "ws_1" });
     listWorkspaceFleetLibraryMock.mockRejectedValue(new Error("catalog down"));
     listSecretsMock.mockRejectedValue(new Error("vault down"));
-    const { default: Page } = await import("../app/(dashboard)/fleets/new/page");
-    const markup = renderToStaticMarkup(await Page({ searchParams: Promise.resolve({}) }));
+    const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/fleets/new/page");
+    const markup = renderToStaticMarkup(
+      await Page({ params: Promise.resolve({ workspaceId: "ws_1" }), searchParams: Promise.resolve({}) }),
+    );
     expect(markup).toContain("No prebuilt fleet library found"); // empty gallery
   });
 
   it("fleets new page accepts a ?library= deep link", async () => {
-    resolveActiveWorkspace.mockResolvedValueOnce({ id: "ws_1" });
     listWorkspaceFleetLibraryMock.mockResolvedValue({ items: [] });
     listSecretsMock.mockResolvedValue({ secrets: [] });
-    const { default: Page } = await import("../app/(dashboard)/fleets/new/page");
+    const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/fleets/new/page");
     const markup = renderToStaticMarkup(
-      await Page({ searchParams: Promise.resolve({ library: "github-pr-reviewer" }) }),
+      await Page({
+        params: Promise.resolve({ workspaceId: "ws_1" }),
+        searchParams: Promise.resolve({ library: "github-pr-reviewer" }),
+      }),
     );
     expect(markup).toContain("Fleet library");
   });
 
   it("fleets detail page redirects to /sign-in when no token", async () => {
     auth.mockResolvedValueOnce({ getToken: vi.fn().mockResolvedValue(null) });
-    const { default: Page } = await import("../app/(dashboard)/fleets/[id]/page");
-    await expect(Page({ params: Promise.resolve({ id: "zom_1" }) })).rejects.toThrow(
-      "redirect:/sign-in",
-    );
-  });
-
-  it("fleets detail page notFound when no workspace", async () => {
-    resolveActiveWorkspace.mockResolvedValueOnce(null);
-    const { default: Page } = await import("../app/(dashboard)/fleets/[id]/page");
-    await expect(Page({ params: Promise.resolve({ id: "zom_1" }) })).rejects.toThrow(
-      "notFound",
-    );
+    const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
+    await expect(
+      Page({ params: Promise.resolve({ workspaceId: "ws_1", id: "zom_1" }) }),
+    ).rejects.toThrow("redirect:/sign-in");
   });
 
   it("fleets detail page notFound when fleet id is not in the list", async () => {
-    resolveActiveWorkspace.mockResolvedValueOnce({ id: "ws_1" });
     mockFetchBilling(happyBilling);
-    const { default: Page } = await import("../app/(dashboard)/fleets/[id]/page");
+    const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
     await expect(
-      Page({ params: Promise.resolve({ id: "missing" }) }),
+      Page({ params: Promise.resolve({ workspaceId: "ws_1", id: "missing" }) }),
     ).rejects.toThrow("notFound");
   });
 
   it("fleets detail page renders panels + exhaustion badge when tenant is exhausted", async () => {
-    resolveActiveWorkspace.mockResolvedValueOnce({ id: "ws_1" });
     mockFetchBilling(exhaustedBilling);
-    const { default: Page } = await import("../app/(dashboard)/fleets/[id]/page");
+    const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
     const markup = renderToStaticMarkup(
-      await Page({ params: Promise.resolve({ id: "zom_1" }) }),
+      await Page({ params: Promise.resolve({ workspaceId: "ws_1", id: "zom_1" }) }),
     );
     expect(markup).toContain("platform-ops");
     expect(markup).toContain("Trigger");
@@ -287,29 +268,26 @@ describe("fleets routes", () => {
   });
 
   it("fleets detail page renders without badge when not exhausted", async () => {
-    resolveActiveWorkspace.mockResolvedValueOnce({ id: "ws_1" });
     mockFetchBilling(happyBilling);
-    const { default: Page } = await import("../app/(dashboard)/fleets/[id]/page");
+    const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
     const markup = renderToStaticMarkup(
-      await Page({ params: Promise.resolve({ id: "zom_1" }) }),
+      await Page({ params: Promise.resolve({ workspaceId: "ws_1", id: "zom_1" }) }),
     );
     expect(markup).not.toContain("Balance exhausted");
   });
 
   it("fleets detail page pulses the WakePulse dot when the fleet is active", async () => {
-    resolveActiveWorkspace.mockResolvedValueOnce({ id: "ws_1" });
     // mockFetchBilling returns a fleet with status "active" — exercises the
     // truthy arm of the status===ACTIVE ternary (renders <WakePulse live />).
     mockFetchBilling(happyBilling);
-    const { default: Page } = await import("../app/(dashboard)/fleets/[id]/page");
+    const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
     const markup = renderToStaticMarkup(
-      await Page({ params: Promise.resolve({ id: "zom_1" }) }),
+      await Page({ params: Promise.resolve({ workspaceId: "ws_1", id: "zom_1" }) }),
     );
     expect(markup).toContain("data-live");
   });
 
   it("fleets detail page omits the WakePulse dot when the fleet is not active", async () => {
-    resolveActiveWorkspace.mockResolvedValueOnce({ id: "ws_1" });
     fetchMock.mockImplementation(async (url: string) => {
       if (url.endsWith("/v1/tenants/me/billing")) {
         return { ok: true, status: 200, json: async () => happyBilling };
@@ -331,16 +309,15 @@ describe("fleets routes", () => {
         }),
       };
     });
-    const { default: Page } = await import("../app/(dashboard)/fleets/[id]/page");
+    const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
     const markup = renderToStaticMarkup(
-      await Page({ params: Promise.resolve({ id: "zom_1" }) }),
+      await Page({ params: Promise.resolve({ workspaceId: "ws_1", id: "zom_1" }) }),
     );
     expect(markup).toContain("paused");
     expect(markup).not.toContain("data-live");
   });
 
   it("fleets detail page renders pending-approvals badge + 50+ label when next_cursor set", async () => {
-    resolveActiveWorkspace.mockResolvedValueOnce({ id: "ws_1" });
     fetchMock.mockImplementation(async (url: string) => {
       if (url.endsWith("/v1/tenants/me/billing")) {
         return { ok: true, status: 200, json: async () => happyBilling };
@@ -367,9 +344,9 @@ describe("fleets routes", () => {
         }),
       };
     });
-    const { default: Page } = await import("../app/(dashboard)/fleets/[id]/page");
+    const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
     const markup = renderToStaticMarkup(
-      await Page({ params: Promise.resolve({ id: "zom_1" }) }),
+      await Page({ params: Promise.resolve({ workspaceId: "ws_1", id: "zom_1" }) }),
     );
     expect(markup).toMatch(/1\+ pending approval/i);
     // Exactly one pending → singular ("") arm of the plural ternary.
@@ -378,7 +355,6 @@ describe("fleets routes", () => {
   });
 
   it("fleets detail page pluralizes the pending-approvals badge with more than one pending", async () => {
-    resolveActiveWorkspace.mockResolvedValueOnce({ id: "ws_1" });
     fetchMock.mockImplementation(async (url: string) => {
       if (url.endsWith("/v1/tenants/me/billing")) {
         return { ok: true, status: 200, json: async () => happyBilling };
@@ -410,15 +386,14 @@ describe("fleets routes", () => {
         }),
       };
     });
-    const { default: Page } = await import("../app/(dashboard)/fleets/[id]/page");
+    const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
     const markup = renderToStaticMarkup(
-      await Page({ params: Promise.resolve({ id: "zom_1" }) }),
+      await Page({ params: Promise.resolve({ workspaceId: "ws_1", id: "zom_1" }) }),
     );
     expect(markup).toContain("2 pending approvals");
   });
 
   it("fleets detail page handles billing fetch failure gracefully (catch branch)", async () => {
-    resolveActiveWorkspace.mockResolvedValueOnce({ id: "ws_1" });
     fetchMock.mockImplementation(async (url: string) => {
       if (url.endsWith("/v1/tenants/me/billing")) {
         throw new Error("network down");
@@ -446,9 +421,9 @@ describe("fleets routes", () => {
         }),
       };
     });
-    const { default: Page } = await import("../app/(dashboard)/fleets/[id]/page");
+    const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
     const markup = renderToStaticMarkup(
-      await Page({ params: Promise.resolve({ id: "zom_1" }) }),
+      await Page({ params: Promise.resolve({ workspaceId: "ws_1", id: "zom_1" }) }),
     );
     expect(markup).toContain("platform-ops");
     expect(markup).not.toContain("Balance exhausted");
@@ -459,7 +434,6 @@ describe("fleets routes", () => {
   // header — so progress is never hidden, and "Open fleet" lands here while
   // installing and resolves in place.
   it("test_installing_fleet_always_visible — detail page shows install states + indicator while installing", async () => {
-    resolveActiveWorkspace.mockResolvedValueOnce({ id: "ws_1" });
     fetchMock.mockImplementation(async (url: string) => {
       if (url.endsWith("/v1/tenants/me/billing")) {
         return { ok: true, status: 200, json: async () => happyBilling };
@@ -479,9 +453,9 @@ describe("fleets routes", () => {
         }),
       };
     });
-    const { default: Page } = await import("../app/(dashboard)/fleets/[id]/page");
+    const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
     const markup = renderToStaticMarkup(
-      await Page({ params: Promise.resolve({ id: "zom_1" }) }),
+      await Page({ params: Promise.resolve({ workspaceId: "ws_1", id: "zom_1" }) }),
     );
     // Header carries the status label + the installing live indicator.
     expect(markup).toContain("installing");
@@ -492,7 +466,6 @@ describe("fleets routes", () => {
   });
 
   it("fleets detail page degrades to empty when the events + approvals fetches fail (catch branches)", async () => {
-    resolveActiveWorkspace.mockResolvedValueOnce({ id: "ws_1" });
     fetchMock.mockImplementation(async (url: string) => {
       if (url.endsWith("/v1/tenants/me/billing")) {
         return { ok: true, status: 200, json: async () => happyBilling };
@@ -508,9 +481,9 @@ describe("fleets routes", () => {
         }),
       };
     });
-    const { default: Page } = await import("../app/(dashboard)/fleets/[id]/page");
+    const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
     const markup = renderToStaticMarkup(
-      await Page({ params: Promise.resolve({ id: "zom_1" }) }),
+      await Page({ params: Promise.resolve({ workspaceId: "ws_1", id: "zom_1" }) }),
     );
     // The fleet still renders; the failed events + approvals calls degrade
     // to empty via their `.catch` arms (the events list shows its empty state).

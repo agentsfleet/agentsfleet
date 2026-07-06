@@ -14,6 +14,7 @@ import { clientFor } from "./fixtures/api-client";
 import { signInAs } from "./fixtures/auth";
 import { FIXTURE_KEY } from "./fixtures/constants";
 import { getDefaultWorkspaceId } from "./fixtures/seed";
+import { gotoWorkspace, workspaceHref, workspaceUrlPattern } from "./fixtures/nav";
 
 const INVALID_GITHUB_SOURCE_REF = "agentsfleet/github-pr-reviewer";
 const FLOW_TIMEOUT_MS = 120_000;
@@ -54,8 +55,8 @@ test.describe("template onboarding", () => {
     expect(resp.id.length).toBeGreaterThan(0);
 
     await signInAs(page, FIXTURE_KEY.regular);
-    await page.goto("/fleets/new");
-    await expect(page).toHaveURL(/\/fleets\/new(\?|$)/);
+    await page.goto(workspaceHref(workspaceId, "fleets/new"));
+    await expect(page).toHaveURL(workspaceUrlPattern("fleets/new"));
 
     const card = page.getByRole("article").filter({ hasText: templateName });
     await expect(card).toBeVisible({ timeout: FLOW_TIMEOUT_MS });
@@ -64,8 +65,8 @@ test.describe("template onboarding", () => {
 
   test("test_github_source_error_stays_in_dialog", async ({ page }) => {
     await signInAs(page, FIXTURE_KEY.regular);
-    await page.goto("/fleets/new");
-    await expect(page).toHaveURL(/\/fleets\/new(\?|$)/);
+    await gotoWorkspace(page, FIXTURE_KEY.regular, "fleets/new");
+    await expect(page).toHaveURL(workspaceUrlPattern("fleets/new"));
 
     await page.getByRole("button", { name: "Create fleet library" }).first().click();
     const dialog = page.getByRole("dialog", { name: "Create fleet library" });

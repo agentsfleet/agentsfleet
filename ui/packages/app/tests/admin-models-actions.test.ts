@@ -16,7 +16,7 @@ import { SCOPE } from "@/lib/auth/scopes";
 const {
   hasScopeMock,
   withTokenMock,
-  withWorkspaceScopeMock,
+  listTenantWorkspacesCachedMock,
   createSecretMock,
   listAdminModelsMock,
   createAdminModelMock,
@@ -26,7 +26,7 @@ const {
 } = vi.hoisted(() => ({
   hasScopeMock: vi.fn(),
   withTokenMock: vi.fn(),
-  withWorkspaceScopeMock: vi.fn(),
+  listTenantWorkspacesCachedMock: vi.fn(),
   createSecretMock: vi.fn(),
   listAdminModelsMock: vi.fn(),
   createAdminModelMock: vi.fn(),
@@ -37,7 +37,9 @@ const {
 
 vi.mock("@/lib/auth/platform", () => ({ hasScope: hasScopeMock }));
 vi.mock("@/lib/actions/with-token", () => ({ withToken: withTokenMock }));
-vi.mock("@/lib/workspace", () => ({ withWorkspaceScope: withWorkspaceScopeMock }));
+// M118: admin/models has no workspace URL segment, so its storage workspace is
+// resolved from the authoritative tenant list (first owned), not a cookie/claim.
+vi.mock("@/lib/workspace", () => ({ listTenantWorkspacesCached: listTenantWorkspacesCachedMock }));
 vi.mock("@/lib/api/secrets", () => ({ createSecret: createSecretMock }));
 vi.mock("@/lib/api/admin_models", () => ({
   listAdminModels: listAdminModelsMock,
@@ -157,14 +159,15 @@ describe("setPlatformDefaultAction — two-step vault write + activation", () =>
   beforeEach(() => hasScopeMock.mockResolvedValue(true));
 
   it("stores the key in the admin workspace vault then activates the catalogued default (no base_url)", async () => {
-    withWorkspaceScopeMock.mockImplementationOnce(
-      async (_t: string, fn: (workspaceId: string) => Promise<unknown>) => fn("ws-1"),
-    );
+    // First owned workspace from the authoritative list is the storage workspace.
+    listTenantWorkspacesCachedMock.mockResolvedValueOnce({ items: [{ id: "ws-1" }], total: 1 });
     setPlatformDefaultMock.mockResolvedValueOnce({ provider: "fireworks", model: "glm-5.2", active: true });
 
     const r = await setPlatformDefaultAction({ provider: "fireworks", model: "glm-5.2", api_key: "sk-secret" });
 
     expect(r).toEqual({ ok: true, data: { provider: "fireworks", model: "glm-5.2", active: true } });
+    // The storage workspace is resolved from the tenant list under the acting token.
+    expect(listTenantWorkspacesCachedMock).toHaveBeenCalledWith("tok");
     // The key is written to the acting admin's workspace under the provider name;
     // base_url is omitted from the vault payload when not provided.
     expect(createSecretMock).toHaveBeenCalledWith(
@@ -181,9 +184,7 @@ describe("setPlatformDefaultAction — two-step vault write + activation", () =>
   });
 
   it("threads base_url into both the vault payload and the activation for an openai-compatible default", async () => {
-    withWorkspaceScopeMock.mockImplementationOnce(
-      async (_t: string, fn: (workspaceId: string) => Promise<unknown>) => fn("ws-9"),
-    );
+    listTenantWorkspacesCachedMock.mockResolvedValueOnce({ items: [{ id: "ws-9" }], total: 1 });
     setPlatformDefaultMock.mockResolvedValueOnce({ provider: "openai-compatible", model: "glm-5.2", active: true });
 
     const r = await setPlatformDefaultAction({
@@ -216,7 +217,7 @@ describe("setPlatformDefaultAction — two-step vault write + activation", () =>
   });
 
   it("fails with a clear error when there is no active workspace to store the key in", async () => {
-    withWorkspaceScopeMock.mockResolvedValueOnce(null);
+    listTenantWorkspacesCachedMock.mockResolvedValueOnce({ items: [], total: 0 });
 
     const r = await setPlatformDefaultAction({ provider: "fireworks", model: "glm-5.2", api_key: "sk-secret" });
 

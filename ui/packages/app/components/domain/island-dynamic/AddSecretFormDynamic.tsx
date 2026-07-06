@@ -8,7 +8,7 @@ import type { ComponentProps } from "react";
 // of the server bundle and hydrates the form where interaction begins.
 const InnerAddCredentialForm = nextDynamic(
   () =>
-    import("@/app/(dashboard)/secrets/components/AddSecretForm").then(
+    import("@/app/(dashboard)/w/[workspaceId]/secrets/components/AddSecretForm").then(
       (mod) => ({ default: mod.default }),
     ),
   { ssr: false, loading: () => null },

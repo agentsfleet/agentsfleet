@@ -11,7 +11,7 @@ import {
   captureModelChanged,
   captureKeyRotated,
   captureProviderReset,
-} from "@/app/(dashboard)/settings/models/lib/track";
+} from "@/app/(dashboard)/w/[workspaceId]/settings/models/lib/track";
 
 describe("captureModelActivated", () => {
   it("emits model_added with provider/mode/model", () => {
