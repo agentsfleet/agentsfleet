@@ -112,4 +112,50 @@ describe("DataTable", () => {
     expect(wrapper.className).toContain("my-table");
     expect(wrapper.className).toContain("overflow-x-auto");
   });
+
+  it("uses py-1.5 cell padding by default (density tighten)", () => {
+    render(<DataTable columns={COLUMNS} rows={ROWS} rowKey={(r) => r.id} />);
+    const headerCell = screen.getAllByRole("columnheader")[0];
+    const bodyCell = screen.getByText("Alpha").closest("td")!;
+    expect(headerCell.className).toContain("py-1.5");
+    expect(headerCell.className).not.toContain("py-2");
+    expect(bodyCell.className).toContain("py-1.5");
+    expect(bodyCell.className).not.toContain("py-2");
+  });
+
+  it("stickyHeader unset renders the table directly in the wrapper (no bounded-height scroll div)", () => {
+    const { container } = render(
+      <DataTable columns={COLUMNS} rows={ROWS} rowKey={(r) => r.id} />,
+    );
+    const wrapper = container.querySelector('[data-slot="data-table"]') as HTMLElement;
+    expect(wrapper.firstElementChild?.tagName).toBe("TABLE");
+    expect(container.querySelector(".max-h-96")).toBeNull();
+    const thead = container.querySelector("thead") as HTMLElement;
+    expect(thead.className).not.toContain("sticky");
+  });
+
+  it("stickyHeader bounds the table height and pins <thead> via sticky top-0", () => {
+    const { container } = render(
+      <DataTable columns={COLUMNS} rows={ROWS} rowKey={(r) => r.id} stickyHeader />,
+    );
+    const scrollDiv = container.querySelector(".max-h-96.overflow-y-auto");
+    expect(scrollDiv).toBeInTheDocument();
+    expect(scrollDiv?.querySelector("table")).toBeInTheDocument();
+    const thead = container.querySelector("thead") as HTMLElement;
+    expect(thead.className).toContain("sticky");
+    expect(thead.className).toContain("top-0");
+  });
+
+  it("stickyHeader's scroll region is keyboard-reachable (tabIndex + region role)", () => {
+    render(
+      <DataTable columns={COLUMNS} rows={ROWS} rowKey={(r) => r.id} stickyHeader caption="Spend by agent" />,
+    );
+    const region = screen.getByRole("region", { name: /spend by agent, scrollable/i });
+    expect(region.getAttribute("tabindex")).toBe("0");
+  });
+
+  it("stickyHeader without a caption falls back to a generic scrollable-region label", () => {
+    render(<DataTable columns={COLUMNS} rows={ROWS} rowKey={(r) => r.id} stickyHeader />);
+    expect(screen.getByRole("region", { name: /scrollable table/i })).toBeInTheDocument();
+  });
 });

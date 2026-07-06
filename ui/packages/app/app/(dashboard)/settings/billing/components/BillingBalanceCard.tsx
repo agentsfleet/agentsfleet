@@ -8,6 +8,7 @@ import {
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
+  UsageBar,
 } from "@agentsfleet/design-system";
 import { CoinsIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -55,17 +56,18 @@ export default function BillingBalanceCard({ billing, summary }: BillingBalanceC
           <BuyCreditsButton />
         </div>
 
-        <div className="app-meter" data-testid="balance-meter" aria-hidden="true">
-          <span style={{ width: `${summary.meterPct}%` }} />
-        </div>
-
-        <div className="flex items-center justify-end gap-4 text-sm text-muted-foreground">
-          <div className="font-mono text-xs" data-testid="balance-usage">
-            spent <span className="text-foreground">{formatDollars(summary.spentNanos)}</span> ·{" "}
-            <span className="text-foreground">{summary.eventCount}</span>{" "}
-            {summary.eventCount === 1 ? "event" : "events"}
-          </div>
-        </div>
+        <UsageBar
+          data-testid="balance-meter"
+          pct={summary.meterPct}
+          sublabel={
+            <div className="flex justify-end" data-testid="balance-usage">
+              spent <span className="text-foreground">{formatDollars(summary.spentNanos)}</span>{" "}
+              ·{" "}
+              <span className="text-foreground">{summary.eventCount}</span>{" "}
+              {summary.eventCount === 1 ? "event" : "events"}
+            </div>
+          }
+        />
 
         {isExhausted ? (
           <Alert variant="destructive" className="text-xs">

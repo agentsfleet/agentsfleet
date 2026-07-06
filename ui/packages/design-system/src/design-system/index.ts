@@ -162,6 +162,7 @@ export {
   type DataTableColumn,
   type DataTableProps,
 } from "./DataTable";
+export { UsageBar, type UsageBarProps } from "./UsageBar";
 export {
   Alert,
   AlertTitle,

@@ -59,7 +59,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `ui/packages/design-system/src/index.ts` | EDIT | Export `UsageBar` |
 | `ui/packages/app/app/(dashboard)/settings/billing/components/BillingBalanceCard.tsx` | EDIT | Replace hand-rolled label/percentage/`.app-meter` markup with `<UsageBar>` (§2) |
 | `ui/packages/app/app/globals.css` | EDIT | Remove `.app-meter`/`.app-meter > span`; retarget the `meter-fill` keyframe + reduced-motion carve-out to the primitive's class hooks (§2) |
-| `ui/packages/design-system/src/design-system/DataTable.tsx` | EDIT | Add opt-in `stickyHeader` prop; tighten default cell padding one notch (§3) |
+| `ui/packages/design-system/src/design-system/DataTable.tsx` | EDIT | Add opt-in `stickyHeader` prop (keyboard-reachable scroll region); tighten default cell padding one notch (§3) |
+| `ui/packages/app/app/(dashboard)/settings/billing/components/BillingUsageTab.tsx` | EDIT | Wire `stickyHeader` on the paginated usage-history table — its real consumer (§3, added at EXECUTE per RULE HLP — see Discovery) |
 | `**/*.test.tsx` (co-located) | EDIT/CREATE | Cover the new token values, `UsageBar`, the migrated `BillingBalanceCard`, and `DataTable`'s sticky-header behaviour |
 
 ## Applicable Rules
@@ -84,7 +85,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ## Sections (implementation slices)
 
-### §1 — Resting-state border and surface contrast
+### §1 — Resting-state border and surface contrast ✅ DONE (all Dimensions)
 
 Bumps two dark-mode token values so cards and tables read defined before any hover/focus interaction, matching the reference screenshots' crispness. **Implementation default:** `--border: #23292e → #2b333a` and `--surface-1: #11161a → #141a1f` in `tokens.css`'s dark block only — value-only edits, no new token names, no component changes, because every `border-border`/`bg-card` consumer already inherits from these two tokens via `theme.css`'s `@theme inline` mapping. Light-mode tokens are untouched (`ThemeToggle.tsx` forces dark; light mode is vestigial — out of scope).
 
@@ -92,16 +93,16 @@ Bumps two dark-mode token values so cards and tables read defined before any hov
 - **Dimension 1.2** — dark-mode `--surface-1` is `#141a1f` → Test `test_surface1_token_bumped`
 - **Dimension 1.3** — light-mode `--border`/`--surface-1` values are byte-identical to before this spec → Test `test_light_tokens_unchanged`
 
-### §2 — A `UsageBar` primitive, replacing the bespoke `.app-meter`
+### §2 — A `UsageBar` primitive, replacing the bespoke `.app-meter` ✅ DONE (all Dimensions)
 
-Extracts the existing meter markup in `BillingBalanceCard` into a reusable `design-system` component so any future usage/quota surface has a primitive to reach for instead of hand-rolling another one-off. **Implementation default:** `UsageBar` accepts a label, a 0-100 percentage (rendered `tabular-nums`), and an optional sub-caption node; track renders with `bg-accent` (maps to `--surface-3`), fill with the existing pulse gradient, height/radius matching the current `.app-meter` (8px, full pill) exactly — this is a lift-and-shift of a proven pattern, not a redesign. The `meter-fill` keyframe and its reduced-motion override move with the component (renamed generically, no longer billing-specific) rather than being dropped.
+Extracts the existing meter markup in `BillingBalanceCard` into a reusable `design-system` component so any future usage/quota surface has a primitive to reach for instead of hand-rolling another one-off. **Implementation default:** `UsageBar` accepts an optional label, a 0-100 percentage (rendered `tabular-nums`, shown only when `label` is supplied), and an optional sub-caption node; track renders with `bg-accent` (maps to `--surface-3`), fill with the existing pulse gradient, height/radius matching the current `.app-meter` (8px, full pill) exactly — this is a lift-and-shift of a proven pattern, not a redesign. The `meter-fill` keyframe and its reduced-motion override move with the component (renamed generically, no longer billing-specific) rather than being dropped. **Amended at EXECUTE:** `label` is optional, not required (see Interfaces + Discovery) — `BillingBalanceCard`'s existing meter has no visible label/percentage (it's `aria-hidden`, and the dollar headline above it already states the value), so making `label` mandatory would have added new visible text to a card the spec commits to leaving visually unchanged.
 
-- **Dimension 2.1** — `UsageBar` renders label, tabular-nums percentage, track+fill, and an optional sub-caption; exported from `@agentsfleet/design-system` → Test `test_usage_bar_renders`
+- **Dimension 2.1** — `UsageBar` renders track+fill always, and a label + tabular-nums percentage row only when `label` is supplied; an optional sub-caption always renders when given; exported from `@agentsfleet/design-system` → Test `test_usage_bar_renders`
 - **Dimension 2.2** — `BillingBalanceCard` renders its meter via `<UsageBar>`, no bespoke inline meter markup remaining → Test `test_billing_balance_uses_usage_bar`
 - **Dimension 2.3** — `.app-meter` and `.app-meter > span` are fully removed from `globals.css`, zero remaining references → Test `test_app_meter_removed`
 - **Dimension 2.4** — `UsageBar`'s track/fill classes resolve only to existing mapped Tailwind tokens (`bg-accent`, `pulse`/`pulse-dim`); no arbitrary hex or one-off utility → Test `test_usage_bar_no_arbitrary_colors`
 
-### §3 — `DataTable` sticky header and row density
+### §3 — `DataTable` sticky header and row density ✅ DONE (all Dimensions)
 
 Keeps a long table's column labels in view while scrolling, and tightens default row padding one notch for a denser, PlanetScale-like read. **Implementation default:** an opt-in `stickyHeader` boolean prop wraps the table body in a bounded-height (`overflow-y-auto`) scroll container with `<thead>` set `sticky top-0` inside it — a separate scroll axis from the existing `overflow-x-auto` wrapper, so horizontal scroll on narrow viewports is unaffected. Default (`stickyHeader` unset) renders exactly as today. Cell padding drops one notch (`py-2` → `py-1.5`) unconditionally — small, uniform, no consumer-side change needed.
 
@@ -116,8 +117,13 @@ DataTable<T> gains one new optional prop (all existing props unchanged):
   stickyHeader?: boolean   // default false — bounds height + pins <thead> when true
 
 UsageBar (new, exported from @agentsfleet/design-system):
-  { label: string; pct: number; sublabel?: React.ReactNode; className?: string }
-  — pct is clamped [0,100] by the component, not the caller.
+  { label?: string; pct: number; sublabel?: React.ReactNode; className?: string }
+  — pct is clamped [0,100] by the component, not the caller. `label` is
+  optional (amended at EXECUTE, see Discovery): BillingBalanceCard's meter is
+  intentionally unlabeled/aria-hidden today (the dollar headline above it
+  already states the value) — the label+percentage row renders only when a
+  caller supplies `label`, so migrating BillingBalanceCard adds no visible
+  text that wasn't there before.
 
 No HTTP/API/schema change. No change to computeReceiveCharge/computeStageCharge
 or any billing data shape — BillingBalanceCard's existing props
@@ -153,8 +159,8 @@ of the meter changes.
 | 1.1 | unit | `test_border_token_bumped` | `tokens.css` dark block `--border` equals `#2b333a` |
 | 1.2 | unit | `test_surface1_token_bumped` | `tokens.css` dark block `--surface-1` equals `#141a1f` |
 | 1.3 | unit | `test_light_tokens_unchanged` | `tokens.css` light block `--border`/`--surface-1` unchanged from baseline |
-| 2.1 | unit | `test_usage_bar_renders` | `<UsageBar label="Monthly run budget" pct={62} sublabel="…"/>` renders label, `62%` (tabular-nums), a track, and a fill sized to 62% |
-| 2.2 | unit | `test_billing_balance_uses_usage_bar` | `BillingBalanceCard` render tree contains `UsageBar`'s `data-slot`; no bespoke `.app-meter` div |
+| 2.1 | unit | `test_usage_bar_renders` | `<UsageBar label="Monthly run budget" pct={62} sublabel="…"/>` renders label, `62%` (tabular-nums), a track, and a fill sized to 62%; `<UsageBar pct={30}/>` (no label) renders track+fill only, no label/percentage text |
+| 2.2 | unit | `test_billing_balance_uses_usage_bar` | `BillingBalanceCard` render tree contains `UsageBar`'s `data-slot` (via the overridden `balance-meter` testid); no bespoke `.app-meter` div; fill width matches `summary.meterPct`; no label/percentage text rendered |
 | 2.3 | unit | `test_app_meter_removed` | `grep -rn 'app-meter' ui/packages/app/app/globals.css` → 0 matches |
 | 2.4 | unit | `test_usage_bar_no_arbitrary_colors` | `UsageBar.tsx` contains no `#`-hex literal and no `[` arbitrary Tailwind value in its class strings |
 | 3.1 | unit | `test_data_table_sticky_header_optin` | `stickyHeader` unset → markup matches pre-change baseline; `stickyHeader={true}` → wrapper has bounded height + `<thead>` has `sticky top-0` |
@@ -165,16 +171,16 @@ of the meter changes.
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | Token contrast bumped (§1) | `grep -E '\-\-border: #23292e\|\-\-surface-1: #11161a' ui/packages/design-system/src/tokens.css` | no output (old values gone from the dark block) | P2 | |
-| R2 | `UsageBar` exported and consumed (§2) | `grep -n "UsageBar" ui/packages/design-system/src/index.ts "ui/packages/app/app/(dashboard)/settings/billing/components/BillingBalanceCard.tsx"` | both files match | P2 | |
-| R3 | `.app-meter` fully removed (§2) | `grep -rn 'app-meter' ui/packages/app/app/globals.css` | no output | P2 | |
-| R4 | `DataTable` sticky header opt-in present, default unchanged (§3) | inspect `DataTable.tsx` for `stickyHeader` prop | prop exists; default path unmodified | P2 | |
-| R5 | Diff inside Files Changed | `git diff --name-only origin/main` | 0 paths missing from the table | P0 | |
-| S1 | UI unit tests pass | `make test-unit-agentsfleet` (or the ui package test runner) | exit 0 | P0 | |
-| S2 | Lint clean | `make lint` | exit 0 | P0 | |
-| S3 | No secrets | `gitleaks detect` | exit 0 | P0 | |
-| S4 | No oversize file | `git diff --name-only origin/main \| grep '\.tsx\?$' \| xargs wc -l 2>/dev/null \| awk '$1>350 && $2!="total"'` | no output | P0 | |
-| S5 | Orphan sweep | Dead Code Sweep greps below | 0 matches | P0 | |
+| R1 | Token contrast bumped (§1) | `grep -E '\-\-border: #23292e\|\-\-surface-1: #11161a' ui/packages/design-system/src/tokens.css` | no output (old values gone from the dark block) | P2 | ✅ no output |
+| R2 | `UsageBar` exported and consumed (§2) | `grep -n "UsageBar" ui/packages/design-system/src/index.ts "ui/packages/app/app/(dashboard)/settings/billing/components/BillingBalanceCard.tsx"` | both files match | P2 | ✅ both match |
+| R3 | `.app-meter` fully removed (§2) | `grep -rn 'app-meter' ui/packages/app/app/globals.css` | no output | P2 | ✅ no output |
+| R4 | `DataTable` sticky header opt-in present, default unchanged (§3) | inspect `DataTable.tsx` for `stickyHeader` prop | prop exists; default path unmodified | P2 | ✅ prop exists; default-path test passes unmodified |
+| R5 | Diff inside Files Changed | `git diff --name-only origin/main` | 0 paths missing from the table | P0 | ✅ 13 paths, all in scope (incl. this spec, `BillingUsageTab.tsx` — the RULE HLP fix from `/review` — and co-located tests) |
+| S1 | UI unit tests pass | `make test-unit-agentsfleet` (or the ui package test runner) | exit 0 | P0 | ✅ design-system 448/448, app 1204/1204 |
+| S2 | Lint clean | `make lint` | exit 0 | P0 | ✅ `make lint-apps-ds-ctl` — app/design-system/agentsfleet all clean |
+| S3 | No secrets | `gitleaks detect` | exit 0 | P0 | ✅ no leaks found |
+| S4 | No oversize file | `git diff --name-only origin/main \| grep '\.tsx\?$' \| xargs wc -l 2>/dev/null \| awk '$1>350 && $2!="total"'` | no output | P0 | ✅ no output |
+| S5 | Orphan sweep | Dead Code Sweep greps below | 0 matches | P0 | ✅ `.app-meter` 0 matches; `meter-fill` 1 match (renamed keyframe, not orphaned) |
 
 **Grading protocol (VERIFY):** run the Verify command verbatim; grade ONLY from its output. Graded = ✅/❌ + the one decisive output line. **Ship gate:** every row graded, every P0 ✅ → eligible for CHORE(close); any ❌ or empty cell → return to EXECUTE; a P2 ❌ ships only with an Indy-acked deferral quote in Discovery.
 
@@ -223,7 +229,8 @@ of the meter changes.
 
 ## Discovery (consult log)
 
-- **Consults** — Indy reviewed a design proposal (artifact) benchmarked against two PlanetScale dashboard screenshots and agreed to proceed; three deltas selected from the proposal's original three (border contrast, `UsageBar`, table structure), the "bonus" capacity-row pattern deferred (no ack needed — it was explicitly optional in the proposal, not dropped scope).
+- **Consults** — Indy reviewed a design proposal (artifact) benchmarked against two PlanetScale dashboard screenshots and agreed to proceed; three deltas selected from the proposal's original three (border contrast, `UsageBar`, table structure), the "bonus" capacity-row pattern deferred (no ack needed — it was explicitly optional in the proposal, not dropped scope). Mid-EXECUTE, Indy asked for "a large refactor" for optimization/performance with no target named; flagged that this contradicts the spec's own patch-vs-refactor verdict and that there's no performance concern in scope (presentation-only diff, no data-fetching/compute) — Indy confirmed **stick to the patch**, no refactor.
+- **EXECUTE reconciliations** — §2's `UsageBar.label` was pinned required in the Interfaces section at authoring; discovered at EXECUTE that `BillingBalanceCard`'s existing meter is intentionally unlabeled and `aria-hidden` (the dollar headline above it already states the value), so a required `label` would have added new visible text — amended `label` to optional (Interfaces + §2 updated in the same diff) so the migration adds zero visible change to `BillingBalanceCard`.
 - **Metrics review** — no product/operator signal changes; presentation-only.
-- **Skill-chain outcomes** — `/write-unit-test`, `/review`, `kishore-babysit-prs`: {empty at creation}
+- **Skill-chain outcomes** — `/write-unit-test`: tests written per Dimension before this review (§ Test Specification), design-system 446/446 + app 1203/1203 green. `/review` (medium effort, 3 finder angles + verify): 2 confirmed findings, both fixed in this diff — (1) `stickyHeader` shipped with zero production consumers (RULE HLP) → wired onto `BillingUsageTab`'s paginated usage-history table, the real long-list case §3 was written for; (2) the sticky-header scroll region was hardcoded (`max-h-96`, no override) and not keyboard-reachable → added `tabIndex={0}` + `role="region"` + a caption-derived `aria-label`. Correctness and cleanup/reuse angles returned no findings. `kishore-babysit-prs`: not yet run — pending PR open.
 - **Deferrals** — {empty at creation}
