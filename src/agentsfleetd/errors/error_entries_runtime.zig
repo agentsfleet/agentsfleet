@@ -70,7 +70,7 @@ pub const ENTRIES_RUNTIME = [_]Entry{
     e("UZ-MEM-003", .service_unavailable, "Memory backend unavailable", "The memory backend (Postgres memory schema) is unreachable. " ++
         "The fleet falls back to ephemeral workspace memory. Check MEMORY_RUNTIME_URL."), // reachable: no — runner memory-push endpoint (fleet-side), not fetched by ui/packages/app
     // ── AGENT KEYS (workspace-scoped, agt_a prefix) ────────────────────────────
-    e("UZ-APIKEY-001", .unauthorized, "Invalid API key", "API key is invalid or revoked. Create one with: agentsfleet fleet create --workspace {ws} --name my-fleet"), // reachable: no — fleet-scoped agt_a bearer auth (CLI/runner), not a browser session
+    e("UZ-APIKEY-001", .unauthorized, "Invalid API key", "API key is invalid or revoked. Mint a replacement with: POST /v1/workspaces/{ws}/fleet-keys"), // reachable: no — fleet-scoped agt_a bearer auth (CLI/runner), not a browser session
     // ── TENANT API KEYS (tenant-scoped, agt_t prefix) ────────────────────────
     eu("UZ-APIKEY-003", .not_found, "API key not found", "No API key matches the supplied id for this tenant. Verify the id with: GET /v1/api-keys", "We couldn't find that API key. It may have already been deleted — refresh the list."),
     e("UZ-APIKEY-004", .unauthorized, "API key has been revoked", "This key was revoked and can no longer authenticate. Mint a replacement with: POST /v1/api-keys"), // reachable: no — CLI/API-key bearer-auth surface, not a browser session

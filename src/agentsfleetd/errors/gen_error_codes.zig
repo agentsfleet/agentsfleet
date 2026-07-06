@@ -55,12 +55,52 @@ fn categoryOf(code: []const u8) []const u8 {
     return rest[0..dash];
 }
 
+// Section titles for the generated page — the raw `UZ-<CAT>-` token is an
+// internal registry namespace, not something an external reader recognizes
+// ("Wh", "Slk", "Gh" mean nothing outside this codebase). Caught by Greptile
+// on the docs PR: exposing the namespace abbreviation directly defeats the
+// purpose of a de-mudballed public error-codes page. One entry per category
+// token that currently exists in REGISTRY (see gen_error_codes_test.zig for
+// the completeness check — a category with no entry here falls back to the
+// capitalized-token form, which stays legible but not friendly).
+const S_API = "API";
+
+const CATEGORY_LABELS = [_]struct { token: []const u8, label: []const u8 }{
+    .{ .token = "AGT", .label = "Fleets" },
+    .{ .token = S_API, .label = S_API },
+    .{ .token = "APIKEY", .label = "API Keys" },
+    .{ .token = "APPROVAL", .label = "Approvals" },
+    .{ .token = "AUTH", .label = "Authentication" },
+    .{ .token = "BUNDLE", .label = "Fleet Bundles" },
+    .{ .token = "CONN", .label = "Connectors" },
+    .{ .token = "CRED", .label = "Credentials" },
+    .{ .token = "EXEC", .label = "Execution" },
+    .{ .token = "FLEETKEY", .label = "Fleet Keys" },
+    .{ .token = "GH", .label = "GitHub" },
+    .{ .token = "GRANT", .label = "Integration Grants" },
+    .{ .token = "INTERNAL", .label = "Internal" },
+    .{ .token = "MEM", .label = "Memory" },
+    .{ .token = "PROVIDER", .label = "Model Providers" },
+    .{ .token = "REQ", .label = "Request" },
+    .{ .token = "RUN", .label = "Runners" },
+    .{ .token = "SLK", .label = "Slack" },
+    .{ .token = "STARTUP", .label = "Startup" },
+    .{ .token = "TOOL", .label = "Tools" },
+    .{ .token = "UUIDV7", .label = "IDs" },
+    .{ .token = "VAULT", .label = "Secrets" },
+    .{ .token = "WH", .label = "Webhooks" },
+};
+
+fn categoryLabel(cat: []const u8) []const u8 {
+    for (CATEGORY_LABELS) |entry| {
+        if (std.mem.eql(u8, entry.token, cat)) return entry.label;
+    }
+    return cat;
+}
+
 fn writeCategoryHeading(w: *std.Io.Writer, cat: []const u8) !void {
-    try w.writeByte('#');
-    try w.writeByte('#');
-    try w.writeByte(' ');
-    try w.writeByte(std.ascii.toUpper(cat[0]));
-    for (cat[1..]) |c| try w.writeByte(std.ascii.toLower(c));
+    try w.writeAll("## ");
+    try w.writeAll(categoryLabel(cat));
     try w.writeByte('\n');
 }
 

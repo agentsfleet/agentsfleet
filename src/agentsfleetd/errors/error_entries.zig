@@ -115,7 +115,7 @@ pub const ENTRIES = [_]Entry{
     e("UZ-AUTH-018", .bad_request, "Invalid verification code shape", "verification_code must be exactly 6 ASCII digits."), // reachable: no — CLI login flow
     e("UZ-AUTH-019", .bad_request, "Invalid ciphertext", "ciphertext is missing or empty. Expect a base64url-encoded AES-256-GCM output."), // reachable: no — CLI login flow
     e("UZ-AUTH-020", .bad_request, "Invalid nonce", "nonce is missing, empty, or the wrong length. Expect a base64url-encoded 12-byte value."), // reachable: no — CLI login flow
-    eu("UZ-AUTH-022", .forbidden, "Insufficient scope", "Your token does not carry a scope required for this action. The required scope is named in the error detail; see docs/AUTH.md for the scope catalogue.", "You need an additional scope for that. Ask an agentsfleet admin to grant the scope this action requires."),
+    eu("UZ-AUTH-022", .forbidden, "Insufficient scope", "Your token does not carry a scope required for this action. The required scope is named in the error detail; see the [Scopes](/api-reference/scopes) reference for what each one grants.", "You need an additional scope for that. Ask an agentsfleet admin to grant the scope this action requires."),
     // ── API (serving-plane backpressure) ─────────────────────────────────────
     e("UZ-API-001", .too_many_requests, "Too many in-flight requests", "This API instance is at its in-flight request ceiling and is shedding load. " ++
         "Honor the Retry-After header and retry with backoff. Operators: raise API_MAX_IN_FLIGHT_REQUESTS or add replicas."), // reachable: no — instance-wide backpressure shed, hit before routing; not a rendered dashboard error
@@ -168,7 +168,7 @@ pub const ENTRIES = [_]Entry{
     e("UZ-AGT-006", .conflict, "Fleet name already exists", "A Fleet with this name already exists. Use `agentsfleet kill <name>` first, then deploy again."), // reachable: no — CLI/API-key surface, not fetched by ui/packages/app
     // UZ-AGT-007 retired (single-string credential body) → see UZ-VAULT-002.
     eu("UZ-AGT-008", .bad_request, "Invalid fleet config", "Config JSON is malformed. Verify trigger, tools, credentials, and budget fields " ++
-        "in your TRIGGER.md frontmatter. See tests/fixtures/fleetbundle/platform-ops/TRIGGER.md for a working example.", "That fleet's config isn't valid. Check the trigger, tools, credentials, and budget fields, then try again."),
+        "in your TRIGGER.md frontmatter. See the [Authoring a fleet](/fleets/authoring) guide for a working example.", "That fleet's config isn't valid. Check the trigger, tools, credentials, and budget fields, then try again."),
     eu("UZ-AGT-009", .not_found, "Fleet not found", "Fleet not found. Verify the fleet_id and that it has not been killed.", "We couldn't find that Fleet. It may have been deleted, or the ID doesn't match one in this workspace."),
     eu("UZ-AGT-010", .conflict, "Fleet state transition not allowed", "The requested lifecycle action is not valid from the fleet's current state. The response detail names the specific transition that was refused.", "That action isn't available for this Fleet right now — check its current status and try again."),
     eu("UZ-AGT-011", .bad_request, "SKILL.md and TRIGGER.md disagree on `name:`", "Top-level `name:` in SKILL.md must match `name:` in TRIGGER.md. One identity per Fleet Bundle.", "This Fleet Bundle's files disagree on its name — SKILL.md and TRIGGER.md must match. Fix the source and try again."),
