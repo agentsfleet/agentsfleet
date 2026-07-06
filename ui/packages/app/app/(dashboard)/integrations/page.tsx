@@ -46,7 +46,9 @@ export default async function IntegrationsPage() {
           error:
             err instanceof ApiError
               ? { code: err.code, status: err.status }
-              : { code: "UZ-UNKNOWN", status: 0 },
+              : // A thrown non-ApiError carries no HTTP status; null keeps the
+                // rendered detail honest instead of a fabricated status 0.
+                { code: "UZ-UNKNOWN", status: null },
         })),
       getConnector("github", workspaceId, token).catch(() => ({
         status: CONNECTOR_STATUS.notConnected,
