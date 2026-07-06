@@ -1,5 +1,5 @@
 //! Integration Grant request handler (fleet auth).
-//! POST /v1/fleets/{id}/integration-requests → handleRequestGrant
+//! POST /v1/workspaces/{ws}/fleets/{id}/integration-requests → handleRequestGrant
 //! Workspace-auth operations (list/revoke) are in integration_grants_workspace.zig.
 
 const std = @import("std");
@@ -137,7 +137,7 @@ fn isSupportedService(service: []const u8) bool {
 }
 
 // ── handleRequestGrant ─────────────────────────────────────────────────────
-// POST /v1/fleets/{fleet_id}/integration-requests
+// POST /v1/workspaces/{ws}/fleets/{fleet_id}/integration-requests
 // Fleet authenticates; fleet_id in path must match caller identity.
 // Idempotent: returns existing pending grant if one already exists for service.
 
