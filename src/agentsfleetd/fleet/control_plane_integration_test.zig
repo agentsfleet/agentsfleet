@@ -10,7 +10,8 @@
 // Requires LIVE_DB=1 + a reachable Redis. Skipped when either is missing.
 
 const std = @import("std");
-const clock = @import("common").clock;
+const shared = @import("common");
+const clock = shared.clock;
 const pg = @import("pg");
 const auth_mw = @import("../auth/middleware/mod.zig");
 const serve_runner_lookup = @import("../cmd/serve_runner_lookup.zig");
@@ -22,6 +23,12 @@ const redis_fleet = @import("../queue/redis_fleet.zig");
 const protocol = @import("contract").protocol;
 const base = @import("../db/test_fixtures.zig");
 const affinity = @import("affinity.zig");
+const vault = @import("../state/vault.zig");
+const credential_key = @import("../fleet_runtime/credential_key.zig");
+const crypto_primitives = @import("../secrets/crypto_primitives.zig");
+const grant_lookup = @import("../state/integration_grant_lookup.zig");
+
+const PROVIDER_GITHUB = shared.PROVIDER_GITHUB;
 
 const ALLOC = std.testing.allocator;
 const LARGE_BALANCE_NANOS: i64 = 1000000000000;
@@ -265,6 +272,8 @@ fn delStream(h: *TestHarness, comptime key: []const u8) void {
 fn cleanupAll(h: *TestHarness, conn: *pg.Conn) void {
     delStream(h, "fleet:" ++ AGENTSFLEET_1_ID ++ ":events");
     delStream(h, "fleet:" ++ AGENTSFLEET_2_ID ++ ":events");
+    execIgnore(conn, "DELETE FROM core.integration_grants WHERE fleet_id IN ($1::uuid, $2::uuid)", .{ AGENTSFLEET_1_ID, AGENTSFLEET_2_ID });
+    execIgnore(conn, "DELETE FROM vault.secrets WHERE workspace_id = $1", .{WORKSPACE_ID});
     execIgnore(conn, "DELETE FROM fleet.runner_leases WHERE runner_id IN ($1::uuid, $2::uuid)", .{ RUNNER_A_ID, RUNNER_B_ID });
     execIgnore(conn, "DELETE FROM fleet.runner_affinity WHERE fleet_id IN ($1::uuid, $2::uuid)", .{ AGENTSFLEET_1_ID, AGENTSFLEET_2_ID });
     execIgnore(conn, "DELETE FROM fleet.runners WHERE id IN ($1::uuid, $2::uuid)", .{ RUNNER_A_ID, RUNNER_B_ID });
@@ -544,4 +553,128 @@ test "integration: runner control plane — release is token-guarded: a supersed
     // The live holder (token == seq) releases → slot freed (leased_until → ~now).
     try affinity.release(conn, AGENTSFLEET_1_ID, 2);
     try std.testing.expect(try leasedUntilOf(conn, AGENTSFLEET_1_ID) < live_until);
+}
+
+// ── Grant-gated mintable classification at lease-issue ─────────
+
+const CONFIG_GITHUB_CRED =
+    \\{"name":"runner-cp-bot","x-agentsfleet":{"triggers":[{"type":"webhook","source":"agentmail"}],"tools":["agentmail"],"credentials":["github"],"budget":{"daily_dollars":5.0}}}
+;
+const CONFIG_STATIC_CRED =
+    \\{"name":"runner-cp-bot","x-agentsfleet":{"triggers":[{"type":"webhook","source":"agentmail"}],"tools":["agentmail"],"credentials":["cpstatic"],"budget":{"daily_dollars":5.0}}}
+;
+const GRANT_CP_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0d6f02";
+const STATIC_SENTINEL = "cp_static_sentinel";
+
+fn seedFleetWithConfig(conn: *pg.Conn, fleet_id: []const u8, name: []const u8, session_id: []const u8, config: []const u8) !void {
+    try base.seedFleet(conn, fleet_id, WORKSPACE_ID, name, config, SOURCE_MD);
+    try base.seedFleetSession(conn, session_id, fleet_id, "{}");
+}
+
+fn seedVaultJson(conn: *pg.Conn, name: []const u8, json: []const u8) !void {
+    const key_name = try credential_key.allocKeyName(ALLOC, name);
+    defer ALLOC.free(key_name);
+    try vault.storeJsonPlaintext(ALLOC, conn, WORKSPACE_ID, key_name, json);
+}
+
+fn setGithubGrant(conn: *pg.Conn, fleet_id: []const u8, status: grant_lookup.GrantStatus) !void {
+    _ = try conn.exec(
+        \\INSERT INTO core.integration_grants
+        \\  (uid, grant_id, fleet_id, service, status, requested_at, requested_reason)
+        \\VALUES ($1::uuid, $1, $2::uuid, $3, $4, 0, 'cp lease-gate test')
+        \\ON CONFLICT (fleet_id, service) DO UPDATE SET status = EXCLUDED.status
+    , .{ GRANT_CP_ID, fleet_id, PROVIDER_GITHUB, status.toSlice() });
+}
+
+/// Lease as `token` and return the duped raw body for policy-level assertions.
+fn leaseBodyAs(h: *TestHarness, token: []const u8) ![]u8 {
+    const req = try (try h.post(protocol.PATH_RUNNER_LEASES).bearer(token)).json("{}");
+    const resp = try req.send();
+    defer resp.deinit();
+    try resp.expectStatus(.ok);
+    return ALLOC.dupe(u8, resp.body);
+}
+
+test "integration: test_lease_gates_mintable_on_grant" {
+    // Grant-gate dimension 3.1 — a connected-but-ungranted mintable credential is
+    // omitted from BOTH policy surfaces (`mintable` and `secrets_map`); the same
+    // config with an approved grant emits the mintable. Two fleets share the
+    // workspace's fleet:github handle; only the grant row differs.
+    crypto_primitives.setTestKek();
+    const h = try startHarness(ALLOC);
+    defer h.deinit();
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    defer cleanupAll(h, conn);
+
+    try base.seedTenant(conn);
+    try base.seedWorkspace(conn, WORKSPACE_ID);
+    try base.seedPlatformProviderWithKey(ALLOC, conn, WORKSPACE_ID, "fw_gate_key");
+    try fundLargeBalance(conn);
+    try seedRunner(conn, RUNNER_A_ID, "runner-cp-a", RUNNER_A_TOKEN);
+    try seedFleetWithConfig(conn, AGENTSFLEET_1_ID, "cp-gate-ungranted", SESSION_1_ID, CONFIG_GITHUB_CRED);
+    try seedFleetWithConfig(conn, AGENTSFLEET_2_ID, "cp-gate-granted", SESSION_2_ID, CONFIG_GITHUB_CRED);
+    try seedVaultJson(conn, PROVIDER_GITHUB, "{\"integration\":\"github\",\"installation_id\":\"42\"}");
+    try setGithubGrant(conn, AGENTSFLEET_2_ID, .approved); // fleet 1 stays ungranted
+    try publishFreshEvent(h, AGENTSFLEET_1_ID);
+    try publishFreshEvent(h, AGENTSFLEET_2_ID);
+
+    // Two leases (assignment order is the scheduler's); assert per fleet id.
+    var checked_ungranted = false;
+    var checked_granted = false;
+    for (0..2) |_| {
+        const body = try leaseBodyAs(h, RUNNER_A_TOKEN);
+        defer ALLOC.free(body);
+        const parsed = try std.json.parseFromSlice(std.json.Value, ALLOC, body, .{});
+        defer parsed.deinit();
+        const lease = parsed.value.object.get("lease").?.object;
+        const fleet_id = lease.get("event").?.object.get("fleet_id").?.string;
+        const policy = lease.get("policy").?.object;
+        const mintable = policy.get("mintable").?.array;
+        const secrets_map = policy.get("secrets_map").?;
+        if (std.mem.eql(u8, fleet_id, AGENTSFLEET_1_ID)) {
+            // Ungranted: no mintable emitted AND no handle leaked into secrets_map.
+            try std.testing.expectEqual(@as(usize, 0), mintable.items.len);
+            if (secrets_map == .object) try std.testing.expect(secrets_map.object.get(PROVIDER_GITHUB) == null);
+            try std.testing.expect(std.mem.indexOf(u8, body, "installation_id") == null);
+            checked_ungranted = true;
+        } else {
+            // Granted: the mintable rides the policy, id-only.
+            try std.testing.expectEqual(@as(usize, 1), mintable.items.len);
+            try std.testing.expectEqualStrings(PROVIDER_GITHUB, mintable.items[0].object.get("integration").?.string);
+            checked_granted = true;
+        }
+    }
+    try std.testing.expect(checked_ungranted);
+    try std.testing.expect(checked_granted);
+}
+
+test "integration: test_static_secrets_unaffected_by_grant_gate" {
+    // Grant-gate dimension 3.2 — a static custom secret (no `integration` field)
+    // resolves into secrets_map exactly as before, with zero grant rows present.
+    crypto_primitives.setTestKek();
+    const h = try startHarness(ALLOC);
+    defer h.deinit();
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    defer cleanupAll(h, conn);
+
+    try base.seedTenant(conn);
+    try base.seedWorkspace(conn, WORKSPACE_ID);
+    try base.seedPlatformProviderWithKey(ALLOC, conn, WORKSPACE_ID, "fw_gate_key2");
+    try fundLargeBalance(conn);
+    try seedRunner(conn, RUNNER_A_ID, "runner-cp-a", RUNNER_A_TOKEN);
+    try seedFleetWithConfig(conn, AGENTSFLEET_1_ID, "cp-gate-static", SESSION_1_ID, CONFIG_STATIC_CRED);
+    try seedVaultJson(conn, "cpstatic", "{\"api_token\":\"" ++ STATIC_SENTINEL ++ "\"}");
+    try publishFreshEvent(h, AGENTSFLEET_1_ID);
+
+    const body = try leaseBodyAs(h, RUNNER_A_TOKEN);
+    defer ALLOC.free(body);
+    const parsed = try std.json.parseFromSlice(std.json.Value, ALLOC, body, .{});
+    defer parsed.deinit();
+    const lease = parsed.value.object.get("lease").?.object;
+    const policy = lease.get("policy").?.object;
+    try std.testing.expectEqual(@as(usize, 0), policy.get("mintable").?.array.items.len);
+    const cpstatic = policy.get("secrets_map").?.object.get("cpstatic").?.object;
+    try std.testing.expectEqualStrings(STATIC_SENTINEL, cpstatic.get("api_token").?.string);
 }
