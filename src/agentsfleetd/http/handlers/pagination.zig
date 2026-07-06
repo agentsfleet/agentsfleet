@@ -91,7 +91,7 @@ test "pagination header names its real consumers and excludes the fleets/list ke
     const self_src = @embedFile("pagination.zig");
     // Slice off just the //! header block (everything before the first code line),
     // so this test's own strings below cannot self-satisfy the header check.
-    const header = self_src[0 .. std.mem.indexOf(u8, self_src, "const std = @import").?];
+    const header = self_src[0..std.mem.indexOf(u8, self_src, "const std = @import").?];
 
     // The three real consumers: each is named in the header AND actually calls the parser.
     const consumers = [_][]const u8{ "api_keys/list.zig", "fleet/runners_list.zig", "fleet/runner_events.zig" };

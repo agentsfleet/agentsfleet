@@ -36,6 +36,9 @@ const base = @import("../../../db/test_fixtures.zig");
 const harness_mod = @import("../../test_harness.zig");
 const TestHarness = harness_mod.TestHarness;
 const protocol = @import("contract").protocol;
+const grant_lookup = @import("../../../state/integration_grant_lookup.zig");
+
+const GrantStatus = grant_lookup.GrantStatus;
 
 const ALLOC = std.testing.allocator;
 
@@ -50,6 +53,7 @@ const FLEET_FOREIGN = "0195b4ba-8d3a-7f13-8abc-2b3e1e0c1c02";
 const LEASE_OWNER = "0195b4ba-8d3a-7f13-8abc-2b3e1e0c1e01";
 const LEASE_FOREIGN = "0195b4ba-8d3a-7f13-8abc-2b3e1e0c1e02";
 const LEASE_STALE = "0195b4ba-8d3a-7f13-8abc-2b3e1e0c1e03";
+const GRANT_OWNER = "0195b4ba-8d3a-7f13-8abc-2b3e1e0c1f01";
 // A lease_expires_at in the distant past (1970) — guaranteed < the handler's
 // wall-clock now, so the live-lease gate must reject it regardless of run date.
 const PAST_MS: i64 = 1000;
@@ -114,6 +118,18 @@ fn seedLease(conn: *pg.Conn, lease_id: []const u8, runner_id: []const u8, fleet_
     return seedLeaseFull(conn, lease_id, runner_id, fleet_id, workspace_id, NOW_MS + 30_000, protocol.RUNNER_LEASE_STATUS_ACTIVE);
 }
 
+/// Upsert the fleet's grant row for `static` at the given status — the
+/// grant gate reads it before any vault load. Idempotent across the
+/// suite's shared-id reruns.
+fn setGrantStatus(conn: *pg.Conn, fleet_id: []const u8, status: GrantStatus) !void {
+    _ = try conn.exec(
+        \\INSERT INTO core.integration_grants
+        \\  (uid, grant_id, fleet_id, service, status, requested_at, requested_reason)
+        \\VALUES ($1::uuid, $1, $2::uuid, $3, $4, 0, 'mint integration test')
+        \\ON CONFLICT (fleet_id, service) DO UPDATE SET status = EXCLUDED.status
+    , .{ GRANT_OWNER, fleet_id, INTEGRATION_STATIC, status.toSlice() });
+}
+
 /// Store a `static` integration handle `{integration, token}` at (workspace, key)
 /// — the vault row the mint handler loads and hands to the broker.
 fn seedStaticHandle(conn: *pg.Conn, workspace_id: []const u8, token: []const u8) !void {
@@ -129,6 +145,7 @@ fn execIgnore(conn: *pg.Conn, sql: []const u8, args: anytype) void {
 }
 
 fn teardown(conn: *pg.Conn) void {
+    execIgnore(conn, "DELETE FROM core.integration_grants WHERE fleet_id IN ($1::uuid, $2::uuid)", .{ FLEET_OWNER, FLEET_FOREIGN });
     execIgnore(conn, "DELETE FROM fleet.runner_leases WHERE id IN ($1::uuid, $2::uuid, $3::uuid)", .{ LEASE_OWNER, LEASE_FOREIGN, LEASE_STALE });
     execIgnore(conn, "DELETE FROM fleet.runners WHERE id IN ($1::uuid, $2::uuid)", .{ RUNNER_OWNER, RUNNER_ATTACKER });
     execIgnore(conn, "DELETE FROM vault.secrets WHERE workspace_id = $1", .{WORKSPACE_OWNER});
@@ -183,6 +200,9 @@ test "test_mint_scoped_to_lease_workspace" {
         // Seed ONLY the foreign workspace's handle for now: the first mint below
         // proves the owner's missing-handle path, then we seed the owner's.
         try seedStaticHandle(conn, WORKSPACE_FOREIGN, SENTINEL_FOREIGN);
+        // The grant gate precedes the vault load, so the owner fleet
+        // needs an approved grant for the legs below to reach the handle paths.
+        try setGrantStatus(conn, FLEET_OWNER, .approved);
     }
     defer cleanupAll(h);
 
@@ -263,10 +283,12 @@ test "test_mint_rejects_cancelled_or_expired_lease" {
         try base.seedWorkspace(conn, WORKSPACE_OWNER);
         try base.seedFleet(conn, FLEET_OWNER, WORKSPACE_OWNER, "cred-owner", "{}", "# z");
         try seedRunner(conn, RUNNER_OWNER, TOKEN_OWNER);
-        // Only the lifecycle differs between the two leases.
+        // Only the lifecycle differs between the two leases. The grant is
+        // approved (grant gate) so a 404 can only be the live-lease gate.
         try seedLeaseFull(conn, LEASE_OWNER, RUNNER_OWNER, FLEET_OWNER, WORKSPACE_OWNER, PAST_MS, protocol.RUNNER_LEASE_STATUS_ACTIVE);
         try seedLeaseFull(conn, LEASE_STALE, RUNNER_OWNER, FLEET_OWNER, WORKSPACE_OWNER, NOW_MS + 30_000, protocol.RUNNER_LEASE_STATUS_EXPIRED);
         try seedStaticHandle(conn, WORKSPACE_OWNER, SENTINEL_OWNER);
+        try setGrantStatus(conn, FLEET_OWNER, .approved);
     }
     defer cleanupAll(h);
 
@@ -290,5 +312,137 @@ test "test_mint_rejects_cancelled_or_expired_lease" {
         try resp.expectStatus(.not_found);
         try std.testing.expect(resp.bodyContains(ec.ERR_RUN_LEASE_NOT_FOUND));
         try std.testing.expect(!resp.bodyContains(SENTINEL_OWNER));
+    }
+}
+
+test "test_mint_requires_approved_grant" {
+    // Grant-gate dimension 2.1 — the grant gate precedes everything vault-shaped:
+    // a live lease + a CONNECTED handle still refuse (403 UZ-GRANT-001) when the
+    // fleet holds no approved grant, and a PENDING grant is equally refused. No
+    // token value appears in any refusal body, and the broker is never reached
+    // (the refusal happens before broker.mint — with a live grant the same
+    // setup mints, proving the only variable is the grant row).
+    crypto_primitives.setTestKek();
+    const h = startHarness() catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+
+    var broker = try CredentialBroker.init(ALLOC, integration.REGISTRY, integration.nullDeps());
+    defer broker.deinit();
+    h.ctx.broker = &broker;
+
+    {
+        const conn = try h.acquireConn();
+        defer h.releaseConn(conn);
+        teardown(conn); // clear any residue from an aborted prior run
+        try base.seedTenant(conn);
+        try base.seedWorkspace(conn, WORKSPACE_OWNER);
+        try base.seedFleet(conn, FLEET_OWNER, WORKSPACE_OWNER, "cred-owner", "{}", "# z");
+        try seedRunner(conn, RUNNER_OWNER, TOKEN_OWNER);
+        try seedLease(conn, LEASE_OWNER, RUNNER_OWNER, FLEET_OWNER, WORKSPACE_OWNER);
+        try seedStaticHandle(conn, WORKSPACE_OWNER, SENTINEL_OWNER);
+        // Deliberately NO grant row.
+    }
+    defer cleanupAll(h);
+
+    // (1) No grant row at all → 403 UZ-GRANT-001, no token bytes.
+    {
+        const body = try mintBody(LEASE_OWNER);
+        defer ALLOC.free(body);
+        const resp = try (try (try h.post(protocol.PATH_RUNNER_CREDENTIALS_MINT).bearer(TOKEN_OWNER)).json(body)).send();
+        defer resp.deinit();
+        try resp.expectStatus(.forbidden);
+        try std.testing.expect(resp.bodyContains(ec.ERR_GRANT_NOT_FOUND));
+        try std.testing.expect(!resp.bodyContains(SENTINEL_OWNER));
+    }
+
+    // (2) A PENDING grant is not an approval — still 403, still no token.
+    {
+        const conn = try h.acquireConn();
+        defer h.releaseConn(conn);
+        try setGrantStatus(conn, FLEET_OWNER, .pending);
+    }
+    {
+        const body = try mintBody(LEASE_OWNER);
+        defer ALLOC.free(body);
+        const resp = try (try (try h.post(protocol.PATH_RUNNER_CREDENTIALS_MINT).bearer(TOKEN_OWNER)).json(body)).send();
+        defer resp.deinit();
+        try resp.expectStatus(.forbidden);
+        try std.testing.expect(resp.bodyContains(ec.ERR_GRANT_NOT_FOUND));
+        try std.testing.expect(!resp.bodyContains(SENTINEL_OWNER));
+    }
+}
+
+test "test_mint_rechecks_revoked_grant" {
+    // Grant-gate dimension 2.2 — mint-time re-check, not just lease-time: the
+    // SAME live lease mints while approved, refuses after a revoke, and mints
+    // again after re-approval. Proves grant authority is read fresh per mint
+    // (a revoke mid-lease bites on the very next token request).
+    crypto_primitives.setTestKek();
+    const h = startHarness() catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+
+    var broker = try CredentialBroker.init(ALLOC, integration.REGISTRY, integration.nullDeps());
+    defer broker.deinit();
+    h.ctx.broker = &broker;
+
+    {
+        const conn = try h.acquireConn();
+        defer h.releaseConn(conn);
+        teardown(conn); // clear any residue from an aborted prior run
+        try base.seedTenant(conn);
+        try base.seedWorkspace(conn, WORKSPACE_OWNER);
+        try base.seedFleet(conn, FLEET_OWNER, WORKSPACE_OWNER, "cred-owner", "{}", "# z");
+        try seedRunner(conn, RUNNER_OWNER, TOKEN_OWNER);
+        try seedLease(conn, LEASE_OWNER, RUNNER_OWNER, FLEET_OWNER, WORKSPACE_OWNER);
+        try seedStaticHandle(conn, WORKSPACE_OWNER, SENTINEL_OWNER);
+        try setGrantStatus(conn, FLEET_OWNER, .approved);
+    }
+    defer cleanupAll(h);
+
+    // (1) Approved → 200 with the owner token.
+    {
+        const body = try mintBody(LEASE_OWNER);
+        defer ALLOC.free(body);
+        const resp = try (try (try h.post(protocol.PATH_RUNNER_CREDENTIALS_MINT).bearer(TOKEN_OWNER)).json(body)).send();
+        defer resp.deinit();
+        try resp.expectStatus(.ok);
+        try std.testing.expect(resp.bodyContains(SENTINEL_OWNER));
+    }
+
+    // (2) Revoked mid-lease → the next mint refuses; no token bytes leak.
+    {
+        const conn = try h.acquireConn();
+        defer h.releaseConn(conn);
+        try setGrantStatus(conn, FLEET_OWNER, .revoked);
+    }
+    {
+        const body = try mintBody(LEASE_OWNER);
+        defer ALLOC.free(body);
+        const resp = try (try (try h.post(protocol.PATH_RUNNER_CREDENTIALS_MINT).bearer(TOKEN_OWNER)).json(body)).send();
+        defer resp.deinit();
+        try resp.expectStatus(.forbidden);
+        try std.testing.expect(resp.bodyContains(ec.ERR_GRANT_NOT_FOUND));
+        try std.testing.expect(!resp.bodyContains(SENTINEL_OWNER));
+    }
+
+    // (3) Re-approved → minting resumes on the same lease.
+    {
+        const conn = try h.acquireConn();
+        defer h.releaseConn(conn);
+        try setGrantStatus(conn, FLEET_OWNER, .approved);
+    }
+    {
+        const body = try mintBody(LEASE_OWNER);
+        defer ALLOC.free(body);
+        const resp = try (try (try h.post(protocol.PATH_RUNNER_CREDENTIALS_MINT).bearer(TOKEN_OWNER)).json(body)).send();
+        defer resp.deinit();
+        try resp.expectStatus(.ok);
+        try std.testing.expect(resp.bodyContains(SENTINEL_OWNER));
     }
 }

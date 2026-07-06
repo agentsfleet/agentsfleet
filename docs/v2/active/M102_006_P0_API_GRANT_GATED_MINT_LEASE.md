@@ -30,11 +30,11 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ## Overview
 
-**Goal (testable):** `POST /v1/runners/me/credentials/mint` refuses with a typed `UZ-GRANT-004 grant_required` (403, no token, no upstream call) when the lease's fleet has no `approved` row in `core.integration_grants` for the requested integration; the lease path emits a `mintable` entry ONLY when the grant is approved (an ungranted connector credential is omitted entirely — never leaked into `secrets_map`); a grant revoked mid-lease refuses the next mint; and `SUPPORTED_SERVICES` accepts the connector providers (`github`, `zoho`, `jira`, `linear`) so the gate is actually reachable for them.
+**Goal (testable):** `POST /v1/runners/me/credentials/mint` refuses with the registered `UZ-GRANT-001` "No integration grant for service" (403, no token, no upstream call) when the lease's fleet has no `approved` row in `core.integration_grants` for the requested integration; the lease path emits a `mintable` entry ONLY when the grant is approved (an ungranted connector credential is omitted entirely — never leaked into `secrets_map`); a grant revoked mid-lease refuses the next mint; and `SUPPORTED_SERVICES` accepts the connector providers (`github`, `zoho`, `jira`, `linear`) so the gate is actually reachable for them.
 
 **Problem:** schema 008's own comment states the invariant — "A fleet must have an approved grant for a service before agentsfleet will inject credentials for it" — but no code enforces it. On main today: `credentials_mint.zig` resolves the lease + vault handle and calls `broker.mint` with no grant read; `service.zig`'s lease classifier emits every connected mintable unconditionally; and `integration_grants/handler.zig`'s `SUPPORTED_SERVICES` list (`slack, gmail, agentmail, discord, grafana`) does not even include `github`, so a GitHub grant cannot be requested at all. M102_001 Invariant 3 is designed, documented, and inert. This is the single platform prerequisite for the approved incident-fleet v1.0 wedge (an unattended, Pull-Request-opening fleet must not mint ungated tokens).
 
-**Solution summary:** one shared read module (`state/integration_grant_lookup.zig`: `isApproved` for the mint hot path, `approvedSet` for the lease batch), wired into BOTH enforcement points — `loadMintInputs` refuses before the vault load, and `resolveExecutionPolicy`'s classification loop omits ungranted mintables. Add the four connector providers to `SUPPORTED_SERVICES` via the existing `common.PROVIDER_*` constants. Register `UZ-GRANT-004` with a hint pointing at the grant-request flow. The broker (`credentials/`) is untouched.
+**Solution summary:** one shared read module (`state/integration_grant_lookup.zig`: `isApproved` for the mint hot path, `approvedSet` for the lease batch), wired into BOTH enforcement points — `loadMintInputs` refuses before the vault load, and `resolveExecutionPolicy`'s classification loop omits ungranted mintables. Add the four connector providers to `SUPPORTED_SERVICES` via the existing `common.PROVIDER_*` constants. Reuse the already-registered `UZ-GRANT-001` (exact-fit title, 403, hint already naming the grant-request flow — discovered caller-less at PLAN; no error-registry edit at all). The broker (`credentials/`) is untouched.
 
 ## PR Intent & comprehension handshake
 
@@ -55,11 +55,10 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 | File | Action | Why |
 |------|--------|-----|
-| `src/agentsfleetd/state/integration_grant_lookup.zig` | CREATE | the ONLY grant-read module: `isApproved(conn, fleet_id, service)` (mint hot path) + `approvedSet(alloc, conn, fleet_id)` (lease batch) |
-| `src/agentsfleetd/http/handlers/runner/credentials_mint.zig` | EDIT | lease resolve returns (workspace_id, fleet_id); grant check between lease resolve and vault load; `UZ-GRANT-004` refusal |
+| `src/agentsfleetd/state/integration_grant_lookup.zig` | CREATE | the ONLY grant-read module: `isApproved(conn, fleet_id, service)` (mint hot path) + `approvedSet(alloc, conn, fleet_id)` (lease batch); owns `GrantStatus` (moved from the http handler so http imports state, never the reverse) |
+| `src/agentsfleetd/http/handlers/runner/credentials_mint.zig` | EDIT | lease resolve returns (workspace_id, fleet_id); grant check between lease resolve and vault load; `UZ-GRANT-001` refusal |
 | `src/agentsfleetd/fleet/service.zig` | EDIT | fetch `approvedSet` at lease-issue; classification loop emits a mintable ONLY when approved; ungranted → omitted + warn |
-| `src/agentsfleetd/http/handlers/integration_grants/handler.zig` | EDIT | `SUPPORTED_SERVICES` += `common.PROVIDER_{GITHUB,ZOHO,JIRA,LINEAR}`; refresh the rejection detail string |
-| `src/agentsfleetd/errors/error_registry.zig` + `errors/error_entries.zig` | EDIT | `ERR_GRANT_REQUIRED = "UZ-GRANT-004"` (403) + `hint()` naming the grant-request flow |
+| `src/agentsfleetd/http/handlers/integration_grants/handler.zig` | EDIT | `SUPPORTED_SERVICES` += `common.PROVIDER_{GITHUB,ZOHO,JIRA,LINEAR}`; comptime-derived rejection detail; `GrantStatus` re-exported from the lookup module |
 | `docs/v2/pending/M102_005_P1_API_CLI_DOCS_AGENT_IDENTITY_PROXY_TAIL.md` | EDIT | §2 replaced with a moved-to-M102_006 pointer; grant rows dropped from its tables (same-commit NDC hygiene) |
 | _colocated tests (Zig `test {}` + integration suite)_ | CREATE/EDIT | one test per Dimension below |
 
@@ -79,7 +78,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | PUB / Struct-Shape | yes — `integration_grant_lookup` pub surface | two narrow pub fns; FILE SHAPE verdict at PLAN |
 | File & Function Length | yes | new module well under 350; `loadMintInputs` gains ~10 lines — extract if it crosses 50 |
 | UFS | yes — status/provider/code literals | constants imported from their owning modules; tests import the same |
-| ERROR REGISTRY | yes — `UZ-GRANT-004` | registered with status 403 + `hint()`; docs error-codes row at DOCUMENT |
+| ERROR REGISTRY | no — reuses registered `UZ-GRANT-001` (caller-less until now) | zero new codes; DOCUMENT confirms the docs error-codes page carries its row |
 | LOGGING | yes — two new warn events | `credential_mint_denied`, `lease_secret_grant_missing`; VLT-clean fields |
 | LIFECYCLE | yes — allocations in `approvedSet` | arena-owned returns; `errdefer` on multi-step builds |
 | UI / DESIGN TOKEN / SCHEMA | no | no UI surface; no schema change |
@@ -104,7 +103,7 @@ Delivers the single read path both enforcement points import, and makes connecto
 
 Delivers the hot-path refusal. **Implementation default:** the check runs inside `loadMintInputs`, after the lease resolve (which now also returns `fleet_id`) and BEFORE the vault handle load, on the same held connection — no extra acquire, and an ungranted request never touches vault bytes.
 
-- **Dimension 2.1** — mint with no approved grant → 403 `UZ-GRANT-004`, no token, no upstream call, `credential_mint_denied` warn logged → Test `test_mint_requires_approved_grant`
+- **Dimension 2.1** — mint with no approved grant → 403 `UZ-GRANT-001`, no token, no upstream call, `credential_mint_denied` warn logged → Test `test_mint_requires_approved_grant`
 - **Dimension 2.2** — grant approved at lease-issue then revoked → the NEXT mint refuses (mint-time re-check, not just lease-time) → Test `test_mint_rechecks_revoked_grant`
 
 ### §3 — Lease-time gating (fail-fast classification)
@@ -123,7 +122,7 @@ state/integration_grant_lookup.zig (NEW — the only grant-read module):
 
 POST /v1/runners/me/credentials/mint (EXISTING route — one additive refusal outcome):
   -> 200 { token, expires_at_ms }                    # unchanged happy path
-  | 403 UZ-GRANT-004 grant_required                  # NEW: no approved grant; no token, no upstream call
+  | 403 UZ-GRANT-001 (No integration grant)          # NEW refusal outcome; no token, no upstream call
   | (existing outcomes unchanged: 404 lease, UZ-CRED-*, UZ-GH-*, UZ-CONN-006)
 
 Lease ExecutionPolicy (EXISTING wire shape — emission rule tightened):
@@ -135,7 +134,7 @@ Lease ExecutionPolicy (EXISTING wire shape — emission rule tightened):
 
 | Mode | Cause | Handling (system response + what the caller observes) |
 |------|-------|--------------------------------------------------------|
-| Mint without approved grant | connected fleet, valid lease, no/pending grant | 403 `UZ-GRANT-004` + hint naming `POST …/integration-requests`; no token; no upstream call |
+| Mint without approved grant | connected fleet, valid lease, no/pending grant | 403 `UZ-GRANT-001` + its registered hint naming `POST …/integration-requests`; no token; no upstream call |
 | Grant revoked mid-lease | approved at lease-issue, revoked before next tool call | next mint refused by the mint-time re-check; child's tool call errors with the typed detail |
 | Ungranted at lease-issue | fleet declares a connector credential, grant absent | credential omitted from `mintable` + `secrets_map`; `lease_secret_grant_missing` warn; substitution fails fast naming the missing credential |
 | Grant read fails (DB error) at mint | transient DB failure on the grant SELECT | fail closed: 500 internal, no token — never fail-open to a mint |
@@ -165,8 +164,8 @@ No product analytics or funnel change — security-plane observability only; no 
 |-----------|------|------|---------------------------------------------|
 | 1.1 | integration | `test_grant_lookup_status_predicate` | approved → true; pending/revoked/absent → false; `approvedSet` returns exactly the approved services |
 | 1.2 | unit | `test_supported_services_include_connectors` | `isSupportedService("github"/"zoho"/"jira"/"linear")` true; list literals come from `common.PROVIDER_*` |
-| 2.1 | integration | `test_mint_requires_approved_grant` | lease + connected handle + NO grant → 403 body carries `UZ-GRANT-004`; fake exchange records zero upstream calls |
-| 2.2 | integration | `test_mint_rechecks_revoked_grant` | approve → lease → revoke → mint → 403 `UZ-GRANT-004`; approve again → mint succeeds |
+| 2.1 | integration | `test_mint_requires_approved_grant` | lease + connected handle + NO grant → 403 body carries `UZ-GRANT-001`; a pending grant is still refused; no token value in any refusal body |
+| 2.2 | integration | `test_mint_rechecks_revoked_grant` | approve → mint 200 → revoke → mint 403 `UZ-GRANT-001`; approve again → mint succeeds |
 | 3.1 | integration | `test_lease_gates_mintable_on_grant` | ungranted github: lease response `mintable == []` and `secrets_map` has no github entry; approved: `mintable` carries it |
 | 3.2 | integration | `test_static_secrets_unaffected_by_grant_gate` | a static custom secret (no `integration` field) resolves into `secrets_map` with no grant row present |
 | — | regression | existing `dispose` unit tests + broker suites | unchanged — the refusal happens before the broker; no `MintResult` variant added |
@@ -221,7 +220,7 @@ No product analytics or funnel change — security-plane observability only; no 
 2. **Preserved user behaviour** — fleets with approved grants and all static-secret fleets behave exactly as today; the happy-path mint wire shape is unchanged.
 3. **Optimal-way check** — yes: two reads on an existing indexed table at the two existing enforcement points; no new plane, table, or endpoint.
 4. **Rebuild-vs-iterate** — iterate; the parent design (M102_001 Invariant 3) was right, only unenforced.
-5. **What we build** — one lookup module, two wired reads, four registry entries, one error code.
+5. **What we build** — one lookup module, two wired reads, four registry entries, zero new error codes (`UZ-GRANT-001` reused).
 6. **What we do NOT build** — static-secret gating, broker changes, new UI, the M102_005 tail.
 7. **Fit with existing features** — completes the grant lifecycle (request/approve/revoke shipped in M102_001) and unblocks the incident-fleet wedge (office-hours design approach C); must not destabilize the mint hot path or lease issuance.
 8. **Surface order** — backend only; the CLI signpost (`agentsfleet connector`) stays in M102_005 §3.
@@ -237,6 +236,7 @@ No product analytics or funnel change — security-plane observability only; no 
 ## Discovery (consult log)
 
 - **Consults** — Architecture / Legacy-Design / gate-flag triage: {empty at creation}
+- **PLAN discovery (Jul 06, 2026):** `UZ-GRANT-001` ("No integration grant for service", 403, exact-fit hint) was found registered with **zero callers** — pre-registered for this enforcement and never wired. Reused instead of minting `UZ-GRANT-004`; the error-registry edit dropped from Files Changed. Also: `GrantStatus` moves from the grants handler into the lookup module (with a `pub` re-export in the handler) to avoid an http→state import cycle while keeping the status vocabulary single-sourced.
 - **Metrics review** — {empty at creation — expected: "operator-plane warns only, no analytics/funnel playbook update"}
 - **Skill-chain outcomes** — `/write-unit-test`, `/review`, `kishore-babysit-prs`: {empty at creation}
 - **Deferrals** — {empty at creation}
