@@ -16,10 +16,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M102
 **Workstream:** 006
 **Date:** Jul 06, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P0 — live security gap on main: any connected fleet with a valid lease mints a provider token with **no** approved-integration-grant check; the grant lifecycle (request/approve/revoke) exists and is operable, but nothing reads it at mint or lease.
 **Categories:** API
 **Batch:** B1 — single-section-family security fix; carved out of M102_005 §2 so it ships ahead of the ingress/CLI/docs tail.
+**Branch:** feat/m102-006-grant-gate
+**Test Baseline:** unit=2327 integration=249 via `make _lint_zig_test_depth`
 **Depends on:** none — `core.integration_grants` (schema 008), its request/approve/revoke lifecycle, and the mint broker are all shipped; this workstream only adds the missing reads.
 **Provenance:** carve-out of M102_005 §2 per the approved incident-fleet office-hours design (approach C, `docs/v2/reviews/incident-fleet-office-hours-design.md`); gap independently confirmed by direct code read this session (zero grant references in the mint path).
 **Canonical architecture:** `docs/AUTH.md` §credential boundary + the `agt_r` plane; `docs/architecture/capabilities.md` §3 (broker row). Introduces no new trust plane — two reads on an existing table at two existing enforcement points.
