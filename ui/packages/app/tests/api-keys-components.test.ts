@@ -74,15 +74,18 @@ describe("ApiKeyList component", () => {
     expect(screen.getByText(/No API keys yet/i)).toBeTruthy();
   });
 
-  it("hides the sort toolbar while the list is empty (only the empty state shows)", async () => {
+  it("hides the sortable table while the list is empty (only the empty state shows)", async () => {
     await renderList(listResponse([]));
-    expect(screen.queryByLabelText(/sort api keys/i)).toBeNull();
+    expect(screen.queryByRole("table")).toBeNull();
     expect(screen.getByText(/No API keys yet/i)).toBeTruthy();
   });
 
-  it("shows the sort toolbar once keys exist", async () => {
+  it("renders Name and Created as clickable, sortable column headers once keys exist", async () => {
     await renderList(listResponse([ACTIVE, REVOKED]));
-    expect(screen.getByLabelText(/sort api keys/i)).toBeTruthy();
+    expect(screen.getByRole("button", { name: /^name$/i })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /^created$/i })).toBeTruthy();
+    expect(screen.getByRole("columnheader", { name: "Name" }).getAttribute("aria-sort")).toBe("none");
+    expect(screen.getByRole("columnheader", { name: "Created" }).getAttribute("aria-sort")).toBe("descending");
   });
 
   it("renders active + revoked rows with status badges and 'never used'", async () => {
@@ -198,15 +201,19 @@ describe("ApiKeyList component", () => {
     );
   });
 
-  it("picking a different sort re-fetches page 1 with that sort", async () => {
+  it("clicking the Name column header re-fetches page 1 sorted by name", async () => {
     await renderList(listResponse([ACTIVE], 30));
-    const trigger = screen.getByLabelText(/sort api keys/i);
-    fireEvent.pointerDown(trigger, { button: 0, pointerType: "mouse" });
-    fireEvent.click(trigger);
-    fireEvent.keyDown(trigger, { key: "Enter" });
-    fireEvent.click(screen.getByText("Name A–Z"));
+    fireEvent.click(screen.getByRole("button", { name: /^name$/i }));
     await waitFor(() =>
       expect(listApiKeysActionMock).toHaveBeenCalledWith(expect.objectContaining({ sort: "key_name", page: 1 })),
+    );
+  });
+
+  it("clicking the active Created column header toggles its direction", async () => {
+    await renderList(listResponse([ACTIVE], 30));
+    fireEvent.click(screen.getByRole("button", { name: /^created$/i }));
+    await waitFor(() =>
+      expect(listApiKeysActionMock).toHaveBeenCalledWith(expect.objectContaining({ sort: "created_at", page: 1 })),
     );
   });
 
@@ -215,11 +222,7 @@ describe("ApiKeyList component", () => {
     // to — the `retried` guard must stop after one reset, not loop forever.
     listApiKeysActionMock.mockResolvedValue({ ok: false, error: "invalid sort", errorCode: "UZ-REQ-001" });
     await renderList(listResponse([ACTIVE], 30));
-    const trigger = screen.getByLabelText(/sort api keys/i);
-    fireEvent.pointerDown(trigger, { button: 0, pointerType: "mouse" });
-    fireEvent.click(trigger);
-    fireEvent.keyDown(trigger, { key: "Enter" });
-    fireEvent.click(screen.getByText("Name A–Z"));
+    fireEvent.click(screen.getByRole("button", { name: /^name$/i }));
     // Original load + exactly one defaults-reset = 2 calls; never a third.
     await waitFor(() => expect(listApiKeysActionMock.mock.calls.length).toBe(2));
     await new Promise((resolve) => setTimeout(resolve, 30));
