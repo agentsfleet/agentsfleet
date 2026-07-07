@@ -28,3 +28,33 @@ describe("tokens.css — wake-pulse [data-live] selector contract", () => {
     expect(css).not.toMatch(/\[data-live\]\s*\{/);
   });
 });
+
+// dark-mode resting-state border/surface contrast bump. Same
+// text-contract rationale as above: jsdom applies no real CSS, so this pins
+// the source value directly against a silent revert to the pre-bump flat
+// tokens.
+describe("tokens.css — dark-mode contrast bump", () => {
+  const css = readFileSync(TOKENS_CSS_PATH, "utf8");
+  const rootStart = css.indexOf(":root {");
+  // The light-mode selector also appears earlier inside a prose comment
+  // (line ~6), so the search for the *block* must start after :root's own
+  // opening brace to avoid slicing an inverted (empty) range.
+  const lightStart = css.indexOf('[data-theme="light"] {', rootStart);
+  const rootBlock = css.slice(rootStart, lightStart);
+  const lightBlock = css.slice(lightStart);
+
+  it("bumps dark-mode --border to #2b333a", () => {
+    expect(rootBlock).toContain("--border: #2b333a;");
+    expect(rootBlock).not.toContain("--border: #23292e;");
+  });
+
+  it("bumps dark-mode --surface-1 to #141a1f", () => {
+    expect(rootBlock).toContain("--surface-1: #141a1f;");
+    expect(rootBlock).not.toContain("--surface-1: #11161a;");
+  });
+
+  it("leaves light-mode --border/--surface-1 untouched", () => {
+    expect(lightBlock).toContain("--surface-1: #f1eee6;");
+    expect(lightBlock).toContain("--border: #d4cdb9;");
+  });
+});

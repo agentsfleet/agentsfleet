@@ -106,10 +106,10 @@ Dark is the **primary** brand surface. All hero shots, marketing screenshots, do
 | Token | Hex | Use |
 |---|---|---|
 | `--bg` | `#0A0D0E` | Page background. Near-black, cool undertone. Never use pure `#000`. |
-| `--surface-1` | `#11161A` | Default elevated surface (cards, sidebars). |
+| `--surface-1` | `#141A1F` | Default elevated surface (cards, sidebars). Lifted from `#11161A` on Jul 07, 2026 — see Decisions log. |
 | `--surface-2` | `#181E22` | Inputs, mockup chrome, elevated cards. |
 | `--surface-3` | `#1F262C` | Hover state, more-elevated layer. |
-| `--border` | `#23292E` | Default borders. |
+| `--border` | `#2B333A` | Default borders. Lifted from `#23292E` on Jul 07, 2026 — see Decisions log. |
 | `--border-strong` | `#2E373E` | Active/focused borders, button outlines. |
 | `--text` | `#E6EAEC` | Default text. Off-white, never pure `#FFF`. |
 | `--text-muted` | `#8B9398` | Secondary text, captions. |
@@ -124,6 +124,8 @@ Dark is the **primary** brand surface. All hero shots, marketing screenshots, do
 | `--pulse-glow` | `rgba(94, 234, 212, 0.35)` | The expanding ring color in the wake-pulse keyframe. |
 
 **Forbidden uses of `--pulse`:** decorative borders, large background fills, gradient stops, hover states on non-live elements, illustrations.
+
+**Sanctioned non-pulse exception — the account avatar:** the dashboard's account-avatar fallback (Clerk `UserButton`, no uploaded photo) is the one place a non-`--pulse` decorative gradient is allowed: a deterministic two-colour `repeating-conic-gradient` pinwheel, hashed from the signed-in user's id (hue, second hue, and start angle all derived from the hash), so each account reads as visually distinct. Two colours only (within the "no three-or-more-stop gradients" rule below); never `--pulse` as one of them. Added Jul 07, 2026 — see Decisions log.
 
 ### Status (use sparingly)
 
@@ -285,7 +287,8 @@ into the anti-vibes traps the rest of this doc forbids.
 - **Sidebars:** surface-2 background. Mono nav items, 12px. Active item gets surface-3 fill, not a colored bar.
 - **Tabs:** one visual — an underline. Inactive triggers read `--text-muted` on a thin `--border` rail; the active trigger lights its 2px bottom-border to `--pulse` (a sanctioned "active" use of the currency) and its label to `--text`. No pill tray, no `bg-background` active fill, no shadow. The in-page Radix tabs and the route-style tab-nav share one style module (`design-system/tab-styles.ts`).
 - **Page header:** the page title sits on its own line; a one-line **description renders directly below it** (muted, body-sm), never beside it. An optional primary action pins top-right — the title + description form a left column, the action aligns to its top. One `PageHeader` primitive carries both the bare and the with-description/action shapes.
-- **Balance meter:** a thin (8px) full-width track (`--surface-3`) with a `--pulse-dim → --pulse` gradient fill whose width is the consumed fraction; the fill animates `0 → value` on load (`meter-fill`, reduced-motion-gated). A usage bar, not a gauge — the caption (spent · events) rides its end; the header CTA sits in the row above so nothing is stranded. App-surface element (`app-meter` in `globals.css`), not a marketing primitive.
+- **Usage bars:** a thin (8px) full-width track (`--surface-3`/`bg-accent`) with a `--pulse-dim → --pulse` gradient fill whose width is the consumed fraction; the fill animates `0 → value` on load (`meter-fill`, reduced-motion-gated). A usage bar, not a gauge — an optional label + tabular-nums percentage row sits above, an optional caption below. `UsageBar` (`design-system/UsageBar.tsx`), not a marketing primitive; `globals.css` owns only the animation keyframe. First consumer: Billing's balance card (unlabeled — the dollar headline above it already states the value).
+- **Option cards:** a bordered choice card (icon slot + label + optional one-line description), `data-state="checked"` gets a `--primary`/`--border-strong` ring — the picker idiom for a small (2-5) set of mutually-exclusive choices where a plain dropdown hides the tradeoff. Built on the existing `RadioGroup`/`RadioGroupItem` Radix primitive (`OptionCard`, `design-system/OptionCard.tsx`), not a second radio implementation. First consumer: `AddRunnerDialog`'s isolation-mode field, replacing a `Select` dropdown.
 
 ---
 
@@ -345,6 +348,9 @@ Each workstream is its own spec. Use `kishore-spec-new` to create them once you'
 | 2026-06-24 | Install is minimal and state-driven — no review page | M98 §9. The Dashboard previews template cards; the Fleets empty-state offers one Install fleet action; `/fleets/new` owns the full source picker (template grid · `owner/repo` · paste-SKILL.md). One click proceeds **inline** through terminal-native install states (importing → connect-to-continue → creating → done; errors retry) — the `BundlePreview` review page is removed. Create **auto-proceeds** (no confirm beat). Live status reuses the existing Server-Sent Events (SSE) fleet-event stream (no polling); an installing fleet always shows its state; "Open fleet" lands in the full-height steer/chat. |
 | 2026-06-23 | Page header: description renders below the title | M98 §1.2. `PageHeader` gained a `description` slot (muted body-sm, stacked under the title) + an optional top-right `actions` slot; the bare flex-row shape stays back-compatible. Fixes the description-beside-title drift (the app was rendering the page description as a right-aligned sibling). |
 | 2026-06-23 | Light-mode primary CTA = solid ink (not mint) | M98 §1.4. Added a `--cta` token isolated from `--pulse`: dark = the pulse, light = solid ink (`--ink` `#17211F`, white text). Keeps mint as currency (accents/links/active/glow) while the light-mode primary button reads as confident ink. `Button` default variant consumes `--cta`/`--cta-foreground`. |
+| 2026-07-07 | Lift dark-mode `--border`/`--surface-1` one step brighter | M119 §1. Resting-state cards/tables only read as defined on hover (`--border` sat ~4% luminance above `--surface-1`), benchmarked against a PlanetScale dashboard reference. Dark `--border` `#23292E → #2B333A`, `--surface-1` `#11161A → #141A1F`. Value-only; every existing `border-border`/`bg-card` consumer inherits it. Light mode untouched (vestigial — `ThemeToggle.tsx` forces dark). |
+| 2026-07-07 | Formalize `UsageBar` and `OptionCard` as shared primitives | M119 §2, §4. `UsageBar` extracts the bespoke `.app-meter` markup (previously hand-rolled once, in `BillingBalanceCard`) into a reusable component — see "Usage bars" above. `OptionCard` builds the M98 §3-4 "option-card" idiom (until now ad-hoc prose, never extracted into code) on top of the existing, previously-zero-consumer `RadioGroup` primitive — see "Option cards" above. First consumer: `AddRunnerDialog`'s isolation-mode field. |
+| 2026-07-07 | Sanction one non-`--pulse` decorative pattern: the account avatar | M119 §5. The dashboard account avatar (Clerk `UserButton` fallback) rendered every user against the same flat `--surface-2`. Added a deterministic, per-user `repeating-conic-gradient` pinwheel (hue, second hue, and start angle all hashed from the user id) so accounts read as visually distinct — a pattern reads closer to "distinct identity" than a smooth blend, approximating GitHub/Linear-style per-account avatar colour without a pixel-grid identicon (Clerk's `appearance.elements` styling hook accepts CSS values only, not custom child markup — a true identicon is a follow-up, not this patch). Never `--pulse`; two colours only, within the "no three-or-more-stop gradients" rule. |
 
 ---
 
