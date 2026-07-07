@@ -13,11 +13,11 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Milestone:** M120
 **Workstream:** 001
 **Date:** Jul 07, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — a tenant-facing dead-end error and a no-delete stale-key gap were reported directly against the shipping page.
 **Categories:** API, UI
 **Batch:** B1 — independent of M120_002 (icon sweep); different file trees.
-**Branch:** feat/m120-models-page-four-row-redesign
+**Branch:** feat/m121-models-registry (authored as feat/m120-models-page-four-row-redesign; renamed when M121_001 folded into the same PR)
 **Test Baseline:** unit=2377 integration=255
 **Depends on:** none (M100_001, M113_001 are DONE prior art, not blocking)
 **Provenance:** human-directed, LLM-drafted (Sonnet 5, Jul 07, 2026) — reconciled from a live bug-report + code-archaeology session with Indy (6 reported "funky" behaviors, root-caused against the running code) plus a follow-up Q&A locking the target row design.
@@ -181,18 +181,20 @@ Regression: existing `provider-switch-list.test.tsx`/`active-model-hero.test.tsx
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | Page always renders exactly 4 rows (§2) | `make test-unit-app` | Dimension 2.1 passes | P0 | |
-| R2 | Default row is read-only (§2) | `make test-unit-app` | Dimension 2.3 passes | P0 | |
-| R3 | Other-provider picker surfaces all stored secrets (§3) | `make test-unit-app` | Dimension 3.2 passes | P1 | |
-| R4 | Switch never dead-ends on an unconfigured platform default (§4) | `make test-integration` | Dimensions 4.1–4.2 pass | P0 | |
-| R5 | Stale/non-active keys are deletable; the active one is not (§5) | `make test-unit-app` | Dimensions 5.1–5.2 pass | P0 | |
-| R6 | Static list backs autocomplete before free text (§6) | `make test-unit-app` | Dimensions 6.1–6.2 pass | P1 | |
-| S1 | Unit tests pass | `make test` | exit 0 | P0 | |
-| S2 | Lint clean | `make lint` | exit 0 | P0 | |
-| S3 | Integration passes (handler touched) | `make test-integration` | exit 0 | P0 | |
-| S6 | Cross-compile (Zig touched) | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` | exit 0 | P0 | |
-| S7 | No secrets | `gitleaks detect` | exit 0 | P0 | |
-| S8 | No oversize source file | `git diff --name-only origin/main \| grep -v '\.md$' \| xargs wc -l 2>/dev/null \| awk '$1>350 && $2!="total"'` | no output | P0 | |
+| R1 | Page always renders exactly 4 rows (§2) | `make test-unit-app` | Dimension 2.1 passes | P0 | ✅ `Tests 1218 passed (1218)` |
+| R2 | Default row is read-only (§2) | `make test-unit-app` | Dimension 2.3 passes | P0 | ✅ same run — never-renders-Edit test green |
+| R3 | Other-provider picker surfaces all stored secrets (§3) | `make test-unit-app` | Dimension 3.2 passes | P1 | ✅ same run — picker + no-silent-delete assertions green |
+| R4 | Switch never dead-ends on an unconfigured platform default (§4) | `make test-integration` | Dimensions 4.1–4.2 pass | P0 | ✅ `All integration tests passed` (incl. self_managed-mode case added by audit) |
+| R5 | Stale/non-active keys are deletable; the active one is not (§5) | `make test-unit-app` | Dimensions 5.1–5.2 pass | P0 | ✅ same run — delete + guard tests green |
+| R6 | Static list backs autocomplete before free text (§6) | `make test-unit-app` | Dimensions 6.1–6.2 pass | P1 | ✅ `provider-model-select` fallback + regression green |
+| S1 | Unit tests pass | `make test` | exit 0 | P0 | ✅ via lanes: agentsfleetd `1503 passed, 479 skipped, 0 failed` · app 1218 · design-system 455 (no bare `make test` target) |
+| S2 | Lint clean | `make lint` | exit 0 | P0 | ✅ via `make lint-zig` + `make lint-apps-ds-ctl` — all green (no bare `make lint` target) |
+| S3 | Integration passes (handler touched) | `make test-integration` | exit 0 | P0 | ✅ `All integration tests passed` |
+| S6 | Cross-compile (Zig touched) | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` | exit 0 | P0 | ✅ both targets exit 0 |
+| S7 | No secrets | `gitleaks detect` | exit 0 | P0 | ✅ `3257 commits scanned … no leaks found` |
+| S8 | No oversize source file | `git diff --name-only origin/main \| grep -v '\.md$' \| xargs wc -l 2>/dev/null \| awk '$1>350 && $2!="total"'` | no output | P0 | ✅ no output after ProviderSwitchList split (440→138/296/133) |
+
+**Test Delta:** unit 2377→2379 (+2) · integration 255→257 (+2) vs CHORE(open) baseline. Lacking: none — additive read-path field + new integration lane. (`make memleak` also ran green: allocator gate 0 failed.)
 
 **Grading protocol (VERIFY):** run the Verify command verbatim; grade ONLY from its output. **Ship gate:** every row graded, every P0 ✅ → eligible for CHORE(close); any ❌ or empty cell → return to EXECUTE.
 
@@ -237,5 +239,7 @@ No files deleted otherwise — `known-models.ts` is new, everything else is edit
 
 - **Consults** — §1 design-shotgun: the `design` binary's image generation needs a real OpenAI platform API key (`sk-...`, image-gen scoped) — none configured on this machine, and a ChatGPT/Codex subscription is a different product surface and cannot substitute (confirmed with Indy). Fell back to hand-built HTML wireframes (3 variants: A "status accent-bar", B "zoned by editability", C "minimal text-forward") using the app's real theme tokens, published as an artifact for review instead of the image-gen comparison board. **Indy's pick (2026-07-07): Variant C** ("minimal text-forward" — no color-block treatments, rows differ by icon/weight, LIVE as small inline mint text, compact icon cluster for actions) **with variant A's lock glyph added to the Default row** (C's original mockup omitted it) — Indy: "Variant C - and the Default must have the lock so the end user cant edit the default" and confirmed "So pretty much for everyone the Default is no editable" (matches Invariant 1 as already written; platform admins edit the default exclusively via the separate Model Library page, per existing `SCOPE.MODEL_ADMIN` gate on `/admin/models`, M100 — no change needed there).
 - **Metrics review** — no analytics/funnel playbook update required (no new event; see Metrics & Observability).
-- **Skill-chain outcomes** — empty at creation.
-- **Deferrals** — empty at creation.
+- **Skill-chain outcomes** — `/write-unit-test` (Jul 07, 2026): required-test ledger 13/13 resolved; three genuine gaps found and fixed in-branch (Dimension 4.1's integration tests both exercised the implicit platform default — a real self_managed-mode case was added; missing icon stubs in the vitest mocks; Dimension 3.2's assertion strengthened to prove no delete rides a switch). `/review` + `kishore-babysit-prs`: run at M121_001's CHORE(close) — one PR covers both workstreams (see Deferrals).
+- **Post-VERIFY design iterations (Jul 07, 2026)** — Indy live-reviewed the running page: destructive-red delete, icon-bearing Switch, fragment fix for row dividers, Change model/Replace key collapsed into one pencil→`ProviderEditPanel`, copy trims ("Add key", "OpenAI-compatible", "No default is configured."), Active badge in Badge green-outline at row end. All committed on this branch with tests green.
+- **Pivot record** — exercising the shipped page against Indy's real model list (3 Anthropic models, GLM 5.2 on two hosts, keyless Ollama, …) showed the 4-slot data model cannot represent the many-model case (first-Anthropic-key-wins; one bucket row for 7 providers). Indy: "I will go with C" (round-3 shotgun, ops-table) and "drive the registry version to done here, per Indys fold-in call. So keep driving and the real reason we started on this milestone is to perfect the M120_001, feel free to move M120_001 done and create a new spec for M121_004 and ensure its fixed in this PR." → M121_001 supersedes this spec's presentation layer in the same PR; this spec's API field, guards, and autocomplete tiers carry forward.
+- **Deferrals** — > Indy (2026-07-07): "feel free to move M120_001 done and create a new spec for M121_004 and ensure its fixed in this PR. feel free to rename the branch of the PR and update the description of the PR when you push." — context: the changelog `<Update>`, `/review`, `kishore-babysit-prs`, and PR opening for this workstream execute once, at M121_001's CHORE(close), because the M120_001 presentation never ships as a user-visible state on its own.
