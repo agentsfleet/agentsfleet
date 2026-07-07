@@ -22,7 +22,7 @@ export function formatContext(tokens: number | undefined): string {
 }
 
 export function LiveBadge() {
-  return <Badge variant="live">Active</Badge>;
+  return <Badge variant="green">Active</Badge>;
 }
 
 // Shared plumbing every non-Default row needs to open its own inline panel
