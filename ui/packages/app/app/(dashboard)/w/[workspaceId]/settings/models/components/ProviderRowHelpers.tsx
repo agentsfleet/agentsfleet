@@ -1,17 +1,15 @@
 import { Button } from "@agentsfleet/design-system";
-import { Trash2Icon } from "lucide-react";
+import { ArrowLeftRightIcon, PencilIcon, Trash2Icon } from "lucide-react";
 import type { ProviderKeySecret } from "@/lib/api/secrets";
-import HeroChangeModelPanel from "./HeroChangeModelPanel";
-import HeroReplaceKeyPanel from "./HeroReplaceKeyPanel";
+import ProviderEditPanel from "./ProviderEditPanel";
 
 export const ANTHROPIC_PROVIDER = "anthropic";
-export const ADD_KEY_AND_MODEL_LABEL = "Add key & model";
+export const ADD_KEY_AND_MODEL_LABEL = "Add key";
 export const DEFAULT_LABEL = "Default";
-export const CUSTOM_LABEL = "Custom — OpenAI-compatible";
-export const DEFAULT_DESCRIPTION = "Add your own key to run on a different provider.";
-export const PLATFORM_UNAVAILABLE_NOTE = "No platform default is configured on this deployment yet.";
+export const CUSTOM_LABEL = "OpenAI-compatible";
+export const PLATFORM_UNAVAILABLE_NOTE = "No default is configured.";
 
-export const PANEL = { addKey: "addKey", changeModel: "changeModel", replaceKey: "replaceKey" } as const;
+export const PANEL = { addKey: "addKey", edit: "edit" } as const;
 export type PanelKind = (typeof PANEL)[keyof typeof PANEL];
 export type OpenRow = "anthropic" | "other" | "custom" | null;
 
@@ -48,7 +46,15 @@ export type RowControls = {
 
 export function switchButton(pending: boolean, onClick: () => void, disabled?: boolean, title?: string) {
   return (
-    <Button type="button" size="sm" disabled={pending || disabled} onClick={onClick} title={title}>
+    <Button
+      type="button"
+      size="sm"
+      disabled={pending || disabled}
+      onClick={onClick}
+      title={title}
+      className="gap-1.5"
+    >
+      <ArrowLeftRightIcon size={14} />
       Switch
     </Button>
   );
@@ -63,7 +69,7 @@ export function deleteButton(
   return (
     <Button
       type="button"
-      variant="ghost"
+      variant="destructive"
       size="sm"
       disabled={pending || disabled}
       onClick={() => onDelete(name)}
@@ -76,7 +82,16 @@ export function deleteButton(
 
 export function addButton(pending: boolean, expanded: boolean, label: string, onClick: () => void) {
   return (
-    <Button type="button" size="sm" variant="outline" disabled={pending} aria-expanded={expanded} onClick={onClick}>
+    <Button
+      type="button"
+      size="sm"
+      variant="outline"
+      disabled={pending}
+      aria-expanded={expanded}
+      onClick={onClick}
+      className="gap-1.5"
+    >
+      <PencilIcon size={14} />
       {label}
     </Button>
   );
@@ -84,24 +99,16 @@ export function addButton(pending: boolean, expanded: boolean, label: string, on
 
 export function editButtons(row: "anthropic" | "other", secret: ProviderKeySecret, controls: RowControls) {
   return (
-    <div className="flex flex-wrap items-center gap-md">
+    <div className="flex items-center gap-1">
       <Button
         type="button"
         variant="outline"
         size="sm"
-        aria-expanded={controls.openRow === row && controls.openPanel === PANEL.changeModel}
-        onClick={() => controls.toggle(row, PANEL.changeModel)}
+        aria-label="Edit"
+        aria-expanded={controls.openRow === row && controls.openPanel === PANEL.edit}
+        onClick={() => controls.toggle(row, PANEL.edit)}
       >
-        Change model
-      </Button>
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        aria-expanded={controls.openRow === row && controls.openPanel === PANEL.replaceKey}
-        onClick={() => controls.toggle(row, PANEL.replaceKey)}
-      >
-        Replace key
+        <PencilIcon size={14} />
       </Button>
       {deleteButton(controls.pending, controls.onDelete, secret.name, true)}
     </div>
@@ -114,20 +121,14 @@ export function editPanel(
   model: string,
   controls: RowControls,
 ) {
-  if (controls.openRow !== row) return null;
-  if (controls.openPanel === PANEL.changeModel) {
-    return <HeroChangeModelPanel provider={secret.provider} secretRef={secret.name} onClose={controls.close} />;
-  }
-  if (controls.openPanel === PANEL.replaceKey) {
-    return (
-      <HeroReplaceKeyPanel
-        workspaceId={controls.workspaceId}
-        secretRef={secret.name}
-        provider={secret.provider}
-        currentModel={model}
-        onClose={controls.close}
-      />
-    );
-  }
-  return null;
+  if (controls.openRow !== row || controls.openPanel !== PANEL.edit) return null;
+  return (
+    <ProviderEditPanel
+      workspaceId={controls.workspaceId}
+      provider={secret.provider}
+      secretRef={secret.name}
+      currentModel={model}
+      onClose={controls.close}
+    />
+  );
 }

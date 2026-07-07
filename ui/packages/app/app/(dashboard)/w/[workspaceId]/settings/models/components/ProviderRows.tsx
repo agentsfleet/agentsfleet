@@ -1,7 +1,7 @@
 "use client";
 
 import { Button, DashboardRow, MetaGrid } from "@agentsfleet/design-system";
-import { CpuIcon, LinkIcon, LockIcon, ServerIcon } from "lucide-react";
+import { CpuIcon, LinkIcon, LockIcon, PlusIcon, ServerIcon } from "lucide-react";
 import type { CustomEndpointSecret, ProviderKeySecret } from "@/lib/api/secrets";
 import { providerLabel } from "@/lib/api/model_caps";
 import ProviderKeyForm from "./ProviderKeyForm";
@@ -10,7 +10,6 @@ import {
   ADD_KEY_AND_MODEL_LABEL,
   ANTHROPIC_PROVIDER,
   CUSTOM_LABEL,
-  DEFAULT_DESCRIPTION,
   DEFAULT_LABEL,
   LiveBadge,
   PANEL,
@@ -47,7 +46,6 @@ export function DefaultRow({
           {!live ? <LiveBadge /> : null}
         </span>
       }
-      description={DEFAULT_DESCRIPTION}
       action={
         !live
           ? null
@@ -79,7 +77,7 @@ export function AnthropicRow({
   controls: RowControls;
 }) {
   return (
-    <div>
+    <>
       <DashboardRow
         data-testid="row-anthropic"
         icon={<CpuIcon size={15} />}
@@ -89,7 +87,7 @@ export function AnthropicRow({
             {isAnthropicActive ? <LiveBadge /> : null}
           </span>
         }
-        description={anthropicSecret ? `Key saved · ${anthropicSecret.model ?? "model not set"}` : "Not configured"}
+        description={anthropicSecret ? (anthropicSecret.model ?? "model not set") : "Not configured"}
         action={
           isAnthropicActive
             ? null
@@ -135,7 +133,7 @@ export function AnthropicRow({
         </div>
       ) : null}
       {isAnthropicActive && anthropicSecret ? editPanel("anthropic", anthropicSecret, model, controls) : null}
-    </div>
+    </>
   );
 }
 
@@ -157,7 +155,7 @@ export function OtherProviderRow({
 }) {
   const otherTitle = otherDisplay ? `Other provider — ${providerLabel(otherDisplay.provider)}` : "Other provider";
   return (
-    <div>
+    <>
       <DashboardRow
         data-testid="row-other"
         icon={<CpuIcon size={15} />}
@@ -169,7 +167,7 @@ export function OtherProviderRow({
         }
         description={
           otherDisplay
-            ? `Key saved · ${otherDisplay.model ?? "model not set"}`
+            ? (otherDisplay.model ?? "model not set")
             : "Paste a key — we'll detect common providers, or pick one"
         }
         action={
@@ -212,8 +210,10 @@ export function OtherProviderRow({
                 disabled={controls.pending}
                 aria-expanded={controls.openRow === "other" && controls.openPanel === PANEL.addKey}
                 onClick={() => controls.toggle("other", PANEL.addKey)}
+                className="gap-1.5"
               >
-                + Add another
+                <PlusIcon size={14} />
+                Add another
               </Button>
             ) : null}
             {/* Dimension 3.2 — every other stored non-Anthropic key stays reachable,
@@ -243,7 +243,7 @@ export function OtherProviderRow({
         </div>
       ) : null}
       {activeOther ? editPanel("other", activeOther, model, controls) : null}
-    </div>
+    </>
   );
 }
 
@@ -258,7 +258,7 @@ export function CustomRow({
   controls: RowControls;
 }) {
   return (
-    <div>
+    <>
       <DashboardRow
         data-testid="row-custom"
         icon={<LinkIcon size={15} />}
@@ -281,7 +281,7 @@ export function CustomRow({
               : addButton(
                   controls.pending,
                   controls.openRow === "custom" && controls.openPanel === PANEL.addKey,
-                  "Add endpoint",
+                  ADD_KEY_AND_MODEL_LABEL,
                   () => controls.toggle("custom", PANEL.addKey),
                 )
         }
@@ -291,6 +291,6 @@ export function CustomRow({
           <CustomEndpointForm workspaceId={controls.workspaceId} activate onDone={controls.close} onCancel={controls.close} />
         </div>
       ) : null}
-    </div>
+    </>
   );
 }
