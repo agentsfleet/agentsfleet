@@ -170,6 +170,7 @@ export default function AddRunnerDialog({ onCreated }: { onCreated: () => void }
                           value={field.value}
                           onValueChange={field.onChange}
                           aria-labelledby={isolationModeLabelId}
+                          className="sm:grid-cols-2"
                         >
                           {SANDBOX_TIERS.map((t) => (
                             <OptionCard
