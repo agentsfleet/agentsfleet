@@ -18,7 +18,11 @@ export function DashboardRowGroup({
   );
 }
 
-export type DashboardRowProps = ComponentProps<"div"> & {
+// Omit the native `title` (tooltip) attribute before intersecting — otherwise
+// TypeScript merges it with the custom `title: ReactNode` prop below into an
+// unusable `string & ReactNode` type that only accepts a plain string,
+// rejecting any JSX title (e.g. a label + status badge composed together).
+export type DashboardRowProps = Omit<ComponentProps<"div">, "title"> & {
   icon?: ReactNode;
   title: ReactNode;
   description?: ReactNode;
