@@ -5,7 +5,7 @@ import { SECRET_KIND, type Secret } from "@/lib/api/secrets";
 import { PROVIDER_MODE, type TenantProvider } from "@/lib/types";
 
 // The Models "Providers" list: exactly 4 fixed rows (Default, Anthropic,
-// Other provider, Custom — OpenAI-compatible). The LIVE badge renders on
+// Other provider, Custom — OpenAI-compatible). The Active badge renders on
 // whichever row is active — there is no separate hero card. Default never
 // exposes an edit action (locked; edited only via the admin Model Library).
 // Anthropic/Other-provider rows support add/switch/change-model/replace-key/
@@ -160,17 +160,17 @@ describe("ProviderSwitchList — exactly 4 fixed rows", () => {
 describe("ProviderSwitchList — LIVE lives on the active row, no separate hero", () => {
   it("shows LIVE on Anthropic's row when it's active, and on Default when platform mode", () => {
     renderList(providerOf(), [ANTHROPIC_SECRET]);
-    expect(row("row-anthropic").getByText("Live")).toBeTruthy();
+    expect(row("row-anthropic").getByText("Active")).toBeTruthy();
     expect(screen.queryByTestId("active-model-hero")).toBeNull();
 
     cleanup();
     renderList({ ...providerOf(), mode: PROVIDER_MODE.platform }, []);
-    expect(rowOf("Default").getByText("Live")).toBeTruthy();
+    expect(rowOf("Default").getByText("Active")).toBeTruthy();
   });
 
   it("shows LIVE on the Other-provider row when a non-Anthropic secret is active", () => {
     renderList(providerOf({ provider: "openai", secret_ref: "openai-key", model: "gpt-4" }), [OPENAI_SECRET]);
-    expect(row("row-other").getByText("Live")).toBeTruthy();
+    expect(row("row-other").getByText("Active")).toBeTruthy();
   });
 });
 

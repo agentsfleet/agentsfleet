@@ -1,5 +1,5 @@
-import { Button } from "@agentsfleet/design-system";
-import { ArrowLeftRightIcon, PencilIcon, Trash2Icon } from "lucide-react";
+import { Badge, Button } from "@agentsfleet/design-system";
+import { ArrowLeftRightIcon, PencilIcon, PlusIcon, Trash2Icon } from "lucide-react";
 import type { ProviderKeySecret } from "@/lib/api/secrets";
 import ProviderEditPanel from "./ProviderEditPanel";
 
@@ -22,12 +22,7 @@ export function formatContext(tokens: number | undefined): string {
 }
 
 export function LiveBadge() {
-  return (
-    <span className="inline-flex items-center gap-1 text-xs font-semibold text-pulse">
-      <span className="h-1.5 w-1.5 rounded-full bg-pulse" aria-hidden="true" />
-      Live
-    </span>
-  );
+  return <Badge variant="live">Active</Badge>;
 }
 
 // Shared plumbing every non-Default row needs to open its own inline panel
@@ -91,7 +86,7 @@ export function addButton(pending: boolean, expanded: boolean, label: string, on
       onClick={onClick}
       className="gap-1.5"
     >
-      <PencilIcon size={14} />
+      <PlusIcon size={14} />
       {label}
     </Button>
   );
