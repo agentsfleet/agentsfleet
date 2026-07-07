@@ -13,12 +13,12 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Milestone:** M120
 **Workstream:** 001
 **Date:** Jul 07, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — a tenant-facing dead-end error and a no-delete stale-key gap were reported directly against the shipping page.
 **Categories:** API, UI
 **Batch:** B1 — independent of M120_002 (icon sweep); different file trees.
-**Branch:** {added at CHORE(open)}
-**Test Baseline:** {set at CHORE(open) via `make _lint_zig_test_depth`}
+**Branch:** feat/m120-models-page-four-row-redesign
+**Test Baseline:** unit=2377 integration=255
 **Depends on:** none (M100_001, M113_001 are DONE prior art, not blocking)
 **Provenance:** human-directed, LLM-drafted (Sonnet 5, Jul 07, 2026) — reconciled from a live bug-report + code-archaeology session with Indy (6 reported "funky" behaviors, root-caused against the running code) plus a follow-up Q&A locking the target row design.
 
