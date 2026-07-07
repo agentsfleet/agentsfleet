@@ -86,6 +86,13 @@ describe("BillingUsageTab (test_billing_usage_ledger_and_empty)", () => {
     expect(container.textContent).toContain(PROVIDER_MODE.self_managed);
   });
 
+  it("wires DataTable's stickyHeader on the usage ledger (its real consumer)", () => {
+    render(React.createElement(BillingUsageTab, { initialCharges: [charge()], initialCursor: null }));
+    const region = screen.getByRole("region", { name: /usage history, scrollable/i });
+    expect(region.querySelector("table")).toBeTruthy();
+    expect(region.getAttribute("tabindex")).toBe("0");
+  });
+
   it("hides Load more when there is no cursor", () => {
     render(React.createElement(BillingUsageTab, { initialCharges: [charge()], initialCursor: null }));
     expect(screen.queryByTestId("usage-load-more")).toBeNull();
