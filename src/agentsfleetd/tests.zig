@@ -69,6 +69,7 @@ test {
     _ = @import("http/stream_registry.zig");
     _ = @import("http/fleet_runner_events_integration_test.zig");
     _ = @import("http/runner_enrollment_integration_test.zig");
+    _ = @import("http/tenant_provider_platform_default_available_integration_test.zig");
     _ = @import("hmac_sig");
     _ = @import("crypto/hmac_sig_test.zig");
     _ = @import("fleet_runtime/webhook_verify.zig");

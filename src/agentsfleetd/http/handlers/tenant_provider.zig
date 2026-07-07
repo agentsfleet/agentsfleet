@@ -62,7 +62,7 @@ pub fn innerGetTenantProvider(hx: Hx, req: *httpz.Request) void {
     };
     defer hx.ctx.pool.release(conn);
 
-    const view = readProviderView(hx.alloc, conn, tenant_id) catch |err| {
+    const view = readProviderView(hx.alloc, conn, tenant_id, platformDefaultAvailable(hx)) catch |err| {
         log.err("get_failed", .{ .error_code = ec.ERR_INTERNAL_DB_UNAVAILABLE, .tenant_id = tenant_id, .err = @errorName(err) });
         common.internalDbUnavailable(hx.res, hx.req_id);
         return;
@@ -148,7 +148,7 @@ fn applyPlatform(hx: Hx, conn: *pg.Conn, tenant_id: []const u8) void {
         },
     };
 
-    const view = readProviderView(hx.alloc, conn, tenant_id) catch {
+    const view = readProviderView(hx.alloc, conn, tenant_id, platformDefaultAvailable(hx)) catch {
         common.internalDbUnavailable(hx.res, hx.req_id);
         return;
     };
@@ -201,7 +201,7 @@ fn applySelfManaged(hx: Hx, conn: *pg.Conn, tenant_id: []const u8, input: PutInp
         return;
     };
 
-    const view = readProviderView(hx.alloc, conn, tenant_id) catch {
+    const view = readProviderView(hx.alloc, conn, tenant_id, platformDefaultAvailable(hx)) catch {
         common.internalDbUnavailable(hx.res, hx.req_id);
         return;
     };
@@ -231,9 +231,33 @@ const ProviderView = struct {
     model: []const u8,
     context_cap_tokens: u32,
     secret_ref: ?[]const u8,
+    /// Whether an active core.platform_llm_keys row exists — independent of
+    /// this tenant's own current mode, so the Models page can gate its own
+    /// "Switch to Default" action before the click, not after a failed PUT.
+    platform_default_available: bool,
 };
 
-fn readProviderView(alloc: std.mem.Allocator, conn: *pg.Conn, tenant_id: []const u8) !ProviderView {
+/// A second connection acquire avoids nesting a query inside
+/// readProviderView's still-open core.tenant_providers result set — the
+/// pg.zig simple-protocol connection can't safely start a new query until
+/// that one is fully drained. Cheap and low-risk on this low-QPS read path.
+fn platformDefaultAvailable(hx: Hx) bool {
+    const conn = hx.ctx.pool.acquire() catch return false;
+    defer hx.ctx.pool.release(conn);
+    var view = tenant_provider.platformDefaultView(hx.alloc, conn) catch return false;
+    if (view) |*v| {
+        v.deinit(hx.alloc);
+        return true;
+    }
+    return false;
+}
+
+fn readProviderView(
+    alloc: std.mem.Allocator,
+    conn: *pg.Conn,
+    tenant_id: []const u8,
+    platform_default_available: bool,
+) !ProviderView {
     var q = PgQuery.from(try conn.query(
         \\SELECT mode, provider, model, context_cap_tokens, secret_ref
         \\FROM core.tenant_providers
@@ -256,6 +280,7 @@ fn readProviderView(alloc: std.mem.Allocator, conn: *pg.Conn, tenant_id: []const
             .model = model,
             .context_cap_tokens = @intCast(@max(cap_i32, 0)),
             .secret_ref = cred_ref,
+            .platform_default_available = platform_default_available,
         };
     }
     // No explicit row → the tenant runs on the live platform default. Source it
@@ -273,6 +298,7 @@ fn readProviderView(alloc: std.mem.Allocator, conn: *pg.Conn, tenant_id: []const
             .model = view.model,
             .context_cap_tokens = view.context_cap_tokens,
             .secret_ref = null,
+            .platform_default_available = platform_default_available,
         };
     }
 
@@ -288,6 +314,7 @@ fn readProviderView(alloc: std.mem.Allocator, conn: *pg.Conn, tenant_id: []const
         .model = model,
         .context_cap_tokens = 0,
         .secret_ref = null,
+        .platform_default_available = platform_default_available,
     };
 }
 

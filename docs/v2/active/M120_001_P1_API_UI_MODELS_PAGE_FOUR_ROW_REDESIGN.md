@@ -88,7 +88,7 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 
 Before the row-list component is rebuilt, run `/design-shotgun` scoped to this page: generate multiple visual variants for the Default/Anthropic/Other-provider/Custom-endpoint row layout, open the comparison board, and record Indy's picks + reconciled decisions in Discovery. The row *semantics* below (§2–§6) are fixed; the *visual* arrangement is not — this step settles it before component work starts, not from chat description alone.
 
-- **Dimension 1.1** — a design-shotgun run exists for this layout and Indy's picks are recorded in Discovery before §2 begins → Acceptance (Discovery record present, not a unit test)
+- **Dimension 1.1** — DONE — a design-shotgun run exists for this layout and Indy's picks are recorded in Discovery before §2 begins → Acceptance (Discovery record present, not a unit test)
 
 ### §2 — Row list collapses to 4 fixed rows; LIVE lives on the active row
 
@@ -109,7 +109,7 @@ Before the row-list component is rebuilt, run `/design-shotgun` scoped to this p
 
 **Implementation default:** `readProviderView` computes `platform_default_available` from `tenant_provider.platformDefaultView(alloc, conn) != null`, unconditionally — today it only surfaces provider/model when the tenant's own mode is already `platform`; this spec makes the boolean visible regardless of the tenant's current mode, so the Default row can gate its own Switch action before the click, not after a failed round-trip.
 
-- **Dimension 4.1** — `platform_default_available` reflects whether an active `platform_llm_keys` row exists, independent of the tenant's own current mode → Test `test_platform_default_available_reflects_active_row_unconditionally`
+- **Dimension 4.1** — DONE — `platform_default_available` reflects whether an active `platform_llm_keys` row exists, independent of the tenant's own current mode → Test `test_platform_default_available_reflects_active_row_unconditionally`
 - **Dimension 4.2** — when `platform_default_available` is false, the Default row's Switch action is disabled with inline copy explaining why, instead of a clickable action that errors after the round-trip → Test `test_switch_disabled_when_platform_default_unavailable`
 
 ### §5 — Delete/forget a stored key
@@ -235,7 +235,7 @@ No files deleted otherwise — `known-models.ts` is new, everything else is edit
 
 ## Discovery (consult log)
 
-- **Consults** — empty at creation.
+- **Consults** — §1 design-shotgun: the `design` binary's image generation needs a real OpenAI platform API key (`sk-...`, image-gen scoped) — none configured on this machine, and a ChatGPT/Codex subscription is a different product surface and cannot substitute (confirmed with Indy). Fell back to hand-built HTML wireframes (3 variants: A "status accent-bar", B "zoned by editability", C "minimal text-forward") using the app's real theme tokens, published as an artifact for review instead of the image-gen comparison board. **Indy's pick (2026-07-07): Variant C** ("minimal text-forward" — no color-block treatments, rows differ by icon/weight, LIVE as small inline mint text, compact icon cluster for actions) **with variant A's lock glyph added to the Default row** (C's original mockup omitted it) — Indy: "Variant C - and the Default must have the lock so the end user cant edit the default" and confirmed "So pretty much for everyone the Default is no editable" (matches Invariant 1 as already written; platform admins edit the default exclusively via the separate Model Library page, per existing `SCOPE.MODEL_ADMIN` gate on `/admin/models`, M100 — no change needed there).
 - **Metrics review** — no analytics/funnel playbook update required (no new event; see Metrics & Observability).
 - **Skill-chain outcomes** — empty at creation.
 - **Deferrals** — empty at creation.
