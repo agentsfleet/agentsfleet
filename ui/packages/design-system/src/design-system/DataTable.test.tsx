@@ -76,13 +76,54 @@ describe("DataTable", () => {
   it("applies numeric and hideOnMobile cell modifiers", () => {
     const cols: DataTableColumn<Row>[] = [
       { key: "name", header: "Name", cell: (r) => r.name, hideOnMobile: true },
-      { key: "spend", header: "Spend", numeric: true, cell: (r) => r.spend, ariaSort: "ascending" },
+      { key: "spend", header: "Spend", numeric: true, cell: (r) => r.spend },
     ];
     render(<DataTable columns={cols} rows={ROWS} rowKey={(r) => r.id} />);
     const headers = screen.getAllByRole("columnheader");
     expect(headers[0].className).toContain("hidden");
     expect(headers[1].className).toContain("text-right");
+    expect(headers[1].getAttribute("aria-sort")).toBeNull();
+  });
+
+  it("renders a sortable header's aria-sort from sortKey/sortDirection, not per-column state", () => {
+    const cols: DataTableColumn<Row>[] = [
+      { key: "name", header: "Name", cell: (r) => r.name, sortable: true },
+      { key: "spend", header: "Spend", numeric: true, cell: (r) => r.spend, sortable: true },
+    ];
+    render(
+      <DataTable
+        columns={cols}
+        rows={ROWS}
+        rowKey={(r) => r.id}
+        sortKey="spend"
+        sortDirection="ascending"
+        onSortChange={vi.fn()}
+      />,
+    );
+    const headers = screen.getAllByRole("columnheader");
+    expect(headers[0].getAttribute("aria-sort")).toBe("none");
     expect(headers[1].getAttribute("aria-sort")).toBe("ascending");
+  });
+
+  it("clicking a sortable header reports its column key via onSortChange", () => {
+    const onSortChange = vi.fn();
+    const cols: DataTableColumn<Row>[] = [
+      { key: "name", header: "Name", cell: (r) => r.name, sortable: true },
+      { key: "spend", header: "Spend", numeric: true, cell: (r) => r.spend },
+    ];
+    render(
+      <DataTable
+        columns={cols}
+        rows={ROWS}
+        rowKey={(r) => r.id}
+        sortKey="name"
+        sortDirection="ascending"
+        onSortChange={onSortChange}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /name/i }));
+    expect(onSortChange).toHaveBeenCalledWith("name");
+    expect(screen.queryByRole("button", { name: /spend/i })).toBeNull();
   });
 
   it("renders a sr-only caption when caption is supplied", () => {
