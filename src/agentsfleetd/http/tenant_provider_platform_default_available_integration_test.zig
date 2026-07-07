@@ -73,7 +73,7 @@ test "integration: platform_default_available is false with no active platform_l
     cleanupRows(conn2);
 }
 
-test "integration: platform_default_available is true when an active platform_llm_keys row exists, even while the tenant runs self-managed" {
+test "integration: platform_default_available is true when an active platform_llm_keys row exists, under the implicit platform-fallback mode" {
     const alloc = std.testing.allocator;
     const h = startHarness(alloc) catch |err| switch (err) {
         error.SkipZigTest => return error.SkipZigTest,
@@ -85,11 +85,11 @@ test "integration: platform_default_available is true when an active platform_ll
     try seedTenantWorkspace(conn);
     try fixtures_provider.seedPlatformProvider(alloc, conn, TEST_WS_ID);
     // The tenant itself is NOT on the platform default — no core.tenant_providers
-    // row is inserted here, so mode falls back to "platform" naturally; the
-    // point under test is that platform_default_available reads the platform
-    // key's existence, not the tenant's own row. (A self-managed activation
-    // would additionally require a catalogued secret — orthogonal to this
-    // Dimension, which only asserts the field's independence from `mode`.)
+    // row is inserted here, so mode falls back to "platform" naturally. This
+    // only proves platform_default_available tracks the platform key's own
+    // existence under the *implicit* mode; the sibling test below activates a
+    // genuine self_managed row to prove the field is independent of the
+    // tenant's *actual* current mode too (Dimension 4.1 / Invariant 2).
     h.releaseConn(conn);
 
     const r = try (try h.get("/v1/tenants/me/provider").bearer(TOKEN_OPERATOR)).send();
@@ -99,5 +99,57 @@ test "integration: platform_default_available is true when an active platform_ll
 
     const conn2 = try h.acquireConn();
     defer h.releaseConn(conn2);
+    cleanupRows(conn2);
+}
+
+test "integration: platform_default_available is true when an active platform_llm_keys row exists, even while the tenant is genuinely activated self_managed" {
+    fixtures_provider.setTestEncryptionKey();
+    const alloc = std.testing.allocator;
+    const h = startHarness(alloc) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+
+    const conn = try h.acquireConn();
+    try seedTenantWorkspace(conn);
+    try fixtures_provider.seedPlatformProvider(alloc, conn, TEST_WS_ID);
+    h.releaseConn(conn);
+
+    // Genuinely activate self_managed mode through the real PUT flow (not a
+    // raw INSERT) so this test proves platform_default_available's
+    // independence from the tenant's *actual* current mode — the gap the
+    // sibling test above (implicit platform-fallback only) leaves open. A
+    // custom openai-compatible secret bypasses the model_rate_cache catalogue
+    // gate (UZ-PROVIDER-004), so it activates without seeding a priced
+    // core.model_library row for the probe model.
+    const secrets_path = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/secrets", .{TEST_WS_ID});
+    defer alloc.free(secrets_path);
+    {
+        const r = try (try (try h.post(secrets_path).bearer(TOKEN_OPERATOR)).json(
+            "{\"name\":\"self-managed-probe-key\",\"data\":{\"provider\":\"openai-compatible\"," ++
+                "\"base_url\":\"https://api.openrouter.ai/v1\",\"model\":\"probe-model\"," ++
+                "\"api_key\":\"sk-probe-not-real\"}}",
+        )).send();
+        defer r.deinit();
+        try r.expectStatus(.created);
+    }
+    {
+        const r = try (try (try h.put("/v1/tenants/me/provider").bearer(TOKEN_OPERATOR))
+            .json("{\"mode\":\"self_managed\",\"secret_ref\":\"self-managed-probe-key\"}")).send();
+        defer r.deinit();
+        try r.expectStatus(.ok);
+        try std.testing.expect(r.bodyContains("\"mode\":\"self_managed\""));
+    }
+
+    const r = try (try h.get("/v1/tenants/me/provider").bearer(TOKEN_OPERATOR)).send();
+    defer r.deinit();
+    try r.expectStatus(.ok);
+    try std.testing.expect(r.bodyContains("\"mode\":\"self_managed\""));
+    try std.testing.expect(r.bodyContains("\"platform_default_available\":true"));
+
+    const conn2 = try h.acquireConn();
+    defer h.releaseConn(conn2);
+    _ = conn2.exec("DELETE FROM vault.secrets WHERE workspace_id = $1 AND key_name = $2", .{ TEST_WS_ID, "self-managed-probe-key" }) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
     cleanupRows(conn2);
 }

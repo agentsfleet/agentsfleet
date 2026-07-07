@@ -145,7 +145,16 @@ export function designSystemStub() {
 }
 
 // Lucide icon stubs used across the switch list / hero.
-const ICONS = ["CpuIcon", "LinkIcon", "ServerIcon", "LockIcon", "Trash2Icon"] as const;
+const ICONS = [
+  "CpuIcon",
+  "LinkIcon",
+  "ServerIcon",
+  "LockIcon",
+  "Trash2Icon",
+  "PlusIcon",
+  "ArrowLeftRightIcon",
+  "PencilIcon",
+] as const;
 export function lucideStub() {
   const make = (name: string) => {
     const C = (p: Record<string, unknown>) => React.createElement("svg", { ...p, "data-icon": name });

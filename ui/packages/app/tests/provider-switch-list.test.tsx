@@ -31,20 +31,12 @@ vi.mock("@/app/(dashboard)/w/[workspaceId]/settings/models/lib/track", () => ({
 }));
 vi.mock("@agentsfleet/design-system", async () => (await import("./helpers/models-component-mocks")).designSystemStub());
 vi.mock("lucide-react", async () => (await import("./helpers/models-component-mocks")).lucideStub());
-vi.mock("@/app/(dashboard)/w/[workspaceId]/settings/models/components/HeroChangeModelPanel", () => ({
+vi.mock("@/app/(dashboard)/w/[workspaceId]/settings/models/components/ProviderEditPanel", () => ({
   default: ({ onClose }: { onClose: () => void }) =>
     React.createElement(
       "div",
-      { "data-testid": "hero-change-model" },
-      React.createElement("button", { "data-testid": "change-close", onClick: onClose }, "close"),
-    ),
-}));
-vi.mock("@/app/(dashboard)/w/[workspaceId]/settings/models/components/HeroReplaceKeyPanel", () => ({
-  default: ({ onClose }: { onClose: () => void }) =>
-    React.createElement(
-      "div",
-      { "data-testid": "hero-replace-key" },
-      React.createElement("button", { "data-testid": "replace-close", onClick: onClose }, "close"),
+      { "data-testid": "provider-edit-panel" },
+      React.createElement("button", { "data-testid": "edit-close", onClick: onClose }, "close"),
     ),
 }));
 vi.mock("@/app/(dashboard)/w/[workspaceId]/settings/models/components/ProviderKeyForm", () => ({
@@ -183,22 +175,20 @@ describe("ProviderSwitchList — LIVE lives on the active row, no separate hero"
 });
 
 describe("ProviderSwitchList — Default row is always read-only", () => {
-  it("never renders Change model or Replace key on the Default row, live or not", () => {
+  it("never renders an Edit action on the Default row, live or not", () => {
     renderList({ ...providerOf(), mode: PROVIDER_MODE.platform }, []);
-    expect(rowOf("Default").queryByRole("button", { name: "Change model" })).toBeNull();
-    expect(rowOf("Default").queryByRole("button", { name: "Replace key" })).toBeNull();
+    expect(rowOf("Default").queryByRole("button", { name: "Edit" })).toBeNull();
 
     cleanup();
     renderList(providerOf(), [ANTHROPIC_SECRET]); // Default not active this time
-    expect(rowOf("Default").queryByRole("button", { name: "Change model" })).toBeNull();
-    expect(rowOf("Default").queryByRole("button", { name: "Replace key" })).toBeNull();
+    expect(rowOf("Default").queryByRole("button", { name: "Edit" })).toBeNull();
   });
 
   it("disables Switch on Default with an explanatory note when no platform default is configured", async () => {
     renderList(providerOf({ platform_default_available: false }), [ANTHROPIC_SECRET]);
     const btn = rowOf("Default").getByRole("button", { name: "Switch" });
     expect(btn.getAttribute("aria-disabled")).toBe("true");
-    expect(screen.getByText(/No platform default is configured/)).toBeTruthy();
+    expect(screen.getByText(/No default is configured/)).toBeTruthy();
     // Clicking a disabled button must not fire the action (guards in the handler).
     fireEvent.click(btn);
     await new Promise((r) => setTimeout(r, 0));
@@ -214,9 +204,9 @@ describe("ProviderSwitchList — Default row is always read-only", () => {
 });
 
 describe("ProviderSwitchList — Anthropic row", () => {
-  it("offers Add key & model when nothing is stored", () => {
+  it("offers Add key when nothing is stored", () => {
     renderList({ ...providerOf(), mode: PROVIDER_MODE.platform }, []);
-    fireEvent.click(row("row-anthropic").getByRole("button", { name: "Add key & model" }));
+    fireEvent.click(row("row-anthropic").getByRole("button", { name: "Add key" }));
     const form = screen.getByTestId("provider-key-form");
     expect(form.getAttribute("data-provider")).toBe("anthropic");
     expect(form.getAttribute("data-activate")).toBe("true");
@@ -239,18 +229,13 @@ describe("ProviderSwitchList — Anthropic row", () => {
     expect(btn.getAttribute("aria-disabled")).toBe("true");
   });
 
-  it("toggles Change model / Replace key panels for the active Anthropic secret", () => {
+  it("opens the combined edit panel for the active Anthropic secret via the pencil action", () => {
     renderList(providerOf(), [ANTHROPIC_SECRET]);
     const anthropicRow = row("row-anthropic");
-    fireEvent.click(anthropicRow.getByRole("button", { name: "Change model" }));
-    expect(screen.getByTestId("hero-change-model")).toBeTruthy();
-    fireEvent.click(screen.getByTestId("change-close"));
-    expect(screen.queryByTestId("hero-change-model")).toBeNull();
-
-    fireEvent.click(anthropicRow.getByRole("button", { name: "Replace key" }));
-    expect(screen.getByTestId("hero-replace-key")).toBeTruthy();
-    fireEvent.click(screen.getByTestId("replace-close"));
-    expect(screen.queryByTestId("hero-replace-key")).toBeNull();
+    fireEvent.click(anthropicRow.getByRole("button", { name: "Edit" }));
+    expect(screen.getByTestId("provider-edit-panel")).toBeTruthy();
+    fireEvent.click(screen.getByTestId("edit-close"));
+    expect(screen.queryByTestId("provider-edit-panel")).toBeNull();
   });
 });
 
@@ -272,7 +257,7 @@ describe("ProviderSwitchList — Other-provider row", () => {
     expect(screen.getByText("Other provider — OpenAI")).toBeTruthy();
     // The remaining one is still reachable via the picker, not hidden.
     expect(screen.getByText(/groq/i)).toBeTruthy();
-    expect(screen.getByRole("button", { name: "+ Add another" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Add another" })).toBeTruthy();
   });
 
   it("switches to a secondary stored key from the picker without losing the others", async () => {
@@ -282,6 +267,12 @@ describe("ProviderSwitchList — Other-provider row", () => {
     await waitFor(() =>
       expect(setProviderSelfManagedAction).toHaveBeenCalledWith({ secret_ref: "groq-key", model: undefined }),
     );
+    // "without losing the others" means the switch is additive, never a
+    // silent delete — assert the sibling secret stays reachable and no
+    // delete call rides along with the switch.
+    expect(deleteSecretAction).not.toHaveBeenCalled();
+    expect(screen.getByText("Other provider — OpenAI")).toBeTruthy();
+    expect(screen.getByText(/groq/i)).toBeTruthy();
   });
 
   it("cannot delete the active other-provider secret but can delete a non-active one", () => {
@@ -293,7 +284,7 @@ describe("ProviderSwitchList — Other-provider row", () => {
 
   it("add-another opens the generic (unlocked) ProviderKeyForm", () => {
     renderList({ ...providerOf(), mode: PROVIDER_MODE.platform }, [OPENAI_SECRET]);
-    fireEvent.click(screen.getByRole("button", { name: "+ Add another" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add another" }));
     expect(screen.getByTestId("provider-key-form").getAttribute("data-provider")).toBe("generic");
   });
 });
@@ -301,12 +292,12 @@ describe("ProviderSwitchList — Other-provider row", () => {
 describe("ProviderSwitchList — Custom endpoint row (unchanged behavior)", () => {
   it("switches to a stored custom endpoint and opens the add form when none exists", async () => {
     renderList({ ...providerOf(), mode: PROVIDER_MODE.platform }, [CUSTOM_ENDPOINT]);
-    fireEvent.click(rowOf("Custom — OpenAI-compatible").getByRole("button", { name: "Switch" }));
+    fireEvent.click(rowOf("OpenAI-compatible").getByRole("button", { name: "Switch" }));
     await waitFor(() => expect(setProviderSelfManagedAction).toHaveBeenCalledWith({ secret_ref: "vllm", model: "m1" }));
 
     cleanup();
     renderList({ ...providerOf(), mode: PROVIDER_MODE.platform }, []);
-    fireEvent.click(screen.getByRole("button", { name: "Add endpoint" }));
+    fireEvent.click(row("row-custom").getByRole("button", { name: "Add key" }));
     expect(screen.getByTestId("custom-endpoint-form").getAttribute("data-activate")).toBe("true");
   });
 });
