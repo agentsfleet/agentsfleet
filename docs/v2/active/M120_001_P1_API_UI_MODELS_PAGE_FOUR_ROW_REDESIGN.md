@@ -123,8 +123,8 @@ Before the row-list component is rebuilt, run `/design-shotgun` scoped to this p
 
 **Implementation default:** `known-models.ts` is a small, static, client-only `Record<provider, string[]>` of common current model names per well-known provider — explicitly not a new backend table, not priced, not yet tenant-editable. `ProviderModelSelect` checks the admin catalogue first, then this static list, then free text.
 
-- **Dimension 6.1** — a provider with zero admin-catalogued models but a static-list entry offers those names in the Model select, instead of degrading straight to free text → Test `test_model_select_falls_back_to_static_list_before_free_text`
-- **Dimension 6.2** — a provider absent from both the catalogue and the static list still degrades to free text (regression, unchanged) → Test `test_model_select_free_text_when_uncatalogued_and_unlisted`
+- **Dimension 6.1** — DONE — a provider with zero admin-catalogued models but a static-list entry offers those names in the Model select, instead of degrading straight to free text → Test `test_model_select_falls_back_to_static_list_before_free_text`
+- **Dimension 6.2** — DONE — a provider absent from both the catalogue and the static list still degrades to free text (regression, unchanged) → Test `test_model_select_free_text_when_uncatalogued_and_unlisted`
 
 ## Interfaces
 
