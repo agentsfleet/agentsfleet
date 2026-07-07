@@ -13,12 +13,12 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Milestone:** M121
 **Workstream:** 001
 **Date:** Jul 07, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — the shipped 4-slot page cannot represent a real tenant's model set (3 Anthropic models, the same model on two hosts, a keyless local endpoint); Indy hit this on the live page.
 **Categories:** API, UI
 **Batch:** B1 — folds into the M120_001 branch per Indy's fold-in call; no parallel workstream.
-**Branch:** feat/m121-models-registry — added at CHORE(open)
-**Test Baseline:** set at CHORE(open) — `unit=<N> integration=<M>` via `make _lint_zig_test_depth`
+**Branch:** feat/m121-models-registry
+**Test Baseline:** unit=2380 integration=258
 **Depends on:** M120_001 (DONE — supplies `platform_default_available`, the delete-guard shape, and the model-autocomplete tiers this spec reuses)
 **Provenance:** human-directed, LLM-drafted (Fable 5, Jul 07, 2026) — pivot decided after Indy exercised the live 4-row page with a 9-model list; visual/interaction shape settled by a 3-round design shotgun (round 3, Variant C: operations-table).
 **Canonical architecture:** `docs/architecture/billing_and_provider_keys.md` §8 (credential model, api_key visibility boundary) — this spec ADDS the tenant model registry noun; the doc gains a matching section at CHORE(close).
