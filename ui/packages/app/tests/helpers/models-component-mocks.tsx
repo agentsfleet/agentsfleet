@@ -114,6 +114,8 @@ export function designSystemStub() {
       ),
     StatusPill: ({ children, variant }: React.PropsWithChildren<{ variant?: string }>) =>
       React.createElement("span", { "data-status-pill": variant ?? "default" }, children),
+    Badge: ({ children, variant }: React.PropsWithChildren<{ variant?: string }>) =>
+      React.createElement("span", { "data-badge": variant ?? "default" }, children),
     SectionLabel: ({ children }: React.PropsWithChildren) =>
       React.createElement("h2", { "data-section-label": "1" }, children),
     DashboardRowGroup: ({ children, ...rest }: React.PropsWithChildren<Record<string, unknown>>) =>
