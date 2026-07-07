@@ -94,30 +94,30 @@ Before the row-list component is rebuilt, run `/design-shotgun` scoped to this p
 
 **Implementation default:** the 4 rows are Default, Anthropic, Other provider, Custom — OpenAI-compatible, in that order, always rendered regardless of catalogue size or how many provider-key secrets exist. Whichever row is currently active renders the LIVE pill directly on itself — no separate hero card above the list.
 
-- **Dimension 2.1** — the page always renders exactly 4 rows → Test `test_models_page_renders_exactly_four_rows`
-- **Dimension 2.2** — the LIVE pill renders on whichever row is active (Default, Anthropic, Other-provider, or Custom), never on a separate hero → Test `test_live_pill_renders_on_active_row_not_a_separate_hero`
-- **Dimension 2.3** — the Default row never renders "Change model" or "Replace key" in any state → Test `test_default_row_has_no_edit_actions`
+- **Dimension 2.1** — DONE — the page always renders exactly 4 rows → Test `test_models_page_renders_exactly_four_rows`
+- **Dimension 2.2** — DONE — the LIVE pill renders on whichever row is active (Default, Anthropic, Other-provider, or Custom), never on a separate hero → Test `test_live_pill_renders_on_active_row_not_a_separate_hero`
+- **Dimension 2.3** — DONE — the Default row never renders "Change model" or "Replace key" in any state → Test `test_default_row_has_no_edit_actions`
 
 ### §3 — Other-provider row: first-class labeling + multi-secret picker
 
 **Implementation default:** whatever non-Anthropic provider is currently active in that slot is named prominently in the row's own label/description (e.g. "Other provider — OpenAI"), not left as generic text. Expanding the row when more than one non-Anthropic provider-key secret is stored reveals a picker across all of them plus an "add another" affordance — no stored secret is silently hidden, replaced, or deleted by adding a new one.
 
-- **Dimension 3.1** — the active non-Anthropic provider's name appears in the Other-provider row's own label/description → Test `test_other_provider_row_names_active_provider`
-- **Dimension 3.2** — with more than one stored non-Anthropic provider-key secret, expanding the row shows a picker across all of them; switching activates the chosen one without deleting the others → Test `test_other_provider_row_offers_picker_across_stored_secrets`
+- **Dimension 3.1** — DONE — the active non-Anthropic provider's name appears in the Other-provider row's own label/description → Test `test_other_provider_row_names_active_provider`
+- **Dimension 3.2** — DONE — with more than one stored non-Anthropic provider-key secret, expanding the row shows a picker across all of them; switching activates the chosen one without deleting the others → Test `test_other_provider_row_offers_picker_across_stored_secrets`
 
 ### §4 — Platform-default Switch never dead-ends
 
 **Implementation default:** `readProviderView` computes `platform_default_available` from `tenant_provider.platformDefaultView(alloc, conn) != null`, unconditionally — today it only surfaces provider/model when the tenant's own mode is already `platform`; this spec makes the boolean visible regardless of the tenant's current mode, so the Default row can gate its own Switch action before the click, not after a failed round-trip.
 
 - **Dimension 4.1** — DONE — `platform_default_available` reflects whether an active `platform_llm_keys` row exists, independent of the tenant's own current mode → Test `test_platform_default_available_reflects_active_row_unconditionally`
-- **Dimension 4.2** — when `platform_default_available` is false, the Default row's Switch action is disabled with inline copy explaining why, instead of a clickable action that errors after the round-trip → Test `test_switch_disabled_when_platform_default_unavailable`
+- **Dimension 4.2** — DONE — when `platform_default_available` is false, the Default row's Switch action is disabled with inline copy explaining why, instead of a clickable action that errors after the round-trip → Test `test_switch_disabled_when_platform_default_unavailable`
 
 ### §5 — Delete/forget a stored key
 
 **Implementation default:** the Anthropic and Other-provider rows expose a delete/forget icon action (reusing the existing `deleteSecretAction`) whenever a key is stored, mirroring `SecretsList.tsx`'s icon + `ConfirmDialog` pattern exactly.
 
-- **Dimension 5.1** — a stored, non-active provider-key secret can be deleted from its Models-page row via the icon action → Test `test_stored_key_row_offers_delete_action`
-- **Dimension 5.2** — deleting the secret that is currently the tenant's active `secret_ref` is blocked (mirrors `SecretsList.tsx`'s existing `protectedFromDelete` guard) → Test `test_cannot_delete_the_active_secret`
+- **Dimension 5.1** — DONE — a stored, non-active provider-key secret can be deleted from its Models-page row via the icon action → Test `test_stored_key_row_offers_delete_action`
+- **Dimension 5.2** — DONE — deleting the secret that is currently the tenant's active `secret_ref` is blocked (mirrors `SecretsList.tsx`'s existing `protectedFromDelete` guard) → Test `test_cannot_delete_the_active_secret`
 
 ### §6 — Static known-model list for autocomplete
 
