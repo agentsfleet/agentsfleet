@@ -43,12 +43,11 @@ export function DefaultRow({
         <span className="inline-flex items-center gap-2">
           <span>{DEFAULT_LABEL}</span>
           <LockIcon size={12} className="text-muted-foreground" aria-label="Managed by a platform admin" />
-          {!live ? <LiveBadge /> : null}
         </span>
       }
       action={
         !live
-          ? null
+          ? <LiveBadge />
           : platformDefaultAvailable
             ? switchButton(pending, onSwitchPlatform)
             : switchButton(pending, onSwitchPlatform, true, PLATFORM_UNAVAILABLE_NOTE)
@@ -81,16 +80,11 @@ export function AnthropicRow({
       <DashboardRow
         data-testid="row-anthropic"
         icon={<CpuIcon size={15} />}
-        title={
-          <span className="inline-flex items-center gap-2">
-            <span>{providerLabel(ANTHROPIC_PROVIDER)}</span>
-            {isAnthropicActive ? <LiveBadge /> : null}
-          </span>
-        }
+        title={providerLabel(ANTHROPIC_PROVIDER)}
         description={anthropicSecret ? (anthropicSecret.model ?? "model not set") : "Not configured"}
         action={
           isAnthropicActive
-            ? null
+            ? <LiveBadge />
             : anthropicSecret
               ? (
                   <div className="flex items-center gap-1">
@@ -159,12 +153,7 @@ export function OtherProviderRow({
       <DashboardRow
         data-testid="row-other"
         icon={<CpuIcon size={15} />}
-        title={
-          <span className="inline-flex items-center gap-2">
-            <span>{otherTitle}</span>
-            {activeOther ? <LiveBadge /> : null}
-          </span>
-        }
+        title={otherTitle}
         description={
           otherDisplay
             ? (otherDisplay.model ?? "model not set")
@@ -172,7 +161,7 @@ export function OtherProviderRow({
         }
         action={
           activeOther
-            ? null
+            ? <LiveBadge />
             : otherDisplay
               ? (
                   <div className="flex items-center gap-1">
@@ -262,12 +251,7 @@ export function CustomRow({
       <DashboardRow
         data-testid="row-custom"
         icon={<LinkIcon size={15} />}
-        title={
-          <span className="inline-flex items-center gap-2">
-            <span>{CUSTOM_LABEL}</span>
-            {activeCustomEndpoint ? <LiveBadge /> : null}
-          </span>
-        }
+        title={CUSTOM_LABEL}
         description={
           activeCustomEndpoint
             ? `${activeCustomEndpoint.name} · ${activeCustomEndpoint.model ?? activeCustomEndpoint.base_url ?? "model not set"}`
@@ -275,7 +259,7 @@ export function CustomRow({
         }
         action={
           activeCustomEndpoint
-            ? null
+            ? <LiveBadge />
             : firstCustomEndpoint
               ? switchButton(controls.pending, () => controls.onSwitch(firstCustomEndpoint.name, firstCustomEndpoint.model))
               : addButton(
