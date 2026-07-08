@@ -162,30 +162,7 @@ fn applySelfManaged(hx: Hx, conn: *pg.Conn, tenant_id: []const u8, input: PutInp
         return;
     };
 
-    var probed = tenant_provider.probeSelfManaged(hx.alloc, conn, tenant_id, secret_ref) catch |err| switch (err) {
-        tenant_provider.ResolveError.SecretMissing => {
-            hx.fail(ec.ERR_PROVIDER_SECRET_NOT_FOUND, "credential row not found in vault");
-            return;
-        },
-        tenant_provider.ResolveError.SecretDataMalformed => {
-            hx.fail(ec.ERR_PROVIDER_SECRET_DATA_MALFORMED, "credential JSON missing required field (provider, api_key, or model)");
-            return;
-        },
-        tenant_provider.ResolveError.SecretEndpointInvalid => {
-            hx.fail(ec.ERR_PROVIDER_BASE_URL_INVALID, "custom endpoint base_url is missing, not https, SSRF-unsafe, or set on a non-openai-compatible provider");
-            return;
-        },
-        tenant_provider.ResolveError.TenantHasNoWorkspace => {
-            log.err("no_workspace", .{ .error_code = ec.ERR_TENANT_NO_PRIMARY_WORKSPACE, .tenant_id = tenant_id });
-            common.errorResponse(hx.res, ec.ERR_TENANT_NO_PRIMARY_WORKSPACE, "Tenant has no primary workspace configured", hx.req_id);
-            return;
-        },
-        else => {
-            log.err("probe_failed", .{ .error_code = ec.ERR_INTERNAL_DB_UNAVAILABLE, .tenant_id = tenant_id, .err = @errorName(err) });
-            common.internalDbUnavailable(hx.res, hx.req_id);
-            return;
-        },
-    };
+    var probed = probeSelfManagedOrFail(hx, conn, tenant_id, secret_ref) orelse return;
     defer probed.deinit(hx.alloc);
 
     // Effective model: caller's --model override OR the credential's stored model.
@@ -195,6 +172,8 @@ fn applySelfManaged(hx: Hx, conn: *pg.Conn, tenant_id: []const u8, input: PutInp
         return;
     };
 
+    // Also upserts the matching registry entry atomically (M121 invariant) —
+    // see state/tenant_provider.zig upsertSelfManaged.
     tenant_provider.upsertSelfManaged(hx.alloc, conn, tenant_id, secret_ref, effective_model, context_cap_tokens) catch |err| {
         log.err("upsert_failed", .{ .error_code = ec.ERR_INTERNAL_DB_UNAVAILABLE, .tenant_id = tenant_id, .err = @errorName(err) });
         common.internalDbUnavailable(hx.res, hx.req_id);
@@ -207,6 +186,35 @@ fn applySelfManaged(hx: Hx, conn: *pg.Conn, tenant_id: []const u8, input: PutInp
     };
     defer freeView(hx.alloc, view);
     hx.ok(.ok, view);
+}
+
+/// Maps every probe failure to its RFC 7807 response. Null means the error
+/// response was already written and the caller just returns.
+fn probeSelfManagedOrFail(hx: Hx, conn: *pg.Conn, tenant_id: []const u8, secret_ref: []const u8) ?tenant_provider.ProbedSecret {
+    return tenant_provider.probeSelfManaged(hx.alloc, conn, tenant_id, secret_ref) catch |err| switch (err) {
+        tenant_provider.ResolveError.SecretMissing => {
+            hx.fail(ec.ERR_PROVIDER_SECRET_NOT_FOUND, "credential row not found in vault");
+            return null;
+        },
+        tenant_provider.ResolveError.SecretDataMalformed => {
+            hx.fail(ec.ERR_PROVIDER_SECRET_DATA_MALFORMED, "credential JSON missing required field (provider, api_key, or model)");
+            return null;
+        },
+        tenant_provider.ResolveError.SecretEndpointInvalid => {
+            hx.fail(ec.ERR_PROVIDER_BASE_URL_INVALID, "custom endpoint base_url is missing, not https, SSRF-unsafe, or set on a non-openai-compatible provider");
+            return null;
+        },
+        tenant_provider.ResolveError.TenantHasNoWorkspace => {
+            log.err("no_workspace", .{ .error_code = ec.ERR_TENANT_NO_PRIMARY_WORKSPACE, .tenant_id = tenant_id });
+            common.errorResponse(hx.res, ec.ERR_TENANT_NO_PRIMARY_WORKSPACE, "Tenant has no primary workspace configured", hx.req_id);
+            return null;
+        },
+        else => {
+            log.err("probe_failed", .{ .error_code = ec.ERR_INTERNAL_DB_UNAVAILABLE, .tenant_id = tenant_id, .err = @errorName(err) });
+            common.internalDbUnavailable(hx.res, hx.req_id);
+            return null;
+        },
+    };
 }
 
 /// Resolve the context-window cap to persist for a self-managed activation.

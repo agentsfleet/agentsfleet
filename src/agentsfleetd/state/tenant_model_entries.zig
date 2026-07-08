@@ -2,6 +2,7 @@ const std = @import("std");
 const clock = @import("common").clock;
 const pg = @import("pg");
 
+const id_format = @import("../types/id_format.zig");
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
 const sql = @import("tenant_model_entries/sql.zig");
 
@@ -93,6 +94,16 @@ pub fn updateModel(
 pub fn delete(conn: *pg.Conn, tenant_id: []const u8, id: []const u8) !bool {
     const affected = try conn.exec(sql.DELETE, .{ id, tenant_id });
     return (affected orelse 0) > 0;
+}
+
+/// Insert the (model_id, secret_ref) registry row for tenant_id if absent —
+/// the write-half of the M121 invariant ("every active selection has a
+/// matching entry"). A duplicate is a clean no-op (ON CONFLICT DO NOTHING),
+/// so repeat activations converge and PUT /provider stays idempotent.
+pub fn ensureEntry(alloc: std.mem.Allocator, conn: *pg.Conn, tenant_id: []const u8, model_id: []const u8, secret_ref: []const u8) !void {
+    const new_id = try id_format.generateTenantModelEntryId(alloc);
+    defer alloc.free(new_id);
+    _ = try conn.exec(sql.INSERT_IF_ABSENT, .{ new_id, tenant_id, model_id, secret_ref, clock.nowMillis() });
 }
 
 pub fn secretExistsForTenant(conn: *pg.Conn, tenant_id: []const u8, secret_ref: []const u8) !bool {

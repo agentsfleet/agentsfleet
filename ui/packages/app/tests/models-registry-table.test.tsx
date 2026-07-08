@@ -268,8 +268,9 @@ describe("ModelsRegistryTable", () => {
     expect(within(rows[2]!).getByText("—")).toBeTruthy();
   });
 
-  it("creating a model entry refreshes the secrets list — the new stored key shows up without a page reload", async () => {
+  it("creating a model entry refreshes the secrets list — a repeat add on the same key name rotates instead of re-creating", async () => {
     createSecretActionMock.mockResolvedValue({ ok: true, data: { name: "anthropic" } });
+    rotateSecretActionMock.mockResolvedValue({ ok: true, data: { name: "anthropic" } });
     createModelEntryActionMock.mockResolvedValue({ ok: true, data: { id: "e1", model_id: "claude-sonnet-5", secret_ref: "anthropic", created_at: 1 } });
     listModelEntriesActionMock.mockResolvedValue({ ok: true, data: registry([entry({ id: "e1", secret_ref: "anthropic" })]) });
     listSecretsActionMock.mockResolvedValueOnce({
@@ -289,13 +290,22 @@ describe("ModelsRegistryTable", () => {
     await waitFor(() => expect(listSecretsActionMock).toHaveBeenCalledWith("ws_1"));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
 
-    // Reopen — the just-created key is now offered without any router refresh.
+    // Second add with the same auto-detected key name ("anthropic") — the
+    // refreshed secrets state now carries that name, so the dialog rotates
+    // the stored key in place instead of re-creating it. This is the
+    // observable proof the refreshSecrets round-trip landed in state.
     await user.click(screen.getByRole("button", { name: /add model/i }));
     const reopened = await screen.findByRole("dialog");
-    expect(within(reopened).getByRole("button", { name: /use existing key/i })).toBeTruthy();
+    await user.type(within(reopened).getByLabelText(/^api key$/i), "sk-ant-second-key");
+    await user.click(within(reopened).getByLabelText(/^model$/i));
+    await user.click((await screen.findAllByRole("option"))[0]!);
+    await user.click(within(reopened).getByRole("button", { name: /^save$/i }));
+
+    await waitFor(() => expect(rotateSecretActionMock).toHaveBeenCalledWith("ws_1", "anthropic", "sk-ant-second-key"));
+    expect(createSecretActionMock).toHaveBeenCalledTimes(1);
   });
 
-  it("a failed secrets refresh after creating a model entry leaves the stored-key list as-is", async () => {
+  it("a failed secrets refresh leaves the stored-key state as-is — a repeat add re-creates rather than rotating", async () => {
     createSecretActionMock.mockResolvedValue({ ok: true, data: { name: "anthropic" } });
     createModelEntryActionMock.mockResolvedValue({ ok: true, data: { id: "e1", model_id: "claude-sonnet-5", secret_ref: "anthropic", created_at: 1 } });
     listModelEntriesActionMock.mockResolvedValue({ ok: true, data: registry([entry({ id: "e1", secret_ref: "anthropic" })]) });
@@ -313,11 +323,18 @@ describe("ModelsRegistryTable", () => {
     await waitFor(() => expect(listSecretsActionMock).toHaveBeenCalledWith("ws_1"));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
 
-    // Reopen — a failed refresh (the `!r.ok` early return) never populates
-    // providerKeys, so "Use existing key" stays hidden — same convention as
-    // refresh()'s silent no-op on a failed listModelEntriesAction.
+    // The `!r.ok` early return kept the secrets state empty, so the same key
+    // name is unknown to the dialog and the second add takes the create path
+    // again (the backend would 409 in reality; mocked ok here — the branch
+    // under test is refreshSecrets' silent no-op, matching refresh()).
     await user.click(screen.getByRole("button", { name: /add model/i }));
     const reopened = await screen.findByRole("dialog");
-    expect(within(reopened).queryByRole("button", { name: /use existing key/i })).toBeNull();
+    await user.type(within(reopened).getByLabelText(/^api key$/i), "sk-ant-second-key");
+    await user.click(within(reopened).getByLabelText(/^model$/i));
+    await user.click((await screen.findAllByRole("option"))[0]!);
+    await user.click(within(reopened).getByRole("button", { name: /^save$/i }));
+
+    await waitFor(() => expect(createSecretActionMock).toHaveBeenCalledTimes(2));
+    expect(rotateSecretActionMock).not.toHaveBeenCalled();
   });
 });

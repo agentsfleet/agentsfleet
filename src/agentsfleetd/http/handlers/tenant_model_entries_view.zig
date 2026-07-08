@@ -4,8 +4,10 @@
 //! metadata (provider/kind/base_url/has_key) via `secret_metadata.project`,
 //! computes `active` against the tenant's current `core.tenant_model_selection`
 //! row, and resolves `context_cap_tokens` from the model-caps catalogue when
-//! known. Split out of tenant_model_entries.zig (the 4-endpoint handler) per
-//! RULE FLL.
+//! known. Pure read — the "every active selection has a matching entry"
+//! invariant is guaranteed at activation-write time (tenant_provider.zig's
+//! ensureEntryForSelection), never patched up here. Split out of
+//! tenant_model_entries.zig (the 4-endpoint handler) per RULE FLL.
 
 const std = @import("std");
 const pg = @import("pg");
@@ -15,7 +17,6 @@ const tenant_provider = @import("../../state/tenant_provider.zig");
 const secret_probe = @import("../../state/secret_probe.zig");
 const secret_metadata = @import("fleets/secret_metadata.zig");
 const model_rate_cache = @import("../../state/model_rate_cache.zig");
-const id_format = @import("../../types/id_format.zig");
 
 const S_API_KEY = "api_key";
 
@@ -46,29 +47,15 @@ pub const ListResult = struct {
 };
 
 /// Caller owns the result and must call `.deinit(alloc)`. Fetches the active
-/// selection and the entry list once each (not once per helper — Greptile
-/// caught the prior two-function split re-fetching both a second time),
-/// synthesizes a missing active-selection entry against that same snapshot,
-/// and re-lists only in the rare case synthesis actually inserted a row.
+/// selection and the entry list once each — a pure read. Activation
+/// (tenant_provider.zig) guarantees the selection always has a matching
+/// entry row, so no synthesize-on-read exists here.
 pub fn buildList(alloc: std.mem.Allocator, conn: *pg.Conn, tenant_id: []const u8) !ListResult {
     var selection = try tenant_provider.activeSelfManagedRef(alloc, conn, tenant_id);
     defer if (selection) |*s| s.deinit(alloc);
 
-    var entries = try entries_state.list(alloc, conn, tenant_id);
+    const entries = try entries_state.list(alloc, conn, tenant_id);
     defer entries_state.deinitEntryList(entries, alloc);
-
-    if (selection) |s| {
-        if (try synthesizeIfMissing(alloc, conn, tenant_id, s, entries)) {
-            // Fetch before freeing: if this `list()` call errors, `entries`
-            // is still the valid original slice, so the outer `defer` above
-            // frees it exactly once. Freeing first and reassigning after
-            // would leave `entries` pointing at freed memory on this error
-            // path — a double-free once the defer runs.
-            const fresh = try entries_state.list(alloc, conn, tenant_id);
-            entries_state.deinitEntryList(entries, alloc);
-            entries = fresh;
-        }
-    }
 
     var views: std.ArrayList(EntryView) = .empty;
     errdefer {
@@ -89,38 +76,6 @@ pub fn buildList(alloc: std.mem.Allocator, conn: *pg.Conn, tenant_id: []const u8
         .rows = try views.toOwnedSlice(alloc),
         .platform_default_available = platformDefaultAvailable(alloc, conn),
     };
-}
-
-/// Inserts an entry for `selection` when `entries` (a snapshot already in
-/// hand — never re-fetched here) has no matching row: the pre-registry
-/// activation case (`PUT /provider` used before the registry ever listed
-/// this tenant). Returns whether a row was inserted, so the caller knows to
-/// refresh its own `entries` snapshot. A race with a concurrent synthesis or
-/// POST is resolved by the unique constraint and ignored — idempotent on repeat.
-fn synthesizeIfMissing(
-    alloc: std.mem.Allocator,
-    conn: *pg.Conn,
-    tenant_id: []const u8,
-    selection: tenant_provider.ActiveSelfManagedRef,
-    entries: []const entries_state.Entry,
-) !bool {
-    for (entries) |e| {
-        if (std.mem.eql(u8, e.secret_ref, selection.secret_ref) and std.mem.eql(u8, e.model_id, selection.model)) return false;
-    }
-
-    const new_id = try id_format.generateTenantModelEntryId(alloc);
-    defer alloc.free(new_id);
-    var created = entries_state.create(alloc, conn, .{
-        .id = new_id,
-        .tenant_id = tenant_id,
-        .model_id = selection.model,
-        .secret_ref = selection.secret_ref,
-    }) catch |err| switch (err) {
-        entries_state.StateError.DuplicateEntry => return false,
-        else => return err,
-    };
-    created.deinit(alloc);
-    return true;
 }
 
 /// A vault load failure (secret deleted out-of-band, decrypt error) degrades

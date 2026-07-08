@@ -22,12 +22,21 @@ const SELECT_FIELDS =
     F_ID ++ TEXT_SEP ++ F_TENANT_ID ++ TEXT_SEP ++ F_MODEL_ID ++ SEP ++
     F_SECRET_REF ++ SEP ++ F_CREATED_AT ++ SEP ++ F_UPDATED_AT;
 
-pub const INSERT =
+// Shared INSERT prefix — both write statements below (RETURNING vs
+// ON CONFLICT) share the same table, column list, and VALUES clause.
+const ENTRY_TENANT_SECRET_TUPLE = F_TENANT_ID ++ SEP ++ F_MODEL_ID ++ SEP ++ F_SECRET_REF;
+const INSERT_PREFIX =
     "INSERT INTO " ++ TABLE ++
-    " (" ++ F_ID ++ SEP ++ F_TENANT_ID ++ SEP ++ F_MODEL_ID ++ SEP ++
-    F_SECRET_REF ++ SEP ++ F_CREATED_AT ++ SEP ++ F_UPDATED_AT ++ ") " ++
-    "VALUES ($1::uuid, $2::uuid, $3, $4, $5, $5) " ++
-    "RETURNING " ++ SELECT_FIELDS;
+    " (" ++ F_ID ++ SEP ++ ENTRY_TENANT_SECRET_TUPLE ++ SEP ++ F_CREATED_AT ++ SEP ++ F_UPDATED_AT ++ ") " ++
+    "VALUES ($1::uuid, $2::uuid, $3, $4, $5, $5) ";
+
+pub const INSERT = INSERT_PREFIX ++ "RETURNING " ++ SELECT_FIELDS;
+
+// ON CONFLICT DO NOTHING (not raise-and-catch): a duplicate is the COMMON
+// case on re-activation, and a clean no-op costs one round-trip with no
+// unique-violation error or aborted subtransaction.
+pub const INSERT_IF_ABSENT =
+    INSERT_PREFIX ++ "ON CONFLICT (" ++ ENTRY_TENANT_SECRET_TUPLE ++ ") DO NOTHING";
 
 pub const LIST =
     "SELECT " ++ SELECT_FIELDS ++ " FROM " ++ TABLE ++
