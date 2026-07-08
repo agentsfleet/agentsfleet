@@ -20,13 +20,13 @@ import type { Secret } from "@/lib/api/secrets";
 import { providerLabel } from "@/lib/api/model_caps";
 import { presentErrorString } from "@/lib/errors";
 import type { TenantModelEntry, TenantModelEntryList } from "@/lib/types";
-import { listModelEntriesAction, resetProviderAction, setProviderSelfManagedAction, deleteModelEntryAction } from "../actions";
+import { listModelEntriesAction, listSecretsAction, resetProviderAction, setProviderSelfManagedAction, deleteModelEntryAction } from "../actions";
 import { captureModelActivated, captureProviderReset } from "../lib/track";
 import AddModelEntryDialog from "./AddModelEntryDialog";
 import EditModelEntryDialog from "./EditModelEntryDialog";
 import ModelDetailsDialog from "./ModelDetailsDialog";
 
-type Props = { workspaceId: string; initial: TenantModelEntryList; secrets: Secret[] };
+type Props = { workspaceId: string; initial: TenantModelEntryList; initialSecrets: Secret[] };
 type RegistryRow = { kind: "default" } | { kind: "entry"; entry: TenantModelEntry };
 export type SortState = { key: "model" | "provider"; dir: "ascending" | "descending" } | null;
 
@@ -183,9 +183,10 @@ function ActionsCell({
   );
 }
 
-export default function ModelsRegistryTable({ workspaceId, initial, secrets }: Props) {
+export default function ModelsRegistryTable({ workspaceId, initial, initialSecrets }: Props) {
   const [pending, startTransition] = useTransition();
   const [entries, setEntries] = useState<TenantModelEntry[]>(initial.models);
+  const [secrets, setSecrets] = useState<Secret[]>(initialSecrets);
   const [platformDefaultAvailable, setPlatformDefaultAvailable] = useState(initial.platform_default_available);
   const [sort, setSort] = useState<SortState>(null);
   const [error, setError] = useState<string | null>(null);
@@ -215,6 +216,16 @@ export default function ModelsRegistryTable({ workspaceId, initial, secrets }: P
       if (!r.ok) return;
       setEntries(r.data.models);
       setPlatformDefaultAvailable(r.data.platform_default_available);
+    });
+  }
+
+  // Refetches only the secrets list — the cheaper counterpart to refresh()
+  // above, called when AddModelEntryDialog commits a new stored secret.
+  function refreshSecrets() {
+    startTransition(async () => {
+      const r = await listSecretsAction(workspaceId);
+      if (!r.ok) return;
+      setSecrets(r.data.secrets);
     });
   }
 
@@ -304,7 +315,7 @@ export default function ModelsRegistryTable({ workspaceId, initial, secrets }: P
       <section aria-label="Models">
         <div className="flex flex-wrap items-baseline justify-between gap-md">
           <SectionLabel>Model registry</SectionLabel>
-          <AddModelEntryDialog workspaceId={workspaceId} secrets={secrets} onCreated={refresh} />
+          <AddModelEntryDialog workspaceId={workspaceId} secrets={secrets} onCreated={refresh} onSecretsChanged={refreshSecrets} />
         </div>
 
         <DataTable

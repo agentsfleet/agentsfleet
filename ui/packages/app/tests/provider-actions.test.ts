@@ -13,6 +13,7 @@ const {
   setTenantProviderSelfManagedMock,
   resetTenantProviderMock,
   rotateSecretMock,
+  listSecretsMock,
   listTenantModelEntriesMock,
   createTenantModelEntryMock,
   updateTenantModelEntryMock,
@@ -22,6 +23,7 @@ const {
   setTenantProviderSelfManagedMock: vi.fn(),
   resetTenantProviderMock: vi.fn(),
   rotateSecretMock: vi.fn(),
+  listSecretsMock: vi.fn(),
   listTenantModelEntriesMock: vi.fn(),
   createTenantModelEntryMock: vi.fn(),
   updateTenantModelEntryMock: vi.fn(),
@@ -33,7 +35,7 @@ vi.mock("@/lib/api/tenant_provider", () => ({
   setTenantProviderSelfManaged: setTenantProviderSelfManagedMock,
   resetTenantProvider: resetTenantProviderMock,
 }));
-vi.mock("@/lib/api/secrets", () => ({ rotateSecret: rotateSecretMock }));
+vi.mock("@/lib/api/secrets", () => ({ rotateSecret: rotateSecretMock, listSecrets: listSecretsMock }));
 vi.mock("@/lib/api/tenant_model_entries", () => ({
   listTenantModelEntries: listTenantModelEntriesMock,
   createTenantModelEntry: createTenantModelEntryMock,
@@ -45,6 +47,7 @@ import {
   setProviderSelfManagedAction,
   resetProviderAction,
   rotateSecretAction,
+  listSecretsAction,
   listModelEntriesAction,
   createModelEntryAction,
   updateModelEntryAction,
@@ -136,6 +139,14 @@ describe("provider server actions — thin forwarders", () => {
     const r = await deleteModelEntryAction("e1");
     expect(r).toEqual({ ok: true, data: undefined });
     expect(deleteTenantModelEntryMock).toHaveBeenCalledWith("e1", "tok");
+  });
+
+  it("listSecretsAction forwards (workspaceId) then token through withToken to the client", async () => {
+    const list = { secrets: [{ kind: "provider_key", name: "anthropic-prod", provider: "anthropic", created_at: 1 }] };
+    listSecretsMock.mockResolvedValueOnce(list);
+    const r = await listSecretsAction("ws_1");
+    expect(r).toEqual({ ok: true, data: list });
+    expect(listSecretsMock).toHaveBeenCalledWith("ws_1", "tok");
   });
 
   it("every registry action routes through withToken exactly once", async () => {

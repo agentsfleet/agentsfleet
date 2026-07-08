@@ -7,7 +7,6 @@ import type { Secret } from "@/lib/api/secrets";
 const createModelEntryActionMock = vi.fn();
 const setProviderSelfManagedActionMock = vi.fn();
 const createSecretActionMock = vi.fn();
-const routerRefreshMock = vi.fn();
 
 vi.mock("@/app/(dashboard)/w/[workspaceId]/settings/models/actions", () => ({
   createModelEntryAction: createModelEntryActionMock,
@@ -16,9 +15,6 @@ vi.mock("@/app/(dashboard)/w/[workspaceId]/settings/models/actions", () => ({
 vi.mock("@/app/(dashboard)/w/[workspaceId]/secrets/actions", () => ({
   createSecretAction: createSecretActionMock,
 }));
-// finish() calls router.refresh() so the page-level `secrets` prop (a server
-// read, never copied into local state) picks up a secret created just now.
-vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: routerRefreshMock, push: vi.fn() }) }));
 
 // Model catalogue state the ProviderModelSelect/Provider-field pickers read —
 // empty by default (Input-fallback shape); one test below populates it to
@@ -53,13 +49,18 @@ async function renderDialog(secrets: Secret[] = []) {
     "../app/(dashboard)/w/[workspaceId]/settings/models/components/AddModelEntryDialog"
   );
   const onCreated = vi.fn();
-  const { rerender } = render(React.createElement(AddModelEntryDialog, { workspaceId: "ws_1", secrets, onCreated } as never));
+  const onSecretsChanged = vi.fn();
+  const { rerender } = render(
+    React.createElement(AddModelEntryDialog, { workspaceId: "ws_1", secrets, onCreated, onSecretsChanged } as never),
+  );
   const user = userEvent.setup();
   await user.click(screen.getByRole("button", { name: /add model/i }));
   await screen.findByRole("dialog");
   const rerenderWithSecrets = (nextSecrets: Secret[]) =>
-    rerender(React.createElement(AddModelEntryDialog, { workspaceId: "ws_1", secrets: nextSecrets, onCreated } as never));
-  return { onCreated, user, rerenderWithSecrets };
+    rerender(
+      React.createElement(AddModelEntryDialog, { workspaceId: "ws_1", secrets: nextSecrets, onCreated, onSecretsChanged } as never),
+    );
+  return { onCreated, onSecretsChanged, user, rerenderWithSecrets };
 }
 
 beforeEach(() => {
@@ -128,7 +129,7 @@ describe("AddModelEntryDialog — reuse-existing-key", () => {
   });
 
   it("shows no key field and creates an entry sharing the stored secret_ref", async () => {
-    const { onCreated, user } = await renderDialog([ANTHROPIC_SECRET]);
+    const { onCreated, onSecretsChanged, user } = await renderDialog([ANTHROPIC_SECRET]);
 
     await user.click(screen.getByRole("button", { name: /use existing key/i }));
     expect(screen.queryByLabelText(/^api key$/i)).toBeNull();
@@ -149,7 +150,7 @@ describe("AddModelEntryDialog — reuse-existing-key", () => {
     expect(createSecretActionMock).not.toHaveBeenCalled();
     await waitFor(() => expect(onCreated).toHaveBeenCalled());
     // Picks up any secret created elsewhere since page load, not just this one.
-    expect(routerRefreshMock).toHaveBeenCalled();
+    expect(onSecretsChanged).toHaveBeenCalled();
   });
 });
 
@@ -261,7 +262,7 @@ describe("AddModelEntryDialog — known provider, new key", () => {
 
   it("surfaces an activation error after a successful register, but still refreshes so a retry doesn't 409", async () => {
     setProviderSelfManagedActionMock.mockResolvedValue({ ok: false, error: "rejected", errorCode: "UZ-PROVIDER-003" });
-    const { onCreated, user } = await renderDialog();
+    const { onCreated, onSecretsChanged, user } = await renderDialog();
     const dialog = screen.getByRole("dialog");
 
     await user.type(within(dialog).getByLabelText(/^api key$/i), "sk-ant-e2e-xxxx");
@@ -275,7 +276,7 @@ describe("AddModelEntryDialog — known provider, new key", () => {
     // stays open (matches ModelsRegistryTable.onSwitchEntry's "refresh
     // regardless of outcome" convention).
     expect(onCreated).toHaveBeenCalled();
-    expect(routerRefreshMock).toHaveBeenCalled();
+    expect(onSecretsChanged).toHaveBeenCalled();
     // Dialog stays open — the user can see the error, not silently closed.
     expect(screen.getByRole("dialog")).toBeTruthy();
   });

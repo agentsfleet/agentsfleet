@@ -19,18 +19,25 @@ vi.mock("@/app/(dashboard)/w/[workspaceId]/settings/models/actions", () => ({
 vi.mock("@/app/(dashboard)/w/[workspaceId]/secrets/actions", () => ({
   createSecretAction: createSecretActionMock,
 }));
-vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn(), push: vi.fn() }) }));
 
 async function renderDialog() {
   const { default: AddModelEntryDialog } = await import(
     "../app/(dashboard)/w/[workspaceId]/settings/models/components/AddModelEntryDialog"
   );
   const onCreated = vi.fn();
-  render(React.createElement(AddModelEntryDialog, { workspaceId: "ws_1", secrets: [] as Secret[], onCreated } as never));
+  const onSecretsChanged = vi.fn();
+  render(
+    React.createElement(AddModelEntryDialog, {
+      workspaceId: "ws_1",
+      secrets: [] as Secret[],
+      onCreated,
+      onSecretsChanged,
+    } as never),
+  );
   const user = userEvent.setup();
   await user.click(screen.getByRole("button", { name: /add model/i }));
   await screen.findByRole("dialog");
-  return { onCreated, user };
+  return { onCreated, onSecretsChanged, user };
 }
 
 beforeEach(() => {
