@@ -116,9 +116,24 @@ test "test_tenant_model_entries_secret_lookup_uses_primary_workspace" {
     defer cleanup(db.conn);
     try seedSecret(db.conn, WS_A_SECONDARY, SECRET_LOCAL);
 
-    try std.testing.expect(!try models.secretExistsForTenant(db.conn, TENANT_A, SECRET_LOCAL));
+    try std.testing.expect(!try models.secretExistsForTenant(ALLOC, db.conn, TENANT_A, SECRET_LOCAL));
     try seedSecret(db.conn, WS_A, SECRET_LOCAL);
-    try std.testing.expect(try models.secretExistsForTenant(db.conn, TENANT_A, SECRET_LOCAL));
+    try std.testing.expect(try models.secretExistsForTenant(ALLOC, db.conn, TENANT_A, SECRET_LOCAL));
+}
+
+test "test_tenant_model_entries_secret_lookup_falls_back_to_prefixed_key" {
+    // A dashboard-created secret (POST /workspaces/{ws}/secrets) is stored
+    // under the "fleet:"-prefixed key, while secret_ref (here and in
+    // tenant_model_selection) always names the raw display name — the same
+    // raw-then-prefixed fallback secret_probe.loadSelfManagedJson uses.
+    const db = (try base.openTestConn(ALLOC)) orelse return error.SkipZigTest;
+    defer db.pool.deinit();
+    defer db.pool.release(db.conn);
+    try seedTenants(db.conn);
+    defer cleanup(db.conn);
+    try seedSecret(db.conn, WS_A, "fleet:" ++ SECRET_SHARED);
+
+    try std.testing.expect(try models.secretExistsForTenant(ALLOC, db.conn, TENANT_A, SECRET_SHARED));
 }
 
 fn seedTenants(conn: *pg.Conn) !void {

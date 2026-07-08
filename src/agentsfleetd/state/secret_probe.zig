@@ -122,6 +122,23 @@ pub fn probeSelfManagedSecret(
     return .{ .provider = provider, .api_key = api_key, .model = model, .base_url = base_url };
 }
 
+/// Load the raw JSON body of a tenant-scoped secret by secret_ref, WITHOUT the
+/// provider/model/api_key shape validation `probeSelfManagedSecret` enforces —
+/// used by the tenant model registry (M121), whose entries own the model and
+/// may reference a secret with no `model` field. Same primary-workspace bridge
+/// and raw→prefixed key fallback as the probe. Returns ResolveError.SecretMissing
+/// when no vault row matches either name. Caller owns the parsed value.
+pub fn loadTenantSecretJson(
+    alloc: std.mem.Allocator,
+    conn: *pg.Conn,
+    tenant_id: []const u8,
+    secret_ref: []const u8,
+) (ResolveError || anyerror)!std.json.Parsed(std.json.Value) {
+    const ws_id = try resolvePrimaryWorkspace(alloc, conn, tenant_id);
+    defer alloc.free(ws_id);
+    return loadSelfManagedJson(alloc, conn, ws_id, secret_ref);
+}
+
 /// Validate the provider⇔base_url pairing for a self-managed credential (RULE
 /// PRI/NTP — the URL is hostile). Pure (no allocation, no DB) so the credential
 /// unit tests drive every branch directly:

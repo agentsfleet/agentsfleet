@@ -151,6 +151,10 @@ paths:
     $ref: ./paths/tenant-workspaces.yaml#/~1v1~1tenants~1me~1workspaces
   /v1/tenants/me/provider:
     $ref: ./paths/tenant-provider.yaml#/~1v1~1tenants~1me~1provider
+  /v1/tenants/me/models:
+    $ref: ./paths/tenant-models.yaml#/~1v1~1tenants~1me~1models
+  /v1/tenants/me/models/{id}:
+    $ref: ./paths/tenant-models.yaml#/~1v1~1tenants~1me~1models~1{id}
   /v1/workspaces/{workspace_id}/secrets:
     $ref: ./paths/secrets.yaml#/~1v1~1workspaces~1{workspace_id}~1secrets
   /v1/workspaces/{workspace_id}/secrets/{secret_name}:

@@ -36,10 +36,15 @@
 // below, at which point they should ask whether the new `detail` string
 // reads like plain English to a dashboard end user or needs its own
 // eu()-curated registry code instead of piggybacking on UZ-INTERNAL-003.
+//
+// M121 §2 added 2 call sites in handlers/tenant_model_entries.zig ("Failed to
+// build the models list", "Failed to mint an entry id") — both plain English,
+// no jargon/schema names/@errorName, so bumped straight into BASELINE rather
+// than mudball-ok'd (79 -> 81).
 const std = @import("std");
 const common = @import("common");
 
-const BASELINE_CALL_SITE_COUNT: usize = 79;
+const BASELINE_CALL_SITE_COUNT: usize = 81;
 const CALL_SITE_NEEDLE = "internalOperationError(";
 const HANDLERS_DIR_PATH = "src/agentsfleetd/http/handlers";
 // `http/server.zig` sits one level above `http/handlers/` (the dispatcher,

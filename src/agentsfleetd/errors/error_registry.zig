@@ -142,6 +142,7 @@ pub const ERR_FLEET_BUNDLE_STORAGE_UNAVAILABLE = "UZ-BUNDLE-005";
 pub const ERR_VAULT_DATA_INVALID = "UZ-VAULT-001";
 pub const ERR_VAULT_DATA_TOO_LARGE = "UZ-VAULT-002";
 pub const ERR_SECRET_NOT_FOUND = "UZ-VAULT-003";
+pub const ERR_SECRET_REFERENCED_BY_MODEL_ENTRIES = "UZ-VAULT-004";
 // PROVIDER (tenant-scoped LLM provider config — PUT /v1/tenants/me/provider)
 pub const ERR_PROVIDER_SECRET_REF_REQUIRED = "UZ-PROVIDER-001";
 pub const ERR_PROVIDER_SECRET_NOT_FOUND = "UZ-PROVIDER-002";
@@ -153,6 +154,11 @@ pub const ERR_MODEL_CAP_IN_USE = "UZ-PROVIDER-007";
 pub const ERR_MODEL_CAP_EXISTS = "UZ-PROVIDER-008";
 pub const ERR_PROVIDER_PLATFORM_KEY_MISSING = "UZ-PROVIDER-009";
 pub const ERR_TENANT_NO_PRIMARY_WORKSPACE = "UZ-PROVIDER-010";
+// MODELS (tenant model registry — /v1/tenants/me/models)
+pub const ERR_MODELS_DELETE_ACTIVE = "UZ-MODELS-001";
+pub const ERR_MODELS_SECRET_NOT_FOUND = "UZ-MODELS-002";
+pub const ERR_MODELS_DUPLICATE_ENTRY = "UZ-MODELS-003";
+pub const ERR_MODELS_ENTRY_NOT_FOUND = "UZ-MODELS-004";
 // MEMORY
 pub const ERR_MEM_AGENTSFLEET_NOT_FOUND = "UZ-MEM-002";
 pub const ERR_MEM_UNAVAILABLE = "UZ-MEM-003";
@@ -306,31 +312,11 @@ comptime {
 }
 
 // ── Comptime mirror-pin: auth_codes leaf must byte-match these codes ───────
-// The auth plane imports these via the `auth_codes` named module (it cannot
-// relative-import this file without breaking the test-auth portability gate).
-// That leaf duplicates the literals; this pin makes any drift a compile error.
+// Split into error_registry_mirror_pin.zig (RULE FLL) — the pin's own
+// container-level comptime block still runs eagerly once this import forces
+// Zig to analyze it.
 comptime {
-    const auth_codes = @import("auth_codes");
-
-    const pairs = .{
-        .{ ERR_FORBIDDEN, auth_codes.ERR_FORBIDDEN },
-        .{ ERR_UNAUTHORIZED, auth_codes.ERR_UNAUTHORIZED },
-        .{ ERR_TOKEN_EXPIRED, auth_codes.ERR_TOKEN_EXPIRED },
-        .{ ERR_AUTH_UNAVAILABLE, auth_codes.ERR_AUTH_UNAVAILABLE },
-        .{ ERR_INSUFFICIENT_SCOPE, auth_codes.ERR_INSUFFICIENT_SCOPE },
-        .{ ERR_APPROVAL_INVALID_SIGNATURE, auth_codes.ERR_APPROVAL_INVALID_SIGNATURE },
-        .{ ERR_WEBHOOK_SIG_INVALID, auth_codes.ERR_WEBHOOK_SIG_INVALID },
-        .{ ERR_WEBHOOK_TIMESTAMP_STALE, auth_codes.ERR_WEBHOOK_TIMESTAMP_STALE },
-        .{ ERR_WEBHOOK_CREDENTIAL_NOT_CONFIGURED, auth_codes.ERR_WEBHOOK_CREDENTIAL_NOT_CONFIGURED },
-        .{ ERR_APIKEY_REVOKED, auth_codes.ERR_APIKEY_REVOKED },
-        .{ ERR_RUN_INVALID_RUNNER_TOKEN, auth_codes.ERR_RUN_INVALID_RUNNER_TOKEN },
-        .{ ERR_RUN_ADMIN_STATE_BLOCKED, auth_codes.ERR_RUN_ADMIN_STATE_BLOCKED },
-        .{ ERR_INTERNAL_OPERATION_FAILED, auth_codes.ERR_INTERNAL_OPERATION_FAILED },
-    };
-    for (pairs) |p| {
-        if (!std.mem.eql(u8, p[0], p[1]))
-            @compileError("auth_codes mirror drift: " ++ p[0]);
-    }
+    _ = @import("error_registry_mirror_pin.zig");
 }
 
 // Not imported by gen_error_codes.zig's narrow exe module (deliberately —
