@@ -1,7 +1,6 @@
 "use client";
 
 import { useId, useState } from "react";
-import { useRouter } from "next/navigation";
 import {
   Alert,
   Button,
@@ -50,13 +49,14 @@ export default function AddModelEntryDialog({
   workspaceId,
   secrets,
   onCreated,
+  onSecretsChanged,
 }: {
   workspaceId: string;
   secrets: Secret[];
   onCreated: () => void;
+  onSecretsChanged: () => void;
 }) {
   const uid = useId();
-  const router = useRouter();
   const { models } = useModelCatalogue();
   const providerOptions = uniqueProviders(models);
   const providerKeys = providerKeysOf(secrets);
@@ -128,7 +128,7 @@ export default function AddModelEntryDialog({
     // saw succeed (that retry would 409 UZ-MODELS-003 "duplicate entry"),
     // and the table isn't stale if the user cancels instead of retrying.
     onCreated();
-    router.refresh();
+    onSecretsChanged();
     if (activate) {
       const activated = await setProviderSelfManagedAction({ secret_ref: secretRef, model: modelId });
       if (!activated.ok) {
@@ -143,7 +143,7 @@ export default function AddModelEntryDialog({
   async function submitKnown(activate: boolean) {
     if (reuseMode) {
       // canSubmitKnown only guarantees reuseSecretName is non-empty, not that
-      // it still names a stored key — router.refresh() after a create can
+      // it still names a stored key — a secrets refresh after a create can
       // change `secrets` (and so providerKeys) out from under an open dialog.
       const secret = providerKeys.find((k) => k.name === reuseSecretName);
       if (!secret) {

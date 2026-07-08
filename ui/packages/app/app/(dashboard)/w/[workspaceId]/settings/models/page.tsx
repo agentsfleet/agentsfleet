@@ -34,7 +34,7 @@ export default async function ModelsKeysPage({
       </PageHeader>
 
       <ModelCatalogueProvider>
-        <ModelsRegistryTable workspaceId={workspaceId} initial={registry} secrets={secretsResp.secrets} />
+        <ModelsRegistryTable workspaceId={workspaceId} initial={registry} initialSecrets={secretsResp.secrets} />
       </ModelCatalogueProvider>
     </div>
   );

@@ -4,11 +4,8 @@ import { cleanup, render, screen, waitFor, within } from "@testing-library/react
 import userEvent from "@testing-library/user-event";
 import type { TenantModelEntry, TenantModelEntryList } from "@/lib/types";
 
-// ModelsRegistryTable always mounts AddModelEntryDialog (even closed), which
-// calls useRouter() for its post-create refresh — needs a router context.
-vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn(), push: vi.fn() }) }));
-
 const listModelEntriesActionMock = vi.fn();
+const listSecretsActionMock = vi.fn();
 const setProviderSelfManagedActionMock = vi.fn();
 const resetProviderActionMock = vi.fn();
 const createModelEntryActionMock = vi.fn();
@@ -19,6 +16,7 @@ const createSecretActionMock = vi.fn();
 
 vi.mock("@/app/(dashboard)/w/[workspaceId]/settings/models/actions", () => ({
   listModelEntriesAction: listModelEntriesActionMock,
+  listSecretsAction: listSecretsActionMock,
   setProviderSelfManagedAction: setProviderSelfManagedActionMock,
   resetProviderAction: resetProviderActionMock,
   createModelEntryAction: createModelEntryActionMock,
@@ -70,11 +68,12 @@ async function renderTable(initial: TenantModelEntryList) {
   const { default: ModelsRegistryTable } = await import(
     "../app/(dashboard)/w/[workspaceId]/settings/models/components/ModelsRegistryTable"
   );
-  render(React.createElement(ModelsRegistryTable, { workspaceId: "ws_1", initial, secrets: [] } as never));
+  render(React.createElement(ModelsRegistryTable, { workspaceId: "ws_1", initial, initialSecrets: [] } as never));
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
+  listSecretsActionMock.mockResolvedValue({ ok: true, data: { secrets: [] } });
 });
 afterEach(() => cleanup());
 
@@ -256,5 +255,58 @@ describe("ModelsRegistryTable", () => {
     );
     expect(screen.getByText("200k")).toBeTruthy();
     expect(screen.getByText("500")).toBeTruthy();
+  });
+
+  it("creating a model entry refreshes the secrets list — the new stored key shows up without a page reload", async () => {
+    createSecretActionMock.mockResolvedValue({ ok: true, data: { name: "anthropic" } });
+    createModelEntryActionMock.mockResolvedValue({ ok: true, data: { id: "e1", model_id: "claude-sonnet-5", secret_ref: "anthropic", created_at: 1 } });
+    listModelEntriesActionMock.mockResolvedValue({ ok: true, data: registry([entry({ id: "e1", secret_ref: "anthropic" })]) });
+    listSecretsActionMock.mockResolvedValueOnce({
+      ok: true,
+      data: { secrets: [{ kind: "provider_key", name: "anthropic", provider: "anthropic", created_at: 1 }] },
+    });
+    await renderTable(registry([]));
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: /add model/i }));
+    const dialog = await screen.findByRole("dialog");
+    await user.type(within(dialog).getByLabelText(/^api key$/i), "sk-ant-e2e-xxxx");
+    await user.click(within(dialog).getByLabelText(/^model$/i));
+    await user.click((await screen.findAllByRole("option"))[0]!);
+    await user.click(within(dialog).getByRole("button", { name: /^save$/i }));
+
+    await waitFor(() => expect(listSecretsActionMock).toHaveBeenCalledWith("ws_1"));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+
+    // Reopen — the just-created key is now offered without any router refresh.
+    await user.click(screen.getByRole("button", { name: /add model/i }));
+    const reopened = await screen.findByRole("dialog");
+    expect(within(reopened).getByRole("button", { name: /use existing key/i })).toBeTruthy();
+  });
+
+  it("a failed secrets refresh after creating a model entry leaves the stored-key list as-is", async () => {
+    createSecretActionMock.mockResolvedValue({ ok: true, data: { name: "anthropic" } });
+    createModelEntryActionMock.mockResolvedValue({ ok: true, data: { id: "e1", model_id: "claude-sonnet-5", secret_ref: "anthropic", created_at: 1 } });
+    listModelEntriesActionMock.mockResolvedValue({ ok: true, data: registry([entry({ id: "e1", secret_ref: "anthropic" })]) });
+    listSecretsActionMock.mockResolvedValueOnce({ ok: false, error: "boom", errorCode: "UZ-INTERNAL-003" });
+    await renderTable(registry([]));
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: /add model/i }));
+    const dialog = await screen.findByRole("dialog");
+    await user.type(within(dialog).getByLabelText(/^api key$/i), "sk-ant-e2e-xxxx");
+    await user.click(within(dialog).getByLabelText(/^model$/i));
+    await user.click((await screen.findAllByRole("option"))[0]!);
+    await user.click(within(dialog).getByRole("button", { name: /^save$/i }));
+
+    await waitFor(() => expect(listSecretsActionMock).toHaveBeenCalledWith("ws_1"));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+
+    // Reopen — a failed refresh (the `!r.ok` early return) never populates
+    // providerKeys, so "Use existing key" stays hidden — same convention as
+    // refresh()'s silent no-op on a failed listModelEntriesAction.
+    await user.click(screen.getByRole("button", { name: /add model/i }));
+    const reopened = await screen.findByRole("dialog");
+    expect(within(reopened).queryByRole("button", { name: /use existing key/i })).toBeNull();
   });
 });

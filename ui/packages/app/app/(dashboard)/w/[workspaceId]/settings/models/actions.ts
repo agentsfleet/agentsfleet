@@ -5,13 +5,14 @@ import {
   resetTenantProvider as apiResetTenantProvider,
   setTenantProviderSelfManaged as apiSetTenantProviderSelfManaged,
 } from "@/lib/api/tenant_provider";
-import { rotateSecret as apiRotateSecret } from "@/lib/api/secrets";
+import { listSecrets as apiListSecrets, rotateSecret as apiRotateSecret } from "@/lib/api/secrets";
 import {
   listTenantModelEntries as apiListTenantModelEntries,
   createTenantModelEntry as apiCreateTenantModelEntry,
   updateTenantModelEntry as apiUpdateTenantModelEntry,
   deleteTenantModelEntry as apiDeleteTenantModelEntry,
 } from "@/lib/api/tenant_model_entries";
+import type { SecretListResponse } from "@/lib/api/secrets";
 import type { TenantModelEntryList, TenantModelEntryWriteResult, TenantProvider } from "@/lib/types";
 
 export async function setProviderSelfManagedAction(
@@ -48,6 +49,13 @@ export async function updateModelEntryAction(
 
 export async function deleteModelEntryAction(id: string): Promise<ActionResult<void>> {
   return withToken((t) => apiDeleteTenantModelEntry(id, t));
+}
+
+// Client-side refetch of the page's SSR `secrets` prop — used after a model
+// entry create commits a new secret, so ModelsRegistryTable can pick it up
+// without re-running the whole Server Component tree (no router.refresh()).
+export async function listSecretsAction(workspaceId: string): Promise<ActionResult<SecretListResponse>> {
+  return withToken((t) => apiListSecrets(workspaceId, t));
 }
 
 // Rotate only the api_key of a stored secret (PATCH …/secrets/{name}).

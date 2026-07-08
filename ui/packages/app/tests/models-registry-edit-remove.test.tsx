@@ -4,11 +4,8 @@ import { cleanup, render, screen, waitFor, within } from "@testing-library/react
 import userEvent from "@testing-library/user-event";
 import type { TenantModelEntry, TenantModelEntryList } from "@/lib/types";
 
-// ModelsRegistryTable always mounts AddModelEntryDialog (even closed), which
-// calls useRouter() for its post-create refresh — needs a router context.
-vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn(), push: vi.fn() }) }));
-
 const listModelEntriesActionMock = vi.fn();
+const listSecretsActionMock = vi.fn();
 const setProviderSelfManagedActionMock = vi.fn();
 const resetProviderActionMock = vi.fn();
 const createModelEntryActionMock = vi.fn();
@@ -18,6 +15,7 @@ const rotateSecretActionMock = vi.fn();
 
 vi.mock("@/app/(dashboard)/w/[workspaceId]/settings/models/actions", () => ({
   listModelEntriesAction: listModelEntriesActionMock,
+  listSecretsAction: listSecretsActionMock,
   setProviderSelfManagedAction: setProviderSelfManagedActionMock,
   resetProviderAction: resetProviderActionMock,
   createModelEntryAction: createModelEntryActionMock,
@@ -52,7 +50,7 @@ async function renderTable(initial: TenantModelEntryList) {
   const { default: ModelsRegistryTable } = await import(
     "../app/(dashboard)/w/[workspaceId]/settings/models/components/ModelsRegistryTable"
   );
-  render(React.createElement(ModelsRegistryTable, { workspaceId: "ws_1", initial, secrets: [] } as never));
+  render(React.createElement(ModelsRegistryTable, { workspaceId: "ws_1", initial, initialSecrets: [] } as never));
 }
 
 async function openRowMenu(user: ReturnType<typeof userEvent.setup>, modelId: string) {
@@ -85,6 +83,7 @@ beforeEach(() => {
   // give it a harmless default so tests that don't care about the re-fetch
   // don't hit `.ok` on an unmocked (undefined) resolution.
   listModelEntriesActionMock.mockResolvedValue({ ok: true, data: registry([]) });
+  listSecretsActionMock.mockResolvedValue({ ok: true, data: { secrets: [] } });
 });
 afterEach(() => cleanup());
 
