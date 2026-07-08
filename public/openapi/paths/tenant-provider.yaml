@@ -27,7 +27,10 @@
       credential_not_found → credential_data_malformed →
       model_not_in_caps_catalogue → UPSERT. Stored `provider` is read
       from the credential JSON; effective `model` is the body override
-      (when present) else the credential's stored model.
+      (when present) else the credential's stored model. A self_managed
+      activation also registers the matching model entry (see
+      /v1/tenants/me/models) when none exists — idempotent on repeat, so
+      an activation is always visible as a registry row.
     tags:
     - Tenant
     requestBody:

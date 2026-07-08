@@ -86,6 +86,10 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 | `ui/packages/app/tests/helpers/dashboard-app-mocks.tsx` | EDIT | one stale comment reference to the deleted `ProviderSwitchList` fixed (Dead Code Sweep) |
 | `ui/packages/app/tests/helpers/models-component-mocks.tsx` | none | not edited — see Discovery: the new dialogs test against the real design-system (ApiKeyList/RunnerList convention), not the stub harness the original row-based forms needed |
 | `docs/architecture/billing_and_provider_keys.md` | EDIT | new registry section (the `core.tenant_model_entries` noun + entry/key indirection) |
+| `src/agentsfleetd/state/tenant_provider.zig` + `state/tenant_model_entries{,.zig,/sql.zig}` | EDIT | §7 follow-up: `upsertSelfManaged` upserts the matching registry entry atomically (`ensureEntry`, ON CONFLICT DO NOTHING, BEGIN/COMMIT) |
+| `src/agentsfleetd/http/handlers/tenant_provider.zig` | EDIT | §7 follow-up: probe error-mapping extracted (RULE FLL); entry upsert moved to state depth |
+| `src/agentsfleetd/http/handlers/tenant_model_entries_view.zig` | EDIT | §7 follow-up: synthesize-on-read deleted — GET is a pure read |
+| `src/agentsfleetd/http/{secrets_json,tenant_provider_platform_default_available}_integration_test.zig` + `state/tenant_provider_test.zig` | EDIT | §7 follow-up: shared-tenant cleanups also delete `core.tenant_model_entries` (activation now inserts rows) |
 
 ## Applicable Rules
 
@@ -127,10 +131,10 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 
 ### §2 — Tenant models endpoints + guards
 
-Four endpoints (Interfaces below). GET joins each entry to the secret metadata projection (provider, kind, `base_url`, created-at) and computes `active` per entry by comparing (`secret_ref`, `model_id`) to the tenant's current provider row; the response also carries `platform_default_available` (reused) so the pinned Default row self-gates. **Active-entry synthesis:** when the tenant's active self-managed selection has no matching entry (pre-registry configuration), GET upserts one idempotently — the registry self-heals with no separate backfill. Guards: POST/PATCH validate the referenced secret exists and is a provider-key/custom-endpoint kind; DELETE refuses the active entry (`UZ-MODELS-001`, 409); the secrets delete path refuses a secret still referenced by entries, naming the count. `api_key` is structurally absent from every response.
+Four endpoints (Interfaces below). GET joins each entry to the secret metadata projection (provider, kind, `base_url`, created-at) and computes `active` per entry by comparing (`secret_ref`, `model_id`) to the tenant's current provider row; the response also carries `platform_default_available` (reused) so the pinned Default row self-gates. **Write-path invariant (reworked in §7):** activation itself (`PUT /provider`) upserts the matching entry, so the active selection always has a row and GET is a pure read — the original synthesize-on-read self-heal was deleted as a GET-that-writes anti-pattern. Guards: POST/PATCH validate the referenced secret exists and is a provider-key/custom-endpoint kind; DELETE refuses the active entry (`UZ-MODELS-001`, 409); the secrets delete path refuses a secret still referenced by entries, naming the count. `api_key` is structurally absent from every response.
 
 - **Dimension 2.1** — GET lists entries with joined metadata + per-entry `active` flag → Test `test_models_list_joins_metadata_and_active` → **DONE** (integration test green)
-- **Dimension 2.2** — GET with an active selection but empty registry synthesizes the matching entry (idempotent on repeat) → Test `test_models_list_synthesizes_active_entry` → **DONE** (integration test green)
+- **Dimension 2.2** — activation with no matching registry row upserts the entry at write time; GET never writes (idempotent on repeat PUT) → Test `test_models_activation_upserts_entry` (reworked in §7 from `test_models_list_synthesizes_active_entry`) → **DONE** (integration test green)
 - **Dimension 2.3** — POST with unknown `secret_ref` → 404 `UZ-MODELS-002`; duplicate entry → 409 `UZ-MODELS-003` → Test `test_models_create_guards` → **DONE** (integration test green)
 - **Dimension 2.4** — DELETE on the active entry → 409 `UZ-MODELS-001`; on a non-active entry → 204 → Test `test_models_delete_active_guard` → **DONE** (integration test green)
 - **Dimension 2.5** — deleting a vault secret referenced by ≥1 entry is refused with the reference count; unreferenced secrets delete as today → Test `test_secret_delete_blocked_when_referenced` → **DONE** (integration test green)
@@ -143,11 +147,11 @@ Four endpoints (Interfaces below). GET joins each entry to the secret metadata p
 - **Dimension 3.2** — Switch on an inactive row calls the existing activate action with that entry's (`secret_ref`, `model_id`); the Active badge moves; no key is requested → Test `test_switch_activates_entry_without_key` → **DONE**
 - **Dimension 3.3** — Default row's Use-default disabled with explanatory copy when no platform default exists (regression from M120_001) → Test `test_use_default_disabled_when_unavailable` → **DONE**
 
-### §4 — Add model dialog (two shapes, reuse-existing-key)
+### §4 — Add model dialog (two shapes; reuse mode removed in §7)
 
-One dialog, segmented **Known provider | Custom endpoint**. Known: paste a key (provider detected via `detect-provider.ts`) **or** pick "use existing key" from the tenant's stored provider keys — the reuse path never shows a key field; model comes from the three-tier autocomplete (admin catalogue → `known-models.ts` → free text, M120_001 §6 carried). Custom: endpoint, key **optional** (blank stores an empty `api_key` in the secret body), model, provider name. Submitting creates the secret first when a new key/endpoint was entered (body carries credential + `base_url` + provider label; the body no longer carries `model` for new writes — entries own the model; the legacy body field remains readable), then POSTs the entry; primary action "Save & make active" also activates, secondary "Save" only registers.
+One dialog, segmented **Known provider | Custom endpoint**. Known: always the paste-a-key form (provider detected via `detect-provider.ts`); model comes from the three-tier autocomplete (admin catalogue → `known-models.ts` → free text, M120_001 §6 carried). **Key name is the credential's identity (§7):** a name that already exists with the same provider gets its `api_key` rotated in place — adding a second model on one account is the same motion as the first; a name owned by a different provider's key errors as a typo guard. The original "use existing key" toggle + stored-key picker was removed in §7 per product direction. Custom: endpoint, key **optional** (blank stores an empty `api_key` in the secret body), model, provider name. Submitting stores or rotates the secret, then POSTs the entry; primary action "Save & make active" also activates, secondary "Save" only registers.
 
-- **Dimension 4.1** — reuse-existing-key: with an Anthropic key stored, adding a second Anthropic model shows no key field and creates an entry sharing the same `secret_ref` → Test `test_add_second_model_reuses_key` → **DONE** (`models-registry-add.test.tsx`)
+- **Dimension 4.1** — create-or-rotate: with `anthropic-prod` stored, adding a model under that same key name + provider rotates the stored key in place and shares the `secret_ref`; a provider mismatch errors without writing → Tests `rotates the stored key in place…` / `errors without writing…` → **DONE** (`models-registry-add.test.tsx`, reworked in §7 from `test_add_second_model_reuses_key`)
 - **Dimension 4.2** — custom shape with blank key registers a keyless entry (secret body `api_key` empty) that can be activated → Test `test_keyless_custom_endpoint_registers_and_activates` → **DONE** (`models-registry-add-custom.test.tsx`)
 - **Dimension 4.3** — known shape with a pasted key stores a secret without `model` in the body and the new entry appears in the table → Test `test_known_provider_add_stores_secret_and_entry` → **DONE**
 
@@ -166,6 +170,21 @@ The six 4-row-era components and their four test suites are deleted; `page.tsx` 
 - **Dimension 6.1** — every deleted symbol greps to zero non-historical references → Acceptance (Dead Code Sweep table) → **DONE**
 - **Dimension 6.2** — the architecture doc carries the registry section in the same PR → Acceptance (doc diff present) → **DONE** (§8.4 added to `billing_and_provider_keys.md`)
 
+### §7 — Follow-up: write-path invariant + Add-dialog simplification (pre-merge review rework)
+
+Added during PR #493 review, on Kishore's direction (Jul 08, 2026): "we are pre v2.0 … you need to rethink this auto heal mechanism" + "I think [reuse-existing-key] is a crap concept … An add is something i always will add." Two reworks, folded into this PR since the milestone had not merged:
+
+**(a) Synthesize-on-read → upsert-on-write.** The GET-path self-heal (`synthesizeIfMissing`) was a read handler mutating the database to patch an invariant the write path was allowed to violate. Deleted. The invariant now lives at state depth: `upsertSelfManaged` (state/tenant_provider.zig) upserts the matching `core.tenant_model_entries` row (`ensureEntry`, `INSERT … ON CONFLICT DO NOTHING`) and writes the selection in one `BEGIN`/`COMMIT` transaction — every caller of the selection write gets the invariant, partial failure leaves nothing, repeat PUTs converge (idempotency preserved). Pre-2.0, no legacy data protection: an old selection-without-entry simply shows no Active row until the next activation. Behavior note: a secret activated via bare `PUT /provider` is now immediately referenced by an entry, so the referenced-secret delete guard protects it (previously deletable while active).
+
+**(b) Add dialog always adds.** The "New key | Use existing key" toggle + stored-key picker removed; the Known-provider tab is always the paste-a-key form. Key name is the credential's identity: same name + same provider → the stored key's `api_key` rotates in place (`rotateSecretAction`); same name + different provider → error, no write. Paste-detect and provider picks never overwrite a hand-edited key name (it is the rotate target), and the rotate branch skips the secrets refetch (list-visible metadata is unchanged). Custom-endpoint tab unchanged.
+
+- **Dimension 7.1** — activation upserts the matching entry; GET is a pure read; repeat PUT idempotent → Test `test_models_activation_upserts_entry` → **DONE** (integration test green)
+- **Dimension 7.2** — Add with an existing (name, provider) rotates in place; provider mismatch errors without writes; rotate failure never registers an entry → Tests in `models-registry-add.test.tsx` "create-or-rotate by key name" → **DONE**
+- **Dimension 7.3** — the secrets-refresh round-trip is observable: a repeat add after a successful refresh rotates, after a failed refresh re-creates → Tests in `models-registry-table.test.tsx` → **DONE**
+- **Dimension 7.4** — shared-tenant integration suites clean `core.tenant_model_entries` (activation now inserts rows) → cleanup edits in both suites, full `make test-integration` green → **DONE**
+
+Deliberately NOT fixed (Kishore's call, same session): the PATCH-active-entry selection-desync (greptile `r3544567630`) — renaming the active entry's model leaves `tenant_model_selection` stale until the user Switches; with synthesis gone the ghost-row symptom no longer occurs, only the stale-Active gap remains. "The bug can stay no change needed here."
+
 ## Interfaces
 
 ```
@@ -180,8 +199,10 @@ DELETE /v1/tenants/me/models/{id}                                       → 204
   404 UZ-MODELS-002 when secret_ref names no vault secret (POST)
   409 UZ-MODELS-003 on duplicate (tenant, model_id, secret_ref)
 Activation is NOT new surface: PUT /v1/tenants/me/provider (existing) with the
-entry's { secret_ref, model }. Secrets create/rotate/delete endpoints unchanged
-except the delete guard (refusal names the referencing entry count).
+entry's { secret_ref, model }. §7: that PUT also upserts the matching registry
+entry (write-path invariant; duplicate tolerated, idempotent). Secrets
+create/rotate/delete endpoints unchanged except the delete guard (refusal names
+the referencing entry count).
 ```
 
 ## Failure Modes
@@ -199,7 +220,7 @@ except the delete guard (refusal names the referencing entry count).
 
 1. `api_key` never appears in any `/models` response or the entries table — structural: no key column exists; responses build from the metadata projection (§8.2 boundary) — enforced by schema shape + `test_models_list_joins_metadata_and_active` asserting field absence.
 2. Every entry's `secret_ref` names an existing vault secret at write time, and a referenced secret cannot be deleted — enforced by POST/PATCH validation + the extended delete guard (Dimensions 2.3/2.5).
-3. The active selection is always representable: GET synthesis guarantees the active (`secret_ref`, `model`) pair has an entry row — enforced by the idempotent upsert (Dimension 2.2).
+3. The active selection is always representable: the selection write itself upserts the matching entry row atomically (GET never writes) — enforced by `ensureEntry` inside `upsertSelfManaged` (state/tenant_provider.zig) (Dimension 2.2, reworked in §7).
 4. At most one entry per (tenant, `model_id`, `secret_ref`) — enforced by the database unique constraint (Dimension 1.2).
 
 ## Metrics & Observability

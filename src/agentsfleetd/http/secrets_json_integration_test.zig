@@ -85,6 +85,10 @@ fn setupSeedData(conn: *pg.Conn) !void {
 
 pub fn cleanupRows(conn: *pg.Conn) void {
     _ = conn.exec("DELETE FROM core.tenant_model_selection WHERE tenant_id = $1::uuid", .{TEST_TENANT_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
+    // Every self_managed activation upserts a registry entry (M121 invariant),
+    // so any suite that PUTs /provider leaves entry rows behind — clean them
+    // here so shared-tenant suites never see each other's rows.
+    _ = conn.exec("DELETE FROM core.tenant_model_entries WHERE tenant_id = $1::uuid", .{TEST_TENANT_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
     _ = conn.exec("DELETE FROM vault.secrets WHERE workspace_id = $1", .{TEST_WS_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
 }
 

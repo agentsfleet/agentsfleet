@@ -15,6 +15,7 @@ const createSecretActionMock = vi.fn();
 vi.mock("@/app/(dashboard)/w/[workspaceId]/settings/models/actions", () => ({
   createModelEntryAction: createModelEntryActionMock,
   setProviderSelfManagedAction: setProviderSelfManagedActionMock,
+  rotateSecretAction: vi.fn(),
 }));
 vi.mock("@/app/(dashboard)/w/[workspaceId]/secrets/actions", () => ({
   createSecretAction: createSecretActionMock,

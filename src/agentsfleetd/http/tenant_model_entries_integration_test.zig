@@ -17,8 +17,9 @@ const entries_state = @import("../state/tenant_model_entries.zig");
 // (tenant_provider_platform_default_available_integration_test.zig).
 const TEST_TENANT_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01";
 
+// base.cleanupRows deletes this suite's entries too (it owns the shared
+// tenant's core.tenant_model_entries cleanup since activation upserts rows).
 fn cleanup(conn: *pg.Conn) void {
-    _ = conn.exec("DELETE FROM core.tenant_model_entries WHERE tenant_id = $1::uuid", .{TEST_TENANT_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
     base.cleanupRows(conn);
 }
 
@@ -86,7 +87,7 @@ test "integration: test_models_list_joins_metadata_and_active — GET joins secr
     cleanup(conn);
 }
 
-test "integration: test_models_list_synthesizes_active_entry — GET synthesizes a missing entry for a pre-registry activation, idempotently" {
+test "integration: test_models_activation_upserts_entry — PUT /provider upserts the matching registry entry at write time; GET is a pure read" {
     base.setTestEncryptionKey();
     const alloc = std.testing.allocator;
     const h = base.seedAndHarness(alloc) catch |err| switch (err) {
@@ -104,8 +105,8 @@ test "integration: test_models_list_synthesizes_active_entry — GET synthesizes
         try r.expectStatus(.created);
     }
     {
-        // Activated directly through PUT /provider — the registry (§2) never
-        // saw a POST for this model, matching a pre-registry tenant.
+        // Activated directly through PUT /provider with no prior POST to the
+        // registry — the activation itself must create the matching entry.
         const r = try (try (try h.put("/v1/tenants/me/provider").bearer(base.TOKEN_OPERATOR))
             .json("{\"mode\":\"self_managed\",\"secret_ref\":\"sync-key\"}")).send();
         defer r.deinit();
@@ -121,11 +122,19 @@ test "integration: test_models_list_synthesizes_active_entry — GET synthesizes
         try std.testing.expect(r.bodyContains("\"active\":true"));
     }
     {
-        // Second GET must not synthesize a duplicate row.
+        // Repeat GET stays a pure read — no row is ever created on the read path.
         const r = try (try h.get("/v1/tenants/me/models").bearer(base.TOKEN_OPERATOR)).send();
         defer r.deinit();
         try r.expectStatus(.ok);
         try std.testing.expectEqual(@as(usize, 1), std.mem.count(u8, r.body, "\"model_id\":\"claude-sonnet-4-6\""));
+    }
+    {
+        // Repeat activation of the same (secret_ref, model) is idempotent —
+        // the entry upsert tolerates the duplicate and state converges.
+        const r = try (try (try h.put("/v1/tenants/me/provider").bearer(base.TOKEN_OPERATOR))
+            .json("{\"mode\":\"self_managed\",\"secret_ref\":\"sync-key\"}")).send();
+        defer r.deinit();
+        try r.expectStatus(.ok);
     }
 
     const conn = try h.acquireConn();

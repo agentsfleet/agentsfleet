@@ -2,9 +2,9 @@
 //!
 //! GET    lists every entry joined to its secret's non-secret metadata, with
 //!        `active` computed against the tenant's current selection, plus
-//!        `platform_default_available`. Synthesizes a missing entry for a
-//!        pre-registry activation first (idempotent) — see
-//!        tenant_model_entries_view.zig.
+//!        `platform_default_available`. Pure read — activation itself
+//!        (tenant_provider.zig) upserts the matching entry, so the selection
+//!        always has one. See tenant_model_entries_view.zig.
 //! POST   {model_id, secret_ref} — 404 UZ-MODELS-002 (unknown secret),
 //!        409 UZ-MODELS-003 (duplicate).
 //! PATCH  {model_id} — model change only; secret_ref is immutable here.

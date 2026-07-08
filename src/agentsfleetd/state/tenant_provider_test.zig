@@ -37,6 +37,9 @@ pub fn setEncryptionKey() void {
 /// Remove tenant provider fixture rows for one workspace.
 pub fn cleanupTeardown(conn: *pg.Conn, ws_id: []const u8) void {
     _ = conn.exec("DELETE FROM core.tenant_model_selection WHERE tenant_id = $1::uuid", .{uc1.TENANT_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
+    // upsertSelfManaged also upserts a registry entry (M121 invariant) — clean
+    // those rows so repeat runs and sibling suites never see them.
+    _ = conn.exec("DELETE FROM core.tenant_model_entries WHERE tenant_id = $1::uuid", .{uc1.TENANT_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
     _ = conn.exec("DELETE FROM core.platform_provider_defaults WHERE source_workspace_id = $1::uuid", .{ws_id}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
     // After platform_provider_defaults (the FK referrer) is gone, the catalogue row is free to drop.
     _ = conn.exec("DELETE FROM core.model_library WHERE provider = $1", .{TP_TEST_PROVIDER}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});

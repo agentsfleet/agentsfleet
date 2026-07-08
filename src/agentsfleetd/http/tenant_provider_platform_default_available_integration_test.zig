@@ -47,6 +47,9 @@ fn seedTenantWorkspace(conn: anytype) !void {
 
 fn cleanupRows(conn: anytype) void {
     _ = conn.exec("DELETE FROM core.tenant_model_selection WHERE tenant_id = $1::uuid", .{TEST_TENANT_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
+    // The self_managed PUT in this suite upserts a registry entry (M121
+    // invariant) — clean it so shared-tenant suites never see our rows.
+    _ = conn.exec("DELETE FROM core.tenant_model_entries WHERE tenant_id = $1::uuid", .{TEST_TENANT_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
     fixtures_provider.teardownPlatformProvider(conn, TEST_WS_ID);
 }
 

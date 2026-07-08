@@ -6,11 +6,13 @@ import type { Secret } from "@/lib/api/secrets";
 
 const createModelEntryActionMock = vi.fn();
 const setProviderSelfManagedActionMock = vi.fn();
+const rotateSecretActionMock = vi.fn();
 const createSecretActionMock = vi.fn();
 
 vi.mock("@/app/(dashboard)/w/[workspaceId]/settings/models/actions", () => ({
   createModelEntryAction: createModelEntryActionMock,
   setProviderSelfManagedAction: setProviderSelfManagedActionMock,
+  rotateSecretAction: rotateSecretActionMock,
 }));
 vi.mock("@/app/(dashboard)/w/[workspaceId]/secrets/actions", () => ({
   createSecretAction: createSecretActionMock,
@@ -43,6 +45,7 @@ const ANTHROPIC_SECRET: Secret = {
   provider: "anthropic",
   created_at: 1_777_507_200_000,
 };
+const ROTATED_API_KEY = "sk-ant-rotated-key";
 
 async function renderDialog(secrets: Secret[] = []) {
   const { default: AddModelEntryDialog } = await import(
@@ -50,23 +53,20 @@ async function renderDialog(secrets: Secret[] = []) {
   );
   const onCreated = vi.fn();
   const onSecretsChanged = vi.fn();
-  const { rerender } = render(
+  render(
     React.createElement(AddModelEntryDialog, { workspaceId: "ws_1", secrets, onCreated, onSecretsChanged } as never),
   );
   const user = userEvent.setup();
   await user.click(screen.getByRole("button", { name: /add model/i }));
   await screen.findByRole("dialog");
-  const rerenderWithSecrets = (nextSecrets: Secret[]) =>
-    rerender(
-      React.createElement(AddModelEntryDialog, { workspaceId: "ws_1", secrets: nextSecrets, onCreated, onSecretsChanged } as never),
-    );
-  return { onCreated, onSecretsChanged, user, rerenderWithSecrets };
+  return { onCreated, onSecretsChanged, user };
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
   catalogueState.models = [];
   createSecretActionMock.mockResolvedValue({ ok: true, data: { name: "anthropic" } });
+  rotateSecretActionMock.mockResolvedValue({ ok: true, data: { name: "anthropic-prod" } });
   createModelEntryActionMock.mockResolvedValue({ ok: true, data: { id: "e1", model_id: "claude-sonnet-5", secret_ref: "anthropic", created_at: 1 } });
   setProviderSelfManagedActionMock.mockResolvedValue({
     ok: true,
@@ -75,82 +75,106 @@ beforeEach(() => {
 });
 afterEach(() => cleanup());
 
-describe("AddModelEntryDialog — reuse-existing-key", () => {
-  it("disables Save until a stored key and a model are both chosen", async () => {
-    const { onCreated, user } = await renderDialog([ANTHROPIC_SECRET]);
+describe("AddModelEntryDialog — create-or-rotate by key name", () => {
+  it("rotates the stored key in place when the name already exists with the same provider", async () => {
+    const { onCreated, onSecretsChanged, user } = await renderDialog([ANTHROPIC_SECRET]);
     const dialog = screen.getByRole("dialog");
 
-    await user.click(within(dialog).getByRole("button", { name: /use existing key/i }));
-    expect(within(dialog).getByRole("button", { name: /^save$/i }).hasAttribute("disabled")).toBe(true);
-
-    await user.click(within(dialog).getByLabelText(/stored key/i));
-    await user.click(await screen.findByText(/anthropic-prod/i));
-    // A key is picked but no model yet — still disabled, not just no-key-picked.
-    expect(within(dialog).getByRole("button", { name: /^save$/i }).hasAttribute("disabled")).toBe(true);
-
-    expect(createModelEntryActionMock).not.toHaveBeenCalled();
-    expect(onCreated).not.toHaveBeenCalled();
-  });
-
-  it("surfaces a stale-key error when the selected secret disappears from the secrets prop before Save", async () => {
-    const { user, rerenderWithSecrets } = await renderDialog([ANTHROPIC_SECRET]);
-    const dialog = screen.getByRole("dialog");
-
-    await user.click(within(dialog).getByRole("button", { name: /use existing key/i }));
-    await user.click(within(dialog).getByLabelText(/stored key/i));
-    await user.click(await screen.findByText(/anthropic-prod/i));
+    await user.type(within(dialog).getByLabelText(/^api key$/i), ROTATED_API_KEY);
+    // Paste-detect names the key "anthropic"; retype it to hit the stored
+    // "anthropic-prod" — key name is the identity the rotate keys off.
+    const keyName = within(dialog).getByLabelText(/key name/i) as HTMLInputElement;
+    await user.clear(keyName);
+    await user.type(keyName, "anthropic-prod");
     await user.click(within(dialog).getByLabelText(/^model$/i));
     await user.click((await screen.findAllByRole("option"))[0]!);
-
-    // canSubmit only checks reuseSecretName is non-empty — a concurrent
-    // secrets-prop refresh (e.g. the key was deleted on the Secrets page in
-    // another tab) can remove it from providerKeys without clearing the
-    // selection, so Save is still enabled but the lookup at submit time fails.
-    rerenderWithSecrets([]);
     await user.click(within(dialog).getByRole("button", { name: /^save$/i }));
 
-    await waitFor(() => expect(within(dialog).getByText(/no longer available/i)).toBeTruthy());
+    await waitFor(() => expect(rotateSecretActionMock).toHaveBeenCalledWith("ws_1", "anthropic-prod", ROTATED_API_KEY));
+    expect(createSecretActionMock).not.toHaveBeenCalled();
+    await waitFor(() => expect(createModelEntryActionMock).toHaveBeenCalledWith(
+      expect.objectContaining({ secret_ref: "anthropic-prod" }),
+    ));
+    await waitFor(() => expect(onCreated).toHaveBeenCalled());
+    // A rotate leaves the secret's list-visible metadata identical, so the
+    // secrets refetch is skipped — only the entries list refreshes.
+    expect(onSecretsChanged).not.toHaveBeenCalled();
+  });
+
+  it("preserves a hand-typed key name against paste-detect, so the rotate target can't be redirected", async () => {
+    const { user } = await renderDialog([ANTHROPIC_SECRET]);
+    const dialog = screen.getByRole("dialog");
+
+    // Key name typed FIRST — the later paste-detect must not clobber it back
+    // to "anthropic" (which could silently rotate a different stored key).
+    const keyName = within(dialog).getByLabelText(/key name/i) as HTMLInputElement;
+    await user.type(keyName, "my-second-anthropic");
+    await user.type(within(dialog).getByLabelText(/^api key$/i), "sk-ant-e2e-xxxx");
+    await waitFor(() => expect((within(dialog).getByLabelText(/^provider$/i) as HTMLInputElement).value).toBe("anthropic"));
+    expect(keyName.value).toBe("my-second-anthropic");
+
+    await user.click(within(dialog).getByLabelText(/^model$/i));
+    await user.click((await screen.findAllByRole("option"))[0]!);
+    await user.click(within(dialog).getByRole("button", { name: /^save$/i }));
+
+    await waitFor(() =>
+      expect(createSecretActionMock).toHaveBeenCalledWith("ws_1", expect.objectContaining({ name: "my-second-anthropic" })),
+    );
+    expect(rotateSecretActionMock).not.toHaveBeenCalled();
+  });
+
+  it("errors without writing anything when the name is owned by a different provider's key", async () => {
+    const openaiSecret: Secret = { kind: "provider_key", name: "openai-prod", provider: "openai", created_at: 1_777_507_200_000 };
+    const { user } = await renderDialog([openaiSecret]);
+    const dialog = screen.getByRole("dialog");
+
+    await user.type(within(dialog).getByLabelText(/^api key$/i), "sk-ant-e2e-xxxx");
+    const keyName = within(dialog).getByLabelText(/key name/i) as HTMLInputElement;
+    await user.clear(keyName);
+    await user.type(keyName, "openai-prod");
+    await user.click(within(dialog).getByLabelText(/^model$/i));
+    await user.click((await screen.findAllByRole("option"))[0]!);
+    await user.click(within(dialog).getByRole("button", { name: /^save$/i }));
+
+    await waitFor(() => expect(within(dialog).getByText(/different provider/i)).toBeTruthy());
+    expect(rotateSecretActionMock).not.toHaveBeenCalled();
+    expect(createSecretActionMock).not.toHaveBeenCalled();
     expect(createModelEntryActionMock).not.toHaveBeenCalled();
   });
 
-  it("surfaces a register error when reusing a stored key", async () => {
+  it("surfaces a register error after a successful rotate, and leaves the dialog open", async () => {
     createModelEntryActionMock.mockResolvedValue({ ok: false, error: "duplicate", errorCode: "UZ-MODELS-003" });
     const { user } = await renderDialog([ANTHROPIC_SECRET]);
     const dialog = screen.getByRole("dialog");
 
-    await user.click(within(dialog).getByRole("button", { name: /use existing key/i }));
-    await user.click(within(dialog).getByLabelText(/stored key/i));
-    await user.click(await screen.findByText(/anthropic-prod/i));
+    await user.type(within(dialog).getByLabelText(/^api key$/i), ROTATED_API_KEY);
+    const keyName = within(dialog).getByLabelText(/key name/i) as HTMLInputElement;
+    await user.clear(keyName);
+    await user.type(keyName, "anthropic-prod");
+    await user.click(within(dialog).getByLabelText(/^model$/i));
+    await user.click((await screen.findAllByRole("option"))[0]!);
+    await user.click(within(dialog).getByRole("button", { name: /^save$/i }));
+
+    await waitFor(() => expect(rotateSecretActionMock).toHaveBeenCalled());
+    await waitFor(() => expect(within(dialog).getByRole("alert")).toBeTruthy());
+    expect(screen.getByRole("dialog")).toBeTruthy();
+  });
+
+  it("surfaces a rotate error and never registers an entry", async () => {
+    rotateSecretActionMock.mockResolvedValue({ ok: false, error: "rejected", errorCode: "UZ-REQ-001" });
+    const { user } = await renderDialog([ANTHROPIC_SECRET]);
+    const dialog = screen.getByRole("dialog");
+
+    await user.type(within(dialog).getByLabelText(/^api key$/i), ROTATED_API_KEY);
+    const keyName = within(dialog).getByLabelText(/key name/i) as HTMLInputElement;
+    await user.clear(keyName);
+    await user.type(keyName, "anthropic-prod");
     await user.click(within(dialog).getByLabelText(/^model$/i));
     await user.click((await screen.findAllByRole("option"))[0]!);
     await user.click(within(dialog).getByRole("button", { name: /^save$/i }));
 
     await waitFor(() => expect(within(dialog).getByRole("alert")).toBeTruthy());
-  });
-
-  it("shows no key field and creates an entry sharing the stored secret_ref", async () => {
-    const { onCreated, onSecretsChanged, user } = await renderDialog([ANTHROPIC_SECRET]);
-
-    await user.click(screen.getByRole("button", { name: /use existing key/i }));
-    expect(screen.queryByLabelText(/^api key$/i)).toBeNull();
-
-    const dialog = screen.getByRole("dialog");
-    await user.click(within(dialog).getByLabelText(/stored key/i));
-    await user.click(await screen.findByText(/anthropic-prod/i));
-
-    await user.click(within(dialog).getByLabelText(/^model$/i));
-    await user.click((await screen.findAllByRole("option"))[0]!);
-
-    await user.click(within(dialog).getByRole("button", { name: /^save$/i }));
-
-    await waitFor(() => expect(createModelEntryActionMock).toHaveBeenCalled());
-    expect(createModelEntryActionMock).toHaveBeenCalledWith(
-      expect.objectContaining({ secret_ref: "anthropic-prod" }),
-    );
-    expect(createSecretActionMock).not.toHaveBeenCalled();
-    await waitFor(() => expect(onCreated).toHaveBeenCalled());
-    // Picks up any secret created elsewhere since page load, not just this one.
-    expect(onSecretsChanged).toHaveBeenCalled();
+    expect(createModelEntryActionMock).not.toHaveBeenCalled();
   });
 });
 
@@ -282,15 +306,3 @@ describe("AddModelEntryDialog — known provider, new key", () => {
   });
 });
 
-describe("AddModelEntryDialog — reuse toggle", () => {
-  it("switches back to New key after opening Use existing key", async () => {
-    const { user } = await renderDialog([ANTHROPIC_SECRET]);
-    const dialog = screen.getByRole("dialog");
-
-    await user.click(within(dialog).getByRole("button", { name: /use existing key/i }));
-    expect(screen.queryByLabelText(/^api key$/i)).toBeNull();
-
-    await user.click(within(dialog).getByRole("button", { name: /^new key$/i }));
-    expect(within(dialog).getByLabelText(/^api key$/i)).toBeTruthy();
-  });
-});

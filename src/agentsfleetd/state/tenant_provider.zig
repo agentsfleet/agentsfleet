@@ -22,11 +22,15 @@
 
 const std = @import("std");
 const clock = @import("common").clock;
+const logging = @import("log");
 const pg = @import("pg");
 const resolver = @import("tenant_provider_resolver.zig");
 const secret_probe = @import("secret_probe.zig");
+const tenant_model_entries = @import("tenant_model_entries.zig");
 const sql = @import("tenant_provider/sql.zig");
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
+
+const log = logging.scoped(.state_tenant_provider);
 
 pub const Mode = enum {
     const Self = @This();
@@ -133,6 +137,20 @@ pub fn upsertSelfManaged(
     var probe = try secret_probe.probeSelfManagedSecret(alloc, conn, tenant_id, secret_ref);
     defer probe.deinit(alloc);
 
+    // M121 registry invariant, enforced HERE so every caller of the selection
+    // write gets it: the active (secret_ref, model) pair always has a matching
+    // core.tenant_model_entries row, and the GET list path stays a pure read.
+    // Entry + selection commit atomically — no orphan entry row surfaces from
+    // a partial failure. rollback() (not exec("ROLLBACK")) per signup_bootstrap:
+    // exec short-circuits when the connection is in FAIL state.
+    _ = try conn.exec("BEGIN", .{});
+    var tx_open = true;
+    errdefer if (tx_open) {
+        conn.rollback() catch |err| log.warn("rollback_failed", .{ .err = @errorName(err) });
+    };
+
+    try tenant_model_entries.ensureEntry(alloc, conn, tenant_id, model, secret_ref);
+
     const now_ms: i64 = clock.nowMillis();
     _ = try conn.exec(sql.UPSERT_SELF_MANAGED, .{
         tenant_id,
@@ -143,6 +161,9 @@ pub fn upsertSelfManaged(
         secret_ref,
         now_ms,
     });
+
+    _ = try conn.exec("COMMIT", .{});
+    tx_open = false;
 }
 
 /// UPSERT an explicit platform-default row for tenant_id. Used by
