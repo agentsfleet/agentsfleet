@@ -20,7 +20,7 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Branch:** {added at CHORE(open)}
 **Test Baseline:** {set at CHORE(open) via `make _lint_zig_test_depth`}
 **Depends on:** none
-**Provenance:** human-directed, LLM-drafted (Sonnet 5, Jul 07, 2026) — Indy explicitly chose the wide (app-wide) sweep scope over a Models-page-only scope during the same Q&A that produced M120_001; a screenshot of the admin Platform Default form's misaligned provider-select surfaced the visual bug this spec also fixes.
+**Provenance:** human-directed, LLM-drafted (Sonnet 5, Jul 07, 2026) — Indy explicitly chose the wide (app-wide) sweep scope over a Models-page-only scope during the same Q&A that produced M120_001; a screenshot of the admin Platform Default form's misaligned provider-select surfaced the visual bug this spec also fixes. Indy asked (mid-EXECUTE on M120_001) that this workstream also get a design-shotgun/wireframe pass before the dialog/icon-row components are built — added as §2's Dimension 2.1.
 
 **Canonical architecture:** none — presentation-only; no data-flow or resolve-path change. `docs/architecture/billing_and_provider_keys.md` is unaffected (the admin catalogue/default *data model* is untouched, only its form's presentation).
 
@@ -89,10 +89,11 @@ The screenshot shows the `Select`'s open option ("fireworks") rendering as an un
 
 ### §2 — Platform Default becomes a "Create default" / "Edit default" dialog trigger
 
-**Implementation default:** mirror `AddModelDialog.tsx` exactly — a `Button` (`PlusIcon` + "Create default" when no active default exists, `PencilIcon` + "Edit default" when one does) opens a `Dialog` containing today's `PlatformDefaultCard` form fields; the card no longer renders inline on the page.
+**Implementation default:** mirror `AddModelDialog.tsx` exactly — a `Button` (`PlusIcon` + "Create default" when no active default exists, `PencilIcon` + "Edit default" when one does) opens a `Dialog` containing today's `PlatformDefaultCard` form fields; the card no longer renders inline on the page. Per Indy's follow-up ask (this session), run a design-shotgun/wireframe pass on this dialog's layout and the catalogue's new icon row (§3) BEFORE building the components — same treatment as M120_001 §1: generate variants (or, if the `design` tool's image generation still has no OpenAI platform key configured, hand-built HTML wireframes using the app's real theme tokens, published for review), collect Indy's pick, record it in Discovery, then build to match. Do not hard-lock the dialog's exact layout from this spec's prose alone.
 
-- **Dimension 2.1** — with no active platform default, the section renders a "Create default" trigger; saving inside the dialog activates a default and closes it → Test `test_create_default_dialog_activates_and_closes`
-- **Dimension 2.2** — with an active default, the trigger reads "Edit default" and pre-fills the dialog with the active provider/model → Test `test_edit_default_dialog_prefills_active_selection`
+- **Dimension 2.1** — a design-shotgun/wireframe run exists for the Platform Default dialog + catalogue icon-row layout and Indy's pick is recorded in Discovery before the dialog/icon components are built → Acceptance (Discovery record present, not a unit test)
+- **Dimension 2.2** — with no active platform default, the section renders a "Create default" trigger; saving inside the dialog activates a default and closes it → Test `test_create_default_dialog_activates_and_closes`
+- **Dimension 2.3** — with an active default, the trigger reads "Edit default" and pre-fills the dialog with the active provider/model → Test `test_edit_default_dialog_prefills_active_selection`
 
 ### §3 — Admin Model Library rows get Edit + icon Delete
 
@@ -133,8 +134,9 @@ Not applicable — no product/operator signal changes; this is a presentation/co
 | Dimension | Tier | Test | Asserts (concrete inputs → expected output) |
 |-----------|------|------|---------------------------------------------|
 | 1.1 | unit | `test_platform_default_provider_select_popover_is_positioned` | open the Provider select → its option list renders inside a positioned popover element, not inline below the trigger |
-| 2.1 | unit | `test_create_default_dialog_activates_and_closes` | no active default → "Create default" trigger renders; submit → `setPlatformDefaultAction` called, dialog closes |
-| 2.2 | unit | `test_edit_default_dialog_prefills_active_selection` | active default exists → trigger reads "Edit default"; opening it shows the active provider/model pre-selected |
+| 2.1 | — | (Acceptance) | design-shotgun/wireframe run exists, Indy's pick recorded in Discovery |
+| 2.2 | unit | `test_create_default_dialog_activates_and_closes` | no active default → "Create default" trigger renders; submit → `setPlatformDefaultAction` called, dialog closes |
+| 2.3 | unit | `test_edit_default_dialog_prefills_active_selection` | active default exists → trigger reads "Edit default"; opening it shows the active provider/model pre-selected |
 | 3.1 | unit | `test_catalogue_row_edit_dialog_updates_rates` | click Edit on a row → dialog pre-filled; submit new rates → `updateAdminModelAction` called with the row's `uid` |
 | 3.2 | unit (regression) | `test_catalogue_row_delete_is_icon_only_same_behavior` | click Delete icon → same `ConfirmDialog` + `deleteAdminModelAction` flow as before, icon-only trigger |
 | 4.1 | unit | `test_create_triggers_render_plus_icon` | render each of `CreateApiKeyDialog`/`AddRunnerDialog`/`AddSecretDialog` → trigger button contains a `PlusIcon` |
@@ -147,7 +149,7 @@ Regression: existing `CatalogueList`/`PlatformDefaultCard` test suites pass once
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
 | R1 | Provider-select popover renders positioned, not misaligned (§1) | `make test-unit-app` | Dimension 1.1 passes | P1 | |
-| R2 | Platform Default is a dialog trigger, not an inline form (§2) | `make test-unit-app` | Dimensions 2.1–2.2 pass | P1 | |
+| R2 | Platform Default is a dialog trigger, not an inline form (§2) | `make test-unit-app` | Dimensions 2.2–2.3 pass | P1 | |
 | R3 | Catalogue rows have icon Edit + icon Delete (§3) | `make test-unit-app` | Dimensions 3.1–3.2 pass | P1 | |
 | R4 | Every listed settings page's Create/Install trigger carries its icon (§4) | `make test-unit-app` | Dimensions 4.1–4.2 pass | P2 | |
 | S1 | Unit tests pass | `make test` | exit 0 | P0 | |
