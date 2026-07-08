@@ -16,6 +16,7 @@ const ws_lifecycle = @import("handlers/workspaces/lifecycle.zig");
 const tenant_billing_h = @import("handlers/tenant_billing.zig");
 const tenant_workspaces_h = @import("handlers/tenant_workspaces.zig");
 const tenant_provider_h = @import("handlers/tenant_provider.zig");
+const tenant_model_entries_h = @import("handlers/tenant_model_entries.zig");
 const admin_keys = @import("handlers/admin/platform_keys.zig");
 const admin_models = @import("handlers/admin/model_caps_admin.zig");
 const memory = @import("handlers/memory/handler.zig");
@@ -137,6 +138,24 @@ pub fn invokeTenantProvider(hx: *Hx, req: *httpz.Request, route: router.Route) v
         .GET => tenant_provider_h.innerGetTenantProvider(hx.*, req),
         .PUT => tenant_provider_h.innerPutTenantProvider(hx.*, req),
         .DELETE => tenant_provider_h.innerDeleteTenantProvider(hx.*, req),
+        else => common.respondMethodNotAllowed(hx.res),
+    }
+}
+
+pub fn invokeTenantModelEntries(hx: *Hx, req: *httpz.Request, route: router.Route) void {
+    _ = route;
+    switch (req.method) {
+        .GET => tenant_model_entries_h.innerListModelEntries(hx.*, req),
+        .POST => tenant_model_entries_h.innerCreateModelEntry(hx.*, req),
+        else => common.respondMethodNotAllowed(hx.res),
+    }
+}
+
+pub fn invokeTenantModelEntryById(hx: *Hx, req: *httpz.Request, route: router.Route) void {
+    const entry_id = route.tenant_model_entry_by_id;
+    switch (req.method) {
+        .PATCH => tenant_model_entries_h.innerUpdateModelEntry(hx.*, req, entry_id),
+        .DELETE => tenant_model_entries_h.innerDeleteModelEntry(hx.*, req, entry_id),
         else => common.respondMethodNotAllowed(hx.res),
     }
 }

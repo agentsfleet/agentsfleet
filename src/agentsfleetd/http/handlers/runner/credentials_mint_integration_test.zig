@@ -29,7 +29,6 @@ const api_key = @import("../../../auth/api_key.zig");
 const serve_runner_lookup = @import("../../../cmd/serve_runner_lookup.zig");
 const crypto_primitives = @import("../../../secrets/crypto_primitives.zig");
 const vault = @import("../../../state/vault.zig");
-const credential_key = @import("../../../fleet_runtime/credential_key.zig");
 const integration = @import("../../../credentials/integration.zig");
 const CredentialBroker = @import("../../../credentials/broker.zig");
 const base = @import("../../../db/test_fixtures.zig");
@@ -137,19 +136,15 @@ fn setGrantStatus(conn: *pg.Conn, fleet_id: []const u8, service: []const u8, sta
 /// Store a `static` integration handle `{integration, token}` at (workspace, key)
 /// — the vault row the mint handler loads and hands to the broker.
 fn seedStaticHandle(conn: *pg.Conn, workspace_id: []const u8, token: []const u8) !void {
-    const key_name = try credential_key.allocKeyName(ALLOC, INTEGRATION_STATIC);
-    defer ALLOC.free(key_name);
     const handle = try std.fmt.allocPrint(ALLOC, "{{\"integration\":\"static\",\"token\":\"{s}\"}}", .{token});
     defer ALLOC.free(handle);
-    try vault.storeJsonPlaintext(ALLOC, conn, workspace_id, key_name, handle);
+    try vault.storeJsonPlaintext(ALLOC, conn, workspace_id, INTEGRATION_STATIC, handle);
 }
 
-/// Store a `fleet:github` App-installation handle — the shape the connect
+/// Store a `github` App-installation handle — the shape the connect
 /// callback writes; the broker mints an installation token from it.
 fn seedGithubHandle(conn: *pg.Conn, workspace_id: []const u8) !void {
-    const key_name = try credential_key.allocKeyName(ALLOC, INTEGRATION_GITHUB);
-    defer ALLOC.free(key_name);
-    try vault.storeJsonPlaintext(ALLOC, conn, workspace_id, key_name, "{\"integration\":\"github\",\"installation_id\":\"42\"}");
+    try vault.storeJsonPlaintext(ALLOC, conn, workspace_id, INTEGRATION_GITHUB, "{\"integration\":\"github\",\"installation_id\":\"42\"}");
 }
 
 fn githubMintBody(lease_id: []const u8) ![]u8 {

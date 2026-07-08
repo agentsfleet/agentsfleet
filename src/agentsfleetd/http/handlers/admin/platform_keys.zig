@@ -23,6 +23,7 @@ const id_format = @import("../../../types/id_format.zig");
 const tenant_provider = @import("../../../state/tenant_provider.zig");
 const model_caps_store = @import("../../../state/model_caps_store.zig");
 const hx_mod = @import("../hx.zig");
+const sql = @import("platform_keys/sql.zig");
 
 const log = logging.scoped(.http);
 
@@ -32,7 +33,7 @@ pub const Context = common.Context;
 // Defined at module level so std.ArrayList(PlatformKeyRow) compiles in all build modes.
 const S_PROVIDER_MUST_BE_1_32_CHARS = "provider must be 1–32 chars";
 const S_ROLLBACK_FAILED = "platform_default_rollback_failed";
-// Postgres SQLSTATE for foreign_key_violation. fk_platform_llm_keys_model trips
+// Postgres SQLSTATE for foreign_key_violation. fk_platform_provider_defaults_model trips
 // it when a concurrent model-delete wins the race against this activation — the
 // signal that lets us return a catalogue-miss 4xx instead of an opaque 500.
 const PG_SQLSTATE_FK_VIOLATION = "23503";
@@ -129,7 +130,7 @@ pub fn innerPutAdminPlatformKey(hx: hx_mod.Hx, req: *httpz.Request) void {
 /// error response and returns false otherwise.
 fn workspaceExists(hx: hx_mod.Hx, conn: anytype, workspace_id: []const u8) bool {
     var q = PgQuery.from(conn.query(
-        "SELECT 1 FROM core.workspaces WHERE workspace_id = $1 LIMIT 1",
+        sql.SELECT_WORKSPACE_EXISTS,
         .{workspace_id},
     ) catch {
         common.internalOperationError(hx.res, "Failed to check workspace existence", hx.req_id);
@@ -163,7 +164,7 @@ fn activateDefault(
         // Inspect the sqlstate BEFORE rollback (rollback issues a new command that
         // clears conn.err). A foreign_key_violation here means the catalogued
         // model was deleted between capFor and commit — the model-delete won the
-        // race fk_platform_llm_keys_model guards. Surface that as the same
+        // race fk_platform_provider_defaults_model guards. Surface that as the same
         // catalogue-miss the pre-flight returns, plus a distinct log line, rather
         // than an opaque 500 the admin can't diagnose.
         const model_deleted_race = if (conn.err) |pg_err| std.mem.eql(u8, pg_err.code, PG_SQLSTATE_FK_VIOLATION) else false;
@@ -193,23 +194,12 @@ fn activateDefaultTx(
     cap: i32,
     now_ms: i64,
 ) !void {
-    _ = try conn.exec(
-        \\INSERT INTO core.platform_llm_keys
-        \\  (id, provider, source_workspace_id, model, base_url, context_cap_tokens, active, created_at, updated_at)
-        \\VALUES ($1, $2, $3, $4, $5, $6, true, $7, $7)
-        \\ON CONFLICT (provider) DO UPDATE
-        \\SET source_workspace_id = EXCLUDED.source_workspace_id,
-        \\    model = EXCLUDED.model,
-        \\    base_url = EXCLUDED.base_url,
-        \\    context_cap_tokens = EXCLUDED.context_cap_tokens,
-        \\    active = true,
-        \\    updated_at = EXCLUDED.updated_at
-    , .{ key_id, input.provider, input.source_workspace_id, input.model, base_url, cap, now_ms });
+    _ = try conn.exec(sql.UPSERT_ACTIVE_DEFAULT, .{ key_id, input.provider, input.source_workspace_id, input.model, base_url, cap, now_ms });
     // Exactly one active row: stand every other provider down. NULL their model
-    // so an inactive row never pins fk_platform_llm_keys_model — otherwise a
+    // so an inactive row never pins fk_platform_provider_defaults_model — otherwise a
     // deactivated provider's stale model would block deleting that catalogue row.
     _ = try conn.exec(
-        "UPDATE core.platform_llm_keys SET active = false, model = NULL, updated_at = $1 WHERE active = true AND provider <> $2",
+        sql.DEACTIVATE_OTHER_DEFAULTS,
         .{ now_ms, input.provider },
     );
 }
@@ -232,9 +222,9 @@ pub fn innerDeleteAdminPlatformKey(hx: hx_mod.Hx, req: *httpz.Request, provider:
     defer hx.ctx.pool.release(conn);
 
     // NULL model alongside active=false so the deactivated row stops pinning
-    // fk_platform_llm_keys_model (lets the admin delete that catalogue model).
+    // fk_platform_provider_defaults_model (lets the admin delete that catalogue model).
     _ = conn.exec(
-        "UPDATE core.platform_llm_keys SET active = false, model = NULL, updated_at = $1 WHERE provider = $2",
+        sql.DEACTIVATE_PROVIDER,
         .{ clock.nowMillis(), provider },
     ) catch {
         common.internalOperationError(hx.res, "Failed to deactivate platform key", hx.req_id);
@@ -263,7 +253,7 @@ pub fn innerGetAdminPlatformKeys(hx: hx_mod.Hx, req: *httpz.Request) void {
     defer hx.ctx.pool.release(conn);
 
     var q = PgQuery.from(conn.query(
-        "SELECT provider, source_workspace_id, active, updated_at FROM core.platform_llm_keys ORDER BY provider",
+        sql.SELECT_KEYS,
         .{},
     ) catch {
         common.internalOperationError(hx.res, "Failed to query platform keys", hx.req_id);

@@ -54,6 +54,6 @@ CREATE TABLE IF NOT EXISTS core.model_library (
 -- api_runtime serves the public read endpoint + the rate-cache populator at API
 -- server boot, and the admin model-caps CRUD API (/v1/admin/models) writes the
 -- catalogue. No worker access — the worker never queries this table directly;
--- tenant_providers carries the resolved cap under self-managed, frontmatter
+-- tenant_model_selection carries the resolved cap under self-managed, frontmatter
 -- carries it under platform-managed.
 GRANT SELECT, INSERT, UPDATE, DELETE ON core.model_library TO api_runtime;

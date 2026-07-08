@@ -73,4 +73,34 @@ describe("ProviderModelSelect", () => {
     expect(screen.getByText("a1")).toBeTruthy();
     expect(screen.getByText("o1")).toBeTruthy();
   });
+
+  it("falls back to the static known-models list before free text when the catalogue has no rows for the provider", () => {
+    catalogueState.models = []; // empty catalogue — provider isn't priced yet
+    render(
+      React.createElement(ProviderModelSelect, {
+        id: "m",
+        provider: "anthropic",
+        model: "",
+        onModelChange: vi.fn(),
+      }),
+    );
+    expect(screen.getByText("claude-sonnet-5")).toBeTruthy();
+    expect(screen.queryByRole("textbox")).toBeNull();
+  });
+
+  it("still degrades to free text when the provider is in neither the catalogue nor the static list (regression)", () => {
+    catalogueState.models = [];
+    const onModelChange = vi.fn();
+    render(
+      React.createElement(ProviderModelSelect, {
+        id: "m",
+        provider: "some-uncatalogued-provider",
+        model: "",
+        onModelChange,
+      }),
+    );
+    const input = screen.getByLabelText("Model") as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "custom-model" } });
+    expect(onModelChange).toHaveBeenCalledWith("custom-model");
+  });
 });

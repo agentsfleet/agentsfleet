@@ -1,7 +1,7 @@
 // Authenticated platform-admin client for the model catalogue + platform default.
 // Distinct from model_caps.ts (the PUBLIC, unauthenticated cap.json reader): these
-// routes are platform-admin-gated and mutate core.model_caps / core.platform_llm_keys.
-// Wire contract: src/agentsfleetd/http/handlers/admin/model_caps_admin.zig +
+// routes are platform-admin-gated and mutate core.model_caps / core.platform_provider_defaults.
+// Wire shape: src/agentsfleetd/http/handlers/admin/model_caps_admin.zig +
 // .../admin/platform_keys.zig.
 
 import { request } from "./client";

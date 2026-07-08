@@ -111,6 +111,13 @@ pub fn requiredScopes(route: router.Route, method: httpz.Method) []const S {
             else => &SECRET_WRITE,
         },
 
+        // ── Tenant model registry (M121) — entries reference vault secrets ──
+        .tenant_model_entries => switch (method) {
+            .GET => &SECRET_READ,
+            else => &SECRET_WRITE,
+        },
+        .tenant_model_entry_by_id => &SECRET_WRITE,
+
         // ── Platform plane (former platform_admin) ──
         .admin_platform_keys => switch (method) {
             .GET => &PLATFORM_KEY_READ,

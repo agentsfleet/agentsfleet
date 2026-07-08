@@ -1,21 +1,9 @@
 "use client";
 
 import { type Ref, useImperativeHandle, useState, useTransition } from "react";
-import {
-  Badge,
-  Button,
-  DataTable,
-  type DataTableColumn,
-  EmptyState,
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@agentsfleet/design-system";
+import { Badge, Button, DataTable, type DataTableColumn, EmptyState } from "@agentsfleet/design-system";
 import { KeyRoundIcon } from "lucide-react";
 import {
-  API_KEY_SORTS,
   DEFAULT_PAGE_SIZE,
   DEFAULT_SORT,
   type ApiKeyListResponse,
@@ -26,11 +14,12 @@ import { presentErrorString } from "@/lib/errors";
 import { listApiKeysAction, revokeApiKeyAction, deleteApiKeyAction } from "../actions";
 import RevokeConfirm, { type ConfirmTarget, type ConfirmTargetActive } from "./RevokeConfirm";
 
-const SORT_LABELS: Record<ApiKeySort, string> = {
-  "-created_at": "Newest first",
-  created_at: "Oldest first",
-  key_name: "Name A–Z",
-  "-key_name": "Name Z–A",
+// Maps a clicked (sortable) column key to the sort value it should apply next:
+// toggles direction if it's already the active column, else defaults to the
+// column's "natural" first click (ascending by name, descending by recency).
+const NEXT_SORT: Record<"name" | "activity", Record<ApiKeySort, ApiKeySort>> = {
+  name: { key_name: "-key_name", "-key_name": "key_name", created_at: "key_name", "-created_at": "key_name" },
+  activity: { "-created_at": "created_at", created_at: "-created_at", key_name: "-created_at", "-key_name": "-created_at" },
 };
 
 // Callers always pass a present epoch (created_at) or pre-guard the nullable
@@ -116,25 +105,11 @@ export default function ApiKeyList({
     });
   }
 
+  const sortKey = sort === "-created_at" || sort === "created_at" ? "activity" : "name";
+  const sortDirection = sort === "key_name" || sort === "created_at" ? "ascending" : "descending";
+
   return (
     <div className="space-y-4">
-      {items.length > 0 ? (
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <Select value={sort} onValueChange={(v) => loadPage({ sort: v as ApiKeySort, page: 1 })}>
-            <SelectTrigger className="w-44" aria-label="Sort API keys">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {API_KEY_SORTS.map((s) => (
-                <SelectItem key={s} value={s}>
-                  {SORT_LABELS[s]}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      ) : null}
-
       {items.length === 0 ? (
         <EmptyState
           icon={<KeyRoundIcon size={28} />}
@@ -151,6 +126,9 @@ export default function ApiKeyList({
           rows={items}
           rowKey={(k) => k.id}
           caption="API keys"
+          sortKey={sortKey}
+          sortDirection={sortDirection}
+          onSortChange={(key) => loadPage({ sort: NEXT_SORT[key as "name" | "activity"][sort], page: 1 })}
         />
       )}
 
@@ -233,11 +211,13 @@ function buildColumns({
       key: "name",
       header: "Name",
       cell: (k) => <KeyNameCell k={k} />,
+      sortable: true,
     },
     {
       key: "activity",
       header: "Created",
       cell: (k) => <KeyActivityCell k={k} />,
+      sortable: true,
     },
     {
       key: "actions",

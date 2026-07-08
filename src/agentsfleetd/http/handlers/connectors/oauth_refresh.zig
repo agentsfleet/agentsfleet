@@ -11,7 +11,6 @@ const pg = @import("pg");
 const common = @import("common");
 const hx_mod = @import("../hx.zig");
 const vault = @import("../../../state/vault.zig");
-const credential_key = @import("../../../fleet_runtime/credential_key.zig");
 
 const F_ACCESS_TOKEN = "access_token";
 const F_REFRESH_TOKEN = "refresh_token";
@@ -58,13 +57,11 @@ pub fn jsonInt(obj: std.json.ObjectMap, key: []const u8) ?i64 {
 }
 
 /// Serialize `handle` (any struct whose fields are the wire shape) and vault it
-/// under `fleet:<provider>`. Each provider owns its own handle struct.
+/// under `<provider>`. Each provider owns its own handle struct.
 pub fn storeHandle(hx: hx_mod.Hx, conn: *pg.Conn, provider: []const u8, workspace_id: []const u8, handle: anytype) !void {
-    const key = try credential_key.allocKeyName(hx.alloc, provider);
-    defer hx.alloc.free(key);
     const json = try std.json.Stringify.valueAlloc(hx.alloc, handle, .{});
     defer hx.alloc.free(json);
-    try vault.storeJsonPlaintext(hx.alloc, conn, workspace_id, key, json);
+    try vault.storeJsonPlaintext(hx.alloc, conn, workspace_id, provider, json);
 }
 
 const testing = std.testing;

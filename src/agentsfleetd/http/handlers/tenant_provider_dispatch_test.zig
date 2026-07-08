@@ -1,7 +1,7 @@
 // Gap-fill — Dimension 8.1/8.2 coverage audit found no test
 // pinning tenant_provider.zig's applyPlatform dispatch itself: a live-DB
 // integration test that forces PlatformKeyMissing needs a globally-empty
-// core.platform_llm_keys, which races every other integration test's
+// core.platform_provider_defaults, which races every other integration test's
 // seeding on the shared pool (same reasoning tenant_provider_test.zig's
 // "PlatformKeyMissing path is exercised in..." comment documents for the
 // state-layer test — see that file, ~line 254). applyPlatform itself is

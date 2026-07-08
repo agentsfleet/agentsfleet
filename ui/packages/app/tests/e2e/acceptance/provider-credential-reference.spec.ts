@@ -1,21 +1,21 @@
 /**
  * provider-credential-reference.spec.ts — a provider key entered in the UI
  * becomes a stored credential the tenant provider references, on the
- * consolidated Models page.
+ * many-model registry page (M121).
  *
- * After the M102 form consolidation the option-card flow is gone. The switch
- * list's generic "Other provider" row opens the consolidated ProviderKeyForm
- * (activate mode): paste a key → the provider is paste-detected → pick a model
- * → "Save & make active" stores `{provider, api_key, model}` and points the
- * tenant provider at it. The credential name derives from the detected
- * provider, so cleanup resets the provider and deletes that credential.
+ * The Add-model dialog's "Known provider" tab (default tab, "New key" mode)
+ * pastes a key → the provider is paste-detected → pick a model → "Save &
+ * make active" stores `{provider, api_key}` (no `model` in the body — entries
+ * own the model now), registers the entry, then points the tenant provider at
+ * it. The credential name derives from the detected provider, so cleanup
+ * resets the provider and deletes that credential.
  *
  * Defensive by design: the paste-detect step is deterministic (client-side),
  * but the save+activate round-trip depends on the fixture backend accepting
  * the model, so the activation assertion tolerates an env-variance alert the
- * same way the prior credential-reference spec did. The exact action calls are
- * pinned by provider-key-form.test.tsx; this spec proves the real built form
- * wires them end to end.
+ * same way the prior credential-reference spec did. The exact action calls
+ * are pinned by models-registry-add.test.tsx; this spec proves the real
+ * built dialog wires them end to end.
  */
 import { expect, test, type Page } from "@playwright/test";
 import { signInAs } from "./fixtures/auth";
@@ -26,7 +26,7 @@ import { gotoWorkspace } from "./fixtures/nav";
 
 const ACTION_TIMEOUT_MS = 15_000;
 // A pasted anthropic-shaped key paste-detects to provider "anthropic"; the
-// consolidated form derives the credential name from the provider.
+// dialog derives the new key's default name from the detected provider.
 const ANTHROPIC_KEY = "sk-ant-e2e-xxxxxxxx";
 const DETECTED_PROVIDER = "anthropic";
 const MODEL_FALLBACK = "claude-sonnet-4-6";
@@ -70,41 +70,41 @@ test.describe("provider credential reference guard", () => {
     await gotoWorkspace(page, FIXTURE_KEY.regular, "settings/models");
     await expect(page.getByRole("heading", { name: /^models$/i })).toBeVisible();
 
-    // Open the generic "Other provider" add-key form — it is the last
-    // "Add key & model" affordance in the switch list (rendered after every
-    // named-provider row and the custom-endpoint row).
-    await page.getByRole("button", { name: "Add key & model" }).last().click();
+    // Open the Add-model dialog — defaults to the "Known provider" tab and
+    // "New key" mode (no stored keys yet in a freshly reset fixture).
+    await page.getByRole("button", { name: "Add model" }).click();
+    await expect(page.getByRole("dialog")).toBeVisible();
 
     // Paste-detect: an anthropic-shaped key fills the provider field (this is
     // the credential-reference behaviour — deterministic, no backend).
     await page.getByLabel("API key").fill(ANTHROPIC_KEY);
-    await expect(page.getByLabel("Provider")).toHaveValue(DETECTED_PROVIDER);
+    const providerField = page.getByLabel("Provider");
+    const providerRole = await providerField.getAttribute("role").catch(() => null);
+    if (providerRole === "combobox") {
+      await expect(providerField).toContainText(/anthropic/i);
+    } else {
+      await expect(providerField).toHaveValue(DETECTED_PROVIDER);
+    }
 
     await pickModel(page);
     await page.getByRole("button", { name: "Save & make active" }).click();
 
-    // The store+activate round-trip either lands (hero goes LIVE referencing the
-    // anthropic credential) or surfaces a typed alert under fixture variance.
-    const hero = page.getByTestId("active-model-hero");
+    // The store+create+activate round-trip either lands (the row shows Active
+    // referencing the anthropic credential) or surfaces a typed alert under
+    // fixture variance.
+    const activeRow = page.getByRole("row", { name: new RegExp(DETECTED_PROVIDER, "i") });
     const outcome = await Promise.race([
-      hero
-        .filter({ hasText: DETECTED_PROVIDER })
-        .waitFor({ state: "visible", timeout: ACTION_TIMEOUT_MS })
-        .then(() => "live" as const),
-      page
-        .getByRole("alert")
-        .waitFor({ state: "visible", timeout: ACTION_TIMEOUT_MS })
-        .then(() => "alert" as const),
+      activeRow.filter({ hasText: /active/i }).waitFor({ state: "visible", timeout: ACTION_TIMEOUT_MS }).then(() => "live" as const),
+      page.getByRole("alert").waitFor({ state: "visible", timeout: ACTION_TIMEOUT_MS }).then(() => "alert" as const),
     ]).catch(() => "unknown" as const);
 
     if (outcome === "live") {
-      await expect(hero).toHaveAttribute("data-live", "true");
-      await expect(hero).toContainText(DETECTED_PROVIDER);
+      await expect(activeRow).toContainText(/active/i);
     } else if (outcome === "alert") {
       await expect(page.getByRole("alert")).toBeVisible();
     } else {
       // Neither landmark resolved in time — fail loudly rather than silently pass.
-      throw new Error("save+activate produced neither a LIVE hero nor a typed alert");
+      throw new Error("save+activate produced neither an Active row nor a typed alert");
     }
   });
 });

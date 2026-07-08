@@ -211,7 +211,7 @@ fn resolveExecutionPolicy(hx: Hx, session: *FleetSession, resolved: ?tenant_prov
     const alloc = hx.alloc;
     // Lease-time overlay (see user_flow.md): sentinel frontmatter (cap 0 /
     // model "") inherits the cap+model the control plane resolved into
-    // tenant_providers; a real frontmatter value wins. `resolved` outlives the
+    // tenant_model_selection; a real frontmatter value wins. `resolved` outlives the
     // hx.ok serialization (deinit deferred in issueLease), so the borrowed model
     // is valid for the response. No resolved provider ⇒ 0/"" ⇒ overlay no-op.
     const budget = context_resolve.resolveContextBudget(

@@ -1,8 +1,7 @@
 import { HTTPS_SCHEME_PREFIX } from "@/lib/types";
 
-// Shared custom-endpoint client validation, extracted from the old
-// credentials/CustomEndpointForm so the consolidated Models forms can
-// reuse it without importing a deleted component.
+// Shared custom-endpoint client validation, kept independent of any one form
+// component so the registry Add dialog's custom-endpoint shape can reuse it.
 
 export const BASE_URL_NOT_HTTPS = "Use https:// for the Base URL.";
 

@@ -6,8 +6,7 @@
 //
 // Drives POST /v1/runners/me/leases through the in-process TestHarness
 // against the live test DB + Redis (skipped when either is missing), and
-// calls `event_rows.markBlocked` / `reclaim_sweeper.sweepOnce` directly for
-// the row- and sweep-level invariants.
+// calls `event_rows.markBlocked` directly for row-level invariants.
 //
 // The balance-exhausted HTTP path (spec 1.1) is unreachable while the free
 // trial window keeps every charge at zero (billing_and_provider_keys.md §
@@ -32,28 +31,27 @@ const queue_consts = @import("../queue/constants.zig");
 const redis_fleet = @import("../queue/redis_fleet.zig");
 const approval_gate_async = @import("../fleet_runtime/approval_gate_async.zig");
 const event_rows = @import("event_rows.zig");
-const reclaim_sweeper = @import("reclaim_sweeper.zig");
 
 const ALLOC = std.testing.allocator;
 
-const WORKSPACE_ID = "0195c9da-1e2a-7f13-8abc-2b3e1e0d7011";
+pub const WORKSPACE_ID = "0195c9da-1e2a-7f13-8abc-2b3e1e0d7011";
 const RUNNER_ID = "0195c9da-1e2a-7f13-8abc-2b3e1e0d7a01";
 const AGENTSFLEET_CRED = "0195c9da-1e2a-7f13-8abc-2b3e1e0d7c01";
 const AGENTSFLEET_PROVIDER = "0195c9da-1e2a-7f13-8abc-2b3e1e0d7c02";
 const AGENTSFLEET_GATED = "0195c9da-1e2a-7f13-8abc-2b3e1e0d7c03";
-const FLEET_IDLE = "0195c9da-1e2a-7f13-8abc-2b3e1e0d7c04";
-const AGENTSFLEET_STRAND = "0195c9da-1e2a-7f13-8abc-2b3e1e0d7c05";
-const AGENTSFLEET_ROW = "0195c9da-1e2a-7f13-8abc-2b3e1e0d7c06";
-const AGENTSFLEET_REACK = "0195c9da-1e2a-7f13-8abc-2b3e1e0d7c07";
-const AGENTSFLEET_GATED_EXP = "0195c9da-1e2a-7f13-8abc-2b3e1e0d7c08";
+pub const FLEET_IDLE = "0195c9da-1e2a-7f13-8abc-2b3e1e0d7c04";
+pub const AGENTSFLEET_STRAND = "0195c9da-1e2a-7f13-8abc-2b3e1e0d7c05";
+pub const AGENTSFLEET_ROW = "0195c9da-1e2a-7f13-8abc-2b3e1e0d7c06";
+pub const AGENTSFLEET_REACK = "0195c9da-1e2a-7f13-8abc-2b3e1e0d7c07";
+pub const AGENTSFLEET_GATED_EXP = "0195c9da-1e2a-7f13-8abc-2b3e1e0d7c08";
 const SESSION_BASE = "0195c9da-1e2a-7f13-8abc-2b3e1e0d7d0";
 
 const RUNNER_TOKEN = auth_mw.runner_bearer.RUNNER_TOKEN_PREFIX ++ "e" ** 64;
 const DEAD_CONSUMER = "worker-retired-host-1700000000000";
 /// Idle injected onto a stranded entry — must exceed the reclaim min-idle.
-const FORCED_IDLE_MS = queue_consts.fleet_xautoclaim_min_idle_ms_int * 2;
+pub const FORCED_IDLE_MS = queue_consts.fleet_xautoclaim_min_idle_ms_int * 2;
 
-const CONFIG_PLAIN =
+pub const CONFIG_PLAIN =
     \\{"name":"lifecycle-plain","x-agentsfleet":{"triggers":[{"type":"webhook","source":"agentmail"}],"tools":["agentmail"],"budget":{"daily_dollars":5.0}}}
 ;
 const CONFIG_GHOST_CRED =
@@ -64,7 +62,7 @@ const CONFIG_GATED_ALL =
 ;
 // A 1ms approval deadline so the gate expires deterministically between two
 // polls (the second poll is a full HTTP round-trip past the deadline).
-const CONFIG_GATED_FAST =
+pub const CONFIG_GATED_FAST =
     \\{"name":"lifecycle-gatex","x-agentsfleet":{"triggers":[{"type":"webhook","source":"agentmail"}],"tools":["agentmail"],"budget":{"daily_dollars":5.0},"gates":{"rules":[{"tool":"*","action":"*","behavior":"approve"}],"timeout_ms":1}}}
 ;
 const SOURCE_MD =
@@ -96,17 +94,17 @@ fn seedRunner(conn: *pg.Conn) !void {
     , .{ RUNNER_ID, hash[0..] });
 }
 
-fn seedFleetWithConfig(conn: *pg.Conn, fleet_id: []const u8, name: []const u8, config: []const u8, session_suffix: []const u8) !void {
+pub fn seedFleetWithConfig(conn: *pg.Conn, fleet_id: []const u8, name: []const u8, config: []const u8, session_suffix: []const u8) !void {
     try base.seedFleet(conn, fleet_id, WORKSPACE_ID, name, config, SOURCE_MD);
     var sid_buf: [64]u8 = undefined;
     const sid = try std.fmt.bufPrint(&sid_buf, "{s}{s}", .{ SESSION_BASE, session_suffix });
     try base.seedFleetSession(conn, sid, fleet_id, "{}");
 }
 
-const Env = struct {
+pub const Env = struct {
     h: *TestHarness,
 
-    fn deinit(self: *Env) void {
+    pub fn deinit(self: *Env) void {
         if (self.h.acquireConn()) |conn| {
             defer self.h.releaseConn(conn);
             cleanupRows(conn);
@@ -149,7 +147,7 @@ fn deleteStream(h: *TestHarness, fleet_id: []const u8) void {
 
 /// Start the harness + seed the canonical fixture set. Skips when DB or
 /// Redis is unavailable.
-fn setup() !Env {
+pub fn setup() !Env {
     const h = try TestHarness.start(ALLOC, .{ .configureRegistry = configureRegistry });
     errdefer h.deinit();
     if (!h.tryConnectRedis()) return error.SkipZigTest;
@@ -165,7 +163,7 @@ fn setup() !Env {
 
 // ── Redis + HTTP helpers ────────────────────────────────────────────────────
 
-fn publishEvent(h: *TestHarness, fleet_id: []const u8) ![]const u8 {
+pub fn publishEvent(h: *TestHarness, fleet_id: []const u8) ![]const u8 {
     try redis_fleet.ensureFleetConsumerGroup(&h.queue, fleet_id);
     return h.queue.xaddFleetEvent(.{
         .event_id = "",
@@ -179,7 +177,7 @@ fn publishEvent(h: *TestHarness, fleet_id: []const u8) ![]const u8 {
 }
 
 /// One lease poll; returns true when a lease was issued.
-fn pollLease(h: *TestHarness) !bool {
+pub fn pollLease(h: *TestHarness) !bool {
     const req = try (try h.post(protocol.PATH_RUNNER_LEASES).bearer(RUNNER_TOKEN)).json("{}");
     const resp = try req.send();
     defer resp.deinit();
@@ -208,13 +206,13 @@ fn eventRow(conn: *pg.Conn, fleet_id: []const u8, event_id: []const u8) !?RowVie
     return out;
 }
 
-fn expectRow(conn: *pg.Conn, fleet_id: []const u8, event_id: []const u8, status: []const u8, label: []const u8) !void {
+pub fn expectRow(conn: *pg.Conn, fleet_id: []const u8, event_id: []const u8, status: []const u8, label: []const u8) !void {
     const row = (try eventRow(conn, fleet_id, event_id)) orelse return error.EventRowMissing;
     try std.testing.expectEqualStrings(status, row.status_buf[0..row.status_len]);
     try std.testing.expectEqualStrings(label, row.label_buf[0..row.label_len]);
 }
 
-fn pendingCount(h: *TestHarness, fleet_id: []const u8) !i64 {
+pub fn pendingCount(h: *TestHarness, fleet_id: []const u8) !i64 {
     var key_buf: [128]u8 = undefined;
     const key = try std.fmt.bufPrint(&key_buf, "fleet:{s}:events", .{fleet_id});
     var resp = try h.queue.command(&.{ "XPENDING", key, queue_consts.fleet_consumer_group });
@@ -226,7 +224,7 @@ fn pendingCount(h: *TestHarness, fleet_id: []const u8) !i64 {
     };
 }
 
-fn consumerCount(h: *TestHarness, fleet_id: []const u8) !usize {
+pub fn consumerCount(h: *TestHarness, fleet_id: []const u8) !usize {
     var key_buf: [128]u8 = undefined;
     const key = try std.fmt.bufPrint(&key_buf, "fleet:{s}:events", .{fleet_id});
     var resp = try h.queue.command(&.{ "XINFO", "CONSUMERS", key, queue_consts.fleet_consumer_group });
@@ -237,7 +235,7 @@ fn consumerCount(h: *TestHarness, fleet_id: []const u8) !usize {
 
 /// Deliver the stream's next entry to a throwaway consumer name (the retired
 /// per-probe minting), simulating a stranded delivery.
-fn deliverToDeadConsumer(h: *TestHarness, fleet_id: []const u8) !void {
+pub fn deliverToDeadConsumer(h: *TestHarness, fleet_id: []const u8) !void {
     var key_buf: [128]u8 = undefined;
     const key = try std.fmt.bufPrint(&key_buf, "fleet:{s}:events", .{fleet_id});
     var resp = try h.queue.command(&.{
@@ -250,7 +248,7 @@ fn deliverToDeadConsumer(h: *TestHarness, fleet_id: []const u8) !void {
 
 /// Force an entry's idle clock via XCLAIM IDLE so the reclaim bound is
 /// crossed without waiting wall-clock minutes.
-fn forceIdle(h: *TestHarness, fleet_id: []const u8, event_id: []const u8, idle_ms: i64) !void {
+pub fn forceIdle(h: *TestHarness, fleet_id: []const u8, event_id: []const u8, idle_ms: i64) !void {
     var key_buf: [128]u8 = undefined;
     const key = try std.fmt.bufPrint(&key_buf, "fleet:{s}:events", .{fleet_id});
     var idle_buf: [24]u8 = undefined;
@@ -298,7 +296,7 @@ test "unresolvable provider credential blocks the event: gate_blocked + tenant_r
     // self-managed row whose secret_ref has no vault row →
     // error.SecretMissing → permanent refusal (RULE ECL).
     _ = try conn.exec(
-        \\INSERT INTO core.tenant_providers
+        \\INSERT INTO core.tenant_model_selection
         \\  (tenant_id, mode, provider, model, context_cap_tokens, secret_ref, created_at, updated_at)
         \\VALUES ($1::uuid, 'self_managed', 'fireworks', 'test-model', 256000, 'no-such-cred', $2, $2)
         \\ON CONFLICT (tenant_id) DO UPDATE SET mode = EXCLUDED.mode, secret_ref = EXCLUDED.secret_ref
@@ -344,170 +342,4 @@ test "approval denial writes the terminal row: gate_blocked + approval_denied + 
     try std.testing.expect(!try pollLease(h));
     try expectRow(conn, AGENTSFLEET_GATED, event_id, event_rows.STATUS_GATE_BLOCKED, event_rows.LABEL_APPROVAL_DENIED);
     try std.testing.expectEqual(@as(i64, 0), try pendingCount(h, AGENTSFLEET_GATED));
-}
-
-test "approval deadline expiry writes the terminal row: gate_blocked + approval_expired + XACK" {
-    var env = setup() catch |err| switch (err) {
-        error.SkipZigTest => return error.SkipZigTest,
-        else => return err,
-    };
-    defer env.deinit();
-    const h = env.h;
-    const conn = try h.acquireConn();
-    defer h.releaseConn(conn);
-    try seedFleetWithConfig(conn, AGENTSFLEET_GATED_EXP, "lifecycle-gatex", CONFIG_GATED_FAST, "8");
-
-    const event_id = try publishEvent(h, AGENTSFLEET_GATED_EXP);
-    defer h.queue.alloc.free(event_id);
-
-    // Poll 1: the gate parks the event pending and records the ref with a
-    // 1ms deadline — no decision is ever written.
-    try std.testing.expect(!try pollLease(h));
-    try expectRow(conn, AGENTSFLEET_GATED_EXP, event_id, event_rows.STATUS_RECEIVED, "");
-    try std.testing.expectEqual(@as(i64, 1), try pendingCount(h, AGENTSFLEET_GATED_EXP));
-
-    // Let the 1ms deadline lapse, then re-poll: the recorded ref resolves
-    // expired → terminal row + XACK (the async-gate timeout outcome).
-    @import("common").sleepNanos(5 * std.time.ns_per_ms);
-    try std.testing.expect(!try pollLease(h));
-    try expectRow(conn, AGENTSFLEET_GATED_EXP, event_id, event_rows.STATUS_GATE_BLOCKED, event_rows.LABEL_APPROVAL_EXPIRED);
-    try std.testing.expectEqual(@as(i64, 0), try pendingCount(h, AGENTSFLEET_GATED_EXP));
-}
-
-test "markBlocked is guarded: terminal rows never reopen, second transition affects zero rows" {
-    var env = setup() catch |err| switch (err) {
-        error.SkipZigTest => return error.SkipZigTest,
-        else => return err,
-    };
-    defer env.deinit();
-    const h = env.h;
-    const conn = try h.acquireConn();
-    defer h.releaseConn(conn);
-    // fleet_events.fleet_id references core.fleets — the row's fleet must exist.
-    try seedFleetWithConfig(conn, AGENTSFLEET_ROW, "lifecycle-row", CONFIG_PLAIN, "6");
-    const EVENT_ID = "1700000000000-7";
-    _ = try conn.exec(
-        \\INSERT INTO core.fleet_events
-        \\  (uid, fleet_id, event_id, workspace_id, actor, event_type, status,
-        \\   request_json, created_at, updated_at)
-        \\VALUES ('0195c9da-1e2a-7f13-8abc-2b3e1e0d7e01'::uuid, $1::uuid, $2, $3::uuid,
-        \\        'steer:test', 'chat', $4, '{}'::jsonb, 0, 0)
-        \\ON CONFLICT (fleet_id, event_id) DO UPDATE SET status = EXCLUDED.status, failure_label = NULL
-    , .{ AGENTSFLEET_ROW, EVENT_ID, WORKSPACE_ID, event_rows.STATUS_RECEIVED });
-
-    // First transition: received → gate_blocked (balance label spelling is
-    // pinned by billing_and_provider_keys.md).
-    try std.testing.expectEqual(@as(i64, 1), try event_rows.markBlocked(h.pool, AGENTSFLEET_ROW, EVENT_ID, event_rows.LABEL_BALANCE_EXHAUSTED));
-    try expectRow(conn, AGENTSFLEET_ROW, EVENT_ID, event_rows.STATUS_GATE_BLOCKED, event_rows.LABEL_BALANCE_EXHAUSTED);
-
-    // Second transition attempt (any label): zero rows — terminal is final.
-    try std.testing.expectEqual(@as(i64, 0), try event_rows.markBlocked(h.pool, AGENTSFLEET_ROW, EVENT_ID, event_rows.LABEL_APPROVAL_DENIED));
-    try expectRow(conn, AGENTSFLEET_ROW, EVENT_ID, event_rows.STATUS_GATE_BLOCKED, event_rows.LABEL_BALANCE_EXHAUSTED);
-}
-
-test "terminal entry re-delivered from the PEL is re-acked, never re-executed" {
-    var env = setup() catch |err| switch (err) {
-        error.SkipZigTest => return error.SkipZigTest,
-        else => return err,
-    };
-    defer env.deinit();
-    const h = env.h;
-    const conn = try h.acquireConn();
-    defer h.releaseConn(conn);
-    try seedFleetWithConfig(conn, AGENTSFLEET_REACK, "lifecycle-reack", CONFIG_PLAIN, "7");
-
-    const event_id = try publishEvent(h, AGENTSFLEET_REACK);
-    defer h.queue.alloc.free(event_id);
-
-    // Poll 1 leases the event: the entry now sits in the stable consumer's
-    // PEL and the row is `received`.
-    try std.testing.expect(try pollLease(h));
-    try std.testing.expectEqual(@as(i64, 1), try pendingCount(h, AGENTSFLEET_REACK));
-
-    // Simulate a report whose terminal write committed but whose XACK was
-    // lost (Redis blip): the row goes terminal, the lease/claim settle out of
-    // active, and the entry is left pending (never acked).
-    _ = try conn.exec(
-        "UPDATE core.fleet_events SET status = $3 WHERE fleet_id = $1::uuid AND event_id = $2",
-        .{ AGENTSFLEET_REACK, event_id, event_rows.STATUS_PROCESSED },
-    );
-    _ = try conn.exec("DELETE FROM fleet.runner_leases WHERE workspace_id = $1::uuid", .{WORKSPACE_ID});
-    _ = try conn.exec("DELETE FROM fleet.runner_affinity WHERE fleet_id = $1::uuid", .{AGENTSFLEET_REACK});
-
-    // Poll 2: the own-PEL read re-delivers the terminal entry. It must be
-    // re-acked (the owed XACK) and NOT re-leased — re-running a settled lease
-    // would double-fire side effects and re-meter tokens (spec Invariant 2).
-    try std.testing.expect(!try pollLease(h));
-    try std.testing.expectEqual(@as(i64, 0), try pendingCount(h, AGENTSFLEET_REACK));
-    // The settled result is untouched — the terminal row was never reopened.
-    try expectRow(conn, AGENTSFLEET_REACK, event_id, event_rows.STATUS_PROCESSED, "");
-}
-
-// ── §2 — stable identity + reclaim ──────────────────────────────────────────
-
-test "consumer identity is stable: repeated idle probes leave one consumer in the group" {
-    var env = setup() catch |err| switch (err) {
-        error.SkipZigTest => return error.SkipZigTest,
-        else => return err,
-    };
-    defer env.deinit();
-    const h = env.h;
-    const conn = try h.acquireConn();
-    defer h.releaseConn(conn);
-    try seedFleetWithConfig(conn, FLEET_IDLE, "lifecycle-idle", CONFIG_PLAIN, "4");
-    try redis_fleet.ensureFleetConsumerGroup(&h.queue, FLEET_IDLE);
-
-    var i: usize = 0;
-    while (i < 25) : (i += 1) _ = try pollLease(h);
-    try std.testing.expectEqual(@as(usize, 1), try consumerCount(h, FLEET_IDLE));
-}
-
-test "reclaim sweep recovers a stranded delivery from a dead consumer and re-leases it" {
-    var env = setup() catch |err| switch (err) {
-        error.SkipZigTest => return error.SkipZigTest,
-        else => return err,
-    };
-    defer env.deinit();
-    const h = env.h;
-    const conn = try h.acquireConn();
-    defer h.releaseConn(conn);
-    try seedFleetWithConfig(conn, AGENTSFLEET_STRAND, "lifecycle-strand", CONFIG_PLAIN, "5");
-
-    const event_id = try publishEvent(h, AGENTSFLEET_STRAND);
-    defer h.queue.alloc.free(event_id);
-    try deliverToDeadConsumer(h, AGENTSFLEET_STRAND);
-    try forceIdle(h, AGENTSFLEET_STRAND, event_id, FORCED_IDLE_MS);
-
-    const stats = try reclaim_sweeper.sweepOnce(h.pool, &h.queue, ALLOC);
-    try std.testing.expect(stats.reclaimed_entries >= 1);
-
-    // The recovered entry re-enters the lease flow on the next poll.
-    try std.testing.expect(try pollLease(h));
-    try expectRow(conn, AGENTSFLEET_STRAND, event_id, event_rows.STATUS_RECEIVED, "");
-}
-
-test "reclaim sweep never touches an entry inside the lease window" {
-    var env = setup() catch |err| switch (err) {
-        error.SkipZigTest => return error.SkipZigTest,
-        else => return err,
-    };
-    defer env.deinit();
-    const h = env.h;
-    const conn = try h.acquireConn();
-    defer h.releaseConn(conn);
-    try seedFleetWithConfig(conn, AGENTSFLEET_STRAND, "lifecycle-strand", CONFIG_PLAIN, "5");
-
-    const event_id = try publishEvent(h, AGENTSFLEET_STRAND);
-    defer h.queue.alloc.free(event_id);
-    try deliverToDeadConsumer(h, AGENTSFLEET_STRAND); // idle ≈ 0 — under the bound
-
-    const stats = try reclaim_sweeper.sweepOnce(h.pool, &h.queue, ALLOC);
-    try std.testing.expectEqual(@as(i64, 0), stats.reclaimed_entries);
-    try std.testing.expectEqual(@as(i64, 1), try pendingCount(h, AGENTSFLEET_STRAND));
-}
-
-test "reclaim min-idle exceeds the lease window" {
-    // pin test: the comptime assertion in queue/constants.zig enforces this;
-    // the runtime pin makes the relation visible in the test inventory.
-    try std.testing.expect(queue_consts.fleet_xautoclaim_min_idle_ms_int > @import("common").LEASE_TTL_MS);
 }
