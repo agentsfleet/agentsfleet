@@ -215,6 +215,15 @@ describe("test_install_inline_state_driven", () => {
     expect(screen.getByText("No description template")).toBeTruthy();
   });
 
+  it("renders a DownloadIcon on the Install confirm button (test_install_confirm_renders_icon)", async () => {
+    installFleetActionMock.mockReturnValue(new Promise(() => {}));
+    const user = userEvent.setup({ delay: null });
+    renderFlow({ presentCredentialNames: ["github"] });
+    await user.click(useEntryButton(0));
+    const install = await screen.findByRole("button", { name: "Install" });
+    expect(install.querySelector("svg.lucide-download")).toBeTruthy();
+  });
+
   it("preselects a library entry from a ?library= deep link and lands on the confirm step", async () => {
     installFleetActionMock.mockReturnValue(new Promise(() => {}));
     const user = userEvent.setup({ delay: null });

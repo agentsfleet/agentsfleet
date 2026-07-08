@@ -27,6 +27,7 @@ import {
   RadioGroup,
   Spinner,
 } from "@agentsfleet/design-system";
+import { PlusIcon } from "lucide-react";
 import {
   HOST_ID_REGEX,
   SANDBOX_TIERS,
@@ -108,6 +109,7 @@ export default function AddRunnerDialog({ onCreated }: { onCreated: () => void }
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
         <Button type="button" size="sm">
+          <PlusIcon size={14} />
           Create runner
         </Button>
       </DialogTrigger>
