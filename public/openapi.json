@@ -2449,7 +2449,7 @@
       "put": {
         "operationId": "put_tenant_provider",
         "summary": "Set tenant LLM provider posture",
-        "description": "Eager-validates and UPSERTs the tenant_model_selection row. Validation order: body shape → credential_ref required (mode=self_managed) → credential_not_found → credential_data_malformed → model_not_in_caps_catalogue → UPSERT. Stored `provider` is read from the credential JSON; effective `model` is the body override (when present) else the credential's stored model.\n",
+        "description": "Eager-validates and UPSERTs the tenant_model_selection row. Validation order: body shape → credential_ref required (mode=self_managed) → credential_not_found → credential_data_malformed → model_not_in_caps_catalogue → UPSERT. Stored `provider` is read from the credential JSON; effective `model` is the body override (when present) else the credential's stored model. A self_managed activation also registers the matching model entry (see /v1/tenants/me/models) when none exists — idempotent on repeat, so an activation is always visible as a registry row.\n",
         "tags": [
           "Tenant"
         ],
