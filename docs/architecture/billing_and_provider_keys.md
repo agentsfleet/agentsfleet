@@ -307,6 +307,25 @@ Both endpoints honour §8.2: the metadata is a read-time *projection*, not a new
 
 **Nav placement history:** M87 (`docs/v2/done/M87_001_P1_UI_MODELS_CREDENTIALS_REDESIGN.md`) deliberately collapsed Models and Credentials into one dashboard nav entry. M113 reverses that — Secrets & ENVs gets its own nav entry and route again. M87's spec is left as-written (a historical record of the reasoning at the time); this note is the pointer for anyone reading it cold.
 
+### 8.4 The tenant model registry — many entries, one shared key (M121)
+
+The 4-fixed-slot Models page (Default / Anthropic / Other provider / Custom) could not represent a real tenant's model set: every Anthropic key past the first was hidden, every non-Anthropic provider piled into one bucket row, and the same model on two hosts (e.g. GLM 5.2 on `fireworks.ai` vs `wafers.ai`) had nowhere to live. `core.tenant_model_entries` (schema/027) adds the missing noun: one row per configured `(model_id, secret_ref)` pair, so N model rows can reference the same vault credential.
+
+```sql
+core.tenant_model_entries (id, tenant_id, model_id, secret_ref, created_at, updated_at)
+  UNIQUE (tenant_id, model_id, secret_ref)
+```
+
+**Entries reference keys — they never own credential material.** `secret_ref` names a `vault.secrets` row (§8.1); the entry table carries no `provider` / `base_url` / `api_key` columns. `GET /v1/tenants/me/models` joins each entry to its secret's §8.2-safe metadata projection (provider, kind, `base_url`, `has_key`) at read time, the same projection §8.3's credential list already uses — `api_key` is structurally absent from the join, not filtered out. A keyless endpoint (Out of Scope: runner auth behaviour is unchanged) stores an empty `api_key` in the secret body so the activate/resolve chain in §9 stays uniform whether or not a key exists.
+
+**Active-entry synthesis keeps the registry always representable.** The tenant's *active* selection still lives on `core.tenant_model_selection` (renamed from `tenant_providers` this milestone — see below) — activation (`PUT /v1/tenants/me/provider`) is unchanged surface. `GET /v1/tenants/me/models` computes each entry's `active` flag by comparing `(secret_ref, model_id)` against that row, and — before listing — idempotently inserts a matching entry if the active selection has none (a pre-registry activation, or one made directly via `PUT /provider`). This is a self-heal on read, not a migration: no backfill job runs, and repeat GETs after the first are no-ops.
+
+**Guards.** POST/PATCH validate `secret_ref` names an existing vault secret (`UZ-MODELS-002` 404 otherwise) and refuse an exact `(model_id, secret_ref)` duplicate (`UZ-MODELS-003` 409). DELETE refuses the entry backing the tenant's active selection (`UZ-MODELS-001` 409) — the UI pre-disables Remove on that row rather than round-tripping the guard. The existing secret-delete path (`DELETE /v1/workspaces/{ws}/secrets/{name}`) is extended symmetrically: deleting a secret still referenced by ≥1 entry is refused, naming the reference count, so a credential can never be deleted out from under a live entry.
+
+**Table renames (same milestone, no behaviour change).** `platform_llm_keys` → `core.platform_provider_defaults` and `tenant_providers` → `core.tenant_model_selection` — both were singular-sounding names that no longer read clearly next to the new plural `tenant_model_entries`. Every reader/writer (state, handlers, fixtures, billing) was repointed at the new table names in the same diff; no column or behaviour changed.
+
+**Vault key-name convention (adjacent cleanup, same milestone).** While wiring the entry-create guard's secret-existence check, a `fleet:`-prefix convention on dashboard-created secret names (`fleet_runtime/credential_key.zig`) turned out to discriminate nothing — every current writer already applied it. It is removed repo-wide: every `vault.secrets` writer and reader now uses the raw user-chosen name directly, and `secret_list.zig`'s `LIKE 'fleet:%'` filter + display-prefix-stripping are gone as dead code. No live data needed migrating.
+
 ---
 
 ## 9. Provider routing — what makes Fireworks + Kimi K2.6 work today

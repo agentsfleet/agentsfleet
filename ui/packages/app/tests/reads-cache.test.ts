@@ -1,23 +1,28 @@
 import { describe, expect, it, vi } from "vitest";
 
-// Both the Models page and the Secrets page read the tenant provider + secret
-// list through their own React `cache()` wrappers (collapsing repeat reads
-// within one server render) — two separate modules with identical shape, not
-// one shared file. Each page's own test mocks its wrappers, so neither proves
-// the wrapper itself delegates to the underlying API function with the
-// arguments forwarded — that's what this file is for, for both modules.
+// Both the Models page and the Secrets page read their own secret list (and,
+// for Secrets, the tenant provider) through their own React `cache()`
+// wrappers (collapsing repeat reads within one server render) — two separate
+// modules with identical shape, not one shared file. Each page's own test
+// mocks its wrappers, so neither proves the wrapper itself delegates to the
+// underlying API function with the arguments forwarded — that's what this
+// file is for, for both modules. The Models page (M121) reads the tenant
+// model registry instead of the tenant provider — the registry list already
+// carries `active` per entry + `platform_default_available`.
 
-const { getTenantProvider, listSecrets } = vi.hoisted(() => ({
+const { getTenantProvider, listSecrets, listTenantModelEntries } = vi.hoisted(() => ({
   getTenantProvider: vi.fn(),
   listSecrets: vi.fn(),
+  listTenantModelEntries: vi.fn(),
 }));
 
 vi.mock("@/lib/api/tenant_provider", () => ({ getTenantProvider }));
 vi.mock("@/lib/api/secrets", () => ({ listSecrets }));
+vi.mock("@/lib/api/tenant_model_entries", () => ({ listTenantModelEntries }));
 
 import {
-  getTenantProviderCached as getTenantProviderCachedModels,
   listSecretsCached as listSecretsCachedModels,
+  listTenantModelEntriesCached,
 } from "@/app/(dashboard)/w/[workspaceId]/settings/models/lib/reads";
 import {
   getTenantProviderCached as getTenantProviderCachedSecrets,
@@ -25,11 +30,11 @@ import {
 } from "@/app/(dashboard)/w/[workspaceId]/secrets/lib/reads";
 
 describe("Models cached reads", () => {
-  it("getTenantProviderCached forwards the token to getTenantProvider", async () => {
-    const provider = { mode: "platform" };
-    getTenantProvider.mockResolvedValue(provider);
-    await expect(getTenantProviderCachedModels("tok")).resolves.toBe(provider);
-    expect(getTenantProvider).toHaveBeenCalledWith("tok");
+  it("listTenantModelEntriesCached forwards the token to listTenantModelEntries", async () => {
+    const registry = { models: [], platform_default_available: true };
+    listTenantModelEntries.mockResolvedValue(registry);
+    await expect(listTenantModelEntriesCached("tok")).resolves.toBe(registry);
+    expect(listTenantModelEntries).toHaveBeenCalledWith("tok");
   });
 
   it("listSecretsCached forwards the workspace id + token to listSecrets", async () => {
