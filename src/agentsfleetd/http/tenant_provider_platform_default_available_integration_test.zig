@@ -1,5 +1,5 @@
 // GET /v1/tenants/me/provider's platform_default_available reflects whether
-// an active core.platform_llm_keys row exists, independent of the tenant's
+// an active core.platform_provider_defaults row exists, independent of the tenant's
 // own current mode. Requires DATABASE_URL (or TEST_DATABASE_URL) — skipped
 // otherwise via `TestHarness.start` returning `error.SkipZigTest`.
 
@@ -46,11 +46,11 @@ fn seedTenantWorkspace(conn: anytype) !void {
 }
 
 fn cleanupRows(conn: anytype) void {
-    _ = conn.exec("DELETE FROM core.tenant_providers WHERE tenant_id = $1::uuid", .{TEST_TENANT_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
+    _ = conn.exec("DELETE FROM core.tenant_model_selection WHERE tenant_id = $1::uuid", .{TEST_TENANT_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
     fixtures_provider.teardownPlatformProvider(conn, TEST_WS_ID);
 }
 
-test "integration: platform_default_available is false with no active platform_llm_keys row, regardless of tenant mode" {
+test "integration: platform_default_available is false with no active platform_provider_defaults row, regardless of tenant mode" {
     const alloc = std.testing.allocator;
     const h = startHarness(alloc) catch |err| switch (err) {
         error.SkipZigTest => return error.SkipZigTest,
@@ -73,7 +73,7 @@ test "integration: platform_default_available is false with no active platform_l
     cleanupRows(conn2);
 }
 
-test "integration: platform_default_available is true when an active platform_llm_keys row exists, under the implicit platform-fallback mode" {
+test "integration: platform_default_available is true when an active platform_provider_defaults row exists, under the implicit platform-fallback mode" {
     const alloc = std.testing.allocator;
     const h = startHarness(alloc) catch |err| switch (err) {
         error.SkipZigTest => return error.SkipZigTest,
@@ -84,7 +84,7 @@ test "integration: platform_default_available is true when an active platform_ll
     const conn = try h.acquireConn();
     try seedTenantWorkspace(conn);
     try fixtures_provider.seedPlatformProvider(alloc, conn, TEST_WS_ID);
-    // The tenant itself is NOT on the platform default — no core.tenant_providers
+    // The tenant itself is NOT on the platform default — no core.tenant_model_selection
     // row is inserted here, so mode falls back to "platform" naturally. This
     // only proves platform_default_available tracks the platform key's own
     // existence under the *implicit* mode; the sibling test below activates a
@@ -102,7 +102,7 @@ test "integration: platform_default_available is true when an active platform_ll
     cleanupRows(conn2);
 }
 
-test "integration: platform_default_available is true when an active platform_llm_keys row exists, even while the tenant is genuinely activated self_managed" {
+test "integration: platform_default_available is true when an active platform_provider_defaults row exists, even while the tenant is genuinely activated self_managed" {
     fixtures_provider.setTestEncryptionKey();
     const alloc = std.testing.allocator;
     const h = startHarness(alloc) catch |err| switch (err) {

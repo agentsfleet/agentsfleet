@@ -51,7 +51,7 @@ pub const ProbedSecret = struct {
 /// workspace pattern signup_bootstrap_store uses for OIDC re-bootstrap.
 /// Multi-workspace tenants point self-managed credentials at the first signup-time
 /// workspace; v3 may add an explicit `vault_workspace_id` column to
-/// tenant_providers so users can pin a different workspace.
+/// tenant_model_selection so users can pin a different workspace.
 fn resolvePrimaryWorkspace(
     alloc: std.mem.Allocator,
     conn: *pg.Conn,

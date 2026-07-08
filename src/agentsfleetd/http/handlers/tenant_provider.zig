@@ -231,14 +231,14 @@ const ProviderView = struct {
     model: []const u8,
     context_cap_tokens: u32,
     secret_ref: ?[]const u8,
-    /// Whether an active core.platform_llm_keys row exists — independent of
+    /// Whether an active core.platform_provider_defaults row exists — independent of
     /// this tenant's own current mode, so the Models page can gate its own
     /// "Switch to Default" action before the click, not after a failed PUT.
     platform_default_available: bool,
 };
 
 /// A second connection acquire avoids nesting a query inside
-/// readProviderView's still-open core.tenant_providers result set — the
+/// readProviderView's still-open core.tenant_model_selection result set — the
 /// pg.zig simple-protocol connection can't safely start a new query until
 /// that one is fully drained. Cheap and low-risk on this low-QPS read path.
 fn platformDefaultAvailable(hx: Hx) bool {
@@ -260,7 +260,7 @@ fn readProviderView(
 ) !ProviderView {
     var q = PgQuery.from(try conn.query(
         \\SELECT mode, provider, model, context_cap_tokens, secret_ref
-        \\FROM core.tenant_providers
+        \\FROM core.tenant_model_selection
         \\WHERE tenant_id = $1::uuid
     , .{tenant_id}));
     defer q.deinit();

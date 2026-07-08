@@ -60,7 +60,10 @@ test {
     _ = @import("auth/crypto/rs256_sign.zig");
     _ = @import("fleet/schema_migration_test.zig");
     _ = @import("fleet/control_plane_integration_test.zig");
+    _ = @import("fleet/control_plane_policy_integration_test.zig");
+    _ = @import("fleet/control_plane_grant_integration_test.zig");
     _ = @import("fleet/event_lifecycle_integration_test.zig");
+    _ = @import("fleet/event_lifecycle_reclaim_integration_test.zig");
     _ = @import("fleet/renewal_integration_test.zig");
     _ = @import("fleet/service_renew_integration_test.zig");
     _ = @import("fleet/service_token_splits_wire_test.zig");
@@ -69,6 +72,7 @@ test {
     _ = @import("http/stream_registry.zig");
     _ = @import("http/fleet_runner_events_integration_test.zig");
     _ = @import("http/runner_enrollment_integration_test.zig");
+    _ = @import("http/secrets_json_metadata_integration_test.zig");
     _ = @import("http/tenant_provider_platform_default_available_integration_test.zig");
     _ = @import("hmac_sig");
     _ = @import("crypto/hmac_sig_test.zig");
@@ -97,6 +101,7 @@ test {
     _ = @import("observability/otel_metrics_cardinality.zig");
     _ = logging.sinks;
     _ = @import("state/tenant_billing.zig");
+    _ = @import("state/tenant_model_entries.zig");
     _ = @import("state/model_rate_cache.zig");
     _ = @import("state/account_teardown.zig");
     _ = @import("state/account_teardown_test.zig");
@@ -169,6 +174,7 @@ test {
     _ = @import("http/handlers/model_caps_integration_test.zig");
     _ = @import("http/handlers/admin/model_caps_admin.zig");
     _ = @import("http/handlers/admin/model_caps_admin_integration_test.zig");
+    _ = @import("http/handlers/admin/model_caps_admin_delete_guard_test.zig");
     _ = @import("http/handlers/webhooks/grant_approval.zig");
     _ = @import("http/handlers/auth/identity_events_clerk_integration_test.zig");
     _ = @import("http/handlers/webhooks/github.zig");

@@ -2,14 +2,14 @@
 //!
 //! Holds the Mode enum, platform-default constants, the ResolvedProvider
 //! return shape, the ResolveError set, and the read/write entry points
-//! that bridge the schema (core.tenant_providers + core.platform_llm_keys
+//! that bridge the schema (core.tenant_model_selection + core.platform_provider_defaults
 //! + vault.secrets) into a single value the worker, doctor, and HTTP
 //! handler all consume.
 //!
-//! Storage layout reminder. core.tenant_providers carries one row per
+//! Storage layout reminder. core.tenant_model_selection carries one row per
 //! tenant who has explicitly configured a provider; absence of row is the
 //! synthesised platform default. The api_key never lives in this row —
-//! under platform mode the resolver follows core.platform_llm_keys into
+//! under platform mode the resolver follows core.platform_provider_defaults into
 //! the admin tenant's workspace vault; under self-managed it loads the user's
 //! tenant-primary workspace vault by first trying the raw user-named
 //! secret_ref, then the dashboard workspace credential key derived from it.
@@ -25,6 +25,7 @@ const clock = @import("common").clock;
 const pg = @import("pg");
 const resolver = @import("tenant_provider_resolver.zig");
 const secret_probe = @import("secret_probe.zig");
+const sql = @import("tenant_provider/sql.zig");
 
 pub const Mode = enum {
     const Self = @This();
@@ -81,7 +82,7 @@ pub const ResolveError = error{
     /// carries a `base_url`. Validated at the parse boundary by base_url_guard
     /// (Invariant 5) — never dialed.
     SecretEndpointInvalid,
-    /// Platform mode, but core.platform_llm_keys has no active row OR the
+    /// Platform mode, but core.platform_provider_defaults has no active row OR the
     /// admin workspace's vault is missing the referenced key. Operator-side
     /// incident; surfaced via dead-letter on the next event.
     PlatformKeyMissing,
@@ -92,7 +93,7 @@ pub const ResolveError = error{
 
 // ── Public API ──────────────────────────────────────────────────────────────
 
-/// Read tenant_providers for tenant_id and return a ResolvedProvider with
+/// Read tenant_model_selection for tenant_id and return a ResolvedProvider with
 /// the api_key fetched from the appropriate vault row. Caller owns the
 /// returned struct and must call .deinit(alloc).
 pub fn resolveActiveProvider(
@@ -132,18 +133,7 @@ pub fn upsertSelfManaged(
     defer probe.deinit(alloc);
 
     const now_ms: i64 = clock.nowMillis();
-    _ = try conn.exec(
-        \\INSERT INTO core.tenant_providers
-        \\  (tenant_id, mode, provider, model, context_cap_tokens, secret_ref, created_at, updated_at)
-        \\VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $7)
-        \\ON CONFLICT (tenant_id) DO UPDATE SET
-        \\  mode               = EXCLUDED.mode,
-        \\  provider           = EXCLUDED.provider,
-        \\  model              = EXCLUDED.model,
-        \\  context_cap_tokens = EXCLUDED.context_cap_tokens,
-        \\  secret_ref     = EXCLUDED.secret_ref,
-        \\  updated_at         = EXCLUDED.updated_at
-    , .{
+    _ = try conn.exec(sql.UPSERT_SELF_MANAGED, .{
         tenant_id,
         Mode.self_managed.label(),
         probe.provider,
@@ -157,7 +147,7 @@ pub fn upsertSelfManaged(
 /// UPSERT an explicit platform-default row for tenant_id. Used by
 /// `tenant provider reset` so the dashboard can distinguish "never
 /// configured" from "explicitly reset". Provider is read from the active
-/// platform_llm_keys row so the row matches what resolveActiveProvider
+/// platform_provider_defaults row so the row matches what resolveActiveProvider
 /// will return.
 pub fn upsertPlatform(
     alloc: std.mem.Allocator,
@@ -168,18 +158,7 @@ pub fn upsertPlatform(
     defer plk.deinit(alloc);
 
     const now_ms: i64 = clock.nowMillis();
-    _ = try conn.exec(
-        \\INSERT INTO core.tenant_providers
-        \\  (tenant_id, mode, provider, model, context_cap_tokens, secret_ref, created_at, updated_at)
-        \\VALUES ($1::uuid, $2, $3, $4, $5, NULL, $6, $6)
-        \\ON CONFLICT (tenant_id) DO UPDATE SET
-        \\  mode               = EXCLUDED.mode,
-        \\  provider           = EXCLUDED.provider,
-        \\  model              = EXCLUDED.model,
-        \\  context_cap_tokens = EXCLUDED.context_cap_tokens,
-        \\  secret_ref     = NULL,
-        \\  updated_at         = EXCLUDED.updated_at
-    , .{
+    _ = try conn.exec(sql.UPSERT_PLATFORM, .{
         tenant_id,
         Mode.platform.label(),
         plk.provider,
@@ -250,5 +229,7 @@ pub fn probeSelfManaged(
 
 test {
     _ = @import("tenant_provider_test.zig");
+    _ = @import("tenant_provider_endpoint_test.zig");
+    _ = @import("tenant_provider_upsert_test.zig");
     _ = @import("base_url_guard.zig");
 }

@@ -15,7 +15,6 @@ const auth_mw = @import("../../../auth/middleware/mod.zig");
 const error_registry = @import("../../../errors/error_registry.zig");
 const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
 const model_rate_cache = @import("../../../state/model_rate_cache.zig");
-const model_caps_store = @import("../../../state/model_caps_store.zig");
 const harness_mod = @import("../../test_harness.zig");
 const TestHarness = harness_mod.TestHarness;
 
@@ -29,7 +28,7 @@ const WORKSPACE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11";
 // Pre-seeded catalogue rows (known uids so PATCH/DELETE can address them).
 const UID_GLM = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a9001";
 const UID_OPUS = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a9002";
-// id for the direct-insert FK probe (uuidv7 — ck_platform_llm_keys_uid_uuidv7).
+// id for the direct-insert FK probe (uuidv7 — ck_platform_provider_defaults_uid_uuidv7).
 const FK_GHOST_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a9201";
 
 const TEST_JWKS = scope_fixtures.JWKS;
@@ -38,7 +37,7 @@ const TENANT_ADMIN_TOKEN = scope_fixtures.TENANT_ADMIN;
 
 fn configureRegistry(_: *auth_mw.MiddlewareRegistry, _: *TestHarness) anyerror!void {}
 
-fn startHarness(alloc: std.mem.Allocator) !*TestHarness {
+pub fn startHarness(alloc: std.mem.Allocator) !*TestHarness {
     return TestHarness.start(alloc, .{
         .configureRegistry = configureRegistry,
         .inline_jwks_json = TEST_JWKS,
@@ -73,10 +72,10 @@ fn seedModel(h: *TestHarness, uid: []const u8, provider: []const u8, model_id: [
     , .{ uid, model_id, provider, now });
 }
 
-fn cleanup(h: *TestHarness) void {
+pub fn cleanup(h: *TestHarness) void {
     const conn = h.acquireConn() catch return;
     defer h.releaseConn(conn);
-    _ = conn.exec("DELETE FROM core.platform_llm_keys WHERE source_workspace_id = $1::uuid", .{WORKSPACE_ID}) catch |err| std.log.warn("cleanup ignored: {s}", .{@errorName(err)});
+    _ = conn.exec("DELETE FROM core.platform_provider_defaults WHERE source_workspace_id = $1::uuid", .{WORKSPACE_ID}) catch |err| std.log.warn("cleanup ignored: {s}", .{@errorName(err)});
     _ = conn.exec("DELETE FROM core.model_library WHERE provider IN ('fireworks','anthropic','m100test')", .{}) catch |err| std.log.warn("cleanup ignored: {s}", .{@errorName(err)});
     _ = conn.exec("DELETE FROM core.workspaces WHERE workspace_id = $1::uuid", .{WORKSPACE_ID}) catch |err| std.log.warn("cleanup ignored: {s}", .{@errorName(err)});
 }
@@ -84,7 +83,7 @@ fn cleanup(h: *TestHarness) void {
 fn countActivePlatformKeys(h: *TestHarness) !struct { total: i64, provider: []const u8 } {
     const conn = try h.acquireConn();
     defer h.releaseConn(conn);
-    var q = PgQuery.from(try conn.query("SELECT count(*)::bigint, coalesce(max(provider), '') FROM core.platform_llm_keys WHERE active = true", .{}));
+    var q = PgQuery.from(try conn.query("SELECT count(*)::bigint, coalesce(max(provider), '') FROM core.platform_provider_defaults WHERE active = true", .{}));
     defer q.deinit();
     const row = (try q.next()) orelse return error.TestUnexpectedResult;
     const total = try row.get(i64, 0);
@@ -220,7 +219,7 @@ test "admin models: deleting the active default's model is blocked 409" {
     try del.expectErrorCode(error_registry.ERR_MODEL_CAP_IN_USE);
 }
 
-test "platform default FK: a platform_llm_keys row cannot reference an uncatalogued model" {
+test "platform default FK: a platform_provider_defaults row cannot reference an uncatalogued model" {
     const h = try startHarness(ALLOC);
     defer h.deinit();
     defer cleanup(h);
@@ -230,11 +229,11 @@ test "platform default FK: a platform_llm_keys row cannot reference an uncatalog
     defer h.releaseConn(conn);
     const now = clock.nowMillis();
     // Direct insert, bypassing the handler's capFor pre-check: (ghostprov,
-    // ghost-model) is not a core.model_library row, so fk_platform_llm_keys_model
+    // ghost-model) is not a core.model_library row, so fk_platform_provider_defaults_model
     // must reject it. This is the DB-level guarantee that makes the model-delete
     // vs default-set race unwinnable — the app guard alone is not race-tight.
     if (conn.exec(
-        \\INSERT INTO core.platform_llm_keys
+        \\INSERT INTO core.platform_provider_defaults
         \\  (id, provider, source_workspace_id, model, context_cap_tokens, active, created_at, updated_at)
         \\VALUES ($1::uuid, 'ghostprov', $2::uuid, 'ghost-model', 128000, true, $3, $3)
     , .{ FK_GHOST_ID, WORKSPACE_ID, now })) |_| {
@@ -264,7 +263,7 @@ test "platform default: standing a provider down NULLs its model, freeing its ca
     try a.expectStatus(.ok);
 
     // anthropic takes over, standing fireworks down. The stand-down NULLs
-    // fireworks' model, releasing fk_platform_llm_keys_model — so glm-5.2 is now
+    // fireworks' model, releasing fk_platform_provider_defaults_model — so glm-5.2 is now
     // deletable. WITHOUT the NULL, this DELETE would hit the FK and 500.
     const b = try (try (try h.put("/v1/admin/platform-keys").bearer(PLATFORM_ADMIN_TOKEN))
         .json("{\"provider\":\"anthropic\",\"source_workspace_id\":\"" ++ WORKSPACE_ID ++ "\",\"model\":\"claude-opus-4-8\"}")).send();
@@ -343,30 +342,4 @@ test "admin models: PATCH rejects a negative rate 400" {
     defer r.deinit();
     try r.expectStatus(.bad_request);
     try r.expectErrorCode(error_registry.ERR_INVALID_REQUEST);
-}
-
-// §2 / Dimension 2.1 — the delete-guard's reference check must FAIL
-// CLOSED on a DB fault. Before the fix, isReferencedByActiveDefault swallowed a
-// query error to `false` (fail OPEN → a transient blip lets the live default's
-// model-cap be deleted, then the next platform lease resolves an uncatalogued
-// model and silently degrades to run-fee-only). The fault is injected the
-// deterministic way: a malformed uid makes the guard's own `$1::uuid` cast fail
-// at query time — the identical `!` error path a pool exhaustion or connection
-// reset takes — and we assert the store function propagates it rather than
-// returning a bool. Dimension 2.2 (the genuine-409 happy path) stays covered by
-// "admin models: deleting the active default's model is blocked 409" above.
-test "test_delete_blocked_on_referenced_check_query_error" {
-    const h = try startHarness(ALLOC);
-    defer h.deinit();
-    defer cleanup(h);
-
-    const conn = try h.acquireConn();
-    defer h.releaseConn(conn);
-
-    if (model_caps_store.isReferencedByActiveDefault(conn, "not-a-uuid")) |_| {
-        // A bool return on a query error is the fail-OPEN bug this closes.
-        return error.QueryErrorSwallowedAsBool;
-    } else |_| {
-        // Expected: the query error propagates so the DELETE handler fails closed.
-    }
 }
