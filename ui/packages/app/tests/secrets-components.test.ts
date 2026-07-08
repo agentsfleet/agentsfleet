@@ -39,6 +39,7 @@ vi.mock("lucide-react", () => {
     Loader2Icon: make("Loader2Icon"),
     KeyRoundIcon: make("KeyRoundIcon"),
     PencilIcon: make("PencilIcon"),
+    PlusIcon: make("PlusIcon"),
     XIcon: make("XIcon"),
   };
 });
@@ -118,6 +119,14 @@ describe("AddSecretDialog", () => {
     await renderDialog();
     expect(screen.getByRole("button", { name: "Create secret" })).toBeTruthy();
     expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("renders a PlusIcon on the create-secret trigger (test_create_triggers_render_plus_icon)", async () => {
+    await renderDialog();
+    const trigger = screen.getByRole("button", { name: "Create secret" });
+    // This file mocks lucide-react as <svg data-icon={name}> (see top-of-file
+    // vi.mock), so assert on the mock's marker, not the real lucide-* class.
+    expect(trigger.querySelector('[data-icon="PlusIcon"]')).toBeTruthy();
   });
 
   it("opens the add-secret form when the trigger is clicked", async () => {

@@ -11,6 +11,7 @@ import {
   Input,
   SectionLabel,
 } from "@agentsfleet/design-system";
+import { DownloadIcon } from "lucide-react";
 import type { FleetLibraryGalleryEntry } from "@/lib/types";
 
 type Props = {
@@ -60,7 +61,10 @@ export function InstallConfirm({ entry, onInstall, onBack }: Props) {
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <Button type="submit">Install</Button>
+            <Button type="submit">
+              <DownloadIcon size={14} />
+              Install
+            </Button>
             <Button type="button" variant="ghost" onClick={onBack}>
               Back
             </Button>

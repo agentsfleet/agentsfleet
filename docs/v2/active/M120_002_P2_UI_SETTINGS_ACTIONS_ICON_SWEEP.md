@@ -106,8 +106,8 @@ The screenshot shows the `Select`'s open option ("fireworks") rendering as an un
 
 **Implementation default:** every bare-text "Create X"/"Install X" trigger button in the Files Changed table above gains the matching icon from the established convention; no new backend calls, no behavior change — trigger label + icon only.
 
-- **Dimension 4.1** — API Keys, Runners, and Secrets "Create X" triggers each render a `PlusIcon` alongside their existing label → Test `test_create_triggers_render_plus_icon`
-- **Dimension 4.2** — the fleets "Install" confirm button renders an install-appropriate icon alongside its existing label → Test `test_install_confirm_renders_icon`
+- **Dimension 4.1** — API Keys, Runners, and Secrets "Create X" triggers each render a `PlusIcon` alongside their existing label → Test `test_create_triggers_render_plus_icon` — **DONE** (assertions added to `api-keys-create-dialog`, `runners-list`, `secrets-components` tests where each component already renders)
+- **Dimension 4.2** — the fleets "Install" confirm button renders an install-appropriate icon alongside its existing label → Test `test_install_confirm_renders_icon` — **DONE** (`DownloadIcon`; see Discovery)
 
 ## Interfaces
 
@@ -202,3 +202,8 @@ No files deleted — `EditModelDialog.tsx` is new; everything else is edited in 
 - **Metrics review** — not applicable — no product/operator signal changes.
 - **Skill-chain outcomes** — empty at creation.
 - **Deferrals** — empty at creation.
+
+### Decisions taken during EXECUTE
+
+- **§4 install icon = `DownloadIcon`** (Jul 08, 2026). The spec said "install-appropriate icon" without naming one, and no existing install/download icon convention exists in the app (grep of `ui/packages/app` returned zero prior `DownloadIcon`/`PackageIcon`/etc. usages). Chose `DownloadIcon` as the universal "install" affordance; defined once and reused per UFS. Reversible if Indy prefers another glyph.
+- **§1/§2/§3 data gap (Platform Default active-default awareness)** — surfaced to Indy before building §2: `page.tsx` never fetches the active platform default and `PlatformDefaultCard` only receives the `models` catalogue; even the existing `GET /v1/admin/platform-keys` returns `provider/source_workspace_id/active/updated_at` but **not `model`** (though `model` is stored on the row). So "Create default" vs "Edit default" (Dimension 2.2) and active-*provider* pre-fill are reachable by wiring the existing GET, but active-*model* pre-fill (Dimension 2.3) needs one extra read-only column on that GET. Awaiting Indy's scope call — recorded here pending the answer.
