@@ -26,6 +26,7 @@ const pg = @import("pg");
 const resolver = @import("tenant_provider_resolver.zig");
 const secret_probe = @import("secret_probe.zig");
 const sql = @import("tenant_provider/sql.zig");
+const PgQuery = @import("../db/pg_query.zig").PgQuery;
 
 pub const Mode = enum {
     const Self = @This();
@@ -199,6 +200,37 @@ pub fn platformDefaultView(
     errdefer alloc.free(provider);
     const model = try alloc.dupe(u8, plk.model);
     return .{ .provider = provider, .model = model, .context_cap_tokens = plk.context_cap_tokens };
+}
+
+/// The tenant's active (secret_ref, model) pair under self_managed mode, with
+/// no vault touch. Used by the model registry's GET synthesis (M121 §2) to
+/// detect an activation with no matching `core.tenant_model_entries` row.
+pub const ActiveSelfManagedRef = struct {
+    const Self = @This();
+
+    secret_ref: []u8,
+    model: []u8,
+
+    pub fn deinit(self: *Self, alloc: std.mem.Allocator) void {
+        alloc.free(self.secret_ref);
+        alloc.free(self.model);
+    }
+};
+
+/// `null` under platform mode or when no row exists. Caller owns the result
+/// and must call `.deinit(alloc)`.
+pub fn activeSelfManagedRef(
+    alloc: std.mem.Allocator,
+    conn: *pg.Conn,
+    tenant_id: []const u8,
+) !?ActiveSelfManagedRef {
+    var q = PgQuery.from(try conn.query(sql.SELECT_ACTIVE_SELF_MANAGED_REF, .{ tenant_id, Mode.self_managed.label() }));
+    defer q.deinit();
+    const row = (try q.next()) orelse return null;
+    const secret_ref = try alloc.dupe(u8, try row.get([]const u8, 0));
+    errdefer alloc.free(secret_ref);
+    const model = try alloc.dupe(u8, try row.get([]const u8, 1));
+    return .{ .secret_ref = secret_ref, .model = model };
 }
 
 pub const ProbedSecret = secret_probe.ProbedSecret;

@@ -61,6 +61,8 @@ pub fn classFor(route: router.Route) RouteClass {
         .get_tenant_metering_periods,
         .list_tenant_workspaces,
         .tenant_provider,
+        .tenant_model_entries,
+        .tenant_model_entry_by_id,
         .fleet_bundles,
         .admin_fleet_library,
         .workspace_fleet_library,
@@ -144,6 +146,8 @@ pub fn specFor(route: router.Route, registry: *auth_mw.MiddlewareRegistry) Route
         .get_tenant_metering_periods => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeGetTenantMeteringPeriods },
         .list_tenant_workspaces => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeListTenantWorkspaces },
         .tenant_provider => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeTenantProvider },
+        .tenant_model_entries => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeTenantModelEntries },
+        .tenant_model_entry_by_id => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeTenantModelEntryById },
         .fleet_bundles => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeFleetBundles },
 
         // Fleet library onboarding (M103). Scope enforced by requireScope from

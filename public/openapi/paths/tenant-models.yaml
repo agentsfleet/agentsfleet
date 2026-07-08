@@ -1,0 +1,207 @@
+/v1/tenants/me/models:
+  get:
+    operationId: list_tenant_model_entries
+    summary: List the tenant's model registry
+    description: >
+      One entry per configured model; two entries can share a `secret_ref`.
+      Each entry is joined to its secret's non-secret metadata (provider,
+      kind, base_url, has_key) — `api_key` is never serialised. `active` is
+      computed against the tenant's current provider selection
+      (`GET /v1/tenants/me/provider`). Before listing, a pre-registry
+      activation with no matching entry is synthesized idempotently, so the
+      registry self-heals with no separate backfill.
+    tags:
+    - Tenant
+    responses:
+      '200':
+        description: Model registry
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TenantModelEntryList'
+      default:
+        $ref: ../components/responses.yaml#/components/responses/Error
+  post:
+    operationId: create_tenant_model_entry
+    summary: Register a model entry
+    description: >
+      Creates one `(model_id, secret_ref)` row. `secret_ref` must already
+      name a vault secret in the tenant's primary workspace — store or reuse
+      one via `/v1/workspaces/{workspace_id}/secrets` first. Does not
+      activate the entry; activate via `PUT /v1/tenants/me/provider`.
+    tags:
+    - Tenant
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+            - model_id
+            - secret_ref
+            properties:
+              model_id:
+                type: string
+                description: Provider-namespaced model string.
+              secret_ref:
+                type: string
+                description: User-named vault secret; may already back other entries.
+    responses:
+      '201':
+        description: Created
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TenantModelEntryWriteResult'
+      '404':
+        description: secret_ref does not name a vault secret (`UZ-MODELS-002`).
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '409':
+        description: An entry with this exact (model_id, secret_ref) pair already exists (`UZ-MODELS-003`).
+        $ref: ../components/responses.yaml#/components/responses/Error
+      default:
+        $ref: ../components/responses.yaml#/components/responses/Error
+/v1/tenants/me/models/{id}:
+  patch:
+    operationId: update_tenant_model_entry
+    summary: Change a model entry's model_id
+    description: >
+      Model-only change; `secret_ref` is immutable on this endpoint — create
+      a new entry to point at a different secret.
+    tags:
+    - Tenant
+    parameters:
+    - name: id
+      in: path
+      required: true
+      description: UUIDv7 of the model entry.
+      schema:
+        type: string
+        format: uuid
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+            - model_id
+            properties:
+              model_id:
+                type: string
+    responses:
+      '200':
+        description: Entry after update
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TenantModelEntryWriteResult'
+      '404':
+        description: No entry with this id for the calling tenant (`UZ-MODELS-004`).
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '409':
+        description: The new (model_id, secret_ref) pair collides with an existing entry (`UZ-MODELS-003`).
+        $ref: ../components/responses.yaml#/components/responses/Error
+      default:
+        $ref: ../components/responses.yaml#/components/responses/Error
+  delete:
+    operationId: delete_tenant_model_entry
+    summary: Remove a model entry
+    description: >
+      Idempotent — deleting an id that doesn't exist (already removed, or
+      never existed) still returns 204. The referenced vault secret is never
+      touched; sibling entries sharing it survive.
+    tags:
+    - Tenant
+    parameters:
+    - name: id
+      in: path
+      required: true
+      description: UUIDv7 of the model entry.
+      schema:
+        type: string
+        format: uuid
+    responses:
+      '204':
+        description: No Content
+      '409':
+        description: This entry is the tenant's active selection — switch to another entry first (`UZ-MODELS-001`).
+        $ref: ../components/responses.yaml#/components/responses/Error
+      default:
+        $ref: ../components/responses.yaml#/components/responses/Error
+
+components:
+  schemas:
+    TenantModelEntry:
+      type: object
+      required:
+      - id
+      - model_id
+      - secret_ref
+      - kind
+      - has_key
+      - active
+      - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        model_id:
+          type: string
+        secret_ref:
+          type: string
+        provider:
+          type: string
+          nullable: true
+        kind:
+          type: string
+          enum: [provider_key, custom_endpoint, custom_secret]
+        base_url:
+          type: string
+          nullable: true
+        has_key:
+          type: boolean
+          description: Whether the referenced secret's body carries a non-empty api_key.
+        context_cap_tokens:
+          type: integer
+          format: int64
+          nullable: true
+          description: From the model-caps catalogue when the provider/model is known; omitted otherwise.
+        active:
+          type: boolean
+          description: True when (secret_ref, model_id) matches the tenant's current provider selection.
+        created_at:
+          type: integer
+          format: int64
+    TenantModelEntryList:
+      type: object
+      required:
+      - models
+      - platform_default_available
+      properties:
+        models:
+          type: array
+          items:
+            $ref: '#/components/schemas/TenantModelEntry'
+        platform_default_available:
+          type: boolean
+          description: Whether an active core.platform_provider_defaults row exists, independent of this tenant's own mode.
+    TenantModelEntryWriteResult:
+      type: object
+      required:
+      - id
+      - model_id
+      - secret_ref
+      - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        model_id:
+          type: string
+        secret_ref:
+          type: string
+        created_at:
+          type: integer
+          format: int64

@@ -1,4 +1,4 @@
-//! Centralized SQL for tenant provider selection writes.
+//! Centralized SQL for tenant provider selection reads and writes.
 
 pub const UPSERT_SELF_MANAGED =
     \\INSERT INTO core.tenant_model_selection
@@ -24,4 +24,11 @@ pub const UPSERT_PLATFORM =
     \\  context_cap_tokens = EXCLUDED.context_cap_tokens,
     \\  secret_ref         = NULL,
     \\  updated_at         = EXCLUDED.updated_at
+;
+
+// mode is bound as a parameter (not inlined) per the no-static-strings-in-SQL rule.
+pub const SELECT_ACTIVE_SELF_MANAGED_REF =
+    \\SELECT secret_ref, model
+    \\FROM core.tenant_model_selection
+    \\WHERE tenant_id = $1::uuid AND mode = $2 AND secret_ref IS NOT NULL
 ;
