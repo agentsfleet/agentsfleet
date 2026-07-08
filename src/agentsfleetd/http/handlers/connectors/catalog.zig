@@ -3,7 +3,7 @@
 //! Renders the comptime connector registry as data for the dashboard: every
 //! entry with its archetype, display name, whether the platform side is
 //! `configured` (oauth2/app_install need a `<provider>-app` bag; api_key needs
-//! nothing), and whether THIS workspace is `connected` (a `fleet:<provider>`
+//! nothing), and whether THIS workspace is `connected` (a `<provider>`
 //! handle exists). The dashboard renders its cards from this — never a
 //! hard-coded provider list (RULE CFG). Read-only; `connector:read`-scoped.
 
@@ -13,7 +13,6 @@ const common = @import("../common.zig");
 const hx_mod = @import("../hx.zig");
 const ec = @import("../../../errors/error_registry.zig");
 const vault = @import("../../../state/vault.zig");
-const credential_key = @import("../../../fleet_runtime/credential_key.zig");
 const oauth2 = @import("oauth2.zig");
 const registry = @import("registry.zig");
 
@@ -33,8 +32,9 @@ const CatalogEntry = struct {
 const N = registry.REGISTRY.len;
 
 /// RESOURCE BUDGET: innerCatalog
-///   Heap allocations: 2·N short key strings (the `<provider>-app` + the
-///     `fleet:<provider>` candidates), freed before return; N comptime-fixed.
+///   Heap allocations: N short `<provider>-app` key strings, freed before
+///     return; N comptime-fixed. The workspace-handle keys are the registry's
+///     own `spec.provider` strings — no allocation needed.
 ///   DB round-trips: exactly 2 (one batch existence query per set) — never the
 ///     ~2·N sequential decrypting `loadJson` reads the naive shape would do.
 ///   Concurrency: single request, one pooled conn held for the two queries.
@@ -52,22 +52,17 @@ pub fn innerCatalog(hx: hx_mod.Hx, workspace_id: []const u8) void {
 
     // Build the two candidate key sets (index-aligned with the registry).
     var app_keys: [N][]const u8 = undefined; // `<provider>-app` (platform bag)
-    var fleet_keys: [N][]const u8 = undefined; // `fleet:<provider>` (workspace handle)
+    var fleet_keys: [N][]const u8 = undefined; // `<provider>` (workspace handle)
     var made: usize = 0;
     defer for (0..made) |j| {
         hx.alloc.free(app_keys[j]);
-        hx.alloc.free(fleet_keys[j]);
     };
     for (registry.REGISTRY, 0..) |spec, i| {
         app_keys[i] = std.fmt.allocPrint(hx.alloc, "{s}" ++ oauth2.APP_VAULT_KEY_SUFFIX, .{spec.provider}) catch {
             common.internalOperationError(hx.res, S_CATALOG_KEY_BUILD_FAILED, hx.req_id);
             return;
         };
-        fleet_keys[i] = credential_key.allocKeyName(hx.alloc, spec.provider) catch {
-            hx.alloc.free(app_keys[i]); // this pair is not yet counted in `made`
-            common.internalOperationError(hx.res, S_CATALOG_KEY_BUILD_FAILED, hx.req_id);
-            return;
-        };
+        fleet_keys[i] = spec.provider;
         made = i + 1;
     }
 

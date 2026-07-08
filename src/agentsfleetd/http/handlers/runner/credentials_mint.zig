@@ -25,7 +25,6 @@ const common = @import("../common.zig");
 const constants = @import("common");
 const ec = @import("../../../errors/error_registry.zig");
 const pg_query = @import("../../../db/pg_query.zig");
-const credential_key = @import("../../../fleet_runtime/credential_key.zig");
 const vault = @import("../../../state/vault.zig");
 const integration = @import("../../../credentials/integration.zig");
 const grant_lookup = @import("../../../state/integration_grant_lookup.zig");
@@ -157,13 +156,7 @@ fn loadMintInputs(hx: Hx, runner_id: []const u8, mint_req: protocol.MintCredenti
         }
     }
 
-    const key_name = credential_key.allocKeyName(hx.alloc, mint_req.integration) catch {
-        common.internalOperationError(hx.res, "failed to build credential key", hx.req_id);
-        return null;
-    };
-    defer hx.alloc.free(key_name);
-
-    const handle = vault.loadJson(hx.alloc, conn, scope.workspace_id, key_name) catch |err| {
+    const handle = vault.loadJson(hx.alloc, conn, scope.workspace_id, mint_req.integration) catch |err| {
         if (err == error.NotFound) {
             // No handle for this workspace → the integration was never connected.
             hx.fail(ec.ERR_CRED_INTEGRATION_NOT_CONNECTED, S_INTEGRATION_NOT_CONNECTED);

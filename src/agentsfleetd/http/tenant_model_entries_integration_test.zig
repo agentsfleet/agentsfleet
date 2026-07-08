@@ -29,7 +29,7 @@ fn extractId(alloc: std.mem.Allocator, body: []const u8) ![]const u8 {
     return alloc.dupe(u8, parsed.value.id);
 }
 
-test "test_models_list_joins_metadata_and_active — GET joins secret metadata, flags exactly one active entry, never leaks api_key" {
+test "integration: test_models_list_joins_metadata_and_active — GET joins secret metadata, flags exactly one active entry, never leaks api_key" {
     base.setTestEncryptionKey();
     const alloc = std.testing.allocator;
     const h = base.seedAndHarness(alloc) catch |err| switch (err) {
@@ -86,7 +86,7 @@ test "test_models_list_joins_metadata_and_active — GET joins secret metadata, 
     cleanup(conn);
 }
 
-test "test_models_list_synthesizes_active_entry — GET synthesizes a missing entry for a pre-registry activation, idempotently" {
+test "integration: test_models_list_synthesizes_active_entry — GET synthesizes a missing entry for a pre-registry activation, idempotently" {
     base.setTestEncryptionKey();
     const alloc = std.testing.allocator;
     const h = base.seedAndHarness(alloc) catch |err| switch (err) {
@@ -136,7 +136,7 @@ test "test_models_list_synthesizes_active_entry — GET synthesizes a missing en
     cleanup(conn);
 }
 
-test "test_models_create_guards — POST guards unknown secret_ref (404) and duplicate entries (409)" {
+test "integration: test_models_create_guards — POST guards unknown secret_ref (404) and duplicate entries (409)" {
     base.setTestEncryptionKey();
     const alloc = std.testing.allocator;
     const h = base.seedAndHarness(alloc) catch |err| switch (err) {
@@ -157,8 +157,6 @@ test "test_models_create_guards — POST guards unknown secret_ref (404) and dup
     const secrets_path = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/secrets", .{base.TEST_WS_ID});
     defer alloc.free(secrets_path);
     {
-        // Dashboard-created secrets are stored under a "fleet:"-prefixed key —
-        // this also exercises the raw→prefixed existence-check fallback.
         const r = try (try (try h.post(secrets_path).bearer(base.TOKEN_OPERATOR))
             .json("{\"name\":\"dup-key\",\"data\":{\"provider\":\"anthropic\",\"api_key\":\"sk-dup\",\"model\":\"claude-sonnet-4-6\"}}")).send();
         defer r.deinit();
@@ -183,7 +181,7 @@ test "test_models_create_guards — POST guards unknown secret_ref (404) and dup
     cleanup(conn);
 }
 
-test "test_models_delete_active_guard — DELETE refuses the active entry, allows a non-active sibling" {
+test "integration: test_models_delete_active_guard — DELETE refuses the active entry, allows a non-active sibling" {
     base.setTestEncryptionKey();
     const alloc = std.testing.allocator;
     const h = base.seedAndHarness(alloc) catch |err| switch (err) {
@@ -247,7 +245,7 @@ test "test_models_delete_active_guard — DELETE refuses the active entry, allow
     cleanup(conn);
 }
 
-test "test_secret_delete_blocked_when_referenced — secret DELETE is blocked while referenced by a model entry, naming the count" {
+test "integration: test_secret_delete_blocked_when_referenced — secret DELETE is blocked while referenced by a model entry, naming the count" {
     base.setTestEncryptionKey();
     const alloc = std.testing.allocator;
     const h = base.seedAndHarness(alloc) catch |err| switch (err) {

@@ -144,7 +144,7 @@ fn seedBotToken(alloc: std.mem.Allocator, conn: *pg.Conn) !void {
     defer obj.deinit(alloc);
     try obj.put(alloc, "integration", .{ .string = spec.PROVIDER });
     try obj.put(alloc, "bot_token", .{ .string = BOT_TOKEN });
-    try test_fixtures.storeVaultJson(alloc, conn, TARGET_WS, "fleet:slack", .{ .object = obj });
+    try test_fixtures.storeVaultJson(alloc, conn, TARGET_WS, spec.PROVIDER, .{ .object = obj });
 }
 
 fn seedInstall(alloc: std.mem.Allocator, conn: *pg.Conn) !void {

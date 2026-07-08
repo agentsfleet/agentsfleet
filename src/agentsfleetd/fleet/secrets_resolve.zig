@@ -12,7 +12,6 @@ const Allocator = std.mem.Allocator;
 
 const error_codes = @import("../errors/error_registry.zig");
 const vault = @import("../state/vault.zig");
-const credential_key = @import("../fleet_runtime/credential_key.zig");
 const integration = @import("../credentials/integration.zig");
 const logging = @import("log");
 
@@ -44,10 +43,7 @@ pub fn resolveSecretsMap(
     defer pool.release(conn);
 
     for (names) |name| {
-        const key_name = try credential_key.allocKeyName(alloc, name);
-        defer alloc.free(key_name);
-
-        const parsed = vault.loadJson(alloc, conn, workspace_id, key_name) catch |err| {
+        const parsed = vault.loadJson(alloc, conn, workspace_id, name) catch |err| {
             if (err == error.NotFound) {
                 log.warn(
                     "credential_not_found",

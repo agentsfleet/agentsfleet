@@ -3,7 +3,6 @@ const shared = @import("common");
 const pg = @import("pg");
 const protocol = @import("contract").protocol;
 const db_fixtures = @import("../db/test_fixtures.zig");
-const credential_key = @import("../fleet_runtime/credential_key.zig");
 const crypto_primitives = @import("../secrets/crypto_primitives.zig");
 const vault = @import("../state/vault.zig");
 const grant_lookup = @import("../state/integration_grant_lookup.zig");
@@ -25,9 +24,7 @@ fn seedFleetWithConfig(conn: *pg.Conn, fleet_id: []const u8, name: []const u8, s
 }
 
 fn seedVaultJson(conn: *pg.Conn, name: []const u8, json: []const u8) !void {
-    const key_name = try credential_key.allocKeyName(cp.ALLOC, name);
-    defer cp.ALLOC.free(key_name);
-    try vault.storeJsonPlaintext(cp.ALLOC, conn, cp.WORKSPACE_ID, key_name, json);
+    try vault.storeJsonPlaintext(cp.ALLOC, conn, cp.WORKSPACE_ID, name, json);
 }
 
 fn setGithubGrant(conn: *pg.Conn, fleet_id: []const u8, status: grant_lookup.GrantStatus) !void {

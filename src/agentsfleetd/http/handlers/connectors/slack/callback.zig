@@ -2,7 +2,7 @@
 //! (`connectors/callback.zig`) dispatches to for the oauth2 archetype. The
 //! generic handler has already consumed the signed state, exchanged the
 //! `code` (deadline-armed), and checked the HTTP status; this hook parses
-//! Slack's `oauth.v2.access` body, vaults the bot token as the `fleet:slack`
+//! Slack's `oauth.v2.access` body, vaults the bot token as the `slack`
 //! handle (RULE VLT — the token lives only there), and records the install in
 //! `core.connector_installs` (for inbound team_id → workspace routing).
 
@@ -12,7 +12,6 @@ const logging = @import("log");
 const clock = @import("common").clock;
 const hx_mod = @import("../../hx.zig");
 const vault = @import("../../../../state/vault.zig");
-const credential_key = @import("../../../../fleet_runtime/credential_key.zig");
 const id_format = @import("../../../../types/id_format.zig");
 const spec = @import("spec.zig");
 
@@ -83,11 +82,9 @@ pub fn postAuth(hx: hx_mod.Hx, workspace_id: []const u8, body: []const u8, _: ?[
 }
 
 fn storeHandle(hx: hx_mod.Hx, conn: *pg.Conn, workspace_id: []const u8, handle: Handle) !void {
-    const key = try credential_key.allocKeyName(hx.alloc, spec.PROVIDER); // "fleet:slack"
-    defer hx.alloc.free(key);
     const json = try std.json.Stringify.valueAlloc(hx.alloc, handle, .{});
     defer hx.alloc.free(json);
-    try vault.storeJsonPlaintext(hx.alloc, conn, workspace_id, key, json);
+    try vault.storeJsonPlaintext(hx.alloc, conn, workspace_id, spec.PROVIDER, json);
 }
 
 fn insertInstall(
