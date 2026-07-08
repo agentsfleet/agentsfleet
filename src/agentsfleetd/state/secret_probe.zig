@@ -10,14 +10,10 @@ const std = @import("std");
 const pg = @import("pg");
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
 const vault = @import("vault.zig");
-const logging = @import("log");
-const credential_key = @import("../fleet_runtime/credential_key.zig");
 
 const tenant_provider = @import("tenant_provider.zig");
 const base_url_guard = @import("base_url_guard.zig");
 const ResolveError = tenant_provider.ResolveError;
-
-const log = logging.scoped(.secret_probe);
 
 const S_API_KEY = "api_key";
 const S_BASE_URL = "base_url";
@@ -51,7 +47,7 @@ pub const ProbedSecret = struct {
 /// workspace pattern signup_bootstrap_store uses for OIDC re-bootstrap.
 /// Multi-workspace tenants point self-managed credentials at the first signup-time
 /// workspace; v3 may add an explicit `vault_workspace_id` column to
-/// tenant_providers so users can pin a different workspace.
+/// tenant_model_selection so users can pin a different workspace.
 fn resolvePrimaryWorkspace(
     alloc: std.mem.Allocator,
     conn: *pg.Conn,
@@ -122,6 +118,23 @@ pub fn probeSelfManagedSecret(
     return .{ .provider = provider, .api_key = api_key, .model = model, .base_url = base_url };
 }
 
+/// Load the raw JSON body of a tenant-scoped secret by secret_ref, WITHOUT the
+/// provider/model/api_key shape validation `probeSelfManagedSecret` enforces —
+/// used by the tenant model registry (M121), whose entries own the model and
+/// may reference a secret with no `model` field. Same primary-workspace bridge
+/// as the probe. Returns ResolveError.SecretMissing when no vault row matches.
+/// Caller owns the parsed value.
+pub fn loadTenantSecretJson(
+    alloc: std.mem.Allocator,
+    conn: *pg.Conn,
+    tenant_id: []const u8,
+    secret_ref: []const u8,
+) (ResolveError || anyerror)!std.json.Parsed(std.json.Value) {
+    const ws_id = try resolvePrimaryWorkspace(alloc, conn, tenant_id);
+    defer alloc.free(ws_id);
+    return loadSelfManagedJson(alloc, conn, ws_id, secret_ref);
+}
+
 /// Validate the provider⇔base_url pairing for a self-managed credential (RULE
 /// PRI/NTP — the URL is hostile). Pure (no allocation, no DB) so the credential
 /// unit tests drive every branch directly:
@@ -155,16 +168,7 @@ fn loadSelfManagedJson(
     secret_ref: []const u8,
 ) (ResolveError || anyerror)!std.json.Parsed(std.json.Value) {
     return vault.loadJson(alloc, conn, workspace_id, secret_ref) catch |err| switch (err) {
-        error.NotFound => {
-            const key_name = try credential_key.allocKeyName(alloc, secret_ref);
-            defer alloc.free(key_name);
-            const parsed = vault.loadJson(alloc, conn, workspace_id, key_name) catch |prefixed_err| switch (prefixed_err) {
-                error.NotFound => return ResolveError.SecretMissing,
-                else => return prefixed_err,
-            };
-            log.debug("self_managed_secret_ref_fallback", .{ .workspace_id = workspace_id });
-            return parsed;
-        },
-        else => return err,
+        error.NotFound => ResolveError.SecretMissing,
+        else => err,
     };
 }

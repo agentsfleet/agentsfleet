@@ -130,6 +130,7 @@ pub const matchAdminPlatformKey = billing.matchAdminPlatformKey;
 pub const matchAdminModel = billing.matchAdminModel;
 pub const matchTenantApiKeyById = billing.matchTenantApiKeyById;
 pub const matchTenantMeteringPeriods = billing.matchTenantMeteringPeriods;
+pub const matchTenantModelEntryById = billing.matchTenantModelEntryById;
 
 // ── /workspaces/{workspace_id}/{suffix} ────────────────────────────────────
 // suffix ∈ {"fleets", "secrets", "fleet-keys", "events", "approvals"}.

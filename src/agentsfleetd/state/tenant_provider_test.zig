@@ -1,52 +1,55 @@
 // Integration tests for tenant_provider.zig.
 //
-// Cover: Mode + ResolvedProvider invariants (no DB), and the resolver +
-// upsert + delete entry points (real DB + vault). Skips when no DB.
+// Cover: Mode + ResolvedProvider invariants (no database (DB)), and the
+// resolver + upsert + delete entry points (real DB + vault). Skips when no DB.
 
 const std = @import("std");
 const clock = @import("common").clock;
 const pg = @import("pg");
-const PgQuery = @import("../db/pg_query.zig").PgQuery;
 
 const tenant_provider = @import("tenant_provider.zig");
 const crypto_primitives = @import("../secrets/crypto_primitives.zig");
 const base = @import("../db/test_fixtures.zig");
 const uc1 = @import("../db/test_fixtures_uc1.zig");
-const credential_key = @import("../fleet_runtime/credential_key.zig");
 
-const ALLOC = std.testing.allocator;
+/// Shared test allocator for tenant provider fixture files.
+pub const ALLOC = std.testing.allocator;
 
-const WS_TP_RESOLVE = "0195b4ba-8d3a-7f13-8abc-aa2000000001";
-const WS_TP_UPSERT = "0195b4ba-8d3a-7f13-8abc-aa2000000002";
-const WS_TP_SELF_MANAGED = "0195b4ba-8d3a-7f13-8abc-aa2000000003";
+/// Workspace id used by resolve-active-provider tests.
+pub const WS_TP_RESOLVE = "0195b4ba-8d3a-7f13-8abc-aa2000000001";
+/// Workspace id used by upsert tests.
+pub const WS_TP_UPSERT = "0195b4ba-8d3a-7f13-8abc-aa2000000002";
+/// Workspace id used by self-managed credential tests.
+pub const WS_TP_SELF_MANAGED = "0195b4ba-8d3a-7f13-8abc-aa2000000003";
 
-// Provider name scoped to this test file. The platform_llm_keys table has
-// UNIQUE on provider, so tests that share a provider name fight over the
-// same row via ON CONFLICT DO UPDATE. Using a test-scoped name keeps our
-// rows isolated from other integration tests.
-const TP_TEST_PROVIDER = "tenant_provider_test_fireworks";
-// The platform default's model/cap now live on the platform_llm_keys row (set by
-// PUT /admin/platform-keys), not a compile-time constant. These are test-scoped
-// fixture values: the tests seed them onto the row and assert the resolver echoes
-// the SAME values back — the specific strings/numbers are arbitrary.
-const TP_DEFAULT_MODEL = "tp-test-default-model";
-const TP_DEFAULT_CAP: u32 = 192_000;
+/// Provider name scoped to this test group.
+pub const TP_TEST_PROVIDER = "tenant_provider_test_fireworks";
+/// Platform default model fixture value.
+pub const TP_DEFAULT_MODEL = "tp-test-default-model";
+/// Platform default context cap fixture value.
+pub const TP_DEFAULT_CAP: u32 = 192_000;
 
-fn setEncryptionKey() void {
+/// Configure deterministic test encryption.
+pub fn setEncryptionKey() void {
     crypto_primitives.setTestKek();
 }
 
-fn cleanupTeardown(conn: *pg.Conn, ws_id: []const u8) void {
-    _ = conn.exec("DELETE FROM core.tenant_providers WHERE tenant_id = $1::uuid", .{uc1.TENANT_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
-    _ = conn.exec("DELETE FROM core.platform_llm_keys WHERE source_workspace_id = $1::uuid", .{ws_id}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
-    // After platform_llm_keys (the FK referrer) is gone, the catalogue row is free to drop.
+/// Remove tenant provider fixture rows for one workspace.
+pub fn cleanupTeardown(conn: *pg.Conn, ws_id: []const u8) void {
+    _ = conn.exec("DELETE FROM core.tenant_model_selection WHERE tenant_id = $1::uuid", .{uc1.TENANT_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
+    // upsertSelfManaged also upserts a registry entry (M121 invariant) — clean
+    // those rows so repeat runs and sibling suites never see them.
+    _ = conn.exec("DELETE FROM core.tenant_model_entries WHERE tenant_id = $1::uuid", .{uc1.TENANT_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
+    _ = conn.exec("DELETE FROM core.platform_provider_defaults WHERE source_workspace_id = $1::uuid", .{ws_id}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
+    // After platform_provider_defaults (the FK referrer) is gone, the catalogue row is free to drop.
     _ = conn.exec("DELETE FROM core.model_library WHERE provider = $1", .{TP_TEST_PROVIDER}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
     _ = conn.exec("DELETE FROM vault.secrets WHERE workspace_id = $1", .{ws_id}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
     uc1.teardown(conn, ws_id);
 }
 
-fn seedPlatformLlmKey(conn: *pg.Conn, alloc: std.mem.Allocator, ws_id: []const u8, provider: []const u8, api_key: []const u8) !void {
-    // Vault row at (ws_id, provider) — same M45 storage path self-managed uses.
+/// Seed a platform default row plus matching vault secret.
+pub fn seedPlatformLlmKey(conn: *pg.Conn, alloc: std.mem.Allocator, ws_id: []const u8, provider: []const u8, api_key: []const u8) !void {
+    // Vault row at (ws_id, provider) — same storage path self-managed uses.
     var obj: std.json.ObjectMap = .empty;
     defer obj.deinit(alloc);
     try obj.put(alloc, "provider", .{ .string = provider });
@@ -54,12 +57,12 @@ fn seedPlatformLlmKey(conn: *pg.Conn, alloc: std.mem.Allocator, ws_id: []const u
     const value = std.json.Value{ .object = obj };
     try base.storeVaultJson(alloc, conn, ws_id, provider, value);
 
-    // Generate a UUIDv7 (required by ck_platform_llm_keys_uid_uuidv7).
+    // Generate a UUIDv7 (required by ck_platform_provider_defaults_uid_uuidv7).
     const id_format = @import("../types/id_format.zig");
     const key_id = try id_format.generateFleetId(alloc);
     defer alloc.free(key_id);
     const now_ms: i64 = clock.nowMillis();
-    // Catalogue row the default points at — fk_platform_llm_keys_model requires it.
+    // Catalogue row the default points at — fk_platform_provider_defaults_model requires it.
     const caps_uid = try id_format.generateFleetId(alloc);
     defer alloc.free(caps_uid);
     _ = try conn.exec(
@@ -71,7 +74,7 @@ fn seedPlatformLlmKey(conn: *pg.Conn, alloc: std.mem.Allocator, ws_id: []const u
         \\ON CONFLICT (provider, model_id) DO NOTHING
     , .{ caps_uid, TP_DEFAULT_MODEL, provider, @as(i32, @intCast(TP_DEFAULT_CAP)), now_ms });
     _ = try conn.exec(
-        \\INSERT INTO core.platform_llm_keys (id, provider, source_workspace_id, model, context_cap_tokens, active, created_at, updated_at)
+        \\INSERT INTO core.platform_provider_defaults (id, provider, source_workspace_id, model, context_cap_tokens, active, created_at, updated_at)
         \\VALUES ($1::uuid, $2, $3::uuid, $5, $6, true, $4, $4)
         \\ON CONFLICT (provider) DO UPDATE
         \\SET source_workspace_id = EXCLUDED.source_workspace_id, model = EXCLUDED.model,
@@ -79,7 +82,8 @@ fn seedPlatformLlmKey(conn: *pg.Conn, alloc: std.mem.Allocator, ws_id: []const u
     , .{ key_id, provider, ws_id, now_ms, TP_DEFAULT_MODEL, @as(i32, @intCast(TP_DEFAULT_CAP)) });
 }
 
-fn seedSelfManagedCredential(
+/// Seed a self-managed vault credential row.
+pub fn seedSelfManagedCredential(
     conn: *pg.Conn,
     alloc: std.mem.Allocator,
     ws_id: []const u8,
@@ -97,7 +101,8 @@ fn seedSelfManagedCredential(
     try base.storeVaultJson(alloc, conn, ws_id, name, value);
 }
 
-fn seedFleetCredential(
+/// Seed a dashboard-style fleet credential row.
+pub fn seedFleetCredential(
     conn: *pg.Conn,
     alloc: std.mem.Allocator,
     ws_id: []const u8,
@@ -106,16 +111,16 @@ fn seedFleetCredential(
     api_key: []const u8,
     model: []const u8,
 ) !void {
-    const key_name = try credential_key.allocKeyName(alloc, name);
-    defer alloc.free(key_name);
-    try seedSelfManagedCredential(conn, alloc, ws_id, key_name, provider, api_key, model);
+    try seedSelfManagedCredential(conn, alloc, ws_id, name, provider, api_key, model);
 }
 
-// ── §6 base_url validation (pure — no DB) ───────────────────────────────────
-// validateSecretEndpoint is the resolver's parse-boundary SSRF gate; these
+// ── base_url validation (pure — no DB) ──────────────────────────────────────
+// validateSecretEndpoint is the resolver's parse-boundary Server-Side Request
+// Forgery (SSRF) gate; these
 // drive every provider⇔base_url branch the Dimensions name without a DB.
 
-const COMPAT = tenant_provider.OPENAI_COMPATIBLE_PROVIDER;
+/// OpenAI-compatible provider fixture value.
+pub const COMPAT = tenant_provider.OPENAI_COMPATIBLE_PROVIDER;
 
 test "test_resolver_extracts_base_url" {
     // 6.1: openai-compatible + valid https base_url → carried through (the bare
@@ -149,8 +154,8 @@ test "test_resolver_rejects_non_https" {
 }
 
 test "test_resolver_blocks_ssrf_hosts" {
-    // 6.3: every SSRF-unsafe host the Dimension enumerates is blocked BEFORE any
-    // run. Asserts ALL of: 127.0.0.1, 10.x, 172.16.x, 192.168.x, the cloud
+    // Every SSRF-unsafe host the Dimension enumerates is blocked before any
+    // run. Asserts all of: 127.0.0.1, 10.x, 172.16.x, 192.168.x, the cloud
     // metadata IP, ::1, and 0.0.0.0.
     const blocked = [_][]const u8{
         "https://127.0.0.1/v1",
@@ -201,10 +206,9 @@ test "ResolvedProvider.deinit completes without leaking" {
         .context_cap_tokens = 256_000,
     };
     rp.deinit(alloc);
-    // testing.allocator detects any un-freed bytes. The api_key zero-on-free
-    // is enforced by std.crypto.secureZero at the call site in deinit; reading
-    // the freed slice would be UAF, so the secureZero contract is verified by
-    // code review rather than a test that inspects post-free memory.
+    // testing.allocator detects any un-freed bytes. The api_key zero-on-free is
+    // enforced by std.crypto.secureZero at the call site in deinit; reading the
+    // freed slice would be a use-after-free, so code review verifies secureZero.
 }
 
 // ── resolveActiveProvider — synthesised platform default ───────────────────
@@ -251,11 +255,8 @@ test "resolveActiveProvider with explicit platform row returns same shape as syn
     try std.testing.expectEqual(TP_DEFAULT_CAP, rp.context_cap_tokens);
 }
 
-// PlatformKeyMissing path is exercised in §13's integration suite where the
-// schema is fresh-migrated and no other test has seeded a `platform_llm_keys`
-// row. We skip the test here because the integration test pool is shared and
-// a global `DELETE FROM core.platform_llm_keys` from this test would race
-// with other tests' seedings.
+// PlatformKeyMissing is exercised in the fresh-migration integration suite,
+// where no other test has seeded a `platform_provider_defaults` row.
 
 // ── resolveActiveProvider — self-managed ────────────────────────────────────────────
 
@@ -290,7 +291,7 @@ test "resolveActiveProvider with self_managed row returns user provider api_key 
 }
 
 test "resolveActiveProvider reflects an in-place credential update (rotate key, same ref)" {
-    // Case 5: tenant_providers.secret_ref is a pointer, not a copy — every
+    // Case 5: tenant_model_selection.secret_ref is a pointer, not a copy — every
     // resolve re-reads the vault, so rotating the key (an upsert on the same
     // name) is picked up by the very next resolve with NO re-selection. The only
     // persistent trace is vault.secrets.updated_at — no audit row is written.
@@ -313,361 +314,8 @@ test "resolveActiveProvider reflects an in-place credential update (rotate key, 
     // Rotate the key in place — storeVaultJson upserts on (workspace_id, key_name).
     try seedSelfManagedCredential(db_ctx.conn, ALLOC, WS_TP_SELF_MANAGED, "rotating-key", TP_TEST_PROVIDER, "fw_NEW_key", MODEL_ID);
 
-    // No re-activation: the same tenant_providers row now resolves the new key.
+    // No re-activation: the same tenant_model_selection row now resolves the new key.
     var rp2 = try tenant_provider.resolveActiveProvider(ALLOC, db_ctx.conn, uc1.TENANT_ID);
     defer rp2.deinit(ALLOC);
     try std.testing.expectEqualStrings("fw_NEW_key", rp2.api_key);
-}
-
-test "resolveActiveProvider carries a validated base_url for openai-compatible (end-to-end)" {
-    setEncryptionKey();
-    const db_ctx = (try base.openTestConn(ALLOC)) orelse return error.SkipZigTest;
-    defer db_ctx.pool.deinit();
-    defer db_ctx.pool.release(db_ctx.conn);
-
-    try uc1.seed(db_ctx.conn, WS_TP_SELF_MANAGED);
-    defer cleanupTeardown(db_ctx.conn, WS_TP_SELF_MANAGED);
-
-    // Seed an openai-compatible credential whose JSON carries a valid https
-    // base_url alongside provider/api_key/model (the "{provider,api_key,model,
-    // base_url}" shape from the spec Interfaces).
-    const CUSTOM_URL = "https://api.openrouter.ai/v1";
-    var obj: std.json.ObjectMap = .empty;
-    defer obj.deinit(ALLOC);
-    try obj.put(ALLOC, "provider", .{ .string = COMPAT });
-    try obj.put(ALLOC, "api_key", .{ .string = "sk_user_compat_xyz" });
-    try obj.put(ALLOC, "model", .{ .string = "gpt-4o-mini" });
-    try obj.put(ALLOC, "base_url", .{ .string = CUSTOM_URL });
-    try base.storeVaultJson(ALLOC, db_ctx.conn, WS_TP_SELF_MANAGED, "compat-endpoint", .{ .object = obj });
-
-    try tenant_provider.upsertSelfManaged(ALLOC, db_ctx.conn, uc1.TENANT_ID, "compat-endpoint", "gpt-4o-mini", 128_000);
-
-    var rp = try tenant_provider.resolveActiveProvider(ALLOC, db_ctx.conn, uc1.TENANT_ID);
-    defer rp.deinit(ALLOC);
-
-    try std.testing.expectEqual(tenant_provider.Mode.self_managed, rp.mode);
-    try std.testing.expectEqualStrings(COMPAT, rp.provider);
-    try std.testing.expectEqualStrings("sk_user_compat_xyz", rp.api_key);
-    try std.testing.expectEqualStrings(CUSTOM_URL, rp.base_url.?);
-}
-
-test "resolveActiveProvider resolves an openai-compatible credential with NO api_key (keyless endpoint)" {
-    // The custom-endpoint api_key is OPTIONAL by spec: a keyless gateway stores
-    // {provider, base_url, model} with no key and must still activate — the
-    // resolver carries an empty bearer key forward. Regression guard for the
-    // UI/resolver contradiction greptile flagged: the forms omit a blank key, so
-    // the resolver must accept its absence rather than reject at the probe.
-    setEncryptionKey();
-    const db_ctx = (try base.openTestConn(ALLOC)) orelse return error.SkipZigTest;
-    defer db_ctx.pool.deinit();
-    defer db_ctx.pool.release(db_ctx.conn);
-
-    try uc1.seed(db_ctx.conn, WS_TP_SELF_MANAGED);
-    defer cleanupTeardown(db_ctx.conn, WS_TP_SELF_MANAGED);
-
-    const KEYLESS_URL = "https://vllm.public.example/v1";
-    var obj: std.json.ObjectMap = .empty;
-    defer obj.deinit(ALLOC);
-    try obj.put(ALLOC, "provider", .{ .string = COMPAT });
-    try obj.put(ALLOC, "model", .{ .string = "gpt-4o-mini" });
-    try obj.put(ALLOC, "base_url", .{ .string = KEYLESS_URL });
-    // No api_key field — the keyless case the forms produce when the key is blank.
-    try base.storeVaultJson(ALLOC, db_ctx.conn, WS_TP_SELF_MANAGED, "keyless-compat", .{ .object = obj });
-
-    try tenant_provider.upsertSelfManaged(ALLOC, db_ctx.conn, uc1.TENANT_ID, "keyless-compat", "gpt-4o-mini", 128_000);
-
-    var rp = try tenant_provider.resolveActiveProvider(ALLOC, db_ctx.conn, uc1.TENANT_ID);
-    defer rp.deinit(ALLOC);
-
-    try std.testing.expectEqual(tenant_provider.Mode.self_managed, rp.mode);
-    try std.testing.expectEqualStrings(COMPAT, rp.provider);
-    try std.testing.expectEqualStrings("", rp.api_key);
-    try std.testing.expectEqualStrings(KEYLESS_URL, rp.base_url.?);
-}
-
-test "resolveActiveProvider rejects an openai-compatible credential with an SSRF base_url" {
-    setEncryptionKey();
-    const db_ctx = (try base.openTestConn(ALLOC)) orelse return error.SkipZigTest;
-    defer db_ctx.pool.deinit();
-    defer db_ctx.pool.release(db_ctx.conn);
-
-    try uc1.seed(db_ctx.conn, WS_TP_SELF_MANAGED);
-    defer cleanupTeardown(db_ctx.conn, WS_TP_SELF_MANAGED);
-
-    // The credential JSON itself is well-formed but points at the cloud metadata
-    // host — upsert (which probes) must refuse it, so a hostile endpoint never
-    // even reaches tenant_providers, let alone a lease.
-    var obj: std.json.ObjectMap = .empty;
-    defer obj.deinit(ALLOC);
-    try obj.put(ALLOC, "provider", .{ .string = COMPAT });
-    try obj.put(ALLOC, "api_key", .{ .string = "sk_user_compat_xyz" });
-    try obj.put(ALLOC, "model", .{ .string = "gpt-4o-mini" });
-    try obj.put(ALLOC, "base_url", .{ .string = "https://169.254.169.254/v1" });
-    try base.storeVaultJson(ALLOC, db_ctx.conn, WS_TP_SELF_MANAGED, "ssrf-endpoint", .{ .object = obj });
-
-    try std.testing.expectError(
-        tenant_provider.ResolveError.SecretEndpointInvalid,
-        tenant_provider.upsertSelfManaged(ALLOC, db_ctx.conn, uc1.TENANT_ID, "ssrf-endpoint", "gpt-4o-mini", 128_000),
-    );
-}
-
-test "resolveActiveProvider accepts dashboard fleet-prefixed credential rows" {
-    setEncryptionKey();
-    const db_ctx = (try base.openTestConn(ALLOC)) orelse return error.SkipZigTest;
-    defer db_ctx.pool.deinit();
-    defer db_ctx.pool.release(db_ctx.conn);
-
-    try uc1.seed(db_ctx.conn, WS_TP_SELF_MANAGED);
-    defer cleanupTeardown(db_ctx.conn, WS_TP_SELF_MANAGED);
-
-    const secret_ref = "dashboard-provider-key";
-    try seedFleetCredential(db_ctx.conn, ALLOC, WS_TP_SELF_MANAGED, secret_ref, TP_TEST_PROVIDER, "fw_DASHBOARD_abc", "accounts/fireworks/models/kimi-k2.6");
-
-    try tenant_provider.upsertSelfManaged(
-        ALLOC,
-        db_ctx.conn,
-        uc1.TENANT_ID,
-        secret_ref,
-        "accounts/fireworks/models/kimi-k2.6",
-        256_000,
-    );
-
-    var rp = try tenant_provider.resolveActiveProvider(ALLOC, db_ctx.conn, uc1.TENANT_ID);
-    defer rp.deinit(ALLOC);
-
-    try std.testing.expectEqual(tenant_provider.Mode.self_managed, rp.mode);
-    try std.testing.expectEqualStrings(TP_TEST_PROVIDER, rp.provider);
-    try std.testing.expectEqualStrings("fw_DASHBOARD_abc", rp.api_key);
-    try std.testing.expectEqualStrings("accounts/fireworks/models/kimi-k2.6", rp.model);
-
-    var q = PgQuery.from(try db_ctx.conn.query(
-        \\SELECT secret_ref FROM core.tenant_providers WHERE tenant_id = $1::uuid
-    , .{uc1.TENANT_ID}));
-    defer q.deinit();
-    const row = (try q.next()).?;
-    try std.testing.expectEqualStrings(secret_ref, try row.get([]const u8, 0));
-}
-
-test "resolveActiveProvider returns SecretMissing when self_managed credential row absent" {
-    setEncryptionKey();
-    const db_ctx = (try base.openTestConn(ALLOC)) orelse return error.SkipZigTest;
-    defer db_ctx.pool.deinit();
-    defer db_ctx.pool.release(db_ctx.conn);
-
-    try uc1.seed(db_ctx.conn, WS_TP_SELF_MANAGED);
-    defer cleanupTeardown(db_ctx.conn, WS_TP_SELF_MANAGED);
-
-    try seedSelfManagedCredential(db_ctx.conn, ALLOC, WS_TP_SELF_MANAGED, "account-fireworks-self-managed", TP_TEST_PROVIDER, "fw_USER_abc", "any-model");
-    try tenant_provider.upsertSelfManaged(ALLOC, db_ctx.conn, uc1.TENANT_ID, "account-fireworks-self-managed", "any-model", 256_000);
-
-    // User deletes the credential while still in mode=self_managed.
-    _ = try db_ctx.conn.exec("DELETE FROM vault.secrets WHERE workspace_id = $1 AND key_name = $2", .{ WS_TP_SELF_MANAGED, "account-fireworks-self-managed" });
-
-    try std.testing.expectError(
-        tenant_provider.ResolveError.SecretMissing,
-        tenant_provider.resolveActiveProvider(ALLOC, db_ctx.conn, uc1.TENANT_ID),
-    );
-}
-
-test "resolveActiveProvider returns SecretDataMalformed when JSON lacks api_key" {
-    setEncryptionKey();
-    const db_ctx = (try base.openTestConn(ALLOC)) orelse return error.SkipZigTest;
-    defer db_ctx.pool.deinit();
-    defer db_ctx.pool.release(db_ctx.conn);
-
-    try uc1.seed(db_ctx.conn, WS_TP_SELF_MANAGED);
-    defer cleanupTeardown(db_ctx.conn, WS_TP_SELF_MANAGED);
-
-    // Seed a malformed credential first (missing api_key); upsertSelfManaged must reject it.
-    var obj: std.json.ObjectMap = .empty;
-    defer obj.deinit(ALLOC);
-    try obj.put(ALLOC, "provider", .{ .string = TP_TEST_PROVIDER });
-    try obj.put(ALLOC, "model", .{ .string = "any-model" });
-    try base.storeVaultJson(ALLOC, db_ctx.conn, WS_TP_SELF_MANAGED, "bad-cred", .{ .object = obj });
-
-    try std.testing.expectError(
-        tenant_provider.ResolveError.SecretDataMalformed,
-        tenant_provider.upsertSelfManaged(ALLOC, db_ctx.conn, uc1.TENANT_ID, "bad-cred", "any-model", 256_000),
-    );
-}
-
-// ── credential-vault malformed / adversarial matrix ─────────────────────────
-// The cross-tier contract the dashboard violated in production: the resolver
-// probe hard-requires a non-empty provider + api_key + model, and gates the
-// provider⇔base_url pairing through the SSRF guard. These DB-backed cases seed a
-// real (synthetic-secret) vault credential and prove upsert's probe refuses each
-// bad shape BEFORE it can reach core.tenant_providers — so a broken or hostile
-// credential is never activated. They tie the dashboard/CLI write-side to the
-// resolver read-side, the seam mocked unit tests left unproven.
-
-test "resolveActiveProvider returns SecretDataMalformed when JSON lacks model" {
-    // THE regression: the exact credential shape the dashboard shipped before the
-    // custom-endpoint fix — provider + api_key, but NO model. The resolver probe
-    // requires model (tenant_provider_resolver.zig: obj.get("model") orelse
-    // SecretDataMalformed), so upsert must refuse it. Coverage missed this
-    // because the dashboard tests mocked the action and every resolver test seeded
-    // a credential WITH a model; this asserts the model requirement end-to-end.
-    setEncryptionKey();
-    const db_ctx = (try base.openTestConn(ALLOC)) orelse return error.SkipZigTest;
-    defer db_ctx.pool.deinit();
-    defer db_ctx.pool.release(db_ctx.conn);
-
-    try uc1.seed(db_ctx.conn, WS_TP_SELF_MANAGED);
-    defer cleanupTeardown(db_ctx.conn, WS_TP_SELF_MANAGED);
-
-    var obj: std.json.ObjectMap = .empty;
-    defer obj.deinit(ALLOC);
-    try obj.put(ALLOC, "provider", .{ .string = TP_TEST_PROVIDER });
-    try obj.put(ALLOC, "api_key", .{ .string = "fw_USER_abc" });
-    try base.storeVaultJson(ALLOC, db_ctx.conn, WS_TP_SELF_MANAGED, "no-model-cred", .{ .object = obj });
-
-    try std.testing.expectError(
-        tenant_provider.ResolveError.SecretDataMalformed,
-        tenant_provider.upsertSelfManaged(ALLOC, db_ctx.conn, uc1.TENANT_ID, "no-model-cred", "override-model", 256_000),
-    );
-}
-
-test "resolveActiveProvider returns SecretDataMalformed when model is an empty string" {
-    // A present-but-empty model is as unusable as a missing one (resolver:
-    // model_v.string.len == 0 → malformed). Guards a dashboard that writes
-    // model: "" when the field is submitted blank.
-    setEncryptionKey();
-    const db_ctx = (try base.openTestConn(ALLOC)) orelse return error.SkipZigTest;
-    defer db_ctx.pool.deinit();
-    defer db_ctx.pool.release(db_ctx.conn);
-
-    try uc1.seed(db_ctx.conn, WS_TP_SELF_MANAGED);
-    defer cleanupTeardown(db_ctx.conn, WS_TP_SELF_MANAGED);
-
-    var obj: std.json.ObjectMap = .empty;
-    defer obj.deinit(ALLOC);
-    try obj.put(ALLOC, "provider", .{ .string = TP_TEST_PROVIDER });
-    try obj.put(ALLOC, "api_key", .{ .string = "fw_USER_abc" });
-    try obj.put(ALLOC, "model", .{ .string = "" });
-    try base.storeVaultJson(ALLOC, db_ctx.conn, WS_TP_SELF_MANAGED, "empty-model-cred", .{ .object = obj });
-
-    try std.testing.expectError(
-        tenant_provider.ResolveError.SecretDataMalformed,
-        tenant_provider.upsertSelfManaged(ALLOC, db_ctx.conn, uc1.TENANT_ID, "empty-model-cred", "override-model", 256_000),
-    );
-}
-
-test "resolveActiveProvider returns SecretDataMalformed when api_key is an empty string" {
-    // Existing coverage rejects a MISSING api_key; this rejects a present-but-empty
-    // one (resolver: api_key_v.string.len == 0 → malformed).
-    setEncryptionKey();
-    const db_ctx = (try base.openTestConn(ALLOC)) orelse return error.SkipZigTest;
-    defer db_ctx.pool.deinit();
-    defer db_ctx.pool.release(db_ctx.conn);
-
-    try uc1.seed(db_ctx.conn, WS_TP_SELF_MANAGED);
-    defer cleanupTeardown(db_ctx.conn, WS_TP_SELF_MANAGED);
-
-    var obj: std.json.ObjectMap = .empty;
-    defer obj.deinit(ALLOC);
-    try obj.put(ALLOC, "provider", .{ .string = TP_TEST_PROVIDER });
-    try obj.put(ALLOC, "api_key", .{ .string = "" });
-    try obj.put(ALLOC, "model", .{ .string = "any-model" });
-    try base.storeVaultJson(ALLOC, db_ctx.conn, WS_TP_SELF_MANAGED, "empty-key-cred", .{ .object = obj });
-
-    try std.testing.expectError(
-        tenant_provider.ResolveError.SecretDataMalformed,
-        tenant_provider.upsertSelfManaged(ALLOC, db_ctx.conn, uc1.TENANT_ID, "empty-key-cred", "any-model", 256_000),
-    );
-}
-
-test "resolveActiveProvider rejects an openai-compatible credential that lacks a base_url" {
-    // openai-compatible is the ONLY door to a custom host, and it REQUIRES a
-    // base_url. A credential that claims the compatible provider but omits base_url
-    // is the mirror mismatch — upsert's probe refuses it (SecretEndpointInvalid),
-    // so a compatible credential can never resolve to a null endpoint. DB-backed
-    // mirror of the pure validateSecretEndpoint(COMPAT, null) unit case.
-    setEncryptionKey();
-    const db_ctx = (try base.openTestConn(ALLOC)) orelse return error.SkipZigTest;
-    defer db_ctx.pool.deinit();
-    defer db_ctx.pool.release(db_ctx.conn);
-
-    try uc1.seed(db_ctx.conn, WS_TP_SELF_MANAGED);
-    defer cleanupTeardown(db_ctx.conn, WS_TP_SELF_MANAGED);
-
-    var obj: std.json.ObjectMap = .empty;
-    defer obj.deinit(ALLOC);
-    try obj.put(ALLOC, "provider", .{ .string = COMPAT });
-    try obj.put(ALLOC, "api_key", .{ .string = "sk_user_compat_xyz" });
-    try obj.put(ALLOC, "model", .{ .string = "gpt-4o-mini" });
-    try base.storeVaultJson(ALLOC, db_ctx.conn, WS_TP_SELF_MANAGED, "compat-no-baseurl-cred", .{ .object = obj });
-
-    try std.testing.expectError(
-        tenant_provider.ResolveError.SecretEndpointInvalid,
-        tenant_provider.upsertSelfManaged(ALLOC, db_ctx.conn, uc1.TENANT_ID, "compat-no-baseurl-cred", "gpt-4o-mini", 128_000),
-    );
-}
-
-test "resolveActiveProvider rejects a named provider that smuggles a base_url" {
-    // A named provider must NOT carry a base_url — that would silently widen the
-    // egress allowlist to an arbitrary host without going through the
-    // openai-compatible path. upsert's probe refuses it (SecretEndpointInvalid).
-    // DB-backed mirror of the pure validateSecretEndpoint("fireworks", url) case.
-    setEncryptionKey();
-    const db_ctx = (try base.openTestConn(ALLOC)) orelse return error.SkipZigTest;
-    defer db_ctx.pool.deinit();
-    defer db_ctx.pool.release(db_ctx.conn);
-
-    try uc1.seed(db_ctx.conn, WS_TP_SELF_MANAGED);
-    defer cleanupTeardown(db_ctx.conn, WS_TP_SELF_MANAGED);
-
-    var obj: std.json.ObjectMap = .empty;
-    defer obj.deinit(ALLOC);
-    try obj.put(ALLOC, "provider", .{ .string = TP_TEST_PROVIDER });
-    try obj.put(ALLOC, "api_key", .{ .string = "fw_USER_abc" });
-    try obj.put(ALLOC, "model", .{ .string = "any-model" });
-    try obj.put(ALLOC, "base_url", .{ .string = "https://evil.example.com/v1" });
-    try base.storeVaultJson(ALLOC, db_ctx.conn, WS_TP_SELF_MANAGED, "named-smuggle-cred", .{ .object = obj });
-
-    try std.testing.expectError(
-        tenant_provider.ResolveError.SecretEndpointInvalid,
-        tenant_provider.upsertSelfManaged(ALLOC, db_ctx.conn, uc1.TENANT_ID, "named-smuggle-cred", "any-model", 256_000),
-    );
-}
-
-// ── upsertSelfManaged / upsertPlatform ──────────────────────────────────────────
-
-test "upsertSelfManaged with non-existent credential returns SecretMissing" {
-    setEncryptionKey();
-    const db_ctx = (try base.openTestConn(ALLOC)) orelse return error.SkipZigTest;
-    defer db_ctx.pool.deinit();
-    defer db_ctx.pool.release(db_ctx.conn);
-
-    try uc1.seed(db_ctx.conn, WS_TP_UPSERT);
-    defer cleanupTeardown(db_ctx.conn, WS_TP_UPSERT);
-
-    try std.testing.expectError(
-        tenant_provider.ResolveError.SecretMissing,
-        tenant_provider.upsertSelfManaged(ALLOC, db_ctx.conn, uc1.TENANT_ID, "does-not-exist", "any-model", 256_000),
-    );
-}
-
-test "upsertPlatform writes mode=platform with NULL secret_ref" {
-    setEncryptionKey();
-    const db_ctx = (try base.openTestConn(ALLOC)) orelse return error.SkipZigTest;
-    defer db_ctx.pool.deinit();
-    defer db_ctx.pool.release(db_ctx.conn);
-
-    try uc1.seed(db_ctx.conn, WS_TP_UPSERT);
-    defer cleanupTeardown(db_ctx.conn, WS_TP_UPSERT);
-
-    try seedPlatformLlmKey(db_ctx.conn, ALLOC, WS_TP_UPSERT, TP_TEST_PROVIDER, "fw_PLATFORM_xyz");
-    try tenant_provider.upsertPlatform(ALLOC, db_ctx.conn, uc1.TENANT_ID);
-
-    var q = PgQuery.from(try db_ctx.conn.query(
-        \\SELECT mode, provider, model, context_cap_tokens, secret_ref
-        \\FROM core.tenant_providers WHERE tenant_id = $1::uuid
-    , .{uc1.TENANT_ID}));
-    defer q.deinit();
-    const row = (try q.next()).?;
-    try std.testing.expectEqualStrings("platform", try row.get([]const u8, 0));
-    try std.testing.expectEqualStrings(TP_TEST_PROVIDER, try row.get([]const u8, 1));
-    try std.testing.expectEqualStrings(TP_DEFAULT_MODEL, try row.get([]const u8, 2));
-    try std.testing.expectEqual(@as(i32, @intCast(TP_DEFAULT_CAP)), try row.get(i32, 3));
-    try std.testing.expectEqual(@as(?[]const u8, null), try row.get(?[]const u8, 4));
 }

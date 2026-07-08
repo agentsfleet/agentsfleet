@@ -114,6 +114,8 @@ export function designSystemStub() {
       ),
     StatusPill: ({ children, variant }: React.PropsWithChildren<{ variant?: string }>) =>
       React.createElement("span", { "data-status-pill": variant ?? "default" }, children),
+    Badge: ({ children, variant }: React.PropsWithChildren<{ variant?: string }>) =>
+      React.createElement("span", { "data-badge": variant ?? "default" }, children),
     SectionLabel: ({ children }: React.PropsWithChildren) =>
       React.createElement("h2", { "data-section-label": "1" }, children),
     DashboardRowGroup: ({ children, ...rest }: React.PropsWithChildren<Record<string, unknown>>) =>
@@ -145,7 +147,16 @@ export function designSystemStub() {
 }
 
 // Lucide icon stubs used across the switch list / hero.
-const ICONS = ["CpuIcon", "LinkIcon", "ServerIcon"] as const;
+const ICONS = [
+  "CpuIcon",
+  "LinkIcon",
+  "ServerIcon",
+  "LockIcon",
+  "Trash2Icon",
+  "PlusIcon",
+  "ArrowLeftRightIcon",
+  "PencilIcon",
+] as const;
 export function lucideStub() {
   const make = (name: string) => {
     const C = (p: Record<string, unknown>) => React.createElement("svg", { ...p, "data-icon": name });

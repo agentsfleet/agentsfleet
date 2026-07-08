@@ -45,6 +45,10 @@ pub const Route = union(enum) {
     list_tenant_workspaces,
     // Tenant-scoped LLM provider config — GET/PUT/DELETE /v1/tenants/me/provider
     tenant_provider,
+    // Tenant model registry (M121) — GET|POST /v1/tenants/me/models
+    tenant_model_entries,
+    // PATCH|DELETE /v1/tenants/me/models/{id}
+    tenant_model_entry_by_id: []const u8,
     fleet_bundles, // GET /v1/fleets/bundles
     // Platform Fleet library onboarding — POST /v1/admin/fleet-libraries
     // (platform-library:write). No workspace context.

@@ -153,7 +153,7 @@ pub const FleetConfig = struct {
     skill: ?[]const u8,
     // Opaque model identifier from `x-agentsfleet.model`. Pass-through: the
     // runner's ContextBudget.model carries it; nothing in this binary
-    // interprets it. Empty/null means "fall back to tenant_providers" (self-managed).
+    // interprets it. Empty/null means "fall back to tenant_model_selection" (self-managed).
     model: ?[]const u8,
     // Frontmatter overrides for the context budget knobs. Null means
     // "no `x-agentsfleet.context:` block authored — every knob is auto."

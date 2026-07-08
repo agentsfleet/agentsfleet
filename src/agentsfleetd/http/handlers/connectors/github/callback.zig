@@ -3,7 +3,7 @@
 //! GitHub redirects the operator's browser here after the App install; the
 //! generic handler has already verified + consumed the signed state and
 //! resolved the bound workspace. This hook validates the `installation_id`
-//! and writes the `fleet:github` vault handle the broker mints from. No token
+//! and writes the `github` vault handle the broker mints from. No token
 //! is ever handled — only the installation id.
 
 const std = @import("std");
@@ -14,7 +14,6 @@ const common = @import("../../common.zig");
 const hx_mod = @import("../../hx.zig");
 const ec = @import("../../../../errors/error_registry.zig");
 const vault = @import("../../../../state/vault.zig");
-const credential_key = @import("../../../../fleet_runtime/credential_key.zig");
 const spec = @import("spec.zig");
 
 const log = logging.scoped(.connector_github);
@@ -54,12 +53,10 @@ fn storeHandle(hx: hx_mod.Hx, workspace_id: []const u8, installation_id: []const
     const conn: *pg.Conn = hx.ctx.pool.acquire() catch return error.DbUnavailable;
     defer hx.ctx.pool.release(conn);
 
-    const key = try credential_key.allocKeyName(hx.alloc, spec.PROVIDER);
-    defer hx.alloc.free(key);
     const handle = try std.fmt.allocPrint(hx.alloc, HANDLE_FMT, .{installation_id});
     defer hx.alloc.free(handle);
 
-    try vault.storeJsonPlaintext(hx.alloc, conn, workspace_id, key, handle);
+    try vault.storeJsonPlaintext(hx.alloc, conn, workspace_id, spec.PROVIDER, handle);
 }
 
 fn isNumericId(s: []const u8) bool {

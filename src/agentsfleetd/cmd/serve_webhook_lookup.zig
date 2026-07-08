@@ -4,7 +4,7 @@
 //!
 //! Secret resolution: each fleet declares one or more `triggers[].source`
 //! entries (e.g. `github`). Each names an HMAC scheme and a workspace
-//! credential. The credential is stored at vault key `fleet:<source>`
+//! credential. The credential is stored at vault key `<source>`
 //! (overridable via `triggers[].credential_name`) and decodes to a JSON
 //! object whose `webhook_secret` field is the HMAC key.
 //!
@@ -18,7 +18,6 @@ const pg = @import("pg");
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
 const crypto_store = @import("../secrets/crypto_store.zig");
 const vault = @import("../state/vault.zig");
-const credential_key = @import("../fleet_runtime/credential_key.zig");
 const webhook_verify = @import("../fleet_runtime/webhook_verify.zig");
 const auth_mw = @import("../auth/middleware/mod.zig");
 const logging = @import("log");
@@ -54,9 +53,7 @@ pub fn lookup(
             // credential (RFC: never silently degrade auth on misconfig).
             scheme = try schemeFromConfig(alloc, cfg);
             const credential_name = row_data.credential_name_override orelse row_data.source;
-            const key_name = try credential_key.allocKeyName(alloc, credential_name);
-            defer alloc.free(key_name);
-            signature_secret = loadWebhookSecret(alloc, conn, row_data.workspace_id, key_name);
+            signature_secret = loadWebhookSecret(alloc, conn, row_data.workspace_id, credential_name);
         }
     }
 

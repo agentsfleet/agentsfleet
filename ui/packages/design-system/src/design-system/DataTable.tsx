@@ -1,4 +1,5 @@
 import * as React from "react";
+import { ArrowDown, ArrowUp } from "lucide-react";
 import { cn } from "../utils";
 import { EmptyState } from "./EmptyState";
 
@@ -11,8 +12,13 @@ export type DataTableColumn<T> = {
   numeric?: boolean;
   /** Hide on mobile (< sm breakpoint) to reduce horizontal scroll. */
   hideOnMobile?: boolean;
-  /** aria-sort state if the caller wants to surface sort direction. */
-  ariaSort?: "ascending" | "descending" | "none";
+  /**
+   * Renders the header as a clickable control that reports clicks via
+   * `onSortChange`. Current direction/aria-sort are derived from
+   * `sortKey`/`sortDirection`, not set per-column — a column is never
+   * self-describing about the *current* sort, only about being sortable.
+   */
+  sortable?: boolean;
 };
 
 export interface DataTableProps<T> {
@@ -33,6 +39,11 @@ export interface DataTableProps<T> {
    * a bounded height is a deliberate choice per call site, not every table.
    */
   stickyHeader?: boolean;
+  /** Key of the column currently driving sort order, for `sortable` columns. */
+  sortKey?: string;
+  sortDirection?: "ascending" | "descending";
+  /** Fired with a column's `key` when its (sortable) header is clicked. */
+  onSortChange?: (key: string) => void;
 }
 
 export function DataTable<T>({
@@ -45,6 +56,9 @@ export function DataTable<T>({
   className,
   isLoading,
   stickyHeader,
+  sortKey,
+  sortDirection,
+  onSortChange,
 }: DataTableProps<T>) {
   if (!isLoading && rows.length === 0) {
     return <>{empty ?? <EmptyState title="Nothing to show yet" />}</>;
@@ -58,20 +72,41 @@ export function DataTable<T>({
       {caption ? <caption className="sr-only">{caption}</caption> : null}
       <thead className={cn("bg-muted", stickyHeader && "sticky top-0 z-10")}>
         <tr>
-          {columns.map((c) => (
-            <th
-              key={c.key}
-              scope="col"
-              aria-sort={c.ariaSort}
-              className={cn(
-                "px-3 py-1.5 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground",
-                c.numeric && "text-right",
-                c.hideOnMobile && "hidden sm:table-cell",
-              )}
-            >
-              {c.header}
-            </th>
-          ))}
+          {columns.map((c) => {
+            const active = c.sortable && sortKey === c.key;
+            const ariaSort = active ? sortDirection : "none";
+            return (
+              <th
+                key={c.key}
+                scope="col"
+                aria-sort={c.sortable ? ariaSort : undefined}
+                className={cn(
+                  "px-3 py-1.5 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground",
+                  c.numeric && "text-right",
+                  c.hideOnMobile && "hidden sm:table-cell",
+                )}
+              >
+                {c.sortable && onSortChange ? (
+                  <button
+                    type="button"
+                    onClick={() => onSortChange(c.key)}
+                    className="inline-flex items-center gap-1 hover:text-foreground"
+                  >
+                    {c.header}
+                    {active ? (
+                      sortDirection === "ascending" ? (
+                        <ArrowUp size={12} aria-hidden="true" />
+                      ) : (
+                        <ArrowDown size={12} aria-hidden="true" />
+                      )
+                    ) : null}
+                  </button>
+                ) : (
+                  c.header
+                )}
+              </th>
+            );
+          })}
         </tr>
       </thead>
       <tbody>

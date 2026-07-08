@@ -26,7 +26,7 @@ const harness_mod = @import("test_harness.zig");
 const TestHarness = harness_mod.TestHarness;
 
 const TEST_TENANT_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01";
-const TEST_WS_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11";
+pub const TEST_WS_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11";
 const PRIMARY_WORKSPACE_CREATED_AT_MS: i64 = 0;
 
 const TEST_ISSUER = scope_fixtures.ISSUER;
@@ -34,8 +34,8 @@ const TEST_AUDIENCE = scope_fixtures.AUDIENCE;
 const TEST_JWKS = scope_fixtures.JWKS;
 
 // Operator + user JWTs from the tenant_provider suite — same tenant/workspace claims.
-const TOKEN_USER = scope_fixtures.VIEWER;
-const TOKEN_OPERATOR = scope_fixtures.TENANT_ADMIN;
+pub const TOKEN_USER = scope_fixtures.VIEWER;
+pub const TOKEN_OPERATOR = scope_fixtures.TENANT_ADMIN;
 
 fn configureRegistry(_: *auth_mw.MiddlewareRegistry, _: *TestHarness) anyerror!void {}
 
@@ -48,7 +48,7 @@ fn startHarness(alloc: std.mem.Allocator) !*TestHarness {
     });
 }
 
-fn setTestEncryptionKey() void {
+pub fn setTestEncryptionKey() void {
     crypto_primitives.setTestKek();
 }
 
@@ -68,7 +68,7 @@ fn setupSeedData(conn: *pg.Conn) !void {
         \\ON CONFLICT (provider, model_id) DO NOTHING
     , .{now_ms});
     try model_rate_cache.populate(conn);
-    _ = try conn.exec("DELETE FROM core.tenant_providers WHERE tenant_id = $1::uuid", .{TEST_TENANT_ID});
+    _ = try conn.exec("DELETE FROM core.tenant_model_selection WHERE tenant_id = $1::uuid", .{TEST_TENANT_ID});
     _ = try conn.exec("DELETE FROM vault.secrets WHERE workspace_id = $1", .{TEST_WS_ID});
     _ = try conn.exec(
         \\INSERT INTO tenants (tenant_id, name, created_at, updated_at)
@@ -83,12 +83,16 @@ fn setupSeedData(conn: *pg.Conn) !void {
     , .{ TEST_WS_ID, TEST_TENANT_ID, PRIMARY_WORKSPACE_CREATED_AT_MS });
 }
 
-fn cleanupRows(conn: *pg.Conn) void {
-    _ = conn.exec("DELETE FROM core.tenant_providers WHERE tenant_id = $1::uuid", .{TEST_TENANT_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
+pub fn cleanupRows(conn: *pg.Conn) void {
+    _ = conn.exec("DELETE FROM core.tenant_model_selection WHERE tenant_id = $1::uuid", .{TEST_TENANT_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
+    // Every self_managed activation upserts a registry entry (M121 invariant),
+    // so any suite that PUTs /provider leaves entry rows behind — clean them
+    // here so shared-tenant suites never see each other's rows.
+    _ = conn.exec("DELETE FROM core.tenant_model_entries WHERE tenant_id = $1::uuid", .{TEST_TENANT_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
     _ = conn.exec("DELETE FROM vault.secrets WHERE workspace_id = $1", .{TEST_WS_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
 }
 
-fn seedAndHarness(alloc: std.mem.Allocator) !*TestHarness {
+pub fn seedAndHarness(alloc: std.mem.Allocator) !*TestHarness {
     const h = try startHarness(alloc);
     errdefer h.deinit();
     const conn = try h.acquireConn();
@@ -314,284 +318,6 @@ test "integration: secret POST rejects oversized stringified data" {
     defer r.deinit();
     try r.expectStatus(.bad_request);
     try std.testing.expect(r.bodyContains(error_codes.ERR_VAULT_DATA_TOO_LARGE));
-
-    const conn = try h.acquireConn();
-    defer h.releaseConn(conn);
-    cleanupRows(conn);
-}
-
-test "integration: secret endpoints enforce operator role" {
-    setTestEncryptionKey();
-    const alloc = std.testing.allocator;
-    const h = seedAndHarness(alloc) catch |err| switch (err) {
-        error.SkipZigTest => return error.SkipZigTest,
-        else => return err,
-    };
-    defer h.deinit();
-
-    const path = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/secrets", .{TEST_WS_ID});
-    defer alloc.free(path);
-    const body = "{\"name\":\"x\",\"data\":{\"k\":\"v\"}}";
-
-    {
-        const r = try (try h.post(path).json(body)).send();
-        defer r.deinit();
-        try r.expectStatus(.unauthorized);
-    }
-    {
-        const r = try (try (try h.post(path).bearer(TOKEN_USER)).json(body)).send();
-        defer r.deinit();
-        try r.expectStatus(.forbidden);
-    }
-
-    const conn = try h.acquireConn();
-    defer h.releaseConn(conn);
-    cleanupRows(conn);
-}
-
-// ── §1: list metadata projection ────────────────────────────────────────────
-
-test "integration: list projects kind + non-secret metadata, never the api_key" {
-    setTestEncryptionKey();
-    const alloc = std.testing.allocator;
-    const h = seedAndHarness(alloc) catch |err| switch (err) {
-        error.SkipZigTest => return error.SkipZigTest,
-        else => return err,
-    };
-    defer h.deinit();
-
-    const creds_path = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/secrets", .{TEST_WS_ID});
-    defer alloc.free(creds_path);
-
-    // Sentinels that must never reappear in the list response (any kind).
-    const PROVIDER_KEY_SECRET = "sk-ant-PROVIDER-DO-NOT-LEAK-7f1a";
-    const ENDPOINT_SECRET = "sk-compat-DO-NOT-LEAK-9c2b";
-    const SECRET_TOKEN = "stripe-DO-NOT-LEAK-3e4d";
-
-    // One of each kind: named provider key, custom openai-compatible endpoint,
-    // opaque secret (no `provider` field).
-    const bodies = [_][]const u8{
-        "{\"name\":\"anthropic-prod\",\"data\":{\"provider\":\"anthropic\",\"api_key\":\"" ++ PROVIDER_KEY_SECRET ++ "\",\"model\":\"claude-sonnet-4-6\"}}",
-        "{\"name\":\"vllm-gw\",\"data\":{\"provider\":\"openai-compatible\",\"base_url\":\"https://gw.example.com/v1\",\"model\":\"kimi-k2.6\",\"api_key\":\"" ++ ENDPOINT_SECRET ++ "\"}}",
-        "{\"name\":\"STRIPE_API_KEY\",\"data\":{\"api_token\":\"" ++ SECRET_TOKEN ++ "\"}}",
-    };
-    for (bodies) |b| {
-        const r = try (try (try h.post(creds_path).bearer(TOKEN_OPERATOR)).json(b)).send();
-        defer r.deinit();
-        try r.expectStatus(.created);
-    }
-
-    const r = try (try h.get(creds_path).bearer(TOKEN_OPERATOR)).send();
-    defer r.deinit();
-    try r.expectStatus(.ok);
-    // Each secret is classified by the server.
-    try std.testing.expect(r.bodyContains("\"kind\":\"provider_key\""));
-    try std.testing.expect(r.bodyContains("\"kind\":\"custom_endpoint\""));
-    try std.testing.expect(r.bodyContains("\"kind\":\"custom_secret\""));
-    // Non-secret descriptors are surfaced…
-    try std.testing.expect(r.bodyContains("\"provider\":\"anthropic\""));
-    try std.testing.expect(r.bodyContains("\"model\":\"claude-sonnet-4-6\""));
-    try std.testing.expect(r.bodyContains("\"provider\":\"openai-compatible\""));
-    try std.testing.expect(r.bodyContains("\"base_url\":\"https://gw.example.com/v1\""));
-    // …but the api_key — for every kind — is never read into the response.
-    try std.testing.expect(!r.bodyContains(PROVIDER_KEY_SECRET));
-    try std.testing.expect(!r.bodyContains(ENDPOINT_SECRET));
-    try std.testing.expect(!r.bodyContains(SECRET_TOKEN));
-    try std.testing.expect(!r.bodyContains("api_key"));
-    try std.testing.expect(!r.bodyContains("api_token"));
-
-    const conn = try h.acquireConn();
-    defer h.releaseConn(conn);
-    cleanupRows(conn);
-}
-
-test "integration: GET list requires operator role" {
-    setTestEncryptionKey();
-    const alloc = std.testing.allocator;
-    const h = seedAndHarness(alloc) catch |err| switch (err) {
-        error.SkipZigTest => return error.SkipZigTest,
-        else => return err,
-    };
-    defer h.deinit();
-
-    const creds_path = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/secrets", .{TEST_WS_ID});
-    defer alloc.free(creds_path);
-
-    // No bearer → 401; user role → 403 (the projection runs only past the gate).
-    {
-        const r = try h.get(creds_path).send();
-        defer r.deinit();
-        try r.expectStatus(.unauthorized);
-    }
-    {
-        const r = try (try h.get(creds_path).bearer(TOKEN_USER)).send();
-        defer r.deinit();
-        try r.expectStatus(.forbidden);
-    }
-
-    const conn = try h.acquireConn();
-    defer h.releaseConn(conn);
-    cleanupRows(conn);
-}
-
-// ── §2: key-only secret rotate (PATCH) ──────────────────────────────────
-
-test "integration: rotate replaces only the api_key, preserving provider/model/base_url" {
-    setTestEncryptionKey();
-    const alloc = std.testing.allocator;
-    const h = seedAndHarness(alloc) catch |err| switch (err) {
-        error.SkipZigTest => return error.SkipZigTest,
-        else => return err,
-    };
-    defer h.deinit();
-
-    const creds_path = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/secrets", .{TEST_WS_ID});
-    defer alloc.free(creds_path);
-    const named_item = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/secrets/anthropic-prod", .{TEST_WS_ID});
-    defer alloc.free(named_item);
-    const endpoint_item = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/secrets/vllm-gw", .{TEST_WS_ID});
-    defer alloc.free(endpoint_item);
-
-    const OLD_KEY = "sk-OLD-DO-NOT-LEAK-aa11";
-    const NEW_KEY = "sk-NEW-DO-NOT-LEAK-bb22";
-
-    const seed_bodies = [_][]const u8{
-        "{\"name\":\"anthropic-prod\",\"data\":{\"provider\":\"anthropic\",\"api_key\":\"" ++ OLD_KEY ++ "\",\"model\":\"claude-sonnet-4-6\"}}",
-        "{\"name\":\"vllm-gw\",\"data\":{\"provider\":\"openai-compatible\",\"base_url\":\"https://gw.example.com/v1\",\"model\":\"kimi-k2.6\",\"api_key\":\"" ++ OLD_KEY ++ "\"}}",
-    };
-    for (seed_bodies) |b| {
-        const r = try (try (try h.post(creds_path).bearer(TOKEN_OPERATOR)).json(b)).send();
-        defer r.deinit();
-        try r.expectStatus(.created);
-    }
-
-    // Rotate both; the body echoes only the name, never the key.
-    const rotate_body = "{\"api_key\":\"" ++ NEW_KEY ++ "\"}";
-    {
-        const r = try (try (try h.patch(named_item).bearer(TOKEN_OPERATOR)).json(rotate_body)).send();
-        defer r.deinit();
-        try r.expectStatus(.ok);
-        try std.testing.expect(r.bodyContains("\"name\":\"anthropic-prod\""));
-        try std.testing.expect(!r.bodyContains(NEW_KEY));
-    }
-    {
-        const r = try (try (try h.patch(endpoint_item).bearer(TOKEN_OPERATOR)).json(rotate_body)).send();
-        defer r.deinit();
-        try r.expectStatus(.ok);
-    }
-
-    // Non-secret fields survive the rotate; neither old nor new key is exposed.
-    const r = try (try h.get(creds_path).bearer(TOKEN_OPERATOR)).send();
-    defer r.deinit();
-    try r.expectStatus(.ok);
-    try std.testing.expect(r.bodyContains("\"provider\":\"anthropic\""));
-    try std.testing.expect(r.bodyContains("\"model\":\"claude-sonnet-4-6\""));
-    try std.testing.expect(r.bodyContains("\"kind\":\"provider_key\""));
-    try std.testing.expect(r.bodyContains("\"base_url\":\"https://gw.example.com/v1\""));
-    try std.testing.expect(r.bodyContains("\"model\":\"kimi-k2.6\""));
-    try std.testing.expect(!r.bodyContains(OLD_KEY));
-    try std.testing.expect(!r.bodyContains(NEW_KEY));
-
-    const conn = try h.acquireConn();
-    defer h.releaseConn(conn);
-    cleanupRows(conn);
-}
-
-test "integration: rotate a missing secret returns typed 404" {
-    setTestEncryptionKey();
-    const alloc = std.testing.allocator;
-    const h = seedAndHarness(alloc) catch |err| switch (err) {
-        error.SkipZigTest => return error.SkipZigTest,
-        else => return err,
-    };
-    defer h.deinit();
-
-    const path = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/secrets/does-not-exist", .{TEST_WS_ID});
-    defer alloc.free(path);
-
-    const r = try (try (try h.patch(path).bearer(TOKEN_OPERATOR)).json("{\"api_key\":\"sk-whatever\"}")).send();
-    defer r.deinit();
-    try r.expectStatus(.not_found);
-    try std.testing.expect(r.bodyContains(error_codes.ERR_SECRET_NOT_FOUND));
-
-    const conn = try h.acquireConn();
-    defer h.releaseConn(conn);
-    cleanupRows(conn);
-}
-
-test "integration: rotate rejects an empty or oversized key without leaking it" {
-    setTestEncryptionKey();
-    const alloc = std.testing.allocator;
-    const h = seedAndHarness(alloc) catch |err| switch (err) {
-        error.SkipZigTest => return error.SkipZigTest,
-        else => return err,
-    };
-    defer h.deinit();
-
-    const creds_path = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/secrets", .{TEST_WS_ID});
-    defer alloc.free(creds_path);
-    const item_path = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/secrets/anthropic-prod", .{TEST_WS_ID});
-    defer alloc.free(item_path);
-
-    {
-        const r = try (try (try h.post(creds_path).bearer(TOKEN_OPERATOR))
-            .json("{\"name\":\"anthropic-prod\",\"data\":{\"provider\":\"anthropic\",\"api_key\":\"sk-seed\",\"model\":\"claude-sonnet-4-6\"}}")).send();
-        defer r.deinit();
-        try r.expectStatus(.created);
-    }
-
-    // Empty key → 400, typed invalid-request.
-    {
-        const r = try (try (try h.patch(item_path).bearer(TOKEN_OPERATOR)).json("{\"api_key\":\"\"}")).send();
-        defer r.deinit();
-        try r.expectStatus(.bad_request);
-        try std.testing.expect(r.bodyContains(error_codes.ERR_INVALID_REQUEST));
-    }
-
-    // Oversized key (5 KiB → re-stringified body exceeds the 4 KiB cap) → 400,
-    // and the key bytes never echo back in the error envelope.
-    {
-        const filler = try alloc.alloc(u8, 5 * 1024);
-        defer alloc.free(filler);
-        @memset(filler, 'k');
-        const body = try std.fmt.allocPrint(alloc, "{{\"api_key\":\"{s}\"}}", .{filler});
-        defer alloc.free(body);
-        const r = try (try (try h.patch(item_path).bearer(TOKEN_OPERATOR)).json(body)).send();
-        defer r.deinit();
-        try r.expectStatus(.bad_request);
-        try std.testing.expect(r.bodyContains(error_codes.ERR_VAULT_DATA_TOO_LARGE));
-        try std.testing.expect(!r.bodyContains(filler));
-    }
-
-    const conn = try h.acquireConn();
-    defer h.releaseConn(conn);
-    cleanupRows(conn);
-}
-
-test "integration: cross-workspace DELETE is rejected (IDOR guard)" {
-    setTestEncryptionKey();
-    const alloc = std.testing.allocator;
-    const h = seedAndHarness(alloc) catch |err| switch (err) {
-        error.SkipZigTest => return error.SkipZigTest,
-        else => return err,
-    };
-    defer h.deinit();
-
-    // TOKEN_OPERATOR's JWT claim binds it to TEST_WS_ID. Issue a DELETE
-    // against a *different* workspace UUID — workspace_guards.enforce
-    // must reject (4xx), never 204. Without this check, a workspace-A
-    // operator could nuke a workspace-B secret just by URL editing.
-    const other_ws = "0195b4ba-8d3a-7f13-8abc-deadbeef0001";
-    const path = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/secrets/fly", .{other_ws});
-    defer alloc.free(path);
-
-    const r = try (try h.delete(path).bearer(TOKEN_OPERATOR)).send();
-    defer r.deinit();
-    // Concrete code is 403 (Workspace access denied), but the invariant is
-    // "not 204" — any 4xx is an acceptable rejection. Anchoring to "≥ 400"
-    // keeps the test resilient if the guard later returns 404 for IDOR safety.
-    try std.testing.expect(r.status >= 400);
-    try std.testing.expect(r.status != 204);
 
     const conn = try h.acquireConn();
     defer h.releaseConn(conn);

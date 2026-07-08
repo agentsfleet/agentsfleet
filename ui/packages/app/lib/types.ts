@@ -1,5 +1,9 @@
 /** Domain types — mirrors agentsfleetd API rules */
 
+// Type-only — erased at compile time, so this does not create a runtime
+// cycle with secrets.ts's own `import { SECRET_FIELD } from "@/lib/types"`.
+import type { SecretKind } from "./api/secrets";
+
 export type CommandClass = "safe" | "sensitive" | "critical";
 
 export type ApiError = {
@@ -211,6 +215,40 @@ export type TenantProvider = {
   model: string;
   context_cap_tokens: number;
   secret_ref: string | null;
+  /** Whether an active platform default exists, independent of `mode` — lets
+   * the Models page gate "Switch to Default" before the click. */
+  platform_default_available: boolean;
+};
+
+// ── Tenant model registry (M121) ──
+// One row per configured `(model_id, secret_ref)` pair — see
+// src/agentsfleetd/http/handlers/tenant_model_entries.zig for the wire
+// contract. `provider`/`base_url`/`context_cap_tokens` ride the
+// `emit_null_optional_fields=false` shape (omitted, never null) — same
+// convention as `Secret` in lib/api/secrets.ts.
+export type TenantModelEntry = {
+  id: string;
+  model_id: string;
+  secret_ref: string;
+  provider?: string;
+  kind: SecretKind;
+  base_url?: string;
+  has_key: boolean;
+  context_cap_tokens?: number;
+  active: boolean;
+  created_at: number;
+};
+
+export type TenantModelEntryList = {
+  models: TenantModelEntry[];
+  platform_default_available: boolean;
+};
+
+export type TenantModelEntryWriteResult = {
+  id: string;
+  model_id: string;
+  secret_ref: string;
+  created_at: number;
 };
 
 export type TenantBillingChargesResponse = {

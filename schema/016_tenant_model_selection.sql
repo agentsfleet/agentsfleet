@@ -12,9 +12,9 @@
 -- tied to mode) are enforced in application code via constants in
 -- src/state/tenant_provider.zig — RULE STS forbids static-string CHECKs.
 
-CREATE TABLE IF NOT EXISTS core.tenant_providers (
+CREATE TABLE IF NOT EXISTS core.tenant_model_selection (
     uid                UUID    GENERATED ALWAYS AS (tenant_id) STORED PRIMARY KEY,
-    CONSTRAINT ck_tenant_providers_uid_uuidv7 CHECK (substring(uid::text from 15 for 1) = '7'),
+    CONSTRAINT ck_tenant_model_selection_uid_uuidv7 CHECK (substring(uid::text from 15 for 1) = '7'),
     tenant_id          UUID    NOT NULL UNIQUE
                                REFERENCES core.tenants(tenant_id)
                                ON DELETE CASCADE,
@@ -28,9 +28,9 @@ CREATE TABLE IF NOT EXISTS core.tenant_providers (
 );
 
 -- Operator query: list all self-managed-key tenants for support / debugging.
-CREATE INDEX IF NOT EXISTS idx_tenant_providers_mode
-    ON core.tenant_providers (mode);
+CREATE INDEX IF NOT EXISTS idx_tenant_model_selection_mode
+    ON core.tenant_model_selection (mode);
 
 -- api_runtime: GET/PUT/DELETE /v1/tenants/me/provider, plus resolveActiveProvider
 -- at lease issue (runs in agentsfleetd post-cutover).
-GRANT SELECT, INSERT, UPDATE, DELETE ON core.tenant_providers TO api_runtime;
+GRANT SELECT, INSERT, UPDATE, DELETE ON core.tenant_model_selection TO api_runtime;

@@ -20,6 +20,7 @@ pub fn match(path: []const u8, method: httpz.Method) ?Route {
     if (std.mem.eql(u8, path, "/v1/tenants/me/billing")) return .get_tenant_billing;
     if (std.mem.eql(u8, path, "/v1/tenants/me/workspaces")) return .list_tenant_workspaces;
     if (std.mem.eql(u8, path, "/v1/tenants/me/provider")) return .tenant_provider;
+    if (std.mem.eql(u8, path, "/v1/tenants/me/models")) return .tenant_model_entries;
     if (std.mem.eql(u8, path, "/v1/fleets/bundles")) return .fleet_bundles;
     if (std.mem.eql(u8, path, "/v1/workspaces")) return .create_workspace;
     if (std.mem.eql(u8, path, "/v1/admin/fleet-libraries")) return .admin_fleet_library;
@@ -99,6 +100,9 @@ fn matchV1(p: matchers.Path, method: httpz.Method) ?Route {
 
     // ── Tenant API key by id ──────────────────────────────────────────────
     if (matchers.matchTenantApiKeyById(p)) |id| return .{ .tenant_api_key_by_id = id };
+
+    // ── Tenant model registry entry by id (M121) ──────────────────────────
+    if (matchers.matchTenantModelEntryById(p)) |id| return .{ .tenant_model_entry_by_id = id };
 
     // ── Workspace + fleet + events/stream (deepest shape first) ──────────
     if (matchers.matchWorkspaceFleetEventsStream(p)) |r| return .{ .workspace_fleet_events_stream = r };

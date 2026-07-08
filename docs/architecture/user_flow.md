@@ -244,7 +244,7 @@ tenant provider → (nothing — synth-default                → agentsfleet te
 add                stays in place)                            --secret account-fireworks-key
                                                               → API loads vault row
                                                               → API GETs /_um/.../cap.json
-                                                              → upsert tenant_providers row
+                                                              → upsert tenant_model_selection row
                                                                 {mode=self_managed, provider, model,
                                                                  context_cap_tokens, secret_ref}
 
@@ -264,7 +264,7 @@ L3 run chunking
                 → threshold = 0.75 × 200000               → threshold = 0.75 × 256000
 ```
 
-**Overlay rule (per-field, independent, applied at lease time):** frontmatter `model: ""` OR `model:` key absent ⇒ overlay from `tenant_providers.model` (or synth-default if no row). Same rule for `context_cap_tokens: 0` OR absent. Non-empty / non-zero values respected as-is. The bundle's frontmatter carries the *visible* sentinels (`""`, `0`) under self-managed posture so a human reading it can spot at a glance that "this fleet inherits from tenant config"; absent-key is the safety net for hand-edits.
+**Overlay rule (per-field, independent, applied at lease time):** frontmatter `model: ""` OR `model:` key absent ⇒ overlay from `tenant_model_selection.model` (or synth-default if no row). Same rule for `context_cap_tokens: 0` OR absent. Non-empty / non-zero values respected as-is. The bundle's frontmatter carries the *visible* sentinels (`""`, `0`) under self-managed posture so a human reading it can spot at a glance that "this fleet inherits from tenant config"; absent-key is the safety net for hand-edits.
 
 The parser-side companion to this rule landed with M49: `x-agentsfleet.model` and `x-agentsfleet.context.*` are now first-class fields on `FleetConfig`, carried on the lease as `ExecutionPolicy` / `ContextBudget` (`src/lib/contract/execution_policy.zig`) *before* auto-sentinel defaults are substituted. Frontmatter overrides therefore win against runtime defaults (the doc previously described this shape but the parser dropped the fields silently — now closed).
 

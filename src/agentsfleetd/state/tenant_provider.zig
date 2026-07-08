@@ -2,14 +2,14 @@
 //!
 //! Holds the Mode enum, platform-default constants, the ResolvedProvider
 //! return shape, the ResolveError set, and the read/write entry points
-//! that bridge the schema (core.tenant_providers + core.platform_llm_keys
+//! that bridge the schema (core.tenant_model_selection + core.platform_provider_defaults
 //! + vault.secrets) into a single value the worker, doctor, and HTTP
 //! handler all consume.
 //!
-//! Storage layout reminder. core.tenant_providers carries one row per
+//! Storage layout reminder. core.tenant_model_selection carries one row per
 //! tenant who has explicitly configured a provider; absence of row is the
 //! synthesised platform default. The api_key never lives in this row —
-//! under platform mode the resolver follows core.platform_llm_keys into
+//! under platform mode the resolver follows core.platform_provider_defaults into
 //! the admin tenant's workspace vault; under self-managed it loads the user's
 //! tenant-primary workspace vault by first trying the raw user-named
 //! secret_ref, then the dashboard workspace credential key derived from it.
@@ -22,9 +22,15 @@
 
 const std = @import("std");
 const clock = @import("common").clock;
+const logging = @import("log");
 const pg = @import("pg");
 const resolver = @import("tenant_provider_resolver.zig");
 const secret_probe = @import("secret_probe.zig");
+const tenant_model_entries = @import("tenant_model_entries.zig");
+const sql = @import("tenant_provider/sql.zig");
+const PgQuery = @import("../db/pg_query.zig").PgQuery;
+
+const log = logging.scoped(.state_tenant_provider);
 
 pub const Mode = enum {
     const Self = @This();
@@ -81,7 +87,7 @@ pub const ResolveError = error{
     /// carries a `base_url`. Validated at the parse boundary by base_url_guard
     /// (Invariant 5) — never dialed.
     SecretEndpointInvalid,
-    /// Platform mode, but core.platform_llm_keys has no active row OR the
+    /// Platform mode, but core.platform_provider_defaults has no active row OR the
     /// admin workspace's vault is missing the referenced key. Operator-side
     /// incident; surfaced via dead-letter on the next event.
     PlatformKeyMissing,
@@ -92,7 +98,7 @@ pub const ResolveError = error{
 
 // ── Public API ──────────────────────────────────────────────────────────────
 
-/// Read tenant_providers for tenant_id and return a ResolvedProvider with
+/// Read tenant_model_selection for tenant_id and return a ResolvedProvider with
 /// the api_key fetched from the appropriate vault row. Caller owns the
 /// returned struct and must call .deinit(alloc).
 pub fn resolveActiveProvider(
@@ -131,19 +137,22 @@ pub fn upsertSelfManaged(
     var probe = try secret_probe.probeSelfManagedSecret(alloc, conn, tenant_id, secret_ref);
     defer probe.deinit(alloc);
 
+    // M121 registry invariant, enforced HERE so every caller of the selection
+    // write gets it: the active (secret_ref, model) pair always has a matching
+    // core.tenant_model_entries row, and the GET list path stays a pure read.
+    // Entry + selection commit atomically — no orphan entry row surfaces from
+    // a partial failure. rollback() (not exec("ROLLBACK")) per signup_bootstrap:
+    // exec short-circuits when the connection is in FAIL state.
+    _ = try conn.exec("BEGIN", .{});
+    var tx_open = true;
+    errdefer if (tx_open) {
+        conn.rollback() catch |err| log.warn("rollback_failed", .{ .err = @errorName(err) });
+    };
+
+    try tenant_model_entries.ensureEntry(alloc, conn, tenant_id, model, secret_ref);
+
     const now_ms: i64 = clock.nowMillis();
-    _ = try conn.exec(
-        \\INSERT INTO core.tenant_providers
-        \\  (tenant_id, mode, provider, model, context_cap_tokens, secret_ref, created_at, updated_at)
-        \\VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $7)
-        \\ON CONFLICT (tenant_id) DO UPDATE SET
-        \\  mode               = EXCLUDED.mode,
-        \\  provider           = EXCLUDED.provider,
-        \\  model              = EXCLUDED.model,
-        \\  context_cap_tokens = EXCLUDED.context_cap_tokens,
-        \\  secret_ref     = EXCLUDED.secret_ref,
-        \\  updated_at         = EXCLUDED.updated_at
-    , .{
+    _ = try conn.exec(sql.UPSERT_SELF_MANAGED, .{
         tenant_id,
         Mode.self_managed.label(),
         probe.provider,
@@ -152,12 +161,15 @@ pub fn upsertSelfManaged(
         secret_ref,
         now_ms,
     });
+
+    _ = try conn.exec("COMMIT", .{});
+    tx_open = false;
 }
 
 /// UPSERT an explicit platform-default row for tenant_id. Used by
 /// `tenant provider reset` so the dashboard can distinguish "never
 /// configured" from "explicitly reset". Provider is read from the active
-/// platform_llm_keys row so the row matches what resolveActiveProvider
+/// platform_provider_defaults row so the row matches what resolveActiveProvider
 /// will return.
 pub fn upsertPlatform(
     alloc: std.mem.Allocator,
@@ -168,18 +180,7 @@ pub fn upsertPlatform(
     defer plk.deinit(alloc);
 
     const now_ms: i64 = clock.nowMillis();
-    _ = try conn.exec(
-        \\INSERT INTO core.tenant_providers
-        \\  (tenant_id, mode, provider, model, context_cap_tokens, secret_ref, created_at, updated_at)
-        \\VALUES ($1::uuid, $2, $3, $4, $5, NULL, $6, $6)
-        \\ON CONFLICT (tenant_id) DO UPDATE SET
-        \\  mode               = EXCLUDED.mode,
-        \\  provider           = EXCLUDED.provider,
-        \\  model              = EXCLUDED.model,
-        \\  context_cap_tokens = EXCLUDED.context_cap_tokens,
-        \\  secret_ref     = NULL,
-        \\  updated_at         = EXCLUDED.updated_at
-    , .{
+    _ = try conn.exec(sql.UPSERT_PLATFORM, .{
         tenant_id,
         Mode.platform.label(),
         plk.provider,
@@ -222,6 +223,37 @@ pub fn platformDefaultView(
     return .{ .provider = provider, .model = model, .context_cap_tokens = plk.context_cap_tokens };
 }
 
+/// The tenant's active (secret_ref, model) pair under self_managed mode, with
+/// no vault touch. Used by the model registry's GET synthesis (M121 §2) to
+/// detect an activation with no matching `core.tenant_model_entries` row.
+pub const ActiveSelfManagedRef = struct {
+    const Self = @This();
+
+    secret_ref: []u8,
+    model: []u8,
+
+    pub fn deinit(self: *Self, alloc: std.mem.Allocator) void {
+        alloc.free(self.secret_ref);
+        alloc.free(self.model);
+    }
+};
+
+/// `null` under platform mode or when no row exists. Caller owns the result
+/// and must call `.deinit(alloc)`.
+pub fn activeSelfManagedRef(
+    alloc: std.mem.Allocator,
+    conn: *pg.Conn,
+    tenant_id: []const u8,
+) !?ActiveSelfManagedRef {
+    var q = PgQuery.from(try conn.query(sql.SELECT_ACTIVE_SELF_MANAGED_REF, .{ tenant_id, Mode.self_managed.label() }));
+    defer q.deinit();
+    const row = (try q.next()) orelse return null;
+    const secret_ref = try alloc.dupe(u8, try row.get([]const u8, 0));
+    errdefer alloc.free(secret_ref);
+    const model = try alloc.dupe(u8, try row.get([]const u8, 1));
+    return .{ .secret_ref = secret_ref, .model = model };
+}
+
 pub const ProbedSecret = secret_probe.ProbedSecret;
 
 /// The provider id that opts a self-managed credential into a custom
@@ -250,5 +282,7 @@ pub fn probeSelfManaged(
 
 test {
     _ = @import("tenant_provider_test.zig");
+    _ = @import("tenant_provider_endpoint_test.zig");
+    _ = @import("tenant_provider_upsert_test.zig");
     _ = @import("base_url_guard.zig");
 }

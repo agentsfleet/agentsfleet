@@ -26,7 +26,6 @@ const test_port = @import("../../test_port.zig");
 const scope_tokens = @import("../../test_scope_tokens.zig");
 const test_fixtures = @import("../../../db/test_fixtures.zig");
 const vault = @import("../../../state/vault.zig");
-const credential_key = @import("../../../fleet_runtime/credential_key.zig");
 const oauth2 = @import("oauth2.zig");
 const connector_state = @import("state.zig");
 const slack_spec = @import("slack/spec.zig");
@@ -109,7 +108,7 @@ test "integration: unconfigured provider fails loud 503, no partial state" {
     try test_fixtures.seedTenantById(conn, TENANT_ID, TENANT_NAME);
     try test_fixtures.seedWorkspaceWithTenant(conn, ADMIN_WS, TENANT_ID);
     try test_fixtures.seedWorkspaceWithTenant(conn, TARGET_WS, TENANT_ID);
-    preClean(alloc, conn);
+    preClean(conn);
 
     // Signing secret present, admin workspace wired — but NO slack-app vault
     // bag: the platform app is unprovisioned.
@@ -127,19 +126,15 @@ test "integration: unconfigured provider fails loud 503, no partial state" {
     try testing.expect(r.bodyContains("UZ-CONN-001"));
 
     // Fail-loud with NO partial state: no vault handle was written.
-    const key = try credential_key.allocKeyName(alloc, common.PROVIDER_SLACK);
-    defer alloc.free(key);
-    if (vault.loadJson(alloc, conn, TARGET_WS, key)) |parsed| {
+    if (vault.loadJson(alloc, conn, TARGET_WS, common.PROVIDER_SLACK)) |parsed| {
         var p = parsed;
         p.deinit();
         return error.HandleUnexpectedlyWritten;
     } else |_| {} // any load failure = no readable handle = no partial state
 }
 
-fn preClean(alloc: std.mem.Allocator, conn: *pg.Conn) void {
-    const key = credential_key.allocKeyName(alloc, common.PROVIDER_SLACK) catch return;
-    defer alloc.free(key);
-    _ = vault.deleteCredential(conn, TARGET_WS, key) catch |e| std.log.warn("preclean vault ignored: {s}", .{@errorName(e)});
+fn preClean(conn: *pg.Conn) void {
+    _ = vault.deleteCredential(conn, TARGET_WS, common.PROVIDER_SLACK) catch |e| std.log.warn("preclean vault ignored: {s}", .{@errorName(e)});
     // Belt-and-suspenders: the "unconfigured" assertion depends on ADMIN_WS
     // having NO slack-app bag. A sibling seed-creds test that crashed before
     // its cleanup could leave one — and then this test would load real creds
@@ -192,10 +187,8 @@ fn deleteVaultKey(conn: *pg.Conn, ws: []const u8, key: []const u8) void {
     _ = vault.deleteCredential(conn, ws, key) catch |e| std.log.warn("vault cleanup ignored: {s}", .{@errorName(e)});
 }
 
-fn deleteFleetHandle(alloc: std.mem.Allocator, conn: *pg.Conn, ws: []const u8, provider: []const u8) void {
-    const key = credential_key.allocKeyName(alloc, provider) catch return;
-    defer alloc.free(key);
-    deleteVaultKey(conn, ws, key);
+fn deleteFleetHandle(conn: *pg.Conn, ws: []const u8, provider: []const u8) void {
+    deleteVaultKey(conn, ws, provider);
 }
 
 test "integration: connect without connector:write is a 403 on the generic route" {
@@ -349,7 +342,7 @@ test "integration: slack status flips not_connected → connected and surfaces t
     defer h.releaseConn(conn);
     test_fixtures.setTestEncryptionKey();
     try seedAuthedFixtures(conn);
-    deleteFleetHandle(alloc, conn, AUTHED_WS, common.PROVIDER_SLACK);
+    deleteFleetHandle(conn, AUTHED_WS, common.PROVIDER_SLACK);
 
     const path = "/v1/workspaces/" ++ AUTHED_WS ++ "/connectors/slack";
     {
@@ -359,13 +352,11 @@ test "integration: slack status flips not_connected → connected and surfaces t
         try testing.expect(r.bodyContains("not_connected"));
     }
 
-    const key = try credential_key.allocKeyName(alloc, common.PROVIDER_SLACK);
-    defer alloc.free(key);
     var handle: std.json.ObjectMap = .empty;
     defer handle.deinit(alloc);
     try handle.put(alloc, "bot_token", .{ .string = "xoxb-m108-status-tok" });
     try handle.put(alloc, "team_name", .{ .string = "Acme M108" });
-    try test_fixtures.storeVaultJson(alloc, conn, AUTHED_WS, key, .{ .object = handle });
+    try test_fixtures.storeVaultJson(alloc, conn, AUTHED_WS, common.PROVIDER_SLACK, .{ .object = handle });
 
     {
         const r = try (try h.get(path).bearer(scope_tokens.TENANT_ADMIN)).send();
@@ -375,7 +366,7 @@ test "integration: slack status flips not_connected → connected and surfaces t
         try testing.expect(r.bodyContains("Acme M108"));
     }
 
-    deleteFleetHandle(alloc, conn, AUTHED_WS, common.PROVIDER_SLACK);
+    deleteFleetHandle(conn, AUTHED_WS, common.PROVIDER_SLACK);
 }
 
 test "integration: catalog reflects the registry with correct configured/connected flags (Dimension 4.1)" {
@@ -395,7 +386,7 @@ test "integration: catalog reflects the registry with correct configured/connect
     h.ctx.platform_admin_workspace_id = ADMIN_WS;
     // Clean slate: no slack platform bag, no slack handle for this workspace.
     _ = vault.deleteCredential(conn, ADMIN_WS, "slack-app") catch {};
-    deleteFleetHandle(alloc, conn, AUTHED_WS, common.PROVIDER_SLACK);
+    deleteFleetHandle(conn, AUTHED_WS, common.PROVIDER_SLACK);
 
     const path = "/v1/workspaces/" ++ AUTHED_WS ++ "/connectors";
 
@@ -415,12 +406,10 @@ test "integration: catalog reflects the registry with correct configured/connect
 
     // Provision slack's platform bag + connect this workspace.
     try seedSlackAppCreds(alloc, conn);
-    const key = try credential_key.allocKeyName(alloc, common.PROVIDER_SLACK);
-    defer alloc.free(key);
     var handle: std.json.ObjectMap = .empty;
     defer handle.deinit(alloc);
     try handle.put(alloc, "bot_token", .{ .string = "xoxb-m108-catalog-tok" });
-    try test_fixtures.storeVaultJson(alloc, conn, AUTHED_WS, key, .{ .object = handle });
+    try test_fixtures.storeVaultJson(alloc, conn, AUTHED_WS, common.PROVIDER_SLACK, .{ .object = handle });
 
     // slack now flips to configured (platform bag) AND connected (handle).
     {
@@ -433,7 +422,7 @@ test "integration: catalog reflects the registry with correct configured/connect
     // Foreign workspace / no scope is already covered by the IDOR + scope tests;
     // clean up this suite's shared platform bag + handle.
     _ = vault.deleteCredential(conn, ADMIN_WS, "slack-app") catch {};
-    deleteFleetHandle(alloc, conn, AUTHED_WS, common.PROVIDER_SLACK);
+    deleteFleetHandle(conn, AUTHED_WS, common.PROVIDER_SLACK);
 }
 
 // An unconfigured deployment leaves the platform-admin workspace unset. The
@@ -471,7 +460,7 @@ test "integration: github status reads the installation handle" {
     defer h.releaseConn(conn);
     test_fixtures.setTestEncryptionKey();
     try seedAuthedFixtures(conn);
-    deleteFleetHandle(alloc, conn, AUTHED_WS, common.PROVIDER_GITHUB);
+    deleteFleetHandle(conn, AUTHED_WS, common.PROVIDER_GITHUB);
 
     const path = "/v1/workspaces/" ++ AUTHED_WS ++ "/connectors/github";
     {
@@ -481,13 +470,11 @@ test "integration: github status reads the installation handle" {
         try testing.expect(r.bodyContains("not_connected"));
     }
 
-    const key = try credential_key.allocKeyName(alloc, common.PROVIDER_GITHUB);
-    defer alloc.free(key);
     var handle: std.json.ObjectMap = .empty;
     defer handle.deinit(alloc);
     try handle.put(alloc, "integration", .{ .string = "github" });
     try handle.put(alloc, "installation_id", .{ .string = "1234567" });
-    try test_fixtures.storeVaultJson(alloc, conn, AUTHED_WS, key, .{ .object = handle });
+    try test_fixtures.storeVaultJson(alloc, conn, AUTHED_WS, common.PROVIDER_GITHUB, .{ .object = handle });
 
     {
         const r = try (try h.get(path).bearer(scope_tokens.TENANT_ADMIN)).send();
@@ -496,7 +483,7 @@ test "integration: github status reads the installation handle" {
         try testing.expect(r.bodyContains("\"status\":\"connected\""));
     }
 
-    deleteFleetHandle(alloc, conn, AUTHED_WS, common.PROVIDER_GITHUB);
+    deleteFleetHandle(conn, AUTHED_WS, common.PROVIDER_GITHUB);
 }
 
 // ── app_install callback e2e (the archetype the oauth2 suites don't cover) ──
@@ -513,7 +500,7 @@ test "integration: github callback writes the fleet:github handle and 302s (app_
     test_fixtures.setTestEncryptionKey();
     try test_fixtures.seedTenantById(conn, TENANT_ID, TENANT_NAME);
     try test_fixtures.seedWorkspaceWithTenant(conn, TARGET_WS, TENANT_ID);
-    deleteFleetHandle(alloc, conn, TARGET_WS, common.PROVIDER_GITHUB);
+    deleteFleetHandle(conn, TARGET_WS, common.PROVIDER_GITHUB);
     h.ctx.approval_signing_secret = SIGNING_SECRET;
 
     // app_install state is minted against github's OWN domain binding.
@@ -526,14 +513,12 @@ test "integration: github callback writes the fleet:github handle and 302s (app_
     defer r.deinit();
     try r.expectStatus(.found); // 302 back to the dashboard connector card
 
-    // The one row app_install writes: the fleet:github handle with the id.
-    const key = try credential_key.allocKeyName(alloc, common.PROVIDER_GITHUB);
-    defer alloc.free(key);
-    var parsed = try vault.loadJson(alloc, conn, TARGET_WS, key);
+    // The one row app_install writes: the github handle with the id.
+    var parsed = try vault.loadJson(alloc, conn, TARGET_WS, common.PROVIDER_GITHUB);
     defer parsed.deinit();
     try testing.expectEqualStrings("42424242", parsed.value.object.get("installation_id").?.string);
 
-    deleteFleetHandle(alloc, conn, TARGET_WS, common.PROVIDER_GITHUB);
+    deleteFleetHandle(conn, TARGET_WS, common.PROVIDER_GITHUB);
 }
 
 test "integration: github callback with a non-numeric installation_id is a 400, no handle written" {
@@ -548,7 +533,7 @@ test "integration: github callback with a non-numeric installation_id is a 400, 
     test_fixtures.setTestEncryptionKey();
     try test_fixtures.seedTenantById(conn, TENANT_ID, TENANT_NAME);
     try test_fixtures.seedWorkspaceWithTenant(conn, TARGET_WS, TENANT_ID);
-    deleteFleetHandle(alloc, conn, TARGET_WS, common.PROVIDER_GITHUB);
+    deleteFleetHandle(conn, TARGET_WS, common.PROVIDER_GITHUB);
     h.ctx.approval_signing_secret = SIGNING_SECRET;
 
     const state = try connector_state.mint(alloc, &h.queue, github_spec.STATE, SIGNING_SECRET, TARGET_WS, common.clock.nowMillis());
@@ -561,9 +546,7 @@ test "integration: github callback with a non-numeric installation_id is a 400, 
     try r.expectStatus(.bad_request);
     try r.expectErrorCode("UZ-REQ-001");
 
-    const key = try credential_key.allocKeyName(alloc, common.PROVIDER_GITHUB);
-    defer alloc.free(key);
-    if (vault.loadJson(alloc, conn, TARGET_WS, key)) |p| {
+    if (vault.loadJson(alloc, conn, TARGET_WS, common.PROVIDER_GITHUB)) |p| {
         var pp = p;
         pp.deinit();
         return error.HandleUnexpectedlyWritten;
@@ -618,7 +601,7 @@ test "integration: an unreachable vendor is a 502 UZ-CONN-003 (pin refused, neve
     try seedAuthedFixtures(conn);
     try seedSlackAppCreds(alloc, conn);
     defer deleteVaultKey(conn, ADMIN_WS, "slack-app"); // cleans up even if an assert below fails
-    defer deleteFleetHandle(alloc, conn, TARGET_WS, common.PROVIDER_SLACK);
+    defer deleteFleetHandle(conn, TARGET_WS, common.PROVIDER_SLACK);
     h.ctx.approval_signing_secret = SIGNING_SECRET;
     h.ctx.platform_admin_workspace_id = ADMIN_WS;
     // Port 1 (tcpmux) never listens on a dev/CI host: the dial is refused,
@@ -726,9 +709,7 @@ test "integration: a vendor 5xx on the exchange is a 502 exchange-failed" {
     try r.expectStatus(.bad_gateway);
     try r.expectErrorCode("UZ-SLK-022");
     // Exchange failed → no vault write happened (the exchange precedes it).
-    const key = try credential_key.allocKeyName(alloc, common.PROVIDER_SLACK);
-    defer alloc.free(key);
-    if (vault.loadJson(alloc, conn, TARGET_WS, key)) |parsed| {
+    if (vault.loadJson(alloc, conn, TARGET_WS, common.PROVIDER_SLACK)) |parsed| {
         var p = parsed;
         p.deinit();
         return error.HandleUnexpectedlyWritten;
