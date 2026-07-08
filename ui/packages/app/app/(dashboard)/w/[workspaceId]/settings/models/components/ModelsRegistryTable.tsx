@@ -328,6 +328,7 @@ export default function ModelsRegistryTable({ workspaceId, initial, secrets }: P
             setEditTarget(null);
             refresh();
           }}
+          onPartialSuccess={refresh}
         />
         <ConfirmDialog
           open={removeTarget !== null}

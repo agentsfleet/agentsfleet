@@ -53,11 +53,13 @@ async function renderDialog(secrets: Secret[] = []) {
     "../app/(dashboard)/w/[workspaceId]/settings/models/components/AddModelEntryDialog"
   );
   const onCreated = vi.fn();
-  render(React.createElement(AddModelEntryDialog, { workspaceId: "ws_1", secrets, onCreated } as never));
+  const { rerender } = render(React.createElement(AddModelEntryDialog, { workspaceId: "ws_1", secrets, onCreated } as never));
   const user = userEvent.setup();
   await user.click(screen.getByRole("button", { name: /add model/i }));
   await screen.findByRole("dialog");
-  return { onCreated, user };
+  const rerenderWithSecrets = (nextSecrets: Secret[]) =>
+    rerender(React.createElement(AddModelEntryDialog, { workspaceId: "ws_1", secrets: nextSecrets, onCreated } as never));
+  return { onCreated, user, rerenderWithSecrets };
 }
 
 beforeEach(() => {
@@ -73,15 +75,41 @@ beforeEach(() => {
 afterEach(() => cleanup());
 
 describe("AddModelEntryDialog — reuse-existing-key", () => {
-  it("does nothing when Save is clicked with no stored key or model chosen", async () => {
+  it("disables Save until a stored key and a model are both chosen", async () => {
     const { onCreated, user } = await renderDialog([ANTHROPIC_SECRET]);
     const dialog = screen.getByRole("dialog");
 
     await user.click(within(dialog).getByRole("button", { name: /use existing key/i }));
-    await user.click(within(dialog).getByRole("button", { name: /^save$/i }));
+    expect(within(dialog).getByRole("button", { name: /^save$/i }).hasAttribute("disabled")).toBe(true);
+
+    await user.click(within(dialog).getByLabelText(/stored key/i));
+    await user.click(await screen.findByText(/anthropic-prod/i));
+    // A key is picked but no model yet — still disabled, not just no-key-picked.
+    expect(within(dialog).getByRole("button", { name: /^save$/i }).hasAttribute("disabled")).toBe(true);
 
     expect(createModelEntryActionMock).not.toHaveBeenCalled();
     expect(onCreated).not.toHaveBeenCalled();
+  });
+
+  it("surfaces a stale-key error when the selected secret disappears from the secrets prop before Save", async () => {
+    const { user, rerenderWithSecrets } = await renderDialog([ANTHROPIC_SECRET]);
+    const dialog = screen.getByRole("dialog");
+
+    await user.click(within(dialog).getByRole("button", { name: /use existing key/i }));
+    await user.click(within(dialog).getByLabelText(/stored key/i));
+    await user.click(await screen.findByText(/anthropic-prod/i));
+    await user.click(within(dialog).getByLabelText(/^model$/i));
+    await user.click((await screen.findAllByRole("option"))[0]!);
+
+    // canSubmit only checks reuseSecretName is non-empty — a concurrent
+    // secrets-prop refresh (e.g. the key was deleted on the Secrets page in
+    // another tab) can remove it from providerKeys without clearing the
+    // selection, so Save is still enabled but the lookup at submit time fails.
+    rerenderWithSecrets([]);
+    await user.click(within(dialog).getByRole("button", { name: /^save$/i }));
+
+    await waitFor(() => expect(within(dialog).getByText(/no longer available/i)).toBeTruthy());
+    expect(createModelEntryActionMock).not.toHaveBeenCalled();
   });
 
   it("surfaces a register error when reusing a stored key", async () => {
@@ -126,11 +154,14 @@ describe("AddModelEntryDialog — reuse-existing-key", () => {
 });
 
 describe("AddModelEntryDialog — known provider, new key", () => {
-  it("does nothing when Save is clicked with the new-key shape incomplete", async () => {
+  it("disables Save when the new-key shape is incomplete", async () => {
     const { user } = await renderDialog();
     const dialog = screen.getByRole("dialog");
 
-    await user.click(within(dialog).getByRole("button", { name: /^save$/i }));
+    expect(within(dialog).getByRole("button", { name: /^save$/i }).hasAttribute("disabled")).toBe(true);
+    await user.type(within(dialog).getByLabelText(/^api key$/i), "sk-ant-e2e-xxxx");
+    // Provider + key name auto-fill from the paste-detect, but Model is still empty.
+    expect(within(dialog).getByRole("button", { name: /^save$/i }).hasAttribute("disabled")).toBe(true);
 
     expect(createSecretActionMock).not.toHaveBeenCalled();
     expect(within(dialog).queryByRole("alert")).toBeNull();
@@ -228,7 +259,7 @@ describe("AddModelEntryDialog — known provider, new key", () => {
     expect(setProviderSelfManagedActionMock).not.toHaveBeenCalled();
   });
 
-  it("surfaces an activation error after a successful register", async () => {
+  it("surfaces an activation error after a successful register, but still refreshes so a retry doesn't 409", async () => {
     setProviderSelfManagedActionMock.mockResolvedValue({ ok: false, error: "rejected", errorCode: "UZ-PROVIDER-003" });
     const { onCreated, user } = await renderDialog();
     const dialog = screen.getByRole("dialog");
@@ -239,7 +270,14 @@ describe("AddModelEntryDialog — known provider, new key", () => {
     await user.click(within(dialog).getByRole("button", { name: /save & make active/i }));
 
     await waitFor(() => expect(within(dialog).getByRole("alert")).toBeTruthy());
-    expect(onCreated).not.toHaveBeenCalled();
+    // The entry itself is already committed server-side by this point — the
+    // table must reflect it even though activation failed and the dialog
+    // stays open (matches ModelsRegistryTable.onSwitchEntry's "refresh
+    // regardless of outcome" convention).
+    expect(onCreated).toHaveBeenCalled();
+    expect(routerRefreshMock).toHaveBeenCalled();
+    // Dialog stays open — the user can see the error, not silently closed.
+    expect(screen.getByRole("dialog")).toBeTruthy();
   });
 });
 

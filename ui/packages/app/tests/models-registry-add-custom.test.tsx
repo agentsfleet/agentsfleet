@@ -72,12 +72,16 @@ describe("AddModelEntryDialog — custom endpoint", () => {
     await waitFor(() => expect(onCreated).toHaveBeenCalled());
   });
 
-  it("does nothing when Save is clicked with the custom shape incomplete", async () => {
+  it("disables Save when the custom shape is incomplete", async () => {
     const { user } = await renderDialog();
     const dialog = screen.getByRole("dialog");
 
     await user.click(within(dialog).getByRole("tab", { name: /custom endpoint/i }));
-    await user.click(within(dialog).getByRole("button", { name: /^save$/i }));
+    expect(within(dialog).getByRole("button", { name: /^save$/i }).hasAttribute("disabled")).toBe(true);
+
+    await user.type(within(dialog).getByLabelText(/^name$/i), "vllm-gateway");
+    // Name filled, base URL + model still empty.
+    expect(within(dialog).getByRole("button", { name: /^save$/i }).hasAttribute("disabled")).toBe(true);
 
     expect(createSecretActionMock).not.toHaveBeenCalled();
   });

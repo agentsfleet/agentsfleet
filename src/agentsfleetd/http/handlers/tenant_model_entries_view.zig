@@ -45,43 +45,24 @@ pub const ListResult = struct {
     }
 };
 
-/// Ensure the tenant's active self-managed (secret_ref, model) selection has a
-/// matching entry row, inserting one when it's missing (pre-registry
-/// activation, e.g. `PUT /provider` used directly before the registry ever
-/// listed this tenant). A race with a concurrent synthesis or POST is
-/// resolved by the unique constraint and ignored — idempotent on repeat.
-pub fn ensureActiveEntrySynthesized(alloc: std.mem.Allocator, conn: *pg.Conn, tenant_id: []const u8) !void {
-    var selection = (try tenant_provider.activeSelfManagedRef(alloc, conn, tenant_id)) orelse return;
-    defer selection.deinit(alloc);
-
-    const existing = try entries_state.list(alloc, conn, tenant_id);
-    defer entries_state.deinitEntryList(existing, alloc);
-    for (existing) |e| {
-        if (std.mem.eql(u8, e.secret_ref, selection.secret_ref) and std.mem.eql(u8, e.model_id, selection.model)) return;
-    }
-
-    const new_id = try id_format.generateTenantModelEntryId(alloc);
-    defer alloc.free(new_id);
-    var created = entries_state.create(alloc, conn, .{
-        .id = new_id,
-        .tenant_id = tenant_id,
-        .model_id = selection.model,
-        .secret_ref = selection.secret_ref,
-    }) catch |err| switch (err) {
-        entries_state.StateError.DuplicateEntry => return,
-        else => return err,
-    };
-    created.deinit(alloc);
-}
-
-/// Caller owns the result and must call `.deinit(alloc)`. Call
-/// `ensureActiveEntrySynthesized` first so a fresh activation is reflected.
+/// Caller owns the result and must call `.deinit(alloc)`. Fetches the active
+/// selection and the entry list once each (not once per helper — Greptile
+/// caught the prior two-function split re-fetching both a second time),
+/// synthesizes a missing active-selection entry against that same snapshot,
+/// and re-lists only in the rare case synthesis actually inserted a row.
 pub fn buildList(alloc: std.mem.Allocator, conn: *pg.Conn, tenant_id: []const u8) !ListResult {
-    const entries = try entries_state.list(alloc, conn, tenant_id);
-    defer entries_state.deinitEntryList(entries, alloc);
-
     var selection = try tenant_provider.activeSelfManagedRef(alloc, conn, tenant_id);
     defer if (selection) |*s| s.deinit(alloc);
+
+    var entries = try entries_state.list(alloc, conn, tenant_id);
+    defer entries_state.deinitEntryList(entries, alloc);
+
+    if (selection) |s| {
+        if (try synthesizeIfMissing(alloc, conn, tenant_id, s, entries)) {
+            entries_state.deinitEntryList(entries, alloc);
+            entries = try entries_state.list(alloc, conn, tenant_id);
+        }
+    }
 
     var views: std.ArrayList(EntryView) = .empty;
     errdefer {
@@ -102,6 +83,38 @@ pub fn buildList(alloc: std.mem.Allocator, conn: *pg.Conn, tenant_id: []const u8
         .rows = try views.toOwnedSlice(alloc),
         .platform_default_available = platformDefaultAvailable(alloc, conn),
     };
+}
+
+/// Inserts an entry for `selection` when `entries` (a snapshot already in
+/// hand — never re-fetched here) has no matching row: the pre-registry
+/// activation case (`PUT /provider` used before the registry ever listed
+/// this tenant). Returns whether a row was inserted, so the caller knows to
+/// refresh its own `entries` snapshot. A race with a concurrent synthesis or
+/// POST is resolved by the unique constraint and ignored — idempotent on repeat.
+fn synthesizeIfMissing(
+    alloc: std.mem.Allocator,
+    conn: *pg.Conn,
+    tenant_id: []const u8,
+    selection: tenant_provider.ActiveSelfManagedRef,
+    entries: []const entries_state.Entry,
+) !bool {
+    for (entries) |e| {
+        if (std.mem.eql(u8, e.secret_ref, selection.secret_ref) and std.mem.eql(u8, e.model_id, selection.model)) return false;
+    }
+
+    const new_id = try id_format.generateTenantModelEntryId(alloc);
+    defer alloc.free(new_id);
+    var created = entries_state.create(alloc, conn, .{
+        .id = new_id,
+        .tenant_id = tenant_id,
+        .model_id = selection.model,
+        .secret_ref = selection.secret_ref,
+    }) catch |err| switch (err) {
+        entries_state.StateError.DuplicateEntry => return false,
+        else => return err,
+    };
+    created.deinit(alloc);
+    return true;
 }
 
 /// A vault load failure (secret deleted out-of-band, decrypt error) degrades

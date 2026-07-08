@@ -65,11 +65,18 @@ async function renderEditDialog(target: TenantModelEntry) {
   );
   const onOpenChange = vi.fn();
   const onSaved = vi.fn();
+  const onPartialSuccess = vi.fn();
   render(
-    React.createElement(EditModelEntryDialog, { workspaceId: "ws_1", target, onOpenChange, onSaved } as never),
+    React.createElement(EditModelEntryDialog, {
+      workspaceId: "ws_1",
+      target,
+      onOpenChange,
+      onSaved,
+      onPartialSuccess,
+    } as never),
   );
   const dialog = await screen.findByRole("dialog");
-  return { dialog, onOpenChange, onSaved, user: userEvent.setup() };
+  return { dialog, onOpenChange, onSaved, onPartialSuccess, user: userEvent.setup() };
 }
 
 beforeEach(() => {
@@ -155,6 +162,24 @@ describe("Row actions — Edit", () => {
     await user.type(within(dialog).getByLabelText(/new api key/i), "sk-ant-rotated");
     await user.click(within(dialog).getByRole("button", { name: /^save$/i }));
 
+    await waitFor(() => expect(within(dialog).getByRole("alert")).toBeTruthy());
+    expect(onSaved).not.toHaveBeenCalled();
+  });
+
+  it("keeps the table in sync when the model rename commits but the key rotation fails", async () => {
+    const target = entry({ id: "e1", model_id: "claude-sonnet-5" });
+    updateModelEntryActionMock.mockResolvedValue({ ok: true, data: { id: "e1", model_id: "claude-opus-4-8", secret_ref: "anthropic-prod", created_at: 1 } });
+    rotateSecretActionMock.mockResolvedValue({ ok: false, error: "rejected", errorCode: "UZ-REQ-001" });
+    const { dialog, onSaved, onPartialSuccess, user } = await renderEditDialog(target);
+
+    await user.click(within(dialog).getByLabelText(/^model$/i));
+    await user.click(await screen.findByRole("option", { name: "claude-opus-4-8" }));
+    await user.type(within(dialog).getByLabelText(/new api key/i), "sk-ant-rotated");
+    await user.click(within(dialog).getByRole("button", { name: /^save$/i }));
+
+    // The rename already committed server-side — the table must refresh even
+    // though the dialog stays open (rotate failed) and onSaved never fires.
+    await waitFor(() => expect(onPartialSuccess).toHaveBeenCalled());
     await waitFor(() => expect(within(dialog).getByRole("alert")).toBeTruthy());
     expect(onSaved).not.toHaveBeenCalled();
   });

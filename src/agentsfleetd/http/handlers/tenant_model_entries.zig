@@ -54,12 +54,6 @@ pub fn innerListModelEntries(hx: Hx, req: *httpz.Request) void {
     };
     defer hx.ctx.pool.release(conn);
 
-    view.ensureActiveEntrySynthesized(hx.alloc, conn, tenant_id) catch |err| {
-        log.err("synthesize_failed", .{ .error_code = ec.ERR_INTERNAL_DB_UNAVAILABLE, .tenant_id = tenant_id, .err = @errorName(err) });
-        common.internalDbUnavailable(hx.res, hx.req_id);
-        return;
-    };
-
     var result = view.buildList(hx.alloc, conn, tenant_id) catch |err| {
         log.err("list_failed", .{ .error_code = ec.ERR_INTERNAL_DB_UNAVAILABLE, .tenant_id = tenant_id, .err = @errorName(err) });
         common.internalDbUnavailable(hx.res, hx.req_id);
