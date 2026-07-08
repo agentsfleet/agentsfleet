@@ -13,12 +13,12 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Milestone:** M120
 **Workstream:** 002
 **Date:** Jul 07, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P2 — visual consistency + one missing capability (catalogue row Edit); no dead-end bugs, unlike M120_001.
 **Categories:** UI
 **Batch:** B1 — independent of M120_001; disjoint file trees (admin/models + other settings pages vs. tenant models page).
-**Branch:** {added at CHORE(open)}
-**Test Baseline:** {set at CHORE(open) via `make _lint_zig_test_depth`}
+**Branch:** feat/m120-002-ui-actions-icon-sweep
+**Test Baseline:** unit=2389 integration=263 (Zig depth via `make _lint_zig_test_depth`, CHORE(open)). This is a UI-only diff — coverage lands as vitest app tests (`make test-unit-app`), which this Zig gate does not count; expect a zero Zig-depth delta at VERIFY with the growth reported against the app suite instead.
 **Depends on:** none
 **Provenance:** human-directed, LLM-drafted (Sonnet 5, Jul 07, 2026) — Indy explicitly chose the wide (app-wide) sweep scope over a Models-page-only scope during the same Q&A that produced M120_001; a screenshot of the admin Platform Default form's misaligned provider-select surfaced the visual bug this spec also fixes. Indy asked (mid-EXECUTE on M120_001) that this workstream also get a design-shotgun/wireframe pass before the dialog/icon-row components are built — added as §2's Dimension 2.1.
 
