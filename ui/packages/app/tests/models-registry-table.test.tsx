@@ -257,6 +257,17 @@ describe("ModelsRegistryTable", () => {
     expect(screen.getByText("500")).toBeTruthy();
   });
 
+  it("renders an explicit 0-token cap as '0', not '—' (nullish guard, not falsy)", async () => {
+    await renderTable(registry([entry({ id: "e1", model_id: "m1", context_cap_tokens: 0 })]));
+    expect(screen.getByText("0")).toBeTruthy();
+  });
+
+  it("renders '—' when the context cap is absent (undefined)", async () => {
+    await renderTable(registry([entry({ id: "e1", model_id: "m1", context_cap_tokens: undefined })]));
+    const rows = screen.getAllByRole("row");
+    expect(within(rows[2]!).getByText("—")).toBeTruthy();
+  });
+
   it("creating a model entry refreshes the secrets list — the new stored key shows up without a page reload", async () => {
     createSecretActionMock.mockResolvedValue({ ok: true, data: { name: "anthropic" } });
     createModelEntryActionMock.mockResolvedValue({ ok: true, data: { id: "e1", model_id: "claude-sonnet-5", secret_ref: "anthropic", created_at: 1 } });

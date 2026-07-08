@@ -59,8 +59,14 @@ pub fn buildList(alloc: std.mem.Allocator, conn: *pg.Conn, tenant_id: []const u8
 
     if (selection) |s| {
         if (try synthesizeIfMissing(alloc, conn, tenant_id, s, entries)) {
+            // Fetch before freeing: if this `list()` call errors, `entries`
+            // is still the valid original slice, so the outer `defer` above
+            // frees it exactly once. Freeing first and reassigning after
+            // would leave `entries` pointing at freed memory on this error
+            // path — a double-free once the defer runs.
+            const fresh = try entries_state.list(alloc, conn, tenant_id);
             entries_state.deinitEntryList(entries, alloc);
-            entries = try entries_state.list(alloc, conn, tenant_id);
+            entries = fresh;
         }
     }
 

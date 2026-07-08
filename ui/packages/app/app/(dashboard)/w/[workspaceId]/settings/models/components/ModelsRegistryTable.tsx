@@ -53,10 +53,12 @@ const PLATFORM_UNAVAILABLE_NOTE = "No default is configured.";
 // Threshold + divisor for the "k" context abbreviation (200000 → "200k").
 const TOKENS_PER_K = 1000;
 
-// `context_cap_tokens` is a Zig `?u32` on the wire (schema/embed.zig) — never
-// negative — so the only falsy case worth guarding is "absent".
+// `context_cap_tokens` is a Zig `?u32` on the wire (schema/embed.zig) — the
+// only real-world absent case is "not in the catalogue" (undefined). Guard
+// on nullishness, not falsiness, so a (semantically invalid but not
+// impossible) explicit 0 still renders as "0" rather than "—".
 function formatContext(tokens: number | undefined): string {
-  if (!tokens) return "—";
+  if (tokens == null) return "—";
   return tokens >= TOKENS_PER_K ? `${Math.round(tokens / TOKENS_PER_K)}k` : String(tokens);
 }
 
