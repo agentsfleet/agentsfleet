@@ -10,14 +10,10 @@ const std = @import("std");
 const pg = @import("pg");
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
 const vault = @import("vault.zig");
-const logging = @import("log");
-const credential_key = @import("../fleet_runtime/credential_key.zig");
 
 const tenant_provider = @import("tenant_provider.zig");
 const base_url_guard = @import("base_url_guard.zig");
 const ResolveError = tenant_provider.ResolveError;
-
-const log = logging.scoped(.secret_probe);
 
 const S_API_KEY = "api_key";
 const S_BASE_URL = "base_url";
@@ -126,8 +122,8 @@ pub fn probeSelfManagedSecret(
 /// provider/model/api_key shape validation `probeSelfManagedSecret` enforces —
 /// used by the tenant model registry (M121), whose entries own the model and
 /// may reference a secret with no `model` field. Same primary-workspace bridge
-/// and raw→prefixed key fallback as the probe. Returns ResolveError.SecretMissing
-/// when no vault row matches either name. Caller owns the parsed value.
+/// as the probe. Returns ResolveError.SecretMissing when no vault row matches.
+/// Caller owns the parsed value.
 pub fn loadTenantSecretJson(
     alloc: std.mem.Allocator,
     conn: *pg.Conn,
@@ -172,16 +168,7 @@ fn loadSelfManagedJson(
     secret_ref: []const u8,
 ) (ResolveError || anyerror)!std.json.Parsed(std.json.Value) {
     return vault.loadJson(alloc, conn, workspace_id, secret_ref) catch |err| switch (err) {
-        error.NotFound => {
-            const key_name = try credential_key.allocKeyName(alloc, secret_ref);
-            defer alloc.free(key_name);
-            const parsed = vault.loadJson(alloc, conn, workspace_id, key_name) catch |prefixed_err| switch (prefixed_err) {
-                error.NotFound => return ResolveError.SecretMissing,
-                else => return prefixed_err,
-            };
-            log.debug("self_managed_secret_ref_fallback", .{ .workspace_id = workspace_id });
-            return parsed;
-        },
-        else => return err,
+        error.NotFound => ResolveError.SecretMissing,
+        else => err,
     };
 }

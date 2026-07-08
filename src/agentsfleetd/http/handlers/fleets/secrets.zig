@@ -15,7 +15,6 @@ const hx_mod = @import("../hx.zig");
 const ec = @import("../../../errors/error_registry.zig");
 const id_format = @import("../../../types/id_format.zig");
 const vault = @import("../../../state/vault.zig");
-const credential_key = @import("../../../fleet_runtime/credential_key.zig");
 const workspace_guards = @import("../../workspace_guards.zig");
 const tenant_model_entries = @import("../../../state/tenant_model_entries.zig");
 
@@ -108,9 +107,7 @@ fn storeSecretJsonOnConn(
     defer alloc.free(plaintext);
     if (plaintext.len > MAX_SECRET_DATA_LEN) return error.DataTooLarge;
 
-    const key_name = try credential_key.allocKeyName(alloc, cred.name);
-    defer alloc.free(key_name);
-    try vault.storeJsonPlaintext(alloc, conn, workspace_id, key_name, plaintext);
+    try vault.storeJsonPlaintext(alloc, conn, workspace_id, cred.name, plaintext);
 }
 
 // ── Delete Secret ─────────────────────────────────────────────────
@@ -139,13 +136,7 @@ pub fn innerDeleteSecret(
 
     if (!checkNotReferencedByModelEntries(hx, conn, secret_name)) return;
 
-    const key_name = credential_key.allocKeyName(hx.alloc, secret_name) catch {
-        common.internalOperationError(hx.res, "Failed to process the secret name", hx.req_id);
-        return;
-    };
-    defer hx.alloc.free(key_name);
-
-    const removed = vault.deleteCredential(conn, workspace_id, key_name) catch |err| {
+    const removed = vault.deleteCredential(conn, workspace_id, secret_name) catch |err| {
         log.err("delete_failed", .{ .error_code = ec.ERR_INTERNAL_DB_QUERY, .err = @errorName(err), .name = secret_name, .req_id = hx.req_id });
         common.internalDbError(hx.res, hx.req_id);
         return;
@@ -282,12 +273,9 @@ fn rotateSecretKeyOnConn(
     secret_name: []const u8,
     new_key: []const u8,
 ) !void {
-    const key_name = try credential_key.allocKeyName(alloc, secret_name);
-    defer alloc.free(key_name);
-
     // Load the existing object, swap ONLY api_key, re-store. A missing row
     // surfaces error.NotFound (mapped to 404 by the caller).
-    var parsed = vault.loadJson(alloc, conn, workspace_id, key_name) catch |err| switch (err) {
+    var parsed = vault.loadJson(alloc, conn, workspace_id, secret_name) catch |err| switch (err) {
         error.NotFound => return error.NotFound,
         else => return err,
     };
@@ -308,5 +296,5 @@ fn rotateSecretKeyOnConn(
     defer alloc.free(plaintext);
     if (plaintext.len > MAX_SECRET_DATA_LEN) return error.DataTooLarge;
 
-    try vault.storeJsonPlaintext(alloc, conn, workspace_id, key_name, plaintext);
+    try vault.storeJsonPlaintext(alloc, conn, workspace_id, secret_name, plaintext);
 }

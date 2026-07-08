@@ -3,7 +3,6 @@ const clock = @import("common").clock;
 const pg = @import("pg");
 
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
-const credential_key = @import("../fleet_runtime/credential_key.zig");
 const sql = @import("tenant_model_entries/sql.zig");
 
 const SQLSTATE_UNIQUE_VIOLATION = "23505";
@@ -96,19 +95,7 @@ pub fn delete(conn: *pg.Conn, tenant_id: []const u8, id: []const u8) !bool {
     return (affected orelse 0) > 0;
 }
 
-/// Checks the raw secret_ref first, then the `fleet:`-prefixed storage key —
-/// the same fallback `secret_probe.loadSelfManagedJson` uses, since a
-/// dashboard-created secret (POST /workspaces/{ws}/secrets) is stored under
-/// the prefixed key while `secret_ref` (here and in `tenant_model_selection`)
-/// always names the raw, user-facing name.
-pub fn secretExistsForTenant(alloc: std.mem.Allocator, conn: *pg.Conn, tenant_id: []const u8, secret_ref: []const u8) !bool {
-    if (try secretRowExists(conn, tenant_id, secret_ref)) return true;
-    const prefixed = try credential_key.allocKeyName(alloc, secret_ref);
-    defer alloc.free(prefixed);
-    return secretRowExists(conn, tenant_id, prefixed);
-}
-
-fn secretRowExists(conn: *pg.Conn, tenant_id: []const u8, secret_ref: []const u8) !bool {
+pub fn secretExistsForTenant(conn: *pg.Conn, tenant_id: []const u8, secret_ref: []const u8) !bool {
     var q = PgQuery.from(try conn.query(sql.EXISTS_SECRET_IN_PRIMARY_WORKSPACE, .{ tenant_id, secret_ref }));
     defer q.deinit();
     return (try q.next()) != null;

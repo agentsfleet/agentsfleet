@@ -16,7 +16,6 @@ const logging = @import("log");
 const bounded_fetch = @import("../bounded_fetch.zig");
 const ec = @import("../../../../errors/error_registry.zig");
 const vault = @import("../../../../state/vault.zig");
-const credential_key = @import("../../../../fleet_runtime/credential_key.zig");
 const PgQuery = @import("../../../../db/pg_query.zig").PgQuery;
 const spec = @import("spec.zig");
 
@@ -127,15 +126,13 @@ fn loadRequestJson(alloc: std.mem.Allocator, conn: *pg.Conn, fleet_id: []const u
     return try std.json.parseFromSlice(std.json.Value, alloc, json, .{});
 }
 
-/// Resolve the per-install bot token from the `(workspace_id,'fleet:slack')`
+/// Resolve the per-install bot token from the `(workspace_id,'slack')`
 /// vault handle callback.zig wrote (RULE VLT). Caller owns the returned token.
 /// `pub` so the mention ingress (`events.zig`) pre-loads the same token for the
-/// thread re-read from the one site that reads the `fleet:slack` handle
+/// thread re-read from the one site that reads the `slack` handle
 /// (RULE NDC — no second loader).
 pub fn loadBotToken(alloc: std.mem.Allocator, conn: *pg.Conn, workspace_id: []const u8) ![]const u8 {
-    const key = try credential_key.allocKeyName(alloc, spec.PROVIDER); // "fleet:slack"
-    defer alloc.free(key);
-    var parsed = try vault.loadJson(alloc, conn, workspace_id, key);
+    var parsed = try vault.loadJson(alloc, conn, workspace_id, spec.PROVIDER);
     defer parsed.deinit();
     // Guard the object variant locally rather than relying on loadJson's shape
     // check (mirrors loadSigningSecret / loadAppCreds): loadBotToken runs on the

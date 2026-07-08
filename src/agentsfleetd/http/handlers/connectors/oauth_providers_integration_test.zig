@@ -10,7 +10,6 @@ const harness_mod = @import("../../test_harness.zig");
 const test_port = @import("../../test_port.zig");
 const test_fixtures = @import("../../../db/test_fixtures.zig");
 const vault = @import("../../../state/vault.zig");
-const credential_key = @import("../../../fleet_runtime/credential_key.zig");
 const oauth2 = @import("oauth2.zig");
 const ec = @import("../../../errors/error_registry.zig");
 const zoho_spec = @import("zoho/spec.zig");
@@ -121,7 +120,7 @@ fn seedFixtures(alloc: std.mem.Allocator, conn: *pg.Conn, provider: []const u8) 
     try test_fixtures.seedTenantById(conn, TENANT_ID, TENANT_NAME);
     try test_fixtures.seedWorkspaceWithTenant(conn, ADMIN_WS, TENANT_ID);
     try test_fixtures.seedWorkspaceWithTenant(conn, TARGET_WS, TENANT_ID);
-    deleteFleetHandle(alloc, conn, TARGET_WS, provider);
+    deleteFleetHandle(conn, TARGET_WS, provider);
     try seedAppCreds(alloc, conn, provider);
 }
 
@@ -135,10 +134,8 @@ fn seedAppCreds(alloc: std.mem.Allocator, conn: *pg.Conn, provider: []const u8) 
     try test_fixtures.storeVaultJson(alloc, conn, ADMIN_WS, key, .{ .object = obj });
 }
 
-fn deleteFleetHandle(alloc: std.mem.Allocator, conn: *pg.Conn, ws: []const u8, provider: []const u8) void {
-    const key = credential_key.allocKeyName(alloc, provider) catch return;
-    defer alloc.free(key);
-    _ = vault.deleteCredential(conn, ws, key) catch |e| std.log.warn("oauth provider cleanup ignored: {s}", .{@errorName(e)});
+fn deleteFleetHandle(conn: *pg.Conn, ws: []const u8, provider: []const u8) void {
+    _ = vault.deleteCredential(conn, ws, provider) catch |e| std.log.warn("oauth provider cleanup ignored: {s}", .{@errorName(e)});
 }
 
 fn driveCallback(h: *TestHarness, alloc: std.mem.Allocator, flow: oauth2.Spec, provider: []const u8, token_url: []const u8) !void {
@@ -168,9 +165,7 @@ fn driveCallbackWithLocation(h: *TestHarness, alloc: std.mem.Allocator, flow: oa
 }
 
 fn loadHandle(alloc: std.mem.Allocator, conn: *pg.Conn, provider: []const u8) !std.json.Parsed(std.json.Value) {
-    const key = try credential_key.allocKeyName(alloc, provider);
-    defer alloc.free(key);
-    return vault.loadJson(alloc, conn, TARGET_WS, key);
+    return vault.loadJson(alloc, conn, TARGET_WS, provider);
 }
 
 test "test_zoho_callback_vaults_refresh_handle" {

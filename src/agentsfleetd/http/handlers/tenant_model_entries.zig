@@ -108,7 +108,7 @@ pub fn innerCreateModelEntry(hx: Hx, req: *httpz.Request) void {
     };
     defer hx.ctx.pool.release(conn);
 
-    const exists = entries_state.secretExistsForTenant(hx.alloc, conn, tenant_id, input.secret_ref) catch {
+    const exists = entries_state.secretExistsForTenant(conn, tenant_id, input.secret_ref) catch {
         common.internalDbError(hx.res, hx.req_id);
         return;
     };

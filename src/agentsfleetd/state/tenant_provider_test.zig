@@ -11,7 +11,6 @@ const tenant_provider = @import("tenant_provider.zig");
 const crypto_primitives = @import("../secrets/crypto_primitives.zig");
 const base = @import("../db/test_fixtures.zig");
 const uc1 = @import("../db/test_fixtures_uc1.zig");
-const credential_key = @import("../fleet_runtime/credential_key.zig");
 
 /// Shared test allocator for tenant provider fixture files.
 pub const ALLOC = std.testing.allocator;
@@ -109,9 +108,7 @@ pub fn seedFleetCredential(
     api_key: []const u8,
     model: []const u8,
 ) !void {
-    const key_name = try credential_key.allocKeyName(alloc, name);
-    defer alloc.free(key_name);
-    try seedSelfManagedCredential(conn, alloc, ws_id, key_name, provider, api_key, model);
+    try seedSelfManagedCredential(conn, alloc, ws_id, name, provider, api_key, model);
 }
 
 // ── base_url validation (pure — no DB) ──────────────────────────────────────

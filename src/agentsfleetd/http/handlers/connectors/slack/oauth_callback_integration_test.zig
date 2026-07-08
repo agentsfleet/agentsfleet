@@ -19,7 +19,6 @@ const test_port = @import("../../../test_port.zig");
 const PgQuery = @import("../../../../db/pg_query.zig").PgQuery;
 const test_fixtures = @import("../../../../db/test_fixtures.zig");
 const vault = @import("../../../../state/vault.zig");
-const credential_key = @import("../../../../fleet_runtime/credential_key.zig");
 const ec = @import("../../../../errors/error_registry.zig");
 const oauth2 = @import("../oauth2.zig");
 const spec = @import("spec.zig");
@@ -126,14 +125,12 @@ fn seedSlackAppCreds(alloc: std.mem.Allocator, conn: *pg.Conn) !void {
 
 // Deterministic slate regardless of a prior (possibly failed) run — the install
 // upsert + vault store both key on ids we own here.
-fn preClean(alloc: std.mem.Allocator, conn: *pg.Conn) void {
+fn preClean(conn: *pg.Conn) void {
     _ = conn.exec(
         "DELETE FROM core.connector_installs WHERE provider = $1 AND external_account_id = $2",
         .{ spec.PROVIDER, TEAM_ID },
     ) catch |e| std.log.warn("preclean connector_installs ignored: {s}", .{@errorName(e)});
-    const key = credential_key.allocKeyName(alloc, spec.PROVIDER) catch return;
-    defer alloc.free(key);
-    _ = vault.deleteCredential(conn, TARGET_WS, key) catch |e| std.log.warn("preclean vault ignored: {s}", .{@errorName(e)});
+    _ = vault.deleteCredential(conn, TARGET_WS, spec.PROVIDER) catch |e| std.log.warn("preclean vault ignored: {s}", .{@errorName(e)});
 }
 
 test "integration: slack oauth callback persists install + vaults token (Dim 1.1)" {
@@ -156,7 +153,7 @@ test "integration: slack oauth callback persists install + vaults token (Dim 1.1
     try test_fixtures.seedTenantById(conn, TENANT_ID, TENANT_NAME);
     try test_fixtures.seedWorkspaceWithTenant(conn, ADMIN_WS, TENANT_ID);
     try test_fixtures.seedWorkspaceWithTenant(conn, TARGET_WS, TENANT_ID);
-    preClean(alloc, conn);
+    preClean(conn);
     try seedSlackAppCreds(alloc, conn);
 
     // Loopback fake-Slack for the code-exchange.
@@ -199,10 +196,8 @@ test "integration: slack oauth callback persists install + vaults token (Dim 1.1
     try testing.expectEqual(@as(i32, 3), scope_count);
     try testing.expect((try q.next()) == null); // unique (provider, external_account_id)
 
-    // (2) The bot token lives ONLY in the (TARGET_WS, fleet:slack) vault handle.
-    const key = try credential_key.allocKeyName(alloc, spec.PROVIDER);
-    defer alloc.free(key);
-    var parsed = try vault.loadJson(alloc, conn, TARGET_WS, key);
+    // (2) The bot token lives ONLY in the (TARGET_WS, slack) vault handle.
+    var parsed = try vault.loadJson(alloc, conn, TARGET_WS, spec.PROVIDER);
     defer parsed.deinit();
     const handle = parsed.value.object;
     try testing.expectEqualStrings(BOT_TOKEN, handle.get("bot_token").?.string);
@@ -225,7 +220,7 @@ test "integration: slack oauth callback rejects a forged state (Dim 1.2)" {
     try test_fixtures.seedTenantById(conn, TENANT_ID, TENANT_NAME);
     try test_fixtures.seedWorkspaceWithTenant(conn, ADMIN_WS, TENANT_ID);
     try test_fixtures.seedWorkspaceWithTenant(conn, TARGET_WS, TENANT_ID);
-    preClean(alloc, conn);
+    preClean(conn);
     try seedSlackAppCreds(alloc, conn);
 
     h.ctx.approval_signing_secret = SIGNING_SECRET;
@@ -263,13 +258,11 @@ test "integration: slack oauth callback rejects a forged state (Dim 1.2)" {
         try testing.expectEqual(@as(i64, 0), try row.get(i64, 0));
     }
 
-    // …and no fleet:slack vault handle was stored for TARGET_WS.
-    const key = try credential_key.allocKeyName(alloc, spec.PROVIDER);
-    defer alloc.free(key);
+    // …and no slack vault handle was stored for TARGET_WS.
     {
         var vq = PgQuery.from(try conn.query(
             "SELECT count(*) FROM vault.secrets WHERE workspace_id = $1 AND key_name = $2",
-            .{ TARGET_WS, key },
+            .{ TARGET_WS, spec.PROVIDER },
         ));
         defer vq.deinit();
         const vrow = try vq.next() orelse return error.CountRowMissing;

@@ -68,7 +68,7 @@ pub fn insertVaultSecret(
     try crypto_store.store(alloc, conn, workspace_id, key_name, plaintext);
 }
 
-/// Insert a workspace credential at `fleet:<credential_name>` containing
+/// Insert a workspace credential at `<credential_name>` containing
 /// `{"webhook_secret": "<plaintext>"}`. Used by webhook integration tests
 /// where the resolver reads the credential via `vault.loadJson`.
 pub fn insertWebhookCredential(
@@ -88,9 +88,7 @@ pub fn insertWebhookCredential(
         .{},
     );
     defer alloc.free(json);
-    const key_name = try std.fmt.allocPrint(alloc, "fleet:{s}", .{credential_name});
-    defer alloc.free(key_name);
-    try crypto_store.store(alloc, conn, workspace_id, key_name, json);
+    try crypto_store.store(alloc, conn, workspace_id, credential_name, json);
 }
 
 /// Delete all rows this test created. Idempotent.

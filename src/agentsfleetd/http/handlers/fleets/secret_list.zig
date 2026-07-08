@@ -13,10 +13,6 @@ const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
 const vault = @import("../../../state/vault.zig");
 const secret_metadata = @import("secret_metadata.zig");
 
-/// `fleet:` storage-key prefix; stripped for the display name. Mirrors the
-/// LIKE pattern in the list query below.
-const S_AGENT = "fleet:";
-
 /// One wire row. `kind` is a static `@tagName` slice (never freed); `name` and
 /// the descriptors are heap-owned (see `freeRow`). No `api_key` field exists.
 pub const SecretListRow = struct {
@@ -28,8 +24,8 @@ pub const SecretListRow = struct {
     base_url: ?[]const u8 = null,
 };
 
-/// Pass-1 staging: the raw `fleet:`-prefixed key (needed to re-load the body in
-/// pass 2) + created_at. Heap-owned by the projection allocator, transient.
+/// Pass-1 staging: the key_name (needed to re-load the body in pass 2) +
+/// created_at. Heap-owned by the projection allocator, transient.
 const StagedRow = struct {
     raw_key: []const u8,
     created_at: i64,
@@ -47,7 +43,7 @@ pub fn fetchSecretListOnConn(conn: *pg.Conn, alloc: std.mem.Allocator, workspace
     {
         var q = PgQuery.from(try conn.query(
             \\SELECT key_name, created_at FROM vault.secrets
-            \\WHERE workspace_id = $1::uuid AND key_name LIKE 'fleet:%'
+            \\WHERE workspace_id = $1::uuid
             \\ORDER BY key_name ASC
         , .{workspace_id}));
         defer q.deinit();
@@ -73,8 +69,7 @@ pub fn fetchSecretListOnConn(conn: *pg.Conn, alloc: std.mem.Allocator, workspace
 }
 
 fn projectStagedRow(conn: *pg.Conn, alloc: std.mem.Allocator, workspace_id: []const u8, s: StagedRow) !SecretListRow {
-    const display = if (std.mem.startsWith(u8, s.raw_key, S_AGENT)) s.raw_key[S_AGENT.len..] else s.raw_key;
-    const name = try alloc.dupe(u8, display);
+    const name = try alloc.dupe(u8, s.raw_key);
     errdefer alloc.free(name);
 
     // Legacy/corrupt body → opaque custom_secret; the list still returns 200.
