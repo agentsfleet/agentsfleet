@@ -8,11 +8,24 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // vi.mock is hoisted above the static actions import, so the mock fns must be
 // created via vi.hoisted() to exist when the factories run.
-const { withTokenMock, setTenantProviderSelfManagedMock, resetTenantProviderMock, rotateSecretMock } = vi.hoisted(() => ({
+const {
+  withTokenMock,
+  setTenantProviderSelfManagedMock,
+  resetTenantProviderMock,
+  rotateSecretMock,
+  listTenantModelEntriesMock,
+  createTenantModelEntryMock,
+  updateTenantModelEntryMock,
+  deleteTenantModelEntryMock,
+} = vi.hoisted(() => ({
   withTokenMock: vi.fn(),
   setTenantProviderSelfManagedMock: vi.fn(),
   resetTenantProviderMock: vi.fn(),
   rotateSecretMock: vi.fn(),
+  listTenantModelEntriesMock: vi.fn(),
+  createTenantModelEntryMock: vi.fn(),
+  updateTenantModelEntryMock: vi.fn(),
+  deleteTenantModelEntryMock: vi.fn(),
 }));
 
 vi.mock("@/lib/actions/with-token", () => ({ withToken: withTokenMock }));
@@ -21,11 +34,21 @@ vi.mock("@/lib/api/tenant_provider", () => ({
   resetTenantProvider: resetTenantProviderMock,
 }));
 vi.mock("@/lib/api/secrets", () => ({ rotateSecret: rotateSecretMock }));
+vi.mock("@/lib/api/tenant_model_entries", () => ({
+  listTenantModelEntries: listTenantModelEntriesMock,
+  createTenantModelEntry: createTenantModelEntryMock,
+  updateTenantModelEntry: updateTenantModelEntryMock,
+  deleteTenantModelEntry: deleteTenantModelEntryMock,
+}));
 
 import {
   setProviderSelfManagedAction,
   resetProviderAction,
   rotateSecretAction,
+  listModelEntriesAction,
+  createModelEntryAction,
+  updateModelEntryAction,
+  deleteModelEntryAction,
 } from "@/app/(dashboard)/w/[workspaceId]/settings/models/actions";
 
 beforeEach(() => {
@@ -81,5 +104,49 @@ describe("provider server actions — thin forwarders", () => {
     expect(rotateSecretMock).toHaveBeenCalledWith("ws_1", "anthropic-prod", "sk-ant-rotated", "tok");
     expect(setTenantProviderSelfManagedMock).not.toHaveBeenCalled();
     expect(resetTenantProviderMock).not.toHaveBeenCalled();
+  });
+
+  it("listModelEntriesAction forwards only the token through withToken to the client", async () => {
+    const registry = { models: [], platform_default_available: true };
+    listTenantModelEntriesMock.mockResolvedValueOnce(registry);
+    const r = await listModelEntriesAction();
+    expect(r).toEqual({ ok: true, data: registry });
+    expect(listTenantModelEntriesMock).toHaveBeenCalledWith("tok");
+  });
+
+  it("createModelEntryAction forwards the body then token through withToken to the client", async () => {
+    const created = { id: "e1", model_id: "m1", secret_ref: "s1", created_at: 1 };
+    createTenantModelEntryMock.mockResolvedValueOnce(created);
+    const body = { model_id: "m1", secret_ref: "s1" };
+    const r = await createModelEntryAction(body);
+    expect(r).toEqual({ ok: true, data: created });
+    expect(createTenantModelEntryMock).toHaveBeenCalledWith(body, "tok");
+  });
+
+  it("updateModelEntryAction forwards (id, body) then token through withToken to the client", async () => {
+    const updated = { id: "e1", model_id: "m2", secret_ref: "s1", created_at: 1 };
+    updateTenantModelEntryMock.mockResolvedValueOnce(updated);
+    const r = await updateModelEntryAction("e1", { model_id: "m2" });
+    expect(r).toEqual({ ok: true, data: updated });
+    expect(updateTenantModelEntryMock).toHaveBeenCalledWith("e1", { model_id: "m2" }, "tok");
+  });
+
+  it("deleteModelEntryAction forwards (id) then token through withToken to the client", async () => {
+    deleteTenantModelEntryMock.mockResolvedValueOnce(undefined);
+    const r = await deleteModelEntryAction("e1");
+    expect(r).toEqual({ ok: true, data: undefined });
+    expect(deleteTenantModelEntryMock).toHaveBeenCalledWith("e1", "tok");
+  });
+
+  it("every registry action routes through withToken exactly once", async () => {
+    listTenantModelEntriesMock.mockResolvedValueOnce({ models: [], platform_default_available: true });
+    createTenantModelEntryMock.mockResolvedValueOnce({});
+    updateTenantModelEntryMock.mockResolvedValueOnce({});
+    deleteTenantModelEntryMock.mockResolvedValueOnce(undefined);
+    await listModelEntriesAction();
+    await createModelEntryAction({ model_id: "m1", secret_ref: "s1" });
+    await updateModelEntryAction("e1", { model_id: "m2" });
+    await deleteModelEntryAction("e1");
+    expect(withTokenMock).toHaveBeenCalledTimes(4);
   });
 });

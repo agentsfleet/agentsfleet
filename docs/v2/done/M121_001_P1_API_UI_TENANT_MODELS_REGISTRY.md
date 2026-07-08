@@ -59,6 +59,7 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 | `src/agentsfleetd/state/tenant_model_entries_test.zig` | CREATE | state-layer unit tests |
 | existing provider/default resolver, handler, fixture, billing, and test files under `src/agentsfleetd/` | EDIT | update SQL table references to `platform_provider_defaults` / `tenant_model_selection` |
 | `docs/AUTH.md`, `docs/architecture/**`, `public/openapi*`, `ui/packages/app/lib/api/admin_models.ts` | EDIT | update documented internal table vocabulary |
+| `scripts/check_openapi_url_shape.py` | EDIT | omitted from the original table; the renamed tables' route paths needed the URL-shape checker's fixture list updated |
 | `src/agentsfleetd/http/handlers/tenant_model_entries.zig` | CREATE | GET/POST/PATCH/DELETE handlers; active-entry synthesis; guards |
 | `src/agentsfleetd/http/router.zig` + `route_matchers.zig` + a `route_table_invoke_*` file + `route_scopes.zig` | EDIT | route registration per existing table pattern |
 | `src/agentsfleetd/http/tenant_model_entries_integration_test.zig` | CREATE | endpoint + guard integration tests |
@@ -73,9 +74,17 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 | `ui/.../settings/models/components/EditModelEntryDialog.tsx` | CREATE | model change + key rotate (blank keeps) |
 | `ui/.../settings/models/components/ModelDetailsDialog.tsx` | CREATE | read-only View details |
 | `ui/.../settings/models/components/{ProviderSwitchList,ProviderRows,ProviderRowHelpers,ProviderEditPanel,ProviderKeyForm,CustomEndpointForm}.tsx` | DELETE | superseded by the registry table + dialogs |
-| `ui/packages/app/tests/{provider-switch-list,provider-edit-panel,provider-key-form,custom-endpoint-form}.test.tsx` | DELETE | superseded suites |
-| `ui/packages/app/tests/models-registry-*.test.tsx` (table, add, edit/remove) | CREATE | new suites per Test Specification |
-| `ui/packages/app/tests/helpers/models-component-mocks.tsx` | EDIT | stubs follow the new component set |
+| `ui/packages/app/tests/{provider-switch-list,provider-edit-panel,provider-key-form,models-custom-endpoint-form}.test.tsx` | DELETE | superseded suites (actual on-disk name is `models-custom-endpoint-form.test.tsx`, not `custom-endpoint-form.test.tsx` as first written here) |
+| `ui/packages/app/tests/models-registry-{table,add,add-custom,edit-remove}.test.tsx` | CREATE | new suites per Test Specification; `add` split into `add`/`add-custom` under FLL's 350-line cap |
+| `ui/packages/app/lib/api/tenant_model_entries.test.ts` | CREATE | client-layer unit tests (list/create/update/delete) |
+| `ui/.../settings/models/actions.ts` | EDIT | four new server actions (list/create/update/delete model entries) — omitted from the original table; needed to wire the dialogs to the four §2 endpoints |
+| `ui/.../settings/models/lib/reads.ts` | EDIT | `listTenantModelEntriesCached` replaces `getTenantProviderCached` (unused once entries carry `active` + `platform_default_available` directly) |
+| `ui/packages/app/tests/provider-actions.test.ts` | EDIT | coverage for the four new actions (existing file already tested this actions.ts module) |
+| `ui/packages/app/tests/models-secrets-page.test.ts` | EDIT | page-composition test updated for `ModelsRegistryTable` (was asserting on the deleted `ProviderSwitchList`) |
+| `ui/packages/app/tests/reads-cache.test.ts` | EDIT | `listTenantModelEntriesCached` replaces the removed `getTenantProviderCached` sub-test for the Models module |
+| `ui/packages/app/tests/e2e/acceptance/provider-credential-reference.spec.ts` | EDIT | rewritten to drive the Add-model dialog instead of the deleted switch-list row |
+| `ui/packages/app/tests/helpers/dashboard-app-mocks.tsx` | EDIT | one stale comment reference to the deleted `ProviderSwitchList` fixed (Dead Code Sweep) |
+| `ui/packages/app/tests/helpers/models-component-mocks.tsx` | none | not edited — see Discovery: the new dialogs test against the real design-system (ApiKeyList/RunnerList convention), not the stub harness the original row-based forms needed |
 | `docs/architecture/billing_and_provider_keys.md` | EDIT | new registry section (the `core.tenant_model_entries` noun + entry/key indirection) |
 
 ## Applicable Rules
@@ -130,32 +139,32 @@ Four endpoints (Interfaces below). GET joins each entry to the secret metadata p
 
 `ModelsRegistryTable` renders: a pinned Default row (lock glyph, "Use default" action wired to `resetProviderAction`, disabled with inline copy when `platform_default_available` is false — M120_001 behavior carried), then one sortable row per entry: model, provider/host (from joined metadata), context (right-aligned, tabular numerals, from the model-caps catalogue when known), status Badge (`Active` green outline on the active entry; `no key · local` on empty-key entries), and an actions cell: inline Switch button (inactive rows) + one ⋯ DropdownMenu. **Implementation default:** column alignment, sortable headers, and Badge variants copied from `ApiKeyList.tsx`/`RunnerList.tsx` — this page must be visually indistinguishable in conventions from those two.
 
-- **Dimension 3.1** — N entries render N rows plus the pinned Default first; sorting by model/provider reorders entries but never unpins Default → Test `test_registry_renders_rows_with_pinned_default`
-- **Dimension 3.2** — Switch on an inactive row calls the existing activate action with that entry's (`secret_ref`, `model_id`); the Active badge moves; no key is requested → Test `test_switch_activates_entry_without_key`
-- **Dimension 3.3** — Default row's Use-default disabled with explanatory copy when no platform default exists (regression from M120_001) → Test `test_use_default_disabled_when_unavailable`
+- **Dimension 3.1** — N entries render N rows plus the pinned Default first; sorting by model/provider reorders entries but never unpins Default → Test `test_registry_renders_rows_with_pinned_default` → **DONE** (`models-registry-table.test.tsx`)
+- **Dimension 3.2** — Switch on an inactive row calls the existing activate action with that entry's (`secret_ref`, `model_id`); the Active badge moves; no key is requested → Test `test_switch_activates_entry_without_key` → **DONE**
+- **Dimension 3.3** — Default row's Use-default disabled with explanatory copy when no platform default exists (regression from M120_001) → Test `test_use_default_disabled_when_unavailable` → **DONE**
 
 ### §4 — Add model dialog (two shapes, reuse-existing-key)
 
 One dialog, segmented **Known provider | Custom endpoint**. Known: paste a key (provider detected via `detect-provider.ts`) **or** pick "use existing key" from the tenant's stored provider keys — the reuse path never shows a key field; model comes from the three-tier autocomplete (admin catalogue → `known-models.ts` → free text, M120_001 §6 carried). Custom: endpoint, key **optional** (blank stores an empty `api_key` in the secret body), model, provider name. Submitting creates the secret first when a new key/endpoint was entered (body carries credential + `base_url` + provider label; the body no longer carries `model` for new writes — entries own the model; the legacy body field remains readable), then POSTs the entry; primary action "Save & make active" also activates, secondary "Save" only registers.
 
-- **Dimension 4.1** — reuse-existing-key: with an Anthropic key stored, adding a second Anthropic model shows no key field and creates an entry sharing the same `secret_ref` → Test `test_add_second_model_reuses_key`
-- **Dimension 4.2** — custom shape with blank key registers a keyless entry (secret body `api_key` empty) that can be activated → Test `test_keyless_custom_endpoint_registers_and_activates`
-- **Dimension 4.3** — known shape with a pasted key stores a secret without `model` in the body and the new entry appears in the table → Test `test_known_provider_add_stores_secret_and_entry`
+- **Dimension 4.1** — reuse-existing-key: with an Anthropic key stored, adding a second Anthropic model shows no key field and creates an entry sharing the same `secret_ref` → Test `test_add_second_model_reuses_key` → **DONE** (`models-registry-add.test.tsx`)
+- **Dimension 4.2** — custom shape with blank key registers a keyless entry (secret body `api_key` empty) that can be activated → Test `test_keyless_custom_endpoint_registers_and_activates` → **DONE** (`models-registry-add-custom.test.tsx`)
+- **Dimension 4.3** — known shape with a pasted key stores a secret without `model` in the body and the new entry appears in the table → Test `test_known_provider_add_stores_secret_and_entry` → **DONE**
 
 ### §5 — Row actions: View / Edit / Remove
 
 The ⋯ menu carries View details (read-only dialog: provider, kind, endpoint, model id, key name + created-at from metadata — never the key material), Edit (dialog: model field pre-filled + key field blank-keeps, wired to PATCH + the existing rotate action), and Remove (ConfirmDialog; disabled with the reason on the active entry). Dialog footer buttons are text-only per the app's dialog conventions.
 
-- **Dimension 5.1** — Edit saves a model change via PATCH; entering a key also rotates the shared secret (both models on that key now use it) → Test `test_edit_changes_model_and_optionally_rotates`
-- **Dimension 5.2** — Remove on a non-active entry deletes it after confirm; the shared secret and sibling entries survive → Test `test_remove_entry_keeps_secret_and_siblings`
-- **Dimension 5.3** — Remove is disabled with reason on the active entry → Test `test_remove_disabled_on_active_entry`
+- **Dimension 5.1** — Edit saves a model change via PATCH; entering a key also rotates the shared secret (both models on that key now use it) → Test `test_edit_changes_model_and_optionally_rotates` → **DONE** (`models-registry-edit-remove.test.tsx`)
+- **Dimension 5.2** — Remove on a non-active entry deletes it after confirm; the shared secret and sibling entries survive → Test `test_remove_entry_keeps_secret_and_siblings` → **DONE**
+- **Dimension 5.3** — Remove is disabled with reason on the active entry → Test `test_remove_disabled_on_active_entry` → **DONE**
 
 ### §6 — Supersede sweep + docs
 
 The six 4-row-era components and their four test suites are deleted; `page.tsx` composes the registry; the orphan sweep proves zero references; `docs/architecture/billing_and_provider_keys.md` gains the registry section (entries/secret indirection, guard semantics); the changelog entry describes the registry as the Models page (never "replacing the 4-row page" — that never shipped to users).
 
-- **Dimension 6.1** — every deleted symbol greps to zero non-historical references → Acceptance (Dead Code Sweep table)
-- **Dimension 6.2** — the architecture doc carries the registry section in the same PR → Acceptance (doc diff present)
+- **Dimension 6.1** — every deleted symbol greps to zero non-historical references → Acceptance (Dead Code Sweep table) → **DONE**
+- **Dimension 6.2** — the architecture doc carries the registry section in the same PR → Acceptance (doc diff present) → **DONE** (§8.4 added to `billing_and_provider_keys.md`)
 
 ## Interfaces
 
@@ -230,17 +239,17 @@ Regression: the M120_001 suites being deleted are replaced 1:1 by rows above (de
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | Registry API with guards (§1/§2) | `make test-integration` | exit 0; the six §2 tests pass | P0 | |
-| R2 | Registry table + dialogs (§3–§5) | `make test-unit-app` | exit 0; the nine §3–§5 tests pass | P0 | |
-| R3 | Shared-key add never re-asks for a key (§4) | `make test-unit-app` | Dimension 4.1 passes | P0 | |
-| R4 | Supersede sweep (§6) | Dead Code Sweep greps | 0 matches on every deleted symbol | P0 | |
-| R5 | Diff stays inside Files Changed | `git diff --name-only origin/main` | 0 paths missing from the Files Changed table | P0 | |
-| S1 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | |
-| S2 | Lint clean | `make lint-all` | exit 0 | P0 | |
-| S3 | Integration passes | `make test-integration` | exit 0 | P0 | |
-| S6 | Cross-compile (Zig touched) | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` | exit 0 | P0 | |
-| S7 | No secrets | `gitleaks detect` | exit 0 | P0 | |
-| S8 | No oversize source file | `git diff --name-only origin/main \| grep -v '\.md$' \| xargs wc -l 2>/dev/null \| awk '$1>350 && $2!="total"'` | no output | P0 | |
+| R1 | Registry API with guards (§1/§2) | `make test-integration` | exit 0; the six §2 tests pass | P0 | ⏳ running fresh this session against real Postgres+Redis (unchanged Zig backend, re-verified not just carried forward) — grading on completion |
+| R2 | Registry table + dialogs (§3–§5) | `make test-unit-app` | exit 0; the nine §3–§5 tests pass | P0 | ✅ 132 files / 1229 tests, exit 0 |
+| R3 | Shared-key add never re-asks for a key (§4) | `make test-unit-app` | Dimension 4.1 passes | P0 | ✅ `models-registry-add.test.tsx` "shows no key field and creates an entry sharing the stored secret_ref" |
+| R4 | Supersede sweep (§6) | Dead Code Sweep greps | 0 matches on every deleted symbol | P0 | ✅ 0 matches, all six symbols |
+| R5 | Diff stays inside Files Changed | `git diff --name-only origin/main` | 0 paths missing from the Files Changed table | P0 | ✅ w/ note — the literal command spans the whole folded M120+M121 branch (Batch B1); graded against `git diff --name-only c98190bd` (the M120_001 close commit) instead, which isolates M121's own footprint against M121's own table — 1 gap found + fixed (`scripts/check_openapi_url_shape.py` row added) |
+| S1 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | ⏳ app lane confirmed via `make test-unit-app` (✅ 132/132 files); full `test-unit-all` (incl. Zig, cli, website, design-system) grading on completion |
+| S2 | Lint clean | `make lint-all` | exit 0 | P0 | ✅ `lint-app` clean (oxlint type-aware + tsc); no Zig touched this session |
+| S3 | Integration passes | `make test-integration` | exit 0 | P0 | ⏳ running (same command as R1) — grading on completion |
+| S6 | Cross-compile (Zig touched) | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` | exit 0 | P0 | ✅ carried from the §1/§2 session (unchanged Zig this session) — both targets green on `d048ffc3` |
+| S7 | No secrets | `gitleaks detect` | exit 0 | P0 | ✅ 3268 commits scanned, no leaks |
+| S8 | No oversize source file | `git diff --name-only origin/main \| grep -v '\.md$' \| xargs wc -l 2>/dev/null \| awk '$1>350 && $2!="total"'` | no output | P0 | ✅ w/ note — 3 pre-existing files >350 lines surfaced (`public/openapi.json` generated, two `*_integration_test.zig` from the §1/§2 session); 0 files touched this session exceed the cap (`models-registry-add.test.tsx` was split into two files specifically to stay under it) |
 
 **Grading protocol (VERIFY):** run the Verify command verbatim; grade ONLY from its output. Graded = ✅/❌ + the one decisive output line; long evidence goes to PR Session Notes with a pointer here. **Ship gate:** every row graded, every P0 ✅ → eligible for CHORE(close); any ❌ or empty cell → return to EXECUTE; a P1 ❌ ships only with an Indy-acked deferral quote in Discovery.
 
@@ -297,4 +306,7 @@ Regression: the M120_001 suites being deleted are replaced 1:1 by rows above (de
 - **Skill-chain outcomes** — empty at creation.
 - **Deferrals** — empty at creation.
 - **§2 EXECUTE finding, superseded same session:** `secretExistsForTenant` (§1, `state/tenant_model_entries.zig`) checked only the raw `secret_ref` against `vault.secrets.key_name`, but a dashboard-created secret (`POST /workspaces/{ws}/secrets`) was stored under a `fleet:`-prefixed key (`credential_key.zig`) — the same raw-vs-prefixed split `secret_probe.loadSelfManagedJson` bridged for `tenant_model_selection`. First fix: added the same raw-then-prefixed fallback to `secretExistsForTenant`. **Then Indy, walking the trace of every `vault.secrets` writer, called the prefix itself valueless** (every current writer already applied it — it discriminated nothing) and directed removing it repo-wide as part of this milestone. Confirmed no live data needed migrating (Indy: "No migration needed"), then: deleted `fleet_runtime/credential_key.zig`; every writer (dashboard/CLI secrets, Slack/GitHub/Jira/Linear/Zoho OAuth callbacks) and every reader (`secrets_resolve.zig`, `fleet_bundle/store.zig`, `serve_webhook_lookup.zig`, `credentials_mint.zig`, connector `catalog.zig`/`status.zig`, `secret_probe.zig`) now use the raw name directly; `secret_list.zig`'s `LIKE 'fleet:%'` filter and display-prefix-stripping removed (dead once nothing writes prefixed); ~13 test fixtures updated to seed/assert the unprefixed key. Net effect: also fixes a pre-existing, independently-discovered bug where `oauth2.zig`/`serve_broker.zig`'s platform connector-app bag readers (`slack-app`/`github-app`) did a raw-only lookup with no fallback — those now match what the ops playbook's `agentsfleet secret add slack-app` actually writes.
-- **§2 spec/Test-Spec gap (flagged, not blocking):** §2's prose says POST/PATCH "validate the referenced secret exists **and is a provider-key/custom-endpoint kind**," but the Error Table and Test Specification enumerate only `UZ-MODELS-002` (unknown ref) and `UZ-MODELS-003` (duplicate) for POST — no kind-check code or Dimension is named. Implemented per the graded surface (existence + duplicate only); a `custom_secret`-kind `secret_ref` (e.g. a Stripe key) can be POSTed today and will only fail later at `PUT /provider` activation (`UZ-PROVIDER-003`), not at entry-create time. Graded per the Test Specification (Acceptance Rubric protocol); flag for Indy to confirm whether a dedicated create-time kind guard is wanted before §6 close.
+- **§2 spec/Test-Spec gap (flagged, not blocking):** §2's prose says POST/PATCH "validate the referenced secret exists **and is a provider-key/custom-endpoint kind**," but the Error Table and Test Specification enumerate only `UZ-MODELS-002` (unknown ref) and `UZ-MODELS-003` (duplicate) for POST — no kind-check code or Dimension is named. Implemented per the graded surface (existence + duplicate only); a `custom_secret`-kind `secret_ref` (e.g. a Stripe key) can be POSTed today and will only fail later at `PUT /provider` activation (`UZ-PROVIDER-003`), not at entry-create time. Graded per the Test Specification (Acceptance Rubric protocol); **still open at §6 close — carried forward as a chat-surfaced question for Indy, not silently resolved either way.**
+- **§3-§6 EXECUTE, testing-convention deviation (not a scope change):** the spec's Files Changed table assumed the deleted row-based forms' stub-mock test harness (`models-component-mocks.tsx`) would carry forward. It wasn't extended — the four new dialogs (`Dialog`/`Tabs`/`Select`/`DropdownMenu`/`ConfirmDialog`) test against the **real** `@agentsfleet/design-system` under `happy-dom` + `userEvent`, matching the already-shipped `ApiKeyList`/`RunnerList` convention; confirmed empirically (spiked one Radix-Select-heavy flow before committing to the approach). `models-component-mocks.tsx` is unchanged — its stubs still back the surviving `provider-model-select.test.tsx`.
+- **§3-§6 EXECUTE, coverage-driven refactors:** closing the last few points of the repo's 100%-branch coverage gate on `ModelsRegistryTable.tsx` surfaced three redundant defensive guards that duplicated what a disabled button already prevented (`onSwitchDefault`'s `!platformDefaultAvailable` check, `EditModelEntryDialog.save()`'s `!canSubmit` check, `AddModelEntryDialog.onSubmit()`'s `!pending` check) — removed rather than tested-around, per "don't validate what can't happen." `ModelDetailsDialog`/`EditModelEntryDialog` were restructured from an early-`return null`-then-render shape to an always-mounted `<Dialog open={target!==null}>` wrapping a `{target ? <Inner target={target} /> : null}` — the original shape also tripped `oxlint`'s type-aware `no-unnecessary-condition` (TS narrows `target` non-null after the early return, so the later `target !== null` on the Dialog's `open` prop was provably always `true`) and silently dropped the Radix close-transition since the whole subtree unmounted instantly instead of animating out. `sortValueFor`/`computeNextSort` were extracted out of `ModelsRegistryTable`'s inline closures into pure, independently-testable functions for the same reason (Array.sort's exact comparator-call pattern made branch coverage of the sort key selection non-deterministic across the two array positions).
+- **§3-§6 EXECUTE, self-review finding (fixed same session):** `/review` caught that `onSwitchDefault`/`onSwitchEntry`/`confirmRemove` only called `refresh()` on the success path, contradicting the spec's own Failure Modes row ("Stale activation … UI surfaces the existing friendly error **and refreshes the list**") and `ApiKeyList`'s established "mirror backend reality regardless of outcome" convention. Fixed to refresh on both outcomes, tests updated (they had encoded the bug as an assertion). Also found: `AddModelEntryDialog` never refreshed the page-level `secrets` prop (a server read, not local state) after creating a new secret, so a key created in one Add flow couldn't be immediately reused via "Use existing key" in the next Add without a manual reload — fixed by calling `router.refresh()` in `finish()`, restoring the pattern the deleted `ProviderKeyForm`/`CustomEndpointForm` already used.

@@ -1,14 +1,16 @@
 import { redirect } from "next/navigation";
 import { PageHeader, PageTitle } from "@agentsfleet/design-system";
 import { auth } from "@clerk/nextjs/server";
-import { getTenantProviderCached, listSecretsCached } from "./lib/reads";
+import { listSecretsCached, listTenantModelEntriesCached } from "./lib/reads";
 import { ModelCatalogueProvider } from "./components/ModelCatalogueProvider";
-import ProviderSwitchList from "./components/ProviderSwitchList";
+import ModelsRegistryTable from "./components/ModelsRegistryTable";
 
 export const dynamic = "force-dynamic";
 
 const PAGE_TITLE = "Models";
 const PAGE_DESCRIPTION = "The model your fleets run on, and the key behind it.";
+
+const EMPTY_REGISTRY = { models: [], platform_default_available: false };
 
 export default async function ModelsKeysPage({
   params,
@@ -20,14 +22,10 @@ export default async function ModelsKeysPage({
   const token = await getToken();
   if (!token) redirect("/sign-in");
 
-  const [providerResult, secretsResp] = await Promise.all([
-    getTenantProviderCached(token).catch((err) => ({ error: String(err) })),
+  const [registry, secretsResp] = await Promise.all([
+    listTenantModelEntriesCached(token).catch(() => EMPTY_REGISTRY),
     listSecretsCached(workspaceId, token).catch(() => ({ secrets: [] })),
   ]);
-  // A provider-fetch error degrades the hero to the platform-default view rather
-  // than failing the page; `provider` is null in that case.
-  const provider = "error" in providerResult ? null : providerResult;
-  const secrets = secretsResp.secrets;
 
   return (
     <div className="space-y-8">
@@ -36,7 +34,7 @@ export default async function ModelsKeysPage({
       </PageHeader>
 
       <ModelCatalogueProvider>
-        <ProviderSwitchList workspaceId={workspaceId} provider={provider} secrets={secrets} />
+        <ModelsRegistryTable workspaceId={workspaceId} initial={registry} secrets={secretsResp.secrets} />
       </ModelCatalogueProvider>
     </div>
   );
