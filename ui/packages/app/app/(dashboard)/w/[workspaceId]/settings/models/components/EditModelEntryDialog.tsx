@@ -25,6 +25,11 @@ type Props = {
   target: TenantModelEntry | null;
   onOpenChange: (open: boolean) => void;
   onSaved: () => void;
+  /** Refreshes the table without closing the dialog — see the modelChanged
+   * branch in `save()` below: the model rename can commit to the server
+   * before a later key-rotation step fails, and the row must not show the
+   * stale model_id if the user then cancels instead of retrying. */
+  onPartialSuccess: () => void;
 };
 
 const EDIT_MODEL_ACTION = "change the model";
@@ -40,11 +45,13 @@ function EditForm({
   target,
   onOpenChange,
   onSaved,
+  onPartialSuccess,
 }: {
   workspaceId: string;
   target: TenantModelEntry;
   onOpenChange: (open: boolean) => void;
   onSaved: () => void;
+  onPartialSuccess: () => void;
 }) {
   const uid = useId();
   const [model, setModel] = useState(target.model_id);
@@ -69,6 +76,10 @@ function EditForm({
           return;
         }
         captureModelChanged({ provider: target.provider ?? "", model: model.trim() });
+        // The rename already committed server-side — keep the table in sync
+        // even if the key rotation below fails and the user cancels instead
+        // of retrying, rather than showing the pre-edit model_id.
+        onPartialSuccess();
       }
       if (keyChanged) {
         const rotated = await rotateSecretAction(workspaceId, target.secret_ref, apiKey.trim());
@@ -123,12 +134,19 @@ function EditForm({
   );
 }
 
-export default function EditModelEntryDialog({ workspaceId, target, onOpenChange, onSaved }: Props) {
+export default function EditModelEntryDialog({ workspaceId, target, onOpenChange, onSaved, onPartialSuccess }: Props) {
   return (
     <Dialog open={target !== null} onOpenChange={onOpenChange}>
       <DialogContent>
         {target ? (
-          <EditForm key={target.id} workspaceId={workspaceId} target={target} onOpenChange={onOpenChange} onSaved={onSaved} />
+          <EditForm
+            key={target.id}
+            workspaceId={workspaceId}
+            target={target}
+            onOpenChange={onOpenChange}
+            onSaved={onSaved}
+            onPartialSuccess={onPartialSuccess}
+          />
         ) : null}
       </DialogContent>
     </Dialog>

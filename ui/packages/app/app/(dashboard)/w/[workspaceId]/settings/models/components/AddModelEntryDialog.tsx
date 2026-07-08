@@ -44,6 +44,7 @@ const SHAPE = { known: "known", custom: "custom" } as const;
 const REGISTER_ACTION = "register the model entry";
 const ACTIVATE_ACTION = "activate this model";
 const STORE_ACTION = "store the credential";
+const STALE_KEY_ERROR = "That stored key is no longer available — pick another.";
 
 export default function AddModelEntryDialog({
   workspaceId,
@@ -74,6 +75,16 @@ export default function AddModelEntryDialog({
   const [customModel, setCustomModel] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Gates both Save buttons below — without it, a click on an incomplete
+  // form silently no-ops (no error, no feedback) since submitKnown/
+  // submitCustom validate internally. Matches EditModelEntryDialog's
+  // `disabled={pending || !canSubmit}` convention.
+  const canSubmitKnown = reuseMode
+    ? reuseSecretName.trim() !== "" && model.trim() !== ""
+    : keyName.trim() !== "" && provider.trim() !== "" && apiKey.trim() !== "" && model.trim() !== "";
+  const canSubmitCustom = customName.trim() !== "" && customBaseUrl.trim() !== "" && customModel.trim() !== "";
+  const canSubmit = shape === SHAPE.known ? canSubmitKnown : canSubmitCustom;
 
   function reset() {
     setShape(SHAPE.known);
@@ -111,6 +122,13 @@ export default function AddModelEntryDialog({
       setError(presentErrorString({ errorCode: created.errorCode, message: created.error, action: REGISTER_ACTION }));
       return false;
     }
+    // The entry is committed server-side from here on regardless of what
+    // activation does next — refresh now so a retry after an activation
+    // failure never re-POSTs the same (model_id, secret_ref) the user never
+    // saw succeed (that retry would 409 UZ-MODELS-003 "duplicate entry"),
+    // and the table isn't stale if the user cancels instead of retrying.
+    onCreated();
+    router.refresh();
     if (activate) {
       const activated = await setProviderSelfManagedAction({ secret_ref: secretRef, model: modelId });
       if (!activated.ok) {
@@ -124,13 +142,18 @@ export default function AddModelEntryDialog({
 
   async function submitKnown(activate: boolean) {
     if (reuseMode) {
+      // canSubmitKnown only guarantees reuseSecretName is non-empty, not that
+      // it still names a stored key — router.refresh() after a create can
+      // change `secrets` (and so providerKeys) out from under an open dialog.
       const secret = providerKeys.find((k) => k.name === reuseSecretName);
-      if (!secret || model.trim() === "") return;
+      if (!secret) {
+        setError(STALE_KEY_ERROR);
+        return;
+      }
       if (await doCreateEntry(secret.name, model.trim(), activate)) finish();
       return;
     }
     const name = keyName.trim();
-    if (name === "" || provider.trim() === "" || apiKey.trim() === "" || model.trim() === "") return;
     const created = await createSecretAction(workspaceId, {
       name,
       data: { [SECRET_FIELD.provider]: provider.trim(), [SECRET_FIELD.apiKey]: apiKey.trim() },
@@ -146,7 +169,6 @@ export default function AddModelEntryDialog({
   async function submitCustom(activate: boolean) {
     const name = customName.trim();
     const modelId = customModel.trim();
-    if (name === "" || customBaseUrl.trim() === "" || modelId === "") return;
     if (!isHttpsUrl(customBaseUrl)) {
       setError(BASE_URL_NOT_HTTPS);
       return;
@@ -166,15 +188,11 @@ export default function AddModelEntryDialog({
     if (await doCreateEntry(name, modelId, activate)) finish();
   }
 
+  // Only reached after doCreateEntry() returns true — the refresh (entries +
+  // secrets) already happened there, unconditionally, the moment the entry
+  // itself committed. This just closes the dialog on full success.
   function finish() {
-    onCreated();
     handleOpenChange(false);
-    // The registry re-fetch above (onCreated → refresh()) covers entries, but
-    // the tenant's stored-secrets list is a page-level server read (page.tsx's
-    // `secrets` prop, passed straight through — never copied into local
-    // state). A secret created just now (New key / Custom endpoint) needs
-    // this to appear in "Use existing key" on the next Add without a reload.
-    router.refresh();
   }
 
   // Only wired to the Save / Save & make active buttons below, both
@@ -287,11 +305,11 @@ export default function AddModelEntryDialog({
         </Tabs>
         {error ? <Alert variant="destructive" className="text-xs">{error}</Alert> : null}
         <DialogFooter>
-          <Button type="button" variant="outline" disabled={pending} onClick={() => void onSubmit(false)}>
+          <Button type="button" variant="outline" disabled={pending || !canSubmit} onClick={() => void onSubmit(false)}>
             {pending ? <Spinner size="sm" srLabel="Saving" /> : null}
             Save
           </Button>
-          <Button type="button" disabled={pending} onClick={() => void onSubmit(true)}>
+          <Button type="button" disabled={pending || !canSubmit} onClick={() => void onSubmit(true)}>
             {pending ? <Spinner size="sm" srLabel="Saving" /> : null}
             Save & make active
           </Button>
