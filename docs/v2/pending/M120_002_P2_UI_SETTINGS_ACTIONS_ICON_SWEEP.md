@@ -170,7 +170,7 @@ No files deleted — `EditModelDialog.tsx` is new; everything else is edited in 
 
 ## Out of Scope
 
-- Any change to `core.model_library`/`platform_llm_keys`'s data model, validation rules, or the resolve path — all backend behavior here already exists and is reused as-is.
+- Any change to `core.model_library`/`platform_provider_defaults`'s data model, validation rules, or the resolve path — all backend behavior here already exists and is reused as-is.
 - The tenant-facing Models page redesign (Default row semantics, delete-stale-key, platform-default-availability fix) — tracked separately as M120_001.
 
 ---

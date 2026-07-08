@@ -12,7 +12,7 @@
 //! Any failure rolls back. Idempotent on `oidc_subject` — replayed webhooks
 //! return existing rows without re-inserting. Platform LLM keys + provider
 //! attachment are deliberately out of scope; resolver reads
-//! core.platform_llm_keys at LLM-call time (runtime-only).
+//! core.platform_provider_defaults at LLM-call time (runtime-only).
 
 const std = @import("std");
 const clock = @import("common").clock;

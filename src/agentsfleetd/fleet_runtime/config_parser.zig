@@ -256,7 +256,7 @@ fn parseSkillRef(
 }
 
 /// Opaque pass-through. Empty string → null (self-managed sentinel; the runner
-/// resolves the model from `tenant_providers` at trigger time).
+/// resolves the model from `tenant_model_selection` at trigger time).
 fn parseModelField(
     alloc: Allocator,
     runtime: std.json.ObjectMap,

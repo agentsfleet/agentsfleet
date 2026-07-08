@@ -2,13 +2,13 @@
 //! webhook (`identity_events_clerk.runDelete`).
 //!
 //! Deletes the subject's tenant and every dependent row in foreign-key order.
-//! `core.fleets`, `vault.secrets`, `core.platform_llm_keys`,
+//! `core.fleets`, `vault.secrets`, `core.platform_provider_defaults`,
 //! `core.fleet_sessions`, and `core.fleet_approval_gates` reference
 //! `workspaces`/`fleets` WITHOUT `ON DELETE CASCADE`, so the workspace and
 //! tenant deletes hit an FK violation — 500 the webhook and make Clerk retry
 //! forever — unless their children go first. Cascade-backed children
 //! (fleet_events, integration_grants, fleet_keys, api_keys, tenant_billing,
-//! tenant_providers) drop with their parent.
+//! tenant_model_selection) drop with their parent.
 //!
 //! Per-fleet Redis event streams (`fleet:{id}:events`) are left to expire via
 //! their TTL — the same fallback the per-fleet delete path documents when
@@ -53,7 +53,7 @@ const PURGE_STATEMENTS = [_][]const u8{
     "DELETE FROM core.fleet_sessions WHERE fleet_id IN " ++ AGENTS_OF_TENANT,
     "DELETE FROM core.fleets WHERE workspace_id IN " ++ WS_OF_TENANT,
     "DELETE FROM vault.secrets WHERE workspace_id IN " ++ WS_OF_TENANT,
-    "DELETE FROM core.platform_llm_keys WHERE source_workspace_id IN " ++ WS_OF_TENANT,
+    "DELETE FROM core.platform_provider_defaults WHERE source_workspace_id IN " ++ WS_OF_TENANT,
     "DELETE FROM core.workspaces WHERE tenant_id = $1::uuid",
     "DELETE FROM core.memberships WHERE tenant_id = $1::uuid",
     "DELETE FROM core.users WHERE tenant_id = $1::uuid",

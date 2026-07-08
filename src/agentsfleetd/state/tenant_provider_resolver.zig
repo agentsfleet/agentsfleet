@@ -1,7 +1,7 @@
 //! Read-side internals for tenant_provider.zig.
 //!
 //! Holds the ProviderRow / PlatformKey record types, the SELECT helpers that
-//! load them, and the resolve* helpers that turn a tenant_providers row (or its
+//! load them, and the resolve* helpers that turn a tenant_model_selection row (or its
 //! absence) into a fully-populated ResolvedProvider including the api_key
 //! fetched from vault. The self-managed credential probe + endpoint SSRF gate
 //! live in secret_probe.zig (split out per RULE FLL).
@@ -66,7 +66,7 @@ pub fn loadProviderRow(
 ) !?ProviderRow {
     var q = PgQuery.from(try conn.query(
         \\SELECT mode, provider, model, context_cap_tokens, secret_ref
-        \\FROM core.tenant_providers
+        \\FROM core.tenant_model_selection
         \\WHERE tenant_id = $1::uuid
     , .{tenant_id}));
     defer q.deinit();
@@ -106,7 +106,7 @@ pub fn loadActivePlatformKey(alloc: std.mem.Allocator, conn: *pg.Conn) !Platform
     // integration test seeds its own active row.
     var q = PgQuery.from(try conn.query(
         \\SELECT provider, source_workspace_id::text, model, base_url, context_cap_tokens
-        \\FROM core.platform_llm_keys
+        \\FROM core.platform_provider_defaults
         \\WHERE active = true
         \\ORDER BY updated_at DESC, id DESC
         \\LIMIT 1
@@ -157,9 +157,9 @@ fn loadVaultApiKey(
     return alloc.dupe(u8, api_key_v.string);
 }
 
-/// Resolve the platform default entirely from the active core.platform_llm_keys
+/// Resolve the platform default entirely from the active core.platform_provider_defaults
 /// row — provider, model, context cap, and base_url all come from there, not from
-/// the tenant's own tenant_providers snapshot or a compile-time constant. This is
+/// the tenant's own tenant_model_selection snapshot or a compile-time constant. This is
 /// what makes a default change propagate per-lease (next event re-resolves): an
 /// admin repointing the default in the dashboard takes effect for every
 /// platform-mode tenant without a redeploy or a per-tenant write.

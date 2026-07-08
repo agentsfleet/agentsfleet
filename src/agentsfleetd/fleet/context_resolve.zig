@@ -70,7 +70,7 @@ pub fn resolveContextBudget(
     if (config_model) |m| ctx.model = m;
 
     // Lease-time tenant-provider overlay: a sentinel (zero/empty) frontmatter
-    // field inherits the value the control plane resolved into tenant_providers;
+    // field inherits the value the control plane resolved into tenant_model_selection;
     // a real frontmatter value is left untouched. Must precede applyDefaults so
     // an overlaid cap feeds the auto `tool_window` tiering.
     if (ctx.context_cap_tokens == 0 and overlay_cap != 0) ctx.context_cap_tokens = overlay_cap;
@@ -125,7 +125,7 @@ const LARGE_CAP_TOKENS: u32 = 1_000_000;
 
 test "resolveContextBudget: sentinel cap+model inherit from the resolved provider" {
     // self-managed sentinel path: frontmatter pins nothing, so both fields
-    // overlay from tenant_providers, and the overlaid cap drives the tiering.
+    // overlay from tenant_model_selection, and the overlaid cap drives the tiering.
     const ctx = resolveContextBudget(.{
         .context_cap_tokens = 0,
         .tool_window = 0,

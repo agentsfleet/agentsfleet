@@ -15,12 +15,12 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Date:** Jul 07, 2026
 **Status:** IN_PROGRESS
 **Priority:** P1 — the shipped 4-slot page cannot represent a real tenant's model set (3 Anthropic models, the same model on two hosts, a keyless local endpoint); Indy hit this on the live page.
-**Categories:** API, UI
+**Categories:** API, User Interface (UI)
 **Batch:** B1 — folds into the M120_001 branch per Indy's fold-in call; no parallel workstream.
 **Branch:** feat/m121-models-registry
 **Test Baseline:** unit=2380 integration=258
 **Depends on:** M120_001 (DONE — supplies `platform_default_available`, the delete-guard shape, and the model-autocomplete tiers this spec reuses)
-**Provenance:** human-directed, LLM-drafted (Fable 5, Jul 07, 2026) — pivot decided after Indy exercised the live 4-row page with a 9-model list; visual/interaction shape settled by a 3-round design shotgun (round 3, Variant C: operations-table).
+**Provenance:** human-directed, Large Language Model (LLM)-drafted (Fable 5, Jul 07, 2026) — pivot decided after Indy exercised the live 4-row page with a 9-model list; visual/interaction shape settled by a 3-round design shotgun (round 3, Variant C: operations-table).
 **Canonical architecture:** `docs/architecture/billing_and_provider_keys.md` §8 (credential model, api_key visibility boundary) — this spec ADDS the tenant model registry noun; the doc gains a matching section at CHORE(close).
 
 ---
@@ -29,8 +29,9 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 
 **Goal (testable):** `GET /v1/tenants/me/models` returns one entry per configured model where two entries can reference the same stored key; the Models page renders those entries in a sortable DataTable with the platform Default pinned first; Switch activates any entry without re-entering a key; deleting the active entry — or a vault secret still referenced by entries — is refused with a named error.
 **Problem:** the 4 fixed slots hide every Anthropic key after the first, pile all non-Anthropic providers into one "Other provider" bucket, and cannot distinguish the same model on two hosts (GLM 5.2 on fireworks.ai vs wafers.ai). A tenant running many models has no registry of what is configured, and adding a second model for an already-keyed provider forces re-pasting the key.
-**Solution summary:** a new `core.tenant_models` table stores one row per configured model entry `(model_id, secret_ref)`; the vault secret keeps the credential (and `base_url`/provider label in its body) while entries carry the model — so N models share one key. Four tenant-scoped endpoints expose list/create/edit/delete with guards. The page becomes a DataTable (Runners/API-Keys conventions): pinned Default row, one row per entry, inline Switch, one ⋯ menu per row (View details / Edit / Remove as dialogs), and an Add-model dialog with a Known provider / Custom endpoint toggle plus a reuse-existing-key path.
+**Solution summary:** a new `core.tenant_model_entries` table stores one row per configured model entry `(model_id, secret_ref)`; the vault secret keeps the credential (and `base_url`/provider label in its body) while entries carry the model — so N models share one key. Four tenant-scoped endpoints expose list/create/edit/delete with guards. The page becomes a DataTable (Runners/API-Keys conventions): pinned Default row, one row per entry, inline Switch, one ⋯ menu per row (View details / Edit / Remove as dialogs), and an Add-model dialog with a Known provider / Custom endpoint toggle plus a reuse-existing-key path.
 
+<!-- Pull Request (PR) expansion for the template-required heading below. -->
 ## PR Intent & comprehension handshake
 
 - **PR title (eventual):** Models page: many-model registry — entries share stored keys, DataTable UI
@@ -39,7 +40,7 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 
 ## Implementing agent — read these first
 
-1. `schema/024_core_tenant_fleet_library.sql` + `docs/SCHEMA_CONVENTIONS.md` — the nearest per-tenant registry table (tenant rows referencing a library); mirror its key/constraint/teardown conventions for `core.tenant_models`.
+1. `schema/024_core_tenant_fleet_library.sql` + `docs/SCHEMA_CONVENTIONS.md` — the nearest per-tenant registry table (tenant rows referencing a library); mirror its key/constraint/teardown conventions for `core.tenant_model_entries`.
 2. `src/agentsfleetd/http/handlers/tenant_provider.zig` — the tenant-scoped handler to mirror (auth, tenant resolution, `readProviderView`, `platform_default_available`); the new handler sits beside it and reuses its resolver plumbing.
 3. `src/agentsfleetd/http/handlers/fleets/secret_metadata.zig` — the decrypt-at-read metadata projection; the models list joins entries to this projection for provider/base_url/kind display without ever exposing `api_key`.
 4. `ui/packages/app/app/(dashboard)/w/[workspaceId]/settings/api-keys/components/ApiKeyList.tsx` and `.../admin/runners/components/RunnerList.tsx` — the DataTable-with-sortable-headers + Badge + row-actions conventions this page must match verbatim.
@@ -49,17 +50,22 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 
 | File | Action | Why |
 |------|--------|-----|
-| `schema/027_core_tenant_models.sql` | CREATE | registry table: id, tenant id, `model_id`, `secret_ref`, created-at; unique (tenant, model, secret) |
+| `schema/004_platform_provider_defaults.sql` | RENAME/EDIT | rename `platform_llm_keys` to the clearer platform-default pointer noun |
+| `schema/016_tenant_model_selection.sql` | RENAME/EDIT | rename `tenant_providers` to the single active tenant selection noun |
+| `schema/027_core_tenant_model_entries.sql` | CREATE | registry table: id, tenant id, `model_id`, `secret_ref`, created-at; unique (tenant, model, secret) |
 | `schema/embed.zig` | EDIT | embed + migration-array entry for 027 |
-| `src/agentsfleetd/state/tenant_models.zig` | CREATE | list/create/update/delete queries + referenced-secret lookup |
-| `src/agentsfleetd/state/tenant_models_test.zig` | CREATE | state-layer unit tests |
-| `src/agentsfleetd/http/handlers/tenant_models.zig` | CREATE | GET/POST/PATCH/DELETE handlers; active-entry synthesis; guards |
+| `src/agentsfleetd/state/tenant_model_entries.zig` | CREATE | list/create/update/delete queries + referenced-secret lookup |
+| `src/agentsfleetd/state/tenant_model_entries/sql.zig` | CREATE | centralized SQL statements for the entry registry |
+| `src/agentsfleetd/state/tenant_model_entries_test.zig` | CREATE | state-layer unit tests |
+| existing provider/default resolver, handler, fixture, billing, and test files under `src/agentsfleetd/` | EDIT | update SQL table references to `platform_provider_defaults` / `tenant_model_selection` |
+| `docs/AUTH.md`, `docs/architecture/**`, `public/openapi*`, `ui/packages/app/lib/api/admin_models.ts` | EDIT | update documented internal table vocabulary |
+| `src/agentsfleetd/http/handlers/tenant_model_entries.zig` | CREATE | GET/POST/PATCH/DELETE handlers; active-entry synthesis; guards |
 | `src/agentsfleetd/http/router.zig` + `route_matchers.zig` + a `route_table_invoke_*` file + `route_scopes.zig` | EDIT | route registration per existing table pattern |
-| `src/agentsfleetd/http/tenant_models_integration_test.zig` | CREATE | endpoint + guard integration tests |
+| `src/agentsfleetd/http/tenant_model_entries_integration_test.zig` | CREATE | endpoint + guard integration tests |
 | `src/agentsfleetd/http/handlers/fleets/` secrets delete path | EDIT | extend the delete guard: refuse when entries reference the secret |
 | error registry source (where `UZ-PROVIDER-*` rows live) | EDIT | new `UZ-MODELS-001..003` rows |
 | `public/openapi/paths/` new `tenant-models.yaml` + `root.yaml` | CREATE/EDIT | document the four endpoints |
-| `ui/packages/app/lib/api/tenant_models.ts` | CREATE | typed client for the four endpoints |
+| `ui/packages/app/lib/api/tenant_model_entries.ts` | CREATE | typed client for the four endpoints |
 | `ui/packages/app/lib/types.ts` | EDIT | entry type + named constants |
 | `ui/.../settings/models/page.tsx` | EDIT | compose the registry table instead of the 4-row list |
 | `ui/.../settings/models/components/ModelsRegistryTable.tsx` | CREATE | DataTable: pinned Default, entry rows, Switch, ⋯ menu |
@@ -70,13 +76,13 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 | `ui/packages/app/tests/{provider-switch-list,provider-edit-panel,provider-key-form,custom-endpoint-form}.test.tsx` | DELETE | superseded suites |
 | `ui/packages/app/tests/models-registry-*.test.tsx` (table, add, edit/remove) | CREATE | new suites per Test Specification |
 | `ui/packages/app/tests/helpers/models-component-mocks.tsx` | EDIT | stubs follow the new component set |
-| `docs/architecture/billing_and_provider_keys.md` | EDIT | new registry section (the `core.tenant_models` noun + entry/key indirection) |
+| `docs/architecture/billing_and_provider_keys.md` | EDIT | new registry section (the `core.tenant_model_entries` noun + entry/key indirection) |
 
 ## Applicable Rules
 
 - **`docs/greptile-learnings/RULES.md`** — NDC/NLR (the six superseded components leave no dead code; their helpers `detect-provider.ts`, `known-models.ts`, `ProviderModelSelect.tsx`, `use-provider-action.ts`, `track.ts` are retained and re-wired); ORP (orphan sweep for every deleted symbol); UFS (endpoint paths, error codes, and dialog copy as named constants — `model_id`/`secret_ref` field names shared verbatim across Zig/TypeScript); FLL (every new file ≤350 lines; the table and dialogs are separate files by construction).
 - **`dispatch/write_zig.md`** — new state + handler files: `conn.query()`→`.drain()` discipline, tagged-union results, errdefer placement, cross-compile both linux targets.
-- **`docs/REST_API_DESIGN_GUIDELINES.md`** — four new routes on a plural noun (`/v1/tenants/me/models`), id in path for PATCH/DELETE, RFC 7807 error bodies with registry codes.
+- **`docs/REST_API_DESIGN_GUIDELINES.md`** — four new routes on a plural noun (`/v1/tenants/me/models`), id in path for PATCH/DELETE, Request for Comments (RFC) 7807 error bodies with registry codes.
 - **`docs/SCHEMA_CONVENTIONS.md`** — 027 file shape, pre-v2.0 teardown convention, embed + migration array in the same diff.
 - **`dispatch/write_ts_adhere_bun.md`** — all UI files; design-system primitives only (DataTable, Badge, DropdownMenu, Dialog, ConfirmDialog); no raw-HTML substitutes.
 
@@ -103,11 +109,12 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 
 ### §1 — Registry table + state layer
 
-`core.tenant_models` stores one row per configured model entry: tenant id, `model_id` (text, the provider-namespaced model string), `secret_ref` (text, NOT NULL — always names a vault secret; keyless endpoints store a secret whose body carries an empty `api_key`, keeping the activate/resolve chain uniform), created-at, and a unique constraint on (tenant, `model_id`, `secret_ref`) so the same model on two hosts is two rows while an exact duplicate is refused. Provider label, kind, and `base_url` are NOT columns — they live in the referenced secret's body and are joined at read via the metadata projection. **Implementation default:** key/id conventions mirror `024_core_tenant_fleet_library.sql`; no static strings in SQL (app-side constants only).
+`core.tenant_model_entries` stores one row per configured model entry: tenant id, `model_id` (text, the provider-namespaced model string), `secret_ref` (text, NOT NULL — always names a vault secret; keyless endpoints store a secret whose body carries an empty `api_key`, keeping the activate/resolve chain uniform), created-at, and a unique constraint on (tenant, `model_id`, `secret_ref`) so the same model on two hosts is two rows while an exact duplicate is refused. Provider label, kind, and `base_url` are NOT columns — they live in the referenced secret's body and are joined at read via the metadata projection. **Implementation default:** key/id conventions mirror `024_core_tenant_fleet_library.sql`; no static strings in SQL (app-side constants only).
 
-- **Dimension 1.1** — create + list round-trips entries for the owning tenant only → Test `test_tenant_models_create_list_tenant_scoped`
-- **Dimension 1.2** — inserting an exact duplicate (tenant, model, secret) fails with the constraint surfaced as a typed state error → Test `test_tenant_models_duplicate_rejected`
-- **Dimension 1.3** — update (model change) and delete round-trip; deleting a row leaves the referenced secret untouched → Test `test_tenant_models_update_delete_leaves_secret`
+- **Dimension 1.1** — create + list round-trips entries for the owning tenant only → Test `test_tenant_model_entries_create_list_tenant_scoped` → **DONE** (state test green)
+- **Dimension 1.2** — inserting an exact duplicate (tenant, model, secret) fails with the constraint surfaced as a typed state error → Test `test_tenant_model_entries_duplicate_rejected` → **DONE** (state test green)
+- **Dimension 1.3** — update (model change) and delete round-trip; deleting a row leaves the referenced secret untouched → Test `test_tenant_model_entries_update_delete_leaves_secret` → **DONE** (state test green)
+- **Dimension 1.4** — `secret_ref` lookup follows the tenant primary-workspace bridge only, not every workspace under the tenant → Test `test_tenant_model_entries_secret_lookup_uses_primary_workspace` → **DONE** (state test green)
 
 ### §2 — Tenant models endpoints + guards
 
@@ -198,9 +205,10 @@ Existing events are reused unchanged: `model_activated` on Switch, `secret_added
 
 | Dimension | Tier | Test | Asserts (concrete inputs → expected output) |
 |-----------|------|------|---------------------------------------------|
-| 1.1 | unit (Zig, DB) | `test_tenant_models_create_list_tenant_scoped` | two tenants insert entries → each lists only its own |
-| 1.2 | unit (Zig, DB) | `test_tenant_models_duplicate_rejected` | same (tenant, model, secret) twice → typed constraint error |
-| 1.3 | unit (Zig, DB) | `test_tenant_models_update_delete_leaves_secret` | delete entry → vault row still present |
+| 1.1 | unit (Zig, Database (DB)) | `test_tenant_model_entries_create_list_tenant_scoped` | two tenants insert entries → each lists only its own |
+| 1.2 | unit (Zig, DB) | `test_tenant_model_entries_duplicate_rejected` | same (tenant, model, secret) twice → typed constraint error |
+| 1.3 | unit (Zig, DB) | `test_tenant_model_entries_update_delete_leaves_secret` | delete entry → vault row still present |
+| 1.4 | unit (Zig, DB) | `test_tenant_model_entries_secret_lookup_uses_primary_workspace` | secret in secondary workspace only → not found; same name in primary workspace → found |
 | 2.1 | integration | `test_models_list_joins_metadata_and_active` | seeded key + 2 entries → provider/kind/base_url joined, exactly one `active:true`, no `api_key` key anywhere in body |
 | 2.2 | integration | `test_models_list_synthesizes_active_entry` | active selection, empty registry → first GET creates the entry; second GET creates nothing |
 | 2.3 | integration (negative) | `test_models_create_guards` | unknown ref → 404 UZ-MODELS-002; duplicate → 409 UZ-MODELS-003 |
@@ -268,10 +276,10 @@ Regression: the M120_001 suites being deleted are replaced 1:1 by rows above (de
 1. **Successful user moment** — Indy opens Models, sees all nine of his configured models (three Anthropic on one key, GLM 5.2 on two hosts, a keyless local Qwen) in one sortable table, clicks Switch on Fable 5, and the Active badge moves — no key pasted, no error.
 2. **Preserved user behaviour** — activate/reset/rotate actions and their events unchanged; Secrets page flows unchanged except the new referenced-secret refusal; Default row semantics (lock, gated Switch) carried from M120_001.
 3. **Optimal-way check** — a registry table is the direct representation of "many configured models"; the rejected alternative (keeping fixed slots with pickers) hides exactly the states Indy hit. Entries-reference-keys is the minimal schema that kills key re-pasting.
-4. **Rebuild-vs-iterate** — iterate on the credential/resolve substrate (M45/M87/M100 — untouched); rebuild the presentation layer only. The 4-row components are deleted, not adapted — adapters would preserve a shape the data model has outgrown.
-5. **What we build** — one table (`core.tenant_models`), four endpoints, one guard extension, one DataTable page, three dialogs, the sweep.
+4. **Rebuild-vs-iterate** — preserve the credential/resolve behaviour while renaming its database nouns for clarity; rebuild the Models presentation layer only. The 4-row components are deleted, not adapted — adapters would preserve a shape the data model has outgrown.
+5. **What we build** — clearer table names (`core.platform_provider_defaults`, `core.tenant_model_selection`), one new table (`core.tenant_model_entries`), four endpoints, one guard extension, one DataTable page, three dialogs, the sweep.
 6. **What we do NOT build** — no new activation path, no analytics events, no CLI, no admin-library changes, no runner changes.
-7. **Fit with existing features** — compounds with M100 platform-default resolve and M102 rotate; must not destabilize the billing posture switch (`core.tenant_providers` untouched structurally).
+7. **Fit with existing features** — compounds with M100 platform-default resolve and M102 rotate; must not destabilize the billing posture switch (`core.tenant_model_selection` renamed but behaviour-preserved).
 8. **Surface order** — User Interface (UI)-first with one additive API family; CLI explicitly deferred (Out of Scope) since the dashboard is where the many-model pain was hit.
 9. **Dashboard restraint** — no per-model health/latency indicators (no signal behind them yet); status column carries only Active and the keyless note, both facts the backend already knows.
 10. **Confused-user next step** — every refusal names its reason inline (active-entry, referenced-secret, duplicate); the empty registry state points at "+ Add model"; free-text model entry remains the escape hatch when autocomplete misses.
@@ -284,7 +292,7 @@ Regression: the M120_001 suites being deleted are replaced 1:1 by rows above (de
 
 ## Discovery (consult log)
 
-- **Consults** — Design shotgun round 2 (Codex, three variants) then round 3 (Fable 5: A accordion / B master-detail / C ops-table) after Indy rejected the 4-slot model against his real 9-model list. **Indy's pick (2026-07-07): Variant C** — "I will go with C … Just follow standard alignment data table and so on so this looks and appears like other pages." Sequencing: fold into this branch — Indy: "drive the registry version to done here, per Indys fold-in call … ensure its fixed in this PR. feel free to rename the branch of the PR and update the description of the PR when you push." Shared-key design: Indy chose "Proper: models reference a key" over paste-per-row. Numbering: Indy wrote "M121_004"; normalized to M121_001 (first workstream of a new milestone) — flagged in-session. Architecture consult: `billing_and_provider_keys.md` §8 read; the registry noun is new — the doc gains it at CHORE(close) (Dimension 6.2).
+- **Consults** — Design shotgun round 2 (Codex, three variants) then round 3 (Fable 5: A accordion / B master-detail / C ops-table) after Indy rejected the 4-slot model against his real 9-model list. **Indy's pick (2026-07-07): Variant C** — "I will go with C … Just follow standard alignment data table and so on so this looks and appears like other pages." Sequencing: fold into this branch — Indy: "drive the registry version to done here, per Indys fold-in call … ensure its fixed in this PR. feel free to rename the branch of the PR and update the description of the PR when you push." Shared-key design: Indy chose "Proper: models reference a key" over paste-per-row. Table vocabulary cleanup: Indy asked, "Can we make those thables better? platform_llm_keys, tenant_providers, tenant_models? This seems too many singular table platform_llm_keys, tenant_providers", then approved, "Yes do these cleanup in this workstream and same PR. No need to spin a new spec for the above table name change. Go ahead and change it,." Numbering: Indy wrote "M121_004"; normalized to M121_001 (first workstream of a new milestone) — flagged in-session. Architecture consult: `billing_and_provider_keys.md` §8 read; the registry noun is new — the doc gains it at CHORE(close) (Dimension 6.2).
 - **Metrics review** — no analytics/funnel playbook update required: no new events (table above).
 - **Skill-chain outcomes** — empty at creation.
 - **Deferrals** — empty at creation.

@@ -156,7 +156,7 @@ pub fn capFor(conn: anytype, provider: []const u8, model: []const u8) ?i32 {
     return row.get(i32, 0) catch null;
 }
 
-/// True iff the row `uid` is the (provider, model) the active platform_llm_keys
+/// True iff the row `uid` is the (provider, model) the active platform_provider_defaults
 /// row resolves to — the delete-guard that blocks removing the live default.
 /// Propagates the query error (matching this file's create/updateRates/remove
 /// siblings) so the caller fails CLOSED on a DB fault instead of collapsing a
@@ -165,7 +165,7 @@ pub fn isReferencedByActiveDefault(conn: anytype, uid: []const u8) !bool {
     var q = PgQuery.from(try conn.query(
         \\SELECT 1
         \\  FROM core.model_library mc
-        \\  JOIN core.platform_llm_keys plk
+        \\  JOIN core.platform_provider_defaults plk
         \\    ON plk.provider = mc.provider AND plk.model = mc.model_id AND plk.active = true
         \\ WHERE mc.uid = $1::uuid
         \\ LIMIT 1
@@ -177,33 +177,30 @@ pub fn isReferencedByActiveDefault(conn: anytype, uid: []const u8) !bool {
 /// Insert a new priced row. ON CONFLICT (provider, model_id) DO NOTHING, so the
 /// affected count is 1 on create and 0 on a duplicate (caller → 409).
 pub fn create(conn: anytype, row: NewRow, now_ms: i64) !?i64 {
-    return conn.exec(
-        "INSERT INTO " ++ TABLE ++
-            \\
-            \\  (uid, model_id, provider, context_cap_tokens,
-            \\   input_nanos_per_mtok, cached_input_nanos_per_mtok, output_nanos_per_mtok,
-            \\   created_at_ms, updated_at_ms)
-            \\VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $8)
-            \\ON CONFLICT (provider, model_id) DO NOTHING
+    return conn.exec("INSERT INTO " ++ TABLE ++
+        \\
+        \\  (uid, model_id, provider, context_cap_tokens,
+        \\   input_nanos_per_mtok, cached_input_nanos_per_mtok, output_nanos_per_mtok,
+        \\   created_at_ms, updated_at_ms)
+        \\VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $8)
+        \\ON CONFLICT (provider, model_id) DO NOTHING
     , .{
-        row.uid,                          row.model_id, row.provider, row.rates.context_cap_tokens,
-        row.rates.input_nanos_per_mtok,   row.rates.cached_input_nanos_per_mtok,
-        row.rates.output_nanos_per_mtok,  now_ms,
+        row.uid,                        row.model_id,                          row.provider,                    row.rates.context_cap_tokens,
+        row.rates.input_nanos_per_mtok, row.rates.cached_input_nanos_per_mtok, row.rates.output_nanos_per_mtok, now_ms,
     });
 }
 
 /// Update caps/rates of the row identified by uid. Affected 0 → no such uid
 /// (caller → 404).
 pub fn updateRates(conn: anytype, uid: []const u8, rates: Rates, now_ms: i64) !?i64 {
-    return conn.exec(
-        "UPDATE " ++ TABLE ++
-            \\
-            \\   SET context_cap_tokens = $2, input_nanos_per_mtok = $3,
-            \\       cached_input_nanos_per_mtok = $4, output_nanos_per_mtok = $5,
-            \\       updated_at_ms = $6
-            \\ WHERE uid = $1::uuid
+    return conn.exec("UPDATE " ++ TABLE ++
+        \\
+        \\   SET context_cap_tokens = $2, input_nanos_per_mtok = $3,
+        \\       cached_input_nanos_per_mtok = $4, output_nanos_per_mtok = $5,
+        \\       updated_at_ms = $6
+        \\ WHERE uid = $1::uuid
     , .{
-        uid, rates.context_cap_tokens, rates.input_nanos_per_mtok,
+        uid,                               rates.context_cap_tokens,    rates.input_nanos_per_mtok,
         rates.cached_input_nanos_per_mtok, rates.output_nanos_per_mtok, now_ms,
     });
 }
