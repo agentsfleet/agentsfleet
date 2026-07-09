@@ -379,6 +379,15 @@ test "integration: test_activate_custom_endpoint_without_model_rejected — empt
         try r.expectStatus(.bad_request);
         try std.testing.expect(r.bodyContains(error_codes.ERR_PROVIDER_MODEL_NOT_IN_CATALOGUE));
     }
+    {
+        // A whitespace-only model is rejected too — the cap gate trims before the
+        // blank check, so `" "` can't slip through `.len == 0` and persist.
+        const r = try (try (try h.put("/v1/tenants/me/provider").bearer(base.TOKEN_OPERATOR))
+            .json("{\"mode\":\"self_managed\",\"secret_ref\":\"gw-key\",\"model\":\"  \"}")).send();
+        defer r.deinit();
+        try r.expectStatus(.bad_request);
+        try std.testing.expect(r.bodyContains(error_codes.ERR_PROVIDER_MODEL_NOT_IN_CATALOGUE));
+    }
 
     const conn = try h.acquireConn();
     defer h.releaseConn(conn);
