@@ -41,7 +41,12 @@ export default function MakeDefaultDialog({
   const [baseUrl, setBaseUrl] = useState("");
   const [apiError, setApiError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
-  const canSave = apiKey !== "" && (!isCustom || baseUrl !== "");
+  // Trim before gating + sending: a whitespace-only key would otherwise pass
+  // `!== ""` and store an unusable credential, and a base URL pasted with
+  // surrounding spaces would pass here but fail backend URL validation.
+  const trimmedApiKey = apiKey.trim();
+  const trimmedBaseUrl = baseUrl.trim();
+  const canSave = trimmedApiKey !== "" && (!isCustom || trimmedBaseUrl !== "");
 
   function save() {
     setApiError(null);
@@ -49,8 +54,8 @@ export default function MakeDefaultDialog({
       const r = await setPlatformDefaultAction({
         provider: model.provider,
         model: model.model_id,
-        api_key: apiKey,
-        base_url: isCustom ? baseUrl : undefined,
+        api_key: trimmedApiKey,
+        base_url: isCustom ? trimmedBaseUrl : undefined,
       });
       if (!r.ok) {
         setApiError(presentErrorString({ errorCode: r.errorCode, message: r.error, action: "set the platform default" }));

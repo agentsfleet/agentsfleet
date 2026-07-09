@@ -280,6 +280,14 @@ describe("CatalogueList — Make default (★ minimal key dialog)", () => {
     await waitFor(() => expect(routerRefreshMock).toHaveBeenCalled());
   });
 
+  it("treats a whitespace-only API key as empty (Make default stays disabled)", async () => {
+    render(React.createElement(CatalogueList, { models: CATALOGUE, activeDefault: null, onDeleted: vi.fn(), onUpdated: vi.fn() }));
+    fireEvent.click(within(rowFor("glm-5.2")).getByRole("button", { name: "Make glm-5.2 the platform default" }));
+    const dialog = within(await screen.findByRole("dialog"));
+    fireEvent.change(dialog.getByLabelText("API key"), { target: { value: "   " } });
+    expect((dialog.getByRole("button", { name: "Make default" }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
   it("requires a base URL for an openai-compatible row and threads it into the activation", async () => {
     setPlatformDefaultActionMock.mockResolvedValue({ ok: true, data: { provider: OPENAI_COMPATIBLE_PROVIDER, model: "glm-5.2", active: true } });
     const custom: AdminModel[] = [
