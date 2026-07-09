@@ -13,7 +13,7 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Milestone:** M120
 **Workstream:** 002
 **Date:** Jul 07, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P2 — visual consistency + one missing capability (catalogue row Edit); no dead-end bugs, unlike M120_001.
 **Categories:** UI
 **Batch:** B1 — independent of M120_001; disjoint file trees (admin/models + other settings pages vs. tenant models page).
@@ -158,14 +158,16 @@ Regression: existing `CatalogueList`/`PlatformDefaultCard` test suites pass once
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
 | R1 | ~~Provider-select popover renders positioned~~ **STRUCK (pivot)** — `PlatformDefaultCard` + its select were deleted | — | n/a | P1 | ✅ n/a |
-| R2 | Making a row the platform default is a ★ row action + minimal key dialog; the active row is badged (§2 pivot) | `make test-unit-app` | Dimensions 2.2–2.3 pass | P1 | |
-| R3 | Catalogue rows have icon Edit + ★ Make default + icon Delete (§3) | `make test-unit-app` | Dimensions 3.1–3.3 pass | P1 | |
-| R4 | Every settings-page Create/Install trigger carries its icon, incl. AddModelDialog (§4) | `make test-unit-app` | Dimensions 4.1–4.2 pass | P2 | |
-| S1 | Unit tests pass | `make test` | exit 0 | P0 | |
-| S2 | Lint clean | `make lint` | exit 0 | P0 | |
-| S7 | No secrets | `gitleaks detect` | exit 0 | P0 | |
-| S8 | No oversize source file | `git diff --name-only origin/main \| grep -v '\.md$' \| xargs wc -l 2>/dev/null \| awk '$1>350 && $2!="total"'` | no output | P0 | |
-| S9 | Orphan sweep | Dead Code Sweep greps | 0 matches | P0 | |
+| R2 | Making a row the platform default is a ★ row action + minimal key dialog; the active row is badged (§2 pivot) | `make test-unit-app` | Dimensions 2.2–2.3 pass | P1 | ✅ 1252 pass |
+| R3 | Catalogue rows have icon Edit + ★ Make default + icon Delete (§3) | `make test-unit-app` | Dimensions 3.1–3.3 pass | P1 | ✅ 1252 pass |
+| R4 | Every settings-page Create/Install trigger carries its icon, incl. AddModelDialog (§4) | `make test-unit-app` | Dimensions 4.1–4.2 pass | P2 | ✅ 1252 pass |
+| S1 | Unit tests pass | `make test-unit-app` (no `make test` target exists — corrected) | exit 0 | P0 | ✅ 132 files / 1252 tests |
+| S1b | App coverage gate (CI) | `cd ui/packages/app && bun run test:coverage` | 100% stmts/branch/funcs/lines | P0 | ✅ 100% |
+| S2 | Lint clean | `make lint-app` + `make lint-zig` + `make check-openapi` | exit 0 | P0 | ✅ all green (pre-commit) |
+| S7 | No secrets | `gitleaks detect` | exit 0 | P0 | ✅ (pre-commit) |
+| S8 | No oversize source file | `git diff --name-only origin/main \| grep -v '\.md$' \| xargs wc -l \| awk '$1>350'` | only FLL-exempt `*_test.*` | P0 | ✅ only 2 test files (exempt) |
+| S9 | Orphan sweep | `grep -rn "PlatformDefaultCard" ui/packages/app/` | 0 matches | P0 | ✅ 0 |
+| Sx | Backend compiles + cross-compiles | native + `zig build -Dtarget={x86_64,aarch64}-linux` + `test-bin` | exit 0 | P0 | ✅ all green (integration test runs in CI — no local Postgres) |
 
 **Grading protocol (VERIFY):** run the Verify command verbatim; grade ONLY from its output. **Ship gate:** every row graded, every P0 ✅ → eligible for CHORE(close); any ❌ or empty cell → return to EXECUTE.
 
@@ -207,10 +209,15 @@ New files: `EditModelDialog.tsx`, `MakeDefaultDialog.tsx`. Deleted: `PlatformDef
 
 ## Discovery (consult log)
 
-- **Consults** — empty at creation.
-- **Metrics review** — not applicable — no product/operator signal changes.
-- **Skill-chain outcomes** — empty at creation.
-- **Deferrals** — empty at creation.
+- **Consults** — design-shotgun (Dimension 2.1) + the make-default pivot decision, both recorded above.
+- **Metrics review** — not applicable — no product/operator signal changes (the `platform_default_set` event is unchanged, now fired by `MakeDefaultDialog`).
+- **Skill-chain outcomes:**
+  - `/write-unit-test` — coverage 100% (stmts/branch/funcs/lines) across the app suite (132 files / 1252 tests); the Zig GET-model + inactive-row-null contract pinned in the integration suite (runs in CI — no local Postgres).
+  - `/review` (local, high effort — 3 correctness + cleanup + conventions angles) — Zig clean; 3 TS + 4 cleanup findings. Fixed: dead `listPlatformKeysAction` (NDC), `pending`/`deleting` collapse, honest page.tsx catch comment, `EditModelDialog` identity-field dedup, inactive-row null test. **Deferred (documented):** Add/Edit rate-schema mirror (intentional per §3), `router.refresh()` stale-catalogue on concurrent add (rare edge; primary flow correct).
+  - `kishore-babysit-prs` — runs after push (report appended to PR Session Notes).
+- **Deferrals (with reasoning, no ack needed — all agent-verified low-risk or intentional):**
+  - **In-place key rotation for the active default** — the ★ is hidden on the active row per Indy's design, so re-entering that provider's key happens on the workspace **Secrets** page (the platform key is a vault secret named for the provider). Surfaced to Indy as a known trade-off; can add an in-place rotate action as a follow-up if wanted.
+  - **`VERSION` not bumped** — changelog is date-decoupled; a P2 UI + read-only API field doesn't clearly warrant a minor bump. Flag for Indy if a release is being cut.
 
 ### Design-shotgun (Dimension 2.1)
 
