@@ -38,7 +38,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 - **PR title (eventual):** Model library feedback: default-row identity+rates, icon actions, unified add-model dialog
 - **Intent (one sentence):** an operator looking at the Models page sees what the platform default actually is and what every model costs, and adds a model — hosted or custom endpoint — through one straightforward form.
-- **Handshake** — the implementing agent fills this at PLAN, before EXECUTE: restate the Intent in its own words and list `ASSUMPTIONS I'M MAKING: …`. A mismatch between the restatement and the Intent above → STOP and reconcile before any edit.
+- **Handshake** (filled at PLAN, Jul 09, 2026) — restated: the workspace Models page stops hiding what the platform default is and what models cost — the Default row carries the default's real identity/context/rates, every row prices itself from the library, actions are one-click icons instead of a dropdown, and adding a model (hosted or OpenAI-compatible endpoint) is one form with no tabs. ASSUMPTIONS: (1) rotate-in-place submit semantics are preserved verbatim; (2) the Default row's "Use default" action is iconified like entry-row actions; (3) rates shown on own-key rows are the library's informational rate, "—" when unpriced; (4) `platform_default_available` stays on the wire alongside the new object (both derived from one view read); (5) paste-detect provider inference is removed with the tabs (key field moves last, so detection would fire after the provider is already picked). No mismatch with the Intent.
 
 ## Implementing agent — read these first
 
@@ -55,8 +55,13 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `src/agentsfleetd/http/handlers/tenant_model_entries_view.zig` | EDIT | `ListResult` gains the platform default identity (provider/model/context cap) instead of boolean-izing it |
 | `src/agentsfleetd/http/handlers/tenant_model_entries.zig` | EDIT | serialize the optional `platform_default` object on the list response |
 | `src/agentsfleetd/http/tenant_model_entries_integration_test.zig` | EDIT | assert identity present with an active default, omitted without |
+| `src/agentsfleetd/db/test_fixtures_provider.zig` | EDIT | seeded platform-default identity constants become `pub` so the new asserts share them (RULE TFX) |
+| `src/agentsfleetd/db/test_fixtures.zig` | EDIT | re-export the now-pub identity constants beside the existing provider re-exports |
 | `ui/packages/app/lib/types.ts` | EDIT | `TenantModelEntryList` gains optional `platform_default` |
-| `ui/packages/app/app/(dashboard)/w/[workspaceId]/settings/models/components/ModelsRegistryTable.tsx` | EDIT | Default-row identity/context/rates; rates join for entry rows; inline icon actions replace the dropdown |
+| `ui/packages/app/app/(dashboard)/w/[workspaceId]/settings/models/components/ModelsRegistryTable.tsx` | EDIT | Default-row identity/context/rates; rates join for entry rows; inline icon actions replace the dropdown; already over the 350-line cap → cells extracted (next row) |
+| `ui/packages/app/app/(dashboard)/w/[workspaceId]/settings/models/components/ModelsRegistryCells.tsx` | CREATE | pure presentational cell/action components + format helpers split out of the table (LENGTH GATE) |
+| `public/openapi/paths/tenant-models.yaml` | EDIT | `TenantModelEntryList` schema gains the optional `platform_default` object |
+| `public/openapi.json` | EDIT | regenerated bundle (`make check-openapi`) — never hand-edited |
 | `ui/packages/app/app/(dashboard)/w/[workspaceId]/settings/models/components/AddModelEntryDialog.tsx` | EDIT | unified form: Name/Provider/(Base URL)/Model/API key; tabs and auto-fill machinery removed |
 | `ui/packages/app/app/(dashboard)/w/[workspaceId]/settings/models/components/ModelDetailsDialog.tsx` | EDIT | "Model id"→"Model", "Key name"→"Name" |
 | `ui/packages/app/app/(dashboard)/w/[workspaceId]/settings/models/lib/detect-provider.ts` | DELETE | paste-detect loses its purpose once the key field moves last; sole consumer is the reworked dialog |
@@ -103,9 +108,9 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 The backend already resolves the active platform default (provider, model, context cap) inside `buildList` and reduces it to `platform_default_available: bool`. Keep the identity: the list response gains an optional `platform_default` object, present exactly when an active default exists. **Implementation default:** reuse the existing single `platformDefaultView` call — no second query; the boolean stays derived from the same view so the two can never disagree.
 
-- **Dimension 1.1** — with an active platform default, `GET /v1/tenants/me/models` returns `platform_default: {provider, model, context_cap_tokens}` and `platform_default_available: true` → Test `test_entries_list_default_identity`
-- **Dimension 1.2** — with no active default, `platform_default` is omitted (not null) and the boolean is false → Test `test_entries_list_no_default_omits_identity`
-- **Dimension 1.3** — entry-row projection (`has_key`, `base_url`, `context_cap_tokens`, `active`) is byte-identical to before → existing integration asserts pass unchanged → Test `test_entries_list_rows_unchanged` (existing suite)
+- **Dimension 1.1** — DONE — with an active platform default, `GET /v1/tenants/me/models` returns `platform_default: {provider, model, context_cap_tokens}` and `platform_default_available: true` → Test `test_entries_list_default_identity`
+- **Dimension 1.2** — DONE — with no active default, `platform_default` is omitted (not null) and the boolean is false → Test `test_entries_list_no_default_omits_identity`
+- **Dimension 1.3** — DONE — entry-row projection (`has_key`, `base_url`, `context_cap_tokens`, `active`) is byte-identical to before → existing integration asserts pass unchanged → Test `test_entries_list_rows_unchanged` (existing suite)
 
 ### §2 — Registry table: Default row shows the default; Context shows rates
 
