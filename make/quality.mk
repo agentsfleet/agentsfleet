@@ -58,10 +58,20 @@ _lint_zig_pg_drain:
 	@python3 lint-zig.py src
 	@echo "✓ [zig] pg-drain check passed"
 
+_lint_zig_test_reachability:
+	@echo "→ [zig] Checking every test block is reachable from a test root..."
+	@python3 scripts/check_zig_test_reachability_test.py >/dev/null 2>&1 || \
+	  { echo "✗ [zig] reachability checker self-tests failed"; python3 scripts/check_zig_test_reachability_test.py; exit 1; }
+	@python3 scripts/check_zig_test_reachability.py --check
+
+# Counts come from the compiler-registered set, not a textual scan: a `test` block
+# in a file no test root force-imports never compiles, and crediting it here would
+# let VERIFY's Test Delta report growth that does not exist.
 _lint_zig_test_depth:
 	@mkdir -p .tmp
-	@unit_count=$$(find src -name '*.zig' -exec grep -hE '^test "' {} + | wc -l | tr -d ' '); \
-	 integration_count=$$(find src -name '*.zig' -exec grep -hE '^test "integration:' {} + | wc -l | tr -d ' '); \
+	@counts=$$(python3 scripts/check_zig_test_reachability.py --count); \
+	 unit_count=$$(printf '%s\n' "$$counts" | sed -n 's/^reachable_test_cases=//p'); \
+	 integration_count=$$(printf '%s\n' "$$counts" | sed -n 's/^reachable_integration_cases=//p'); \
 	 printf 'agentsfleetd_test_cases=%s\nagentsfleetd_integration_cases=%s\n' "$$unit_count" "$$integration_count" | tee .tmp/agentsfleetd-test-depth.txt >/dev/null; \
 	 if [ "$$unit_count" -lt 25 ]; then echo "✗ expected at least 25 Zig tests, got $$unit_count"; exit 1; fi; \
 	 if [ "$$integration_count" -lt 3 ]; then echo "✗ expected at least 3 Zig integration tests, got $$integration_count"; exit 1; fi; \
@@ -259,7 +269,7 @@ _runner_isolation_check:
 	if [ $$FAIL -eq 1 ]; then exit 1; fi; \
 	echo "✓ [isolation] runner graph depends only on nullclaw (no pg/s3/httpz)"
 
-lint-zig: _fmt_check _zlint_check _lint_zig_pg_drain _lint_zig_test_depth _schema_gate_check _zig_target_lint _zig_line_limit_check _hardcoded_role_check _legacy_symbols_check _legacy_noun_check _runner_isolation_check  ## Lint all Zig source (agentsfleetd/runner/lib)
+lint-zig: _fmt_check _zlint_check _lint_zig_pg_drain _lint_zig_test_reachability _lint_zig_test_depth _schema_gate_check _zig_target_lint _zig_line_limit_check _hardcoded_role_check _legacy_symbols_check _legacy_noun_check _runner_isolation_check  ## Lint all Zig source (agentsfleetd/runner/lib)
 	@echo "✓ [zig] Lint passed"
 
 lint-website: _website_lint  ## Lint website only (Oxlint + tsc)

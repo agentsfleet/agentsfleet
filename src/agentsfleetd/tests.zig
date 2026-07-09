@@ -214,4 +214,12 @@ test {
     _ = @import("fleet/integration_roundtrip_test.zig");
     _ = @import("fleet/integration_session_continuation_test.zig");
     _ = @import("fleet/placement_eligibility_test.zig");
+    // `cmd/*` reaches the test root only through main.zig's ordinary imports,
+    // which register nothing — these lines are what make their blocks compile.
+    _ = @import("cmd/common.zig");
+    _ = @import("cmd/doctor.zig");
+    _ = @import("cmd/doctor_args.zig");
+    _ = @import("cmd/doctor_render.zig");
+    _ = @import("cmd/preflight_test.zig");
+    _ = @import("cmd/serve_shutdown.zig");
 }

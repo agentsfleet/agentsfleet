@@ -5,6 +5,9 @@ const BYTES_PER_KIB = 1024;
 pub const CheckResult = struct {
     id: []const u8,
     ok: bool,
+    /// Always heap-owned by the `results` list — `appendCheck` copies whatever it
+    /// is handed. A mix of string literals and `allocPrint` results would leave no
+    /// single correct free path; `freeResults` is that path.
     detail: []const u8,
 };
 
@@ -16,10 +19,12 @@ pub fn appendCheck(
     detail: []const u8,
     overall_ok: *bool,
 ) !void {
+    const owned = try alloc.dupe(u8, detail);
+    errdefer alloc.free(owned);
     try results.append(alloc, .{
         .id = id,
         .ok = ok,
-        .detail = detail,
+        .detail = owned,
     });
     if (!ok) overall_ok.* = false;
 }
@@ -33,7 +38,17 @@ pub fn appendFmtCheck(
     comptime fmt: []const u8,
     args: anytype,
 ) !void {
-    try appendCheck(alloc, results, id, ok, try std.fmt.allocPrint(alloc, fmt, args), overall_ok);
+    const rendered = try std.fmt.allocPrint(alloc, fmt, args);
+    defer alloc.free(rendered); // appendCheck keeps its own copy
+    try appendCheck(alloc, results, id, ok, rendered, overall_ok);
+}
+
+/// Releases every `detail` before the list backing it. `id` is always a literal or
+/// a module-level constant, so `detail` is the only owned field. Must run after
+/// `renderText`/`renderJson`, which borrow the details they print.
+pub fn freeResults(alloc: std.mem.Allocator, results: *std.ArrayList(CheckResult)) void {
+    for (results.items) |c| alloc.free(c.detail);
+    results.deinit(alloc);
 }
 
 pub fn renderText(stdout: *std.Io.Writer, results: []const CheckResult, overall_ok: bool) !void {
@@ -80,7 +95,7 @@ test "dynamic check details stay valid through render with GPA" {
     const alloc = gpa.allocator();
     var ok = true;
     var results: std.ArrayList(CheckResult) = .empty;
-    defer results.deinit(alloc);
+    defer freeResults(alloc, &results);
     try appendFmtCheck(alloc, &results, "schema_gate_compat", false, &ok, "schema_gate status=fail expected_versions={d} applied_versions={d} reason_code={s}", .{ 3, 2, "SCHEMA_BEHIND_BINARY" });
     var output_buf: [BYTES_PER_KIB]u8 = undefined;
     var w = std.Io.Writer.fixed(&output_buf);

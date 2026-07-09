@@ -52,21 +52,30 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ## Files Changed (blast radius)
 
+Amended at EXECUTE against the compiler-truth dead set (7 files, 26 blocks) and Indy's
+runner-wiring decision; the pre-EXECUTE guesses are superseded, not hidden. See Discovery.
+
 | File | Action | Why |
 |------|--------|-----|
-| `scripts/check_zig_test_reachability.py` | CREATE | builds each test binary in list mode, unions registered test names, flags dead test-bearing files, and emits the reachable-block count for the depth gate |
-| `scripts/check_zig_test_reachability_test.py` | CREATE | fixture-based self-tests: dead file flagged, waiver exempts, un-wire turns the gate red |
-| `src/build/test_runner.zig` | CREATE | custom Zig test runner; under a list-mode env flag it prints every `builtin.test_functions` name and exits without running; otherwise behavior-preserving |
-| `build.zig` | EDIT | set `.test_runner` on the `test` and `test-auth` `addTest` modules |
-| `build_runner.zig` | EDIT | set `.test_runner` on the runner `test` `addTest` module |
-| `src/build/lib_tests.zig` | EDIT | set `.test_runner` on the lib `addTestStep` module |
-| `make/quality.mk` | EDIT | add the checker as a `lint-zig` prerequisite; rewrite `_lint_zig_test_depth` to consume the checker's reachable count instead of a textual `^test "` grep |
-| `src/agentsfleetd/cmd/common.zig` | EDIT | self-updating migration assertions (count-equals-embedded + version contiguity), replacing the literal-`26` traps |
-| `src/agentsfleetd/tests.zig` | EDIT | force-import `cmd/common.zig` and the remaining agentsfleetd files the checker enumerates |
-| `src/runner/tests.zig` | EDIT | force-import the runner files the checker enumerates (if any) |
-| `src/lib/tests.zig` | EDIT | force-import the lib files the checker enumerates (if any) |
-| `src/agentsfleetd/auth/tests.zig` | EDIT | force-import the auth files the checker enumerates (if any) |
-| `src/**/*.zig` (the checker's dead-set output) | EDIT | each newly-executing test repaired per gate-flag triage; the set is the checker's output, deliberately NOT enumerated here |
+| `scripts/check_zig_test_reachability.py` | CREATE | runs the `list-tests` lane on both build graphs, unions registered test names per root, flags dead test-bearing files, and emits the reachable-block count for the depth gate |
+| `scripts/check_zig_test_reachability_test.py` | CREATE | fixture-based self-tests: dead file flagged, waiver exempts, un-wire turns the gate red, duplicate description does NOT mask a dead file |
+| `src/build/test_runner_list.zig` | CREATE | list-only Zig test runner (`mode: .simple`): prints every `builtin.test_functions` name and exits without running. Installed ONLY on the `list-tests` lane |
+| `src/build/test_list.zig` | CREATE | the `list-tests` lane — attaches a second, list-only compilation per test binary, sharing the real step's root module |
+| `src/build/auth_tests.zig` | CREATE | forced by RULE FLL: `build.zig` hit 360 lines (cap 350), so the `test-auth` portability gate is extracted, mirroring `lib_tests.zig`/`s3.zig` |
+| `src/build/main.zig` | EDIT | re-export `test_list` + `auth_tests` to both build graphs |
+| `build.zig` | EDIT | create the `list-tests` step; attach the daemon lane; delegate `test-auth` to `auth_tests.zig` |
+| `build_runner.zig` | EDIT | create its own `list-tests` step; attach the runner unit + integration lanes |
+| `src/build/lib_tests.zig` | EDIT | attach the lib / logging / call_deadline lanes |
+| `src/build/s3.zig` | EDIT | attach the s3 lane (the eighth `addTest`, missing from the pre-EXECUTE table) |
+| `make/quality.mk` | EDIT | `_lint_zig_test_reachability` (runs the checker's self-tests, then `--check`) added to `lint-zig`; `_lint_zig_test_depth` consumes `--count` instead of a textual `^test "` grep |
+| `src/agentsfleetd/cmd/common.zig` | EDIT | self-updating migration assertions (count-equals-embedded + version contiguity + a gap/duplicate negative), replacing the literal-`26` traps |
+| `src/agentsfleetd/tests.zig` | EDIT | force-import the 6 dead `cmd/*` files |
+| `src/lib/tests.zig` | EDIT | force-import `common/backoff.zig` |
+| `src/agentsfleetd/cmd/preflight_test.zig` | EDIT | had not compiled since the environment-injection refactor: `std.posix.setenv`/`unsetenv` are gone in Zig 0.16, two call sites used pre-refactor arities, and the signal-handler type had moved. Rebuilt on `common.env.fromPairs`; the tautological `expect(true)` becomes a sigaction read-back |
+| `src/agentsfleetd/cmd/doctor_render.zig` | EDIT | product fix (Indy-approved, see Discovery): `CheckResult.detail` had mixed ownership, leaking 5 allocations per `agentsfleetd doctor`. `appendCheck` now copies; `freeResults` is the single free path |
+| `src/agentsfleetd/cmd/doctor.zig` | EDIT | call `freeResults`; delete the false "callers must provide an arena-style allocator" comment (`main.zig:139` passes a `DebugAllocator`) |
+
+Not edited, contrary to the pre-EXECUTE guess: `src/runner/tests.zig` and `src/agentsfleetd/auth/tests.zig` — the compiler-truth dead set contained no runner or auth file, so neither barrel needed a line.
 
 ## Applicable Rules
 
@@ -94,35 +103,60 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ### §1 — Compiler-truth reachability gate
 
-A checker enumerates the true dead set and fails the build on it. **Implementation default:** the authority is compiler truth, not a static import graph — build each test binary (the four roots plus any other `addTest` the build defines) in a list-only mode via a shared custom test runner, union every `builtin.test_functions` name, and mark a source file dead when none of its `test "<desc>"` descriptions appear in that union. A relative-import walk is rejected as the authority because it under-predicts liveness (the audit's static model predicted ~1735 live blocks while the daemon binary registers 1997) and would flag live files as dead. A file may opt out only with an explicit `// no-test-root: <reason>` line. The checker prints every offender and exits non-zero, and is added to the existing `lint-zig` prerequisite list — no new public target.
+A checker enumerates the true dead set and fails the build on it. The authority is compiler truth, not a static import graph: a relative-import walk under-predicts liveness and would flag live files as dead.
 
-- **Dimension 1.1** — a planted test-bearing fixture reachable from no root makes the checker exit non-zero and print its path → Test `test_reachability_flags_unwired_fixture`
-- **Dimension 1.2** — a file carrying `// no-test-root: <reason>` is not reported even with no registering root → Test `test_reachability_waiver_exempts`
-- **Dimension 1.3** — the checker runs inside `make lint-zig` and its non-zero exit fails the target → Test `test_reachability_wired_into_lint_zig`
-- **Dimension 1.4** — with the custom runner installed, a normal `make test-unit-agentsfleetd` run reports the same pass/skip totals and zero failures as before the swap → Test `test_runner_normal_execution_unchanged`
+**Implementation (amended at EXECUTE; supersedes the two defaults below).**
+
+1. **Parallel list-only lane, not a runner swap.** The spec's default said "set `.test_runner` on the `test` and `test-auth` `addTest` modules." In Zig 0.16 `TestRunner` is `{ path, mode: .simple | .server }`, and `zig build test --summary all` gets its pass/skip totals from the build system over `std.zig.Server` — i.e. `server` mode. Swapping the runner would therefore either break `--summary all` or force vendoring upstream's ~460-line `test_runner.zig` (over the 350-line cap, and a compiler-internal fork owned forever). Instead, all 8 `addTest` steps keep Zig's default runner untouched, and `src/build/test_list.zig` attaches a **second** compilation of the same root module carrying `src/build/test_runner_list.zig` (`mode: .simple`), behind `zig build list-tests`. Invariant 4 and Dimension 1.4 therefore hold by construction rather than by assertion — the normal path is not modified at all. Lanes carry no `filters`, since `-Dtest-filter` prunes `builtin.test_functions` and a filtered listing would report live blocks as dead.
+
+2. **Prefix matching on the namespace, not the test description.** The spec's default said to "mark a source file dead when none of its `test "<desc>"` descriptions appear in that union." That is unsound, and a fixture proves it: a dead file sharing a description with a live one is reported reachable, because the description *does* appear in the union. Zig names each test `<namespace>.test.<description>` (or `<namespace>.test_<N>` when anonymous), where `<namespace>` is the source path relative to that binary's root directory with `/`→`.` and `.zig` stripped. The checker therefore inverts the mapping: for each candidate file it computes the expected namespace and asks whether any registered name carries that prefix. `test_duplicate_description_does_not_mask_a_dead_file` locks this in.
+
+A file may opt out only with an explicit `// no-test-root: <reason>` line. The checker prints every offender and exits non-zero from `_lint_zig_test_reachability`, a private prerequisite of the existing `lint-zig` — no new public target. That target runs the checker's own self-tests first, so the gate guarding the gate cannot itself go dead.
+
+- **Dimension 1.1** — DONE — a planted test-bearing fixture reachable from no root makes the checker exit non-zero and print its path → Test `test_reachability_flags_unwired_fixture`
+- **Dimension 1.2** — DONE — a file carrying `// no-test-root: <reason>` is not reported even with no registering root → Test `test_reachability_waiver_exempts`
+- **Dimension 1.3** — DONE — the checker runs inside `make lint-zig` and its non-zero exit fails the target → Tests `test_reachability_wired_into_lint_zig`, `test_reachability_target_invokes_the_checker`
+- **Dimension 1.4** — DONE (by construction) — the real `test` steps are never swapped, so normal execution cannot regress. Evidenced instead by every suite staying green: daemon 1528 pass / 495 skip / 0 fail, auth 223 pass, lib 35 pass, runner 356 pass / 7 skip
+- **Dimension 1.5** — DONE — a registered name maps to a file by namespace prefix, so a duplicate description cannot mask a dead file → Test `test_duplicate_description_does_not_mask_a_dead_file`
 
 ### §2 — cmd/common.zig wired in with self-updating migration assertions
 
 Force-import `cmd/common.zig` from the agentsfleetd root so its 11 blocks compile, then repair the two stale assertions. **Implementation default:** the repaired assertions derive everything from `schema.migrations` — no literal count. Assert that `canonicalMigrations().len` equals the embedded `schema.migrations.len`, that versions are strictly monotonic and contiguous from 1, and that the last version equals the registered count. This is deliberate per RULE UFS and RULE MIG: swapping the literal `26` for `27` would only re-arm the same trap the next time a migration lands; a derived assertion never drifts.
 
-- **Dimension 2.1** — after wiring, the checker (§1) sees `cmd/common.zig` as reachable and every one of its blocks registers → Test `test_common_zig_reachable_and_registered`
-- **Dimension 2.2** — `canonicalMigrations().len` equals `schema.migrations.len` and the last version equals that count, with no literal migration count in the file → Test `test_migration_count_equals_embedded`
-- **Dimension 2.3** — migration versions are strictly increasing and contiguous from 1 → Test `test_migration_versions_contiguous_monotonic`
-- **Dimension 2.4** — a fixture migration list with a duplicated or gapped version fails the contiguity assertion → Test `test_migration_version_gap_rejected`
+- **Dimension 2.1** — DONE — after wiring, the checker (§1) sees `cmd/common.zig` as reachable and all 11 of its blocks register → proven by `check_zig_test_reachability.py --check` exiting 0
+- **Dimension 2.2** — DONE — `canonicalMigrations().len` equals `schema_migrations.len` and the last version equals that count, with no literal migration count in the file → Test `canonical schema bootstrap: last version equals the registered count`
+- **Dimension 2.3** — DONE — migration versions are strictly increasing and contiguous from 1 → Test `canonical migrations: versions are contiguous and strictly increasing`
+- **Dimension 2.4** — DONE — a fixture migration list with a duplicated or gapped version fails the contiguity assertion → Test `canonical migrations: a gapped or duplicated version is rejected`
+
+Both stale assertions failed the moment they compiled (`expected 26, found 27`), exactly as predicted. `V_CONNECTOR_INSTALLS`/`V_CHANNEL_TABLES`/`FIRST_MIGRATION_VERSION` are named constants (RULE UFS); no bare `26` survives.
 
 ### §3 — Enable the remaining unreachable set; triage what fires
 
 Every file the §1 checker lists is force-imported under one root, or waived with a stated reason — the set is the checker's output, not a number written into this spec. A newly-executing test that fails is the payoff, not an obstacle. **Implementation default (gate-flag triage, per AGENTS.md):** a mechanical cause (a stale literal, a renamed symbol, a moved import path) is auto-repaired in the same diff and reported in one line; a judgment call (a genuine product bug or a weakened guarantee) STOPS and is surfaced to Indy as fix-or-defer. An agent-unilateral deferral is incomplete scope, not deferral — it blocks CHORE(close) without an Indy-acked quote in Discovery. Two of `common.zig`'s previously-dead blocks are the guards for findings the Jul 09 audit re-discovered independently (see Failure Modes).
 
-- **Dimension 3.1** — the §1 checker exits zero across the whole tree: no test-bearing file is dead and unwaived → Test `test_no_unwired_test_files`
-- **Dimension 3.2** — the previously-dead SqlStatementSplitter and concurrent-migration-race guards now execute in the daemon suite → Test `test_previously_dead_guards_now_run`
+- **Dimension 3.1** — DONE — the §1 checker exits zero across the whole tree: 351 files reachable, 0 dead, 0 waived
+- **Dimension 3.2** — DONE — the previously-dead SqlStatementSplitter and concurrent-migration-race guards now execute in the daemon suite (both live in `cmd/common.zig`)
+
+**Dead set (compiler truth, not an estimate): 7 files, 26 blocks.** All 7 were force-imported; none was waived.
+
+| File | Blocks | Triage outcome |
+|------|--------|----------------|
+| `cmd/common.zig` | 11 | 2 failed on wiring (`expected 26, found 27`) — **mechanical**, repaired in §2. Re-arms the SqlStatementSplitter parse guard, the concurrent-migration-race guard, and a migrator-role separation guard |
+| `cmd/preflight_test.zig` | 5 | did not **compile**: `std.posix.setenv`/`unsetenv` removed in Zig 0.16, two pre-refactor call arities, moved signal-handler type — **mechanical**, rebuilt on `common.env.fromPairs` |
+| `cmd/doctor.zig` | 2 | passed on wiring |
+| `cmd/doctor_args.zig` | 2 | passed on wiring |
+| `cmd/doctor_render.zig` | 1 | crashed on wiring: **real product leak**, 5 allocations per `agentsfleetd doctor`. **Judgment** → surfaced to Indy → fixed (Discovery) |
+| `cmd/serve_shutdown.zig` | 1 | passed on wiring |
+| `lib/common/backoff.zig` | 4 | passed on wiring (jitter bounds, cap saturation) |
 
 ### §4 — Depth gate counts only reachable blocks
 
 `_lint_zig_test_depth` counts `^test "` textually across `src/`, crediting blocks that cannot compile, so Test Baseline / Test Delta — the mechanism VERIFY uses to prove tests were added — is unsound. Recount from the compiler-registered set the §1 checker already computes. **Implementation default:** the recipe reads the checker's reachable count rather than re-deriving it, so the two can never disagree.
 
-- **Dimension 4.1** — `_lint_zig_test_depth` reports the count of compiler-registered blocks, which is strictly ≤ the textual `^test "` count and excludes any dead file → Test `test_depth_counts_registered_only`
-- **Dimension 4.2** — un-wiring one currently-reachable file (a fixture mutation) drops the reachable count and turns the depth gate red → Test `test_depth_gate_red_on_unwire`
+- **Dimension 4.1** — DONE — `_lint_zig_test_depth` counts only blocks in files proven reachable, which is ≤ the textual `^test "` count and excludes any dead file → Tests `test_depth_counts_registered_only`, `test_count_never_exceeds_the_textual_block_count`, `test_depth_gate_consumes_the_checker_count`
+- **Dimension 4.2** — DONE — un-wiring one currently-reachable file (a fixture mutation) drops the reachable count and turns the depth gate red → Test `test_depth_gate_red_on_unwire`
+
+**What `--count` counts.** Not the raw registered-name set: a file reachable from two roots (every `src/agentsfleetd/auth/**` file registers in both the daemon and auth binaries) would be double-counted, and anonymous barrel `test {}` blocks would be credited. Summing registered names across the 8 binaries gives 2913 — *above* the textual 2395, which would make this Dimension's own "≤ textual" assertion false. Registration is per-file, so `--count` instead sums the `^test "` blocks of every file the compiler proved live. That is compiler-grounded, comparable to the historical metric, and ≤ it by construction.
 
 ## Interfaces
 
@@ -219,7 +253,7 @@ No command-line surface of `agentsfleet`, no HTTP route, and no on-disk schema p
 ## Out of Scope
 
 - Retroactively re-grading the Test Delta rows of already-merged specs (M109_*, M120_*, and earlier) whose baselines were computed from the textual count — the corrected count applies going forward only.
-- Fixing the product bugs a newly-executing test may expose (the SqlStatementSplitter mis-split and the pool-migrations advisory-lock ordering finding each get their own spec) — this spec makes the guards run and triages what fires; it does not carry their fixes.
+- Fixing the product bugs a newly-executing test may expose (the SqlStatementSplitter mis-split and the pool-migrations advisory-lock ordering finding each get their own spec, M123_002) — this spec makes the guards run and triages what fires; it does not carry their fixes. **Amended at EXECUTE:** the exception is a bug whose newly-live test *fails*, since the suite cannot be left red and waiving the test would silence a guard. Exactly one qualified — the `agentsfleetd doctor` detail leak (§3, Indy-approved, Discovery). The two named bugs above do not: their guards now run and pass, because both are latent rather than live.
 - Changing how Zig itself registers tests, or migrating away from inline `test` blocks — the custom runner only adds a list mode; collection semantics are unchanged.
 - Broadening the invariant to non-Zig test surfaces (Bun/Vitest packages) — those use directory-based discovery, not force-import.
 
@@ -247,9 +281,31 @@ No command-line surface of `agentsfleet`, no HTTP route, and no on-disk schema p
 
 ## Discovery (consult log)
 
-- **Consults** — Architecture / Legacy-Design / gate-flag triage: empty at creation.
-- **Test Delta reads negative by construction (recorded at CHORE(open), Jul 09, 2026)** — the `Test Baseline:` above (`unit=2395 integration=267`) was produced by the very counter §4 condemns: `make/quality.mk:63` runs `find src -name '*.zig' -exec grep -hE '^test "'`, a textual scan that credits every non-compiling block. After §4 swaps in the compiler-registered count, the VERIFY Test Delta will compare a corrected number against an inflated one and read **negative**, even though §2/§3 add tests and wire previously-dead ones. This does not indicate a regression, and the standard rule ("zero/negative unit delta on a code-adding diff → justify or return to EXECUTE", `docs/VERIFY_TIERS.md` §Test delta) must be satisfied by the justification rather than by the raw delta. **VERIFY protocol for this workstream:** report BOTH numbers — the corrected `--count` output and the old textual count re-run at HEAD — and grade the delta on the corrected-count basis (post-fix corrected count vs. a corrected count computed against `origin/main`). The gap between the two at merge time is itself the headline finding: it is the phantom-block population, and it belongs in PR Session Notes as a number.
-- **Baseline honesty** — `2395/267` is recorded verbatim rather than pre-corrected, because CHORE(open) records what the gate said at open. Substituting a hand-computed "true" baseline here would fabricate a measurement no command produced.
-- **Metrics review** — empty at creation.
-- **Skill-chain outcomes** — empty at creation.
-- **Deferrals** — empty at creation.
+### Consults — gate-flag triage
+
+- **Runner wiring (design fork, surfaced at PLAN).** Zig 0.16's `TestRunner` requires choosing `mode: .simple | .server`, and the real suites' `--summary all` accounting comes from the build system over `std.zig.Server`. The spec's literal instruction (swap `.test_runner` on the existing steps) would break that output or force a 460-line compiler-internal fork. Presented three forms to Indy with the build-graph consequences drawn out.
+  > Indy (2026-07-09): selected **"A: Parallel list-only lane"** — leave all 8 `addTest` steps on the default runner; attach a second list-only compilation sharing each root module. Amends the spec's Implementation default + Files Changed.
+
+- **`agentsfleetd doctor` memory leak (judgment flag, surfaced at EXECUTE §3).** Wiring `cmd/doctor_render.zig` into a test root made its dead `"dynamic check details stay valid through render with GPA"` block compile for the first time; it aborted on a leak assertion. Root cause: `CheckResult.detail` carried mixed ownership — 25 `appendCheck` sites pass string literals (borrowed), 5 `appendFmtCheck` sites pass `allocPrint` results (owned) — and `doctor.zig` freed only the `ArrayList` buffer. The comment at `doctor.zig:79` claimed callers "must provide an arena-style allocator"; `main.zig:139` passes a `DebugAllocator` straight through, so the claim was false and the binary leaked 5 allocations per `doctor` run. Bounded (the process exits immediately) but real, and waiving the test would have been silencing a guard.
+  > Indy (2026-07-09): selected **"A: Own the detail"** — `appendCheck` copies every detail, `freeResults` is the single free path, the false comment is deleted. Carried in this workstream because the alternative was a red suite.
+
+  This **amends the spec's Out of Scope**, which anticipated only the two *known* product bugs (SqlStatementSplitter mis-split, advisory-lock ordering) and assumed each could be deferred to its own spec. Those two remain deferred and untouched — their guards now merely *run*. This third bug blocked the suite and could not be. One caveat recorded honestly: the test body changed by one line (`results.deinit` → `freeResults`), but its `gpa.deinit() == .ok` leak assertion — the part that caught the bug — is untouched.
+
+- **Architecture / Legacy-Design consult** — none required; no flow, stream, namespace, or trust boundary changed.
+
+### Empirical findings
+
+- **Zig's test-collection rule, established by experiment, not by reading.** A file's `test` blocks register only when the file is force-referenced at comptime (`test { _ = @import("x.zig"); }` or `comptime { _ = x; }`) from a file that is itself registered. A plain `const x = @import("x.zig")` registers nothing even from an analyzed file. This matters because `src/agentsfleetd/tests.zig` → `main.zig` → `cmd/migrate.zig` → `cmd/common.zig` is a real, unbroken import chain — a barrel grep looks reassuring — yet collection does not travel down it.
+- **Dead set: 7 files, 26 blocks** (see §3). Two of the 26 were provably false (`migrations.len == 26` against 27 embedded migrations); one file (`preflight_test.zig`) no longer compiled at all; one (`doctor_render.zig`) exposed a live product leak.
+- **`src/build/s3.zig` owns an eighth `addTest`** the spec's Files Changed never listed; a correct implementation would have failed rubric row R7 as written.
+
+### Corrections to this spec's own record
+
+- **The predicted negative Test Delta did not occur — the mechanism was right, the sign was wrong.** At CHORE(open) this section warned that §4's corrected counter would read *below* the inflated `Test Baseline: unit=2395 integration=267`, since that baseline credits blocks that never compile. It measured `unit=2369 integration=261` mid-EXECUTE, exactly −26/−6 (the phantom population). But §3 wired **every** dead file rather than leaving any phantom, so at close the corrected count is `unit=2397 integration=267` — **+2 unit**, the two migration-contiguity tests added in §2. The corrected count now equals the textual count *because zero dead files remain*; it would diverge again the instant one is added, and the reachability gate fires first. The CHORE(open) warning is left above in the header rather than deleted, and superseded here: predicting a number and then measuring it is the point.
+- **Baseline honesty** — `2395/267` was recorded verbatim rather than pre-corrected, because CHORE(open) records what the gate said at open. Substituting a hand-computed "true" baseline would have fabricated a measurement no command produced.
+
+### Remaining
+
+- **Metrics review** — not applicable: build-time gates and a test runner; no runtime event added, renamed, or removed.
+- **Skill-chain outcomes** — pending (`/write-unit-test`, `/review`, `kishore-babysit-prs` run at VERIFY / CHORE(close)).
+- **Deferrals** — none. The two product bugs named in Out of Scope (SqlStatementSplitter mis-split, advisory-lock ordering) were already spec'd out to M123_002 at authoring time and are not deferrals introduced here.
