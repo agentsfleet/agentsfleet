@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  Badge,
   Dialog,
   DialogContent,
   DialogDescription,
@@ -25,7 +26,17 @@ function Details({ target }: { target: TenantModelEntry }) {
     <>
       <DialogHeader>
         <DialogTitle>{target.model_id}</DialogTitle>
-        <DialogDescription>Model entry details.</DialogDescription>
+        {/* Creation time and key presence are header context, not rows: the rows
+            say what the entry is, the header says when it landed and whether a
+            key backs it. */}
+        <div className="flex items-center justify-between gap-2">
+          <DialogDescription>
+            Added <Time value={new Date(target.created_at)} format="relative" />
+          </DialogDescription>
+          <Badge variant={target.has_key ? "green" : "default"}>
+            {target.has_key ? "In vault" : "Keyless endpoint"}
+          </Badge>
+        </div>
       </DialogHeader>
       <DescriptionList>
         <div>
@@ -33,8 +44,14 @@ function Details({ target }: { target: TenantModelEntry }) {
           <DescriptionDetails>{target.provider ? providerLabel(target.provider) : "Unknown"}</DescriptionDetails>
         </div>
         <div>
-          <DescriptionTerm>Kind</DescriptionTerm>
-          <DescriptionDetails>{target.kind}</DescriptionDetails>
+          <DescriptionTerm>Model</DescriptionTerm>
+          <DescriptionDetails mono>{target.model_id}</DescriptionDetails>
+        </div>
+        {/* `secret_ref` is the vault key reference, not a display name — labelling
+            it "Name" made it read as a duplicate of Provider. */}
+        <div>
+          <DescriptionTerm>Secret ref</DescriptionTerm>
+          <DescriptionDetails mono>{target.secret_ref}</DescriptionDetails>
         </div>
         {target.base_url ? (
           <div>
@@ -42,22 +59,6 @@ function Details({ target }: { target: TenantModelEntry }) {
             <DescriptionDetails mono>{target.base_url}</DescriptionDetails>
           </div>
         ) : null}
-        <div>
-          <DescriptionTerm>Model</DescriptionTerm>
-          <DescriptionDetails mono>{target.model_id}</DescriptionDetails>
-        </div>
-        <div>
-          <DescriptionTerm>Name</DescriptionTerm>
-          <DescriptionDetails mono>{target.secret_ref}</DescriptionDetails>
-        </div>
-        <div>
-          <DescriptionTerm>Has key</DescriptionTerm>
-          <DescriptionDetails>{target.has_key ? "Yes" : "No — keyless endpoint"}</DescriptionDetails>
-        </div>
-        <div>
-          <DescriptionTerm>Created</DescriptionTerm>
-          <DescriptionDetails><Time value={new Date(target.created_at)} /></DescriptionDetails>
-        </div>
       </DescriptionList>
     </>
   );

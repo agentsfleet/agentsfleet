@@ -2,6 +2,7 @@ import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { TooltipProvider } from "@agentsfleet/design-system";
 
 const routerRefresh = vi.fn();
 
@@ -53,17 +54,28 @@ describe("SecretsList component", () => {
       secrets,
       ...(protectedSecretName === undefined ? {} : { protectedSecretName }),
     };
-    const element = React.createElement(SecretsList, props as never);
+    // The Created cell now renders a relative <Time>, which mounts a Radix
+    // Tooltip — that requires a TooltipProvider ancestor (mounted at the
+    // dashboard layout in production, absent in unit renders).
+    const element = React.createElement(
+      TooltipProvider,
+      null,
+      React.createElement(SecretsList, props as never),
+    );
     const rendered = render(element);
     return {
       ...rendered,
       rerenderList(nextProtectedSecretName: string | null) {
         rendered.rerender(
-          React.createElement(SecretsList, {
-            workspaceId: "ws_1",
-            secrets,
-            protectedSecretName: nextProtectedSecretName,
-          } as never),
+          React.createElement(
+            TooltipProvider,
+            null,
+            React.createElement(SecretsList, {
+              workspaceId: "ws_1",
+              secrets,
+              protectedSecretName: nextProtectedSecretName,
+            } as never),
+          ),
         );
       },
     };
@@ -100,11 +112,19 @@ describe("SecretsList component", () => {
   });
 
   it("renders one row per secret with name and a human timestamp", async () => {
-    await renderList();
+    const { container } = await renderList();
     expect(screen.getByText("fly")).toBeTruthy();
     expect(screen.getByText("slack")).toBeTruthy();
     expect(screen.getAllByText("Write-only encrypted secret")).toHaveLength(2);
-    expect(screen.getAllByText(/Apr 26, 2026/)).toHaveLength(2);
+    // Created now renders a relative <Time> ("… ago"); the absolute Apr 26 2026
+    // string moved into the hover tooltip. Two rows → two <time> elements, each
+    // carrying the ISO instant as its datetime and a relative visible label.
+    const times = container.querySelectorAll("time");
+    expect(times).toHaveLength(2);
+    for (const t of times) {
+      expect(t.getAttribute("datetime")).toMatch(/^2026-04-26T/);
+      expect(t.textContent).toMatch(/ago$/);
+    }
   });
 
   it("delete row trigger renders the destructive button variant, matching RunnerList's pattern", async () => {

@@ -2,7 +2,14 @@ import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { TooltipProvider } from "@agentsfleet/design-system";
 import type { ApiKeyListResponse, ApiKeyRow } from "@/lib/api/api_keys";
+
+// The relative-Time cells in ApiKeyList render Radix tooltips, which require a
+// TooltipProvider ancestor (mounted at the dashboard layout in production).
+function withTooltipProvider(node: React.ReactElement): React.ReactElement {
+  return React.createElement(TooltipProvider, null, node);
+}
 
 // ── Shared mocks ───────────────────────────────────────────────────────────
 
@@ -66,7 +73,7 @@ describe("ApiKeyList component", () => {
     const { default: ApiKeyList } = await import(
       "../app/(dashboard)/settings/api-keys/components/ApiKeyList"
     );
-    render(React.createElement(ApiKeyList, { initial } as never));
+    render(withTooltipProvider(React.createElement(ApiKeyList, { initial } as never)));
   }
 
   it("renders the empty-state message when there are no keys", async () => {
@@ -264,10 +271,12 @@ describe("ApiKeyList component", () => {
       "../app/(dashboard)/settings/api-keys/components/ApiKeysView"
     );
     render(
-      React.createElement(ApiKeysView, {
-        initial: listResponse([ACTIVE]),
-        operatorOnly: false,
-      } as never),
+      withTooltipProvider(
+        React.createElement(ApiKeysView, {
+          initial: listResponse([ACTIVE]),
+          operatorOnly: false,
+        } as never),
+      ),
     );
     createApiKeyActionMock.mockResolvedValue({
       ok: true,
