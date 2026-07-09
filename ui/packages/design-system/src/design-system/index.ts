@@ -9,6 +9,7 @@ export {
   type ButtonProps,
   type ButtonVariant,
 } from "./Button";
+export { IconAction, type IconActionProps } from "./IconAction";
 export {
   Card,
   CardHeader,

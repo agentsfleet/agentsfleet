@@ -15,24 +15,6 @@ vi.mock("@clerk/nextjs/server", () => ({
   auth: authMock,
 }));
 
-// ── lib/utils.ts — formatDate (currently uncovered) ──────────────────────
-
-describe("lib/utils formatDate", () => {
-  it("formats a Date instance into the en-US short form", async () => {
-    const { formatDate } = await import("../lib/utils");
-    const out = formatDate(new Date("2026-04-22T18:30:00Z"));
-    expect(typeof out).toBe("string");
-    expect(out.length).toBeGreaterThan(0);
-    // Output contains the year.
-    expect(out).toMatch(/2026/);
-  });
-
-  it("accepts an ISO string input", async () => {
-    const { formatDate } = await import("../lib/utils");
-    expect(formatDate("2026-04-22T00:00:00Z")).toMatch(/2026/);
-  });
-});
-
 // ── Billing settings page — Promise.all catch fallbacks ─────────────────
 
 describe("billing settings page — error fallback", () => {

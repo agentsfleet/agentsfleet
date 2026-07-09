@@ -1,6 +1,6 @@
 "use client";
 
-import { type Ref, useImperativeHandle, useRef, useState, useTransition } from "react";
+import { type ReactNode, type Ref, useImperativeHandle, useRef, useState, useTransition } from "react";
 import {
   Badge,
   type BadgeVariant,
@@ -8,8 +8,10 @@ import {
   DataTable,
   type DataTableColumn,
   EmptyState,
+  IconAction,
+  Time,
 } from "@agentsfleet/design-system";
-import { ActivityIcon, ServerIcon } from "lucide-react";
+import { ActivityIcon, BanIcon, ArrowDownToLineIcon, Trash2Icon, ServerIcon } from "lucide-react";
 import {
   RUNNER_ADMIN_ACTION,
   RUNNER_ADMIN_STATE,
@@ -45,12 +47,17 @@ const ADMIN_STATE_VARIANT: Record<RunnerAdminState, BadgeVariant> = {
   revoked: "destructive",
 };
 
+// Each admin action carries its confirm-dialog copy plus the glyph its
+// icon-only row trigger renders. `label` is the single source of the accessible
+// name — IconAction feeds it to both the aria-label and the tooltip body — so
+// the icon choice is presentation only; correctness rides on `label`.
 const ACTION_CONFIG: Record<RunnerAdminAction, {
   label: string;
   title: string;
   description: string;
   intent: "default" | "destructive";
   errorAction: string;
+  icon: ReactNode;
 }> = {
   [RUNNER_ADMIN_ACTION.cordon]: {
     label: "Cordon",
@@ -58,6 +65,7 @@ const ACTION_CONFIG: Record<RunnerAdminAction, {
     description: "Runner-plane calls stop immediately. Existing lease rows stay fenced until expiry or reassignment.",
     intent: "default",
     errorAction: "cordon this runner",
+    icon: <BanIcon />,
   },
   [RUNNER_ADMIN_ACTION.drain]: {
     label: "Drain",
@@ -65,6 +73,7 @@ const ACTION_CONFIG: Record<RunnerAdminAction, {
     description: "The runner stops taking new work and becomes drained automatically once active leases reach zero.",
     intent: "default",
     errorAction: "drain this runner",
+    icon: <ArrowDownToLineIcon />,
   },
   [RUNNER_ADMIN_ACTION.revoke]: {
     label: "Revoke",
@@ -72,15 +81,9 @@ const ACTION_CONFIG: Record<RunnerAdminAction, {
     description: "The runner token is blocked immediately. This is terminal for the enrolled host.",
     intent: "destructive",
     errorAction: "revoke this runner",
+    icon: <Trash2Icon />,
   },
 };
-
-// Pin the locale so SSR (server locale) and the client (viewer locale) format
-// the timestamp identically — a bare toLocaleString() hydration-mismatches the
-// same way the catalogue's token count did.
-function fmt(ms: number): string {
-  return new Date(ms).toLocaleString("en-US");
-}
 
 function actionsFor(state: RunnerAdminState): RunnerAdminAction[] {
   const out: RunnerAdminAction[] = [];
@@ -102,8 +105,14 @@ function HostCell({ r }: { r: RunnerListItem }) {
     <div className="min-w-0">
       <div className="truncate font-mono text-sm">{r.host_id}</div>
       <div className="font-mono text-xs tabular-nums text-muted-foreground">
-        enrolled {fmt(r.created_at)} ·{" "}
-        {r.last_seen_at > 0 ? `last seen ${fmt(r.last_seen_at)}` : "never connected"}
+        enrolled <Time value={new Date(r.created_at)} format="relative" /> ·{" "}
+        {r.last_seen_at > 0 ? (
+          <>
+            last seen <Time value={new Date(r.last_seen_at)} format="relative" />
+          </>
+        ) : (
+          "never connected"
+        )}
       </div>
     </div>
   );
@@ -140,21 +149,19 @@ function ActionsCell({
 }) {
   return (
     <div className="flex flex-wrap items-center justify-end gap-2">
-      <Button type="button" variant="outline" size="sm" onClick={() => onActivity(r)} disabled={pending}>
+      <IconAction label="Activity" onClick={() => onActivity(r)} disabled={pending}>
         <ActivityIcon />
-        Activity
-      </Button>
+      </IconAction>
       {actionsFor(r.admin_state).map((action) => (
-        <Button
+        <IconAction
           key={action}
-          type="button"
+          label={ACTION_CONFIG[action].label}
           variant={action === RUNNER_ADMIN_ACTION.revoke ? "destructive" : "outline"}
-          size="sm"
           onClick={() => onAction(r, action)}
           disabled={pending}
         >
-          {ACTION_CONFIG[action].label}
-        </Button>
+          {ACTION_CONFIG[action].icon}
+        </IconAction>
       ))}
     </div>
   );

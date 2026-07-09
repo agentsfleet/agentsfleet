@@ -9,6 +9,7 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
+  Time,
 } from "@agentsfleet/design-system";
 import type {
   RunnerAdminAction,
@@ -115,9 +116,11 @@ function ActivityRow({ event }: { event: RunnerEventItem }) {
     <li className="rounded-md border p-3">
       <div className="flex flex-wrap items-center gap-2">
         <Badge variant="cyan">{event.event_type}</Badge>
-        <time className="font-mono text-xs tabular-nums text-muted-foreground" dateTime={occurredAt.toISOString()}>
-          {occurredAt.toLocaleString()}
-        </time>
+        <Time
+          value={occurredAt}
+          format="relative"
+          className="font-mono text-xs tabular-nums text-muted-foreground"
+        />
       </div>
       <p className="mt-2 break-all font-mono text-xs text-muted-foreground">{formatMetadata(event.metadata)}</p>
     </li>

@@ -117,6 +117,8 @@ export {
   TooltipContent,
   TooltipProvider,
   type TooltipContentProps,
+  IconAction,
+  type IconActionProps,
   EmptyState,
   type EmptyStateProps,
   CopyButton,

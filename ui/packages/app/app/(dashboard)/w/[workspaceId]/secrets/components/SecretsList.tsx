@@ -8,6 +8,7 @@ import {
   DataTable,
   EmptyState,
   Spinner,
+  Time,
   type DataTableColumn,
 } from "@agentsfleet/design-system";
 import { KeyRoundIcon, PencilIcon, PencilLineIcon, Trash2Icon } from "lucide-react";
@@ -22,15 +23,6 @@ type Props = {
   secrets: Secret[];
   protectedSecretName?: string | null;
 };
-
-const DATE_FORMATTER = new Intl.DateTimeFormat("en-US", {
-  dateStyle: "medium",
-  timeStyle: "short",
-});
-
-function formatCreatedAt(ms: number) {
-  return DATE_FORMATTER.format(new Date(ms));
-}
 
 type SecretActionProps = {
   secret: Secret;
@@ -117,9 +109,11 @@ function SecretNameCell({
 
 function SecretCreatedCell({ secret }: { secret: Secret }) {
   return (
-    <span className="font-mono text-xs tabular-nums text-muted-foreground">
-      {formatCreatedAt(secret.created_at)}
-    </span>
+    <Time
+      value={new Date(secret.created_at)}
+      format="relative"
+      className="font-mono text-xs tabular-nums text-muted-foreground"
+    />
   );
 }
 

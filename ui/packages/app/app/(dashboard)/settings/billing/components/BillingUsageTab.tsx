@@ -9,6 +9,7 @@ import {
   DataTable,
   EmptyState,
   Spinner,
+  Time,
   type DataTableColumn,
 } from "@agentsfleet/design-system";
 import { listTenantBillingChargesAction } from "../actions";
@@ -40,7 +41,16 @@ const COLUMNS: DataTableColumn<ChargeRow>[] = [
   {
     key: "date",
     header: "Date",
-    cell: (c) => <span className="font-mono text-xs">{formatChargeTimestamp(c.recorded_at)}</span>,
+    // The ledger keeps its approved "MMM DD, YYYY · HH:MM" string, now rendered
+    // through Time so the cell carries the canonical <time datetime> ISO instant.
+    // The label already IS the precise instant, so no hover tooltip is added.
+    cell: (c) => (
+      <Time
+        value={new Date(c.recorded_at)}
+        label={formatChargeTimestamp(c.recorded_at)}
+        className="font-mono text-xs"
+      />
+    ),
   },
   {
     key: "amount",

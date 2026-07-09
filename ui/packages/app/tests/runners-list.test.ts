@@ -2,6 +2,7 @@ import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { TooltipProvider } from "@agentsfleet/design-system";
 import type { RunnerListItem, RunnerListResponse } from "@/lib/api/runners";
 
 // ── Shared mocks ───────────────────────────────────────────────────────────
@@ -91,7 +92,9 @@ describe("RunnerList component", () => {
     const { default: RunnerList } = await import(
       "../app/(dashboard)/admin/runners/components/RunnerList"
     );
-    render(React.createElement(RunnerList, { initial } as never));
+    render(
+      React.createElement(TooltipProvider, null, React.createElement(RunnerList, { initial } as never)),
+    );
   }
 
   it("renders the empty-state hint when no runners are enrolled", async () => {
@@ -180,7 +183,13 @@ describe("RunnerList component", () => {
     const { default: RunnersView } = await import(
       "../app/(dashboard)/admin/runners/components/RunnersView"
     );
-    render(React.createElement(RunnersView, { initial: listResponse([REGISTERED]) } as never));
+    render(
+      React.createElement(
+        TooltipProvider,
+        null,
+        React.createElement(RunnersView, { initial: listResponse([REGISTERED]) } as never),
+      ),
+    );
     createRunnerActionMock.mockResolvedValue({
       ok: true,
       data: { runner_id: "r2", runner_token: "agt_rnew" },
@@ -201,7 +210,13 @@ describe("RunnerList component", () => {
     const { default: RunnersView } = await import(
       "../app/(dashboard)/admin/runners/components/RunnersView"
     );
-    render(React.createElement(RunnersView, { initial: listResponse([REGISTERED]) } as never));
+    render(
+      React.createElement(
+        TooltipProvider,
+        null,
+        React.createElement(RunnersView, { initial: listResponse([REGISTERED]) } as never),
+      ),
+    );
     const trigger = screen.getByRole("button", { name: /create runner/i });
     expect(trigger.querySelector("svg.lucide-plus")).toBeTruthy();
   });

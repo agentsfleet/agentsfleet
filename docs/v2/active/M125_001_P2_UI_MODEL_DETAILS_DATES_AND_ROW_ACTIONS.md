@@ -64,6 +64,21 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `ui/packages/app/app/(dashboard)/w/[workspaceId]/secrets/components/SecretsList.test.tsx` | CREATE | relative Created cell + no-bespoke-formatter cases (colocated, per neighbouring secrets tests) |
 | `ui/packages/app/app/(dashboard)/admin/runners/components/RunnerList.tsx` | EDIT | Activity/Cordon/Drain/Revoke → `IconAction`; `ACTION_CONFIG` gains `icon`; `HostCell` → `Time`; delete `fmt()` |
 | `ui/packages/app/app/(dashboard)/admin/runners/components/RunnerList.test.tsx` | CREATE | every-row-action-has-a-name, Revoke-destructive, host-cell-uses-Time cases (colocated) |
+| `ui/packages/app/app/(dashboard)/settings/api-keys/components/ApiKeyList.tsx` | EDIT | §5 sweep — `fmt()` (a bare, unpinned `toLocaleString()`) → `Time`; created/last-used/revoked go relative |
+| `ui/packages/app/app/(dashboard)/admin/runners/components/RunnerDialogs.tsx` | EDIT | §5 sweep — the hand-rolled `<time dateTime>` + bare `toLocaleString()` in `ActivityRow` → `Time` |
+| `ui/packages/app/app/(dashboard)/settings/billing/components/BillingUsageTab.tsx` | EDIT | §5 sweep — the charge timestamp cell gains `<time datetime>` + tooltip by rendering `Time` with the ledger string as `label` |
+| `ui/packages/app/lib/utils.ts` | EDIT | §5 sweep — delete `formatDate`, an `Intl.DateTimeFormat` helper with zero callers (RULE NDC) |
+| `ui/packages/app/tests/timestamp-standard.test.ts` | CREATE | the repo-grep invariant: no bespoke date formatter outside the sanctioned homes |
+| `ui/packages/app/tests/billing-charge-cell.test.tsx` | CREATE | the charge cell renders `Time` with the ledger label and an ISO `datetime` |
+| `ui/packages/app/app/(dashboard)/settings/api-keys/components/ApiKeyList.test.tsx` | CREATE | colocated: `Time` adopted, `fmt` gone, null guards intact |
+| `ui/packages/app/tests/models-registry-edit-remove.test.tsx` | EDIT | blast radius of §1 — wrap renders in `TooltipProvider`; assertions follow the new dialog copy (`In vault` / `Keyless endpoint`, no `Kind`) |
+| `ui/packages/app/tests/models-registry-table.test.tsx` | EDIT | blast radius of §1 — wrap renders in `TooltipProvider` (the dialog now mounts a Radix Tooltip) |
+| `ui/packages/app/tests/secrets-list.test.ts` | EDIT | blast radius of §2 — `TooltipProvider` wrap; assert relative `<time>` instead of the old absolute string |
+| `ui/packages/app/tests/api-keys-components.test.ts` | EDIT | blast radius of §5.1 — `TooltipProvider` wrap |
+| `ui/packages/app/tests/runners-list.test.ts` | EDIT | blast radius of §4 — `TooltipProvider` wrap |
+| `ui/packages/app/tests/runners-list-actions.test.ts` | EDIT | blast radius of §4 — `TooltipProvider` wrap |
+| `ui/packages/app/tests/runners-list-activity-open-change.test.ts` | EDIT | blast radius of §4 — `TooltipProvider` wrap |
+| `ui/packages/app/tests/coverage-edges.test.ts` | EDIT | blast radius of §5.4 — drop the `formatDate` block orphaned by deleting the helper (RULE NLR) |
 
 ## Applicable Rules
 
@@ -94,33 +109,45 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 The dialog's job is a fast read of one registry entry. Relabel the `Name` row to **Secret ref** (keep the value — it is the vault key ref, e.g. "pioneer", which is why `Name` and `Provider` both showed "pioneer"). Remove the `Kind` row entirely and the `Has key` Yes/No row. Row order becomes **Provider, Model, Secret ref, then Endpoint (when `base_url` present)**. Move key presence and creation into the header: a status **Badge** reading "In vault" when `has_key`, "Keyless endpoint" when not; and the creation time as `<Time format="relative">` phrased "Added <relative>" (renders e.g. "Added … ago"; the absolute timestamp is one hover away). **Target header layout:** title = `model_id`; beneath it the relative added-time on the left and the vault Badge on the right. **Implementation default:** vault Badge uses `variant="green"` for "In vault" and `variant="default"` for "Keyless endpoint" — the muted default reads as informational, not alarming.
 
-- **Dimension 1.1** — `Kind` and `Has key` rows are gone; remaining rows render in order Provider, Model, Secret ref, Endpoint(when present) → Test `test_details_row_order_no_kind`
-- **Dimension 1.2** — the former `Name` row is labelled "Secret ref" and still renders `target.secret_ref` → Test `test_secret_ref_row_label`
-- **Dimension 1.3** — header Badge reads "In vault" when `has_key` is true and "Keyless endpoint" when false → Test `test_vault_badge_reflects_has_key`
-- **Dimension 1.4** — the header shows an "Added <relative>" `Time` (`format="relative"`) and `created_at` no longer appears as a row in the description list → Test `test_added_time_relative_in_header`
+- **Dimension 1.1** — `Kind` and `Has key` rows are gone; remaining rows render in order Provider, Model, Secret ref, Endpoint(when present) → Test `test_details_row_order_no_kind` — DONE
+- **Dimension 1.2** — the former `Name` row is labelled "Secret ref" and still renders `target.secret_ref` → Test `test_secret_ref_row_label` — DONE
+- **Dimension 1.3** — header Badge reads "In vault" when `has_key` is true and "Keyless endpoint" when false → Test `test_vault_badge_reflects_has_key` — DONE
+- **Dimension 1.4** — the header shows an "Added <relative>" `Time` (`format="relative"`) and `created_at` no longer appears as a row in the description list → Test `test_added_time_relative_in_header` — DONE
 
 ### §2 — Secrets "Created" goes relative
 
 The Secrets list "Created" column prints a bespoke locale-pinned absolute string. Point it at `<Time value={new Date(created_at)} format="relative">` so it reads a relative "… ago" label with the absolute timestamp in the tooltip, and delete `DATE_FORMATTER` and `formatCreatedAt` — no bespoke formatter survives (RULE NDC). **Implementation default:** pass the millisecond `created_at` through `new Date(...)` at the call site, matching `Time`'s `value: string | Date` input; `Time`'s own NaN guard renders "—" for a bad timestamp.
 
-- **Dimension 2.1** — the Created cell renders a `Time` with `format="relative"` whose tooltip carries the absolute timestamp → Test `test_secrets_created_relative`
-- **Dimension 2.2** — `DATE_FORMATTER` and `formatCreatedAt` are removed from `SecretsList.tsx`; zero bespoke date-formatting code remains in the file → Test `test_secretslist_no_bespoke_formatter`
+- **Dimension 2.1** — the Created cell renders a `Time` with `format="relative"` whose tooltip carries the absolute timestamp → Test `test_secrets_created_relative` — DONE
+- **Dimension 2.2** — `DATE_FORMATTER` and `formatCreatedAt` are removed from `SecretsList.tsx`; zero bespoke date-formatting code remains in the file → Test `test_secretslist_no_bespoke_formatter` — DONE
 
 ### §3 — `IconAction`: the named icon-only row-action primitive
 
 The app has no icon-only row-action pattern, and Indy asked for a *standardized* one. Add `IconAction` to the design system: it composes `Button(size="icon-sm")` inside a `Tooltip`, and its `label: string` prop is **required by the type** and feeds BOTH the visible tooltip body AND the button's `aria-label`. An icon-only action therefore cannot ship without an accessible name — the compiler rejects it. Size is fixed to `icon-sm` internally (not a prop), so the standard is uniform; `variant` passes through (`outline` default, `destructive` for terminal actions), as do `onClick`, `disabled`, `type`, `ref`. Export from both design-system barrels. **Implementation default:** the icon is `children`; `IconAction` does not re-implement `Tooltip`/`Button` — it arranges them.
 
-- **Dimension 3.1** — `IconAction` (imported from `@agentsfleet/design-system`) renders a `size="icon-sm"` button whose `aria-label` equals `label`; omitting `label` is a TypeScript error → Test `test_icon_action_accessible_name`
-- **Dimension 3.2** — hovering the trigger surfaces a tooltip whose text equals `label` → Test `test_icon_action_tooltip_shows_label`
-- **Dimension 3.3** — `variant="destructive"` and passthrough props (`onClick`, `disabled`) reach the underlying Button unchanged → Test `test_icon_action_variant_and_passthrough`
+- **Dimension 3.1** — `IconAction` (imported from `@agentsfleet/design-system`) renders a `size="icon-sm"` button whose `aria-label` equals `label`; omitting `label` is a TypeScript error → Test `test_icon_action_accessible_name` — DONE
+- **Dimension 3.2** — hovering the trigger surfaces a tooltip whose text equals `label` → Test `test_icon_action_tooltip_shows_label` — DONE
+- **Dimension 3.3** — `variant="destructive"` and passthrough props (`onClick`, `disabled`) reach the underlying Button unchanged → Test `test_icon_action_variant_and_passthrough` — DONE
 
 ### §4 — Runner list adopts the standard
 
 Replace the runner list's text action buttons (Activity, Cordon, Drain, Revoke) with `IconAction`, keeping Revoke's `destructive` intent. `ACTION_CONFIG` gains an `icon` field per action (a `lucide-react` glyph; the existing `label` becomes the accessible name); Activity keeps its `ActivityIcon`. `HostCell`'s enrolled/last-seen timestamps adopt `<Time format="relative">` (deleting the locale-pinned `fmt()`), so "enrolled <relative> · last seen <relative>" with absolute tooltips. **Implementation default:** the agent picks recognizable glyphs for cordon/drain/revoke; correctness rides on the `label`, not the glyph choice.
 
-- **Dimension 4.1** — every rendered runner-row action (Activity + the state-appropriate Cordon/Drain/Revoke) is an `IconAction` with a non-empty accessible name → Test `test_runner_row_actions_have_accessible_names`
-- **Dimension 4.2** — the Revoke action renders with the `destructive` variant/intent → Test `test_revoke_destructive_intent`
-- **Dimension 4.3** — `HostCell` renders enrolled/last-seen via `Time` and `fmt()` is deleted from the file → Test `test_hostcell_uses_time_no_fmt`
+- **Dimension 4.1** — every rendered runner-row action (Activity + the state-appropriate Cordon/Drain/Revoke) is an `IconAction` with a non-empty accessible name → Test `test_runner_row_actions_have_accessible_names` — DONE
+- **Dimension 4.2** — the Revoke action renders with the `destructive` variant/intent → Test `test_revoke_destructive_intent` — DONE
+- **Dimension 4.3** — `HostCell` renders enrolled/last-seen via `Time` and `fmt()` is deleted from the file → Test `test_hostcell_uses_time_no_fmt` — DONE
+
+### §5 — Every rendered timestamp goes through `Time`
+
+Indy's ask generalised: the date standard is not a per-screen decision. A timestamp rendered anywhere in the app goes through `Time`, which owns the `<time datetime>` semantic, the locale pin, the hydration guard, and the tooltip. `format` picks the register — `relative` for "when did this happen" columns, `absolute` (or a `label` override) where a precise instant is the point. Two homes are sanctioned to compute a date string: `design-system/time-utils.ts`, and a domain formatter whose output is fed to `Time` as a `label`. Everything else is deleted.
+
+Concretely: `ApiKeyList.fmt()` and `RunnerDialogs.ActivityRow` both call a **bare, locale-unpinned** `toLocaleString()` — the very hydration mismatch the `RunnerList.fmt()` comment warns about — and both become `Time`. `lib/utils.ts::formatDate` has zero callers and is deleted outright. `BillingUsageTab` keeps its approved ledger format (`MMM DD, YYYY · HH:MM`) but renders it through `Time` as a `label` override, gaining the `<time datetime>` attribute and the tooltip. **Implementation default:** `EventsList` is already correct — `<Time label={clockTime(created)} tooltipContent={ts}>` is the exemplar for a domain-formatted label, and its browser-local HH:MM clock is deliberate. Do not touch it; mirror it.
+
+- **Dimension 5.1** — `ApiKeyList` renders created/last-used/revoked through `Time`; `fmt()` is gone → Test `test_apikeylist_uses_time_no_fmt` — DONE
+- **Dimension 5.2** — `RunnerDialogs.ActivityRow` renders `occurred_at` through `Time`; no hand-rolled `<time>` or `toLocaleString()` remains in the file → Test `test_activityrow_uses_time` — DONE
+- **Dimension 5.3** — `BillingUsageTab`'s charge cell renders a `Time` whose visible label is still the ledger string and whose `datetime` attribute is the canonical ISO instant → Test `test_billing_charge_cell_time_label` — DONE
+- **Dimension 5.4** — `formatDate` is deleted from `lib/utils.ts` and referenced nowhere → Test `test_formatdate_deleted` — DONE
+- **Dimension 5.5** — no bespoke date formatter exists in the app outside the sanctioned homes: a repo grep for `toLocaleString`/`toLocaleDateString`/`toLocaleTimeString`/`Intl.DateTimeFormat` over `ui/packages/app` production code returns only `EventsList.tsx` (clock label) and `settings/billing/lib/charges.ts` (ledger label) → Test `test_no_bespoke_date_formatters` — DONE
 
 ## Interfaces
 
@@ -163,7 +190,8 @@ No API route, request/response shape, `TenantModelEntry`/`RunnerListItem` field,
 1. Every `IconAction` has an accessible name — `label: string` is a required prop with no default; TypeScript rejects omission. Enforced by the type and asserted by `test_icon_action_accessible_name` + `test_runner_row_actions_have_accessible_names`, never by review.
 2. Zero bespoke date formatters remain in the touched app files — `Time` is the single formatting home. Enforced by grep in `test_secretslist_no_bespoke_formatter` + `test_hostcell_uses_time_no_fmt` (assert `DATE_FORMATTER`/`formatCreatedAt`/`fmt` absent).
 3. `IconAction` size is always `icon-sm` — `size` is not exposed as a prop; asserted by the rendered class in `test_icon_action_accessible_name`.
-4. Relative `Time` labels stay hydration-safe — `Time` sets `suppressHydrationWarning` for `format="relative"` and locale-pins its absolute default, so the Server-Side Rendering (SSR) markup and the first Client-Side Rendering (CSR) paint never mismatch. Adopting `Time` inherits this; the deleted `fmt()`/`DATE_FORMATTER` pinned the locale by hand for exactly this reason, and `Time` subsumes that pin.
+4. Relative `Time` labels stay hydration-safe — `Time` sets `suppressHydrationWarning` for `format="relative"` and locale-pins its absolute default, so the Server-Side Rendering (SSR) markup and the first Client-Side Rendering (CSR) paint never mismatch. Adopting `Time` inherits this; the deleted `fmt()`/`DATE_FORMATTER` pinned the locale by hand for exactly this reason, and `Time` subsumes that pin. Two of the formatters §5 deletes (`ApiKeyList.fmt`, `RunnerDialogs`) never pinned the locale at all.
+5. No bespoke date formatter exists anywhere in `ui/packages/app` production code outside the two sanctioned homes (`EventsList` clock label, `charges.ts` ledger label) — enforced by `test_no_bespoke_date_formatters`, a grep-based test that goes red when a new `toLocaleString`/`Intl.DateTimeFormat` date call appears. The standard cannot regress silently; it is a failing test, not a review comment.
 
 ## Metrics & Observability
 
@@ -187,6 +215,11 @@ No API route, request/response shape, `TenantModelEntry`/`RunnerListItem` field,
 | 4.1 | unit | `test_runner_row_actions_have_accessible_names` | active-state row → Activity+Cordon+Drain+Revoke each an `IconAction`; every action button has a non-empty accessible name |
 | 4.2 | unit | `test_revoke_destructive_intent` | Revoke action button carries the destructive variant class |
 | 4.3 | unit (render+grep) | `test_hostcell_uses_time_no_fmt` | host cell renders `<time>` for enrolled/last-seen; `grep -nE "\bfmt\b" RunnerList.tsx` → 0 matches |
+| 5.1 | unit (render+grep) | `test_apikeylist_uses_time_no_fmt` | key rows render `<time>` for created/last-used/revoked; `grep "function fmt("` → 0 matches |
+| 5.2 | unit (render+grep) | `test_activityrow_uses_time` | an activity row renders `<time datetime>`; `grep "toLocaleString"` in `RunnerDialogs.tsx` → 0 matches |
+| 5.3 | unit | `test_billing_charge_cell_time_label` | charge cell's visible text is the ledger string and its `datetime` attribute is the ISO instant |
+| 5.4 | unit (grep) | `test_formatdate_deleted` | `grep -rn "\bformatDate\b" ui/packages/app` → 0 matches |
+| 5.5 | unit (grep) | `test_no_bespoke_date_formatters` | date-formatting grep over app production code returns only `EventsList.tsx` and `charges.ts` |
 | FM-NaN | unit | `test_time_invalid_timestamp_dash` | `created_at:NaN` → cell shows "—", no throw (Failure Mode row 1) |
 
 Regression: the existing model/secrets/runner render suites must stay green after the row and formatter changes (no behaviour beyond presentation moved). Idempotency/replay: N/A — no retry semantics.
@@ -199,7 +232,8 @@ Regression: the existing model/secrets/runner render suites must stay green afte
 | R2 | Secrets Created renders relative (§2) | `make test-unit-app` | exit 0 incl. `test_secrets_created_relative` | P0 | |
 | R3 | `IconAction` requires an accessible name (§3) | `make test-unit-design-system` | exit 0 incl. `test_icon_action_accessible_name` | P0 | |
 | R4 | Every runner row action has a name; Revoke stays destructive (§4) | `make test-unit-app` | exit 0 incl. `test_runner_row_actions_have_accessible_names` + `test_revoke_destructive_intent` | P0 | |
-| R5 | No bespoke date formatter survives (§2/§4) | `grep -rnE "DATE_FORMATTER\|formatCreatedAt\|function fmt\(" ui/packages/app/app --include=*.tsx \| grep -v node_modules` | no output | P0 | |
+| R5 | No bespoke date formatter survives (§2/§4/§5) | `grep -rnE "DATE_FORMATTER\|formatCreatedAt\|function fmt\(\|\bformatDate\b" ui/packages/app/app ui/packages/app/lib --include=*.tsx --include=*.ts \| grep -v node_modules \| grep -v charges.ts` | no output | P0 | |
+| R7 | Every rendered timestamp goes through `Time` (§5) | `make test-unit-app` | exit 0 incl. `test_no_bespoke_date_formatters` | P0 | |
 | R6 | Diff stays inside Files Changed | `git diff --name-only origin/main` | 0 paths missing from the Files Changed table | P0 | |
 | S1 | App unit tests pass | `make test-unit-app` | exit 0 | P0 | |
 | S2 | Design-system unit tests pass | `make test-unit-design-system` | exit 0 | P0 | |
@@ -223,11 +257,17 @@ N/A — no files deleted (all app files are edited; the design-system files are 
 | `DATE_FORMATTER`, `formatCreatedAt` (SecretsList) | `grep -rnE "DATE_FORMATTER\|formatCreatedAt" ui/packages/app` | 0 matches |
 | `fmt` (RunnerList locale-pinned formatter) | `grep -n "function fmt(" ui/packages/app/app/(dashboard)/admin/runners/components/RunnerList.tsx` | 0 matches |
 | `Kind` / `Has key` row terms + `target.kind` in the dialog | `grep -nE "Kind\|Has key\|target\.kind" ui/packages/app/app/(dashboard)/w/[workspaceId]/settings/models/components/ModelDetailsDialog.tsx` | 0 matches |
+| `fmt` (ApiKeyList bare-`toLocaleString` formatter) | `grep -n "function fmt(" ui/packages/app/app/(dashboard)/settings/api-keys/components/ApiKeyList.tsx` | 0 matches |
+| `formatDate` (dead `Intl.DateTimeFormat` helper, zero callers) | `grep -rn "\bformatDate\b" ui/packages/app` | 0 matches |
+| bespoke date formatting outside the sanctioned homes | `grep -rlE "toLocaleString\|toLocaleDateString\|toLocaleTimeString\|Intl\.DateTimeFormat" ui/packages/app --include='*.tsx' --include='*.ts' \| grep -v '\.test\.' \| grep -v '/tests/'` | only `EventsList.tsx` (clock label fed to `Time`), `charges.ts` (ledger label fed to `Time`), `CatalogueList.tsx` (formats a token **count**, not a date), and `CronCard.tsx` (`Intl.DateTimeFormat().resolvedOptions().timeZone` — reads the browser timezone *name*, formats nothing) |
 
 ## Out of Scope
 
 - **A runner Delete action.** Requested in the screenshot feedback, but there is no Delete: `RUNNER_ADMIN_ACTION = {cordon, drain, revoke}` and the daemon serves no `DELETE /v1/runners` route. Adding one is a new destructive endpoint (daemon handler, admin authorization, audit event) — a separate spec, not a UI batch. Recorded here so the omission is deliberate.
-- **`RunnerActivityDialog`'s inline `occurred_at` timestamp** (`RunnerDialogs.tsx`) — a separate inline `toLocaleString()`, not the `fmt()` this spec deletes, and in a different file (NLR does not reach across files). Left for a follow-up timestamp sweep to keep this diff precise.
+- **`EventsList.tsx`'s `clockTime`/`CLOCK_FORMAT`** — already compliant: it feeds `Time`'s `label` override and its browser-local HH:MM clock is a deliberate operator affordance. It is the exemplar §5 mirrors, not a violation.
+- **`charges.ts::formatChargeTimestamp`** — the ledger string itself stays (an approved mockup format); only its *rendering* moves behind `Time`. Replacing the format is a design decision, not a timestamp-standard one.
+- **`CatalogueList.tsx`'s `toLocaleString("en-US")`** — formats `context_cap_tokens`, a number. Not a date. Untouched.
+- **Timestamps outside `ui/packages/app`** — the `website` package renders none; the Command-Line Interface (CLI) has its own output layer.
 - Any change to `Time`, `Button`, `Badge`, or `Tooltip` themselves — they already carry every capability this spec consumes.
 - Migrating other icon buttons (Secrets edit/rename/delete, `Shell.tsx`) to `IconAction` — `IconAction` is introduced here and proven on the runner list; a broader adoption sweep is its own low-risk follow-up.
 
