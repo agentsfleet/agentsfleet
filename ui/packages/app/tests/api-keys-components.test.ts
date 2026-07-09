@@ -103,6 +103,12 @@ describe("ApiKeyList component", () => {
     expect(screen.getByLabelText(/Delete API key old-zapier/i)).toBeTruthy();
   });
 
+  it("Revoke and Delete are icon buttons — ban and trash glyphs, verbs carried by the aria-label", async () => {
+    await renderList(listResponse([ACTIVE, REVOKED]));
+    expect(screen.getByLabelText(/Revoke API key ci-runner/i).querySelector("svg.lucide-ban")).toBeTruthy();
+    expect(screen.getByLabelText(/Delete API key old-zapier/i).querySelector("svg.lucide-trash-2")).toBeTruthy();
+  });
+
   it("Revoke and Delete row triggers render the destructive button variant, matching RunnerList's pattern", async () => {
     await renderList(listResponse([ACTIVE, REVOKED]));
     expect(screen.getByLabelText(/Revoke API key ci-runner/i).className).toContain("bg-destructive");

@@ -64,6 +64,13 @@ describe("AddModelDialog", () => {
     expect(trigger.querySelector("svg.lucide-plus")).toBeTruthy();
   });
 
+  it("describes the entry exactly: prices a model per token, rates per 1M tokens", async () => {
+    render(React.createElement(AddModelDialog, { onCreated: vi.fn() }));
+    await userEvent.setup().click(screen.getByRole("button", { name: "Create model library" }));
+    const dialog = within(screen.getByRole("dialog"));
+    expect(dialog.getByText("A model library entry prices a model per token. Rates are per 1M tokens.")).toBeTruthy();
+  });
+
   it("should convert $/1M entry to integer nanos when creating a model", async () => {
     const user = userEvent.setup();
     createAdminModelActionMock.mockResolvedValue({ ok: true, data: { ...CATALOGUE[0] } });
@@ -72,7 +79,7 @@ describe("AddModelDialog", () => {
 
     await user.click(screen.getByRole("button", { name: "Create model library" }));
     fireEvent.change(screen.getByLabelText("Provider"), { target: { value: "fireworks" } });
-    fireEvent.change(screen.getByLabelText("Model id"), { target: { value: "glm-5.2" } });
+    fireEvent.change(screen.getByLabelText("Model"), { target: { value: "glm-5.2" } });
     fireEvent.change(screen.getByLabelText("Input $/1M"), { target: { value: "0.55" } });
 
     const dialog = screen.getByRole("dialog");
@@ -89,7 +96,7 @@ describe("AddModelDialog", () => {
     const user = userEvent.setup();
     render(React.createElement(AddModelDialog, { onCreated: vi.fn() }));
     await user.click(screen.getByRole("button", { name: "Create model library" }));
-    await user.type(screen.getByLabelText("Model id"), "glm-5.2");
+    await user.type(screen.getByLabelText("Model"), "glm-5.2");
     const dialog = screen.getByRole("dialog");
     await user.click(within(dialog).getByRole("button", { name: "Create model library" }));
     await new Promise((r) => setTimeout(r, 50));
@@ -103,7 +110,7 @@ describe("AddModelDialog", () => {
 
     await userEvent.setup().click(screen.getByRole("button", { name: "Create model library" }));
     fireEvent.change(screen.getByLabelText("Provider"), { target: { value: "fireworks" } });
-    fireEvent.change(screen.getByLabelText("Model id"), { target: { value: "glm-5.2" } });
+    fireEvent.change(screen.getByLabelText("Model"), { target: { value: "glm-5.2" } });
 
     const dialog = screen.getByRole("dialog");
     fireEvent.submit(dialog.querySelector("form")!);
@@ -213,12 +220,12 @@ describe("CatalogueList — Edit (rates dialog wired to updateAdminModelAction)"
     await waitFor(() => expect(onUpdated).toHaveBeenCalledWith(expect.objectContaining({ uid: "u1", input_nanos_per_mtok: 990_000_000 })));
   });
 
-  it("shows the immutable provider + model id as disabled fields", async () => {
+  it("shows the immutable provider + model as disabled fields", async () => {
     render(React.createElement(CatalogueList, { models: CATALOGUE, activeDefault: null, onDeleted: vi.fn(), onUpdated: vi.fn() }));
     fireEvent.click(within(rowFor("glm-5.2")).getByRole("button", { name: "Edit glm-5.2" }));
     const dialog = within(await screen.findByRole("dialog"));
     const provider = dialog.getByLabelText("Provider (locked)") as HTMLInputElement;
-    const modelId = dialog.getByLabelText("Model id (locked)") as HTMLInputElement;
+    const modelId = dialog.getByLabelText("Model (locked)") as HTMLInputElement;
     expect(provider.disabled).toBe(true);
     expect(provider.value).toBe("fireworks");
     expect(modelId.disabled).toBe(true);
@@ -374,7 +381,7 @@ describe("ModelsView", () => {
     await userEvent.setup().click(screen.getByRole("button", { name: "Create model library" }));
     const dialog = within(screen.getByRole("dialog"));
     fireEvent.change(dialog.getByLabelText("Provider"), { target: { value: "moonshot" } });
-    fireEvent.change(dialog.getByLabelText("Model id"), { target: { value: "kimi-k2.6" } });
+    fireEvent.change(dialog.getByLabelText("Model"), { target: { value: "kimi-k2.6" } });
     fireEvent.submit(screen.getByRole("dialog").querySelector("form")!);
 
     await waitFor(() => expect(screen.getByText("kimi-k2.6")).toBeTruthy());
