@@ -16,12 +16,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M122
 **Workstream:** 005
 **Date:** Jul 09, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — the test-harness integrity check the other four M122 workstreams' Test Delta rows silently depend on: today a Zig `test` block only runs when its file is force-imported from a test root, nothing enforces that convention, and the depth gate credits blocks that never compile — so a false assertion can sit green in a "1504 pass" suite indefinitely.
 **Categories:** API, INFRA
 **Batch:** B1 — runs alone; touches the Zig test roots, build graph, one checker script, and one make file; no overlap with M122_001..004 subject matter.
-**Branch:** {added at CHORE(open)}
-**Test Baseline:** set at CHORE(open) — `unit=<N> integration=<M>` via `make _lint_zig_test_depth`
+**Branch:** `feat/m122-005-test-root-reachability`
+**Test Baseline:** unit=2395 integration=267 — recorded at CHORE(open) from the CURRENT textual `^test "` counter, which §4 replaces. The corrected compiler-truth count is expected to land STRICTLY BELOW this number even though §2/§3 add tests, because this baseline credits blocks that never compile. See Discovery → "Test Delta reads negative by construction".
 **Depends on:** none — sibling M122_004 shares the "make the guard actually fire" theme but is independent; this is the test-harness instance of that class.
 **Provenance:** agent-generated — discovered Jul 09, 2026 while re-verifying the Jul 02, 2026 `fleet-wide-refactor-audit`. The dead-block proof is empirical (a false assertion living in a green suite, reproduced below); the broader dead-set size is explicitly unresolved — the static reachability estimate is an upper bound with false positives, so this spec pins no file count and derives the true set from the compiler.
 **Canonical architecture:** `docs/architecture/direction.md` — platform determinism + gate discipline; the force-import convention itself is documented in the header comment of `src/agentsfleetd/tests.zig`.
@@ -248,6 +248,8 @@ No command-line surface of `agentsfleet`, no HTTP route, and no on-disk schema p
 ## Discovery (consult log)
 
 - **Consults** — Architecture / Legacy-Design / gate-flag triage: empty at creation.
+- **Test Delta reads negative by construction (recorded at CHORE(open), Jul 09, 2026)** — the `Test Baseline:` above (`unit=2395 integration=267`) was produced by the very counter §4 condemns: `make/quality.mk:63` runs `find src -name '*.zig' -exec grep -hE '^test "'`, a textual scan that credits every non-compiling block. After §4 swaps in the compiler-registered count, the VERIFY Test Delta will compare a corrected number against an inflated one and read **negative**, even though §2/§3 add tests and wire previously-dead ones. This does not indicate a regression, and the standard rule ("zero/negative unit delta on a code-adding diff → justify or return to EXECUTE", `docs/VERIFY_TIERS.md` §Test delta) must be satisfied by the justification rather than by the raw delta. **VERIFY protocol for this workstream:** report BOTH numbers — the corrected `--count` output and the old textual count re-run at HEAD — and grade the delta on the corrected-count basis (post-fix corrected count vs. a corrected count computed against `origin/main`). The gap between the two at merge time is itself the headline finding: it is the phantom-block population, and it belongs in PR Session Notes as a number.
+- **Baseline honesty** — `2395/267` is recorded verbatim rather than pre-corrected, because CHORE(open) records what the gate said at open. Substituting a hand-computed "true" baseline here would fabricate a measurement no command produced.
 - **Metrics review** — empty at creation.
 - **Skill-chain outcomes** — empty at creation.
 - **Deferrals** — empty at creation.
