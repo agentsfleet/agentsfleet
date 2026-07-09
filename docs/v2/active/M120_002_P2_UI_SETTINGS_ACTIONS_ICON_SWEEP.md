@@ -47,23 +47,24 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 
 | File | Action | Why |
 |------|--------|-----|
-| `ui/.../admin/models/components/CatalogueList.tsx` | EDIT | Delete becomes an icon button (`Trash2Icon`); add an Edit icon button (`PencilIcon`) opening the new dialog |
-| `ui/.../admin/models/components/EditModelDialog.tsx` | CREATE | rates/context-cap edit dialog wired to the existing `updateAdminModelAction`; mirrors `AddModelDialog.tsx`'s form shape minus the immutable provider/model_id fields |
-| `ui/.../admin/models/components/PlatformDefaultCard.tsx` | EDIT | root-cause + fix the misaligned provider-`Select` popover; replace the always-inline form with a "Create default" / "Edit default" button that opens a `Dialog` (mirrors `AddModelDialog.tsx`) |
-| `ui/.../admin/models/actions.ts` | EDIT | `updateAdminModelAction` already exported (§3); add `listPlatformKeysAction` (Option A read path) |
+| `ui/.../admin/models/components/CatalogueList.tsx` | EDIT | Actions column: icon Edit (`PencilIcon`) + Make default (`StarIcon`) + icon Delete (`Trash2Icon`); "Default" badge on the active row (hides its ★); renders `EditModelDialog` + `MakeDefaultDialog` |
+| `ui/.../admin/models/components/EditModelDialog.tsx` | CREATE | rates/context-cap edit dialog wired to the existing `updateAdminModelAction`; mirrors `AddModelDialog.tsx`'s form shape minus the immutable provider/model_id fields (shown disabled) |
+| `ui/.../admin/models/components/MakeDefaultDialog.tsx` | CREATE | **(pivot)** minimal "make this row the platform default" dialog — API key (+ base URL for openai-compatible) only; provider/model from the row; reuses `setPlatformDefaultAction` |
+| `ui/.../admin/models/components/PlatformDefaultCard.tsx` | **DELETE** | **(pivot)** the whole Platform Default section is removed; making a row the default is now a row action, not a separate form. §1's popover bug is deleted with it |
+| `ui/.../admin/models/actions.ts` | EDIT | `updateAdminModelAction` already exported; add `listPlatformKeysAction` (Option A read path) |
 | `src/agentsfleetd/http/handlers/admin/platform_keys/sql.zig` | EDIT | Option A — `SELECT_KEYS` gains the already-stored `model` column |
 | `src/agentsfleetd/http/handlers/admin/platform_keys.zig` | EDIT | Option A — `PlatformKeyRow.model: ?[]const u8`; GET reads/returns it (nullable) |
-| `public/openapi.json` | EDIT | Option A — `PlatformKey` schema gains nullable `model` |
+| `public/openapi{.json,/components/schemas.yaml}` | EDIT | Option A — `PlatformKey` schema gains nullable `model` (YAML source + bundled json) |
 | `src/agentsfleetd/http/handlers/admin/model_caps_admin_integration_test.zig` | EDIT | Option A — assert GET returns the active row's `model` |
 | `ui/.../lib/api/admin_models.ts` | EDIT | Option A — `PlatformKey`/`PlatformKeyList` types, `listPlatformKeys`, `activePlatformDefault` |
-| `ui/.../admin/models/page.tsx` | EDIT | Option A — fetch platform-keys error-tolerantly, thread the active default into `ModelsView` → `PlatformDefaultCard` |
-| `ui/.../admin/models/components/ModelsView.tsx` | EDIT | Option A — pass the active default down to `PlatformDefaultCard` |
+| `ui/.../admin/models/page.tsx` | EDIT | Option A — fetch platform-keys error-tolerantly, thread the active default into `ModelsView` → `CatalogueList` for the badge |
+| `ui/.../admin/models/components/ModelsView.tsx` | EDIT | drop the Platform Default section; thread `activeDefault` + `onUpdated` into `CatalogueList` |
 | `ui/.../settings/api-keys/components/CreateApiKeyDialog.tsx` | EDIT | trigger button gains `PlusIcon` |
 | `ui/.../admin/runners/components/AddRunnerDialog.tsx` | EDIT | trigger button gains `PlusIcon` |
 | `ui/.../w/[workspaceId]/secrets/components/AddSecretDialog.tsx` | EDIT | trigger button gains `PlusIcon` |
-| `ui/.../w/[workspaceId]/fleets/new/InstallConfirm.tsx` | EDIT | "Install" submit button gains an install-appropriate icon |
-| `ui/.../admin/models/components/CatalogueList.test.tsx` (or equivalent) | EDIT/CREATE | icon-button + Edit-dialog coverage |
-| `ui/.../admin/models/components/PlatformDefaultCard.test.tsx` (or equivalent) | EDIT | dialog-trigger + popover-fix coverage |
+| `ui/.../admin/models/components/AddModelDialog.tsx` | EDIT | **(added mid-flight, Indy)** "Create model library" trigger gains `PlusIcon` — the one Create button on this page the sweep list first missed |
+| `ui/.../w/[workspaceId]/fleets/new/InstallConfirm.tsx` | EDIT | "Install" submit button gains `DownloadIcon` |
+| `ui/.../tests/{admin-models-ui,admin-models-page,admin-models-actions,api-keys-create-dialog,runners-list,secrets-components,fleets-install-flow}.test.ts` + `lib/api/admin_models.test.ts` | EDIT | icon assertions, Edit/Make-default/badge coverage, `listPlatformKeys`/`activePlatformDefault` + read-path tests |
 
 ## Applicable Rules
 
@@ -92,22 +93,23 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 
 The screenshot shows the `Select`'s open option ("fireworks") rendering as an unstyled, misaligned element below the trigger instead of a positioned popover — most likely a portal/stacking-context issue specific to this card's nesting, not the shared `Select` primitive itself (no other call site of `Select` has this reported). **Implementation default:** root-cause against `PlatformDefaultCard.tsx`'s specific DOM nesting before assuming a shared-primitive fix is needed; this section's fix must land before or alongside §2's dialog conversion, since moving the form into a `Dialog` may itself resolve the stacking-context issue as a side effect — confirm either way rather than assuming.
 
-- **Dimension 1.1** — opening the Provider select renders its options as a properly positioned popover, not an inline misaligned element → Test `test_platform_default_provider_select_popover_is_positioned`
+- **Dimension 1.1** — ~~opening the Provider select renders its options as a properly positioned popover~~ **STRUCK (pivot, see Discovery)** — the misaligned select lived in `PlatformDefaultCard`, which was deleted. No provider select remains on this surface, so there is nothing to fix. R1 is struck from the rubric.
 
 ### §2 — Platform Default becomes a "Create default" / "Edit default" dialog trigger
 
 **Implementation default:** mirror `AddModelDialog.tsx` exactly — a `Button` (`PlusIcon` + "Create default" when no active default exists, `PencilIcon` + "Edit default" when one does) opens a `Dialog` containing today's `PlatformDefaultCard` form fields; the card no longer renders inline on the page. Per Indy's follow-up ask (this session), run a design-shotgun/wireframe pass on this dialog's layout and the catalogue's new icon row (§3) BEFORE building the components — same treatment as M120_001 §1: generate variants (or, if the `design` tool's image generation still has no OpenAI platform key configured, hand-built HTML wireframes using the app's real theme tokens, published for review), collect Indy's pick, record it in Discovery, then build to match. Do not hard-lock the dialog's exact layout from this spec's prose alone.
 
-- **Dimension 2.1** — a design-shotgun/wireframe run exists for the Platform Default dialog + catalogue icon-row layout and Indy's pick is recorded in Discovery before the dialog/icon components are built → Acceptance (Discovery record present, not a unit test)
-- **Dimension 2.2** — with no active platform default, the section renders a "Create default" trigger; saving inside the dialog activates a default and closes it → Test `test_create_default_dialog_activates_and_closes`
-- **Dimension 2.3** — with an active default, the trigger reads "Edit default" and pre-fills the dialog with the active provider/model → Test `test_edit_default_dialog_prefills_active_selection`
+- **Dimension 2.1** — a design-shotgun/wireframe run exists for the Platform Default dialog + catalogue icon-row layout and Indy's pick is recorded in Discovery before the dialog/icon components are built → Acceptance (Discovery record present, not a unit test) — **DONE** (wireframe published, Indy picked §2=A, §3=1; see Discovery)
+- **Dimension 2.2** — **REFRAMED (pivot):** a catalogue row's **★ Make default** action opens a minimal `MakeDefaultDialog` (API key + base URL for openai-compatible only); saving calls `setPlatformDefaultAction` with the row's (provider, model) and closes → **DONE** (`admin-models-ui.test.ts` "★ opens a minimal key dialog…", "requires a base URL for an openai-compatible row…")
+- **Dimension 2.3** — **REFRAMED (pivot):** the active default's catalogue row shows a **"Default"** badge and hides its own ★; other rows keep ★. The active (provider, model) comes from `listPlatformKeys` → `activePlatformDefault` (Option A read), matched against each row → **DONE** (`admin-models-ui.test.ts` "badges the active default's row and hides its ★…", page threading + tolerance in `admin-models-page.test.ts`)
 
 ### §3 — Admin Model Library rows get Edit + icon Delete
 
 **Implementation default:** `CatalogueList.tsx`'s Actions column renders `PencilIcon` (opens `EditModelDialog`, wired to the existing `updateAdminModelAction`) and `Trash2Icon` (existing delete flow, unchanged behavior, icon-only now) side by side, matching `SecretsList.tsx`'s spacing/`aria-label` convention.
 
-- **Dimension 3.1** — each catalogue row renders an Edit icon button that opens a dialog pre-filled with that row's rates/context cap; saving calls `updateAdminModelAction` and the list reflects the change → Test `test_catalogue_row_edit_dialog_updates_rates`
-- **Dimension 3.2** — Delete is icon-only (`Trash2Icon`, `aria-label`) with the existing `ConfirmDialog` confirmation, behavior unchanged from today → Test `test_catalogue_row_delete_is_icon_only_same_behavior`
+- **Dimension 3.1** — each catalogue row renders an Edit icon button (`PencilIcon`) that opens `EditModelDialog` pre-filled with that row's rates/context cap (provider + model id disabled/immutable); saving calls `updateAdminModelAction` with the row's `uid` and the list reflects the change → **DONE** (`admin-models-ui.test.ts` "opens a dialog pre-filled…PATCHes the new rates by uid", ModelsView "reflects an edited model's new rates")
+- **Dimension 3.2** — Delete is icon-only (`Trash2Icon`, `aria-label` `Delete {model_id}`) with the existing `ConfirmDialog` confirmation, behavior unchanged from today → **DONE** (`admin-models-ui.test.ts` "Delete is an icon-only destructive button…", delete confirm/success/failure/cancel tests)
+- **Dimension 3.3** (pivot) — each non-default row renders a `StarIcon` **Make default** action between Edit and Delete; the active row shows the Default badge instead → **DONE** (covered with 2.2/2.3 above)
 
 ### §4 — Global icon sweep across remaining settings pages
 
@@ -155,10 +157,10 @@ Regression: existing `CatalogueList`/`PlatformDefaultCard` test suites pass once
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | Provider-select popover renders positioned, not misaligned (§1) | `make test-unit-app` | Dimension 1.1 passes | P1 | |
-| R2 | Platform Default is a dialog trigger, not an inline form (§2) | `make test-unit-app` | Dimensions 2.2–2.3 pass | P1 | |
-| R3 | Catalogue rows have icon Edit + icon Delete (§3) | `make test-unit-app` | Dimensions 3.1–3.2 pass | P1 | |
-| R4 | Every listed settings page's Create/Install trigger carries its icon (§4) | `make test-unit-app` | Dimensions 4.1–4.2 pass | P2 | |
+| R1 | ~~Provider-select popover renders positioned~~ **STRUCK (pivot)** — `PlatformDefaultCard` + its select were deleted | — | n/a | P1 | ✅ n/a |
+| R2 | Making a row the platform default is a ★ row action + minimal key dialog; the active row is badged (§2 pivot) | `make test-unit-app` | Dimensions 2.2–2.3 pass | P1 | |
+| R3 | Catalogue rows have icon Edit + ★ Make default + icon Delete (§3) | `make test-unit-app` | Dimensions 3.1–3.3 pass | P1 | |
+| R4 | Every settings-page Create/Install trigger carries its icon, incl. AddModelDialog (§4) | `make test-unit-app` | Dimensions 4.1–4.2 pass | P2 | |
 | S1 | Unit tests pass | `make test` | exit 0 | P0 | |
 | S2 | Lint clean | `make lint` | exit 0 | P0 | |
 | S7 | No secrets | `gitleaks detect` | exit 0 | P0 | |
@@ -169,13 +171,13 @@ Regression: existing `CatalogueList`/`PlatformDefaultCard` test suites pass once
 
 ## Dead Code Sweep
 
-**Orphaned references — the inline `PlatformDefaultCard` form, if fully replaced rather than reused inside the dialog.**
+**`PlatformDefaultCard` is deleted outright (pivot) — no production or test reference may remain.**
 
 | Deleted symbol/import | Grep | Expected |
 |-----------------------|------|----------|
-| any now-unused inline-form-only styling/state from the pre-dialog `PlatformDefaultCard` | `grep -rn "PlatformDefaultCard" ui/packages/app/ --include="*.tsx" \| grep -v "\.test\."` | only the dialog-trigger version remains |
+| `PlatformDefaultCard` (component + its import in `ModelsView`) | `grep -rn "PlatformDefaultCard" ui/packages/app/` | 0 matches |
 
-No files deleted — `EditModelDialog.tsx` is new; everything else is edited in place.
+New files: `EditModelDialog.tsx`, `MakeDefaultDialog.tsx`. Deleted: `PlatformDefaultCard.tsx`. `setPlatformDefaultAction` + the `platform_default_set` telemetry event survive (now driven by `MakeDefaultDialog`).
 
 ## Out of Scope
 
@@ -209,6 +211,23 @@ No files deleted — `EditModelDialog.tsx` is new; everything else is edited in 
 - **Metrics review** — not applicable — no product/operator signal changes.
 - **Skill-chain outcomes** — empty at creation.
 - **Deferrals** — empty at creation.
+
+### Design-shotgun (Dimension 2.1)
+
+- **Wireframe run** (Jul 09, 2026) — hand-built HTML wireframes in the real agentsfleet dark/light tokens (image-gen path unavailable per the M120_001 note), two variants per surface, published for review: `https://claude.ai/code/artifact/3add99c7-6ce3-4617-8656-bf371b658490`.
+- **Indy's pick (2026-07-09):** §2 dialog = **A (Stacked — mirrors the Add-model dialog)**; §3 row actions = **1 (Secrets-page parity — ghost pencil + destructive trash)**. Both surfaces build to match these; §1's popover fix is folded into the §2 dialog conversion.
+
+### Direction pivot — Platform Default becomes a row action (Indy, Jul 09, 2026)
+
+> Indy (2026-07-09): "I think the PLATFORM DEFAULT component and section can be removed. Since essentially an enduser just makes a model library entry as default. So this must be an action (with an icon) after edit pencil which illustrates `make as default`?" + picked **Minimal key dialog** (no backend change) for the API-key handling.
+
+This supersedes the original §1/§2 design:
+
+- **§1 (popover fix) — DISSOLVED.** The misaligned provider-`Select` lived in `PlatformDefaultCard`, which is being deleted; there is no longer a select to fix. Dimension 1.1 / R1 are struck.
+- **§2 (Platform Default → dialog trigger) — REPLACED.** No separate Platform Default section or `PlatformDefaultCard`. Instead the catalogue row carries a **★ Make default** action between ✎ Edit and 🗑 Delete. The currently-active default row shows a **"Default"** badge and hides its own ★.
+- **★ Make default** opens a minimal `MakeDefaultDialog` collecting **only** the API key (+ base URL for the openai-compatible provider) — provider + model are the row's known identity. It reuses `setPlatformDefaultAction({provider, model, api_key, base_url})` **unchanged** (zero backend change). The key is required each (re)set because it is write-only and never read back.
+- **§3** stays and grows: Edit + Make-default + icon Delete per row, plus the Default badge.
+- **Option A read path still used:** `listPlatformKeys` → `activePlatformDefault` gives the active (provider, model); the row whose (provider, model_id) matches gets the "Default" badge. The GET `model` column added earlier is exactly what makes that match possible.
 
 ### Decisions taken during EXECUTE
 

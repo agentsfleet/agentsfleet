@@ -23,6 +23,7 @@ const {
   updateAdminModelMock,
   deleteAdminModelMock,
   setPlatformDefaultMock,
+  listPlatformKeysMock,
 } = vi.hoisted(() => ({
   hasScopeMock: vi.fn(),
   withTokenMock: vi.fn(),
@@ -33,6 +34,7 @@ const {
   updateAdminModelMock: vi.fn(),
   deleteAdminModelMock: vi.fn(),
   setPlatformDefaultMock: vi.fn(),
+  listPlatformKeysMock: vi.fn(),
 }));
 
 vi.mock("@/lib/auth/platform", () => ({ hasScope: hasScopeMock }));
@@ -47,6 +49,7 @@ vi.mock("@/lib/api/admin_models", () => ({
   updateAdminModel: updateAdminModelMock,
   deleteAdminModel: deleteAdminModelMock,
   setPlatformDefault: setPlatformDefaultMock,
+  listPlatformKeys: listPlatformKeysMock,
 }));
 
 import {
@@ -55,6 +58,7 @@ import {
   updateAdminModelAction,
   deleteAdminModelAction,
   setPlatformDefaultAction,
+  listPlatformKeysAction,
 } from "@/app/(dashboard)/admin/models/actions";
 
 const MODEL = {
@@ -120,6 +124,13 @@ describe("admin/models server actions — scoped happy paths forward through wit
     listAdminModelsMock.mockResolvedValueOnce({ models: [MODEL] });
     expect(await listAdminModelsAction()).toEqual({ ok: true, data: { models: [MODEL] } });
     expect(listAdminModelsMock).toHaveBeenCalledWith("tok");
+  });
+
+  it("listPlatformKeysAction forwards the token to the client", async () => {
+    const keys = { keys: [{ provider: "fireworks", source_workspace_id: "ws1", model: "glm-5.2", active: true, updated_at: 1 }] };
+    listPlatformKeysMock.mockResolvedValueOnce(keys);
+    expect(await listPlatformKeysAction()).toEqual({ ok: true, data: keys });
+    expect(listPlatformKeysMock).toHaveBeenCalledWith("tok");
   });
 
   it("createAdminModelAction forwards the cap body through withToken", async () => {

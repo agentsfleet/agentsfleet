@@ -23,6 +23,7 @@ import {
   Input,
   Spinner,
 } from "@agentsfleet/design-system";
+import { PlusIcon } from "lucide-react";
 import { type AdminModel, usdPerMtokToNanos } from "@/lib/api/admin_models";
 import { presentErrorString } from "@/lib/errors";
 import { createAdminModelAction } from "../actions";
@@ -88,7 +89,10 @@ export default function AddModelDialog({ onCreated }: { onCreated: (m: AdminMode
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
-        <Button type="button" size="sm">Create model library</Button>
+        <Button type="button" size="sm">
+          <PlusIcon size={14} />
+          Create model library
+        </Button>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
