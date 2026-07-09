@@ -11,24 +11,14 @@ import {
   updateAdminModel,
   deleteAdminModel,
   setPlatformDefault,
-  listPlatformKeys,
   type AdminModel,
   type AdminModelList,
   type ModelCapInput,
   type ModelRatesInput,
-  type PlatformKeyList,
 } from "@/lib/api/admin_models";
 
 export async function listAdminModelsAction(): Promise<ActionResult<AdminModelList>> {
   return requireScope(SCOPE.MODEL_READ, () => withToken((t) => listAdminModels(t)));
-}
-
-// Read-only list of platform-default rows (which provider/model is active), for
-// badging the catalogue's active row. The backend gate is `platform-key:read`;
-// the UI proxy mirrors the page's `model:read` (defence-in-depth), and page.tsx
-// tolerates a backend 403 so a model:read-only viewer still loads the page.
-export async function listPlatformKeysAction(): Promise<ActionResult<PlatformKeyList>> {
-  return requireScope(SCOPE.MODEL_READ, () => withToken((t) => listPlatformKeys(t)));
 }
 
 export async function createAdminModelAction(body: ModelCapInput): Promise<ActionResult<AdminModel>> {

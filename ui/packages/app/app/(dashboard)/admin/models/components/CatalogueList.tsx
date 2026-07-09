@@ -42,16 +42,16 @@ function ModelCell({ model, active }: { model: AdminModel; active: PlatformKey |
 function RowActions({
   model,
   active,
-  pending,
-  deleting,
+  busy,
   onEdit,
   onMakeDefault,
   onDelete,
 }: {
   model: AdminModel;
   active: PlatformKey | null;
-  pending: boolean;
-  deleting: boolean;
+  // True only while THIS row's delete is in flight — disables the row's actions
+  // and swaps the trash icon for a spinner.
+  busy: boolean;
   onEdit: (m: AdminModel) => void;
   onMakeDefault: (m: AdminModel) => void;
   onDelete: (m: AdminModel) => void;
@@ -63,7 +63,7 @@ function RowActions({
         variant="ghost"
         size="sm"
         onClick={() => onEdit(model)}
-        disabled={pending}
+        disabled={busy}
         aria-label={`Edit ${model.model_id}`}
       >
         <PencilIcon size={14} />
@@ -74,7 +74,7 @@ function RowActions({
           variant="ghost"
           size="sm"
           onClick={() => onMakeDefault(model)}
-          disabled={pending}
+          disabled={busy}
           aria-label={`Make ${model.model_id} the platform default`}
         >
           <StarIcon size={14} />
@@ -84,11 +84,11 @@ function RowActions({
         type="button"
         variant="destructive"
         size="sm"
-        disabled={pending}
+        disabled={busy}
         onClick={() => onDelete(model)}
         aria-label={`Delete ${model.model_id}`}
       >
-        {deleting ? <Spinner size="sm" srLabel="Deleting" /> : <Trash2Icon size={14} />}
+        {busy ? <Spinner size="sm" srLabel="Deleting" /> : <Trash2Icon size={14} />}
       </Button>
     </div>
   );
@@ -144,8 +144,7 @@ function buildColumns({
         <RowActions
           model={m}
           active={active}
-          pending={pending && busyUid === m.uid}
-          deleting={pending && busyUid === m.uid}
+          busy={pending && busyUid === m.uid}
           onEdit={onEdit}
           onMakeDefault={onMakeDefault}
           onDelete={onDelete}

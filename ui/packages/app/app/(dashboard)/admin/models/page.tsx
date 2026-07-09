@@ -29,10 +29,11 @@ export default async function AdminModelsPage() {
     throw e;
   }
 
-  // The active platform default badges the catalogue row it resolves to. Its GET
-  // is gated on platform-key:read — a distinct scope from this page's model:read —
-  // so a model:read-only viewer can 403 here. Tolerate any failure and fall back
-  // to "no default known" rather than failing the whole page over a badge.
+  // The active platform default only badges a catalogue row — a non-essential
+  // indicator. Its GET is gated on platform-key:read (a distinct scope from this
+  // page's model:read), so a model:read-only viewer 403s here; a transient
+  // backend/network error is likewise possible. Any failure degrades to "no
+  // default known" rather than failing the whole page over a badge.
   let activeDefault: PlatformKey | null = null;
   try {
     activeDefault = activePlatformDefault(await listPlatformKeys(token));
