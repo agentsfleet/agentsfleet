@@ -171,6 +171,29 @@ describe("AddModelEntryDialog — create-or-rotate by name", () => {
     expect(createModelEntryActionMock).not.toHaveBeenCalled();
   });
 
+  it("errors without writing when the name is owned by a custom endpoint secret (kind-blind guard closed)", async () => {
+    const endpointSecret: Secret = {
+      kind: "custom_endpoint",
+      name: "vllm-gateway",
+      provider: "openai-compatible",
+      base_url: "https://vllm.corp/v1",
+      created_at: 1_777_507_200_000,
+    };
+    const { user } = await renderDialog([endpointSecret]);
+    const dialog = screen.getByRole("dialog");
+
+    await fillKnownForm(user, dialog, { name: "vllm-gateway", key: "sk-ant-e2e-xxxx" });
+    await user.click(within(dialog).getByRole("button", { name: /^save$/i }));
+
+    // The secrets POST is an upsert — writing {provider, api_key} over an
+    // endpoint secret would destroy its base_url and break the entries
+    // referencing it. The guard must catch non-provider_key kinds too.
+    await waitFor(() => expect(within(dialog).getByText(/different provider/i)).toBeTruthy());
+    expect(rotateSecretActionMock).not.toHaveBeenCalled();
+    expect(createSecretActionMock).not.toHaveBeenCalled();
+    expect(createModelEntryActionMock).not.toHaveBeenCalled();
+  });
+
   it("surfaces a register error after a successful rotate, and leaves the dialog open", async () => {
     createModelEntryActionMock.mockResolvedValue({ ok: false, error: "duplicate", errorCode: "UZ-MODELS-003" });
     const { user } = await renderDialog([ANTHROPIC_SECRET]);

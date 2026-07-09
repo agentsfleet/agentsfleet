@@ -25,7 +25,7 @@ import { createSecretAction } from "@/app/(dashboard)/w/[workspaceId]/secrets/ac
 import { createModelEntryAction, rotateSecretAction, setProviderSelfManagedAction } from "../actions";
 import { isHttpsUrl, BASE_URL_NOT_HTTPS } from "../lib/custom-endpoint";
 import { presentErrorString } from "@/lib/errors";
-import { providerKeysOf, type Secret } from "@/lib/api/secrets";
+import { SECRET_KIND, type Secret } from "@/lib/api/secrets";
 import { providerLabel, uniqueProviders } from "@/lib/api/model_caps";
 import { OPENAI_COMPATIBLE_PROVIDER, SECRET_FIELD } from "@/lib/types";
 import { EVENTS } from "@/lib/analytics/events";
@@ -37,7 +37,7 @@ import ProviderModelSelect from "./ProviderModelSelect";
 const REGISTER_ACTION = "register the model entry";
 const ACTIVATE_ACTION = "activate this model";
 const STORE_ACTION = "store the credential";
-const NAME_PROVIDER_MISMATCH = "That name is already used by a different provider's key — pick another one.";
+const NAME_PROVIDER_MISMATCH = "That name is already used by a different provider or secret — pick another one.";
 
 export default function AddModelEntryDialog({
   workspaceId,
@@ -55,7 +55,6 @@ export default function AddModelEntryDialog({
   // The library's providers plus the OpenAI-compatible option, pinned last —
   // one dropdown covers hosted providers and custom endpoints alike (no tabs).
   const providerOptions = uniqueProviders(models).filter((p) => p !== OPENAI_COMPATIBLE_PROVIDER);
-  const providerKeys = providerKeysOf(secrets);
 
   const [open, setOpen] = useState(false);
   const [keyName, setKeyName] = useState("");
@@ -119,18 +118,24 @@ export default function AddModelEntryDialog({
   }
 
   /** Store (or rotate) the credential, register the entry, optionally activate.
-   * Name is the credential's identity: reusing it with the SAME provider
-   * rotates the api_key in place, so adding a second model on one account is
-   * the same motion as the first. A name owned by a DIFFERENT provider's key
-   * errors instead of overwriting (typo guard). The OpenAI-compatible path
-   * always stores a fresh secret carrying the provider sentinel + base_url
-   * (+ optional key) — the same fields the old custom-endpoint form wrote. */
+   * Name is the credential's identity, guarded across EVERY stored kind: a
+   * name owned by anything other than a same-shaped secret errors instead of
+   * overwriting (the secrets POST is an upsert server-side, so a silent
+   * collision would destroy the original credential's body). Reusing a name
+   * with the SAME named provider rotates the api_key in place; reusing an
+   * OpenAI-compatible name while the compatible provider is selected rewrites
+   * the endpoint's base_url + key together (the custom reconfigure motion). */
   async function submit(activate: boolean) {
     const name = keyName.trim();
     const modelId = model.trim();
     const key = apiKey.trim();
+    const existing = secrets.find((s) => s.name === name);
 
     if (isCustom) {
+      if (existing && existing.kind !== SECRET_KIND.custom_endpoint) {
+        setError(NAME_PROVIDER_MISMATCH);
+        return;
+      }
       if (!isHttpsUrl(baseUrl)) {
         setError(BASE_URL_NOT_HTTPS);
         return;
@@ -150,9 +155,8 @@ export default function AddModelEntryDialog({
       return;
     }
 
-    const existing = providerKeys.find((k) => k.name === name);
     if (existing) {
-      if (existing.provider !== provider.trim()) {
+      if (existing.kind !== SECRET_KIND.provider_key || existing.provider !== provider.trim()) {
         setError(NAME_PROVIDER_MISMATCH);
         return;
       }

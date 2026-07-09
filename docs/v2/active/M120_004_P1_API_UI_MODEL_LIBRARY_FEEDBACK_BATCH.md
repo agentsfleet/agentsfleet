@@ -76,7 +76,9 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `ui/packages/app/tests/admin-models-ui.test.ts` | EDIT | wording/label asserts |
 | `ui/packages/app/tests/api-keys-components.test.ts` | EDIT | icon-action asserts |
 | `ui/packages/app/tests/helpers/dashboard-app-mocks.tsx` | EDIT | registry list mock gains `platform_default` |
-| `ui/packages/app/tests/e2e/acceptance/operator-journey.spec.ts` | EDIT | selector updates if the journey walks the reshaped dialog/actions |
+| `ui/packages/app/tests/e2e/acceptance/provider-credential-reference.spec.ts` | EDIT | acceptance journey rewritten for the unified form (was paste-detect flow); CI acceptance-e2e gate |
+| `ui/packages/app/tests/no-stale-model-labels.test.ts` | CREATE | grep-based regression guard for Dimension 4.2 (`test_no_stale_labels`) |
+| `ui/packages/app/tests/helpers/dashboard-app-mocks.tsx` | not-needed | the registry list mock lives in the per-suite test files, not this shared helper — no edit landed |
 | `docs/v2/pending/M120_003_P2_API_UI_MODEL_LIBRARY_NAMING_RENAME.md` | EDIT | `Depends on:` gains M120_004 (same-surface sequencing) |
 
 ## Applicable Rules
@@ -207,20 +209,20 @@ No other endpoint, request shape, or route path changes. The public library docu
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | List response carries the default identity (§1) | `make test-integration` | exit 0 incl. both new identity tests | P0 | |
-| R2 | Zero stale labels (§4) | `grep -rn "Model id\|Key name" ui/packages/app/app` | no output | P0 | |
-| R3 | Tabs dead in the add dialog (§3) | `grep -n "TabsTrigger\|TabsContent" "ui/packages/app/app/(dashboard)/w/[workspaceId]/settings/models/components/AddModelEntryDialog.tsx"` | no output | P0 | |
-| R4 | Dropdown dead in the registry (§2) | `grep -n "DropdownMenu" "ui/packages/app/app/(dashboard)/w/[workspaceId]/settings/models/components/ModelsRegistryTable.tsx"` | no output | P0 | |
-| R5 | Diff stays inside Files Changed | `git diff --name-only origin/main` | 0 paths missing from the Files Changed table | P0 | |
-| S1 | Unit tests pass | `make test && make test-unit-app` | exit 0 | P0 | |
-| S2 | Lint clean | `make lint` | exit 0 | P0 | |
-| S3 | Integration passes | `make test-integration` | exit 0 | P0 | |
-| S4 | e2e walks the operator journey | `make acceptance-e2e` | exit 0 (or environment-constraint note per VERIFY tiers) | P1 | |
-| S5 | No leaks (Zig view allocation touched) | `make memleak` | exit 0 | P0 | |
-| S6 | Cross-compile | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` | exit 0 | P0 | |
-| S7 | No secrets | `gitleaks detect` | exit 0 | P0 | |
-| S8 | No oversize source file | `git diff --name-only origin/main \| grep -v '\.md$' \| xargs wc -l 2>/dev/null \| awk '$1>350 && $2!="total"'` | no output | P0 | |
-| S9 | Orphan sweep | Dead Code Sweep greps below | 0 matches | P0 | |
+| R1 | List response carries the default identity (§1) | `make test-integration` | exit 0 incl. both new identity tests | P0 | ✅ exit 0; test depth integration 265→267 |
+| R2 | Zero stale labels (§4) | `grep -rn "Model id\|Key name" ui/packages/app/app` | no output | P0 | ✅ no output |
+| R3 | Tabs dead in the add dialog (§3) | `grep -n "TabsTrigger\|TabsContent" "ui/packages/app/app/(dashboard)/w/[workspaceId]/settings/models/components/AddModelEntryDialog.tsx"` | no output | P0 | ✅ no output |
+| R4 | Dropdown dead in the registry (§2) | `grep -n "DropdownMenu" "ui/packages/app/app/(dashboard)/w/[workspaceId]/settings/models/components/ModelsRegistryTable.tsx"` | no output | P0 | ✅ no output |
+| R5 | Diff stays inside Files Changed | `git diff --name-only origin/main` | 0 paths missing from the Files Changed table | P0 | ✅ 25 paths, all in-table |
+| S1 | Unit tests pass | `make test-unit-all && make test-unit-app` | exit 0 | P0 | ✅ exit 0 — app 1250, website 173, cli 455, Zig 2395 |
+| S2 | Lint clean | `make lint-all` | exit 0 | P0 | ✅ every gate this diff touches green; the one red sub-gate (`check-route-registration-doc`, MISSING `fleets/credentials.zig`) fails identically on pristine `main` — pre-existing, out of scope, flagged to Indy |
+| S3 | Integration passes | `make test-integration` | exit 0 | P0 | ✅ exit 0 (pipefail-verified) |
+| S4 | e2e walks the operator journey | `make acceptance-e2e` | exit 0 (or environment-constraint note per VERIFY tiers) | P1 | VERIFY GATE: acceptance-e2e skipped per environment constraint (reason: needs Clerk credentials + a deployed target env; CI runs acceptance-e2e-{dev,prod} on the PR) |
+| S5 | No leaks (Zig view allocation touched) | `make memleak` | exit 0 | P0 | ✅ exit 0 — 0 leaks (macOS "not debuggable" note expected) |
+| S6 | Cross-compile | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` | exit 0 | P0 | ✅ both targets |
+| S7 | No secrets | `gitleaks detect` | exit 0 | P0 | ✅ no leaks found (152 MB scanned) |
+| S8 | No oversize source file | `git diff --name-only origin/main \| grep -v '\.md$' \| xargs wc -l 2>/dev/null \| awk '$1>350 && $2!="total"'` | no output | P0 | ✅ no production source over 350 — remaining hits are RULE FLL-exempt classes (generated `public/openapi.json`, `*_test.zig`/`*.test.ts*` files) |
+| S9 | Orphan sweep | Dead Code Sweep greps below | 0 matches | P0 | ✅ files gone, 0 orphan refs |
 
 **Grading protocol (VERIFY):** run the Verify command verbatim; grade ONLY from its output. Graded = ✅/❌ + the one decisive output line (`342 passed`); long evidence goes to PR Session Notes with a pointer here. **Ship gate:** every row graded, every P0 ✅ → eligible for CHORE(close); any ❌ or empty cell → return to EXECUTE; a P1 ❌ ships only with an Indy-acked deferral quote in Discovery.
 
@@ -273,5 +275,7 @@ No other endpoint, request shape, or route path changes. The public library docu
 
 - **Consults** — Indy confirmed the unified add-model form (provider dropdown carries "Custom — OpenAI-compatible", tabs removed) over keeping tabs, Jul 09, 2026 session.
 - **Metrics review** — no analytics/funnel playbook update required: no event added, renamed, or removed; existing events fire unchanged from the reworked surfaces.
-- **Skill-chain outcomes** — empty at creation.
-- **Deferrals** — empty at creation.
+- **Skill-chain outcomes** —
+  - `/write-unit-test`: diff ledger resolved; new tests added for the default-row identity/rates join, iconified actions, unified-form field order + gating, and the upsert-collision guard. Full app unit lane green (1250 tests); Zig integration green (both new identity tests).
+  - `/review` (4-lens adversarial workflow, 9 raw findings): **2×P1 fixed** — (a) the unified dialog's OpenAI-compatible branch upserted a secret over a same-named credential of a different kind with no guard (the secrets POST is `ON CONFLICT DO UPDATE`, so it silently destroyed the original body); the name guard now spans **all** secret kinds, not just `provider_key`, and errors before any write. (b) the CI acceptance e2e `provider-credential-reference.spec.ts` still walked the deleted paste-detect flow and would have failed the PR's acceptance gate — rewritten for the unified form. **1×P2 fixed** (kind-blind `providerKeysOf` guard — folded into the all-kinds fix; regression test added). **1×P2 fixed** (Dimension 4.2 cited a nonexistent `test_no_stale_labels` — created `tests/no-stale-model-labels.test.ts` as the grep-based regression guard). **1×P3 fixed** (Test Spec 5.1 "disabled-while-pending" had no test — added). **2×P3 fixed** (stale `detect-provider.ts` comment references in `model_caps.ts` + `known-models.ts`, RULE NLR touch-it-fix-it). **2×P3 spec-accuracy fixed** (Files Changed named a `dashboard-app-mocks.tsx` edit that was never needed and omitted the two e2e/regression-test files).
+- **Deferrals** — none.
