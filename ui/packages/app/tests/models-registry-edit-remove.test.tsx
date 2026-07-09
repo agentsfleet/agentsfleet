@@ -53,8 +53,9 @@ async function renderTable(initial: TenantModelEntryList) {
   render(React.createElement(ModelsRegistryTable, { workspaceId: "ws_1", initial, initialSecrets: [] } as never));
 }
 
-async function openRowMenu(user: ReturnType<typeof userEvent.setup>, modelId: string) {
-  await user.click(screen.getByRole("button", { name: new RegExp(`row actions for ${modelId}`, "i") }));
+/** Row actions are inline icon buttons (no dropdown) — click by aria-label. */
+async function clickRowAction(user: ReturnType<typeof userEvent.setup>, label: RegExp) {
+  await user.click(screen.getByRole("button", { name: label }));
 }
 
 async function renderEditDialog(target: TenantModelEntry) {
@@ -95,8 +96,7 @@ describe("Row actions — Edit", () => {
     await renderTable(registry([target]));
 
     const user = userEvent.setup();
-    await openRowMenu(user, "claude-sonnet-5");
-    await user.click(screen.getByRole("menuitem", { name: /^edit$/i }));
+    await clickRowAction(user, /edit claude-sonnet-5/i);
 
     const dialog = await screen.findByRole("dialog");
     // The model catalogue is empty in this test (no ModelCatalogueProvider),
@@ -215,8 +215,7 @@ describe("Row actions — dialog dismissal wiring (via the full table)", () => {
   it("closes the View details dialog on its own Close button", async () => {
     await renderTable(registry([entry({})]));
     const user = userEvent.setup();
-    await openRowMenu(user, "claude-sonnet-5");
-    await user.click(screen.getByRole("menuitem", { name: /view details/i }));
+    await clickRowAction(user, /view details for claude-sonnet-5/i);
     const dialog = await screen.findByRole("dialog");
 
     await user.click(within(dialog).getByRole("button", { name: /^close$/i }));
@@ -226,8 +225,7 @@ describe("Row actions — dialog dismissal wiring (via the full table)", () => {
   it("closes the Edit dialog via Cancel, wired through the table's own state", async () => {
     await renderTable(registry([entry({})]));
     const user = userEvent.setup();
-    await openRowMenu(user, "claude-sonnet-5");
-    await user.click(screen.getByRole("menuitem", { name: /^edit$/i }));
+    await clickRowAction(user, /edit claude-sonnet-5/i);
     const dialog = await screen.findByRole("dialog");
 
     await user.click(within(dialog).getByRole("button", { name: /^cancel$/i }));
@@ -238,8 +236,7 @@ describe("Row actions — dialog dismissal wiring (via the full table)", () => {
   it("dismissing the Remove confirm without confirming clears the pending target", async () => {
     await renderTable(registry([entry({})]));
     const user = userEvent.setup();
-    await openRowMenu(user, "claude-sonnet-5");
-    await user.click(screen.getByRole("menuitem", { name: /^remove claude-sonnet-5$/i }));
+    await clickRowAction(user, /^remove claude-sonnet-5$/i);
     await screen.findByRole("alertdialog");
 
     await user.keyboard("{Escape}");
@@ -302,8 +299,7 @@ describe("Row actions — Remove", () => {
     await renderTable(registry([active, inactive]));
 
     const user = userEvent.setup();
-    await openRowMenu(user, "claude-opus-4-8");
-    await user.click(screen.getByRole("menuitem", { name: /^remove claude-opus-4-8$/i }));
+    await clickRowAction(user, /^remove claude-opus-4-8$/i);
 
     const confirm = await screen.findByRole("alertdialog");
     await user.click(within(confirm).getByRole("button", { name: /^remove$/i }));
@@ -320,8 +316,7 @@ describe("Row actions — Remove", () => {
     await renderTable(registry([inactive]));
 
     const user = userEvent.setup();
-    await openRowMenu(user, "claude-opus-4-8");
-    await user.click(screen.getByRole("menuitem", { name: /^remove claude-opus-4-8$/i }));
+    await clickRowAction(user, /^remove claude-opus-4-8$/i);
     const confirm = await screen.findByRole("alertdialog");
     await user.click(within(confirm).getByRole("button", { name: /^remove$/i }));
 
@@ -329,16 +324,15 @@ describe("Row actions — Remove", () => {
     await waitFor(() => expect(listModelEntriesActionMock).toHaveBeenCalled());
   });
 
-  it("disables Remove with a reason on the active entry's row menu", async () => {
+  it("disables Remove with a reason on the active entry's row", async () => {
     const active = entry({ id: "e1", model_id: "claude-sonnet-5", active: true });
     await renderTable(registry([active]));
 
     const user = userEvent.setup();
-    await openRowMenu(user, "claude-sonnet-5");
-    const removeItem = screen.getByRole("menuitem", { name: /cannot remove claude-sonnet-5 while it is active/i });
-    expect(removeItem.getAttribute("aria-disabled")).toBe("true");
+    const removeButton = screen.getByRole("button", { name: /cannot remove claude-sonnet-5 while it is active/i });
+    expect(removeButton.hasAttribute("disabled")).toBe(true);
 
-    await user.click(removeItem);
+    await user.click(removeButton);
     expect(deleteModelEntryActionMock).not.toHaveBeenCalled();
     expect(screen.queryByRole("alertdialog")).toBeNull();
   });
