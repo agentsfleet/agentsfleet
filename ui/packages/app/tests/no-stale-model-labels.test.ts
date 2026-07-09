@@ -7,8 +7,12 @@ import { join } from "node:path";
 // tree for either stale label so a future edit reintroducing them fails here,
 // not in a design review. Test files are excluded — they legitimately assert on
 // prior wording and their own fixture strings.
+//
+// Word-boundary anchored so prose like "Model identifier" or "Key names" in a
+// comment or JSDoc doesn't trip a substring false positive — only the exact
+// labels, as a whole phrase, count.
 const APP_ROOT = join(__dirname, "..", "app");
-const STALE_LABELS = ["Model id", "Key name"] as const;
+const STALE_LABELS = [/\bModel id\b/, /\bKey name\b/] as const;
 
 function sourceFiles(dir: string): string[] {
   const out: string[] = [];
@@ -32,7 +36,7 @@ describe("no stale model labels under app/", () => {
     for (const file of sourceFiles(APP_ROOT)) {
       const text = readFileSync(file, "utf8");
       for (const label of STALE_LABELS) {
-        if (text.includes(label)) offenders.push(`${file}: "${label}"`);
+        if (label.test(text)) offenders.push(`${file}: ${label.source}`);
       }
     }
     expect(offenders).toEqual([]);
