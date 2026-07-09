@@ -16,12 +16,13 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M125
 **Workstream:** 001
 **Date:** Jul 09, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P2 — presentation polish plus one accessibility-hardening primitive; no data-model, route, or wire-shape change. The icon-action standard removes a whole defect class (nameless icon buttons), which lifts it above pure cosmetics.
 **Categories:** UI
 **Batch:** B2 — no code dependency, but M120_003 (pending) renames the `settings/models` client imports this spec's §1 file already uses (`@/lib/api/model_caps` → `model_library`). Ordering risk only: whichever lands second rebases one import line in `ModelDetailsDialog.tsx`. Do NOT block on it; note the collision at PLAN and take the trivial rebase.
 **Branch:** `feat/m125-001-ui-details-row-actions`
 **Test Baseline:** `unit=2395 integration=267` — recorded at CHORE(open), Jul 09, 2026, via `make _lint_zig_test_depth` on `main` @ `87e0e059`. This workstream is UI-only, so the Zig depth gate is expected to stay flat; the meaningful delta lands in the app and design-system vitest suites.
+**Test Delta at close:** `unit=2395 integration=267` — flat, as predicted: this branch touches no Zig. The real delta is seven new vitest files (`IconAction.test.tsx`, `model-details-dialog`, `SecretsList`, `ApiKeyList`, `RunnerList`, `billing-charge-cell`, `timestamp-standard`) plus render/grep assertions added to four pre-existing ones. Suites at close: app 1270 passed (138 files), design-system 458 passed (50 files). No zero/negative delta on a code-adding diff.
 **Depends on:** none.
 **Provenance:** human-directed — Indy's screenshot feedback on the model-entry details dialog, the Secrets "Created" column, and the Manage-runners row actions (Jul 09, 2026 session); agent-drafted against the code as merged at PR #496.
 **Canonical architecture:** none — presentation-layer only; no flow, channel, or schema is defined or changed. The design-system primitive set (`ui/packages/design-system/src/index.ts`) is the surface of record for §3.
