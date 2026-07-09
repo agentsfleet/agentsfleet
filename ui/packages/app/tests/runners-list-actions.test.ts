@@ -2,6 +2,7 @@ import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { TooltipProvider } from "@agentsfleet/design-system";
 import type { RunnerEventsResponse, RunnerListItem, RunnerListResponse } from "@/lib/api/runners";
 
 const PAGE_SIZE = 25;
@@ -120,7 +121,9 @@ async function renderList(initial: RunnerListResponse) {
   const { default: RunnerList } = await import(
     "../app/(dashboard)/admin/runners/components/RunnerList"
   );
-  render(React.createElement(RunnerList, { initial } as never));
+  render(
+    React.createElement(TooltipProvider, null, React.createElement(RunnerList, { initial } as never)),
+  );
 }
 
 beforeEach(() => {
@@ -257,6 +260,15 @@ describe("RunnerList activity dialog", () => {
     await waitFor(() => expect(listRunnerEventsActionMock).toHaveBeenCalledWith(ONLINE.id, { page: 1, page_size: PAGE_SIZE }));
     expect(await screen.findByText("runner_online")).toBeTruthy();
     expect(screen.getByText(/last_seen_at/i)).toBeTruthy();
+
+    // The activity row must render its timestamp through <Time>, not raw text:
+    // a grep for the removed toLocaleString cannot catch a hand-rolled label,
+    // so assert the semantic <time datetime> element that Time emits. Scope to
+    // the dialog — the host cell behind it also renders <time> elements now.
+    const dialog = await screen.findByRole("dialog");
+    const stamp = dialog.querySelector("time[datetime]");
+    expect(stamp).toBeTruthy();
+    expect(stamp?.getAttribute("datetime")).toBe(new Date(1_716_500_000_000).toISOString());
   });
 
   it("ignores stale activity responses from a previously selected runner", async () => {
