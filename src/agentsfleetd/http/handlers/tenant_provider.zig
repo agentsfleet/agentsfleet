@@ -197,7 +197,7 @@ fn probeSelfManagedOrFail(hx: Hx, conn: *pg.Conn, tenant_id: []const u8, secret_
             return null;
         },
         tenant_provider.ResolveError.SecretDataMalformed => {
-            hx.fail(ec.ERR_PROVIDER_SECRET_DATA_MALFORMED, "credential JSON missing required field (provider, api_key, or model)");
+            hx.fail(ec.ERR_PROVIDER_SECRET_DATA_MALFORMED, "credential JSON missing required field (provider, or api_key for a named provider)");
             return null;
         },
         tenant_provider.ResolveError.SecretEndpointInvalid => {
@@ -225,7 +225,14 @@ fn probeSelfManagedOrFail(hx: Hx, conn: *pg.Conn, tenant_id: []const u8, secret_
 /// not in the catalogue, and the caller fails it (UZ-PROVIDER-004). The rate row
 /// is keyed by (provider, model): the credential's provider is the authority for
 /// which provider hosts the model.
+///
+/// An empty effective model returns `null` for EVERY provider — the credential no
+/// longer guarantees a model (M121: it lives on the registry entry / PUT body), so
+/// this is the boundary that re-establishes "an activation must name a model."
+/// Without it a bare PUT for an openai-compatible secret would take the sentinel
+/// path and persist a blank model that fails only later at dial time.
 fn resolveSelfManagedCap(provider: []const u8, model: []const u8) ?u32 {
+    if (model.len == 0) return null;
     if (std.mem.eql(u8, provider, tenant_provider.OPENAI_COMPATIBLE_PROVIDER)) {
         return CUSTOM_ENDPOINT_CAP_UNKNOWN;
     }

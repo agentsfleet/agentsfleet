@@ -79,8 +79,10 @@ pub const ResolvedProvider = struct {
 pub const ResolveError = error{
     /// self-managed row points at a secret_ref that has no vault row.
     SecretMissing,
-    /// Vault row decrypted but the JSON object is missing required fields
-    /// (provider, api_key, model).
+    /// Vault row decrypted but the JSON object is missing a required field:
+    /// `provider` (always), or `api_key` (for a named provider — optional for an
+    /// openai-compatible endpoint). `model` is optional (M121: it lives on the
+    /// registry entry, not the credential).
     SecretDataMalformed,
     /// An openai-compatible credential's `base_url` is missing, not https, or
     /// targets an SSRF-unsafe host; OR a non-openai-compatible credential
@@ -118,8 +120,9 @@ pub fn resolveActiveProvider(
 }
 
 /// UPSERT a self-managed row for tenant_id. Validates the credential exists in the
-/// tenant's primary workspace vault and that the JSON has the required
-/// shape (provider/api_key/model). Stores the user-supplied model + cap
+/// tenant's primary workspace vault and has the required shape (provider always;
+/// api_key for a named provider) — `model` is NOT required on the credential
+/// (M121: it lives on the registry entry). Stores the caller-supplied model + cap
 /// directly — caller is responsible for resolving them from the model-caps
 /// catalogue beforehand.
 ///
