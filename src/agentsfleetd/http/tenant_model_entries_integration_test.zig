@@ -388,6 +388,16 @@ test "integration: test_activate_custom_endpoint_without_model_rejected — empt
         try r.expectStatus(.bad_request);
         try std.testing.expect(r.bodyContains(error_codes.ERR_PROVIDER_MODEL_NOT_IN_CATALOGUE));
     }
+    {
+        // A whitespace-PADDED but otherwise valid model is rejected too — the cap
+        // gate requires the trimmed value to equal the submitted one, so a padded
+        // name can't be persisted for the custom endpoint to choke on at dial time.
+        const r = try (try (try h.put("/v1/tenants/me/provider").bearer(base.TOKEN_OPERATOR))
+            .json("{\"mode\":\"self_managed\",\"secret_ref\":\"gw-key\",\"model\":\" claude-sonnet-4-6 \"}")).send();
+        defer r.deinit();
+        try r.expectStatus(.bad_request);
+        try std.testing.expect(r.bodyContains(error_codes.ERR_PROVIDER_MODEL_NOT_IN_CATALOGUE));
+    }
 
     const conn = try h.acquireConn();
     defer h.releaseConn(conn);
