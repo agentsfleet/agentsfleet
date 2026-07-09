@@ -384,23 +384,27 @@ describe("ModelsRegistryTable", () => {
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: /add model/i }));
     const dialog = await screen.findByRole("dialog");
-    await user.type(within(dialog).getByLabelText(/^api key$/i), "sk-ant-e2e-xxxx");
+    await user.type(within(dialog).getByLabelText(/^name$/i), "anthropic");
+    await user.type(within(dialog).getByLabelText(/^provider$/i), "anthropic");
     await user.click(within(dialog).getByLabelText(/^model$/i));
     await user.click((await screen.findAllByRole("option"))[0]!);
+    await user.type(within(dialog).getByLabelText(/^api key$/i), "sk-ant-e2e-xxxx");
     await user.click(within(dialog).getByRole("button", { name: /^save$/i }));
 
     await waitFor(() => expect(listSecretsActionMock).toHaveBeenCalledWith("ws_1"));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
 
-    // Second add with the same auto-detected key name ("anthropic") — the
-    // refreshed secrets state now carries that name, so the dialog rotates
-    // the stored key in place instead of re-creating it. This is the
-    // observable proof the refreshSecrets round-trip landed in state.
+    // Second add reusing the same name ("anthropic") — the refreshed secrets
+    // state now carries that name, so the dialog rotates the stored key in
+    // place instead of re-creating it. This is the observable proof the
+    // refreshSecrets round-trip landed in state.
     await user.click(screen.getByRole("button", { name: /add model/i }));
     const reopened = await screen.findByRole("dialog");
-    await user.type(within(reopened).getByLabelText(/^api key$/i), "sk-ant-second-key");
+    await user.type(within(reopened).getByLabelText(/^name$/i), "anthropic");
+    await user.type(within(reopened).getByLabelText(/^provider$/i), "anthropic");
     await user.click(within(reopened).getByLabelText(/^model$/i));
     await user.click((await screen.findAllByRole("option"))[0]!);
+    await user.type(within(reopened).getByLabelText(/^api key$/i), "sk-ant-second-key");
     await user.click(within(reopened).getByRole("button", { name: /^save$/i }));
 
     await waitFor(() => expect(rotateSecretActionMock).toHaveBeenCalledWith("ws_1", "anthropic", "sk-ant-second-key"));
@@ -417,23 +421,27 @@ describe("ModelsRegistryTable", () => {
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: /add model/i }));
     const dialog = await screen.findByRole("dialog");
-    await user.type(within(dialog).getByLabelText(/^api key$/i), "sk-ant-e2e-xxxx");
+    await user.type(within(dialog).getByLabelText(/^name$/i), "anthropic");
+    await user.type(within(dialog).getByLabelText(/^provider$/i), "anthropic");
     await user.click(within(dialog).getByLabelText(/^model$/i));
     await user.click((await screen.findAllByRole("option"))[0]!);
+    await user.type(within(dialog).getByLabelText(/^api key$/i), "sk-ant-e2e-xxxx");
     await user.click(within(dialog).getByRole("button", { name: /^save$/i }));
 
     await waitFor(() => expect(listSecretsActionMock).toHaveBeenCalledWith("ws_1"));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
 
-    // The `!r.ok` early return kept the secrets state empty, so the same key
+    // The `!r.ok` early return kept the secrets state empty, so the same
     // name is unknown to the dialog and the second add takes the create path
     // again (the backend would 409 in reality; mocked ok here — the branch
     // under test is refreshSecrets' silent no-op, matching refresh()).
     await user.click(screen.getByRole("button", { name: /add model/i }));
     const reopened = await screen.findByRole("dialog");
-    await user.type(within(reopened).getByLabelText(/^api key$/i), "sk-ant-second-key");
+    await user.type(within(reopened).getByLabelText(/^name$/i), "anthropic");
+    await user.type(within(reopened).getByLabelText(/^provider$/i), "anthropic");
     await user.click(within(reopened).getByLabelText(/^model$/i));
     await user.click((await screen.findAllByRole("option"))[0]!);
+    await user.type(within(reopened).getByLabelText(/^api key$/i), "sk-ant-second-key");
     await user.click(within(reopened).getByRole("button", { name: /^save$/i }));
 
     await waitFor(() => expect(createSecretActionMock).toHaveBeenCalledTimes(2));

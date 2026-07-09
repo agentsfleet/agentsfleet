@@ -18,9 +18,9 @@ vi.mock("@/app/(dashboard)/w/[workspaceId]/secrets/actions", () => ({
   createSecretAction: createSecretActionMock,
 }));
 
-// Model catalogue state the ProviderModelSelect/Provider-field pickers read —
-// empty by default (Input-fallback shape); one test below populates it to
-// exercise the catalogue-backed <Select> branch for the Provider field.
+// Model catalogue state the Provider/Model pickers read — empty by default
+// (free-text provider fallback); tests populate it to exercise the
+// catalogue-backed <Select> branch.
 const { catalogueState } = vi.hoisted(() => ({
   catalogueState: {
     models: [] as Array<{
@@ -62,6 +62,21 @@ async function renderDialog(secrets: Secret[] = []) {
   return { onCreated, onSecretsChanged, user };
 }
 
+/** Walks the unified form in its field order: Name → Provider → Model → API key.
+ * Empty catalogue → provider is the free-text fallback; the model picker
+ * fills from the static known-models list for the typed provider. */
+async function fillKnownForm(
+  user: ReturnType<typeof userEvent.setup>,
+  dialog: HTMLElement,
+  { name, provider = "anthropic", key }: { name: string; provider?: string; key: string },
+) {
+  await user.type(within(dialog).getByLabelText(/^name$/i), name);
+  await user.type(within(dialog).getByLabelText(/^provider$/i), provider);
+  await user.click(within(dialog).getByLabelText(/^model$/i));
+  await user.click((await screen.findAllByRole("option"))[0]!);
+  await user.type(within(dialog).getByLabelText(/^api key$/i), key);
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   catalogueState.models = [];
@@ -75,19 +90,60 @@ beforeEach(() => {
 });
 afterEach(() => cleanup());
 
-describe("AddModelEntryDialog — create-or-rotate by key name", () => {
+describe("AddModelEntryDialog — unified form shape", () => {
+  it("renders one tab-free form ordered Name → Provider → Model → API key, with no Base URL for a named provider", async () => {
+    await renderDialog();
+    const dialog = screen.getByRole("dialog");
+
+    expect(within(dialog).queryByRole("tablist")).toBeNull();
+    expect(within(dialog).queryByLabelText(/base url/i)).toBeNull();
+
+    const labels = Array.from(dialog.querySelectorAll("label")).map((l) => l.textContent);
+    expect(labels).toEqual(["Name", "Provider", "Model", "API key"]);
+  });
+
+  it("typing an API key or a provider never mutates the free-form Name", async () => {
+    const { user } = await renderDialog();
+    const dialog = screen.getByRole("dialog");
+
+    const name = within(dialog).getByLabelText(/^name$/i) as HTMLInputElement;
+    await user.type(within(dialog).getByLabelText(/^api key$/i), "sk-ant-e2e-xxxx");
+    expect(name.value).toBe("");
+    await user.type(within(dialog).getByLabelText(/^provider$/i), "anthropic");
+    expect(name.value).toBe("");
+
+    await user.type(name, "my-second-anthropic");
+    await user.click(within(dialog).getByLabelText(/^model$/i));
+    await user.click((await screen.findAllByRole("option"))[0]!);
+    await user.click(within(dialog).getByRole("button", { name: /^save$/i }));
+
+    await waitFor(() =>
+      expect(createSecretActionMock).toHaveBeenCalledWith("ws_1", expect.objectContaining({ name: "my-second-anthropic" })),
+    );
+    expect(rotateSecretActionMock).not.toHaveBeenCalled();
+  });
+
+  it("lists the library's providers plus the OpenAI-compatible option pinned last", async () => {
+    catalogueState.models = [
+      { id: "claude-sonnet-5", provider: "anthropic", context_cap_tokens: 200000, input_nanos_per_mtok: 0, cached_input_nanos_per_mtok: 0, output_nanos_per_mtok: 0 },
+    ];
+    const { user } = await renderDialog();
+    const dialog = screen.getByRole("dialog");
+
+    await user.click(within(dialog).getByLabelText(/^provider$/i));
+    const options = await screen.findAllByRole("option");
+    const labels = options.map((o) => o.textContent);
+    expect(labels[0]).toBe("Anthropic");
+    expect(labels[labels.length - 1]).toBe("Custom — OpenAI-compatible");
+  });
+});
+
+describe("AddModelEntryDialog — create-or-rotate by name", () => {
   it("rotates the stored key in place when the name already exists with the same provider", async () => {
     const { onCreated, onSecretsChanged, user } = await renderDialog([ANTHROPIC_SECRET]);
     const dialog = screen.getByRole("dialog");
 
-    await user.type(within(dialog).getByLabelText(/^api key$/i), ROTATED_API_KEY);
-    // Paste-detect names the key "anthropic"; retype it to hit the stored
-    // "anthropic-prod" — key name is the identity the rotate keys off.
-    const keyName = within(dialog).getByLabelText(/key name/i) as HTMLInputElement;
-    await user.clear(keyName);
-    await user.type(keyName, "anthropic-prod");
-    await user.click(within(dialog).getByLabelText(/^model$/i));
-    await user.click((await screen.findAllByRole("option"))[0]!);
+    await fillKnownForm(user, dialog, { name: "anthropic-prod", key: ROTATED_API_KEY });
     await user.click(within(dialog).getByRole("button", { name: /^save$/i }));
 
     await waitFor(() => expect(rotateSecretActionMock).toHaveBeenCalledWith("ws_1", "anthropic-prod", ROTATED_API_KEY));
@@ -101,39 +157,12 @@ describe("AddModelEntryDialog — create-or-rotate by key name", () => {
     expect(onSecretsChanged).not.toHaveBeenCalled();
   });
 
-  it("preserves a hand-typed key name against paste-detect, so the rotate target can't be redirected", async () => {
-    const { user } = await renderDialog([ANTHROPIC_SECRET]);
-    const dialog = screen.getByRole("dialog");
-
-    // Key name typed FIRST — the later paste-detect must not clobber it back
-    // to "anthropic" (which could silently rotate a different stored key).
-    const keyName = within(dialog).getByLabelText(/key name/i) as HTMLInputElement;
-    await user.type(keyName, "my-second-anthropic");
-    await user.type(within(dialog).getByLabelText(/^api key$/i), "sk-ant-e2e-xxxx");
-    await waitFor(() => expect((within(dialog).getByLabelText(/^provider$/i) as HTMLInputElement).value).toBe("anthropic"));
-    expect(keyName.value).toBe("my-second-anthropic");
-
-    await user.click(within(dialog).getByLabelText(/^model$/i));
-    await user.click((await screen.findAllByRole("option"))[0]!);
-    await user.click(within(dialog).getByRole("button", { name: /^save$/i }));
-
-    await waitFor(() =>
-      expect(createSecretActionMock).toHaveBeenCalledWith("ws_1", expect.objectContaining({ name: "my-second-anthropic" })),
-    );
-    expect(rotateSecretActionMock).not.toHaveBeenCalled();
-  });
-
   it("errors without writing anything when the name is owned by a different provider's key", async () => {
     const openaiSecret: Secret = { kind: "provider_key", name: "openai-prod", provider: "openai", created_at: 1_777_507_200_000 };
     const { user } = await renderDialog([openaiSecret]);
     const dialog = screen.getByRole("dialog");
 
-    await user.type(within(dialog).getByLabelText(/^api key$/i), "sk-ant-e2e-xxxx");
-    const keyName = within(dialog).getByLabelText(/key name/i) as HTMLInputElement;
-    await user.clear(keyName);
-    await user.type(keyName, "openai-prod");
-    await user.click(within(dialog).getByLabelText(/^model$/i));
-    await user.click((await screen.findAllByRole("option"))[0]!);
+    await fillKnownForm(user, dialog, { name: "openai-prod", key: "sk-ant-e2e-xxxx" });
     await user.click(within(dialog).getByRole("button", { name: /^save$/i }));
 
     await waitFor(() => expect(within(dialog).getByText(/different provider/i)).toBeTruthy());
@@ -147,12 +176,7 @@ describe("AddModelEntryDialog — create-or-rotate by key name", () => {
     const { user } = await renderDialog([ANTHROPIC_SECRET]);
     const dialog = screen.getByRole("dialog");
 
-    await user.type(within(dialog).getByLabelText(/^api key$/i), ROTATED_API_KEY);
-    const keyName = within(dialog).getByLabelText(/key name/i) as HTMLInputElement;
-    await user.clear(keyName);
-    await user.type(keyName, "anthropic-prod");
-    await user.click(within(dialog).getByLabelText(/^model$/i));
-    await user.click((await screen.findAllByRole("option"))[0]!);
+    await fillKnownForm(user, dialog, { name: "anthropic-prod", key: ROTATED_API_KEY });
     await user.click(within(dialog).getByRole("button", { name: /^save$/i }));
 
     await waitFor(() => expect(rotateSecretActionMock).toHaveBeenCalled());
@@ -165,12 +189,7 @@ describe("AddModelEntryDialog — create-or-rotate by key name", () => {
     const { user } = await renderDialog([ANTHROPIC_SECRET]);
     const dialog = screen.getByRole("dialog");
 
-    await user.type(within(dialog).getByLabelText(/^api key$/i), ROTATED_API_KEY);
-    const keyName = within(dialog).getByLabelText(/key name/i) as HTMLInputElement;
-    await user.clear(keyName);
-    await user.type(keyName, "anthropic-prod");
-    await user.click(within(dialog).getByLabelText(/^model$/i));
-    await user.click((await screen.findAllByRole("option"))[0]!);
+    await fillKnownForm(user, dialog, { name: "anthropic-prod", key: ROTATED_API_KEY });
     await user.click(within(dialog).getByRole("button", { name: /^save$/i }));
 
     await waitFor(() => expect(within(dialog).getByRole("alert")).toBeTruthy());
@@ -179,29 +198,29 @@ describe("AddModelEntryDialog — create-or-rotate by key name", () => {
 });
 
 describe("AddModelEntryDialog — known provider, new key", () => {
-  it("disables Save when the new-key shape is incomplete", async () => {
+  it("disables Save until name, provider, model, AND key are present for a named provider", async () => {
     const { user } = await renderDialog();
     const dialog = screen.getByRole("dialog");
+    const save = () => within(dialog).getByRole("button", { name: /^save$/i });
 
-    expect(within(dialog).getByRole("button", { name: /^save$/i }).hasAttribute("disabled")).toBe(true);
-    await user.type(within(dialog).getByLabelText(/^api key$/i), "sk-ant-e2e-xxxx");
-    // Provider + key name auto-fill from the paste-detect, but Model is still empty.
-    expect(within(dialog).getByRole("button", { name: /^save$/i }).hasAttribute("disabled")).toBe(true);
-
-    expect(createSecretActionMock).not.toHaveBeenCalled();
-    expect(within(dialog).queryByRole("alert")).toBeNull();
-  });
-
-  it("paste-detects the provider and stores a secret with no model field in the body", async () => {
-    const { user } = await renderDialog();
-    const dialog = screen.getByRole("dialog");
-
-    await user.type(within(dialog).getByLabelText(/^api key$/i), "sk-ant-e2e-xxxx");
-    await waitFor(() => expect((within(dialog).getByLabelText(/^provider$/i) as HTMLInputElement).value).toBe("anthropic"));
-
+    expect(save().hasAttribute("disabled")).toBe(true);
+    await user.type(within(dialog).getByLabelText(/^name$/i), "anthropic");
+    await user.type(within(dialog).getByLabelText(/^provider$/i), "anthropic");
     await user.click(within(dialog).getByLabelText(/^model$/i));
     await user.click((await screen.findAllByRole("option"))[0]!);
+    // Everything but the key — a named provider is never keyless.
+    expect(save().hasAttribute("disabled")).toBe(true);
 
+    await user.type(within(dialog).getByLabelText(/^api key$/i), "sk-ant-e2e-xxxx");
+    expect(save().hasAttribute("disabled")).toBe(false);
+    expect(createSecretActionMock).not.toHaveBeenCalled();
+  });
+
+  it("stores a secret with provider + api_key and no model field in the body", async () => {
+    const { user } = await renderDialog();
+    const dialog = screen.getByRole("dialog");
+
+    await fillKnownForm(user, dialog, { name: "anthropic", key: "sk-ant-e2e-xxxx" });
     await user.click(within(dialog).getByRole("button", { name: /^save$/i }));
 
     await waitFor(() => expect(createSecretActionMock).toHaveBeenCalled());
@@ -212,18 +231,19 @@ describe("AddModelEntryDialog — known provider, new key", () => {
     await waitFor(() => expect(createModelEntryActionMock).toHaveBeenCalled());
   });
 
-  it("picks the provider from a catalogue-backed <Select> when the catalogue has rows", async () => {
+  it("picks the provider from the catalogue-backed <Select> when the library has rows", async () => {
     catalogueState.models = [
       { id: "claude-sonnet-5", provider: "anthropic", context_cap_tokens: 200000, input_nanos_per_mtok: 0, cached_input_nanos_per_mtok: 0, output_nanos_per_mtok: 0 },
     ];
     const { user } = await renderDialog();
     const dialog = screen.getByRole("dialog");
 
-    await user.type(within(dialog).getByLabelText(/^api key$/i), "a-key-with-no-known-prefix");
+    await user.type(within(dialog).getByLabelText(/^name$/i), "anthropic");
     await user.click(within(dialog).getByLabelText(/^provider$/i));
-    await user.click(await screen.findByRole("option", { name: /anthropic/i }));
+    await user.click(await screen.findByRole("option", { name: /^anthropic$/i }));
     await user.click(within(dialog).getByLabelText(/^model$/i));
     await user.click((await screen.findAllByRole("option"))[0]!);
+    await user.type(within(dialog).getByLabelText(/^api key$/i), "a-key-with-no-known-prefix");
     await user.click(within(dialog).getByRole("button", { name: /^save$/i }));
 
     await waitFor(() => expect(createSecretActionMock).toHaveBeenCalled());
@@ -231,39 +251,12 @@ describe("AddModelEntryDialog — known provider, new key", () => {
     expect(body.data.provider).toBe("anthropic");
   });
 
-  it("lets the key name be edited directly, independent of the detected provider", async () => {
-    const { user } = await renderDialog();
-    const dialog = screen.getByRole("dialog");
-
-    // A key with no recognised prefix — the provider field stays a free-text
-    // <Input> (empty catalogue), so both it and Key name are typed manually.
-    await user.type(within(dialog).getByLabelText(/^api key$/i), "a-key-with-no-known-prefix");
-    await user.type(within(dialog).getByLabelText(/^provider$/i), "anthropic");
-
-    const keyName = within(dialog).getByLabelText(/key name/i) as HTMLInputElement;
-    await user.clear(keyName);
-    await user.type(keyName, "anthropic-secondary");
-
-    await user.click(within(dialog).getByLabelText(/^model$/i));
-    await user.click((await screen.findAllByRole("option"))[0]!);
-    await user.click(within(dialog).getByRole("button", { name: /^save$/i }));
-
-    await waitFor(() =>
-      expect(createSecretActionMock).toHaveBeenCalledWith(
-        "ws_1",
-        expect.objectContaining({ name: "anthropic-secondary" }),
-      ),
-    );
-  });
-
   it("surfaces a store error and never registers an entry", async () => {
     createSecretActionMock.mockResolvedValue({ ok: false, error: "boom", errorCode: "UZ-VAULT-002" });
     const { user } = await renderDialog();
     const dialog = screen.getByRole("dialog");
 
-    await user.type(within(dialog).getByLabelText(/^api key$/i), "sk-ant-e2e-xxxx");
-    await user.click(within(dialog).getByLabelText(/^model$/i));
-    await user.click((await screen.findAllByRole("option"))[0]!);
+    await fillKnownForm(user, dialog, { name: "anthropic", key: "sk-ant-e2e-xxxx" });
     await user.click(within(dialog).getByRole("button", { name: /^save$/i }));
 
     await waitFor(() => expect(within(dialog).getByRole("alert")).toBeTruthy());
@@ -275,9 +268,7 @@ describe("AddModelEntryDialog — known provider, new key", () => {
     const { user } = await renderDialog();
     const dialog = screen.getByRole("dialog");
 
-    await user.type(within(dialog).getByLabelText(/^api key$/i), "sk-ant-e2e-xxxx");
-    await user.click(within(dialog).getByLabelText(/^model$/i));
-    await user.click((await screen.findAllByRole("option"))[0]!);
+    await fillKnownForm(user, dialog, { name: "anthropic", key: "sk-ant-e2e-xxxx" });
     await user.click(within(dialog).getByRole("button", { name: /save & make active/i }));
 
     await waitFor(() => expect(within(dialog).getByRole("alert")).toBeTruthy());
@@ -289,9 +280,7 @@ describe("AddModelEntryDialog — known provider, new key", () => {
     const { onCreated, onSecretsChanged, user } = await renderDialog();
     const dialog = screen.getByRole("dialog");
 
-    await user.type(within(dialog).getByLabelText(/^api key$/i), "sk-ant-e2e-xxxx");
-    await user.click(within(dialog).getByLabelText(/^model$/i));
-    await user.click((await screen.findAllByRole("option"))[0]!);
+    await fillKnownForm(user, dialog, { name: "anthropic", key: "sk-ant-e2e-xxxx" });
     await user.click(within(dialog).getByRole("button", { name: /save & make active/i }));
 
     await waitFor(() => expect(within(dialog).getByRole("alert")).toBeTruthy());
@@ -305,4 +294,3 @@ describe("AddModelEntryDialog — known provider, new key", () => {
     expect(screen.getByRole("dialog")).toBeTruthy();
   });
 });
-

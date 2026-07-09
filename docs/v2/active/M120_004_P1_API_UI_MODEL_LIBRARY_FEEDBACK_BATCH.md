@@ -126,11 +126,11 @@ The Default row renders the platform default's model (mono, alongside the existi
 
 One form, ordered **Name → Provider → Base URL (OpenAI-compatible only) → Model → API key**; the Known-provider/Custom-endpoint tabs and the duplicated custom-state fields die. The Provider dropdown lists the library's providers plus "Custom — OpenAI-compatible" (existing `providerLabel` entry). Name is free-form: nothing auto-fills or rewrites it, so the auto-fill/dirty-tracking and paste-detect machinery is removed with its module. Rotate-in-place submit semantics are kept verbatim.
 
-- **Dimension 3.1** — the dialog renders a single tab-free form in the specified field order; Base URL appears only while the OpenAI-compatible provider is selected → Test `test_add_dialog_unified_order`
-- **Dimension 3.2** — OpenAI-compatible selected: API key becomes optional, Base URL required + https-validated inline; named provider selected: API key required, no Base URL field → Test `test_add_dialog_openai_compatible_gating`
-- **Dimension 3.3** — typing an API key or picking a provider never mutates Name → Test `test_add_dialog_name_free_form`
-- **Dimension 3.4** — same Name + same provider rotates the stored key in place; a Name owned by a different provider's key errors without overwriting → Test existing rotate/mismatch asserts green after rework
-- **Dimension 3.5** — the OpenAI-compatible path stores the secret with the same fields as the old custom tab (provider sentinel, base_url, optional api_key) → Test `test_add_dialog_openai_compatible_submit`
+- **Dimension 3.1** — DONE — the dialog renders a single tab-free form in the specified field order; Base URL appears only while the OpenAI-compatible provider is selected → Test `test_add_dialog_unified_order`
+- **Dimension 3.2** — DONE — OpenAI-compatible selected: API key becomes optional, Base URL required + https-validated inline; named provider selected: API key required, no Base URL field → Test `test_add_dialog_openai_compatible_gating`
+- **Dimension 3.3** — DONE — typing an API key or picking a provider never mutates Name → Test `test_add_dialog_name_free_form`
+- **Dimension 3.4** — DONE — same Name + same provider rotates the stored key in place; a Name owned by a different provider's key errors without overwriting → Test existing rotate/mismatch asserts green after rework
+- **Dimension 3.5** — DONE — the OpenAI-compatible path stores the secret with the same fields as the old custom tab (provider sentinel, base_url, optional api_key) → Test `test_add_dialog_openai_compatible_submit`
 
 ### §4 — Admin library dialogs: wording + label sweep
 
