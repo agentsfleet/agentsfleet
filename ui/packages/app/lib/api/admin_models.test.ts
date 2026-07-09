@@ -8,6 +8,9 @@ import {
   updateAdminModel,
   deleteAdminModel,
   setPlatformDefault,
+  listPlatformKeys,
+  activePlatformDefault,
+  type PlatformKey,
 } from "./admin_models";
 
 const fetchMock = vi.fn();
@@ -112,5 +115,29 @@ describe("admin model catalogue client", () => {
     await deleteAdminModel("tok", "a/b");
     const [url] = fetchMock.mock.calls[0]!;
     expect(String(url)).toContain("/v1/admin/models/a%2Fb");
+  });
+
+  it("should GET the platform-keys list with a bearer token", async () => {
+    fetchMock.mockResolvedValue(okJson({ keys: [] }));
+    await listPlatformKeys("tok_abc");
+    const [url, init] = fetchMock.mock.calls[0]!;
+    expect(String(url)).toContain("/v1/admin/platform-keys");
+    expect(init.method).toBe("GET");
+    expect(init.headers.Authorization).toBe("Bearer tok_abc");
+  });
+});
+
+// ── Active-default selection: the one active row (or null) drives the badge ───
+describe("activePlatformDefault", () => {
+  const active: PlatformKey = { provider: "fireworks", source_workspace_id: "ws1", model: "glm-5.2", active: true, updated_at: 2 };
+  const inactive: PlatformKey = { provider: "anthropic", source_workspace_id: "ws1", model: null, active: false, updated_at: 1 };
+
+  it("returns the single active row when one is set", () => {
+    expect(activePlatformDefault({ keys: [inactive, active] })).toBe(active);
+  });
+
+  it("returns null when no row is active", () => {
+    expect(activePlatformDefault({ keys: [inactive] })).toBeNull();
+    expect(activePlatformDefault({ keys: [] })).toBeNull();
   });
 });

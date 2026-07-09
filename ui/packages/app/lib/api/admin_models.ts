@@ -58,6 +58,21 @@ export interface PlatformDefaultInput {
   base_url?: string;
 }
 
+// A row of core.platform_provider_defaults as the admin GET returns it. Never
+// carries key material. `model` is the priced (provider, model_id) the default
+// resolves to — non-null on the active row, NULL once a provider is stood down.
+export interface PlatformKey {
+  provider: string;
+  source_workspace_id: string;
+  model: string | null;
+  active: boolean;
+  updated_at: number;
+}
+
+export interface PlatformKeyList {
+  keys: PlatformKey[];
+}
+
 export async function listAdminModels(token: string): Promise<AdminModelList> {
   return request<AdminModelList>(ADMIN_MODELS_PATH, { method: "GET" }, token);
 }
@@ -83,4 +98,18 @@ export async function setPlatformDefault(
   body: PlatformDefaultInput,
 ): Promise<{ provider: string; model: string; active: boolean }> {
   return request(ADMIN_PLATFORM_KEYS_PATH, { method: "PUT", body: JSON.stringify(body) }, token);
+}
+
+export async function listPlatformKeys(token: string): Promise<PlatformKeyList> {
+  return request<PlatformKeyList>(ADMIN_PLATFORM_KEYS_PATH, { method: "GET" }, token);
+}
+
+/**
+ * The single active platform default, or null when none is set. The backend
+ * keeps at most one row active (unique + stand-down), so a plain `find` is exact —
+ * the catalogue row whose (provider, model_id) equals this row's (provider, model)
+ * is the one the admin UI badges as "Default".
+ */
+export function activePlatformDefault(list: PlatformKeyList): PlatformKey | null {
+  return list.keys.find((k) => k.active) ?? null;
 }
