@@ -39,10 +39,17 @@ pub const EntryView = struct {
 pub const ListResult = struct {
     rows: []EntryView,
     platform_default_available: bool,
+    /// The active platform default's identity — the Models page renders the
+    /// Default row's model/context from it. Omitted from the wire
+    /// (`emit_null_optional_fields=false`) when no default is configured;
+    /// `platform_default_available` derives from the same read, so the two
+    /// can never disagree.
+    platform_default: ?tenant_provider.PlatformDefaultView = null,
 
     pub fn deinit(self: *ListResult, alloc: std.mem.Allocator) void {
         for (self.rows) |r| freeView(alloc, r);
         alloc.free(self.rows);
+        if (self.platform_default) |*dv| dv.deinit(alloc);
     }
 };
 
@@ -72,9 +79,18 @@ pub fn buildList(alloc: std.mem.Allocator, conn: *pg.Conn, tenant_id: []const u8
         try views.append(alloc, view);
     }
 
+    // Sequential reuse of `conn` is safe: every query above (`list`,
+    // `activeSelfManagedRef`, each `loadTenantSecretJson`) fully drains its
+    // own result set before returning — mirrors `fleets/secret_list.zig`.
+    // A failure reading the default degrades to "no default known" rather
+    // than failing the list — the posture the boolean always had.
+    var platform_default = tenant_provider.platformDefaultView(alloc, conn) catch null;
+    errdefer if (platform_default) |*dv| dv.deinit(alloc);
+
     return .{
         .rows = try views.toOwnedSlice(alloc),
-        .platform_default_available = platformDefaultAvailable(alloc, conn),
+        .platform_default_available = platform_default != null,
+        .platform_default = platform_default,
     };
 }
 
@@ -144,17 +160,4 @@ fn freeView(alloc: std.mem.Allocator, v: EntryView) void {
     if (v.provider) |p| alloc.free(p);
     if (v.base_url) |b| alloc.free(b);
     // v.kind is a static @tagName slice — not owned, never freed.
-}
-
-/// Sequential reuse of `conn` is safe here: every query above (`list`,
-/// `activeSelfManagedRef`, each `loadTenantSecretJson`) fully drains and
-/// closes its own result set before returning — mirrors the two-pass
-/// pattern in `fleets/secret_list.zig`.
-fn platformDefaultAvailable(alloc: std.mem.Allocator, conn: *pg.Conn) bool {
-    var view = tenant_provider.platformDefaultView(alloc, conn) catch return false;
-    if (view) |*v| {
-        v.deinit(alloc);
-        return true;
-    }
-    return false;
 }

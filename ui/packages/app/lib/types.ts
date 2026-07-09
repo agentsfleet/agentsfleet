@@ -239,9 +239,19 @@ export type TenantModelEntry = {
   created_at: number;
 };
 
+/** The active platform default's identity — rides the registry list so the
+ * Models page renders the Default row without a second request. */
+export type TenantPlatformDefault = {
+  provider: string;
+  model: string;
+  context_cap_tokens: number;
+};
+
 export type TenantModelEntryList = {
   models: TenantModelEntry[];
   platform_default_available: boolean;
+  /** Present iff `platform_default_available` — both derive from one server-side read. */
+  platform_default?: TenantPlatformDefault;
 };
 
 export type TenantModelEntryWriteResult = {

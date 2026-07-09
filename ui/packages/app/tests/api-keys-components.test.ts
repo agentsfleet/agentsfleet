@@ -103,6 +103,35 @@ describe("ApiKeyList component", () => {
     expect(screen.getByLabelText(/Delete API key old-zapier/i)).toBeTruthy();
   });
 
+  it("Revoke and Delete are icon buttons — ban and trash glyphs, verbs carried by the aria-label", async () => {
+    await renderList(listResponse([ACTIVE, REVOKED]));
+    expect(screen.getByLabelText(/Revoke API key ci-runner/i).querySelector("svg.lucide-ban")).toBeTruthy();
+    expect(screen.getByLabelText(/Delete API key old-zapier/i).querySelector("svg.lucide-trash-2")).toBeTruthy();
+  });
+
+  it("the icon action buttons disable while a mutation is in flight (disabled-while-pending preserved)", async () => {
+    // Hold the mutation open so the transition stays pending; the row's icon
+    // buttons must be disabled for the duration, then re-enable on settle.
+    let resolveRevoke!: (v: unknown) => void;
+    revokeApiKeyActionMock.mockReturnValue(new Promise((r) => { resolveRevoke = r; }));
+    listApiKeysActionMock.mockResolvedValue({ ok: true, data: listResponse([REVOKED]) });
+    const user = userEvent.setup();
+    await renderList(listResponse([ACTIVE]));
+
+    await user.click(screen.getByLabelText(/Revoke API key ci-runner/i));
+    await user.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: /^revoke$/i }));
+
+    await waitFor(() => expect(revokeApiKeyActionMock).toHaveBeenCalled());
+    // Mid-flight: the row action is disabled.
+    await waitFor(() =>
+      expect(screen.getByLabelText(/Revoke API key ci-runner/i).hasAttribute("disabled")).toBe(true),
+    );
+
+    resolveRevoke({ ok: true, data: { id: ACTIVE.id, active: false, revoked_at: 1 } });
+    // After settle the list re-fetched (row now revoked → Delete affordance).
+    await waitFor(() => expect(screen.getByLabelText(/Delete API key old-zapier/i)).toBeTruthy());
+  });
+
   it("Revoke and Delete row triggers render the destructive button variant, matching RunnerList's pattern", async () => {
     await renderList(listResponse([ACTIVE, REVOKED]));
     expect(screen.getByLabelText(/Revoke API key ci-runner/i).className).toContain("bg-destructive");

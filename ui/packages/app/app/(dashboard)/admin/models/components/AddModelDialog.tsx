@@ -98,8 +98,7 @@ export default function AddModelDialog({ onCreated }: { onCreated: (m: AdminMode
         <DialogHeader>
           <DialogTitle>Create model library</DialogTitle>
           <DialogDescription>
-            A model library entry prices a model per token for everyone on your team and can be
-            the platform default. Rates are per 1M tokens.
+            A model library entry prices a model per token. Rates are per 1M tokens.
           </DialogDescription>
         </DialogHeader>
         <Form {...form}>
@@ -113,7 +112,7 @@ export default function AddModelDialog({ onCreated }: { onCreated: (m: AdminMode
             )} />
             <FormField control={form.control} name="model_id" render={({ field }) => (
               <FormItem>
-                <FormLabel>Model id</FormLabel>
+                <FormLabel>Model</FormLabel>
                 <FormControl><Input placeholder="glm-5.2" autoComplete="off" className="font-mono" {...field} /></FormControl>
                 <FormDescription>The provider&apos;s model identifier (may contain slashes).</FormDescription>
                 <FormMessage />

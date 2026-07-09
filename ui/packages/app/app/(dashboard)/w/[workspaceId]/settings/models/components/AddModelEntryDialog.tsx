@@ -19,18 +19,13 @@ import {
   SelectTrigger,
   SelectValue,
   Spinner,
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
 } from "@agentsfleet/design-system";
 import { PlusIcon } from "lucide-react";
 import { createSecretAction } from "@/app/(dashboard)/w/[workspaceId]/secrets/actions";
 import { createModelEntryAction, rotateSecretAction, setProviderSelfManagedAction } from "../actions";
-import { detectProviderFromKey } from "../lib/detect-provider";
 import { isHttpsUrl, BASE_URL_NOT_HTTPS } from "../lib/custom-endpoint";
 import { presentErrorString } from "@/lib/errors";
-import { providerKeysOf, type Secret } from "@/lib/api/secrets";
+import { SECRET_KIND, type Secret } from "@/lib/api/secrets";
 import { providerLabel, uniqueProviders } from "@/lib/api/model_caps";
 import { OPENAI_COMPATIBLE_PROVIDER, SECRET_FIELD } from "@/lib/types";
 import { EVENTS } from "@/lib/analytics/events";
@@ -39,11 +34,10 @@ import { captureModelActivated } from "../lib/track";
 import { useModelCatalogue } from "./ModelCatalogueProvider";
 import ProviderModelSelect from "./ProviderModelSelect";
 
-const SHAPE = { known: "known", custom: "custom" } as const;
 const REGISTER_ACTION = "register the model entry";
 const ACTIVATE_ACTION = "activate this model";
 const STORE_ACTION = "store the credential";
-const KEY_NAME_PROVIDER_MISMATCH = "That key name is already used by a different provider's key — pick another name.";
+const NAME_PROVIDER_MISMATCH = "That name is already used by a different provider or secret — pick another one.";
 
 export default function AddModelEntryDialog({
   workspaceId,
@@ -58,67 +52,42 @@ export default function AddModelEntryDialog({
 }) {
   const uid = useId();
   const { models } = useModelCatalogue();
-  const providerOptions = uniqueProviders(models);
-  const providerKeys = providerKeysOf(secrets);
+  // The library's providers plus the OpenAI-compatible option, pinned last —
+  // one dropdown covers hosted providers and custom endpoints alike (no tabs).
+  const providerOptions = uniqueProviders(models).filter((p) => p !== OPENAI_COMPATIBLE_PROVIDER);
 
   const [open, setOpen] = useState(false);
-  const [shape, setShape] = useState<(typeof SHAPE)[keyof typeof SHAPE]>(SHAPE.known);
   const [keyName, setKeyName] = useState("");
-  // Key name is the rotate-in-place identity (see submitKnown) — once the
-  // user hand-edits it, paste-detect and provider picks must never clobber
-  // it, or they'd silently redirect the rotate onto a different stored key.
-  const [keyNameDirty, setKeyNameDirty] = useState(false);
   const [provider, setProvider] = useState("");
-  const [apiKey, setApiKey] = useState("");
+  const [baseUrl, setBaseUrl] = useState("");
   const [model, setModel] = useState("");
-  const [customName, setCustomName] = useState("");
-  const [customBaseUrl, setCustomBaseUrl] = useState("");
-  const [customApiKey, setCustomApiKey] = useState("");
-  const [customModel, setCustomModel] = useState("");
+  const [apiKey, setApiKey] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const isCustom = provider.trim() === OPENAI_COMPATIBLE_PROVIDER;
+
   // Gates both Save buttons below — without it, a click on an incomplete
-  // form silently no-ops (no error, no feedback) since submitKnown/
-  // submitCustom validate internally. Matches EditModelEntryDialog's
-  // `disabled={pending || !canSubmit}` convention.
-  const canSubmitKnown =
-    keyName.trim() !== "" && provider.trim() !== "" && apiKey.trim() !== "" && model.trim() !== "";
-  const canSubmitCustom = customName.trim() !== "" && customBaseUrl.trim() !== "" && customModel.trim() !== "";
-  const canSubmit = shape === SHAPE.known ? canSubmitKnown : canSubmitCustom;
+  // form silently no-ops (no error, no feedback) since submit() validates
+  // internally. A custom endpoint may be keyless; a named provider never is.
+  const canSubmit =
+    keyName.trim() !== "" &&
+    provider.trim() !== "" &&
+    model.trim() !== "" &&
+    (isCustom ? baseUrl.trim() !== "" : apiKey.trim() !== "");
 
   function reset() {
-    setShape(SHAPE.known);
     setKeyName("");
-    setKeyNameDirty(false);
     setProvider("");
-    setApiKey("");
+    setBaseUrl("");
     setModel("");
-    setCustomName("");
-    setCustomBaseUrl("");
-    setCustomApiKey("");
-    setCustomModel("");
+    setApiKey("");
     setError(null);
   }
 
   function handleOpenChange(next: boolean) {
     setOpen(next);
     if (!next) reset();
-  }
-
-  /** Auto-fill the key name from a provider pick/detect — never over a hand-edit. */
-  function autoFillKeyName(value: string) {
-    if (!keyNameDirty) setKeyName(value);
-  }
-
-  function onApiKeyChange(value: string) {
-    setApiKey(value);
-    const detected = detectProviderFromKey(value);
-    if (detected && detected !== provider) {
-      setProvider(detected);
-      autoFillKeyName(detected);
-      setModel("");
-    }
   }
 
   // `secretsChanged` is false on the rotate branch — a rotate keeps the
@@ -148,66 +117,67 @@ export default function AddModelEntryDialog({
     return true;
   }
 
-  // Key name is the credential's identity: a name that already exists with
-  // the SAME provider gets its api_key rotated in place, so adding a second
-  // model on one account is the same paste-a-key motion as the first — no
-  // reuse mode, no name error. A name owned by a DIFFERENT provider's key
-  // errors instead of overwriting (typo guard).
-  async function submitKnown(activate: boolean) {
+  /** Store (or rotate) the credential, register the entry, optionally activate.
+   * Name is the credential's identity, guarded across EVERY stored kind: a
+   * name owned by anything other than a same-shaped secret errors instead of
+   * overwriting (the secrets POST is an upsert server-side, so a silent
+   * collision would destroy the original credential's body). Reusing a name
+   * with the SAME named provider rotates the api_key in place; reusing an
+   * OpenAI-compatible name while the compatible provider is selected rewrites
+   * the endpoint's base_url + key together (the custom reconfigure motion). */
+  async function submit(activate: boolean) {
     const name = keyName.trim();
-    const existing = providerKeys.find((k) => k.name === name);
-    if (existing) {
-      if (existing.provider !== provider.trim()) {
-        setError(KEY_NAME_PROVIDER_MISMATCH);
+    const modelId = model.trim();
+    const key = apiKey.trim();
+    const existing = secrets.find((s) => s.name === name);
+
+    if (isCustom) {
+      if (existing && existing.kind !== SECRET_KIND.custom_endpoint) {
+        setError(NAME_PROVIDER_MISMATCH);
         return;
       }
-      const rotated = await rotateSecretAction(workspaceId, name, apiKey.trim());
+      if (!isHttpsUrl(baseUrl)) {
+        setError(BASE_URL_NOT_HTTPS);
+        return;
+      }
+      const data: Record<string, unknown> = {
+        [SECRET_FIELD.provider]: OPENAI_COMPATIBLE_PROVIDER,
+        [SECRET_FIELD.baseUrl]: baseUrl.trim(),
+      };
+      if (key !== "") data[SECRET_FIELD.apiKey] = key;
+      const created = await createSecretAction(workspaceId, { name, data });
+      if (!created.ok) {
+        setError(presentErrorString({ errorCode: created.errorCode, message: created.error, action: STORE_ACTION }));
+        return;
+      }
+      captureProductEvent(EVENTS.secret_added, { secret_name: name });
+      if (await doCreateEntry(name, modelId, activate, true)) handleOpenChange(false);
+      return;
+    }
+
+    if (existing) {
+      if (existing.kind !== SECRET_KIND.provider_key || existing.provider !== provider.trim()) {
+        setError(NAME_PROVIDER_MISMATCH);
+        return;
+      }
+      const rotated = await rotateSecretAction(workspaceId, name, key);
       if (!rotated.ok) {
         setError(presentErrorString({ errorCode: rotated.errorCode, message: rotated.error, action: STORE_ACTION }));
         return;
       }
-      if (await doCreateEntry(name, model.trim(), activate, false)) finish();
+      if (await doCreateEntry(name, modelId, activate, false)) handleOpenChange(false);
       return;
     }
     const created = await createSecretAction(workspaceId, {
       name,
-      data: { [SECRET_FIELD.provider]: provider.trim(), [SECRET_FIELD.apiKey]: apiKey.trim() },
+      data: { [SECRET_FIELD.provider]: provider.trim(), [SECRET_FIELD.apiKey]: key },
     });
     if (!created.ok) {
       setError(presentErrorString({ errorCode: created.errorCode, message: created.error, action: STORE_ACTION }));
       return;
     }
     captureProductEvent(EVENTS.secret_added, { secret_name: name });
-    if (await doCreateEntry(name, model.trim(), activate, true)) finish();
-  }
-
-  async function submitCustom(activate: boolean) {
-    const name = customName.trim();
-    const modelId = customModel.trim();
-    if (!isHttpsUrl(customBaseUrl)) {
-      setError(BASE_URL_NOT_HTTPS);
-      return;
-    }
-    const data: Record<string, unknown> = {
-      [SECRET_FIELD.provider]: OPENAI_COMPATIBLE_PROVIDER,
-      [SECRET_FIELD.baseUrl]: customBaseUrl.trim(),
-    };
-    const key = customApiKey.trim();
-    if (key !== "") data[SECRET_FIELD.apiKey] = key;
-    const created = await createSecretAction(workspaceId, { name, data });
-    if (!created.ok) {
-      setError(presentErrorString({ errorCode: created.errorCode, message: created.error, action: STORE_ACTION }));
-      return;
-    }
-    captureProductEvent(EVENTS.secret_added, { secret_name: name });
-    if (await doCreateEntry(name, modelId, activate, true)) finish();
-  }
-
-  // Only reached after doCreateEntry() returns true — the refresh (entries +
-  // secrets) already happened there, unconditionally, the moment the entry
-  // itself committed. This just closes the dialog on full success.
-  function finish() {
-    handleOpenChange(false);
+    if (await doCreateEntry(name, modelId, activate, true)) handleOpenChange(false);
   }
 
   // Only wired to the Save / Save & make active buttons below, both
@@ -216,8 +186,7 @@ export default function AddModelEntryDialog({
     setError(null);
     setPending(true);
     try {
-      if (shape === SHAPE.known) await submitKnown(activate);
-      else await submitCustom(activate);
+      await submit(activate);
     } finally {
       setPending(false);
     }
@@ -234,56 +203,53 @@ export default function AddModelEntryDialog({
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Add a model</DialogTitle>
-          <DialogDescription>Register a model entry. Reusing a key name updates that stored key.</DialogDescription>
+          <DialogDescription>Register a model entry. Reusing a name updates that stored key.</DialogDescription>
         </DialogHeader>
-        <Tabs value={shape} onValueChange={(v) => setShape(v as typeof shape)}>
-          <TabsList>
-            <TabsTrigger value={SHAPE.known}>Known provider</TabsTrigger>
-            <TabsTrigger value={SHAPE.custom}>Custom endpoint</TabsTrigger>
-          </TabsList>
-          <TabsContent value={SHAPE.known} className="space-y-3">
+        <div className="space-y-3">
+          <div className="space-y-2">
+            <Label htmlFor={`${uid}-name`}>Name</Label>
+            <Input id={`${uid}-name`} value={keyName} onChange={(e) => setKeyName(e.target.value)} placeholder="anthropic-prod" spellCheck={false} autoComplete="off" />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor={`${uid}-provider`}>Provider</Label>
+            {providerOptions.length > 0 ? (
+              <Select value={provider} onValueChange={(v) => { setProvider(v); setModel(""); }}>
+                <SelectTrigger id={`${uid}-provider`} aria-label="Provider">
+                  <SelectValue placeholder="Select a provider" />
+                </SelectTrigger>
+                <SelectContent>
+                  {providerOptions.map((p) => <SelectItem key={p} value={p}>{providerLabel(p)}</SelectItem>)}
+                  <SelectItem value={OPENAI_COMPATIBLE_PROVIDER}>{providerLabel(OPENAI_COMPATIBLE_PROVIDER)}</SelectItem>
+                </SelectContent>
+              </Select>
+            ) : (
+              // Library unavailable (fetch failed / empty) — degrade to free
+              // text so a key can still be stored; typing the compatible
+              // provider id reveals the Base URL field the same way.
+              <Input id={`${uid}-provider`} value={provider} onChange={(e) => { setProvider(e.target.value); setModel(""); }} placeholder="anthropic" spellCheck={false} autoComplete="off" />
+            )}
+          </div>
+          {isCustom ? (
             <div className="space-y-2">
-              <Label htmlFor={`${uid}-api-key`}>API key</Label>
-              <Input id={`${uid}-api-key`} type="password" value={apiKey} onChange={(e) => onApiKeyChange(e.target.value)} placeholder="paste your key — we'll detect common providers" spellCheck={false} autoComplete="off" />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor={`${uid}-provider`}>Provider</Label>
-              {providerOptions.length > 0 ? (
-                <Select value={provider} onValueChange={(v) => { setProvider(v); autoFillKeyName(v); setModel(""); }}>
-                  <SelectTrigger id={`${uid}-provider`} aria-label="Provider">
-                    <SelectValue placeholder="Select a provider" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {providerOptions.map((p) => <SelectItem key={p} value={p}>{providerLabel(p)}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              ) : (
-                <Input id={`${uid}-provider`} value={provider} onChange={(e) => { setProvider(e.target.value); autoFillKeyName(e.target.value); setModel(""); }} placeholder="anthropic" spellCheck={false} autoComplete="off" />
-              )}
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor={`${uid}-key-name`}>Key name</Label>
-              <Input id={`${uid}-key-name`} value={keyName} onChange={(e) => { setKeyName(e.target.value); setKeyNameDirty(true); }} placeholder="anthropic-prod" spellCheck={false} autoComplete="off" />
-            </div>
-            <ProviderModelSelect id={`${uid}-model`} provider={provider || undefined} model={model} onModelChange={setModel} />
-          </TabsContent>
-          <TabsContent value={SHAPE.custom} className="space-y-3">
-            <div className="space-y-2">
-              <Label htmlFor={`${uid}-c-name`}>Name</Label>
-              <Input id={`${uid}-c-name`} value={customName} onChange={(e) => setCustomName(e.target.value)} placeholder="vllm-gateway" spellCheck={false} autoComplete="off" />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor={`${uid}-c-url`}>Base URL</Label>
-              <Input id={`${uid}-c-url`} value={customBaseUrl} onChange={(e) => setCustomBaseUrl(e.target.value)} placeholder="https://vllm.corp/v1" spellCheck={false} autoComplete="off" />
+              <Label htmlFor={`${uid}-base-url`}>Base URL</Label>
+              <Input id={`${uid}-base-url`} value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} placeholder="https://vllm.corp/v1" spellCheck={false} autoComplete="off" />
               <p className="text-xs text-muted-foreground">Any OpenAI-compatible endpoint. Must use https; loopback and private hosts are rejected.</p>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor={`${uid}-c-key`}>API key (optional)</Label>
-              <Input id={`${uid}-c-key`} type="password" value={customApiKey} onChange={(e) => setCustomApiKey(e.target.value)} placeholder="leave blank if the endpoint needs no key" spellCheck={false} autoComplete="off" />
-            </div>
-            <ProviderModelSelect id={`${uid}-c-model`} provider={OPENAI_COMPATIBLE_PROVIDER} model={customModel} onModelChange={setCustomModel} />
-          </TabsContent>
-        </Tabs>
+          ) : null}
+          <ProviderModelSelect id={`${uid}-model`} provider={provider || undefined} model={model} onModelChange={setModel} />
+          <div className="space-y-2">
+            <Label htmlFor={`${uid}-api-key`}>{isCustom ? "API key (optional)" : "API key"}</Label>
+            <Input
+              id={`${uid}-api-key`}
+              type="password"
+              value={apiKey}
+              onChange={(e) => setApiKey(e.target.value)}
+              placeholder={isCustom ? "leave blank if the endpoint needs no key" : "stored in your workspace vault; never shown again"}
+              spellCheck={false}
+              autoComplete="off"
+            />
+          </div>
+        </div>
         {error ? <Alert variant="destructive" className="text-xs">{error}</Alert> : null}
         <DialogFooter>
           <Button type="button" variant="outline" disabled={pending || !canSubmit} onClick={() => void onSubmit(false)}>

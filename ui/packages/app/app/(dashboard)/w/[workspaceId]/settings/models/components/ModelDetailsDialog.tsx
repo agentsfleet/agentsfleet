@@ -43,11 +43,11 @@ function Details({ target }: { target: TenantModelEntry }) {
           </div>
         ) : null}
         <div>
-          <DescriptionTerm>Model id</DescriptionTerm>
+          <DescriptionTerm>Model</DescriptionTerm>
           <DescriptionDetails mono>{target.model_id}</DescriptionDetails>
         </div>
         <div>
-          <DescriptionTerm>Key name</DescriptionTerm>
+          <DescriptionTerm>Name</DescriptionTerm>
           <DescriptionDetails mono>{target.secret_ref}</DescriptionDetails>
         </div>
         <div>

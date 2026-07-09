@@ -5692,6 +5692,27 @@
           "platform_default_available": {
             "type": "boolean",
             "description": "Whether an active core.platform_provider_defaults row exists, independent of this tenant's own mode."
+          },
+          "platform_default": {
+            "type": "object",
+            "description": "The active platform default's identity — present exactly when `platform_default_available` is true (both derive from the same read). Lets the Models page render the Default row's model, provider, and context without a second request.\n",
+            "required": [
+              "provider",
+              "model",
+              "context_cap_tokens"
+            ],
+            "properties": {
+              "provider": {
+                "type": "string"
+              },
+              "model": {
+                "type": "string"
+              },
+              "context_cap_tokens": {
+                "type": "integer",
+                "format": "int64"
+              }
+            }
           }
         }
       },

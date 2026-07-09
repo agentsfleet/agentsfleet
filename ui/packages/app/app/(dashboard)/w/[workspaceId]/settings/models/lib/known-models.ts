@@ -3,9 +3,9 @@
 // catalogue (core.model_library, admin-managed via /admin/models). Used only
 // as a fallback when the admin catalogue has zero rows for a given provider;
 // falls back further to free text when even this list doesn't cover the
-// provider. Providers here mirror detect-provider.ts's PROVIDER_KEY_PREFIXES
-// (paste-detected) plus the custom/openai-compatible slot, which never uses
-// this list (its model is always free text).
+// provider. The keys are the well-known hosted providers; the
+// custom/openai-compatible slot never uses this list (its model is always
+// free text).
 export const KNOWN_MODELS: Readonly<Record<string, readonly string[]>> = {
   anthropic: ["claude-sonnet-5", "claude-opus-4-8", "claude-fable-5", "claude-haiku-4-5"],
   openai: ["gpt-5.5", "gpt-5-mini"],
