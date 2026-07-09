@@ -41,6 +41,9 @@ const PG_SQLSTATE_FK_VIOLATION = "23503";
 const PlatformKeyRow = struct {
     provider: []const u8,
     source_workspace_id: []const u8,
+    // NULL for inactive rows (DEACTIVATE_* nulls it to release the catalogue FK);
+    // the active row carries the priced model the UI pre-fills for "Edit default".
+    model: ?[]const u8,
     active: bool,
     updated_at: i64,
 };
@@ -271,11 +274,14 @@ pub fn innerGetAdminPlatformKeys(hx: hx_mod.Hx, req: *httpz.Request) void {
         const row = maybe_row orelse break;
         const prov = hx.alloc.dupe(u8, row.get([]u8, 0) catch continue) catch continue;
         const src_ws = hx.alloc.dupe(u8, row.get([]u8, 1) catch continue) catch continue;
-        const active = row.get(bool, 2) catch continue;
-        const updated_at = row.get(i64, 3) catch continue;
+        const model_opt = row.get(?[]const u8, 2) catch continue;
+        const model_dup: ?[]const u8 = if (model_opt) |m| (hx.alloc.dupe(u8, m) catch continue) else null;
+        const active = row.get(bool, 3) catch continue;
+        const updated_at = row.get(i64, 4) catch continue;
         rows.append(hx.alloc, .{
             .provider = prov,
             .source_workspace_id = src_ws,
+            .model = model_dup,
             .active = active,
             .updated_at = updated_at,
         }) catch continue;

@@ -201,6 +201,29 @@ test "platform default: setting a second provider leaves exactly one active row"
     try std.testing.expectEqualStrings("anthropic", active.provider);
 }
 
+test "platform default: GET returns the active row's model for the Edit-default pre-fill" {
+    const h = try startHarness(ALLOC);
+    defer h.deinit();
+    defer cleanup(h);
+    try seedTenantWorkspace(h);
+    try seedModel(h, UID_GLM, "fireworks", "glm-5.2");
+
+    const set = try (try (try h.put("/v1/admin/platform-keys").bearer(PLATFORM_ADMIN_TOKEN))
+        .json("{\"provider\":\"fireworks\",\"source_workspace_id\":\"" ++ WORKSPACE_ID ++ "\",\"model\":\"glm-5.2\"}")).send();
+    defer set.deinit();
+    try set.expectStatus(.ok);
+
+    // The active row now carries its priced model in the GET body — the field the
+    // admin UI reads to pre-fill the "Edit default" dialog. Before SELECT_KEYS
+    // carried `model`, the GET exposed only provider/active and the pre-fill was
+    // unreachable.
+    const list = try (try h.get("/v1/admin/platform-keys").bearer(PLATFORM_ADMIN_TOKEN)).send();
+    defer list.deinit();
+    try list.expectStatus(.ok);
+    try std.testing.expect(list.bodyContains("\"model\""));
+    try std.testing.expect(list.bodyContains("glm-5.2"));
+}
+
 test "admin models: deleting the active default's model is blocked 409" {
     const h = try startHarness(ALLOC);
     defer h.deinit();

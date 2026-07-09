@@ -22,7 +22,7 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Depends on:** none
 **Provenance:** human-directed, LLM-drafted (Sonnet 5, Jul 07, 2026) — Indy explicitly chose the wide (app-wide) sweep scope over a Models-page-only scope during the same Q&A that produced M120_001; a screenshot of the admin Platform Default form's misaligned provider-select surfaced the visual bug this spec also fixes. Indy asked (mid-EXECUTE on M120_001) that this workstream also get a design-shotgun/wireframe pass before the dialog/icon-row components are built — added as §2's Dimension 2.1.
 
-**Canonical architecture:** none — presentation-only; no data-flow or resolve-path change. `docs/architecture/billing_and_provider_keys.md` is unaffected (the admin catalogue/default *data model* is untouched, only its form's presentation).
+**Canonical architecture:** near-presentation-only. The one non-presentation change (Option A, see Discovery) surfaces an already-stored column (`platform_provider_defaults.model`) through the existing `GET /v1/admin/platform-keys` read — no schema, validation, or resolve-path change. `docs/architecture/billing_and_provider_keys.md` is unaffected (the catalogue/default *data model* and the resolve path are untouched; only the admin read response gains a field the row already carries).
 
 ## Overview
 
@@ -50,7 +50,14 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 | `ui/.../admin/models/components/CatalogueList.tsx` | EDIT | Delete becomes an icon button (`Trash2Icon`); add an Edit icon button (`PencilIcon`) opening the new dialog |
 | `ui/.../admin/models/components/EditModelDialog.tsx` | CREATE | rates/context-cap edit dialog wired to the existing `updateAdminModelAction`; mirrors `AddModelDialog.tsx`'s form shape minus the immutable provider/model_id fields |
 | `ui/.../admin/models/components/PlatformDefaultCard.tsx` | EDIT | root-cause + fix the misaligned provider-`Select` popover; replace the always-inline form with a "Create default" / "Edit default" button that opens a `Dialog` (mirrors `AddModelDialog.tsx`) |
-| `ui/.../admin/models/actions.ts` | EDIT | export `updateAdminModelAction` wiring if not already re-exported for the new dialog (already defined; confirm import path) |
+| `ui/.../admin/models/actions.ts` | EDIT | `updateAdminModelAction` already exported (§3); add `listPlatformKeysAction` (Option A read path) |
+| `src/agentsfleetd/http/handlers/admin/platform_keys/sql.zig` | EDIT | Option A — `SELECT_KEYS` gains the already-stored `model` column |
+| `src/agentsfleetd/http/handlers/admin/platform_keys.zig` | EDIT | Option A — `PlatformKeyRow.model: ?[]const u8`; GET reads/returns it (nullable) |
+| `public/openapi.json` | EDIT | Option A — `PlatformKey` schema gains nullable `model` |
+| `src/agentsfleetd/http/handlers/admin/model_caps_admin_integration_test.zig` | EDIT | Option A — assert GET returns the active row's `model` |
+| `ui/.../lib/api/admin_models.ts` | EDIT | Option A — `PlatformKey`/`PlatformKeyList` types, `listPlatformKeys`, `activePlatformDefault` |
+| `ui/.../admin/models/page.tsx` | EDIT | Option A — fetch platform-keys error-tolerantly, thread the active default into `ModelsView` → `PlatformDefaultCard` |
+| `ui/.../admin/models/components/ModelsView.tsx` | EDIT | Option A — pass the active default down to `PlatformDefaultCard` |
 | `ui/.../settings/api-keys/components/CreateApiKeyDialog.tsx` | EDIT | trigger button gains `PlusIcon` |
 | `ui/.../admin/runners/components/AddRunnerDialog.tsx` | EDIT | trigger button gains `PlusIcon` |
 | `ui/.../w/[workspaceId]/secrets/components/AddSecretDialog.tsx` | EDIT | trigger button gains `PlusIcon` |
@@ -67,7 +74,7 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 
 | Gate | Fires? | Satisfaction strategy |
 |------|--------|-----------------------|
-| ZIG GATE | no | no `.zig` touched — `updateAdminModel`'s backend already exists |
+| ZIG GATE / XCOMPILE | **yes** (Option A) | `platform_keys` GET gains the already-stored `model` column (read-only; no schema/validation/resolve change). Native + `zig build -Dtarget=x86_64-linux` + `-Dtarget=aarch64-linux` all green; nullable read via `row.get(?[]const u8, …)`. `PlatformKeyRow` is a module-private `const` (no new `pub` → PUB GATE skipped) |
 | PUB / Struct-Shape | yes | `EditModelDialog`'s props shape verdict at PLAN |
 | File & Function Length | possible | split if `PlatformDefaultCard.tsx`'s dialog conversion nears 350 lines |
 | UFS | yes | one shared icon set (Plus/Pencil/Trash2) via existing `lucide-react` imports, not re-invented per page |
@@ -206,4 +213,9 @@ No files deleted — `EditModelDialog.tsx` is new; everything else is edited in 
 ### Decisions taken during EXECUTE
 
 - **§4 install icon = `DownloadIcon`** (Jul 08, 2026). The spec said "install-appropriate icon" without naming one, and no existing install/download icon convention exists in the app (grep of `ui/packages/app` returned zero prior `DownloadIcon`/`PackageIcon`/etc. usages). Chose `DownloadIcon` as the universal "install" affordance; defined once and reused per UFS. Reversible if Indy prefers another glyph.
-- **§1/§2/§3 data gap (Platform Default active-default awareness)** — surfaced to Indy before building §2: `page.tsx` never fetches the active platform default and `PlatformDefaultCard` only receives the `models` catalogue; even the existing `GET /v1/admin/platform-keys` returns `provider/source_workspace_id/active/updated_at` but **not `model`** (though `model` is stored on the row). So "Create default" vs "Edit default" (Dimension 2.2) and active-*provider* pre-fill are reachable by wiring the existing GET, but active-*model* pre-fill (Dimension 2.3) needs one extra read-only column on that GET. Awaiting Indy's scope call — recorded here pending the answer.
+- **§1/§2/§3 data gap (Platform Default active-default awareness)** — surfaced to Indy before building §2: `page.tsx` never fetches the active platform default and `PlatformDefaultCard` only receives the `models` catalogue; even the existing `GET /v1/admin/platform-keys` returns `provider/source_workspace_id/active/updated_at` but **not `model`** (though `model` is stored on the row). So "Create default" vs "Edit default" (Dimension 2.2) and active-*provider* pre-fill are reachable by wiring the existing GET, but active-*model* pre-fill (Dimension 2.3) needs one extra read-only column on that GET.
+
+  **Resolution — Option A (Indy, Jul 09, 2026):**
+  > Indy (2026-07-09): "Yes option A" — context: the Platform Default active-default data gap; authorizes adding `model` to the platform-keys GET (a read-only column already stored on the row — no schema/validation/resolve-path change) plus a UI read path, to fully deliver Dimensions 2.2 + 2.3 (provider **and** model pre-fill on "Edit default"). ZIG GATE + cross-compile are now in scope for M120_002.
+
+  Scope note surfaced while wiring: `GET /v1/admin/platform-keys` is gated on `platform-key:read` (`route_scopes.zig:123`), a *different* scope from the admin/models page's `model:read` gate. A `model:read`-only viewer would 403 on the platform-keys fetch, so `page.tsx` fetches it error-tolerantly (any failure → `activeDefault = null` → "Create default" label, no pre-fill), mirroring how `setPlatformDefaultAction` already uses `model:admin` as the dashboard's defence-in-depth proxy for a `platform-key:admin` backend route.
