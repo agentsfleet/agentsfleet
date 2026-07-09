@@ -15,6 +15,8 @@ const tenant_provider = @import("tenant_provider.zig");
 const base_url_guard = @import("base_url_guard.zig");
 const ResolveError = tenant_provider.ResolveError;
 
+const S_PROVIDER = "provider";
+const S_MODEL = "model";
 const S_API_KEY = "api_key";
 const S_BASE_URL = "base_url";
 /// Provider id in the self-managed credential JSON that opts the credential into
@@ -28,6 +30,10 @@ pub const ProbedSecret = struct {
 
     provider: []u8,
     api_key: []u8,
+    /// The credential's own `model`, or `""` when the secret carries no `model`
+    /// field — the M121 default (the model lives on the registry entry, not the
+    /// credential). Only read as a legacy fallback for a bare PUT /provider that
+    /// passes no model; the registry activation path always overrides it.
     model: []u8,
     /// Validated custom endpoint URL when `provider == OPENAI_COMPATIBLE_PROVIDER`
     /// (https + SSRF-safe); `null` for every named provider. Set only after
@@ -79,10 +85,21 @@ pub fn probeSelfManagedSecret(
 
     if (parsed.value != .object) return ResolveError.SecretDataMalformed;
     const obj = parsed.value.object;
-    const provider_v = obj.get("provider") orelse return ResolveError.SecretDataMalformed;
-    const model_v = obj.get("model") orelse return ResolveError.SecretDataMalformed;
-    if (provider_v != .string or model_v != .string) return ResolveError.SecretDataMalformed;
-    if (provider_v.string.len == 0 or model_v.string.len == 0) return ResolveError.SecretDataMalformed;
+    const provider_v = obj.get(S_PROVIDER) orelse return ResolveError.SecretDataMalformed;
+    if (provider_v != .string or provider_v.string.len == 0) return ResolveError.SecretDataMalformed;
+
+    // `model` is OPTIONAL (M121 registry): the tenant model registry stores the
+    // model on the `core.tenant_model_entries` row, so a known-provider secret is
+    // just {provider, api_key} with NO `model` field. Both consumers source the
+    // effective model elsewhere — activation from the PUT body (`input.model
+    // orelse probed.model`), runtime resolve from the selection row (`row.model`)
+    // — so a model-less secret is well-formed. When present it must be a string
+    // (non-string ⇒ malformed); a present value is kept only as the legacy
+    // fallback for a bare PUT /provider that passes no model. Absent OR empty ⇒ "".
+    const model_str: []const u8 = if (obj.get(S_MODEL)) |mv| blk: {
+        if (mv != .string) return ResolveError.SecretDataMalformed;
+        break :blk mv.string;
+    } else "";
 
     // api_key is required + non-empty for a named provider, but OPTIONAL for an
     // openai-compatible custom endpoint — a keyless gateway dials with no bearer
@@ -112,7 +129,7 @@ pub fn probeSelfManagedSecret(
         std.crypto.secureZero(u8, api_key);
         alloc.free(api_key);
     }
-    const model = try alloc.dupe(u8, model_v.string);
+    const model = try alloc.dupe(u8, model_str);
     errdefer alloc.free(model);
     const base_url: ?[]u8 = if (validated_base_url) |u| try alloc.dupe(u8, u) else null;
     return .{ .provider = provider, .api_key = api_key, .model = model, .base_url = base_url };
