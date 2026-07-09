@@ -116,11 +116,11 @@ The backend already resolves the active platform default (provider, model, conte
 
 The Default row renders the platform default's model (mono, alongside the existing "Default" + lock treatment), its provider label, its context, and its per-token rates. Every entry row's Context cell gains a rates line joined client-side from the once-per-session public model library by `(provider, model_id)` — models not in the library (custom endpoints) show "—" for rates. **Implementation default:** one pure join helper in the table module reading `useModelCatalogue()`; rates format reuses the admin catalogue's "in / cached / out" $-per-1M presentation.
 
-- **Dimension 2.1** — Default row shows model id, provider label, context, and rates when `platform_default` is present → Test `test_registry_default_row_identity`
-- **Dimension 2.2** — Default row degrades to "—" with the existing "No default is configured." note when absent → Test `test_registry_default_row_absent`
-- **Dimension 2.3** — entry rows show rates when the library knows `(provider, model_id)`, "—" otherwise (including when the library fetch failed) → Test `test_registry_rates_join`
-- **Dimension 2.4** — actions render as inline ghost icon buttons — view, switch (hidden while active), edit, delete (disabled while active) — each `aria-label`ed with the model id; no dropdown menu remains in the module → Test `test_registry_actions_iconified`
-- **Dimension 2.5** — switch/remove flows (stale-race refresh-on-failure, confirm dialog) behave exactly as before behind the new buttons → Test existing `models-registry-edit-remove` suite green after selector updates
+- **Dimension 2.1** — DONE — Default row shows model id, provider label, context, and rates when `platform_default` is present → Test `test_registry_default_row_identity`
+- **Dimension 2.2** — DONE — Default row degrades to "—" with the existing "No default is configured." note when absent → Test `test_registry_default_row_absent`
+- **Dimension 2.3** — DONE — entry rows show rates when the library knows `(provider, model_id)`, "—" otherwise (including when the library fetch failed) → Test `test_registry_rates_join`
+- **Dimension 2.4** — DONE — actions render as inline ghost icon buttons — view, switch (hidden while active), edit, delete (disabled while active) — each `aria-label`ed with the model id; no dropdown menu remains in the module → Test `test_registry_actions_iconified`
+- **Dimension 2.5** — DONE — switch/remove flows (stale-race refresh-on-failure, confirm dialog) behave exactly as before behind the new buttons → Test existing `models-registry-edit-remove` suite green after selector updates
 
 ### §3 — Unified add-model dialog
 
