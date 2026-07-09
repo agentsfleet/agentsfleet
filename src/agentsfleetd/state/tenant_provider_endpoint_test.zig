@@ -166,7 +166,12 @@ test "resolveActiveProvider returns SecretDataMalformed when JSON lacks api_key"
     );
 }
 
-test "resolveActiveProvider returns SecretDataMalformed when JSON lacks model" {
+// M121 regression: a known-provider secret is {provider, api_key} with NO
+// `model` field (the model lives on the registry entry). The full
+// activate → resolve chain must succeed — before the probe fix this failed
+// UZ-PROVIDER-003 "That secret is missing required fields", so the registry
+// row committed but activating/switching to it was impossible.
+test "activate + resolve succeed when the credential carries no model (M121 registry)" {
     fixture.setEncryptionKey();
     const db_ctx = (try base.openTestConn(fixture.ALLOC)) orelse return error.SkipZigTest;
     defer db_ctx.pool.deinit();
@@ -181,13 +186,21 @@ test "resolveActiveProvider returns SecretDataMalformed when JSON lacks model" {
     try obj.put(fixture.ALLOC, "api_key", .{ .string = "fw_USER_abc" });
     try base.storeVaultJson(fixture.ALLOC, db_ctx.conn, fixture.WS_TP_SELF_MANAGED, "no-model-cred", .{ .object = obj });
 
-    try std.testing.expectError(
-        tenant_provider.ResolveError.SecretDataMalformed,
-        tenant_provider.upsertSelfManaged(fixture.ALLOC, db_ctx.conn, uc1.TENANT_ID, "no-model-cred", "override-model", 256_000),
-    );
+    // Activation must accept the model-less secret — the model is the caller's.
+    try tenant_provider.upsertSelfManaged(fixture.ALLOC, db_ctx.conn, uc1.TENANT_ID, "no-model-cred", "override-model", 256_000);
+
+    // Resolve returns the credential's provider + api_key and the model from the
+    // selection row (`row.model`), not the absent credential model.
+    var resolved = try tenant_provider.resolveActiveProvider(fixture.ALLOC, db_ctx.conn, uc1.TENANT_ID);
+    defer resolved.deinit(fixture.ALLOC);
+    try std.testing.expectEqualStrings(fixture.TP_TEST_PROVIDER, resolved.provider);
+    try std.testing.expectEqualStrings("override-model", resolved.model);
+    try std.testing.expectEqualStrings("fw_USER_abc", resolved.api_key);
 }
 
-test "resolveActiveProvider returns SecretDataMalformed when model is an empty string" {
+// A credential that DOES carry a `model` field, but empty, is likewise accepted
+// (empty ⇒ treated as absent); the caller-supplied model still wins on resolve.
+test "activate + resolve succeed when the credential's model is an empty string" {
     fixture.setEncryptionKey();
     const db_ctx = (try base.openTestConn(fixture.ALLOC)) orelse return error.SkipZigTest;
     defer db_ctx.pool.deinit();
@@ -203,10 +216,11 @@ test "resolveActiveProvider returns SecretDataMalformed when model is an empty s
     try obj.put(fixture.ALLOC, "model", .{ .string = "" });
     try base.storeVaultJson(fixture.ALLOC, db_ctx.conn, fixture.WS_TP_SELF_MANAGED, "empty-model-cred", .{ .object = obj });
 
-    try std.testing.expectError(
-        tenant_provider.ResolveError.SecretDataMalformed,
-        tenant_provider.upsertSelfManaged(fixture.ALLOC, db_ctx.conn, uc1.TENANT_ID, "empty-model-cred", "override-model", 256_000),
-    );
+    try tenant_provider.upsertSelfManaged(fixture.ALLOC, db_ctx.conn, uc1.TENANT_ID, "empty-model-cred", "override-model", 256_000);
+
+    var resolved = try tenant_provider.resolveActiveProvider(fixture.ALLOC, db_ctx.conn, uc1.TENANT_ID);
+    defer resolved.deinit(fixture.ALLOC);
+    try std.testing.expectEqualStrings("override-model", resolved.model);
 }
 
 test "resolveActiveProvider returns SecretDataMalformed when api_key is an empty string" {
