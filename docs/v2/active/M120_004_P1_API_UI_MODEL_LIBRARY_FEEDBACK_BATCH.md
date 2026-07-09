@@ -134,12 +134,12 @@ One form, ordered **Name → Provider → Base URL (OpenAI-compatible only) → 
 
 ### §4 — Admin library dialogs: wording + label sweep
 
-- **Dimension 4.1** — the create dialog description reads exactly "A model library entry prices a model per token. Rates are per 1M tokens." → Test `test_admin_create_dialog_wording`
-- **Dimension 4.2** — zero "Model id" / "Key name" strings remain anywhere under `ui/packages/app/app`; the replacement labels are "Model" and "Name" (admin add/edit dialogs, workspace details dialog, add-entry dialog description) → Test `test_no_stale_labels` (grep-based) + rendered-label asserts in the existing dialog suites
+- **Dimension 4.1** — DONE — the create dialog description reads exactly "A model library entry prices a model per token. Rates are per 1M tokens." → Test `test_admin_create_dialog_wording`
+- **Dimension 4.2** — DONE — zero "Model id" / "Key name" strings remain anywhere under `ui/packages/app/app`; the replacement labels are "Model" and "Name" (admin add/edit dialogs, workspace details dialog, add-entry dialog description) → Test `test_no_stale_labels` (grep-based) + rendered-label asserts in the existing dialog suites
 
 ### §5 — API-keys actions iconified
 
-- **Dimension 5.1** — Revoke and Delete render as icon buttons (ban-style icon for revoke, trash for delete) with the existing `aria-label`s and disabled/pending behavior preserved → Test `test_api_keys_actions_iconified`
+- **Dimension 5.1** — DONE — Revoke and Delete render as icon buttons (ban-style icon for revoke, trash for delete) with the existing `aria-label`s and disabled/pending behavior preserved → Test `test_api_keys_actions_iconified`
 
 ## Interfaces
 

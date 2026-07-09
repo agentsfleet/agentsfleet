@@ -2,7 +2,7 @@
 
 import { type Ref, useImperativeHandle, useState, useTransition } from "react";
 import { Badge, Button, DataTable, type DataTableColumn, EmptyState } from "@agentsfleet/design-system";
-import { KeyRoundIcon } from "lucide-react";
+import { BanIcon, KeyRoundIcon, Trash2Icon } from "lucide-react";
 import {
   DEFAULT_PAGE_SIZE,
   DEFAULT_SORT,
@@ -186,13 +186,15 @@ function KeyActionsCell({
   onRevoke: () => void;
   onDelete: () => void;
 }) {
+  // Icon actions matching the catalogue/registry rows — the aria-label
+  // carries the verb + key name, the glyph carries the affordance.
   return k.active ? (
     <Button type="button" variant="destructive" size="sm" disabled={pending} onClick={onRevoke} aria-label={`Revoke API key ${k.key_name}`}>
-      Revoke
+      <BanIcon size={14} />
     </Button>
   ) : (
     <Button type="button" variant="destructive" size="sm" disabled={pending} onClick={onDelete} aria-label={`Delete API key ${k.key_name}`}>
-      Delete
+      <Trash2Icon size={14} />
     </Button>
   );
 }
