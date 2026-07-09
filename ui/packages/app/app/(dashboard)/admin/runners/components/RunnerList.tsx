@@ -11,7 +11,11 @@ import {
   IconAction,
   Time,
 } from "@agentsfleet/design-system";
-import { ActivityIcon, BanIcon, ArrowDownToLineIcon, Trash2Icon, ServerIcon } from "lucide-react";
+// Glyph vocabulary follows the settings surfaces: BanIcon means "revoke a
+// credential", Trash2Icon means "delete". There is no runner delete, so no
+// trash-can appears here — a trash-can that revokes would advertise an action
+// the daemon does not serve.
+import { ActivityIcon, BanIcon, ArrowDownToLineIcon, PauseIcon, ServerIcon } from "lucide-react";
 import {
   RUNNER_ADMIN_ACTION,
   RUNNER_ADMIN_STATE,
@@ -65,7 +69,7 @@ const ACTION_CONFIG: Record<RunnerAdminAction, {
     description: "Runner-plane calls stop immediately. Existing lease rows stay fenced until expiry or reassignment.",
     intent: "default",
     errorAction: "cordon this runner",
-    icon: <BanIcon />,
+    icon: <PauseIcon />,
   },
   [RUNNER_ADMIN_ACTION.drain]: {
     label: "Drain",
@@ -81,7 +85,7 @@ const ACTION_CONFIG: Record<RunnerAdminAction, {
     description: "The runner token is blocked immediately. This is terminal for the enrolled host.",
     intent: "destructive",
     errorAction: "revoke this runner",
-    icon: <Trash2Icon />,
+    icon: <BanIcon />,
   },
 };
 
