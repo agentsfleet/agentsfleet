@@ -37,7 +37,7 @@ vi.mock("@/app/(dashboard)/w/[workspaceId]/settings/models/components/ModelCatal
   useModelCatalogue: () => catalogueState,
 }));
 
-async function renderDialog() {
+async function renderDialog(secrets: Secret[] = []) {
   const { default: AddModelEntryDialog } = await import(
     "../app/(dashboard)/w/[workspaceId]/settings/models/components/AddModelEntryDialog"
   );
@@ -46,7 +46,7 @@ async function renderDialog() {
   render(
     React.createElement(AddModelEntryDialog, {
       workspaceId: "ws_1",
-      secrets: [] as Secret[],
+      secrets,
       onCreated,
       onSecretsChanged,
     } as never),
@@ -180,6 +180,46 @@ describe("AddModelEntryDialog — OpenAI-compatible provider", () => {
     await waitFor(() => expect(createSecretActionMock).toHaveBeenCalled());
     const [, body] = createSecretActionMock.mock.calls[0] as [string, { data: Record<string, unknown> }];
     expect(body.data.api_key).toBe("sk-vllm-key");
+  });
+
+  it("errors without writing when the name is owned by a named provider's key (upsert-collision guard)", async () => {
+    const anthropicSecret: Secret = { kind: "provider_key", name: "anthropic-prod", provider: "anthropic", created_at: 1 };
+    const { user } = await renderDialog([anthropicSecret]);
+    const dialog = screen.getByRole("dialog");
+
+    await user.type(within(dialog).getByLabelText(/^name$/i), "anthropic-prod");
+    await pickCustomProvider(user, dialog);
+    await user.type(within(dialog).getByLabelText(/base url/i), "https://vllm.corp/v1");
+    await user.type(within(dialog).getByLabelText(/^model$/i), "vllm-model");
+    await user.click(within(dialog).getByRole("button", { name: /^save$/i }));
+
+    // The secrets POST is a server-side upsert — proceeding would destroy the
+    // anthropic credential's body. The guard must error before any write.
+    await waitFor(() => expect(within(dialog).getByText(/different provider/i)).toBeTruthy());
+    expect(createSecretActionMock).not.toHaveBeenCalled();
+    expect(createModelEntryActionMock).not.toHaveBeenCalled();
+  });
+
+  it("reusing an existing custom endpoint's name rewrites that endpoint in place (reconfigure motion)", async () => {
+    const endpointSecret: Secret = {
+      kind: "custom_endpoint",
+      name: "vllm-gateway",
+      provider: "openai-compatible",
+      base_url: "https://old.vllm.corp/v1",
+      created_at: 1,
+    };
+    const { user } = await renderDialog([endpointSecret]);
+    const dialog = screen.getByRole("dialog");
+
+    await user.type(within(dialog).getByLabelText(/^name$/i), "vllm-gateway");
+    await pickCustomProvider(user, dialog);
+    await user.type(within(dialog).getByLabelText(/base url/i), "https://new.vllm.corp/v1");
+    await user.type(within(dialog).getByLabelText(/^model$/i), "vllm-model");
+    await user.click(within(dialog).getByRole("button", { name: /^save$/i }));
+
+    await waitFor(() => expect(createSecretActionMock).toHaveBeenCalled());
+    const [, body] = createSecretActionMock.mock.calls[0] as [string, { data: Record<string, unknown> }];
+    expect(body.data.base_url).toBe("https://new.vllm.corp/v1");
   });
 
   it("surfaces a store error for the custom shape", async () => {

@@ -1,21 +1,21 @@
 /**
  * provider-credential-reference.spec.ts — a provider key entered in the UI
  * becomes a stored credential the tenant provider references, on the
- * many-model registry page (M121).
+ * many-model registry page.
  *
- * The Add-model dialog's "Known provider" tab (default tab, "New key" mode)
- * pastes a key → the provider is paste-detected → pick a model → "Save &
- * make active" stores `{provider, api_key}` (no `model` in the body — entries
- * own the model now), registers the entry, then points the tenant provider at
- * it. The credential name derives from the detected provider, so cleanup
- * resets the provider and deletes that credential.
+ * The unified Add-model dialog is one tab-free form: Name → Provider → Model
+ * → API key. Type a Name, pick (or type) the provider, pick a model, paste the
+ * key, then "Save & make active" stores `{provider, api_key}` (no `model` in
+ * the body — entries own the model now), registers the entry, then points the
+ * tenant provider at it. The credential name is the typed Name, so cleanup
+ * resets the provider and deletes that credential by the same name.
  *
- * Defensive by design: the paste-detect step is deterministic (client-side),
- * but the save+activate round-trip depends on the fixture backend accepting
- * the model, so the activation assertion tolerates an env-variance alert the
- * same way the prior credential-reference spec did. The exact action calls
- * are pinned by models-registry-add.test.tsx; this spec proves the real
- * built dialog wires them end to end.
+ * Defensive by design: the form assembly is deterministic (client-side), but
+ * the save+activate round-trip depends on the fixture backend accepting the
+ * model, so the activation assertion tolerates an env-variance alert the same
+ * way the prior credential-reference spec did. The exact action calls are
+ * pinned by models-registry-add.test.tsx; this spec proves the real built
+ * dialog wires them end to end.
  */
 import { expect, test, type Page } from "@playwright/test";
 import { signInAs } from "./fixtures/auth";
@@ -25,10 +25,11 @@ import { getDefaultWorkspaceId } from "./fixtures/seed";
 import { gotoWorkspace } from "./fixtures/nav";
 
 const ACTION_TIMEOUT_MS = 15_000;
-// A pasted anthropic-shaped key paste-detects to provider "anthropic"; the
-// dialog derives the new key's default name from the detected provider.
+// The typed credential Name — free-form in the unified form, and the identity
+// cleanup keys off. Named for the provider it holds, by convention.
+const CREDENTIAL_NAME = "anthropic";
+const PROVIDER = "anthropic";
 const ANTHROPIC_KEY = "sk-ant-e2e-xxxxxxxx";
-const DETECTED_PROVIDER = "anthropic";
 const MODEL_FALLBACK = "claude-sonnet-4-6";
 
 async function resetProviderDirect(): Promise<void> {
@@ -40,6 +41,19 @@ async function deleteCredentialDirect(name: string): Promise<void> {
   await clientFor(FIXTURE_KEY.regular)
     .delete(`/v1/workspaces/${ws}/secrets/${encodeURIComponent(name)}`)
     .catch(() => undefined);
+}
+
+// The Provider field is a catalogue-backed <Select> when the fixture catalogue
+// has rows, and degrades to a free-text <Input> when it doesn't — handle both.
+async function pickProvider(page: Page): Promise<void> {
+  const providerField = page.getByLabel("Provider");
+  const role = await providerField.getAttribute("role").catch(() => null);
+  if (role === "combobox") {
+    await providerField.click();
+    await page.getByRole("option", { name: new RegExp(`^${PROVIDER}$`, "i") }).click({ timeout: 5_000 });
+  } else {
+    await providerField.fill(PROVIDER);
+  }
 }
 
 // The catalogue-backed model picker is a <Select> when the catalogue covers
@@ -59,40 +73,33 @@ async function pickModel(page: Page): Promise<void> {
 test.describe("provider credential reference guard", () => {
   test.afterEach(async () => {
     await resetProviderDirect();
-    await deleteCredentialDirect(DETECTED_PROVIDER);
+    await deleteCredentialDirect(CREDENTIAL_NAME);
   });
 
-  test("a pasted provider key becomes the active model credential", async ({ page }) => {
+  test("a provider key entered in the unified form becomes the active model credential", async ({ page }) => {
     await resetProviderDirect();
-    await deleteCredentialDirect(DETECTED_PROVIDER);
+    await deleteCredentialDirect(CREDENTIAL_NAME);
 
     await signInAs(page, FIXTURE_KEY.regular);
     await gotoWorkspace(page, FIXTURE_KEY.regular, "settings/models");
     await expect(page.getByRole("heading", { name: /^models$/i })).toBeVisible();
 
-    // Open the Add-model dialog — defaults to the "Known provider" tab and
-    // "New key" mode (no stored keys yet in a freshly reset fixture).
+    // Open the unified Add-model dialog — one form, no tabs.
     await page.getByRole("button", { name: "Add model" }).click();
     await expect(page.getByRole("dialog")).toBeVisible();
 
-    // Paste-detect: an anthropic-shaped key fills the provider field (this is
-    // the credential-reference behaviour — deterministic, no backend).
-    await page.getByLabel("API key").fill(ANTHROPIC_KEY);
-    const providerField = page.getByLabel("Provider");
-    const providerRole = await providerField.getAttribute("role").catch(() => null);
-    if (providerRole === "combobox") {
-      await expect(providerField).toContainText(/anthropic/i);
-    } else {
-      await expect(providerField).toHaveValue(DETECTED_PROVIDER);
-    }
-
+    // Fill the form in order: Name → Provider → Model → API key.
+    await page.getByLabel("Name").fill(CREDENTIAL_NAME);
+    await pickProvider(page);
     await pickModel(page);
+    await page.getByLabel("API key", { exact: true }).fill(ANTHROPIC_KEY);
+
     await page.getByRole("button", { name: "Save & make active" }).click();
 
     // The store+create+activate round-trip either lands (the row shows Active
     // referencing the anthropic credential) or surfaces a typed alert under
     // fixture variance.
-    const activeRow = page.getByRole("row", { name: new RegExp(DETECTED_PROVIDER, "i") });
+    const activeRow = page.getByRole("row", { name: new RegExp(PROVIDER, "i") });
     const outcome = await Promise.race([
       activeRow.filter({ hasText: /active/i }).waitFor({ state: "visible", timeout: ACTION_TIMEOUT_MS }).then(() => "live" as const),
       page.getByRole("alert").waitFor({ state: "visible", timeout: ACTION_TIMEOUT_MS }).then(() => "alert" as const),

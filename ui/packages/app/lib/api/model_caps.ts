@@ -2,8 +2,10 @@
 // served unauthenticated at /_um/<key>/cap.json. The model list, per-model
 // context caps + token rates, and the global rates/billing block all come from
 // here — see src/agentsfleetd/http/handlers/model_caps.zig for the wire contract.
-// The wizard's key-format → provider heuristic (detect-provider.ts) is the ONLY
-// client-side data; everything catalogue-shaped is fetched from this endpoint.
+// Everything catalogue-shaped is fetched from this endpoint; the only static
+// client-side model data is the small known-models fallback list
+// (settings/models/lib/known-models.ts), used when the catalogue has no rows
+// for a provider.
 
 import { BASE } from "./client";
 
