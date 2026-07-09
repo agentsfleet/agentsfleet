@@ -310,3 +310,96 @@ test "integration: test_secret_delete_blocked_when_referenced — secret DELETE 
     defer h.releaseConn(conn);
     cleanup(conn);
 }
+
+// M121 regression at the HTTP boundary: the Add-model dialog stores a
+// known-provider secret with NO `model` field (the model lives on the registry
+// entry / PUT body). Every OTHER activation test in this file puts a `model` in
+// the secret body, which masked the bug — before the probe fix this exact flow
+// (Save & make active / Switch) returned 400 UZ-PROVIDER-003 while the registry
+// row still committed.
+test "integration: test_activate_model_less_secret — a {provider,api_key} secret with NO model activates when the model rides the PUT body" {
+    base.setTestEncryptionKey();
+    const alloc = std.testing.allocator;
+    const h = base.seedAndHarness(alloc) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+
+    const secrets_path = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/secrets", .{base.TEST_WS_ID});
+    defer alloc.free(secrets_path);
+    {
+        // No `model` in the secret body — the M121 shape.
+        const r = try (try (try h.post(secrets_path).bearer(base.TOKEN_OPERATOR))
+            .json("{\"name\":\"no-model-key\",\"data\":{\"provider\":\"anthropic\",\"api_key\":\"sk-nomodel\"}}")).send();
+        defer r.deinit();
+        try r.expectStatus(.created);
+    }
+    {
+        // The model rides the PUT body (the registry entry's model_id), not the secret.
+        const r = try (try (try h.put("/v1/tenants/me/provider").bearer(base.TOKEN_OPERATOR))
+            .json("{\"mode\":\"self_managed\",\"secret_ref\":\"no-model-key\",\"model\":\"claude-sonnet-4-6\"}")).send();
+        defer r.deinit();
+        try r.expectStatus(.ok);
+        try std.testing.expect(r.bodyContains("\"model\":\"claude-sonnet-4-6\""));
+    }
+
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    cleanup(conn);
+}
+
+// Guard restored after the probe relaxation: a bare PUT for an openai-compatible
+// secret carrying no model (and no model in the body) must fail up front rather
+// than persist a blank model that only breaks later at dial time. Named
+// providers already fail via the catalogue lookup; the custom-endpoint cap path
+// takes a sentinel, so resolveSelfManagedCap now rejects an empty model for it too.
+test "integration: test_activate_custom_endpoint_without_model_rejected — empty effective model fails UZ-PROVIDER-004, not a blank persist" {
+    base.setTestEncryptionKey();
+    const alloc = std.testing.allocator;
+    const h = base.seedAndHarness(alloc) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+
+    const secrets_path = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/secrets", .{base.TEST_WS_ID});
+    defer alloc.free(secrets_path);
+    {
+        const r = try (try (try h.post(secrets_path).bearer(base.TOKEN_OPERATOR))
+            .json("{\"name\":\"gw-key\",\"data\":{\"provider\":\"openai-compatible\",\"base_url\":\"https://gw.example.com/v1\",\"api_key\":\"sk-gw\"}}")).send();
+        defer r.deinit();
+        try r.expectStatus(.created);
+    }
+    {
+        // No model on the credential AND none in the body → empty effective model.
+        const r = try (try (try h.put("/v1/tenants/me/provider").bearer(base.TOKEN_OPERATOR))
+            .json("{\"mode\":\"self_managed\",\"secret_ref\":\"gw-key\"}")).send();
+        defer r.deinit();
+        try r.expectStatus(.bad_request);
+        try std.testing.expect(r.bodyContains(error_codes.ERR_PROVIDER_MODEL_NOT_IN_CATALOGUE));
+    }
+    {
+        // A whitespace-only model is rejected too — the cap gate trims before the
+        // blank check, so `" "` can't slip through `.len == 0` and persist.
+        const r = try (try (try h.put("/v1/tenants/me/provider").bearer(base.TOKEN_OPERATOR))
+            .json("{\"mode\":\"self_managed\",\"secret_ref\":\"gw-key\",\"model\":\"  \"}")).send();
+        defer r.deinit();
+        try r.expectStatus(.bad_request);
+        try std.testing.expect(r.bodyContains(error_codes.ERR_PROVIDER_MODEL_NOT_IN_CATALOGUE));
+    }
+    {
+        // A whitespace-PADDED but otherwise valid model is rejected too — the cap
+        // gate requires the trimmed value to equal the submitted one, so a padded
+        // name can't be persisted for the custom endpoint to choke on at dial time.
+        const r = try (try (try h.put("/v1/tenants/me/provider").bearer(base.TOKEN_OPERATOR))
+            .json("{\"mode\":\"self_managed\",\"secret_ref\":\"gw-key\",\"model\":\" claude-sonnet-4-6 \"}")).send();
+        defer r.deinit();
+        try r.expectStatus(.bad_request);
+        try std.testing.expect(r.bodyContains(error_codes.ERR_PROVIDER_MODEL_NOT_IN_CATALOGUE));
+    }
+
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    cleanup(conn);
+}
