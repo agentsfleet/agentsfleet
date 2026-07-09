@@ -22,6 +22,16 @@ const ServeMigrationDecision = enum {
 const schema_mod = @import("schema");
 const schema_migrations = schema_mod.migrations;
 
+/// `runMigrations` applies the array in order and records each version, so the
+/// list must start at 1 and step by exactly 1: a gap would record a version whose
+/// schema never ran, and a repeat would re-apply one. Nothing in `schema/embed.zig`
+/// enforces that, so the assertions below derive it rather than restate a literal.
+const FIRST_MIGRATION_VERSION: i32 = 1;
+/// The two migrations whose presence the connector-install and channel surfaces
+/// depend on. Named because a bare `25`/`26` in an assertion reads as an index.
+const V_CONNECTOR_INSTALLS: i32 = 25;
+const V_CHANNEL_TABLES: i32 = 26;
+
 pub fn canonicalMigrations() [schema_migrations.len]db.Migration {
     var result: [schema_migrations.len]db.Migration = undefined;
     for (schema_migrations, 0..) |m, i| {
@@ -107,17 +117,45 @@ pub fn runCanonicalMigrations(pool: *db.Pool) !void {
     try db.runMigrations(pool, &migrations);
 }
 
-test "canonical migrations: connector install + channel tables registered (v25, v26)" {
+/// True when versions run 1, 2, 3, … with no gap, repeat, or reordering.
+fn versionsContiguousFromFirst(migrations: []const db.Migration) bool {
+    for (migrations, 0..) |m, i| {
+        const expected: i32 = FIRST_MIGRATION_VERSION + @as(i32, @intCast(i));
+        if (m.version != expected) return false;
+    }
+    return true;
+}
+
+test "canonical migrations: connector install + channel tables registered" {
     const migrations = canonicalMigrations();
-    try std.testing.expectEqual(@as(usize, 26), migrations.len);
+    try std.testing.expectEqual(schema_migrations.len, migrations.len);
     var has_installs = false;
     var has_channels = false;
     for (migrations) |m| {
-        if (m.version == 25) has_installs = true;
-        if (m.version == 26) has_channels = true;
+        if (m.version == V_CONNECTOR_INSTALLS) has_installs = true;
+        if (m.version == V_CHANNEL_TABLES) has_channels = true;
     }
     try std.testing.expect(has_installs);
     try std.testing.expect(has_channels);
+}
+
+test "canonical migrations: versions are contiguous and strictly increasing" {
+    const migrations = canonicalMigrations();
+    try std.testing.expect(versionsContiguousFromFirst(&migrations));
+}
+
+test "canonical migrations: a gapped or duplicated version is rejected" {
+    const gapped = [_]db.Migration{
+        .{ .version = 1, .sql = "" },
+        .{ .version = 3, .sql = "" },
+    };
+    try std.testing.expect(!versionsContiguousFromFirst(&gapped));
+
+    const duplicated = [_]db.Migration{
+        .{ .version = 1, .sql = "" },
+        .{ .version = 1, .sql = "" },
+    };
+    try std.testing.expect(!versionsContiguousFromFirst(&duplicated));
 }
 
 test "migrateOnStartEnabledFromEnv parses known values" {
@@ -223,9 +261,11 @@ test "integration: startup with pending migrations proceeds when enabled and loc
     try std.testing.expectEqual(.run_required, decision);
 }
 
-test "canonical schema bootstrap: last version is 26" {
+test "canonical schema bootstrap: last version equals the registered count" {
     const migrations = canonicalMigrations();
-    try std.testing.expectEqual(@as(i32, 26), migrations[migrations.len - 1].version);
+    try std.testing.expect(migrations.len > 0);
+    const last = migrations[migrations.len - 1].version;
+    try std.testing.expectEqual(@as(i32, @intCast(migrations.len)), last);
 }
 
 test "every migration SQL is parseable by SqlStatementSplitter" {
