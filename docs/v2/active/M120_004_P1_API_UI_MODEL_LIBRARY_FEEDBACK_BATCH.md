@@ -16,12 +16,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M120
 **Workstream:** 004
 **Date:** Jul 09, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — operator-facing feedback batch: the workspace Models table shows a blank Default row today, and two action surfaces still hide behind text buttons / a dropdown.
 **Categories:** API, UI
 **Batch:** B1 — runs alone; M120_003 (pending internal rename) re-sequences after this spec because both edit the same import surface.
-**Branch:** {added at CHORE(open)}
-**Test Baseline:** set at CHORE(open) — `unit=<N> integration=<M>` via `make _lint_zig_test_depth`
+**Branch:** feat/m120-004-model-library-feedback
+**Test Baseline:** unit=2393 integration=265
 **Depends on:** none outstanding — M120_001/M120_002 are merged; M120_003 stays pending and its `Depends on:` line gains this workstream (amended in the same authoring commit)
 **Provenance:** human-directed — Indy's screenshot feedback batch (Jul 09, 2026 session): blank Default-row context, dialog wording, label renames, iconified actions, and the unified add-model dialog (unified-form option Indy-confirmed in-session); agent-drafted against the code as merged at PR #495
 **Canonical architecture:** `docs/architecture/billing_and_provider_keys.md` — platform default resolution + priced model library; this spec adds one read-only field to an existing tenant list response and changes no resolution or billing behavior
