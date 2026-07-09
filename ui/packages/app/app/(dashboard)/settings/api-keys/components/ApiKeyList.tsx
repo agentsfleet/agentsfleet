@@ -1,7 +1,7 @@
 "use client";
 
 import { type Ref, useImperativeHandle, useState, useTransition } from "react";
-import { Badge, Button, DataTable, type DataTableColumn, EmptyState } from "@agentsfleet/design-system";
+import { Badge, Button, DataTable, type DataTableColumn, EmptyState, Time } from "@agentsfleet/design-system";
 import { BanIcon, KeyRoundIcon, Trash2Icon } from "lucide-react";
 import {
   DEFAULT_PAGE_SIZE,
@@ -21,12 +21,6 @@ const NEXT_SORT: Record<"name" | "activity", Record<ApiKeySort, ApiKeySort>> = {
   name: { key_name: "-key_name", "-key_name": "key_name", created_at: "key_name", "-created_at": "key_name" },
   activity: { "-created_at": "created_at", created_at: "-created_at", key_name: "-created_at", "-key_name": "-created_at" },
 };
-
-// Callers always pass a present epoch (created_at) or pre-guard the nullable
-// fields (last_used_at / revoked_at), so `ms` is never null here.
-function fmt(ms: number): string {
-  return new Date(ms).toLocaleString();
-}
 
 export type ApiKeyListHandle = { refresh: () => void };
 
@@ -166,11 +160,24 @@ function KeyNameCell({ k }: { k: ApiKeyRow }) {
   );
 }
 
+// created_at is always a present epoch; last_used_at / revoked_at are pre-guarded
+// as nullable, so Time renders only for a real timestamp (never for null).
 function KeyActivityCell({ k }: { k: ApiKeyRow }) {
   return (
     <span className="font-mono text-xs tabular-nums text-muted-foreground">
-      created {fmt(k.created_at)} · {k.last_used_at ? `last used ${fmt(k.last_used_at)}` : "never used"}
-      {k.revoked_at ? ` · revoked ${fmt(k.revoked_at)}` : ""}
+      created <Time value={new Date(k.created_at)} format="relative" /> ·{" "}
+      {k.last_used_at ? (
+        <>
+          last used <Time value={new Date(k.last_used_at)} format="relative" />
+        </>
+      ) : (
+        "never used"
+      )}
+      {k.revoked_at ? (
+        <>
+          {" · "}revoked <Time value={new Date(k.revoked_at)} format="relative" />
+        </>
+      ) : null}
     </span>
   );
 }

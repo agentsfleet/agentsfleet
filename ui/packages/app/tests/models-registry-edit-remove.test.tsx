@@ -2,7 +2,15 @@ import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { TooltipProvider } from "@agentsfleet/design-system";
 import type { TenantModelEntry, TenantModelEntryList } from "@/lib/types";
+
+/** ModelDetailsDialog renders a relative <Time>, which mounts a Radix Tooltip.
+ *  Radix requires a TooltipProvider ancestor — supplied by the dashboard layout
+ *  in production, so unit renders must supply it themselves. */
+function withTooltipProvider(node: React.ReactElement): React.ReactElement {
+  return React.createElement(TooltipProvider, null, node);
+}
 
 const listModelEntriesActionMock = vi.fn();
 const listSecretsActionMock = vi.fn();
@@ -50,7 +58,7 @@ async function renderTable(initial: TenantModelEntryList) {
   const { default: ModelsRegistryTable } = await import(
     "../app/(dashboard)/w/[workspaceId]/settings/models/components/ModelsRegistryTable"
   );
-  render(React.createElement(ModelsRegistryTable, { workspaceId: "ws_1", initial, initialSecrets: [] } as never));
+  render(withTooltipProvider(React.createElement(ModelsRegistryTable, { workspaceId: "ws_1", initial, initialSecrets: [] } as never)));
 }
 
 /** Row actions are inline icon buttons (no dropdown) — click by aria-label. */
@@ -256,7 +264,7 @@ describe("Row actions — View details", () => {
     expect(container.firstChild).toBeNull();
   });
 
-  it("shows provider, endpoint, key name, and has-key for a full custom-endpoint entry", async () => {
+  it("shows provider, endpoint, secret ref, and the In vault badge for a full custom-endpoint entry", async () => {
     const { default: ModelDetailsDialog } = await import(
       "../app/(dashboard)/w/[workspaceId]/settings/models/components/ModelDetailsDialog"
     );
@@ -268,24 +276,27 @@ describe("Row actions — View details", () => {
       base_url: "https://vllm.corp/v1",
       has_key: true,
     });
-    render(React.createElement(ModelDetailsDialog, { target, onOpenChange: vi.fn() } as never));
+    render(withTooltipProvider(React.createElement(ModelDetailsDialog, { target, onOpenChange: vi.fn() } as never)));
 
     const dialog = await screen.findByRole("dialog");
     expect(within(dialog).getByText("https://vllm.corp/v1")).toBeTruthy();
     expect(within(dialog).getByText("vllm-gateway")).toBeTruthy();
-    expect(within(dialog).getByText("Yes")).toBeTruthy();
+    // "Has key: Yes" became a header badge; "Kind" is gone entirely.
+    expect(within(dialog).getByText("In vault")).toBeTruthy();
+    expect(within(dialog).queryByText("Yes")).toBeNull();
+    expect(within(dialog).queryByText(/^kind$/i, { selector: "dt" })).toBeNull();
   });
 
-  it("shows Unknown provider and the keyless note for a minimal entry", async () => {
+  it("shows Unknown provider and the Keyless endpoint badge for a minimal entry", async () => {
     const { default: ModelDetailsDialog } = await import(
       "../app/(dashboard)/w/[workspaceId]/settings/models/components/ModelDetailsDialog"
     );
     const target = entry({ provider: undefined, kind: "custom_secret", base_url: undefined, has_key: false });
-    render(React.createElement(ModelDetailsDialog, { target, onOpenChange: vi.fn() } as never));
+    render(withTooltipProvider(React.createElement(ModelDetailsDialog, { target, onOpenChange: vi.fn() } as never)));
 
     const dialog = await screen.findByRole("dialog");
     expect(within(dialog).getByText("Unknown")).toBeTruthy();
-    expect(within(dialog).getByText(/no — keyless endpoint/i)).toBeTruthy();
+    expect(within(dialog).getByText("Keyless endpoint")).toBeTruthy();
     expect(within(dialog).queryByText(/endpoint/i, { selector: "dt" })).toBeNull();
   });
 });

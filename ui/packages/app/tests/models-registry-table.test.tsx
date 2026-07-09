@@ -2,8 +2,15 @@ import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { TooltipProvider } from "@agentsfleet/design-system";
 import type { TenantModelEntry, TenantModelEntryList, TenantPlatformDefault } from "@/lib/types";
 import type { CapJson } from "@/lib/api/model_caps";
+
+/** The details dialog renders a relative <Time> → a Radix Tooltip, which needs a
+ *  TooltipProvider ancestor (the dashboard layout supplies it in production). */
+function withTooltipProvider(node: React.ReactElement): React.ReactElement {
+  return React.createElement(TooltipProvider, null, node);
+}
 
 const getModelCapsMock = vi.fn();
 vi.mock("@/lib/api/model_caps", async (importOriginal) => {
@@ -95,7 +102,7 @@ async function renderTable(initial: TenantModelEntryList) {
   const { default: ModelsRegistryTable } = await import(
     "../app/(dashboard)/w/[workspaceId]/settings/models/components/ModelsRegistryTable"
   );
-  render(React.createElement(ModelsRegistryTable, { workspaceId: "ws_1", initial, initialSecrets: [] } as never));
+  render(withTooltipProvider(React.createElement(ModelsRegistryTable, { workspaceId: "ws_1", initial, initialSecrets: [] } as never)));
 }
 
 /** Renders inside a real ModelCatalogueProvider with getModelCaps mocked, so
@@ -109,10 +116,12 @@ async function renderTableWithLibrary(initial: TenantModelEntryList, library: Ca
     "../app/(dashboard)/w/[workspaceId]/settings/models/components/ModelsRegistryTable"
   );
   render(
-    React.createElement(
-      ModelCatalogueProvider,
-      null,
-      React.createElement(ModelsRegistryTable, { workspaceId: "ws_1", initial, initialSecrets: [] } as never),
+    withTooltipProvider(
+      React.createElement(
+        ModelCatalogueProvider,
+        null,
+        React.createElement(ModelsRegistryTable, { workspaceId: "ws_1", initial, initialSecrets: [] } as never),
+      ),
     ),
   );
 }

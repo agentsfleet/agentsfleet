@@ -2,6 +2,7 @@ import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { TooltipProvider } from "@agentsfleet/design-system";
 import type { RunnerEventsResponse, RunnerListItem, RunnerListResponse } from "@/lib/api/runners";
 
 const PAGE_SIZE = 25;
@@ -120,7 +121,9 @@ async function renderList(initial: RunnerListResponse) {
   const { default: RunnerList } = await import(
     "../app/(dashboard)/admin/runners/components/RunnerList"
   );
-  render(React.createElement(RunnerList, { initial } as never));
+  render(
+    React.createElement(TooltipProvider, null, React.createElement(RunnerList, { initial } as never)),
+  );
 }
 
 beforeEach(() => {
