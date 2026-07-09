@@ -19,7 +19,7 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Batch:** B2 — sequenced after M120_001/M120_002 land, since both edit files this spec renames/moves; running concurrently would create avoidable rebase churn on the same import lines.
 **Branch:** {added at CHORE(open)}
 **Test Baseline:** {set at CHORE(open) via `make _lint_zig_test_depth`}
-**Depends on:** M120_001 (edits `ProviderModelSelect.tsx`/creates `known-models.ts`, both touching the public catalogue reader this spec renames), M120_002 (edits `CatalogueList.tsx`/`PlatformDefaultCard.tsx`/creates `EditModelDialog.tsx`, all importing the admin client this spec renames)
+**Depends on:** M120_001 (edits `ProviderModelSelect.tsx`/creates `known-models.ts`, both touching the public catalogue reader this spec renames), M120_002 (edits `CatalogueList.tsx`/`PlatformDefaultCard.tsx`/creates `EditModelDialog.tsx`, all importing the admin client this spec renames), M120_004 (reworks `AddModelEntryDialog.tsx`/`ModelsRegistryTable.tsx` and edits both client files this spec renames — same-surface sequencing)
 **Provenance:** human-directed — Indy noticed mid-session that the schema table (`core.model_library`, since M100) and the admin page title ("Model library") had already moved off "caps" naming, while the Zig module/file names and TypeScript client/type names had not; confirmed by grep during this session (see Discovery).
 
 **Canonical architecture:** none — pure rename, zero data-model or route-contract change. `docs/architecture/billing_and_provider_keys.md` is unaffected.
