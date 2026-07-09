@@ -32,11 +32,16 @@ const ALLOWED = new Set([
 ]);
 
 // A line is a bespoke date formatter if it calls one of the locale date
-// methods, or constructs an Intl.DateTimeFormat for FORMATTING. The
+// methods, or constructs an Intl date formatter for FORMATTING. The
 // `Intl.DateTimeFormat().resolvedOptions().timeZone` idiom reads the caller's
 // timezone name — it formats no date — so it is not a violation.
+//
+// Intl.RelativeTimeFormat is included deliberately: hand-rolling a "… ago"
+// label is the one way to satisfy the letter of this guard while defeating its
+// purpose. `Time format="relative"` is the only sanctioned relative renderer.
 function isBespokeDateLine(line: string): boolean {
   if (/toLocaleString|toLocaleDateString|toLocaleTimeString/.test(line)) return true;
+  if (/Intl\.RelativeTimeFormat/.test(line)) return true;
   if (/Intl\.DateTimeFormat/.test(line) && !/resolvedOptions/.test(line)) return true;
   return false;
 }

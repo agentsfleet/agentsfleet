@@ -17,8 +17,8 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "./Tooltip";
  * neither. A <TooltipProvider> ancestor is required (mounted at the dashboard
  * layout root).
  *
- *   <IconAction label="Cordon" onClick={cordon}><BanIcon /></IconAction>
- *   <IconAction label="Revoke" variant="destructive"><Trash2Icon /></IconAction>
+ *   <IconAction label="Cordon" onClick={cordon}><PauseIcon /></IconAction>
+ *   <IconAction label="Revoke" variant="destructive"><BanIcon /></IconAction>
  */
 export interface IconActionProps
   extends Omit<ButtonProps, "size" | "aria-label" | "children"> {

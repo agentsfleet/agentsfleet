@@ -260,6 +260,15 @@ describe("RunnerList activity dialog", () => {
     await waitFor(() => expect(listRunnerEventsActionMock).toHaveBeenCalledWith(ONLINE.id, { page: 1, page_size: PAGE_SIZE }));
     expect(await screen.findByText("runner_online")).toBeTruthy();
     expect(screen.getByText(/last_seen_at/i)).toBeTruthy();
+
+    // The activity row must render its timestamp through <Time>, not raw text:
+    // a grep for the removed toLocaleString cannot catch a hand-rolled label,
+    // so assert the semantic <time datetime> element that Time emits. Scope to
+    // the dialog — the host cell behind it also renders <time> elements now.
+    const dialog = await screen.findByRole("dialog");
+    const stamp = dialog.querySelector("time[datetime]");
+    expect(stamp).toBeTruthy();
+    expect(stamp?.getAttribute("datetime")).toBe(new Date(1_716_500_000_000).toISOString());
   });
 
   it("ignores stale activity responses from a previously selected runner", async () => {
