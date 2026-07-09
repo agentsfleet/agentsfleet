@@ -29,7 +29,7 @@ pub const DEACTIVATE_PROVIDER =
 ;
 
 pub const SELECT_KEYS =
-    \\SELECT provider, source_workspace_id, active, updated_at
+    \\SELECT provider, source_workspace_id, model, active, updated_at
     \\  FROM core.platform_provider_defaults
     \\ ORDER BY provider
 ;

@@ -3,7 +3,7 @@ import { auth } from "@clerk/nextjs/server";
 import { ApiError } from "@/lib/api/errors";
 import { hasScope } from "@/lib/auth/platform";
 import { SCOPE } from "@/lib/auth/scopes";
-import { listAdminModels } from "@/lib/api/admin_models";
+import { listAdminModels, listPlatformKeys, activePlatformDefault, type PlatformKey } from "@/lib/api/admin_models";
 import ModelsView from "./components/ModelsView";
 
 export const dynamic = "force-dynamic";
@@ -29,5 +29,17 @@ export default async function AdminModelsPage() {
     throw e;
   }
 
-  return <ModelsView initial={initial} />;
+  // The active platform default only badges a catalogue row — a non-essential
+  // indicator. Its GET is gated on platform-key:read (a distinct scope from this
+  // page's model:read), so a model:read-only viewer 403s here; a transient
+  // backend/network error is likewise possible. Any failure degrades to "no
+  // default known" rather than failing the whole page over a badge.
+  let activeDefault: PlatformKey | null = null;
+  try {
+    activeDefault = activePlatformDefault(await listPlatformKeys(token));
+  } catch {
+    activeDefault = null;
+  }
+
+  return <ModelsView initial={initial} activeDefault={activeDefault} />;
 }

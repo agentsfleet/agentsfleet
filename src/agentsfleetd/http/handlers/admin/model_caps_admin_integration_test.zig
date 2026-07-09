@@ -201,6 +201,57 @@ test "platform default: setting a second provider leaves exactly one active row"
     try std.testing.expectEqualStrings("anthropic", active.provider);
 }
 
+test "platform default: GET returns the active row's model for the Edit-default pre-fill" {
+    const h = try startHarness(ALLOC);
+    defer h.deinit();
+    defer cleanup(h);
+    try seedTenantWorkspace(h);
+    try seedModel(h, UID_GLM, "fireworks", "glm-5.2");
+
+    const set = try (try (try h.put("/v1/admin/platform-keys").bearer(PLATFORM_ADMIN_TOKEN))
+        .json("{\"provider\":\"fireworks\",\"source_workspace_id\":\"" ++ WORKSPACE_ID ++ "\",\"model\":\"glm-5.2\"}")).send();
+    defer set.deinit();
+    try set.expectStatus(.ok);
+
+    // The active row now carries its priced model in the GET body — the field the
+    // admin UI reads to pre-fill the "Edit default" dialog. Before SELECT_KEYS
+    // carried `model`, the GET exposed only provider/active and the pre-fill was
+    // unreachable.
+    const list = try (try h.get("/v1/admin/platform-keys").bearer(PLATFORM_ADMIN_TOKEN)).send();
+    defer list.deinit();
+    try list.expectStatus(.ok);
+    try std.testing.expect(list.bodyContains("\"model\""));
+    try std.testing.expect(list.bodyContains("glm-5.2"));
+}
+
+test "platform default: GET reports a stood-down provider's model as null" {
+    const h = try startHarness(ALLOC);
+    defer h.deinit();
+    defer cleanup(h);
+    try seedTenantWorkspace(h);
+    try seedModel(h, UID_GLM, "fireworks", "glm-5.2");
+    try seedModel(h, UID_OPUS, "anthropic", "claude-opus-4-8");
+
+    // fireworks is the default (model = glm-5.2) …
+    const a = try (try (try h.put("/v1/admin/platform-keys").bearer(PLATFORM_ADMIN_TOKEN))
+        .json("{\"provider\":\"fireworks\",\"source_workspace_id\":\"" ++ WORKSPACE_ID ++ "\",\"model\":\"glm-5.2\"}")).send();
+    defer a.deinit();
+    try a.expectStatus(.ok);
+    // … then anthropic takes over, standing fireworks down (NULLs its model).
+    const b = try (try (try h.put("/v1/admin/platform-keys").bearer(PLATFORM_ADMIN_TOKEN))
+        .json("{\"provider\":\"anthropic\",\"source_workspace_id\":\"" ++ WORKSPACE_ID ++ "\",\"model\":\"claude-opus-4-8\"}")).send();
+    defer b.deinit();
+    try b.expectStatus(.ok);
+
+    // The GET carries the active row's model AND serializes the stood-down row's
+    // NULL model as JSON null (the OpenAPI "NULL for inactive rows" contract).
+    const list = try (try h.get("/v1/admin/platform-keys").bearer(PLATFORM_ADMIN_TOKEN)).send();
+    defer list.deinit();
+    try list.expectStatus(.ok);
+    try std.testing.expect(list.bodyContains("claude-opus-4-8"));
+    try std.testing.expect(list.bodyContains("\"model\":null"));
+}
+
 test "admin models: deleting the active default's model is blocked 409" {
     const h = try startHarness(ALLOC);
     defer h.deinit();

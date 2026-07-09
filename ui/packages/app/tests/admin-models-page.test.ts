@@ -15,21 +15,27 @@ const redirect = vi.fn((path: string) => {
 const authMock = vi.fn();
 const hasScopeMock = vi.fn();
 const listAdminModelsMock = vi.fn();
+const listPlatformKeysMock = vi.fn();
 
 vi.mock("next/navigation", () => ({ redirect }));
 vi.mock("@clerk/nextjs/server", () => ({ auth: authMock }));
 vi.mock("@/lib/auth/platform", () => ({ hasScope: hasScopeMock }));
+// activePlatformDefault stays real (pure `.find`); only the two network reads
+// are stubbed.
 vi.mock("@/lib/api/admin_models", async (orig) => ({
   ...(await orig<typeof import("@/lib/api/admin_models")>()),
   listAdminModels: listAdminModelsMock,
+  listPlatformKeys: listPlatformKeysMock,
 }));
 
-// Stub the client view so the page test stays focused on page-level guards.
+// Stub the client view so the page test stays focused on page-level guards. It
+// surfaces the threaded activeDefault so the fetch/tolerance branches are testable.
 vi.mock("@/app/(dashboard)/admin/models/components/ModelsView", () => ({
-  default: ({ initial }: { initial: { models: Array<{ model_id: string }> } }) =>
+  default: ({ initial, activeDefault }: { initial: { models: Array<{ model_id: string }> }; activeDefault: { model: string | null } | null }) =>
     React.createElement(
       "div",
       { "data-models-view": "1" },
+      React.createElement("span", { "data-active-default": "1" }, activeDefault?.model ?? "none"),
       initial.models.map((m) => React.createElement("span", { key: m.model_id }, m.model_id)),
     ),
 }));
@@ -43,6 +49,9 @@ function mockAuth(token: string | null = "tok") {
 beforeEach(() => {
   vi.clearAllMocks();
   hasScopeMock.mockResolvedValue(true);
+  // Default: no platform-keys rows (activeDefault → null). Tests that care set
+  // their own resolution/rejection.
+  listPlatformKeysMock.mockResolvedValue({ keys: [] });
 });
 
 describe("admin/models page", () => {
@@ -90,5 +99,31 @@ describe("admin/models page", () => {
     expect(html).toContain("glm-5.2");
     expect(html).toContain("claude-opus-4-8");
     expect(listAdminModelsMock).toHaveBeenCalledWith("tok");
+  });
+
+  it("threads the active platform default into ModelsView for the row badge", async () => {
+    mockAuth();
+    listAdminModelsMock.mockResolvedValueOnce({ models: [{ model_id: "glm-5.2" }] });
+    listPlatformKeysMock.mockResolvedValueOnce({
+      keys: [{ provider: "fireworks", source_workspace_id: "ws1", model: "glm-5.2", active: true, updated_at: 1 }],
+    });
+    const { default: Page } = await import("../app/(dashboard)/admin/models/page");
+    const html = renderToStaticMarkup(await Page());
+    // The stub surfaces activeDefault?.model — the active row's model reaches the view.
+    expect(html).toContain("glm-5.2");
+    expect(listPlatformKeysMock).toHaveBeenCalledWith("tok");
+  });
+
+  it("tolerates a platform-keys 403 (distinct scope) — renders with no active default", async () => {
+    mockAuth();
+    listAdminModelsMock.mockResolvedValueOnce({ models: [{ model_id: "glm-5.2" }] });
+    // platform-key:read is a different scope than the page's model:read gate, so a
+    // model:read-only viewer 403s here. The page must still render.
+    listPlatformKeysMock.mockRejectedValueOnce(new ApiError("forbidden", 403, "UZ-AUTH-022"));
+    const { default: Page } = await import("../app/(dashboard)/admin/models/page");
+    const html = renderToStaticMarkup(await Page());
+    expect(html).toContain("glm-5.2");
+    // Falls back to "no default known" rather than crashing the page.
+    expect(html).toContain("none");
   });
 });

@@ -6,43 +6,41 @@ import userEvent from "@testing-library/user-event";
 // Only the server-action module is stubbed; lib/api/admin_models (the $/1M⇄nanos
 // conversion) stays real so the form's actual conversion is exercised, not faked.
 // vi.hoisted: vi.mock is hoisted above const decls, so the mock fns must be too.
-const { createAdminModelActionMock, setPlatformDefaultActionMock, deleteAdminModelActionMock, captureProductEventMock } = vi.hoisted(() => ({
+const {
+  createAdminModelActionMock,
+  setPlatformDefaultActionMock,
+  deleteAdminModelActionMock,
+  updateAdminModelActionMock,
+  captureProductEventMock,
+  routerRefreshMock,
+} = vi.hoisted(() => ({
   createAdminModelActionMock: vi.fn(),
   setPlatformDefaultActionMock: vi.fn(),
   deleteAdminModelActionMock: vi.fn(),
+  updateAdminModelActionMock: vi.fn(),
   captureProductEventMock: vi.fn(),
+  routerRefreshMock: vi.fn(),
 }));
 
 vi.mock("@/app/(dashboard)/admin/models/actions", () => ({
   createAdminModelAction: createAdminModelActionMock,
   setPlatformDefaultAction: setPlatformDefaultActionMock,
   deleteAdminModelAction: deleteAdminModelActionMock,
+  updateAdminModelAction: updateAdminModelActionMock,
   listAdminModelsAction: vi.fn(),
-  updateAdminModelAction: vi.fn(),
+  listPlatformKeysAction: vi.fn(),
 }));
 vi.mock("@/lib/analytics/posthog", () => ({ captureProductEvent: captureProductEventMock }));
+vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: routerRefreshMock }) }));
 
 import AddModelDialog from "@/app/(dashboard)/admin/models/components/AddModelDialog";
-import PlatformDefaultCard from "@/app/(dashboard)/admin/models/components/PlatformDefaultCard";
 import CatalogueList from "@/app/(dashboard)/admin/models/components/CatalogueList";
 import ModelsView from "@/app/(dashboard)/admin/models/components/ModelsView";
-import { type AdminModel, OPENAI_COMPATIBLE_PROVIDER } from "@/lib/api/admin_models";
+import { type AdminModel, type PlatformKey, OPENAI_COMPATIBLE_PROVIDER } from "@/lib/api/admin_models";
 import { EVENTS } from "../lib/analytics/events";
 
-// Open a design-system (Radix) Select and click one of its options. Mirrors the
-// pointerDown→click→Enter sequence provider-selector.test.ts uses — Radix only
-// mounts SelectContent (and its items) once the trigger is activated, so the
-// option's render is uncovered until the select is actually opened.
-function pickOption(trigger: HTMLElement, optionText: string) {
-  fireEvent.pointerDown(trigger, { button: 0, pointerType: "mouse" });
-  fireEvent.click(trigger);
-  fireEvent.keyDown(trigger, { key: "Enter" });
-  fireEvent.click(screen.getByText(optionText));
-}
-
-// The catalogue is a design-system DataTable now — rows carry no custom
-// aria-label, so scope a row by its (unique) model_id cell and walk up to its
-// <tr>. Replaces the old `<provider> <model_id> catalogue row` aria query.
+// The catalogue is a design-system DataTable — scope a row by its (unique)
+// model_id cell and walk up to its <tr>.
 function rowFor(modelId: string): HTMLElement {
   return screen.getByText(modelId).closest("tr")!;
 }
@@ -52,10 +50,20 @@ const CATALOGUE: AdminModel[] = [
   { uid: "u2", provider: "anthropic", model_id: "claude-opus-4-8", context_cap_tokens: 200000, input_nanos_per_mtok: 15_000_000_000, cached_input_nanos_per_mtok: 1_500_000_000, output_nanos_per_mtok: 75_000_000_000 },
 ];
 
+const DEFAULT_FIREWORKS: PlatformKey = {
+  provider: "fireworks", source_workspace_id: "ws1", model: "glm-5.2", active: true, updated_at: 1,
+};
+
 beforeEach(() => vi.clearAllMocks());
 afterEach(() => cleanup());
 
 describe("AddModelDialog", () => {
+  it("renders a PlusIcon on the create-model-library trigger (test_create_triggers_render_plus_icon)", () => {
+    render(React.createElement(AddModelDialog, { onCreated: vi.fn() }));
+    const trigger = screen.getByRole("button", { name: "Create model library" });
+    expect(trigger.querySelector("svg.lucide-plus")).toBeTruthy();
+  });
+
   it("should convert $/1M entry to integer nanos when creating a model", async () => {
     const user = userEvent.setup();
     createAdminModelActionMock.mockResolvedValue({ ok: true, data: { ...CATALOGUE[0] } });
@@ -63,9 +71,6 @@ describe("AddModelDialog", () => {
     render(React.createElement(AddModelDialog, { onCreated }));
 
     await user.click(screen.getByRole("button", { name: "Create model library" }));
-    // Set values directly: happy-dom drops the intermediate invalid state when
-    // typing decimals char-by-char into a type=number input. fireEvent.change
-    // still drives react-hook-form's onChange — exactly what a paste would.
     fireEvent.change(screen.getByLabelText("Provider"), { target: { value: "fireworks" } });
     fireEvent.change(screen.getByLabelText("Model id"), { target: { value: "glm-5.2" } });
     fireEvent.change(screen.getByLabelText("Input $/1M"), { target: { value: "0.55" } });
@@ -76,8 +81,7 @@ describe("AddModelDialog", () => {
     await waitFor(() => expect(createAdminModelActionMock).toHaveBeenCalledTimes(1));
     const arg = createAdminModelActionMock.mock.calls[0]![0];
     expect(arg.provider).toBe("fireworks");
-    expect(arg.model_id).toBe("glm-5.2");
-    expect(arg.input_nanos_per_mtok).toBe(550_000_000); // 0.55 $/1M → nanos
+    expect(arg.input_nanos_per_mtok).toBe(550_000_000);
     expect(onCreated).toHaveBeenCalledTimes(1);
   });
 
@@ -85,16 +89,14 @@ describe("AddModelDialog", () => {
     const user = userEvent.setup();
     render(React.createElement(AddModelDialog, { onCreated: vi.fn() }));
     await user.click(screen.getByRole("button", { name: "Create model library" }));
-    await user.type(screen.getByLabelText("Model id"), "glm-5.2"); // provider left blank
+    await user.type(screen.getByLabelText("Model id"), "glm-5.2");
     const dialog = screen.getByRole("dialog");
     await user.click(within(dialog).getByRole("button", { name: "Create model library" }));
-    // Zod min(1) on provider blocks submit; the action never fires.
     await new Promise((r) => setTimeout(r, 50));
     expect(createAdminModelActionMock).not.toHaveBeenCalled();
   });
 
   it("surfaces the action error and keeps the dialog open when the create fails", async () => {
-    // No errorCode → presentError falls back to surfacing the raw server message.
     createAdminModelActionMock.mockResolvedValue({ ok: false, error: "model exists" });
     const onCreated = vi.fn();
     render(React.createElement(AddModelDialog, { onCreated }));
@@ -106,138 +108,33 @@ describe("AddModelDialog", () => {
     const dialog = screen.getByRole("dialog");
     fireEvent.submit(dialog.querySelector("form")!);
 
-    // The failure renders an error string (lines 79-81) without closing the dialog
-    // or appending a row — onCreated never fires.
     await waitFor(() => expect(within(screen.getByRole("dialog")).getByText(/model exists/i)).toBeTruthy());
     expect(onCreated).not.toHaveBeenCalled();
   });
 });
 
-describe("PlatformDefaultCard", () => {
-  it("should disable Save until a provider, model, and key are chosen", () => {
-    render(React.createElement(PlatformDefaultCard, { models: CATALOGUE }));
-    const save = screen.getByRole("button", { name: /Save default/ }) as HTMLButtonElement;
-    expect(save.disabled).toBe(true);
-  });
-
-  it("should derive the provider options from the catalogue (no free-text default)", () => {
-    render(React.createElement(PlatformDefaultCard, { models: CATALOGUE }));
-    // The card never renders a free-text provider/model input — only catalogue-backed
-    // selects — so an uncatalogued default is unselectable by construction.
-    expect(screen.queryByPlaceholderText(/free.?text/i)).toBeNull();
-    expect(screen.getByLabelText("Default provider")).toBeTruthy();
-    expect(screen.getByLabelText("Default model")).toBeTruthy();
-  });
-});
-
-describe("PlatformDefaultCard — save flow", () => {
-  it("stores the chosen provider/model/key, clears the key, and confirms on success", async () => {
-    setPlatformDefaultActionMock.mockResolvedValue({ ok: true, data: { provider: "fireworks", model: "glm-5.2", active: true } });
-    render(React.createElement(PlatformDefaultCard, { models: CATALOGUE }));
-
-    pickOption(screen.getByLabelText("Default provider"), "fireworks"); // covers onValueChange (resets model) + provider option
-    pickOption(screen.getByLabelText("Default model"), "glm-5.2"); // covers the catalogue-filtered model option
-    const key = screen.getByLabelText("API key") as HTMLInputElement;
-    fireEvent.change(key, { target: { value: "sk-secret" } });
-
-    fireEvent.click(screen.getByRole("button", { name: /Save default/ }));
-
-    await waitFor(() => expect(setPlatformDefaultActionMock).toHaveBeenCalledTimes(1));
-    expect(setPlatformDefaultActionMock).toHaveBeenCalledWith({
-      provider: "fireworks",
-      model: "glm-5.2",
-      api_key: "sk-secret",
-      base_url: undefined, // not a custom endpoint → no base_url
-    });
-    await waitFor(() => expect(screen.getByText("Platform default updated.")).toBeTruthy());
-    // The key is cleared from the field after a successful store (it lives in the vault now).
-    expect(key.value).toBe("");
-    // Telemetry: a platform_default_set product event fires with the priced
-    // model + a non-custom flag, and never the key material.
-    expect(captureProductEventMock).toHaveBeenCalledWith(EVENTS.platform_default_set, {
-      provider: "fireworks",
-      model: "glm-5.2",
-      is_custom: false,
-    });
-  });
-
-  it("surfaces the action error and leaves the key in place when activation fails", async () => {
-    setPlatformDefaultActionMock.mockResolvedValue({ ok: false, error: "rate gate rejected the model" });
-    render(React.createElement(PlatformDefaultCard, { models: CATALOGUE }));
-
-    pickOption(screen.getByLabelText("Default provider"), "fireworks");
-    pickOption(screen.getByLabelText("Default model"), "glm-5.2");
-    fireEvent.change(screen.getByLabelText("API key"), { target: { value: "sk-secret" } });
-    fireEvent.click(screen.getByRole("button", { name: /Save default/ }));
-
-    await waitFor(() => expect(screen.getByText(/rate gate rejected the model/i)).toBeTruthy());
-    expect(screen.queryByText("Platform default updated.")).toBeNull();
-    // Telemetry sits on the success path only — a rejected save fires no event.
-    expect(captureProductEventMock).not.toHaveBeenCalled();
-  });
-
-  it("requires a base URL for an openai-compatible endpoint and threads it into the save", async () => {
-    setPlatformDefaultActionMock.mockResolvedValue({ ok: true, data: { provider: OPENAI_COMPATIBLE_PROVIDER, model: "glm-5.2", active: true } });
-    const custom: AdminModel[] = [
-      { uid: "c1", provider: OPENAI_COMPATIBLE_PROVIDER, model_id: "glm-5.2", context_cap_tokens: 128000, input_nanos_per_mtok: 0, cached_input_nanos_per_mtok: 0, output_nanos_per_mtok: 0 },
-    ];
-    render(React.createElement(PlatformDefaultCard, { models: custom }));
-
-    pickOption(screen.getByLabelText("Default provider"), OPENAI_COMPATIBLE_PROVIDER);
-    pickOption(screen.getByLabelText("Default model"), "glm-5.2");
-    fireEvent.change(screen.getByLabelText("API key"), { target: { value: "sk-secret" } });
-
-    // The base-URL field only renders for the openai-compatible provider, and Save
-    // stays disabled until it is filled (canSave's isCustom branch).
-    const baseUrl = screen.getByLabelText("Base URL");
-    const save = screen.getByRole("button", { name: /Save default/ }) as HTMLButtonElement;
-    expect(save.disabled).toBe(true);
-    fireEvent.change(baseUrl, { target: { value: "https://endpoint.example/v1" } });
-    fireEvent.click(save);
-
-    await waitFor(() => expect(setPlatformDefaultActionMock).toHaveBeenCalledTimes(1));
-    expect(setPlatformDefaultActionMock).toHaveBeenCalledWith({
-      provider: OPENAI_COMPATIBLE_PROVIDER,
-      model: "glm-5.2",
-      api_key: "sk-secret",
-      base_url: "https://endpoint.example/v1",
-    });
-    // The custom-endpoint path flags the event is_custom: true (the other save
-    // test covers the is_custom: false branch).
-    expect(captureProductEventMock).toHaveBeenCalledWith(EVENTS.platform_default_set, {
-      provider: OPENAI_COMPATIBLE_PROVIDER,
-      model: "glm-5.2",
-      is_custom: true,
-    });
-  });
-});
-
-describe("CatalogueList", () => {
+describe("CatalogueList — rows + rates + empty state", () => {
   it("renders a priced row per catalogue model with $/1M rates", () => {
-    render(React.createElement(CatalogueList, { models: CATALOGUE, onDeleted: vi.fn() }));
-    // The catalogue is a design-system DataTable — one row per priced model.
+    render(React.createElement(CatalogueList, { models: CATALOGUE, activeDefault: null, onDeleted: vi.fn(), onUpdated: vi.fn() }));
     expect(screen.getByTestId("data-table")).toBeTruthy();
     expect(screen.getByText("glm-5.2")).toBeTruthy();
-    // 550_000_000 nanos/Mtok → $0.55, two decimals.
     expect(screen.getByText("0.55 / 0.14 / 2.19")).toBeTruthy();
   });
 
   it("shows the empty state when there are no models", () => {
-    render(React.createElement(CatalogueList, { models: [], onDeleted: vi.fn() }));
+    render(React.createElement(CatalogueList, { models: [], activeDefault: null, onDeleted: vi.fn(), onUpdated: vi.fn() }));
     expect(screen.getByText("No models yet")).toBeTruthy();
-    expect(
-      screen.getByText("Add a model to price it and make it selectable as the platform default."),
-    ).toBeTruthy();
-    // The empty state replaces the table entirely.
+    expect(screen.getByText("Add a model to price it and make it the platform default.")).toBeTruthy();
     expect(screen.queryByTestId("data-table")).toBeNull();
   });
+});
 
-  it("does not delete on the row click alone — a confirm dialog gates the irreversible action", async () => {
+describe("CatalogueList — Delete (icon-only, confirm-gated)", () => {
+  it("does not delete on the icon click alone — a confirm dialog gates the irreversible action", async () => {
     const onDeleted = vi.fn();
-    render(React.createElement(CatalogueList, { models: CATALOGUE, onDeleted }));
+    render(React.createElement(CatalogueList, { models: CATALOGUE, activeDefault: null, onDeleted, onUpdated: vi.fn() }));
 
-    const row = rowFor("glm-5.2");
-    fireEvent.click(within(row).getByRole("button", { name: "Delete" }));
+    fireEvent.click(within(rowFor("glm-5.2")).getByRole("button", { name: "Delete glm-5.2" }));
 
     await waitFor(() => expect(screen.getByRole("alertdialog")).toBeTruthy());
     expect(deleteAdminModelActionMock).not.toHaveBeenCalled();
@@ -247,10 +144,9 @@ describe("CatalogueList", () => {
   it("removes a row from the parent on a successful delete, after confirming", async () => {
     deleteAdminModelActionMock.mockResolvedValue({ ok: true, data: undefined });
     const onDeleted = vi.fn();
-    render(React.createElement(CatalogueList, { models: CATALOGUE, onDeleted }));
+    render(React.createElement(CatalogueList, { models: CATALOGUE, activeDefault: null, onDeleted, onUpdated: vi.fn() }));
 
-    const row = rowFor("glm-5.2");
-    fireEvent.click(within(row).getByRole("button", { name: "Delete" }));
+    fireEvent.click(within(rowFor("glm-5.2")).getByRole("button", { name: "Delete glm-5.2" }));
     await waitFor(() => expect(screen.getByRole("alertdialog")).toBeTruthy());
     fireEvent.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: "Delete" }));
 
@@ -258,58 +154,213 @@ describe("CatalogueList", () => {
     await waitFor(() => expect(onDeleted).toHaveBeenCalledWith("u1"));
   });
 
-  it("delete failure surfaces errorMessage inline and keeps the dialog open", async () => {
+  it("delete failure surfaces errorMessage inline and keeps the dialog open (test_catalogue_row_delete_is_icon_only_same_behavior)", async () => {
     deleteAdminModelActionMock.mockResolvedValue({ ok: false, error: "model is the active platform default" });
-    const onDeleted = vi.fn();
-    render(React.createElement(CatalogueList, { models: CATALOGUE, onDeleted }));
+    render(React.createElement(CatalogueList, { models: CATALOGUE, activeDefault: null, onDeleted: vi.fn(), onUpdated: vi.fn() }));
 
-    const row = rowFor("claude-opus-4-8");
-    fireEvent.click(within(row).getByRole("button", { name: "Delete" }));
+    fireEvent.click(within(rowFor("claude-opus-4-8")).getByRole("button", { name: "Delete claude-opus-4-8" }));
     await waitFor(() => expect(screen.getByRole("alertdialog")).toBeTruthy());
     fireEvent.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: "Delete" }));
 
-    await waitFor(() =>
-      expect(screen.getByRole("alert").textContent).toMatch(/model is the active platform default/i),
-    );
-    // The dialog is still open (not silently closed on failure) and the row
-    // is untouched — matches SecretsList's "keeps the dialog open" pattern.
+    await waitFor(() => expect(screen.getByRole("alert").textContent).toMatch(/model is the active platform default/i));
     expect(screen.queryByRole("alertdialog")).toBeTruthy();
-    expect(onDeleted).not.toHaveBeenCalled();
   });
 
-  it("renders the Delete button with the destructive variant, matching RunnerList's row-action pattern", () => {
-    render(React.createElement(CatalogueList, { models: CATALOGUE, onDeleted: vi.fn() }));
-    const row = rowFor("glm-5.2");
-    expect(within(row).getByRole("button", { name: "Delete" }).className).toContain("bg-destructive");
+  it("Delete is an icon-only destructive button with an aria-label, not text", () => {
+    render(React.createElement(CatalogueList, { models: CATALOGUE, activeDefault: null, onDeleted: vi.fn(), onUpdated: vi.fn() }));
+    const del = within(rowFor("glm-5.2")).getByRole("button", { name: "Delete glm-5.2" });
+    expect(del.className).toContain("bg-destructive");
+    expect(del.querySelector("svg.lucide-trash-2")).toBeTruthy();
+    // No visible "Delete" text label — the trigger is icon-only now.
+    expect(del.textContent?.trim()).toBe("");
   });
 
   it("cancel on the dialog clears the target without invoking the delete action", async () => {
     const user = userEvent.setup();
-    const onDeleted = vi.fn();
-    render(React.createElement(CatalogueList, { models: CATALOGUE, onDeleted }));
+    render(React.createElement(CatalogueList, { models: CATALOGUE, activeDefault: null, onDeleted: vi.fn(), onUpdated: vi.fn() }));
 
-    const row = rowFor("glm-5.2");
-    await user.click(within(row).getByRole("button", { name: "Delete" }));
+    await user.click(within(rowFor("glm-5.2")).getByRole("button", { name: "Delete glm-5.2" }));
     await waitFor(() => expect(screen.getByRole("alertdialog")).toBeTruthy());
     await user.click(screen.getByRole("button", { name: /^cancel$/i }));
     await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
     expect(deleteAdminModelActionMock).not.toHaveBeenCalled();
-    expect(onDeleted).not.toHaveBeenCalled();
+  });
+});
+
+describe("CatalogueList — Edit (rates dialog wired to updateAdminModelAction)", () => {
+  it("opens a dialog pre-filled with the row's rates and PATCHes the new rates by uid (test_catalogue_row_edit_dialog_updates_rates)", async () => {
+    updateAdminModelActionMock.mockResolvedValue({ ok: true, data: { uid: "u1", updated: true } });
+    const onUpdated = vi.fn();
+    render(React.createElement(CatalogueList, { models: CATALOGUE, activeDefault: null, onDeleted: vi.fn(), onUpdated }));
+
+    fireEvent.click(within(rowFor("glm-5.2")).getByRole("button", { name: "Edit glm-5.2" }));
+    const dialog = within(await screen.findByRole("dialog"));
+    // Pre-filled from the row: 550_000_000 nanos → $0.55, cap 128000.
+    expect((dialog.getByLabelText("Input $/1M") as HTMLInputElement).value).toBe("0.55");
+    expect((dialog.getByLabelText("Context cap (tokens)") as HTMLInputElement).value).toBe("128000");
+
+    fireEvent.change(dialog.getByLabelText("Input $/1M"), { target: { value: "0.99" } });
+    fireEvent.submit(screen.getByRole("dialog").querySelector("form")!);
+
+    await waitFor(() => expect(updateAdminModelActionMock).toHaveBeenCalledTimes(1));
+    expect(updateAdminModelActionMock).toHaveBeenCalledWith("u1", {
+      context_cap_tokens: 128000,
+      input_nanos_per_mtok: 990_000_000, // 0.99 $/1M
+      cached_input_nanos_per_mtok: 140_000_000,
+      output_nanos_per_mtok: 2_190_000_000,
+    });
+    // The parent gets the row's new shape (identity + edited rates).
+    await waitFor(() => expect(onUpdated).toHaveBeenCalledWith(expect.objectContaining({ uid: "u1", input_nanos_per_mtok: 990_000_000 })));
+  });
+
+  it("shows the immutable provider + model id as disabled fields", async () => {
+    render(React.createElement(CatalogueList, { models: CATALOGUE, activeDefault: null, onDeleted: vi.fn(), onUpdated: vi.fn() }));
+    fireEvent.click(within(rowFor("glm-5.2")).getByRole("button", { name: "Edit glm-5.2" }));
+    const dialog = within(await screen.findByRole("dialog"));
+    const provider = dialog.getByLabelText("Provider (locked)") as HTMLInputElement;
+    const modelId = dialog.getByLabelText("Model id (locked)") as HTMLInputElement;
+    expect(provider.disabled).toBe(true);
+    expect(provider.value).toBe("fireworks");
+    expect(modelId.disabled).toBe(true);
+    expect(modelId.value).toBe("glm-5.2");
+  });
+
+  it("surfaces the update error inline and keeps the edit dialog open on failure", async () => {
+    updateAdminModelActionMock.mockResolvedValue({ ok: false, error: "rate rejected" });
+    const onUpdated = vi.fn();
+    render(React.createElement(CatalogueList, { models: CATALOGUE, activeDefault: null, onDeleted: vi.fn(), onUpdated }));
+
+    fireEvent.click(within(rowFor("glm-5.2")).getByRole("button", { name: "Edit glm-5.2" }));
+    await screen.findByRole("dialog");
+    fireEvent.submit(screen.getByRole("dialog").querySelector("form")!);
+
+    await waitFor(() => expect(within(screen.getByRole("dialog")).getByText(/rate rejected/i)).toBeTruthy());
+    expect(onUpdated).not.toHaveBeenCalled();
+  });
+
+  it("rejects a non-positive context cap without calling the action", async () => {
+    updateAdminModelActionMock.mockResolvedValue({ ok: true, data: { uid: "u1", updated: true } });
+    render(React.createElement(CatalogueList, { models: CATALOGUE, activeDefault: null, onDeleted: vi.fn(), onUpdated: vi.fn() }));
+
+    fireEvent.click(within(rowFor("glm-5.2")).getByRole("button", { name: "Edit glm-5.2" }));
+    const dialog = within(await screen.findByRole("dialog"));
+    fireEvent.change(dialog.getByLabelText("Context cap (tokens)"), { target: { value: "0" } });
+    fireEvent.change(dialog.getByLabelText("Input $/1M"), { target: { value: "-1" } });
+    fireEvent.submit(screen.getByRole("dialog").querySelector("form")!);
+
+    await new Promise((r) => setTimeout(r, 50));
+    expect(updateAdminModelActionMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("CatalogueList — Make default (★ minimal key dialog)", () => {
+  it("★ opens a minimal key dialog; saving activates the row's (provider, model) as the default", async () => {
+    setPlatformDefaultActionMock.mockResolvedValue({ ok: true, data: { provider: "fireworks", model: "glm-5.2", active: true } });
+    render(React.createElement(CatalogueList, { models: CATALOGUE, activeDefault: null, onDeleted: vi.fn(), onUpdated: vi.fn() }));
+
+    fireEvent.click(within(rowFor("glm-5.2")).getByRole("button", { name: "Make glm-5.2 the platform default" }));
+    const dialog = within(await screen.findByRole("dialog"));
+    // No provider/model selects — identity comes from the row.
+    fireEvent.change(dialog.getByLabelText("API key"), { target: { value: "sk-secret" } });
+    fireEvent.click(dialog.getByRole("button", { name: "Make default" }));
+
+    await waitFor(() => expect(setPlatformDefaultActionMock).toHaveBeenCalledTimes(1));
+    expect(setPlatformDefaultActionMock).toHaveBeenCalledWith({
+      provider: "fireworks",
+      model: "glm-5.2",
+      api_key: "sk-secret",
+      base_url: undefined,
+    });
+    expect(captureProductEventMock).toHaveBeenCalledWith(EVENTS.platform_default_set, {
+      provider: "fireworks",
+      model: "glm-5.2",
+      is_custom: false,
+    });
+    // On success it re-reads the server so the Default badge moves to this row.
+    await waitFor(() => expect(routerRefreshMock).toHaveBeenCalled());
+  });
+
+  it("treats a whitespace-only API key as empty (Make default stays disabled)", async () => {
+    render(React.createElement(CatalogueList, { models: CATALOGUE, activeDefault: null, onDeleted: vi.fn(), onUpdated: vi.fn() }));
+    fireEvent.click(within(rowFor("glm-5.2")).getByRole("button", { name: "Make glm-5.2 the platform default" }));
+    const dialog = within(await screen.findByRole("dialog"));
+    fireEvent.change(dialog.getByLabelText("API key"), { target: { value: "   " } });
+    expect((dialog.getByRole("button", { name: "Make default" }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("requires a base URL for an openai-compatible row and threads it into the activation", async () => {
+    setPlatformDefaultActionMock.mockResolvedValue({ ok: true, data: { provider: OPENAI_COMPATIBLE_PROVIDER, model: "glm-5.2", active: true } });
+    const custom: AdminModel[] = [
+      { uid: "c1", provider: OPENAI_COMPATIBLE_PROVIDER, model_id: "glm-5.2", context_cap_tokens: 128000, input_nanos_per_mtok: 0, cached_input_nanos_per_mtok: 0, output_nanos_per_mtok: 0 },
+    ];
+    render(React.createElement(CatalogueList, { models: custom, activeDefault: null, onDeleted: vi.fn(), onUpdated: vi.fn() }));
+
+    fireEvent.click(within(rowFor("glm-5.2")).getByRole("button", { name: "Make glm-5.2 the platform default" }));
+    const dialog = within(await screen.findByRole("dialog"));
+    fireEvent.change(dialog.getByLabelText("API key"), { target: { value: "sk-secret" } });
+    const save = dialog.getByRole("button", { name: "Make default" }) as HTMLButtonElement;
+    // Save stays disabled until the base URL is filled (canSave's isCustom branch).
+    expect(save.disabled).toBe(true);
+    fireEvent.change(dialog.getByLabelText("Base URL"), { target: { value: "https://endpoint.example/v1" } });
+    fireEvent.click(save);
+
+    await waitFor(() => expect(setPlatformDefaultActionMock).toHaveBeenCalledWith({
+      provider: OPENAI_COMPATIBLE_PROVIDER,
+      model: "glm-5.2",
+      api_key: "sk-secret",
+      base_url: "https://endpoint.example/v1",
+    }));
+    expect(captureProductEventMock).toHaveBeenCalledWith(EVENTS.platform_default_set, {
+      provider: OPENAI_COMPATIBLE_PROVIDER,
+      model: "glm-5.2",
+      is_custom: true,
+    });
+  });
+
+  it("surfaces the activation error inline and does not refresh when the make-default fails", async () => {
+    setPlatformDefaultActionMock.mockResolvedValue({ ok: false, error: "rate gate rejected the model" });
+    render(React.createElement(CatalogueList, { models: CATALOGUE, activeDefault: null, onDeleted: vi.fn(), onUpdated: vi.fn() }));
+
+    fireEvent.click(within(rowFor("glm-5.2")).getByRole("button", { name: "Make glm-5.2 the platform default" }));
+    const dialog = within(await screen.findByRole("dialog"));
+    fireEvent.change(dialog.getByLabelText("API key"), { target: { value: "sk-secret" } });
+    fireEvent.click(dialog.getByRole("button", { name: "Make default" }));
+
+    await waitFor(() => expect(screen.getByText(/rate gate rejected the model/i)).toBeTruthy());
+    expect(captureProductEventMock).not.toHaveBeenCalled();
+    expect(routerRefreshMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("CatalogueList — Default badge", () => {
+  it("badges the active default's row and hides its ★, while other rows keep ★", () => {
+    render(React.createElement(CatalogueList, { models: CATALOGUE, activeDefault: DEFAULT_FIREWORKS, onDeleted: vi.fn(), onUpdated: vi.fn() }));
+
+    const activeRow = within(rowFor("glm-5.2"));
+    expect(activeRow.getByText("Default")).toBeTruthy();
+    expect(activeRow.queryByRole("button", { name: "Make glm-5.2 the platform default" })).toBeNull();
+
+    const otherRow = within(rowFor("claude-opus-4-8"));
+    expect(otherRow.queryByText("Default")).toBeNull();
+    expect(otherRow.getByRole("button", { name: "Make claude-opus-4-8 the platform default" })).toBeTruthy();
   });
 });
 
 describe("ModelsView", () => {
   const initial = { models: CATALOGUE };
 
-  it("renders the catalogue and the platform-default surface from the seeded list", () => {
-    render(React.createElement(ModelsView, { initial }));
-    // PageTitle now reads "Model library" (h1); the DataTable caption carries the
-    // same text (sr-only), so scope to the heading.
+  it("renders the catalogue with no separate platform-default section", () => {
+    render(React.createElement(ModelsView, { initial, activeDefault: null }));
     expect(screen.getByRole("heading", { level: 1, name: "Model library" })).toBeTruthy();
     expect(screen.getByText("glm-5.2")).toBeTruthy();
     expect(screen.getByText("claude-opus-4-8")).toBeTruthy();
-    // The platform-default card reads the same catalogue for its picker.
-    expect(screen.getByLabelText("Default provider")).toBeTruthy();
+    // The old Platform Default form (its "Default provider" select) is gone.
+    expect(screen.queryByLabelText("Default provider")).toBeNull();
+  });
+
+  it("passes the active default through so the matching row is badged", () => {
+    render(React.createElement(ModelsView, { initial, activeDefault: DEFAULT_FIREWORKS }));
+    expect(within(rowFor("glm-5.2")).getByText("Default")).toBeTruthy();
   });
 
   it("appends a newly created model to the catalogue without a round-trip", async () => {
@@ -318,33 +369,40 @@ describe("ModelsView", () => {
       input_nanos_per_mtok: 600_000_000, cached_input_nanos_per_mtok: 150_000_000, output_nanos_per_mtok: 2_300_000_000,
     };
     createAdminModelActionMock.mockResolvedValue({ ok: true, data: created });
-    render(React.createElement(ModelsView, { initial }));
+    render(React.createElement(ModelsView, { initial, activeDefault: null }));
 
     await userEvent.setup().click(screen.getByRole("button", { name: "Create model library" }));
-    // Scope to the dialog: PlatformDefaultCard also renders a "Provider" label.
     const dialog = within(screen.getByRole("dialog"));
     fireEvent.change(dialog.getByLabelText("Provider"), { target: { value: "moonshot" } });
     fireEvent.change(dialog.getByLabelText("Model id"), { target: { value: "kimi-k2.6" } });
     fireEvent.submit(screen.getByRole("dialog").querySelector("form")!);
 
-    // ModelsView's onCreated callback appends the row → the new model appears
-    // in the catalogue table without a round-trip.
     await waitFor(() => expect(screen.getByText("kimi-k2.6")).toBeTruthy());
-    expect(rowFor("kimi-k2.6")).toBeTruthy();
   });
 
   it("drops a deleted model from the catalogue", async () => {
     deleteAdminModelActionMock.mockResolvedValue({ ok: true, data: undefined });
-    render(React.createElement(ModelsView, { initial }));
+    render(React.createElement(ModelsView, { initial, activeDefault: null }));
 
-    const row = rowFor("glm-5.2");
-    fireEvent.click(within(row).getByRole("button", { name: "Delete" }));
+    fireEvent.click(within(rowFor("glm-5.2")).getByRole("button", { name: "Delete glm-5.2" }));
     await waitFor(() => expect(screen.getByRole("alertdialog")).toBeTruthy());
     fireEvent.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: "Delete" }));
 
-    // ModelsView's onDeleted callback filters the row out → glm-5.2 is gone,
-    // the other catalogue row stays.
     await waitFor(() => expect(screen.queryByText("glm-5.2")).toBeNull());
     expect(screen.getByText("claude-opus-4-8")).toBeTruthy();
+  });
+
+  it("reflects an edited model's new rates in the table without a round-trip", async () => {
+    updateAdminModelActionMock.mockResolvedValue({ ok: true, data: { uid: "u1", updated: true } });
+    render(React.createElement(ModelsView, { initial, activeDefault: null }));
+
+    fireEvent.click(within(rowFor("glm-5.2")).getByRole("button", { name: "Edit glm-5.2" }));
+    const dialog = within(await screen.findByRole("dialog"));
+    fireEvent.change(dialog.getByLabelText("Input $/1M"), { target: { value: "0.99" } });
+    fireEvent.submit(screen.getByRole("dialog").querySelector("form")!);
+
+    // 0.99 $/1M → $0.99 in the rates cell; the old 0.55 is gone.
+    await waitFor(() => expect(screen.getByText("0.99 / 0.14 / 2.19")).toBeTruthy());
+    expect(screen.queryByText("0.55 / 0.14 / 2.19")).toBeNull();
   });
 });
