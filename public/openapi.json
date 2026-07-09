@@ -5542,6 +5542,11 @@
             "format": "uuid",
             "description": "Workspace whose self-managed key is used"
           },
+          "model": {
+            "type": "string",
+            "nullable": true,
+            "description": "The priced (provider, model_id) this default resolves to. Non-null for the active row; NULL for inactive rows."
+          },
           "active": {
             "type": "boolean",
             "description": "Whether this platform key is active"

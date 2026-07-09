@@ -197,6 +197,15 @@ describe("RunnerList component", () => {
     );
   });
 
+  it("renders a PlusIcon on the create-runner trigger (test_create_triggers_render_plus_icon)", async () => {
+    const { default: RunnersView } = await import(
+      "../app/(dashboard)/admin/runners/components/RunnersView"
+    );
+    render(React.createElement(RunnersView, { initial: listResponse([REGISTERED]) } as never));
+    const trigger = screen.getByRole("button", { name: /create runner/i });
+    expect(trigger.querySelector("svg.lucide-plus")).toBeTruthy();
+  });
+
   it("never sends a page_size above the backend max (always the fixed default 25)", async () => {
     const user = userEvent.setup();
     await renderList(listResponse([REGISTERED], 30));

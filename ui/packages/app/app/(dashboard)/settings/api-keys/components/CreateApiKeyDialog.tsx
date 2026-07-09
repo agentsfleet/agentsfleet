@@ -23,6 +23,7 @@ import {
   Input,
   Spinner,
 } from "@agentsfleet/design-system";
+import { PlusIcon } from "lucide-react";
 import { KEY_NAME_REGEX, DESCRIPTION_MAX, type CreatedApiKey } from "@/lib/api/api_keys";
 import { presentErrorString } from "@/lib/errors";
 import { createApiKeyAction } from "../actions";
@@ -83,6 +84,7 @@ export default function CreateApiKeyDialog({ onCreated }: { onCreated: () => voi
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
         <Button type="button" size="sm">
+          <PlusIcon size={14} />
           Create key
         </Button>
       </DialogTrigger>

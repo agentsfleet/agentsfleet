@@ -10,6 +10,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@agentsfleet/design-system";
+import { PlusIcon } from "lucide-react";
 import AddSecretFormDynamic from "@/components/domain/island-dynamic/AddSecretFormDynamic";
 
 const ADD_SECRET_TRIGGER_LABEL = "Create secret";
@@ -21,6 +22,7 @@ export default function AddSecretDialog({ workspaceId }: { workspaceId: string }
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         <Button type="button" size="sm">
+          <PlusIcon size={14} />
           {ADD_SECRET_TRIGGER_LABEL}
         </Button>
       </DialogTrigger>

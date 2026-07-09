@@ -2,10 +2,9 @@
 
 import { useState } from "react";
 import { PageHeader, PageTitle, Section, SectionLabel } from "@agentsfleet/design-system";
-import type { AdminModel, AdminModelList } from "@/lib/api/admin_models";
+import type { AdminModel, AdminModelList, PlatformKey } from "@/lib/api/admin_models";
 import CatalogueList from "./CatalogueList";
 import AddModelDialog from "./AddModelDialog";
-import PlatformDefaultCard from "./PlatformDefaultCard";
 
 // One trimmed line — the per-token pricing detail lives in the Create-model
 // dialog, not repeated on the page.
@@ -13,10 +12,17 @@ const MODELS_DESCRIPTION =
   "Every model your team can run, priced per token — the platform default runs for users without their own key.";
 
 // Single source of truth for the catalogue: the table renders it, the Create
-// dialog appends to it, deletes remove from it, and the Platform Default card
-// reads it for its model picker — so adding a model rate immediately makes it
-// selectable as the default without a round-trip.
-export default function ModelsView({ initial }: { initial: AdminModelList }) {
+// dialog appends to it, edits update a row in place, and deletes remove from it.
+// The platform default is no longer a separate section — a row's ★ action makes
+// it the default, and the active one carries a "Default" badge (resolved from
+// `activeDefault`, read server-side in page.tsx).
+export default function ModelsView({
+  initial,
+  activeDefault,
+}: {
+  initial: AdminModelList;
+  activeDefault: PlatformKey | null;
+}) {
   const [models, setModels] = useState<AdminModel[]>(initial.models);
 
   return (
@@ -33,14 +39,10 @@ export default function ModelsView({ initial }: { initial: AdminModelList }) {
           </div>
           <CatalogueList
             models={models}
+            activeDefault={activeDefault}
             onDeleted={(uid) => setModels((prev) => prev.filter((m) => m.uid !== uid))}
+            onUpdated={(m) => setModels((prev) => prev.map((x) => (x.uid === m.uid ? m : x)))}
           />
-        </section>
-      </Section>
-
-      <Section asChild>
-        <section aria-label="Platform default" className="mt-10">
-          <PlatformDefaultCard models={models} />
         </section>
       </Section>
     </div>
