@@ -97,12 +97,12 @@ export default function EditModelDialog({
         <DialogHeader>
           <DialogTitle>Edit model rates</DialogTitle>
           <DialogDescription>
-            Update the context cap and per-token rates. Provider and model id are the row&apos;s fixed
+            Update the context cap and per-token rates. Provider and model are the row&apos;s fixed
             identity and can&apos;t change here. Rates are per 1M tokens.
           </DialogDescription>
         </DialogHeader>
         <div className="grid grid-cols-2 gap-3">
-          {([["Provider", model.provider], ["Model id", model.model_id]] as const).map(([label, value]) => (
+          {([["Provider", model.provider], ["Model", model.model_id]] as const).map(([label, value]) => (
             <div key={label} className="space-y-1.5">
               <span className="text-sm font-medium">{label}</span>
               <Input value={value} disabled aria-label={`${label} (locked)`} />

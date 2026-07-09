@@ -2,9 +2,11 @@
 //!
 //! GET    lists every entry joined to its secret's non-secret metadata, with
 //!        `active` computed against the tenant's current selection, plus
-//!        `platform_default_available`. Pure read — activation itself
-//!        (tenant_provider.zig) upserts the matching entry, so the selection
-//!        always has one. See tenant_model_entries_view.zig.
+//!        `platform_default_available` and — when a default is active — its
+//!        identity as `platform_default` {provider, model, context_cap_tokens}.
+//!        Pure read — activation itself (tenant_provider.zig) upserts the
+//!        matching entry, so the selection always has one. See
+//!        tenant_model_entries_view.zig.
 //! POST   {model_id, secret_ref} — 404 UZ-MODELS-002 (unknown secret),
 //!        409 UZ-MODELS-003 (duplicate).
 //! PATCH  {model_id} — model change only; secret_ref is immutable here.
@@ -63,7 +65,11 @@ pub fn innerListModelEntries(hx: Hx, req: *httpz.Request) void {
 
     hx.res.status = @intFromEnum(std.http.Status.ok);
     hx.res.json(
-        .{ .models = result.rows, .platform_default_available = result.platform_default_available },
+        .{
+            .models = result.rows,
+            .platform_default_available = result.platform_default_available,
+            .platform_default = result.platform_default,
+        },
         .{ .emit_null_optional_fields = false },
     ) catch {
         common.internalOperationError(hx.res, "Failed to build the models list", hx.req_id);

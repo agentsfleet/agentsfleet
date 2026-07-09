@@ -11,6 +11,7 @@ const pg = @import("pg");
 const base = @import("secrets_json_integration_test.zig");
 const error_codes = @import("../errors/error_registry.zig");
 const entries_state = @import("../state/tenant_model_entries.zig");
+const fixtures_provider = @import("../db/test_fixtures.zig");
 
 // Matches base's private TEST_TENANT_ID (not exported) — same literal, same
 // seeded row, per the sibling suite's precedent
@@ -305,6 +306,67 @@ test "integration: test_secret_delete_blocked_when_referenced — secret DELETE 
         defer r.deinit();
         try r.expectStatus(.no_content);
     }
+
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    cleanup(conn);
+}
+
+test "integration: test_entries_list_default_identity — GET carries the active platform default's provider/model/context alongside the availability boolean" {
+    base.setTestEncryptionKey();
+    const alloc = std.testing.allocator;
+    const h = base.seedAndHarness(alloc) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+
+    {
+        const conn = try h.acquireConn();
+        defer h.releaseConn(conn);
+        try fixtures_provider.seedPlatformProvider(alloc, conn, base.TEST_WS_ID);
+    }
+
+    const r = try (try h.get("/v1/tenants/me/models").bearer(base.TOKEN_OPERATOR)).send();
+    defer r.deinit();
+    try r.expectStatus(.ok);
+    try std.testing.expect(r.bodyContains("\"platform_default_available\":true"));
+    // Distinguished from the boolean's key by the colon-brace: the object is
+    // present and carries the exact identity the fixture seeded.
+    try std.testing.expect(r.bodyContains("\"platform_default\":{"));
+    try std.testing.expect(r.bodyContains("\"provider\":\"" ++ fixtures_provider.TEST_PROVIDER_NAME ++ "\""));
+    try std.testing.expect(r.bodyContains("\"model\":\"" ++ fixtures_provider.TEST_PLATFORM_MODEL ++ "\""));
+    const cap_json = comptime std.fmt.comptimePrint("\"context_cap_tokens\":{d}", .{fixtures_provider.TEST_PLATFORM_CAP_TOKENS});
+    try std.testing.expect(r.bodyContains(cap_json));
+
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    fixtures_provider.teardownPlatformProvider(conn, base.TEST_WS_ID);
+    cleanup(conn);
+}
+
+test "integration: test_entries_list_no_default_omits_identity — GET omits platform_default (never null) and reports availability false when none is active" {
+    base.setTestEncryptionKey();
+    const alloc = std.testing.allocator;
+    const h = base.seedAndHarness(alloc) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+
+    {
+        // Clear any active default a prior test (or suite) left behind.
+        const conn = try h.acquireConn();
+        defer h.releaseConn(conn);
+        fixtures_provider.teardownPlatformProvider(conn, base.TEST_WS_ID);
+    }
+
+    const r = try (try h.get("/v1/tenants/me/models").bearer(base.TOKEN_OPERATOR)).send();
+    defer r.deinit();
+    try r.expectStatus(.ok);
+    try std.testing.expect(r.bodyContains("\"platform_default_available\":false"));
+    // emit_null_optional_fields=false — the key must be absent, not null.
+    try std.testing.expect(!r.bodyContains("\"platform_default\":"));
 
     const conn = try h.acquireConn();
     defer h.releaseConn(conn);

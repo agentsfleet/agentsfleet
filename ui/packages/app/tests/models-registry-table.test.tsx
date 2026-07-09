@@ -2,7 +2,14 @@ import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { TenantModelEntry, TenantModelEntryList } from "@/lib/types";
+import type { TenantModelEntry, TenantModelEntryList, TenantPlatformDefault } from "@/lib/types";
+import type { CapJson } from "@/lib/api/model_caps";
+
+const getModelCapsMock = vi.fn();
+vi.mock("@/lib/api/model_caps", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/api/model_caps")>();
+  return { ...actual, getModelCaps: getModelCapsMock };
+});
 
 const listModelEntriesActionMock = vi.fn();
 const listSecretsActionMock = vi.fn();
@@ -60,15 +67,54 @@ function entry(overrides: Partial<TenantModelEntry>): TenantModelEntry {
   };
 }
 
-function registry(models: TenantModelEntry[], platformDefaultAvailable = true): TenantModelEntryList {
-  return { models, platform_default_available: platformDefaultAvailable };
+function registry(
+  models: TenantModelEntry[],
+  platformDefaultAvailable = true,
+  platformDefault?: TenantPlatformDefault,
+): TenantModelEntryList {
+  return { models, platform_default_available: platformDefaultAvailable, platform_default: platformDefault };
 }
+
+const LIBRARY: CapJson = {
+  version: "test",
+  models: [
+    {
+      id: "claude-sonnet-5",
+      provider: "anthropic",
+      context_cap_tokens: 200000,
+      input_nanos_per_mtok: 3_000_000_000,
+      cached_input_nanos_per_mtok: 300_000_000,
+      output_nanos_per_mtok: 15_000_000_000,
+    },
+  ],
+  rates: { run_nanos_per_sec: 0, event_nanos: 0 },
+  billing: { starter_credit_nanos: 0, free_trial_end_ms: 0, free_trial_stage_nanos: 0 },
+};
 
 async function renderTable(initial: TenantModelEntryList) {
   const { default: ModelsRegistryTable } = await import(
     "../app/(dashboard)/w/[workspaceId]/settings/models/components/ModelsRegistryTable"
   );
   render(React.createElement(ModelsRegistryTable, { workspaceId: "ws_1", initial, initialSecrets: [] } as never));
+}
+
+/** Renders inside a real ModelCatalogueProvider with getModelCaps mocked, so
+ * the Context column's rates join reads a deterministic library. */
+async function renderTableWithLibrary(initial: TenantModelEntryList, library: CapJson = LIBRARY) {
+  getModelCapsMock.mockResolvedValue(library);
+  const { ModelCatalogueProvider } = await import(
+    "../app/(dashboard)/w/[workspaceId]/settings/models/components/ModelCatalogueProvider"
+  );
+  const { default: ModelsRegistryTable } = await import(
+    "../app/(dashboard)/w/[workspaceId]/settings/models/components/ModelsRegistryTable"
+  );
+  render(
+    React.createElement(
+      ModelCatalogueProvider,
+      null,
+      React.createElement(ModelsRegistryTable, { workspaceId: "ws_1", initial, initialSecrets: [] } as never),
+    ),
+  );
 }
 
 beforeEach(() => {
@@ -104,7 +150,7 @@ describe("ModelsRegistryTable", () => {
     await renderTable(registry([entry({})]));
 
     const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: /^switch$/i }));
+    await user.click(screen.getByRole("button", { name: /switch to claude-sonnet-5/i }));
     expect(setProviderSelfManagedActionMock).toHaveBeenCalledWith({ secret_ref: "anthropic-prod", model: "claude-sonnet-5" });
     expect(screen.queryByLabelText(/api key/i)).toBeNull();
   });
@@ -151,7 +197,7 @@ describe("ModelsRegistryTable", () => {
     await renderTable(registry([entry({})]));
 
     const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: /^switch$/i }));
+    await user.click(screen.getByRole("button", { name: /switch to claude-sonnet-5/i }));
     await screen.findByText(/rejected/i);
     await waitFor(() => expect(listModelEntriesActionMock).toHaveBeenCalled());
   });
@@ -189,18 +235,73 @@ describe("ModelsRegistryTable", () => {
     await renderTable(registry([entry({})]));
 
     const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: /^switch$/i }));
+    await user.click(screen.getByRole("button", { name: /switch to claude-sonnet-5/i }));
     await waitFor(() => expect(listModelEntriesActionMock).toHaveBeenCalled());
     expect(screen.getByText("claude-sonnet-5")).toBeTruthy();
   });
 
-  it("View details opens the read-only dialog for the clicked row", async () => {
+  it("View details opens the read-only dialog straight from the inline icon button", async () => {
     await renderTable(registry([entry({})]));
     const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: /row actions for claude-sonnet-5/i }));
-    await user.click(screen.getByRole("menuitem", { name: /view details/i }));
+    await user.click(screen.getByRole("button", { name: /view details for claude-sonnet-5/i }));
     const dialog = await screen.findByRole("dialog");
     expect(within(dialog).getByRole("heading", { name: "claude-sonnet-5" })).toBeTruthy();
+  });
+
+  it("row actions are inline icon buttons — view/switch/edit/remove, no dropdown menu; switch absent and remove disabled on the active row", async () => {
+    await renderTable(registry([entry({ id: "e1", model_id: "claude-sonnet-5", active: false }), entry({ id: "e2", model_id: "claude-opus-4-8", active: true })]));
+
+    // Inactive row: all four actions.
+    expect(screen.getByRole("button", { name: /view details for claude-sonnet-5/i })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /switch to claude-sonnet-5/i })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /edit claude-sonnet-5/i })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /^remove claude-sonnet-5$/i })).toBeTruthy();
+
+    // Active row: no switch; remove disabled with the explanatory label.
+    expect(screen.queryByRole("button", { name: /switch to claude-opus-4-8/i })).toBeNull();
+    const disabledRemove = screen.getByRole("button", { name: /cannot remove claude-opus-4-8 while it is active/i });
+    expect(disabledRemove.hasAttribute("disabled")).toBe(true);
+
+    // The overflow dropdown is gone entirely.
+    expect(screen.queryByRole("button", { name: /row actions/i })).toBeNull();
+  });
+
+  it("default row renders the platform default's model, provider, context, and library rates", async () => {
+    await renderTableWithLibrary(
+      registry([], true, { provider: "anthropic", model: "claude-sonnet-5", context_cap_tokens: 200000 }),
+    );
+
+    const rows = screen.getAllByRole("row");
+    const defaultRow = within(rows[1]!);
+    expect(defaultRow.getByText("Default")).toBeTruthy();
+    expect(defaultRow.getByText("claude-sonnet-5")).toBeTruthy();
+    expect(defaultRow.getByText("Anthropic")).toBeTruthy();
+    expect(defaultRow.getByText("200k")).toBeTruthy();
+    await waitFor(() => expect(defaultRow.getByText("3.00 / 0.30 / 15.00")).toBeTruthy());
+  });
+
+  it("default row degrades to '—' when no platform default identity rides the list", async () => {
+    await renderTable(registry([entry({ active: true })], false));
+    const rows = screen.getAllByRole("row");
+    const defaultRow = within(rows[1]!);
+    expect(defaultRow.getByText("—")).toBeTruthy();
+    expect(screen.getByText("No default is configured.")).toBeTruthy();
+  });
+
+  it("entry rows price from the library when known and show '—' rates otherwise", async () => {
+    await renderTableWithLibrary(
+      registry([
+        entry({ id: "e1", model_id: "claude-sonnet-5", provider: "anthropic", context_cap_tokens: 200000 }),
+        entry({ id: "e2", model_id: "local-model", provider: "openai-compatible", base_url: "https://vllm.corp/v1", context_cap_tokens: 32000 }),
+      ]),
+    );
+
+    await waitFor(() => expect(screen.getByText("3.00 / 0.30 / 15.00")).toBeTruthy());
+    const rows = screen.getAllByRole("row");
+    // Row order: header, Default, sonnet (priced), local (unpriced → "—" rates line).
+    const localRow = within(rows[3]!);
+    expect(localRow.getByText("32k")).toBeTruthy();
+    expect(localRow.getByText("—")).toBeTruthy();
   });
 
   it("shows the 'no key · local' badge on an entry with no key, and the endpoint host in the Provider cell", async () => {
@@ -262,10 +363,11 @@ describe("ModelsRegistryTable", () => {
     expect(screen.getByText("0")).toBeTruthy();
   });
 
-  it("renders '—' when the context cap is absent (undefined)", async () => {
+  it("renders '—' for both context and rates when the cap is absent and the library doesn't price the model", async () => {
     await renderTable(registry([entry({ id: "e1", model_id: "m1", context_cap_tokens: undefined })]));
     const rows = screen.getAllByRole("row");
-    expect(within(rows[2]!).getByText("—")).toBeTruthy();
+    // Two lines in the Context cell — context "—" and rates "—".
+    expect(within(rows[2]!).getAllByText("—")).toHaveLength(2);
   });
 
   it("creating a model entry refreshes the secrets list — a repeat add on the same key name rotates instead of re-creating", async () => {
@@ -282,23 +384,27 @@ describe("ModelsRegistryTable", () => {
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: /add model/i }));
     const dialog = await screen.findByRole("dialog");
-    await user.type(within(dialog).getByLabelText(/^api key$/i), "sk-ant-e2e-xxxx");
+    await user.type(within(dialog).getByLabelText(/^name$/i), "anthropic");
+    await user.type(within(dialog).getByLabelText(/^provider$/i), "anthropic");
     await user.click(within(dialog).getByLabelText(/^model$/i));
     await user.click((await screen.findAllByRole("option"))[0]!);
+    await user.type(within(dialog).getByLabelText(/^api key$/i), "sk-ant-e2e-xxxx");
     await user.click(within(dialog).getByRole("button", { name: /^save$/i }));
 
     await waitFor(() => expect(listSecretsActionMock).toHaveBeenCalledWith("ws_1"));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
 
-    // Second add with the same auto-detected key name ("anthropic") — the
-    // refreshed secrets state now carries that name, so the dialog rotates
-    // the stored key in place instead of re-creating it. This is the
-    // observable proof the refreshSecrets round-trip landed in state.
+    // Second add reusing the same name ("anthropic") — the refreshed secrets
+    // state now carries that name, so the dialog rotates the stored key in
+    // place instead of re-creating it. This is the observable proof the
+    // refreshSecrets round-trip landed in state.
     await user.click(screen.getByRole("button", { name: /add model/i }));
     const reopened = await screen.findByRole("dialog");
-    await user.type(within(reopened).getByLabelText(/^api key$/i), "sk-ant-second-key");
+    await user.type(within(reopened).getByLabelText(/^name$/i), "anthropic");
+    await user.type(within(reopened).getByLabelText(/^provider$/i), "anthropic");
     await user.click(within(reopened).getByLabelText(/^model$/i));
     await user.click((await screen.findAllByRole("option"))[0]!);
+    await user.type(within(reopened).getByLabelText(/^api key$/i), "sk-ant-second-key");
     await user.click(within(reopened).getByRole("button", { name: /^save$/i }));
 
     await waitFor(() => expect(rotateSecretActionMock).toHaveBeenCalledWith("ws_1", "anthropic", "sk-ant-second-key"));
@@ -315,23 +421,27 @@ describe("ModelsRegistryTable", () => {
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: /add model/i }));
     const dialog = await screen.findByRole("dialog");
-    await user.type(within(dialog).getByLabelText(/^api key$/i), "sk-ant-e2e-xxxx");
+    await user.type(within(dialog).getByLabelText(/^name$/i), "anthropic");
+    await user.type(within(dialog).getByLabelText(/^provider$/i), "anthropic");
     await user.click(within(dialog).getByLabelText(/^model$/i));
     await user.click((await screen.findAllByRole("option"))[0]!);
+    await user.type(within(dialog).getByLabelText(/^api key$/i), "sk-ant-e2e-xxxx");
     await user.click(within(dialog).getByRole("button", { name: /^save$/i }));
 
     await waitFor(() => expect(listSecretsActionMock).toHaveBeenCalledWith("ws_1"));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
 
-    // The `!r.ok` early return kept the secrets state empty, so the same key
+    // The `!r.ok` early return kept the secrets state empty, so the same
     // name is unknown to the dialog and the second add takes the create path
     // again (the backend would 409 in reality; mocked ok here — the branch
     // under test is refreshSecrets' silent no-op, matching refresh()).
     await user.click(screen.getByRole("button", { name: /add model/i }));
     const reopened = await screen.findByRole("dialog");
-    await user.type(within(reopened).getByLabelText(/^api key$/i), "sk-ant-second-key");
+    await user.type(within(reopened).getByLabelText(/^name$/i), "anthropic");
+    await user.type(within(reopened).getByLabelText(/^provider$/i), "anthropic");
     await user.click(within(reopened).getByLabelText(/^model$/i));
     await user.click((await screen.findAllByRole("option"))[0]!);
+    await user.type(within(reopened).getByLabelText(/^api key$/i), "sk-ant-second-key");
     await user.click(within(reopened).getByRole("button", { name: /^save$/i }));
 
     await waitFor(() => expect(createSecretActionMock).toHaveBeenCalledTimes(2));
