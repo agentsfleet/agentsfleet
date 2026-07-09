@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M120
 **Workstream:** 004
 **Date:** Jul 09, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — operator-facing feedback batch: the workspace Models table shows a blank Default row today, and two action surfaces still hide behind text buttons / a dropdown.
 **Categories:** API, UI
 **Batch:** B1 — runs alone; M120_003 (pending internal rename) re-sequences after this spec because both edit the same import surface.
