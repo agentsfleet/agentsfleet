@@ -102,14 +102,12 @@ export default function EditModelDialog({
           </DialogDescription>
         </DialogHeader>
         <div className="grid grid-cols-2 gap-3">
-          <div className="space-y-1.5">
-            <label htmlFor="edit-provider" className="text-sm font-medium">Provider</label>
-            <Input id="edit-provider" value={model.provider} disabled />
-          </div>
-          <div className="space-y-1.5">
-            <label htmlFor="edit-model-id" className="text-sm font-medium">Model id</label>
-            <Input id="edit-model-id" value={model.model_id} disabled />
-          </div>
+          {([["Provider", model.provider], ["Model id", model.model_id]] as const).map(([label, value]) => (
+            <div key={label} className="space-y-1.5">
+              <span className="text-sm font-medium">{label}</span>
+              <Input value={value} disabled aria-label={`${label} (locked)`} />
+            </div>
+          ))}
         </div>
         <Form {...form}>
           <form onSubmit={(e) => void form.handleSubmit(onSubmit)(e)} className="space-y-4">

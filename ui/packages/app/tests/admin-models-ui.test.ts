@@ -217,8 +217,12 @@ describe("CatalogueList — Edit (rates dialog wired to updateAdminModelAction)"
     render(React.createElement(CatalogueList, { models: CATALOGUE, activeDefault: null, onDeleted: vi.fn(), onUpdated: vi.fn() }));
     fireEvent.click(within(rowFor("glm-5.2")).getByRole("button", { name: "Edit glm-5.2" }));
     const dialog = within(await screen.findByRole("dialog"));
-    expect((dialog.getByLabelText("Provider") as HTMLInputElement).disabled).toBe(true);
-    expect((dialog.getByLabelText("Model id") as HTMLInputElement).disabled).toBe(true);
+    const provider = dialog.getByLabelText("Provider (locked)") as HTMLInputElement;
+    const modelId = dialog.getByLabelText("Model id (locked)") as HTMLInputElement;
+    expect(provider.disabled).toBe(true);
+    expect(provider.value).toBe("fireworks");
+    expect(modelId.disabled).toBe(true);
+    expect(modelId.value).toBe("glm-5.2");
   });
 
   it("surfaces the update error inline and keeps the edit dialog open on failure", async () => {
