@@ -196,6 +196,9 @@ pub const setTestEncryptionKey = provider_fixtures.setTestEncryptionKey;
 pub const seedPlatformProvider = provider_fixtures.seedPlatformProvider;
 pub const seedPlatformProviderWithKey = provider_fixtures.seedPlatformProviderWithKey;
 pub const teardownPlatformProvider = provider_fixtures.teardownPlatformProvider;
+pub const TEST_PROVIDER_NAME = provider_fixtures.TEST_PROVIDER_NAME;
+pub const TEST_PLATFORM_MODEL = provider_fixtures.TEST_PLATFORM_MODEL;
+pub const TEST_PLATFORM_CAP_TOKENS = provider_fixtures.TEST_PLATFORM_CAP_TOKENS;
 
 // ── Shared DB connection ────────────────────────────────────────────────
 

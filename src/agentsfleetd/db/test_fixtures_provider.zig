@@ -14,7 +14,9 @@ const base = @import("test_fixtures.zig");
 
 const IGNORED_ERROR_FMT = "ignored: {s}";
 
-const TEST_PROVIDER_NAME = "test_fireworks";
+/// Pub: integration asserts compare wire output against the exact identity
+/// this module seeds (one constant, no re-typed literals in tests).
+pub const TEST_PROVIDER_NAME = "test_fireworks";
 const TEST_PROVIDER_API_KEY = "fw_test_stub_not_real";
 /// The platform default's model + context cap the seeded platform_provider_defaults row
 /// carries. M100 sources these from the row (the old PLATFORM_DEFAULT_MODEL /
@@ -27,8 +29,8 @@ const TEST_PROVIDER_API_KEY = "fw_test_stub_not_real";
 /// pre-FK rate-cache-MISS behaviour, minus the latent lease-issue panic. A
 /// token-tier billing assertion still seeds its OWN (provider, model) pair with
 /// real rates (see service_token_splits_wire_test), not this default.
-const TEST_PLATFORM_MODEL = "accounts/fireworks/models/kimi-k2.6";
-const TEST_PLATFORM_CAP_TOKENS: i32 = 256_000;
+pub const TEST_PLATFORM_MODEL = "accounts/fireworks/models/kimi-k2.6";
+pub const TEST_PLATFORM_CAP_TOKENS: i32 = 256_000;
 
 /// Set ENCRYPTION_MASTER_KEY in the process env so vault.storeJson /
 /// crypto_store.load can wrap/unwrap DEKs in tests. Idempotent; safe to
