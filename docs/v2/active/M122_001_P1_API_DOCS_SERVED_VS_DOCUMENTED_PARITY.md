@@ -16,12 +16,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M122
 **Workstream:** 001
 **Date:** Jul 09, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — user-facing docs promise a non-existent safety ceiling (a "10 continuation" cap) and a non-existent failure label (`chunk_chain_escalate_human`); the served admin model-catalogue routes ship undocumented. Neither crashes, so this is doc/parity truth-in-advertising, not a runtime bug.
 **Categories:** API, DOCS
 **Batch:** B1 — independent; touches no source shared with any pending workstream.
-**Branch:** {added at CHORE(open)}
-**Test Baseline:** set at CHORE(open) — `unit=<N> integration=<M>` via `make _lint_zig_test_depth`
+**Branch:** `feat/m122-served-doc-parity`
+**Test Baseline:** unit=2402 integration=267
 **Depends on:** none.
 **Provenance:** agent-generated (pre-spec, Jul 02 2026 `fleet-wide-refactor-audit`; both findings re-verified against HEAD `7a06fb5d` on Jul 09 2026 by the `audit-open-items-recheck` workflow, each surviving an adversarial refutation pass).
 **Canonical architecture:** `docs/REST_API_DESIGN_GUIDELINES.md` §1/§7 (URL shape + route-registration freshness — the coverage gate in §3 extends that family); `docs/SCHEMA_CONVENTIONS.md` is untouched.
