@@ -58,9 +58,12 @@ INTEGRATION_LINE_PREFIX = 'test "integration:'
 # states why here, in a line of its own.
 WAIVER_MARKER = "// no-test-root:"
 
-# Wire format emitted by src/build/test_runner_list.zig.
+# Wire format emitted by src/build/test_runner_list.zig. Each TEST line is
+# `TEST\t<root_dir>\t<name>` — self-describing, so attribution never depends on
+# stdout ordering between concurrently-run lanes.
 ROOT_PREFIX = "ROOT\t"
 TEST_PREFIX = "TEST\t"
+FIELD_SEP = "\t"
 
 # Registered-name infixes separating a file's namespace from its test.
 NAMED_TEST_INFIX = ".test."
@@ -88,12 +91,15 @@ def registered_names():
         if proc.returncode != 0:
             sys.stderr.write(f"{' '.join(cmd)} failed:\n{proc.stderr}")
             sys.exit(1)
-        root = None
         for line in proc.stdout.splitlines():
             if line.startswith(ROOT_PREFIX):
-                root = line[len(ROOT_PREFIX):]
-            elif line.startswith(TEST_PREFIX) and root is not None:
-                groups[root].add(line[len(TEST_PREFIX):])
+                # Proves the lane ran. A lane that registers nothing still lands here,
+                # so its files are correctly judged dead rather than silently skipped.
+                groups.setdefault(line[len(ROOT_PREFIX):], set())
+            elif line.startswith(TEST_PREFIX):
+                root, _, name = line[len(TEST_PREFIX):].partition(FIELD_SEP)
+                if name:
+                    groups[root].add(name)
     if not groups:
         sys.stderr.write(f"no `{LIST_STEP}` output parsed -- is the lane wired?\n")
         sys.exit(1)
@@ -120,6 +126,16 @@ def candidate_files():
     return sorted(found)
 
 
+def has_ambiguous_name(path):
+    """True when `path`'s namespace could collide with another file's.
+
+    The namespace is the relative path with `/` rewritten to `.`, so `a/b/c.zig` and
+    `a/b.c.zig` both yield `a.b.c` and a live file would mask a dead twin. Nothing in
+    `src/` is named this way today; this keeps it that way rather than trusting it.
+    """
+    return "." in os.path.basename(path)[: -len(ZIG_EXT)]
+
+
 def is_live(path, groups):
     """True when `path` registers >=1 test in any binary rooted above it."""
     for root, names in groups.items():
@@ -133,8 +149,22 @@ def is_live(path, groups):
     return False
 
 
+def waiver_reason(path):
+    """The reason after `// no-test-root:`, or None when the file is not waived.
+
+    An empty reason does not waive. A silent opt-out is how a test block goes dark
+    in the first place, so the marker must say why or it does not count.
+    """
+    for line in read_lines(path):
+        marker = line.find(WAIVER_MARKER)
+        if marker != -1:
+            reason = line[marker + len(WAIVER_MARKER):].strip()
+            return reason or None
+    return None
+
+
 def is_waived(path):
-    return any(WAIVER_MARKER in line for line in read_lines(path))
+    return waiver_reason(path) is not None
 
 
 def count_blocks(path):
@@ -146,7 +176,29 @@ def count_blocks(path):
 
 
 def run_check(groups, candidates):
-    dead = [p for p in candidates if not is_live(p, groups) and not is_waived(p)]
+    """Dead files fail the gate. Waived files are named, never merely counted:
+    a waiver that nobody reads is how a test block goes dark in the first place."""
+    ambiguous = [p for p in candidates if has_ambiguous_name(p)]
+    if ambiguous:
+        sys.stderr.write(
+            "✗ [zig] filename would produce an ambiguous test namespace "
+            "(a dot before `.zig` collides with a directory separator):\n"
+        )
+        for path in ambiguous:
+            sys.stderr.write(f"    {path}\n")
+        return 1
+
+    dead, waived, stale_waivers = [], [], []
+    for path in candidates:
+        reason = waiver_reason(path)
+        if is_live(path, groups):
+            if reason is not None:
+                stale_waivers.append(path)
+        elif reason is not None:
+            waived.append((path, reason))
+        else:
+            dead.append(path)
+
     if dead:
         sys.stderr.write(
             f"✗ [zig] {len(dead)} test-bearing file(s) register no test in any binary.\n"
@@ -156,13 +208,26 @@ def run_check(groups, candidates):
             blocks, _ = count_blocks(path)
             sys.stderr.write(f"    {path}  ({blocks} dead block(s))\n")
         return 1
-    waived = [p for p in candidates if is_waived(p)]
-    suffix = f" ({len(waived)} waived)" if waived else ""
-    print(f"✓ [zig] test-root reachability: {len(candidates)} file(s) reachable{suffix}")
+
+    for path, reason in waived:
+        print(f"  waived: {path} — {reason or '<no reason given>'}")
+    for path in stale_waivers:
+        print(f"  stale waiver: {path} registers tests; drop its `{WAIVER_MARKER}` line")
+    reachable = len(candidates) - len(waived)
+    suffix = f", {len(waived)} waived" if waived else ""
+    print(f"✓ [zig] test-root reachability: {reachable} file(s) reachable{suffix}")
     return 0
 
 
-def run_count(groups, candidates):
+def format_counts(groups, candidates):
+    """Blocks declared in files the compiler proved live.
+
+    Not the registered-name count: a file reachable from two roots (every
+    `src/agentsfleetd/auth/**` file registers in both the daemon and auth binaries)
+    would be counted twice, and anonymous barrel `test {}` blocks would be credited.
+    Registration is per-file, so per-file counting is both compiler-grounded and
+    directly comparable to the historical textual total.
+    """
     unit = integration = 0
     for path in candidates:
         if not is_live(path, groups):
@@ -170,8 +235,11 @@ def run_count(groups, candidates):
         blocks, integration_blocks = count_blocks(path)
         unit += blocks
         integration += integration_blocks
-    print(f"reachable_test_cases={unit}")
-    print(f"reachable_integration_cases={integration}")
+    return f"reachable_test_cases={unit}\nreachable_integration_cases={integration}\n"
+
+
+def run_count(groups, candidates):
+    sys.stdout.write(format_counts(groups, candidates))
     return 0
 
 
@@ -180,13 +248,21 @@ def main():
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--check", action="store_true", help="fail on any dead file")
     group.add_argument("--count", action="store_true", help="print reachable counts")
+    # Listing all 8 binaries costs ~10s, so `--check` can hand its counts to the depth
+    # gate instead of making it pay for a second, identical listing.
+    parser.add_argument("--counts-out", metavar="PATH", help="also write counts to PATH")
     args = parser.parse_args()
 
     groups = registered_names()
     candidates = candidate_files()
-    if args.check:
-        return run_check(groups, candidates)
-    return run_count(groups, candidates)
+    if args.count:
+        return run_count(groups, candidates)
+
+    code = run_check(groups, candidates)
+    if code == 0 and args.counts_out:
+        with open(args.counts_out, "w") as handle:
+            handle.write(format_counts(groups, candidates))
+    return code
 
 
 if __name__ == "__main__":
