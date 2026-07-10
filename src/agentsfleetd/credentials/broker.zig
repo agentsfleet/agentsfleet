@@ -158,11 +158,13 @@ fn finishColdMint(self: *CredentialBroker, alloc: std.mem.Allocator, key: []cons
     defer self.alloc.free(minted.token); // runMint handed us an owned copy
     defer if (minted.rotated_refresh_token) |rt| self.alloc.free(rt);
     const tok = alloc.dupe(u8, minted.token) catch return .{ .mint_failed = .transient };
+    // Degrade, don't fail, when only the ROTATED copy cannot be duped: the
+    // exchange already consumed the old refresh token and the caller's access
+    // token is in hand. Failing here would waste the mint AND have the retry
+    // post the dead token immediately; dropping the rotation instead costs at
+    // most the documented one-reconnect bound at expiry.
     const rotated: ?[]const u8 = if (minted.rotated_refresh_token) |rt|
-        alloc.dupe(u8, rt) catch {
-            alloc.free(tok); // the only owner so far — free before failing closed
-            return .{ .mint_failed = .transient };
-        }
+        alloc.dupe(u8, rt) catch null
     else
         null;
     // Cache LAST: a mint that fails closed above must not leave a warm entry

@@ -411,13 +411,16 @@ test "mint: test_broker_rotated_token_ownership — one free path per copy, fail
         alloc.free(r.ok.rotated_refresh_token.?);
     }
     // Partial-dupe OOM: the caller's token dupe succeeds (index 0), the rotated
-    // dupe fails (index 1) → the token copy is freed on the fail-closed path,
-    // so nothing leaks and no double-free fires (RULE OWN).
+    // dupe fails (index 1) → the mint DEGRADES rather than fails: the exchange
+    // already consumed the old refresh token, so the caller still gets its
+    // valid access token and only the rotation is dropped (the documented
+    // one-reconnect bound). Nothing leaks, no double-free (RULE OWN).
     {
         var failing = std.testing.FailingAllocator.init(std.testing.allocator, .{ .fail_index = 1 });
         const r = try b.mint(failing.allocator(), "ws-own-2", "zoho", h.value, 0);
-        try std.testing.expect(r == .mint_failed);
-        try std.testing.expectEqual(integration.Retry.transient, r.mint_failed);
+        try std.testing.expect(r == .ok);
+        defer failing.allocator().free(r.ok.token);
+        try std.testing.expect(r.ok.rotated_refresh_token == null);
     }
 }
 
