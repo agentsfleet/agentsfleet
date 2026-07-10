@@ -27,6 +27,10 @@ const S_COMMON = "common";
 const S_CALL_DEADLINE = "call_deadline";
 const S_S3 = "s3";
 const S_GEN_ERROR_CODES = "gen-error-codes";
+// Directory the daemon test root is rooted at. Zig names a registered test after
+// its source path relative to this directory, so `list-tests` echoes it for the
+// reachability checker (`scripts/check_zig_test_reachability.py`).
+const S_AGENTSFLEETD_TESTS_ROOT_DIR = "src/agentsfleetd";
 
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
@@ -185,10 +189,14 @@ pub fn build(b: *std.Build) void {
     // Extracted to src/build/lib_tests.zig (RULE FLL) — one step covering the
     // src/lib barrel plus the named-module-consuming lib modules (logging,
     // call_deadline), each compiled in its production module shape.
-    buildpkg.lib_tests.addTestStep(b, target, optimize, test_filters, deps);
+    // `list-tests`: one list-only compilation per test binary, printing the tests the
+    // compiler actually registered. Created before the steps that attach lanes to it.
+    const list_step = b.step(buildpkg.test_list.STEP_NAME, buildpkg.test_list.STEP_DESC);
+
+    buildpkg.lib_tests.addTestStep(b, target, optimize, test_filters, deps, list_step);
 
     // `test-s3`: compile r2.zig against z3 standalone (build-wiring gate).
-    buildpkg.s3.addTestStep(b, target, optimize, test_filters);
+    buildpkg.s3.addTestStep(b, target, optimize, test_filters, list_step);
 
     // ── Run step ─────────────────────────────────────────────────────────────
     const run_cmd = b.addRunArtifact(exe);
@@ -242,35 +250,17 @@ pub fn build(b: *std.Build) void {
     buildpkg.fixtures.addDaemon(b, tests.root_module);
     const run_tests = b.addRunArtifact(tests);
     b.step("test", "Run unit tests").dependOn(&run_tests.step);
+    buildpkg.test_list.addLane(b, list_step, S_AGENTSFLEETD_TESTS, tests.root_module, S_AGENTSFLEETD_TESTS_ROOT_DIR);
 
-    // ── test-auth ────────────────────────────────────────────────────────────
-    // Links ONLY src/auth/** and proves the portability contract: every module
-    // under src/auth/ compiles in isolation without the rest of the project.
-    // Any import that escapes the folder (directly or transitively) fails the
-    // link here — so src/auth/ stays extractable into a standalone agentsfleet-auth.
-    const test_auth = b.addTest(.{
-        .name = "agentsfleetd-test-auth",
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("src/agentsfleetd/auth/tests.zig"),
-            .target = target,
-            .optimize = optimize,
-            .imports = &.{
-                .{ .name = S_HTTPZ, .module = httpz_mod },
-                .{ .name = S_HMAC_SIG, .module = hmac_sig_mod },
-                .{ .name = S_AUTH_CODES, .module = auth_codes_mod },
-                .{ .name = S_LOG, .module = log_mod },
-                .{ .name = S_CONTRACT, .module = contract_mod },
-                .{ .name = S_COMMON, .module = common_mod },
-            },
-        }),
-        .filters = test_filters,
-    });
-    // src/auth/ now imports the named "log" module so it can use obs.scoped
-    // without breaking the portability gate (the gate forbids reaching into
-    // src/observability/ via relative paths, but named modules are
-    // first-class deps that don't violate the layer boundary).
-    b.step("test-auth", "Run src/auth/** tests in isolation (portability gate)")
-        .dependOn(&b.addRunArtifact(test_auth).step);
+    // `test-auth`: the src/agentsfleetd/auth/** portability gate (src/build/auth_tests.zig).
+    buildpkg.auth_tests.addTestStep(b, target, optimize, test_filters, &.{
+        .{ .name = S_HTTPZ, .module = httpz_mod },
+        .{ .name = S_HMAC_SIG, .module = hmac_sig_mod },
+        .{ .name = S_AUTH_CODES, .module = auth_codes_mod },
+        .{ .name = S_LOG, .module = log_mod },
+        .{ .name = S_CONTRACT, .module = contract_mod },
+        .{ .name = S_COMMON, .module = common_mod },
+    }, list_step);
 
     if (with_bench_tools) {
         // ── zBench dependency ────────────────────────────────────────────────
