@@ -22,7 +22,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Batch:** B1 — independent; touches no source shared with any pending workstream.
 **Branch:** `feat/m122-served-doc-parity`
 **Test Baseline:** unit=2402 integration=267
-**Depends on:** none.
+**Depends on:** M122_005 (budget enforcement) — §1 only. The rewritten pages describe enforced per-fleet budgets, so they must not merge ahead of the code that enforces them. Both workstreams share one branch and one Pull Request (PR); §2 and §3 depend on nothing.
 **Provenance:** agent-generated (pre-spec, Jul 02 2026 `fleet-wide-refactor-audit`; both findings re-verified against HEAD `7a06fb5d` on Jul 09 2026 by the `audit-open-items-recheck` workflow, each surviving an adversarial refutation pass).
 **Canonical architecture:** `docs/REST_API_DESIGN_GUIDELINES.md` §1/§7 (URL shape + route-registration freshness — the coverage gate in §3 extends that family); `docs/SCHEMA_CONVENTIONS.md` is untouched.
 
@@ -30,9 +30,9 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ## Overview
 
-**Goal (testable):** the docs-repo context-lifecycle page describes what the daemon actually does on context exhaustion (a run terminates as `fleet_error` with a checkpoint — no automatic re-enqueue, no continuation cap, no `chunk_chain_escalate_human` label); the four served `/v1/admin/models` routes appear in `public/openapi.json`; and a mechanical Continuous Integration (CI) gate fails whenever any served public route lacks a documented (or explicitly allowlisted) OpenAPI entry.
-**Problem:** two independently-verified drifts. (1) `concepts/context-lifecycle.mdx` and `fleets/authoring.mdx` document a continuation-chain feature — the runtime re-enqueues the exhausted event, a chain caps at 10 continuations, the 11th is labelled `chunk_chain_escalate_human` — that does not exist: `chunk_chain`/`escalate_human`/`MAX_CONTINUATION` return zero hits across `src/` and `cli/`, and `service_report.zig` finalizes a non-processed run without ever re-enqueuing. A reader tunes knobs and waits for a ceiling that will never fire. (2) The platform-admin model catalogue Create/Read/Update/Delete (CRUD) — GET+POST `/v1/admin/models`, PATCH+DELETE `/v1/admin/models/{uid}` — is live-served but absent from every OpenAPI source, and nothing prevents the next served route from drifting the same way.
-**Solution summary:** rewrite the two docs-repo pages to describe the real terminal behaviour and delete the phantom-feature claims (docs are wrong, code is right — no runtime change); add `public/openapi/paths/admin-models.yaml` mirroring the sibling `admin.yaml` platform-keys shape, wire it into the bundle, and regenerate `public/openapi.json`; and add `scripts/check_openapi_route_coverage.py` to `make check-openapi` so a served-route-without-a-documented-entry fails CI from now on.
+**Goal (testable):** the docs-repo context-lifecycle page describes what the daemon actually does when a run approaches its context cap (the runtime observes and logs; the fleet itself wraps up; nothing re-enqueues — no continuation cap, no `chunk_chain_escalate_human` label) and which ceilings really stop a run; the four served `/v1/admin/models` routes appear in `public/openapi.json`; and a mechanical Continuous Integration (CI) gate fails whenever any served public route lacks a documented (or explicitly allowlisted) OpenAPI entry.
+**Problem:** three verified drifts, two of them phantom safety ceilings. (1) `concepts/context-lifecycle.mdx` and `fleets/authoring.mdx` document a continuation-chain feature — the runtime re-enqueues the exhausted event, a chain caps at 10 continuations, the 11th is labelled `chunk_chain_escalate_human` — that does not exist: `chunk_chain`/`escalate_human`/`MAX_CONTINUATION` return zero hits across `src/` and `cli/`, and `service_report.zig` finalizes a non-processed run without ever re-enqueuing. `running.mdx` and `cli/agentsfleet.mdx` compound it by advertising an `actor=continuation:<original_actor>` value that only test fixtures ever write. (2) The platform-admin model catalogue Create/Read/Update/Delete (CRUD) — GET+POST `/v1/admin/models`, PATCH+DELETE `/v1/admin/models/{uid}` — is live-served but absent from every OpenAPI source, and nothing prevents the next served route from drifting the same way. (3) Found while walking §1's golden path: `daily_dollars`/`monthly_dollars` are required in every `TRIGGER.md`, parsed into `FleetConfig.budget`, and read by nothing but `config_parser_test.zig`; the `budget_breach` label they promise has zero hits in `src/`. So `context-lifecycle.mdx`'s "three independent ceilings stop it" answer names three ceilings of which **none** fires: the context cap only writes a log line (`runner_progress.zig:247`), the continuation cap never existed, and the budget cap is dead config.
+**Solution summary:** rewrite the five affected docs-repo pages to describe real, grep-provable mechanisms and delete the phantom-feature claims; add `public/openapi/paths/admin-models.yaml` mirroring the sibling `admin.yaml` platform-keys shape, wire it into the bundle, and regenerate `public/openapi.json`; and add `scripts/check_openapi_route_coverage.py` to `make check-openapi` so a served-route-without-a-documented-entry fails CI from now on. Drift (3) is a *code* gap, not a doc gap — Indy's call (Discovery, Jul 10 2026) is to build the enforcement rather than delete the promise, so **M122_005** lands per-fleet budget enforcement on this same branch and PR, and §1's budget prose then describes shipped behaviour rather than an unbuilt ceiling.
 
 ## PR Intent & comprehension handshake
 
@@ -52,13 +52,19 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 | File | Action | Why |
 |------|--------|-----|
-| `~/Projects/docs/concepts/context-lifecycle.mdx` | EDIT (separate repo, own branch) | rewrite the continuation-chain + "Will it run forever?" claims to the real `fleet_error`-termination behaviour; drop the 10-cap and `chunk_chain_escalate_human` label |
-| `~/Projects/docs/fleets/authoring.mdx` | EDIT (separate repo, own branch) | correct the `<Note>` (line 154) claiming the runtime auto re-enqueues `actor=continuation:<original_actor>` |
+| `~/Projects/docs/concepts/context-lifecycle.mdx` | EDIT (separate repo, own branch) | rewrite the continuation-chain section, the "Context full" + "Budget breach" rows, and the "Will it run forever?" answer to the ceilings that really fire; drop the 10-cap and `chunk_chain_escalate_human` label |
+| `~/Projects/docs/fleets/authoring.mdx` | EDIT (separate repo, own branch) | correct the `<Note>` (line 154) claiming the runtime auto re-enqueues `actor=continuation:<original_actor>`; correct the Budgets section (line 177) to M122_005's enforcement |
+| `~/Projects/docs/fleets/troubleshooting.mdx` | EDIT (separate repo, own branch) | the `budget_breach` symptom row (line 16) — real once M122_005 lands; confirm the label and the §5 anchor match |
+| `~/Projects/docs/fleets/running.mdx` | EDIT (separate repo, own branch) | drop `continuation:<original_actor>` (line 55) from the actor-tag list — no production code writes it |
+| `~/Projects/docs/cli/agentsfleet.mdx` | EDIT (separate repo, own branch) | drop `continuation:*` (line 208) from the `--actor` filter examples — same phantom actor |
 | `public/openapi/paths/admin-models.yaml` | CREATE | document GET/POST `/v1/admin/models` + PATCH/DELETE `/v1/admin/models/{uid}`, mirroring `admin.yaml` |
-| `public/openapi/root.yaml` | EDIT | register the two new paths as `$ref`s into `admin-models.yaml` |
+| `public/openapi/root.yaml` | EDIT | register the two new paths as `$ref`s into `admin-models.yaml`; widen the `Admin` tag description to admit the model catalogue |
 | `public/openapi.json` | EDIT | regenerated bundle (`redocly bundle`) now carrying the admin/models paths |
 | `scripts/check_openapi_route_coverage.py` | CREATE | new gate: every served public `/v1` route is documented in `openapi.json` or in a justified allowlist |
-| `make/quality.mk` | EDIT | wire `check_openapi_route_coverage.py` into the `check-openapi` target |
+| `scripts/check_openapi_route_coverage_test.py` | CREATE | the gate's self-tests — negative case (§3.1), carve-out rot, and the HEAD regression guard |
+| `make/quality.mk` | EDIT | wire the coverage script + its self-tests into the `check-openapi` target |
+
+`~/Projects/docs/changelog.mdx` line 1660 also carries the phantom `actor=continuation:<original_actor>` prose. It is **deliberately not edited**: shipped changelog entries are historical record (`docs/CHANGELOG_VOICE.md` — history is archived, never rewritten). The correction rides the new `<Update>` this workstream appends at CHORE(close).
 
 ## Applicable Rules
 
@@ -84,29 +90,35 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ## Sections (implementation slices)
 
-### §1 — Rewrite the context-lifecycle docs to the real termination behaviour
+### §1 — Rewrite the drifted docs pages to grep-provable behaviour
 
-The daemon does not implement continuation chains. On a context-exhausted (non-processed) run, `service_report.zig:finalize()` marks the event `fleet_error`, persists a granular `failure_label`, checkpoints session state, `XACK`s, and releases affinity — it never re-enqueues a follow-up event; the `EVENT_TYPE_CONTINUATION = "continuation"` ingest type has no production producer. Rewrite `context-lifecycle.mdx` (the "Context full" row, the "Continuation chains" section, the "Will it run forever?" answer) and the `authoring.mdx:154` `<Note>` to describe that a run which approaches the context cap ends with a checkpoint and terminates as `fleet_error`; there is no automatic continuation, no 10-cap, and no `chunk_chain_escalate_human` label. **Implementation default:** establish the exact terminal status/label and the treatment of every knob from `service_report.zig`/`event_rows.zig` BEFORE editing — describe only mechanisms with a grep-provable code backing; a knob or ceiling with no code owner is deleted, not softened. Runs on the `~/Projects/docs` own-branch flow (branch off a clean `main`; never commit onto a dirty `main`) — no docs-repo edit happens during authoring.
+The daemon implements no continuation chains. When a run's prompt approaches the model's context cap, the runtime **observes and logs, it does not act**: `runner_progress.zig:247` computes `prompt_tokens / context_cap_tokens` after every LLM round-trip and, past `stage_chunk_threshold`, emits a `chunk_threshold_breached` line. Its own comment is explicit — *"NullClaw doesn't expose mid-loop interrupt, so the runtime cannot force a chunk — the fleet does it via SKILL prose."* A fleet that follows that prose consolidates findings into memory and ends the run normally: the child exits 0, `child_supervisor_result.zig:classify` reads `exit_ok: true`, and `service_report.zig:finalize()` marks the event **`processed`** and checkpoints the session. Nothing re-enqueues it; `EVENT_TYPE_CONTINUATION` has no production producer, and `actor=continuation:<…>` is written only by `events_integration_test.zig` fixtures. `fleet_error` is the terminal status for the ten `FailureClass` kills (`timeout_kill`, `oom_kill`, `renewal_terminate`, `runner_crash`, …), not for context exhaustion.
 
-- **Dimension 1.1** — after the rewrite, `chunk_chain_escalate_human`, "10 continuations", and "continuation cap" appear zero times in `context-lifecycle.mdx` and `authoring.mdx` → Test `test_docs_no_phantom_continuation`
-- **Dimension 1.2** — both pages describe the real terminal outcome (context exhaustion → `fleet_error` + checkpoint, no automatic re-enqueue): the phrase "re-enqueues the same event" is gone and `fleet_error` termination is present → Test `test_docs_describe_fleet_error_termination`
-- **Dimension 1.3** — every tuning knob the rewritten page still names resolves to a real identifier under `src/` (e.g. `context_cap_tokens`); a knob with no code backing is removed → Test `test_docs_knobs_have_code_backing`
+Rewrite the five pages listed in Files Changed so that every named mechanism, label, and ceiling has a grep-provable owner in `src/`. **Implementation default:** establish the exact status/label from `service_report.zig`/`event_rows.zig`/`execution_result.zig` BEFORE editing — a knob or ceiling with no code owner is deleted, not softened. The one exception is the budget ceiling: M122_005 gives it a code owner in this same PR, so §1 describes it as enforced. Runs on the `~/Projects/docs` own-branch flow (branch off a clean `main`; never commit onto a dirty `main`) — no docs-repo edit happens during authoring.
+
+- **Dimension 1.1** — after the rewrite, `chunk_chain_escalate_human`, "10 continuations", "continuation cap", and `continuation:` actor prose appear zero times across the four continuation-drifted pages → Test `test_docs_no_phantom_continuation`
+- **Dimension 1.2** — the pages describe the real terminal outcomes: a fleet that voluntarily wraps up on a full context ends `processed` with a checkpoint, `fleet_error` carries a `FailureClass` label, and nothing re-enqueues either. The phrase "re-enqueues the same event" is gone → Test `test_docs_describe_real_termination`. *(Amended Jul 10 2026: the spec as authored asserted "context exhaustion → `fleet_error`", which the code refutes — a voluntary wrap-up exits 0 and is `processed`. Writing `fleet_error` would have replaced one falsehood with another.)*
+- **Dimension 1.3** — every tuning knob the rewritten pages still name resolves to a real identifier under `src/` (`context_cap_tokens`, `tool_window`, `memory_checkpoint_every`, `stage_chunk_threshold` — all four are parsed in `config_parser.zig` under `x-agentsfleet.context`); a knob with no code backing is removed → Test `test_docs_knobs_have_code_backing`
+- **Dimension 1.4** — the "Will it run forever?" answer names only ceilings that fire: the lease deadline (`timeout_kill`), `/renew` policy stops (`renewal_terminate` — max-runtime or tenant credit exhausted), the cgroup limits (`oom_kill` / `resource_kill`), and — once M122_005 lands — the per-fleet budget (`budget_breach`) → Test `test_docs_ceilings_are_real`
 
 ### §2 — Document the served admin model-catalogue routes
 
 The four `/v1/admin/models` routes are live-served (registered in `routes.zig`, dispatched in `route_table_invoke.zig`) but absent from every OpenAPI source, while the sibling `/v1/admin/platform-keys` is documented. Add `admin-models.yaml` covering GET+POST `/v1/admin/models` and PATCH+DELETE `/v1/admin/models/{uid}`, register both paths in `root.yaml`, and regenerate `openapi.json`. **Implementation default:** mirror `admin.yaml` for operation ids, tags (`Admin`), and the shared `Error` response `$ref`; read the request/response shapes off `handlers/admin/model_caps_admin.zig` so the documented bodies match what the handlers actually accept and emit.
 
-- **Dimension 2.1** — `public/openapi.json` contains path items for `/v1/admin/models` and `/v1/admin/models/{uid}` → Test `test_openapi_documents_admin_models`
-- **Dimension 2.2** — the bundle is clean: `admin-models.yaml` has no dangling `$ref` and passes Redocly lint → Test existing `make check-openapi` green (`redocly bundle` + `lint`)
-- **Dimension 2.3** — the documented verbs equal the served verbs (GET, POST on the collection; PATCH, DELETE on the item) → Test `test_admin_models_verbs_match_routes`
+- **Dimension 2.1** — `public/openapi.json` contains path items for `/v1/admin/models` and `/v1/admin/models/{uid}` → Test `test_admin_models_is_documented_at_head` → **DONE** (bundle carries both; 59 paths, was 57)
+- **Dimension 2.2** — the bundle is clean: `admin-models.yaml` has no dangling `$ref` and passes Redocly lint → Test existing `make check-openapi` green (`redocly bundle` + `lint`) → **DONE** (`AdminModel` + `AdminModelRates` hoist into root components; lint green, 28 pre-existing warnings unchanged)
+- **Dimension 2.3** — the documented verbs equal the served verbs (GET, POST on the collection; PATCH, DELETE on the item) → Test `test_admin_models_is_documented_at_head` → **DONE** (asserts the verb sets against `routes.zig:80-81`)
 
 ### §3 — Route-coverage gate (the durable recurrence fix)
 
-`check_openapi_url_shape.py` and `check_openapi_errors.py` only validate paths already in `openapi.json`; nothing asserts that every served route is present there — which is exactly how admin/models drifted. Add `check_openapi_route_coverage.py`: enumerate the daemon's served public `/v1` routes from the `routes.zig` registry, and fail if any is neither documented in `openapi.json` nor in a small allowlist of deliberately-internal control-plane routes (runner leases, service report, internal webhook receive), each carrying a one-line justification. **Implementation default:** derive served paths from `routes.zig` (the canonical registry), normalizing `{param}` segments to the OpenAPI template form; the allowlist mirrors the URL-shape script's justified-carve-out style. Wire it as a fourth step in `check-openapi`.
+`check_openapi_url_shape.py` and `check_openapi_errors.py` only validate paths already in `openapi.json`; nothing asserts that every served route is present there — which is exactly how admin/models drifted. Add `check_openapi_route_coverage.py`: enumerate the daemon's served public `/v1` routes from the `routes.zig` registry, and fail if any is neither documented in `openapi.json` nor in a small allowlist of deliberately-internal control-plane routes (the runner self-plane, `/v1/fleets/streams`), each carrying a one-line justification. **Implementation default:** derive served paths from `routes.zig` (the canonical registry) by reading each variant's own comment block, normalizing `{param}` names away so `{ws}` and `{workspace_id}` compare equal, and expanding the `{gate_id}:approve|:deny` colon-op alternation; the allowlists mirror the URL-shape script's justified-carve-out style, including its stale-entry sweep. Wire it as a fourth step in `check-openapi`.
 
-- **Dimension 3.1** — run against a temporary `openapi.json` with a served, non-allowlisted route removed → the script exits non-zero and names the missing path → Test `test_route_coverage_flags_undocumented`
-- **Dimension 3.2** — run at HEAD after §2 (admin/models documented; internal routes allowlisted) → the script exits 0 → Test `test_route_coverage_clean_at_head`
-- **Dimension 3.3** — `check-openapi` invokes the coverage script → Test `test_check_openapi_runs_coverage` (grep the make target)
+Four `Route` variants (`create_auth_session`, `create_workspace`, `approval_webhook`, `workspace_fleet_memories`) carry no path in their comment. Rather than skip them — a silent coverage hole — they are mapped to their served path in a justified `PATHLESS_VARIANT_PATHS` table, so all 65 served `/v1` routes are checked. Adding the missing comments to `routes.zig` is the durable fix and would let the table shrink to nothing; that edit is outside this workstream's Files-Changed scope and is left for a follow-up. Any *new* variant the script cannot resolve is a hard failure, so the hole cannot reopen.
+
+- **Dimension 3.1** — run against a temporary `openapi.json` with a served, non-allowlisted route removed → the script exits non-zero and names the missing path → Test `test_flags_a_served_route_missing_from_the_spec` → **DONE** (unit; verified end-to-end too — deleting `/v1/admin/models` from a scratch copy of the bundle exits 1 with `UNDOCUMENTED ROUTE: /v1/admin/models (routes.zig: admin_models)`)
+- **Dimension 3.2** — run at HEAD after §2 (admin/models documented; internal routes allowlisted) → the script exits 0 → Test `test_head_is_clean` → **DONE** (`OK: route coverage — 65 served /v1 routes, 10 internal carve-outs, all documented`)
+- **Dimension 3.3** — `check-openapi` invokes the coverage script → **DONE** (`make/quality.mk` runs the self-tests then the gate; `grep -c check_openapi_route_coverage make/quality.mk` → 2)
+- **Dimension 3.4** — the gate cannot silently under-cover: a `Route` variant it can neither resolve to a `/v1` path nor find in a justified carve-out table is a hard failure, and a carve-out that stops naming a real route/variant is flagged stale → Tests `test_variant_with_no_path_comment_fails_rather_than_being_skipped`, `test_internal_allow_entry_no_longer_served_is_flagged` → **DONE** (15 self-tests green)
 
 ## Interfaces
 
@@ -138,7 +150,9 @@ scripts/check_openapi_route_coverage.py behaviour:
 
 1. Every served public `/v1` route is present in `public/openapi.json` or in the coverage gate's justified allowlist — enforced by `check_openapi_route_coverage.py` in `make check-openapi` (CI), not review discipline.
 2. `public/openapi.json` is a clean bundle of `public/openapi/**` with no dangling `$ref` — enforced by `redocly bundle` + `redocly lint` in `check-openapi`.
-3. The daemon implements no continuation re-enqueue / cap / escalation — enforced by the existing production code (`chunk_chain`/`escalate_human`/`MAX_CONTINUATION` grep to zero across `src/` + `cli/`); §1 corrects the docs to match, and the §1.1 grep keeps the phantom strings out of the two pages on the branch.
+3. The daemon implements no continuation re-enqueue / cap / escalation — enforced by the existing production code (`chunk_chain`/`escalate_human`/`MAX_CONTINUATION` grep to zero across `src/` + `cli/`); §1 corrects the docs to match, and the §1.1 grep keeps the phantom strings off the four pages on the branch.
+4. The coverage gate never silently under-covers: every `Route` variant resolves to a checked path, a justified pathless-variant mapping, or a justified non-`/v1` carve-out — an unresolvable variant fails CI rather than being skipped (`test_variant_with_no_path_comment_fails_rather_than_being_skipped`).
+5. No runtime behaviour changes **in this workstream** — §1/§2/§3 touch docs, OpenAPI sources, and a CI script only. The runtime change that makes §1's budget prose true lives in M122_005, which carries its own Invariants and Failure Modes.
 
 ## Metrics & Observability
 
@@ -150,32 +164,39 @@ scripts/check_openapi_route_coverage.py behaviour:
 
 | Dimension | Tier | Test | Asserts (concrete inputs → expected output) |
 |-----------|------|------|---------------------------------------------|
-| 1.1 | unit (grep, docs repo) | `test_docs_no_phantom_continuation` | `grep -c "chunk_chain_escalate_human\|10 continuations\|continuation cap"` over both pages → 0 |
-| 1.2 | unit (grep, docs repo) | `test_docs_describe_fleet_error_termination` | "re-enqueues the same event" absent; `fleet_error` termination language present on both pages |
-| 1.3 | unit (grep, cross-repo) | `test_docs_knobs_have_code_backing` | each knob identifier named in the rewritten page matches a token under `src/`; unbacked knobs removed |
-| 2.1 | unit (bundle assertion) | `test_openapi_documents_admin_models` | `openapi.json` `paths` contains `/v1/admin/models` and `/v1/admin/models/{uid}` |
+| 1.1 | unit (grep, docs repo) | `test_docs_no_phantom_continuation` | `grep -c "chunk_chain_escalate_human\|10 continuations\|continuation cap\|continuation:"` over the four continuation-drifted pages → 0 |
+| 1.2 | unit (grep, docs repo) | `test_docs_describe_real_termination` | "re-enqueues the same event" absent; `processed` (voluntary wrap-up) and `fleet_error` (`FailureClass` kill) both described |
+| 1.3 | unit (grep, cross-repo) | `test_docs_knobs_have_code_backing` | each knob identifier named in the rewritten pages matches a token under `src/`; unbacked knobs removed |
+| 1.4 | unit (grep, cross-repo) | `test_docs_ceilings_are_real` | every ceiling named in "Will it run forever?" resolves to a `FailureClass` tag or a gate label under `src/` |
+| 2.1 | unit (bundle assertion) | `test_admin_models_is_documented_at_head` | `openapi.json` `paths` contains `/v1/admin/models` and `/v1/admin/models/{uid}` |
 | 2.2 | integration (regression) | existing `make check-openapi` | `redocly bundle` + `lint` exit 0 with the new YAML wired in |
-| 2.3 | unit | `test_admin_models_verbs_match_routes` | documented verbs = {GET, POST} on the collection, {PATCH, DELETE} on the item |
-| 3.1 | unit (negative) | `test_route_coverage_flags_undocumented` | served route removed from a temp spec → script exit ≠ 0, path named in output |
-| 3.2 | unit (positive) | `test_route_coverage_clean_at_head` | at HEAD post-§2 → script exit 0 |
-| 3.3 | unit (grep) | `test_check_openapi_runs_coverage` | `check-openapi` target invokes `check_openapi_route_coverage.py` |
+| 2.3 | unit | `test_admin_models_is_documented_at_head` | documented verbs = {GET, POST} on the collection, {PATCH, DELETE} on the item |
+| 3.1 | unit (negative) | `test_flags_a_served_route_missing_from_the_spec` | served route absent from the spec → violation names the path and its `routes.zig` variant |
+| 3.2 | unit (positive) | `test_head_is_clean` | at HEAD post-§2 → zero violations, >50 served routes parsed |
+| 3.3 | unit (grep) | `make check-openapi` | the target runs the self-tests and the coverage script |
+| 3.4 | unit (rot guards) | `test_variant_with_no_path_comment_fails_rather_than_being_skipped`, `test_internal_allow_entry_no_longer_served_is_flagged`, `test_pathless_entry_that_gained_a_comment_is_flagged` | an unresolvable variant fails; a carve-out naming nothing real is flagged stale |
 
-Regression: §2.2 proves the pre-existing OpenAPI bundle + lint still pass. Idempotency/replay: N/A — no retry semantics.
+Regression: §2.2 proves the pre-existing OpenAPI bundle + lint still pass. §3's `test_head_is_clean` is a standing regression guard for the exact drift this workstream fixes. Idempotency/replay: N/A — no retry semantics.
+
+The §1 tests are greps, not a harness: the docs live in a separate repository with no test runner, so they run as the R1/R2 rubric commands on the docs branch. This is an honest bound — no standing CI gate exists in this repo for the docs repo, and §3's gate covers only the OpenAPI surface.
 
 ## Acceptance Rubric (single scoring surface)
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | Phantom continuation claims gone (§1) | `grep -rn "chunk_chain_escalate_human\|10 continuations\|continuation cap" ~/Projects/docs/concepts/context-lifecycle.mdx ~/Projects/docs/fleets/authoring.mdx` | no output | P0 | |
-| R2 | Auto re-enqueue claim gone (§1) | `grep -rn "re-enqueues the same event" ~/Projects/docs/concepts/context-lifecycle.mdx ~/Projects/docs/fleets/authoring.mdx` | no output | P0 | |
-| R3 | admin/models documented (§2) | `grep -c "/v1/admin/models" public/openapi.json` | output ≥ 2 | P0 | |
-| R4 | OpenAPI bundle + all coverage checks pass (§2/§3) | `make check-openapi` | exit 0 | P0 | |
-| R5 | Coverage gate catches an undocumented route (§3) | `python3 scripts/check_openapi_route_coverage.py` after deleting a served path from a temp `openapi.json` copy | exit ≠ 0, path named | P0 | |
-| R6 | Coverage gate wired into check-openapi (§3) | `grep -c check_openapi_route_coverage make/quality.mk` | output ≥ 1 | P0 | |
-| R7 | Diff stays inside Files Changed (§2/§3) | `git diff --name-only origin/main \| grep -vE 'admin-models\.yaml\|openapi/root\.yaml\|public/openapi\.json\|check_openapi_route_coverage\.py\|make/quality\.mk'` | no output | P0 | |
+| R1 | Phantom continuation claims gone (§1) | `grep -rn "chunk_chain_escalate_human\|10 continuations\|continuation cap\|continuation:" ~/Projects/docs/concepts/context-lifecycle.mdx ~/Projects/docs/fleets/authoring.mdx ~/Projects/docs/fleets/running.mdx ~/Projects/docs/cli/agentsfleet.mdx` | no output | P0 | |
+| R2 | Auto re-enqueue claim gone (§1) | `grep -rn "re-enqueues the same event" ~/Projects/docs/` | no output | P0 | |
+| R3 | admin/models documented (§2) | `grep -c "/v1/admin/models" public/openapi.json` | output ≥ 2 | P0 | ✅ `4` |
+| R4 | OpenAPI bundle + all coverage checks pass (§2/§3) | `make check-openapi` | exit 0 | P0 | ✅ `✓ [openapi] Bundle + lint + error-schema + url-shape + route-coverage all green` |
+| R5 | Coverage gate catches an undocumented route (§3) | `python3 scripts/check_openapi_route_coverage.py` after deleting a served path from a temp `openapi.json` copy | exit ≠ 0, path named | P0 | ✅ `UNDOCUMENTED ROUTE: /v1/admin/models  (routes.zig: admin_models)`, exit=1 |
+| R6 | Coverage gate wired into check-openapi (§3) | `grep -c check_openapi_route_coverage make/quality.mk` | output ≥ 1 | P0 | ✅ `2` |
+| R7 | This workstream's own diff stays inside its Files Changed (§2/§3) | `git diff --name-only origin/main \| grep -E 'openapi\|scripts/\|make/' \| grep -vE 'admin-models\.yaml\|openapi/root\.yaml\|public/openapi\.json\|check_openapi_route_coverage(_test)?\.py\|make/quality\.mk'` | no output | P0 | |
+| R8 | Every ceiling named in the docs has a code owner (§1) | `grep -rn "budget_breach\|timeout_kill\|renewal_terminate\|oom_kill" src/ \| grep -v test \| wc -l` | output ≥ 4 | P0 | |
 | S1 | Lint clean | `make lint` | exit 0 | P0 | |
 | S2 | No secrets | `gitleaks detect` | exit 0 | P0 | |
-| S3 | No oversize source file | `git diff --name-only origin/main \| grep -v '\.md$' \| xargs wc -l 2>/dev/null \| awk '$1>350 && $2!="total"'` | no output | P0 | |
+| S3 | No oversize hand-written source file | `git diff --name-only origin/main \| grep -vE '\.md$\|^public/openapi\.json$' \| xargs wc -l 2>/dev/null \| awk '$1>350 && $2!="total"'` | no output | P0 | |
+
+**R7 note (amended Jul 10 2026):** the branch also carries M122_005's enforcement code (`src/**`) and both specs (`docs/v2/**`), so R7 narrows to the OpenAPI/scripts/make surface this workstream owns; M122_005 grades its own Files-Changed scope. **S3 note:** `public/openapi.json` is excluded — it is a `redocly bundle` artefact (6,946 lines) and §2 mandates regenerating it, so the row as originally written was unsatisfiable by construction.
 
 **Grading protocol (VERIFY):** run the Verify command verbatim; grade ONLY from its output. Graded = ✅/❌ + the one decisive output line. **Ship gate:** every row graded, every P0 ✅ → eligible for CHORE(close); any ❌ or empty cell → return to EXECUTE; a P1 ❌ ships only with an Indy-acked deferral quote in Discovery.
 
@@ -190,7 +211,10 @@ N/A — no files deleted; §1 rewrites two docs pages in place, §2/§3 create n
 | Deleted symbol/prose | Grep | Expected |
 |-----------------------|------|----------|
 | `chunk_chain_escalate_human` (phantom failure label in docs) | `grep -rn "chunk_chain_escalate_human" ~/Projects/docs` | 0 matches |
-| auto re-enqueue continuation prose | `grep -rn "re-enqueues the same event\|actor=continuation" ~/Projects/docs` | 0 matches |
+| auto re-enqueue continuation prose | `grep -rn "re-enqueues the same event" ~/Projects/docs` | 0 matches |
+| phantom `continuation:` actor value | `grep -rn "actor=continuation\|continuation:" ~/Projects/docs --exclude=changelog.mdx` | 0 matches |
+
+**`changelog.mdx` carve-out.** `changelog.mdx:1660` carries `actor=continuation:<original_actor>` in a shipped entry. Shipped changelog entries are historical record — `docs/CHANGELOG_VOICE.md` archives history, never rewrites it — so the repo-wide grep in this table excludes it. The correction is published forward, in the new `<Update>` this workstream appends at CHORE(close), which states plainly that continuation chains never shipped. Rewriting the old entry would erase the evidence that the claim was ever made.
 
 ## Out of Scope
 
@@ -198,6 +222,8 @@ N/A — no files deleted; §1 rewrites two docs pages in place, §2/§3 create n
 - Removing the ingest-only `EVENT_TYPE_CONTINUATION` type from `event_rows.zig` — a separate dead-machinery call, not this doc/parity workstream.
 - Adding the admin/models routes to the docs-repo navigation — they are an internal platform-admin surface; OpenAPI parity is the parity fix, and public-nav placement is a separate editorial decision.
 - Documenting or allowlisting-then-narrowing every currently-internal control-plane route beyond what the coverage gate needs to pass at HEAD.
+- Adding the four missing served-path comments to `routes.zig` so `PATHLESS_VARIANT_PATHS` can be emptied — the durable fix for §3's one manual table, deferred to keep this workstream's in-repo diff inside R7.
+- **Per-fleet budget enforcement itself** — the code that makes §1's budget prose true is M122_005, a sibling workstream on this same branch and PR. This spec only *describes* the enforced behaviour; it does not implement it.
 
 ---
 
@@ -222,7 +248,21 @@ N/A — no files deleted; §1 rewrites two docs pages in place, §2/§3 create n
 
 ## Discovery (consult log)
 
-- **Consults** — Architecture / Legacy-Design / gate-flag triage: (empty at creation).
-- **Metrics review** — (empty at creation).
-- **Skill-chain outcomes** — (empty at creation).
-- **Deferrals** — (empty at creation).
+- **Consults** — Architecture (`dispatch/name_architecture.md`, Jul 10 2026): read `docs/architecture/billing_and_provider_keys.md` before naming the budget flow. It defines posture as tenant-scoped and says nothing about per-fleet dollar ceilings, so M122_005 introduces that concept and owns the corresponding architecture-doc diff. Gate-flag triage: none fired (no Zig, no schema, no UI in this workstream).
+
+- **Golden-path walk (Jul 10 2026)** — walking §1's end-to-end path before editing surfaced three facts that refute the spec as authored:
+  1. **Context exhaustion does not produce `fleet_error`.** `runner_progress.zig:247` only *observes* `prompt_tokens / context_cap_tokens` and logs `chunk_threshold_breached`; its comment states the runtime "cannot force a chunk." A fleet that wraps up voluntarily exits 0 → `exit_ok: true` → status `processed`. `fleet_error` is reserved for the ten `FailureClass` kills. Dimension 1.2 and its test were amended; writing `fleet_error` would have swapped one falsehood for another.
+  2. **`budget_breach` is a phantom label** — zero hits across `src/` and `cli/`, yet named in three docs pages.
+  3. **Per-fleet budgets are never enforced.** `FleetConfig.budget` (`config_types.zig:149`) is read by exactly one thing in the repo: `config_parser_test.zig`. `daily_dollars`/`monthly_dollars` are required in every `TRIGGER.md`, parsed, validated, and then ignored. Combined with (1) and the continuation phantom, all three ceilings named in `context-lifecycle.mdx:44`'s "Will it run forever?" answer are fiction.
+
+- **Decisions (Indy, Jul 10 2026)** — a cost-safety boundary is not an agent-unilateral call, so both were escalated:
+  - *Budget gap:* **build the enforcement**, rather than delete the promise from the docs. → M122_005.
+  - *Enforcement points:* **pre-run gate + mid-run `/renew`, with a new `budget_breach` label** — so an in-flight run is stopped, matching the behaviour the docs already promise, and triage can tell a budget stop from a credit stop.
+  - *Spec shape:* **a new spec (M122_005) on this same worktree and PR**, not a wholesale amendment of M122_001. Rationale: M122_001 keeps its three Sections and its rubric; money-handling code gets its own Failure Modes, Invariants, and Test Specification; and the docs rewrite cannot merge ahead of the code it describes.
+  - *Docs sweep width:* **every affected page except `changelog.mdx`** (history is append-only; the correction rides the new `<Update>`).
+
+- **Metrics review** — unchanged for this workstream (no product or operator signal added, renamed, or removed). M122_005 adds the `budget_breach` terminal label and its `metrics_runner` failure bucket; that surface is reviewed in M122_005's own Metrics table.
+
+- **Skill-chain outcomes** — `/write-unit-test` + `/review` + `kishore-babysit-prs`: pending (run at VERIFY / CHORE(close)).
+
+- **Deferrals** — one, agent-proposed and requiring an Indy ack before CHORE(close): adding the four missing served-path comments to `routes.zig` so `PATHLESS_VARIANT_PATHS` can be emptied (Out of Scope, kept out to hold R7's diff bound). No other item is deferred; nothing in this spec is claimed complete that is not.
