@@ -58,37 +58,6 @@ _lint_zig_pg_drain:
 	@python3 lint-zig.py src
 	@echo "✓ [zig] pg-drain check passed"
 
-REACHABLE_COUNTS := .tmp/zig-reachable-counts.txt
-
-_lint_zig_test_reachability:
-	@mkdir -p .tmp
-	@echo "→ [zig] Checking every test block is reachable from a test root..."
-	@python3 scripts/check_zig_test_reachability_test.py >/dev/null 2>&1 || \
-	  { echo "✗ [zig] reachability checker self-tests failed"; python3 scripts/check_zig_test_reachability_test.py; exit 1; }
-	@python3 scripts/check_zig_test_reachability.py --check --counts-out $(REACHABLE_COUNTS)
-
-# Counts come from the compiler-registered set, not a textual scan: a `test` block
-# in a file no test root force-imports never compiles, and crediting it here would
-# let VERIFY's Test Delta report growth that does not exist. Listing all 8 binaries
-# costs ~10s, so this consumes the counts the reachability gate already produced
-# rather than paying for an identical second listing.
-_lint_zig_test_depth: _lint_zig_test_reachability
-	@mkdir -p .tmp
-	@set -eu; \
-	 counts=$$(cat $(REACHABLE_COUNTS)); \
-	 unit_count=$$(printf '%s\n' "$$counts" | sed -n 's/^reachable_test_cases=//p'); \
-	 integration_count=$$(printf '%s\n' "$$counts" | sed -n 's/^reachable_integration_cases=//p'); \
-	 for pair in "unit:$$unit_count" "integration:$$integration_count"; do \
-	   name=$${pair%%:*}; value=$${pair#*:}; \
-	   case "$$value" in \
-	     ''|*[!0-9]*) echo "✗ [zig] depth gate: --count gave no $$name total (got '$$value')"; exit 1;; \
-	   esac; \
-	 done; \
-	 printf 'agentsfleetd_test_cases=%s\nagentsfleetd_integration_cases=%s\n' "$$unit_count" "$$integration_count" | tee .tmp/agentsfleetd-test-depth.txt >/dev/null; \
-	 if [ "$$unit_count" -lt 25 ]; then echo "✗ expected at least 25 Zig tests, got $$unit_count"; exit 1; fi; \
-	 if [ "$$integration_count" -lt 3 ]; then echo "✗ expected at least 3 Zig integration tests, got $$integration_count"; exit 1; fi; \
-	 echo "✓ [zig] test depth gate passed (unit=$$unit_count integration=$$integration_count)"
-
 _zig_target_lint:
 	@echo "→ [ci] Checking Zig target triples for -gnu suffix..."
 	@FAIL=0; \
