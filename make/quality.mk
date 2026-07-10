@@ -58,15 +58,6 @@ _lint_zig_pg_drain:
 	@python3 lint-zig.py src
 	@echo "✓ [zig] pg-drain check passed"
 
-_lint_zig_test_depth:
-	@mkdir -p .tmp
-	@unit_count=$$(find src -name '*.zig' -exec grep -hE '^test "' {} + | wc -l | tr -d ' '); \
-	 integration_count=$$(find src -name '*.zig' -exec grep -hE '^test "integration:' {} + | wc -l | tr -d ' '); \
-	 printf 'agentsfleetd_test_cases=%s\nagentsfleetd_integration_cases=%s\n' "$$unit_count" "$$integration_count" | tee .tmp/agentsfleetd-test-depth.txt >/dev/null; \
-	 if [ "$$unit_count" -lt 25 ]; then echo "✗ expected at least 25 Zig tests, got $$unit_count"; exit 1; fi; \
-	 if [ "$$integration_count" -lt 3 ]; then echo "✗ expected at least 3 Zig integration tests, got $$integration_count"; exit 1; fi; \
-	 echo "✓ [zig] test depth gate passed (unit=$$unit_count integration=$$integration_count)"
-
 _zig_target_lint:
 	@echo "→ [ci] Checking Zig target triples for -gnu suffix..."
 	@FAIL=0; \
@@ -107,10 +98,20 @@ ZIG_LINE_LIMIT_ALLOWLIST := \
 ZIG_LINE_LIMIT_EXCLUDE_DIRS := (^|/)(vendor|third_party|\.zig-cache)/
 ZIG_LINE_LIMIT_TEST_PATTERN := (^|/)(tests?)/|_test\.zig$$|_test_.*\.zig$$|tests\.zig$$|.*test.*\.zig$$
 
+# `-c safe.directory=*` because the CI container runs as root against a checkout
+# owned by the runner user; plain `git ls-files` there dies with "dubious ownership"
+# (exit 128). The empty-list check is the real guard: without it the loop below
+# never runs, FAIL stays 0, and this gate prints ✓ having inspected zero files —
+# which is exactly what it did in CI until Jul 2026.
 _zig_line_limit_check:
 	@echo "→ [zig] Checking Zig file line limit (max 350 lines — RULE FLL)..."
 	@FAIL=0; \
-	for f in $$(git ls-files '*.zig' | grep -vE '$(ZIG_LINE_LIMIT_EXCLUDE_DIRS)' | grep -vE '$(ZIG_LINE_LIMIT_TEST_PATTERN)' | sort); do \
+	files=$$(git -c safe.directory='*' ls-files '*.zig' | grep -vE '$(ZIG_LINE_LIMIT_EXCLUDE_DIRS)' | grep -vE '$(ZIG_LINE_LIMIT_TEST_PATTERN)' | sort); \
+	if [ -z "$$files" ]; then \
+		echo "✗ [zig] line-limit gate listed zero Zig files — git failed, so this gate proved nothing"; \
+		exit 1; \
+	fi; \
+	for f in $$files; do \
 		lines=$$(wc -l < "$$f"); \
 		if [ "$$lines" -gt 350 ]; then \
 			allowed=0; \
@@ -259,7 +260,7 @@ _runner_isolation_check:
 	if [ $$FAIL -eq 1 ]; then exit 1; fi; \
 	echo "✓ [isolation] runner graph depends only on nullclaw (no pg/s3/httpz)"
 
-lint-zig: _fmt_check _zlint_check _lint_zig_pg_drain _lint_zig_test_depth _schema_gate_check _zig_target_lint _zig_line_limit_check _hardcoded_role_check _legacy_symbols_check _legacy_noun_check _runner_isolation_check  ## Lint all Zig source (agentsfleetd/runner/lib)
+lint-zig: _fmt_check _zlint_check _lint_zig_pg_drain check-test-reachability _lint_zig_test_depth _schema_gate_check _zig_target_lint _zig_line_limit_check _hardcoded_role_check _legacy_symbols_check _legacy_noun_check _runner_isolation_check  ## Lint all Zig source (agentsfleetd/runner/lib)
 	@echo "✓ [zig] Lint passed"
 
 lint-website: _website_lint  ## Lint website only (Oxlint + tsc)
@@ -321,7 +322,8 @@ check-playbooks:  ## Validate playbooks/ — shellcheck + reference integrity + 
 	@# themselves). Excludes docs/v2/ and CHANGELOG.md: specs and the changelog are
 	@# historical records that intentionally cite now-moved paths.
 	@FAIL=0; \
-	REFS=$$(git grep -hoE 'playbooks/[A-Za-z0-9_./-]+' -- . ':!docs/v2/' ':!CHANGELOG.md' | sed 's/[.,):]*$$//' | sort -u); \
+	REFS=$$(git -c safe.directory='*' grep -hoE 'playbooks/[A-Za-z0-9_./-]+' -- . ':!docs/v2/' ':!CHANGELOG.md' | sed 's/[.,):]*$$//' | sort -u); \
+	if [ -z "$$REFS" ]; then echo "✗ [playbooks] reference scan matched nothing — git failed, so this gate proved nothing"; exit 1; fi; \
 	for ref in $$REFS; do \
 	  [ -e "$$ref" ] || { echo "✗ broken playbooks/ reference: $$ref"; FAIL=1; }; \
 	done; \
