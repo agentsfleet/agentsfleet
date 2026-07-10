@@ -19,6 +19,8 @@ Commands:
   workspace                    Manage workspaces
   fleet-key                    Manage fleet API keys
   grant                        Manage integration grants
+  api-key                      Manage tenant API keys
+  connector                    Inspect workspace connectors
   tenant                       Tenant-scoped commands
   billing                      Tenant billing dashboard
   library                      Browse the first-party Fleet library gallery

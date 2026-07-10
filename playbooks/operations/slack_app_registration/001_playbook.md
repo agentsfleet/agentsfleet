@@ -129,14 +129,14 @@ jq -n \
   --arg sec "$(read -rsp 'client_secret: ' sec >&2; printf '%s' "$sec")" \
   --arg sig "$(read -rsp 'signing_secret: ' sig >&2; printf '%s' "$sig")" \
   '{client_id:$cid, client_secret:$sec, signing_secret:$sig}' |
-  AGENTSFLEET_API_KEY="$ADMIN_KEY" agentsfleet credential add slack-app --data @-
+  AGENTSFLEET_API_KEY="$ADMIN_KEY" agentsfleet secret create slack-app --force --data @-
 ```
 
-> Prefer mirroring `op://$VAULT/slack-app/{client_id,client_secret,signing_secret}` into 1Password first, then piping `op read` → `jq` → `agentsfleet credential add` (the admin_bootstrap §7 shape, whose `credential set` is the older verb for the same `--data @-` stdin pattern) so the source of truth survives a vault rotation. Re-run with `--force` to overwrite an existing `slack-app`.
+> Prefer mirroring `op://$VAULT/slack-app/{client_id,client_secret,signing_secret}` into 1Password first, then piping `op read` → `jq` → `agentsfleet secret create --force` so the source of truth survives a vault rotation.
 
 ### Acceptance
 
-`agentsfleet credential add` exits 0. No secret appears in shell history, process argv, or output.
+`agentsfleet secret create` exits 0. No secret appears in shell history, process argv, or output.
 
 ---
 
@@ -146,19 +146,19 @@ jq -n \
 
 ```bash
 # Daemon can see the platform credential (metadata only — never the secret bytes):
-AGENTSFLEET_API_KEY="$ADMIN_KEY" agentsfleet credential show slack-app --json | jq '{name,kind}'
+AGENTSFLEET_API_KEY="$ADMIN_KEY" agentsfleet secret show slack-app --json | jq '{name,kind}'
 # Live check: post a real @agentsfleet in a test channel the bot was invited to.
 # Expect: an in-thread reply within a few seconds; the event lands in core.fleet_events.
 ```
 
 ### Acceptance
 
-`credential show` returns the `slack-app` metadata with no secret material; a real `@agentsfleet` mention is answered in-thread.
+`secret show` returns the `slack-app` metadata with no secret material; a real `@agentsfleet` mention is answered in-thread.
 
 ---
 
 ## Rollback
 
-1. `agentsfleet credential delete slack-app` (admin key) to drop the platform secret.
+1. `agentsfleet secret delete slack-app` (admin key) to drop the platform secret.
 2. At `api.slack.com/apps` → the app → **Basic Information → Delete App** (or rotate `client_secret`/`signing_secret` and re-run §5).
 3. Existing per-customer installs (`core.connector_installs` rows + the per-workspace `fleet:slack` vault handles) are unaffected by an app-secret rotation; a full app delete invalidates them — re-install per customer afterward.

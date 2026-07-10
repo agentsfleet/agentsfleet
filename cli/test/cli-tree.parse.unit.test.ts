@@ -48,11 +48,17 @@ test("auth status dispatches the nested status action", async () => {
 
 // ── Workspace tree ──────────────────────────────────────────────────────
 
-test("workspace add [name] captures optional positional", async () => {
+test("workspace create [name] captures optional positional", async () => {
   const { handlers, calls } = makeSpyTree();
-  await dispatch(["workspace", "add", "my-ws"], handlers);
-  expect(calls[0]?.name).toBe("workspace.add");
+  await dispatch(["workspace", "create", "my-ws"], handlers);
+  expect(calls[0]?.name).toBe("workspace.create");
   expect(calls[0]?.frame.parsed.positionals).toEqual(["my-ws"]);
+});
+
+test("workspace add is rejected with no dispatch", async () => {
+  const { handlers, calls } = makeSpyTree();
+  await expect(dispatch(["workspace", "add", "my-ws"], handlers)).rejects.toThrow();
+  expect(calls).toHaveLength(0);
 });
 
 test("workspace list dispatches", async () => {
@@ -91,20 +97,26 @@ test("workspace delete <id> captures required positional", async () => {
 
 // ── Fleet-key tree ────────────────────────────────────────────────────────
 
-test("fleet-key add accepts --workspace / --fleet / --name / --description", async () => {
+test("fleet-key create accepts --workspace / --fleet / --name / --description", async () => {
   const { handlers, calls } = makeSpyTree();
   await dispatch([
-    "fleet-key", "add",
+    "fleet-key", "create",
     "--workspace", VALID_ID,
     "--fleet",    VALID_ID,
     "--name",      "scout",
     "--description", "for scouting",
   ], handlers);
-  expect(calls[0]?.name).toBe("fleet-key.add");
+  expect(calls[0]?.name).toBe("fleet-key.create");
   expect(calls[0]?.frame.parsed.options.workspace).toBe(VALID_ID);
   expect(calls[0]?.frame.parsed.options.fleet).toBe(VALID_ID);
   expect(calls[0]?.frame.parsed.options.name).toBe("scout");
   expect(calls[0]?.frame.parsed.options.description).toBe("for scouting");
+});
+
+test("fleet-key add is rejected with no dispatch", async () => {
+  const { handlers, calls } = makeSpyTree();
+  await expect(dispatch(["fleet-key", "add"], handlers)).rejects.toThrow();
+  expect(calls).toHaveLength(0);
 });
 
 test("fleet-key list with --workspace dispatches", async () => {
@@ -118,6 +130,61 @@ test("fleet-key delete <id> with --workspace captures both", async () => {
   await dispatch(["fleet-key", "delete", VALID_ID, "--workspace", VALID_ID], handlers);
   expect(calls[0]?.name).toBe("fleet-key.delete");
   expect(calls[0]?.frame.parsed.positionals[0]).toBe(VALID_ID);
+  expect(calls[0]?.frame.parsed.options.workspace).toBe(VALID_ID);
+});
+
+// ── API-key tree ─────────────────────────────────────────────────────────
+
+test("api-key create accepts --name / --description", async () => {
+  const { handlers, calls } = makeSpyTree();
+  await dispatch([
+    "api-key", "create",
+    "--name", "ci-runner",
+    "--description", "build automation",
+  ], handlers);
+  expect(calls[0]?.name).toBe("api-key.create");
+  expect(calls[0]?.frame.parsed.options.name).toBe("ci-runner");
+  expect(calls[0]?.frame.parsed.options.description).toBe("build automation");
+});
+
+test("api-key list accepts pagination and sort flags", async () => {
+  const { handlers, calls } = makeSpyTree();
+  await dispatch([
+    "api-key", "list",
+    "--page", "2",
+    "--page-size", "50",
+    "--sort", "key_name",
+  ], handlers);
+  expect(calls[0]?.name).toBe("api-key.list");
+  expect(calls[0]?.frame.parsed.options.page).toBe(2);
+  expect(calls[0]?.frame.parsed.options.pageSize).toBe(50);
+  expect(calls[0]?.frame.parsed.options["page-size"]).toBe(50);
+  expect(calls[0]?.frame.parsed.options.sort).toBe("key_name");
+});
+
+test("api-key revoke/delete capture the key id", async () => {
+  const { handlers, calls } = makeSpyTree();
+  await dispatch(["api-key", "revoke", VALID_ID], handlers);
+  await dispatch(["api-key", "delete", VALID_ID], handlers);
+  expect(calls.map((c) => c.name)).toEqual(["api-key.revoke", "api-key.delete"]);
+  expect(calls[0]?.frame.parsed.positionals[0]).toBe(VALID_ID);
+  expect(calls[1]?.frame.parsed.positionals[0]).toBe(VALID_ID);
+});
+
+// ── Connector tree ───────────────────────────────────────────────────────
+
+test("connector list dispatches with --workspace", async () => {
+  const { handlers, calls } = makeSpyTree();
+  await dispatch(["connector", "list", "--workspace", VALID_ID], handlers);
+  expect(calls[0]?.name).toBe("connector.list");
+  expect(calls[0]?.frame.parsed.options.workspace).toBe(VALID_ID);
+});
+
+test("connector status captures provider and --workspace", async () => {
+  const { handlers, calls } = makeSpyTree();
+  await dispatch(["connector", "status", "slack", "--workspace", VALID_ID], handlers);
+  expect(calls[0]?.name).toBe("connector.status");
+  expect(calls[0]?.frame.parsed.positionals[0]).toBe("slack");
   expect(calls[0]?.frame.parsed.options.workspace).toBe(VALID_ID);
 });
 
@@ -145,16 +212,22 @@ test("tenant provider show dispatches", async () => {
   expect(calls[0]?.name).toBe("tenant.provider.show");
 });
 
-test("tenant provider add accepts --secret / --model", async () => {
+test("tenant provider create accepts --secret / --model", async () => {
   const { handlers, calls } = makeSpyTree();
   await dispatch([
-    "tenant", "provider", "add",
+    "tenant", "provider", "create",
     "--secret", "openai-prod",
     "--model",      "gpt-4o",
   ], handlers);
-  expect(calls[0]?.name).toBe("tenant.provider.add");
+  expect(calls[0]?.name).toBe("tenant.provider.create");
   expect(calls[0]?.frame.parsed.options.secret).toBe("openai-prod");
   expect(calls[0]?.frame.parsed.options.model).toBe("gpt-4o");
+});
+
+test("tenant provider add is rejected with no dispatch", async () => {
+  const { handlers, calls } = makeSpyTree();
+  await expect(dispatch(["tenant", "provider", "add"], handlers)).rejects.toThrow();
+  expect(calls).toHaveLength(0);
 });
 
 test("tenant provider delete dispatches", async () => {

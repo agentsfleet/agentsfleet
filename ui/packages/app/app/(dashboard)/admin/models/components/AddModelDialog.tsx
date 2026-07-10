@@ -22,6 +22,7 @@ import {
   FormMessage,
   Input,
   Spinner,
+  TooltipButton,
 } from "@agentsfleet/design-system";
 import { PlusIcon } from "lucide-react";
 import { type AdminModel, usdPerMtokToNanos } from "@/lib/api/admin_models";
@@ -50,6 +51,7 @@ const DEFAULTS: FormValues = {
   cached_usd: "0",
   output_usd: "0",
 };
+const CREATE_MODEL_LIBRARY_TOOLTIP = "Create a priced model users can choose.";
 
 export default function AddModelDialog({ onCreated }: { onCreated: (m: AdminModel) => void }) {
   const [open, setOpen] = useState(false);
@@ -78,7 +80,7 @@ export default function AddModelDialog({ onCreated }: { onCreated: (m: AdminMode
         output_nanos_per_mtok: usdPerMtokToNanos(Number(v.output_usd)),
       });
       if (!r.ok) {
-        setApiError(presentErrorString({ errorCode: r.errorCode, message: r.error, action: "add the model" }));
+        setApiError(presentErrorString({ errorCode: r.errorCode, message: r.error, action: "create the model" }));
         return;
       }
       onCreated(r.data);
@@ -89,16 +91,16 @@ export default function AddModelDialog({ onCreated }: { onCreated: (m: AdminMode
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
-        <Button type="button" size="sm">
+        <TooltipButton type="button" size="sm" tooltip={CREATE_MODEL_LIBRARY_TOOLTIP}>
           <PlusIcon size={14} />
           Create model library
-        </Button>
+        </TooltipButton>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Create model library</DialogTitle>
           <DialogDescription>
-            A model library entry prices a model per token. Rates are per 1M tokens.
+            Create a priced model users can choose. Rates are per 1M tokens.
           </DialogDescription>
         </DialogHeader>
         <Form {...form}>
@@ -150,10 +152,18 @@ export default function AddModelDialog({ onCreated }: { onCreated: (m: AdminMode
             </div>
             {apiError ? <p className="text-sm text-destructive">{apiError}</p> : null}
             <DialogFooter>
-              <Button type="submit" disabled={pending}>
+              <Button
+                type="button"
+                variant="ghost"
+                disabled={pending}
+                onClick={() => handleOpenChange(false)}
+              >
+                Cancel
+              </Button>
+              <TooltipButton type="submit" disabled={pending} tooltip={CREATE_MODEL_LIBRARY_TOOLTIP}>
                 {pending ? <Spinner size="sm" srLabel="Creating" /> : null}
                 Create model library
-              </Button>
+              </TooltipButton>
             </DialogFooter>
           </form>
         </Form>

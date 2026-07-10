@@ -27,7 +27,7 @@ export const requireWorkspaceId: Effect.Effect<
     return yield* Effect.fail(
       new ConfigError({
         detail: "no workspace selected",
-        suggestion: "run `agentsfleet workspace add` or `workspace use <id>`",
+        suggestion: "run `agentsfleet workspace create` or `workspace use <id>`",
       }),
     );
   }

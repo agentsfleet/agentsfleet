@@ -3,7 +3,7 @@
 //
 // Populated once per CLI invocation by the commander → Effect bridge
 // (src/lib/commander-bridge.ts). Reads:
-//   - commandPath: the resolved command name(s), e.g. ["workspace", "add"]
+//   - commandPath: the resolved command name(s), e.g. ["workspace", "create"]
 //   - commandRunId: a fresh UUID per invocation (correlates analytics
 //     events, spans, and log lines emitted during this run)
 //

@@ -48,7 +48,7 @@ afterEach(() => cleanup());
 describe("RenameSecretDialog", () => {
   it("always shows the generic (no fleet-name) rename warning", () => {
     renderDialog();
-    expect(screen.getByText(/renaming breaks fleets that reference this secret/i)).toBeTruthy();
+    expect(screen.getByText(/any fleets using this secret still point to the old name/i)).toBeTruthy();
     // Generic by design — no specific fleet is ever named.
     expect(screen.queryByText(/\$\{secrets\./i)).toBeNull();
   });

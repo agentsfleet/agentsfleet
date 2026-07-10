@@ -8,6 +8,7 @@ import {
   PageHeader,
   PageTitle,
   Skeleton,
+  TooltipButton,
 } from "@agentsfleet/design-system";
 import { listFleets } from "@/lib/api/fleets";
 import { getTenantBillingCached } from "@/lib/api/tenant_billing";
@@ -15,6 +16,7 @@ import { workspacePath } from "@/lib/workspace-routes";
 import ExhaustionBanner from "@/components/domain/ExhaustionBanner";
 import { BotIcon, PlusIcon } from "lucide-react";
 import FleetsList from "./components/FleetsList";
+import { INSTALL_FLEET_TOOLTIP } from "./new/library-docs";
 
 export const dynamic = "force-dynamic";
 
@@ -96,9 +98,11 @@ function FleetsEmptyState({ workspaceId }: { workspaceId: string }) {
           >
             Learn more
           </a>
-          <Link href={workspacePath(workspaceId, "fleets/new")} className={buttonClassName("default", "sm")}>
-            <PlusIcon size={14} /> Install fleet
-          </Link>
+          <TooltipButton asChild size="sm" tooltip={INSTALL_FLEET_TOOLTIP}>
+            <Link href={workspacePath(workspaceId, "fleets/new")}>
+              <PlusIcon size={14} /> Install fleet
+            </Link>
+          </TooltipButton>
         </div>
       }
     />

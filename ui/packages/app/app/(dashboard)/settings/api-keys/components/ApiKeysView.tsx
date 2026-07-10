@@ -14,7 +14,7 @@ import type { ApiKeyListResponse } from "@/lib/api/api_keys";
 import ApiKeyList, { type ApiKeyListHandle } from "./ApiKeyList";
 import CreateApiKeyDialogDynamic from "@/components/domain/island-dynamic/CreateApiKeyDialogDynamic";
 
-const API_KEYS_DESCRIPTION = "Authenticate with the agentsfleet API. Each key is shown once.";
+const API_KEYS_DESCRIPTION = "Authenticate with the agentsfleet API.";
 
 type ApiKeysViewProps = {
   initial: ApiKeyListResponse | null;

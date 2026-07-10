@@ -40,7 +40,7 @@ export function makeSpyTree(): SpyTree {
     },
     doctor: spy("doctor"),
     workspace: {
-      add: spy("workspace.add"),
+      create: spy("workspace.create"),
       list: spy("workspace.list"),
       use: spy("workspace.use"),
       show: spy("workspace.show"),
@@ -48,9 +48,19 @@ export function makeSpyTree(): SpyTree {
       delete: spy("workspace.delete"),
     },
     fleetKey: {
-      add: spy("fleet-key.add"),
+      create: spy("fleet-key.create"),
       list: spy("fleet-key.list"),
       delete: spy("fleet-key.delete"),
+    },
+    apiKey: {
+      create: spy("api-key.create"),
+      list: spy("api-key.list"),
+      revoke: spy("api-key.revoke"),
+      delete: spy("api-key.delete"),
+    },
+    connector: {
+      list: spy("connector.list"),
+      status: spy("connector.status"),
     },
     grant: {
       list: spy("grant.list"),
@@ -59,7 +69,7 @@ export function makeSpyTree(): SpyTree {
     tenant: {
       provider: {
         show: spy("tenant.provider.show"),
-        add: spy("tenant.provider.add"),
+        create: spy("tenant.provider.create"),
         delete: spy("tenant.provider.delete"),
       },
     },
@@ -80,7 +90,7 @@ export function makeSpyTree(): SpyTree {
       events: spy("fleet.events"),
       steer: spy("fleet.steer"),
       secret: {
-        add: spy("fleet.secret.add"),
+        create: spy("fleet.secret.create"),
         show: spy("fleet.secret.show"),
         list: spy("fleet.secret.list"),
         delete: spy("fleet.secret.delete"),

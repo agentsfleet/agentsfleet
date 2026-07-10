@@ -18,7 +18,7 @@ describe("did-you-mean integration", () => {
     expect(errText).toContain("doctor");
   });
 
-  test("'workspace ad' suggests 'workspace add'", async () => {
+  test("'workspac' suggests 'workspace create'", async () => {
     const out = bufferStream();
     const err = bufferStream();
     // runCli sees command="workspace" args=["ad"], which IS a valid route (workspace)

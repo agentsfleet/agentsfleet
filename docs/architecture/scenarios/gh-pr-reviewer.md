@@ -59,7 +59,7 @@ The runner executes the **fleet's** SKILL.md (which reflects any PATCH), not the
 
 ## 3. Wire the webhook, the PR fires
 
-1. **Secrets.** `agentsfleet secret add github --data=@-` with `{ "token":"ghp_…", "webhook_secret":"…" }` → vault key `fleet:github`.
+1. **Secrets.** `agentsfleet secret create github --data=@-` with `{ "token":"ghp_…", "webhook_secret":"…" }` → vault key `fleet:github`.
 2. **Register the webhook** on GitHub (Settings ▸ Webhooks, or the pre-filled `gh api …/hooks` command the dashboard renders), `events: pull_request`, `config[secret]` = the `webhook_secret`.
 3. **A PR is opened.** GitHub `POST /v1/webhooks/{fleet_id}/github` with `X-Hub-Signature-256`. The receiver verifies the Hash-based Message Authentication Code (HMAC) against `fleet:github.webhook_secret`, then `XADD fleet:{id}:events`. 🔨 **Today the receiver accepts only `workflow_run`; accepting `pull_request` is the one piece of trigger plumbing this fleet needs** — until it lands, the PR event is ignored.
 
@@ -74,7 +74,7 @@ The gate + billing path is identical to every other event — see [`../billing_a
 
 ## 5. What John sees after `pull_request` acceptance lands
 
-- The PR carries the fleet's review comments.
+- The pull request carries the fleet's review comments.
 - `agentsfleet events {id}` / the dashboard `/fleets/{id}` thread shows the run: the `http_request` tool calls and the response, streamed over Server-Sent Events (SSE), durable in `core.fleet_events`.
 
 ## 6. Built vs to-build

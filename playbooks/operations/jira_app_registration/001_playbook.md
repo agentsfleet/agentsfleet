@@ -98,14 +98,14 @@ jq -n \
   --arg cid "$(read -rp  'client_id: '     cid; printf '%s' "$cid")" \
   --arg sec "$(read -rsp 'client_secret: ' sec; printf '%s' "$sec")" \
   '{client_id:$cid, client_secret:$sec}' |
-  AGENTSFLEET_API_KEY="$ADMIN_KEY" agentsfleet secret add jira-app --data @-
+  AGENTSFLEET_API_KEY="$ADMIN_KEY" agentsfleet secret create jira-app --data @-
 ```
 
-> Prefer mirroring `op://$VAULT/jira-app/{client_id,client_secret}` into 1Password first, then piping `op read` → `jq` → `agentsfleet secret add` so the source of truth survives a vault rotation. Re-run with `--force` to overwrite an existing `jira-app`.
+> Prefer mirroring `op://$VAULT/jira-app/{client_id,client_secret}` into 1Password first, then piping `op read` → `jq` → `agentsfleet secret create` so the source of truth survives a vault rotation. Re-run with `--force` to overwrite an existing `jira-app`.
 
 ### Acceptance
 
-`agentsfleet secret add` exits 0. No secret appears in shell history, process argv, or output.
+`agentsfleet secret create` exits 0. No secret appears in shell history, process argv, or output.
 
 ---
 

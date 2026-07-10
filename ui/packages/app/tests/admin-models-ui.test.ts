@@ -2,6 +2,7 @@ import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { TooltipProvider } from "@agentsfleet/design-system";
 
 // Only the server-action module is stubbed; lib/api/admin_models (the $/1M⇄nanos
 // conversion) stays real so the form's actual conversion is exercised, not faked.
@@ -39,6 +40,10 @@ import ModelsView from "@/app/(dashboard)/admin/models/components/ModelsView";
 import { type AdminModel, type PlatformKey, OPENAI_COMPATIBLE_PROVIDER } from "@/lib/api/admin_models";
 import { EVENTS } from "../lib/analytics/events";
 
+function renderWithTooltipProvider(node: React.ReactElement) {
+  return render(React.createElement(TooltipProvider, null, node));
+}
+
 // The catalogue is a design-system DataTable — scope a row by its (unique)
 // model_id cell and walk up to its <tr>.
 function rowFor(modelId: string): HTMLElement {
@@ -64,11 +69,11 @@ describe("AddModelDialog", () => {
     expect(trigger.querySelector("svg.lucide-plus")).toBeTruthy();
   });
 
-  it("describes the entry exactly: prices a model per token, rates per 1M tokens", async () => {
+  it("describes the entry in user-facing pricing language", async () => {
     render(React.createElement(AddModelDialog, { onCreated: vi.fn() }));
     await userEvent.setup().click(screen.getByRole("button", { name: "Create model library" }));
     const dialog = within(screen.getByRole("dialog"));
-    expect(dialog.getByText("A model library entry prices a model per token. Rates are per 1M tokens.")).toBeTruthy();
+    expect(dialog.getByText("Create a priced model users can choose. Rates are per 1M tokens.")).toBeTruthy();
   });
 
   it("should convert $/1M entry to integer nanos when creating a model", async () => {
@@ -118,18 +123,30 @@ describe("AddModelDialog", () => {
     await waitFor(() => expect(within(screen.getByRole("dialog")).getByText(/model exists/i)).toBeTruthy());
     expect(onCreated).not.toHaveBeenCalled();
   });
+
+  it("closes from Cancel without creating a model", async () => {
+    const user = userEvent.setup();
+    render(React.createElement(AddModelDialog, { onCreated: vi.fn() }));
+
+    await user.click(screen.getByRole("button", { name: "Create model library" }));
+    const dialog = screen.getByRole("dialog");
+    await user.click(within(dialog).getByRole("button", { name: /^cancel$/i }));
+
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(createAdminModelActionMock).not.toHaveBeenCalled();
+  });
 });
 
 describe("CatalogueList — rows + rates + empty state", () => {
   it("renders a priced row per catalogue model with $/1M rates", () => {
-    render(React.createElement(CatalogueList, { models: CATALOGUE, activeDefault: null, onDeleted: vi.fn(), onUpdated: vi.fn() }));
+    renderWithTooltipProvider(React.createElement(CatalogueList, { models: CATALOGUE, activeDefault: null, onDeleted: vi.fn(), onUpdated: vi.fn() }));
     expect(screen.getByTestId("data-table")).toBeTruthy();
     expect(screen.getByText("glm-5.2")).toBeTruthy();
     expect(screen.getByText("0.55 / 0.14 / 2.19")).toBeTruthy();
   });
 
   it("shows the empty state when there are no models", () => {
-    render(React.createElement(CatalogueList, { models: [], activeDefault: null, onDeleted: vi.fn(), onUpdated: vi.fn() }));
+    renderWithTooltipProvider(React.createElement(CatalogueList, { models: [], activeDefault: null, onDeleted: vi.fn(), onUpdated: vi.fn() }));
     expect(screen.getByText("No models yet")).toBeTruthy();
     expect(screen.getByText("Add a model to price it and make it the platform default.")).toBeTruthy();
     expect(screen.queryByTestId("data-table")).toBeNull();
@@ -139,7 +156,7 @@ describe("CatalogueList — rows + rates + empty state", () => {
 describe("CatalogueList — Delete (icon-only, confirm-gated)", () => {
   it("does not delete on the icon click alone — a confirm dialog gates the irreversible action", async () => {
     const onDeleted = vi.fn();
-    render(React.createElement(CatalogueList, { models: CATALOGUE, activeDefault: null, onDeleted, onUpdated: vi.fn() }));
+    renderWithTooltipProvider(React.createElement(CatalogueList, { models: CATALOGUE, activeDefault: null, onDeleted, onUpdated: vi.fn() }));
 
     fireEvent.click(within(rowFor("glm-5.2")).getByRole("button", { name: "Delete glm-5.2" }));
 
@@ -151,7 +168,7 @@ describe("CatalogueList — Delete (icon-only, confirm-gated)", () => {
   it("removes a row from the parent on a successful delete, after confirming", async () => {
     deleteAdminModelActionMock.mockResolvedValue({ ok: true, data: undefined });
     const onDeleted = vi.fn();
-    render(React.createElement(CatalogueList, { models: CATALOGUE, activeDefault: null, onDeleted, onUpdated: vi.fn() }));
+    renderWithTooltipProvider(React.createElement(CatalogueList, { models: CATALOGUE, activeDefault: null, onDeleted, onUpdated: vi.fn() }));
 
     fireEvent.click(within(rowFor("glm-5.2")).getByRole("button", { name: "Delete glm-5.2" }));
     await waitFor(() => expect(screen.getByRole("alertdialog")).toBeTruthy());
@@ -163,7 +180,7 @@ describe("CatalogueList — Delete (icon-only, confirm-gated)", () => {
 
   it("delete failure surfaces errorMessage inline and keeps the dialog open (test_catalogue_row_delete_is_icon_only_same_behavior)", async () => {
     deleteAdminModelActionMock.mockResolvedValue({ ok: false, error: "model is the active platform default" });
-    render(React.createElement(CatalogueList, { models: CATALOGUE, activeDefault: null, onDeleted: vi.fn(), onUpdated: vi.fn() }));
+    renderWithTooltipProvider(React.createElement(CatalogueList, { models: CATALOGUE, activeDefault: null, onDeleted: vi.fn(), onUpdated: vi.fn() }));
 
     fireEvent.click(within(rowFor("claude-opus-4-8")).getByRole("button", { name: "Delete claude-opus-4-8" }));
     await waitFor(() => expect(screen.getByRole("alertdialog")).toBeTruthy());
@@ -174,7 +191,7 @@ describe("CatalogueList — Delete (icon-only, confirm-gated)", () => {
   });
 
   it("Delete is an icon-only destructive button with an aria-label, not text", () => {
-    render(React.createElement(CatalogueList, { models: CATALOGUE, activeDefault: null, onDeleted: vi.fn(), onUpdated: vi.fn() }));
+    renderWithTooltipProvider(React.createElement(CatalogueList, { models: CATALOGUE, activeDefault: null, onDeleted: vi.fn(), onUpdated: vi.fn() }));
     const del = within(rowFor("glm-5.2")).getByRole("button", { name: "Delete glm-5.2" });
     expect(del.className).toContain("bg-destructive");
     expect(del.querySelector("svg.lucide-trash-2")).toBeTruthy();
@@ -184,7 +201,7 @@ describe("CatalogueList — Delete (icon-only, confirm-gated)", () => {
 
   it("cancel on the dialog clears the target without invoking the delete action", async () => {
     const user = userEvent.setup();
-    render(React.createElement(CatalogueList, { models: CATALOGUE, activeDefault: null, onDeleted: vi.fn(), onUpdated: vi.fn() }));
+    renderWithTooltipProvider(React.createElement(CatalogueList, { models: CATALOGUE, activeDefault: null, onDeleted: vi.fn(), onUpdated: vi.fn() }));
 
     await user.click(within(rowFor("glm-5.2")).getByRole("button", { name: "Delete glm-5.2" }));
     await waitFor(() => expect(screen.getByRole("alertdialog")).toBeTruthy());
@@ -198,7 +215,7 @@ describe("CatalogueList — Edit (rates dialog wired to updateAdminModelAction)"
   it("opens a dialog pre-filled with the row's rates and PATCHes the new rates by uid (test_catalogue_row_edit_dialog_updates_rates)", async () => {
     updateAdminModelActionMock.mockResolvedValue({ ok: true, data: { uid: "u1", updated: true } });
     const onUpdated = vi.fn();
-    render(React.createElement(CatalogueList, { models: CATALOGUE, activeDefault: null, onDeleted: vi.fn(), onUpdated }));
+    renderWithTooltipProvider(React.createElement(CatalogueList, { models: CATALOGUE, activeDefault: null, onDeleted: vi.fn(), onUpdated }));
 
     fireEvent.click(within(rowFor("glm-5.2")).getByRole("button", { name: "Edit glm-5.2" }));
     const dialog = within(await screen.findByRole("dialog"));
@@ -221,7 +238,7 @@ describe("CatalogueList — Edit (rates dialog wired to updateAdminModelAction)"
   });
 
   it("shows the immutable provider + model as disabled fields", async () => {
-    render(React.createElement(CatalogueList, { models: CATALOGUE, activeDefault: null, onDeleted: vi.fn(), onUpdated: vi.fn() }));
+    renderWithTooltipProvider(React.createElement(CatalogueList, { models: CATALOGUE, activeDefault: null, onDeleted: vi.fn(), onUpdated: vi.fn() }));
     fireEvent.click(within(rowFor("glm-5.2")).getByRole("button", { name: "Edit glm-5.2" }));
     const dialog = within(await screen.findByRole("dialog"));
     const provider = dialog.getByLabelText("Provider (locked)") as HTMLInputElement;
@@ -235,7 +252,7 @@ describe("CatalogueList — Edit (rates dialog wired to updateAdminModelAction)"
   it("surfaces the update error inline and keeps the edit dialog open on failure", async () => {
     updateAdminModelActionMock.mockResolvedValue({ ok: false, error: "rate rejected" });
     const onUpdated = vi.fn();
-    render(React.createElement(CatalogueList, { models: CATALOGUE, activeDefault: null, onDeleted: vi.fn(), onUpdated }));
+    renderWithTooltipProvider(React.createElement(CatalogueList, { models: CATALOGUE, activeDefault: null, onDeleted: vi.fn(), onUpdated }));
 
     fireEvent.click(within(rowFor("glm-5.2")).getByRole("button", { name: "Edit glm-5.2" }));
     await screen.findByRole("dialog");
@@ -247,7 +264,7 @@ describe("CatalogueList — Edit (rates dialog wired to updateAdminModelAction)"
 
   it("rejects a non-positive context cap without calling the action", async () => {
     updateAdminModelActionMock.mockResolvedValue({ ok: true, data: { uid: "u1", updated: true } });
-    render(React.createElement(CatalogueList, { models: CATALOGUE, activeDefault: null, onDeleted: vi.fn(), onUpdated: vi.fn() }));
+    renderWithTooltipProvider(React.createElement(CatalogueList, { models: CATALOGUE, activeDefault: null, onDeleted: vi.fn(), onUpdated: vi.fn() }));
 
     fireEvent.click(within(rowFor("glm-5.2")).getByRole("button", { name: "Edit glm-5.2" }));
     const dialog = within(await screen.findByRole("dialog"));
@@ -258,12 +275,24 @@ describe("CatalogueList — Edit (rates dialog wired to updateAdminModelAction)"
     await new Promise((r) => setTimeout(r, 50));
     expect(updateAdminModelActionMock).not.toHaveBeenCalled();
   });
+
+  it("closes from Cancel without updating rates", async () => {
+    const user = userEvent.setup();
+    renderWithTooltipProvider(React.createElement(CatalogueList, { models: CATALOGUE, activeDefault: null, onDeleted: vi.fn(), onUpdated: vi.fn() }));
+
+    await user.click(within(rowFor("glm-5.2")).getByRole("button", { name: "Edit glm-5.2" }));
+    const dialog = within(await screen.findByRole("dialog"));
+    await user.click(dialog.getByRole("button", { name: /^cancel$/i }));
+
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(updateAdminModelActionMock).not.toHaveBeenCalled();
+  });
 });
 
 describe("CatalogueList — Make default (★ minimal key dialog)", () => {
   it("★ opens a minimal key dialog; saving activates the row's (provider, model) as the default", async () => {
     setPlatformDefaultActionMock.mockResolvedValue({ ok: true, data: { provider: "fireworks", model: "glm-5.2", active: true } });
-    render(React.createElement(CatalogueList, { models: CATALOGUE, activeDefault: null, onDeleted: vi.fn(), onUpdated: vi.fn() }));
+    renderWithTooltipProvider(React.createElement(CatalogueList, { models: CATALOGUE, activeDefault: null, onDeleted: vi.fn(), onUpdated: vi.fn() }));
 
     fireEvent.click(within(rowFor("glm-5.2")).getByRole("button", { name: "Make glm-5.2 the platform default" }));
     const dialog = within(await screen.findByRole("dialog"));
@@ -288,7 +317,7 @@ describe("CatalogueList — Make default (★ minimal key dialog)", () => {
   });
 
   it("treats a whitespace-only API key as empty (Make default stays disabled)", async () => {
-    render(React.createElement(CatalogueList, { models: CATALOGUE, activeDefault: null, onDeleted: vi.fn(), onUpdated: vi.fn() }));
+    renderWithTooltipProvider(React.createElement(CatalogueList, { models: CATALOGUE, activeDefault: null, onDeleted: vi.fn(), onUpdated: vi.fn() }));
     fireEvent.click(within(rowFor("glm-5.2")).getByRole("button", { name: "Make glm-5.2 the platform default" }));
     const dialog = within(await screen.findByRole("dialog"));
     fireEvent.change(dialog.getByLabelText("API key"), { target: { value: "   " } });
@@ -300,7 +329,7 @@ describe("CatalogueList — Make default (★ minimal key dialog)", () => {
     const custom: AdminModel[] = [
       { uid: "c1", provider: OPENAI_COMPATIBLE_PROVIDER, model_id: "glm-5.2", context_cap_tokens: 128000, input_nanos_per_mtok: 0, cached_input_nanos_per_mtok: 0, output_nanos_per_mtok: 0 },
     ];
-    render(React.createElement(CatalogueList, { models: custom, activeDefault: null, onDeleted: vi.fn(), onUpdated: vi.fn() }));
+    renderWithTooltipProvider(React.createElement(CatalogueList, { models: custom, activeDefault: null, onDeleted: vi.fn(), onUpdated: vi.fn() }));
 
     fireEvent.click(within(rowFor("glm-5.2")).getByRole("button", { name: "Make glm-5.2 the platform default" }));
     const dialog = within(await screen.findByRole("dialog"));
@@ -326,7 +355,7 @@ describe("CatalogueList — Make default (★ minimal key dialog)", () => {
 
   it("surfaces the activation error inline and does not refresh when the make-default fails", async () => {
     setPlatformDefaultActionMock.mockResolvedValue({ ok: false, error: "rate gate rejected the model" });
-    render(React.createElement(CatalogueList, { models: CATALOGUE, activeDefault: null, onDeleted: vi.fn(), onUpdated: vi.fn() }));
+    renderWithTooltipProvider(React.createElement(CatalogueList, { models: CATALOGUE, activeDefault: null, onDeleted: vi.fn(), onUpdated: vi.fn() }));
 
     fireEvent.click(within(rowFor("glm-5.2")).getByRole("button", { name: "Make glm-5.2 the platform default" }));
     const dialog = within(await screen.findByRole("dialog"));
@@ -337,11 +366,23 @@ describe("CatalogueList — Make default (★ minimal key dialog)", () => {
     expect(captureProductEventMock).not.toHaveBeenCalled();
     expect(routerRefreshMock).not.toHaveBeenCalled();
   });
+
+  it("closes from Cancel without changing the default", async () => {
+    const user = userEvent.setup();
+    renderWithTooltipProvider(React.createElement(CatalogueList, { models: CATALOGUE, activeDefault: null, onDeleted: vi.fn(), onUpdated: vi.fn() }));
+
+    await user.click(within(rowFor("glm-5.2")).getByRole("button", { name: "Make glm-5.2 the platform default" }));
+    const dialog = within(await screen.findByRole("dialog"));
+    await user.click(dialog.getByRole("button", { name: /^cancel$/i }));
+
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(setPlatformDefaultActionMock).not.toHaveBeenCalled();
+  });
 });
 
 describe("CatalogueList — Default badge", () => {
   it("badges the active default's row and hides its ★, while other rows keep ★", () => {
-    render(React.createElement(CatalogueList, { models: CATALOGUE, activeDefault: DEFAULT_FIREWORKS, onDeleted: vi.fn(), onUpdated: vi.fn() }));
+    renderWithTooltipProvider(React.createElement(CatalogueList, { models: CATALOGUE, activeDefault: DEFAULT_FIREWORKS, onDeleted: vi.fn(), onUpdated: vi.fn() }));
 
     const activeRow = within(rowFor("glm-5.2"));
     expect(activeRow.getByText("Default")).toBeTruthy();
@@ -357,7 +398,7 @@ describe("ModelsView", () => {
   const initial = { models: CATALOGUE };
 
   it("renders the catalogue with no separate platform-default section", () => {
-    render(React.createElement(ModelsView, { initial, activeDefault: null }));
+    renderWithTooltipProvider(React.createElement(ModelsView, { initial, activeDefault: null }));
     expect(screen.getByRole("heading", { level: 1, name: "Model library" })).toBeTruthy();
     expect(screen.getByText("glm-5.2")).toBeTruthy();
     expect(screen.getByText("claude-opus-4-8")).toBeTruthy();
@@ -366,7 +407,7 @@ describe("ModelsView", () => {
   });
 
   it("passes the active default through so the matching row is badged", () => {
-    render(React.createElement(ModelsView, { initial, activeDefault: DEFAULT_FIREWORKS }));
+    renderWithTooltipProvider(React.createElement(ModelsView, { initial, activeDefault: DEFAULT_FIREWORKS }));
     expect(within(rowFor("glm-5.2")).getByText("Default")).toBeTruthy();
   });
 
@@ -376,7 +417,7 @@ describe("ModelsView", () => {
       input_nanos_per_mtok: 600_000_000, cached_input_nanos_per_mtok: 150_000_000, output_nanos_per_mtok: 2_300_000_000,
     };
     createAdminModelActionMock.mockResolvedValue({ ok: true, data: created });
-    render(React.createElement(ModelsView, { initial, activeDefault: null }));
+    renderWithTooltipProvider(React.createElement(ModelsView, { initial, activeDefault: null }));
 
     await userEvent.setup().click(screen.getByRole("button", { name: "Create model library" }));
     const dialog = within(screen.getByRole("dialog"));
@@ -389,7 +430,7 @@ describe("ModelsView", () => {
 
   it("drops a deleted model from the catalogue", async () => {
     deleteAdminModelActionMock.mockResolvedValue({ ok: true, data: undefined });
-    render(React.createElement(ModelsView, { initial, activeDefault: null }));
+    renderWithTooltipProvider(React.createElement(ModelsView, { initial, activeDefault: null }));
 
     fireEvent.click(within(rowFor("glm-5.2")).getByRole("button", { name: "Delete glm-5.2" }));
     await waitFor(() => expect(screen.getByRole("alertdialog")).toBeTruthy());
@@ -401,7 +442,7 @@ describe("ModelsView", () => {
 
   it("reflects an edited model's new rates in the table without a round-trip", async () => {
     updateAdminModelActionMock.mockResolvedValue({ ok: true, data: { uid: "u1", updated: true } });
-    render(React.createElement(ModelsView, { initial, activeDefault: null }));
+    renderWithTooltipProvider(React.createElement(ModelsView, { initial, activeDefault: null }));
 
     fireEvent.click(within(rowFor("glm-5.2")).getByRole("button", { name: "Edit glm-5.2" }));
     const dialog = within(await screen.findByRole("dialog"));

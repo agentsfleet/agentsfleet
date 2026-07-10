@@ -124,8 +124,8 @@ export const buildFleetHandlers = (
       ),
   ),
   secret: {
-    add: wrapEFn(
-      "fleet.secret.add",
+    create: wrapEFn(
+      "fleet.secret.create",
       (frame) =>
         secretAddEffectFromFlags({
           name: frame.parsed.positionals[0],

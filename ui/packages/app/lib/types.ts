@@ -24,8 +24,8 @@ export type FleetTrigger =
   | { type: "api" };
 
 // `status` is typed as the loose `string` because the wire format may carry
-// values the front-end doesn't recognise (forward-compat). Consumers should
-// narrow with `AGENTSFLEET_STATUS` from `lib/api/fleets` before branching.
+// values the front-end doesn't recognise yet. Consumers should narrow with
+// `AGENTSFLEET_STATUS` from `lib/api/fleets` before branching.
 export type Fleet = {
   id: string;
   name: string;
@@ -35,12 +35,12 @@ export type Fleet = {
   triggers?: FleetTrigger[];
 };
 
-// Install a fleet from exactly one onboarded library tier (M103 §4): a platform
-// entry (slug id) or this workspace's tenant entry (UUIDv7). The `?: never`
-// arms make the two mutually exclusive at compile time; raw-`SKILL.md` paste, the
-// legacy per-workspace `bundle_id`, and github-import-at-create are no longer
-// accepted. An optional `name` overrides the SKILL.md-derived fleet name so one
-// library entry can back multiple fleets in a workspace.
+// Install a fleet from exactly one onboarded library tier: a platform entry
+// (slug id) or this workspace's tenant entry. The `?: never` arms make the two
+// mutually exclusive at compile time; raw-`SKILL.md` paste, per-workspace
+// `bundle_id`, and github-import-at-create are not accepted. An optional `name`
+// overrides the SKILL.md-derived fleet name so one library entry can back
+// multiple fleets in a workspace.
 export type InstallFleetRequest =
   | { platform_library_id: string; name?: string; tenant_library_id?: never }
   | { tenant_library_id: string; name?: string; platform_library_id?: never };
@@ -52,8 +52,8 @@ export type InstallFleetResponse = {
 
 // ── Fleet library catalog (two-tier) ──
 // The platform catalog and per-workspace tenant entries, unioned by the
-// workspace gallery (M103 §5). R2 holds the canonical tar; these rows are
-// metadata only — never support-file bytes or an object-store key. Mirrors
+// workspace gallery. Object storage holds the canonical tar; these rows are
+// metadata only, never support-file bytes or an object-store key. Mirrors
 // agentsfleetd `http/handlers/library/gallery.zig` (GalleryEntry).
 
 // The catalog tier of a library entry. The install flow keys the create body off it:
@@ -220,10 +220,10 @@ export type TenantProvider = {
   platform_default_available: boolean;
 };
 
-// ── Tenant model registry (M121) ──
+// ── Tenant model registry ──
 // One row per configured `(model_id, secret_ref)` pair — see
 // src/agentsfleetd/http/handlers/tenant_model_entries.zig for the wire
-// contract. `provider`/`base_url`/`context_cap_tokens` ride the
+// shape. `provider`/`base_url`/`context_cap_tokens`/rates ride the
 // `emit_null_optional_fields=false` shape (omitted, never null) — same
 // convention as `Secret` in lib/api/secrets.ts.
 export type TenantModelEntry = {
@@ -235,6 +235,9 @@ export type TenantModelEntry = {
   base_url?: string;
   has_key: boolean;
   context_cap_tokens?: number;
+  input_nanos_per_mtok?: number;
+  cached_input_nanos_per_mtok?: number;
+  output_nanos_per_mtok?: number;
   active: boolean;
   created_at: number;
 };
@@ -245,6 +248,9 @@ export type TenantPlatformDefault = {
   provider: string;
   model: string;
   context_cap_tokens: number;
+  input_nanos_per_mtok?: number;
+  cached_input_nanos_per_mtok?: number;
+  output_nanos_per_mtok?: number;
 };
 
 export type TenantModelEntryList = {

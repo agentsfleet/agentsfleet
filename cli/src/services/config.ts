@@ -23,8 +23,7 @@ export const DEFAULT_POSTHOG_KEY = "phc_XmuRIXBSTRfxka7IgfkU0VPMD3LDRR3IqILXNg3b
 // API key) exported here authenticates the CLI without a browser login,
 // and — by the env-wins precedence in `resolveToken` — takes priority over
 // a stored login JWT. This is the only env-sourced bearer the CLI reads; the
-// older `AGENTSFLEET_TOKEN` env var (and the unprefixed `API_KEY` alias) were
-// removed.
+// unprefixed `API_KEY` and `AGENTSFLEET_TOKEN` names are not accepted.
 export const AGENTSFLEET_API_KEY_ENV = "AGENTSFLEET_API_KEY";
 
 export interface CliConfigShape {
@@ -63,8 +62,7 @@ const trimmed = (v: string | undefined): string | undefined => {
 // Single source for the env-sourced service API key. Trimmed so a
 // whitespace-only export counts as unset (never reaches the wire as a blank
 // Bearer). Both cli.ts and resolveCliConfig resolve through here so the read
-// can't drift between the two paths. Only `AGENTSFLEET_API_KEY` is honoured —
-// the unprefixed `API_KEY` alias was dropped as off-brand.
+// can't drift between the two paths. Only `AGENTSFLEET_API_KEY` is accepted.
 export const resolveApiKeyFromEnv = (env: NodeJS.ProcessEnv): string | null =>
   trimmed(env[AGENTSFLEET_API_KEY_ENV]) ?? null;
 

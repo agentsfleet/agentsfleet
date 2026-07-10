@@ -3,7 +3,7 @@
  * seeded-credentials session). Mirrors lifecycle-with-token / secret-vault
  * / fleet-key-mutation: mint a Clerk session JWT, hydrate workspaces.json from
  * the API, then walk cross-resource deletes whose outcome the suite DISCOVERS
- * and DOCUMENTS against api-dev rather than presumes. The load-bearing contract
+ * and DOCUMENTS against api-dev rather than presumes. The load-bearing rule
  * for each scenario is restated as an inline comment at its `describe` block:
  *
  *   (a) delete a secret a tenant provider references → refused-conflict OR
@@ -62,7 +62,7 @@ const CMD_PROVIDER = "provider" as const;
 const CMD_WORKSPACE = "workspace" as const;
 const CMD_AGENT_KEY = "fleet-key" as const;
 const CMD_LIST = "list" as const;
-const SUB_ADD = "add" as const;
+const SUB_CREATE = "create" as const;
 const SUB_DELETE = "delete" as const;
 const SUB_LIST = "list" as const;
 const FLAG_DATA = "--data" as const;
@@ -174,21 +174,21 @@ if (!isLive) {
     describe("(a) delete a secret a tenant provider references", () => {
       const secretName = refName("provref");
 
-      it("add secret → provider references it → delete is refused OR cascades", async () => {
+      it("create secret → provider references it → delete is refused OR cascades", async () => {
         // 1. Store the secret.
-        const added = await run([CMD_SECRET, SUB_ADD, secretName, FLAG_DATA, secretPayload(), FLAG_JSON]);
-        assert.equal(added.code, 0, `secret add exited ${added.code}: ${added.stderr}`);
+        const added = await run([CMD_SECRET, SUB_CREATE, secretName, FLAG_DATA, secretPayload(), FLAG_JSON]);
+        assert.equal(added.code, 0, `secret create exited ${added.code}: ${added.stderr}`);
         assert.equal(
-          parseJson<Record<string, unknown>>(added.stdout, "secret-add")[KEY_STATUS],
+          parseJson<Record<string, unknown>>(added.stdout, "secret-create")[KEY_STATUS],
           STATUS_STORED,
-          `unexpected secret add status: ${added.stdout}`,
+          `unexpected secret create status: ${added.stdout}`,
         );
 
         // 2. Point the tenant provider at it. The PUT may accept the posture
         //    (possibly flagging credential_missing) or reject an unknown
         //    secret — only treat an accepted PUT as a real reference.
         const linked = await run([
-          CMD_TENANT, CMD_PROVIDER, SUB_ADD, FLAG_SECRET, secretName,
+          CMD_TENANT, CMD_PROVIDER, SUB_CREATE, FLAG_SECRET, secretName,
           FLAG_MODEL, PROBE_MODEL, FLAG_JSON,
         ]);
         if (linked.code === 0) {

@@ -6,6 +6,14 @@ import { TooltipProvider } from "@agentsfleet/design-system";
 import type { TenantModelEntry, TenantModelEntryList, TenantPlatformDefault } from "@/lib/types";
 import type { CapJson } from "@/lib/api/model_caps";
 
+const MODEL_REGISTRY_HEADER_ORDER = [
+  "Provider",
+  "Model",
+  "Context · $/1M (in / cached / out)",
+  "Status",
+  "Actions",
+] as const;
+
 /** The details dialog renders a relative <Time> → a Radix Tooltip, which needs a
  *  TooltipProvider ancestor (the dashboard layout supplies it in production). */
 function withTooltipProvider(node: React.ReactElement): React.ReactElement {
@@ -133,6 +141,12 @@ beforeEach(() => {
 afterEach(() => cleanup());
 
 describe("ModelsRegistryTable", () => {
+  it("renders Provider before Model in the registry table", async () => {
+    await renderTable(registry([entry({})]));
+    const headers = screen.getAllByRole("columnheader").map((h) => h.textContent);
+    expect(headers).toEqual([...MODEL_REGISTRY_HEADER_ORDER]);
+  });
+
   it("renders N entries plus the pinned Default row first; sorting never unpins Default", async () => {
     const entries = Array.from({ length: 9 }, (_, i) =>
       entry({ id: `e${i}`, model_id: `model-${i}`, provider: i % 2 === 0 ? "anthropic" : "openai" }),
@@ -289,6 +303,24 @@ describe("ModelsRegistryTable", () => {
     await waitFor(() => expect(defaultRow.getByText("3.00 / 0.30 / 15.00")).toBeTruthy());
   });
 
+  it("default row renders server-provided rates when the public catalogue is unavailable", async () => {
+    await renderTable(
+      registry([], true, {
+        provider: "anthropic",
+        model: "claude-sonnet-5",
+        context_cap_tokens: 200000,
+        input_nanos_per_mtok: 3_000_000_000,
+        cached_input_nanos_per_mtok: 300_000_000,
+        output_nanos_per_mtok: 15_000_000_000,
+      }),
+    );
+
+    const rows = screen.getAllByRole("row");
+    const defaultRow = within(rows[1]!);
+    expect(defaultRow.getByText("200k")).toBeTruthy();
+    expect(defaultRow.getByText("3.00 / 0.30 / 15.00")).toBeTruthy();
+  });
+
   it("default row degrades to '—' when no platform default identity rides the list", async () => {
     await renderTable(registry([entry({ active: true })], false));
     const rows = screen.getAllByRole("row");
@@ -297,7 +329,7 @@ describe("ModelsRegistryTable", () => {
     expect(screen.getByText("No default is configured.")).toBeTruthy();
   });
 
-  it("entry rows price from the library when known and show '—' rates otherwise", async () => {
+  it("entry rows price from the library when known and name unavailable rates otherwise", async () => {
     await renderTableWithLibrary(
       registry([
         entry({ id: "e1", model_id: "claude-sonnet-5", provider: "anthropic", context_cap_tokens: 200000 }),
@@ -307,10 +339,29 @@ describe("ModelsRegistryTable", () => {
 
     await waitFor(() => expect(screen.getByText("3.00 / 0.30 / 15.00")).toBeTruthy());
     const rows = screen.getAllByRole("row");
-    // Row order: header, Default, sonnet (priced), local (unpriced → "—" rates line).
+    // Row order: header, Default, sonnet (priced), local (unpriced).
     const localRow = within(rows[3]!);
     expect(localRow.getByText("32k")).toBeTruthy();
-    expect(localRow.getByText("—")).toBeTruthy();
+    expect(localRow.getByText("Rates unavailable")).toBeTruthy();
+  });
+
+  it("entry rows render server-provided rates without depending on the public catalogue", async () => {
+    await renderTable(
+      registry([
+        entry({
+          id: "e1",
+          model_id: "claude-sonnet-5",
+          provider: "anthropic",
+          context_cap_tokens: 200000,
+          input_nanos_per_mtok: 3_000_000_000,
+          cached_input_nanos_per_mtok: 300_000_000,
+          output_nanos_per_mtok: 15_000_000_000,
+        }),
+      ]),
+    );
+
+    expect(screen.getByText("200k")).toBeTruthy();
+    expect(screen.getByText("3.00 / 0.30 / 15.00")).toBeTruthy();
   });
 
   it("shows the 'no key · local' badge on an entry with no key, and the endpoint host in the Provider cell", async () => {
@@ -372,11 +423,12 @@ describe("ModelsRegistryTable", () => {
     expect(screen.getByText("0")).toBeTruthy();
   });
 
-  it("renders '—' for both context and rates when the cap is absent and the library doesn't price the model", async () => {
+  it("renders a dash for absent context and names unavailable rates", async () => {
     await renderTable(registry([entry({ id: "e1", model_id: "m1", context_cap_tokens: undefined })]));
     const rows = screen.getAllByRole("row");
-    // Two lines in the Context cell — context "—" and rates "—".
-    expect(within(rows[2]!).getAllByText("—")).toHaveLength(2);
+    const contextCell = within(rows[2]!);
+    expect(contextCell.getByText("—")).toBeTruthy();
+    expect(contextCell.getByText("Rates unavailable")).toBeTruthy();
   });
 
   it("creating a model entry refreshes the secrets list — a repeat add on the same key name rotates instead of re-creating", async () => {
@@ -391,7 +443,7 @@ describe("ModelsRegistryTable", () => {
     await renderTable(registry([]));
 
     const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: /add model/i }));
+    await user.click(screen.getByRole("button", { name: /create model/i }));
     const dialog = await screen.findByRole("dialog");
     await user.type(within(dialog).getByLabelText(/^name$/i), "anthropic");
     await user.type(within(dialog).getByLabelText(/^provider$/i), "anthropic");
@@ -407,7 +459,7 @@ describe("ModelsRegistryTable", () => {
     // state now carries that name, so the dialog rotates the stored key in
     // place instead of re-creating it. This is the observable proof the
     // refreshSecrets round-trip landed in state.
-    await user.click(screen.getByRole("button", { name: /add model/i }));
+    await user.click(screen.getByRole("button", { name: /create model/i }));
     const reopened = await screen.findByRole("dialog");
     await user.type(within(reopened).getByLabelText(/^name$/i), "anthropic");
     await user.type(within(reopened).getByLabelText(/^provider$/i), "anthropic");
@@ -428,7 +480,7 @@ describe("ModelsRegistryTable", () => {
     await renderTable(registry([]));
 
     const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: /add model/i }));
+    await user.click(screen.getByRole("button", { name: /create model/i }));
     const dialog = await screen.findByRole("dialog");
     await user.type(within(dialog).getByLabelText(/^name$/i), "anthropic");
     await user.type(within(dialog).getByLabelText(/^provider$/i), "anthropic");
@@ -444,7 +496,7 @@ describe("ModelsRegistryTable", () => {
     // name is unknown to the dialog and the second add takes the create path
     // again (the backend would 409 in reality; mocked ok here — the branch
     // under test is refreshSecrets' silent no-op, matching refresh()).
-    await user.click(screen.getByRole("button", { name: /add model/i }));
+    await user.click(screen.getByRole("button", { name: /create model/i }));
     const reopened = await screen.findByRole("dialog");
     await user.type(within(reopened).getByLabelText(/^name$/i), "anthropic");
     await user.type(within(reopened).getByLabelText(/^provider$/i), "anthropic");

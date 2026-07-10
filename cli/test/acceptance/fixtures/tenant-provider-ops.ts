@@ -11,7 +11,7 @@
  *
  * The CLI surface is confirmed against `cli/src/program/cli-tree.ts`:
  *   tenant provider show            (GET  /v1/tenants/me/provider)
- *   tenant provider add --secret <name> [--model <name>]
+ *   tenant provider create --secret <name> [--model <name>]
  *                                   (PUT, mode=self_managed)
  *   tenant provider delete          (DELETE → platform default)
  *
@@ -29,11 +29,11 @@ import { OPENAI_COMPATIBLE_PROVIDER } from "../../../src/constants/custom-endpoi
 
 type Env = Readonly<Record<string, string>>;
 
-// Custom-endpoint secret argv heads — the typed secret-add form
+// Custom-endpoint secret argv heads — the typed secret-create form
 // (`--provider openai-compatible --base-url <url> --api-key <key>`). UFS: the
 // flag literals live once here, reused by the provider-set scenario.
 const CMD_SECRET = "secret" as const;
-const SUB_ADD = "add" as const;
+const SUB_CREATE = "create" as const;
 const SUB_DELETE = "delete" as const;
 export const FLAG_PROVIDER = "--provider" as const;
 export const FLAG_BASE_URL = "--base-url" as const;
@@ -46,19 +46,19 @@ export interface CustomSecretOptions {
 }
 
 /**
- * `secret add <name> --provider openai-compatible --base-url <url>
+ * `secret create <name> --provider openai-compatible --base-url <url>
  * --api-key <key> --json`. Stores a custom OpenAI-compatible secret so a
- * subsequent `tenant provider add --secret <name>` can target it. Returns
+ * subsequent `tenant provider create --secret <name>` can target it. Returns
  * the raw run result; the secret-leak regression fires against the JWT.
  */
-export async function addCustomEndpointSecret(
+export async function createCustomEndpointSecret(
   env: Env,
   sessionJwt: string,
   opts: CustomSecretOptions,
 ): Promise<RunResult> {
   const result = await runFleetctl(
     [
-      CMD_SECRET, SUB_ADD, opts.name,
+      CMD_SECRET, SUB_CREATE, opts.name,
       FLAG_PROVIDER, OPENAI_COMPATIBLE_PROVIDER,
       FLAG_BASE_URL, opts.baseUrl,
       FLAG_API_KEY, opts.apiKey,
@@ -98,10 +98,10 @@ export const TENANT_PROVIDER_MODE = {
 // command so neither head literal is repeated (UFS: no string used twice).
 const TENANT_PROVIDER_BASE: ReadonlyArray<string> = ["tenant", "provider"];
 const SUBCOMMAND_SHOW = "show" as const;
-const SUBCOMMAND_ADD = "add" as const;
+const SUBCOMMAND_CREATE = "create" as const;
 const SUBCOMMAND_DELETE = "delete" as const;
 export const TENANT_PROVIDER_SHOW_ARGS: ReadonlyArray<string> = [...TENANT_PROVIDER_BASE, SUBCOMMAND_SHOW];
-export const TENANT_PROVIDER_ADD_ARGS: ReadonlyArray<string> = [...TENANT_PROVIDER_BASE, SUBCOMMAND_ADD];
+export const TENANT_PROVIDER_CREATE_ARGS: ReadonlyArray<string> = [...TENANT_PROVIDER_BASE, SUBCOMMAND_CREATE];
 export const TENANT_PROVIDER_DELETE_ARGS: ReadonlyArray<string> = [...TENANT_PROVIDER_BASE, SUBCOMMAND_DELETE];
 
 export const FLAG_JSON = "--json" as const;
@@ -141,23 +141,23 @@ export async function showProvider(env: Env, sessionJwt: string): Promise<Provid
   return parseProvider(result.stdout);
 }
 
-export interface AddProviderOptions {
+export interface CreateProviderOptions {
   readonly secret: string;
   readonly model?: string | undefined;
 }
 
 /**
- * `tenant provider add --secret <name> [--model <name>] --json`. Returns
+ * `tenant provider create --secret <name> [--model <name>] --json`. Returns
  * the raw run result so the caller can branch on exit code (the backend may
  * accept the PUT and report `credential_missing`, or reject an unknown
  * secret outright — both are legitimate and the spec handles each).
  */
-export async function addProvider(
+export async function createProvider(
   env: Env,
   sessionJwt: string,
-  opts: AddProviderOptions,
+  opts: CreateProviderOptions,
 ): Promise<RunResult> {
-  const args = [...TENANT_PROVIDER_ADD_ARGS, FLAG_SECRET, opts.secret];
+  const args = [...TENANT_PROVIDER_CREATE_ARGS, FLAG_SECRET, opts.secret];
   if (opts.model) args.push(FLAG_MODEL, opts.model);
   args.push(FLAG_JSON);
   const result = await runFleetctl(args, { env });
@@ -180,7 +180,7 @@ export async function deleteProvider(env: Env, sessionJwt: string): Promise<Prov
  * Assert a snapshot is a well-formed self-managed posture: mode flipped,
  * secret_ref echoes the supplied name, not flagged as the synthesised
  * default, and any `error` field is exactly the known credential-missing
- * marker (anything else is a resolver regression). Keeps the spec's `add`
+ * marker (anything else is a resolver regression). Keeps the spec's `create`
  * test body inside the 50-line function bound.
  */
 export function assertSelfManagedSnapshot(
@@ -190,7 +190,7 @@ export function assertSelfManagedSnapshot(
   assert.equal(
     after.mode,
     TENANT_PROVIDER_MODE.selfManaged,
-    `expected mode=${TENANT_PROVIDER_MODE.selfManaged} after add; got ${JSON.stringify(after)}`,
+    `expected mode=${TENANT_PROVIDER_MODE.selfManaged} after create; got ${JSON.stringify(after)}`,
   );
   assert.equal(
     after.secret_ref,
@@ -212,11 +212,11 @@ export function assertSelfManagedSnapshot(
 }
 
 /**
- * Assert a non-zero `add` result is a recognised upstream rejection and that
- * the live posture still equals the captured baseline (a rejected add must
+ * Assert a non-zero `create` result is a recognised upstream rejection and that
+ * the live posture still equals the captured baseline (a rejected create must
  * not partially mutate). Returns nothing; throws via assert on violation.
  */
-export async function assertRejectedAddLeftBaseline(
+export async function assertRejectedCreateLeftBaseline(
   env: Env,
   sessionJwt: string,
   added: RunResult,
@@ -225,13 +225,13 @@ export async function assertRejectedAddLeftBaseline(
   assert.match(
     `${added.stderr}\n${added.stdout}`,
     /credential|secret|not found|HTTP_4\d\d|UZ-|invalid/i,
-    `add failed with an unexpected error shape: ${added.stderr || added.stdout}`,
+    `create failed with an unexpected error shape: ${added.stderr || added.stdout}`,
   );
   const stillBaseline = await showProvider(env, sessionJwt);
   assert.equal(
     stillBaseline.mode,
     baselineMode,
-    "rejected add must leave the baseline posture untouched",
+    "rejected create must leave the baseline posture untouched",
   );
 }
 
@@ -247,7 +247,7 @@ export async function restoreProviderBaseline(
 ): Promise<void> {
   try {
     if (baseline.mode === TENANT_PROVIDER_MODE.selfManaged && baseline.secret_ref) {
-      await addProvider(env, sessionJwt, {
+      await createProvider(env, sessionJwt, {
         secret: baseline.secret_ref,
         model: baseline.model,
       });

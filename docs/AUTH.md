@@ -304,6 +304,8 @@ Dashboard ─► POST /v1/api-keys ─► Zig backend     Zig backend
 
 A tenant API key carries the same standing privilege as a long-lived JWT for the tenant — anyone who holds the raw `agt_t<hex>` value can act for that tenant until the key is revoked. Treat as a credential equivalent to a database password: rotate on suspected exposure, scope by workspace where the dashboard's "Create API Key" surface supports it, prefer short-lived JWTs (Flow 1 or Flow 2) for interactive use.
 
+Successful `agt_t` authentication first performs a read-only hash lookup. For an active key, agentsfleetd then attempts a best-effort `core.api_keys.last_used_at` stamp with `FOR UPDATE SKIP LOCKED`; if that metadata write is blocked or fails, authentication still succeeds. The backend stores and compares only the SHA-256 hash; the raw key is returned once at creation time and is never persisted.
+
 ### Provisioning
 
 ```mermaid
@@ -871,7 +873,7 @@ The middleware emits exactly three error codes for webhook auth failures, each w
 
 | Code | When it fires | What the operator should do |
 | --- | --- | --- |
-| `UZ-WH-020 webhook_credential_not_configured` (401) | Provider not recognized OR `<source>` vault row missing OR row has no `webhook_secret` field OR field is empty | `agentsfleet secret add <source> --data='{"webhook_secret":"<key>"}'` in the workspace |
+| `UZ-WH-020 webhook_credential_not_configured` (401) | Provider not recognized OR `<source>` vault row missing OR row has no `webhook_secret` field OR field is empty | `agentsfleet secret create <source> --data='{"webhook_secret":"<key>"}'` in the workspace |
 | `UZ-WH-010 invalid_signature` (401) | Provider + secret are both configured, but the signature header is missing OR the body's MAC doesn't match | The webhook secret stored in the workspace vault doesn't match what the provider has registered. Re-rotate. |
 | `UZ-WH-011 stale_timestamp` (401) | Slack-style schemes only — request timestamp is outside the 5-minute drift window | Clock skew or replay attempt. Investigate. |
 
@@ -902,7 +904,7 @@ The dashboard's **connectors** (GitHub App, Slack, and every future registry pro
 - **Slack** is a real OAuth-2.0 code exchange: the callback trades the `code` for a bot token using the platform app's `client_id`/`client_secret`, then writes **two** rows — the per-install vault handle and the `core.connector_installs` routing row.
 - **GitHub** is a GitHub App **installation**, not a code exchange (`oauth2.zig:8-9` says so explicitly): its callback carries `installation_id` (no `code`, nothing to exchange) and writes **one** row — the vault handle only. Inbound GitHub traffic routes via the fleet-trigger webhook path, so it needs no `connector_installs` entry.
 - **Zoho Desk, Jira, Linear** (M108) are OAuth-2.0 code exchanges that issue a **refresh token**: the callback trades the `code` for `{access_token, refresh_token, expires_in}` and vaults a refresh handle. Jira's hook additionally resolves the Atlassian **cloud id** via the accessible-resources probe (bounded); Zoho captures its data-center label. The broker later mints fresh access tokens from the refresh handle (see *Broker refresh-mint* below) — the runner never sees the refresh token.
-- **Datadog, Grafana, Fly are not connectors.** A registry shape for operator-pasted vendor keys was considered for these three and dropped (M108_002, `connectors.md:52` — no such archetype ships): a static vendor key is just a workspace secret, not a connector — there is no registry entry, no connect/callback round-trip, and no platform app bag to protect. The operator adds the key directly as a plain workspace secret (`agentsfleet secret add <name>` — see the docs site's Secrets guide) and it is referenced from `TRIGGER.md` as `${secrets.<name>.<field>}` like any other tool secret — never through this connect/callback surface.
+- **Datadog, Grafana, Fly are not connectors.** A registry shape for operator-pasted vendor keys was considered for these three and dropped (M108_002, `connectors.md:52` — no such archetype ships): a static vendor key is just a workspace secret, not a connector — there is no registry entry, no connect/callback round-trip, and no platform app bag to protect. The operator adds the key directly as a plain workspace secret (`agentsfleet secret create <name>` — see the docs site's Secrets guide) and it is referenced from `TRIGGER.md` as `${secrets.<name>.<field>}` like any other tool secret — never through this connect/callback surface.
 
 The rows themselves:
 

@@ -44,10 +44,10 @@ describe("CommandRuntime helpers", () => {
   test("getCommandRuntimeCommand joins commandPath with spaces", () => {
     expect(
       getCommandRuntimeCommand({
-        commandPath: ["workspace", "add"],
+        commandPath: ["workspace", "create"],
         commandRunId: "rid-1",
       }),
-    ).toBe("workspace add");
+    ).toBe("workspace create");
   });
 
   test("getCommandRuntimeCommand on a single-segment path returns that segment", () => {
@@ -65,10 +65,10 @@ describe("CommandRuntime helpers", () => {
   test("getCommandRuntimeSpanName dot-joins under the cli. prefix", () => {
     expect(
       getCommandRuntimeSpanName({
-        commandPath: ["workspace", "add"],
+        commandPath: ["workspace", "create"],
         commandRunId: "rid-2",
       }),
-    ).toBe("cli.workspace.add");
+    ).toBe("cli.workspace.create");
   });
 
   test("getCommandRuntimeSpanName on an empty path is the bare cli. prefix", () => {

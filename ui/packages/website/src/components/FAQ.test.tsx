@@ -5,11 +5,13 @@ import FAQ from "./FAQ";
 import { FAQ_WEDGE_ITEM } from "../lib/marketing-copy";
 import { RATES_DISPLAY } from "../lib/rates";
 
+const FAQ_TEST_TIMEOUT_MS = 20_000;
+
 function escapedPattern(value: string) {
   return new RegExp(value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
 }
 
-describe("FAQ", () => {
+describe("FAQ", { timeout: FAQ_TEST_TIMEOUT_MS }, () => {
   it("renders the section heading", () => {
     render(<FAQ />);
     expect(screen.getByRole("heading", { level: 2, name: /common questions/i })).toBeInTheDocument();

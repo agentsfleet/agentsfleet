@@ -15,7 +15,7 @@ One golden end-to-end walkthrough that composes the v2 install, trigger, and exe
 
 These are the load-bearing invariants. Every spec under `docs/v2/` should be readable against them; the canonical home for each is the linked topic doc.
 
-1. **Model-caps endpoint** — `GET https://api.agentsfleet.net/_um/da5b6b3810543fe108d816ee972e4ff8/cap.json` is the single source of truth for model → context cap and per-model token rates. Resolved at API-server boot or at `tenant provider add` time, never at trigger time. See [`../billing_and_provider_keys.md`](../billing_and_provider_keys.md) §9–10.
+1. **Model-caps endpoint** — `GET https://api.agentsfleet.net/_um/da5b6b3810543fe108d816ee972e4ff8/cap.json` is the single source of truth for model → context cap and per-model token rates. Resolved at API-server boot or at `tenant provider create` time, never at trigger time. See [`../billing_and_provider_keys.md`](../billing_and_provider_keys.md) §9–10.
 2. **Overlay at lease time** — when frontmatter carries `model: ""` / `context_cap_tokens: 0` / omits the keys, the control plane overlays from `tenant_model_selection`, per-field. See [`../billing_and_provider_keys.md`](../billing_and_provider_keys.md).
 3. **One credit pool, posture-dependent drain** — `core.tenant_billing.balance_nanos` is a single column; receive + run debits fire under both postures; only the per-run rate differs. No plan tiers. See [`../billing_and_provider_keys.md`](../billing_and_provider_keys.md) §1.
 4. **api_key visibility boundary** — platform or self-managed, the api_key exists only in vault, server-side memory, and outbound request headers; never in any user-facing surface. See [`../billing_and_provider_keys.md`](../billing_and_provider_keys.md) §8.

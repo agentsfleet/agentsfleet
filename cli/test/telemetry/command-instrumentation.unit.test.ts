@@ -272,12 +272,12 @@ describe("withCommandInstrumentation", () => {
   });
 
   it("ignores positional arguments (only --flags count as flags_used)", async () => {
-    setArgv(["workspace", "add", "my-ws"]);
+    setArgv(["workspace", "create", "my-ws"]);
     const analytics = mockContextualAnalytics();
     const program = Effect.void.pipe(
       withCommandInstrumentation(),
       Effect.provide(analytics.layer),
-      Effect.provide(commandLayer(["workspace", "add"])),
+      Effect.provide(commandLayer(["workspace", "create"])),
     );
     await Effect.runPromise(program);
     expect(analytics.captured[0]?.properties.flags_used).toEqual([]);

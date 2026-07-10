@@ -24,23 +24,26 @@ import {
   FormMessage,
   Input,
   Spinner,
+  TooltipButton,
 } from "@agentsfleet/design-system";
-import { PlusIcon } from "lucide-react";
+import { CircleHelpIcon, PlusIcon } from "lucide-react";
 import { captureProductEvent } from "@/lib/analytics/posthog";
 import { EVENTS } from "@/lib/analytics/events";
 import { presentError, type ErrorPresentation } from "@/lib/errors";
 import { SOURCE_KIND_GITHUB } from "@/lib/types";
 import { onboardLibraryEntryAction } from "../actions";
-import { CREATE_LIBRARY_DOC_URL } from "./library-docs";
+import { CREATE_FLEET_LIBRARY_TOOLTIP, CREATE_LIBRARY_DOC_URL } from "./library-docs";
 
 const SOURCE_REF_PATTERN = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
 const ONBOARD_ACTION = "create the fleet library";
+const SAMPLE_LIBRARY_REPO = "agentsfleet/github-pr-reviewer";
+const SAMPLE_LIBRARY_REPO_URL = "https://github.com/agentsfleet/github-pr-reviewer";
 
 const schema = z.object({
   source_ref: z
     .string()
     .trim()
-    .regex(SOURCE_REF_PATTERN, "Use owner/repo, for example agentsfleet/github-pr-reviewer"),
+    .regex(SOURCE_REF_PATTERN, `Use owner/repo, for example ${SAMPLE_LIBRARY_REPO}`),
 });
 
 type FormValues = z.infer<typeof schema>;
@@ -112,16 +115,16 @@ export default function AddLibraryDialog({
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
-        <Button type="button" size="sm">
+        <TooltipButton type="button" size="sm" tooltip={CREATE_FLEET_LIBRARY_TOOLTIP}>
           <PlusIcon size={14} />
           {triggerLabel}
-        </Button>
+        </TooltipButton>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Create fleet library</DialogTitle>
           <DialogDescription>
-            Add a GitHub repository that contains a fleet library entry.
+            Create from a GitHub repository that contains a fleet library entry.
           </DialogDescription>
         </DialogHeader>
         <Form {...form}>
@@ -135,13 +138,26 @@ export default function AddLibraryDialog({
                   <FormControl>
                     <Input placeholder="owner/repo" autoComplete="off" spellCheck={false} {...field} />
                   </FormControl>
-                  <FormDescription>
+                  <FormDescription className="space-y-1">
+                    <span className="block">
+                      Example:{" "}
+                      <a
+                        href={SAMPLE_LIBRARY_REPO_URL}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-pulse underline-offset-2 hover:underline focus-visible:underline"
+                      >
+                        {SAMPLE_LIBRARY_REPO}
+                        <span className="sr-only"> (opens in a new tab)</span>
+                      </a>
+                    </span>
                     <a
                       href={CREATE_LIBRARY_DOC_URL}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-pulse underline-offset-2 hover:underline focus-visible:underline"
+                      className="inline-flex items-center gap-1 text-pulse underline-offset-2 hover:underline focus-visible:underline"
                     >
+                      <CircleHelpIcon size={13} aria-hidden="true" />
                       Learn more<span className="sr-only"> about writing library entries (opens in a new tab)</span>
                     </a>
                   </FormDescription>
@@ -156,11 +172,14 @@ export default function AddLibraryDialog({
                 {apiError.code ? <code className="text-xs">{apiError.code}</code> : null}
               </Alert>
             ) : null}
-            <DialogFooter>
-              <Button type="submit" disabled={pending}>
+            <DialogFooter className="flex-col gap-2 sm:flex-row sm:gap-2">
+              <Button type="button" variant="ghost" disabled={pending} onClick={() => handleOpenChange(false)}>
+                Cancel
+              </Button>
+              <TooltipButton type="submit" disabled={pending} tooltip={CREATE_FLEET_LIBRARY_TOOLTIP}>
                 {pending ? <Spinner size="sm" srLabel="Creating fleet library" /> : null}
                 Create
-              </Button>
+              </TooltipButton>
             </DialogFooter>
           </form>
         </Form>

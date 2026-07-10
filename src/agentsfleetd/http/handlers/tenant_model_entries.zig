@@ -1,9 +1,9 @@
-//! /v1/tenants/me/models — tenant-scoped many-model registry (M121 §2).
+//! /v1/tenants/me/models — tenant-scoped many-model registry.
 //!
 //! GET    lists every entry joined to its secret's non-secret metadata, with
 //!        `active` computed against the tenant's current selection, plus
 //!        `platform_default_available` and — when a default is active — its
-//!        identity as `platform_default` {provider, model, context_cap_tokens}.
+//!        identity as `platform_default` {provider, model, context_cap_tokens, rates}.
 //!        Pure read — activation itself (tenant_provider.zig) upserts the
 //!        matching entry, so the selection always has one. See
 //!        tenant_model_entries_view.zig.

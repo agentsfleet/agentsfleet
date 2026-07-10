@@ -135,7 +135,7 @@ export function buildFleetTree(
   // <url> --api-key <key> [--model <m>]`) that compose the same JSON object.
   // `--base-url` runs parseHttpsUrlOption at PARSE time, so a non-https URL
   // exits non-zero with NO network call (full SSRF check stays server-side).
-  secret.command("add <name>")
+  secret.command("create <name>")
     .description("Store a secret JSON object")
     .option("--data <json>", "Secret JSON object, or @- to read stdin")
     .option(FLAG_PROVIDER, `Provider id (use '${OPENAI_COMPATIBLE_PROVIDER}' for a custom endpoint)`, parseStringOption)
@@ -143,7 +143,7 @@ export function buildFleetTree(
     .option(FLAG_API_KEY, "Provider API key for the typed custom-endpoint form")
     .option(FLAG_MODEL_OPT, "Default model identifier for the typed custom-endpoint form", parseStringOption)
     .option("--force", "Overwrite if a secret with this name already exists")
-    .action(actionFor("fleet.secret.add", (frame) => runHandler(state, frame, handlers.fleet.secret.add)));
+    .action(actionFor("fleet.secret.create", (frame) => runHandler(state, frame, handlers.fleet.secret.create)));
 
   secret.command("show <name>")
     .description("Confirm a secret exists (never echoes secret bytes)")

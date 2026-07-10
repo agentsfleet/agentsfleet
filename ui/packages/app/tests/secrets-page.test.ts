@@ -1,6 +1,7 @@
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
+import { SECRETS_PAGE_DESCRIPTION } from "../app/(dashboard)/w/[workspaceId]/secrets/copy";
 
 // Server-component page test for the standalone /secrets page — Secrets &
 // ENVs is its own page again, not a Models section. The data layer
@@ -106,7 +107,7 @@ describe("Secrets page", () => {
     const markup = renderToStaticMarkup(await renderPage(Page));
 
     expect(markup).toContain("Secrets");
-    expect(markup).toContain("Encrypted secrets your fleets can use");
+    expect(markup).toContain(SECRETS_PAGE_DESCRIPTION);
     expect(markup).toContain('data-testid="add-secret-dialog"');
     expect(markup).toContain('data-workspace="ws_1"');
     expect(markup).toContain('data-testid="secrets-list"');

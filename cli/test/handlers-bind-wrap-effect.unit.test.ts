@@ -36,7 +36,7 @@ const frame: ActionFrame = {
 
 // Frame carrying options, used to drive the wrapEffectFn factory closures
 // that read frame.parsed.options (workspace.delete --workspace-id,
-// tenant.provider.add --secret/--model, billing.show --limit/--cursor).
+// tenant.provider.create --secret/--model, billing.show --limit/--cursor).
 const frameWith = (
   options: Record<string, unknown>,
   positionals: string[] = [],
@@ -137,24 +137,24 @@ describe("wrapEffectFn factory closures", () => {
     expect(lifecycle.lastCommand).toBe("workspace.delete");
   });
 
-  // tenant.provider.add reads --secret and --model from the frame and
+  // tenant.provider.create reads --secret and --model from the frame and
   // builds tenantProviderAddEffectFromArgs (handlers-bind.ts:266-268).
-  test("tenant.provider.add threads --secret and --model and exits numerically", async () => {
+  test("tenant.provider.create threads --secret and --model and exits numerically", async () => {
     const lifecycle = lifecycleFor();
     const handlers = buildHandlers(lifecycle);
-    const code = await handlers.tenant.provider.add(
+    const code = await handlers.tenant.provider.create(
       frameWith({ secret: "vault://openai", model: "gpt-4o" }),
     );
     expect(typeof code).toBe("number");
-    expect(lifecycle.lastCommand).toBe("tenant.provider.add");
+    expect(lifecycle.lastCommand).toBe("tenant.provider.create");
   });
 
-  test("tenant.provider.add with no flags still drives the factory closure", async () => {
+  test("tenant.provider.create with no flags still drives the factory closure", async () => {
     const lifecycle = lifecycleFor();
     const handlers = buildHandlers(lifecycle);
-    const code = await handlers.tenant.provider.add(frameWith({}));
+    const code = await handlers.tenant.provider.create(frameWith({}));
     expect(typeof code).toBe("number");
-    expect(lifecycle.lastCommand).toBe("tenant.provider.add");
+    expect(lifecycle.lastCommand).toBe("tenant.provider.create");
   });
 
   // billing.show reads --limit and --cursor from the frame and builds

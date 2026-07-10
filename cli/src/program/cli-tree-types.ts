@@ -21,7 +21,7 @@ export interface AuthHandlers {
 }
 
 export interface WorkspaceHandlers {
-  add: CommandHandlerFn;
+  create: CommandHandlerFn;
   list: CommandHandlerFn;
   use: CommandHandlerFn;
   show: CommandHandlerFn;
@@ -30,9 +30,21 @@ export interface WorkspaceHandlers {
 }
 
 export interface FleetKeyHandlers {
-  add: CommandHandlerFn;
+  create: CommandHandlerFn;
   list: CommandHandlerFn;
   delete: CommandHandlerFn;
+}
+
+export interface ApiKeyHandlers {
+  create: CommandHandlerFn;
+  list: CommandHandlerFn;
+  revoke: CommandHandlerFn;
+  delete: CommandHandlerFn;
+}
+
+export interface ConnectorHandlers {
+  list: CommandHandlerFn;
+  status: CommandHandlerFn;
 }
 
 export interface GrantHandlers {
@@ -42,7 +54,7 @@ export interface GrantHandlers {
 
 export interface TenantProviderHandlers {
   show: CommandHandlerFn;
-  add: CommandHandlerFn;
+  create: CommandHandlerFn;
   delete: CommandHandlerFn;
 }
 
@@ -55,7 +67,7 @@ export interface BillingHandlers {
 }
 
 export interface FleetSecretHandlers {
-  add: CommandHandlerFn;
+  create: CommandHandlerFn;
   show: CommandHandlerFn;
   list: CommandHandlerFn;
   delete: CommandHandlerFn;
@@ -89,6 +101,8 @@ export interface Handlers {
   doctor: CommandHandlerFn;
   workspace: WorkspaceHandlers;
   fleetKey: FleetKeyHandlers;
+  apiKey: ApiKeyHandlers;
+  connector: ConnectorHandlers;
   grant: GrantHandlers;
   tenant: TenantHandlers;
   billing: BillingHandlers;

@@ -16,7 +16,7 @@ import { FIXTURE_KEY } from "./fixtures/constants";
 import { getDefaultWorkspaceId } from "./fixtures/seed";
 import { gotoWorkspace, workspaceHref, workspaceUrlPattern } from "./fixtures/nav";
 
-const INVALID_GITHUB_SOURCE_REF = "agentsfleet/github-pr-reviewer";
+const INVALID_GITHUB_SOURCE_REF = "agentsfleet/not-a-real-fleet-library";
 const FLOW_TIMEOUT_MS = 120_000;
 
 function fixtureSkillMd(name: string): string {

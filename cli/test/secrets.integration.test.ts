@@ -9,7 +9,7 @@ const authedScope = <T>(fn: (stateDir: string) => Promise<T>): Promise<T> =>
   withAuthedStateDir({ workspaceId: WS_ID, sessionId: "sess_cred" }, fn);
 
 describe("secret commands", () => {
-  test("`secret add` with no existing secret GETs list (empty), POSTs the secret, prints stored", async () => {
+  test("`secret create` with no existing secret GETs list (empty), POSTs the secret, prints stored", async () => {
     await authedScope(async () => {
       let postBody: string | null = null;
       const routes: MockRoutes = {
@@ -23,7 +23,7 @@ describe("secret commands", () => {
         const out = bufferStream();
         const err = bufferStream();
         const code = await runCli(
-          ["secret", "add", "github", `--data={"token":"ghp_test_value"}`],
+          ["secret", "create", "github", `--data={"token":"ghp_test_value"}`],
           { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
         );
         expect(code).toBe(0);
@@ -44,7 +44,7 @@ describe("secret commands", () => {
     });
   });
 
-  test("`secret add` skips silently when the name already exists (default upsert guard)", async () => {
+  test("`secret create` skips silently when the name already exists (default upsert guard)", async () => {
     await authedScope(async () => {
       const routes: MockRoutes = {
         [`GET /v1/workspaces/${WS_ID}/secrets`]: () => jsonResponse(200, {
@@ -57,7 +57,7 @@ describe("secret commands", () => {
         const out = bufferStream();
         const err = bufferStream();
         const code = await runCli(
-          ["secret", "add", "github", `--data={"token":"ghp_will_not_be_sent"}`],
+          ["secret", "create", "github", `--data={"token":"ghp_will_not_be_sent"}`],
           { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
         );
         expect(code).toBe(0);
@@ -68,7 +68,7 @@ describe("secret commands", () => {
     });
   });
 
-  test("`secret add --force` skips the preflight GET and POSTs immediately as overwritten", async () => {
+  test("`secret create --force` skips the preflight GET and POSTs immediately as overwritten", async () => {
     await authedScope(async () => {
       let postBody: string | null = null;
       const routes: MockRoutes = {
@@ -83,7 +83,7 @@ describe("secret commands", () => {
         const out = bufferStream();
         const err = bufferStream();
         const code = await runCli(
-          ["secret", "add", "github", `--data={"token":"ghp_force"}`, "--force"],
+          ["secret", "create", "github", `--data={"token":"ghp_force"}`, "--force"],
           { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
         );
         expect(code).toBe(0);

@@ -13,6 +13,8 @@
 export const COMMAND_GROUPS: ReadonlyArray<string> = [
   "workspace",
   "fleet-key",
+  "api-key",
+  "connector",
   "grant",
   "tenant",
   "billing",
@@ -42,6 +44,8 @@ export const READ_ONLY_COMMANDS: ReadonlyArray<ReadOnlyCommandRow> = [
   { args: ["workspace", "list", "--json"], isList: true, itemsKey: "workspaces" },
   { args: ["workspace", "show", "--json"], requiredKey: "workspace_id" },
   { args: ["fleet-key", "list", "--json"], isList: true, itemsKey: "items" },
+  { args: ["api-key", "list", "--json"], isList: true, itemsKey: "items" },
+  { args: ["connector", "list", "--json"], label: "connector list" },
   { args: ["tenant", "provider", "show", "--json"], requiredKey: "mode" },
   { args: ["billing", "show", "--json"], requiredKey: "balance_nanos" },
   { args: ["list", "--json"], isList: true, itemsKey: "items", label: "fleet list" },
@@ -128,6 +132,7 @@ export const REQUIRES_POSITIONAL_ARG: ReadonlyArray<RequiresPositionalArgRow> = 
   { args: ["workspace", "delete"], missingArgName: "workspace_id" },
   { args: ["fleet-key", "delete"], missingArgName: "key_id" },
   { args: ["grant", "delete"], missingArgName: "grant_id" },
+  { args: ["connector", "status"], missingArgName: "provider" },
   { args: ["kill"], missingArgName: "fleet_id" },
   { args: ["stop"], missingArgName: "fleet_id" },
   { args: ["resume"], missingArgName: "fleet_id" },
@@ -143,6 +148,8 @@ export const INVALID_ID_SAMPLES: ReadonlyArray<string> = [
 export const AUTH_REQUIRED_REPRESENTATIVE: ReadonlyArray<ReadonlyArray<string>> = [
   ["doctor"],
   ["workspace", "list"],
+  ["api-key", "list"],
+  ["connector", "list"],
   ["billing", "show"],
   ["list"],
 ];

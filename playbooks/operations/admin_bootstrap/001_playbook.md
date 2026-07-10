@@ -221,17 +221,18 @@ unset KEY
 
 ## 7.0 Agent: Store platform Fireworks key in admin workspace vault
 
-**Goal:** write the Fireworks API key into the admin tenant's normal credential vault under the provider name `fireworks`. This is the key platform-managed tenants use through the `core.platform_llm_keys` pointer. The raw key must flow from 1Password to `jq` to `agentsfleet` through stdin; do not pass it as a shell argument.
+**Goal:** write the Fireworks API key into the admin tenant's normal secret vault under the provider name `fireworks`. This is the key platform-managed tenants use through the `core.platform_llm_keys` pointer. The raw key must flow from 1Password to `jq` to `agentsfleet` through stdin; do not pass it as a shell argument.
 
 ```bash
 op read "op://$VAULT/agentsfleet-admin/fireworks_api_key" |
   jq -Rn '{provider:"fireworks", api_key: input, model:"accounts/fireworks/models/kimi-k2.6"}' |
-  agentsfleet credential set fireworks --data @-
+  AGENTSFLEET_API_KEY="$(op read "op://$VAULT/agentsfleet-admin/api_key")" \
+    agentsfleet secret create fireworks --force --data @-
 ```
 
 ### Acceptance
 
-`agentsfleet credential set` exits 0. The raw Fireworks key does not appear in shell history, process argv, or playbook output.
+`agentsfleet secret create` exits 0. The raw Fireworks key does not appear in shell history, process argv, or playbook output.
 
 ---
 
@@ -251,7 +252,7 @@ unset KEY
 
 ### Acceptance
 
-`GET /v1/admin/platform-keys` returns one active Fireworks row pointing at the admin workspace credential named `fireworks`. `agentsfleet doctor --json` for a fresh non-admin tenant reports `tenant_provider.mode="platform"`, provider `fireworks`, model `accounts/fireworks/models/kimi-k2.6`, and `context_cap_tokens=256000` without exposing the Fireworks API key.
+`GET /v1/admin/platform-keys` returns one active Fireworks row pointing at the admin workspace secret named `fireworks`. `agentsfleet doctor --json` for a fresh non-admin tenant reports `tenant_provider.mode="platform"`, provider `fireworks`, model `accounts/fireworks/models/kimi-k2.6`, and `context_cap_tokens=256000` without exposing the Fireworks API key.
 
 ---
 

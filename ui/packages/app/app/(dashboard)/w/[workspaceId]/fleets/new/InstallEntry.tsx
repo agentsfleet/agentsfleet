@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Button, EmptyState } from "@agentsfleet/design-system";
+import { Button, EmptyState, TooltipButton } from "@agentsfleet/design-system";
 import { LayoutTemplateIcon, PlusIcon } from "lucide-react";
 import type { FleetLibraryGalleryEntry } from "@/lib/types";
 import { workspacePath } from "@/lib/workspace-routes";
@@ -8,6 +8,7 @@ import {
   FLEET_LIBRARY_EMPTY_DESCRIPTION,
   FLEET_LIBRARY_EMPTY_DESCRIPTION_READONLY,
   FLEET_LIBRARY_EMPTY_TITLE,
+  CREATE_FLEET_LIBRARY_TOOLTIP,
 } from "./library-docs";
 import { LibraryCard } from "./LibraryCard";
 
@@ -49,11 +50,11 @@ export function InstallEntry({
           <div className="flex flex-wrap items-center justify-center gap-md">
             <LibraryDocsLink />
             {canAddLibraryEntry ? (
-              <Button asChild size="sm">
+              <TooltipButton asChild size="sm" tooltip={CREATE_FLEET_LIBRARY_TOOLTIP}>
                 <Link href={`${workspacePath(workspaceId, "fleets/new")}?create=1`}>
                   <PlusIcon size={14} /> Create fleet library
                 </Link>
-              </Button>
+              </TooltipButton>
             ) : null}
           </div>
         }

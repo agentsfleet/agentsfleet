@@ -1,6 +1,6 @@
-// Regression guards for the unprefixed API_KEY env alias. cli.ts previously
+// Regression guards for the unprefixed API_KEY env name. cli.ts previously
 // read `env.API_KEY || env.AGENTSFLEET_API_KEY`; the bare form was off-brand
-// (and outranked the prefixed one). These prove that an ambient `API_KEY` is
+// and outranked the prefixed one. These prove that an ambient `API_KEY` is
 // no longer a recognized auth source, while `AGENTSFLEET_API_KEY` both clears
 // runCli's local auth guard AND reaches the wire as `Authorization: Bearer`
 // on the Effect http-client path.
@@ -12,7 +12,7 @@
 // is its red-green proof.
 //
 // Sibling to api-url-resolution.integration.test.ts, which guards the
-// symmetric removal of the bare API_URL alias.
+// symmetric rejection of the bare API_URL name.
 
 import { test } from "bun:test";
 import assert from "node:assert/strict";
@@ -64,7 +64,7 @@ function envWith(extra: Record<string, string>): NodeJS.ProcessEnv {
   return { ...env, ...extra };
 }
 
-test("ambient bare API_KEY authenticates nothing — alias removed → AUTH_REQUIRED", async () => {
+test("ambient bare API_KEY authenticates nothing and returns AUTH_REQUIRED", async () => {
   await withFreshStateDir(async () => {
     const out = bufferStream();
     const err = bufferStream();
