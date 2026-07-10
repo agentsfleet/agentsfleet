@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M122
 **Workstream:** 002
 **Date:** Jul 09, 2026
-**Status:** DONE
+**Status:** IN_PROGRESS
 **Priority:** P1 — the live fleet timeline silently drops every frame published during a Server-Sent Events (SSE) reconnect window and never re-fetches them; the gap self-heals only when the operator reloads the page (Server-Side Rendering (SSR) re-seed). The class-merge consolidation rides along at P2-grade — a latent Tailwind-conflict duplication with no demonstrated broken override, folded in because it shares no scope with the streaming fix and both are pure UI-package hygiene.
 **Categories:** UI
 **Batch:** B1 — runs alone; no shared files with any other pending workstream.
@@ -132,6 +132,16 @@ Move the Tailwind-conflict-aware `cn` (and its extended `font-size` class group)
 - **Dimension 3.1** — the design-system `cn` resolves a Tailwind conflict (`cn("px-2","px-4")` → `"px-4"`) and preserves a semantic font-size token beside a color token → Test `test_ds_cn_merges_and_keeps_fontsize` — ✅ **DONE**
 - **Dimension 3.2** — exactly one `export function cn`/`export const cn` declaration exists across `ui/packages` (the design-system one); the app `utils.ts` no longer declares `cn` → Test `test_single_cn_export` — ✅ **DONE**
 - **Dimension 3.3** — every prior `@/lib/utils` `cn` consumer imports from `@agentsfleet/design-system` and renders unchanged → Test existing app component suites green after the import swap — ✅ **DONE**
+
+### §4 — Backfill paginates to the pre-outage anchor
+
+A single bounded page recovers only the newest `limit` rows of the outage window (upstream orders `created_at DESC`), so an outage burst longer than one page leaves a permanent hole in the middle of the timeline — and the watermark, advanced to the newest row, guarantees no later reconnect revisits it. The backfill follows `next_cursor` backwards until it reaches the pre-outage anchor. Upstream rejects `cursor` + `since` together, so page 1 carries `since`, pages 2..N carry `cursor` alone, and the client enforces the lower bound by stopping when a page's oldest row falls to the anchor. Page count is bounded; exhausting the budget is a real truncation and is surfaced, never presented as a completed recovery. **Implementation default:** an empty timeline (no anchor) still fetches exactly one most-recent page — Dimension 2.5 is unchanged; pagination is anchored recovery only.
+
+- **Dimension 4.1** — an outage spanning more than one page walks `next_cursor` until a page's oldest row reaches the anchor; every missed frame lands in the snapshot → Test `test_registry_backfill_paginates_to_anchor`
+- **Dimension 4.2** — page 1 carries `since` and no `cursor`; subsequent pages carry `cursor` and no `since` (upstream rejects both together) → Test `test_registry_backfill_page_two_uses_cursor_only`
+- **Dimension 4.3** — a reconnect on an empty timeline issues exactly one page and never paginates → Test `test_registry_backfill_empty_timeline_single_page`
+- **Dimension 4.4** — exhausting the page budget emits a truncation diagnostic rather than silently claiming recovery → Test `test_registry_backfill_truncation_surfaced`
+- **Dimension 4.5** — a mid-pagination failure leaves the watermark unadvanced so the next reconnect retries the same window → Test `test_registry_backfill_midpage_failure_keeps_watermark`
 
 ## Interfaces
 
