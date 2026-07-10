@@ -1,4 +1,4 @@
-// Workspace command Effects — add / list / use / show / secrets / delete.
+// Workspace command Effects — create / list / use / show / secrets / delete.
 //
 // Only `workspace create` hits the API (POST /v1/workspaces). The other five
 // commands operate against the on-disk Workspaces store (services/workspaces.ts).
@@ -9,7 +9,7 @@
 // Errors map to CliError variants → dispatcher exit codes:
 //   - missing positional / malformed UUID → ValidationError (exit 4)
 //   - no active / unknown workspace       → ConfigError    (exit 5)
-//   - API failure on `add`                → ServerError    (exit 3)
+//   - API failure on `create`             → ServerError    (exit 3)
 //   - state store IO failure              → UnexpectedError (exit 1)
 
 import { Effect } from "effect";

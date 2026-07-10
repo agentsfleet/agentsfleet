@@ -55,6 +55,12 @@ test("workspace create [name] captures optional positional", async () => {
   expect(calls[0]?.frame.parsed.positionals).toEqual(["my-ws"]);
 });
 
+test("workspace add is rejected with no dispatch", async () => {
+  const { handlers, calls } = makeSpyTree();
+  await expect(dispatch(["workspace", "add", "my-ws"], handlers)).rejects.toThrow();
+  expect(calls).toHaveLength(0);
+});
+
 test("workspace list dispatches", async () => {
   const { handlers, calls } = makeSpyTree();
   await dispatch(["workspace", "list"], handlers);
@@ -105,6 +111,12 @@ test("fleet-key create accepts --workspace / --fleet / --name / --description", 
   expect(calls[0]?.frame.parsed.options.fleet).toBe(VALID_ID);
   expect(calls[0]?.frame.parsed.options.name).toBe("scout");
   expect(calls[0]?.frame.parsed.options.description).toBe("for scouting");
+});
+
+test("fleet-key add is rejected with no dispatch", async () => {
+  const { handlers, calls } = makeSpyTree();
+  await expect(dispatch(["fleet-key", "add"], handlers)).rejects.toThrow();
+  expect(calls).toHaveLength(0);
 });
 
 test("fleet-key list with --workspace dispatches", async () => {
@@ -210,6 +222,12 @@ test("tenant provider create accepts --secret / --model", async () => {
   expect(calls[0]?.name).toBe("tenant.provider.create");
   expect(calls[0]?.frame.parsed.options.secret).toBe("openai-prod");
   expect(calls[0]?.frame.parsed.options.model).toBe("gpt-4o");
+});
+
+test("tenant provider add is rejected with no dispatch", async () => {
+  const { handlers, calls } = makeSpyTree();
+  await expect(dispatch(["tenant", "provider", "add"], handlers)).rejects.toThrow();
+  expect(calls).toHaveLength(0);
 });
 
 test("tenant provider delete dispatches", async () => {

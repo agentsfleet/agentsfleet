@@ -26,7 +26,7 @@ Requires Node.js ≥ 24 (or Bun ≥ 1.3).
 agentsfleet login
 
 # Create a workspace
-agentsfleet workspace add my-workspace
+agentsfleet workspace create my-workspace
 
 # Verify configuration and connectivity
 agentsfleet doctor
@@ -41,7 +41,7 @@ agentsfleet doctor
 | `login [--token <token>] [--token-name <label>] [--force] [--no-open]` | Authenticate via browser (or pass a token directly; prefer piped stdin to keep it out of shell history) |
 | `logout` | Sign out — revoke every active session on this account and clear local credentials |
 | `auth status` | Show active token source, claims, and server-side validity |
-| `workspace add [<name>]` | Create a new workspace |
+| `workspace create [<name>]` | Create a new workspace |
 | `workspace list` | List workspaces |
 | `workspace use <workspace_id>` | Set the active workspace |
 | `workspace show [<workspace_id>]` | Show workspace details (defaults to the active workspace) |
@@ -53,7 +53,7 @@ agentsfleet doctor
 
 | Command | Description |
 |---------|-------------|
-| `fleet-key add [--workspace <id>] [--fleet <id>] [--name <name>]` | Mint a Fleet API key for the workspace |
+| `fleet-key create [--workspace <id>] [--fleet <id>] [--name <name>]` | Mint a Fleet API key for the workspace |
 | `fleet-key list [--workspace <id>]` | List Fleet API keys |
 | `fleet-key delete <fleet_key_id> [--workspace <id>]` | Revoke a Fleet API key |
 
@@ -69,7 +69,7 @@ agentsfleet doctor
 | Command | Description |
 |---------|-------------|
 | `tenant provider show` | Show the active provider config |
-| `tenant provider add --secret <name> [--model <name>]` | Use a self-managed secret |
+| `tenant provider create --secret <name> [--model <name>]` | Use a self-managed secret |
 | `tenant provider delete` | Reset to the platform default |
 
 ### Billing
@@ -112,9 +112,9 @@ Workspace-scoped tool secrets live in the vault (Slack, GitHub, Fly, Upstash, et
 
 | Command | Description |
 |---------|-------------|
-| `secret add <name> --data=@-` | Add a secret (pipe JSON on stdin; skip if exists) |
-| `secret add <name> --data=@- --force` | Overwrite an existing secret |
-| `secret add <name> --data='<json>'` | Add a secret (inline JSON, exposes secret to shell history) |
+| `secret create <name> --data=@-` | Create a secret (pipe JSON on stdin; skip if exists) |
+| `secret create <name> --data=@- --force` | Overwrite an existing secret |
+| `secret create <name> --data='<json>'` | Create a secret (inline JSON, exposes secret to shell history) |
 | `secret show <name>` | Check existence and `created_at` (never echoes secret) |
 | `secret list` | List workspace secrets |
 | `secret delete <name>` | Remove a workspace secret |

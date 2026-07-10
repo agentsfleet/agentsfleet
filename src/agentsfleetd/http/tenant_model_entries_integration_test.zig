@@ -344,6 +344,9 @@ test "integration: test_entries_list_default_identity — GET carries the active
     try std.testing.expect(r.bodyContains("\"model\":\"" ++ fixtures_provider.TEST_PLATFORM_MODEL ++ "\""));
     const cap_json = comptime std.fmt.comptimePrint("\"context_cap_tokens\":{d}", .{fixtures_provider.TEST_PLATFORM_CAP_TOKENS});
     try std.testing.expect(r.bodyContains(cap_json));
+    try std.testing.expect(r.bodyContains("\"input_nanos_per_mtok\":0"));
+    try std.testing.expect(r.bodyContains("\"cached_input_nanos_per_mtok\":0"));
+    try std.testing.expect(r.bodyContains("\"output_nanos_per_mtok\":0"));
 
     const conn = try h.acquireConn();
     defer h.releaseConn(conn);

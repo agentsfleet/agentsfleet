@@ -1,7 +1,7 @@
 // `agentsfleet secret create|show|list|delete` — workspace-scoped opaque
 // JSON secrets keyed by `name`. The skill consuming them addresses fields
 // as ${secrets.<name>.<field>}; this CLI does not enforce a schema (the
-// consumer owns it). Default `add` upserts skip-if-exists; `--force`
+// consumer owns it). Default `create` skips existing names; `--force`
 // overwrites. The backing endpoint upserts on (workspace_id, key_name);
 // the client-side guard keeps re-runs from silently clobbering a shared
 // secret.

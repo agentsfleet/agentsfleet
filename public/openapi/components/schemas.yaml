@@ -105,7 +105,7 @@ components:
           type: integer
           format: int64
           nullable: true
-          description: Stays null until the async-stamping workstream ships.
+          description: Null until the key is used successfully for API-key authentication.
         revoked_at:
           type: integer
           format: int64

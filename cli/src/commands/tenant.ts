@@ -1,4 +1,4 @@
-// Tenant provider configuration: show / add / delete the active LLM
+// Tenant provider configuration: show / create / delete the active LLM
 // posture (platform-managed default vs self-managed key with a named
 // secret).
 //
