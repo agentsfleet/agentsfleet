@@ -16,8 +16,9 @@ const Outcome = integration.Outcome;
 const OAuth2Refresh = integration.OAuth2Refresh;
 const OauthApp = integration.OauthApp;
 
-/// Vault-handle field carrying the refresh token to exchange.
-const FIELD_REFRESH_TOKEN: []const u8 = "refresh_token";
+/// Vault-handle field carrying the refresh token to exchange (single-sourced
+/// with the connect callbacks and the broker's fingerprint exclusion set).
+const FIELD_REFRESH_TOKEN = integration.FIELD_REFRESH_TOKEN;
 /// Vault-handle field carrying the data-center accounts server this refresh
 /// token is redeemable at (Zoho multi-DC only; absent for single-region
 /// providers, which fall back to `cfg.token_endpoint`). Refreshing at the
@@ -26,8 +27,10 @@ const FIELD_REFRESH_TOKEN: []const u8 = "refresh_token";
 const FIELD_ACCOUNTS_BASE: []const u8 = "accounts_base";
 const ZOHO_TOKEN_PATH: []const u8 = "/oauth/v2/token";
 
-/// Token-endpoint response fields.
-const RESP_FIELD_ACCESS_TOKEN: []const u8 = "access_token";
+/// Token-endpoint response fields. The token twins reuse the vault-handle
+/// field names — RFC 6749 names both sides of the wire identically.
+const RESP_FIELD_ACCESS_TOKEN = integration.FIELD_ACCESS_TOKEN;
+const RESP_FIELD_REFRESH_TOKEN = integration.FIELD_REFRESH_TOKEN;
 const RESP_FIELD_EXPIRES_IN: []const u8 = "expires_in";
 const RESP_FIELD_ERROR: []const u8 = "error";
 
@@ -46,7 +49,8 @@ const HTTP_SERVER_ERROR_FLOOR: u16 = 500;
 const MS_PER_SECOND: i64 = 1000;
 /// Access-token lifetime (ms) when the response omits `expires_in`. A conservative
 /// floor re-mints early, never late — mirrors the github mint's local-expiry floor.
-const DEFAULT_ACCESS_TTL_MS: i64 = 5 * 60 * 1000;
+/// Pub for the sibling test file, which pins the fallback behavior against it.
+pub const DEFAULT_ACCESS_TTL_MS: i64 = 5 * 60 * 1000;
 
 /// Mint a fresh access token from the handle's refresh token. `reconnect_required`
 /// when the handle lacks a refresh token or the vendor reports `invalid_grant`
@@ -83,7 +87,7 @@ pub fn mint(ctx: MintCtx, cfg: OAuth2Refresh) anyerror!Outcome {
     }) catch return .{ .mint_failed = .transient }; // network / timeout → retryable
     defer ctx.alloc.free(resp.body);
 
-    if (resp.status == HTTP_OK) return parseAccess(ctx, resp.body);
+    if (resp.status == HTTP_OK) return parseAccess(ctx, refresh_token, resp.body);
     return classifyFailure(ctx.alloc, resp.status, resp.body);
 }
 
@@ -124,7 +128,7 @@ fn isUnreserved(c: u8) bool {
         (c >= '0' and c <= '9') or c == '-' or c == '.' or c == '_' or c == '~';
 }
 
-fn parseAccess(ctx: MintCtx, body: []const u8) anyerror!Outcome {
+fn parseAccess(ctx: MintCtx, posted_refresh_token: []const u8, body: []const u8) anyerror!Outcome {
     var parsed = std.json.parseFromSlice(std.json.Value, ctx.alloc, body, .{}) catch return .{ .mint_failed = .permanent };
     defer parsed.deinit();
     const obj = switch (parsed.value) {
@@ -133,9 +137,22 @@ fn parseAccess(ctx: MintCtx, body: []const u8) anyerror!Outcome {
     };
     const tok = strField(obj, RESP_FIELD_ACCESS_TOKEN) orelse return .{ .mint_failed = .permanent };
     const ttl_ms = if (intField(obj, RESP_FIELD_EXPIRES_IN)) |secs| secs * MS_PER_SECOND else DEFAULT_ACCESS_TTL_MS;
+    const owned_tok = try ctx.alloc.dupe(u8, tok);
+    errdefer ctx.alloc.free(owned_tok);
+    // A response refresh token that is absent, EMPTY (a malformed provider or
+    // broken proxy must not poison the vault with an unusable credential), or
+    // merely echoes the posted one is not a rotation; only a genuinely new
+    // value is surfaced (and triggers the handler's vault write-back). Deduping
+    // here keeps the handler simple — this is the one place that holds both
+    // the posted and returned values.
+    const rotated: ?[]const u8 = if (strField(obj, RESP_FIELD_REFRESH_TOKEN)) |rt|
+        if (rt.len == 0 or std.mem.eql(u8, rt, posted_refresh_token)) null else try ctx.alloc.dupe(u8, rt)
+    else
+        null;
     return .{ .ok = .{
-        .token = try ctx.alloc.dupe(u8, tok),
+        .token = owned_tok,
         .expires_at_ms = ctx.now_ms + ttl_ms,
+        .rotated_refresh_token = rotated,
     } };
 }
 
@@ -172,53 +189,9 @@ fn intField(obj: std.json.ObjectMap, key: []const u8) ?i64 {
     };
 }
 
-// ── Tests (shared harness: testing.FakeGitHub as the token endpoint) ──────────
-
-const testing = @import("testing.zig");
-const Retry = integration.Retry;
-
-const TEST_NOW_MS: i64 = 1_700_000_000_000;
-const TEST_EXPIRES_IN_S: i64 = 3600;
-const TEST_EXPIRES_IN_TEXT = std.fmt.comptimePrint("{d}", .{TEST_EXPIRES_IN_S});
-const HANDLE_ZOHO = "{\"integration\":\"zoho\",\"refresh_token\":\"rt_zoho_abc\"}";
-const HANDLE_ZOHO_EU = "{\"integration\":\"zoho\",\"refresh_token\":\"rt_zoho_abc\",\"accounts_base\":\"https://accounts.zoho.eu\"}";
-const TEST_CFG = OAuth2Refresh{ .token_endpoint = "https://accounts.test/oauth/v2/token", .app = testAppSelector };
-
-fn testAppSelector(p: integration.PlatformSecrets) ?OauthApp {
-    return p.zoho;
-}
-
-/// A `MintCtx` wired with a fake token endpoint + the fake oauth app, over `handle`.
-fn refreshCtx(alloc: std.mem.Allocator, handle: std.json.Value, vendor: *testing.FakeGitHub) MintCtx {
-    return .{
-        .alloc = alloc,
-        .handle = handle,
-        .now_ms = TEST_NOW_MS,
-        .platform = .{ .zoho = testing.fake_oauth_app },
-        .http = vendor.exchange(),
-        .sign = testing.fakeSign,
-    };
-}
-
-test "oauth2_refresh mint: 200 → access token with local expiry; refresh token posted, not returned (Dimension 3.3)" {
-    const alloc = std.testing.allocator;
-    var vendor = testing.FakeGitHub{ .alloc = alloc, .status = 200, .resp_body = "{\"access_token\":\"at_fresh\",\"expires_in\":" ++ TEST_EXPIRES_IN_TEXT ++ "}" };
-    defer vendor.deinit();
-    var h = try testing.parse(alloc, HANDLE_ZOHO);
-    defer h.deinit();
-
-    const out = try mint(refreshCtx(alloc, h.value, &vendor), TEST_CFG);
-    try std.testing.expect(out == .ok);
-    defer alloc.free(out.ok.token);
-    try std.testing.expectEqualStrings("at_fresh", out.ok.token);
-    try std.testing.expectEqual(TEST_NOW_MS + TEST_EXPIRES_IN_S * MS_PER_SECOND, out.ok.expires_at_ms);
-    // The refresh token is the request credential (posted) but never the result:
-    // the runner-facing token carries only the fresh access token.
-    try std.testing.expect(std.mem.indexOf(u8, vendor.body, "rt_zoho_abc") != null);
-    try std.testing.expect(std.mem.indexOf(u8, out.ok.token, "rt_zoho_abc") == null);
-    // Auth is in the body, not a bearer header (the broker sends no bearer).
-    try std.testing.expectEqual(@as(usize, 0), vendor.bearer.len);
-}
+// ── Tests ─────────────────────────────────────────────────────────────────────
+// The mint-level suite lives in `integration_oauth_refresh_test.zig` (FLL-exempt;
+// discovered from `tests.zig`). Only the private-helper test stays in-file.
 
 test "oauth2_refresh mint: form-encodes refresh grant values" {
     const alloc = std.testing.allocator;
@@ -228,109 +201,4 @@ test "oauth2_refresh mint: form-encodes refresh grant values" {
         "grant_type=refresh_token&refresh_token=rt%2Ba%26b%3Dc%25&client_id=cid%2B1&client_secret=sec%26ret%3D",
         form,
     );
-}
-
-test "oauth2_refresh mint: a handle with accounts_base refreshes at ITS data center, not cfg.token_endpoint" {
-    const alloc = std.testing.allocator;
-    var vendor = testing.FakeGitHub{ .alloc = alloc, .status = 200, .resp_body = "{\"access_token\":\"at_eu\",\"expires_in\":" ++ TEST_EXPIRES_IN_TEXT ++ "}" };
-    defer vendor.deinit();
-    var h = try testing.parse(alloc, HANDLE_ZOHO_EU);
-    defer h.deinit();
-
-    const out = try mint(refreshCtx(alloc, h.value, &vendor), TEST_CFG);
-    try std.testing.expect(out == .ok);
-    defer alloc.free(out.ok.token);
-    // The EU handle's stored accounts_base wins over TEST_CFG's single-region
-    // default — this is the exact bug class greptile flagged: a hardcoded
-    // token_endpoint means every non-US refresh dies invalid_grant.
-    try std.testing.expectEqualStrings("https://accounts.zoho.eu/oauth/v2/token", vendor.url);
-}
-
-test "oauth2_refresh mint: a handle without accounts_base falls back to cfg.token_endpoint" {
-    const alloc = std.testing.allocator;
-    var vendor = testing.FakeGitHub{ .alloc = alloc, .status = 200, .resp_body = "{\"access_token\":\"at_default\",\"expires_in\":" ++ TEST_EXPIRES_IN_TEXT ++ "}" };
-    defer vendor.deinit();
-    var h = try testing.parse(alloc, HANDLE_ZOHO);
-    defer h.deinit();
-
-    const out = try mint(refreshCtx(alloc, h.value, &vendor), TEST_CFG);
-    try std.testing.expect(out == .ok);
-    defer alloc.free(out.ok.token);
-    try std.testing.expectEqualStrings(TEST_CFG.token_endpoint, vendor.url);
-}
-
-test "oauth2_refresh mint: missing expires_in falls back to the conservative floor" {
-    const alloc = std.testing.allocator;
-    var vendor = testing.FakeGitHub{ .alloc = alloc, .status = 200, .resp_body = "{\"access_token\":\"at_no_ttl\"}" };
-    defer vendor.deinit();
-    var h = try testing.parse(alloc, HANDLE_ZOHO);
-    defer h.deinit();
-    const out = try mint(refreshCtx(alloc, h.value, &vendor), TEST_CFG);
-    try std.testing.expect(out == .ok);
-    defer alloc.free(out.ok.token);
-    try std.testing.expectEqual(TEST_NOW_MS + DEFAULT_ACCESS_TTL_MS, out.ok.expires_at_ms);
-}
-
-test "oauth2_refresh mint: invalid_grant → reconnect_required in a single attempt (Dimension 3.2)" {
-    const alloc = std.testing.allocator;
-    var vendor = testing.FakeGitHub{ .alloc = alloc, .status = 400, .resp_body = "{\"error\":\"invalid_grant\"}" };
-    defer vendor.deinit();
-    var h = try testing.parse(alloc, HANDLE_ZOHO);
-    defer h.deinit();
-    const out = try mint(refreshCtx(alloc, h.value, &vendor), TEST_CFG);
-    try std.testing.expect(out == .reconnect_required);
-    // No retry storm: exactly one bounded exchange per mint request.
-    try std.testing.expectEqual(@as(usize, 1), vendor.calls);
-}
-
-test "oauth2_refresh mint: status → outcome mapping (transient 5xx, permanent other-4xx)" {
-    const alloc = std.testing.allocator;
-    const cases = [_]struct { status: u16, retry: Retry }{
-        .{ .status = 503, .retry = .transient }, // upstream fault → retry
-        .{ .status = 429, .retry = .permanent }, // other 4xx, no invalid_grant → permanent
-    };
-    for (cases) |c| {
-        var vendor = testing.FakeGitHub{ .alloc = alloc, .status = c.status, .resp_body = "{\"error\":\"temporarily_unavailable\"}" };
-        defer vendor.deinit();
-        var h = try testing.parse(alloc, HANDLE_ZOHO);
-        defer h.deinit();
-        const out = try mint(refreshCtx(alloc, h.value, &vendor), TEST_CFG);
-        try std.testing.expect(out == .mint_failed);
-        try std.testing.expectEqual(c.retry, out.mint_failed);
-    }
-}
-
-test "oauth2_refresh mint: a handle without a refresh token reconnects without calling the vendor" {
-    const alloc = std.testing.allocator;
-    var vendor = testing.FakeGitHub{ .alloc = alloc, .status = 200 };
-    defer vendor.deinit();
-    var h = try testing.parse(alloc, "{\"integration\":\"zoho\"}");
-    defer h.deinit();
-    try std.testing.expect((try mint(refreshCtx(alloc, h.value, &vendor), TEST_CFG)) == .reconnect_required);
-    try std.testing.expectEqual(@as(usize, 0), vendor.calls);
-}
-
-test "oauth2_refresh mint: an unconfigured platform app fails permanent without a call" {
-    const alloc = std.testing.allocator;
-    var vendor = testing.FakeGitHub{ .alloc = alloc, .status = 200 };
-    defer vendor.deinit();
-    var h = try testing.parse(alloc, HANDLE_ZOHO);
-    defer h.deinit();
-    var ctx = refreshCtx(alloc, h.value, &vendor);
-    ctx.platform = .{}; // no zoho app configured
-    const out = try mint(ctx, TEST_CFG);
-    try std.testing.expect(out == .mint_failed);
-    try std.testing.expectEqual(Retry.permanent, out.mint_failed);
-    try std.testing.expectEqual(@as(usize, 0), vendor.calls);
-}
-
-test "oauth2_refresh mint: a transport error is a transient mint_failed (failure injection)" {
-    const alloc = std.testing.allocator;
-    var vendor = testing.FakeGitHub{ .alloc = alloc, .fail_with = error.ConnectionRefused };
-    defer vendor.deinit();
-    var h = try testing.parse(alloc, HANDLE_ZOHO);
-    defer h.deinit();
-    const out = try mint(refreshCtx(alloc, h.value, &vendor), TEST_CFG);
-    try std.testing.expect(out == .mint_failed);
-    try std.testing.expectEqual(Retry.transient, out.mint_failed);
 }

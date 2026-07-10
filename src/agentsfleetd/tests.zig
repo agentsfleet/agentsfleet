@@ -12,6 +12,7 @@ test {
     _ = @import("db/pool.zig");
     _ = @import("db/pg_query.zig");
     _ = @import("db/sql_splitter.zig");
+    _ = @import("db/sql_splitter_test.zig");
     _ = @import("config/env_vars.zig");
     _ = @import("config/load.zig");
     _ = @import("config/balance_policy.zig");
@@ -36,6 +37,7 @@ test {
     _ = @import("credentials/integration_ctx.zig");
     _ = @import("credentials/integration_github.zig");
     _ = @import("credentials/integration_oauth_refresh.zig");
+    _ = @import("credentials/integration_oauth_refresh_test.zig");
     _ = @import("credentials/broker.zig");
     _ = @import("credentials/broker_test.zig");
     _ = @import("credentials/serve_broker.zig");

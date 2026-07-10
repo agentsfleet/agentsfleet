@@ -29,9 +29,10 @@ const Conn = pg.Conn;
 const AdvisoryLockKey: i64 = 0x7A6F6D6269650001;
 
 /// Bounded retry: at most MAX_ATTEMPTS polls spaced RETRY_MS apart
-/// (~30s worst case) before giving up.
-const MAX_ATTEMPTS: u32 = 30;
-const RETRY_MS: u64 = 1_000;
+/// (~30s worst case) before giving up. `pub` so `runMigrations` can delegate
+/// to `runMigrationsBounded` with the production bound.
+pub const MAX_ATTEMPTS: u32 = 30;
+pub const RETRY_MS: u64 = 1_000;
 
 /// One poll's verdict. `pub` for the unit test, which exercises the pure
 /// retry decision without a database.

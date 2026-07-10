@@ -8,13 +8,13 @@ import {
   CardContent,
   CardHeader,
   CardTitle,
+  cn,
   EYEBROW_CLASS,
   Input,
   Label,
   Time,
   useResettableTimeout,
 } from "@agentsfleet/design-system";
-import { cn } from "@/lib/utils";
 import type { FleetTrigger } from "@/lib/types";
 import type { GuidanceCard } from "./provider-guidance";
 

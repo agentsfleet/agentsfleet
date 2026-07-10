@@ -9,7 +9,7 @@ import {
   reconcileOptimistic,
   subscribe,
 } from "./fleet-stream-registry";
-import type { EventRow } from "@/lib/api/events";
+import { FRAME_KIND, type EventRow } from "@/lib/api/events";
 
 // Mirrors the FakeEventSource pattern in tests/use-fleet-event-stream.test.ts.
 // Centralizing was considered and rejected — the helper is small and the
@@ -294,5 +294,390 @@ describe("fleet-stream-registry — mutation edges", () => {
     a();
     vi.advanceTimersByTime(IDLE_RELEASE_MS + 1);
     expect(() => a()).not.toThrow();
+  });
+});
+
+describe("fleet-stream-registry — reconnect backfill", () => {
+  // The registry backfills through the same-origin proxy on reconnect opens
+  // only; these drive error→backoff→reopen against a mocked fetch.
+  const RECONNECT_ADVANCE_MS = 2_001; // first-retry backoff (base 1s × 2^1) + 1
+  const SEED_AT_MS = Date.UTC(2026, 4, 15, 18, 30, 0);
+  // A frame published during the outage — any instant after the seed works.
+  const MISSED_AT_MS = SEED_AT_MS + 1_000;
+  // Spacing between adjacent rows in a mocked newest-first page.
+  const ROW_SPACING_MS = 1_000;
+  // Newest row of a multi-page outage burst; MISSED_AT_MS is its oldest.
+  const OUTAGE_NEWEST_MS = SEED_AT_MS + 3 * ROW_SPACING_MS;
+  // Every row of a budget-exhausting walk stays newer than the anchor.
+  const OUTAGE_UNREACHABLE_MS = SEED_AT_MS + 5 * ROW_SPACING_MS;
+  // SEED_AT_MS minus the 2s overlap, second-truncated ("since" is 20-char RFC 3339).
+  const SEED_SINCE_PARAM = "2026-05-15T18:29:58Z";
+  // MISSED_AT_MS minus the same overlap — the watermark after a successful backfill.
+  const MISSED_SINCE_PARAM = "2026-05-15T18:29:59Z";
+
+  const fetchSpy = vi.fn();
+  const originalFetch = globalThis.fetch;
+
+  beforeEach(() => {
+    fetchSpy.mockReset();
+    globalThis.fetch = fetchSpy as unknown as typeof fetch;
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  function pageWith(
+    items: EventRow[],
+    nextCursor: string | null = null,
+  ): { ok: true; json: () => Promise<unknown> } {
+    return { ok: true, json: () => Promise.resolve({ items, next_cursor: nextCursor }) };
+  }
+
+  // Rows arrive newest-first, mirroring the upstream `created_at DESC` order.
+  function descRows(ids: string[], newestMs: number): EventRow[] {
+    return ids.map((id, i) => row({ event_id: id, created_at: newestMs - i * ROW_SPACING_MS }));
+  }
+
+  function queryOf(callIndex: number): URLSearchParams {
+    return new URL(String(fetchSpy.mock.calls[callIndex]![0]), "http://localhost").searchParams;
+  }
+
+  // The backfill path awaits fetch → json → merge per page; drain enough
+  // microtask hops for a full BACKFILL_MAX_PAGES cursor walk (fake timers stay
+  // untouched — nothing here rides a timer).
+  async function flushBackfill(): Promise<void> {
+    for (let i = 0; i < 200; i += 1) await Promise.resolve();
+  }
+
+  function reconnect(): FakeEventSource {
+    const es0 = FakeEventSource.instances[0]!;
+    es0.onopen?.call(es0 as unknown as EventSource, {} as Event);
+    es0.onerror?.call(es0 as unknown as EventSource, {} as Event);
+    vi.advanceTimersByTime(RECONNECT_ADVANCE_MS);
+    const es1 = FakeEventSource.instances[1]!;
+    es1.onopen?.call(es1 as unknown as EventSource, {} as Event);
+    return es1;
+  }
+
+  // Drive one more error→reopen cycle off the given (open) EventSource.
+  function reconnectAgain(es: FakeEventSource): FakeEventSource {
+    es.onerror?.call(es as unknown as EventSource, {} as Event);
+    vi.advanceTimersByTime(RECONNECT_ADVANCE_MS);
+    const next = FakeEventSource.instances[FakeEventSource.instances.length - 1]!;
+    next.onopen?.call(next as unknown as EventSource, {} as Event);
+    return next;
+  }
+
+  it("test_registry_backfills_on_reconnect — error→reopen issues one backfill keyed off the last-seen event and merges the rows", async () => {
+    fetchSpy.mockResolvedValueOnce(
+      pageWith([row({ event_id: "evt_missed", created_at: MISSED_AT_MS })]),
+    );
+    const a = subscribe(WS, Z_A, [row({ event_id: "evt_seed", created_at: SEED_AT_MS })], () => {});
+    reconnect();
+    await flushBackfill();
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    const url = String(fetchSpy.mock.calls[0]![0]);
+    expect(url).toContain(`/backend/v1/workspaces/${WS}/fleets/${Z_A}/events?`);
+    expect(url).toContain(`since=${encodeURIComponent(SEED_SINCE_PARAM)}`);
+    expect(url).toContain("limit=200");
+    expect(getSnapshot(Z_A).events.map((e) => e.id)).toEqual(["evt_seed", "evt_missed"]);
+    a();
+  });
+
+  it("test_registry_initial_open_no_backfill — the first-ever onopen issues no backfill fetch", async () => {
+    const a = subscribe(WS, Z_A, [row({ event_id: "evt_seed", created_at: SEED_AT_MS })], () => {});
+    const es = FakeEventSource.instances[0]!;
+    es.onopen?.call(es as unknown as EventSource, {} as Event);
+    await flushBackfill();
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(getSnapshot(Z_A).connectionStatus).toBe(CONNECTION_STATUS.LIVE);
+    a();
+  });
+
+  it("test_registry_backfill_dedupes — a row delivered both live and via backfill appears once", async () => {
+    fetchSpy.mockResolvedValueOnce(
+      pageWith([
+        row({ event_id: "evt_seed", created_at: SEED_AT_MS }),
+        row({ event_id: "evt_missed", created_at: MISSED_AT_MS }),
+      ]),
+    );
+    const a = subscribe(WS, Z_A, [row({ event_id: "evt_seed", created_at: SEED_AT_MS })], () => {});
+    reconnect();
+    await flushBackfill();
+    const ids = getSnapshot(Z_A).events.map((e) => e.id);
+    expect(ids).toEqual(["evt_seed", "evt_missed"]);
+    a();
+  });
+
+  it("test_registry_backfill_failure_tolerated — a rejected backfill fetch leaves the timeline intact and the stream LIVE", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    fetchSpy.mockRejectedValueOnce(new Error("network drop mid-backfill"));
+    const a = subscribe(WS, Z_A, [row({ event_id: "evt_seed", created_at: SEED_AT_MS })], () => {});
+    reconnect();
+    await flushBackfill();
+    expect(getSnapshot(Z_A).events.map((e) => e.id)).toEqual(["evt_seed"]);
+    expect(getSnapshot(Z_A).connectionStatus).toBe(CONNECTION_STATUS.LIVE);
+    expect(warnSpy).toHaveBeenCalled();
+    warnSpy.mockRestore();
+    a();
+  });
+
+  it("test_registry_backfill_failure_tolerated — an HTTP-error backfill response is swallowed the same way", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    fetchSpy.mockResolvedValueOnce({ ok: false, status: 503 });
+    const a = subscribe(WS, Z_A, [row({ event_id: "evt_seed", created_at: SEED_AT_MS })], () => {});
+    reconnect();
+    await flushBackfill();
+    expect(getSnapshot(Z_A).events.map((e) => e.id)).toEqual(["evt_seed"]);
+    expect(getSnapshot(Z_A).connectionStatus).toBe(CONNECTION_STATUS.LIVE);
+    expect(warnSpy).toHaveBeenCalled();
+    warnSpy.mockRestore();
+    a();
+  });
+
+  it("keys the backfill off the last server event, skipping a newer optimistic row", async () => {
+    // A steer sent mid-outage appends an optimistic row with a client-clock
+    // timestamp; keying `since` off it would skip frames published earlier
+    // in the outage window.
+    fetchSpy.mockResolvedValueOnce(pageWith([]));
+    const a = subscribe(WS, Z_A, [row({ event_id: "evt_seed", created_at: SEED_AT_MS })], () => {});
+    const es0 = FakeEventSource.instances[0]!;
+    es0.onopen?.call(es0 as unknown as EventSource, {} as Event);
+    es0.onerror?.call(es0 as unknown as EventSource, {} as Event);
+    appendOptimistic(Z_A, "sent during the outage", "steer:k@e2e.com");
+    vi.advanceTimersByTime(RECONNECT_ADVANCE_MS);
+    const es1 = FakeEventSource.instances[1]!;
+    es1.onopen?.call(es1 as unknown as EventSource, {} as Event);
+    await flushBackfill();
+    const url = String(fetchSpy.mock.calls[0]![0]);
+    expect(url).toContain(`since=${encodeURIComponent(SEED_SINCE_PARAM)}`);
+    a();
+  });
+
+  it("keys the backfill off the last server event, skipping a newer failed row", async () => {
+    fetchSpy.mockResolvedValueOnce(pageWith([]));
+    const a = subscribe(WS, Z_A, [row({ event_id: "evt_seed", created_at: SEED_AT_MS })], () => {});
+    const es0 = FakeEventSource.instances[0]!;
+    es0.onopen?.call(es0 as unknown as EventSource, {} as Event);
+    es0.onerror?.call(es0 as unknown as EventSource, {} as Event);
+    const tempId = appendOptimistic(Z_A, "steer that fails mid-outage", "steer:k@e2e.com");
+    markOptimisticFailed(Z_A, tempId);
+    vi.advanceTimersByTime(RECONNECT_ADVANCE_MS);
+    const es1 = FakeEventSource.instances[1]!;
+    es1.onopen?.call(es1 as unknown as EventSource, {} as Event);
+    await flushBackfill();
+    const url = String(fetchSpy.mock.calls[0]![0]);
+    expect(url).toContain(`since=${encodeURIComponent(SEED_SINCE_PARAM)}`);
+    a();
+  });
+
+  it("ignores a malformed backfill body whose items is not an array", async () => {
+    fetchSpy.mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ items: "nope" }) });
+    const a = subscribe(WS, Z_A, [row({ event_id: "evt_seed", created_at: SEED_AT_MS })], () => {});
+    reconnect();
+    await flushBackfill();
+    expect(getSnapshot(Z_A).events.map((e) => e.id)).toEqual(["evt_seed"]);
+    expect(getSnapshot(Z_A).connectionStatus).toBe(CONNECTION_STATUS.LIVE);
+    a();
+  });
+
+  it("drops a backfill page that resolves after the entry was torn down", async () => {
+    let resolveFetch!: (value: unknown) => void;
+    fetchSpy.mockReturnValueOnce(new Promise((resolve) => { resolveFetch = resolve; }));
+    const a = subscribe(WS, Z_A, [row({ event_id: "evt_seed", created_at: SEED_AT_MS })], () => {});
+    reconnect();
+    a();
+    vi.advanceTimersByTime(IDLE_RELEASE_MS + 1);
+    resolveFetch(pageWith([row({ event_id: "evt_late", created_at: MISSED_AT_MS })]));
+    await flushBackfill();
+    // Torn down — the late page must not resurrect a snapshot.
+    expect(getSnapshot(Z_A).events).toEqual([]);
+  });
+
+  it("advances the since watermark only via successful backfill pages", async () => {
+    fetchSpy.mockResolvedValueOnce(
+      pageWith([row({ event_id: "evt_missed", created_at: MISSED_AT_MS })]),
+    );
+    fetchSpy.mockResolvedValueOnce(pageWith([]));
+    const a = subscribe(WS, Z_A, [row({ event_id: "evt_seed", created_at: SEED_AT_MS })], () => {});
+    const es1 = reconnect();
+    await flushBackfill();
+    reconnectAgain(es1);
+    await flushBackfill();
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    expect(String(fetchSpy.mock.calls[1]![0])).toContain(
+      `since=${encodeURIComponent(MISSED_SINCE_PARAM)}`,
+    );
+    a();
+  });
+
+  it("a live client-stamped frame never advances the since watermark", async () => {
+    // Live frames are stamped with the client clock; a skewed clock keying
+    // the cursor would push `since` past frames published in the outage.
+    fetchSpy.mockResolvedValueOnce(pageWith([]));
+    const a = subscribe(WS, Z_A, [row({ event_id: "evt_seed", created_at: SEED_AT_MS })], () => {});
+    const es0 = FakeEventSource.instances[0]!;
+    es0.onopen?.call(es0 as unknown as EventSource, {} as Event);
+    es0.onmessage?.call(es0 as unknown as EventSource, {
+      data: JSON.stringify({
+        kind: FRAME_KIND.EVENT_RECEIVED,
+        event_id: "evt_live",
+        actor: "fleet",
+      }),
+    } as MessageEvent);
+    es0.onerror?.call(es0 as unknown as EventSource, {} as Event);
+    vi.advanceTimersByTime(RECONNECT_ADVANCE_MS);
+    const es1 = FakeEventSource.instances[1]!;
+    es1.onopen?.call(es1 as unknown as EventSource, {} as Event);
+    await flushBackfill();
+    expect(String(fetchSpy.mock.calls[0]![0])).toContain(
+      `since=${encodeURIComponent(SEED_SINCE_PARAM)}`,
+    );
+    a();
+  });
+
+  it("a failed backfill does not advance the watermark — the next reconnect retries the same window", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    fetchSpy.mockRejectedValueOnce(new Error("network drop"));
+    fetchSpy.mockResolvedValueOnce(pageWith([]));
+    const a = subscribe(WS, Z_A, [row({ event_id: "evt_seed", created_at: SEED_AT_MS })], () => {});
+    const es1 = reconnect();
+    await flushBackfill();
+    reconnectAgain(es1);
+    await flushBackfill();
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    for (const call of fetchSpy.mock.calls) {
+      expect(String(call[0])).toContain(`since=${encodeURIComponent(SEED_SINCE_PARAM)}`);
+    }
+    warnSpy.mockRestore();
+    a();
+  });
+
+  it("holds a single backfill in flight across overlapping reconnect opens", async () => {
+    let resolveFetch!: (value: unknown) => void;
+    fetchSpy.mockReturnValueOnce(new Promise((resolve) => { resolveFetch = resolve; }));
+    const a = subscribe(WS, Z_A, [row({ event_id: "evt_seed", created_at: SEED_AT_MS })], () => {});
+    const es1 = reconnect();
+    reconnectAgain(es1);
+    await flushBackfill();
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    resolveFetch(pageWith([]));
+    await flushBackfill();
+    a();
+  });
+
+  it("test_registry_backfill_paginates_to_anchor — an outage longer than one page walks next_cursor until a page reaches the anchor", async () => {
+    // Page 1 is the NEWEST slice of the window (upstream orders created_at
+    // DESC) and is full → next_cursor set. Without following it, evt_oldest
+    // (published early in the outage) would be lost in a mid-timeline hole.
+    fetchSpy.mockResolvedValueOnce(
+      pageWith(descRows(["evt_newest", "evt_mid"], OUTAGE_NEWEST_MS), "cursor_page2"),
+    );
+    fetchSpy.mockResolvedValueOnce(
+      pageWith(descRows(["evt_oldest"], MISSED_AT_MS), null),
+    );
+    const a = subscribe(WS, Z_A, [row({ event_id: "evt_seed", created_at: SEED_AT_MS })], () => {});
+    reconnect();
+    await flushBackfill();
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    expect(getSnapshot(Z_A).events.map((e) => e.id)).toEqual([
+      "evt_seed",
+      "evt_oldest",
+      "evt_mid",
+      "evt_newest",
+    ]);
+    a();
+  });
+
+  it("test_registry_backfill_page_two_uses_cursor_only — page 1 sends since, page 2 sends cursor (upstream rejects both together)", async () => {
+    fetchSpy.mockResolvedValueOnce(
+      pageWith(descRows(["evt_a", "evt_b"], OUTAGE_NEWEST_MS), "cursor_page2"),
+    );
+    fetchSpy.mockResolvedValueOnce(
+      pageWith(descRows(["evt_c"], MISSED_AT_MS), null),
+    );
+    const a = subscribe(WS, Z_A, [row({ event_id: "evt_seed", created_at: SEED_AT_MS })], () => {});
+    reconnect();
+    await flushBackfill();
+    const first = queryOf(0);
+    expect(first.get("since")).toBe(SEED_SINCE_PARAM);
+    expect(first.get("cursor")).toBeNull();
+    const second = queryOf(1);
+    expect(second.get("cursor")).toBe("cursor_page2");
+    expect(second.get("since")).toBeNull();
+    a();
+  });
+
+  it("test_registry_backfill_empty_timeline_single_page — no anchor means exactly one page, never pagination", async () => {
+    // A full page with a next_cursor would tempt the walk; with no anchor to
+    // walk back to, following it would drag in the fleet's whole history.
+    fetchSpy.mockResolvedValueOnce(
+      pageWith(descRows(["evt_first_ever"], SEED_AT_MS), "cursor_page2"),
+    );
+    const a = subscribe(WS, Z_A, NO_SEED, () => {});
+    reconnect();
+    await flushBackfill();
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(getSnapshot(Z_A).events.map((e) => e.id)).toEqual(["evt_first_ever"]);
+    a();
+  });
+
+  it("test_registry_backfill_truncation_surfaced — exhausting the page budget warns rather than claiming a complete recovery", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const MAX_PAGES = 10;
+    // Every page full, every page newer than the anchor → the walk never
+    // reaches it and the budget runs out.
+    for (let i = 0; i < MAX_PAGES; i += 1) {
+      fetchSpy.mockResolvedValueOnce(
+        pageWith(descRows([`evt_${i}`], OUTAGE_UNREACHABLE_MS), `cursor_${i}`),
+      );
+    }
+    const a = subscribe(WS, Z_A, [row({ event_id: "evt_seed", created_at: SEED_AT_MS })], () => {});
+    reconnect();
+    await flushBackfill();
+    expect(fetchSpy).toHaveBeenCalledTimes(MAX_PAGES);
+    expect(warnSpy).toHaveBeenCalledWith(
+      "fleet-stream backfill failed",
+      `recovery truncated at ${MAX_PAGES} pages`,
+    );
+    warnSpy.mockRestore();
+    a();
+  });
+
+  it("test_registry_backfill_midpage_failure_keeps_watermark — a failure on page 2 leaves the watermark at the anchor so the next reconnect retries", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    fetchSpy.mockResolvedValueOnce(
+      pageWith(descRows(["evt_newest"], OUTAGE_NEWEST_MS), "cursor_page2"),
+    );
+    fetchSpy.mockResolvedValueOnce({ ok: false, status: 503 });
+    fetchSpy.mockResolvedValueOnce(pageWith([], null));
+    const a = subscribe(WS, Z_A, [row({ event_id: "evt_seed", created_at: SEED_AT_MS })], () => {});
+    const es1 = reconnect();
+    await flushBackfill();
+    // Page 1's rows are merged (id-dedupe makes the retry idempotent), but the
+    // watermark must NOT have advanced past the unrecovered remainder.
+    expect(getSnapshot(Z_A).events.map((e) => e.id)).toContain("evt_newest");
+    reconnectAgain(es1);
+    await flushBackfill();
+    expect(queryOf(2).get("since")).toBe(SEED_SINCE_PARAM);
+    warnSpy.mockRestore();
+    a();
+  });
+
+  it("test_registry_backfill_empty_timeline_requests_recent — a reconnect with no last-seen event fetches the most-recent bounded page", async () => {
+    fetchSpy.mockResolvedValueOnce(
+      pageWith([row({ event_id: "evt_first_ever", created_at: SEED_AT_MS })]),
+    );
+    const a = subscribe(WS, Z_A, NO_SEED, () => {});
+    reconnect();
+    await flushBackfill();
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    const url = String(fetchSpy.mock.calls[0]![0]);
+    expect(url).not.toContain("since=");
+    expect(url).not.toContain("cursor=");
+    expect(url).toContain("limit=200");
+    expect(getSnapshot(Z_A).events.map((e) => e.id)).toEqual(["evt_first_ever"]);
+    a();
   });
 });

@@ -1,6 +1,8 @@
 import { streamFleetEventsUrl, type EventRow, type LiveFrame } from "@/lib/api/events";
+import { runBackfill, warnBackfillFailure } from "./fleet-stream-backfill";
 import {
   applyLiveFrame,
+  maxServerCreatedAt,
   mergeBackfill,
   type FleetEvent,
 } from "./fleet-stream-frames";
@@ -23,7 +25,10 @@ export {
 //
 // The initial event list is seeded from server-rendered data passed by
 // the caller (no client-side backfill GET, no bearer token in the
-// browser); live updates ride the cookie-authed SSE route handler.
+// browser); live updates ride the cookie-authed SSE route handler. A
+// reconnect open — never the initial one — additionally backfills the
+// frames published during the outage via the same-origin events proxy,
+// merged through the id-deduping mergeBackfill.
 
 export const CONNECTION_STATUS = {
   CONNECTING: "connecting",
@@ -59,6 +64,16 @@ type Entry = {
   reconnectAttempts: number;
   idleTimer: ReturnType<typeof setTimeout> | null;
   tempCounter: number;
+  // Whether this entry's EventSource has ever reached onopen. Distinguishes
+  // the initial (SSR-seeded) connect from a reconnect — only the latter
+  // backfills. Lives on the mutable Entry, never a passed primitive.
+  hasConnectedOnce: boolean;
+  // Newest server-confirmed created_at (epoch ms) — advanced only by the SSR
+  // seed and successful backfill pages, never by client-clock-stamped live or
+  // optimistic rows, and never by a failed backfill (so a failure cannot seal
+  // the gap it left).
+  serverSinceMs: number | null;
+  backfillInFlight: boolean;
 };
 
 const REGISTRY = new Map<string, Entry>();
@@ -97,11 +112,37 @@ function startEventSource(entry: Entry, fleetId: string): void {
   const es = new EventSource(url);
   entry.eventSource = es;
   es.onopen = () => {
+    const isReconnect = entry.hasConnectedOnce;
+    entry.hasConnectedOnce = true;
     entry.reconnectAttempts = 0;
     patchSnapshot(entry, { connectionStatus: CONNECTION_STATUS.LIVE });
+    if (isReconnect) void backfillMissedFrames(entry, fleetId);
   };
   es.onmessage = (e) => onFrame(entry, e);
   es.onerror = () => onEventSourceError(entry, fleetId);
+}
+
+// Fire the reconnect gap-recovery walk. The watermark advances only on a
+// completed (or explicitly-truncated) walk; a failure leaves it at the anchor
+// so the next reconnect retries the same window. Merges are id-deduped, so the
+// retry is idempotent.
+async function backfillMissedFrames(entry: Entry, fleetId: string): Promise<void> {
+  if (entry.backfillInFlight) return;
+  entry.backfillInFlight = true;
+  try {
+    const outcome = await runBackfill({
+      workspaceId: entry.workspaceId,
+      fleetId,
+      anchorMs: entry.serverSinceMs,
+      stillCurrent: () => REGISTRY.get(fleetId) === entry,
+      onPage: (rows) => setEvents(entry, (prev) => mergeBackfill(prev, rows)),
+    });
+    if (outcome.ok) entry.serverSinceMs = outcome.watermark;
+  } catch (err) {
+    warnBackfillFailure(err);
+  } finally {
+    entry.backfillInFlight = false;
+  }
 }
 
 function onFrame(entry: Entry, e: MessageEvent): void {
@@ -168,6 +209,9 @@ function createEntry(workspaceId: string, initial: EventRow[]): Entry {
     reconnectAttempts: 0,
     idleTimer: null,
     tempCounter: 0,
+    hasConnectedOnce: false,
+    serverSinceMs: maxServerCreatedAt(null, initial),
+    backfillInFlight: false,
   };
 }
 

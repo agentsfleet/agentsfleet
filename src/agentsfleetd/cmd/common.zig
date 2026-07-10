@@ -289,15 +289,33 @@ test "canonical schema bootstrap: last version equals the registered count" {
     try std.testing.expectEqual(@as(i32, @intCast(migrations.len)), last);
 }
 
-test "every migration SQL is parseable by SqlStatementSplitter" {
+test "every migration splits into structurally complete statements" {
     const SqlSplitter = @import("../db/sql_splitter.zig").SqlStatementSplitter;
     const migrations = canonicalMigrations();
     for (migrations) |migration| {
-        const stmt_count = SqlSplitter.count(migration.sql);
-        // Every migration must produce at least one statement (even version markers have SELECT 1).
-        if (stmt_count == 0) {
-            std.debug.print("\nFAIL: migration v{d} produces zero statements\n", .{migration.version});
-            return error.EmptyMigration;
+        // Loud reject: a structurally-unterminated migration fails validate
+        // instead of splitting on a boundary inside the unterminated region.
+        SqlSplitter.validate(migration.sql) catch |err| {
+            std.debug.print("\nFAIL: migration v{d} rejected: {s}\n", .{ migration.version, @errorName(err) });
+            return err;
+        };
+        var splitter = SqlSplitter.init(migration.sql);
+        var statements: u32 = 0;
+        while (splitter.next()) |stmt| {
+            // Correct-split assertion: every emitted statement is itself
+            // structurally complete — a split inside a quote or comment
+            // (silent truncation) leaves an unterminated fragment that fails.
+            SqlSplitter.validate(stmt) catch |err| {
+                const preview_len = @min(stmt.len, 120);
+                std.debug.print(
+                    "\nFAIL: migration v{d} statement {d} truncated ({s}): {s}\n",
+                    .{ migration.version, statements + 1, @errorName(err), stmt[0..preview_len] },
+                );
+                return err;
+            };
+            statements += 1;
         }
+        // Every migration yields at least one statement (version markers carry SELECT 1).
+        try std.testing.expect(statements > 0);
     }
 }
