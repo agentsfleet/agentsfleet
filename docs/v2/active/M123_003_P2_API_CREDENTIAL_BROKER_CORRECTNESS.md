@@ -16,12 +16,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M123
 **Workstream:** 003
 **Date:** Jul 09, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P2 — two bounded correctness gaps in the credential broker: a reconnected/rotated grant keeps serving the previously-minted token until its ≤1h expiry (self-healing, narrow window, needs an already-privileged operator), and a rotating-refresh provider (Jira) drops its rotated refresh token and forces a roughly-hourly reconnect. Neither is cross-tenant or unauthenticated.
 **Categories:** API
 **Batch:** B1 — independent; no shared files with other active workstreams.
-**Branch:** {added at CHORE(open)}
-**Test Baseline:** set at CHORE(open) — `unit=<N> integration=<M>` via `make _lint_zig_test_depth`
+**Branch:** feat/m123-broker-correctness
+**Test Baseline:** unit=2402 integration=267
 **Depends on:** None.
 **Provenance:** agent-generated (pre-spec) — the Jul 09, 2026 `m122-gap-audit-security` workflow audited three credential-broker areas a Jul 02 coverage critic flagged and never reached. Both findings below passed an adversarial refutation pass (1/1 uphold each). A third finding — a missing single-flight guard blamed for refresh-token reuse revocation — was REFUTED: the real defect is rotation-persistence, not concurrency (see Discovery). Each finding re-verified against current source before drafting.
 **Canonical architecture:** `docs/architecture/data_flow.md` — the mint/lease/grant gate chain the broker serves; `docs/architecture/runner_fleet.md` — the on-demand credential-mint path (`POST /v1/runners/me/credentials/mint`).
