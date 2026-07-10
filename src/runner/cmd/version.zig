@@ -29,10 +29,15 @@ pub fn run() u8 {
     return 0;
 }
 
-test "version line carries the bare build version (deploy.sh idempotent-skip invariant)" {
+test "version line carries the bare build version in whitespace field 2 (deploy.sh idempotent-skip invariant)" {
     var buf: [128]u8 = undefined;
     const out = line(&buf);
     try std.testing.expect(std.mem.startsWith(u8, out, "agentsfleet-runner "));
-    // deploy.sh reads whitespace field 2 — the bare version must be present verbatim.
-    try std.testing.expect(std.mem.indexOf(u8, out, build_options.version) != null);
+    // deploy.sh parses whitespace field 2 for its exact-equality version skip, so
+    // asserting the version merely appears somewhere is too weak: a reformat that
+    // shifted it off field 2 would pass yet break every redeploy. Pin the field.
+    var fields = std.mem.tokenizeAny(u8, out, " \n");
+    _ = fields.next(); // "agentsfleet-runner"
+    const version_field = fields.next() orelse return error.MissingVersionField;
+    try std.testing.expectEqualStrings(build_options.version, version_field);
 }

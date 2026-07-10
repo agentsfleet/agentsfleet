@@ -26,12 +26,22 @@ PENDING_DIR="$SPEC_ROOT/pending"
 # milestone reference asserts a fact about the system, so it must name a spec
 # that shipped (done/) or is in flight (active/); the roadmap names what is
 # merely planned, and a pending/ spec is the only evidence such work exists.
-readonly ROADMAP_BASENAME="roadmap.md"
+# The carve-out matches this exact path, not the basename — a nested
+# `scenarios/roadmap.md` must not inherit the exemption and launder unshipped ids.
+readonly ROADMAP_REL_PATH="roadmap.md"
 
 FAIL=0
 
 err() { printf "FAIL: %s\n" "$*" >&2; FAIL=1; }
 ok()  { printf "OK:   %s\n" "$*"; }
+
+# A missing ARCH_DIR must be a hard error, not a vacuous pass: without this, a
+# standalone run against a moved or renamed docs tree reports green while checking
+# nothing (every scan below is guarded with `2>/dev/null` and would find zero).
+if [ ! -d "$ARCH_DIR" ]; then
+  err "ARCH_DIR '$ARCH_DIR' is not a directory — nothing to check (moved corpus?)"
+  exit "$FAIL"
+fi
 
 # ---------------------------------------------------------------------------
 # 1. test_arch_M_references_resolve
@@ -54,7 +64,7 @@ resolve_ref() {
 
   if spec_exists "$DONE_DIR" "$base"; then return 0; fi
   if spec_exists "$ACTIVE_DIR" "$base"; then return 0; fi
-  if [ "$(basename "$src_file")" = "$ROADMAP_BASENAME" ] && spec_exists "$PENDING_DIR" "$base"; then
+  if [ "${src_file#"$ARCH_DIR"/}" = "$ROADMAP_REL_PATH" ] && spec_exists "$PENDING_DIR" "$base"; then
     return 0
   fi
   return 1

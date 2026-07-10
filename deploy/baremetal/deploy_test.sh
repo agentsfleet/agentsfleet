@@ -81,6 +81,22 @@ version_check_status() {
   )
 }
 
+# The version negatives assert is_already_installed returns non-zero. That is
+# also what a broken harness yields — a missing awk, or deploy.sh failing to
+# source — so those tests could pass for the wrong reason. Fail loud up front if
+# the harness itself is not sound, converting a vacuous green into a red.
+preflight() {
+  command -v awk >/dev/null 2>&1 \
+    || { printf 'FATAL preflight: awk not found — version parsing untestable\n' >&2; exit 2; }
+  (
+    # shellcheck source=./deploy.sh
+    source "$DEPLOY_SH" >/dev/null 2>&1
+    declare -F is_already_installed >/dev/null && declare -F version_token_matches >/dev/null
+  ) || { printf 'FATAL preflight: sourcing deploy.sh did not define the functions under test\n' >&2; exit 2; }
+}
+
+preflight
+
 # ── §1 — version equality ────────────────────────────────────────────────────
 
 test_deploy_version_substring_not_equal_reinstalls() {

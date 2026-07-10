@@ -13,13 +13,9 @@
 #   DEPLOY_HOSTNAME     — override hostname in notifications (default: $(hostname))
 #   DRAIN_TIMEOUT       — seconds to wait for a graceful stop (default: 120)
 #
-# Examples:
-#   deploy.sh runner v0.1.0 /opt/agentsfleet/bin/agentsfleet-runner
-#   deploy.sh runner v0.2.0                              # downloads from GH release
-#
 # At most one deploy runs per host: main() takes a non-blocking flock and exits
-# non-zero when another deploy already holds it. Sourcing this file runs no
-# deploy — deploy_test.sh relies on that to exercise the functions directly.
+# non-zero when another deploy already holds it. Sourcing this file runs no deploy
+# — deploy_test.sh relies on that to exercise the functions directly.
 #
 # The runner holds zero datastore credentials: if it stops abruptly the control
 # plane reclaims its in-flight lease (lease_expires_at + fencing_token), so a
@@ -124,7 +120,14 @@ is_already_installed() {
   version_token_matches "$current" "$VERSION" || return 1
 
   log "✓ ${BINARY_NAME} ${VERSION} already installed — ensuring service is up."
-  systemctl is-active --quiet "$SERVICE_NAME" || systemctl start "$SERVICE_NAME"
+  # If the already-installed binary's service will not start, report not-installed
+  # rather than success: the caller then runs the full reinstall + restart +
+  # verify_healthy path, which surfaces the real failure instead of notifying "ok"
+  # over a dead service.
+  if ! systemctl is-active --quiet "$SERVICE_NAME" && ! systemctl start "$SERVICE_NAME"; then
+    log "✗ ${SERVICE_NAME} is installed but will not start — forcing a full redeploy."
+    return 1
+  fi
   return 0
 }
 

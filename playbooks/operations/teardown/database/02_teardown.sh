@@ -7,6 +7,13 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../../../lib/common.sh
 source "${SCRIPT_DIR}/../../../lib/common.sh"
 
+# Reads the vault (op:// refs below), so it carries the same approval + auth
+# gates as every other script under playbooks/operations/ (enforced by
+# `make check-playbooks`). Teardown is destructive, so this is on top of the
+# ALLOW_*_TEARDOWN approval, not instead of it.
+playbooks_require_vault_read_approval
+playbooks_require_op_auth
+
 echo ""
 echo "== database-teardown Section 2: database teardown execution =="
 echo ""

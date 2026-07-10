@@ -35,15 +35,19 @@ mkdir -p "$STUB_DIR"
 cleanup() { rm -rf "$WORK_DIR"; }
 trap cleanup EXIT
 
-# Records every subcommand so `op read` reachability is assertable. `whoami`
-# honours OP_WHOAMI_STATUS so a test can simulate an expired session.
+# Records the full argv of every call so vault-read reachability is assertable
+# even when `read` is not $1 (`op --account X read …`). `whoami` honours
+# OP_WHOAMI_STATUS so a test can simulate an expired session. The subcommand is
+# whichever argument is not a global flag or its value.
 cat >"$STUB_DIR/op" <<'STUB'
 #!/usr/bin/env bash
-printf '%s\n' "$1" >>"$OP_CALLS"
-case "${1:-}" in
-  whoami) exit "${OP_WHOAMI_STATUS:-0}" ;;
-  read)   printf 'stub-secret\n' ;;
-esac
+printf '%s\n' "$*" >>"$OP_CALLS"
+for arg in "$@"; do
+  case "$arg" in
+    whoami) exit "${OP_WHOAMI_STATUS:-0}" ;;
+    read)   printf 'stub-secret\n'; exit 0 ;;
+  esac
+done
 exit 0
 STUB
 
@@ -69,7 +73,9 @@ run_gated_script() {
     bash "$script" 2>&1
 }
 
-op_read_was_called() { grep -qx 'read' "$OP_CALLS" 2>/dev/null; }
+# A vault read reached the stub iff any logged argv contains `read` as a word —
+# `op read …` and `op --account X read …` both match; `op whoami` does not.
+op_read_was_called() { grep -qE '(^| )read( |$)' "$OP_CALLS" 2>/dev/null; }
 
 # ── Dimension 3.1 — no approval, no vault ────────────────────────────────────
 
@@ -123,8 +129,28 @@ test_credential_rotation_requires_op_auth() {
   ok "$name"
 }
 
+# ── Positive path — the gates permit, not just deny ──────────────────────────
+
+# The two deny tests both pass against a script that ALWAYS blocks (e.g. an
+# inverted gate, or an unconditional exit after the preamble). This proves the
+# gates let an approved + authenticated run through to the vault read.
+test_credential_rotation_allows_when_approved_and_authed() {
+  local name="test_credential_rotation_allows_when_approved_and_authed"
+  local script
+
+  for script in "${GATED_SCRIPTS[@]}"; do
+    run_gated_script "$script" ALLOW_VAULT_READS=1 OP_WHOAMI_STATUS=0 >/dev/null 2>&1 || true
+    if ! op_read_was_called; then
+      bad "$name" "$(basename "$script") never reached the vault read with approval + auth present — a gate blocks the happy path"
+      return
+    fi
+  done
+  ok "$name"
+}
+
 test_credential_rotation_blocks_without_approval
 test_credential_rotation_requires_op_auth
+test_credential_rotation_allows_when_approved_and_authed
 
 printf '\n%d passed, %d failed\n' "$passed" "$failed"
 [[ "$failed" -eq 0 ]]
