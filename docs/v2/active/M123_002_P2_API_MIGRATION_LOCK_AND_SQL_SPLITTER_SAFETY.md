@@ -16,12 +16,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M123
 **Workstream:** 002
 **Date:** Jul 09, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P2 — three migration-path correctness gaps; the worst is a fresh-DB simultaneous-first-deploy race that self-heals on restart, the others latent (no live trigger) but silent when they fire.
 **Categories:** API
 **Batch:** B1 — runs alone; touches only the migration runner, the SQL splitter, and one reachable integration-test file.
-**Branch:** {added at CHORE(open)}
-**Test Baseline:** set at CHORE(open) — `unit=<N> integration=<M>` via `make _lint_zig_test_depth`
+**Branch:** feat/m123-migration-lock-splitter
+**Test Baseline:** unit=2402 integration=267
 **Depends on:** M122_005 (test-root reachability) — the corpus guard this spec hardens in `cmd/common.zig` executes only once M122_005 wires that file into a test root; landing this ahead of it would leave the hardened guard green-by-omission, the exact pathology M122_005 closes.
 **Provenance:** agent-generated — the Jul 09, 2026 `m122-gap-audit-security` workflow audited three migration-path areas a Jul 02, 2026 coverage critic flagged and never reached. Each finding survived an adversarial refutation pass; the Data Definition Language (DDL) race finding is 3/3 uphold with a corrected severity (P1→P2), the splitter and stale-row findings 1/1 uphold at their original P2/P3.
 **Canonical architecture:** `docs/architecture/data_flow.md` — the serve-boot migration chain (`enforceServeMigrationSafety` → `inspectMigrationState` → `runMigrations`); this spec changes ordering and correctness inside that chain, not its shape.
