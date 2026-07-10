@@ -117,6 +117,29 @@ test_arch_doc_roadmap_resolves_pending() {
     bad "$name" "roadmap.md laundered $PHANTOM_ID, which has no spec in any directory"
     return
   fi
+
+  # The exemption is the top-level roadmap.md alone. A nested roadmap.md must not
+  # inherit it — else any doc could launder unshipped ids by living at that name.
+  local nested="$WORK_DIR/b4"
+  mkdir -p "$nested/scenarios"
+  printf '# nested\n\nDepends on %s (planned).\n' "$PENDING_ONLY_ID" >"$nested/scenarios/roadmap.md"
+  if run_gate "$nested" "$spec_root"; then
+    bad "$name" "a nested scenarios/roadmap.md resolved a pending-only milestone — basename carve-out leaked"
+    return
+  fi
+  ok "$name"
+}
+
+# A moved or renamed docs tree must fail loud, not pass by finding nothing.
+test_arch_doc_missing_dir_fails_loud() {
+  local name="test_arch_doc_missing_dir_fails_loud"
+  local spec_root="$WORK_DIR/specs"
+  build_spec_root "$spec_root"
+
+  if run_gate "$WORK_DIR/does-not-exist" "$spec_root"; then
+    bad "$name" "gate passed against a non-existent ARCH_DIR — a moved corpus reports green"
+    return
+  fi
   ok "$name"
 }
 
@@ -164,6 +187,7 @@ test_arch_doc_real_corpus_resolves() {
 
 test_arch_doc_validates_all_m_ids
 test_arch_doc_roadmap_resolves_pending
+test_arch_doc_missing_dir_fails_loud
 test_arch_doc_wired_into_lint_all
 test_arch_doc_real_corpus_resolves
 

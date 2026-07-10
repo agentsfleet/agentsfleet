@@ -15,13 +15,18 @@
 
 check-vault-gate-parity:  ## Every playbooks/operations/ script that reads the vault calls both approval + auth gates
 	@echo "→ [playbooks] vault-gate parity — every operations script that reads the vault passes both gates..."
-	@# Comments are stripped before matching: a script that only *mentions* the read
-	@# (this gate's own test does) must not be treated as one that performs it. The
-	@# empty-scan guard mirrors check-playbooks' reference check — a scan that
+	@# A vault reader is detected by the `op://` reference scheme, not the `op read`
+	@# verb. Every read names an `op://…` ref, and the repo reads through several
+	@# spellings — a literal `op read`, `op --account X read`, and the common.sh
+	@# helper `playbooks_read_ref_or_empty` (no `op read` in the caller at all). The
+	@# scheme is the one signal every reader shares, so matching it is immune to all
+	@# three. Only whole-line comments are dropped (`^[[:space:]]*#`); a mid-line
+	@# `#` inside a string is left intact rather than risk deleting the ref after it.
+	@# The empty-scan guard mirrors check-playbooks' reference check — a scan that
 	@# matched nothing has proved nothing, and would pass silently after a refactor.
 	@FAIL=0; \
 	READERS=$$(for f in $$(find playbooks/operations -name '*.sh' | sort); do \
-	  sed 's/#.*//' "$$f" | grep -qE '(^|[^[:alnum:]_])op read([[:space:]]|$$)' && echo "$$f"; \
+	  grep -vE '^[[:space:]]*#' "$$f" | grep -qF 'op://' && echo "$$f"; \
 	done); \
 	if [ -z "$$READERS" ]; then echo "✗ [playbooks] vault-gate parity scan matched no vault readers — the scan is broken, not the tree"; exit 1; fi; \
 	for f in $$READERS; do \
