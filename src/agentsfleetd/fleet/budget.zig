@@ -97,6 +97,49 @@ pub const Verdict = enum {
 /// database": a malformed stored budget fails CLOSED.
 pub const BudgetError = error{UnreadableBudget};
 
+/// A fleet's stored ceiling paired with what it has already spent.
+pub const BudgetAndSpend = struct { budget: FleetBudget, spend: Spend };
+
+/// What the renew-side read observed. Splitting "we read nothing" into three
+/// distinct causes is what lets the two failure postures be *decided* by a pure
+/// function (`refusalFor`) rather than buried in a `catch` beside a connection.
+pub const BudgetRead = union(enum) {
+    found: BudgetAndSpend,
+    /// Nothing to enforce: no fleet row (the lease's own checks own that case),
+    /// or a fleet that declares no `budget` at all. Undeclared is unbounded —
+    /// killing such a run would enforce a ceiling nobody wrote.
+    absent,
+    /// A budget IS declared but cannot be parsed — fail CLOSED.
+    unreadable,
+    /// The database could not be reached or queried — fail OPEN.
+    unavailable,
+};
+
+/// The mid-run refusal decision. Returns the breach verdict when the run must
+/// stop, `null` when it may continue.
+///
+/// The whole asymmetry lives here, in one switch, testable without a database:
+/// an *unavailable* budget admits (a metering outage must not kill every
+/// in-flight run), an *unreadable* one refuses (a ceiling we cannot parse is not
+/// a ceiling we may ignore).
+pub fn refusalFor(read: BudgetRead) ?Verdict {
+    return switch (read) {
+        .found => |f| {
+            const verdict = covers(f.budget, f.spend);
+            return if (verdict.refused()) verdict else null;
+        },
+        .absent, .unavailable => null,
+        .unreadable => .day_exceeded,
+    };
+}
+
+/// The pre-run admission decision. A spend we could not read admits the event
+/// (fail open), mirroring `metering.balanceCoversEstimate`.
+pub fn verdictOrAdmit(maybe_spend: ?Spend, fleet_budget: FleetBudget) Verdict {
+    const spend = maybe_spend orelse return .ok;
+    return covers(fleet_budget, spend);
+}
+
 /// Dollars → nanos. The parser bounds inputs to `(0, 1000]` daily and
 /// `(0, 10000]` monthly, so `dollars * 1e9` tops out around 1e13 and cannot
 /// approach `i64` max; the saturating branch guards a future bound change, not
@@ -166,23 +209,50 @@ pub fn spendForFleetOn(conn: *pg.Conn, workspace_id: []const u8, fleet_id: []con
     };
 }
 
-/// Renew-side read. Returns `null` when the fleet row is gone (the caller admits
-/// — the lease is about to fail its own checks anyway), `BudgetError` when the
-/// stored budget cannot be parsed (fail CLOSED), and propagates DB errors so the
-/// caller can fail open on them.
+/// Classify the renew-side read into the three no-budget causes plus the happy
+/// path, so `refusalFor` can decide without touching a connection.
+pub fn readBudget(
+    conn: *pg.Conn,
+    alloc: std.mem.Allocator,
+    fleet_id: []const u8,
+    workspace_id: []const u8,
+    now_ms: i64,
+) BudgetRead {
+    const found = fetchBudgetAndSpend(conn, alloc, fleet_id, workspace_id, now_ms) catch |err| {
+        if (err == BudgetError.UnreadableBudget) return .unreadable;
+        log.warn("budget_read_query_failed", .{ .error_code = ec.ERR_INTERNAL_DB_QUERY, .fleet_id = fleet_id, .err = @errorName(err) });
+        return .unavailable;
+    } orelse return .absent;
+    return .{ .found = found };
+}
+
+/// Renew-side read. Returns `null` when there is no ceiling to enforce — either
+/// the fleet row is gone (the lease's own checks own that case) or the fleet
+/// declares no `budget` at all. Returns `BudgetError.UnreadableBudget` when a
+/// budget IS declared but cannot be parsed (fail CLOSED), and propagates DB
+/// errors so the caller can fail open on them.
+///
+/// The absent/malformed split is load-bearing. `parseFleetConfig` requires
+/// `budget`, so a live fleet always has one — but `config_json` rows written by
+/// other paths (fixtures, anything predating the requirement) may not, and
+/// refusing THEIR renewals would kill healthy in-flight runs to enforce a
+/// ceiling nobody declared. Undeclared means unbounded here, exactly as it was
+/// before this gate existed; the tenant credit pool still bounds it.
 pub fn fetchBudgetAndSpend(
     conn: *pg.Conn,
     alloc: std.mem.Allocator,
     fleet_id: []const u8,
     workspace_id: []const u8,
     now_ms: i64,
-) !?struct { budget: FleetBudget, spend: Spend } {
+) !?BudgetAndSpend {
     const floors = windowFloors(now_ms);
     var q = PgQuery.from(try conn.query(SELECT_BUDGET_AND_SPEND_SQL, .{ fleet_id, workspace_id, fleet_id, floors.day, floors.month }));
     defer q.deinit();
-    const row = try q.next() orelse return null;
-
-    const budget_json = try row.get(?[]const u8, 0) orelse return BudgetError.UnreadableBudget;
+    const row = try q.next() orelse return null; // no fleet row
+    // SQL NULL here means the JSON path found no `budget` key: no ceiling was
+    // declared, so there is nothing to enforce. A DECLARED-but-malformed budget
+    // is a different thing and fails closed inside `parseStoredBudget`.
+    const budget_json = try row.get(?[]const u8, 0) orelse return null;
     const spend = Spend{
         .day_nanos = try row.get(i64, 1),
         .month_nanos = try row.get(i64, 2),
@@ -204,72 +274,11 @@ fn parseStoredBudget(alloc: std.mem.Allocator, budget_json: []const u8) !FleetBu
     return config_helpers.parseFleetBudget(obj) catch BudgetError.UnreadableBudget;
 }
 
-// ── Unit tests: the pure half. Time and spend are arguments, never reads. ────
+// ── Inline tests for the module-private helpers ─────────────────────────────
+// The public surface is tested in `budget_test.zig`; these two reach functions
+// that stay private, so they live beside them.
 
 const testing = std.testing;
-
-test "dollarsToNanos rounds to nearest and never wraps" {
-    // The expected nano value IS the assertion. Naming these after
-    // `NANOS_PER_USD` would let a change to that constant silently rewrite the
-    // expectation the test exists to pin.
-    // pin test: literal is the contract
-    try testing.expectEqual(@as(i64, 1_000_000_000), dollarsToNanos(1.0));
-    try testing.expectEqual(@as(i64, 1), dollarsToNanos(0.000000001));
-    // pin test: literal is the contract — the parser's max daily ceiling in nanos.
-    try testing.expectEqual(@as(i64, 1_000_000_000_000), dollarsToNanos(1000.0));
-    try testing.expectEqual(@as(i64, 5_500_000_000), dollarsToNanos(5.5));
-    // Non-finite / non-positive ceilings collapse to a ZERO cap, which `covers`
-    // then refuses — never to an unbounded one.
-    try testing.expectEqual(@as(i64, 0), dollarsToNanos(0.0));
-    try testing.expectEqual(@as(i64, 0), dollarsToNanos(-1.0));
-    try testing.expectEqual(@as(i64, 0), dollarsToNanos(std.math.nan(f64)));
-    try testing.expectEqual(@as(i64, 0), dollarsToNanos(std.math.inf(f64)));
-    // A finite value large enough to overflow i64 nanos saturates rather than
-    // wrapping into a negative (and therefore trivially-exceeded) ceiling.
-    try testing.expectEqual(@as(i64, std.math.maxInt(i64)), dollarsToNanos(1e30));
-}
-
-test "a zero-collapsed ceiling refuses every run rather than admitting one" {
-    const broken = FleetBudget{ .daily_dollars = std.math.nan(f64), .monthly_dollars = null };
-    try testing.expectEqual(Verdict.day_exceeded, covers(broken, .{ .day_nanos = 0, .month_nanos = 0 }));
-}
-
-test "covers admits below the daily cap and refuses at or above it" {
-    const budget = FleetBudget{ .daily_dollars = 1.0, .monthly_dollars = null };
-    // One nano under, exactly at, and one nano over a $1.00 ceiling. The
-    // boundary is the whole point of the test.
-    try testing.expectEqual(Verdict.ok, covers(budget, .{ .day_nanos = 999_999_999, .month_nanos = 0 }));
-    // pin test: literal is the contract
-    try testing.expectEqual(Verdict.day_exceeded, covers(budget, .{ .day_nanos = 1_000_000_000, .month_nanos = 0 }));
-    try testing.expectEqual(Verdict.day_exceeded, covers(budget, .{ .day_nanos = 1_000_000_001, .month_nanos = 0 }));
-}
-
-test "covers treats an absent monthly ceiling as unlimited" {
-    const budget = FleetBudget{ .daily_dollars = 1.0, .monthly_dollars = null };
-    // Astronomically over any plausible month figure ($1M of spend), but the
-    // day is clear — with no monthly ceiling declared, it must still be admitted.
-    // pin test: literal is the contract
-    try testing.expectEqual(Verdict.ok, covers(budget, .{ .day_nanos = 0, .month_nanos = 1_000_000_000_000_000 }));
-}
-
-test "covers enforces the monthly ceiling when present" {
-    const budget = FleetBudget{ .daily_dollars = 100.0, .monthly_dollars = 10.0 };
-    try testing.expectEqual(Verdict.ok, covers(budget, .{ .day_nanos = 0, .month_nanos = 9_999_999_999 }));
-    try testing.expectEqual(Verdict.month_exceeded, covers(budget, .{ .day_nanos = 0, .month_nanos = 10_000_000_000 }));
-}
-
-test "covers reports the daily breach first when both ceilings are exceeded" {
-    // The day is the tighter, more actionable signal; the operator raises the
-    // daily cap or fixes the loop before ever reaching the month.
-    const budget = FleetBudget{ .daily_dollars = 1.0, .monthly_dollars = 1.0 };
-    try testing.expectEqual(Verdict.day_exceeded, covers(budget, .{ .day_nanos = 2_000_000_000, .month_nanos = 2_000_000_000 }));
-}
-
-test "Verdict.refused is true for exactly the two breach cases" {
-    try testing.expect(!Verdict.ok.refused());
-    try testing.expect(Verdict.day_exceeded.refused());
-    try testing.expect(Verdict.month_exceeded.refused());
-}
 
 test "windowFloors derives both bounds from one now_ms" {
     // 2026-07-10T16:04:00Z

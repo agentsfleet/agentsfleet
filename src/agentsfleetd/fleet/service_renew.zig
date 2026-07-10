@@ -187,22 +187,17 @@ fn creditsCover(hx: Hx, lease: Lease) bool {
 /// — fail CLOSED, because a ceiling we cannot parse is not one we may ignore.
 fn budgetRefusal(hx: Hx, lease: Lease) ?budget.Verdict {
     const conn = hx.ctx.pool.acquire() catch |err| {
+        // Could not even ask → fail open, like `creditsCover`.
         log.warn("renew_budget_acquire_fail", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .fleet_id = lease.fleet_id, .err = @errorName(err) });
         return null;
     };
     defer hx.ctx.pool.release(conn);
 
-    const found = budget.fetchBudgetAndSpend(conn, hx.alloc, lease.fleet_id, lease.workspace_id, clock.nowMillis()) catch |err| {
-        if (err == budget.BudgetError.UnreadableBudget) {
-            log.warn("renew_budget_unreadable", .{ .error_code = ec.ERR_RUN_BUDGET_EXCEEDED, .fleet_id = lease.fleet_id });
-            return .day_exceeded; // fail closed on data we cannot trust
-        }
-        log.warn("renew_budget_query_failed", .{ .error_code = ec.ERR_INTERNAL_DB_QUERY, .fleet_id = lease.fleet_id, .err = @errorName(err) });
-        return null; // fail open on an unavailable database
-    } orelse return null; // fleet row gone — the lease's own checks own that case
-
-    const verdict = budget.covers(found.budget, found.spend);
-    return if (verdict.refused()) verdict else null;
+    const read = budget.readBudget(conn, hx.alloc, lease.fleet_id, lease.workspace_id, clock.nowMillis());
+    if (read == .unreadable) {
+        log.warn("renew_budget_unreadable", .{ .error_code = ec.ERR_RUN_BUDGET_EXCEEDED, .fleet_id = lease.fleet_id });
+    }
+    return budget.refusalFor(read);
 }
 
 /// Returns the lease, `null` when no row matches (terminal 404), or an error on

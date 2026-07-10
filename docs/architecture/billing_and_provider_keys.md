@@ -246,7 +246,17 @@ The balance gate above bounds what a **tenant** may spend: one credit pool, one 
 
 **Overshoot is bounded, not zero.** The ceiling is a floor-check: a run is admitted while `spend < cap`. An already-running run may exceed its cap by at most one renewal window's worth of tokens before its next `/renew` refuses it. Enforcing a *predicted* end-of-run cost would refuse runs that would have finished under budget.
 
-**Failure posture, deliberately asymmetric.** A database fault fails **open** (admit / renew), mirroring `balanceCoversEstimate` — a metering outage must not halt every fleet on the platform. An *unparseable stored budget* fails **closed**: a ceiling we cannot read is not a ceiling we may ignore. The stored budget is parsed by `config_helpers.parseFleetBudget`, the same validator that accepted it at ingest, so the ceiling that admits a run and the ceiling that kills it are one number.
+**Failure posture, deliberately asymmetric.** Three distinct "no verdict" causes, three different answers:
+
+| Cause | Answer | Why |
+|---|---|---|
+| Database unreachable / query failed | **admit** (fail open) | mirrors `balanceCoversEstimate` — a metering outage must not halt every fleet on the platform |
+| Fleet declares **no** `budget` | **admit** | undeclared is unbounded, exactly as before this gate existed. The tenant credit pool still bounds it. Refusing would enforce a ceiling nobody wrote |
+| `budget` declared but unparseable | **refuse** (fail closed) | a ceiling we cannot read is not a ceiling we may ignore |
+
+The stored budget is parsed by `config_helpers.parseFleetBudget`, the same validator that accepted it at ingest, so the ceiling that admits a run and the ceiling that kills it are one number.
+
+**The gate is inert during the free trial.** Every charge is zero until `FREE_TRIAL_END_MS` (`2026-08-01T00:00:00Z`), so no fleet accrues `credit_deducted_nanos` and no budget is consumed — the same property the balance gate has, and the honest one: you are not being charged, so you are not spending your allowance. Both gates begin to bite when the window closes.
 
 ---
 

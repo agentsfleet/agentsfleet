@@ -85,15 +85,15 @@ fn eventView(acq: assign.Acquired) redis_fleet.FleetEvent {
 }
 
 /// The fleet's own spend ceiling, resolved from the config the session already
-/// carries — no lookup. `null` when the spend could not be read (DB fault): the
-/// caller then admits the event, matching `balanceCoversEstimate`'s fail-open
-/// posture, because a metering outage must not halt every fleet on the platform.
-fn budgetVerdict(pool: *pg.Pool, session: *FleetSession, event: *const redis_fleet.FleetEvent) ?budget.Verdict {
-    const spend = budget.spendForFleet(pool, session.workspace_id, session.fleet_id, clock.nowMillis()) orelse {
+/// carries — no lookup. A spend that could not be read admits the event
+/// (`budget.verdictOrAdmit`), matching `balanceCoversEstimate`'s fail-open
+/// posture: a metering outage must not halt every fleet on the platform.
+fn budgetVerdict(pool: *pg.Pool, session: *FleetSession, event: *const redis_fleet.FleetEvent) budget.Verdict {
+    const spend = budget.spendForFleet(pool, session.workspace_id, session.fleet_id, clock.nowMillis());
+    if (spend == null) {
         log.warn("lease_budget_unavailable", .{ .error_code = ec.ERR_INTERNAL_DB_QUERY, .fleet_id = session.fleet_id, .event_id = event.event_id });
-        return null;
-    };
-    return budget.covers(session.config.budget, spend);
+    }
+    return budget.verdictOrAdmit(spend, session.config.budget);
 }
 
 /// Mirror `event_loop_writepath.run` steps 1–7 via the leaf helpers, then
@@ -179,12 +179,11 @@ fn runBilling(hx: Hx, session: *FleetSession, event: *const redis_fleet.FleetEve
     // the receive debit below — a refused event must never be charged. Independent
     // of the credit gate: both must pass. Fail-open on a DB fault (`spendForFleet`
     // returns null), mirroring `balanceCoversEstimate`.
-    if (budgetVerdict(pool, session, event)) |verdict| {
-        if (verdict.refused()) {
-            log.debug("lease_budget_breach", .{ .error_code = ec.ERR_RUN_BUDGET_EXCEEDED, .fleet_id = session.fleet_id, .event_id = event.event_id, .verdict = @tagName(verdict) });
-            blockEvent(hx, session.fleet_id, event.event_id, rows.LABEL_BUDGET_BREACH);
-            return null;
-        }
+    const budget_verdict = budgetVerdict(pool, session, event);
+    if (budget_verdict.refused()) {
+        log.debug("lease_budget_breach", .{ .error_code = ec.ERR_RUN_BUDGET_EXCEEDED, .fleet_id = session.fleet_id, .event_id = event.event_id, .verdict = @tagName(budget_verdict) });
+        blockEvent(hx, session.fleet_id, event.event_id, rows.LABEL_BUDGET_BREACH);
+        return null;
     }
     // Receive debits exactly once per event — a re-delivered entry already
     // paid on its first delivery (the balance debit is not replay-guarded;
