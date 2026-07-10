@@ -146,13 +146,16 @@ pub fn spendForFleet(
         return null;
     };
     defer pool.release(conn);
-    return spendForFleetConn(conn, workspace_id, fleet_id, now_ms) catch |err| {
+    return spendForFleetOn(conn, workspace_id, fleet_id, now_ms) catch |err| {
         log.warn("budget_spend_query_failed", .{ .error_code = ec.ERR_INTERNAL_DB_QUERY, .fleet_id = fleet_id, .err = @errorName(err) });
         return null;
     };
 }
 
-fn spendForFleetConn(conn: *pg.Conn, workspace_id: []const u8, fleet_id: []const u8, now_ms: i64) !?Spend {
+/// The connection-taking half of `spendForFleet`, so a caller that already holds
+/// a connection (the renew gate, the integration tests) does not take a second
+/// one from the pool. A fleet with no telemetry rows yet spends zero.
+pub fn spendForFleetOn(conn: *pg.Conn, workspace_id: []const u8, fleet_id: []const u8, now_ms: i64) !?Spend {
     const floors = windowFloors(now_ms);
     var q = PgQuery.from(try conn.query(SELECT_SPEND_SQL, .{ workspace_id, fleet_id, floors.day, floors.month }));
     defer q.deinit();

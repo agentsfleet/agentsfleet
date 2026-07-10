@@ -131,7 +131,7 @@ The gate slots into `runBilling` between `balanceCoversEstimate` and `debitRecei
 - **Dimension 1.2** — `monthly_dollars == null` ⇒ no monthly ceiling; a fleet far past any month figure still admits when the day is clear → Test `covers treats an absent monthly ceiling as unlimited` → **DONE** (unit green)
 - **Dimension 1.3** — `dollarsToNanos` rounds to the nearest nano and never wraps: `1.0 → 1_000_000_000`; `0.000000001 → 1`; the parser's max daily (`1000.0`) → `1e12` → Test `dollarsToNanos rounds to nearest and never wraps` → **DONE** (unit green; a non-finite ceiling collapses to 0 and refuses, proven by `a zero-collapsed ceiling refuses every run rather than admitting one`)
 - **Dimension 1.4** — `startOfUtcMonthMillis` returns the first instant of the UTC month for a fixed `now_ms`, including a leap-year February and a month-boundary millisecond → Test `startOfUtcMonthMillis truncates to the first instant of the UTC month` + leap-year + pre-epoch clamp → **DONE** (unit green)
-- **Dimension 1.5** — `spendForFleet` sums only the target fleet, only inside each window, and only `credit_deducted_nanos` (not metered) → Test `test_spend_for_fleet_windows_and_scopes` (integration, real Postgres)
+- **Dimension 1.5** — `spendForFleet` sums only the target fleet, only inside each window, and only `credit_deducted_nanos` (not metered) → Tests `integration: spend_for_fleet_counts_only_the_rolling_day_inside_the_day_window`, `..._excludes_rows_before_the_calendar_month_start`, `..._is_scoped_to_one_fleet_and_one_workspace`, `..._reports_zero_for_a_fleet_that_has_never_run` → **DONE** (4 integration tests green against live Postgres; stable across 3 consecutive runs)
 - **Dimension 1.6** — a fleet whose 24h spend has reached `daily_dollars` gets its next event written `status=gate_blocked, failure_label=budget_breach`, and **no receive debit is taken** → Test `test_lease_gate_blocks_over_budget_fleet` (integration)
 - **Dimension 1.7** — a DB fault inside `spendForFleet` admits the event (fail-open) and logs `error_code` → Test `test_lease_gate_fails_open_on_db_fault`
 
@@ -143,7 +143,7 @@ Reading the budget live (rather than pinning it onto the lease row at issue) is 
 
 - **Dimension 2.1** — `/renew` for a lease whose fleet is over its daily ceiling answers 402 with `error_code=UZ-RUN-015` and does not extend the lease → Test `test_renew_refuses_over_budget_lease` (integration)
 - **Dimension 2.2** — `/renew` for a fleet under budget renews exactly as before; the added gate costs one query and changes no response → Test `test_renew_under_budget_unchanged` (integration, regression)
-- **Dimension 2.3** — the budget the renew gate reads equals the budget `parseFleetBudget` accepts: an invalid stored budget refuses the renewal rather than silently admitting it → Test `test_renew_invalid_stored_budget_refuses`
+- **Dimension 2.3** — the budget the renew gate reads equals the budget `parseFleetBudget` accepts: an invalid stored budget refuses the renewal rather than silently admitting it → Tests `integration: fetch_budget_and_spend_refuses_an_unparseable_stored_budget`, `..._refuses_when_the_budget_key_is_absent`, `..._returns_null_when_the_fleet_row_is_gone` → **DONE** (integration green; the reuse of `parseFleetBudget` is what makes the two ceilings one number)
 - **Dimension 2.4** — a DB fault inside `fetchBudgetAndSpend` renews (fail-open), mirroring `creditsCover` → Test `test_renew_fails_open_on_db_fault`
 
 ### §3 — carry the reason to the durable `failure_label`
