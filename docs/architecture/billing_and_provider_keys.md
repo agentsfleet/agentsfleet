@@ -236,13 +236,15 @@ The balance gate above bounds what a **tenant** may spend: one credit pool, one 
 | Question | "can this tenant afford one more event?" | "has this fleet spent its own allowance?" |
 | Pre-run refusal | `gate_blocked` + `balance_exhausted` | `gate_blocked` + `budget_breach` |
 | Mid-run refusal | `/renew` → `UZ-RUN-012` → `renewal_terminate` | `/renew` → `UZ-RUN-015` → `budget_breach` |
-| Source of truth | wallet balance | `SUM(credit_deducted_nanos)` over `core.fleet_execution_telemetry` |
+| Source of truth | wallet balance | per-slice drainage summed by drain time: `fleet.metering_periods.charged_nanos` (by `created_at`) + the receive fee |
 
 **Where it fires.** `runBilling` checks the budget after the balance gate and **before the receive deduct**, so a refused event is never charged. `session.config.budget` is already parsed onto the session, so the check costs one indexed aggregate and no extra lookup. Mid-run, `service_renew` re-reads the ceiling live from `config_json` on every renewal tick inside the window — lowering a runaway fleet's `daily_dollars` therefore bites at its next tick, not only at its next run.
 
 **Windows.** `daily_dollars` is a **rolling 24 hours** (`recorded_at >= now − 86_400_000`); `monthly_dollars` is the **UTC calendar month** (`clock.startOfUtcMonthMillis`). Both derive from a single `now_ms` per gate invocation, passed in, so the two windows can never straddle a tick. `monthly_dollars` is optional — absent means no monthly ceiling.
 
-**Spend means credit *drained*,** `SUM(credit_deducted_nanos)`, not credit metered. On the slice that exhausts a wallet, `charged_nanos < run_fee + token_cost` and the remainder is forgiven (§3); a budget counts money that actually left the pool.
+**Spend means credit *drained*,** not credit metered. On the slice that exhausts a wallet, `charged_nanos < run_fee + token_cost` and the remainder is forgiven (§3); a budget counts money that actually left the pool.
+
+**Timed by drain, not by run start.** The gate sums the per-slice ledger `fleet.metering_periods.charged_nanos` by each slice's own `created_at`, plus the receive fee (one telemetry row, accurately timed at gate-pass). It deliberately does **not** sum the accumulating `fleet_execution_telemetry` stage row: that row's `recorded_at` is pinned at the first renewal and never advances (§5.1's settle keeps `credit_deducted_nanos += …` but not the timestamp), so a 12h run's spend would otherwise be attributed entirely to its start and could age out of the rolling-24h window up to 12h early, or slip across a month boundary. The stage telemetry row is joined only for `fleet_id` scope, and the scan is pruned to `recorded_at >= floor − MAX_RUNTIME` (a slice cannot drain more than one run-length after its run started).
 
 **Overshoot is bounded, not zero.** The ceiling is a floor-check: a run is admitted while `spend < cap`. An already-running run may exceed its cap by at most one renewal window's worth of tokens before its next `/renew` refuses it. Enforcing a *predicted* end-of-run cost would refuse runs that would have finished under budget.
 

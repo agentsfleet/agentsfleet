@@ -37,12 +37,19 @@ pub const RenewResult = union(enum) {
     terminal: TerminalRenew,
 };
 
-/// Map a refusal body's `error_code` onto the class the run is reported under.
-/// Only the fleet-budget refusal gets its own class; every other definitive
-/// rejection — and any body we cannot read — stays `renewal_terminate`, which is
-/// what those stops have always meant. An unreadable body must never invent a
-/// more specific cause than we actually observed.
-fn terminalReason(alloc: Allocator, body: []const u8) types.FailureClass {
+/// The one HTTP status a fleet-budget refusal is served with (payment_required).
+/// Gating on it means a stray `UZ-RUN-015` in a 401/404/409 body can never be
+/// mistaken for a budget breach — the control plane only pairs that code with a
+/// 402 (`service_renew.zig`).
+const BUDGET_REFUSAL_STATUS: u16 = 402;
+
+/// Map a refusal `(status, body)` onto the class the run is reported under. Only
+/// a 402 whose body carries `UZ-RUN-015` is a budget breach; every other
+/// definitive rejection — and any body we cannot read — stays `renewal_terminate`,
+/// which is what those stops have always meant. An unreadable body must never
+/// invent a more specific cause than we actually observed.
+fn terminalReason(alloc: Allocator, status: u16, body: []const u8) types.FailureClass {
+    if (status != BUDGET_REFUSAL_STATUS) return .renewal_terminate;
     const parsed = std.json.parseFromSlice(
         struct { error_code: []const u8 = "" },
         alloc,
@@ -65,7 +72,7 @@ pub fn classifyRenew(alloc: Allocator, status: u16, body: []const u8) ClientErro
         defer parsed.deinit();
         return .{ .renewed = parsed.value.lease_expires_at };
     }
-    if (isTerminalRenewStatus(status)) return .{ .terminal = .{ .status = status, .reason = terminalReason(alloc, body) } };
+    if (isTerminalRenewStatus(status)) return .{ .terminal = .{ .status = status, .reason = terminalReason(alloc, status, body) } };
     return ClientError.BadStatus; // other 4xx (400/429/…) + 5xx → retryable; caller retries next tick.
 }
 
