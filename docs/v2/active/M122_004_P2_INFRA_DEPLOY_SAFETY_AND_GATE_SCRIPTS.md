@@ -16,12 +16,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M122
 **Workstream:** 004
 **Date:** Jul 09, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P2 — operator-tooling hardening: a deploy skip on a substring version collision (visibly-stale binary), an unserialized deploy that can overlap on manual/orphaned runs, two credential-rotation scripts missing the vault approval+auth friction their siblings enforce, and two doc-freshness gates that silently pass (one hardcodes a frozen milestone range and never runs; one is blind to underscore-named targets). No user, data, or runtime blast radius — the failures are stale-artifact and weakened-guardrail shaped, not blocking or exploitable.
 **Categories:** INFRA
 **Batch:** B1 — runs alone; touches deploy + playbooks + scripts + one make file, no overlap with other pending work.
-**Branch:** {added at CHORE(open)}
-**Test Baseline:** set at CHORE(open) — `unit=<N> integration=<M>` via `make _lint_zig_test_depth`
+**Branch:** `feat/m122-deploy-safety-gates`
+**Test Baseline:** unit=2402 integration=267
 **Depends on:** none.
 **Provenance:** agent-generated (pre-spec, Jul 02, 2026 `fleet-wide-refactor-audit`; every finding re-verified against HEAD 7a06fb5d on Jul 09, 2026 by the `audit-open-items-recheck` workflow, each surviving an adversarial refutation pass with severities corrected down from the original audit).
 **Canonical architecture:** `docs/architecture/direction.md` — platform determinism + gate discipline; the deploy/vault conventions these fixes conform to live in `playbooks/lib/common.sh` and `docs/REST_API_DESIGN_GUIDELINES.md` §7.
@@ -60,9 +60,11 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `playbooks/operations/credential_rotation/02_service_health.sh` | EDIT | same guardrail parity (§3) |
 | `playbooks/operations/credential_rotation/vault_gate_test.sh` | CREATE | asserts both scripts block without approval / without `op` auth (§3); name is outside the `0[1-9]_`/`[1-9][0-9]_` gate glob (RULE GLS) |
 | `scripts/check_architecture_doc.sh` | EDIT | validate every milestone identifier, drop the frozen `M(40..51)` alternation (§4) |
+| `scripts/check_architecture_doc_test.sh` | CREATE | fixture-driven self-test for Dimensions 4.1/4.3 — `M999` fails everywhere, `pending/` resolves in `roadmap.md` only. Added at CHORE(open): §4 named the tests but gave them no file. |
 | `scripts/check_route_registration_doc.py` | EDIT | widen both make-target char classes to include underscore (§5) |
 | `scripts/check_route_registration_doc_test.py` | CREATE | asserts the widened regexes capture underscore targets and flag a phantom one (§5) |
 | `docs/REST_API_DESIGN_GUIDELINES.md` | EDIT | §7 gains one citation of a real underscore target (`make _fmt_check`) as a live regression fixture (§5) |
+| `src/runner/cmd/version.zig` | EDIT | comment-only: the module doc comment and one test comment cite the substring check §1 deletes. No output-shape change (Out of Scope holds). Added to this table at CHORE(open) per Indy's Jul 10 call — see Discovery. |
 | `make/quality.mk` | EDIT | new `check-architecture-doc` + `check-deploy-safety` targets in `lint-all`; `check-playbooks` gains the vault-gate parity grep + runs `vault_gate_test.sh`; `check-route-registration-doc` also runs its new test (§3/§4/§5) |
 
 ## Applicable Rules
@@ -100,6 +102,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 `main()` runs install + `systemctl restart` with no serialization; a manual prod invocation or a cancel-orphaned CI run can overlap a second invocation of the non-atomic sequence. Wrap `main()` in `flock -n` on a fixed lock path and die immediately when the lock is held. **Implementation default:** a non-blocking lock (`-n`, fail-fast with a clear message) over a blocking wait — an operator wants to know a deploy is already running, not queue behind it.
 
+**Portability (Indy's Jul 10 call — see Discovery):** `flock` ships with util-linux and is absent on macOS. `deploy.sh` targets Linux bare metal only, so it keeps `flock` — the kernel releases the lock when a `SIGKILL`ed deploy dies, which a `noclobber` lock file cannot do. `deploy_test.sh` therefore prints a loud `SKIP` for the two lock Dimensions when `flock` is absent, and hard-fails when `CI` is set — so the lock invariant is enforced on every `ubuntu-latest` runner and never silently green in CI.
+
 - **Dimension 2.1** — with the lock held by another process, invoking the guarded entry exits non-zero immediately without installing → Test `test_deploy_second_invocation_blocked_when_locked`
 - **Dimension 2.2** — with the lock free, the guarded entry acquires it and proceeds → Test `test_deploy_acquires_lock_when_free`
 
@@ -115,12 +119,17 @@ Both scripts read the vault without the approval friction or `op`-auth pre-check
 
 The gate hardcodes a frozen `M40..M51` alternation and is wired into no make target, so M52+ references are skipped and the whole script never executes automatically. Both halves must land or the gate stays decorative: validate every `M[0-9]+` reference against `done/`/`active/`, and add a `make check-architecture-doc` target to `lint-all`.
 
-- **Dimension 4.1** — a fixture architecture file citing an unshipped identifier (e.g. `M999`) makes the gate exit non-zero; the real corpus (which cites M52+) resolves clean, proving M52+ is no longer skipped → Test `test_arch_doc_validates_all_m_ids`
+**Roadmap carve-out (Indy's Jul 10 call — see Discovery).** Unfreezing the range surfaces 39 identifiers across `docs/architecture`; 38 resolve to `done/`/`active/`. The lone survivor is `roadmap.md:49`, which cites `M105` (spec real, but in `pending/`) as a Rung-1 dependency — legitimate content for the one doc whose job is naming unshipped work. The strict `done/`+`active/` tier therefore binds every architecture doc that asserts a shipped fact; `roadmap.md` alone additionally resolves against `pending/`. A phantom identifier with no spec anywhere (`M999`) still fails in every file, `roadmap.md` included. This preserves the gate's original "pending specs are aspirational, not load-bearing" intent rather than dissolving it repo-wide.
+
+- **Dimension 4.1** — a fixture architecture file citing an unshipped identifier (e.g. `M999`) makes the gate exit non-zero; the real corpus (which cites M52+ up to M121) resolves clean, proving M52+ is no longer skipped → Test `test_arch_doc_validates_all_m_ids`
+- **Dimension 4.3** — a fixture `roadmap.md` citing a `pending/`-only identifier resolves clean, while the same citation in any other architecture file fails; `M999` fails in both → Test `test_arch_doc_roadmap_resolves_pending`
 - **Dimension 4.2** — `check-architecture-doc` exists in `make/quality.mk` and is a prerequisite of `lint-all` → Test `test_arch_doc_wired_into_lint_all` (grep of the make file)
 
 ### §5 — Route-registration gate sees underscore-named targets
 
 Both make-target regexes exclude underscore, so an underscore-named target cited in the REST guide is captured by neither the citation scan nor the definition set — a false negative if a phantom internal target is ever cited. Widen both char classes to include underscore.
+
+**Correction to read-first note 3.** That note claims `MAKE_TARGET_DEF_RE`'s `_?` prefix "already anchors underscore-led names, so only the inner char class needs `_`." It does not: the `_?` sits *outside* the capture group, so `_fmt:` registers under the name `fmt`. The `_?` moves inside the group as part of this Section — a strict tightening (a doc citing `` `make fmt` `` now correctly reports `PHANTOM TARGET`; no target cited in the guide today changes verdict).
 
 - **Dimension 5.1** — the widened `DOC_MAKE_TARGET_RE` captures `` `make _fmt_check` `` and `MAKE_TARGET_DEF_RE` matches a `_lint_zig_test_depth:` definition line → Test `test_underscore_targets_captured`
 - **Dimension 5.2** — a doc citing `` `make _no_such_target` `` (a phantom underscore target) is reported as a `PHANTOM TARGET`, proving underscore citations are now checked → Test `test_phantom_underscore_target_flagged`
@@ -134,7 +143,8 @@ deploy.sh main() -> holds flock -n on /var/lock/agentsfleet-deploy.lock for its
   whole run; exits non-zero without side effects if the lock is already held.
 credential_rotation/{01_vault_sync,02_service_health}.sh -> exit non-zero before
   any vault read unless ALLOW_VAULT_READS=1 and `op` is authenticated.
-check_architecture_doc.sh -> exit 0 iff every M[0-9]+ reference resolves; run by
+check_architecture_doc.sh -> exit 0 iff every M[0-9]+ reference resolves against
+  done/ or active/; roadmap.md additionally resolves against pending/. Run by
   `make check-architecture-doc` (in lint-all).
 check_route_registration_doc.py -> make-target scans accept [a-z0-9_-] names.
 ```
@@ -158,7 +168,7 @@ No command-line surface, environment-variable name, on-disk path, or gate exit-c
 1. `deploy.sh` compares the exact version token, never a glob substring — enforced by Dimensions 1.1/1.2 and RULE ORP grep confirming no `== *"…"*` remains around `VERSION`.
 2. At most one `deploy.sh main()` runs per host — enforced by `flock -n` on a fixed lock path (Dimension 2.1).
 3. Every `playbooks/operations/**` script that reads the vault passes both gates — enforced by the `check-playbooks` parity grep (Dimension 3.3), not review.
-4. `check_architecture_doc.sh` carries no frozen milestone range and runs in `lint-all` — enforced by the validate-all scan plus the make-membership grep (Dimensions 4.1/4.2).
+4. `check_architecture_doc.sh` carries no frozen milestone range and runs in `lint-all` — enforced by the validate-all scan plus the make-membership grep (Dimensions 4.1/4.2). `pending/` resolves in `roadmap.md` and nowhere else (Dimension 4.3).
 5. The route-registration checker's make-target regexes accept underscore — enforced by the self-test (Dimension 5.1).
 
 ## Metrics & Observability
@@ -174,13 +184,14 @@ No command-line surface, environment-variable name, on-disk path, or gate exit-c
 | 1.1 | unit | `test_deploy_version_substring_not_equal_reinstalls` | stub `--version` → `0.1.0-rc1`, target `v0.1.0` → `is_already_installed` non-zero |
 | 1.2 | unit | `test_deploy_version_exact_match_skips` | stub `--version` field 2 equals `${VERSION#v}` → `is_already_installed` zero |
 | 1.3 | unit | `test_deploy_malformed_version_reinstalls` | stub `--version` → empty / no field 2 → `is_already_installed` non-zero (reinstall) |
-| 2.1 | unit | `test_deploy_second_invocation_blocked_when_locked` | background holder owns the lock → guarded entry exits non-zero, no `install`/`systemctl` reached |
-| 2.2 | unit | `test_deploy_acquires_lock_when_free` | free lock → guarded entry acquires it and continues |
+| 2.1 | unit | `test_deploy_second_invocation_blocked_when_locked` | background holder owns the lock → guarded entry exits non-zero, no `install`/`systemctl` reached. `flock` absent → loud SKIP locally, hard fail when `CI` is set |
+| 2.2 | unit | `test_deploy_acquires_lock_when_free` | free lock → guarded entry acquires it and continues. Same `flock` skip rule as 2.1 |
 | 3.1 | unit | `test_credential_rotation_blocks_without_approval` | `ALLOW_VAULT_READS` unset → each script exits non-zero + approval message, zero `op read` invoked |
 | 3.2 | unit | `test_credential_rotation_requires_op_auth` | approval set, `op whoami` stubbed to fail → exit non-zero + sign-in hint |
 | 3.3 | integration | `test_ops_scripts_vault_gate_parity` | grep across `playbooks/operations/**`: every file with `op read` also sources `common.sh` and calls both gates → 0 offenders |
 | 4.1 | unit | `test_arch_doc_validates_all_m_ids` | fixture arch dir citing `M999` (no spec) → gate exit non-zero; real corpus → exit 0 |
 | 4.2 | unit (grep) | `test_arch_doc_wired_into_lint_all` | `make/quality.mk` defines `check-architecture-doc` and lists it in `lint-all` |
+| 4.3 | unit | `test_arch_doc_roadmap_resolves_pending` | fixture `roadmap.md` citing a `pending/`-only ID → exit 0; same ID in `direction.md` → non-zero; `M999` in `roadmap.md` → non-zero |
 | 5.1 | unit | `test_underscore_targets_captured` | `DOC_MAKE_TARGET_RE` finds `_fmt_check`; `MAKE_TARGET_DEF_RE` matches `_lint_zig_test_depth:` |
 | 5.2 | unit | `test_phantom_underscore_target_flagged` | doc text citing `make _no_such_target` → checker returns a `PHANTOM TARGET` violation |
 | all shell | integration (regression) | `make lint-shell` | shellcheck stays green on every edited/new `*.sh` (`--severity=error`) |
@@ -196,6 +207,8 @@ No command-line surface, environment-variable name, on-disk path, or gate exit-c
 | R5 | Architecture gate runs in lint-all (§4) | `grep -n 'check-architecture-doc' make/quality.mk` | ≥2 matches (target + lint-all) | P0 | |
 | R6 | Route-reg underscore self-test passes (§5) | `python3 scripts/check_route_registration_doc_test.py` | exit 0 | P0 | |
 | R7 | Diff stays inside Files Changed | `git diff --name-only origin/main` | 0 paths missing from the Files Changed table | P0 | |
+| R8 | Unfrozen arch gate green on the real corpus (§4) | `bash scripts/check_architecture_doc.sh` | exit 0 | P0 | |
+| R9 | Arch-gate self-test passes (§4, incl. roadmap carve-out) | `bash scripts/check_architecture_doc_test.sh` | exit 0 | P0 | |
 | S1 | Shell lint clean | `make lint-shell` | exit 0 | P0 | |
 | S2 | Full lint clean (incl. new gates) | `make lint-all` | exit 0 | P0 | |
 | S3 | No secrets | `gitleaks detect` | exit 0 | P0 | |
@@ -248,7 +261,18 @@ No command-line surface, environment-variable name, on-disk path, or gate exit-c
 
 ## Discovery (consult log)
 
-- **Consults** — Architecture / Legacy-Design / gate-flag triage: empty at creation.
-- **Metrics review** — empty at creation.
-- **Skill-chain outcomes** — empty at creation.
-- **Deferrals** — empty at creation.
+- **Consults** — three judgment calls surfaced at PLAN, before any edit; Indy decided all three on Jul 10, 2026.
+
+  1. **§4 — the unfrozen gate fails the real corpus.** Removing the `M(40..51)` alternation surfaces 39 identifiers in `docs/architecture`; `roadmap.md:49` cites `M105`, whose spec is real but sits in `pending/`, which the gate's own comment rejects as "aspirational, not load-bearing". So Dimension 4.1's claim that "the real corpus resolves clean" was false as written. Options put to Indy: (a) carve out `roadmap.md`, (b) accept `pending/` repo-wide, (c) reword `roadmap.md`. **Indy chose (a)** — strict `done/`+`active/` for every doc asserting a shipped fact; `roadmap.md` alone also resolves `pending/`, because naming unshipped work is that file's purpose. `M999` still fails everywhere. §4, Interfaces, Invariant 4, and Dimension 4.3 updated to match.
+
+  2. **§2 — `flock` does not exist on macOS.** `deploy.sh` targets Linux bare metal, and `flock` is the correct primitive there (the kernel releases the lock when a `SIGKILL`ed deploy dies; a `noclobber` lock file would strand every later deploy behind stale state). The exposure is the *test*: `make lint-all` runs on Indy's mac. Options: (a) hard-fail with a `brew install flock` hint, (b) skip locally + hard-fail when `CI` is set, (c) drop `flock` for a portable `noclobber` lock. **Indy chose (b)** — no new local tool prereq; the lock Dimensions are enforced on every `ubuntu-latest` runner and can never be silently green in CI. Recorded in §2 and the Test Specification.
+
+  3. **`src/runner/cmd/version.zig` documents the deleted behavior.** Its module doc comment justifies the output shape by citing `is_already_installed()`'s substring test (`current == *"${VERSION#v}"*`), and a test comment repeats it. §1 deletes that behavior, so both comments become false. The file was outside Files Changed, and Out of Scope forbids changing its *output shape* — which a comment-only edit does not. **Indy approved the comment-only fix**; the file is now in Files Changed so acceptance row R7 stays green.
+
+- **Gate-flag triage** — one mechanical finding, auto-applied. The spec's read-first note 3 mis-describes the §5 defect: `MAKE_TARGET_DEF_RE`'s `_?` sits *outside* the capture group, so `_fmt:` registers under the name `fmt` (not `_fmt`). Widening the inner char class alone would leave that wrong. The `_?` moves inside the group. Strict tightening: a doc citing `` `make fmt` `` now correctly reports `PHANTOM TARGET`; no target cited in the guide today changes verdict. Recorded as a correction note under §5.
+
+- **Architecture consult** — `docs/architecture/direction.md` (platform determinism + gate discipline) read before §4. The direction doc's stance — a gate that cannot fail is not a gate — is what forces both halves of §4 (unfreeze *and* wire into `lint-all`) to land together, and is why option (b) was chosen in consult 2 over a permanently-skipped local test.
+
+- **Metrics review** — not applicable; no product or operator signal changes (see Metrics & Observability).
+- **Skill-chain outcomes** — recorded at VERIFY / CHORE(close).
+- **Deferrals** — none.
