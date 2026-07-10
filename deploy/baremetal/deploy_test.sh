@@ -140,7 +140,13 @@ test_deploy_second_invocation_blocked_when_locked() {
   local lock="$WORK_DIR/held.lock"
   local marker="$WORK_DIR/held.marker"
   local sentinels="$WORK_DIR/blocked"
+  local binary="$WORK_DIR/staged-binary"
   mkdir -p "$sentinels"
+
+  # The staged binary must exist. If it does not, an unlocked deploy dies on the
+  # missing file before ever calling install, and this test would pass whether or
+  # not the lock is taken — green for the wrong reason.
+  : >"$binary"
 
   ( flock -w 5 9 || exit 1; touch "$marker"; sleep 30 ) 9>"$lock" &
   local holder=$!
@@ -152,7 +158,7 @@ test_deploy_second_invocation_blocked_when_locked() {
 
   local status=0
   DEPLOY_LOCK_PATH="$lock" SENTINEL_DIR="$sentinels" PATH="$STUB_DIR:$PATH" \
-    bash "$DEPLOY_SH" runner v9.9.9 "$WORK_DIR/some-binary" >/dev/null 2>&1 || status=$?
+    bash "$DEPLOY_SH" runner v9.9.9 "$binary" >/dev/null 2>&1 || status=$?
   kill "$holder" 2>/dev/null
   wait "$holder" 2>/dev/null
 
