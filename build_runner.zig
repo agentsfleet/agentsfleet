@@ -31,6 +31,11 @@ const S_COMMON = "common";
 const S_CALL_DEADLINE = "call_deadline";
 const S_NULLCLAW = "nullclaw";
 const S_BUILD_OPTIONS = "build_options";
+const S_RUNNER_TESTS = "agentsfleet-runner-tests";
+const S_RUNNER_INTEGRATION_TESTS = "agentsfleet-runner-integration-tests";
+// Both runner test binaries root inside src/runner/, so the reachability checker
+// resolves their registered names against this directory.
+const S_RUNNER_ROOT_DIR = "src/runner";
 
 // Build-option names + the runner root, single-sourced (RULE UFS) — each is
 // referenced by the prod, stub-exe, and integration options modules below.
@@ -118,7 +123,7 @@ pub fn build(b: *std.Build) void {
     // exe, so it proves exactly what ships and links no datastore: a red agentsfleetd
     // (`src/`) suite never blocks building, testing, or shipping the runner.
     const runner_tests = b.addTest(.{
-        .name = "agentsfleet-runner-tests",
+        .name = S_RUNNER_TESTS,
         .root_module = b.createModule(.{
             .root_source_file = b.path("src/runner/tests.zig"),
             .target = target,
@@ -136,6 +141,10 @@ pub fn build(b: *std.Build) void {
     });
     buildpkg.fixtures.addRunner(b, runner_tests.root_module);
     b.step("test", "Run agentsfleet-runner unit tests (daemon + engine + cmd)").dependOn(&b.addRunArtifact(runner_tests).step);
+
+    // `list-tests` is defined per build graph; the daemon graph has its own in build.zig.
+    const list_step = b.step(buildpkg.test_list.STEP_NAME, buildpkg.test_list.STEP_DESC);
+    buildpkg.test_list.addLane(b, list_step, S_RUNNER_TESTS, runner_tests.root_module, S_RUNNER_ROOT_DIR);
 
     // The stub child binary the worker-pool integration lane forks: a real
     // `agentsfleet-runner` built with `executor_provider_stub=true`, so its `__execute`
@@ -178,7 +187,7 @@ pub fn build(b: *std.Build) void {
     // Linux-only (SkipZigTest elsewhere); the `test-integration-agentsfleet-runner` make lane
     // runs them on a Linux host.
     const runner_integration_tests = b.addTest(.{
-        .name = "agentsfleet-runner-integration-tests",
+        .name = S_RUNNER_INTEGRATION_TESTS,
         .root_module = b.createModule(.{
             .root_source_file = b.path("src/runner/sandbox_integration_test.zig"),
             .target = target,
@@ -200,4 +209,5 @@ pub fn build(b: *std.Build) void {
     // resolve here too, not just in the unit lane.
     buildpkg.fixtures.addRunner(b, runner_integration_tests.root_module);
     b.step("test-integration", "Run agentsfleet-runner integration tests (real-process sandbox proofs + worker-pool concurrency, Linux)").dependOn(&b.addRunArtifact(runner_integration_tests).step);
+    buildpkg.test_list.addLane(b, list_step, S_RUNNER_INTEGRATION_TESTS, runner_integration_tests.root_module, S_RUNNER_ROOT_DIR);
 }
