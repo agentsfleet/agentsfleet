@@ -2,7 +2,7 @@
 # QUALITY — code quality, formatting, analysis
 # =============================================================================
 
-.PHONY: lint-all lint-zig lint-website lint-apps-ds-ctl lint-app lint-design-system lint-cli lint-shell check-openapi check-schema-gate check-gh-actions-valid check-playbooks check-route-registration-doc gen-error-codes _fmt _fmt_check _zlint_check _lint_zig_pg_drain _lint_zig_test_depth _schema_gate_check _zig_target_lint _zig_line_limit_check _hardcoded_role_check _legacy_symbols_check _website_lint _app_lint _design_system_lint _cli_lint _shell_lint
+.PHONY: lint-all lint-zig lint-website lint-apps-ds-ctl lint-app lint-design-system lint-cli lint-shell check-openapi check-schema-gate check-gh-actions-valid check-playbooks check-route-registration-doc check-architecture-doc check-deploy-safety gen-error-codes _fmt _fmt_check _zlint_check _lint_zig_pg_drain _lint_zig_test_depth _schema_gate_check _zig_target_lint _zig_line_limit_check _hardcoded_role_check _legacy_symbols_check _website_lint _app_lint _design_system_lint _cli_lint _shell_lint
 
 # Regenerate docs/api-reference/error-codes.mdx (own repo, ~/Projects/docs)
 # from the agentsfleetd error registry. No default target path on purpose —
@@ -197,7 +197,17 @@ check-openapi:  ## Bundle YAML → openapi.json + Redocly lint + error-schema + 
 	@echo "✓ [openapi] Bundle + lint + error-schema + url-shape all green"
 
 check-route-registration-doc:  ## REST guide §7 route-registration facts stay fresh (middleware names, cited paths, make targets, dead prefixes)
+	@python3 scripts/check_route_registration_doc_test.py
 	@python3 scripts/check_route_registration_doc.py
+
+check-architecture-doc:  ## docs/architecture/ stays true — milestone refs resolve, relative links resolve, no orphan markers
+	@bash scripts/check_architecture_doc_test.sh
+	@bash scripts/check_architecture_doc.sh
+
+check-deploy-safety:  ## deploy.sh version-skip equality + deploy mutex, and shellcheck over deploy/baremetal/
+	@command -v $(SHELLCHECK) >/dev/null 2>&1 || { echo "shellcheck not found. Install via: mise install shellcheck"; exit 1; }
+	@$(SHELLCHECK) --severity=error -x deploy/baremetal/*.sh
+	@bash deploy/baremetal/deploy_test.sh
 
 SHELLCHECK ?= shellcheck
 
@@ -276,7 +286,7 @@ lint-cli: _cli_lint  ## Lint agentsfleet CLI only (Oxlint + runtime/const audits
 lint-shell: _shell_lint  ## Lint scripts/*.sh via shellcheck (follows dotfiles symlinks)
 
 
-lint-all: lint-zig lint-website lint-apps-ds-ctl lint-shell check-openapi check-schema-gate check-gh-actions-valid check-playbooks check-route-registration-doc  ## Run all linters + quality gates
+lint-all: lint-zig lint-website lint-apps-ds-ctl lint-shell check-openapi check-schema-gate check-gh-actions-valid check-playbooks check-route-registration-doc check-architecture-doc check-deploy-safety  ## Run all linters + quality gates
 	@echo "✓ All lint checks passed"
 
 check-gh-actions-valid:  ## Validate .github/workflows/ — actionlint (YAML + run: shellcheck) + make-target ref check

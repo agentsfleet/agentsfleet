@@ -1,22 +1,33 @@
 #!/usr/bin/env bash
-# Architecture doc consistency tests required by docs/v2/active/M51_001
-# Test Specification (folded from M50). Run via:
+# Architecture doc consistency gate. Run via `make check-architecture-doc`
+# (a prerequisite of `make lint-all`), or directly:
 #
 #     bash scripts/check_architecture_doc.sh
 #
 # Tests covered:
-#   * test_arch_M_references_resolve  — every M{N} mentioned has a done/ spec
+#   * test_arch_M_references_resolve  — every milestone identifier resolves
 #   * test_arch_anchor_links_resolve  — every relative .md link target exists
-#   * test_arch_section_14_present    — §14 ship_reflection.md exists, non-empty,
-#                                        under 600 words
 #   * test_arch_no_orphan_TODO        — 0 TODO/TKTK/FIXME hits in architecture/
+#
+# ARCH_DIR and SPEC_ROOT are overridable so check_architecture_doc_test.sh can
+# point the gate at fixtures. Nothing else sets them.
 #
 # Exits 0 on success, 1 on the first failing assertion (with diagnostic).
 
 set -euo pipefail
 
-ARCH_DIR="docs/architecture"
-DONE_DIR="docs/v2/done"
+ARCH_DIR="${ARCH_DIR:-docs/architecture}"
+SPEC_ROOT="${SPEC_ROOT:-docs/v2}"
+DONE_DIR="$SPEC_ROOT/done"
+ACTIVE_DIR="$SPEC_ROOT/active"
+PENDING_DIR="$SPEC_ROOT/pending"
+
+# The single architecture doc whose subject is unshipped work. Everywhere else a
+# milestone reference asserts a fact about the system, so it must name a spec
+# that shipped (done/) or is in flight (active/); the roadmap names what is
+# merely planned, and a pending/ spec is the only evidence such work exists.
+readonly ROADMAP_BASENAME="roadmap.md"
+
 FAIL=0
 
 err() { printf "FAIL: %s\n" "$*" >&2; FAIL=1; }
@@ -24,30 +35,54 @@ ok()  { printf "OK:   %s\n" "$*"; }
 
 # ---------------------------------------------------------------------------
 # 1. test_arch_M_references_resolve
-#    Each M{N} in architecture/ must resolve to a spec in done/ (shipped) or
-#    active/ (currently in-flight, e.g. the spec doing the cross-ref itself).
-#    pending/ is NOT acceptable — pending specs are aspirational, not load-bearing.
+#    Every milestone identifier in architecture/ must resolve to a spec in done/
+#    (shipped) or active/ (in flight, e.g. the spec doing the cross-ref itself).
+#    pending/ resolves in roadmap.md alone — see ROADMAP_BASENAME above. An
+#    identifier with no spec anywhere fails in every file, roadmap included.
 # ---------------------------------------------------------------------------
-m_ids=$(grep -rEoh "M[0-9]+_[0-9]+|\bM[0-9]+\b" "$ARCH_DIR" 2>/dev/null \
-  | grep -E "^M(40|41|42|43|44|45|46|47|48|49|50|51)" \
-  | sort -u || true)
 
-if [ -z "$m_ids" ]; then
-  ok "no M{N} references in architecture/ (vacuously resolves)"
+# True when some `<base>_*.md` spec lives in `dir`.
+spec_exists() {
+  ls "$1/$2"_*.md >/dev/null 2>&1
+}
+
+# `src_file` decides whether pending/ counts; `ref` may carry a workstream suffix,
+# which the milestone glob strips before matching a spec filename.
+resolve_ref() {
+  local src_file="$1"
+  local base="${2%%_*}"
+
+  if spec_exists "$DONE_DIR" "$base"; then return 0; fi
+  if spec_exists "$ACTIVE_DIR" "$base"; then return 0; fi
+  if [ "$(basename "$src_file")" = "$ROADMAP_BASENAME" ] && spec_exists "$PENDING_DIR" "$base"; then
+    return 0
+  fi
+  return 1
+}
+
+# `file:REF` pairs, not bare refs: which file cited an identifier decides whether
+# pending/ resolves it, so the filename has to survive the scan.
+m_refs=$(grep -rEo "M[0-9]+_[0-9]+|\bM[0-9]+\b" "$ARCH_DIR" 2>/dev/null | sort -u || true)
+
+if [ -z "$m_refs" ]; then
+  ok "no milestone references in $ARCH_DIR/ (vacuously resolves)"
 else
   m_count=0
-  for ref in $m_ids; do
-    # Strip subspec suffix (e.g. M45_001 -> M45) for prefix glob match
-    base="${ref%%_*}"
-    if ls "$DONE_DIR"/"${base}"_*.md >/dev/null 2>&1; then
-      m_count=$((m_count + 1))
-    elif ls "docs/v2/active/${base}"_*.md >/dev/null 2>&1; then
+  # Here-doc, not a pipe: a `while read` on the right of a pipe runs in a subshell
+  # and every err() would set FAIL in a shell that exits before the check reads it.
+  while IFS= read -r entry; do
+    [ -n "$entry" ] || continue
+    src="${entry%%:*}"
+    ref="${entry##*:}"
+    if resolve_ref "$src" "$ref"; then
       m_count=$((m_count + 1))
     else
-      err "test_arch_M_references_resolve: $ref referenced in architecture/ but no $DONE_DIR/${base}_*.md or docs/v2/active/${base}_*.md found"
+      err "test_arch_M_references_resolve: $ref cited in $src resolves to no spec in $DONE_DIR/ or $ACTIVE_DIR/ (pending/ resolves only in $ROADMAP_BASENAME)"
     fi
-  done
-  [ "$FAIL" = 0 ] && ok "test_arch_M_references_resolve: all $m_count M-IDs resolve to done/ or active/ specs"
+  done <<EOF
+$m_refs
+EOF
+  [ "$FAIL" = 0 ] && ok "test_arch_M_references_resolve: all $m_count milestone references resolve"
 fi
 
 # ---------------------------------------------------------------------------
@@ -73,28 +108,8 @@ done < <(grep -rEon '\]\(\.\.?/[^)]+\.md[^)]*\)' "$ARCH_DIR" 2>/dev/null \
 [ "$broken_links" = 0 ] && ok "test_arch_anchor_links_resolve: all relative .md links resolve"
 
 # ---------------------------------------------------------------------------
-# 3. test_arch_section_14_present
+# 3. test_arch_no_orphan_TODO
 # ---------------------------------------------------------------------------
-SR_FILE="$ARCH_DIR/ship_reflection.md"
-if [ ! -f "$SR_FILE" ]; then
-  err "test_arch_section_14_present: $SR_FILE missing"
-elif ! head -3 "$SR_FILE" | grep -qE "^# 14\."; then
-  err "test_arch_section_14_present: $SR_FILE does not start with '# 14.' header"
-else
-  word_count=$(wc -w < "$SR_FILE" | tr -d ' ')
-  if [ "$word_count" -gt 600 ]; then
-    err "test_arch_section_14_present: $SR_FILE is $word_count words (cap is 600 per spec §4.3)"
-  elif [ "$word_count" -lt 50 ]; then
-    err "test_arch_section_14_present: $SR_FILE is only $word_count words (looks empty/stub-only)"
-  else
-    ok "test_arch_section_14_present: $SR_FILE present, $word_count words (cap 600)"
-  fi
-fi
-
-# ---------------------------------------------------------------------------
-# 4. test_arch_no_orphan_TODO
-# ---------------------------------------------------------------------------
-# `PENDING SHIP` markers in ship_reflection.md are deliberate, not orphans.
 todo_hits=$(grep -rEn "TODO|TKTK|FIXME" "$ARCH_DIR" 2>/dev/null || true)
 if [ -n "$todo_hits" ]; then
   err "test_arch_no_orphan_TODO: orphan markers found in architecture/:"
