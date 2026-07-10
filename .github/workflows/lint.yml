@@ -120,21 +120,29 @@ jobs:
     # bun/zig build. GitHub sets CI=true, so check-deploy-safety's flock lock
     # tests run here rather than skip.
     #
-    # check-route-registration-doc is deliberately absent: its subject,
+    # The full check-route-registration-doc gate is absent: its subject,
     # docs/REST_API_DESIGN_GUIDELINES.md, is committed as an absolute-path symlink
-    # into a developer's dotfiles, so it dangles in a fresh CI checkout. That gate
-    # stays in `make lint-all` + the pre-commit hook, which run where the dotfiles
-    # resolve. Making it a CI gate would need the doc de-symlinked first (a
-    # separate, dotfiles-owned change).
+    # into a developer's dotfiles, so it dangles in a fresh CI checkout. Validating
+    # the actual guide (phantom targets, stale paths) stays in `make lint-all` +
+    # the pre-commit hook, which run where the dotfiles resolve; a CI doc-freshness
+    # gate would need the doc de-symlinked first (a dotfiles-owned change). BUT the
+    # checker's *logic* — the make-target regexes this milestone widened — is
+    # validated here by its self-test, which reads real make/ files and skips the
+    # one guide-dependent case, so a regex regression is still caught in CI.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
       - name: Playbooks (shellcheck + refs + vault-gate parity)
         run: make check-playbooks
       - name: Architecture doc consistency
         run: make check-architecture-doc
       - name: Deploy version/lock safety
         run: make check-deploy-safety
+      - name: Route-registration checker logic (self-test; guide case skips in CI)
+        run: python3 scripts/check_route_registration_doc_test.py
 
   lint:
     runs-on: ubuntu-latest
