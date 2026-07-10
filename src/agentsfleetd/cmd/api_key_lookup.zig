@@ -13,6 +13,24 @@ const db = @import("../db/pool.zig");
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
 const tenant_api_key = @import("../auth/middleware/tenant_api_key.zig");
 
+const LOOKUP_SQL =
+    \\SELECT uid::text, tenant_id::text, created_by::text, active
+    \\FROM core.api_keys
+    \\WHERE key_hash = $1
+    \\LIMIT 1
+;
+
+const STAMP_LAST_USED_SQL =
+    \\UPDATE core.api_keys
+    \\SET last_used_at = $2
+    \\WHERE uid IN (
+    \\    SELECT uid
+    \\    FROM core.api_keys
+    \\    WHERE key_hash = $1 AND active = TRUE
+    \\    FOR UPDATE SKIP LOCKED
+    \\)
+;
+
 pub const LookupResult = tenant_api_key.LookupResult;
 
 /// Host context carrying the shared connection pool. A stable pointer to a
@@ -33,33 +51,24 @@ pub fn lookup(
     const self: *Ctx = @ptrCast(@alignCast(host));
     const conn = self.pool.acquire() catch return error.DbUnavailable;
     defer self.pool.release(conn);
-    const now_ms = clock.nowMillis();
 
-    var q = PgQuery.from(conn.query(
-        \\WITH matched AS (
-        \\    SELECT uid, tenant_id, created_by, active
-        \\    FROM core.api_keys
-        \\    WHERE key_hash = $1
-        \\    LIMIT 1
-        \\), touched AS (
-        \\    UPDATE core.api_keys k
-        \\    SET last_used_at = $2
-        \\    FROM matched m
-        \\    WHERE k.uid = m.uid AND m.active = TRUE
-        \\    RETURNING k.uid::text, k.tenant_id::text, k.created_by::text, k.active
-        \\)
-        \\SELECT uid, tenant_id, created_by, active
-        \\FROM touched
-        \\UNION ALL
-        \\SELECT uid::text, tenant_id::text, created_by::text, active
-        \\FROM matched
-        \\WHERE NOT EXISTS (SELECT 1 FROM touched)
-        \\LIMIT 1
-    , .{ key_hash_hex, now_ms }) catch return error.DbQueryFailed);
-    defer q.deinit();
+    const result = blk: {
+        var q = PgQuery.from(conn.query(LOOKUP_SQL, .{key_hash_hex}) catch return error.DbQueryFailed);
+        defer q.deinit();
 
-    const row = (q.next() catch return error.DbQueryFailed) orelse return null;
-    return try copyRow(alloc, row);
+        const row = (q.next() catch return error.DbQueryFailed) orelse return null;
+        break :blk try copyRow(alloc, row);
+    };
+
+    if (result.active) stampLastUsed(conn, key_hash_hex, clock.nowMillis());
+    return result;
+}
+
+fn stampLastUsed(conn: *pg.Conn, key_hash_hex: []const u8, now_ms: i64) void {
+    _ = conn.exec(STAMP_LAST_USED_SQL, .{ key_hash_hex, now_ms }) catch {
+        // Authentication already succeeded; usage metadata must never decide it.
+        return;
+    };
 }
 
 fn copyRow(alloc: std.mem.Allocator, row: pg.Row) !LookupResult {
@@ -85,4 +94,9 @@ fn copyRow(alloc: std.mem.Allocator, row: pg.Row) !LookupResult {
 // Referenced to silence "unused" warnings when the host isn't wired yet.
 test {
     _ = db;
+}
+
+test "tenant key lookup keeps usage stamp out of the authentication query" {
+    try std.testing.expect(std.mem.indexOf(u8, LOOKUP_SQL, "UPDATE core.api_keys") == null);
+    try std.testing.expect(std.mem.indexOf(u8, STAMP_LAST_USED_SQL, "FOR UPDATE SKIP LOCKED") != null);
 }
