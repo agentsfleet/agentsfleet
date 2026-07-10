@@ -44,17 +44,28 @@ Usage:
 import argparse
 import collections
 import os
+import re
 import subprocess
 import sys
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-# Source lines that make a file a candidate. Column-0 anchored. Anonymous blocks
-# (`test { ... }`) count for CANDIDACY but not for the depth total: a file holding
-# only anonymous tests can still be unreachable, and skipping it would leave the
-# gate with the blind spot it exists to close. The depth total stays on named
-# blocks so it remains comparable to the historical `^test "` count.
-CANDIDATE_LINE_PREFIXES = ('test "', "test {")
+# A column-0 `test` keyword in any of its three forms starts a test block:
+#
+#     test "named" {}      -> <ns>.test.named
+#     test {}   /  test{}  -> <ns>.test_<N>        (anonymous; the brace may hug)
+#     test someDecl {}     -> <ns>.decltest.someDecl
+#
+# `\b` after `test` matches all three yet rejects `test_helper` and `testing.x`,
+# because `_` and `i` are word characters. Matching the literal `'test "'` alone
+# let a file whose tests are all anonymous or all decltests slip past the gate —
+# and `zig fmt` only rescues the `test{` case, and only inside `lint-zig`, never
+# on the push path through `_lint_zig_test_depth`.
+CANDIDATE_TEST_RE = re.compile(r"^test\b")
+
+# The depth total stays on NAMED blocks so it remains directly comparable to the
+# historical `^test "` count the Test Baseline was recorded from. Anonymous blocks
+# and decltests make a file a candidate; they never inflate the number.
 TEST_LINE_PREFIX = 'test "'
 INTEGRATION_LINE_PREFIX = 'test "integration:'
 
@@ -70,8 +81,10 @@ TEST_PREFIX = "TEST\t"
 FIELD_SEP = "\t"
 
 # Registered-name infixes separating a file's namespace from its test.
-NAMED_TEST_INFIX = ".test."
-ANON_TEST_INFIX = ".test_"
+# Infixes separating a file's namespace from its registered test, one per form
+# above. Omitting `.decltest.` would report a LIVE decltest file as dead — a false
+# positive, which is worse than the miss it was paired with.
+NAME_INFIXES = (".test.", ".test_", ".decltest.")
 
 LIST_STEP = "list-tests"
 # The two build graphs. `build_runner.zig` is the runner daemon's own graph and
@@ -116,9 +129,14 @@ def read_lines(path):
 
 
 def declares_a_test(path):
-    return any(
-        line.startswith(CANDIDATE_LINE_PREFIXES) for line in read_lines(path)
-    )
+    return any(CANDIDATE_TEST_RE.match(line) for line in read_lines(path))
+
+
+def count_declared(path):
+    """Test blocks of every form. Used only to report how much a dead file lost:
+    an anonymous-only file has zero NAMED blocks, and "(0 dead blocks)" would read
+    like a false alarm."""
+    return sum(1 for line in read_lines(path) if CANDIDATE_TEST_RE.match(line))
 
 
 def candidate_files():
@@ -157,8 +175,8 @@ def is_live(path, groups):
         if not path.startswith(prefix):
             continue
         namespace = path[len(prefix):-len(ZIG_EXT)].replace("/", ".")
-        named, anon = namespace + NAMED_TEST_INFIX, namespace + ANON_TEST_INFIX
-        if any(n.startswith(named) or n.startswith(anon) for n in names):
+        wanted = tuple(namespace + infix for infix in NAME_INFIXES)
+        if any(n.startswith(wanted) for n in names):
             return True
     return False
 
@@ -219,13 +237,7 @@ def run_check(groups, candidates):
             f"  Force-import each from a test root, or add `{WAIVER_MARKER} <reason>`:\n"
         )
         for path in dead:
-            # Declared, not counted: an anonymous-only file has zero *named* blocks
-            # yet is still dead, and "(0 dead blocks)" would read like a false alarm.
-            declared = sum(
-                1 for line in read_lines(path)
-                if line.startswith(CANDIDATE_LINE_PREFIXES)
-            )
-            sys.stderr.write(f"    {path}  ({declared} dead block(s))\n")
+            sys.stderr.write(f"    {path}  ({count_declared(path)} dead block(s))\n")
         return 1
 
     for path, reason in waived:
