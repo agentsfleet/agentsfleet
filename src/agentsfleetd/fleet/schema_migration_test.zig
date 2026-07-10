@@ -13,6 +13,10 @@ const pg = @import("pg");
 const parseUrl = @import("../db/pool.zig").parseUrl;
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
 const base = @import("../db/test_fixtures.zig");
+const migration_lock = @import("../db/pool_migration_lock.zig");
+const pool_migrations = @import("../db/pool_migrations.zig");
+const Migration = @import("../db/pool_types.zig").Migration;
+const cmd_common = @import("../cmd/common.zig");
 
 // `uid id host_id token_hash sandbox_tier admin_state labels tenant_id last_seen_at
 //  created_at updated_at` — the frozen `fleet.runners` column set.
@@ -289,4 +293,241 @@ test "fleet FK: an orphan fleet_id on runner_lease / runner_affinity is rejected
         try std.testing.expectError(error.PG, db.conn.exec(FK_LEASE_INSERT, .{ FK_LEASE_ID, FK_RUNNER_ID, FK_ORPHAN_FLEET_ID, FK_WORKSPACE_ID, base.TEST_TENANT_ID }));
         try expectFkViolation(db.conn);
     }
+}
+
+// ── Migration-runner regressions: lock-before-DDL ordering, idempotent happy
+// path, and stale-vs-genuine failure-row correlation ─────────────────────────
+
+// Fast injected lock bounds so contention runs fail in milliseconds, mirroring
+// the acquireBounded pattern in db/pool_test.zig.
+const FAST_LOCK_MAX_ATTEMPTS: u32 = 3;
+const FAST_LOCK_RETRY_MS: u64 = 5;
+// Temporary rename target hiding the live `audit` schema, so a blocked
+// migration attempt's (absent) bookkeeping DDL is observable on a migrated DB.
+const AUDIT_STASH_SCHEMA = "audit_lock_ordering_stash";
+// Failure-row probe versions: 1 is always applied on the migrated test DB
+// (versions are contiguous from 1); 999_999 is far outside the canonical list.
+const APPLIED_PROBE_VERSION: i32 = 1;
+const UNAPPLIED_PROBE_VERSION: i32 = 999_999;
+
+const COUNT_APPLIED_MIGRATIONS_SQL = "SELECT count(*)::bigint FROM audit.schema_migrations";
+const COUNT_APPLIED_PROBE_VERSION_SQL = std.fmt.comptimePrint(
+    "SELECT count(*)::bigint FROM audit.schema_migrations WHERE version = {d}",
+    .{APPLIED_PROBE_VERSION},
+);
+const SUM_APPLIED_STAMPS_SQL = "SELECT COALESCE(SUM(applied_at), 0)::bigint FROM audit.schema_migrations";
+const INSERT_FAILURE_ROW_SQL =
+    \\INSERT INTO audit.schema_migration_failures (version, failed_at, error_text)
+    \\VALUES ($1, 0, 'test fixture')
+    \\ON CONFLICT (version) DO UPDATE SET failed_at = EXCLUDED.failed_at
+;
+const DELETE_FAILURE_ROW_SQL = "DELETE FROM audit.schema_migration_failures WHERE version = $1";
+
+fn auditSchemaCount(conn: *pg.Conn) !i64 {
+    return scalarI64(conn, "SELECT count(*)::bigint FROM pg_namespace WHERE nspname = 'audit'");
+}
+
+// The stash tests rename and (in the heal path) CASCADE-drop the `audit`
+// schema — a blast radius beyond fixture rows. Refuse to run against any
+// database not named after the disposable compose/test DB.
+const DISPOSABLE_TEST_DB_NAME = "agentsfleetdb";
+
+fn requireDisposableTestDb(conn: *pg.Conn) !void {
+    var q = PgQuery.from(try conn.query("SELECT current_database()::text", .{}));
+    defer q.deinit();
+    const row = (try q.next()) orelse return error.TestUnexpectedResult;
+    const name = try row.get([]const u8, 0);
+    if (!std.mem.eql(u8, name, DISPOSABLE_TEST_DB_NAME)) return error.SkipZigTest;
+}
+
+/// Restore the real `audit` schema from the stash — the normal post-test path,
+/// and the heal path for a stash left behind by a crashed prior run. Any
+/// `audit` present alongside the stash is empty bookkeeping created by a
+/// blocked (regressed) run; the real data lives in the stash.
+fn healAuditStash(conn: *pg.Conn) void {
+    const stash = scalarI64(
+        conn,
+        "SELECT count(*)::bigint FROM pg_namespace WHERE nspname = '" ++ AUDIT_STASH_SCHEMA ++ "'",
+    ) catch return;
+    if (stash == 0) return;
+    _ = conn.exec("DROP SCHEMA IF EXISTS audit CASCADE", .{}) catch |err|
+        std.log.warn("audit stash heal (drop) ignored: {s}", .{@errorName(err)});
+    _ = conn.exec("ALTER SCHEMA " ++ AUDIT_STASH_SCHEMA ++ " RENAME TO audit", .{}) catch |err|
+        std.log.warn("audit stash heal (rename) ignored: {s}", .{@errorName(err)});
+}
+
+fn failureRowCleanup(conn: *pg.Conn, version: i32) void {
+    _ = conn.exec(DELETE_FAILURE_ROW_SQL, .{version}) catch |err|
+        std.log.warn("failure-row cleanup ignored: {s}", .{@errorName(err)});
+}
+
+test "migration lock: a held lock blocks runMigrations before any bookkeeping DDL" {
+    const alloc = std.testing.allocator;
+    const holder = (try openConnOrSkip(alloc)) orelse return error.SkipZigTest;
+    defer holder.pool.deinit();
+    defer holder.pool.release(holder.conn);
+    const runner = (try openConnOrSkip(alloc)) orelse return error.SkipZigTest;
+    defer runner.pool.deinit();
+    runner.pool.release(runner.conn); // runMigrationsBounded acquires its own conn
+
+    try requireDisposableTestDb(holder.conn);
+    healAuditStash(holder.conn);
+    _ = try holder.conn.exec("ALTER SCHEMA audit RENAME TO " ++ AUDIT_STASH_SCHEMA, .{});
+    errdefer healAuditStash(holder.conn); // heal even when a mid-test `try` fails
+
+    try migration_lock.acquireBounded(holder.conn, FAST_LOCK_MAX_ATTEMPTS, FAST_LOCK_RETRY_MS);
+
+    const migrations = cmd_common.canonicalMigrations();
+    const blocked = pool_migrations.runMigrationsBounded(
+        runner.pool,
+        &migrations,
+        FAST_LOCK_MAX_ATTEMPTS,
+        FAST_LOCK_RETRY_MS,
+    );
+
+    // Capture, then restore the schema BEFORE asserting, so a failing assert
+    // cannot leave the shared test DB with `audit` stashed away.
+    const audit_recreated = auditSchemaCount(holder.conn) catch -1;
+    migration_lock.release(holder.conn);
+    healAuditStash(holder.conn);
+
+    try std.testing.expectError(error.MigrationLockUnavailable, blocked);
+    try std.testing.expectEqual(@as(i64, 0), audit_recreated);
+}
+
+// Synthetic one-entry migration lists for the fresh-bookkeeping tests below.
+// Safe ONLY against a stashed-fresh `audit` schema: reapOrphanedMigrationRows
+// deletes bookkeeping rows outside the given list, so a synthetic list must
+// never run against the real bookkeeping tables.
+const SYNTHETIC_MIGRATION_VERSION: i32 = 1;
+const SYNTHETIC_OK_MIGRATION = [_]Migration{.{ .version = SYNTHETIC_MIGRATION_VERSION, .sql = "SELECT 1;" }};
+// No closing $body$ — structurally unterminated on purpose.
+const SYNTHETIC_UNTERMINATED_MIGRATION = [_]Migration{.{
+    .version = SYNTHETIC_MIGRATION_VERSION,
+    .sql = "CREATE FUNCTION f() RETURNS void AS $body$ BEGIN RETURN; END;",
+}};
+
+test "fresh bookkeeping: a migration applies once and a re-run is a no-op" {
+    const alloc = std.testing.allocator;
+    const probe = (try openConnOrSkip(alloc)) orelse return error.SkipZigTest;
+    defer probe.pool.deinit();
+    defer probe.pool.release(probe.conn);
+    const runner = (try openConnOrSkip(alloc)) orelse return error.SkipZigTest;
+    defer runner.pool.deinit();
+    runner.pool.release(runner.conn); // runMigrationsBounded acquires its own conn
+
+    try requireDisposableTestDb(probe.conn);
+    healAuditStash(probe.conn);
+    _ = try probe.conn.exec("ALTER SCHEMA audit RENAME TO " ++ AUDIT_STASH_SCHEMA, .{});
+    errdefer healAuditStash(probe.conn); // heal even when a mid-test `try` fails
+
+    const first = pool_migrations.runMigrationsBounded(
+        runner.pool,
+        &SYNTHETIC_OK_MIGRATION,
+        FAST_LOCK_MAX_ATTEMPTS,
+        FAST_LOCK_RETRY_MS,
+    );
+    const rows_after_first = scalarI64(probe.conn, COUNT_APPLIED_PROBE_VERSION_SQL) catch -1;
+    const second = pool_migrations.runMigrationsBounded(
+        runner.pool,
+        &SYNTHETIC_OK_MIGRATION,
+        FAST_LOCK_MAX_ATTEMPTS,
+        FAST_LOCK_RETRY_MS,
+    );
+    const rows_after_second = scalarI64(probe.conn, COUNT_APPLIED_PROBE_VERSION_SQL) catch -1;
+    healAuditStash(probe.conn);
+
+    try first;
+    try second;
+    try std.testing.expectEqual(@as(i64, 1), rows_after_first);
+    try std.testing.expectEqual(@as(i64, 1), rows_after_second);
+}
+
+test "fresh bookkeeping: an unterminated migration fails loudly and records the failure row" {
+    const alloc = std.testing.allocator;
+    const probe = (try openConnOrSkip(alloc)) orelse return error.SkipZigTest;
+    defer probe.pool.deinit();
+    defer probe.pool.release(probe.conn);
+    const runner = (try openConnOrSkip(alloc)) orelse return error.SkipZigTest;
+    defer runner.pool.deinit();
+    runner.pool.release(runner.conn); // runMigrationsBounded acquires its own conn
+
+    try requireDisposableTestDb(probe.conn);
+    healAuditStash(probe.conn);
+    _ = try probe.conn.exec("ALTER SCHEMA audit RENAME TO " ++ AUDIT_STASH_SCHEMA, .{});
+    errdefer healAuditStash(probe.conn); // heal even when a mid-test `try` fails
+
+    const run = pool_migrations.runMigrationsBounded(
+        runner.pool,
+        &SYNTHETIC_UNTERMINATED_MIGRATION,
+        FAST_LOCK_MAX_ATTEMPTS,
+        FAST_LOCK_RETRY_MS,
+    );
+    // The failure row must carry the named SplitError, and no version row may exist.
+    const failure_rows = scalarI64(
+        probe.conn,
+        "SELECT count(*)::bigint FROM audit.schema_migration_failures WHERE version = 1 AND error_text = 'UnterminatedDollarQuote'",
+    ) catch -1;
+    const version_rows = scalarI64(probe.conn, COUNT_APPLIED_PROBE_VERSION_SQL) catch -1;
+    healAuditStash(probe.conn);
+
+    try std.testing.expectError(error.UnterminatedDollarQuote, run);
+    try std.testing.expectEqual(@as(i64, 1), failure_rows);
+    try std.testing.expectEqual(@as(i64, 0), version_rows);
+}
+
+test "runMigrations: fully-applied database is idempotent across repeated runs" {
+    const alloc = std.testing.allocator;
+    const db = (try openConnOrSkip(alloc)) orelse return error.SkipZigTest;
+    defer db.pool.deinit();
+    defer db.pool.release(db.conn);
+
+    const migrations = cmd_common.canonicalMigrations();
+    try pool_migrations.runMigrations(db.pool, &migrations);
+
+    const applied_count = try scalarI64(db.conn, COUNT_APPLIED_MIGRATIONS_SQL);
+    const applied_stamp_sum = try scalarI64(db.conn, SUM_APPLIED_STAMPS_SQL);
+    try std.testing.expectEqual(@as(i64, @intCast(migrations.len)), applied_count);
+
+    // Second run applies zero: same row count, same applied_at stamps.
+    try pool_migrations.runMigrations(db.pool, &migrations);
+    try std.testing.expectEqual(applied_count, try scalarI64(db.conn, COUNT_APPLIED_MIGRATIONS_SQL));
+    try std.testing.expectEqual(applied_stamp_sum, try scalarI64(db.conn, SUM_APPLIED_STAMPS_SQL));
+}
+
+test "stale failure row: an already-applied version resolves instead of blocking boot" {
+    const alloc = std.testing.allocator;
+    const db = (try openConnOrSkip(alloc)) orelse return error.SkipZigTest;
+    defer db.pool.deinit();
+    defer db.pool.release(db.conn);
+
+    // Precondition: the probe version really is applied on the migrated test DB.
+    try std.testing.expectEqual(@as(i64, 1), try scalarI64(db.conn, COUNT_APPLIED_PROBE_VERSION_SQL));
+
+    failureRowCleanup(db.conn, APPLIED_PROBE_VERSION);
+    _ = try db.conn.exec(INSERT_FAILURE_ROW_SQL, .{APPLIED_PROBE_VERSION});
+    errdefer failureRowCleanup(db.conn, APPLIED_PROBE_VERSION);
+
+    const migrations = cmd_common.canonicalMigrations();
+    const state = pool_migrations.inspectMigrationState(db.pool, &migrations);
+    failureRowCleanup(db.conn, APPLIED_PROBE_VERSION);
+
+    try std.testing.expect(!(try state).has_failed_migrations);
+}
+
+test "genuine failure row: an unapplied version still blocks boot" {
+    const alloc = std.testing.allocator;
+    const db = (try openConnOrSkip(alloc)) orelse return error.SkipZigTest;
+    defer db.pool.deinit();
+    defer db.pool.release(db.conn);
+
+    failureRowCleanup(db.conn, UNAPPLIED_PROBE_VERSION);
+    _ = try db.conn.exec(INSERT_FAILURE_ROW_SQL, .{UNAPPLIED_PROBE_VERSION});
+    errdefer failureRowCleanup(db.conn, UNAPPLIED_PROBE_VERSION);
+
+    const migrations = cmd_common.canonicalMigrations();
+    const state = pool_migrations.inspectMigrationState(db.pool, &migrations);
+    failureRowCleanup(db.conn, UNAPPLIED_PROBE_VERSION);
+
+    try std.testing.expect((try state).has_failed_migrations);
 }
