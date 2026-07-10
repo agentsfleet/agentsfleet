@@ -16,6 +16,7 @@ const Handle = struct {
     refresh_token: []const u8,
     access_token: []const u8,
     expires_at_ms: i64,
+    connected_at_ms: i64,
     label: []const u8,
 };
 
@@ -36,6 +37,7 @@ pub fn postAuth(hx: hx_mod.Hx, workspace_id: []const u8, body: []const u8, _: ?[
         .refresh_token = tok.refresh_token,
         .access_token = tok.access_token,
         .expires_at_ms = oauth_refresh.expiresAtMs(tok.expires_in_s),
+        .connected_at_ms = oauth_refresh.connectedAtMs(),
         .label = LABEL_LINEAR,
     });
 }
