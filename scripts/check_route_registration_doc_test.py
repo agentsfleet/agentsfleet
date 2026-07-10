@@ -59,6 +59,12 @@ class TestUnderscoreTargets(unittest.TestCase):
 
     def test_real_underscore_targets_resolve(self):
         doc = f"Run `make {FMT_CHECK_TARGET}` and `make {TEST_DEPTH_TARGET}`."
+        # Assert the citations are seen before asserting they resolve. An
+        # underscore-blind regex captures nothing, and a doc that cites nothing
+        # trivially has no phantom targets — a pass that proves the opposite.
+        self.assertEqual(
+            checker.DOC_MAKE_TARGET_RE.findall(doc), [FMT_CHECK_TARGET, TEST_DEPTH_TARGET]
+        )
         self.assertEqual(checker.check_phantom_make_targets(doc, MAKE_DIR, MAKEFILE), [])
 
 
