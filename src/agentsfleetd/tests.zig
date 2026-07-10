@@ -12,6 +12,7 @@ test {
     _ = @import("db/pool.zig");
     _ = @import("db/pg_query.zig");
     _ = @import("db/sql_splitter.zig");
+    _ = @import("db/sql_splitter_test.zig");
     _ = @import("config/env_vars.zig");
     _ = @import("config/load.zig");
     _ = @import("config/balance_policy.zig");
