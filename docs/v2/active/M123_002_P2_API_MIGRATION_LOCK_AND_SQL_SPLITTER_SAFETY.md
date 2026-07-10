@@ -173,19 +173,19 @@ No HTTP route, Command-Line Interface (CLI) surface, or on-disk schema path chan
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | Lock precedes DDL; splitter parses/rejects correctly (§1/§2) | `make test-unit-all` | exit 0 incl. the splitter unit tests | P0 | |
-| R2 | Lock-held and stale-row regressions pass (§1/§3) | `make test-integration` | exit 0 incl. the new migration tests | P0 | |
-| R3 | Splitter header no longer disclaims tagged dollar-quotes/block comments (§2) | `grep -n "not supported\|does NOT handle" src/agentsfleetd/db/sql_splitter.zig` | no output | P1 | |
-| R4 | Corpus guard no longer passes on `count != 0` alone (§2) | `grep -n "stmt_count == 0" src/agentsfleetd/cmd/common.zig` | no output | P1 | |
-| R5 | Diff stays inside Files Changed | `git diff --name-only origin/main` | 0 paths missing from the Files Changed table | P0 | |
-| S1 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | |
-| S2 | Lint clean | `make lint-all` | exit 0 | P0 | |
-| S3 | Integration passes | `make test-integration` | exit 0 | P0 | |
-| S4 | pg-drain intact (query changed) | `make _lint_zig_pg_drain` | exit 0 | P0 | |
-| S5 | No leaks (Zig migration path touched) | `make memleak` | exit 0 | P0 | |
-| S6 | Cross-compile | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` | exit 0 | P0 | |
-| S7 | No secrets | `gitleaks detect` | exit 0 | P0 | |
-| S8 | No oversize source file | `git diff --name-only origin/main \| grep -v -E '\.md$\|^docs/\|_test\.' \| xargs wc -l 2>/dev/null \| awk '$1>350 && $2!="total"'` | no output | P0 | |
+| R1 | Lock precedes DDL; splitter parses/rejects correctly (§1/§2) | `make test-unit-all` | exit 0 incl. the splitter unit tests | P0 | ✅ exit 0 — `✓ All unit lanes passed` |
+| R2 | Lock-held and stale-row regressions pass (§1/§3) | `make test-integration` | exit 0 incl. the new migration tests | P0 | ⏳ verbatim run blocked by cross-worktree container contention; the 8 migration tests pass against a fresh private Postgres (`1680 pass / 0 fail`, twice) — see Session Notes |
+| R3 | Splitter header no longer disclaims tagged dollar-quotes/block comments (§2) | `grep -n "not supported\|does NOT handle" src/agentsfleetd/db/sql_splitter.zig` | no output | P1 | ✅ no output |
+| R4 | Corpus guard no longer passes on `count != 0` alone (§2) | `grep -n "stmt_count == 0" src/agentsfleetd/cmd/common.zig` | no output | P1 | ✅ no output |
+| R5 | Diff stays inside Files Changed | `git diff --name-only origin/main` | 0 paths missing from the Files Changed table | P0 | ✅ 0 missing (7 source paths + this spec) |
+| S1 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | ✅ exit 0 |
+| S2 | Lint clean | `make lint-all` | exit 0 | P0 | ✅ `✓ All lint checks passed` |
+| S3 | Integration passes | `make test-integration` | exit 0 | P0 | ⏳ same as R2 |
+| S4 | pg-drain intact (query changed) | `make _lint_zig_pg_drain` | exit 0 | P0 | ✅ `✓ pg-drain check passed (628 files scanned)` |
+| S5 | No leaks (Zig migration path touched) | `make memleak` | exit 0 | P0 | ✅ `✓ [agentsfleetd] memleak gate passed` (1542 pass; 0 failed) |
+| S6 | Cross-compile | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` | exit 0 | P0 | ✅ both targets, re-run after the review fixes |
+| S7 | No secrets | `gitleaks detect` | exit 0 | P0 | ✅ `no leaks found` (3330 commits) |
+| S8 | No oversize source file | `git diff --name-only origin/main \| grep -v -E '\.md$\|^docs/\|_test\.' \| xargs wc -l 2>/dev/null \| awk '$1>350 && $2!="total"'` | no output | P0 | ✅ no output (pool_migrations.zig at exactly 350) |
 
 **Grading protocol (VERIFY):** run the Verify command verbatim; grade ONLY from its output. Graded = ✅/❌ + the one decisive output line (`342 passed`); long evidence goes to PR Session Notes with a pointer here. **Ship gate:** every row graded, every P0 ✅ → eligible for CHORE(close); any ❌ or empty cell → return to EXECUTE; a P1 ❌ ships only with an Indy-acked deferral quote in Discovery.
 
