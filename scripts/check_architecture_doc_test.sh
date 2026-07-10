@@ -130,6 +130,30 @@ test_arch_doc_roadmap_resolves_pending() {
   ok "$name"
 }
 
+# The unresolved-reference path builds its own diagnostic; a dangling variable
+# there (it once expanded a renamed constant under `set -u`) would crash with an
+# unbound-variable error instead of naming the offending milestone. Assert the
+# real message reaches the operator.
+test_arch_doc_unresolved_ref_names_the_milestone() {
+  local name="test_arch_doc_unresolved_ref_names_the_milestone"
+  local spec_root="$WORK_DIR/specs"
+  build_spec_root "$spec_root"
+
+  local arch output
+  arch="$(build_arch_dir "$WORK_DIR/u1" direction.md "Depends on $PHANTOM_ID.")"
+  output="$(ARCH_DIR="$arch" SPEC_ROOT="$spec_root" bash "$GATE" 2>&1)"
+
+  if [[ "$output" == *"unbound variable"* ]]; then
+    bad "$name" "the failure path crashed on an unbound variable instead of reporting the ref: $output"
+    return
+  fi
+  if [[ "$output" != *"$PHANTOM_ID"* ]]; then
+    bad "$name" "the failure message did not name the unresolved milestone $PHANTOM_ID: $output"
+    return
+  fi
+  ok "$name"
+}
+
 # A moved or renamed docs tree must fail loud, not pass by finding nothing.
 test_arch_doc_missing_dir_fails_loud() {
   local name="test_arch_doc_missing_dir_fails_loud"
@@ -187,6 +211,7 @@ test_arch_doc_real_corpus_resolves() {
 
 test_arch_doc_validates_all_m_ids
 test_arch_doc_roadmap_resolves_pending
+test_arch_doc_unresolved_ref_names_the_milestone
 test_arch_doc_missing_dir_fails_loud
 test_arch_doc_wired_into_lint_all
 test_arch_doc_real_corpus_resolves

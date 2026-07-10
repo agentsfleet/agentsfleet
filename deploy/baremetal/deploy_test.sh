@@ -37,8 +37,6 @@ mkdir -p "$STUB_DIR"
 cleanup() { rm -rf "$WORK_DIR"; }
 trap cleanup EXIT
 
-# `systemctl is-active --quiet` must succeed so the exact-match path does not try
-# to start anything; every invocation drops a sentinel for the reachability asserts.
 write_stub() {
   local name="$1" sentinel="$2"
   cat >"$STUB_DIR/$name" <<STUB
@@ -49,7 +47,22 @@ STUB
   chmod +x "$STUB_DIR/$name"
 }
 
-write_stub systemctl "$SENTINEL_SYSTEMCTL"
+# systemctl needs per-subcommand control: `is-active` gates whether the version
+# path starts the service and whether verify_healthy sees it come up, so a test
+# drives it via SYSTEMCTL_IS_ACTIVE_RC (default 0 = active, so the common
+# exact-match skip works). Every call still drops the sentinel for reachability.
+cat >"$STUB_DIR/systemctl" <<STUB
+#!/usr/bin/env bash
+touch "\$SENTINEL_DIR/$SENTINEL_SYSTEMCTL"
+for arg in "\$@"; do
+  case "\$arg" in
+    is-active) exit "\${SYSTEMCTL_IS_ACTIVE_RC:-0}" ;;
+  esac
+done
+exit 0
+STUB
+chmod +x "$STUB_DIR/systemctl"
+
 write_stub install "$SENTINEL_INSTALL"
 
 # A fake agentsfleet-runner whose --version output is whatever the case needs.
@@ -137,6 +150,34 @@ test_deploy_malformed_version_reinstalls() {
   ok "$name"
 }
 
+# `systemctl start` exits zero once systemd accepts the job, so a version match
+# whose service starts then immediately dies must NOT report installed — it has
+# to run verify_healthy and fall through to a full reinstall on failure.
+test_deploy_version_match_unhealthy_service_reinstalls() {
+  local name="test_deploy_version_match_unhealthy_service_reinstalls"
+  local stub
+  stub="$(make_stub_runner "runner-unhealthy" "agentsfleet-runner 0.1.0 (git abc1234)")"
+
+  local status=0
+  (
+    export SENTINEL_DIR="$WORK_DIR" PATH="$STUB_DIR:$PATH"
+    # Service never active, and verify_healthy's single fast attempt also finds it
+    # inactive — i.e. it started but did not stay up.
+    export SYSTEMCTL_IS_ACTIVE_RC=1 VERIFY_HEALTH_ATTEMPTS=1 VERIFY_HEALTH_DELAY=0
+    # shellcheck source=./deploy.sh
+    source "$DEPLOY_SH" >/dev/null 2>&1
+    set +e
+    VERSION="v0.1.0"
+    is_already_installed "$stub" >/dev/null 2>&1
+  ) || status=$?
+
+  if [[ "$status" -ne 0 ]]; then
+    ok "$name"
+  else
+    bad "$name" "version matched but the service never came up healthy, yet is_already_installed reported installed"
+  fi
+}
+
 # ── §2 — deploy mutex ────────────────────────────────────────────────────────
 
 # The holder signals readiness with a marker file rather than the parent probing
@@ -213,6 +254,7 @@ test_deploy_acquires_lock_when_free() {
 test_deploy_version_substring_not_equal_reinstalls
 test_deploy_version_exact_match_skips
 test_deploy_malformed_version_reinstalls
+test_deploy_version_match_unhealthy_service_reinstalls
 
 if command -v flock >/dev/null 2>&1; then
   test_deploy_second_invocation_blocked_when_locked
