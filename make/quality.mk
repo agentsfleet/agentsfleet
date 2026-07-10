@@ -2,7 +2,7 @@
 # QUALITY — code quality, formatting, analysis
 # =============================================================================
 
-.PHONY: lint-all lint-zig lint-website lint-apps-ds-ctl lint-app lint-design-system lint-cli lint-shell check-openapi check-schema-gate check-gh-actions-valid check-playbooks check-route-registration-doc check-architecture-doc check-deploy-safety gen-error-codes _fmt _fmt_check _zlint_check _lint_zig_pg_drain _lint_zig_test_depth _schema_gate_check _zig_target_lint _zig_line_limit_check _hardcoded_role_check _legacy_symbols_check _website_lint _app_lint _design_system_lint _cli_lint _shell_lint
+.PHONY: lint-all lint-zig lint-website lint-apps-ds-ctl lint-app lint-design-system lint-cli lint-shell check-openapi check-schema-gate check-gh-actions-valid check-playbooks check-route-registration-doc gen-error-codes _fmt _fmt_check _zlint_check _lint_zig_pg_drain _lint_zig_test_depth _schema_gate_check _zig_target_lint _zig_line_limit_check _hardcoded_role_check _legacy_symbols_check _website_lint _app_lint _design_system_lint _cli_lint _shell_lint
 
 # Regenerate docs/api-reference/error-codes.mdx (own repo, ~/Projects/docs)
 # from the agentsfleetd error registry. No default target path on purpose —
@@ -200,15 +200,6 @@ check-route-registration-doc:  ## REST guide §7 route-registration facts stay f
 	@python3 scripts/check_route_registration_doc_test.py
 	@python3 scripts/check_route_registration_doc.py
 
-check-architecture-doc:  ## docs/architecture/ stays true — milestone refs resolve, relative links resolve, no orphan markers
-	@bash scripts/check_architecture_doc_test.sh
-	@bash scripts/check_architecture_doc.sh
-
-check-deploy-safety:  ## deploy.sh version-skip equality + deploy mutex, and shellcheck over deploy/baremetal/
-	@command -v $(SHELLCHECK) >/dev/null 2>&1 || { echo "shellcheck not found. Install via: mise install shellcheck"; exit 1; }
-	@$(SHELLCHECK) --severity=error -x deploy/baremetal/*.sh
-	@bash deploy/baremetal/deploy_test.sh
-
 SHELLCHECK ?= shellcheck
 
 _shell_lint:
@@ -323,7 +314,7 @@ check-gh-actions-valid:  ## Validate .github/workflows/ — actionlint (YAML + r
 	if [ $$FAIL -eq 1 ]; then echo "✗ workflow target reference check failed"; exit 1; fi; \
 	echo "✓ [gh-actions] actionlint + make-target refs all green"
 
-check-playbooks:  ## Validate playbooks/ — shellcheck + reference integrity + README/tree parity
+check-playbooks: check-vault-gate-parity  ## Validate playbooks/ — vault-gate parity + shellcheck + reference integrity + README/tree parity
 	@echo "→ [playbooks] shellcheck on playbooks/**/*.sh..."
 	@command -v $(SHELLCHECK) >/dev/null 2>&1 || { echo "shellcheck not found. Install via: mise install shellcheck"; exit 1; }
 	@find playbooks -name '*.sh' -print0 | xargs -0 $(SHELLCHECK) --severity=error -x
@@ -349,22 +340,3 @@ check-playbooks:  ## Validate playbooks/ — shellcheck + reference integrity + 
 	done; \
 	if [ $$FAIL -eq 1 ]; then echo "✗ [playbooks] README/tree parity failed"; exit 1; fi; \
 	echo "✓ [playbooks] README documents every playbook dir"
-	@echo "→ [playbooks] vault-gate parity — every operations script that reads the vault passes both gates..."
-	@# Comments are stripped before matching: a script that only *mentions* the read
-	@# (this gate's own test does) must not be treated as one that performs it. The
-	@# empty-scan guard mirrors the reference check above — a scan that matched
-	@# nothing has proved nothing, and would pass silently after a refactor.
-	@FAIL=0; \
-	READERS=$$(for f in $$(find playbooks/operations -name '*.sh' | sort); do \
-	  sed 's/#.*//' "$$f" | grep -qE '(^|[^[:alnum:]_])op read([[:space:]]|$$)' && echo "$$f"; \
-	done); \
-	if [ -z "$$READERS" ]; then echo "✗ [playbooks] vault-gate parity scan matched no vault readers — the scan is broken, not the tree"; exit 1; fi; \
-	for f in $$READERS; do \
-	  for sym in 'lib/common.sh' 'playbooks_require_vault_read_approval' 'playbooks_require_op_auth'; do \
-	    grep -q "$$sym" "$$f" || { echo "✗ $$f reads the vault but never calls: $$sym"; FAIL=1; }; \
-	  done; \
-	done; \
-	if [ $$FAIL -eq 1 ]; then echo "✗ [playbooks] vault-gate parity failed — add the common.sh preamble (see playbooks/operations/ip_allowlisting/01_egress_inventory.sh)"; exit 1; fi; \
-	echo "✓ [playbooks] every vault-reading operations script passes both gates"
-	@echo "→ [playbooks] vault-gate self-tests..."
-	@bash playbooks/operations/credential_rotation/vault_gate_test.sh

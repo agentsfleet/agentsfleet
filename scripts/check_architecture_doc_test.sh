@@ -13,7 +13,8 @@ set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 readonly GATE="$SCRIPT_DIR/check_architecture_doc.sh"
-readonly QUALITY_MK="$REPO_ROOT/make/quality.mk"
+readonly MAKE_DIR="$REPO_ROOT/make"
+readonly QUALITY_MK="$MAKE_DIR/quality.mk"
 
 # Fixture milestones: one shipped, one in flight, one planned, one that exists
 # nowhere. Workstream-suffixed names are composed rather than written out, since
@@ -121,15 +122,23 @@ test_arch_doc_roadmap_resolves_pending() {
 
 # ── Dimension 4.2 — the gate actually runs ───────────────────────────────────
 
+# A target defined but unreferenced is exactly the state this gate was in before:
+# present on disk, invoked by nothing. Both halves are asserted — the definition
+# (in any included make file) and the lint-all edge that actually runs it.
 test_arch_doc_wired_into_lint_all() {
   local name="test_arch_doc_wired_into_lint_all"
 
-  if ! grep -qE '^check-architecture-doc:' "$QUALITY_MK"; then
-    bad "$name" "make/quality.mk defines no check-architecture-doc target"
+  if ! grep -qrE '^check-architecture-doc:' "$MAKE_DIR"; then
+    bad "$name" "no make file under $MAKE_DIR defines a check-architecture-doc target"
     return
   fi
   if ! grep -qE '^lint-all:.*check-architecture-doc' "$QUALITY_MK"; then
     bad "$name" "check-architecture-doc is not a prerequisite of lint-all — the gate never runs"
+    return
+  fi
+  # The definition is worthless if the Makefile never includes the file it lives in.
+  if ! grep -qE '^include make/' "$REPO_ROOT/Makefile"; then
+    bad "$name" "root Makefile includes no make/*.mk"
     return
   fi
   ok "$name"
