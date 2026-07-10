@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M122
 **Workstream:** 004
 **Date:** Jul 09, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P2 — operator-tooling hardening: a deploy skip on a substring version collision (visibly-stale binary), an unserialized deploy that can overlap on manual/orphaned runs, two credential-rotation scripts missing the vault approval+auth friction their siblings enforce, and two doc-freshness gates that silently pass (one hardcodes a frozen milestone range and never runs; one is blind to underscore-named targets). No user, data, or runtime blast radius — the failures are stale-artifact and weakened-guardrail shaped, not blocking or exploitable.
 **Categories:** INFRA
 **Batch:** B1 — runs alone; touches deploy + playbooks + scripts + one make file, no overlap with other pending work.
@@ -212,7 +212,7 @@ No command-line surface, environment-variable name, on-disk path, or gate exit-c
 | 2.2 | unit | `test_deploy_acquires_lock_when_free` | free lock → guarded entry acquires it and continues. Same `flock` skip rule as 2.1 |
 | 3.1 | unit | `test_credential_rotation_blocks_without_approval` | `ALLOW_VAULT_READS` unset → each script exits non-zero + approval message, zero `op read` invoked |
 | 3.2 | unit | `test_credential_rotation_requires_op_auth` | approval set, `op whoami` stubbed to fail → exit non-zero + sign-in hint |
-| 3.3 | integration | `test_ops_scripts_vault_gate_parity` | grep across `playbooks/operations/**`: every file with `op read` also sources `common.sh` and calls both gates → 0 offenders |
+| 3.3 | integration | `check-vault-gate-parity` (make) | grep across `playbooks/operations/**`: every file that names an `op://` ref (the scheme every reader shares, incl. helper-based reads) also sources `common.sh` and calls both gates → 0 offenders across all 13 readers |
 | 4.1 | unit | `test_arch_doc_validates_all_m_ids` | fixture arch dir citing `M999` (no spec) → gate exit non-zero; real corpus → exit 0 |
 | 4.2 | unit (grep) | `test_arch_doc_wired_into_lint_all` | `make/quality.mk` defines `check-architecture-doc` and lists it in `lint-all` |
 | 4.3 | unit | `test_arch_doc_roadmap_resolves_pending` | fixture `roadmap.md` citing a `pending/`-only ID → exit 0; same ID in `direction.md` → non-zero; `M999` in `roadmap.md` → non-zero |
@@ -224,19 +224,19 @@ No command-line surface, environment-variable name, on-disk path, or gate exit-c
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | Deploy version + lock tests pass (§1/§2) | `bash deploy/baremetal/deploy_test.sh` | exit 0 | P0 | |
-| R2 | Rotation scripts block without approval (§3) | `bash playbooks/operations/credential_rotation/vault_gate_test.sh` | exit 0 | P0 | |
-| R3 | No raw-vault-read parity gap remains (§3) | `make check-playbooks` | exit 0 (parity grep clean) | P0 | |
-| R4 | Frozen milestone range gone (§4) | `grep -n 'M(40\|41\|42' scripts/check_architecture_doc.sh` | no output | P0 | |
-| R5 | Architecture gate runs in lint-all (§4) | `grep -n 'check-architecture-doc' make/quality.mk` | ≥2 matches (target + lint-all) | P0 | |
-| R6 | Route-reg underscore self-test passes (§5) | `python3 scripts/check_route_registration_doc_test.py` | exit 0 | P0 | |
-| R7 | Diff stays inside Files Changed | `git diff --name-only origin/main` | 0 paths missing from the Files Changed table | P0 | |
-| R8 | Unfrozen arch gate green on the real corpus (§4) | `bash scripts/check_architecture_doc.sh` | exit 0 | P0 | |
-| R9 | Arch-gate self-test passes (§4, incl. roadmap carve-out) | `bash scripts/check_architecture_doc_test.sh` | exit 0 | P0 | |
-| S1 | Shell lint clean | `make lint-shell` | exit 0 | P0 | |
-| S2 | Full lint clean (incl. new gates) | `make lint-all` | exit 0 | P0 | |
-| S3 | No secrets | `gitleaks detect` | exit 0 | P0 | |
-| S4 | No oversize source file | `git diff --name-only origin/main \| grep -v '\.md$' \| xargs wc -l 2>/dev/null \| awk '$1>350 && $2!="total"'` | no output | P0 | |
+| R1 | Deploy version + lock tests pass (§1/§2) | `bash deploy/baremetal/deploy_test.sh` | exit 0 | P0 | ✅ `3 passed, 0 failed, 2 skipped` (mac); `5 passed, 0 failed` on `ubuntu:24.04` w/ `CI=1` |
+| R2 | Rotation scripts block without approval (§3) | `bash playbooks/operations/credential_rotation/vault_gate_test.sh` | exit 0 | P0 | ✅ `3 passed, 0 failed` (deny×2 + positive path) |
+| R3 | No raw-vault-read parity gap remains (§3) | `make check-playbooks` | exit 0 (parity grep clean) | P0 | ✅ `every vault-reading operations script passes both gates` (13 readers) |
+| R4 | Frozen milestone range gone (§4) | `grep -n 'M(40\|41\|42' scripts/check_architecture_doc.sh` | no output | P0 | ✅ no output |
+| R5 | Architecture gate runs in lint-all (§4) | `grep -rn 'check-architecture-doc' make/` | ≥2 matches (target def + lint-all edge; the target lives in `make/check-safety-gates.mk` after the RULE FLL split) | P0 | ✅ 3 matches: def @ `check-safety-gates.mk:42`, `.PHONY`, lint-all edge @ `quality.mk:280` |
+| R6 | Route-reg underscore self-test passes (§5) | `python3 scripts/check_route_registration_doc_test.py` | exit 0 | P0 | ✅ `Ran 6 tests … OK` |
+| R7 | Diff stays inside Files Changed | `git diff --name-only origin/main` | 0 paths missing from the Files Changed table | P0 | ✅ 23 changed paths, 0 missing |
+| R8 | Unfrozen arch gate green on the real corpus (§4) | `bash scripts/check_architecture_doc.sh` | exit 0 | P0 | ✅ `all 80 milestone references resolve` |
+| R9 | Arch-gate self-test passes (§4, incl. roadmap carve-out) | `bash scripts/check_architecture_doc_test.sh` | exit 0 | P0 | ✅ `5 passed, 0 failed` (incl. nested-roadmap + missing-dir guards) |
+| S1 | Shell lint clean | `make lint-shell` | exit 0 | P0 | ✅ `shellcheck passed (error-level)` |
+| S2 | Full lint clean (incl. new gates) | `make lint-all` | exit 0 | P0 | ✅ `✓ All lint checks passed` |
+| S3 | No secrets | `gitleaks detect` | exit 0 | P0 | ✅ `no leaks found` |
+| S4 | No oversize source file | `git diff --name-only origin/main \| grep -v '\.md$' \| xargs wc -l 2>/dev/null \| awk '$1>350 && $2!="total"'` | no output | P0 | ✅ no output (`deploy.sh` at 350) |
 
 **Grading protocol (VERIFY):** run the Verify command verbatim; grade ONLY from its output. Graded = ✅/❌ + the one decisive output line. **Ship gate:** every row graded, every P0 ✅ → eligible for CHORE(close); any ❌ or empty cell → return to EXECUTE; a P1 ❌ ships only with an Indy-acked deferral quote in Discovery.
 
