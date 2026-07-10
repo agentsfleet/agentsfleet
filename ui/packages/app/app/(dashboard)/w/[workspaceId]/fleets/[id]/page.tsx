@@ -1,7 +1,6 @@
 import { auth } from "@clerk/nextjs/server";
 import { notFound, redirect } from "next/navigation";
-import { Badge, EYEBROW_CLASS, PageHeader, PageTitle, Section, SectionLabel, WakePulse } from "@agentsfleet/design-system";
-import { cn } from "@/lib/utils";
+import { Badge, cn, EYEBROW_CLASS, PageHeader, PageTitle, Section, SectionLabel, WakePulse } from "@agentsfleet/design-system";
 import { getFleet, AGENTSFLEET_STATUS } from "@/lib/api/fleets";
 import { getTenantBillingCached } from "@/lib/api/tenant_billing";
 import { listFleetEvents } from "@/lib/api/events";

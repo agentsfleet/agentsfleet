@@ -7,6 +7,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import {
   Button,
+  cn,
   EYEBROW_CLASS,
   Form,
   FormControl,
@@ -19,7 +20,6 @@ import {
   TooltipButton,
 } from "@agentsfleet/design-system";
 import { XIcon } from "lucide-react";
-import { cn } from "@/lib/utils";
 import { createSecretAction } from "../actions";
 import { presentErrorString } from "@/lib/errors";
 import { SECRET_NAME_MAX } from "../lib/secret-data";
