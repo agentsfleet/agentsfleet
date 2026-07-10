@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M122
 **Workstream:** 001
 **Date:** Jul 09, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — user-facing docs promise a non-existent safety ceiling (a "10 continuation" cap) and a non-existent failure label (`chunk_chain_escalate_human`); the served admin model-catalogue routes ship undocumented. Neither crashes, so this is doc/parity truth-in-advertising, not a runtime bug.
 **Categories:** API, DOCS
 **Batch:** B1 — independent; touches no source shared with any pending workstream.

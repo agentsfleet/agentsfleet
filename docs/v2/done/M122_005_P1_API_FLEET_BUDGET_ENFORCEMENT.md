@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M122
 **Workstream:** 005
 **Date:** Jul 10, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — `daily_dollars` is a required field in every `TRIGGER.md` and is advertised as a hard spend ceiling that "terminates the in-flight event cleanly." It terminates nothing. A fleet in a tool-call loop bills the tenant's credit pool until the pool empties or the lease's max-runtime cap fires. This is a cost-safety boundary that silently does not exist.
 **Categories:** API
 **Batch:** B1 — shares one branch and one Pull Request (PR) with M122_001; disjoint file set.
@@ -289,8 +289,8 @@ Regression: §2.2 proves an under-budget renewal is unchanged. Idempotency/repla
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
 | R1 | The dead field is live (§4) | `grep -rn "config\.budget" src/ --include='*.zig' \| grep -v _test \| wc -l` | output ≥ 1 | P0 | ✅ `1` — `service_billing.zig:96` |
-| R2 | Both gates + the pure math pass (§1/§2) | `make test` | exit 0 | P0 |  ✅ `zig build test` 0 failures (2441 unit) |
-| R3 | Both gates behave against real Postgres (§1/§2/§3) | `make test-integration` | exit 0 | P0 | |
+| R2 | Both gates + the pure math pass (§1/§2) | `make test` | exit 0 | P0 | ✅ `zig build test` 0 failures (2449 unit) |
+| R3 | Both gates behave against real Postgres (§1/§2/§3) | `make test-integration` | exit 0 | P0 | ✅ `All integration tests passed` (0 failures, clean DB, post-fix) |
 | R4 | The budget label reaches the durable record (§3) | `grep -rn "budget_breach" src/agentsfleetd/fleet/event_rows.zig src/lib/contract/execution_result.zig` | both files match | P0 |  ✅ both files carry `budget_breach` |
 | R5 | The new error code is registered in both halves | `grep -c "UZ-RUN-015" src/agentsfleetd/errors/error_entries.zig src/agentsfleetd/errors/error_registry.zig` | each ≥ 1 | P0 |  ✅ `1` each (`error_entries.zig` + `error_registry.zig`) |
 | R6 | The misnamed dollar bound is gone (§4) | `grep -c "MS_PER_SECOND" src/agentsfleetd/fleet_runtime/config_helpers.zig` | output = 0 | P1 |  ✅ `0` |
