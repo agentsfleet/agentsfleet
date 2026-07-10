@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { cn } from "./utils";
@@ -69,6 +69,10 @@ describe("cn — single workspace declaration", () => {
   }
 
   it("test_single_cn_export — exactly one cn declaration exists across ui/packages", () => {
+    // Fail loud if the cwd anchor resolved somewhere unexpected — a scan of
+    // the wrong tree would pass while guarding nothing.
+    expect(existsSync(resolve(PACKAGES_ROOT, "design-system"))).toBe(true);
+    expect(existsSync(resolve(PACKAGES_ROOT, "app"))).toBe(true);
     const hits = tsSourcesUnder(PACKAGES_ROOT).filter((file) =>
       CN_DECLARATION.test(readFileSync(file, "utf8")),
     );

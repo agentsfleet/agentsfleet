@@ -53,10 +53,23 @@ describe("backfill route handler — auth", () => {
     const res = await GET(makeReq(), paramsOf("ws_1", "zomb_1"));
     expect(res.status).toBe(401);
     expect(res.headers.get("content-type")).toBe("application/json");
+    expect(res.headers.get("cache-control")).toBe("no-store");
     const body = (await res.json()) as { error: string; code: string };
     expect(body.code).toBe("UZ-401");
     expect(body.error).toBe("Unauthorized");
     expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("rejects dot-only path segments before minting or calling upstream", async () => {
+    // encodeURIComponent leaves '.' intact; a bare '..' segment would
+    // dot-normalize inside fetch and steer the token at a different
+    // upstream path.
+    for (const [ws, fleet] of [["..", "zomb_1"], ["ws_1", ".."], [".", "zomb_1"]] as const) {
+      const res = await GET(makeReq(), paramsOf(ws, fleet));
+      expect(res.status).toBe(400);
+    }
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(getTokenFn).not.toHaveBeenCalled();
   });
 });
 
@@ -86,7 +99,24 @@ describe("backfill route handler — authed proxying", () => {
     expect(headers.Accept).toBe("application/json");
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toBe("application/json");
+    // Authed per-tenant JSON must never land in a shared cache.
+    expect(res.headers.get("cache-control")).toBe("no-store");
     expect(await res.text()).toBe(UPSTREAM_PAGE);
+  });
+
+  it("forwards a cursor through the allowlist", async () => {
+    getTokenFn.mockResolvedValueOnce("tk");
+    fetchSpy.mockResolvedValueOnce(
+      new Response(UPSTREAM_PAGE, {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    await GET(makeReq("?cursor=abc123"), paramsOf("ws_1", "zomb_1"));
+    const [url] = fetchSpy.mock.calls[0]!;
+    expect(url).toBe(
+      "https://api.example.test/v1/workspaces/ws_1/fleets/zomb_1/events?cursor=abc123",
+    );
   });
 
   it("omits the query string entirely when the caller sends no forwardable keys", async () => {
@@ -154,6 +184,16 @@ describe("backfill route handler — upstream errors", () => {
     const res = await GET(makeReq(), paramsOf("ws_1", "zomb_1"));
     expect(res.status).toBe(500);
     expect(await res.text()).toBe("Upstream error 500");
+  });
+
+  it("returns a pinned 502 envelope when the upstream fetch itself rejects", async () => {
+    getTokenFn.mockResolvedValueOnce("tk");
+    fetchSpy.mockRejectedValueOnce(new Error("connect ECONNREFUSED"));
+    const res = await GET(makeReq(), paramsOf("ws_1", "zomb_1"));
+    expect(res.status).toBe(502);
+    expect(res.headers.get("cache-control")).toBe("no-store");
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toBe("Upstream unreachable");
   });
 
   it("survives upstream.text() rejection without throwing", async () => {

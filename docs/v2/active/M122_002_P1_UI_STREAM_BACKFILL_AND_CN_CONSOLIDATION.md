@@ -79,6 +79,9 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `ui/packages/app/app/(dashboard)/w/[workspaceId]/secrets/components/AddSecretForm.tsx` | EDIT | import `cn` from `@agentsfleet/design-system` |
 | `ui/packages/app/components/layout/Shell.tsx` | EDIT | import `cn` from `@agentsfleet/design-system` |
 | `bun.lock` | EDIT | lockfile consequence of the dependency moves (app drops, design-system gains `clsx`/`tailwind-merge`) |
+| `ui/packages/app/lib/streaming/fleet-stream-frames.ts` | EDIT | `mergeBackfill` terminal-row authoritative replace + pure watermark/RFC 3339 helpers (added at `/review` — outage-straddling events and client clock skew) |
+| `ui/packages/app/lib/streaming/fleet-stream-frames.test.ts` | EDIT | terminal-replace / in-progress-no-clobber / watermark / rfc3339 cases (added at `/review`) |
+| `docs/architecture/data_flow.md` | EDIT | client-side gap-recovery paragraph beside the pub/sub no-resume statement (CHORE(close) architecture-diff requirement) |
 
 ## Applicable Rules
 
@@ -252,7 +255,7 @@ N/A — no files deleted (the app `utils.ts` is edited, not removed).
 
 ## Discovery (consult log)
 
-- **Consults** — Architecture / Legacy-Design / gate-flag triage: empty at creation.
-- **Metrics review** — empty at creation.
-- **Skill-chain outcomes** — empty at creation.
-- **Deferrals** — empty at creation.
+- **Consults** — Architecture: `docs/architecture/data_flow.md` §"Two streams + one pub/sub channel" gained the client gap-recovery paragraph in this diff. Gate-flag triage: oxlint `no-console` fired on the backfill diagnostic the Failure Modes table mandates — resolved with the single-site `warnBackfillFailure` helper carrying an inline `oxlint-disable-next-line` (the app has no client logger; removing the diagnostic would contradict the spec).
+- **Metrics review** — unchanged from creation: no analytics event added.
+- **Skill-chain outcomes** — `/write-unit-test`: diff ledger fully resolved (pasted in PR Session Notes); net +30 TypeScript unit tests. `/review`: 3 specialist subagents + Claude adversarial + Codex adversarial. Fixed in-branch: server-confirmed `since` watermark (client clock skew defeated the recovery; cross-model confirmed), terminal-row authoritative `mergeBackfill` (outage-straddling truncation), backfill fetch timeout + single-flight guard, failed-backfill-never-advances-watermark, route `Cache-Control: no-store`, dot-only path-segment rejection, error-passthrough content-type constrained to JSON-or-plain, upstream fetch try/catch → pinned 502, malformed-body diagnostic, `backfillFleetEventsUrl` opts narrowed to the forwarded keys.
+- **Deferrals** — no spec Section/Dimension deferred. Review findings judged out of this spec's scope and flagged for Indy in PR Session Notes: `next_cursor` pagination loop (spec bounds recovery to one page by design), initial-open backfill (spec Invariant 1 forbids it), upstream response-byte budget (backend concern, class shared with the SSR seed path), twMerge class groups for the custom spacing/tracking token scales, completion-frame-vs-backfill millisecond race residual, and mirroring the dot-segment/cache-control hardening into the pre-existing `events/stream/route.ts`.
