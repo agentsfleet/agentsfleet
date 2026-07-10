@@ -40,7 +40,22 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 - **PR title (eventual):** Harden deploy version/lock safety and repair two doc-freshness + one vault-approval gate
 - **Intent (one sentence):** an operator's redeploy is skipped only on a true version match and never overlaps itself, vault-reading rotation scripts carry the same approval friction as their siblings, and the architecture-doc and route-registration gates actually catch drift instead of silently passing.
-- **Handshake** — the implementing agent fills this at PLAN, before EXECUTE: restate the Intent in its own words and list `ASSUMPTIONS I'M MAKING: …`. A mismatch between the restatement and the Intent above → STOP and reconcile before any edit.
+- **Handshake** (filled at PLAN, Jul 10, 2026 — before any edit)
+
+  **Intent, restated.** Five safety checks in this repo either fire too loosely or never fire at all. Two live in the deploy path: a redeploy is skipped whenever the installed binary's version *contains* the target as a substring, so `v0.1.0` over `0.1.0-rc1` leaves a stale binary running and reports success; and nothing serializes `main()`, so two operators — or an operator and a cancel-orphaned Continuous Integration (CI) job — can interleave `install` and `systemctl restart`. One lives in the vault path: the two `credential_rotation` scripts read 1Password without the approval prompt and `op`-auth pre-check that every sibling operations script enforces. Two are repo gates that pass while proving nothing: the architecture-doc checker only validates milestone identifiers M40 through M51 (a range frozen years of milestones ago) and is wired into no make target, so it never even runs; and the route-registration checker's make-target regexes cannot see an underscore, so an underscore-named target cited in the guide is invisible to both its citation scan and its definition set. After this work an operator's redeploy either truly skips or truly reinstalls and never overlaps itself, a rotation script refuses the vault until approval and sign-in are both present, and both doc gates actually catch drift. I am repairing the checks, not silencing them.
+
+  **ASSUMPTIONS I'M MAKING:**
+
+  1. A redundant reinstall is always safe; a wrong skip is the bug. Every ambiguous `--version` shape — empty output, a single field, a read error — therefore resolves to "not installed" and the deploy proceeds.
+  2. `deploy.sh` runs only on Linux bare metal, so `flock` is available at deploy time. Its absence at *test* time (macOS) is a test-harness concern, not a deploy concern, and is handled per Indy's call in Discovery.
+  3. The lock must be injectable for the test to exercise it: `/var/lock/` is not writable by a non-root test process. The lock path stays a single named constant with an environment override, defaulting to `/var/lock/agentsfleet-deploy.lock`.
+  4. Sourcing `deploy.sh` from the test must not execute a deploy. The `main "$@"` call is guarded by a sourced-vs-executed check so the functions are reachable without side effects.
+  5. The two `credential_rotation` scripts keep their `op_read_with_retry` wrapper untouched. §3 is additive — the gates go in front of the first read, not through a rewrite of the retry/cache logic. De-duplicating that wrapper is named in Out of Scope.
+  6. `roadmap.md` is the only architecture doc whose job is naming unshipped work, so it is the only file where a `pending/` spec resolves. This is Indy's call, recorded in Discovery, not my inference.
+  7. The `check-playbooks` parity grep binds `playbooks/operations/**` only. `playbooks/founding/**` is explicitly Out of Scope, so a founding script reading the vault does not fail this gate.
+  8. Adding `check-architecture-doc` and `check-deploy-safety` to `lint-all` means both must be green on `main` the moment this lands — no new target may enter `lint-all` red. The `M105` carve-out exists precisely because of this.
+
+  No mismatch with the Intent above; proceeding to EXECUTE.
 
 ## Implementing agent — read these first
 
@@ -94,9 +109,9 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 `is_already_installed` compares the running binary's `--version` output against the target with a bash glob substring test, so any version whose text merely contains the target skips the redeploy. Parse the exact version token (whitespace field 2 of the `agentsfleet-runner <version> (git <sha>)` line) and compare with `==` after stripping the `v` prefix. **Implementation default:** a malformed or unexpected `--version` shape resolves to "not installed" so the deploy proceeds — a redundant reinstall is safe; a wrong skip is the bug.
 
-- **Dimension 1.1** — installed `0.1.0-rc1` with target `v0.1.0` (substring, not equal) → `is_already_installed` returns non-zero, the deploy reinstalls → Test `test_deploy_version_substring_not_equal_reinstalls`
-- **Dimension 1.2** — installed version field equals the stripped target → `is_already_installed` returns zero, the deploy skips → Test `test_deploy_version_exact_match_skips`
-- **Dimension 1.3** — a malformed `--version` shape (empty output or a line with no field 2) → `is_already_installed` returns non-zero (resolves to not-installed), the deploy reinstalls → Test `test_deploy_malformed_version_reinstalls`
+- **Dimension 1.1** — DONE — installed `0.1.0-rc1` with target `v0.1.0` (substring, not equal) → `is_already_installed` returns non-zero, the deploy reinstalls → Test `test_deploy_version_substring_not_equal_reinstalls`
+- **Dimension 1.2** — DONE — installed version field equals the stripped target → `is_already_installed` returns zero, the deploy skips → Test `test_deploy_version_exact_match_skips`
+- **Dimension 1.3** — DONE — a malformed `--version` shape (empty output or a line with no field 2) → `is_already_installed` returns non-zero (resolves to not-installed), the deploy reinstalls → Test `test_deploy_malformed_version_reinstalls`
 
 ### §2 — Deploy runs are mutually exclusive
 
@@ -104,8 +119,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 **Portability (Indy's Jul 10 call — see Discovery):** `flock` ships with util-linux and is absent on macOS. `deploy.sh` targets Linux bare metal only, so it keeps `flock` — the kernel releases the lock when a `SIGKILL`ed deploy dies, which a `noclobber` lock file cannot do. `deploy_test.sh` therefore prints a loud `SKIP` for the two lock Dimensions when `flock` is absent, and hard-fails when `CI` is set — so the lock invariant is enforced on every `ubuntu-latest` runner and never silently green in CI.
 
-- **Dimension 2.1** — with the lock held by another process, invoking the guarded entry exits non-zero immediately without installing → Test `test_deploy_second_invocation_blocked_when_locked`
-- **Dimension 2.2** — with the lock free, the guarded entry acquires it and proceeds → Test `test_deploy_acquires_lock_when_free`
+- **Dimension 2.1** — DONE — with the lock held by another process, invoking the guarded entry exits non-zero immediately without installing → Test `test_deploy_second_invocation_blocked_when_locked`
+- **Dimension 2.2** — DONE — with the lock free, the guarded entry acquires it and proceeds → Test `test_deploy_acquires_lock_when_free`
 
 ### §3 — Credential-rotation scripts carry the vault approval+auth gate
 

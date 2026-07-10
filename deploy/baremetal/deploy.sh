@@ -17,14 +17,27 @@
 #   deploy.sh runner v0.1.0 /opt/agentsfleet/bin/agentsfleet-runner
 #   deploy.sh runner v0.2.0                              # downloads from GH release
 #
+# At most one deploy runs per host: main() takes a non-blocking flock and exits
+# non-zero when another deploy already holds it. Sourcing this file runs no
+# deploy — deploy_test.sh relies on that to exercise the functions directly.
+#
 # The runner holds zero datastore credentials: if it stops abruptly the control
 # plane reclaims its in-flight lease (lease_expires_at + fencing_token), so a
 # bounded stop never loses or double-runs work.
 
 set -euo pipefail
 
+# Sourcing this file must never deploy: deploy_test.sh sources it to reach the
+# individual functions, so both the stdbuf re-exec below and `main` at the bottom
+# stay behind this guard.
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+  readonly DEPLOY_EXECUTED=1
+else
+  readonly DEPLOY_EXECUTED=0
+fi
+
 # Force line-buffered stdout/stderr so log output streams through SSH in real time.
-if [ -z "${_DEPLOY_UNBUFFERED:-}" ] && command -v stdbuf >/dev/null 2>&1; then
+if [[ "$DEPLOY_EXECUTED" == 1 && -z "${_DEPLOY_UNBUFFERED:-}" ]] && command -v stdbuf >/dev/null 2>&1; then
   export _DEPLOY_UNBUFFERED=1
   exec stdbuf -oL -eL "$0" "$@"
 fi
@@ -61,24 +74,74 @@ case "$(uname -m)" in
 esac
 readonly RELEASE_ARTIFACT="${BINARY_NAME}-linux-${_arch}"
 
+# Serializes install + `systemctl restart`, which is not atomic: a manual run and
+# a cancel-orphaned CI run can otherwise interleave on the same host. flock is the
+# right primitive here rather than a lock file — the kernel drops the lock when the
+# holder dies, so a SIGKILLed deploy cannot strand every later deploy behind it.
+# Overridable only so deploy_test.sh can point at a writable temp path: /var/lock
+# is root-owned and the tests do not run as root. Production never sets it.
+readonly DEPLOY_LOCK_PATH="${DEPLOY_LOCK_PATH:-/var/lock/agentsfleet-deploy.lock}"
+
+# `agentsfleet-runner --version` prints `agentsfleet-runner <version> (git <sha>)`
+# (src/runner/cmd/version.zig). The version is whitespace-delimited field 2.
+readonly VERSION_FIELD_INDEX=2
+
 # ── Logging ──────────────────────────────────────────────────────────────────
 
 log()  { echo "[deploy] $*"; }
 die()  { log "FATAL: $*"; notify_discord "fail"; exit 1; }
 
+# Exits without notifying Discord. A run refused because another deploy holds the
+# lock is not a deploy failure, and the holder sends its own status when it lands;
+# a "deploy FAILED" embed here would page someone for a working deploy.
+die_unnotified() { log "FATAL: $*"; exit 1; }
+
 # ── Version check ────────────────────────────────────────────────────────────
 
+# Exact equality, never a substring: `0.1.0-rc1` contains `0.1.0` and `0.10.2`
+# contains `0.1`, so a glob match skips a real upgrade, leaves the old binary
+# running, and reports success.
+version_token_matches() {
+  local version_output="$1"
+  local target="${2#v}"
+
+  local token
+  token=$(printf '%s\n' "$version_output" \
+    | awk -v field="$VERSION_FIELD_INDEX" 'NR == 1 && NF >= field { print $field }')
+
+  [[ -n "$token" && "$token" == "$target" ]]
+}
+
+# `dest` is injectable so the test can point at a stub binary; production callers
+# pass nothing. An unreadable or unexpected `--version` shape yields no token and
+# so reports "not installed" — a redundant reinstall is safe, a wrong skip is not.
 is_already_installed() {
-  local dest="${INSTALL_DIR}/${BINARY_NAME}"
+  local dest="${1:-${INSTALL_DIR}/${BINARY_NAME}}"
   [[ -x "$dest" ]] || return 1
 
   local current
-  current=$("$dest" --version 2>/dev/null || echo "unknown")
-  [[ "$current" == *"${VERSION#v}"* ]] || return 1
+  current=$("$dest" --version 2>/dev/null || true)
+  version_token_matches "$current" "$VERSION" || return 1
 
   log "✓ ${BINARY_NAME} ${VERSION} already installed — ensuring service is up."
   systemctl is-active --quiet "$SERVICE_NAME" || systemctl start "$SERVICE_NAME"
   return 0
+}
+
+# ── Deploy mutex ─────────────────────────────────────────────────────────────
+
+# Holds the lock on a descriptor that stays open for the life of the process, so
+# it releases on exit — normal, fatal, or killed. Non-blocking on purpose: an
+# operator wants to hear "a deploy is already running", not silently queue behind one.
+acquire_deploy_lock() {
+  command -v flock >/dev/null 2>&1 \
+    || die_unnotified "flock not found — install util-linux; refusing to deploy without a mutex."
+
+  exec {DEPLOY_LOCK_FD}>"$DEPLOY_LOCK_PATH" \
+    || die_unnotified "cannot open deploy lock $DEPLOY_LOCK_PATH"
+
+  flock -n "$DEPLOY_LOCK_FD" \
+    || die_unnotified "another deploy holds $DEPLOY_LOCK_PATH — refusing to run install+restart concurrently."
 }
 
 # ── Binary acquisition ───────────────────────────────────────────────────────
@@ -249,6 +312,10 @@ main() {
   [[ "$COMPONENT" == "$COMPONENT_RUNNER" ]] \
     || die "Unknown component '$COMPONENT'. The only deployable component is '${COMPONENT_RUNNER}'."
 
+  # After argument validation, before anything that touches the host: a usage or
+  # bad-component error needs no lock, and must not fail on an unwritable /var/lock.
+  acquire_deploy_lock
+
   # Skip version check when CI provides a local binary — always do a full
   # install+restart cycle. The shortcut is only for release-download mode.
   if [[ -z "$LOCAL_BINARY" ]] && is_already_installed; then
@@ -275,4 +342,6 @@ main() {
   fi
 }
 
-main "$@"
+if [[ "$DEPLOY_EXECUTED" == 1 ]]; then
+  main "$@"
+fi
