@@ -234,6 +234,15 @@ jobs:
           oauth-secret: ${{ env.TS_OAUTH_SECRET }}
           tags: tag:ci
 
+      # Section 3 hard-fails on /opt/agentsfleet/.env, and Section 4 is the script that
+      # writes it — so readiness gated on an artifact no CI step produced, and the job
+      # could never pass on a host that had not been hand-provisioned. Idempotent:
+      # re-running it rewrites the same env file from vault and restarts the unit.
+      - name: Provision runner env file from vault
+        run: VAULT_DEV="${{ vars.VAULT_DEV }}" ./playbooks/founding/06_runner_bootstrap_dev/04_provision_runner_env.sh
+        env:
+          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+
       - name: Verify worker host readiness
         run: VAULT_DEV="${{ vars.VAULT_DEV }}" ./playbooks/founding/06_runner_bootstrap_dev/03_deploy_readiness.sh
         env:
@@ -277,11 +286,10 @@ jobs:
           # NOTE: the runner needs three vars in /etc/default/agentsfleet-runner:
           #   AGENTSFLEET_API_URL, AGENTSFLEET_RUNNER_TOKEN (a pre-minted agt_r; Option B),
           #   RUNNER_HOST_ID
-          # — provisioned per host by playbooks/founding/06_runner_bootstrap_dev/
-          # 04_provision_runner_env.sh; this job stays gated off
-          # (DEV_WORKER_READY) until the placeholder agt_r in vault has been
-          # swapped for a real admin-minted token and the runner is verified
-          # active.
+          # — written by the "Provision runner env file from vault" step above
+          # (playbooks/founding/06_runner_bootstrap_dev/04_provision_runner_env.sh),
+          # which deploy.sh then copies from /opt/agentsfleet/.env on every run.
+          # This job is enabled per repo variable DEV_WORKER_READY.
           echo ">>> deploying runner..."
           $SSH "$TARGET" \
             "sudo DRAIN_TIMEOUT=60 /opt/agentsfleet/deploy/deploy.sh runner $VERSION /opt/agentsfleet/bin/agentsfleet-runner"
