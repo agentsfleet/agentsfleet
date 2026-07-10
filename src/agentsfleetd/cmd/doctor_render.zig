@@ -104,3 +104,41 @@ test "dynamic check details stay valid through render with GPA" {
     try std.testing.expect(std.mem.indexOf(u8, out, "\"schema_gate_compat\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, out, "SCHEMA_BEHIND_BINARY") != null);
 }
+
+test "appendCheck copies the detail so the caller's buffer stays the caller's" {
+    // The whole point of the copy: a caller may hand over a stack buffer, an arena
+    // slice, or an `allocPrint` temp it is about to free. Borrowing any of those
+    // would leave `results` pointing at freed or rewritten bytes by render time.
+    const alloc = std.testing.allocator;
+    var ok = true;
+    var results: std.ArrayList(CheckResult) = .empty;
+    defer freeResults(alloc, &results);
+
+    var scratch = [_]u8{ 'l', 'i', 'v', 'e' };
+    try appendCheck(alloc, &results, "id", true, &scratch, &ok);
+    @memset(&scratch, 'X');
+
+    try std.testing.expectEqualStrings("live", results.items[0].detail);
+}
+
+test "appendCheck and appendFmtCheck leak nothing when an allocation fails" {
+    // checkAllAllocationFailures fails each internal allocation in turn and asserts
+    // the error return leaks nothing — the deterministic proof that appendCheck's
+    // `errdefer alloc.free(owned)` and appendFmtCheck's `defer alloc.free(rendered)`
+    // are both correct, including when the failing allocation is the second append.
+    const Probe = struct {
+        fn run(alloc: std.mem.Allocator) !void {
+            var ok = true;
+            var results: std.ArrayList(CheckResult) = .empty;
+            defer freeResults(alloc, &results);
+            try appendCheck(alloc, &results, "literal", true, "borrowed literal", &ok);
+            try appendFmtCheck(alloc, &results, "fmt", false, &ok, "v={d}", .{7});
+        }
+    };
+    try std.testing.checkAllAllocationFailures(std.testing.allocator, Probe.run, .{});
+}
+
+test "freeResults on an empty list is safe" {
+    var results: std.ArrayList(CheckResult) = .empty;
+    freeResults(std.testing.allocator, &results);
+}
