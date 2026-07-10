@@ -78,9 +78,13 @@ NON_V1_VARIANTS: dict[str, str] = {
     "model_caps": "CDN-cached static catalogue at /_um/<hash>/cap.json (model_caps.zig MODEL_CAPS_PATH)",
 }
 
-# A union variant declaration: exactly four leading spaces, then `name:` (a
-# payload-carrying variant) or `name,` (a bare one).
-VARIANT_RE = re.compile(r"^ {4}([a-z_][a-z0-9_]*)\s*[:,]")
+# A union variant declaration: leading indentation (any amount — `zig fmt` uses
+# four spaces, but matching `\s+` means a re-indent or a tab can't make a variant
+# vanish from the scan, which would silently drop it from coverage), then `name:`
+# (a payload-carrying variant) or `name,` (a bare one). A variant this misses
+# would never reach the unaccounted-variant hard failure, defeating the gate's
+# no-silent-undercover guarantee — so the match must be indentation-agnostic.
+VARIANT_RE = re.compile(r"^\s+([a-z_][a-z0-9_]*)\s*[:,]")
 # A `/v1/...` token, optionally followed by `|:alt` colon-op alternations —
 # routes.zig writes the approvals pair as `{gate_id}:approve|:deny`.
 PATH_RE = re.compile(r"/v1/[A-Za-z0-9_{}/:.\-]*(?:\|:[a-z][a-z0-9-]*)*")
