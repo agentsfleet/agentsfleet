@@ -69,11 +69,11 @@ fn ensureSchemaMigrationFailuresTable(conn: *Conn) !void {
     , .{});
 }
 
-fn hasFailedMigrationRecords(conn: *Conn) !bool {
-    var result = PgQuery.from(try conn.query(
-        S_SELECT_UNRESOLVED_MIGRATION_FAILURES,
-        .{},
-    ));
+fn hasFailedMigrationRecords(conn: *Conn, correlate_applied: bool) !bool {
+    // No schema_migrations table → nothing is applied → any failure row is
+    // unresolved (and the correlated query would 42P01 on the missing table).
+    const sql = if (correlate_applied) S_SELECT_UNRESOLVED_MIGRATION_FAILURES else S_SELECT_1_FROM_AUDIT_SCHEMA_MIGRATION_FAILURES_LIMI;
+    var result = PgQuery.from(try conn.query(sql, .{}));
     defer result.deinit();
     return (try result.next()) != null;
 }
@@ -238,7 +238,7 @@ pub fn inspectMigrationState(pool: *Pool, migrations: []const Migration) !Migrat
     else
         0;
     const failed = if (has_schema_migration_failures)
-        hasFailedMigrationRecords(conn) catch |err| {
+        hasFailedMigrationRecords(conn, has_schema_migrations) catch |err| {
             if (err == error.PG) logPgErrorContext(conn, "inspect.has_failed_migrations");
             return err;
         }

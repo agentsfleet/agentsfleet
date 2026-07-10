@@ -327,6 +327,19 @@ fn auditSchemaCount(conn: *pg.Conn) !i64 {
     return scalarI64(conn, "SELECT count(*)::bigint FROM pg_namespace WHERE nspname = 'audit'");
 }
 
+// The stash tests rename and (in the heal path) CASCADE-drop the `audit`
+// schema — a blast radius beyond fixture rows. Refuse to run against any
+// database not named after the disposable compose/test DB.
+const DISPOSABLE_TEST_DB_NAME = "agentsfleetdb";
+
+fn requireDisposableTestDb(conn: *pg.Conn) !void {
+    var q = PgQuery.from(try conn.query("SELECT current_database()::text", .{}));
+    defer q.deinit();
+    const row = (try q.next()) orelse return error.TestUnexpectedResult;
+    const name = try row.get([]const u8, 0);
+    if (!std.mem.eql(u8, name, DISPOSABLE_TEST_DB_NAME)) return error.SkipZigTest;
+}
+
 /// Restore the real `audit` schema from the stash — the normal post-test path,
 /// and the heal path for a stash left behind by a crashed prior run. Any
 /// `audit` present alongside the stash is empty bookkeeping created by a
@@ -357,6 +370,7 @@ test "migration lock: a held lock blocks runMigrations before any bookkeeping DD
     defer runner.pool.deinit();
     runner.pool.release(runner.conn); // runMigrationsBounded acquires its own conn
 
+    try requireDisposableTestDb(holder.conn);
     healAuditStash(holder.conn);
     _ = try holder.conn.exec("ALTER SCHEMA audit RENAME TO " ++ AUDIT_STASH_SCHEMA, .{});
     errdefer healAuditStash(holder.conn); // heal even when a mid-test `try` fails
@@ -402,6 +416,7 @@ test "fresh bookkeeping: a migration applies once and a re-run is a no-op" {
     defer runner.pool.deinit();
     runner.pool.release(runner.conn); // runMigrationsBounded acquires its own conn
 
+    try requireDisposableTestDb(probe.conn);
     healAuditStash(probe.conn);
     _ = try probe.conn.exec("ALTER SCHEMA audit RENAME TO " ++ AUDIT_STASH_SCHEMA, .{});
     errdefer healAuditStash(probe.conn); // heal even when a mid-test `try` fails
@@ -437,6 +452,7 @@ test "fresh bookkeeping: an unterminated migration fails loudly and records the 
     defer runner.pool.deinit();
     runner.pool.release(runner.conn); // runMigrationsBounded acquires its own conn
 
+    try requireDisposableTestDb(probe.conn);
     healAuditStash(probe.conn);
     _ = try probe.conn.exec("ALTER SCHEMA audit RENAME TO " ++ AUDIT_STASH_SCHEMA, .{});
     errdefer healAuditStash(probe.conn); // heal even when a mid-test `try` fails
@@ -490,6 +506,7 @@ test "stale failure row: an already-applied version resolves instead of blocking
 
     failureRowCleanup(db.conn, APPLIED_PROBE_VERSION);
     _ = try db.conn.exec(INSERT_FAILURE_ROW_SQL, .{APPLIED_PROBE_VERSION});
+    errdefer failureRowCleanup(db.conn, APPLIED_PROBE_VERSION);
 
     const migrations = cmd_common.canonicalMigrations();
     const state = pool_migrations.inspectMigrationState(db.pool, &migrations);
@@ -506,6 +523,7 @@ test "genuine failure row: an unapplied version still blocks boot" {
 
     failureRowCleanup(db.conn, UNAPPLIED_PROBE_VERSION);
     _ = try db.conn.exec(INSERT_FAILURE_ROW_SQL, .{UNAPPLIED_PROBE_VERSION});
+    errdefer failureRowCleanup(db.conn, UNAPPLIED_PROBE_VERSION);
 
     const migrations = cmd_common.canonicalMigrations();
     const state = pool_migrations.inspectMigrationState(db.pool, &migrations);
