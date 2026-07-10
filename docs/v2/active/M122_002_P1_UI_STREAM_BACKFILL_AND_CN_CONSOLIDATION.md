@@ -16,12 +16,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M122
 **Workstream:** 002
 **Date:** Jul 09, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — the live fleet timeline silently drops every frame published during a Server-Sent Events (SSE) reconnect window and never re-fetches them; the gap self-heals only when the operator reloads the page (Server-Side Rendering (SSR) re-seed). The class-merge consolidation rides along at P2-grade — a latent Tailwind-conflict duplication with no demonstrated broken override, folded in because it shares no scope with the streaming fix and both are pure UI-package hygiene.
 **Categories:** UI
 **Batch:** B1 — runs alone; no shared files with any other pending workstream.
-**Branch:** {added at CHORE(open)}
-**Test Baseline:** set at CHORE(open) — `unit=<N> integration=<M>` via `make _lint_zig_test_depth`
+**Branch:** feat/m122-stream-backfill-cn
+**Test Baseline:** unit=2402 integration=267
 **Depends on:** none.
 **Provenance:** agent-generated (pre-spec, `fleet-wide-refactor-audit`, Jul 02, 2026; both findings re-verified against HEAD 7a06fb5d on Jul 09, 2026 by the `audit-open-items-recheck` workflow, each surviving an adversarial refutation pass — F14's original P1 was corrected to P2 because the app Tailwind-aware `cn` has 7 live consumers and no concrete broken class override was shown).
 **Canonical architecture:** `docs/architecture/data_flow.md` — fleet activity pub/sub → SSE fan-out; this spec adds a client-side gap-recovery read and changes no server or channel behavior.
@@ -39,6 +39,13 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 - **PR title (eventual):** Recover missed fleet-stream frames on reconnect; unify the cn class-merge helper
 - **Intent (one sentence):** an operator watching a fleet's live timeline never loses activity to a reconnect blip, and every component merges Tailwind classes through one implementation.
 - **Handshake** — the implementing agent fills this at PLAN, before EXECUTE: restate the Intent in its own words and list `ASSUMPTIONS I'M MAKING: …`. A mismatch between the restatement and the Intent above → STOP and reconcile before any edit.
+- **Restatement (Orly, PLAN):** when the fleet timeline's SSE connection drops and reconnects, the client itself recovers the events published during the gap — fetching them through a new cookie-authed same-origin proxy and merging them by event id, no page reload — and the workspace ends with exactly one `cn` implementation, the Tailwind-conflict-aware one, owned by the design-system and consumed by app and design-system components alike. Matches the Intent above.
+- `ASSUMPTIONS I'M MAKING:`
+  1. The upstream `GET /v1/workspaces/{ws}/fleets/{id}/events` list already serves the bounded, newest-first (`created_at DESC, event_id DESC`) page with `cursor`/`since`/`limit` — verified in `src/agentsfleetd/http/handlers/fleets/events.zig` + `state/fleet_events_store.zig`; no Zig changes.
+  2. `cursor` and `since` are mutually exclusive upstream, and `since` accepts only a 20-char RFC 3339 `YYYY-MM-DDTHH:MM:SSZ` (no fractional seconds) or a Go-style duration — the registry keys the backfill as `since = lastSeen.createdAt − overlap`, second-truncated; the truncation plus the explicit overlap constant re-fetches the boundary window and `mergeBackfill`'s id-dedupe absorbs it (RULE KYS).
+  3. A reconnect on an empty snapshot backfills with neither `cursor` nor `since` (just `limit`) — newest-first ordering makes that exactly the "most-recent bounded page" of Dimension 2.5.
+  4. The app `lib/utils.ts` holds `formatDuration` + `truncate` only (no `formatDate` exists — the Files Changed cell is corrected in this same commit); the file's real helpers stay.
+  5. `ClassValue` is imported nowhere outside the two `utils.ts` files, so the design-system `cn` adopting clsx's `ClassValue` type (re-exported) breaks no consumer.
 
 ## Implementing agent — read these first
 
@@ -59,7 +66,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `ui/packages/design-system/src/utils.ts` | EDIT | `cn` becomes `twMerge(clsx(...))` carrying the extended font-size class group |
 | `ui/packages/design-system/package.json` | EDIT | add `clsx` + `tailwind-merge` dependencies |
 | `ui/packages/design-system/src/utils.test.ts` | EDIT | replace the naive-join assertions with merge/dedupe + font-size-group + single-declaration cases |
-| `ui/packages/app/lib/utils.ts` | EDIT | remove `cn` + `clsx`/`tailwind-merge` machinery; keep `formatDate`/`formatDuration`/`truncate` |
+| `ui/packages/app/lib/utils.ts` | EDIT | remove `cn` + `clsx`/`tailwind-merge` machinery; keep `formatDuration`/`truncate` |
 | `ui/packages/app/package.json` | EDIT | drop `clsx` + `tailwind-merge` (app copy was their sole importer) |
 | `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/[id]/page.tsx` | EDIT | import `cn` from `@agentsfleet/design-system` |
 | `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/components/FleetsList.tsx` | EDIT | import `cn` from `@agentsfleet/design-system` |
