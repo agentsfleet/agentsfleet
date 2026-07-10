@@ -58,7 +58,11 @@ runner-wiring decision; the pre-EXECUTE guesses are superseded, not hidden. See 
 | File | Action | Why |
 |------|--------|-----|
 | `scripts/check_zig_test_reachability.py` | CREATE | runs the `list-tests` lane on both build graphs, unions registered test names per root, flags dead test-bearing files, and emits the reachable-block count for the depth gate |
-| `scripts/check_zig_test_reachability_test.py` | CREATE | fixture-based self-tests: dead file flagged, waiver exempts, un-wire turns the gate red, duplicate description does NOT mask a dead file |
+| `scripts/check_zig_test_reachability_test.py` | CREATE | reachability + depth-count self-tests: dead file flagged, waiver exempts, un-wire turns the gate red, duplicate description does NOT mask a dead file |
+| `scripts/check_zig_test_reachability_cli_test.py` | CREATE | forced by RULE FLL (the suite reached 398 lines): listing-parse and `--check`/`--count`/`--counts-out` dispatch self-tests |
+| `scripts/reachability_test_support.py` | CREATE | shared fixtures for the two suites above (FLL split) |
+| `make/reachability.mk` | CREATE | forced by RULE FLL: `make/quality.mk` reached 361 lines (cap 350, and it was already at 339), so the two reachability recipes moved out, mirroring how `make/` is already carved by concern |
+| `Makefile` | EDIT | `include make/reachability.mk` |
 | `src/build/test_runner_list.zig` | CREATE | list-only Zig test runner (`mode: .simple`): prints every `builtin.test_functions` name and exits without running. Installed ONLY on the `list-tests` lane |
 | `src/build/test_list.zig` | CREATE | the `list-tests` lane — attaches a second, list-only compilation per test binary, sharing the real step's root module |
 | `src/build/auth_tests.zig` | CREATE | forced by RULE FLL: `build.zig` hit 360 lines (cap 350), so the `test-auth` portability gate is extracted, mirroring `lib_tests.zig`/`s3.zig` |
@@ -67,7 +71,7 @@ runner-wiring decision; the pre-EXECUTE guesses are superseded, not hidden. See 
 | `build_runner.zig` | EDIT | create its own `list-tests` step; attach the runner unit + integration lanes |
 | `src/build/lib_tests.zig` | EDIT | attach the lib / logging / call_deadline lanes |
 | `src/build/s3.zig` | EDIT | attach the s3 lane (the eighth `addTest`, missing from the pre-EXECUTE table) |
-| `make/quality.mk` | EDIT | `_lint_zig_test_reachability` (runs the checker's self-tests, then `--check`) added to `lint-zig`; `_lint_zig_test_depth` consumes `--count` instead of a textual `^test "` grep |
+| `make/quality.mk` | EDIT | `_lint_zig_test_reachability` added to the `lint-zig` prerequisite list (the recipes themselves live in `make/reachability.mk`) |
 | `src/agentsfleetd/cmd/common.zig` | EDIT | self-updating migration assertions (count-equals-embedded + version contiguity + a gap/duplicate negative), replacing the literal-`26` traps |
 | `src/agentsfleetd/tests.zig` | EDIT | force-import the 6 dead `cmd/*` files |
 | `src/lib/tests.zig` | EDIT | force-import `common/backoff.zig` |
