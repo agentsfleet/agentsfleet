@@ -16,12 +16,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M122
 **Workstream:** 005
 **Date:** Jul 09, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — the test-harness integrity check the other four M122 workstreams' Test Delta rows silently depend on: today a Zig `test` block only runs when its file is force-imported from a test root, nothing enforces that convention, and the depth gate credits blocks that never compile — so a false assertion can sit green in a "1504 pass" suite indefinitely.
 **Categories:** API, INFRA
-**Batch:** B1 — runs alone; touches the Zig test roots, build graph, one checker script, and one make file; no overlap with M122_001..004 subject matter.
+**Batch:** B1 — runs alone; touches the Zig test roots, build graph, the checker scripts, and the make gates; no overlap with M122_001..004 subject matter.
 **Branch:** `feat/m122-005-test-root-reachability`
-**Test Baseline:** unit=2395 integration=267 — recorded at CHORE(open) from the CURRENT textual `^test "` counter, which §4 replaces. The corrected compiler-truth count is expected to land STRICTLY BELOW this number even though §2/§3 add tests, because this baseline credits blocks that never compile. See Discovery → "Test Delta reads negative by construction".
+**Test Baseline:** unit=2395 integration=267 — recorded at CHORE(open) from the textual `^test "` counter, which §4 replaces. **Final: unit=2401 integration=267 (+6 unit).** The CHORE(open) prediction that the corrected count would land *below* the baseline was wrong in sign and right in mechanism; see Discovery → "Corrections to this spec's own record".
 **Depends on:** none — sibling M122_004 shares the "make the guard actually fire" theme but is independent; this is the test-harness instance of that class.
 **Provenance:** agent-generated — discovered Jul 09, 2026 while re-verifying the Jul 02, 2026 `fleet-wide-refactor-audit`. The dead-block proof is empirical (a false assertion living in a green suite, reproduced below); the broader dead-set size is explicitly unresolved — the static reachability estimate is an upper bound with false positives, so this spec pins no file count and derives the true set from the compiler.
 **Canonical architecture:** `docs/architecture/direction.md` — platform determinism + gate discipline; the force-import convention itself is documented in the header comment of `src/agentsfleetd/tests.zig`.
@@ -46,8 +46,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 1. `src/agentsfleetd/tests.zig` (header + force-import block) — the convention this spec enforces; the barrel §2/§3 extend. Its sibling headers in `src/runner/tests.zig`, `src/lib/tests.zig`, `src/agentsfleetd/auth/tests.zig` note that the test runner collects only root-module tests — named-module (`common`, `log`, `schema`) tests do NOT collect in an importing binary, which is why compiler truth, not a relative-import walk, is the authority.
 2. `src/agentsfleetd/cmd/common.zig` (lines 25-31, 110-121, 226-229) — `canonicalMigrations()` returns `[schema_migrations.len]`; the two stale assertions §2 repairs; `schema/embed.zig` is the single source of the version list.
-3. `make/quality.mk` (`_lint_zig_test_depth`, `lint-zig` prerequisite list, `_lint_zig_pg_drain` calling `python3 lint-zig.py src`) — the existing private-prerequisite pattern §1/§4 mirror; do NOT add a public near-duplicate target.
-4. `build.zig` (the `test` + `test-auth` `addTest` sites, ~lines 216-267), `build_runner.zig` (`test` at ~120), `src/build/lib_tests.zig` (`addTestStep`) — the `addTest` modules whose `.test_runner` field §1 sets.
+3. `make/quality.mk` (`lint-zig` prerequisite list, `_lint_zig_pg_drain` calling `python3 lint-zig.py src`) — the existing private-prerequisite pattern §1/§4 mirror; do NOT add a public near-duplicate target. The two reachability recipes ended up in `make/reachability.mk` (RULE FLL).
+4. `build.zig`, `build_runner.zig`, `src/build/lib_tests.zig`, `src/build/s3.zig` — the 8 `addTest` sites. §1 does NOT set `.test_runner` on them (see the amended §1); it attaches a parallel list-only lane sharing each root module.
 5. `docs/greptile-learnings/RULES.md` — RULE TST (M2_001: router tests existed since M16 but never ran; two bugs surfaced on import — the exact class this spec closes) and RULE MIG (index/version assertions in `cmd/common.zig`).
 
 ## Files Changed (blast radius)
@@ -238,17 +238,17 @@ No command-line surface of `agentsfleet`, no HTTP route, and no on-disk schema p
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | Reachability checker self-tests pass (§1/§4) | `python3 scripts/check_zig_test_reachability_test.py` | exit 0 | P0 | |
-| R2 | No dead test-bearing file remains (§1/§3) | `python3 scripts/check_zig_test_reachability.py --check` | exit 0, no paths printed | P0 | |
-| R3 | `cmd/common.zig` is force-imported (§2) | `grep -n 'cmd/common.zig' src/agentsfleetd/tests.zig` | ≥1 match | P0 | |
-| R4 | No bare migration-count literal survives (§2) | `grep -nE '@as\([a-z0-9]+, 2[0-9]\)' src/agentsfleetd/cmd/common.zig` | no output | P0 | |
-| R5 | Depth gate counts registered blocks (§4) | `make _lint_zig_test_depth` | exit 0, count == checker `--count` | P0 | |
-| R6 | Daemon suite green with the newly-wired blocks (§2/§3) | `make test-unit-agentsfleetd` | exit 0, 0 failures | P0 | |
-| R7 | Diff stays inside Files Changed | `git diff --name-only origin/main` | 0 paths missing from the Files Changed table | P0 | |
-| S1 | Zig lint clean incl. the new gate | `make lint-zig` | exit 0 | P0 | |
-| S2 | Cross-compile | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` | exit 0 | P0 | |
-| S3 | No secrets | `gitleaks detect` | exit 0 | P0 | |
-| S4 | No oversize source file | `git diff --name-only origin/main \| grep -v '\.md$' \| xargs wc -l 2>/dev/null \| awk '$1>350 && $2!="total"'` | no output | P0 | |
+| R1 | Reachability checker self-tests pass (§1/§4) | `python3 -m unittest discover -s scripts -t scripts -p 'check_zig_test_reachability*_test.py'` | exit 0 | P0 | ✅ `Ran 33 tests … OK` |
+| R2 | No dead test-bearing file remains (§1/§3) | `python3 scripts/check_zig_test_reachability.py --check` | exit 0, no paths printed | P0 |  ✅ `✓ [zig] test-root reachability: 351 file(s) reachable` |
+| R3 | `cmd/common.zig` is force-imported (§2) | `grep -n 'cmd/common.zig' src/agentsfleetd/tests.zig` | ≥1 match | P0 |  ✅ `1` match |
+| R4 | No bare migration-count literal survives (§2) | `grep -nE '@as\([a-z0-9]+, 2[0-9]\)' src/agentsfleetd/cmd/common.zig` | no output | P0 |  ✅ no output (grep rewritten — the old `\|` was a literal pipe) |
+| R5 | Depth gate counts registered blocks (§4) | `make _lint_zig_test_depth` | exit 0, count == checker `--count` | P0 |  ✅ `✓ [zig] test depth gate passed (unit=2401 integration=267)` |
+| R6 | Daemon suite green with the newly-wired blocks (§2/§3) | `make test-unit-agentsfleetd` | exit 0, 0 failures | P0 |  ✅ `1532 pass, 495 skip` (0 fail) |
+| R7 | Diff stays inside Files Changed | `git diff --name-only origin/main` | 0 paths missing from the Files Changed table | P0 |  ✅ 22 files, 0 missing from Files Changed |
+| S1 | Zig lint clean incl. the new gate | `make lint-zig` | exit 0 | P0 |  ✅ exit 0 |
+| S2 | Cross-compile | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` | exit 0 | P0 |  ✅ exit 0 both targets |
+| S3 | No secrets | `gitleaks detect` | exit 0 | P0 |  ✅ exit 0 |
+| S4 | No oversize source file | `git diff --name-only origin/main \| grep -v '\.md$' \| xargs wc -l 2>/dev/null \| awk '$1>350 && $2!="total"'` | no output | P0 |  ✅ no output (after the FLL splits) |
 
 **Grading protocol (VERIFY):** run the Verify command verbatim; grade ONLY from its output. Graded = ✅/❌ + the one decisive output line (`342 passed`); long evidence goes to PR Session Notes with a pointer here. **Ship gate:** every row graded, every P0 ✅ → eligible for CHORE(close); any ❌ or empty cell → return to EXECUTE; a P1 ❌ ships only with an Indy-acked deferral quote in Discovery.
 
@@ -318,7 +318,7 @@ No command-line surface of `agentsfleet`, no HTTP route, and no on-disk schema p
 
 ### Corrections to this spec's own record
 
-- **The predicted negative Test Delta did not occur — the mechanism was right, the sign was wrong.** At CHORE(open) this section warned that §4's corrected counter would read *below* the inflated `Test Baseline: unit=2395 integration=267`, since that baseline credits blocks that never compile. It measured `unit=2369 integration=261` mid-EXECUTE, exactly −26/−6 (the phantom population). But §3 wired **every** dead file rather than leaving any phantom, so at close the corrected count is `unit=2397 integration=267` — **+2 unit**, the two migration-contiguity tests added in §2. The corrected count now equals the textual count *because zero dead files remain*; it would diverge again the instant one is added, and the reachability gate fires first. The CHORE(open) warning is left above in the header rather than deleted, and superseded here: predicting a number and then measuring it is the point.
+- **The predicted negative Test Delta did not occur — the mechanism was right, the sign was wrong.** At CHORE(open) this section warned that §4's corrected counter would read *below* the inflated `Test Baseline: unit=2395 integration=267`, since that baseline credits blocks that never compile. It measured `unit=2369 integration=261` mid-EXECUTE, exactly −26/−6 (the phantom population). But §3 wired **every** dead file rather than leaving any phantom, so at close the corrected count is `unit=2401 integration=267` — **+6 unit**: the two migration-contiguity tests from §2, plus four added while closing `/write-unit-test` and `/review`. The corrected count now equals the textual count *because zero dead files remain*; it would diverge again the instant one is added, and the reachability gate fires first. The CHORE(open) warning is left above in the header rather than deleted, and superseded here: predicting a number and then measuring it is the point.
 - **Baseline honesty** — `2395/267` was recorded verbatim rather than pre-corrected, because CHORE(open) records what the gate said at open. Substituting a hand-computed "true" baseline would have fabricated a measurement no command produced.
 
 ### Remaining
