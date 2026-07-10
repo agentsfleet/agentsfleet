@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M122
 **Workstream:** 002
 **Date:** Jul 09, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — the live fleet timeline silently drops every frame published during a Server-Sent Events (SSE) reconnect window and never re-fetches them; the gap self-heals only when the operator reloads the page (Server-Side Rendering (SSR) re-seed). The class-merge consolidation rides along at P2-grade — a latent Tailwind-conflict duplication with no demonstrated broken override, folded in because it shares no scope with the streaming fix and both are pure UI-package hygiene.
 **Categories:** UI
 **Batch:** B1 — runs alone; no shared files with any other pending workstream.
@@ -82,6 +82,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `ui/packages/app/lib/streaming/fleet-stream-frames.ts` | EDIT | `mergeBackfill` terminal-row authoritative replace + pure watermark/RFC 3339 helpers (added at `/review` — outage-straddling events and client clock skew) |
 | `ui/packages/app/lib/streaming/fleet-stream-frames.test.ts` | EDIT | terminal-replace / in-progress-no-clobber / watermark / rfc3339 cases (added at `/review`) |
 | `docs/architecture/data_flow.md` | EDIT | client-side gap-recovery paragraph beside the pub/sub no-resume statement (CHORE(close) architecture-diff requirement) |
+| `ui/packages/app/lib/streaming/fleet-stream-backfill.ts` | CREATE | §4 cursor-follow walk, extracted so the registry stays under the LENGTH GATE |
 | `ui/packages/website/.size-limit.json` | EDIT | landing critical-path budget 140 kB → 150 kB — Indy-approved (see Discovery): the consolidated `cn` carries tailwind-merge (~7 kB gz) into the website bundle |
 
 ## Applicable Rules
@@ -137,11 +138,11 @@ Move the Tailwind-conflict-aware `cn` (and its extended `font-size` class group)
 
 A single bounded page recovers only the newest `limit` rows of the outage window (upstream orders `created_at DESC`), so an outage burst longer than one page leaves a permanent hole in the middle of the timeline — and the watermark, advanced to the newest row, guarantees no later reconnect revisits it. The backfill follows `next_cursor` backwards until it reaches the pre-outage anchor. Upstream rejects `cursor` + `since` together, so page 1 carries `since`, pages 2..N carry `cursor` alone, and the client enforces the lower bound by stopping when a page's oldest row falls to the anchor. Page count is bounded; exhausting the budget is a real truncation and is surfaced, never presented as a completed recovery. **Implementation default:** an empty timeline (no anchor) still fetches exactly one most-recent page — Dimension 2.5 is unchanged; pagination is anchored recovery only.
 
-- **Dimension 4.1** — an outage spanning more than one page walks `next_cursor` until a page's oldest row reaches the anchor; every missed frame lands in the snapshot → Test `test_registry_backfill_paginates_to_anchor`
-- **Dimension 4.2** — page 1 carries `since` and no `cursor`; subsequent pages carry `cursor` and no `since` (upstream rejects both together) → Test `test_registry_backfill_page_two_uses_cursor_only`
-- **Dimension 4.3** — a reconnect on an empty timeline issues exactly one page and never paginates → Test `test_registry_backfill_empty_timeline_single_page`
-- **Dimension 4.4** — exhausting the page budget emits a truncation diagnostic rather than silently claiming recovery → Test `test_registry_backfill_truncation_surfaced`
-- **Dimension 4.5** — a mid-pagination failure leaves the watermark unadvanced so the next reconnect retries the same window → Test `test_registry_backfill_midpage_failure_keeps_watermark`
+- **Dimension 4.1** — an outage spanning more than one page walks `next_cursor` until a page's oldest row reaches the anchor; every missed frame lands in the snapshot → Test `test_registry_backfill_paginates_to_anchor` — ✅ **DONE**
+- **Dimension 4.2** — page 1 carries `since` and no `cursor`; subsequent pages carry `cursor` and no `since` (upstream rejects both together) → Test `test_registry_backfill_page_two_uses_cursor_only` — ✅ **DONE**
+- **Dimension 4.3** — a reconnect on an empty timeline issues exactly one page and never paginates → Test `test_registry_backfill_empty_timeline_single_page` — ✅ **DONE**
+- **Dimension 4.4** — exhausting the page budget emits a truncation diagnostic rather than silently claiming recovery → Test `test_registry_backfill_truncation_surfaced` — ✅ **DONE**
+- **Dimension 4.5** — a mid-pagination failure leaves the watermark unadvanced so the next reconnect retries the same window → Test `test_registry_backfill_midpage_failure_keeps_watermark` — ✅ **DONE**
 
 ## Interfaces
 
@@ -268,6 +269,7 @@ N/A — no files deleted (the app `utils.ts` is edited, not removed).
 
 - **Consults** — Architecture: `docs/architecture/data_flow.md` §"Two streams + one pub/sub channel" gained the client gap-recovery paragraph in this diff. Gate-flag triage: oxlint `no-console` fired on the backfill diagnostic the Failure Modes table mandates — resolved with the single-site `warnBackfillFailure` helper carrying an inline `oxlint-disable-next-line` (the app has no client logger; removing the diagnostic would contradict the spec).
 - **Metrics review** — unchanged from creation: no analytics event added.
+- **Post-review escalation** — greptile posted two findings on the PR; both answered without a code change (P1 "stale backfill replaces live event" → false positive, greptile conceded; P2 "actor filter dropped" → already fixed in `510dd627`). Separately, `bundle-size-website` went red on the landing critical path and Indy approved the budget bump; then Indy escalated adversarial-review deferral #1 into §4.
 - **Skill-chain outcomes** — `/write-unit-test`: diff ledger fully resolved (pasted in PR Session Notes); net +30 TypeScript unit tests. `/review`: 3 specialist subagents + Claude adversarial + Codex adversarial. Fixed in-branch: server-confirmed `since` watermark (client clock skew defeated the recovery; cross-model confirmed), terminal-row authoritative `mergeBackfill` (outage-straddling truncation), backfill fetch timeout + single-flight guard, failed-backfill-never-advances-watermark, route `Cache-Control: no-store`, dot-only path-segment rejection, error-passthrough content-type constrained to JSON-or-plain, upstream fetch try/catch → pinned 502, malformed-body diagnostic, `backfillFleetEventsUrl` opts narrowed to the forwarded keys.
 - **Consult (post-PR, CI)** — `bundle-size-website` failed at 144.81 kB vs the 140 kB landing budget (tailwind-merge riding the consolidated `cn` into the website bundle).
   > Indy (2026-07-10): “Bump budget to 150 kB” — chosen via decision prompt; context: keep exactly one conflict-aware `cn` workspace-wide, accept tailwind-merge's real cost on the landing critical path.
