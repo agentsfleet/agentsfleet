@@ -96,6 +96,17 @@ class TestUnaccountedVariants(unittest.TestCase):
         self.assertIn("UNDOCUMENTED ROUTE", dirty[0])
         self.assertIn("/v1/workspaces", dirty[0])
 
+    def test_a_differently_indented_variant_is_still_seen(self):
+        # greptile P2: a variant at anything other than 4 spaces (a re-indent, a
+        # tab) must not silently vanish from the scan — an unseen variant never
+        # reaches the unaccounted hard-failure, so a served route could ship
+        # uncovered. The match is indentation-agnostic.
+        for indent in ("  ", "      ", "\t", "\t  "):
+            text = routes_zig(f"{indent}brand_new_route, // no path stated")
+            violations, _ = gate.collect_violations(text, spec(), EMPTY)
+            self.assertEqual(len(violations), 1, f"indent {indent!r} was dropped")
+            self.assertIn("UNACCOUNTED VARIANT", violations[0])
+
     def test_non_v1_variant_is_out_of_remit(self):
         carve = gate.CarveOuts(internal={}, pathless={}, non_v1={"healthz": "k8s probe"})
         violations, served = gate.collect_violations(routes_zig("    healthz,"), spec(), carve)
