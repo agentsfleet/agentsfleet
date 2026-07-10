@@ -39,22 +39,28 @@ fn activeLeaseCount(conn: *pg.Conn, fleet_id: []const u8) !i64 {
     return row.get(i64, 0);
 }
 
-/// Reject the reclaim's `status = 'expired'` write, so `reclaimPriorActive`
-/// errors *after* `affinity.claim` has already won the slot — the precise
-/// ordering the release-on-error branch exists for. Injecting at the Postgres
-/// layer (rather than through `select`'s allocator) keeps this deterministic:
-/// the candidate scan and the claim both allocate before the reclaim probe, so
-/// no stable `fail_index` isolates the reclaim's own dupes. `NOT VALID` skips
-/// the scan of pre-existing rows, which sibling suites may have left terminal.
-fn armReclaimFailure(conn: *pg.Conn) !void {
-    // `setup()` cleared any leaked constraint before this test ran, so the ADD
-    // starts from a clean slot; the per-test `defer disarmReclaimFailure` drops
-    // it on the way out.
-    var sql_buf: [192]u8 = undefined;
+/// Reject the reclaim's `status = 'expired'` write for `fleet_id`, so
+/// `reclaimPriorActive` errors *after* `affinity.claim` has already won the slot
+/// — the precise ordering the release-on-error branch exists for. Injecting at
+/// the Postgres layer (rather than through `select`'s allocator) keeps this
+/// deterministic: the candidate scan and the claim both allocate before the
+/// reclaim probe, so no stable `fail_index` isolates the reclaim's own dupes.
+///
+/// The CHECK is **scoped to `fleet_id`** — the test's own throwaway fleet, which
+/// no other suite touches — so even if a killed run leaks the constraint (or a
+/// raw-pool test like `schema_migration_test` bypasses the conn-opener cleanup),
+/// it can only reject writes to that one fleet's rows. Other suites, which use
+/// different fleet ids, are unaffected regardless of how they open the DB.
+/// `NOT VALID` skips the scan of pre-existing rows.
+fn armReclaimFailure(conn: *pg.Conn, fleet_id: []const u8) !void {
+    // `setup()` (via the conn openers) cleared any leaked constraint before this
+    // test ran, so the ADD starts from a clean slot; the per-test
+    // `defer disarmReclaimFailure` drops it on the way out.
+    var sql_buf: [256]u8 = undefined;
     const sql = try std.fmt.bufPrint(
         &sql_buf,
-        "ALTER TABLE fleet.runner_leases ADD CONSTRAINT {s} CHECK (status <> '{s}') NOT VALID",
-        .{ fixtures.RECLAIM_FAIL_CONSTRAINT, protocol.RUNNER_LEASE_STATUS_EXPIRED },
+        "ALTER TABLE fleet.runner_leases ADD CONSTRAINT {s} CHECK (NOT (fleet_id = '{s}'::uuid AND status = '{s}')) NOT VALID",
+        .{ fixtures.RECLAIM_FAIL_CONSTRAINT, fleet_id, protocol.RUNNER_LEASE_STATUS_EXPIRED },
     );
     _ = try conn.exec(sql, .{});
 }
@@ -69,21 +75,26 @@ fn disarmReclaimFailure(conn: *pg.Conn) void {
     _ = conn.exec(sql, .{}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
 }
 
-/// Make `affinity.release` itself fail, so releasing a won slot degrades to the
-/// claim's own TTL expiry. The two writers of `runner_affinity` separate by the
-/// *shape* of their write, not by the clock: `claim` sets `leased_until = now +
-/// LEASE_TTL_MS` against `updated_at = now` (a positive gap), while `release`
-/// sets both to the same `now` (a zero gap). Rejecting a non-positive gap admits
-/// every claim and rejects every release, with no wall-clock margin that could
-/// go stale under load. `NOT VALID` skips the existing row, which the caller has
-/// just parked at `leased_until = 0`.
-fn armReleaseFailure(conn: *pg.Conn) !void {
-    // `setup()` cleared any leaked constraint first (see `armReclaimFailure`).
-    var sql_buf: [192]u8 = undefined;
+/// Make `affinity.release` itself fail for `fleet_id`, so releasing a won slot
+/// degrades to the claim's own TTL expiry. The two writers of `runner_affinity`
+/// separate by the *shape* of their write, not by the clock: `claim` sets
+/// `leased_until = now + LEASE_TTL_MS` against `updated_at = now` (unequal),
+/// while `release` sets both to the same `now` (equal). Rejecting an
+/// equal-timestamps write on this fleet admits every claim and rejects the
+/// release, with no wall-clock margin that could go stale under load.
+///
+/// Scoped to `fleet_id` for the same reason as `armReclaimFailure`: a leak can
+/// only ever affect this test's throwaway fleet. Crucially, the `leased_until =
+/// updated_at` shape is *also* what a plain zero-init insert produces, so a
+/// leaked unscoped version rejected unrelated inserts (e.g. `schema_migration_
+/// test` writing `(0, 0)`) — the fleet scope closes exactly that. `NOT VALID`
+/// skips the existing row, which the caller has just parked at `leased_until = 0`.
+fn armReleaseFailure(conn: *pg.Conn, fleet_id: []const u8) !void {
+    var sql_buf: [256]u8 = undefined;
     const sql = try std.fmt.bufPrint(
         &sql_buf,
-        "ALTER TABLE fleet.runner_affinity ADD CONSTRAINT {s} CHECK (leased_until - updated_at > 0) NOT VALID",
-        .{fixtures.RELEASE_FAIL_CONSTRAINT},
+        "ALTER TABLE fleet.runner_affinity ADD CONSTRAINT {s} CHECK (NOT (fleet_id = '{s}'::uuid AND leased_until = updated_at)) NOT VALID",
+        .{ fixtures.RELEASE_FAIL_CONSTRAINT, fleet_id },
     );
     _ = try conn.exec(sql, .{});
 }
@@ -255,7 +266,7 @@ test "a reclaim-stage failure releases the won slot instead of stalling the flee
     // `active` — exactly the state a reclaim is meant to recover.
     _ = try conn.exec("UPDATE fleet.runner_affinity SET leased_until = 0 WHERE fleet_id = $1::uuid", .{base.AGENTSFLEET_RECLAIM_FAIL});
 
-    try armReclaimFailure(conn);
+    try armReclaimFailure(conn, base.AGENTSFLEET_RECLAIM_FAIL);
     {
         defer disarmReclaimFailure(conn);
         // This poll wins the slot (fencing_seq 1 -> 2), then the reclaim write
@@ -335,10 +346,11 @@ test "a failed release degrades to TTL expiry and never masks the original recla
     try std.testing.expect(try base.pollLease(h));
     _ = try conn.exec("UPDATE fleet.runner_affinity SET leased_until = 0 WHERE fleet_id = $1::uuid", .{base.AGENTSFLEET_RELEASE_FAIL});
 
-    // Both the reclaim probe AND the compensating release now fail.
-    try armReclaimFailure(conn);
+    // Both the reclaim probe AND the compensating release now fail — scoped to
+    // this test's own fleet so a leak cannot reach any other suite.
+    try armReclaimFailure(conn, base.AGENTSFLEET_RELEASE_FAIL);
     defer disarmReclaimFailure(conn);
-    try armReleaseFailure(conn);
+    try armReleaseFailure(conn, base.AGENTSFLEET_RELEASE_FAIL);
     defer disarmReleaseFailure(conn);
 
     // The release error is swallowed and reported (`released=false`), the reclaim
