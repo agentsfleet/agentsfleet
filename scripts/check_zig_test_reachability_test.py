@@ -95,6 +95,49 @@ class TestReachability(ReachabilityTestCase):
         groups = {ROOT_DIR: set(), "src/agentsfleetd/auth": {"jwt.test.verify"}}
         self.assertTrue(checker.is_live(path, groups))
 
+    def test_file_under_no_test_root_is_dead(self):
+        """`src/build/**` sits under no binary's root, so a test there can never run."""
+        stray = self.write("src/build/helper.zig", 'test "orphan" {}\n')
+        groups = {ROOT_DIR: {"db.pool.test.pools"}}
+        self.assertFalse(checker.is_live(stray, groups))
+        self.assertEqual(self.run_check(groups, [stray])[0], 1)
+
+    def test_waiver_requires_the_exact_marker(self):
+        """A bare `// no-test-root` without the colon is not a waiver."""
+        near_miss = self.write(
+            f"{ROOT_DIR}/orphan.zig",
+            '// no-test-root\ntest "never runs" {}\n',
+        )
+        self.assertFalse(checker.is_waived(near_miss))
+        self.assertEqual(self.run_check({ROOT_DIR: set()}, [near_miss])[0], 1)
+
+    def test_only_column_zero_test_lines_count(self):
+        """Preserves the historical `^test "` semantics: an indented block is not a
+        top-level test declaration, and a `test "` inside a doc-comment is not code."""
+        path = self.write(
+            f"{ROOT_DIR}/x.zig",
+            'test "real" {}\n    test "indented" {}\n// test "commented" {}\n',
+        )
+        self.assertEqual(checker.count_blocks(path), (1, 0))
+
+    def test_registered_names_exits_when_a_lane_prints_nothing(self):
+        """An empty listing means the lane is unwired; treating it as 'no tests exist'
+        would silently mark the entire tree dead, or (worse) pass a --count of 0."""
+        class FakeProc:
+            returncode = 0
+            stdout = ""
+            stderr = ""
+
+        original = checker.subprocess.run
+        checker.subprocess.run = lambda *a, **k: FakeProc()
+        try:
+            with contextlib.redirect_stderr(io.StringIO()):
+                with self.assertRaises(SystemExit) as caught:
+                    checker.registered_names()
+            self.assertEqual(caught.exception.code, 1)
+        finally:
+            checker.subprocess.run = original
+
     def test_duplicate_description_does_not_mask_a_dead_file(self):
         """A dead file sharing a test description with a live one stays dead.
 
@@ -143,6 +186,98 @@ class TestDepthCount(ReachabilityTestCase):
         self.assertIn("reachable_test_cases=0", after)
         self.assertEqual(self.run_check(wired, [path])[0], 0)
         self.assertEqual(self.run_check(unwired, [path])[0], 1)
+
+
+class FakeProc:
+    def __init__(self, stdout="", returncode=0, stderr=""):
+        self.stdout = stdout
+        self.returncode = returncode
+        self.stderr = stderr
+
+
+class SubprocessFakeCase(ReachabilityTestCase):
+    """Replaces subprocess.run with a scripted queue of results."""
+
+    def fake_subprocess(self, *results):
+        queue = list(results)
+        original = checker.subprocess.run
+        checker.subprocess.run = lambda *a, **k: queue.pop(0)
+        self.addCleanup(lambda: setattr(checker.subprocess, "run", original))
+
+
+class TestRegisteredNames(SubprocessFakeCase):
+    def test_groups_tests_under_the_preceding_root(self):
+        self.fake_subprocess(
+            FakeProc("ROOT\tsrc/agentsfleetd\nTEST\tdb.pool.test.a\n"),
+            FakeProc("ROOT\tsrc/runner\nTEST\tengine.test.b\n"),
+        )
+        groups = checker.registered_names()
+        self.assertEqual(groups["src/agentsfleetd"], {"db.pool.test.a"})
+        self.assertEqual(groups["src/runner"], {"engine.test.b"})
+
+    def test_two_binaries_sharing_a_root_accumulate(self):
+        """The runner's unit and integration lanes both root at src/runner."""
+        self.fake_subprocess(
+            FakeProc("ROOT\tsrc/runner\nTEST\ta.test.one\n"),
+            FakeProc("ROOT\tsrc/runner\nTEST\tb.test.two\n"),
+        )
+        self.assertEqual(checker.registered_names()["src/runner"], {"a.test.one", "b.test.two"})
+
+    def test_test_line_before_any_root_is_dropped(self):
+        self.fake_subprocess(
+            FakeProc("TEST\torphan.test.x\nROOT\tsrc/lib\nTEST\tclock.test.y\n"),
+            FakeProc("ROOT\tsrc/runner\nTEST\tz.test.z\n"),
+        )
+        groups = checker.registered_names()
+        self.assertEqual(groups["src/lib"], {"clock.test.y"})
+        self.assertNotIn("orphan.test.x", set().union(*groups.values()))
+
+    def test_exits_when_a_lane_fails_to_build(self):
+        self.fake_subprocess(FakeProc(returncode=1, stderr="compile error"))
+        with contextlib.redirect_stderr(io.StringIO()) as err:
+            with self.assertRaises(SystemExit) as caught:
+                checker.registered_names()
+        self.assertEqual(caught.exception.code, 1)
+        self.assertIn("compile error", err.getvalue())
+
+
+class TestCandidateFiles(SubprocessFakeCase):
+    def test_selects_only_zig_files_carrying_a_test_block(self):
+        self.write(f"{ROOT_DIR}/with_test.zig", 'test "a" {}\n')
+        self.write(f"{ROOT_DIR}/no_test.zig", "pub fn f() void {}\n")
+        self.write(f"{ROOT_DIR}/notes.md", 'test "not zig" {}\n')
+        listing = f"{ROOT_DIR}/with_test.zig\n{ROOT_DIR}/no_test.zig\n{ROOT_DIR}/notes.md\n"
+        self.fake_subprocess(FakeProc(listing))
+        self.assertEqual(checker.candidate_files(), [f"{ROOT_DIR}/with_test.zig"])
+
+
+class TestMainDispatch(ReachabilityTestCase):
+    def setUp(self):
+        super().setUp()
+        original_argv = sys.argv
+        self.addCleanup(lambda: setattr(sys, "argv", original_argv))
+
+    def _stub(self, groups, candidates):
+        for name, value in (("registered_names", groups), ("candidate_files", candidates)):
+            original = getattr(checker, name)
+            setattr(checker, name, lambda v=value: v)
+            self.addCleanup(lambda n=name, o=original: setattr(checker, n, o))
+
+    def test_check_flag_returns_nonzero_on_a_dead_file(self):
+        dead = self.write(f"{ROOT_DIR}/orphan.zig", 'test "x" {}\n')
+        self._stub({ROOT_DIR: set()}, [dead])
+        sys.argv = ["prog", "--check"]
+        with contextlib.redirect_stderr(io.StringIO()), contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(checker.main(), 1)
+
+    def test_count_flag_prints_counts_and_returns_zero(self):
+        live = self.write(f"{ROOT_DIR}/live.zig", 'test "x" {}\n')
+        self._stub({ROOT_DIR: {"live.test.x"}}, [live])
+        sys.argv = ["prog", "--count"]
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            self.assertEqual(checker.main(), 0)
+        self.assertIn("reachable_test_cases=1", out.getvalue())
 
 
 class TestMakeWiring(unittest.TestCase):

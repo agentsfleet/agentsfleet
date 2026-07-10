@@ -158,6 +158,27 @@ test "canonical migrations: a gapped or duplicated version is rejected" {
     try std.testing.expect(!versionsContiguousFromFirst(&duplicated));
 }
 
+test "canonical migrations: a list not starting at version 1, or running backwards, is rejected" {
+    // `runMigrations` records versions by array position, so an off-by-one start or a
+    // reversed pair would mark schema applied that never ran.
+    const zero_based = [_]db.Migration{
+        .{ .version = 0, .sql = "" },
+        .{ .version = 1, .sql = "" },
+    };
+    try std.testing.expect(!versionsContiguousFromFirst(&zero_based));
+
+    const descending = [_]db.Migration{
+        .{ .version = 2, .sql = "" },
+        .{ .version = 1, .sql = "" },
+    };
+    try std.testing.expect(!versionsContiguousFromFirst(&descending));
+
+    // Vacuously contiguous: the embedded list is asserted non-empty separately, so an
+    // empty slice never reaches a caller that would misread `true` as "migrations ran".
+    const empty: []const db.Migration = &.{};
+    try std.testing.expect(versionsContiguousFromFirst(empty));
+}
+
 test "migrateOnStartEnabledFromEnv parses known values" {
     const alloc = std.testing.allocator;
     var empty = try common.env.fromPairs(alloc, &.{});
