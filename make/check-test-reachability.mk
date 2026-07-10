@@ -1,17 +1,24 @@
 # =============================================================================
-# TEST-ROOT REACHABILITY — every Zig `test` block runs, or is provably waived
+# check-test-reachability — every Zig `test` block runs, or is provably waived
 # =============================================================================
 #
+# A static check, not a test lane: it compiles nothing you ship and asserts a
+# property of the source tree, like check-openapi or check-route-registration-doc.
 # Zig registers a file's `test` blocks only when the file is force-referenced at
-# comptime from a test root; a plain `@import` registers nothing. Split out of
-# quality.mk (RULE FLL), mirroring how make/ is already carved by concern.
+# comptime from a test root; a plain `@import` registers nothing, so a block can
+# sit on disk for months and never compile. Split out of quality.mk (RULE FLL).
+#
+# Where it fires: `lint-zig` (so CI's lint job and the pre-commit zig lane run it),
+# and `_lint_zig_test_depth`, which `test-unit-agentsfleetd` invokes — that is the
+# push-time path, since `.githooks/pre-push` runs the unit lane for any pushed
+# `*.zig`, which is exactly when the test files have been written.
 
-.PHONY: _lint_zig_test_reachability _lint_zig_test_depth
+.PHONY: check-test-reachability _lint_zig_test_depth
 
 REACHABLE_COUNTS := .tmp/zig-reachable-counts.txt
 REACHABILITY_TESTS := python3 -m unittest discover -s scripts -t scripts -p 'check_zig_test_reachability*_test.py'
 
-_lint_zig_test_reachability:
+check-test-reachability:  ## Every Zig `test` block compiles from a test root, or carries a waiver
 	@mkdir -p .tmp
 	@echo "→ [zig] Checking every test block is reachable from a test root..."
 	@$(REACHABILITY_TESTS) >/dev/null 2>&1 || \
@@ -21,10 +28,10 @@ _lint_zig_test_reachability:
 # Counts come from the compiler-registered set, never a textual scan: a `test` block
 # no test root force-imports never compiles, and crediting it would let VERIFY's Test
 # Delta report growth that does not exist. Listing all 8 binaries costs ~10s, so this
-# consumes what the reachability gate already produced. `set -eu` + the numeric guard
+# consumes what the reachability check already produced. `set -eu` + the numeric guard
 # are load-bearing: without them an errored checker yields an empty count, `[ "" -lt
 # 25 ]` errors instead of failing, and the recipe prints success and exits 0.
-_lint_zig_test_depth: _lint_zig_test_reachability
+_lint_zig_test_depth: check-test-reachability
 	@set -eu; \
 	 counts=$$(cat $(REACHABLE_COUNTS)); \
 	 unit_count=$$(printf '%s\n' "$$counts" | sed -n 's/^reachable_test_cases=//p'); \

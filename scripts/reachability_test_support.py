@@ -18,10 +18,12 @@ import check_zig_test_reachability as checker  # noqa: E402
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # `lint-zig` lives in quality.mk; the two reachability recipes were split into
-# test-reachability.mk under RULE FLL. Wiring tests read whichever holds the fact.
+# check-test-reachability.mk under RULE FLL. Wiring tests read whichever holds the fact.
 QUALITY_MK = os.path.join(REPO_ROOT, "make", "quality.mk")
-REACHABILITY_MK = os.path.join(REPO_ROOT, "make", "test-reachability.mk")
-CHECKER_TARGET = "_lint_zig_test_reachability"
+REACHABILITY_MK = os.path.join(REPO_ROOT, "make", "check-test-reachability.mk")
+TEST_UNIT_MK = os.path.join(REPO_ROOT, "make", "test-unit.mk")
+PRE_PUSH_HOOK = os.path.join(REPO_ROOT, ".githooks", "pre-push")
+CHECKER_TARGET = "check-test-reachability"
 
 ROOT_DIR = "src/agentsfleetd"
 

@@ -15,10 +15,12 @@ import unittest
 
 from reachability_test_support import (  # noqa: E402
     CHECKER_TARGET,
+    PRE_PUSH_HOOK,
     QUALITY_MK,
     REACHABILITY_MK,
     REPO_ROOT,
     ROOT_DIR,
+    TEST_UNIT_MK,
     ReachabilityTestCase,
     checker,
 )
@@ -211,7 +213,7 @@ class TestMakeWiring(unittest.TestCase):
         """The recipes moved out of quality.mk under RULE FLL; an unincluded .mk
         would make every reachability assertion below vacuously true."""
         with open(os.path.join(REPO_ROOT, "Makefile")) as handle:
-            self.assertIn("include make/test-reachability.mk", handle.read())
+            self.assertIn("include make/check-test-reachability.mk", handle.read())
 
     def test_reachability_target_invokes_the_checker(self):
         self.assertIn(f"{CHECKER_TARGET}:", self.reachability_mk)
@@ -220,7 +222,7 @@ class TestMakeWiring(unittest.TestCase):
     def test_depth_gate_consumes_the_reachability_counts(self):
         """One listing, not two: the depth gate reads what --check already produced."""
         self.assertIn("--check --counts-out $(REACHABLE_COUNTS)", self.reachability_mk)
-        self.assertIn("_lint_zig_test_depth: _lint_zig_test_reachability", self.reachability_mk)
+        self.assertIn("_lint_zig_test_depth: check-test-reachability", self.reachability_mk)
         self.assertIn("counts=$$(cat $(REACHABLE_COUNTS))", self.reachability_mk)
         self.assertNotIn(
             """find src -name '*.zig' -exec grep -hE '^test "'""",
@@ -234,6 +236,20 @@ class TestMakeWiring(unittest.TestCase):
         recipe = self.reachability_mk.split("_lint_zig_test_depth:")[1]
         self.assertIn("set -eu", recipe)
         self.assertIn("*[!0-9]*", recipe)
+
+    def test_the_check_runs_on_push_not_only_on_commit(self):
+        """Push is when the test files have actually been written, so this chain must
+        hold: .githooks/pre-push → test-unit-agentsfleetd → _lint_zig_test_depth →
+        check-test-reachability. Break any link and a dead test block reaches the PR."""
+        with open(PRE_PUSH_HOOK) as handle:
+            pre_push = handle.read()
+        with open(TEST_UNIT_MK) as handle:
+            test_unit_mk = handle.read()
+
+        self.assertIn("needs_test_zig=1", pre_push)
+        self.assertIn("test-unit-agentsfleetd", pre_push)
+        self.assertIn("$(MAKE) _lint_zig_test_depth", test_unit_mk)
+        self.assertIn(f"_lint_zig_test_depth: {CHECKER_TARGET}", self.reachability_mk)
 
     def test_git_dependent_gates_fail_closed_on_an_empty_scan(self):
         """The CI container runs as root over a runner-owned checkout, so plain git
