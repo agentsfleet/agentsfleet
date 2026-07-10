@@ -69,7 +69,7 @@ const STATUS_ACTIVE = "active" as const;
 const STATUS_REVOKED = "revoked" as const;
 const TIME_NEVER = "never" as const;
 const TIME_MISSING = "-" as const;
-const SORTS = new Set([SORT_CREATED_AT_DESC, CREATED_AT, SORT_KEY_NAME_DESC, KEY_NAME]);
+const SORTS: ReadonlySet<string> = new Set([SORT_CREATED_AT_DESC, CREATED_AT, SORT_KEY_NAME_DESC, KEY_NAME]);
 
 const requireValue = (
   value: string | undefined,
