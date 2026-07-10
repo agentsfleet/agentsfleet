@@ -1,10 +1,13 @@
 import { Button } from "@agentsfleet/design-system";
+import { CircleHelpIcon } from "lucide-react";
 
 // The "write your own template" docs entry. Kept in a neutral module (not the
 // client-only AddLibraryDialog) so Server Components can import the URL + the
 // shared link without pulling the dialog's module graph.
 export const CREATE_LIBRARY_DOC_URL =
   "https://docs.agentsfleet.net/fleets/library#writing-your-own";
+export const CREATE_FLEET_LIBRARY_TOOLTIP = "Create a fleet library entry from GitHub.";
+export const INSTALL_FLEET_TOOLTIP = "Start from the fleet library.";
 
 // Shared copy for the Fleet library empty state (dashboard embed + install
 // picker) so the two surfaces can never drift apart.
@@ -22,6 +25,7 @@ export function LibraryDocsLink() {
   return (
     <Button asChild variant="outline" size="sm">
       <a href={CREATE_LIBRARY_DOC_URL} target="_blank" rel="noopener noreferrer">
+        <CircleHelpIcon size={14} aria-hidden="true" />
         Learn more
       </a>
     </Button>

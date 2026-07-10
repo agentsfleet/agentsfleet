@@ -7,7 +7,7 @@
  *
  * Surface confirmed against `src/program/cli-tree.ts` +
  * `src/program/cli-tree-fleet.ts` + `src/commands/workspace.ts`:
- *   - `workspace add [name]`  → POST /v1/workspaces; --json → { workspace_id, name }
+ *   - `workspace create [name]`  → POST /v1/workspaces; --json → { workspace_id, name }
  *   - `workspace list --json` → { current_workspace_id, workspaces: [...] }
  *   - `workspace use <id>`    → --json → { active: <id> } (active carries the id)
  *   - `workspace show --json` → { workspace_id, active: <bool>, name, created_at }
@@ -16,7 +16,7 @@
  *   - `list --workspace-id <id> --json` → { items: [...] } (top-level fleet list)
  *
  * Hard constraint surfaced here (also in the spec header): the server
- * exposes no workspace-delete route, so every `workspace add` leaves a
+ * exposes no workspace-delete route, so every `workspace create` leaves a
  * permanent workspace in the shared DEV tenant. Names are
  * `ACCEPTANCE_RUN_PREFIX`-scoped so the residue is attributable; fleets
  * inside are still torn down via `cleanWorkspaceFleets`.
@@ -77,13 +77,13 @@ function parseJson(result: RunResult, label: string): Record<string, unknown> {
   return JSON.parse(trimmed) as Record<string, unknown>;
 }
 
-/** `workspace add <name>` → asserts a real `workspace_id`, returns it. */
+/** `workspace create <name>` → asserts a real `workspace_id`, returns it. */
 export async function addWorkspace(env: Env, name: string): Promise<AddedWorkspace> {
-  const result = await runFleetctl(["workspace", "add", name, FLAG_JSON], { env });
-  const parsed = parseJson(result, `workspace add ${name}`);
+  const result = await runFleetctl(["workspace", "create", name, FLAG_JSON], { env });
+  const parsed = parseJson(result, `workspace create ${name}`);
   const workspaceId = parsed[WS_ID_KEY];
-  assert.equal(typeof workspaceId, "string", `workspace add ${name}: missing ${WS_ID_KEY}: ${result.stdout}`);
-  assert.ok((workspaceId as string).length > 0, `workspace add ${name}: empty ${WS_ID_KEY}`);
+  assert.equal(typeof workspaceId, "string", `workspace create ${name}: missing ${WS_ID_KEY}: ${result.stdout}`);
+  assert.ok((workspaceId as string).length > 0, `workspace create ${name}: empty ${WS_ID_KEY}`);
   const rawName = parsed[AGENT_NAME_KEY];
   return { workspaceId: workspaceId as string, name: typeof rawName === "string" ? rawName : null };
 }

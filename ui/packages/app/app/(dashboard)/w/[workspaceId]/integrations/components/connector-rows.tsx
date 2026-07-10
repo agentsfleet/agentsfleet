@@ -29,10 +29,11 @@ import { presentErrorString } from "@/lib/errors";
 const NOT_CONNECTED_LABEL = "Not connected";
 const CONNECTED_LABEL = "Connected";
 const RECONNECT_LABEL = "Reconnect needed";
-const NOT_CONFIGURED_LABEL = "Setup required";
+const NOT_CONFIGURED_LABEL = "Admin setup required";
 const CONNECTING_LABEL = "Connecting…";
-const SETUP_GUIDE_LABEL = "Setup guide";
+const SETUP_STEPS_LABEL = "Setup steps";
 const CONNECTED_IDENTITY_PREFIX = "Connected: ";
+const NOT_CONFIGURED_DESCRIPTION = "A platform admin needs to enable this connector.";
 
 // The card LIST comes from the catalog; this map only decorates a known provider
 // id with an icon. An unknown id falls back to a generic plug, so a newly
@@ -121,7 +122,7 @@ export function OAuthConnectorRow({
   }
 
   const description = !entry.configured
-    ? "Not configured on this deployment."
+    ? NOT_CONFIGURED_DESCRIPTION
     : isConnected
       ? identity
         ? `${CONNECTED_IDENTITY_PREFIX}${identity}`
@@ -155,7 +156,7 @@ export function OAuthConnectorRow({
               rel="noreferrer"
               className="rounded-sm text-body-sm text-primary underline underline-offset-2 hover:no-underline focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
-              {SETUP_GUIDE_LABEL}
+              {SETUP_STEPS_LABEL}
             </a>
           ) : isConnected ? null : (
             <Button

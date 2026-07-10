@@ -26,7 +26,7 @@ import {
 
 export type RenameSecretDialogProps = {
   workspaceId: string;
-  /** The secret being renamed. Its current name is the reference key Fleets resolve. */
+  /** The secret being renamed. Its current name is the reference key fleets resolve. */
   name: string;
   /**
    * Every existing secret name in the workspace. Renaming to one of these would
@@ -42,10 +42,10 @@ export type RenameSecretDialogProps = {
 // Renaming is create-new-then-delete-old: there is no in-place rename endpoint,
 // and the vault never returns plaintext, so the new name must be stored with a
 // freshly re-entered value before the old name is dropped. The warning is
-// generic by design — the platform never indexes which Fleets reference a given
+// generic by design — the platform never indexes which fleets reference a given
 // secret name, so it can't name them.
 const RENAME_WARNING =
-  "Renaming breaks Fleets that reference this secret until you update them — the old name is removed once the new one is saved.";
+  "Any fleets using this secret still point to the old name. They may fail after the rename until you update them.";
 const NAME_LENGTH_INVALID = `New name must be 1–${SECRET_NAME_MAX} characters`;
 const NAME_UNCHANGED = "New name matches the current name — use Edit to replace the value instead";
 const nameTakenMessage = (n: string) =>
@@ -149,7 +149,8 @@ export default function RenameSecretDialog({
         <DialogHeader>
           <DialogTitle>Rename secret &ldquo;{name}&rdquo;</DialogTitle>
           <DialogDescription>
-            Stores the secret under a new name, then removes the old one. Re-enter the value below.
+            Choose a new name and paste the value again. Saved values are hidden, so we create a
+            new secret and remove the old one after it saves.
           </DialogDescription>
         </DialogHeader>
 

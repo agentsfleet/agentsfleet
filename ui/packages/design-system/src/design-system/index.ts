@@ -10,6 +10,7 @@ export {
   type ButtonVariant,
 } from "./Button";
 export { IconAction, type IconActionProps } from "./IconAction";
+export { TooltipButton, type TooltipButtonProps } from "./TooltipButton";
 export {
   Card,
   CardHeader,
@@ -132,6 +133,7 @@ export {
   TooltipTrigger,
   TooltipContent,
   TooltipProvider,
+  type TooltipProviderProps,
   type TooltipContentProps,
 } from "./Tooltip";
 export { EmptyState, type EmptyStateProps } from "./EmptyState";

@@ -1,5 +1,4 @@
-// Login handler — Effect-shaped device flow. Replaces the legacy
-// plaintext-token poll-and-grab with the ECDH-encrypted handshake:
+// Login handler — Effect-shaped device flow using the ECDH-encrypted handshake:
 //
 //   1. CLI generates an ephemeral P-256 keypair.
 //   2. POST /v1/auth/sessions { public_key, token_name } → session_id.

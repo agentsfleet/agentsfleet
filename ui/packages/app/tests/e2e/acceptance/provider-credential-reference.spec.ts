@@ -84,8 +84,8 @@ test.describe("provider credential reference guard", () => {
     await gotoWorkspace(page, FIXTURE_KEY.regular, "settings/models");
     await expect(page.getByRole("heading", { name: /^models$/i })).toBeVisible();
 
-    // Open the unified Add-model dialog — one form, no tabs.
-    await page.getByRole("button", { name: "Add model" }).click();
+    // Open the unified create-model dialog — one form, no tabs.
+    await page.getByRole("button", { name: "Create model" }).click();
     await expect(page.getByRole("dialog")).toBeVisible();
 
     // Fill the form in order: Name → Provider → Model → API key.

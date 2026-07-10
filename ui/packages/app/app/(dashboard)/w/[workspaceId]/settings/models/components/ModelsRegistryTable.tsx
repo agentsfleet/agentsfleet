@@ -160,8 +160,8 @@ export default function ModelsRegistryTable({ workspaceId, initial, initialSecre
   }
 
   const columns: DataTableColumn<RegistryRow>[] = [
-    { key: "model", header: "Model", sortable: true, cell: (row) => <ModelCell row={row} platformDefault={platformDefault} /> },
     { key: "provider", header: "Provider", sortable: true, cell: (row) => <ProviderCell row={row} platformDefault={platformDefault} /> },
+    { key: "model", header: "Model", sortable: true, cell: (row) => <ModelCell row={row} platformDefault={platformDefault} /> },
     {
       key: "context",
       header: "Context · $/1M (in / cached / out)",

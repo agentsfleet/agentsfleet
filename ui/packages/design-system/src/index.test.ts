@@ -37,15 +37,13 @@ describe("design-system public exports", () => {
     expect(DesignSystem.EYEBROW_CLASS).toContain("uppercase");
   });
 
-  it.each([
-    "Time",
-    "List",
-    "ListItem",
-    "DescriptionList",
-    "DescriptionTerm",
-    "DescriptionDetails",
-    "CopyButton",
-  ] as const)("exports %s", (name) => {
-    expect(DesignSystem[name]).toBeDefined();
+  it("exports list and utility components", () => {
+    expect(DesignSystem.Time).toBeDefined();
+    expect(DesignSystem.List).toBeDefined();
+    expect(DesignSystem.ListItem).toBeDefined();
+    expect(DesignSystem.DescriptionList).toBeDefined();
+    expect(DesignSystem.DescriptionTerm).toBeDefined();
+    expect(DesignSystem.DescriptionDetails).toBeDefined();
+    expect(DesignSystem.CopyButton).toBeDefined();
   });
 });

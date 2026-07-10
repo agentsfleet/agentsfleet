@@ -57,7 +57,7 @@ async function renderDialog(secrets: Secret[] = []) {
     React.createElement(AddModelEntryDialog, { workspaceId: "ws_1", secrets, onCreated, onSecretsChanged } as never),
   );
   const user = userEvent.setup();
-  await user.click(screen.getByRole("button", { name: /add model/i }));
+  await user.click(screen.getByRole("button", { name: /create model/i }));
   await screen.findByRole("dialog");
   return { onCreated, onSecretsChanged, user };
 }
@@ -121,6 +121,15 @@ describe("AddModelEntryDialog — unified form shape", () => {
       expect(createSecretActionMock).toHaveBeenCalledWith("ws_1", expect.objectContaining({ name: "my-second-anthropic" })),
     );
     expect(rotateSecretActionMock).not.toHaveBeenCalled();
+  });
+
+  it("closes from Cancel without creating a secret or model entry", async () => {
+    const { user } = await renderDialog();
+    await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: /^cancel$/i }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(createSecretActionMock).not.toHaveBeenCalled();
+    expect(createModelEntryActionMock).not.toHaveBeenCalled();
+    expect(setProviderSelfManagedActionMock).not.toHaveBeenCalled();
   });
 
   it("lists the library's providers plus the OpenAI-compatible option pinned last", async () => {

@@ -11,6 +11,7 @@ export const WEBHOOKS_PATH = "/v1/webhooks/";
 export const HEALTHZ_PATH = "/healthz";
 export const AUTH_SESSIONS_PATH = "/v1/auth/sessions";
 export const WORKSPACES_COLLECTION_PATH = "/v1/workspaces";
+export const TENANT_API_KEYS_PATH = "/v1/api-keys";
 export const TENANT_BILLING_PATH = "/v1/tenants/me/billing";
 export const TENANT_PROVIDER_PATH = "/v1/tenants/me/provider";
 
@@ -65,6 +66,15 @@ export const wsSecretsPath = (wsId: string): string =>
 
 export const wsSecretPath = (wsId: string, name: string): string =>
   `${WORKSPACES_PATH}${enc(wsId)}/secrets/${enc(name)}`;
+
+export const tenantApiKeyPath = (keyId: string): string =>
+  `${TENANT_API_KEYS_PATH}/${enc(keyId)}`;
+
+export const wsConnectorsPath = (wsId: string): string =>
+  `${WORKSPACES_PATH}${enc(wsId)}/connectors`;
+
+export const wsConnectorPath = (wsId: string, provider: string): string =>
+  `${WORKSPACES_PATH}${enc(wsId)}/connectors/${enc(provider)}`;
 
 // Workspace-scoped integration grant routes (per fleet).
 export const wsGrantsListPath = (wsId: string, fleetId: string): string =>

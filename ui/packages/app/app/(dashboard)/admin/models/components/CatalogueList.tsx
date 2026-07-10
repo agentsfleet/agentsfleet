@@ -4,11 +4,11 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   Badge,
-  Button,
   ConfirmDialog,
   DataTable,
   type DataTableColumn,
   EmptyState,
+  IconAction,
   Spinner,
 } from "@agentsfleet/design-system";
 import { CoinsIcon, PencilIcon, StarIcon, Trash2Icon } from "lucide-react";
@@ -58,38 +58,35 @@ function RowActions({
 }) {
   return (
     <div className="flex justify-end gap-1">
-      <Button
+      <IconAction
         type="button"
         variant="ghost"
-        size="sm"
         onClick={() => onEdit(model)}
         disabled={busy}
-        aria-label={`Edit ${model.model_id}`}
+        label={`Edit ${model.model_id}`}
       >
         <PencilIcon size={14} />
-      </Button>
+      </IconAction>
       {isDefault(model, active) ? null : (
-        <Button
+        <IconAction
           type="button"
           variant="ghost"
-          size="sm"
           onClick={() => onMakeDefault(model)}
           disabled={busy}
-          aria-label={`Make ${model.model_id} the platform default`}
+          label={`Make ${model.model_id} the platform default`}
         >
           <StarIcon size={14} />
-        </Button>
+        </IconAction>
       )}
-      <Button
+      <IconAction
         type="button"
         variant="destructive"
-        size="sm"
         disabled={busy}
         onClick={() => onDelete(model)}
-        aria-label={`Delete ${model.model_id}`}
+        label={`Delete ${model.model_id}`}
       >
         {busy ? <Spinner size="sm" srLabel="Deleting" /> : <Trash2Icon size={14} />}
-      </Button>
+      </IconAction>
     </div>
   );
 }

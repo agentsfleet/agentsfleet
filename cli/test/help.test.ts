@@ -46,7 +46,7 @@ describe("help output", () => {
       expect(code).toBe(0);
       const output = out.read();
       // Top-level --help lists the commands + groups (nested subcommands like
-      // `workspace add` live under `agentsfleet workspace --help`).
+      // `workspace create` live under `agentsfleet workspace --help`).
       expect(output).toContain("login");
       expect(output).toContain("logout");
       expect(output).toContain("workspace");

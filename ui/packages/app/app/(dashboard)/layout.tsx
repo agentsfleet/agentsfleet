@@ -28,7 +28,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
   // no `activeWorkspaceId` prop, no cookie. It wraps both the workspace-scoped
   // subtree and the tenant/platform pages (settings/api-keys, billing, admin).
   return (
-    <TooltipProvider delayDuration={150}>
+    <TooltipProvider>
       <Shell workspaces={listResult.items} operatorScopes={[...scopes]}>
         {children}
       </Shell>

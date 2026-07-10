@@ -275,11 +275,11 @@ describe("secret list extra branches", () => {
 });
 
 // ---------------------------------------------------------------------------
-// secret add — human-mode already-exists skip (--json variant in errors
+// secret create — human-mode already-exists skip (--json variant in errors
 // unit test; this covers the else branch at lines 167-169)
 // ---------------------------------------------------------------------------
 
-describe("secret add already-exists human mode", () => {
+describe("secret create already-exists human mode", () => {
   test("prints human-mode skip message when secret already exists (no --json)", async () => {
     await authedScope(async () => {
       const routes: MockRoutes = {
@@ -290,7 +290,7 @@ describe("secret add already-exists human mode", () => {
         const out = bufferStream();
         const err = bufferStream();
         const code = await runCli(
-          ["secret", "add", "existing", `--data={"token":"x"}`],
+          ["secret", "create", "existing", `--data={"token":"x"}`],
           { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
         );
         expect(code).toBe(0);

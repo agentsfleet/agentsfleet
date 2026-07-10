@@ -89,17 +89,17 @@ jq -n \
   --arg app_slug "$(read -rp 'App public slug: ' v; echo "$v")" \
   --arg private_key_pem "$(cat "$PEM_PATH")" \
   '{app_id:$app_id, private_key_pem:$private_key_pem, app_slug:$app_slug}' |
-  AGENTSFLEET_API_KEY="$ADMIN_KEY" agentsfleet secret add github-app --data @-
+  AGENTSFLEET_API_KEY="$ADMIN_KEY" agentsfleet secret create github-app --data @-
 
 # Destroy the local key copy — vault is now the only source of truth.
 command -v shred >/dev/null && shred -u "$PEM_PATH" || rm -P "$PEM_PATH" 2>/dev/null || trash "$PEM_PATH"
 ```
 
-> Prefer mirroring the PEM + identifiers into `op://$VAULT/github-app/*` first (so a vault rotation can re-issue), then pipe `op read` → `jq` → `agentsfleet secret add`. Re-run with `--force` to overwrite an existing `github-app`.
+> Prefer mirroring the PEM + identifiers into `op://$VAULT/github-app/*` first (so a vault rotation can re-issue), then pipe `op read` → `jq` → `agentsfleet secret create`. Re-run with `--force` to overwrite an existing `github-app`.
 
 ### Acceptance
 
-`agentsfleet secret add` exits 0; the `.pem` no longer exists on disk; no key bytes in shell history, argv, or output.
+`agentsfleet secret create` exits 0; the `.pem` no longer exists on disk; no key bytes in shell history, argv, or output.
 
 ---
 

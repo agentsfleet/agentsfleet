@@ -1,4 +1,4 @@
-// HTTP integration tests for /v1/tenants/me/models (M121 §2).
+// HTTP integration tests for /v1/tenants/me/models.
 //
 // Requires DATABASE_URL (or TEST_DATABASE_URL) — skipped otherwise via
 // `TestHarness.start` returning `error.SkipZigTest`. Reuses the seeded
@@ -17,6 +17,9 @@ const fixtures_provider = @import("../db/test_fixtures.zig");
 // seeded row, per the sibling suite's precedent
 // (tenant_provider_platform_default_available_integration_test.zig).
 const TEST_TENANT_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01";
+const SONNET_INPUT_RATE_JSON = "\"input_nanos_per_mtok\":3000000000";
+const SONNET_CACHED_INPUT_RATE_JSON = "\"cached_input_nanos_per_mtok\":300000000";
+const SONNET_OUTPUT_RATE_JSON = "\"output_nanos_per_mtok\":15000000000";
 
 // base.cleanupRows deletes this suite's entries too (it owns the shared
 // tenant's core.tenant_model_entries cleanup since activation upserts rows).
@@ -80,6 +83,9 @@ test "integration: test_models_list_joins_metadata_and_active — GET joins secr
     try std.testing.expectEqual(@as(usize, 1), std.mem.count(u8, r.body, "\"active\":true"));
     try std.testing.expectEqual(@as(usize, 1), std.mem.count(u8, r.body, "\"active\":false"));
     try std.testing.expect(r.bodyContains("\"platform_default_available\""));
+    try std.testing.expect(r.bodyContains(SONNET_INPUT_RATE_JSON));
+    try std.testing.expect(r.bodyContains(SONNET_CACHED_INPUT_RATE_JSON));
+    try std.testing.expect(r.bodyContains(SONNET_OUTPUT_RATE_JSON));
     try std.testing.expect(!r.bodyContains(SENTINEL));
     try std.testing.expect(!r.bodyContains("api_key"));
 
@@ -338,6 +344,9 @@ test "integration: test_entries_list_default_identity — GET carries the active
     try std.testing.expect(r.bodyContains("\"model\":\"" ++ fixtures_provider.TEST_PLATFORM_MODEL ++ "\""));
     const cap_json = comptime std.fmt.comptimePrint("\"context_cap_tokens\":{d}", .{fixtures_provider.TEST_PLATFORM_CAP_TOKENS});
     try std.testing.expect(r.bodyContains(cap_json));
+    try std.testing.expect(r.bodyContains("\"input_nanos_per_mtok\":0"));
+    try std.testing.expect(r.bodyContains("\"cached_input_nanos_per_mtok\":0"));
+    try std.testing.expect(r.bodyContains("\"output_nanos_per_mtok\":0"));
 
     const conn = try h.acquireConn();
     defer h.releaseConn(conn);
@@ -373,12 +382,11 @@ test "integration: test_entries_list_no_default_omits_identity — GET omits pla
     cleanup(conn);
 }
 
-// M121 regression at the HTTP boundary: the Add-model dialog stores a
-// known-provider secret with NO `model` field (the model lives on the registry
-// entry / PUT body). Every OTHER activation test in this file puts a `model` in
-// the secret body, which masked the bug — before the probe fix this exact flow
-// (Save & make active / Switch) returned 400 UZ-PROVIDER-003 while the registry
-// row still committed.
+// Regression guard: the Add-model dialog stores a known-provider secret with no
+// `model` field (the model lives on the registry entry / PUT body). Other
+// activation tests in this file put a `model` in the secret body, which masked
+// the bug — before the probe fix this exact flow returned UZ-PROVIDER-003 while
+// the registry row still committed.
 test "integration: test_activate_model_less_secret — a {provider,api_key} secret with NO model activates when the model rides the PUT body" {
     base.setTestEncryptionKey();
     const alloc = std.testing.allocator;
@@ -391,7 +399,7 @@ test "integration: test_activate_model_less_secret — a {provider,api_key} secr
     const secrets_path = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/secrets", .{base.TEST_WS_ID});
     defer alloc.free(secrets_path);
     {
-        // No `model` in the secret body — the M121 shape.
+        // No `model` in the secret body; the PUT body carries the selected model.
         const r = try (try (try h.post(secrets_path).bearer(base.TOKEN_OPERATOR))
             .json("{\"name\":\"no-model-key\",\"data\":{\"provider\":\"anthropic\",\"api_key\":\"sk-nomodel\"}}")).send();
         defer r.deinit();

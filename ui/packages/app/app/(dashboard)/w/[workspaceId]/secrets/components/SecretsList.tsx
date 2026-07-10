@@ -3,10 +3,10 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
-  Button,
   ConfirmDialog,
   DataTable,
   EmptyState,
+  IconAction,
   Spinner,
   Time,
   type DataTableColumn,
@@ -17,6 +17,7 @@ import type { Secret } from "@/lib/api/secrets";
 import { presentErrorString } from "@/lib/errors";
 import EditSecretDialogDynamic from "@/components/domain/island-dynamic/EditSecretDialogDynamic";
 import RenameSecretDialogDynamic from "@/components/domain/island-dynamic/RenameSecretDialogDynamic";
+import { SECRET_ROW_DESCRIPTION } from "../copy";
 
 type Props = {
   workspaceId: string;
@@ -44,23 +45,21 @@ function SecretActions({
   const deleteDisabled = pending || protectedFromDelete;
   return (
     <div className="flex justify-end gap-1">
-      <Button
+      <IconAction
         type="button"
         variant="ghost"
-        size="sm"
         onClick={() => onEdit(secret.name)}
         disabled={pending}
-        aria-label={`Edit secret ${secret.name}`}
+        label={`Edit secret ${secret.name}`}
       >
         <PencilIcon size={14} />
-      </Button>
-      <Button
+      </IconAction>
+      <IconAction
         type="button"
         variant="destructive"
-        size="sm"
         onClick={() => onDelete(secret.name)}
         disabled={deleteDisabled}
-        aria-label={
+        label={
           protectedFromDelete
             ? `Secret ${secret.name} is in model setup`
             : `Delete secret ${secret.name}`
@@ -72,7 +71,7 @@ function SecretActions({
         }
       >
         {deleting ? <Spinner size="sm" srLabel="Deleting" /> : <Trash2Icon size={14} />}
-      </Button>
+      </IconAction>
     </div>
   );
 }
@@ -90,19 +89,18 @@ function SecretNameCell({
     <div className="flex min-w-0 items-start gap-1">
       <div className="min-w-0">
         <div className="truncate font-mono text-sm">{secret.name}</div>
-        <div className="text-xs text-muted-foreground">Write-only encrypted secret</div>
+        <div className="text-xs text-muted-foreground">{SECRET_ROW_DESCRIPTION}</div>
       </div>
-      <Button
+      <IconAction
         type="button"
         variant="ghost"
-        size="sm"
         onClick={() => onRename(secret.name)}
         disabled={pending}
-        aria-label={`Rename secret ${secret.name}`}
+        label={`Rename secret ${secret.name}`}
         title="Rename"
       >
         <PencilLineIcon size={14} />
-      </Button>
+      </IconAction>
     </div>
   );
 }

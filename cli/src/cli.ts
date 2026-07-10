@@ -268,7 +268,7 @@ export async function runCli(argv: readonly string[], io: RunCliIo = {}): Promis
 
   // commander 14 does NOT propagate exitOverride/configureOutput to
   // subcommands, so an option validator that throws InvalidArgumentError on a
-  // SUBCOMMAND flag (e.g. `secret add --base-url`) would otherwise call
+  // SUBCOMMAND flag (e.g. `secret create --base-url`) would otherwise call
   // process.exit + write to the real stderr, bypassing the Effect bridge and
   // the injected test streams. Apply both to the whole tree so every parse-stage
   // rejection throws (caught by runCommanderParse) and routes through the

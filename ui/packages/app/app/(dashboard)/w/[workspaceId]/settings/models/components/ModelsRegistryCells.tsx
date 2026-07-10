@@ -1,6 +1,6 @@
 "use client";
 
-import { Badge, Button } from "@agentsfleet/design-system";
+import { Badge, IconAction } from "@agentsfleet/design-system";
 import { ArrowLeftRightIcon, EyeIcon, LockIcon, PencilIcon, Trash2Icon } from "lucide-react";
 import { type ModelCap, providerLabel } from "@/lib/api/model_caps";
 import { nanosToUsdPerMtok } from "@/lib/api/admin_models";
@@ -16,6 +16,7 @@ const PLATFORM_UNAVAILABLE_NOTE = "No default is configured.";
 // Threshold + divisor for the "k" context abbreviation (200000 → "200k").
 const TOKENS_PER_K = 1000;
 const EMPTY_VALUE = "—";
+const RATES_UNAVAILABLE = "Rates unavailable";
 
 export function rowKey(row: RegistryRow): string {
   return row.kind === "default" ? "default" : row.entry.id;
@@ -30,6 +31,8 @@ export function formatContext(tokens: number | undefined): string {
   return tokens >= TOKENS_PER_K ? `${Math.round(tokens / TOKENS_PER_K)}k` : String(tokens);
 }
 
+type RateFields = Pick<ModelCap, "input_nanos_per_mtok" | "cached_input_nanos_per_mtok" | "output_nanos_per_mtok">;
+
 /** The library row pricing (provider, model_id) — null when the library
  * doesn't price it (custom endpoints, or the library fetch failed). */
 export function libraryRateFor(
@@ -41,10 +44,25 @@ export function libraryRateFor(
   return models.find((m) => m.provider === provider && m.id === modelId) ?? null;
 }
 
+function rowRateFor(row: TenantModelEntry | TenantPlatformDefault): RateFields | null {
+  if (
+    row.input_nanos_per_mtok == null ||
+    row.cached_input_nanos_per_mtok == null ||
+    row.output_nanos_per_mtok == null
+  ) {
+    return null;
+  }
+  return {
+    input_nanos_per_mtok: row.input_nanos_per_mtok,
+    cached_input_nanos_per_mtok: row.cached_input_nanos_per_mtok,
+    output_nanos_per_mtok: row.output_nanos_per_mtok,
+  };
+}
+
 /** "in / cached / out" per-1M line — the admin catalogue's presentation; the
  * column header carries the "$/1M" unit so the cell stays compact. */
-export function formatRates(rate: ModelCap | null): string {
-  if (!rate) return EMPTY_VALUE;
+export function formatRates(rate: RateFields | null): string {
+  if (!rate) return RATES_UNAVAILABLE;
   const usd = (nanos: number) => nanosToUsdPerMtok(nanos).toFixed(2);
   return `${usd(rate.input_nanos_per_mtok)} / ${usd(rate.cached_input_nanos_per_mtok)} / ${usd(rate.output_nanos_per_mtok)}`;
 }
@@ -111,12 +129,18 @@ export function ContextCell({
           provider: platformDefault.provider,
           model: platformDefault.model,
           context: platformDefault.context_cap_tokens,
+          rate: rowRateFor(platformDefault),
         }
-      : { provider: row.entry.provider, model: row.entry.model_id, context: row.entry.context_cap_tokens };
+      : {
+          provider: row.entry.provider,
+          model: row.entry.model_id,
+          context: row.entry.context_cap_tokens,
+          rate: rowRateFor(row.entry),
+        };
   if (!identity) {
     return <span className="font-mono text-xs tabular-nums text-muted-foreground">{EMPTY_VALUE}</span>;
   }
-  const rate = libraryRateFor(libraryModels, identity.provider, identity.model);
+  const rate = identity.rate ?? libraryRateFor(libraryModels, identity.provider, identity.model);
   return (
     <div className="font-mono text-xs tabular-nums text-muted-foreground">
       <div>{formatContext(identity.context)}</div>
@@ -158,16 +182,15 @@ export function ActionsCell({
     if (isDefaultLive) return null;
     return (
       <div className="flex flex-col items-end gap-1">
-        <Button
+        <IconAction
           type="button"
           variant="ghost"
-          size="sm"
           disabled={pending || !platformDefaultAvailable}
           onClick={onSwitchDefault}
-          aria-label="Use default"
+          label="Use default"
         >
           <ArrowLeftRightIcon size={14} />
-        </Button>
+        </IconAction>
         {!platformDefaultAvailable ? <span className="text-xs text-muted-foreground">{PLATFORM_UNAVAILABLE_NOTE}</span> : null}
       </div>
     );
@@ -175,48 +198,44 @@ export function ActionsCell({
   const { entry } = row;
   return (
     <div className="flex items-center justify-end gap-1">
-      <Button
+      <IconAction
         type="button"
         variant="ghost"
-        size="sm"
         disabled={pending}
         onClick={() => onView(entry)}
-        aria-label={`View details for ${entry.model_id}`}
+        label={`View details for ${entry.model_id}`}
       >
         <EyeIcon size={14} />
-      </Button>
+      </IconAction>
       {!entry.active ? (
-        <Button
+        <IconAction
           type="button"
           variant="ghost"
-          size="sm"
           disabled={pending}
           onClick={() => onSwitchEntry(entry)}
-          aria-label={`Switch to ${entry.model_id}`}
+          label={`Switch to ${entry.model_id}`}
         >
           <ArrowLeftRightIcon size={14} />
-        </Button>
+        </IconAction>
       ) : null}
-      <Button
+      <IconAction
         type="button"
         variant="ghost"
-        size="sm"
         disabled={pending}
         onClick={() => onEdit(entry)}
-        aria-label={`Edit ${entry.model_id}`}
+        label={`Edit ${entry.model_id}`}
       >
         <PencilIcon size={14} />
-      </Button>
-      <Button
+      </IconAction>
+      <IconAction
         type="button"
         variant="destructive"
-        size="sm"
         disabled={pending || entry.active}
         onClick={() => onRemove(entry)}
-        aria-label={entry.active ? `Cannot remove ${entry.model_id} while it is active` : `Remove ${entry.model_id}`}
+        label={entry.active ? `Cannot remove ${entry.model_id} while it is active` : `Remove ${entry.model_id}`}
       >
         <Trash2Icon size={14} />
-      </Button>
+      </IconAction>
     </div>
   );
 }

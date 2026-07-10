@@ -21,7 +21,7 @@ Read this when you need to know where a webhook, a steer, or a cron fire ends up
 | `core.fleets` | `agentsfleetd-api` only | Canonical Fleet runtime table; `agentsfleetd` reads it at lease so config resolves fresh per lease |
 | `core.fleet_sessions` | `agentsfleetd` lease path (mark busy) + report path (checkpoint) | `agentsfleetd` at lease + `agentsfleet status` |
 | `fleet.runner_leases` / `fleet.runner_affinity` | `agentsfleetd` lease path (issue) + report/reclaim (flip / release) | `agentsfleetd` assignment + fencing + reclaim |
-| `vault.secrets` | `agentsfleetd-api` on `secret add` (upsert) | `agentsfleetd` resolves just-in-time at `lease`, ships inline in the lease reply |
+| `vault.secrets` | `agentsfleetd-api` on `secret create` (upsert) | `agentsfleetd` resolves just-in-time at `lease`, ships inline in the lease reply |
 | `fleet:control` | — (removed at the cutover) | — (removed at the cutover) |
 
 ---
@@ -525,7 +525,7 @@ user action:
   deferred renaming this constant) — the matching `triggers[].source` is unknown
   to the provider registry, OR the workspace has no `fleet:<source>` vault secret
   (vault row missing OR `webhook_secret` field absent). User-recoverable misconfig
-  — fix with `agentsfleet secret add <source> --data @-` and pipe JSON on stdin.
+  — fix with `agentsfleet secret create <source> --data @-` and pipe JSON on stdin.
 - `UZ-WH-010 invalid_signature` — provider + secret both configured but
   the request is unsigned, mis-signed, or the body was tampered with.
   Either an attack or a real drift between what the provider has

@@ -168,6 +168,21 @@ components:
           format: int64
           nullable: true
           description: From the model-caps catalogue when the provider/model is known; omitted otherwise.
+        input_nanos_per_mtok:
+          type: integer
+          format: int64
+          nullable: true
+          description: Input-token price in nanos per 1M tokens when the model is in the platform library.
+        cached_input_nanos_per_mtok:
+          type: integer
+          format: int64
+          nullable: true
+          description: Cached-input-token price in nanos per 1M tokens when available.
+        output_nanos_per_mtok:
+          type: integer
+          format: int64
+          nullable: true
+          description: Output-token price in nanos per 1M tokens when the model is in the platform library.
         active:
           type: boolean
           description: True when (secret_ref, model_id) matches the tenant's current provider selection.
@@ -206,6 +221,18 @@ components:
             context_cap_tokens:
               type: integer
               format: int64
+            input_nanos_per_mtok:
+              type: integer
+              format: int64
+              nullable: true
+            cached_input_nanos_per_mtok:
+              type: integer
+              format: int64
+              nullable: true
+            output_nanos_per_mtok:
+              type: integer
+              format: int64
+              nullable: true
     TenantModelEntryWriteResult:
       type: object
       required:

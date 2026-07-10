@@ -2,9 +2,9 @@
  * fleet-key mutation round-trip (live, seeded-credentials session).
  *
  * Closes the biggest mutation gap the coverage critic flagged: every other
- * write verb got a dedicated live slice, but `fleet-key add` / `delete` were
+ * write verb got a dedicated live slice, but `fleet-key create` / `delete` were
  * only ever exercised in the negative matrices. This walks the happy path:
- *   install fleet -> fleet-key add --fleet <id> --name <prefixed> --json
+ *   install fleet -> fleet-key create --fleet <id> --name <prefixed> --json
  *   -> fleet-key list --json includes the fleet_key_id
  *   -> fleet-key delete <id> --json -> deleted
  *   -> fleet-key list --json excludes it
@@ -37,7 +37,7 @@ const isLive = target.startsWith("https://");
 
 // --- command/flag/key constants (RULE UFS) ---------------------------------
 const CMD_AGENT_KEY = "fleet-key" as const;
-const SUB_ADD = "add" as const;
+const SUB_CREATE = "create" as const;
 const SUB_LIST = "list" as const;
 const SUB_DELETE = "delete" as const;
 const FLAG_AGENT = "--fleet" as const;
@@ -123,11 +123,11 @@ if (!isLive) {
       if (stateDir) await fs.rm(stateDir, { recursive: true, force: true });
     });
 
-    it("add mints a key bound to the fleet and returns an fleet_key_id", async () => {
-      const result = await run([CMD_AGENT_KEY, SUB_ADD, FLAG_AGENT, fleetId, FLAG_NAME, keyName("roundtrip"), FLAG_JSON]);
-      assert.equal(result.code, 0, `add exited ${result.code}: ${result.stderr}`);
+    it("create mints a key bound to the fleet and returns a fleet_key_id", async () => {
+      const result = await run([CMD_AGENT_KEY, SUB_CREATE, FLAG_AGENT, fleetId, FLAG_NAME, keyName("roundtrip"), FLAG_JSON]);
+      assert.equal(result.code, 0, `create exited ${result.code}: ${result.stderr}`);
       const parsed = JSON.parse(result.stdout.trim()) as FleetKeyRow;
-      assert.equal(typeof parsed.fleet_key_id, "string", `add missing fleet_key_id: ${result.stdout}`);
+      assert.equal(typeof parsed.fleet_key_id, "string", `create missing fleet_key_id: ${result.stdout}`);
       mintedKeyId = parsed.fleet_key_id as string;
     });
 

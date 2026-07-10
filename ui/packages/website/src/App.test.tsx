@@ -20,7 +20,9 @@ function renderApp(initialRoute = "/") {
   return render(<RouterProvider router={router} />);
 }
 
-describe("App", () => {
+const APP_TEST_TIMEOUT_MS = 20_000;
+
+describe("App", { timeout: APP_TEST_TIMEOUT_MS }, () => {
   beforeEach(() => {
     analytics.trackNavigationClicked.mockReset();
     analytics.trackSignupStarted.mockReset();

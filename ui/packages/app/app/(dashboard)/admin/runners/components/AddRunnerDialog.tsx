@@ -26,6 +26,7 @@ import {
   OptionCard,
   RadioGroup,
   Spinner,
+  TooltipButton,
 } from "@agentsfleet/design-system";
 import { PlusIcon } from "lucide-react";
 import {
@@ -43,6 +44,8 @@ import { EVENTS } from "@/lib/analytics/events";
 import { captureProductEvent } from "@/lib/analytics/posthog";
 
 const DEFAULT_TIER: SandboxTier = "landlock_full";
+const RUNNER_TOKEN_WARNING = "Copy the install token when it appears. It is shown once.";
+const CREATE_RUNNER_TOOLTIP = "Enroll a host to run fleets.";
 
 const schema = z.object({
   host_id: z.string().trim().regex(HOST_ID_REGEX, "1–256 characters: letters, digits, dot, hyphen, underscore"),
@@ -108,10 +111,10 @@ export default function AddRunnerDialog({ onCreated }: { onCreated: () => void }
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
-        <Button type="button" size="sm">
+        <TooltipButton type="button" size="sm" tooltip={CREATE_RUNNER_TOOLTIP}>
           <PlusIcon size={14} />
           Create runner
-        </Button>
+        </TooltipButton>
       </DialogTrigger>
       <DialogContent
         onInteractOutside={(e) => {
@@ -132,9 +135,7 @@ export default function AddRunnerDialog({ onCreated }: { onCreated: () => void }
               </DialogDescription>
             </DialogHeader>
             <Alert variant="warning">
-              <AlertDescription>
-                Creating a runner mints an install token shown only once — copy it when it appears.
-              </AlertDescription>
+              <AlertDescription>{RUNNER_TOKEN_WARNING}</AlertDescription>
             </Alert>
             <Form {...form}>
               <form
@@ -205,10 +206,18 @@ export default function AddRunnerDialog({ onCreated }: { onCreated: () => void }
                 />
                 {apiError ? <p className="text-sm text-destructive">{apiError}</p> : null}
                 <DialogFooter>
-                  <Button type="submit" disabled={pending}>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    disabled={pending}
+                    onClick={() => handleOpenChange(false)}
+                  >
+                    Cancel
+                  </Button>
+                  <TooltipButton type="submit" disabled={pending} tooltip={CREATE_RUNNER_TOOLTIP}>
                     {pending ? <Spinner size="sm" srLabel="Enrolling" /> : null}
                     Create runner
-                  </Button>
+                  </TooltipButton>
                 </DialogFooter>
               </form>
             </Form>
