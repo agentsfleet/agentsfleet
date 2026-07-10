@@ -27,6 +27,7 @@ test {
     _ = @import("fleet/fleet_session.zig");
     _ = @import("fleet/event_rows.zig");
     _ = @import("fleet/budget.zig");
+    _ = @import("fleet/budget_test.zig");
     _ = @import("fleet/service_activity.zig");
     _ = @import("fleet/approval_gate.zig");
     _ = @import("fleet_runtime/approval_gate_async.zig");
@@ -66,6 +67,7 @@ test {
     _ = @import("fleet/control_plane_grant_integration_test.zig");
     _ = @import("fleet/event_lifecycle_integration_test.zig");
     _ = @import("fleet/budget_integration_test.zig");
+    _ = @import("fleet/budget_gate_integration_test.zig");
     _ = @import("fleet/event_lifecycle_reclaim_integration_test.zig");
     _ = @import("fleet/renewal_integration_test.zig");
     _ = @import("fleet/service_renew_integration_test.zig");

@@ -201,7 +201,7 @@ test "integration: fetch_budget_and_spend_refuses_an_unparseable_stored_budget" 
     );
 }
 
-test "integration: fetch_budget_and_spend_refuses_when_the_budget_key_is_absent" {
+test "integration: fetch_budget_and_spend_admits_a_fleet_that_declares_no_budget" {
     const db_ctx = (try base.openTestConn(ALLOC)) orelse return error.SkipZigTest;
     defer db_ctx.pool.deinit();
     defer db_ctx.pool.release(db_ctx.conn);
@@ -212,16 +212,41 @@ test "integration: fetch_budget_and_spend_refuses_when_the_budget_key_is_absent"
     defer teardownFleet(conn, FLEET_UUID);
 
     // `config_json` with no budget subobject: the JSON path yields SQL NULL.
+    // "No ceiling declared" is NOT "ceiling we cannot read". Refusing here would
+    // kill the in-flight runs of every fleet row written by a path that does not
+    // set `budget` — enforcing a limit nobody wrote. `service_token_splits_wire_test`
+    // seeds exactly such a fleet (`config_json = "{}"`), and caught this.
     _ = try conn.exec(
         \\INSERT INTO core.fleets (id, workspace_id, name, source_markdown, config_json, status, created_at, updated_at)
         \\VALUES ($1::uuid, $2::uuid, 'budget-fixture', '', '{"x-agentsfleet":{}}'::jsonb, 'active', 0, 0)
         \\ON CONFLICT (id) DO UPDATE SET config_json = EXCLUDED.config_json
     , .{ FLEET_UUID, WS_A });
 
-    try std.testing.expectError(
-        budget.BudgetError.UnreadableBudget,
-        budget.fetchBudgetAndSpend(conn, ALLOC, FLEET_UUID, WS_A, NOW_MS),
-    );
+    const found = try budget.fetchBudgetAndSpend(conn, ALLOC, FLEET_UUID, WS_A, NOW_MS);
+    try std.testing.expectEqual(@as(@TypeOf(found), null), found);
+    // ...and the read classifies as `.absent`, which `refusalFor` admits.
+    const read = budget.readBudget(conn, ALLOC, FLEET_UUID, WS_A, NOW_MS);
+    try std.testing.expectEqual(std.meta.Tag(budget.BudgetRead).absent, std.meta.activeTag(read));
+    try std.testing.expectEqual(@as(?budget.Verdict, null), budget.refusalFor(.absent));
+}
+
+test "integration: a declared-but-malformed budget still refuses (fail closed)" {
+    const db_ctx = (try base.openTestConn(ALLOC)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
+    const conn = db_ctx.conn;
+
+    try uc1.seed(conn, WS_A);
+    defer uc1.teardown(conn, WS_A);
+    defer teardownFleet(conn, FLEET_UUID);
+
+    // The distinction from the test above: a `budget` key IS present, and its
+    // value is nonsense. That is a ceiling we cannot read, so the run stops.
+    try seedFleetWithBudget(conn, FLEET_UUID, WS_A, "{\"daily_dollars\": \"five\"}");
+    const read = budget.readBudget(conn, ALLOC, FLEET_UUID, WS_A, NOW_MS);
+    try std.testing.expectEqual(std.meta.Tag(budget.BudgetRead).unreadable, std.meta.activeTag(read));
+    const refusal = budget.refusalFor(.unreadable);
+    try std.testing.expect(refusal != null and refusal.?.refused());
 }
 
 test "integration: fetch_budget_and_spend_returns_null_when_the_fleet_row_is_gone" {
