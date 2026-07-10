@@ -1,12 +1,21 @@
 #!/usr/bin/env bash
-# M7_002 Section 1: vault sync — verify credential fields exist and are consistent.
+# Vault sync — verify credential fields exist and are consistent.
 #
 # Covers playbook sections 1.0 (Vercel bypass) and 2.0 (Upstash Redis passwords).
+# Reads the vault, so it carries the same approval + auth gates as every other
+# script under playbooks/operations/ (enforced by `make check-playbooks`).
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=../../lib/common.sh
+source "$SCRIPT_DIR/../../lib/common.sh"
+
+playbooks_require_vault_read_approval
+playbooks_require_op_auth
+
 echo ""
-echo "== M7_002 Section 1: vault sync =="
+echo "== vault sync =="
 
 vault_dev="${VAULT_DEV:-ZMB_CD_DEV}"
 vault_prod="${VAULT_PROD:-ZMB_CD_PROD}"
