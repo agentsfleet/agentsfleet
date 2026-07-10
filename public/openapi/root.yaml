@@ -45,7 +45,7 @@ tags:
   x-mintlify:
     navigation: Secrets
 - name: Admin
-  description: Platform-wide configuration — manage shared LLM provider keys
+  description: Platform-wide configuration — manage shared LLM provider keys and the priced model catalogue
   x-mintlify:
     navigation: Admin
 - name: Billing
@@ -105,6 +105,10 @@ paths:
     $ref: ./paths/admin.yaml#/~1v1~1admin~1platform-keys
   /v1/admin/platform-keys/{provider}:
     $ref: ./paths/admin.yaml#/~1v1~1admin~1platform-keys~1{provider}
+  /v1/admin/models:
+    $ref: ./paths/admin-models.yaml#/~1v1~1admin~1models
+  /v1/admin/models/{uid}:
+    $ref: ./paths/admin-models.yaml#/~1v1~1admin~1models~1{uid}
   /v1/auth/sessions:
     $ref: ./paths/authentication.yaml#/~1v1~1auth~1sessions
   /v1/auth/sessions/{session_id}:
