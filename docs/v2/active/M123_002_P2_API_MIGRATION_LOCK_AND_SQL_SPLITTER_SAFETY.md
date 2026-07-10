@@ -58,6 +58,9 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `src/agentsfleetd/db/sql_splitter.zig` | EDIT | §2 tagged `$tag$` dollar-quote + `/* */` block-comment support, a non-allocating `validate`, header caveats removed, new unit tests |
 | `src/agentsfleetd/fleet/schema_migration_test.zig` | EDIT | §1 lock-before-DDL regression; §3 stale-vs-genuine failure-row correlation regression (both reachable today) |
 | `src/agentsfleetd/cmd/common.zig` | EDIT | §2 harden the `every migration SQL is parseable` corpus guard from `count != 0` to a correct-split assertion — runs only after M122_005 wires this file in |
+| `src/agentsfleetd/db/sql_splitter_test.zig` | ADD | §2 splitter unit tests extracted from the source module (file-length cap) plus the new tagged-dollar-quote / block-comment / `validate` tests |
+| `src/agentsfleetd/tests.zig` | EDIT | force-import the extracted `sql_splitter_test.zig` so its tests stay reachable |
+| `src/agentsfleetd/db/pool_migration_lock.zig` | EDIT | §1 expose the production lock bounds (`MAX_ATTEMPTS`/`RETRY_MS`) so `runMigrations` can delegate to the bounded variant |
 
 ## Applicable Rules
 
@@ -82,28 +85,28 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ## Sections (implementation slices)
 
-### §1 — Advisory lock covers all migration bookkeeping DDL
+### §1 — Advisory lock covers all migration bookkeeping DDL — DONE
 
 `runMigrations` runs `ensureSchemaMigrationsTable` / `ensureSchemaMigrationFailuresTable` (each a `CREATE SCHEMA/TABLE IF NOT EXISTS`) before `migration_lock.acquire`, so the DDL that builds the serialization bookkeeping runs outside the lock meant to serialize it. **Implementation default:** move `migration_lock.acquire` (and its `defer migration_lock.release`) above the two `ensure*` calls, because `acquire` needs only a session and the constant key — no table — so it can be taken first, and the lock then covers the reap, the ensure DDL, and every apply. The loser of a genuinely-simultaneous boot now bounded-retries (~30s) and either succeeds as a no-op or exits with `MigrationLockUnavailable`, instead of crashing on a duplicate-catalog error.
 
-- **Dimension 1.1** — with the advisory lock held by a separate session, `runMigrations` returns `error.MigrationLockUnavailable` and creates no `audit` bookkeeping (proving `acquire` precedes the DDL) → Test `test_lock_held_blocks_before_ddl`
-- **Dimension 1.2** — a normal `runMigrations` on a clean database applies every migration and a second call is a no-op (regression: reorder does not change the happy path) → Test `test_run_migrations_idempotent_happy_path`
+- **Dimension 1.1** — DONE — with the advisory lock held by a separate session, `runMigrations` returns `error.MigrationLockUnavailable` and creates no `audit` bookkeeping (proving `acquire` precedes the DDL) → Test `test_lock_held_blocks_before_ddl`
+- **Dimension 1.2** — DONE — a normal `runMigrations` on a clean database applies every migration and a second call is a no-op (regression: reorder does not change the happy path) → Test `test_run_migrations_idempotent_happy_path`
 
-### §2 — SQL splitter: tagged dollar-quotes, block comments, loud on the unparseable
+### §2 — SQL splitter: tagged dollar-quotes, block comments, loud on the unparseable — DONE
 
 The splitter matches only bare `$$` and treats `/* */` as unsupported, so a tagged `$body$ ... ; ... $body$` function body splits on an internal `;`; the corpus guard only checks `count != 0` and cannot see the truncation. **Implementation default:** support the two documented gaps AND add a loud backstop — (a) capture the tag on an opening `$tag$` and match it verbatim on close so internal `;`/`$$` are inert; (b) skip `/* ... */` block comments like `--` line comments; (c) add a non-allocating `pub fn validate` that scans and returns a named error (distinct from `error.PG`) on an unterminated dollar-quote, block comment, or string; (d) call `validate` in `applySqlStatements` before splitting so a genuinely-unparseable migration fails loudly at apply time, never truncates. Silent truncation of a migration is the state this section makes unrepresentable. Delete the "does NOT handle" caveats from the module header.
 
-- **Dimension 2.1** — `CREATE FUNCTION f() ... AS $body$ BEGIN ...; ...; END $body$ LANGUAGE plpgsql;` splits as exactly one statement → Test `test_splitter_tagged_dollar_quote_single_statement`
-- **Dimension 2.2** — a `/* ; $$ $body$ */` block comment is skipped entirely, contributing no boundary and opening no quote state → Test `test_splitter_block_comment_skipped`
-- **Dimension 2.3** — an unterminated `$tag$`, unterminated `/*`, or unterminated `'` string makes `validate` return its named error instead of the splitter returning a truncated tail → Test `test_splitter_validate_rejects_unterminated`
-- **Dimension 2.4** — every canonical migration passes `validate` and splits to its expected boundary count (corpus guard hardened from `count != 0`; lives in `cmd/common.zig`, so it executes only once M122_005 wires that file into a test root) → Test `test_every_migration_splits_correctly`
+- **Dimension 2.1** — DONE — `CREATE FUNCTION f() ... AS $body$ BEGIN ...; ...; END $body$ LANGUAGE plpgsql;` splits as exactly one statement → Test `test_splitter_tagged_dollar_quote_single_statement`
+- **Dimension 2.2** — DONE — a `/* ; $$ $body$ */` block comment is skipped entirely, contributing no boundary and opening no quote state → Test `test_splitter_block_comment_skipped`
+- **Dimension 2.3** — DONE — an unterminated `$tag$`, unterminated `/*`, or unterminated `'` string makes `validate` return its named error instead of the splitter returning a truncated tail → Test `test_splitter_validate_rejects_unterminated`
+- **Dimension 2.4** — DONE — every canonical migration passes `validate` and splits to its expected boundary count (corpus guard hardened from `count != 0`; lives in `cmd/common.zig`, so it executes only once M122_005 wires that file into a test root) → Test `test_every_migration_splits_correctly`
 
-### §3 — A stale failure row for an applied migration no longer blocks boot
+### §3 — A stale failure row for an applied migration no longer blocks boot — DONE
 
 `clearMigrationFailure` runs after `COMMIT`, outside the transaction, and swallows its error; `inspectMigrationState` treats any `schema_migration_failures` row as fatal, so a transient post-commit DELETE failure on an already-applied migration wedges serve boot with `MigrationFailed` until a manual `agentsfleetd migrate`. **Implementation default:** correlate in `hasFailedMigrationRecords` — a failure row counts only when its version is absent from `schema_migrations` (a genuinely failed, not-yet-applied migration). A failure row whose version is applied is treated as resolved, so the swallowed DELETE is no longer load-bearing for boot correctness. This is the durable fix over re-arming the post-commit DELETE.
 
-- **Dimension 3.1** — a `schema_migration_failures` row whose version is present in `schema_migrations` → `inspectMigrationState` reports `has_failed_migrations = false` (before the fix: true) → Test `test_applied_version_failure_row_is_resolved`
-- **Dimension 3.2** — a failure row whose version is NOT applied still reports `has_failed_migrations = true` (regression: a genuine failure still blocks) → Test `test_unapplied_version_failure_row_still_blocks`
+- **Dimension 3.1** — DONE — a `schema_migration_failures` row whose version is present in `schema_migrations` → `inspectMigrationState` reports `has_failed_migrations = false` (before the fix: true) → Test `test_applied_version_failure_row_is_resolved`
+- **Dimension 3.2** — DONE — a failure row whose version is NOT applied still reports `has_failed_migrations = true` (regression: a genuine failure still blocks) → Test `test_unapplied_version_failure_row_still_blocks`
 
 ## Interfaces
 
@@ -118,6 +121,10 @@ sql_splitter.SqlStatementSplitter
 pool_migrations.runMigrations(pool, migrations) !void
   // unchanged signature; acquire now precedes ensure* DDL; applySqlStatements
   // calls validate before splitting.
+
+pool_migrations.runMigrationsBounded(pool, migrations, lock_max_attempts, lock_retry_ms) !void
+  // NEW test seam mirroring migration_lock.acquireBounded — runMigrations
+  // delegates with the production bounds; contention tests inject fast ones.
 
 pool_migrations.inspectMigrationState(pool, migrations) !MigrationState
   // unchanged signature; MigrationState.has_failed_migrations now derives from
@@ -166,19 +173,19 @@ No HTTP route, Command-Line Interface (CLI) surface, or on-disk schema path chan
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | Lock precedes DDL; splitter parses/rejects correctly (§1/§2) | `make test` | exit 0 incl. the splitter unit tests | P0 | |
+| R1 | Lock precedes DDL; splitter parses/rejects correctly (§1/§2) | `make test-unit-all` | exit 0 incl. the splitter unit tests | P0 | |
 | R2 | Lock-held and stale-row regressions pass (§1/§3) | `make test-integration` | exit 0 incl. the new migration tests | P0 | |
 | R3 | Splitter header no longer disclaims tagged dollar-quotes/block comments (§2) | `grep -n "not supported\|does NOT handle" src/agentsfleetd/db/sql_splitter.zig` | no output | P1 | |
 | R4 | Corpus guard no longer passes on `count != 0` alone (§2) | `grep -n "stmt_count == 0" src/agentsfleetd/cmd/common.zig` | no output | P1 | |
 | R5 | Diff stays inside Files Changed | `git diff --name-only origin/main` | 0 paths missing from the Files Changed table | P0 | |
-| S1 | Unit tests pass | `make test` | exit 0 | P0 | |
-| S2 | Lint clean | `make lint` | exit 0 | P0 | |
+| S1 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | |
+| S2 | Lint clean | `make lint-all` | exit 0 | P0 | |
 | S3 | Integration passes | `make test-integration` | exit 0 | P0 | |
-| S4 | pg-drain intact (query changed) | `make check-pg-drain` | exit 0 | P0 | |
+| S4 | pg-drain intact (query changed) | `make _lint_zig_pg_drain` | exit 0 | P0 | |
 | S5 | No leaks (Zig migration path touched) | `make memleak` | exit 0 | P0 | |
 | S6 | Cross-compile | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` | exit 0 | P0 | |
 | S7 | No secrets | `gitleaks detect` | exit 0 | P0 | |
-| S8 | No oversize source file | `git diff --name-only origin/main \| grep -v '\.md$' \| xargs wc -l 2>/dev/null \| awk '$1>350 && $2!="total"'` | no output | P0 | |
+| S8 | No oversize source file | `git diff --name-only origin/main \| grep -v -E '\.md$\|^docs/\|_test\.' \| xargs wc -l 2>/dev/null \| awk '$1>350 && $2!="total"'` | no output | P0 | |
 
 **Grading protocol (VERIFY):** run the Verify command verbatim; grade ONLY from its output. Graded = ✅/❌ + the one decisive output line (`342 passed`); long evidence goes to PR Session Notes with a pointer here. **Ship gate:** every row graded, every P0 ✅ → eligible for CHORE(close); any ❌ or empty cell → return to EXECUTE; a P1 ❌ ships only with an Indy-acked deferral quote in Discovery.
 
@@ -217,6 +224,14 @@ N/A — no files deleted. §2 removes the "does NOT handle" header caveats and t
 ## Discovery (consult log)
 
 - **Consults** — Architecture / Legacy-Design / gate-flag triage: empty at creation.
+- **EXECUTE decisions** (routine choice points, reasoning recorded):
+  1. Dimension 1.1 exercises `runMigrationsBounded` (a new test seam that `runMigrations` delegates to with the production bounds) instead of stalling ~30s on the production lock bound — mirrors the `acquire`/`acquireBounded` idiom the lock module and `db/pool_test.zig` already use for exactly this reason. Interfaces + Files Changed amended.
+  2. Dimension 2.4's correct-split assertion = whole-file `validate` + per-statement `validate` (every emitted statement must be structurally complete, so a split inside a quote/comment fails loudly) + non-zero count. No per-migration expected-count literal table — a hardcoded count column would rot on every migration add (the drift RULE MIG exists to prevent).
+  3. The §2 loud-reject log (`migrate.sql_invalid`, err level) carries version + error name but no new `UZ-*` registry code, matching the existing code-less err/warn convention across the `db_migrate`/startup command surfaces; the spec's "no new error-registry code" scoping holds (`audits/logging.sh` treats a missing `error_code=` as informational).
+  4. Single-caller `beginTx`/`commitTx` wrappers inlined (named `S_BEGIN`/`S_COMMIT` consts) during the `runMigrations` function-cap split into `runMigrationsBounded` + `applyOneMigration`.
+  5. No dollar-tag length cap: the Postgres lexer accepts tags of any length (and high-bit/UTF-8 tag bytes), so an arbitrary cap would silently mis-split a long-tagged quote — the exact pathology §2 makes unrepresentable. The delimiter scan is inherently bounded by the first non-tag byte.
+  6. Two fresh-bookkeeping integration tests added beyond the Test Specification (apply-once/no-op re-run, and unterminated-migration loud reject with its failure row) — `applyOneMigration` and the `applySqlStatements` validate call site are otherwise unreachable on the already-migrated shared test DB, and a synthetic migration list is only safe against a stashed-fresh `audit` schema (reap deletes rows outside the list).
+  7. Rubric Verify commands aligned to the Makefile's real target names (`make test-unit-all` / `make lint-all` / `make _lint_zig_pg_drain`); S8 gains the canonical `_test\.` exclusion from the FLL self-audit (test files are FLL-exempt).
 - **Metrics review** — empty at creation.
 - **Skill-chain outcomes** — empty at creation.
 - **Deferrals** — empty at creation.
