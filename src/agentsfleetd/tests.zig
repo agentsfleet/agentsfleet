@@ -65,6 +65,7 @@ test {
     _ = @import("fleet/control_plane_policy_integration_test.zig");
     _ = @import("fleet/control_plane_grant_integration_test.zig");
     _ = @import("fleet/event_lifecycle_integration_test.zig");
+    _ = @import("fleet/budget_integration_test.zig");
     _ = @import("fleet/event_lifecycle_reclaim_integration_test.zig");
     _ = @import("fleet/renewal_integration_test.zig");
     _ = @import("fleet/service_renew_integration_test.zig");
