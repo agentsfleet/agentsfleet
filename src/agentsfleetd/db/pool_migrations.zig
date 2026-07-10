@@ -18,19 +18,27 @@ const log = logging.scoped(.db_migrate);
 const Conn = pg.Conn;
 const Pool = pg.Pool;
 
-/// Authoritative declarations live in `pool_types.zig` (the leaf module
-/// that breaks the pool.zig ↔ pool_migrations.zig import cycle).
+/// `pool_types.zig` is the leaf that breaks the pool.zig ↔ pool_migrations.zig import cycle.
 const types = @import("pool_types.zig");
 const Migration = types.Migration;
 const MigrationState = types.MigrationState;
 
 const S_PG_ERROR = "pg_error";
+const S_BEGIN = "BEGIN";
+const S_COMMIT = "COMMIT";
 const S_SELECT_1_FROM_AUDIT_SCHEMA_MIGRATION_FAILURES_LIMI = "SELECT 1 FROM audit.schema_migration_failures LIMIT 1";
+// A failure row is fatal only while its version is unapplied; stale rows resolve.
+const S_SELECT_UNRESOLVED_MIGRATION_FAILURES =
+    \\SELECT 1 FROM audit.schema_migration_failures f
+    \\WHERE NOT EXISTS (
+    \\    SELECT 1 FROM audit.schema_migrations m WHERE m.version = f.version
+    \\)
+    \\LIMIT 1
+;
 
 // Stack scratch for reapOrphanedMigrationRows' IN-list (no heap): per-version
-// decimal width (incl. comma) × the version cap × live copies held at once
-// (ArrayList growth ~2x + the two rendered DELETEs) + fixed DELETE-template
-// overhead. The version cap lives in migration_versions.zig.
+// decimal width × the version cap (migration_versions.zig) × live copies held
+// at once (ArrayList growth ~2x + two rendered DELETEs) + template overhead.
 const MAX_INLIST_DIGITS_PER_VERSION = 12;
 const REAP_SQL_TEMPLATE_BYTES = 128;
 const REAP_INLIST_COPIES = 4;
@@ -61,11 +69,11 @@ fn ensureSchemaMigrationFailuresTable(conn: *Conn) !void {
     , .{});
 }
 
-fn hasFailedMigrationRecords(conn: *Conn) !bool {
-    var result = PgQuery.from(try conn.query(
-        S_SELECT_1_FROM_AUDIT_SCHEMA_MIGRATION_FAILURES_LIMI,
-        .{},
-    ));
+fn hasFailedMigrationRecords(conn: *Conn, correlate_applied: bool) !bool {
+    // No schema_migrations table → nothing is applied → any failure row is
+    // unresolved (and the correlated query would 42P01 on the missing table).
+    const sql = if (correlate_applied) S_SELECT_UNRESOLVED_MIGRATION_FAILURES else S_SELECT_1_FROM_AUDIT_SCHEMA_MIGRATION_FAILURES_LIMI;
+    var result = PgQuery.from(try conn.query(sql, .{}));
     defer result.deinit();
     return (try result.next()) != null;
 }
@@ -85,13 +93,10 @@ fn clearMigrationFailure(conn: *Conn, version: i32) void {
     _ = conn.exec("DELETE FROM audit.schema_migration_failures WHERE version = $1", .{version}) catch |err| log.warn(logging.EVENT_IGNORED_ERROR, .{ .err = @errorName(err) });
 }
 
-/// Delete rows in audit.schema_migrations + schema_migration_failures whose
-/// version is no longer in the canonical migration list. Keeps the bookkeeping
-/// table in sync when migrations are removed (pre-v2.0 teardown — RULE SCH).
-/// Safe to run on every migrate: a fresh DB with no orphan rows is a no-op.
+/// Delete bookkeeping rows whose version left the canonical migration list
+/// (pre-v2.0 teardown — RULE SCH). No-op on every other migrate run.
 fn reapOrphanedMigrationRows(allocator: std.mem.Allocator, conn: *Conn, migrations: []const Migration) !void {
-    // Empty list → `DELETE … WHERE version NOT IN ()` is a Postgres syntax
-    // error (sqlstate 42601). A no-migrations boot has nothing to reap.
+    // Empty list → `NOT IN ()` is a Postgres syntax error (42601); nothing to reap.
     if (migrations.len == 0) return;
 
     var buf: std.ArrayList(u8) = .empty;
@@ -173,7 +178,13 @@ fn tableExists(conn: *Conn, query_sql: []const u8) !bool {
     return true;
 }
 
-fn applySqlStatements(conn: *Conn, sql: []const u8) !u32 {
+fn applySqlStatements(conn: *Conn, version: i32, sql: []const u8) !u32 {
+    // Loud reject: unterminated SQL fails as a named SplitError (never error.PG)
+    // before any truncated statement could apply.
+    sql_splitter.SqlStatementSplitter.validate(sql) catch |err| {
+        log.err("migrate.sql_invalid", .{ .version = version, .err = @errorName(err) });
+        return err;
+    };
     var splitter = sql_splitter.SqlStatementSplitter.init(sql);
     var count: u32 = 0;
 
@@ -187,17 +198,8 @@ fn applySqlStatements(conn: *Conn, sql: []const u8) !u32 {
     return count;
 }
 
-fn beginTx(conn: *Conn) !void {
-    _ = try conn.exec("BEGIN", .{});
-}
-
-fn commitTx(conn: *Conn) !void {
-    _ = try conn.exec("COMMIT", .{});
-}
-
 fn rollbackTx(conn: *Conn) void {
-    // conn.rollback() handles the FAIL-state case where exec("ROLLBACK")
-    // would silently no-op and leave the session in an aborted tx.
+    // conn.rollback() handles the FAIL state where exec("ROLLBACK") would silently no-op.
     conn.rollback() catch |err| log.warn(logging.EVENT_IGNORED_ERROR, .{ .err = @errorName(err) });
 }
 
@@ -236,20 +238,16 @@ pub fn inspectMigrationState(pool: *Pool, migrations: []const Migration) !Migrat
     else
         0;
     const failed = if (has_schema_migration_failures)
-        hasFailedMigrationRecords(conn) catch |err| {
+        hasFailedMigrationRecords(conn, has_schema_migrations) catch |err| {
             if (err == error.PG) logPgErrorContext(conn, "inspect.has_failed_migrations");
             return err;
         }
     else
         false;
 
-    // Pooler-safe: probeAvailable uses a transaction-scoped advisory lock that
-    // auto-releases at statement end. The old tryAcquire/release pair took a
-    // SESSION lock here and, over the pooled .api connection serve-boot runs on,
-    // leaked it onto a backend (the separate release routed elsewhere) — the
-    // exact failure this milestone fixes for the migrate path. Advisory locks
-    // are cluster-wide, so contention by a direct-connection migrator is still
-    // detected.
+    // Pooler-safe: probeAvailable's transaction-scoped advisory lock auto-releases
+    // at statement end (a session-scoped probe leaks onto a pooled backend). Advisory
+    // locks are cluster-wide, so a direct-connection migrator is still detected.
     var lock_available = true;
     if (applied_versions < migrations.len) {
         lock_available = migration_lock.probeAvailable(conn) catch false;
@@ -268,9 +266,24 @@ pub fn inspectMigrationState(pool: *Pool, migrations: []const Migration) !Migrat
 
 /// Execute versioned schema migrations, once each, in order.
 pub fn runMigrations(pool: *Pool, migrations: []const Migration) !void {
-    var conn = try pool.acquire();
+    return runMigrationsBounded(pool, migrations, migration_lock.MAX_ATTEMPTS, migration_lock.RETRY_MS);
+}
+
+/// Same run under an injected lock bound so tests fail fast — mirrors
+/// `migration_lock.acquireBounded`. The advisory lock is taken BEFORE the
+/// bookkeeping `ensure*` DDL: `CREATE ... IF NOT EXISTS` is not race-safe, so
+/// fresh-database boots must serialize even the table creation.
+pub fn runMigrationsBounded(pool: *Pool, migrations: []const Migration, lock_max_attempts: u32, lock_retry_ms: u64) !void {
+    const conn = try pool.acquire();
     defer pool.release(conn);
     log.info("migrate.conn_acquired", .{ .expected_versions = migrations.len });
+
+    migration_lock.acquireBounded(conn, lock_max_attempts, lock_retry_ms) catch |err| {
+        if (err == error.PG) logPgErrorContext(conn, "migrate.acquire_lock");
+        return err;
+    };
+    defer migration_lock.release(conn);
+    log.info("migrate.lock_acquired", .{});
 
     ensureSchemaMigrationsTable(conn) catch |err| {
         if (err == error.PG) logPgErrorContext(conn, "migrate.ensure_schema_migrations_table");
@@ -280,13 +293,6 @@ pub fn runMigrations(pool: *Pool, migrations: []const Migration) !void {
         if (err == error.PG) logPgErrorContext(conn, "migrate.ensure_schema_migration_failures_table");
         return err;
     };
-
-    migration_lock.acquire(conn) catch |err| {
-        if (err == error.PG) logPgErrorContext(conn, "migrate.acquire_lock");
-        return err;
-    };
-    defer migration_lock.release(conn);
-    log.info("migrate.lock_acquired", .{});
 
     var reap_scratch: [REAP_SCRATCH_BYTES]u8 = undefined;
     var reap_fba = std.heap.FixedBufferAllocator.init(&reap_scratch);
@@ -305,36 +311,40 @@ pub fn runMigrations(pool: *Pool, migrations: []const Migration) !void {
             clearMigrationFailure(conn, migration.version);
             continue;
         }
-
-        log.info("migration_start", .{ .version = migration.version });
-        beginTx(conn) catch |err| {
-            if (err == error.PG) logPgErrorContext(conn, "migrate.begin_tx");
-            return err;
-        };
-        const statements = applySqlStatements(conn, migration.sql) catch |err| {
-            rollbackTx(conn);
-            if (err == error.PG) logPgErrorContext(conn, "migrate.apply_sql_statements");
-            markMigrationFailure(conn, migration.version, err);
-            return err;
-        };
-
-        _ = conn.exec(
-            "INSERT INTO audit.schema_migrations (version, applied_at) VALUES ($1, $2)",
-            .{ migration.version, clock.nowMillis() },
-        ) catch |err| {
-            rollbackTx(conn);
-            if (err == error.PG) logPgErrorContext(conn, "migrate.insert_schema_migrations");
-            markMigrationFailure(conn, migration.version, err);
-            return err;
-        };
-
-        commitTx(conn) catch |err| {
-            rollbackTx(conn);
-            if (err == error.PG) logPgErrorContext(conn, "migrate.commit_tx");
-            markMigrationFailure(conn, migration.version, err);
-            return err;
-        };
-        clearMigrationFailure(conn, migration.version);
-        log.info("migration_applied", .{ .version = migration.version, .statements = statements });
+        try applyOneMigration(conn, migration);
     }
+}
+
+/// Apply one migration in its own transaction, recording success/failure bookkeeping.
+fn applyOneMigration(conn: *Conn, migration: Migration) !void {
+    log.info("migration_start", .{ .version = migration.version });
+    _ = conn.exec(S_BEGIN, .{}) catch |err| {
+        if (err == error.PG) logPgErrorContext(conn, "migrate.begin_tx");
+        return err;
+    };
+    const statements = applySqlStatements(conn, migration.version, migration.sql) catch |err| {
+        rollbackTx(conn);
+        if (err == error.PG) logPgErrorContext(conn, "migrate.apply_sql_statements");
+        markMigrationFailure(conn, migration.version, err);
+        return err;
+    };
+
+    _ = conn.exec(
+        "INSERT INTO audit.schema_migrations (version, applied_at) VALUES ($1, $2)",
+        .{ migration.version, clock.nowMillis() },
+    ) catch |err| {
+        rollbackTx(conn);
+        if (err == error.PG) logPgErrorContext(conn, "migrate.insert_schema_migrations");
+        markMigrationFailure(conn, migration.version, err);
+        return err;
+    };
+
+    _ = conn.exec(S_COMMIT, .{}) catch |err| {
+        rollbackTx(conn);
+        if (err == error.PG) logPgErrorContext(conn, "migrate.commit_tx");
+        markMigrationFailure(conn, migration.version, err);
+        return err;
+    };
+    clearMigrationFailure(conn, migration.version);
+    log.info("migration_applied", .{ .version = migration.version, .statements = statements });
 }
