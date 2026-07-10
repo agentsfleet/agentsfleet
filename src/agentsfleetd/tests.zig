@@ -214,6 +214,10 @@ test {
     _ = @import("fleet/integration_roundtrip_test.zig");
     _ = @import("fleet/integration_session_continuation_test.zig");
     _ = @import("fleet/placement_eligibility_test.zig");
+    // Its `test { _ = importer; _ = store; }` façade never compiled, so it registered
+    // nothing; `importer.zig` happens to be force-imported below, and `store.zig` has
+    // no tests yet. Wiring the façade makes it do the job it was written for.
+    _ = @import("fleet_bundle/mod.zig");
     // `cmd/*` reaches the test root only through main.zig's ordinary imports,
     // which register nothing — these lines are what make their blocks compile.
     _ = @import("cmd/common.zig");

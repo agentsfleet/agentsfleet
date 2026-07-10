@@ -18,9 +18,9 @@ import check_zig_test_reachability as checker  # noqa: E402
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # `lint-zig` lives in quality.mk; the two reachability recipes were split into
-# reachability.mk under RULE FLL. The wiring tests read whichever holds the fact.
+# test-reachability.mk under RULE FLL. Wiring tests read whichever holds the fact.
 QUALITY_MK = os.path.join(REPO_ROOT, "make", "quality.mk")
-REACHABILITY_MK = os.path.join(REPO_ROOT, "make", "reachability.mk")
+REACHABILITY_MK = os.path.join(REPO_ROOT, "make", "test-reachability.mk")
 CHECKER_TARGET = "_lint_zig_test_reachability"
 
 ROOT_DIR = "src/agentsfleetd"

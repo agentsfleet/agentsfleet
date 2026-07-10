@@ -86,6 +86,28 @@ class TestCandidateFiles(ReachabilityTestCase):
             [f"{ROOT_DIR}/with_test.zig", "src/lib/deep/nested.zig"],
         )
 
+    def test_anonymous_only_file_is_still_a_candidate(self):
+        """A file holding only `test { ... }` blocks can be unreachable too. Skipping
+        it would leave the gate with the blind spot it exists to close."""
+        anon = self.write(f"{ROOT_DIR}/barrel.zig", 'test {\n    _ = @import("x.zig");\n}\n')
+        self.assertIn(anon, checker.candidate_files())
+        self.assertTrue(checker.declares_a_test(anon))
+
+        plain = self.write(f"{ROOT_DIR}/plain.zig", "pub fn f() void {}\n")
+        self.assertFalse(checker.declares_a_test(plain))
+
+    def test_anonymous_only_dead_file_fails_the_gate_with_a_real_count(self):
+        anon = self.write(f"{ROOT_DIR}/barrel.zig", 'test {\n    _ = @import("x.zig");\n}\n')
+        code, output = self.run_check({ROOT_DIR: set()}, [anon])
+        self.assertEqual(code, 1)
+        self.assertIn("1 dead block(s)", output)  # not "0", despite zero NAMED blocks
+
+    def test_anonymous_blocks_do_not_inflate_the_depth_count(self):
+        """The depth total stays on named blocks so it remains comparable to the
+        historical `^test \"` count that Test Baseline was recorded from."""
+        path = self.write(f"{ROOT_DIR}/mixed.zig", 'test {\n}\ntest "named" {}\n')
+        self.assertEqual(checker.count_blocks(path), (1, 0))
+
     def test_candidate_files_never_shells_out(self):
         """CI runs in a container where `git ls-files` exits 128 on the checkout.
         Walking the tree keeps the gate working anywhere `python3` runs."""

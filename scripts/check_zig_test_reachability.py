@@ -49,8 +49,12 @@ import sys
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-# Source line that makes a file a candidate, and the integration sub-class the
-# depth gate counts separately. Column-0 anchored, matching the historical gate.
+# Source lines that make a file a candidate. Column-0 anchored. Anonymous blocks
+# (`test { ... }`) count for CANDIDACY but not for the depth total: a file holding
+# only anonymous tests can still be unreachable, and skipping it would leave the
+# gate with the blind spot it exists to close. The depth total stays on named
+# blocks so it remains comparable to the historical `^test "` count.
+CANDIDATE_LINE_PREFIXES = ('test "', "test {")
 TEST_LINE_PREFIX = 'test "'
 INTEGRATION_LINE_PREFIX = 'test "integration:'
 
@@ -111,8 +115,14 @@ def read_lines(path):
         return handle.readlines()
 
 
+def declares_a_test(path):
+    return any(
+        line.startswith(CANDIDATE_LINE_PREFIXES) for line in read_lines(path)
+    )
+
+
 def candidate_files():
-    """Every src/**/*.zig carrying at least one column-0 `test "` line.
+    """Every src/**/*.zig declaring at least one column-0 `test` block.
 
     Walks the tree instead of shelling out to `git ls-files`: the Continuous
     Integration (CI) jobs run in a container where git refuses the checkout
@@ -125,7 +135,7 @@ def candidate_files():
             if not name.endswith(ZIG_EXT):
                 continue
             path = os.path.relpath(os.path.join(dirpath, name), REPO_ROOT)
-            if any(line.startswith(TEST_LINE_PREFIX) for line in read_lines(path)):
+            if declares_a_test(path):
                 found.append(path)
     return sorted(found)  # os.walk order is filesystem-dependent
 
@@ -209,8 +219,13 @@ def run_check(groups, candidates):
             f"  Force-import each from a test root, or add `{WAIVER_MARKER} <reason>`:\n"
         )
         for path in dead:
-            blocks, _ = count_blocks(path)
-            sys.stderr.write(f"    {path}  ({blocks} dead block(s))\n")
+            # Declared, not counted: an anonymous-only file has zero *named* blocks
+            # yet is still dead, and "(0 dead blocks)" would read like a false alarm.
+            declared = sum(
+                1 for line in read_lines(path)
+                if line.startswith(CANDIDATE_LINE_PREFIXES)
+            )
+            sys.stderr.write(f"    {path}  ({declared} dead block(s))\n")
         return 1
 
     for path, reason in waived:
