@@ -143,6 +143,13 @@ describe("backfillFleetEventsUrl", () => {
     );
   });
 
+  it("appends a keyset cursor through the shared query builder", async () => {
+    const { backfillFleetEventsUrl } = await import("./events");
+    expect(backfillFleetEventsUrl("ws_1", "z_1", { cursor: "abc123" })).toBe(
+      "/backend/v1/workspaces/ws_1/fleets/z_1/events?cursor=abc123",
+    );
+  });
+
   it("encodes path segments so a slashy id can not escape the URL", async () => {
     const { backfillFleetEventsUrl } = await import("./events");
     expect(backfillFleetEventsUrl("ws/1", "z 2")).toBe(

@@ -22,9 +22,28 @@ type Params = {
 const FORWARDED_QUERY_KEYS = ["cursor", "since", "limit"] as const;
 
 const CONTENT_TYPE_JSON = "application/json";
+const CONTENT_TYPE_TEXT = "text/plain";
+
+// Authed per-tenant JSON must never land in a shared cache — the URL varies
+// by workspace/fleet, not by user.
+const CACHE_CONTROL_NO_STORE = "no-store";
+
+// encodeURIComponent leaves '.' intact, so a bare '..'/'.' path param would
+// dot-normalize inside fetch and steer the minted token at an upstream path
+// other than the one this proxy exists to reach.
+const DOT_ONLY_SEGMENT = /^\.+$/;
 
 export async function GET(req: Request, { params }: Params) {
   const { workspaceId, fleetId } = await params;
+  if (DOT_ONLY_SEGMENT.test(workspaceId) || DOT_ONLY_SEGMENT.test(fleetId)) {
+    return new Response(JSON.stringify({ error: "Invalid path parameter" }), {
+      status: 400,
+      headers: {
+        "Content-Type": CONTENT_TYPE_JSON,
+        "Cache-Control": CACHE_CONTROL_NO_STORE,
+      },
+    });
+  }
 
   const { getToken } = await auth();
   // Post-Stage-1: the customized default session token carries
@@ -34,7 +53,10 @@ export async function GET(req: Request, { params }: Params) {
   if (!token) {
     return new Response(JSON.stringify({ error: "Unauthorized", code: "UZ-401" }), {
       status: 401,
-      headers: { "Content-Type": CONTENT_TYPE_JSON },
+      headers: {
+        "Content-Type": CONTENT_TYPE_JSON,
+        "Cache-Control": CACHE_CONTROL_NO_STORE,
+      },
     });
   }
 
@@ -50,21 +72,39 @@ export async function GET(req: Request, { params }: Params) {
     `${API_ORIGIN}/v1/workspaces/${encodeURIComponent(workspaceId)}` +
     `/fleets/${encodeURIComponent(fleetId)}/events${qs.length > 0 ? `?${qs}` : ""}`;
 
-  const upstream = await fetch(upstreamUrl, {
-    method: "GET",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      Accept: CONTENT_TYPE_JSON,
-    },
-    signal: req.signal,
-  });
+  let upstream: Response;
+  try {
+    upstream = await fetch(upstreamUrl, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: CONTENT_TYPE_JSON,
+      },
+      signal: req.signal,
+    });
+  } catch {
+    // Backend unreachable (or the browser aborted mid-flight): a pinned 502
+    // envelope, not an unhandled framework 500.
+    return new Response(JSON.stringify({ error: "Upstream unreachable" }), {
+      status: 502,
+      headers: {
+        "Content-Type": CONTENT_TYPE_JSON,
+        "Cache-Control": CACHE_CONTROL_NO_STORE,
+      },
+    });
+  }
 
   if (!upstream.ok) {
     const text = await upstream.text().catch(() => "");
+    // This GET is directly navigable on the dashboard origin with forwarded
+    // query params — never reflect an upstream error under a markup-capable
+    // content type.
+    const upstreamType = upstream.headers.get("content-type") ?? CONTENT_TYPE_TEXT;
     return new Response(text || `Upstream error ${upstream.status}`, {
       status: upstream.status,
       headers: {
-        "Content-Type": upstream.headers.get("content-type") ?? "text/plain",
+        "Content-Type": upstreamType.startsWith(CONTENT_TYPE_JSON) ? upstreamType : CONTENT_TYPE_TEXT,
+        "Cache-Control": CACHE_CONTROL_NO_STORE,
       },
     });
   }
@@ -74,6 +114,9 @@ export async function GET(req: Request, { params }: Params) {
   const body = await upstream.text();
   return new Response(body, {
     status: 200,
-    headers: { "Content-Type": CONTENT_TYPE_JSON },
+    headers: {
+      "Content-Type": CONTENT_TYPE_JSON,
+      "Cache-Control": CACHE_CONTROL_NO_STORE,
+    },
   });
 }

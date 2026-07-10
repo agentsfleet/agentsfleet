@@ -7,7 +7,9 @@ import {
 } from "@/lib/api/events";
 import {
   applyLiveFrame,
+  maxServerCreatedAt,
   mergeBackfill,
+  rfc3339Seconds,
   type FleetEvent,
 } from "./fleet-stream-frames";
 import {
@@ -72,6 +74,12 @@ type Entry = {
   // the initial (SSR-seeded) connect from a reconnect — only the latter
   // backfills. Lives on the mutable Entry, never a passed primitive.
   hasConnectedOnce: boolean;
+  // Newest server-confirmed created_at (epoch ms) — advanced only by the SSR
+  // seed and successful backfill pages, never by client-clock-stamped live or
+  // optimistic rows, and never by a failed backfill (so a failure cannot seal
+  // the gap it left).
+  serverSinceMs: number | null;
+  backfillInFlight: boolean;
 };
 
 const REGISTRY = new Map<string, Entry>();
@@ -87,6 +95,9 @@ const RECONNECT_MAX_BACKOFF_ATTEMPTS = 5;
 // page limit is the upstream maximum.
 const BACKFILL_OVERLAP_MS = 2_000;
 const BACKFILL_PAGE_LIMIT = 200;
+// A hung proxy response must not pin the promise across a flapping network;
+// the next reconnect retries anyway.
+const BACKFILL_TIMEOUT_MS = 10_000;
 
 const EMPTY_SNAPSHOT: FleetStreamSnapshot = Object.freeze({
   events: [],
@@ -127,18 +138,6 @@ function startEventSource(entry: Entry, fleetId: string): void {
   es.onerror = () => onEventSourceError(entry, fleetId);
 }
 
-// The `since` lower bound for a reconnect backfill: the last-seen event's
-// timestamp minus the overlap, truncated to the 20-char `YYYY-MM-DDTHH:MM:SSZ`
-// shape upstream accepts. Undefined on an empty timeline — buildQuery then
-// omits the param and the fetch returns the most-recent bounded page, so
-// first-ever frames during the outage are still recovered.
-function backfillSince(events: FleetEvent[]): string | undefined {
-  const lastSeen = events[events.length - 1];
-  if (!lastSeen) return undefined;
-  const floorMs = Math.max(lastSeen.createdAt.getTime() - BACKFILL_OVERLAP_MS, 0);
-  return `${new Date(floorMs).toISOString().slice(0, 19)}Z`;
-}
-
 // A backfill failure is deliberately swallowed (live frames have already
 // resumed; the next reconnect retries), so this console line is its only
 // surfacing — hence the single-site no-console override.
@@ -147,29 +146,43 @@ function warnBackfillFailure(detail: unknown): void {
   console.warn("fleet-stream backfill failed", detail);
 }
 
-// Recover the frames published while the EventSource was down. A failure is
-// swallowed after a diagnostic: live frames have already resumed on the new
-// connection and the next reconnect retries the backfill.
+// Recover the frames published while the EventSource was down, keyed `since`
+// the server-confirmed watermark minus the overlap; with no watermark (a
+// never-seeded fleet) the fetch returns the most-recent bounded page instead.
+// A failure is swallowed after a diagnostic: live frames have already resumed
+// on the new connection and the next reconnect retries the backfill.
 async function backfillMissedFrames(entry: Entry, fleetId: string): Promise<void> {
-  const url = backfillFleetEventsUrl(entry.workspaceId, fleetId, {
-    since: backfillSince(entry.snapshot.events),
-    limit: BACKFILL_PAGE_LIMIT,
-  });
+  if (entry.backfillInFlight) return;
+  entry.backfillInFlight = true;
   try {
-    const res = await fetch(url);
+    const since =
+      entry.serverSinceMs === null
+        ? undefined
+        : rfc3339Seconds(entry.serverSinceMs - BACKFILL_OVERLAP_MS);
+    const url = backfillFleetEventsUrl(entry.workspaceId, fleetId, {
+      since,
+      limit: BACKFILL_PAGE_LIMIT,
+    });
+    const res = await fetch(url, { signal: AbortSignal.timeout(BACKFILL_TIMEOUT_MS) });
     if (!res.ok) {
       warnBackfillFailure(`HTTP ${res.status}`);
       return;
     }
     const page = (await res.json()) as EventsPage;
-    if (!Array.isArray(page.items)) return;
+    if (!Array.isArray(page.items)) {
+      warnBackfillFailure("malformed page body");
+      return;
+    }
     // The entry may have been torn down (idle release) while the fetch was
     // in flight — merging into a detached entry would resurrect nothing
     // visible, so drop the page.
     if (REGISTRY.get(fleetId) !== entry) return;
+    entry.serverSinceMs = maxServerCreatedAt(entry.serverSinceMs, page.items);
     setEvents(entry, (prev) => mergeBackfill(prev, page.items));
   } catch (err) {
     warnBackfillFailure(err);
+  } finally {
+    entry.backfillInFlight = false;
   }
 }
 
@@ -238,6 +251,8 @@ function createEntry(workspaceId: string, initial: EventRow[]): Entry {
     idleTimer: null,
     tempCounter: 0,
     hasConnectedOnce: false,
+    serverSinceMs: maxServerCreatedAt(null, initial),
+    backfillInFlight: false,
   };
 }
 
