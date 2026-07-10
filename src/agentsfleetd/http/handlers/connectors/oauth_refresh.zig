@@ -43,6 +43,17 @@ pub fn expiresAtMs(expires_in_s: i64) i64 {
     return common.clock.nowMillis() + expires_in_s * MS_PER_SECOND;
 }
 
+/// Connect-time stamp for the handle's `connected_at_ms` field — the
+/// guaranteed-fresh identity field the broker's cache fingerprint keys on.
+/// Several providers' other non-rotating fields are constants (Linear's label)
+/// or instance-scoped (Zoho's data center, Jira's site), so without this stamp
+/// a reconnect to a DIFFERENT account could keep serving the previous
+/// account's cached token until expiry. The rotation write-back preserves it,
+/// so ordinary refreshes still hit the cache.
+pub fn connectedAtMs() i64 {
+    return common.clock.nowMillis();
+}
+
 /// Optional string field — null when absent or non-string.
 pub fn jsonStr(obj: std.json.ObjectMap, key: []const u8) ?[]const u8 {
     return switch (obj.get(key) orelse return null) {
@@ -68,25 +79,46 @@ pub fn storeHandle(hx: hx_mod.Hx, conn: *pg.Conn, provider: []const u8, workspac
     try vault.storeJsonPlaintext(hx.alloc, conn, workspace_id, provider, json);
 }
 
-/// Merge a rotated refresh token into an already-vaulted handle and re-store it
-/// under the same provider key — the mint write-back path for providers that
-/// rotate the refresh token on every exchange. Rewrites ONLY the refresh_token
-/// field; every provider-instance field (cloud id, data-center base, labels)
-/// rides along untouched, through the same store path the connect callback used.
+/// Merge a rotated refresh token into the CURRENTLY-vaulted handle and
+/// re-store it under the same provider key — the mint write-back path for
+/// providers that rotate the refresh token on every exchange. This is a
+/// guarded merge, not a blind overwrite: the caller's mint ran against a
+/// handle snapshot loaded BEFORE the network exchange, and an admin may have
+/// reconnected the integration in that window. The handle is re-loaded here
+/// and persisted only when its stored refresh token still equals the one the
+/// mint posted — otherwise the row now belongs to a newer grant and the
+/// write-back is dropped (returns false; worst case is the one forced
+/// reconnect the mint already accepted). Rewrites ONLY the refresh_token
+/// field of the FRESH row; every other field rides along untouched.
 pub fn storeRotatedRefreshToken(
     hx: hx_mod.Hx,
     conn: *pg.Conn,
     provider: []const u8,
     workspace_id: []const u8,
-    handle: *std.json.Parsed(std.json.Value),
+    posted_refresh_token: []const u8,
     rotated_refresh_token: []const u8,
-) !void {
-    const obj = switch (handle.value) {
+) !bool {
+    var current = try vault.loadJson(hx.alloc, conn, workspace_id, provider);
+    defer current.deinit();
+    if (!refreshTokenEquals(current.value, posted_refresh_token)) return false;
+    const obj = switch (current.value) {
         .object => |*o| o,
         else => return vault.Error.NotAnObject, // loadJson guarantees .object; defensive
     };
-    try obj.put(handle.arena.allocator(), F_REFRESH_TOKEN, .{ .string = rotated_refresh_token });
-    try storeHandle(hx, conn, provider, workspace_id, handle.value);
+    try obj.put(current.arena.allocator(), F_REFRESH_TOKEN, .{ .string = rotated_refresh_token });
+    try storeHandle(hx, conn, provider, workspace_id, current.value);
+    return true;
+}
+
+/// Does the stored handle's refresh token equal `posted`? A missing field or
+/// non-object shape is a mismatch (the row was replaced or removed).
+fn refreshTokenEquals(stored: std.json.Value, posted: []const u8) bool {
+    const obj = switch (stored) {
+        .object => |o| o,
+        else => return false,
+    };
+    const rt = jsonStr(obj, F_REFRESH_TOKEN) orelse return false;
+    return std.mem.eql(u8, rt, posted);
 }
 
 const testing = std.testing;
@@ -112,4 +144,18 @@ test "jsonInt: accepts a float expiry" {
     var parsed = try std.json.parseFromSlice(std.json.Value, testing.allocator, "{\"expires_in\":" ++ TEST_EXPIRES_SECONDS_TEXT ++ ".0}", .{});
     defer parsed.deinit();
     try testing.expectEqual(TEST_EXPIRES_SECONDS, jsonInt(parsed.value.object, "expires_in").?);
+}
+
+test "refreshTokenEquals: the write-back guard matches only the identical stored token" {
+    // The guarded merge drops a rotation when the vault row changed under the
+    // exchange (a concurrent reconnect): stored ≠ posted, missing field, or a
+    // replaced non-object row must all read as a mismatch, never a match.
+    var same = try std.json.parseFromSlice(std.json.Value, testing.allocator, "{\"refresh_token\":\"rt_0\"}", .{});
+    defer same.deinit();
+    try testing.expect(refreshTokenEquals(same.value, "rt_0"));
+    try testing.expect(!refreshTokenEquals(same.value, "rt_other"));
+    var missing = try std.json.parseFromSlice(std.json.Value, testing.allocator, "{\"integration\":\"zoho\"}", .{});
+    defer missing.deinit();
+    try testing.expect(!refreshTokenEquals(missing.value, "rt_0"));
+    try testing.expect(!refreshTokenEquals(.null, "rt_0"));
 }

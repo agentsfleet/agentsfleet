@@ -139,12 +139,14 @@ fn parseAccess(ctx: MintCtx, posted_refresh_token: []const u8, body: []const u8)
     const ttl_ms = if (intField(obj, RESP_FIELD_EXPIRES_IN)) |secs| secs * MS_PER_SECOND else DEFAULT_ACCESS_TTL_MS;
     const owned_tok = try ctx.alloc.dupe(u8, tok);
     errdefer ctx.alloc.free(owned_tok);
-    // A response refresh token that is absent or merely echoes the posted one
-    // is not a rotation; only a genuinely new value is surfaced (and triggers
-    // the handler's vault write-back). Deduping here keeps the handler simple —
-    // this is the one place that holds both the posted and returned values.
+    // A response refresh token that is absent, EMPTY (a malformed provider or
+    // broken proxy must not poison the vault with an unusable credential), or
+    // merely echoes the posted one is not a rotation; only a genuinely new
+    // value is surfaced (and triggers the handler's vault write-back). Deduping
+    // here keeps the handler simple — this is the one place that holds both
+    // the posted and returned values.
     const rotated: ?[]const u8 = if (strField(obj, RESP_FIELD_REFRESH_TOKEN)) |rt|
-        if (std.mem.eql(u8, rt, posted_refresh_token)) null else try ctx.alloc.dupe(u8, rt)
+        if (rt.len == 0 or std.mem.eql(u8, rt, posted_refresh_token)) null else try ctx.alloc.dupe(u8, rt)
     else
         null;
     return .{ .ok = .{

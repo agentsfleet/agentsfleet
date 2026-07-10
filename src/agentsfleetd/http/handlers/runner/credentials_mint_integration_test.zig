@@ -74,6 +74,7 @@ const SENTINEL_FOREIGN = "ghs_foreign_workspace_token";
 const INTEGRATION_STATIC = "static";
 const INTEGRATION_GITHUB = "github";
 const INTEGRATION_ZOHO = "zoho";
+const INTEGRATION_JIRA = "jira";
 // The token the FakeGitHub exchange returns on a successful installation mint.
 const GITHUB_MINTED = "ghs_minted";
 
@@ -196,16 +197,28 @@ fn mintBody(lease_id: []const u8) ![]u8 {
 fn seedZohoHandle(conn: *pg.Conn, workspace_id: []const u8, refresh_token: []const u8) !void {
     const handle = try std.fmt.allocPrint(
         ALLOC,
-        "{{\"integration\":\"{s}\",\"refresh_token\":\"{s}\",\"access_token\":\"at_seeded\",\"expires_at_ms\":1,\"accounts_base\":\"https://accounts.test\",\"label\":\"test-dc\"}}",
+        "{{\"integration\":\"{s}\",\"refresh_token\":\"{s}\",\"access_token\":\"at_seeded\",\"expires_at_ms\":1,\"connected_at_ms\":1,\"accounts_base\":\"https://accounts.test\",\"label\":\"test-dc\"}}",
         .{ INTEGRATION_ZOHO, refresh_token },
     );
     defer ALLOC.free(handle);
     try vault.storeJsonPlaintext(ALLOC, conn, workspace_id, INTEGRATION_ZOHO, handle);
 }
 
-/// The vaulted zoho handle's current refresh_token, duped for the caller.
-fn vaultRefreshToken(conn: *pg.Conn, workspace_id: []const u8) ![]u8 {
-    var parsed = try vault.loadJson(ALLOC, conn, workspace_id, INTEGRATION_ZOHO);
+/// Store a jira refresh handle — Jira is the provider whose rotating 3LO
+/// tokens motivated the write-back, so the persist round-trip pins it.
+fn seedJiraHandle(conn: *pg.Conn, workspace_id: []const u8, refresh_token: []const u8) !void {
+    const handle = try std.fmt.allocPrint(
+        ALLOC,
+        "{{\"integration\":\"{s}\",\"refresh_token\":\"{s}\",\"access_token\":\"at_seeded\",\"expires_at_ms\":1,\"connected_at_ms\":1,\"cloud_id\":\"cloud-test\",\"site_url\":\"https://acme.atlassian.net\",\"label\":\"Acme Jira\"}}",
+        .{ INTEGRATION_JIRA, refresh_token },
+    );
+    defer ALLOC.free(handle);
+    try vault.storeJsonPlaintext(ALLOC, conn, workspace_id, INTEGRATION_JIRA, handle);
+}
+
+/// The vaulted handle's current refresh_token, duped for the caller.
+fn vaultRefreshToken(conn: *pg.Conn, workspace_id: []const u8, provider: []const u8) ![]u8 {
+    var parsed = try vault.loadJson(ALLOC, conn, workspace_id, provider);
     defer parsed.deinit();
     const rt = switch (parsed.value.object.get(integration.FIELD_REFRESH_TOKEN).?) {
         .string => |s| s,
@@ -215,19 +228,19 @@ fn vaultRefreshToken(conn: *pg.Conn, workspace_id: []const u8) ![]u8 {
 }
 
 /// The vault row's updated_at — the write-back detector (any store rewrites it).
-fn vaultUpdatedAt(conn: *pg.Conn, workspace_id: []const u8) !i64 {
+fn vaultUpdatedAt(conn: *pg.Conn, workspace_id: []const u8, provider: []const u8) !i64 {
     var q = PgQuery.from(try conn.query(
         \\SELECT updated_at FROM vault.secrets WHERE workspace_id = $1::uuid AND key_name = $2
-    , .{ workspace_id, INTEGRATION_ZOHO }));
+    , .{ workspace_id, provider }));
     defer q.deinit();
     const row = try q.next() orelse return error.TestUnexpectedResult;
     return try row.get(i64, 0);
 }
 
-fn pinVaultUpdatedAt(conn: *pg.Conn, workspace_id: []const u8) !void {
+fn pinVaultUpdatedAt(conn: *pg.Conn, workspace_id: []const u8, provider: []const u8) !void {
     _ = try conn.exec(
         \\UPDATE vault.secrets SET updated_at = $1 WHERE workspace_id = $2::uuid AND key_name = $3
-    , .{ PINNED_UPDATED_AT_MS, workspace_id, INTEGRATION_ZOHO });
+    , .{ PINNED_UPDATED_AT_MS, workspace_id, provider });
 }
 
 // Failure injection for the write-back path: a scoped trigger that rejects any
@@ -246,6 +259,15 @@ const DROP_BLOCK_TRIGGER = "DROP TRIGGER IF EXISTS test_block_vault_writeback ON
 const DROP_BLOCK_FN = "DROP FUNCTION IF EXISTS test_block_vault_writeback()";
 
 fn dropWriteBackBlock(conn: *pg.Conn) void {
+    // DROP TRIGGER (even IF EXISTS) takes an ACCESS EXCLUSIVE lock on the
+    // table; gate on pg_trigger so the common no-residue path — this runs at
+    // the START of every test in this file — takes no lock on the shared vault.
+    var q = PgQuery.from(conn.query(
+        \\SELECT 1 FROM pg_trigger WHERE tgname = 'test_block_vault_writeback'
+    , .{}) catch return);
+    defer q.deinit();
+    const present = (q.next() catch return) != null;
+    if (!present) return;
     execIgnore(conn, DROP_BLOCK_TRIGGER, .{});
     execIgnore(conn, DROP_BLOCK_FN, .{});
 }
@@ -573,15 +595,15 @@ test "integration: test_mint_persists_rotated_refresh_token" {
         try base.seedFleet(conn, FLEET_OWNER, WORKSPACE_OWNER, "cred-owner", "{}", "# z");
         try seedRunner(conn, RUNNER_OWNER, TOKEN_OWNER);
         try seedLease(conn, LEASE_OWNER, RUNNER_OWNER, FLEET_OWNER, WORKSPACE_OWNER);
-        try setGrantStatus(conn, FLEET_OWNER, INTEGRATION_ZOHO, .approved);
-        try seedZohoHandle(conn, WORKSPACE_OWNER, RT_SEEDED);
+        try setGrantStatus(conn, FLEET_OWNER, INTEGRATION_JIRA, .approved);
+        try seedJiraHandle(conn, WORKSPACE_OWNER, RT_SEEDED);
     }
     defer cleanupAll(h);
 
     // (1) Cold mint: 200 with the fresh access token; the exchange posted the
     // SEEDED refresh token, and the response's rotated one is vaulted.
     {
-        const body = try mintBodyFor(LEASE_OWNER, INTEGRATION_ZOHO);
+        const body = try mintBodyFor(LEASE_OWNER, INTEGRATION_JIRA);
         defer ALLOC.free(body);
         const resp = try (try (try h.post(protocol.PATH_RUNNER_CREDENTIALS_MINT).bearer(TOKEN_OWNER)).json(body)).send();
         defer resp.deinit();
@@ -594,7 +616,7 @@ test "integration: test_mint_persists_rotated_refresh_token" {
     {
         const conn = try h.acquireConn();
         defer h.releaseConn(conn);
-        const rt = try vaultRefreshToken(conn, WORKSPACE_OWNER);
+        const rt = try vaultRefreshToken(conn, WORKSPACE_OWNER, INTEGRATION_JIRA);
         defer ALLOC.free(rt);
         try std.testing.expectEqualStrings(RT_ROTATED, rt);
     }
@@ -608,7 +630,7 @@ test "integration: test_mint_persists_rotated_refresh_token" {
     defer broker2.deinit();
     h.ctx.broker = &broker2;
     {
-        const body = try mintBodyFor(LEASE_OWNER, INTEGRATION_ZOHO);
+        const body = try mintBodyFor(LEASE_OWNER, INTEGRATION_JIRA);
         defer ALLOC.free(body);
         const resp = try (try (try h.post(protocol.PATH_RUNNER_CREDENTIALS_MINT).bearer(TOKEN_OWNER)).json(body)).send();
         defer resp.deinit();
@@ -649,7 +671,7 @@ test "integration: test_mint_no_rotation_leaves_handle_unchanged" {
         try seedLease(conn, LEASE_OWNER, RUNNER_OWNER, FLEET_OWNER, WORKSPACE_OWNER);
         try setGrantStatus(conn, FLEET_OWNER, INTEGRATION_ZOHO, .approved);
         try seedZohoHandle(conn, WORKSPACE_OWNER, RT_SEEDED);
-        try pinVaultUpdatedAt(conn, WORKSPACE_OWNER);
+        try pinVaultUpdatedAt(conn, WORKSPACE_OWNER, INTEGRATION_ZOHO);
     }
     defer cleanupAll(h);
 
@@ -664,8 +686,8 @@ test "integration: test_mint_no_rotation_leaves_handle_unchanged" {
     {
         const conn = try h.acquireConn();
         defer h.releaseConn(conn);
-        try std.testing.expectEqual(PINNED_UPDATED_AT_MS, try vaultUpdatedAt(conn, WORKSPACE_OWNER));
-        const rt = try vaultRefreshToken(conn, WORKSPACE_OWNER);
+        try std.testing.expectEqual(PINNED_UPDATED_AT_MS, try vaultUpdatedAt(conn, WORKSPACE_OWNER, INTEGRATION_ZOHO));
+        const rt = try vaultRefreshToken(conn, WORKSPACE_OWNER, INTEGRATION_ZOHO);
         defer ALLOC.free(rt);
         try std.testing.expectEqualStrings(RT_SEEDED, rt);
     }
@@ -723,7 +745,7 @@ test "integration: test_write_back_failure_logged_not_fatal" {
         const conn = try h.acquireConn();
         defer h.releaseConn(conn);
         dropWriteBackBlock(conn); // disarm before reading/cleanup
-        const rt = try vaultRefreshToken(conn, WORKSPACE_OWNER);
+        const rt = try vaultRefreshToken(conn, WORKSPACE_OWNER, INTEGRATION_ZOHO);
         defer ALLOC.free(rt);
         try std.testing.expectEqualStrings(RT_SEEDED, rt);
     }
