@@ -43,15 +43,29 @@ pub fn expiresAtMs(expires_in_s: i64) i64 {
     return common.clock.nowMillis() + expires_in_s * MS_PER_SECOND;
 }
 
+/// Last stamp handed out — makes `connectedAtMs` strictly monotonic within
+/// the daemon (all connect callbacks run in this one process), so two
+/// reconnects can NEVER share a stamp even inside the same millisecond.
+var last_connect_stamp = std.atomic.Value(i64).init(0);
+
 /// Connect-time stamp for the handle's `connected_at_ms` field — the
 /// guaranteed-fresh identity field the broker's cache fingerprint keys on.
 /// Several providers' other non-rotating fields are constants (Linear's label)
 /// or instance-scoped (Zoho's data center, Jira's site), so without this stamp
 /// a reconnect to a DIFFERENT account could keep serving the previous
 /// account's cached token until expiry. The rotation write-back preserves it,
-/// so ordinary refreshes still hit the cache.
+/// so ordinary refreshes still hit the cache. Strictly monotonic (never merely
+/// wall-clock) so same-millisecond reconnects still get distinct fingerprints.
 pub fn connectedAtMs() i64 {
-    return common.clock.nowMillis();
+    const now = common.clock.nowMillis();
+    // safe because: the CAS below re-validates; a stale read only costs a retry.
+    var prev = last_connect_stamp.load(.monotonic);
+    while (true) {
+        const next = @max(now, prev + 1);
+        // safe because: acq_rel on success publishes `next` to the next caller's
+        // failure-load; monotonic on failure is fine — the loop re-reads.
+        prev = last_connect_stamp.cmpxchgWeak(prev, next, .acq_rel, .monotonic) orelse return next;
+    }
 }
 
 /// Optional string field — null when absent or non-string.
@@ -144,6 +158,20 @@ test "jsonInt: accepts a float expiry" {
     var parsed = try std.json.parseFromSlice(std.json.Value, testing.allocator, "{\"expires_in\":" ++ TEST_EXPIRES_SECONDS_TEXT ++ ".0}", .{});
     defer parsed.deinit();
     try testing.expectEqual(TEST_EXPIRES_SECONDS, jsonInt(parsed.value.object, "expires_in").?);
+}
+
+test "connectedAtMs: strictly monotonic — same-millisecond reconnects never share a stamp" {
+    // A tight loop lands many calls inside one wall-clock millisecond, so the
+    // `prev + 1` branch is exercised deterministically; every stamp must be
+    // strictly greater than the one before (distinct fingerprints per grant).
+    const STAMP_SAMPLES = 1000;
+    var prev = connectedAtMs();
+    var i: usize = 0;
+    while (i < STAMP_SAMPLES) : (i += 1) {
+        const next = connectedAtMs();
+        try testing.expect(next > prev);
+        prev = next;
+    }
 }
 
 test "refreshTokenEquals: the write-back guard matches only the identical stored token" {
