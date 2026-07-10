@@ -83,7 +83,9 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `scripts/check_route_registration_doc_test.py` | CREATE | asserts the widened regexes capture underscore targets and flag a phantom one (§5) |
 | `docs/REST_API_DESIGN_GUIDELINES.md` | NOT CHANGED | Planned as a "live regression fixture" citing `make _fmt_check`. Dropped at EXECUTE for two independent reasons — the file is a symlink into `~/Projects/dotfiles`, and the fixture cannot detect the regression it was meant to guard (the narrowed regex never captures the citation, so a revert leaves the gate green). The self-test carries the coverage instead. See Discovery consult 6. |
 | `src/runner/cmd/version.zig` | EDIT | comment-only: the module doc comment and one test comment cite the substring check §1 deletes. No output-shape change (Out of Scope holds). Added to this table at CHORE(open) per Indy's Jul 10 call — see Discovery. |
-| `make/quality.mk` | EDIT | new `check-architecture-doc` + `check-deploy-safety` targets in `lint-all`; `check-playbooks` gains the vault-gate parity grep + runs `vault_gate_test.sh`; `check-route-registration-doc` also runs its new test (§3/§4/§5) |
+| `make/quality.mk` | EDIT | `lint-all` gains `check-architecture-doc` + `check-deploy-safety`; `check-playbooks` gains `check-vault-gate-parity` as a prerequisite; `check-route-registration-doc` also runs its new test (§3/§4/§5) |
+| `make/check-safety-gates.mk` | CREATE | holds the three new gate targets. Added at VERIFY: the vault-parity scan pushed `make/quality.mk` from 341 to 370 lines, past the RULE FLL cap, and acceptance row S4 fails on it. Same split, same reason, as `make/check-test-reachability.mk`. |
+| `Makefile` | EDIT | `include make/check-safety-gates.mk`. Also replaces the stale `USEAGENT` brand in the header comment with `agentsfleet` (RULE NLR, touch-it-fix-it). |
 
 ## Applicable Rules
 
