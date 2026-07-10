@@ -224,6 +224,30 @@ Properties:
 - **Mid-event balance crossing zero is fine.** In-flight events run to completion under the snapshot taken at receive time. The next event hits the gate cleanly.
 - **Concurrent events on near-zero balance.** Two events claim simultaneously, both pass the gate (balance was sufficient for one), both deduct → balance can briefly go negative. We accept the small overshoot rather than serialise all events behind a row lock. Recovery: next event sees `balance_nanos < 0`, gate trips.
 
+### 5.1 The per-fleet budget gate — a second, independent ceiling
+
+The balance gate above bounds what a **tenant** may spend: one credit pool, one `balance_nanos`. It says nothing about how that pool is divided. A single misbehaving fleet in a tool-call loop can drain the whole pool while every other fleet in the tenant starves.
+
+`daily_dollars` / `monthly_dollars` in a fleet's `TRIGGER.md` are the **fleet-scoped** ceiling — the blast-radius guard. The two gates are independent and both must pass:
+
+| | Balance gate | Budget gate |
+|---|---|---|
+| Scope | tenant (`core.tenant_billing.balance_nanos`) | one fleet (`core.fleets.config_json` → `x-agentsfleet.budget`) |
+| Question | "can this tenant afford one more event?" | "has this fleet spent its own allowance?" |
+| Pre-run refusal | `gate_blocked` + `balance_exhausted` | `gate_blocked` + `budget_breach` |
+| Mid-run refusal | `/renew` → `UZ-RUN-012` → `renewal_terminate` | `/renew` → `UZ-RUN-015` → `budget_breach` |
+| Source of truth | wallet balance | `SUM(credit_deducted_nanos)` over `core.fleet_execution_telemetry` |
+
+**Where it fires.** `runBilling` checks the budget after the balance gate and **before the receive deduct**, so a refused event is never charged. `session.config.budget` is already parsed onto the session, so the check costs one indexed aggregate and no extra lookup. Mid-run, `service_renew` re-reads the ceiling live from `config_json` on every renewal tick inside the window — lowering a runaway fleet's `daily_dollars` therefore bites at its next tick, not only at its next run.
+
+**Windows.** `daily_dollars` is a **rolling 24 hours** (`recorded_at >= now − 86_400_000`); `monthly_dollars` is the **UTC calendar month** (`clock.startOfUtcMonthMillis`). Both derive from a single `now_ms` per gate invocation, passed in, so the two windows can never straddle a tick. `monthly_dollars` is optional — absent means no monthly ceiling.
+
+**Spend means credit *drained*,** `SUM(credit_deducted_nanos)`, not credit metered. On the slice that exhausts a wallet, `charged_nanos < run_fee + token_cost` and the remainder is forgiven (§3); a budget counts money that actually left the pool.
+
+**Overshoot is bounded, not zero.** The ceiling is a floor-check: a run is admitted while `spend < cap`. An already-running run may exceed its cap by at most one renewal window's worth of tokens before its next `/renew` refuses it. Enforcing a *predicted* end-of-run cost would refuse runs that would have finished under budget.
+
+**Failure posture, deliberately asymmetric.** A database fault fails **open** (admit / renew), mirroring `balanceCoversEstimate` — a metering outage must not halt every fleet on the platform. An *unparseable stored budget* fails **closed**: a ceiling we cannot read is not a ceiling we may ignore. The stored budget is parsed by `config_helpers.parseFleetBudget`, the same validator that accepted it at ingest, so the ceiling that admits a run and the ceiling that kills it are one number.
+
 ---
 
 ## 6. The credit-exhausted user experience
