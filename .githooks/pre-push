@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Pre-push: fast smoke verification. Heavy lanes live in CI.
-# Bypass for emergencies: `git push --no-verify` (discouraged per AGENTS.md).
+# Pre-push: fast smoke verification. Heavy lanes live in Continuous Integration
+# (CI).
 #
 # Stage shape:
 #   1. classify pushed files (since upstream / main fork-point) into 7 flags
-#   2. parallel matching test-unit-* lanes
+#   2. run matching test-unit-* lanes
 #
 # Surfaces:
 #   - test-unit-agentsfleetd        (*.zig, schema/*.sql)
@@ -13,13 +13,14 @@
 #   - test-unit-app            (ui/packages/app/*, design-system/* triggers both)
 #   - test-unit-design-system  (ui/packages/design-system/*)
 #
-# Moved to CI (.github/workflows/{test-integration,memleak}.yml):
+# Moved to Continuous Integration (CI)
+# (.github/workflows/{test-integration,memleak}.yml):
 #   - test-integration         — worker integration vs real Postgres + Redis
 #   - memleak                  — valgrind / allocator leak gate
 # Pre-push is the fast-smoke floor; CI is the comprehensive gate. The prior
-# behaviour held the SSH session idle for 15-20 min during tier-2 + memleak,
-# which github.com routinely dropped — the pack-write at end-of-hook then
-# failed with SIGPIPE even though every test passed locally.
+# behaviour held the Secure Shell (SSH) session idle for 15-20 min during the
+# heavier lanes, which github.com routinely dropped at pack-write time even
+# though every test passed locally.
 set -euo pipefail
 
 repo_root="$(git rev-parse --show-toplevel)"
@@ -52,7 +53,7 @@ while IFS= read -r f; do
     ui/packages/app/*)
       needs_test_app=1 ;;
     ui/packages/design-system/*)
-      # DS is consumed by app — test both when DS changes.
+      # Design system is consumed by app — test both when design-system changes.
       needs_test_design_system=1
       needs_test_app=1 ;;
   esac
@@ -65,32 +66,25 @@ if [ "$any_needed" -eq 0 ]; then
   exit 0
 fi
 
-# --- Parallel test lanes -----------------------------------------------------
-# Output may interleave across lanes; each target prefixes its lines
-# ([agentsfleetd]/[app]/[website]/etc.) so the source is identifiable.
-pids=()
-names=()
+# --- Test lanes --------------------------------------------------------------
+# Browser and pseudo-terminal tests are individually stable but fight for local
+# runtime resources when all lanes launch at once. Keep coverage intact and run
+# lanes serially so the hook is deterministic on developer laptops.
+failed_names=()
 
-launch() {
+run_lane() {
   local name="$1"; shift
-  echo "pre-push: $* (parallel)"
-  "$@" &
-  pids+=("$!")
-  names+=("$name")
+  echo "pre-push: $*"
+  if ! "$@"; then
+    failed_names+=("$name")
+  fi
 }
 
-[ "$needs_test_zig"           = 1 ] && launch test-unit-agentsfleetd        make test-unit-agentsfleetd
-[ "$needs_test_cli"             = 1 ] && launch test-unit-cli            make test-unit-cli
-[ "$needs_test_website"       = 1 ] && launch test-unit-website        make test-unit-website
-[ "$needs_test_app"           = 1 ] && launch test-unit-app            make test-unit-app
-[ "$needs_test_design_system" = 1 ] && launch test-unit-design-system  make test-unit-design-system
-
-failed_names=()
-for i in "${!pids[@]}"; do
-  if ! wait "${pids[$i]}"; then
-    failed_names+=("${names[$i]}")
-  fi
-done
+[ "$needs_test_zig"           = 1 ] && run_lane test-unit-agentsfleetd        make test-unit-agentsfleetd
+[ "$needs_test_cli"           = 1 ] && run_lane test-unit-cli                make test-unit-cli
+[ "$needs_test_website"       = 1 ] && run_lane test-unit-website            make test-unit-website
+[ "$needs_test_app"           = 1 ] && run_lane test-unit-app                make test-unit-app
+[ "$needs_test_design_system" = 1 ] && run_lane test-unit-design-system      make test-unit-design-system
 
 if [ "${#failed_names[@]}" -gt 0 ]; then
   echo "✗ pre-push: failed lanes — ${failed_names[*]}"
