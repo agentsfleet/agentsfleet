@@ -112,18 +112,22 @@ def read_lines(path):
 
 
 def candidate_files():
-    """Every tracked src/**/*.zig carrying at least one column-0 `test "` line."""
-    proc = subprocess.run(
-        ["git", "ls-files", SRC_DIR],
-        cwd=REPO_ROOT, capture_output=True, text=True, check=True,
-    )
+    """Every src/**/*.zig carrying at least one column-0 `test "` line.
+
+    Walks the tree instead of shelling out to `git ls-files`: the Continuous
+    Integration (CI) jobs run in a container where git refuses the checkout
+    ("dubious ownership", exit 128), and the textual gate this replaces used
+    `find src`, which has exactly these semantics.
+    """
     found = []
-    for path in proc.stdout.split():
-        if not path.endswith(ZIG_EXT):
-            continue
-        if any(line.startswith(TEST_LINE_PREFIX) for line in read_lines(path)):
-            found.append(path)
-    return sorted(found)
+    for dirpath, _dirs, filenames in os.walk(os.path.join(REPO_ROOT, SRC_DIR)):
+        for name in filenames:
+            if not name.endswith(ZIG_EXT):
+                continue
+            path = os.path.relpath(os.path.join(dirpath, name), REPO_ROOT)
+            if any(line.startswith(TEST_LINE_PREFIX) for line in read_lines(path)):
+                found.append(path)
+    return sorted(found)  # os.walk order is filesystem-dependent
 
 
 def has_ambiguous_name(path):

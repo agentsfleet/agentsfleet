@@ -75,14 +75,31 @@ class TestRegisteredNames(SubprocessFakeCase):
         self.assertEqual(caught.exception.code, 1)
         self.assertIn("compile error", err.getvalue())
 
-class TestCandidateFiles(SubprocessFakeCase):
+class TestCandidateFiles(ReachabilityTestCase):
     def test_selects_only_zig_files_carrying_a_test_block(self):
         self.write(f"{ROOT_DIR}/with_test.zig", 'test "a" {}\n')
         self.write(f"{ROOT_DIR}/no_test.zig", "pub fn f() void {}\n")
         self.write(f"{ROOT_DIR}/notes.md", 'test "not zig" {}\n')
-        listing = f"{ROOT_DIR}/with_test.zig\n{ROOT_DIR}/no_test.zig\n{ROOT_DIR}/notes.md\n"
-        self.fake_subprocess(FakeProc(listing))
-        self.assertEqual(checker.candidate_files(), [f"{ROOT_DIR}/with_test.zig"])
+        self.write("src/lib/deep/nested.zig", 'test "b" {}\n')
+        self.assertEqual(
+            checker.candidate_files(),
+            [f"{ROOT_DIR}/with_test.zig", "src/lib/deep/nested.zig"],
+        )
+
+    def test_candidate_files_never_shells_out(self):
+        """CI runs in a container where `git ls-files` exits 128 on the checkout.
+        Walking the tree keeps the gate working anywhere `python3` runs."""
+        self.write(f"{ROOT_DIR}/with_test.zig", 'test "a" {}\n')
+
+        def explode(*args, **kwargs):
+            raise AssertionError(f"candidate_files must not spawn {args!r}")
+
+        original = checker.subprocess.run
+        checker.subprocess.run = explode
+        try:
+            self.assertEqual(checker.candidate_files(), [f"{ROOT_DIR}/with_test.zig"])
+        finally:
+            checker.subprocess.run = original
 
 class TestMainDispatch(ReachabilityTestCase):
     def setUp(self):
