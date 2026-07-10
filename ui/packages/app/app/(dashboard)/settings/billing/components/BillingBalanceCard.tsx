@@ -3,6 +3,7 @@ import {
   Button,
   Card,
   CardContent,
+  cn,
   EYEBROW_CLASS,
   Tooltip,
   TooltipContent,
@@ -11,7 +12,6 @@ import {
   UsageBar,
 } from "@agentsfleet/design-system";
 import { CoinsIcon } from "lucide-react";
-import { cn } from "@/lib/utils";
 import type { TenantBilling } from "@/lib/types";
 import { SUPPORT_EMAIL } from "@/lib/contact";
 import { formatDollars, type ChargeSummary } from "../lib/charges";

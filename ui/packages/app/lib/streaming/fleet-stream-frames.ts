@@ -32,10 +32,48 @@ export function mergeBackfill(
   rows: EventRow[],
 ): FleetEvent[] {
   const seen = new Set(prev.map((e) => e.id));
+  // A terminal backfill row is authoritative over a live row with the same
+  // id — an event that straddled an outage may sit here as a partial chunk
+  // accumulation, and the durable row carries the full final text + status.
+  // An in-progress ("received") backfill row never clobbers live chunks:
+  // the live accumulation is newer than the list snapshot.
+  const authoritative = new Map<string, EventRow>();
+  for (const r of rows) {
+    if (seen.has(r.event_id) && r.status !== AGENTSFLEET_EVENT_STATUS.RECEIVED) {
+      authoritative.set(r.event_id, r);
+    }
+  }
+  const kept = prev.map((e) => {
+    const replacement = authoritative.get(e.id);
+    return replacement ? rowToEvent(replacement) : e;
+  });
   const fromBackfill = rows.filter((r) => !seen.has(r.event_id)).map(rowToEvent);
-  return [...fromBackfill, ...prev].sort(
+  return [...fromBackfill, ...kept].sort(
     (a, b) => a.createdAt.getTime() - b.createdAt.getTime(),
   );
+}
+
+// The newest server-confirmed `created_at` across the rows, folded into the
+// running watermark. Live SSE frames are stamped with the CLIENT clock and
+// must never advance this — a skewed client would push the backfill's lower
+// bound into the server's future and silently recover nothing.
+export function maxServerCreatedAt(
+  current: number | null,
+  rows: EventRow[],
+): number | null {
+  let max = current;
+  for (const r of rows) {
+    if (typeof r.created_at === "number" && (max === null || r.created_at > max)) {
+      max = r.created_at;
+    }
+  }
+  return max;
+}
+
+// Epoch ms → the 20-char `YYYY-MM-DDTHH:MM:SSZ` shape the upstream `since`
+// parser accepts (no fractional seconds).
+export function rfc3339Seconds(ms: number): string {
+  return `${new Date(Math.max(ms, 0)).toISOString().slice(0, 19)}Z`;
 }
 
 export function applyLiveFrame(
