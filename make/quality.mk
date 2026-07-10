@@ -260,7 +260,7 @@ _runner_isolation_check:
 	if [ $$FAIL -eq 1 ]; then exit 1; fi; \
 	echo "✓ [isolation] runner graph depends only on nullclaw (no pg/s3/httpz)"
 
-lint-zig: _fmt_check _zlint_check _lint_zig_pg_drain _lint_zig_test_reachability _lint_zig_test_depth _schema_gate_check _zig_target_lint _zig_line_limit_check _hardcoded_role_check _legacy_symbols_check _legacy_noun_check _runner_isolation_check  ## Lint all Zig source (agentsfleetd/runner/lib)
+lint-zig: _fmt_check _zlint_check _lint_zig_pg_drain check-test-reachability _lint_zig_test_depth _schema_gate_check _zig_target_lint _zig_line_limit_check _hardcoded_role_check _legacy_symbols_check _legacy_noun_check _runner_isolation_check  ## Lint all Zig source (agentsfleetd/runner/lib)
 	@echo "✓ [zig] Lint passed"
 
 lint-website: _website_lint  ## Lint website only (Oxlint + tsc)
