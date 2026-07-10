@@ -235,6 +235,26 @@ class TestMakeWiring(unittest.TestCase):
         self.assertIn("set -eu", recipe)
         self.assertIn("*[!0-9]*", recipe)
 
+    def test_git_dependent_gates_fail_closed_on_an_empty_scan(self):
+        """The CI container runs as root over a runner-owned checkout, so plain git
+        exits 128 ("dubious ownership"). A `for f in $(git ...)` loop then iterates
+        nothing and the gate prints ✓ having inspected zero files — which is what
+        _zig_line_limit_check did in CI. Every git call takes -c safe.directory, and
+        every scan asserts it matched something."""
+        for call in ("ls-files '*.zig'", "grep -hoE 'playbooks/"):
+            self.assertNotIn(
+                f"git {call}",
+                self.quality_mk,
+                msg=f"`git {call}` must pass -c safe.directory (CI container)",
+            )
+        line_limit = self.quality_mk.split("_zig_line_limit_check:")[1].split("\n\n")[0]
+        self.assertIn("git -c safe.directory='*' ls-files", line_limit)
+        self.assertIn("listed zero Zig files", line_limit)
+
+        playbooks = self.quality_mk.split("check-playbooks:")[1]
+        self.assertIn("git -c safe.directory='*' grep", playbooks)
+        self.assertIn("matched nothing", playbooks)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
