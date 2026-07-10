@@ -115,6 +115,72 @@ test "validate rejects unterminated dollar-quote, block comment, and string" {
     );
 }
 
+test "a long run of empty statements neither recurses nor yields statements" {
+    // Regression: `next()` recursed once per empty statement; ~50k consecutive
+    // `;` overflowed the stack, crashing validate() — the loud backstop itself.
+    const alloc = std.testing.allocator;
+    const flood = try alloc.alloc(u8, 100_000);
+    defer alloc.free(flood);
+    @memset(flood, ';');
+    try std.testing.expectEqual(@as(u32, 0), SqlStatementSplitter.count(flood));
+    try SqlStatementSplitter.validate(flood);
+}
+
+test "double-quoted identifiers keep apostrophes, comments, and semicolons inert" {
+    // An apostrophe inside `"..."` must not open a phantom string (which would
+    // falsely reject valid SQL as UnterminatedString)…
+    var s = SqlStatementSplitter.init("SELECT \"it's\" FROM t; SELECT 2;");
+    try std.testing.expectEqualStrings("SELECT \"it's\" FROM t", s.next().?);
+    try std.testing.expectEqualStrings("SELECT 2", s.next().?);
+    try std.testing.expect(s.next() == null);
+    // …a `--` inside an identifier must not start a comment (which would
+    // silently merge two statements into one exec)…
+    var c = SqlStatementSplitter.init("CREATE INDEX \"idx--tmp\" ON t(c); SELECT 1;");
+    try std.testing.expectEqualStrings("CREATE INDEX \"idx--tmp\" ON t(c)", c.next().?);
+    try std.testing.expectEqualStrings("SELECT 1", c.next().?);
+    try std.testing.expect(c.next() == null);
+    // …and a `;` inside an identifier is not a boundary; `""` escapes stay inside.
+    var q = SqlStatementSplitter.init("CREATE TABLE \"a;b\" (id INT); SELECT \"x\"\"y\";");
+    try std.testing.expectEqualStrings("CREATE TABLE \"a;b\" (id INT)", q.next().?);
+    try std.testing.expectEqualStrings("SELECT \"x\"\"y\"", q.next().?);
+    try std.testing.expect(q.next() == null);
+}
+
+test "escape strings honor backslash escapes; plain strings do not" {
+    // E'...' — the `\'` stays inside the literal (both cases of the prefix).
+    var e = SqlStatementSplitter.init("INSERT INTO t VALUES (E'a\\'; b'); SELECT 1;");
+    try std.testing.expectEqualStrings("INSERT INTO t VALUES (E'a\\'; b')", e.next().?);
+    try std.testing.expectEqualStrings("SELECT 1", e.next().?);
+    try std.testing.expect(e.next() == null);
+    var lower = SqlStatementSplitter.init("SELECT e'x\\'y';");
+    try std.testing.expectEqualStrings("SELECT e'x\\'y'", lower.next().?);
+    // Plain '...' treats backslash literally (standard_conforming_strings):
+    // 'a\' is a complete string, so the `;` after it is a real boundary.
+    var plain = SqlStatementSplitter.init("SELECT 'a\\'; SELECT 'b';");
+    try std.testing.expectEqualStrings("SELECT 'a\\'", plain.next().?);
+    try std.testing.expectEqualStrings("SELECT 'b'", plain.next().?);
+    try std.testing.expect(plain.next() == null);
+}
+
+test "a dollar sign glued to an identifier does not open a dollar-quote (maximal munch)" {
+    // Postgres folds `a$b$` into one identifier; the `;` after it is a boundary.
+    var s = SqlStatementSplitter.init("SELECT a$b$ ; SELECT 1;");
+    try std.testing.expectEqualStrings("SELECT a$b$", s.next().?);
+    try std.testing.expectEqualStrings("SELECT 1", s.next().?);
+    try std.testing.expect(s.next() == null);
+    // After a string literal (non-identifier byte) the delimiter DOES open.
+    var q = SqlStatementSplitter.init("SELECT 'x'$b$ ; $b$;");
+    try std.testing.expectEqualStrings("SELECT 'x'$b$ ; $b$", q.next().?);
+    try std.testing.expect(q.next() == null);
+}
+
+test "validate rejects an unterminated quoted identifier" {
+    try std.testing.expectError(
+        SplitError.UnterminatedQuotedIdentifier,
+        SqlStatementSplitter.validate("CREATE TABLE \"broken (id INT);"),
+    );
+}
+
 test "validate accepts terminated quoting in every supported form" {
     try SqlStatementSplitter.validate("SELECT 1;");
     try SqlStatementSplitter.validate("SELECT 'it''s; fine' FROM t; -- trailing comment");
