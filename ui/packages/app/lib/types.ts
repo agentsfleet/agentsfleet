@@ -24,8 +24,8 @@ export type FleetTrigger =
   | { type: "api" };
 
 // `status` is typed as the loose `string` because the wire format may carry
-// values the front-end doesn't recognise (forward-compat). Consumers should
-// narrow with `AGENTSFLEET_STATUS` from `lib/api/fleets` before branching.
+// values the front-end doesn't recognise yet. Consumers should narrow with
+// `AGENTSFLEET_STATUS` from `lib/api/fleets` before branching.
 export type Fleet = {
   id: string;
   name: string;
@@ -37,10 +37,10 @@ export type Fleet = {
 
 // Install a fleet from exactly one onboarded library tier: a platform entry
 // (slug id) or this workspace's tenant entry. The `?: never` arms make the two
-// mutually exclusive at compile time; raw-`SKILL.md` paste, the
-// legacy per-workspace `bundle_id`, and github-import-at-create are no longer
-// accepted. An optional `name` overrides the SKILL.md-derived fleet name so one
-// library entry can back multiple fleets in a workspace.
+// mutually exclusive at compile time; raw-`SKILL.md` paste, per-workspace
+// `bundle_id`, and github-import-at-create are not accepted. An optional `name`
+// overrides the SKILL.md-derived fleet name so one library entry can back
+// multiple fleets in a workspace.
 export type InstallFleetRequest =
   | { platform_library_id: string; name?: string; tenant_library_id?: never }
   | { tenant_library_id: string; name?: string; platform_library_id?: never };
