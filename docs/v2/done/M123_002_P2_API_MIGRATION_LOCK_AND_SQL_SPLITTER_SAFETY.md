@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M123
 **Workstream:** 002
 **Date:** Jul 09, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P2 — three migration-path correctness gaps; the worst is a fresh-DB simultaneous-first-deploy race that self-heals on restart, the others latent (no live trigger) but silent when they fire.
 **Categories:** API
 **Batch:** B1 — runs alone; touches only the migration runner, the SQL splitter, and one reachable integration-test file.
@@ -174,13 +174,13 @@ No HTTP route, Command-Line Interface (CLI) surface, or on-disk schema path chan
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
 | R1 | Lock precedes DDL; splitter parses/rejects correctly (§1/§2) | `make test-unit-all` | exit 0 incl. the splitter unit tests | P0 | ✅ exit 0 — `✓ All unit lanes passed` |
-| R2 | Lock-held and stale-row regressions pass (§1/§3) | `make test-integration` | exit 0 incl. the new migration tests | P0 | ⏳ verbatim run blocked by cross-worktree container contention; the 8 migration tests pass against a fresh private Postgres (`1680 pass / 0 fail`, twice) — see Session Notes |
+| R2 | Lock-held and stale-row regressions pass (§1/§3) | `make test-integration` | exit 0 incl. the new migration tests | P0 | ✅ exit 0 — `✓ [agentsfleetd] Full integration suite passed` (fresh containers + schema reset, so tier-3 quality); also 1680/0 twice vs a private fresh Postgres |
 | R3 | Splitter header no longer disclaims tagged dollar-quotes/block comments (§2) | `grep -n "not supported\|does NOT handle" src/agentsfleetd/db/sql_splitter.zig` | no output | P1 | ✅ no output |
 | R4 | Corpus guard no longer passes on `count != 0` alone (§2) | `grep -n "stmt_count == 0" src/agentsfleetd/cmd/common.zig` | no output | P1 | ✅ no output |
 | R5 | Diff stays inside Files Changed | `git diff --name-only origin/main` | 0 paths missing from the Files Changed table | P0 | ✅ 0 missing (7 source paths + this spec) |
 | S1 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | ✅ exit 0 |
 | S2 | Lint clean | `make lint-all` | exit 0 | P0 | ✅ `✓ All lint checks passed` |
-| S3 | Integration passes | `make test-integration` | exit 0 | P0 | ⏳ same as R2 |
+| S3 | Integration passes | `make test-integration` | exit 0 | P0 | ✅ exit 0 — same run as R2 |
 | S4 | pg-drain intact (query changed) | `make _lint_zig_pg_drain` | exit 0 | P0 | ✅ `✓ pg-drain check passed (628 files scanned)` |
 | S5 | No leaks (Zig migration path touched) | `make memleak` | exit 0 | P0 | ✅ `✓ [agentsfleetd] memleak gate passed` (1542 pass; 0 failed) |
 | S6 | Cross-compile | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` | exit 0 | P0 | ✅ both targets, re-run after the review fixes |
