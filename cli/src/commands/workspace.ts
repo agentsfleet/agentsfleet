@@ -1,8 +1,8 @@
 // Workspace command Effects — add / list / use / show / secrets / delete.
 //
-// Only `workspace add` hits the API (POST /v1/workspaces). The other five
+// Only `workspace create` hits the API (POST /v1/workspaces). The other five
 // commands operate against the on-disk Workspaces store (services/workspaces.ts).
-// `workspace add` is also the only command that does NOT call requireWorkspaceId
+// `workspace create` is also the only command that does NOT call requireWorkspaceId
 // — it CREATES the current workspace; gating it on an existing one would
 // produce a chicken-and-egg failure on a fresh install.
 //
@@ -100,7 +100,7 @@ export const workspaceAddEffect = (
     // dashboards can pivot on command name (telemetry is opt-OUT
     // default; AGENTSFLEET_TELEMETRY_DISABLED=1 or DO_NOT_TRACK=1 disables).
     yield* analytics.capture(EVT_WORKSPACE_CREATED, {
-      command: "workspace.add",
+      command: "workspace.create",
     });
 
     if (config.jsonMode) {
@@ -205,7 +205,7 @@ export const workspaceUseEffectFromArgs = (
       return yield* Effect.fail(
         new ConfigError({
           detail: `workspace ${workspaceId} is not in your local list`,
-          suggestion: "run `agentsfleet workspace add` or `agentsfleet workspace list`",
+          suggestion: "run `agentsfleet workspace create` or `agentsfleet workspace list`",
         }),
       );
     }

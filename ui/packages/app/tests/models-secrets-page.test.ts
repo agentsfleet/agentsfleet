@@ -1,6 +1,7 @@
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
+import { MODELS_PAGE_DESCRIPTION } from "../app/(dashboard)/w/[workspaceId]/settings/models/copy";
 
 // Server-component page test for the Models page (M121: the registry
 // table replaced the switch list). The data layer (reads.ts → tenant model
@@ -82,7 +83,7 @@ describe("Models page", () => {
     const markup = renderToStaticMarkup(await renderPage(Page));
 
     expect(markup).toContain("Models");
-    expect(markup).toContain("The model your fleets run on, and the key behind it.");
+    expect(markup).toContain(MODELS_PAGE_DESCRIPTION);
     expect(markup).toContain('data-catalogue-provider="1"');
     expect(markup).toContain('data-testid="models-registry-table"');
     expect(markup).toContain('data-entry-count="2"');

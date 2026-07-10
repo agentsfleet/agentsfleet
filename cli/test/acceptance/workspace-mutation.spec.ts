@@ -7,7 +7,7 @@
  * the workspace mutating surface confirmed against
  * `src/program/cli-tree.ts` + `src/commands/workspace.ts`:
  *
- *   1. round-trip — `workspace add` → `workspace list` contains it →
+ *   1. round-trip — `workspace create` → `workspace list` contains it →
  *      `workspace use` → `workspace show` reflects active →
  *      `workspace delete` (LOCAL store removal) → list excludes it.
  *   2. scope isolation — two created workspaces; a prefix-named fleet
@@ -135,7 +135,7 @@ if (!isLive) {
     describe("round-trip add → list → use → show → delete", () => {
       let createdId = "";
 
-      it("workspace add creates a server workspace and returns its id", async () => {
+      it("workspace create creates a server workspace and returns its id", async () => {
         const added = await addWorkspace(env, RT_NAME);
         createdId = added.workspaceId;
         createdWorkspaceIds.add(createdId);

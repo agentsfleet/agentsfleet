@@ -19,8 +19,8 @@ export const buildWorkspaceHandlers = (
   wrapE: WrapE,
   wrapEFn: WrapEFn,
 ): WorkspaceHandlers => ({
-  add: wrapEFn(
-    "workspace.add",
+  create: wrapEFn(
+    "workspace.create",
     (frame) => workspaceAddEffect(frame.parsed.positionals[0]),
   ),
   list: wrapE("workspace.list", workspaceListEffect),

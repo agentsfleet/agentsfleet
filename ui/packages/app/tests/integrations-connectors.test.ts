@@ -180,9 +180,10 @@ describe("IntegrationsConnectors (test_ui_connectors_cards_from_catalog)", () =>
   it("renders an unconfigured OAuth connector with the UZ-CONN-001 docs link, no Connect", () => {
     renderConnectors([entry({ id: "jira", archetype: "oauth2", display_name: "Jira", configured: false })]);
     const jira = screen.getByTestId("integration-jira");
-    expect(jira.textContent).toContain("Setup required");
+    expect(jira.textContent).toContain("Admin setup required");
+    expect(jira.textContent).toContain("A platform admin needs to enable this connector.");
     expect(screen.queryByRole("button", { name: /connect jira/i })).toBeNull();
-    const link = within(jira).getByRole("link", { name: /setup guide/i });
+    const link = within(jira).getByRole("link", { name: /setup steps/i });
     expect(link.getAttribute("href")).toBe(CONNECTOR_NOT_CONFIGURED_DOCS_URI);
   });
 });

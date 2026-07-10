@@ -5,9 +5,9 @@
  * a CLI read WITH that key, so this file carries the primitives that round-trip
  * is built from:
  *
- *   - `mintFleetKey`  — `fleet-key add --fleet <id> --name <prefixed> --json`,
+ *   - `mintFleetKey`  — `fleet-key create --fleet <id> --name <prefixed> --json`,
  *     returns BOTH the `fleet_key_id` (for revoke/teardown) and the usable
- *     `key` secret (the `agt_a…` value the add response exposes once). The
+ *     `key` secret (the `agt_a…` value the create response exposes once). The
  *     secret field is confirmed against `cli/src/commands/fleet_key.ts`
  *     (`FleetKeyResponse.key`, emitted verbatim by `output.printJson(res)`).
  *
@@ -21,7 +21,7 @@
  *     makes no claim about the OUTCOME; it returns the raw run result and the
  *     caller asserts.
  *
- *     CONTRACT (verified against `agentsfleetd`): an `agt_a…` fleet key is NOT a
+ *     Rule verified against `agentsfleetd`: an `agt_a…` fleet key is NOT a
  *     control-plane credential. The standard `bearer()` middleware
  *     (`src/agentsfleetd/auth/middleware/bearer_or_api_key.zig`) accepts only an
  *     OIDC JWT or a tenant `agt_t` key and answers 401 otherwise; `agt_a` keys
@@ -52,7 +52,7 @@ type Env = Readonly<Record<string, string>>;
 
 // --- command / flag / key wire literals (RULE UFS) -------------------------
 export const CMD_AGENT_KEY = "fleet-key" as const;
-export const SUB_ADD = "add" as const;
+export const SUB_CREATE = "create" as const;
 export const SUB_LIST = "list" as const;
 export const SUB_DELETE = "delete" as const;
 export const FLAG_AGENT = "--fleet" as const;
@@ -140,7 +140,7 @@ export async function assertSecretDeleteDisjunction(opts: {
 export interface MintedFleetKey {
   /** Stable id used to revoke the key and for teardown. */
   readonly fleetKeyId: string;
-  /** The usable secret (`agt_a…`) shown once by the add response. */
+  /** The usable secret (`agt_a…`) shown once by the create response. */
   readonly secret: string;
 }
 
@@ -150,8 +150,8 @@ interface FleetKeyAddEnvelope {
 }
 
 /**
- * `fleet-key add --fleet <id> --name <name> --json` → both ids. Asserts a
- * clean exit and that the add response exposed a usable secret. Throws (rather
+ * `fleet-key create --fleet <id> --name <name> --json` → both ids. Asserts a
+ * clean exit and that the create response exposed a usable secret. Throws (rather
  * than returning a partial) so the caller never authenticates with `undefined`.
  */
 export async function mintFleetKey(
@@ -160,17 +160,17 @@ export async function mintFleetKey(
   opts: { readonly fleetId: string; readonly name: string },
 ): Promise<MintedFleetKey> {
   const result = await runFleetctl(
-    [CMD_AGENT_KEY, SUB_ADD, FLAG_AGENT, opts.fleetId, FLAG_NAME, opts.name, FLAG_JSON],
+    [CMD_AGENT_KEY, SUB_CREATE, FLAG_AGENT, opts.fleetId, FLAG_NAME, opts.name, FLAG_JSON],
     { env, stdin: "" },
   );
   assertNoSecretLeak(result, sessionJwt);
-  assert.equal(result.code, 0, `fleet-key add exited ${result.code}: ${result.stderr}`);
+  assert.equal(result.code, 0, `fleet-key create exited ${result.code}: ${result.stderr}`);
   const parsed = JSON.parse(result.stdout.trim()) as FleetKeyAddEnvelope;
   const fleetKeyId = parsed[KEY_AGENT_KEY_ID];
   const secret = parsed[KEY_SECRET];
-  assert.equal(typeof fleetKeyId, "string", `add missing ${KEY_AGENT_KEY_ID}: ${result.stdout}`);
-  assert.equal(typeof secret, "string", `add missing usable ${KEY_SECRET} secret: ${result.stdout}`);
-  assert.ok((secret as string).length > 0, `add returned an empty ${KEY_SECRET} secret: ${result.stdout}`);
+  assert.equal(typeof fleetKeyId, "string", `create missing ${KEY_AGENT_KEY_ID}: ${result.stdout}`);
+  assert.equal(typeof secret, "string", `create missing usable ${KEY_SECRET} secret: ${result.stdout}`);
+  assert.ok((secret as string).length > 0, `create returned an empty ${KEY_SECRET} secret: ${result.stdout}`);
   return { fleetKeyId: fleetKeyId as string, secret: secret as string };
 }
 

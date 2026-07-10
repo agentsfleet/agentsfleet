@@ -16,6 +16,7 @@ import {
   FormMessage,
   Input,
   Spinner,
+  TooltipButton,
 } from "@agentsfleet/design-system";
 import { XIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -24,11 +25,14 @@ import { presentErrorString } from "@/lib/errors";
 import { SECRET_NAME_MAX } from "../lib/secret-data";
 import { EVENTS } from "@/lib/analytics/events";
 import { captureProductEvent } from "@/lib/analytics/posthog";
+import { CREATE_SECRET_TOOLTIP } from "../copy";
 
 type Props = {
   workspaceId: string;
   /** Called after a successful submit — lets a dialog-hosted mount close itself. */
   onDone?: () => void;
+  /** Called when a dialog-hosted mount should close without saving. */
+  onCancel?: () => void;
 };
 
 const STORE_ACTION = "store the secret";
@@ -80,7 +84,7 @@ type FormValues = z.infer<typeof schema>;
 
 const EMPTY_FIELD = { key: "", value: "" };
 
-export default function AddSecretForm({ workspaceId, onDone }: Props) {
+export default function AddSecretForm({ workspaceId, onDone, onCancel }: Props) {
   const router = useRouter();
   const [apiError, setApiError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -212,10 +216,17 @@ export default function AddSecretForm({ workspaceId, onDone }: Props) {
           </Button>
         </div>
 
-        <Button type="submit" disabled={pending} variant="outline">
-          {pending ? <Spinner size="sm" srLabel="Creating" /> : null}
-          {ADD_SECRET_LABEL}
-        </Button>
+        <div className="flex justify-end gap-2">
+          {onCancel ? (
+            <Button type="button" variant="ghost" disabled={pending} onClick={onCancel}>
+              Cancel
+            </Button>
+          ) : null}
+          <TooltipButton type="submit" disabled={pending} variant="outline" tooltip={CREATE_SECRET_TOOLTIP}>
+            {pending ? <Spinner size="sm" srLabel="Creating" /> : null}
+            {ADD_SECRET_LABEL}
+          </TooltipButton>
+        </div>
         {apiError ? <p className="text-body-sm text-destructive">{apiError}</p> : null}
       </form>
     </Form>

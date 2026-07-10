@@ -34,8 +34,6 @@ Configuration — Slack channel, production-branch glob, cron schedule — lives
 
 This matters architecturally: the install surface is the CLI (deterministic, scriptable, host-neutral) and the bundle is portable markdown. The runtime stays prompt-driven; `agentsfleet install` plus the catalogue is what makes it tractable from a cold start.
 
-> **Transitional note.** The earlier wedge was a host-agent markdown skill (`/agentsfleet-install-platform-ops`, added via `npx skills add agentsfleet/skills`) that orchestrated repo detection, gating questions, frontmatter generation, and webhook auto-registration. That onboarding is being retired in favor of the CLI + catalogue flow above, and the public docs lead with the CLI path. Where this file and the scenarios still describe skill-orchestrated steps, read them as the prior approach — the substrate calls (`doctor`, `secret add`, `install --library`, `fleet update --from`, `steer`, the `gh` webhook registration) are unchanged; only the orchestration moved from the skill to the CLI + the user.
-
 ## §8.0.1 Deployment posture: hosted-only in v2
 
 v2 ships **hosted-only** on `api.agentsfleet.net`. The skill detects no choice point: it defaults to the hosted endpoint, prompts Clerk OAuth via `agentsfleet login` if the CLI is not authenticated, and proceeds. There is no self-host runbook in v2 and no `--self-host` flag.
@@ -240,8 +238,8 @@ install flow   →   doctor --json (health)                  doctor --json (heal
                     model: accounts/fireworks/models/kimi-k2.6                model: ""
                     context_cap_tokens: 256000              context_cap_tokens: 0
 
-tenant provider → (nothing — synth-default                → agentsfleet tenant provider add
-add                stays in place)                            --secret account-fireworks-key
+tenant provider → (nothing — synth-default                → agentsfleet tenant provider create
+                   stays in place)                            --secret account-fireworks-key
                                                               → API loads vault row
                                                               → API GETs /_um/.../cap.json
                                                               → upsert tenant_model_selection row
@@ -268,9 +266,9 @@ L3 run chunking
 
 The parser-side companion to this rule landed with M49: `x-agentsfleet.model` and `x-agentsfleet.context.*` are now first-class fields on `FleetConfig`, carried on the lease as `ExecutionPolicy` / `ContextBudget` (`src/lib/contract/execution_policy.zig`) *before* auto-sentinel defaults are substituted. Frontmatter overrides therefore win against runtime defaults (the doc previously described this shape but the parser dropped the fields silently — now closed).
 
-Single source of truth for caps: `https://api.agentsfleet.net/_um/da5b6b3810543fe108d816ee972e4ff8/cap.json`. Resolved at `tenant provider add` time (self-managed path) or hardcoded as a server-side synth-default constant (platform path). **Never resolved at trigger time** — would add a network dependency to the hot path. See [`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §9 for the endpoint shape and §1 for the full self-managed posture.
+Single source of truth for caps: `https://api.agentsfleet.net/_um/da5b6b3810543fe108d816ee972e4ff8/cap.json`. Resolved at `tenant provider create` time (self-managed path) or hardcoded as a server-side synth-default constant (platform path). **Never resolved at trigger time** — would add a network dependency to the hot path. See [`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §9 for the endpoint shape and §1 for the full self-managed posture.
 
-**Dashboard equivalent — the Models page (`/settings/models`).** A browser user manages the same self-managed posture there instead of the CLI. The **active-model row** shows the resolved `provider` · `model` with a LIVE/DEFAULT pill — the dashboard read of `tenant provider show` — and the secret-driven **switch-list** flips the active provider in one click, calling the same self-managed provider-set as `tenant provider add`, keyed off the server-projected secret `kind` (see [`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §8.3). The row's **Replace key** rotates a provider key in place via PATCH (§8.3) without re-entering model or endpoint. The legacy `/credentials` page was removed outright (not redirected) — provider keys live here; custom (non-provider) secrets moved to the standalone Secrets & ENVs page (`/secrets`).
+**Dashboard equivalent — the Models page (`/settings/models`).** A browser user manages the same self-managed posture there instead of the CLI. The **active-model row** shows the resolved `provider` · `model` with a LIVE/DEFAULT pill — the dashboard read of `tenant provider show` — and the secret-driven **switch-list** flips the active provider in one click, calling the same self-managed provider-set as `tenant provider create`, keyed off the server-projected secret `kind` (see [`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §8.3). The row's **Replace key** rotates a provider key in place via PATCH (§8.3) without re-entering model or endpoint. The `/credentials` page was removed outright (not redirected) — provider keys live here; custom (non-provider) secrets moved to the standalone Secrets & ENVs page (`/secrets`).
 
 ## §8.8 Slack as a resident surface (Rung 0) — M106
 

@@ -127,8 +127,8 @@ describe("--help bodies use angle-bracket metavar convention", () => {
     ["agentsfleet install --help",              ["install", "--help"],              ["--library <id>", "--name <name>"]],
     ["agentsfleet login --help",                ["login", "--help"],                ["--token <token>", "--token-name <label>"]],
     ["agentsfleet billing show --help",         ["billing", "show", "--help"],      ["--limit <n>", "--cursor <token>"]],
-    ["agentsfleet fleet-key add --help",        ["fleet-key", "add", "--help"],     ["--workspace <id>", "--fleet <id>", "--name <name>"]],
-    ["agentsfleet tenant provider add --help",  ["tenant", "provider", "add", "--help"], ["--secret <name>", "--model <name>"]],
+    ["agentsfleet fleet-key create --help",        ["fleet-key", "create", "--help"],     ["--workspace <id>", "--fleet <id>", "--name <name>"]],
+    ["agentsfleet tenant provider create --help",  ["tenant", "provider", "create", "--help"], ["--secret <name>", "--model <name>"]],
   ];
 
   for (const [name, argv, metavars] of cases) {
@@ -148,7 +148,7 @@ describe("--help bodies use angle-bracket metavar convention", () => {
 describe("validators reject invalid values with clear error stem", () => {
   type ValidatorCase = readonly [string, ReadonlyArray<string>, RegExp];
   // The CLI surfaces commander's "option '--X <v>' argument 'Y' is invalid.
-  // <stem>" line on stderr and exits non-zero. The stem is the contract
+  // <stem>" line on stderr and exits non-zero. The stem is the rule
   // we pin here. Exit code is currently 1 for commander.invalidArgument
   // (commander wraps the InvalidArgumentError and exits 1); a separate
   // cli.ts hygiene PR can map it to POSIX 2 by extending
@@ -162,8 +162,8 @@ describe("validators reject invalid values with clear error stem", () => {
     ["logs --limit 9999",     ["logs", "--limit", "9999"],       /must be ≤ 500/],
     ["events <id> --limit 9999", ["events", FIXTURE_UUIDV7, "--limit", "9999"], /must be ≤ 500/],
     // parseIdOption rejections (uuidv7 enforced)
-    ["fleet-key add --workspace not-a-uuid", ["fleet-key", "add", "--workspace", "not-a-uuid", "--fleet", FIXTURE_UUIDV7], /uuidv7 format/],
-    ["fleet-key add --fleet not-a-uuid",    ["fleet-key", "add", "--workspace", FIXTURE_UUIDV7, "--fleet", "not-a-uuid"], /uuidv7 format/],
+    ["fleet-key create --workspace not-a-uuid", ["fleet-key", "create", "--workspace", "not-a-uuid", "--fleet", FIXTURE_UUIDV7], /uuidv7 format/],
+    ["fleet-key create --fleet not-a-uuid",    ["fleet-key", "create", "--workspace", FIXTURE_UUIDV7, "--fleet", "not-a-uuid"], /uuidv7 format/],
     ["list --workspace-id not-a-uuid",   ["list", "--workspace-id", "not-a-uuid"], /uuidv7 format/],
   ];
 
@@ -239,10 +239,10 @@ describe("option values flow end-to-end into the wire request", () => {
     assert.match(charges.url, /[?&]cursor=xyz(&|$)/);
   });
 
-  it("fleet-key add --workspace <uuid7> --fleet <uuid7> --name fred → POST body has name=fred", async () => {
+  it("fleet-key create --workspace <uuid7> --fleet <uuid7> --name fred → POST body has name=fred", async () => {
     clear();
     const result = await runFleetctl(
-      ["fleet-key", "add", "--workspace", workspaceUuid, "--fleet", FIXTURE_UUIDV7_B, "--name", "fred", "--json"],
+      ["fleet-key", "create", "--workspace", workspaceUuid, "--fleet", FIXTURE_UUIDV7_B, "--name", "fred", "--json"],
       { env: apiEnv() },
     );
     assert.equal(result.code, 0, `stderr=${result.stderr}`);
@@ -255,10 +255,10 @@ describe("option values flow end-to-end into the wire request", () => {
     assert.equal(body.fleet_id, FIXTURE_UUIDV7_B, `expected fleet_id in POST body; body=${post.body}`);
   });
 
-  it("tenant provider add --secret keyname --model gpt-x → PUT body has secret_ref + model", async () => {
+  it("tenant provider create --secret keyname --model gpt-x → PUT body has secret_ref + model", async () => {
     clear();
     const result = await runFleetctl(
-      ["tenant", "provider", "add", "--secret", "keyname", "--model", "gpt-x", "--json"],
+      ["tenant", "provider", "create", "--secret", "keyname", "--model", "gpt-x", "--json"],
       { env: apiEnv() },
     );
     assert.equal(result.code, 0, `stderr=${result.stderr}`);

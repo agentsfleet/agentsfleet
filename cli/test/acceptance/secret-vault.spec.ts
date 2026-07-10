@@ -2,14 +2,14 @@
  * Secret-vault round-trip (live, seeded-credentials session).
  *
  * Walks the workspace secret vault end to end against the live DEV API:
- *   add (name + JSON object via --data) → list --json contains it →
+ *   create (name + JSON object via --data) → list --json contains it →
  *   show --json reports exists:true and NEVER echoes the secret bytes →
  *   delete → list --json excludes it → show --json reports exists:false.
  *
  * Plus the negative edges that gate the slice:
- *   - add without --data fails client-side (no network)
- *   - add with a non-object payload fails client-side
- *   - add of an existing name without --force is skipped, --force overwrites
+ *   - create without --data fails client-side (no network)
+ *   - create with a non-object payload fails client-side
+ *   - create of an existing name without --force is skipped, --force overwrites
  *   - show of an unknown name exits non-zero, exists:false
  *   - secret material never appears in any captured stream (assertNoSecretLeak
  *     also fires against the minted JWT after every spawn)
@@ -48,7 +48,7 @@ const isLive = target.startsWith("https://");
 
 // --- command/flag/key constants (RULE UFS) ---------------------------------
 const CMD_SECRET = "secret" as const;
-const SUB_ADD = "add" as const;
+const SUB_CREATE = "create" as const;
 const SUB_SHOW = "show" as const;
 const SUB_LIST = "list" as const;
 const SUB_DELETE = "delete" as const;
@@ -76,7 +76,7 @@ const NO_COLOR_ON = "1" as const;
 const STATE_DIR_PREFIX = "agentsfleet-secretvault-" as const;
 const UNKNOWN_NAME_SUFFIX = "ghost" as const;
 
-// Custom-endpoint typed secret-add form.
+// Custom-endpoint typed secret-create form.
 const FLAG_PROVIDER = "--provider" as const;
 const FLAG_BASE_URL = "--base-url" as const;
 const FLAG_API_KEY = "--api-key" as const;
@@ -84,7 +84,7 @@ const OPENAI_COMPATIBLE_PROVIDER = "openai-compatible" as const;
 const CUSTOM_BASE_URL = "https://vllm.acceptance.example/v1" as const;
 const NON_HTTPS_BASE_URL = "http://vllm.acceptance.example/v1" as const;
 
-// A quoted JSON scalar — valid JSON, but not the object `add` requires, so the
+// A quoted JSON scalar — valid JSON, but not the object `create` requires, so the
 // client-side payload guard must reject it before any network call.
 const SCALAR_PAYLOAD = '"just-a-string"' as const;
 
@@ -208,14 +208,14 @@ if (!isLive) {
     });
 
     describe("happy-path round-trip", () => {
-      it("add stores a named JSON secret", async () => {
+      it("create stores a named JSON secret", async () => {
         const result = await run([
-          CMD_SECRET, SUB_ADD, roundTripName, FLAG_DATA, secretPayload(), FLAG_JSON,
+          CMD_SECRET, SUB_CREATE, roundTripName, FLAG_DATA, secretPayload(), FLAG_JSON,
         ]);
-        assert.equal(result.code, 0, `add exited ${result.code}: ${result.stderr}`);
-        const parsed = parseJson<Record<string, unknown>>(result.stdout, SUB_ADD);
-        assert.equal(parsed[KEY_STATUS], STATUS_STORED, `unexpected add status: ${result.stdout}`);
-        assert.equal(parsed[KEY_NAME], roundTripName, `add echoed wrong name: ${result.stdout}`);
+        assert.equal(result.code, 0, `create exited ${result.code}: ${result.stderr}`);
+        const parsed = parseJson<Record<string, unknown>>(result.stdout, SUB_CREATE);
+        assert.equal(parsed[KEY_STATUS], STATUS_STORED, `unexpected create status: ${result.stdout}`);
+        assert.equal(parsed[KEY_NAME], roundTripName, `create echoed wrong name: ${result.stdout}`);
       });
 
       it("list --json contains the stored secret", async () => {
@@ -277,29 +277,29 @@ if (!isLive) {
         await run([CMD_SECRET, SUB_DELETE, upsertName, FLAG_JSON]).catch(() => undefined);
       });
 
-      it("first add stores; re-add without --force is skipped; --force overwrites", async () => {
+      it("first create stores; repeat create without --force is skipped; --force overwrites", async () => {
         const first = await run([
-          CMD_SECRET, SUB_ADD, upsertName, FLAG_DATA, secretPayload(), FLAG_JSON,
+          CMD_SECRET, SUB_CREATE, upsertName, FLAG_DATA, secretPayload(), FLAG_JSON,
         ]);
-        assert.equal(first.code, 0, `first add exited ${first.code}: ${first.stderr}`);
+        assert.equal(first.code, 0, `first create exited ${first.code}: ${first.stderr}`);
         assert.equal(
-          parseJson<Record<string, unknown>>(first.stdout, "first-add")[KEY_STATUS],
+          parseJson<Record<string, unknown>>(first.stdout, "first-create")[KEY_STATUS],
           STATUS_STORED,
         );
 
-        const reAdd = await run([
-          CMD_SECRET, SUB_ADD, upsertName, FLAG_DATA, secretPayload(), FLAG_JSON,
+        const repeatCreate = await run([
+          CMD_SECRET, SUB_CREATE, upsertName, FLAG_DATA, secretPayload(), FLAG_JSON,
         ]);
-        const reParsed = parseJson<Record<string, unknown>>(reAdd.stdout, "re-add");
-        assert.equal(reParsed[KEY_STATUS], STATUS_SKIPPED, `expected skipped: ${reAdd.stdout}`);
-        assert.equal(reParsed[KEY_REASON], REASON_ALREADY_EXISTS, `expected reason: ${reAdd.stdout}`);
+        const reParsed = parseJson<Record<string, unknown>>(repeatCreate.stdout, "repeat-create");
+        assert.equal(reParsed[KEY_STATUS], STATUS_SKIPPED, `expected skipped: ${repeatCreate.stdout}`);
+        assert.equal(reParsed[KEY_REASON], REASON_ALREADY_EXISTS, `expected reason: ${repeatCreate.stdout}`);
 
         const forced = await run([
-          CMD_SECRET, SUB_ADD, upsertName, FLAG_DATA, secretPayload(), FLAG_FORCE, FLAG_JSON,
+          CMD_SECRET, SUB_CREATE, upsertName, FLAG_DATA, secretPayload(), FLAG_FORCE, FLAG_JSON,
         ]);
-        assert.equal(forced.code, 0, `forced add exited ${forced.code}: ${forced.stderr}`);
+        assert.equal(forced.code, 0, `forced create exited ${forced.code}: ${forced.stderr}`);
         assert.equal(
-          parseJson<Record<string, unknown>>(forced.stdout, "forced-add")[KEY_STATUS],
+          parseJson<Record<string, unknown>>(forced.stdout, "forced-create")[KEY_STATUS],
           STATUS_OVERWRITTEN,
           `expected overwritten: ${forced.stdout}`,
         );
@@ -315,18 +315,18 @@ if (!isLive) {
         assert.equal(parsed[KEY_EXISTS], false, `expected exists:false: ${result.stdout}`);
       });
 
-      it("add without --data is rejected client-side (no network)", async () => {
-        await runUnroutable([CMD_SECRET, SUB_ADD, secretName("nodata"), FLAG_JSON]);
+      it("create without --data is rejected client-side (no network)", async () => {
+        await runUnroutable([CMD_SECRET, SUB_CREATE, secretName("nodata"), FLAG_JSON]);
       });
 
-      it("add with a non-object payload is rejected client-side (no network)", async () => {
+      it("create with a non-object payload is rejected client-side (no network)", async () => {
         await runUnroutable([
-          CMD_SECRET, SUB_ADD, secretName("scalar"), FLAG_DATA, SCALAR_PAYLOAD, FLAG_JSON,
+          CMD_SECRET, SUB_CREATE, secretName("scalar"), FLAG_DATA, SCALAR_PAYLOAD, FLAG_JSON,
         ]);
       });
     });
 
-    // Custom OpenAI-compatible endpoint secret — the typed secret-add
+    // Custom OpenAI-compatible endpoint secret — the typed secret-create
     // form stores provider + base_url; a non-https URL is rejected by the
     // commander validator with NO network call.
     describe("custom OpenAI-compatible endpoint", () => {
@@ -336,18 +336,18 @@ if (!isLive) {
         await run([CMD_SECRET, SUB_DELETE, customName, FLAG_JSON]).catch(() => undefined);
       });
 
-      it("add --provider openai-compatible --base-url <https> --api-key <key> stores it", async () => {
+      it("create --provider openai-compatible --base-url <https> --api-key <key> stores it", async () => {
         const result = await run([
-          CMD_SECRET, SUB_ADD, customName,
+          CMD_SECRET, SUB_CREATE, customName,
           FLAG_PROVIDER, OPENAI_COMPATIBLE_PROVIDER,
           FLAG_BASE_URL, CUSTOM_BASE_URL,
           FLAG_API_KEY, CUSTOM_API_KEY_VALUE,
           FLAG_JSON,
         ]);
-        assert.equal(result.code, 0, `custom add exited ${result.code}: ${result.stderr}`);
-        const parsed = parseJson<Record<string, unknown>>(result.stdout, "custom-add");
-        assert.equal(parsed[KEY_STATUS], STATUS_STORED, `unexpected custom add status: ${result.stdout}`);
-        assert.equal(parsed[KEY_NAME], customName, `custom add echoed wrong name: ${result.stdout}`);
+        assert.equal(result.code, 0, `custom create exited ${result.code}: ${result.stderr}`);
+        const parsed = parseJson<Record<string, unknown>>(result.stdout, "custom-create");
+        assert.equal(parsed[KEY_STATUS], STATUS_STORED, `unexpected custom create status: ${result.stdout}`);
+        assert.equal(parsed[KEY_NAME], customName, `custom create echoed wrong name: ${result.stdout}`);
       });
 
       it("list --json contains the custom-endpoint secret", async () => {
@@ -359,7 +359,7 @@ if (!isLive) {
 
       it("a non-https --base-url is rejected client-side (non-zero exit, no network)", async () => {
         await runUnroutable([
-          CMD_SECRET, SUB_ADD, secretName("custom-bad"),
+          CMD_SECRET, SUB_CREATE, secretName("custom-bad"),
           FLAG_PROVIDER, OPENAI_COMPATIBLE_PROVIDER,
           FLAG_BASE_URL, NON_HTTPS_BASE_URL,
           FLAG_API_KEY, CUSTOM_API_KEY_VALUE,

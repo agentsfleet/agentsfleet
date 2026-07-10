@@ -8,7 +8,7 @@
  * forbidden for every named provider). The CLI re-states the literal once here
  * — the `cli/` and `ui/` Bun projects do not share a module graph, so each side
  * mirrors the Zig source in exactly one place (the same pattern `PROVIDER_MODE`
- * already follows in `constants/billing.ts`). Every reader — the secret-add
+ * already follows in `constants/billing.ts`). Every reader — the secret-create
  * command, the option validator, and the tests — imports from here (RULE UFS).
  *
  * The secret JSON field keys match the resolver's `S_API_KEY` / `S_BASE_URL`

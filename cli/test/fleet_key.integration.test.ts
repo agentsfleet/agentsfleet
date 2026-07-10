@@ -10,7 +10,7 @@ const authedScope = <T>(fn: (stateDir: string) => Promise<T>): Promise<T> =>
   withAuthedStateDir({ workspaceId: WS_ID, sessionId: "sess_agent" }, fn);
 
 describe("fleet (external API key) commands", () => {
-  test("`fleet-key add` POSTs the new key and prints the raw value exactly once (shown-once contract)", async () => {
+  test("`fleet-key create` POSTs the new key and prints the raw value exactly once (shown-once rule)", async () => {
     await authedScope(async () => {
       let postBody: string | null = null;
       const routes: MockRoutes = {
@@ -28,7 +28,7 @@ describe("fleet (external API key) commands", () => {
         const err = bufferStream();
         const code = await runCli(
           [
-            "fleet-key", "add",
+            "fleet-key", "create",
             "--workspace", WS_ID,
             "--fleet", FLEET_ID,
             "--name", "langgraph-bot",

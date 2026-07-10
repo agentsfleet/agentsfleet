@@ -1,4 +1,4 @@
-// `agentsfleet secret add|show|list|delete` — workspace-scoped opaque
+// `agentsfleet secret create|show|list|delete` — workspace-scoped opaque
 // JSON secrets keyed by `name`. The skill consuming them addresses fields
 // as ${secrets.<name>.<field>}; this CLI does not enforce a schema (the
 // consumer owns it). Default `add` upserts skip-if-exists; `--force`
@@ -85,7 +85,7 @@ export const secretAddEffectFromFlags = (
     const wsId = yield* requireWorkspaceId;
     const name = yield* requireName(
       flags.name,
-      "agentsfleet secret add <name> --data='<json-object>' [--force]",
+      "agentsfleet secret create <name> --data='<json-object>' [--force]",
     );
     const data = yield* resolveSecretBody(flags);
 
@@ -184,7 +184,7 @@ export const secretListEffect: Effect.Effect<
   const secrets = res.secrets ?? [];
   if (secrets.length === 0) {
     yield* output.info(
-      "No secrets stored. Add one with: agentsfleet secret add <name> --data=@- (pipe JSON on stdin)",
+      "No secrets stored. Create one with: agentsfleet secret create <name> --data=@- (pipe JSON on stdin)",
     );
     return;
   }

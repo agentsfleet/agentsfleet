@@ -4,11 +4,9 @@ import { auth } from "@clerk/nextjs/server";
 import { listSecretsCached, listTenantModelEntriesCached } from "./lib/reads";
 import { ModelCatalogueProvider } from "./components/ModelCatalogueProvider";
 import ModelsRegistryTable from "./components/ModelsRegistryTable";
+import { MODELS_PAGE_DESCRIPTION, MODELS_PAGE_TITLE } from "./copy";
 
 export const dynamic = "force-dynamic";
-
-const PAGE_TITLE = "Models";
-const PAGE_DESCRIPTION = "The model your fleets run on, and the key behind it.";
 
 const EMPTY_REGISTRY = { models: [], platform_default_available: false };
 
@@ -29,8 +27,8 @@ export default async function ModelsKeysPage({
 
   return (
     <div className="space-y-8">
-      <PageHeader description={PAGE_DESCRIPTION}>
-        <PageTitle>{PAGE_TITLE}</PageTitle>
+      <PageHeader description={MODELS_PAGE_DESCRIPTION}>
+        <PageTitle>{MODELS_PAGE_TITLE}</PageTitle>
       </PageHeader>
 
       <ModelCatalogueProvider>

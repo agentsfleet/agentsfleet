@@ -1,5 +1,5 @@
 /**
- * secrets-lifecycle.spec.ts — custom-secret add (field builder, via dialog) →
+ * secrets-lifecycle.spec.ts — custom-secret create (field builder, via dialog) →
  * list → rotate, on the standalone /secrets page.
  *
  * Secrets is a real standalone page again, not a

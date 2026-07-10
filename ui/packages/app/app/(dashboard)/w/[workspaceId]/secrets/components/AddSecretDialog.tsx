@@ -2,16 +2,17 @@
 
 import { useState } from "react";
 import {
-  Button,
   Dialog,
   DialogContent,
   DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
+  TooltipButton,
 } from "@agentsfleet/design-system";
-import { PlusIcon } from "lucide-react";
+import { CircleHelpIcon, PlusIcon } from "lucide-react";
 import AddSecretFormDynamic from "@/components/domain/island-dynamic/AddSecretFormDynamic";
+import { CREATE_SECRET_TOOLTIP } from "../copy";
 
 const ADD_SECRET_TRIGGER_LABEL = "Create secret";
 
@@ -21,10 +22,10 @@ export default function AddSecretDialog({ workspaceId }: { workspaceId: string }
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button type="button" size="sm">
+        <TooltipButton type="button" size="sm" tooltip={CREATE_SECRET_TOOLTIP}>
           <PlusIcon size={14} />
           {ADD_SECRET_TRIGGER_LABEL}
-        </Button>
+        </TooltipButton>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
@@ -36,13 +37,18 @@ export default function AddSecretDialog({ workspaceId }: { workspaceId: string }
               href="https://docs.agentsfleet.net/fleets/credentials"
               target="_blank"
               rel="noopener noreferrer"
-              className="text-pulse underline-offset-2 hover:underline focus-visible:underline"
+              className="inline-flex items-center gap-1 text-pulse underline-offset-2 hover:underline focus-visible:underline"
             >
+              <CircleHelpIcon size={13} aria-hidden="true" />
               Learn more<span className="sr-only"> (opens in a new tab)</span>
             </a>
           </DialogDescription>
         </DialogHeader>
-        <AddSecretFormDynamic workspaceId={workspaceId} onDone={() => setOpen(false)} />
+        <AddSecretFormDynamic
+          workspaceId={workspaceId}
+          onDone={() => setOpen(false)}
+          onCancel={() => setOpen(false)}
+        />
       </DialogContent>
     </Dialog>
   );

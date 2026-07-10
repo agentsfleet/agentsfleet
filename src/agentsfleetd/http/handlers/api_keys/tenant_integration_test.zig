@@ -1,4 +1,4 @@
-// Integration tests for /v1/api-keys (M28_002 §3, §4).
+// Integration tests for /v1/api-keys.
 //
 // Covers:
 //   - POST creates: 201, agt_t prefix, SHA-256 hex persisted in core.api_keys.
@@ -179,6 +179,7 @@ test "integration: minted agt_t key authenticates GET, revoked by PATCH {active:
     defer list_before.deinit();
     try list_before.expectStatus(.ok);
     try std.testing.expect(!list_before.bodyContains("key_hash"));
+    try std.testing.expect(!list_before.bodyContains("\"last_used_at\":null"));
 
     // Revoke via PATCH.
     const patch_url = try std.fmt.allocPrint(ALLOC, "/v1/api-keys/{s}", .{id});

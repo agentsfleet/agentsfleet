@@ -1,4 +1,4 @@
-// test_cli_custom_secret_add — the typed custom-endpoint secret-add
+// test_cli_custom_secret_create — the typed custom-endpoint secret-create
 // form (`--provider openai-compatible --base-url <url> --model <m>
 // [--api-key <key>]`). Field-pairing rules mirror the resolver: model is always
 // required; api_key is required for a named provider but optional for
@@ -34,11 +34,11 @@ const NON_HTTPS_BASE_URL = "http://vllm.corp.example/v1";
 const authedScope = <T>(fn: (stateDir: string) => Promise<T>): Promise<T> =>
   withAuthedStateDir({ workspaceId: WS_ID, sessionId: "sess_custom_cred" }, fn);
 
-describe("secret add — custom OpenAI-compatible endpoint", () => {
+describe("secret create — custom OpenAI-compatible endpoint", () => {
   test("openai-compatible + https base_url stores a secret carrying provider + base_url", async () => {
     await authedScope(async () => {
       const routes: MockRoutes = {
-        // The add command lists first (upsert skip-if-exists guard) then POSTs.
+        // The create command lists first (upsert skip-if-exists guard) then POSTs.
         [`GET /v1/workspaces/${WS_ID}/secrets`]: () =>
           jsonResponse(200, { secrets: [] }),
         [`POST /v1/workspaces/${WS_ID}/secrets`]: () =>
@@ -49,7 +49,7 @@ describe("secret add — custom OpenAI-compatible endpoint", () => {
         const err = bufferStream();
         const code = await runCli(
           [
-            "secret", "add", SECRET_NAME,
+            "secret", "create", SECRET_NAME,
             "--provider", OPENAI_COMPATIBLE_PROVIDER,
             "--base-url", VALID_BASE_URL,
             "--api-key", API_KEY,
@@ -75,7 +75,7 @@ describe("secret add — custom OpenAI-compatible endpoint", () => {
         expect(sent.data?.[SECRET_FIELD_API_KEY]).toBe(API_KEY);
         expect(sent.data?.[SECRET_FIELD_MODEL]).toBe(MODEL);
         // The secret api_key rides in the encrypted POST body but must never
-        // surface on stdout (the --json success contract carries only metadata).
+        // surface on stdout (the --json success rule carries only metadata).
         expect(out.read()).not.toContain(API_KEY);
       });
     });
@@ -96,7 +96,7 @@ describe("secret add — custom OpenAI-compatible endpoint", () => {
         const err = bufferStream();
         const code = await runCli(
           [
-            "secret", "add", SECRET_NAME,
+            "secret", "create", SECRET_NAME,
             "--provider", OPENAI_COMPATIBLE_PROVIDER,
             "--base-url", NON_HTTPS_BASE_URL,
             "--api-key", API_KEY,
@@ -129,7 +129,7 @@ describe("secret add — custom OpenAI-compatible endpoint", () => {
         const err = bufferStream();
         const code = await runCli(
           [
-            "secret", "add", SECRET_NAME,
+            "secret", "create", SECRET_NAME,
             "--provider", OPENAI_COMPATIBLE_PROVIDER,
             "--base-url", "not a url",
             "--api-key", API_KEY,
@@ -151,7 +151,7 @@ describe("secret add — custom OpenAI-compatible endpoint", () => {
       const err = bufferStream();
       const code = await runCli(
         [
-          "secret", "add", SECRET_NAME,
+          "secret", "create", SECRET_NAME,
           "--provider", OPENAI_COMPATIBLE_PROVIDER,
           "--api-key", API_KEY,
           "--json",
@@ -177,7 +177,7 @@ describe("secret add — custom OpenAI-compatible endpoint", () => {
         const err = bufferStream();
         const code = await runCli(
           [
-            "secret", "add", SECRET_NAME,
+            "secret", "create", SECRET_NAME,
             "--provider", OPENAI_COMPATIBLE_PROVIDER,
             "--base-url", VALID_BASE_URL,
             "--model", MODEL,
@@ -203,7 +203,7 @@ describe("secret add — custom OpenAI-compatible endpoint", () => {
       const err = bufferStream();
       const code = await runCli(
         [
-          "secret", "add", SECRET_NAME,
+          "secret", "create", SECRET_NAME,
           "--provider", "anthropic",
           "--model", MODEL,
           "--json",
@@ -222,7 +222,7 @@ describe("secret add — custom OpenAI-compatible endpoint", () => {
       const err = bufferStream();
       const code = await runCli(
         [
-          "secret", "add", SECRET_NAME,
+          "secret", "create", SECRET_NAME,
           "--provider", OPENAI_COMPATIBLE_PROVIDER,
           "--base-url", VALID_BASE_URL,
           "--api-key", API_KEY,
@@ -242,7 +242,7 @@ describe("secret add — custom OpenAI-compatible endpoint", () => {
       const err = bufferStream();
       const code = await runCli(
         [
-          "secret", "add", SECRET_NAME,
+          "secret", "create", SECRET_NAME,
           "--provider", "anthropic",
           "--base-url", VALID_BASE_URL,
           "--api-key", API_KEY,
@@ -266,7 +266,7 @@ describe("secret add — custom OpenAI-compatible endpoint", () => {
       const err = bufferStream();
       const code = await runCli(
         [
-          "secret", "add", SECRET_NAME,
+          "secret", "create", SECRET_NAME,
           "--model", MODEL,
           "--json",
         ],
@@ -287,7 +287,7 @@ describe("secret add — custom OpenAI-compatible endpoint", () => {
       const err = bufferStream();
       const code = await runCli(
         [
-          "secret", "add", SECRET_NAME,
+          "secret", "create", SECRET_NAME,
           "--provider", OPENAI_COMPATIBLE_PROVIDER,
           "--base-url", VALID_BASE_URL,
           "--api-key", API_KEY,

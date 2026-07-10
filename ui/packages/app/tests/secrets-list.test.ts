@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { TooltipProvider } from "@agentsfleet/design-system";
+import { SECRET_ROW_DESCRIPTION } from "../app/(dashboard)/w/[workspaceId]/secrets/copy";
 
 const routerRefresh = vi.fn();
 
@@ -115,7 +116,7 @@ describe("SecretsList component", () => {
     const { container } = await renderList();
     expect(screen.getByText("fly")).toBeTruthy();
     expect(screen.getByText("slack")).toBeTruthy();
-    expect(screen.getAllByText("Write-only encrypted secret")).toHaveLength(2);
+    expect(screen.getAllByText(SECRET_ROW_DESCRIPTION)).toHaveLength(2);
     // Created now renders a relative <Time> ("… ago"); the absolute Apr 26 2026
     // string moved into the hover tooltip. Two rows → two <time> elements, each
     // carrying the ISO instant as its datetime and a relative visible label.
@@ -138,7 +139,7 @@ describe("SecretsList component", () => {
     // the "write-only" label — the secret value never appears in the DOM.
     await renderList([{ name: "openai-key", created_at: Date.UTC(2026, 3, 26, 12) }]);
     expect(screen.getByText("openai-key")).toBeTruthy();
-    expect(screen.getByText("Write-only encrypted secret")).toBeTruthy();
+    expect(screen.getByText(SECRET_ROW_DESCRIPTION)).toBeTruthy();
     // No plaintext secret is rendered anywhere.
     expect(document.body.textContent).not.toMatch(/sk-[a-z0-9]/i);
 
@@ -147,7 +148,7 @@ describe("SecretsList component", () => {
     await user.click(screen.getByLabelText(/Edit secret openai-key/i));
     await waitFor(() => expect(screen.getByText(/Edit secret .*openai-key/i)).toBeTruthy());
     expect(screen.getByRole("button", { name: /^rotate$/i })).toBeTruthy();
-    expect(screen.getByText(/enter the full replacement secret/i)).toBeTruthy();
+    expect(screen.getByText(/paste the full replacement value/i)).toBeTruthy();
     // There is no "reveal"/"show" control that would expose the stored value.
     expect(screen.queryByRole("button", { name: /reveal|show secret/i })).toBeNull();
   });

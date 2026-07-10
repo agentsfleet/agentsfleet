@@ -6,12 +6,12 @@ import { PlusIcon } from "lucide-react";
 import {
   Alert,
   Button,
-  buttonClassName,
   EYEBROW_CLASS,
   Input,
   List,
   ListItem,
   Time,
+  TooltipButton,
   WakePulse,
 } from "@agentsfleet/design-system";
 import { cn } from "@/lib/utils";
@@ -19,6 +19,7 @@ import { AGENTSFLEET_STATUS, type Fleet } from "@/lib/api/fleets";
 import { listFleetsAction } from "../actions";
 import { workspacePath } from "@/lib/workspace-routes";
 import { presentErrorString } from "@/lib/errors";
+import { INSTALL_FLEET_TOOLTIP } from "../new/library-docs";
 
 type Props = {
   workspaceId: string;
@@ -125,9 +126,11 @@ export default function FleetsList({
             {liveTotal} live{overCap ? ` · capped at ${PULSE_CAP}` : ""}
           </span>
         ) : null}
-        <Link href={workspacePath(workspaceId, "fleets/new")} className={buttonClassName("default", "sm")}>
-          <PlusIcon size={14} /> Install fleet
-        </Link>
+        <TooltipButton asChild size="sm" tooltip={INSTALL_FLEET_TOOLTIP}>
+          <Link href={workspacePath(workspaceId, "fleets/new")}>
+            <PlusIcon size={14} /> Install fleet
+          </Link>
+        </TooltipButton>
       </div>
 
       {filtered.length === 0 ? (
@@ -219,4 +222,3 @@ function StateDot({ state, pulses }: StateDotProps) {
   }
   return <span className="inline-block w-2 h-2 rounded-full bg-muted-foreground" />;
 }
-

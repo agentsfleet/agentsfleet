@@ -87,6 +87,14 @@ describe("CreateApiKeyDialog component", () => {
     expect(createApiKeyActionMock).not.toHaveBeenCalled();
   });
 
+  it("closes from Cancel before minting and never calls the action", async () => {
+    const { user, onCreated } = await openDialog();
+    await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: /^cancel$/i }));
+    await waitFor(() => expect(screen.queryByLabelText(/^name$/i)).toBeNull());
+    expect(createApiKeyActionMock).not.toHaveBeenCalled();
+    expect(onCreated).not.toHaveBeenCalled();
+  });
+
   it("happy path: reveals the raw key exactly once, then discards it on close", async () => {
     createApiKeyActionMock.mockResolvedValue({
       ok: true,
