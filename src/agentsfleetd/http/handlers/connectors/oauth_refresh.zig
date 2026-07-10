@@ -11,9 +11,13 @@ const pg = @import("pg");
 const common = @import("common");
 const hx_mod = @import("../hx.zig");
 const vault = @import("../../../state/vault.zig");
+const integration = @import("../../../credentials/integration.zig");
 
-const F_ACCESS_TOKEN = "access_token";
-const F_REFRESH_TOKEN = "refresh_token";
+// Field names single-sourced with the broker fingerprint's rotating-credential
+// set — the callbacks write exactly the fields the broker excludes from the
+// cache identity, so the two lists cannot drift apart.
+const F_ACCESS_TOKEN = integration.FIELD_ACCESS_TOKEN;
+const F_REFRESH_TOKEN = integration.FIELD_REFRESH_TOKEN;
 const F_EXPIRES_IN = "expires_in";
 const MS_PER_SECOND: i64 = 1000;
 
@@ -62,6 +66,27 @@ pub fn storeHandle(hx: hx_mod.Hx, conn: *pg.Conn, provider: []const u8, workspac
     const json = try std.json.Stringify.valueAlloc(hx.alloc, handle, .{});
     defer hx.alloc.free(json);
     try vault.storeJsonPlaintext(hx.alloc, conn, workspace_id, provider, json);
+}
+
+/// Merge a rotated refresh token into an already-vaulted handle and re-store it
+/// under the same provider key — the mint write-back path for providers that
+/// rotate the refresh token on every exchange. Rewrites ONLY the refresh_token
+/// field; every provider-instance field (cloud id, data-center base, labels)
+/// rides along untouched, through the same store path the connect callback used.
+pub fn storeRotatedRefreshToken(
+    hx: hx_mod.Hx,
+    conn: *pg.Conn,
+    provider: []const u8,
+    workspace_id: []const u8,
+    handle: *std.json.Parsed(std.json.Value),
+    rotated_refresh_token: []const u8,
+) !void {
+    const obj = switch (handle.value) {
+        .object => |*o| o,
+        else => return vault.Error.NotAnObject, // loadJson guarantees .object; defensive
+    };
+    try obj.put(handle.arena.allocator(), F_REFRESH_TOKEN, .{ .string = rotated_refresh_token });
+    try storeHandle(hx, conn, provider, workspace_id, handle.value);
 }
 
 const testing = std.testing;
