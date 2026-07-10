@@ -7,13 +7,15 @@ const redis_fleet = @import("../queue/redis_fleet.zig");
 const event_rows = @import("event_rows.zig");
 const reclaim_sweeper = @import("reclaim_sweeper.zig");
 const base = @import("event_lifecycle_integration_test.zig");
+const fixtures = @import("../db/test_fixtures.zig");
 const assign = @import("assign.zig");
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
 
-// The fault-injection constraint names live in the base harness
-// (`base.RECLAIM_FAIL_CONSTRAINT` / `base.RELEASE_FAIL_CONSTRAINT`) so that
-// `setup()` can drop a leaked one before *any* test runs — see the comment on
-// those consts. This file only arms/disarms them per test.
+// The fault-injection constraint names live in `test_fixtures`
+// (`fixtures.RECLAIM_FAIL_CONSTRAINT` / `fixtures.RELEASE_FAIL_CONSTRAINT`) so
+// that every test-DB conn opener can drop a leaked one before *any* test
+// touches the shared tables — see `dropInjectedFaultConstraints`. This file
+// only arms/disarms them per test.
 
 const AffinitySlot = struct { fencing_seq: i64, leased_until: i64 };
 
@@ -52,7 +54,7 @@ fn armReclaimFailure(conn: *pg.Conn) !void {
     const sql = try std.fmt.bufPrint(
         &sql_buf,
         "ALTER TABLE fleet.runner_leases ADD CONSTRAINT {s} CHECK (status <> '{s}') NOT VALID",
-        .{ base.RECLAIM_FAIL_CONSTRAINT, protocol.RUNNER_LEASE_STATUS_EXPIRED },
+        .{ fixtures.RECLAIM_FAIL_CONSTRAINT, protocol.RUNNER_LEASE_STATUS_EXPIRED },
     );
     _ = try conn.exec(sql, .{});
 }
@@ -62,7 +64,7 @@ fn disarmReclaimFailure(conn: *pg.Conn) void {
     const sql = std.fmt.bufPrint(
         &sql_buf,
         "ALTER TABLE fleet.runner_leases DROP CONSTRAINT IF EXISTS {s}",
-        .{base.RECLAIM_FAIL_CONSTRAINT},
+        .{fixtures.RECLAIM_FAIL_CONSTRAINT},
     ) catch return;
     _ = conn.exec(sql, .{}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
 }
@@ -81,7 +83,7 @@ fn armReleaseFailure(conn: *pg.Conn) !void {
     const sql = try std.fmt.bufPrint(
         &sql_buf,
         "ALTER TABLE fleet.runner_affinity ADD CONSTRAINT {s} CHECK (leased_until - updated_at > 0) NOT VALID",
-        .{base.RELEASE_FAIL_CONSTRAINT},
+        .{fixtures.RELEASE_FAIL_CONSTRAINT},
     );
     _ = try conn.exec(sql, .{});
 }
@@ -91,7 +93,7 @@ fn disarmReleaseFailure(conn: *pg.Conn) void {
     const sql = std.fmt.bufPrint(
         &sql_buf,
         "ALTER TABLE fleet.runner_affinity DROP CONSTRAINT IF EXISTS {s}",
-        .{base.RELEASE_FAIL_CONSTRAINT},
+        .{fixtures.RELEASE_FAIL_CONSTRAINT},
     ) catch return;
     _ = conn.exec(sql, .{}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
 }
