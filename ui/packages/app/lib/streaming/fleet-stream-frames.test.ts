@@ -3,7 +3,9 @@ import { FRAME_KIND, type EventRow, type LiveFrame } from "@/lib/api/events";
 import {
   actorToRole,
   applyLiveFrame,
+  maxServerCreatedAt,
   mergeBackfill,
+  rfc3339Seconds,
   type FleetEvent,
 } from "./fleet-stream-frames";
 
@@ -50,11 +52,11 @@ describe("actorToRole", () => {
 });
 
 describe("mergeBackfill", () => {
-  it("drops rows already present and sorts the union oldest-first", () => {
+  it("dedupes by id and sorts the union oldest-first", () => {
     const prev = [evt({ id: "e2", createdAt: new Date(2000) })];
     const merged = mergeBackfill(prev, [
       row({ event_id: "e1", created_at: MS_PER_SECOND, response_text: "a" }),
-      row({ event_id: "e2", created_at: 2000 }), // already in prev → skipped
+      row({ event_id: "e2", created_at: 2000 }),
     ]);
     expect(merged.map((e) => e.id)).toEqual(["e1", "e2"]);
   });
@@ -63,6 +65,49 @@ describe("mergeBackfill", () => {
     const [first] = mergeBackfill([], [row({ response_text: null, request_json: "{\"a\":1}" })]);
     expect(first?.text).toBe("");
     expect(first?.custom?.requestJson).toBe("{\"a\":1}");
+  });
+
+  it("replaces a partial live row with a terminal backfill row of the same id", () => {
+    // An event that straddled an outage: live chunks accumulated a partial
+    // text, the durable row carries the full final text + terminal status.
+    const prev = [evt({ id: "e1", text: "partial chu", status: "received" })];
+    const merged = mergeBackfill(prev, [
+      row({ event_id: "e1", status: "processed", response_text: "the full final text" }),
+    ]);
+    expect(merged).toHaveLength(1);
+    expect(merged[0]?.text).toBe("the full final text");
+    expect(merged[0]?.status).toBe("processed");
+  });
+
+  it("keeps the live accumulation when the backfill row is still in progress", () => {
+    // The live chunk stream is newer than the list snapshot for a running
+    // event — a "received" backfill row must not clobber it.
+    const prev = [evt({ id: "e1", text: "live chunks so far", status: "received" })];
+    const merged = mergeBackfill(prev, [
+      row({ event_id: "e1", status: "received", response_text: "stale snapshot" }),
+    ]);
+    expect(merged).toHaveLength(1);
+    expect(merged[0]?.text).toBe("live chunks so far");
+  });
+});
+
+describe("maxServerCreatedAt", () => {
+  it("folds the newest created_at into the watermark and ignores non-numeric values", () => {
+    expect(maxServerCreatedAt(null, [])).toBeNull();
+    expect(
+      maxServerCreatedAt(null, [row({ created_at: 5_000 }), row({ created_at: 3_000 })]),
+    ).toBe(5_000);
+    expect(maxServerCreatedAt(7_000, [row({ created_at: 5_000 })])).toBe(7_000);
+    expect(
+      maxServerCreatedAt(null, [row({ created_at: "bogus" as unknown as number })]),
+    ).toBeNull();
+  });
+});
+
+describe("rfc3339Seconds", () => {
+  it("truncates to the 20-char second-granular shape and clamps negatives", () => {
+    expect(rfc3339Seconds(Date.UTC(2026, 4, 15, 18, 29, 58, 789))).toBe("2026-05-15T18:29:58Z");
+    expect(rfc3339Seconds(-5)).toBe("1970-01-01T00:00:00Z");
   });
 });
 
