@@ -131,6 +131,12 @@ test("secret create <name> accepts --data / --force", async () => {
   expect(calls[0]?.frame.parsed.options.force).toBe(true);
 });
 
+test("secret add is rejected with no dispatch", async () => {
+  const { handlers, calls } = makeSpyTree();
+  await expect(dispatch(["secret", "add", "openai"], handlers)).rejects.toThrow();
+  expect(calls).toHaveLength(0);
+});
+
 test("secret create <name> accepts the typed custom-endpoint flags", async () => {
   const { handlers, calls } = makeSpyTree();
   await dispatch([

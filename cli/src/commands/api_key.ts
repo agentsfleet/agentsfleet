@@ -11,8 +11,17 @@ import {
   TENANT_API_KEYS_PATH,
   tenantApiKeyPath,
 } from "../lib/api-paths.ts";
-import { validateRequiredId } from "../program/validators.ts";
+import { INTEGER_RE, validateRequiredId } from "../program/validators.ts";
 import { ValidationError, type CliError } from "../errors/index.ts";
+import {
+  API_KEY_CREATED_AT,
+  API_KEY_KEY_NAME,
+  API_KEY_SORTS,
+  API_KEY_SORT_CREATED_AT_DESC,
+  DEFAULT_API_KEY_PAGE,
+  DEFAULT_API_KEY_PAGE_SIZE,
+  MAX_API_KEY_PAGE_SIZE,
+} from "../constants/api-key.ts";
 
 export interface ApiKeyCreateArgs {
   readonly name: string | undefined;
@@ -54,14 +63,9 @@ interface RevokedApiKey {
   readonly revoked_at?: number | string | null;
 }
 
-const DEFAULT_PAGE = 1;
-const DEFAULT_PAGE_SIZE = 25;
-const MAX_PAGE_SIZE = 100;
-const KEY_NAME = "key_name" as const;
-const CREATED_AT = "created_at" as const;
-const SORT_CREATED_AT_DESC = `-${CREATED_AT}` as const;
-const SORT_KEY_NAME_DESC = `-${KEY_NAME}` as const;
-const DEFAULT_SORT = SORT_CREATED_AT_DESC;
+const KEY_NAME = API_KEY_KEY_NAME;
+const CREATED_AT = API_KEY_CREATED_AT;
+const DEFAULT_SORT = API_KEY_SORT_CREATED_AT_DESC;
 const API_KEY_ID = "api_key_id" as const;
 const PAGE_FIELD = "page" as const;
 const PAGE_SIZE_FIELD = "page_size" as const;
@@ -69,7 +73,7 @@ const STATUS_ACTIVE = "active" as const;
 const STATUS_REVOKED = "revoked" as const;
 const TIME_NEVER = "never" as const;
 const TIME_MISSING = "-" as const;
-const SORTS: ReadonlySet<string> = new Set([SORT_CREATED_AT_DESC, CREATED_AT, SORT_KEY_NAME_DESC, KEY_NAME]);
+const SORTS: ReadonlySet<string> = new Set(API_KEY_SORTS);
 
 const requireValue = (
   value: string | undefined,
@@ -110,6 +114,14 @@ const parseBoundedInt = (
   max: number,
 ): Effect.Effect<number, ValidationError> => {
   if (raw === undefined) return Effect.succeed(fallback);
+  if (!INTEGER_RE.test(raw)) {
+    return Effect.fail(
+      new ValidationError({
+        detail: `${fieldName} must be an integer between ${min} and ${max}`,
+        suggestion: `pass --${fieldName.replace("_", "-")} <${min}..${max}>`,
+      }),
+    );
+  }
   const parsed = Number.parseInt(raw, 10);
   if (!Number.isFinite(parsed) || parsed < min || parsed > max) {
     return Effect.fail(
@@ -198,8 +210,20 @@ export const apiKeyListEffectFromArgs = (
     const output = yield* Output;
     const http = yield* HttpClient;
     const token = yield* resolveAuthToken;
-    const page = yield* parseBoundedInt(args.page, DEFAULT_PAGE, PAGE_FIELD, 1, Number.MAX_SAFE_INTEGER);
-    const pageSize = yield* parseBoundedInt(args.pageSize, DEFAULT_PAGE_SIZE, PAGE_SIZE_FIELD, 1, MAX_PAGE_SIZE);
+    const page = yield* parseBoundedInt(
+      args.page,
+      DEFAULT_API_KEY_PAGE,
+      PAGE_FIELD,
+      1,
+      Number.MAX_SAFE_INTEGER,
+    );
+    const pageSize = yield* parseBoundedInt(
+      args.pageSize,
+      DEFAULT_API_KEY_PAGE_SIZE,
+      PAGE_SIZE_FIELD,
+      1,
+      MAX_API_KEY_PAGE_SIZE,
+    );
     const sort = yield* parseSort(args.sort);
 
     const res = yield* http.request<ApiKeyListResponse>({

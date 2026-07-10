@@ -1,4 +1,4 @@
-// Secret-add body resolution — split out of fleet_secret.ts to keep
+// Secret-create body resolution — split out of fleet_secret.ts to keep
 // that file under the 350-line FLL cap. Two input forms converge here on the
 // `data` object the vault POST carries:
 //

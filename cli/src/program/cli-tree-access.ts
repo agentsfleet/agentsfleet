@@ -9,10 +9,13 @@ import type {
   Handlers,
   ProgramState,
 } from "./cli-tree-types.ts";
+import {
+  API_KEY_SORTS,
+  MAX_API_KEY_PAGE_SIZE,
+} from "../constants/api-key.ts";
 
 const PAGE_BOUNDS = { min: 1 };
-const PAGE_SIZE_BOUNDS = { min: 1, max: 100 };
-const API_KEY_SORTS = ["-created_at", "created_at", "-key_name", "key_name"] as const;
+const PAGE_SIZE_BOUNDS = { min: 1, max: MAX_API_KEY_PAGE_SIZE };
 const FLAG_WORKSPACE_ID = "--workspace <id>" as const;
 const WORKSPACE_ID = "Workspace ID" as const;
 const COMMAND_LIST = "list" as const;

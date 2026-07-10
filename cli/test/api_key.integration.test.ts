@@ -6,6 +6,7 @@ import { withMockApi, jsonResponse, type MockRoutes } from "./helpers-mock-api.t
 
 const WS_ID = "01900000-0000-7000-8000-000000a91eaf";
 const KEY_ID = "01900000-0000-7000-8000-000000a91e90";
+const RAW_KEY = "agt_t_test_raw_key_value_only_shown_once";
 const authedScope = <T>(fn: () => Promise<T>): Promise<T> =>
   withAuthedStateDir({ workspaceId: WS_ID, sessionId: "sess_api_key" }, fn);
 
@@ -19,7 +20,7 @@ describe("api-key commands", () => {
           return jsonResponse(201, {
             id: KEY_ID,
             key_name: "ci-runner",
-            key: "agt_t_test_raw_key_value_only_shown_once",
+            key: RAW_KEY,
             created_at: 1700000000000,
           });
         },
@@ -35,7 +36,7 @@ describe("api-key commands", () => {
         expect(code).toBe(0);
         const text = out.read();
         expect(text).toContain(KEY_ID);
-        expect(text).toContain("agt_t_test_raw_key_value_only_shown_once");
+        expect((text.match(new RegExp(RAW_KEY, "g")) ?? []).length).toBe(1);
         expect(text).toMatch(/shown once/i);
         expect(JSON.parse(postBody ?? "{}")).toEqual({
           key_name: "ci-runner",
@@ -120,6 +121,33 @@ describe("api-key commands", () => {
           `DELETE /v1/api-keys/${KEY_ID}`,
         ]);
       });
+    });
+  });
+
+  test("invalid api-key arguments fail before any API request", async () => {
+    await authedScope(async () => {
+      const invalidCases: ReadonlyArray<ReadonlyArray<string>> = [
+        ["api-key", "create"],
+        ["api-key", "list", "--page", "abc"],
+        ["api-key", "list", "--page-size", "101"],
+        ["api-key", "list", "--sort", "name"],
+        ["api-key", "revoke", "not-a-uuid"],
+      ];
+      for (const argv of invalidCases) {
+        await withMockApi({}, async (apiUrl, calls) => {
+          const out = bufferStream();
+          const err = bufferStream();
+          const code = await runCli(argv, {
+            stdout: out.stream,
+            stderr: err.stream,
+            env: { AGENTSFLEET_API_URL: apiUrl },
+          });
+
+          expect(code).not.toBe(0);
+          expect(`${out.read()}\n${err.read()}`).toMatch(/required|integer|uuidv7|one of|name|≤ 100/i);
+          expect(calls).toEqual([]);
+        });
+      }
     });
   });
 });

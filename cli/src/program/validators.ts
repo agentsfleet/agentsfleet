@@ -33,7 +33,7 @@ import { HTTPS_SCHEME_PREFIX } from "../constants/custom-endpoint.ts";
 
 export const EXAMPLE_UUIDV7 = "0192a3b4-c5d6-7e8f-9012-345678901234";
 
-const INTEGER_RE = /^-?\d+$/;
+export const INTEGER_RE = /^-?\d+$/;
 const NUMBER_RE = /^-?\d+(\.\d+)?([eE][-+]?\d+)?$/;
 const DURATION_RE = /^(\d+)(ms|s|m|h)$/;
 const MUST_BE_A_NUMBER = "must be a number" as const;

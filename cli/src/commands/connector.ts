@@ -29,6 +29,7 @@ const STATUS_CONNECTED = "connected" as const;
 const STATUS_NOT_CONNECTED = "not connected" as const;
 const SETUP_READY = "configured" as const;
 const SETUP_REQUIRED = "admin setup required" as const;
+const CONTROL_BYTES_RE = /[\u0000-\u001f\u007f-\u009f]/g;
 
 const requireValue = (
   value: string | undefined,
@@ -73,10 +74,15 @@ const requireProvider = (
     return provider;
   });
 
-const primitive = (value: unknown): string | null => {
+const cleanTableCell = (value: string): string => value.replace(CONTROL_BYTES_RE, "");
+
+const primitive = (value: unknown, clean: boolean): string | null => {
   if (value === null || value === undefined) return null;
-  if (typeof value === "string") return value;
-  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  if (typeof value === "string") return clean ? cleanTableCell(value) : value;
+  if (typeof value === "number" || typeof value === "boolean") {
+    const rendered = String(value);
+    return clean ? cleanTableCell(rendered) : rendered;
+  }
   return null;
 };
 
@@ -112,11 +118,11 @@ export const connectorListEffectFromArgs = (
         { key: "archetype", label: "KIND" },
       ],
       entries.map((entry) => ({
-        id: entry.id ?? "",
-        display_name: entry.display_name ?? "",
+        id: cleanTableCell(entry.id ?? ""),
+        display_name: cleanTableCell(entry.display_name ?? ""),
         setup: entry.configured ? SETUP_READY : SETUP_REQUIRED,
         connection: entry.connected ? STATUS_CONNECTED : STATUS_NOT_CONNECTED,
-        archetype: entry.archetype ?? "",
+        archetype: cleanTableCell(entry.archetype ?? ""),
       })),
     );
   });
@@ -144,7 +150,7 @@ export const connectorStatusEffectFromArgs = (
     }
 
     const rows = Object.entries(res)
-      .map(([field, value]) => ({ field, value: primitive(value) }))
+      .map(([field, value]) => ({ field: cleanTableCell(field), value: primitive(value, true) }))
       .filter((row): row is { field: string; value: string } => row.value !== null);
     yield* output.printTable(
       [
