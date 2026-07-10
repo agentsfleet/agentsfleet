@@ -201,6 +201,54 @@ test "integration: fetch_budget_and_spend_refuses_an_unparseable_stored_budget" 
     );
 }
 
+/// Poison the connection's transaction so the NEXT query on it errors, without
+/// touching any shared table. A divide-by-zero aborts the transaction; every
+/// subsequent statement returns `error.PG` ("current transaction is aborted")
+/// until rollback. Deterministic, isolated, and reversible — a clean DB-fault
+/// injection for the fail-open paths.
+fn poisonTransaction(conn: *pg.Conn) !void {
+    _ = try conn.exec("BEGIN", .{});
+    // The abort is the whole point, so the error is expected, not suppressed.
+    try std.testing.expectError(error.PG, conn.exec("SELECT 1/0", .{}));
+}
+
+fn healTransaction(conn: *pg.Conn) void {
+    _ = conn.exec("ROLLBACK", .{}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
+}
+
+test "integration: the spend query surfaces a DB fault as an error the pool gate catches" {
+    const db_ctx = (try base.openTestConn(ALLOC)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
+    const conn = db_ctx.conn;
+
+    // The pre-run fail-open is two halves: `spendForFleet` (pool) turns a query
+    // error into null via `catch`, and `verdictOrAdmit(null,…)` admits (unit
+    // test). This proves the FIRST half is reachable — the query genuinely errors
+    // on a DB fault, so the `catch` is not dead. (The pool-level catch itself
+    // can't be poisoned here: `spendForFleet` acquires a fresh connection.)
+    try poisonTransaction(conn);
+    defer healTransaction(conn);
+    try std.testing.expectError(error.PG, budget.spendForFleetOn(conn, WS_A, FLEET_A, NOW_MS));
+}
+
+test "integration: readBudget classifies a query error as unavailable (fail open)" {
+    const db_ctx = (try base.openTestConn(ALLOC)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
+    const conn = db_ctx.conn;
+
+    // The renew-side twin: a DB fault must map to `.unavailable`, which
+    // `refusalFor` admits — NOT to `.unreadable`, which would refuse. Conflating
+    // "could not ask" with "answer was nonsense" would kill in-flight runs during
+    // any metering blip.
+    try poisonTransaction(conn);
+    defer healTransaction(conn);
+    const read = budget.readBudget(conn, ALLOC, FLEET_UUID, WS_A, NOW_MS);
+    try std.testing.expectEqual(std.meta.Tag(budget.BudgetRead).unavailable, std.meta.activeTag(read));
+    try std.testing.expectEqual(@as(?budget.Verdict, null), budget.refusalFor(read));
+}
+
 test "integration: fetch_budget_and_spend_admits_a_fleet_that_declares_no_budget" {
     const db_ctx = (try base.openTestConn(ALLOC)) orelse return error.SkipZigTest;
     defer db_ctx.pool.deinit();
