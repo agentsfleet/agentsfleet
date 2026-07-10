@@ -24,16 +24,18 @@ function makeStubHandlers(): Handlers {
   return {
     login: noop, logout: noop, doctor: noop,
     auth:      { status: noop },
-    workspace: { add: noop, list: noop, use: noop, show: noop, secrets: noop, delete: noop },
-    fleetKey:  { add: noop, list: noop, delete: noop },
+    workspace: { create: noop, list: noop, use: noop, show: noop, secrets: noop, delete: noop },
+    fleetKey:  { create: noop, list: noop, delete: noop },
+    apiKey:    { create: noop, list: noop, revoke: noop, delete: noop },
+    connector: { list: noop, status: noop },
     grant:     { list: noop, delete: noop },
-    tenant:    { provider: { show: noop, add: noop, delete: noop } },
+    tenant:    { provider: { show: noop, create: noop, delete: noop } },
     billing:   { show: noop },
     fleet: {
       library: noop,
       install: noop, update: noop, list: noop, status: noop, stop: noop, resume: noop,
       kill: noop, delete: noop, logs: noop, events: noop, steer: noop,
-      secret: { add: noop, show: noop, list: noop, delete: noop },
+      secret: { create: noop, show: noop, list: noop, delete: noop },
     },
     memory: { list: noop, search: noop },
   };
@@ -62,15 +64,17 @@ describe("CLI tree — every documented route is reachable through commander", (
 
   const expectedCommands = [
     ["login"], ["logout"], ["doctor"],
-    ["workspace", "add"], ["workspace", "list"], ["workspace", "use"],
+    ["workspace", "create"], ["workspace", "list"], ["workspace", "use"],
     ["workspace", "show"], ["workspace", "secrets"], ["workspace", "delete"],
-    ["fleet-key", "add"], ["fleet-key", "list"], ["fleet-key", "delete"],
+    ["fleet-key", "create"], ["fleet-key", "list"], ["fleet-key", "delete"],
+    ["api-key", "create"], ["api-key", "list"], ["api-key", "revoke"], ["api-key", "delete"],
+    ["connector", "list"], ["connector", "status"],
     ["grant", "list"], ["grant", "delete"],
-    ["tenant", "provider", "show"], ["tenant", "provider", "add"], ["tenant", "provider", "delete"],
+    ["tenant", "provider", "show"], ["tenant", "provider", "create"], ["tenant", "provider", "delete"],
     ["billing", "show"],
     ["install"], ["list"], ["status"], ["stop"], ["resume"], ["kill"], ["delete"],
     ["logs"], ["events"], ["steer"],
-    ["secret", "add"], ["secret", "show"], ["secret", "list"], ["secret", "delete"],
+    ["secret", "create"], ["secret", "show"], ["secret", "list"], ["secret", "delete"],
   ];
 
   for (const path of expectedCommands) {

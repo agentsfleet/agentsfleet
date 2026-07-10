@@ -167,7 +167,7 @@ export const doctorEffect: Effect.Effect<
     ok: wsSelected,
     detail: wsSelected
       ? String(wsId)
-      : "no workspace selected. Run: agentsfleet workspace add",
+      : "no workspace selected. Run: agentsfleet workspace create",
   };
 
   const bindingCheck: DoctorCheckResult = wsId

@@ -1,13 +1,8 @@
 import { describe, it, expect, vi } from "vitest";
 import { fireEvent, render, screen, cleanup } from "@testing-library/react";
 import { IconAction } from "./IconAction";
-import { TooltipProvider } from "./Tooltip";
-
-// A <TooltipProvider> ancestor is mandatory: IconAction always composes a Radix
-// Tooltip, and Radix throws at render without the provider (production mounts it
-// at the dashboard layout root). Every render here goes through this wrapper.
 function renderAction(node: React.ReactElement) {
-  return render(<TooltipProvider>{node}</TooltipProvider>);
+  return render(node);
 }
 
 const Glyph = () => <svg data-testid="glyph" aria-hidden="true" />;
@@ -22,7 +17,7 @@ describe("IconAction", () => {
 
     // The single `label` prop is the button's accessible name — an icon alone
     // is not a name. aria-label survives even if the floating tooltip never
-    // opens (Failure Mode: TooltipProvider absent).
+    // opens.
     const button = screen.getByRole("button", { name: "Cordon" });
     expect(button).toBeInTheDocument();
     expect(button.getAttribute("aria-label")).toBe("Cordon");
@@ -81,6 +76,8 @@ describe("IconAction", () => {
     );
     const disabledButton = screen.getByRole("button", { name: "Revoke" });
     expect(disabledButton).toBeDisabled();
+    expect(disabledButton.className).toContain("pointer-events-none");
+    expect(disabledButton.parentElement?.tagName).toBe("SPAN");
     fireEvent.click(disabledButton);
     expect(onDisabledClick).not.toHaveBeenCalled();
   });

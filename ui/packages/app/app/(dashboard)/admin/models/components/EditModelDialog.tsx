@@ -142,7 +142,10 @@ export default function EditModelDialog({
               )} />
             </div>
             {apiError ? <p className="text-sm text-destructive">{apiError}</p> : null}
-            <DialogFooter>
+            <DialogFooter className="flex-col gap-2 sm:flex-row sm:gap-2">
+              <Button type="button" variant="ghost" disabled={pending} onClick={() => onOpenChange(false)}>
+                Cancel
+              </Button>
               <Button type="submit" disabled={pending}>
                 {pending ? <Spinner size="sm" srLabel="Saving" /> : null}
                 Save changes

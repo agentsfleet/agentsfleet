@@ -19,6 +19,7 @@ import {
   SelectTrigger,
   SelectValue,
   Spinner,
+  TooltipButton,
 } from "@agentsfleet/design-system";
 import { PlusIcon } from "lucide-react";
 import { createSecretAction } from "@/app/(dashboard)/w/[workspaceId]/secrets/actions";
@@ -38,6 +39,7 @@ const REGISTER_ACTION = "register the model entry";
 const ACTIVATE_ACTION = "activate this model";
 const STORE_ACTION = "store the credential";
 const NAME_PROVIDER_MISMATCH = "That name is already used by a different provider or secret — pick another one.";
+const CREATE_MODEL_TOOLTIP = "Create a model entry for this workspace.";
 
 export default function AddModelEntryDialog({
   workspaceId,
@@ -195,15 +197,15 @@ export default function AddModelEntryDialog({
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
-        <Button type="button" size="sm" className="gap-1.5">
+        <TooltipButton type="button" size="sm" className="gap-1.5" tooltip={CREATE_MODEL_TOOLTIP}>
           <PlusIcon size={14} />
-          Add model
-        </Button>
+          Create model
+        </TooltipButton>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Add a model</DialogTitle>
-          <DialogDescription>Register a model entry. Reusing a name updates that stored key.</DialogDescription>
+          <DialogTitle>Create model</DialogTitle>
+          <DialogDescription>Store the key and register a model your fleets can use.</DialogDescription>
         </DialogHeader>
         <div className="space-y-3">
           <div className="space-y-2">
@@ -252,6 +254,9 @@ export default function AddModelEntryDialog({
         </div>
         {error ? <Alert variant="destructive" className="text-xs">{error}</Alert> : null}
         <DialogFooter>
+          <Button type="button" variant="ghost" disabled={pending} onClick={() => handleOpenChange(false)}>
+            Cancel
+          </Button>
           <Button type="button" variant="outline" disabled={pending || !canSubmit} onClick={() => void onSubmit(false)}>
             {pending ? <Spinner size="sm" srLabel="Saving" /> : null}
             Save

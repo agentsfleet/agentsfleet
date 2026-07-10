@@ -52,7 +52,7 @@ async function renderDialog(secrets: Secret[] = []) {
     } as never),
   );
   const user = userEvent.setup();
-  await user.click(screen.getByRole("button", { name: /add model/i }));
+  await user.click(screen.getByRole("button", { name: /create model/i }));
   await screen.findByRole("dialog");
   return { onCreated, onSecretsChanged, user };
 }

@@ -34,7 +34,7 @@ async function withStateDir<T>(fn: (dir: string) => Promise<T>): Promise<T> {
   }
 }
 
-test("workspace add does not persist local state when API create fails", async () => {
+test("workspace create does not persist local state when API create fails", async () => {
   await withStateDir(async () => {
     const out = bufferStream();
     const err = bufferStream();
@@ -55,7 +55,7 @@ test("workspace add does not persist local state when API create fails", async (
       };
     });
 
-    const code = await runCli(["workspace", "add", "acme-prod"], {
+    const code = await runCli(["workspace", "create", "acme-prod"], {
       env: { ...process.env, AGENTSFLEET_API_URL: apiOrigin, AGENTSFLEET_API_KEY: "agt_t_test", BROWSER: "false" },
       stdout: out.stream,
       stderr: err.stream,
@@ -72,7 +72,7 @@ test("workspace add does not persist local state when API create fails", async (
   });
 });
 
-test("workspace add persists backend workspace_id in json mode", async () => {
+test("workspace create persists backend workspace_id in json mode", async () => {
   await withStateDir(async () => {
     const out = bufferStream();
     const err = bufferStream();
@@ -89,7 +89,7 @@ test("workspace add persists backend workspace_id in json mode", async () => {
       }),
     }));
 
-    const code = await runCli(["--json", "workspace", "add"], {
+    const code = await runCli(["--json", "workspace", "create"], {
       env: { ...process.env, AGENTSFLEET_API_KEY: "agt_t_test" },
       stdout: out.stream,
       stderr: err.stream,

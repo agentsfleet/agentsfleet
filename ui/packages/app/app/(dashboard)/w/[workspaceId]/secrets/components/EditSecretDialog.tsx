@@ -21,7 +21,7 @@ import { SECRET_DATA_REENTER_REQUIRED, parseSecretDataObject } from "../lib/secr
 
 export type EditSecretDialogProps = {
   workspaceId: string;
-  /** The secret being rotated. Its name is the reference key Fleets resolve. */
+  /** The secret being rotated. Its name is the reference key fleets resolve. */
   name: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -89,7 +89,7 @@ export default function EditSecretDialog({
         <DialogHeader>
           <DialogTitle>Edit secret &ldquo;{name}&rdquo;</DialogTitle>
           <DialogDescription>
-            Write-only. Enter the full replacement secret.
+            Saved values are hidden. Paste the full replacement value to update this secret.
           </DialogDescription>
         </DialogHeader>
 

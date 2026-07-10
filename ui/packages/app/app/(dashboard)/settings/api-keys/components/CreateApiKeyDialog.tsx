@@ -22,6 +22,7 @@ import {
   FormMessage,
   Input,
   Spinner,
+  TooltipButton,
 } from "@agentsfleet/design-system";
 import { PlusIcon } from "lucide-react";
 import { KEY_NAME_REGEX, DESCRIPTION_MAX, type CreatedApiKey } from "@/lib/api/api_keys";
@@ -38,6 +39,7 @@ const schema = z.object({
   description: z.string().trim().max(DESCRIPTION_MAX, `Description must be ${DESCRIPTION_MAX} characters or fewer`),
 });
 type FormValues = z.infer<typeof schema>;
+const CREATE_KEY_TOOLTIP = "Create an agentsfleet API key.";
 
 export default function CreateApiKeyDialog({ onCreated }: { onCreated: () => void }) {
   const [open, setOpen] = useState(false);
@@ -83,10 +85,10 @@ export default function CreateApiKeyDialog({ onCreated }: { onCreated: () => voi
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
-        <Button type="button" size="sm">
+        <TooltipButton type="button" size="sm" tooltip={CREATE_KEY_TOOLTIP}>
           <PlusIcon size={14} />
           Create key
-        </Button>
+        </TooltipButton>
       </DialogTrigger>
       <DialogContent
         onInteractOutside={(e) => { if (created) e.preventDefault(); }}
@@ -133,10 +135,18 @@ export default function CreateApiKeyDialog({ onCreated }: { onCreated: () => voi
                 />
                 {apiError ? <p className="text-sm text-destructive">{apiError}</p> : null}
                 <DialogFooter>
-                  <Button type="submit" disabled={pending}>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    disabled={pending}
+                    onClick={() => handleOpenChange(false)}
+                  >
+                    Cancel
+                  </Button>
+                  <TooltipButton type="submit" disabled={pending} tooltip={CREATE_KEY_TOOLTIP}>
                     {pending ? <Spinner size="sm" srLabel="Creating" /> : null}
                     Create key
-                  </Button>
+                  </TooltipButton>
                 </DialogFooter>
               </form>
             </Form>

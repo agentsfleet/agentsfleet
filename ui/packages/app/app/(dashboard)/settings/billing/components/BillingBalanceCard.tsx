@@ -71,7 +71,7 @@ export default function BillingBalanceCard({ billing, summary }: BillingBalanceC
 
         {isExhausted ? (
           <Alert variant="destructive" className="text-xs">
-            Balance exhausted. New Fleet events are gate-blocked until you top up — contact{" "}
+            Balance exhausted. New fleet events are gate-blocked until you top up — contact{" "}
             <a href={`mailto:${SUPPORT_EMAIL}`} className="underline">
               support
             </a>{" "}
@@ -85,7 +85,7 @@ export default function BillingBalanceCard({ billing, summary }: BillingBalanceC
 
 function BuyCreditsButton() {
   return (
-    <TooltipProvider delayDuration={150}>
+    <TooltipProvider>
       <Tooltip>
         <TooltipTrigger asChild>
           {/* A real mailto link, not a disabled control — a control that acts

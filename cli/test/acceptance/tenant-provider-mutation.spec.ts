@@ -4,14 +4,14 @@
  * Walks the tenant LLM-provider posture through a full mutate-and-restore
  * cycle against a real API:
  *   - show baseline          (GET  /v1/tenants/me/provider)
- *   - add self-managed       (PUT  mode=self_managed, --secret, --model)
+ *   - create self-managed    (PUT  mode=self_managed, --secret, --model)
  *   - show reflects new mode  (mode flips to self_managed)
  *   - delete                 (DELETE → platform default)
  *   - show returns to baseline (mode/secret back to where we started)
  *
  * Tenant provider posture is TENANT-scoped shared state — there is no
  * per-run prefix to isolate it the way agents get ACCEPTANCE_RUN_PREFIX.
- * The contract is therefore: capture the baseline in beforeAll, restore it
+ * The rule is therefore: capture the baseline in beforeAll, restore it
  * in afterAll EVEN ON FAILURE (see `restoreProviderBaseline`). The suite
  * never asserts global tenant emptiness — only that its own mutation is
  * observable and then reverted.
@@ -45,9 +45,9 @@ import { attachJwt } from "./fixtures/clerk-admin.ts";
 import { hydrateWorkspacesForToken } from "./fixtures/workspace-hydration.ts";
 import {
   TENANT_PROVIDER_MODE,
-  addCustomEndpointSecret,
-  addProvider,
-  assertRejectedAddLeftBaseline,
+  createCustomEndpointSecret,
+  createProvider,
+  assertRejectedCreateLeftBaseline,
   assertSelfManagedSnapshot,
   deleteSecretByName,
   deleteProvider,
@@ -84,7 +84,7 @@ if (!isLive) {
     it.skip("requires AGENTSFLEET_ACCEPTANCE_TARGET to be an https URL", () => {});
   });
 } else {
-  describe("tenant-provider-mutation — add → show → delete restores baseline", () => {
+  describe("tenant-provider-mutation — create → show → delete restores baseline", () => {
     let sessionJwt = "";
     let stateDir = "";
     let env: Record<string, string> = {};
@@ -115,7 +115,7 @@ if (!isLive) {
     afterAll(async () => {
       // Restore EVEN ON FAILURE — shared tenant must not carry this run's
       // posture forward. If we never mutated, still reset to the captured
-      // baseline as a belt-and-braces guard against a half-applied add.
+      // baseline as a belt-and-braces guard against a half-applied create.
       if (env && sessionJwt && (mutated || baseline)) {
         const restoreTo = baseline ?? ({ mode: TENANT_PROVIDER_MODE.platform } as ProviderSnapshot);
         await restoreProviderBaseline(env, sessionJwt, restoreTo);
@@ -135,8 +135,8 @@ if (!isLive) {
       );
     });
 
-    it("add self-managed → show reflects mode=self_managed", async () => {
-      const added = await addProvider(env, sessionJwt, {
+    it("create self-managed → show reflects mode=self_managed", async () => {
+      const added = await createProvider(env, sessionJwt, {
         secret: ACCEPTANCE_SECRET_REF,
         model: ACCEPTANCE_MODEL_OVERRIDE,
       });
@@ -145,7 +145,7 @@ if (!isLive) {
       // secret. A rejection means the posture was NOT changed — record
       // `mutated` only on success so teardown matches reality.
       if (added.code !== 0) {
-        await assertRejectedAddLeftBaseline(env, sessionJwt, added, baseline?.mode);
+        await assertRejectedCreateLeftBaseline(env, sessionJwt, added, baseline?.mode);
         return;
       }
 
@@ -155,7 +155,7 @@ if (!isLive) {
     }, 30_000);
 
     it("delete resets to the platform default and show returns to baseline", async () => {
-      // If the add was rejected upstream we never left the baseline, so the
+      // If the create was rejected upstream we never left the baseline, so the
       // delete-then-restore assertion below would be vacuous; skip cleanly.
       if (!mutated) {
         const current = await showProvider(env, sessionJwt);
@@ -241,24 +241,24 @@ if (!isLive) {
       if (stateDir) await fs.rm(stateDir, { recursive: true, force: true });
     });
 
-    it("secret add (openai-compatible + base_url) → provider add → show reflects the custom secret", async () => {
+    it("secret create (openai-compatible + base_url) → provider create → show reflects the custom secret", async () => {
       // 1. Store the custom-endpoint secret (typed flags; api_key never logged).
-      const added = await addCustomEndpointSecret(env, sessionJwt, {
+      const added = await createCustomEndpointSecret(env, sessionJwt, {
         name: CUSTOM_SECRET_NAME,
         baseUrl: CUSTOM_BASE_URL,
         apiKey: CUSTOM_API_KEY,
       });
-      assert.equal(added.code, 0, `custom secret add exited ${added.code}: ${added.stderr}`);
+      assert.equal(added.code, 0, `custom secret create exited ${added.code}: ${added.stderr}`);
 
       // 2. Point the tenant provider at it. PUT body is unchanged — the URL
       //    lives in the referenced secret.
-      const set = await addProvider(env, sessionJwt, { secret: CUSTOM_SECRET_NAME });
+      const set = await createProvider(env, sessionJwt, { secret: CUSTOM_SECRET_NAME });
       // The secret exists, so the PUT should be accepted (mode flips). If
       // the upstream rejects an unresolved key it leaves the baseline intact —
       // either is recorded, but the custom secret we just stored should
       // resolve.
       if (set.code !== 0) {
-        await assertRejectedAddLeftBaseline(env, sessionJwt, set, baseline?.mode);
+        await assertRejectedCreateLeftBaseline(env, sessionJwt, set, baseline?.mode);
         return;
       }
 

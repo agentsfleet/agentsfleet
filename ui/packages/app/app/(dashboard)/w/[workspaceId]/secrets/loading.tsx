@@ -1,4 +1,5 @@
 import RouteLoading from "@/components/layout/RouteLoading";
+import { SECRETS_PAGE_DESCRIPTION, SECRETS_PAGE_TITLE } from "./copy";
 
 // Secrets is its own standalone page now — it no longer redirects to
 // /settings/models, so paint its real header. Without this it borrowed the stale
@@ -6,8 +7,8 @@ import RouteLoading from "@/components/layout/RouteLoading";
 export default function SecretsLoading() {
   return (
     <RouteLoading
-      title="Secrets"
-      description="Encrypted secrets your fleets can use — write-only once saved."
+      title={SECRETS_PAGE_TITLE}
+      description={SECRETS_PAGE_DESCRIPTION}
     />
   );
 }

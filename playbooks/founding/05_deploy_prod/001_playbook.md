@@ -206,7 +206,7 @@ Run the CLI smoke against PROD after `/healthz` and `/readyz` are green.
 export AGENTSFLEET_API_URL=https://api.agentsfleet.net
 
 npx agentsfleet login
-npx agentsfleet workspace add <ACCEPTANCE_REPO_URL>
+npx agentsfleet workspace create <ACCEPTANCE_REPO_URL>
 npx agentsfleet specs sync docs/spec/
 npx agentsfleet run
 npx agentsfleet runs list

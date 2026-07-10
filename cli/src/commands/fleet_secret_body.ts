@@ -46,7 +46,7 @@ type ParsedData =
   | { readonly ok: false; readonly message: string };
 
 const PROVIDER_ADD_USAGE =
-  `agentsfleet secret add <name> --provider ${OPENAI_COMPATIBLE_PROVIDER} ` +
+  `agentsfleet secret create <name> --provider ${OPENAI_COMPATIBLE_PROVIDER} ` +
   `--base-url https://host/v1 --model <m> [--api-key <key>]`;
 
 const parseDataObject = (raw: string): ParsedData => {
@@ -151,7 +151,7 @@ const resolveDataSource = (
       return yield* Effect.fail(
         new ValidationError({
           detail: "--data=@- but stdin was empty",
-          suggestion: "pipe JSON on stdin: cat secret.json | agentsfleet secret add <name> --data=@-",
+          suggestion: "pipe JSON on stdin: cat secret.json | agentsfleet secret create <name> --data=@-",
         }),
       );
     }

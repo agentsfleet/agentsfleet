@@ -5,11 +5,9 @@ import { PROVIDER_MODE } from "@/lib/types";
 import { getTenantProviderCached, listSecretsCached } from "./lib/reads";
 import SecretsList from "./components/SecretsList";
 import AddSecretDialog from "./components/AddSecretDialog";
+import { SECRETS_PAGE_DESCRIPTION, SECRETS_PAGE_TITLE } from "./copy";
 
 export const dynamic = "force-dynamic";
-
-const PAGE_TITLE = "Secrets";
-const PAGE_DESCRIPTION = "Encrypted secrets your fleets can use — write-only once saved.";
 
 export default async function SecretsPage({
   params,
@@ -37,8 +35,8 @@ export default async function SecretsPage({
 
   return (
     <div className="space-y-8">
-      <PageHeader description={PAGE_DESCRIPTION}>
-        <PageTitle>{PAGE_TITLE}</PageTitle>
+      <PageHeader description={SECRETS_PAGE_DESCRIPTION}>
+        <PageTitle>{SECRETS_PAGE_TITLE}</PageTitle>
       </PageHeader>
 
       <div className="flex flex-wrap items-baseline justify-between gap-md">

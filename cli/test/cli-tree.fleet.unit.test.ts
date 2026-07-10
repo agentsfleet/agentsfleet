@@ -118,29 +118,29 @@ test("steer <id> --tty dispatches without a message", async () => {
   expect(calls[0]?.frame.parsed.options.tty).toBe(true);
 });
 
-test("secret add <name> accepts --data / --force", async () => {
+test("secret create <name> accepts --data / --force", async () => {
   const { handlers, calls } = makeSpyTree();
   await dispatch([
-    "secret", "add", "openai",
+    "secret", "create", "openai",
     "--data", '{"api_key":"sk-test"}',
     "--force",
   ], handlers);
-  expect(calls[0]?.name).toBe("fleet.secret.add");
+  expect(calls[0]?.name).toBe("fleet.secret.create");
   expect(calls[0]?.frame.parsed.positionals[0]).toBe("openai");
   expect(calls[0]?.frame.parsed.options.data).toBe('{"api_key":"sk-test"}');
   expect(calls[0]?.frame.parsed.options.force).toBe(true);
 });
 
-test("secret add <name> accepts the typed custom-endpoint flags", async () => {
+test("secret create <name> accepts the typed custom-endpoint flags", async () => {
   const { handlers, calls } = makeSpyTree();
   await dispatch([
-    "secret", "add", "vllm",
+    "secret", "create", "vllm",
     "--provider", "openai-compatible",
     "--base-url", "https://vllm.corp/v1",
     "--api-key", "sk-custom",
     "--model", "qwen2.5",
   ], handlers);
-  expect(calls[0]?.name).toBe("fleet.secret.add");
+  expect(calls[0]?.name).toBe("fleet.secret.create");
   expect(calls[0]?.frame.parsed.positionals[0]).toBe("vllm");
   expect(calls[0]?.frame.parsed.options.provider).toBe("openai-compatible");
   // commander stores hyphenated flags under their camelCase key.
@@ -149,11 +149,11 @@ test("secret add <name> accepts the typed custom-endpoint flags", async () => {
   expect(calls[0]?.frame.parsed.options.model).toBe("qwen2.5");
 });
 
-test("secret add rejects a non-https --base-url at parse time (no dispatch)", async () => {
+test("secret create rejects a non-https --base-url at parse time (no dispatch)", async () => {
   const { handlers, calls } = makeSpyTree();
   await expect(
     dispatch([
-      "secret", "add", "vllm",
+      "secret", "create", "vllm",
       "--provider", "openai-compatible",
       "--base-url", "http://vllm.corp/v1",
       "--api-key", "sk-custom",

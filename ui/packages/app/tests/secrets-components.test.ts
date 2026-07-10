@@ -40,6 +40,7 @@ vi.mock("lucide-react", () => {
     KeyRoundIcon: make("KeyRoundIcon"),
     PencilIcon: make("PencilIcon"),
     PlusIcon: make("PlusIcon"),
+    CircleHelpIcon: make("CircleHelpIcon"),
     XIcon: make("XIcon"),
   };
 });
@@ -169,6 +170,16 @@ describe("AddSecretDialog", () => {
     await user.click(screen.getByRole("button", { name: "Create secret" }));
     await waitFor(() => expect(screen.getByRole("dialog")).toBeTruthy());
     await user.click(screen.getByRole("button", { name: "Close" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(createSecretActionMock).not.toHaveBeenCalled();
+  });
+
+  it("closes from Cancel without creating a secret", async () => {
+    const user = userEvent.setup();
+    await renderDialog();
+    await user.click(screen.getByRole("button", { name: "Create secret" }));
+    await waitFor(() => expect(screen.getByLabelText(/secret name/i)).toBeTruthy());
+    await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: /^cancel$/i }));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(createSecretActionMock).not.toHaveBeenCalled();
   });

@@ -1,4 +1,4 @@
-//! DB-backed `LookupFn` for the `tenant_api_key` middleware (M28_002 §4).
+//! DB-backed `LookupFn` for the `tenant_api_key` middleware.
 //!
 //! `src/auth/middleware/` is portability-locked — it cannot reach into
 //! `src/db/`. This module lives in `src/cmd/` (alongside the serve host
@@ -8,6 +8,7 @@
 const std = @import("std");
 const pg = @import("pg");
 
+const clock = @import("common").clock;
 const db = @import("../db/pool.zig");
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
 const tenant_api_key = @import("../auth/middleware/tenant_api_key.zig");
@@ -32,13 +33,29 @@ pub fn lookup(
     const self: *Ctx = @ptrCast(@alignCast(host));
     const conn = self.pool.acquire() catch return error.DbUnavailable;
     defer self.pool.release(conn);
+    const now_ms = clock.nowMillis();
 
     var q = PgQuery.from(conn.query(
+        \\WITH matched AS (
+        \\    SELECT uid, tenant_id, created_by, active
+        \\    FROM core.api_keys
+        \\    WHERE key_hash = $1
+        \\    LIMIT 1
+        \\), touched AS (
+        \\    UPDATE core.api_keys k
+        \\    SET last_used_at = $2
+        \\    FROM matched m
+        \\    WHERE k.uid = m.uid AND m.active = TRUE
+        \\    RETURNING k.uid::text, k.tenant_id::text, k.created_by::text, k.active
+        \\)
+        \\SELECT uid, tenant_id, created_by, active
+        \\FROM touched
+        \\UNION ALL
         \\SELECT uid::text, tenant_id::text, created_by::text, active
-        \\FROM core.api_keys
-        \\WHERE key_hash = $1
+        \\FROM matched
+        \\WHERE NOT EXISTS (SELECT 1 FROM touched)
         \\LIMIT 1
-    , .{key_hash_hex}) catch return error.DbQueryFailed);
+    , .{ key_hash_hex, now_ms }) catch return error.DbQueryFailed);
     defer q.deinit();
 
     const row = (q.next() catch return error.DbQueryFailed) orelse return null;

@@ -161,14 +161,14 @@ Run the full CLI acceptance flow against DEV after the pipeline is green.
 >
 > **`<ACCEPTANCE_REPO_URL>`** is an operator-supplied input, not a repo constant:
 > the clone/HTTPS URL of the throwaway GitHub repository the acceptance run opens
-> its PR against (the GitHub App is installed on it during `workspace add`).
+> its pull request against (the GitHub App is installed on it during `workspace create`).
 > Supply your own; there is no committed default.
 
 ```bash
 export AGENTSFLEET_API_URL=https://api-dev.agentsfleet.net
 
 npx agentsfleet login
-npx agentsfleet workspace add <ACCEPTANCE_REPO_URL>
+npx agentsfleet workspace create <ACCEPTANCE_REPO_URL>
 npx agentsfleet specs sync docs/spec/
 npx agentsfleet run
 npx agentsfleet runs list
@@ -176,7 +176,7 @@ npx agentsfleet runs list
 
 Expected outcomes:
 - `login` — Clerk auth token stored in local config
-- `workspace add` — workspace created, GitHub App installed on acceptance repo
+- `workspace create` — workspace created, GitHub App installed on acceptance repo
 - `specs sync` — spec files uploaded, count confirmed
 - `run` — run ID returned; status transitions to `running` then `completed`; PR opened on acceptance repo
 - `runs list` — run appears with `status: completed` and `pr_url` present

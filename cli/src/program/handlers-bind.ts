@@ -27,6 +27,7 @@ import {
   tenantProviderDeleteEffect,
 } from "../commands/tenant.ts";
 import { billingShowEffectFromArgs } from "../commands/billing.ts";
+import { buildAccessHandlers } from "./handlers-bind-access.ts";
 import { buildFleetHandlers } from "./handlers-bind-fleet.ts";
 import { buildWorkspaceHandlers } from "./handlers-bind-workspace.ts";
 import { buildMemoryHandlers } from "./handlers-bind-memory.ts";
@@ -109,10 +110,10 @@ function stdinFromCtx(ctx: LifecycleCtx): NodeJS.ReadableStream | undefined {
 // commander's preAction has fired, so --no-open / --json / --api
 // global flags are captured.
 //
-// `name` is the wrap-site label ("fleet.add", "workspace.list", ...).
+// `name` is the wrap-site label ("fleet.create", "workspace.list", ...).
 // Split into commandPath so CommandRuntime carries it (the span name
-// becomes `cli.fleet.add`, the analytics command label becomes
-// "fleet add").
+// becomes `cli.fleet.create`, the analytics command label becomes
+// "fleet create").
 function mainLayerForCtx(lifecycle: Lifecycle, name: string): ReturnType<typeof mainLayerFor> {
   const streams = streamsFromCtx(lifecycle.ctx);
   const stdin = stdinFromCtx(lifecycle.ctx);
@@ -204,8 +205,8 @@ export function buildHandlers(lifecycle: Lifecycle): Handlers {
     doctor: wrapE("doctor", doctorEffect),
     workspace: buildWorkspaceHandlers(wrapE, wrapEFn),
     fleetKey: {
-      add: wrapEffectFn(
-        "fleet-key.add",
+      create: wrapEffectFn(
+        "fleet-key.create",
         (frame) => {
           const opts = frame.parsed.options;
           return fleetAddEffectFromArgs({
@@ -247,6 +248,7 @@ export function buildHandlers(lifecycle: Lifecycle): Handlers {
         lifecycle,
       ),
     },
+    ...buildAccessHandlers(wrapEFn),
     grant: {
       list: wrapEffectFn(
         "grant.list",
@@ -274,8 +276,8 @@ export function buildHandlers(lifecycle: Lifecycle): Handlers {
     tenant: {
       provider: {
         show: wrapE("tenant.provider.show", tenantProviderShowEffect),
-        add: wrapEffectFn(
-          "tenant.provider.add",
+        create: wrapEffectFn(
+          "tenant.provider.create",
           (frame) =>
             tenantProviderAddEffectFromArgs(
               optString(frame.parsed.options, "secret"),

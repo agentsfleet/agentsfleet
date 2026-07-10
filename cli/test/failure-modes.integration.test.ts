@@ -62,10 +62,10 @@ describe("failure modes — login surface", () => {
 });
 
 describe("failure modes — workspace surface", () => {
-  test("workspace add returning UZ-WORKSPACE-002 (paused, 402) blocks the user with a billing-shaped error", async () => {
+  test("workspace create returning UZ-WORKSPACE-002 (paused, 402) blocks the user with a billing-shaped error", async () => {
     await authedScope(async () => {
       // Start the customer in a logged-in but workspace-less state so the
-      // failed `workspace add` is the moment they hit the paused error.
+      // failed `workspace create` is the moment they hit the paused error.
       await saveWorkspaces({ current_workspace_id: null, items: [] });
       const routes: MockRoutes = {
         "POST /v1/workspaces": () => jsonResponse(402,
@@ -74,7 +74,7 @@ describe("failure modes — workspace surface", () => {
       await withMockApi(routes, async (apiUrl) => {
         const out = bufferStream();
         const err = bufferStream();
-        const code = await runCli(["workspace", "add", "my-repo"], {
+        const code = await runCli(["workspace", "create", "my-repo"], {
           stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl },
         });
         // Effect-shape contract: HTTP 4xx → ServerError → exit 3.

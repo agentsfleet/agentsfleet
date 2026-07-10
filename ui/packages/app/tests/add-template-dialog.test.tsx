@@ -58,6 +58,20 @@ describe("AddLibraryDialog", () => {
     expect(link.getAttribute("href")).toBe(CREATE_LIBRARY_DOC_URL);
   });
 
+  it("shows the sample fleet library repository as a GitHub link", async () => {
+    await openDialog();
+    const link = screen.getByRole("link", { name: /^agentsfleet\/github-pr-reviewer/i });
+    expect(link.getAttribute("href")).toBe("https://github.com/agentsfleet/github-pr-reviewer");
+  });
+
+  it("closes from Cancel without creating a fleet library", async () => {
+    const user = await openDialog();
+    await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: /^cancel$/i }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Create fleet library" })).toBeNull());
+    expect(onboardLibraryEntryActionMock).not.toHaveBeenCalled();
+    expect(routerRefresh).not.toHaveBeenCalled();
+  });
+
   it("rejects an invalid owner/repo source-ref before calling the action", async () => {
     const user = await openDialog();
     await user.type(screen.getByLabelText("Repository"), "notarepo");

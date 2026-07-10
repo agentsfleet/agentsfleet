@@ -15,6 +15,7 @@ import { Command, Option as CommanderOption, type Help } from "commander";
 import { FleetHelp, styleTagline } from "./help.ts";
 import { OPT_TTY } from "../constants/cli-flags.ts";
 import { parseIntOption, parseIdOption } from "./validators.ts";
+import { buildAccessTree } from "./cli-tree-access.ts";
 import { buildFleetTree } from "./cli-tree-fleet.ts";
 import { buildMemoryTree } from "./cli-tree-memory.ts";
 import { helpTail } from "./cli-tree-help.ts";
@@ -138,6 +139,7 @@ export function buildProgram({ handlers, version, state, helpFactory }: BuildPro
   buildWorkspaceTree(program, handlers, state);
   buildFleetKeyTree(program, handlers, state);
   buildGrantTree(program, handlers, state);
+  buildAccessTree(program, handlers, state, { actionFor, runHandler });
   buildTenantTree(program, handlers, state);
   buildBillingTree(program, handlers, state);
   buildFleetTree(program, handlers, state, { actionFor, runHandler });
@@ -151,9 +153,9 @@ function buildWorkspaceTree(program: Command, handlers: Handlers, state: Program
     .command("workspace")
     .description("Manage workspaces");
 
-  ws.command("add [name]")
+  ws.command("create [name]")
     .description("Create a new workspace")
-    .action(actionFor("workspace.add", (frame) => runHandler(state, frame, handlers.workspace.add)));
+    .action(actionFor("workspace.create", (frame) => runHandler(state, frame, handlers.workspace.create)));
 
   ws.command(COMMAND_LIST)
     .description("List workspaces")
@@ -182,13 +184,13 @@ function buildFleetKeyTree(program: Command, handlers: Handlers, state: ProgramS
     .command("fleet-key")
     .description("Manage fleet API keys");
 
-  fleetKey.command(COMMAND_ADD)
+  fleetKey.command(COMMAND_CREATE)
     .description("Mint a Fleet API key for the workspace")
     .option(FLAG_WORKSPACE_ID, WORKSPACE_ID, parseIdOption)
     .option(FLAG_FLEET_ID, "Fleet ID this key is bound to", parseIdOption)
     .option("--name <name>", "Human-readable fleet key name")
     .option("--description <desc>", "Optional description")
-    .action(actionFor("fleet-key.add", (frame) => runHandler(state, frame, handlers.fleetKey.add)));
+    .action(actionFor("fleet-key.create", (frame) => runHandler(state, frame, handlers.fleetKey.create)));
 
   fleetKey.command(COMMAND_LIST)
     .description("List fleet API keys")
@@ -229,11 +231,11 @@ function buildTenantTree(program: Command, handlers: Handlers, state: ProgramSta
     .description("Show the active provider config")
     .action(actionFor("tenant.provider.show", (frame) => runHandler(state, frame, handlers.tenant.provider.show)));
 
-  provider.command(COMMAND_ADD)
+  provider.command(COMMAND_CREATE)
     .description("Use a self-managed secret")
     .option("--secret <name>", "Named secret from the workspace vault")
     .option("--model <name>", "Override the default model identifier")
-    .action(actionFor("tenant.provider.add", (frame) => runHandler(state, frame, handlers.tenant.provider.add)));
+    .action(actionFor("tenant.provider.create", (frame) => runHandler(state, frame, handlers.tenant.provider.create)));
 
   provider.command("delete")
     .description("Reset to the platform default")
@@ -255,7 +257,7 @@ const FLAG_WORKSPACE_ID = "--workspace <id>" as const;
 const FLAG_FLEET_ID = "--fleet <id>" as const;
 const WORKSPACE_ID = "Workspace ID" as const;
 const FLEET_ID = "Fleet ID" as const;
-const COMMAND_ADD = "add" as const;
+const COMMAND_CREATE = "create" as const;
 const COMMAND_DOCTOR = "doctor" as const;
 const COMMAND_LIST = "list" as const;
 const COMMAND_LOGIN = "login" as const;

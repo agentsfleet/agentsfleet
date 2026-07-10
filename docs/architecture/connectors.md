@@ -49,7 +49,7 @@ A workspace *connects* a provider once (connector); everything fleets then do wi
 | `oauth2` | authorize-redirect → code exchange (deadline-armed) → `post_auth` hook parses + persists | `code` + `state` | vault handle (+ provider-specific rows, e.g. Slack's `connector_installs`) | `slack`, `zoho` (multi-DC — the callback's `location` resolves the effective token endpoint), `jira`, `linear` |
 | `app_install` | vendor install page → callback validates via `complete` hook | `installation_id` + `state` | vault handle only | `github` |
 
-**There is no `api_key` archetype.** One was considered for operator-pasted vendor keys (Datadog, Grafana, Fly) and dropped (M108_002): a static vendor key is just a workspace secret referenced as `${secrets.<name>.<field>}`, not a connector — it never had a connect/callback round-trip or a platform app secret to protect. Those three providers are plain `agentsfleet secret add` entries, never registry entries. `REGISTRY.len` is pinned at 5 (`registry.zig`'s own pin test) — five OAuth/app-install connectors, not eight.
+**There is no `api_key` archetype.** One was considered for operator-pasted vendor keys (Datadog, Grafana, Fly) and dropped (M108_002): a static vendor key is just a workspace secret referenced as `${secrets.<name>.<field>}`, not a connector — it never had a connect/callback round-trip or a platform app secret to protect. Those three providers are plain `agentsfleet secret create` entries, never registry entries. `REGISTRY.len` is pinned at 5 (`registry.zig`'s own pin test) — five OAuth/app-install connectors, not eight.
 
 ## Trust anchors (two — unchanged from M102/M106)
 
@@ -82,7 +82,7 @@ Deadline fired, watchdog unarmable, or vendor unreachable → `UZ-CONN-003` (502
 1. Provider id as a `common` constant (RULE UFS) — it is simultaneously the route segment, the vault-key stem (`<provider>-app`, `fleet:<provider>`), and the registry id.
 2. A `<provider>/spec.zig` data file (oauth2: endpoints/scopes; app_install: state binding) + the archetype's hook functions (oauth2: `post_auth` body parse + rows; app_install: `build_install_url` + `complete`).
 3. One `ConnectorSpec` entry in `registry.zig`.
-4. Provision the `<provider>-app` bag in the admin vault. (An operator-supplied vendor key with no browser round-trip — Datadog/Grafana/Fly's shape — isn't a connector at all; it's a plain workspace secret, `agentsfleet secret add`, never a registry entry.)
+4. Provision the `<provider>-app` bag in the admin vault. (An operator-supplied vendor key with no browser round-trip — Datadog/Grafana/Fly's shape — isn't a connector at all; it's a plain workspace secret, `agentsfleet secret create`, never a registry entry.)
 5. Tests: the generic-route suites already cover the flow; add hook-level tests for the provider's parse/persist deltas.
 
 No route, matcher, scope, invoke, or OpenAPI edit — the `{provider}` form already covers the new id.

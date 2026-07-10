@@ -3,7 +3,7 @@
 // Manages agt_a API keys issued to LangGraph/CrewAI/Composio fleets.
 // The raw key is shown once at creation and cannot be retrieved again.
 //
-// agentsfleet fleet-key add    --workspace <ws> --fleet <id> --name <name> [--description <desc>]
+// agentsfleet fleet-key create    --workspace <ws> --fleet <id> --name <name> [--description <desc>]
 // agentsfleet fleet-key list   --workspace <ws>
 // agentsfleet fleet-key delete --workspace <ws> <fleet_key_id>
 
@@ -103,12 +103,12 @@ export const fleetAddEffectFromArgs = (
     const workspaceId = yield* resolveWorkspaceId(args.workspaceId);
     const fleetId = yield* requireFlag(
       args.fleetId,
-      "fleet-key add requires --fleet <id>",
+      "fleet-key create requires --fleet <id>",
       "pass --fleet <fleet_id>",
     );
     const name = yield* requireFlag(
       args.name,
-      "fleet-key add requires --name <name>",
+      "fleet-key create requires --name <name>",
       "pass --name <name>",
     );
     const description = args.description ?? "";
