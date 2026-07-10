@@ -162,7 +162,7 @@ Today every renewal stop lands as `renewal_terminate`, because `RenewResult.term
 
 `FleetConfig.budget` stops being a dead struct field the moment §1 lands, satisfying RULE DFS. Separately, `config_helpers.zig:13` declares `const MS_PER_SECOND = 1000.0` whose *only* use (line 258) is as the upper bound on `daily_dollars` — a milliseconds name doing duty as a dollar ceiling. Rename to `MAX_DAILY_BUDGET_UNITS`, value unchanged, sweep for orphans (RULE ORP). Document the per-fleet ceiling in `docs/architecture/billing_and_provider_keys.md` as a fleet-scoped guard distinct from the tenant-scoped credit pool.
 
-- **Dimension 4.1** — `grep -rn "\.budget\." src/ --include='*.zig' | grep -v test` returns at least one production hit (the field is live) → Test `test_fleet_budget_field_has_production_reader`
+- **Dimension 4.1** — `grep -rn "config\.budget" src/ --include='*.zig' | grep -v _test` returns at least one production hit (the field is live) → **DONE** (`service_billing.zig:96` — `budget.covers(session.config.budget, spend)`; zero hits at `origin/main`). *(Amended Jul 10 2026: the criterion originally grepped `\.budget\.`, which requires a field access THROUGH `budget` and matches nothing — the real reader is `session.config.budget`, with no trailing dot. As written the row would have reported 0 and "proved" the field was still dead.)*
 - **Dimension 4.2** — `MS_PER_SECOND` no longer appears in `config_helpers.zig`, and the daily bound is unchanged at 1000.0 → Test existing `config_parser_test.zig` bounds cases → **DONE** (rename is value-preserving; `grep -c MS_PER_SECOND config_helpers.zig` → 0)
 - **Dimension 4.3** — the architecture doc names the per-fleet ceiling and its two gates → verified by `make lint-all` (`check_architecture_doc.sh`) and the R8 grep
 
@@ -282,7 +282,7 @@ Regression: §2.2 proves an under-budget renewal is unchanged. Idempotency/repla
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | The dead field is live (§4) | `grep -rn "\.budget\." src/ --include='*.zig' \| grep -v test \| wc -l` | output ≥ 1 | P0 | |
+| R1 | The dead field is live (§4) | `grep -rn "config\.budget" src/ --include='*.zig' \| grep -v _test \| wc -l` | output ≥ 1 | P0 | ✅ `1` — `service_billing.zig:96` |
 | R2 | Both gates + the pure math pass (§1/§2) | `make test` | exit 0 | P0 | |
 | R3 | Both gates behave against real Postgres (§1/§2/§3) | `make test-integration` | exit 0 | P0 | |
 | R4 | The budget label reaches the durable record (§3) | `grep -rn "budget_breach" src/agentsfleetd/fleet/event_rows.zig src/lib/contract/execution_result.zig` | both files match | P0 | |
