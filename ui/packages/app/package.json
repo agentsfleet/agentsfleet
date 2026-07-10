@@ -5,9 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "next dev --turbopack",
-    "build": "next build",
+    "build": "bun run typecheck && next build",
     "start": "next start",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "node ./node_modules/@typescript/native/bin/tsc --noEmit",
     "lint": "oxlint --type-aware .",
     "test": "vitest run tests/*.test.ts tests/*.test.tsx lib/*.test.ts lib/**/*.test.ts 'app/(dashboard)' --testTimeout 60000",
     "test:smoke": "vitest run tests/smoke.test.ts",
@@ -56,6 +56,7 @@
     "@testing-library/dom": "^10.4.1",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.1",
+    "@typescript/native": "npm:typescript@7.0.2",
     "@types/node": "^26.1.1",
     "@types/react": "19.2.17",
     "@types/react-dom": "19.2.3",
@@ -67,7 +68,7 @@
     "size-limit": "^12.1.0",
     "svix": "^1.96.1",
     "tailwindcss": "^4.3.2",
-    "typescript": "7.0.2",
+    "typescript": "npm:typescript@6.0.2",
     "vitest": "4.1.10"
   }
 }

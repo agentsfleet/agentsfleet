@@ -24,6 +24,19 @@ vi.mock("@/lib/analytics/posthog", () => ({
   captureProductEvent: captureProductEventMock,
 }));
 
+// Dialog tests own dialog/form wiring; island-dynamic.test covers next/dynamic,
+// so this suite renders the real form without the framework loader race.
+vi.mock("@/components/domain/island-dynamic/AddSecretFormDynamic", async () => {
+  const ReactModule = await import("react");
+  const { default: AddSecretForm } = await import(
+    "@/app/(dashboard)/w/[workspaceId]/secrets/components/AddSecretForm"
+  );
+  type AddSecretFormProps = Parameters<typeof AddSecretForm>[0];
+  const AddSecretFormDynamicMock = (props: AddSecretFormProps) =>
+    ReactModule.createElement(AddSecretForm, props);
+  return { default: AddSecretFormDynamicMock };
+});
+
 // Use the real ConfirmDialog (for errorMessage rendering) and lucide stubs;
 // stub only the form primitives that pull radix client-only providers we
 // don't need at unit level.
@@ -130,14 +143,14 @@ describe("AddSecretDialog", () => {
     expect(trigger.querySelector('[data-icon="PlusIcon"]')).toBeTruthy();
   });
 
-  it("opens the add-secret form when the trigger is clicked", async () => {
+  it("opens the create-secret form when the trigger is clicked", async () => {
     const user = userEvent.setup();
     await renderDialog();
     await user.click(screen.getByRole("button", { name: "Create secret" }));
     await waitFor(() => expect(screen.getByRole("dialog")).toBeTruthy());
-    expect(within(screen.getByRole("dialog")).getByText(/^create secret$/i)).toBeTruthy();
-    // AddSecretFormDynamic (`next/dynamic`, ssr:false) mounts async — wait for
-    // the lazy-loaded form to land inside the now-open dialog.
+    expect(
+      within(screen.getByRole("dialog")).getByRole("heading", { name: "Create secret" }),
+    ).toBeTruthy();
     await waitFor(() => expect(screen.getByLabelText(/secret name/i)).toBeTruthy());
   });
 
