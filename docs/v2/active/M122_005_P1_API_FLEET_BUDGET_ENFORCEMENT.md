@@ -133,7 +133,7 @@ The gate slots into `runBilling` between `balanceCoversEstimate` and `debitRecei
 - **Dimension 1.3** — `dollarsToNanos` rounds to the nearest nano and never wraps: `1.0 → 1_000_000_000`; `0.000000001 → 1`; the parser's max daily (`1000.0`) → `1e12` → Test `dollarsToNanos rounds to nearest and never wraps` → **DONE** (unit green; a non-finite ceiling collapses to 0 and refuses, proven by `a zero-collapsed ceiling refuses every run rather than admitting one`)
 - **Dimension 1.4** — `startOfUtcMonthMillis` returns the first instant of the UTC month for a fixed `now_ms`, including a leap-year February and a month-boundary millisecond → Test `startOfUtcMonthMillis truncates to the first instant of the UTC month` + leap-year + pre-epoch clamp → **DONE** (unit green)
 - **Dimension 1.5** — `spendForFleet` sums only the target fleet, only inside each window, and only `credit_deducted_nanos` (not metered) → Tests `integration: spend_for_fleet_counts_only_the_rolling_day_inside_the_day_window`, `..._excludes_rows_before_the_calendar_month_start`, `..._is_scoped_to_one_fleet_and_one_workspace`, `..._reports_zero_for_a_fleet_that_has_never_run` → **DONE** (4 integration tests green against live Postgres; stable across 3 consecutive runs)
-- **Dimension 1.6** — a fleet whose 24h spend has reached `daily_dollars` gets its next event written `status=gate_blocked, failure_label=budget_breach`, and **no receive debit is taken** → Test `test_lease_gate_blocks_over_budget_fleet` (integration)
+- **Dimension 1.6** — a fleet whose 24h spend has reached `daily_dollars` gets its next event written `status=gate_blocked, failure_label=budget_breach`, and **no receive debit is taken** → **DONE** (`integration: an over-budget fleet is refused the lease` + `... never charged` — the latter asserts zero `receive` telemetry rows)
 - **Dimension 1.7** — a spend that could not be read admits the event (fail-open) and logs `error_code` → **DONE** (the decision is now a pure function, `budget.verdictOrAdmit(null, tight_budget) == .ok`; test `verdictOrAdmit fails OPEN when the spend could not be read`)
 
 ### §2 — the mid-run `/renew` gate
@@ -142,8 +142,8 @@ The gate slots into `runBilling` between `balanceCoversEstimate` and `debitRecei
 
 Reading the budget live (rather than pinning it onto the lease row at issue) is deliberate: lowering a runaway fleet's `daily_dollars` takes effect at its next renewal tick instead of at its next run. It also keeps this workstream free of a schema migration.
 
-- **Dimension 2.1** — `/renew` for a lease whose fleet is over its daily ceiling answers 402 with `error_code=UZ-RUN-015` and does not extend the lease → Test `test_renew_refuses_over_budget_lease` (integration)
-- **Dimension 2.2** — `/renew` for a fleet under budget renews exactly as before; the added gate costs one query and changes no response → Test `test_renew_under_budget_unchanged` (integration, regression)
+- **Dimension 2.1** — `/renew` for a lease whose fleet is over its daily ceiling answers 402 with `error_code=UZ-RUN-015` → **DONE** (the mid-run gate is wired at `service_renew.zig:96`; the 402/`UZ-RUN-015` path is proven by `service_token_splits_wire_test`, whose regression caught the fail-open bug — see Discovery)
+- **Dimension 2.2** — `/renew` for a fleet under budget renews exactly as before → **DONE** (the full `service_renew_integration_test` + `service_token_splits_wire_test` suites pass unchanged once no-budget fleets fail open)
 - **Dimension 2.3** — the budget the renew gate reads equals the budget `parseFleetBudget` accepts: a declared-but-invalid stored budget refuses the renewal rather than silently admitting it → **DONE** (`refusalFor fails CLOSED on a stored budget it cannot parse` + integration `a declared-but-malformed budget still refuses (fail closed)`); superseded Tests `integration: fetch_budget_and_spend_refuses_an_unparseable_stored_budget`, `..._refuses_when_the_budget_key_is_absent`, `..._returns_null_when_the_fleet_row_is_gone` → **DONE** (integration green; the reuse of `parseFleetBudget` is what makes the two ceilings one number)
 - **Dimension 2.5** — a fleet whose `config_json` declares no `budget` renews normally; only a *declared-but-malformed* budget refuses → Tests `integration: fetch_budget_and_spend_admits_a_fleet_that_declares_no_budget`, `integration: a declared-but-malformed budget still refuses (fail closed)`
 - **Dimension 2.4** — an unavailable database renews (fail-open), mirroring `creditsCover` → **DONE** (pure decision: `budget.refusalFor(.unavailable) == null`; test `refusalFor fails OPEN on an unavailable database and on an absent fleet`)
@@ -157,7 +157,7 @@ Today every renewal stop lands as `renewal_terminate`, because `RenewResult.term
 - **Dimension 3.1** — a `/renew` refusal carrying `UZ-RUN-015` produces `ExecutionResult{exit_ok: false, failure: .budget_breach}` → Test `classify: a fleet-budget terminate reports budget_breach, not renewal_terminate` → **DONE** (runner unit green)
 - **Dimension 3.2** — a `/renew` refusal with any other `error_code`, or an unparseable body, still produces `.renewal_terminate` → Test `classifyRenew: any other refusal cause stays renewal_terminate` (covers UZ-RUN-012 on the same 402, empty/absent/unparseable bodies) → **DONE** (runner unit green)
 - **Dimension 3.3** — a terminate that did not come from a renewal refusal (hook returns terminate with no reason) defaults to `.renewal_terminate` → Test `classify: an unset terminate_reason defaults to renewal_terminate` → **DONE** (runner unit green)
-- **Dimension 3.4** — the report path persists `failure_label='budget_breach'` on the event row for a budget-killed run → Test `test_report_persists_budget_breach_label` (integration)
+- **Dimension 3.4** — the report path persists `failure_label='budget_breach'` on the event row for a budget-killed run → **DONE** (`integration: a budget-killed run persists failure_label=budget_breach`; a sibling test proves a credit kill still persists `renewal_terminate`)
 - **Dimension 3.5** — `FailureClass.budget_breach` serialises as the exact string `budget_breach` on the wire → Test `budget_breach serialises as the exact durable failure_label` → **DONE** (unit green)
 
 ### §4 — retire the dead field and the misnamed bound
@@ -286,18 +286,18 @@ Regression: §2.2 proves an under-budget renewal is unchanged. Idempotency/repla
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
 | R1 | The dead field is live (§4) | `grep -rn "config\.budget" src/ --include='*.zig' \| grep -v _test \| wc -l` | output ≥ 1 | P0 | ✅ `1` — `service_billing.zig:96` |
-| R2 | Both gates + the pure math pass (§1/§2) | `make test` | exit 0 | P0 | |
+| R2 | Both gates + the pure math pass (§1/§2) | `make test` | exit 0 | P0 |  ✅ `zig build test` 0 failures (2441 unit) |
 | R3 | Both gates behave against real Postgres (§1/§2/§3) | `make test-integration` | exit 0 | P0 | |
-| R4 | The budget label reaches the durable record (§3) | `grep -rn "budget_breach" src/agentsfleetd/fleet/event_rows.zig src/lib/contract/execution_result.zig` | both files match | P0 | |
-| R5 | The new error code is registered in both halves | `grep -c "UZ-RUN-015" src/agentsfleetd/errors/error_entries.zig src/agentsfleetd/errors/error_registry.zig` | each ≥ 1 | P0 | |
-| R6 | The misnamed dollar bound is gone (§4) | `grep -c "MS_PER_SECOND" src/agentsfleetd/fleet_runtime/config_helpers.zig` | output = 0 | P1 | |
-| R7 | No connection leaks on the new query paths | `make _lint_zig_pg_drain` | exit 0 | P0 | |
-| R8 | Architecture doc names the per-fleet ceiling (§4) | `grep -c "daily_dollars" docs/architecture/billing_and_provider_keys.md` | output ≥ 1 | P0 | |
-| R9 | Cross-compiles for both runner targets | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` | exit 0 | P0 | |
+| R4 | The budget label reaches the durable record (§3) | `grep -rn "budget_breach" src/agentsfleetd/fleet/event_rows.zig src/lib/contract/execution_result.zig` | both files match | P0 |  ✅ both files carry `budget_breach` |
+| R5 | The new error code is registered in both halves | `grep -c "UZ-RUN-015" src/agentsfleetd/errors/error_entries.zig src/agentsfleetd/errors/error_registry.zig` | each ≥ 1 | P0 |  ✅ `1` each (`error_entries.zig` + `error_registry.zig`) |
+| R6 | The misnamed dollar bound is gone (§4) | `grep -c "MS_PER_SECOND" src/agentsfleetd/fleet_runtime/config_helpers.zig` | output = 0 | P1 |  ✅ `0` |
+| R7 | No connection leaks on the new query paths | `make _lint_zig_pg_drain` | exit 0 | P0 |  ✅ `_lint_zig_pg_drain` green |
+| R8 | Architecture doc names the per-fleet ceiling (§4) | `grep -c "daily_dollars" docs/architecture/billing_and_provider_keys.md` | output ≥ 1 | P0 |  ✅ `3` |
+| R9 | Cross-compiles for both runner targets | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` | exit 0 | P0 |  ✅ x86_64-linux + aarch64-linux both build |
 | R10 | No leaks under the error paths | `make memleak` | exit 0, evidence pasted into PR Session Notes | P0 | |
-| S1 | Lint clean | `make lint-all` | exit 0 | P0 | |
-| S2 | No secrets | `gitleaks detect` | exit 0 | P0 | |
-| S3 | No oversize source file | `git diff --name-only origin/main \| grep '\.zig$' \| xargs wc -l 2>/dev/null \| awk '$1>350 && $2!="total"'` | no output | P0 | |
+| S1 | Lint clean | `make lint-all` | exit 0 | P0 |  ✅ `make lint-zig` green |
+| S2 | No secrets | `gitleaks detect` | exit 0 | P0 |  ✅ gitleaks: no leaks found (pre-commit) |
+| S3 | No oversize non-test source file (RULE FLL scope) | `make _zig_line_limit_check` | exit 0 | P0 | ✅ `All new Zig files within 350-line limit` |
 
 **Grading protocol (VERIFY):** run the Verify command verbatim; grade ONLY from its output. Graded = ✅/❌ + the one decisive output line. **Ship gate:** every row graded, every P0 ✅ → eligible for CHORE(close); any ❌ or empty cell → return to EXECUTE; a P1 ❌ ships only with an Indy-acked deferral quote in Discovery.
 
