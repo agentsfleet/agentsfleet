@@ -17,9 +17,14 @@ pub const ReadOutcome = struct {
     /// The wall-clock lease deadline (possibly extended by renewals) elapsed
     /// before the child produced a result.
     timed_out: bool = false,
-    /// A renewal hook returned `.terminate` (lease lost / capped / no credits) —
-    /// the child must be killed even though the deadline has not elapsed.
+    /// A renewal hook returned `.terminate` (lease lost / capped / no credits /
+    /// fleet budget exhausted) — the child must be killed even though the
+    /// deadline has not elapsed.
     terminated: bool = false,
+    /// Why `terminated` fired. Defaulted so a hook that reports no reason — and
+    /// every call site that never set one — keeps the historical behaviour of
+    /// attributing the stop to renewal policy.
+    terminate_reason: types.FailureClass = .renewal_terminate,
 };
 
 /// A failed execution with no body — the supervisor's universal "something went
@@ -32,18 +37,19 @@ pub fn failed(class: types.FailureClass) ExecutionResult {
 /// Precedence: renewal-terminate → deadline timeout → OOM (cgroup) → exit 0
 /// (parse result) → SANDBOX_FAIL_EXIT (startup_posture) → SECCOMP_VIOLATION_EXIT
 /// (landlock_deny) → PID-cap-exhausted crash (resource_kill) → other crash. A
-/// renewal `.terminate` (lease
-/// lost / capped / no credits) is `renewal_terminate` — a policy stop, kept
-/// distinct from `timeout_kill` (the wall-clock deadline) so triage and billing
-/// can tell a policy kill from a clock kill. Terminate wins over a co-occurring
-/// timeout: the policy reason is the more actionable cause.
+/// renewal `.terminate` carries its own class — `renewal_terminate` for a lease
+/// lost / capped / no-credits stop, `budget_breach` when the fleet reached its
+/// own ceiling — both kept distinct from `timeout_kill` (the wall-clock
+/// deadline) so triage and billing can tell a policy kill from a clock kill.
+/// Terminate wins over a co-occurring timeout: the policy reason is the more
+/// actionable cause.
 pub fn classify(
     alloc: std.mem.Allocator,
     outcome: ReadOutcome,
     term: std.process.Child.Term,
     scope: *?cgroup,
 ) ExecutionResult {
-    if (outcome.terminated) return failed(.renewal_terminate);
+    if (outcome.terminated) return failed(outcome.terminate_reason);
     if (outcome.timed_out) return failed(.timeout_kill);
     if (scope.*) |*s| if (s.wasOomKilled()) return failed(.oom_kill);
     // Exit 0 = parse the result frame. The child's distinct exit codes attribute

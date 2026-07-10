@@ -63,25 +63,31 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 | File | Action | Why |
 |------|--------|-----|
-| `src/agentsfleetd/fleet/budget.zig` | CREATE | pure ceiling math (`dollarsToNanos`, `covers`) + the windowed spend query + the renew-side budget fetch |
-| `src/agentsfleetd/fleet/budget_test.zig` | CREATE | unit tests for the pure half: rounding, boundary, absent monthly, overflow guard |
+| `src/agentsfleetd/fleet/budget.zig` | CREATE | pure ceiling math (`dollarsToNanos`, `covers`) + the windowed spend query + the renew-side budget fetch, with the pure-half unit tests inline (matching `event_rows.zig` / `context_resolve.zig` in the same directory) |
 | `src/agentsfleetd/fleet/budget_integration_test.zig` | CREATE | real-Postgres tests for the windowed sum + both gates' terminal rows |
+| `src/agentsfleetd/tests.zig` | EDIT | register `fleet/budget.zig` with the unit-test root |
 | `src/agentsfleetd/fleet/event_rows.zig` | EDIT | add `LABEL_BUDGET_BREACH = "budget_breach"` beside the other `gate_blocked` labels (RULE UFS single ownership site) |
 | `src/agentsfleetd/fleet/service_billing.zig` | EDIT | pre-run gate between the balance check and the receive debit |
 | `src/agentsfleetd/fleet/service_renew.zig` | EDIT | `Lease` gains `fleet_id`/`workspace_id`; budget gate after `creditsCover` |
-| `src/agentsfleetd/errors/error_entries.zig` | EDIT | register `UZ-RUN-015` (`.payment_required`) |
-| `src/agentsfleetd/errors/error_registry.zig` | EDIT | `pub const ERR_RUN_BUDGET_EXCEEDED = "UZ-RUN-015";` |
+| `src/agentsfleetd/errors/error_entries.zig` | EDIT | register `UZ-RUN-015` (`.payment_required`) — the `/renew` refusal |
+| `src/agentsfleetd/errors/error_entries_runtime.zig` | EDIT | register `UZ-EXEC-015` — the runner-engine mirror `errorCodeForFailure` demands for the new `FailureClass` |
+| `src/agentsfleetd/errors/error_registry.zig` | EDIT | `ERR_RUN_BUDGET_EXCEEDED = "UZ-RUN-015"`, `ERR_EXEC_BUDGET_BREACH = "UZ-EXEC-015"` |
+| `src/runner/engine/client_errors.zig` | EDIT | the runner's mirror of both codes + the exhaustive `errorCodeForFailure` arm (the compiler forces this: adding a `FailureClass` variant fails the build until the arm exists) |
 | `src/agentsfleetd/fleet_runtime/config_helpers.zig` | EDIT | rename the file-local `MS_PER_SECOND` (a milliseconds name bounding *dollars*) to `MAX_DAILY_BUDGET_UNITS`; value unchanged (RULE UFS / RULE NLR) |
 | `src/lib/common/clock.zig` | EDIT | `startOfUtcMonthMillis(now_ms)` — pure, injectable `now`, no wall-clock read |
 | `src/lib/contract/execution_result.zig` | EDIT | `FailureClass.budget_breach` |
-| `src/runner/daemon/control_plane_client.zig` | EDIT | `RenewResult.terminal` carries `{status, reason}`; parse `error_code` from the refusal body |
-| `src/runner/daemon/renew_driver.zig` | EDIT | map the terminal reason onto `RenewDecision.terminate` |
-| `src/runner/daemon/lease_run.zig` | EDIT | its `onTick` returns the widened `RenewDecision` |
-| `src/runner/child_supervisor_read.zig` | EDIT | `RenewDecision.terminate: FailureClass`; `applyTick` returns `?FailureClass`; `ReadOutcome.terminate_reason` |
-| `src/runner/child_supervisor.zig` | EDIT | re-export the widened types |
-| `src/runner/child_supervisor_result.zig` | EDIT | `classify` honours `outcome.terminate_reason` |
-| `src/runner/child_supervisor_test.zig` | EDIT | scripted hooks return the widened decision; assert reason propagation |
+| `src/runner/daemon/control_plane_client_renew.zig` | CREATE | the pure `/renew` classification half — `TerminalRenew`, `RenewResult`, `classifyRenew`, `isTerminalRenewStatus`, and the body's `error_code` → `FailureClass` map. Split out because the parent sat AT the 350-line cap (RULE FLL), mirroring the existing `control_plane_client_mint.zig` split |
+| `src/runner/daemon/control_plane_client.zig` | EDIT | re-export the renew half; `renew()` keeps the I/O |
+| `src/runner/daemon/renew_driver.zig` | EDIT | map the terminal reason onto `RenewDecision.terminate`; log the class-specific `UZ-EXEC-*` code |
+| `src/runner/child_supervisor_read.zig` | EDIT | `RenewDecision.terminate: FailureClass`; `applyTick` returns `?FailureClass`; both call sites carry the reason |
+| `src/runner/child_supervisor_result.zig` | EDIT | `ReadOutcome.terminate_reason` (defaulted); `classify` honours it |
+| `src/runner/child_supervisor_test.zig` | EDIT | scripted hooks return the widened decision; assert `budget_breach` propagation and the default |
 | `src/runner/child_supervisor_concurrency_test.zig` | EDIT | same widened decision in the concurrency harness |
+| `src/runner/daemon/control_plane_client_test.zig` | EDIT | `UZ-RUN-015` → `budget_breach`; every other cause (incl. `UZ-RUN-012` on the same 402, and unparseable bodies) stays `renewal_terminate` |
+| `src/runner/daemon/renew_driver_test.zig` | EDIT | a budget refusal rides through `onTick` as `.terminate = .budget_breach` |
+| `src/runner/daemon/renew_driver_concurrency_test.zig` | EDIT | widened decision in the concurrency harness |
+
+`src/runner/daemon/lease_run.zig` needs no edit after all — its `TickFanout.onTick` forwards `driver.tick(...)` verbatim, so the widened `RenewDecision` passes through untouched. `src/runner/child_supervisor.zig` likewise: it re-exports `read_mod.RenewDecision` by alias, which widens for free.
 | `docs/architecture/billing_and_provider_keys.md` | EDIT | document the per-fleet ceiling as a distinct concept from the tenant credit pool |
 
 ## Applicable Rules
@@ -121,10 +127,10 @@ The pure half first: `dollarsToNanos(f64) i64` (× `tenant_billing.NANOS_PER_USD
 
 The gate slots into `runBilling` between `balanceCoversEstimate` and `debitReceive`, so a refused event is never charged the receive fee. On refusal: `blockEvent(hx, fleet_id, event_id, rows.LABEL_BUDGET_BREACH)` → `status=gate_blocked, failure_label=budget_breach`, guarded on `status=received`, and the caller returns no-work without XACKing (identical to `balance_exhausted`).
 
-- **Dimension 1.1** — `covers` admits at `spend < cap` and refuses at `spend == cap` and `spend > cap`, for the daily ceiling → Test `test_budget_covers_daily_boundary`
-- **Dimension 1.2** — `monthly_dollars == null` ⇒ no monthly ceiling; a fleet far past any month figure still admits when the day is clear → Test `test_budget_absent_monthly_is_unlimited`
-- **Dimension 1.3** — `dollarsToNanos` rounds to the nearest nano and never wraps: `1.0 → 1_000_000_000`; `0.000000001 → 1`; the parser's max daily (`1000.0`) → `1e12` → Test `test_budget_dollars_to_nanos_rounds_and_saturates`
-- **Dimension 1.4** — `startOfUtcMonthMillis` returns the first instant of the UTC month for a fixed `now_ms`, including a leap-year February and a month-boundary millisecond → Test `test_clock_start_of_utc_month`
+- **Dimension 1.1** — `covers` admits at `spend < cap` and refuses at `spend == cap` and `spend > cap`, for the daily ceiling → Test `covers admits below the daily cap and refuses at or above it` → **DONE** (unit green)
+- **Dimension 1.2** — `monthly_dollars == null` ⇒ no monthly ceiling; a fleet far past any month figure still admits when the day is clear → Test `covers treats an absent monthly ceiling as unlimited` → **DONE** (unit green)
+- **Dimension 1.3** — `dollarsToNanos` rounds to the nearest nano and never wraps: `1.0 → 1_000_000_000`; `0.000000001 → 1`; the parser's max daily (`1000.0`) → `1e12` → Test `dollarsToNanos rounds to nearest and never wraps` → **DONE** (unit green; a non-finite ceiling collapses to 0 and refuses, proven by `a zero-collapsed ceiling refuses every run rather than admitting one`)
+- **Dimension 1.4** — `startOfUtcMonthMillis` returns the first instant of the UTC month for a fixed `now_ms`, including a leap-year February and a month-boundary millisecond → Test `startOfUtcMonthMillis truncates to the first instant of the UTC month` + leap-year + pre-epoch clamp → **DONE** (unit green)
 - **Dimension 1.5** — `spendForFleet` sums only the target fleet, only inside each window, and only `credit_deducted_nanos` (not metered) → Test `test_spend_for_fleet_windows_and_scopes` (integration, real Postgres)
 - **Dimension 1.6** — a fleet whose 24h spend has reached `daily_dollars` gets its next event written `status=gate_blocked, failure_label=budget_breach`, and **no receive debit is taken** → Test `test_lease_gate_blocks_over_budget_fleet` (integration)
 - **Dimension 1.7** — a DB fault inside `spendForFleet` admits the event (fail-open) and logs `error_code` → Test `test_lease_gate_fails_open_on_db_fault`
@@ -146,18 +152,18 @@ Today every renewal stop lands as `renewal_terminate`, because `RenewResult.term
 
 `metrics_runner.incRunnerFailure(runner_id, body.failure_reason)` buckets the new variant with no change (`service_report.zig:123`).
 
-- **Dimension 3.1** — a `/renew` refusal carrying `UZ-RUN-015` produces `ExecutionResult{exit_ok: false, failure: .budget_breach}` → Test `test_classify_maps_budget_refusal_to_budget_breach`
-- **Dimension 3.2** — a `/renew` refusal with any other `error_code`, or an unparseable body, still produces `.renewal_terminate` → Test `test_classify_unknown_refusal_stays_renewal_terminate`
-- **Dimension 3.3** — a terminate that did not come from a renewal refusal (hook returns terminate with no reason) defaults to `.renewal_terminate` → Test `test_read_outcome_terminate_reason_defaults`
+- **Dimension 3.1** — a `/renew` refusal carrying `UZ-RUN-015` produces `ExecutionResult{exit_ok: false, failure: .budget_breach}` → Test `classify: a fleet-budget terminate reports budget_breach, not renewal_terminate` → **DONE** (runner unit green)
+- **Dimension 3.2** — a `/renew` refusal with any other `error_code`, or an unparseable body, still produces `.renewal_terminate` → Test `classifyRenew: any other refusal cause stays renewal_terminate` (covers UZ-RUN-012 on the same 402, empty/absent/unparseable bodies) → **DONE** (runner unit green)
+- **Dimension 3.3** — a terminate that did not come from a renewal refusal (hook returns terminate with no reason) defaults to `.renewal_terminate` → Test `classify: an unset terminate_reason defaults to renewal_terminate` → **DONE** (runner unit green)
 - **Dimension 3.4** — the report path persists `failure_label='budget_breach'` on the event row for a budget-killed run → Test `test_report_persists_budget_breach_label` (integration)
-- **Dimension 3.5** — `FailureClass.budget_breach` serialises as the exact string `budget_breach` on the wire → Test `test_failure_class_budget_breach_tag_name`
+- **Dimension 3.5** — `FailureClass.budget_breach` serialises as the exact string `budget_breach` on the wire → Test `budget_breach serialises as the exact durable failure_label` → **DONE** (unit green)
 
 ### §4 — retire the dead field and the misnamed bound
 
 `FleetConfig.budget` stops being a dead struct field the moment §1 lands, satisfying RULE DFS. Separately, `config_helpers.zig:13` declares `const MS_PER_SECOND = 1000.0` whose *only* use (line 258) is as the upper bound on `daily_dollars` — a milliseconds name doing duty as a dollar ceiling. Rename to `MAX_DAILY_BUDGET_UNITS`, value unchanged, sweep for orphans (RULE ORP). Document the per-fleet ceiling in `docs/architecture/billing_and_provider_keys.md` as a fleet-scoped guard distinct from the tenant-scoped credit pool.
 
 - **Dimension 4.1** — `grep -rn "\.budget\." src/ --include='*.zig' | grep -v test` returns at least one production hit (the field is live) → Test `test_fleet_budget_field_has_production_reader`
-- **Dimension 4.2** — `MS_PER_SECOND` no longer appears in `config_helpers.zig`, and the daily bound is unchanged at 1000.0 → Test `test_parse_fleet_budget_daily_bound_unchanged`
+- **Dimension 4.2** — `MS_PER_SECOND` no longer appears in `config_helpers.zig`, and the daily bound is unchanged at 1000.0 → Test existing `config_parser_test.zig` bounds cases → **DONE** (rename is value-preserving; `grep -c MS_PER_SECOND config_helpers.zig` → 0)
 - **Dimension 4.3** — the architecture doc names the per-fleet ceiling and its two gates → verified by `make lint-all` (`check_architecture_doc.sh`) and the R8 grep
 
 ## Interfaces
@@ -165,17 +171,21 @@ Today every renewal stop lands as `renewal_terminate`, because `RenewResult.term
 ```
 src/agentsfleetd/fleet/budget.zig
   pub const Spend = struct { day_nanos: i64, month_nanos: i64 };
-  pub const Verdict = enum { ok, day_exceeded, month_exceeded };
+  pub const Verdict = enum { ok, day_exceeded, month_exceeded,
+                             pub fn refused(self: Verdict) bool };
+  pub const BudgetError = error{UnreadableBudget};
 
-  pub fn dollarsToNanos(dollars: f64) i64;
+  pub fn dollarsToNanos(dollars: f64) i64;   // non-finite/<=0 -> 0 (a cap that refuses)
   pub fn covers(budget: FleetBudget, spend: Spend) Verdict;
 
-  /// null on any DB fault — the caller fails open explicitly.
-  pub fn spendForFleet(pool: *pg.Pool, alloc: Allocator,
-                       workspace_id: []const u8, fleet_id: []const u8,
-                       now_ms: i64) ?Spend;
+  /// null on any DB fault — the caller fails open explicitly. No allocator: the
+  /// two sums come back as scalars.
+  pub fn spendForFleet(pool: *pg.Pool, workspace_id: []const u8,
+                       fleet_id: []const u8, now_ms: i64) ?Spend;
 
   /// Renew-side: the fleet's stored budget + both windowed sums in one statement.
+  /// `BudgetError.UnreadableBudget` on a malformed stored budget (fail closed);
+  /// propagates DB errors (caller fails open); null when the fleet row is gone.
   pub fn fetchBudgetAndSpend(conn: *pg.Conn, alloc: Allocator,
                              fleet_id: []const u8, workspace_id: []const u8,
                              now_ms: i64) !?struct { budget: FleetBudget, spend: Spend };
@@ -190,14 +200,18 @@ src/agentsfleetd/fleet/event_rows.zig
   pub const LABEL_BUDGET_BREACH = "budget_breach";
 
 src/agentsfleetd/errors/error_registry.zig
-  pub const ERR_RUN_BUDGET_EXCEEDED = "UZ-RUN-015";   // 402 payment_required
+  pub const ERR_RUN_BUDGET_EXCEEDED = "UZ-RUN-015";    // 402, the /renew refusal
+  pub const ERR_EXEC_BUDGET_BREACH  = "UZ-EXEC-015";   // the runner-engine mirror
 
-src/runner/daemon/control_plane_client.zig
-  pub const TerminalRenew = struct { status: u16, reason: FailureClass };
+src/runner/daemon/control_plane_client_renew.zig   (re-exported by the parent)
+  pub const TerminalRenew = struct { status: u16,
+                                     reason: FailureClass = .renewal_terminate };
   pub const RenewResult = union(enum) { renewed: i64, terminal: TerminalRenew };
 
 src/runner/child_supervisor_read.zig
   pub const RenewDecision = union(enum) { keep, extend: i64, terminate: FailureClass };
+
+src/runner/child_supervisor_result.zig
   pub const ReadOutcome = struct { …, terminated: bool = false,
                                    terminate_reason: FailureClass = .renewal_terminate };
 
@@ -274,7 +288,7 @@ Regression: §2.2 proves an under-budget renewal is unchanged. Idempotency/repla
 | R4 | The budget label reaches the durable record (§3) | `grep -rn "budget_breach" src/agentsfleetd/fleet/event_rows.zig src/lib/contract/execution_result.zig` | both files match | P0 | |
 | R5 | The new error code is registered in both halves | `grep -c "UZ-RUN-015" src/agentsfleetd/errors/error_entries.zig src/agentsfleetd/errors/error_registry.zig` | each ≥ 1 | P0 | |
 | R6 | The misnamed dollar bound is gone (§4) | `grep -c "MS_PER_SECOND" src/agentsfleetd/fleet_runtime/config_helpers.zig` | output = 0 | P1 | |
-| R7 | No connection leaks on the new query paths | `make check-pg-drain` | exit 0 | P0 | |
+| R7 | No connection leaks on the new query paths | `make _lint_zig_pg_drain` | exit 0 | P0 | |
 | R8 | Architecture doc names the per-fleet ceiling (§4) | `grep -c "daily_dollars" docs/architecture/billing_and_provider_keys.md` | output ≥ 1 | P0 | |
 | R9 | Cross-compiles for both runner targets | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` | exit 0 | P0 | |
 | R10 | No leaks under the error paths | `make memleak` | exit 0, evidence pasted into PR Session Notes | P0 | |
@@ -294,11 +308,11 @@ N/A — no files deleted; this workstream creates three and edits seventeen.
 
 | Deleted symbol/prose | Grep | Expected |
 |-----------------------|------|----------|
-| `MS_PER_SECOND` (misnamed dollar bound in the config parser) | `grep -rn "MS_PER_SECOND" src/agentsfleetd/fleet_runtime/` | 0 matches |
+| `MS_PER_SECOND` (misnamed dollar bound in the config parser) | `grep -c "MS_PER_SECOND" src/agentsfleetd/fleet_runtime/config_helpers.zig` | 0 matches |
 | `RenewResult.terminal` as a bare `u16` | `grep -rn "terminal: u16" src/runner/` | 0 matches |
 | `applyTick` returning bare `bool` | `grep -rn "fn applyTick.*) bool" src/runner/` | 0 matches |
 
-Note: `MS_PER_SECOND` remains a legitimate, genuinely-milliseconds constant in `auth/jwks.zig`, `auth/oidc.zig`, and `state/fleet_events_filter.zig`. The sweep is scoped to `fleet_runtime/`, where it was a misnomer.
+Note: `MS_PER_SECOND` remains a legitimate, genuinely-milliseconds constant elsewhere — `auth/jwks.zig`, `auth/oidc.zig`, `state/fleet_events_filter.zig`, and `fleet_runtime/approval_gate.zig` (a 24-hour gate timeout). The sweep is scoped to `config_helpers.zig`, the one file where the name bounded dollars.
 
 ## Out of Scope
 
