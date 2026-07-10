@@ -13,4 +13,5 @@ test {
     _ = @import("contract/contract.zig");
     _ = @import("common/clock.zig");
     _ = @import("common/env.zig");
+    _ = @import("common/backoff.zig");
 }
