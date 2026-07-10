@@ -16,12 +16,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M122
 **Workstream:** 003
 **Date:** Jul 09, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P2 — one bounded, self-healing single-fleet stall on a transient error path, and one dead-code hygiene cleanup; neither loses data, neither is a live production incident.
 **Categories:** API, CLI
 **Batch:** B1 — independent; no shared files with any other open workstream.
-**Branch:** {added at CHORE(open)}
-**Test Baseline:** set at CHORE(open) — `unit=<N> integration=<M>` via `make _lint_zig_test_depth`
+**Branch:** `feat/m122-error-path-residue`
+**Test Baseline:** unit=2402 integration=267
 **Depends on:** None.
 **Provenance:** agent-generated (pre-spec, Jul 02, 2026 `fleet-wide-refactor-audit`; both findings re-verified against HEAD `7a06fb5d` on Jul 09, 2026 by the `audit-open-items-recheck` workflow, each survivor passing an adversarial refutation pass that corrected the original inflated severities down).
 
@@ -90,7 +90,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 `tryCandidate` wins the slot (`affinity.claim`), then probes `reclaim.reclaimPriorActive` with a bare `try`. On a reclaim-stage error the win leaks: the slot holds until its own `leased_until` expiry, stalling that one fleet for up to the lease TTL. Release the slot before the error propagates, mirroring `acquireFresh`'s branch style. **Implementation default:** wrap the reclaim call in an explicit `catch` that calls `affinity.release(conn, fleet_id, won.token)` (its own error swallowed, idempotent), logs `reclaim_error_released` on the `.runner_assign` scope, then re-raises the error so `select`'s existing catch still logs `assign_failed` — a single release path per exit, no broad `errdefer` overlapping `acquireFresh`'s own releases (RULE OWN).
 
-- **Dimension 1.1** — a reclaim-stage failure after a won claim releases the slot: its `leased_until` is reset to ~now (claimable by the next poll), not held for the full TTL → Test `test_reclaim_error_releases_claim`
+- **Dimension 1.1** — a reclaim-stage failure after a won claim releases the slot: its `leased_until` is reset to ~now (claimable by the next poll), not held for the full TTL → Test `test_reclaim_error_releases_claim` (injected at the Postgres layer — see Discovery)
 - **Dimension 1.2** — happy-path reclaim and fresh acquisition are byte-identical to before → existing `event_lifecycle_reclaim_integration_test` suite green
 
 ### §2 — Collapse the duplicate role-namespace constant + probes
@@ -139,7 +139,7 @@ This spec changes internal error-path control flow and deletes a duplicate const
 
 | Dimension | Tier | Test | Asserts (concrete inputs → expected output) |
 |-----------|------|------|---------------------------------------------|
-| 1.1 | integration | `test_reclaim_error_releases_claim` | seed a prior active lease on a fleet; drive `select` with the reclaim-stage dupe forced to fail (a `std.testing.FailingAllocator` pinned to that allocation) → the `runner_affinity` row's `leased_until` is reset to ~now (a second runner claims with a strictly higher token immediately), not held for the full TTL |
+| 1.1 | integration | `test_reclaim_error_releases_claim` | seed a fleet with a prior `active` lease and an unclaimed affinity slot; arm a `NOT VALID` CHECK constraint on `fleet.runner_leases` rejecting the reclaim's `status = 'expired'` write, so `reclaimPriorActive` errors at row-read **after** `affinity.claim` won → the lease poll yields no lease AND the `runner_affinity` row's `leased_until` is ≤ now, so a fresh `affinity.claim` wins immediately with a strictly higher fencing token, rather than the slot being held for the full TTL |
 | 1.2 | integration (regression) | existing `event_lifecycle_reclaim_integration_test` | happy-path reclaim + fresh acquisition unchanged |
 | 2.1 | unit (regression) | existing `auth-token.unit.test.ts` role asserts | every retained role-resolution case (top-level, metadata, custom_claims, app_metadata, namespaced, whitespace-reject, null-token) yields the same result after the collapse |
 | 3.1 | unit | `test_no_duplicate_role_namespace_constant` | the decoder source contains exactly one role-namespace constant; grep for `ROLE_NAMESPACE_DEV` / `ROLE_NAMESPACE_COM` → 0 |
@@ -205,6 +205,8 @@ N/A — no files deleted.
 ## Discovery (consult log)
 
 - **Consults** —
+  - **Dimension 1.1 injection mechanism corrected at CHORE(open).** The authored plan (a `std.testing.FailingAllocator` "pinned to that allocation") is not implementable: `select` takes an `Hx` and reads `hx.alloc` (the request arena) rather than accepting an allocator, and both `listCandidates` and `affinity.claim` allocate from it *before* the reclaim probe, so no stable `fail_index` isolates the reclaim's `alloc.dupe`. Probing the count first is destructive — `reclaimPriorActive` marks the lease `expired` on its first (successful) pass. Replaced with a Postgres-level injection: a `NOT VALID` CHECK constraint rejecting `status = 'expired'` fails the reclaim `UPDATE ... RETURNING` deterministically, after the claim is won, on the identical `catch` branch. Same branch proven; no production signature widened for testability.
+  - **Release-after-error is safe on the same pooled connection (verified in `pg.zig`).** A server-side error surfaces at `Result.next()` (Bind already completed), leaving `conn._state == .query`; `reclaimPriorActive`'s `defer q.deinit()` → `PgQuery.drain()` consumes the trailing `ReadyForQuery`, restoring `_state = .idle` before the error reaches `tryCandidate`. So `affinity.release(conn, ...)` in the catch runs on a usable connection, and `pool.release` sees an idle conn (no reconnect churn). The OOM sub-case drains identically. This is why the release belongs in `tryCandidate` — after `reclaimPriorActive` has fully unwound — and not inside it.
 - **Metrics review** —
 - **Skill-chain outcomes** —
 - **Deferrals** —
