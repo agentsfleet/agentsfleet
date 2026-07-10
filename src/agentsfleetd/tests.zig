@@ -26,6 +26,7 @@ test {
     // Runner control-plane verbs' per-event prep, lifted from the deleted worker.
     _ = @import("fleet/fleet_session.zig");
     _ = @import("fleet/event_rows.zig");
+    _ = @import("fleet/budget.zig");
     _ = @import("fleet/service_activity.zig");
     _ = @import("fleet/approval_gate.zig");
     _ = @import("fleet_runtime/approval_gate_async.zig");
