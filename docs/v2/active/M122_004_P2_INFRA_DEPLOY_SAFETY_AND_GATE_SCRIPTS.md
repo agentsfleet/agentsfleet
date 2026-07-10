@@ -74,6 +74,9 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `playbooks/operations/credential_rotation/01_vault_sync.sh` | EDIT | source `common.sh` + call both vault gates before the first read (§3) |
 | `playbooks/operations/credential_rotation/02_service_health.sh` | EDIT | same guardrail parity (§3) |
 | `playbooks/operations/credential_rotation/vault_gate_test.sh` | CREATE | asserts both scripts block without approval / without `op` auth (§3); name is outside the `0[1-9]_`/`[1-9][0-9]_` gate glob (RULE GLS) |
+| `playbooks/operations/observability/01_credentials.sh` | EDIT | reads the vault ungated — same `common.sh` preamble (§3). Added at EXECUTE per Indy's Jul 10 call; without it Dimension 3.3's operations-wide grep cannot pass. Also strips a milestone identifier from source (MSID / RULE NLR). |
+| `playbooks/operations/observability/02_prometheus.sh` | EDIT | same ungated vault read, same preamble (§3) |
+| `playbooks/operations/observability/03_dashboard.sh` | EDIT | same ungated vault read, same preamble (§3) |
 | `scripts/check_architecture_doc.sh` | EDIT | validate every milestone identifier, drop the frozen `M(40..51)` alternation (§4) |
 | `scripts/check_architecture_doc_test.sh` | CREATE | fixture-driven self-test for Dimensions 4.1/4.3 — `M999` fails everywhere, `pending/` resolves in `roadmap.md` only. Added at CHORE(open): §4 named the tests but gave them no file. |
 | `scripts/check_route_registration_doc.py` | EDIT | widen both make-target char classes to include underscore (§5) |
@@ -124,11 +127,11 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ### §3 — Credential-rotation scripts carry the vault approval+auth gate
 
-Both scripts read the vault without the approval friction or `op`-auth pre-check their `ip_allowlisting` siblings enforce. Source `common.sh` and call `playbooks_require_vault_read_approval` + `playbooks_require_op_auth` before the first read in each. A parity grep gate (in `check-playbooks`) then enforces the invariant across the whole operations surface. **Implementation default:** keep the existing `op_read_with_retry` wrapper; the fix is additive (gates in front), not a rewrite of the retry/cache logic.
+Both scripts read the vault without the approval friction or `op`-auth pre-check their `ip_allowlisting` siblings enforce. Source `common.sh` and call `playbooks_require_vault_read_approval` + `playbooks_require_op_auth` before the first read in each. A parity grep gate (in `check-playbooks`) then enforces the invariant across the whole operations surface — which also pulled the three ungated `observability/` scripts into scope (Discovery consult 4). **Implementation default:** keep the existing `op_read_with_retry` wrapper; the fix is additive (gates in front), not a rewrite of the retry/cache logic.
 
-- **Dimension 3.1** — running either script with `ALLOW_VAULT_READS` unset exits non-zero with the approval error before any `op read` → Test `test_credential_rotation_blocks_without_approval`
-- **Dimension 3.2** — with approval set but `op` unauthenticated, the script exits non-zero via `playbooks_require_op_auth` → Test `test_credential_rotation_requires_op_auth`
-- **Dimension 3.3** — every script under `playbooks/operations/**` that contains an `op read` also sources `common.sh` and calls both gates → Test `test_ops_scripts_vault_gate_parity` (grep gate in `check-playbooks`)
+- **Dimension 3.1** — DONE — running either script with `ALLOW_VAULT_READS` unset exits non-zero with the approval error before any `op read` → Test `test_credential_rotation_blocks_without_approval`
+- **Dimension 3.2** — DONE — with approval set but `op` unauthenticated, the script exits non-zero via `playbooks_require_op_auth` → Test `test_credential_rotation_requires_op_auth`
+- **Dimension 3.3** — DONE — every script under `playbooks/operations/**` that contains an `op read` also sources `common.sh` and calls both gates → Test `test_ops_scripts_vault_gate_parity` (grep gate in `check-playbooks`)
 
 ### §4 — Architecture-doc gate validates every milestone identifier and actually runs
 
@@ -283,6 +286,8 @@ No command-line surface, environment-variable name, on-disk path, or gate exit-c
   2. **§2 — `flock` does not exist on macOS.** `deploy.sh` targets Linux bare metal, and `flock` is the correct primitive there (the kernel releases the lock when a `SIGKILL`ed deploy dies; a `noclobber` lock file would strand every later deploy behind stale state). The exposure is the *test*: `make lint-all` runs on Indy's mac. Options: (a) hard-fail with a `brew install flock` hint, (b) skip locally + hard-fail when `CI` is set, (c) drop `flock` for a portable `noclobber` lock. **Indy chose (b)** — no new local tool prereq; the lock Dimensions are enforced on every `ubuntu-latest` runner and can never be silently green in CI. Recorded in §2 and the Test Specification.
 
   3. **`src/runner/cmd/version.zig` documents the deleted behavior.** Its module doc comment justifies the output shape by citing `is_already_installed()`'s substring test (`current == *"${VERSION#v}"*`), and a test comment repeats it. §1 deletes that behavior, so both comments become false. The file was outside Files Changed, and Out of Scope forbids changing its *output shape* — which a comment-only edit does not. **Indy approved the comment-only fix**; the file is now in Files Changed so acceptance row R7 stays green.
+
+  4. **§3 — the operations-wide parity grep fails on three more scripts.** Dimension 3.3 demands a grep proving every `playbooks/operations/**` script that reads the vault calls both gates. Three do not: `observability/01_credentials.sh`, `02_prometheus.sh`, `03_dashboard.sh` read six 1Password references with no approval prompt, no `op`-auth pre-check, and no `common.sh` source. Options put to Indy: (a) gate all three here, (b) narrow the grep to `credential_rotation/` + `ip_allowlisting/`, (c) keep the wide grep with a named `observability/` exclusion plus a follow-up spec. **Indy chose (a)** — (b) makes Invariant 3 false while looking green, and (c) is the deferred-cleanup carve-out RULE NLG bans pre-`2.0.0`. The three scripts join Files Changed. Consequence: `observability/00_gate.sh` now requires `ALLOW_VAULT_READS=1` and an authenticated `op`, matching every sibling.
 
 - **Gate-flag triage** — one mechanical finding, auto-applied. The spec's read-first note 3 mis-describes the §5 defect: `MAKE_TARGET_DEF_RE`'s `_?` sits *outside* the capture group, so `_fmt:` registers under the name `fmt` (not `_fmt`). Widening the inner char class alone would leave that wrong. The `_?` moves inside the group. Strict tightening: a doc citing `` `make fmt` `` now correctly reports `PHANTOM TARGET`; no target cited in the guide today changes verdict. Recorded as a correction note under §5.
 

@@ -1,6 +1,16 @@
 #!/usr/bin/env bash
 # Import and verify every Grafana dashboard in deploy/grafana/.
+#
+# Reads the vault, so it carries the same approval + auth gates as every other
+# script under playbooks/operations/ (enforced by `make check-playbooks`).
 set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=../../lib/common.sh
+source "$SCRIPT_DIR/../../lib/common.sh"
+
+playbooks_require_vault_read_approval
+playbooks_require_op_auth
 
 VAULT="${VAULT_DEV:-ZMB_CD_DEV}"
 GRAFANA_URL=$(op read "op://$VAULT/grafana-observability/grafana-url")

@@ -339,3 +339,22 @@ check-playbooks:  ## Validate playbooks/ — shellcheck + reference integrity + 
 	done; \
 	if [ $$FAIL -eq 1 ]; then echo "✗ [playbooks] README/tree parity failed"; exit 1; fi; \
 	echo "✓ [playbooks] README documents every playbook dir"
+	@echo "→ [playbooks] vault-gate parity — every operations script that reads the vault passes both gates..."
+	@# Comments are stripped before matching: a script that only *mentions* the read
+	@# (this gate's own test does) must not be treated as one that performs it. The
+	@# empty-scan guard mirrors the reference check above — a scan that matched
+	@# nothing has proved nothing, and would pass silently after a refactor.
+	@FAIL=0; \
+	READERS=$$(for f in $$(find playbooks/operations -name '*.sh' | sort); do \
+	  sed 's/#.*//' "$$f" | grep -qE '(^|[^[:alnum:]_])op read([[:space:]]|$$)' && echo "$$f"; \
+	done); \
+	if [ -z "$$READERS" ]; then echo "✗ [playbooks] vault-gate parity scan matched no vault readers — the scan is broken, not the tree"; exit 1; fi; \
+	for f in $$READERS; do \
+	  for sym in 'lib/common.sh' 'playbooks_require_vault_read_approval' 'playbooks_require_op_auth'; do \
+	    grep -q "$$sym" "$$f" || { echo "✗ $$f reads the vault but never calls: $$sym"; FAIL=1; }; \
+	  done; \
+	done; \
+	if [ $$FAIL -eq 1 ]; then echo "✗ [playbooks] vault-gate parity failed — add the common.sh preamble (see playbooks/operations/ip_allowlisting/01_egress_inventory.sh)"; exit 1; fi; \
+	echo "✓ [playbooks] every vault-reading operations script passes both gates"
+	@echo "→ [playbooks] vault-gate self-tests..."
+	@bash playbooks/operations/credential_rotation/vault_gate_test.sh
