@@ -5,6 +5,9 @@ const BYTES_PER_KIB = 1024;
 pub const CheckResult = struct {
     id: []const u8,
     ok: bool,
+    /// Always heap-owned by the `results` list — `appendCheck` copies whatever it
+    /// is handed. A mix of string literals and `allocPrint` results would leave no
+    /// single correct free path; `freeResults` is that path.
     detail: []const u8,
 };
 
@@ -16,10 +19,12 @@ pub fn appendCheck(
     detail: []const u8,
     overall_ok: *bool,
 ) !void {
+    const owned = try alloc.dupe(u8, detail);
+    errdefer alloc.free(owned);
     try results.append(alloc, .{
         .id = id,
         .ok = ok,
-        .detail = detail,
+        .detail = owned,
     });
     if (!ok) overall_ok.* = false;
 }
@@ -33,7 +38,17 @@ pub fn appendFmtCheck(
     comptime fmt: []const u8,
     args: anytype,
 ) !void {
-    try appendCheck(alloc, results, id, ok, try std.fmt.allocPrint(alloc, fmt, args), overall_ok);
+    const rendered = try std.fmt.allocPrint(alloc, fmt, args);
+    defer alloc.free(rendered); // appendCheck keeps its own copy
+    try appendCheck(alloc, results, id, ok, rendered, overall_ok);
+}
+
+/// Releases every `detail` before the list backing it. `id` is always a literal or
+/// a module-level constant, so `detail` is the only owned field. Must run after
+/// `renderText`/`renderJson`, which borrow the details they print.
+pub fn freeResults(alloc: std.mem.Allocator, results: *std.ArrayList(CheckResult)) void {
+    for (results.items) |c| alloc.free(c.detail);
+    results.deinit(alloc);
 }
 
 pub fn renderText(stdout: *std.Io.Writer, results: []const CheckResult, overall_ok: bool) !void {
@@ -80,7 +95,7 @@ test "dynamic check details stay valid through render with GPA" {
     const alloc = gpa.allocator();
     var ok = true;
     var results: std.ArrayList(CheckResult) = .empty;
-    defer results.deinit(alloc);
+    defer freeResults(alloc, &results);
     try appendFmtCheck(alloc, &results, "schema_gate_compat", false, &ok, "schema_gate status=fail expected_versions={d} applied_versions={d} reason_code={s}", .{ 3, 2, "SCHEMA_BEHIND_BINARY" });
     var output_buf: [BYTES_PER_KIB]u8 = undefined;
     var w = std.Io.Writer.fixed(&output_buf);
@@ -88,4 +103,42 @@ test "dynamic check details stay valid through render with GPA" {
     const out = w.buffered();
     try std.testing.expect(std.mem.indexOf(u8, out, "\"schema_gate_compat\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, out, "SCHEMA_BEHIND_BINARY") != null);
+}
+
+test "appendCheck copies the detail so the caller's buffer stays the caller's" {
+    // The whole point of the copy: a caller may hand over a stack buffer, an arena
+    // slice, or an `allocPrint` temp it is about to free. Borrowing any of those
+    // would leave `results` pointing at freed or rewritten bytes by render time.
+    const alloc = std.testing.allocator;
+    var ok = true;
+    var results: std.ArrayList(CheckResult) = .empty;
+    defer freeResults(alloc, &results);
+
+    var scratch = [_]u8{ 'l', 'i', 'v', 'e' };
+    try appendCheck(alloc, &results, "id", true, &scratch, &ok);
+    @memset(&scratch, 'X');
+
+    try std.testing.expectEqualStrings("live", results.items[0].detail);
+}
+
+test "appendCheck and appendFmtCheck leak nothing when an allocation fails" {
+    // checkAllAllocationFailures fails each internal allocation in turn and asserts
+    // the error return leaks nothing — the deterministic proof that appendCheck's
+    // `errdefer alloc.free(owned)` and appendFmtCheck's `defer alloc.free(rendered)`
+    // are both correct, including when the failing allocation is the second append.
+    const Probe = struct {
+        fn run(alloc: std.mem.Allocator) !void {
+            var ok = true;
+            var results: std.ArrayList(CheckResult) = .empty;
+            defer freeResults(alloc, &results);
+            try appendCheck(alloc, &results, "literal", true, "borrowed literal", &ok);
+            try appendFmtCheck(alloc, &results, "fmt", false, &ok, "v={d}", .{7});
+        }
+    };
+    try std.testing.checkAllAllocationFailures(std.testing.allocator, Probe.run, .{});
+}
+
+test "freeResults on an empty list is safe" {
+    var results: std.ArrayList(CheckResult) = .empty;
+    freeResults(std.testing.allocator, &results);
 }

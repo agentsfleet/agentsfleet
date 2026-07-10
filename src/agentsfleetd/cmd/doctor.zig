@@ -76,14 +76,14 @@ fn ensureSchemaCompatible(state: db.MigrationState) MigrationSchemaGateError!voi
 }
 
 pub fn run(io: std.Io, env_map: *const EnvMap, argv: []const [:0]const u8, alloc: std.mem.Allocator) !void {
-    // Allocator contract: callers must provide an arena-style allocator; CheckResult.detail slices are retained until renderText/renderJson completes.
     log.info("doctor.start", .{});
     var ok = true;
     var stdout_buf: [8192]u8 = undefined;
     var stdout_w = std.Io.File.stdout().writer(io, &stdout_buf);
     const stdout = &stdout_w.interface;
     var results: std.ArrayList(CheckResult) = .empty;
-    defer results.deinit(alloc);
+    // Details are owned copies; both renderers borrow them, so the free runs last.
+    defer doctor_render.freeResults(alloc, &results);
 
     // argv[0]=binary, argv[1]=subcommand; the rest are doctor flags.
     var extra_args: std.ArrayList([]const u8) = .empty;

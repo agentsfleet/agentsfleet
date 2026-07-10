@@ -4,6 +4,7 @@
 
 include make/dev.mk
 include make/quality.mk
+include make/check-test-reachability.mk
 include make/harness.mk
 include make/test.mk
 include make/build.mk
@@ -27,6 +28,7 @@ help:  ## Show all available Makefile targets
 	@echo "  check-openapi            Bundle YAML → openapi.json + Redocly lint + error-schema + URL-shape checks"
 	@echo "  check-gh-actions-valid   Validate .github/workflows/ (actionlint YAML + shellcheck + make-target refs)"
 	@echo "  check-playbooks          Validate playbooks/ (shellcheck + reference integrity + README/tree parity)"
+	@echo "  check-test-reachability  Every Zig test block compiles from a test root, or carries a waiver"
 	@echo ""
 	@echo "Tests:"
 	@echo "  test-unit-all            Run all unit lanes (agentsfleetd + zigrunner + ziglib + test-coverage-all)"
