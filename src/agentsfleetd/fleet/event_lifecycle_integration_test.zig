@@ -49,6 +49,15 @@ pub const AGENTSFLEET_FRESH_FAIL = "0195c9da-1e2a-7f13-8abc-2b3e1e0d7c0a";
 pub const AGENTSFLEET_RELEASE_FAIL = "0195c9da-1e2a-7f13-8abc-2b3e1e0d7c0b";
 const SESSION_BASE = "0195c9da-1e2a-7f13-8abc-2b3e1e0d7d0";
 
+// Fault-injection CHECK constraints the reclaim suite installs to force a
+// reclaim/release error. Named here (not just in the reclaim test file) so the
+// shared `setup()` can drop them defensively — a run killed between an `arm*`
+// ADD and its deferred DROP would otherwise leave the constraint installed and
+// wedge the shared test DB for *unrelated* fleet tests that reclaim a lease or
+// release a slot, neither of which calls the reclaim suite's own cleanup.
+pub const RECLAIM_FAIL_CONSTRAINT = "ck_test_reclaim_fail";
+pub const RELEASE_FAIL_CONSTRAINT = "ck_test_release_fail";
+
 const RUNNER_TOKEN = auth_mw.runner_bearer.RUNNER_TOKEN_PREFIX ++ "e" ** 64;
 const DEAD_CONSUMER = "worker-retired-host-1700000000000";
 /// Idle injected onto a stranded entry — must exceed the reclaim min-idle.
@@ -151,6 +160,16 @@ fn deleteStream(h: *TestHarness, fleet_id: []const u8) void {
     resp.deinit(h.queue.alloc);
 }
 
+/// Drop the reclaim suite's fault-injection constraints if a prior run leaked
+/// them. Runs at the start of every `setup()` — the one place guaranteed to
+/// execute after an interrupted run, since a kill skips deferred teardown. A
+/// `DROP ... IF EXISTS` on an unconstrained table is a no-op, so this is safe
+/// for every test, not only the reclaim ones.
+fn clearInjectedConstraints(conn: *pg.Conn) void {
+    _ = conn.exec("ALTER TABLE fleet.runner_leases DROP CONSTRAINT IF EXISTS " ++ RECLAIM_FAIL_CONSTRAINT, .{}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
+    _ = conn.exec("ALTER TABLE fleet.runner_affinity DROP CONSTRAINT IF EXISTS " ++ RELEASE_FAIL_CONSTRAINT, .{}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
+}
+
 /// Start the harness + seed the canonical fixture set. Skips when DB or
 /// Redis is unavailable.
 pub fn setup() !Env {
@@ -160,6 +179,7 @@ pub fn setup() !Env {
     base.setTestEncryptionKey();
     const conn = try h.acquireConn();
     defer h.releaseConn(conn);
+    clearInjectedConstraints(conn);
     try base.seedTenant(conn);
     try base.seedWorkspace(conn, WORKSPACE_ID);
     try base.seedPlatformProvider(ALLOC, conn, WORKSPACE_ID);

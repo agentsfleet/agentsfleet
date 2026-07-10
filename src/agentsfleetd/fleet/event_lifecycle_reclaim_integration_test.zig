@@ -10,10 +10,10 @@ const base = @import("event_lifecycle_integration_test.zig");
 const assign = @import("assign.zig");
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
 
-/// Armed by every test that needs the reclaim probe to fail, and dropped by name
-/// on the way out; `IF EXISTS` keeps the teardown idempotent when a test body
-/// already dropped it.
-const RECLAIM_FAIL_CONSTRAINT = "ck_test_reclaim_fail";
+// The fault-injection constraint names live in the base harness
+// (`base.RECLAIM_FAIL_CONSTRAINT` / `base.RELEASE_FAIL_CONSTRAINT`) so that
+// `setup()` can drop a leaked one before *any* test runs — see the comment on
+// those consts. This file only arms/disarms them per test.
 
 const AffinitySlot = struct { fencing_seq: i64, leased_until: i64 };
 
@@ -45,17 +45,14 @@ fn activeLeaseCount(conn: *pg.Conn, fleet_id: []const u8) !i64 {
 /// no stable `fail_index` isolates the reclaim's own dupes. `NOT VALID` skips
 /// the scan of pre-existing rows, which sibling suites may have left terminal.
 fn armReclaimFailure(conn: *pg.Conn) !void {
-    // Idempotent by construction: a prior run killed between the ADD and its
-    // deferred DROP would otherwise wedge the shared test database, since the
-    // re-ADD fails on the duplicate name *before* this run registers a defer.
-    // `make test-integration` rebuilds the schema anyway, but the filtered dev
-    // loop (`zig build test -Dtest-filter=…`) does not.
-    disarmReclaimFailure(conn);
+    // `setup()` cleared any leaked constraint before this test ran, so the ADD
+    // starts from a clean slot; the per-test `defer disarmReclaimFailure` drops
+    // it on the way out.
     var sql_buf: [192]u8 = undefined;
     const sql = try std.fmt.bufPrint(
         &sql_buf,
         "ALTER TABLE fleet.runner_leases ADD CONSTRAINT {s} CHECK (status <> '{s}') NOT VALID",
-        .{ RECLAIM_FAIL_CONSTRAINT, protocol.RUNNER_LEASE_STATUS_EXPIRED },
+        .{ base.RECLAIM_FAIL_CONSTRAINT, protocol.RUNNER_LEASE_STATUS_EXPIRED },
     );
     _ = try conn.exec(sql, .{});
 }
@@ -65,12 +62,10 @@ fn disarmReclaimFailure(conn: *pg.Conn) void {
     const sql = std.fmt.bufPrint(
         &sql_buf,
         "ALTER TABLE fleet.runner_leases DROP CONSTRAINT IF EXISTS {s}",
-        .{RECLAIM_FAIL_CONSTRAINT},
+        .{base.RECLAIM_FAIL_CONSTRAINT},
     ) catch return;
     _ = conn.exec(sql, .{}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
 }
-
-const RELEASE_FAIL_CONSTRAINT = "ck_test_release_fail";
 
 /// Make `affinity.release` itself fail, so releasing a won slot degrades to the
 /// claim's own TTL expiry. The two writers of `runner_affinity` separate by the
@@ -81,13 +76,12 @@ const RELEASE_FAIL_CONSTRAINT = "ck_test_release_fail";
 /// go stale under load. `NOT VALID` skips the existing row, which the caller has
 /// just parked at `leased_until = 0`.
 fn armReleaseFailure(conn: *pg.Conn) !void {
-    // Idempotent for the same reason as `armReclaimFailure`.
-    disarmReleaseFailure(conn);
+    // `setup()` cleared any leaked constraint first (see `armReclaimFailure`).
     var sql_buf: [192]u8 = undefined;
     const sql = try std.fmt.bufPrint(
         &sql_buf,
         "ALTER TABLE fleet.runner_affinity ADD CONSTRAINT {s} CHECK (leased_until - updated_at > 0) NOT VALID",
-        .{RELEASE_FAIL_CONSTRAINT},
+        .{base.RELEASE_FAIL_CONSTRAINT},
     );
     _ = try conn.exec(sql, .{});
 }
@@ -97,7 +91,7 @@ fn disarmReleaseFailure(conn: *pg.Conn) void {
     const sql = std.fmt.bufPrint(
         &sql_buf,
         "ALTER TABLE fleet.runner_affinity DROP CONSTRAINT IF EXISTS {s}",
-        .{RELEASE_FAIL_CONSTRAINT},
+        .{base.RELEASE_FAIL_CONSTRAINT},
     ) catch return;
     _ = conn.exec(sql, .{}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
 }
