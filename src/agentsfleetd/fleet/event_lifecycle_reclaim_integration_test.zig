@@ -45,6 +45,12 @@ fn activeLeaseCount(conn: *pg.Conn, fleet_id: []const u8) !i64 {
 /// no stable `fail_index` isolates the reclaim's own dupes. `NOT VALID` skips
 /// the scan of pre-existing rows, which sibling suites may have left terminal.
 fn armReclaimFailure(conn: *pg.Conn) !void {
+    // Idempotent by construction: a prior run killed between the ADD and its
+    // deferred DROP would otherwise wedge the shared test database, since the
+    // re-ADD fails on the duplicate name *before* this run registers a defer.
+    // `make test-integration` rebuilds the schema anyway, but the filtered dev
+    // loop (`zig build test -Dtest-filter=…`) does not.
+    disarmReclaimFailure(conn);
     var sql_buf: [192]u8 = undefined;
     const sql = try std.fmt.bufPrint(
         &sql_buf,
@@ -75,6 +81,8 @@ const RELEASE_FAIL_CONSTRAINT = "ck_test_release_fail";
 /// go stale under load. `NOT VALID` skips the existing row, which the caller has
 /// just parked at `leased_until = 0`.
 fn armReleaseFailure(conn: *pg.Conn) !void {
+    // Idempotent for the same reason as `armReclaimFailure`.
+    disarmReleaseFailure(conn);
     var sql_buf: [192]u8 = undefined;
     const sql = try std.fmt.bufPrint(
         &sql_buf,
