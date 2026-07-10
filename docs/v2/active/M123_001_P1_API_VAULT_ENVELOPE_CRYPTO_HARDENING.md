@@ -16,12 +16,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M123
 **Workstream:** 001
 **Date:** Jul 09, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — hardens the credential-vault security boundary (envelope-at-rest encryption). The verifiers deflated every finding to P2/P3 for one honest reason: exploiting the identity-binding gap presupposes an actor who already holds write access to `vault.secrets` — which the `api_runtime` role has (`schema/002_vault_schema.sql:70`). That makes this defense-in-depth, not a live exploit; the P1 is the boundary it protects, not a reachable attack.
 **Categories:** API
 **Batch:** B1 — runs alone; touches only the `secrets/` crypto module and its callers via unchanged public signatures.
-**Branch:** {added at CHORE(open)}
-**Test Baseline:** set at CHORE(open) — `unit=<N> integration=<M>` via `make _lint_zig_test_depth`
+**Branch:** `feat/m123-vault-envelope`
+**Test Baseline:** unit=2402 integration=267
 **Depends on:** None.
 **Provenance:** agent-generated (pre-spec) — the Jul 09, 2026 `m122-gap-audit-security` workflow audited three areas a Jul 02 coverage critic flagged and never reached; every finding survived an adversarial refutation pass (finding 1: 3/3 uphold, verifier-corrected P1→P2; findings 2/3: 1/1 uphold P2; finding 4: 1/1 uphold P3). Each re-verified against current source before drafting.
 **Canonical architecture:** `docs/AUTH.md` §Sensitive-data classification — the LLM-provider-key / vault-secret credential boundary this spec must not weaken; `docs/architecture/billing_and_provider_keys.md` — where resolved secrets are consumed.
@@ -40,7 +40,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 - **PR title (eventual):** Bind vault envelopes to row identity, zero key material, and cover the envelope lifecycle
 - **Intent (one sentence):** a stolen or write-tampered `vault.secrets` row can no longer be relocated to decrypt another workspace's secret, transient key bytes do not linger in memory, and the envelope path is guarded by tests.
-- **Handshake** — the implementing agent fills this at PLAN, before EXECUTE: restate the Intent in its own words and list `ASSUMPTIONS I'M MAKING: …`. A mismatch between the restatement and the Intent above → STOP and reconcile before any edit.
+- **Handshake restatement** — version-2 vault rows will authenticate their workspace, key name, and envelope version on both encryption legs; legacy rows remain readable; transient key buffers are wiped; and negative tests prove relocation and malformed rows fail closed.
+- **Assumptions** — the existing `kek_version` column is the envelope-version seam; version 1 remains read-compatible only; the user-requested workspace copy is explanatory and changes no isolation or billing behavior.
 
 ## Implementing agent — read these first
 
@@ -59,11 +60,18 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `src/agentsfleetd/secrets/sql.zig` | CREATE | domain-local SQL statement + column-name constants for the store `INSERT` and load `SELECT` (the `kek_version` column edit changes the statement text — SQL Statement Modules rule) |
 | `src/agentsfleetd/secrets/crypto_store_test.zig` | CREATE | envelope lifecycle, three error branches, row-relocation negative, v1 read-compat + rewrap, no-leak-on-error-path, source-grep zeroization assertion |
 | `src/agentsfleetd/tests.zig` | EDIT | register `secrets/crypto_store_test.zig` in the aggregate test root |
+| `ui/packages/app/components/layout/CreateWorkspaceDialog.tsx` | EDIT | clarify that workspaces organize fleets, teammates, and credentials while usage and billing remain tenant-wide |
+| `ui/packages/app/tests/dashboard-workspace.test.ts` | EDIT | pin the clarified workspace-boundary copy |
+
+## Punch List
+
+- [ ] **P1 — Clarify workspace purpose and tenant scope.** Replace the isolation-only description with: “Use workspaces to organize fleets, teammates, and credentials within your tenant. Usage and billing roll up across all workspaces. Leave the name blank to generate one.” Add a component assertion for the exact copy.
 
 ## Applicable Rules
 
 - **`docs/greptile-learnings/RULES.md`** — **CTM** (the AEAD tag check is constant-time by construction; no new short-circuit secret compare is introduced — hold the line), **VLT** (secrets stay in `vault.secrets`, resolved via `crypto_store.load()`; this diff strengthens the boundary, must not add a plaintext column), **TGU** (`SecretError` stays a flat error set; no optional-field variant structs added), **UFS** (`kek_version` values, the associated-data field separator, and the birthday-bound magnitude become named constants — no bare `1`/`2`/`32`), **NSQ** (schema-qualified, named-constant SQL in the new `sql.zig`), **TST-NAM** (new test identifiers milestone-free), **ORP** (no symbol renamed/deleted — none to sweep, table below records N/A).
 - **`dispatch/write_zig.md`** — memory-safety (return-slice ownership, `std.testing.allocator` leak proofs), multi-step `errdefer` on `store()`'s two allocations, DRAIN (`load()`'s `PgQuery` already drains — preserve), SQL Statement Modules (extract inline SQL on touch), cross-compile both linux targets.
+- **`dispatch/write_ts_adhere_bun.md`** — preserve the existing dialog/design-system shape, hoist the revised description to its owning module constant, and pin the copy through the existing component test.
 
 ## Applicable Gates
 
@@ -73,7 +81,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | PUB / Struct-Shape | yes — new `sql.zig`; changed `encrypt`/`decrypt` shape | `sql.zig` is a stateless constants/function namespace → conventional layout (one-sentence "operations-over-value, no owned state"); `buildAad` stays private; `encrypt`/`decrypt` keep their free-function shape, only the parameter list grows |
 | File & Function Length (≤350/≤50/≤70) | yes — watch `crypto_primitives.zig` (171) as inline tests grow | SQL extraction shrinks `crypto_store.zig`; if `crypto_primitives.zig` crosses ~300 with the new tests, extract them to a sibling `crypto_primitives_test.zig` registered in `tests.zig` |
 | UFS | yes | `KEK_VERSION_LEGACY = 1`, `KEK_VERSION_AAD_BOUND = 2`, the associated-data field separator, and `KEK_WRAP_NONCE_BIRTHDAY_BOUND_LOG2 = 32` as named constants |
-| UI Substitution / DESIGN TOKEN | no | no UI surface |
+| UI Substitution / DESIGN TOKEN | yes — workspace dialog copy only | existing design-system primitives and tokens remain unchanged; no raw element or arbitrary token is added |
 | LOGGING / LIFECYCLE / ERROR REGISTRY / SCHEMA | LIFECYCLE yes; others no | LIFECYCLE: `secureZero`+`free` pairing and `errdefer` placement reviewed per the façade. No new log event (existing `stored`/`retrieved` info logs unchanged). No new `UZ-*` code — the three error branches already exist. No `schema/*.sql` DDL change: `kek_version` already exists with a Data Definition Language (DDL) `DEFAULT 1`; writing `2` is app-level |
 
 ## Prior-Art / Reference Implementations
@@ -174,6 +182,7 @@ No HTTP route, request/response shape, or public vault surface changes. vault.zi
 | 3.5 | integration | `test_store_upsert_roundtrip` | store v1-value then store v2-value for one key → `load` returns v2-value |
 | 4.1 | integration | `test_store_fresh_dek_per_secret` | store the same plaintext twice → distinct `encrypted_dek` and distinct `ciphertext` columns |
 | 4.2 | unit (source-grep) | `test_kek_wrap_bound_documented` | `KEK_WRAP_NONCE_BIRTHDAY_BOUND_LOG2` constant present with a rationale doc-comment |
+| P1 | unit | `CreateWorkspaceDialog component` copy assertion | rendered dialog contains the workspace-purpose sentence and tenant-wide usage/billing sentence |
 
 Regression: 1.4 and 3.5 protect existing read/upsert behavior. Idempotency: `store`'s `ON CONFLICT` upsert is covered by 3.5. Integration rows seed rows through the real `vault.secrets` schema (no temp tables) and skip gracefully when `TEST_DATABASE_URL` is unset, mirroring `vault_test.zig`.
 
@@ -185,7 +194,8 @@ Regression: 1.4 and 3.5 protect existing read/upsert behavior. Idempotency: `sto
 | R2 | Envelope error branches + nonce guard (§3) proven | `make test` | exit 0 incl. the four §3 negative/lifecycle tests + `test_encrypt_nonce_unique` | P0 | |
 | R3 | Key material zeroed on every path (§2) | `grep -c "secureZero" src/agentsfleetd/secrets/crypto_store.zig src/agentsfleetd/secrets/crypto_primitives.zig` | each file ≥ 1; total ≥ 4 | P0 | |
 | R4 | No plaintext-secret column added (VLT held) | `grep -in "plaintext\|secret_value" schema/002_vault_schema.sql` | no output | P0 | |
-| R5 | Diff stays inside Files Changed | `git diff --name-only origin/main` | 0 paths missing from the Files Changed table | P0 | |
+| R5 | Workspace purpose and tenant scope are explicit | `bun test ui/packages/app/tests/dashboard-workspace.test.ts` | exit 0; copy assertion passes | P0 | |
+| R6 | Diff stays inside Files Changed | `git diff --name-only origin/main` | 0 paths missing from the Files Changed table | P0 | |
 | S1 | Unit tests pass | `make test` | exit 0 | P0 | |
 | S2 | Lint clean | `make lint` | exit 0 | P0 | |
 | S3 | Integration passes (vault DB path touched) | `make test-integration` | exit 0 | P0 | |
@@ -206,6 +216,7 @@ N/A — no files deleted, no public symbols renamed or removed. `encrypt`/`decry
 - Switching the KEK-wrap to a nonce-misuse-resistant construction (AES-GCM-SIV) or a deterministic wrap nonce — the documented birthday bound is accepted at realistic write volume (§4).
 - Protecting the process-lifetime `g_kek` global from a memory capture (it necessarily lives resident for the daemon to decrypt) — the honest bound stated in §2.
 - Any change to the `vault.secrets` schema shape, the `api_runtime` grant, or the public vault / HTTP surface.
+- Any workspace behavior, billing behavior, or dialog layout change; Punch List P1 changes explanatory copy only.
 
 ---
 
@@ -218,9 +229,9 @@ N/A — no files deleted, no public symbols renamed or removed. `encrypt`/`decry
 5. **What we build** — one associated-data parameter bound into both legs, a version dispatch on read, `secureZero` on every key buffer, one extracted SQL module, and the missing envelope tests.
 6. **What we do NOT build** — a bulk rewrap job, a nonce-misuse-resistant KEK-wrap, or any protection of the resident master key — all named in Out of Scope.
 7. **Fit with existing features** — compounds the vault credential boundary (`docs/AUTH.md`); must not destabilize `vault.zig`'s structured-credential layer or the runner-lease provider-key delivery that consumes resolved secrets.
-8. **Surface order** — N/A — no user surface; this is backend crypto hardening with no Command-Line Interface (CLI) or UI change.
-9. **Dashboard restraint** — N/A — no user surface.
-10. **Confused-user next step** — N/A — no user surface; the only "user" is an on-call operator, whose signal is the existing `unsupported_kek_version` / `decrypt_failed` error logs, unchanged by this spec.
+8. **Surface order** — the security work has no public surface; the adjacent workspace copy is confined to the existing create dialog and does not alter its flow.
+9. **Dashboard restraint** — Punch List P1 changes one description constant and one assertion; no component, layout, or visual-token work is introduced.
+10. **Confused-user next step** — workspace creators learn what workspaces organize and that usage/billing remain tenant-wide; operators retain the existing `unsupported_kek_version` / `decrypt_failed` signals.
 
 ## Decomposition & alternatives (patch vs refactor)
 
