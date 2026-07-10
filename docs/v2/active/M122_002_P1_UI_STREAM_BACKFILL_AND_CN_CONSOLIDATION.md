@@ -63,6 +63,9 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `ui/packages/app/lib/api/events.ts` | EDIT | add `backfillFleetEventsUrl` beside `streamFleetEventsUrl` |
 | `ui/packages/app/lib/streaming/fleet-stream-registry.ts` | EDIT | track last-seen event; on reconnect open, fetch + `mergeBackfill` the missed window |
 | `ui/packages/app/lib/streaming/fleet-stream-registry.test.ts` | EDIT | reconnect-backfill, initial-skip, dedupe, fetch-failure tolerance, and empty-timeline cases |
+| `ui/packages/app/tests/backfill-route.test.ts` | CREATE | Dimensions 1.1–1.3 route tests (sibling of `sse-route.test.ts` — the Test Specification named these tests but this row was omitted at authoring; added at EXECUTE) |
+| `ui/packages/app/tests/utils.test.ts` | EDIT | drop the app `cn` merge case (the behavior moves to the design-system suite); keep duration/truncate cases (omitted at authoring; added at EXECUTE) |
+| `ui/packages/app/lib/api/events.test.ts` | EDIT | direct `backfillFleetEventsUrl` cases mirroring the existing `streamFleetEventsUrl` block (omitted at authoring; added at VERIFY per `/write-unit-test` ledger) |
 | `ui/packages/design-system/src/utils.ts` | EDIT | `cn` becomes `twMerge(clsx(...))` carrying the extended font-size class group |
 | `ui/packages/design-system/package.json` | EDIT | add `clsx` + `tailwind-merge` dependencies |
 | `ui/packages/design-system/src/utils.test.ts` | EDIT | replace the naive-join assertions with merge/dedupe + font-size-group + single-declaration cases |
@@ -75,6 +78,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `ui/packages/app/app/(dashboard)/settings/billing/components/BillingBalanceCard.tsx` | EDIT | import `cn` from `@agentsfleet/design-system` |
 | `ui/packages/app/app/(dashboard)/w/[workspaceId]/secrets/components/AddSecretForm.tsx` | EDIT | import `cn` from `@agentsfleet/design-system` |
 | `ui/packages/app/components/layout/Shell.tsx` | EDIT | import `cn` from `@agentsfleet/design-system` |
+| `bun.lock` | EDIT | lockfile consequence of the dependency moves (app drops, design-system gains `clsx`/`tailwind-merge`) |
 
 ## Applicable Rules
 
@@ -103,27 +107,27 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 The browser holds no bearer token, so a client-side backfill cannot call the upstream events list directly. Add a Route Handler at `.../fleets/[fleetId]/events/route.ts` that resolves the Clerk session, mints the API-audience token server-side, and forwards a bounded `GET /v1/workspaces/{ws}/fleets/{id}/events` with the caller's query (cursor/since/limit), returning the upstream JSON body. **Implementation default:** copy the stream route's auth + error branches; return the upstream `EventsPage` body unbuffered-count-bounded via `limit`, so a long outage cannot pull an unbounded page.
 
-- **Dimension 1.1** — with a valid session, the route mints a token and returns the upstream events page body and status → Test `test_backfill_route_proxies_authed`
-- **Dimension 1.2** — with no session token, the route returns 401 with the same error envelope as the stream route, never calling upstream → Test `test_backfill_route_unauthorized`
-- **Dimension 1.3** — an upstream non-2xx is passed through with its status and body, not masked as 200 → Test `test_backfill_route_upstream_error_passthrough`
+- **Dimension 1.1** — with a valid session, the route mints a token and returns the upstream events page body and status → Test `test_backfill_route_proxies_authed` — ✅ **DONE**
+- **Dimension 1.2** — with no session token, the route returns 401 with the same error envelope as the stream route, never calling upstream → Test `test_backfill_route_unauthorized` — ✅ **DONE**
+- **Dimension 1.3** — an upstream non-2xx is passed through with its status and body, not masked as 200 → Test `test_backfill_route_upstream_error_passthrough` — ✅ **DONE**
 
 ### §2 — Registry backfills on reconnect
 
 The stream registry tracks the last-seen event and, on every reconnect `es.onopen` (never the initial connect, which is already SSR-seeded), fetches the backfill route keyed off that event with a small overlap, then merges via the id-deduping `mergeBackfill`. **Implementation default:** derive the cursor from the last event in the snapshot; if the timeline is empty (a reconnect on an as-yet-silent fleet), request the most-recent bounded page so first-ever frames during the outage are still recovered. A failed backfill fetch is swallowed after a diagnostic — live frames resume and the next reconnect retries.
 
-- **Dimension 2.1** — after an error-then-reopen, the registry issues one backfill keyed off the last-seen event and merges the returned rows into the snapshot → Test `test_registry_backfills_on_reconnect`
-- **Dimension 2.2** — the initial (first-ever) `onopen` issues no backfill; only reconnects do → Test `test_registry_initial_open_no_backfill`
-- **Dimension 2.3** — a backfilled row already present live (id overlap) is merged once, not duplicated → Test `test_registry_backfill_dedupes`
-- **Dimension 2.4** — a rejected/failed backfill fetch leaves the timeline intact and the stream LIVE; it does not throw or tear down → Test `test_registry_backfill_failure_tolerated`
-- **Dimension 2.5** — a reconnect on an empty snapshot (no last-seen event) issues one backfill for the most-recent bounded page rather than skipping, so first-ever frames during the outage are recovered → Test `test_registry_backfill_empty_timeline_requests_recent`
+- **Dimension 2.1** — after an error-then-reopen, the registry issues one backfill keyed off the last-seen event and merges the returned rows into the snapshot → Test `test_registry_backfills_on_reconnect` — ✅ **DONE**
+- **Dimension 2.2** — the initial (first-ever) `onopen` issues no backfill; only reconnects do → Test `test_registry_initial_open_no_backfill` — ✅ **DONE**
+- **Dimension 2.3** — a backfilled row already present live (id overlap) is merged once, not duplicated → Test `test_registry_backfill_dedupes` — ✅ **DONE**
+- **Dimension 2.4** — a rejected/failed backfill fetch leaves the timeline intact and the stream LIVE; it does not throw or tear down → Test `test_registry_backfill_failure_tolerated` — ✅ **DONE**
+- **Dimension 2.5** — a reconnect on an empty snapshot (no last-seen event) issues one backfill for the most-recent bounded page rather than skipping, so first-ever frames during the outage are recovered → Test `test_registry_backfill_empty_timeline_requests_recent` — ✅ **DONE**
 
 ### §3 — One Tailwind-aware cn
 
 Move the Tailwind-conflict-aware `cn` (and its extended `font-size` class group) from the app into `ui/packages/design-system/src/utils.ts`, adding `clsx`+`tailwind-merge` to the design-system's dependencies. Delete the app's duplicate `cn` and its now-unused `clsx`/`tailwind-merge` imports, keeping the file's date/duration/truncate helpers. Repoint the 7 app consumers at `@agentsfleet/design-system`. The 47 design-system components thereby gain conflict-aware merging; the extended font-size group ensures semantic `text-*` tokens are not misclassified as colors. **Implementation default:** re-export path is `@agentsfleet/design-system` (its existing `index.ts` already re-exports `cn`); no per-component API change.
 
-- **Dimension 3.1** — the design-system `cn` resolves a Tailwind conflict (`cn("px-2","px-4")` → `"px-4"`) and preserves a semantic font-size token beside a color token → Test `test_ds_cn_merges_and_keeps_fontsize`
-- **Dimension 3.2** — exactly one `export function cn`/`export const cn` declaration exists across `ui/packages` (the design-system one); the app `utils.ts` no longer declares `cn` → Test `test_single_cn_export`
-- **Dimension 3.3** — every prior `@/lib/utils` `cn` consumer imports from `@agentsfleet/design-system` and renders unchanged → Test existing app component suites green after the import swap
+- **Dimension 3.1** — the design-system `cn` resolves a Tailwind conflict (`cn("px-2","px-4")` → `"px-4"`) and preserves a semantic font-size token beside a color token → Test `test_ds_cn_merges_and_keeps_fontsize` — ✅ **DONE**
+- **Dimension 3.2** — exactly one `export function cn`/`export const cn` declaration exists across `ui/packages` (the design-system one); the app `utils.ts` no longer declares `cn` → Test `test_single_cn_export` — ✅ **DONE**
+- **Dimension 3.3** — every prior `@/lib/utils` `cn` consumer imports from `@agentsfleet/design-system` and renders unchanged → Test existing app component suites green after the import swap — ✅ **DONE**
 
 ## Interfaces
 

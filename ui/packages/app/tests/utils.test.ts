@@ -1,12 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { cn, formatDuration, truncate } from "../lib/utils";
+import { formatDuration, truncate } from "../lib/utils";
+
+// `cn` moved to @agentsfleet/design-system (single workspace declaration);
+// its merge behavior is covered by the design-system utils suite.
 
 describe("app utils", () => {
-  it("merges tailwind classes deterministically", () => {
-    expect(cn("px-2", "px-4", "text-sm")).toBe("px-4 text-sm");
-  });
-
   it("formats short and minute durations", () => {
     expect(formatDuration(42)).toBe("42s");
     expect(formatDuration(121)).toBe("2m 1s");
