@@ -95,6 +95,44 @@ class TestReachability(ReachabilityTestCase):
         groups = {ROOT_DIR: set(), "src/agentsfleetd/auth": {"jwt.test.verify"}}
         self.assertTrue(checker.is_live(path, groups))
 
+    def test_empty_waiver_reason_does_not_waive(self):
+        """`// no-test-root:` with nothing after it is a silent opt-out, so it fails."""
+        path = self.write(f"{ROOT_DIR}/orphan.zig", '// no-test-root:\ntest "x" {}\n')
+        self.assertIsNone(checker.waiver_reason(path))
+        self.assertEqual(self.run_check({ROOT_DIR: set()}, [path])[0], 1)
+
+    def test_ambiguous_dotted_filename_is_rejected(self):
+        """`a/b.c.zig` and `a/b/c.zig` both namespace to `a.b.c`; refuse the collision."""
+        dotted = self.write(f"{ROOT_DIR}/db.pool.zig", 'test "x" {}\n')
+        self.assertTrue(checker.has_ambiguous_name(dotted))
+        self.assertFalse(checker.has_ambiguous_name(f"{ROOT_DIR}/db/pool.zig"))
+        code, output = self.run_check({ROOT_DIR: {"db.pool.test.x"}}, [dotted])
+        self.assertEqual(code, 1)
+        self.assertIn("ambiguous test namespace", output)
+
+    def test_waived_file_is_not_counted_as_reachable(self):
+        """A waived file is excluded from the reachable count and named with its
+        reason — a waiver nobody reads is how a block goes dark to begin with."""
+        waived = self.write(
+            f"{ROOT_DIR}/orphan.zig",
+            '// no-test-root: only compiles under -Dfuzz\ntest "x" {}\n',
+        )
+        live = self.write(f"{ROOT_DIR}/live.zig", 'test "y" {}\n')
+        code, output = self.run_check({ROOT_DIR: {"live.test.y"}}, [waived, live])
+        self.assertEqual(code, 0)
+        self.assertIn("1 file(s) reachable, 1 waived", output)
+        self.assertIn("only compiles under -Dfuzz", output)
+        self.assertIn(waived, output)
+
+    def test_stale_waiver_on_a_live_file_is_reported(self):
+        path = self.write(
+            f"{ROOT_DIR}/live.zig",
+            '// no-test-root: left over from an old refactor\ntest "y" {}\n',
+        )
+        code, output = self.run_check({ROOT_DIR: {"live.test.y"}}, [path])
+        self.assertEqual(code, 0)
+        self.assertIn("stale waiver", output)
+
     def test_file_under_no_test_root_is_dead(self):
         """`src/build/**` sits under no binary's root, so a test there can never run."""
         stray = self.write("src/build/helper.zig", 'test "orphan" {}\n')
@@ -206,31 +244,49 @@ class SubprocessFakeCase(ReachabilityTestCase):
 
 
 class TestRegisteredNames(SubprocessFakeCase):
-    def test_groups_tests_under_the_preceding_root(self):
+    def test_each_test_line_carries_its_own_root(self):
         self.fake_subprocess(
-            FakeProc("ROOT\tsrc/agentsfleetd\nTEST\tdb.pool.test.a\n"),
-            FakeProc("ROOT\tsrc/runner\nTEST\tengine.test.b\n"),
+            FakeProc("ROOT\tsrc/agentsfleetd\nTEST\tsrc/agentsfleetd\tdb.pool.test.a\n"),
+            FakeProc("ROOT\tsrc/runner\nTEST\tsrc/runner\tengine.test.b\n"),
         )
         groups = checker.registered_names()
         self.assertEqual(groups["src/agentsfleetd"], {"db.pool.test.a"})
         self.assertEqual(groups["src/runner"], {"engine.test.b"})
 
+    def test_interleaved_lane_output_is_attributed_correctly(self):
+        """`zig build` runs lanes on a thread pool. If stdout ever interleaves, a
+        root-carrying TEST line still lands in the right group; a positional parser
+        would misfile it and silently flip a file's live/dead verdict."""
+        self.fake_subprocess(
+            FakeProc(
+                "ROOT\tsrc/lib\n"
+                "TEST\tsrc/runner\tengine.test.b\n"   # runner's line lands mid-lib block
+                "ROOT\tsrc/runner\n"
+                "TEST\tsrc/lib\tclock.test.a\n"
+            ),
+            FakeProc("ROOT\tsrc/agentsfleetd\n"),
+        )
+        groups = checker.registered_names()
+        self.assertEqual(groups["src/lib"], {"clock.test.a"})
+        self.assertEqual(groups["src/runner"], {"engine.test.b"})
+
     def test_two_binaries_sharing_a_root_accumulate(self):
         """The runner's unit and integration lanes both root at src/runner."""
         self.fake_subprocess(
-            FakeProc("ROOT\tsrc/runner\nTEST\ta.test.one\n"),
-            FakeProc("ROOT\tsrc/runner\nTEST\tb.test.two\n"),
+            FakeProc("ROOT\tsrc/runner\nTEST\tsrc/runner\ta.test.one\n"),
+            FakeProc("ROOT\tsrc/runner\nTEST\tsrc/runner\tb.test.two\n"),
         )
         self.assertEqual(checker.registered_names()["src/runner"], {"a.test.one", "b.test.two"})
 
-    def test_test_line_before_any_root_is_dropped(self):
+    def test_a_lane_registering_nothing_still_records_its_root(self):
+        """Otherwise a silently-empty binary looks like 'no candidates under it'."""
         self.fake_subprocess(
-            FakeProc("TEST\torphan.test.x\nROOT\tsrc/lib\nTEST\tclock.test.y\n"),
-            FakeProc("ROOT\tsrc/runner\nTEST\tz.test.z\n"),
+            FakeProc("ROOT\tsrc/lib\n"),
+            FakeProc("ROOT\tsrc/runner\nTEST\tsrc/runner\tz.test.z\n"),
         )
         groups = checker.registered_names()
-        self.assertEqual(groups["src/lib"], {"clock.test.y"})
-        self.assertNotIn("orphan.test.x", set().union(*groups.values()))
+        self.assertIn("src/lib", groups)
+        self.assertEqual(groups["src/lib"], set())
 
     def test_exits_when_a_lane_fails_to_build(self):
         self.fake_subprocess(FakeProc(returncode=1, stderr="compile error"))
@@ -270,6 +326,28 @@ class TestMainDispatch(ReachabilityTestCase):
         with contextlib.redirect_stderr(io.StringIO()), contextlib.redirect_stdout(io.StringIO()):
             self.assertEqual(checker.main(), 1)
 
+    def test_check_writes_counts_out_so_the_depth_gate_needs_no_second_listing(self):
+        live = self.write(f"{ROOT_DIR}/live.zig", 'test "x" {}\ntest "integration: y" {}\n')
+        self._stub({ROOT_DIR: {"live.test.x"}}, [live])
+        out_path = os.path.join(self._tmp.name, "counts.txt")
+        sys.argv = ["prog", "--check", "--counts-out", out_path]
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(checker.main(), 0)
+        with open(out_path) as handle:
+            written = handle.read()
+        self.assertIn("reachable_test_cases=2", written)
+        self.assertIn("reachable_integration_cases=1", written)
+
+    def test_check_does_not_write_counts_when_a_dead_file_fails_the_gate(self):
+        """A red gate must not leave a counts file a later step could consume."""
+        dead = self.write(f"{ROOT_DIR}/orphan.zig", 'test "x" {}\n')
+        self._stub({ROOT_DIR: set()}, [dead])
+        out_path = os.path.join(self._tmp.name, "counts.txt")
+        sys.argv = ["prog", "--check", "--counts-out", out_path]
+        with contextlib.redirect_stderr(io.StringIO()), contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(checker.main(), 1)
+        self.assertFalse(os.path.exists(out_path))
+
     def test_count_flag_prints_counts_and_returns_zero(self):
         live = self.write(f"{ROOT_DIR}/live.zig", 'test "x" {}\n')
         self._stub({ROOT_DIR: {"live.test.x"}}, [live])
@@ -297,9 +375,23 @@ class TestMakeWiring(unittest.TestCase):
         self.assertIn(f"{CHECKER_TARGET}:", self.quality_mk)
         self.assertIn("check_zig_test_reachability.py --check", self.quality_mk)
 
-    def test_depth_gate_consumes_the_checker_count(self):
-        self.assertIn("check_zig_test_reachability.py --count", self.quality_mk)
-        self.assertNotIn("""find src -name '*.zig' -exec grep -hE '^test "'""", self.quality_mk)
+    def test_depth_gate_consumes_the_reachability_counts(self):
+        """One listing, not two: the depth gate reads what --check already produced."""
+        self.assertIn("--check --counts-out $(REACHABLE_COUNTS)", self.quality_mk)
+        self.assertIn("_lint_zig_test_depth: _lint_zig_test_reachability", self.quality_mk)
+        self.assertIn("counts=$$(cat $(REACHABLE_COUNTS))", self.quality_mk)
+        self.assertNotIn(
+            """find src -name '*.zig' -exec grep -hE '^test "'""",
+            self.quality_mk,
+            msg="depth gate must not fall back to the textual scan",
+        )
+
+    def test_depth_gate_fails_closed_on_a_bad_count(self):
+        """The recipe must `set -eu` and reject a non-numeric total: the old form
+        printed success with a blank count when the checker errored."""
+        recipe = self.quality_mk.split("_lint_zig_test_depth:")[1].split("\n\n")[0]
+        self.assertIn("set -eu", recipe)
+        self.assertIn("*[!0-9]*", recipe)
 
 
 if __name__ == "__main__":

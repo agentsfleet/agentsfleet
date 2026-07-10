@@ -17,13 +17,17 @@ const std = @import("std");
 const builtin = @import("builtin");
 const Io = std.Io;
 
-/// Emitted once, echoing the directory this binary's root module is rooted at.
-/// The checker joins it with each test's namespace to recover a repo-relative path.
+/// Emitted once, proving this lane ran even when it registers no tests at all.
 const ROOT_PREFIX = "ROOT\t";
-/// Emitted once per registered test, carrying the compiler's fully-qualified name
-/// (`<namespace>.test.<description>`, namespace being the source path relative to
-/// ROOT with `/` replaced by `.` and `.zig` stripped).
+/// Emitted once per registered test as `TEST\t<root_dir>\t<name>`, where `<name>` is
+/// the compiler's fully-qualified `<namespace>.test.<description>` and `<namespace>`
+/// is the source path relative to `<root_dir>` with `/` replaced by `.` and `.zig`
+/// stripped. Each line carries its own root because `zig build` runs the lanes on a
+/// thread pool: attributing a test to the most recent `ROOT` line would misfile it
+/// the day two lanes interleave on stdout, silently flipping a file's live/dead
+/// verdict — the exact failure this gate exists to catch.
 const TEST_PREFIX = "TEST\t";
+const FIELD_SEP = "\t";
 const LINE_END = "\n";
 
 /// `std.process.Init.Minimal.args.toSlice` needs an allocator; argv here is one
@@ -39,15 +43,17 @@ pub fn main(init: std.process.Init.Minimal) void {
     const args = init.args.toSlice(fba.allocator()) catch
         @panic("test_runner_list: cannot read argv");
 
+    const root_dir = if (args.len > 1) args[1] else "";
     const stdout = Io.File.stdout();
-    emit(stdout, ROOT_PREFIX, if (args.len > 1) args[1] else "");
-    for (builtin.test_functions) |test_fn| emit(stdout, TEST_PREFIX, test_fn.name);
+    emit(stdout, &.{ ROOT_PREFIX, root_dir });
+    for (builtin.test_functions) |test_fn| {
+        emit(stdout, &.{ TEST_PREFIX, root_dir, FIELD_SEP, test_fn.name });
+    }
 }
 
 /// Best-effort write: a closed stdout means the checker went away, and a listing
 /// run has nothing to clean up, so there is no error worth propagating.
-fn emit(file: Io.File, prefix: []const u8, value: []const u8) void {
-    file.writeStreamingAll(io, prefix) catch return;
-    file.writeStreamingAll(io, value) catch return;
+fn emit(file: Io.File, parts: []const []const u8) void {
+    for (parts) |part| file.writeStreamingAll(io, part) catch return;
     file.writeStreamingAll(io, LINE_END) catch return;
 }

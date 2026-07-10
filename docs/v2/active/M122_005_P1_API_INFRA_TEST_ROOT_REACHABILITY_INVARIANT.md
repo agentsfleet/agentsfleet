@@ -162,15 +162,28 @@ Every file the §1 checker lists is force-imported under one root, or waived wit
 
 ```
 scripts/check_zig_test_reachability.py
-  --check   -> exit 0 iff every src/**/*.zig with a `^test "` line registers
-               >=1 test in some test binary OR carries `// no-test-root: <reason>`;
-               exit non-zero listing each offending path otherwise.
-  --count   -> print `reachable_test_cases=<N>` and `reachable_integration_cases=<M>`
-               (the registered-block totals _lint_zig_test_depth consumes).
+  --check   -> exit 0 iff every src/**/*.zig with a `test "` line registers >=1 test
+               in some binary OR carries `// no-test-root: <reason>` with a NON-EMPTY
+               reason; exit non-zero listing each offending path otherwise. Also
+               rejects a filename whose namespace would be ambiguous (a `.` before
+               `.zig` collides with a directory separator). Waived files are named
+               with their reason, excluded from the reachable count, and a waiver on
+               a file that DOES register tests is reported as stale.
+  --count   -> print `reachable_test_cases=<N>` and `reachable_integration_cases=<M>`.
+  --counts-out PATH
+            -> with --check, also write those two lines to PATH. Listing all 8 binaries
+               costs ~10s, so `_lint_zig_test_depth` consumes this artifact instead of
+               paying for a second, identical listing (it depends on the reachability
+               target for exactly that reason).
 
-Waiver grammar (source line, exact):  // no-test-root: <reason>
-List-mode env flag (build side): when set, src/build/test_runner.zig prints one
-  registered test name per line and exits 0 without executing any test.
+Waiver grammar (source line, exact):  // no-test-root: <reason>   (reason required)
+
+Build side: `zig build list-tests` (defined in BOTH graphs) attaches a list-only
+  compilation per test binary via src/build/test_list.zig, carrying
+  src/build/test_runner_list.zig (`mode: .simple`). It prints one `ROOT\t<dir>` line
+  per lane, then `TEST\t<root_dir>\t<name>` per registered test. Each TEST line
+  carries its own root because zig build runs lanes on a thread pool; positional
+  attribution would misfile a test the day two lanes interleave on stdout.
 ```
 
 No command-line surface of `agentsfleet`, no HTTP route, and no on-disk schema path changes. `schema/embed.zig` and the migration SQL files are read-only inputs.
@@ -224,7 +237,7 @@ No command-line surface of `agentsfleet`, no HTTP route, and no on-disk schema p
 | R1 | Reachability checker self-tests pass (§1/§4) | `python3 scripts/check_zig_test_reachability_test.py` | exit 0 | P0 | |
 | R2 | No dead test-bearing file remains (§1/§3) | `python3 scripts/check_zig_test_reachability.py --check` | exit 0, no paths printed | P0 | |
 | R3 | `cmd/common.zig` is force-imported (§2) | `grep -n 'cmd/common.zig' src/agentsfleetd/tests.zig` | ≥1 match | P0 | |
-| R4 | No bare migration-count literal survives (§2) | `grep -nE '@as\(usize, 2[0-9]\)\|i32, 2[0-9]\)' src/agentsfleetd/cmd/common.zig` | no output | P0 | |
+| R4 | No bare migration-count literal survives (§2) | `grep -nE '@as\([a-z0-9]+, 2[0-9]\)' src/agentsfleetd/cmd/common.zig` | no output | P0 | |
 | R5 | Depth gate counts registered blocks (§4) | `make _lint_zig_test_depth` | exit 0, count == checker `--count` | P0 | |
 | R6 | Daemon suite green with the newly-wired blocks (§2/§3) | `make test-unit-agentsfleetd` | exit 0, 0 failures | P0 | |
 | R7 | Diff stays inside Files Changed | `git diff --name-only origin/main` | 0 paths missing from the Files Changed table | P0 | |
@@ -307,5 +320,17 @@ No command-line surface of `agentsfleet`, no HTTP route, and no on-disk schema p
 ### Remaining
 
 - **Metrics review** — not applicable: build-time gates and a test runner; no runtime event added, renamed, or removed.
-- **Skill-chain outcomes** — pending (`/write-unit-test`, `/review`, `kishore-babysit-prs` run at VERIFY / CHORE(close)).
+- **Skill-chain outcomes**
+  - `/write-unit-test` — diff ledger 24/24 resolved (3 `won't-test` with reasons: the list runner cannot execute inside a test binary; build-graph wiring has no unit surface; no concurrent or hot-path surface exists). Checker branch coverage 69% → 99%. Mutation on changed lines 5/5 killed, including a mutant that restored the spec's original description-matching rule. Red-green confirmed: pre-fix the same suite reported `2 fail, 1 crash`.
+  - `/review` — adversarial diff review, with an independent fresh-context pass. **Seven findings, all closed:**
+    1. **CRITICAL — the depth gate failed open.** `_lint_zig_test_depth` ran `counts=$(… --count)` with no `set -e`. When the checker errored, `unit_count` was empty, `[ "" -lt 25 ]` raised *"integer expression expected"* and returned 2, the `if` treated non-zero as false, and the recipe **printed success and exited 0** while writing blank counts. The gate whose entire purpose is to make a number trustworthy would silently pass whenever `zig build list-tests` failed. The old textual recipe could not fail this way, because `wc -l` always emits a number. Fixed with `set -eu` plus an explicit numeric guard; both mutants (non-zero exit, non-numeric output) now fail the build.
+    2. **R4 was a no-op.** `grep -nE '…\|…'` — the `\|` a markdown table forces is a *literal pipe* in an extended regular expression, not alternation. R4 matched nothing regardless of the code, so the earlier "clean" grading of R4 was worthless. Rewritten without a pipe (`@as\([a-z0-9]+, 2[0-9]\)`), verified to catch a planted literal and to ignore `@as(i32, @intCast(...))`.
+    3. **Waivers laundered into "reachable".** `run_check` printed `len(candidates)` as the reachable count, which includes waived files, and never named them. Now waived files are named with their reason, excluded from the count, and a waiver on a file that *does* register tests is reported as stale.
+    4. **An empty waiver reason waived the file.** `// no-test-root:` with nothing after it passed the gate. A silent opt-out is how a block goes dark; a reason is now required.
+    5. **Positional attribution was fragile.** `TEST` lines were attributed to the most recent `ROOT` line. `zig build` runs lanes on a thread pool, so interleaved stdout would misfile a test and flip a file's live/dead verdict. Each `TEST` line now carries its own root dir.
+    6. **The namespace map was not injective.** `a/b/c.zig` and `a/b.c.zig` both map to `a.b.c`, so a live file could mask a dead twin — the same unsoundness for which description-matching was rejected. Latent (no such filename exists) and now rejected outright.
+    7. **`lint-zig` paid for the ~10s listing twice** (`--check` then `--count`). `--check --counts-out` now hands its counts to the depth gate, which depends on it. Standalone `make _lint_zig_test_depth`: 6.3s, one listing.
+
+    Found clean by the independent pass and re-verified: the doctor ownership fix (every `results` list is freed via `freeResults`; `id` is never freed and is always a literal; no double-free or borrowed-slice free remains), root coverage (all 8 `addTest` steps have lanes; `src/build/**` has zero test blocks), per-root namespace scoping against cross-root masking, lanes correctly omitting `.filters`, and fixtures attached before each `addLane`.
+  - `kishore-babysit-prs` — runs after the push.
 - **Deferrals** — none. The two product bugs named in Out of Scope (SqlStatementSplitter mis-split, advisory-lock ordering) were already spec'd out to M123_002 at authoring time and are not deferrals introduced here.

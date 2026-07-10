@@ -59,7 +59,7 @@ fn testSignalHandler(sig: std.posix.SIG) callconv(.c) void {
     test_signal_received.store(true, .release);
 }
 
-test "installSignalHandlers installs the handler for INT and TERM" {
+test "installSignalHandlers routes a delivered INT to the given handler" {
     // The suite runs in this process: leaving our handler installed would swallow
     // a real Ctrl-C for every test that follows, so the previous actions are
     // restored before returning.
@@ -71,6 +71,7 @@ test "installSignalHandlers installs the handler for INT and TERM" {
         std.posix.sigaction(std.posix.SIG.INT, &prev_int, null);
         std.posix.sigaction(std.posix.SIG.TERM, &prev_term, null);
     }
+    test_signal_received.store(false, .release);
 
     preflight.installSignalHandlers(testSignalHandler);
 
@@ -82,4 +83,9 @@ test "installSignalHandlers installs the handler for INT and TERM" {
     const expected = @intFromPtr(&testSignalHandler);
     try std.testing.expectEqual(expected, @intFromPtr(installed_int.handler.handler.?));
     try std.testing.expectEqual(expected, @intFromPtr(installed_term.handler.handler.?));
+
+    // Raise only AFTER the handler is proven installed: on the default action a
+    // delivered INT would terminate the test runner instead of failing this test.
+    try std.posix.raise(std.posix.SIG.INT);
+    try std.testing.expect(test_signal_received.load(.acquire));
 }
