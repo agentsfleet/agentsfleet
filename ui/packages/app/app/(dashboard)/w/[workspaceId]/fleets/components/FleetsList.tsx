@@ -6,6 +6,7 @@ import { PlusIcon } from "lucide-react";
 import {
   Alert,
   Button,
+  cn,
   EYEBROW_CLASS,
   Input,
   List,
@@ -14,7 +15,6 @@ import {
   TooltipButton,
   WakePulse,
 } from "@agentsfleet/design-system";
-import { cn } from "@/lib/utils";
 import { AGENTSFLEET_STATUS, type Fleet } from "@/lib/api/fleets";
 import { listFleetsAction } from "../actions";
 import { workspacePath } from "@/lib/workspace-routes";

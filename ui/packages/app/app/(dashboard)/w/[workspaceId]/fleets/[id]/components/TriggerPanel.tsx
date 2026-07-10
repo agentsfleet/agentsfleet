@@ -11,11 +11,11 @@ import {
   Button,
   Card,
   CardContent,
+  cn,
   EYEBROW_CLASS,
   Time,
   useResettableTimeout,
 } from "@agentsfleet/design-system";
-import { cn } from "@/lib/utils";
 import { webhookUrlFor } from "@/lib/api/fleets";
 import GuidedTriggerCard, { COPY_RESET_MS } from "./GuidedTriggerCard";
 import CronCard from "./CronCard";

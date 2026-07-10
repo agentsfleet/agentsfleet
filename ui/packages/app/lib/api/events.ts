@@ -147,3 +147,18 @@ export function streamFleetEventsUrl(workspaceId: string, fleetId: string): stri
     `/fleets/${encodeURIComponent(fleetId)}/events/stream`
   );
 }
+
+// Same-origin URL for the reconnect backfill list. Intercepted by the Next
+// Route Handler at app/backend/.../events/route.ts (the non-stream sibling
+// of streamFleetEventsUrl's handler), which injects the Bearer token
+// server-side and forwards cursor/since/limit upstream.
+export function backfillFleetEventsUrl(
+  workspaceId: string,
+  fleetId: string,
+  opts?: Omit<EventsQuery, "fleet_id">,
+): string {
+  return (
+    `/backend/v1/workspaces/${encodeURIComponent(workspaceId)}` +
+    `/fleets/${encodeURIComponent(fleetId)}/events${buildQuery(opts)}`
+  );
+}

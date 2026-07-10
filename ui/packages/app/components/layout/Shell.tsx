@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import {
   Button,
+  cn,
   Dialog,
   DialogContent,
   DialogTitle,
@@ -29,7 +30,6 @@ import {
   Nav,
   WakePulse,
 } from "@agentsfleet/design-system";
-import { cn } from "@/lib/utils";
 import { setAnalyticsContext, trackNavigationClicked } from "@/lib/analytics/posthog";
 import { SCOPE } from "@/lib/auth/scopes";
 import { workspaceIdFromPath, workspacePath } from "@/lib/workspace-routes";
