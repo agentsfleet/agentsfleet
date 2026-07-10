@@ -43,6 +43,18 @@ const CONFIG_DAILY_ONE_DOLLAR =
 /// spend is over budget — the boundary the unit tests pin.
 const SPEND_AT_CEILING_NANOS: i64 = 1_000_000_000;
 
+// The budget query sums the per-slice ledger (`fleet.metering_periods`) by
+// `created_at`, joined to the stage telemetry row for scope. Seed both: a stage
+// row (scope + recorded_at pruning; its own nanos are not read for stage) plus a
+// metering slice carrying the drained `nanos`. Single-slice run → start == drain.
+const INSERT_METERING_SLICE_SQL =
+    \\INSERT INTO fleet.metering_periods
+    \\  (uid, event_id, slice_seq, d_input_tokens, d_cached_tokens, d_output_tokens,
+    \\   run_ms, run_fee_nanos, token_cost_nanos, charged_nanos, created_at)
+    \\VALUES (overlay(gen_random_uuid()::text placing '7' from 15 for 1)::uuid,
+    \\        $1, 1, 0, 0, 0, 0, 0, 0, $2, $3)
+;
+
 fn seedSpend(conn: *pg.Conn, fleet_id: []const u8, event_id: []const u8, nanos: i64, recorded_at: i64) !void {
     try store.insertTelemetry(conn, ALLOC, .{
         .tenant_id = base.TEST_TENANT_ID,
@@ -52,12 +64,18 @@ fn seedSpend(conn: *pg.Conn, fleet_id: []const u8, event_id: []const u8, nanos: 
         .charge_type = .stage,
         .posture = .platform,
         .model = FIXTURE_MODEL,
-        .credit_deducted_nanos = nanos,
+        .credit_deducted_nanos = 0,
         .recorded_at = recorded_at,
     });
+    _ = try conn.exec(INSERT_METERING_SLICE_SQL, .{ event_id, nanos, recorded_at });
 }
 
 fn teardownSpend(conn: *pg.Conn) void {
+    _ = conn.exec(
+        \\DELETE FROM fleet.metering_periods mp
+        \\USING core.fleet_execution_telemetry t
+        \\WHERE t.event_id = mp.event_id AND t.workspace_id = $1
+    , .{life.WORKSPACE_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
     _ = conn.exec("DELETE FROM core.fleet_execution_telemetry WHERE workspace_id = $1", .{life.WORKSPACE_ID}) catch |err|
         std.log.warn("ignored: {s}", .{@errorName(err)});
 }

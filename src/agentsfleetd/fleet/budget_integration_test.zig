@@ -32,8 +32,24 @@ const NOW_MS: i64 = 1_783_699_440_000;
 const MONTH_START_MS: i64 = 1_782_864_000_000; // 2026-07-01T00:00:00Z
 const HOUR_MS: i64 = 60 * 60 * 1000;
 
-/// One telemetry row charging `nanos` against `fleet_id` at `recorded_at`.
-fn seedSpend(conn: *pg.Conn, workspace_id: []const u8, fleet_id: []const u8, event_id: []const u8, nanos: i64, recorded_at: i64) !void {
+/// The budget query sums the per-slice ledger (`fleet.metering_periods`) by each
+/// slice's own `created_at`, joined to the stage telemetry row for fleet scope.
+/// A metering uid must be uuidv7-shaped (char 15 = '7', the schema CHECK), so we
+/// force it on a random uuid rather than mint one in Zig.
+const INSERT_METERING_SLICE_SQL =
+    \\INSERT INTO fleet.metering_periods
+    \\  (uid, event_id, slice_seq, d_input_tokens, d_cached_tokens, d_output_tokens,
+    \\   run_ms, run_fee_nanos, token_cost_nanos, charged_nanos, created_at)
+    \\VALUES (overlay(gen_random_uuid()::text placing '7' from 15 for 1)::uuid,
+    \\        $1, $2, 0, 0, 0, 0, 0, 0, $3, $4)
+;
+
+/// Seed one stage drain the budget query will count: a `metering_periods` slice
+/// carrying `nanos` at `drain_ms`, plus the joined stage telemetry row stamped
+/// at `start_ms` (the run start the query prunes by). The telemetry row's own
+/// `credit_deducted_nanos` is NOT read for stage — the slice's `charged_nanos`
+/// is — so it is 0.
+fn seedStageSlice(conn: *pg.Conn, workspace_id: []const u8, fleet_id: []const u8, event_id: []const u8, slice_seq: i64, nanos: i64, start_ms: i64, drain_ms: i64) !void {
     try store.insertTelemetry(conn, ALLOC, .{
         .tenant_id = base.TEST_TENANT_ID,
         .workspace_id = workspace_id,
@@ -42,12 +58,27 @@ fn seedSpend(conn: *pg.Conn, workspace_id: []const u8, fleet_id: []const u8, eve
         .charge_type = .stage,
         .posture = .platform,
         .model = FIXTURE_MODEL,
-        .credit_deducted_nanos = nanos,
-        .recorded_at = recorded_at,
+        .credit_deducted_nanos = 0,
+        .recorded_at = start_ms,
     });
+    _ = try conn.exec(INSERT_METERING_SLICE_SQL, .{ event_id, slice_seq, nanos, drain_ms });
+}
+
+/// The common single-slice case: a run that drains `nanos` in one shot at
+/// `recorded_at` (start == drain), so the fix's start-vs-drain distinction
+/// collapses and the old call sites keep their exact numbers.
+fn seedSpend(conn: *pg.Conn, workspace_id: []const u8, fleet_id: []const u8, event_id: []const u8, nanos: i64, recorded_at: i64) !void {
+    try seedStageSlice(conn, workspace_id, fleet_id, event_id, 1, nanos, recorded_at, recorded_at);
 }
 
 fn teardownSpend(conn: *pg.Conn, workspace_id: []const u8) void {
+    // metering_periods has no workspace column — delete its rows via the
+    // telemetry rows they join to, BEFORE those telemetry rows are removed.
+    _ = conn.exec(
+        \\DELETE FROM fleet.metering_periods mp
+        \\USING core.fleet_execution_telemetry t
+        \\WHERE t.event_id = mp.event_id AND t.workspace_id = $1
+    , .{workspace_id}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
     _ = conn.exec("DELETE FROM core.fleet_execution_telemetry WHERE workspace_id = $1", .{workspace_id}) catch |err|
         std.log.warn("ignored: {s}", .{@errorName(err)});
 }
@@ -87,6 +118,53 @@ test "integration: spend_for_fleet_counts_only_the_rolling_day_inside_the_day_wi
     const spend = (try budget.spendForFleetOn(conn, WS_A, FLEET_A, NOW_MS)).?;
     try std.testing.expectEqual(@as(i64, 100), spend.day_nanos);
     try std.testing.expectEqual(@as(i64, 800), spend.month_nanos);
+}
+
+test "integration: spend is timed by DRAIN, not by run start (the P1 regression)" {
+    const db_ctx = (try base.openTestConn(ALLOC)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
+    const conn = db_ctx.conn;
+
+    try uc1.seed(conn, WS_A);
+    defer uc1.teardown(conn, WS_A);
+    defer teardownSpend(conn, WS_A);
+
+    // A long run (12h, the max): STARTED 25h ago (outside the rolling 24h) and
+    // DRAINED its money 13h ago (inside it). The accumulating telemetry stage row
+    // is pinned at the 25h-ago start — the exact bug the review found. If the
+    // query bucketed by that `recorded_at`, this spend would wrongly drop out of
+    // the day window and the daily ceiling could be breached ~2x. Bucketing by
+    // the slice's own `created_at` counts it. This test fails on the pre-fix query.
+    try seedStageSlice(conn, WS_A, FLEET_A, "evt-budget-longrun", 1, 500, NOW_MS - 25 * HOUR_MS, NOW_MS - 13 * HOUR_MS);
+
+    const spend = (try budget.spendForFleetOn(conn, WS_A, FLEET_A, NOW_MS)).?;
+    try std.testing.expectEqual(@as(i64, 500), spend.day_nanos);   // drained inside 24h → counted
+    try std.testing.expectEqual(@as(i64, 500), spend.month_nanos);
+}
+
+test "integration: a multi-slice run counts each slice in the window it drained" {
+    const db_ctx = (try base.openTestConn(ALLOC)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
+    const conn = db_ctx.conn;
+
+    try uc1.seed(conn, WS_A);
+    defer uc1.teardown(conn, WS_A);
+    defer teardownSpend(conn, WS_A);
+
+    // One event, three renewal slices under one stage row started 25h ago.
+    // Slice 1 drained 25h ago (OUTSIDE the day window), slices 2 and 3 drained
+    // 20h and 13h ago (INSIDE; the run's 12h span reaches to 13h ago). Day spend
+    // must be slices 2+3 only; month spend all three. Proves per-slice
+    // attribution, not whole-run.
+    try seedStageSlice(conn, WS_A, FLEET_A, "evt-budget-multi", 1, 100, NOW_MS - 25 * HOUR_MS, NOW_MS - 25 * HOUR_MS);
+    try seedStageSlice(conn, WS_A, FLEET_A, "evt-budget-multi", 2, 20, NOW_MS - 25 * HOUR_MS, NOW_MS - 20 * HOUR_MS);
+    try seedStageSlice(conn, WS_A, FLEET_A, "evt-budget-multi", 3, 3, NOW_MS - 25 * HOUR_MS, NOW_MS - 13 * HOUR_MS);
+
+    const spend = (try budget.spendForFleetOn(conn, WS_A, FLEET_A, NOW_MS)).?;
+    try std.testing.expectEqual(@as(i64, 23), spend.day_nanos);   // slices 2+3
+    try std.testing.expectEqual(@as(i64, 123), spend.month_nanos); // all three (same month)
 }
 
 test "integration: spend_for_fleet_excludes_rows_before_the_calendar_month_start" {
@@ -226,10 +304,14 @@ test "integration: the spend query surfaces a DB fault as an error the pool gate
     // error into null via `catch`, and `verdictOrAdmit(null,…)` admits (unit
     // test). This proves the FIRST half is reachable — the query genuinely errors
     // on a DB fault, so the `catch` is not dead. (The pool-level catch itself
-    // can't be poisoned here: `spendForFleet` acquires a fresh connection.)
+    // can't be poisoned here: `spendForFleet` acquires a fresh connection.) The
+    // exact error variant (PG "txn aborted" vs ConnectionBusy) is driver-drain
+    // dependent and immaterial — the `catch |err|` swallows any of them.
     try poisonTransaction(conn);
     defer healTransaction(conn);
-    try std.testing.expectError(error.PG, budget.spendForFleetOn(conn, WS_A, FLEET_A, NOW_MS));
+    if (budget.spendForFleetOn(conn, WS_A, FLEET_A, NOW_MS)) |_| {
+        return error.TestExpectedQueryToFailOnPoisonedTxn;
+    } else |_| {}
 }
 
 test "integration: readBudget classifies a query error as unavailable (fail open)" {
@@ -278,6 +360,32 @@ test "integration: fetch_budget_and_spend_admits_a_fleet_that_declares_no_budget
     try std.testing.expectEqual(@as(?budget.Verdict, null), budget.refusalFor(.absent));
 }
 
+test "integration: a budget key holding JSON null admits (not a declared ceiling)" {
+    const db_ctx = (try base.openTestConn(ALLOC)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
+    const conn = db_ctx.conn;
+
+    try uc1.seed(conn, WS_A);
+    defer uc1.teardown(conn, WS_A);
+    defer teardownFleet(conn, FLEET_UUID);
+
+    // `budget: null` is NOT SQL NULL — `config_json->'x-agentsfleet'->'budget'`
+    // yields JSONB null, which `::text` renders as the string "null". Before the
+    // fix this flowed to `parseStoredBudget` → `.unreadable` → refused, killing
+    // in-flight runs of a fleet that declared no ceiling. It must admit, exactly
+    // like a missing key.
+    _ = try conn.exec(
+        \\INSERT INTO core.fleets (id, workspace_id, name, source_markdown, config_json, status, created_at, updated_at)
+        \\VALUES ($1::uuid, $2::uuid, 'budget-fixture', '', '{"x-agentsfleet":{"budget":null}}'::jsonb, 'active', 0, 0)
+        \\ON CONFLICT (id) DO UPDATE SET config_json = EXCLUDED.config_json
+    , .{ FLEET_UUID, WS_A });
+
+    const read = budget.readBudget(conn, ALLOC, FLEET_UUID, WS_A, NOW_MS);
+    try std.testing.expectEqual(std.meta.Tag(budget.BudgetRead).absent, std.meta.activeTag(read));
+    try std.testing.expectEqual(@as(?budget.Verdict, null), budget.refusalFor(read));
+}
+
 test "integration: a declared-but-malformed budget still refuses (fail closed)" {
     const db_ctx = (try base.openTestConn(ALLOC)) orelse return error.SkipZigTest;
     defer db_ctx.pool.deinit();
@@ -288,8 +396,8 @@ test "integration: a declared-but-malformed budget still refuses (fail closed)" 
     defer uc1.teardown(conn, WS_A);
     defer teardownFleet(conn, FLEET_UUID);
 
-    // The distinction from the test above: a `budget` key IS present, and its
-    // value is nonsense. That is a ceiling we cannot read, so the run stops.
+    // The distinction: a `budget` OBJECT is present and its value is nonsense.
+    // That is a ceiling someone tried to set and botched, so the run stops.
     try seedFleetWithBudget(conn, FLEET_UUID, WS_A, "{\"daily_dollars\": \"five\"}");
     const read = budget.readBudget(conn, ALLOC, FLEET_UUID, WS_A, NOW_MS);
     try std.testing.expectEqual(std.meta.Tag(budget.BudgetRead).unreadable, std.meta.activeTag(read));

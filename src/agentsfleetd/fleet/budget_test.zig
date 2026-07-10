@@ -16,10 +16,13 @@ const config_types = @import("../fleet_runtime/config_types.zig");
 const FleetBudget = config_types.FleetBudget;
 const Spend = budget.Spend;
 const Verdict = budget.Verdict;
+const BudgetError = budget.BudgetError;
 const dollarsToNanos = budget.dollarsToNanos;
 const covers = budget.covers;
 const verdictOrAdmit = budget.verdictOrAdmit;
 const refusalFor = budget.refusalFor;
+const windowFloors = budget.windowFloors;
+const parseStoredBudget = budget.parseStoredBudget;
 
 /// A $1.00/day ceiling with no monthly bound, plus a spend either side of it.
 const TIGHT = FleetBudget{ .daily_dollars = 1.0, .monthly_dollars = null };
@@ -136,3 +139,48 @@ test "refusalFor surfaces a monthly breach distinctly from a daily one" {
     );
 }
 
+
+// ── windowFloors + parseStoredBudget (pub helpers, no DB) ────────────────────
+
+test "windowFloors derives both bounds from one now_ms" {
+    // 2026-07-10T16:04:00Z
+    const now: i64 = 1_783_699_440_000;
+    const floors = windowFloors(now);
+    try testing.expectEqual(now - std.time.ms_per_day, floors.day);
+    try testing.expectEqual(@as(i64, 1_782_864_000_000), floors.month); // 2026-07-01T00:00:00Z
+    // Within the first 24h of a month the month floor is >= the day floor; later
+    // it is < the day floor. `LEAST(day, month)` picks the earlier as the scan
+    // bound either way, and both are <= now.
+    try testing.expect(floors.day <= now and floors.month <= now);
+}
+
+test "parseStoredBudget: valid object parses" {
+    const ok = (try parseStoredBudget(testing.allocator, "{\"daily_dollars\": 5.0}")).?;
+    try testing.expectEqual(@as(f64, 5.0), ok.daily_dollars);
+    try testing.expectEqual(@as(?f64, null), ok.monthly_dollars);
+}
+
+test "parseStoredBudget: a botched budget OBJECT fails CLOSED" {
+    // Someone tried to declare a ceiling and got the object wrong → refuse.
+    try testing.expectError(BudgetError.UnreadableBudget, parseStoredBudget(testing.allocator, "{\"daily_dollars\": -1}"));
+    try testing.expectError(BudgetError.UnreadableBudget, parseStoredBudget(testing.allocator, "{\"daily_dollars\": 0}"));
+    try testing.expectError(BudgetError.UnreadableBudget, parseStoredBudget(testing.allocator, "{\"daily_dollars\": 1001}"));
+    try testing.expectError(BudgetError.UnreadableBudget, parseStoredBudget(testing.allocator, "{}"));
+    try testing.expectError(BudgetError.UnreadableBudget, parseStoredBudget(testing.allocator, "not json"));
+}
+
+test "parseStoredBudget: a NON-object value is not a declared ceiling -> admit" {
+    // JSON null (a present-but-null `budget` key renders as the text "null"),
+    // and any scalar/array in the budget slot, mean "no ceiling declared" — the
+    // caller admits, exactly as for a missing key.
+    try testing.expectEqual(@as(?FleetBudget, null), try parseStoredBudget(testing.allocator, "null"));
+    try testing.expectEqual(@as(?FleetBudget, null), try parseStoredBudget(testing.allocator, "5"));
+    try testing.expectEqual(@as(?FleetBudget, null), try parseStoredBudget(testing.allocator, "[]"));
+    try testing.expectEqual(@as(?FleetBudget, null), try parseStoredBudget(testing.allocator, "\"nope\""));
+}
+
+test "parseStoredBudget round-trips a monthly ceiling" {
+    const b = (try parseStoredBudget(testing.allocator, "{\"daily_dollars\": 1.0, \"monthly_dollars\": 8.0}")).?;
+    try testing.expectEqual(@as(f64, 1.0), b.daily_dollars);
+    try testing.expectEqual(@as(?f64, 8.0), b.monthly_dollars);
+}

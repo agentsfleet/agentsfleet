@@ -51,6 +51,17 @@ test "classifyRenew: any other refusal cause stays renewal_terminate" {
     }
 }
 
+test "classifyRenew: UZ-RUN-015 on a NON-402 terminal status is not a budget breach" {
+    // Only the 402 budget refusal carries UZ-RUN-015 server-side. A 401/404/409
+    // whose body happens to carry it (proxy injection, a future reuse) must NOT
+    // be relabeled budget_breach — the classifier gates on status == 402.
+    const body = "{\"error_code\":\"UZ-RUN-015\"}";
+    inline for (.{ 401, 404, 409 }) |status| {
+        const out = try client.classifyRenew(testing.allocator, status, body);
+        try testing.expectEqual(client.RenewResult{ .terminal = .{ .status = status, .reason = .renewal_terminate } }, out);
+    }
+}
+
 test "classifyRenew: non-terminal 4xx and all 5xx are retryable BadStatus" {
     inline for (.{ 400, 403, 408, 429, 500, 503 }) |status| {
         try testing.expectError(error.BadStatus, client.classifyRenew(testing.allocator, status, ""));

@@ -31,11 +31,13 @@
 const std = @import("std");
 const pg = @import("pg");
 const logging = @import("log");
-const clock = @import("common").clock;
+const common = @import("common");
+const clock = common.clock;
 
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
 const ec = @import("../errors/error_registry.zig");
 const tenant_billing = @import("../state/tenant_billing.zig");
+const ChargeType = @import("../state/fleet_telemetry_store.zig").ChargeType;
 const config_types = @import("../fleet_runtime/config_types.zig");
 const config_helpers = @import("../fleet_runtime/config_helpers.zig");
 
@@ -47,30 +49,62 @@ pub const FleetBudget = config_types.FleetBudget;
 /// "Rolling 24-hour dollar ceiling", so the window slides with `now_ms`.
 const ROLLING_DAY_MS: i64 = std.time.ms_per_day;
 
-/// Both windowed sums in one statement, served by
-/// `idx_fleet_execution_telemetry_workspace_id_fleet_id_recorded_at`.
-/// `$3` is the rolling-day floor, `$4` the month floor; the outer predicate
-/// bounds the scan to the earlier of the two.
+/// Why these queries sum `metering_periods`, not the telemetry stage row: a run
+/// drains slice-by-slice across up to `MAX_RUNTIME_MS`, but the accumulating
+/// telemetry STAGE row pins `recorded_at` at the first renewal (~run start) and
+/// never advances it, so it cannot answer "how much drained in the last 24h".
+/// The accurate per-slice times live in `metering_periods.created_at`; the stage
+/// telemetry row is joined only for fleet scope + index pruning. The receive fee
+/// is one telemetry row written once at gate-pass, so ITS `recorded_at` is
+/// already the drain time. Pruning: a slice draining in `[floor, now]` cannot
+/// belong to a run started before `floor - MAX_RUNTIME`, so bounding the stage
+/// scan there drops no slice while keeping the index range small.
+const DRAIN_BACKOFF_MS: i64 = common.MAX_RUNTIME_MS;
+
+/// Windowed spend for one fleet, timed by actual drain. `$1` workspace_id ·
+/// `$2` fleet_id · `$3` day floor · `$4` month floor · `$5` stage label ·
+/// `$6` receive label · `$7` MAX_RUNTIME_MS. See `DRAIN_BACKOFF_MS`.
 const SELECT_SPEND_SQL =
+    \\WITH drains AS (
+    \\  SELECT mp.charged_nanos AS amt, mp.created_at AS ts
+    \\  FROM core.fleet_execution_telemetry t
+    \\  JOIN fleet.metering_periods mp ON mp.event_id = t.event_id
+    \\  WHERE t.workspace_id = $1 AND t.fleet_id = $2 AND t.charge_type = $5
+    \\    AND t.recorded_at >= LEAST($3::bigint, $4::bigint) - $7::bigint
+    \\  UNION ALL
+    \\  SELECT r.credit_deducted_nanos AS amt, r.recorded_at AS ts
+    \\  FROM core.fleet_execution_telemetry r
+    \\  WHERE r.workspace_id = $1 AND r.fleet_id = $2 AND r.charge_type = $6
+    \\    AND r.recorded_at >= LEAST($3::bigint, $4::bigint)
+    \\)
     \\SELECT
-    \\  COALESCE(SUM(credit_deducted_nanos) FILTER (WHERE recorded_at >= $3::bigint), 0)::bigint,
-    \\  COALESCE(SUM(credit_deducted_nanos) FILTER (WHERE recorded_at >= $4::bigint), 0)::bigint
-    \\FROM core.fleet_execution_telemetry
-    \\WHERE workspace_id = $1 AND fleet_id = $2
-    \\  AND recorded_at >= LEAST($3::bigint, $4::bigint)
+    \\  COALESCE(SUM(amt) FILTER (WHERE ts >= $3::bigint), 0)::bigint,
+    \\  COALESCE(SUM(amt) FILTER (WHERE ts >= $4::bigint), 0)::bigint
+    \\FROM drains
 ;
 
-/// The renew-side read: the fleet's stored budget subobject plus both windowed
-/// sums, in one round trip. The lease row carries no config, so the budget is
-/// read live — lowering a runaway fleet's ceiling therefore bites at its next
-/// renewal tick rather than only at its next run.
+/// Renew-side: the stored budget subobject + both drain-timed sums in one round
+/// trip. Budget is read live (the lease row carries no config), so lowering a
+/// runaway fleet's ceiling bites at its next renewal, not its next run. `$1`
+/// fleet uuid · `$2` workspace_id · `$3` fleet_id · `$4` day floor · `$5` month
+/// floor · `$6` stage label · `$7` receive label · `$8` MAX_RUNTIME_MS.
 const SELECT_BUDGET_AND_SPEND_SQL =
+    \\WITH drains AS (
+    \\  SELECT mp.charged_nanos AS amt, mp.created_at AS ts
+    \\  FROM core.fleet_execution_telemetry t
+    \\  JOIN fleet.metering_periods mp ON mp.event_id = t.event_id
+    \\  WHERE t.workspace_id = $2 AND t.fleet_id = $3 AND t.charge_type = $6
+    \\    AND t.recorded_at >= LEAST($4::bigint, $5::bigint) - $8::bigint
+    \\  UNION ALL
+    \\  SELECT r.credit_deducted_nanos AS amt, r.recorded_at AS ts
+    \\  FROM core.fleet_execution_telemetry r
+    \\  WHERE r.workspace_id = $2 AND r.fleet_id = $3 AND r.charge_type = $7
+    \\    AND r.recorded_at >= LEAST($4::bigint, $5::bigint)
+    \\)
     \\SELECT
     \\  (z.config_json->'x-agentsfleet'->'budget')::text,
-    \\  COALESCE((SELECT SUM(t.credit_deducted_nanos) FROM core.fleet_execution_telemetry t
-    \\            WHERE t.workspace_id = $2 AND t.fleet_id = $3 AND t.recorded_at >= $4::bigint), 0)::bigint,
-    \\  COALESCE((SELECT SUM(t.credit_deducted_nanos) FROM core.fleet_execution_telemetry t
-    \\            WHERE t.workspace_id = $2 AND t.fleet_id = $3 AND t.recorded_at >= $5::bigint), 0)::bigint
+    \\  COALESCE((SELECT SUM(amt) FROM drains WHERE ts >= $4::bigint), 0)::bigint,
+    \\  COALESCE((SELECT SUM(amt) FROM drains WHERE ts >= $5::bigint), 0)::bigint
     \\FROM core.fleets z
     \\WHERE z.id = $1::uuid
 ;
@@ -169,7 +203,7 @@ pub fn covers(budget: FleetBudget, spend: Spend) Verdict {
 
 /// Window floors for one `now_ms`. Split out so both queries and every test
 /// derive their bounds from the same arithmetic.
-fn windowFloors(now_ms: i64) struct { day: i64, month: i64 } {
+pub fn windowFloors(now_ms: i64) struct { day: i64, month: i64 } {
     return .{
         .day = now_ms -| ROLLING_DAY_MS,
         .month = clock.startOfUtcMonthMillis(now_ms),
@@ -200,7 +234,10 @@ pub fn spendForFleet(
 /// one from the pool. A fleet with no telemetry rows yet spends zero.
 pub fn spendForFleetOn(conn: *pg.Conn, workspace_id: []const u8, fleet_id: []const u8, now_ms: i64) !?Spend {
     const floors = windowFloors(now_ms);
-    var q = PgQuery.from(try conn.query(SELECT_SPEND_SQL, .{ workspace_id, fleet_id, floors.day, floors.month }));
+    var q = PgQuery.from(try conn.query(SELECT_SPEND_SQL, .{
+        workspace_id, fleet_id, floors.day, floors.month,
+        ChargeType.stage.label(),   ChargeType.receive.label(), DRAIN_BACKOFF_MS,
+    }));
     defer q.deinit();
     const row = try q.next() orelse return Spend{ .day_nanos = 0, .month_nanos = 0 };
     return Spend{
@@ -246,7 +283,10 @@ pub fn fetchBudgetAndSpend(
     now_ms: i64,
 ) !?BudgetAndSpend {
     const floors = windowFloors(now_ms);
-    var q = PgQuery.from(try conn.query(SELECT_BUDGET_AND_SPEND_SQL, .{ fleet_id, workspace_id, fleet_id, floors.day, floors.month }));
+    var q = PgQuery.from(try conn.query(SELECT_BUDGET_AND_SPEND_SQL, .{
+        fleet_id, workspace_id, fleet_id, floors.day, floors.month,
+        ChargeType.stage.label(), ChargeType.receive.label(), DRAIN_BACKOFF_MS,
+    }));
     defer q.deinit();
     const row = try q.next() orelse return null; // no fleet row
     // SQL NULL here means the JSON path found no `budget` key: no ceiling was
@@ -257,57 +297,29 @@ pub fn fetchBudgetAndSpend(
         .day_nanos = try row.get(i64, 1),
         .month_nanos = try row.get(i64, 2),
     };
-    return .{ .budget = try parseStoredBudget(alloc, budget_json), .spend = spend };
+    // `null` here = "not a declared ceiling" (JSON null, or a non-object in the
+    // budget slot) → admit, exactly like a missing key. `error` = "a ceiling was
+    // declared as an object and it will not validate" → fail closed.
+    const parsed_budget = try parseStoredBudget(alloc, budget_json) orelse return null;
+    return .{ .budget = parsed_budget, .spend = spend };
 }
 
 /// Parse the stored budget subobject through the SAME validator that accepted it
 /// at ingest (`config_helpers.parseFleetBudget`), so the ceiling that admits a
 /// run and the ceiling that kills it can never be interpreted two ways.
-fn parseStoredBudget(alloc: std.mem.Allocator, budget_json: []const u8) !FleetBudget {
+///
+/// Three outcomes: `null` = not a budget OBJECT (JSON null / scalar / array) →
+/// no ceiling declared → admit, like a missing key (a present-but-null key
+/// renders as the text `"null"`, so without this it would fail closed and kill
+/// in-flight runs). `error.UnreadableBudget` = a budget OBJECT that won't
+/// validate → someone botched a ceiling → fail closed. A `FleetBudget` = valid.
+pub fn parseStoredBudget(alloc: std.mem.Allocator, budget_json: []const u8) !?FleetBudget {
     const parsed = std.json.parseFromSlice(std.json.Value, alloc, budget_json, .{}) catch
         return BudgetError.UnreadableBudget;
     defer parsed.deinit();
     const obj = switch (parsed.value) {
         .object => |o| o,
-        else => return BudgetError.UnreadableBudget,
+        else => return null, // not a declared ceiling → admit
     };
     return config_helpers.parseFleetBudget(obj) catch BudgetError.UnreadableBudget;
-}
-
-// ── Inline tests for the module-private helpers ─────────────────────────────
-// The public surface is tested in `budget_test.zig`; these two reach functions
-// that stay private, so they live beside them.
-
-const testing = std.testing;
-
-test "windowFloors derives both bounds from one now_ms" {
-    // 2026-07-10T16:04:00Z
-    const now: i64 = 1_783_699_440_000;
-    const floors = windowFloors(now);
-    try testing.expectEqual(now - std.time.ms_per_day, floors.day);
-    try testing.expectEqual(@as(i64, 1_782_864_000_000), floors.month); // 2026-07-01T00:00:00Z
-    // The month floor is never after the day floor within the first 24h of a
-    // month, and both are <= now — the scan bound `LEAST(day, month)` is sound.
-    try testing.expect(floors.day <= now and floors.month <= now);
-}
-
-test "parseStoredBudget rejects malformed budgets rather than admitting them" {
-    // Valid.
-    const ok = try parseStoredBudget(testing.allocator, "{\"daily_dollars\": 5.0}");
-    try testing.expectEqual(@as(f64, 5.0), ok.daily_dollars);
-    try testing.expectEqual(@as(?f64, null), ok.monthly_dollars);
-
-    // Negative, zero, over-bound, wrong shape, and non-JSON all fail CLOSED.
-    try testing.expectError(BudgetError.UnreadableBudget, parseStoredBudget(testing.allocator, "{\"daily_dollars\": -1}"));
-    try testing.expectError(BudgetError.UnreadableBudget, parseStoredBudget(testing.allocator, "{\"daily_dollars\": 0}"));
-    try testing.expectError(BudgetError.UnreadableBudget, parseStoredBudget(testing.allocator, "{\"daily_dollars\": 1001}"));
-    try testing.expectError(BudgetError.UnreadableBudget, parseStoredBudget(testing.allocator, "{}"));
-    try testing.expectError(BudgetError.UnreadableBudget, parseStoredBudget(testing.allocator, "[]"));
-    try testing.expectError(BudgetError.UnreadableBudget, parseStoredBudget(testing.allocator, "not json"));
-}
-
-test "parseStoredBudget round-trips a monthly ceiling" {
-    const b = try parseStoredBudget(testing.allocator, "{\"daily_dollars\": 1.0, \"monthly_dollars\": 8.0}");
-    try testing.expectEqual(@as(f64, 1.0), b.daily_dollars);
-    try testing.expectEqual(@as(?f64, 8.0), b.monthly_dollars);
 }
