@@ -29,6 +29,16 @@ pub const FIELD_INTEGRATION: []const u8 = "integration";
 /// Vault-handle field carrying a stored token (the `static` integration).
 const FIELD_TOKEN: []const u8 = "token";
 
+/// Vault-handle credential fields that rotate on an ordinary token refresh.
+/// Single source for the connect callbacks (which write them), the oauth2
+/// refresh mint (which reads the response twins), and the broker's cache
+/// fingerprint (which EXCLUDES them: a rotation must stay a cache hit, while
+/// any other field change is an identity change and must miss).
+pub const FIELD_REFRESH_TOKEN: []const u8 = "refresh_token";
+pub const FIELD_ACCESS_TOKEN: []const u8 = "access_token";
+pub const FIELD_EXPIRES_AT_MS: []const u8 = "expires_at_ms";
+pub const ROTATING_CREDENTIAL_FIELDS = [_][]const u8{ FIELD_REFRESH_TOKEN, FIELD_ACCESS_TOKEN, FIELD_EXPIRES_AT_MS };
+
 /// Far-future sentinel for a credential with no upstream expiry (a stored PAT).
 const STATIC_NEVER_EXPIRES_MS: i64 = std.math.maxInt(i64);
 
@@ -43,6 +53,10 @@ pub const Id = enum { static, github, zoho, jira, linear };
 pub const Minted = struct {
     token: []const u8,
     expires_at_ms: i64,
+    /// Non-null only when the exchange rotated the stored refresh token
+    /// (oauth2_refresh, rotating providers). Owned by the mint's allocator;
+    /// the mint handler persists it back to the vault.
+    rotated_refresh_token: ?[]const u8 = null,
 };
 
 /// Whether a `mint_failed` is worth retrying (ECL): `transient` for upstream 5xx /

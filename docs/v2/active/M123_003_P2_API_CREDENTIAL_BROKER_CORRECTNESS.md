@@ -57,7 +57,9 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `src/agentsfleetd/credentials/broker.zig` | EDIT | cache key folds a stable-identity fingerprint of the handle; the `ok` return threads a rotated refresh token from the miss path (null on a cache hit) |
 | `src/agentsfleetd/credentials/broker_test.zig` | EDIT | reconnect-changes-identity → fresh mint; refresh-only change → cache hit; rotated token propagated on miss, null on hit; ownership/leak under `testing.allocator` |
 | `src/agentsfleetd/credentials/integration.zig` | EDIT | `Minted` gains `rotated_refresh_token: ?[]const u8 = null`; shared rotating-field-name constants for the fingerprint exclusion set |
-| `src/agentsfleetd/credentials/integration_oauth_refresh.zig` | EDIT | `RESP_FIELD_REFRESH_TOKEN` const; `parseAccess` returns the response's refresh token when present and different from the one posted |
+| `src/agentsfleetd/credentials/integration_oauth_refresh.zig` | EDIT | `RESP_FIELD_REFRESH_TOKEN` const; `parseAccess` returns the response's refresh token when present and different from the one posted; in-file mint tests extracted to the sibling test file (File & Function Length gate — the file was at 336/350) |
+| `src/agentsfleetd/credentials/integration_oauth_refresh_test.zig` | ADD | the extracted oauth2-refresh mint suite + the new rotation-capture tests (amended at EXECUTE: FLL forced the extraction) |
+| `src/agentsfleetd/tests.zig` | EDIT | one test-discovery line for the extracted test file (amended at EXECUTE) |
 | `src/agentsfleetd/http/handlers/runner/credentials_mint.zig` | EDIT | after a successful mint with a rotated token, re-acquire a conn and write the updated handle back to the vault; warn-log on write-back failure (RULE OBS) |
 | `src/agentsfleetd/http/handlers/connectors/oauth_refresh.zig` | EDIT | shared helper to merge a rotated refresh token into an existing handle and re-store it; export the rotating field-name constants for reuse |
 | `src/agentsfleetd/http/handlers/runner/credentials_mint_integration_test.zig` | EDIT | end-to-end write-back: a rotating-provider cold mint updates the vaulted refresh token; a non-rotating mint leaves it unchanged |
@@ -85,7 +87,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ## Sections (implementation slices)
 
-### §1 — Cache key folds a stable-identity fingerprint
+### §1 — Cache key folds a stable-identity fingerprint — DONE
 
 The token cache keys on `(workspace, integration)` alone, so a rewritten handle (reconnect to a different github installation, a rotated static PAT) is served the previously-minted token until skew. Fold a fingerprint of the handle's STABLE identity into the key: hash the handle object with the rotating-credential fields removed. **Implementation default:** a 64-bit non-cryptographic hash (`std.hash.Wyhash`) over the handle's identity fields in a canonical key order (sort keys so parser/insertion order can't change the fingerprint), excluding a named field set — `refresh_token`, `access_token`, and `expires_at_ms`; the fixed-width fingerprint is appended to the existing key buffer after the integration tag. Excluding the rotating fields is required so §2/§3's write-back does not force a cache miss on every request for a rotating provider (Decomposition). This fingerprint fix subsumes the secondary "bound the static cache below 24h" proposal — a rotated static PAT changes the fingerprint and re-mints immediately — so `MAX_TTL_S` is left unchanged.
 
@@ -93,14 +95,14 @@ The token cache keys on `(workspace, integration)` alone, so a rewritten handle 
 - **Dimension 1.2** — two mints whose handles differ ONLY in an excluded rotating field (`refresh_token`) share a cache hit (the second returns the cached token, no second exchange) → Test `test_refresh_only_change_hits_cache`
 - **Dimension 1.3** — the fingerprint is order-independent: two handles with identical fields in different JSON key order produce the same cache key (one exchange across both mints) → Test `test_fingerprint_canonical_order`
 
-### §2 — OAuth refresh mint captures a rotated refresh token
+### §2 — OAuth refresh mint captures a rotated refresh token — DONE
 
 `parseAccess` reads only the access token and expiry; a rotated `refresh_token` in the response body is parsed into the JSON value and freed unread. Add the response-field constant and return the rotated token on the `ok` outcome when the body carries a `refresh_token` that differs from the one posted (a non-rotating provider that omits or echoes the same token yields `null` — no needless write-back). **Implementation default:** dedupe against the posted refresh token inside the strategy (it holds both values), so the handler stays simple; the returned token is duped with `ctx.alloc` and owned by the caller.
 
 - **Dimension 2.1** — a refresh response carrying a NEW `refresh_token` returns it as `Minted.rotated_refresh_token` alongside the fresh access token → Test `test_refresh_response_rotates_token`
 - **Dimension 2.2** — a refresh response that omits `refresh_token`, or echoes the posted one unchanged, returns `rotated_refresh_token = null` → Test `test_refresh_response_no_rotation`
 
-### §3 — Broker threads it; the mint handler persists it
+### §3 — Broker threads it; the mint handler persists it — DONE
 
 The broker returns `rotated_refresh_token` on `MintResult.ok` from the miss path (a cache hit did no exchange, so it stays `null`), owning/duping the copy for the caller and freeing the strategy's copy exactly once. The mint handler, after a successful mint carrying a rotated token, re-acquires a conn (the mint's conn was already released before the network exchange) and writes the updated handle back to the vault via the shared merge-and-store helper. A write-back failure is logged at warn and never fails the request — the child already holds a valid access token; the honest bound is that a crash in the sub-second persist window still costs one forced reconnect (Failure Modes / Discovery), reduced from "every ~1h, always."
 
@@ -151,7 +153,9 @@ The cache-key layout is internal and exposes no wire shape; the vaulted handle s
 
 | Metric / event | Owner | Fires when | Properties allowed | Privacy guard | Test proof |
 |----------------|-------|------------|--------------------|---------------|------------|
-| `credential_mint.refresh_rotated` warn/info log | ops | §3 persists a rotated refresh token or its write-back fails | `workspace_id`, `integration`, outcome (persisted/failed), `err` name on failure | no token/refresh-token bytes in the log line (VLT) | `test_mint_persists_rotated_refresh_token`, `test_write_back_failure_logged_not_fatal` |
+| `credential_mint.refresh_rotated` warn (failed) / debug (persisted) log | ops | §3 persists a rotated refresh token or its write-back fails | `workspace_id`, `integration`, outcome (persisted/failed), `err` name on failure | no token/refresh-token bytes in the log line (VLT) | `test_mint_persists_rotated_refresh_token`, `test_write_back_failure_logged_not_fatal` |
+
+Amended at EXECUTE (spec-vs-rules): the authored "warn/info" pair violated `LOGGING_STANDARD.md` §10A.L4 (the `info` allow-list is fixed) — the persisted branch logs at `debug`. The failure `warn` carries no `error_code` per §5/§100: the mint itself succeeded, no wire error maps to the best-effort persist failure, and the domain consequence surfaces on a later mint as the already-registered `UZ-CONN-006`.
 
 ## Test Specification (tiered)
 
@@ -174,17 +178,17 @@ Regression: existing broker tests (`test_...caches a token within validity`, `..
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | Reconnect/rotation of identity re-mints; refresh-only change hits cache (§1) | `make test` | exit 0 incl. the three §1 tests | P0 | |
-| R2 | Rotated refresh token captured + persisted (§2/§3) | `make test-integration` | exit 0 incl. `test_mint_persists_rotated_refresh_token` | P0 | |
-| R3 | Non-rotating provider unaffected — handle unchanged, no write-back (§3) | `make test-integration` | exit 0 incl. `test_mint_no_rotation_leaves_handle_unchanged` | P0 | |
-| R4 | No token/refresh bytes logged in the write-back branches | `grep -n "refresh_rotated" src/agentsfleetd/http/handlers/runner/credentials_mint.zig` | log line names only `workspace_id`/`integration`/outcome/`err`, no token arg | P0 | |
-| R5 | Diff stays inside Files Changed | `git diff --name-only origin/main` | 0 paths missing from the Files Changed table | P0 | |
-| S1 | Unit tests pass | `make test` | exit 0 | P0 | |
-| S2 | Lint clean | `make lint` | exit 0 | P0 | |
-| S3 | Integration passes | `make test-integration` | exit 0 | P0 | |
-| S5 | No leaks (broker token-copy ownership touched) | `make memleak` | exit 0 | P0 | |
-| S6 | Cross-compile | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` | exit 0 | P0 | |
-| S7 | No secrets | `gitleaks detect` | exit 0 | P0 | |
+| R1 | Reconnect/rotation of identity re-mints; refresh-only change hits cache (§1) | `make test-unit-all` | exit 0 incl. the three §1 tests | P0 | ✅ all four sub-lanes exit 0 (`test depth gate passed (unit=2414 integration=270)`) |
+| R2 | Rotated refresh token captured + persisted (§2/§3) | `make test-integration` | exit 0 incl. `test_mint_persists_rotated_refresh_token` | P0 | ✅ exit 0; execution proven by sabotage canary going red in this lane |
+| R3 | Non-rotating provider unaffected — handle unchanged, no write-back (§3) | `make test-integration` | exit 0 incl. `test_mint_no_rotation_leaves_handle_unchanged` | P0 | ✅ exit 0 (updated_at sentinel unchanged) |
+| R4 | No token/refresh bytes logged in the write-back branches | `grep -n "refresh_rotated" src/agentsfleetd/http/handlers/runner/credentials_mint.zig` | log line names only `workspace_id`/`integration`/outcome/`err`, no token arg | P0 | ✅ lines 142/145 carry exactly those fields |
+| R5 | Diff stays inside Files Changed | `git diff --name-only origin/main` | 0 paths missing from the Files Changed table | P0 | ✅ 9 code paths = amended table; +the spec file itself |
+| S1 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | ✅ agentsfleetd/runner/lib/coverage each exit 0 (`Ran 1305 tests across 143 files`) |
+| S2 | Lint clean | `make lint-all` | exit 0 | P0 | ✅ `All lint checks passed` |
+| S3 | Integration passes | `make test-integration` | exit 0 | P0 | ✅ exit 0 (`Full integration suite passed`); isolated-stack re-run `2028 pass, 10 skip` — see Session Notes on shared-stack interference |
+| S5 | No leaks (broker token-copy ownership touched) | `make memleak` | exit 0 | P0 | ✅ `1541 passed; 498 skipped; 0 failed` |
+| S6 | Cross-compile | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` | exit 0 | P0 | ✅ both targets exit 0 |
+| S7 | No secrets | `gitleaks detect` | exit 0 | P0 | ✅ `no leaks found` (153.24 MB scanned) |
 | S8 | No oversize source file | `git diff --name-only origin/main \| grep -v '\.md$' \| xargs wc -l 2>/dev/null \| awk '$1>350 && $2!="total"'` | no output | P0 | |
 
 **Grading protocol (VERIFY):** run the Verify command verbatim; grade ONLY from its output. Graded = ✅/❌ + the one decisive output line (`342 passed`); long evidence goes to PR Session Notes with a pointer here. **Ship gate:** every row graded, every P0 ✅ → eligible for CHORE(close); any ❌ or empty cell → return to EXECUTE; a P1 ❌ ships only with an Indy-acked deferral quote in Discovery.
@@ -223,10 +227,10 @@ N/A — no files deleted. No public symbol renamed; the new `Minted` field and t
 
 ## Discovery (consult log)
 
-- **Consults** — Architecture / Legacy-Design / gate-flag triage: empty at creation..
+- **Consults** — Architecture: no consult needed — the cache-key layout is broker-internal; neither `data_flow.md` nor `runner_fleet.md` describes it, and the mint flow shape is unchanged. Legacy-Design: none triggered. Gate-flag triage (mechanical, auto-applied): UFS flagged four inline `3600`s in the new broker tests → extracted to shared response-body consts; LENGTH forced the oauth2-refresh test extraction (Files Changed amended).
 - **Refuted-finding record** — a third audit finding claimed a missing single-flight guard caused refresh-token reuse detection to revoke the token family. The refuter killed it: for a genuinely rotating provider the design is already broken SEQUENTIALLY because the rotated token is never persisted; single-flight would delay revocation by one mint cycle, not prevent it. Root cause = rotation-persistence (§2/§3); the concurrency framing was a red herring. No single-flight added.
 - **Provider rotation scope (established from code)** — Zoho refresh tokens are permanent (unaffected); Jira/Atlassian 3LO rotates by default (the confirmed break); Linear returns refresh pairs (`linear/callback.zig`) but is not asserted to rotate on refresh — the fix is provider-agnostic (persist-if-rotated), correct for whichever provider rotates and a no-op for those that do not, so scope is pinned to behavior, not a provider allow-list.
 - **Severity honesty** — both findings verified P2 (1/1 uphold each): finding 1 is a bounded least-privilege lag (self-healing at ≤1h expiry, needs an already-privileged operator, single cache entry — not cross-tenant/unauth); finding 2 forces a roughly-hourly reconnect for a rotating provider only. Neither is a live cross-tenant or unauthenticated exploit.
 - **Metrics review** — one scoped log line added (`credential_mint.refresh_rotated`); no analytics/funnel playbook applies to backend credential plumbing.
-- **Skill-chain outcomes** — empty at creation..
+- **Skill-chain outcomes** — `/write-unit-test`: diff ledger 11/11 resolved (8 tested, 3 won't-test with reasons: private fingerprint helpers proven through the public mint surface; shared constants compile-checked; handler extraction is behavior-preserving line moves). Audit added two tests beyond the spec's ten: the writeKey key-buffer-overflow fail-closed path, and an exhaustive FailingAllocator sweep over the oauth2_refresh mint (every allocation index, zero leaks). Mutation probes 2/2 killed doubling as red-green proof: fingerprint neutered to a constant → `test_reconnect_identity_change_remints` red; rotation capture forced null → `test_broker_threads_rotated_on_miss_only` red + rotation test crash. Test Delta vs baseline: unit 2402→2414 (+12), integration 267→270 (+3).
 - **Deferrals** — empty at creation..

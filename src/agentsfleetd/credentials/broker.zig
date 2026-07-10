@@ -32,9 +32,13 @@ pub const EXPIRY_SKEW_MS: i64 = 60_000;
 const CACHE_SEGMENTS: u16 = 64;
 const CACHE_MAX_ENTRIES: u32 = 8192;
 
-/// Cache-key separator joining (workspace, integration). ASCII unit separator —
-/// never present in either field, so key boundaries cannot collide.
+/// Cache-key separator joining (workspace, integration, fingerprint). ASCII unit
+/// separator — never present in any field, so key boundaries cannot collide.
 const KEY_SEP: u8 = 0x1f;
+
+/// Wyhash seed for the identity fingerprint. Any fixed value works — the
+/// fingerprint only ever compares against itself within this process's cache.
+const FP_SEED: u64 = 0;
 
 /// Floor for the cache.zig TTL (seconds); our own `now_ms` skew check is the
 /// authoritative expiry, so this is only a backstop that must stay positive.
@@ -110,27 +114,21 @@ pub fn mint(
         return .unknown_integration;
     };
     var key_buf: [512]u8 = undefined;
-    const key = writeKey(&key_buf, workspace, @tagName(id)) orelse return .{ .mint_failed = .permanent };
+    const key = writeKey(&key_buf, workspace, @tagName(id), identityFingerprint(handle)) orelse return .{ .mint_failed = .permanent };
 
     if (self.store.get(key)) |entry| {
         defer entry.release();
         if (now_ms < entry.value.expires_at_ms - EXPIRY_SKEW_MS) {
             const tok = alloc.dupe(u8, entry.value.token) catch return .{ .mint_failed = .transient };
             self.emit(@tagName(id), OUTCOME_OK, true);
+            // A hit did no exchange, so rotated_refresh_token stays null.
             return .{ .ok = .{ .token = tok, .expires_at_ms = entry.value.expires_at_ms } };
         }
         // present but past our skew → fall through to re-mint (put overwrites it).
     }
 
-    const outcome = self.runMint(id, handle, now_ms);
-    switch (outcome) {
-        .ok => |minted| {
-            defer self.alloc.free(minted.token); // runMint handed us an owned copy
-            self.cacheMinted(key, minted, now_ms);
-            const tok = alloc.dupe(u8, minted.token) catch return .{ .mint_failed = .transient };
-            self.emit(@tagName(id), OUTCOME_OK, false);
-            return .{ .ok = .{ .token = tok, .expires_at_ms = minted.expires_at_ms } };
-        },
+    switch (self.runMint(id, handle, now_ms)) {
+        .ok => |minted| return self.finishColdMint(alloc, key, @tagName(id), minted, now_ms),
         .reconnect_required => {
             self.emit(@tagName(id), OUTCOME_RECONNECT, false);
             return .reconnect_required;
@@ -140,6 +138,26 @@ pub fn mint(
             return .{ .mint_failed = retry };
         },
     }
+}
+
+/// Cache + hand back a cold-path mint. The strategy's owned copies are freed
+/// here exactly once; the caller receives independent dupes — including the
+/// rotated refresh token when the exchange rotated it (RULE OWN: one free path
+/// per allocation, proven leak-free under `std.testing.allocator`).
+fn finishColdMint(self: *CredentialBroker, alloc: std.mem.Allocator, key: []const u8, id_name: []const u8, minted: integration.Minted, now_ms: i64) integration.MintResult {
+    defer self.alloc.free(minted.token); // runMint handed us an owned copy
+    defer if (minted.rotated_refresh_token) |rt| self.alloc.free(rt);
+    self.cacheMinted(key, minted, now_ms);
+    const tok = alloc.dupe(u8, minted.token) catch return .{ .mint_failed = .transient };
+    const rotated: ?[]const u8 = if (minted.rotated_refresh_token) |rt|
+        alloc.dupe(u8, rt) catch {
+            alloc.free(tok); // the only owner so far — free before failing closed
+            return .{ .mint_failed = .transient };
+        }
+    else
+        null;
+    self.emit(id_name, OUTCOME_OK, false);
+    return .{ .ok = .{ .token = tok, .expires_at_ms = minted.expires_at_ms, .rotated_refresh_token = rotated } };
 }
 
 /// Store a freshly-minted token (cache.zig owns the duped bytes; frees via
@@ -192,12 +210,86 @@ fn emit(self: *CredentialBroker, integration_name: []const u8, outcome: []const 
     });
 }
 
-fn writeKey(buf: []u8, workspace: []const u8, id_name: []const u8) ?[]const u8 {
-    if (workspace.len + id_name.len + 1 > buf.len) return null;
+fn writeKey(buf: []u8, workspace: []const u8, id_name: []const u8, fingerprint: u64) ?[]const u8 {
+    if (workspace.len + id_name.len + 2 > buf.len) return null;
     @memcpy(buf[0..workspace.len], workspace);
     buf[workspace.len] = KEY_SEP;
     @memcpy(buf[workspace.len + 1 ..][0..id_name.len], id_name);
-    return buf[0 .. workspace.len + 1 + id_name.len];
+    var pos = workspace.len + 1 + id_name.len;
+    buf[pos] = KEY_SEP;
+    pos += 1;
+    // Fixed-width hex keeps the key length predictable and the bytes printable.
+    const fp_hex = std.fmt.bufPrint(buf[pos..], "{x:0>16}", .{fingerprint}) catch return null;
+    return buf[0 .. pos + fp_hex.len];
+}
+
+/// 64-bit fingerprint of the handle's STABLE identity: every top-level field
+/// except the rotating-credential set (`integration.ROTATING_CREDENTIAL_FIELDS`).
+/// An ordinary refresh-token rotation keeps the fingerprint (cache hit); a
+/// reconnect or re-stored credential changes a non-excluded field and misses,
+/// so a stale token is structurally unreachable. Non-object handles (rejected
+/// upstream by `parseIntegration`) hash their raw value defensively.
+fn identityFingerprint(handle: std.json.Value) u64 {
+    var hasher = std.hash.Wyhash.init(FP_SEED);
+    switch (handle) {
+        .object => |obj| hashObject(&hasher, obj, true),
+        else => hashValue(&hasher, handle),
+    }
+    return hasher.final();
+}
+
+/// Hash `obj` in canonical (ascending key) order via an allocation-free
+/// selection walk, so JSON parser/insertion order cannot change the result.
+/// `exclude_rotating` drops the rotating-credential fields (top level only).
+fn hashObject(hasher: *std.hash.Wyhash, obj: std.json.ObjectMap, exclude_rotating: bool) void {
+    var prev: ?[]const u8 = null;
+    while (nextKeyAfter(obj, prev, exclude_rotating)) |key| {
+        hasher.update(key);
+        hasher.update(&[_]u8{KEY_SEP});
+        hashValue(hasher, obj.get(key).?);
+        prev = key;
+    }
+}
+
+/// The smallest key strictly greater than `prev` (null → the smallest key),
+/// skipping excluded fields. O(n²) over a vault handle's handful of fields —
+/// cheaper than allocating and sorting a key list on the mint hot path.
+fn nextKeyAfter(obj: std.json.ObjectMap, prev: ?[]const u8, exclude_rotating: bool) ?[]const u8 {
+    var best: ?[]const u8 = null;
+    var it = obj.iterator();
+    while (it.next()) |e| {
+        const k = e.key_ptr.*;
+        if (exclude_rotating and isRotatingField(k)) continue;
+        if (prev) |p| {
+            if (std.mem.order(u8, k, p) != .gt) continue;
+        }
+        if (best == null or std.mem.order(u8, k, best.?) == .lt) best = k;
+    }
+    return best;
+}
+
+fn isRotatingField(name: []const u8) bool {
+    for (integration.ROTATING_CREDENTIAL_FIELDS) |f| {
+        if (std.mem.eql(u8, name, f)) return true;
+    }
+    return false;
+}
+
+/// Hash a JSON value with a leading type tag, so `"5"` and `5` (or `null` and
+/// an empty string) cannot collide. Arrays keep their order (order is
+/// meaningful); nested objects re-canonicalize but never exclude (the rotating
+/// exclusion applies at the handle's top level only).
+fn hashValue(hasher: *std.hash.Wyhash, v: std.json.Value) void {
+    hasher.update(&[_]u8{@intFromEnum(std.meta.activeTag(v))});
+    switch (v) {
+        .null => {},
+        .bool => |b| hasher.update(&[_]u8{@intFromBool(b)}),
+        .integer => |n| hasher.update(std.mem.asBytes(&n)),
+        .float => |f| hasher.update(std.mem.asBytes(&f)),
+        .number_string, .string => |s| hasher.update(s),
+        .array => |arr| for (arr.items) |item| hashValue(hasher, item),
+        .object => |obj| hashObject(hasher, obj, false),
+    }
 }
 
 fn parseIntegration(handle: std.json.Value) ?integration.Id {
