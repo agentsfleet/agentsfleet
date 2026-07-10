@@ -113,22 +113,24 @@ jobs:
           fi
 
   safety-gates:
-    # The repo-hygiene gates that live under `make lint-all` but were never run
-    # by CI, so a broken architecture reference, an ungated vault reader, a
-    # deploy-safety regression, or REST-guide drift could merge green. Each is a
-    # static check needing only shellcheck (on the runner image), python3, and
-    # flock (util-linux, present) — no bun/zig build. GitHub sets CI=true, so
-    # check-deploy-safety's flock lock tests run here rather than skip.
+    # Repo-hygiene gates that lived under `make lint-all` but were never run by
+    # CI, so a broken architecture reference, an ungated vault reader, or a
+    # deploy-safety regression could merge green. Each is a static check needing
+    # only shellcheck (on the runner image) and flock (util-linux, present) — no
+    # bun/zig build. GitHub sets CI=true, so check-deploy-safety's flock lock
+    # tests run here rather than skip.
+    #
+    # check-route-registration-doc is deliberately absent: its subject,
+    # docs/REST_API_DESIGN_GUIDELINES.md, is committed as an absolute-path symlink
+    # into a developer's dotfiles, so it dangles in a fresh CI checkout. That gate
+    # stays in `make lint-all` + the pre-commit hook, which run where the dotfiles
+    # resolve. Making it a CI gate would need the doc de-symlinked first (a
+    # separate, dotfiles-owned change).
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.14"
       - name: Playbooks (shellcheck + refs + vault-gate parity)
         run: make check-playbooks
-      - name: REST guide route-registration freshness
-        run: make check-route-registration-doc
       - name: Architecture doc consistency
         run: make check-architecture-doc
       - name: Deploy version/lock safety
