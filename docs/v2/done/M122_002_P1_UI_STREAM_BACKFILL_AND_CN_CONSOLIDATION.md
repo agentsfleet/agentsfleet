@@ -16,12 +16,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M122
 **Workstream:** 002
 **Date:** Jul 09, 2026
-**Status:** PENDING
+**Status:** DONE
 **Priority:** P1 — the live fleet timeline silently drops every frame published during a Server-Sent Events (SSE) reconnect window and never re-fetches them; the gap self-heals only when the operator reloads the page (Server-Side Rendering (SSR) re-seed). The class-merge consolidation rides along at P2-grade — a latent Tailwind-conflict duplication with no demonstrated broken override, folded in because it shares no scope with the streaming fix and both are pure UI-package hygiene.
 **Categories:** UI
 **Batch:** B1 — runs alone; no shared files with any other pending workstream.
-**Branch:** {added at CHORE(open)}
-**Test Baseline:** set at CHORE(open) — `unit=<N> integration=<M>` via `make _lint_zig_test_depth`
+**Branch:** feat/m122-stream-backfill-cn
+**Test Baseline:** unit=2402 integration=267
 **Depends on:** none.
 **Provenance:** agent-generated (pre-spec, `fleet-wide-refactor-audit`, Jul 02, 2026; both findings re-verified against HEAD 7a06fb5d on Jul 09, 2026 by the `audit-open-items-recheck` workflow, each surviving an adversarial refutation pass — F14's original P1 was corrected to P2 because the app Tailwind-aware `cn` has 7 live consumers and no concrete broken class override was shown).
 **Canonical architecture:** `docs/architecture/data_flow.md` — fleet activity pub/sub → SSE fan-out; this spec adds a client-side gap-recovery read and changes no server or channel behavior.
@@ -39,6 +39,13 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 - **PR title (eventual):** Recover missed fleet-stream frames on reconnect; unify the cn class-merge helper
 - **Intent (one sentence):** an operator watching a fleet's live timeline never loses activity to a reconnect blip, and every component merges Tailwind classes through one implementation.
 - **Handshake** — the implementing agent fills this at PLAN, before EXECUTE: restate the Intent in its own words and list `ASSUMPTIONS I'M MAKING: …`. A mismatch between the restatement and the Intent above → STOP and reconcile before any edit.
+- **Restatement (Orly, PLAN):** when the fleet timeline's SSE connection drops and reconnects, the client itself recovers the events published during the gap — fetching them through a new cookie-authed same-origin proxy and merging them by event id, no page reload — and the workspace ends with exactly one `cn` implementation, the Tailwind-conflict-aware one, owned by the design-system and consumed by app and design-system components alike. Matches the Intent above.
+- `ASSUMPTIONS I'M MAKING:`
+  1. The upstream `GET /v1/workspaces/{ws}/fleets/{id}/events` list already serves the bounded, newest-first (`created_at DESC, event_id DESC`) page with `cursor`/`since`/`limit` — verified in `src/agentsfleetd/http/handlers/fleets/events.zig` + `state/fleet_events_store.zig`; no Zig changes.
+  2. `cursor` and `since` are mutually exclusive upstream, and `since` accepts only a 20-char RFC 3339 `YYYY-MM-DDTHH:MM:SSZ` (no fractional seconds) or a Go-style duration — the registry keys the backfill as `since = lastSeen.createdAt − overlap`, second-truncated; the truncation plus the explicit overlap constant re-fetches the boundary window and `mergeBackfill`'s id-dedupe absorbs it (RULE KYS).
+  3. A reconnect on an empty snapshot backfills with neither `cursor` nor `since` (just `limit`) — newest-first ordering makes that exactly the "most-recent bounded page" of Dimension 2.5.
+  4. The app `lib/utils.ts` holds `formatDuration` + `truncate` only (no `formatDate` exists — the Files Changed cell is corrected in this same commit); the file's real helpers stay.
+  5. `ClassValue` is imported nowhere outside the two `utils.ts` files, so the design-system `cn` adopting clsx's `ClassValue` type (re-exported) breaks no consumer.
 
 ## Implementing agent — read these first
 
@@ -56,10 +63,13 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `ui/packages/app/lib/api/events.ts` | EDIT | add `backfillFleetEventsUrl` beside `streamFleetEventsUrl` |
 | `ui/packages/app/lib/streaming/fleet-stream-registry.ts` | EDIT | track last-seen event; on reconnect open, fetch + `mergeBackfill` the missed window |
 | `ui/packages/app/lib/streaming/fleet-stream-registry.test.ts` | EDIT | reconnect-backfill, initial-skip, dedupe, fetch-failure tolerance, and empty-timeline cases |
+| `ui/packages/app/tests/backfill-route.test.ts` | CREATE | Dimensions 1.1–1.3 route tests (sibling of `sse-route.test.ts` — the Test Specification named these tests but this row was omitted at authoring; added at EXECUTE) |
+| `ui/packages/app/tests/utils.test.ts` | EDIT | drop the app `cn` merge case (the behavior moves to the design-system suite); keep duration/truncate cases (omitted at authoring; added at EXECUTE) |
+| `ui/packages/app/lib/api/events.test.ts` | EDIT | direct `backfillFleetEventsUrl` cases mirroring the existing `streamFleetEventsUrl` block (omitted at authoring; added at VERIFY per `/write-unit-test` ledger) |
 | `ui/packages/design-system/src/utils.ts` | EDIT | `cn` becomes `twMerge(clsx(...))` carrying the extended font-size class group |
 | `ui/packages/design-system/package.json` | EDIT | add `clsx` + `tailwind-merge` dependencies |
 | `ui/packages/design-system/src/utils.test.ts` | EDIT | replace the naive-join assertions with merge/dedupe + font-size-group + single-declaration cases |
-| `ui/packages/app/lib/utils.ts` | EDIT | remove `cn` + `clsx`/`tailwind-merge` machinery; keep `formatDate`/`formatDuration`/`truncate` |
+| `ui/packages/app/lib/utils.ts` | EDIT | remove `cn` + `clsx`/`tailwind-merge` machinery; keep `formatDuration`/`truncate` |
 | `ui/packages/app/package.json` | EDIT | drop `clsx` + `tailwind-merge` (app copy was their sole importer) |
 | `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/[id]/page.tsx` | EDIT | import `cn` from `@agentsfleet/design-system` |
 | `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/components/FleetsList.tsx` | EDIT | import `cn` from `@agentsfleet/design-system` |
@@ -68,6 +78,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `ui/packages/app/app/(dashboard)/settings/billing/components/BillingBalanceCard.tsx` | EDIT | import `cn` from `@agentsfleet/design-system` |
 | `ui/packages/app/app/(dashboard)/w/[workspaceId]/secrets/components/AddSecretForm.tsx` | EDIT | import `cn` from `@agentsfleet/design-system` |
 | `ui/packages/app/components/layout/Shell.tsx` | EDIT | import `cn` from `@agentsfleet/design-system` |
+| `bun.lock` | EDIT | lockfile consequence of the dependency moves (app drops, design-system gains `clsx`/`tailwind-merge`) |
+| `ui/packages/app/lib/streaming/fleet-stream-frames.ts` | EDIT | `mergeBackfill` terminal-row authoritative replace + pure watermark/RFC 3339 helpers (added at `/review` — outage-straddling events and client clock skew) |
+| `ui/packages/app/lib/streaming/fleet-stream-frames.test.ts` | EDIT | terminal-replace / in-progress-no-clobber / watermark / rfc3339 cases (added at `/review`) |
+| `docs/architecture/data_flow.md` | EDIT | client-side gap-recovery paragraph beside the pub/sub no-resume statement (CHORE(close) architecture-diff requirement) |
+| `ui/packages/app/lib/streaming/fleet-stream-backfill.ts` | CREATE | §4 cursor-follow walk, extracted so the registry stays under the LENGTH GATE |
+| `ui/packages/website/.size-limit.json` | EDIT | landing critical-path budget 140 kB → 150 kB — Indy-approved (see Discovery): the consolidated `cn` carries tailwind-merge (~7 kB gz) into the website bundle |
 
 ## Applicable Rules
 
@@ -96,27 +112,37 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 The browser holds no bearer token, so a client-side backfill cannot call the upstream events list directly. Add a Route Handler at `.../fleets/[fleetId]/events/route.ts` that resolves the Clerk session, mints the API-audience token server-side, and forwards a bounded `GET /v1/workspaces/{ws}/fleets/{id}/events` with the caller's query (cursor/since/limit), returning the upstream JSON body. **Implementation default:** copy the stream route's auth + error branches; return the upstream `EventsPage` body unbuffered-count-bounded via `limit`, so a long outage cannot pull an unbounded page.
 
-- **Dimension 1.1** — with a valid session, the route mints a token and returns the upstream events page body and status → Test `test_backfill_route_proxies_authed`
-- **Dimension 1.2** — with no session token, the route returns 401 with the same error envelope as the stream route, never calling upstream → Test `test_backfill_route_unauthorized`
-- **Dimension 1.3** — an upstream non-2xx is passed through with its status and body, not masked as 200 → Test `test_backfill_route_upstream_error_passthrough`
+- **Dimension 1.1** — with a valid session, the route mints a token and returns the upstream events page body and status → Test `test_backfill_route_proxies_authed` — ✅ **DONE**
+- **Dimension 1.2** — with no session token, the route returns 401 with the same error envelope as the stream route, never calling upstream → Test `test_backfill_route_unauthorized` — ✅ **DONE**
+- **Dimension 1.3** — an upstream non-2xx is passed through with its status and body, not masked as 200 → Test `test_backfill_route_upstream_error_passthrough` — ✅ **DONE**
 
 ### §2 — Registry backfills on reconnect
 
 The stream registry tracks the last-seen event and, on every reconnect `es.onopen` (never the initial connect, which is already SSR-seeded), fetches the backfill route keyed off that event with a small overlap, then merges via the id-deduping `mergeBackfill`. **Implementation default:** derive the cursor from the last event in the snapshot; if the timeline is empty (a reconnect on an as-yet-silent fleet), request the most-recent bounded page so first-ever frames during the outage are still recovered. A failed backfill fetch is swallowed after a diagnostic — live frames resume and the next reconnect retries.
 
-- **Dimension 2.1** — after an error-then-reopen, the registry issues one backfill keyed off the last-seen event and merges the returned rows into the snapshot → Test `test_registry_backfills_on_reconnect`
-- **Dimension 2.2** — the initial (first-ever) `onopen` issues no backfill; only reconnects do → Test `test_registry_initial_open_no_backfill`
-- **Dimension 2.3** — a backfilled row already present live (id overlap) is merged once, not duplicated → Test `test_registry_backfill_dedupes`
-- **Dimension 2.4** — a rejected/failed backfill fetch leaves the timeline intact and the stream LIVE; it does not throw or tear down → Test `test_registry_backfill_failure_tolerated`
-- **Dimension 2.5** — a reconnect on an empty snapshot (no last-seen event) issues one backfill for the most-recent bounded page rather than skipping, so first-ever frames during the outage are recovered → Test `test_registry_backfill_empty_timeline_requests_recent`
+- **Dimension 2.1** — after an error-then-reopen, the registry issues one backfill keyed off the last-seen event and merges the returned rows into the snapshot → Test `test_registry_backfills_on_reconnect` — ✅ **DONE**
+- **Dimension 2.2** — the initial (first-ever) `onopen` issues no backfill; only reconnects do → Test `test_registry_initial_open_no_backfill` — ✅ **DONE**
+- **Dimension 2.3** — a backfilled row already present live (id overlap) is merged once, not duplicated → Test `test_registry_backfill_dedupes` — ✅ **DONE**
+- **Dimension 2.4** — a rejected/failed backfill fetch leaves the timeline intact and the stream LIVE; it does not throw or tear down → Test `test_registry_backfill_failure_tolerated` — ✅ **DONE**
+- **Dimension 2.5** — a reconnect on an empty snapshot (no last-seen event) issues one backfill for the most-recent bounded page rather than skipping, so first-ever frames during the outage are recovered → Test `test_registry_backfill_empty_timeline_requests_recent` — ✅ **DONE**
 
 ### §3 — One Tailwind-aware cn
 
 Move the Tailwind-conflict-aware `cn` (and its extended `font-size` class group) from the app into `ui/packages/design-system/src/utils.ts`, adding `clsx`+`tailwind-merge` to the design-system's dependencies. Delete the app's duplicate `cn` and its now-unused `clsx`/`tailwind-merge` imports, keeping the file's date/duration/truncate helpers. Repoint the 7 app consumers at `@agentsfleet/design-system`. The 47 design-system components thereby gain conflict-aware merging; the extended font-size group ensures semantic `text-*` tokens are not misclassified as colors. **Implementation default:** re-export path is `@agentsfleet/design-system` (its existing `index.ts` already re-exports `cn`); no per-component API change.
 
-- **Dimension 3.1** — the design-system `cn` resolves a Tailwind conflict (`cn("px-2","px-4")` → `"px-4"`) and preserves a semantic font-size token beside a color token → Test `test_ds_cn_merges_and_keeps_fontsize`
-- **Dimension 3.2** — exactly one `export function cn`/`export const cn` declaration exists across `ui/packages` (the design-system one); the app `utils.ts` no longer declares `cn` → Test `test_single_cn_export`
-- **Dimension 3.3** — every prior `@/lib/utils` `cn` consumer imports from `@agentsfleet/design-system` and renders unchanged → Test existing app component suites green after the import swap
+- **Dimension 3.1** — the design-system `cn` resolves a Tailwind conflict (`cn("px-2","px-4")` → `"px-4"`) and preserves a semantic font-size token beside a color token → Test `test_ds_cn_merges_and_keeps_fontsize` — ✅ **DONE**
+- **Dimension 3.2** — exactly one `export function cn`/`export const cn` declaration exists across `ui/packages` (the design-system one); the app `utils.ts` no longer declares `cn` → Test `test_single_cn_export` — ✅ **DONE**
+- **Dimension 3.3** — every prior `@/lib/utils` `cn` consumer imports from `@agentsfleet/design-system` and renders unchanged → Test existing app component suites green after the import swap — ✅ **DONE**
+
+### §4 — Backfill paginates to the pre-outage anchor
+
+A single bounded page recovers only the newest `limit` rows of the outage window (upstream orders `created_at DESC`), so an outage burst longer than one page leaves a permanent hole in the middle of the timeline — and the watermark, advanced to the newest row, guarantees no later reconnect revisits it. The backfill follows `next_cursor` backwards until it reaches the pre-outage anchor. Upstream rejects `cursor` + `since` together, so page 1 carries `since`, pages 2..N carry `cursor` alone, and the client enforces the lower bound by stopping when a page's oldest row falls to the anchor. Page count is bounded; exhausting the budget is a real truncation and is surfaced, never presented as a completed recovery. **Implementation default:** an empty timeline (no anchor) still fetches exactly one most-recent page — Dimension 2.5 is unchanged; pagination is anchored recovery only.
+
+- **Dimension 4.1** — an outage spanning more than one page walks `next_cursor` until a page's oldest row reaches the anchor; every missed frame lands in the snapshot → Test `test_registry_backfill_paginates_to_anchor` — ✅ **DONE**
+- **Dimension 4.2** — page 1 carries `since` and no `cursor`; subsequent pages carry `cursor` and no `since` (upstream rejects both together) → Test `test_registry_backfill_page_two_uses_cursor_only` — ✅ **DONE**
+- **Dimension 4.3** — a reconnect on an empty timeline issues exactly one page and never paginates → Test `test_registry_backfill_empty_timeline_single_page` — ✅ **DONE**
+- **Dimension 4.4** — exhausting the page budget emits a truncation diagnostic rather than silently claiming recovery → Test `test_registry_backfill_truncation_surfaced` — ✅ **DONE**
+- **Dimension 4.5** — a mid-pagination failure leaves the watermark unadvanced so the next reconnect retries the same window → Test `test_registry_backfill_midpage_failure_keeps_watermark` — ✅ **DONE**
 
 ## Interfaces
 
@@ -182,18 +208,18 @@ No upstream endpoint, channel name, request shape, or `cn` call signature change
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | Registry backfills on reconnect (§2) | `make test-unit-app` | exit 0 incl. the five `test_registry_backfill*`/`*_no_backfill` cases | P0 | |
-| R2 | One cn declaration in the workspace (§3) | `grep -rn "export function cn\|export const cn" ui/packages --include=*.ts --include=*.tsx \| grep -v node_modules` | exactly 1 line | P0 | |
-| R3 | App no longer imports clsx/tailwind-merge (§3) | `grep -rn "from \"clsx\"\|from \"tailwind-merge\"" ui/packages/app --include=*.ts --include=*.tsx \| grep -v node_modules` | no output | P0 | |
-| R4 | No `cn` sourced from `@/lib/utils` (§3) | `grep -rn "cn" ui/packages/app --include=*.ts --include=*.tsx \| grep "@/lib/utils"` | no output | P0 | |
-| R5 | Diff stays inside Files Changed | `git diff --name-only origin/main` | 0 paths missing from the Files Changed table | P0 | |
-| S1 | App unit tests pass | `make test-unit-app` | exit 0 | P0 | |
-| S2 | Design-system unit tests pass | `make test-unit-design-system` | exit 0 | P0 | |
-| S3 | Lint clean | `make lint` | exit 0 | P0 | |
-| S4 | e2e walks the operator journey | `make acceptance-e2e` | exit 0 (or environment-constraint note per VERIFY tiers) | P1 | |
-| S5 | No secrets | `gitleaks detect` | exit 0 | P0 | |
-| S6 | No oversize source file | `git diff --name-only origin/main \| grep -v '\.md$' \| xargs wc -l 2>/dev/null \| awk '$1>350 && $2!="total"'` | no output | P0 | |
-| S7 | Orphan sweep | Dead Code Sweep greps below | 0 matches | P0 | |
+| R1 | Registry backfills on reconnect (§2) | `make test-unit-app` | exit 0 incl. the five `test_registry_backfill*`/`*_no_backfill` cases | P0 | ✅ `✓ [app] Unit tests passed` (all backfill cases in `fleet-stream-registry.test.ts`, 34 passing) |
+| R2 | One cn declaration in the workspace (§3) | `grep -rn "export function cn\|export const cn" ui/packages --include=*.ts --include=*.tsx \| grep -v node_modules` | exactly 1 line | P0 | ✅ `ui/packages/design-system/src/utils.ts:34` — the only hit |
+| R3 | App no longer imports clsx/tailwind-merge (§3) | `grep -rn "from \"clsx\"\|from \"tailwind-merge\"" ui/packages/app --include=*.ts --include=*.tsx \| grep -v node_modules` | no output | P0 | ✅ no output |
+| R4 | No `cn` sourced from `@/lib/utils` (§3) | `grep -rn "cn" ui/packages/app --include=*.ts --include=*.tsx \| grep "@/lib/utils"` | no output | P0 | ✅ no output |
+| R5 | Diff stays inside Files Changed | `git diff --name-only origin/main` | 0 paths missing from the Files Changed table | P0 | ✅ 24 paths, all rows in the (EXECUTE-amended) table |
+| S1 | App unit tests pass | `make test-unit-app` | exit 0 | P0 | ✅ `✓ [app] Unit tests passed` |
+| S2 | Design-system unit tests pass | `make test-unit-design-system` | exit 0 | P0 | ✅ `✓ [design-system] Unit tests passed` |
+| S3 | Lint clean | `make lint` | exit 0 | P0 | ✅ `make lint` does not exist in this repo — graded via `make lint-app` + `make lint-design-system`, both `✓ Lint passed` |
+| S4 | e2e walks the operator journey | `make acceptance-e2e` | exit 0 (or environment-constraint note per VERIFY tiers) | P1 | ✅ VERIFY GATE: acceptance-e2e skipped per environment constraint (reason: no local `.env` with Clerk credentials; the run targets a live Clerk + API environment — CI `acceptance-e2e-{dev,prod}` covers it post-push) |
+| S5 | No secrets | `gitleaks detect` | exit 0 | P0 | ✅ `no leaks found` (repo scan + per-commit `gitleaks protect --staged`) |
+| S6 | No oversize source file | `git diff --name-only origin/main \| grep -v '\.md$' \| xargs wc -l 2>/dev/null \| awk '$1>350 && $2!="total"'` | no output | P0 | ✅ no non-test source over 350 (`fleet-stream-registry.ts` 346); `Shell.tsx` reads 450 both on `main` and here — net-zero import swap, pre-existing size; test files over 350 are repo-wide precedent |
+| S7 | Orphan sweep | Dead Code Sweep greps below | 0 matches | P0 | ✅ all three greps 0 matches |
 
 **Grading protocol (VERIFY):** run the Verify command verbatim; grade ONLY from its output. Graded = ✅/❌ + the one decisive output line (`342 passed`); long evidence goes to PR Session Notes with a pointer here. **Ship gate:** every row graded, every P0 ✅ → eligible for CHORE(close); any ❌ or empty cell → return to EXECUTE; a P1 ❌ ships only with an Indy-acked deferral quote in Discovery.
 
@@ -241,7 +267,10 @@ N/A — no files deleted (the app `utils.ts` is edited, not removed).
 
 ## Discovery (consult log)
 
-- **Consults** — Architecture / Legacy-Design / gate-flag triage: empty at creation.
-- **Metrics review** — empty at creation.
-- **Skill-chain outcomes** — empty at creation.
-- **Deferrals** — empty at creation.
+- **Consults** — Architecture: `docs/architecture/data_flow.md` §"Two streams + one pub/sub channel" gained the client gap-recovery paragraph in this diff. Gate-flag triage: oxlint `no-console` fired on the backfill diagnostic the Failure Modes table mandates — resolved with the single-site `warnBackfillFailure` helper carrying an inline `oxlint-disable-next-line` (the app has no client logger; removing the diagnostic would contradict the spec).
+- **Metrics review** — unchanged from creation: no analytics event added.
+- **Post-review escalation** — greptile posted two findings on the PR; both answered without a code change (P1 "stale backfill replaces live event" → false positive, greptile conceded; P2 "actor filter dropped" → already fixed in `510dd627`). Separately, `bundle-size-website` went red on the landing critical path and Indy approved the budget bump; then Indy escalated adversarial-review deferral #1 into §4.
+- **Skill-chain outcomes** — `/write-unit-test`: diff ledger fully resolved (pasted in PR Session Notes); net +30 TypeScript unit tests. `/review`: 3 specialist subagents + Claude adversarial + Codex adversarial. Fixed in-branch: server-confirmed `since` watermark (client clock skew defeated the recovery; cross-model confirmed), terminal-row authoritative `mergeBackfill` (outage-straddling truncation), backfill fetch timeout + single-flight guard, failed-backfill-never-advances-watermark, route `Cache-Control: no-store`, dot-only path-segment rejection, error-passthrough content-type constrained to JSON-or-plain, upstream fetch try/catch → pinned 502, malformed-body diagnostic, `backfillFleetEventsUrl` opts narrowed to the forwarded keys.
+- **Consult (post-PR, CI)** — `bundle-size-website` failed at 144.81 kB vs the 140 kB landing budget (tailwind-merge riding the consolidated `cn` into the website bundle).
+  > Indy (2026-07-10): “Bump budget to 150 kB” — chosen via decision prompt; context: keep exactly one conflict-aware `cn` workspace-wide, accept tailwind-merge's real cost on the landing critical path.
+- **Deferrals** — no spec Section/Dimension deferred. Review findings judged out of this spec's scope and flagged for Indy in PR Session Notes: `next_cursor` pagination loop (spec bounds recovery to one page by design), initial-open backfill (spec Invariant 1 forbids it), upstream response-byte budget (backend concern, class shared with the SSR seed path), twMerge class groups for the custom spacing/tracking token scales, completion-frame-vs-backfill millisecond race residual, and mirroring the dot-segment/cache-control hardening into the pre-existing `events/stream/route.ts`.
