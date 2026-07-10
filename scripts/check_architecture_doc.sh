@@ -47,7 +47,7 @@ fi
 # 1. test_arch_M_references_resolve
 #    Every milestone identifier in architecture/ must resolve to a spec in done/
 #    (shipped) or active/ (in flight, e.g. the spec doing the cross-ref itself).
-#    pending/ resolves in roadmap.md alone — see ROADMAP_BASENAME above. An
+#    pending/ resolves in roadmap.md alone — see ROADMAP_REL_PATH above. An
 #    identifier with no spec anywhere fails in every file, roadmap included.
 # ---------------------------------------------------------------------------
 
@@ -87,7 +87,7 @@ else
     if resolve_ref "$src" "$ref"; then
       m_count=$((m_count + 1))
     else
-      err "test_arch_M_references_resolve: $ref cited in $src resolves to no spec in $DONE_DIR/ or $ACTIVE_DIR/ (pending/ resolves only in $ROADMAP_BASENAME)"
+      err "test_arch_M_references_resolve: $ref cited in $src resolves to no spec in $DONE_DIR/ or $ACTIVE_DIR/ (pending/ resolves only in $ROADMAP_REL_PATH)"
     fi
   done <<EOF
 $m_refs

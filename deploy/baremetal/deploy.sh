@@ -17,9 +17,8 @@
 # non-zero when another deploy already holds it. Sourcing this file runs no deploy
 # — deploy_test.sh relies on that to exercise the functions directly.
 #
-# The runner holds zero datastore credentials: if it stops abruptly the control
-# plane reclaims its in-flight lease (lease_expires_at + fencing_token), so a
-# bounded stop never loses or double-runs work.
+# The runner holds zero datastore credentials, so an abrupt stop is safe: the
+# control plane reclaims its in-flight lease (see drain_runner).
 
 set -euo pipefail
 
@@ -71,11 +70,10 @@ esac
 readonly RELEASE_ARTIFACT="${BINARY_NAME}-linux-${_arch}"
 
 # Serializes install + `systemctl restart`, which is not atomic: a manual run and
-# a cancel-orphaned CI run can otherwise interleave on the same host. flock is the
-# right primitive here rather than a lock file — the kernel drops the lock when the
-# holder dies, so a SIGKILLed deploy cannot strand every later deploy behind it.
-# Overridable only so deploy_test.sh can point at a writable temp path: /var/lock
-# is root-owned and the tests do not run as root. Production never sets it.
+# a cancel-orphaned CI run can otherwise interleave on the same host. flock beats a
+# lock file — the kernel drops it when the holder dies, so a SIGKILLed deploy never
+# strands later ones. Overridable only so deploy_test.sh can use a writable temp
+# path (/var/lock is root-owned; the tests are not root). Production never sets it.
 readonly DEPLOY_LOCK_PATH="${DEPLOY_LOCK_PATH:-/var/lock/agentsfleet-deploy.lock}"
 
 # `agentsfleet-runner --version` prints `agentsfleet-runner <version> (git <sha>)`
@@ -87,9 +85,8 @@ readonly VERSION_FIELD_INDEX=2
 log()  { echo "[deploy] $*"; }
 die()  { log "FATAL: $*"; notify_discord "fail"; exit 1; }
 
-# Exits without notifying Discord. A run refused because another deploy holds the
-# lock is not a deploy failure, and the holder sends its own status when it lands;
-# a "deploy FAILED" embed here would page someone for a working deploy.
+# Exits without notifying Discord: a run refused because another deploy holds the
+# lock is not a failure, and a "deploy FAILED" embed would page for a working deploy.
 die_unnotified() { log "FATAL: $*"; exit 1; }
 
 # ── Version check ────────────────────────────────────────────────────────────
@@ -108,9 +105,9 @@ version_token_matches() {
   [[ -n "$token" && "$token" == "$target" ]]
 }
 
-# `dest` is injectable so the test can point at a stub binary; production callers
-# pass nothing. An unreadable or unexpected `--version` shape yields no token and
-# so reports "not installed" — a redundant reinstall is safe, a wrong skip is not.
+# `dest` is injectable so the test can point at a stub binary (production passes
+# nothing). An unreadable or unexpected `--version` shape yields no token → reports
+# "not installed"; a redundant reinstall is safe, a wrong skip is not.
 is_already_installed() {
   local dest="${1:-${INSTALL_DIR}/${BINARY_NAME}}"
   [[ -x "$dest" ]] || return 1
@@ -120,12 +117,14 @@ is_already_installed() {
   version_token_matches "$current" "$VERSION" || return 1
 
   log "✓ ${BINARY_NAME} ${VERSION} already installed — ensuring service is up."
-  # If the already-installed binary's service will not start, report not-installed
-  # rather than success: the caller then runs the full reinstall + restart +
-  # verify_healthy path, which surfaces the real failure instead of notifying "ok"
-  # over a dead service.
-  if ! systemctl is-active --quiet "$SERVICE_NAME" && ! systemctl start "$SERVICE_NAME"; then
-    log "✗ ${SERVICE_NAME} is installed but will not start — forcing a full redeploy."
+  systemctl is-active --quiet "$SERVICE_NAME" && return 0
+
+  # Not active: start it AND verify it stays up. `systemctl start` exits zero once
+  # systemd accepts the job, so a runner that starts then dies would otherwise skip
+  # to "ok" over a dead service. Any failure → report not-installed so the caller
+  # runs the full reinstall path, which surfaces the real fault.
+  if ! systemctl start "$SERVICE_NAME" || ! verify_healthy; then
+    log "✗ ${SERVICE_NAME} is installed but will not stay up — forcing a full redeploy."
     return 1
   fi
   return 0
@@ -133,9 +132,9 @@ is_already_installed() {
 
 # ── Deploy mutex ─────────────────────────────────────────────────────────────
 
-# Holds the lock on a descriptor that stays open for the life of the process, so
-# it releases on exit — normal, fatal, or killed. Non-blocking on purpose: an
-# operator wants to hear "a deploy is already running", not silently queue behind one.
+# Holds the lock on a descriptor open for the life of the process, so it releases
+# on any exit — normal, fatal, or killed. Non-blocking: an operator wants to hear
+# "a deploy is already running", not queue silently behind one.
 acquire_deploy_lock() {
   command -v flock >/dev/null 2>&1 \
     || die_unnotified "flock not found — install util-linux; refusing to deploy without a mutex."
@@ -257,8 +256,9 @@ restart_services() {
 }
 
 verify_healthy() {
-  local attempts=5
-  local delay=2
+  # attempts/delay overridable only so deploy_test.sh avoids a real 10s wait.
+  local attempts="${VERIFY_HEALTH_ATTEMPTS:-5}"
+  local delay="${VERIFY_HEALTH_DELAY:-2}"
   for i in $(seq 1 "$attempts"); do
     sleep "$delay"
     if systemctl is-active --quiet "$SERVICE_NAME"; then
