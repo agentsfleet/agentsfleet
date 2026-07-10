@@ -16,12 +16,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M122
 **Workstream:** 005
 **Date:** Jul 10, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — `daily_dollars` is a required field in every `TRIGGER.md` and is advertised as a hard spend ceiling that "terminates the in-flight event cleanly." It terminates nothing. A fleet in a tool-call loop bills the tenant's credit pool until the pool empties or the lease's max-runtime cap fires. This is a cost-safety boundary that silently does not exist.
 **Categories:** API
 **Batch:** B1 — shares one branch and one Pull Request (PR) with M122_001; disjoint file set.
-**Branch:** {added at CHORE(open)}
-**Test Baseline:** set at CHORE(open) — `unit=<N> integration=<M>` via `make _lint_zig_test_depth`
+**Branch:** `feat/m122-served-doc-parity` (shared with M122_001, per Indy's Jul 10 2026 same-tree decision)
+**Test Baseline:** unit=2402 integration=267
 **Depends on:** none. **Blocks:** M122_001 §1 — the docs rewrite describes this enforcement, so it must not merge ahead of this code.
 **Provenance:** discovered Jul 10, 2026 during M122_001's §1 golden-path walk (`grep -rn FleetBudget src/` → parsed, stored, read only by `config_parser_test.zig`). Escalated to Indy as a judgment-class gate flag; he chose to build the enforcement rather than delete the documented promise. Decision + rationale recorded in M122_001's Discovery log.
 **Canonical architecture:** `docs/architecture/billing_and_provider_keys.md` — defines posture and the tenant-scoped credit pool. It is silent on per-fleet dollar ceilings, so this workstream introduces that concept and owns the corresponding architecture-doc diff.
