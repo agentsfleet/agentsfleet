@@ -192,11 +192,11 @@ The §1 tests are greps, not a harness: the docs live in a separate repository w
 | R6 | Coverage gate wired into check-openapi (§3) | `grep -c check_openapi_route_coverage make/quality.mk` | output ≥ 1 | P0 | ✅ `2` |
 | R7 | This workstream's own diff stays inside its Files Changed (§2/§3) | `git diff --name-only origin/main \| grep -E 'openapi\|scripts/\|make/' \| grep -vE 'admin-models\.yaml\|openapi/root\.yaml\|public/openapi\.json\|check_openapi_route_coverage(_test)?\.py\|make/quality\.mk'` | no output | P0 | |
 | R8 | Every ceiling named in the docs has a code owner (§1) | `grep -rn "budget_breach\|timeout_kill\|renewal_terminate\|oom_kill" src/ \| grep -v test \| wc -l` | output ≥ 4 | P0 | |
-| S1 | Lint clean | `make lint` | exit 0 | P0 | |
+| S1 | Lint clean | `make lint-all` | exit 0 | P0 | |
 | S2 | No secrets | `gitleaks detect` | exit 0 | P0 | |
 | S3 | No oversize hand-written source file | `git diff --name-only origin/main \| grep -vE '\.md$\|^public/openapi\.json$' \| xargs wc -l 2>/dev/null \| awk '$1>350 && $2!="total"'` | no output | P0 | |
 
-**R7 note (amended Jul 10 2026):** the branch also carries M122_005's enforcement code (`src/**`) and both specs (`docs/v2/**`), so R7 narrows to the OpenAPI/scripts/make surface this workstream owns; M122_005 grades its own Files-Changed scope. **S3 note:** `public/openapi.json` is excluded — it is a `redocly bundle` artefact (6,946 lines) and §2 mandates regenerating it, so the row as originally written was unsatisfiable by construction.
+**R7 note (amended Jul 10 2026):** the branch also carries M122_005's enforcement code (`src/**`) and both specs (`docs/v2/**`), so R7 narrows to the OpenAPI/scripts/make surface this workstream owns; M122_005 grades its own Files-Changed scope. **S3 note:** `public/openapi.json` is excluded — it is a `redocly bundle` artefact (6,946 lines) and §2 mandates regenerating it, so the row as originally written was unsatisfiable by construction. **S1 note:** was `make lint`, which is not a target in this repo (`make -n lint` → no rule); the aggregate linter is `lint-all` (`make/quality.mk:279`).
 
 **Grading protocol (VERIFY):** run the Verify command verbatim; grade ONLY from its output. Graded = ✅/❌ + the one decisive output line. **Ship gate:** every row graded, every P0 ✅ → eligible for CHORE(close); any ❌ or empty cell → return to EXECUTE; a P1 ❌ ships only with an Indy-acked deferral quote in Discovery.
 
