@@ -211,7 +211,7 @@ class TestMakeWiring(unittest.TestCase):
         """The recipes moved out of quality.mk under RULE FLL; an unincluded .mk
         would make every reachability assertion below vacuously true."""
         with open(os.path.join(REPO_ROOT, "Makefile")) as handle:
-            self.assertIn("include make/reachability.mk", handle.read())
+            self.assertIn("include make/test-reachability.mk", handle.read())
 
     def test_reachability_target_invokes_the_checker(self):
         self.assertIn(f"{CHECKER_TARGET}:", self.reachability_mk)

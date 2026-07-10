@@ -4,7 +4,7 @@
 
 include make/dev.mk
 include make/quality.mk
-include make/reachability.mk
+include make/test-reachability.mk
 include make/harness.mk
 include make/test.mk
 include make/build.mk
