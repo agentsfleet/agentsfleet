@@ -50,11 +50,12 @@ const S_CONNECTOR_MINT_FAILED = "Connector token refresh failed";
 // Grant-gate refusal (invariant: no token without an approved
 // grant). The registered UZ-GRANT-001 hint carries the request-grant recovery.
 const S_GRANT_REQUIRED = "No approved integration grant for this fleet and integration";
-// Rotated-refresh write-back observability (RULE OBS): one event, two outcomes.
-// No token bytes ever ride these lines (VLT).
+// Rotated-refresh write-back observability (RULE OBS): one event, three
+// outcomes. No token bytes ever ride these lines (VLT).
 const EVT_REFRESH_ROTATED = "refresh_rotated";
 const S_ROTATE_PERSISTED = "persisted";
 const S_ROTATE_FAILED = "failed";
+const S_ROTATE_SKIPPED_STALE = "skipped_stale";
 
 /// The lease's workspace + the connected integration handle, resolved together
 /// under one DB connection so the connection is released before the broker's
@@ -125,7 +126,7 @@ fn mintAndRespond(hx: Hx, broker: *CredentialBroker, mint_req: protocol.MintCred
     };
     if (result == .ok) {
         if (result.ok.rotated_refresh_token) |rotated|
-            persistRotatedRefresh(hx, mint_req.integration, inputs.workspace_id, &inputs.handle, rotated);
+            persistRotatedRefresh(hx, mint_req.integration, inputs.workspace_id, inputs.handle.value, rotated);
     }
     respond(hx, integration.idFromString(mint_req.integration), result);
 }
@@ -136,22 +137,44 @@ fn mintAndRespond(hx: Hx, broker: *CredentialBroker, mint_req: protocol.MintCred
 /// succeeded and the child holds a valid access token, so a failed persist is
 /// warn-logged — the operator's breadcrumb — and costs at most one forced
 /// reconnect later; it never fails the request (RULE ECL: a write-back failure
-/// is not a mint failure).
-fn persistRotatedRefresh(hx: Hx, integration_id: []const u8, workspace_id: []const u8, handle: *std.json.Parsed(std.json.Value), rotated: []const u8) void {
-    writeBackRotated(hx, integration_id, workspace_id, handle, rotated) catch |err| {
+/// is not a mint failure). A persist SKIPPED because the vault row changed
+/// under the exchange (an admin reconnected mid-mint) is correct behavior —
+/// the rotated token belongs to the replaced grant — logged as its own branch.
+fn persistRotatedRefresh(hx: Hx, integration_id: []const u8, workspace_id: []const u8, handle: std.json.Value, rotated: []const u8) void {
+    const posted = postedRefreshToken(handle) orelse return; // non-refresh handle: nothing to merge against
+    const persisted = writeBackRotated(hx, integration_id, workspace_id, posted, rotated) catch |err| {
         log.warn(EVT_REFRESH_ROTATED, .{ .workspace_id = workspace_id, .integration = integration_id, .outcome = S_ROTATE_FAILED, .err = @errorName(err) });
         return;
     };
-    log.debug(EVT_REFRESH_ROTATED, .{ .workspace_id = workspace_id, .integration = integration_id, .outcome = S_ROTATE_PERSISTED });
+    if (persisted) {
+        log.debug(EVT_REFRESH_ROTATED, .{ .workspace_id = workspace_id, .integration = integration_id, .outcome = S_ROTATE_PERSISTED });
+    } else {
+        log.debug(EVT_REFRESH_ROTATED, .{ .workspace_id = workspace_id, .integration = integration_id, .outcome = S_ROTATE_SKIPPED_STALE });
+    }
+}
+
+/// The refresh token this mint POSTED — read from the pre-exchange handle
+/// snapshot; the write-back's guarded merge compares it against the row's
+/// current value to detect a concurrent reconnect.
+fn postedRefreshToken(handle: std.json.Value) ?[]const u8 {
+    const obj = switch (handle) {
+        .object => |o| o,
+        else => return null,
+    };
+    return switch (obj.get(integration.FIELD_REFRESH_TOKEN) orelse return null) {
+        .string => |s| s,
+        else => null,
+    };
 }
 
 /// The fallible write-back core: re-acquire a conn (the mint inputs' conn was
-/// released before the upstream exchange) and re-store the handle through the
-/// connect callback's own store path.
-fn writeBackRotated(hx: Hx, integration_id: []const u8, workspace_id: []const u8, handle: *std.json.Parsed(std.json.Value), rotated: []const u8) !void {
+/// released before the upstream exchange) and merge-store through the connect
+/// callback's own store path. Returns whether the merge persisted (false =
+/// dropped because the stored grant changed under the exchange).
+fn writeBackRotated(hx: Hx, integration_id: []const u8, workspace_id: []const u8, posted: []const u8, rotated: []const u8) !bool {
     const conn = try hx.ctx.pool.acquire();
     defer hx.ctx.pool.release(conn);
-    try connector_oauth_refresh.storeRotatedRefreshToken(hx, conn, integration_id, workspace_id, handle, rotated);
+    return connector_oauth_refresh.storeRotatedRefreshToken(hx, conn, integration_id, workspace_id, posted, rotated);
 }
 
 /// Resolve the lease's workspace+fleet (scoped to the presenting runner), gate

@@ -102,6 +102,18 @@ test "oauth2_refresh mint: test_refresh_response_no_rotation — an absent or ec
         defer alloc.free(out.ok.token);
         try std.testing.expect(out.ok.rotated_refresh_token == null);
     }
+    // (c) An EMPTY refresh_token is a malformed rotation, never persisted — a
+    // broken provider/proxy must not poison the vault with an unusable token.
+    {
+        var vendor = testing.FakeGitHub{ .alloc = alloc, .status = 200, .resp_body = "{\"access_token\":\"at_fresh\",\"expires_in\":" ++ TEST_EXPIRES_IN_TEXT ++ ",\"refresh_token\":\"\"}" };
+        defer vendor.deinit();
+        var h = try testing.parse(alloc, HANDLE_ZOHO);
+        defer h.deinit();
+        const out = try mint(refreshCtx(alloc, h.value, &vendor), TEST_CFG);
+        try std.testing.expect(out == .ok);
+        defer alloc.free(out.ok.token);
+        try std.testing.expect(out.ok.rotated_refresh_token == null);
+    }
 }
 
 test "oauth2_refresh mint: should leak nothing at every allocation-failure point (exhaustive injection)" {
@@ -114,6 +126,7 @@ test "oauth2_refresh mint: should leak nothing at every allocation-failure point
     // dupe fails) and every earlier partial-build path.
     const alloc = std.testing.allocator;
     var fail_index: usize = 0;
+    var swept_past_all_sites = false;
     while (fail_index < 64) : (fail_index += 1) {
         var failing = std.testing.FailingAllocator.init(alloc, .{ .fail_index = fail_index });
         var vendor = testing.FakeGitHub{ .alloc = alloc, .status = 200, .resp_body = "{\"access_token\":\"at_fresh\",\"expires_in\":" ++ TEST_EXPIRES_IN_TEXT ++ ",\"refresh_token\":\"rt_rotated_new\"}" };
@@ -128,7 +141,15 @@ test "oauth2_refresh mint: should leak nothing at every allocation-failure point
             },
             else => {},
         }
+        // An iteration that completed WITHOUT inducing a failure means the
+        // fail_index exceeded mint's real allocation count — every site has
+        // now been failed once, so the sweep is provably exhaustive.
+        if (!failing.has_induced_failure) {
+            swept_past_all_sites = true;
+            break;
+        }
     }
+    try std.testing.expect(swept_past_all_sites);
 }
 
 test "oauth2_refresh mint: a handle with accounts_base refreshes at ITS data center, not cfg.token_endpoint" {

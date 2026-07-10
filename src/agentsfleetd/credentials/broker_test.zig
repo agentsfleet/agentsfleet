@@ -351,13 +351,44 @@ test "mint: should fail closed when the key (workspace + id + fingerprint) overf
     var h = try testing.parse(alloc, "{\"integration\":\"github\"}");
     defer h.deinit();
 
-    // 600 > the 512-byte key buffer minus separators + the 16-hex fingerprint.
-    const giant_ws = "w" ** 600;
-    const r = try b.mint(alloc, giant_ws, "github", h.value, 0);
-    try std.testing.expect(r == .mint_failed);
-    try std.testing.expectEqual(integration.Retry.permanent, r.mint_failed);
+    // Two boundary shapes: grossly over (600), and the honest-guard edge where
+    // workspace + id + separators fit but the 16-hex fingerprint would not
+    // (500 + "github" + 2 + 16 = 524 > 512) — the pre-review guard passed this
+    // one to a bufPrint failure; the guard now reserves the full key up front.
+    inline for (.{ "w" ** 600, "w" ** 500 }) |giant_ws| {
+        const r = try b.mint(alloc, giant_ws, "github", h.value, 0);
+        try std.testing.expect(r == .mint_failed);
+        try std.testing.expectEqual(integration.Retry.permanent, r.mint_failed);
+    }
     // Fails BEFORE any upstream call — a broken key never mints.
     try std.testing.expectEqual(@as(usize, 0), fake_calls.load(.monotonic));
+}
+
+test "mint: test_reconnect_refresh_provider_remints — a fresh connect stamp misses the cache when every other identity field is a constant" {
+    const alloc = std.testing.allocator;
+    var vendor = testing.FakeGitHub{ .alloc = alloc, .status = 200, .resp_body = PLAIN_EXCHANGE_RESP };
+    defer vendor.deinit();
+    var rec = testing.RecordingMetrics{};
+    var b = try CredentialBroker.init(alloc, integration.REGISTRY, testing.brokerDeps(&vendor, &rec));
+    defer b.deinit();
+    // Linear-shaped worst case: every non-rotating field except connected_at_ms
+    // is byte-identical between grant A and grant B (a real Linear handle's
+    // label is a constant). Only the connect callback's connected_at_ms stamp
+    // distinguishes the grants — pre-stamp the fingerprint was constant, the
+    // second mint HIT the cache, and grant A's token kept serving after the
+    // operator reconnected as grant B.
+    var ha = try testing.parse(alloc, "{\"integration\":\"zoho\",\"refresh_token\":\"rt_a\",\"label\":\"L\",\"connected_at_ms\":111}");
+    defer ha.deinit();
+    var hb = try testing.parse(alloc, "{\"integration\":\"zoho\",\"refresh_token\":\"rt_b\",\"label\":\"L\",\"connected_at_ms\":222}");
+    defer hb.deinit();
+
+    const r1 = try b.mint(alloc, "ws1", "zoho", ha.value, 0);
+    try std.testing.expect(r1 == .ok);
+    alloc.free(r1.ok.token);
+    const r2 = try b.mint(alloc, "ws1", "zoho", hb.value, 0);
+    try std.testing.expect(r2 == .ok);
+    alloc.free(r2.ok.token);
+    try std.testing.expectEqual(@as(usize, 2), vendor.calls); // reconnect re-minted
 }
 
 test "mint: test_broker_rotated_token_ownership — one free path per copy, fail-closed on partial dupe (OOM)" {
@@ -401,21 +432,31 @@ test "mint: a caller allocation failure fails closed as mint_failed{transient}, 
     defer h.deinit();
 
     // Cold path: runMint succeeds, the caller dup OOMs → mint_failed{transient}.
+    // The failed mint leaves NO warm entry (cache-last): a hit reports no
+    // rotated token, so caching a mint the caller never received would strand
+    // rotation state.
     {
         var failing = std.testing.FailingAllocator.init(std.testing.allocator, .{ .fail_index = 0 });
         const r = try b.mint(failing.allocator(), "ws-oom", "github", h.value, 0);
         try std.testing.expect(r == .mint_failed);
         try std.testing.expectEqual(integration.Retry.transient, r.mint_failed);
     }
-    // Warm path: the cold mint above cached ws-oom; a hit whose caller dup OOMs
-    // takes the SAME fail-closed branch — never a panic, never a stale token.
+    // Warm the cache with a successful mint…
+    {
+        const r = try b.mint(std.testing.allocator, "ws-oom", "github", h.value, 0);
+        try std.testing.expect(r == .ok);
+        std.testing.allocator.free(r.ok.token);
+    }
+    // …then a HIT whose caller dup OOMs takes the SAME fail-closed branch —
+    // never a panic, never a stale token.
     {
         var failing = std.testing.FailingAllocator.init(std.testing.allocator, .{ .fail_index = 0 });
         const r = try b.mint(failing.allocator(), "ws-oom", "github", h.value, 0);
         try std.testing.expect(r == .mint_failed);
         try std.testing.expectEqual(integration.Retry.transient, r.mint_failed);
     }
-    // Exactly one upstream mint (the cold one); the warm path hit cache. The
-    // testing allocator's deinit asserts every internal allocation was freed.
-    try std.testing.expectEqual(@as(usize, 1), fake_calls.load(.monotonic));
+    // Two upstream mints: the OOM'd cold attempt (uncached, by design) and the
+    // successful warm-up; the final OOM'd call was a cache hit. The testing
+    // allocator's deinit asserts every internal allocation was freed.
+    try std.testing.expectEqual(@as(usize, 2), fake_calls.load(.monotonic));
 }
