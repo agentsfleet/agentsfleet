@@ -228,6 +228,7 @@ const pretty = @import("pretty.zig");
 pub const initPrettyMode = pretty.initPrettyMode;
 pub const isPretty = pretty.isPretty;
 pub const formatPretty = pretty.formatPretty;
+pub const leak_guard = @import("leak_guard.zig"); // teardown GPA-verdict guard
 
 // ---------------------------------------------------------------------------
 // Section 4 — Pre-init stderr write.
@@ -271,6 +272,7 @@ test {
     _ = envelope;
     _ = pretty;
     _ = sinks;
+    _ = @import("leak_guard_test.zig");
 }
 
 test "fatalStderr is callable (compile check)" {

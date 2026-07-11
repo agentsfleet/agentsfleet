@@ -132,12 +132,22 @@ fn registerProductionSinks() void {
     log_sinks.registerSink(.{ .emit = otlpSinkEmit, .ctx = log_sinks.statelessCtx() });
 }
 
+/// Process exit code when the daemon's DebugAllocator reports a leak at teardown
+/// (Debug builds only — see `leak_guard`; ReleaseSafe logs and exits normally).
+/// Distinct from the generic `exit(1)` startup failures so an operator or CI run
+/// can tell a leak-abort from a config error. 70 == BSD sysexits `EX_SOFTWARE`.
+const EXIT_GPA_LEAK: u8 = 70;
+
 pub fn main(init: std.process.Init) void {
     const io = init.io;
     const env_map = init.environ_map;
 
     var gpa = std.heap.DebugAllocator(.{ .thread_safe = true }){};
-    defer _ = gpa.deinit();
+    // A leaked allocation at shutdown fails the daemon loudly in Debug
+    // builds (nonzero exit + logged verdict); ReleaseSafe logs the verdict and
+    // exits normally, so production shutdown behaviour is unchanged. Registered
+    // first → runs LAST (LIFO), after every `defer` below has freed into `alloc`.
+    defer logging.leak_guard.check(gpa.deinit(), "daemon") catch std.process.exit(EXIT_GPA_LEAK);
     const alloc = gpa.allocator();
     var dotenv_overlay = config_load.applyEnvSources(io, env_map, alloc) catch |err| {
         logging.fatalStderr("fatal: failed loading env sources: {}\n", .{err});

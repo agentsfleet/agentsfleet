@@ -80,8 +80,11 @@ pub fn runLoop(io: std.Io, alloc: std.mem.Allocator, cfg: Config, env_map: *cons
 
     var pool: ?worker_pool.Pool = null;
     // On any exit the workers see stop/drain (set below or by the signal handler),
-    // finish their in-flight child, and are joined — no thread/child leak.
-    defer if (pool) |p| p.join();
+    // finish their in-flight child, and are joined — no thread/child leak. A
+    // per-worker leak verdict is already logged at `err` inside join; the daemon
+    // is on its shutdown path, so we record the swallow and let exit proceed.
+    defer if (pool) |p| p.join() catch |err|
+        log.warn(logging.EVENT_IGNORED_ERROR, .{ .op = "worker_pool_join", .err = @errorName(err) });
 
     var heartbeat_errors: u32 = 0;
     while (true) {
