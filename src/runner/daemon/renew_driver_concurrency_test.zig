@@ -77,11 +77,11 @@ test "onTick should remain safe after a terminal renewal even when called again"
     // tick OUTSIDE the window short-circuits to .keep without re-calling the
     // client — proving a late tick after termination cannot corrupt state or
     // re-enter the client when the deadline is comfortably far.
-    var fake = FakeClient{ .outcomes = &.{.{ .terminal = 402 }} };
+    var fake = FakeClient{ .outcomes = &.{.{ .terminal = .{ .status = 402 } }} };
     var driver = driverWith(&fake, NOW_MS + MS_PER_SECOND);
     const h = driver.hook();
 
-    try testing.expectEqual(RenewDecision.terminate, h.onTick(h.ctx, NOW_MS, .{}));
+    try testing.expectEqual(RenewDecision{ .terminate = .renewal_terminate }, h.onTick(h.ctx, NOW_MS, .{}));
     try testing.expectEqual(@as(usize, 1), fake.calls);
     try testing.expectEqual(NOW_MS + MS_PER_SECOND, driver.deadline_ms); // terminal left it unchanged
 

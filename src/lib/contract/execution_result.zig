@@ -27,11 +27,24 @@ pub const FailureClass = enum {
     /// (the wall-clock deadline elapsed) so triage and billing/analytics can
     /// tell a policy stop from a clock stop.
     renewal_terminate,
+    /// Killed because the FLEET's own `daily_dollars`/`monthly_dollars` ceiling
+    /// is reached — the control plane's `/renew` answered `UZ-RUN-015`. Distinct
+    /// from `renewal_terminate` (a platform/billing stop) so an operator can
+    /// answer "did my budget hold?" from the event row alone: a budget breach is
+    /// the fleet author's own limit working, not a billing failure.
+    budget_breach,
 
     pub fn label(self: FailureClass) []const u8 {
         return @tagName(self);
     }
 };
+
+test "budget_breach serialises as the exact durable failure_label" {
+    // The wire + `core.fleet_events.failure_label` spelling is pinned here: the
+    // docs, the gate label, and the runner all agree on this one string.
+    try std.testing.expectEqualStrings("budget_breach", FailureClass.budget_breach.label());
+    try std.testing.expectEqualStrings("renewal_terminate", FailureClass.renewal_terminate.label());
+}
 
 /// Result of a single stage execution. Defaults describe a not-yet-run stage;
 /// `exit_ok` flips true on a clean finish. `memory_peak_bytes`/`cpu_throttled_ms`
