@@ -16,9 +16,12 @@ const testing = std.testing;
 const PATH = "/v1/ingress/github";
 const SECRET = "github-app-ingress-test-secret";
 const REPOSITORY = "agentsfleet/agentsfleet";
+const REPOSITORY_MIXED_CASE = "AgentsFleet/AgentsFleet";
 const DEDUP_NAMESPACE = "gh";
 const DEDUP_KEY_BUF_LEN = 256;
 const CONCURRENT_REQUEST_COUNT = 100;
+const MARKER_CASE_MATCH = "case-match";
+const DELIVERY_CASE_MATCH = "delivery-case-match";
 /// Two server-admitted requests are enough to disprove global serialization;
 /// higher peaks depend on host scheduler load and are not a correctness rule.
 const MIN_PEAK_IN_FLIGHT = 2;
@@ -290,4 +293,34 @@ test "integration: App ingress routes installation repository event grant and re
     var extra_fanout_buf: [36]u8 = undefined;
     try testing.expectEqual(@as(i64, 0), try streamLen(h, try fanoutId(&extra_fanout_buf, FANOUT_LIMIT - FANOUT_BASE_COUNT, false)));
     try testing.expectEqual(@as(i64, 1), try streamLen(h, try fanoutId(&first_fanout_buf, 0, false)));
+}
+
+test "integration: App ingress matches GitHub repositories case-insensitively" {
+    const h = TestHarness.start(testing.allocator, .{ .configureRegistry = noopRegistry }) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    base_fixtures.setTestEncryptionKey();
+    fixtures.cleanup(conn);
+    defer fixtures.cleanup(conn);
+    try fixtures.seed(testing.allocator, conn, SECRET);
+    clearStreams(h);
+    clearReplaySlots(h);
+    defer {
+        clearStreams(h);
+        clearReplaySlots(h);
+    }
+    h.ctx.platform_admin_workspace_id = fixtures.ADMIN_WORKSPACE_ID;
+
+    const mixed_case = try pullRequestBody(testing.allocator, fixtures.INSTALLATION_ID, REPOSITORY_MIXED_CASE, MARKER_CASE_MATCH);
+    defer testing.allocator.free(mixed_case);
+    const accepted = try postSigned(h, mixed_case, "pull_request", DELIVERY_CASE_MATCH, SECRET);
+    defer accepted.deinit();
+    try accepted.expectStatus(.accepted);
+    try testing.expectEqual(@as(i64, 1), try streamLen(h, fixtures.FLEET_PULL_ONE));
+    try testing.expectEqual(@as(i64, 1), try streamLen(h, fixtures.FLEET_PULL_TWO));
+    try testing.expectEqual(@as(i64, 0), try streamLen(h, fixtures.FLEET_WRONG_REPO));
 }

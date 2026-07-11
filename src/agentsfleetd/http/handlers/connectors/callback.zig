@@ -36,6 +36,7 @@ const EXCHANGE_FAILED_FMT = "{s} token exchange failed";
 const EXCHANGE_FAILED_FALLBACK = "Token exchange failed";
 const VENDOR_DEADLINE_FMT = "{s} token exchange did not complete in time";
 const VENDOR_DEADLINE_FALLBACK = "Token exchange did not complete in time";
+const S_STATE_VERIFY_FAILED = "Failed to verify connector connect state";
 
 pub fn innerCallback(hx: hx_mod.Hx, req: *httpz.Request, provider: []const u8) void {
     const spec = registry.lookup(provider) orelse return registry.respondUnknown(hx, provider);
@@ -88,6 +89,15 @@ pub fn innerCallback(hx: hx_mod.Hx, req: *httpz.Request, provider: []const u8) v
                 return;
             };
             defer hx.alloc.free(workspace_id);
+
+            const is_latest = connector_state.consumeLatest(hx.ctx.queue, a.state, workspace_id, raw_state) catch {
+                common.internalOperationError(hx.res, S_STATE_VERIFY_FAILED, hx.req_id);
+                return;
+            };
+            if (!is_latest) {
+                hx.fail(ec.ERR_CONNECTOR_STATE_INVALID, S_STATE_INVALID);
+                return;
+            }
 
             // The hook owns validation + persistence + its failure responses
             // (installation callbacks carry vendor-bespoke inputs).

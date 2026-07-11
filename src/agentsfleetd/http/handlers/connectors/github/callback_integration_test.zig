@@ -8,6 +8,7 @@ const harness_mod = @import("../../../test_harness.zig");
 const test_port = @import("../../../test_port.zig");
 const fixtures = @import("../../../../db/test_fixtures.zig");
 const PgQuery = @import("../../../../db/pg_query.zig").PgQuery;
+const ec = @import("../../../../errors/error_registry.zig");
 const vault = @import("../../../../state/vault.zig");
 const id_format = @import("../../../../types/id_format.zig");
 const connector_state = @import("../state.zig");
@@ -27,6 +28,7 @@ const FIRST_INSTALL = "42424242";
 const NEXT_INSTALL = "43434343";
 const FAKE_CODE = "github-user-code";
 const TOKEN_PATH = "/login/oauth/access_token";
+const CALLBACK_PATH_FMT = "/v1/connectors/github/callback?installation_id={s}&code={s}&state={s}";
 const CONTENT_TYPE_JSON = "application/json";
 const USER_TOKEN_BODY = "{\"access_token\":\"github-user-token\"}";
 
@@ -135,10 +137,17 @@ fn expectInstall(conn: *pg.Conn, installation_id: []const u8, expected: ?[]const
     } else try testing.expect(row == null);
 }
 
+fn mintLatestState(h: *TestHarness, workspace_id: []const u8) ![]const u8 {
+    const state = try connector_state.mint(testing.allocator, &h.queue, spec.STATE, SIGNING_SECRET, workspace_id, common.clock.nowMillis());
+    errdefer testing.allocator.free(state);
+    try connector_state.markLatest(&h.queue, spec.STATE, workspace_id, state);
+    return state;
+}
+
 fn connect(h: *TestHarness, installation_id: []const u8) !void {
-    const state = try connector_state.mint(testing.allocator, &h.queue, spec.STATE, SIGNING_SECRET, WORKSPACE_ID, common.clock.nowMillis());
+    const state = try mintLatestState(h, WORKSPACE_ID);
     defer testing.allocator.free(state);
-    const path = try std.fmt.allocPrint(testing.allocator, "/v1/connectors/github/callback?installation_id={s}&code={s}&state={s}", .{ installation_id, FAKE_CODE, state });
+    const path = try std.fmt.allocPrint(testing.allocator, CALLBACK_PATH_FMT, .{ installation_id, FAKE_CODE, state });
     defer testing.allocator.free(path);
     const response = try h.get(path).redirectBehavior(.unhandled).send();
     defer response.deinit();
@@ -196,6 +205,49 @@ test "integration: GitHub callback atomically replaces handle and routing row" {
     try testing.expectEqual(@as(usize, 4), fake.calls.load(.acquire));
 }
 
+test "integration: GitHub callback rejects a stale app-install state after a newer start" {
+    const h = TestHarness.start(testing.allocator, .{ .configureRegistry = noopRegistry }) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    fixtures.setTestEncryptionKey();
+    try fixtures.seedTenantById(conn, TENANT_ID, TENANT_NAME);
+    try fixtures.seedWorkspaceWithTenant(conn, WORKSPACE_ID, TENANT_ID);
+    try fixtures.seedWorkspaceWithTenant(conn, ADMIN_WORKSPACE_ID, TENANT_ID);
+    cleanup(conn);
+    defer cleanup(conn);
+    try seedAppCreds(testing.allocator, conn);
+    var fake: FakeGitHub = undefined;
+    try fake.start(.ok);
+    defer fake.shutdown();
+    const base = try configureGithub(h, &fake, testing.allocator);
+    defer testing.allocator.free(base);
+    defer testing.allocator.free(h.ctx.connector_oauth_token_endpoint_override.?);
+
+    const stale_state = try mintLatestState(h, WORKSPACE_ID);
+    defer testing.allocator.free(stale_state);
+    const current_state = try mintLatestState(h, WORKSPACE_ID);
+    defer testing.allocator.free(current_state);
+
+    const current_path = try std.fmt.allocPrint(testing.allocator, CALLBACK_PATH_FMT, .{ NEXT_INSTALL, FAKE_CODE, current_state });
+    defer testing.allocator.free(current_path);
+    const current = try h.get(current_path).redirectBehavior(.unhandled).send();
+    defer current.deinit();
+    try current.expectStatus(.found);
+
+    const stale_path = try std.fmt.allocPrint(testing.allocator, CALLBACK_PATH_FMT, .{ FIRST_INSTALL, FAKE_CODE, stale_state });
+    defer testing.allocator.free(stale_path);
+    const stale = try h.get(stale_path).redirectBehavior(.unhandled).send();
+    defer stale.deinit();
+    try stale.expectStatus(.bad_request);
+    try stale.expectErrorCode(ec.ERR_CONNECTOR_STATE_INVALID);
+    try expectInstall(conn, FIRST_INSTALL, null);
+    try expectInstall(conn, NEXT_INSTALL, WORKSPACE_ID);
+}
+
 test "integration: GitHub callback rejects an installation owned by another workspace and rolls back" {
     const h = TestHarness.start(testing.allocator, .{ .configureRegistry = noopRegistry }) catch |err| switch (err) {
         error.SkipZigTest => return error.SkipZigTest,
@@ -221,9 +273,9 @@ test "integration: GitHub callback rejects an installation owned by another work
 
     try connect(h, FIRST_INSTALL);
     try seedInstall(conn, NEXT_INSTALL, OTHER_WORKSPACE_ID);
-    const state = try connector_state.mint(testing.allocator, &h.queue, spec.STATE, SIGNING_SECRET, WORKSPACE_ID, common.clock.nowMillis());
+    const state = try mintLatestState(h, WORKSPACE_ID);
     defer testing.allocator.free(state);
-    const path = try std.fmt.allocPrint(testing.allocator, "/v1/connectors/github/callback?installation_id={s}&code={s}&state={s}", .{ NEXT_INSTALL, FAKE_CODE, state });
+    const path = try std.fmt.allocPrint(testing.allocator, CALLBACK_PATH_FMT, .{ NEXT_INSTALL, FAKE_CODE, state });
     defer testing.allocator.free(path);
     const response = try h.get(path).redirectBehavior(.unhandled).send();
     defer response.deinit();
@@ -259,9 +311,9 @@ test "integration: GitHub callback rejects an installation absent from the autho
     defer testing.allocator.free(base);
     defer testing.allocator.free(h.ctx.connector_oauth_token_endpoint_override.?);
 
-    const state = try connector_state.mint(testing.allocator, &h.queue, spec.STATE, SIGNING_SECRET, WORKSPACE_ID, common.clock.nowMillis());
+    const state = try mintLatestState(h, WORKSPACE_ID);
     defer testing.allocator.free(state);
-    const path = try std.fmt.allocPrint(testing.allocator, "/v1/connectors/github/callback?installation_id={s}&code={s}&state={s}", .{ FIRST_INSTALL, FAKE_CODE, state });
+    const path = try std.fmt.allocPrint(testing.allocator, CALLBACK_PATH_FMT, .{ FIRST_INSTALL, FAKE_CODE, state });
     defer testing.allocator.free(path);
     const response = try h.get(path).redirectBehavior(.unhandled).send();
     defer response.deinit();
