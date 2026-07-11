@@ -37,7 +37,10 @@ else
 	@echo "✓ [kernel] Runner integration tests passed (Linux real-process proofs)"
 endif
 
-TEST_DATABASE_URL_LOCAL ?= postgres://agentsfleet:agentsfleet@localhost:5432/agentsfleetdb
+# sslmode=disable: the local docker Postgres has no TLS and parseUrl defaults to
+# `.require` (hosted providers mandate it) — without it every local DB-lane test
+# fails at connect with SSLNotSupportedByServer before it can run.
+TEST_DATABASE_URL_LOCAL ?= postgres://agentsfleet:agentsfleet@localhost:5432/agentsfleetdb?sslmode=disable
 TEST_REDIS_TLS_URL_LOCAL ?= rediss://:agentsfleet@localhost:6379
 # Cert path — populated by _ensure-test-infra after Redis is healthy. Do NOT shell-expand
 # at parse time; Redis may not be running yet when the Makefile is first evaluated.
