@@ -25,6 +25,7 @@ const S_YAML = "yaml";
 const S_CONTRACT = "contract";
 const S_COMMON = "common";
 const S_CALL_DEADLINE = "call_deadline";
+const S_TRIPWIRE = "tripwire";
 const S_S3 = "s3";
 const S_GEN_ERROR_CODES = "gen-error-codes";
 // Directory the daemon test root is rooted at. Zig names a registered test after
@@ -135,6 +136,11 @@ pub fn build(b: *std.Build) void {
     // runner's control-plane client so the mechanism exists exactly once.
     const call_deadline_mod = deps.call_deadline;
 
+    // Comptime-erased fault injection (src/lib/tripwire) — production files
+    // carry check() markers, so the production module imports it too; the
+    // calls compile to nothing outside test builds.
+    const tripwire_mod = deps.tripwire;
+
     // hmac_sig sources its wall-clock from `common.clock` (Zig 0.16 removed
     // std.time.*Timestamp). Same pure, datastore-free shared module as log_mod —
     // no domain coupling, no cycle (common never imports hmac_sig).
@@ -165,6 +171,7 @@ pub fn build(b: *std.Build) void {
                 .{ .name = S_CONTRACT, .module = contract_mod },
                 .{ .name = S_COMMON, .module = common_mod },
                 .{ .name = S_CALL_DEADLINE, .module = call_deadline_mod },
+                .{ .name = S_TRIPWIRE, .module = tripwire_mod },
                 .{ .name = S_YAML, .module = yaml_mod },
                 .{ .name = S_S3, .module = s3_mod },
             },
@@ -241,6 +248,7 @@ pub fn build(b: *std.Build) void {
                 .{ .name = S_CONTRACT, .module = contract_mod },
                 .{ .name = S_COMMON, .module = common_mod },
                 .{ .name = S_CALL_DEADLINE, .module = call_deadline_mod },
+                .{ .name = S_TRIPWIRE, .module = tripwire_mod },
                 .{ .name = S_YAML, .module = yaml_mod },
                 .{ .name = S_S3, .module = s3_mod },
             },

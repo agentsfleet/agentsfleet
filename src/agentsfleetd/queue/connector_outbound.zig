@@ -217,8 +217,19 @@ const ParsedJobFields = struct {
     }
 };
 
+/// Dupe `val` into `slot`, freeing any prior value: a repeated stream key
+/// (foreign writer / operator tooling) must not orphan the earlier dupe.
+/// Dupe-before-free so an OOM leaves the previous value owned by the struct
+/// for `errdefer freeOwned` to release.
+fn setDuped(alloc: std.mem.Allocator, slot: *?[]u8, val: []const u8) !void {
+    const duped = try alloc.dupe(u8, val);
+    if (slot.*) |prev| alloc.free(prev);
+    slot.* = duped;
+}
+
 /// Walk the `[key, val, …]` field array, duping recognized values. `errdefer
-/// freeOwned` unwinds partial dupes if a later `dupe` OOMs.
+/// freeOwned` unwinds partial dupes if a later `dupe` OOMs; a repeated key
+/// replaces (and frees) the earlier value — last write wins.
 fn parseJobFields(alloc: std.mem.Allocator, fields: []const redis_protocol.RespValue) !ParsedJobFields {
     var out: ParsedJobFields = .{};
     errdefer out.freeOwned(alloc);
@@ -227,15 +238,15 @@ fn parseJobFields(alloc: std.mem.Allocator, fields: []const redis_protocol.RespV
         const key = redis_protocol.valueAsString(fields[i]) orelse continue;
         const val = redis_protocol.valueAsString(fields[i + 1]) orelse continue;
         if (std.mem.eql(u8, key, F_PROVIDER)) {
-            out.provider = try alloc.dupe(u8, val);
+            try setDuped(alloc, &out.provider, val);
         } else if (std.mem.eql(u8, key, F_WORKSPACE_ID)) {
-            out.workspace_id = try alloc.dupe(u8, val);
+            try setDuped(alloc, &out.workspace_id, val);
         } else if (std.mem.eql(u8, key, F_FLEET_ID)) {
-            out.fleet_id = try alloc.dupe(u8, val);
+            try setDuped(alloc, &out.fleet_id, val);
         } else if (std.mem.eql(u8, key, F_EVENT_ID)) {
-            out.event_id = try alloc.dupe(u8, val);
+            try setDuped(alloc, &out.event_id, val);
         } else if (std.mem.eql(u8, key, F_ANSWER)) {
-            out.answer = try alloc.dupe(u8, val);
+            try setDuped(alloc, &out.answer, val);
         }
     }
     return out;
@@ -290,6 +301,29 @@ test "decodeJobTuple unwinds every owned slice on OOM at any step" {
     var item = try buildTuple(testing.allocator);
     defer item.deinit(testing.allocator);
     try testing.checkAllAllocationFailures(testing.allocator, decodeForLeakCheck, .{&item});
+}
+
+fn parseDupKeyForLeakCheck(alloc: std.mem.Allocator, fields: []const redis_protocol.RespValue) !void {
+    var parsed = try parseJobFields(alloc, fields);
+    parsed.freeOwned(alloc);
+}
+
+test "parseJobFields frees the earlier dupe on a repeated key (last wins)" {
+    const alloc = testing.allocator;
+    const fields = try alloc.alloc(redis_protocol.RespValue, 4);
+    fields[0] = try dupBulk(alloc, F_PROVIDER);
+    fields[1] = try dupBulk(alloc, "slack");
+    fields[2] = try dupBulk(alloc, F_PROVIDER);
+    fields[3] = try dupBulk(alloc, "github");
+    var item = redis_protocol.RespValue{ .array = fields };
+    defer item.deinit(alloc);
+
+    var parsed = try parseJobFields(alloc, fields);
+    defer parsed.freeOwned(alloc);
+    try testing.expectEqualStrings("github", parsed.provider.?);
+
+    // OOM at every allocation point with a prior dupe owned: nothing leaks.
+    try testing.checkAllAllocationFailures(alloc, parseDupKeyForLeakCheck, .{fields});
 }
 
 test "decodeJobTuple rejects a job missing a required field" {

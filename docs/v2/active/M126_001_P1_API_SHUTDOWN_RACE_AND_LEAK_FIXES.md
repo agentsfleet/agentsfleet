@@ -65,13 +65,15 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `src/agentsfleetd/credentials/broker.zig` | EDIT | Single-flight cold-miss mint (R8) |
 | `src/agentsfleetd/observability/otlp/exporter.zig` | EDIT | Idempotent/guarded install (R9) |
 | `src/agentsfleetd/observability/metrics_runner.zig` | EDIT | Explicit spin-exhaustion handling — no duplicate slot (R10) |
-| `src/lib/tripwire.zig` | CREATE | Vendored fault-injection module (§4), shared by daemon and runner test graphs |
+| `src/lib/tripwire/tripwire.zig` | CREATE | Vendored fault-injection module (§4), named module for both build graphs (directory layout per src/lib convention) |
 | `src/lib/tests.zig` | EDIT | Wire tripwire self-tests into the lib test root (RULE TST) |
+| `src/build/shared.zig` | EDIT | tripwire module constructed in SharedDeps (named-module wiring) |
+| `build.zig` | EDIT | tripwire import on the daemon exe + test graphs |
+| `build_runner.zig` | EDIT | tripwire import on the runner graphs (lands with the base-adherence fail points) |
 | `src/agentsfleetd/cmd/serve_shutdown_test.zig` | CREATE | R1 regression: boot-window SIGTERM lifecycle test |
 | `src/agentsfleetd/events/subscription_hub_test.zig` | EDIT | R2/R4/R5 regressions: stalled peer, undrained stop, concurrent read+write |
 | `src/agentsfleetd/http/handlers/fleets/create_install_steps_test.zig` | CREATE | R3 regression: production configuration vs teardown |
-| `src/agentsfleetd/fleet/liveness_sweeper_test.zig` | CREATE | L1/L2 regressions: loop-all-failpoints leak proofs |
-| `src/agentsfleetd/queue/connector_outbound_test.zig` | EDIT | L3 regression: dup-key entry frees the earlier dupe |
+| `src/agentsfleetd/fleet/liveness_sweeper_integration_test.zig` | EDIT | L1/L2 regressions: loop-all-failpoints leak proofs (the fetch ladder needs real rows; L3's dup-key test is in-file in connector_outbound.zig — its decode fns are private) |
 | `src/lib/logging/sinks_test.zig` | EDIT | R6 regression: unregister under concurrent emits (real threads) |
 | `src/agentsfleetd/credentials/broker_test.zig` | EDIT | R8 regression: concurrent cold misses → exactly one mint |
 | `src/agentsfleetd/observability/otlp/exporter_test.zig` | EDIT | R9 regression: double install → one thread, no leaked handle |
@@ -139,9 +141,9 @@ Error paths free exactly what they acquired. **Implementation default:** match
 `reclaim_sweeper.zig`'s compound errdefer for the list, and `connector_outbound.zig:194`'s
 documented per-local pattern for struct-literal fields — both already canonical in-repo.
 
-- **Dimension 3.1** — `fetchDueRunners` frees both the duped items and the ArrayList backing buffer on every error path (L1) → Test `test_fetch_due_runners_error_paths_leak_free`
-- **Dimension 3.2** — a row-shape failure after the `.id` dupe orphans nothing: fields land in errdefer-covered locals before the append (L2) → Test `test_fetch_due_runners_partial_row_no_orphan`
-- **Dimension 3.3** — `parseJobFields` frees the earlier dupe when a duplicate key overwrites it, for every owned field (L3) → Test `test_parse_job_fields_duplicate_key_frees_prior`
+- **Dimension 3.1** — `fetchDueRunners` frees both the duped items and the ArrayList backing buffer on every error path (L1) → Test `test_fetch_due_runners_error_paths_leak_free` — DONE
+- **Dimension 3.2** — a row-shape failure after the `.id` dupe orphans nothing: fields land in errdefer-covered locals before the append (L2) → Test `test_fetch_due_runners_partial_row_no_orphan` — DONE
+- **Dimension 3.3** — `parseJobFields` frees the earlier dupe when a duplicate key overwrites it, for every owned field (L3) → Test in-file: "parseJobFields frees the earlier dupe on a repeated key (last wins)" + OOM sweep — DONE
 
 ### §4 — Tripwire fault injection, vendored
 
@@ -149,8 +151,8 @@ Port ghostty's `tripwire.zig` into `src/lib/` so error-path proofs stop dependin
 allocation-failure order and start naming their fail points. Zero production cost is a hard
 requirement (comptime `enabled = builtin.is_test`, inline call convention when disabled).
 
-- **Dimension 4.1** — the module self-tests: armed-and-untripped expectations fail the test; `errorAfter` counts; `end(.reset)` clears state → Test `test_tripwire_arm_fire_reset_semantics`
-- **Dimension 4.2** — §3's fixes carry named fail points, and their tests loop every fail point injecting `error.OutOfMemory` under `std.testing.allocator`, asserting the error surfaces AND observable state rolled back → covered by `test_fetch_due_runners_error_paths_leak_free` (the loop-all-failpoints body)
+- **Dimension 4.1** — the module self-tests: armed-and-untripped expectations fail the test; `errorAfter` counts; `end(.reset)` clears state → in-file tripwire tests, wired via the lib test root — DONE
+- **Dimension 4.2** — §3's fixes carry named fail points, and their tests loop every fail point injecting `error.OutOfMemory` under `std.testing.allocator`, asserting the error surfaces AND observable state rolled back → covered by `test_fetch_due_runners_error_paths_leak_free` (the loop-all-failpoints body) — DONE
 
 ### §5 — Latent race hardening (R6, R8, R9, R10)
 
