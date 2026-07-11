@@ -8,7 +8,7 @@ const common = @import("handlers/common.zig");
 const hx_mod = @import("handlers/hx.zig");
 
 const health = @import("handlers/health.zig");
-const model_caps_h = @import("handlers/model_caps.zig");
+const model_library_h = @import("handlers/model_library.zig");
 const auth_sessions = @import("handlers/auth/sessions.zig");
 const fleet_api = @import("handlers/fleets/api.zig");
 const fleet_secrets = @import("handlers/fleets/secrets.zig");
@@ -62,9 +62,10 @@ pub fn invokeMetrics(hx: *Hx, req: *httpz.Request, route: router.Route) void {
     health.innerMetrics(hx.*, req);
 }
 
-pub fn invokeModelCaps(hx: *Hx, req: *httpz.Request, route: router.Route) void {
+pub fn invokeModelLibrary(hx: *Hx, req: *httpz.Request, route: router.Route) void {
     _ = route;
-    model_caps_h.innerGetModelCaps(hx.*, req);
+    if (!common.requireMethod(hx.res, req.method, .GET)) return;
+    model_library_h.innerGetModelLibrary(hx.*);
 }
 
 // ── Auth sessions ─────────────────────────────────────────────────────────

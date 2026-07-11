@@ -69,6 +69,12 @@ Primary targets below; every import/call site the blast-radius grep (Dimension 1
 | `public/openapi/paths/models.yaml` | CREATE | documents `GET /v1/models` |
 | `public/openapi/root.yaml` + `public/openapi.json` | EDIT | path swap; the json is re-bundled by `make check-openapi` |
 | `scripts/check_openapi_route_coverage.py` + `scripts/check_openapi_url_shape.py` | EDIT | `model_caps` route mapping becomes the new authenticated route; `_um` static-path allowlist entry removed |
+| `src/agentsfleetd/http/handlers/admin/model_library_admin_delete_guard_test.zig` | RENAME (was `model_caps_admin_delete_guard_test.zig`) | third admin test the blast-radius grep surfaced; follows its subject |
+| `src/agentsfleetd/state/model_library/sql.zig` | CREATE | SQL Statement Modules touch-extraction (Indy-flagged in-session): the store's and rate cache's statements + the TABLE constant move here, mirroring `state/tenant_model_entries/sql.zig` |
+| `src/agentsfleetd/state/model_rate_cache.zig` | EDIT | its catalogue SELECT moves to the domain sql.zig; stale "model-caps" prose fixed |
+| route wiring (`routes.zig`, `route_scopes.zig`, `route_table.zig`, `route_table_invoke.zig`, `tests.zig`) | EDIT | `.model_caps`→`.model_library` variant; scope bucket no-auth→authenticated-only; bearer middleware; invoke wrapper owns the GET method check |
+| `src/agentsfleetd/errors/error_entries.zig` | EDIT | `UZ-PROVIDER-004` hint repoints from the retired endpoint to the model library (text-only; no code change) |
+| stale-prose sites (`state/tenant_provider.zig`, `fleet/context_resolve.zig`, `fleet/service_token_splits_wire_test.zig`, `http/rbac_http_integration_test.zig`, `http/handlers/fleets/backpressure_integration_test.zig`) | EDIT | comments/fixture names off the old naming; the backpressure probe repoints at `/v1/models` (admission sheds pre-auth, so its unauthenticated shed legs still 429; the ok-leg attaches a fixture bearer) |
 | `docs/architecture/billing_and_provider_keys.md`, `docs/architecture/scenarios/README.md`, `docs/architecture/user_flow.md` | EDIT | §10 and every flow mention rewritten to the authenticated read |
 | `~/Projects/docs`: `docs.json`, `changelog.mdx`, `cli/agentsfleet.mdx`, `api-reference/error-codes.mdx` | EDIT (own branch, per operating model) | nav page swap, retirement `<Update>`, stale "resolves from the cap.json endpoint" CLI prose fixed, `UZ-PROVIDER-004` guidance reworded to "the model library" |
 
@@ -78,6 +84,7 @@ Primary targets below; every import/call site the blast-radius grep (Dimension 1
 - **`dispatch/write_zig.md`** — file moves + import fix-ups + handler rework across `.zig`.
 - **`dispatch/write_ts_adhere_bun.md`** — file moves + import/type updates + Server Action across `.ts`/`.tsx`.
 - **`docs/REST_API_DESIGN_GUIDELINES.md`** — new `/v1` route; read before EXECUTE (`write_http` dispatch).
+- **`dispatch/write_zig.md` §SQL Statement Modules (SQLMOD)** — the touched store carries inline SQL, so extraction to a domain `sql.zig` is owed in the same diff (touch-arm; Indy-flagged in-session).
 - **`docs/CHANGELOG_VOICE.md`** — the retirement `<Update>` (`write_changelog` dispatch); historical `cap.json` changelog entries are append-only and stay.
 
 ## Applicable Gates
@@ -101,7 +108,7 @@ Primary targets below; every import/call site the blast-radius grep (Dimension 1
 
 The rename-only slice: files whose behavior is untouched go straight to their final names. **Implementation default:** `git mv` each file, rename every exported `Cap`/`Caps` symbol to its `Library` equivalent, fix every `@import` call site the blast-radius grep surfaced. These land as pure-rename commits, before any rework commit.
 
-- **Dimension 1.1** — the blast-radius grep for every renamed/deleted token (`model_caps`, `ModelCaps`, `Cap`-named exports, `_um/`, `cap.json`, `CAP_JSON`, `publicConfig`) is run from repo root, no path filter, and its full result set recorded in Discovery before any file is touched → Acceptance (Discovery record, not a unit test)
+- **Dimension 1.1** — the blast-radius grep for every renamed/deleted token (`model_caps`, `ModelCaps`, `Cap`-named exports, `_um/`, `cap.json`, `CAP_JSON`, `publicConfig`) is run from repo root, no path filter, and its full result set recorded in Discovery before any file is touched → Acceptance (Discovery record, not a unit test) — **DONE** (see Discovery)
 - **Dimension 1.2** — the full existing Zig suite (unit + integration) passes at baseline counts after the renames, and both linux targets cross-compile clean → Test `test_zig_suite_green_post_rename`
 
 ### §2 — Authenticated model-library read (`GET /v1/models`)
@@ -126,7 +133,7 @@ The public handler renames AND reworks: `model_caps.zig` → `model_library.zig`
 
 - **Dimension 4.1** — the go/no-go consult above is recorded in Discovery → Acceptance (Discovery record, not a unit test) — **DONE** (Indy ack recorded at CHORE(open), see Discovery)
 - **Dimension 4.2** — `GET /_um/<key>/cap.json` → `404`; no alias, no redirect → Test `test_cap_json_path_returns_404`
-- **Dimension 4.3** — zero `model_caps`/`ModelCaps` references in `src/`; zero `model_caps`/`ModelCap`/`CAP_JSON` references in `ui/`; zero `_um/`/`cap.json` references in `src/`, `ui/`, `public/`, `scripts/` — no carve-outs → Test `test_zero_old_name_references` (grep-based)
+- **Dimension 4.3** — zero `model_caps`/`ModelCaps` references in `src/`; zero `model_caps`/`ModelCap`/`CAP_JSON` references in `ui/`; zero `_um/`/`cap.json` references in `src/`, `ui/`, `public/`, `scripts/`. Single carve-out: `model_library_integration_test.zig` carries the retired path literal as the 404 pin test (Dimension 4.2's proof is not serving code) → Test `test_zero_old_name_references` (grep-based)
 - **Dimension 4.4** — `publicConfig`/`PublicConfig` and the rates/billing wire types are deleted; zero references remain → Test `test_public_config_orphan_removed` (grep-based)
 
 ### §5 — OpenAPI + coverage checks follow
@@ -202,7 +209,7 @@ Regression: 1.2/3.3 ARE the rename's regression proof (names change, behavior do
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | Zero old names or retired-path refs (§1, §3, §4) | `grep -rn "model_caps\|ModelCaps" src/; grep -rn "model_caps\|ModelCap\b\|CAP_JSON" ui/; grep -rn "_um/\|cap\.json" src/ ui/ public/ scripts/` | no output from any grep | P0 | |
+| R1 | Zero old names or retired-path refs (§1, §3, §4) | `grep -rn "model_caps\|ModelCaps" src/; grep -rn "model_caps\|ModelCap\b\|CAP_JSON" ui/; grep -rn "_um/\|cap\.json" src/ ui/ public/ scripts/ \| grep -v model_library_integration_test.zig` | no output from any grep (the 404 pin test is the single allowed retired-path mention) | P0 | |
 | R2 | OpenAPI gate green (§5) | `make check-openapi` | exit 0 | P0 | |
 | R3 | Architecture docs clean (§6) | `grep -rn "cap\.json" docs/architecture/` | no output | P0 | |
 | R4 | Docs site aligned (§6) | `cd ~/Projects/docs && git grep -n "cap\.json" -- docs.json cli/agentsfleet.mdx api-reference/error-codes.mdx` | no output (changelog history exempt) | P0 | |
@@ -238,7 +245,7 @@ Regression: 1.2/3.3 ARE the rename's regression proof (names change, behavior do
 |-----------------------|------|----------|
 | `model_caps` import paths + `ModelCaps`/`MODEL_CAPS_*` identifiers | `grep -rn "model_caps\|ModelCaps\|MODEL_CAPS" src/` | 0 matches |
 | `ModelCap`, `ModelCapInput`, `CapJson`, `CapRates`, `CapBilling`, `getModelCaps`, `CAP_JSON_PATH`, `CAP_JSON_PATH_KEY` | `grep -rn "ModelCap\b\|ModelCapInput\|CapJson\|CapRates\|CapBilling\|getModelCaps\|CAP_JSON" ui/` | 0 matches |
-| `_um`/`cap.json` path literals | `grep -rn "_um/\|cap\.json" src/ ui/ public/ scripts/` | 0 matches |
+| `_um`/`cap.json` path literals | `grep -rn "_um/\|cap\.json" src/ ui/ public/ scripts/ \| grep -v model_library_integration_test.zig` | 0 matches (the 404 pin test is the single allowed mention) |
 | `publicConfig`, `PublicConfig` | `grep -rn "publicConfig\|PublicConfig" src/` | 0 matches |
 
 ## Out of Scope
@@ -276,6 +283,8 @@ Regression: 1.2/3.3 ARE the rename's regression proof (names change, behavior do
   - Session consult (Jul 11, 2026, Indy-directed): sunset proposed by Indy; verified in-session — the dashboard Models page is the only live consumer (`ModelCatalogueProvider` fetch on mount); the CLI resolves caps server-side via `PUT /v1/tenants/me/provider` (`cli/src/commands/tenant.ts`); the install-skill never calls the endpoint (M49_001 §202); the `rates`/`billing` block has zero consumers (the dashboard discards it, the CLI pins `cli/src/constants/billing.ts`, the website pins `rates.ts`).
   - Merge consult — `> Indy (2026-07-11 08:59): "Do you think M120_005 supercedes M120_003? Since fixing M120_003 is pointless? That means we only fix the delta between M120_005 and M120_003 (base our spec on M120_005 and find delta with M120_003) and move it to M12_005 and continue as one spec M120_005 and M120_003 is closed as deferred?" — context: M120_003's rename scope is absorbed into this spec; M120_003 closed DEFERRED.`
   - Architecture consult: route name `GET /v1/models` checked against `docs/architecture/` — no conflicting stream/route naming; `billing_and_provider_keys.md` §10 is amended by §6.
+  - Dimension 1.1 blast-radius record (Jul 11, 2026, from repo root, no path filter): `model_caps` word — 26 files (5 Zig handler/store/test + 5 route-wiring + 12 UI source/test + 2 scripts + schema comment sites); `ModelCaps|ModelCap\b|MODEL_CAPS` — 15 files; `CAP_JSON|CapJson|CapRates|CapBilling|getModelCaps` — 6 UI files; `_um/|cap.json` — 16 files (incl. 6 `cli/test` false positives: a mock variable named `cap` with a `.json` property, outside every acceptance grep); `publicConfig|PublicConfig` — 3 files; `admin_models` — 13 UI files. Per-file hit counts in PR Session Notes. Surfaced beyond the authored table: the delete-guard admin test, `route_table.zig`/`routes.zig`/`route_scopes.zig`/`route_table_invoke.zig`/`tests.zig` wiring, `rbac_http_integration_test.zig` comment, the backpressure probe, and hyphenated `model-caps` prose (7 sites incl. the `UZ-PROVIDER-004` hint) — all folded into Files Changed above. `schema/embed.zig` + `schema/003_model_library.sql` comment mentions stay (append-only migration surface, outside every acceptance grep).
+  - SQLMOD consult (Indy-flagged mid-EXECUTE, Jul 11, 2026): the touched store carried inline SQL; the SQL Statement Modules touch-arm was owed and initially missed. Extraction to `state/model_library/sql.zig` landed in the same diff (store + rate-cache statements + TABLE). Root cause: the deterministic checker (`audits/sql-mod.sh --staged`) by design flags only ADDED SQL, and the product `make harness-verify` carries no SQLMOD row at all. Follow-up proposed to Indy (outside this spec's scope): (a) wire `sql-mod.sh --staged` into the product `make harness-verify`; (b) dotfiles `edit_rules` change teaching the checker that a rename is a touch.
   - §4 pre-flip go/no-go — **CLOSED at CHORE(open)**: `> Indy (2026-07-11 09:44): "No one outside our code is reading the public URL so you are free to remove and the cap.json" — context: Dimension 4.1 satisfied; the route flip to 404 is cleared, no access-log scan required.`
 - **Metrics review** — not applicable — no product/operator signal changes.
 - **Skill-chain outcomes** — empty at creation.

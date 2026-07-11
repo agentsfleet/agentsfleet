@@ -1,4 +1,4 @@
-//! Admin model-caps CRUD — `model:{read,admin}`-gated management of the priced
+//! Admin model-library CRUD — `model:{read,admin}`-gated management of the priced
 //! model catalogue (core.model_library), the billing spine.
 //!
 //! Routes (gated by the `model:read` (GET) / `model:admin` (write) scope in

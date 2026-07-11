@@ -2,7 +2,7 @@
 //!
 //! Populated at API server boot from core.model_library; read on the hot path by
 //! tenant_billing.computeStageCharge under platform-managed posture. The admin
-//! model-caps CRUD API calls populate() again after every mutation so a rate
+//! model-library CRUD API calls populate() again after every mutation so a rate
 //! change is live with no restart.
 //!
 //! Concurrency: the process-global is guarded by a mutex. Hot-path readers
@@ -22,7 +22,7 @@ const std = @import("std");
 const pg = @import("pg");
 const common = @import("common");
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
-const model_library_store = @import("model_library_store.zig");
+const sql = @import("model_library/sql.zig");
 
 pub const ModelRate = struct {
     input_nanos_per_mtok: i64,
@@ -39,9 +39,6 @@ const RatesMap = std.StringHashMapUnmanaged(ModelRate);
 /// (claude-opus-4-8 on anthropic vs pioneer) maps to two distinct keys.
 const KEY_SEP: u8 = 0x1f;
 
-const SELECT_RATES =
-    "SELECT provider, model_id, input_nanos_per_mtok, cached_input_nanos_per_mtok, output_nanos_per_mtok, context_cap_tokens" ++
-    "\nFROM " ++ model_library_store.TABLE;
 
 /// Write the composite (provider, model) lookup key into `buf`. Returns null
 /// if the pair does not fit — caller treats that as a cache miss (loud at
@@ -66,7 +63,7 @@ pub const Cache = struct {
         const arena_alloc = arena.allocator();
 
         var rates: RatesMap = .{};
-        var q = PgQuery.from(try conn.query(SELECT_RATES, .{}));
+        var q = PgQuery.from(try conn.query(sql.LIST_RATES_FOR_CACHE, .{}));
         defer q.deinit();
         while (try q.next()) |row| {
             const provider = try row.get([]const u8, 0);
@@ -108,8 +105,8 @@ var global_lock: common.Mutex = .{};
 /// (Re)build the rate cache from core.model_library. Safe to call at runtime under
 /// concurrent readers: the fresh Cache is built before the lock is taken, so the
 /// DB query never blocks the hot path, and a failed rebuild leaves the live
-/// cache in place. Called at boot (serve.zig) and after every admin model-caps
-/// mutation.
+/// cache in place. Called at boot (serve.zig) and after every admin
+/// model-library mutation.
 ///
 /// The cache is a PROCESS SINGLETON, so it owns its memory off
 /// `std.heap.page_allocator` — not a caller-supplied allocator. An earlier

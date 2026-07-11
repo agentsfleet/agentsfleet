@@ -19,7 +19,7 @@ const std = @import("std");
 const common = @import("common");
 const metrics = @import("../../../observability/metrics.zig");
 const ec = @import("../../../errors/error_registry.zig");
-const model_caps = @import("../model_caps.zig");
+const model_library = @import("../model_library.zig");
 
 const harness_mod = @import("../../test_harness.zig");
 const TestHarness = harness_mod.TestHarness;
@@ -40,9 +40,11 @@ const FD_CYCLES: usize = 3;
 /// Probe range for the fd-liveness count — covers every descriptor the
 /// harness (pool, server, clients) plausibly holds.
 const FD_PROBE_MAX: std.c.fd_t = 1024;
-/// api-class, none-auth probe route — sheds at the ceiling where the
-/// ops-class probes below must not.
-const API_PROBE_PATH = model_caps.MODEL_CAPS_PATH;
+/// api-class probe route — sheds at the ceiling where the ops-class probes
+/// below must not. Bearer-authed at invoke, but admission runs BEFORE the
+/// middleware chain, so the unauthenticated shed legs still observe 429; only
+/// the admitted "ok" leg attaches a fixture bearer to reach the handler's 200.
+const API_PROBE_PATH = model_library.MODEL_LIBRARY_PATH;
 
 /// Bounded poll for the parked stream's slot release after close: the handler
 /// wakes on the drain publish, fails its write, unwinds, and decrements.
@@ -141,7 +143,7 @@ test "integration: api-class requests shed 429 at the ceiling; ops routes and 40
     // request released its slot — a leaked claim would keep live at >=1 and
     // re-shed this probe.
     h.ctx.api_max_in_flight_requests = 1;
-    const ok = try (h.get(API_PROBE_PATH)).send();
+    const ok = try (try h.get(API_PROBE_PATH).bearer(fixtures.TOKEN_OPERATOR)).send();
     defer ok.deinit();
     try ok.expectStatus(.ok);
 

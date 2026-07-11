@@ -41,7 +41,7 @@ const TOKENS_PER_MTOK: i64 = 1_000_000;
 /// Promotional free-trial cutoff (UTC) `2026-08-01T00:00:00Z`. While
 /// `now_ms < FREE_TRIAL_END_MS`, computeStageCharge returns
 /// `FREE_TRIAL_STAGE_NANOS` regardless of posture/model/tokens; after, the
-/// standard rate constants apply. Private — read via `publicConfig()` and the
+/// standard rate constants apply. Private — surfaced via the
 /// `Billing.free_trial_*` projection; value mirrors the JS/TS twins in
 /// `rates.ts`, `types.ts`, `billing.js` (cross-tier parity rule).
 const FREE_TRIAL_END_MS: i64 = 1_785_542_400_000;
@@ -52,28 +52,6 @@ const FREE_TRIAL_STAGE_NANOS: i64 = 0;
 /// charged at this floor; v3 may add reconciliation against StageResult.
 pub const ESTIMATE_FLOOR_INPUT_TOKENS: u32 = 100;
 pub const ESTIMATE_FLOOR_OUTPUT_TOKENS: u32 = 100;
-
-/// Global, non-secret config the public catalogue endpoint serves beside the
-/// model rows; read (not copied) so it can't drift from the billing math.
-const PublicConfig = struct {
-    run_nanos_per_sec: i64,
-    event_nanos: i64,
-    starter_credit_nanos: i64,
-    free_trial_end_ms: i64,
-    free_trial_stage_nanos: i64,
-};
-
-/// One accessor (minimal pub surface) exposing the served consts — including the
-/// otherwise-private free-trial window — to the public catalogue handler.
-pub fn publicConfig() PublicConfig {
-    return .{
-        .run_nanos_per_sec = RUN_NANOS_PER_SEC,
-        .event_nanos = EVENT_NANOS,
-        .starter_credit_nanos = STARTER_CREDIT_NANOS,
-        .free_trial_end_ms = FREE_TRIAL_END_MS,
-        .free_trial_stage_nanos = FREE_TRIAL_STAGE_NANOS,
-    };
-}
 
 pub const Billing = struct {
     balance_nanos: i64,
