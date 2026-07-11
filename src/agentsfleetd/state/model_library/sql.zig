@@ -1,7 +1,8 @@
 //! Centralised SQL for the model library catalogue (core.model_library).
-//! Every query against the table lives here so the table name is grepable
-//! from one file and the store module stays focused on row mapping, allocator
-//! ownership, and error translation. Mirrors state/tenant_model_entries/sql.zig.
+//! Every production query against the table lives here so the table name is
+//! grepable from one place and the store module stays focused on row mapping,
+//! allocator ownership, and error translation (tests keep their setup/teardown
+//! SQL inline per the SQL Statement Modules rule). Mirrors state/tenant_model_entries/sql.zig.
 
 /// The catalogue table — single source for every core.model_library reference.
 pub const TABLE = "core.model_library";
@@ -31,8 +32,8 @@ pub const CAP_FOR =
 /// True-row probe: is the uid the (provider, model) the active
 /// platform_provider_defaults row resolves to? (The delete-guard.)
 pub const IS_REFERENCED_BY_ACTIVE_DEFAULT =
-    \\SELECT 1
-    \\  FROM core.model_library mc
+    "SELECT 1\n  FROM " ++ TABLE ++ " mc" ++
+    \\
     \\  JOIN core.platform_provider_defaults plk
     \\    ON plk.provider = mc.provider AND plk.model = mc.model_id AND plk.active = true
     \\ WHERE mc.uid = $1::uuid
@@ -67,7 +68,7 @@ pub const DELETE_BY_UID =
     "DELETE FROM " ++ TABLE ++ " WHERE uid = $1::uuid";
 
 /// Full rate projection for the in-memory rate cache (model_rate_cache.zig) —
-/// keyed by (provider, model_id) at load time.
+/// keyed by (provider, model_id) at load time. Column order follows
+/// RATE_COLUMNS (cap first), matching the cache populator's indices.
 pub const LIST_RATES_FOR_CACHE =
-    "SELECT provider, model_id, input_nanos_per_mtok, cached_input_nanos_per_mtok, output_nanos_per_mtok, context_cap_tokens" ++
-    "\nFROM " ++ TABLE;
+    "SELECT provider, model_id, " ++ RATE_COLUMNS ++ FROM_TABLE;

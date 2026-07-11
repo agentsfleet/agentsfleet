@@ -5,7 +5,7 @@
 // so the token never reaches the browser. The only static client-side model
 // data is the small known-models fallback list
 // (settings/models/lib/known-models.ts), used when the catalogue has no rows
-// for a provider. The former public unauthenticated cap.json route is retired.
+// for a provider.
 
 import { request } from "./client";
 

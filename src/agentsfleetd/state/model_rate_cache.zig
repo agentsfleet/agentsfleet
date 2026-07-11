@@ -68,10 +68,10 @@ pub const Cache = struct {
         while (try q.next()) |row| {
             const provider = try row.get([]const u8, 0);
             const model_id = try row.get([]const u8, 1);
-            const in_rate = try row.get(i64, 2);
-            const cached_rate = try row.get(i64, 3);
-            const out_rate = try row.get(i64, 4);
-            const cap_i32 = try row.get(i32, 5);
+            const cap_i32 = try row.get(i32, 2);
+            const in_rate = try row.get(i64, 3);
+            const cached_rate = try row.get(i64, 4);
+            const out_rate = try row.get(i64, 5);
             var key_buf: [512]u8 = undefined;
             const key_src = writeKey(&key_buf, provider, model_id) orelse continue;
             const key = try arena_alloc.dupe(u8, key_src);

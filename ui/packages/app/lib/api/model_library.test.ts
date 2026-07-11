@@ -28,6 +28,8 @@ describe("getModelLibrary", () => {
 
     expect(requestMock).toHaveBeenCalledTimes(1);
     const [path, init, token] = requestMock.mock.calls[0]!;
+    // pin test: literal is the contract — the wire path shared verbatim with
+    // MODEL_LIBRARY_PATH in the Zig handler and this client.
     expect(path).toBe("/v1/models");
     expect((init as { method: string }).method).toBe("GET");
     // The route is bearer-authed — the token threads through to request(),
