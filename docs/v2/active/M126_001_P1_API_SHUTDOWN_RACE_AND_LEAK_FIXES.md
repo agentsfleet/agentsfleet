@@ -16,12 +16,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M126
 **Workstream:** 001
 **Date:** Jul 11, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — three timing-dependent production defects (permanent loss of graceful shutdown, daemon-wide Server-Sent Events (SSE) stall, use-after-free during teardown) plus an unbounded slow leak in a forever-retrying sweeper. Customer-visible as stuck deploys, 429 storms, and shutdown crashes.
 **Categories:** API
 **Batch:** B1 — runs alone; M126_002 and M126_003 both depend on this branch (shared files, vendored tripwire).
 **Branch:** `feat/m126-001-shutdown-race-leak-fixes`
-**Test Baseline:** recorded at CHORE(open) via `make _lint_zig_test_depth`. Authoring-time reference: `unit=2500 integration=299` (`main` @ `3b1719a4b`, Jul 11, 2026).
+**Test Baseline:** unit=2500 integration=299 — recorded at CHORE(open), Jul 11, 2026, via `make _lint_zig_test_depth` on `feat/m126-001-shutdown-race-leak-fixes` @ `35dc828e1`.
 **Depends on:** none.
 **Provenance:** agent-generated (pre-spec, `docs/v2/reviews/m126-ghostty-adversarial-review.md` — five-agent adversarial review, Jul 11, 2026; Indy directed "all findings fixed").
 **Canonical architecture:** `docs/architecture/` carries no concurrency doc yet — M126_002 §3 creates it; this workstream's shutdown-ordering decisions feed that doc.
@@ -287,6 +287,7 @@ N/A — no files deleted; the stale "harmless" comment in `handlers/common.zig` 
 ## Discovery (consult log)
 
 - **Consults** — Architecture / Legacy-Design / gate-flag triage: the question asked + Indy's decision.
+  - Fold decision — > Indy (2026-07-11 ~12:26): "go, i chore open pull those M126_002,M126_003 into your worktree of M126_001 and commit in your PR." — all three workstreams execute on this branch, one PR.
 - **Metrics review** — events added, extra events found during `/review`, analytics/funnel playbook update or the explicit no-change reason.
 - **Skill-chain outcomes** — `/write-unit-test`, `/review`, `kishore-babysit-prs` results (order per `AGENTS.md` CHORE(close); iteration counts, findings dispositioned).
 - **Deferrals** — every "deferred to follow-up" needs an **Indy-acked verbatim quote** here, format `> Indy (YYYY-MM-DD HH:MM): "<quote>" — context: <which item, why>`. An agent-unilateral deferral is **incomplete scope, not deferral**, and blocks CHORE(close) until the item lands or the quote is captured.
