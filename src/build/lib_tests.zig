@@ -74,6 +74,14 @@ pub fn addTestStep(
     lib_test_step.dependOn(&b.addRunArtifact(logging_tests).step);
     lib_test_step.dependOn(&b.addRunArtifact(call_deadline_tests).step);
 
+    // Install all three src/lib test binaries for the valgrind memleak lane
+    // (`make memleak`'s lib lane). Each is a separate compilation/namespace, so
+    // the lane leak-gates all three artifacts.
+    const lib_test_bin_step = b.step("test-lib-bin", "Install the three src/lib test binaries for the memleak/valgrind lane");
+    lib_test_bin_step.dependOn(&b.addInstallArtifact(lib_tests, .{}).step);
+    lib_test_bin_step.dependOn(&b.addInstallArtifact(logging_tests, .{}).step);
+    lib_test_bin_step.dependOn(&b.addInstallArtifact(call_deadline_tests, .{}).step);
+
     test_list.addLane(b, list_step, S_LIB_TESTS, lib_tests.root_module, S_LIB_ROOT_DIR);
     test_list.addLane(b, list_step, S_LOGGING_TESTS, logging_tests.root_module, S_LOGGING_ROOT_DIR);
     test_list.addLane(b, list_step, S_CALL_DEADLINE_TESTS, call_deadline_tests.root_module, S_CALL_DEADLINE_ROOT_DIR);

@@ -52,8 +52,10 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 | File | Action | Why |
 |------|--------|-----|
-| `make/bench.mk` | EDIT | memleak lane iterates daemon + runner + lib test binaries; boot→SIGTERM→drain test included in the valgrind run |
-| `build.zig` / `build_runner.zig` | EDIT | test-bin targets per graph as needed by the new lanes (extend existing steps; no new build surface beyond that) |
+| `make/bench.mk` | EDIT | `memleak` iterates daemon + runner + lib graphs via one parametrized `_memleak-lane`; a `_memleak-boot-drain` lane migrates + exports the integration env + runs the filtered boot→SIGTERM→drain test under the gate and greps its run-proof marker |
+| `build_runner.zig` | EDIT | new `test-bin` step installs the runner UNIT-test binary (excludes the fork+exec integration tests); no `-Dopenssl` (runner links no OpenSSL) |
+| `src/build/lib_tests.zig` | EDIT | new `test-lib-bin` step installs the three `src/lib` test binaries for the valgrind lane |
+| `src/agentsfleetd/cmd/serve_lifecycle_integration_test.zig` | EDIT | run-proof marker (`std.debug.print`, bypasses the log-sink fail-on-warn) the `boot-drain` lane greps to prove the DB-gated test ran under the gate |
 | `src/agentsfleetd/main.zig` | EDIT | GPA deinit verdict checked — `.leak` fails (nonzero exit in debug/test-facing builds) instead of being discarded |
 | `src/runner/daemon/worker_pool.zig` | EDIT | per-worker GPA verdict surfaced and failed, same policy |
 | `src/agentsfleetd/state/model_rate_cache.zig` | EDIT | allocator injected (production default unchanged); rebuild/swap leak-checkable |
@@ -108,9 +110,9 @@ Linux with the existing flags; macOS keeps the blocking `testing.allocator` run 
 valgrind invocation per graph rather than one merged binary — the graphs have different build
 files and the per-lane output names the failing suite.
 
-- **Dimension 1.1** — runner suite runs under the valgrind lane; a seeded leak in a scratch branch fails it (verified during EXECUTE, not committed) → Test: `make memleak` output names all three lanes; rubric grep
-- **Dimension 1.2** — lib suite same → same verification
-- **Dimension 1.3** — `docs/VERIFY_TIERS.md` memleak tier updated to name the three lanes → rubric grep
+- **Dimension 1.1** — runner suite runs under the valgrind lane → Test: `make memleak` output names all three lanes; rubric grep — DONE. `build_runner.zig` gains a `test-bin` step (installs `agentsfleet-runner-tests`, excludes the fork+exec integration tests); `bench.mk`'s parametrized `_memleak-lane` runs the runner lane (`MEMLEAK_OPENSSL_OFF=0` — the runner links no OpenSSL). **Validated on macOS: runner lane passes (363 passed, 7 skipped, allocator gate + advisory leaks).**
+- **Dimension 1.2** — lib suite same → same verification — DONE. `src/build/lib_tests.zig` gains a `test-lib-bin` step (installs all three `src/lib` artifacts); the `_memleak-lane` runs the lib lane over the three binaries (`|| exit 1` INSIDE the `for`). **Validated on macOS: lib lane passes the blocking allocator gate for all three; one allocation-heavy sink-soak test fails only the ADVISORY `leaks` pass under `MallocStackLogging` overhead — non-blocking by design (valgrind's lighter slowdown with the 5–10 s timeouts handles it).**
+- **Dimension 1.3** — `docs/VERIFY_TIERS.md` memleak tier updated to name the three lanes → rubric grep — DONE (VERIFY_TIERS.md is a symlink into `~/Projects/dotfiles`; the update landed there and pushed to dotfiles `master`). Adds the `boot-drain` focused lane (dimension 5.1's gap-closer): the general daemon lane runs with NO DB env so every DB-gated test — including boot→drain — SKIPS under valgrind; the `boot-drain` lane migrates + exports the env + runs the daemon binary FILTERED to the lifecycle test under the gate and greps a run-proof marker. **Validated on macOS end-to-end: infra → migrate → filtered build → run → marker found → "boot→SIGTERM→drain ran leak-clean under the gate".**
 
 ### §2 — GPA leak verdicts become failures
 

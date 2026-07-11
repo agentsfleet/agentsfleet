@@ -252,7 +252,17 @@ test "integration: daemon boot -> SIGTERM -> drain runs the real teardown clean"
 
     // The listener is torn down → a fresh /healthz connect no longer succeeds.
     try testing.expect(!healthzOk(served_port));
+
+    // Run-proof marker (raw stderr, bypasses the log-sink fail-on-warn): the
+    // memleak lane greps this to prove the boot→drain test actually EXECUTED
+    // under valgrind rather than silently skipping on a misconfigured env — an
+    // unmarked skip would make the P0 leak claim vacuous.
+    std.debug.print("{s}\n", .{LIFECYCLE_RAN_MARKER});
 }
+
+// Greppable proof the lifecycle test ran to completion — the memleak lane
+// greps this exact string from the valgrind run's stderr (RULE UFS: named once).
+const LIFECYCLE_RAN_MARKER = "SERVE_LIFECYCLE_BOOT_DRAIN_RAN";
 
 /// Poll the boot witness: `/healthz` 200 means listening + handler installed;
 /// `run_done` set first means run() returned without serving (retry a port).
