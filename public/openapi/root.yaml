@@ -90,10 +90,10 @@ tags:
   description: Two-tier Fleet library catalog — platform-wide and tenant-scoped onboarding from a GitHub source, stored once in object storage by content hash.
   x-mintlify:
     navigation: Fleet library
-- name: Model Catalogue
-  description: Public model→capability catalogue consumed at provisioning time.
+- name: Model Library
+  description: The model library catalogue — bearer-authed read of the priced models and their per-token rates.
   x-mintlify:
-    navigation: Model Catalogue
+    navigation: Model Library
 paths:
   /healthz:
     $ref: ./paths/health.yaml#/~1healthz
@@ -211,8 +211,8 @@ paths:
     $ref: ./paths/fleet.yaml#/~1v1~1fleets~1runners~1{id}
   /v1/fleets/runners/{id}/events:
     $ref: ./paths/fleet.yaml#/~1v1~1fleets~1runners~1{id}~1events
-  /_um/da5b6b3810543fe108d816ee972e4ff8/cap.json:
-    $ref: ./paths/model-caps.yaml#/~1_um~1da5b6b3810543fe108d816ee972e4ff8~1cap.json
+  /v1/models:
+    $ref: ./paths/models.yaml#/~1v1~1models
 components:
   securitySchemes:
     $ref: ./components/security.yaml#/components/securitySchemes

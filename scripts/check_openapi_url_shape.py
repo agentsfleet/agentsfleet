@@ -100,16 +100,10 @@ NOUN_FINAL_SEGMENT_ALLOW: set[str] = {
 # "we'll get to it" is mechanical.
 VENDOR_PATH_CARVE_OUTS: set[str] = set()
 
-# Static-catalogue carve-out — the public model→capability catalogue is served
-# at a cryptic, static-file-shaped path (`/_um/<hash>/cap.json`) so it can be
-# CDN-cached at the edge and is unauthenticated by design. It is a static asset,
-# NOT a REST resource, and can never satisfy §1 (the opaque hash + `.json`
-# suffix are intrinsic to its shape). Documenting it in the public OpenAPI
-# requires this explicit, named exception (owner-directed carve-out — the path
-# is pinned by the runtime handler `model_caps.zig` MODEL_CAPS_PATH).
-STATIC_CATALOGUE_CARVE_OUTS: set[str] = {
-    "/_um/da5b6b3810543fe108d816ee972e4ff8/cap.json",
-}
+# Static-catalogue carve-out — empty since the public catalogue retired in
+# favour of the bearer-authed GET /v1/models (a normal REST resource). Kept
+# declared so the next owner-directed static-asset exception has a named home.
+STATIC_CATALOGUE_CARVE_OUTS: set[str] = set()
 
 # A "noun-shaped" final segment is either a path param ({foo}), a colon-op
 # (:approve, :reject), or matches the noun grammar: lowercase letters,
