@@ -106,6 +106,8 @@
         $ref: ../components/responses.yaml#/components/responses/Error
       '401':
         $ref: ../components/responses.yaml#/components/responses/Error
+      '404':
+        $ref: ../components/responses.yaml#/components/responses/Error
       '413':
         $ref: ../components/responses.yaml#/components/responses/Error
       '429':

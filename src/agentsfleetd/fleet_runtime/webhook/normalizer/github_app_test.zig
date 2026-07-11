@@ -46,3 +46,13 @@ test "GitHub App normalization rejects unsupported and malformed event shapes" {
     defer missing_repo.deinit();
     try std.testing.expectError(subject.NormalizeError.MissingRepository, subject.normalizeFromValue(std.testing.allocator, subject.EVENT_PULL_REQUEST, missing_repo.value.object, 0));
 }
+
+test "GitHub App ingress normalizer ignores unsupported event" {
+    var empty = try parse(
+        \\{"installation":{"id":123},"repository":{"full_name":"agentsfleet/agentsfleet"}}
+    );
+    defer empty.deinit();
+
+    const maybe = try subject.normalizeForIngress(std.testing.allocator, "issues", empty.value.object, 0);
+    try std.testing.expectEqual(@as(?[]const u8, null), maybe);
+}

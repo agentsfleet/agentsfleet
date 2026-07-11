@@ -75,7 +75,11 @@ pub fn normalizeForIngress(
     root: std.json.ObjectMap,
     received_at_unix: i64,
 ) anyerror!?[]u8 {
-    return switch (try normalizeFromValue(alloc, event, root, received_at_unix)) {
+    const normalized = normalizeFromValue(alloc, event, root, received_at_unix) catch |err| {
+        if (err == error.UnsupportedEvent) return null;
+        return err;
+    };
+    return switch (normalized) {
         .accepted => |body| body,
         .ignored => null,
     };
