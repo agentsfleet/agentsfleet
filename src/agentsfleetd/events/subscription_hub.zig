@@ -2,19 +2,26 @@
 //! to every live SSE stream.
 //!
 //! Topology: a mutex-guarded `channel → subscribers` map in front of a single
-//! `redis_subscriber` connection read by one dedicated reader thread. Wire
-//! SUBSCRIBE/UNSUBSCRIBE happen only on a channel's first-subscriber /
-//! last-subscriber edges; everything between is a map edit. The reader copies
-//! each inbound frame into every subscriber's bounded queue (`Subscription`)
-//! and never blocks on a slow consumer.
+//! `redis_subscriber` connection read by one dedicated reader thread
+//! (`subscription_hub_reader.zig`). Wire SUBSCRIBE/UNSUBSCRIBE happen only on
+//! a channel's first-subscriber / last-subscriber edges; everything between
+//! is a map edit.
 //!
-//! Concurrency model: the reader thread is the only `conn` swapper and does
-//! its blocking reads OUTSIDE the hub mutex; subscribe/unsubscribe send their
-//! wire commands UNDER the mutex. Reads and writes own disjoint transport
-//! state (poll/read on the fd vs the writer + TLS write keys), the same
-//! one-reader/one-writer model the request-path client family uses — a
-//! pathological interleave surfaces as a read error and heals through the
-//! reconnect path.
+//! Concurrency model — two locks, one thread confinement, one watchdog:
+//!   - `mutex` guards `channels` (the map) and NOTHING else. No wire write
+//!     ever runs under it, so a stalled peer cannot block dispatch,
+//!     subscribe, unsubscribe, channelCount, or stop.
+//!   - `wire` guards the `conn` field and serializes every wire WRITE
+//!     (subscribe/unsubscribe sends, reconnect install). Never nested with
+//!     `mutex` — acquire one at a time.
+//!   - The reader thread is confined to the read half (fd poll/read + read
+//!     keys) and dereferences `conn` outside `wire`: only the reader (and
+//!     post-join `stop()`) swaps the field, and the two transport halves are
+//!     disjoint — writers touch only the writer + TLS write keys, under
+//!     `wire`.
+//!   - Every wire send is bounded by a call_deadline watchdog: a peer that
+//!     stops reading gets the socket shut down at the deadline; the send
+//!     errors, the reader's next read fails, and the reconnect path heals.
 //!
 //! Loss semantics: pub/sub is the eyeballs surface, not the audit surface.
 //! Frames published while the connection is being re-dialed are lost, exactly
@@ -31,29 +38,45 @@ io: std.Io,
 /// `start()`; must outlive the hub (serve.zig and the harness both deinit
 /// the hub before the queue client).
 cfg: ?redis_config.Config = null,
-/// Guards `channels`, `conn` swaps, and wire writes. The reader's blocking
-/// read runs outside it; fan-out and re-subscribe sweeps run under it.
+/// Guards `channels` only. Wire writes NEVER run under it — see the model
+/// doc above; fan-out (reader) and map edits (request threads) share it.
 mutex: std.Io.Mutex = .init,
+/// Guards `conn` (the field) and serializes every wire write. Bounded holds
+/// only: each send is watchdog-bounded, so waiters never wait unbounded.
+wire: std.Io.Mutex = .init,
 channels: std.StringHashMapUnmanaged(*ChannelEntry) = .empty,
 conn: ?redis_subscriber = null,
 reader_thread: ?std.Thread = null,
 stopped: std.atomic.Value(bool) = .init(false),
-/// Reader-socket read timeout (SO_RCVTIMEO). Default = prod's
-/// `HUB_READ_TIMEOUT_MS`; the test harness lowers it so `stop()`'s join is fast.
+/// Reader-socket read timeout. Default = prod's `HUB_READ_TIMEOUT_MS`;
+/// the test harness lowers it so `stop()`'s join is fast.
 read_timeout_ms: u32 = HUB_READ_TIMEOUT_MS,
+/// Per-send deadline for wire writes (the watchdog's arm bound). Default =
+/// prod's `HUB_SEND_TIMEOUT_MS`; tests lower it to exercise the fire path.
+send_timeout_ms: u31 = HUB_SEND_TIMEOUT_MS,
+/// `stop()`'s bounded wait for closed streams to detach. Default = prod's
+/// `STOP_DRAIN_MAX_MS`; tests lower it to exercise the undrained path.
+stop_drain_max_ms: u64 = STOP_DRAIN_MAX_MS,
+/// Bounds every wire send by shutting the socket down at the deadline.
+/// One instance suffices: `wire` serializes sends, so at most one is armed.
+send_watchdog: SendWatchdog = .{},
 
 const ChannelEntry = struct {
     subscribers: std.ArrayList(*Subscription) = .empty,
 };
 
+/// Silent mechanism (`Watchdog(null)`): fire/refusal logging happens here
+/// where the channel context lives — mirrors the connectors' bounded_fetch.
+const SendWatchdog = call_deadline.Watchdog(null);
+
 /// Default reader wake cadence — bounds stop latency, reconnect detection, and
 /// pickup delay for wire commands behind a quiet socket. The per-instance
 /// `read_timeout_ms` field defaults to this; the test harness overrides it.
 const HUB_READ_TIMEOUT_MS: u32 = 1_000;
-/// Redial pacing: one attempt per second, stop-checked every slice so
-/// `stop()` never waits out a full backoff.
-const RECONNECT_SLICE_MS: u64 = 250;
-const RECONNECT_SLICES_PER_ATTEMPT: usize = 4;
+/// Default per-send bound. A truly dead peer costs one subscriber at most
+/// this long, never the daemon: the fired watchdog kills the socket and the
+/// reconnect path takes over.
+const HUB_SEND_TIMEOUT_MS: u31 = 5_000;
 /// `stop()` waits (bounded) for closed streams to detach so a late
 /// `unsubscribe` can never touch a deinit'd channel map.
 const STOP_DRAIN_MAX_MS: u64 = 5_000;
@@ -65,6 +88,7 @@ pub fn init(alloc: std.mem.Allocator, io: std.Io) Self {
 
 /// Dial the shared connection and start the reader thread. Boot path —
 /// failure here is a startup failure, mirroring the queue client connect.
+/// Single-threaded: the reader does not exist yet, so `conn` is set bare.
 pub fn start(self: *Self, cfg: redis_config.Config) !void {
     self.cfg = cfg;
     var conn = try redis_subscriber.connectFromConfig(self.io, self.alloc, cfg, .{ .read_timeout_ms = self.read_timeout_ms });
@@ -72,12 +96,14 @@ pub fn start(self: *Self, cfg: redis_config.Config) !void {
     conn.installReadTimeout();
     self.conn = conn;
     errdefer self.conn = null;
-    self.reader_thread = try std.Thread.spawn(.{}, readerMain, .{self});
+    self.reader_thread = try std.Thread.spawn(.{}, reader.readerMain, .{self});
     log.debug("hub_started", .{ .host = cfg.host, .port = cfg.port });
 }
 
 /// Stop the reader, close every live subscription so stream threads drain,
-/// and drop the connection. Idempotent; safe on a never-started hub.
+/// and drop the connection — the teardown runs under `wire`, so a racing
+/// late `unsubscribe` send serializes with it and then observes a null conn
+/// instead of a freed one. Idempotent; safe on a never-started hub.
 pub fn stop(self: *Self) void {
     if (self.stopped.swap(true, .acq_rel)) return;
     if (self.reader_thread) |t| {
@@ -92,17 +118,20 @@ pub fn stop(self: *Self) void {
     self.mutex.unlock(self.io);
     // Bounded drain by WALL-CLOCK deadline (re-checked each poll), not a sum of
     // nominal sleep slices — a starved `sleepNanos` overshoots and would overrun it.
-    const drain_deadline_ms = clock.nowMillis() + @as(i64, @intCast(STOP_DRAIN_MAX_MS));
+    const drain_deadline_ms = clock.nowMillis() + @as(i64, @intCast(self.stop_drain_max_ms));
     while (self.channelCount() > 0 and clock.nowMillis() < drain_deadline_ms) {
         common.sleepNanos(STOP_DRAIN_POLL_MS * std.time.ns_per_ms);
     }
     if (self.channelCount() > 0) {
         log.warn("hub_stop_undrained", .{ .live_channels = self.channelCount() });
     }
+    self.wire.lockUncancelable(self.io);
     if (self.conn) |*c| {
         c.deinit();
         self.conn = null;
     }
+    self.wire.unlock(self.io);
+    self.send_watchdog.deinit();
 }
 
 /// Frees map storage. Call after `stop()` AND after every stream thread has
@@ -121,17 +150,20 @@ pub fn deinit(self: *Self) void {
 
 pub const SubscribeError = error{ OutOfMemory, HubStopped };
 
-/// Attach a new subscriber to `channel_name`. First subscriber on a channel
-/// sends the wire SUBSCRIBE; during a reconnect gap the wire send is skipped
-/// and the post-redial sweep re-subscribes from the map.
+/// Attach a new subscriber to `channel_name`. The first subscriber on a
+/// channel sends the wire SUBSCRIBE — outside the map mutex, bounded by the
+/// send watchdog; during a reconnect gap the send is skipped and the
+/// post-redial sweep re-subscribes from the map.
 pub fn subscribe(self: *Self, channel_name: []const u8) SubscribeError!*Subscription {
     const sub = try Subscription.create(self.alloc, self.io, channel_name);
     errdefer sub.destroy();
-    try self.attach(sub);
+    if (try self.attach(sub)) self.wireSendSubscribe(sub.channel_name);
     return sub;
 }
 
-fn attach(self: *Self, sub: *Subscription) SubscribeError!void {
+/// Map half of subscribe: insert under `mutex` only. Returns true when `sub`
+/// is the channel's first subscriber (the caller then does the wire send).
+fn attach(self: *Self, sub: *Subscription) SubscribeError!bool {
     // Everything fallible is allocated before the lock; `consumed` routes the
     // spares to the map or back to the allocator on the way out. The explicit
     // catch covers the window before the consumed-defer is registered.
@@ -155,7 +187,7 @@ fn attach(self: *Self, sub: *Subscription) SubscribeError!void {
     const gop = try self.channels.getOrPut(self.alloc, spare_key);
     if (gop.found_existing) {
         try gop.value_ptr.*.subscribers.append(self.alloc, sub);
-        return;
+        return false;
     }
     gop.value_ptr.* = spare_entry;
     spare_entry.subscribers.append(self.alloc, sub) catch |err| {
@@ -164,16 +196,14 @@ fn attach(self: *Self, sub: *Subscription) SubscribeError!void {
         return err;
     };
     consumed = true;
-    if (self.conn) |*c| c.sendSubscribe(sub.channel_name) catch |err| {
-        // a failed write means the socket is dead; the reader's next read
-        // fails too and the reconnect sweep re-subscribes from the map
-        log.warn("hub_subscribe_send_failed", .{ .channel = sub.channel_name, .err = @errorName(err) });
-    };
+    return true;
 }
 
-/// Detach and destroy `sub`. Last subscriber off a channel sends the wire
-/// UNSUBSCRIBE (skipped during a reconnect gap — the fresh connection never
-/// re-subscribes a channel that left the map).
+/// Detach and destroy `sub`. The last subscriber off a channel sends the wire
+/// UNSUBSCRIBE outside the map mutex, then repairs the one benign race: a new
+/// first-subscriber whose SUBSCRIBE landed before our UNSUBSCRIBE would be
+/// silently muted, so if the channel is live again we re-SUBSCRIBE (a double
+/// SUBSCRIBE is a Redis no-op).
 pub fn unsubscribe(self: *Self, sub: *Subscription) void {
     var freed_key: ?[]const u8 = null;
     var freed_entry: ?*ChannelEntry = null;
@@ -192,11 +222,12 @@ pub fn unsubscribe(self: *Self, sub: *Subscription) void {
                 freed_key = entry.key_ptr.*;
                 freed_entry = entry.value_ptr.*;
                 self.channels.removeByPtr(entry.key_ptr);
-                if (self.conn) |*c| c.sendUnsubscribe(sub.channel_name) catch |err| {
-                    log.debug("hub_unsubscribe_send_failed", .{ .err = @errorName(err) });
-                };
             }
         }
+    }
+    if (freed_entry != null) {
+        self.wireSendUnsubscribe(sub.channel_name);
+        if (self.channelLive(sub.channel_name)) self.wireSendSubscribe(sub.channel_name);
     }
     if (freed_entry) |entry| {
         entry.subscribers.deinit(self.alloc);
@@ -213,137 +244,71 @@ pub fn channelCount(self: *Self) usize {
     return self.channels.count();
 }
 
-fn readerMain(self: *Self) void {
-    while (!self.stopped.load(.acquire)) {
-        const before_ms = clock.nowMillis();
-        // safe because: this thread is the only conn swapper, so reading the
-        // optional outside the mutex is single-writer; writers only touch the
-        // conn's write half, under the mutex.
-        const maybe_msg = self.conn.?.nextMessage() catch {
-            self.reconnect();
-            continue;
-        };
-        if (maybe_msg) |msg| {
-            var m = msg;
-            defer m.deinit(self.alloc);
-            self.dispatch(m.channel, m.payload);
-            continue;
-        }
-        // null = timeout tick OR closed socket; a null in under half the (instance) timeout is a dead socket.
-        if (clock.nowMillis() - before_ms < @divTrunc(@as(i64, self.read_timeout_ms), 2)) self.reconnect();
-    }
-}
-
-fn dispatch(self: *Self, channel: []const u8, payload: []const u8) void {
+fn channelLive(self: *Self, channel_name: []const u8) bool {
     self.mutex.lockUncancelable(self.io);
     defer self.mutex.unlock(self.io);
-    // a frame racing the last unsubscribe simply has nobody to deliver to
-    const entry = self.channels.get(channel) orelse return;
-    for (entry.subscribers.items) |sub| sub.push(payload);
+    return self.channels.contains(channel_name);
 }
 
-/// Reader-thread only: drop the dead connection, redial with stop-checked
-/// pacing, then re-subscribe every channel that still has viewers.
-fn reconnect(self: *Self) void {
-    log.warn("hub_connection_lost", .{ .live_channels = self.channelCount() });
-    self.dropConn();
-    while (!self.stopped.load(.acquire)) {
-        var i: usize = 0;
-        while (i < RECONNECT_SLICES_PER_ATTEMPT) : (i += 1) {
-            if (self.stopped.load(.acquire)) return;
-            common.sleepNanos(RECONNECT_SLICE_MS * std.time.ns_per_ms);
-        }
-        var fresh = redis_subscriber.connectFromConfig(self.io, self.alloc, self.cfg.?, .{ .read_timeout_ms = self.read_timeout_ms }) catch |err| {
-            log.warn("hub_redial_failed", .{ .err = @errorName(err) });
-            continue;
-        };
-        fresh.installReadTimeout();
-        if (self.resubscribeAll(fresh)) {
-            metrics.incSseHubReconnects();
-            log.debug("hub_reconnected", .{ .live_channels = self.channelCount() });
-            return;
-        }
-        self.dropConn();
+/// Watchdog-bounded wire SUBSCRIBE under `wire`. Skips silently when no
+/// connection is installed (reconnect gap — the post-redial sweep covers it).
+/// pub for the reader's post-install delta pass.
+pub fn wireSendSubscribe(self: *Self, channel_name: []const u8) void {
+    self.wireSend(.subscribe, channel_name);
+}
+
+fn wireSendUnsubscribe(self: *Self, channel_name: []const u8) void {
+    self.wireSend(.unsubscribe, channel_name);
+}
+
+const WireVerb = enum { subscribe, unsubscribe };
+
+fn wireSend(self: *Self, verb: WireVerb, channel_name: []const u8) void {
+    self.wire.lockUncancelable(self.io);
+    defer self.wire.unlock(self.io);
+    const conn_ptr = if (self.conn) |*c| c else return;
+    if (self.send_watchdog.arm(conn_ptr.socketHandle(), self.send_timeout_ms) == .watchdog_unavailable) {
+        // No watchdog → an unbounded send is refused outright; the reconnect
+        // sweep re-subscribes from the map once the reader replaces the conn.
+        log.warn("hub_wire_send_refused", .{ .channel = channel_name });
+        return;
     }
-}
-
-fn dropConn(self: *Self) void {
-    self.mutex.lockUncancelable(self.io);
-    var dead = self.conn;
-    self.conn = null;
-    self.mutex.unlock(self.io);
-    if (dead) |*c| c.deinit();
-}
-
-/// Replay SUBSCRIBE for every mapped channel on `fresh`, then install it.
-/// The O(N) wire sends run UNLOCKED on a duped name snapshot — a full send
-/// buffer must not stall dispatch/subscribe/unsubscribe behind the hub mutex
-/// (duped because the last unsubscribe during the window frees the map key).
-/// The install pass re-locks and sends the delta for channels subscribed
-/// during the window (attach skips its wire send while conn is null).
-/// False = send failure or hub stopped; `fresh` is consumed either way.
-fn resubscribeAll(self: *Self, fresh: redis_subscriber) bool {
-    var conn = fresh;
-    const names = self.snapshotChannelNames() catch {
-        conn.deinit();
-        return false; // OOM → treat as a failed attempt; the redial loop retries
+    defer self.send_watchdog.disarm();
+    const send_result = switch (verb) {
+        .subscribe => conn_ptr.sendSubscribe(channel_name),
+        .unsubscribe => conn_ptr.sendUnsubscribe(channel_name),
     };
-    defer {
-        for (names) |n| self.alloc.free(n);
-        self.alloc.free(names);
+    send_result catch |err| {
+        // A failed write means the socket is dead (or was shut down by the
+        // deadline below); the reader's next read fails too and the
+        // reconnect sweep re-subscribes from the map.
+        log.warn("hub_wire_send_failed", .{ .verb = @tagName(verb), .channel = channel_name, .err = @errorName(err) });
+    };
+    if (self.send_watchdog.deadlineFired()) {
+        log.warn("hub_wire_write_slowpath", .{ .verb = @tagName(verb), .channel = channel_name, .deadline_ms = self.send_timeout_ms });
     }
-    for (names) |name| {
-        conn.sendSubscribe(name) catch |err| {
-            log.warn(S_RESUBSCRIBE_FAILED, .{ .channel = name, .err = @errorName(err) });
-            conn.deinit();
-            return false;
-        };
-    }
-    self.mutex.lockUncancelable(self.io);
-    defer self.mutex.unlock(self.io);
-    if (self.stopped.load(.acquire)) {
-        conn.deinit();
-        return false;
-    }
-    self.conn = conn;
-    var it = self.channels.keyIterator();
-    while (it.next()) |key| {
-        if (containsName(names, key.*)) continue;
-        self.conn.?.sendSubscribe(key.*) catch |err| {
-            log.warn(S_RESUBSCRIBE_FAILED, .{ .channel = key.*, .err = @errorName(err) });
-            return false; // installed — the caller's dropConn tears it down
-        };
-    }
-    return true;
 }
 
-/// Duped channel names under the mutex; caller owns the slice + strings.
-fn snapshotChannelNames(self: *Self) error{OutOfMemory}![]const []const u8 {
-    self.mutex.lockUncancelable(self.io);
-    defer self.mutex.unlock(self.io);
-    var names = try self.alloc.alloc([]const u8, self.channels.count());
-    errdefer self.alloc.free(names);
-    var i: usize = 0;
-    errdefer for (names[0..i]) |n| self.alloc.free(n);
-    var it = self.channels.keyIterator();
-    while (it.next()) |key| : (i += 1) names[i] = try self.alloc.dupe(u8, key.*);
-    return names;
+/// Test seam: hold the wire lock to simulate a peer-stalled send, proving map
+/// operations proceed while a wire write is blocked.
+pub fn testHoldWire(self: *Self) void {
+    self.wire.lockUncancelable(self.io);
 }
 
-fn containsName(names: []const []const u8, key: []const u8) bool {
-    for (names) |n| if (std.mem.eql(u8, n, key)) return true;
-    return false;
+/// Test seam: release the lock taken by `testHoldWire`.
+pub fn testReleaseWire(self: *Self) void {
+    self.wire.unlock(self.io);
 }
 
 const std = @import("std");
 const common = @import("common");
 const clock = common.clock;
 const logging = @import("log");
+const call_deadline = @import("call_deadline");
 const redis_config = @import("../queue/redis_config.zig");
 const redis_subscriber = @import("../queue/redis_subscriber.zig");
-const metrics = @import("../observability/metrics.zig");
+const reader = @import("subscription_hub_reader.zig");
 const log = logging.scoped(.subscription_hub);
-const S_RESUBSCRIBE_FAILED = "hub_resubscribe_failed";
 
 test {
     _ = @import("subscription_hub_test.zig");

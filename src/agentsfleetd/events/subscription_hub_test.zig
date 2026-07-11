@@ -478,3 +478,158 @@ test "integration: a stalled viewer drops oldest while its channel sibling recei
     defer testing.allocator.free(head.message);
     try testing.expectEqualStrings("f3", head.message);
 }
+
+// ── Wire-write lock discipline (cold hub — protocol proofs, no Redis) ───────
+
+/// Subscriber-thread body for the stalled-wire test: the FIRST subscribe on a
+/// channel does a wire send, which blocks on the test-held wire lock.
+const StalledFirstSubscribe = struct {
+    fn run(hub: *subscription_hub, done: *common.Event, out_err: *?anyerror) void {
+        const sub = hub.subscribe(CHANNEL_A) catch |err| {
+            out_err.* = err;
+            done.set();
+            return;
+        };
+        done.set();
+        // Leave detachment to the main thread's cleanup ordering.
+        _ = sub;
+    }
+};
+
+test "attach_with_stalled_peer_does_not_block_dispatch" {
+    var hub = subscription_hub.init(testing.allocator, common.globalIo());
+    defer hub.deinit();
+
+    // Simulate a peer-stalled wire send: hold the wire lock so the first
+    // subscriber's SUBSCRIBE send blocks exactly where a full send buffer
+    // would block it.
+    hub.testHoldWire();
+    var wire_released = false;
+    defer if (!wire_released) hub.testReleaseWire();
+
+    var first_done = common.Event{};
+    var first_err: ?anyerror = null;
+    const first = try std.Thread.spawn(.{}, StalledFirstSubscribe.run, .{ &hub, &first_done, &first_err });
+    defer first.join();
+
+    // The first subscriber's map insert lands before its (blocked) wire send.
+    var waited_ms: u64 = 0;
+    while (hub.channelCount() == 0 and waited_ms < DELIVERY_WAIT_MS) : (waited_ms += 100) {
+        common.sleepNanos(POLL_SLEEP_NS);
+    }
+    try testing.expectEqual(@as(usize, 1), hub.channelCount());
+
+    // THE PROPERTY (pre-fix this deadlocked): with one wire send stalled,
+    // every map operation still completes — a non-first subscribe, a
+    // non-last unsubscribe, and the count.
+    const second = try hub.subscribe(CHANNEL_A);
+    try testing.expectEqual(@as(usize, 1), hub.channelCount());
+    hub.unsubscribe(second);
+    try testing.expect(!first_done.isSet());
+
+    hub.testReleaseWire();
+    wire_released = true;
+    try first_done.timedWait(DELIVERY_WAIT_MS * std.time.ns_per_ms);
+    try testing.expect(first_err == null);
+
+    // Cleanup: stop closes the remaining subscription; drain it like a stream
+    // thread would, then the count settles to zero.
+    const remaining = blk: {
+        hub.mutex.lockUncancelable(hub.io);
+        defer hub.mutex.unlock(hub.io);
+        const entry = hub.channels.get(CHANNEL_A) orelse break :blk null;
+        break :blk entry.subscribers.items[0];
+    };
+    if (remaining) |sub| hub.unsubscribe(sub);
+    hub.stop();
+    try testing.expectEqual(@as(usize, 0), hub.channelCount());
+}
+
+test "hub_stop_undrained_no_conn_teardown_race" {
+    // stop()'s drain-timeout warns by design; the build runner fails a
+    // passing test that emits warn+ logs — silence for this test only.
+    const saved_log_level = testing.log_level;
+    testing.log_level = .err;
+    defer testing.log_level = saved_log_level;
+
+    var hub = subscription_hub.init(testing.allocator, common.globalIo());
+    defer hub.deinit();
+    // A wedged stream thread never detaches inside the bound: shrink the
+    // bound so the test exercises the undrained path quickly.
+    hub.stop_drain_max_ms = 100;
+
+    const wedged = try hub.subscribe(CHANNEL_A);
+    hub.stop(); // drain times out with the channel still live; conn teardown runs under the wire lock
+
+    // The "wedged" stream thread finally unsubscribes AFTER stop returned —
+    // pre-fix this read a connection stop() had already deinit'd (with a live
+    // conn: use-after-free); post-fix the send path observes null under the
+    // wire lock and skips.
+    hub.unsubscribe(wedged);
+    try testing.expectEqual(@as(usize, 0), hub.channelCount());
+}
+
+/// Churn-thread body for the concurrent read+write test: subscribe/unsubscribe
+/// its own channel repeatedly, generating wire writes while the reader reads.
+const WireChurn = struct {
+    const ITERATIONS: usize = 25;
+    fn run(hub: *subscription_hub, channel: []const u8, out_err: *?anyerror) void {
+        var i: usize = 0;
+        while (i < ITERATIONS) : (i += 1) {
+            const sub = hub.subscribe(channel) catch |err| {
+                out_err.* = err;
+                return;
+            };
+            hub.unsubscribe(sub);
+        }
+    }
+};
+
+test "integration: concurrent_read_write_one_subscriber_conn" {
+    const url = try requireRedisUrlOrSkip();
+    const cfg = try queue_redis.testing.poolConfigFromUrl(testing.allocator, url);
+    defer redis_config.deinitConfig(testing.allocator, cfg);
+    var pub_client = try queue_redis.testing.connectFromUrl(common.globalIo(), testing.allocator, url);
+    defer pub_client.deinit();
+
+    var hub = subscription_hub.init(testing.allocator, common.globalIo());
+    defer hub.deinit();
+    defer hub.stop();
+    try hub.start(cfg);
+
+    // A live viewer keeps the reader busy with real frames…
+    const viewer = try hub.subscribe(CHANNEL_A);
+    var viewer_detached = false;
+    defer if (!viewer_detached) hub.unsubscribe(viewer);
+
+    // …while churn threads hammer the write half of the SAME connection.
+    var errs = [_]?anyerror{ null, null, null };
+    const churn_channels = [_][]const u8{ "hubtest:churn:one", "hubtest:churn:two", "hubtest:churn:three" };
+    var churn: [3]std.Thread = undefined;
+    for (&churn, churn_channels, 0..) |*t, chan, i| {
+        t.* = try std.Thread.spawn(.{}, WireChurn.run, .{ &hub, chan, &errs[i] });
+    }
+
+    // Publish through the churn window; every frame must reach the viewer —
+    // interleaved reads and serialized writes on one connection corrupt
+    // neither direction.
+    var frame_buf: [16]u8 = undefined;
+    var delivered: usize = 0;
+    var i: usize = 0;
+    while (i < 10) : (i += 1) {
+        const frame = try std.fmt.bufPrint(&frame_buf, "rw{d}", .{i});
+        try pub_client.publish(CHANNEL_A, frame);
+        const got = viewer.pop(DELIVERY_WAIT_MS);
+        if (got == .message) {
+            testing.allocator.free(got.message);
+            delivered += 1;
+        }
+    }
+    for (&churn) |*t| t.join();
+
+    for (errs) |maybe_err| try testing.expect(maybe_err == null);
+    try testing.expectEqual(@as(usize, 10), delivered);
+    hub.unsubscribe(viewer);
+    viewer_detached = true;
+    try expectNumsub(&pub_client, CHANNEL_A, 0);
+}

@@ -183,6 +183,12 @@ pub fn installReadTimeout(self: *Self) void {
     if (self.read_timeout_ms) |ms| self.transport.setReadTimeout(ms);
 }
 
+/// The socket handle, for owners that bound their blocking sends with a
+/// call_deadline watchdog (the hub's wire writes).
+pub fn socketHandle(self: *Self) std.posix.fd_t {
+    return self.transport.socketHandle();
+}
+
 fn sendCommand(self: *Self, argv: []const []const u8) !void {
     const writer = self.transport.writer();
     try writer.print("*{d}\r\n", .{argv.len});
