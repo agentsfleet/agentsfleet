@@ -208,6 +208,13 @@ test "integration: App ingress routes installation repository event grant and re
     try ignored.expectStatus(.ok);
     try testing.expectEqual(@as(i64, 1), try streamLen(h, fixtures.FLEET_WORKFLOW));
 
+    const unsupported = try postSigned(h, "{\"installation\":{\"id\":123456},\"repository\":{\"full_name\":\"agentsfleet/agentsfleet\"}}", "issues", "delivery-unsupported", SECRET);
+    defer unsupported.deinit();
+    try unsupported.expectStatus(.ok);
+    try testing.expect(unsupported.bodyContains("\"status\":\"ignored\""));
+    try testing.expectEqual(@as(i64, 1), try streamLen(h, fixtures.FLEET_WORKFLOW));
+    try testing.expectEqual(@as(i64, 1), try streamLen(h, fixtures.FLEET_PULL_ONE));
+
     // One failed queue target releases only its replay slot. Retrying the same
     // delivery fills the missing stream without duplicating the successful one.
     const partial_pull = try pullRequestBody(testing.allocator, fixtures.INSTALLATION_ID, REPOSITORY, "partial");
