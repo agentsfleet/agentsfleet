@@ -49,6 +49,7 @@ pub const FleetEvent = struct {
         alloc.free(self.event_type);
         alloc.free(self.workspace_id);
         alloc.free(self.request_json);
+        self.* = undefined;
     }
 };
 
@@ -322,9 +323,8 @@ fn decodeForLeakCheck(alloc: std.mem.Allocator, item: *const redis_protocol.Resp
 test "decodeFleetEventTuple unwinds every owned slice on OOM at any step" {
     var item = try buildTuple(testing.allocator, false);
     defer item.deinit(testing.allocator);
-    // Fails each internal dupe in turn (event_type, actor, the two defaulted
-    // slices, event_id) and asserts the only error is OutOfMemory with zero
-    // leaked bytes — proving the parseEventFields + intoOwned errdefer chain.
+    // Fails each internal dupe in turn and asserts the only error is OutOfMemory
+    // with zero leaked bytes — proving the parseEventFields + intoOwned errdefer chain.
     try testing.checkAllAllocationFailures(testing.allocator, decodeForLeakCheck, .{&item});
 }
 

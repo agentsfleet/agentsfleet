@@ -179,6 +179,7 @@ pub const BufferedSink = struct {
         // to free the backing buffer.
         unregisterByCtx(@ptrCast(self));
         self.buf.deinit(self.alloc);
+        self.* = undefined;
     }
 
     pub fn sink(self: *BufferedSink) Sink {
@@ -189,7 +190,7 @@ pub const BufferedSink = struct {
     /// frees with the BufferedSink's allocator (`bs.alloc`). The copy
     /// is taken under lock so concurrent `emit`s can't invalidate the
     /// returned slice via ArrayList realloc — the previous
-    /// `return self.buf.items` was a race waiting to happen.
+    /// `return self.buf.items` was a race waiting to happen. Caller must free.
     pub fn snapshot(self: *BufferedSink) ![]u8 {
         self.mutex.lock();
         defer self.mutex.unlock();

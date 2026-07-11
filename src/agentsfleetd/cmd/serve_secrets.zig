@@ -22,6 +22,7 @@ pub const Secrets = struct {
         if (self.clerk_webhook_secret) |s| self.alloc.free(s);
         if (self.approval_signing_secret) |s| self.alloc.free(s);
         if (self.clerk_secret_key) |s| self.alloc.free(s);
+        self.* = undefined;
     }
 };
 

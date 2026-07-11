@@ -101,6 +101,10 @@ pub fn applyReadTimeout(self: *Self, ms: ?u32) void {
 }
 
 pub fn deinit(self: *Self) void {
+    // discipline: ok — this deinit poisons via its terminal state machine, not
+    // `self.* = undefined`: `state = .closed` + `fd = INVALID_FD` below are the
+    // double-deinit guard. Memory-poisoning would corrupt `self.state` and turn
+    // the controlled `.closed => assert(false)` into undefined behavior (A5).
     // .active or .poisoned → .closing → .closed
     // .closing → .closed (already requested teardown)
     // .closed → asserts (Invariant 14: terminal, reachable once)

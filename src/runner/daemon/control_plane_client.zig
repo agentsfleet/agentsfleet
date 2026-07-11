@@ -70,6 +70,7 @@ pub fn init(alloc: Allocator, io: std.Io, base_url: []const u8) LoopbackClient {
 pub fn deinit(self: *LoopbackClient) void {
     self.watchdog.deinit();
     self.http.deinit();
+    self.* = undefined;
 }
 
 /// POST /v1/runners/me/leases → the next event + resolved policy, or no-work.

@@ -22,6 +22,7 @@ pub const RespValue = union(enum) {
             },
             .integer => {},
         }
+        self.* = undefined;
     }
 };
 

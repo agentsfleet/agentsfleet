@@ -60,6 +60,7 @@ pub const Delivery = struct {
         alloc.free(self.fleet_id);
         alloc.free(self.event_id);
         alloc.free(self.answer);
+        self.* = undefined;
     }
 };
 
