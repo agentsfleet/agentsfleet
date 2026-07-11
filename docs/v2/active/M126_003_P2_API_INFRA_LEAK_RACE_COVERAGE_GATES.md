@@ -136,8 +136,8 @@ leak-audited for the first time.
 `defer <binding>.deinit()`, with a seeded-violation fixture proving detection. Tree is clean
 today (268/268 verified in the review) so the tightened check lands green.
 
-- **Dimension 4.1** — seeded wrap-without-defer fixture fails the check naming file:line → Test `test_drain_lint_detects_missing_defer` (fixture-driven)
-- **Dimension 4.2** — full tree passes the tightened check → Test: `make lint` exit 0
+- **Dimension 4.1** — seeded wrap-without-defer fixture fails the check naming file:line → Test `test_drain_lint_detects_missing_defer` (fixture-driven) — DONE (comment-stripped so a commented `defer q.deinit()` can't mask a real gap)
+- **Dimension 4.2** — full tree passes the tightened check → Test: `make lint` exit 0 — DONE (the tightened check found + fixed a real latent gap: `db/pool_migration_lock.zig` `release` used a bare `result.deinit()` where its sibling `probeAvailable` used `defer`)
 
 ### §5 — Deterministic lifecycle tests for the five untested surfaces
 
