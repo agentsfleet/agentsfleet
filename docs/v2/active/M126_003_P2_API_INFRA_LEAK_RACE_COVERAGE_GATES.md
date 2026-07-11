@@ -126,9 +126,9 @@ The three sites take an injected allocator with the production default unchanged
 (`page_allocator`); tests construct them on `std.testing.allocator` so rebuild/swap cycles are
 leak-audited for the first time.
 
-- **Dimension 3.1** — `model_rate_cache` repeated populate/swap under `testing.allocator` is leak-free → Test `test_rate_cache_rebuild_cycles_leak_free`
-- **Dimension 3.2** — `approval_gate_db` decision-sink cycle leak-free → Test `test_approval_gate_sink_leak_free`
-- **Dimension 3.3** — `db/pool` init/deinit cycle leak-free under injection → Test `test_db_pool_alloc_injected_leak_free`
+- **Dimension 3.1** — `model_rate_cache` repeated populate/swap under `testing.allocator` is leak-free → Test `test_rate_cache_rebuild_cycles_leak_free` — DONE. Injection is a module `backing_allocator` var + `setBackingAllocatorForTest` (NOT a `populate` parameter — the file's doc comment documents why a caller-supplied allocator was removed as a footgun; the module knob keeps that closed while staying overridable). DB-gated integration test (`model_rate_cache_integration_test.zig`) drives 20 populate/swap rounds under `testing.allocator` — **validated leak-free against live pg** (exit 0).
+- **Dimension 3.2** — `approval_gate_db` decision-sink cycle leak-free → Test `test_approval_gate_sink_leak_free` — DONE. `resolveGateDecision` gains a `sink_alloc: Allocator` param (2 production callers pass `page_allocator`). Unit test asserts `ResolvedRow.deinit` frees all six owned fields with zero residue/double-free under `testing.allocator` — the exact ownership the injected sink allocator relies on (DB-free).
+- **Dimension 3.3** — `db/pool` connect-string allocation leak-free under injection → Test `test_db_pool_alloc_injected_leak_free` — DONE (as a `parseUrl` unit test). Divergence: the page_allocator site (`initFromEnvForRole`) legitimately stays `page_allocator` — `pg.Pool.init` borrows the connect strings for the pool's whole life and returns no handle to free them, so a full init/deinit cannot leak-audit them (that is *why* they are process-lifetime page_allocator). `parseUrl` IS the injectable allocator seam; the unit test drives its dupe path on `testing.allocator` and frees it, proving the allocation side leak-clean.
 
 ### §4 — Drain lint verifies the pair
 

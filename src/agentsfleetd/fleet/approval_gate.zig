@@ -201,7 +201,7 @@ fn evaluatePendingGate(
             logGateActivity(pool, alloc, session, error_codes.GATE_EVENT_TIMEOUT, ref.actionId());
             // Attribution must be the canonical "system:timeout" string the
             // sweeper also writes (resolve() dedups whichever lands first).
-            approval_gate.resolveGateDecision(pool, ref.actionId(), .timed_out, resolver.SYSTEM_TIMEOUT, "");
+            approval_gate.resolveGateDecision(pool, ref.actionId(), .timed_out, resolver.SYSTEM_TIMEOUT, "", std.heap.page_allocator);
             cleanupPendingKey(redis, session.fleet_id, ref.actionId());
             return .{ .blocked = .timeout };
         },
