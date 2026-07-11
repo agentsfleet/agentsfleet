@@ -57,11 +57,17 @@ DOC_ZIG_PATH_RE = re.compile(r"src/agentsfleetd/[a-zA-Z0-9_/]+\.zig")
 # An unquoted `r"make ([a-z-]+)"` also matches ordinary prose ("make sure",
 # "make it clear"), which would false-positive the moment such a sentence is
 # added to the guide.
-DOC_MAKE_TARGET_RE = re.compile(r"`make ([a-z][a-z0-9-]*)`")
+DOC_MAKE_TARGET_RE = re.compile(r"`make (_?[a-z][a-z0-9_-]*)`")
 # Real make targets are defined as `name:` or `_name:` at column 0 across
 # make/*.mk + Makefile. Extracted once into a set so each cited target is an
 # O(1) membership check instead of a fresh regex scan of the whole corpus.
-MAKE_TARGET_DEF_RE = re.compile(r"^_?([a-z][a-z0-9-]*):", re.MULTILINE)
+#
+# The leading `_` sits INSIDE the capture group, and underscore is in the inner
+# class. Both matter: with `^_?([a-z]...)` the target `_fmt:` registered under
+# the name `fmt`, so a doc citing `make fmt` — a target that does not exist —
+# passed, while `make _fmt` was reported phantom. And without `_` in the inner
+# class, `_lint_zig_test_depth:` matched nothing at all.
+MAKE_TARGET_DEF_RE = re.compile(r"^(_?[a-z][a-z0-9_-]*):", re.MULTILINE)
 
 
 def read_file(path: str) -> str | None:

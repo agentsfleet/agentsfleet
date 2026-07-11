@@ -1,12 +1,22 @@
 #!/usr/bin/env bash
-# M7_002 Section 2: service health — verify services are healthy after rotation.
+# Service health — verify services are healthy after rotation.
 #
 # Covers playbook section 4.0 (API health + Vercel bypass verification).
+# The bypass check reads the vault, so the gates run up front rather than after
+# the health probes: a run that cannot reach the vault cannot finish, and failing
+# before the network calls keeps the operator's error the real one.
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=../../lib/common.sh
+source "$SCRIPT_DIR/../../lib/common.sh"
+
+playbooks_require_vault_read_approval
+playbooks_require_op_auth
+
 echo ""
-echo "== M7_002 Section 2: service health =="
+echo "== service health =="
 
 vault_prod="${VAULT_PROD:-ZMB_CD_PROD}"
 
