@@ -66,6 +66,15 @@ const US_PER_MS: u32 = 1000; // millisecond -> microsecond factor for the timeva
 // Live-infra OS env keys the make integration lane exports (the ONLY values
 // read from the live environment — the rest are injected literals so a dev
 // machine's exporter/analytics env can never leak into the booted daemon).
+// Isolation gate: this test drives a REAL full daemon (HTTP listener + sweepers
+// + event bus + redis + telemetry captures + SIGTERM) — far too invasive to
+// interleave with the ~2000 tests in the shared `make test-integration` binary,
+// where it perturbs process-global state (the telemetry ring records a
+// `.server_started`, the model rate cache is deinit'd, redis connections churn)
+// and destabilizes unrelated tests. It runs ONLY in its own isolated, filtered
+// process — the `make memleak` boot-drain lane sets this env; the general
+// integration suite does not, so there it skips.
+const LIFECYCLE_ISOLATION_ENV: [:0]const u8 = "AGENTSFLEET_LIFECYCLE_ISOLATED";
 const OS_DB_URL_ENV: [:0]const u8 = "TEST_DATABASE_URL";
 const OS_REDIS_TLS_URL_ENV: [:0]const u8 = "TEST_REDIS_TLS_URL";
 const OS_REDIS_CA_CERT_ENV: [:0]const u8 = "REDIS_TLS_CA_CERT_FILE";
@@ -123,6 +132,10 @@ fn runServe(a: RunArgs) void {
 test "integration: daemon boot -> SIGTERM -> drain runs the real teardown clean" {
     const alloc = testing.allocator;
     const io = common.globalIo();
+
+    // Skip outside the dedicated isolated lane (see LIFECYCLE_ISOLATION_ENV): a
+    // full real-daemon boot must not run interleaved with the shared suite.
+    if (common.env.testLiveValue(LIFECYCLE_ISOLATION_ENV) == null) return error.SkipZigTest;
 
     // ── Env gate: build the daemon env from live infra ONLY. Never snapshot the
     // live environment — a dev machine's POSTHOG_API_KEY / OTLP endpoint would

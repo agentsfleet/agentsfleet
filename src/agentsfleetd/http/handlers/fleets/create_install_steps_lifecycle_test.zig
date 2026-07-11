@@ -47,6 +47,13 @@ fn cleanupFleet(h: *TestHarness) void {
     const conn = h.acquireConn() catch return;
     defer h.releaseConn(conn);
     base.teardownFleets(conn, LC_WORKSPACE_ID);
+    // Delete the seeded workspace too (fleets first — no cascade on workspace_id).
+    // A leftover core.workspaces row under the shared test tenant poisons sibling
+    // suites: secret_probe.resolvePrimaryWorkspace bridges tenant→workspace by
+    // earliest (created_at ASC, workspace_id ASC), and every fixture is created_at=0,
+    // so this low-UUID workspace would win the tie-break and misdirect their
+    // credential loads to the wrong workspace (SecretMissing / NotFound).
+    base.teardownWorkspace(conn, LC_WORKSPACE_ID);
 }
 
 test "integration(install_worker): teardown wait() awaits the in-flight worker; flip lands before finish" {
