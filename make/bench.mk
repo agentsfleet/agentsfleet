@@ -83,7 +83,7 @@ _memleak-boot-drain: _ensure-test-infra
 	echo "→ [boot-drain] Building the lifecycle test binary (filtered)..."; \
 	ZIG_GLOBAL_CACHE_DIR="$(ZIG_GLOBAL_CACHE_DIR)" ZIG_LOCAL_CACHE_DIR="$(ZIG_LOCAL_CACHE_DIR)" zig build test-bin $$opt -Dtest-filter="$$filter" $(if $(MEMLEAK_CPU),-Dcpu=$(MEMLEAK_CPU),) || exit 1; \
 	echo "→ [boot-drain] Running the lifecycle test under the leak gate (live pg + TLS redis)..."; \
-	out=$$(TEST_DATABASE_URL="$$db_url" TEST_REDIS_TLS_URL="$$redis_url" REDIS_TLS_CA_CERT_FILE="$$ca" $$runner zig-out/bin/agentsfleetd-tests 2>&1) || { echo "$$out"; echo "✗ [boot-drain] leak gate failed"; exit 1; }; \
+	out=$$(AGENTSFLEET_LIFECYCLE_ISOLATED=1 TEST_DATABASE_URL="$$db_url" TEST_REDIS_TLS_URL="$$redis_url" REDIS_TLS_CA_CERT_FILE="$$ca" $$runner zig-out/bin/agentsfleetd-tests 2>&1) || { echo "$$out"; echo "✗ [boot-drain] leak gate failed"; exit 1; }; \
 	echo "$$out" | grep -q "$$marker" || { echo "$$out"; echo "✗ [boot-drain] lifecycle test did NOT run (skipped — infra env misconfigured); the leak claim would be vacuous"; exit 1; }; \
 	echo "✓ [boot-drain] boot→SIGTERM→drain ran leak-clean under the gate"
 
