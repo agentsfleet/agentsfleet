@@ -13,7 +13,7 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Milestone:** M120
 **Workstream:** 005
 **Date:** Jul 11, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P2 — naming-debt completion + surface reduction; no new capability, no known consumer breaks (pre-flip consult in §4 proves or Indy-acks that).
 **Categories:** API, DOCS, UI
 **Batch:** B1 — no open dependency; M120_001/M120_002/M120_004 (the Models-page surface this must not regress) are in `done/`. If M125_001 runs concurrently, coordinate on `ModelsRegistryTable.tsx` — shared surface, not a dependency.
@@ -216,7 +216,7 @@ Regression: 1.2/3.3 ARE the rename's regression proof (names change, behavior do
 | R2 | OpenAPI gate green (§5) | `make check-openapi` | exit 0 | P0 | ✅ "66 served /v1 routes … all documented" |
 | R3 | Architecture docs clean (§6) | `grep -rn "cap\.json" docs/architecture/ \| grep -v "retired"` | no output (explicit retirement notes are the only surviving mentions) | P0 | ✅ no output |
 | R4 | Docs site aligned (§6) | `cd ~/Projects/docs && git grep -n "cap\.json" -- docs.json cli/agentsfleet.mdx api-reference/error-codes.mdx` | no output (changelog history exempt) | P0 | ✅ no output (branch `chore/m120-library-sunset-changelog`) |
-| R5 | Diff stays inside Files Changed | `git diff --name-only origin/main` | 0 paths missing from the table | P0 | ✅ graded at CHORE(close), post-final-commit |
+| R5 | Diff stays inside Files Changed | `git diff --name-only origin/main` | 0 paths missing from the table | P0 | ✅ every path maps to a table row (renames appear as delete+create pairs) |
 | S1 | Unit tests pass | `make test-unit-all` | exit 0; count ≥ baseline | P0 | ✅ "All unit lanes passed"; Zig unit 2487 (baseline 2486, +1); app suite green |
 | S2 | Lint clean | `make lint-all` | exit 0 | P0 | ✅ "All lint checks passed" (after the REST-guide exceptions-table fix, committed to dotfiles) |
 | S3 | Integration passes | `make test-integration` | exit 0; includes the new `/v1/models` + `404` tests | P0 | ✅ "All integration tests passed" (after wiring the fixture-JWKS triplet into the two suites; one env flake ruled out — container restart mid-run) |
