@@ -93,6 +93,7 @@ test_should_defer_health_check_when_runner_binary_is_absent() {
   local name="test_should_defer_health_check_when_runner_binary_is_absent"
   local output status=0
   output="$(run_provision \
+    RUNNER_SANDBOX_TIER=dev_none \
     REMOTE_BINARY_PRESENT=0 \
     REMOTE_STARTUP_OUTPUT=$'remote startup output\n')" || status=$?
 
