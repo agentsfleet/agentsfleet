@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 # Section 4: provision the agentsfleet-runner env file from vault.
-# Idempotent. Writes /opt/agentsfleet/.env on the dev worker host with the three
+# Idempotent. Writes /opt/agentsfleet/.env on the dev worker host with the four
 # vars the runner daemon requires (see deploy/baremetal/agentsfleet-runner.service):
 #   AGENTSFLEET_API_URL       — control-plane base URL (literal for dev)
 #   AGENTSFLEET_RUNNER_TOKEN  — pre-minted agt_r token (Option B; vault: runner-token)
-#   RUNNER_HOST_ID       — stable machine id; must equal the minted fleet host_id
-#                          (vault: tailscale-hostname = agent-…-worker-ant)
+#   RUNNER_HOST_ID            — stable machine id; must equal the minted fleet host_id
+#                               (vault: tailscale-hostname = agent-…-worker-ant)
+#   RUNNER_SANDBOX_TIER       — landlock_full for this bare-metal Linux host
 #
 # Pre-Option-B, the daemon self-registered with a agt_t API key and minted
 # its own agt_r. Post-Option-B (commit c1ac7343), the platform admin pre-mints
@@ -27,6 +28,7 @@ echo "== Section 4: provision /opt/agentsfleet/.env =="
 
 vault_dev="${VAULT_DEV:-ZMB_CD_DEV}"
 api_url="${AGENTSFLEET_API_URL:-https://api-dev.agentsfleet.net}"
+sandbox_tier="landlock_full"
 missing=0
 
 declare -A OP_CACHE_VALUE
@@ -140,6 +142,7 @@ cat > "$env_local" <<EOF
 AGENTSFLEET_API_URL=${api_url}
 AGENTSFLEET_RUNNER_TOKEN=${runner_token}
 RUNNER_HOST_ID=${host_id}
+RUNNER_SANDBOX_TIER=${sandbox_tier}
 EOF
 chmod 600 "$env_local"
 scp -i "$ssh_id" "${ssh_opts[@]}" "$env_local" \
