@@ -13,7 +13,7 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Milestone:** M120
 **Workstream:** 003
 **Date:** Jul 07, 2026
-**Status:** PENDING
+**Status:** DEFERRED — superseded by M120_005 (Indy-directed merge, Jul 11, 2026): the rename scope is absorbed there and lands in the same pass as the public-endpoint retirement, so symbols the retirement deletes are never renamed first. Reactivation condition: only if M120_005 is abandoned. See Discovery → Deferrals.
 **Priority:** P2 — pure internal-consistency rename; no user-facing behavior change, no bug.
 **Categories:** API, UI
 **Batch:** B2 — sequenced after M120_001/M120_002 land, since both edit files this spec renames/moves; running concurrently would create avoidable rebase churn on the same import lines.
@@ -203,4 +203,5 @@ Regression: 1.3/2.3/3.1 ARE the regression proof for this spec — a pure rename
 - **Consults** — empty at creation; §1.1/§2.1's blast-radius grep results land here once EXECUTE begins.
 - **Metrics review** — not applicable — no product/operator signal changes.
 - **Skill-chain outcomes** — empty at creation.
-- **Deferrals** — empty at creation.
+- **Deferrals** —
+  - Whole-spec supersession — `> Indy (2026-07-11 08:59): "Do you think M120_005 supercedes M120_003? Since fixing M120_003 is pointless? That means we only fix the delta between M120_005 and M120_003 (base our spec on M120_005 and find delta with M120_003) and move it to M12_005 and continue as one spec M120_005 and M120_003 is closed as deferred?" — context: this spec's full rename scope (store/admin Zig renames, admin TypeScript client rename, import fix-ups, `ModelCap`→`LibraryModel`) is absorbed into M120_005 §1–§4; the symbols M120_005's retirement deletes (`CapJson`/`CapRates`/`CapBilling`, the wire-path constants) are deleted there instead of renamed here. Reactivation: only if M120_005 is abandoned.`
