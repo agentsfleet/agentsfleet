@@ -50,6 +50,17 @@ const IDLE_TICK_OBSERVE_NS: u64 = 1_500 * std.time.ns_per_ms;
 /// Subscription.create's two allocation sites precede push's payload copy.
 const PUSH_COPY_FAIL_INDEX: usize = 2;
 
+// Process-level RSS soak: the coarse (Bun-style) leak layer for hub churn on a
+// PRODUCTION general-purpose allocator (smp) — the map + Subscription
+// alloc/free retention testing.allocator's leak detector can't see (that exact
+// in-process oracle is the checkAllAllocationFailures suite above). A cold hub
+// (no connection) is the reconnect-gap path: wireSend early-returns when
+// conn == null, so churn is a warn-free map+alloc with no Redis. Warm to the
+// allocator plateau first, then bound growth over the soak coarsely.
+const HUB_RSS_WARMUP_CYCLES: usize = 32; // prime the smp_allocator plateau pre-baseline
+const HUB_RSS_SOAK_ITERATIONS: usize = 16_384; // subscribe/unsubscribe rounds measured vs baseline
+const HUB_RSS_GROWTH_BOUND_BYTES: u64 = 4 * 1024 * 1024; // 4 MiB — catches unbounded growth, not byte-exact
+
 // ── Subscription mechanics (pure) ───────────────────────────────────────────
 
 test "subscription: frames pop in publish order and ownership transfers" {
@@ -216,6 +227,40 @@ test "hub: refcounted channel map — wire-silent middles, last-out removes" {
     try testing.expectEqual(@as(usize, 1), hub.channelCount());
     hub.unsubscribe(sb);
     try testing.expectEqual(@as(usize, 0), hub.channelCount());
+}
+
+test "hub: RSS growth over subscribe/unsubscribe churn stays bounded (cold hub, production allocator)" {
+    // Skip early where no RSS reader exists — the probe can't run (never fail).
+    if (common.rss.currentBytes() == null) return error.SkipZigTest;
+
+    // Cold hub on the PRODUCTION general-purpose allocator (smp) — the
+    // process-level layer testing.allocator's leak detector cannot see. No
+    // Redis: conn == null makes wireSend a warn-free no-op, so each iteration
+    // is a pure map insert/remove + Subscription alloc/free.
+    var hub = subscription_hub.init(std.heap.smp_allocator, common.globalIo());
+    defer hub.deinit();
+    defer hub.stop();
+
+    // Warm to the allocator plateau BEFORE reading the baseline.
+    var w: usize = 0;
+    while (w < HUB_RSS_WARMUP_CYCLES) : (w += 1) {
+        const sub = try hub.subscribe(CHANNEL_A);
+        hub.unsubscribe(sub);
+    }
+
+    const baseline = common.rss.currentBytes() orelse return error.SkipZigTest;
+    var i: usize = 0;
+    while (i < HUB_RSS_SOAK_ITERATIONS) : (i += 1) {
+        const sub = try hub.subscribe(CHANNEL_A);
+        hub.unsubscribe(sub);
+    }
+    const after = common.rss.currentBytes() orelse return error.SkipZigTest;
+
+    // Balanced churn leaves the map empty — a residual entry would be a leak.
+    try testing.expectEqual(@as(usize, 0), hub.channelCount());
+    // Saturating: RSS can dip below baseline as the allocator recycles pages.
+    const growth = after -| baseline;
+    try testing.expect(growth < HUB_RSS_GROWTH_BOUND_BYTES);
 }
 
 test "hub: stop closes live subscriptions and rejects new subscribes" {
