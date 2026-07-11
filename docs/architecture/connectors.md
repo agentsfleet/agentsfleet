@@ -40,7 +40,7 @@ A workspace *connects* a provider once (connector); everything fleets then do wi
 - **Routes are generic.** `POST /v1/workspaces/{ws}/connectors/{provider}/connect`, `GET /v1/workspaces/{ws}/connectors/{provider}`, `GET /v1/connectors/{provider}/callback` — three matchers serve every provider (`route_matchers_connectors.zig`); scopes stay `connector:write`/`connector:read` on the generic variants. The shipped Slack/GitHub URLs are preserved verbatim because `slack`/`github` are registry ids.
 - **Dispatch is on SHAPE, never on provider id.** The archetype tagged-union owns which flow runs; handlers switch exhaustively on it (a new archetype cannot land half-wired — the compiler forces every arm). No `if provider == "slack"` exists anywhere in the flow.
 - **Invariants are compile-time facts.** Duplicate/empty provider ids, an oauth2 entry without scopes or an exchange-failed code, or a flow whose embedded provider id disagrees with its entry — all `@compileError`, not review vigilance.
-- **Inbound routing follows the provider's real shape.** App-level webhooks whose payload carries a stable routing key use `POST /v1/ingress/{provider}` and the verifier/router registry. Slack keeps `POST /v1/connectors/slack/events` because its challenge, retry, timestamp, channel, and thread semantics are load-bearing. Jira and Linear have connected credentials but no inbound integration yet. Generic connect plumbing does not imply generic event behavior.
+- **Inbound routing follows the provider's real shape.** App-level webhooks whose payload carries a stable routing key use `POST /v1/ingress/{provider}`, but the shipped implementation is provider-owned: GitHub lives in `handlers/ingress/github.zig`, and its routing statements live with the GitHub connector in `handlers/connectors/github/sql.zig`. Slack keeps `POST /v1/connectors/slack/events` because its challenge, retry, timestamp, channel, and thread semantics are load-bearing. Jira and Linear have connected credentials but no inbound integration yet. Generic connect plumbing does not imply generic event behavior.
 
 ## Archetypes
 
@@ -58,7 +58,7 @@ A workspace *connects* a provider once (connector); everything fleets then do wi
 3. **Platform app secrets live in the admin-workspace vault** as per-provider `<provider>-app` bags (`slack-app`, `github-app`, …) — one app per provider shared across all tenants, catastrophic-if-leaked, never on a per-tenant surface. GitHub's bag carries its App identity, user-authorization client credentials, and App-level webhook secret; an unprovisioned bag fails loud: 503 `UZ-CONN-001`.
 4. **Provider signatures authenticate inbound events.** GitHub App traffic is verified against the platform `github-app.webhook_secret`; manual per-fleet webhooks still use the workspace `<source>.webhook_secret`; Slack App events use the platform `slack-app.signing_secret`. No inbound route falls back to Bearer authentication.
 
-The connector registry owns callback dispatch; the ingress registry owns App-event verification and routing. Detailed auth behavior and refusal codes live in [`../AUTH.md`](../AUTH.md) §OAuth connectors.
+The connector registry owns callback dispatch; provider ingress handlers own event routing once the route segment has selected them. Detailed auth behavior and refusal codes live in [`../AUTH.md`](../AUTH.md) §OAuth connectors.
 
 ## GitHub App: platform setup to fleet execution
 
