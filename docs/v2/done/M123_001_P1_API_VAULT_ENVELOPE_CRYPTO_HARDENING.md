@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M123
 **Workstream:** 001
 **Date:** Jul 09, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — hardens the credential-vault security boundary (envelope-at-rest encryption). The verifiers deflated every finding to P2/P3 for one honest reason: exploiting the identity-binding gap presupposes an actor who already holds write access to `vault.secrets` — which the `api_runtime` role has (`schema/002_vault_schema.sql:70`). That makes this defense-in-depth, not a live exploit; the P1 is the boundary it protects, not a reachable attack.
 **Categories:** API
 **Batch:** B1 — runs alone; touches only the `secrets/` crypto module and its callers via unchanged public signatures.
@@ -199,19 +199,19 @@ Regression: 1.4 and 3.5 protect existing read/upsert behavior. Idempotency: `sto
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | Relocated row + version binding (§1) proven | `make test-integration-db` | exit 0 including both relocation tests, legacy read, and version binding | P0 | |
-| R2 | Envelope error branches + nonce guard (§3) proven | `make test-unit-agentsfleetd` | exit 0 including the §3 negative/lifecycle tests and nonce uniqueness | P0 | |
-| R3 | Key material zeroed on every path (§2) | `grep -c "secureZero" src/agentsfleetd/secrets/crypto_store.zig src/agentsfleetd/secrets/crypto_primitives.zig` | each file ≥ 1; total ≥ 4 | P0 | |
-| R4 | No plaintext-secret column added (VLT held) | `grep -in "plaintext\|secret_value" schema/002_vault_schema.sql` | no output | P0 | |
-| R5 | Workspace purpose and tenant scope are explicit | `cd ui/packages/app && bunx vitest run tests/create-workspace-dialog.test.ts` | exit 0; copy assertion passes | P0 | |
-| R6 | Diff stays inside Files Changed | `git diff --name-only origin/main` | 0 paths missing from the Files Changed table | P0 | |
-| S1 | Unit tests pass | `make test-unit-agentsfleetd` | exit 0 | P0 | |
-| S2 | Lint clean | `make lint-zig && make lint-app` | exit 0 | P0 | |
-| S3 | Integration passes (vault database path touched) | `make test-integration-db` | exit 0 | P0 | |
-| S5 | No leaks (allocator wiring touched) | `make memleak` | exit 0 | P0 | |
-| S6 | Cross-compile (Zig touched) | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` | exit 0 | P0 | |
-| S7 | No secrets | `gitleaks detect` | exit 0 | P0 | |
-| S8 | No oversize source file | `git diff --name-only origin/main \| grep -v '\.md$' \| xargs wc -l 2>/dev/null \| awk '$1>350 && $2!="total"'` | no output | P0 | |
+| R1 | Relocated row + version binding (§1) proven | `make test-integration-db` | exit 0 including both relocation tests, legacy read, and version binding | P0 | ✅ database suite passed |
+| R2 | Envelope error branches + nonce guard (§3) proven | `make test-unit-agentsfleetd` | exit 0 including the §3 negative/lifecycle tests and nonce uniqueness | P0 | ✅ `1581 passed, 536 skipped` |
+| R3 | Key material zeroed on every path (§2) | `grep -c "secureZero" src/agentsfleetd/secrets/crypto_store.zig src/agentsfleetd/secrets/crypto_primitives.zig` | each file ≥ 1; total ≥ 4 | P0 | ✅ store `5`, primitives `2` |
+| R4 | No plaintext-secret column added (VLT held) | `grep -in "plaintext\|secret_value" schema/002_vault_schema.sql` | no output | P0 | ✅ no matches |
+| R5 | Workspace purpose and tenant scope are explicit | `cd ui/packages/app && bunx vitest run tests/create-workspace-dialog.test.ts` | exit 0; copy assertion passes | P0 | ✅ `9 passed` |
+| R6 | Diff stays inside Files Changed | `git diff --name-only origin/main` | 0 paths missing from the Files Changed table | P0 | ✅ all `9` paths listed |
+| S1 | Unit tests pass | `make test-unit-agentsfleetd` | exit 0 | P0 | ✅ `1581 passed, 536 skipped` |
+| S2 | Lint clean | `make lint-zig && make lint-app` | exit 0 | P0 | ✅ both lint targets passed |
+| S3 | Integration passes (vault database path touched) | `make test-integration-db` | exit 0 | P0 | ✅ database suite passed |
+| S5 | No leaks (allocator wiring touched) | `make memleak` | exit 0 | P0 | ✅ `1581 passed, 536 skipped, 0 failed` |
+| S6 | Cross-compile (Zig touched) | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` | exit 0 | P0 | ✅ both Linux targets built |
+| S7 | No secrets | `gitleaks detect` | exit 0 | P0 | ✅ no leaks found |
+| S8 | No oversize source file | `git diff --name-only origin/main \| grep -v '\.md$' \| xargs wc -l 2>/dev/null \| awk '$1>350 && $2!="total"'` | no output | P0 | ✅ no output |
 
 **Grading protocol (VERIFY):** run the Verify command verbatim; grade ONLY from its output. Graded = ✅/❌ + the one decisive output line (`342 passed`); long evidence goes to PR Session Notes with a pointer here. **Ship gate:** every row graded, every P0 ✅ → eligible for CHORE(close); any ❌ or empty cell → return to EXECUTE; a P1 ❌ ships only with an Indy-acked deferral quote in Discovery.
 
@@ -250,8 +250,9 @@ N/A — no files deleted, no public symbols renamed or removed. `encrypt`/`decry
 
 ## Discovery (consult log)
 
-- **Consults** — Architecture / Legacy-Design / gate-flag triage: empty at creation.
+- **Consults** — architecture unchanged: the vault remains the credential store and provider-key consumers are untouched. No architecture document update is needed. Legacy-Design did not fire; no compatibility path was added beyond the required version-1 reader.
 - **Metrics review** — empty at creation.
 - **Skill-chain outcomes** — `/write-unit-test` coverage added for associated-data mismatch, nonce uniqueness, source zeroization, SQL version wiring, and the workspace description. `/review` found eight issues across identity canonicalization, error-path reachability, test classification, command accuracy, acceptance grading, wipe assertions, tuple coverage, and nonce rationale; all eight were fixed, and the second adversarial pass returned no findings.
 - **Deferrals** — empty at creation.
-- **Verification notes** — agentsfleetd unit target passed (`1539` passed, `504` skipped); test depth moved from `unit=2402 integration=267` to `unit=2416 integration=276`; the focused workspace test passed (`9` tests); Zig and app lint passed; both Linux cross-compiles passed; the real PostgreSQL suite passed; `make memleak` passed; gitleaks found no leaks; and the staged-diff harness reported all gates green.
+- **Documentation** — no OpenAPI, command-line interface, schema, migration, release-version, public API, or documented workflow changed. The dashboard copy clarifies existing behavior in place; no changelog or external documentation update is warranted.
+- **Verification notes** — after merging current `origin/main`, agentsfleetd unit tests passed (`1581` passed, `536` skipped); the focused workspace test passed (`9` tests); Zig and app lint passed; both Linux cross-compiles passed; the real PostgreSQL suite passed; `make memleak` passed; gitleaks found no leaks; `make check-version` matched `0.16.1`; and the staged-diff harness reported all gates green. Final depth is `unit=2500 integration=299` versus the open baseline `unit=2402 integration=267`; this patch contributed `+14` unit and `+9` integration before the `main` merge, with the remaining growth arriving from `main`. Coverage is not lacking: every Dimension has direct unit or real-database proof.
