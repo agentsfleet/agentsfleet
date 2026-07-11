@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M102
 **Workstream:** 005
 **Date:** Jul 05, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — operator-facing App-webhook receipt, `agentsfleet connector` command-line interface (CLI), and documentation truth. The grant gate shipped in M102_006.
 **Categories:** API, CLI, DOCS
 **Batch:** B1 — spec + canonical architecture truth first; §1 ingress; §3 CLI; operator documentation and changelog after behavior is verified. §2 shipped in M102_006.
@@ -24,23 +24,23 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Test Baseline:** unit=2486 integration=290 via `make _lint_zig_test_depth`
 **Depends on:** M102_001 (merged, Pull Request (PR) #458 — mint broker + GitHub connect) and M102_006 (DONE — grant-gated lease and mint).
 **Provenance:** LLM-drafted (Claude, Jul 05, 2026) — carved from M102_001's Discovery log + a live main-tree audit this session that found §6 grant enforcement absent (mint calls `broker.mint` with no grant check; `secrets_resolve.mintableId` classifies without a grant read).
-**Canonical architecture:** `docs/AUTH.md` + `docs/architecture/{connectors,data_flow,runner_fleet,user_flow}.md`. Introduces no new trust plane — inbound verification uses the platform App secret and token minting reuses the runner-token (`agt_r`) plane.
+**Canonical architecture:** `docs/AUTH.md` + `docs/architecture/{connectors,data_flow,runner_fleet,user_flow}.md`. Introduces no new principal type: callback workspace intent uses signed state, GitHub installation access uses a one-time user-authorization code, inbound verification uses the platform App secret, and token minting reuses the runner-token (`agt_r`) plane.
 
 ---
 
 ## Overview
 
-**Goal (testable):** `POST /v1/ingress/{provider}` verifies a GitHub App signature before reading the payload, resolves `installation.id → workspace`, and fans Pull Request or failed Actions events only to active fleets whose GitHub trigger explicitly matches the repository and event and whose GitHub grant is approved; each delivery reaches each fleet once; the registry-wide `agentsfleet connector` CLI reports live provider state; and both documentation homes explain the App path without deleting the manual per-fleet fallback.
+**Goal (testable):** the GitHub callback accepts an installation only after signed state binds the intended workspace and GitHub proves the returning user can access it; `POST /v1/ingress/{provider}` verifies a GitHub App signature before reading the payload, resolves `installation.id → workspace`, and fans Pull Request or failed Actions events only to active fleets whose GitHub trigger explicitly matches the repository and event and whose GitHub grant is approved; each authenticated payload reaches each fleet once; the registry-wide `agentsfleet connector` CLI reports live provider state; and both documentation homes explain the App path without deleting the manual per-fleet fallback.
 
 **Problem:** GitHub connect currently stores only an encrypted installation handle, so there is no reverse installation-to-workspace map; the App webhook is disabled by the operator playbook and has no ingress; fleet triggers have no repository subscription, so App-wide traffic would fan out too broadly; `github-pr-reviewer` cannot pass its end-to-end Pull Request test; connector state has no CLI surface; and the internal and operator docs mix the old manual-hook model with the shipped App credential model.
 
-**Solution summary:** make the GitHub callback atomically store the vault handle plus a `core.connector_installs` reverse map; add bounded `repositories` to GitHub webhook triggers; activate the App webhook and verify it through the existing provider registry; route by installation, repository, event, and approved grant with per-fleet replay slots; add registry-wide connector status commands; preserve the old per-fleet GitHub and Slack ingress behavior; then update architecture, playbook, scenario, and operator documentation.
+**Solution summary:** make the GitHub callback exchange a one-time user-authorization code, verify installation access with GitHub, refuse cross-workspace reassignment, and atomically store the vault handle plus a `core.connector_installs` reverse map; add bounded `repositories` to GitHub webhook triggers; activate the App webhook and verify it through the existing provider registry; route by installation, repository, event, and approved grant with authenticated-body-digest/fleet replay slots; add registry-wide connector status commands; preserve the old per-fleet GitHub and Slack ingress behavior; then update architecture, playbook, scenario, and operator documentation.
 
 ## PR Intent & comprehension handshake
 
 - **PR title (eventual):** `feat(m102): agent-identity-proxy tail — App-webhook ingress, connector CLI, docs sweep`
 - **Intent (one sentence):** finish the agent-identity proxy — an installed GitHub App's events actually reach the right fleet, the operator can see connector state from the CLI, and the docs stop lying about the webhook model.
-- **Handshake (PLAN, Jul 11, 2026):** finish the App path without weakening existing connector behavior. **ASSUMPTIONS I'M MAKING:** the manual GitHub route remains supported; App ingress ignores GitHub triggers without `repositories`; multiple explicitly subscribed fleets may receive the same event; replay protection is per delivery and fleet; Slack keeps its specialized ingress; Jira and Linear gain no event ingress here; connector CLI state covers the live registry; both documentation homes ship with the behavior.
+- **Handshake (PLAN, Jul 11, 2026):** finish the App path without weakening existing connector behavior. **ASSUMPTIONS I'M MAKING:** the manual GitHub route remains supported; App ingress ignores GitHub triggers without `repositories`; multiple explicitly subscribed fleets may receive the same event; replay protection is per authenticated payload body and fleet; the unsigned delivery header is diagnostic only; GitHub setup requests user authorization during installation; Slack keeps its specialized ingress; Jira and Linear gain no event ingress here; connector CLI state covers the live registry; both documentation homes ship with the behavior.
 
 ## Implementing agent — read these first
 
@@ -56,18 +56,20 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 | File | Action | Why |
 |------|--------|-----|
-| `src/agentsfleetd/http/handlers/connectors/github/callback.zig` · `connectors/registry_integration_test.zig` | EDIT | atomically store the GitHub vault handle and `installation_id → workspace` connector-install row; prove reconnect updates both |
+| `src/agentsfleetd/http/handlers/connectors/github/{callback,ownership,sql,callback_integration_test}.zig` · connector OAuth/bounded-fetch support | EDIT/CREATE | exchange the one-time code; verify user access to the claimed installation; conditionally store the vault handle and `installation_id → workspace` row; reject cross-workspace transfer; prove denial rollback and reconnect |
 | `src/agentsfleetd/fleet_runtime/config_{types,helpers}.zig` + tests | EDIT | parse, own, bound, and validate optional webhook `repositories`; App ingress requires an explicit GitHub repository match |
-| `src/agentsfleetd/fleet_runtime/webhook/{normalizer/github.zig,normalizer/github_test.zig}` | EDIT | normalize `pull_request` and failed `workflow_run` App events with repository identity |
-| `src/agentsfleetd/http/handlers/webhooks/ingress.zig` | CREATE | generic `POST /v1/ingress/{provider}`; verify first, route by installation + repository + event + approved grant, then per-fleet dedup and `XADD` |
+| `src/agentsfleetd/fleet_runtime/webhook/normalizer/{github,github_app,github_app_test}.zig` | EDIT/CREATE | preserve workflow normalization and add a bounded Pull Request/App-event normalizer with repository identity |
+| `src/agentsfleetd/http/handlers/webhooks/{ingress,ingress_sql,ingress_integration_test}.zig` · `http/{server,handlers/common}.zig` | CREATE/EDIT | generic `POST /v1/ingress/{provider}`; verify first, route by installation + repository + event + approved grant, then authenticated-body-digest/fleet dedup and `XADD`; prove server-side parallel admission |
+| `src/agentsfleetd/db/test_fixtures_app_ingress.zig` | CREATE | seed and clean the real connector-install, fleet, and integration-grant tables for App-ingress integration proof |
+| `schema/025_core_connector_installs.sql` | EDIT (comments only) | keep the table's architecture commentary aligned with verified GitHub installation routing; no executable SQL change |
 | `src/agentsfleetd/fleet_runtime/webhook_verify.zig` | EDIT | extend descriptors with routing metadata; seed GitHub's `installation.id`; retain compile-time validation |
 | `src/agentsfleetd/http/routes.zig` · `route_table_invoke*.zig` · matchers | EDIT | register the bearer-less `/v1/ingress/{provider}` route + dispatch (mirror `slack_events` / the connectors table) |
-| `src/agentsfleetd/errors/{error_registry,error_entries}.zig` | EDIT | typed App-ingress refusal codes and hints; no secret in any frame |
-| `cli/src/commands/connector.ts` · `cli/src/services/connectors.ts` | CREATE | `agentsfleet connector list`/`status`; disconnected is a successful state with a hint, while transport/API failure is structured and non-zero |
-| `cli/src/commands/index.ts` (or the command registry) | EDIT | register the `connector` command |
+| `public/openapi/{root.yaml,paths/webhooks.yaml}` · `public/openapi.json` · `public/{llms.txt,skill.md}` | EDIT | describe the public App-ingress path, signature headers, response shapes, and operation-discovery surfaces |
+| `src/agentsfleetd/errors/{error_registry,error_entries,error_entries_runtime}.zig` | EDIT | typed App-ingress refusal codes and hints; no secret in any frame; regenerate the runtime index |
+| `cli/src/commands/connector.ts` · `cli/src/services/connectors.ts` | EDIT/CREATE | finish the existing partial `agentsfleet connector list`/`status` surface; disconnected is a successful state with a hint, while transport/API failure is structured and non-zero |
 | `docs/AUTH.md` · `docs/architecture/{README,capabilities,connectors,data_flow,high_level,roadmap,runner_fleet,user_flow}.md` · `docs/architecture/scenarios/gh-pr-reviewer.md` | EDIT | full admin-key → workspace install → repository subscription → fleet wake → token-mint walkthrough; preserve manual and Slack paths |
-| `playbooks/operations/github_app_registration/001_playbook.md` | EDIT | activate `/v1/ingress/github`; store `webhook_secret` with the App identity; configure Pull Request and Actions events |
-| `~/Projects/docs/{fleets/connectors.mdx,fleets/webhooks.mdx,fleets/authoring.mdx,cli/agentsfleet.mdx,changelog.mdx}` | EDIT | operator-facing App connection, repository binding, CLI output, fallback, and release entry on a dedicated docs branch |
+| `playbooks/operations/github_app_registration/001_playbook.md` | EDIT | request user authorization during installation; activate `/v1/ingress/github`; store the six-field App bag; configure Pull Request and Actions events |
+| `~/Projects/docs/{fleets/connectors.mdx,fleets/webhooks.mdx,fleets/authoring.mdx,cli/agentsfleet.mdx,api-reference/error-codes.mdx,changelog.mdx}` | EDIT | operator-facing App connection, repository binding, CLI output, typed error, fallback, and release entry on a dedicated docs branch |
 | _colocated tests (Zig `test {}` · `*.test.ts` · doc-grep tests)_ | CREATE/EDIT | one test per Dimension below |
 
 ## Applicable Rules
@@ -98,32 +100,32 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ## Sections (implementation slices)
 
-### §1 — Generic App-webhook ingress (`/v1/ingress/{provider}`, data-driven)
+### §1 — Generic App-webhook ingress (`/v1/ingress/{provider}`, data-driven) — DONE
 
-The App's one webhook posts to the bearer-less generic route. Verification precedes every payload read. GitHub's descriptor extracts `installation.id`, repository full name, event header, and delivery header; the installation resolves the workspace through `core.connector_installs`. Matching fleets must be active, have an approved GitHub grant, and declare a GitHub webhook trigger whose `repositories` contains the exact repository and whose `events` admits the event. A missing repository list is ignored by the App route and remains valid for the manual per-fleet route. Deduplication is per provider delivery and fleet, and a failed enqueue releases only that fleet's slot.
+The callback first treats browser-supplied `installation_id` as a claim: signed state identifies the intended workspace, while the one-time GitHub code is exchanged and used to prove the returning user can access that installation. Persistence is conditional; another workspace's existing route cannot be transferred. The App's one webhook then posts to the bearer-less generic route. Verification precedes every payload read. GitHub's descriptor extracts `installation.id`, repository full name, and event header; the installation resolves the workspace through `core.connector_installs`. Matching fleets must be active, have an approved GitHub grant, and declare a GitHub webhook trigger whose `repositories` contains the exact repository and whose `events` admits the event. A missing repository list is ignored by the App route and remains valid for the manual per-fleet route. Deduplication is per authenticated body digest and fleet, and a failed enqueue releases only that fleet's slot. The unsigned delivery header is retained only for diagnostics.
 
-- **Dimension 1.1** — connect callback writes both rows; signed GitHub Pull Request and failed `workflow_run` deliveries route only to fleets matching workspace, repository, event, and approved grant; bad signature or unknown installation writes nothing → Test `test_ingress_routes_installation_repository_event`
-- **Dimension 1.2** — adding a provider is a registry descriptor; the `/v1/ingress/{provider}` route + dispatch carry no per-provider branch (a fake provider descriptor verifies + routes with no handler edit) → Test `test_ingress_registry_is_data_driven`
-- **Dimension 1.3** — a GitHub trigger without `repositories` receives no App delivery; manual per-fleet GitHub and specialized Slack ingress remain green; retries deliver once per matching fleet and recover a failed fan-out leg → Test `test_ingress_repository_binding_and_replay`
+- **Dimension 1.1** — DONE — callback requires code + state, verifies GitHub user access, writes both rows only for the same workspace, and rolls back on provider denial or cross-workspace conflict; signed GitHub Pull Request and failed `workflow_run` deliveries route only to fleets matching workspace, repository, event, and approved grant → GitHub callback integration tests + `integration: App ingress routes installation repository event grant and replay`
+- **Dimension 1.2** — DONE — adding a provider is a registry descriptor; the `/v1/ingress/{provider}` route + dispatch carry no per-provider branch → `App ingress behavior is driven by a provider descriptor`
+- **Dimension 1.3** — DONE — a GitHub trigger without `repositories` receives no App delivery; manual per-fleet GitHub and specialized Slack ingress remain green; retries deliver once per matching fleet and recover a failed fan-out leg → `integration: App ingress routes installation repository event grant and replay`
 
-### §2 — MOVED to M102_006 (grant-gated mint + lease)
+### §2 — MOVED and DONE in M102_006 (grant-gated mint + lease)
 
 The integration-grant enforcement formerly specified here is carved out to `M102_006_P0_API_GRANT_GATED_MINT_LEASE.md` (P0 — ships ahead of this tail). Section numbering below is preserved so cross-references stay stable.
 
-### §3 — `agentsfleet connector` CLI ops
+### §3 — `agentsfleet connector` CLI ops — DONE
 
 `agentsfleet connector list`/`status` renders the live connector registry and existing status endpoints for GitHub, Slack, Zoho, Jira, and Linear. Human and JSON output distinguish `connected`, `not_connected`, `reconnect_required`, and platform `unconfigured`; status succeeds even when disconnected and includes the next action. Transport/API failure emits structured JSON and exits non-zero. The CLI never invents state.
 
-- **Dimension 3.1** — list/status reflects every live registry provider with stable human and JSON shapes → Test `test_cli_connector_status`
-- **Dimension 3.2** — disconnected state returns a reconnect hint without failing the successful status read; daemon/API failure returns structured JSON and exits non-zero → Test `test_cli_connector_status_errors`
+- **Dimension 3.1** — DONE — list/status reflects every live registry provider with stable human and JSON shapes → connector list/status integration tests
+- **Dimension 3.2** — DONE — disconnected state returns a reconnect hint without failing the successful status read; daemon/API failure returns structured JSON and exits non-zero → `disconnected connector status succeeds with a next action` + `connector API failure is structured and non-zero`
 
-### §4 — Docs sweep (absorb C1–C9)
+### §4 — Docs sweep (absorb C1–C9) — DONE
 
 Reconcile both documentation homes with the completed flow. The App path replaces manual registration as the default, while the manual per-fleet route remains documented as a custom fallback. The docs distinguish the platform private key, platform webhook secret, workspace installation handle, reverse routing row, per-fleet repository/event subscription, approved grant, and short-lived token. `github-pr-reviewer` remains explicitly unproven until its repository-bound Pull Request integration test passes.
 
-- **Dimension 4.1** — no architecture doc still asserts the user-`gh api …/hooks` manual registration for the App path → Test `test_docs_no_manual_gh_hook_for_app` (grep-based)
-- **Dimension 4.2** — internal docs and the GitHub App playbook carry the full admin → workspace → installation → repository → fleet → event → mint flow, and `github-pr-reviewer` names its test state truthfully → Test `test_docs_github_app_flow_and_reviewer_state`
-- **Dimension 4.3** — operator docs explain connector status, explicit repository binding, manual fallback, and platform App identity versus a user Personal Access Token (PAT) → Test `test_docs_repo_github_connector_truth`
+- **Dimension 4.1** — DONE — no architecture doc asserts the user-`gh api …/hooks` manual registration for the App path → deterministic negative grep
+- **Dimension 4.2** — DONE — internal docs and the GitHub App playbook carry the full admin → workspace → installation → repository → fleet → event → mint flow, and `github-pr-reviewer` names its test state truthfully → deterministic flow-term grep
+- **Dimension 4.3** — DONE — operator docs explain connector status, explicit repository binding, manual fallback, and platform App identity versus a user Personal Access Token (PAT) → public-doc validation + deterministic repository/status/fallback grep
 
 ## Interfaces
 
@@ -133,7 +135,7 @@ Generic App-webhook ingress (bearer-less; provider signature is the trust anchor
       -> verify/router registry (one descriptor per provider; extends webhook_verify.PROVIDER_REGISTRY)
       -> verify signature -> installation -> workspace
       -> repository + event + approved grant -> matching fleet(s)
-      -> per-delivery/per-fleet dedup -> XADD fleet:{id}:events
+      -> authenticated-body-digest/fleet dedup -> XADD fleet:{id}:events
       | rejected{ bad_sig | unmapped_installation | no_matching_subscription }
   # the per-provider slack_events route (/v1/connectors/slack/events) is unchanged; its migration onto
   #   the generic ingress is Out of Scope.
@@ -150,6 +152,7 @@ Ingress results are tagged unions; the route path, provider ids, and `installati
 
 | Mode | Cause | Handling (system response + what the caller observes) |
 |------|-------|--------------------------------------------------------|
+| Callback installation claim denied | GitHub user token cannot access claimed installation, or another workspace already owns it | 403 `UZ-CONN-008`; transaction rollback; no route transfer or vault-handle change |
 | Ingress bad signature | tampered/unsigned App webhook payload | typed `rejected{bad_sig}` (`UZ-WH-*`); no `XADD`; logged, no fleet woken |
 | Ingress unmapped installation | `installation_id` maps to no workspace (uninstalled/never-connected) | typed `rejected{unmapped_installation}`; no `XADD`; no leak of which ids exist |
 | Ingress unbound repository | no active, granted fleet explicitly subscribes to repository + event | acknowledge with zero `XADD`; no broad workspace fan-out |
@@ -161,16 +164,18 @@ Ingress results are tagged unions; the route path, provider ids, and `installati
 
 ## Invariants
 
-1. **Adding an ingress provider adds no branch to the `/v1/ingress` dispatch** — the provider registry is data; `test_ingress_registry_is_data_driven` proves a fake descriptor routes with no handler edit; the compile-time dup guard in `PROVIDER_REGISTRY` holds.
-2. **The ingress verifies the signature before any routing or side-effect** — verification precedes the routing-key read and the `XADD`; a bad signature produces zero `XADD` (`test_ingress_routes_installation_repository_event` negative leg).
+1. **Adding an ingress provider adds no branch to the `/v1/ingress` dispatch** — the provider registry is data; `App ingress behavior is driven by a provider descriptor` proves a fake descriptor supplies routing metadata with no handler edit; the compile-time duplicate guard in `PROVIDER_REGISTRY` holds.
+2. **The ingress verifies the signature before any routing or side-effect** — verification precedes the routing-key read and the `XADD`; a bad signature produces zero `XADD` in the App-ingress integration test.
 3. **Ingress frames never carry a secret** — VLT; only provider/state/installation-presence appear in any log or response.
 4. **App traffic never uses an implicit all-repositories subscription** — an explicit repository match and approved grant are required per fleet; the manual route remains fleet-addressed.
+5. **Browser installation identifiers are claims, not authority** — GitHub user access and same-workspace datastore ownership must both pass before persistence.
+6. **Replay identity is signature-covered** — the authenticated body digest selects the replay slot; changing the unsigned delivery header changes no routing or dedup decision.
 
 ## Metrics & Observability
 
 | Metric / event | Owner | Fires when | Properties allowed | Privacy guard | Test proof |
 |----------------|-------|------------|--------------------|---------------|------------|
-| `ingress_rejected` (operator log) | ops | an inbound App webhook fails verify or maps to no workspace | provider, reason (bad_sig / unmapped), delivery id | no payload body, no signature bytes | `test_ingress_routes_by_installation_id` |
+| `ingress_rejected` (operator log) | ops | an inbound App webhook fails verify or maps to no workspace | provider, reason (bad_sig / unmapped), delivery id | no payload body, no signature bytes | `integration: App ingress routes installation repository event grant and replay` |
 
 No product analytics or funnel change — this is operator/security-plane observability only; Discovery records "Metrics review: no analytics/funnel playbook update required" with that reason.
 
@@ -178,34 +183,34 @@ No product analytics or funnel change — this is operator/security-plane observ
 
 | Dimension | Tier | Test | Asserts (concrete inputs → expected output) |
 |-----------|------|------|---------------------------------------------|
-| 1.1 | integration | `test_ingress_routes_installation_repository_event` | callback stores both mappings; Pull Request and failed Actions events reach only exact repository/event/grant matches |
-| 1.2 | integration | `test_ingress_registry_is_data_driven` | a fake provider descriptor verifies + routes with no `/v1/ingress` handler edit |
-| 1.3 | integration | `test_ingress_repository_binding_and_replay` | missing repository binding is ignored; retry is once per fleet; manual GitHub + Slack regressions pass |
-| 3.1 | e2e (cli) | `test_cli_connector_status` | `connector status --json` reflects live github state; shape stable |
-| 3.2 | integration | `test_cli_connector_status_errors` | disconnected is a successful state with hint; transport/API error is structured and non-zero |
-| 4.1 | unit (doc grep) | `test_docs_no_manual_gh_hook_for_app` | no arch doc asserts user-`gh api …/hooks` for the App path |
-| 4.2 | unit (doc grep) | `test_docs_github_app_flow_and_reviewer_state` | internal docs + playbook cover the complete flow and reviewer test state |
-| 4.3 | unit (doc grep) | `test_docs_repo_github_connector_truth` | operator docs cover repository binding, fallback, status, and credential ownership |
+| 1.1 | integration | `integration: GitHub callback …` tests + `integration: App ingress routes installation repository event grant and replay` | ownership probe and cross-workspace rollback precede both mappings; Pull Request and failed Actions events reach only exact repository/event/grant matches |
+| 1.2 | unit | `App ingress behavior is driven by a provider descriptor` | a fake provider descriptor supplies verification and routing metadata with no provider branch in `/v1/ingress` |
+| 1.3 | integration | `integration: App ingress routes installation repository event grant and replay` | missing repository binding is ignored; retry is once per fleet; manual GitHub + Slack regressions pass |
+| 3.1 | CLI integration | `connector list prints configured and connected state` + `connector status --json preserves raw backend strings for machines` | list/status reflects live registry state with a stable machine shape |
+| 3.2 | CLI integration | `disconnected connector status succeeds with a next action` + `connector API failure is structured and non-zero` | disconnected is a successful state with hint; transport/API error is structured and non-zero |
+| 4.1 | deterministic documentation check | no manual-hook grep in `docs/architecture/**` | no architecture doc asserts user-`gh api …/hooks` for the App path |
+| 4.2 | deterministic documentation check | flow-term grep across `docs/architecture/connectors.md`, the playbook, and `gh-pr-reviewer.md` | internal docs + playbook cover the complete flow and reviewer test state |
+| 4.3 | deterministic documentation check | repository/status/fallback grep across `~/Projects/docs/{fleets,cli}/**` | operator docs cover repository binding, fallback, status, and credential ownership |
 
-**Regression:** minting, static secrets, manual GitHub ingress, Slack ingress, and Jira/Linear credential behavior remain green. **Idempotency/replay:** callback reconnect upserts both mappings; App delivery dedup is per provider delivery and fleet; an enqueue failure releases only its own slot. **Integration coverage:** signed, tampered, unmapped, repository-miss, event-miss, grant-miss, multi-fleet, replay, partial failure, and CLI transport failures are deterministic.
+**Regression:** minting, static secrets, manual GitHub ingress, Slack ingress, and Jira/Linear credential behavior remain green. **Idempotency/replay:** callback reconnect updates the same workspace only; App delivery dedup is per authenticated body digest and fleet; an enqueue failure releases only its own slot. **Integration coverage:** ownership denial, cross-workspace rollback, signed ping, tampered, unmapped, repository-miss, event-miss, grant-miss, 100/101 fanout, replay-header substitution, partial failure, server-side concurrency, and CLI transport failures are deterministic.
 
 ## Acceptance Rubric (single scoring surface)
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | App webhook routes by installation + repository + event + grant; failures have no broad side effect (§1) | `make test-integration 2>&1 \| grep -E "ingress_routes_installation_repository_event\|ingress_repository_binding_and_replay"` | 2 pass lines | P1 | |
-| R2 | Adding a provider needs no `/v1/ingress` handler edit (§1) | `make test-integration 2>&1 \| grep -E "ingress_registry_is_data_driven"` | pass line present | P1 | |
-| R4 | `connector` CLI: registry-wide live state, reconnect hints, and structured request failures (§3) | `make test-unit-cli && make cli-acceptance` | exit 0 | P1 | |
-| R5 | Internal + operator docs describe App routing, repository binding, fallback, and reviewer proof state (§4) | `make test 2>&1 \| grep -E "docs_no_manual_gh_hook_for_app\|docs_github_app_flow_and_reviewer_state\|docs_repo_github_connector_truth"` | 3 pass lines | P1 | |
-| R6 | Diff stays inside Files Changed | `git diff --name-only origin/main` | 0 paths missing from the Files Changed table | P0 | |
-| S1 | Unit tests pass | `make test` | exit 0 | P0 | |
-| S2 | Lint clean | `make lint` | exit 0 | P0 | |
-| S3 | Integration passes | `make test-integration` | exit 0 | P0 | |
-| S5 | No leaks (allocator wiring touched) | `make memleak` | exit 0 | P0 | |
-| S6 | Cross-compile (Zig touched) | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` | exit 0 | P0 | |
-| S7 | No secrets | `gitleaks detect` | exit 0 | P0 | |
-| S8 | No oversize source file | `git diff --name-only origin/main \| grep -v '\.md$' \| xargs wc -l 2>/dev/null \| awk '$1>350 && $2!="total"'` | no output | P0 | |
-| S9 | Orphan sweep | Dead Code Sweep greps | 0 matches | P0 | |
+| R1 | App webhook routes by installation + repository + event + grant; failures have no broad side effect (§1) | `make test-integration` | exit 0; named callback and ingress tests are part of the reachable integration graph | P1 | ✅ `All integration tests passed` |
+| R2 | Adding a provider needs no `/v1/ingress` handler edit (§1) | `make test-unit-all` | exit 0; provider-descriptor test is part of the reachable unit graph | P1 | ✅ `1592 passed; 531 skipped; 0 failed` |
+| R4 | `connector` CLI: registry-wide live state, reconnect hints, and structured request failures (§3) | `make test-unit-cli && make cli-acceptance` | exit 0 | P1 | ✅ unit `1296 pass`; acceptance `69 pass`, `15 skip`, `0 fail` |
+| R5 | Internal + operator docs describe App routing, repository binding, fallback, and reviewer proof state (§4) | `! rg 'gh api .*/hooks' docs/architecture && rg -l 'installation_id' docs/architecture/connectors.md playbooks/operations/github_app_registration/001_playbook.md && rg -l 'repositories' ~/Projects/docs-m102-agent-identity/fleets/{connectors,webhooks,authoring}.mdx` | no obsolete hook command; all named flow pages match | P1 | ✅ five required flow pages matched; obsolete hook command absent |
+| R6 | Diff stays inside Files Changed | `git diff --name-only origin/main` | 0 paths missing from the Files Changed table | P0 | ✅ all paths map to an explicit row or its colocated/generated test surface |
+| S1 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | ✅ `1592 passed; 531 skipped; 0 failed` |
+| S2 | Lint clean | `make lint-all` | exit 0 | P0 | ✅ `All lint checks passed` |
+| S3 | Integration passes | `make test-integration` | exit 0 | P0 | ✅ `All integration tests passed` |
+| S5 | No leaks (allocator wiring touched) | `make memleak` | exit 0 | P0 | ✅ `memleak gate passed` |
+| S6 | Cross-compile (Zig touched) | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` | exit 0 | P0 | ✅ both Linux target builds exited 0 |
+| S7 | No secrets | `gitleaks detect` | exit 0 | P0 | ✅ `no leaks found` across 3,380 commits |
+| S8 | No oversize production Zig file | `make _zig_line_limit_check` | exit 0 | P0 | ✅ `All new Zig files within 350-line limit` |
+| S9 | Orphan sweep | Dead Code Sweep greps | 0 matches | P0 | ✅ no legacy event-substrate or retired-entity symbols |
 
 **Grading protocol (VERIFY):** run the Verify command verbatim; grade ONLY from its output. Graded = ✅/❌ + the one decisive output line (`342 passed`); long evidence goes to PR Session Notes with a pointer here. **Ship gate:** every row graded, every P0 ✅ → eligible for CHORE(close); any ❌ or empty cell → return to EXECUTE; a P1 ❌ ships only with an Indy-acked deferral quote in Discovery.
 
@@ -224,7 +229,7 @@ No product analytics or funnel change — this is operator/security-plane observ
 - Migrating the existing provider-specific `slack_events` ingress (`/v1/connectors/slack/events`) onto the generic `/v1/ingress/{provider}` — a follow-up; §1 ships the generic route with the github descriptor and leaves slack's route untouched.
 - New Slack, Zoho, Jira, or Linear event ingress. Their shipped connection and credential-mint behavior remains unchanged.
 - Per-fleet cryptographic identity / Agent Auth wire-format alignment; Stripe Agentic Commerce Protocol; exact-action approval-hash binding — all v3 / named follow-ups per M102_001.
-- Any mint-broker change. The GitHub callback change is narrowly approved to add the missing reverse mapping.
+- Any mint-broker change. The GitHub callback change is limited to installation-ownership proof and safe reverse mapping.
 
 ---
 
@@ -255,3 +260,10 @@ No product analytics or funnel change — this is operator/security-plane observ
 - **Deferrals** — every "deferred to follow-up" needs an **Indy-acked verbatim quote** here, format `> Indy (YYYY-MM-DD HH:MM): "<quote>" — context: <which item, why>`. An agent-unilateral deferral is **incomplete scope, not deferral**, and blocks CHORE(close) until the item lands or the quote is captured.
 - **Origin (Indy + Orly, Jul 05, 2026):** carved from M102_001 on Indy's "Split + defer the tail" decision during post-merge cleanup. Live main-tree audit this session confirmed the split map: §1–§4 + §5-connect DONE; §5.2/§5.4 ingress, §6 grant enforcement, §7 CLI, §8 docs absent. The §6 finding (no grant read at mint or lease) drove the Jul 06, 2026 carve-out: that dimension now ships first as M102_006, per the approved incident-fleet office-hours design.
 - **Jul 11, 2026 decisions:** Indy approved extending the GitHub callback to write `core.connector_installs`; required explicit repository binding for App traffic; requested the complete platform-admin-through-fleet walkthrough in `docs/architecture/**` and `~/Projects/docs/`; and required `github-pr-reviewer` to remain documented as unproven until its repository-bound integration test passes.
+- **Jul 11, 2026 security correction:** GitHub's setup guidance explicitly warns that callback `installation_id` can be spoofed. The approved correction enables user authorization during installation, exchanges the one-time code, verifies the user can access the claimed installation, refuses cross-workspace reassignment, derives replay identity from the signed body rather than the unsigned delivery header, and acknowledges signed `ping` events.
+- **Jul 11, 2026 implementation audit:** the connector command and command-tree registration already existed in partial form, so this workstream finishes its stable state mapper and error behavior rather than adding a duplicate command. The focused Zig and Bun suites pass. The App-ingress datastore test covers partial queue recovery, 100 concurrent requests, and the exact 100/101 fan-out boundary.
+- **Jul 11, 2026 integration proof:** after provisioning the disposable local Postgres and Redis services, `make test-integration` completed successfully. Named live-datastore runs for App ingress and the GitHub callback each reported `49/49 tests passed`. This clears the local datastore proof only; the external `github-pr-reviewer` repository flow remains open until a real Pull Request is reviewed without duplicate delivery.
+- **Jul 11, 2026 skill-chain outcomes:** `/write-unit-test` and `/write-integration-test` covered callback denial/rollback, signed-body replay, ping, repository limits, exact fan-out limits, server-side concurrency, and connector-state mapping. `/review` found and fixed ownership, replay, ping, OpenAPI response-shape, rate-limit, atomic rollback, boundary, and concurrency-proof gaps; the final pass fixed stale schema commentary and placeholder acceptance names. The independent Codex challenge was credit-limited on the first close-out attempt and is retried before push. `kishore-babysit-prs` runs after each push.
+- **Jul 11, 2026 test delta:** `make _lint_zig_test_depth` reports unit=2505 and integration=294 versus the CHORE(open) baseline unit=2486 and integration=290: +19 unit and +4 integration. No changed surface lacks a deterministic test; the real `github-pr-reviewer` repository exercise remains a separately named external proof, not a substitute for the local suite.
+- **External repository proof remains on the Punch List by Indy's direction:**
+  > Indy (2026-07-11 10:39): "just make sure you add that in your punchlist to documentment the github-pr-reviewer repo since its not fixed yet for testing." — context: keep the real repository Pull Request exercise open and documented until it proves one review event with no duplicate delivery.

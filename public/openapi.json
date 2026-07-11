@@ -1277,6 +1277,210 @@
         "security": []
       }
     },
+    "/v1/ingress/{provider}": {
+      "post": {
+        "operationId": "ingest_connector_webhook",
+        "summary": "Receive a platform-managed connector webhook",
+        "description": "Bearer-less ingress for a platform-managed connector App. The provider signature is verified against the platform-admin vault before the JSON body is parsed. The provider installation maps the delivery to one workspace; active fleet subscriptions, repository bindings, event types, and approved integration grants determine the fan-out targets. Replay identity is derived from the authenticated body, not mutable delivery headers. GitHub is the currently supported provider.",
+        "tags": [
+          "Webhooks"
+        ],
+        "parameters": [
+          {
+            "name": "provider",
+            "in": "path",
+            "required": true,
+            "description": "Connector provider that signed the delivery.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "github"
+              ]
+            }
+          },
+          {
+            "name": "X-GitHub-Event",
+            "in": "header",
+            "required": true,
+            "description": "GitHub event type, currently `ping`, `pull_request`, or `workflow_run`.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-GitHub-Delivery",
+            "in": "header",
+            "required": true,
+            "description": "GitHub-issued diagnostic delivery identifier. It is not trusted for replay protection because this header is outside the signed body.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Hub-Signature-256",
+            "in": "header",
+            "required": true,
+            "description": "Hash-based Message Authentication Code (HMAC)-SHA256 of the raw body, prefixed with `sha256=`.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "description": "Raw provider webhook payload. Routed GitHub events must carry `installation.id` and `repository.full_name`; signed `ping` payloads are acknowledged without those fields.",
+                "additionalProperties": true
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Delivery was a signed ping, or was valid but intentionally ignored because its event was filtered, its installation was unmapped, or no fleet subscription matched.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "status"
+                      ],
+                      "properties": {
+                        "status": {
+                          "type": "string",
+                          "x-stability": "stable",
+                          "enum": [
+                            "pong",
+                            "ignored"
+                          ]
+                        }
+                      }
+                    },
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "ignored"
+                      ],
+                      "properties": {
+                        "ignored": {
+                          "type": "string",
+                          "x-stability": "stable",
+                          "enum": [
+                            "UZ-WH-021",
+                            "UZ-WH-022"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Delivery matched one or more fleets; new per-fleet events were enqueued and replays were suppressed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "status",
+                    "matched",
+                    "enqueued"
+                  ],
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "x-stability": "stable",
+                      "enum": [
+                        "accepted"
+                      ]
+                    },
+                    "matched": {
+                      "type": "integer",
+                      "x-stability": "stable",
+                      "minimum": 1,
+                      "maximum": 100
+                    },
+                    "enqueued": {
+                      "type": "integer",
+                      "x-stability": "stable",
+                      "minimum": 0,
+                      "maximum": 100
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "description": "This API instance reached its in-flight request ceiling. Retry after the advertised delay.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds before retrying.",
+                "schema": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              },
+              "X-RateLimit-Limit": {
+                "description": "Instance in-flight request ceiling.",
+                "schema": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              },
+              "X-RateLimit-Remaining": {
+                "description": "Remaining admission capacity, zero for this response.",
+                "schema": {
+                  "type": "integer",
+                  "enum": [
+                    0
+                  ]
+                }
+              },
+              "X-RateLimit-Reset": {
+                "description": "Unix timestamp in seconds when immediate retry becomes reasonable.",
+                "schema": {
+                  "type": "integer",
+                  "format": "int64"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": []
+      }
+    },
     "/v1/webhooks/svix/{fleet_id}": {
       "post": {
         "operationId": "receive_svix_webhook",

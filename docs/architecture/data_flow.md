@@ -426,6 +426,26 @@ installed runtime. Runner remains the infrastructure vocabulary.
 
 ### B. TRIGGER  (steer / webhook / cron — three callers, ONE ingress)
 
+Before the GitHub App can produce events, a workspace connection is established
+with two independent proofs:
+
+```
+   USER       signs up → creates/selects workspace W
+                → POST /workspaces/W/connectors/github/connect
+   API        signs single-use state bound to W
+                → GitHub App installation page
+   GITHUB     user chooses account + permitted repositories
+                → callback { installation_id, code, state }
+   API        state proves W; code exchange + user-installation probe proves
+              the returning GitHub user can access installation_id
+                → conditional transaction:
+                   workspace vault handle + connector_installs route
+                   existing other-workspace owner → 403, no mutation
+```
+
+The browser-provided installation identifier is therefore a claim to verify,
+not authority by itself.
+
 ```
    Common envelope (every XADD on fleet:{id}:events carries these
    five fields; the stream entry id IS the canonical event_id —
@@ -453,7 +473,7 @@ installed runtime. Runner remains the infrastructure vocabulary.
                  installation.id → core.connector_installs → workspace
                  repository.full_name + event + approved grant
                     → active fleet subscriptions
-                 per-delivery/per-fleet replay slot
+                 authenticated-body-digest/fleet replay slot
                → XADD fleet:{id}:events * for each exact match
                       actor=webhook:github  type=webhook
                       workspace_id=<ws>     request=<normalized-json>
@@ -472,7 +492,8 @@ installed runtime. Runner remains the infrastructure vocabulary.
                App delivery; it never means every repository in the workspace.
                Multiple fleets may intentionally match. Each gets its own
                replay slot so a failed fan-out leg can retry without duplicating
-               successful fleets.
+               successful fleets. The unsigned delivery header remains
+               diagnostic and cannot select a new replay identity.
 
    MANUAL     Custom providers and the old GitHub workflow_run path retain
    WEBHOOK      POST /v1/webhooks/{fleet_id}

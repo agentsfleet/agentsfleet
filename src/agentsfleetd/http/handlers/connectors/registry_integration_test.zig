@@ -488,7 +488,7 @@ test "integration: github status reads the installation handle" {
 
 // ── app_install callback e2e (the archetype the oauth2 suites don't cover) ──
 
-test "integration: github callback writes the fleet:github handle and 302s (app_install archetype)" {
+test "integration: github callback requires a user-authorization code" {
     const alloc = testing.allocator;
     const h = TestHarness.start(alloc, .{ .configureRegistry = noopRegistry }) catch |err| switch (err) {
         error.SkipZigTest => return error.SkipZigTest,
@@ -511,12 +511,8 @@ test "integration: github callback writes the fleet:github handle and 302s (app_
 
     const r = try h.get(path).redirectBehavior(.unhandled).send();
     defer r.deinit();
-    try r.expectStatus(.found); // 302 back to the dashboard connector card
-
-    // The one row app_install writes: the github handle with the id.
-    var parsed = try vault.loadJson(alloc, conn, TARGET_WS, common.PROVIDER_GITHUB);
-    defer parsed.deinit();
-    try testing.expectEqualStrings("42424242", parsed.value.object.get("installation_id").?.string);
+    try r.expectStatus(.bad_request);
+    try r.expectErrorCode("UZ-REQ-001");
 
     deleteFleetHandle(conn, TARGET_WS, common.PROVIDER_GITHUB);
 }
