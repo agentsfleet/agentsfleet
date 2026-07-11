@@ -564,7 +564,7 @@ Every named credential / token / identifier in the auth surface, with sensitivit
 | `AUDIT_LOG_PEPPER` | secret | until rotated | 1Password vaults · agentsfleetd process memory | same as `AUTH_SESSION_CODE_PEPPER` |
 | Fleet-trigger webhook secrets (per-provider HMAC keys) | secret | until rotated | vault items (`<source>` in workspace vault, field `webhook_secret`) · webhook_sig middleware in agentsfleetd | logs · error bodies · diagnostic bundles · operator screenshots |
 | Connector per-install handle (`<provider>` in the **workspace** vault, M106/M108) — Slack: `{integration, bot_token (xoxb-…), …}`; GitHub: `{integration, installation_id}`; refresh connectors (Zoho/Jira/Linear): `{integration, refresh_token, access_token, expires_at_ms, …}`. (Datadog/Grafana/Fly are not connectors and write no per-install handle — their vendor keys are plain workspace secrets instead, governed by the standard workspace-vault write/read boundary above, not this connector-specific row.) | secret | until reconnected / revoked | workspace vault · agentsfleetd process memory (`loadBotToken` for the outbound poster + thread re-fetch, `vault.loadJson` for the status read, the installation-token + oauth2-refresh broker mints) · outbound HTTPS `Authorization: Bearer` to the provider | logs · error bodies · client bundles · telemetry · the connector status + catalog reads (return only `{status}` / `{configured, connected}` flags, never key material) |
-| Platform connector-app secret bag (admin-workspace `<provider>-app`, e.g. `slack-app` → `{client_id, client_secret, signing_secret}`, M106) | secret (catastrophic — one OAuth app for every tenant) | until rotated | admin-workspace vault (keyed by `Context.platform_admin_workspace_id`) · agentsfleetd process memory (OAuth code exchange; the events-ingress `loadSigningSecret`) | logs · error bodies · client bundles · any per-tenant surface · metrics labels |
+| Platform connector-app secret bag (admin-workspace `<provider>-app`, e.g. `slack-app` → `{client_id, client_secret, signing_secret}` and `github-app` → `{app_id, app_slug, private_key_pem, webhook_secret}`) | secret except public identifiers (`app_id`, `app_slug`); catastrophic secrets are shared across every tenant | until rotated | admin-workspace vault (keyed by `Context.platform_admin_workspace_id`) · agentsfleetd process memory (connector exchange, token mint, inbound App-signature verify) | logs · error bodies · client bundles · any per-tenant surface · metrics labels |
 | Connector OAuth `state` (signed, single-use, M106) | sensitive ephemeral capability | one callback round-trip (consumed on use) | the provider authorize URL · the callback query string it returns on | server-side persistence · reuse after consume · `.auth` logs |
 | Language Model (LLM) provider `api_key` (platform OR self-managed, M80_009) | secret | per-lease ephemeral (resolved at lease, `secureZero`d after serialize) | vault items (`platform_provider_defaults` pointer / tenant `secret_ref`) · `agentsfleetd` process memory (`resolveActiveProvider`) · inline on the lease `ExecutionPolicy.api_key` over TLS to a *placed* trusted-fleet runner · the runner's in-process NullClaw session + outbound HTTPS `Authorization: Bearer` to the provider | logs · activity/progress frames · the `fleet.runner_leases` row · `secrets_map` · telemetry · error bodies · `doctor --json` · any user-facing surface |
 | `clerk-{dev,prod}` publishable key (`pk_test_…`/`pk_live_…`) | non-credential identifier | until Clerk instance is rotated | client bundle (intentionally shipped via `NEXT_PUBLIC_…`) | (none — this is the "non-secret" one) |
@@ -840,13 +840,13 @@ Each of these is a real concern, named here so future fleets and security-review
 
 ---
 
-## Webhook auth (separate surface)
+## Manual fleet-webhook auth (separate surface)
 
-The three flows above (CLI, UI, API key) all converge on `Authorization: Bearer …`. **Inbound webhooks are a different surface entirely** — they never carry a Bearer token. Every inbound webhook MUST be HMAC-signed by the calling provider, verified by the `webhook_sig` middleware (`src/agentsfleetd/auth/middleware/webhook_sig.zig`), and rejected if the signature is missing or wrong. There is no fallback.
+The three flows above (CLI, UI, API key) all converge on `Authorization: Bearer …`. **Inbound webhooks are a different surface entirely** — they never carry a Bearer token. The manual fleet-addressed routes are signed by the calling provider and verified by `webhook_sig` middleware (`src/agentsfleetd/auth/middleware/webhook_sig.zig`). GitHub App and Slack App ingress verify their platform App secrets inside their handlers because their payload routing fields identify the workspace and fleet only after authentication. No route falls back to Bearer auth.
 
 This is industry standard for inbound webhooks: GitHub (`X-Hub-Signature-256`), Slack (`X-Slack-Signature`), Stripe (`Stripe-Signature`), Linear (`linear-signature`), and Svix-fronted providers (Clerk, AgentMail) all ship HMAC-SHA256 over the raw body. Bearer tokens are for *outbound* API calls (where the caller authenticates itself); HMAC is for *inbound* (where the receiver verifies the body wasn't tampered with).
 
-### Provider scheme registry
+### Manual-route provider scheme registry
 
 `src/agentsfleetd/fleet_runtime/webhook_verify.zig` holds the canonical `PROVIDER_REGISTRY` — one `VerifyConfig` per provider naming the signature header, prefix, and timestamp policy:
 
@@ -856,9 +856,9 @@ This is industry standard for inbound webhooks: GitHub (`X-Hub-Signature-256`), 
 | Slack | `x-slack-signature` | `v0=` | yes (`x-slack-request-timestamp`) | 5 min |
 | Linear | `linear-signature` | (none) | no | n/a |
 
-Adding a new provider is one new `VerifyConfig` const + one entry in the registry. No new middleware.
+Adding a new manual-route provider is one new `VerifyConfig` const + one entry in the registry. No new middleware. App-level ingress uses the corresponding ingress descriptor and platform secret described under *OAuth connectors*.
 
-### Workspace-credential resolver
+### Manual-route workspace-credential resolver
 
 The middleware itself is provider-agnostic. The host supplies a `lookup_fn` (`src/agentsfleetd/cmd/serve_webhook_lookup.zig:lookup`) that, given the URL's `{fleet_id}`, returns:
 
@@ -867,7 +867,7 @@ The middleware itself is provider-agnostic. The host supplies a `lookup_fn` (`sr
 
 The credential being workspace-scoped (not fleet-scoped) means rotating the secret once rotates it for every fleet in that workspace using the same source — single point of rotation, the property the architecture wants.
 
-### Error taxonomy
+### Manual-route error taxonomy
 
 The middleware emits exactly three error codes for webhook auth failures, each with a distinct operator action:
 
@@ -881,7 +881,7 @@ The `UZ-WH-020` vs `UZ-WH-010` split matters: the first is a recoverable misconf
 
 ### What does NOT auth a webhook
 
-- **Bearer tokens.** Sending `Authorization: Bearer …` to any `/v1/webhooks/...` URL contributes nothing — the header is not consulted. (Generic Bearer auth applies only to the normal API surface listed in the three flows above.)
+- **Bearer tokens.** Sending `Authorization: Bearer …` to `/v1/webhooks/...`, `/v1/ingress/...`, or a provider App-events route contributes nothing — the header is not consulted. Generic Bearer auth applies only to the normal API surface listed above.
 - **Session cookies.** Webhook URLs are not session-authed; cookies are ignored.
 - **URL-embedded secrets** (legacy `/v1/webhooks/{fleet_id}/{secret}` form). Removed in M43 — the matcher no longer recognizes the two-segment form.
 
@@ -895,25 +895,25 @@ The `UZ-WH-020` vs `UZ-WH-010` split matters: the first is a recoverable misconf
 
 ## OAuth connectors (separate surface — M106, generalized by the M108 registry)
 
-The dashboard's **connectors** (GitHub App, Slack, and every future registry provider) are a third inbound surface, distinct from both Bearer auth and fleet-trigger webhooks. agentsfleet is the OAuth **client**: connecting is a browser redirect round-trip that ends with a provider-issued token vaulted server-side — never a token paste, and no Bearer on the inbound legs. Since M108 the routes are one generic `{provider}` trio resolved against the comptime connector registry (`handlers/connectors/registry.zig`; unknown provider → 404 `UZ-CONN-004`) — the platform shape (registry, archetypes, bounded outbound, connector-vs-integration terminology) lives in [`architecture/connectors.md`](./architecture/connectors.md); THIS section stays the behavior + trust-anchor reference. Scopes: `connector:write` gates the generic `connector_connect`, `connector:read` gates `connector_status` (`http/route_scopes.zig`).
+The dashboard's **connectors** (GitHub App, Slack, and every future registry provider) are distinct from both Bearer auth and fleet-trigger webhooks. agentsfleet is the OAuth **client**: connecting is a browser redirect round-trip that ends with a provider-issued handle vaulted server-side — never a token paste, and no Bearer on the callback. Since M108 the routes are one generic `{provider}` trio resolved against the comptime connector registry (`handlers/connectors/registry.zig`; unknown provider → 404 `UZ-CONN-004`). The platform shape lives in [`architecture/connectors.md`](./architecture/connectors.md); this section stays the behavior + trust-anchor reference. Scopes: `connector:write` gates `connector_connect`; `connector:read` gates `connector_status`.
 
 ### Connect + callback (the OAuth round-trip)
 
 `POST /v1/workspaces/{ws}/connectors/{provider}/connect` (Bearer, `connector:write`) mints a **signed single-use `state`** — HMAC'd with the **approval signing secret** — that binds the workspace, and returns the provider authorize URL. The browser leaves for the provider and returns to `GET /v1/connectors/{provider}/callback`, a **Bearer-less** endpoint whose *sole* trust anchor is that signed `state` (verified + consumed; a *missing* state is a malformed request → `UZ-REQ-001`; forged/expired/replayed → `UZ-CONN-002 connector_state_invalid`). The generic callback dispatches on the registry entry's **archetype** — the oauth2 code exchange runs deadline-armed through `bounded_fetch` (a stalled vendor → 502 `UZ-CONN-003`, no vault write) — and hands the provider-specific part to the entry's hook. What that means per shipped provider:
 
 - **Slack** is a real OAuth-2.0 code exchange: the callback trades the `code` for a bot token using the platform app's `client_id`/`client_secret`, then writes **two** rows — the per-install vault handle and the `core.connector_installs` routing row.
-- **GitHub** is a GitHub App **installation**, not a code exchange (`oauth2.zig:8-9` says so explicitly): its callback carries `installation_id` (no `code`, nothing to exchange) and writes **one** row — the vault handle only. Inbound GitHub traffic routes via the fleet-trigger webhook path, so it needs no `connector_installs` entry.
+- **GitHub** is a GitHub App **installation**, not a code exchange: its callback carries `installation_id` (no `code`, nothing to exchange) and writes **two** records — the encrypted workspace vault handle used by the broker and the non-secret `core.connector_installs` row used for App-event routing. Both writes succeed or the callback fails; querying encrypted vault handles in reverse is never a routing mechanism.
 - **Zoho Desk, Jira, Linear** (M108) are OAuth-2.0 code exchanges that issue a **refresh token**: the callback trades the `code` for `{access_token, refresh_token, expires_in}` and vaults a refresh handle. Jira's hook additionally resolves the Atlassian **cloud id** via the accessible-resources probe (bounded); Zoho captures its data-center label. The broker later mints fresh access tokens from the refresh handle (see *Broker refresh-mint* below) — the runner never sees the refresh token.
 - **Datadog, Grafana, Fly are not connectors.** A registry shape for operator-pasted vendor keys was considered for these three and dropped (M108_002, `connectors.md:52` — no such archetype ships): a static vendor key is just a workspace secret, not a connector — there is no registry entry, no connect/callback round-trip, and no platform app bag to protect. The operator adds the key directly as a plain workspace secret (`agentsfleet secret create <name>` — see the docs site's Secrets guide) and it is referenced from `TRIGGER.md` as `${secrets.<name>.<field>}` like any other tool secret — never through this connect/callback surface.
 
 The rows themselves:
 
 - **Per-install handle** `<provider>` in the **workspace** vault — Slack `{integration, bot_token, bot_user_id, team_id, team_name, scopes}`; GitHub `{integration, installation_id}`; the refresh providers `{integration, refresh_token, access_token, expires_at_ms, …provider-instance fields}` (Jira adds `cloud_id`/`site_url`, Zoho `accounts_base`). Datadog/Grafana/Fly write **no** per-install handle at all — not being connectors, their keys live as ordinary named workspace secrets instead. This is the credential the broker/worker mints or reads from. RULE VLT — the token lives only here. (The `integration` field names the connector; see the M108 refactor note on renaming it to `connector`.)
-- **`core.connector_installs`** (Slack only) — the `team_id → workspace_id` map that routes inbound events (below).
+- **`core.connector_installs`** — the non-secret external-account routing map: Slack stores `team_id → workspace_id`; GitHub stores `installation_id → workspace_id`. Tokens and App secrets never live here.
 
 ### Platform app secrets (`<provider>-app`, admin workspace)
 
-The provider app is **one per connector, shared across every tenant**. Its secrets live in the **admin-workspace** vault under `<provider>-app` (`connectors/oauth2.zig` `APP_VAULT_KEY_SUFFIX = "-app"`), keyed by `Context.platform_admin_workspace_id`. The bag is per-provider: `slack-app` holds `{client_id, client_secret, signing_secret}`; `github-app` holds `{app_id, private_key_pem, app_slug}` (the App mints installation tokens from the private key — there is no client secret); the OAuth-2.0 refresh connectors `zoho-app`/`jira-app`/`linear-app` hold `{client_id, client_secret}` (the broker posts these to the provider token endpoint on each refresh mint). Datadog, Grafana, and Fly are **not connectors** and have no `<provider>-app` bag here at all — there is no platform app to protect; the operator's key is a plain workspace secret, never routed through this admin-vault surface. These bags are catastrophic-if-leaked — they compromise every tenant's connector — so they never touch a per-tenant surface (see the sensitive-data table).
+The provider app is **one per connector, shared across every tenant**. Its secrets live in the **admin-workspace** vault under `<provider>-app` (`connectors/oauth2.zig` `APP_VAULT_KEY_SUFFIX = "-app"`), keyed by `Context.platform_admin_workspace_id`. The bag is per-provider: `slack-app` holds `{client_id, client_secret, signing_secret}`; `github-app` holds `{app_id, private_key_pem, app_slug, webhook_secret}` — the private key signs outbound App identity and the distinct webhook secret verifies inbound deliveries; the OAuth-2.0 refresh connectors `zoho-app`/`jira-app`/`linear-app` hold `{client_id, client_secret}`. Datadog, Grafana, and Fly are not connectors and have no `<provider>-app` bag. Catastrophic fields never touch a per-tenant surface.
 
 ### Integration-grant gate on every mint (restores M102_001 Invariant 3)
 
@@ -922,6 +922,21 @@ A connected integration alone does not authorize a fleet to use it. Every `POST 
 ### Broker refresh-mint (M108 — Zoho, Jira, Linear)
 
 The credential broker (`credentials/`) resolves a workspace's `<provider>` refresh handle to a short-lived access token on demand: it posts a `grant_type=refresh_token` form to the provider token endpoint using the `<provider>-app` client id/secret, caches the result until expiry-minus-skew (mirroring the GitHub installation-token mint), and degrades to `reconnect_required` on a revoked token (`invalid_grant`) — never a crash, never a raw refresh-token egress to the runner. The exchange is **deadline-armed** (`serve_broker.HttpClientExchange`, a per-call `call_deadline` watchdog): a hung vendor token endpoint fails closed, never stalls the broker. The runner-facing mint response carries only the access token + its expiry.
+
+### GitHub App events ingress (`POST /v1/ingress/github`)
+
+GitHub posts App-level events here after the platform operator activates the one webhook on the shared App. This is not the manual fleet-trigger route. The trust anchor is the platform `github-app.webhook_secret`; the App private key has no role in inbound verification.
+
+Order is load-bearing:
+
+1. Resolve the GitHub ingress descriptor and platform webhook secret.
+2. Verify `x-hub-signature-256` over the untouched request body in constant time. A missing or bad signature returns the typed webhook refusal before any payload field or routing table is read.
+3. Extract `installation.id`, `repository.full_name`, the GitHub event header, and the delivery identifier using the standard JSON parser.
+4. Resolve `(provider=github, external_account_id=installation.id) → workspace_id` through `core.connector_installs`. An unknown installation is acknowledged and dropped without revealing whether another workspace owns it.
+5. Select only active fleets in that workspace with an approved GitHub integration grant and a GitHub trigger whose explicit `repositories` contains `repository.full_name` and whose `events` admits the incoming event. Missing `repositories` means no App delivery; it remains valid for the manual fleet-addressed route.
+6. Claim one replay slot per delivery and fleet, then append to `fleet:{id}:events`. If one append fails, release only that fleet's slot so GitHub's retry can complete the missing fan-out leg.
+
+Pull Request events and completed failed `workflow_run` events are normalized into the ordinary webhook event envelope. Receiving the event does not disclose credentials. A later GitHub API tool call still crosses the runner-token mint boundary and rechecks the fleet's approved integration grant.
 
 ### Signed events ingress (`POST /v1/connectors/slack/events`)
 
@@ -932,17 +947,16 @@ Slack posts channel mentions here. This is **not** the fleet-trigger webhook pat
 3. **Verify**: freshness (5-min drift → 401 `UZ-SLK-011`), then a constant-time `v0=` HMAC over `v0:{ts}:{body}` (mismatch → 401 `UZ-SLK-010`). With the cache warm this rejects with zero database work.
 4. Resolve `team_id → workspace_id` via `core.connector_installs`. An **unknown team is acknowledged with 200 and dropped** — the body says so (`{"ignored":"UZ-SLK-020"}`, `events.zig` `hx.ok`) — so Slack never enters a retry loop against an uninstalled workspace.
 
-### Not the fleet-trigger webhook surface
+### The three signed inbound surfaces
 
-Both surfaces HMAC-verify inbound Slack traffic, so keep them straight:
+Keep the credential owner and routing key straight:
 
-| | Fleet-trigger webhook (§Webhook auth) | OAuth connector events (here) |
-| --- | --- | --- |
-| Route | `/v1/webhooks/{fleet_id}` (`/v1/webhooks/{fleet_id}/github` for GitHub) | `/v1/connectors/slack/events` |
-| Middleware | `webhook_sig` | `none` (verifies in-handler) |
-| Secret | workspace `<source>` field `webhook_secret` | admin `slack-app` field `signing_secret` |
-| Secret scope | per workspace (rotate once per source) | per platform (one app, all tenants) |
-| Routing | `{fleet_id}` in the URL | `team_id` → `connector_installs` → workspace |
+| | Manual fleet trigger | GitHub App events | Slack App events |
+| --- | --- | --- | --- |
+| Route | `/v1/webhooks/{fleet_id}` (`…/{fleet_id}/github` for GitHub) | `/v1/ingress/github` | `/v1/connectors/slack/events` |
+| Secret | workspace `<source>.webhook_secret` | admin `github-app.webhook_secret` | admin `slack-app.signing_secret` |
+| Scope | one workspace/fleet URL | one platform App, every tenant | one platform App, every tenant |
+| Routing | fleet identifier in URL | installation → workspace → repository/event/grant fleets | team → workspace → channel-resident fleet |
 
 A workspace that connected the `@agentsfleet` Slack app stores a `fleet:slack` handle carrying `bot_token` — **not** a `webhook_secret`. The connector's inbound secret is the platform `slack-app` `signing_secret`, not that row.
 

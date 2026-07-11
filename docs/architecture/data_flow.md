@@ -287,7 +287,7 @@ Before the cutover there were three Redis surfaces. The split kept two and retir
 | `fleet:{id}:activity` | Pub/sub channel (no consumer group, no persistence) | One per fleet | Best-effort live tail — `agentsfleetd` `PUBLISH`es one frame per `event_received` / `tool_call_started` / `fleet_response_chunk` / `tool_call_progress` / `tool_call_completed` / `event_complete`. The bracket frames originate in `agentsfleetd`; the mid-run frames are forwarded from the runner over the `activity` verb. The SubscriptionHub `SUBSCRIBE`s once per channel-with-viewers on its one shared connection and fans frames out by copy into each SSE stream's bounded queue. No buffer beyond those queues, no ACK, no resume. | High during execution, zero when idle. |
 | `fleet:control` | (removed) | — | **Removed at the cutover.** It existed to tell the worker watcher to spawn / cancel / reconfigure per-fleet threads — and there are no per-fleet threads anymore. The producer (`control_stream.publish` from the install / status / config handlers) and the dead `control_stream` module were deleted; the install path keeps only `redis_agent.ensureFleetConsumerGroup` (load-bearing — the `lease` `XREADGROUP` needs the events group to exist). | gone |
 
-`fleet:{id}:events` is durable (events appended, `XACK`ed entries pruned) and backs the at-least-once delivery contract. The pub/sub channel is ephemeral and exists only to power live user UIs — its loss never affects correctness, only what the user sees in real time. Durable activity history lives in `core.fleet_events`; the pub/sub channel is the eyeballs surface, not the audit surface.
+`fleet:{id}:events` is durable (events appended, `XACK`ed entries pruned) and backs the at-least-once delivery guarantee. The pub/sub channel is ephemeral and exists only to power live user interfaces — its loss never affects correctness, only what the user sees in real time. Durable activity history lives in `core.fleet_events`; the pub/sub channel is the eyeballs surface, not the audit surface.
 
 **Client-side gap recovery (M122).** Because the channel has no resume, a dashboard tab that drops its Server-Sent Events (SSE) connection misses every frame published during the reconnect window. The stream registry (`ui/packages/app/lib/streaming/fleet-stream-registry.ts`) closes that gap client-side: on every reconnect open — never the SSR-seeded initial connect — it fetches the bounded `core.fleet_events` list through the same-origin token-minting proxy (`/backend/v1/workspaces/{ws}/fleets/{id}/events`, mirror of the SSE proxy), keyed `since` the last server-delivered event minus a 2-second overlap, and merges by event id. No server, channel, or frame-shape change — the durable table remains the recovery source of truth.
 
@@ -447,35 +447,45 @@ installed runtime. Runner remains the infrastructure vocabulary.
                → 202 { event_id }                ← CLI uses event_id
                                                    to filter SSE frames
 
-   WEBHOOK   GH Actions posts workflow_run failure
-               → POST /v1/webhooks/{fleet_id}/github   (HMAC-SHA256
-                 verified against workspace secret
-                 `github`.webhook_secret)
-               → XADD fleet:{id}:events *
+   GITHUB    App posts pull_request or workflow_run
+   APP         → POST /v1/ingress/github
+                 verify platform github-app.webhook_secret BEFORE payload read
+                 installation.id → core.connector_installs → workspace
+                 repository.full_name + event + approved grant
+                    → active fleet subscriptions
+                 per-delivery/per-fleet replay slot
+               → XADD fleet:{id}:events * for each exact match
                       actor=webhook:github  type=webhook
                       workspace_id=<ws>     request=<normalized-json>
                       created_at=<ms>
                → 202
 
-               Receiver path carries a static `/{source}` suffix per provider
-               (`/github`, `/linear`, `/jira`, `/grafana`, `/agentmail`,
-               `/svix/{fleet_id}` for Clerk). The signature middleware
-               dispatches on the path, not on runtime config.
+               A GitHub App trigger declares both events and repositories:
 
-               A Fleet's TRIGGER.md declares `triggers: [...]` as an array
-               (length 1–8, unique on `(type, source)` tuple). Each webhook
-               entry carries `events: [...]` — the provider-specific
-               subscription list the user forwards to the provider
-               (e.g. `gh api repos/.../hooks --field 'events[]=workflow_run'`).
-               The receiver itself doesn't read `events[]`; the normaliser
-               filters server-side on the event's own semantics
-               (`conclusion=failure` for `workflow_run`). Declaration shape
-               and wire-side filtering are separate concerns.
+                 triggers:
+                   - type: webhook
+                     source: github
+                     events: [pull_request]
+                     repositories: [acme/payments]
+
+               `repositories` is required for App traffic. Omission means no
+               App delivery; it never means every repository in the workspace.
+               Multiple fleets may intentionally match. Each gets its own
+               replay slot so a failed fan-out leg can retry without duplicating
+               successful fleets.
+
+   MANUAL     Custom providers and the old GitHub workflow_run path retain
+   WEBHOOK      POST /v1/webhooks/{fleet_id}
+                 POST /v1/webhooks/{fleet_id}/github
+               with a workspace `<source>.webhook_secret`. The fleet identifier
+               is already in the URL, so this route does not require
+               `repositories` and does not use `core.connector_installs`.
 
                The internal Clerk endpoint that bootstraps our own tenants
                on `user.created` is NOT this surface — it lives in the auth
                plane at `POST /v1/auth/identity-events/clerk`. The
-               `/v1/webhooks/` namespace is customer-data-plane only.
+               `/v1/webhooks/` and `/v1/ingress/` namespaces are
+               customer-data-plane only.
 
    CRON      NullClaw cron-tool fires on schedule (in the sandboxed child)
                → the runner reports a cron-scheduling intent; agentsfleetd
