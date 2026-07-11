@@ -60,6 +60,7 @@ sudo() {
 case "$command" in
   "chmod 600 /opt/agentsfleet/.env") exit 0 ;;
   *"sudo install -m 600"*)
+    printf '%s' "${REMOTE_STARTUP_OUTPUT:-}"
     command="${command/'[ -x /usr/local/bin/agentsfleet-runner ]'/'[ "'"${REMOTE_BINARY_PRESENT:-0}"'" = 1 ]'}"
     eval "$command"
     ;;
@@ -88,7 +89,9 @@ run_provision() {
 test_should_defer_health_check_when_runner_binary_is_absent() {
   local name="test_should_defer_health_check_when_runner_binary_is_absent"
   local output status=0
-  output="$(run_provision REMOTE_BINARY_PRESENT=0)" || status=$?
+  output="$(run_provision \
+    REMOTE_BINARY_PRESENT=0 \
+    REMOTE_STARTUP_OUTPUT=$'remote startup output\n')" || status=$?
 
   if [[ "$status" -ne 0 ]]; then
     bad "$name" "provisioning failed on a host awaiting its first binary: $output"
