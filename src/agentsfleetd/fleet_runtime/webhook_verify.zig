@@ -21,8 +21,8 @@ pub const VerifyConfig = struct {
     ingress: ?IngressConfig = null,
 };
 
-/// Provider-owned metadata consumed by the generic App ingress. JSON paths
-/// are key-only traversals over the verified payload.
+/// Provider-owned metadata consumed by App ingress handlers. JSON paths are
+/// key-only traversals over the verified payload.
 pub const IngressConfig = struct {
     platform_secret_key: []const u8,
     platform_secret_field: []const u8,

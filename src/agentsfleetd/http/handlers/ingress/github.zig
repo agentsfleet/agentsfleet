@@ -1,7 +1,7 @@
-//! POST /v1/ingress/{provider} — bearer-less App-webhook ingress.
-//! Provider verification, routing paths, headers, normalization, and replay
-//! namespace come from `webhook_verify.PROVIDER_REGISTRY`; this handler has no
-//! provider branch. The platform secret is read from the admin workspace vault.
+//! POST /v1/ingress/github — bearer-less GitHub App event ingress.
+//! Header names, JSON paths, normalization, and replay namespace come from the
+//! GitHub verifier descriptor. Routing is GitHub App specific:
+//! installation.id → workspace → repository/event/grant fleet matches.
 //! Signature verification precedes JSON parsing and every routing side effect.
 
 const std = @import("std");
@@ -21,7 +21,8 @@ const fleet_config = @import("../../../fleet_runtime/config.zig");
 const webhook_verify = @import("../../../fleet_runtime/webhook_verify.zig");
 const grant_lookup = @import("../../../state/integration_grant_lookup.zig");
 const EventEnvelope = @import("contract").event_envelope;
-const sql = @import("ingress_sql.zig");
+const github_spec = @import("../connectors/github/spec.zig");
+const github_sql = @import("../connectors/github/sql.zig");
 
 const log = logging.scoped(.app_ingress);
 const Hx = hx_mod.Hx;
@@ -46,7 +47,8 @@ const Target = struct {
     workspace_id: []const u8,
 };
 
-pub fn innerIngress(hx: Hx, req: *httpz.Request, provider: []const u8) void {
+pub fn innerGithubAppIngress(hx: Hx, req: *httpz.Request, provider: []const u8) void {
+    if (!std.ascii.eqlIgnoreCase(provider, github_spec.PROVIDER)) return unknownProvider(hx);
     const verify = webhook_verify.detectProvider(provider, webhook_verify.NoHeaders{}) orelse return unknownProvider(hx);
     const ingress = verify.ingress orelse return unknownProvider(hx);
     const event = boundedHeader(req, ingress.event_header, MAX_EVENT_LEN) orelse return malformed(hx);
@@ -184,7 +186,7 @@ fn loadPlatformSecret(alloc: std.mem.Allocator, conn: *pg.Conn, admin_workspace_
 }
 
 fn resolveWorkspace(alloc: std.mem.Allocator, conn: *pg.Conn, provider: []const u8, routing_key: []const u8) !?[]u8 {
-    var q = PgQuery.from(try conn.query(sql.SELECT_WORKSPACE, .{ provider, routing_key }));
+    var q = PgQuery.from(try conn.query(github_sql.SELECT_WORKSPACE_BY_INSTALLATION, .{ provider, routing_key }));
     defer q.deinit();
     const row = try q.next() orelse return null;
     return try alloc.dupe(u8, try row.get([]const u8, 0));
@@ -193,7 +195,7 @@ fn resolveWorkspace(alloc: std.mem.Allocator, conn: *pg.Conn, provider: []const 
 fn findTargets(alloc: std.mem.Allocator, conn: *pg.Conn, workspace_id: []const u8, provider: []const u8, repository: []const u8, event: []const u8) ![]const Target {
     var out: std.ArrayList(Target) = .empty;
     errdefer freeTargets(alloc, out.items);
-    var q = PgQuery.from(try conn.query(sql.SELECT_TARGETS, .{ workspace_id, fleet_config.FleetStatus.active.toSlice(), provider, grant_lookup.GrantStatus.approved.toSlice(), repository, event, MAX_FANOUT + 1 }));
+    var q = PgQuery.from(try conn.query(github_sql.SELECT_APP_INGRESS_TARGETS, .{ workspace_id, fleet_config.FleetStatus.active.toSlice(), provider, grant_lookup.GrantStatus.approved.toSlice(), repository, event, MAX_FANOUT + 1 }));
     defer q.deinit();
     while (try q.next()) |row| {
         if (out.items.len == MAX_FANOUT) return error.FanoutLimitExceeded;
@@ -267,7 +269,7 @@ fn fakeNormalize(alloc: std.mem.Allocator, event: []const u8, _: std.json.Object
     return @as(?[]u8, try std.fmt.allocPrint(alloc, "{{\"event\":\"{s}\"}}", .{event}));
 }
 
-test "App ingress behavior is driven by a provider descriptor" {
+test "GitHub App ingress extracts descriptor-owned paths" {
     const descriptor = webhook_verify.IngressConfig{
         .platform_secret_key = "fake-app",
         .platform_secret_field = "secret",
@@ -290,7 +292,7 @@ test "App ingress behavior is driven by a provider descriptor" {
     try std.testing.expectEqualStrings("{\"event\":\"changed\"}", normalized);
 }
 
-test "App ingress replay identity is independent of the unsigned delivery header" {
+test "GitHub App ingress replay identity is independent of the unsigned delivery header" {
     const first = authenticatedReplayId("signed-body");
     const replay = authenticatedReplayId("signed-body");
     const different = authenticatedReplayId("different-signed-body");
@@ -298,6 +300,6 @@ test "App ingress replay identity is independent of the unsigned delivery header
     try std.testing.expect(!std.mem.eql(u8, &first, &different));
 }
 
-test "App ingress replay slot covers the GitHub redelivery window" {
+test "GitHub App ingress replay slot covers the GitHub redelivery window" {
     try std.testing.expectEqual(@as(u32, 72 * 60 * 60), DEDUP_TTL_SECONDS);
 }

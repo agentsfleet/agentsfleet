@@ -30,7 +30,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ## Overview
 
-**Goal (testable):** the GitHub callback accepts an installation only after signed state binds the intended workspace and GitHub proves the returning user can access it; `POST /v1/ingress/{provider}` verifies a GitHub App signature before reading the payload, resolves `installation.id → workspace`, and fans Pull Request or failed Actions events only to active fleets whose GitHub trigger explicitly matches the repository and event and whose GitHub grant is approved; each authenticated payload reaches each fleet once; the registry-wide `agentsfleet connector` CLI reports live provider state; and both documentation homes explain the App path without deleting the manual per-fleet fallback.
+**Goal (testable):** the GitHub callback accepts an installation only after signed state binds the intended workspace and GitHub proves the returning user can access it; `POST /v1/ingress/github` verifies a GitHub App signature before reading the payload, resolves `installation.id → workspace`, and fans Pull Request or failed Actions events only to active fleets whose GitHub trigger explicitly matches the repository and event and whose GitHub grant is approved; each authenticated payload reaches each fleet once; the registry-wide `agentsfleet connector` CLI reports live provider state; and both documentation homes explain the App path without deleting the manual per-fleet fallback.
 
 **Problem:** GitHub connect currently stores only an encrypted installation handle, so there is no reverse installation-to-workspace map; the App webhook is disabled by the operator playbook and has no ingress; fleet triggers have no repository subscription, so App-wide traffic would fan out too broadly; `github-pr-reviewer` cannot pass its end-to-end Pull Request test; connector state has no CLI surface; and the internal and operator docs mix the old manual-hook model with the shipped App credential model.
 
@@ -59,7 +59,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `src/agentsfleetd/http/handlers/connectors/github/{callback,ownership,sql,callback_integration_test}.zig` · connector OAuth/bounded-fetch support | EDIT/CREATE | exchange the one-time code; verify user access to the claimed installation; conditionally store the vault handle and `installation_id → workspace` row; reject cross-workspace transfer; prove denial rollback and reconnect |
 | `src/agentsfleetd/fleet_runtime/config_{types,helpers}.zig` + tests | EDIT | parse, own, bound, and validate optional webhook `repositories`; App ingress requires an explicit GitHub repository match |
 | `src/agentsfleetd/fleet_runtime/webhook/normalizer/{github,github_app,github_app_test}.zig` | EDIT/CREATE | preserve workflow normalization and add a bounded Pull Request/App-event normalizer with repository identity |
-| `src/agentsfleetd/http/handlers/webhooks/{ingress,ingress_sql,ingress_integration_test}.zig` · `http/{server,handlers/common}.zig` | CREATE/EDIT | generic `POST /v1/ingress/{provider}`; verify first, route by installation + repository + event + approved grant, then authenticated-body-digest/fleet dedup and `XADD`; prove server-side parallel admission |
+| `src/agentsfleetd/http/handlers/ingress/{github,github_integration_test}.zig` · `src/agentsfleetd/http/handlers/connectors/github/sql.zig` · `http/{server,handlers/common}.zig` | CREATE/EDIT | GitHub-owned `POST /v1/ingress/github`; verify first, route by installation + repository + event + approved grant, then authenticated-body-digest/fleet dedup and `XADD`; prove server-side parallel admission |
 | `src/agentsfleetd/db/test_fixtures_app_ingress.zig` | CREATE | seed and clean the real connector-install, fleet, and integration-grant tables for App-ingress integration proof |
 | `schema/025_core_connector_installs.sql` | EDIT (comments only) | keep the table's architecture commentary aligned with verified GitHub installation routing; no executable SQL change |
 | `src/agentsfleetd/fleet_runtime/webhook_verify.zig` | EDIT | extend descriptors with routing metadata; seed GitHub's `installation.id`; retain compile-time validation |
@@ -100,13 +100,13 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ## Sections (implementation slices)
 
-### §1 — Generic App-webhook ingress (`/v1/ingress/{provider}`, data-driven) — DONE
+### §1 — GitHub App-webhook ingress (`/v1/ingress/github`) — DONE
 
-The callback first treats browser-supplied `installation_id` as a claim: signed state identifies the intended workspace, while the one-time GitHub code is exchanged and used to prove the returning user can access that installation. Persistence is conditional; another workspace's existing route cannot be transferred. The App's one webhook then posts to the bearer-less generic route. Verification precedes every payload read. GitHub's descriptor extracts `installation.id`, repository full name, and event header; the installation resolves the workspace through `core.connector_installs`. Matching fleets must be active, have an approved GitHub grant, and declare a GitHub webhook trigger whose `repositories` contains the exact repository and whose `events` admits the event. A missing repository list is ignored by the App route and remains valid for the manual per-fleet route. Deduplication is per authenticated body digest and fleet, and a failed enqueue releases only that fleet's slot. The unsigned delivery header is retained only for diagnostics.
+The callback first treats browser-supplied `installation_id` as a claim: signed state identifies the intended workspace, while the one-time GitHub code is exchanged and used to prove the returning user can access that installation. Persistence is conditional; another workspace's existing route cannot be transferred. The App's one webhook then posts to the bearer-less GitHub ingress route. Verification precedes every payload read. GitHub's descriptor extracts `installation.id`, repository full name, and event header; the installation resolves the workspace through `core.connector_installs`. Matching fleets must be active, have an approved GitHub grant, and declare a GitHub webhook trigger whose `repositories` contains the exact repository and whose `events` admits the event. A missing repository list is ignored by the App route and remains valid for the manual per-fleet route. Deduplication is per authenticated body digest and fleet, and a failed enqueue releases only that fleet's slot. The unsigned delivery header is retained only for diagnostics.
 
-- **Dimension 1.1** — DONE — callback requires code + state, verifies GitHub user access, writes both rows only for the same workspace, and rolls back on provider denial or cross-workspace conflict; signed GitHub Pull Request and failed `workflow_run` deliveries route only to fleets matching workspace, repository, event, and approved grant → GitHub callback integration tests + `integration: App ingress routes installation repository event grant and replay`
-- **Dimension 1.2** — DONE — adding a provider is a registry descriptor; the `/v1/ingress/{provider}` route + dispatch carry no per-provider branch → `App ingress behavior is driven by a provider descriptor`
-- **Dimension 1.3** — DONE — a GitHub trigger without `repositories` receives no App delivery; manual per-fleet GitHub and specialized Slack ingress remain green; retries deliver once per matching fleet and recover a failed fan-out leg → `integration: App ingress routes installation repository event grant and replay`
+- **Dimension 1.1** — DONE — callback requires code + state, verifies GitHub user access, writes both rows only for the same workspace, and rolls back on provider denial or cross-workspace conflict; signed GitHub Pull Request and failed `workflow_run` deliveries route only to fleets matching workspace, repository, event, and approved grant → GitHub callback integration tests + `integration: GitHub App ingress routes installation repository event grant and replay`
+- **Dimension 1.2** — DONE — the route namespace remains `/v1/ingress/{provider}`, but the shipped routing owner is GitHub-specific; non-GitHub route providers fail closed instead of silently reusing GitHub repository/event SQL → `integration: GitHub App ingress rejects non-GitHub route providers`
+- **Dimension 1.3** — DONE — a GitHub trigger without `repositories` receives no App delivery; manual per-fleet GitHub and specialized Slack ingress remain green; retries deliver once per matching fleet and recover a failed fan-out leg → `integration: GitHub App ingress routes installation repository event grant and replay`
 
 ### §2 — MOVED and DONE in M102_006 (grant-gated mint + lease)
 
@@ -130,15 +130,15 @@ Reconcile both documentation homes with the completed flow. The App path replace
 ## Interfaces
 
 ```
-Generic App-webhook ingress (bearer-less; provider signature is the trust anchor):
-  POST /v1/ingress/{provider}   # provider="github"; one platform App secret; payload.installation.id
-      -> verify/router registry (one descriptor per provider; extends webhook_verify.PROVIDER_REGISTRY)
+GitHub App-webhook ingress (bearer-less; GitHub App signature is the trust anchor):
+  POST /v1/ingress/github   # one platform App secret; payload.installation.id
+      -> GitHub verifier descriptor (extends webhook_verify.PROVIDER_REGISTRY)
       -> verify signature -> installation -> workspace
       -> repository + event + approved grant -> matching fleet(s)
       -> authenticated-body-digest/fleet dedup -> XADD fleet:{id}:events
       | rejected{ bad_sig | unmapped_installation | no_matching_subscription }
   # the per-provider slack_events route (/v1/connectors/slack/events) is unchanged; its migration onto
-  #   the generic ingress is Out of Scope.
+  #   /v1/ingress/slack is Out of Scope.
 
 Connector CLI (structured JSON on --json / when piped; non-zero only when the status request fails):
   agentsfleet connector list            -> [{ provider, state: connected|not_connected|reconnect_required|unconfigured, hint? }]
@@ -157,14 +157,14 @@ Ingress results are tagged unions; the route path, provider ids, and `installati
 | Ingress unmapped installation | `installation_id` maps to no workspace (uninstalled/never-connected) | typed `rejected{unmapped_installation}`; no `XADD`; no leak of which ids exist |
 | Ingress unbound repository | no active, granted fleet explicitly subscribes to repository + event | acknowledge with zero `XADD`; no broad workspace fan-out |
 | Partial fan-out failure | one fleet enqueue fails after another succeeds | release only failed fleet's dedup slot; provider retry completes missing leg without duplicating the successful leg |
-| Ingress new provider added | a descriptor added for a provider with a known signature family | routes with zero `/v1/ingress` handler edits (`test_ingress_registry_is_data_driven`) |
+| Ingress new provider added | a descriptor added for a provider with a known signature family | requires a provider-owned routing handler unless it shares GitHub's exact installation/repository/event/grant shape |
 | CLI reads a disconnected connector | connector status is `not_connected` or `reconnect_required` | successful state response with a connect/reconnect hint; no fabricated failure |
 | CLI daemon unreachable | control-plane down during `connector list` | structured-JSON transport error + non-zero exit; no partial/fabricated state |
 | Token leak to logs | logging an ingress payload or connector state | never logged or returned (VLT); only non-secret provider/state/installation-presence appears |
 
 ## Invariants
 
-1. **Adding an ingress provider adds no branch to the `/v1/ingress` dispatch** — the provider registry is data; `App ingress behavior is driven by a provider descriptor` proves a fake descriptor supplies routing metadata with no handler edit; the compile-time duplicate guard in `PROVIDER_REGISTRY` holds.
+1. **Adding an ingress provider must name its routing owner** — the route namespace is shared, but a new provider does not inherit GitHub's repository/event SQL by accident; `integration: GitHub App ingress rejects non-GitHub route providers` proves fail-closed behavior.
 2. **The ingress verifies the signature before any routing or side-effect** — verification precedes the routing-key read and the `XADD`; a bad signature produces zero `XADD` in the App-ingress integration test.
 3. **Ingress frames never carry a secret** — VLT; only provider/state/installation-presence appear in any log or response.
 4. **App traffic never uses an implicit all-repositories subscription** — an explicit repository match and approved grant are required per fleet; the manual route remains fleet-addressed.
@@ -175,7 +175,7 @@ Ingress results are tagged unions; the route path, provider ids, and `installati
 
 | Metric / event | Owner | Fires when | Properties allowed | Privacy guard | Test proof |
 |----------------|-------|------------|--------------------|---------------|------------|
-| `ingress_rejected` (operator log) | ops | an inbound App webhook fails verify or maps to no workspace | provider, reason (bad_sig / unmapped), delivery id | no payload body, no signature bytes | `integration: App ingress routes installation repository event grant and replay` |
+| `ingress_rejected` (operator log) | ops | an inbound App webhook fails verify or maps to no workspace | provider, reason (bad_sig / unmapped), delivery id | no payload body, no signature bytes | `integration: GitHub App ingress routes installation repository event grant and replay` |
 
 No product analytics or funnel change — this is operator/security-plane observability only; Discovery records "Metrics review: no analytics/funnel playbook update required" with that reason.
 
@@ -183,9 +183,9 @@ No product analytics or funnel change — this is operator/security-plane observ
 
 | Dimension | Tier | Test | Asserts (concrete inputs → expected output) |
 |-----------|------|------|---------------------------------------------|
-| 1.1 | integration | `integration: GitHub callback …` tests + `integration: App ingress routes installation repository event grant and replay` | ownership probe and cross-workspace rollback precede both mappings; Pull Request and failed Actions events reach only exact repository/event/grant matches |
-| 1.2 | unit | `App ingress behavior is driven by a provider descriptor` | a fake provider descriptor supplies verification and routing metadata with no provider branch in `/v1/ingress` |
-| 1.3 | integration | `integration: App ingress routes installation repository event grant and replay` | missing repository binding is ignored; retry is once per fleet; manual GitHub + Slack regressions pass |
+| 1.1 | integration | `integration: GitHub callback …` tests + `integration: GitHub App ingress routes installation repository event grant and replay` | ownership probe and cross-workspace rollback precede both mappings; Pull Request and failed Actions events reach only exact repository/event/grant matches |
+| 1.2 | integration | `integration: GitHub App ingress rejects non-GitHub route providers` | a non-GitHub route provider fails closed instead of reusing GitHub App routing |
+| 1.3 | integration | `integration: GitHub App ingress routes installation repository event grant and replay` | missing repository binding is ignored; retry is once per fleet; manual GitHub + Slack regressions pass |
 | 3.1 | CLI integration | `connector list prints configured and connected state` + `connector status --json preserves raw backend strings for machines` | list/status reflects live registry state with a stable machine shape |
 | 3.2 | CLI integration | `disconnected connector status succeeds with a next action` + `connector API failure is structured and non-zero` | disconnected is a successful state with hint; transport/API error is structured and non-zero |
 | 4.1 | deterministic documentation check | no manual-hook grep in `docs/architecture/**` | no architecture doc asserts user-`gh api …/hooks` for the App path |
@@ -199,7 +199,7 @@ No product analytics or funnel change — this is operator/security-plane observ
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
 | R1 | App webhook routes by installation + repository + event + grant; failures have no broad side effect (§1) | `make test-integration` | exit 0; named callback and ingress tests are part of the reachable integration graph | P1 | ✅ `All integration tests passed` |
-| R2 | Adding a provider needs no `/v1/ingress` handler edit (§1) | `make test-unit-all` | exit 0; provider-descriptor test is part of the reachable unit graph | P1 | ✅ `1592 passed; 531 skipped; 0 failed` |
+| R2 | Non-GitHub ingress providers cannot reuse GitHub routing by accident (§1) | `make test-unit-agentsfleetd` | exit 0; non-GitHub route-provider rejection test is part of the reachable graph | P1 | ✅ `1598 pass, 543 skip` |
 | R4 | `connector` CLI: registry-wide live state, reconnect hints, and structured request failures (§3) | `make test-unit-cli && make cli-acceptance` | exit 0 | P1 | ✅ unit `1296 pass`; acceptance `69 pass`, `15 skip`, `0 fail` |
 | R5 | Internal + operator docs describe App routing, repository binding, fallback, and reviewer proof state (§4) | `! rg 'gh api .*/hooks' docs/architecture && rg -l 'installation_id' docs/architecture/connectors.md playbooks/operations/github_app_registration/001_playbook.md && rg -l 'repositories' ~/Projects/docs-m102-agent-identity/fleets/{connectors,webhooks,authoring}.mdx` | no obsolete hook command; all named flow pages match | P1 | ✅ five required flow pages matched; obsolete hook command absent |
 | R6 | Diff stays inside Files Changed | `git diff --name-only origin/main` | 0 paths missing from the Files Changed table | P0 | ✅ all paths map to an explicit row or its colocated/generated test surface |
@@ -226,7 +226,7 @@ No product analytics or funnel change — this is operator/security-plane observ
 
 ## Out of Scope
 
-- Migrating the existing provider-specific `slack_events` ingress (`/v1/connectors/slack/events`) onto the generic `/v1/ingress/{provider}` — a follow-up; §1 ships the generic route with the github descriptor and leaves slack's route untouched.
+- Migrating the existing provider-specific `slack_events` ingress (`/v1/connectors/slack/events`) onto `/v1/ingress/slack` — a follow-up; §1 ships the GitHub App ingress and leaves Slack's route untouched.
 - New Slack, Zoho, Jira, or Linear event ingress. Their shipped connection and credential-mint behavior remains unchanged.
 - Per-fleet cryptographic identity / Agent Auth wire-format alignment; Stripe Agentic Commerce Protocol; exact-action approval-hash binding — all v3 / named follow-ups per M102_001.
 - Any mint-broker change. The GitHub callback change is limited to installation-ownership proof and safe reverse mapping.
@@ -237,9 +237,9 @@ No product analytics or funnel change — this is operator/security-plane observ
 
 1. **Successful user moment** — an operator connects GitHub and a teammate's Pull Request wakes the fleet: the App webhook lands (§1) and the operator can confirm "connected" from `agentsfleet connector status` (§3) — no silent drops (token gating ships first, in M102_006).
 2. **Preserved user behaviour** — the shipped connect flow, the §1–§4 on-demand mint, static custom secrets, the existing `slack_events` ingress, and model routing all keep working.
-3. **Optimal-way check** — the most direct finish: the ingress rides the existing verifier, the CLI is a renderer over the existing status endpoint. The gap to unconstrained-optimal (migrating slack onto the generic ingress, a fully registry-driven `PlatformSecrets`) is deferred — the abstraction lands, convergence later.
+3. **Optimal-way check** — the most direct finish: the GitHub ingress rides the existing verifier, the CLI is a renderer over the existing status endpoint. The gap to unconstrained-optimal (migrating Slack onto `/v1/ingress/slack`, a fully registry-driven `PlatformSecrets`) is deferred — the abstraction lands, convergence later.
 4. **Rebuild-vs-iterate** — iterate. Every surface exists; this wires the four deferred dimensions onto them. Verdict: targeted completion, not a refactor.
-5. **What we build** — GitHub's two-row connect persistence, explicit repository subscriptions, generic App ingress, registry-wide connector status, and both documentation homes.
+5. **What we build** — GitHub's two-row connect persistence, explicit repository subscriptions, GitHub App ingress, registry-wide connector status, and both documentation homes.
 6. **What we do NOT build** — slack-route migration; new outbound connectors; per-fleet identity; any schema change (the grant table exists).
 7. **Fit with existing features** — compounds with the shipped mint broker, the connect surface, and the approval inbox; must not destabilize the existing webhook verifier, the mint hot path, or static-secret resolution.
 8. **Surface order** — canonical architecture docs first, then §1 ingress, §3 CLI, and finally operator documentation + changelog verified against the implementation.

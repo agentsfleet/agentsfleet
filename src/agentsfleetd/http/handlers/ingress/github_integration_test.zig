@@ -14,6 +14,7 @@ const TestHarness = harness_mod.TestHarness;
 const testing = std.testing;
 
 const PATH = "/v1/ingress/github";
+const NON_GITHUB_PATH = "/v1/ingress/linear";
 const SECRET = "github-app-ingress-test-secret";
 const REPOSITORY = "agentsfleet/agentsfleet";
 const REPOSITORY_MIXED_CASE = "AgentsFleet/AgentsFleet";
@@ -138,7 +139,7 @@ fn clearFanoutStreams(h: *TestHarness, count: usize) void {
     }
 }
 
-test "integration: App ingress routes installation repository event grant and replay" {
+test "integration: GitHub App ingress routes installation repository event grant and replay" {
     const h = TestHarness.start(testing.allocator, .{ .configureRegistry = noopRegistry }) catch |err| switch (err) {
         error.SkipZigTest => return error.SkipZigTest,
         else => return err,
@@ -295,7 +296,7 @@ test "integration: App ingress routes installation repository event grant and re
     try testing.expectEqual(@as(i64, 1), try streamLen(h, try fanoutId(&first_fanout_buf, 0, false)));
 }
 
-test "integration: App ingress matches GitHub repositories case-insensitively" {
+test "integration: GitHub App ingress matches repositories case-insensitively" {
     const h = TestHarness.start(testing.allocator, .{ .configureRegistry = noopRegistry }) catch |err| switch (err) {
         error.SkipZigTest => return error.SkipZigTest,
         else => return err,
@@ -323,4 +324,17 @@ test "integration: App ingress matches GitHub repositories case-insensitively" {
     try testing.expectEqual(@as(i64, 1), try streamLen(h, fixtures.FLEET_PULL_ONE));
     try testing.expectEqual(@as(i64, 1), try streamLen(h, fixtures.FLEET_PULL_TWO));
     try testing.expectEqual(@as(i64, 0), try streamLen(h, fixtures.FLEET_WRONG_REPO));
+}
+
+test "integration: GitHub App ingress rejects non-GitHub route providers" {
+    const h = TestHarness.start(testing.allocator, .{ .configureRegistry = noopRegistry }) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+
+    const rejected = try h.post(NON_GITHUB_PATH).rawBody("{}").send();
+    defer rejected.deinit();
+    try rejected.expectStatus(.not_found);
+    try testing.expect(rejected.bodyContains(ec.ERR_CONNECTOR_UNKNOWN));
 }
