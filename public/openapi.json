@@ -155,10 +155,10 @@
       }
     },
     {
-      "name": "Model Catalogue",
-      "description": "Public model→capability catalogue consumed at provisioning time.",
+      "name": "Model Library",
+      "description": "The model library catalogue — bearer-authed read of the priced models and their per-token rates.",
       "x-mintlify": {
-        "navigation": "Model Catalogue"
+        "navigation": "Model Library"
       }
     }
   ],
@@ -5529,38 +5529,24 @@
         }
       }
     },
-    "/_um/da5b6b3810543fe108d816ee972e4ff8/cap.json": {
+    "/v1/models": {
       "get": {
-        "operationId": "get_model_caps",
-        "summary": "Get the model capability catalogue",
-        "description": "Public, unauthenticated model->capability catalogue plus the global, non-secret\nclient config (run/event rates, starter credit, free-trial window). Both the\ninstall skill and `agentsfleet provider set` call this once at provisioning time\nand pin the result.\n\nThe path-key segment (`da5b6b3810543fe108d816ee972e4ff8`) is an opportunistic-crawler\ndeflector, not a credential — the catalogue is public information. Rotation is a\ncoordinated CLI + skill + API release.\n",
+        "operationId": "get_model_library",
+        "summary": "Get the model library",
+        "description": "The model library catalogue (`core.model_library`): one row per priced `(provider, model_id)` pair with its context cap and per-token rates, plus a `version` stamp derived from the newest row. Bearer-authed — any authenticated tenant may read it; the route carries no capability scope. Replaces the retired public `cap.json` document: the former unauthenticated cryptic-prefix path returns `404` (no alias), and the global `rates`/`billing` block it carried was consumer-less and retired with it. An empty catalogue is a valid state and returns `200` with an empty `models` array.\n",
         "tags": [
-          "Model Catalogue"
-        ],
-        "security": [],
-        "parameters": [
-          {
-            "name": "model",
-            "in": "query",
-            "required": false,
-            "description": "Filter the catalogue to a single `model_id`. Omit to return the whole catalogue.",
-            "schema": {
-              "type": "string"
-            }
-          }
+          "Model Library"
         ],
         "responses": {
           "200": {
-            "description": "The model catalogue, per-token rates, and global billing config.",
+            "description": "The model library catalogue.",
             "content": {
               "application/json": {
                 "schema": {
                   "type": "object",
                   "required": [
                     "version",
-                    "models",
-                    "rates",
-                    "billing"
+                    "models"
                   ],
                   "properties": {
                     "version": {
@@ -5603,45 +5589,6 @@
                             "type": "integer",
                             "format": "int64"
                           }
-                        }
-                      }
-                    },
-                    "rates": {
-                      "type": "object",
-                      "required": [
-                        "run_nanos_per_sec",
-                        "event_nanos"
-                      ],
-                      "properties": {
-                        "run_nanos_per_sec": {
-                          "type": "integer",
-                          "format": "int64"
-                        },
-                        "event_nanos": {
-                          "type": "integer",
-                          "format": "int64"
-                        }
-                      }
-                    },
-                    "billing": {
-                      "type": "object",
-                      "required": [
-                        "starter_credit_nanos",
-                        "free_trial_end_ms",
-                        "free_trial_stage_nanos"
-                      ],
-                      "properties": {
-                        "starter_credit_nanos": {
-                          "type": "integer",
-                          "format": "int64"
-                        },
-                        "free_trial_end_ms": {
-                          "type": "integer",
-                          "format": "int64"
-                        },
-                        "free_trial_stage_nanos": {
-                          "type": "integer",
-                          "format": "int64"
                         }
                       }
                     }
