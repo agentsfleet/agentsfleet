@@ -117,10 +117,10 @@ install worker is tracked (the existing WaitGroup, set in production) and awaite
 queue deinit — because both mirror proven in-repo shapes (`events/bus.zig` stop ordering; the
 test harness already sets the WaitGroup) rather than inventing new machinery.
 
-- **Dimension 1.1** — SIGTERM delivered between signal-handler install and server publish still stops the daemon: background loops keep running until a real shutdown; the watcher never exits without having stopped a live server (R1) → Test `test_sigterm_before_publish_stops_server`
-- **Dimension 1.2** — the install-progression worker cannot outlive the pool/queue it uses: production sets the tracking WaitGroup; teardown awaits it before `pool.deinit()`/`queue.deinit()`; the stale "harmless" comment is corrected (R3) → Test `test_install_worker_awaited_before_pool_deinit`
+- **Dimension 1.1** — SIGTERM delivered between signal-handler install and server publish still stops the daemon: background loops keep running until a real shutdown; the watcher never exits without having stopped a live server (R1) → Test `test_sigterm_before_publish_stops_server` (+ disarm-retires-watcher teardown test) — DONE
+- **Dimension 1.2** — the install-progression worker cannot outlive the pool/queue it uses: production sets the tracking WaitGroup (serve.zig owns it; `defer install_wg.wait()` unwinds before the pool/queue defers); the stale "harmless" comment is corrected (R3) → code DONE; the lifecycle proof is `test_install_worker_lifecycle_vs_teardown` (M126_003 Dimension 5.3, same PR)
 - **Dimension 1.3** — `hub.stop()` never touches `conn` outside the mutex; the undrained-timeout path defers connection teardown until stragglers are confirmed gone instead of deiniting under a live racer (R4) → Test `test_hub_stop_undrained_no_conn_teardown_race`
-- **Dimension 1.4** — `deinitStreaming` frees hub/registry storage only after every registered stream thread has exited; a straggler past the bounded wait blocks the free, is logged, and the wait re-arms (R7) → Test `test_streaming_teardown_outlasts_straggler`
+- **Dimension 1.4** — `deinitStreaming` frees hub/registry storage only after every registered stream thread has exited; a straggler past the bounded wait blocks the free, is logged, and the wait re-arms (R7) → Test `streaming_teardown_outlasts_straggler` (awaitEmptyRounds re-arm proof) — DONE
 
 ### §2 — Hub wire-write discipline: no blocking socket write under the mutex
 

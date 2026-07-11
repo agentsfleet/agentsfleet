@@ -176,7 +176,7 @@ pub fn run(io: std.Io, env_map: *const EnvMap, argv: []const [:0]const u8, alloc
     // from (borrows the queue pool's resolved config — torn down before it).
     var streams = stream_registry.init(alloc, io);
     var hub = subscription_hub.init(alloc, io);
-    defer deinitStreaming(&hub, &streams);
+    defer serve_shutdown.deinitStreaming(&hub, &streams);
     hub.start(api_queue.pool.cfg) catch |err| {
         log.err("startup.subscription_hub_failed", .{
             .error_code = error_codes.ERR_STARTUP_REDIS_CONNECT,
@@ -194,9 +194,16 @@ pub fn run(io: std.Io, env_map: *const EnvMap, argv: []const [:0]const u8, alloc
     var r2_store = try serve_r2.resolve(env_map, alloc, io);
     defer if (r2_store) |*c| c.deinit();
 
+    // Detached install-step workers borrow the pool + queue; teardown waits
+    // for the in-flight ones here BEFORE the pool/queue defers (declared
+    // above, so they unwind after this) free what the workers use.
+    var install_wg: common.WaitGroup = .{};
+    defer install_wg.wait();
+
     var ctx = http_handler.Context{
         .pool = api_pool,
         .queue = &api_queue,
+        .install_wg = &install_wg,
         .alloc = alloc,
         .io = io,
         .clerk_webhook_secret = secrets.clerk_webhook_secret,
@@ -331,20 +338,8 @@ pub fn run(io: std.Io, env_map: *const EnvMap, argv: []const [:0]const u8, alloc
     background.stop();
 }
 
-/// Stream/hub teardown as one explicit sequence (was four LIFO defers):
-/// stop's close broadcast wakes pop-parked stream threads (fd shutdown
-/// alone cannot), awaitEmpty bounds their deregistration, then the storage
-/// deinits. streams.drain() is deliberately NOT folded in — it is the first
-/// unwind step (declared at the server site) so client fds shut down while
-/// srv.deinit() is still joining request threads that may touch hub/registry.
-fn deinitStreaming(hub: *subscription_hub, streams: *stream_registry) void {
-    hub.stop();
-    streams.awaitEmpty();
-    hub.deinit();
-    streams.deinit();
-}
-
-// Arg-parsing tests live in serve_test.zig.
+// Arg-parsing tests live in serve_test.zig; the streaming teardown sequence
+// lives in serve_shutdown.deinitStreaming with the rest of the choreography.
 comptime {
     _ = @import("serve_test.zig");
 }

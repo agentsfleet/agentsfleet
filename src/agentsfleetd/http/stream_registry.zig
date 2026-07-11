@@ -127,15 +127,27 @@ pub fn drain(self: *Self) void {
     if (live > 0) log.debug("drain_started", .{ .live_streams = live });
 }
 
-/// Step three: wait (bounded) for the woken stream threads to deregister,
-/// so callers can tear down whatever the streams borrow (hub, registry).
+/// Step three: block until every woken stream thread has deregistered, so
+/// callers can tear down what the streams borrow (hub, registry). Waits in
+/// bounded rounds; each incomplete round logs the straggler count and
+/// re-arms — the storage is NEVER freed under a live stream thread (a loud
+/// hang that systemd escalates beats a use-after-free in a wedged thread).
 pub fn awaitEmpty(self: *Self) void {
-    var waited_ms: u64 = 0;
-    while (self.count() > 0 and waited_ms < AWAIT_EMPTY_MAX_MS) : (waited_ms += AWAIT_EMPTY_POLL_MS) {
-        common.sleepNanos(AWAIT_EMPTY_POLL_MS * std.time.ns_per_ms);
-    }
-    if (self.count() > 0) {
-        log.warn("drain_incomplete", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .live_streams = self.count() });
+    _ = self.awaitEmptyRounds(AWAIT_EMPTY_MAX_MS);
+}
+
+/// Testable core of `awaitEmpty`: waits in rounds of `round_ms`, returning
+/// the number of incomplete (logged, re-armed) rounds once empty.
+pub fn awaitEmptyRounds(self: *Self, round_ms: u64) u32 {
+    var rounds: u32 = 0;
+    while (true) {
+        var waited_ms: u64 = 0;
+        while (self.count() > 0 and waited_ms < round_ms) : (waited_ms += AWAIT_EMPTY_POLL_MS) {
+            common.sleepNanos(AWAIT_EMPTY_POLL_MS * std.time.ns_per_ms);
+        }
+        if (self.count() == 0) return rounds;
+        rounds += 1;
+        log.warn("drain_incomplete", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .live_streams = self.count(), .rounds = rounds });
     }
 }
 

@@ -217,3 +217,36 @@ fn listAndFree(alloc: std.mem.Allocator, reg: *StreamRegistry) !void {
     }
     alloc.free(rows);
 }
+
+/// Straggler stimulus: deregisters after a few poll intervals so awaitEmpty
+/// must survive at least one incomplete round before the registry empties.
+const Straggler = struct {
+    const HOLD_MS: u64 = 180;
+    fn run(reg: *StreamRegistry, id: u64) void {
+        common.sleepNanos(HOLD_MS * std.time.ns_per_ms);
+        reg.deregister(id);
+    }
+};
+
+test "streaming_teardown_outlasts_straggler: awaitEmpty re-arms, never returns non-empty" {
+    // The incomplete rounds warn by design; the build runner fails a passing
+    // test that emits warn+ logs — silence them for this test only.
+    const saved_log_level = testing.log_level;
+    testing.log_level = .err;
+    defer testing.log_level = saved_log_level;
+
+    var reg = StreamRegistry.init(testing.allocator, common.globalIo());
+    defer reg.deinit();
+
+    const id = (try reg.tryRegister(WS, ZID_A, STARTED_A_MS, CAP)).?;
+    const t = try std.Thread.spawn(.{}, Straggler.run, .{ &reg, id });
+    defer t.join();
+
+    // Tiny rounds so the straggler forces re-arms: the pre-fix awaitEmpty
+    // returned after ONE bounded round with the stream still registered.
+    const STRAGGLER_TEST_ROUND_MS: u64 = 60;
+    const rounds = reg.awaitEmptyRounds(STRAGGLER_TEST_ROUND_MS);
+    try testing.expect(rounds >= 1);
+    try testing.expectEqual(@as(usize, 0), reg.count());
+    metrics.setSseInFlightStreams(0);
+}

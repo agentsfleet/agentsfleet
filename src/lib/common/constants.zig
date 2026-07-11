@@ -14,6 +14,7 @@ const sync = @import("sync.zig");
 pub const Mutex = sync.Mutex;
 pub const Condition = sync.Condition;
 pub const WaitGroup = sync.WaitGroup;
+pub const Event = sync.Event;
 pub const globalIo = sync.globalIo;
 pub const sleepNanos = sync.sleepNanos;
 
