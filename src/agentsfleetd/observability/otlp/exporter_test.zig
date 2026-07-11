@@ -79,3 +79,44 @@ test "test_exporter_testhooks: testSetInstalled/testClear toggle state without a
     TestExporter.testClear();
     try std.testing.expect(!TestExporter.isInstalled());
 }
+
+// ── Drain-on-shutdown: uninstall's join runs the flush thread's drain loop
+//    until the ring is empty. This is the one lifecycle leg the tests above did
+//    not pin (they buffer nothing); the other legs — spawn/join, single-thread
+//    claim, racing install — are covered above, so this extends that suite
+//    rather than duplicating it. ──────────────────────────────────────────────
+var g_drain_ring = std.atomic.Value(usize).init(0);
+
+fn drainCollect(alloc: std.mem.Allocator, cfg: config.GrafanaOtlpConfig) !?[]const u8 {
+    _ = alloc;
+    _ = cfg;
+    // A real collect consumes the pending buffer into the body; here we drain
+    // the fake ring and return null so the flush never touches the network.
+    g_drain_ring.store(0, .release);
+    return null;
+}
+fn drainPending() bool {
+    return g_drain_ring.load(.acquire) > 0;
+}
+
+const DrainExporter = exporter.Exporter(.{
+    .path = "/v1/drain",
+    .scope = .otel_traces,
+    .collect = drainCollect,
+    .pending = drainPending,
+    .flush_interval_ms = 100,
+});
+
+const DRAIN_PENDING_SEED: usize = 5;
+
+test "exporter uninstall drains the ring before the flush thread joins" {
+    g_drain_ring.store(DRAIN_PENDING_SEED, .release); // buffer pending entries
+    try std.testing.expectEqual(DrainExporter.InstallOutcome.installed, DrainExporter.install(TEST_CFG));
+    // uninstall clears g_running, wakes the tick sleep, and joins the flush
+    // thread — whose shutdown-drain loop runs flushOnce while pending() is true,
+    // so the ring is empty by the time join returns. The join is the barrier, so
+    // the post-join read needs no polling.
+    DrainExporter.uninstall();
+    try std.testing.expectEqual(@as(usize, 0), g_drain_ring.load(.acquire));
+    try std.testing.expect(!DrainExporter.isInstalled());
+}
