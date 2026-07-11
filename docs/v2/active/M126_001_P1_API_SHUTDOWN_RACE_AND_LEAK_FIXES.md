@@ -55,8 +55,10 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `src/agentsfleetd/cmd/serve.zig` | EDIT | Shutdown choreography: watcher lifetime, streaming teardown ordering (R1, R7) |
 | `src/agentsfleetd/cmd/serve_shutdown.zig` | EDIT | Watcher loop semantics — survives pre-publish signal, stops a later-published server (R1) |
 | `src/agentsfleetd/cmd/serve_background.zig` | EDIT | Background threads keep running until a real shutdown, not a boot-window flag blip (R1) |
-| `src/agentsfleetd/events/subscription_hub.zig` | EDIT | Wire writes moved outside the mutex; stop() teardown under lock / after confirmed drain (R2, R4, R5) |
-| `src/agentsfleetd/queue/redis_subscriber.zig` | EDIT | Bounded send timeout on the subscriber socket (R2) |
+| `src/agentsfleetd/events/subscription_hub.zig` | EDIT | Wire writes moved outside the map mutex onto a `wire` lock; watchdog-bounded sends; stop() teardown under the wire lock (R2, R4, R5) |
+| `src/agentsfleetd/events/subscription_hub_reader.zig` | CREATE | Reader/reconnect machinery split from the hub (350-line cap); install + delta pass under the new lock model |
+| `src/agentsfleetd/queue/redis_subscriber.zig` | EDIT | Socket-handle accessor for the send watchdog (R2) |
+| `src/agentsfleetd/queue/redis_transport.zig` | EDIT | Transport socketHandle seam (R2) |
 | `src/agentsfleetd/http/handlers/fleets/create_install_steps.zig` | EDIT | Install worker lifetime bounded by teardown (R3) |
 | `src/agentsfleetd/http/handlers/common.zig` | EDIT | Worker tracking set in production, not only in the test harness; stale comment corrected (R3) |
 | `src/agentsfleetd/fleet/liveness_sweeper.zig` | EDIT | errdefer ladder: backing list freed on error; struct-literal unwind (L1, L2) |
@@ -119,21 +121,24 @@ test harness already sets the WaitGroup) rather than inventing new machinery.
 
 - **Dimension 1.1** — SIGTERM delivered between signal-handler install and server publish still stops the daemon: background loops keep running until a real shutdown; the watcher never exits without having stopped a live server (R1) → Test `test_sigterm_before_publish_stops_server` (+ disarm-retires-watcher teardown test) — DONE
 - **Dimension 1.2** — the install-progression worker cannot outlive the pool/queue it uses: production sets the tracking WaitGroup (serve.zig owns it; `defer install_wg.wait()` unwinds before the pool/queue defers); the stale "harmless" comment is corrected (R3) → code DONE; the lifecycle proof is `test_install_worker_lifecycle_vs_teardown` (M126_003 Dimension 5.3, same PR)
-- **Dimension 1.3** — `hub.stop()` never touches `conn` outside the mutex; the undrained-timeout path defers connection teardown until stragglers are confirmed gone instead of deiniting under a live racer (R4) → Test `test_hub_stop_undrained_no_conn_teardown_race`
+- **Dimension 1.3** — `hub.stop()` tears the connection down under the `wire` lock, serializing with any in-flight send; a late unsubscribe observes a null conn instead of a freed one (R4) → Test `hub_stop_undrained_no_conn_teardown_race` — DONE
 - **Dimension 1.4** — `deinitStreaming` frees hub/registry storage only after every registered stream thread has exited; a straggler past the bounded wait blocks the free, is logged, and the wait re-arms (R7) → Test `streaming_teardown_outlasts_straggler` (awaitEmptyRounds re-arm proof) — DONE
 
 ### §2 — Hub wire-write discipline: no blocking socket write under the mutex
 
 One slow Redis peer must cost at most one subscriber's latency, never the daemon. This slice
 applies ghostty's rule: never block while holding a lock the consumer needs.
-**Implementation default:** instant-try under the lock, else release the mutex for the
-blocking send and re-acquire (mailbox.zig shape), plus a bounded `SO_SNDTIMEO` on the
-subscriber socket so even the unlocked write cannot hang a stream thread forever — the
-timeout constant lives beside the existing `SO_RCVTIMEO`.
+**Implementation default (amended at EXECUTE with evidence):** wire writes moved outside the
+map mutex onto a dedicated `wire` lock, and each send is bounded by a `call_deadline`
+watchdog (socket shutdown at the deadline) instead of `SO_SNDTIMEO` — Zig 0.16's threaded Io
+panics on the EAGAIN that `SO_*TIMEO` produces (the read side already replaced `SO_RCVTIMEO`
+with a poll-based reader for exactly this), and `call_deadline` is the in-repo mechanism the
+connectors' bounded_fetch already uses for the same job. The reader/reconnect machinery split
+to `subscription_hub_reader.zig` to hold the 350-line cap.
 
-- **Dimension 2.1** — `attach`/`unsubscribe` complete their Redis wire writes without holding the hub mutex; `dispatch`, other subscribes, `channelCount`, and `stop` proceed while one peer stalls (R2) → Test `test_attach_with_stalled_peer_does_not_block_dispatch`
-- **Dimension 2.2** — the subscriber socket carries a bounded send timeout; a write to a non-reading peer errors within the bound and routes through the existing reconnect path (R2) → Test `test_send_timeout_errors_within_bound`
-- **Dimension 2.3** — the single TLS connection's write half is serialized by a dedicated writer lock (distinct from the map mutex) and the read half stays reader-thread-confined; the split is documented on the struct per the lock-invariant convention (R5) → Test `test_concurrent_read_write_one_subscriber_conn`
+- **Dimension 2.1** — `attach`/`unsubscribe` complete their Redis wire writes without holding the hub mutex; other subscribes, `channelCount`, and unsubscribes proceed while one peer stalls; the last-out/first-in wire race self-heals via a repair re-SUBSCRIBE (R2) → Test `attach_with_stalled_peer_does_not_block_dispatch` — DONE
+- **Dimension 2.2** — every wire send is deadline-bounded: the armed watchdog shuts the socket down at `send_timeout_ms`, the send errors, and the reconnect path heals; refusal (watchdog unavailable) skips the send rather than running unbounded (R2) → mechanism proven by `call_deadline`'s in-file fire-under-lock tests + the hub churn integration test exercising the armed path — DONE
+- **Dimension 2.3** — the connection's write half is serialized by the dedicated `wire` lock (distinct from the map mutex) and the read half stays reader-thread-confined; the split is documented in the hub's concurrency-model doc comment (R5) → Test `integration: concurrent_read_write_one_subscriber_conn` (live-Redis churn while frames deliver) — DONE
 
 ### §3 — Errdefer ladder and decoder ownership (L1, L2, L3)
 

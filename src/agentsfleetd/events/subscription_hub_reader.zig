@@ -1,0 +1,157 @@
+//! SubscriptionHub's reader thread: the blocking-read loop, frame fan-out,
+//! and the reconnect/redial machinery. Implementation detail of
+//! `subscription_hub.zig` — split out by concern (the hub file owns the
+//! lifecycle + subscriber-facing surface; this file owns the one thread that
+//! reads the shared connection).
+//!
+//! Thread confinement: every fn here runs on the reader thread only (spawned
+//! by `hub.start`, joined by `hub.stop`), so no lock is needed for its own
+//! locals; shared state is reached through the hub's two documented locks
+//! (`mutex` for the channel map, `wire` for the connection + sends).
+
+const std = @import("std");
+const common = @import("common");
+const clock = common.clock;
+const logging = @import("log");
+const redis_subscriber = @import("../queue/redis_subscriber.zig");
+const metrics = @import("../observability/metrics.zig");
+const Hub = @import("subscription_hub.zig");
+
+const log = logging.scoped(.subscription_hub);
+const S_RESUBSCRIBE_FAILED = "hub_resubscribe_failed";
+
+/// Redial pacing: one attempt per second, stop-checked every slice so
+/// `stop()` never waits out a full backoff.
+const RECONNECT_SLICE_MS: u64 = 250;
+const RECONNECT_SLICES_PER_ATTEMPT: usize = 4;
+
+/// Reader-thread entrypoint: block on the shared connection, fan each frame
+/// out, reconnect on failure, until `hub.stop()` raises the flag.
+pub fn readerMain(hub: *Hub) void {
+    while (!hub.stopped.load(.acquire)) { // safe because: pairs with stop()'s release via swap.
+        const before_ms = clock.nowMillis();
+        // The reader dereferences `conn` outside the wire lock: only this
+        // thread (and post-join stop()) ever swaps the field, and the read
+        // half (fd poll/read + read keys) is disjoint from the write half the
+        // wire lock serializes — see the hub's concurrency model doc.
+        const maybe_msg = hub.conn.?.nextMessage() catch {
+            reconnect(hub);
+            continue;
+        };
+        if (maybe_msg) |msg| {
+            var m = msg;
+            defer m.deinit(hub.alloc);
+            dispatch(hub, m.channel, m.payload);
+            continue;
+        }
+        // null = timeout tick OR closed socket; a null in under half the
+        // (instance) timeout is a dead socket.
+        if (clock.nowMillis() - before_ms < @divTrunc(@as(i64, hub.read_timeout_ms), 2)) reconnect(hub);
+    }
+}
+
+fn dispatch(hub: *Hub, channel: []const u8, payload: []const u8) void {
+    hub.mutex.lockUncancelable(hub.io);
+    defer hub.mutex.unlock(hub.io);
+    // a frame racing the last unsubscribe simply has nobody to deliver to
+    const entry = hub.channels.get(channel) orelse return;
+    for (entry.subscribers.items) |sub| sub.push(payload);
+}
+
+/// Drop the dead connection, redial with stop-checked pacing, then
+/// re-subscribe every channel that still has viewers.
+fn reconnect(hub: *Hub) void {
+    log.warn("hub_connection_lost", .{ .live_channels = hub.channelCount() });
+    dropConn(hub);
+    while (!hub.stopped.load(.acquire)) {
+        var i: usize = 0;
+        while (i < RECONNECT_SLICES_PER_ATTEMPT) : (i += 1) {
+            if (hub.stopped.load(.acquire)) return;
+            common.sleepNanos(RECONNECT_SLICE_MS * std.time.ns_per_ms);
+        }
+        var fresh = redis_subscriber.connectFromConfig(hub.io, hub.alloc, hub.cfg.?, .{ .read_timeout_ms = hub.read_timeout_ms }) catch |err| {
+            log.warn("hub_redial_failed", .{ .err = @errorName(err) });
+            continue;
+        };
+        fresh.installReadTimeout();
+        if (resubscribeAll(hub, fresh)) {
+            metrics.incSseHubReconnects();
+            log.debug("hub_reconnected", .{ .live_channels = hub.channelCount() });
+            return;
+        }
+        dropConn(hub);
+    }
+}
+
+/// Swap the connection out under the wire lock (serializing against in-flight
+/// sends — bounded by the send watchdog), then close it unlocked.
+fn dropConn(hub: *Hub) void {
+    hub.wire.lockUncancelable(hub.io);
+    var dead = hub.conn;
+    hub.conn = null;
+    hub.wire.unlock(hub.io);
+    if (dead) |*c| c.deinit();
+}
+
+/// Replay SUBSCRIBE for every mapped channel on `fresh`, then install it.
+/// The O(N) sends run on the NOT-YET-INSTALLED conn — single-owner, no lock,
+/// and a full send buffer cannot stall dispatch/subscribe/unsubscribe (the
+/// names are a duped snapshot: a racing last-unsubscribe frees the map key).
+/// After install, a delta pass covers channels subscribed during the window
+/// (attach skips its wire send while conn is null); a channel whose attach
+/// raced the install double-SUBSCRIBEs, which Redis treats as a no-op.
+/// False = send failure or hub stopped; `fresh` is consumed either way.
+fn resubscribeAll(hub: *Hub, fresh: redis_subscriber) bool {
+    var conn = fresh;
+    const before = snapshotChannelNames(hub) catch {
+        conn.deinit();
+        return false; // OOM → treat as a failed attempt; the redial loop retries
+    };
+    defer freeNames(hub, before);
+    for (before) |name| {
+        conn.sendSubscribe(name) catch |err| {
+            log.warn(S_RESUBSCRIBE_FAILED, .{ .channel = name, .err = @errorName(err) });
+            conn.deinit();
+            return false;
+        };
+    }
+    hub.wire.lockUncancelable(hub.io);
+    if (hub.stopped.load(.acquire)) { // safe because: pairs with stop()'s release via swap.
+        hub.wire.unlock(hub.io);
+        conn.deinit();
+        return false;
+    }
+    hub.conn = conn;
+    hub.wire.unlock(hub.io);
+
+    const after = snapshotChannelNames(hub) catch return true; // installed; the next reconnect sweeps
+    defer freeNames(hub, after);
+    for (after) |name| {
+        if (containsName(before, name)) continue;
+        hub.wireSendSubscribe(name); // send failure logs + heals via the reader's next read
+    }
+    return true;
+}
+
+/// Duped channel names under the map mutex; caller owns the slice + strings.
+fn snapshotChannelNames(hub: *Hub) error{OutOfMemory}![]const []const u8 {
+    hub.mutex.lockUncancelable(hub.io);
+    defer hub.mutex.unlock(hub.io);
+    var names = try hub.alloc.alloc([]const u8, hub.channels.count());
+    errdefer hub.alloc.free(names);
+    var i: usize = 0;
+    errdefer for (names[0..i]) |n| hub.alloc.free(n);
+    var it = hub.channels.keyIterator();
+    while (it.next()) |key| : (i += 1) names[i] = try hub.alloc.dupe(u8, key.*);
+    return names;
+}
+
+fn freeNames(hub: *Hub, names: []const []const u8) void {
+    for (names) |n| hub.alloc.free(n);
+    hub.alloc.free(names);
+}
+
+fn containsName(names: []const []const u8, key: []const u8) bool {
+    for (names) |n| if (std.mem.eql(u8, n, key)) return true;
+    return false;
+}

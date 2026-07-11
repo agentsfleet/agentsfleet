@@ -294,4 +294,13 @@ pub const Transport = union(enum) {
             .tls => |*t| t.stream_reader.timed_out,
         };
     }
+
+    /// The transport's socket handle — the seam a caller-owned watchdog
+    /// (call_deadline) arms to bound an otherwise-unbounded blocking send.
+    pub fn socketHandle(self: *Self) std.posix.fd_t {
+        return switch (self.*) {
+            .plain => |*p| p.stream_reader.fd,
+            .tls => |*t| t.stream_reader.fd,
+        };
+    }
 };
