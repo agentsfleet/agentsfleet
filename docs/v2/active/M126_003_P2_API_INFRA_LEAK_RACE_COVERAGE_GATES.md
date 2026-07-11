@@ -30,9 +30,9 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ## Overview
 
-**Goal (testable):** `make memleak` exercises the daemon, runner, and lib suites (valgrind on Linux) and fails on any General Purpose Allocator (GPA) leak verdict; the three `page_allocator` singletons are leak-checkable under `std.testing.allocator`; the drain lint fails on a `PgQuery.from` without its `defer q.deinit()`; and the five untested race surfaces from the review each have a deterministic real-thread lifecycle test (`std.Thread.ResetEvent` + bounded `timedWait`, zero sleeps) — with a positive unit and integration test delta over the CHORE(open) baseline.
+**Goal (testable):** `make memleak` exercises the daemon, runner, and lib suites (valgrind on Linux) and fails on any General Purpose Allocator (GPA) leak verdict; the three `page_allocator` singletons are leak-checkable under `std.testing.allocator`; the drain lint fails on a `PgQuery.from` without its `defer q.deinit()`; the five untested race surfaces from the review each have a deterministic real-thread lifecycle test (bounded event waits, zero sleeps); and Resident Set Size (RSS) growth probes bound the process-level layer no in-process oracle sees — with a positive unit and integration test delta over the CHORE(open) baseline.
 **Problem:** The review's coverage assessment (`docs/v2/reviews/m126-ghostty-adversarial-review.md` §4) found the leak gate valgrinds only the daemon suite; leak verdicts from both long-lived GPAs are printed and discarded; three `page_allocator` singletons are invisible to every detector; the drain lint passes on the mere presence of `PgQuery.from(`; and the shutdown choreography, hub reconnect races, production install-worker configuration, OpenTelemetry Protocol (OTLP) exporter thread lifecycle, and sink unregister have zero tests — so a regression in any of them ships green today.
-**Solution summary:** Extend the memleak lane to all three test graphs; turn the discarded GPA verdicts into hard failures; inject allocators into the three singletons; make the drain lint verify the wrap/deinit pair with a seeded-violation fixture; add one deterministic lifecycle test suite per untested surface, including a full boot → SIGTERM → drain daemon test that runs inside the valgrind lane; and add allocation-failure injection over the security-critical `crypto_store.load/store`.
+**Solution summary:** Extend the memleak lane to all three test graphs; turn the discarded GPA verdicts into hard failures; inject allocators into the three singletons; make the drain lint verify the wrap/deinit pair with a seeded-violation fixture; add one deterministic lifecycle test suite per untested surface, including a full boot → SIGTERM → drain daemon test that runs inside the valgrind lane; add allocation-failure injection over the security-critical `crypto_store.load/store`; and add Resident Set Size (RSS) growth probes — Bun's process-level leak layer (baseline → workload ×N → assert bounded growth), the only detector that sees `c_allocator`/`page_allocator`/native-library (openssl, sqlite, wasm3) growth on macOS where valgrind cannot run.
 
 ## PR Intent & comprehension handshake
 
@@ -67,6 +67,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `src/lib/logging/sinks_lifecycle_test.zig` | CREATE | unregister under concurrent emits, real threads (extends 001's regression to a soak-shaped deterministic suite) |
 | `src/agentsfleetd/secrets/crypto_store_test.zig` | EDIT | `checkAllAllocationFailures` over load/store paths |
 | `src/agentsfleetd/fleet/liveness_sweeper_integration_test.zig` | EDIT | concurrent-sweep variant moves off `page_allocator` onto `testing.allocator`; mid-query failure injection via tripwire |
+| `src/lib/common/rss.zig` | CREATE | Cross-platform RSS reader (`currentBytes()`: Linux `/proc/self/statm`, macOS `task_info`) — the soak probes' measurement seam |
 | `src/agentsfleetd/tests.zig`, `src/runner/tests.zig`, `src/lib/tests.zig` | EDIT | new test files reachable from their test roots (RULE TST) |
 
 Test-file basenames follow the repo's colocated `*_test.zig` convention; extend an existing
@@ -155,6 +156,21 @@ run under `std.testing.allocator` so each is simultaneously a leak proof.
 - **Dimension 6.1** — `checkAllAllocationFailures` over `crypto_store.load` and `store`: every allocation-failure point unwinds leak-free with key material zeroed → Test `test_crypto_store_alloc_failures_leak_free`
 - **Dimension 6.2** — `liveness_sweeper` integration: concurrent-sweep variant runs on `testing.allocator` (off `page_allocator`), and a tripwire mid-query failure during a sweep leaves zero residue → Test `test_concurrent_sweep_with_midquery_failure_leak_free`
 
+### §7 — RSS growth probes (the Bun layer: process-level leak signal)
+
+Adopted from Bun's memory-test model (Indy's direction, Jul 11, 2026): Bun pairs exact
+in-process leak oracles with coarse **RSS-growth probes** — baseline `process.memoryUsage.rss()`,
+run the workload N times, force collection, assert bounded growth. Our exact oracle
+(`std.testing.allocator`) is stronger than Bun's (no garbage collector nondeterminism), but we
+have NO process-level layer: growth in `c_allocator`, `page_allocator`, or native libraries
+(openssl, sqlite, wasm3) is invisible to `testing.allocator`, and valgrind cannot run on the
+macOS dev machines. The probe pattern: read RSS via `common.rss.currentBytes()`, run the
+workload `SOAK_ITERATIONS` times, re-read, assert growth under a named per-probe bound
+(generous — RSS is coarse; the probe catches unbounded growth, not byte-exact leaks).
+
+- **Dimension 7.1** — `src/lib/common/rss.zig` reads the process RSS on Linux (`/proc/self/statm`) and macOS (`task_info`); returns null on unsupported platforms so probes skip, never false-fail → Test `test_rss_reader_returns_plausible_value`
+- **Dimension 7.2** — two seed probes establish the pattern: `model_rate_cache` rebuild/swap soak (complements the §3 injectability with the native-side view) and hub subscribe/unsubscribe churn soak → Tests `test_rate_cache_rebuild_rss_bounded`, `test_hub_churn_rss_bounded`
+
 ## Interfaces
 
 ```
@@ -219,6 +235,8 @@ defer deinit in the same function.
 | 5.5 | unit | `test_sinks_unregister_under_concurrent_emits` | N emitters + unregister → pre-removal emits complete; zero leaks |
 | 6.1 | unit | `test_crypto_store_alloc_failures_leak_free` | every allocation-failure point in load/store → error surfaces, zero leaks, key material zeroed |
 | 6.2 | integration | `test_concurrent_sweep_with_midquery_failure_leak_free` | concurrent sweeps + tripwire mid-query failure on `testing.allocator` → zero leaks |
+| 7.1 | unit | `test_rss_reader_returns_plausible_value` | currentBytes() non-null on Linux/macOS and > 1 MiB for a live test process |
+| 7.2 | unit | `test_rate_cache_rebuild_rss_bounded`, `test_hub_churn_rss_bounded` | baseline RSS → SOAK_ITERATIONS workload cycles → growth < named per-probe bound |
 | regression | integration | `make test-integration` | pre-existing suites unchanged and green |
 
 ## Acceptance Rubric (single scoring surface)
