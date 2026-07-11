@@ -1,4 +1,4 @@
-//! Admin model-caps CRUD — `model:{read,admin}`-gated management of the priced
+//! Admin model-library CRUD — `model:{read,admin}`-gated management of the priced
 //! model catalogue (core.model_library), the billing spine.
 //!
 //! Routes (gated by the `model:read` (GET) / `model:admin` (write) scope in
@@ -28,7 +28,7 @@ const common = @import("../common.zig");
 const error_codes = @import("../../../errors/error_registry.zig");
 const id_format = @import("../../../types/id_format.zig");
 const model_rate_cache = @import("../../../state/model_rate_cache.zig");
-const model_caps_store = @import("../../../state/model_caps_store.zig");
+const model_library_store = @import("../../../state/model_library_store.zig");
 const hx_mod = @import("../hx.zig");
 
 const log = logging.scoped(.http);
@@ -47,9 +47,9 @@ const S_MODEL_NOT_FOUND = "No catalogue model matches this uid";
 const S_UID_FIELD = "uid";
 
 /// Mutable caps/rates shared by create + update. provider/model_id are create-only
-/// (the row identity), so PATCH parses `model_caps_store.Rates` directly and POST
+/// (the row identity), so PATCH parses `model_library_store.Rates` directly and POST
 /// parses the flat ModelInput (rates + identity) below.
-const RatesInput = model_caps_store.Rates;
+const RatesInput = model_library_store.Rates;
 
 const ModelInput = struct {
     provider: []const u8,
@@ -91,7 +91,7 @@ pub fn innerGetAdminModels(hx: hx_mod.Hx, req: *httpz.Request) void {
     };
     defer hx.ctx.pool.release(conn);
 
-    const rows = model_caps_store.listForAdmin(hx.alloc, conn) catch {
+    const rows = model_library_store.listForAdmin(hx.alloc, conn) catch {
         common.internalOperationError(hx.res, "Failed to query model catalogue", hx.req_id);
         return;
     };
@@ -143,7 +143,7 @@ pub fn innerPostAdminModel(hx: hx_mod.Hx, req: *httpz.Request) void {
     // ON CONFLICT DO NOTHING + affected-row count distinguishes create (1) from
     // a duplicate (provider, model_id) attempt (0) → 409, without inspecting the
     // driver's unique-violation error.
-    const affected = model_caps_store.create(conn, .{
+    const affected = model_library_store.create(conn, .{
         .uid = uid,
         .provider = in.provider,
         .model_id = in.model_id,
@@ -200,7 +200,7 @@ pub fn innerPatchAdminModel(hx: hx_mod.Hx, req: *httpz.Request, uid: []const u8)
     };
     defer hx.ctx.pool.release(conn);
 
-    const affected = model_caps_store.updateRates(conn, uid, in, clock.nowMillis()) catch {
+    const affected = model_library_store.updateRates(conn, uid, in, clock.nowMillis()) catch {
         common.internalOperationError(hx.res, "Failed to update catalogue model", hx.req_id);
         return;
     };
@@ -233,7 +233,7 @@ pub fn innerDeleteAdminModel(hx: hx_mod.Hx, req: *httpz.Request, uid: []const u8
     // closes). The default must be repointed first. A DB fault during this check
     // fails CLOSED (block the delete, respond internal-error) rather than
     // collapsing to "not referenced" and letting the live default be removed.
-    const referenced = model_caps_store.isReferencedByActiveDefault(conn, uid) catch {
+    const referenced = model_library_store.isReferencedByActiveDefault(conn, uid) catch {
         common.internalOperationError(hx.res, "Failed to verify model reference", hx.req_id);
         return;
     };
@@ -242,7 +242,7 @@ pub fn innerDeleteAdminModel(hx: hx_mod.Hx, req: *httpz.Request, uid: []const u8
         return;
     }
 
-    const affected = model_caps_store.remove(conn, uid) catch {
+    const affected = model_library_store.remove(conn, uid) catch {
         common.internalOperationError(hx.res, "Failed to delete catalogue model", hx.req_id);
         return;
     };

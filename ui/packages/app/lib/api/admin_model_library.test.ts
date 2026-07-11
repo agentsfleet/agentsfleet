@@ -11,7 +11,7 @@ import {
   listPlatformKeys,
   activePlatformDefault,
   type PlatformKey,
-} from "./admin_models";
+} from "./admin_model_library";
 
 const fetchMock = vi.fn();
 vi.stubGlobal("fetch", fetchMock);

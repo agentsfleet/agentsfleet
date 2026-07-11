@@ -41,7 +41,7 @@ vi.mock("@/lib/actions/with-token", () => ({ withToken: withTokenMock }));
 // resolved from the authoritative tenant list (first owned), not a cookie/claim.
 vi.mock("@/lib/workspace", () => ({ listTenantWorkspacesCached: listTenantWorkspacesCachedMock }));
 vi.mock("@/lib/api/secrets", () => ({ createSecret: createSecretMock }));
-vi.mock("@/lib/api/admin_models", () => ({
+vi.mock("@/lib/api/admin_model_library", () => ({
   listAdminModels: listAdminModelsMock,
   createAdminModel: createAdminModelMock,
   updateAdminModel: updateAdminModelMock,

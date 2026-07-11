@@ -123,7 +123,7 @@ pub fn resolveActiveProvider(
 /// tenant's primary workspace vault and has the required shape (provider always;
 /// api_key for a named provider) — `model` is NOT required on the credential
 /// (M121: it lives on the registry entry). Stores the caller-supplied model + cap
-/// directly — caller is responsible for resolving them from the model-caps
+/// directly — caller is responsible for resolving them from the model-library
 /// catalogue beforehand.
 ///
 /// Persisted `provider` is read from the validated credential's JSON

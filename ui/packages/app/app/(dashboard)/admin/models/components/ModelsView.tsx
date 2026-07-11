@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { PageHeader, PageTitle, Section, SectionLabel } from "@agentsfleet/design-system";
-import type { AdminModel, AdminModelList, PlatformKey } from "@/lib/api/admin_models";
+import type { AdminModel, AdminModelList, PlatformKey } from "@/lib/api/admin_model_library";
 import CatalogueList from "./CatalogueList";
 import AddModelDialog from "./AddModelDialog";
 

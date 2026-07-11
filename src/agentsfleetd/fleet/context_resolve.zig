@@ -43,7 +43,7 @@ comptime {
 /// frontmatter value wins (non-zero `context_cap_tokens`, non-empty `model`);
 /// a sentinel (`context_cap_tokens: 0` / `model: ""` / absent) overlays from
 /// the resolved tenant provider (`overlay_cap` / `overlay_model`, which the
-/// control plane resolved from the model-caps endpoint at install /
+/// control plane resolved from the model library at install /
 /// `tenant provider add` time); anything still unset falls to `applyDefaults`.
 /// Pass `overlay_cap: 0` / `overlay_model: ""` when no provider resolved — the
 /// overlay is then a no-op and an unresolved cap leaves `tool_window` at the

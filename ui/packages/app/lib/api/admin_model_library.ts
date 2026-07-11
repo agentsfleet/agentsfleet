@@ -1,7 +1,7 @@
-// Authenticated platform-admin client for the model catalogue + platform default.
-// Distinct from model_caps.ts (the PUBLIC, unauthenticated cap.json reader): these
-// routes are platform-admin-gated and mutate core.model_caps / core.platform_provider_defaults.
-// Wire shape: src/agentsfleetd/http/handlers/admin/model_caps_admin.zig +
+// Authenticated platform-admin client for the model library + platform default.
+// Distinct from model_library.ts (the tenant-facing catalogue reader): these
+// routes are platform-admin-gated and mutate core.model_library / core.platform_provider_defaults.
+// Wire shape: src/agentsfleetd/http/handlers/admin/model_library_admin.zig +
 // .../admin/platform_keys.zig.
 
 import { request } from "./client";
@@ -39,7 +39,7 @@ export interface AdminModelList {
   models: AdminModel[];
 }
 
-export interface ModelCapInput {
+export interface LibraryModelInput {
   provider: string;
   model_id: string;
   context_cap_tokens: number;
@@ -49,7 +49,7 @@ export interface ModelCapInput {
 }
 
 /** Caps/rates only — provider+model_id are the immutable row identity (PATCH). */
-export type ModelRatesInput = Omit<ModelCapInput, "provider" | "model_id">;
+export type ModelRatesInput = Omit<LibraryModelInput, "provider" | "model_id">;
 
 export interface PlatformDefaultInput {
   provider: string;
@@ -77,7 +77,7 @@ export async function listAdminModels(token: string): Promise<AdminModelList> {
   return request<AdminModelList>(ADMIN_MODELS_PATH, { method: "GET" }, token);
 }
 
-export async function createAdminModel(token: string, body: ModelCapInput): Promise<AdminModel> {
+export async function createAdminModel(token: string, body: LibraryModelInput): Promise<AdminModel> {
   return request<AdminModel>(ADMIN_MODELS_PATH, { method: "POST", body: JSON.stringify(body) }, token);
 }
 

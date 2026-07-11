@@ -22,8 +22,8 @@ vi.mock("@clerk/nextjs/server", () => ({ auth: authMock }));
 vi.mock("@/lib/auth/platform", () => ({ hasScope: hasScopeMock }));
 // activePlatformDefault stays real (pure `.find`); only the two network reads
 // are stubbed.
-vi.mock("@/lib/api/admin_models", async (orig) => ({
-  ...(await orig<typeof import("@/lib/api/admin_models")>()),
+vi.mock("@/lib/api/admin_model_library", async (orig) => ({
+  ...(await orig<typeof import("@/lib/api/admin_model_library")>()),
   listAdminModels: listAdminModelsMock,
   listPlatformKeys: listPlatformKeysMock,
 }));

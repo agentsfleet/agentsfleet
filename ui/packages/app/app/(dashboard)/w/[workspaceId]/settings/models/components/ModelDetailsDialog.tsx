@@ -12,7 +12,7 @@ import {
   DescriptionTerm,
   Time,
 } from "@agentsfleet/design-system";
-import { providerLabel } from "@/lib/api/model_caps";
+import { providerLabel } from "@/lib/api/model_library";
 import type { TenantModelEntry } from "@/lib/types";
 
 type Props = {

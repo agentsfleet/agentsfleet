@@ -1,0 +1,61 @@
+/v1/models:
+  get:
+    operationId: get_model_library
+    summary: Get the model library
+    description: >
+      The model library catalogue (`core.model_library`): one row per priced
+      `(provider, model_id)` pair with its context cap and per-token rates,
+      plus a `version` stamp derived from the newest row. Bearer-authed — any
+      authenticated tenant may read it; the route carries no capability scope.
+      Replaces the retired public `cap.json` document: the former
+      unauthenticated cryptic-prefix path returns `404` (no alias), and the
+      global `rates`/`billing` block it carried was consumer-less and retired
+      with it. An empty catalogue is a valid state and returns `200` with an
+      empty `models` array.
+    tags:
+    - Model Library
+    responses:
+      '200':
+        description: The model library catalogue.
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - version
+              - models
+              properties:
+                version:
+                  type: string
+                  description: Catalogue version, derived as the max model updated_at rendered YYYY-MM-DD (UTC).
+                models:
+                  type: array
+                  items:
+                    type: object
+                    required:
+                    - id
+                    - provider
+                    - context_cap_tokens
+                    - input_nanos_per_mtok
+                    - cached_input_nanos_per_mtok
+                    - output_nanos_per_mtok
+                    properties:
+                      id:
+                        type: string
+                        description: The model_id. Provider hosting is encoded in the id itself.
+                      provider:
+                        type: string
+                      context_cap_tokens:
+                        type: integer
+                        format: int32
+                      input_nanos_per_mtok:
+                        type: integer
+                        format: int64
+                      cached_input_nanos_per_mtok:
+                        type: integer
+                        format: int64
+                      output_nanos_per_mtok:
+                        type: integer
+                        format: int64
+      default:
+        $ref: ../components/responses.yaml#/components/responses/Error

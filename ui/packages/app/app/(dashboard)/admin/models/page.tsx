@@ -3,7 +3,7 @@ import { auth } from "@clerk/nextjs/server";
 import { ApiError } from "@/lib/api/errors";
 import { hasScope } from "@/lib/auth/platform";
 import { SCOPE } from "@/lib/auth/scopes";
-import { listAdminModels, listPlatformKeys, activePlatformDefault, type PlatformKey } from "@/lib/api/admin_models";
+import { listAdminModels, listPlatformKeys, activePlatformDefault, type PlatformKey } from "@/lib/api/admin_model_library";
 import ModelsView from "./components/ModelsView";
 
 export const dynamic = "force-dynamic";

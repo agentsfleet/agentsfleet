@@ -75,7 +75,6 @@ NON_V1_VARIANTS: dict[str, str] = {
     "healthz": "k8s liveness probe at /healthz",
     "readyz": "k8s readiness probe at /readyz",
     "metrics": "prometheus scrape at /metrics",
-    "model_caps": "CDN-cached static catalogue at /_um/<hash>/cap.json (model_caps.zig MODEL_CAPS_PATH)",
 }
 
 # A union variant declaration: leading indentation (any amount — `zig fmt` uses

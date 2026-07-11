@@ -1,4 +1,4 @@
-// Admin model-caps CRUD + platform-default authz/behaviour over the live HTTP
+// Admin model-library CRUD + platform-default authz/behaviour over the live HTTP
 // surface. Platform-admin-gated: a `platform_admin` JWT passes; a tenant-admin
 // JWT is 403. Catalogue mutations repopulate; the platform default is validated
 // against the catalogue and kept single-active.

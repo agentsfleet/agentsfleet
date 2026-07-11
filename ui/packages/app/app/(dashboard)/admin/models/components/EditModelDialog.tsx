@@ -26,7 +26,7 @@ import {
   type ModelRatesInput,
   nanosToUsdPerMtok,
   usdPerMtokToNanos,
-} from "@/lib/api/admin_models";
+} from "@/lib/api/admin_model_library";
 import { presentErrorString } from "@/lib/errors";
 import { updateAdminModelAction } from "../actions";
 
