@@ -4,11 +4,11 @@
 -- signature-authenticated inbound event — which arrives addressed only by the
 -- provider's account id (e.g. Slack's team_id) — can resolve its workspace.
 --
--- The bot token and all install metadata live in the (workspace_id,
--- 'fleet:slack') vault handle, NEVER in this table (RULE VLT) — there is
--- deliberately no token column. This row is the ONE addition the GitHub
--- connector does not need: GitHub's inbound webhooks are per-fleet-URL
--- addressed, whereas Slack events are addressed by team_id only.
+-- Connector credentials and install metadata live in workspace vault handles,
+-- NEVER in this table (RULE VLT) — there is deliberately no token column.
+-- Slack events resolve team_id through this index. Verified GitHub App events
+-- resolve installation_id through the same index before repository, event,
+-- grant, and fleet routing filters are applied.
 --
 -- Value constraints (provider is one of the known connector providers) are
 -- enforced in application code via named constants in

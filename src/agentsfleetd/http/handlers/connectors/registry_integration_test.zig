@@ -45,6 +45,13 @@ const UNKNOWN_PROVIDER = "nope";
 
 fn noopRegistry(_: *auth_mw.MiddlewareRegistry, _: *TestHarness) anyerror!void {}
 
+fn mintLatestGithubState(alloc: std.mem.Allocator, h: *TestHarness) ![]const u8 {
+    const state = try connector_state.mint(alloc, &h.queue, github_spec.STATE, SIGNING_SECRET, TARGET_WS, common.clock.nowMillis());
+    errdefer alloc.free(state);
+    try connector_state.markLatest(&h.queue, github_spec.STATE, TARGET_WS, state);
+    return state;
+}
+
 // ── Pure router-shape tests (no DB) — the generic trio resolves any
 // {provider} segment; provider resolution is the handler layer's job. ────────
 
@@ -488,7 +495,7 @@ test "integration: github status reads the installation handle" {
 
 // ── app_install callback e2e (the archetype the oauth2 suites don't cover) ──
 
-test "integration: github callback writes the fleet:github handle and 302s (app_install archetype)" {
+test "integration: github callback requires a user-authorization code" {
     const alloc = testing.allocator;
     const h = TestHarness.start(alloc, .{ .configureRegistry = noopRegistry }) catch |err| switch (err) {
         error.SkipZigTest => return error.SkipZigTest,
@@ -504,19 +511,15 @@ test "integration: github callback writes the fleet:github handle and 302s (app_
     h.ctx.approval_signing_secret = SIGNING_SECRET;
 
     // app_install state is minted against github's OWN domain binding.
-    const state = try connector_state.mint(alloc, &h.queue, github_spec.STATE, SIGNING_SECRET, TARGET_WS, common.clock.nowMillis());
+    const state = try mintLatestGithubState(alloc, h);
     defer alloc.free(state);
     const path = try std.fmt.allocPrint(alloc, "/v1/connectors/github/callback?installation_id=42424242&state={s}", .{state});
     defer alloc.free(path);
 
     const r = try h.get(path).redirectBehavior(.unhandled).send();
     defer r.deinit();
-    try r.expectStatus(.found); // 302 back to the dashboard connector card
-
-    // The one row app_install writes: the github handle with the id.
-    var parsed = try vault.loadJson(alloc, conn, TARGET_WS, common.PROVIDER_GITHUB);
-    defer parsed.deinit();
-    try testing.expectEqualStrings("42424242", parsed.value.object.get("installation_id").?.string);
+    try r.expectStatus(.bad_request);
+    try r.expectErrorCode("UZ-REQ-001");
 
     deleteFleetHandle(conn, TARGET_WS, common.PROVIDER_GITHUB);
 }
@@ -536,7 +539,7 @@ test "integration: github callback with a non-numeric installation_id is a 400, 
     deleteFleetHandle(conn, TARGET_WS, common.PROVIDER_GITHUB);
     h.ctx.approval_signing_secret = SIGNING_SECRET;
 
-    const state = try connector_state.mint(alloc, &h.queue, github_spec.STATE, SIGNING_SECRET, TARGET_WS, common.clock.nowMillis());
+    const state = try mintLatestGithubState(alloc, h);
     defer alloc.free(state);
     const path = try std.fmt.allocPrint(alloc, "/v1/connectors/github/callback?installation_id=not-a-number&state={s}", .{state});
     defer alloc.free(path);

@@ -91,7 +91,7 @@ pub fn innerCallback(hx: hx_mod.Hx, req: *httpz.Request, provider: []const u8) v
 
             // The hook owns validation + persistence + its failure responses
             // (installation callbacks carry vendor-bespoke inputs).
-            if (a.complete(hx, workspace_id, req)) redirectToDashboard(hx);
+            if (a.complete(hx, workspace_id, raw_state, req)) redirectToDashboard(hx);
         },
     }
 }

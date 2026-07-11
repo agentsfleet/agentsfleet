@@ -54,6 +54,10 @@ pub fn match(path: []const u8, method: httpz.Method) ?Route {
 /// (no API-version literal). Disambiguation is shape-driven (segment count +
 /// segment[i] equality); no two matchers can both fire on the same path.
 fn matchV1(p: matchers.Path, method: httpz.Method) ?Route {
+    if (matchers.matchIngress(p)) |provider| return switch (method) {
+        .POST => .{ .app_ingress = provider },
+        else => null,
+    };
     // ── Fleet operator plane ──────────────────────────────────────────────
     if (matchers.matchFleetRunnerEvents(p)) |runner_id| return switch (method) {
         .GET => .{ .fleet_runner_events = runner_id },

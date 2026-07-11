@@ -165,7 +165,7 @@ Primary job:
 
 Trigger modes:
 
-- **Webhook.** GitHub Actions posts `workflow_run.conclusion == failure` to the fleet's GitHub webhook ingest URL (`POST /v1/webhooks/{fleet_id}/github`) with a hash-based-message-authentication signature; the receiver writes a synthetic event with `actor=webhook:github`.
+- **Webhook.** A workspace connection is accepted only after the GitHub user-authorization callback proves access to the claimed installation; cross-workspace reassignment is refused. GitHub Actions then posts a completed failed `workflow_run` to the shared GitHub App ingress (`POST /v1/ingress/github`). The receiver verifies the platform App signature, maps the installation to a workspace, and wakes only fleets explicitly subscribed to that repository and event with an approved GitHub grant. The manual fleet-addressed route remains available for custom hooks. Both paths write `actor=webhook:github`.
 - **Cron.** A periodic production health check, scheduled by NullClaw's `cron_add` tool; each fire arrives as a synthetic event with `actor=cron:<schedule>`.
 - **Steer.** A direct operator instruction via `agentsfleet steer <fleet_id> <message>` or the dashboard chat widget; lands with `actor=steer:<user>`.
 
