@@ -40,6 +40,7 @@ pub const Mutex = struct {
 /// finish/wait are safe from any thread (detached workers `finish`, a teardown
 /// thread `wait`s).
 pub const WaitGroup = struct {
+    /// Guards `count`; start/finish/wait are all taken under it.
     mutex: Mutex = .{},
     cond: Condition = .{},
     count: usize = 0,

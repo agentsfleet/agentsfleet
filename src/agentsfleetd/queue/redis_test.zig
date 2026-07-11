@@ -220,36 +220,35 @@ test "PlainTransport.init enables SO_KEEPALIVE on its socket" {
     try std.testing.expect(enabled != 0);
 }
 
-test "PlainTransport.init closes the stream on allocation failure (no fd leak)" {
-    // Regression for the dialAndAuth fd-leak path: every reconnect calls
-    // PlainTransport.init / TlsTransport.initInPlace; if that fails after
-    // tcpConnectToHost succeeds, the socket must be closed or a sustained
-    // period of init failures (TLS rotation, OOM) exhausts the fd table.
-    // We force the failure by giving init a failing allocator and assert
-    // that the second alloc call (write_buffer) gets a free()'d read_buffer
-    // without the test allocator complaining about the leaked stream.
+test "PlainTransport.init unwinds every owned resource at each buffer-alloc failpoint" {
+    // A6 loop-all-failpoints: arm each buffer allocation in turn and assert init
+    // returns OutOfMemory with (a) no leak (std.testing.allocator) and (b) the
+    // stream's fd closed. Regression for the dialAndAuth fd-leak path — every
+    // reconnect calls PlainTransport.init, so a sustained run of init failures
+    // (TLS rotation, OOM) must never exhaust the fd table. The tripwire covers
+    // BOTH the read_buffer errdefer (stream.close alone) and the write_buffer
+    // errdefer (free read_buffer + close stream), which the old single
+    // fail_index=1 test only reached the second of.
     const io = common.globalIo();
     var lp = try test_port.listenLoopback(io);
     defer lp.server.deinit(io);
-
     var caddr = try net.IpAddress.parseIp4("127.0.0.1", lp.port);
-    const stream = try caddr.connect(io, .{ .mode = .stream });
-    const fd_before = stream.socket.handle;
 
-    // FailingAllocator that errors on the 2nd allocation — read_buffer
-    // succeeds (so init progresses past the first errdefer), write_buffer
-    // fails (so init returns an error and our errdefer stream.close() must fire).
-    var failing = std.testing.FailingAllocator.init(std.testing.allocator, .{ .fail_index = 1 });
-    const result = redis_transport.PlainTransport.init(io, failing.allocator(), stream);
-    try std.testing.expectError(error.OutOfMemory, result);
-
-    // Confirm the fd is no longer open. read() on a closed fd returns EBADF,
-    // which Zig 0.16's `std.posix.read` maps to `error.Unexpected` (it treats
-    // a bad fd as use-after-free). Proves the errdefer stream.close() in init
-    // actually fired (otherwise we'd block waiting for a byte).
-    var probe: [1]u8 = undefined;
-    const probe_result = std.posix.read(fd_before, &probe);
-    try std.testing.expectError(error.Unexpected, probe_result);
+    const tw = redis_transport.plain_init_tw;
+    for (std.meta.tags(tw.FailPoint)) |tag| {
+        defer tw.end(.reset) catch unreachable;
+        const stream = try caddr.connect(io, .{ .mode = .stream });
+        const fd = stream.socket.handle;
+        tw.errorAlways(tag, error.OutOfMemory);
+        try std.testing.expectError(
+            error.OutOfMemory,
+            redis_transport.PlainTransport.init(io, std.testing.allocator, stream),
+        );
+        // errdefer stream.close(io) must have fired — the fd is closed, so a read
+        // maps to error.Unexpected (0.16 treats EBADF as use-after-free).
+        var probe: [1]u8 = undefined;
+        try std.testing.expectError(error.Unexpected, std.posix.read(fd, &probe));
+    }
 }
 
 test "Client.readyCheck self-heals when the server drops the connection" {

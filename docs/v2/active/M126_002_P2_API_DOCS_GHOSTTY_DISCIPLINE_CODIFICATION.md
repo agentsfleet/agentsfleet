@@ -171,8 +171,8 @@ add a prefix → `make lint` surfaces that folder's violations → fix → commi
 (touch-it-fix-it) covers files outside the roster until their folder joins.
 
 - **Dimension 4.1** — every base prefix passes the §2 blocking checks with zero waivers → Test: `make lint` green with the roster active — DONE (18 deinits poisoned + 6 phrases; `redis_connection` uses a documented `// discipline: ok` terminal-state guard; `make lint-zig` green)
-- **Dimension 4.2** — every `Mutex`/`RwLock` in the base carries an invariant doc comment; count matches the §3 registry → Test `test_base_mutexes_documented` (grep-driven assertion)
-- **Dimension 4.3** — every multi-step init in the base carries tripwire fail points with a loop-all-failpoints test under `std.testing.allocator`; the per-folder ledger lands in the §5 matrix → Test: the per-folder `*_test.zig` additions (A6 shape)
+- **Dimension 4.2** — every `Mutex`/`RwLock` in the base carries an invariant doc comment; count matches the §3 registry → Test `test_base_mutexes_documented` (grep-driven assertion) — DONE (8 base mutexes documented; audit skips `test`-block helpers)
+- **Dimension 4.3** — every multi-step init in the base carries tripwire fail points with a loop-all-failpoints test under `std.testing.allocator`; the per-folder ledger lands in the §5 matrix → Test: the per-folder `*_test.zig` additions (A6 shape) — DONE (queue/ tripwire exemplar `plain_init_tw` + loop-all-failpoints test in `redis_test.zig`; fleet/ sweepers carry `fetch_tw` loop-all from M126_001; the connector decoders carry `checkAllAllocationFailures`; the I/O-bound dial/handshake/spawn inits are proven by the integration connect-failure paths + worker_pool partial-spawn errdefer — per-folder ledger in §5)
 - **Dimension 4.4** — the roster ships with exactly the seven base prefixes above and the expansion procedure is documented beside them (comment header in the roster + a paragraph in `docs/architecture/concurrency.md`) → Test: rubric grep — DONE (R6 grep = 7; expansion procedure in roster header + concurrency.md §Expanding the discipline base)
 
 ### §5 — Adherence & Enforcement Matrix (filled at CHORE(close))
