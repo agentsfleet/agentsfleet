@@ -142,6 +142,14 @@ pub fn build(b: *std.Build) void {
     buildpkg.fixtures.addRunner(b, runner_tests.root_module);
     b.step("test", "Run agentsfleet-runner unit tests (daemon + engine + cmd)").dependOn(&b.addRunArtifact(runner_tests).step);
 
+    // Install the runner UNIT-test binary for the valgrind memleak lane
+    // (`make memleak`'s runner lane). Deliberately NOT runner_integration_tests:
+    // those fork+exec real children, invalid under valgrind without
+    // --trace-children. No -Dopenssl toggle exists here — the runner graph links
+    // no OpenSSL, so passing that root-only flag would be a hard error.
+    b.step("test-bin", "Install the runner unit-test binary for the memleak/valgrind lane")
+        .dependOn(&b.addInstallArtifact(runner_tests, .{}).step);
+
     // `list-tests` is defined per build graph; the daemon graph has its own in build.zig.
     const list_step = b.step(buildpkg.test_list.STEP_NAME, buildpkg.test_list.STEP_DESC);
     buildpkg.test_list.addLane(b, list_step, S_RUNNER_TESTS, runner_tests.root_module, S_RUNNER_ROOT_DIR);
