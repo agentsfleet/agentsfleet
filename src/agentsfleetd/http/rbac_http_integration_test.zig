@@ -90,7 +90,7 @@ test "integration: RBAC endpoints enforce operator and admin roles over live HTT
     // (`platform-key:read`), so a tenant-scoped principal — whatever tenant
     // capabilities it carries — is insufficient and is rejected `403 UZ-AUTH-022`.
     // The platform success path (200) is covered in
-    // model_caps_admin_integration_test, which carries a platform-scoped token.
+    // model_library_admin_integration_test, which carries a platform-scoped token.
     const admin_keys_path = "/v1/admin/platform-keys";
 
     { // No token → 401

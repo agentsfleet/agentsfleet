@@ -9,10 +9,10 @@ pub const Route = union(enum) {
     healthz,
     readyz,
     metrics,
-    // Public, unauthenticated model→cap catalogue served at a cryptic path
-    // prefix (handlers/model_caps.zig). Both the install-skill and
-    // `agentsfleet provider set` consume this once at provisioning time.
-    model_caps,
+    // The model library catalogue — GET /v1/models, any authenticated tenant
+    // (handlers/model_library.zig). The dashboard's model pickers are the
+    // consumer; the former public cryptic-prefix route is retired (404).
+    model_library,
     create_auth_session,
     /// GET /v1/auth/sessions/{session_id} — CLI polls for status + (post-
     /// approve) the public material it needs for the verify call. Never
@@ -76,7 +76,7 @@ pub const Route = union(enum) {
     // Admin platform key management
     admin_platform_keys, // GET + PUT /v1/admin/platform-keys (method-dispatched in server.zig)
     delete_admin_platform_key: []const u8, // DELETE /v1/admin/platform-keys/{provider}
-    // Admin model-caps catalogue CRUD (platform-admin)
+    // Admin model-library catalogue CRUD (platform-admin)
     admin_models, // GET + POST /v1/admin/models (method-dispatched)
     admin_model_by_id: []const u8, // PATCH + DELETE /v1/admin/models/{uid}
     // Fleet create/read/update/delete (CRUD), workspace-scoped.

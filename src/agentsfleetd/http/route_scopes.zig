@@ -75,7 +75,6 @@ pub fn requiredScopes(route: router.Route, method: httpz.Method) []const S {
         .healthz,
         .readyz,
         .metrics,
-        .model_caps,
         .create_auth_session,
         .poll_auth_session,
         .verify_auth_session,
@@ -94,6 +93,9 @@ pub fn requiredScopes(route: router.Route, method: httpz.Method) []const S {
         .approve_auth_session,
         .delete_auth_session,
         .delete_all_auth_sessions,
+        // The model library catalogue is global, non-secret data — any
+        // authenticated tenant may read it; no capability scope gates it.
+        .model_library,
         => &NONE,
 
         // ── Workspace lifecycle / tenant admin ──

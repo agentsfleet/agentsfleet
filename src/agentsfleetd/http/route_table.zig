@@ -48,7 +48,7 @@ pub fn classFor(route: router.Route) RouteClass {
     return switch (route) {
         .healthz, .readyz, .metrics => .ops,
         .workspace_fleet_events_stream => .stream,
-        .model_caps,
+        .model_library,
         .create_auth_session,
         .poll_auth_session,
         .approve_auth_session,
@@ -128,7 +128,8 @@ pub fn specFor(route: router.Route, registry: *auth_mw.MiddlewareRegistry) Route
         .healthz => .{ .middlewares = auth_mw.MiddlewareRegistry.none, .invoke = invoke.invokeHealthz },
         .readyz => .{ .middlewares = auth_mw.MiddlewareRegistry.none, .invoke = invoke.invokeReadyz },
         .metrics => .{ .middlewares = auth_mw.MiddlewareRegistry.none, .invoke = invoke.invokeMetrics },
-        .model_caps => .{ .middlewares = auth_mw.MiddlewareRegistry.none, .invoke = invoke.invokeModelCaps },
+        // Model library catalogue — bearer-authed, any tenant (no capability scope).
+        .model_library => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeModelLibrary },
 
         // Auth sessions — device-flow surface.
         .create_auth_session => .{ .middlewares = auth_mw.MiddlewareRegistry.none, .invoke = invoke.invokeCreateAuthSession },
@@ -321,7 +322,7 @@ test "classFor: ops probes never shed, the SSE tail is stream, the rest api" {
     try testing.expectEqual(RouteClass.ops, classFor(.readyz));
     try testing.expectEqual(RouteClass.ops, classFor(.metrics));
     try testing.expectEqual(RouteClass.stream, classFor(.{ .workspace_fleet_events_stream = .{ .workspace_id = "ws1", .fleet_id = "z1" } }));
-    try testing.expectEqual(RouteClass.api, classFor(.model_caps));
+    try testing.expectEqual(RouteClass.api, classFor(.model_library));
     try testing.expectEqual(RouteClass.api, classFor(.create_workspace));
     try testing.expectEqual(RouteClass.api, classFor(.runner_lease));
     try testing.expectEqual(RouteClass.api, classFor(.{ .receive_webhook = "z1" }));
