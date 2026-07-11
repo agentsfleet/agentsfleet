@@ -55,21 +55,22 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 | File | Action | Why |
 |------|--------|-----|
-| `src/agentsfleetd/secrets/crypto_primitives.zig` | EDIT | thread `ad: []const u8` through `encrypt`/`decrypt`; `secureZero` the decoded key in `setKekFromHex`; add nonce-uniqueness + associated-data-mismatch + empty-associated-data round-trip tests; document the KEK-wrap birthday bound as a named constant |
+| `src/agentsfleetd/secrets/crypto_primitives.zig` | EDIT | thread `ad: []const u8` through `encrypt`/`decrypt`; `secureZero` the decoded key in `setKekFromHex`; add nonce-uniqueness + associated-data-mismatch + empty-associated-data round-trip tests; document the KEK-wrap random-nonce limit as a named constant |
 | `src/agentsfleetd/secrets/crypto_store.zig` | EDIT | build the canonical identity, bind it into both legs, stamp `kek_version = 2`, dispatch v1/v2 on read, `secureZero` `dek` / `kek` / `dek_plain` on every path; call the extracted SQL constants |
 | `src/agentsfleetd/secrets/sql.zig` | CREATE | domain-local SQL statement + column-name constants for the store `INSERT` and load `SELECT` (the `kek_version` column edit changes the statement text — SQL Statement Modules rule) |
 | `src/agentsfleetd/secrets/crypto_store_test.zig` | CREATE | envelope lifecycle, three error branches, row-relocation negative, v1 read-compat + rewrap, no-leak-on-error-path, source-grep zeroization assertion |
 | `src/agentsfleetd/tests.zig` | EDIT | register `secrets/crypto_store_test.zig` in the aggregate test root |
-| `ui/packages/app/components/layout/CreateWorkspaceDialog.tsx` | EDIT | clarify that workspaces organize fleets, teammates, and credentials while usage and billing remain tenant-wide |
-| `ui/packages/app/tests/dashboard-workspace.test.ts` | EDIT | pin the clarified workspace-boundary copy |
+| `ui/packages/app/components/layout/CreateWorkspaceDialog.tsx` | EDIT | clarify that workspaces organize fleets, teammates, and credentials within a tenant |
+| `ui/packages/app/tests/dashboard-workspace.test.ts` | EDIT | split the over-cap dialog tests from the workspace-switcher tests |
+| `ui/packages/app/tests/create-workspace-dialog.test.ts` | CREATE | retain the dialog behavior suite and pin the clarified workspace-boundary copy |
 
 ## Punch List
 
-- [ ] **P1 — Clarify workspace purpose and tenant scope.** Replace the isolation-only description with: “Use workspaces to organize fleets, teammates, and credentials within your tenant. Usage and billing roll up across all workspaces. Leave the name blank to generate one.” Add a component assertion for the exact copy.
+- [x] **P1 — Clarify workspace purpose and tenant scope.** Replace the isolation-only description with: “Use workspaces to organize fleets, teammates, and credentials within your tenant. Leave the name blank to generate one.” Add a component assertion for the exact copy.
 
 ## Applicable Rules
 
-- **`docs/greptile-learnings/RULES.md`** — **CTM** (the AEAD tag check is constant-time by construction; no new short-circuit secret compare is introduced — hold the line), **VLT** (secrets stay in `vault.secrets`, resolved via `crypto_store.load()`; this diff strengthens the boundary, must not add a plaintext column), **TGU** (`SecretError` stays a flat error set; no optional-field variant structs added), **UFS** (`kek_version` values, the associated-data field separator, and the birthday-bound magnitude become named constants — no bare `1`/`2`/`32`), **NSQ** (schema-qualified, named-constant SQL in the new `sql.zig`), **TST-NAM** (new test identifiers milestone-free), **ORP** (no symbol renamed/deleted — none to sweep, table below records N/A).
+- **`docs/greptile-learnings/RULES.md`** — **CTM** (the AEAD tag check is constant-time by construction; no new short-circuit secret compare is introduced — hold the line), **VLT** (secrets stay in `vault.secrets`, resolved via `crypto_store.load()`; this diff strengthens the boundary, must not add a plaintext column), **TGU** (`SecretError` stays a flat error set; no optional-field variant structs added), **UFS** (`kek_version` values, the associated-data field separator, and the random-nonce invocation limit become named constants — no bare `1`/`2`/`32`), **NSQ** (schema-qualified, named-constant SQL in the new `sql.zig`), **TST-NAM** (new test identifiers milestone-free), **ORP** (no symbol renamed/deleted — none to sweep, table below records N/A).
 - **`dispatch/write_zig.md`** — memory-safety (return-slice ownership, `std.testing.allocator` leak proofs), multi-step `errdefer` on `store()`'s two allocations, DRAIN (`load()`'s `PgQuery` already drains — preserve), SQL Statement Modules (extract inline SQL on touch), cross-compile both linux targets.
 - **`dispatch/write_ts_adhere_bun.md`** — preserve the existing dialog/design-system shape, hoist the revised description to its owning module constant, and pin the copy through the existing component test.
 
@@ -80,7 +81,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | ZIG GATE | yes — two `*.zig` production files + one new source + one new test | cross-compile `x86_64-linux` + `aarch64-linux`; `make memleak` for the allocator-touching `store`/`load` |
 | PUB / Struct-Shape | yes — new `sql.zig`; changed `encrypt`/`decrypt` shape | `sql.zig` is a stateless constants/function namespace → conventional layout (one-sentence "operations-over-value, no owned state"); `buildAad` stays private; `encrypt`/`decrypt` keep their free-function shape, only the parameter list grows |
 | File & Function Length (≤350/≤50/≤70) | yes — watch `crypto_primitives.zig` (171) as inline tests grow | SQL extraction shrinks `crypto_store.zig`; if `crypto_primitives.zig` crosses ~300 with the new tests, extract them to a sibling `crypto_primitives_test.zig` registered in `tests.zig` |
-| UFS | yes | `KEK_VERSION_LEGACY = 1`, `KEK_VERSION_AAD_BOUND = 2`, the associated-data field separator, and `KEK_WRAP_NONCE_BIRTHDAY_BOUND_LOG2 = 32` as named constants |
+| UFS | yes | `KEK_VERSION_LEGACY = 1`, `KEK_VERSION_AAD_BOUND = 2`, the associated-data field separator, and `KEK_WRAP_RANDOM_NONCE_INVOCATION_LIMIT_LOG2 = 32` as named constants |
 | UI Substitution / DESIGN TOKEN | yes — workspace dialog copy only | existing design-system primitives and tokens remain unchanged; no raw element or arbitrary token is added |
 | LOGGING / LIFECYCLE / ERROR REGISTRY / SCHEMA | LIFECYCLE yes; others no | LIFECYCLE: `secureZero`+`free` pairing and `errdefer` placement reviewed per the façade. No new log event (existing `stored`/`retrieved` info logs unchanged). No new `UZ-*` code — the three error branches already exist. No `schema/*.sql` DDL change: `kek_version` already exists with a Data Definition Language (DDL) `DEFAULT 1`; writing `2` is app-level |
 
@@ -93,36 +94,44 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ### §1 — Bind row identity into the envelope; version the format
 
+**Status: DONE**
+
 `encrypt`/`decrypt` gain an `ad: []const u8` parameter passed straight to the AES-256 Galois/Counter Mode (GCM) call. `store()` builds a canonical identity — `workspace_id`, a field separator, `key_name`, the separator, and `kek_version` — and passes it as the associated data for **both** the DEK-wrap and the payload encryption, stamping the row `kek_version = 2`. Because associated data is part of the authenticated envelope, a version-1 row (written with empty associated data) cannot decrypt under the bound path; `load()` therefore dispatches on the existing `kek_version` seam. **Implementation default:** version-1 rows decrypt with empty associated data (read-compatible) and are rewritten as version-2 on their next `store()`/rotation — self-healing, no standalone migration — because the residual version-1 exposure is the same already-privileged-write-foothold case the verifiers bounded, and a lazy upgrade avoids a bulk backfill for a defense-in-depth gap. `load()` continues to reject any `kek_version` outside `{1, 2}` with `UnsupportedKekVersion`.
 
-- **Dimension 1.1** — `encrypt` then `decrypt` with a matching associated data round-trips; `decrypt` with a *different* associated data returns `DecryptFailed` (relocation proof at the primitive level) → Test `test_aead_ad_mismatch_fails`
-- **Dimension 1.2** — `store()` writes `kek_version = 2` and both legs authenticate only against the row identity; `load()` round-trips the value → Test `test_store_load_v2_roundtrip`
-- **Dimension 1.3** — a version-2 row whose crypto columns are copied into a different `key_name` fails `DecryptFailed` on `load()` → Test `test_store_relocated_row_rejected`
-- **Dimension 1.4** — a legacy version-1 row (empty associated data) still decrypts on `load()`, and a subsequent `store()` rewrites it as version 2 → Test `test_store_v1_read_compat_then_rewrap`
+- **Dimension 1.1** — `encrypt` then `decrypt` with matching associated data round-trips; `decrypt` with different associated data returns `DecryptFailed` (relocation proof at the primitive level) → Test `associated data mismatch rejects ciphertext`
+- **Dimension 1.2** — `store()` writes `kek_version = 2`, canonicalizes equivalent UUID spellings, and both legs authenticate only against the row identity; `load()` round-trips the value → Test `integration: crypto store canonicalizes workspace id and upserts a fresh envelope`
+- **Dimension 1.3** — a version-2 row whose crypto columns are copied into a different `key_name` or workspace fails `DecryptFailed` on `load()` → Tests `integration: crypto store rejects an envelope relocated to another key` and `integration: crypto store rejects an envelope relocated to another workspace`
+- **Dimension 1.4** — a legacy version-1 row (empty associated data) still decrypts on `load()`, and a subsequent `store()` rewrites it as version 2 → Test `integration: crypto store reads a legacy envelope then rewrites version two`
 
 ### §2 — Zero key material on every path
 
+**Status: DONE**
+
 Every plaintext key buffer is wiped before its backing storage is released, on success and error paths. **Implementation default:** a `defer std.crypto.secureZero(u8, &buf)` beside each stack buffer (`dek`, the `kek` copies in `store`/`load`, the fixed `dek` in `load`, the decoded `key` in `setKekFromHex`), and a zero-then-free on the heap `dek_plain` in `load()`. **Honest bound:** the KEK also lives for the process lifetime in the `g_kek` global, so a core dump always contains the KEK regardless of these transient-copy wipes — the DEK and `dek_plain` zeroing is the load-bearing part; the KEK-copy wipes are defense-in-depth against a stray stack/swap image, not a claim that the vault's master key is otherwise protected from a memory capture.
 
-- **Dimension 2.1** — every key-material buffer named above has an adjacent `secureZero`; enforced by a source assertion so review discipline cannot regress it → Test `test_key_zeroization_present`
-- **Dimension 2.2** — `load()`'s decrypt-failure branch still frees `dek_plain` (zero leak under `std.testing.allocator`), proving the cleanup runs on the error path → Test `test_load_error_path_frees_dek`
+- **Dimension 2.1** — every key-material buffer named above has an adjacent `secureZero`; enforced by a source assertion so review discipline cannot regress it → Test `crypto store source keeps transient key zeroization`
+- **Dimension 2.2** — a valid wrapped DEK plus a tampered payload tag reaches payload decryption and still wipes/frees `dek_plain` under `std.testing.allocator` → Test `integration: crypto store frees the unwrapped key after payload failure`
 
 ### §3 — Cover the envelope lifecycle, its error branches, and nonce uniqueness
 
+**Status: DONE**
+
 `crypto_store.zig` has no tests today. Add the lifecycle and each `load()` failure branch, plus a nonce-uniqueness guard on `encrypt`.
 
-- **Dimension 3.1** — two `encrypt` calls on identical plaintext + key + associated data yield distinct nonces → Test `test_encrypt_nonce_unique`
-- **Dimension 3.2** — `load()` for an absent `(workspace_id, key_name)` returns `NotFound` → Test `test_load_not_found`
-- **Dimension 3.3** — `load()` on a row seeded with `kek_version = 3` returns `UnsupportedKekVersion` → Test `test_load_unsupported_kek_version`
-- **Dimension 3.4** — `load()` on a row with a wrong-length `dek_nonce` column returns `InvalidEnvelope` → Test `test_load_invalid_envelope`
-- **Dimension 3.5** — a second `store()` for the same key upserts, and `load()` returns the latest value → Test `test_store_upsert_roundtrip`
+- **Dimension 3.1** — two `encrypt` calls on identical plaintext + key + associated data yield distinct nonces → Test `encrypt generates unique nonces`
+- **Dimension 3.2** — `load()` for an absent `(workspace_id, key_name)` returns `NotFound` → Test `integration: crypto store returns not found for a missing key`
+- **Dimension 3.3** — `load()` on a row seeded with `kek_version = 3` returns `UnsupportedKekVersion` → Test `integration: crypto store rejects an unsupported envelope version`
+- **Dimension 3.4** — `load()` on a row with a wrong-length `dek_nonce` column returns `InvalidEnvelope` → Test `integration: crypto store rejects a malformed envelope`
+- **Dimension 3.5** — a second `store()` for the same key upserts, and `load()` returns the latest value → Test `integration: crypto store canonicalizes workspace id and upserts a fresh envelope`
 
 ### §4 — Confirm payload nonces safe; document the KEK-wrap bound
 
-Payload encryption uses a fresh per-secret DEK, so a payload-nonce collision across distinct DEKs is harmless — no fix needed there. The only single-key random-nonce path is the KEK-wrap, whose NIST SP 800-38D birthday bound (~2^32 wraps) is recorded as an accepted, documented limit; the associated-data binding from §1 further localizes any collision to one identity. **Implementation default:** document the bound as a named constant with rationale rather than switch to a nonce-misuse-resistant construction — that larger crypto change is Out of Scope and the bound is far from reachable write volume.
+**Status: DONE**
 
-- **Dimension 4.1** — two `store()` calls for the same plaintext produce distinct wrapped-DEK and distinct payload ciphertext (fresh DEK per secret) → Test `test_store_fresh_dek_per_secret`
-- **Dimension 4.2** — the accepted KEK-wrap birthday bound is a named constant with a rationale doc-comment (no silent magic number) → Test `test_kek_wrap_bound_documented`
+Payload encryption uses a fresh per-secret DEK, so a payload-nonce collision across distinct DEKs does not reuse a key. The single-key random-nonce path is the KEK-wrap. Its accepted operational ceiling is 2^32 wraps, where a 96-bit random nonce has roughly 2^-33 collision probability; associated data does not mitigate nonce reuse. **Implementation default:** document this conservative per-KEK limit as a named constant rather than switch to a nonce-misuse-resistant construction — that larger crypto change is Out of Scope and expected write volume remains far below the ceiling.
+
+- **Dimension 4.1** — two `store()` calls for the same plaintext produce distinct wrapped-DEK and distinct payload ciphertext (fresh DEK per secret) → Test `integration: crypto store canonicalizes workspace id and upserts a fresh envelope`
+- **Dimension 4.2** — the accepted KEK-wrap random-nonce limit is a named constant with a rationale doc-comment (no silent magic number) → Test `crypto store documents the random nonce invocation limit`
 
 ## Interfaces
 
@@ -169,20 +178,20 @@ No HTTP route, request/response shape, or public vault surface changes. vault.zi
 
 | Dimension | Tier | Test | Asserts (concrete inputs → expected output) |
 |-----------|------|------|---------------------------------------------|
-| 1.1 | unit | `test_aead_ad_mismatch_fails` | encrypt with AD=identityA; decrypt with AD=identityB → `DecryptFailed`; decrypt with AD=identityA → plaintext |
-| 1.2 | integration | `test_store_load_v2_roundtrip` | store then load a secret → equal plaintext; the stored row carries `kek_version = 2` |
-| 1.3 | integration (negative) | `test_store_relocated_row_rejected` | copy row A's crypto columns into row B (different key_name) → `load(B)` returns `DecryptFailed` |
-| 1.4 | integration (regression) | `test_store_v1_read_compat_then_rewrap` | seed an empty-AD `kek_version = 1` row → `load` decrypts it; after `store`, the row is `kek_version = 2` |
-| 2.1 | unit (source-grep) | `test_key_zeroization_present` | `@embedFile` of both crypto sources contains a `secureZero` for `dek`, `kek`, `dek_plain`, and the decoded key |
-| 2.2 | unit (leak) | `test_load_error_path_frees_dek` | injected decrypt failure in `load` under `std.testing.allocator` → zero leaks reported |
-| 3.1 | unit | `test_encrypt_nonce_unique` | two `encrypt(plaintext, key, ad)` calls → `blob1.nonce != blob2.nonce` |
-| 3.2 | integration (negative) | `test_load_not_found` | `load` for an unseeded key → `NotFound` |
-| 3.3 | integration (negative) | `test_load_unsupported_kek_version` | seed `kek_version = 3` → `load` returns `UnsupportedKekVersion` |
-| 3.4 | integration (negative) | `test_load_invalid_envelope` | seed a 4-byte `dek_nonce` → `load` returns `InvalidEnvelope` |
-| 3.5 | integration | `test_store_upsert_roundtrip` | store v1-value then store v2-value for one key → `load` returns v2-value |
-| 4.1 | integration | `test_store_fresh_dek_per_secret` | store the same plaintext twice → distinct `encrypted_dek` and distinct `ciphertext` columns |
-| 4.2 | unit (source-grep) | `test_kek_wrap_bound_documented` | `KEK_WRAP_NONCE_BIRTHDAY_BOUND_LOG2` constant present with a rationale doc-comment |
-| P1 | unit | `CreateWorkspaceDialog component` copy assertion | rendered dialog contains the workspace-purpose sentence and tenant-wide usage/billing sentence |
+| 1.1 | unit | `associated data mismatch rejects ciphertext` | encrypt with associated data identity A; decrypt with identity B → `DecryptFailed`; decrypt with identity A → plaintext |
+| 1.2 | integration | `integration: crypto store canonicalizes workspace id and upserts a fresh envelope` | store with uppercase UUID then load with canonical lowercase UUID → equal plaintext; row carries `kek_version = 2` |
+| 1.3 | integration (negative) | `integration: crypto store rejects an envelope relocated to another key/workspace` | copy row A's crypto columns across either identity dimension → target `load` returns `DecryptFailed` |
+| 1.4 | integration (regression) | `integration: crypto store reads a legacy envelope then rewrites version two` | seed an empty-associated-data `kek_version = 1` row → `load` decrypts it; after `store`, the row is `kek_version = 2` |
+| 2.1 | unit (source-grep) | `crypto store source keeps transient key zeroization` | `@embedFile` of both crypto sources contains a `secureZero` for `dek`, `kek`, `dek_plain`, and the decoded key |
+| 2.2 | integration (negative/leak) | `integration: crypto store frees the unwrapped key after payload failure` | valid wrapped DEK + tampered payload tag under `std.testing.allocator` → `DecryptFailed`, zero leaks |
+| 3.1 | unit | `encrypt generates unique nonces` | two `encrypt(plaintext, key, associated_data)` calls → `blob1.nonce != blob2.nonce` |
+| 3.2 | integration (negative) | `integration: crypto store returns not found for a missing key` | `load` for an unseeded key → `NotFound` |
+| 3.3 | integration (negative) | `integration: crypto store rejects an unsupported envelope version` | seed `kek_version = 3` → `load` returns `UnsupportedKekVersion` |
+| 3.4 | integration (negative) | `integration: crypto store rejects a malformed envelope` | seed a 4-byte `dek_nonce` → `load` returns `InvalidEnvelope` |
+| 3.5 | integration | `integration: crypto store canonicalizes workspace id and upserts a fresh envelope` | store v1-value then store v2-value for one key → `load` returns v2-value |
+| 4.1 | integration | `integration: crypto store canonicalizes workspace id and upserts a fresh envelope` | store the same plaintext twice → distinct `encrypted_dek` and distinct `ciphertext` columns |
+| 4.2 | unit (source-grep) | `crypto store documents the random nonce invocation limit` | `KEK_WRAP_RANDOM_NONCE_INVOCATION_LIMIT_LOG2` constant and collision rationale present |
+| P1 | unit | `CreateWorkspaceDialog component` copy assertion | rendered dialog contains the workspace-purpose sentence and generated-name guidance |
 
 Regression: 1.4 and 3.5 protect existing read/upsert behavior. Idempotency: `store`'s `ON CONFLICT` upsert is covered by 3.5. Integration rows seed rows through the real `vault.secrets` schema (no temp tables) and skip gracefully when `TEST_DATABASE_URL` is unset, mirroring `vault_test.zig`.
 
@@ -190,15 +199,15 @@ Regression: 1.4 and 3.5 protect existing read/upsert behavior. Idempotency: `sto
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | Relocated row + version binding (§1) proven | `make test-integration` | exit 0 incl. `test_store_relocated_row_rejected`, `test_store_v1_read_compat_then_rewrap` | P0 | |
-| R2 | Envelope error branches + nonce guard (§3) proven | `make test` | exit 0 incl. the four §3 negative/lifecycle tests + `test_encrypt_nonce_unique` | P0 | |
+| R1 | Relocated row + version binding (§1) proven | `make test-integration-db` | exit 0 including both relocation tests, legacy read, and version binding | P0 | |
+| R2 | Envelope error branches + nonce guard (§3) proven | `make test-unit-agentsfleetd` | exit 0 including the §3 negative/lifecycle tests and nonce uniqueness | P0 | |
 | R3 | Key material zeroed on every path (§2) | `grep -c "secureZero" src/agentsfleetd/secrets/crypto_store.zig src/agentsfleetd/secrets/crypto_primitives.zig` | each file ≥ 1; total ≥ 4 | P0 | |
 | R4 | No plaintext-secret column added (VLT held) | `grep -in "plaintext\|secret_value" schema/002_vault_schema.sql` | no output | P0 | |
-| R5 | Workspace purpose and tenant scope are explicit | `bun test ui/packages/app/tests/dashboard-workspace.test.ts` | exit 0; copy assertion passes | P0 | |
+| R5 | Workspace purpose and tenant scope are explicit | `cd ui/packages/app && bunx vitest run tests/create-workspace-dialog.test.ts` | exit 0; copy assertion passes | P0 | |
 | R6 | Diff stays inside Files Changed | `git diff --name-only origin/main` | 0 paths missing from the Files Changed table | P0 | |
-| S1 | Unit tests pass | `make test` | exit 0 | P0 | |
-| S2 | Lint clean | `make lint` | exit 0 | P0 | |
-| S3 | Integration passes (vault DB path touched) | `make test-integration` | exit 0 | P0 | |
+| S1 | Unit tests pass | `make test-unit-agentsfleetd` | exit 0 | P0 | |
+| S2 | Lint clean | `make lint-zig && make lint-app` | exit 0 | P0 | |
+| S3 | Integration passes (vault database path touched) | `make test-integration-db` | exit 0 | P0 | |
 | S5 | No leaks (allocator wiring touched) | `make memleak` | exit 0 | P0 | |
 | S6 | Cross-compile (Zig touched) | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` | exit 0 | P0 | |
 | S7 | No secrets | `gitleaks detect` | exit 0 | P0 | |
@@ -213,7 +222,7 @@ N/A — no files deleted, no public symbols renamed or removed. `encrypt`/`decry
 ## Out of Scope
 
 - A bulk background rewrap job that upgrades every version-1 row to version 2 eagerly — the lazy on-write upgrade is sufficient for a defense-in-depth gap; a backfill is future work.
-- Switching the KEK-wrap to a nonce-misuse-resistant construction (AES-GCM-SIV) or a deterministic wrap nonce — the documented birthday bound is accepted at realistic write volume (§4).
+- Switching the KEK-wrap to a nonce-misuse-resistant construction (AES-GCM-SIV) or a deterministic wrap nonce — the documented random-nonce invocation limit is accepted at realistic write volume (§4).
 - Protecting the process-lifetime `g_kek` global from a memory capture (it necessarily lives resident for the daemon to decrypt) — the honest bound stated in §2.
 - Any change to the `vault.secrets` schema shape, the `api_runtime` grant, or the public vault / HTTP surface.
 - Any workspace behavior, billing behavior, or dialog layout change; Punch List P1 changes explanatory copy only.
@@ -231,7 +240,7 @@ N/A — no files deleted, no public symbols renamed or removed. `encrypt`/`decry
 7. **Fit with existing features** — compounds the vault credential boundary (`docs/AUTH.md`); must not destabilize `vault.zig`'s structured-credential layer or the runner-lease provider-key delivery that consumes resolved secrets.
 8. **Surface order** — the security work has no public surface; the adjacent workspace copy is confined to the existing create dialog and does not alter its flow.
 9. **Dashboard restraint** — Punch List P1 changes one description constant and one assertion; no component, layout, or visual-token work is introduced.
-10. **Confused-user next step** — workspace creators learn what workspaces organize and that usage/billing remain tenant-wide; operators retain the existing `unsupported_kek_version` / `decrypt_failed` signals.
+10. **Confused-user next step** — workspace creators learn what workspaces organize and why credentials belong within them; operators retain the existing `unsupported_kek_version` / `decrypt_failed` signals.
 
 ## Decomposition & alternatives (patch vs refactor)
 
@@ -243,5 +252,6 @@ N/A — no files deleted, no public symbols renamed or removed. `encrypt`/`decry
 
 - **Consults** — Architecture / Legacy-Design / gate-flag triage: empty at creation.
 - **Metrics review** — empty at creation.
-- **Skill-chain outcomes** — empty at creation.
+- **Skill-chain outcomes** — `/write-unit-test` coverage added for associated-data mismatch, nonce uniqueness, source zeroization, SQL version wiring, and the workspace description. `/review` found eight issues across identity canonicalization, error-path reachability, test classification, command accuracy, acceptance grading, wipe assertions, tuple coverage, and nonce rationale; all eight were fixed, and the second adversarial pass returned no findings.
 - **Deferrals** — empty at creation.
+- **Verification notes** — agentsfleetd unit target passed (`1539` passed, `504` skipped); test depth moved from `unit=2402 integration=267` to `unit=2416 integration=276`; the focused workspace test passed (`9` tests); Zig and app lint passed; both Linux cross-compiles passed; the real PostgreSQL suite passed; `make memleak` passed; gitleaks found no leaks; and the staged-diff harness reported all gates green.

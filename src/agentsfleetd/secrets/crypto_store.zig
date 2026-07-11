@@ -8,6 +8,7 @@ const pg = @import("pg");
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
 const id_format = @import("../types/id_format.zig");
 const cp = @import("crypto_primitives.zig");
+const sql = @import("sql.zig");
 const error_codes = @import("../errors/error_registry.zig");
 const logging = @import("log");
 
@@ -16,6 +17,16 @@ const log = logging.scoped(.secrets);
 const KEY_LEN = cp.KEY_LEN;
 const NONCE_LEN = cp.NONCE_LEN;
 const TAG_LEN = cp.TAG_LEN;
+const KEK_VERSION_LEGACY: i32 = 1;
+const KEK_VERSION_AAD_BOUND: i32 = 2;
+const AAD_SEPARATOR: u8 = 0x1f;
+const AAD_FORMAT = "{s}{c}{s}{c}{d}";
+
+fn buildAad(alloc: std.mem.Allocator, workspace_id: []const u8, key_name: []const u8, kek_version: i32) ![]u8 {
+    const canonical_workspace_id = try std.ascii.allocLowerString(alloc, workspace_id);
+    defer alloc.free(canonical_workspace_id);
+    return std.fmt.allocPrint(alloc, AAD_FORMAT, .{ canonical_workspace_id, AAD_SEPARATOR, key_name, AAD_SEPARATOR, kek_version });
+}
 
 /// Store encrypted secret in vault.secrets with envelope encryption.
 pub fn store(
@@ -25,34 +36,27 @@ pub fn store(
     key_name: []const u8,
     plaintext: []const u8,
 ) !void {
-    const kek = try cp.loadKek();
+    var kek = try cp.loadKek();
+    defer std.crypto.secureZero(u8, &kek);
 
     var dek: [KEY_LEN]u8 = undefined;
+    defer std.crypto.secureZero(u8, &dek);
     try constants.secureRandomBytes(&dek);
 
-    const wrapped_dek = try cp.encrypt(alloc, dek[0..], &kek);
+    const aad = try buildAad(alloc, workspace_id, key_name, KEK_VERSION_AAD_BOUND);
+    defer alloc.free(aad);
+
+    const wrapped_dek = try cp.encrypt(alloc, dek[0..], aad, &kek);
     defer wrapped_dek.deinit(alloc);
 
-    const encrypted_payload = try cp.encrypt(alloc, plaintext, &dek);
+    const encrypted_payload = try cp.encrypt(alloc, plaintext, aad, &dek);
     defer encrypted_payload.deinit(alloc);
 
     const now_ms = clock.nowMillis();
 
     const secret_id = try id_format.generateVaultSecretId(alloc);
     defer alloc.free(secret_id);
-    _ = try conn.exec(
-        \\INSERT INTO vault.secrets
-        \\  (id, workspace_id, key_name, encrypted_dek, dek_nonce, dek_tag, nonce, ciphertext, tag, created_at, updated_at)
-        \\VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $10)
-        \\ON CONFLICT (workspace_id, key_name) DO UPDATE
-        \\SET encrypted_dek = EXCLUDED.encrypted_dek,
-        \\    dek_nonce = EXCLUDED.dek_nonce,
-        \\    dek_tag = EXCLUDED.dek_tag,
-        \\    nonce = EXCLUDED.nonce,
-        \\    ciphertext = EXCLUDED.ciphertext,
-        \\    tag = EXCLUDED.tag,
-        \\    updated_at = EXCLUDED.updated_at
-    , .{
+    _ = try conn.exec(sql.INSERT_SECRET, .{
         secret_id,
         workspace_id,
         key_name,
@@ -62,6 +66,7 @@ pub fn store(
         encrypted_payload.nonce[0..],
         encrypted_payload.ciphertext,
         encrypted_payload.tag[0..],
+        KEK_VERSION_AAD_BOUND,
         now_ms,
     });
     // info (not debug) by design: credential store/retrieve stays visible in default prod logs for
@@ -76,11 +81,7 @@ pub fn load(
     workspace_id: []const u8,
     key_name: []const u8,
 ) ![]u8 {
-    var result = PgQuery.from(try conn.query(
-        \\SELECT encrypted_dek, dek_nonce, dek_tag, nonce, ciphertext, tag, kek_version
-        \\FROM vault.secrets
-        \\WHERE workspace_id = $1 AND key_name = $2
-    , .{ workspace_id, key_name }));
+    var result = PgQuery.from(try conn.query(sql.SELECT_SECRET, .{ workspace_id, key_name }));
     defer result.deinit();
 
     const row = try result.next() orelse {
@@ -96,12 +97,8 @@ pub fn load(
     const payload_nonce_slice = try row.get([]u8, 3);
     const payload_ciphertext = try row.get([]u8, 4);
     const payload_tag_slice = try row.get([]u8, 5);
-    // Only kek_version=1 is supported. Pre-cleanup, a multi-key dispatch path
-    // (KEK_VERSION + ENCRYPTION_MASTER_KEY_V2) could store rows with version=2;
-    // that path is gone, so any non-1 row would silently decrypt with the wrong
-    // key and surface as DecryptFailed. Fail loud instead.
     const kek_version = try row.get(i32, 6);
-    if (kek_version != 1) {
+    if (kek_version != KEK_VERSION_LEGACY and kek_version != KEK_VERSION_AAD_BOUND) {
         log.err("unsupported_kek_version", .{
             .workspace_id = workspace_id,
             .key_name = key_name,
@@ -120,13 +117,24 @@ pub fn load(
     const dek_copy = try alloc.dupe(u8, encrypted_dek);
     defer alloc.free(dek_copy);
 
-    const kek = try cp.loadKek();
+    var kek = try cp.loadKek();
+    defer std.crypto.secureZero(u8, &kek);
 
-    const dek_plain = try cp.decrypt(alloc, &dek_nonce, dek_copy, &dek_tag, &kek);
-    defer alloc.free(dek_plain);
+    const aad = if (kek_version == KEK_VERSION_AAD_BOUND)
+        try buildAad(alloc, workspace_id, key_name, kek_version)
+    else
+        try alloc.dupe(u8, "");
+    defer alloc.free(aad);
 
-    const dek = try cp.toFixed(KEY_LEN, dek_plain);
-    const plaintext_result = cp.decrypt(alloc, &payload_nonce, ciphertext_copy, &payload_tag, &dek) catch |err| {
+    const dek_plain = try cp.decrypt(alloc, &dek_nonce, dek_copy, &dek_tag, aad, &kek);
+    defer {
+        std.crypto.secureZero(u8, dek_plain);
+        alloc.free(dek_plain);
+    }
+
+    var dek = try cp.toFixed(KEY_LEN, dek_plain);
+    defer std.crypto.secureZero(u8, &dek);
+    const plaintext_result = cp.decrypt(alloc, &payload_nonce, ciphertext_copy, &payload_tag, aad, &dek) catch |err| {
         log.err("decrypt_failed", .{
             .workspace_id = workspace_id,
             .key_name = key_name,

@@ -12,6 +12,14 @@ pub const AesGcm = std.crypto.aead.aes_gcm.Aes256Gcm;
 pub const KEY_LEN = AesGcm.key_length; // 32
 pub const NONCE_LEN = AesGcm.nonce_length; // 12
 pub const TAG_LEN = AesGcm.tag_length; // 16
+/// Conservative per-KEK invocation ceiling for random 96-bit AES-GCM nonces.
+/// At 2^32 wraps, collision probability is roughly 2^-33; expected vault write
+/// volume remains far below this accepted operational limit.
+const KEK_WRAP_RANDOM_NONCE_INVOCATION_LIMIT_LOG2 = 32;
+
+comptime {
+    std.debug.assert(KEK_WRAP_RANDOM_NONCE_INVOCATION_LIMIT_LOG2 == 32);
+}
 
 pub const SecretError = error{
     MissingMasterKey,
@@ -47,6 +55,7 @@ var g_kek: ?[KEY_LEN]u8 = null;
 pub fn setKekFromHex(hex: []const u8) SecretError!void {
     if (hex.len != KEY_LEN * 2) return SecretError.InvalidKeyHex;
     var key: [KEY_LEN]u8 = undefined;
+    defer std.crypto.secureZero(u8, &key);
     _ = std.fmt.hexToBytes(&key, hex) catch return SecretError.InvalidKeyHex;
     g_kek = key;
 }
@@ -77,6 +86,7 @@ pub fn setTestKek() void {
 pub fn encrypt(
     alloc: std.mem.Allocator,
     plaintext: []const u8,
+    ad: []const u8,
     key: *const [KEY_LEN]u8,
 ) !EncryptedBlob {
     var nonce: [NONCE_LEN]u8 = undefined;
@@ -86,7 +96,7 @@ pub fn encrypt(
     errdefer alloc.free(ciphertext);
 
     var tag: [TAG_LEN]u8 = undefined;
-    AesGcm.encrypt(ciphertext, &tag, plaintext, "", nonce, key.*);
+    AesGcm.encrypt(ciphertext, &tag, plaintext, ad, nonce, key.*);
 
     return .{
         .nonce = nonce,
@@ -102,12 +112,16 @@ pub fn decrypt(
     nonce: *const [NONCE_LEN]u8,
     ciphertext: []const u8,
     tag: *const [TAG_LEN]u8,
+    ad: []const u8,
     key: *const [KEY_LEN]u8,
 ) ![]u8 {
     const plaintext = try alloc.alloc(u8, ciphertext.len);
-    errdefer alloc.free(plaintext);
+    errdefer {
+        std.crypto.secureZero(u8, plaintext);
+        alloc.free(plaintext);
+    }
 
-    AesGcm.decrypt(plaintext, ciphertext, tag.*, "", nonce.*, key.*) catch
+    AesGcm.decrypt(plaintext, ciphertext, tag.*, ad, nonce.*, key.*) catch
         return SecretError.DecryptFailed;
 
     return plaintext;
@@ -128,10 +142,10 @@ test "encrypt/decrypt round-trip with raw bytes" {
     try common.secureRandomBytes(&key);
 
     const plaintext = "super-secret-api-key-12345";
-    const blob = try encrypt(alloc, plaintext, &key);
+    const blob = try encrypt(alloc, plaintext, "", &key);
     defer blob.deinit(alloc);
 
-    const recovered = try decrypt(alloc, &blob.nonce, blob.ciphertext, &blob.tag, &key);
+    const recovered = try decrypt(alloc, &blob.nonce, blob.ciphertext, &blob.tag, "", &key);
     defer alloc.free(recovered);
 
     try std.testing.expectEqualStrings(plaintext, recovered);
@@ -143,7 +157,7 @@ test "decrypt fails when tag is tampered" {
     var key: [KEY_LEN]u8 = undefined;
     try common.secureRandomBytes(&key);
 
-    const blob = try encrypt(alloc, "hello", &key);
+    const blob = try encrypt(alloc, "hello", "", &key);
     defer blob.deinit(alloc);
 
     var bad_tag = blob.tag;
@@ -151,8 +165,37 @@ test "decrypt fails when tag is tampered" {
 
     try std.testing.expectError(
         SecretError.DecryptFailed,
-        decrypt(alloc, &blob.nonce, blob.ciphertext, &bad_tag, &key),
+        decrypt(alloc, &blob.nonce, blob.ciphertext, &bad_tag, "", &key),
     );
+}
+
+test "associated data mismatch rejects ciphertext" {
+    const alloc = std.testing.allocator;
+    var key: [KEY_LEN]u8 = undefined;
+    try common.secureRandomBytes(&key);
+    const blob = try encrypt(alloc, "hello", "workspace-a", &key);
+    defer blob.deinit(alloc);
+
+    const recovered = try decrypt(alloc, &blob.nonce, blob.ciphertext, &blob.tag, "workspace-a", &key);
+    defer alloc.free(recovered);
+    try std.testing.expectEqualStrings("hello", recovered);
+
+    try std.testing.expectError(
+        SecretError.DecryptFailed,
+        decrypt(alloc, &blob.nonce, blob.ciphertext, &blob.tag, "workspace-b", &key),
+    );
+}
+
+test "encrypt generates unique nonces" {
+    const alloc = std.testing.allocator;
+    var key: [KEY_LEN]u8 = undefined;
+    try common.secureRandomBytes(&key);
+    const first = try encrypt(alloc, "hello", "workspace-a", &key);
+    defer first.deinit(alloc);
+    const second = try encrypt(alloc, "hello", "workspace-a", &key);
+    defer second.deinit(alloc);
+
+    try std.testing.expect(!std.mem.eql(u8, &first.nonce, &second.nonce));
 }
 
 test "loadKek returns the KEK seeded via setKekFromHex (Option C boot-resolve)" {
