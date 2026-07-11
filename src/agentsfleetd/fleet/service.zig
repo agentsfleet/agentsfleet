@@ -65,7 +65,7 @@ pub fn leaseNext(hx: Hx) void {
         hx.fail(ec.ERR_RUN_INVALID_RUNNER_TOKEN, "runner identity required");
         return;
     };
-    const acq = assign.select(hx, runner_id) orelse return replyNoWork(hx);
+    const acq = assign.select(hx.ctx, hx.alloc, runner_id) orelse return replyNoWork(hx);
 
     var session = FleetSession.claimFleet(hx.alloc, acq.fleet_id, hx.ctx.pool) catch |err| {
         log.debug("lease_claim_unavailable", .{ .fleet_id = acq.fleet_id, .err = @errorName(err) });

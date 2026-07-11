@@ -35,7 +35,7 @@ const event_rows = @import("event_rows.zig");
 const ALLOC = std.testing.allocator;
 
 pub const WORKSPACE_ID = "0195c9da-1e2a-7f13-8abc-2b3e1e0d7011";
-const RUNNER_ID = "0195c9da-1e2a-7f13-8abc-2b3e1e0d7a01";
+pub const RUNNER_ID = "0195c9da-1e2a-7f13-8abc-2b3e1e0d7a01";
 const AGENTSFLEET_CRED = "0195c9da-1e2a-7f13-8abc-2b3e1e0d7c01";
 const AGENTSFLEET_PROVIDER = "0195c9da-1e2a-7f13-8abc-2b3e1e0d7c02";
 const AGENTSFLEET_GATED = "0195c9da-1e2a-7f13-8abc-2b3e1e0d7c03";
@@ -44,6 +44,9 @@ pub const AGENTSFLEET_STRAND = "0195c9da-1e2a-7f13-8abc-2b3e1e0d7c05";
 pub const AGENTSFLEET_ROW = "0195c9da-1e2a-7f13-8abc-2b3e1e0d7c06";
 pub const AGENTSFLEET_REACK = "0195c9da-1e2a-7f13-8abc-2b3e1e0d7c07";
 pub const AGENTSFLEET_GATED_EXP = "0195c9da-1e2a-7f13-8abc-2b3e1e0d7c08";
+pub const AGENTSFLEET_RECLAIM_FAIL = "0195c9da-1e2a-7f13-8abc-2b3e1e0d7c09";
+pub const AGENTSFLEET_FRESH_FAIL = "0195c9da-1e2a-7f13-8abc-2b3e1e0d7c0a";
+pub const AGENTSFLEET_RELEASE_FAIL = "0195c9da-1e2a-7f13-8abc-2b3e1e0d7c0b";
 const SESSION_BASE = "0195c9da-1e2a-7f13-8abc-2b3e1e0d7d0";
 
 const RUNNER_TOKEN = auth_mw.runner_bearer.RUNNER_TOKEN_PREFIX ++ "e" ** 64;
@@ -121,6 +124,9 @@ pub const Env = struct {
         deleteStream(self.h, AGENTSFLEET_ROW);
         deleteStream(self.h, AGENTSFLEET_REACK);
         deleteStream(self.h, AGENTSFLEET_GATED_EXP);
+        deleteStream(self.h, AGENTSFLEET_RECLAIM_FAIL);
+        deleteStream(self.h, AGENTSFLEET_FRESH_FAIL);
+        deleteStream(self.h, AGENTSFLEET_RELEASE_FAIL);
         self.h.deinit();
     }
 };
@@ -146,7 +152,9 @@ fn deleteStream(h: *TestHarness, fleet_id: []const u8) void {
 }
 
 /// Start the harness + seed the canonical fixture set. Skips when DB or
-/// Redis is unavailable.
+/// Redis is unavailable. `TestHarness.start` already cleared any leaked
+/// fault-injection constraint (`test_fixtures.dropInjectedFaultConstraints`)
+/// before this runs.
 pub fn setup() !Env {
     const h = try TestHarness.start(ALLOC, .{ .configureRegistry = configureRegistry });
     errdefer h.deinit();
