@@ -463,3 +463,40 @@ test "mint: a caller allocation failure fails closed as mint_failed{transient}, 
     // allocator's deinit asserts every internal allocation was freed.
     try std.testing.expectEqual(@as(usize, 2), fake_calls.load(.monotonic));
 }
+
+// ── Cold-miss single-flight (broker_flight.zig) ─────────────────────────────
+
+/// Contender for the single-flight test: same key, concurrent cold miss.
+const ColdMissContender = struct {
+    fn run(b: *CredentialBroker, handle: *const std.json.Value, ok_count: *std.atomic.Value(usize)) void {
+        const r = b.mint(std.testing.allocator, "ws1", "github", handle.*, 0) catch return;
+        if (r == .ok) {
+            std.testing.allocator.free(r.ok.token);
+            _ = ok_count.fetchAdd(1, .monotonic);
+        }
+    }
+};
+
+test "broker_cold_miss_single_mint" {
+    const alloc = std.testing.allocator;
+    fake_calls.store(0, .monotonic);
+    // Widen the cold-miss window so the contenders genuinely overlap the
+    // winner's in-flight mint.
+    fake_delay_ns = 50 * std.time.ns_per_ms;
+    defer fake_delay_ns = 0;
+    var b = try brokerWith(alloc, FAKE_REGISTRY);
+    defer b.deinit();
+    var h = try testing.parse(alloc, "{\"integration\":\"github\"}");
+    defer h.deinit();
+
+    const CONTENDERS = 8;
+    var ok_count = std.atomic.Value(usize).init(0);
+    var threads: [CONTENDERS]std.Thread = undefined;
+    for (&threads) |*t| t.* = try std.Thread.spawn(.{}, ColdMissContender.run, .{ &b, &h.value, &ok_count });
+    for (&threads) |*t| t.join();
+
+    // Pre-fix: every contender inside the 50ms window minted its own token
+    // (same refresh token posted N times → provider family revocation).
+    try std.testing.expectEqual(@as(usize, 1), fake_calls.load(.monotonic));
+    try std.testing.expectEqual(@as(usize, CONTENDERS), ok_count.load(.monotonic));
+}

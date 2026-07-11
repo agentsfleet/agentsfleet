@@ -139,16 +139,22 @@ fn resolveSlot(runner_id: []const u8) ?*Slot {
         const occ = slot.occupied.load(.acquire); // safe because: pairs with the cmpxchg release on claim
         if (occ == 1) {
             // Bounded spin so we never race past a mid-init slot for our own
-            // key (which would claim a duplicate); the cap falls back to
-            // probe-forward if an initializer was suspended mid-init.
+            // key (which would claim a duplicate).
             var spins: u32 = 0;
             const SPIN_CAP: u32 = 4096;
             while (slot.ready.load(.acquire) != 1) { // safe because: pairs with the .release store in initSlot
-                if (spins >= SPIN_CAP) break;
+                if (spins >= SPIN_CAP) {
+                    // Saturation policy: a slot stuck mid-init past the cap
+                    // may be OUR key — probing past it could claim a
+                    // duplicate slot and split this runner's counters
+                    // forever. Drop this one record instead; the next call
+                    // lands after the initializer finishes.
+                    return null;
+                }
                 std.atomic.spinLoopHint();
                 spins += 1;
             }
-            if (slot.ready.load(.acquire) == 1 and slotMatches(slot, h, runner_id)) return slot;
+            if (slotMatches(slot, h, runner_id)) return slot;
             continue;
         }
 

@@ -150,7 +150,7 @@ test "test_uninstall_joins_cleanly: install then uninstall completes with no han
         .instance_id = "test-instance",
         .api_key = "test-key",
     };
-    otel_metrics.install(cfg);
+    _ = otel_metrics.install(cfg);
     try std.testing.expect(otel_metrics.isInstalled());
     // Empty ring → the flush thread never POSTs; uninstall wakes the tick sleep
     // and joins within one SLEEP_TICK_MS, leaving the exporter disabled.

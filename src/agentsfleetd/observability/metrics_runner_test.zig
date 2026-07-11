@@ -114,3 +114,29 @@ test "cardinality overflow routes to _other with the reason preserved" {
 // The fleet_memory_* family tests moved to metrics_memory_test.zig with the
 // module split; renderPrometheus still composes those families after the
 // runner ones, pinned there through this same render entry point.
+
+// ── Slot resolution under contention (saturation policy, no duplicates) ─────
+
+const StormThread = struct {
+    const PER_THREAD: usize = 200;
+    fn run(runner_id: []const u8) void {
+        var i: usize = 0;
+        while (i < PER_THREAD) : (i += 1) mr.incRunnerFailure(runner_id, null);
+    }
+};
+
+test "metrics_runner_no_duplicate_slot_under_contention" {
+    mr.resetForTest();
+    const THREADS = 8;
+    var threads: [THREADS]std.Thread = undefined;
+    for (&threads) |*t| t.* = try std.Thread.spawn(.{}, StormThread.run, .{"contended-runner"});
+    for (&threads) |*t| t.join();
+
+    // A duplicate slot for one runner id would split the counter across two
+    // series — the full total on ONE series is the no-duplicate proof.
+    var buf: [8192]u8 = undefined;
+    const out = try render(&buf);
+    var expected_buf: [128]u8 = undefined;
+    const expected = try std.fmt.bufPrint(&expected_buf, "agentsfleet_runner_failures_total{{runner_id=\"contended-runner\",reason=\"unknown\"}} {d}", .{THREADS * StormThread.PER_THREAD});
+    try std.testing.expect(contains(out, expected));
+}

@@ -88,7 +88,7 @@ pub fn initTelemetry(env_map: *const EnvMap, alloc: std.mem.Allocator) Telemetry
 
 pub fn initOtelLogs(env_map: *const EnvMap, alloc: std.mem.Allocator) void {
     if (otlp_config.configFromEnv(env_map, alloc)) |cfg| {
-        otel_logs.install(cfg);
+        _ = otel_logs.install(cfg);
         log.info("startup.otel_logs_ok", .{});
     }
 }
@@ -105,7 +105,7 @@ pub fn deinitOtelLogs() void {
 
 pub fn initOtelTraces(env_map: *const EnvMap, alloc: std.mem.Allocator) void {
     if (otlp_config.configFromEnv(env_map, alloc)) |cfg| {
-        otel_traces.install(cfg);
+        _ = otel_traces.install(cfg);
         log.info("startup.otel_traces_ok", .{});
     }
 }
@@ -122,7 +122,7 @@ pub fn deinitOtelTraces() void {
 
 pub fn initOtelMetrics(env_map: *const EnvMap, alloc: std.mem.Allocator) void {
     if (otlp_config.configFromEnv(env_map, alloc)) |cfg| {
-        otel_metrics.install(cfg);
+        _ = otel_metrics.install(cfg);
         log.info("startup.otel_metrics_ok", .{});
     } else {
         // Self-serve signal: the disabled reason lives in the startup log, not a

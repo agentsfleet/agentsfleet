@@ -44,18 +44,22 @@ pub fn Exporter(comptime hooks: Hooks) type {
 
         const log = logging.scoped(hooks.scope);
 
-        /// Install the exporter. Starts the background flush thread. Idempotent:
-        /// a second install while running is a no-op — two flush threads on one
-        /// ring would put two consumers on a single-consumer buffer.
-        pub fn install(cfg: config.GrafanaOtlpConfig) void {
-            if (g_running.load(.acquire)) return;
+        pub const InstallOutcome = enum { installed, already_running, spawn_failed };
+
+        /// Install the exporter. Starts the background flush thread. The claim
+        /// is a single atomic swap — a racing second install loses and changes
+        /// nothing (two flush threads on one ring would put two consumers on a
+        /// single-consumer buffer, and the overwritten thread handle would
+        /// never be joined).
+        pub fn install(cfg: config.GrafanaOtlpConfig) InstallOutcome {
+            if (g_running.swap(true, .acq_rel)) return .already_running;
             g_config = cfg;
-            g_running.store(true, .release);
             g_thread = std.Thread.spawn(.{}, flushLoop, .{}) catch {
                 g_config = null;
                 g_running.store(false, .release);
-                return;
+                return .spawn_failed;
             };
+            return .installed;
         }
 
         /// Stop the flush thread and drain. Wakes the tick sleep within one tick.

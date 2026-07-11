@@ -29,7 +29,7 @@ const TEST_CFG: config.GrafanaOtlpConfig = .{
 
 test "test_exporter_lifecycle: install spawns the flush thread, uninstall joins within a tick" {
     try std.testing.expect(!TestExporter.isInstalled());
-    TestExporter.install(TEST_CFG);
+    try std.testing.expectEqual(TestExporter.InstallOutcome.installed, TestExporter.install(TEST_CFG));
     try std.testing.expect(TestExporter.isInstalled());
     // Empty buffer (collect→null) → no POST; uninstall wakes the tick sleep and
     // joins cleanly, no hang.
@@ -37,14 +37,38 @@ test "test_exporter_lifecycle: install spawns the flush thread, uninstall joins 
     try std.testing.expect(!TestExporter.isInstalled());
 }
 
-test "double install is a no-op — single-consumer guard (no orphaned second thread)" {
-    TestExporter.install(TEST_CFG);
+test "double install loses the claim — single-consumer guard (no orphaned second thread)" {
+    try std.testing.expectEqual(TestExporter.InstallOutcome.installed, TestExporter.install(TEST_CFG));
     // Second install while running must NOT spawn a second flush thread (two
-    // consumers on one ring would corrupt it). The guard makes it a no-op.
-    TestExporter.install(TEST_CFG);
+    // consumers on one ring would corrupt it, and the overwritten handle
+    // would never be joined).
+    try std.testing.expectEqual(TestExporter.InstallOutcome.already_running, TestExporter.install(TEST_CFG));
     try std.testing.expect(TestExporter.isInstalled());
     // uninstall joins the single thread and completes (would hang/leak if a
     // second orphaned thread existed).
+    TestExporter.uninstall();
+    try std.testing.expect(!TestExporter.isInstalled());
+}
+
+/// Racing installer for the atomic-claim test: records its outcome.
+const RacingInstall = struct {
+    fn run(outcome: *TestExporter.InstallOutcome) void {
+        outcome.* = TestExporter.install(TEST_CFG);
+    }
+};
+
+test "test_exporter_double_install_one_thread: racing installs — exactly one claim wins" {
+    var a = TestExporter.InstallOutcome.spawn_failed;
+    var b = TestExporter.InstallOutcome.spawn_failed;
+    const ta = try std.Thread.spawn(.{}, RacingInstall.run, .{&a});
+    const tb = try std.Thread.spawn(.{}, RacingInstall.run, .{&b});
+    ta.join();
+    tb.join();
+    // Exactly one .installed; the loser observed .already_running — the
+    // pre-fix check-then-act let BOTH through, orphaning a thread handle.
+    const a_won = a == .installed and b == .already_running;
+    const b_won = b == .installed and a == .already_running;
+    try std.testing.expect(a_won or b_won);
     TestExporter.uninstall();
     try std.testing.expect(!TestExporter.isInstalled());
 }
