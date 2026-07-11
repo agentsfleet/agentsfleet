@@ -61,10 +61,11 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `src/agentsfleetd/db/pool.zig` | EDIT | allocator injected for the page_allocator site |
 | `lint-zig.py` | EDIT | drain check requires the `defer <q>.deinit()` pair per `PgQuery.from(` site |
 | `src/agentsfleetd/cmd/serve_lifecycle_integration_test.zig` | CREATE | boot → SIGTERM → drain full-daemon test; runs in the valgrind lane |
-| `src/agentsfleetd/events/subscription_hub_lifecycle_test.zig` | CREATE | reconnect racing attach/unsubscribe/stop; undrained-stop; deterministic real threads |
+| `src/agentsfleetd/cmd/serve_shutdown.zig` | EDIT | `publishedEvent()` test seam (~6 lines, Event set in `publishServer`, re-armed by `reset()`) — the deterministic boot witness the 5.1 test waits on before raising SIGTERM |
+| `src/agentsfleetd/events/subscription_hub_test.zig` | EDIT | 5.2 satisfied by the existing deterministic hub suite (001, folded into this PR); 7.2's churn soak extends this file — the planned `subscription_hub_lifecycle_test.zig` CREATE is obsoleted by the de-dup rule |
 | `src/agentsfleetd/http/handlers/fleets/create_install_steps_lifecycle_test.zig` | CREATE | production (null-WaitGroup-history) configuration vs teardown — asserts 001's tracked-worker behavior |
-| `src/agentsfleetd/observability/otlp/exporter_lifecycle_test.zig` | CREATE | live flush-thread install/uninstall/drain/double-install |
-| `src/lib/logging/sinks_lifecycle_test.zig` | CREATE | unregister under concurrent emits, real threads (extends 001's regression to a soak-shaped deterministic suite) |
+| `src/agentsfleetd/observability/otlp/exporter_test.zig` | EDIT | 5.4: drain-empties-ring leg added to the existing lifecycle suite (planned `exporter_lifecycle_test.zig` CREATE obsoleted — de-dup rule) |
+| `src/lib/logging/sinks_test.zig` | EDIT | 5.5: soak-shaped unregister-under-N-emitters added to the existing suite (planned `sinks_lifecycle_test.zig` CREATE obsoleted — de-dup rule) |
 | `src/agentsfleetd/secrets/crypto_store_test.zig` | EDIT | `checkAllAllocationFailures` over load/store paths |
 | `src/agentsfleetd/fleet/liveness_sweeper_integration_test.zig` | EDIT | concurrent-sweep variant moves off `page_allocator` onto `testing.allocator`; mid-query failure injection via tripwire |
 | `src/lib/common/rss.zig` | CREATE | Cross-platform RSS reader (`currentBytes()`: Linux `/proc/self/statm`, macOS `task_info`) — the soak probes' measurement seam |
@@ -155,8 +156,8 @@ run under `std.testing.allocator` so each is simultaneously a leak proof.
 
 ### §6 — Failure injection for crypto_store and the sweeper
 
-- **Dimension 6.1** — `checkAllAllocationFailures` over `crypto_store.load` and `store`: every allocation-failure point unwinds leak-free with key material zeroed → Test `test_crypto_store_alloc_failures_leak_free`
-- **Dimension 6.2** — `liveness_sweeper` integration: concurrent-sweep variant runs on `testing.allocator` (off `page_allocator`), and a tripwire mid-query failure during a sweep leaves zero residue → Test `test_concurrent_sweep_with_midquery_failure_leak_free`
+- **Dimension 6.1** — `checkAllAllocationFailures` over `crypto_store.load` and `store`: every allocation-failure point unwinds leak-free with key material zeroed → Test `test_crypto_store_alloc_failures_leak_free` — DONE (`crypto_store_test.zig`, two tests). The SELECT/INSERT runs on the conn (pool) allocator, so only load/store's own dupe/AAD/encrypt/decrypt allocations fail through the injected allocator — each surfaces OutOfMemory with zero residue (deferred free + `secureZero` ladder + `result.deinit` drain). Key-material zeroing stays structurally guaranteed by the deferred `secureZero` on kek/dek/dek_plain (+ the existing zeroization source test). **Validated pass vs live pg.**
+- **Dimension 6.2** — `liveness_sweeper` integration: concurrent-sweep variant runs on `testing.allocator` (off `page_allocator`), and a tripwire mid-query failure during a sweep leaves zero residue → Test `test_concurrent_sweep_with_midquery_failure_leak_free` — DONE. `SweepWorker` gains an injected `alloc` (concurrent variants pass `testing.allocator`, a thread-safe DebugAllocator — nothing rides `page_allocator`). New test sequences strictly: **stage 1 (main thread only)** arms `fetch_tw.errorAfter(.dupe_id, …, 1)`, asserts OOM, resets — the tripwire is unsynchronized module-global state, so it is never armed while workers run; **stage 2** N concurrent sweeps whose success + exactly-one-event dedup IS the residue oracle for stage 1 (memory residue fails `testing.allocator`; an undrained result poisoning a pooled conn would break the sweeps). **Validated pass vs live pg.**
 
 ### §7 — RSS growth probes (the Bun layer: process-level leak signal)
 
