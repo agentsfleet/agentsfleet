@@ -1,18 +1,76 @@
 //! SqlStatementSplitter — splits raw SQL text into individual statements.
 //!
-//! Handles:
+//! Handles, per the Postgres lexer:
 //!   - `;` as statement terminator
-//!   - `'...'` single-quoted string literals (with `''` escape)
-//!   - `$$...$$` bare dollar-quoting (tagged dollar-quotes not supported)
-//!   - `-- ...` line comments (stripped from output)
+//!   - `'...'` strings (`''` escape) and `E'...'` escape strings (backslash
+//!     escapes honored, so `\'` stays inside the literal)
+//!   - `"..."` quoted identifiers (`""` escape) — `;`, `--`, `/*`, `'` inside
+//!     them are inert
+//!   - `$$...$$` and tagged `$tag$...$tag$` dollar-quoting (UTF-8 tag bytes,
+//!     no length cap; a delimiter never opens immediately after an identifier
+//!     byte — maximal munch folds that `$` into the identifier)
+//!   - `-- ...` line comments and `/* ... */` block comments (nesting) —
+//!     neither contributes a statement boundary
 //!
-//! Does NOT handle:
-//!   - `/* ... */` block comments
-//!   - Tagged dollar-quotes (e.g. `$body$...$body$`)
+//! `validate` is the loud backstop: input that ends inside a string,
+//! identifier, dollar-quote, or block comment returns a named `SplitError` so
+//! a malformed migration fails before apply instead of splitting on a boundary
+//! inside the unterminated region. The error set is distinct from `error.PG`
+//! so callers never conflate a malformed migration with a database failure.
+//!
+//! Tests live in `sql_splitter_test.zig` (force-imported from `tests.zig`).
 
 const std = @import("std");
 
-const S_T_R_N = " \t\r\n";
+const WHITESPACE_CHARS = " \t\r\n";
+const LINE_COMMENT_MARKER = "--";
+const BLOCK_COMMENT_OPEN = "/*";
+const BLOCK_COMMENT_CLOSE = "*/";
+const DOLLAR_QUOTE_CHAR: u8 = '$';
+const SINGLE_QUOTE_CHAR: u8 = '\'';
+const DOUBLE_QUOTE_CHAR: u8 = '"';
+const BACKSLASH_CHAR: u8 = '\\';
+/// Postgres allows high-bit bytes in dollar-quote tags (lexer pattern
+/// `\$([A-Za-z\200-\377_][A-Za-z\200-\377_0-9]*)?\$`), so UTF-8 tags work.
+const HIGH_BIT_CHAR_FLOOR: u8 = 0x80;
+
+pub const SplitError = error{
+    UnterminatedString,
+    UnterminatedQuotedIdentifier,
+    UnterminatedDollarQuote,
+    UnterminatedBlockComment,
+};
+
+fn isDollarTagStartChar(c: u8) bool {
+    return std.ascii.isAlphabetic(c) or c == '_' or c >= HIGH_BIT_CHAR_FLOOR;
+}
+
+fn isDollarTagChar(c: u8) bool {
+    return isDollarTagStartChar(c) or std.ascii.isDigit(c);
+}
+
+/// Postgres `ident_cont`: `[A-Za-z0-9_$\200-\377]`. A dollar-quote delimiter
+/// cannot immediately follow one of these — maximal munch makes `a$b$` a
+/// single identifier, not `a` + an opening `$b$`.
+fn isIdentifierByte(c: u8) bool {
+    return isDollarTagChar(c) or c == DOLLAR_QUOTE_CHAR;
+}
+
+/// Dollar-quote delimiter at `pos`: `$$` or `$tag$` (no tag length cap — the
+/// scan stops at the first non-tag byte). Returns the whole delimiter
+/// including both `$` so the closer can be matched verbatim, or null when
+/// `pos` starts a positional parameter (`$1`) or a lone `$`.
+fn dollarDelimiterAt(sql: []const u8, pos: usize) ?[]const u8 {
+    std.debug.assert(sql[pos] == DOLLAR_QUOTE_CHAR);
+    var i = pos + 1;
+    while (i < sql.len) : (i += 1) {
+        const c = sql[i];
+        if (c == DOLLAR_QUOTE_CHAR) return sql[pos .. i + 1];
+        const valid_tag_char = if (i == pos + 1) isDollarTagStartChar(c) else isDollarTagChar(c);
+        if (!valid_tag_char) return null;
+    }
+    return null;
+}
 
 pub const SqlStatementSplitter = struct {
     const Self = @This();
@@ -20,19 +78,60 @@ pub const SqlStatementSplitter = struct {
     sql: []const u8,
     pos: usize,
     in_single_quote: bool,
-    in_dollar_quote: bool,
+    in_double_quote: bool,
+    /// True while inside an `E'...'` string, where backslash escapes (incl.
+    /// `\'`) stay inside the literal; a plain `'...'` treats `\` literally
+    /// (standard_conforming_strings).
+    single_quote_backslash_escapes: bool,
+    /// Whole opening delimiter (`$$`, `$body$`) while inside a dollar-quote;
+    /// the closing delimiter must match it verbatim, so `;`, `$$`, and other
+    /// tags inside the quoted body stay inert.
+    dollar_tag: ?[]const u8,
+    /// Set when a `/*` ran to end of input unterminated; `validate` reports it
+    /// (the comment itself was consumed, so `next` can't signal the defect).
+    unterminated_block_comment: bool,
 
     pub fn init(sql: []const u8) SqlStatementSplitter {
         return .{
             .sql = sql,
             .pos = 0,
             .in_single_quote = false,
-            .in_dollar_quote = false,
+            .in_double_quote = false,
+            .single_quote_backslash_escapes = false,
+            .dollar_tag = null,
+            .unterminated_block_comment = false,
         };
     }
 
-    /// Advance past whitespace and line comments. Returns the position of
-    /// the first non-comment, non-whitespace character (or end of input).
+    fn matchesAt(self: *const Self, marker: []const u8) bool {
+        return std.mem.startsWith(u8, self.sql[self.pos..], marker);
+    }
+
+    fn skipLineComment(self: *Self) void {
+        while (self.pos < self.sql.len and self.sql[self.pos] != '\n') : (self.pos += 1) {}
+    }
+
+    /// Postgres block comments nest; consume through the matching close. An
+    /// unterminated comment consumes to end of input and flags itself.
+    fn skipBlockComment(self: *Self) void {
+        var depth: u32 = 0;
+        while (self.pos < self.sql.len) {
+            if (self.matchesAt(BLOCK_COMMENT_OPEN)) {
+                depth += 1;
+                self.pos += BLOCK_COMMENT_OPEN.len;
+            } else if (self.matchesAt(BLOCK_COMMENT_CLOSE)) {
+                depth -= 1;
+                self.pos += BLOCK_COMMENT_CLOSE.len;
+                if (depth == 0) return;
+            } else {
+                self.pos += 1;
+            }
+        }
+        self.unterminated_block_comment = true;
+    }
+
+    /// Advance past whitespace and comments between statements, so a leading
+    /// comment is excluded from the next statement's slice.
     fn skipWhitespaceAndComments(self: *Self) void {
         while (self.pos < self.sql.len) {
             const ch = self.sql[self.pos];
@@ -40,67 +139,126 @@ pub const SqlStatementSplitter = struct {
                 self.pos += 1;
                 continue;
             }
-            if (ch == '-' and self.pos + 1 < self.sql.len and self.sql[self.pos + 1] == '-') {
-                while (self.pos < self.sql.len and self.sql[self.pos] != '\n') : (self.pos += 1) {}
+            if (self.matchesAt(LINE_COMMENT_MARKER)) {
+                self.skipLineComment();
+                continue;
+            }
+            if (self.matchesAt(BLOCK_COMMENT_OPEN)) {
+                self.skipBlockComment();
                 continue;
             }
             break;
         }
     }
 
+    /// The `'` opening at `pos` starts an `E'...'` escape string when a
+    /// standalone `E`/`e` immediately precedes it (standalone = not itself
+    /// the tail of an identifier like `CASE` or `table_e`).
+    fn escapeStringPrefixAt(self: *const Self, pos: usize) bool {
+        if (pos == 0) return false;
+        const prev = self.sql[pos - 1];
+        if (prev != 'E' and prev != 'e') return false;
+        return pos == 1 or !isIdentifierByte(self.sql[pos - 2]);
+    }
+
+    fn consumeSingleQuoteByte(self: *Self, ch: u8) void {
+        if (self.single_quote_backslash_escapes and ch == BACKSLASH_CHAR and self.pos + 1 < self.sql.len) {
+            self.pos += 2; // E'...': the escaped byte (incl. `\'`) stays inside
+            return;
+        }
+        if (ch == SINGLE_QUOTE_CHAR) {
+            if (self.pos + 1 < self.sql.len and self.sql[self.pos + 1] == SINGLE_QUOTE_CHAR) {
+                self.pos += 2; // `''` escape stays inside the literal
+                return;
+            }
+            self.in_single_quote = false;
+        }
+        self.pos += 1;
+    }
+
+    fn consumeDoubleQuoteByte(self: *Self, ch: u8) void {
+        if (ch == DOUBLE_QUOTE_CHAR) {
+            if (self.pos + 1 < self.sql.len and self.sql[self.pos + 1] == DOUBLE_QUOTE_CHAR) {
+                self.pos += 2; // `""` escape stays inside the identifier
+                return;
+            }
+            self.in_double_quote = false;
+        }
+        self.pos += 1;
+    }
+
     /// Returns the next non-empty, trimmed SQL statement, or null when exhausted.
     pub fn next(self: *Self) ?[]const u8 {
-        self.skipWhitespaceAndComments();
-        if (self.pos >= self.sql.len) return null;
+        // A loop, not recursion: a long run of empty statements (`;;;;…`) must
+        // not grow the stack — validate() walks this same path on untrusted
+        // input and must fail with a named error, never a stack overflow.
+        scan: while (true) {
+            self.skipWhitespaceAndComments();
+            if (self.pos >= self.sql.len) return null;
 
-        const start = self.pos;
+            const start = self.pos;
 
-        while (self.pos < self.sql.len) {
-            const ch = self.sql[self.pos];
+            while (self.pos < self.sql.len) {
+                const ch = self.sql[self.pos];
 
-            // Skip inline -- comments within a statement.
-            if (!self.in_single_quote and !self.in_dollar_quote and
-                ch == '-' and self.pos + 1 < self.sql.len and self.sql[self.pos + 1] == '-')
-            {
-                while (self.pos < self.sql.len and self.sql[self.pos] != '\n') : (self.pos += 1) {}
-                continue;
-            }
-
-            // Track single-quoted string literals.
-            if (!self.in_dollar_quote and ch == '\'') {
-                if (self.in_single_quote and self.pos + 1 < self.sql.len and self.sql[self.pos + 1] == '\'') {
-                    self.pos += 2;
+                if (self.dollar_tag) |tag| {
+                    if (ch == DOLLAR_QUOTE_CHAR and self.matchesAt(tag)) {
+                        self.dollar_tag = null;
+                        self.pos += tag.len;
+                    } else {
+                        self.pos += 1;
+                    }
                     continue;
                 }
-                self.in_single_quote = !self.in_single_quote;
+                if (self.in_single_quote) {
+                    self.consumeSingleQuoteByte(ch);
+                    continue;
+                }
+                if (self.in_double_quote) {
+                    self.consumeDoubleQuoteByte(ch);
+                    continue;
+                }
+
+                if (self.matchesAt(LINE_COMMENT_MARKER)) {
+                    self.skipLineComment();
+                    continue;
+                }
+                if (self.matchesAt(BLOCK_COMMENT_OPEN)) {
+                    self.skipBlockComment();
+                    continue;
+                }
+                if (ch == SINGLE_QUOTE_CHAR) {
+                    self.in_single_quote = true;
+                    self.single_quote_backslash_escapes = self.escapeStringPrefixAt(self.pos);
+                    self.pos += 1;
+                    continue;
+                }
+                if (ch == DOUBLE_QUOTE_CHAR) {
+                    self.in_double_quote = true;
+                    self.pos += 1;
+                    continue;
+                }
+                if (ch == DOLLAR_QUOTE_CHAR and (self.pos == 0 or !isIdentifierByte(self.sql[self.pos - 1]))) {
+                    if (dollarDelimiterAt(self.sql, self.pos)) |tag| {
+                        self.dollar_tag = tag;
+                        self.pos += tag.len;
+                        continue;
+                    }
+                }
+                if (ch == ';') {
+                    const stmt = std.mem.trim(u8, self.sql[start..self.pos], WHITESPACE_CHARS);
+                    self.pos += 1;
+                    if (stmt.len > 0) return stmt;
+                    continue :scan; // empty statement — rescan without recursing
+                }
+
                 self.pos += 1;
-                continue;
             }
 
-            // Track bare $$ dollar-quoting.
-            if (!self.in_single_quote and self.pos + 1 < self.sql.len and
-                ch == '$' and self.sql[self.pos + 1] == '$')
-            {
-                self.in_dollar_quote = !self.in_dollar_quote;
-                self.pos += 2;
-                continue;
-            }
-
-            // Statement terminator — only outside quotes.
-            if (ch == ';' and !self.in_single_quote and !self.in_dollar_quote) {
-                const stmt = std.mem.trim(u8, self.sql[start..self.pos], S_T_R_N);
-                self.pos += 1;
-                if (stmt.len > 0) return stmt;
-                return self.next();
-            }
-
-            self.pos += 1;
+            const tail = std.mem.trim(u8, self.sql[start..], WHITESPACE_CHARS);
+            if (tail.len > 0) return tail;
+            return null;
         }
-
-        // Tail — content after last semicolon.
-        const tail = std.mem.trim(u8, self.sql[start..], S_T_R_N);
-        if (tail.len > 0) return tail;
-        return null;
     }
 
     /// Count total statements without side effects.
@@ -110,120 +268,18 @@ pub const SqlStatementSplitter = struct {
         while (splitter.next() != null) : (n += 1) {}
         return n;
     }
+
+    /// Structural scan with no allocation: a named error when the input ends
+    /// inside a string, quoted identifier, dollar-quote, or block comment. A
+    /// migration either splits correctly or fails here — never a silent
+    /// truncation. Callers: `applySqlStatements` before apply, and the
+    /// migration corpus guard.
+    pub fn validate(sql: []const u8) SplitError!void {
+        var splitter = SqlStatementSplitter.init(sql);
+        while (splitter.next() != null) {}
+        if (splitter.in_single_quote) return SplitError.UnterminatedString;
+        if (splitter.in_double_quote) return SplitError.UnterminatedQuotedIdentifier;
+        if (splitter.dollar_tag != null) return SplitError.UnterminatedDollarQuote;
+        if (splitter.unterminated_block_comment) return SplitError.UnterminatedBlockComment;
+    }
 };
-
-// ── Tests ──────────────────────────────────────────────────────────────
-
-test "splits simple statements on semicolons" {
-    var s = SqlStatementSplitter.init("CREATE TABLE t (id INT); INSERT INTO t VALUES (1);");
-    try std.testing.expectEqualStrings("CREATE TABLE t (id INT)", s.next().?);
-    try std.testing.expectEqualStrings("INSERT INTO t VALUES (1)", s.next().?);
-    try std.testing.expect(s.next() == null);
-}
-
-test "preserves semicolons inside single-quoted strings" {
-    var s = SqlStatementSplitter.init("INSERT INTO t VALUES ('hello; world');");
-    try std.testing.expectEqualStrings("INSERT INTO t VALUES ('hello; world')", s.next().?);
-    try std.testing.expect(s.next() == null);
-}
-
-test "handles escaped single quotes" {
-    var s = SqlStatementSplitter.init("INSERT INTO t VALUES ('it''s ok');");
-    try std.testing.expectEqualStrings("INSERT INTO t VALUES ('it''s ok')", s.next().?);
-    try std.testing.expect(s.next() == null);
-}
-
-test "preserves semicolons inside dollar-quoted blocks" {
-    var s = SqlStatementSplitter.init(
-        \\CREATE FUNCTION f() RETURNS void AS $$
-        \\BEGIN
-        \\  RAISE NOTICE 'done;';
-        \\END;
-        \\$$ LANGUAGE plpgsql;
-    );
-    const stmt = s.next().?;
-    try std.testing.expect(std.mem.containsAtLeast(u8, stmt, 1, "RAISE NOTICE"));
-    try std.testing.expect(s.next() == null);
-}
-
-test "skips leading -- line comments" {
-    var s = SqlStatementSplitter.init(
-        \\-- This is a comment with ; and ' characters
-        \\SELECT 1;
-    );
-    try std.testing.expectEqualStrings("SELECT 1", s.next().?);
-    try std.testing.expect(s.next() == null);
-}
-
-test "apostrophe in comment does not open string literal" {
-    var s = SqlStatementSplitter.init(
-        \\-- This slot's existence matters; don't remove
-        \\SELECT 1;
-    );
-    try std.testing.expectEqualStrings("SELECT 1", s.next().?);
-    try std.testing.expect(s.next() == null);
-}
-
-test "comment-only input returns null" {
-    var s = SqlStatementSplitter.init(
-        \\-- version marker only
-        \\-- no tables here
-    );
-    try std.testing.expect(s.next() == null);
-}
-
-test "version marker file: comments + SELECT 1" {
-    var s = SqlStatementSplitter.init(
-        \\-- removed_table.sql
-        \\-- Slot reserved; original table dropped. This slot's existence matters.
-        \\SELECT 1;
-    );
-    try std.testing.expectEqualStrings("SELECT 1", s.next().?);
-    try std.testing.expect(s.next() == null);
-}
-
-test "multiple statements with interleaved comments" {
-    var s = SqlStatementSplitter.init(
-        \\-- Create schema
-        \\CREATE SCHEMA IF NOT EXISTS core;
-        \\-- Create table
-        \\CREATE TABLE core.t (id INT);
-        \\-- Done
-    );
-    try std.testing.expectEqualStrings("CREATE SCHEMA IF NOT EXISTS core", s.next().?);
-    try std.testing.expectEqualStrings("CREATE TABLE core.t (id INT)", s.next().?);
-    try std.testing.expect(s.next() == null);
-}
-
-test "empty input returns null" {
-    var s = SqlStatementSplitter.init("");
-    try std.testing.expect(s.next() == null);
-}
-
-test "whitespace-only input returns null" {
-    var s = SqlStatementSplitter.init("  \n\t\n  ");
-    try std.testing.expect(s.next() == null);
-}
-
-test "trailing content without semicolon is returned" {
-    var s = SqlStatementSplitter.init("SELECT 1; SELECT 2");
-    try std.testing.expectEqualStrings("SELECT 1", s.next().?);
-    try std.testing.expectEqualStrings("SELECT 2", s.next().?);
-    try std.testing.expect(s.next() == null);
-}
-
-test "count returns correct number of statements" {
-    try std.testing.expectEqual(@as(u32, 3), SqlStatementSplitter.count("A; B; C;"));
-    try std.testing.expectEqual(@as(u32, 1), SqlStatementSplitter.count("SELECT 1;"));
-    try std.testing.expectEqual(@as(u32, 0), SqlStatementSplitter.count("-- comment only"));
-    try std.testing.expectEqual(@as(u32, 1), SqlStatementSplitter.count("-- comment\nSELECT 1;"));
-}
-
-test "inline comment after SQL is included in statement" {
-    var s = SqlStatementSplitter.init("SELECT 1 -- trailing comment\n;");
-    const stmt = s.next().?;
-    // The comment is part of the statement text (between start and ;)
-    // Postgres handles it fine — it strips comments during parsing.
-    try std.testing.expect(std.mem.startsWith(u8, stmt, "SELECT 1"));
-    try std.testing.expect(s.next() == null);
-}

@@ -23,7 +23,42 @@ test "classifyRenew: a 2xx with an unparseable body is a malformed response" {
 test "classifyRenew: each terminal 4xx maps to terminal carrying that status" {
     inline for (.{ 401, 402, 404, 409 }) |status| {
         const out = try client.classifyRenew(testing.allocator, status, "");
-        try testing.expectEqual(client.RenewResult{ .terminal = status }, out);
+        // An empty body names no cause, so the stop keeps the historical class.
+        try testing.expectEqual(client.RenewResult{ .terminal = .{ .status = status, .reason = .renewal_terminate } }, out);
+    }
+}
+
+test "classifyRenew: a 402 carrying UZ-RUN-015 is a fleet budget breach" {
+    const body = "{\"error_code\":\"UZ-RUN-015\",\"detail\":\"Fleet budget exhausted\"}";
+    const out = try client.classifyRenew(testing.allocator, 402, body);
+    try testing.expectEqual(client.RenewResult{ .terminal = .{ .status = 402, .reason = .budget_breach } }, out);
+}
+
+test "classifyRenew: any other refusal cause stays renewal_terminate" {
+    // The tenant's credit pool (UZ-RUN-012) must not be mistaken for the fleet's
+    // own ceiling, and an unreadable body must never invent a specific cause.
+    const cases = [_][]const u8{
+        "{\"error_code\":\"UZ-RUN-012\"}", // credit exhausted, same 402
+        "{\"error_code\":\"UZ-RUN-011\"}", // lease lost
+        "{\"error_code\":\"\"}", // present but empty
+        "{\"detail\":\"no code field\"}", // no error_code at all
+        "{truncated", // unparseable
+        "", // empty
+    };
+    for (cases) |body| {
+        const out = try client.classifyRenew(testing.allocator, 402, body);
+        try testing.expectEqual(client.RenewResult{ .terminal = .{ .status = 402, .reason = .renewal_terminate } }, out);
+    }
+}
+
+test "classifyRenew: UZ-RUN-015 on a NON-402 terminal status is not a budget breach" {
+    // Only the 402 budget refusal carries UZ-RUN-015 server-side. A 401/404/409
+    // whose body happens to carry it (proxy injection, a future reuse) must NOT
+    // be relabeled budget_breach — the classifier gates on status == 402.
+    const body = "{\"error_code\":\"UZ-RUN-015\"}";
+    inline for (.{ 401, 404, 409 }) |status| {
+        const out = try client.classifyRenew(testing.allocator, status, body);
+        try testing.expectEqual(client.RenewResult{ .terminal = .{ .status = status, .reason = .renewal_terminate } }, out);
     }
 }
 
