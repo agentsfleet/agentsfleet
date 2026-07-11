@@ -16,12 +16,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M126
 **Workstream:** 002
 **Date:** Jul 11, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P2 — governance, lint, docs, and comment/annotation retrofit; prevents the M126_001 defect classes from recurring rather than fixing a live defect.
 **Categories:** API, DOCS
 **Batch:** B2 — after M126_001 merges (shared lifecycle-spine files; rule A6 cites the tripwire module 001 vendors). May run parallel with M126_003 (disjoint files except `make/quality.mk` — coordinate at PLAN if both are active).
-**Branch:** `feat/m126-002-ghostty-discipline-codification`
-**Test Baseline:** recorded at CHORE(open) via `make _lint_zig_test_depth`. Authoring-time reference: `unit=2500 integration=299` (`main` @ `3b1719a4b`, Jul 11, 2026; expect 001's delta on top).
+**Branch:** `feat/m126-001-shutdown-race-leak-fixes` — folded into the M126_001 worktree/PR per Indy (Jul 11, 2026)
+**Test Baseline:** unit=2500 integration=299 — recorded at CHORE(open), Jul 11, 2026, via `make _lint_zig_test_depth` on `feat/m126-001-shutdown-race-leak-fixes` @ `35dc828e1`.
 **Depends on:** M126_001 (tripwire module exists; spine files carry 001's fixes before retrofit annotates them).
 **Provenance:** agent-generated (pre-spec, `docs/v2/reviews/m126-ghostty-adversarial-review.md` §5 — ghostty practice mining; Indy directed alignment on SPSC ownership transfer, shutdown ordering, documented lock invariants, tripwire, and a strict Allocator model, recorded in `dispatch/write_zig.md` with Invariance Suite proof).
 **Canonical architecture:** `docs/architecture/concurrency.md` — created by this workstream (§3); becomes the doc `name_architecture` consults for every future stream/queue/thread naming.
@@ -315,6 +315,7 @@ N/A — no symbols removed; retrofit adds annotations only. S8/S9-equivalent hyg
 ## Discovery (consult log)
 
 - **Consults** — Architecture / Legacy-Design / gate-flag triage: the question asked + Indy's decision.
+  - Fold decision — > Indy (2026-07-11 ~12:26): "go, i chore open pull those M126_002,M126_003 into your worktree of M126_001 and commit in your PR." — all three workstreams execute on this branch, one PR.
 - **Metrics review** — events added, extra events found during `/review`, analytics/funnel playbook update or the explicit no-change reason.
 - **Skill-chain outcomes** — `/write-unit-test`, `/review`, `kishore-babysit-prs` results (order per `AGENTS.md` CHORE(close); iteration counts, findings dispositioned).
 - **Deferrals** — every "deferred to follow-up" needs an **Indy-acked verbatim quote** here, format `> Indy (YYYY-MM-DD HH:MM): "<quote>" — context: <which item, why>`. An agent-unilateral deferral is **incomplete scope, not deferral**, and blocks CHORE(close) until the item lands or the quote is captured.
