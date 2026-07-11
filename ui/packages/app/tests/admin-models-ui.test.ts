@@ -4,7 +4,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import userEvent from "@testing-library/user-event";
 import { TooltipProvider } from "@agentsfleet/design-system";
 
-// Only the server-action module is stubbed; lib/api/admin_models (the $/1M⇄nanos
+// Only the server-action module is stubbed; lib/api/admin_model_library (the $/1M⇄nanos
 // conversion) stays real so the form's actual conversion is exercised, not faked.
 // vi.hoisted: vi.mock is hoisted above const decls, so the mock fns must be too.
 const {
@@ -37,7 +37,7 @@ vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: routerRefreshMo
 import AddModelDialog from "@/app/(dashboard)/admin/models/components/AddModelDialog";
 import CatalogueList from "@/app/(dashboard)/admin/models/components/CatalogueList";
 import ModelsView from "@/app/(dashboard)/admin/models/components/ModelsView";
-import { type AdminModel, type PlatformKey, OPENAI_COMPATIBLE_PROVIDER } from "@/lib/api/admin_models";
+import { type AdminModel, type PlatformKey, OPENAI_COMPATIBLE_PROVIDER } from "@/lib/api/admin_model_library";
 import { EVENTS } from "../lib/analytics/events";
 
 function renderWithTooltipProvider(node: React.ReactElement) {

@@ -8,7 +8,7 @@ const common = @import("handlers/common.zig");
 const hx_mod = @import("handlers/hx.zig");
 
 const health = @import("handlers/health.zig");
-const model_caps_h = @import("handlers/model_caps.zig");
+const model_library_h = @import("handlers/model_library.zig");
 const auth_sessions = @import("handlers/auth/sessions.zig");
 const fleet_api = @import("handlers/fleets/api.zig");
 const fleet_secrets = @import("handlers/fleets/secrets.zig");
@@ -18,7 +18,7 @@ const tenant_workspaces_h = @import("handlers/tenant_workspaces.zig");
 const tenant_provider_h = @import("handlers/tenant_provider.zig");
 const tenant_model_entries_h = @import("handlers/tenant_model_entries.zig");
 const admin_keys = @import("handlers/admin/platform_keys.zig");
-const admin_models = @import("handlers/admin/model_caps_admin.zig");
+const admin_models = @import("handlers/admin/model_library_admin.zig");
 const memory = @import("handlers/memory/handler.zig");
 const grants = @import("handlers/integration_grants/handler.zig");
 const grants_ws = @import("handlers/integration_grants/workspace.zig");
@@ -62,9 +62,10 @@ pub fn invokeMetrics(hx: *Hx, req: *httpz.Request, route: router.Route) void {
     health.innerMetrics(hx.*, req);
 }
 
-pub fn invokeModelCaps(hx: *Hx, req: *httpz.Request, route: router.Route) void {
+pub fn invokeModelLibrary(hx: *Hx, req: *httpz.Request, route: router.Route) void {
     _ = route;
-    model_caps_h.innerGetModelCaps(hx.*, req);
+    if (!common.requireMethod(hx.res, req.method, .GET)) return;
+    model_library_h.innerGetModelLibrary(hx.*);
 }
 
 // ── Auth sessions ─────────────────────────────────────────────────────────

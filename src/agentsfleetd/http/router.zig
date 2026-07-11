@@ -1,7 +1,7 @@
 const std = @import("std");
 const httpz = @import("httpz");
 const matchers = @import("route_matchers.zig");
-const model_caps_h = @import("handlers/model_caps.zig");
+const model_library_h = @import("handlers/model_library.zig");
 const runner_protocol = @import("contract").protocol;
 
 const S_EVENTS = "events";
@@ -14,7 +14,7 @@ pub fn match(path: []const u8, method: httpz.Method) ?Route {
     if (std.mem.eql(u8, path, "/healthz")) return .healthz;
     if (std.mem.eql(u8, path, "/readyz")) return .readyz;
     if (std.mem.eql(u8, path, "/metrics")) return .metrics;
-    if (std.mem.eql(u8, path, model_caps_h.MODEL_CAPS_PATH)) return .model_caps;
+    if (std.mem.eql(u8, path, model_library_h.MODEL_LIBRARY_PATH)) return .model_library;
     if (std.mem.eql(u8, path, "/v1/auth/sessions")) return .create_auth_session;
     if (std.mem.eql(u8, path, "/v1/tenants/me/billing/charges")) return .get_tenant_billing_charges;
     if (std.mem.eql(u8, path, "/v1/tenants/me/billing")) return .get_tenant_billing;
@@ -99,7 +99,7 @@ fn matchV1(p: matchers.Path, method: httpz.Method) ?Route {
     // ── Admin platform key by provider ────────────────────────────────────
     if (matchers.matchAdminPlatformKey(p)) |provider| return .{ .delete_admin_platform_key = provider };
 
-    // ── Admin model-caps catalogue row by uid ─────────────────────────────
+    // ── Admin model-library catalogue row by uid ─────────────────────────────
     if (matchers.matchAdminModel(p)) |uid| return .{ .admin_model_by_id = uid };
 
     // ── Tenant API key by id ──────────────────────────────────────────────
@@ -153,6 +153,10 @@ fn matchV1(p: matchers.Path, method: httpz.Method) ?Route {
     if (matchers.matchWebhook(p)) |zid| return .{ .receive_webhook = zid };
 
     return null;
+}
+
+test "match resolves the model library route" {
+    try std.testing.expectEqualDeep(Route.model_library, match(model_library_h.MODEL_LIBRARY_PATH, .GET).?);
 }
 
 test "match resolves tenant billing route" {

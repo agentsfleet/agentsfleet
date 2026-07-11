@@ -21,7 +21,7 @@ const common = @import("../common.zig");
 const error_codes = @import("../../../errors/error_registry.zig");
 const id_format = @import("../../../types/id_format.zig");
 const tenant_provider = @import("../../../state/tenant_provider.zig");
-const model_caps_store = @import("../../../state/model_caps_store.zig");
+const model_library_store = @import("../../../state/model_library_store.zig");
 const hx_mod = @import("../hx.zig");
 const sql = @import("platform_keys/sql.zig");
 
@@ -111,7 +111,7 @@ pub fn innerPutAdminPlatformKey(hx: hx_mod.Hx, req: *httpz.Request) void {
 
     // Billing-spine guard: the default's (provider, model) MUST be a priced
     // catalogue row. The cap comes from that row — authoritative, no body drift.
-    const cap = model_caps_store.capFor(conn, input.provider, input.model) orelse {
+    const cap = model_library_store.capFor(conn, input.provider, input.model) orelse {
         hx.fail(error_codes.ERR_PROVIDER_MODEL_NOT_IN_CATALOGUE, "model is not a priced catalogue row for this provider; add it to /admin/models first");
         return;
     };

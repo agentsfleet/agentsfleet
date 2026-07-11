@@ -89,7 +89,7 @@ x-agentsfleet:
     stage_chunk_threshold: 0.75    # % context fill that triggers chunking
     context_cap_tokens: 200000     # the active model's context window
                                     # (resolved at install time from the
-                                    #  model-caps endpoint — see user_flow.md
+                                    #  model library — see user_flow.md
                                     #  §8.7 and billing_and_provider_keys.md). 0 is the
                                     # self-managed overlay sentinel — same shape as
                                     # the empty `model` value above.
@@ -144,7 +144,7 @@ The runtime ships with model-tier-aware defaults the user inherits without any c
 - `memory_checkpoint_every: 5` and `stage_chunk_threshold: 0.75` for every model — checkpoint cadence and chunk-trigger fraction don't meaningfully change with context size.
 - `tool_window: auto` resolves at install time based on the active model's context cap: **30** when the cap is at least one million tokens, **20** for caps between two-hundred-thousand and three-hundred-thousand tokens, **10** for caps at or below two-hundred-thousand tokens.
 
-The model's context cap is **not** baked into the runtime. It's resolved at install time (platform-managed posture) or at provider-set time (self-managed provider key posture) from the model-caps endpoint. See [`user_flow.md`](./user_flow.md) §8.7 and [`billing_and_provider_keys.md`](./billing_and_provider_keys.md).
+The model's context cap is **not** baked into the runtime. It's resolved at install time (platform-managed posture) or at provider-set time (self-managed provider key posture) from the model library. See [`user_flow.md`](./user_flow.md) §8.7 and [`billing_and_provider_keys.md`](./billing_and_provider_keys.md).
 
 ### When a user does want to override (rare)
 

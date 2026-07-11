@@ -195,7 +195,7 @@ pub const ENTRIES = [_]Entry{
         "Run `agentsfleet secret add <name> --data=@-` to create it.", "We couldn't find that secret. Store it under Secrets & ENVs, then try again."),
     eu("UZ-PROVIDER-003", .bad_request, "Secret JSON missing required field", "Stored secret JSON must include `provider` (a non-empty string); `api_key` is required for a named provider but optional for an `openai-compatible` endpoint. `model` is optional — the model registry entry carries it, not the credential. " ++
         "Re-run `agentsfleet secret add` with the required fields.", "That secret is missing required fields. It needs a provider set (and an API key for a named provider) — edit it under Secrets & ENVs and add them."),
-    eu("UZ-PROVIDER-004", .bad_request, "Model not in library", "The effective model is not present in core.model_library. Pick a model from the model-caps endpoint " ++
+    eu("UZ-PROVIDER-004", .bad_request, "Model not in library", "The effective model is not present in core.model_library. Pick a model from the model library (GET /v1/models, or the admin list) " ++
         "or request the library be extended.", "That model isn't in our library yet. Pick a listed model, or ask us to add support for it."),
     eu("UZ-PROVIDER-005", .bad_request, "Custom endpoint base_url invalid or unsafe", "An openai-compatible credential needs a valid `base_url`: it must use https and must not target a " ++
         "loopback, private, link-local, or cloud-metadata host. A non-openai-compatible provider must not carry a `base_url`.", "That endpoint URL isn't allowed. Use a public https URL for your custom endpoint."),

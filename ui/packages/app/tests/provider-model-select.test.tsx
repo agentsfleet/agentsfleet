@@ -1,7 +1,7 @@
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import type { ModelCap } from "@/lib/api/model_caps";
+import type { LibraryModel } from "@/lib/api/model_library";
 
 // Catalogue-backed model picker. With a catalogue it constrains to a <Select>
 // (provider-scoped or provider-agnostic); when empty it degrades to a free-text
@@ -9,7 +9,7 @@ import type { ModelCap } from "@/lib/api/model_caps";
 // branches are deterministic.
 
 const { catalogueState } = vi.hoisted(() => ({
-  catalogueState: { models: [] as ModelCap[], loading: false, error: false },
+  catalogueState: { models: [] as LibraryModel[], loading: false, error: false },
 }));
 
 vi.mock("@/app/(dashboard)/w/[workspaceId]/settings/models/components/ModelCatalogueProvider", () => ({
@@ -19,7 +19,7 @@ vi.mock("@agentsfleet/design-system", async () => (await import("./helpers/model
 
 import ProviderModelSelect from "@/app/(dashboard)/w/[workspaceId]/settings/models/components/ProviderModelSelect";
 
-const cap = (id: string, provider: string): ModelCap => ({
+const cap = (id: string, provider: string): LibraryModel => ({
   id,
   provider,
   context_cap_tokens: 1,

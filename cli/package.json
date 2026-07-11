@@ -1,6 +1,6 @@
 {
   "name": "@agentsfleet/cli",
-  "version": "0.16.1",
+  "version": "0.17.0",
   "description": "agentsfleet CLI",
   "repository": {
     "type": "git",

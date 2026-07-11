@@ -13,15 +13,15 @@ import {
   setPlatformDefault,
   type AdminModel,
   type AdminModelList,
-  type ModelCapInput,
+  type LibraryModelInput,
   type ModelRatesInput,
-} from "@/lib/api/admin_models";
+} from "@/lib/api/admin_model_library";
 
 export async function listAdminModelsAction(): Promise<ActionResult<AdminModelList>> {
   return requireScope(SCOPE.MODEL_READ, () => withToken((t) => listAdminModels(t)));
 }
 
-export async function createAdminModelAction(body: ModelCapInput): Promise<ActionResult<AdminModel>> {
+export async function createAdminModelAction(body: LibraryModelInput): Promise<ActionResult<AdminModel>> {
   return requireScope(SCOPE.MODEL_ADMIN, () => withToken((t) => createAdminModel(t, body)));
 }
 
