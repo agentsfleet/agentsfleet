@@ -3,9 +3,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 
 const getModelLibraryActionMock = vi.hoisted(() => vi.fn());
+const routerPushMock = vi.hoisted(() => vi.fn());
+// Stable router instance — Next's real useRouter returns a stable object, and
+// the provider's effect depends on it; a per-render mock object would re-fire
+// the effect and double-count the fetch.
+const routerMock = vi.hoisted(() => ({ push: routerPushMock }));
 vi.mock("@/app/(dashboard)/w/[workspaceId]/settings/models/actions", () => ({
   getModelLibraryAction: getModelLibraryActionMock,
 }));
+vi.mock("next/navigation", () => ({ useRouter: () => routerMock }));
 
 import {
   ModelCatalogueProvider,
@@ -52,7 +58,7 @@ describe("ModelCatalogueProvider", () => {
     expect(getModelLibraryActionMock).toHaveBeenCalledTimes(1);
   });
 
-  it("degrades to error=true / empty models when the action reports failure (auth/network mapped to ok:false)", async () => {
+  it("degrades to error=true / empty models when the action reports a non-auth failure", async () => {
     getModelLibraryActionMock.mockResolvedValue({ ok: false, error: "Service Unavailable", status: 503 });
     render(
       React.createElement(ModelCatalogueProvider, null, React.createElement(Probe)),
@@ -60,6 +66,18 @@ describe("ModelCatalogueProvider", () => {
     await waitFor(() => expect(screen.getByTestId("error").textContent).toBe("true"));
     expect(screen.getByTestId("loading").textContent).toBe("false");
     expect(screen.getByTestId("models").textContent).toBe("");
+    expect(routerPushMock).not.toHaveBeenCalled();
+  });
+
+  it("routes to sign-in on a 401 — an expired session is not a catalogue outage", async () => {
+    getModelLibraryActionMock.mockResolvedValue({ ok: false, error: "Not authenticated", status: 401 });
+    render(
+      React.createElement(ModelCatalogueProvider, null, React.createElement(Probe)),
+    );
+    await waitFor(() => expect(routerPushMock).toHaveBeenCalledWith("/sign-in"));
+    // No free-text degrade: the user leaves for sign-in instead of being
+    // handed silent manual model-id inputs.
+    expect(screen.getByTestId("error").textContent).toBe("false");
   });
 
   it("degrades to error=true / empty models when the action call itself rejects", async () => {
