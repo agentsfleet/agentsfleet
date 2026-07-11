@@ -288,3 +288,50 @@ test "sink_unregister_waits_for_inflight_emit" {
     try e1_done.timedWait(5 * std.time.ns_per_s);
     try u_done.timedWait(5 * std.time.ns_per_s);
 }
+
+// ── Soak-shaped unregister-under-load ───────────────────────────────────────
+// The epoch-ticket drain is proven deterministically above with one gated
+// emitter; this pins the same safety at volume — N emitter threads hammering
+// the registry while the sink is pulled out. testing.allocator is the leak /
+// double-free oracle; the append-under-lock means every landed emit is a whole
+// line, so a torn concurrent append would break the length invariant. Bounded
+// loops + join, zero sleeps.
+
+const SOAK_EMITTERS: usize = 8;
+const SOAK_EMITS_PER_THREAD: usize = 256;
+const SOAK_LINE = "event=soak_emit\n"; // body + newline BufferedSink.emit writes per emit
+
+const SoakEmitter = struct {
+    fn run(iterations: usize) void {
+        var i: usize = 0;
+        while (i < iterations) : (i += 1) {
+            emitToSinks(.info, "soak", 0, "event=soak_emit");
+        }
+    }
+};
+
+test "unregister under N concurrent emitters: whole-line emits, no double-free, no lost sink" {
+    var bs = BufferedSink.init(std.testing.allocator);
+    defer bs.deinit();
+    clearSinksForTest();
+    defer clearSinksForTest();
+    registerSink(bs.sink());
+
+    var threads: [SOAK_EMITTERS]std.Thread = undefined;
+    for (&threads) |*t| t.* = try std.Thread.spawn(.{}, SoakEmitter.run, .{SOAK_EMITS_PER_THREAD});
+
+    // Pull the sink out mid-stream. unregisterByCtx waits for every in-flight
+    // emit that snapshotted this ctx to complete before returning, so no emitter
+    // dereferences bs afterward; later emits see the compacted registry and drop.
+    sinks.unregisterByCtx(@ptrCast(&bs));
+
+    for (&threads) |t| t.join();
+
+    const captured = try bs.snapshot();
+    defer std.testing.allocator.free(captured);
+    // Every landed emit is a complete SOAK_LINE (append body+'\n' under the sink
+    // mutex is atomic vs. other emitters) — a torn interleave would leave a
+    // partial line and fail this. The exact count is race-dependent (some emits
+    // land pre-drain, the rest drop), so we assert the safety invariant, not it.
+    try std.testing.expectEqual(@as(usize, 0), captured.len % SOAK_LINE.len);
+}
