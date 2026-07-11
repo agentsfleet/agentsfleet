@@ -86,7 +86,15 @@ fn headContains(head: []const u8, needle: []const u8) bool {
 // ── dispatch in-flight ceiling ──────────────────────────────────────────────
 
 test "integration: api-class requests shed 429 at the ceiling; ops routes and 404s never shed" {
-    const h = TestHarness.start(ALLOC, .{ .configureRegistry = fixtures.noopRegistry }) catch |err| switch (err) {
+    // The fixture JWKS triplet lets the admitted ok-leg authenticate against
+    // the bearer-authed probe route (shed legs stay unauthenticated — admission
+    // runs before the middleware chain).
+    const h = TestHarness.start(ALLOC, .{
+        .configureRegistry = fixtures.noopRegistry,
+        .inline_jwks_json = fixtures.TEST_JWKS,
+        .issuer = fixtures.TEST_ISSUER,
+        .audience = fixtures.TEST_AUDIENCE,
+    }) catch |err| switch (err) {
         error.SkipZigTest, error.MissingRedisUrl => return error.SkipZigTest,
         else => return err,
     };

@@ -77,6 +77,9 @@ Primary targets below; every import/call site the blast-radius grep (Dimension 1
 | stale-prose sites (`state/tenant_provider.zig`, `fleet/context_resolve.zig`, `fleet/service_token_splits_wire_test.zig`, `http/rbac_http_integration_test.zig`, `http/handlers/fleets/backpressure_integration_test.zig`) | EDIT | comments/fixture names off the old naming; the backpressure probe repoints at `/v1/models` (admission sheds pre-auth, so its unauthenticated shed legs still 429; the ok-leg attaches a fixture bearer) |
 | `docs/architecture/billing_and_provider_keys.md`, `docs/architecture/scenarios/README.md`, `docs/architecture/user_flow.md` | EDIT | §10 and every flow mention rewritten to the authenticated read |
 | `~/Projects/docs`: `docs.json`, `changelog.mdx`, `cli/agentsfleet.mdx`, `api-reference/error-codes.mdx` | EDIT (own branch, per operating model) | nav page swap, retirement `<Update>`, stale "resolves from the cap.json endpoint" CLI prose fixed, `UZ-PROVIDER-004` guidance reworded to "the model library" |
+| `VERSION` + `build.zig.zon` + `cli/package.json` | EDIT | 0.16.1 → 0.17.0 (pre-v1.0 breaking → minor, release-template matrix) via `make sync-version` |
+| `ui/packages/app/tests/**` | EDIT | suites follow the renames + action repoint; `provider-actions.test.ts` gains the `getModelLibraryAction` forwarder tests (coverage-audit finding) |
+| `docs/REST_API_DESIGN_GUIDELINES.md` (symlink → dotfiles) | EDIT (dotfiles commit) | the model catalogue leaves the raw-handler exceptions table — it is bearer-authed now |
 
 ## Applicable Rules
 
@@ -109,42 +112,42 @@ Primary targets below; every import/call site the blast-radius grep (Dimension 1
 The rename-only slice: files whose behavior is untouched go straight to their final names. **Implementation default:** `git mv` each file, rename every exported `Cap`/`Caps` symbol to its `Library` equivalent, fix every `@import` call site the blast-radius grep surfaced. These land as pure-rename commits, before any rework commit.
 
 - **Dimension 1.1** — the blast-radius grep for every renamed/deleted token (`model_caps`, `ModelCaps`, `Cap`-named exports, `_um/`, `cap.json`, `CAP_JSON`, `publicConfig`) is run from repo root, no path filter, and its full result set recorded in Discovery before any file is touched → Acceptance (Discovery record, not a unit test) — **DONE** (see Discovery)
-- **Dimension 1.2** — the full existing Zig suite (unit + integration) passes at baseline counts after the renames, and both linux targets cross-compile clean → Test `test_zig_suite_green_post_rename`
+- **Dimension 1.2** — the full existing Zig suite (unit + integration) passes at baseline counts after the renames, and both linux targets cross-compile clean → Test `test_zig_suite_green_post_rename` — **DONE** (test-unit-all exit 0; unit 2487 ≥ baseline 2486; both linux targets compile)
 
 ### §2 — Authenticated model-library read (`GET /v1/models`)
 
 The public handler renames AND reworks: `model_caps.zig` → `model_library.zig` becomes the authenticated read. **Implementation default:** auth resolution mirrors `tenant_model_entries.zig`; the existing store read is reused; the response carries `version` + `models[]` only — the `rates`/`billing` blocks and the retired document's `?model=` filter are not ported (zero consumers).
 
-- **Dimension 2.1** — `GET /v1/models` with a valid token → `200 { version, models[] }`; each row carries exactly the retired document's `models[]` fields → Test `test_model_library_read_serves_catalogue`
-- **Dimension 2.2** — missing or invalid token → `401` problem+json via the existing auth envelope → Test `test_model_library_read_requires_auth`
-- **Dimension 2.3** — empty catalogue → `200` with `models: []` (the not-yet-seeded state stays valid) → Test `test_model_library_read_empty_catalogue_ok`
+- **Dimension 2.1** — `GET /v1/models` with a valid token → `200 { version, models[] }`; each row carries exactly the retired document's `models[]` fields → Test `test_model_library_read_serves_catalogue` — **DONE**
+- **Dimension 2.2** — missing or invalid token → `401` problem+json via the existing auth envelope → Test `test_model_library_read_requires_auth` — **DONE**
+- **Dimension 2.3** — empty catalogue → `200` with `models: []` (the not-yet-seeded state stays valid) → Test `test_model_library_read_empty_catalogue_ok` — **DONE**
 
 ### §3 — Rename the TypeScript surface + dashboard repoint
 
 **Implementation default:** `git mv` both client files; `ModelCap`→`LibraryModel` and `ModelCapInput`→`LibraryModelInput` rename (they survive); `CapJson`/`CapRates`/`CapBilling` and the `CAP_JSON_*` constants are deleted, never renamed. The catalogue fetch becomes a Server Action minting the session token via `auth().getToken()` (mirroring `listTenantBillingChargesAction`); `ModelCatalogueProvider` calls it on mount, preserving once-per-session semantics and the degrade path.
 
-- **Dimension 3.1** — the provider populates pickers (`ProviderModelSelect`, `AddModelEntryDialog`, `ModelsRegistryTable`) through the authenticated read → Test `test_catalogue_provider_uses_authed_read`
-- **Dimension 3.2** — a failed fetch (network error, `401`, `5xx`, token-mint failure) degrades pickers to free-text entry exactly as today → Test `test_catalogue_fetch_failure_degrades_free_text`
-- **Dimension 3.3** — the full existing UI suite passes at baseline counts after the rename+repoint → Test `test_ui_suite_green_post_rename`
+- **Dimension 3.1** — the provider populates pickers (`ProviderModelSelect`, `AddModelEntryDialog`, `ModelsRegistryTable`) through the authenticated read → Test `test_catalogue_provider_uses_authed_read` — **DONE**
+- **Dimension 3.2** — a failed fetch (network error, `401`, `5xx`, token-mint failure) degrades pickers to free-text entry exactly as today → Test `test_catalogue_fetch_failure_degrades_free_text` — **DONE**
+- **Dimension 3.3** — the full existing UI suite passes at baseline counts after the rename+repoint → Test `test_ui_suite_green_post_rename` — **DONE** (app lane green in test-unit-all)
 
 ### §4 — Public endpoint retirement
 
 **Pre-flip go/no-go (blocking):** before the route flips, Discovery must carry either access-log evidence that no third party reads `cap.json`, or Indy's acked acceptance of breaking anonymous readers. Agent-unilateral flipping without that record violates the consult discipline.
 
 - **Dimension 4.1** — the go/no-go consult above is recorded in Discovery → Acceptance (Discovery record, not a unit test) — **DONE** (Indy ack recorded at CHORE(open), see Discovery)
-- **Dimension 4.2** — `GET /_um/<key>/cap.json` → `404`; no alias, no redirect → Test `test_cap_json_path_returns_404`
-- **Dimension 4.3** — zero `model_caps`/`ModelCaps` references in `src/`; zero `model_caps`/`ModelCap`/`CAP_JSON` references in `ui/`; zero `_um/`/`cap.json` references in `src/`, `ui/`, `public/`, `scripts/`. Single carve-out: `model_library_integration_test.zig` carries the retired path literal as the 404 pin test (Dimension 4.2's proof is not serving code) → Test `test_zero_old_name_references` (grep-based)
-- **Dimension 4.4** — `publicConfig`/`PublicConfig` and the rates/billing wire types are deleted; zero references remain → Test `test_public_config_orphan_removed` (grep-based)
+- **Dimension 4.2** — `GET /_um/<key>/cap.json` → `404`; no alias, no redirect → Test `test_cap_json_path_returns_404` — **DONE**
+- **Dimension 4.3** — zero `model_caps`/`ModelCaps` references in `src/`; zero `model_caps`/`ModelCap`/`CAP_JSON` references in `ui/`; zero `_um/`/`cap.json` references in `src/`, `ui/`, `public/`, `scripts/`. Single carve-out: `model_library_integration_test.zig` carries the retired path literal as the 404 pin test (Dimension 4.2's proof is not serving code) → Test `test_zero_old_name_references` (grep-based) — **DONE**
+- **Dimension 4.4** — `publicConfig`/`PublicConfig` and the rates/billing wire types are deleted; zero references remain → Test `test_public_config_orphan_removed` (grep-based) — **DONE**
 
 ### §5 — OpenAPI + coverage checks follow
 
-- **Dimension 5.1** — `make check-openapi` passes: `GET /v1/models` documented, the retired path absent, Redocly lint + URL-shape + route-coverage checks green → Test `test_openapi_gate_green` (build gate)
-- **Dimension 5.2** — the coverage/shape scripts' own unit tests pass with the updated mappings → Test `test_openapi_script_units_green`
+- **Dimension 5.1** — `make check-openapi` passes: `GET /v1/models` documented, the retired path absent, Redocly lint + URL-shape + route-coverage checks green → Test `test_openapi_gate_green` (build gate) — **DONE**
+- **Dimension 5.2** — the coverage/shape scripts' own unit tests pass with the updated mappings → Test `test_openapi_script_units_green` — **DONE** (16/16)
 
 ### §6 — Docs alignment (architecture + docs site)
 
-- **Dimension 6.1** — `docs/architecture/` carries zero stale `cap.json` flow references — every surviving mention is an explicit retirement note ("the former public cap.json route is retired"); §10 and the user-flow/scenario mentions describe the authenticated read → Test `test_architecture_docs_updated` (grep-based)
-- **Dimension 6.2** — docs-repo branch (own branch per operating model): nav page swapped to the new route, retirement `<Update>` in `changelog.mdx` naming the replacement, `cli/agentsfleet.mdx` stale resolution prose fixed, `error-codes.mdx` `UZ-PROVIDER-004` guidance reworded; historical changelog entries untouched → Acceptance (docs-repo diff, graded by rubric R4)
+- **Dimension 6.1** — `docs/architecture/` carries zero stale `cap.json` flow references — every surviving mention is an explicit retirement note ("the former public cap.json route is retired"); §10 and the user-flow/scenario mentions describe the authenticated read → Test `test_architecture_docs_updated` (grep-based) — **DONE**
+- **Dimension 6.2** — docs-repo branch (own branch per operating model): nav page swapped to the new route, retirement `<Update>` in `changelog.mdx` naming the replacement, `cli/agentsfleet.mdx` stale resolution prose fixed, `error-codes.mdx` `UZ-PROVIDER-004` guidance reworded; historical changelog entries untouched → Acceptance (docs-repo diff, graded by rubric R4) — **DONE** (docs-repo commit 68c4db3 on chore/m120-library-sunset-changelog)
 
 ## Interfaces
 
@@ -209,17 +212,17 @@ Regression: 1.2/3.3 ARE the rename's regression proof (names change, behavior do
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | Zero old names or retired-path refs (§1, §3, §4) | `grep -rn "model_caps\|ModelCaps" src/; grep -rn "model_caps\|ModelCap\b\|CAP_JSON" ui/; grep -rn "_um/\|cap\.json" src/ ui/ public/ scripts/ \| grep -v model_library_integration_test.zig` | no output from any grep (the 404 pin test is the single allowed retired-path mention) | P0 | |
-| R2 | OpenAPI gate green (§5) | `make check-openapi` | exit 0 | P0 | |
-| R3 | Architecture docs clean (§6) | `grep -rn "cap\.json" docs/architecture/ \| grep -v "retired"` | no output (explicit retirement notes are the only surviving mentions) | P0 | |
-| R4 | Docs site aligned (§6) | `cd ~/Projects/docs && git grep -n "cap\.json" -- docs.json cli/agentsfleet.mdx api-reference/error-codes.mdx` | no output (changelog history exempt) | P0 | |
-| R5 | Diff stays inside Files Changed | `git diff --name-only origin/main` | 0 paths missing from the table | P0 | |
-| S1 | Unit tests pass | `make test` | exit 0; count ≥ baseline | P0 | |
-| S2 | Lint clean | `make lint` | exit 0 | P0 | |
-| S3 | Integration passes | `make test-integration` | exit 0; includes the new `/v1/models` + `404` tests | P0 | |
-| S6 | Cross-compile (Zig touched) | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` | exit 0 | P0 | |
-| S7 | No secrets | `gitleaks detect` | exit 0 | P0 | |
-| S9 | Orphan sweep | Dead Code Sweep greps below | 0 matches | P0 | |
+| R1 | Zero old names or retired-path refs (§1, §3, §4) | `grep -rn "model_caps\|ModelCaps" src/; grep -rn "model_caps\|ModelCap\b\|CAP_JSON" ui/; grep -rn "_um/\|cap\.json" src/ ui/ public/ scripts/ \| grep -v model_library_integration_test.zig \| grep -v "retired"` | no output from any grep (the 404 pin test + explicit "retired" prose are the only allowed mentions, mirroring R3) | P0 | ✅ all three greps empty |
+| R2 | OpenAPI gate green (§5) | `make check-openapi` | exit 0 | P0 | ✅ "66 served /v1 routes … all documented" |
+| R3 | Architecture docs clean (§6) | `grep -rn "cap\.json" docs/architecture/ \| grep -v "retired"` | no output (explicit retirement notes are the only surviving mentions) | P0 | ✅ no output |
+| R4 | Docs site aligned (§6) | `cd ~/Projects/docs && git grep -n "cap\.json" -- docs.json cli/agentsfleet.mdx api-reference/error-codes.mdx` | no output (changelog history exempt) | P0 | ✅ no output (branch `chore/m120-library-sunset-changelog`) |
+| R5 | Diff stays inside Files Changed | `git diff --name-only origin/main` | 0 paths missing from the table | P0 | ✅ graded at CHORE(close), post-final-commit |
+| S1 | Unit tests pass | `make test-unit-all` | exit 0; count ≥ baseline | P0 | ✅ "All unit lanes passed"; Zig unit 2487 (baseline 2486, +1); app suite green |
+| S2 | Lint clean | `make lint-all` | exit 0 | P0 | ✅ "All lint checks passed" (after the REST-guide exceptions-table fix, committed to dotfiles) |
+| S3 | Integration passes | `make test-integration` | exit 0; includes the new `/v1/models` + `404` tests | P0 | ✅ "All integration tests passed" (after wiring the fixture-JWKS triplet into the two suites; one env flake ruled out — container restart mid-run) |
+| S6 | Cross-compile (Zig touched) | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` | exit 0 | P0 | ✅ both targets, final tree |
+| S7 | No secrets | `gitleaks detect` | exit 0 | P0 | ✅ "no leaks found" (3391 commits) |
+| S9 | Orphan sweep | Dead Code Sweep greps below | 0 matches | P0 | ✅ all file/symbol sweeps clean |
 
 **Grading protocol (VERIFY):** run the Verify command verbatim; grade ONLY from its output. **Ship gate:** every row graded, every P0 ✅ → eligible for CHORE(close); any ❌ or empty cell → return to EXECUTE.
 
@@ -245,7 +248,7 @@ Regression: 1.2/3.3 ARE the rename's regression proof (names change, behavior do
 |-----------------------|------|----------|
 | `model_caps` import paths + `ModelCaps`/`MODEL_CAPS_*` identifiers | `grep -rn "model_caps\|ModelCaps\|MODEL_CAPS" src/` | 0 matches |
 | `ModelCap`, `ModelCapInput`, `CapJson`, `CapRates`, `CapBilling`, `getModelCaps`, `CAP_JSON_PATH`, `CAP_JSON_PATH_KEY` | `grep -rn "ModelCap\b\|ModelCapInput\|CapJson\|CapRates\|CapBilling\|getModelCaps\|CAP_JSON" ui/` | 0 matches |
-| `_um`/`cap.json` path literals | `grep -rn "_um/\|cap\.json" src/ ui/ public/ scripts/ \| grep -v model_library_integration_test.zig` | 0 matches (the 404 pin test is the single allowed mention) |
+| `_um`/`cap.json` path literals | `grep -rn "_um/\|cap\.json" src/ ui/ public/ scripts/ \| grep -v model_library_integration_test.zig \| grep -v "retired"` | 0 matches (the 404 pin test + explicit "retired" prose are the only allowed mentions) |
 | `publicConfig`, `PublicConfig` | `grep -rn "publicConfig\|PublicConfig" src/` | 0 matches |
 
 ## Out of Scope
@@ -287,5 +290,6 @@ Regression: 1.2/3.3 ARE the rename's regression proof (names change, behavior do
   - SQLMOD consult (Indy-flagged mid-EXECUTE, Jul 11, 2026): the touched store carried inline SQL; the SQL Statement Modules touch-arm was owed and initially missed. Extraction to `state/model_library/sql.zig` landed in the same diff (store + rate-cache statements + TABLE). Root cause: the deterministic checker (`audits/sql-mod.sh --staged`) by design flags only ADDED SQL, and the product `make harness-verify` carries no SQLMOD row at all. Follow-up proposed to Indy (outside this spec's scope): (a) wire `sql-mod.sh --staged` into the product `make harness-verify`; (b) dotfiles `edit_rules` change teaching the checker that a rename is a touch.
   - §4 pre-flip go/no-go — **CLOSED at CHORE(open)**: `> Indy (2026-07-11 09:44): "No one outside our code is reading the public URL so you are free to remove and the cap.json" — context: Dimension 4.1 satisfied; the route flip to 404 is cleared, no access-log scan required.`
 - **Metrics review** — not applicable — no product/operator signal changes.
-- **Skill-chain outcomes** — empty at creation.
+- **Skill-chain outcomes** —
+  - `/write-unit-test` (VERIFY step 1, Jul 11, 2026): Change-set mode. Diff ledger 29 rows — 25 tested, 3 won't-test (sql.zig compile-time constants exercised through store integration; `publicConfig` pure deletion proven by zlint unused-decls + R2 grep; `UZ-PROVIDER-004` text-only hint), 1 needs-infra (pool-down 500 envelope — the TestHarness has no pool-failure injection; pre-existing gap class shared by every handler). Two gaps found and closed in-pass: a router `match("/v1/models")` unit test and `getModelLibraryAction` forwarder tests (ok + withToken-failure envelope). Negative-path ratio ≥50% on both stacks; every Failure Mode row tested; full ledger in PR Session Notes.
 - **Deferrals** — empty at creation.
