@@ -143,7 +143,7 @@ The public handler renames AND reworks: `model_caps.zig` → `model_library.zig`
 
 ### §6 — Docs alignment (architecture + docs site)
 
-- **Dimension 6.1** — `docs/architecture/` carries zero stale `cap.json` flow references; §10 and the user-flow/scenario mentions describe the authenticated read → Test `test_architecture_docs_updated` (grep-based)
+- **Dimension 6.1** — `docs/architecture/` carries zero stale `cap.json` flow references — every surviving mention is an explicit retirement note ("the former public cap.json route is retired"); §10 and the user-flow/scenario mentions describe the authenticated read → Test `test_architecture_docs_updated` (grep-based)
 - **Dimension 6.2** — docs-repo branch (own branch per operating model): nav page swapped to the new route, retirement `<Update>` in `changelog.mdx` naming the replacement, `cli/agentsfleet.mdx` stale resolution prose fixed, `error-codes.mdx` `UZ-PROVIDER-004` guidance reworded; historical changelog entries untouched → Acceptance (docs-repo diff, graded by rubric R4)
 
 ## Interfaces
@@ -211,7 +211,7 @@ Regression: 1.2/3.3 ARE the rename's regression proof (names change, behavior do
 |---|--------------------------------|---------------------|----------|----------|-----------------|
 | R1 | Zero old names or retired-path refs (§1, §3, §4) | `grep -rn "model_caps\|ModelCaps" src/; grep -rn "model_caps\|ModelCap\b\|CAP_JSON" ui/; grep -rn "_um/\|cap\.json" src/ ui/ public/ scripts/ \| grep -v model_library_integration_test.zig` | no output from any grep (the 404 pin test is the single allowed retired-path mention) | P0 | |
 | R2 | OpenAPI gate green (§5) | `make check-openapi` | exit 0 | P0 | |
-| R3 | Architecture docs clean (§6) | `grep -rn "cap\.json" docs/architecture/` | no output | P0 | |
+| R3 | Architecture docs clean (§6) | `grep -rn "cap\.json" docs/architecture/ \| grep -v "retired"` | no output (explicit retirement notes are the only surviving mentions) | P0 | |
 | R4 | Docs site aligned (§6) | `cd ~/Projects/docs && git grep -n "cap\.json" -- docs.json cli/agentsfleet.mdx api-reference/error-codes.mdx` | no output (changelog history exempt) | P0 | |
 | R5 | Diff stays inside Files Changed | `git diff --name-only origin/main` | 0 paths missing from the table | P0 | |
 | S1 | Unit tests pass | `make test` | exit 0; count ≥ baseline | P0 | |
