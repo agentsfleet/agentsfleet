@@ -31,6 +31,13 @@ pub const SELECT_INSTALL =
     \\WHERE provider = $1 AND external_account_id = $2
 ;
 
+/// Serialize final GitHub install persistence for one workspace. The callback
+/// consumes the latest-state marker under this transaction-level advisory lock
+/// before deleting/replacing the vault handle and reverse-routing row.
+pub const LOCK_INSTALL_PERSISTENCE =
+    \\SELECT pg_advisory_xact_lock(hashtext($1), hashtext($2))
+;
+
 /// Resolve a GitHub App installation id to its connected workspace.
 pub const SELECT_WORKSPACE_BY_INSTALLATION =
     \\SELECT workspace_id::text FROM core.connector_installs
@@ -69,6 +76,7 @@ test "GitHub connector statements use the core schema" {
     const std = @import("std");
     try std.testing.expect(std.mem.indexOf(u8, DELETE_WORKSPACE_INSTALLS, "core.connector_installs") != null);
     try std.testing.expect(std.mem.indexOf(u8, UPSERT_INSTALL, "core.connector_installs") != null);
+    try std.testing.expect(std.mem.indexOf(u8, LOCK_INSTALL_PERSISTENCE, "pg_advisory_xact_lock") != null);
     try std.testing.expect(std.mem.indexOf(u8, SELECT_WORKSPACE_BY_INSTALLATION, "core.connector_installs") != null);
     try std.testing.expect(std.mem.indexOf(u8, SELECT_APP_INGRESS_TARGETS, "core.fleets") != null);
     try std.testing.expect(std.mem.indexOf(u8, SELECT_APP_INGRESS_TARGETS, "core.integration_grants") != null);
