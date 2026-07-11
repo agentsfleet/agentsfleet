@@ -47,6 +47,10 @@ vi.mock("@/app/(dashboard)/w/[workspaceId]/secrets/actions", () => ({
   createSecretAction: createSecretActionMock,
   deleteSecretAction: vi.fn(),
 }));
+// ModelCatalogueProvider reads useRouter (401 → sign-in); a stable stub keeps
+// its effect single-fire outside a real app-router mount.
+const routerMock = { push: vi.fn() };
+vi.mock("next/navigation", () => ({ useRouter: () => routerMock }));
 
 // A transparent DataTable wrapper that also exposes the live onSortChange
 // prop — DataTable's own type accepts any string key (any column could opt
