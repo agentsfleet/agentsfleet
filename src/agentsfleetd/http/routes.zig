@@ -73,6 +73,7 @@ pub const Route = union(enum) {
     /// the workspace's `fleet:github` credential; handler filters to
     /// workflow_run/failure and XADDs the M42 envelope.
     github_webhook: []const u8,
+    app_ingress: []const u8, // POST /v1/ingress/{provider}; provider-signature auth in-handler
     // Admin platform key management
     admin_platform_keys, // GET + PUT /v1/admin/platform-keys (method-dispatched in server.zig)
     delete_admin_platform_key: []const u8, // DELETE /v1/admin/platform-keys/{provider}

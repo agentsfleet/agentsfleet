@@ -30,6 +30,9 @@ const MAX_SIGNATURE_HEADER_LEN = config_types.MAX_SIGNATURE_HEADER_LEN;
 pub const MAX_TRIGGERS_PER_AGENT: usize = 8;
 const MAX_EVENTS_PER_TRIGGER: usize = 16;
 const MAX_EVENT_NAME_LEN: usize = 64;
+const MAX_REPOSITORIES_PER_TRIGGER: usize = 64;
+const MAX_REPOSITORY_NAME_LEN: usize = 255;
+const LOG_TRIGGER_ALLOW_LIST_INVALID = "trigger_allow_list_invalid";
 
 /// Parse a `triggers[]` array element.
 pub fn parseFleetTrigger(alloc: Allocator, obj: std.json.ObjectMap) (Allocator.Error || FleetConfigError)!FleetTrigger {
@@ -49,12 +52,15 @@ pub fn parseFleetTrigger(alloc: Allocator, obj: std.json.ObjectMap) (Allocator.E
             for (evs) |e| alloc.free(e);
             alloc.free(evs);
         };
+        const repositories = try parseRepositories(alloc, obj);
+        errdefer if (repositories) |repos| config_types.freeStringSlice(alloc, repos);
         const credential_name = try optionalString(alloc, obj, "credential_name");
         errdefer if (credential_name) |c| alloc.free(c);
         const signature = try parseWebhookSignature(alloc, obj, source);
         return .{ .webhook = .{
             .source = source,
             .events = events,
+            .repositories = repositories,
             .credential_name = credential_name,
             .signature = signature,
         } };
@@ -126,18 +132,34 @@ fn parseEvents(
     alloc: Allocator,
     obj: std.json.ObjectMap,
 ) (Allocator.Error || FleetConfigError)!?[]const []const u8 {
-    const val = obj.get("events") orelse return null;
+    return parseBoundedStrings(alloc, obj, "events", MAX_EVENTS_PER_TRIGGER, MAX_EVENT_NAME_LEN, noWhitespace);
+}
+
+fn parseRepositories(
+    alloc: Allocator,
+    obj: std.json.ObjectMap,
+) (Allocator.Error || FleetConfigError)!?[]const []const u8 {
+    return parseBoundedStrings(alloc, obj, "repositories", MAX_REPOSITORIES_PER_TRIGGER, MAX_REPOSITORY_NAME_LEN, validRepository);
+}
+
+fn parseBoundedStrings(
+    alloc: Allocator,
+    obj: std.json.ObjectMap,
+    field: []const u8,
+    max_count: usize,
+    max_len: usize,
+    valid: *const fn ([]const u8) bool,
+) (Allocator.Error || FleetConfigError)!?[]const []const u8 {
+    const val = obj.get(field) orelse return null;
     const arr = switch (val) {
         .array => |a| a,
         else => {
-            log.warn("events_must_be_array", .{
-                .error_code = ec.ERR_AGENTSFLEET_INVALID_CONFIG,
-            });
+            log.warn(LOG_TRIGGER_ALLOW_LIST_INVALID, .{ .error_code = ec.ERR_AGENTSFLEET_INVALID_CONFIG, .field = field, .reason = "not_array" });
             return FleetConfigError.InvalidFieldType;
         },
     };
-    if (arr.items.len == 0 or arr.items.len > MAX_EVENTS_PER_TRIGGER) {
-        log.warn("events_count_out_of_bounds", .{ .error_code = ec.ERR_AGENTSFLEET_INVALID_CONFIG, .count = arr.items.len, .max = MAX_EVENTS_PER_TRIGGER });
+    if (arr.items.len == 0 or arr.items.len > max_count) {
+        log.warn(LOG_TRIGGER_ALLOW_LIST_INVALID, .{ .error_code = ec.ERR_AGENTSFLEET_INVALID_CONFIG, .field = field, .reason = "count", .count = arr.items.len, .max = max_count });
         return FleetConfigError.InvalidFieldType;
     }
     var out = try alloc.alloc([]const u8, arr.items.len);
@@ -150,28 +172,29 @@ fn parseEvents(
         const s = switch (item) {
             .string => |str| str,
             else => {
-                log.warn("events_entry_not_string", .{
-                    .error_code = ec.ERR_AGENTSFLEET_INVALID_CONFIG,
-                });
+                log.warn(LOG_TRIGGER_ALLOW_LIST_INVALID, .{ .error_code = ec.ERR_AGENTSFLEET_INVALID_CONFIG, .field = field, .reason = "not_string" });
                 return FleetConfigError.InvalidFieldType;
             },
         };
-        if (s.len == 0 or s.len > MAX_EVENT_NAME_LEN) {
-            log.warn("events_entry_length_out_of_bounds", .{ .error_code = ec.ERR_AGENTSFLEET_INVALID_CONFIG, .len = s.len, .max = MAX_EVENT_NAME_LEN });
+        if (s.len == 0 or s.len > max_len or !valid(s)) {
+            log.warn(LOG_TRIGGER_ALLOW_LIST_INVALID, .{ .error_code = ec.ERR_AGENTSFLEET_INVALID_CONFIG, .field = field, .reason = "entry", .len = s.len, .max = max_len });
             return FleetConfigError.InvalidFieldType;
-        }
-        for (s) |c| {
-            if (std.ascii.isWhitespace(c)) {
-                log.warn("events_entry_has_whitespace", .{
-                    .error_code = ec.ERR_AGENTSFLEET_INVALID_CONFIG,
-                });
-                return FleetConfigError.InvalidFieldType;
-            }
         }
         out[i] = try alloc.dupe(u8, s);
         i += 1;
     }
     return out;
+}
+
+fn noWhitespace(s: []const u8) bool {
+    for (s) |c| if (std.ascii.isWhitespace(c)) return false;
+    return true;
+}
+
+fn validRepository(s: []const u8) bool {
+    if (!noWhitespace(s)) return false;
+    const slash = std.mem.indexOfScalar(u8, s, '/') orelse return false;
+    return slash > 0 and slash + 1 < s.len and std.mem.indexOfScalarPos(u8, s, slash + 1, '/') == null;
 }
 
 fn parseWebhookSignature(

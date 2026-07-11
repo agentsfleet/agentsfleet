@@ -44,7 +44,7 @@ pub const OUTBOUND_POST_DEADLINE_MS: u31 = 10_000;
 pub const THREAD_READ_DEADLINE_MS: u31 = 1_500;
 
 /// What kind of vendor call is in flight — the `call_class` log field.
-pub const CallClass = enum { token_exchange, outbound_post, thread_read };
+pub const CallClass = enum { token_exchange, installation_verify, outbound_post, thread_read };
 
 /// Status + body of a completed vendor call. Caller owns `body`.
 pub const Response = struct { status: u16, body: []u8 };

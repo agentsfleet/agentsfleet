@@ -67,6 +67,9 @@ pub const Context = struct {
     /// provider) is used. Integration tests point it at a loopback fake-provider
     /// so the code-exchange hits an in-process server, never the real Slack API.
     connector_oauth_token_endpoint_override: ?[]const u8 = null,
+    /// Test/dev seam for GitHub's user-installation ownership lookup. Null in
+    /// production. Integration tests point it at a loopback fake-provider.
+    connector_github_api_base_override: ?[]const u8 = null,
     /// Test/dev seam: override the Slack Web API base (`https://slack.com/api`)
     /// for the §4 outbound `chat.postMessage` + thread re-read. Null in
     /// production. Integration tests point it at a loopback FakeSlack so the
@@ -92,6 +95,9 @@ pub const Context = struct {
     api_url: []const u8,
     api_in_flight_requests: std.atomic.Value(u32),
     api_max_in_flight_requests: u32,
+    /// Optional integration-test probe updated after API admission. Production
+    /// leaves it null; tests use it to prove handlers overlap server-side.
+    api_peak_in_flight_probe: ?*std.atomic.Value(u32) = null,
     /// Ceiling for live SSE streams (SSE_MAX_STREAMS env knob, parsed in
     /// runtime_loader). Streams run on dedicated detached threads, so the cap
     /// bounds threads + memory — not handler-pool occupancy. Defaults so

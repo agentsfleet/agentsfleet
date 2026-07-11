@@ -55,9 +55,11 @@ test {
     _ = @import("http/handlers/connectors/jira/callback.zig");
     _ = @import("http/handlers/connectors/linear/callback.zig");
     _ = @import("http/handlers/connectors/github/callback.zig");
+    _ = @import("http/handlers/connectors/github/callback_integration_test.zig");
     _ = @import("http/handlers/connectors/oauth_providers_integration_test.zig");
     _ = @import("http/handlers/connectors/slack/oauth_callback_integration_test.zig");
     _ = @import("http/handlers/connectors/slack/events_integration_test.zig");
+    _ = @import("http/handlers/webhooks/ingress_integration_test.zig");
     _ = @import("http/handlers/connectors/slack/outbound_integration_test.zig");
     _ = @import("http/handlers/connectors/slack/thread_refetch_integration_test.zig");
     _ = @import("http/handlers/connectors/slack/channel_memory_integration_test.zig");

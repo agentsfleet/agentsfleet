@@ -10,15 +10,22 @@ const std = @import("std");
 const httpz = @import("httpz");
 const pg = @import("pg");
 const logging = @import("log");
+const clock = @import("common").clock;
 const common = @import("../../common.zig");
 const hx_mod = @import("../../hx.zig");
 const ec = @import("../../../../errors/error_registry.zig");
 const vault = @import("../../../../state/vault.zig");
+const id_format = @import("../../../../types/id_format.zig");
 const spec = @import("spec.zig");
+const sql = @import("sql.zig");
+const ownership = @import("ownership.zig");
+const PgQuery = @import("../../../../db/pg_query.zig").PgQuery;
 
 const log = logging.scoped(.connector_github);
 
 const Q_INSTALLATION_ID = "installation_id";
+const Q_CODE = "code";
+const INSTALLED_BY_UNKNOWN = "";
 // The exact vault-handle shape the broker reads (integration_github.zig).
 const HANDLE_FMT = "{{\"integration\":\"github\",\"installation_id\":\"{s}\"}}";
 const MAX_INSTALLATION_ID_LEN: usize = 32;
@@ -40,10 +47,13 @@ pub fn complete(hx: hx_mod.Hx, workspace_id: []const u8, req: *httpz.Request) bo
         return false;
     }
 
-    storeHandle(hx, workspace_id, installation_id) catch {
-        common.internalOperationError(hx.res, "Failed to store GitHub connection", hx.req_id);
+    const code = qs.get(Q_CODE) orelse {
+        hx.fail(ec.ERR_INVALID_REQUEST, "Missing code");
         return false;
     };
+    ownership.verify(hx, code, installation_id) catch |err| return failOwnership(hx, err);
+
+    storeHandle(hx, workspace_id, installation_id) catch |err| return failOwnership(hx, err);
 
     log.info("github_connected", .{ .workspace_id = workspace_id });
     return true;
@@ -56,7 +66,43 @@ fn storeHandle(hx: hx_mod.Hx, workspace_id: []const u8, installation_id: []const
     const handle = try std.fmt.allocPrint(hx.alloc, HANDLE_FMT, .{installation_id});
     defer hx.alloc.free(handle);
 
+    const uid = try id_format.generateConnectorInstallId(hx.alloc);
+    defer hx.alloc.free(uid);
+    const no_scopes: []const []const u8 = &.{};
+    const now = clock.nowMillis();
+
+    try conn.begin();
+    errdefer conn.rollback() catch |err| log.warn("github_connect_rollback_failed", .{
+        .error_code = ec.ERR_INTERNAL_OPERATION_FAILED,
+        .err = @errorName(err),
+    });
+    _ = try conn.exec(sql.DELETE_WORKSPACE_INSTALLS, .{ spec.PROVIDER, workspace_id });
     try vault.storeJsonPlaintext(hx.alloc, conn, workspace_id, spec.PROVIDER, handle);
+    {
+        var query = PgQuery.from(try conn.query(sql.UPSERT_INSTALL, .{
+            uid,
+            spec.PROVIDER,
+            installation_id,
+            workspace_id,
+            INSTALLED_BY_UNKNOWN,
+            no_scopes,
+            now,
+        }));
+        defer query.deinit();
+        if (try query.next() == null) return error.OwnershipDenied;
+    }
+    try conn.commit();
+}
+
+fn failOwnership(hx: hx_mod.Hx, err: anyerror) bool {
+    switch (err) {
+        error.NotConfigured => hx.fail(ec.ERR_CONNECTOR_NOT_CONFIGURED, "GitHub user authorization is not configured"),
+        error.ExchangeFailed => hx.fail(ec.ERR_CONNECTOR_OAUTH_EXCHANGE_FAILED, "GitHub user authorization failed"),
+        error.OwnershipDenied => hx.fail(ec.ERR_CONNECTOR_INSTALLATION_OWNERSHIP, "GitHub installation ownership could not be verified"),
+        error.DeadlineExceeded, error.WatchdogUnavailable, error.VendorUnreachable => hx.fail(ec.ERR_CONNECTOR_VENDOR_DEADLINE, "GitHub ownership verification did not complete"),
+        else => common.internalOperationError(hx.res, "Failed to complete GitHub connection", hx.req_id),
+    }
+    return false;
 }
 
 fn isNumericId(s: []const u8) bool {

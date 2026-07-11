@@ -22,7 +22,7 @@ Today fleet keys (`agt_a`) authenticate via a bespoke handler-local lookup (`int
 
 ## GitHub App event routing — active in M102_005
 
-M102_005 completes the inbound half of the existing GitHub App connector: the callback persists both the encrypted installation handle and the non-secret installation-to-workspace route; `/v1/ingress/github` verifies the platform App signature and selects fleets by explicit repository, event, and approved-grant membership. The old fleet-addressed GitHub webhook remains a supported custom path. Slack keeps its specialized events ingress; Jira and Linear remain credential connectors without inbound event routing in this workstream.
+M102_005 completes the inbound half of the existing GitHub App connector: the callback exchanges a one-time user-authorization code, verifies access to the claimed installation, refuses cross-workspace reassignment, and then persists both the encrypted installation handle and non-secret installation-to-workspace route. `/v1/ingress/github` verifies the platform App signature, derives replay identity from the authenticated body, and selects fleets by explicit repository, event, and approved-grant membership. The old fleet-addressed GitHub webhook remains a supported custom path. Slack keeps its specialized events ingress; Jira and Linear remain credential connectors without inbound event routing in this workstream.
 
 The `github-pr-reviewer` walkthrough remains a target, not a shipped proof, until its repository-bound Pull Request integration test passes. The workstream must update that status from test evidence, never from the presence of handler code alone.
 
