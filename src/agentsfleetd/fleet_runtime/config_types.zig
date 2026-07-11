@@ -102,6 +102,10 @@ pub const WebhookSignatureConfig = struct {
 /// Null means "fire on every event"; non-null asserts an allow-list with
 /// length 1..MAX_EVENTS_PER_TRIGGER.
 ///
+/// `repositories` is the explicit App-ingress binding (`["owner/repo"]`).
+/// Null remains valid for the manual per-fleet webhook route, but App ingress
+/// never treats it as an all-repositories subscription.
+///
 /// `credential_name` is an optional vault-key override. The webhook auth
 /// resolver builds the vault row name as `fleet:<credential_name orelse source>`.
 /// Lets one workspace store distinct webhook secrets per fleet when two
@@ -110,6 +114,7 @@ pub const FleetTrigger = union(FleetTriggerType) {
     webhook: struct {
         source: []const u8,
         events: ?[]const []const u8,
+        repositories: ?[]const []const u8 = null,
         credential_name: ?[]const u8 = null,
         signature: ?WebhookSignatureConfig = null,
     },
@@ -242,6 +247,7 @@ pub fn freeFleetTrigger(alloc: Allocator, t: FleetTrigger) void {
                 for (evs) |e| alloc.free(e);
                 alloc.free(evs);
             }
+            if (w.repositories) |repos| freeStringSlice(alloc, repos);
             if (w.credential_name) |c| alloc.free(c);
             if (w.signature) |sig| {
                 alloc.free(sig.header);

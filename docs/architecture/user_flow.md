@@ -89,7 +89,7 @@ Or run the chain explicitly (skip any step already in place):
 ```bash
 npm install -g @agentsfleet/cli   # CLI binary
 agentsfleet login                  # Clerk OAuth → token in ~/.config/agentsfleet/credentials.json
-gh auth login -s admin:repo_hook   # one-time; lets you register GitHub webhooks from the terminal
+agentsfleet connector status github --json
 ```
 
 `agentsfleet doctor --json` is the readiness gate (§8.2.2 step 2): on any miss it prints the explicit fix commands and stops. The commands are deliberately separate so a user with most of the chain already in place skips what they already have.
@@ -104,7 +104,7 @@ gh auth login -s admin:repo_hook   # one-time; lets you register GitHub webhooks
    - **Existing Fleet edit** — `agentsfleet fleet update <fleet_id> --from <path>` PATCHes `source_markdown` / `trigger_markdown` in place; it is not a create path.
 4. The API reads the library entry's `SKILL.md` / `TRIGGER.md`, parses frontmatter, derives `name` + `config_json`, persists the Fleet row, and synchronously creates the events stream + consumer group before returning 201. When a library entry lacks `TRIGGER.md`, the API generates a default manual/API trigger with no tools, no secrets, and no network. The 201 response carries `fleet_id` and `webhook_urls: { <source>: <url> }` — one entry per webhook trigger declared by `TRIGGER.md` or the library entry's metadata. See [`data_flow.md`](./data_flow.md) for the create-to-lease sequence.
 5. The API stores the Fleet config, linked secret reference, approval policy, trigger declarations (`triggers: [...]` array), and optional bundle snapshot reference.
-6. **Webhook registration on the upstream provider runs from the user's own machine** — `agentsfleet install` prints the webhook URL(s) from the 201 response, and the user registers each on the provider with `gh api repos/.../hooks` (for GitHub) or the equivalent command, using their existing `gh` auth or stored API token. The platform never holds the user's Personal Access Token (PAT) for this step; the registration is logged on the provider side by the user. For dashboard-only creates, the Trigger panel on `/fleets/{id}` renders the exact terminal command pre-filled with the webhook URL and event list, ready to copy.
+6. **Provider wiring follows the trigger surface.** For the GitHub App path, a workspace administrator connects GitHub once. `agentsfleet` signs state bound to the selected workspace; GitHub returns `installation_id` plus a one-time user-authorization code; `agentsfleetd` exchanges that code and verifies the user can access the installation before storing its workspace route. An installation already owned by another workspace is rejected without reassignment. The administrator selects the maximum repositories during App installation, and each fleet declares its smaller `repositories` + `events` subscription; GitHub then delivers automatically to `/v1/ingress/github`. Other custom webhooks retain the printed per-fleet URL and operator-run provider registration. The platform holds its own App identity and secrets, never a user's Personal Access Token (PAT).
 7. Future triggers are served with no restart and no watcher thread: creation made the Fleet's events stream + consumer group up front (step 4), so each later trigger `XADD`s to the canonical stream name `fleet:{id}:events` and the control plane hands that event to whichever `agentsfleet-runner` leases next (`POST /v1/runners/me/leases`).
 
 After creation, the Fleet is no longer tied to the interactive Claude session that created it.
@@ -129,7 +129,8 @@ Two first scenarios anchor the product flow:
 
 A Fleet's `TRIGGER.md` declares `triggers: [...]` — an array of 1–8 trigger entries (unique on `(type, source)` tuple). Each entry is one of:
 
-- **Webhook trigger.** Type `webhook`, `source` from M28's `PROVIDER_REGISTRY` (`github`, `linear`, `jira`, `grafana`, `slack`, `agentmail`, `clerk`), and `events: [...]` listing the provider-specific subscriptions. An external system POSTs to `POST /v1/webhooks/{fleet_id}` (GitHub gets its own `POST /v1/webhooks/{fleet_id}/github`; every other provider posts to the bare route, `source` resolved server-side from the fleet's `triggers[]` config, not the URL); `fleet_id` is the canonical Fleet identifier. The receiver verifies the HMAC signature via M28's middleware (per provider), normalises the payload, and lands a synthetic event on `fleet:{id}:events` with `actor=webhook:<source>`.
+- **GitHub App trigger.** Type `webhook`, `source: github`, explicit `repositories: [owner/repo, …]`, and `events: [...]`. GitHub posts once to `POST /v1/ingress/github`; the signed delivery's installation resolves the workspace, then repository + event + approved GitHub grant select the fleet. Omitting `repositories` is fail-closed for App traffic.
+- **Manual/custom webhook trigger.** The existing fleet-addressed routes remain available: `POST /v1/webhooks/{fleet_id}` and the GitHub-specific `POST /v1/webhooks/{fleet_id}/github`. The operator registers those URLs and a workspace webhook secret with the provider. This path does not infer a fleet from an App installation and does not require `repositories`.
 - **Cron trigger.** Type `cron`, `schedule` as a 5-field cron expression. NullClaw's in-runner cron tool fires on time. Each fire arrives as a synthetic event with `actor=cron:<schedule>`. At most one cron entry per Fleet.
 
 In addition to the declared triggers, every Fleet always accepts:
@@ -149,14 +150,14 @@ The user experience inside Claude (or Amp / Codex CLI / OpenCode) feels like thi
 1. The user is already in their project.
 2. The user asks Claude to create or refine an operational fleet.
 3. Claude edits `SKILL.md`, `TRIGGER.md`, and related project instructions.
-4. Claude installs or updates the fleet through the CLI. The install response carries `webhook_urls`; the rendered `TRIGGER.md` carries `triggers[].events`; `gh api repos/.../hooks` registers each webhook trigger without leaving the terminal.
+4. Claude installs or updates the fleet through the CLI. For GitHub App triggers, `TRIGGER.md` carries explicit `repositories` and `events`; the workspace's existing App installation supplies the event source. For a custom webhook, the install response still carries `webhook_urls` for operator registration.
 5. Claude can also manually invoke the fleet via `agentsfleet steer` for one-off user-triggered tasks.
 6. Later, the fleet wakes on webhook or cron without the user staying in the terminal.
 7. When the user returns to Claude, they inspect what happened from durable history (`agentsfleet events {id}` or the dashboard Events tab) instead of reconstructing it from memory.
 
 The dashboard equivalent surface on `/fleets/{id}` matches the CLI path:
 
-- The **Trigger panel** renders one card per declared trigger. Known providers get a pre-rendered terminal command (e.g. `gh api repos/.../hooks ...` for GitHub, `curl https://api.linear.app/graphql ...` for Linear) the user copies and runs locally. The card shows the registered hook id and last delivery once a real event arrives. The dashboard never holds the user's provider PAT.
+- The **Trigger panel** renders one card per declared trigger. A GitHub App card shows connector state plus repository/event subscriptions and routes a disconnected workspace to Connect GitHub. Custom providers retain registration guidance and copyable per-fleet URLs. The dashboard never asks for or stores a user's provider PAT.
 - The **chat surface** (composed via `@assistant-ui/react`) shows webhook / cron / continuation events as system chips, fleet reasoning as streaming assistant bubbles, and the steer composer at the bottom turns user input into an event on the fleet's stream.
 
 This matters because the fleet is not replacing Claude. It extends Claude from an interactive assistant into a durable operational worker — and the dashboard mirrors the same primitives so a user who lives in the browser sees an equivalent surface.
@@ -171,13 +172,13 @@ While working in Claude, the user defines a `platform-ops` fleet that:
 
 When a GH Actions deploy fails:
 
-1. GitHub posts to the fleet's webhook ingest URL `POST /v1/webhooks/{fleet_id}/github` with the failed `workflow_run` payload. The URL was registered earlier by the user running `gh api repos/{repo}/hooks` from their machine, using their existing `gh` auth or stored API token; the platform never held it for that step.
-2. The webhook receiver verifies the HMAC signature against the workspace's stored secret (vault secret `github`, field `webhook_secret`). The secret is workspace-scoped — every fleet in the workspace whose `triggers[]` contains a `source: github` entry shares it by default; rotating it once rotates everywhere. Resolver: `vault.loadJson(workspace_id, name=trigger.source)` (where `trigger` is the matching `triggers[]` entry); an optional `x-agentsfleet.triggers[].credential_name:` frontmatter override (key name unchanged) scopes a distinct vault row per fleet for the per-fleet secret-isolation case (multi-org GitHub, multi-app Slack, multi-tenant B2B-on-agentsfleet).
-3. The receiver normalizes the payload into a synthetic event and `XADD`s to `fleet:{id}:events` with `actor=webhook:github`, `type=webhook`, `workspace_id={ws}`, `request={run_url, head_sha, conclusion, ref, repo, attempt}`, `created_at=<epoch_ms>`.
+1. GitHub posts the failed `workflow_run` to `POST /v1/ingress/github`, carrying `installation.id`, `repository.full_name`, the event header, a diagnostic delivery identifier, and the App signature.
+2. The ingress verifies the signature against the platform `github-app.webhook_secret` before reading routing fields, resolves the installation through `core.connector_installs`, and selects active fleets in that workspace whose GitHub trigger explicitly matches the repository and event and whose GitHub grant is approved.
+3. For each matching fleet, the receiver hashes the signature-covered body, claims a body-digest-and-fleet replay slot, and `XADD`s the normalized event to `fleet:{id}:events`. A changed unsigned delivery header cannot bypass replay; a failed fan-out leg releases only its own slot. The manual `POST /v1/webhooks/{fleet_id}/github` route remains available for custom per-fleet hooks and continues to use a workspace `webhook_secret`.
 4. A `agentsfleet-runner` long-polls `POST /v1/runners/me/leases`; on the lease path `agentsfleetd`:
    - INSERTs `core.fleet_events` (status='received')
    - passes the balance + approval gates
-   - resolves secrets from the vault (GitHub PAT, Fly token, Slack bot token)
+   - resolves static secrets from the vault and records mintable GitHub handles; the actual GitHub token is minted only when the tool call needs it
    - resolves provider config (`tenant_provider.resolveActiveProvider`) — platform-managed key OR self-managed key, depending on tenant posture
    - returns the lease carrying `secrets_map`, `network_policy`, `tools` list, `context` knobs, and provider config
 
@@ -264,7 +265,7 @@ L3 run chunking
 
 **Overlay rule (per-field, independent, applied at lease time):** frontmatter `model: ""` OR `model:` key absent ⇒ overlay from `tenant_model_selection.model` (or synth-default if no row). Same rule for `context_cap_tokens: 0` OR absent. Non-empty / non-zero values respected as-is. The bundle's frontmatter carries the *visible* sentinels (`""`, `0`) under self-managed posture so a human reading it can spot at a glance that "this fleet inherits from tenant config"; absent-key is the safety net for hand-edits.
 
-The parser-side companion to this rule landed with M49: `x-agentsfleet.model` and `x-agentsfleet.context.*` are now first-class fields on `FleetConfig`, carried on the lease as `ExecutionPolicy` / `ContextBudget` (`src/lib/contract/execution_policy.zig`) *before* auto-sentinel defaults are substituted. Frontmatter overrides therefore win against runtime defaults (the doc previously described this shape but the parser dropped the fields silently — now closed).
+The parser-side companion to this rule landed with M49: `x-agentsfleet.model` and `x-agentsfleet.context.*` are now first-class fields on `FleetConfig`, carried on the lease as `ExecutionPolicy` / `ContextBudget` (`execution_policy.zig`) *before* auto-sentinel defaults are substituted. Frontmatter overrides therefore win against runtime defaults (the doc previously described this shape but the parser dropped the fields silently — now closed).
 
 Single source of truth for caps: the `core.model_library` table (tenant read: bearer-authed `GET /v1/models`; the former public cap.json route is retired). Resolved server-side at `tenant provider create` time (self-managed path) or hardcoded as a server-side synth-default constant (platform path). **Never resolved at trigger time** — would add a network dependency to the hot path. See [`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §10 for the library shape and §1 for the full self-managed posture.
 

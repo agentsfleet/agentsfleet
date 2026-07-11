@@ -122,6 +122,7 @@ pub fn exchange(
     defer wd.deinit();
     const headers = [_]std.http.Header{
         .{ .name = "content-type", .value = "application/x-www-form-urlencoded" },
+        .{ .name = "accept", .value = "application/json" },
     };
     const res = try bounded_fetch.fetch(alloc, io, &wd, .{
         .url = spec.token_endpoint,

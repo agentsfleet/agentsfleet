@@ -140,6 +140,8 @@ pub const ENTRIES = [_]Entry{
     e("UZ-WH-020", .unauthorized, "Webhook credential not configured", "No webhook credential is configured for this fleet's source. Run " ++
         "`agentsfleet secret add <source> --data='{\"webhook_secret\":\"...\"}'` " ++
         "in the fleet's workspace, then resend."), // reachable: no — external webhook sender sees this, not the dashboard
+    e("UZ-WH-021", .not_found, "Connector installation is not mapped", "Reconnect the provider App to the intended workspace before redelivering the event."), // reachable: no — log-only ingress outcome
+    e("UZ-WH-022", .not_found, "No fleet subscription matched", "Bind the repository and event to an active fleet with an approved integration grant."), // reachable: no — log-only ingress outcome
     e("UZ-WH-030", .payload_too_large, "Webhook payload too large", "Webhook body exceeds the 1 MiB ingest limit. Reduce the payload size " ++
         "or filter at the source."), // reachable: no — external webhook sender sees this, not the dashboard
     // ── SLACK CONNECTOR ──────────────────────────────────────────────────────

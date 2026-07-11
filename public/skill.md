@@ -28,6 +28,7 @@ platform-only (set by the anomaly gate) and rejected if requested via API.
 | `post_fleet_message` | POST | `/v1/workspaces/{workspace_id}/fleets/{fleet_id}/messages` | steer message |
 | `list_fleet_events` | GET | `/v1/workspaces/{workspace_id}/fleets/{fleet_id}/events` | — |
 | `stream_fleet_events` | GET | `/v1/workspaces/{workspace_id}/fleets/{fleet_id}/events/stream` | — (Server-Sent Events) |
+| `ingest_connector_webhook` | POST | `/v1/ingress/{provider}` | provider-signed connector event |
 | `ingest_fleet_webhook` | POST | `/v1/webhooks/{fleet_id}` | provider-shaped event |
 | `get_tenant_billing` | GET | `/v1/tenants/me/billing` | — |
 | `get_tenant_billing_charges` | GET | `/v1/tenants/me/billing/charges` | — |

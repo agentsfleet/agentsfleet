@@ -44,9 +44,11 @@ const Hx = hx_mod.Hx;
 /// callback owns response mapping.
 pub const PostAuthFn = *const fn (hx: Hx, workspace_id: []const u8, exchange_body: []const u8, location: ?[]const u8) anyerror!void;
 /// app_install completion hook: validates + persists AND owns its failure
-/// responses (an installation callback's inputs are provider-bespoke).
+/// responses (an installation callback's inputs are provider-bespoke). The
+/// raw state is passed through so the provider can keep freshness checks
+/// adjacent to its final persistence.
 /// Returns true on success; false after having responded.
-pub const CompleteFn = *const fn (hx: Hx, workspace_id: []const u8, req: *httpz.Request) bool;
+pub const CompleteFn = *const fn (hx: Hx, workspace_id: []const u8, raw_state: []const u8, req: *httpz.Request) bool;
 /// Status renderer: `handle` is the parsed `fleet:<provider>` vault object
 /// (null = missing/unreadable). Owns the full response body.
 pub const RespondStatusFn = *const fn (hx: Hx, handle: ?std.json.ObjectMap) void;
