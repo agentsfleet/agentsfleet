@@ -14,5 +14,6 @@ test {
     _ = @import("common/clock.zig");
     _ = @import("common/env.zig");
     _ = @import("common/backoff.zig");
+    _ = @import("common/rss.zig");
     _ = @import("tripwire/tripwire.zig");
 }
