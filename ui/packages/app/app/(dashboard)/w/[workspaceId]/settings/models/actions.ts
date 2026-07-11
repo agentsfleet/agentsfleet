@@ -6,6 +6,7 @@ import {
   setTenantProviderSelfManaged as apiSetTenantProviderSelfManaged,
 } from "@/lib/api/tenant_provider";
 import { listSecrets as apiListSecrets, rotateSecret as apiRotateSecret } from "@/lib/api/secrets";
+import { getModelLibrary as apiGetModelLibrary, type ModelLibrary } from "@/lib/api/model_library";
 import {
   listTenantModelEntries as apiListTenantModelEntries,
   createTenantModelEntry as apiCreateTenantModelEntry,
@@ -14,6 +15,13 @@ import {
 } from "@/lib/api/tenant_model_entries";
 import type { SecretListResponse } from "@/lib/api/secrets";
 import type { TenantModelEntryList, TenantModelEntryWriteResult, TenantProvider } from "@/lib/types";
+
+// The model library read (GET /v1/models) is bearer-authed; the client-side
+// catalogue provider fetches through this action so the token never reaches
+// the browser. Mirrors listTenantBillingChargesAction.
+export async function getModelLibraryAction(): Promise<ActionResult<ModelLibrary>> {
+  return withToken((t) => apiGetModelLibrary(t));
+}
 
 export async function setProviderSelfManagedAction(
   body: { secret_ref: string; model?: string },

@@ -13,7 +13,7 @@ import {
   Input,
   Spinner,
 } from "@agentsfleet/design-system";
-import { type AdminModel, OPENAI_COMPATIBLE_PROVIDER } from "@/lib/api/admin_models";
+import { type AdminModel, OPENAI_COMPATIBLE_PROVIDER } from "@/lib/api/admin_model_library";
 import { presentErrorString } from "@/lib/errors";
 import { captureProductEvent } from "@/lib/analytics/posthog";
 import { EVENTS } from "@/lib/analytics/events";

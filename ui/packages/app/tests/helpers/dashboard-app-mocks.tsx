@@ -31,7 +31,7 @@ export const resetTenantProviderMock = vi.fn();
 export const listSecretsMock = vi.fn();
 export const createSecretMock = vi.fn();
 export const deleteSecretMock = vi.fn();
-export const getModelCapsMock = vi.fn();
+export const getModelLibraryMock = vi.fn();
 export const listWorkspaceFleetLibraryMock = vi.fn();
 export const onboardWorkspaceFleetLibraryMock = vi.fn();
 
@@ -153,12 +153,12 @@ export function fleetLibraryMock() {
   };
 }
 
-export function modelCapsMock() {
-  // getModelCaps is mocked; the pure catalogue helpers (read synchronously by
+export function modelLibraryMock() {
+  // getModelLibrary is mocked; the pure catalogue helpers (read synchronously by
   // ModelsRegistryTable / ProviderModelSelect) keep their real behaviour so a
   // full module mock doesn't strip them to undefined.
   return {
-    getModelCaps: getModelCapsMock,
+    getModelLibrary: getModelLibraryMock,
     uniqueModelIds: (models: { id: string }[]) =>
       Array.from(new Map(models.map((m) => [m.id, m])).values()),
     modelsForProvider: (models: { provider: string }[], provider: string) =>
@@ -213,11 +213,9 @@ export function resetDashboardMocks() {
   getTenantBillingMock.mockResolvedValue({ balance_nanos: 5 * NANOS_PER_USD, is_exhausted: false, exhausted_at: null });
   listWorkspaceEventsMock.mockResolvedValue({ items: [], next_cursor: null });
   listFleetEventsMock.mockResolvedValue({ items: [], next_cursor: null });
-  getModelCapsMock.mockResolvedValue({
+  getModelLibraryMock.mockResolvedValue({
     version: "2026-04-29",
     models: [],
-    rates: { run_nanos_per_sec: 0, event_nanos: 0 },
-    billing: { starter_credit_nanos: 0, free_trial_end_ms: 0, free_trial_stage_nanos: 0 },
   });
   stopFleetMock.mockResolvedValue(undefined);
   listWorkspaceFleetLibraryMock.mockResolvedValue({ items: [] });

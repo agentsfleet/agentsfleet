@@ -2,8 +2,8 @@
 
 import { Badge, IconAction } from "@agentsfleet/design-system";
 import { ArrowLeftRightIcon, EyeIcon, LockIcon, PencilIcon, Trash2Icon } from "lucide-react";
-import { type ModelCap, providerLabel } from "@/lib/api/model_caps";
-import { nanosToUsdPerMtok } from "@/lib/api/admin_models";
+import { type LibraryModel, providerLabel } from "@/lib/api/model_library";
+import { nanosToUsdPerMtok } from "@/lib/api/admin_model_library";
 import type { TenantModelEntry, TenantPlatformDefault } from "@/lib/types";
 
 // Presentational cells + row actions for ModelsRegistryTable, split out so the
@@ -31,15 +31,15 @@ export function formatContext(tokens: number | undefined): string {
   return tokens >= TOKENS_PER_K ? `${Math.round(tokens / TOKENS_PER_K)}k` : String(tokens);
 }
 
-type RateFields = Pick<ModelCap, "input_nanos_per_mtok" | "cached_input_nanos_per_mtok" | "output_nanos_per_mtok">;
+type RateFields = Pick<LibraryModel, "input_nanos_per_mtok" | "cached_input_nanos_per_mtok" | "output_nanos_per_mtok">;
 
 /** The library row pricing (provider, model_id) — null when the library
  * doesn't price it (custom endpoints, or the library fetch failed). */
 export function libraryRateFor(
-  models: ModelCap[],
+  models: LibraryModel[],
   provider: string | undefined,
   modelId: string,
-): ModelCap | null {
+): LibraryModel | null {
   if (!provider) return null;
   return models.find((m) => m.provider === provider && m.id === modelId) ?? null;
 }
@@ -121,7 +121,7 @@ export function ContextCell({
 }: {
   row: RegistryRow;
   platformDefault: TenantPlatformDefault | null;
-  libraryModels: ModelCap[];
+  libraryModels: LibraryModel[];
 }) {
   const identity =
     row.kind === "default"
