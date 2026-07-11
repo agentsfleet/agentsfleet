@@ -16,7 +16,8 @@
 # POST /v1/runners) on the live dev control plane and stored under runner-token.
 # This script requires that real token: it seeds both the source /opt/agentsfleet/.env
 # (which deploy.sh copies on every CI run) and the unit's EnvironmentFile
-# /etc/default/agentsfleet-runner, then restarts and verifies the daemon is active.
+# /etc/default/agentsfleet-runner. When the binary exists it restarts and verifies
+# the daemon; otherwise it stops the retry loop and leaves startup to deploy.sh.
 # A agt_rFAKE_… placeholder is rejected below; DEV_WORKER_READY stays `false`
 # until a real token brings the runner up green.
 set -euo pipefail
@@ -146,16 +147,31 @@ scp -i "$ssh_id" "${ssh_opts[@]}" "$env_local" \
 ssh -i "$ssh_id" "${ssh_opts[@]}" "${ssh_user}@${ssh_host}" \
   "chmod 600 /opt/agentsfleet/.env"
 
-# Sync the source env to the unit's EnvironmentFile, then restart. The unit reads
+# Sync the source env to the unit's EnvironmentFile, then restart when the runner
+# binary is already installed. The unit reads
 # /etc/default/agentsfleet-runner (deploy.sh's ENV_DEST) — NOT /opt/agentsfleet/.env — so a
 # restart without this copy would re-read the previous /etc/default and ignore the
 # vars just written. /opt/agentsfleet/.env stays the source-of-truth deploy.sh copies
-# from on every CI deploy; we seed both here so this restart and the is-active
-# check below actually exercise the new token. install -m 600 keeps it root-only.
-echo "-- syncing env -> /etc/default/agentsfleet-runner + restarting agentsfleet-runner.service"
-ssh -i "$ssh_id" "${ssh_opts[@]}" "${ssh_user}@${ssh_host}" \
+# from on every CI deploy; we seed both here so either this restart or the first
+# deploy exercises the new token. install -m 600 keeps it root-only.
+echo "-- syncing env -> /etc/default/agentsfleet-runner + reconciling agentsfleet-runner.service"
+service_action=$(ssh -i "$ssh_id" "${ssh_opts[@]}" "${ssh_user}@${ssh_host}" \
   "sudo install -m 600 -o root -g root /opt/agentsfleet/.env /etc/default/agentsfleet-runner \
-   && sudo systemctl restart agentsfleet-runner.service"
+   && if [ -x /usr/local/bin/agentsfleet-runner ]; then \
+        sudo systemctl restart agentsfleet-runner.service && printf restarted; \
+      else \
+        sudo systemctl stop agentsfleet-runner.service && printf deferred; \
+      fi")
+
+# A freshly bootstrapped or renamed host can have the unit before its first
+# binary. Stop systemd's Restart=always loop and let deploy.sh install, start,
+# and health-check the binary later in the same CI job.
+if [ "$service_action" = "deferred" ]; then
+  echo "  ✓ env provisioned; service start deferred until runner binary deployment"
+  echo ""
+  echo "✅ section 4 passed"
+  exit 0
+fi
 
 # Poll up to ~10s so we don't race systemd's RestartSec=5 (a daemon that
 # crashes and is in `scheduled-restart` would read as `failed` at +3s).

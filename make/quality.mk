@@ -324,6 +324,8 @@ check-playbooks: check-vault-gate-parity  ## Validate playbooks/ — vault-gate 
 	@echo "→ [playbooks] shellcheck on playbooks/**/*.sh..."
 	@command -v $(SHELLCHECK) >/dev/null 2>&1 || { echo "shellcheck not found. Install via: mise install shellcheck"; exit 1; }
 	@find playbooks -name '*.sh' -print0 | xargs -0 $(SHELLCHECK) --severity=error -x
+	@echo "→ [playbooks] runner env provisioning tests..."
+	@bash playbooks/founding/06_runner_bootstrap_dev/provision_runner_env_test.sh
 	@echo "→ [playbooks] reference integrity — every playbooks/ path resolves..."
 	@# Scans the live operational surface (CI, scripts, active docs, the playbooks
 	@# themselves). Excludes docs/v2/ and CHANGELOG.md: specs and the changelog are
