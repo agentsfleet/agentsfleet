@@ -47,6 +47,7 @@ pub fn loadCaBundle(io: std.Io, alloc: std.mem.Allocator, ca_file_path: ?[]const
     return ca_bundle;
 }
 
+/// Resolve the Redis URL for `role` from the env. Caller must free the returned slice.
 pub fn resolveRedisUrl(env_map: *const EnvMap, alloc: std.mem.Allocator, role: redis_types.RedisRole) ![]const u8 {
     const url = (try common.env.owned(env_map, alloc, redis_types.roleEnvVarName(role))) orelse return error.MissingRedisUrl;
     if (std.mem.trim(u8, url, " \t\r\n").len == 0) {

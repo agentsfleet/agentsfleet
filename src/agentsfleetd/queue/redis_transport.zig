@@ -131,6 +131,7 @@ pub const PlainTransport = struct {
         self.stream.close(io);
         alloc.free(self.read_buffer);
         alloc.free(self.write_buffer);
+        self.* = undefined;
     }
 
     pub fn reader(self: *Self) *std.Io.Reader {
@@ -235,6 +236,7 @@ const TlsTransport = struct {
         alloc.free(self.socket_write_buffer);
         alloc.free(self.tls_read_buffer);
         alloc.free(self.tls_write_buffer);
+        self.* = undefined;
     }
 
     pub fn reader(self: *Self) *std.Io.Reader {
@@ -257,6 +259,7 @@ pub const Transport = union(enum) {
             .plain => |*p| p.deinit(io, alloc),
             .tls => |*t| t.deinit(io, alloc),
         }
+        self.* = undefined;
     }
 
     pub fn reader(self: *Self) *std.Io.Reader {

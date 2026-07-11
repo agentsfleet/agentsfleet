@@ -268,6 +268,7 @@ pub const CredentialBrokerHandle = struct {
         freeOauthApp(self.alloc, self.zoho_app);
         freeOauthApp(self.alloc, self.jira_app);
         freeOauthApp(self.alloc, self.linear_app);
+        self.* = undefined;
     }
 };
 

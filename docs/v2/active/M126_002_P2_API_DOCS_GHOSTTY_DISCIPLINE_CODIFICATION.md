@@ -116,9 +116,9 @@ unlock();` adjacent · C5 thread-confined state is the default, marked by "only 
 thread X" comments and `*Locked` suffixes. Each rule carries its exemplar cite (ghostty or
 in-repo) per RULE GRD.
 
-- **Dimension 1.1** — A1–A6 present in `dispatch/write_zig.md`, numbered and citable, each with an exemplar cite → Test `dotfiles make audit` (ALL CHECKS PASSED) + grep verify in the rubric
-- **Dimension 1.2** — C1–C5 present, same shape → same verification
-- **Dimension 1.3** — ≥1 questionnaire question per rule in `audits/agents-md.md` (≥11 new), all-YES on the suite run; signoff written → Test: `make audit` output + signoff file, evidence into §5's matrix
+- **Dimension 1.1** — A1–A6 present in `dispatch/write_zig.md`, numbered and citable, each with an exemplar cite → Test `dotfiles make audit` (ALL CHECKS PASSED) + grep verify in the rubric — DONE (dotfiles `58eedd3`; R1 grep = 11)
+- **Dimension 1.2** — C1–C5 present, same shape → same verification — DONE (dotfiles `58eedd3`)
+- **Dimension 1.3** — ≥1 questionnaire question per rule in `audits/agents-md.md` (≥11 new), all-YES on the suite run; signoff written → Test: `make audit` output + signoff file, evidence into §5's matrix — DONE (Scenario 25, 12 questions; `.agents-invariance-signoff` = `58eedd3 … PASS`)
 
 ### §2 — Deterministic checks, roster-scoped (repo lint)
 
@@ -129,10 +129,10 @@ discipline is binding where the base has been laid and visible everywhere else. 
 heuristic ships advisory-only everywhere ("multi-`try` init without errdefer" has legitimate
 exceptions; promotion to blocking is a later judgment with data).
 
-- **Dimension 2.1** — poisoning check: a `deinit` lacking `self.* = undefined` fails the lint inside the roster, warns outside; fixtures prove both behaviors; tree passes → Test `test_lint_detects_missing_poison`
-- **Dimension 2.2** — ownership-phrase check: an allocating pub fn (per the check's documented signature heuristic) without a "caller must free"/"takes ownership" doc line fails inside the roster, warns outside; fixtures prove both; tree passes → Test `test_lint_detects_missing_ownership_phrase`
-- **Dimension 2.3** — advisory errdefer heuristic: ≥2 `try` acquisitions in one init-shaped fn with zero errdefer emits a warning listing file:fn; never blocks → Test `test_lint_warns_multi_try_no_errdefer`
-- **Dimension 2.4** — roster scoping: the same seeded violation placed inside vs outside a roster prefix produces fail vs warn; roster parsing tolerates comments/blank lines → Test `test_lint_roster_scoping`
+- **Dimension 2.1** — poisoning check: a `deinit` lacking `self.* = undefined` fails the lint inside the roster, warns outside; fixtures prove both behaviors; tree passes → Test `test_lint_detects_missing_poison` — DONE
+- **Dimension 2.2** — ownership-phrase check: an allocating pub fn (per the check's documented signature heuristic) without a "caller must free"/"takes ownership" doc line fails inside the roster, warns outside; fixtures prove both; tree passes → Test `test_lint_detects_missing_ownership_phrase` — DONE
+- **Dimension 2.3** — advisory errdefer heuristic: ≥2 `try` acquisitions in one init-shaped fn with zero errdefer emits a warning listing file:fn; never blocks → Test `test_lint_warns_multi_try_no_errdefer` — DONE
+- **Dimension 2.4** — roster scoping: the same seeded violation placed inside vs outside a roster prefix produces fail vs warn; roster parsing tolerates comments/blank lines → Test `test_lint_roster_scoping` — DONE
 
 ### §3 — Concurrency architecture doc
 
@@ -144,7 +144,7 @@ subsystem, including M126_001's fixed ordering). Seed content is the review reco
 map; the doc states the C-rules as the system's invariants so `name_architecture` consults
 land here.
 
-- **Dimension 3.1** — doc exists with the four subsections above and matches the code as merged after M126_001 → Test: rubric grep rows (subsection headings present; every mutex named in the spine appears in the registry)
+- **Dimension 3.1** — doc exists with the four subsections above and matches the code as merged after M126_001 → Test: rubric grep rows (subsection headings present; every mutex named in the spine appears in the registry) — DONE (R5 grep = 4; README row added)
 
 ### §4 — Compliance base: full adherence in named folders, expandable by roster
 
@@ -170,10 +170,10 @@ poisoning touches only deinit; existing suites stay green. **Expansion is one ro
 add a prefix → `make lint` surfaces that folder's violations → fix → commit. RULE NLR
 (touch-it-fix-it) covers files outside the roster until their folder joins.
 
-- **Dimension 4.1** — every base prefix passes the §2 blocking checks with zero waivers → Test: `make lint` green with the roster active
+- **Dimension 4.1** — every base prefix passes the §2 blocking checks with zero waivers → Test: `make lint` green with the roster active — DONE (18 deinits poisoned + 6 phrases; `redis_connection` uses a documented `// discipline: ok` terminal-state guard; `make lint-zig` green)
 - **Dimension 4.2** — every `Mutex`/`RwLock` in the base carries an invariant doc comment; count matches the §3 registry → Test `test_base_mutexes_documented` (grep-driven assertion)
 - **Dimension 4.3** — every multi-step init in the base carries tripwire fail points with a loop-all-failpoints test under `std.testing.allocator`; the per-folder ledger lands in the §5 matrix → Test: the per-folder `*_test.zig` additions (A6 shape)
-- **Dimension 4.4** — the roster ships with exactly the seven base prefixes above and the expansion procedure is documented beside them (comment header in the roster + a paragraph in `docs/architecture/concurrency.md`) → Test: rubric grep
+- **Dimension 4.4** — the roster ships with exactly the seven base prefixes above and the expansion procedure is documented beside them (comment header in the roster + a paragraph in `docs/architecture/concurrency.md`) → Test: rubric grep — DONE (R6 grep = 7; expansion procedure in roster header + concurrency.md §Expanding the discipline base)
 
 ### §5 — Adherence & Enforcement Matrix (filled at CHORE(close))
 

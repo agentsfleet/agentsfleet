@@ -147,6 +147,7 @@ pub fn deinit(self: *Self) void {
         self.alloc.destroy(conn);
     }
     redis_config.deinitConfig(self.alloc, self.cfg);
+    self.* = undefined;
 }
 
 // === Acquire / Release ===

@@ -87,6 +87,7 @@ pub fn deinit(self: *R2) void {
     self.alloc.free(self.secret_access_key);
     self.alloc.free(self.endpoint);
     self.alloc.free(self.bucket);
+    self.* = undefined;
 }
 
 /// Put an object (the immutable bundle snapshot). Keys are content-hash addressed,

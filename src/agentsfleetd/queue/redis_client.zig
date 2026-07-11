@@ -115,6 +115,7 @@ fn finishFromConfig(io: std.Io, alloc: std.mem.Allocator, cfg: redis_config.Conf
 
 pub fn deinit(self: *Self) void {
     self.pool.deinit();
+    self.* = undefined;
 }
 
 pub fn publish(self: *Self, channel: []const u8, data: []const u8) !void {
@@ -155,6 +156,7 @@ pub fn readyCheck(self: *Self) !void {
     try self.ping();
 }
 
+/// Caller must free the returned slice.
 pub fn aclWhoAmI(self: *Self) ![]u8 {
     var resp = try self.command(&.{ "ACL", "WHOAMI" });
     defer resp.deinit(self.alloc);
@@ -191,6 +193,7 @@ pub fn setNx(self: *Self, key: []const u8, value: []const u8, ttl_seconds: u32) 
 /// surface it in the response body for SSE correlation.
 ///
 /// Stream is trimmed approximately to MAXLEN 10000 entries.
+/// Caller must free the returned entry id.
 pub fn xaddFleetEvent(self: *Self, envelope: EventEnvelope) ![]u8 {
     var stream_key_buf: [128]u8 = undefined;
     const stream_key = try std.fmt.bufPrint(&stream_key_buf, "fleet:{s}:events", .{envelope.fleet_id});

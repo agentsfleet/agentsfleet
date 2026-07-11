@@ -146,6 +146,7 @@ pub fn deinit(self: *Self) void {
         self.alloc.free(kv.key_ptr.*);
     }
     self.channels.deinit(self.alloc);
+    self.* = undefined;
 }
 
 pub const SubscribeError = error{ OutOfMemory, HubStopped };
