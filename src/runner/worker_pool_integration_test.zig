@@ -176,7 +176,7 @@ test "worker pool runs N leases concurrently and reports them all, then drains c
     }
 
     drain.store(true, .seq_cst); // graceful: finish in-flight, take no new lease
-    pool.join();
+    try pool.join(); // real workers, no leak → .ok; join surfaces a leak verdict otherwise
     // Deinit'ing the listener does NOT reliably unblock a concurrent accept() on
     // Linux (it does on macOS/BSD), and deinit-during-accept races the acceptor.
     // So: flag stop, wake the blocked accept() with a throwaway self-connection,

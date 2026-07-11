@@ -117,8 +117,8 @@ logs and exits nonzero (daemon) / fails the worker teardown path (pool) — acti
 DebugAllocator is the backing allocator, so tests and debug runs fail loudly while ReleaseSafe
 production (c-allocator-free path unchanged) is unaffected.
 
-- **Dimension 2.1** — daemon teardown with a leaked allocation exits nonzero and logs the verdict → Test `test_gpa_verdict_fails_on_leak` (helper-level, seeded leak in-test)
-- **Dimension 2.2** — worker pool teardown surfaces a per-worker leak as a failure → Test `test_worker_pool_gpa_verdict_fails`
+- **Dimension 2.1** — daemon teardown with a leaked allocation exits nonzero and logs the verdict → Test `test_gpa_verdict_fails_on_leak` — DONE. Shared helper `src/lib/logging/leak_guard.zig` (`check`/`verdictToError`) — placed in the `log` module, not `common`, because a guard in `common` would close a `common → log → common` import cycle. `main.zig` verdict now runs `leak_guard.check(gpa.deinit(), "daemon") catch std.process.exit(EXIT_GPA_LEAK)` (Debug fails; ReleaseSafe logs). Tests assert `verdictToError` (pure) + `check`'s log line via a `BufferedSink` capture — a real seeded leak's own `deinit()` emits an `err` log the harness counts as a failure, so the enum verdict is passed directly.
+- **Dimension 2.2** — worker pool teardown surfaces a per-worker leak as a failure → Test `test_worker_pool_gpa_verdict_fails` — DONE. Each worker stores `deinit() == .leak` into a per-worker `Pool.leak_flags` slot; `Pool.join` folds them (`foldWorkerVerdict`, pure) and routes the verdict through `leak_guard.check` (`join` now returns `LeakError!void`; callers updated). Test asserts the pure fold (no log) so the fail-on-warn runner is satisfied.
 
 ### §3 — page_allocator singletons become leak-checkable
 
