@@ -119,6 +119,8 @@ test {
     _ = @import("state/signup_bootstrap_test.zig");
     _ = @import("state/vault.zig");
     _ = @import("state/vault_test.zig");
+    _ = @import("secrets/crypto_store.zig");
+    _ = @import("secrets/crypto_store_test.zig");
     _ = @import("http/handlers/handler_auth_primitives_test.zig");
     _ = @import("http/handlers/auth/sessions_log_redaction_test.zig");
     _ = @import("http/handlers/auth/session_helpers_error_leak_test.zig");
