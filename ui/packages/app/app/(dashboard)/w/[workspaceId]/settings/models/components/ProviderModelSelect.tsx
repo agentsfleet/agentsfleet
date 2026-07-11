@@ -9,7 +9,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@agentsfleet/design-system";
-import { modelsForProvider, uniqueModelIds } from "@/lib/api/model_caps";
+import { modelsForProvider, uniqueModelIds } from "@/lib/api/model_library";
 import { useModelCatalogue } from "./ModelCatalogueProvider";
 import { knownModelsFor } from "../lib/known-models";
 
@@ -29,7 +29,7 @@ export type ProviderModelSelectProps = {
  * has no rows for this provider, the small static known-models list
  * (lib/known-models.ts) fills the same <Select> shape as a plain autocomplete
  * convenience; only when NEITHER covers the provider does this degrade to a
- * free-text input. Provider-scoped because core.model_caps is keyed by
+ * free-text input. Provider-scoped because core.model_library is keyed by
  * (provider, model_id).
  */
 export default function ProviderModelSelect({

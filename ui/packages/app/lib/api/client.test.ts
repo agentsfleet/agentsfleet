@@ -112,7 +112,7 @@ describe("request", () => {
       ok: false,
       status: 400,
       json: async () => ({
-        detail: "The effective model is not present in core.model_caps.",
+        detail: "The effective model is not present in core.model_library.",
         error_code: "UZ-PROVIDER-004",
         user_message: "That model isn't in our catalogue yet. Pick a listed model, or ask us to add support for it.",
       }),

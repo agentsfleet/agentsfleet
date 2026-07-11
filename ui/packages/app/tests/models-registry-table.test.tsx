@@ -4,7 +4,7 @@ import { cleanup, render, screen, waitFor, within } from "@testing-library/react
 import userEvent from "@testing-library/user-event";
 import { TooltipProvider } from "@agentsfleet/design-system";
 import type { TenantModelEntry, TenantModelEntryList, TenantPlatformDefault } from "@/lib/types";
-import type { CapJson } from "@/lib/api/model_caps";
+import type { ModelLibrary } from "@/lib/api/model_library";
 
 const MODEL_REGISTRY_HEADER_ORDER = [
   "Provider",
@@ -20,11 +20,7 @@ function withTooltipProvider(node: React.ReactElement): React.ReactElement {
   return React.createElement(TooltipProvider, null, node);
 }
 
-const getModelCapsMock = vi.fn();
-vi.mock("@/lib/api/model_caps", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@/lib/api/model_caps")>();
-  return { ...actual, getModelCaps: getModelCapsMock };
-});
+const getModelLibraryActionMock = vi.fn();
 
 const listModelEntriesActionMock = vi.fn();
 const listSecretsActionMock = vi.fn();
@@ -37,6 +33,7 @@ const rotateSecretActionMock = vi.fn();
 const createSecretActionMock = vi.fn();
 
 vi.mock("@/app/(dashboard)/w/[workspaceId]/settings/models/actions", () => ({
+  getModelLibraryAction: getModelLibraryActionMock,
   listModelEntriesAction: listModelEntriesActionMock,
   listSecretsAction: listSecretsActionMock,
   setProviderSelfManagedAction: setProviderSelfManagedActionMock,
@@ -90,7 +87,7 @@ function registry(
   return { models, platform_default_available: platformDefaultAvailable, platform_default: platformDefault };
 }
 
-const LIBRARY: CapJson = {
+const LIBRARY: ModelLibrary = {
   version: "test",
   models: [
     {
@@ -102,8 +99,6 @@ const LIBRARY: CapJson = {
       output_nanos_per_mtok: 15_000_000_000,
     },
   ],
-  rates: { run_nanos_per_sec: 0, event_nanos: 0 },
-  billing: { starter_credit_nanos: 0, free_trial_end_ms: 0, free_trial_stage_nanos: 0 },
 };
 
 async function renderTable(initial: TenantModelEntryList) {
@@ -113,10 +108,10 @@ async function renderTable(initial: TenantModelEntryList) {
   render(withTooltipProvider(React.createElement(ModelsRegistryTable, { workspaceId: "ws_1", initial, initialSecrets: [] } as never)));
 }
 
-/** Renders inside a real ModelCatalogueProvider with getModelCaps mocked, so
- * the Context column's rates join reads a deterministic library. */
-async function renderTableWithLibrary(initial: TenantModelEntryList, library: CapJson = LIBRARY) {
-  getModelCapsMock.mockResolvedValue(library);
+/** Renders inside a real ModelCatalogueProvider with the library action mocked,
+ * so the Context column's rates join reads a deterministic library. */
+async function renderTableWithLibrary(initial: TenantModelEntryList, library: ModelLibrary = LIBRARY) {
+  getModelLibraryActionMock.mockResolvedValue({ ok: true, data: library });
   const { ModelCatalogueProvider } = await import(
     "../app/(dashboard)/w/[workspaceId]/settings/models/components/ModelCatalogueProvider"
   );

@@ -12,7 +12,7 @@ import {
   Spinner,
 } from "@agentsfleet/design-system";
 import { CoinsIcon, PencilIcon, StarIcon, Trash2Icon } from "lucide-react";
-import { type AdminModel, type PlatformKey, nanosToUsdPerMtok } from "@/lib/api/admin_models";
+import { type AdminModel, type PlatformKey, nanosToUsdPerMtok } from "@/lib/api/admin_model_library";
 import { presentErrorString } from "@/lib/errors";
 import { deleteAdminModelAction } from "../actions";
 import EditModelDialog from "./EditModelDialog";
