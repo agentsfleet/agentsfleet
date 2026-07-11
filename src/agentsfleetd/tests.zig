@@ -181,9 +181,9 @@ test {
     _ = @import("http/handlers/tenant_billing_integration_test.zig");
     _ = @import("http/handlers/model_caps.zig");
     _ = @import("http/handlers/model_caps_integration_test.zig");
-    _ = @import("http/handlers/admin/model_caps_admin.zig");
-    _ = @import("http/handlers/admin/model_caps_admin_integration_test.zig");
-    _ = @import("http/handlers/admin/model_caps_admin_delete_guard_test.zig");
+    _ = @import("http/handlers/admin/model_library_admin.zig");
+    _ = @import("http/handlers/admin/model_library_admin_integration_test.zig");
+    _ = @import("http/handlers/admin/model_library_admin_delete_guard_test.zig");
     _ = @import("http/handlers/webhooks/grant_approval.zig");
     _ = @import("http/handlers/auth/identity_events_clerk_integration_test.zig");
     _ = @import("http/handlers/webhooks/github.zig");

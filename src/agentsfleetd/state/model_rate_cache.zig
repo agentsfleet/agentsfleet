@@ -22,7 +22,7 @@ const std = @import("std");
 const pg = @import("pg");
 const common = @import("common");
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
-const model_caps_store = @import("model_caps_store.zig");
+const model_library_store = @import("model_library_store.zig");
 
 pub const ModelRate = struct {
     input_nanos_per_mtok: i64,
@@ -41,7 +41,7 @@ const KEY_SEP: u8 = 0x1f;
 
 const SELECT_RATES =
     "SELECT provider, model_id, input_nanos_per_mtok, cached_input_nanos_per_mtok, output_nanos_per_mtok, context_cap_tokens" ++
-    "\nFROM " ++ model_caps_store.TABLE;
+    "\nFROM " ++ model_library_store.TABLE;
 
 /// Write the composite (provider, model) lookup key into `buf`. Returns null
 /// if the pair does not fit — caller treats that as a cache miss (loud at
