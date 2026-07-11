@@ -77,10 +77,20 @@ test "onTick inside the window renews and advances the kill deadline" {
 }
 
 test "onTick inside the window terminates on a terminal renewal and leaves the deadline" {
-    var fake = FakeClient{ .outcome = .{ .terminal = 402 } };
+    var fake = FakeClient{ .outcome = .{ .terminal = .{ .status = 402 } } };
     var driver = driverWith(&fake, NOW_MS + MS_PER_SECOND);
     const h = driver.hook();
-    try testing.expectEqual(RenewDecision.terminate, h.onTick(h.ctx, NOW_MS, .{}));
+    try testing.expectEqual(RenewDecision{ .terminate = .renewal_terminate }, h.onTick(h.ctx, NOW_MS, .{}));
+    try testing.expectEqual(NOW_MS + MS_PER_SECOND, driver.deadline_ms); // unchanged
+}
+
+test "onTick carries a fleet-budget refusal through as budget_breach" {
+    // The class the control plane named on the refusal is what the run is
+    // reported under — not the generic renewal stop.
+    var fake = FakeClient{ .outcome = .{ .terminal = .{ .status = 402, .reason = .budget_breach } } };
+    var driver = driverWith(&fake, NOW_MS + MS_PER_SECOND);
+    const h = driver.hook();
+    try testing.expectEqual(RenewDecision{ .terminate = .budget_breach }, h.onTick(h.ctx, NOW_MS, .{}));
     try testing.expectEqual(NOW_MS + MS_PER_SECOND, driver.deadline_ms); // unchanged
 }
 

@@ -41,6 +41,7 @@ const subscription_hub = @import("../events/subscription_hub.zig");
 const stream_registry = @import("stream_registry.zig");
 const message = @import("test_http_message.zig");
 const server_bringup = @import("test_harness_server.zig");
+const test_fixtures = @import("../db/test_fixtures.zig");
 
 const TEST_AUTH_SESSION_PEPPER: []const u8 = "test-pepper-bytes-32-len--padded";
 const TEST_AUDIT_LOG_PEPPER: []const u8 = "test-pepper-bytes-32-len--padded";
@@ -152,6 +153,9 @@ pub const TestHarness = struct {
     /// when the test DB is not configured (`TEST_DATABASE_URL` unset).
     pub fn start(alloc: std.mem.Allocator, cfg: Config) !*TestHarness {
         const db_ctx = (try common.openHandlerTestConn(alloc)) orelse return error.SkipZigTest;
+        // Clear any fault-injection constraint a killed reclaim run leaked, before
+        // this (or any) fleet test touches the shared tables — see the fn's note.
+        test_fixtures.dropInjectedFaultConstraints(db_ctx.conn);
         db_ctx.pool.release(db_ctx.conn);
         // Ownership transfers to h.pool below, but until we successfully
         // return h the pool is THIS function's responsibility — without

@@ -1,6 +1,10 @@
 import { test } from "bun:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { decodeTokenPayload, extractDistinctIdFromToken, extractRoleFromToken } from "../src/program/auth-token.ts";
+
+const AUTH_TOKEN_SOURCE = readFileSync(join(import.meta.dir, "..", "src", "program", "auth-token.ts"), "utf8");
 
 function makeToken(payload: Record<string, unknown>): string {
   const header = Buffer.from(JSON.stringify({ alg: "none", typ: "JWT" })).toString("base64url");
@@ -86,6 +90,16 @@ test("extractRoleFromToken reads namespaced metadata claims", () => {
     extractRoleFromToken(makeToken({ metadata: { "https://agentsfleet.net/role": "Admin" } })),
     "admin",
   );
+});
+
+// Standing guard: the decoder once declared ROLE_NAMESPACE_DEV and
+// ROLE_NAMESPACE_COM as byte-identical strings and probed both, so half the
+// candidate list was a no-op. Role resolution never changes if a duplicate
+// creeps back, so only source inspection can catch the regression.
+test("auth-token source declares exactly one role-namespace constant", () => {
+  const declared = [...AUTH_TOKEN_SOURCE.matchAll(/const\s+(\w*ROLE_NAMESPACE\w*)\s*=/g)].map((m) => m[1]);
+  assert.deepEqual(declared, ["ROLE_NAMESPACE"]);
+  assert.equal(/ROLE_NAMESPACE_(?:DEV|COM)/.test(AUTH_TOKEN_SOURCE), false);
 });
 
 test("decodeTokenPayload returns parsed payload object", () => {

@@ -29,6 +29,25 @@ const IGNORED_ERROR_FMT = "ignored: {s}";
 /// Canonical test tenant shared across all integration test UCs.
 pub const TEST_TENANT_ID = "0195b4ba-8d3a-7f13-8abc-000000000001";
 
+/// Fault-injection CHECK constraints the reclaim suite installs to force a
+/// reclaim/release error (`event_lifecycle_reclaim_integration_test.zig`). Named
+/// here so `dropInjectedFaultConstraints` — invoked from every test-DB conn
+/// opener — can clear them for ANY later test, not just the reclaim suite's own.
+pub const RECLAIM_FAIL_CONSTRAINT = "ck_test_reclaim_fail";
+pub const RELEASE_FAIL_CONSTRAINT = "ck_test_release_fail";
+
+/// Drop the reclaim suite's fault-injection constraints if a prior run leaked
+/// them. Called from `openTestConn` and `TestHarness.start` — the shared conn
+/// entry points every fleet DB test passes through — so a run killed between an
+/// `arm*` ADD and its deferred DROP cannot wedge the shared test DB for
+/// unrelated fleet tests (a kill skips deferred teardown, so cleanup must live
+/// at the next run's conn acquisition, before it touches those tables). A
+/// `DROP ... IF EXISTS` on an unconstrained table is a no-op.
+pub fn dropInjectedFaultConstraints(conn: *pg.Conn) void {
+    _ = conn.exec("ALTER TABLE fleet.runner_leases DROP CONSTRAINT IF EXISTS " ++ RECLAIM_FAIL_CONSTRAINT, .{}) catch |err| std.log.warn(IGNORED_ERROR_FMT, .{@errorName(err)});
+    _ = conn.exec("ALTER TABLE fleet.runner_affinity DROP CONSTRAINT IF EXISTS " ++ RELEASE_FAIL_CONSTRAINT, .{}) catch |err| std.log.warn(IGNORED_ERROR_FMT, .{@errorName(err)});
+}
+
 /// Insert the canonical test tenant. Idempotent via ON CONFLICT DO NOTHING.
 pub fn seedTenant(conn: *pg.Conn) !void {
     _ = try conn.exec(
@@ -217,6 +236,7 @@ pub fn openTestConn(alloc: std.mem.Allocator) !?struct { pool: *pg.Pool, conn: *
 
     errdefer pool.deinit();
     const conn = try pool.acquire();
+    dropInjectedFaultConstraints(conn);
     return .{ .pool = pool, .conn = conn };
 }
 
