@@ -54,7 +54,7 @@ const TerminateAfterHook = struct {
         _ = now_ms;
         const self: *TerminateAfterHook = @ptrCast(@alignCast(ctx));
         self.ticks += 1;
-        return if (self.ticks <= self.keep_ticks) .keep else .terminate;
+        return if (self.ticks <= self.keep_ticks) .keep else .{ .terminate = .renewal_terminate };
     }
 };
 

@@ -10,7 +10,9 @@ const ec = @import("../errors/error_registry.zig");
 
 const config_types = @import("config_types.zig");
 const webhook_verify = @import("webhook_verify.zig");
-const MS_PER_SECOND = 1000.0;
+// Upper bounds on a fleet's declared spend ceiling, in dollars (RULE UFS — a
+// literal's name carries its meaning; these bound money, never milliseconds).
+const MAX_DAILY_BUDGET_UNITS = 1000.0;
 const MAX_BUDGET_UNITS = 10000.0;
 
 const log = logging.scoped(.fleet_config);
@@ -255,7 +257,7 @@ pub fn parseFleetBudget(obj: std.json.ObjectMap) FleetConfigError!FleetBudget {
         .integer => |i| @as(f64, @floatFromInt(i)),
         else => return FleetConfigError.InvalidBudget,
     };
-    if (daily <= 0.0 or daily > MS_PER_SECOND) return FleetConfigError.InvalidBudget;
+    if (daily <= 0.0 or daily > MAX_DAILY_BUDGET_UNITS) return FleetConfigError.InvalidBudget;
 
     const monthly: ?f64 = blk: {
         const val = obj.get("monthly_dollars") orelse break :blk null;

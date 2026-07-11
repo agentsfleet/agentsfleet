@@ -157,7 +157,7 @@ test "readResult: a hook returning .terminate kills the wait and reports termina
     defer pipe_proto.testOsClose(fds[0]);
     defer pipe_proto.testOsClose(fds[1]); // keep write end open → no EOF, forces a tick
 
-    var hook_state = ScriptedHook{ .decisions = &.{.terminate} };
+    var hook_state = ScriptedHook{ .decisions = &.{.{ .terminate = .renewal_terminate }} };
     const hook = supervisor.RenewHook{ .ctx = &hook_state, .onTick = ScriptedHook.onTick, .tick_ms = 10 };
     var dummy: u8 = 0;
     const sink = ActivitySink{ .ctx = &dummy, .forward = NoopSink.forward };
@@ -168,6 +168,8 @@ test "readResult: a hook returning .terminate kills the wait and reports termina
 
     try std.testing.expect(outcome.terminated);
     try std.testing.expect(!outcome.timed_out);
+    // A hook that names no reason keeps the historical attribution.
+    try std.testing.expectEqual(contract.execution_result.FailureClass.renewal_terminate, outcome.terminate_reason);
     try std.testing.expect(hook_state.ticks >= 1);
     // No usage frame ever arrived → the tick observed all-zero counters.
     try std.testing.expectEqual(supervisor.UsageSnapshot{}, hook_state.last_usage);
@@ -377,6 +379,38 @@ test "classify: a policy terminate outranks a co-occurring deadline timeout" {
     // more actionable cause, so terminate wins.
     const both = supervisor.classify(std.testing.allocator, .{ .terminated = true, .timed_out = true }, .{ .exited = 0 }, &scope);
     try std.testing.expectEqual(FailureClass.renewal_terminate, both.failure.?);
+}
+
+test "classify: a fleet-budget terminate reports budget_breach, not renewal_terminate" {
+    var scope: ?cgroup = null;
+    // The refusal named the fleet's own ceiling. That class must survive to the
+    // durable `failure_label` — an operator asking "did my budget hold?" reads
+    // this, and `renewal_terminate` would answer the wrong question.
+    const budget = supervisor.classify(
+        std.testing.allocator,
+        .{ .terminated = true, .terminate_reason = .budget_breach },
+        .{ .exited = 0 },
+        &scope,
+    );
+    try std.testing.expect(!budget.exit_ok);
+    try std.testing.expectEqual(FailureClass.budget_breach, budget.failure.?);
+
+    // It still outranks a co-occurring timeout, like any other policy stop.
+    const with_timeout = supervisor.classify(
+        std.testing.allocator,
+        .{ .terminated = true, .timed_out = true, .terminate_reason = .budget_breach },
+        .{ .exited = 0 },
+        &scope,
+    );
+    try std.testing.expectEqual(FailureClass.budget_breach, with_timeout.failure.?);
+}
+
+test "classify: an unset terminate_reason defaults to renewal_terminate" {
+    var scope: ?cgroup = null;
+    // Every pre-existing `.terminated = true` call site omits the reason; the
+    // field's default keeps their behaviour byte-identical.
+    const defaulted = supervisor.classify(std.testing.allocator, .{ .terminated = true }, .{ .exited = 0 }, &scope);
+    try std.testing.expectEqual(FailureClass.renewal_terminate, defaulted.failure.?);
 }
 
 test "classify maps distinct child exit codes (sandbox-fail, seccomp) to their failure classes" {

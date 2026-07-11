@@ -13,8 +13,10 @@
 
 const std = @import("std");
 const logging = @import("log");
+const clock = @import("common").clock;
 const ec = @import("../errors/error_registry.zig");
 const pg = @import("pg");
+const budget = @import("budget.zig");
 
 const hx_mod = @import("../http/handlers/hx.zig");
 const assign = @import("assign.zig");
@@ -80,6 +82,18 @@ fn eventView(acq: assign.Acquired) redis_fleet.FleetEvent {
         .request_json = @constCast(acq.request_json),
         .created_at_ms = acq.event_created_at,
     };
+}
+
+/// The fleet's own spend ceiling, resolved from the config the session already
+/// carries — no lookup. A spend that could not be read admits the event
+/// (`budget.verdictOrAdmit`), matching `balanceCoversEstimate`'s fail-open
+/// posture: a metering outage must not halt every fleet on the platform.
+fn budgetVerdict(pool: *pg.Pool, session: *FleetSession, event: *const redis_fleet.FleetEvent) budget.Verdict {
+    const spend = budget.spendForFleet(pool, session.workspace_id, session.fleet_id, clock.nowMillis());
+    if (spend == null) {
+        log.warn("lease_budget_unavailable", .{ .error_code = ec.ERR_INTERNAL_DB_QUERY, .fleet_id = session.fleet_id, .event_id = event.event_id });
+    }
+    return budget.verdictOrAdmit(spend, session.config.budget);
 }
 
 /// Mirror `event_loop_writepath.run` steps 1–7 via the leaf helpers, then
@@ -159,6 +173,16 @@ fn runBilling(hx: Hx, session: *FleetSession, event: *const redis_fleet.FleetEve
     if (!metering.balanceCoversEstimate(pool, alloc, tr.tenant_id, tr.resolved.mode, tr.resolved.provider, tr.resolved.model, policy)) {
         log.debug("lease_balance_exhausted", .{ .fleet_id = session.fleet_id, .event_id = event.event_id });
         blockEvent(hx, session.fleet_id, event.event_id, rows.LABEL_BALANCE_EXHAUSTED);
+        return null;
+    }
+    // The fleet's OWN ceiling, checked after the tenant's credit pool and BEFORE
+    // the receive debit below — a refused event must never be charged. Independent
+    // of the credit gate: both must pass. Fail-open on a DB fault (`spendForFleet`
+    // returns null), mirroring `balanceCoversEstimate`.
+    const budget_verdict = budgetVerdict(pool, session, event);
+    if (budget_verdict.refused()) {
+        log.debug("lease_budget_breach", .{ .error_code = ec.ERR_RUN_BUDGET_EXCEEDED, .fleet_id = session.fleet_id, .event_id = event.event_id, .verdict = @tagName(budget_verdict) });
+        blockEvent(hx, session.fleet_id, event.event_id, rows.LABEL_BUDGET_BREACH);
         return null;
     }
     // Receive debits exactly once per event — a re-delivered entry already

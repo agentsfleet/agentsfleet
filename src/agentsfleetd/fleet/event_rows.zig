@@ -47,6 +47,11 @@ pub const LABEL_TENANT_RESOLVE_FAILED = "tenant_resolve_failed";
 pub const LABEL_SECRET_MISSING = "secret_missing";
 pub const LABEL_APPROVAL_DENIED = "approval_denied";
 pub const LABEL_APPROVAL_EXPIRED = "approval_expired";
+/// The FLEET's own `daily_dollars`/`monthly_dollars` ceiling is reached. Spelt
+/// identically to `contract.execution_result.FailureClass.budget_breach`, which
+/// carries the same verdict for the mid-run kill — one label, two gates, so an
+/// operator greps one string whether the run was refused or stopped.
+pub const LABEL_BUDGET_BREACH = "budget_breach";
 
 const EVENT_TYPE_CONTINUATION = "continuation";
 const FIELD_ORIGINAL_EVENT_ID = "original_event_id";
