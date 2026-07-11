@@ -155,13 +155,23 @@ ssh -i "$ssh_id" "${ssh_opts[@]}" "${ssh_user}@${ssh_host}" \
 # from on every CI deploy; we seed both here so either this restart or the first
 # deploy exercises the new token. install -m 600 keeps it root-only.
 echo "-- syncing env -> /etc/default/agentsfleet-runner + reconciling agentsfleet-runner.service"
-service_action=$(ssh -i "$ssh_id" "${ssh_opts[@]}" "${ssh_user}@${ssh_host}" \
+service_action="restarted"
+if ssh -i "$ssh_id" "${ssh_opts[@]}" "${ssh_user}@${ssh_host}" \
   "sudo install -m 600 -o root -g root /opt/agentsfleet/.env /etc/default/agentsfleet-runner \
    && if [ -x /usr/local/bin/agentsfleet-runner ]; then \
-        sudo systemctl restart agentsfleet-runner.service && printf restarted; \
+        sudo systemctl restart agentsfleet-runner.service; \
       else \
-        sudo systemctl stop agentsfleet-runner.service && printf deferred; \
-      fi")
+        sudo systemctl stop agentsfleet-runner.service && exit 42; \
+      fi"; then
+  :
+else
+  service_status=$?
+  if [ "$service_status" -eq 42 ]; then
+    service_action="deferred"
+  else
+    exit "$service_status"
+  fi
+fi
 
 # A freshly bootstrapped or renamed host can have the unit before its first
 # binary. Stop systemd's Restart=always loop and let deploy.sh install, start,
