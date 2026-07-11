@@ -25,6 +25,9 @@ type Props = {
   onCreated?: (workspaceName: string) => void;
 };
 
+const WORKSPACE_DESCRIPTION =
+  "Use workspaces to organize fleets, teammates, and credentials within your tenant. Leave the name blank to generate one.";
+
 export default function CreateWorkspaceDialog({ open, onOpenChange, onCreated }: Props) {
   const [name, setName] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -74,10 +77,7 @@ export default function CreateWorkspaceDialog({ open, onOpenChange, onCreated }:
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Create workspace</DialogTitle>
-          <DialogDescription>
-            A workspace isolates teammates and credentials; billing rolls up to
-            your tenant. Leave the name blank to have one generated.
-          </DialogDescription>
+          <DialogDescription>{WORKSPACE_DESCRIPTION}</DialogDescription>
         </DialogHeader>
         <div className="space-y-2">
           <Label htmlFor="workspace-name">Name (optional)</Label>
