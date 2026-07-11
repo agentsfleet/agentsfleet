@@ -135,7 +135,13 @@ pub const Telemetry = struct {
     }
 
     /// Production init — wraps a PostHog client (nullable for graceful degradation).
+    /// `Backend` is comptime-selected: TestBackend (no `.client` field) in test
+    /// builds, ProdBackend otherwise. A test that drives the real `serve.run`
+    /// reaches this through `initTelemetry`, so in a test build it must construct
+    /// the empty test backend instead of a `.client` literal TestBackend lacks.
+    /// Production (`!is_test`) is unchanged.
     pub fn initProd(client: ?*posthog.PostHogClient) Telemetry {
+        if (builtin.is_test) return .{ .backend = .{} };
         return .{ .backend = .{ .client = client } };
     }
 
