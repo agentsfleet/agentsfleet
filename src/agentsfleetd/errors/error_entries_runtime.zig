@@ -55,6 +55,7 @@ pub const ENTRIES_RUNTIME = [_]Entry{
     e("UZ-EXEC-012", .internal_server_error, "Runner fleet init failed", "Runner fleet initialization failed. Check configuration."), // reachable: no — runner-engine internal FailureClass code, not dashboard-fetched
     e("UZ-EXEC-013", .internal_server_error, "Runner fleet run failed", "Runner fleet execution failed. Check logs for details."), // reachable: no — runner-engine internal FailureClass code, not dashboard-fetched
     e("UZ-EXEC-014", .bad_request, "Runner invalid config", "Runner configuration is invalid. Check config_json fields."), // reachable: no — runner-engine internal FailureClass code, not dashboard-fetched
+    e("UZ-EXEC-015", .payment_required, "Execution stopped: fleet budget exhausted", "The control plane refused the lease renewal because the fleet reached its own daily_dollars or monthly_dollars ceiling (UZ-RUN-015). A fleet-scoped spend stop, kept distinct from a renewal-terminate (UZ-EXEC-008) so triage can tell the fleet author's own limit from a platform or billing stop."), // reachable: no — runner-engine internal FailureClass code, not dashboard-fetched
     // ── RELAY ────────────────────────────────────────────────────────────────
     // ── APPROVAL GATE ────────────────────────────────────────────────────────
     eu("UZ-APPROVAL-001", .bad_request, "Approval parse failed", "Gate policy in TRIGGER.md config_json has invalid syntax. Check the 'gates' section.", "That approval gate's config is invalid. Check the gates section in TRIGGER.md."),
