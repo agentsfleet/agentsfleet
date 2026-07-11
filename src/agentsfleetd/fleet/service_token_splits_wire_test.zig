@@ -38,7 +38,7 @@ const RUNNER_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0e9a01";
 const FLEET_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0e9c01";
 const AFFINITY_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0e9e01";
 const LEASE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0e9f01";
-const MODEL_CAPS_UID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0e9d01";
+const MODEL_LIBRARY_UID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0e9d01";
 const EVENT_ID = "evt-wire-splits-1";
 const RUNNER_TOKEN = auth_mw.runner_bearer.RUNNER_TOKEN_PREFIX ++ "d" ** 64;
 // Suite-private (provider, model) pair with its own seeded core.model_library
@@ -143,7 +143,7 @@ fn seedModelRates(conn: *pg.Conn) !void {
         \\   cached_input_nanos_per_mtok = EXCLUDED.cached_input_nanos_per_mtok,
         \\   output_nanos_per_mtok = EXCLUDED.output_nanos_per_mtok,
         \\   updated_at_ms = EXCLUDED.updated_at_ms
-    , .{ MODEL_CAPS_UID, MODEL, PROVIDER, MODEL_CONTEXT_CAP_TOKENS, RATE_INPUT_NANOS_PER_MTOK, RATE_CACHED_NANOS_PER_MTOK, RATE_OUTPUT_NANOS_PER_MTOK, now_ms });
+    , .{ MODEL_LIBRARY_UID, MODEL, PROVIDER, MODEL_CONTEXT_CAP_TOKENS, RATE_INPUT_NANOS_PER_MTOK, RATE_CACHED_NANOS_PER_MTOK, RATE_OUTPUT_NANOS_PER_MTOK, now_ms });
     try model_rate_cache.populate(conn);
 }
 

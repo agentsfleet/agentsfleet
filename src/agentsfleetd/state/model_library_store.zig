@@ -1,5 +1,5 @@
 //! Single owner of core.model_library SQL — the priced model catalogue (the
-//! billing spine). The public caps endpoint, the admin CRUD handler, and the
+//! billing spine). The catalogue read handler, the admin CRUD handler, and the
 //! platform-default cap snapshot call these helpers instead of embedding the
 //! table name, column lists, or row mapping themselves. Consolidated here (M100)
 //! so a catalogue schema change touches one file.

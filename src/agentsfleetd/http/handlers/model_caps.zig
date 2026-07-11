@@ -27,7 +27,7 @@ const httpz = @import("httpz");
 const pg = @import("pg");
 
 const tenant_billing = @import("../../state/tenant_billing.zig");
-const model_caps_store = @import("../../state/model_caps_store.zig");
+const model_library_store = @import("../../state/model_library_store.zig");
 const common = @import("common.zig");
 const hx_mod = @import("hx.zig");
 
@@ -42,9 +42,9 @@ pub const MODEL_CAPS_PATH_KEY = "da5b6b3810543fe108d816ee972e4ff8"; // gitleaks:
 /// Full URL path. Constants used by the router and by tests.
 pub const MODEL_CAPS_PATH = "/_um/" ++ MODEL_CAPS_PATH_KEY ++ "/cap.json";
 
-/// The public per-model row shape — owned by model_caps_store (model_id as `id`,
+/// The public per-model row shape — owned by model_library_store (model_id as `id`,
 /// provider, cap, rates). The store's listForPublic returns these directly.
-const ModelCap = model_caps_store.PublicRow;
+const ModelCap = model_library_store.PublicRow;
 
 const Rates = struct {
     run_nanos_per_sec: i64,
@@ -96,7 +96,7 @@ fn buildResponse(
     conn: *pg.Conn,
     model_filter: ?[]const u8,
 ) !ResponseBody {
-    const catalogue = try model_caps_store.listForPublic(alloc, conn, model_filter);
+    const catalogue = try model_library_store.listForPublic(alloc, conn, model_filter);
 
     const version = try formatVersion(alloc, catalogue.max_updated_ms);
     const cfg = tenant_billing.publicConfig();
