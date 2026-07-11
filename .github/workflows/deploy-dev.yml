@@ -237,7 +237,8 @@ jobs:
       # Section 3 hard-fails on /opt/agentsfleet/.env, and Section 4 is the script that
       # writes it — so readiness gated on an artifact no CI step produced, and the job
       # could never pass on a host that had not been hand-provisioned. Idempotent:
-      # re-running it rewrites the same env file from vault and restarts the unit.
+      # re-running it rewrites the same env file from vault. It restarts an installed
+      # runner, or defers startup to deploy.sh when the binary is not installed yet.
       - name: Provision runner env file from vault
         run: VAULT_DEV="${{ vars.VAULT_DEV }}" ./playbooks/founding/06_runner_bootstrap_dev/04_provision_runner_env.sh
         env:
