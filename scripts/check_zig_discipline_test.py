@@ -114,6 +114,22 @@ class DisciplineLint(unittest.TestCase):
                          f"base mutexes without an invariant doc comment: {undocumented}")
         self.assertGreaterEqual(count, 4, f"expected >=4 base mutexes, found {count}")
 
+    def _drain(self, path):
+        return subprocess.run([sys.executable, "lint-zig.py", path],
+                              cwd=str(ROOT), capture_output=True, text=True)
+
+    def test_drain_lint_detects_missing_defer(self):
+        # §4: a PgQuery.from binding without its `defer q.deinit()` pair fails.
+        r = self._drain("tests/lint/drain/missing_defer.zig")
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("without `defer", r.stdout)
+        self.assertIn("missing_defer.zig", r.stdout)
+
+    def test_drain_lint_passes_paired(self):
+        r = self._drain("tests/lint/drain/ok.zig")
+        self.assertEqual(r.returncode, 0, r.stdout)
+        self.assertIn("passed", r.stdout)
+
 
 if __name__ == "__main__":
     unittest.main()

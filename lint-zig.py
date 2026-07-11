@@ -31,7 +31,10 @@ FN_PATTERN = re.compile(r"^\s*(pub\s+)?fn\s+(\w+)")
 
 
 def find_zig_files(root: str):
-    return list(Path(root).rglob("*.zig"))
+    p = Path(root)
+    if p.is_file():
+        return [p]
+    return list(p.rglob("*.zig"))
 
 
 def extract_functions(text: str):
@@ -49,6 +52,10 @@ def extract_functions(text: str):
 # --- pg-drain check (default mode) ------------------------------------------
 
 DRAIN_SUPPRESS = "// check-pg-drain: ok"
+# Binding captured by `var q = [try] PgQuery.from(...)` — the pair check below
+# requires a `defer q.deinit()` for each such binding (PgQuery auto-drains in
+# deinit, but only if the defer actually runs).
+PGQUERY_BINDING = re.compile(r"(?:var|const)\s+(\w+)\s*=\s*(?:try\s+)?PgQuery\.from\(")
 
 
 def check_pg_drain(path: Path):
@@ -59,14 +66,28 @@ def check_pg_drain(path: Path):
 
     errors = []
     for lineno, fn_name, body, _ in extract_functions(text):
-        if "conn.query(" not in body:
-            continue
-        if ".drain(" in body:
-            continue
-        # PgQuery wraps the result and auto-drains in deinit().
-        if "PgQuery.from(" in body:
-            continue
         if DRAIN_SUPPRESS in body:
+            continue
+        # Strip line comments so a comment mentioning `defer q.deinit()` cannot
+        # mask a genuine missing pair (and a commented-out query cannot trip us).
+        code = "\n".join(re.sub(r"//.*", "", ln) for ln in body.splitlines())
+        has_query = "conn.query(" in code
+        has_pgquery = "PgQuery.from(" in code
+        if not has_query and not has_pgquery:
+            continue
+        if has_pgquery:
+            # PgQuery auto-drains in deinit — but the `defer q.deinit()` that
+            # fires it must exist. Verify the pair, don't just accept presence.
+            for m in PGQUERY_BINDING.finditer(code):
+                binding = m.group(1)
+                if f"defer {binding}.deinit(" not in code:
+                    errors.append(
+                        f"  {path}:{lineno}: fn {fn_name} — "
+                        f"PgQuery.from bound to `{binding}` without `defer {binding}.deinit()`"
+                    )
+            continue
+        # Raw conn.query() (no PgQuery wrapper) must drain before deinit.
+        if ".drain(" in code:
             continue
         errors.append(
             f"  {path}:{lineno}: fn {fn_name} — conn.query() without .drain()"
