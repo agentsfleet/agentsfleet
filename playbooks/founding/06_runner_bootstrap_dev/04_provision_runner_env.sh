@@ -28,7 +28,7 @@ echo "== Section 4: provision /opt/agentsfleet/.env =="
 
 vault_dev="${VAULT_DEV:-ZMB_CD_DEV}"
 api_url="${AGENTSFLEET_API_URL:-https://api-dev.agentsfleet.net}"
-sandbox_tier="${RUNNER_SANDBOX_TIER:-landlock_full}"
+sandbox_tier="landlock_full"
 missing=0
 
 declare -A OP_CACHE_VALUE
