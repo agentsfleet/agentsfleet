@@ -2,9 +2,10 @@
 //!
 //! The version string is single-sourced: `build_runner.zig` reads the repo
 //! VERSION file (kept in sync by `make sync-version`) into the `build_options`
-//! module, and this is the only reader. The output deliberately contains the
-//! bare version number so `deploy.sh`'s `is_already_installed()` version-skip
-//! (`current == *"${VERSION#v}"*`) matches and the idempotent install fires.
+//! module, and this is the only reader. The bare version number is the second
+//! whitespace-delimited field on purpose: `deploy.sh`'s `is_already_installed()`
+//! reads that field and compares it to the target for exact equality, so a shape
+//! change here turns every redeploy into a full reinstall.
 
 const std = @import("std");
 const build_options = @import("build_options");
@@ -28,10 +29,15 @@ pub fn run() u8 {
     return 0;
 }
 
-test "version line carries the bare build version (deploy.sh idempotency contract)" {
+test "version line carries the bare build version in whitespace field 2 (deploy.sh idempotent-skip invariant)" {
     var buf: [128]u8 = undefined;
     const out = line(&buf);
     try std.testing.expect(std.mem.startsWith(u8, out, "agentsfleet-runner "));
-    // deploy.sh greps for the VERSION substring — it must be present verbatim.
-    try std.testing.expect(std.mem.indexOf(u8, out, build_options.version) != null);
+    // deploy.sh parses whitespace field 2 for its exact-equality version skip, so
+    // asserting the version merely appears somewhere is too weak: a reformat that
+    // shifted it off field 2 would pass yet break every redeploy. Pin the field.
+    var fields = std.mem.tokenizeAny(u8, out, " \n");
+    _ = fields.next(); // "agentsfleet-runner"
+    const version_field = fields.next() orelse return error.MissingVersionField;
+    try std.testing.expectEqualStrings(build_options.version, version_field);
 }
