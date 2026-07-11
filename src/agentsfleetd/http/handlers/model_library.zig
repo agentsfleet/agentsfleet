@@ -1,9 +1,8 @@
 //! GET /v1/models — the model library catalogue (core.model_library), served
 //! to any authenticated tenant. The dashboard Models page is the only
 //! consumer: its pickers fetch the catalogue once per session through a
-//! token-minting Server Action. The former public, unauthenticated
-//! cryptic-prefix route is retired (404, no alias) — the catalogue prices the
-//! platform's billing spine and has no anonymous consumer.
+//! token-minting Server Action. The catalogue prices the platform's billing
+//! spine and has no anonymous consumer — reads require an authenticated tenant.
 //!
 //! Provider hosting is encoded in the model_id itself
 //! (`accounts/fireworks/...` is Fireworks; bare `kimi-k2.6` is Moonshot;
@@ -31,8 +30,8 @@ const Hx = hx_mod.Hx;
 pub const MODEL_LIBRARY_PATH = "/v1/models";
 
 /// The per-model row shape — owned by model_library_store (model_id as `id`,
-/// provider, cap, rates). The store's listForPublic returns these directly.
-const LibraryModel = model_library_store.PublicRow;
+/// provider, cap, rates). The store's listForLibrary returns these directly.
+const LibraryModel = model_library_store.LibraryRow;
 
 const ResponseBody = struct {
     version: []const u8,
@@ -61,7 +60,7 @@ pub fn innerGetModelLibrary(hx: Hx) void {
 }
 
 fn buildResponse(alloc: std.mem.Allocator, conn: *pg.Conn) !ResponseBody {
-    const catalogue = try model_library_store.listForPublic(alloc, conn);
+    const catalogue = try model_library_store.listForLibrary(alloc, conn);
     const version = try formatVersion(alloc, catalogue.max_updated_ms);
     return .{ .version = version, .models = catalogue.models };
 }

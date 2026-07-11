@@ -31,7 +31,6 @@ export const resetTenantProviderMock = vi.fn();
 export const listSecretsMock = vi.fn();
 export const createSecretMock = vi.fn();
 export const deleteSecretMock = vi.fn();
-export const getModelLibraryMock = vi.fn();
 export const listWorkspaceFleetLibraryMock = vi.fn();
 export const onboardWorkspaceFleetLibraryMock = vi.fn();
 
@@ -153,25 +152,6 @@ export function fleetLibraryMock() {
   };
 }
 
-export function modelLibraryMock() {
-  // getModelLibrary is mocked; the pure catalogue helpers (read synchronously by
-  // ModelsRegistryTable / ProviderModelSelect) keep their real behaviour so a
-  // full module mock doesn't strip them to undefined.
-  return {
-    getModelLibrary: getModelLibraryMock,
-    uniqueModelIds: (models: { id: string }[]) =>
-      Array.from(new Map(models.map((m) => [m.id, m])).values()),
-    modelsForProvider: (models: { provider: string }[], provider: string) =>
-      models.filter((m) => m.provider === provider),
-    uniqueProviders: (models: { provider: string }[]) =>
-      Array.from(new Set(models.map((m) => m.provider))),
-    providerLabel: (provider: string) =>
-      ({ anthropic: "Anthropic", openai: "OpenAI", "openai-compatible": "Custom — OpenAI-compatible" })[
-        provider
-      ] ?? provider,
-  };
-}
-
 export function addSecretFormMock() {
   return { default: ({ workspaceId }: { workspaceId: string }) => React.createElement("div", { "data-add-secret-form": workspaceId }) };
 }
@@ -213,10 +193,6 @@ export function resetDashboardMocks() {
   getTenantBillingMock.mockResolvedValue({ balance_nanos: 5 * NANOS_PER_USD, is_exhausted: false, exhausted_at: null });
   listWorkspaceEventsMock.mockResolvedValue({ items: [], next_cursor: null });
   listFleetEventsMock.mockResolvedValue({ items: [], next_cursor: null });
-  getModelLibraryMock.mockResolvedValue({
-    version: "2026-04-29",
-    models: [],
-  });
   stopFleetMock.mockResolvedValue(undefined);
   listWorkspaceFleetLibraryMock.mockResolvedValue({ items: [] });
   onboardWorkspaceFleetLibraryMock.mockResolvedValue({

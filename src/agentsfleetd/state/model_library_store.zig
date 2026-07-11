@@ -42,7 +42,7 @@ pub const AdminRow = struct {
 /// Library row: model_id (as `id`) + provider + rates. No uid (never exposed
 /// outside the admin plane), no updated_at_ms (returned separately as the
 /// catalogue version).
-pub const PublicRow = struct {
+pub const LibraryRow = struct {
     id: []const u8,
     provider: []const u8,
     context_cap_tokens: i32,
@@ -53,8 +53,8 @@ pub const PublicRow = struct {
 
 /// The catalogue plus the max updated_at_ms across the returned rows
 /// (drives the version stamp; 0 for an empty catalogue).
-pub const PublicList = struct {
-    models: []PublicRow,
+pub const LibraryList = struct {
+    models: []LibraryRow,
     max_updated_ms: i64,
 };
 
@@ -92,38 +92,30 @@ pub fn listForAdmin(alloc: std.mem.Allocator, conn: *pg.Conn) ![]AdminRow {
 }
 
 /// The catalogue as the authenticated library read serves it: all rows ordered
-/// by model_id, plus the max updated_at_ms seen (the version stamp). The former
-/// `?model=` filter retired with the public endpoint — no remaining consumer.
-pub fn listForPublic(alloc: std.mem.Allocator, conn: *pg.Conn) !PublicList {
-    var rows: std.ArrayList(PublicRow) = .empty;
+/// by model_id, plus the max updated_at_ms seen (the version stamp).
+pub fn listForLibrary(alloc: std.mem.Allocator, conn: *pg.Conn) !LibraryList {
+    var rows: std.ArrayList(LibraryRow) = .empty;
     errdefer rows.deinit(alloc);
     var max_updated_ms: i64 = 0;
 
     var q = PgQuery.from(try conn.query(sql.LIST_LIBRARY, .{}));
     defer q.deinit();
-    while (try q.next()) |row| try appendPublic(alloc, &rows, &max_updated_ms, row);
+    while (try q.next()) |row| {
+        const id = try alloc.dupe(u8, try row.get([]const u8, 0));
+        const provider = try alloc.dupe(u8, try row.get([]const u8, 1));
+        try rows.append(alloc, .{
+            .id = id,
+            .provider = provider,
+            .context_cap_tokens = try row.get(i32, 2),
+            .input_nanos_per_mtok = try row.get(i64, 3),
+            .cached_input_nanos_per_mtok = try row.get(i64, 4),
+            .output_nanos_per_mtok = try row.get(i64, 5),
+        });
+        const updated = try row.get(i64, 6);
+        if (updated > max_updated_ms) max_updated_ms = updated;
+    }
 
     return .{ .models = try rows.toOwnedSlice(alloc), .max_updated_ms = max_updated_ms };
-}
-
-fn appendPublic(
-    alloc: std.mem.Allocator,
-    rows: *std.ArrayList(PublicRow),
-    max_updated_ms: *i64,
-    row: anytype,
-) !void {
-    const id = try alloc.dupe(u8, try row.get([]const u8, 0));
-    const provider = try alloc.dupe(u8, try row.get([]const u8, 1));
-    try rows.append(alloc, .{
-        .id = id,
-        .provider = provider,
-        .context_cap_tokens = try row.get(i32, 2),
-        .input_nanos_per_mtok = try row.get(i64, 3),
-        .cached_input_nanos_per_mtok = try row.get(i64, 4),
-        .output_nanos_per_mtok = try row.get(i64, 5),
-    });
-    const updated = try row.get(i64, 6);
-    if (updated > max_updated_ms.*) max_updated_ms.* = updated;
 }
 
 /// context_cap_tokens of the priced (provider, model_id) row, or null when the

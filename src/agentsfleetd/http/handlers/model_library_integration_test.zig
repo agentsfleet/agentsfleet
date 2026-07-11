@@ -14,14 +14,16 @@ const harness_mod = @import("../test_harness.zig");
 const TestHarness = harness_mod.TestHarness;
 
 const model_library_h = @import("model_library.zig");
+const model_library_store = @import("../../state/model_library_store.zig");
+const sql = @import("../../state/model_library/sql.zig");
 
 // Any authenticated persona may read the library; VIEWER (the minimal-scope
 // persona) proves the route is authenticated-only, not capability-scoped.
 const VIEWER_TOKEN = scope_fixtures.VIEWER;
 
 // uuidv7 literals (version nibble 7) so the library uid CHECK passes.
-const UID_SONNET = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a8001";
-const UID_KIMI = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a8002";
+const UID_PRICED = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a8001";
+const UID_ZERO_RATED = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a8002";
 
 fn configureRegistry(_: *auth_mw.MiddlewareRegistry, _: *TestHarness) anyerror!void {}
 
@@ -36,34 +38,40 @@ fn openHarnessOrSkip(alloc: std.mem.Allocator) !*TestHarness {
     });
 }
 
-// Seed the two rows the read-path tests assert on. Rates mirror the retired
-// seed (Sonnet $3/M in · $15/M out in nanos) so the wire-shape assertions below
-// pin the same values, sourced from a test-owned insert.
+// Seed the two rows the read-path tests assert on, through the store's own
+// create() so the fixture exercises the production insert path. The model ids
+// are unique to this suite — several sibling suites seed the shared catalogue
+// table with real model ids under their own uids, and a colliding
+// (provider, model_id) pair would make create()'s ON CONFLICT silently no-op.
+// The affected-count assertions keep any future collision loud.
 fn seedLibrary(h: *TestHarness) !void {
     const conn = try h.acquireConn();
     defer h.releaseConn(conn);
     const now = clock.nowMillis();
-    _ = try conn.exec(
-        \\INSERT INTO core.model_library
-        \\  (uid, model_id, provider, context_cap_tokens, input_nanos_per_mtok, cached_input_nanos_per_mtok, output_nanos_per_mtok, created_at_ms, updated_at_ms)
-        \\VALUES ($1::uuid, 'claude-sonnet-4-6', 'anthropic', 256000, 3000000000, 300000000, 15000000000, $3, $3),
-        \\       ($2::uuid, 'kimi-k2.6', 'moonshot', 256000, 0, 0, 0, $3, $3)
-        \\ON CONFLICT (provider, model_id) DO NOTHING
-    , .{ UID_SONNET, UID_KIMI, now });
+    try std.testing.expectEqual(@as(?i64, 1), try model_library_store.create(conn, .{
+        .uid = UID_PRICED,
+        .provider = "anthropic",
+        .model_id = "claude-library-read-fixture",
+        .rates = .{ .context_cap_tokens = 256000, .input_nanos_per_mtok = 3000000000, .cached_input_nanos_per_mtok = 300000000, .output_nanos_per_mtok = 15000000000 },
+    }, now));
+    try std.testing.expectEqual(@as(?i64, 1), try model_library_store.create(conn, .{
+        .uid = UID_ZERO_RATED,
+        .provider = "moonshot",
+        .model_id = "kimi-library-read-fixture",
+        .rates = .{ .context_cap_tokens = 256000, .input_nanos_per_mtok = 0, .cached_input_nanos_per_mtok = 0, .output_nanos_per_mtok = 0 },
+    }, now));
 }
 
 fn cleanupLibrary(h: *TestHarness) void {
     const conn = h.acquireConn() catch return;
     defer h.releaseConn(conn);
-    _ = conn.exec("DELETE FROM core.model_library WHERE uid IN ($1::uuid, $2::uuid)", .{ UID_SONNET, UID_KIMI }) catch |err| std.log.warn("cleanup ignored: {s}", .{@errorName(err)});
+    _ = model_library_store.remove(conn, UID_PRICED) catch |err| std.log.warn("cleanup ignored: {s}", .{@errorName(err)});
+    _ = model_library_store.remove(conn, UID_ZERO_RATED) catch |err| std.log.warn("cleanup ignored: {s}", .{@errorName(err)});
 }
 
 test "integration(model_library): GET with a valid token returns the catalogue" {
     const alloc = std.testing.allocator;
-    const h = openHarnessOrSkip(alloc) catch |err| switch (err) {
-        error.SkipZigTest => return error.SkipZigTest,
-        else => return err,
-    };
+    const h = try openHarnessOrSkip(alloc);
     defer h.deinit();
     try seedLibrary(h);
     defer cleanupLibrary(h);
@@ -72,8 +80,8 @@ test "integration(model_library): GET with a valid token returns the catalogue" 
     defer r.deinit();
     try r.expectStatus(.ok);
     try std.testing.expect(r.bodyContains("\"version\""));
-    try std.testing.expect(r.bodyContains("claude-sonnet-4-6"));
-    try std.testing.expect(r.bodyContains("kimi-k2.6"));
+    try std.testing.expect(r.bodyContains("claude-library-read-fixture"));
+    try std.testing.expect(r.bodyContains("kimi-library-read-fixture"));
     try std.testing.expect(r.bodyContains("\"context_cap_tokens\":256000"));
     // The row shape is byte-identical to the retired public document's rows:
     // per-token rates accompany every row (zero for self-managed-only models).
@@ -84,10 +92,7 @@ test "integration(model_library): GET with a valid token returns the catalogue" 
 
 test "integration(model_library): GET without a token returns 401" {
     const alloc = std.testing.allocator;
-    const h = openHarnessOrSkip(alloc) catch |err| switch (err) {
-        error.SkipZigTest => return error.SkipZigTest,
-        else => return err,
-    };
+    const h = try openHarnessOrSkip(alloc);
     defer h.deinit();
 
     const r = try h.get(model_library_h.MODEL_LIBRARY_PATH).send();
@@ -97,10 +102,7 @@ test "integration(model_library): GET without a token returns 401" {
 
 test "integration(model_library): GET with a garbage token returns 401" {
     const alloc = std.testing.allocator;
-    const h = openHarnessOrSkip(alloc) catch |err| switch (err) {
-        error.SkipZigTest => return error.SkipZigTest,
-        else => return err,
-    };
+    const h = try openHarnessOrSkip(alloc);
     defer h.deinit();
 
     const r = try (try h.get(model_library_h.MODEL_LIBRARY_PATH).bearer("not-a-jwt")).send();
@@ -110,18 +112,21 @@ test "integration(model_library): GET with a garbage token returns 401" {
 
 test "integration(model_library): empty catalogue returns 200 with models: []" {
     const alloc = std.testing.allocator;
-    const h = openHarnessOrSkip(alloc) catch |err| switch (err) {
-        error.SkipZigTest => return error.SkipZigTest,
-        else => return err,
-    };
+    const h = try openHarnessOrSkip(alloc);
     defer h.deinit();
 
     // Deterministic empty state: every suite self-seeds what it asserts on, so
-    // clearing the table here cannot break a sibling suite's assertions.
+    // clearing the table here cannot break a sibling suite's assertions. An
+    // active platform default holds a foreign key into this table (NO ACTION),
+    // so a populated-defaults database cannot be emptied — skip rather than
+    // fail on state this test does not own.
     {
         const conn = try h.acquireConn();
         defer h.releaseConn(conn);
-        _ = try conn.exec("DELETE FROM core.model_library", .{});
+        _ = conn.exec("DELETE FROM " ++ sql.TABLE, .{}) catch |err| {
+            std.log.warn("empty-catalogue leg skipped: table not emptiable ({s})", .{@errorName(err)});
+            return error.SkipZigTest;
+        };
     }
 
     const r = try (try h.get(model_library_h.MODEL_LIBRARY_PATH).bearer(VIEWER_TOKEN)).send();
@@ -130,12 +135,20 @@ test "integration(model_library): empty catalogue returns 200 with models: []" {
     try std.testing.expect(r.bodyContains("\"models\":[]"));
 }
 
+test "integration(model_library): POST without a token returns 401 (auth runs before the method check)" {
+    const alloc = std.testing.allocator;
+    const h = try openHarnessOrSkip(alloc);
+    defer h.deinit();
+
+    const req = try h.post(model_library_h.MODEL_LIBRARY_PATH).json("{}");
+    const r = try req.send();
+    defer r.deinit();
+    try r.expectStatus(.unauthorized);
+}
+
 test "integration(model_library): POST with a valid token returns 405" {
     const alloc = std.testing.allocator;
-    const h = openHarnessOrSkip(alloc) catch |err| switch (err) {
-        error.SkipZigTest => return error.SkipZigTest,
-        else => return err,
-    };
+    const h = try openHarnessOrSkip(alloc);
     defer h.deinit();
 
     const req = try (try h.post(model_library_h.MODEL_LIBRARY_PATH).bearer(VIEWER_TOKEN)).json("{}");
@@ -146,10 +159,7 @@ test "integration(model_library): POST with a valid token returns 405" {
 
 test "integration(model_library): the retired public cap.json path returns 404" {
     const alloc = std.testing.allocator;
-    const h = openHarnessOrSkip(alloc) catch |err| switch (err) {
-        error.SkipZigTest => return error.SkipZigTest,
-        else => return err,
-    };
+    const h = try openHarnessOrSkip(alloc);
     defer h.deinit();
 
     // pin test: literal is the retired wire path under test — the one allowed

@@ -10,8 +10,7 @@ pub const Route = union(enum) {
     readyz,
     metrics,
     // The model library catalogue — GET /v1/models, any authenticated tenant
-    // (handlers/model_library.zig). The dashboard's model pickers are the
-    // consumer; the former public cryptic-prefix route is retired (404).
+    // (handlers/model_library.zig). The dashboard's model pickers are the consumer.
     model_library,
     create_auth_session,
     /// GET /v1/auth/sessions/{session_id} — CLI polls for status + (post-
