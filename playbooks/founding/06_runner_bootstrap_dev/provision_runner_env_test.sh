@@ -18,6 +18,7 @@ WORK_DIR="$(mktemp -d)"
 readonly WORK_DIR
 readonly STUB_DIR="$WORK_DIR/bin"
 readonly SSH_CALLS="$WORK_DIR/ssh-calls.log"
+readonly SCP_PAYLOAD="$WORK_DIR/scp-payload"
 mkdir -p "$STUB_DIR"
 cleanup() { rm -rf "$WORK_DIR"; }
 trap cleanup EXIT
@@ -35,7 +36,8 @@ STUB
 
 cat >"$STUB_DIR/scp" <<'STUB'
 #!/usr/bin/env bash
-exit 0
+source_path="${*: -2:1}"
+cp "$source_path" "$SCP_PAYLOAD"
 STUB
 
 cat >"$STUB_DIR/ssh" <<'STUB'
@@ -80,6 +82,7 @@ chmod +x "$STUB_DIR/op" "$STUB_DIR/scp" "$STUB_DIR/ssh"
 run_provision() {
   : >"$SSH_CALLS"
   env PATH="$STUB_DIR:$PATH" \
+    SCP_PAYLOAD="$SCP_PAYLOAD" \
     SSH_CALLS="$SSH_CALLS" \
     OP_READ_MIN_INTERVAL_SECONDS=0 \
     "$@" \
@@ -95,6 +98,8 @@ test_should_defer_health_check_when_runner_binary_is_absent() {
 
   if [[ "$status" -ne 0 ]]; then
     bad "$name" "provisioning failed on a host awaiting its first binary: $output"
+  elif ! grep -q '^RUNNER_SANDBOX_TIER=landlock_full$' "$SCP_PAYLOAD"; then
+    bad "$name" "provisioned env omitted the release-safe Linux sandbox tier"
   elif ! grep -q '^stop$' "$SSH_CALLS" || grep -q '^restart$' "$SSH_CALLS"; then
     bad "$name" "missing binary did not stop the service retry loop"
   elif grep -q '^status-check$' "$SSH_CALLS"; then
