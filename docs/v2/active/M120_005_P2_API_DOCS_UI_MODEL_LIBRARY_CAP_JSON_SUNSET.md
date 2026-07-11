@@ -13,12 +13,12 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Milestone:** M120
 **Workstream:** 005
 **Date:** Jul 11, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P2 — naming-debt completion + surface reduction; no new capability, no known consumer breaks (pre-flip consult in §4 proves or Indy-acks that).
 **Categories:** API, DOCS, UI
 **Batch:** B1 — no open dependency; M120_001/M120_002/M120_004 (the Models-page surface this must not regress) are in `done/`. If M125_001 runs concurrently, coordinate on `ModelsRegistryTable.tsx` — shared surface, not a dependency.
-**Branch:** {added at CHORE(open)}
-**Test Baseline:** {set at CHORE(open) via `make _lint_zig_test_depth`}
+**Branch:** feat/m120-library-sunset
+**Test Baseline:** unit=2486 integration=290
 **Depends on:** none — M120_003 closed DEFERRED; its rename scope is absorbed here (Indy-directed merge, verbatim quote in Discovery)
 **Provenance:** LLM-drafted (Claude Opus 4.8, Jul 11, 2026) — Indy-directed: the sunset and the M120_003 merge were both proposed by Indy in-session; the consumer sweep below was verified in that session (see Discovery).
 **Canonical architecture:** `docs/architecture/billing_and_provider_keys.md` §10 — describes the endpoint this spec retires; §6 of this spec rewrites it.
@@ -124,7 +124,7 @@ The public handler renames AND reworks: `model_caps.zig` → `model_library.zig`
 
 **Pre-flip go/no-go (blocking):** before the route flips, Discovery must carry either access-log evidence that no third party reads `cap.json`, or Indy's acked acceptance of breaking anonymous readers. Agent-unilateral flipping without that record violates the consult discipline.
 
-- **Dimension 4.1** — the go/no-go consult above is recorded in Discovery → Acceptance (Discovery record, not a unit test)
+- **Dimension 4.1** — the go/no-go consult above is recorded in Discovery → Acceptance (Discovery record, not a unit test) — **DONE** (Indy ack recorded at CHORE(open), see Discovery)
 - **Dimension 4.2** — `GET /_um/<key>/cap.json` → `404`; no alias, no redirect → Test `test_cap_json_path_returns_404`
 - **Dimension 4.3** — zero `model_caps`/`ModelCaps` references in `src/`; zero `model_caps`/`ModelCap`/`CAP_JSON` references in `ui/`; zero `_um/`/`cap.json` references in `src/`, `ui/`, `public/`, `scripts/` — no carve-outs → Test `test_zero_old_name_references` (grep-based)
 - **Dimension 4.4** — `publicConfig`/`PublicConfig` and the rates/billing wire types are deleted; zero references remain → Test `test_public_config_orphan_removed` (grep-based)
@@ -276,7 +276,7 @@ Regression: 1.2/3.3 ARE the rename's regression proof (names change, behavior do
   - Session consult (Jul 11, 2026, Indy-directed): sunset proposed by Indy; verified in-session — the dashboard Models page is the only live consumer (`ModelCatalogueProvider` fetch on mount); the CLI resolves caps server-side via `PUT /v1/tenants/me/provider` (`cli/src/commands/tenant.ts`); the install-skill never calls the endpoint (M49_001 §202); the `rates`/`billing` block has zero consumers (the dashboard discards it, the CLI pins `cli/src/constants/billing.ts`, the website pins `rates.ts`).
   - Merge consult — `> Indy (2026-07-11 08:59): "Do you think M120_005 supercedes M120_003? Since fixing M120_003 is pointless? That means we only fix the delta between M120_005 and M120_003 (base our spec on M120_005 and find delta with M120_003) and move it to M12_005 and continue as one spec M120_005 and M120_003 is closed as deferred?" — context: M120_003's rename scope is absorbed into this spec; M120_003 closed DEFERRED.`
   - Architecture consult: route name `GET /v1/models` checked against `docs/architecture/` — no conflicting stream/route naming; `billing_and_provider_keys.md` §10 is amended by §6.
-  - **OPEN — §4 pre-flip go/no-go:** access-log evidence or Indy's verbatim ack accepting the break lands here before the route flips.
+  - §4 pre-flip go/no-go — **CLOSED at CHORE(open)**: `> Indy (2026-07-11 09:44): "No one outside our code is reading the public URL so you are free to remove and the cap.json" — context: Dimension 4.1 satisfied; the route flip to 404 is cleared, no access-log scan required.`
 - **Metrics review** — not applicable — no product/operator signal changes.
 - **Skill-chain outcomes** — empty at creation.
 - **Deferrals** — empty at creation.
