@@ -4,11 +4,17 @@ const common = @import("common");
 const logging = @import("log");
 const redis_config = @import("redis_config.zig");
 const error_codes = @import("../errors/error_registry.zig");
+const tripwire = @import("tripwire");
 
 /// Zig 0.16 moved sockets under `std.Io.net` (io-threaded Stream/Reader/Writer).
 const net = std.Io.net;
 
 const log = logging.scoped(.redis_queue);
+
+/// Fail points for `PlainTransport.init`'s buffer-alloc ladder (rule A6). Armed
+/// only in tests; comptime-erased in production. The loop-all-failpoints test
+/// lives in `redis_test.zig`.
+pub const plain_init_tw = tripwire.module(enum { read_buffer, write_buffer }, error{OutOfMemory});
 
 /// Best-effort TCP keepalive so an idle Upstash connection is detected by the
 /// kernel within ~60s instead of sitting silently dead until the next request.
@@ -111,8 +117,10 @@ pub const PlainTransport = struct {
         // so callers (incl. dialAndAuth on every reconnect) cannot leak fds.
         errdefer stream.close(io);
         applyKeepalive(stream);
+        try plain_init_tw.check(.read_buffer);
         const read_buffer = try alloc.alloc(u8, 16 * 1024);
         errdefer alloc.free(read_buffer);
+        try plain_init_tw.check(.write_buffer);
         const write_buffer = try alloc.alloc(u8, 16 * 1024);
         errdefer alloc.free(write_buffer);
 

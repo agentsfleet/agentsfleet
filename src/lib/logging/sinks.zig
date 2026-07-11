@@ -165,6 +165,7 @@ pub fn emitToSinks(
 pub const BufferedSink = struct {
     alloc: std.mem.Allocator,
     buf: std.ArrayList(u8) = .empty,
+    /// Guards `buf`; `snapshot()` copies under it so a concurrent emit can't realloc mid-read.
     mutex: common.Mutex = .{},
 
     pub fn init(alloc: std.mem.Allocator) BufferedSink {
