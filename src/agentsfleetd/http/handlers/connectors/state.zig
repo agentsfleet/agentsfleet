@@ -26,6 +26,10 @@ const FIELD_SEP: u8 = '|';
 const MAC_SEP: u8 = '.';
 const NONCE_BYTES = 16;
 const NONCE_KEY_BUF_LEN = 128;
+const LATEST_KEY_BUF_LEN = 160;
+const LATEST_KEY_SEGMENT = "latest:";
+const LATEST_KEY_FMT = "{s}{s}{s}";
+const S_GET = "GET";
 const DEFAULT_TTL_SECONDS: u32 = 600;
 
 /// Per-connector binding: the HMAC domain prefix and Redis nonce-key prefix that
@@ -80,6 +84,28 @@ pub fn verifyConsume(
     defer alloc.free(p.buf);
     if (!consumeNonce(queue, cfg, p.nonce)) return null;
     return alloc.dupe(u8, p.workspace_id) catch null;
+}
+
+/// Record the newest app-install state for a workspace. Older valid states must
+/// not complete after a newer install flow was started for the same workspace.
+pub fn markLatest(queue: *queue_redis.Client, cfg: Config, workspace_id: []const u8, state: []const u8) !void {
+    var key_buf: [LATEST_KEY_BUF_LEN]u8 = undefined;
+    try queue.setEx(try latestKey(&key_buf, cfg.nonce_prefix, workspace_id), state, cfg.ttl_seconds);
+}
+
+/// Consume the newest app-install marker. Returns false for stale callbacks.
+pub fn consumeLatest(queue: *queue_redis.Client, cfg: Config, workspace_id: []const u8, state: []const u8) !bool {
+    var key_buf: [LATEST_KEY_BUF_LEN]u8 = undefined;
+    const key = try latestKey(&key_buf, cfg.nonce_prefix, workspace_id);
+    var resp = try queue.command(&.{ S_GET, key });
+    defer resp.deinit(queue.alloc);
+    const current = switch (resp) {
+        .bulk => |v| v orelse return false,
+        else => return false,
+    };
+    if (!constEql(current, state)) return false;
+    try queue.del(key);
+    return true;
 }
 
 /// Build a signed state string. Pure (no I/O). Caller owns the returned slice.
@@ -152,6 +178,10 @@ fn macHex(domain_prefix: []const u8, secret: []const u8, payload: []const u8) [H
 /// consume sites can't drift.
 fn nonceKey(buf: []u8, nonce_prefix: []const u8, nonce: []const u8) ![]const u8 {
     return std.fmt.bufPrint(buf, "{s}{s}", .{ nonce_prefix, nonce });
+}
+
+fn latestKey(buf: []u8, nonce_prefix: []const u8, workspace_id: []const u8) ![]const u8 {
+    return std.fmt.bufPrint(buf, LATEST_KEY_FMT, .{ nonce_prefix, LATEST_KEY_SEGMENT, workspace_id });
 }
 
 fn storeNonce(queue: *queue_redis.Client, cfg: Config, nonce: []const u8) !void {

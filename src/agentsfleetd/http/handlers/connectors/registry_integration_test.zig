@@ -45,6 +45,13 @@ const UNKNOWN_PROVIDER = "nope";
 
 fn noopRegistry(_: *auth_mw.MiddlewareRegistry, _: *TestHarness) anyerror!void {}
 
+fn mintLatestGithubState(alloc: std.mem.Allocator, h: *TestHarness) ![]const u8 {
+    const state = try connector_state.mint(alloc, &h.queue, github_spec.STATE, SIGNING_SECRET, TARGET_WS, common.clock.nowMillis());
+    errdefer alloc.free(state);
+    try connector_state.markLatest(&h.queue, github_spec.STATE, TARGET_WS, state);
+    return state;
+}
+
 // ── Pure router-shape tests (no DB) — the generic trio resolves any
 // {provider} segment; provider resolution is the handler layer's job. ────────
 
@@ -504,7 +511,7 @@ test "integration: github callback requires a user-authorization code" {
     h.ctx.approval_signing_secret = SIGNING_SECRET;
 
     // app_install state is minted against github's OWN domain binding.
-    const state = try connector_state.mint(alloc, &h.queue, github_spec.STATE, SIGNING_SECRET, TARGET_WS, common.clock.nowMillis());
+    const state = try mintLatestGithubState(alloc, h);
     defer alloc.free(state);
     const path = try std.fmt.allocPrint(alloc, "/v1/connectors/github/callback?installation_id=42424242&state={s}", .{state});
     defer alloc.free(path);
@@ -532,7 +539,7 @@ test "integration: github callback with a non-numeric installation_id is a 400, 
     deleteFleetHandle(conn, TARGET_WS, common.PROVIDER_GITHUB);
     h.ctx.approval_signing_secret = SIGNING_SECRET;
 
-    const state = try connector_state.mint(alloc, &h.queue, github_spec.STATE, SIGNING_SECRET, TARGET_WS, common.clock.nowMillis());
+    const state = try mintLatestGithubState(alloc, h);
     defer alloc.free(state);
     const path = try std.fmt.allocPrint(alloc, "/v1/connectors/github/callback?installation_id=not-a-number&state={s}", .{state});
     defer alloc.free(path);

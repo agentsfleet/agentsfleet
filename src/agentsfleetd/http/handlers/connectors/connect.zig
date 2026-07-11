@@ -105,6 +105,11 @@ fn connectAppInstall(hx: hx_mod.Hx, spec: *const registry.ConnectorSpec, a: regi
     };
     defer hx.alloc.free(url);
 
+    connector_state.markLatest(hx.ctx.queue, a.state, workspace_id, st) catch {
+        common.internalOperationError(hx.res, S_CONNECT_START_FAILED, hx.req_id);
+        return;
+    };
+
     log.debug(EV_CONNECT_INITIATED, .{ .provider = spec.provider, .workspace_id = workspace_id });
     hx.ok(.ok, .{ .install_url = url });
 }

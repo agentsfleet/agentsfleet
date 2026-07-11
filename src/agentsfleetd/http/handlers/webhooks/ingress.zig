@@ -33,10 +33,13 @@ const MAX_ROUTING_KEY_LEN: usize = 64;
 const MAX_REPOSITORY_LEN: usize = 255;
 const MAX_FANOUT: usize = 100;
 const DEDUP_KEY_BUF_LEN: usize = 512;
-const DEDUP_TTL_SECONDS: u32 = 86_400;
+const DEDUP_TTL_SECONDS: u32 = 72 * 60 * 60;
 const LOG_INGRESS_REJECTED = "ingress_rejected";
+const LOG_INGRESS_SECRET_LOAD_FAILED = "ingress_secret_load_failed";
 const EVENT_PING = "ping";
 const STATUS_PONG = "pong";
+const S_PROVIDER_SECRET_MISSING = "Provider App webhook secret is not configured";
+const S_PROVIDER_SECRET_LOAD_FAILED = "Failed to load provider App webhook secret";
 
 const Target = struct {
     fleet_id: []const u8,
@@ -54,8 +57,12 @@ pub fn innerIngress(hx: Hx, req: *httpz.Request, provider: []const u8) void {
 
     var conn_slot: ?*pg.Conn = hx.ctx.pool.acquire() catch return common.internalDbUnavailable(hx.res, hx.req_id);
     defer if (conn_slot) |conn| hx.ctx.pool.release(conn);
-    const secret = loadPlatformSecret(hx.alloc, conn_slot.?, hx.ctx.platform_admin_workspace_id, ingress) orelse {
-        hx.fail(ec.ERR_CONNECTOR_NOT_CONFIGURED, "Provider App webhook secret is not configured");
+    const secret = loadPlatformSecret(hx.alloc, conn_slot.?, hx.ctx.platform_admin_workspace_id, ingress) catch |err| {
+        log.err(LOG_INGRESS_SECRET_LOAD_FAILED, .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .provider = provider, .err = @errorName(err) });
+        common.internalOperationError(hx.res, S_PROVIDER_SECRET_LOAD_FAILED, hx.req_id);
+        return;
+    } orelse {
+        hx.fail(ec.ERR_CONNECTOR_NOT_CONFIGURED, S_PROVIDER_SECRET_MISSING);
         return;
     };
     defer hx.alloc.free(secret);
@@ -164,13 +171,16 @@ fn validSignature(config: webhook_verify.VerifyConfig, secret: []const u8, provi
     return hs.constantTimeEql(&actual, &expected);
 }
 
-fn loadPlatformSecret(alloc: std.mem.Allocator, conn: *pg.Conn, admin_workspace_id: []const u8, ingress: webhook_verify.IngressConfig) ?[]u8 {
+fn loadPlatformSecret(alloc: std.mem.Allocator, conn: *pg.Conn, admin_workspace_id: []const u8, ingress: webhook_verify.IngressConfig) !?[]u8 {
     if (admin_workspace_id.len == 0) return null;
-    var parsed = vault.loadJson(alloc, conn, admin_workspace_id, ingress.platform_secret_key) catch return null;
+    var parsed = vault.loadJson(alloc, conn, admin_workspace_id, ingress.platform_secret_key) catch |err| switch (err) {
+        error.NotFound => return null,
+        else => return err,
+    };
     defer parsed.deinit();
     const value = parsed.value.object.get(ingress.platform_secret_field) orelse return null;
     if (value != .string or value.string.len == 0) return null;
-    return alloc.dupe(u8, value.string) catch null;
+    return try alloc.dupe(u8, value.string);
 }
 
 fn resolveWorkspace(alloc: std.mem.Allocator, conn: *pg.Conn, provider: []const u8, routing_key: []const u8) !?[]u8 {
@@ -286,4 +296,8 @@ test "App ingress replay identity is independent of the unsigned delivery header
     const different = authenticatedReplayId("different-signed-body");
     try std.testing.expectEqualSlices(u8, &first, &replay);
     try std.testing.expect(!std.mem.eql(u8, &first, &different));
+}
+
+test "App ingress replay slot covers the GitHub redelivery window" {
+    try std.testing.expectEqual(@as(u32, 72 * 60 * 60), DEDUP_TTL_SECONDS);
 }

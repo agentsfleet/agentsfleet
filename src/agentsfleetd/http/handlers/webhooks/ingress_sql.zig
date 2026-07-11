@@ -23,7 +23,11 @@ pub const SELECT_TARGETS =
     \\    FROM jsonb_array_elements(COALESCE(f.config_json->'x-agentsfleet'->'triggers', '[]'::jsonb)) AS trigger
     \\    WHERE trigger->>'type' = 'webhook'
     \\      AND trigger->>'source' = $3
-    \\      AND trigger->'repositories' ? $5
+    \\      AND EXISTS (
+    \\        SELECT 1
+    \\        FROM jsonb_array_elements_text(COALESCE(trigger->'repositories', '[]'::jsonb)) AS repo_name(value)
+    \\        WHERE lower(repo_name.value) = lower($5)
+    \\      )
     \\      AND (NOT (trigger ? 'events') OR trigger->'events' ? $6)
     \\  )
     \\ORDER BY f.id
