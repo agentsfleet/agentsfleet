@@ -259,8 +259,9 @@ EOF
 
 The end-to-end provisioning above is also packaged as
 [`04_provision_runner_env.sh`](./04_provision_runner_env.sh) — run that for
-an idempotent one-shot (it also restarts `agentsfleet-runner.service` and verifies
-it stays active).
+an idempotent one-shot. When the runner binary is installed, it restarts
+`agentsfleet-runner.service` and verifies it stays active. Before the first binary
+deploy, it stops the service retry loop and leaves startup to `deploy.sh`.
 
 ### 4.3 Install the systemd unit
 
@@ -286,7 +287,9 @@ ssh $SSH_OPTS "${USER}@zombie-dev-worker-ant" "ls /etc/systemd/system/agentsflee
 #   /etc/systemd/system/agentsfleet-runner.service
 ```
 
-**Gate check:** run `./04_provision_runner_env.sh` — it verifies vault refs, writes the env file, restarts the service, and confirms `is-active`.
+**Gate check:** run `./04_provision_runner_env.sh` — it verifies vault refs and
+writes the env file. It verifies `is-active` when the binary is installed; before
+the first deploy, a deferred service start is the expected result.
 
 ---
 
@@ -346,12 +349,15 @@ Once `DEV_WORKER_READY=true` is set, every push to `main` triggers the `deploy-w
 
 1. Downloads the freshly compiled `agentsfleet-runner` binary (from the `compile-dev` job)
 2. Joins the Tailscale network
-3. Verifies worker host readiness (`03_deploy_readiness.sh`)
-4. scp's the binary + `deploy/baremetal/deploy.sh` + `agentsfleet-runner.service` to the server
-5. Calls `sudo deploy.sh runner $VERSION /opt/agentsfleet/bin/agentsfleet-runner` with the local binary path
-6. Sends Discord notification on success/failure
+3. Rewrites `/opt/agentsfleet/.env` from the vault (`04_provision_runner_env.sh`)
+4. Verifies worker host readiness (`03_deploy_readiness.sh`)
+5. scp's the binary + `deploy/baremetal/deploy.sh` + `agentsfleet-runner.service` to the server
+6. Calls `sudo deploy.sh runner $VERSION /opt/agentsfleet/bin/agentsfleet-runner` with the local binary path
+7. Sends Discord notification on success/failure
 
-No manual steps after bootstrap — the server is fully CI-managed. The env file (`/opt/agentsfleet/.env`) is **not** rewritten by CI; it's host-resident state, provisioned once via section 4.0 and rotated only via the credential-rotation playbook.
+No manual steps after bootstrap — the server is fully CI-managed. The env file
+(`/opt/agentsfleet/.env`) is rewritten from the vault on every deploy, so token
+rotation reaches the host without a separate manual provisioning run.
 
 ---
 
