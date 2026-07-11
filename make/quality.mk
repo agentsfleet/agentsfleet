@@ -185,7 +185,9 @@ check-schema-gate: _schema_gate_check  ## Enforce pre-v2.0 teardown convention o
 
 REDOCLY := bunx @redocly/cli
 
-check-openapi:  ## Bundle YAML → openapi.json + Redocly lint + error-schema + URL-shape checks
+ROUTE_COVERAGE_TESTS := python3 -m unittest discover -s scripts -t scripts -p 'check_openapi_route_coverage*_test.py'
+
+check-openapi:  ## Bundle YAML → openapi.json + Redocly lint + error-schema + URL-shape + route-coverage checks
 	@echo "→ [openapi] Bundling split YAML → public/openapi.json..."
 	@$(REDOCLY) bundle public/openapi/root.yaml -o public/openapi.json >/dev/null
 	@echo "→ [openapi] Redocly lint..."
@@ -194,7 +196,11 @@ check-openapi:  ## Bundle YAML → openapi.json + Redocly lint + error-schema + 
 	@python3 scripts/check_openapi_errors.py
 	@echo "→ [openapi] REST §1 URL shape (no verbs in URLs)..."
 	@python3 scripts/check_openapi_url_shape.py
-	@echo "✓ [openapi] Bundle + lint + error-schema + url-shape all green"
+	@echo "→ [openapi] Route-coverage gate self-tests..."
+	@$(ROUTE_COVERAGE_TESTS)
+	@echo "→ [openapi] REST §7 served-vs-documented route coverage..."
+	@python3 scripts/check_openapi_route_coverage.py
+	@echo "✓ [openapi] Bundle + lint + error-schema + url-shape + route-coverage all green"
 
 check-route-registration-doc:  ## REST guide §7 route-registration facts stay fresh (middleware names, cited paths, make targets, dead prefixes)
 	@python3 scripts/check_route_registration_doc_test.py

@@ -17,6 +17,7 @@ const contract = @import("contract");
 const pipe_proto = @import("pipe_proto.zig");
 const cred = @import("engine/credential_request.zig");
 const result_mod = @import("child_supervisor_result.zig");
+const types = @import("engine/types.zig");
 const client_errors = @import("engine/client_errors.zig");
 
 const log = logging.scoped(.runner_supervisor);
@@ -49,7 +50,10 @@ pub const MemorySink = struct {
 
 /// What the read loop should do after a renewal tick or a progress frame.
 /// `extend` carries the new absolute kill deadline (epoch ms).
-pub const RenewDecision = union(enum) { keep, extend: i64, terminate };
+/// `terminate` carries the class the run is reported under, so a fleet-budget
+/// stop reaches the durable `failure_label` instead of collapsing into the
+/// generic `renewal_terminate` every renewal stop used to share.
+pub const RenewDecision = union(enum) { keep, extend: i64, terminate: types.FailureClass };
 
 /// Outcome of servicing one `credential_request` (M102 §3): a short-lived token
 /// for the child, or a typed rejection it fails closed on. `token` is owned by the
@@ -115,7 +119,7 @@ pub fn readResult(
             .timed_out => {
                 const now = clock.nowMillis();
                 if (now >= deadline) return .{ .timed_out = true };
-                if (applyTick(renew_hook, &deadline, now, usage)) return .{ .terminated = true };
+                if (applyTick(renew_hook, &deadline, now, usage)) |reason| return .{ .terminated = true, .terminate_reason = reason };
                 continue;
             },
             .readable => {},
@@ -182,7 +186,7 @@ fn handleFrame(
         },
     }
     // Every non-terminal frame attests liveness and is a renewal point.
-    if (applyTick(renew_hook, deadline, clock.nowMillis(), usage.*)) return .{ .terminated = true };
+    if (applyTick(renew_hook, deadline, clock.nowMillis(), usage.*)) |reason| return .{ .terminated = true, .terminate_reason = reason };
     return null;
 }
 
@@ -224,14 +228,17 @@ fn writePipeResponse(alloc: std.mem.Allocator, response_fd: std.posix.fd_t, resp
 /// Ask the renewal hook for a decision and apply it to `deadline`. Returns true
 /// iff the child must be terminated (lease lost / capped / no credits). A null
 /// hook (no renewal configured) is a no-op.
-fn applyTick(renew_hook: ?RenewHook, deadline: *i64, now_ms: i64, usage: pipe_proto.UsageSnapshot) bool {
-    const h = renew_hook orelse return false;
+/// Run one renewal tick. Returns the class to terminate under, or `null` to keep
+/// reading — an optional rather than a bool so the hook's reason survives to
+/// `classify` instead of being flattened to "something stopped us".
+fn applyTick(renew_hook: ?RenewHook, deadline: *i64, now_ms: i64, usage: pipe_proto.UsageSnapshot) ?types.FailureClass {
+    const h = renew_hook orelse return null;
     switch (h.onTick(h.ctx, now_ms, usage)) {
         .keep => {},
         .extend => |new_deadline| deadline.* = new_deadline,
-        .terminate => return true,
+        .terminate => |reason| return reason,
     }
-    return false;
+    return null;
 }
 
 /// Parse one `activity` frame payload and hand it to the sink. Best-effort: a

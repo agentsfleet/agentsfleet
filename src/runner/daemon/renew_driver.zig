@@ -128,9 +128,12 @@ pub fn RenewDriver(comptime Client: type) type {
                     log.debug("lease_renewed", .{ .lease_id = self.lease_id, .lease_expires_at = new_deadline });
                     return .{ .extend = new_deadline };
                 },
-                .terminal => |status| {
-                    log.warn("lease_renew_terminal", .{ .error_code = client_errors.ERR_EXEC_RENEWAL_TERMINATED, .lease_id = self.lease_id, .status = status });
-                    return .terminate;
+                .terminal => |t| {
+                    // The refusal's own class rides through to `classify`, so a
+                    // fleet-budget stop is reported as `budget_breach` rather
+                    // than as a generic renewal stop.
+                    log.warn("lease_renew_terminal", .{ .error_code = client_errors.errorCodeForFailure(t.reason), .lease_id = self.lease_id, .status = t.status, .reason = t.reason.label() });
+                    return .{ .terminate = t.reason };
                 },
             }
         }

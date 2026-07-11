@@ -30,6 +30,7 @@ const PgQuery = @import("../db/pg_query.zig").PgQuery;
 const hx_mod = @import("../http/handlers/hx.zig");
 const common = @import("../http/handlers/common.zig");
 const ec = @import("../errors/error_registry.zig");
+const budget = @import("budget.zig");
 const protocol = @import("contract").protocol;
 const id_format = @import("../types/id_format.zig");
 const renewal = @import("renewal.zig");
@@ -41,10 +42,13 @@ const Hx = hx_mod.Hx;
 const log = logging.scoped(.runner_renew);
 
 /// The lease fields renewal needs before the atomic extend: tenant + metering
-/// context for the credit gate, and the status to reject a non-active lease
-/// early. Arena-dup'd off the row.
+/// context for the credit gate, the fleet/workspace identity for the per-fleet
+/// budget gate, and the status to reject a non-active lease early. Arena-dup'd
+/// off the row.
 const Lease = struct {
     tenant_id: []const u8,
+    fleet_id: []const u8,
+    workspace_id: []const u8,
     posture: []const u8,
     provider: []const u8,
     model: []const u8,
@@ -83,6 +87,15 @@ pub fn renew(hx: Hx, req: *httpz.Request, lease_id: []const u8) void {
     if (!creditsCover(hx, lease)) {
         log.warn("renew_no_credits", .{ .error_code = ec.ERR_RUN_LEASE_RENEWAL_NO_CREDITS, .runner_id = runner_id, .lease_id = lease_id });
         hx.fail(ec.ERR_RUN_LEASE_RENEWAL_NO_CREDITS, "Tenant balance can no longer fund this run; not renewed");
+        return;
+    }
+    // The fleet's OWN ceiling — independent of the tenant credit pool above; both
+    // must pass. The 402 is the same status the credit refusal uses, so the
+    // runner's terminal-status set is unchanged; the body's `UZ-RUN-015` is what
+    // lets it report `budget_breach` rather than a generic renewal stop.
+    if (budgetRefusal(hx, lease)) |verdict| {
+        log.warn("renew_budget_breach", .{ .error_code = ec.ERR_RUN_BUDGET_EXCEEDED, .runner_id = runner_id, .lease_id = lease_id, .fleet_id = lease.fleet_id, .verdict = @tagName(verdict) });
+        hx.fail(ec.ERR_RUN_BUDGET_EXCEEDED, "Fleet budget exhausted for this window; not renewed");
         return;
     }
 
@@ -159,6 +172,34 @@ fn creditsCover(hx: Hx, lease: Lease) bool {
     return metering.balanceCoversEstimate(hx.ctx.pool, hx.alloc, lease.tenant_id, parsePosture(lease.posture), lease.provider, lease.model, hx.ctx.balance_policy);
 }
 
+/// The fleet's own spend ceiling. Returns the breach verdict when the run must
+/// stop, `null` when it may continue.
+///
+/// The budget is read LIVE from `core.fleets.config_json` rather than pinned on
+/// the lease at issue, so lowering a runaway fleet's ceiling bites at its next
+/// renewal tick instead of only at its next run. It is parsed by the same
+/// validator that accepted it at ingest, so the ceiling that admits a run and
+/// the ceiling that kills it can never be read two ways.
+///
+/// Two distinct failure postures, deliberately: a DB fault (pool acquire, query)
+/// admits the renewal — fail OPEN, mirroring `creditsCover`, because a metering
+/// outage must not kill every in-flight run. An UNREADABLE stored budget refuses
+/// — fail CLOSED, because a ceiling we cannot parse is not one we may ignore.
+fn budgetRefusal(hx: Hx, lease: Lease) ?budget.Verdict {
+    const conn = hx.ctx.pool.acquire() catch |err| {
+        // Could not even ask → fail open, like `creditsCover`.
+        log.warn("renew_budget_acquire_fail", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .fleet_id = lease.fleet_id, .err = @errorName(err) });
+        return null;
+    };
+    defer hx.ctx.pool.release(conn);
+
+    const read = budget.readBudget(conn, hx.alloc, lease.fleet_id, lease.workspace_id, clock.nowMillis());
+    if (read == .unreadable) {
+        log.warn("renew_budget_unreadable", .{ .error_code = ec.ERR_RUN_BUDGET_EXCEEDED, .fleet_id = lease.fleet_id });
+    }
+    return budget.refusalFor(read);
+}
+
 /// Returns the lease, `null` when no row matches (terminal 404), or an error on
 /// a transient DB fault (the caller maps it to a retryable 5xx, not a 404).
 fn loadLease(hx: Hx, runner_id: []const u8, lease_id: []const u8) !?Lease {
@@ -172,17 +213,19 @@ fn loadLeaseInner(hx: Hx, runner_id: []const u8, lease_id: []const u8) !?Lease {
     const conn = try hx.ctx.pool.acquire();
     defer hx.ctx.pool.release(conn);
     var q = PgQuery.from(try conn.query(
-        \\SELECT tenant_id::text, posture, provider, model, status
+        \\SELECT tenant_id::text, fleet_id::text, workspace_id::text, posture, provider, model, status
         \\FROM fleet.runner_leases WHERE id = $1::uuid AND runner_id = $2::uuid
     , .{ lease_id, runner_id }));
     defer q.deinit();
     const row = try q.next() orelse return null;
     return .{
         .tenant_id = try hx.alloc.dupe(u8, try row.get([]const u8, 0)),
-        .posture = try hx.alloc.dupe(u8, try row.get([]const u8, 1)),
-        .provider = try hx.alloc.dupe(u8, try row.get([]const u8, 2)),
-        .model = try hx.alloc.dupe(u8, try row.get([]const u8, 3)),
-        .status = try hx.alloc.dupe(u8, try row.get([]const u8, 4)),
+        .fleet_id = try hx.alloc.dupe(u8, try row.get([]const u8, 1)),
+        .workspace_id = try hx.alloc.dupe(u8, try row.get([]const u8, 2)),
+        .posture = try hx.alloc.dupe(u8, try row.get([]const u8, 3)),
+        .provider = try hx.alloc.dupe(u8, try row.get([]const u8, 4)),
+        .model = try hx.alloc.dupe(u8, try row.get([]const u8, 5)),
+        .status = try hx.alloc.dupe(u8, try row.get([]const u8, 6)),
     };
 }
 
