@@ -271,6 +271,15 @@ test "sink_unregister_waits_for_inflight_emit" {
     const u = try std.Thread.spawn(.{}, Unregisterer.run, .{ &gated, &u_done });
     defer u.join();
 
+    // Barrier: E2 must be a genuine POST-removal emit. unregisterByCtx compacts
+    // the registry and flips the epoch atomically under the registry lock, so an
+    // empty registry proves the removal landed and E2 will take the post-removal
+    // path. Without it, under CPU contention E2 can win the registry lock before U
+    // compacts, snapshot the still-present gated sink, park on `release`, and time
+    // out e2_done — a spawn-order race in a test that must be deterministic. U has
+    // released the registry lock before its drain spin, so this cannot deadlock.
+    while (sinksRegistered()) std.atomic.spinLoopHint();
+
     // E2: a post-removal emit completes fast — pre-fix, its completion
     // satisfied U's single-counter drain target and U returned with E1
     // still running inside the freed-in-real-life ctx.
