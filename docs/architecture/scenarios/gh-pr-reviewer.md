@@ -2,16 +2,17 @@
 
 > Parent: [`README.md`](./README.md) · References: [`../fleet_bundles.md`](../fleet_bundles.md) (bundle storage), [`../data_flow.md`](../data_flow.md) (trigger/execute loop), [`../billing_and_provider_keys.md`](../billing_and_provider_keys.md) (provider posture + credit gate).
 >
-> This is the single end-to-end walkthrough. It follows one persona — **John Doe** — installing the `github-pr-reviewer` fleet from a GitHub repo, wiring the webhook, and watching a Pull Request (PR) get reviewed. Provider posture, billing math, and the credit gate are **not** re-narrated here — those facts live in their topic docs (linked above); this scenario references them instead of duplicating them.
+> This is the single end-to-end walkthrough. It follows one persona — **John Doe** — installing the `github-pr-reviewer` fleet through the Command-Line Interface (CLI), connecting the shared GitHub App to his workspace, binding a repository to the fleet, and watching a Pull Request (PR) get reviewed. Provider posture, billing math, and the credit gate are not re-narrated here; those facts live in their topic docs.
 
-**Outcome under test:** from a GitHub Pull Request (PR) reviewer template to a posted PR review comment, with GitHub used only for template onboarding and runtime PR API calls, and the fleet running its installed `SKILL.md` against each event. The final trigger leg waits on `pull_request` webhook acceptance; until that lands the scenario is the target golden path, not fully green.
+**Outcome under test:** from a GitHub Pull Request reviewer template to a posted review comment, with the fleet running its installed `SKILL.md` against a repository-bound App event and using a short-lived installation token for runtime GitHub API calls. This scenario is **not yet proven**: it becomes green only when the repository-bound Pull Request integration test passes end to end.
 
-Legend: ✅ built today · 🔨 to-build.
+Legend: ✅ implemented and locally proven · 🔨 not built or not proven.
 
 ```mermaid
 sequenceDiagram
   autonumber
-  participant Op as User (laptop)
+  participant Admin as Platform admin
+  participant Op as Workspace user
   participant CLI as agentsfleet
   participant API as agentsfleetd-api
   participant GH as GitHub
@@ -19,22 +20,35 @@ sequenceDiagram
   participant PG as Postgres
   participant Runner as agentsfleet-runner
 
-  Note over Op,PG: admin already onboarded github-pr-reviewer → R2 + core.fleet_library
+  Admin->>GH: create App; set callback + /v1/ingress/github
+  Admin->>API: vault App identity, webhook secret, and client credentials
+  Note over Admin,PG: admin already onboarded github-pr-reviewer → R2 + core.fleet_library
+  Op->>API: sign up and create/select workspace W
+  Op->>API: connect github (signed single-use state)
+  API-->>Op: GitHub App install URL
+  Op->>GH: install App on acme/payments
+  GH->>API: callback installation_id + one-time code + state
+  API->>GH: exchange code; verify user can access installation
+  GH-->>API: installation accessible
+  API->>PG: conditional vault handle + connector_installs route
+  Note over API,PG: other workspace already owns installation → 403, no mutation
   Op->>CLI: install --library github-pr-reviewer
   CLI->>API: GET /v1/workspaces/{ws}/fleet-libraries
   API-->>CLI: platform row { id:"github-pr-reviewer", visibility:"platform" }
   CLI->>API: POST /v1/workspaces/{ws}/fleets { platform_library_id:"github-pr-reviewer" }
   API->>PG: INSERT core.fleets
-  API-->>CLI: { fleet_id, webhook_urls:{ github } }
-  Op->>GH: register webhook (events: pull_request)
+  API-->>CLI: { fleet_id }
+  Op->>API: TRIGGER: repositories=[acme/payments], events=[pull_request]
   Note over Op,Runner: …a PR is opened…
-  GH->>API: POST /v1/webhooks/{fleet_id}/github (Hash-based Message Authentication Code (HMAC))
-  API->>API: verify + accept pull_request 🔨 + XADD fleet:{id}:events
+  GH->>API: POST /v1/ingress/github
+  API->>API: verify App signature before payload routing
+  API->>PG: installation → workspace → repository/event/grant fleets
+  API->>API: claim body-digest+fleet replay slot → XADD fleet:{id}:events ✅
   Runner->>API: lease → { instructions:<SKILL>, event, bundle:{hash} }
   Runner->>R2: GET bundle tar → untar support files into sandbox
   Runner->>GH: GET /pulls/{n}/files (Bearer ${secrets.github.token})
   Runner->>GH: POST /pulls/{n}/reviews (comments)
-  Runner->>API: report → event processed → dashboard tail (SSE)
+  Runner->>API: report → event processed → dashboard event stream
 ```
 
 ---
@@ -57,11 +71,14 @@ Full storage detail: [`../fleet_bundles.md`](../fleet_bundles.md).
 
 The runner executes the **fleet's** SKILL.md (which reflects any PATCH), not the bundle's import-time copy.
 
-## 3. Wire the webhook, the PR fires
+## 3. Connect the App, bind the repository, then receive the PR
 
-1. **Secrets.** `agentsfleet secret create github --data=@-` with `{ "token":"ghp_…", "webhook_secret":"…" }` → vault key `fleet:github`.
-2. **Register the webhook** on GitHub (Settings ▸ Webhooks, or the pre-filled `gh api …/hooks` command the dashboard renders), `events: pull_request`, `config[secret]` = the `webhook_secret`.
-3. **A PR is opened.** GitHub `POST /v1/webhooks/{fleet_id}/github` with `X-Hub-Signature-256`. The receiver verifies the Hash-based Message Authentication Code (HMAC) against `fleet:github.webhook_secret`, then `XADD fleet:{id}:events`. 🔨 **Today the receiver accepts only `workflow_run`; accepting `pull_request` is the one piece of trigger plumbing this fleet needs** — until it lands, the PR event is ignored.
+1. **Platform setup, once per environment.** The platform administrator creates the shared GitHub App with callback `/v1/connectors/github/callback`, event ingress `/v1/ingress/github`, user authorization requested during installation, Pull Request and workflow-run subscriptions, and minimum repository permissions. The `github-app` admin-vault bag carries `{app_id, app_slug, private_key_pem, webhook_secret, client_id, client_secret}`.
+2. **Workspace connection, once per GitHub installation.** John signs up, creates or selects his `agentsfleet` workspace, and starts `connector connect github`; the API creates signed single-use state bound to that workspace and redirects him to GitHub. He installs the App on `acme/payments`. The callback exchanges the one-time code, verifies John can access that installation, consumes state, and conditionally stores the workspace installation handle plus `installation_id → workspace_id` routing row. An installation already owned by another workspace returns 403 without changing either workspace.
+3. **Fleet subscription.** The installed fleet declares `source: github`, `events: [pull_request]`, and `repositories: [acme/payments]` in `TRIGGER.md`. The App installation is the maximum repository set; this fleet list is the smaller event subscription. Omission receives no App traffic.
+4. **A PR is opened.** GitHub signs and posts the event to `/v1/ingress/github`. The receiver verifies before reading routing fields, resolves the installation, selects only active and approved fleets matching `acme/payments` plus `pull_request`, claims an authenticated-body-digest/fleet replay slot, and appends the normalized event.
+
+The manual `/v1/webhooks/{fleet_id}/github` route remains available for an operator-managed per-fleet hook. It uses the workspace webhook secret and does not require `repositories`; it is not the default App path.
 
 ## 4. The run — SKILL.md drives the review
 
@@ -72,7 +89,7 @@ A runner leases the event (one active lease per fleet). The lease carries `instr
 
 The gate + billing path is identical to every other event — see [`../billing_and_provider_keys.md`](../billing_and_provider_keys.md) for the credit-pool deductions and the gate.
 
-## 5. What John sees after `pull_request` acceptance lands
+## 5. What John sees after the integration test proves the path
 
 - The pull request carries the fleet's review comments.
 - `agentsfleet events {id}` / the dashboard `/fleets/{id}` thread shows the run: the `http_request` tool calls and the response, streamed over Server-Sent Events (SSE), durable in `core.fleet_events`.
@@ -82,10 +99,13 @@ The gate + billing path is identical to every other event — see [`../billing_a
 | Step | Status |
 |---|---|
 | Install bundle from GitHub → R2 + Postgres | ✅ |
-| Webhook HMAC verify · queue · lease · run | ✅ |
+| Manual webhook signature verify · queue · lease · run | ✅ |
+| GitHub App callback stores installation handle + routing row | ✅ real-datastore callback and reconnect coverage passes |
+| App ingress filters installation + repository + event + grant | ✅ real Postgres and Redis coverage passes for signature, normalization, routing, replay, partial-failure recovery, and 100-delivery contention |
 | `SKILL.md` delivered as `instructions` per lease | ✅ |
 | Read the diff + post comments via `http_request` | ✅ |
-| Accept `pull_request` events (today only `workflow_run`) | 🔨 |
+| Local repository-bound `pull_request` datastore test | ✅ 49/49 named-suite tests pass against real Postgres and Redis |
+| External `github-pr-reviewer` repository test | 🔨 — proof gate for this scenario; do not call the scenario fixed until it passes |
 | Compounding memory across PRs | 🔨 (parked design) |
 
 ## 7. What is NOT in this scenario
@@ -98,3 +118,15 @@ The gate + billing path is identical to every other event — see [`../billing_a
 - **One reasoning loop.** A webhook event and a manual steer enter the same lease/execute path with the same envelope; the runtime never branches on actor type.
 - **GitHub is a one-time source, never a runtime dependency.** The fleet runs from the internal snapshot even if the source repo is later made private or deleted.
 - **The integration is the bundle**, not native per-system code: `SKILL.md` + `http_request` + injected `${secrets.*}` do the GitHub work.
+- **No broad fan-out.** App installation identifies the workspace; explicit repository and event membership identifies each fleet.
+- **Receipt is not credential access.** A later tool call mints a short-lived installation token only after the lease-derived fleet grant is rechecked.
+
+## 9. Remaining proof punch list
+
+1. ✅ Run the local database-and-Redis App-ingress suite without a skipped test.
+2. Connect a test workspace to the GitHub App and bind the `github-pr-reviewer` fleet to a dedicated repository.
+3. Open a Pull Request in that repository and observe exactly one queued event for the bound fleet.
+4. Let the fleet read the diff and post its review through a short-lived installation token.
+5. Replay the same GitHub delivery and confirm no second fleet event or review is created.
+
+Until all five checks pass, `github-pr-reviewer` is implemented plumbing with an outstanding repository-level proof, not a completed end-to-end scenario.

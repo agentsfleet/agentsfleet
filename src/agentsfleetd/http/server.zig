@@ -162,9 +162,9 @@ fn dispatch(ctx: *handler.Context, registry: *auth_mw.MiddlewareRegistry, req: *
 /// api-class admission: claim an in-flight slot; above the ceiling the
 /// request is shed with 429 before any per-request allocation.
 fn dispatchApi(ctx: *handler.Context, registry: *auth_mw.MiddlewareRegistry, req: *httpz.Request, res: *httpz.Response, matched: router.Route, path: []const u8) void {
-    // safe because: pure admission counter — no memory is published through
-    // it, over-claimers release in the paired defer below.
+    // safe because: pure admission counter; over-claimers release below.
     const live = ctx.api_in_flight_requests.fetchAdd(1, .monotonic) + 1;
+    if (ctx.api_peak_in_flight_probe) |probe| _ = probe.fetchMax(live, .monotonic);
     defer {
         // safe because: same admission counter; the gauge store tolerates
         // last-writer staleness between concurrent requests.

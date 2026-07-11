@@ -118,4 +118,6 @@ pub const ENTRIES_RUNTIME = [_]Entry{
         "Start the connect again from the dashboard; if it repeats, verify the provider app credentials and redirect URL.", "That connection didn't go through. Try connecting again from the dashboard."),
     eu("UZ-CONN-007", .internal_server_error, "Connector catalog lookup failed", "The vault existence check for connector app/fleet keys failed (a Postgres error). " ++
         "Retry; if it persists, check DB connectivity and the vault schema state.", "We couldn't load your connectors right now. Try refreshing — if it keeps failing, contact support."),
+    eu("UZ-CONN-008", .forbidden, "Connector installation ownership not verified", "GitHub did not confirm that the authorizing user can access the submitted App installation, or that installation is already connected to another workspace. " ++
+        "Start the connection again while signed in to the GitHub account that owns the installation.", "We couldn't verify that this GitHub installation belongs to you. Sign in with the owning GitHub account and try again."),
 };

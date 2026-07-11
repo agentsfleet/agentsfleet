@@ -10,6 +10,7 @@ const webhooks = @import("handlers/webhooks/fleet.zig");
 const approval = @import("handlers/webhooks/approval.zig");
 const grant_approval = @import("handlers/webhooks/grant_approval.zig");
 const github_webhook_h = @import("handlers/webhooks/github.zig");
+const github_ingress_h = @import("handlers/ingress/github.zig");
 const clerk_webhook_h = @import("handlers/auth/identity_events_clerk.zig");
 
 const Hx = hx_mod.Hx;
@@ -47,4 +48,9 @@ pub fn invokeGrantApprovalWebhook(hx: *Hx, req: *httpz.Request, route: router.Ro
 pub fn invokeGithubWebhook(hx: *Hx, req: *httpz.Request, route: router.Route) void {
     if (!common.requireMethod(hx.res, req.method, .POST)) return;
     github_webhook_h.innerInvokeGithubWebhook(hx.*, req, route.github_webhook);
+}
+
+pub fn invokeAppIngress(hx: *Hx, req: *httpz.Request, route: router.Route) void {
+    if (!common.requireMethod(hx.res, req.method, .POST)) return;
+    github_ingress_h.innerGithubAppIngress(hx.*, req, route.app_ingress);
 }

@@ -102,7 +102,8 @@ fn jsonNumberAsI64(v: ?std.json.Value) ?i64 {
     };
 }
 
-fn formatRfc3339(buf: []u8, unix_seconds: i64) []const u8 {
+/// Format a server receipt timestamp for GitHub normalizers.
+pub fn formatRfc3339(buf: []u8, unix_seconds: i64) []const u8 {
     const epoch_secs: u64 = if (unix_seconds < 0) 0 else @intCast(unix_seconds);
     const epoch = std.time.epoch.EpochSeconds{ .secs = epoch_secs };
     const day = epoch.getEpochDay();
