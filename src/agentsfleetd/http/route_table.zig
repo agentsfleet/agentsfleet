@@ -72,6 +72,7 @@ pub fn classFor(route: router.Route) RouteClass {
         .approval_webhook,
         .grant_approval_webhook,
         .github_webhook,
+        .app_ingress,
         .admin_platform_keys,
         .delete_admin_platform_key,
         .admin_models,
@@ -172,6 +173,7 @@ pub fn specFor(route: router.Route, registry: *auth_mw.MiddlewareRegistry) Route
         // keyed by the matching `triggers[].source`).
         .receive_webhook => .{ .middlewares = registry.webhookSig(), .invoke = invoke.invokeReceiveWebhook },
         .github_webhook => .{ .middlewares = registry.webhookSig(), .invoke = invoke.invokeGithubWebhook },
+        .app_ingress => .{ .middlewares = auth_mw.MiddlewareRegistry.none, .invoke = invoke.invokeAppIngress },
         // Clerk via Svix — dedicated middleware, shared handler.
         .receive_svix_webhook => .{ .middlewares = registry.svix(), .invoke = invoke.invokeReceiveSvixWebhook },
         // Clerk user.created auth-plane event — no fleet context; handler
@@ -300,6 +302,7 @@ test "specFor resolves a RouteSpec for a representative sample of every route fa
     _ = specFor(.{ .approval_webhook = "z1" }, &reg);
     _ = specFor(.{ .grant_approval_webhook = "z1" }, &reg);
     _ = specFor(.{ .github_webhook = "z1" }, &reg);
+    _ = specFor(.{ .app_ingress = "github" }, &reg);
     _ = specFor(.{ .workspace_fleet_memories = .{ .workspace_id = "ws1", .fleet_id = "z1" } }, &reg);
     _ = specFor(.{ .request_integration_grant = .{ .workspace_id = "ws1", .fleet_id = "z1" } }, &reg);
     _ = specFor(.{ .list_integration_grants = .{ .workspace_id = "ws1", .fleet_id = "z1" } }, &reg);

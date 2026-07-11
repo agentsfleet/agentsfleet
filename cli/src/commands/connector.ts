@@ -13,23 +13,19 @@ import {
   wsConnectorsPath,
 } from "../lib/api-paths.ts";
 import { ValidationError, type CliError } from "../errors/index.ts";
-
-interface ConnectorCatalogEntry {
-  readonly id?: string;
-  readonly archetype?: string;
-  readonly display_name?: string;
-  readonly configured?: boolean;
-  readonly connected?: boolean;
-}
+import {
+  summarizeConnector,
+  summarizeStatus,
+  type ConnectorCatalogEntry,
+} from "../services/connectors.ts";
 
 type ConnectorStatusResponse = Record<string, unknown>;
 
 const PROVIDER_RE = /^[a-z][a-z0-9_-]{0,63}$/;
-const STATUS_CONNECTED = "connected" as const;
-const STATUS_NOT_CONNECTED = "not connected" as const;
-const SETUP_READY = "configured" as const;
-const SETUP_REQUIRED = "admin setup required" as const;
 const CONTROL_BYTES_RE = /[\u0000-\u001f\u007f-\u009f]/g;
+const CONNECTOR_LIST_HINT = "run `agentsfleet connector list` to see provider ids";
+const FIELD_PROVIDER = "provider";
+const FIELD_STATE = "state";
 
 const requireValue = (
   value: string | undefined,
@@ -67,7 +63,7 @@ const requireProvider = (
       return yield* Effect.fail(
         new ValidationError({
           detail: "provider must be lowercase letters, numbers, hyphens, or underscores",
-          suggestion: "run `agentsfleet connector list` to see provider ids",
+          suggestion: CONNECTOR_LIST_HINT,
         }),
       );
     }
@@ -101,28 +97,29 @@ export const connectorListEffectFromArgs = (
       token,
     });
 
+    const summaries = entries.map(summarizeConnector);
     if (config.jsonMode) {
-      yield* output.printJson(entries);
+      yield* output.printJson(summaries);
       return;
     }
-    if (entries.length === 0) {
+    if (summaries.length === 0) {
       yield* output.info("no connectors found");
       return;
     }
     yield* output.printTable(
       [
-        { key: "id", label: "PROVIDER" },
+        { key: FIELD_PROVIDER, label: "PROVIDER" },
         { key: "display_name", label: "NAME" },
-        { key: "setup", label: "SETUP" },
-        { key: "connection", label: "CONNECTION" },
+        { key: FIELD_STATE, label: "STATE" },
+        { key: "hint", label: "NEXT ACTION" },
         { key: "archetype", label: "KIND" },
       ],
-      entries.map((entry) => ({
-        id: cleanTableCell(entry.id ?? ""),
-        display_name: cleanTableCell(entry.display_name ?? ""),
-        setup: entry.configured ? SETUP_READY : SETUP_REQUIRED,
-        connection: entry.connected ? STATUS_CONNECTED : STATUS_NOT_CONNECTED,
-        archetype: cleanTableCell(entry.archetype ?? ""),
+      summaries.map((entry) => ({
+        provider: cleanTableCell(entry.provider),
+        display_name: cleanTableCell(entry.display_name),
+        state: entry.state,
+        hint: cleanTableCell(entry.hint ?? "-"),
+        archetype: cleanTableCell(entry.archetype),
       })),
     );
   });
@@ -139,17 +136,31 @@ export const connectorStatusEffectFromArgs = (
     const workspaceId = yield* resolveWorkspaceId(workspaceIdFlag);
     const provider = yield* requireProvider(providerRaw);
 
-    const res = yield* http.request<ConnectorStatusResponse>({
-      path: wsConnectorPath(workspaceId, provider),
+    const entries = yield* http.request<ReadonlyArray<ConnectorCatalogEntry>>({
+      path: wsConnectorsPath(workspaceId),
       token,
     });
+    const entry = entries.find((candidate) => candidate.id === provider);
+    if (!entry) {
+      return yield* Effect.fail(new ValidationError({
+        detail: `unknown connector provider: ${provider}`,
+        suggestion: CONNECTOR_LIST_HINT,
+      }));
+    }
+    const res = entry.configured
+      ? yield* http.request<ConnectorStatusResponse>({
+          path: wsConnectorPath(workspaceId, provider),
+          token,
+        })
+      : null;
+    const summary = summarizeStatus(entry, res);
 
     if (config.jsonMode) {
-      yield* output.printJson(res);
+      yield* output.printJson(summary);
       return;
     }
 
-    const rows = Object.entries(res)
+    const rows = Object.entries(summary.details)
       .map(([field, value]) => ({ field: cleanTableCell(field), value: primitive(value, true) }))
       .filter((row): row is { field: string; value: string } => row.value !== null);
     yield* output.printTable(
@@ -157,6 +168,11 @@ export const connectorStatusEffectFromArgs = (
         { key: "field", label: "FIELD" },
         { key: "value", label: "VALUE" },
       ],
-      [{ field: "provider", value: provider }, ...rows],
+      [
+        { field: FIELD_PROVIDER, value: provider },
+        { field: FIELD_STATE, value: summary.state },
+        ...(summary.hint ? [{ field: "next_action", value: cleanTableCell(summary.hint) }] : []),
+        ...rows.filter((row) => row.field !== "status"),
+      ],
     );
   });

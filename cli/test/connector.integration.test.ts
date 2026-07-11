@@ -42,7 +42,8 @@ describe("connector commands", () => {
         expect(code).toBe(0);
         const text = out.read();
         expect(text).toContain("slack");
-        expect(text).toContain("admin setup required");
+        expect(text).toContain("unconfigured");
+        expect(text).toContain("platform administrator");
         expect(text).toContain("github");
         expect(text).toContain("configured");
         expect(text).toContain("connected");
@@ -56,6 +57,8 @@ describe("connector commands", () => {
   test("`connector status <provider>` prints primitive status fields", async () => {
     await authedScope(async () => {
       const routes: MockRoutes = {
+        [`GET /v1/workspaces/${WS_ID}/connectors`]: () =>
+          jsonResponse(200, [{ id: "slack", configured: true, connected: true }]),
         [`GET /v1/workspaces/${WS_ID}/connectors/slack`]: () =>
           jsonResponse(200, {
             status: "connected",
@@ -75,12 +78,13 @@ describe("connector commands", () => {
         const text = out.read();
         expect(text).toContain("provider");
         expect(text).toContain("slack");
-        expect(text).toContain("status");
+        expect(text).toContain("state");
         expect(text).toContain("connected");
         expect(text).toContain("agentsfleet[31m-dev");
         expect(text).not.toContain("\u001b");
         expect(text).not.toContain("ignored");
         expect(calls.map((c) => `${c.method} ${c.path}`)).toEqual([
+          `GET /v1/workspaces/${WS_ID}/connectors`,
           `GET /v1/workspaces/${WS_ID}/connectors/slack`,
         ]);
       });
@@ -91,6 +95,8 @@ describe("connector commands", () => {
     await authedScope(async () => {
       const rawTeam = "agentsfleet\u001b[31m-dev";
       const routes: MockRoutes = {
+        [`GET /v1/workspaces/${WS_ID}/connectors`]: () =>
+          jsonResponse(200, [{ id: "slack", configured: true, connected: true }]),
         [`GET /v1/workspaces/${WS_ID}/connectors/slack`]: () =>
           jsonResponse(200, { status: "connected", team: rawTeam }),
       };
@@ -103,7 +109,13 @@ describe("connector commands", () => {
         );
 
         expect(code).toBe(0);
-        expect(JSON.parse(out.read())).toEqual({ status: "connected", team: rawTeam });
+        expect(JSON.parse(out.read())).toEqual({
+          provider: "slack",
+          display_name: "",
+          archetype: "",
+          state: "connected",
+          details: { status: "connected", team: rawTeam },
+        });
         expect(err.read()).toBe("");
       });
     });
@@ -146,6 +158,52 @@ describe("connector commands", () => {
         expect(code).not.toBe(0);
         expect(`${out.read()}\n${err.read()}`).toContain("connector command requires --workspace");
         expect(calls).toEqual([]);
+      });
+    });
+  });
+
+  test("disconnected connector status succeeds with a next action", async () => {
+    await authedScope(async () => {
+      const routes: MockRoutes = {
+        [`GET /v1/workspaces/${WS_ID}/connectors`]: () =>
+          jsonResponse(200, [{ id: "github", configured: true, connected: false }]),
+        [`GET /v1/workspaces/${WS_ID}/connectors/github`]: () =>
+          jsonResponse(200, { status: "not_connected" }),
+      };
+      await withMockApi(routes, async (apiUrl) => {
+        const out = bufferStream();
+        const err = bufferStream();
+        const code = await runCli(
+          ["connector", "status", "github", "--workspace", WS_ID, "--json"],
+          { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
+        );
+        expect(code).toBe(0);
+        expect(JSON.parse(out.read())).toMatchObject({
+          provider: "github",
+          state: "not_connected",
+          hint: expect.stringContaining("Connect github"),
+        });
+        expect(err.read()).toBe("");
+      });
+    });
+  });
+
+  test("connector API failure is structured and non-zero", async () => {
+    await authedScope(async () => {
+      const routes: MockRoutes = {
+        [`GET /v1/workspaces/${WS_ID}/connectors`]: () =>
+          jsonResponse(500, { error: { code: "UZ-INTERNAL-002", message: "Database error" } }),
+      };
+      await withMockApi(routes, async (apiUrl) => {
+        const out = bufferStream();
+        const err = bufferStream();
+        const code = await runCli(
+          ["connector", "list", "--workspace", WS_ID, "--json"],
+          { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
+        );
+        expect(code).not.toBe(0);
+        expect(err.read()).toContain("UZ-INTERNAL-002");
+        expect(out.read()).toBe("");
       });
     });
   });

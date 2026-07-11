@@ -123,6 +123,8 @@ paths:
     $ref: ./paths/memory.yaml#/~1v1~1workspaces~1{workspace_id}~1fleets~1{fleet_id}~1memories
   /v1/auth/identity-events/clerk:
     $ref: ./paths/auth/identity-events.yaml#/~1v1~1auth~1identity-events~1clerk
+  /v1/ingress/{provider}:
+    $ref: ./paths/webhooks.yaml#/~1v1~1ingress~1{provider}
   /v1/webhooks/svix/{fleet_id}:
     $ref: ./paths/webhooks.yaml#/~1v1~1webhooks~1svix~1{fleet_id}
   /v1/webhooks/{fleet_id}:

@@ -105,6 +105,8 @@ pub const ERR_WEBHOOK_MALFORMED = "UZ-WH-002";
 pub const ERR_WEBHOOK_SIG_INVALID = "UZ-WH-010";
 pub const ERR_WEBHOOK_TIMESTAMP_STALE = "UZ-WH-011";
 pub const ERR_WEBHOOK_CREDENTIAL_NOT_CONFIGURED = "UZ-WH-020";
+pub const ERR_WEBHOOK_INSTALL_NOT_MAPPED = "UZ-WH-021";
+pub const ERR_WEBHOOK_SUBSCRIPTION_NOT_FOUND = "UZ-WH-022";
 pub const ERR_WEBHOOK_PAYLOAD_TOO_LARGE = "UZ-WH-030";
 // SLACK CONNECTOR
 // Events ingress (M106 §2): signature/replay rejections are 401; an unmapped
@@ -228,6 +230,7 @@ pub const ERR_CONNECTOR_UNKNOWN = "UZ-CONN-004";
 // removed when api-key providers became custom secrets rather than connectors.
 pub const ERR_CONNECTOR_OAUTH_EXCHANGE_FAILED = "UZ-CONN-006";
 pub const ERR_CONNECTOR_CATALOG_LOOKUP_FAILED = "UZ-CONN-007";
+pub const ERR_CONNECTOR_INSTALLATION_OWNERSHIP = "UZ-CONN-008";
 
 // ── Non-error constants (migrated from codes.zig) ──────────────────────────
 // Webhook user-facing messages

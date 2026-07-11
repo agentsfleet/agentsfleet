@@ -203,6 +203,7 @@ pub const invokeClerkWebhook = webhooks_invokes.invokeClerkWebhook;
 pub const invokeApprovalWebhook = webhooks_invokes.invokeApprovalWebhook;
 pub const invokeGrantApprovalWebhook = webhooks_invokes.invokeGrantApprovalWebhook;
 pub const invokeGithubWebhook = webhooks_invokes.invokeGithubWebhook;
+pub const invokeAppIngress = webhooks_invokes.invokeAppIngress;
 
 // ── Fleet create/read/update/delete ──────────────────────────────────────
 
