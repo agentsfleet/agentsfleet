@@ -31,7 +31,9 @@ pub fn currentBytes() ?u64 {
 /// `io`) so `common` stays dependency-free.
 fn linuxCurrentBytes() ?u64 {
     const fd = std.posix.openatZ(std.posix.AT.FDCWD, "/proc/self/statm", .{ .ACCMODE = .RDONLY }, 0) catch return null;
-    defer std.posix.close(fd);
+    // Zig 0.16 removed std.posix.close; this branch is Linux-only, so the raw
+    // Linux `close` syscall keeps rss.zig libc-free and io-free (its whole point).
+    defer _ = std.os.linux.close(fd);
     var buf: [128]u8 = undefined;
     const n = std.posix.read(fd, &buf) catch return null;
     if (n == 0) return null;
