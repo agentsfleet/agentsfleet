@@ -203,6 +203,7 @@ check-openapi:  ## Bundle YAML → openapi.json + Redocly lint + error-schema + 
 	@echo "✓ [openapi] Bundle + lint + error-schema + url-shape + route-coverage all green"
 
 check-route-registration-doc:  ## REST guide §7 route-registration facts stay fresh (middleware names, cited paths, make targets, dead prefixes)
+	@python3 scripts/check_route_registration_doc_test.py
 	@python3 scripts/check_route_registration_doc.py
 
 SHELLCHECK ?= shellcheck
@@ -282,7 +283,7 @@ lint-cli: _cli_lint  ## Lint agentsfleet CLI only (Oxlint + runtime/const audits
 lint-shell: _shell_lint  ## Lint scripts/*.sh via shellcheck (follows dotfiles symlinks)
 
 
-lint-all: lint-zig lint-website lint-apps-ds-ctl lint-shell check-openapi check-schema-gate check-gh-actions-valid check-playbooks check-route-registration-doc  ## Run all linters + quality gates
+lint-all: lint-zig lint-website lint-apps-ds-ctl lint-shell check-openapi check-schema-gate check-gh-actions-valid check-playbooks check-route-registration-doc check-architecture-doc check-deploy-safety  ## Run all linters + quality gates
 	@echo "✓ All lint checks passed"
 
 check-gh-actions-valid:  ## Validate .github/workflows/ — actionlint (YAML + run: shellcheck) + make-target ref check
@@ -319,7 +320,7 @@ check-gh-actions-valid:  ## Validate .github/workflows/ — actionlint (YAML + r
 	if [ $$FAIL -eq 1 ]; then echo "✗ workflow target reference check failed"; exit 1; fi; \
 	echo "✓ [gh-actions] actionlint + make-target refs all green"
 
-check-playbooks:  ## Validate playbooks/ — shellcheck + reference integrity + README/tree parity
+check-playbooks: check-vault-gate-parity  ## Validate playbooks/ — vault-gate parity + shellcheck + reference integrity + README/tree parity
 	@echo "→ [playbooks] shellcheck on playbooks/**/*.sh..."
 	@command -v $(SHELLCHECK) >/dev/null 2>&1 || { echo "shellcheck not found. Install via: mise install shellcheck"; exit 1; }
 	@find playbooks -name '*.sh' -print0 | xargs -0 $(SHELLCHECK) --severity=error -x

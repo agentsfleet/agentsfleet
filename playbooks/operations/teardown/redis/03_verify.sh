@@ -6,6 +6,13 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/../../../lib/common.sh"
 
+# Reads the vault (op:// refs below), so it carries the same approval + auth
+# gates as every other script under playbooks/operations/ (enforced by
+# `make check-playbooks`). Teardown is destructive, so this is on top of the
+# ALLOW_*_TEARDOWN approval, not instead of it.
+playbooks_require_vault_read_approval
+playbooks_require_op_auth
+
 vault_dev="${VAULT_DEV:-ZMB_CD_DEV}"
 vault_prod="${VAULT_PROD:-ZMB_CD_PROD}"
 env_mode="${ENV:-}"

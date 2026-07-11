@@ -1,6 +1,16 @@
 #!/usr/bin/env bash
-# M28_001 §0: Verify Grafana observability credentials exist in vault.
+# Verify Grafana observability credentials exist in vault.
+#
+# Reads the vault, so it carries the same approval + auth gates as every other
+# script under playbooks/operations/ (enforced by `make check-playbooks`).
 set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=../../lib/common.sh
+source "$SCRIPT_DIR/../../lib/common.sh"
+
+playbooks_require_vault_read_approval
+playbooks_require_op_auth
 
 VAULT="${VAULT_DEV:-ZMB_CD_DEV}"
 ITEM="grafana-observability"
