@@ -210,3 +210,81 @@ test "unregisterByCtx drain is bounded — no-sink emits don't grow drain_target
     const after_deinit = emitTicketsForTest();
     try std.testing.expectEqual(after_deinit.started, after_deinit.completed);
 }
+
+// ── Unregister drain vs concurrent emits (the epoch-ticket property) ────────
+
+const common = @import("common");
+
+/// A sink that BLOCKS inside emit until released — widens the pre-removal
+/// fan-out window so the drain property is provable, not timing luck.
+const GatedSink = struct {
+    entered: common.Event = .{},
+    release: common.Event = .{},
+
+    fn sink(self: *GatedSink) sinks.Sink {
+        return .{ .emit = emit, .ctx = @ptrCast(self) };
+    }
+
+    fn emit(ctx: *anyopaque, level: std.log.Level, scope: []const u8, ts_ms: i64, body: []const u8) void {
+        _ = level;
+        _ = scope;
+        _ = ts_ms;
+        _ = body;
+        const self: *GatedSink = @ptrCast(@alignCast(ctx));
+        self.entered.set();
+        self.release.timedWait(10 * std.time.ns_per_s) catch |err| switch (err) {
+            // Best-effort bound: a released-too-late gate just ends the emit.
+            error.Timeout => {},
+        };
+    }
+};
+
+const Emitter = struct {
+    fn once(done: *common.Event) void {
+        emitToSinks(.info, "s", 0, "event=inflight_emit");
+        done.set();
+    }
+};
+
+const Unregisterer = struct {
+    fn run(gated: *GatedSink, done: *common.Event) void {
+        sinks.unregisterByCtx(@ptrCast(gated));
+        done.set();
+    }
+};
+
+test "sink_unregister_waits_for_inflight_emit" {
+    clearSinksForTest();
+    defer clearSinksForTest();
+
+    var gated = GatedSink{};
+    registerSink(gated.sink());
+
+    // E1: a pre-removal emit, parked inside the gated sink's fan-out.
+    var e1_done = common.Event{};
+    const e1 = try std.Thread.spawn(.{}, Emitter.once, .{&e1_done});
+    defer e1.join();
+    try gated.entered.timedWait(5 * std.time.ns_per_s);
+
+    // U: unregister must not return while E1 still holds the removed ctx.
+    var u_done = common.Event{};
+    const u = try std.Thread.spawn(.{}, Unregisterer.run, .{ &gated, &u_done });
+    defer u.join();
+
+    // E2: a post-removal emit completes fast — pre-fix, its completion
+    // satisfied U's single-counter drain target and U returned with E1
+    // still running inside the freed-in-real-life ctx.
+    var e2_done = common.Event{};
+    const e2 = try std.Thread.spawn(.{}, Emitter.once, .{&e2_done});
+    defer e2.join();
+    try e2_done.timedWait(5 * std.time.ns_per_s);
+
+    // Settle window: give a buggy U every chance to return early.
+    common.sleepNanos(100 * std.time.ns_per_ms);
+    try std.testing.expect(!u_done.isSet());
+
+    // Release E1 → U's old-epoch target drains → U returns.
+    gated.release.set();
+    try e1_done.timedWait(5 * std.time.ns_per_s);
+    try u_done.timedWait(5 * std.time.ns_per_s);
+}

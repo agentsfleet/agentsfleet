@@ -65,6 +65,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `src/agentsfleetd/queue/connector_outbound.zig` | EDIT | Duplicate-key dupe freed before overwrite (L3) |
 | `src/lib/logging/sinks.zig` | EDIT | Drain tickets count only pre-removal emits (R6) |
 | `src/agentsfleetd/credentials/broker.zig` | EDIT | Single-flight cold-miss mint (R8) |
+| `src/agentsfleetd/credentials/broker_flight.zig` | CREATE | Cold-miss coordination split (single-flight guard + cache write-back; 350-line cap) |
 | `src/agentsfleetd/observability/otlp/exporter.zig` | EDIT | Idempotent/guarded install (R9) |
 | `src/agentsfleetd/observability/metrics_runner.zig` | EDIT | Explicit spin-exhaustion handling — no duplicate slot (R10) |
 | `src/lib/tripwire/tripwire.zig` | CREATE | Vendored fault-injection module (§4), named module for both build graphs (directory layout per src/lib convention) |
@@ -161,10 +162,10 @@ requirement (comptime `enabled = builtin.is_test`, inline call convention when d
 
 ### §5 — Latent race hardening (R6, R8, R9, R10)
 
-- **Dimension 5.1** — sink unregister waits only on pre-removal in-flight emits (generation or ticket-epoch scheme); a pre-removal emit still running blocks the free (R6) → Test `test_sink_unregister_waits_for_inflight_emit`
-- **Dimension 5.2** — concurrent cold misses for one broker key mint exactly once (single-flight, `jwks.zig` shape); losers wait for the winner's value (R8) → Test `test_broker_cold_miss_single_mint`
-- **Dimension 5.3** — concurrent/double `exporter.install` spawns exactly one flush thread and leaks no handle (R9) → Test `test_exporter_double_install_one_thread`
-- **Dimension 5.4** — slot resolution under contention never yields a duplicate slot: spin exhaustion becomes an explicit error or a documented saturation policy, not a fall-through (R10) → Test `test_metrics_runner_no_duplicate_slot_under_contention`
+- **Dimension 5.1** — sink unregister waits only on pre-removal in-flight emits (epoch-split ticket counters); a pre-removal emit still running blocks the free (R6) → Test `sink_unregister_waits_for_inflight_emit` (gated-sink reproduction of the exact unsoundness) — DONE
+- **Dimension 5.2** — concurrent cold misses for one broker key mint exactly once (single-flight in `broker_flight.zig`); losers wait and re-read the winner's cached token (R8) → Test `broker_cold_miss_single_mint` — DONE
+- **Dimension 5.3** — racing `exporter.install` claims atomically: exactly one `.installed`, the loser gets `.already_running`, no orphaned thread handle (R9) → Test `test_exporter_double_install_one_thread` — DONE
+- **Dimension 5.4** — slot resolution under contention never yields a duplicate slot: spin exhaustion drops the single record (documented saturation policy) instead of probing past a mid-init slot (R10) → Test `metrics_runner_no_duplicate_slot_under_contention` — DONE
 
 ## Interfaces
 
