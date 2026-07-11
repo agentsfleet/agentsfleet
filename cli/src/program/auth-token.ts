@@ -43,8 +43,7 @@ export interface JwtClaims {
   readonly [key: string]: unknown;
 }
 
-const ROLE_NAMESPACE_DEV = "https://agentsfleet.net/role";
-const ROLE_NAMESPACE_COM = "https://agentsfleet.net/role";
+const ROLE_NAMESPACE = "https://agentsfleet.net/role";
 
 export function decodeTokenPayload(token: unknown): JwtClaims | null {
   if (!token || !isString(token)) return null;
@@ -76,10 +75,8 @@ export function extractRoleFromToken(token: unknown): RoleClaim | null {
     payload.metadata?.role,
     payload.custom_claims?.role,
     payload.app_metadata?.role,
-    payload[ROLE_NAMESPACE_DEV],
-    payload[ROLE_NAMESPACE_COM],
-    payload.metadata?.[ROLE_NAMESPACE_DEV],
-    payload.metadata?.[ROLE_NAMESPACE_COM],
+    payload[ROLE_NAMESPACE],
+    payload.metadata?.[ROLE_NAMESPACE],
   ];
   for (const raw of candidates) {
     if (!isString(raw)) continue;
