@@ -151,6 +151,10 @@ fn matchV1(p: matchers.Path, method: httpz.Method) ?Route {
     return null;
 }
 
+test "match resolves the model library route" {
+    try std.testing.expectEqualDeep(Route.model_library, match(model_library_h.MODEL_LIBRARY_PATH, .GET).?);
+}
+
 test "match resolves tenant billing route" {
     try std.testing.expectEqualDeep(Route.get_tenant_billing, match("/v1/tenants/me/billing", .GET).?);
 }

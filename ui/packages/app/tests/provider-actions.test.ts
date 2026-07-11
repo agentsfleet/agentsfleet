@@ -18,6 +18,7 @@ const {
   createTenantModelEntryMock,
   updateTenantModelEntryMock,
   deleteTenantModelEntryMock,
+  getModelLibraryMock,
 } = vi.hoisted(() => ({
   withTokenMock: vi.fn(),
   setTenantProviderSelfManagedMock: vi.fn(),
@@ -28,6 +29,7 @@ const {
   createTenantModelEntryMock: vi.fn(),
   updateTenantModelEntryMock: vi.fn(),
   deleteTenantModelEntryMock: vi.fn(),
+  getModelLibraryMock: vi.fn(),
 }));
 
 vi.mock("@/lib/actions/with-token", () => ({ withToken: withTokenMock }));
@@ -42,6 +44,7 @@ vi.mock("@/lib/api/tenant_model_entries", () => ({
   updateTenantModelEntry: updateTenantModelEntryMock,
   deleteTenantModelEntry: deleteTenantModelEntryMock,
 }));
+vi.mock("@/lib/api/model_library", () => ({ getModelLibrary: getModelLibraryMock }));
 
 import {
   setProviderSelfManagedAction,
@@ -52,6 +55,7 @@ import {
   createModelEntryAction,
   updateModelEntryAction,
   deleteModelEntryAction,
+  getModelLibraryAction,
 } from "@/app/(dashboard)/w/[workspaceId]/settings/models/actions";
 
 beforeEach(() => {
@@ -65,6 +69,21 @@ beforeEach(() => {
 afterEach(() => vi.resetAllMocks());
 
 describe("provider server actions — thin forwarders", () => {
+  it("getModelLibraryAction threads only the token through withToken to the library client", async () => {
+    const library = { version: "2026-04-29", models: [] };
+    getModelLibraryMock.mockResolvedValueOnce(library);
+    const r = await getModelLibraryAction();
+    expect(r).toEqual({ ok: true, data: library });
+    expect(getModelLibraryMock).toHaveBeenCalledWith("tok");
+  });
+
+  it("getModelLibraryAction returns withToken's failure envelope untouched (degrade path input)", async () => {
+    withTokenMock.mockResolvedValueOnce({ ok: false, error: "Not authenticated", status: 401 });
+    const r = await getModelLibraryAction();
+    expect(r).toEqual({ ok: false, error: "Not authenticated", status: 401 });
+    expect(getModelLibraryMock).not.toHaveBeenCalled();
+  });
+
   it("setProviderSelfManagedAction forwards the body then token through withToken to the client", async () => {
     const provider = { mode: "self_managed", model: "claude-opus" };
     setTenantProviderSelfManagedMock.mockResolvedValueOnce(provider);
