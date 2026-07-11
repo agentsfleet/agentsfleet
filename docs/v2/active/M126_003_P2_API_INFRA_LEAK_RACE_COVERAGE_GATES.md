@@ -168,7 +168,7 @@ macOS dev machines. The probe pattern: read RSS via `common.rss.currentBytes()`,
 workload `SOAK_ITERATIONS` times, re-read, assert growth under a named per-probe bound
 (generous — RSS is coarse; the probe catches unbounded growth, not byte-exact leaks).
 
-- **Dimension 7.1** — `src/lib/common/rss.zig` reads the process RSS on Linux (`/proc/self/statm`) and macOS (`task_info`); returns null on unsupported platforms so probes skip, never false-fail → Test `test_rss_reader_returns_plausible_value`
+- **Dimension 7.1** — `src/lib/common/rss.zig` reads the process RSS on Linux (`/proc/self/statm`) and macOS (`task_info`); returns null on unsupported platforms so probes skip, never false-fail → Test `test_rss_reader_returns_plausible_value` — DONE. Linux path is a raw-syscall `/proc/self/statm` read (`std.posix.openatZ`/`read`, no libc, no `io`); macOS path is mach `task_info(MACH_TASK_BASIC_INFO)` returning `resident_size` (flavor `20` pinned — `std.c.MACH_TASK_BASIC_INFO` is a redirect placeholder; libSystem is always linked on Darwin so it resolves in the libc-free lib graph too). Re-exported as `common.rss`. Verified: `resident_size` reads ~1.5 MiB live; compiles x86_64-linux + aarch64-linux + native.
 - **Dimension 7.2** — two seed probes establish the pattern: `model_rate_cache` rebuild/swap soak (complements the §3 injectability with the native-side view) and hub subscribe/unsubscribe churn soak → Tests `test_rate_cache_rebuild_rss_bounded`, `test_hub_churn_rss_bounded`
 
 ## Interfaces

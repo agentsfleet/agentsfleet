@@ -32,6 +32,11 @@ pub const backoff = @import("backoff.zig");
 /// `std.process.Init` (`common.env.owned`). See `env.zig`.
 pub const env = @import("env.zig");
 
+/// Process-level current RSS reader (`common.rss.currentBytes`) — the
+/// coarse memory oracle the RSS growth-probe soaks read; null where
+/// unsupported so a probe skips. See `rss.zig`.
+pub const rss = @import("rss.zig");
+
 /// How long an issued lease/affinity claim stays valid before the slot becomes
 /// reclaimable, and the increment each renewal adds. The control plane sets
 /// `leased_until = now + this` and stamps the lease row's `lease_expires_at` to
