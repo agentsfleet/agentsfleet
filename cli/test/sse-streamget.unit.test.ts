@@ -88,6 +88,18 @@ test("streamGet throws ApiError when the response is non-2xx", async () => {
   ).rejects.toMatchObject({ status: 500, code: "UZ-EXT-001" });
 });
 
+test("streamGet falls back from RFC 7807 detail to title", async () => {
+  const fetchImpl = fakeFetch(() => partialResponse({
+    ok: false,
+    status: 424,
+    statusText: "Failed Dependency",
+    text: async () => JSON.stringify({ error_code: "UZ-BUNDLE-003", title: "Fleet Bundle secrets missing" }),
+  }));
+  await expect(
+    streamGet("https://example/x", {}, () => {}, { fetchImpl, timeoutMs: 0 }),
+  ).rejects.toMatchObject({ code: "UZ-BUNDLE-003", message: "Fleet Bundle secrets missing" });
+});
+
 test("streamGet non-JSON error bodies fall back to status text and raw body", async () => {
   const fetchImpl = fakeFetch(() => partialResponse({
     ok: false,

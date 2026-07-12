@@ -9,9 +9,8 @@
 // JSON.parse()'d if possible. Lines starting with `:` are comments
 // (heartbeats) and skipped.
 
-import { ApiError, type FetchImpl } from "./http.ts";
+import { ApiError, readProblemDetails, type FetchImpl } from "./http.ts";
 
-const ERROR_KEY = "error";
 const MESSAGE_KEY = "message";
 
 const DEFAULT_TIMEOUT_MS = 60_000;
@@ -62,13 +61,9 @@ export async function streamGet(
       const text = await res.text();
       let json: unknown = null;
       try { json = JSON.parse(text); } catch { /* ignore */ }
-      const errorCode = readNestedString(json, [ERROR_KEY, "code"])
-        ?? readNestedString(json, ["error_code"])
-        ?? `HTTP_${res.status}`;
-      const message = readNestedString(json, [ERROR_KEY, MESSAGE_KEY])
-        ?? readNestedString(json, ["detail"])
-        ?? res.statusText
-        ?? "stream request failed";
+      const problem = readProblemDetails(json);
+      const errorCode = problem.code ?? `HTTP_${res.status}`;
+      const message = problem.message ?? res.statusText ?? "stream request failed";
       throw new ApiError(message, { status: res.status, code: errorCode, body: json ?? text });
     }
 
@@ -104,15 +99,6 @@ export async function streamGet(
   } finally {
     if (timer) clearTimeout(timer);
   }
-}
-
-function readNestedString(value: unknown, path: ReadonlyArray<string>): string | undefined {
-  let cursor: unknown = value;
-  for (const key of path) {
-    if (cursor === null || typeof cursor !== TYPE_OBJECT) return undefined;
-    cursor = (cursor as Record<string, unknown>)[key];
-  }
-  return typeof cursor === "string" ? cursor : undefined;
 }
 
 export function parseSseFrame(frame: string): SseFrame | null {
