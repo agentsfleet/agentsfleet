@@ -30,6 +30,16 @@ pub fn pinPooledHandle(client: *std.http.Client, url: []const u8) ?std.Io.net.So
         .raw => |r| r,
         .percent_encoded => |p| p,
     };
+    return connectPinned(client, host_str, port, tls);
+}
+
+/// Prime-then-pin core for callers that already hold host/port/tls (the
+/// runner's persistent control-plane client) — `pinPooledHandle` is the
+/// URL-parsing wrapper. Connects the pooled handle the next `fetch` will pop
+/// and returns its socket for a deadline watchdog; null means certificate
+/// state or the connect is unusable and the caller must not arm-and-fetch on
+/// an assumed pin.
+pub fn connectPinned(client: *std.http.Client, host_str: []const u8, port: u16, tls: bool) ?std.Io.net.Socket.Handle {
     if (host_str.len == 0) return null;
     primeTlsForDirectConnect(client, client.io, tls);
     if (tls and client.now == null) return null;
@@ -38,4 +48,8 @@ pub fn pinPooledHandle(client: *std.http.Client, url: []const u8) ?std.Io.net.So
     const handle = conn.stream_writer.stream.socket.handle;
     client.connection_pool.release(conn, client.io);
     return handle;
+}
+
+test {
+    _ = @import("http_pin_test.zig");
 }

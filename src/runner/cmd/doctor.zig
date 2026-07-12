@@ -47,16 +47,20 @@ fn reachCheck(io: std.Io, alloc: std.mem.Allocator, api: ?[]const u8, token: ?[]
     var client = Client.init(alloc, io, api.?);
     defer client.deinit();
     _ = client.heartbeat(alloc, token.?, call_deadline.DEFAULT_DEADLINE_MS) catch |err|
-        return .{ .name = CHECK_CONTROL_PLANE, .ok = false, .detail = switch (err) {
-            // 401/403: reached a control plane, but this token is rejected.
-            error.Unauthorized => "reachable; token REJECTED (401/403) — mint a fresh agt_r",
-            // Non-2xx/non-401 (a 3xx/404/5xx): the TLS host answered but it isn't
-            // an agentsfleet control-plane heartbeat endpoint. Distinct from a
-            // dial failure so "slack.com answered 302" doesn't read as "down".
-            error.BadStatus => "reachable (TLS ok) but not an agentsfleet control plane (non-2xx/401 on /v1/runners/heartbeats)",
-            // Connect/TLS/transport failed — genuinely could not reach the host.
-            else => "unreachable — could not connect (dial/TLS/transport failed)",
-        } };
+        return .{
+            .name = CHECK_CONTROL_PLANE,
+            .ok = false,
+            .detail = switch (err) {
+                // 401/403: reached a control plane, but this token is rejected.
+                error.Unauthorized => "reachable; token REJECTED (401/403) — mint a fresh agt_r",
+                // Non-2xx/non-401 (a 3xx/404/5xx): the TLS host answered but it isn't
+                // an agentsfleet control-plane heartbeat endpoint. Distinct from a
+                // dial failure so "slack.com answered 302" doesn't read as "down".
+                error.BadStatus => "reachable (TLS ok) but not an agentsfleet control plane (non-2xx/401 on /v1/runners/heartbeats)",
+                // Connect/TLS/transport failed — genuinely could not reach the host.
+                else => "unreachable — could not connect (dial/TLS/transport failed)",
+            },
+        };
     return .{ .name = CHECK_CONTROL_PLANE, .ok = true, .detail = "reachable; token valid" };
 }
 

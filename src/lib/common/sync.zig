@@ -63,6 +63,14 @@ pub const WaitGroup = struct {
         defer self.mutex.unlock();
         while (self.count != 0) self.cond.wait(&self.mutex);
     }
+
+    /// Registered-but-unfinished units right now. For bounded waiters that
+    /// poll with progress logging instead of blocking in `wait`.
+    pub fn pending(self: *WaitGroup) usize {
+        self.mutex.lock();
+        defer self.mutex.unlock();
+        return self.count;
+    }
 };
 
 /// One-shot event: `set()` once, `timedWait()` blocks until set or the bound

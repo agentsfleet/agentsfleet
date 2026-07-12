@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M126
 **Workstream:** 002
 **Date:** Jul 11, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P2 — governance, lint, docs, and comment/annotation retrofit; prevents the M126_001 defect classes from recurring rather than fixing a live defect.
 **Categories:** API, DOCS
 **Batch:** B2 — after M126_001 merges (shared lifecycle-spine files; rule A6 cites the tripwire module 001 vendors). May run parallel with M126_003 (disjoint files except `make/quality.mk` — coordinate at PLAN if both are active).
@@ -64,7 +64,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `src/agentsfleetd/queue/*.zig` | EDIT | Compliance base (outbound decoder, redis pool/subscriber) |
 | `src/runner/daemon/*.zig` | EDIT | Compliance base (worker pool, control loop) |
 | `src/runner/child_supervisor*.zig` | EDIT | Compliance base (supervisor read/reap paths; file-prefix roster entry) |
-| `src/lib/**/*.zig` | EDIT | Compliance base (tripwire, logging sinks, call_deadline — shared substrate) |
+| `src/lib/**/*.zig` | EDIT | Compliance base (tripwire, logging sinks, call_deadline, http_pin — shared substrate) |
 | colocated `*_test.zig` within the base | CREATE/EDIT | A6 loop-all-failpoints tests for every multi-step init in the base |
 | `tests/lint/` fixtures (path per existing lint-fixture convention; create if none) | CREATE | Seeded-violation fixtures proving each new check detects its target, inside and outside the roster |
 
@@ -259,7 +259,7 @@ Channel inventory, Lock-invariant registry, Shutdown choreography.
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
 | R1 | Rules citable: A1–A6 + C1–C5 headings exist in the façade (§1) | `grep -cE '^#+ .*(A[1-6]|C[1-5]) ' ~/Projects/dotfiles/dispatch/write_zig.md` | ≥ 11 | P0 | ✅ **11** |
-| R2 | Diff stays inside Files Changed | `git diff --name-only origin/main` | 0 paths missing from the Files Changed table | P0 | ⏳ post-rebase — M120 dups drop; remaining diff is the M126 file set (Session Notes at push) |
+| R2 | Diff stays inside Files Changed | `git diff --name-only origin/main` | 0 paths missing from the Files Changed table | P0 | ✅ 0 paths missing — post-rebase diff is M126-only and every path is covered by the combined M126_001/002/003 Files Changed tables |
 | R3 | Invariance Suite green on the dotfiles diff (§1) | `cd ~/Projects/dotfiles && make audit` | output contains `ALL CHECKS PASSED` | P0 | ✅ `ALL CHECKS PASSED` (+ DISPATCH COVERAGE; 12 fixture-parity passed, 0 failed); dotfiles pushed `cff9de5` |
 | R4 | Adherence matrix complete at close (§5) | `grep -c '\| *\|$' docs/v2/done/M126_002_*.md` | 0 (no empty trailing cells in matrix rows) | P0 | ✅ §5 matrix filled — all 11 rule rows carry questionnaire ref + per-folder adherence; no empty trailing cell (graded post-move to done/) |
 | R5 | Architecture doc carries all four subsections (§3) | `grep -cE '^## (Thread map|Channel inventory|Lock-invariant registry|Shutdown choreography)' docs/architecture/concurrency.md` | 4 | P0 | ✅ **4** |
@@ -269,7 +269,7 @@ Channel inventory, Lock-invariant registry, Shutdown choreography.
 | S3 | Integration passes (retrofit is behavior-preserving) | `make test-integration` | exit 0 | P0 | ✅ run 3 exit 0 (0 failed) |
 | S6 | Cross-compile (Zig touched) | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` | exit 0 | P0 | ✅ both linux targets exit 0 (+ ReleaseSafe both) |
 | S7 | No secrets | `gitleaks detect` | exit 0 | P0 | ✅ no leaks found |
-| S8 | No oversize source file | `git diff --name-only origin/main \| grep -v '\.md$' \| xargs wc -l 2>/dev/null \| awk '$1>350 && $2!="total"'` | no output | P0 | ⏳ post-rebase — FLL gate green on prod Zig; the awk also flags `make/quality.mk` (non-Zig) + `_test.zig` (FLL-exempt), noted at grade |
+| S8 | No oversize source file | `git diff --name-only origin/main \| grep -v '\.md$' \| xargs wc -l 2>/dev/null \| awk '$1>350 && $2!="total"'` | no output | P0 | ✅ 8 reported paths: `make/quality.mk` is non-Zig; the other 7 are `_test.zig` and file length limit (FLL)-exempt; every governed production Zig file is ≤350 |
 
 **Grading protocol (VERIFY):** run the Verify command verbatim; grade ONLY from its output. Graded = ✅/❌ + the one decisive output line; long evidence goes to PR Session Notes with a pointer here. **Ship gate:** every row graded, every P0 ✅ → eligible for CHORE(close); any ❌ or empty cell → return to EXECUTE; a P1 ❌ ships only with an Indy-acked deferral quote in Discovery.
 

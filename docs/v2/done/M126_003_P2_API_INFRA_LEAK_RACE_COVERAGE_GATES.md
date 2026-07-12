@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M126
 **Workstream:** 003
 **Date:** Jul 11, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P2 — test and gate infrastructure; closes the blind spots that let the M126_001 defect classes pass every existing gate.
 **Categories:** API, INFRA
 **Batch:** B2 — after M126_001 merges (its fixes make these tests passable; tripwire is available). May run parallel with M126_002 (coordinate the shared `lint-zig.py`/`make/quality.mk` touch at PLAN).
@@ -249,7 +249,7 @@ defer deinit in the same function.
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
 | R1 | Memleak gate exercises all three suites (§1) | `make memleak 2>&1 \| grep -cE '^→ \[(agentsfleetd\|runner\|lib)\]'` | ≥ 3 | P0 | ✅ **6** (agentsfleetd + runner + lib build+run markers) |
-| R2 | Diff stays inside Files Changed | `git diff --name-only origin/main` | 0 paths missing from the Files Changed table | P0 | ⏳ post-rebase — the 3 M120 dup commits drop; remaining diff is the M126 file set (graded in Session Notes at push) |
+| R2 | Diff stays inside Files Changed | `git diff --name-only origin/main` | 0 paths missing from the Files Changed table | P0 | ✅ 0 paths missing — post-rebase diff is M126-only and every path is covered by the combined M126_001/002/003 Files Changed tables |
 | R3 | Five lifecycle surfaces covered (§5) | `make test-unit-all && make test-integration && make memleak` | exit 0 (§5.2–§5.5 in test-integration; §5.1 in the memleak boot-drain lane) | P0 | ✅ unit lanes + integration (run 3, 0 failed) + memleak all exit 0; §5.1 ran in the boot-drain lane (marker + leak-clean), §5.2–§5.5 in test-integration |
 | R4 | Drain lint catches the pair violation (§4) | fixture lane run named in the test spec | nonzero on fixture; `make lint-zig` exit 0 on tree | P0 | ✅ pg-drain check green (645 files); `make lint-zig` exit 0 |
 | R5 | VERIFY_TIERS documents the new lanes (§1) | `grep -c 'runner' docs/VERIFY_TIERS.md` | ≥ 1 in the memleak tier section | P1 | ✅ **1** |

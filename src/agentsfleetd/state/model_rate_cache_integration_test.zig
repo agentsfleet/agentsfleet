@@ -38,12 +38,13 @@ const RC_INPUT_NANOS: i64 = 1_000;
 const RC_CACHED_NANOS: i64 = 100;
 const RC_OUTPUT_NANOS: i64 = 2_000;
 
-test "integration(model_rate_cache): rebuild/swap cycles are leak-free under testing.allocator" {
-    const db_ctx = (try base.openTestConn(testing.allocator)) orelse return error.SkipZigTest;
-    defer db_ctx.pool.deinit();
-    defer db_ctx.pool.release(db_ctx.conn);
-    const conn = db_ctx.conn;
+const RC_CLEANUP_SQL = "DELETE FROM core.model_library WHERE provider = $1";
 
+// Seed the suite-private (provider, model) row both tests populate/swap
+// against; caller owns the matching `defer _ = conn.exec(DELETE...) catch {}`
+// (kept inline, not a shared helper — ZLint's suppressed-errors rule allows a
+// swallowed `catch {}` as a defer's direct body, not inside a plain fn).
+fn seedRateRow(conn: anytype) !void {
     const now = clock.nowMillis();
     _ = try conn.exec(
         \\INSERT INTO core.model_library
@@ -52,7 +53,16 @@ test "integration(model_rate_cache): rebuild/swap cycles are leak-free under tes
         \\VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $8)
         \\ON CONFLICT (provider, model_id) DO NOTHING
     , .{ RC_UID, RC_MODEL, RC_PROVIDER, RC_CAP_TOKENS, RC_INPUT_NANOS, RC_CACHED_NANOS, RC_OUTPUT_NANOS, now });
-    defer _ = conn.exec("DELETE FROM core.model_library WHERE provider = $1", .{RC_PROVIDER}) catch {};
+}
+
+test "integration(model_rate_cache): rebuild/swap cycles are leak-free under testing.allocator" {
+    const db_ctx = (try base.openTestConn(testing.allocator)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
+    const conn = db_ctx.conn;
+
+    try seedRateRow(conn);
+    defer _ = conn.exec(RC_CLEANUP_SQL, .{RC_PROVIDER}) catch {};
 
     // Reset any global a prior test left, then swap the backing to
     // testing.allocator so every rebuild + prior-arena free is leak-audited.
@@ -82,15 +92,8 @@ test "integration(model_rate_cache): RSS growth over the rebuild/swap soak stays
 
     // Seed the same suite-private row so each populate does real row-parse +
     // arena work (not a no-op empty build).
-    const now = clock.nowMillis();
-    _ = try conn.exec(
-        \\INSERT INTO core.model_library
-        \\  (uid, model_id, provider, context_cap_tokens, input_nanos_per_mtok,
-        \\   cached_input_nanos_per_mtok, output_nanos_per_mtok, created_at_ms, updated_at_ms)
-        \\VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $8)
-        \\ON CONFLICT (provider, model_id) DO NOTHING
-    , .{ RC_UID, RC_MODEL, RC_PROVIDER, RC_CAP_TOKENS, RC_INPUT_NANOS, RC_CACHED_NANOS, RC_OUTPUT_NANOS, now });
-    defer _ = conn.exec("DELETE FROM core.model_library WHERE provider = $1", .{RC_PROVIDER}) catch {};
+    try seedRateRow(conn);
+    defer _ = conn.exec(RC_CLEANUP_SQL, .{RC_PROVIDER}) catch {};
 
     // DELIBERATELY do NOT call setBackingAllocatorForTest: the probe's whole
     // point is the production page_allocator layer testing.allocator can't see.

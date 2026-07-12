@@ -53,16 +53,24 @@ state is protected, and how the thread is stopped and joined.
 The daemon's background fleet is spawned in `cmd/serve_background.zig`
 (`BackgroundThreads.start`) and torn down in `cmd/serve_shutdown.zig`.
 
+Two shutdown flags, deliberately split (`serve_shutdown.zig`): the raw signal
+flag (`shutdown_requested`, read only by the watcher) and the background-stop
+flag the sweepers/outbound worker receive via `serve_shutdown.flag()`. The
+background flag flips only when the watcher actually stops a published server
+or at teardown disarm — a boot-window SIGTERM therefore cannot kill the
+background stack while the server may still come up and briefly serve
+(the half-dead-node window).
+
 | Thread | Spawned by | Touches | Protection | Stop path |
 |---|---|---|---|---|
-| signal watcher | `serve_shutdown.signalWatcher` | the process-global shutdown flag | atomic flag; armed only **after** the server is published (boot-window SIGTERM survives) | one-shot; SIGTERM/SIGINT sets the flag, then it returns |
-| event bus | `events/bus.runThread` | the in-proc event queue | `bus.mutex` | flag observed → loop exits → joined |
-| approval-gate sweeper | `fleet_runtime/approval_gate_sweeper.run` | Postgres (own conn) | none shared (per-thread conn) | shutdown flag → exits → joined |
-| liveness sweeper | `fleet/liveness_sweeper.run` | Postgres (own conn) | none shared | shutdown flag → exits → joined |
-| reclaim sweeper | `fleet/reclaim_sweeper.run` | Postgres + Redis (own conns) | none shared | shutdown flag → exits → joined |
-| outbound worker | `queue/outbound_worker.run` | Redis outbound stream (own conn) | none shared | shutdown flag → exits → joined |
+| signal watcher | `serve_shutdown.signalWatcher` | the signal flag + the background-stop flag | atomic flags; armed only **after** the server is published (boot-window SIGTERM survives) | one-shot; stops the published server, releases the background loops, returns |
+| event bus | `events/bus.runThread` | the in-proc event queue | `bus.mutex` | `bus.stop()` → loop exits → joined |
+| approval-gate sweeper | `fleet_runtime/approval_gate_sweeper.run` | Postgres (own conn) | none shared (per-thread conn) | background-stop flag → exits → joined |
+| liveness sweeper | `fleet/liveness_sweeper.run` | Postgres (own conn) | none shared | background-stop flag → exits → joined |
+| reclaim sweeper | `fleet/reclaim_sweeper.run` | Postgres + Redis (own conns) | none shared | background-stop flag → exits → joined |
+| outbound worker | `queue/outbound_worker.run` | Redis outbound stream (own conn) | none shared | background-stop flag → exits → joined |
 | SSE hub reader | `events/subscription_hub_reader.readerMain` | the one shared pub/sub connection + the `channels` map | `hub.wire` (connection) + `hub.mutex` (map), acquired one at a time | `stop()` → reader observes stop → joined under `hub.wire` |
-| install worker | `http/handlers/fleets/create_install_steps.worker` (detached) | pool + queue during install | guarded by `install_wg` (`WaitGroup`) | teardown `install_wg.wait()` before pool/queue deinit |
+| install worker | `http/handlers/fleets/create_install_steps.worker` (detached) | pool + queue during install | guarded by `install_wg` (`WaitGroup`) | teardown `serve_shutdown.awaitInstallWorkers` before pool/queue deinit — never proceeds under a live worker; each expired round warns with the straggler count |
 | OTLP flush | `observability/otlp/exporter.flushLoop` | the export ring | atomic single-flight claim on `g_running` | flag → loop exits → joined |
 | metrics runners | `observability/metrics_fleet.Runner.run` | metrics snapshot slots | per-runner slot claim | shutdown flag → exit |
 | call-deadline watchdog | `lib/call_deadline` loop | the per-call deadline flag | atomic flag under the call's own lock | fires or the call completes; joined by the caller |

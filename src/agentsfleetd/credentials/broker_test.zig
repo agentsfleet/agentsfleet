@@ -500,3 +500,32 @@ test "broker_cold_miss_single_mint" {
     try std.testing.expectEqual(@as(usize, 1), fake_calls.load(.monotonic));
     try std.testing.expectEqual(@as(usize, CONTENDERS), ok_count.load(.monotonic));
 }
+
+test "broker_flight: an OOM-degraded winner never removes a later caller's registration" {
+    const flight = @import("broker_flight.zig");
+    const alloc = std.testing.allocator;
+    var b = try brokerWith(alloc, FAKE_REGISTRY);
+    defer b.deinit();
+
+    // Caller A's flight bookkeeping OOMs: it wins unguarded, registering no
+    // map entry (the degrade path — a rare bounded double mint by design).
+    var failing = std.testing.FailingAllocator.init(alloc, .{ .fail_index = 0 });
+    b.alloc = failing.allocator();
+    try std.testing.expectEqual(flight.FlightClaim.won_unguarded, flight.beginFlight(&b, "k"));
+    b.alloc = alloc;
+    try std.testing.expect(!b.inflight.contains("k"));
+
+    // Caller B arrives for the same key and registers a real flight.
+    try std.testing.expectEqual(flight.FlightClaim.won_registered, flight.beginFlight(&b, "k"));
+    try std.testing.expect(b.inflight.contains("k"));
+
+    // Caller A finishes. With the claim tri-state it never calls endFlight —
+    // pre-fix its unconditional endFlight removed B's LIVE entry here, waking
+    // B's waiters mid-mint and re-arming the concurrent double mint the
+    // guard exists to prevent (provider refresh-family revocation).
+    try std.testing.expect(b.inflight.contains("k"));
+
+    // B's own endFlight is the one that releases the key.
+    flight.endFlight(&b, "k");
+    try std.testing.expect(!b.inflight.contains("k"));
+}
