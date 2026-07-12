@@ -11,12 +11,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M123
 **Workstream:** 001
 **Date:** Jul 11, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P0 — users must not launch with commands or API guidance that the product rejects
 **Categories:** API, CLI, DOCS
 **Batch:** B1 — one cross-repository launch-readiness outcome
 **Branch:** `feat/m123-v2-docs-alignment`
-**Test Baseline:** set at CHORE(open) — `unit=<N> integration=<M>` via `make _lint_zig_test_depth`
+**Test Baseline:** unit=2526 integration=307
 **Depends on:** none
 **Provenance:** agent-generated from Indy's Jul 11, 2026 launch direction
 **Canonical architecture:** `docs/architecture/user_flow.md` §8
