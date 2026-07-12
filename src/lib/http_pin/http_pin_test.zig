@@ -38,15 +38,32 @@ fn boundPort(handle: std.Io.net.Socket.Handle) !u16 {
 /// dies at DNS and never reaches the panic site, so it proves nothing about it.
 /// A reachable loopback peer does — if the guard ever regresses, the connect
 /// lands here and the null clock is dereferenced for real.
+///
+/// Retired via `shutdown()` — never by closing the listener under it: on Linux,
+/// `listener.deinit` does not wake a blocked `accept`, so a join after it hangs
+/// forever (it happens to wake on macOS, which is how such a hang ships).
 const AcceptProbe = struct {
     listener: *std.Io.net.Server,
     io: std.Io,
     accepted: std.atomic.Value(bool) = std.atomic.Value(bool).init(false),
+    stop: std.atomic.Value(bool) = std.atomic.Value(bool).init(false),
 
     fn run(self: *AcceptProbe) void {
-        const conn = self.listener.accept(self.io) catch return; // deinit wakes us
-        self.accepted.store(true, .seq_cst);
+        const conn = self.listener.accept(self.io) catch return;
+        // shutdown()'s own wake connect is not a probe hit; anything that
+        // arrives BEFORE stop is set is the regression being detected.
+        if (!self.stop.load(.seq_cst)) self.accepted.store(true, .seq_cst);
         conn.close(self.io);
+    }
+
+    /// Linux-safe retire: set the stop flag, then wake the blocked accept with
+    /// one throwaway loopback connect that run() swallows. The caller joins the
+    /// probe thread after this and only THEN deinits the listener.
+    fn shutdown(self: *AcceptProbe, port: u16) void {
+        self.stop.store(true, .seq_cst);
+        var addr = std.Io.net.IpAddress.parseIp4("127.0.0.1", port) catch return;
+        const stream = addr.connect(self.io, .{ .mode = .stream }) catch return;
+        stream.close(self.io);
     }
 };
 
@@ -197,10 +214,12 @@ test "an unprimed secure pin to a REACHABLE peer never opens the socket (the cra
     try testing.expect(client.now == null); // and the clock really was never primed
 
     client.deinit();
-    listener.deinit(io); // wakes the blocked accept
+    probe.shutdown(port); // Linux-safe: wake the blocked accept, then join, THEN deinit
     accepter.join();
+    listener.deinit(io);
 
     // The load-bearing assertion: the guard fired BEFORE the connect, so the
-    // panic site was never reached. Pre-fix this peer would have been accepted.
+    // panic site was never reached (shutdown's own wake connect is excluded by
+    // the stop flag). Pre-fix this peer would have been accepted.
     try testing.expect(!probe.accepted.load(.seq_cst));
 }

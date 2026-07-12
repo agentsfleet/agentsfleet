@@ -173,17 +173,24 @@ const AUTH_REJECT_RESPONSE = "HTTP/1.1 401 Unauthorized\r\nContent-Length: 0\r\n
 
 /// Serial loopback control plane that 401s every heartbeat. `drop_at` (1-based
 /// accept index) closes that connection without a response — a transport error
-/// that must RESET the consecutive-reject streak, not count toward it. Exits
-/// when the listener closes.
+/// that must RESET the consecutive-reject streak, not count toward it. Retired
+/// via `shutdown()` — NEVER by closing the listener under it: on Linux,
+/// `listener.deinit` does not wake a blocked `accept`, so a join after it hangs
+/// forever (it happens to wake on macOS, which is exactly how that hang ships).
 const RejectingStub = struct {
     listener: *std.Io.net.Server,
     io: std.Io,
     drop_at: u32 = 0,
     accepts: std.atomic.Value(u32) = std.atomic.Value(u32).init(0),
+    stop: std.atomic.Value(bool) = std.atomic.Value(bool).init(false),
 
     fn run(self: *RejectingStub) void {
         while (true) {
             const conn = self.listener.accept(self.io) catch return;
+            if (self.stop.load(.seq_cst)) { // shutdown()'s wake connect, not a heartbeat
+                conn.close(self.io);
+                return;
+            }
             defer conn.close(self.io);
             var buf: [HEARTBEAT_REQ_BUF_BYTES]u8 = undefined;
             var total: usize = 0;
@@ -200,6 +207,17 @@ const RejectingStub = struct {
             w.interface.writeAll(AUTH_REJECT_RESPONSE) catch return;
             w.interface.flush() catch return;
         }
+    }
+
+    /// Linux-safe retire: set the stop flag, then wake the blocked accept with
+    /// one throwaway loopback connect that run() swallows. The caller joins the
+    /// stub thread after this and only THEN deinits the listener — no thread
+    /// may still sit in accept at deinit.
+    fn shutdown(self: *RejectingStub, port: u16) void {
+        self.stop.store(true, .seq_cst);
+        var addr = std.Io.net.IpAddress.parseIp4("127.0.0.1", port) catch return;
+        const stream = addr.connect(self.io, .{ .mode = .stream }) catch return;
+        stream.close(self.io);
     }
 };
 
@@ -245,9 +263,14 @@ fn runRejectedTokenLoop(drop_at: u32) !struct { exit: loop.LoopExit, accepts: u3
     // Read before this helper's own defer clears the flag for the next test.
     const drained = loop.drain_requested.load(.seq_cst);
     wd.done.store(true, .seq_cst);
-    if (!wd.fired.load(.seq_cst)) listener.deinit(io); // wakes the stub's accept
-    stub_thread.join();
     wd_thread.join();
+    if (!wd.fired.load(.seq_cst)) {
+        stub.shutdown(port); // wake the blocked accept (Linux-safe), stub retires
+        stub_thread.join();
+        listener.deinit(io); // only after the join — nothing sits in accept now
+    } else {
+        stub_thread.join(); // the watchdog already closed the listener; accept errored out
+    }
     return .{ .exit = exit_reason, .accepts = stub.accepts.load(.seq_cst), .drained = drained };
 }
 
@@ -310,8 +333,9 @@ test "a rejected lease returns to the worker loop after one bounded idle" {
     loop.pollAndProcess(io, alloc, &cp, cfg.runner_token, cfg, &env_map);
     try testing.expectEqual(@as(u32, 1), stub.accepts.load(.seq_cst));
 
-    listener.deinit(io);
+    stub.shutdown(port); // Linux-safe: wake the blocked accept, then join, THEN deinit
     stub_thread.join();
+    listener.deinit(io);
 }
 
 test "drain signal handler requests a graceful drain" {
