@@ -16,12 +16,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M127
 **Workstream:** 001
 **Date:** Jul 12, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — operator-facing; without it the platform catalog can only be filled by raw curl, so every deployment ships an empty catalog
 **Categories:** UI
 **Batch:** B1 — single workstream, no parallel siblings
-**Branch:** added at CHORE(open)
-**Test Baseline:** set at CHORE(open) — `unit=<N> integration=<M>` via `make _lint_zig_test_depth`
+**Branch:** feat/m127-platform-library-ui
+**Test Baseline:** unit=2585 integration=311 (Zig depth gate; this spec adds no Zig, so the delta that matters is the app vitest/playwright count — recorded in VERIFY)
 **Depends on:** none — M110_001 (done) recorded this exact surface as its deferred follow-up
 **Provenance:** LLM-drafted (claude-fable-5, Jul 12, 2026)
 **Canonical architecture:** `docs/architecture/fleet_bundles.md` §Two-tier catalog
