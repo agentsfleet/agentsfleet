@@ -17,14 +17,17 @@ fn testIo() std.Io {
     return std.Io.Threaded.global_single_threaded.io();
 }
 
-/// Read the kernel-assigned port off a bound listener (Zig 0.16 exposes no
-/// getsockname on std.Io.net.Server, so go through libc on the raw fd).
+/// Read the kernel-assigned port off a bound listener. Zig 0.16 exposes no
+/// getsockname on std.Io.net.Server; `posix.system` routes to raw syscalls on
+/// Linux and libc on macOS — the lib test graph links no libc, so `std.c` is
+/// not an option here (it compiles only where `-lc` is on the link line).
 fn boundPort(handle: std.Io.net.Socket.Handle) !u16 {
-    // SAFETY: getsockname fills sa before sa.port is read on success; the != 0
-    // branch returns an error without reading sa.
+    // SAFETY: getsockname fills sa before sa.port is read on success; the
+    // non-SUCCESS branch returns an error without reading sa.
     var sa: std.posix.sockaddr.in = undefined;
     var len: std.posix.socklen_t = @sizeOf(std.posix.sockaddr.in);
-    if (std.c.getsockname(handle, @ptrCast(&sa), &len) != 0) return error.GetSockNameFailed;
+    if (std.posix.errno(std.posix.system.getsockname(handle, @ptrCast(&sa), &len)) != .SUCCESS)
+        return error.GetSockNameFailed;
     return std.mem.bigToNative(u16, sa.port);
 }
 
