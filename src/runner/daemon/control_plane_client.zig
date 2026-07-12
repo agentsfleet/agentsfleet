@@ -33,7 +33,18 @@ tls: bool,
 /// Bounds the in-flight call (lazy thread; joined by deinit).
 watchdog: CallWatchdog = .{},
 
-pub const ClientError = error{ RequestFailed, BadStatus, MalformedResponse, WatchdogUnavailable };
+pub const ClientError = error{ RequestFailed, BadStatus, Unauthorized, MalformedResponse, WatchdogUnavailable };
+
+/// Classify a control-plane HTTP status. 401/403 means the runner token was
+/// rejected — a PERMANENT failure that retrying can never fix — so it maps to a
+/// distinct `Unauthorized`, kept apart from a transient non-2xx (`BadStatus`).
+/// The control loop fails loud on a rejected token instead of backing off
+/// forever as generic transport loss (which hid a stale vault token as an
+/// invisible `activating` crash-loop).
+pub fn checkStatus(status: u16) ClientError!void {
+    if (status == 401 or status == 403) return ClientError.Unauthorized;
+    if (status < 200 or status >= 300) return ClientError.BadStatus;
+}
 // Watchdog bound to this client's log identity (the shipped `cp_*` events +
 // the runner transport-loss code); deadline policy lives in `call_deadline`.
 const CallWatchdog = call_deadline.Watchdog(.{
@@ -83,7 +94,7 @@ pub fn deinit(self: *LoopbackClient) void {
 pub fn lease(self: *LoopbackClient, alloc: Allocator, runner_token: []const u8, deadline_ms: u31) !std.json.Parsed(protocol.LeaseResponse) {
     const res = try self.post(alloc, protocol.PATH_RUNNER_LEASES, runner_token, "", deadline_ms);
     defer alloc.free(res.body);
-    if (res.status < 200 or res.status >= 300) return ClientError.BadStatus;
+    try checkStatus(res.status);
     return std.json.parseFromSlice(protocol.LeaseResponse, alloc, res.body, .{ .allocate = .alloc_always }) catch
         ClientError.MalformedResponse;
 }
@@ -94,7 +105,7 @@ pub fn lease(self: *LoopbackClient, alloc: Allocator, runner_token: []const u8, 
 pub fn heartbeat(self: *LoopbackClient, alloc: Allocator, runner_token: []const u8, deadline_ms: u31) !protocol.HeartbeatResponse {
     const res = try self.post(alloc, protocol.PATH_RUNNER_HEARTBEATS, runner_token, "", deadline_ms);
     defer alloc.free(res.body);
-    if (res.status < 200 or res.status >= 300) return ClientError.BadStatus;
+    try checkStatus(res.status);
     const parsed = std.json.parseFromSlice(protocol.HeartbeatResponse, alloc, res.body, .{}) catch
         return ClientError.MalformedResponse;
     defer parsed.deinit();
@@ -107,7 +118,7 @@ pub fn heartbeat(self: *LoopbackClient, alloc: Allocator, runner_token: []const 
 pub fn getSelf(self: *LoopbackClient, alloc: Allocator, runner_token: []const u8, deadline_ms: u31) !std.json.Parsed(protocol.SelfResponse) {
     const res = try self.get(alloc, protocol.PATH_RUNNER_SELF, runner_token, deadline_ms);
     defer alloc.free(res.body);
-    if (res.status < 200 or res.status >= 300) return ClientError.BadStatus;
+    try checkStatus(res.status);
     return std.json.parseFromSlice(protocol.SelfResponse, alloc, res.body, .{ .allocate = .alloc_always }) catch
         ClientError.MalformedResponse;
 }
@@ -119,7 +130,7 @@ pub fn report(self: *LoopbackClient, alloc: Allocator, runner_token: []const u8,
     defer alloc.free(payload);
     const res = try self.post(alloc, protocol.PATH_RUNNER_REPORTS, runner_token, payload, deadline_ms);
     defer alloc.free(res.body);
-    if (res.status < 200 or res.status >= 300) return ClientError.BadStatus;
+    try checkStatus(res.status);
 }
 
 /// GET /v1/runners/me/memory/{fleet_id} → the fleet's prior memory (a
@@ -132,7 +143,7 @@ pub fn memoryHydrate(self: *LoopbackClient, alloc: Allocator, runner_token: []co
     defer alloc.free(path);
     const res = try self.get(alloc, path, runner_token, deadline_ms);
     defer alloc.free(res.body);
-    if (res.status < 200 or res.status >= 300) return ClientError.BadStatus;
+    try checkStatus(res.status);
     return std.json.parseFromSlice(protocol.MemoryHydrateResponse, alloc, res.body, .{ .allocate = .alloc_always }) catch
         ClientError.MalformedResponse;
 }
@@ -148,7 +159,7 @@ pub fn memoryCapture(self: *LoopbackClient, alloc: Allocator, runner_token: []co
     defer alloc.free(payload);
     const res = try self.post(alloc, path, runner_token, payload, deadline_ms);
     defer alloc.free(res.body);
-    if (res.status < 200 or res.status >= 300) return ClientError.BadStatus;
+    try checkStatus(res.status);
 }
 
 /// POST /v1/runners/me/leases/{lease_id}/activity → forward live-tail progress
@@ -242,6 +253,13 @@ pub const PostResult = struct { status: u16, body: []u8 };
 /// fetch then fails fast on its own connect attempt.
 fn pooledHandle(self: *LoopbackClient) ?std.Io.net.Socket.Handle {
     if (self.host.len == 0) return null;
+    // A TLS `connect()` reads `client.now` + `client.ca_bundle`, but only
+    // `fetch()` populates them (lazily) — and we `connect()` directly here to
+    // pin the pooled socket for the watchdog BEFORE the fetch in `send`. Prime
+    // them first, else the handshake panics on a null `client.now.?` (the runner
+    // never heartbeats → crash-loops). Shared with the daemon's connector/broker
+    // armed-fetch sites.
+    call_deadline.primeTlsForDirectConnect(&self.http, self.io, self.tls);
     const host = std.Io.net.HostName.init(self.host) catch return null;
     const conn = self.http.connect(host, self.port, if (self.tls) .tls else .plain) catch return null;
     const handle = conn.stream_writer.stream.socket.handle;

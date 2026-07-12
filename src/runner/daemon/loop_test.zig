@@ -143,7 +143,10 @@ test "runner boots from a agt_r token straight into the lease loop with no regis
     // map satisfies the threaded `runLoop` signature.
     var env_map: std.process.Environ.Map = .init(alloc);
     defer env_map.deinit();
-    loop.runLoop(io, alloc, cfg, &env_map); // returns on the `stop` heartbeat (or on drain if the watchdog fires)
+    // Returns on the `stop` heartbeat (or on drain if the watchdog fires) — a
+    // clean exit either way, never token_rejected/worker_pool_failed here.
+    const exit_reason = loop.runLoop(io, alloc, cfg, &env_map);
+    try testing.expect(exit_reason == .fleet_stop or exit_reason == .drained);
     wd.done.store(true, .seq_cst);
     server_thread.join();
     wd_thread.join();

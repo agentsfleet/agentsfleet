@@ -199,9 +199,16 @@ done
 if [ "$status" = "active" ]; then
   echo "  ✓ agentsfleet-runner.service is active"
 else
-  echo "  ✗ agentsfleet-runner.service is not active (status: $status)"
-  echo "    inspect: ssh ${ssh_user}@${ssh_host} journalctl -u agentsfleet-runner --no-pager -n 30"
-  exit 1
+  # NON-FATAL. This restart exercises the CURRENTLY-INSTALLED (possibly stale)
+  # binary; the new binary is installed and health-checked authoritatively by
+  # deploy.sh's verify_healthy in the later "Deploy runner to bare-metal" step,
+  # which dies on a runner that won't stay up. A crash-looping OLD binary here
+  # must not block its own replacement — that deadlock is exactly how a fixed
+  # binary could never land (the runner sat crash-looping for ~15h). Dump the
+  # journal so the real cause shows up in CI instead of an opaque "activating".
+  echo "  ⚠ agentsfleet-runner.service not active yet (status: $status) — the new binary + authoritative health check run in the deploy step. Recent journal:"
+  ssh -i "$ssh_id" "${ssh_opts[@]}" "${ssh_user}@${ssh_host}" \
+    "sudo journalctl -u agentsfleet-runner --no-pager -n 40 2>&1 || true"
 fi
 
 echo ""

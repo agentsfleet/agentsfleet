@@ -198,7 +198,7 @@ pub const HttpClientExchange = struct {
         // workspaces, so the watchdog is per-call (a shared one would let two
         // arms clobber each other). A pin/arm failure refuses the call rather
         // than running unbounded — same discipline as `bounded_fetch`.
-        const handle = pinHandle(&client, req.url) orelse return error.HttpExchangeFailed;
+        const handle = call_deadline.pinPooledHandle(&client, req.url) orelse return error.HttpExchangeFailed;
         var wd: Watchdog = .{};
         defer wd.deinit();
         if (wd.arm(handle, self.deadline_ms) == .watchdog_unavailable) return error.HttpExchangeFailed;
@@ -216,28 +216,6 @@ pub const HttpClientExchange = struct {
         }) catch return error.HttpExchangeFailed;
 
         return .{ .status = @intFromEnum(result.status), .body = aw.toOwnedSlice() catch return error.OutOfMemory };
-    }
-
-    /// Pin the pooled connection the fetch will use (get-or-create, release back
-    /// so the fetch pops the same one) and return its socket handle for the
-    /// watchdog. Null on an unusable URL or a dial failure → the call is refused.
-    /// Mirrors `bounded_fetch.pinPooledHandle`; a shared armed-fetch primitive
-    /// unifying the two is the DRY follow-up noted in the M108 refactor findings.
-    fn pinHandle(client: *std.http.Client, url: []const u8) ?std.Io.net.Socket.Handle {
-        const uri = std.Uri.parse(url) catch return null;
-        const tls = std.ascii.eqlIgnoreCase(uri.scheme, "https");
-        const port: u16 = uri.port orelse @as(u16, if (tls) 443 else 80);
-        const raw_host = uri.host orelse return null;
-        const host_str = switch (raw_host) {
-            .raw => |r| r,
-            .percent_encoded => |p| p,
-        };
-        if (host_str.len == 0) return null;
-        const host = std.Io.net.HostName.init(host_str) catch return null;
-        const conn = client.connect(host, port, if (tls) .tls else .plain) catch return null;
-        const handle = conn.stream_writer.stream.socket.handle;
-        client.connection_pool.release(conn, client.io);
-        return handle;
     }
 };
 
