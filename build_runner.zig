@@ -29,6 +29,7 @@ const S_LOG = "log";
 const S_CONTRACT = "contract";
 const S_COMMON = "common";
 const S_CALL_DEADLINE = "call_deadline";
+const S_HTTP_PIN = "http_pin";
 const S_NULLCLAW = "nullclaw";
 const S_BUILD_OPTIONS = "build_options";
 const S_RUNNER_TESTS = "agentsfleet-runner-tests";
@@ -69,6 +70,7 @@ pub fn build(b: *std.Build) void {
     // — the mechanism every client verb arms; shared with agentsfleetd's
     // connector bounded_fetch so neither graph reaches across the other's tree.
     const call_deadline_mod = deps.call_deadline;
+    const http_pin_mod = deps.http_pin;
 
     // NullClaw engine dependency — same options as the agentsfleetd build graph.
     const nullclaw_mod = deps.nullclaw;
@@ -103,6 +105,7 @@ pub fn build(b: *std.Build) void {
                 .{ .name = S_CONTRACT, .module = contract_mod },
                 .{ .name = S_COMMON, .module = common_mod },
                 .{ .name = S_CALL_DEADLINE, .module = call_deadline_mod },
+                .{ .name = S_HTTP_PIN, .module = http_pin_mod },
                 .{ .name = S_NULLCLAW, .module = nullclaw_mod },
                 .{ .name = S_BUILD_OPTIONS, .module = build_options_mod },
             },
@@ -133,6 +136,7 @@ pub fn build(b: *std.Build) void {
                 .{ .name = S_CONTRACT, .module = contract_mod },
                 .{ .name = S_COMMON, .module = common_mod },
                 .{ .name = S_CALL_DEADLINE, .module = call_deadline_mod },
+                .{ .name = S_HTTP_PIN, .module = http_pin_mod },
                 .{ .name = S_NULLCLAW, .module = nullclaw_mod },
                 .{ .name = S_BUILD_OPTIONS, .module = build_options_mod },
             },
@@ -174,6 +178,7 @@ pub fn build(b: *std.Build) void {
                 .{ .name = S_CONTRACT, .module = contract_mod },
                 .{ .name = S_COMMON, .module = common_mod },
                 .{ .name = S_CALL_DEADLINE, .module = call_deadline_mod },
+                .{ .name = S_HTTP_PIN, .module = http_pin_mod },
                 .{ .name = S_NULLCLAW, .module = nullclaw_mod },
                 .{ .name = S_BUILD_OPTIONS, .module = stub_exe_opts.createModule() },
             },
@@ -205,6 +210,7 @@ pub fn build(b: *std.Build) void {
                 .{ .name = S_CONTRACT, .module = contract_mod },
                 .{ .name = S_COMMON, .module = common_mod },
                 .{ .name = S_CALL_DEADLINE, .module = call_deadline_mod },
+                .{ .name = S_HTTP_PIN, .module = http_pin_mod },
                 .{ .name = S_NULLCLAW, .module = nullclaw_mod },
                 .{ .name = S_BUILD_OPTIONS, .module = integ_opts.createModule() },
             },

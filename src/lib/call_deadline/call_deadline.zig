@@ -222,45 +222,6 @@ pub fn Watchdog(comptime log_spec: ?LogSpec) type {
     };
 }
 
-/// Populate `client.now` + `client.ca_bundle` the way `std.http.Client.fetch`
-/// does lazily, so a direct `connect()` (the armed-fetch pin below, which runs
-/// BEFORE the fetch) doesn't panic on a null `client.now.?` in the TLS handshake
-/// nor fail an empty trust store. No-op for plain HTTP or once primed (a later
-/// fetch skips its own rescan, seeing `now != null`). Each `std.http.Client`
-/// here is single-threaded, so no lock is taken; best-effort — a rescan failure
-/// leaves `now` null and the fetch retries.
-pub fn primeTlsForDirectConnect(client: *std.http.Client, io: std.Io, tls: bool) void {
-    if (!tls or client.now != null) return;
-    const now = std.Io.Clock.real.now(io);
-    client.ca_bundle.rescan(client.allocator, io, now) catch return;
-    client.now = now;
-}
-
-/// Pin the pooled connection the next `fetch` will use (get-or-create, then
-/// release it so the fetch pops the same one) and return its socket handle for
-/// the deadline watchdog. Null on an unusable URL or a dial failure → the caller
-/// refuses the call. The shared armed-fetch primitive: the daemon's connector
-/// outbound (`bounded_fetch`) and credential broker (`serve_broker`) share this
-/// rather than hand-copy it (the M108 DRY follow-up). Primes TLS first so an
-/// HTTPS connect can't panic on a null clock.
-pub fn pinPooledHandle(client: *std.http.Client, url: []const u8) ?std.Io.net.Socket.Handle {
-    const uri = std.Uri.parse(url) catch return null;
-    const tls = std.ascii.eqlIgnoreCase(uri.scheme, "https");
-    const port: u16 = uri.port orelse @as(u16, if (tls) 443 else 80);
-    const raw_host = uri.host orelse return null;
-    const host_str = switch (raw_host) {
-        .raw => |r| r,
-        .percent_encoded => |p| p,
-    };
-    if (host_str.len == 0) return null;
-    primeTlsForDirectConnect(client, client.io, tls);
-    const host = std.Io.net.HostName.init(host_str) catch return null;
-    const conn = client.connect(host, port, if (tls) .tls else .plain) catch return null;
-    const handle = conn.stream_writer.stream.socket.handle;
-    client.connection_pool.release(conn, client.io);
-    return handle;
-}
-
 // ── Tests ───────────────────────────────────────────────────────────────────
 // The log identity is comptime data, so one representative spec exercises the
 // generic exactly as consumers instantiate it. The error_code field is a log

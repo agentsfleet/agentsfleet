@@ -25,6 +25,7 @@ const S_YAML = "yaml";
 const S_CONTRACT = "contract";
 const S_COMMON = "common";
 const S_CALL_DEADLINE = "call_deadline";
+const S_HTTP_PIN = "http_pin";
 const S_TRIPWIRE = "tripwire";
 const S_S3 = "s3";
 const S_GEN_ERROR_CODES = "gen-error-codes";
@@ -135,6 +136,7 @@ pub fn build(b: *std.Build) void {
     // connectors' outbound vendor HTTP (bounded_fetch); shared with the
     // runner's control-plane client so the mechanism exists exactly once.
     const call_deadline_mod = deps.call_deadline;
+    const http_pin_mod = deps.http_pin;
 
     // Comptime-erased fault injection (src/lib/tripwire) — production files
     // carry check() markers, so the production module imports it too; the
@@ -171,6 +173,7 @@ pub fn build(b: *std.Build) void {
                 .{ .name = S_CONTRACT, .module = contract_mod },
                 .{ .name = S_COMMON, .module = common_mod },
                 .{ .name = S_CALL_DEADLINE, .module = call_deadline_mod },
+                .{ .name = S_HTTP_PIN, .module = http_pin_mod },
                 .{ .name = S_TRIPWIRE, .module = tripwire_mod },
                 .{ .name = S_YAML, .module = yaml_mod },
                 .{ .name = S_S3, .module = s3_mod },
@@ -248,6 +251,7 @@ pub fn build(b: *std.Build) void {
                 .{ .name = S_CONTRACT, .module = contract_mod },
                 .{ .name = S_COMMON, .module = common_mod },
                 .{ .name = S_CALL_DEADLINE, .module = call_deadline_mod },
+                .{ .name = S_HTTP_PIN, .module = http_pin_mod },
                 .{ .name = S_TRIPWIRE, .module = tripwire_mod },
                 .{ .name = S_YAML, .module = yaml_mod },
                 .{ .name = S_S3, .module = s3_mod },
