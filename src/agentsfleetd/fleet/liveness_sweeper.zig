@@ -10,6 +10,7 @@ const PgQuery = @import("../db/pg_query.zig").PgQuery;
 const id_format = @import("../types/id_format.zig");
 const protocol = @import("contract").protocol;
 const runner_events = @import("runner_events.zig");
+const tripwire = @import("tripwire");
 
 const log = logging.scoped(.runner_liveness_sweeper);
 
@@ -31,6 +32,15 @@ const RunnerRef = struct {
     admin_state: protocol.AdminState,
 };
 
+/// Fail points for `fetchDueRunners`' errdefer ladder. Public so the sibling
+/// integration test can arm them; comptime-erased outside test builds.
+pub const fetch_tw = tripwire.module(enum {
+    row_state,
+    dupe_id,
+    append_ref,
+    to_owned,
+}, error{ OutOfMemory, DbRowShape });
+
 const OfflineSweep = struct {
     inserted_event: bool = false,
     expired_slots: i64 = 0,
@@ -46,7 +56,7 @@ pub const SweepStats = struct {
 /// Run until shutdown is signalled. Spawned by the serve lifecycle.
 pub fn run(pool: *pg.Pool, alloc: std.mem.Allocator, shutdown: *std.atomic.Value(bool)) void {
     log.debug(LOG_SWEEPER_STARTED, .{ .interval_ms = constants.HEARTBEAT_INTERVAL_MS, .batch_limit = SWEEP_BATCH_LIMIT });
-    while (!shutdown.load(.acquire)) { // safe because: pairs with serve_shutdown.request() release-store.
+    while (!shutdown.load(.acquire)) { // safe because: pairs with serve_shutdown's background-stop release-store (watcher server-stop / teardown disarm).
         const stats = sweepOnce(pool, alloc) catch |err| {
             log.warn(LOG_SWEEP_FAILED, .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .err = @errorName(err) });
             sleepInterruptible(shutdown, SWEEP_INTERVAL_NS);
@@ -117,16 +127,29 @@ fn fetchDueRunners(pool: *pg.Pool, alloc: std.mem.Allocator, now_ms: i64) ![]Run
     defer q.deinit();
 
     var refs: std.ArrayList(RunnerRef) = .empty;
-    errdefer freeRunnerRefItems(alloc, refs.items);
+    errdefer {
+        freeRunnerRefItems(alloc, refs.items);
+        refs.deinit(alloc);
+    }
     while (try q.next()) |row| {
+        try fetch_tw.check(.row_state);
         const raw_state = try row.get([]const u8, 2);
         const admin_state = std.meta.stringToEnum(protocol.AdminState, raw_state) orelse return error.DbRowShape;
+        // Fallible row reads land in locals BEFORE the dupe: Zig does not
+        // unwind earlier struct-literal fields when a later one errors, so no
+        // owned allocation may be in flight while another field can fail.
+        const last_seen_at = try row.get(i64, 1);
+        try fetch_tw.check(.dupe_id);
+        const id = try alloc.dupe(u8, try row.get([]const u8, 0));
+        errdefer alloc.free(id);
+        try fetch_tw.check(.append_ref);
         try refs.append(alloc, .{
-            .id = try alloc.dupe(u8, try row.get([]const u8, 0)),
-            .last_seen_at = try row.get(i64, 1),
+            .id = id,
+            .last_seen_at = last_seen_at,
             .admin_state = admin_state,
         });
     }
+    try fetch_tw.check(.to_owned);
     return refs.toOwnedSlice(alloc);
 }
 
@@ -259,7 +282,7 @@ fn isStale(last_seen_at: i64, now_ms: i64) bool {
 fn sleepInterruptible(shutdown: *std.atomic.Value(bool), total_ns: u64) void {
     var remaining = total_ns;
     while (remaining > 0) {
-        if (shutdown.load(.acquire)) return; // safe because: pairs with serve_shutdown.request() release-store.
+        if (shutdown.load(.acquire)) return; // safe because: pairs with serve_shutdown's background-stop release-store (watcher server-stop / teardown disarm).
         const step = @min(remaining, SHUTDOWN_POLL_NS);
         constants.sleepNanos(step);
         remaining -|= step;

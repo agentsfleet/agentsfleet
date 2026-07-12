@@ -463,3 +463,80 @@ test "mint: a caller allocation failure fails closed as mint_failed{transient}, 
     // allocator's deinit asserts every internal allocation was freed.
     try std.testing.expectEqual(@as(usize, 2), fake_calls.load(.monotonic));
 }
+
+// ── Cold-miss single-flight (broker_flight.zig) ─────────────────────────────
+
+/// Contender for the single-flight test: same key, concurrent cold miss.
+const ColdMissContender = struct {
+    fn run(b: *CredentialBroker, handle: *const std.json.Value, ok_count: *std.atomic.Value(usize)) void {
+        const r = b.mint(std.testing.allocator, "ws1", "github", handle.*, 0) catch return;
+        if (r == .ok) {
+            std.testing.allocator.free(r.ok.token);
+            _ = ok_count.fetchAdd(1, .monotonic);
+        }
+    }
+};
+
+test "broker_cold_miss_single_mint" {
+    const alloc = std.testing.allocator;
+    fake_calls.store(0, .monotonic);
+    // Widen the cold-miss window so the contenders genuinely overlap the
+    // winner's in-flight mint.
+    fake_delay_ns = 50 * std.time.ns_per_ms;
+    defer fake_delay_ns = 0;
+    var b = try brokerWith(alloc, FAKE_REGISTRY);
+    defer b.deinit();
+    var h = try testing.parse(alloc, "{\"integration\":\"github\"}");
+    defer h.deinit();
+
+    const CONTENDERS = 8;
+    var ok_count = std.atomic.Value(usize).init(0);
+    var threads: [CONTENDERS]std.Thread = undefined;
+    for (&threads) |*t| t.* = try std.Thread.spawn(.{}, ColdMissContender.run, .{ &b, &h.value, &ok_count });
+    for (&threads) |*t| t.join();
+
+    // Pre-fix: every contender inside the 50ms window minted its own token
+    // (same refresh token posted N times → provider family revocation).
+    try std.testing.expectEqual(@as(usize, 1), fake_calls.load(.monotonic));
+    try std.testing.expectEqual(@as(usize, CONTENDERS), ok_count.load(.monotonic));
+}
+
+test "broker_flight: a guard that cannot be allocated fails closed, never flies unguarded" {
+    const flight = @import("broker_flight.zig");
+    const alloc = std.testing.allocator;
+    var b = try brokerWith(alloc, FAKE_REGISTRY);
+    defer b.deinit();
+
+    // The flight bookkeeping cannot be allocated. Pre-fix this "degraded" to an
+    // unguarded mint, so under memory pressure every concurrent caller minted
+    // at once — against a rotating provider they post the SAME refresh token and
+    // its reuse detection revokes the whole family. The claim must instead say
+    // the guard is unavailable, and register nothing.
+    var failing = std.testing.FailingAllocator.init(alloc, .{ .fail_index = 0 });
+    b.alloc = failing.allocator();
+    try std.testing.expectEqual(flight.FlightClaim.unavailable, flight.beginFlight(&b, "k"));
+    b.alloc = alloc;
+    try std.testing.expect(!b.inflight.contains("k"));
+}
+
+test "broker_cold_miss_guard_unavailable_fails_transient_without_minting" {
+    const alloc = std.testing.allocator;
+    fake_calls.store(0, .monotonic);
+    var b = try brokerWith(alloc, FAKE_REGISTRY);
+    defer b.deinit();
+    var h = try testing.parse(alloc, "{\"integration\":\"github\"}");
+    defer h.deinit();
+
+    // Starve the broker's own allocator so the single-flight registration
+    // cannot be taken. The mint must fail CLOSED and retryable — and crucially
+    // must never reach the upstream mint, because an unguarded concurrent mint
+    // is what burns the refresh-token family.
+    var failing = std.testing.FailingAllocator.init(alloc, .{ .fail_index = 0 });
+    b.alloc = failing.allocator();
+    const r = try b.mint(alloc, "ws-guard", "github", h.value, 0);
+    b.alloc = alloc;
+
+    try std.testing.expect(r == .mint_failed);
+    try std.testing.expectEqual(integration.Retry.transient, r.mint_failed);
+    try std.testing.expectEqual(@as(usize, 0), fake_calls.load(.monotonic));
+}

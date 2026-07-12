@@ -260,16 +260,86 @@ test "idle draining runner becomes drained on the next sweep" {
     try std.testing.expectEqual(@as(i64, 1), try eventCount(ctx.conn, .runner_drained));
 }
 
+/// Seed two due runners so the fetch ladder runs with real rows: a stale
+/// active one (due via the last-seen predicate) and a draining one (due via
+/// the admin-state predicate).
+fn seedTwoDueRunners(conn: *pg.Conn) !void {
+    const now_ms = clock.nowMillis();
+    try seedRunner(conn, RUNNER_STALE_ID, STALE_HOST, STALE_HASH, .active, now_ms - constants.RUNNER_OFFLINE_AFTER_MS - constants.HEARTBEAT_INTERVAL_MS);
+    try seedRunner(conn, RUNNER_LIVE_ID, LIVE_HOST, LIVE_HASH, .draining, now_ms);
+}
+
+test "fetch_due_runners_error_paths_leak_free" {
+    const ctx = (try base.openTestConn(ALLOC)) orelse return error.SkipZigTest;
+    defer ctx.pool.deinit();
+    defer ctx.pool.release(ctx.conn);
+    cleanup(ctx.conn);
+    defer cleanup(ctx.conn);
+    try seedFleetBase(ctx.conn);
+    try seedTwoDueRunners(ctx.conn);
+
+    // Every fail point injected on first reach; std.testing.allocator fails
+    // the test if any duped id or the ArrayList backing buffer leaks.
+    for (std.meta.tags(sweeper.fetch_tw.FailPoint)) |tag| {
+        defer sweeper.fetch_tw.end(.reset) catch unreachable;
+        sweeper.fetch_tw.errorAlways(tag, error.OutOfMemory);
+        try std.testing.expectError(error.OutOfMemory, sweeper.sweepOnce(ctx.pool, ALLOC));
+    }
+}
+
+test "fetch_due_runners_partial_row_no_orphan" {
+    const ctx = (try base.openTestConn(ALLOC)) orelse return error.SkipZigTest;
+    defer ctx.pool.deinit();
+    defer ctx.pool.release(ctx.conn);
+    cleanup(ctx.conn);
+    defer cleanup(ctx.conn);
+    try seedFleetBase(ctx.conn);
+    try seedTwoDueRunners(ctx.conn);
+
+    // Trip on the SECOND row (min=1) so one ref — with its duped id — is
+    // already owned when the failure lands: proves the mid-loop unwind frees
+    // both the accumulated item and the backing buffer. row_state uses the
+    // real row-shape error; the allocation points use OOM.
+    const second_row_cases = .{
+        .{ sweeper.fetch_tw.FailPoint.row_state, error.DbRowShape },
+        .{ sweeper.fetch_tw.FailPoint.dupe_id, error.OutOfMemory },
+        .{ sweeper.fetch_tw.FailPoint.append_ref, error.OutOfMemory },
+    };
+    inline for (second_row_cases) |case| {
+        defer sweeper.fetch_tw.end(.reset) catch unreachable;
+        sweeper.fetch_tw.errorAfter(case[0], case[1], 1);
+        try std.testing.expectError(case[1], sweeper.sweepOnce(ctx.pool, ALLOC));
+    }
+}
+
 const SweepWorker = struct {
     pool: *pg.Pool,
+    /// Injected sweep allocator — the concurrent variants pass
+    /// `std.testing.allocator` (a thread-safe DebugAllocator) so every
+    /// concurrent sweep doubles as a leak proof; nothing rides the
+    /// undetectable `page_allocator` anymore.
+    alloc: std.mem.Allocator,
     err: ?anyerror = null,
 
     fn run(self: *SweepWorker) void {
-        _ = sweeper.sweepOnce(self.pool, std.heap.page_allocator) catch |err| {
+        _ = sweeper.sweepOnce(self.pool, self.alloc) catch |err| {
             self.err = err;
         };
     }
 };
+
+/// Spawn CONCURRENT_SWEEPERS workers on `testing.allocator`, join them all,
+/// and require every sweep succeeded. Joins are the only synchronization.
+fn runConcurrentSweeps(pool: *pg.Pool) !void {
+    var workers: [CONCURRENT_SWEEPERS]SweepWorker = undefined;
+    var threads: [CONCURRENT_SWEEPERS]std.Thread = undefined;
+    for (&workers, &threads) |*worker, *thread| {
+        worker.* = .{ .pool = pool, .alloc = ALLOC };
+        thread.* = try std.Thread.spawn(.{}, SweepWorker.run, .{worker});
+    }
+    for (&threads) |*thread| thread.join();
+    for (&workers) |worker| try std.testing.expect(worker.err == null);
+}
 
 test "concurrent sweepers emit one offline event" {
     const ctx = (try base.openTestConn(ALLOC)) orelse return error.SkipZigTest;
@@ -280,13 +350,36 @@ test "concurrent sweepers emit one offline event" {
     try seedFleetBase(ctx.conn);
 
     try seedStaleActiveLease(ctx.conn, AGENTSFLEET_ONE_ID, AFFINITY_ONE_ID, LEASE_ONE_ID, EVENT_ID_ONE, 1);
-    var workers: [CONCURRENT_SWEEPERS]SweepWorker = undefined;
-    var threads: [CONCURRENT_SWEEPERS]std.Thread = undefined;
-    for (&workers, &threads) |*worker, *thread| {
-        worker.* = .{ .pool = ctx.pool };
-        thread.* = try std.Thread.spawn(.{}, SweepWorker.run, .{worker});
+    try runConcurrentSweeps(ctx.pool);
+    try std.testing.expectEqual(@as(i64, 1), try eventCount(ctx.conn, .runner_offline));
+}
+
+test "concurrent sweeps after a mid-query failure leave zero residue" {
+    // Two sequenced stages — the tripwire is module-global state mutated
+    // without synchronization, so it is armed, tripped, and reset strictly on
+    // the main thread BEFORE any worker spawns (an armed fail point reached
+    // from N threads would be a data race, not a test).
+    const ctx = (try base.openTestConn(ALLOC)) orelse return error.SkipZigTest;
+    defer ctx.pool.deinit();
+    defer ctx.pool.release(ctx.conn);
+    cleanup(ctx.conn);
+    defer cleanup(ctx.conn);
+    try seedFleetBase(ctx.conn);
+    try seedTwoDueRunners(ctx.conn);
+
+    // Stage 1 (main thread only): a mid-query failure with one duped id
+    // already owned — the fetch unwinds before any action runs, so no event
+    // is written and nothing survives the error path.
+    {
+        defer sweeper.fetch_tw.end(.reset) catch unreachable;
+        sweeper.fetch_tw.errorAfter(.dupe_id, error.OutOfMemory, 1);
+        try std.testing.expectError(error.OutOfMemory, sweeper.sweepOnce(ctx.pool, ALLOC));
     }
-    for (&threads) |*thread| thread.join();
-    for (&workers) |worker| try std.testing.expect(worker.err == null);
+
+    // Stage 2: concurrent sweeps over the same rows succeed and dedup to
+    // exactly one transition — the residue oracle for stage 1. Memory residue
+    // fails testing.allocator; an undrained result poisoning a pooled conn
+    // breaks these sweeps; DB residue breaks the exactly-one assertions.
+    try runConcurrentSweeps(ctx.pool);
     try std.testing.expectEqual(@as(i64, 1), try eventCount(ctx.conn, .runner_offline));
 }

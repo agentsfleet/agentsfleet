@@ -210,3 +210,137 @@ test "unregisterByCtx drain is bounded — no-sink emits don't grow drain_target
     const after_deinit = emitTicketsForTest();
     try std.testing.expectEqual(after_deinit.started, after_deinit.completed);
 }
+
+// ── Unregister drain vs concurrent emits (the epoch-ticket property) ────────
+
+const common = @import("common");
+
+/// A sink that BLOCKS inside emit until released — widens the pre-removal
+/// fan-out window so the drain property is provable, not timing luck.
+const GatedSink = struct {
+    entered: common.Event = .{},
+    release: common.Event = .{},
+
+    fn sink(self: *GatedSink) sinks.Sink {
+        return .{ .emit = emit, .ctx = @ptrCast(self) };
+    }
+
+    fn emit(ctx: *anyopaque, level: std.log.Level, scope: []const u8, ts_ms: i64, body: []const u8) void {
+        _ = level;
+        _ = scope;
+        _ = ts_ms;
+        _ = body;
+        const self: *GatedSink = @ptrCast(@alignCast(ctx));
+        self.entered.set();
+        self.release.timedWait(10 * std.time.ns_per_s) catch |err| switch (err) {
+            // Best-effort bound: a released-too-late gate just ends the emit.
+            error.Timeout => {},
+        };
+    }
+};
+
+const Emitter = struct {
+    fn once(done: *common.Event) void {
+        emitToSinks(.info, "s", 0, "event=inflight_emit");
+        done.set();
+    }
+};
+
+const Unregisterer = struct {
+    fn run(gated: *GatedSink, done: *common.Event) void {
+        sinks.unregisterByCtx(@ptrCast(gated));
+        done.set();
+    }
+};
+
+test "sink_unregister_waits_for_inflight_emit" {
+    clearSinksForTest();
+    defer clearSinksForTest();
+
+    var gated = GatedSink{};
+    registerSink(gated.sink());
+
+    // E1: a pre-removal emit, parked inside the gated sink's fan-out.
+    var e1_done = common.Event{};
+    const e1 = try std.Thread.spawn(.{}, Emitter.once, .{&e1_done});
+    defer e1.join();
+    try gated.entered.timedWait(5 * std.time.ns_per_s);
+
+    // U: unregister must not return while E1 still holds the removed ctx.
+    var u_done = common.Event{};
+    const u = try std.Thread.spawn(.{}, Unregisterer.run, .{ &gated, &u_done });
+    defer u.join();
+
+    // Barrier: E2 must be a genuine POST-removal emit. unregisterByCtx compacts
+    // the registry and flips the epoch atomically under the registry lock, so an
+    // empty registry proves the removal landed and E2 will take the post-removal
+    // path. Without it, under CPU contention E2 can win the registry lock before U
+    // compacts, snapshot the still-present gated sink, park on `release`, and time
+    // out e2_done — a spawn-order race in a test that must be deterministic. U has
+    // released the registry lock before its drain spin, so this cannot deadlock.
+    while (sinksRegistered()) std.atomic.spinLoopHint();
+
+    // E2: a post-removal emit completes fast — pre-fix, its completion
+    // satisfied U's single-counter drain target and U returned with E1
+    // still running inside the freed-in-real-life ctx.
+    var e2_done = common.Event{};
+    const e2 = try std.Thread.spawn(.{}, Emitter.once, .{&e2_done});
+    defer e2.join();
+    try e2_done.timedWait(5 * std.time.ns_per_s);
+
+    // Settle window: give a buggy U every chance to return early.
+    common.sleepNanos(100 * std.time.ns_per_ms);
+    try std.testing.expect(!u_done.isSet());
+
+    // Release E1 → U's old-epoch target drains → U returns.
+    gated.release.set();
+    try e1_done.timedWait(5 * std.time.ns_per_s);
+    try u_done.timedWait(5 * std.time.ns_per_s);
+}
+
+// ── Soak-shaped unregister-under-load ───────────────────────────────────────
+// The epoch-ticket drain is proven deterministically above with one gated
+// emitter; this pins the same safety at volume — N emitter threads hammering
+// the registry while the sink is pulled out. testing.allocator is the leak /
+// double-free oracle; the append-under-lock means every landed emit is a whole
+// line, so a torn concurrent append would break the length invariant. Bounded
+// loops + join, zero sleeps.
+
+const SOAK_EMITTERS: usize = 8;
+const SOAK_EMITS_PER_THREAD: usize = 256;
+const SOAK_LINE = "event=soak_emit\n"; // body + newline BufferedSink.emit writes per emit
+
+const SoakEmitter = struct {
+    fn run(iterations: usize) void {
+        var i: usize = 0;
+        while (i < iterations) : (i += 1) {
+            emitToSinks(.info, "soak", 0, "event=soak_emit");
+        }
+    }
+};
+
+test "unregister under N concurrent emitters: whole-line emits, no double-free, no lost sink" {
+    var bs = BufferedSink.init(std.testing.allocator);
+    defer bs.deinit();
+    clearSinksForTest();
+    defer clearSinksForTest();
+    registerSink(bs.sink());
+
+    var threads: [SOAK_EMITTERS]std.Thread = undefined;
+    for (&threads) |*t| t.* = try std.Thread.spawn(.{}, SoakEmitter.run, .{SOAK_EMITS_PER_THREAD});
+
+    // Pull the sink out mid-stream. unregisterByCtx waits for every in-flight
+    // emit that snapshotted this ctx to complete before returning, so no emitter
+    // dereferences bs afterward; later emits see the compacted registry and drop.
+    sinks.unregisterByCtx(@ptrCast(&bs));
+
+    for (&threads) |t| t.join();
+
+    const captured = try bs.snapshot();
+    defer std.testing.allocator.free(captured);
+    // Every landed emit is a complete SOAK_LINE (append body+'\n' under the sink
+    // mutex is atomic vs. other emitters) — a torn interleave would leave a
+    // partial line and fail this. The exact count is race-dependent (some emits
+    // land pre-drain, the rest drop), so we assert the safety invariant, not it.
+    try std.testing.expectEqual(@as(usize, 0), captured.len % SOAK_LINE.len);
+}

@@ -78,6 +78,7 @@ pub const ActivityForwarder = struct {
 
     pub fn deinit(self: *ActivityForwarder) void {
         self.buf.deinit(self.alloc);
+        self.* = undefined;
     }
 };
 

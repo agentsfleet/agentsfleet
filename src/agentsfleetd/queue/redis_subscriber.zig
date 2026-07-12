@@ -32,6 +32,7 @@ pub const Message = struct {
     pub fn deinit(self: *Message, alloc: std.mem.Allocator) void {
         alloc.free(self.channel);
         alloc.free(self.payload);
+        self.* = undefined;
     }
 };
 
@@ -101,6 +102,7 @@ pub fn connectFromConfig(io: std.Io, alloc: std.mem.Allocator, cfg: redis_config
 
 pub fn deinit(self: *Self) void {
     self.transport.deinit(self.io, self.alloc);
+    self.* = undefined;
 }
 
 /// SUBSCRIBE to a single channel and consume the acknowledgment.
@@ -181,6 +183,12 @@ pub fn sendUnsubscribe(self: *Self, channel: []const u8) !void {
 /// using `sendSubscribe`) call this once after connect.
 pub fn installReadTimeout(self: *Self) void {
     if (self.read_timeout_ms) |ms| self.transport.setReadTimeout(ms);
+}
+
+/// The socket handle, for owners that bound their blocking sends with a
+/// call_deadline watchdog (the hub's wire writes).
+pub fn socketHandle(self: *Self) std.posix.fd_t {
+    return self.transport.socketHandle();
 }
 
 fn sendCommand(self: *Self, argv: []const []const u8) !void {

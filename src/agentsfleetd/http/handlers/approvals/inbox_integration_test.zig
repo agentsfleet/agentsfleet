@@ -474,6 +474,7 @@ test "integration: worker self-timeout writes resolved_by=system:timeout" {
         .timed_out,
         resolver.SYSTEM_TIMEOUT,
         "",
+        std.heap.page_allocator,
     );
 
     var q = @import("../../../db/pg_query.zig").PgQuery.from(try conn.query(

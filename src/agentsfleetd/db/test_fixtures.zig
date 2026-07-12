@@ -23,6 +23,7 @@ const common = @import("common");
 const env = common.env;
 const pg = @import("pg");
 const db = @import("pool.zig");
+const PgQuery = @import("pg_query.zig").PgQuery;
 
 const IGNORED_ERROR_FMT = "ignored: {s}";
 
@@ -172,6 +173,37 @@ pub fn seedFleet(
         \\VALUES ($1, $2, $3, $4, $5, 'active', 0, 0)
         \\ON CONFLICT DO NOTHING
     , .{ fleet_id, workspace_id, name, source_markdown, config_json });
+}
+
+/// Insert a minimal fleet row in an explicit status (e.g. `installing` for the
+/// install-worker lifecycle test — the guarded installing→active flip matches
+/// only that status). Workspace must exist. Idempotent. The SQL lives here so
+/// the fleet-seed shape keeps one home instead of leaking into test bodies.
+pub fn seedFleetWithStatus(
+    conn: *pg.Conn,
+    fleet_id: []const u8,
+    workspace_id: []const u8,
+    name: []const u8,
+    status: []const u8,
+) !void {
+    _ = try conn.exec(
+        \\INSERT INTO core.fleets
+        \\  (id, workspace_id, name, source_markdown, config_json, status, created_at, updated_at)
+        \\VALUES ($1, $2, $3, '', '{}', $4, 0, 0)
+        \\ON CONFLICT DO NOTHING
+    , .{ fleet_id, workspace_id, name, status });
+}
+
+/// Read a fleet row's status into an owned copy (caller frees with `alloc`).
+/// Null when the row does not exist.
+pub fn fleetStatusOwned(conn: *pg.Conn, alloc: std.mem.Allocator, fleet_id: []const u8) !?[]u8 {
+    var q = PgQuery.from(try conn.query(
+        "SELECT status FROM core.fleets WHERE id = $1::uuid",
+        .{fleet_id},
+    ));
+    defer q.deinit();
+    const row = (try q.next()) orelse return null;
+    return try alloc.dupe(u8, try row.get([]const u8, 0));
 }
 
 /// Insert a fleet session checkpoint. Fleet must exist. Idempotent.

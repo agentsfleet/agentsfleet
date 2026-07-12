@@ -53,6 +53,7 @@ const BusEvent = struct {
 pub const Bus = struct {
     const Self = @This();
 
+    /// Guards the event queue; orders a producer push against the consumer's predicate check.
     mutex: common.Mutex = .{},
     cond: common.Condition = .{},
     running: std.atomic.Value(bool) = std.atomic.Value(bool).init(true),

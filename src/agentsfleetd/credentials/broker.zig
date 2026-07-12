@@ -16,13 +16,12 @@
 //!               │ hit & unexpired ─▶ dup token ─▶ ok
 //!               │ miss / expired  ─▶ runMint (NO lock) ─▶ store.put(ttl) ─▶ dup ─▶ ok
 //!
-//! Tradeoff vs the prior hand-rolled version: cache.zig's get/put does not
-//! single-flight, so two simultaneous cold-misses for the SAME key may both mint
-//! (rare; the last put wins). Harmless for github/static; for a ROTATING refresh
-//! provider both misses post the same refresh token and the provider's reuse
-//! detection may revoke the family (one forced reconnect) — bounded to the
-//! concurrent-cold-miss window. If that ever bites, a thin per-key in-flight
-//! guard layers on top without touching this.
+//! Cold-miss coordination: cache.zig's get/put does not single-flight, so the
+//! thin per-key in-flight guard in `broker_flight.zig` sits on top — exactly
+//! one caller mints per key; losers wait and re-read what the winner cached.
+//! Without it, two simultaneous cold-misses on a ROTATING refresh provider
+//! both post the same refresh token and the provider's reuse detection can
+//! revoke the token family.
 
 const CredentialBroker = @This();
 
@@ -41,18 +40,6 @@ const KEY_SEP: u8 = 0x1f;
 
 /// Hex width of the fingerprint appended to the cache key.
 const FP_HEX_LEN: usize = @sizeOf(u64) * 2;
-
-/// Floor for the cache.zig TTL (seconds); our own `now_ms` skew check is the
-/// authoritative expiry, so this is only a backstop that must stay positive.
-const MIN_TTL_S: u32 = 1;
-
-/// Ceiling for the cache.zig TTL (seconds). cache.zig stores the entry expiry as
-/// `@as(u32, now_epoch_seconds) + ttl` (segment.zig) — a u32 add — so an
-/// unbounded ttl (e.g. a never-expires `static` token whose remaining seconds
-/// exceed `maxInt(u32)`) overflows that u32 and panics. One day is a safe
-/// backstop: the broker's `now_ms` skew check at the read path is authoritative,
-/// so the cache TTL only needs to be long enough to avoid needless re-mints.
-const MAX_TTL_S: u32 = 24 * 60 * 60;
 
 /// Metrics `outcome` labels (RULE UFS — shared by every emit site).
 const OUTCOME_OK: []const u8 = "ok";
@@ -82,6 +69,12 @@ store: TokenCache,
 /// costs nothing — and keeps handle-influenced collisions from being
 /// precomputable offline.
 fp_seed: u64,
+/// Single-flight registry for cold-miss mints (`broker_flight.zig`): a key
+/// present here is being minted right now; losers wait on the condition and
+/// re-read the cache. The mutex guards `inflight` and nothing else.
+inflight_mutex: common.Mutex = .{},
+inflight_cond: common.Condition = .{},
+inflight: std.StringHashMapUnmanaged(void) = .empty,
 
 /// `registry` is injected (production passes `integration.REGISTRY`) so a test can
 /// supply a fake-id registry and prove dispatch is data-driven. `deps` carries the
@@ -104,6 +97,11 @@ pub fn init(alloc: std.mem.Allocator, registry: []const Spec, deps: integration.
 
 pub fn deinit(self: *CredentialBroker) void {
     self.store.deinit();
+    // Residual flight keys exist only if a minter died mid-flight; free them
+    // so teardown is leak-clean either way.
+    var it = self.inflight.keyIterator();
+    while (it.next()) |k| self.alloc.free(k.*);
+    self.inflight.deinit(self.alloc);
     self.* = undefined;
 }
 
@@ -126,16 +124,25 @@ pub fn mint(
     var key_buf: [512]u8 = undefined;
     const key = writeKey(&key_buf, workspace, @tagName(id), self.identityFingerprint(handle)) orelse return .{ .mint_failed = .permanent };
 
-    if (self.store.get(key)) |entry| {
-        defer entry.release();
-        if (now_ms < entry.value.expires_at_ms - EXPIRY_SKEW_MS) {
-            const tok = alloc.dupe(u8, entry.value.token) catch return .{ .mint_failed = .transient };
-            self.emit(@tagName(id), OUTCOME_OK, true);
-            // A hit did no exchange, so rotated_refresh_token stays null.
-            return .{ .ok = .{ .token = tok, .expires_at_ms = entry.value.expires_at_ms } };
-        }
-        // present but past our skew → fall through to re-mint (put overwrites it).
+    if (self.cachedToken(alloc, key, @tagName(id), now_ms)) |res| return res;
+
+    // Single-flight (broker_flight.zig): exactly one cold-miss mint per key.
+    // A loser waits, then re-reads what the winner cached; a winner that
+    // cached nothing (mint failed) frees the next waiter to take its own
+    // flight through the loop. If the guard cannot be established at all
+    // (allocation failure), fail closed rather than mint unguarded — a
+    // concurrent unguarded mint reuses the refresh token and can cost the
+    // whole token family (see beginFlight).
+    var claim = flight.beginFlight(self, key);
+    while (claim == .lost) {
+        if (self.cachedToken(alloc, key, @tagName(id), now_ms)) |res| return res;
+        claim = flight.beginFlight(self, key);
     }
+    if (claim == .unavailable) {
+        self.emit(@tagName(id), OUTCOME_MINT_FAILED, false);
+        return .{ .mint_failed = .transient };
+    }
+    defer flight.endFlight(self, key);
 
     switch (self.runMint(id, handle, now_ms)) {
         .ok => |minted| return self.finishColdMint(alloc, key, @tagName(id), minted, now_ms),
@@ -169,34 +176,21 @@ fn finishColdMint(self: *CredentialBroker, alloc: std.mem.Allocator, key: []cons
         null;
     // Cache LAST: a mint that fails closed above must not leave a warm entry
     // (a hit reports no rotated token, so the caller would never re-persist).
-    self.cacheMinted(key, minted, now_ms);
+    flight.cacheMinted(self, key, minted.token, minted.expires_at_ms, now_ms);
     self.emit(id_name, OUTCOME_OK, false);
     return .{ .ok = .{ .token = tok, .expires_at_ms = minted.expires_at_ms, .rotated_refresh_token = rotated } };
 }
 
-/// Store a freshly-minted token (cache.zig owns the duped bytes; frees via
-/// `removedFromCache` on eviction). A put failure is non-fatal — the caller still
-/// gets its token, just without a cache entry.
-fn cacheMinted(self: *CredentialBroker, key: []const u8, minted: integration.Minted, now_ms: i64) void {
-    const owned = self.alloc.dupe(u8, minted.token) catch return;
-    self.store.put(key, .{ .token = owned, .expires_at_ms = minted.expires_at_ms }, .{
-        .ttl = ttlSeconds(minted.expires_at_ms, now_ms),
-    }) catch self.alloc.free(owned);
-}
-
-/// cache.zig expiry backstop (seconds). Our `now_ms` skew check is authoritative;
-/// in production `now_ms` tracks wall time so this matches the real remaining life.
-fn ttlSeconds(expires_at_ms: i64, now_ms: i64) u32 {
-    // Saturating subtraction: a never-expires token uses `maxInt(i64)`, and
-    // `maxInt(i64) - negative_now` would overflow a plain i64 subtraction.
-    const remaining_ms = expires_at_ms -| now_ms;
-    if (remaining_ms <= 0) return MIN_TTL_S;
-    const secs = @divFloor(remaining_ms, 1000);
-    // Clamp to MAX_TTL_S, never `maxInt(u32)`: cache.zig adds `now_epoch_seconds`
-    // to this ttl in a u32, so the type max is the one value guaranteed to
-    // overflow it. A bounded ceiling keeps `now + ttl` inside u32.
-    if (secs >= MAX_TTL_S) return MAX_TTL_S;
-    return @max(MIN_TTL_S, @as(u32, @intCast(secs)));
+/// Fresh-enough cached token for `key`, duped into `alloc`. Null on a miss or
+/// a skew-expired entry (the caller re-mints; the put overwrites).
+fn cachedToken(self: *CredentialBroker, alloc: std.mem.Allocator, key: []const u8, id_name: []const u8, now_ms: i64) ?integration.MintResult {
+    const entry = self.store.get(key) orelse return null;
+    defer entry.release();
+    if (now_ms >= entry.value.expires_at_ms - EXPIRY_SKEW_MS) return null;
+    const tok = alloc.dupe(u8, entry.value.token) catch return .{ .mint_failed = .transient };
+    self.emit(id_name, OUTCOME_OK, true);
+    // A hit did no exchange, so rotated_refresh_token stays null.
+    return .{ .ok = .{ .token = tok, .expires_at_ms = entry.value.expires_at_ms } };
 }
 
 /// Dispatch to the integration's mint with a fully-built `MintCtx`. Runs WITHOUT
@@ -334,5 +328,6 @@ fn parseIntegration(handle: std.json.Value) ?integration.Id {
 const std = @import("std");
 const common = @import("common");
 const cache = @import("cache");
+const flight = @import("broker_flight.zig");
 const integration = @import("integration.zig");
 const Spec = integration.Spec;

@@ -39,7 +39,6 @@ const RatesMap = std.StringHashMapUnmanaged(ModelRate);
 /// (claude-opus-4-8 on anthropic vs pioneer) maps to two distinct keys.
 const KEY_SEP: u8 = 0x1f;
 
-
 /// Write the composite (provider, model) lookup key into `buf`. Returns null
 /// if the pair does not fit — caller treats that as a cache miss (loud at
 /// billing), never a silent wrong-rate.
@@ -102,21 +101,38 @@ pub const Cache = struct {
 var global: ?Cache = null;
 var global_lock: common.Mutex = .{};
 
+/// Backing allocator for the process singleton's arena. Defaults to the
+/// process-lifetime `page_allocator`; a leak test overrides it to
+/// `testing.allocator` (via `setBackingAllocatorForTest`) to audit the
+/// rebuild/swap cycle, then restores it. It is a MODULE knob, never a `populate`
+/// parameter — see `populate`'s doc comment for why no caller may supply one.
+var backing_allocator: std.mem.Allocator = std.heap.page_allocator;
+
+/// Test-only: swap the singleton's backing allocator so a leak test can audit
+/// the populate/swap cycle under `testing.allocator`. Returns the previous
+/// allocator; the caller restores it when the test ends.
+pub fn setBackingAllocatorForTest(alloc: std.mem.Allocator) std.mem.Allocator {
+    const prev = backing_allocator;
+    backing_allocator = alloc;
+    return prev;
+}
+
 /// (Re)build the rate cache from core.model_library. Safe to call at runtime under
 /// concurrent readers: the fresh Cache is built before the lock is taken, so the
 /// DB query never blocks the hot path, and a failed rebuild leaves the live
 /// cache in place. Called at boot (serve.zig) and after every admin
 /// model-library mutation.
 ///
-/// The cache is a PROCESS SINGLETON, so it owns its memory off
-/// `std.heap.page_allocator` — not a caller-supplied allocator. An earlier
-/// design threaded the caller's allocator through here; the admin CRUD handler
-/// then passed its request-scoped `ctx.alloc`, leaving the global cache holding
-/// request-lifetime memory (a use-after-free once the request arena reset, and a
-/// cross-allocator free on the next build-then-swap). Owning the backing here
-/// removes that footgun: no caller can tie cache lifetime to a transient scope.
+/// The cache is a PROCESS SINGLETON, so it owns its memory off the module
+/// `backing_allocator` (`page_allocator` in production) — never a caller-supplied
+/// allocator. An earlier design threaded the caller's allocator through here; the
+/// admin CRUD handler then passed its request-scoped `ctx.alloc`, leaving the
+/// global cache holding request-lifetime memory (a use-after-free once the
+/// request arena reset, and a cross-allocator free on the next build-then-swap).
+/// Owning the backing at module scope removes that footgun: no caller can tie
+/// cache lifetime to a transient scope, and a leak test overrides it in place.
 pub fn populate(conn: *pg.Conn) !void {
-    const fresh = try Cache.initFromConn(std.heap.page_allocator, conn);
+    const fresh = try Cache.initFromConn(backing_allocator, conn);
     global_lock.lock();
     defer global_lock.unlock();
     if (global) |*g| g.deinit();

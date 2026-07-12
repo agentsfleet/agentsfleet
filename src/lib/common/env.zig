@@ -11,6 +11,7 @@ pub const Map = std.process.Environ.Map;
 
 /// Owned copy of env var `name`, or null if unset; OOM propagates (never masked
 /// as "unset" — so an allocation failure surfaces, not a misleading "not set").
+/// Caller must free the returned slice.
 pub fn owned(env_map: *const Map, alloc: std.mem.Allocator, name: []const u8) !?[]const u8 {
     const value = env_map.get(name) orelse return null;
     return try alloc.dupe(u8, value);

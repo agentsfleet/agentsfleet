@@ -397,3 +397,19 @@ test "test_post_get_release_buffer_on_mid_stream_fetch_failure" {
     try expectVerbReleasesBufferOnMidStreamFailure(.post);
     try expectVerbReleasesBufferOnMidStreamFailure(.get);
 }
+
+test "checkStatus: 401/403 map to Unauthorized, other non-2xx to BadStatus, 2xx passes" {
+    // The fail-loud contract: a rejected token (401/403) is a PERMANENT reject,
+    // kept distinct from a transient non-2xx so the control loop exits
+    // token_rejected instead of retrying a stale token forever as transport loss
+    // (the invisible crash-loop this fixes). The status codes are the contract.
+    inline for (.{ 401, 403 }) |status| {
+        try testing.expectError(client.ClientError.Unauthorized, client.checkStatus(status));
+    }
+    inline for (.{ 400, 404, 409, 429, 500, 502, 503 }) |status| {
+        try testing.expectError(client.ClientError.BadStatus, client.checkStatus(status));
+    }
+    inline for (.{ 200, 201, 202, 204 }) |status| {
+        try client.checkStatus(status); // 2xx → no error
+    }
+}

@@ -25,6 +25,7 @@
 const std = @import("std");
 const logging = @import("log");
 const call_deadline = @import("call_deadline");
+const http_pin = @import("http_pin");
 const ec = @import("../../../errors/error_registry.zig");
 
 const log = logging.scoped(.connectors);
@@ -91,7 +92,7 @@ pub fn fetch(alloc: std.mem.Allocator, io: std.Io, wd: *Watchdog, call: Call) Fe
 
     // Armed or refused: no pin → no call (the runner client falls through to
     // an unarmed fetch here; connectors must not).
-    const handle = pinPooledHandle(&client, call.url) orelse {
+    const handle = http_pin.pinPooledHandle(&client, call.url) orelse {
         warnRefused(call, R_VENDOR_UNREACHABLE);
         return FetchError.VendorUnreachable;
     };
@@ -143,27 +144,6 @@ fn warnRefused(call: Call, reason: []const u8) void {
         .call_class = @tagName(call.class),
         .deadline_ms = call.deadline_ms,
     });
-}
-
-/// Pin the pooled connection the fetch will use (get-or-create, then release
-/// back to the free list so the fetch pops the same one) and return its socket
-/// handle for the watchdog. Null when the URL is unusable or the dial fails —
-/// the call is refused.
-fn pinPooledHandle(client: *std.http.Client, url: []const u8) ?std.Io.net.Socket.Handle {
-    const uri = std.Uri.parse(url) catch return null;
-    const tls = std.ascii.eqlIgnoreCase(uri.scheme, "https");
-    const port: u16 = uri.port orelse @as(u16, if (tls) 443 else 80);
-    const raw_host = uri.host orelse return null;
-    const host_str = switch (raw_host) {
-        .raw => |r| r,
-        .percent_encoded => |p| p,
-    };
-    if (host_str.len == 0) return null;
-    const host = std.Io.net.HostName.init(host_str) catch return null;
-    const conn = client.connect(host, port, if (tls) .tls else .plain) catch return null;
-    const handle = conn.stream_writer.stream.socket.handle;
-    client.connection_pool.release(conn, client.io);
-    return handle;
 }
 
 // ── Tests (real loopback sockets; no DB — the deadline mechanism is pure) ────

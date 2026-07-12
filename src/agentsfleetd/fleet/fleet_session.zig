@@ -45,6 +45,7 @@ pub fn deinit(self: *Self, alloc: Allocator) void {
     alloc.free(self.context_json);
     if (self.bundle_content_hash) |bch| alloc.free(bch);
     if (self.execution_id) |eid| alloc.free(eid);
+    self.* = undefined;
 }
 
 /// Claim a Fleet: load config + session checkpoint from Postgres.
@@ -128,7 +129,7 @@ pub fn claimFleet(
 }
 
 /// Read the persisted session resume cursor (`core.fleet_sessions.context_json`),
-/// or `"{}"` when the fleet has no checkpoint yet.
+/// or `"{}"` when the fleet has no checkpoint yet. Caller must free the returned slice.
 pub fn loadSessionCheckpoint(alloc: Allocator, pool: *pg.Pool, fleet_id: []const u8) ![]const u8 {
     const conn = try pool.acquire();
     defer pool.release(conn);

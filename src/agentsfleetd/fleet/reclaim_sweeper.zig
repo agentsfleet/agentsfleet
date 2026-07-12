@@ -44,7 +44,7 @@ pub const SweepStats = struct {
 /// Run until shutdown is signalled. Spawned by the serve lifecycle.
 pub fn run(pool: *pg.Pool, queue: *queue_redis.Client, alloc: std.mem.Allocator, shutdown: *std.atomic.Value(bool)) void {
     log.debug(LOG_SWEEPER_STARTED, .{ .interval_ms = queue_consts.fleet_reclaim_interval_ms, .min_idle_ms = queue_consts.fleet_xautoclaim_min_idle_ms_int, .batch_limit = SWEEP_BATCH_LIMIT });
-    while (!shutdown.load(.acquire)) { // safe because: pairs with serve_shutdown.request() release-store.
+    while (!shutdown.load(.acquire)) { // safe because: pairs with serve_shutdown's background-stop release-store (watcher server-stop / teardown disarm).
         const stats = sweepOnce(pool, queue, alloc) catch |err| {
             log.warn(LOG_SWEEP_FAILED, .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .err = @errorName(err) });
             sleepInterruptible(shutdown, SWEEP_INTERVAL_NS);
@@ -117,7 +117,7 @@ fn fetchActiveFleets(pool: *pg.Pool, alloc: std.mem.Allocator) ![][]const u8 {
 fn sleepInterruptible(shutdown: *std.atomic.Value(bool), total_ns: u64) void {
     var remaining = total_ns;
     while (remaining > 0) {
-        if (shutdown.load(.acquire)) return; // safe because: pairs with serve_shutdown.request() release-store.
+        if (shutdown.load(.acquire)) return; // safe because: pairs with serve_shutdown's background-stop release-store (watcher server-stop / teardown disarm).
         const step = @min(remaining, SHUTDOWN_POLL_NS);
         constants.sleepNanos(step);
         remaining -|= step;

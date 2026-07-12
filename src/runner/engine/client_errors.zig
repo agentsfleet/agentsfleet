@@ -21,6 +21,7 @@ pub const ERR_EXEC_RUNNER_FLEET_INIT: []const u8 = "UZ-EXEC-012";
 pub const ERR_EXEC_RUNNER_FLEET_RUN: []const u8 = "UZ-EXEC-013";
 pub const ERR_EXEC_RUNNER_INVALID_CONFIG: []const u8 = "UZ-EXEC-014";
 pub const ERR_EXEC_BUDGET_BREACH: []const u8 = "UZ-EXEC-015";
+pub const ERR_EXEC_RUNNER_TOKEN_REJECTED: []const u8 = "UZ-EXEC-016";
 pub const ERR_TOOL_UNKNOWN: []const u8 = "UZ-TOOL-005";
 
 /// Control-plane code the `/renew` refusal carries when a fleet has reached its

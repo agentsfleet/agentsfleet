@@ -23,6 +23,7 @@ alloc: std.mem.Allocator,
 io: std.Io,
 /// Channel this subscription is attached to. Owned copy.
 channel_name: []u8,
+/// Guards the epoch counter and payload ring; the epoch is read under it before a futex sleep.
 mutex: std.Io.Mutex = .init,
 /// Bumped (release) + futex-woken on every push/close; pop reads it under
 /// the mutex and sleeps on that observed value.

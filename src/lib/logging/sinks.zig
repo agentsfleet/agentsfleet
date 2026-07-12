@@ -53,13 +53,19 @@ const MAX_SINKS: usize = 4;
 var sinks_buf: [MAX_SINKS]Sink = undefined;
 var sinks_len: usize = 0;
 var sinks_mutex: common.Mutex = .{};
-// Monotonic emit tickets. Bumped under sinks_mutex at snapshot time;
-// drained when fan-out returns. unregisterByCtx snapshots `started`
-// after compaction and waits for `completed` to catch up, bounding
-// the wait to the pre-removal in-flight set instead of all live
-// emits.
-var emit_started: std.atomic.Value(u64) = .{ .raw = 0 };
-var emit_completed: std.atomic.Value(u64) = .{ .raw = 0 };
+// Epoch-split emit tickets. Each emit joins the CURRENT epoch under
+// sinks_mutex at snapshot time and completes into that same epoch.
+// unregisterByCtx flips the epoch after compaction and waits for the
+// OLD epoch to drain — post-removal emits land in the new epoch, so
+// their completions can never satisfy the pre-removal drain (a single
+// started/completed pair let exactly that happen: fast post-removal
+// completions covered for a still-running pre-removal emit).
+var emit_epoch: usize = 0; // guarded by sinks_mutex (flips under unregister_mutex + sinks_mutex)
+var emit_started: [2]std.atomic.Value(u64) = .{ .{ .raw = 0 }, .{ .raw = 0 } };
+var emit_completed: [2]std.atomic.Value(u64) = .{ .{ .raw = 0 }, .{ .raw = 0 } };
+// Serializes unregister drains: an epoch flip while another drain is
+// in flight would recycle the epoch that drain still counts on.
+var unregister_mutex: common.Mutex = .{};
 
 /// Sentinel pointer for stateless sinks (stderr, OTLP). Never read by
 /// the emit fn — just satisfies the `*anyopaque` non-null contract.
@@ -88,12 +94,16 @@ pub fn sinksRegistered() bool {
     return sinks_len > 0;
 }
 
-// Remove every entry whose `ctx` matches AND drain any concurrent
-// `emitToSinks` that snapshotted the registry before our removal. Used
-// by `BufferedSink.deinit` so a single bs.deinit() (1) pulls all the
-// caller's registrations out and (2) blocks until any prior snapshot
-// has finished fan-out, making the ctx safe to free.
-fn unregisterByCtx(ctx: *const anyopaque) void {
+/// Remove every entry whose `ctx` matches AND drain any concurrent
+/// `emitToSinks` that snapshotted the registry before our removal. Used
+/// by `BufferedSink.deinit` so a single bs.deinit() (1) pulls all the
+/// caller's registrations out and (2) blocks until any prior snapshot
+/// has finished fan-out, making the ctx safe to free. Public so any
+/// stateful sink owner (and the drain-property test) can use the same
+/// safe removal path.
+pub fn unregisterByCtx(ctx: *const anyopaque) void {
+    unregister_mutex.lock();
+    defer unregister_mutex.unlock();
     sinks_mutex.lock();
     var write_idx: usize = 0;
     for (sinks_buf[0..sinks_len]) |s| {
@@ -103,13 +113,20 @@ fn unregisterByCtx(ctx: *const anyopaque) void {
         }
     }
     sinks_len = write_idx;
-    // Snapshot the started high-water mark while we still hold
-    // sinks_mutex — emits that incremented before this took their
-    // registry snapshot pre-compaction and may still hold the
-    // removed ctx. Emits that increment after unlock cannot.
-    const drain_target = emit_started.load(.acquire);
+    // Flip the epoch while still holding sinks_mutex: every emit that
+    // snapshotted the registry pre-compaction sits in the OLD epoch;
+    // emits after the unlock join the new one and cannot mask a
+    // still-running pre-removal fan-out.
+    const old = emit_epoch;
+    emit_epoch ^= 1;
+    const drain_target = emit_started[old].load(.acquire);
     sinks_mutex.unlock();
-    while (emit_completed.load(.acquire) < drain_target) std.atomic.spinLoopHint();
+    while (emit_completed[old].load(.acquire) < drain_target) std.atomic.spinLoopHint();
+    // Old epoch fully drained — recycle its counters for the next flip
+    // (safe: epoch flips serialize on unregister_mutex, and no live
+    // emit can still hold the old epoch index).
+    emit_started[old].store(0, .release);
+    emit_completed[old].store(0, .release);
 }
 
 pub fn emitToSinks(
@@ -131,11 +148,13 @@ pub fn emitToSinks(
     var snapshot_arr: [MAX_SINKS]Sink = undefined;
     const n = sinks_len;
     for (sinks_buf[0..n], 0..) |s, i| snapshot_arr[i] = s;
-    // Increment INSIDE the lock — atomic with snapshot so
-    // unregisterByCtx's drain_target read can't miss us.
-    _ = emit_started.fetchAdd(1, .acq_rel);
+    // Join the current epoch INSIDE the lock — atomic with the registry
+    // snapshot, so unregisterByCtx's flip cleanly partitions emits into
+    // pre-removal (old epoch, drained) and post-removal (new epoch).
+    const epoch = emit_epoch;
+    _ = emit_started[epoch].fetchAdd(1, .acq_rel);
     sinks_mutex.unlock();
-    defer _ = emit_completed.fetchAdd(1, .release);
+    defer _ = emit_completed[epoch].fetchAdd(1, .release);
     for (snapshot_arr[0..n]) |s| s.emit(s.ctx, level, scope, ts_ms, body);
 }
 
@@ -146,6 +165,7 @@ pub fn emitToSinks(
 pub const BufferedSink = struct {
     alloc: std.mem.Allocator,
     buf: std.ArrayList(u8) = .empty,
+    /// Guards `buf`; `snapshot()` copies under it so a concurrent emit can't realloc mid-read.
     mutex: common.Mutex = .{},
 
     pub fn init(alloc: std.mem.Allocator) BufferedSink {
@@ -160,6 +180,7 @@ pub const BufferedSink = struct {
         // to free the backing buffer.
         unregisterByCtx(@ptrCast(self));
         self.buf.deinit(self.alloc);
+        self.* = undefined;
     }
 
     pub fn sink(self: *BufferedSink) Sink {
@@ -170,7 +191,7 @@ pub const BufferedSink = struct {
     /// frees with the BufferedSink's allocator (`bs.alloc`). The copy
     /// is taken under lock so concurrent `emit`s can't invalidate the
     /// returned slice via ArrayList realloc — the previous
-    /// `return self.buf.items` was a race waiting to happen.
+    /// `return self.buf.items` was a race waiting to happen. Caller must free.
     pub fn snapshot(self: *BufferedSink) ![]u8 {
         self.mutex.lock();
         defer self.mutex.unlock();
@@ -195,14 +216,14 @@ pub const BufferedSink = struct {
     }
 };
 
-/// Test-only window into the emit ticket counters. Used by
-/// sinks_test.zig to pin the bounded-drain property after compaction;
-/// production callers have no use for these and should not introduce
-/// one.
+/// Test-only window into the emit ticket counters (summed across both
+/// epochs). Used by sinks_test.zig to pin the bounded-drain property
+/// after compaction; production callers have no use for these and
+/// should not introduce one.
 pub fn emitTicketsForTest() struct { started: u64, completed: u64 } {
     return .{
-        .started = emit_started.load(.acquire),
-        .completed = emit_completed.load(.acquire),
+        .started = emit_started[0].load(.acquire) + emit_started[1].load(.acquire),
+        .completed = emit_completed[0].load(.acquire) + emit_completed[1].load(.acquire),
     };
 }
 

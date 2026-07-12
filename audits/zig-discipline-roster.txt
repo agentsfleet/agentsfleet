@@ -1,0 +1,26 @@
+# zig-discipline-roster.txt — path prefixes where the ghostty-derived Allocator
+# and concurrency discipline (rules A1-A6, C1-C5 in dispatch/write_zig.md) is
+# BINDING in code, not just advisory.
+#
+# lint-zig.py --discipline reads this file. A source file whose path starts with
+# any prefix below is IN the compliance base: the deinit-poison check (A5) and
+# the ownership-phrase check (A5) BLOCK (nonzero exit). Outside every prefix the
+# same findings only WARN — the discipline is visible everywhere, enforced where
+# the base has been laid. The multi-try-without-errdefer heuristic (A2) is
+# advisory everywhere.
+#
+# EXPANSION is one line. Adding the next folder to the discipline base = add its
+# prefix here, run `make lint`, fix what it surfaces, commit. No code change is
+# needed for scope growth — enforcement scope is data, not logic. Until a folder
+# joins, RULE NLR (touch-it-fix-it) owns its individual files.
+#
+# Blank lines and #-comments are ignored. A prefix without a trailing slash is a
+# file-name prefix (matches child_supervisor.zig, child_supervisor_read.zig, …).
+
+src/agentsfleetd/cmd/
+src/agentsfleetd/events/
+src/agentsfleetd/fleet/
+src/agentsfleetd/queue/
+src/runner/daemon/
+src/runner/child_supervisor
+src/lib/

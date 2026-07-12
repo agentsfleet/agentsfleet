@@ -25,6 +25,8 @@ const S_YAML = "yaml";
 const S_CONTRACT = "contract";
 const S_COMMON = "common";
 const S_CALL_DEADLINE = "call_deadline";
+const S_HTTP_PIN = "http_pin";
+const S_TRIPWIRE = "tripwire";
 const S_S3 = "s3";
 const S_GEN_ERROR_CODES = "gen-error-codes";
 // Directory the daemon test root is rooted at. Zig names a registered test after
@@ -131,8 +133,11 @@ pub fn build(b: *std.Build) void {
     const common_mod = deps.common;
 
     // Socket-shutdown call watchdog (src/lib/call_deadline) — bounds the
-    // connectors' outbound vendor HTTP (bounded_fetch); shared with the
-    // runner's control-plane client so the mechanism exists exactly once.
+    // connectors' outbound vendor HTTP (bounded_fetch); shared with the runner's
+    // control-plane client so the mechanism exists exactly once. `deps.http_pin`
+    // (shared prime-then-pin) and `deps.tripwire` (comptime-erased fault
+    // injection — production files carry check() markers that compile to nothing
+    // outside test builds) are imported via `deps` directly at the sites below.
     const call_deadline_mod = deps.call_deadline;
 
     // hmac_sig sources its wall-clock from `common.clock` (Zig 0.16 removed
@@ -165,6 +170,8 @@ pub fn build(b: *std.Build) void {
                 .{ .name = S_CONTRACT, .module = contract_mod },
                 .{ .name = S_COMMON, .module = common_mod },
                 .{ .name = S_CALL_DEADLINE, .module = call_deadline_mod },
+                .{ .name = S_HTTP_PIN, .module = deps.http_pin },
+                .{ .name = S_TRIPWIRE, .module = deps.tripwire },
                 .{ .name = S_YAML, .module = yaml_mod },
                 .{ .name = S_S3, .module = s3_mod },
             },
@@ -244,6 +251,8 @@ pub fn build(b: *std.Build) void {
                 .{ .name = S_CONTRACT, .module = contract_mod },
                 .{ .name = S_COMMON, .module = common_mod },
                 .{ .name = S_CALL_DEADLINE, .module = call_deadline_mod },
+                .{ .name = S_HTTP_PIN, .module = deps.http_pin },
+                .{ .name = S_TRIPWIRE, .module = deps.tripwire },
                 .{ .name = S_YAML, .module = yaml_mod },
                 .{ .name = S_S3, .module = s3_mod },
             },

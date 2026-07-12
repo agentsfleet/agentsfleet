@@ -24,6 +24,8 @@ const Config = @import("config.zig");
 const client_mod = @import("control_plane_client.zig");
 const loop = @import("loop.zig");
 
+const leak_guard = logging.leak_guard;
+
 const log = logging.scoped(.fleet_runner);
 
 /// Spawn failure: either the threads handle could not be allocated, or the OS
@@ -41,6 +43,10 @@ const WorkerContext = struct {
     env_map: *const std.process.Environ.Map,
     stop: *std.atomic.Value(bool),
     drain: *std.atomic.Value(bool),
+    /// The worker stores its own `DebugAllocator.deinit()` verdict here at
+    /// teardown (`true` == `.leak`); the pool folds every slot at `join`. Points
+    /// into `Pool.leak_flags`, which outlives the worker (joined before freed).
+    leak_slot: *std.atomic.Value(bool),
 };
 
 /// A running fixed-N pool. `join()` blocks until every worker has returned and
@@ -48,16 +54,34 @@ const WorkerContext = struct {
 pub const Pool = struct {
     alloc: std.mem.Allocator,
     threads: []std.Thread,
+    /// One leak flag per worker; a worker stores `deinit() == .leak` into its
+    /// slot at teardown and `join` folds them into the pool's verdict.
+    leak_flags: []std.atomic.Value(bool),
 
-    /// Block until every worker thread returns, then free the handle slice. The
-    /// caller must have already set `stop`/`drain` (the control loop does this on
-    /// its exit path) or the workers would never leave their poll loop.
-    pub fn join(self: Pool) void {
+    /// Block until every worker thread returns, free the handle + flag slices,
+    /// then surface the folded per-worker leak verdict (`leak_guard.check`):
+    /// any worker that leaked fails `join` in Debug builds and logs in release.
+    /// The caller must have already set `stop`/`drain` (the control loop does
+    /// this on its exit path) or the workers would never leave their poll loop.
+    pub fn join(self: Pool) leak_guard.LeakError!void {
         for (self.threads) |t| t.join();
         log.debug("worker_pool_joined", .{ .workers = self.threads.len });
+        const verdict = foldWorkerVerdict(self.leak_flags);
         self.alloc.free(self.threads);
+        self.alloc.free(self.leak_flags);
+        return leak_guard.check(verdict, "worker");
     }
 };
+
+/// Fold the per-worker leak flags into one teardown verdict — any worker that
+/// reported a leak makes the pool's verdict `.leak`. Pure (no logging) so the
+/// runner's fail-on-warn test harness can assert it without emitting a log.
+pub fn foldWorkerVerdict(leak_flags: []const std.atomic.Value(bool)) std.heap.Check {
+    for (leak_flags) |*f| {
+        if (f.load(.seq_cst)) return .leak;
+    }
+    return .ok;
+}
 
 /// Spawn `cfg.worker_count` worker threads, each running `workerLoop` with its
 /// own allocator scope + client. Returns a `Pool` the caller joins on shutdown.
@@ -72,12 +96,17 @@ pub fn spawn(
     drain: *std.atomic.Value(bool),
 ) PoolError!Pool {
     const threads = try alloc.alloc(std.Thread, cfg.worker_count);
+    errdefer alloc.free(threads);
+    const leak_flags = try alloc.alloc(std.atomic.Value(bool), cfg.worker_count);
+    errdefer alloc.free(leak_flags);
+    for (leak_flags) |*f| f.* = std.atomic.Value(bool).init(false);
     var spawned: usize = 0;
     errdefer {
-        // Partial spawn: unblock the workers already up, join them, free.
+        // Partial spawn: unblock the workers already up and join them (they
+        // write their leak slot on the way out). The threads/leak_flags slices
+        // are freed by the two errdefers above once this join returns.
         stop.store(true, .seq_cst);
         for (threads[0..spawned]) |t| t.join();
-        alloc.free(threads);
     }
     while (spawned < cfg.worker_count) : (spawned += 1) {
         const ctx = WorkerContext{
@@ -87,11 +116,12 @@ pub fn spawn(
             .env_map = env_map,
             .stop = stop,
             .drain = drain,
+            .leak_slot = &leak_flags[spawned],
         };
         threads[spawned] = try std.Thread.spawn(.{}, workerLoop, .{ctx});
     }
     log.debug("worker_pool_spawned", .{ .workers = cfg.worker_count });
-    return .{ .alloc = alloc, .threads = threads };
+    return .{ .alloc = alloc, .threads = threads, .leak_flags = leak_flags };
 }
 
 /// One worker: lease → execute → report (the existing `pollAndProcess`, verbatim)
@@ -101,7 +131,10 @@ pub fn spawn(
 /// socket deadlines), never shared across threads.
 fn workerLoop(ctx: WorkerContext) void {
     var gpa: std.heap.DebugAllocator(.{}) = .{};
-    defer _ = gpa.deinit();
+    // Record this worker's leak verdict for the pool to fold at join. Registered
+    // first → runs LAST (LIFO), after `cp.deinit()` has freed its allocations,
+    // so the verdict reflects a fully-drained worker.
+    defer ctx.leak_slot.store(gpa.deinit() == .leak, .seq_cst);
     const alloc = gpa.allocator();
 
     var cp = client_mod.init(alloc, ctx.io, ctx.cfg.control_plane_url);

@@ -56,6 +56,7 @@ pub const ENTRIES_RUNTIME = [_]Entry{
     e("UZ-EXEC-013", .internal_server_error, "Runner fleet run failed", "The runner could not finish the fleet run. Check the activity stream."), // reachable: no — runner-engine internal FailureClass code, not dashboard-fetched
     e("UZ-EXEC-014", .bad_request, "Run settings invalid", "The run settings are invalid. Check the fleet files before retrying."), // reachable: no — runner-engine internal FailureClass code, not dashboard-fetched
     e("UZ-EXEC-015", .payment_required, "Run stopped: fleet limit reached", "The run stopped because the fleet reached its configured limit."), // reachable: no — runner-engine internal FailureClass code, not dashboard-fetched
+    e("UZ-EXEC-016", .unauthorized, "Runner token rejected", "The control plane rejected this host's agt_r runner token (401/403) on the heartbeat. Retrying can't fix it — mint a fresh agt_r and re-provision the host's runner token, then restart the runner."), // reachable: no — runner control-loop code, logged (server_stopped reason=token_rejected) not dashboard-fetched
     // ── RELAY ────────────────────────────────────────────────────────────────
     // ── APPROVAL GATE ────────────────────────────────────────────────────────
     eu("UZ-APPROVAL-001", .bad_request, "Approval parse failed", "Gate policy in TRIGGER.md config_json has invalid syntax. Check the 'gates' section.", "That approval gate's config is invalid. Check the gates section in TRIGGER.md."),

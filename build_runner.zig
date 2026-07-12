@@ -29,6 +29,7 @@ const S_LOG = "log";
 const S_CONTRACT = "contract";
 const S_COMMON = "common";
 const S_CALL_DEADLINE = "call_deadline";
+const S_HTTP_PIN = "http_pin";
 const S_NULLCLAW = "nullclaw";
 const S_BUILD_OPTIONS = "build_options";
 const S_RUNNER_TESTS = "agentsfleet-runner-tests";
@@ -69,6 +70,7 @@ pub fn build(b: *std.Build) void {
     // — the mechanism every client verb arms; shared with agentsfleetd's
     // connector bounded_fetch so neither graph reaches across the other's tree.
     const call_deadline_mod = deps.call_deadline;
+    const http_pin_mod = deps.http_pin;
 
     // NullClaw engine dependency — same options as the agentsfleetd build graph.
     const nullclaw_mod = deps.nullclaw;
@@ -103,6 +105,7 @@ pub fn build(b: *std.Build) void {
                 .{ .name = S_CONTRACT, .module = contract_mod },
                 .{ .name = S_COMMON, .module = common_mod },
                 .{ .name = S_CALL_DEADLINE, .module = call_deadline_mod },
+                .{ .name = S_HTTP_PIN, .module = http_pin_mod },
                 .{ .name = S_NULLCLAW, .module = nullclaw_mod },
                 .{ .name = S_BUILD_OPTIONS, .module = build_options_mod },
             },
@@ -133,6 +136,7 @@ pub fn build(b: *std.Build) void {
                 .{ .name = S_CONTRACT, .module = contract_mod },
                 .{ .name = S_COMMON, .module = common_mod },
                 .{ .name = S_CALL_DEADLINE, .module = call_deadline_mod },
+                .{ .name = S_HTTP_PIN, .module = http_pin_mod },
                 .{ .name = S_NULLCLAW, .module = nullclaw_mod },
                 .{ .name = S_BUILD_OPTIONS, .module = build_options_mod },
             },
@@ -141,6 +145,14 @@ pub fn build(b: *std.Build) void {
     });
     buildpkg.fixtures.addRunner(b, runner_tests.root_module);
     b.step("test", "Run agentsfleet-runner unit tests (daemon + engine + cmd)").dependOn(&b.addRunArtifact(runner_tests).step);
+
+    // Install the runner UNIT-test binary for the valgrind memleak lane
+    // (`make memleak`'s runner lane). Deliberately NOT runner_integration_tests:
+    // those fork+exec real children, invalid under valgrind without
+    // --trace-children. No -Dopenssl toggle exists here — the runner graph links
+    // no OpenSSL, so passing that root-only flag would be a hard error.
+    b.step("test-bin", "Install the runner unit-test binary for the memleak/valgrind lane")
+        .dependOn(&b.addInstallArtifact(runner_tests, .{}).step);
 
     // `list-tests` is defined per build graph; the daemon graph has its own in build.zig.
     const list_step = b.step(buildpkg.test_list.STEP_NAME, buildpkg.test_list.STEP_DESC);
@@ -166,6 +178,7 @@ pub fn build(b: *std.Build) void {
                 .{ .name = S_CONTRACT, .module = contract_mod },
                 .{ .name = S_COMMON, .module = common_mod },
                 .{ .name = S_CALL_DEADLINE, .module = call_deadline_mod },
+                .{ .name = S_HTTP_PIN, .module = http_pin_mod },
                 .{ .name = S_NULLCLAW, .module = nullclaw_mod },
                 .{ .name = S_BUILD_OPTIONS, .module = stub_exe_opts.createModule() },
             },
@@ -197,6 +210,7 @@ pub fn build(b: *std.Build) void {
                 .{ .name = S_CONTRACT, .module = contract_mod },
                 .{ .name = S_COMMON, .module = common_mod },
                 .{ .name = S_CALL_DEADLINE, .module = call_deadline_mod },
+                .{ .name = S_HTTP_PIN, .module = http_pin_mod },
                 .{ .name = S_NULLCLAW, .module = nullclaw_mod },
                 .{ .name = S_BUILD_OPTIONS, .module = integ_opts.createModule() },
             },
