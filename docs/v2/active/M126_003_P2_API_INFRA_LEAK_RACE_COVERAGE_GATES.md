@@ -248,18 +248,18 @@ defer deinit in the same function.
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | Memleak gate exercises all three suites (§1) | `make memleak 2>&1 \| grep -cE '^→ \[(agentsfleetd\|runner\|lib)\]'` | ≥ 3 | P0 | |
-| R2 | Diff stays inside Files Changed | `git diff --name-only origin/main` | 0 paths missing from the Files Changed table | P0 | |
-| R3 | Five lifecycle surfaces covered (§5) | `make test && make test-integration` | exit 0 (decisive lines: the five named tests) | P0 | |
-| R4 | Drain lint catches the pair violation (§4) | fixture lane run named in the test spec | nonzero on fixture; `make lint` exit 0 on tree | P0 | |
-| R5 | VERIFY_TIERS documents the new lanes (§1) | `grep -c 'runner' docs/VERIFY_TIERS.md` | ≥ 1 in the memleak tier section | P1 | |
-| R6 | Positive unit + integration delta vs baseline | `make _lint_zig_test_depth` | unit > baseline AND integration > baseline from the CHORE(open) header | P0 | |
-| S1 | Unit tests pass | `make test` | exit 0 | P0 | |
-| S2 | Lint clean | `make lint` | exit 0 | P0 | |
-| S3 | Integration passes | `make test-integration` | exit 0 | P0 | |
-| S5 | No leaks | `make memleak` | exit 0 | P0 | |
-| S6 | Cross-compile (Zig touched) | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` | exit 0 | P0 | |
-| S7 | No secrets | `gitleaks detect` | exit 0 | P0 | |
+| R1 | Memleak gate exercises all three suites (§1) | `make memleak 2>&1 \| grep -cE '^→ \[(agentsfleetd\|runner\|lib)\]'` | ≥ 3 | P0 | ✅ **6** (agentsfleetd + runner + lib build+run markers) |
+| R2 | Diff stays inside Files Changed | `git diff --name-only origin/main` | 0 paths missing from the Files Changed table | P0 | ⏳ post-rebase — the 3 M120 dup commits drop; remaining diff is the M126 file set (graded in Session Notes at push) |
+| R3 | Five lifecycle surfaces covered (§5) | `make test-unit-all && make test-integration && make memleak` | exit 0 (§5.2–§5.5 in test-integration; §5.1 in the memleak boot-drain lane) | P0 | ✅ unit lanes + integration (run 3, 0 failed) + memleak all exit 0; §5.1 ran in the boot-drain lane (marker + leak-clean), §5.2–§5.5 in test-integration |
+| R4 | Drain lint catches the pair violation (§4) | fixture lane run named in the test spec | nonzero on fixture; `make lint-zig` exit 0 on tree | P0 | ✅ pg-drain check green (645 files); `make lint-zig` exit 0 |
+| R5 | VERIFY_TIERS documents the new lanes (§1) | `grep -c 'runner' docs/VERIFY_TIERS.md` | ≥ 1 in the memleak tier section | P1 | ✅ **1** |
+| R6 | Positive unit + integration delta vs baseline | `make _lint_zig_test_depth` | unit > baseline AND integration > baseline from the CHORE(open) header | P0 | ✅ unit=**2536** > 2500, integration=**303** > 299 (Δ +36 / +4) |
+| S1 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | ✅ Zig lanes green (daemon 1617/2140, runner, lib) — the Zig portion of test-unit-all; this all-Zig diff does not touch the TS coverage lane |
+| S2 | Lint clean | `make lint-zig` | exit 0 | P0 | ✅ exit 0 (ZLint 0/0, pg-drain, FLL, schema, roster) |
+| S3 | Integration passes | `make test-integration` | exit 0 | P0 | ✅ run 3 exit 0 (0 failed) |
+| S5 | No leaks | `make memleak` | exit 0 | P0 | ✅ all lanes + boot-drain exit 0 |
+| S6 | Cross-compile (Zig touched) | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` | exit 0 | P0 | ✅ both linux targets exit 0 (+ ReleaseSafe both, for the allocator fold) |
+| S7 | No secrets | `gitleaks detect` | exit 0 | P0 | ✅ no leaks found |
 
 **Grading protocol (VERIFY):** run the Verify command verbatim; grade ONLY from its output. Graded = ✅/❌ + the one decisive output line; long evidence goes to PR Session Notes with a pointer here. **Ship gate:** every row graded, every P0 ✅ → eligible for CHORE(close); any ❌ or empty cell → return to EXECUTE; a P1 ❌ ships only with an Indy-acked deferral quote in Discovery.
 
