@@ -208,7 +208,7 @@ else
   # journal so the real cause shows up in CI instead of an opaque "activating".
   echo "  ⚠ agentsfleet-runner.service not active yet (status: $status) — the new binary + authoritative health check run in the deploy step. Recent journal:"
   ssh -i "$ssh_id" "${ssh_opts[@]}" "${ssh_user}@${ssh_host}" \
-    "sudo journalctl -u agentsfleet-runner --no-pager -n 40 2>&1 || true"
+    "sudo journalctl -u agentsfleet-runner --no-pager -n 40 2>&1" || true
 fi
 
 echo ""

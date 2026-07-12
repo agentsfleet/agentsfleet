@@ -21,6 +21,7 @@ const pg = @import("pg");
 const common = @import("common");
 const logging = @import("log");
 const call_deadline = @import("call_deadline");
+const http_pin = @import("http_pin");
 
 const integration = @import("integration.zig");
 const vault = @import("../state/vault.zig");
@@ -198,7 +199,7 @@ pub const HttpClientExchange = struct {
         // workspaces, so the watchdog is per-call (a shared one would let two
         // arms clobber each other). A pin/arm failure refuses the call rather
         // than running unbounded — same discipline as `bounded_fetch`.
-        const handle = call_deadline.pinPooledHandle(&client, req.url) orelse return error.HttpExchangeFailed;
+        const handle = http_pin.pinPooledHandle(&client, req.url) orelse return error.HttpExchangeFailed;
         var wd: Watchdog = .{};
         defer wd.deinit();
         if (wd.arm(handle, self.deadline_ms) == .watchdog_unavailable) return error.HttpExchangeFailed;

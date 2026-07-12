@@ -25,6 +25,7 @@
 const std = @import("std");
 const logging = @import("log");
 const call_deadline = @import("call_deadline");
+const http_pin = @import("http_pin");
 const ec = @import("../../../errors/error_registry.zig");
 
 const log = logging.scoped(.connectors);
@@ -91,7 +92,7 @@ pub fn fetch(alloc: std.mem.Allocator, io: std.Io, wd: *Watchdog, call: Call) Fe
 
     // Armed or refused: no pin → no call (the runner client falls through to
     // an unarmed fetch here; connectors must not).
-    const handle = call_deadline.pinPooledHandle(&client, call.url) orelse {
+    const handle = http_pin.pinPooledHandle(&client, call.url) orelse {
         warnRefused(call, R_VENDOR_UNREACHABLE);
         return FetchError.VendorUnreachable;
     };

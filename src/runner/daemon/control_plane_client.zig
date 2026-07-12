@@ -259,7 +259,8 @@ fn pooledHandle(self: *LoopbackClient) ?std.Io.net.Socket.Handle {
     // them first, else the handshake panics on a null `client.now.?` (the runner
     // never heartbeats → crash-loops). Shared with the daemon's connector/broker
     // armed-fetch sites.
-    call_deadline.primeTlsForDirectConnect(&self.http, self.io, self.tls);
+    http_pin.primeTlsForDirectConnect(&self.http, self.io, self.tls);
+    if (self.tls and self.http.now == null) return null;
     const host = std.Io.net.HostName.init(self.host) catch return null;
     const conn = self.http.connect(host, self.port, if (self.tls) .tls else .plain) catch return null;
     const handle = conn.stream_writer.stream.socket.handle;
@@ -336,5 +337,6 @@ pub fn get(self: *LoopbackClient, alloc: Allocator, path: []const u8, bearer: []
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const call_deadline = @import("call_deadline");
+const http_pin = @import("http_pin");
 const client_errors = @import("../engine/client_errors.zig");
 const protocol = @import("contract").protocol;
