@@ -14,9 +14,12 @@ export const ONBOARD_ACTION = "onboard the fleet library";
 
 export const ONBOARD_TOOLTIP = "Onboard a fleet into the platform catalog from GitHub.";
 
-export const SAMPLE_LIBRARY_REPO = "agentsfleet/github-pr-reviewer";
-
-export const LIBRARY_DOC_URL = "https://docs.agentsfleet.net/fleets/library#writing-your-own";
-
-// owner/repo — the only source form the platform surface accepts.
-export const SOURCE_REF_PATTERN = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
+// The source contract (accepted form, example repository, authoring docs) is
+// shared with the workspace onboarding dialog — see lib/fleet-library-source.ts.
+// It is deliberately NOT re-spelled here: both surfaces feed the same importer,
+// so a tightening must reach both.
+export {
+  SOURCE_REF_PATTERN,
+  SAMPLE_LIBRARY_REPO,
+  LIBRARY_AUTHORING_DOC_URL,
+} from "@/lib/fleet-library-source";
