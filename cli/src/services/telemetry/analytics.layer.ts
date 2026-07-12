@@ -26,7 +26,7 @@ import { telemetryRuntimeLayer } from "./runtime.layer.ts";
 const AI_TOOL_CI = "ci";
 const AI_TOOL_UNKNOWN_NON_INTERACTIVE = "unknown_non_interactive";
 const POSTHOG_FETCH_RETRY_COUNT = 0;
-const POSTHOG_FLUSH_AT = 100;
+const POSTHOG_FLUSH_AT = 50;
 const POSTHOG_FLUSH_INTERVAL_MS = 0;
 const POSTHOG_REQUEST_TIMEOUT_MS = 1_000;
 
