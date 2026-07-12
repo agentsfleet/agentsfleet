@@ -1,6 +1,22 @@
 //! HTTP connection-pool pinning shared by the daemon and runner build graphs.
 //! Direct TLS connects must prime the certificate bundle and validation clock
 //! that `std.http.Client.fetch` otherwise initializes lazily.
+//!
+//! PRECONDITION — the caller must own `client` exclusively for the pin→fetch
+//! window. Pinning connects, then RELEASES the connection back to the pool so
+//! the following `fetch` pops the same one; a second thread fetching on the
+//! same client could pop that connection first, and the watchdog would then
+//! shut down a socket belonging to the other request while its own fetch ran
+//! unbounded. Priming is likewise a bare `ca_bundle.rescan` — std's own path
+//! scans into a local bundle and swaps it in under `ca_bundle_lock`, so a
+//! concurrent handshake here could read a half-rebuilt trust store.
+//!
+//! Every call site satisfies this today: the daemon's connector and broker each
+//! build a fresh `std.http.Client` per call (`bounded_fetch.fetch`,
+//! `serve_broker.HttpClientExchange`), and the runner's persistent client is
+//! per-worker-thread and driven serially. A future caller that pools or shares
+//! a client across threads MUST take `ca_bundle_lock` and pin under its own
+//! exclusion, or it silently reintroduces both races.
 
 const std = @import("std");
 

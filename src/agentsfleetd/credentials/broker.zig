@@ -129,15 +129,20 @@ pub fn mint(
     // Single-flight (broker_flight.zig): exactly one cold-miss mint per key.
     // A loser waits, then re-reads what the winner cached; a winner that
     // cached nothing (mint failed) frees the next waiter to take its own
-    // flight through the loop. Only a REGISTERED winner ends the flight — an
-    // OOM-degraded (unguarded) winner owns no entry, and removing the key
-    // would free a later caller's live registration.
+    // flight through the loop. If the guard cannot be established at all
+    // (allocation failure), fail closed rather than mint unguarded — a
+    // concurrent unguarded mint reuses the refresh token and can cost the
+    // whole token family (see beginFlight).
     var claim = flight.beginFlight(self, key);
     while (claim == .lost) {
         if (self.cachedToken(alloc, key, @tagName(id), now_ms)) |res| return res;
         claim = flight.beginFlight(self, key);
     }
-    defer if (claim == .won_registered) flight.endFlight(self, key);
+    if (claim == .unavailable) {
+        self.emit(@tagName(id), OUTCOME_MINT_FAILED, false);
+        return .{ .mint_failed = .transient };
+    }
+    defer flight.endFlight(self, key);
 
     switch (self.runMint(id, handle, now_ms)) {
         .ok => |minted| return self.finishColdMint(alloc, key, @tagName(id), minted, now_ms),
