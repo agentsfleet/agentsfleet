@@ -110,14 +110,24 @@ export type OnboardLibraryEntryRequest =
       trigger_markdown?: string;
     };
 
-export type OnboardedLibraryEntry = {
+// The onboard response — identical on both tiers except which catalogue the
+// entry landed in. The two endpoints (workspace-scoped vs `/v1/admin/…`) differ
+// only in the scope they demand, so the tier is carried as the discriminant
+// rather than duplicated as two independent shapes.
+type OnboardedLibraryEntryBase = {
   id: string;
   name: string;
-  visibility: "tenant";
   content_hash: string;
   requirements: FleetLibraryRequirements;
   support_files: FleetLibrarySupportFileSummary[];
 };
+
+export type OnboardedLibraryEntry = OnboardedLibraryEntryBase & { visibility: "tenant" };
+
+// Onboarded by a `platform-library:write` operator. Stored `visibility='public'`
+// server-side, which is what puts it in every workspace's gallery beside the
+// migration-seeded rows.
+export type OnboardedPlatformLibraryEntry = OnboardedLibraryEntryBase & { visibility: "platform" };
 
 export type FleetListResponse = {
   items: Fleet[];
