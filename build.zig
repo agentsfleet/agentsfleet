@@ -214,7 +214,10 @@ pub fn build(b: *std.Build) void {
             .root_source_file = b.path("src/agentsfleetd/errors/gen_error_codes.zig"),
             .target = target,
             .optimize = optimize,
-            .imports = &.{.{ .name = S_COMMON, .module = common_mod }},
+            .imports = &.{
+                .{ .name = S_BUILD_OPTIONS, .module = build_options_mod },
+                .{ .name = S_COMMON, .module = common_mod },
+            },
         }),
     });
     const run_gen_error_codes = b.addRunArtifact(gen_error_codes);

@@ -12,7 +12,7 @@
  *   - `workspace use <id>`    → --json → { active: <id> } (active carries the id)
  *   - `workspace show --json` → { workspace_id, active: <bool>, name, created_at }
  *   - `workspace delete <id>` → LOCAL store removal only (no server route);
- *                               --json → { deleted: <id> }
+ *                               --json → { removed_from_local_state: <id> }
  *   - `list --workspace-id <id> --json` → { items: [...] } (top-level fleet list)
  *
  * Hard constraint surfaced here (also in the spec header): the server
@@ -40,7 +40,7 @@ export const WS_LIST_CURRENT_KEY = "current_workspace_id" as const;
 export const WS_ID_KEY = "workspace_id" as const;
 export const WS_SHOW_ACTIVE_KEY = "active" as const;
 export const WS_USE_ACTIVE_KEY = "active" as const;
-export const WS_DELETE_KEY = "deleted" as const;
+export const WORKSPACE_LOCAL_REMOVAL_FIELD = "removed_from_local_state" as const;
 export const AGENT_LIST_ITEMS_KEY = "items" as const;
 export const AGENT_ID_KEY = "fleet_id" as const;
 export const AGENT_NAME_KEY = "name" as const;

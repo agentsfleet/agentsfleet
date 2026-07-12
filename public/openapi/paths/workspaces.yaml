@@ -2,8 +2,7 @@
   post:
     operationId: create_workspace
     summary: Create a workspace
-    description: Creates a new workspace in the caller's tenant. All fields are optional — an empty body
-      provisions a workspace with a server-assigned Heroku-style name.
+    description: Creates a workspace in the caller's tenant. An empty body uses a server-assigned name.
     tags:
     - Workspaces
     requestBody:

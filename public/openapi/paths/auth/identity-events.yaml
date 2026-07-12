@@ -1,19 +1,11 @@
 /v1/auth/identity-events/clerk:
   post:
     operationId: auth_identity_event_clerk
-    summary: Clerk user.created auth-plane event
+    summary: Receive a Clerk account event
     description: |
-      Internal auth-plane endpoint. Clerk delivers `user.created` (and adjacent
-      identity-lifecycle types) via Svix; the signature is verified inline
-      against `CLERK_WEBHOOK_SECRET`. On success the handler atomically
-      provisions a personal account (tenant + user + owner membership + default
-      workspace + zero-cent credit state + audit row). Idempotent on
-      `oidc_subject` — replays return `created:false` with no new rows.
-      Non-`user.created` event types are 200-ignored so Clerk stops retrying.
+      Receives signed account events from Clerk. A `user.created` event creates the user's account and default workspace.
 
-      Sits outside `/v1/webhooks/` (customer data plane) — the auth namespace
-      is for signals about the platform's own auth lifecycle, not for events
-      that wake user-defined Fleets.
+      Repeated events return `created:false`. Unsupported event types return 200 with `status: ignored`.
     tags:
     - auth-identity-events
     parameters:
@@ -65,7 +57,7 @@
                 workspace_id:
                   type: string
                   format: uuid
-                  description: UUIDv7 of the newly provisioned default workspace (or the existing one on replay).
+                  description: New or existing default workspace identifier.
                 workspace_name:
                   type: string
                   description: Heroku-style workspace name, e.g. `jolly-harbor-482`.

@@ -60,6 +60,9 @@ const SUCCESS_BODY =
 const IN_PROGRESS_BODY =
     \\{"action":"in_progress","workflow_run":{"id":42,"conclusion":null,"run_attempt":1},"repository":{"full_name":"o/r"}}
 ;
+const PULL_REQUEST_BODY =
+    \\{"action":"opened","number":42,"repository":{"full_name":"o/r"},"pull_request":{"number":42,"title":"Fix routing","html_url":"https://github.com/o/r/pull/42","state":"open","draft":false,"user":{"login":"indy"},"head":{"ref":"fix","sha":"abc123"},"base":{"ref":"main"}}}
+;
 
 const Setup = struct {
     h: *TestHarness,
@@ -351,6 +354,23 @@ test "B1: happy path — 202; dedup key set with ~72h TTL; XLEN += 1" {
     try std.testing.expectEqual(before + 1, after);
     const ttl = try dedupTtl(s.h, alloc, s.fx.fleet_id, "del_b1");
     try std.testing.expect(ttl > 259195 and ttl <= 259200);
+}
+
+test "B8: opened pull request reaches the per-fleet event stream" {
+    const alloc = std.testing.allocator;
+    var s = Setup.init(alloc, "active") catch |err| return skipOrErr(err);
+    defer s.deinit(alloc);
+    requireRedis(s.h) catch return error.SkipZigTest;
+    cleanupRedis(s.h, alloc, s.fx.fleet_id, &.{"del_b8"});
+    defer cleanupRedis(s.h, alloc, s.fx.fleet_id, &.{"del_b8"});
+
+    const before = try xlen(s.h, alloc, s.fx.fleet_id);
+    const response = try postSigned(alloc, &s, "pull_request", "del_b8", PULL_REQUEST_BODY);
+    defer response.deinit();
+
+    try response.expectStatus(.accepted);
+    try std.testing.expect(response.bodyContains("\"event_id\""));
+    try std.testing.expectEqual(before + 1, try xlen(s.h, alloc, s.fx.fleet_id));
 }
 
 test "B2: replay same X-GitHub-Delivery → first 202, second 200 deduped; XLEN += 1 only" {

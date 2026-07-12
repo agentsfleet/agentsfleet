@@ -31,6 +31,8 @@ import {
 
 const WS_ID = "0195b4ba-8d3a-7f13-8abc-000000000010";
 const WS_ID_2 = "0195b4ba-8d3a-7f13-8abc-000000000011";
+const LOCAL_REMOVAL_STEM = "workspace removed from local state";
+const SERVER_DELETION_STEM = "workspace deleted";
 
 interface Recorder {
   readonly stdout: string[];
@@ -558,6 +560,8 @@ describe("workspaceDeleteEffectFromArgs", () => {
     expect(workspacesState.value.items).toHaveLength(1);
     expect(workspacesState.value.current_workspace_id).toBe(WS_ID_2);
     expect(rec.events[0]?.event).toBe("workspace_deleted");
+    expect(rec.stdout).toContain(`ok: ${LOCAL_REMOVAL_STEM}: ${WS_ID}`);
+    expect(rec.stdout.some((line) => line.includes(SERVER_DELETION_STEM))).toBe(false);
   });
 
   test("ValidationError when no id provided", async () => {
@@ -596,7 +600,7 @@ describe("workspaceDeleteEffectFromArgs", () => {
     expect(workspacesState.value.items).toBe(original);
   });
 
-  test("emits JSON envelope in jsonMode", async () => {
+  test("JSON output says the workspace was removed from local state", async () => {
     const rec = makeRecorder();
     const workspacesState = {
       value: {
@@ -611,6 +615,6 @@ describe("workspaceDeleteEffectFromArgs", () => {
       Effect.provide(analyticsLayer(rec)),
     );
     await runWith(program);
-    expect(rec.stdout.some((line) => line.includes(`"deleted":"${WS_ID}"`))).toBe(true);
+    expect(rec.stdout.some((line) => line.includes(`"removed_from_local_state":"${WS_ID}"`))).toBe(true);
   });
 });
