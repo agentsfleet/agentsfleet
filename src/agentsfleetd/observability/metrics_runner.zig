@@ -127,7 +127,9 @@ fn initSlot(slot: *Slot, h: u64, runner_id: []const u8) void {
 }
 
 /// Linear-probe to the runner's slot, claiming a fresh one on first sight.
-/// Returns null only when every slot is occupied (cardinality overflow).
+/// Returns null when every slot is occupied (cardinality overflow), or when a
+/// slot stuck mid-init outlasts the bounded spin (saturation drop, §ready
+/// spin below) — both cases bump the same overflow counters at the call site.
 fn resolveSlot(runner_id: []const u8) ?*Slot {
     const h = runnerHash(runner_id);
     const start = h % MAX_SLOTS;

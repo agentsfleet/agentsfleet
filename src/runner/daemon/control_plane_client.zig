@@ -252,20 +252,13 @@ pub const PostResult = struct { status: u16, body: []u8 };
 /// its socket handle for the watchdog. Null when the connect fails — the
 /// fetch then fails fast on its own connect attempt.
 fn pooledHandle(self: *LoopbackClient) ?std.Io.net.Socket.Handle {
-    if (self.host.len == 0) return null;
     // A TLS `connect()` reads `client.now` + `client.ca_bundle`, but only
-    // `fetch()` populates them (lazily) — and we `connect()` directly here to
-    // pin the pooled socket for the watchdog BEFORE the fetch in `send`. Prime
-    // them first, else the handshake panics on a null `client.now.?` (the runner
-    // never heartbeats → crash-loops). Shared with the daemon's connector/broker
-    // armed-fetch sites.
-    http_pin.primeTlsForDirectConnect(&self.http, self.io, self.tls);
-    if (self.tls and self.http.now == null) return null;
-    const host = std.Io.net.HostName.init(self.host) catch return null;
-    const conn = self.http.connect(host, self.port, if (self.tls) .tls else .plain) catch return null;
-    const handle = conn.stream_writer.stream.socket.handle;
-    self.http.connection_pool.release(conn, self.io);
-    return handle;
+    // `fetch()` populates them (lazily) — and this pins the pooled socket for
+    // the watchdog BEFORE the fetch in `send`. `http_pin` owns the prime-then-
+    // connect discipline, shared verbatim with the daemon's connector/broker
+    // armed-fetch sites (an unprimed handshake panics on a null `client.now.?`
+    // — the runner never heartbeats → crash-loops).
+    return http_pin.connectPinned(&self.http, self.host, self.port, self.tls);
 }
 
 /// Shared core of the bearer-authed verbs: arm the deadline watchdog, issue one

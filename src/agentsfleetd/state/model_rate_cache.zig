@@ -39,7 +39,6 @@ const RatesMap = std.StringHashMapUnmanaged(ModelRate);
 /// (claude-opus-4-8 on anthropic vs pioneer) maps to two distinct keys.
 const KEY_SEP: u8 = 0x1f;
 
-
 /// Write the composite (provider, model) lookup key into `buf`. Returns null
 /// if the pair does not fit — caller treats that as a cache miss (loud at
 /// billing), never a silent wrong-rate.

@@ -162,6 +162,158 @@ test "runner boots from a agt_r token straight into the lease loop with no regis
     try testing.expect(std.mem.indexOf(u8, observed, "POST " ++ protocol.PATH_RUNNERS ++ " ") == null);
 }
 
+// ── rejected-token streak (loop.zig fail-loud exit) ─────────────────────────
+
+/// Zeroes the backoff seam so a ten-reject streak runs in milliseconds.
+fn zeroBackoff(_: u32) u64 {
+    return 0;
+}
+
+const AUTH_REJECT_RESPONSE = "HTTP/1.1 401 Unauthorized\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+
+/// Serial loopback control plane that 401s every heartbeat. `drop_at` (1-based
+/// accept index) closes that connection without a response — a transport error
+/// that must RESET the consecutive-reject streak, not count toward it. Exits
+/// when the listener closes.
+const RejectingStub = struct {
+    listener: *std.Io.net.Server,
+    io: std.Io,
+    drop_at: u32 = 0,
+    accepts: std.atomic.Value(u32) = std.atomic.Value(u32).init(0),
+
+    fn run(self: *RejectingStub) void {
+        while (true) {
+            const conn = self.listener.accept(self.io) catch return;
+            defer conn.close(self.io);
+            var buf: [HEARTBEAT_REQ_BUF_BYTES]u8 = undefined;
+            var total: usize = 0;
+            while (total < buf.len) {
+                const n = std.posix.read(conn.socket.handle, buf[total..]) catch break;
+                if (n == 0) break;
+                total += n;
+                if (std.mem.indexOf(u8, buf[0..total], "\r\n\r\n") != null) break;
+            }
+            const seq = self.accepts.fetchAdd(1, .seq_cst) + 1;
+            if (seq == self.drop_at) continue; // close with no response: transport error
+            var wbuf: [128]u8 = undefined;
+            var w = conn.writer(self.io, &wbuf);
+            w.interface.writeAll(AUTH_REJECT_RESPONSE) catch return;
+            w.interface.flush() catch return;
+        }
+    }
+};
+
+/// Boot a runLoop against a RejectingStub; `drained` is the drain flag as the
+/// loop exited (read before the helper's cleanup defer resets it).
+fn runRejectedTokenLoop(drop_at: u32) !struct { exit: loop.LoopExit, accepts: u32, drained: bool } {
+    const alloc = testing.allocator;
+    const saved_backoff = loop.backoff_ms;
+    loop.backoff_ms = zeroBackoff;
+    defer loop.backoff_ms = saved_backoff;
+    loop.drain_requested.store(false, .seq_cst);
+    defer loop.drain_requested.store(false, .seq_cst);
+
+    const io = constants.globalIo();
+    var addr = try std.Io.net.IpAddress.parseIp4("127.0.0.1", 0);
+    var listener = try addr.listen(io, .{ .reuse_address = true });
+    const port = try boundPort(listener.socket.handle);
+
+    var stub = RejectingStub{ .listener = &listener, .io = io, .drop_at = drop_at };
+    var stub_thread = try std.Thread.spawn(.{}, RejectingStub.run, .{&stub});
+    var wd = BootWatchdog{ .io = io, .listener = &listener };
+    var wd_thread = try std.Thread.spawn(.{}, BootWatchdog.run, .{&wd});
+
+    const url = try std.fmt.allocPrint(alloc, "http://127.0.0.1:{d}", .{port});
+    defer alloc.free(url);
+    const cfg = Config{
+        .control_plane_url = try alloc.dupe(u8, url),
+        .runner_token = try alloc.dupe(u8, contract.protocol.RUNNER_TOKEN_PREFIX ++ "a" ** 64),
+        .host_id = try alloc.dupe(u8, "reject-test-host"),
+        .sandbox_tier = .dev_none,
+        .workspace_base = try alloc.dupe(u8, "/tmp/agentsfleet-runner-reject-test"),
+        .network_policy = .deny_all_egress,
+        .worker_count = 1,
+        .cp_deadlines = .{},
+        .registry_allowlist = &.{},
+        .alloc = alloc,
+    };
+    defer cfg.deinit();
+    var env_map: std.process.Environ.Map = .init(alloc);
+    defer env_map.deinit();
+
+    const exit_reason = loop.runLoop(io, alloc, cfg, &env_map);
+    // Read before this helper's own defer clears the flag for the next test.
+    const drained = loop.drain_requested.load(.seq_cst);
+    wd.done.store(true, .seq_cst);
+    if (!wd.fired.load(.seq_cst)) listener.deinit(io); // wakes the stub's accept
+    stub_thread.join();
+    wd_thread.join();
+    return .{ .exit = exit_reason, .accepts = stub.accepts.load(.seq_cst), .drained = drained };
+}
+
+test "ten consecutive rejected heartbeats exit token_rejected and request drain" {
+    const r = try runRejectedTokenLoop(0);
+    try testing.expectEqual(loop.LoopExit.token_rejected, r.exit);
+    // The exit also requests drain so any sibling loops observe the stop.
+    try testing.expect(r.drained);
+    // Exactly the streak cap, no more — mirrors loop.zig's
+    // MAX_CONSECUTIVE_AUTH_REJECTS; a drift here means the fail-loud
+    // threshold silently moved.
+    try testing.expectEqual(@as(u32, 10), r.accepts);
+}
+
+test "a transport error between rejects resets the consecutive-reject streak" {
+    // Accept #6 drops with no response after five 401s: the streak restarts,
+    // so the exit needs ten NEW consecutive rejects — 16 accepts total
+    // (5 rejected + 1 dropped + 10 rejected), not 11.
+    const r = try runRejectedTokenLoop(6);
+    try testing.expectEqual(loop.LoopExit.token_rejected, r.exit);
+    try testing.expectEqual(@as(u32, 16), r.accepts);
+}
+
+test "a rejected lease returns to the worker loop after one bounded idle" {
+    const alloc = testing.allocator;
+    const saved_backoff = loop.backoff_ms;
+    loop.backoff_ms = zeroBackoff;
+    defer loop.backoff_ms = saved_backoff;
+
+    const io = constants.globalIo();
+    var addr = try std.Io.net.IpAddress.parseIp4("127.0.0.1", 0);
+    var listener = try addr.listen(io, .{ .reuse_address = true });
+    const port = try boundPort(listener.socket.handle);
+    var stub = RejectingStub{ .listener = &listener, .io = io };
+    var stub_thread = try std.Thread.spawn(.{}, RejectingStub.run, .{&stub});
+
+    const url = try std.fmt.allocPrint(alloc, "http://127.0.0.1:{d}", .{port});
+    defer alloc.free(url);
+    const cfg = Config{
+        .control_plane_url = try alloc.dupe(u8, url),
+        .runner_token = try alloc.dupe(u8, contract.protocol.RUNNER_TOKEN_PREFIX ++ "a" ** 64),
+        .host_id = try alloc.dupe(u8, "lease-reject-host"),
+        .sandbox_tier = .dev_none,
+        .workspace_base = try alloc.dupe(u8, "/tmp/agentsfleet-runner-lease-reject"),
+        .network_policy = .deny_all_egress,
+        .worker_count = 1,
+        .cp_deadlines = .{},
+        .registry_allowlist = &.{},
+        .alloc = alloc,
+    };
+    defer cfg.deinit();
+    var env_map: std.process.Environ.Map = .init(alloc);
+    defer env_map.deinit();
+
+    var cp = @import("control_plane_client.zig").init(alloc, io, cfg.control_plane_url);
+    defer cp.deinit();
+    // A 401 lease must come back to the worker loop after ONE bounded idle —
+    // the heartbeat loop owns the process exit; a worker that crashed, spun,
+    // or retried inline here would hammer a known-rejected control plane.
+    loop.pollAndProcess(io, alloc, &cp, cfg.runner_token, cfg, &env_map);
+    try testing.expectEqual(@as(u32, 1), stub.accepts.load(.seq_cst));
+
+    listener.deinit(io);
+    stub_thread.join();
+}
+
 test "drain signal handler requests a graceful drain" {
     defer loop.drain_requested.store(false, .seq_cst);
     loop.drain_requested.store(false, .seq_cst);

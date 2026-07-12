@@ -71,6 +71,16 @@ pub const LoopExit = enum { drained, fleet_stop, worker_pool_failed, token_rejec
 /// hiccup at the heartbeat cadence; a genuinely stale token trips it in minutes.
 const MAX_CONSECUTIVE_AUTH_REJECTS: u32 = 10;
 
+/// Attempt count that saturates the shared backoff at its ceiling
+/// (`BASE_MS << 4` already exceeds `MAX_BACKOFF_MS`). Used where the loop
+/// wants "idle at the cap" rather than an escalating ramp.
+const BACKOFF_CEILING_ATTEMPT: u32 = 4;
+
+/// Backoff seam: every loop sleep routes through this so the deterministic
+/// auth-reject streak tests run in milliseconds instead of the production
+/// multi-minute jittered ramp. Production never overrides it.
+pub var backoff_ms: *const fn (u32) u64 = constants.backoff.ms;
+
 /// Control loop: the host's single thread heartbeats once per host on the
 /// `HEARTBEAT_INTERVAL_MS` cadence, maps a `.stop`/`.drain` directive (and the
 /// signal-set `drain_requested`) onto the shared atomics, and owns the worker
@@ -121,16 +131,16 @@ pub fn runLoop(io: std.Io, alloc: std.mem.Allocator, cfg: Config, env_map: *cons
                     return .token_rejected;
                 }
                 log.warn("heartbeat_unauthorized", .{ .error_code = ERR_EXEC_RUNNER_TOKEN_REJECTED, .consecutive = auth_rejects });
-                sleepMs(io, constants.backoff.ms(auth_rejects - 1));
+                sleepMs(io, backoff_ms(auth_rejects - 1));
                 continue;
             }
             heartbeat_errors += 1;
             auth_rejects = 0;
             log.warn("heartbeat_failed", .{ .error_code = ERR_EXEC_TRANSPORT_LOSS, .err = @errorName(err), .consecutive = heartbeat_errors });
-            // Bounded+jittered backoff (M100): exponential in the consecutive
-            // error count, capped at MAX_BACKOFF_MS — never the old unbounded
+            // Bounded+jittered backoff: exponential in the consecutive error
+            // count, capped at MAX_BACKOFF_MS — never an unbounded
             // `2s * heartbeat_errors` ramp. attempt is 0-based (first error → ~base).
-            sleepMs(io, constants.backoff.ms(heartbeat_errors - 1));
+            sleepMs(io, backoff_ms(heartbeat_errors - 1));
             continue;
         };
         heartbeat_errors = 0;
@@ -168,8 +178,17 @@ pub fn runLoop(io: std.Io, alloc: std.mem.Allocator, cfg: Config, env_map: *cons
 /// loop with its own allocator + client (see `worker_pool.zig`).
 pub fn pollAndProcess(io: std.Io, alloc: std.mem.Allocator, cp: *client_mod, runner_token: []const u8, cfg: Config, env_map: *const std.process.Environ.Map) void {
     const lease_parsed = cp.lease(alloc, runner_token, cfg.cp_deadlines.default_ms) catch |err| {
+        if (err == error.Unauthorized) {
+            // A rejected token is permanent — the heartbeat loop owns the
+            // loud `token_rejected` exit. Workers stop hammering the control
+            // plane at the poll cadence and idle at the backoff ceiling
+            // until that exit lands.
+            log.warn("lease_unauthorized", .{ .error_code = ERR_EXEC_RUNNER_TOKEN_REJECTED });
+            sleepMs(io, backoff_ms(BACKOFF_CEILING_ATTEMPT));
+            return;
+        }
         log.warn("lease_failed", .{ .error_code = ERR_EXEC_TRANSPORT_LOSS, .err = @errorName(err) });
-        sleepMs(io, constants.backoff.ms(0));
+        sleepMs(io, backoff_ms(0));
         return;
     };
     defer lease_parsed.deinit();

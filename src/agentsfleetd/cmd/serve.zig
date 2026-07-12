@@ -198,7 +198,7 @@ pub fn run(io: std.Io, env_map: *const EnvMap, argv: []const [:0]const u8, alloc
     // for the in-flight ones here BEFORE the pool/queue defers (declared
     // above, so they unwind after this) free what the workers use.
     var install_wg: common.WaitGroup = .{};
-    defer install_wg.wait();
+    defer serve_shutdown.awaitInstallWorkers(&install_wg);
 
     var ctx = http_handler.Context{
         .pool = api_pool,

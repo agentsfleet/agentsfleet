@@ -11,29 +11,37 @@
 
 const CredentialBroker = @import("broker.zig");
 
-/// True → the caller owns the flight for `key` and MUST `endFlight` it.
-/// False → another flight for the key completed while we waited; the caller
+/// How a cold-miss flight claim resolved. `won_registered` owns a map entry
+/// and MUST `endFlight`; `won_unguarded` flies with NO entry and MUST NOT —
+/// the key may since belong to a later caller's live registration, and
+/// removing it would free that caller's entry and wake its waiters mid-mint
+/// (re-arming the very double-mint the guard exists to prevent).
+pub const FlightClaim = enum { won_registered, won_unguarded, lost };
+
+/// `lost` → another flight for the key completed while we waited; the caller
 /// re-reads the cache (and contends again if the winner cached nothing).
-pub fn beginFlight(self: *CredentialBroker, key: []const u8) bool {
+pub fn beginFlight(self: *CredentialBroker, key: []const u8) FlightClaim {
     self.inflight_mutex.lock();
     defer self.inflight_mutex.unlock();
     if (self.inflight.contains(key)) {
         while (self.inflight.contains(key)) self.inflight_cond.wait(&self.inflight_mutex);
-        return false;
+        return .lost;
     }
     // OOM degrade: fly unguarded — the pre-guard behavior, a rare double
     // mint bounded to the documented one-reconnect cost — rather than fail
-    // a mint the caller needs. endFlight tolerates the missing entry.
-    const owned = self.alloc.dupe(u8, key) catch return true;
+    // a mint the caller needs. The claim names the degrade explicitly so
+    // the caller skips endFlight (see FlightClaim).
+    const owned = self.alloc.dupe(u8, key) catch return .won_unguarded;
     self.inflight.put(self.alloc, owned, {}) catch {
         self.alloc.free(owned);
-        return true;
+        return .won_unguarded;
     };
-    return true;
+    return .won_registered;
 }
 
-/// Release the flight for `key` and wake every waiter (each re-reads the
-/// cache; on a failed mint the first one through takes its own flight).
+/// Release a `won_registered` flight for `key` and wake every waiter (each
+/// re-reads the cache; on a failed mint the first one through takes its own
+/// flight). Never called by a `won_unguarded` winner — no entry is theirs.
 pub fn endFlight(self: *CredentialBroker, key: []const u8) void {
     self.inflight_mutex.lock();
     defer self.inflight_mutex.unlock();

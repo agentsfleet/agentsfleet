@@ -56,7 +56,7 @@ pub const SweepStats = struct {
 /// Run until shutdown is signalled. Spawned by the serve lifecycle.
 pub fn run(pool: *pg.Pool, alloc: std.mem.Allocator, shutdown: *std.atomic.Value(bool)) void {
     log.debug(LOG_SWEEPER_STARTED, .{ .interval_ms = constants.HEARTBEAT_INTERVAL_MS, .batch_limit = SWEEP_BATCH_LIMIT });
-    while (!shutdown.load(.acquire)) { // safe because: pairs with serve_shutdown.request() release-store.
+    while (!shutdown.load(.acquire)) { // safe because: pairs with serve_shutdown's background-stop release-store (watcher server-stop / teardown disarm).
         const stats = sweepOnce(pool, alloc) catch |err| {
             log.warn(LOG_SWEEP_FAILED, .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .err = @errorName(err) });
             sleepInterruptible(shutdown, SWEEP_INTERVAL_NS);
@@ -282,7 +282,7 @@ fn isStale(last_seen_at: i64, now_ms: i64) bool {
 fn sleepInterruptible(shutdown: *std.atomic.Value(bool), total_ns: u64) void {
     var remaining = total_ns;
     while (remaining > 0) {
-        if (shutdown.load(.acquire)) return; // safe because: pairs with serve_shutdown.request() release-store.
+        if (shutdown.load(.acquire)) return; // safe because: pairs with serve_shutdown's background-stop release-store (watcher server-stop / teardown disarm).
         const step = @min(remaining, SHUTDOWN_POLL_NS);
         constants.sleepNanos(step);
         remaining -|= step;
