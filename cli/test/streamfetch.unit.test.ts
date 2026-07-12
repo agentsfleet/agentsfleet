@@ -184,6 +184,19 @@ describe("streamFetch — error paths", () => {
     }
   });
 
+  test("RFC 7807 response throws ApiError with flat code and detail", async () => {
+    const fetchImpl = asFetchImpl(async () => ({
+      ok: false,
+      status: 424,
+      statusText: "Failed Dependency",
+      headers: { get: () => null },
+      text: async () => JSON.stringify({ error_code: "UZ-BUNDLE-003", detail: "missing secrets" }),
+    }));
+    await expect(
+      streamFetch(STREAM_URL, {}, {}, () => {}, { fetchImpl }),
+    ).rejects.toMatchObject({ code: "UZ-BUNDLE-003", message: "missing secrets" });
+  });
+
   test("non-200 with non-JSON body still throws ApiError", async () => {
     const fetchImpl = asFetchImpl(async () => ({
       ok: false,
