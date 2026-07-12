@@ -58,6 +58,7 @@ const REQUIRED_ENV = [
 // acceptable: local agentsfleetd + DEV Clerk + DEV billing balance only).
 const DEFAULT_REGULAR_EMAIL = "regular-fixture@mailinator.com";
 const DEFAULT_ADMIN_EMAIL = "admin-fixture@mailinator.com";
+const DEFAULT_OPERATOR_EMAIL = "operator-fixture@mailinator.com";
 
 // Random per-create password. The harness never logs in via password;
 // CLERK_SECRET_KEY admin API mints sessions directly. A stable password
@@ -78,6 +79,11 @@ function fixtureUsers(): FixtureUserSpec[] {
     {
       key: FIXTURE_KEY.admin,
       email: process.env.AUTH_E2E_ADMIN_EMAIL ?? DEFAULT_ADMIN_EMAIL,
+      password: freshPassword(),
+    },
+    {
+      key: FIXTURE_KEY.operator,
+      email: process.env.AUTH_E2E_OPERATOR_EMAIL ?? DEFAULT_OPERATOR_EMAIL,
       password: freshPassword(),
     },
   ];

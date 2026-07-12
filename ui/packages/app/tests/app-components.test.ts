@@ -65,6 +65,7 @@ vi.mock("lucide-react", () => ({
   ZapIcon: (props: Record<string, unknown>) => React.createElement("svg", { ...props, "data-icon": "ZapIcon" }),
   ShieldIcon: (props: Record<string, unknown>) => React.createElement("svg", { ...props, "data-icon": "ShieldIcon" }),
   KeyRoundIcon: (props: Record<string, unknown>) => React.createElement("svg", { ...props, "data-icon": "KeyRoundIcon" }),
+  LibraryIcon: (props: Record<string, unknown>) => React.createElement("svg", { ...props, "data-icon": "LibraryIcon" }),
   LinkIcon: (props: Record<string, unknown>) => React.createElement("svg", { ...props, "data-icon": "LinkIcon" }),
   CheckCircle2Icon: (props: Record<string, unknown>) => React.createElement("svg", { ...props, "data-icon": "CheckCircle2Icon" }),
   ServerIcon: (props: Record<string, unknown>) => React.createElement("svg", { ...props, "data-icon": "ServerIcon" }),
@@ -400,6 +401,32 @@ describe("app components", () => {
     const markup = renderToStaticMarkup(React.createElement(Shell, null, React.createElement("div")));
     expect(markup).not.toContain('href="/admin/runners"');
     expect(markup).not.toContain('data-icon="ServerIcon"');
+    expect(markup).not.toContain('href="/admin/fleet-libraries"');
+  });
+
+  it("Shell appends Fleet libraries only when the session holds platform-library:write", async () => {
+    const { default: Shell } = await import("../components/layout/Shell");
+    mocks.usePathname.mockReturnValue("/");
+    const withScope = renderToStaticMarkup(
+      React.createElement(
+        Shell,
+        { operatorScopes: ["platform-library:write"] } as React.ComponentProps<typeof Shell>,
+        React.createElement("div"),
+      ),
+    );
+    expect(withScope).toContain("Fleet libraries");
+    expect(withScope).toContain('href="/admin/fleet-libraries"');
+
+    // A neighbouring operator scope does not open the surface — the platform
+    // catalog has no read rung, so nothing expands into platform-library:write.
+    const otherScope = renderToStaticMarkup(
+      React.createElement(
+        Shell,
+        { operatorScopes: ["model:admin"] } as React.ComponentProps<typeof Shell>,
+        React.createElement("div"),
+      ),
+    );
+    expect(otherScope).not.toContain('href="/admin/fleet-libraries"');
   });
 
   it("Shell mobile-nav: hamburger button is present (md:hidden)", async () => {
