@@ -19,6 +19,7 @@
  */
 import { expect, test } from "@playwright/test";
 import { signInAs } from "./fixtures/auth";
+import { workspaceUrlPattern } from "./fixtures/nav";
 import { FIXTURE_KEY } from "./fixtures/constants";
 
 const ADMIN_PATH = "/admin/fleet-libraries";
@@ -88,35 +89,38 @@ test.describe("platform fleet-library onboarding", () => {
     await expect(entry).toBeVisible({ timeout: 60_000 });
     await expect(entry).toContainText(SAMPLE_ENTRY_ID);
     await expect(entry).toContainText("platform");
-
-    // Re-onboarding the same repository upserts rather than minting a second
-    // entry — the catalog id is derived from the bundle, not the request.
-    await page.getByRole("button", { name: /onboard fleet/i }).click();
-    await page.getByLabel(/repository/i).fill(SAMPLE_REPO);
-    await page.getByRole("button", { name: /^onboard$/i }).click();
-    await expect(page.getByTestId(`onboarded-entry-${SAMPLE_ENTRY_ID}`)).toHaveCount(1);
   });
 
-  test("the onboarded fleet becomes installable in a workspace gallery", async ({ page }) => {
-    // The operator onboards…
+  test("the onboarded fleet becomes installable in a workspace gallery, exactly once", async ({
+    page,
+  }) => {
+    // Onboard the same repository TWICE. The catalog id comes from the bundle's
+    // declared name, not the request, so the second onboard must upsert the
+    // first row rather than mint a second entry.
     await signInAs(page, FIXTURE_KEY.operator);
-    await page.goto(ADMIN_PATH);
-    await page.getByRole("button", { name: /onboard fleet/i }).click();
-    await page.getByLabel(/repository/i).fill(SAMPLE_REPO);
-    await page.getByRole("button", { name: /^onboard$/i }).click();
-    await expect(page.getByTestId(`onboarded-entry-${SAMPLE_ENTRY_ID}`)).toBeVisible({
-      timeout: 60_000,
-    });
+    for (const _attempt of [1, 2]) {
+      await page.goto(ADMIN_PATH);
+      await page.getByRole("button", { name: /onboard fleet/i }).click();
+      await page.getByLabel(/repository/i).fill(SAMPLE_REPO);
+      await page.getByRole("button", { name: /^onboard$/i }).click();
+      await expect(page.getByTestId(`onboarded-entry-${SAMPLE_ENTRY_ID}`)).toBeVisible({
+        timeout: 60_000,
+      });
+    }
 
-    // …and a plain workspace user, who can reach no operator surface at all,
-    // can now install it. This is the whole point of the platform tier.
+    // A plain workspace user, who can reach no operator surface at all, can now
+    // install it — the whole point of the platform tier. The gallery is also
+    // the only place a duplicate catalog row would be visible: the admin page
+    // renders one card by construction, so asserting there proves nothing.
     await signInAs(page, FIXTURE_KEY.regular);
     await page.goto("/");
-    const workspaceUrl = new URL(page.url());
-    await page.goto(`${workspaceUrl.pathname}/fleets/new`);
+    await expect(page).toHaveURL(workspaceUrlPattern());
 
-    await expect(page.getByText(SAMPLE_ENTRY_ID, { exact: false }).first()).toBeVisible({
-      timeout: 30_000,
-    });
+    const workspacePath = new URL(page.url()).pathname;
+    await page.goto(`${workspacePath}/fleets/new`);
+
+    const cards = page.getByTestId(`library-card-${SAMPLE_ENTRY_ID}`);
+    await expect(cards.first()).toBeVisible({ timeout: 30_000 });
+    await expect(cards).toHaveCount(1);
   });
 });

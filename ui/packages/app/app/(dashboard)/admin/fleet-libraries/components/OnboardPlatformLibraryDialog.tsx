@@ -32,7 +32,7 @@ import { presentError, type ErrorPresentation } from "@/lib/errors";
 import { SOURCE_KIND_GITHUB, type OnboardedPlatformLibraryEntry } from "@/lib/types";
 import { onboardPlatformLibraryAction } from "../actions";
 import {
-  LIBRARY_DOC_URL,
+  LIBRARY_AUTHORING_DOC_URL,
   ONBOARD_ACTION,
   ONBOARD_TOOLTIP,
   SAMPLE_LIBRARY_REPO,
@@ -153,7 +153,7 @@ export default function OnboardPlatformLibraryDialog({
                   <FormDescription className="space-y-1">
                     <span className="block">Example: {SAMPLE_LIBRARY_REPO}</span>
                     <a
-                      href={LIBRARY_DOC_URL}
+                      href={LIBRARY_AUTHORING_DOC_URL}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="inline-flex items-center gap-1 text-pulse underline-offset-2 hover:underline focus-visible:underline"
