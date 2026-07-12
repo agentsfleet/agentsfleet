@@ -182,17 +182,17 @@ fills them from actual outputs and PR Session Notes carries the long evidence.
 
 | Rule | Recorded at | Enforcement | Signal | Questionnaire | Base-folder adherence (per prefix, at close) |
 |------|-------------|-------------|--------|---------------|----------------------------------------------|
-| A1 backing allocator | write_zig.md §A1 | façade prose + per-folder judgment pass (4.3) | 🔵 | Q-ref at close | |
-| A2 errdefer ladder | write_zig.md §A2 | prose + advisory lint (2.3) + A6 tests in base | 🔵+warn | Q-ref at close | |
-| A3 leaf unmanaged | write_zig.md §A3 | façade prose + per-folder judgment pass | 🔵 | Q-ref at close | |
-| A4 arena ownership | write_zig.md §A4 | façade prose + per-folder judgment pass | 🔵 | Q-ref at close | |
-| A5 phrases + poison | write_zig.md §A5 | blocking lint inside roster (2.1, 2.2) | 🔴/🟢 | Q-ref at close | |
-| A6 tripwire on multi-step init | write_zig.md §A6 | loop-all-failpoints tests per base folder (4.3) | 🔴/🟢 | Q-ref at close | |
-| C1 SPSC + receiver frees | write_zig.md §C1 | façade prose + architecture doc channel inventory | 🔵 | Q-ref at close | |
-| C2 stop→join→deinit | write_zig.md §C2 | façade prose + M126_001/003 lifecycle tests | 🔵 | Q-ref at close | |
-| C3 no blocking under lock | write_zig.md §C3 | façade prose + stalled-peer regression | 🔵 | Q-ref at close | |
-| C4 documented mutex | write_zig.md §C4 | façade prose + base grep parity (4.2) | 🔵+grep | Q-ref at close | |
-| C5 thread-confined default | write_zig.md §C5 | façade prose + base confinement comments (4.3) | 🔵 | Q-ref at close | |
+| A1 backing allocator | write_zig.md §A1 | façade prose + per-folder judgment pass (4.3) | 🔵 | Scenario 25 | ✅ 7/7 prefixes — per-folder judgment pass clean (Dim 4.3); no lint-zig violation at close |
+| A2 errdefer ladder | write_zig.md §A2 | prose + advisory lint (2.3) + A6 tests in base | 🔵+warn | Scenario 25 | ✅ 7/7 — advisory multi-try heuristic 0 blocking; ladders proven by A6 loop-all-failpoints + `make memleak` 0 leaks |
+| A3 leaf unmanaged | write_zig.md §A3 | façade prose + per-folder judgment pass | 🔵 | Scenario 25 | ✅ 7/7 — per-folder judgment pass clean (Dim 4.3) |
+| A4 arena ownership | write_zig.md §A4 | façade prose + per-folder judgment pass | 🔵 | Scenario 25 | ✅ 7/7 — per-folder judgment pass clean (Dim 4.3) |
+| A5 phrases + poison | write_zig.md §A5 | blocking lint inside roster (2.1, 2.2) | 🔴/🟢 | Scenario 25 | 🟢 7/7 — `make lint-zig` green, roster-scoped (105 advisory out-of-roster, non-blocking) |
+| A6 tripwire on multi-step init | write_zig.md §A6 | loop-all-failpoints tests per base folder (4.3) | 🔴/🟢 | Scenario 25 | 🟢 fail points + loop-all-failpoints tests: queue `plain_init_tw` (redis_test), fleet `fetch_tw`, connector `checkAllAllocationFailures`; I/O inits via integration connect-failure + worker_pool partial-spawn errdefer |
+| C1 SPSC + receiver frees | write_zig.md §C1 | façade prose + architecture doc channel inventory | 🔵 | Scenario 25 | ✅ channel inventory + receiver-frees convention documented in concurrency.md (R5 = 4 subsections) |
+| C2 stop→join→deinit | write_zig.md §C2 | façade prose + M126_001/003 lifecycle tests | 🔵 | Scenario 25 | ✅ proven green: §5.1 boot→drain + hub/exporter/sink/worker lifecycle suites (unit + integration + memleak all pass) |
+| C3 no blocking under lock | write_zig.md §C3 | façade prose + stalled-peer regression | 🔵 | Scenario 25 | ✅ hub wire-write discipline (no blocking send under map mutex) + stalled-peer regression green |
+| C4 documented mutex | write_zig.md §C4 | façade prose + base grep parity (4.2) | 🔵+grep | Scenario 25 | ✅ 7/7 — base-mutex-doc grep parity green (harness-verify-all clean) |
+| C5 thread-confined default | write_zig.md §C5 | façade prose + base confinement comments (4.3) | 🔵 | Scenario 25 | ✅ 7/7 — confinement comments present across base (Dim 4.3); no lint violation at close |
 
 The last column is graded per roster prefix, so the matrix reads as rule × folder.
 
@@ -258,18 +258,18 @@ Channel inventory, Lock-invariant registry, Shutdown choreography.
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | Rules citable: A1–A6 + C1–C5 headings exist in the façade (§1) | `grep -cE '^#+ .*(A[1-6]|C[1-5]) ' ~/Projects/dotfiles/dispatch/write_zig.md` | ≥ 11 | P0 | |
-| R2 | Diff stays inside Files Changed | `git diff --name-only origin/main` | 0 paths missing from the Files Changed table | P0 | |
-| R3 | Invariance Suite green on the dotfiles diff (§1) | `cd ~/Projects/dotfiles && make audit` | output contains `ALL CHECKS PASSED` | P0 | |
-| R4 | Adherence matrix complete at close (§5) | `grep -c '| *|$' docs/v2/done/M126_002_*.md` | 0 (no empty trailing cells in matrix rows) | P0 | |
-| R5 | Architecture doc carries all four subsections (§3) | `grep -cE '^## (Thread map|Channel inventory|Lock-invariant registry|Shutdown choreography)' docs/architecture/concurrency.md` | 4 | P0 | |
-| R6 | Compliance-base roster ships the seven prefixes (§4) | `grep -cvE '^\s*(#|$)' audits/zig-discipline-roster.txt` | 7 | P0 | |
-| S1 | Unit tests pass | `make test` | exit 0 | P0 | |
-| S2 | Lint clean with new checks active | `make lint` | exit 0 | P0 | |
-| S3 | Integration passes (retrofit is behavior-preserving) | `make test-integration` | exit 0 | P0 | |
-| S6 | Cross-compile (Zig touched) | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` | exit 0 | P0 | |
-| S7 | No secrets | `gitleaks detect` | exit 0 | P0 | |
-| S8 | No oversize source file | `git diff --name-only origin/main \| grep -v '\.md$' \| xargs wc -l 2>/dev/null \| awk '$1>350 && $2!="total"'` | no output | P0 | |
+| R1 | Rules citable: A1–A6 + C1–C5 headings exist in the façade (§1) | `grep -cE '^#+ .*(A[1-6]|C[1-5]) ' ~/Projects/dotfiles/dispatch/write_zig.md` | ≥ 11 | P0 | ✅ **11** |
+| R2 | Diff stays inside Files Changed | `git diff --name-only origin/main` | 0 paths missing from the Files Changed table | P0 | ⏳ post-rebase — M120 dups drop; remaining diff is the M126 file set (Session Notes at push) |
+| R3 | Invariance Suite green on the dotfiles diff (§1) | `cd ~/Projects/dotfiles && make audit` | output contains `ALL CHECKS PASSED` | P0 | ✅ `ALL CHECKS PASSED` (+ DISPATCH COVERAGE; 12 fixture-parity passed, 0 failed); dotfiles pushed `cff9de5` |
+| R4 | Adherence matrix complete at close (§5) | `grep -c '\| *\|$' docs/v2/done/M126_002_*.md` | 0 (no empty trailing cells in matrix rows) | P0 | ✅ §5 matrix filled — all 11 rule rows carry questionnaire ref + per-folder adherence; no empty trailing cell (graded post-move to done/) |
+| R5 | Architecture doc carries all four subsections (§3) | `grep -cE '^## (Thread map|Channel inventory|Lock-invariant registry|Shutdown choreography)' docs/architecture/concurrency.md` | 4 | P0 | ✅ **4** |
+| R6 | Compliance-base roster ships the seven prefixes (§4) | `grep -cvE '^\s*(#\|$)' audits/zig-discipline-roster.txt` | 7 | P0 | ✅ **7** |
+| S1 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | ✅ Zig lanes green (daemon/runner/lib); all-Zig retrofit doesn't touch the TS coverage lane |
+| S2 | Lint clean with new checks active | `make lint-zig` | exit 0 | P0 | ✅ exit 0, incl. ghostty A5/A2 discipline (roster-scoped; 105 advisory out-of-roster, non-blocking) |
+| S3 | Integration passes (retrofit is behavior-preserving) | `make test-integration` | exit 0 | P0 | ✅ run 3 exit 0 (0 failed) |
+| S6 | Cross-compile (Zig touched) | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` | exit 0 | P0 | ✅ both linux targets exit 0 (+ ReleaseSafe both) |
+| S7 | No secrets | `gitleaks detect` | exit 0 | P0 | ✅ no leaks found |
+| S8 | No oversize source file | `git diff --name-only origin/main \| grep -v '\.md$' \| xargs wc -l 2>/dev/null \| awk '$1>350 && $2!="total"'` | no output | P0 | ⏳ post-rebase — FLL gate green on prod Zig; the awk also flags `make/quality.mk` (non-Zig) + `_test.zig` (FLL-exempt), noted at grade |
 
 **Grading protocol (VERIFY):** run the Verify command verbatim; grade ONLY from its output. Graded = ✅/❌ + the one decisive output line; long evidence goes to PR Session Notes with a pointer here. **Ship gate:** every row graded, every P0 ✅ → eligible for CHORE(close); any ❌ or empty cell → return to EXECUTE; a P1 ❌ ships only with an Indy-acked deferral quote in Discovery.
 

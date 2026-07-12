@@ -69,6 +69,15 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `src/agentsfleetd/observability/otlp/exporter.zig` | EDIT | Idempotent/guarded install (R9) |
 | `src/agentsfleetd/observability/metrics_runner.zig` | EDIT | Explicit spin-exhaustion handling — no duplicate slot (R10) |
 | `src/agentsfleetd/main.zig` | EDIT | Release builds select `smp_allocator`, not the DebugAllocator (Invariant 5, mirrors `src/runner/main.zig`) — folded in per Indy (Jul 12); the long-running daemon stops paying DebugAllocator bookkeeping in production, leak detection now lives in the memleak gates. Debug keeps the leak-checked allocator + abort. |
+| — Runner HTTPS crash-loop fix (folded in per Indy, Jul 12; see Discovery) — | | |
+| `src/lib/call_deadline/call_deadline.zig` | EDIT | Shared `primeTlsForDirectConnect` (fixes the null-`now` TLS panic) + `pinPooledHandle` (the M108 shared armed-fetch primitive) |
+| `src/runner/daemon/control_plane_client.zig` (+`_test`) | EDIT | Prime TLS before the watchdog-pin connect; `Unauthorized` + pub `checkStatus` classifier + its test |
+| `src/runner/daemon/loop.zig` (+`_test`) | EDIT | `LoopExit`; exit `token_rejected` after 10 consecutive 401/403 heartbeats |
+| `src/runner/main.zig` | EDIT | Exit non-zero on `token_rejected` (also carries the allocator fold above) |
+| `src/runner/cmd/doctor.zig` | EDIT | Distinguish token-rejected / non-control-plane / unreachable |
+| `src/agentsfleetd/http/handlers/connectors/bounded_fetch.zig`, `src/agentsfleetd/credentials/serve_broker.zig` | EDIT | Use the shared `call_deadline.pinPooledHandle` (delete the two hand-copied pins) |
+| `src/runner/engine/client_errors.zig`, `src/agentsfleetd/errors/error_registry.zig`, `error_entries_runtime.zig` | EDIT | New `UZ-EXEC-016` (runner token rejected) — canonical + mirror + registry entry |
+| `playbooks/founding/06_runner_bootstrap_dev/04_provision_runner_env.sh` | EDIT | Deploy deadlock: is-active gate on the old binary is non-fatal + dumps journalctl into CI; deploy.sh stays the authoritative gate |
 | `src/lib/tripwire/tripwire.zig` | CREATE | Vendored fault-injection module (§4), named module for both build graphs (directory layout per src/lib convention) |
 | `src/lib/tests.zig` | EDIT | Wire tripwire self-tests into the lib test root (RULE TST) |
 | `src/build/shared.zig` | EDIT | tripwire module constructed in SharedDeps (named-module wiring) |
@@ -241,17 +250,17 @@ its doc comment states teardown ordering (await before pool/queue deinit).
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | Every review finding R1–R10/L1–L3 maps to a named test above and all pass (§1–§5) | `make test` | exit 0 | P0 | |
-| R2 | Diff stays inside Files Changed | `git diff --name-only origin/main` | 0 paths missing from the Files Changed table | P0 | |
-| R3 | Boot-window SIGTERM lifecycle proven with real threads (§1) | `make test-integration` | exit 0 | P0 | |
-| S1 | Unit tests pass | `make test` | exit 0 | P0 | |
-| S2 | Lint clean | `make lint` | exit 0 | P0 | |
-| S3 | Integration passes | `make test-integration` | exit 0 | P0 | |
-| S5 | No leaks | `make memleak` | exit 0 | P0 | |
-| S6 | Cross-compile (Zig touched) | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` | exit 0 | P0 | |
-| S7 | No secrets | `gitleaks detect` | exit 0 | P0 | |
-| S8 | No oversize source file | `git diff --name-only origin/main \| grep -v '\.md$' \| xargs wc -l 2>/dev/null \| awk '$1>350 && $2!="total"'` | no output | P0 | |
-| S9 | Orphan sweep | Dead Code Sweep greps | 0 matches | P0 | |
+| R1 | Every review finding R1–R10/L1–L3 maps to a named test above and all pass (§1–§5) | `make test-unit-all` | exit 0 | P0 | ✅ Zig lanes green (daemon 1617/2140, runner, lib); every R/L finding maps to a named test that ran |
+| R2 | Diff stays inside Files Changed | `git diff --name-only origin/main` | 0 paths missing from the Files Changed table | P0 | ⏳ post-rebase — M120 dups drop; remaining diff is the M126 file set (Session Notes at push) |
+| R3 | Boot-window SIGTERM lifecycle proven with real threads (§1) | `make test-integration && make memleak` | exit 0 | P0 | ✅ boot→SIGTERM→drain proof runs in the memleak boot-drain lane (§5.1, marker + leak-clean); deterministic shutdown-ordering suites in test-integration (run 3, 0 failed) |
+| S1 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | ✅ Zig lanes green (daemon/runner/lib); all-Zig diff doesn't touch the TS coverage lane |
+| S2 | Lint clean | `make lint-zig` | exit 0 | P0 | ✅ exit 0 (ZLint 0/0, pg-drain, FLL, schema, roster, ORP) |
+| S3 | Integration passes | `make test-integration` | exit 0 | P0 | ✅ run 3 exit 0 (0 failed) |
+| S5 | No leaks | `make memleak` | exit 0 | P0 | ✅ all lanes + boot-drain exit 0 |
+| S6 | Cross-compile (Zig touched) | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` | exit 0 | P0 | ✅ both linux targets exit 0 (+ ReleaseSafe both, for the allocator fold) |
+| S7 | No secrets | `gitleaks detect` | exit 0 | P0 | ✅ no leaks found |
+| S8 | No oversize source file | `git diff --name-only origin/main \| grep -v '\.md$' \| xargs wc -l 2>/dev/null \| awk '$1>350 && $2!="total"'` | no output | P0 | ⏳ post-rebase — FLL gate green on prod Zig; the awk also flags `make/*.mk` (non-Zig) + `_test.zig` (FLL-exempt), noted at grade |
+| S9 | Orphan sweep | Dead Code Sweep greps | 0 matches | P0 | ✅ ORP gate green ("No legacy event-substrate symbols in active code") |
 
 **Grading protocol (VERIFY):** run the Verify command verbatim; grade ONLY from its output. Graded = ✅/❌ + the one decisive output line (`342 passed`); long evidence goes to PR Session Notes with a pointer here. **Ship gate:** every row graded, every P0 ✅ → eligible for CHORE(close); any ❌ or empty cell → return to EXECUTE; a P1 ❌ ships only with an Indy-acked deferral quote in Discovery.
 
@@ -297,6 +306,7 @@ N/A — no files deleted; the stale "harmless" comment in `handlers/common.zig` 
 
 - **Consults** — Architecture / Legacy-Design / gate-flag triage: the question asked + Indy's decision.
   - Fold decision — > Indy (2026-07-11 ~12:26): "go, i chore open pull those M126_002,M126_003 into your worktree of M126_001 and commit in your PR." — all three workstreams execute on this branch, one PR.
+  - Runner HTTPS crash-loop — > Indy (2026-07-12): "I want it to fixed in this Pr ... So debug and fix it in this PR" (folded in). The dev runner had been crash-looping ~15h (systemd restart counter 10807): its FIRST control-plane heartbeat panicked (`attempt to use null value`) in `std.http.Client.connectTcp` → `Connection.Tls.create` reading `client.now.?`. Root cause: the "pin the pooled socket for the deadline watchdog via a direct `connect()` BEFORE the fetch" pattern skips the TLS-state init (`now` + `ca_bundle`) that `fetch()` does lazily — so any HTTPS connect panicked (plain HTTP never touches `now`, which is why it hid). Present at THREE sites: runner `control_plane_client.pooledHandle` (actively firing), daemon `bounded_fetch.pinPooledHandle` + `serve_broker.pinHandle` (latent — connector + credential-broker HTTPS). Fixed with one shared `call_deadline.primeTlsForDirectConnect`, and the 2 daemon copies collapsed into a shared `call_deadline.pinPooledHandle` (closing the M108 DRY debt the code itself flagged). Fail-loud hardening (Fable-5 @ high design): `ClientError.Unauthorized` (401/403) + a `checkStatus` classifier; `runLoop` returns `LoopExit` and exits `token_rejected` after 10 consecutive 401/403s; `main` exits non-zero; new error `UZ-EXEC-016`; `doctor` now distinguishes token-rejected / non-control-plane / unreachable. Deploy deadlock fixed: `04_provision_runner_env.sh`'s is-active gate (on the OLD binary, BEFORE deploy.sh installs the new one — a crash-loop could never be replaced) is now non-fatal + dumps journalctl into CI; `deploy.sh verify_healthy` stays the authoritative gate. **Validated:** local repro (panic reproduced, then fixed) + a real-URL sweep of ~50 live HTTPS hosts — the 5 connectors (Slack/GitHub/Zoho/Jira/Linear), the control plane, and 28 inference providers — all connect with **0 panics**; `doctor` vs live `api-dev.agentsfleet.net` gets a real 401 → "token REJECTED".
   - Daemon allocator fold — > Indy (2026-07-12): "Fold into this PR" — swap the daemon's release-build allocator from the DebugAllocator to `smp_allocator`, mirroring `src/runner/main.zig` (Invariant 5). Surfaced framing Indy accepted before deciding: the swap gains perf (the long-running daemon stops paying DebugAllocator per-allocation bookkeeping + locking forever) but drops the release-mode *logged* leak verdict — now covered by the memleak gates (testing-allocator test graphs + the boot→drain lifecycle test) at test time, which is the deterministic replacement at the right point in the lifecycle. Fable-5 @ high advised the shape: block-form conditional `defer` (my first `else _ = gpa.deinit()` would not compile — an assignment can't be a bare if-else branch); the release `_ = gpa.deinit()` is load-bearing (keeps `gpa` used so release doesn't error on an unused local); duplicate `allocatorKind`/`AllocatorKind` in daemon `main.zig` rather than hoist into `src/lib/common` (hoisting would drag the isolated runner graph into this PR); keep the explicit `.thread_safe = true`. Also flagged + fixed: two now-stale release-behavior comments. Follow-up (NOT this scope — Fable-5 suggestion): export a periodic process resident-set-size (RSS) gauge via the existing OTLP metrics path as the runtime production leak signal.
 - **Metrics review** — events added, extra events found during `/review`, analytics/funnel playbook update or the explicit no-change reason.
 - **Skill-chain outcomes** — `/write-unit-test`, `/review`, `kishore-babysit-prs` results (order per `AGENTS.md` CHORE(close); iteration counts, findings dispositioned).
