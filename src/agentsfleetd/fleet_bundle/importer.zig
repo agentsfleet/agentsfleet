@@ -309,7 +309,7 @@ test "prepare lists trigger requirements" {
         \\    - type: webhook
         \\      source: github
         \\  credentials: [github]
-        \\  tools: [github_review_comment]
+        \\  tools: [http_request]
         \\  network:
         \\    allow: [api.github.com]
         \\  budget:

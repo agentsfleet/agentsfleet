@@ -15,22 +15,25 @@
  * update-bundle construction the lifecycle suite never needed.
  */
 
+import type { RunResult } from "./cli.js";
+
 import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import url from "node:url";
 
-import { PLATFORM_OPS_SAMPLE_DIR } from "./constants.ts";
+import {
+  PLATFORM_OPS_FIXTURE_NAME,
+  PLATFORM_OPS_SAMPLE_DIR,
+} from "./constants.ts";
 import { runFleetctl } from "./cli.js";
-import type { RunResult } from "./cli.js";
 
 type Env = Readonly<Record<string, string>>;
 
 const HERE = path.dirname(url.fileURLToPath(import.meta.url));
 const WORKTREE_ROOT = path.resolve(HERE, "..", "..", "..", "..");
 
-const SAMPLE_NAME = "platform-ops-fleet";
 const ACCEPTANCE_SLACK_CHANNEL = "#agentsfleet-acceptance";
 const ACCEPTANCE_MODEL = "accounts/fireworks/models/kimi-k2.6";
 const ACCEPTANCE_CONTEXT_CAP = "256000";
@@ -63,13 +66,13 @@ async function writeUpdateBundle(fleetName: string): Promise<string> {
   await fs.writeFile(
     path.join(targetDir, SKILL_FILE),
     skill
-      .replace(`${NAME_FIELD_PREFIX}${SAMPLE_NAME}`, `${NAME_FIELD_PREFIX}${fleetName}`)
+      .replace(`${NAME_FIELD_PREFIX}${PLATFORM_OPS_FIXTURE_NAME}`, `${NAME_FIELD_PREFIX}${fleetName}`)
       .replaceAll(SLACK_TOKEN, ACCEPTANCE_SLACK_CHANNEL) + updateMarker(),
   );
   await fs.writeFile(
     path.join(targetDir, TRIGGER_FILE),
     trigger
-      .replace(`${NAME_FIELD_PREFIX}${SAMPLE_NAME}`, `${NAME_FIELD_PREFIX}${fleetName}`)
+      .replace(`${NAME_FIELD_PREFIX}${PLATFORM_OPS_FIXTURE_NAME}`, `${NAME_FIELD_PREFIX}${fleetName}`)
       .replaceAll(MODEL_TOKEN, ACCEPTANCE_MODEL)
       .replaceAll(CONTEXT_CAP_TOKEN, ACCEPTANCE_CONTEXT_CAP),
   );

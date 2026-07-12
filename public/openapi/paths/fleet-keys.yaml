@@ -42,8 +42,7 @@
   post:
     operationId: create_fleet_key
     summary: Issue a Fleet key for a Fleet
-    description: Creates a new `agt_a` Fleet key bound to a specific Fleet. **The raw key is returned once.** Only the SHA-256
-      hash is persisted — the key cannot be retrieved again.
+    description: Creates a fleet key with the `agt_a` prefix. The raw key is returned once. Only its SHA-256 hash is saved.
     tags:
     - Fleet Keys
     parameters:

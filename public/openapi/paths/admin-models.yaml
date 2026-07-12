@@ -1,11 +1,10 @@
 /v1/admin/models:
   get:
     operationId: list_admin_models
-    summary: List the priced model catalogue
+    summary: List models
     description: >
-      Every catalogue row in `core.model_library`, ordered by (provider,
-      model_id). This is the billing spine — a model absent from the catalogue
-      meters at the run fee only. Requires the `model:read` scope.
+      Returns every shared model, ordered by provider and model identifier.
+      Requires the `model:read` scope.
     tags:
     - Admin
     responses:
@@ -129,11 +128,9 @@
         $ref: ../components/responses.yaml#/components/responses/Error
   delete:
     operationId: delete_admin_model
-    summary: Remove a catalogue row
+    summary: Remove a model
     description: >
-      Refuses to delete the model the active platform default points at —
-      otherwise the next platform-mode lease resolves a model with no priced
-      row and silently meters at the run fee only. Repoint the default first.
+      Refuses to remove the active default model. Choose another default first.
       Requires the `model:admin` scope.
     tags:
     - Admin

@@ -89,7 +89,7 @@ pub fn innerCreateWorkspace(hx: hx_mod.Hx, req: *httpz.Request) void {
         name: ?[]const u8 = null,
     };
 
-    // Empty body is allowed — `agentsfleet workspace add` with no args POSTs `{}`
+    // Empty body is allowed — `agentsfleet workspace create` with no args POSTs `{}`
     // and lets the server pick a Heroku-style name (parity with signup).
     const body = req.body() orelse "{}";
     const parsed = std.json.parseFromSlice(Req, hx.alloc, body, .{ .ignore_unknown_fields = true }) catch {

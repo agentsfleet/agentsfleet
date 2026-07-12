@@ -2,6 +2,7 @@
 // REGISTRY; running it twice must produce byte-identical output
 // ("re-running on a clean tree is a no-op").
 const std = @import("std");
+const build_options = @import("build_options");
 const gen = @import("gen_error_codes.zig");
 
 test "gen_error_codes.render() is idempotent" {
@@ -16,6 +17,36 @@ test "gen_error_codes.render() is idempotent" {
     try gen.render(alloc, &run2.writer);
 
     try std.testing.expectEqualStrings(run1.written(), run2.written());
+}
+
+test "gen_error_codes.render() follows the documentation reference shape" {
+    const alloc = std.testing.allocator;
+    var run: std.Io.Writer.Allocating = .init(alloc);
+    defer run.deinit();
+    try gen.render(alloc, &run.writer);
+    const out = run.written();
+
+    const ordered = [_][]const u8{
+        "type: reference\n",
+        "audience: user\n",
+        "verified: 2026-07-12\n",
+        "product_version: " ++ build_options.version ++ "\n",
+        "executable: false\n",
+        "# Error codes\n",
+        "## Synopsis\n",
+        "## Example with output\n",
+        "## Options\n",
+        "## Errors\n",
+        "## Related pages\n",
+    };
+    var offset: usize = 0;
+    for (ordered) |needle| {
+        const relative = std.mem.indexOf(u8, out[offset..], needle) orelse {
+            std.debug.print("generated page is missing ordered section: {s}\n", .{needle});
+            return error.TestExpectedSectionInOutput;
+        };
+        offset += relative + needle.len;
+    }
 }
 
 test "gen_error_codes.render() output contains every REGISTRY code exactly once" {
@@ -38,6 +69,28 @@ test "gen_error_codes.render() output contains every REGISTRY code exactly once"
         };
         const second = std.mem.indexOf(u8, out[first + needle.len ..], needle);
         try std.testing.expect(second == null);
+
+        var anchor_buf: [96]u8 = undefined;
+        const anchor = try std.fmt.bufPrint(&anchor_buf, "<span id=\"{s}\"></span>", .{entry.code});
+        try std.testing.expect(std.mem.indexOf(u8, out, anchor) != null);
+    }
+}
+
+test "gen_error_codes.render() excludes removed command spellings" {
+    const alloc = std.testing.allocator;
+    var run: std.Io.Writer.Allocating = .init(alloc);
+    defer run.deinit();
+    try gen.render(alloc, &run.writer);
+    const out = run.written();
+
+    const removed_spellings = [_][]const u8{
+        "agentsfleet install --from",
+        "agentsfleet secret add",
+        "agentsfleet workspace add",
+        "agentsfleet tenant provider add",
+    };
+    for (removed_spellings) |spelling| {
+        try std.testing.expect(std.mem.indexOf(u8, out, spelling) == null);
     }
 }
 
@@ -52,23 +105,66 @@ test "gen_error_codes.render() section headings are friendly labels, not raw nam
     try gen.render(alloc, &run.writer);
     const out = run.written();
 
-    // Excludes STARTUP: its friendly label ("Startup") happens to be
-    // identical to the naive capitalized-token fallback — nothing to
-    // distinguish there, so it's not part of this regression check.
-    const RAW_TOKEN_HEADINGS = [_][]const u8{
-        "\n## Wh\n",   "\n## Slk\n",     "\n## Agt\n",      "\n## Gh\n",
-        "\n## Conn\n", "\n## Mem\n",     "\n## Req\n",      "\n## Cred\n",
-        "\n## Exec\n", "\n## Run\n",     "\n## Uuidv7\n",   "\n## Apikey\n",
-        "\n## Vault\n", "\n## Grant\n",  "\n## Bundle\n",   "\n## Provider\n",
-        "\n## Tool\n", "\n## Fleetkey\n", "\n## Approval\n",
-        "\n## Auth\n",
+    try std.testing.expect(std.mem.indexOf(u8, out, "\n### Webhooks\n") != null);
+    try std.testing.expect(std.mem.indexOf(u8, out, "\n### Fleets\n") != null);
+    try std.testing.expect(std.mem.indexOf(u8, out, "\n### Tenant models\n") != null);
+}
+
+test "gen_error_codes.render() gives webhook failures webhook-specific prevention" {
+    const alloc = std.testing.allocator;
+    var run: std.Io.Writer.Allocating = .init(alloc);
+    defer run.deinit();
+    try gen.render(alloc, &run.writer);
+    const out = run.written();
+
+    try std.testing.expect(std.mem.indexOf(u8, out, "Keep webhook signing secrets matched and service clocks synchronized.") != null);
+    try std.testing.expect(std.mem.indexOf(u8, out, "Refresh credentials before they expire.") == null);
+}
+
+test "gen_error_codes.render() documents required and optional response fields" {
+    const alloc = std.testing.allocator;
+    var run: std.Io.Writer.Allocating = .init(alloc);
+    defer run.deinit();
+    try gen.render(alloc, &run.writer);
+    const out = run.written();
+
+    try std.testing.expect(std.mem.indexOf(u8, out, "Every response contains the first five fields below.") != null);
+    try std.testing.expect(std.mem.indexOf(u8, out, "| `current_state` |") != null);
+    try std.testing.expect(std.mem.indexOf(u8, out, "| `user_message` |") != null);
+}
+
+test "gen_error_codes.render() prefers public user messages" {
+    const alloc = std.testing.allocator;
+    var run: std.Io.Writer.Allocating = .init(alloc);
+    defer run.deinit();
+    try gen.render(alloc, &run.writer);
+    const out = run.written();
+
+    try std.testing.expect(std.mem.indexOf(u8, out, "We couldn't finish that request.") != null);
+    try std.testing.expect(std.mem.indexOf(u8, out, "Check the err= field and database logs.") == null);
+    try std.testing.expect(std.mem.indexOf(u8, out, "This page comes from the `agentsfleetd` error registry.") == null);
+}
+
+test "gen_error_codes.render() keeps operator details out of public fixes" {
+    const alloc = std.testing.allocator;
+    var run: std.Io.Writer.Allocating = .init(alloc);
+    defer run.deinit();
+    try gen.render(alloc, &run.writer);
+    const out = run.written();
+
+    const private_terms = [_][]const u8{
+        "err= field",
+        "DATABASE_URL",
+        "REDIS_URL_API",
+        "Postgres memory schema",
+        "core.tenant_model_entries",
+        "core.model_library",
+        "core.platform_provider_defaults",
+        "API_MAX_",
+        "SSE_MAX_",
+        "config_json",
     };
-    for (RAW_TOKEN_HEADINGS) |needle| {
-        if (std.mem.indexOf(u8, out, needle) != null) {
-            std.debug.print("raw namespace token used as a section heading: \"{s}\"\n", .{needle});
-            return error.TestUnexpectedResult;
-        }
+    for (private_terms) |term| {
+        try std.testing.expect(std.mem.indexOf(u8, out, term) == null);
     }
-    try std.testing.expect(std.mem.indexOf(u8, out, "\n## Webhooks\n") != null);
-    try std.testing.expect(std.mem.indexOf(u8, out, "\n## Fleets\n") != null);
 }
