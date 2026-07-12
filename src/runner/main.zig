@@ -108,8 +108,13 @@ pub fn main(init: std.process.Init) void {
     // Option B: the env-supplied `agt_r` (prefix-validated in Config.load) IS this
     // runner's identity. No register call — go straight to the loop.
     loop.installDrainHandlers();
-    loop.runLoop(io, alloc, cfg, env_map);
-    log.info("server_stopped", .{});
+    const exit_reason = loop.runLoop(io, alloc, cfg, env_map);
+    log.info("server_stopped", .{ .reason = @tagName(exit_reason) });
+    // A rejected runner token can never self-heal — exit non-zero so systemd's
+    // restart + the deploy health check surface it as a loud, named failure
+    // (server_stopped reason=token_rejected in journald) instead of a runner that
+    // stays "up" while never leasing work. Other exits are a clean stop.
+    if (exit_reason == .token_rejected) std.process.exit(1);
 }
 
 /// Handle a CLI subcommand/flag if argv carries one, returning the process exit
