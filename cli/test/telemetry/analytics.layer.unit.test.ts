@@ -36,7 +36,7 @@ describe("analyticsLayer", () => {
     await Effect.runPromise(program);
     expect(STUB.options).toMatchObject({
       fetchRetryCount: 0,
-      flushAt: 100,
+      flushAt: 50,
       flushInterval: 0,
       requestTimeout: EXPECTED_REQUEST_TIMEOUT_MS,
     });
