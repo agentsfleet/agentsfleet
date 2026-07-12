@@ -50,14 +50,11 @@ jobs:
           ZIG_LOCAL_CACHE_DIR: ${{ github.workspace }}/.tmp/zig-local-cache
         run: |
           make _ensure-test-infra
-          # Pre-baked: trixie-slim + Zig + valgrind. Trixie's valgrind groks
-          # Zig DWARF; bookworm's misreads frames. seccomp=unconfined because
-          # valgrind's syscall interception trips the default profile.
-          # The libc6-dev install is a bridge until the trixie image is rebuilt
-          # with it baked in (Dockerfile.debian-trixie already adds it): the
-          # published 0.16.0 image has libssl-dev but not libc6-dev, and the
-          # boot→drain lane's daemon compile links OpenSSL, whose headers
-          # include sys/types.h. No-op (~2s) once the image carries it.
+          # Pre-baked: trixie-slim + Zig + valgrind + libc6-dev (the boot→drain
+          # lane's daemon compile links OpenSSL, whose headers need the base
+          # libc set). Trixie's valgrind groks Zig DWARF; bookworm's misreads
+          # frames. seccomp=unconfined because valgrind's syscall interception
+          # trips the default profile.
           docker run --rm --network host \
             -v "${{ github.workspace }}":"${{ github.workspace }}" \
             -w "${{ github.workspace }}" \
@@ -66,7 +63,7 @@ jobs:
             -e TEST_INFRA=provided \
             --security-opt seccomp=unconfined \
             ghcr.io/agentsfleet/ci-zig-debian-trixie:0.16.0 \
-            sh -c 'apt-get update -qq && apt-get install -y -qq --no-install-recommends libc6-dev && mkdir -p "$ZIG_GLOBAL_CACHE_DIR" "$ZIG_LOCAL_CACHE_DIR" && make memleak'
+            sh -c 'mkdir -p "$ZIG_GLOBAL_CACHE_DIR" "$ZIG_LOCAL_CACHE_DIR" && make memleak'
       - name: Stop services
         if: always()
         run: docker compose down
