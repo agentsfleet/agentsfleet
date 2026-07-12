@@ -40,6 +40,8 @@ These are the tool primitives NullClaw exposes. The fleet's `tools:` allowlist g
 | Tool | Purpose | Visible to the fleet (host) |
 |---|---|---|
 | `http_request` | GET / POST to allow-listed hosts. Placeholders like `${secrets.NAME.FIELD}` are substituted at the tool bridge after sandbox entry. For a **mintable integration** (e.g. GitHub), the placeholder resolves to a short-lived token **minted on demand** at the bridge through the credential broker — not a stored value. | The fleet sees placeholders only; it never sees raw secret bytes. |
+| `file_read` / `file_write` / `file_edit` | Read or change files inside the runner workspace. A fleet receives only the file tools listed in its policy. | Yes, when explicitly enabled. |
+| `git` | Inspect and change the repository inside the runner workspace. Network access and GitHub credentials remain separate controls. | Yes, when explicitly enabled. |
 | `memory_store` / `memory_recall` | Durable scratchpad keyed by string. Survives run boundaries and full restart. The "where I am" snapshot mechanism. | Yes — the fleet reads and writes. |
 | `cron_add` / `cron_list` / `cron_remove` | Self-schedule future invocations. Each fire arrives as a synthetic event with `actor=cron:<schedule>`. | Yes. |
 | `shell` (gated) | Read-only commands like `docker ps`, `kubectl get`. Not part of the initial platform-ops surface. | Yes, when explicitly enabled. |

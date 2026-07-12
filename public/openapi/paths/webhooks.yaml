@@ -1,22 +1,18 @@
 /v1/ingress/{provider}:
   post:
     operationId: ingest_connector_webhook
-    summary: Receive a platform-managed connector webhook
-    description: >-
-      Bearer-less ingress for a platform-managed connector App. The provider
-      signature is verified against the platform-admin vault before the JSON
-      body is parsed. The provider installation maps the delivery to one
-      workspace; active fleet subscriptions, repository bindings, event types,
-      and approved integration grants determine the fan-out targets. Replay
-      identity is derived from the authenticated body, not mutable delivery
-      headers. GitHub is the currently supported provider.
+    summary: Receive a provider event
+    description: |
+      Receives signed events from a connected provider. GitHub is the supported provider.
+
+      A matching event starts runs for subscribed fleets. Duplicate events do not start another run.
     tags:
     - Webhooks
     parameters:
     - name: provider
       in: path
       required: true
-      description: Connector provider that signed the delivery.
+      description: Provider that sent the event.
       schema:
         type: string
         enum:
@@ -30,7 +26,7 @@
     - name: X-GitHub-Delivery
       in: header
       required: true
-      description: GitHub-issued diagnostic delivery identifier. It is not trusted for replay protection because this header is outside the signed body.
+      description: Delivery identifier supplied by GitHub.
       schema:
         type: string
     - name: X-Hub-Signature-256
@@ -45,11 +41,11 @@
         application/json:
           schema:
             type: object
-            description: Raw provider webhook payload. Routed GitHub events must carry `installation.id` and `repository.full_name`; signed `ping` payloads are acknowledged without those fields.
+            description: A signed GitHub event body. Events other than `ping` require `installation.id` and `repository.full_name`.
             additionalProperties: true
     responses:
       '202':
-        description: Delivery matched one or more fleets; new per-fleet events were enqueued and replays were suppressed.
+        description: Event matched at least one fleet.
         content:
           application/json:
             schema:
@@ -75,7 +71,7 @@
                   minimum: 0
                   maximum: 100
       '200':
-        description: Delivery was a signed ping, or was valid but intentionally ignored because its event was filtered, its installation was unmapped, or no fleet subscription matched.
+        description: Valid event that required no fleet run.
         content:
           application/json:
             schema:
@@ -146,10 +142,11 @@
 /v1/webhooks/{fleet_id}/github:
   post:
     operationId: github_webhook
-    summary: Ingest a GitHub Actions webhook
-    description: GitHub `workflow_run` webhook receiver. Body is HMAC-SHA256 signed (X-Hub-Signature-256) against the workspace's
-      `fleet:github` credential `webhook_secret` field. Only `action=completed` with `conclusion=failure` is XADDed to the
-      fleet event stream; other events return 200. Idempotency keyed on `X-GitHub-Delivery` for 24h.
+    summary: Receive a signed GitHub event
+    description: |
+      Verifies the body with the `webhook_secret` field from the workspace's `github` secret.
+
+      Reviewable `pull_request` events and failed completed `workflow_run` events create fleet events. A delivery identifier remains reserved for 72 hours after acceptance.
     tags:
     - Webhooks
     parameters:
@@ -163,9 +160,12 @@
     - name: X-GitHub-Event
       in: header
       required: true
-      description: GitHub event type. Only `workflow_run` is ingested.
+      description: GitHub event type.
       schema:
         type: string
+        enum:
+        - pull_request
+        - workflow_run
     - name: X-GitHub-Delivery
       in: header
       required: true
@@ -184,7 +184,8 @@
         application/json:
           schema:
             type: object
-            description: Raw GitHub webhook payload — see https://docs.github.com/en/webhooks/webhook-events-and-payloads#workflow_run.
+            description: Raw GitHub webhook payload.
+            additionalProperties: true
     responses:
       '202':
         description: Event accepted and enqueued.
@@ -192,25 +193,38 @@
           application/json:
             schema:
               type: object
+              additionalProperties: false
+              required:
+              - status
+              - event_id
               properties:
                 status:
                   type: string
+                  const: accepted
                 event_id:
                   type: string
       '200':
-        description: Duplicate delivery (idempotency hit) or event ignored (fleet paused, non-workflow_run, non-completed
-          action, or non-failure conclusion). Body distinguishes the two via the `deduped` or `ignored` field. The
-          `fleet_paused` ignore does not consume the dedup slot, so redelivery after resume processes normally.
+        description: Duplicate or ignored event. An ignored event does not reserve its delivery identifier.
         content:
           application/json:
             schema:
-              type: object
-              properties:
-                deduped:
-                  type: boolean
-                ignored:
-                  type: string
-                  description: Reason the event was filtered out (e.g. `non_failure_conclusion`, `fleet_paused`).
+              oneOf:
+              - type: object
+                additionalProperties: false
+                required:
+                - deduped
+                properties:
+                  deduped:
+                    type: boolean
+                    const: true
+              - type: object
+                additionalProperties: false
+                required:
+                - ignored
+                properties:
+                  ignored:
+                    type: string
+                    description: Reason the event was ignored.
       '400':
         $ref: ../components/responses.yaml#/components/responses/Error
       '401':
@@ -341,11 +355,11 @@
 /v1/webhooks/svix/{fleet_id}:
   post:
     operationId: receive_svix_webhook
-    summary: Receive a Svix-signed webhook (Clerk events)
-    description: Ingress endpoint for Svix-signed webhooks (e.g. Clerk user lifecycle events). Signature is verified by
-      the webhook auth middleware against the workspace's Svix secret before the handler runs. Body shape is
-      event-specific and defined by the upstream issuer; the server validates the envelope and dispatches to the fleet's
-      event log.
+    summary: Receive a signed Svix event
+    description: |
+      Receives a signed Svix event for one fleet. A valid new event returns 202.
+
+      A duplicate or an event for a paused fleet returns 200.
     tags:
     - Webhooks
     parameters:
@@ -395,9 +409,7 @@
                   enum:
                   - accepted
       '200':
-        description: 'Not enqueued, intentionally. Two shapes: duplicate delivery (`{"status": "duplicate"}` — same body
-          `event_id` within the 24-hour dedup window) or event ignored (`{"ignored": "fleet_paused"}` — fleet is paused;
-          the dedup slot is not consumed, so redelivery after resume processes normally).'
+        description: Duplicate event or event ignored because the fleet is paused.
         content:
           application/json:
             schema:

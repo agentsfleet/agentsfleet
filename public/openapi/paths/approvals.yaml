@@ -92,13 +92,11 @@
 /v1/workspaces/{workspace_id}/approvals/{gate_id}:approve:
   post:
     operationId: approve_workspace_approval
-    summary: Approve a pending gate
+    summary: Approve a pending request
     description: |
-      Resolves the gate to "approved" and wakes the worker thread blocked
-      on the gate. Funnels through the channel-agnostic resolve core that
-      Slack callbacks and the auto-timeout sweeper share — first writer
-      wins; concurrent resolvers receive 409 with the original outcome and
-      resolver attribution.
+      Approves a pending request. If two callers resolve it, the first result wins.
+
+      Other callers receive 409 with the existing result and resolver.
     tags:
     - Approvals
     parameters:
@@ -139,11 +137,11 @@
 /v1/workspaces/{workspace_id}/approvals/{gate_id}:deny:
   post:
     operationId: deny_workspace_approval
-    summary: Deny a pending gate
+    summary: Deny a pending request
     description: |
-      Resolves the gate to "denied" and wakes the worker thread. The
-      worker treats `denied` as "do not execute the proposed tool call".
-      Same dedup semantics as `:approve`.
+      Denies a pending request. The proposed tool call does not run.
+
+      If two callers resolve the request, the first result wins.
     tags:
     - Approvals
     parameters:
@@ -242,9 +240,7 @@ components:
         resolved_by: { type: string }
     ApprovalAlreadyResolvedResponse:
       description: |
-        RFC 7807 problem+json with structured extension fields carrying the
-        original outcome and resolver attribution so the dashboard can render
-        "already resolved by X at Y" without a follow-up GET.
+        Error response for a request that was already resolved. The response includes the first result, time, and resolver.
       allOf:
       - $ref: ../components/schemas.yaml#/components/schemas/ErrorBody
       - type: object

@@ -2,8 +2,7 @@
   post:
     operationId: create_api_key
     summary: Mint a tenant API key
-    description: Creates a new `agt_t`-prefixed tenant admin key. **The raw key is returned once.** Only the SHA-256 hash
-      is persisted — the key cannot be retrieved again. Requires operator (or admin) role.
+    description: Creates a tenant admin key with the `agt_t` prefix. The raw key is returned once. Only its SHA-256 hash is saved.
     tags:
     - API Keys
     requestBody:
@@ -185,8 +184,7 @@
   delete:
     operationId: delete_api_key
     summary: Delete a revoked tenant API key
-    description: Hard-deletes the row from `core.api_keys`. The key must already be revoked (`active = false`); an active
-      key returns `409 UZ-APIKEY-008`.
+    description: Deletes a revoked tenant API key. An active key returns 409 `UZ-APIKEY-008`.
     tags:
     - API Keys
     parameters:

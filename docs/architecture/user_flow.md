@@ -162,39 +162,15 @@ The dashboard equivalent surface on `/fleets/{id}` matches the CLI path:
 
 This matters because the fleet is not replacing Claude. It extends Claude from an interactive assistant into a durable operational worker — and the dashboard mirrors the same primitives so a user who lives in the browser sees an equivalent surface.
 
-## §8.5 Example: Platform-Ops with GH Actions trigger
+## §8.5 Example: Production deploy repair
 
-While working in Claude, the user defines a `platform-ops` fleet that:
+The current `platform-ops` flow wakes when GitHub Actions reports a failed production deployment. The fleet reads deployment evidence and posts a diagnosis.
 
-- wakes on GitHub Actions deploy-failure webhooks (primary)
-- wakes on a periodic production health cron (secondary; declared in `triggers[]` or added by NullClaw's `cron_add` tool at runtime)
-- can also be steered manually by the user
+The approved target adds a bounded code fix and a draft Pull Request (PR). A human still reviews and merges the PR.
 
-When a GH Actions deploy fails:
+The existing deployment pipeline deploys the merge. A later run checks production health and records the result.
 
-1. GitHub posts the failed `workflow_run` to `POST /v1/ingress/github`, carrying `installation.id`, `repository.full_name`, the event header, a diagnostic delivery identifier, and the App signature.
-2. The ingress verifies the signature against the platform `github-app.webhook_secret` before reading routing fields, resolves the installation through `core.connector_installs`, and selects active fleets in that workspace whose GitHub trigger explicitly matches the repository and event and whose GitHub grant is approved.
-3. For each matching fleet, the receiver hashes the signature-covered body, claims a body-digest-and-fleet replay slot, and `XADD`s the normalized event to `fleet:{id}:events`. A changed unsigned delivery header cannot bypass replay; a failed fan-out leg releases only its own slot. The manual `POST /v1/webhooks/{fleet_id}/github` route remains available for custom per-fleet hooks and continues to use a workspace `webhook_secret`.
-4. A `agentsfleet-runner` long-polls `POST /v1/runners/me/leases`; on the lease path `agentsfleetd`:
-   - INSERTs `core.fleet_events` (status='received')
-   - passes the balance + approval gates
-   - resolves static secrets from the vault and records mintable GitHub handles; the actual GitHub token is minted only when the tool call needs it
-   - resolves provider config (`tenant_provider.resolveActiveProvider`) — platform-managed key OR self-managed key, depending on tenant posture
-   - returns the lease carrying `secrets_map`, `network_policy`, `tools` list, `context` knobs, and provider config
-
-   The runner then forks a sandboxed child that runs the NullClaw fleet on the leased event.
-5. The fleet's NullClaw fleet reasons over the message:
-   - calls `http_request GET https://api.github.com/repos/{repo}/actions/runs/{run_id}/logs` with `${secrets.github.api_token}` substituted at the tool bridge
-   - calls `http_request GET ${fly.host}/v1/apps/{app}/logs`
-   - calls `http_request GET ${upstash.host}/v2/redis/stats/{db}`
-   - correlates: was the failure a migration error vs OOM kill vs network timeout vs deploy-config drift
-   - calls `http_request POST ${slack.host}/api/chat.postMessage` with the diagnosis
-6. The fleet's response is UPDATEd into `core.fleet_events` (status='processed', response_text, tokens, wall_ms).
-7. If the SKILL.md prose said the fleet may schedule a follow-up health check, it calls `cron_add "*/30 * * * *" "post-recovery health check"`.
-
-When the user opens Claude later, they see the outcome trail in `core.fleet_events` keyed by actor — they can filter "show me all webhook:github events from the last 24h" or "show me what kishore steered last Tuesday." They never reconstruct from memory; the durable log is authoritative.
-
-The same fleet also responds to manual `agentsfleet steer {id} "morning health check"` — same reasoning loop, different `actor=steer:kishore`.
+The full sequence and its proof boundary live in [`scenarios/production-deploy-repair.md`](./scenarios/production-deploy-repair.md).
 
 ## §8.6 Why Claude is the starting point
 

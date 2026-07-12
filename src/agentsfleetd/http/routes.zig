@@ -68,9 +68,9 @@ pub const Route = union(enum) {
     approval_webhook: []const u8,
     // Grant approval webhook — /v1/webhooks/{fleet_id}/grant-approval
     grant_approval_webhook: []const u8,
-    /// POST /v1/webhooks/{fleet_id}/github — GitHub Actions ingest. HMAC via
-    /// the workspace's `fleet:github` credential; handler filters to
-    /// workflow_run/failure and XADDs the M42 envelope.
+    /// POST /v1/webhooks/{fleet_id}/github — signed GitHub ingest. HMAC via
+    /// the workspace's GitHub credential. The handler accepts reviewable pull
+    /// requests and failed completed workflow runs.
     github_webhook: []const u8,
     app_ingress: []const u8, // POST /v1/ingress/{provider}; provider-signature auth in-handler
     // Admin platform key management

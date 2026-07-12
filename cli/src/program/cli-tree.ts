@@ -175,7 +175,7 @@ function buildWorkspaceTree(program: Command, handlers: Handlers, state: Program
     .action(actionFor("workspace.secrets", (frame) => runHandler(state, frame, handlers.workspace.secrets)));
 
   ws.command("delete <workspace_id>")
-    .description("Delete a workspace (irreversible)")
+    .description("Remove a workspace from local client state")
     .action(actionFor("workspace.delete", (frame) => runHandler(state, frame, handlers.workspace.delete)));
 }
 

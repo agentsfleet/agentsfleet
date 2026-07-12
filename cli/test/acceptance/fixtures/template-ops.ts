@@ -14,12 +14,13 @@ import path from "node:path";
 import url from "node:url";
 import fs from "node:fs/promises";
 
-import { PLATFORM_OPS_SAMPLE_DIR } from "./constants.ts";
+import {
+  PLATFORM_OPS_FIXTURE_NAME,
+  PLATFORM_OPS_SAMPLE_DIR,
+} from "./constants.ts";
 
 const HERE = path.dirname(url.fileURLToPath(import.meta.url));
 const WORKTREE_ROOT = path.resolve(HERE, "..", "..", "..", "..");
-const SAMPLE_NAME = "platform-ops-fleet";
-
 const ENV_API_URL = "AGENTSFLEET_API_URL";
 const ENV_STATE_DIR = "AGENTSFLEET_STATE_DIR";
 const SOURCE_KIND_UPLOAD = "upload";
@@ -64,10 +65,10 @@ export async function buildPlatformOpsContent(name: string): Promise<SampleConte
   const trigger = await fs.readFile(path.join(sourceDir, "TRIGGER.md"), "utf8");
   return {
     skillMarkdown: skill
-      .replace(`name: ${SAMPLE_NAME}`, `name: ${name}`)
+      .replace(`name: ${PLATFORM_OPS_FIXTURE_NAME}`, `name: ${name}`)
       .replaceAll("{{slack_channel}}", "#agentsfleet-acceptance"),
     triggerMarkdown: trigger
-      .replace(`name: ${SAMPLE_NAME}`, `name: ${name}`)
+      .replace(`name: ${PLATFORM_OPS_FIXTURE_NAME}`, `name: ${name}`)
       .replaceAll("{{model}}", "accounts/fireworks/models/kimi-k2.6")
       .replaceAll("{{context_cap_tokens}}", "256000"),
   };

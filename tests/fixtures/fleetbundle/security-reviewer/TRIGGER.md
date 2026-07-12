@@ -7,7 +7,7 @@ x-agentsfleet:
       events:
         - pull_request
   tools:
-    - github_review_comment
+    - http_request
   credentials:
     - github
   network:

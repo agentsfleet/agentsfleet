@@ -10,7 +10,7 @@ import { withMockApi, jsonResponse, type MockRoutes } from "./helpers-mock-api.t
 
 const WS_ID = "01900000-0000-7000-8000-000000b00b00";
 const FLEET_ID = "01900000-0000-7000-8000-000000c0ffee";
-
+const INSTALL_LIBRARY_HINT = "agentsfleet install --library <library_id>";
 const authedScope = <T>(fn: (stateDir: string) => Promise<T>): Promise<T> =>
   withAuthedStateDir({ workspaceId: WS_ID, sessionId: "sess_fleet_test" }, fn);
 
@@ -63,7 +63,10 @@ describe("status", () => {
           { stdout: out.stream, stderr: bufferStream().stream, env: { AGENTSFLEET_API_URL: apiUrl } },
         );
         expect(code).toBe(0);
-        expect(out.read()).toContain("No fleets running");
+        const output = out.read();
+        expect(output).toContain("No fleets running");
+        expect(output).toContain(INSTALL_LIBRARY_HINT);
+        expect(output).not.toContain("install --from");
       });
     });
   });
@@ -80,7 +83,10 @@ describe("status", () => {
           { stdout: out.stream, stderr: bufferStream().stream, env: { AGENTSFLEET_API_URL: apiUrl } },
         );
         expect(code).toBe(0);
-        expect(out.read()).toContain("No fleets running");
+        const output = out.read();
+        expect(output).toContain("No fleets running");
+        expect(output).toContain(INSTALL_LIBRARY_HINT);
+        expect(output).not.toContain("install --from");
       });
     });
   });

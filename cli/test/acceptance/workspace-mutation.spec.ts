@@ -60,7 +60,7 @@ import { cleanWorkspaceFleets } from "./fixtures/teardown.ts";
 import {
   WS_ID_KEY,
   WS_SHOW_ACTIVE_KEY,
-  WS_DELETE_KEY,
+  WORKSPACE_LOCAL_REMOVAL_FIELD,
   AGENT_ID_KEY,
   AGENT_NAME_KEY,
   FLAG_JSON,
@@ -171,8 +171,8 @@ if (!isLive) {
         const result = await runWithEnv(["workspace", "delete", createdId, FLAG_JSON]);
         assert.equal(result.code, 0, `workspace delete exited ${result.code}: ${result.stderr}`);
         const parsed = JSON.parse(result.stdout.trim()) as Record<string, unknown>;
-        assert.equal(parsed[WS_DELETE_KEY], createdId,
-          `workspace delete ${WS_DELETE_KEY} mismatch: ${result.stdout}`);
+        assert.equal(parsed[WORKSPACE_LOCAL_REMOVAL_FIELD], createdId,
+          `workspace delete ${WORKSPACE_LOCAL_REMOVAL_FIELD} mismatch: ${result.stdout}`);
         // The server workspace persists (no DELETE route); drop it from the
         // teardown set only because no fleet was ever installed inside it.
         createdWorkspaceIds.delete(createdId);

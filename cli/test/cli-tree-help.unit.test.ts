@@ -74,3 +74,9 @@ test("fleet --help clarifies the lifecycle verbs are top-level commands", () => 
   // Points back to the full guide.
   expect(text).toContain("agentsfleet --help");
 });
+
+test("workspace delete help says it removes local state only", () => {
+  const text = renderCommandHelp("workspace", "delete");
+  expect(text).toContain("Remove a workspace from local client state");
+  expect(text).not.toContain("irreversible");
+});
