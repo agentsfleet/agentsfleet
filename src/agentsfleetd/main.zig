@@ -132,23 +132,52 @@ fn registerProductionSinks() void {
     log_sinks.registerSink(.{ .emit = otlpSinkEmit, .ctx = log_sinks.statelessCtx() });
 }
 
-/// Process exit code when the daemon's DebugAllocator reports a leak at teardown
-/// (Debug builds only — see `leak_guard`; ReleaseSafe logs and exits normally).
-/// Distinct from the generic `exit(1)` startup failures so an operator or CI run
-/// can tell a leak-abort from a config error. 70 == BSD sysexits `EX_SOFTWARE`.
+/// Process exit code when the daemon's DebugAllocator reports a leak at teardown.
+/// Debug builds only — see `leak_guard`; a release build runs the `smp_allocator`
+/// (no leak accounting), so this abort cannot fire there. Distinct from the generic
+/// `exit(1)` startup failures so an operator or CI run can tell a leak-abort from a
+/// config error. 70 == BSD sysexits `EX_SOFTWARE`.
 const EXIT_GPA_LEAK: u8 = 70;
+
+/// Allocator selected by build mode (Invariant 5, mirrors `src/runner/main.zig`).
+/// Debug keeps the leak-checking DebugAllocator; a release build uses the fast
+/// thread-safe `smp_allocator` so the long-running daemon never pays the
+/// DebugAllocator's per-allocation bookkeeping + locking cost in production. Leak
+/// detection lives in the memleak gates (testing-allocator test graphs + the
+/// boot→drain lifecycle test); a runtime resident-set-size gauge is the follow-up
+/// production signal. Pure so the choice is unit-testable.
+const AllocatorKind = enum { debug_leak_checked, release_smp };
+
+fn allocatorKind(mode: std.builtin.OptimizeMode) AllocatorKind {
+    return if (mode == .Debug) .debug_leak_checked else .release_smp;
+}
+
+test "release builds select the smp allocator; Debug the leak-checked one (Invariant 5)" {
+    try std.testing.expectEqual(AllocatorKind.debug_leak_checked, allocatorKind(.Debug));
+    try std.testing.expectEqual(AllocatorKind.release_smp, allocatorKind(.ReleaseSafe));
+    try std.testing.expectEqual(AllocatorKind.release_smp, allocatorKind(.ReleaseFast));
+    try std.testing.expectEqual(AllocatorKind.release_smp, allocatorKind(.ReleaseSmall));
+}
 
 pub fn main(init: std.process.Init) void {
     const io = init.io;
     const env_map = init.environ_map;
 
     var gpa = std.heap.DebugAllocator(.{ .thread_safe = true }){};
-    // A leaked allocation at shutdown fails the daemon loudly in Debug
-    // builds (nonzero exit + logged verdict); ReleaseSafe logs the verdict and
-    // exits normally, so production shutdown behaviour is unchanged. Registered
-    // first → runs LAST (LIFO), after every `defer` below has freed into `alloc`.
-    defer logging.leak_guard.check(gpa.deinit(), "daemon") catch std.process.exit(EXIT_GPA_LEAK);
-    const alloc = gpa.allocator();
+    // First defer → runs LAST (LIFO), after every `defer` below has freed into
+    // `alloc`. In Debug a leak at shutdown aborts loudly (nonzero exit + logged
+    // verdict). In release `alloc` is `smp_allocator`, so nothing was allocated
+    // through `gpa`; its `deinit` is a no-op that also keeps the binding live
+    // (the `comptime` branch elides the Debug arm entirely in release builds).
+    defer if (comptime allocatorKind(builtin.mode) == .debug_leak_checked) {
+        logging.leak_guard.check(gpa.deinit(), "daemon") catch std.process.exit(EXIT_GPA_LEAK);
+    } else {
+        _ = gpa.deinit();
+    };
+    const alloc = switch (allocatorKind(builtin.mode)) {
+        .debug_leak_checked => gpa.allocator(),
+        .release_smp => std.heap.smp_allocator,
+    };
     var dotenv_overlay = config_load.applyEnvSources(io, env_map, alloc) catch |err| {
         logging.fatalStderr("fatal: failed loading env sources: {}\n", .{err});
         std.process.exit(1);
