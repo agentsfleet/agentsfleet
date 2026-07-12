@@ -133,15 +133,12 @@ pub fn build(b: *std.Build) void {
     const common_mod = deps.common;
 
     // Socket-shutdown call watchdog (src/lib/call_deadline) — bounds the
-    // connectors' outbound vendor HTTP (bounded_fetch); shared with the
-    // runner's control-plane client so the mechanism exists exactly once.
+    // connectors' outbound vendor HTTP (bounded_fetch); shared with the runner's
+    // control-plane client so the mechanism exists exactly once. `deps.http_pin`
+    // (shared prime-then-pin) and `deps.tripwire` (comptime-erased fault
+    // injection — production files carry check() markers that compile to nothing
+    // outside test builds) are imported via `deps` directly at the sites below.
     const call_deadline_mod = deps.call_deadline;
-    const http_pin_mod = deps.http_pin;
-
-    // Comptime-erased fault injection (src/lib/tripwire) — production files
-    // carry check() markers, so the production module imports it too; the
-    // calls compile to nothing outside test builds.
-    const tripwire_mod = deps.tripwire;
 
     // hmac_sig sources its wall-clock from `common.clock` (Zig 0.16 removed
     // std.time.*Timestamp). Same pure, datastore-free shared module as log_mod —
@@ -173,8 +170,8 @@ pub fn build(b: *std.Build) void {
                 .{ .name = S_CONTRACT, .module = contract_mod },
                 .{ .name = S_COMMON, .module = common_mod },
                 .{ .name = S_CALL_DEADLINE, .module = call_deadline_mod },
-                .{ .name = S_HTTP_PIN, .module = http_pin_mod },
-                .{ .name = S_TRIPWIRE, .module = tripwire_mod },
+                .{ .name = S_HTTP_PIN, .module = deps.http_pin },
+                .{ .name = S_TRIPWIRE, .module = deps.tripwire },
                 .{ .name = S_YAML, .module = yaml_mod },
                 .{ .name = S_S3, .module = s3_mod },
             },
@@ -224,7 +221,10 @@ pub fn build(b: *std.Build) void {
             .root_source_file = b.path("src/agentsfleetd/errors/gen_error_codes.zig"),
             .target = target,
             .optimize = optimize,
-            .imports = &.{.{ .name = S_COMMON, .module = common_mod }},
+            .imports = &.{
+                .{ .name = S_BUILD_OPTIONS, .module = build_options_mod },
+                .{ .name = S_COMMON, .module = common_mod },
+            },
         }),
     });
     const run_gen_error_codes = b.addRunArtifact(gen_error_codes);
@@ -251,8 +251,8 @@ pub fn build(b: *std.Build) void {
                 .{ .name = S_CONTRACT, .module = contract_mod },
                 .{ .name = S_COMMON, .module = common_mod },
                 .{ .name = S_CALL_DEADLINE, .module = call_deadline_mod },
-                .{ .name = S_HTTP_PIN, .module = http_pin_mod },
-                .{ .name = S_TRIPWIRE, .module = tripwire_mod },
+                .{ .name = S_HTTP_PIN, .module = deps.http_pin },
+                .{ .name = S_TRIPWIRE, .module = deps.tripwire },
                 .{ .name = S_YAML, .module = yaml_mod },
                 .{ .name = S_S3, .module = s3_mod },
             },

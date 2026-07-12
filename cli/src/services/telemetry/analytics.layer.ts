@@ -25,6 +25,10 @@ import { telemetryRuntimeLayer } from "./runtime.layer.ts";
 
 const AI_TOOL_CI = "ci";
 const AI_TOOL_UNKNOWN_NON_INTERACTIVE = "unknown_non_interactive";
+const POSTHOG_FETCH_RETRY_COUNT = 0;
+const POSTHOG_FLUSH_AT = 50;
+const POSTHOG_FLUSH_INTERVAL_MS = 0;
+const POSTHOG_REQUEST_TIMEOUT_MS = 1_000;
 
 type AiToolRuntime = Pick<TelemetryRuntimeValue, "isCi" | "isTty">;
 
@@ -84,15 +88,18 @@ export const analyticsLayer = Layer.effect(
 
       const client = new PostHog(cliConfig.telemetryPosthogKey, {
         host: cliConfig.telemetryPosthogHost,
-        flushAt: 1,
-        flushInterval: 0,
+        fetchRetryCount: POSTHOG_FETCH_RETRY_COUNT,
+        flushAt: POSTHOG_FLUSH_AT,
+        flushInterval: POSTHOG_FLUSH_INTERVAL_MS,
+        requestTimeout: POSTHOG_REQUEST_TIMEOUT_MS,
       });
-      // Bounded shutdown so CLI exit isn't blocked on a slow PostHog
-      // endpoint. Mirrors supabase analytics.layer.ts. _shutdown(ms) is
-      // the timeout-bound variant; client.shutdown() can hang for the
-      // default flush interval if the endpoint is unreachable.
+      // Send once at scope close. Treat delivery failure as an expected error
+      // so telemetry cannot change command output or the process exit code.
       yield* Effect.addFinalizer(() =>
-        Effect.promise(() => client._shutdown(5_000)).pipe(Effect.ignore),
+        Effect.tryPromise({
+          try: () => client.flush(),
+          catch: (error) => error,
+        }).pipe(Effect.ignore),
       );
 
       const baseProperties = stripUndefined({

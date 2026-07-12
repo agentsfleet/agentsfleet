@@ -96,7 +96,7 @@ This spec uses Cloudflare R2 object storage (R2), Pull Request (PR), Command-Lin
 | `docs/v2/pending/M96_001_P2_API_DOCS_INFRA_BUNDLE_R2_CANONICAL_STORE.md` | CREATE | Track the R2 canonical-store decision and implementation proof. |
 | `docs/architecture/fleet_bundles.md` | EDIT | Replace the open redundancy note with the decided R2-canonical storage model. |
 | `docs/architecture/data_flow.md` | EDIT | Update install flow so Postgres metadata and R2 content roles are unambiguous. |
-| `docs/architecture/scenarios/gh-pr-reviewer.md` | EDIT | Clarify user-visible GitHub source vs internal installed snapshot without adding resync. |
+| `docs/architecture/scenarios/github-pr-reviewer.md` | EDIT | Clarify user-visible GitHub source vs internal installed snapshot without adding resync. |
 | `schema/027_core_fleet_bundles.sql` | EDIT | Replace full support-file content storage with support-file manifest metadata. |
 | `schema/embed.zig` and `src/agentsfleetd/cmd/common.zig` | EDIT | Keep migration embedding and index assertions aligned if the schema file changes. |
 | `src/agentsfleetd/fleet_bundle/importer.zig` | EDIT | Produce a support-file manifest and content hash without serializing support bytes into Postgres metadata. |
@@ -201,6 +201,14 @@ Runner plane:
 6. Direct Markdown and skill-only bundle installs do not require R2 - enforced by regression tests.
 7. GitHub is import-time source visibility, not runtime storage - enforced by scenario docs and lease/materialization tests.
 8. Secrets never enter R2, support manifests, public responses, or logs - enforced by importer secret-shape rejection and redaction tests.
+
+## Metrics & Observability
+
+| Metric / event | Owner | Fires when | Properties allowed | Privacy guard | Test proof |
+|----------------|-------|------------|--------------------|---------------|------------|
+| not applicable | not applicable | not applicable | not applicable | not applicable | not applicable |
+
+Metrics review: no analytics or funnel event changes. This milestone changes only the storage backend for fleet bundle support-file bytes; no product event names or properties change.
 
 ## Test Specification (tiered)
 

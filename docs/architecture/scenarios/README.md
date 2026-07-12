@@ -1,13 +1,14 @@
-# Architecture Scenarios
+# Architecture scenarios
 
-One golden end-to-end walkthrough that composes the v2 install, trigger, and execute loop for the hero use case. Read it in isolation and you understand how a real user gets to a real outcome.
+Each scenario follows one user outcome from its trigger to its result. Each page separates working code from missing proof.
 
 | File | What it proves |
 |---|---|
-| [`gh-pr-reviewer.md`](./gh-pr-reviewer.md) | **The golden path.** John Doe installs the `github-pr-reviewer` from a GitHub repo (the bundle storage journey: GitHub tarball → canonical re-pack → R2 + Postgres), wires the webhook, and a Pull Request (PR) gets reviewed. Marks what is built vs the one piece of trigger plumbing still to land (`pull_request` events). |
+| [`github-pr-reviewer.md`](./github-pr-reviewer.md) | Install the `github-pr-reviewer` library and receive review comments on a Pull Request (PR). |
+| [`production-deploy-repair.md`](./production-deploy-repair.md) | Diagnose a failed production deployment, prepare a bounded fix, and hold the draft PR for human review. |
 | [`slack-channel-resident.md`](./slack-channel-resident.md) | **The Rung-0 on-ramp (M106).** A fact told to `@agentsfleet` in one Slack thread is recalled in a different thread of the same channel — because the memory namespace is the per-channel resident fleet, not the thread. Reactive (read-only, mention-only); the acquisition on-ramp to the durable hired teammate. |
 
-> **Why one scenario.** Earlier the set carried three platform-ops walkthroughs (cold install, self-managed posture, credit-gate drain). Those narratives were consolidated into the topic docs they proved — the canonical facts now live in [`../billing_and_provider_keys.md`](../billing_and_provider_keys.md) (posture + billing + gate) and [`../data_flow.md`](../data_flow.md) (the install/trigger/execute/bill loop). The scenario set keeps a single golden narrative; the invariants below point at those topic docs.
+> Earlier platform-operations walkthroughs repeated facts from topic pages. The current scenarios link to those pages instead of copying their details.
 >
 > Shipped specs under `docs/v2/done/` may still cite the retired `01_default_install.md` / `02_self_managed.md` / `03_balance_gate.md` by name — those are historical records of what each milestone touched at ship time and are intentionally left intact.
 

@@ -15,7 +15,8 @@ Read in this order if you've never seen the project:
 
 1. [`high_level.md`](./high_level.md) — what the product is, what it isn't, and why it exists.
 2. [`user_flow.md`](./user_flow.md) — how a user gets from "I want a Fleet" to "the Fleet is running on my repo."
-3. [`scenarios/gh-pr-reviewer.md`](./scenarios/gh-pr-reviewer.md) — the golden end-to-end walkthrough: John Doe installs the `github-pr-reviewer` from a GitHub repo and watches a Pull Request get reviewed. Provider posture, billing, and the credit gate live in their topic docs ([`billing_and_provider_keys.md`](./billing_and_provider_keys.md)), not in a separate scenario.
+3. [`scenarios/github-pr-reviewer.md`](./scenarios/github-pr-reviewer.md) — install `github-pr-reviewer` and watch it review a Pull Request.
+4. [`scenarios/production-deploy-repair.md`](./scenarios/production-deploy-repair.md) — trace a failed deployment from evidence to a human-reviewed fix.
 
 > `user_flow.md` and `scenarios/` are **contributor-canonical** — cited by `§`-anchor in active and shipped spec acceptance criteria and in sibling arch docs. They are *not* user-facing docs to relocate to docs.agentsfleet.net (which carries its own independent user coverage). Before "moving user-facing docs," `git grep` the spec corpus for the file/anchor references first.
 
@@ -35,7 +36,8 @@ After that, dip into whichever of these matches the change you're making:
 | [`concurrency.md`](./concurrency.md) | The thread/lock/channel/shutdown model of both planes: every spawned thread and its stop path (thread map), the SPSC channel inventory with payload ownership, the lock-invariant registry, and the stop→join→deinit shutdown choreography. Grounds the `C1–C5` concurrency rules; the doc `name_architecture` consults before naming a thread, channel, or lock. |
 | [`connectors.md`](./connectors.md) | The registry-driven connector platform: connect/callback/status, provider ownership proof, App-level inbound routing, platform App secrets, workspace installation handles, repository-bound fleet subscriptions, and the provider impact across GitHub, Slack, Jira, and Linear. This is the full platform-admin → workspace → fleet → event → short-lived-token walkthrough. |
 | [`billing_and_provider_keys.md`](./billing_and_provider_keys.md) | How users pay for what they run. The credit-pool model (Amp-style), the one-time starter grant, the two debit points (receive + run), `compute_receive_charge` / `compute_stage_charge`, the free-trial window through 2026-08-01 00:00 UTC, the self-managed secret shape, the api_key visibility boundary, NullClaw's provider routing, the model library (authenticated GET /v1/models) with per-model token rates, and the read-only billing dashboard + CLI surface. **Current dollar amounts live on [agentsfleet.net/#pricing](https://agentsfleet.net/#pricing)** — this doc covers shape and behaviour. |
-| [`scenarios/gh-pr-reviewer.md`](./scenarios/gh-pr-reviewer.md) | The single golden end-to-end walkthrough — install the `github-pr-reviewer` from GitHub, wire the webhook, review a PR. Posture / billing / gate facts live in the topic docs, not re-narrated here. |
+| [`scenarios/github-pr-reviewer.md`](./scenarios/github-pr-reviewer.md) | Install `github-pr-reviewer`, connect GitHub, and receive review comments. |
+| [`scenarios/production-deploy-repair.md`](./scenarios/production-deploy-repair.md) | Diagnose a failed deployment and show the unproven steps needed for a draft Pull Request (PR). |
 | [`roadmap.md`](./roadmap.md) | Deferred / forward-looking direction: v2.1 scope-based auth, the fleet-keys first-class revamp, the bastion post-MVP shape, open-fleet (mode C). Direction, not commitment. |
 | [`../AUTH.md`](../AUTH.md) | The principal model (CLI, UI, tenant api key, fleet key, and the `agt_r` runner machine principal), the bearer-routing middleware, and the per-flow detail. The canonical reference any time auth is in scope. |
 

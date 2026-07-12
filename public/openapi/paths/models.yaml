@@ -1,17 +1,10 @@
 /v1/models:
   get:
     operationId: get_model_library
-    summary: Get the model library
+    summary: List available models
     description: >
-      The model library catalogue (`core.model_library`): one row per priced
-      `(provider, model_id)` pair with its context cap and per-token rates,
-      plus a `version` stamp derived from the newest row. Bearer-authed — any
-      authenticated tenant may read it; the route carries no capability scope.
-      Replaces the retired public `cap.json` document: the former
-      unauthenticated cryptic-prefix path returns `404` (no alias), and the
-      global `rates`/`billing` block it carried was consumer-less and retired
-      with it. An empty catalogue is a valid state and returns `200` with an
-      empty `models` array.
+      Returns models available to the tenant. Each item includes its provider,
+      context limit, and usage fields. An empty library returns an empty array.
     tags:
     - Model Library
     responses:
@@ -27,7 +20,7 @@
               properties:
                 version:
                   type: string
-                  description: Catalogue version, derived as the max model updated_at rendered YYYY-MM-DD (UTC).
+                  description: Date of the most recently updated model, formatted as YYYY-MM-DD in UTC.
                 models:
                   type: array
                   items:

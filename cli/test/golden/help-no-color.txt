@@ -28,7 +28,8 @@ Commands:
                                (--library <id>)
   fleet                        Fleet management subcommands
   list [options]               List fleets in the active workspace (paginated)
-  status [fleet_id]            Show fleet status (workspace-wide if no id)
+  status                       Show status for every fleet in the active
+                               workspace
   stop <fleet_id>              Halt the running session (resumable)
   resume <fleet_id>            Resume from stopped or auto-paused
   kill <fleet_id>              Mark terminal (irreversible)

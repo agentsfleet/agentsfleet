@@ -50,7 +50,7 @@
   delete:
     operationId: revoke_integration_grant
     summary: Revoke an integration grant
-    description: Immediately revokes a grant. A revoked grant blocks the fleet on its next execute attempt
+    description: Immediately revokes a grant. A revoked grant blocks the fleet on its next call
       against the affected service.
     tags:
     - Integration Grants

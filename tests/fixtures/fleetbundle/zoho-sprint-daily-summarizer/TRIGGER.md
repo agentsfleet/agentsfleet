@@ -5,7 +5,7 @@ x-agentsfleet:
     - type: cron
       schedule: "0 18 * * 1-5"
   tools:
-    - zoho_sprint_read
+    - http_request
   credentials:
     - zoho
   network:
