@@ -11,15 +11,25 @@
 
 const CredentialBroker = @import("broker.zig");
 
-/// How a cold-miss flight claim resolved. `won_registered` owns a map entry
-/// and MUST `endFlight`; `won_unguarded` flies with NO entry and MUST NOT —
-/// the key may since belong to a later caller's live registration, and
-/// removing it would free that caller's entry and wake its waiters mid-mint
-/// (re-arming the very double-mint the guard exists to prevent).
-pub const FlightClaim = enum { won_registered, won_unguarded, lost };
+/// How a cold-miss flight claim resolved. Only `won_registered` owns a map
+/// entry and may `endFlight` it — a claim that never registered must not
+/// remove the key, or it would free a LATER caller's live registration and
+/// wake its waiters mid-mint, re-arming the very double-mint the guard exists
+/// to prevent.
+pub const FlightClaim = enum { won_registered, lost, unavailable };
 
 /// `lost` → another flight for the key completed while we waited; the caller
 /// re-reads the cache (and contends again if the winner cached nothing).
+///
+/// `unavailable` → the flight bookkeeping itself could not be allocated, so the
+/// mint FAILS CLOSED (`.mint_failed = .transient`) instead of flying unguarded.
+/// Degrading to an unguarded mint would let every concurrent caller under memory
+/// pressure mint at once; against a rotating provider they all post the SAME
+/// refresh token, its reuse detection fires, and it revokes the whole token
+/// family — which costs a human a manual reconnect of the workspace integration.
+/// A transient failure costs one retry (the caller already backs off on
+/// `.transient`). Integrity wins over availability here: of the two failure
+/// modes, we take the self-healing one.
 pub fn beginFlight(self: *CredentialBroker, key: []const u8) FlightClaim {
     self.inflight_mutex.lock();
     defer self.inflight_mutex.unlock();
@@ -27,21 +37,17 @@ pub fn beginFlight(self: *CredentialBroker, key: []const u8) FlightClaim {
         while (self.inflight.contains(key)) self.inflight_cond.wait(&self.inflight_mutex);
         return .lost;
     }
-    // OOM degrade: fly unguarded — the pre-guard behavior, a rare double
-    // mint bounded to the documented one-reconnect cost — rather than fail
-    // a mint the caller needs. The claim names the degrade explicitly so
-    // the caller skips endFlight (see FlightClaim).
-    const owned = self.alloc.dupe(u8, key) catch return .won_unguarded;
+    const owned = self.alloc.dupe(u8, key) catch return .unavailable;
     self.inflight.put(self.alloc, owned, {}) catch {
         self.alloc.free(owned);
-        return .won_unguarded;
+        return .unavailable;
     };
     return .won_registered;
 }
 
 /// Release a `won_registered` flight for `key` and wake every waiter (each
 /// re-reads the cache; on a failed mint the first one through takes its own
-/// flight). Never called by a `won_unguarded` winner — no entry is theirs.
+/// flight). Only a registered winner calls this — no other claim owns an entry.
 pub fn endFlight(self: *CredentialBroker, key: []const u8) void {
     self.inflight_mutex.lock();
     defer self.inflight_mutex.unlock();
