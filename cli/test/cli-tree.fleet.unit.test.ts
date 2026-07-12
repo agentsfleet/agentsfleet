@@ -52,17 +52,11 @@ test("list accepts --workspace-id / --cursor / --limit", async () => {
   expect(calls[0]?.frame.parsed.options.limit).toBe(50);
 });
 
-test("status [fleet_id] dispatches with no positional (workspace-wide)", async () => {
+test("status dispatches with no positional", async () => {
   const { handlers, calls } = makeSpyTree();
   await dispatch(["status"], handlers);
   expect(calls[0]?.name).toBe("fleet.status");
   expect(calls[0]?.frame.parsed.positionals).toHaveLength(0);
-});
-
-test("status <fleet_id> dispatches with positional", async () => {
-  const { handlers, calls } = makeSpyTree();
-  await dispatch(["status", VALID_ID], handlers);
-  expect(calls[0]?.frame.parsed.positionals[0]).toBe(VALID_ID);
 });
 
 test("stop / resume / kill / delete each dispatch with required positional", async () => {

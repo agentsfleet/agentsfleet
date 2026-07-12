@@ -216,7 +216,7 @@ describe("installEffectFromFlags — template requirements preview", () => {
         Effect.provide(makeLayer(captured, false, requests,
           libraryResponse("t1", "platform", {
             credentials: ["github"],
-            tools: ["github_review_comment"],
+            tools: ["http_request"],
             network_hosts: ["api.github.com"],
             trigger_present: false,
           }, "t1"))),
@@ -225,7 +225,7 @@ describe("installEffectFromFlags — template requirements preview", () => {
     expect(Exit.isSuccess(exit)).toBe(true);
     const out = captured.join("\n");
     expect(out).toContain("Secrets: github");
-    expect(out).toContain("Tools: github_review_comment");
+    expect(out).toContain("Tools: http_request");
     expect(out).toContain("Network hosts: api.github.com");
     expect(out).toContain("Generated default API wake");
   });

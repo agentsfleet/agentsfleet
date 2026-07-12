@@ -14,7 +14,7 @@ comments that flag correctness bugs, missing tests, and risky changes.
 ## Steps
 1. Read the pull request diff.
 2. Identify correctness, security, and test-coverage gaps.
-3. Post one review comment per finding via the `github_review_comment` tool.
+3. Post one review comment per finding with `http_request`.
 
 ## Constraints
 - Comment only — never push, merge, approve, or close.

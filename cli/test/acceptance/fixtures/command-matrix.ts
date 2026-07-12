@@ -122,11 +122,8 @@ export interface RequiresPositionalArgRow {
 // produce commander's "missing required argument" rejection (matched by
 // `expectMissingArg`'s /missing|required|usage|expected/ regex).
 //
-// `status [fleet_id]` and `logs [fleet_id]` are optional positionals
-// — `status` bare exits 0 (workspace-wide fallback) and `logs` bare
-// exits 2 with a domain-specific stem ("logs requires --fleet <id>")
-// that the generic missing-arg regex does not match. They are
-// exercised in §4a's lifecycle walk with a real fleetId instead.
+// `logs [fleet_id]` has an optional positional. Bare `logs` exits 2 with a
+// domain-specific stem that the generic missing-argument check does not match.
 export const REQUIRES_POSITIONAL_ARG: ReadonlyArray<RequiresPositionalArgRow> = [
   { args: ["workspace", "use"], missingArgName: "workspace_id" },
   { args: ["workspace", "delete"], missingArgName: "workspace_id" },

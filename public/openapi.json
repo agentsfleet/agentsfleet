@@ -3,7 +3,7 @@
   "info": {
     "title": "agentsfleet Control Plane API",
     "version": "1.0.0",
-    "description": "Fleet automation control plane — webhook-driven fleet execution in a bwrap+landlock sandbox.",
+    "description": "API for managing workspaces, fleets, triggers, and runs.",
     "contact": {
       "name": "agentsfleet",
       "url": "https://agentsfleet.net"
@@ -30,133 +30,133 @@
     },
     {
       "name": "Authentication",
-      "description": "CLI login flow via device-code style sessions and GitHub OAuth",
+      "description": "Command Line Interface (CLI) sign-in sessions and GitHub sign-in",
       "x-mintlify": {
         "navigation": "Authentication"
       }
     },
     {
       "name": "Workspaces",
-      "description": "Create and manage workspaces (one workspace per repo)",
+      "description": "Create and manage workspaces",
       "x-mintlify": {
         "navigation": "Workspaces"
       }
     },
     {
       "name": "Tenant",
-      "description": "Tenant-scoped surfaces — provider posture and tenant-level configuration",
+      "description": "Manage tenant provider settings and models",
       "x-mintlify": {
         "navigation": "Tenant"
       }
     },
     {
       "name": "auth-identity-events",
-      "description": "Internal auth-plane identity-lifecycle events (Clerk `user.created`, future identity-provider hooks). Not for customer fleets.",
+      "description": "Process signed account events from Clerk. This route is not for customer fleets.",
       "x-mintlify": {
         "navigation": "Auth Identity Events"
       }
     },
     {
       "name": "Fleets",
-      "description": "Fleet management and webhook ingestion — create, configure, and operate event-driven fleets",
+      "description": "Create, configure, and run fleets",
       "x-mintlify": {
         "navigation": "Fleets"
       }
     },
     {
       "name": "Memory",
-      "description": "Persistent Fleet memory — list and search key-value entries scoped to a Fleet (read-only; entries are written by the runner plane, not this API)",
+      "description": "Read and search saved fleet memory",
       "x-mintlify": {
         "navigation": "Memory"
       }
     },
     {
       "name": "Secrets",
-      "description": "Workspace secret vault — self-managed (Bring Your Own Key) LLM provider keys and arbitrary named secrets a Fleet interpolates as `${secrets.<name>.<field>}`",
+      "description": "Manage named secrets for fleets in a workspace",
       "x-mintlify": {
         "navigation": "Secrets"
       }
     },
     {
       "name": "Admin",
-      "description": "Platform-wide configuration — manage shared LLM provider keys and the priced model catalogue",
+      "description": "Manage shared provider keys and models",
       "x-mintlify": {
         "navigation": "Admin"
       }
     },
     {
       "name": "Billing",
-      "description": "Plan upgrades and billing events",
+      "description": "Read tenant balances and charge records",
       "x-mintlify": {
         "navigation": "Billing"
       }
     },
     {
       "name": "Integration Grants",
-      "description": "Fleet runtime permission grants for third-party services (Slack, GitHub, etc.)",
+      "description": "Manage fleet access to third-party services",
       "x-mintlify": {
         "navigation": "Integration Grants"
       }
     },
     {
       "name": "Connectors",
-      "description": "Workspace connectors — auth + credential plumbing for third-party providers. One generic `{provider}` route set serves every provider in the deployment's connector registry; unknown providers are 404.",
+      "description": "Connect workspaces to third-party providers",
       "x-mintlify": {
         "navigation": "Connectors"
       }
     },
     {
       "name": "Fleet Keys",
-      "description": "Per-Fleet API keys for LangGraph/CrewAI/Composio Fleets to call the execute endpoint. Workspace-scoped.",
+      "description": "Manage keys that let external clients call a fleet",
       "x-mintlify": {
         "navigation": "Fleet Keys"
       }
     },
     {
       "name": "API Keys",
-      "description": "Tenant-level admin API keys (`agt_t` prefix). Rotatable, self-service, replace the legacy `API_KEY` env var for admin auth.",
+      "description": "Manage tenant admin API keys",
       "x-mintlify": {
         "navigation": "API Keys"
       }
     },
     {
       "name": "Webhooks",
-      "description": "Approval-gate webhooks invoked by humans to unblock a paused fleet",
+      "description": "Receive signed events and approval decisions",
       "x-mintlify": {
         "navigation": "Webhooks"
       }
     },
     {
       "name": "Approvals",
-      "description": "Approval-gate inbox — list, inspect, and resolve pending gates from the dashboard or programmatically.",
+      "description": "List, inspect, and resolve pending approvals",
       "x-mintlify": {
         "navigation": "Approvals"
       }
     },
     {
       "name": "Fleet",
-      "description": "Runner fleet operator plane — enroll, list, and administer sandbox runners. Operator/admin-scoped.",
+      "description": "Enroll and manage runners",
       "x-mintlify": {
         "navigation": "Fleet"
       }
     },
     {
       "name": "Fleet Bundles",
-      "description": "Workspace-scoped fleet source bundles imported from templates, uploads, or GitHub.",
+      "description": "Manage fleet source bundles in a workspace",
       "x-mintlify": {
         "navigation": "Fleet Bundles"
       }
     },
     {
       "name": "Fleet library",
-      "description": "Two-tier Fleet library catalog — platform-wide and tenant-scoped onboarding from a GitHub source, stored once in object storage by content hash.",
+      "description": "Browse and add reusable fleet sources",
       "x-mintlify": {
         "navigation": "Fleet library"
       }
     },
     {
       "name": "Model Library",
-      "description": "The model library catalogue — bearer-authed read of the priced models and their per-token rates.",
+      "description": "List models available to the tenant",
       "x-mintlify": {
         "navigation": "Model Library"
       }
@@ -237,7 +237,7 @@
       "get": {
         "operationId": "readyz",
         "summary": "Readiness probe",
-        "description": "Kubernetes-style readiness probe. Returns 200 when both the database and the Redis queue are reachable; returns 503 fail-closed if either dependency is degraded.",
+        "description": "Returns 200 when the database and event queue are available. Returns 503 when either dependency is unavailable.",
         "tags": [
           "Health"
         ],
@@ -431,8 +431,8 @@
     "/v1/admin/models": {
       "get": {
         "operationId": "list_admin_models",
-        "summary": "List the priced model catalogue",
-        "description": "Every catalogue row in `core.model_library`, ordered by (provider, model_id). This is the billing spine — a model absent from the catalogue meters at the run fee only. Requires the `model:read` scope.\n",
+        "summary": "List models",
+        "description": "Returns every shared model, ordered by provider and model identifier. Requires the `model:read` scope.\n",
         "tags": [
           "Admin"
         ],
@@ -615,8 +615,8 @@
       },
       "delete": {
         "operationId": "delete_admin_model",
-        "summary": "Remove a catalogue row",
-        "description": "Refuses to delete the model the active platform default points at — otherwise the next platform-mode lease resolves a model with no priced row and silently meters at the run fee only. Repoint the default first. Requires the `model:admin` scope.\n",
+        "summary": "Remove a model",
+        "description": "Refuses to remove the active default model. Choose another default first. Requires the `model:admin` scope.\n",
         "tags": [
           "Admin"
         ],
@@ -654,7 +654,7 @@
       "post": {
         "operationId": "create_auth_session",
         "summary": "Start a command-line login session",
-        "description": "Step 1 of the command-line device flow. The command-line tool generates\nan ephemeral P-256 ECDH keypair and POSTs the public key plus a\nhuman-facing `token_name` label. The server allocates a UUIDv7\n`session_id`, builds the browser approval `login_url` from `APP_URL`,\nand stores `{cli_public_key, token_name, status: pending, expires_at_ms}`\nin Redis with a 5-minute TTL. The command-line tool prints `login_url`\nfor the human to open in their browser.\n\nUnauthenticated; rate-limited at the Cloudflare WAF edge\n(L2 — 10 / IP / minute on `POST /v1/auth/sessions`) and\nClerk-edge (L1) for sign-in / sign-up traffic upstream.\n",
+        "description": "Starts a command-line sign-in session that lasts 5 minutes. The response includes a URL for approval in a browser.\n\nNo access token is required. Rate limits may return 429.\n",
         "tags": [
           "Authentication"
         ],
@@ -732,8 +732,8 @@
     "/v1/auth/sessions/{session_id}": {
       "get": {
         "operationId": "poll_auth_session",
-        "summary": "Poll auth session status",
-        "description": "Step 2 of the CLI device flow. The CLI polls this endpoint with the\n`session_id` returned from `POST /v1/auth/sessions`. The response\nsurfaces only the public material the CLI needs to proceed:\n`status`, `cli_public_key`, `token_name`, `expires_at_ms`.\n\n**NEVER** returns `ciphertext`, `nonce`, `dashboard_public_key`,\n`verification_code`, or `verification_code_hmac` (Invariant 1 in\n`docs/AUTH.md` Flow 1). Ciphertext release is gated behind the\nverification code on `POST /v1/auth/sessions/{id}/verify`.\n\nUnauthenticated by design — the CLI poll precedes any token grant.\nThe terminal states (`expired`, `consumed`, `aborted`) return 410\nwith a structured ErrorBody (`UZ-AUTH-006/012/013`).\n",
+        "summary": "Read a sign-in session",
+        "description": "Returns the current sign-in status. No access token is required.\n\nExpired, used, or cancelled sessions return 410 with a stable error code.\n",
         "tags": [
           "Authentication"
         ],
@@ -845,8 +845,8 @@
     "/v1/auth/sessions/{session_id}/approve": {
       "patch": {
         "operationId": "approve_auth_session",
-        "summary": "Dashboard approves a pending session and submits the encrypted JWT",
-        "description": "Step 3 of the CLI device flow. Called by the dashboard JS process\nafter the operator clicks Approve on `/cli-auth/{session_id}`.\n\nThe dashboard:\n  1. Generates an ephemeral P-256 ECDH keypair (`dash_priv` / `dash_pub`).\n  2. Derives the shared secret = `dash_priv × cli_public_key`.\n  3. Runs HKDF-SHA-256 with empty salt and `info = \"m74-002-v1\"` to\n     produce a 32-byte AES-256-GCM key.\n  4. Encrypts the Clerk JWT (template `api`) with a fresh 96-bit nonce\n     via `crypto.subtle.encrypt({ name: \"AES-GCM\", iv: nonce }, key, jwt)`.\n  5. Generates a 6-digit verification code via\n     `crypto.getRandomValues(new Uint32Array(1)) mod 1_000_000`.\n  6. PATCHes this endpoint with `{ dashboard_public_key, ciphertext,\n     nonce, verification_code }`.\n\nThe API computes `verification_code_hmac =\nHMAC-SHA256(AUTH_SESSION_CODE_PEPPER, session_id || verification_code)`\nand persists the HMAC (never the plaintext code). The session\ntransitions atomically `pending → verification_pending`. The\nsingle-write invariant: any subsequent PATCH for the same session\nreturns 409 `UZ-AUTH-015`.\n\nMemory hygiene on the dashboard: discard `dash_priv` and the shared\nkey after this call resolves. Never persist crypto material.\n",
+        "summary": "Approve a sign-in session",
+        "description": "Approves a pending command-line sign-in session. The dashboard sends encrypted sign-in data and a six-digit verification code.\n\nA second approval for the same session returns 409 `UZ-AUTH-015`.\n",
         "tags": [
           "Authentication"
         ],
@@ -876,20 +876,20 @@
                 "properties": {
                   "dashboard_public_key": {
                     "type": "string",
-                    "description": "Base64url P-256 SubjectPublicKeyInfo (the dashboard's ephemeral ECDH public key)."
+                    "description": "Temporary public key used to encrypt the sign-in data."
                   },
                   "ciphertext": {
                     "type": "string",
-                    "description": "Base64url AES-256-GCM output over the Clerk JWT plaintext."
+                    "description": "Encrypted sign-in data."
                   },
                   "nonce": {
                     "type": "string",
-                    "description": "Base64url 12-byte (96-bit) AES-GCM nonce. Random per call."
+                    "description": "Random 12-byte value used for this encrypted message."
                   },
                   "verification_code": {
                     "type": "string",
                     "pattern": "^[0-9]{6}$",
-                    "description": "Exactly 6 ASCII digits. Travels plaintext over TLS to this\nClerk-authenticated endpoint, exists momentarily in the API\nprocess to compute the HMAC, then is discarded. The\nalternative (dashboard pre-hashes locally) does not work\nbecause only the API holds the pepper.\n"
+                    "description": "Exactly six digits shown to the user."
                   }
                 }
               }
@@ -898,7 +898,7 @@
         },
         "responses": {
           "200": {
-            "description": "Session transitioned to verification_pending",
+            "description": "Session is ready for code verification.",
             "content": {
               "application/json": {
                 "schema": {
@@ -939,8 +939,8 @@
     "/v1/auth/sessions/{session_id}/verify": {
       "post": {
         "operationId": "verify_auth_session",
-        "summary": "CLI submits the 6-digit verification code and receives the encrypted JWT",
-        "description": "Step 4 of the CLI device flow. Atomically transitions\n`verification_pending → consumed` and releases the ciphertext\npayload in a single Lua-EVAL write.\n\nNo bearer authentication — the verification code IS the auth. The\ncode is single-use; success and failure paths both surface through\nErrorBody response codes:\n\n  * `UZ-AUTH-011` (400) — code did not match; `verification_attempts`\n    incremented. The fifth failed attempt transitions the session to\n    `aborted` with `reason=\"rate_limit_exceeded\"` (the L3 rate limit\n    per `docs/AUTH.md` Flow 1).\n  * `UZ-AUTH-018` (400) — verification code malformed (must be exactly\n    6 ASCII digits). The CLI distinguishes this from `UZ-AUTH-011` to\n    reprompt for a correctly-shaped code rather than reporting a mismatch.\n  * `UZ-AUTH-012` (410) — session already consumed (outside the 60-second\n    same-fingerprint replay window, or different fingerprint).\n  * `UZ-AUTH-013` (410) — session aborted (5 wrong codes, explicit cancel,\n    or replaced by a newer session).\n  * `UZ-AUTH-014` (410) — session not yet approved (no dashboard PATCH yet).\n  * `UZ-AUTH-006` (401) — session expired (5-min TTL elapsed).\n\nOn success the response carries `{ dashboard_public_key, ciphertext,\nnonce }`. The CLI derives the same AES-256-GCM key (ECDH × HKDF as\non the dashboard side; `info` MUST be `\"m74-002-v1\"` verbatim) and\ndecrypts the JWT.\n\nConsume-idempotency window: on success the server records\n`consumed_client_fingerprint = sha256(remote_addr || user_agent || session_id)`\nand `consume_payload_expires_at_ms = now_ms + 60_000`. A second\nPOST inside that window from the same fingerprint returns the same\npayload (so \"consume succeeded, response lost, client retried\"\nconverges). Outside the window or from a different fingerprint →\n410 `UZ-AUTH-012`.\n",
+        "summary": "Verify a sign-in session",
+        "description": "Checks the six-digit code and returns encrypted sign-in data. The code can be used once.\n\nA retry from the same client within 60 seconds returns the same response. Later retries return 410 `UZ-AUTH-012`.\n\n`UZ-AUTH-011` means the code did not match. The fifth failed attempt ends the session.\n`UZ-AUTH-018` means the code was not six digits. `UZ-AUTH-013` means the session ended.\n`UZ-AUTH-014` means approval is pending. `UZ-AUTH-006` means the session expired after 5 minutes.\n",
         "tags": [
           "Authentication"
         ],
@@ -978,7 +978,7 @@
         },
         "responses": {
           "200": {
-            "description": "Verification succeeded; ciphertext payload released. The CLI\ndecrypts `ciphertext` using `dashboard_public_key` + its own\nECDH private key per the HKDF / AES-GCM derivation described\non `PATCH /v1/auth/sessions/{session_id}/approve`.\n",
+            "description": "Verification succeeded. The response contains encrypted sign-in data.",
             "content": {
               "application/json": {
                 "schema": {
@@ -991,15 +991,15 @@
                   "properties": {
                     "dashboard_public_key": {
                       "type": "string",
-                      "description": "Base64url P-256 SPKI — the dashboard's ephemeral ECDH public key from the matching approve call."
+                      "description": "Temporary public key from the approval request."
                     },
                     "ciphertext": {
                       "type": "string",
-                      "description": "Base64url AES-256-GCM output over the Clerk JWT."
+                      "description": "Encrypted sign-in data."
                     },
                     "nonce": {
                       "type": "string",
-                      "description": "Base64url 12-byte AES-GCM nonce used during encryption."
+                      "description": "Random 12-byte value used for this encrypted message."
                     }
                   }
                 }
@@ -1164,8 +1164,8 @@
     "/v1/auth/identity-events/clerk": {
       "post": {
         "operationId": "auth_identity_event_clerk",
-        "summary": "Clerk user.created auth-plane event",
-        "description": "Internal auth-plane endpoint. Clerk delivers `user.created` (and adjacent\nidentity-lifecycle types) via Svix; the signature is verified inline\nagainst `CLERK_WEBHOOK_SECRET`. On success the handler atomically\nprovisions a personal account (tenant + user + owner membership + default\nworkspace + zero-cent credit state + audit row). Idempotent on\n`oidc_subject` — replays return `created:false` with no new rows.\nNon-`user.created` event types are 200-ignored so Clerk stops retrying.\n\nSits outside `/v1/webhooks/` (customer data plane) — the auth namespace\nis for signals about the platform's own auth lifecycle, not for events\nthat wake user-defined Fleets.\n",
+        "summary": "Receive a Clerk account event",
+        "description": "Receives signed account events from Clerk. A `user.created` event creates the user's account and default workspace.\n\nRepeated events return `created:false`. Unsupported event types return 200 with `status: ignored`.\n",
         "tags": [
           "auth-identity-events"
         ],
@@ -1234,7 +1234,7 @@
                     "workspace_id": {
                       "type": "string",
                       "format": "uuid",
-                      "description": "UUIDv7 of the newly provisioned default workspace (or the existing one on replay)."
+                      "description": "New or existing default workspace identifier."
                     },
                     "workspace_name": {
                       "type": "string",
@@ -1280,8 +1280,8 @@
     "/v1/ingress/{provider}": {
       "post": {
         "operationId": "ingest_connector_webhook",
-        "summary": "Receive a platform-managed connector webhook",
-        "description": "Bearer-less ingress for a platform-managed connector App. The provider signature is verified against the platform-admin vault before the JSON body is parsed. The provider installation maps the delivery to one workspace; active fleet subscriptions, repository bindings, event types, and approved integration grants determine the fan-out targets. Replay identity is derived from the authenticated body, not mutable delivery headers. GitHub is the currently supported provider.",
+        "summary": "Receive a provider event",
+        "description": "Receives signed events from a connected provider. GitHub is the supported provider.\n\nA matching event starts runs for subscribed fleets. Duplicate events do not start another run.\n",
         "tags": [
           "Webhooks"
         ],
@@ -1290,7 +1290,7 @@
             "name": "provider",
             "in": "path",
             "required": true,
-            "description": "Connector provider that signed the delivery.",
+            "description": "Provider that sent the event.",
             "schema": {
               "type": "string",
               "enum": [
@@ -1311,7 +1311,7 @@
             "name": "X-GitHub-Delivery",
             "in": "header",
             "required": true,
-            "description": "GitHub-issued diagnostic delivery identifier. It is not trusted for replay protection because this header is outside the signed body.",
+            "description": "Delivery identifier supplied by GitHub.",
             "schema": {
               "type": "string"
             }
@@ -1332,7 +1332,7 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "description": "Raw provider webhook payload. Routed GitHub events must carry `installation.id` and `repository.full_name`; signed `ping` payloads are acknowledged without those fields.",
+                "description": "A signed GitHub event body. Events other than `ping` require `installation.id` and `repository.full_name`.",
                 "additionalProperties": true
               }
             }
@@ -1340,7 +1340,7 @@
         },
         "responses": {
           "200": {
-            "description": "Delivery was a signed ping, or was valid but intentionally ignored because its event was filtered, its installation was unmapped, or no fleet subscription matched.",
+            "description": "Valid event that required no fleet run.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1385,7 +1385,7 @@
             }
           },
           "202": {
-            "description": "Delivery matched one or more fleets; new per-fleet events were enqueued and replays were suppressed.",
+            "description": "Event matched at least one fleet.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1487,8 +1487,8 @@
     "/v1/webhooks/svix/{fleet_id}": {
       "post": {
         "operationId": "receive_svix_webhook",
-        "summary": "Receive a Svix-signed webhook (Clerk events)",
-        "description": "Ingress endpoint for Svix-signed webhooks (e.g. Clerk user lifecycle events). Signature is verified by the webhook auth middleware against the workspace's Svix secret before the handler runs. Body shape is event-specific and defined by the upstream issuer; the server validates the envelope and dispatches to the fleet's event log.",
+        "summary": "Receive a signed Svix event",
+        "description": "Receives a signed Svix event for one fleet. A valid new event returns 202.\n\nA duplicate or an event for a paused fleet returns 200.\n",
         "tags": [
           "Webhooks"
         ],
@@ -1545,7 +1545,7 @@
         },
         "responses": {
           "200": {
-            "description": "Not enqueued, intentionally. Two shapes: duplicate delivery (`{\"status\": \"duplicate\"}` — same body `event_id` within the 24-hour dedup window) or event ignored (`{\"ignored\": \"fleet_paused\"}` — fleet is paused; the dedup slot is not consumed, so redelivery after resume processes normally).",
+            "description": "Duplicate event or event ignored because the fleet is paused.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1598,8 +1598,8 @@
     "/v1/webhooks/{fleet_id}": {
       "post": {
         "operationId": "receive_webhook",
-        "summary": "Deliver an inbound webhook event to a Fleet",
-        "description": "Delivers an inbound event to the fleet identified by `fleet_id`. The fleet is looked up by primary key — no JSONB traversal, no source-name uniqueness required. The body MUST be HMAC-SHA256 signed with the workspace credential keyed by the fleet's `trigger.source` (e.g. vault row `fleet:linear`, field `webhook_secret`). The provider-specific signature header (`x-hub-signature-256` for GitHub, `x-slack-signature` for Slack, etc.) is verified upstream by the `webhook_sig` middleware; this handler runs only after the HMAC is valid. There is no Bearer fallback — every inbound webhook MUST be signed. Duplicate events (same `event_id` within 24 h) return 200 `{status: \"duplicate\"}`. A webhook for a paused fleet returns 200 `{ignored: \"fleet_paused\"}` without consuming the dedup slot, so redelivery after resume processes normally. A new event is enqueued to the fleet's Redis stream and returns 202.",
+        "summary": "Send a signed event to a fleet",
+        "description": "Sends a signed event to one fleet. Every request requires a valid provider signature.\n\nA new event returns 202. A duplicate within 24 hours returns `status: duplicate`.\n\nA paused fleet returns `ignored: fleet_paused`. Send the event again after resuming the fleet.\n",
         "tags": [
           "Fleets"
         ],
@@ -1608,7 +1608,7 @@
             "name": "fleet_id",
             "in": "path",
             "required": true,
-            "description": "UUIDv7 of the target fleet. Obtained from `POST /v1/workspaces/{workspace_id}/fleets` or `agentsfleet install --from <path>`.",
+            "description": "Fleet identifier returned by fleet creation or `agentsfleet install --library <LIBRARY_ID>`.",
             "schema": {
               "type": "string",
               "format": "uuid"
@@ -1629,7 +1629,7 @@
                 "properties": {
                   "event_id": {
                     "type": "string",
-                    "description": "Unique identifier for this event. Used for idempotency deduplication (24-hour window)."
+                    "description": "Unique event identifier. Duplicates within 24 hours are ignored."
                   },
                   "type": {
                     "type": "string",
@@ -1647,7 +1647,7 @@
         },
         "responses": {
           "200": {
-            "description": "Not enqueued, intentionally. Two shapes: duplicate event (`{\"status\": \"duplicate\"}` — already processed within the 24-hour dedup window) or event ignored (`{\"ignored\": \"fleet_paused\"}` — fleet is paused; the dedup slot is not consumed, so redelivery after resume processes normally).",
+            "description": "Duplicate event or event ignored because the fleet is paused.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1667,7 +1667,7 @@
             }
           },
           "202": {
-            "description": "Event accepted and enqueued for the fleet.",
+            "description": "Event accepted.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1700,7 +1700,7 @@
             }
           },
           "401": {
-            "description": "Webhook auth failure. Three distinct codes: `UZ-WH-020 webhook_credential_not_configured` (fleet has no recognized provider, OR the workspace has no matching `fleet:<source>` vault credential, OR the credential JSON has no `webhook_secret` field — this is the operator-recoverable misconfig path); `UZ-WH-010 invalid_signature` (provider + secret are configured but the request is unsigned, mis-signed, or the body was tampered with); `UZ-WH-011 stale_timestamp` (Slack-style schemes with timestamp drift > 5 min).",
+            "description": "Missing connector settings return `UZ-WH-020`. An invalid signature returns `UZ-WH-010`.\n\nA Slack timestamp outside 5 minutes returns `UZ-WH-011`.\n",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -1903,8 +1903,8 @@
     "/v1/webhooks/{fleet_id}/github": {
       "post": {
         "operationId": "github_webhook",
-        "summary": "Ingest a GitHub Actions webhook",
-        "description": "GitHub `workflow_run` webhook receiver. Body is HMAC-SHA256 signed (X-Hub-Signature-256) against the workspace's `fleet:github` credential `webhook_secret` field. Only `action=completed` with `conclusion=failure` is XADDed to the fleet event stream; other events return 200. Idempotency keyed on `X-GitHub-Delivery` for 24h.",
+        "summary": "Receive a signed GitHub event",
+        "description": "Verifies the body with the `webhook_secret` field from the workspace's `github` secret.\n\nReviewable `pull_request` events and failed completed `workflow_run` events create fleet events. A delivery identifier remains reserved for 72 hours after acceptance.\n",
         "tags": [
           "Webhooks"
         ],
@@ -1923,9 +1923,13 @@
             "name": "X-GitHub-Event",
             "in": "header",
             "required": true,
-            "description": "GitHub event type. Only `workflow_run` is ingested.",
+            "description": "GitHub event type.",
             "schema": {
-              "type": "string"
+              "type": "string",
+              "enum": [
+                "pull_request",
+                "workflow_run"
+              ]
             }
           },
           {
@@ -1953,27 +1957,46 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "description": "Raw GitHub webhook payload — see https://docs.github.com/en/webhooks/webhook-events-and-payloads#workflow_run."
+                "description": "Raw GitHub webhook payload.",
+                "additionalProperties": true
               }
             }
           }
         },
         "responses": {
           "200": {
-            "description": "Duplicate delivery (idempotency hit) or event ignored (fleet paused, non-workflow_run, non-completed action, or non-failure conclusion). Body distinguishes the two via the `deduped` or `ignored` field. The `fleet_paused` ignore does not consume the dedup slot, so redelivery after resume processes normally.",
+            "description": "Duplicate or ignored event. An ignored event does not reserve its delivery identifier.",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "properties": {
-                    "deduped": {
-                      "type": "boolean"
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "deduped"
+                      ],
+                      "properties": {
+                        "deduped": {
+                          "type": "boolean",
+                          "const": true
+                        }
+                      }
                     },
-                    "ignored": {
-                      "type": "string",
-                      "description": "Reason the event was filtered out (e.g. `non_failure_conclusion`, `fleet_paused`)."
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "ignored"
+                      ],
+                      "properties": {
+                        "ignored": {
+                          "type": "string",
+                          "description": "Reason the event was ignored."
+                        }
+                      }
                     }
-                  }
+                  ]
                 }
               }
             }
@@ -1984,9 +2007,15 @@
               "application/json": {
                 "schema": {
                   "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "status",
+                    "event_id"
+                  ],
                   "properties": {
                     "status": {
-                      "type": "string"
+                      "type": "string",
+                      "const": "accepted"
                     },
                     "event_id": {
                       "type": "string"
@@ -2018,8 +2047,8 @@
     "/v1/workspaces/{workspace_id}/connectors": {
       "get": {
         "operationId": "connector_catalog",
-        "summary": "List the connector catalog for a workspace",
-        "description": "Renders the deployment's connector registry as data for the dashboard (requires the `connector:read` scope) — every provider with its archetype, display name, whether the platform side is `configured` (the `<provider>-app` platform bag exists), and whether this workspace is `connected` (holds a `fleet:<provider>` vault handle). The dashboard renders its cards from this — there is no hard-coded provider list. This is the collection whose items are the per-provider status routes below.",
+        "summary": "List connectors for a workspace",
+        "description": "Returns the providers available to the workspace. Each item shows whether the provider is ready and connected.\n\nRequires the `connector:read` scope.\n",
         "tags": [
           "Connectors"
         ],
@@ -2028,7 +2057,7 @@
             "name": "workspace_id",
             "in": "path",
             "required": true,
-            "description": "UUIDv7 of the workspace to report connected state for.",
+            "description": "Workspace identifier.",
             "schema": {
               "type": "string",
               "format": "uuid"
@@ -2037,7 +2066,7 @@
         ],
         "responses": {
           "200": {
-            "description": "The connector catalog — one entry per registry provider.",
+            "description": "Available connectors and their current state.",
             "content": {
               "application/json": {
                 "schema": {
@@ -2054,10 +2083,11 @@
                     "properties": {
                       "id": {
                         "type": "string",
-                        "description": "Connector registry id / route segment (`slack`, `github`, `zoho`, `jira`, `linear`)."
+                        "description": "Provider identifier."
                       },
                       "archetype": {
                         "type": "string",
+                        "description": "Connection method used by the provider.",
                         "enum": [
                           "oauth2",
                           "app_install"
@@ -2068,11 +2098,11 @@
                       },
                       "configured": {
                         "type": "boolean",
-                        "description": "Platform side ready — the `<provider>-app` bag exists."
+                        "description": "True when the provider is ready to connect."
                       },
                       "connected": {
                         "type": "boolean",
-                        "description": "This workspace holds a `fleet:<provider>` vault handle."
+                        "description": "True when the workspace is connected."
                       }
                     }
                   }
@@ -2098,8 +2128,8 @@
     "/v1/workspaces/{workspace_id}/connectors/{provider}/connect": {
       "post": {
         "operationId": "connector_connect",
-        "summary": "Start a connector connect flow",
-        "description": "Begins the connect round-trip for any provider in the connector registry (requires the `connector:write` scope). Returns the URL the operator's browser is redirected to — the provider's OAuth authorize URL (oauth2 archetype, e.g. `slack`) or the vendor App install URL (app_install archetype, e.g. `github`). A single-use signed state bound to the workspace rides that URL; the round-trip finishes at the callback. No token is created or stored here. Unknown provider → 404 `UZ-CONN-004`; provider not provisioned on this deployment → 503 `UZ-CONN-001`.",
+        "summary": "Get a provider connection URL",
+        "description": "Returns a URL for connecting the workspace to the provider. Open the URL in a browser.\n\nAn unknown provider returns 404 `UZ-CONN-004`. An unavailable provider returns 503 `UZ-CONN-001`.\n",
         "tags": [
           "Connectors"
         ],
@@ -2108,7 +2138,7 @@
             "name": "workspace_id",
             "in": "path",
             "required": true,
-            "description": "UUIDv7 of the workspace the connector will be bound to.",
+            "description": "Workspace identifier.",
             "schema": {
               "type": "string",
               "format": "uuid"
@@ -2118,7 +2148,7 @@
             "name": "provider",
             "in": "path",
             "required": true,
-            "description": "Connector registry id (`slack`, `github`, `zoho`, `jira`, `linear`). The id is also the `{provider}` segment of the callback URL and the vault-key stem.",
+            "description": "Provider identifier, such as `slack` or `github`.",
             "schema": {
               "type": "string"
             }
@@ -2126,7 +2156,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Connect flow started.",
+            "description": "Connection URL created.",
             "content": {
               "application/json": {
                 "schema": {
@@ -2137,7 +2167,7 @@
                   "properties": {
                     "install_url": {
                       "type": "string",
-                      "description": "URL to redirect the operator's browser to (provider authorize URL or vendor install URL)."
+                      "description": "URL to open in the user's browser."
                     }
                   }
                 }
@@ -2168,8 +2198,8 @@
     "/v1/workspaces/{workspace_id}/connectors/{provider}": {
       "get": {
         "operationId": "connector_status",
-        "summary": "Read a connector's status",
-        "description": "Reports whether the workspace holds a live `fleet:{provider}` vault handle (requires the `connector:read` scope). Never fabricates a connected state — a missing or unreadable handle reads as `not_connected`. Provider-specific extras ride alongside (`slack` adds `team`, generic OAuth providers add `label`). Unknown provider → 404 `UZ-CONN-004`.",
+        "summary": "Read a connector status",
+        "description": "Returns `connected` or `not_connected` for one provider. Requires the `connector:read` scope.\n\nAn unknown provider returns 404 `UZ-CONN-004`.\n",
         "tags": [
           "Connectors"
         ],
@@ -2178,7 +2208,7 @@
             "name": "workspace_id",
             "in": "path",
             "required": true,
-            "description": "UUIDv7 of the workspace.",
+            "description": "Workspace identifier.",
             "schema": {
               "type": "string",
               "format": "uuid"
@@ -2188,7 +2218,7 @@
             "name": "provider",
             "in": "path",
             "required": true,
-            "description": "Connector registry id (`slack`, `github`, `zoho`, `jira`, `linear`).",
+            "description": "Provider identifier, such as `slack` or `github`.",
             "schema": {
               "type": "string"
             }
@@ -2217,14 +2247,14 @@
                         "string",
                         "null"
                       ],
-                      "description": "Slack only — the connected Slack workspace name (absent for other providers)."
+                      "description": "Connected Slack workspace name. Null for other providers."
                     },
                     "label": {
                       "type": [
                         "string",
                         "null"
                       ],
-                      "description": "Generic OAuth providers only — display label from the provider handle, when available."
+                      "description": "Provider label when available."
                     }
                   }
                 }
@@ -2252,8 +2282,8 @@
     "/v1/connectors/{provider}/callback": {
       "get": {
         "operationId": "connector_callback",
-        "summary": "Complete a connector connect flow (vendor redirect)",
-        "description": "The provider redirects the operator's browser here after authorization. Bearer-less by design — the signed single-use `state` minted at connect is the only trust anchor (there is no Bearer on a cross-site redirect); verify-and-consume yields the bound workspace. oauth2 providers exchange the `code` for a token under an enforced vendor deadline (`UZ-CONN-003` on stall) and vault it; app_install providers (`github`) record the `installation_id` handle instead. On success the browser is 302-redirected to the dashboard's connector card; if that redirect URL cannot be built (dashboard base URL allocation failure) the connection still succeeded, so it returns 200 `{\"status\":\"connected\"}` instead. Invalid, expired, or replayed state gives 400 `UZ-CONN-002`.",
+        "summary": "Complete a provider connection",
+        "description": "The provider sends the user's browser here after approval. A valid callback connects the workspace and returns the browser to the dashboard.\n\nInvalid, expired, or reused state returns 400 `UZ-CONN-002`. A provider timeout returns `UZ-CONN-003`.\n",
         "tags": [
           "Connectors"
         ],
@@ -2262,7 +2292,7 @@
             "name": "provider",
             "in": "path",
             "required": true,
-            "description": "Connector registry id (`slack`, `github`, `zoho`, `jira`, `linear`).",
+            "description": "Provider identifier, such as `slack` or `github`.",
             "schema": {
               "type": "string"
             }
@@ -2271,7 +2301,7 @@
             "name": "state",
             "in": "query",
             "required": true,
-            "description": "The signed single-use state minted at connect. Binds the callback to a workspace; expired or replayed states are rejected.",
+            "description": "One-time value supplied through the connection URL.",
             "schema": {
               "type": "string"
             }
@@ -2280,7 +2310,7 @@
             "name": "code",
             "in": "query",
             "required": false,
-            "description": "OAuth authorization code (oauth2 providers — required for them).",
+            "description": "Authorization code supplied by the provider when required.",
             "schema": {
               "type": "string"
             }
@@ -2289,7 +2319,7 @@
             "name": "installation_id",
             "in": "query",
             "required": false,
-            "description": "Vendor installation id (app_install providers — required for them; `github` sends it after the App install).",
+            "description": "Installation identifier supplied by providers such as GitHub.",
             "schema": {
               "type": "string"
             }
@@ -2297,7 +2327,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Connected, but the dashboard redirect URL could not be built (allocation failure). The connection succeeded; no redirect is issued.",
+            "description": "Connected without a dashboard redirect.",
             "content": {
               "application/json": {
                 "schema": {
@@ -2316,10 +2346,10 @@
             }
           },
           "302": {
-            "description": "Connected — browser redirected to the dashboard's connector card.",
+            "description": "Connected. The browser returns to the dashboard.",
             "headers": {
               "Location": {
-                "description": "Dashboard connectors page for the just-connected provider.",
+                "description": "Dashboard connectors page.",
                 "schema": {
                   "type": "string"
                 }
@@ -2348,8 +2378,8 @@
     "/v1/connectors/slack/events": {
       "post": {
         "operationId": "slack_events",
-        "summary": "Ingest Slack Events API deliveries",
-        "description": "Slack's Events API receiver (bespoke — inbound event surfaces are per-provider by nature). Bearer-less; every request is authenticated by the Slack v0 request signature (`X-Slack-Signature` + timestamp, 5-minute drift window) — signature failures are 401 `UZ-SLK-010`/`UZ-SLK-011`. `url_verification` echoes the challenge; event deliveries are acknowledged 200 within Slack's deadline and processed async (duplicates dedup to `{\"status\":\"duplicate\"}`; events from teams with no connector install are dropped with `{\"ignored\":\"UZ-SLK-020\"}` so Slack stops retrying).",
+        "summary": "Receive Slack events",
+        "description": "Slack sends signed events to this route. Users do not call this route.\n\nAn invalid signature returns 401 `UZ-SLK-010`. A timestamp outside 5 minutes returns 401 `UZ-SLK-011`.\n",
         "tags": [
           "Connectors"
         ],
@@ -2358,7 +2388,7 @@
             "name": "X-Slack-Signature",
             "in": "header",
             "required": true,
-            "description": "Slack v0 HMAC-SHA256 request signature.",
+            "description": "Slack request signature. Slack supplies this value.",
             "schema": {
               "type": "string"
             }
@@ -2367,7 +2397,7 @@
             "name": "X-Slack-Request-Timestamp",
             "in": "header",
             "required": true,
-            "description": "Unix timestamp of the delivery; rejected outside the 5-minute drift window.",
+            "description": "Delivery time in Unix seconds. Values outside 5 minutes are rejected.",
             "schema": {
               "type": "string"
             }
@@ -2379,7 +2409,7 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "description": "Slack Events API envelope (`url_verification` or `event_callback`) — see https://api.slack.com/apis/events-api#events-JSON.",
+                "description": "Slack event or URL verification request.",
                 "additionalProperties": true
               }
             }
@@ -2387,22 +2417,54 @@
         },
         "responses": {
           "200": {
-            "description": "Acknowledged. Shapes: `{\"status\":\"accepted\"}` (enqueued), `{\"status\":\"duplicate\"}` (dedup hit), `{\"challenge\":\"...\"}` (url_verification echo), `{\"ignored\":\"UZ-SLK-020\"}` (no install for the sending team).",
+            "description": "Accepted, duplicate, verification, or ignored response.",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "properties": {
-                    "status": {
-                      "type": "string"
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "status"
+                      ],
+                      "properties": {
+                        "status": {
+                          "type": "string",
+                          "enum": [
+                            "accepted",
+                            "duplicate"
+                          ]
+                        }
+                      }
                     },
-                    "challenge": {
-                      "type": "string"
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "challenge"
+                      ],
+                      "properties": {
+                        "challenge": {
+                          "type": "string",
+                          "description": "Value returned for Slack URL verification."
+                        }
+                      }
                     },
-                    "ignored": {
-                      "type": "string"
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "ignored"
+                      ],
+                      "properties": {
+                        "ignored": {
+                          "type": "string",
+                          "const": "UZ-SLK-020"
+                        }
+                      }
                     }
-                  }
+                  ]
                 }
               }
             }
@@ -2427,7 +2489,7 @@
       "post": {
         "operationId": "create_workspace",
         "summary": "Create a workspace",
-        "description": "Creates a new workspace in the caller's tenant. All fields are optional — an empty body provisions a workspace with a server-assigned Heroku-style name.",
+        "description": "Creates a workspace in the caller's tenant. An empty body uses a server-assigned name.",
         "tags": [
           "Workspaces"
         ],
@@ -2487,14 +2549,14 @@
     "/v1/tenants/me/billing": {
       "get": {
         "operationId": "get_tenant_billing",
-        "summary": "Tenant billing snapshot",
-        "description": "Returns the tenant-scoped billing row created at signup. The single row carries the credit-pool balance shared across every workspace the tenant owns. Two-rate metering in nanos: events are free (both postures); stages cost $0.001 (platform) or $0.0001 (self-managed). Debited by the worker as fleet runs complete.\n",
+        "summary": "Read the tenant balance",
+        "description": "Returns the balance shared by every workspace in the tenant. The response also shows whether the balance is empty and whether a free trial is active.\n",
         "tags": [
           "Billing"
         ],
         "responses": {
           "200": {
-            "description": "Tenant billing snapshot",
+            "description": "Current tenant balance",
             "content": {
               "application/json": {
                 "schema": {
@@ -2510,26 +2572,26 @@
                     "balance_nanos": {
                       "type": "integer",
                       "format": "int64",
-                      "description": "Remaining credit-pool balance in nanos (1 nano = 1/1,000,000,000 USD)."
+                      "description": "Remaining tenant balance in nanos."
                     },
                     "updated_at": {
                       "type": "integer",
                       "format": "int64",
-                      "description": "Last update time (epoch ms)"
+                      "description": "Last update time in Unix milliseconds."
                     },
                     "is_exhausted": {
                       "type": "boolean",
-                      "description": "True once the balance has hit zero on a worker debit."
+                      "description": "True after a charge reduces the balance to zero."
                     },
                     "exhausted_at": {
                       "type": "integer",
                       "format": "int64",
                       "nullable": true,
-                      "description": "Epoch ms of the first exhausting debit. Null until the balance is exhausted."
+                      "description": "Time of the first zero balance in Unix milliseconds. Null until then."
                     },
                     "free_trial": {
                       "type": "object",
-                      "description": "Promotional free-trial window state (src/state/tenant_billing.zig).",
+                      "description": "Current free-trial state.",
                       "required": [
                         "active",
                         "ends_at_ms"
@@ -2537,12 +2599,12 @@
                       "properties": {
                         "active": {
                           "type": "boolean",
-                          "description": "True while the free-trial window is in effect."
+                          "description": "True while the free trial is active."
                         },
                         "ends_at_ms": {
                           "type": "integer",
                           "format": "int64",
-                          "description": "Epoch ms when the free-trial window closes."
+                          "description": "Free-trial end time in Unix milliseconds."
                         }
                       }
                     }
@@ -2560,8 +2622,8 @@
     "/v1/tenants/me/billing/charges": {
       "get": {
         "operationId": "get_tenant_billing_charges",
-        "summary": "Tenant credit-pool charges",
-        "description": "Returns the newest-first slice of `fleet_execution_telemetry` rows for the caller's tenant. Two rows per event under the credit-pool model (`charge_type` ∈ `receive`, `stage`); the dashboard groups them by `event_id` to show one line per event with both charges. Limit-only paging is sufficient for the v2.0 Settings → Billing Usage tab; deeper history pages with Stripe billing in v2.1.\n",
+        "summary": "List tenant charges",
+        "description": "Returns charge records with the newest record first. Use `limit` and `cursor` to read more records.\n",
         "tags": [
           "Billing"
         ],
@@ -2569,7 +2631,7 @@
           {
             "name": "limit",
             "in": "query",
-            "description": "Page size (1–200, default 50).",
+            "description": "Number of records to return. The default is 50. Valid values are 1 through 200.",
             "required": false,
             "schema": {
               "type": "integer",
@@ -2582,7 +2644,7 @@
           {
             "name": "cursor",
             "in": "query",
-            "description": "Opaque pagination token returned in `next_cursor` from a previous page. Omit for the first page. Treat as a black-box string — the encoded `(recorded_at, id)` tuple is an implementation detail.\n",
+            "description": "Token from `next_cursor` in the previous response. Omit it for the first page.",
             "required": false,
             "schema": {
               "type": "string"
@@ -2591,7 +2653,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Newest-first telemetry rows scoped to the caller's tenant.",
+            "description": "Tenant charge records with the newest record first.",
             "content": {
               "application/json": {
                 "schema": {
@@ -2604,7 +2666,7 @@
                     "next_cursor": {
                       "type": "string",
                       "nullable": true,
-                      "description": "Opaque token for the next page; null when no more rows."
+                      "description": "Token for the next page. Null when no records remain."
                     },
                     "items": {
                       "type": "array",
@@ -2695,8 +2757,8 @@
     "/v1/tenants/me/billing/charges/{event_id}/telemetry": {
       "get": {
         "operationId": "get_tenant_metering_periods",
-        "summary": "Tenant metering periods for one charge",
-        "description": "Returns the oldest-first renewal slices behind one `stage` charge. The route is scoped to the caller's tenant through the matching `fleet_execution_telemetry` row; unknown or foreign `event_id` values return an empty `items` list.\n",
+        "summary": "List details for one charge",
+        "description": "Returns the detail records for one charge, oldest first. An unknown `event_id` returns an empty `items` list.\n",
         "tags": [
           "Billing"
         ],
@@ -2704,7 +2766,7 @@
           {
             "name": "event_id",
             "in": "path",
-            "description": "Event Identifier (ID) from a `get_tenant_billing_charges` response.",
+            "description": "Event identifier from a `get_tenant_billing_charges` response.",
             "required": true,
             "schema": {
               "type": "string"
@@ -2713,7 +2775,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Metering slices for the requested event.",
+            "description": "Charge details for the requested event.",
             "content": {
               "application/json": {
                 "schema": {
@@ -2854,8 +2916,8 @@
     "/v1/tenants/me/provider": {
       "get": {
         "operationId": "get_tenant_provider",
-        "summary": "Read tenant LLM provider configuration",
-        "description": "Returns the tenant's persisted provider config — mode, provider name, model, context cap, and (under self-managed) the user-named credential_ref. The api_key is never serialised. Tenants with no row receive a synthesised platform default.\n",
+        "summary": "Read tenant model provider settings",
+        "description": "Returns the tenant's provider mode, provider name, model, context limit, and credential reference. Secret values are never returned.\n",
         "tags": [
           "Tenant"
         ],
@@ -2877,8 +2939,8 @@
       },
       "put": {
         "operationId": "put_tenant_provider",
-        "summary": "Set tenant LLM provider posture",
-        "description": "Eager-validates and UPSERTs the tenant_model_selection row. Validation order: body shape → credential_ref required (mode=self_managed) → credential_not_found → credential_data_malformed → model_not_in_caps_catalogue → UPSERT. Stored `provider` is read from the credential JSON; effective `model` is the body override (when present) else the credential's stored model. A self_managed activation also registers the matching model entry (see /v1/tenants/me/models) when none exists — idempotent on repeat, so an activation is always visible as a registry row.\n",
+        "summary": "Set tenant model provider",
+        "description": "Sets the provider mode and model. Self-managed mode requires a `credential_ref` that names an existing secret.\nIf the model entry does not exist, this request creates it.\n",
         "tags": [
           "Tenant"
         ],
@@ -3133,7 +3195,7 @@
       "get": {
         "operationId": "list_workspace_secrets",
         "summary": "List secrets stored for a workspace",
-        "description": "Returns secret names and non-secret descriptors. Values are never returned — they live encrypted in `vault.secrets`.",
+        "description": "Returns secret names and non-secret details. Secret values are never returned.",
         "tags": [
           "Secrets"
         ],
@@ -3184,8 +3246,8 @@
       },
       "post": {
         "operationId": "store_workspace_secret",
-        "summary": "Store a secret in the workspace vault",
-        "description": "Plaintext is the canonical-stringified form of the supplied JSON object,\nenvelope-encrypted with the KEK (master key v1) and persisted to\n`vault.secrets`. The raw value is never stored unencrypted and never\nreturned. `data` must be a non-empty JSON object whose stringified form\nis ≤ 4 KiB; a stringified form over 4 KiB is rejected with `UZ-VAULT-002`,\nand bare strings, arrays, scalars, and `{}` are rejected with\n`UZ-VAULT-001`.\n",
+        "summary": "Store a workspace secret",
+        "description": "Stores an encrypted JSON object. Secret values are never returned.\n\n`data` must be a non-empty object no larger than 4 KiB. Larger values return `UZ-VAULT-002`.\n\nStrings, arrays, scalars, and empty objects return `UZ-VAULT-001`.\n",
         "tags": [
           "Secrets"
         ],
@@ -3263,7 +3325,7 @@
       "patch": {
         "operationId": "rotate_workspace_secret",
         "summary": "Rotate a secret's api_key field",
-        "description": "Replaces only the stored `api_key` field; `provider`/`model`/`base_url`\n(and any other stored fields) are preserved by loading the existing\nobject and swapping the single field. A missing secret returns\n`UZ-VAULT-003`.\n",
+        "description": "Replaces only the stored `api_key` field. Other fields keep their current values.\n\nA missing secret returns `UZ-VAULT-003`.\n",
         "tags": [
           "Secrets"
         ],
@@ -3390,7 +3452,7 @@
       "post": {
         "operationId": "create_api_key",
         "summary": "Mint a tenant API key",
-        "description": "Creates a new `agt_t`-prefixed tenant admin key. **The raw key is returned once.** Only the SHA-256 hash is persisted — the key cannot be retrieved again. Requires operator (or admin) role.",
+        "description": "Creates a tenant admin key with the `agt_t` prefix. The raw key is returned once. Only its SHA-256 hash is saved.",
         "tags": [
           "API Keys"
         ],
@@ -3654,7 +3716,7 @@
       "delete": {
         "operationId": "delete_api_key",
         "summary": "Delete a revoked tenant API key",
-        "description": "Hard-deletes the row from `core.api_keys`. The key must already be revoked (`active = false`); an active key returns `409 UZ-APIKEY-008`.",
+        "description": "Deletes a revoked tenant API key. An active key returns 409 `UZ-APIKEY-008`.",
         "tags": [
           "API Keys"
         ],
@@ -3757,7 +3819,7 @@
       "post": {
         "operationId": "create_fleet_key",
         "summary": "Issue a Fleet key for a Fleet",
-        "description": "Creates a new `agt_a` Fleet key bound to a specific Fleet. **The raw key is returned once.** Only the SHA-256 hash is persisted — the key cannot be retrieved again.",
+        "description": "Creates a fleet key with the `agt_a` prefix. The raw key is returned once. Only its SHA-256 hash is saved.",
         "tags": [
           "Fleet Keys"
         ],
@@ -3909,7 +3971,7 @@
       "get": {
         "operationId": "list_fleets",
         "summary": "List fleets in a workspace",
-        "description": "Returns fleets the caller has access to in the given workspace. Keyset paginated over `(created_at DESC, id DESC)`. Omit `cursor` for the first page; pass the response `cursor` back verbatim to fetch the next page. `cursor` is `null` when the last page has been reached. Response envelope follows the RAD §8 `items`/`total` convention (`total` is the size of this page, not a global count).\n",
+        "description": "Returns visible fleets with the newest fleet first. Omit `cursor` for the first page. Use the returned cursor to read the next page.\n",
         "tags": [
           "Fleets"
         ],
@@ -3995,8 +4057,8 @@
       },
       "post": {
         "operationId": "create_fleet",
-        "summary": "Create a Fleet",
-        "description": "Creates a new Fleet from direct SKILL.md bytes or from a stored Fleet Bundle snapshot. Optional TRIGGER.md bytes override the bundle trigger; otherwise the stored trigger is used, and if absent the server generates a default API trigger. The server is the single parser of trigger frontmatter — `name` and the persisted `config_json` are derived server-side. The Command-Line Interface (CLI) sends markdown files as raw bytes; no frontmatter parsing happens client-side.",
+        "summary": "Create a fleet",
+        "description": "Creates a fleet from one library entry. Use either `platform_library_id` or `tenant_library_id`.\n\nThe service creates a default API trigger when the library has no trigger.\n",
         "tags": [
           "Fleets"
         ],
@@ -4014,12 +4076,12 @@
         ],
         "requestBody": {
           "required": true,
-          "description": "Install a fleet from exactly one onboarded Fleet library tier (M103 §4): a platform library entry (slug id) or this workspace's tenant library entry (UUIDv7). The server reads SKILL/TRIGGER + content identity from the library row; raw-SKILL paste and the legacy per-workspace bundle_id are not accepted.",
+          "description": "Choose one library entry. Use `platform_library_id` for the shared library or `tenant_library_id` for the workspace library.",
           "content": {
             "application/json": {
               "schema": {
                 "type": "object",
-                "anyOf": [
+                "oneOf": [
                   {
                     "required": [
                       "platform_library_id"
@@ -4073,7 +4135,8 @@
                       "description": "Fleet name parsed from TRIGGER.md frontmatter or the generated default trigger — the canonical identifier the user will see in `agentsfleet status` and CLI output."
                     },
                     "status": {
-                      "type": "string"
+                      "type": "string",
+                      "const": "installing"
                     },
                     "webhook_urls": {
                       "type": "object",
@@ -4323,8 +4386,8 @@
     "/v1/workspaces/{workspace_id}/fleets/{fleet_id}": {
       "patch": {
         "operationId": "patch_fleet",
-        "summary": "Update Fleet config or drive its status FSM",
-        "description": "Partial update of a Fleet. Body fields are optional and presence-based:\n\n- `config_json` — replace the fleet's config blob whole; publishes\n  `fleet_config_changed`.\n- `trigger_markdown` — replace the fleet's stored `TRIGGER.md`; the server\n  reparses the frontmatter and overlays the `x_agentsfleet.triggers` half of\n  `config_json`. The fleet's `name` is rewritten to the reparsed name.\n  Mutually exclusive with `config_json` (both drive the same column).\n- `source_markdown` — replace the fleet's stored `SKILL.md`; the server\n  reparses the frontmatter and overlays the tools / credentials / network /\n  budget halves of `config_json`. The reparsed `name` must equal the\n  fleet's current name (renames require a fresh install).\n- `status` — drive the lifecycle FSM. Allowed values: `active` (resume from\n  stopped or auto-paused), `stopped` (halt the running session, resumable),\n  `killed` (terminal mark, irreversible). The `paused` state is platform-only\n  (set by the anomaly gate) and rejected here.\n\nAll field-bearing branches run inside a single transaction that takes a\nrow-level `FOR UPDATE` lock on `core.fleets`, applies field-level merge\nsemantics, and commits with a single `UPDATE`. Two writers patching\ndifferent body fields land both halves; two writers patching the same\nfield collapse to last-write-wins. Per-transaction `lock_timeout=5s`,\n`statement_timeout=10s`, `idle_in_transaction_session_timeout=5s` make\npathological waits fail fast as `503` (retryable).\n\nThe SQL UPDATE is one statement; one control-stream publish fires when any\ndirty surface lands. Returns the new `config_revision` (a strictly\nmonotonic ms-epoch timestamp).\n\nFSM rules:\n\n- `killed` is terminal — any further PATCH on a killed fleet returns 404\n  (the row is a tombstone).\n- Stop requires status ∈ {active, paused}; Resume requires status ∈\n  {stopped, paused}; Kill is allowed from any non-killed state.\n- Disallowed transitions return 409 (e.g. resume on an active fleet).\n\nStatus transitions (stop/resume/kill) require operator-minimum role\nper RULE BIL — destructive lifecycle actions. Pure config updates stay\nat workspace-member.\n",
+        "summary": "Update a fleet",
+        "description": "Updates fleet files or status. Every request field is optional.\n\n`config_json` and `trigger_markdown` cannot be used together. A killed fleet cannot be changed.\n\nStatus changes require an operator role. Config changes require workspace membership.\n",
         "tags": [
           "Fleets"
         ],
@@ -4359,15 +4422,15 @@
                 "properties": {
                   "config_json": {
                     "type": "string",
-                    "description": "The new fleet config as a JSON string. Validated server-side.\nMutually exclusive with `trigger_markdown`.\n"
+                    "description": "Replaces the fleet config with a JSON string.\nMutually exclusive with `trigger_markdown`.\n"
                   },
                   "trigger_markdown": {
                     "type": "string",
-                    "description": "The full TRIGGER.md to persist; the server reparses the\nfrontmatter and overlays the `x_agentsfleet.triggers` half of\n`config_json`. Must be non-empty. Mutually exclusive with\n`config_json`.\n"
+                    "description": "Replaces `TRIGGER.md` and updates the fleet name and triggers.\nMust be non-empty. Mutually exclusive with `config_json`.\n"
                   },
                   "source_markdown": {
                     "type": "string",
-                    "description": "The full SKILL.md to persist; the server reparses the\nfrontmatter and overlays the tools / credentials / network /\nbudget halves of `config_json`. The reparsed `name` must\nmatch the fleet's current name. Must be non-empty.\n"
+                    "description": "Replaces `SKILL.md` and its settings. Must be non-empty.\nThe skill name must match the current fleet name.\n"
                   },
                   "status": {
                     "type": "string",
@@ -4376,7 +4439,7 @@
                       "stopped",
                       "killed"
                     ],
-                    "description": "Target FSM state. `active` resumes from stopped/paused; `stopped`\nhalts the running session (resumable); `killed` is terminal. Note\nthat `paused` is intentionally not in this enum — it is set only\nby the platform's anomaly gate.\n"
+                    "description": "New fleet state. `active` resumes, and `stopped` can resume later.\n`killed` is final. Only the service can set `paused`.\n"
                   }
                 }
               }
@@ -4438,8 +4501,8 @@
       },
       "delete": {
         "operationId": "delete_fleet",
-        "summary": "Hard-delete a fleet and cascade its history",
-        "description": "Hard-purge a fleet. Removes the `core.fleets` row and cascades every\nper-fleet record across PostgreSQL (PG) schemas (events, telemetry, sessions,\napproval gates, integration grants, fleet keys, memory entries) plus\nbest-effort DELs the Redis event stream.\n\nTwo-step lifecycle for safety: kill first (PATCH `{status:\"killed\"}`),\nthen delete. Returns 409 if the fleet is not yet `killed`.\n\nOperator-minimum role required (RULE BIL — destructive lifecycle).\n",
+        "summary": "Permanently delete a fleet",
+        "description": "Permanently deletes the fleet, events, runs, approvals, grants, keys, and memory. This cannot be undone.\n\nSet the fleet status to `killed` first. Otherwise the request returns 409.\n\nRequires an operator role.\n",
         "tags": [
           "Fleets"
         ],
@@ -4467,7 +4530,7 @@
         ],
         "responses": {
           "204": {
-            "description": "Fleet purged."
+            "description": "Fleet and history deleted."
           },
           "401": {
             "$ref": "#/components/responses/Error"
@@ -4563,7 +4626,7 @@
       "delete": {
         "operationId": "revoke_integration_grant",
         "summary": "Revoke an integration grant",
-        "description": "Immediately revokes a grant. A revoked grant blocks the fleet on its next execute attempt against the affected service.",
+        "description": "Immediately revokes a grant. A revoked grant blocks the fleet on its next call against the affected service.",
         "tags": [
           "Integration Grants"
         ],
@@ -4769,7 +4832,7 @@
       "post": {
         "operationId": "post_fleet_message",
         "summary": "Post a chat message to a fleet",
-        "description": "Build an EventEnvelope with `actor=steer:<user>` / `event_type=chat` and XADD it onto `fleet:{id}:events`. The Redis stream entry id IS the canonical event_id and is returned to the caller so Server-Sent Events (SSE) consumers can filter frames for the message they just sent. Same single-ingress rule as webhook and continuation events — no separate \"queued vs instant\" mode.",
+        "description": "Starts a fleet run with a chat event. Returns an event identifier for tracking in the activity stream.",
         "tags": [
           "Fleets"
         ],
@@ -4834,7 +4897,7 @@
                     },
                     "event_id": {
                       "type": "string",
-                      "description": "Redis stream entry id (the canonical event_id). Format `<ms>-<seq>`."
+                      "description": "Accepted event identifier. Format `<MILLISECONDS>-<SEQUENCE>`."
                     }
                   }
                 }
@@ -4854,7 +4917,7 @@
             "$ref": "#/components/responses/Error"
           },
           "409": {
-            "description": "Fleet is paused or otherwise not active (`UZ-AGT-012`). Steering refuses loudly instead of enqueuing work that would strand. The problem-details body carries `current_state` naming the actual fleet status (e.g. `paused`). Resume with `agentsfleet resume <fleet>`, then retry.",
+            "description": "Fleet is not active (`UZ-AGT-012`). Resume with `agentsfleet resume <FLEET>`, then retry.",
             "$ref": "#/components/responses/Error"
           },
           "default": {
@@ -4867,7 +4930,7 @@
       "get": {
         "operationId": "list_fleet_events",
         "summary": "List a fleet's event history",
-        "description": "Cursor-paginated list of operator-visible events for one fleet, newest first. Each row is a `core.fleet_events` entry — the durable record produced by the worker write path on every steer, webhook, cron, or continuation event. Filter by actor glob (e.g. `steer:*`, `webhook:github`) or `since=` (Go-style duration like `2h`/`30m` or RFC 3339 timestamp). `since=` and `cursor=` are mutually exclusive.\n",
+        "description": "Returns fleet events with the newest event first. Filter with `actor` or `since`. You cannot use `since` and `cursor` together.\n",
         "tags": [
           "Fleets"
         ],
@@ -4945,7 +5008,7 @@
                       "type": "array",
                       "items": {
                         "type": "object",
-                        "description": "One fleet_events row."
+                        "description": "One fleet event."
                       }
                     },
                     "next_cursor": {
@@ -4966,8 +5029,8 @@
     "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/events/stream": {
       "get": {
         "operationId": "stream_fleet_events",
-        "summary": "Subscribe to a fleet's live activity stream (SSE)",
-        "description": "Server-Sent Events tail of the Redis pub/sub channel `fleet:{id}:activity`. The server fans the channel out from one shared subscription and forwards each PUBLISH frame as one SSE event with id (per-connection monotonic counter), event (frame kind), and data (JSON payload) lines. Frame kinds - event_received, tool_call_started, tool_call_progress, chunk, tool_call_completed, event_complete. Sequence ids reset to 0 on every new stream and the server ignores `Last-Event-ID`. Concurrent streams per instance are capped - above the cap the request is rejected with 503 (code UZ-API-002) and a Retry-After header. Clients reconnect by calling GET /events with a cursor to backfill the durable record, then re-open this stream. Authentication this slice is Bearer-only (CLI / programmatic). Browser cookie auth lands with the dashboard slice.\n",
+        "summary": "Stream live fleet activity",
+        "description": "Opens a Server-Sent Events (SSE) stream for new fleet activity. Each message includes `id`, `event`, and `data`.\n\nIdentifiers restart at 0 for each connection. The route ignores `Last-Event-ID`.\n\nAt capacity, the route returns 503 `UZ-API-002` with `Retry-After`. Read missed events before reconnecting.\n",
         "tags": [
           "Fleets"
         ],
@@ -5270,8 +5333,8 @@
     "/v1/workspaces/{workspace_id}/approvals/{gate_id}:approve": {
       "post": {
         "operationId": "approve_workspace_approval",
-        "summary": "Approve a pending gate",
-        "description": "Resolves the gate to \"approved\" and wakes the worker thread blocked\non the gate. Funnels through the channel-agnostic resolve core that\nSlack callbacks and the auto-timeout sweeper share — first writer\nwins; concurrent resolvers receive 409 with the original outcome and\nresolver attribution.\n",
+        "summary": "Approve a pending request",
+        "description": "Approves a pending request. If two callers resolve it, the first result wins.\n\nOther callers receive 409 with the existing result and resolver.\n",
         "tags": [
           "Approvals"
         ],
@@ -5341,8 +5404,8 @@
     "/v1/workspaces/{workspace_id}/approvals/{gate_id}:deny": {
       "post": {
         "operationId": "deny_workspace_approval",
-        "summary": "Deny a pending gate",
-        "description": "Resolves the gate to \"denied\" and wakes the worker thread. The\nworker treats `denied` as \"do not execute the proposed tool call\".\nSame dedup semantics as `:approve`.\n",
+        "summary": "Deny a pending request",
+        "description": "Denies a pending request. The proposed tool call does not run.\n\nIf two callers resolve the request, the first result wins.\n",
         "tags": [
           "Approvals"
         ],
@@ -5739,8 +5802,8 @@
     "/v1/models": {
       "get": {
         "operationId": "get_model_library",
-        "summary": "Get the model library",
-        "description": "The model library catalogue (`core.model_library`): one row per priced `(provider, model_id)` pair with its context cap and per-token rates, plus a `version` stamp derived from the newest row. Bearer-authed — any authenticated tenant may read it; the route carries no capability scope. Replaces the retired public `cap.json` document: the former unauthenticated cryptic-prefix path returns `404` (no alias), and the global `rates`/`billing` block it carried was consumer-less and retired with it. An empty catalogue is a valid state and returns `200` with an empty `models` array.\n",
+        "summary": "List available models",
+        "description": "Returns models available to the tenant. Each item includes its provider, context limit, and usage fields. An empty library returns an empty array.\n",
         "tags": [
           "Model Library"
         ],
@@ -5758,7 +5821,7 @@
                   "properties": {
                     "version": {
                       "type": "string",
-                      "description": "Catalogue version, derived as the max model updated_at rendered YYYY-MM-DD (UTC)."
+                      "description": "Date of the most recently updated model, formatted as YYYY-MM-DD in UTC."
                     },
                     "models": {
                       "type": "array",
@@ -5871,12 +5934,12 @@
           },
           "current_state": {
             "type": "string",
-            "description": "Present only on 409 conflict responses (RFC 7807 extension). Names the resource state that forbade the requested transition, e.g. `paused` when steering a paused fleet (UZ-AGT-012).",
+            "description": "Resource state that blocked the requested change. Present only on 409 responses.",
             "example": "paused"
           },
           "user_message": {
             "type": "string",
-            "description": "Present only for error codes with a curated dashboard-safe rendering\n(RFC 7807 extension). One plain sentence with no snake_case tokens,\ninternal nouns, or HTTP jargon — safe to render directly to an\nend user, unlike `detail`/`title` which are written for the\nCLI/API-integrator audience and may reference internal state.\nOmitted (not `null`) for every code without a curated override;\nclients should fall back to `detail`/`title` in that case.\n",
+            "description": "Plain message safe to show to a user. Present only when an error defines one.\n\nUse `detail` or `title` when this field is absent.\n",
             "example": "We couldn't find that Fleet. It may have been deleted, or the ID doesn't match one in this workspace."
           }
         }
@@ -5896,11 +5959,11 @@
           },
           "database": {
             "type": "boolean",
-            "description": "True if the PostgreSQL connection pool is reachable and a trivial query succeeds"
+            "description": "True when the database accepts a test query."
           },
           "queue": {
             "type": "boolean",
-            "description": "True if the Redis queue backend is reachable"
+            "description": "True when the event queue is available."
           }
         },
         "additionalProperties": false
@@ -6148,7 +6211,7 @@
           },
           "platform_default_available": {
             "type": "boolean",
-            "description": "Whether an active core.platform_provider_defaults row exists, independent of this tenant's own mode."
+            "description": "True when a shared default model is available."
           },
           "platform_default": {
             "type": "object",
@@ -6426,7 +6489,7 @@
           "triggers": {
             "type": "array",
             "nullable": true,
-            "description": "Projected from config_json `x-agentsfleet.triggers`; null when the row has no triggers entry.",
+            "description": "Configured fleet triggers. Null when no triggers are set.",
             "items": {
               "$ref": "#/components/schemas/FleetTrigger"
             }
@@ -6434,12 +6497,12 @@
           "events_processed": {
             "type": "integer",
             "format": "int64",
-            "description": "Lifetime count of events this fleet has processed (rows in `core.fleet_events`)."
+            "description": "Lifetime count of events processed by this fleet."
           },
           "budget_used_nanos": {
             "type": "integer",
             "format": "int64",
-            "description": "Cumulative credit this fleet has consumed, in nanos (1 nano = 1/1,000,000,000 USD). Sum of its `fleet_execution_telemetry.credit_deducted_nanos`."
+            "description": "Total balance used by this fleet, in nanos."
           }
         }
       },
@@ -6887,7 +6950,7 @@
         }
       },
       "ApprovalAlreadyResolvedResponse": {
-        "description": "RFC 7807 problem+json with structured extension fields carrying the\noriginal outcome and resolver attribution so the dashboard can render\n\"already resolved by X at Y\" without a follow-up GET.\n",
+        "description": "Error response for a request that was already resolved. The response includes the first result, time, and resolver.\n",
         "allOf": [
           {
             "$ref": "#/components/schemas/ErrorBody"
@@ -7014,7 +7077,7 @@
           },
           "admin_state": {
             "type": "string",
-            "description": "Operator intent. `active` admits the runner plane; the others reject it.",
+            "description": "Operator setting. Only `active` accepts runner requests.",
             "enum": [
               "active",
               "cordoned",

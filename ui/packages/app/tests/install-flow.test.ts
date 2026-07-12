@@ -21,7 +21,7 @@ const PLATFORM_ENTRY: InstallSource = {
   source_ref: "platform/github-pr-reviewer",
   requirements: {
     credentials: ["github"],
-    tools: ["github_review_comment"],
+    tools: ["http_request"],
     network_hosts: ["api.github.com"],
     trigger_present: true,
   },
@@ -35,7 +35,7 @@ describe("requirementsOf — normalises the gallery entry", () => {
     expect(r.name).toBe("GitHub PR reviewer");
     expect(r.credentials).toEqual(["github"]);
     expect(r.credentialReasons).toEqual({ github: "review pull requests" });
-    expect(r.tools).toEqual(["github_review_comment"]);
+    expect(r.tools).toEqual(["http_request"]);
     expect(r.networkHosts).toEqual(["api.github.com"]);
     expect(r.triggerPresent).toBe(true);
   });

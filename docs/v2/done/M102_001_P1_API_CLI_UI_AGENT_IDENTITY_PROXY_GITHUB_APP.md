@@ -124,7 +124,7 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 | `ui/packages/app/app/(dashboard)/credentials/components/IntegrationsConnectors.tsx` | CREATE/EDIT | GitHub Connect / connected / **Reconnect**; Slack/Zoho "Planned" |
 | `cli/src/commands/connectors.ts` · `services/connectors.ts` | CREATE/EDIT | `agentsfleet connector` status/list; structured-JSON error on disconnected |
 | _error registry module_ | EDIT | `UZ-GH-*` (reconnect/mint-failed) + `UZ-CRED-*` (unknown-integration) + `hint()` |
-| `docs/architecture/{user_flow,data_flow,capabilities,high_level,README,roadmap,runner_fleet}.md` · `scenarios/gh-pr-reviewer.md` | EDIT | §8 docs sweep — absorb C1–C9 (review companion) |
+| `docs/architecture/{user_flow,data_flow,capabilities,high_level,README,roadmap,runner_fleet}.md` · `scenarios/github-pr-reviewer.md` | EDIT | §8 docs sweep — absorb C1–C9 (review companion) |
 | `docs/v2/reviews/m102-doc-shape-review.md` | CREATE | the adversarial doc-shape review artifact |
 | _colocated tests (Zig `test {}` · `*.test.tsx` · `*.spec.ts`)_ | CREATE/EDIT | one test per Dimension below |
 
@@ -207,7 +207,7 @@ The standing **integration grant** (`core.integration_grants`) gates whether a f
 - **Dimension 7.2** — acting through a disconnected connector → structured-JSON error + non-zero exit + reconnect suggestion → `test_cli_connector_disconnected_error` — ⏭️ **DEFERRED → M102_005 §3**
 
 ### §8 — Docs sweep (absorb C1–C9)
-Update the architecture docs the new model changes, owners before echoes (review companion): `user_flow.md` §8.2–8.5, `data_flow.md` §B/§C, `capabilities.md` §2–3 first; then `README.md` glossary, `high_level.md` §5.1, `scenarios/gh-pr-reviewer.md`, `runner_fleet.md` (one `agt_r` route), `roadmap.md`.
+Update the architecture docs the new model changes, owners before echoes (review companion): `user_flow.md` §8.2–8.5, `data_flow.md` §B/§C, `capabilities.md` §2–3 first; then `README.md` glossary, `high_level.md` §5.1, `scenarios/github-pr-reviewer.md`, `runner_fleet.md` (one `agt_r` route), `roadmap.md`.
 - **Dimension 8.1** — the manual-`gh-api-hooks` registration model is replaced by App-connect; no doc still asserts "user registers the webhook" for the App path → `test_docs_no_manual_gh_hook_for_app` (grep-based) — ⏭️ **DEFERRED → M102_005 §4** (owner docs updated early — commits `2bd6bc2f`/`b8a641e9`; the echo sweep + grep tests carry over)
 - **Dimension 8.2** — the "platform never holds the user's PAT" claim is reworded to distinguish the platform App key → `test_docs_app_key_vs_user_pat` (grep-based) — ⏭️ **DEFERRED → M102_005 §4**
 

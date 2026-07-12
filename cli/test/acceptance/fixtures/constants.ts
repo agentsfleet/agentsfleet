@@ -42,6 +42,8 @@ export const TERMINAL_STATUSES: ReadonlyArray<string> = [
 
 export const PLATFORM_OPS_SAMPLE_DIR = "tests/fixtures/fleetbundle/platform-ops";
 
+export const PLATFORM_OPS_FIXTURE_NAME = "platform-ops-agent";
+
 export const LOGIN_POLL_MS = 500;
 
 export const LOGIN_TIMEOUT_SEC = 60;

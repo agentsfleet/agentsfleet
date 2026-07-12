@@ -1,12 +1,10 @@
 /v1/tenants/me/provider:
   get:
     operationId: get_tenant_provider
-    summary: Read tenant LLM provider configuration
+    summary: Read tenant model provider settings
     description: >
-      Returns the tenant's persisted provider config — mode, provider name,
-      model, context cap, and (under self-managed) the user-named credential_ref.
-      The api_key is never serialised. Tenants with no row receive a
-      synthesised platform default.
+      Returns the tenant's provider mode, provider name, model, context limit,
+      and credential reference. Secret values are never returned.
     tags:
     - Tenant
     responses:
@@ -20,17 +18,12 @@
         $ref: ../components/responses.yaml#/components/responses/Error
   put:
     operationId: put_tenant_provider
-    summary: Set tenant LLM provider posture
+    summary: Set tenant model provider
     description: >
-      Eager-validates and UPSERTs the tenant_model_selection row. Validation
-      order: body shape → credential_ref required (mode=self_managed) →
-      credential_not_found → credential_data_malformed →
-      model_not_in_caps_catalogue → UPSERT. Stored `provider` is read
-      from the credential JSON; effective `model` is the body override
-      (when present) else the credential's stored model. A self_managed
-      activation also registers the matching model entry (see
-      /v1/tenants/me/models) when none exists — idempotent on repeat, so
-      an activation is always visible as a registry row.
+      Sets the provider mode and model. Self-managed mode requires a
+      `credential_ref` that names an existing secret.
+
+      If the model entry does not exist, this request creates it.
     tags:
     - Tenant
     requestBody:

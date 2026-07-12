@@ -12,6 +12,8 @@
 import { describe, it, beforeAll, afterAll } from "bun:test";
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
+import { createServer } from "node:http";
+import type { Socket } from "node:net";
 import path from "node:path";
 import url from "node:url";
 
@@ -31,6 +33,47 @@ const HERE = path.dirname(url.fileURLToPath(import.meta.url));
 const CLI_ROOT = path.resolve(HERE, "..", "..");
 
 const ANSI_RE = /\x1b\[[0-9;]*m/g;
+const TELEMETRY_NOT_DISABLED = "0";
+const TELEMETRY_EXIT_BUDGET_MS = 5_000;
+
+interface StalledServer {
+  readonly url: string;
+  close(): Promise<void>;
+}
+
+async function startStalledServer(): Promise<StalledServer> {
+  const sockets = new Set<Socket>();
+  const server = createServer(() => {
+    // Keep the response open so the client request timeout must end the flush.
+  });
+  server.on("connection", (socket) => {
+    sockets.add(socket);
+    socket.once("close", () => sockets.delete(socket));
+  });
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolve);
+  });
+  const address = server.address();
+  if (address === null || typeof address === "string") {
+    for (const socket of sockets) socket.destroy();
+    throw new Error("stalled telemetry server did not open a TCP port");
+  }
+  return {
+    url: `http://127.0.0.1:${address.port}`,
+    close: () =>
+      new Promise<void>((resolve, reject) => {
+        for (const socket of sockets) socket.destroy();
+        server.close((error) => {
+          if (error) {
+            reject(error);
+            return;
+          }
+          resolve();
+        });
+      }),
+  };
+}
 
 function stripAnsi(text: string): string {
   return text.replace(ANSI_RE, "").replace(/\s+$/gm, "");
@@ -212,6 +255,24 @@ describe("help DX surfaces (real binary)", () => {
     }
     // Env vars are documented externally; help carries a one-line pointer.
     assert.match(out, /Environment variables: https:\/\/docs\.agentsfleet\.net\/cli\/configuration/);
+  });
+
+  it("--help exits cleanly when telemetry accepts but never responds", async () => {
+    const stalled = await startStalledServer();
+    try {
+      const result = await runFleetctl(["--help"], {
+        env: emptyEnv({
+          AGENTSFLEET_TELEMETRY_DISABLED: TELEMETRY_NOT_DISABLED,
+          AGENTSFLEET_TELEMETRY_POSTHOG_HOST: stalled.url,
+        }),
+        timeoutMs: TELEMETRY_EXIT_BUDGET_MS,
+      });
+      assert.equal(result.code, 0, `stderr=${result.stderr}`);
+      assert.equal(result.stderr, "");
+      assert.ok(result.durationMs < TELEMETRY_EXIT_BUDGET_MS);
+    } finally {
+      await stalled.close();
+    }
   });
 
   it("--help stays within 80 columns through the real binary", async () => {

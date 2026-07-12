@@ -1,8 +1,7 @@
 // Loads SKILL.md / TRIGGER.md fixtures from tests/fixtures/fleetbundle/{skill,trigger}/
 // at test time and asserts the expected parser outcome for each. The
-// fixtures are user-facing canonical examples (positive + negative); this
-// test pins their behavior to the parser so authoring-doc + parser stay
-// aligned.
+// fixtures are parser inputs (positive + negative); this test pins their
+// behavior to the parser so bundle authoring and parsing stay aligned.
 //
 // Tests run from the repo root (zig build sets cwd), so paths are relative
 // to the project root.
@@ -13,6 +12,22 @@ const config = @import("config.zig");
 const BYTES_PER_KIB = 1024;
 
 const FIXTURES_BASE = "tests/fixtures/fleetbundle";
+const PLATFORM_OPS_FIXTURE_NAME = "platform-ops-agent";
+const PLATFORM_OPS_SKILL_PATH = "platform-ops/SKILL.md";
+const PLATFORM_OPS_TRIGGER_PATH = "platform-ops/TRIGGER.md";
+const MODEL_PLACEHOLDER = "{{model}}";
+const MODEL_VALUE = "accounts/fireworks/models/kimi-k2.6";
+const CONTEXT_CAP_PLACEHOLDER = "{{context_cap_tokens}}";
+const CONTEXT_CAP_VALUE = "256000";
+const FirstPartyFixture = struct {
+    name: []const u8,
+    directory: []const u8,
+};
+const FIRST_PARTY_FIXTURES = [_]FirstPartyFixture{
+    .{ .name = "github-pr-reviewer", .directory = "github-pr-reviewer" },
+    .{ .name = "security-reviewer", .directory = "security-reviewer" },
+    .{ .name = "zoho-sprint-daily-summarizer", .directory = "zoho-sprint-daily-summarizer" },
+};
 
 fn loadFixture(alloc: std.mem.Allocator, rel_path: []const u8) ![]u8 {
     const path = try std.fs.path.join(alloc, &.{ FIXTURES_BASE, rel_path });
@@ -134,18 +149,54 @@ test "fixture skill/name_mismatch — both files parse but identities disagree" 
     try std.testing.expect(!std.mem.eql(u8, meta.name, cfg.name));
 }
 
-test "shipped sample tests/fixtures/fleetbundle/platform-ops SKILL.md frontmatter validates" {
-    // Note: the trigger side of platform-ops uses `type: chat` and tools
-    // (`http_request`, `memory_*`, `cron_*`) that the registry in
-    // config_helpers.zig does not yet recognize. That is a pre-existing
-    // drift between the shipped sample and the parser's known-types/
-    // known-tools lists — surfaced here, fixed in a follow-up spec.
-    // For M46 we only assert the SKILL.md side validates, which is the
-    // half this milestone added.
+test "platform operations acceptance fixture parses as one matching fleet" {
     const alloc = std.testing.allocator;
-    const skill_md = try std.Io.Dir.cwd().readFileAlloc(common.globalIo(), "tests/fixtures/fleetbundle/platform-ops/SKILL.md", alloc, .limited(64 * 1024));
+    const skill_md = try loadFixture(alloc, PLATFORM_OPS_SKILL_PATH);
     defer alloc.free(skill_md);
+    const trigger_template = try loadFixture(alloc, PLATFORM_OPS_TRIGGER_PATH);
+    defer alloc.free(trigger_template);
+    const trigger_with_model = try std.mem.replaceOwned(u8, alloc, trigger_template, MODEL_PLACEHOLDER, MODEL_VALUE);
+    defer alloc.free(trigger_with_model);
+    const trigger_md = try std.mem.replaceOwned(u8, alloc, trigger_with_model, CONTEXT_CAP_PLACEHOLDER, CONTEXT_CAP_VALUE);
+    defer alloc.free(trigger_md);
+
     var meta = try config.parseSkillMetadata(alloc, skill_md);
     defer meta.deinit(alloc);
-    try std.testing.expectEqualStrings("platform-ops-agent", meta.name);
+    var parsed = try config.parseTriggerMarkdownWithJson(alloc, trigger_md);
+    defer parsed.deinit(alloc);
+
+    try std.testing.expectEqualStrings(PLATFORM_OPS_FIXTURE_NAME, meta.name);
+    try std.testing.expectEqualStrings(meta.name, parsed.config.name);
+    try std.testing.expectEqualStrings(MODEL_VALUE, parsed.config.model.?);
+    try std.testing.expectEqual(@as(u32, 256000), parsed.config.context.?.context_cap_tokens); // pin test: literal is the expected parsed value
+}
+
+test "first-party library fixtures use the supported HTTP request tool" {
+    const alloc = std.testing.allocator;
+    for (FIRST_PARTY_FIXTURES) |fixture| {
+        const skill_path = try std.fmt.allocPrint(alloc, "{s}/SKILL.md", .{fixture.directory});
+        defer alloc.free(skill_path);
+        const trigger_path = try std.fmt.allocPrint(alloc, "{s}/TRIGGER.md", .{fixture.directory});
+        defer alloc.free(trigger_path);
+        const skill_md = try loadFixture(alloc, skill_path);
+        defer alloc.free(skill_md);
+        const trigger_md = try loadFixture(alloc, trigger_path);
+        defer alloc.free(trigger_md);
+
+        var meta = config.parseSkillMetadata(alloc, skill_md) catch |err| {
+            std.debug.print("first-party SKILL fixture failed: {s}: {s}\n", .{ fixture.name, @errorName(err) });
+            return err;
+        };
+        defer meta.deinit(alloc);
+        var parsed = config.parseTriggerMarkdownWithJson(alloc, trigger_md) catch |err| {
+            std.debug.print("first-party TRIGGER fixture failed: {s}: {s}\n", .{ fixture.name, @errorName(err) });
+            return err;
+        };
+        defer parsed.deinit(alloc);
+
+        try std.testing.expectEqualStrings(fixture.name, meta.name);
+        try std.testing.expectEqualStrings(meta.name, parsed.config.name);
+        try std.testing.expectEqual(@as(usize, 1), parsed.config.tools.len);
+        try std.testing.expectEqualStrings("http_request", parsed.config.tools[0]);
+    }
 }

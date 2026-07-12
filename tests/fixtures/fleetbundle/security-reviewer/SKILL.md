@@ -14,7 +14,7 @@ security findings as review comments.
 ## Steps
 1. Read the pull request diff.
 2. Check it against `checklists/owasp.md` (a bundled support file).
-3. Post one review comment per finding via `github_review_comment`, with severity.
+3. Post one review comment per finding with `http_request` and include the severity.
 
 ## Constraints
 - Comment only — never push, merge, approve, or close.
