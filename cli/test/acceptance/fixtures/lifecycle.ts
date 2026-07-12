@@ -31,10 +31,8 @@ export const resumeFleet = (env: Env, id: string): Promise<unknown> => lifecycle
 export const killFleet = (env: Env, id: string): Promise<unknown> => lifecycleAction("kill", id, env);
 
 export async function getStatus(env: Env, fleetId: string): Promise<FleetRow> {
-  // `agentsfleet status` ignores positional args and lists all fleets in the
-  // current workspace (server returns `{items: [...], total}`). Filter
-  // client-side. Surface in Discovery: the CLI lacks a per-fleet GET-by-id
-  // command — adding one belongs in a follow-on CLI hygiene PR.
+  // `agentsfleet list --json` returns every fleet in the current workspace.
+  // Filter client-side because `agentsfleet status` is workspace-wide.
   const result = await runFleetctl(["list", "--json"], { env });
   if (result.code !== 0) {
     throw new Error(`list (for status of ${fleetId}) exited ${result.code}: ${result.stderr.trim()}`);

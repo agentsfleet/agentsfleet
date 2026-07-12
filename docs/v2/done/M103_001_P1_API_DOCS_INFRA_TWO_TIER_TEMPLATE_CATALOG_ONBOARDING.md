@@ -111,7 +111,7 @@ This spec uses Cloudflare R2 object storage (R2), Pull Request (PR), Command-Lin
 | File | Action | Why |
 |------|--------|-----|
 | `docs/v2/pending/M103_001_*.md` (CREATE) · `docs/v2/done/M96_001_*.md` (MOVE) | — | This spec; retire superseded R2-canonical spec as DEFERRED. |
-| `docs/architecture/{fleet_bundles,data_flow}.md`, `scenarios/gh-pr-reviewer.md` | EDIT | R2-canonical + two-tier model; onboard-vs-install storage roles; admin-onboard-vs-user-install, no resync. |
+| `docs/architecture/{fleet_bundles,data_flow}.md`, `scenarios/github-pr-reviewer.md` | EDIT | R2-canonical + two-tier model; onboard-vs-install storage roles; admin-onboard-vs-user-install, no resync. |
 | `schema/029_core_tenant_fleet_bundle_templates.sql` | CREATE | Tenant tier: workspace-scoped, runtime-mutable, content-hash + manifest; `description` column for gallery parity (Dimension 5.4). |
 | `schema/027_core_fleet_bundles.sql` | EDIT | Full support-file content → manifest metadata. |
 | `schema/028_fleet_bundle_templates.sql` | EDIT | Content-hash + manifest columns; grant `api_runtime` INSERT/UPDATE (consistent with `core.fleet_bundles`); writes gated in-handler by the `platform-template:write` scope. |

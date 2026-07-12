@@ -201,7 +201,7 @@ components:
             $ref: '#/components/schemas/TenantModelEntry'
         platform_default_available:
           type: boolean
-          description: Whether an active core.platform_provider_defaults row exists, independent of this tenant's own mode.
+          description: True when a shared default model is available.
         platform_default:
           type: object
           description: >

@@ -2,7 +2,7 @@ openapi: 3.1.0
 info:
   title: agentsfleet Control Plane API
   version: 1.0.0
-  description: Fleet automation control plane — webhook-driven fleet execution in a bwrap+landlock sandbox.
+  description: API for managing workspaces, fleets, triggers, and runs.
   contact:
     name: agentsfleet
     url: https://agentsfleet.net
@@ -17,81 +17,79 @@ tags:
   x-mintlify:
     navigation: Health
 - name: Authentication
-  description: CLI login flow via device-code style sessions and GitHub OAuth
+  description: Command Line Interface (CLI) sign-in sessions and GitHub sign-in
   x-mintlify:
     navigation: Authentication
 - name: Workspaces
-  description: Create and manage workspaces (one workspace per repo)
+  description: Create and manage workspaces
   x-mintlify:
     navigation: Workspaces
 - name: Tenant
-  description: Tenant-scoped surfaces — provider posture and tenant-level configuration
+  description: Manage tenant provider settings and models
   x-mintlify:
     navigation: Tenant
 - name: auth-identity-events
-  description: Internal auth-plane identity-lifecycle events (Clerk `user.created`, future identity-provider hooks). Not for customer fleets.
+  description: Process signed account events from Clerk. This route is not for customer fleets.
   x-mintlify:
     navigation: Auth Identity Events
 - name: Fleets
-  description: Fleet management and webhook ingestion — create, configure, and operate event-driven fleets
+  description: Create, configure, and run fleets
   x-mintlify:
     navigation: Fleets
 - name: Memory
-  description: Persistent Fleet memory — list and search key-value entries scoped to a Fleet (read-only; entries are written by the runner plane, not this API)
+  description: Read and search saved fleet memory
   x-mintlify:
     navigation: Memory
 - name: Secrets
-  description: Workspace secret vault — self-managed (Bring Your Own Key) LLM provider keys and arbitrary named secrets a Fleet interpolates as `${secrets.<name>.<field>}`
+  description: Manage named secrets for fleets in a workspace
   x-mintlify:
     navigation: Secrets
 - name: Admin
-  description: Platform-wide configuration — manage shared LLM provider keys and the priced model catalogue
+  description: Manage shared provider keys and models
   x-mintlify:
     navigation: Admin
 - name: Billing
-  description: Plan upgrades and billing events
+  description: Read tenant balances and charge records
   x-mintlify:
     navigation: Billing
 - name: Integration Grants
-  description: Fleet runtime permission grants for third-party services (Slack, GitHub, etc.)
+  description: Manage fleet access to third-party services
   x-mintlify:
     navigation: Integration Grants
 - name: Connectors
-  description: Workspace connectors — auth + credential plumbing for third-party providers. One generic `{provider}` route
-    set serves every provider in the deployment's connector registry; unknown providers are 404.
+  description: Connect workspaces to third-party providers
   x-mintlify:
     navigation: Connectors
 - name: Fleet Keys
-  description: Per-Fleet API keys for LangGraph/CrewAI/Composio Fleets to call the execute endpoint. Workspace-scoped.
+  description: Manage keys that let external clients call a fleet
   x-mintlify:
     navigation: Fleet Keys
 - name: API Keys
-  description: Tenant-level admin API keys (`agt_t` prefix). Rotatable, self-service, replace the legacy `API_KEY` env var
-    for admin auth.
+  description: Manage tenant admin API keys
   x-mintlify:
     navigation: API Keys
 - name: Webhooks
-  description: Approval-gate webhooks invoked by humans to unblock a paused fleet
+  description: Receive signed events and approval decisions
   x-mintlify:
     navigation: Webhooks
 - name: Approvals
-  description: Approval-gate inbox — list, inspect, and resolve pending gates from the dashboard or programmatically.
+  description: List, inspect, and resolve pending approvals
   x-mintlify:
     navigation: Approvals
 - name: Fleet
-  description: Runner fleet operator plane — enroll, list, and administer sandbox runners. Operator/admin-scoped.
+  description: Enroll and manage runners
   x-mintlify:
     navigation: Fleet
 - name: Fleet Bundles
-  description: Workspace-scoped fleet source bundles imported from templates, uploads, or GitHub.
+  description: Manage fleet source bundles in a workspace
   x-mintlify:
     navigation: Fleet Bundles
 - name: Fleet library
-  description: Two-tier Fleet library catalog — platform-wide and tenant-scoped onboarding from a GitHub source, stored once in object storage by content hash.
+  description: Browse and add reusable fleet sources
   x-mintlify:
     navigation: Fleet library
 - name: Model Library
-  description: The model library catalogue — bearer-authed read of the priced models and their per-token rates.
+  description: List models available to the tenant
   x-mintlify:
     navigation: Model Library
 paths:

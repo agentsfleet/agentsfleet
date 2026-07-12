@@ -85,7 +85,7 @@ The manual `/v1/webhooks/{fleet_id}/github` route remains available for an opera
 A runner leases the event (one active lease per fleet). The lease carries `instructions` (the fleet's stored `SKILL.md`, resolved fresh from `core.fleets`), the raw PR payload as the event, and `bundle:{content_hash}`. The runner pulls the support tar from R2 into the sandbox, then NullClaw runs the SKILL.md prose against the payload:
 
 - `http_request GET api.github.com/repos/{owner}/{repo}/pulls/{n}/files` with `Authorization: Bearer ${secrets.github.token}` (substituted at the tool bridge inside the sandbox).
-- forms findings, then `http_request POST …/pulls/{n}/reviews` with the comments. ✅ Comment posting rides the generic `http_request` tool — there is no native `github_review_comment` tool, by design (the integration is the bundle, not Zig).
+- forms findings, then `http_request POST …/pulls/{n}/reviews` with the comments. ✅ The bundle uses the generic `http_request` tool. Zig has no GitHub-specific review tool.
 
 The gate + billing path is identical to every other event — see [`../billing_and_provider_keys.md`](../billing_and_provider_keys.md) for the credit-pool deductions and the gate.
 

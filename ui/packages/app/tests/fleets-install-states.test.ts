@@ -45,7 +45,7 @@ const TEMPLATE_GH: FleetLibraryGalleryEntry = {
   source_ref: "platform/github-pr-reviewer",
   requirements: {
     credentials: ["github"],
-    tools: ["github_review_comment"],
+    tools: ["http_request"],
     network_hosts: ["api.github.com"],
     trigger_present: true,
   },

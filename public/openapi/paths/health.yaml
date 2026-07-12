@@ -51,8 +51,7 @@
   get:
     operationId: readyz
     summary: Readiness probe
-    description: Kubernetes-style readiness probe. Returns 200 when both the database and the Redis queue are reachable; returns
-      503 fail-closed if either dependency is degraded.
+    description: Returns 200 when the database and event queue are available. Returns 503 when either dependency is unavailable.
     tags:
     - Health
     security: []

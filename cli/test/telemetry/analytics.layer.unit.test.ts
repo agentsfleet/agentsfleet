@@ -1,86 +1,5 @@
-// analyticsLayer + analyticsInternals coverage. No Supabase counterpart
-// — agentsfleet's analytics layer wraps posthog-node directly. Mocks the
-// PostHog constructor via bun:test mock.module so capture / identify /
-// alias / groupIdentify / shutdown are observed in-process without
-// touching the network.
-
-import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import pathMod from "node:path";
-
-interface CapturedEvent {
-  event: string;
-  distinctId: string;
-  properties?: Record<string, unknown>;
-  groups?: Record<string, string>;
-}
-
-interface PostHogStub {
-  capture: ReturnType<typeof mock>;
-  identify: ReturnType<typeof mock>;
-  alias: ReturnType<typeof mock>;
-  groupIdentify: ReturnType<typeof mock>;
-  shutdown: ReturnType<typeof mock>;
-  captured: CapturedEvent[];
-  identified: Array<{ distinctId: string; properties?: Record<string, unknown> }>;
-  aliased: Array<{ distinctId: string; alias: string }>;
-  groupIdentified: Array<{
-    groupType: string;
-    groupKey: string;
-    distinctId: string;
-    properties?: Record<string, unknown>;
-  }>;
-  shutdownCalls: number;
-}
-
-const STUB: PostHogStub = {
-  captured: [],
-  identified: [],
-  aliased: [],
-  groupIdentified: [],
-  shutdownCalls: 0,
-  capture: mock(() => undefined),
-  identify: mock(() => undefined),
-  alias: mock(() => undefined),
-  groupIdentify: mock(() => undefined),
-  shutdown: mock(async () => undefined),
-};
-
-mock.module("posthog-node", () => ({
-  PostHog: class PostHogStubClass {
-      constructor(_key: string, _opts: Record<string, unknown>) {}
-      capture(evt: CapturedEvent): void {
-        STUB.captured.push(evt);
-        STUB.capture(evt);
-      }
-      identify(payload: { distinctId: string; properties?: Record<string, unknown> }): void {
-        STUB.identified.push(payload);
-        STUB.identify(payload);
-      }
-      alias(payload: { distinctId: string; alias: string }): void {
-        STUB.aliased.push(payload);
-        STUB.alias(payload);
-      }
-      groupIdentify(payload: {
-        groupType: string;
-        groupKey: string;
-        distinctId: string;
-        properties?: Record<string, unknown>;
-      }): void {
-        STUB.groupIdentified.push(payload);
-        STUB.groupIdentify(payload);
-      }
-      async shutdown(): Promise<void> {
-        STUB.shutdownCalls += 1;
-        await STUB.shutdown();
-      }
-      async _shutdown(_timeoutMs?: number): Promise<void> {
-        STUB.shutdownCalls += 1;
-        await STUB.shutdown();
-      }
-    },
-}));
+import { describe, expect, it } from "bun:test";
+import { STUB } from "./analytics.layer.fixture.ts";
 
 // Imports happen AFTER the mock.module call above resolves.
 const { analyticsLayer } = await import("../../src/services/telemetry/analytics.layer.ts");
@@ -91,87 +10,7 @@ const { withAnalyticsContext } = await import(
 const { cliConfigLayer } = await import("../../src/services/config.ts");
 const { Effect, Layer } = await import("effect");
 
-const ENV_KEYS = [
-  "AGENTSFLEET_TELEMETRY_POSTHOG_KEY",
-  "AGENTSFLEET_TELEMETRY_POSTHOG_HOST",
-  "AGENTSFLEET_STATE_DIR",
-  "AGENTSFLEET_TELEMETRY_DISABLED",
-  "DO_NOT_TRACK",
-  "AGENTSFLEET_TELEMETRY_DEBUG",
-  "CI",
-  "GITHUB_ACTIONS",
-  "GITLAB_CI",
-  "CIRCLECI",
-  "JENKINS_URL",
-  "BUILDKITE",
-  "AI_AGENT",
-  "CODEX_SANDBOX",
-  "CODEX_CI",
-  "CODEX_THREAD_ID",
-  "CURSOR_TRACE_ID",
-  "CURSOR_AGENT",
-  "CURSOR_EXTENSION_HOST_ROLE",
-  "GEMINI_CLI",
-  "ANTIGRAVITY_AGENT",
-  "AUGMENT_AGENT",
-  "OPENCODE_CLIENT",
-  "CLAUDECODE",
-  "CLAUDE_CODE",
-  "CLAUDE_CODE_IS_COWORK",
-  "REPL_ID",
-  "COPILOT_MODEL",
-  "COPILOT_ALLOW_ALL",
-  "COPILOT_GITHUB_TOKEN",
-] as const;
-const STDOUT_IS_TTY_PROPERTY = "isTTY";
-const saved: Record<string, string | undefined> = {};
-let tmpDir: string | undefined;
-
-function forceStdoutIsTty(value: boolean): () => void {
-  const original = process.stdout.isTTY;
-  Object.defineProperty(process.stdout, STDOUT_IS_TTY_PROPERTY, {
-    configurable: true,
-    value,
-  });
-  return () => {
-    if (original === undefined) {
-      Reflect.deleteProperty(process.stdout, STDOUT_IS_TTY_PROPERTY);
-      return;
-    }
-    Object.defineProperty(process.stdout, STDOUT_IS_TTY_PROPERTY, {
-      configurable: true,
-      value: original,
-    });
-  };
-}
-
-beforeEach(() => {
-  for (const k of ENV_KEYS) saved[k] = process.env[k];
-  for (const k of ENV_KEYS) delete process.env[k];
-  STUB.captured.length = 0;
-  STUB.identified.length = 0;
-  STUB.aliased.length = 0;
-  STUB.groupIdentified.length = 0;
-  STUB.shutdownCalls = 0;
-  tmpDir = mkdtempSync(pathMod.join(tmpdir(), "agentsfleet-analytics-test-"));
-  process.env.AGENTSFLEET_STATE_DIR = tmpDir;
-});
-
-afterEach(() => {
-  if (tmpDir !== undefined) rmSync(tmpDir, { recursive: true, force: true });
-  tmpDir = undefined;
-  for (const k of ENV_KEYS) {
-    if (saved[k] === undefined) delete process.env[k];
-    else process.env[k] = saved[k];
-  }
-});
-
-// Default is opt-IN now (matches supabase). grantConsent is a no-op
-// kept for test-readability — every emit path runs under the default
-// granted state unless a test explicitly opts out via denyConsent().
-function grantConsent(): void {
-  // intentionally empty — default state is granted
-}
+const EXPECTED_REQUEST_TIMEOUT_MS = 1_000;
 
 function denyConsentViaKillSwitch(): void {
   process.env.AGENTSFLEET_TELEMETRY_DISABLED = "1";
@@ -187,13 +26,22 @@ function getAnalytics() {
   }).pipe(Effect.provide(Layer.provide(analyticsLayer, cliConfigLayer)));
 }
 
-function writeTelemetryJson(body: Record<string, unknown>): void {
-  // tmpDir is reset in beforeEach. mkdtempSync already created the dir.
-  const fs = require("node:fs") as typeof import("node:fs");
-  fs.writeFileSync(pathMod.join(tmpDir!, "telemetry.json"), JSON.stringify(body));
-}
-
 describe("analyticsLayer", () => {
+  it("uses bounded delivery settings", async () => {
+    const program = Effect.scoped(
+      Effect.gen(function* () {
+        yield* getAnalytics();
+      }),
+    );
+    await Effect.runPromise(program);
+    expect(STUB.options).toMatchObject({
+      fetchRetryCount: 0,
+      flushAt: 100,
+      flushInterval: 0,
+      requestTimeout: EXPECTED_REQUEST_TIMEOUT_MS,
+    });
+  });
+
   it("emits when env is clean (default consent=granted, supabase parity)", async () => {
     const program = Effect.scoped(
       Effect.gen(function* () {
@@ -238,7 +86,6 @@ describe("analyticsLayer", () => {
   });
 
   it("capture merges base properties + AnalyticsContext + per-call properties", async () => {
-    grantConsent();
     const program = Effect.scoped(
       Effect.gen(function* () {
         const svc = yield* getAnalytics();
@@ -274,19 +121,22 @@ describe("analyticsLayer", () => {
   });
 
   it("capture records the non-interactive fallback when no agent is detected", async () => {
-    grantConsent();
-    const program = Effect.scoped(
-      Effect.gen(function* () {
-        const svc = yield* getAnalytics();
-        yield* svc.capture("evt");
-      }),
-    );
-    await Effect.runPromise(program);
-    expect(STUB.captured[0]?.properties?.ai_tool).toBe("unknown_non_interactive");
+    const restoreStdout = STUB.forceStdoutIsTty(false);
+    try {
+      const program = Effect.scoped(
+        Effect.gen(function* () {
+          const svc = yield* getAnalytics();
+          yield* svc.capture("evt");
+        }),
+      );
+      await Effect.runPromise(program);
+      expect(STUB.captured[0]?.properties?.ai_tool).toBe("unknown_non_interactive");
+    } finally {
+      restoreStdout();
+    }
   });
 
   it("capture records the continuous-integration fallback when no agent is detected", async () => {
-    grantConsent();
     process.env.CI = "1";
     const program = Effect.scoped(
       Effect.gen(function* () {
@@ -299,8 +149,7 @@ describe("analyticsLayer", () => {
   });
 
   it("capture omits ai_tool for an interactive terminal when no agent is detected", async () => {
-    grantConsent();
-    const restoreStdout = forceStdoutIsTty(true);
+    const restoreStdout = STUB.forceStdoutIsTty(true);
     try {
       const program = Effect.scoped(
         Effect.gen(function* () {
@@ -316,7 +165,6 @@ describe("analyticsLayer", () => {
   });
 
   it("capture without context defaults distinctId to runtime deviceId", async () => {
-    grantConsent();
     const program = Effect.scoped(
       Effect.gen(function* () {
         const svc = yield* getAnalytics();
@@ -331,8 +179,7 @@ describe("analyticsLayer", () => {
   });
 
   it("capture uses runtime distinctId (from telemetry.json) when set", async () => {
-    grantConsent();
-    writeTelemetryJson({
+    STUB.writeTelemetryJson({
       consent: "granted",
       device_id: "ignored",
       session_id: "ignored",
@@ -350,8 +197,7 @@ describe("analyticsLayer", () => {
   });
 
   it("capture uses context.distinct_id with highest precedence", async () => {
-    grantConsent();
-    writeTelemetryJson({
+    STUB.writeTelemetryJson({
       consent: "granted",
       device_id: "ignored",
       session_id: "ignored",
@@ -369,7 +215,6 @@ describe("analyticsLayer", () => {
   });
 
   it("identify passes through with cli_version / os / arch + extras", async () => {
-    grantConsent();
     const program = Effect.scoped(
       Effect.gen(function* () {
         const svc = yield* getAnalytics();
@@ -387,7 +232,6 @@ describe("analyticsLayer", () => {
   });
 
   it("identify with no extra properties only emits cli_version / os / arch", async () => {
-    grantConsent();
     const program = Effect.scoped(
       Effect.gen(function* () {
         const svc = yield* getAnalytics();
@@ -403,7 +247,6 @@ describe("analyticsLayer", () => {
   });
 
   it("alias passes through unchanged", async () => {
-    grantConsent();
     const program = Effect.scoped(
       Effect.gen(function* () {
         const svc = yield* getAnalytics();
@@ -415,7 +258,6 @@ describe("analyticsLayer", () => {
   });
 
   it("groupIdentify uses context.distinct_id when present", async () => {
-    grantConsent();
     const program = Effect.scoped(
       Effect.gen(function* () {
         const svc = yield* getAnalytics();
@@ -434,7 +276,6 @@ describe("analyticsLayer", () => {
   });
 
   it("groupIdentify falls back to runtime deviceId when context lacks distinct_id", async () => {
-    grantConsent();
     const program = Effect.scoped(
       Effect.gen(function* () {
         const svc = yield* getAnalytics();
@@ -446,15 +287,27 @@ describe("analyticsLayer", () => {
     expect(STUB.groupIdentified[0]?.distinctId.length).toBeGreaterThan(0);
   });
 
-  it("invokes shutdown via Effect.addFinalizer when the scope closes", async () => {
-    grantConsent();
+  it("flushes without invoking the client shutdown logger when the scope closes", async () => {
     const program = Effect.scoped(
       Effect.gen(function* () {
         yield* getAnalytics();
       }),
     );
     await Effect.runPromise(program);
-    expect(STUB.shutdownCalls).toBe(1);
+    expect(STUB.flushCalls).toBe(1);
+    expect(STUB.shutdownCalls).toBe(0);
+  });
+
+  it("ignores a flush failure when the scope closes", async () => {
+    STUB.flushError = new Error("unreachable telemetry host");
+    const program = Effect.scoped(
+      Effect.gen(function* () {
+        yield* getAnalytics();
+      }),
+    );
+    await Effect.runPromise(program);
+    expect(STUB.flushCalls).toBe(1);
+    expect(STUB.shutdownCalls).toBe(0);
   });
 
 });

@@ -1,12 +1,12 @@
-// POST /v1/webhooks/{fleet_id}/github — GitHub Actions webhook ingest.
+// POST /v1/webhooks/{fleet_id}/github — signed GitHub webhook ingest.
 //
 // Auth: HMAC-SHA256 over the raw body (X-Hub-Signature-256), verified by the
-//       webhook_sig middleware against the workspace's `fleet:github`
+//       webhook_sig middleware against the workspace's `github`
 //       credential. This handler runs only after the signature is valid.
 //
 // Body cap: 1 MiB (UZ-WH-030 before any other work).
-// Filter: only `workflow_run` events with `action=completed` and
-//         `conclusion=failure` are XADDed; everything else returns 200 OK
+// Filter: reviewable `pull_request` events and failed completed
+//         `workflow_run` events are added; everything else returns 200 OK
 //         with a `{"ignored":"<reason>"}` body so the diagnostic survives
 //         CDN / HTTP/2 proxy paths (RFC 9110 §6.4.5 forbids 204+body).
 // Idempotency: `webhook:dedup:{fleet_id}:gh:{X-GitHub-Delivery}` (72 h TTL,
@@ -33,7 +33,7 @@ const fleet_config = @import("../../../fleet_runtime/config.zig");
 const telemetry_mod = @import("../../../observability/telemetry.zig");
 const metrics_counters = @import("../../../observability/metrics_counters.zig");
 const EventEnvelope = @import("contract").event_envelope;
-const normalizer = @import("../../../fleet_runtime/webhook/normalizer/github.zig");
+const normalizer = @import("../../../fleet_runtime/webhook/normalizer/github_app.zig");
 const filter = @import("github_filter.zig");
 const BYTES_PER_KIB = 1024;
 
@@ -82,7 +82,7 @@ pub fn innerInvokeGithubWebhook(hx: Hx, req: *httpz.Request, fleet_id: []const u
         return;
     };
 
-    if (!std.mem.eql(u8, event, filter.EVENT_WORKFLOW_RUN)) {
+    if (!filter.isSupportedEvent(event)) {
         // 200 OK + diagnostic body (not 204) so the `ignored` reason survives
         // CDNs / HTTP/2 proxies that may strip or reject 204+body per
         // RFC 9110 §6.4.5. GitHub's webhook delivery dashboard renders this
@@ -142,7 +142,7 @@ pub fn innerInvokeGithubWebhook(hx: Hx, req: *httpz.Request, fleet_id: []const u
         .object => |o| o,
         else => null,
     };
-    const decision = if (root) |r| filter.filterParsedRoot(r) else null;
+    const decision = if (root) |r| filter.filterParsedRoot(event, r) else null;
     if (decision == null) {
         log.warn("malformed_payload", .{
             .error_code = ec.ERR_WEBHOOK_MALFORMED,
@@ -171,7 +171,7 @@ pub fn innerInvokeGithubWebhook(hx: Hx, req: *httpz.Request, fleet_id: []const u
     };
     if (!claimDedupSlot(hx, fleet_id, delivery, dedup_key)) return;
 
-    const request_json = normalizer.normalizeFromValue(hx.alloc, root.?, clock.nowSeconds()) catch |err| {
+    const normalized = normalizer.normalizeFromValue(hx.alloc, event, root.?, clock.nowSeconds()) catch |err| {
         // Normalize failure must not burn the slot: GitHub's redelivery of a
         // (possibly fixed) payload for this delivery UUID stays deliverable.
         releaseDedupSlot(hx, fleet_id, dedup_key);
@@ -183,6 +183,14 @@ pub fn innerInvokeGithubWebhook(hx: Hx, req: *httpz.Request, fleet_id: []const u
         });
         hx.fail(ec.ERR_WEBHOOK_MALFORMED, ec.MSG_MALFORMED_JSON);
         return;
+    };
+    const request_json = switch (normalized) {
+        .accepted => |json| json,
+        .ignored => |reason| {
+            releaseDedupSlot(hx, fleet_id, dedup_key);
+            hx.ok(.ok, .{ .ignored = reason });
+            return;
+        },
     };
     defer hx.alloc.free(request_json);
 

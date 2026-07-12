@@ -1,16 +1,15 @@
-// GitHub webhook ingest filter — decides whether a parsed `workflow_run`
-// payload should be XADDed to the agent's event stream. Pure functions
+// GitHub webhook ingest filter — decides whether a parsed event payload
+// should be added to the fleet's event stream. Pure functions
 // over `std.json.Value`; no I/O, no logging, no allocations beyond what
 // the caller already owns.
 //
-// Filter contract: only `workflow_run` events with `action=completed` and
-// `conclusion=failure` and a `repository` object are ingested. Everything
-// else returns a `FilterDecision` with `ingest=false` and a stable
-// machine-readable `reason` string for the caller to surface.
+// Failed completed workflow runs are accepted. Pull requests are accepted
+// when they open, reopen, receive new commits, or leave draft state.
 
 const std = @import("std");
 
 const S_WORKFLOW_RUN = "workflow_run";
+const S_PULL_REQUEST = "pull_request";
 
 pub const FilterDecision = struct {
     ingest: bool,
@@ -19,10 +18,24 @@ pub const FilterDecision = struct {
 
 const ACTION_COMPLETED = "completed";
 const CONCLUSION_FAILURE = "failure";
+const FIELD_ACTION = "action";
+const FIELD_REPOSITORY = "repository";
+const REASON_MISSING_REPOSITORY = "missing_repository";
 pub const EVENT_WORKFLOW_RUN = S_WORKFLOW_RUN;
+pub const EVENT_PULL_REQUEST = S_PULL_REQUEST;
 
-pub fn filterParsedRoot(root: std.json.ObjectMap) ?FilterDecision {
-    const action = stringField(root.get("action")) orelse "";
+pub fn isSupportedEvent(event: []const u8) bool {
+    return std.mem.eql(u8, event, EVENT_WORKFLOW_RUN) or std.mem.eql(u8, event, EVENT_PULL_REQUEST);
+}
+
+pub fn filterParsedRoot(event: []const u8, root: std.json.ObjectMap) ?FilterDecision {
+    if (std.mem.eql(u8, event, EVENT_PULL_REQUEST)) return filterPullRequest(root);
+    if (!std.mem.eql(u8, event, EVENT_WORKFLOW_RUN)) return null;
+    return filterWorkflowRun(root);
+}
+
+fn filterWorkflowRun(root: std.json.ObjectMap) ?FilterDecision {
+    const action = stringField(root.get(FIELD_ACTION)) orelse "";
     if (!std.mem.eql(u8, action, ACTION_COMPLETED)) {
         return .{ .ingest = false, .reason = "non_completed_action" };
     }
@@ -34,16 +47,30 @@ pub fn filterParsedRoot(root: std.json.ObjectMap) ?FilterDecision {
     if (!std.mem.eql(u8, conclusion, CONCLUSION_FAILURE)) {
         return .{ .ingest = false, .reason = "non_failure_conclusion" };
     }
-    const repo_ok = if (root.get("repository")) |v| v == .object else false;
-    if (!repo_ok) return .{ .ingest = false, .reason = "missing_repository" };
+    const repo_ok = if (root.get(FIELD_REPOSITORY)) |v| v == .object else false;
+    if (!repo_ok) return .{ .ingest = false, .reason = REASON_MISSING_REPOSITORY };
     return .{ .ingest = true, .reason = "" };
 }
 
-fn filterAction(alloc: std.mem.Allocator, body: []const u8) ?FilterDecision {
+fn filterPullRequest(root: std.json.ObjectMap) ?FilterDecision {
+    const action = stringField(root.get(FIELD_ACTION)) orelse "";
+    const accepted = std.mem.eql(u8, action, "opened") or
+        std.mem.eql(u8, action, "reopened") or
+        std.mem.eql(u8, action, "synchronize") or
+        std.mem.eql(u8, action, "ready_for_review");
+    if (!accepted) return .{ .ingest = false, .reason = "non_review_action" };
+    const pull_request = root.get(S_PULL_REQUEST) orelse return null;
+    if (pull_request != .object) return null;
+    const repo_ok = if (root.get(FIELD_REPOSITORY)) |value| value == .object else false;
+    if (!repo_ok) return .{ .ingest = false, .reason = REASON_MISSING_REPOSITORY };
+    return .{ .ingest = true, .reason = "" };
+}
+
+fn filterAction(alloc: std.mem.Allocator, event: []const u8, body: []const u8) ?FilterDecision {
     const parsed = std.json.parseFromSlice(std.json.Value, alloc, body, .{}) catch return null;
     defer parsed.deinit();
     return switch (parsed.value) {
-        .object => |o| filterParsedRoot(o),
+        .object => |o| filterParsedRoot(event, o),
         else => null,
     };
 }
@@ -62,7 +89,7 @@ test "filterAction: completed + failure + repository → ingest" {
     const body =
         \\{"action":"completed","workflow_run":{"conclusion":"failure"},"repository":{"full_name":"o/r"}}
     ;
-    const got = filterAction(testing.allocator, body) orelse return error.TestUnexpectedNull;
+    const got = filterAction(testing.allocator, EVENT_WORKFLOW_RUN, body) orelse return error.TestUnexpectedNull;
     try testing.expect(got.ingest);
 }
 
@@ -70,16 +97,16 @@ test "filterAction: completed + failure but missing repository → ignore missin
     const body =
         \\{"action":"completed","workflow_run":{"conclusion":"failure"}}
     ;
-    const got = filterAction(testing.allocator, body) orelse return error.TestUnexpectedNull;
+    const got = filterAction(testing.allocator, EVENT_WORKFLOW_RUN, body) orelse return error.TestUnexpectedNull;
     try testing.expect(!got.ingest);
-    try testing.expectEqualStrings("missing_repository", got.reason);
+    try testing.expectEqualStrings(REASON_MISSING_REPOSITORY, got.reason);
 }
 
 test "filterAction: in_progress action → ignore non_completed_action" {
     const body =
         \\{"action":"in_progress","workflow_run":{"conclusion":null}}
     ;
-    const got = filterAction(testing.allocator, body) orelse return error.TestUnexpectedNull;
+    const got = filterAction(testing.allocator, EVENT_WORKFLOW_RUN, body) orelse return error.TestUnexpectedNull;
     try testing.expect(!got.ingest);
     try testing.expectEqualStrings("non_completed_action", got.reason);
 }
@@ -88,7 +115,7 @@ test "filterAction: missing action → ignore non_completed_action" {
     const body =
         \\{"workflow_run":{"conclusion":"failure"}}
     ;
-    const got = filterAction(testing.allocator, body) orelse return error.TestUnexpectedNull;
+    const got = filterAction(testing.allocator, EVENT_WORKFLOW_RUN, body) orelse return error.TestUnexpectedNull;
     try testing.expect(!got.ingest);
     try testing.expectEqualStrings("non_completed_action", got.reason);
 }
@@ -97,15 +124,15 @@ test "filterAction: missing workflow_run → null" {
     const body =
         \\{"action":"completed"}
     ;
-    try testing.expect(filterAction(testing.allocator, body) == null);
+    try testing.expect(filterAction(testing.allocator, EVENT_WORKFLOW_RUN, body) == null);
 }
 
 test "filterAction: malformed JSON → null" {
-    try testing.expect(filterAction(testing.allocator, "not json") == null);
+    try testing.expect(filterAction(testing.allocator, EVENT_WORKFLOW_RUN, "not json") == null);
 }
 
 test "filterAction: non-object root → null" {
-    try testing.expect(filterAction(testing.allocator, "[1,2,3]") == null);
+    try testing.expect(filterAction(testing.allocator, EVENT_WORKFLOW_RUN, "[1,2,3]") == null);
 }
 
 test "filterAction: parameterized non-failure conclusions" {
@@ -122,7 +149,7 @@ test "filterAction: parameterized non-failure conclusions" {
         ,
     };
     for (cases) |body| {
-        const got = filterAction(testing.allocator, body) orelse return error.TestUnexpectedNull;
+        const got = filterAction(testing.allocator, EVENT_WORKFLOW_RUN, body) orelse return error.TestUnexpectedNull;
         try testing.expect(!got.ingest);
         try testing.expectEqualStrings("non_failure_conclusion", got.reason);
     }
@@ -130,6 +157,24 @@ test "filterAction: parameterized non-failure conclusions" {
 
 test "filter constants pin" {
     try testing.expectEqualStrings("workflow_run", EVENT_WORKFLOW_RUN);
+    try testing.expectEqualStrings("pull_request", EVENT_PULL_REQUEST);
     try testing.expectEqualStrings("completed", ACTION_COMPLETED);
     try testing.expectEqualStrings("failure", CONCLUSION_FAILURE);
+}
+
+test "filterAction: opened pull request with repository → ingest" {
+    const body =
+        \\{"action":"opened","pull_request":{"number":42},"repository":{"full_name":"o/r"}}
+    ;
+    const got = filterAction(testing.allocator, EVENT_PULL_REQUEST, body) orelse return error.TestUnexpectedNull;
+    try testing.expect(got.ingest);
+}
+
+test "filterAction: closed pull request → ignore non_review_action" {
+    const body =
+        \\{"action":"closed","pull_request":{"number":42},"repository":{"full_name":"o/r"}}
+    ;
+    const got = filterAction(testing.allocator, EVENT_PULL_REQUEST, body) orelse return error.TestUnexpectedNull;
+    try testing.expect(!got.ingest);
+    try testing.expectEqualStrings("non_review_action", got.reason);
 }

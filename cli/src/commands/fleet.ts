@@ -96,7 +96,7 @@ export const statusEffect: Effect.Effect<
   const fleets = res.items ?? [];
   if (fleets.length === 0) {
     yield* output.info(
-      "No fleets running. Install one with: agentsfleet install --from <path>",
+      "No fleets running. List choices with: agentsfleet library. Install one with: agentsfleet install --library <library_id>",
     );
     return;
   }

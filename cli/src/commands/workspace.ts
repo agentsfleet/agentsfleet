@@ -36,6 +36,7 @@ import {
 } from "../constants/analytics-events.ts";
 
 const WORKSPACE_ID_FIELD = "workspace_id";
+const WORKSPACE_LOCAL_REMOVAL_FIELD = "removed_from_local_state";
 // The real, registered top-level command group (cli-tree-fleet.ts). One const
 // so the JSON-mode and human-readable redirects can never re-diverge onto a
 // phantom `agentsfleet agent secret` that has no CLI registration.
@@ -309,9 +310,9 @@ export const workspaceDeleteEffectFromArgs = (
     yield* analytics.capture(EVT_WORKSPACE_DELETED, { workspace_id: workspaceId });
 
     if (config.jsonMode) {
-      yield* output.printJson({ deleted: workspaceId });
+      yield* output.printJson({ [WORKSPACE_LOCAL_REMOVAL_FIELD]: workspaceId });
     } else {
-      yield* output.success(`workspace deleted: ${workspaceId}`);
+      yield* output.success(`workspace removed from local state: ${workspaceId}`);
     }
   });
 const LITERAL = "—" as const;

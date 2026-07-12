@@ -1,18 +1,15 @@
 /v1/tenants/me/billing:
   get:
     operationId: get_tenant_billing
-    summary: Tenant billing snapshot
+    summary: Read the tenant balance
     description: >
-      Returns the tenant-scoped billing row created at signup. The single row
-      carries the credit-pool balance shared across every workspace the tenant
-      owns. Two-rate metering in nanos: events are free (both postures); stages
-      cost $0.001 (platform) or $0.0001 (self-managed). Debited by the worker
-      as fleet runs complete.
+      Returns the balance shared by every workspace in the tenant. The response
+      also shows whether the balance is empty and whether a free trial is active.
     tags:
     - Billing
     responses:
       '200':
-        description: Tenant billing snapshot
+        description: Current tenant balance
         content:
           application/json:
             schema:
@@ -27,52 +24,48 @@
                 balance_nanos:
                   type: integer
                   format: int64
-                  description: Remaining credit-pool balance in nanos (1 nano = 1/1,000,000,000 USD).
+                  description: Remaining tenant balance in nanos.
                 updated_at:
                   type: integer
                   format: int64
-                  description: Last update time (epoch ms)
+                  description: Last update time in Unix milliseconds.
                 is_exhausted:
                   type: boolean
-                  description: True once the balance has hit zero on a worker debit.
+                  description: True after a charge reduces the balance to zero.
                 exhausted_at:
                   type: integer
                   format: int64
                   nullable: true
-                  description: Epoch ms of the first exhausting debit. Null until the balance is exhausted.
+                  description: Time of the first zero balance in Unix milliseconds. Null until then.
                 free_trial:
                   type: object
-                  description: Promotional free-trial window state (src/state/tenant_billing.zig).
+                  description: Current free-trial state.
                   required:
                   - active
                   - ends_at_ms
                   properties:
                     active:
                       type: boolean
-                      description: True while the free-trial window is in effect.
+                      description: True while the free trial is active.
                     ends_at_ms:
                       type: integer
                       format: int64
-                      description: Epoch ms when the free-trial window closes.
+                      description: Free-trial end time in Unix milliseconds.
       default:
         $ref: ../components/responses.yaml#/components/responses/Error
 /v1/tenants/me/billing/charges:
   get:
     operationId: get_tenant_billing_charges
-    summary: Tenant credit-pool charges
+    summary: List tenant charges
     description: >
-      Returns the newest-first slice of `fleet_execution_telemetry` rows for the
-      caller's tenant. Two rows per event under the credit-pool model
-      (`charge_type` ∈ `receive`, `stage`); the dashboard groups them by
-      `event_id` to show one line per event with both charges. Limit-only
-      paging is sufficient for the v2.0 Settings → Billing Usage tab; deeper
-      history pages with Stripe billing in v2.1.
+      Returns charge records with the newest record first. Use `limit` and
+      `cursor` to read more records.
     tags:
     - Billing
     parameters:
     - name: limit
       in: query
-      description: Page size (1–200, default 50).
+      description: Number of records to return. The default is 50. Valid values are 1 through 200.
       required: false
       schema:
         type: integer
@@ -82,16 +75,13 @@
         default: 50
     - name: cursor
       in: query
-      description: >
-        Opaque pagination token returned in `next_cursor` from a previous
-        page. Omit for the first page. Treat as a black-box string — the
-        encoded `(recorded_at, id)` tuple is an implementation detail.
+      description: Token from `next_cursor` in the previous response. Omit it for the first page.
       required: false
       schema:
         type: string
     responses:
       '200':
-        description: Newest-first telemetry rows scoped to the caller's tenant.
+        description: Tenant charge records with the newest record first.
         content:
           application/json:
             schema:
@@ -103,7 +93,7 @@
                 next_cursor:
                   type: string
                   nullable: true
-                  description: Opaque token for the next page; null when no more rows.
+                  description: Token for the next page. Null when no records remain.
                 items:
                   type: array
                   items:
@@ -138,24 +128,22 @@
 /v1/tenants/me/billing/charges/{event_id}/telemetry:
   get:
     operationId: get_tenant_metering_periods
-    summary: Tenant metering periods for one charge
+    summary: List details for one charge
     description: >
-      Returns the oldest-first renewal slices behind one `stage` charge. The
-      route is scoped to the caller's tenant through the matching
-      `fleet_execution_telemetry` row; unknown or foreign `event_id` values
-      return an empty `items` list.
+      Returns the detail records for one charge, oldest first. An unknown
+      `event_id` returns an empty `items` list.
     tags:
     - Billing
     parameters:
     - name: event_id
       in: path
-      description: Event Identifier (ID) from a `get_tenant_billing_charges` response.
+      description: Event identifier from a `get_tenant_billing_charges` response.
       required: true
       schema:
         type: string
     responses:
       '200':
-        description: Metering slices for the requested event.
+        description: Charge details for the requested event.
         content:
           application/json:
             schema:

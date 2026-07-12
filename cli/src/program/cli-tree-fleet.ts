@@ -80,8 +80,8 @@ export function buildFleetTree(
     .action(actionFor("fleet.list", (frame) => runHandler(state, frame, handlers.fleet.list)));
 
   program
-    .command("status [fleet_id]")
-    .description("Show fleet status (workspace-wide if no id)")
+    .command("status")
+    .description("Show status for every fleet in the active workspace")
     .action(actionFor("fleet.status", (frame) => runHandler(state, frame, handlers.fleet.status)));
 
   program
