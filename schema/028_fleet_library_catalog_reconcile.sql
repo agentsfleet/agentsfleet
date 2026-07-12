@@ -27,8 +27,16 @@ DELETE FROM core.fleet_library
 -- `content_hash IS NOT NULL`), which is what fills the hash, the markdown, and
 -- the re-derived tools.
 --
--- ON CONFLICT updates only those curated columns: an operator may already have
--- onboarded one of these, and re-running this must not clobber a landed bundle.
+-- ON CONFLICT touches only rows that hold NO bundle (`content_hash IS NULL`).
+-- The catalog id is derived from a bundle's SKILL.md frontmatter name, so a row
+-- with one of these ids may have been materialized from a DIFFERENT repository
+-- whose bundle happens to declare the same name. Rewriting its source, declared
+-- credentials, and network hosts while leaving that bundle's stored markdown and
+-- hash in place would produce a hybrid row: the gallery and the install gate
+-- would describe a first-party fleet while the runner served someone else's
+-- content. Seeding curated metadata is never worth that, so a materialized row
+-- is left entirely alone — reconciling it is an operator decision, not a
+-- migration's.
 INSERT INTO core.fleet_library
     (id, name, description, source_repo, source_path, source_ref,
      required_credentials, required_credentials_reasons, required_tools, network_hosts, visibility,
@@ -62,4 +70,5 @@ ON CONFLICT (id) DO UPDATE SET
     required_credentials = EXCLUDED.required_credentials,
     required_credentials_reasons = EXCLUDED.required_credentials_reasons,
     network_hosts = EXCLUDED.network_hosts,
-    updated_at = EXCLUDED.updated_at;
+    updated_at = EXCLUDED.updated_at
+ WHERE core.fleet_library.content_hash IS NULL;
