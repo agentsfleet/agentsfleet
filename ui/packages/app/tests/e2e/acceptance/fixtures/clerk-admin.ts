@@ -20,7 +20,7 @@
  * stable, and the SDK pulls in node:crypto-heavy deps we don't need.
  */
 
-import type { FixtureKey } from "./constants";
+import { FIXTURE_KEY, OPERATOR_FIXTURE_SCOPES, type FixtureKey } from "./constants";
 
 const CLERK_API_BASE = "https://api.clerk.com/v1";
 
@@ -103,34 +103,46 @@ async function getUser(userId: string): Promise<ClerkUser> {
   return clerkRequest<ClerkUser>("GET", `/users/${userId}`);
 }
 
+// public_metadata.is_test_fixture lets prod ops dashboards filter these
+// identities out, and gives a future Clerk webhook handler a hook to refuse
+// unsafe operations against fixture users.
+//
+// `scopes` is present only on the operator fixture. The session-token template
+// projects it to the top-level `scopes` claim that agentsfleetd's requireScope
+// and the dashboard's readSessionScopes both read; every other fixture is
+// deliberately scope-free, so a spec asserting an operator surface is hidden
+// stays meaningful. Built once and shared by the create and backfill paths so
+// the two can never drift.
+function fixtureMetadata(spec: FixtureUserSpec): Record<string, unknown> {
+  const metadata: Record<string, unknown> = {
+    is_test_fixture: true,
+    owner: "acceptance-e2e-suite",
+    role: spec.key,
+  };
+  if (spec.key === FIXTURE_KEY.operator) {
+    metadata.scopes = [...OPERATOR_FIXTURE_SCOPES];
+  }
+  return metadata;
+}
+
 async function createUser(spec: FixtureUserSpec): Promise<ClerkUser> {
-  // public_metadata.is_test_fixture lets prod ops dashboards filter these
-  // identities out, and gives a future Clerk webhook handler a hook to
-  // refuse unsafe operations against fixture users.
   return clerkRequest<ClerkUser>("POST", "/users", {
     email_address: [spec.email],
     password: spec.password,
     skip_password_checks: true,
     skip_password_requirement: false,
-    public_metadata: {
-      is_test_fixture: true,
-      owner: "acceptance-e2e-suite",
-      role: spec.key,
-    },
+    public_metadata: fixtureMetadata(spec),
   });
 }
 
 async function ensureUser(spec: FixtureUserSpec): Promise<ClerkUser> {
   const existing = await findUserByEmail(spec.email);
   if (existing) {
-    // Backfill the metadata tag on pre-existing fixture users (one-time
-    // migration cost when rolling out the tag for the first time).
+    // Backfill the metadata on pre-existing fixture users — this is also what
+    // grants the operator scope to an operator fixture created before the scope
+    // existed.
     await clerkRequest<ClerkUser>("PATCH", `/users/${existing.id}/metadata`, {
-      public_metadata: {
-        is_test_fixture: true,
-        owner: "acceptance-e2e-suite",
-        role: spec.key,
-      },
+      public_metadata: fixtureMetadata(spec),
     }).catch(() => undefined);
     return existing;
   }
