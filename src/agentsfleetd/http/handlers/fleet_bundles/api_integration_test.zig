@@ -68,7 +68,7 @@ test "integration: template catalog lists seeded first-party templates from the 
     try res.expectStatus(.ok);
     try std.testing.expect(res.bodyContains("\"items\""));
     try std.testing.expect(res.bodyContains("\"github-pr-reviewer\""));
-    try std.testing.expect(res.bodyContains("\"security-reviewer\""));
+    try std.testing.expect(res.bodyContains("\"platform-ops\""));
     try std.testing.expect(res.bodyContains("\"required_credentials\""));
     try std.testing.expect(res.bodyContains("[\"github\"]"));
     try std.testing.expect(res.bodyContains("\"required_credentials_reasons\""));
