@@ -23,6 +23,7 @@ const UNSUPPORTED = Scope{ .tenant_id = "0195b4ba-8d3a-7f13-8abc-aa0000000007", 
 const WRONG_VERSION = Scope{ .tenant_id = "0195b4ba-8d3a-7f13-8abc-aa0000000008", .workspace_id = "0195b4ba-8d3a-7f13-8abc-cd0000000008" };
 const MALFORMED = Scope{ .tenant_id = "0195b4ba-8d3a-7f13-8abc-aa0000000009", .workspace_id = "0195b4ba-8d3a-7f13-8abc-cd0000000009" };
 const PAYLOAD_FAILURE = Scope{ .tenant_id = "0195b4ba-8d3a-7f13-8abc-aa0000000010", .workspace_id = "0195b4ba-8d3a-7f13-8abc-cd0000000010" };
+const ALLOC_FAIL = Scope{ .tenant_id = "0195b4ba-8d3a-7f13-8abc-aa0000000011", .workspace_id = "0195b4ba-8d3a-7f13-8abc-cd0000000011" };
 const VERSION_LEGACY: i32 = 1;
 const VERSION_BOUND: i32 = 2;
 const VERSION_UNSUPPORTED: i32 = 3;
@@ -312,4 +313,54 @@ test "crypto store documents the random nonce invocation limit" {
     const primitive_source = @embedFile("crypto_primitives.zig");
     try std.testing.expect(std.mem.indexOf(u8, primitive_source, "KEK_WRAP_RANDOM_NONCE_INVOCATION_LIMIT_LOG2") != null);
     try std.testing.expect(std.mem.indexOf(u8, primitive_source, "collision probability is roughly 2^-33") != null);
+}
+
+// ── Allocation-failure sweeps over load/store ───────────────────────────────
+// checkAllAllocationFailures fails each allocation site through the injected
+// allocator in turn and asserts the call surfaces OutOfMemory with ZERO residue.
+// The query itself runs on the conn's (pool) allocator, so the SELECT/INSERT
+// always completes — only load/store's own dupe/AAD/encrypt/decrypt allocations
+// fail, exercising the deferred free + secureZero unwind ladder. Key material
+// never survives: kek/dek/dek_plain carry deferred secureZero that runs on
+// every error return, and the drain (`result.deinit`) leaves the conn clean.
+
+fn loadForFailCheck(alloc: std.mem.Allocator, conn: *pg.Conn, workspace_id: []const u8, key_name: []const u8) !void {
+    const plaintext = try store.load(alloc, conn, workspace_id, key_name);
+    alloc.free(plaintext);
+}
+
+fn storeForFailCheck(alloc: std.mem.Allocator, conn: *pg.Conn, workspace_id: []const u8, key_name: []const u8, plaintext: []const u8) !void {
+    try store.store(alloc, conn, workspace_id, key_name, plaintext);
+}
+
+test "integration: crypto store load unwinds leak-free at every allocation-failure point" {
+    const alloc = std.testing.allocator;
+    const handle = (try base.openTestConn(alloc)) orelse return error.SkipZigTest;
+    defer {
+        handle.pool.release(handle.conn);
+        handle.pool.deinit();
+    }
+    try seedWorkspace(handle.conn, ALLOC_FAIL);
+    defer cleanup(handle.conn, ALLOC_FAIL);
+
+    // A real (version-2, AAD-bound) envelope to load — exercises buildAad on the
+    // decrypt path, the widest allocation ladder.
+    try store.store(alloc, handle.conn, ALLOC_FAIL.workspace_id, "afl-load", "top-secret-plaintext-material");
+    try std.testing.checkAllAllocationFailures(alloc, loadForFailCheck, .{ handle.conn, ALLOC_FAIL.workspace_id, @as([]const u8, "afl-load") });
+}
+
+test "integration: crypto store store unwinds leak-free at every allocation-failure point" {
+    const alloc = std.testing.allocator;
+    const handle = (try base.openTestConn(alloc)) orelse return error.SkipZigTest;
+    defer {
+        handle.pool.release(handle.conn);
+        handle.pool.deinit();
+    }
+    try seedWorkspace(handle.conn, ALLOC_FAIL);
+    defer cleanup(handle.conn, ALLOC_FAIL);
+
+    // store upserts, so the single all-allocations-succeed run is idempotent;
+    // every failing run returns OutOfMemory before the INSERT with kek/dek
+    // zeroed and no leaked AAD / wrapped-DEK / ciphertext / secret-id buffer.
+    try std.testing.checkAllAllocationFailures(alloc, storeForFailCheck, .{ handle.conn, ALLOC_FAIL.workspace_id, @as([]const u8, "afl-store"), @as([]const u8, "another-secret-value") });
 }

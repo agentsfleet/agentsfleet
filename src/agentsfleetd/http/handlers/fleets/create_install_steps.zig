@@ -59,9 +59,9 @@ const Job = struct {
     queue: *queue_redis.Client,
     workspace_id: []const u8,
     fleet_id: []const u8,
-    /// Optional drain handle — `finish()`ed exactly once on worker exit so a
-    /// harness can `wait()` for in-flight workers before tearing down the pool.
-    /// Null in production (no graceful pool teardown to race).
+    /// Optional drain handle — `finish()`ed exactly once on worker exit.
+    /// serve.zig (production) and the test harness both `wait()` on it before
+    /// tearing down the pool/queue this worker borrows.
     wg: ?*constants.WaitGroup = null,
 };
 

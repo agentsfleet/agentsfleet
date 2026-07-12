@@ -87,6 +87,7 @@ read_timeout_ms: ?u32,
 idle: std.SinglyLinkedList = .{},
 idle_count: usize = 0,
 active_count: usize = 0,
+/// Guards `idle`, `idle_count`, and `active_count` — the pool's slot accounting.
 mutex: common.Mutex = .{},
 /// Signalled by `release` whenever `active_count` drops, waking an acquirer
 /// that is blocked on a full `max_active` ceiling. Paired with `mutex`.
@@ -147,6 +148,7 @@ pub fn deinit(self: *Self) void {
         self.alloc.destroy(conn);
     }
     redis_config.deinitConfig(self.alloc, self.cfg);
+    self.* = undefined;
 }
 
 // === Acquire / Release ===

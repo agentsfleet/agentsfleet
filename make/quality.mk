@@ -2,7 +2,7 @@
 # QUALITY — code quality, formatting, analysis
 # =============================================================================
 
-.PHONY: lint-all lint-zig lint-website lint-apps-ds-ctl lint-app lint-design-system lint-cli lint-shell check-documentation-rules check-openapi check-schema-gate check-gh-actions-valid check-playbooks check-route-registration-doc gen-error-codes _fmt _fmt_check _zlint_check _lint_zig_pg_drain _lint_zig_test_depth _schema_gate_check _zig_target_lint _zig_line_limit_check _hardcoded_role_check _legacy_symbols_check _website_lint _app_lint _design_system_lint _cli_lint _shell_lint
+.PHONY: lint-all lint-zig lint-website lint-apps-ds-ctl lint-app lint-design-system lint-cli lint-shell check-documentation-rules check-openapi check-schema-gate check-gh-actions-valid check-playbooks check-route-registration-doc gen-error-codes _fmt _fmt_check _zlint_check _lint_zig_pg_drain _lint_zig_discipline _lint_zig_test_depth _schema_gate_check _zig_target_lint _zig_line_limit_check _hardcoded_role_check _legacy_symbols_check _website_lint _app_lint _design_system_lint _cli_lint _shell_lint
 
 # Regenerate docs/api-reference/error-codes.mdx (own repo, ~/Projects/docs)
 # from the agentsfleetd error registry. No default target path on purpose —
@@ -61,6 +61,18 @@ _lint_zig_pg_drain:
 	@echo "→ [zig] Checking pg query drain discipline..."
 	@python3 lint-zig.py src
 	@echo "✓ [zig] pg-drain check passed"
+
+# Roster-scoped ghostty-derived discipline (A5 poison + ownership phrase blocking
+# inside audits/zig-discipline-roster.txt; A2 errdefer heuristic advisory), plus
+# the fixture-driven self-tests that prove each check bites in/out of the roster.
+DISCIPLINE_TESTS := python3 -m unittest discover -s scripts -t scripts -p 'check_zig_discipline*_test.py'
+
+_lint_zig_discipline:
+	@echo "→ [zig] Checking ghostty-derived A5/A2 discipline (roster-scoped)..."
+	@python3 lint-zig.py --discipline --roster audits/zig-discipline-roster.txt src
+	@echo "→ [zig] Discipline lint self-tests..."
+	@$(DISCIPLINE_TESTS)
+	@echo "✓ [zig] discipline check + self-tests passed"
 
 _zig_target_lint:
 	@echo "→ [ci] Checking Zig target triples for -gnu suffix..."
@@ -271,7 +283,7 @@ _runner_isolation_check:
 	if [ $$FAIL -eq 1 ]; then exit 1; fi; \
 	echo "✓ [isolation] runner graph depends only on nullclaw (no pg/s3/httpz)"
 
-lint-zig: _fmt_check _zlint_check _lint_zig_pg_drain check-test-reachability _lint_zig_test_depth _schema_gate_check _zig_target_lint _zig_line_limit_check _hardcoded_role_check _legacy_symbols_check _legacy_noun_check _runner_isolation_check  ## Lint all Zig source (agentsfleetd/runner/lib)
+lint-zig: _fmt_check _zlint_check _lint_zig_pg_drain _lint_zig_discipline check-test-reachability _lint_zig_test_depth _schema_gate_check _zig_target_lint _zig_line_limit_check _hardcoded_role_check _legacy_symbols_check _legacy_noun_check _runner_isolation_check  ## Lint all Zig source (agentsfleetd/runner/lib)
 	@echo "✓ [zig] Lint passed"
 
 lint-website: _website_lint  ## Lint website only (Oxlint + tsc)

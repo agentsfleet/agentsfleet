@@ -43,7 +43,7 @@ test "pool spawns worker_count threads and joins them all cleanly" {
     const cfg = staticCfg(4);
     var pool = try worker_pool.spawn(io, testing.allocator, cfg, &env_map, &stop, &drain);
     try testing.expectEqual(@as(usize, 4), pool.threads.len); // one handle per worker
-    pool.join(); // must return — a hang here is a stuck worker / missed flag
+    try pool.join(); // must return .ok — a hang is a stuck worker; an error is a leaked worker
 }
 
 test "pool drains via the drain flag as well as stop" {
@@ -58,7 +58,7 @@ test "pool drains via the drain flag as well as stop" {
 
     var pool = try worker_pool.spawn(io, testing.allocator, staticCfg(2), &env_map, &stop, &drain);
     try testing.expectEqual(@as(usize, 2), pool.threads.len);
-    pool.join();
+    try pool.join();
 }
 
 test "single-worker pool is the degenerate N=1 case" {
@@ -73,5 +73,21 @@ test "single-worker pool is the degenerate N=1 case" {
 
     var pool = try worker_pool.spawn(io, testing.allocator, staticCfg(1), &env_map, &stop, &drain);
     try testing.expectEqual(@as(usize, 1), pool.threads.len);
-    pool.join();
+    try pool.join();
+}
+
+test "foldWorkerVerdict: any per-worker leak flag makes the pool verdict .leak" {
+    // The pool's teardown verdict is the OR of every worker's own
+    // DebugAllocator verdict. Pure fold — no thread, no allocator, no log — so
+    // the fail-on-warn runner can assert it. `join` routes this verdict through
+    // `leak_guard.check`, which fails the join in Debug builds.
+    var flags = [_]std.atomic.Value(bool){
+        std.atomic.Value(bool).init(false),
+        std.atomic.Value(bool).init(false),
+        std.atomic.Value(bool).init(false),
+    };
+    try testing.expectEqual(std.heap.Check.ok, worker_pool.foldWorkerVerdict(&flags));
+
+    flags[1].store(true, .seq_cst); // one worker reported a leak on teardown
+    try testing.expectEqual(std.heap.Check.leak, worker_pool.foldWorkerVerdict(&flags));
 }

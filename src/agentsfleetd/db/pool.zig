@@ -238,6 +238,29 @@ test "hasSslModeDisable detects disable in query string" {
     try std.testing.expect(!hasSslModeDisable("application_name=test"));
 }
 
+test "parseUrl dupes the connect strings and frees clean under testing.allocator" {
+    // parseUrl is the injectable allocator seam for the pool's connect strings.
+    // initFromEnvForRole passes page_allocator there on purpose: pg.Pool.init
+    // borrows the strings for the pool's whole life and never copies them, so
+    // they are process-lifetime and freed only at exit. Driving the same dupe
+    // path on testing.allocator (and freeing it here) proves the allocation side
+    // is leak-clean — the audit the production page_allocator site cannot do.
+    const a = std.testing.allocator;
+    const opts = try parseUrl(a, "postgres://alice:secret@db.example.com:6543/appdb?sslmode=disable");
+    defer {
+        a.free(opts.connect.host.?);
+        a.free(opts.auth.username);
+        a.free(opts.auth.password.?);
+        a.free(opts.auth.database.?);
+    }
+    try std.testing.expectEqualStrings("db.example.com", opts.connect.host.?);
+    try std.testing.expectEqual(@as(?u16, 6543), opts.connect.port);
+    try std.testing.expectEqualStrings("alice", opts.auth.username);
+    try std.testing.expectEqualStrings("secret", opts.auth.password.?);
+    try std.testing.expectEqualStrings("appdb", opts.auth.database.?);
+    try std.testing.expect(opts.connect.tls == .off); // sslmode=disable
+}
+
 test "parseSizeStr accepts a clean u32 and rejects blank/garbage" {
     try std.testing.expectEqual(@as(?u32, 12), parseSizeStr("12"));
     try std.testing.expectEqual(@as(?u32, 750), parseSizeStr("  750\n")); // trims surrounding ws

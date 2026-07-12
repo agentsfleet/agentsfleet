@@ -86,10 +86,18 @@ pub fn initTelemetry(env_map: *const EnvMap, alloc: std.mem.Allocator) Telemetry
 // OTLP log exporter
 // ---------------------------------------------------------------------------
 
+/// Why an exporter is dark after a failed install: the flush thread never
+/// started, so the signal is silently dropped for the process lifetime. Shared
+/// by all three exporters (RULE UFS).
+const R_FLUSH_SPAWN_FAILED = "flush_thread_spawn_failed";
+
 pub fn initOtelLogs(env_map: *const EnvMap, alloc: std.mem.Allocator) void {
     if (otlp_config.configFromEnv(env_map, alloc)) |cfg| {
-        otel_logs.install(cfg);
-        log.info("startup.otel_logs_ok", .{});
+        switch (otel_logs.install(cfg)) {
+            .installed => log.info("startup.otel_logs_ok", .{}),
+            .already_running => log.info("startup.otel_logs_already_running", .{}),
+            .spawn_failed => log.warn("startup.otel_logs_failed", .{ .reason = R_FLUSH_SPAWN_FAILED }),
+        }
     }
 }
 
@@ -105,8 +113,11 @@ pub fn deinitOtelLogs() void {
 
 pub fn initOtelTraces(env_map: *const EnvMap, alloc: std.mem.Allocator) void {
     if (otlp_config.configFromEnv(env_map, alloc)) |cfg| {
-        otel_traces.install(cfg);
-        log.info("startup.otel_traces_ok", .{});
+        switch (otel_traces.install(cfg)) {
+            .installed => log.info("startup.otel_traces_ok", .{}),
+            .already_running => log.info("startup.otel_traces_already_running", .{}),
+            .spawn_failed => log.warn("startup.otel_traces_failed", .{ .reason = R_FLUSH_SPAWN_FAILED }),
+        }
     }
 }
 
@@ -122,8 +133,11 @@ pub fn deinitOtelTraces() void {
 
 pub fn initOtelMetrics(env_map: *const EnvMap, alloc: std.mem.Allocator) void {
     if (otlp_config.configFromEnv(env_map, alloc)) |cfg| {
-        otel_metrics.install(cfg);
-        log.info("startup.otel_metrics_ok", .{});
+        switch (otel_metrics.install(cfg)) {
+            .installed => log.info("startup.otel_metrics_ok", .{}),
+            .already_running => log.info("startup.otel_metrics_already_running", .{}),
+            .spawn_failed => log.warn("startup.otel_metrics_failed", .{ .reason = R_FLUSH_SPAWN_FAILED }),
+        }
     } else {
         // Self-serve signal: the disabled reason lives in the startup log, not a
         // ticket — same shared GRAFANA_OTLP_* gate as traces/logs.
@@ -268,6 +282,7 @@ pub const CredentialBrokerHandle = struct {
         freeOauthApp(self.alloc, self.zoho_app);
         freeOauthApp(self.alloc, self.jira_app);
         freeOauthApp(self.alloc, self.linear_app);
+        self.* = undefined;
     }
 };
 

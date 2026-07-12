@@ -124,12 +124,12 @@ pub const Context = struct {
     /// and fixture Contexts that omit it get null, and the mint handler fails
     /// closed (503) when the broker is unconfigured.
     broker: ?*CredentialBroker = null,
-    /// Optional drain handle for detached install-progression workers (fleet
-    /// create spawns one per fleet). Production leaves it null — the process
-    /// exits without a graceful pool teardown, so the detached workers are
-    /// harmless. Integration harnesses set it so deinit() can wait for in-flight
-    /// workers BEFORE freeing the pool, closing the use-after-free a worker would
-    /// hit calling pool.acquire() after teardown.
+    /// Drain handle for detached install-progression workers (fleet create
+    /// spawns one per fleet). serve.zig owns one in production and the test
+    /// harness owns its own: both wait() on it BEFORE freeing the pool/queue
+    /// the workers borrow — pool teardown IS graceful in production, so an
+    /// unawaited worker would use-after-free on pool.acquire(). Null only in
+    /// fixture Contexts that never reach the create path.
     install_wg: ?*constants.WaitGroup = null,
 
     pub const SlackSigningSecret = struct { bytes: []const u8 };

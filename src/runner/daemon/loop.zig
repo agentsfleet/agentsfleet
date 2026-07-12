@@ -22,6 +22,7 @@ const protocol = contract.protocol;
 const log = logging.scoped(.fleet_runner);
 const ERR_EXEC_RUNNER_FLEET_INIT = client_errors.ERR_EXEC_RUNNER_FLEET_INIT;
 const ERR_EXEC_TRANSPORT_LOSS = client_errors.ERR_EXEC_TRANSPORT_LOSS;
+const ERR_EXEC_RUNNER_TOKEN_REJECTED = client_errors.ERR_EXEC_RUNNER_TOKEN_REJECTED;
 
 /// One event for a graceful daemon stop; the `reason` field discriminates the
 /// trigger (signal drain, fleet stop, fleet drain). Named per RULE UFS (3 sites).
@@ -58,6 +59,28 @@ pub fn installDrainHandlers() void {
 /// (finish in-flight, take no new lease) per the locked design.
 pub var stop_requested = std.atomic.Value(bool).init(false);
 
+/// Why the control loop exited. The entrypoint maps `token_rejected` to a
+/// non-zero process exit so a stale/revoked runner token surfaces as a loud,
+/// named fatal + a visible `activating` restart — not the invisible
+/// forever-retry that read as a healthy-but-idle worker (the dev crash-loop).
+pub const LoopExit = enum { drained, fleet_stop, worker_pool_failed, token_rejected };
+
+/// Consecutive 401/403 heartbeats tolerated (a transient auth blip from fronting
+/// infra — the dev control plane sits behind a Cloudflare tunnel) before the
+/// loop declares the token rejected and exits. ~10 rides out a brief WAF/tunnel
+/// hiccup at the heartbeat cadence; a genuinely stale token trips it in minutes.
+const MAX_CONSECUTIVE_AUTH_REJECTS: u32 = 10;
+
+/// Attempt count that saturates the shared backoff at its ceiling
+/// (`BASE_MS << 4` already exceeds `MAX_BACKOFF_MS`). Used where the loop
+/// wants "idle at the cap" rather than an escalating ramp.
+const BACKOFF_CEILING_ATTEMPT: u32 = 4;
+
+/// Backoff seam: every loop sleep routes through this so the deterministic
+/// auth-reject streak tests run in milliseconds instead of the production
+/// multi-minute jittered ramp. Production never overrides it.
+pub var backoff_ms: *const fn (u32) u64 = constants.backoff.ms;
+
 /// Control loop: the host's single thread heartbeats once per host on the
 /// `HEARTBEAT_INTERVAL_MS` cadence, maps a `.stop`/`.drain` directive (and the
 /// signal-set `drain_requested`) onto the shared atomics, and owns the worker
@@ -68,7 +91,7 @@ pub var stop_requested = std.atomic.Value(bool).init(false);
 /// first control-plane contact is always the heartbeat and a boot-time `.stop`
 /// exits before a single lease is taken. Workers each run `pollAndProcess`
 /// concurrently; `cfg.worker_count == 1` is behaviourally today's single daemon.
-pub fn runLoop(io: std.Io, alloc: std.mem.Allocator, cfg: Config, env_map: *const std.process.Environ.Map) void {
+pub fn runLoop(io: std.Io, alloc: std.mem.Allocator, cfg: Config, env_map: *const std.process.Environ.Map) LoopExit {
     var cp = client_mod.init(alloc, io, cfg.control_plane_url);
     defer cp.deinit();
     const runner_token: []const u8 = cfg.runner_token;
@@ -80,37 +103,59 @@ pub fn runLoop(io: std.Io, alloc: std.mem.Allocator, cfg: Config, env_map: *cons
 
     var pool: ?worker_pool.Pool = null;
     // On any exit the workers see stop/drain (set below or by the signal handler),
-    // finish their in-flight child, and are joined — no thread/child leak.
-    defer if (pool) |p| p.join();
+    // finish their in-flight child, and are joined — no thread/child leak. A
+    // per-worker leak verdict is already logged at `err` inside join; the daemon
+    // is on its shutdown path, so we record the swallow and let exit proceed.
+    defer if (pool) |p| p.join() catch |err|
+        log.warn(logging.EVENT_IGNORED_ERROR, .{ .op = "worker_pool_join", .err = @errorName(err) });
 
     var heartbeat_errors: u32 = 0;
+    var auth_rejects: u32 = 0;
     while (true) {
         if (drain_requested.load(.seq_cst)) {
             log.info(EVENT_SERVER_STOPPED, .{ .reason = "signal_drain" });
-            break;
+            return .drained;
         }
 
         const hb = cp.heartbeat(alloc, runner_token, cfg.cp_deadlines.default_ms) catch |err| {
+            // A 401/403 is a rejected token — retrying can never fix it, so count
+            // it apart from transport loss and fail loud once it's clearly not a
+            // transient blip. A transport error resets the auth streak (and vice
+            // versa), so only CONSECUTIVE rejects trip the exit.
+            if (err == error.Unauthorized) {
+                auth_rejects += 1;
+                heartbeat_errors = 0;
+                if (auth_rejects >= MAX_CONSECUTIVE_AUTH_REJECTS) {
+                    log.err("runner_token_rejected", .{ .error_code = ERR_EXEC_RUNNER_TOKEN_REJECTED, .consecutive = auth_rejects, .hint = "mint a fresh agt_r and re-provision the runner token" });
+                    drain_requested.store(true, .seq_cst);
+                    return .token_rejected;
+                }
+                log.warn("heartbeat_unauthorized", .{ .error_code = ERR_EXEC_RUNNER_TOKEN_REJECTED, .consecutive = auth_rejects });
+                sleepMs(io, backoff_ms(auth_rejects - 1));
+                continue;
+            }
             heartbeat_errors += 1;
+            auth_rejects = 0;
             log.warn("heartbeat_failed", .{ .error_code = ERR_EXEC_TRANSPORT_LOSS, .err = @errorName(err), .consecutive = heartbeat_errors });
-            // Bounded+jittered backoff (M100): exponential in the consecutive
-            // error count, capped at MAX_BACKOFF_MS — never the old unbounded
+            // Bounded+jittered backoff: exponential in the consecutive error
+            // count, capped at MAX_BACKOFF_MS — never an unbounded
             // `2s * heartbeat_errors` ramp. attempt is 0-based (first error → ~base).
-            sleepMs(io, constants.backoff.ms(heartbeat_errors - 1));
+            sleepMs(io, backoff_ms(heartbeat_errors - 1));
             continue;
         };
         heartbeat_errors = 0;
+        auth_rejects = 0;
 
         switch (hb.status) {
             .stop => {
                 log.info(EVENT_SERVER_STOPPED, .{ .reason = "fleet_stop" });
                 stop_requested.store(true, .seq_cst);
-                break;
+                return .fleet_stop;
             },
             .drain => {
                 log.info(EVENT_SERVER_STOPPED, .{ .reason = "fleet_drain" });
                 drain_requested.store(true, .seq_cst);
-                break;
+                return .drained;
             },
             .ok => {},
         }
@@ -119,7 +164,7 @@ pub fn runLoop(io: std.Io, alloc: std.mem.Allocator, cfg: Config, env_map: *cons
         if (pool == null) {
             pool = worker_pool.spawn(io, alloc, cfg, env_map, &stop_requested, &drain_requested) catch |err| {
                 log.err("worker_pool_spawn_failed", .{ .error_code = ERR_EXEC_RUNNER_FLEET_INIT, .err = @errorName(err) });
-                break;
+                return .worker_pool_failed;
             };
         }
 
@@ -133,8 +178,17 @@ pub fn runLoop(io: std.Io, alloc: std.mem.Allocator, cfg: Config, env_map: *cons
 /// loop with its own allocator + client (see `worker_pool.zig`).
 pub fn pollAndProcess(io: std.Io, alloc: std.mem.Allocator, cp: *client_mod, runner_token: []const u8, cfg: Config, env_map: *const std.process.Environ.Map) void {
     const lease_parsed = cp.lease(alloc, runner_token, cfg.cp_deadlines.default_ms) catch |err| {
+        if (err == error.Unauthorized) {
+            // A rejected token is permanent — the heartbeat loop owns the
+            // loud `token_rejected` exit. Workers stop hammering the control
+            // plane at the poll cadence and idle at the backoff ceiling
+            // until that exit lands.
+            log.warn("lease_unauthorized", .{ .error_code = ERR_EXEC_RUNNER_TOKEN_REJECTED });
+            sleepMs(io, backoff_ms(BACKOFF_CEILING_ATTEMPT));
+            return;
+        }
         log.warn("lease_failed", .{ .error_code = ERR_EXEC_TRANSPORT_LOSS, .err = @errorName(err) });
-        sleepMs(io, constants.backoff.ms(0));
+        sleepMs(io, backoff_ms(0));
         return;
     };
     defer lease_parsed.deinit();

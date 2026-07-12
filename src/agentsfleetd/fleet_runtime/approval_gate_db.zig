@@ -107,8 +107,12 @@ pub fn resolveGateDecision(
     status: GateStatus,
     by: []const u8,
     detail: []const u8,
+    sink_alloc: Allocator,
 ) void {
-    const sink_alloc = std.heap.page_allocator;
+    // sink_alloc owns the transient ResolvedRow the outcome duplicates and frees
+    // below. Production passes `page_allocator` (the row is freed before return,
+    // so nothing is leaked to the process); a leak test passes
+    // `testing.allocator` to audit that free.
     const args: ResolveArgs = .{
         .action_id = action_id,
         .outcome = status,
@@ -273,4 +277,23 @@ fn parseStatus(s: []const u8) GateStatus {
     if (std.mem.eql(u8, s, "timed_out")) return .timed_out;
     if (std.mem.eql(u8, s, "auto_killed")) return .auto_killed;
     return .pending;
+}
+
+test "ResolvedRow.deinit frees every owned field (leak-free under testing.allocator)" {
+    // The decision sink (`resolveGateDecision`) allocates a ResolvedRow on the
+    // injected `sink_alloc` and frees it via this deinit before returning. On
+    // testing.allocator, a missed field surfaces as a leak and a double-free
+    // panics — so this pins the exact ownership the injected allocator relies on.
+    const a = std.testing.allocator;
+    var row = ResolvedRow{
+        .gate_id = try a.dupe(u8, "gate-1"),
+        .action_id = try a.dupe(u8, "act-1"),
+        .workspace_id = try a.dupe(u8, "ws-1"),
+        .fleet_id = try a.dupe(u8, "fleet-1"),
+        .outcome = .approved,
+        .resolved_at = 0,
+        .resolved_by = try a.dupe(u8, "system"),
+        .detail = try a.dupe(u8, "reason"),
+    };
+    row.deinit(a);
 }

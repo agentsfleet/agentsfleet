@@ -40,6 +40,7 @@ pub const Mutex = struct {
 /// finish/wait are safe from any thread (detached workers `finish`, a teardown
 /// thread `wait`s).
 pub const WaitGroup = struct {
+    /// Guards `count`; start/finish/wait are all taken under it.
     mutex: Mutex = .{},
     cond: Condition = .{},
     count: usize = 0,
@@ -61,6 +62,42 @@ pub const WaitGroup = struct {
         self.mutex.lock();
         defer self.mutex.unlock();
         while (self.count != 0) self.cond.wait(&self.mutex);
+    }
+
+    /// Registered-but-unfinished units right now. For bounded waiters that
+    /// poll with progress logging instead of blocking in `wait`.
+    pub fn pending(self: *WaitGroup) usize {
+        self.mutex.lock();
+        defer self.mutex.unlock();
+        return self.count;
+    }
+};
+
+/// One-shot event: `set()` once, `timedWait()` blocks until set or the bound
+/// expires. Zig 0.16 removed `std.Thread.ResetEvent`; this is the repo's
+/// bounded replacement for lifecycle tests and shutdown choreography —
+/// poll-based at millisecond granularity, so it suits synchronization points,
+/// not hot paths. Re-arm by assigning `.{}`.
+pub const Event = struct {
+    fired: std.atomic.Value(bool) = std.atomic.Value(bool).init(false),
+
+    const POLL_NS: u64 = 2 * std.time.ns_per_ms;
+
+    pub fn set(self: *Event) void {
+        self.fired.store(true, .release); // safe because: pairs with the .acquire loads in isSet/timedWait.
+    }
+
+    pub fn isSet(self: *const Event) bool {
+        return self.fired.load(.acquire);
+    }
+
+    pub fn timedWait(self: *const Event, timeout_ns: u64) error{Timeout}!void {
+        var waited: u64 = 0;
+        while (!self.fired.load(.acquire)) { // safe because: pairs with set()'s release-store.
+            if (waited >= timeout_ns) return error.Timeout;
+            sleepNanos(POLL_NS);
+            waited += POLL_NS;
+        }
     }
 };
 

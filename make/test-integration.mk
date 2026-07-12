@@ -37,7 +37,10 @@ else
 	@echo "✓ [kernel] Runner integration tests passed (Linux real-process proofs)"
 endif
 
-TEST_DATABASE_URL_LOCAL ?= postgres://agentsfleet:agentsfleet@localhost:5432/agentsfleetdb
+# sslmode=disable: the local docker Postgres has no TLS and parseUrl defaults to
+# `.require` (hosted providers mandate it) — without it every local DB-lane test
+# fails at connect with SSLNotSupportedByServer before it can run.
+TEST_DATABASE_URL_LOCAL ?= postgres://agentsfleet:agentsfleet@localhost:5432/agentsfleetdb?sslmode=disable
 TEST_REDIS_TLS_URL_LOCAL ?= rediss://:agentsfleet@localhost:6379
 # Cert path — populated by _ensure-test-infra after Redis is healthy. Do NOT shell-expand
 # at parse time; Redis may not be running yet when the Makefile is first evaluated.
@@ -47,7 +50,17 @@ TEST_REDIS_TLS_CA_CERT ?= $(CURDIR)/.tmp/redis-ca.crt
 # Idempotent — if already healthy, docker compose up --wait is a no-op. Safe to call
 # multiple times. Extracts the Redis TLS CA cert after the container is healthy so
 # subsequent targets can rely on $(TEST_REDIS_TLS_CA_CERT) being present.
+#
+# TEST_INFRA=provided — the caller already booted postgres/redis and extracted the
+# CA cert by running THIS recipe in an environment that has docker (CI: the memleak
+# workflow runs it on the host, then the valgrind container — which carries no
+# docker CLI — runs the gate with the flag). Fail-closed: the flag never bypasses
+# the cert check, so a caller that claims infra without providing it dies loudly.
 _ensure-test-infra:
+ifeq ($(TEST_INFRA),provided)
+	@test -s "$(TEST_REDIS_TLS_CA_CERT)" || { echo "✗ TEST_INFRA=provided but $(TEST_REDIS_TLS_CA_CERT) is missing — the caller did not actually provision infra"; exit 1; }
+	@echo "✓ [infra] postgres + redis provided by caller (TEST_INFRA=provided); compose skipped"
+else
 	@if ! docker info >/dev/null 2>&1; then \
 	  echo "✗ Docker daemon is not running — start Docker Desktop / dockerd and retry."; \
 	  exit 1; \
@@ -70,6 +83,7 @@ _ensure-test-infra:
 	@docker compose cp redis:/tls/server.crt "$(TEST_REDIS_TLS_CA_CERT)" >/dev/null
 	@test -s "$(TEST_REDIS_TLS_CA_CERT)" || { echo "✗ Failed to extract Redis TLS cert"; exit 1; }
 	@echo "✓ [infra] postgres + redis ready; Redis CA cert at $(TEST_REDIS_TLS_CA_CERT)"
+endif
 
 # Drop and recreate all app schemas so every test-integration run starts from a clean
 # state. Needed because several tests in the suite (rbac, tenant_provider, event_loop) leave

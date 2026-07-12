@@ -52,6 +52,10 @@ pub const Threads = struct {
         if (self.stopped) return;
         self.stopped = true;
         serve_shutdown.request();
+        // The watcher only retires after stopping a live server; at teardown
+        // the server is already down (or never came up), so disarm it before
+        // the join or a boot-failure path would hang here.
+        serve_shutdown.disarmWatcher();
         self.event_bus.stop();
         join(&self.signal_thread);
         join(&self.event_thread);

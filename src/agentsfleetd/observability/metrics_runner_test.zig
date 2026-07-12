@@ -114,3 +114,57 @@ test "cardinality overflow routes to _other with the reason preserved" {
 // The fleet_memory_* family tests moved to metrics_memory_test.zig with the
 // module split; renderPrometheus still composes those families after the
 // runner ones, pinned there through this same render entry point.
+
+// ── Slot resolution under contention (saturation policy, no duplicates) ─────
+
+const StormThread = struct {
+    const PER_THREAD: usize = 200;
+    fn run(runner_id: []const u8) void {
+        var i: usize = 0;
+        while (i < PER_THREAD) : (i += 1) mr.incRunnerFailure(runner_id, null);
+    }
+};
+
+/// Occurrences of `needle` in `haystack` — a second hit for one runner_id's
+/// series IS the duplicate-slot defect.
+fn countOccurrences(haystack: []const u8, needle: []const u8) usize {
+    return std.mem.count(u8, haystack, needle);
+}
+
+/// Value of the exposition line starting with `prefix` (0 when absent — a
+/// series with no increments is never rendered).
+fn seriesValue(out: []const u8, prefix: []const u8) !u64 {
+    const start = std.mem.indexOf(u8, out, prefix) orelse return 0;
+    const rest = out[start + prefix.len ..];
+    const end = std.mem.indexOfScalar(u8, rest, '\n') orelse rest.len;
+    return std.fmt.parseInt(u64, std.mem.trim(u8, rest[0..end], " "), 10);
+}
+
+test "metrics_runner_no_duplicate_slot_under_contention" {
+    mr.resetForTest();
+    const THREADS = 8;
+    const TOTAL = THREADS * StormThread.PER_THREAD;
+    var threads: [THREADS]std.Thread = undefined;
+    for (&threads) |*t| t.* = try std.Thread.spawn(.{}, StormThread.run, .{"contended-runner"});
+    for (&threads) |*t| t.join();
+
+    var buf: [8192]u8 = undefined;
+    const out = try render(&buf);
+
+    // The no-duplicate proof: a duplicate slot claim for one runner_id would
+    // split its counter across TWO identically-labelled series. Exactly one is
+    // the invariant — asserted directly rather than inferred from the total.
+    const own_prefix = "agentsfleet_runner_failures_total{runner_id=\"contended-runner\",reason=\"unknown\"} ";
+    try std.testing.expectEqual(@as(usize, 1), countOccurrences(out, own_prefix));
+
+    // Conservation: every increment is accounted for, never lost. A record whose
+    // slot was still mid-init past the spin cap is DROPPED to `_other` by the
+    // saturation policy (never probed forward into a duplicate slot), so under
+    // CPU contention the split between the two series is legitimately
+    // nondeterministic — only the sum is invariant. Asserting the full total on
+    // the runner's own series would be asserting that the saturation policy
+    // never fires, which is a load-dependent flake, not a correctness property.
+    const own = try seriesValue(out, own_prefix);
+    const other = try seriesValue(out, "agentsfleet_runner_failures_total{runner_id=\"_other\",reason=\"unknown\"} ");
+    try std.testing.expectEqual(@as(u64, TOTAL), own + other);
+}

@@ -112,6 +112,7 @@ test {
     _ = @import("state/tenant_billing.zig");
     _ = @import("state/tenant_model_entries.zig");
     _ = @import("state/model_rate_cache.zig");
+    _ = @import("state/model_rate_cache_integration_test.zig");
     _ = @import("state/account_teardown.zig");
     _ = @import("state/account_teardown_test.zig");
     _ = @import("state/heroku_names.zig");
@@ -148,6 +149,7 @@ test {
     _ = @import("http/handlers/fleets/api_integration_test.zig");
     _ = @import("http/handlers/fleets/create.zig");
     _ = @import("http/handlers/fleets/create_install_steps.zig");
+    _ = @import("http/handlers/fleets/create_install_steps_lifecycle_test.zig");
     _ = @import("http/handlers/fleets/list.zig");
     _ = @import("http/handlers/fleets/patch.zig");
     _ = @import("http/handlers/fleets/patch_body_fields_integration_test.zig");
@@ -236,4 +238,5 @@ test {
     _ = @import("cmd/doctor_render.zig");
     _ = @import("cmd/preflight_test.zig");
     _ = @import("cmd/serve_shutdown.zig");
+    _ = @import("cmd/serve_lifecycle_integration_test.zig");
 }

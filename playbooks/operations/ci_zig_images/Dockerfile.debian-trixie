@@ -25,7 +25,13 @@ RUN apt-get update \
       make \
       gpg \
       libssl-dev \
+      libc6-dev \
  && rm -rf /var/lib/apt/lists/*
+# libc6-dev is load-bearing, not a nicety: --no-install-recommends skips it, so
+# libssl-dev's headers exist while /usr/include/**/sys/types.h does not — and any
+# OpenSSL-linking compile (the memleak boot→drain lane's daemon binary, which
+# needs TLS redis) dies in translate-c. The valgrind lanes never noticed because
+# they build with -Dopenssl=false.
 
 RUN set -eux; \
     tarball="zig-x86_64-linux-${ZIG_VERSION}.tar.xz"; \

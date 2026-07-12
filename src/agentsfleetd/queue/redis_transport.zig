@@ -4,11 +4,17 @@ const common = @import("common");
 const logging = @import("log");
 const redis_config = @import("redis_config.zig");
 const error_codes = @import("../errors/error_registry.zig");
+const tripwire = @import("tripwire");
 
 /// Zig 0.16 moved sockets under `std.Io.net` (io-threaded Stream/Reader/Writer).
 const net = std.Io.net;
 
 const log = logging.scoped(.redis_queue);
+
+/// Fail points for `PlainTransport.init`'s buffer-alloc ladder (rule A6). Armed
+/// only in tests; comptime-erased in production. The loop-all-failpoints test
+/// lives in `redis_test.zig`.
+pub const plain_init_tw = tripwire.module(enum { read_buffer, write_buffer }, error{OutOfMemory});
 
 /// Best-effort TCP keepalive so an idle Upstash connection is detected by the
 /// kernel within ~60s instead of sitting silently dead until the next request.
@@ -111,8 +117,10 @@ pub const PlainTransport = struct {
         // so callers (incl. dialAndAuth on every reconnect) cannot leak fds.
         errdefer stream.close(io);
         applyKeepalive(stream);
+        try plain_init_tw.check(.read_buffer);
         const read_buffer = try alloc.alloc(u8, 16 * 1024);
         errdefer alloc.free(read_buffer);
+        try plain_init_tw.check(.write_buffer);
         const write_buffer = try alloc.alloc(u8, 16 * 1024);
         errdefer alloc.free(write_buffer);
 
@@ -131,6 +139,7 @@ pub const PlainTransport = struct {
         self.stream.close(io);
         alloc.free(self.read_buffer);
         alloc.free(self.write_buffer);
+        self.* = undefined;
     }
 
     pub fn reader(self: *Self) *std.Io.Reader {
@@ -235,6 +244,7 @@ const TlsTransport = struct {
         alloc.free(self.socket_write_buffer);
         alloc.free(self.tls_read_buffer);
         alloc.free(self.tls_write_buffer);
+        self.* = undefined;
     }
 
     pub fn reader(self: *Self) *std.Io.Reader {
@@ -257,6 +267,7 @@ pub const Transport = union(enum) {
             .plain => |*p| p.deinit(io, alloc),
             .tls => |*t| t.deinit(io, alloc),
         }
+        self.* = undefined;
     }
 
     pub fn reader(self: *Self) *std.Io.Reader {
@@ -292,6 +303,15 @@ pub const Transport = union(enum) {
         return switch (self.*) {
             .plain => |*p| p.stream_reader.timed_out,
             .tls => |*t| t.stream_reader.timed_out,
+        };
+    }
+
+    /// The transport's socket handle — the seam a caller-owned watchdog
+    /// (call_deadline) arms to bound an otherwise-unbounded blocking send.
+    pub fn socketHandle(self: *Self) std.posix.fd_t {
+        return switch (self.*) {
+            .plain => |*p| p.stream_reader.fd,
+            .tls => |*t| t.stream_reader.fd,
         };
     }
 };

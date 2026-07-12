@@ -1,0 +1,4 @@
+# Fixture roster for the discipline-lint self-tests (scripts/check_zig_discipline_test.py).
+# Comment + blank-line tolerance is itself under test (test_lint_roster_scoping).
+
+tests/lint/in_roster

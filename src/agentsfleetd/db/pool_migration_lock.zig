@@ -94,7 +94,7 @@ pub fn acquireBounded(conn: *Conn, max_attempts: u32, retry_ms: u64) !void {
 /// is not actionable (the session — and its lock — are already gone).
 pub fn release(conn: *Conn) void {
     var result = PgQuery.from(conn.query("SELECT pg_advisory_unlock($1)", .{AdvisoryLockKey}) catch return);
-    result.deinit();
+    defer result.deinit();
 }
 
 /// Read-side availability check for `inspectMigrationState`, which runs over the

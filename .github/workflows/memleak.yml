@@ -14,11 +14,9 @@ concurrency:
 jobs:
   memleak:
     runs-on: ubuntu-latest
-    container:
-      # Pre-baked: trixie-slim + Zig + valgrind. Trixie's valgrind groks
-      # Zig 0.15 DWARF; bookworm's misreads frames.
-      image: ghcr.io/agentsfleet/ci-zig-debian-trixie:0.16.0
-      options: --security-opt seccomp=unconfined
+    # Valgrind's 10-30x slowdown across three test graphs plus the boot→drain
+    # lifecycle lane; ~15 min on a warm Zig cache, headroom for a cold one.
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v6
       # Persist the Zig cache across runs so memleak doesn't recompile the test
@@ -34,5 +32,41 @@ jobs:
           restore-keys: |
             zig-${{ runner.os }}-${{ github.job }}-0.16.0-${{ hashFiles('build.zig.zon', 'build.zig', 'build_runner.zig') }}-
             zig-${{ runner.os }}-${{ github.job }}-0.16.0-
-      - name: Run memleak gate
-        run: make memleak
+      # Mirrors the test-integration job's shape: docker work on the HOST, the
+      # Zig/valgrind work inside the project's pre-baked image via `docker run`
+      # (not a job `container:` — the gate's boot→drain lane needs live
+      # postgres/redis, the trixie image carries valgrind but no docker CLI, and
+      # --network host keeps localhost:5432/6379 pointing at the compose-
+      # published ports; a GHA job container is forced onto GitHub's managed
+      # network, which rejects --network host).
+      #
+      # The host provisions infra with the SAME make recipe the gate runs
+      # locally — no forked logic — then the container runs the gate with
+      # TEST_INFRA=provided, whose short-circuit re-verifies the extracted CA
+      # cert and fails closed if infra was claimed but not provided.
+      - name: Run memleak gate in ci-zig-debian-trixie (compose datastores on host)
+        env:
+          ZIG_GLOBAL_CACHE_DIR: ${{ github.workspace }}/.tmp/zig-global-cache
+          ZIG_LOCAL_CACHE_DIR: ${{ github.workspace }}/.tmp/zig-local-cache
+        run: |
+          make _ensure-test-infra
+          # Pre-baked: trixie-slim + Zig + valgrind. Trixie's valgrind groks
+          # Zig DWARF; bookworm's misreads frames. seccomp=unconfined because
+          # valgrind's syscall interception trips the default profile.
+          # The libc6-dev install is a bridge until the trixie image is rebuilt
+          # with it baked in (Dockerfile.debian-trixie already adds it): the
+          # published 0.16.0 image has libssl-dev but not libc6-dev, and the
+          # boot→drain lane's daemon compile links OpenSSL, whose headers
+          # include sys/types.h. No-op (~2s) once the image carries it.
+          docker run --rm --network host \
+            -v "${{ github.workspace }}":"${{ github.workspace }}" \
+            -w "${{ github.workspace }}" \
+            -e ZIG_GLOBAL_CACHE_DIR \
+            -e ZIG_LOCAL_CACHE_DIR \
+            -e TEST_INFRA=provided \
+            --security-opt seccomp=unconfined \
+            ghcr.io/agentsfleet/ci-zig-debian-trixie:0.16.0 \
+            sh -c 'apt-get update -qq && apt-get install -y -qq --no-install-recommends libc6-dev && mkdir -p "$ZIG_GLOBAL_CACHE_DIR" "$ZIG_LOCAL_CACHE_DIR" && make memleak'
+      - name: Stop services
+        if: always()
+        run: docker compose down
