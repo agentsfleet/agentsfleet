@@ -5,6 +5,7 @@ import {
   Badge,
   Button,
   ConfirmDialog,
+  CopyButton,
   DataTable,
   type DataTableColumn,
   EmptyState,
@@ -38,6 +39,8 @@ import {
   EMPTY_TITLE,
   FETCH_BUNDLE,
   FETCH_UPDATE,
+  COPY_HASH_LABEL,
+  COPY_SLUG_LABEL,
   HASH_PREVIEW_LENGTH,
   PATCH_ACTION,
   PUBLISH,
@@ -147,7 +150,12 @@ export default function PlatformCatalogTable({
       cell: (row) => (
         <div className="flex flex-col">
           <span className="font-medium">{row.name}</span>
-          <span className="text-xs text-muted-foreground">{row.id}</span>
+          {/* The slug is the id a workspace installs by (`platform_library_id`) and
+              the id every API call names. It is meant to be pasted, so it can be. */}
+          <span className="flex items-center gap-1">
+            <span className="text-xs text-muted-foreground">{row.id}</span>
+            <CopyButton value={row.id} label={`${COPY_SLUG_LABEL}: ${row.id}`} />
+          </span>
         </div>
       ),
     },
@@ -173,12 +181,21 @@ export default function PlatformCatalogTable({
       key: "bundle",
       header: COLUMN_BUNDLE,
       hideOnMobile: true,
-      // The hash is how an operator confirms a refetch actually changed something.
-      cell: (row) => (
-        <code className="text-xs text-muted-foreground">
-          {row.content_hash ? row.content_hash.slice(0, HASH_PREVIEW_LENGTH) : NO_HASH}
-        </code>
-      ),
+      // The hash is how an operator confirms a refetch actually changed something —
+      // comparing two of them IS the job this column exists for. The cell shows a
+      // preview (the full hash would dominate the row) and copies the WHOLE hash,
+      // because a truncated one compares to nothing.
+      cell: (row) =>
+        row.content_hash ? (
+          <span className="flex items-center gap-1">
+            <code className="text-xs text-muted-foreground">
+              {row.content_hash.slice(0, HASH_PREVIEW_LENGTH)}
+            </code>
+            <CopyButton value={row.content_hash} label={COPY_HASH_LABEL} />
+          </span>
+        ) : (
+          <code className="text-xs text-muted-foreground">{NO_HASH}</code>
+        ),
     },
     {
       key: "actions",

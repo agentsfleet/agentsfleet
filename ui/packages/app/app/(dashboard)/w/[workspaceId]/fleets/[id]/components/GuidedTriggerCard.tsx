@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { CheckIcon, CopyIcon, ExternalLinkIcon } from "lucide-react";
+import { ExternalLinkIcon } from "lucide-react";
 import {
   Button,
   Card,
@@ -9,11 +9,11 @@ import {
   CardHeader,
   CardTitle,
   cn,
+  CopyButton,
   EYEBROW_CLASS,
   Input,
   Label,
   Time,
-  useResettableTimeout,
 } from "@agentsfleet/design-system";
 import type { FleetTrigger } from "@/lib/types";
 import type { GuidanceCard } from "./provider-guidance";
@@ -28,7 +28,6 @@ type Props = {
 // Copy-feedback reset delay — how long a "Copied" affordance stays before
 // reverting. Shared with TriggerPanel's CopyUrlFallback so the two copy
 // surfaces in this feature can't drift apart.
-export const COPY_RESET_MS = 1500;
 
 export default function GuidedTriggerCard({
   trigger,
@@ -37,9 +36,6 @@ export default function GuidedTriggerCard({
   lastDeliveryAt,
 }: Props) {
   const [vars, setVars] = useState<Record<string, string>>({});
-  const [copiedKey, setCopiedKey] = useState<string | null>(null);
-  const resetTimer = useResettableTimeout();
-
   const events = useMemo(() => trigger.events ?? [], [trigger.events]);
   const command = useMemo(
     () => guidance.command(vars, webhookUrl, events),
@@ -47,17 +43,6 @@ export default function GuidedTriggerCard({
   );
   const deepLink = useMemo(() => guidance.webUiDeepLink(vars), [guidance, vars]);
 
-  async function copy(key: string, value: string) {
-    try {
-      await navigator.clipboard.writeText(value);
-      setCopiedKey(key);
-      // The timer is single-shot (a second copy cancels the prior one), so the
-      // pending callback always belongs to the current key — clear it outright.
-      resetTimer.start(() => setCopiedKey(null), COPY_RESET_MS);
-    } catch {
-      // clipboard API unavailable — user can select the code block manually
-    }
-  }
 
   return (
     <Card data-testid={`guided-trigger-card-${trigger.source}`} className="bg-card">
@@ -69,13 +54,7 @@ export default function GuidedTriggerCard({
       </CardHeader>
 
       <CardContent className="flex flex-col gap-4">
-        <CopyableLine
-          label="Webhook URL"
-          value={webhookUrl}
-          copied={copiedKey === "url"}
-          onCopy={() => void copy("url", webhookUrl)}
-          testId="webhook-url"
-        />
+        <CopyableLine label="Webhook URL" value={webhookUrl} testId="webhook-url" />
 
         {guidance.variables.length > 0 ? (
           <div className="flex flex-col gap-2">
@@ -119,30 +98,8 @@ export default function GuidedTriggerCard({
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <Button
-            type="button"
-            variant="default"
-            size="sm"
-            onClick={() => void copy("command", command)}
-            aria-label="Copy registration command"
-          >
-            {copiedKey === "command" ? <CheckIcon size={14} /> : <CopyIcon size={14} />}
-            {copiedKey === "command" ? "Copied command" : "Copy command"}
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={() => void copy("url-shortcut", webhookUrl)}
-            aria-label="Copy webhook URL"
-          >
-            {copiedKey === "url-shortcut" ? (
-              <CheckIcon size={14} />
-            ) : (
-              <CopyIcon size={14} />
-            )}
-            {copiedKey === "url-shortcut" ? "Copied URL" : "Copy URL"}
-          </Button>
+          <CopyButton value={command} label="Copy registration command" showLabel />
+          <CopyButton value={webhookUrl} label="Copy webhook URL" showLabel />
           <Button asChild variant="ghost" size="sm">
             <a
               href={deepLink}
@@ -165,14 +122,10 @@ export default function GuidedTriggerCard({
 function CopyableLine({
   label,
   value,
-  copied,
-  onCopy,
   testId,
 }: {
   label: string;
   value: string;
-  copied: boolean;
-  onCopy: () => void;
   testId?: string;
 }) {
   return (
@@ -187,16 +140,7 @@ function CopyableLine({
         >
           {value}
         </code>
-        <Button
-          type="button"
-          onClick={onCopy}
-          variant="ghost"
-          size="sm"
-          aria-label={`Copy ${label}`}
-        >
-          {copied ? <CheckIcon size={14} /> : <CopyIcon size={14} />}
-          {copied ? "Copied" : "Copy"}
-        </Button>
+        <CopyButton value={value} label={`Copy ${label}`} />
       </div>
     </div>
   );

@@ -167,7 +167,7 @@ describe("AddRunnerDialog component", () => {
     const writeText = stubClipboardWriteText().mockResolvedValue(undefined);
     const { user } = await openDialog();
     await reachReveal(user);
-    await user.click(screen.getByRole("button", { name: /copy to clipboard/i }));
+    await user.click(screen.getByRole("button", { name: /copy runner token/i }));
     await waitFor(() => expect(writeText).toHaveBeenCalledWith("agt_rdeadbeef"));
     // findByRole (not sync getByRole) — the "Copied" label flips one microtask
     // after writeText resolves; sync querying races the re-render under load.
@@ -178,8 +178,8 @@ describe("AddRunnerDialog component", () => {
     stubClipboardWriteText().mockRejectedValue(new Error("blocked"));
     const { user } = await openDialog();
     await reachReveal(user);
-    await user.click(screen.getByRole("button", { name: /copy to clipboard/i }));
-    await waitFor(() => expect(screen.getByText(/copy failed — select the value/i)).toBeTruthy());
+    await user.click(screen.getByRole("button", { name: /copy runner token/i }));
+    await waitFor(() => expect(screen.getByRole("button", { name: /copy failed/i })).toBeTruthy());
     // The reveal stays intact so the operator can still grab the value by hand.
     expect((screen.getByLabelText("Runner token") as HTMLInputElement).value).toBe("agt_rdeadbeef");
   });

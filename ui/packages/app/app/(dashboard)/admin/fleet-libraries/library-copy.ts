@@ -106,6 +106,12 @@ export const EDIT_REASON_MISSING = "No copy — the install gate will not explai
 export const REPOSITORY_HOST = "https://github.com/";
 export const REPOSITORY_LINK_LABEL = "Open on GitHub";
 
+// Copy affordances. The hash cell shows a preview but copies the WHOLE hash — a
+// truncated hash compares to nothing, and comparing two of them is the only reason
+// the column exists.
+export const COPY_SLUG_LABEL = "Copy fleet id";
+export const COPY_HASH_LABEL = "Copy the full bundle hash";
+
 // The source shape (accepted form, example repository, authoring docs) is shared
 // with the workspace onboarding dialog — see lib/fleet-library-source.ts. It is
 // deliberately NOT re-spelled here: both surfaces feed the same importer, so a

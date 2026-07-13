@@ -13,6 +13,7 @@ import {
   CardFooter,
   CardHeader,
   CardTitle,
+  CopyButton,
   Skeleton,
 } from "@agentsfleet/design-system";
 import {
@@ -21,12 +22,7 @@ import {
   generateEphemeralKeypair,
   generateVerificationCode,
 } from "@/lib/auth/cli-flow";
-import {
-  CopyButton,
-  PageShell,
-  VerificationCodeDisplay,
-  sanitizeTokenName,
-} from "./cli-auth-ui";
+import { PageShell, VerificationCodeDisplay, sanitizeTokenName } from "./cli-auth-ui";
 
 // Discriminant + status tags are named per RULE UFS (no bare repeated string
 // literals); the `as const` objects keep them usable as discriminated-union
@@ -293,7 +289,7 @@ export default function CliAuthPage({
             <VerificationCodeDisplay code={approve.verificationCode} />
           </CardContent>
           <CardFooter>
-            <CopyButton value={approve.verificationCode} />
+            <CopyButton value={approve.verificationCode} label="Copy code" showLabel />
           </CardFooter>
         </Card>
       </PageShell>

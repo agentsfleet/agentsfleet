@@ -1,14 +1,15 @@
 "use client";
 
-import { useCallback, useState } from "react";
-import { Button } from "@agentsfleet/design-system";
-
 // Presentational chrome for the CLI-auth approve page. Extracted from
 // page.tsx to keep that file under the length cap; these are internal to
 // the route (the approve-flow logic stays in page.tsx).
+//
+// The copy affordance used to live here, as a component ALSO named CopyButton —
+// which shadowed the design-system export of the same name and is very likely why
+// that primitive went unused across the whole app. It is gone; the route imports
+// the real one.
 
 const TOKEN_NAME_MAX_LEN = 64;
-const COPY_RESET_MS = 2000;
 
 export function PageShell({ children }: { children: React.ReactNode }) {
   return (
@@ -26,24 +27,6 @@ export function VerificationCodeDisplay({ code }: { code: string }) {
     >
       {code}
     </output>
-  );
-}
-
-export function CopyButton({ value }: { value: string }) {
-  const [copied, setCopied] = useState(false);
-  const onCopy = useCallback(async () => {
-    try {
-      await navigator.clipboard.writeText(value);
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), COPY_RESET_MS);
-    } catch {
-      setCopied(false);
-    }
-  }, [value]);
-  return (
-    <Button variant="secondary" onClick={() => void onCopy()}>
-      {copied ? "Copied" : "Copy code"}
-    </Button>
   );
 }
 

@@ -5,6 +5,7 @@ import {
   Badge,
   type BadgeVariant,
   Button,
+  CopyButton,
   DataTable,
   type DataTableColumn,
   EmptyState,
@@ -107,7 +108,12 @@ type ActivityDataState = {
 function HostCell({ r }: { r: RunnerListItem }) {
   return (
     <div className="min-w-0">
-      <div className="truncate font-mono text-sm">{r.host_id}</div>
+      {/* The host id is truncated to fit the column, so the eye cannot recover it
+          — the clipboard is the only way to get the whole value out of this cell. */}
+      <div className="flex min-w-0 items-center gap-1">
+        <div className="truncate font-mono text-sm">{r.host_id}</div>
+        <CopyButton value={r.host_id} label={`Copy host id: ${r.host_id}`} />
+      </div>
       <div className="font-mono text-xs tabular-nums text-muted-foreground">
         enrolled <Time value={new Date(r.created_at)} format="relative" /> ·{" "}
         {r.last_seen_at > 0 ? (

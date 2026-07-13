@@ -1,6 +1,10 @@
 "use client";
 
-import { Badge, IconAction } from "@agentsfleet/design-system";
+import {
+  Badge,
+  CopyButton,
+  IconAction,
+} from "@agentsfleet/design-system";
 import { ArrowLeftRightIcon, EyeIcon, LockIcon, PencilIcon, Trash2Icon } from "lucide-react";
 import { type LibraryModel, providerLabel } from "@/lib/api/model_library";
 import { nanosToUsdPerMtok } from "@/lib/api/admin_model_library";
@@ -85,7 +89,15 @@ export function ModelCell({
       </span>
     );
   }
-  return <span className="truncate font-mono text-sm">{row.entry.model_id}</span>;
+  // The model id is what a user pastes into fleet config and into provider
+  // dashboards. It is truncated here, so the clipboard is the only way to get it
+  // out whole.
+  return (
+    <span className="flex min-w-0 items-center gap-1">
+      <span className="truncate font-mono text-sm">{row.entry.model_id}</span>
+      <CopyButton value={row.entry.model_id} label={`Copy model id: ${row.entry.model_id}`} />
+    </span>
+  );
 }
 
 export function ProviderCell({
@@ -107,7 +119,12 @@ export function ProviderCell({
   return (
     <div className="min-w-0">
       <div className="text-sm">{entry.provider ? providerLabel(entry.provider) : "Unknown"}</div>
-      {entry.base_url ? <div className="truncate font-mono text-xs text-muted-foreground">{entry.base_url}</div> : null}
+      {entry.base_url ? (
+        <div className="flex min-w-0 items-center gap-1">
+          <div className="truncate font-mono text-xs text-muted-foreground">{entry.base_url}</div>
+          <CopyButton value={entry.base_url} label={`Copy base URL: ${entry.base_url}`} />
+        </div>
+      ) : null}
     </div>
   );
 }
