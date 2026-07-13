@@ -1,10 +1,10 @@
-import React from "react";
+import React, { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { TooltipProvider } from "@agentsfleet/design-system";
+import { Button, TooltipProvider } from "@agentsfleet/design-system";
 import { EVENTS } from "@/lib/analytics/events";
-import OnboardPlatformLibraryDialog from "./OnboardPlatformLibraryDialog";
+import AddFleetDialog from "./AddFleetDialog";
 
 // Real design-system primitives render Radix Tooltips, so a TooltipProvider
 // ancestor is mandatory — the dashboard layout mounts one in production.
@@ -19,30 +19,46 @@ vi.mock("@/lib/analytics/posthog", () => ({
 }));
 
 const REPO = "agentsfleet/platform-ops";
+const OTHER_REPO = "someone-else/platform-ops";
 
 const ENTRY = {
   id: "platform-ops",
   name: "Platform operations diagnostician",
   visibility: "platform" as const,
   content_hash: "sha256:abc123",
-  requirements: { credentials: ["fly"], tools: ["http_request"], network_hosts: [], trigger_present: true },
+  requirements: {
+    credentials: ["fly"],
+    tools: ["http_request"],
+    network_hosts: [],
+    trigger_present: true,
+  },
   support_files: [],
 };
 
-function renderDialog(onOnboarded = vi.fn()) {
-  render(
+// The dialog is controlled by the page now — success closes it and the page
+// revalidates, so there is no lifted "here is what you onboarded" callback. This
+// harness stands in for the page: it owns `open`, so closing is observable.
+function Harness({ prefillRepo }: { prefillRepo?: string }) {
+  const [open, setOpen] = useState(false);
+  return (
     <TooltipProvider>
-      <OnboardPlatformLibraryDialog onOnboarded={onOnboarded} />
-    </TooltipProvider>,
+      <Button type="button" onClick={() => setOpen(true)}>
+        open
+      </Button>
+      <AddFleetDialog open={open} onOpenChange={setOpen} prefillRepo={prefillRepo} />
+    </TooltipProvider>
   );
-  return onOnboarded;
+}
+
+function renderDialog(prefillRepo?: string) {
+  render(<Harness prefillRepo={prefillRepo} />);
 }
 
 async function openAndSubmit(user: ReturnType<typeof userEvent.setup>, repo: string) {
-  await user.click(screen.getByRole("button", { name: /onboard fleet/i }));
+  await user.click(screen.getByRole("button", { name: /^open$/i }));
   const input = await screen.findByLabelText(/repository/i);
   if (repo) await user.type(input, repo);
-  await user.click(screen.getByRole("button", { name: /^onboard$/i }));
+  await user.click(screen.getByRole("button", { name: /^add fleet$/i }));
 }
 
 beforeEach(() => {
@@ -53,7 +69,7 @@ afterEach(() => {
   cleanup();
 });
 
-describe("OnboardPlatformLibraryDialog", () => {
+describe("AddFleetDialog", () => {
   it("rejects a source_ref that is not owner/repo, without calling the action", async () => {
     const user = userEvent.setup();
     renderDialog();
@@ -71,21 +87,33 @@ describe("OnboardPlatformLibraryDialog", () => {
     await waitFor(() => expect(onboardPlatformLibraryActionMock).not.toHaveBeenCalled());
   });
 
-  it("onboards the repository and hands the entry back to the page", async () => {
+  it("adds the repository and closes — the table is the confirmation", async () => {
     const user = userEvent.setup();
     onboardPlatformLibraryActionMock.mockResolvedValueOnce({ ok: true, data: ENTRY });
-    const onOnboarded = renderDialog();
+    renderDialog();
 
     await openAndSubmit(user, REPO);
 
-    await waitFor(() => expect(onOnboarded).toHaveBeenCalledWith(ENTRY));
+    await waitFor(() => expect(screen.queryByLabelText(/repository/i)).toBeNull());
     expect(onboardPlatformLibraryActionMock).toHaveBeenCalledWith({
       source_kind: "github",
       source_ref: REPO,
     });
   });
 
-  it("emits the onboarding event with the catalog id and no repository free-text", async () => {
+  // Opened from a row's Fetch action: the operator never retypes a repository the
+  // table is already showing them.
+  it("prefills the repository when the dialog is opened from a row", async () => {
+    const user = userEvent.setup();
+    renderDialog(REPO);
+
+    await user.click(screen.getByRole("button", { name: /^open$/i }));
+
+    const input = (await screen.findByLabelText(/repository/i)) as HTMLInputElement;
+    expect(input.value).toBe(REPO);
+  });
+
+  it("emits the event with the catalog id and no repository free-text", async () => {
     const user = userEvent.setup();
     onboardPlatformLibraryActionMock.mockResolvedValueOnce({ ok: true, data: ENTRY });
     renderDialog();
@@ -105,21 +133,56 @@ describe("OnboardPlatformLibraryDialog", () => {
       error: "insufficient scope",
       errorCode: "UZ-AUTH-022",
     });
-    const onOnboarded = renderDialog();
+    renderDialog();
 
     await openAndSubmit(user, REPO);
 
     expect(await screen.findByText("UZ-AUTH-022")).toBeTruthy();
-    expect(onOnboarded).not.toHaveBeenCalled();
     // The repository field is still mounted — the operator can correct and retry.
     expect(screen.getByLabelText(/repository/i)).toBeTruthy();
+  });
+
+  // A name collision is never resolved silently: overwriting swaps the bundle
+  // every workspace installs, so the operator must say so out loud.
+  it("offers an explicit Replace on a name collision, and retries with replace set", async () => {
+    const user = userEvent.setup();
+    onboardPlatformLibraryActionMock
+      .mockResolvedValueOnce({ ok: false, error: "name taken", errorCode: "UZ-CATALOG-004" })
+      .mockResolvedValueOnce({ ok: true, data: ENTRY });
+    renderDialog();
+
+    await openAndSubmit(user, OTHER_REPO);
+
+    const replace = await screen.findByRole("button", { name: /replace anyway/i });
+    await user.click(replace);
+
+    await waitFor(() =>
+      expect(onboardPlatformLibraryActionMock).toHaveBeenLastCalledWith({
+        source_kind: "github",
+        source_ref: OTHER_REPO,
+        replace: true,
+      }),
+    );
+  });
+
+  // The first attempt must NOT carry `replace` — a collision has to be surfaced,
+  // never pre-authorised.
+  it("never sends replace on the first attempt", async () => {
+    const user = userEvent.setup();
+    onboardPlatformLibraryActionMock.mockResolvedValueOnce({ ok: true, data: ENTRY });
+    renderDialog();
+
+    await openAndSubmit(user, REPO);
+
+    const [body] = onboardPlatformLibraryActionMock.mock.calls[0] ?? [];
+    expect(body).not.toHaveProperty("replace");
   });
 
   it("Cancel closes the dialog and clears what was typed, so a reopen starts clean", async () => {
     const user = userEvent.setup();
     renderDialog();
 
-    await user.click(screen.getByRole("button", { name: /onboard fleet/i }));
+    await user.click(screen.getByRole("button", { name: /^open$/i }));
     await user.type(await screen.findByLabelText(/repository/i), REPO);
     await user.click(screen.getByRole("button", { name: /^cancel$/i }));
 
@@ -127,11 +190,11 @@ describe("OnboardPlatformLibraryDialog", () => {
     expect(onboardPlatformLibraryActionMock).not.toHaveBeenCalled();
 
     // Reopening must not resurrect the abandoned repository.
-    await user.click(screen.getByRole("button", { name: /onboard fleet/i }));
-    expect((await screen.findByLabelText(/repository/i)).getAttribute("value")).toBe("");
+    await user.click(screen.getByRole("button", { name: /^open$/i }));
+    expect(((await screen.findByLabelText(/repository/i)) as HTMLInputElement).value).toBe("");
   });
 
-  it("disables the controls and shows a spinner while the onboard is in flight", async () => {
+  it("disables the controls while the add is in flight", async () => {
     const user = userEvent.setup();
     let release: (v: unknown) => void = () => {};
     onboardPlatformLibraryActionMock.mockReturnValueOnce(
@@ -143,9 +206,9 @@ describe("OnboardPlatformLibraryDialog", () => {
 
     await openAndSubmit(user, REPO);
 
-    // A slow importer (GitHub fetch + validate + object-store write) must not
-    // let the operator fire a second onboard on top of the first.
-    const submit = await screen.findByRole("button", { name: /onboarding fleet|onboard$/i });
+    // A slow importer (GitHub fetch + validate + object-store write) must not let
+    // the operator fire a second add on top of the first.
+    const submit = await screen.findByRole("button", { name: /adding fleet|add fleet$/i });
     await waitFor(() => expect(submit.hasAttribute("disabled")).toBe(true));
     expect(screen.getByRole("button", { name: /^cancel$/i }).hasAttribute("disabled")).toBe(true);
 
@@ -161,21 +224,21 @@ describe("OnboardPlatformLibraryDialog", () => {
         release = resolve;
       }),
     );
-    const onOnboarded = renderDialog();
+    renderDialog();
 
     await openAndSubmit(user, REPO);
-    // Dismiss while the onboard is still in flight. Cancel is disabled during a
-    // submit, so Escape (Radix's onOpenChange, which `pending` does not gate) is
-    // the real abandon path — and it is exactly what the requestId guard exists
-    // for. The importer keeps running server-side; its answer is no longer wanted.
+    // Dismiss while the add is still in flight. Cancel is disabled during a submit,
+    // so Escape (Radix's onOpenChange, which `pending` does not gate) is the real
+    // abandon path — and it is exactly what the requestId guard exists for. The
+    // importer keeps running server-side; its answer is no longer wanted.
     await user.keyboard("{Escape}");
     await waitFor(() => expect(screen.queryByLabelText(/repository/i)).toBeNull());
 
     release({ ok: true, data: ENTRY });
 
-    // The stale success must not reopen the page's result card, and it must not
-    // resurrect the dialog. Without the requestId guard this would fire.
-    await waitFor(() => expect(onOnboarded).not.toHaveBeenCalled());
+    // The stale success must not resurrect the dialog, and must not emit a success
+    // event for work the operator walked away from.
+    await waitFor(() => expect(captureProductEventMock).not.toHaveBeenCalled());
     expect(screen.queryByLabelText(/repository/i)).toBeNull();
   });
 
@@ -189,13 +252,13 @@ describe("OnboardPlatformLibraryDialog", () => {
 
     await openAndSubmit(user, REPO);
 
-    // presentError falls back to an action-derived title when the failure has
-    // no UZ code — the alert must still render, with no empty code element.
+    // presentError falls back to an action-derived title when the failure has no UZ
+    // code — the alert must still render, with no empty code element.
     expect(await screen.findByRole("alert")).toBeTruthy();
     expect(screen.getByLabelText(/repository/i)).toBeTruthy();
   });
 
-  it("records a failed onboard as an outcome rather than dropping the signal", async () => {
+  it("records a failed add as an outcome rather than dropping the signal", async () => {
     const user = userEvent.setup();
     onboardPlatformLibraryActionMock.mockResolvedValueOnce({
       ok: false,
