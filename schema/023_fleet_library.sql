@@ -59,9 +59,21 @@ CREATE TABLE IF NOT EXISTS core.fleet_library (
 -- platform-library:write scope (requireScope middleware).
 GRANT SELECT, INSERT, UPDATE ON core.fleet_library TO api_runtime;
 
--- Primer: three first-party templates, one repo each (agentsfleet/<id>).
+-- Primer: the first-party bundles, one repo each (agentsfleet/<id>). The id is
+-- the identity — it names the repository, the `name:` both SKILL.md and
+-- TRIGGER.md declare, and this row; the importer takes the catalog id straight
+-- from that frontmatter name, so a bundle whose name drifts from its repo
+-- onboards as a second entry instead of filling the row seeded here.
+--
+-- These rows carry only the curated metadata an operator cannot derive from a
+-- bundle: the description and the per-credential "why this fleet needs it" copy
+-- the install gate shows. They stay invisible in the gallery until a platform
+-- operator onboards the repository (the list query filters on
+-- `content_hash IS NOT NULL`), which upserts the bundle's hash, markdown, and
+-- re-derived tools onto the row.
+--
 -- source_path empty (repo root is the bundle). source_ref 'main' until the
--- repos are finalized — pin to a commit SHA in a follow-up migration.
+-- repos are finalized — pin to a commit SHA once they settle.
 -- ON CONFLICT keeps the seed idempotent on re-apply.
 INSERT INTO core.fleet_library
     (id, name, description, source_repo, source_path, source_ref,
@@ -88,14 +100,24 @@ VALUES
      '["sprintsapi.zoho.com","accounts.zoho.com"]'::jsonb, 'public',
      (extract(epoch from now()) * 1000)::bigint,
      (extract(epoch from now()) * 1000)::bigint),
-    ('security-reviewer',
-     'Security reviewer',
-     'Reviews pull requests for security issues and posts findings.',
-     'agentsfleet/security-reviewer', '', 'main',
-     '["github"]'::jsonb,
-     '{"github":"scan your pull requests for security issues and post findings"}'::jsonb,
+    ('zoho-recruiter-daily-summarizer',
+     'Zoho Recruit daily summarizer',
+     'Summarizes the day''s Zoho Recruit pipeline activity and posts a digest.',
+     'agentsfleet/zoho-recruiter-daily-summarizer', '', 'main',
+     '["zoho_recruit"]'::jsonb,
+     '{"zoho_recruit":"read your hiring pipeline for the daily digest"}'::jsonb,
      '["http_request"]'::jsonb,
-     '["api.github.com"]'::jsonb, 'public',
+     '["recruit.zoho.com","accounts.zoho.com"]'::jsonb, 'public',
+     (extract(epoch from now()) * 1000)::bigint,
+     (extract(epoch from now()) * 1000)::bigint),
+    ('platform-ops',
+     'Platform operations diagnostician',
+     'Reads Fly.io app state and logs and Upstash Redis stats, correlates them into one cause, and posts the diagnosis to Slack.',
+     'agentsfleet/platform-ops', '', 'main',
+     '["fly","upstash","slack","github"]'::jsonb,
+     '{"fly":"read your app state and logs","upstash":"read your Redis database stats","slack":"post the diagnosis to your channel","github":"read the failed workflow run and its commits"}'::jsonb,
+     '["http_request"]'::jsonb,
+     '["api.machines.dev","api.upstash.com","slack.com","api.github.com"]'::jsonb, 'public',
      (extract(epoch from now()) * 1000)::bigint,
      (extract(epoch from now()) * 1000)::bigint)
 ON CONFLICT (id) DO NOTHING;

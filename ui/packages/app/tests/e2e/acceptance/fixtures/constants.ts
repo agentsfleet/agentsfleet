@@ -26,6 +26,11 @@ export type FleetStatus = (typeof AGENTSFLEET_STATUS)[keyof typeof AGENTSFLEET_S
 export const FIXTURE_KEY = {
   regular: "regular",
   admin: "admin",
+  // Platform operator — the only fixture whose Clerk `public_metadata.scopes`
+  // carries an operator scope. Kept separate from `admin` (which is a tenant
+  // owner, not a platform operator) so the other fixtures stay scope-free and
+  // the specs that assert an operator surface is HIDDEN keep their meaning.
+  operator: "operator",
 } as const;
 
 export type FixtureKey = (typeof FIXTURE_KEY)[keyof typeof FIXTURE_KEY];
@@ -33,7 +38,15 @@ export type FixtureKey = (typeof FIXTURE_KEY)[keyof typeof FIXTURE_KEY];
 export const FIXTURE_KEYS: readonly FixtureKey[] = [
   FIXTURE_KEY.regular,
   FIXTURE_KEY.admin,
+  FIXTURE_KEY.operator,
 ] as const;
+
+// Provisioned onto the operator fixture's Clerk `public_metadata.scopes`, which
+// the session-token template projects to the top-level `scopes` claim that both
+// the dashboard's `readSessionScopes` and agentsfleetd's `requireScope` read
+// (docs/AUTH.md §Manually-provisioned). Only the platform fleet-library scope is
+// granted — the acceptance suite exercises that surface and nothing else.
+export const OPERATOR_FIXTURE_SCOPES = ["platform-library:write"] as const;
 
 /**
  * `@clerk/nextjs` major version that the harness was tested against. A bump

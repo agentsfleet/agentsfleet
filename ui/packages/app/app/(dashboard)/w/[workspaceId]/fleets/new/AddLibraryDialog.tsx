@@ -31,13 +31,15 @@ import { captureProductEvent } from "@/lib/analytics/posthog";
 import { EVENTS } from "@/lib/analytics/events";
 import { presentError, type ErrorPresentation } from "@/lib/errors";
 import { SOURCE_KIND_GITHUB } from "@/lib/types";
+import {
+  SOURCE_REF_PATTERN,
+  SAMPLE_LIBRARY_REPO,
+  SAMPLE_LIBRARY_REPO_URL,
+} from "@/lib/fleet-library-source";
 import { onboardLibraryEntryAction } from "../actions";
 import { CREATE_FLEET_LIBRARY_TOOLTIP, CREATE_LIBRARY_DOC_URL } from "./library-docs";
 
-const SOURCE_REF_PATTERN = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
 const ONBOARD_ACTION = "create the fleet library";
-const SAMPLE_LIBRARY_REPO = "agentsfleet/github-pr-reviewer";
-const SAMPLE_LIBRARY_REPO_URL = "https://github.com/agentsfleet/github-pr-reviewer";
 
 const schema = z.object({
   source_ref: z
