@@ -7,7 +7,7 @@ const std = @import("std");
 const testing = std.testing;
 
 const resolve = @import("resolve.zig");
-const importer = @import("../../../fleet_bundle/importer.zig");
+const importer = @import("../../../fleet_library/importer.zig");
 
 const SKILL = "---\nname: x\ndescription: d\nversion: 0.1.0\n---\nbody";
 

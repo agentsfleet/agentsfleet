@@ -161,10 +161,10 @@ test {
     _ = @import("http/handlers/library/onboard.zig");
     _ = @import("http/handlers/library/gallery.zig");
     _ = @import("http/handlers/library/onboard_integration_test.zig");
-    _ = @import("fleet_bundle/library_store.zig");
-    _ = @import("fleet_bundle/importer.zig");
-    _ = @import("fleet_bundle/github_source.zig");
-    _ = @import("fleet_bundle/github_net.zig");
+    _ = @import("fleet_library/library_store.zig");
+    _ = @import("fleet_library/importer.zig");
+    _ = @import("fleet_library/github_source.zig");
+    _ = @import("fleet_library/github_net.zig");
     // Fleet execution telemetry store (writers via metering, tenant-scoped read via /v1/tenants/me/billing/charges)
     _ = @import("state/fleet_telemetry_store.zig");
     _ = @import("http/handlers/workspaces/dashboard_integration_test.zig");
@@ -229,7 +229,7 @@ test {
     // Its `test { _ = importer; _ = store; }` façade never compiled, so it registered
     // nothing; `importer.zig` happens to be force-imported below, and `store.zig` has
     // no tests yet. Wiring the façade makes it do the job it was written for.
-    _ = @import("fleet_bundle/mod.zig");
+    _ = @import("fleet_library/mod.zig");
     // `cmd/*` reaches the test root only through main.zig's ordinary imports,
     // which register nothing — these lines are what make their blocks compile.
     _ = @import("cmd/common.zig");
