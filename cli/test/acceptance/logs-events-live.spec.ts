@@ -142,7 +142,7 @@ if (!isLive) {
       // Install once for the whole suite — generates the timeline the logs
       // tail and the events walk both read. Prefix-scoped name so teardown
       // only reaps this run's fleet.
-      const installed = await installPlatformOpsFleet({ env });
+      const installed = await installPlatformOpsFleet({ env, seedFixtureSecrets: false });
       const id = installed.id ?? installed.fleet_id;
       if (!id) throw new Error(`install missing id: ${JSON.stringify(installed)}`);
       fleetId = id;

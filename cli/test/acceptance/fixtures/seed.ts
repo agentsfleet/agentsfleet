@@ -14,6 +14,7 @@ import crypto from "node:crypto";
 
 import { ACCEPTANCE_RUN_PREFIX } from "./constants.ts";
 import { runFleetctl } from "./cli.js";
+import { ensurePlatformSecretsSeeded } from "./platform-secrets.ts";
 import {
   buildPlatformOpsContent,
   onboardUploadTemplate,
@@ -23,6 +24,7 @@ import {
 export interface InstallOptions {
   readonly env: Readonly<Record<string, string>>;
   readonly timeoutMs?: number;
+  readonly seedFixtureSecrets?: boolean;
   // Defaults to the per-process `ACCEPTANCE_RUN_PREFIX`. Pass a custom
   // prefix only when a spec needs an isolated sub-namespace.
   readonly runPrefix?: string;
@@ -41,6 +43,7 @@ function uniqueName(runPrefix: string): string {
 export async function installPlatformOpsFleet(opts: InstallOptions): Promise<InstalledFleet> {
   const runPrefix = opts.runPrefix ?? ACCEPTANCE_RUN_PREFIX;
   const ctx = await readAuthContext(opts.env);
+  if (opts.seedFixtureSecrets !== false) await ensurePlatformSecretsSeeded(opts.env);
   const content = await buildPlatformOpsContent(uniqueName(runPrefix));
   const templateId = await onboardUploadTemplate(ctx, content);
   const result = await runFleetctl(
