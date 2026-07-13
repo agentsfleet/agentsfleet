@@ -106,10 +106,10 @@ Delete the seed. A `core.fleet_library` row is no longer born in a migration car
 **Implementation defaults.** (a) Every write stages to `draft` — `INSERT_PLATFORM`'s `ON CONFLICT` list gains `visibility`, so fetching a newer bundle for a published fleet returns it to draft rather than shipping it unreviewed; the publish gate must cover updates, not just first creation. (b) `description` is **removed** from that `ON CONFLICT` list and `required_credentials_reasons` stays out of it (it already is) — both are operator-owned after creation, and a refetch that clobbered the operator's edit would make §5's pencil a lie; a brand-new row still takes its description from the bundle at `INSERT`. (c) The deployed database keeps its four rows — they carry curated copy and are exactly what a create would produce minus the bundle; `029` only normalizes them (`content_hash IS NULL` ⇒ `draft`), because a bundle-less row claiming to be public is the accident this milestone exists to end.
 
 - **Dimension 1.1** — a fresh database has an empty `core.fleet_library`; no migration anywhere inserts a catalog row → Test `test_fresh_database_catalog_empty`
-- **Dimension 1.2** — on a database that already applied `023`, every bundle-less row becomes `draft` and no row with a bundle is touched; re-running changes nothing → Test `test_draft_normalize_is_idempotent_and_scoped`
-- **Dimension 1.3** — CODE DONE (test pending) — creating from a repository writes a `draft` row whose id, name, description, credentials, tools, and hosts all come from the bundle → Test `test_create_derives_row_from_bundle`
-- **Dimension 1.4** — CODE DONE (test pending) — fetching a newer bundle for a published fleet rewrites its bundle fields and returns it to `draft`, preserving the operator's description and install-gate copy → Test `test_refetch_drafts_and_preserves_curated_copy`
-- **Dimension 1.5** — CODE DONE (test pending) — creating from a repository whose frontmatter id already exists under a *different* source repository is rejected 409 unless `replace` is set → Test `test_create_rejects_id_collision_without_replace`
+- **Dimension 1.2** — DONE — on a database that already applied `023`, every bundle-less row becomes `draft` and no row with a bundle is touched; re-running changes nothing → Test `test_draft_normalize_is_idempotent_and_scoped`
+- **Dimension 1.3** — DONE — creating from a repository writes a `draft` row whose id, name, description, credentials, tools, and hosts all come from the bundle → Test `test_create_derives_row_from_bundle`
+- **Dimension 1.4** — DONE — fetching a newer bundle for a published fleet rewrites its bundle fields and returns it to `draft`, preserving the operator's description and install-gate copy → Test `test_refetch_drafts_and_preserves_curated_copy`
+- **Dimension 1.5** — DONE — creating from a repository whose frontmatter id already exists under a *different* source repository is rejected 409 unless `replace` is set → Test `test_create_rejects_id_collision_without_replace`
 - **Dimension 1.6** — DONE — no `fleet_bundle` path or import survives the rename; the build is green under the new folder → Test `test_no_fleet_bundle_references`
 
 ### §2 — The catalog routes
@@ -118,20 +118,20 @@ The admin plane's only resource with no read, no update, no delete. Add them: a 
 
 **Implementation defaults.** (a) Every method requires `platform-library:write` — no `platform-library:read` rung. Scopes are hand-provisioned in Clerk (`docs/AUTH.md` §Manually-provisioned), so a read rung would lock today's operators out of the page until a human re-provisioned them, to serve a read-only auditor role nobody has; `route_scopes.zig` resolves per method anyway, so splitting later is a one-line change. (b) No pagination, filter, or search — a curated first-party list, ordered by id.
 
-- **Dimension 2.1** — CODE DONE (test pending) — `GET` returns every row, draft and published, with metadata only: never `skill_markdown`, `trigger_markdown`, or an object-store key → Test `test_admin_catalog_lists_all_rows_without_bodies`
-- **Dimension 2.2** — CODE DONE (test pending) — `PATCH` updates the description and the per-credential install-gate copy, leaving bundle-derived fields untouched → Test `test_patch_updates_curated_copy_only`
-- **Dimension 2.3** — CODE DONE (test pending) — `PATCH` publishes and unpublishes; publishing a row with no bundle is rejected with a registry code → Test `test_publish_requires_a_bundle`
-- **Dimension 2.4** — CODE DONE (test pending) — `DELETE` removes a draft; deleting a published row is rejected with a registry code → Test `test_delete_rejects_published_row`
-- **Dimension 2.5** — CODE DONE (test pending) — a token without the scope gets 403 `UZ-AUTH-022` on every method; an unsupported method gets 405 → Test `test_catalog_routes_scope_and_method_enforced`
-- **Dimension 2.6** — CODE DONE (test pending) — every new method is documented in the split OpenAPI source and route coverage passes → Test `test_openapi_covers_catalog_routes`
+- **Dimension 2.1** — DONE — `GET` returns every row, draft and published, with metadata only: never `skill_markdown`, `trigger_markdown`, or an object-store key → Test `test_admin_catalog_lists_all_rows_without_bodies`
+- **Dimension 2.2** — DONE — `PATCH` updates the description and the per-credential install-gate copy, leaving bundle-derived fields untouched → Test `test_patch_updates_curated_copy_only`
+- **Dimension 2.3** — DONE — `PATCH` publishes and unpublishes; publishing a row with no bundle is rejected with a registry code → Test `test_publish_requires_a_bundle`
+- **Dimension 2.4** — DONE — `DELETE` removes a draft; deleting a published row is rejected with a registry code → Test `test_delete_rejects_published_row`
+- **Dimension 2.5** — DONE — a token without the scope gets 403 `UZ-AUTH-022` on every method; an unsupported method gets 405 → Test `test_catalog_routes_scope_and_method_enforced`
+- **Dimension 2.6** — DONE — every new method is documented in the split OpenAPI source and route coverage passes → Test `test_openapi_covers_catalog_routes`
 
 ### §3 — Publish is the only door to a tenant
 
 An unpublished fleet must be unreachable, not merely unlisted. The gallery already filters `visibility = 'public'`, but `SELECT_PLATFORM_INSTALL` — the resolve-by-id path the install flow uses — does **not**, so today a draft could be installed by anyone who knows its id. Without this slice, Unpublish is decoration.
 
-- **Dimension 3.1** — CODE DONE (test pending) — installing a draft fleet by id fails; publishing it makes the same install succeed → Test `test_draft_fleet_is_not_installable_by_id`
-- **Dimension 3.2** — a draft appears in neither the workspace gallery nor `GET /v1/fleets/bundles`; publishing surfaces it in both → Test `test_draft_absent_from_gallery_and_bundles`
-- **Dimension 3.3** — unpublishing removes it from both surfaces and blocks new installs, while a workspace that already installed it keeps running (its fleet holds its own `bundle_content_hash`) → Test `test_unpublish_leaves_existing_installs_intact`
+- **Dimension 3.1** — DONE — installing a draft fleet by id fails; publishing it makes the same install succeed → Test `test_draft_fleet_is_not_installable_by_id`
+- **Dimension 3.2** — DONE — a draft appears in neither the workspace gallery nor `GET /v1/fleets/bundles`; publishing surfaces it in both → Test `test_draft_absent_from_gallery_and_bundles`
+- **Dimension 3.3** — DONE — unpublishing removes it from both surfaces and blocks new installs, while a workspace that already installed it keeps running (its fleet holds its own `bundle_content_hash`) → Test `test_unpublish_leaves_existing_installs_intact`
 
 ### §4 — Clients, types, and the table
 
@@ -139,11 +139,11 @@ The surface an operator reads: one client per route, one status derivation, one 
 
 **Implementation defaults.** (a) Status is derived, never a wire field — the server returns `visibility` and a nullable `content_hash`, and one exported function maps them to `No bundle | Draft | Published`; two sources for one fact is how a table starts lying. (b) The content hash renders truncated with the full value available on the row — an operator compares hashes to confirm a refetch changed something.
 
-- **Dimension 4.1** — the clients call `GET`/`PATCH`/`DELETE` on the right paths with the bearer token → Test `test_catalog_clients_call_admin_endpoints`
-- **Dimension 4.2** — status derivation: `public` ⇒ Published; `draft` + hash ⇒ Draft; `draft` + no hash ⇒ No bundle → Test `test_catalog_status_derivation`
-- **Dimension 4.3** — the page reads the catalog server-side and renders one row per entry, keyed by catalog id, each with its status; a No-bundle row shows no hash → Test `test_catalog_table_renders_rows`, `test_catalog_row_status_rendering`
-- **Dimension 4.4** — the empty state renders only when the catalog is genuinely empty, and invites the first Add → Test `test_catalog_empty_state_only_when_no_rows`
-- **Dimension 4.5** — a read failure renders the mapped `presentError` presentation, never an empty table pretending the catalog is empty → Test `test_catalog_read_failure_surfaces_error`
+- **Dimension 4.1** — DONE — the clients call `GET`/`PATCH`/`DELETE` on the right paths with the bearer token → Test `test_catalog_clients_call_admin_endpoints`
+- **Dimension 4.2** — DONE — status derivation: `public` ⇒ Published; `draft` + hash ⇒ Draft; `draft` + no hash ⇒ No bundle → Test `test_catalog_status_derivation`
+- **Dimension 4.3** — DONE — the page reads the catalog server-side and renders one row per entry, keyed by catalog id, each with its status; a No-bundle row shows no hash → Test `test_catalog_table_renders_rows`, `test_catalog_row_status_rendering`
+- **Dimension 4.4** — DONE — the empty state renders only when the catalog is genuinely empty, and invites the first Add → Test `test_catalog_empty_state_only_when_no_rows`
+- **Dimension 4.5** — DONE — a read failure renders the mapped `presentError` presentation, never an empty table pretending the catalog is empty → Test `test_catalog_read_failure_surfaces_error`
 
 ### §5 — Row actions: add, edit, publish, fetch, delete
 
@@ -151,12 +151,12 @@ The operator's actual work. Every affordance has a route behind it, and no affor
 
 **Implementation defaults.** (a) The action set is derived from row state: **No bundle** → Fetch bundle, Edit, Delete. **Draft** → Publish, Fetch update, Edit, Delete. **Published** → Unpublish, Fetch update, Edit. No Delete on a published row — withdraw first; the route enforces the guard and the User Interface (UI) simply does not offer it. (b) Add and Fetch share one dialog — same validation, same double-submit guard, same error mapping — differing only in a prefilled repository; a second onboarding form is a second place for the validation to drift.
 
-- **Dimension 5.1** — "Add fleet" creates from a typed repository; the new row appears as a draft after revalidation → Test `test_add_fleet_creates_draft_row`
-- **Dimension 5.2** — a row's Fetch action opens the dialog prefilled with that row's repository; success returns the row to draft → Test `test_fetch_update_prefills_and_drafts`
-- **Dimension 5.3** — Edit saves the description and per-credential install-gate copy; a failed save keeps the dialog open with the mapped error → Test `test_edit_dialog_saves_curated_copy`
-- **Dimension 5.4** — Publish flips a draft to Published and Unpublish flips it back, each revalidating the table → Test `test_publish_unpublish_round_trip`
-- **Dimension 5.5** — Delete is offered only on unpublished rows, behind a destructive confirm naming the fleet → Test `test_delete_offered_only_when_unpublished`
-- **Dimension 5.6** — a create whose id collides returns 409 and the dialog offers an explicit Replace, which retries with `replace` set → Test `test_collision_offers_explicit_replace`
+- **Dimension 5.1** — DONE — "Add fleet" creates from a typed repository; the new row appears as a draft after revalidation → Test `test_add_fleet_creates_draft_row`
+- **Dimension 5.2** — DONE — a row's Fetch action opens the dialog prefilled with that row's repository; success returns the row to draft → Test `test_fetch_update_prefills_and_drafts`
+- **Dimension 5.3** — DONE — Edit saves the description and per-credential install-gate copy; a failed save keeps the dialog open with the mapped error → Test `test_edit_dialog_saves_curated_copy`
+- **Dimension 5.4** — DONE — Publish flips a draft to Published and Unpublish flips it back, each revalidating the table → Test `test_publish_unpublish_round_trip`
+- **Dimension 5.5** — DONE — Delete is offered only on unpublished rows, behind a destructive confirm naming the fleet → Test `test_delete_offered_only_when_unpublished`
+- **Dimension 5.6** — DONE — a create whose id collides returns 409 and the dialog offers an explicit Replace, which retries with `replace` set → Test `test_collision_offers_explicit_replace`
 
 ## Interfaces
 
