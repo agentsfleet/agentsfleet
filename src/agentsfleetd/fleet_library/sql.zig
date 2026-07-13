@@ -28,11 +28,18 @@ pub const SELECT_TENANT_INSTALL =
 /// `core.fleets.bundle_content_hash` — a workspace already running the fleet is
 /// untouched; only NEW installs pause until it is republished.
 ///
-/// `description` and `required_credentials_reasons` are ABSENT from the ON
-/// CONFLICT list on purpose: both are operator-owned after creation (the pencil
-/// on /admin/fleet-libraries writes them), and a refetch that clobbered the
-/// operator's copy would make that edit a lie (M128 Invariant 4). A brand-new row
-/// still takes its description from the bundle, via the INSERT arm.
+/// `name` and `description` are ABSENT from the ON CONFLICT list on purpose: both
+/// are operator-owned after creation (the pencil on /admin/fleet-libraries writes
+/// them), and a refetch that clobbered the operator's copy would make that edit a
+/// lie (M128 Invariant 4; M130 §3 moved `name` across the same line — offering a
+/// rename the next Fetch update silently reverts is worse than not offering it).
+/// A brand-new row still takes both from the bundle, via the INSERT arm.
+///
+/// `required_credentials_reasons` is neither overwritten NOR left alone: it is
+/// PRUNED to the credentials the incoming bundle actually declares. The map is
+/// keyed by credential name, so a bundle that drops a credential would otherwise
+/// leave a dead key that the dialog never renders and every save faithfully
+/// round-trips (M130 §4). Kept keys keep their copy; departed ones are dropped.
 ///
 /// The id-collision guard is IN the statement ($15 = replace), not a SELECT before
 /// it. The catalog id comes from the bundle's frontmatter, so two operators adding
@@ -52,10 +59,16 @@ pub const INSERT_PLATFORM =
     \\        ($7::jsonb -> 'credentials'), $8::jsonb, ($7::jsonb -> 'tools'), ($7::jsonb -> 'network_hosts'),
     \\        $9, $10, $11, $12, $13::jsonb, $14, $14)
     \\ON CONFLICT (id) DO UPDATE SET
-    \\   name = EXCLUDED.name,
     \\   source_repo = EXCLUDED.source_repo,
     \\   source_ref = EXCLUDED.source_ref,
     \\   required_credentials = EXCLUDED.required_credentials,
+    \\   required_credentials_reasons = (
+    \\       SELECT COALESCE(jsonb_object_agg(k, v), '{}'::jsonb)
+    \\         FROM jsonb_each_text(core.fleet_library.required_credentials_reasons) AS r(k, v)
+    \\        WHERE r.k IN (
+    \\              SELECT jsonb_array_elements_text(EXCLUDED.required_credentials)
+    \\        )
+    \\   ),
     \\   required_tools = EXCLUDED.required_tools,
     \\   network_hosts = EXCLUDED.network_hosts,
     \\   visibility = EXCLUDED.visibility,
@@ -99,11 +112,13 @@ pub const SELECT_ADMIN_CATALOG_ROW =
     \\ WHERE id = $1
 ;
 
-/// Read one row's lifecycle facts. Backs three guards: publish-needs-a-bundle,
-/// delete-needs-unpublished, and the add-path's id-collision check (whether this
-/// id already belongs to a DIFFERENT repository).
+/// Read one row's lifecycle facts. Backs four guards: publish-needs-a-bundle,
+/// delete-needs-unpublished, the add-path's id-collision check (whether this id
+/// already belongs to a DIFFERENT repository), and the PATCH's publish-vs-
+/// source-change check (you cannot publish a bundle you are discarding in the
+/// same request).
 pub const SELECT_CATALOG_ROW =
-    \\SELECT source_repo, visibility, content_hash
+    \\SELECT source_repo, visibility, content_hash, source_ref
     \\  FROM core.fleet_library
     \\ WHERE id = $1
 ;
@@ -118,6 +133,42 @@ pub const UPDATE_CATALOG_CURATE =
     \\   SET description = COALESCE($2, description),
     \\       required_credentials_reasons = COALESCE($3::jsonb, required_credentials_reasons),
     \\       updated_at = $4
+    \\ WHERE id = $1
+    \\RETURNING id
+;
+
+/// The operator's identity edit: name, and the source the bundle came from.
+///
+/// The invalidation lives HERE, not in the handler, and that is the point. In an
+/// UPDATE's SET list the right-hand side reads the OLD row, so
+/// `COALESCE($3, source_repo) IS DISTINCT FROM source_repo` asks "is the incoming
+/// repository different from the stored one?" atomically with the write — no
+/// read-then-write window, and no way for a caller to change the source while
+/// keeping a `content_hash` that was built from the previous one. Both columns
+/// move together or neither does (M130 Invariant 3).
+///
+/// A stale bundle is discarded rather than kept: the tar in object storage was
+/// built from the OLD repository, so a row that kept it would advertise a source
+/// it is not serving. Workspaces already running the fleet are untouched — their
+/// install pinned its own content_hash at install time.
+///
+/// $5 is the draft visibility: a row whose bundle just went away cannot stay
+/// public, and UPDATE_CATALOG_VISIBILITY below would refuse to republish it until
+/// a bundle is fetched.
+pub const UPDATE_CATALOG_IDENTITY =
+    \\UPDATE core.fleet_library
+    \\   SET name = COALESCE($2, name),
+    \\       source_repo = COALESCE($3, source_repo),
+    \\       source_ref = COALESCE($4, source_ref),
+    \\       content_hash = CASE
+    \\           WHEN COALESCE($3, source_repo) IS DISTINCT FROM source_repo
+    \\             OR COALESCE($4, source_ref) IS DISTINCT FROM source_ref
+    \\           THEN NULL ELSE content_hash END,
+    \\       visibility = CASE
+    \\           WHEN COALESCE($3, source_repo) IS DISTINCT FROM source_repo
+    \\             OR COALESCE($4, source_ref) IS DISTINCT FROM source_ref
+    \\           THEN $5 ELSE visibility END,
+    \\       updated_at = $6
     \\ WHERE id = $1
     \\RETURNING id
 ;

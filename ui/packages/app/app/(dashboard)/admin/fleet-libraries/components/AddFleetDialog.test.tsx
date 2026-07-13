@@ -58,7 +58,7 @@ async function openAndSubmit(user: ReturnType<typeof userEvent.setup>, repo: str
   await user.click(screen.getByRole("button", { name: /^open$/i }));
   const input = await screen.findByLabelText(/repository/i);
   if (repo) await user.type(input, repo);
-  await user.click(screen.getByRole("button", { name: /^add fleet$/i }));
+  await user.click(screen.getByRole("button", { name: /^create fleet library$/i }));
 }
 
 beforeEach(() => {
@@ -208,7 +208,7 @@ describe("AddFleetDialog", () => {
 
     // A slow importer (GitHub fetch + validate + object-store write) must not let
     // the operator fire a second add on top of the first.
-    const submit = await screen.findByRole("button", { name: /adding fleet|add fleet$/i });
+    const submit = await screen.findByRole("button", { name: /creating fleet library|create fleet library$/i });
     await waitFor(() => expect(submit.hasAttribute("disabled")).toBe(true));
     expect(screen.getByRole("button", { name: /^cancel$/i }).hasAttribute("disabled")).toBe(true);
 

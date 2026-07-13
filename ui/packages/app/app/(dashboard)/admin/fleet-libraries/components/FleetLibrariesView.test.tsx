@@ -168,7 +168,7 @@ describe("FleetLibrariesView", () => {
     });
     await userEvent.keyboard("{Escape}");
 
-    await userEvent.click(screen.getByRole("button", { name: "Add fleet" }));
+    await userEvent.click(screen.getByRole("button", { name: "Create fleet library" }));
     await waitFor(() => {
       expect((screen.getByLabelText("Repository") as HTMLInputElement).value).toBe("");
     });
@@ -216,10 +216,10 @@ describe("FleetLibrariesView", () => {
     renderView([DRAFT]);
 
     await userEvent.click(screen.getByRole("button", { name: "Edit" }));
-    expect(await screen.findByText("Edit install-gate copy")).toBeTruthy();
+    expect(await screen.findByText("Edit fleet library")).toBeTruthy();
 
     await userEvent.click(screen.getByRole("button", { name: /^cancel$/i }));
-    await waitFor(() => expect(screen.queryByText("Edit install-gate copy")).toBeNull());
+    await waitFor(() => expect(screen.queryByText("Edit fleet library")).toBeNull());
   });
 
   it("unpublishes a published fleet through the patch action", async () => {

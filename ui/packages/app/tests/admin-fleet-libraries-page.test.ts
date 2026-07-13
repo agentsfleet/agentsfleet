@@ -35,7 +35,7 @@ vi.mock("@/lib/api/fleet-library", () => ({
 }));
 
 vi.mock("@/app/(dashboard)/admin/fleet-libraries/components/FleetLibrariesView", () => ({
-  default: () => React.createElement("div", { "data-fleet-libraries-view": "1" }, "Fleet libraries"),
+  default: () => React.createElement("div", { "data-fleet-libraries-view": "1" }, "Fleet library"),
 }));
 
 const NOT_PLATFORM_ADMIN = "/settings?notice=fleet-libraries-platform-admin-only";
@@ -69,7 +69,7 @@ describe("admin/fleet-libraries page", () => {
   it("renders the catalog surface for an operator", async () => {
     const { default: Page } = await import("../app/(dashboard)/admin/fleet-libraries/page");
     const html = renderToStaticMarkup(await Page());
-    expect(html).toContain("Fleet libraries");
+    expect(html).toContain("Fleet library");
     expect(listPlatformFleetLibraryMock).toHaveBeenCalledWith("tok");
   });
 
@@ -87,7 +87,7 @@ describe("admin/fleet-libraries page", () => {
     // Neither the empty state nor the table: the operator is told the read failed,
     // not shown a catalog that looks empty.
     expect(html).not.toContain("No fleets in the catalog");
-    expect(html).not.toContain("Add fleet");
+    expect(html).not.toContain("Create fleet library");
     expect(html).toContain("load the fleet catalog");
   });
 });

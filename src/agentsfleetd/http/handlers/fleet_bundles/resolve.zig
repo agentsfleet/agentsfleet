@@ -108,17 +108,12 @@ pub fn buildSource(source_kind: []const u8, source_ref: []const u8) error{Invali
     if (std.mem.eql(u8, source_kind, importer.SOURCE_KIND_TEMPLATE)) {
         return .{ .template = source_ref };
     }
-    const owner_repo = try parseOwnerRepo(source_ref);
+    // The segment rules (charset, length, no "."/"..") live with the URL builder
+    // that enforces them — asking it here means a bad repository is refused before
+    // the fetch rather than during it, and means the catalog's PATCH refuses the
+    // same strings this does. Both map to UZ-BUNDLE-001 (pipeline.zig).
+    const owner_repo = FetchedBundle.parseOwnerRepo(source_ref) orelse return error.InvalidSourceRef;
     return .{ .github = .{ .owner = owner_repo.owner, .repo = owner_repo.repo, .ref = GITHUB_REF_DEFAULT } };
-}
-
-fn parseOwnerRepo(source_ref: []const u8) error{InvalidSourceRef}!struct { owner: []const u8, repo: []const u8 } {
-    const slash = std.mem.indexOfScalar(u8, source_ref, '/') orelse return error.InvalidSourceRef;
-    const owner = source_ref[0..slash];
-    const repo = source_ref[slash + 1 ..];
-    if (owner.len == 0 or repo.len == 0) return error.InvalidSourceRef;
-    if (std.mem.indexOfScalar(u8, repo, '/') != null) return error.InvalidSourceRef;
-    return .{ .owner = owner, .repo = repo };
 }
 
 fn bridgeSupport(alloc: std.mem.Allocator, files: []const FetchedBundle.SupportFile) std.mem.Allocator.Error![]importer.SupportFile {

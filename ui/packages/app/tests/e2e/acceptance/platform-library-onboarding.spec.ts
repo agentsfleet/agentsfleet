@@ -25,7 +25,7 @@ import { workspaceUrlPattern } from "./fixtures/nav";
 import { FIXTURE_KEY } from "./fixtures/constants";
 
 const ADMIN_PATH = "/admin/fleet-libraries";
-const NAV_LABEL = "Fleet libraries";
+const NAV_LABEL = "Fleet library";
 
 // Published at agentsfleet/<id>. The catalog id is the bundle's SKILL.md
 // frontmatter name — not the repository path the operator types.

@@ -45,16 +45,42 @@ describe("CopyButton", () => {
     });
   });
 
-  it("stays on the idle label when the clipboard write rejects", async () => {
+  // The values that pass through this button include a one-time API key and a
+  // runner enrollment token — shown once, unrecoverable. A copy that silently did
+  // nothing, on a button that looked like it worked, costs the user that value
+  // permanently. So a rejection is REPORTED, not swallowed.
+  it("reports a failed clipboard write instead of swallowing it", async () => {
     stubClipboard(vi.fn().mockRejectedValue(new Error("denied")));
     render(<CopyButton value={VALUE} label={LABEL} />);
 
     fireEvent.click(screen.getByRole("button", { name: LABEL }));
 
-    // The rejection is swallowed; no "Copied" flash lies about the failure.
+    const failed = await screen.findByRole("button", { name: /copy failed/i });
+    expect(failed.getAttribute("data-outcome")).toBe("failed");
+    // Never the success flash: that is the lie this branch exists to prevent.
+    expect(screen.queryByRole("button", { name: "Copied" })).toBeNull();
+  });
+
+  it("announces the failure in a live region, not by an icon swap alone", async () => {
+    stubClipboard(vi.fn().mockRejectedValue(new Error("denied")));
+    render(<CopyButton value={VALUE} label={LABEL} />);
+
+    fireEvent.click(screen.getByRole("button", { name: LABEL }));
+
+    const status = await screen.findByRole("status");
+    expect(status.textContent).toMatch(/copy failed/i);
+  });
+
+  it("reverts from failed to idle after the reset window", async () => {
+    stubClipboard(vi.fn().mockRejectedValue(new Error("denied")));
+    render(<CopyButton value={VALUE} label={LABEL} />);
+
+    fireEvent.click(screen.getByRole("button", { name: LABEL }));
+    await screen.findByRole("button", { name: /copy failed/i });
+
+    vi.advanceTimersByTime(2_000); // pin test: literal is the contract
     await waitFor(() => {
       expect(screen.getByRole("button", { name: LABEL })).toBeTruthy();
     });
-    expect(screen.queryByRole("button", { name: "Copied" })).toBeNull();
   });
 });
