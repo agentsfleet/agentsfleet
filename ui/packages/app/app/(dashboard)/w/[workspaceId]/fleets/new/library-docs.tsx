@@ -1,11 +1,13 @@
 import { Button } from "@agentsfleet/design-system";
 import { CircleHelpIcon } from "lucide-react";
+import { LIBRARY_AUTHORING_DOC_URL } from "@/lib/fleet-library-source";
 
-// The "write your own template" docs entry. Kept in a neutral module (not the
-// client-only AddLibraryDialog) so Server Components can import the URL + the
-// shared link without pulling the dialog's module graph.
-export const CREATE_LIBRARY_DOC_URL =
-  "https://docs.agentsfleet.net/fleets/library#writing-your-own";
+// The "write your own library entry" docs entry. Kept in a neutral module (not
+// the client-only AddLibraryDialog) so Server Components can import the URL +
+// the shared link without pulling the dialog's module graph. It points at the
+// authoring guide: the fleet-library page explains the catalog, but the steps
+// for writing SKILL.md / TRIGGER.md live on /fleets/authoring.
+export const CREATE_LIBRARY_DOC_URL = LIBRARY_AUTHORING_DOC_URL;
 export const CREATE_FLEET_LIBRARY_TOOLTIP = "Create a fleet library entry from GitHub.";
 export const INSTALL_FLEET_TOOLTIP = "Start from the fleet library.";
 

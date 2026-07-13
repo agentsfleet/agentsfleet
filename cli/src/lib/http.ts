@@ -1,6 +1,7 @@
 
 const APIERROR = "ApiError" as const;
 const TYPE_OBJECT = "object" as const;
+const TYPE_STRING = "string" as const;
 const MS_PER_SECOND = 1000 as const;
 
 // HTTP transport: fetch wrapper, JSON envelope unwrap, AbortController-backed
@@ -15,6 +16,13 @@ export interface ApiErrorDetails {
   requestId?: string | null;
   body?: unknown;
   retryAfterMs?: number | null;
+}
+
+export interface ProblemDetails {
+  readonly code?: string | undefined;
+  readonly message?: string | undefined;
+  readonly requestId?: string | undefined;
+  readonly missingSecrets?: ReadonlyArray<string> | undefined;
 }
 
 export class ApiError extends Error {
@@ -88,10 +96,10 @@ export async function apiRequest(url: string, options: ApiRequestOptions = {}): 
     }
 
     if (!res.ok) {
-      const envelope = isErrorEnvelope(json) ? json : null;
-      const errorCode = envelope?.error?.code ?? `HTTP_${res.status}`;
-      const requestId = envelope?.error?.request_id ?? envelope?.request_id ?? null;
-      const message = envelope?.error?.message ?? res.statusText ?? "request failed";
+      const problem = readProblemDetails(json);
+      const errorCode = problem.code ?? `HTTP_${res.status}`;
+      const requestId = problem.requestId ?? null;
+      const message = problem.message ?? res.statusText ?? "request failed";
       // Capture Retry-After at the boundary where res.headers is still
       // in scope; ApiError.body intentionally carries only the parsed
       // payload, so the header lives on a dedicated field.
@@ -119,17 +127,26 @@ export async function apiRequest(url: string, options: ApiRequestOptions = {}): 
   }
 }
 
-interface ErrorEnvelope {
-  error?: {
-    code?: string;
-    message?: string;
-    request_id?: string | null;
-  };
-  request_id?: string | null;
-}
+const readString = (value: unknown): string | undefined =>
+  typeof value === TYPE_STRING ? value as string : undefined;
 
-function isErrorEnvelope(value: unknown): value is ErrorEnvelope {
-  return value !== null && typeof value === TYPE_OBJECT;
+const readStringArray = (value: unknown): ReadonlyArray<string> | undefined =>
+  Array.isArray(value) && value.every((item) => typeof item === TYPE_STRING)
+    ? value
+    : undefined;
+
+export function readProblemDetails(value: unknown): ProblemDetails {
+  if (value === null || typeof value !== TYPE_OBJECT) return {};
+  const body = value as Record<string, unknown>;
+  const nested = body.error !== null && typeof body.error === TYPE_OBJECT
+    ? body.error as Record<string, unknown>
+    : null;
+  return {
+    code: readString(nested?.code) ?? readString(body.error_code),
+    message: readString(nested?.message) ?? readString(body.detail) ?? readString(body.title),
+    requestId: readString(nested?.request_id) ?? readString(body.request_id),
+    missingSecrets: readStringArray(body.missing_secrets),
+  };
 }
 
 // POST-based SSE streaming consumer lives in stream-fetch.ts (the

@@ -94,6 +94,34 @@ describe("HttpClient", () => {
       expect(fail?.message).toContain("retry");
     }
   });
+  test("ServerError lists missing Fleet Bundle secrets from RFC 7807", async () => {
+    setFetch((async () =>
+      new Response(JSON.stringify({
+        error_code: "UZ-BUNDLE-003",
+        detail: "Fleet Bundle requires workspace secrets that are not present",
+        request_id: "req_bundle",
+        missing_secrets: ["fly", "upstash", "slack", "github"],
+      }), { status: 424 })) as unknown as typeof globalThis.fetch);
+    const exit = await Effect.runPromiseExit(
+      Effect.provide(
+        Effect.gen(function* () {
+          const http = yield* HttpClient;
+          return yield* http.request({ path: "/v1/x", retry: { maxAttempts: 1 } });
+        }),
+        SUITE_LAYER("https://api.test.local"),
+      ),
+    );
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (Exit.isFailure(exit)) {
+      const fail = Option.getOrNull(Cause.findErrorOption(exit.cause));
+      expect(fail).toMatchObject({
+        _tag: "ServerError",
+        code: "UZ-BUNDLE-003",
+        requestId: "req_bundle",
+        suggestion: "add: fly, upstash, slack, github",
+      });
+    }
+  });
   test("NetworkError when fetch throws fetch-failed", async () => {
     setFetch(((async () => {
       throw new TypeError("fetch failed");
