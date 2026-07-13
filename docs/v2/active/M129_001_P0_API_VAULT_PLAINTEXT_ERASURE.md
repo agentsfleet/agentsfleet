@@ -16,12 +16,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M129
 **Workstream:** 001
 **Date:** Jul 13, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P0 — secret-bearing request and response storage currently survives request completion without deterministic erasure
 **Categories:** API
 **Batch:** B1 — isolated security hardening
-**Branch:** set at CHORE(open)
-**Test Baseline:** set at CHORE(open) — `unit=<N> integration=<M>` via `make _lint_zig_test_depth`
+**Branch:** feat/m129-plaintext-erasure
+**Test Baseline:** unit=2585 integration=311
 **Depends on:** M123_001 — envelope encryption and transient key zeroing are the established vault baseline
 **Provenance:** agent-drafted (Codex, Jul 13, 2026) from an adversarial Fable review independently checked against Zig 0.16 and httpz source
 **Canonical architecture:** `docs/architecture/data_flow.md` §C and `docs/architecture/billing_and_provider_keys.md` §8.2
