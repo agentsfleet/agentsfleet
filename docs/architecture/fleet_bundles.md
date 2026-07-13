@@ -59,6 +59,8 @@ The platform tier has a lifecycle, carried by `core.fleet_library.visibility`. T
 
 **Publish is the only door to a tenant.** Three reads gate on it — the workspace gallery, `GET /v1/fleets/bundles`, and `SELECT_PLATFORM_INSTALL` (the resolve-by-id path the install flow uses). The third is the load-bearing one: without it a draft would be *unlisted but installable* by anyone who knew its id, and Unpublish would be decoration.
 
+**All three also require a bundle** (`content_hash IS NOT NULL`), not just the publish state. A row that claims to be `public` but holds no bundle — the shape a pre-M128 database still carries — is therefore invisible to every tenant rather than advertised and then dead-ending at install. This is enforced in the queries, not by migrating rows: a stale row cannot lie to a tenant whatever state it is in, and no SQL migration is needed to make that true. An operator clears such rows from the dashboard (unpublish, then delete).
+
 **Withdrawing is safe because an install snapshots the bundle** onto `core.fleets.bundle_content_hash` + `bundle_snapshot_key`. A workspace already running a fleet is untouched by an unpublish or a delete of the catalog row it came from; only *new* installs pause.
 
 The operator's two curated fields — `description` and `required_credentials_reasons` (the install gate's "why this fleet needs your token" copy) — are deliberately **absent from the `ON CONFLICT` update list**, so a bundle refetch can never clobber what an operator wrote.

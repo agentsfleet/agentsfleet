@@ -33,6 +33,15 @@ pub const SELECT_TENANT_INSTALL =
 /// on /admin/fleet-libraries writes them), and a refetch that clobbered the
 /// operator's copy would make that edit a lie (M128 Invariant 4). A brand-new row
 /// still takes its description from the bundle, via the INSERT arm.
+///
+/// The id-collision guard is IN the statement ($15 = replace), not a SELECT before
+/// it. The catalog id comes from the bundle's frontmatter, so two operators adding
+/// two DIFFERENT repositories whose bundles declare the same unused name would both
+/// see "no such row" in a pre-check and both proceed — and the second upsert would
+/// silently swap the first repository's bundle out from under it. The `DO UPDATE
+/// ... WHERE` makes the conflict path refuse unless the incumbent IS this repository
+/// (a refetch) or the operator said `replace`. Zero rows returned means the id
+/// belongs to someone else; the caller turns that into UZ-CATALOG-004.
 pub const INSERT_PLATFORM =
     \\INSERT INTO core.fleet_library
     \\  (id, name, description, source_repo, source_path, source_ref,
@@ -55,6 +64,7 @@ pub const INSERT_PLATFORM =
     \\   trigger_markdown = EXCLUDED.trigger_markdown,
     \\   support_files_json = EXCLUDED.support_files_json,
     \\   updated_at = EXCLUDED.updated_at
+    \\ WHERE $15::boolean OR core.fleet_library.source_repo = EXCLUDED.source_repo
     \\RETURNING id
 ;
 
@@ -169,11 +179,20 @@ pub const SELECT_GALLERY_TENANT =
     \\ ORDER BY created_at DESC
 ;
 
+/// The public bundles list (GET /v1/fleets/bundles). Filters on BOTH the publish
+/// state and the bundle's presence — the same pair the gallery and the install path
+/// use, so all three reads agree on what a tenant can see.
+///
+/// The `content_hash IS NOT NULL` arm is not belt-and-braces: without it a row that
+/// is `public` but holds no bundle is ADVERTISED here and then dead-ends at install,
+/// because SELECT_PLATFORM_INSTALL requires the hash. That is how the pre-M128
+/// seed rows behaved. Enforcing it in the query rather than migrating the rows means
+/// a stale row cannot lie to a tenant no matter what state it is in.
 pub const SELECT_BUNDLES_LIST =
     \\SELECT id, name, description,
     \\       required_credentials::text, required_tools::text, network_hosts::text,
     \\       required_credentials_reasons::text
     \\  FROM core.fleet_library
-    \\ WHERE visibility = $1
+    \\ WHERE visibility = $1 AND content_hash IS NOT NULL
     \\ ORDER BY id
 ;

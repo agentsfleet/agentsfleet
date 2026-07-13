@@ -17,7 +17,13 @@
 -- unpublished fleet is unreachable, not merely unlisted.
 -- Canonical constants: fleet_library/library_store.zig (VISIBILITY_DRAFT /
 -- VISIBILITY_PUBLIC). Value sets are enforced in application code per RULE STS
--- (no static-string DEFAULT/CHECK here).
+-- (no static-string DEFAULT/CHECK here), and no migration writes them — nothing
+-- in schema/ inserts or updates a catalog row.
+--
+-- A row that is 'public' but holds NO bundle cannot lie to a tenant: all three
+-- tenant-facing reads (the workspace gallery, GET /v1/fleets/bundles, and the
+-- resolve-by-id install path) filter on `content_hash IS NOT NULL` as well as on
+-- visibility. That is enforced in the queries, not by migrating the rows.
 --
 -- Layout decision (eng-review 2026-06-20, FINAL): ONE GIT REPO PER ENTRY, named
 -- agentsfleet/<id> (repo name == entry id). The repo ROOT is the bundle

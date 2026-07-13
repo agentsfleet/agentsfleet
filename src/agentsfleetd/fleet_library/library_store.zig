@@ -27,11 +27,10 @@ pub const TIER_TENANT: []const u8 = "tenant";
 /// every tenant. `public` — live: it appears in the workspace gallery and in
 /// GET /v1/fleets/bundles, and it can be installed.
 ///
-/// These two literals are the whole value set. They are duplicated verbatim in
-/// `schema/029_fleet_library_draft_normalize.sql` (SQL cannot import a Zig
-/// constant — RULE STS) and in the dashboard's `lib/types.ts`; a drift between
-/// any of the three silently hides or exposes fleets, so an integration test
-/// asserts the migration and these constants agree.
+/// These two literals are the whole value set. No migration writes them — the
+/// catalog is runtime data — so the only other place they are spelled is the
+/// dashboard's `lib/types.ts`. A drift between the two silently hides or exposes
+/// fleets, which is why the wire values are asserted, not assumed.
 pub const VISIBILITY_DRAFT: []const u8 = "draft";
 pub const VISIBILITY_PUBLIC: []const u8 = "public";
 
@@ -59,6 +58,9 @@ pub const PlatformInsertParams = struct {
     requirements_json: []const u8,
     support_files_json: []const u8,
     now_ms: i64,
+    /// Overwrite a catalog id that already belongs to a DIFFERENT repository.
+    /// False means the statement itself refuses the swap — see INSERT_PLATFORM.
+    replace: bool = false,
 };
 
 pub const TenantInsertParams = struct {
@@ -124,6 +126,11 @@ fn rowToInstall(row_opt: anytype, alloc: std.mem.Allocator) !?InstallEntry {
 /// requirement columns. ALWAYS stages the row to `draft`: publishing is a separate,
 /// explicit act, so neither a new fleet nor a newly-fetched bundle can reach a
 /// tenant without an operator saying so (M128 §1). Returns the row id (caller owns it).
+///
+/// `error.CatalogIdCollision` when the id already belongs to a different repository
+/// and `replace` is false. The guard lives in the statement, so two operators racing
+/// the same unused id cannot both win — one INSERTs, the other's conflict path finds
+/// a foreign `source_repo` and refuses.
 pub fn insertOrUpdatePlatform(conn: *pg.Conn, alloc: std.mem.Allocator, p: PlatformInsertParams) ![]const u8 {
     var q = PgQuery.from(try conn.query(sql.INSERT_PLATFORM, .{
         p.id,
@@ -140,9 +147,12 @@ pub fn insertOrUpdatePlatform(conn: *pg.Conn, alloc: std.mem.Allocator, p: Platf
         p.trigger_markdown,
         p.support_files_json,
         p.now_ms,
+        p.replace,
     }));
     defer q.deinit();
-    const row = try q.next() orelse return error.TemplateInsertMissing;
+    // Zero rows can now mean only one thing: the ON CONFLICT guard refused, because
+    // this id is owned by another repository. A plain insert always returns.
+    const row = try q.next() orelse return error.CatalogIdCollision;
     return try alloc.dupe(u8, try row.get([]const u8, 0));
 }
 
