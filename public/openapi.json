@@ -4211,6 +4211,49 @@
       }
     },
     "/v1/admin/fleet-libraries": {
+      "get": {
+        "operationId": "list_platform_fleet_library",
+        "summary": "List the platform Fleet library catalog",
+        "description": "Lists every entry in the global platform catalog. Published, draft, and entries whose bundle was never fetched all appear. Unlike the workspace gallery, this operator view hides nothing: it shows what is live and what still needs work. Requires the `platform-library:write` scope. Metadata only — never bundle markdown, a support-file body, or an object-store key.",
+        "tags": [
+          "Fleet library"
+        ],
+        "responses": {
+          "200": {
+            "description": "The platform catalog.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "entries"
+                  ],
+                  "properties": {
+                    "entries": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/FleetLibraryCatalogEntry"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
       "post": {
         "operationId": "onboard_platform_fleet_library",
         "summary": "Onboard a platform Fleet library entry",
@@ -4248,10 +4291,122 @@
           "403": {
             "$ref": "#/components/responses/Error"
           },
+          "409": {
+            "description": "The bundle's name is a catalog id already owned by a different repository; retry with `replace` (`UZ-CATALOG-004`).",
+            "$ref": "#/components/responses/Error"
+          },
           "413": {
             "$ref": "#/components/responses/Error"
           },
           "502": {
+            "$ref": "#/components/responses/Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/admin/fleet-libraries/{id}": {
+      "patch": {
+        "operationId": "update_platform_fleet_library",
+        "summary": "Curate, publish, or unpublish a platform Fleet library entry",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The catalog id — the bundle's SKILL.md frontmatter name (a slug, not a UUID).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "description": "Partial update. `description` and `required_credentials_reasons` are the two fields no bundle can supply, so they are operator-owned: a later bundle refetch never overwrites them. `published` moves the entry between `draft` (stored, invisible to every tenant) and `public` (live in every workspace gallery and installable). Publishing an entry whose bundle was never fetched is refused — a published entry always has something to install. Requires the `platform-library:write` scope.",
+        "tags": [
+          "Fleet library"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FleetLibraryCatalogPatch"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The entry as it now stands.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FleetLibraryCatalogEntry"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "description": "Publish was requested for an entry with no bundle; fetch it from the repository first (`UZ-CATALOG-002`).",
+            "$ref": "#/components/responses/Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "delete_platform_fleet_library",
+        "summary": "Delete an unpublished platform Fleet library entry",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The catalog id — the bundle's SKILL.md frontmatter name (a slug, not a UUID).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "description": "Removes a catalog entry. Only an entry that is NOT published may be deleted. A live fleet is never taken away from the tenants who can install it, so unpublish it first. Workspaces that already installed the fleet are unaffected: an install snapshots the bundle, so it keeps running. Requires the `platform-library:write` scope.",
+        "tags": [
+          "Fleet library"
+        ],
+        "responses": {
+          "204": {
+            "description": "Entry deleted."
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "description": "The entry is published; unpublish it first, then delete (`UZ-CATALOG-003`).",
             "$ref": "#/components/responses/Error"
           },
           "503": {
@@ -6553,38 +6708,6 @@
           }
         }
       },
-      "FleetLibraryOnboardRequest": {
-        "type": "object",
-        "required": [
-          "source_kind"
-        ],
-        "properties": {
-          "source_kind": {
-            "type": "string",
-            "description": "Where the entry comes from. `github` and `template` are fetched and validated server-side; `upload` carries the SKILL.md (and optional TRIGGER.md) Markdown inline for a skill-only entry.",
-            "enum": [
-              "template",
-              "upload",
-              "github"
-            ]
-          },
-          "source_ref": {
-            "type": "string",
-            "maxLength": 512,
-            "description": "Required for `github` (an `owner/repo` locator resolved at the default branch) and `template` (a first-party template id)."
-          },
-          "skill_markdown": {
-            "type": "string",
-            "maxLength": 204800,
-            "description": "Raw SKILL.md bytes. Required for `upload`; ignored for fetched sources."
-          },
-          "trigger_markdown": {
-            "type": "string",
-            "maxLength": 204800,
-            "description": "Optional raw TRIGGER.md bytes for `upload`. Ignored for fetched sources."
-          }
-        }
-      },
       "FleetBundleRequirements": {
         "type": "object",
         "required": [
@@ -6640,6 +6763,115 @@
           }
         }
       },
+      "FleetLibraryCatalogEntry": {
+        "type": "object",
+        "description": "One row of the platform Fleet library catalog, as the operator sees it. Metadata only — never bundle markdown, a support-file body, or an object-store key.",
+        "required": [
+          "id",
+          "name",
+          "description",
+          "source_repo",
+          "source_ref",
+          "visibility",
+          "content_hash",
+          "requirements",
+          "required_credentials_reasons",
+          "support_files",
+          "updated_at"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The catalog id — the bundle's SKILL.md frontmatter name."
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string",
+            "description": "Operator-owned after the entry is created. Seeded from the bundle on the first fetch; a later refetch never overwrites it."
+          },
+          "source_repo": {
+            "type": "string",
+            "description": "The GitHub repository the bundle was fetched from, as `owner/repo`."
+          },
+          "source_ref": {
+            "type": "string",
+            "description": "The git ref the bundle was fetched at."
+          },
+          "visibility": {
+            "type": "string",
+            "enum": [
+              "draft",
+              "public"
+            ],
+            "description": "The publish lifecycle. `draft` — the bundle is stored and the fleet is invisible to every tenant. `public` — live in every workspace gallery and installable."
+          },
+          "content_hash": {
+            "type": "string",
+            "nullable": true,
+            "description": "The content hash of the stored bundle, or null when no bundle has ever been fetched for this entry. A null hash can never be published."
+          },
+          "requirements": {
+            "$ref": "#/components/schemas/FleetBundleRequirements"
+          },
+          "required_credentials_reasons": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Per-credential \"why this fleet needs it\" copy, keyed by credential name, shown at the install gate. Operator-owned: the importer cannot derive it, and a bundle refetch never overwrites it."
+          },
+          "support_files": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FleetBundleSupportFileSummary"
+            }
+          },
+          "updated_at": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Milliseconds since the Unix epoch."
+          }
+        }
+      },
+      "FleetLibraryOnboardRequest": {
+        "type": "object",
+        "required": [
+          "source_kind"
+        ],
+        "properties": {
+          "source_kind": {
+            "type": "string",
+            "description": "Where the entry comes from. `github` and `template` are fetched and validated server-side; `upload` carries the SKILL.md (and optional TRIGGER.md) Markdown inline for a skill-only entry.",
+            "enum": [
+              "template",
+              "upload",
+              "github"
+            ]
+          },
+          "replace": {
+            "type": "boolean",
+            "default": false,
+            "description": "Platform tier only. The catalog id comes from the bundle's SKILL.md frontmatter name, not this repository path. So a bundle may declare a name another repository already owns. That is refused with `UZ-CATALOG-004`, rather than silently swapping the bundle every workspace installs. Retry with `replace: true` to overwrite it deliberately."
+          },
+          "source_ref": {
+            "type": "string",
+            "maxLength": 512,
+            "description": "Required for `github` (an `owner/repo` locator resolved at the default branch) and `template` (a first-party template id)."
+          },
+          "skill_markdown": {
+            "type": "string",
+            "maxLength": 204800,
+            "description": "Raw SKILL.md bytes. Required for `upload`; ignored for fetched sources."
+          },
+          "trigger_markdown": {
+            "type": "string",
+            "maxLength": 204800,
+            "description": "Optional raw TRIGGER.md bytes for `upload`. Ignored for fetched sources."
+          }
+        }
+      },
       "FleetLibraryOnboardResult": {
         "type": "object",
         "description": "Result of onboarding a Fleet library entry (platform or tenant tier). Carries the entry identity, its tier in `visibility`, the content hash, the derived requirements, and support-file summaries — never an object-store key or support-file content.",
@@ -6679,6 +6911,25 @@
             "items": {
               "$ref": "#/components/schemas/FleetBundleSupportFileSummary"
             }
+          }
+        }
+      },
+      "FleetLibraryCatalogPatch": {
+        "type": "object",
+        "description": "Partial update of a catalog entry. Every field is optional; an absent field is left untouched, so editing the description never blanks the credential copy.",
+        "properties": {
+          "description": {
+            "type": "string"
+          },
+          "required_credentials_reasons": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "published": {
+            "type": "boolean",
+            "description": "true publishes the entry (requires a bundle); false withdraws it back to draft, which removes it from every gallery and blocks new installs. Workspaces already running the fleet are unaffected."
           }
         }
       },

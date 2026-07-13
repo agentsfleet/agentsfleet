@@ -9,7 +9,7 @@ const std = @import("std");
 const common = @import("../common.zig");
 const hx_mod = @import("../hx.zig");
 const ec = @import("../../../errors/error_registry.zig");
-const importer = @import("../../../fleet_bundle/importer.zig");
+const importer = @import("../../../fleet_library/importer.zig");
 const resolve = @import("../fleet_bundles/resolve.zig");
 
 const Hx = hx_mod.Hx;

@@ -155,7 +155,10 @@ pub fn requiredScopes(route: router.Route, method: httpz.Method) []const S {
         => &FLEET_READ,
 
         // ── Fleet library onboarding (M103; independent scopes, no hierarchy) ──
-        .admin_fleet_library => &PLATFORM_LIBRARY_WRITE,
+        // No read rung: `platform-library:write` gates the list too. Scopes are
+        // hand-provisioned in Clerk, so adding one would lock today's operators
+        // out of the page until a human re-provisioned them (M128 §2).
+        .admin_fleet_library, .admin_fleet_library_by_id => &PLATFORM_LIBRARY_WRITE,
         // GET lists the workspace gallery (read); POST onboards (write).
         .workspace_fleet_library => switch (method) {
             .GET => &FLEET_READ,

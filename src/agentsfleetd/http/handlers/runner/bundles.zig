@@ -19,7 +19,7 @@ const logging = @import("log");
 const common = @import("../common.zig");
 const ec = @import("../../../errors/error_registry.zig");
 const hx_mod = @import("../hx.zig");
-const importer = @import("../../../fleet_bundle/importer.zig");
+const importer = @import("../../../fleet_library/importer.zig");
 
 const Hx = hx_mod.Hx;
 const log = logging.scoped(.runner_bundle);

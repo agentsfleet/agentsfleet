@@ -13,8 +13,8 @@
 
 const std = @import("std");
 
-const importer = @import("../../../fleet_bundle/importer.zig");
-const FetchedBundle = @import("../../../fleet_bundle/github_source.zig");
+const importer = @import("../../../fleet_library/importer.zig");
+const FetchedBundle = @import("../../../fleet_library/github_source.zig");
 
 /// GitHub sources resolve at the default branch ref until per-source commit
 /// pinning lands.
@@ -27,6 +27,10 @@ const GITHUB_REF_DEFAULT = "main";
 pub const ImportRequest = struct {
     source_kind: []const u8,
     source_ref: []const u8 = "",
+    /// Platform add path only (M128): overwrite a catalog id that already belongs
+    /// to a DIFFERENT source repository. Defaults false, so a collision is a 409
+    /// the operator must acknowledge rather than a silent content swap.
+    replace: bool = false,
     skill_markdown: ?[]const u8 = null,
     trigger_markdown: ?[]const u8 = null,
     support_files: []const importer.SupportFile = &.{},

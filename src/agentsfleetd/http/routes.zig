@@ -49,9 +49,12 @@ pub const Route = union(enum) {
     // PATCH|DELETE /v1/tenants/me/models/{id}
     tenant_model_entry_by_id: []const u8,
     fleet_bundles, // GET /v1/fleets/bundles
-    // Platform Fleet library onboarding — POST /v1/admin/fleet-libraries
+    // Platform Fleet library catalog — GET|POST /v1/admin/fleet-libraries
     // (platform-library:write). No workspace context.
     admin_fleet_library,
+    // Per-entry catalog lifecycle — PATCH|DELETE /v1/admin/fleet-libraries/{id}
+    // (platform-library:write). Carries the catalog id (a slug, not a UUID).
+    admin_fleet_library_by_id: []const u8,
     // Tenant Fleet library onboarding — POST /v1/workspaces/{ws}/fleet-libraries
     // (library:write + workspace ownership). Carries workspace_id.
     workspace_fleet_library: []const u8,

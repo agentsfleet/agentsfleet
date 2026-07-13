@@ -11,6 +11,7 @@
 //! ("platform"/"tenant") and never an R2 key (Invariant 7).
 
 const std = @import("std");
+const pg = @import("pg");
 const httpz = @import("httpz");
 const logging = @import("log");
 
@@ -18,8 +19,9 @@ const common = @import("../common.zig");
 const hx_mod = @import("../hx.zig");
 const ec = @import("../../../errors/error_registry.zig");
 const id_format = @import("../../../types/id_format.zig");
-const importer = @import("../../../fleet_bundle/importer.zig");
-const library_store = @import("../../../fleet_bundle/library_store.zig");
+const importer = @import("../../../fleet_library/importer.zig");
+const library_store = @import("../../../fleet_library/library_store.zig");
+const catalog = @import("catalog.zig");
 const resolve = @import("../fleet_bundles/resolve.zig");
 const pipeline = @import("pipeline.zig");
 const clock = @import("common").clock;
@@ -47,7 +49,7 @@ const OnboardCtx = struct {
 pub fn innerPlatformOnboard(hx: Hx, req: *httpz.Request) void {
     var ctx = prepareOnboard(hx, req) orelse return;
     defer ctx.deinit(hx.alloc);
-    const id = insertPlatform(hx, ctx.resolved.body, ctx.prepared) orelse return;
+    const id = insertPlatform(hx, ctx.resolved.body, ctx.prepared, ctx.parsed.value.replace) orelse return;
     defer hx.alloc.free(id);
     respond(hx, ctx.resolved.body, ctx.prepared, id, library_store.TIER_PLATFORM);
 }
@@ -115,9 +117,21 @@ fn authorizeWs(hx: Hx, workspace_id: []const u8) bool {
     return true;
 }
 
-fn insertPlatform(hx: Hx, body: importer.ImportBody, prepared: importer.PreparedBundle) ?[]const u8 {
+fn insertPlatform(hx: Hx, body: importer.ImportBody, prepared: importer.PreparedBundle, replace: bool) ?[]const u8 {
     var db = hx.db() orelse return null;
     defer db.end();
+
+    // The catalog id is the bundle's frontmatter name, NOT the repository the
+    // operator typed. So a repository whose SKILL.md declares a name someone else
+    // already owns would silently overwrite that fleet's content — every tenant
+    // installing it would get this bundle instead.
+    //
+    // The guard is IN the upsert, not a SELECT before it: a check-then-act pair
+    // loses the race where two operators add two different repositories declaring
+    // the same UNUSED name — both would see no row, both would proceed, and the
+    // second would swap out the first. The statement refuses instead, and we only
+    // have to report it. Re-fetching the SAME repository is not a collision; that
+    // is the update path.
     return library_store.insertOrUpdatePlatform(db.conn, hx.alloc, .{
         .id = prepared.name,
         .name = prepared.name,
@@ -129,11 +143,35 @@ fn insertPlatform(hx: Hx, body: importer.ImportBody, prepared: importer.Prepared
         .requirements_json = prepared.requirements_json,
         .support_files_json = prepared.support_files_json,
         .now_ms = clock.nowMillis(),
-    }) catch |err| {
-        log.err("platform_onboard_store_failed", .{ .error_code = ec.ERR_INTERNAL_DB_QUERY, .err = @errorName(err), .req_id = hx.req_id });
-        common.internalDbError(hx.res, hx.req_id);
-        return null;
+        .replace = replace,
+    }) catch |err| switch (err) {
+        error.CatalogIdCollision => {
+            respondCollision(hx, db.conn, prepared.name);
+            return null;
+        },
+        else => {
+            log.err("platform_onboard_store_failed", .{ .error_code = ec.ERR_INTERNAL_DB_QUERY, .err = @errorName(err), .req_id = hx.req_id });
+            common.internalDbError(hx.res, hx.req_id);
+            return null;
+        },
     };
+}
+
+/// Name the repository that actually owns the id, so the operator can see whose
+/// fleet they were about to overwrite. This read is on the failure path only — it
+/// guards nothing, so it cannot re-introduce the race the statement just closed.
+fn respondCollision(hx: Hx, conn: *pg.Conn, id: []const u8) void {
+    const incumbent: []const u8 = blk: {
+        const state = catalog.fetchRowState(hx.alloc, conn, id) catch break :blk id;
+        break :blk if (state) |st| st.source_repo else id;
+    };
+    common.errorResponseConflict(
+        hx.res,
+        ec.ERR_CATALOG_ID_COLLISION,
+        "That bundle's name is already taken by a different repository. Rename the bundle, or retry with replace to overwrite it.",
+        hx.req_id,
+        incumbent,
+    );
 }
 
 fn insertTenant(hx: Hx, workspace_id: []const u8, body: importer.ImportBody, prepared: importer.PreparedBundle) ?[]const u8 {
