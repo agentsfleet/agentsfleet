@@ -14,7 +14,7 @@ const pg = @import("pg");
 const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
 const common = @import("../common.zig");
 const hx_mod = @import("../hx.zig");
-const sql = @import("../../../fleet_bundle/sql.zig");
+const sql = @import("../../../fleet_library/sql.zig");
 
 const Hx = hx_mod.Hx;
 

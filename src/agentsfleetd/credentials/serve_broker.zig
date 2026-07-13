@@ -5,7 +5,7 @@
 //! effect is injected via `integration.Deps`. This file builds the *real* effects
 //! the daemon supplies at boot:
 //!   * `HttpClientExchange` — the outbound HTTP boundary over `std.http.Client`
-//!     (mirrors `fleet_bundle/github_net.zig`), used for the GitHub token exchange.
+//!     (mirrors `fleet_library/github_net.zig`), used for the GitHub token exchange.
 //!   * `loadGithubApp` — the option-1 platform-key load: read `(admin_ws,
 //!     "github-app")` from the vault and dupe `{app_id, private_key_pem}` into a
 //!     process-lifetime buffer. Degrades to `null` on any miss/parse error so the

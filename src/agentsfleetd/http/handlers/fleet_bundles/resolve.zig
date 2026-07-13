@@ -13,8 +13,8 @@
 
 const std = @import("std");
 
-const importer = @import("../../../fleet_bundle/importer.zig");
-const FetchedBundle = @import("../../../fleet_bundle/github_source.zig");
+const importer = @import("../../../fleet_library/importer.zig");
+const FetchedBundle = @import("../../../fleet_library/github_source.zig");
 
 /// GitHub sources resolve at the default branch ref until per-source commit
 /// pinning lands.

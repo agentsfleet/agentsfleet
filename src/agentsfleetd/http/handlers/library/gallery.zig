@@ -12,8 +12,8 @@ const common = @import("../common.zig");
 const hx_mod = @import("../hx.zig");
 const ec = @import("../../../errors/error_registry.zig");
 const id_format = @import("../../../types/id_format.zig");
-const library_store = @import("../../../fleet_bundle/library_store.zig");
-const sql = @import("../../../fleet_bundle/sql.zig");
+const library_store = @import("../../../fleet_library/library_store.zig");
+const sql = @import("../../../fleet_library/sql.zig");
 
 const Hx = hx_mod.Hx;
 

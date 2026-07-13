@@ -110,7 +110,7 @@ Delete the seed. A `core.fleet_library` row is no longer born in a migration car
 - **Dimension 1.3** — creating from a repository writes a `draft` row whose id, name, description, credentials, tools, and hosts all come from the bundle → Test `test_create_derives_row_from_bundle`
 - **Dimension 1.4** — fetching a newer bundle for a published fleet rewrites its bundle fields and returns it to `draft`, preserving the operator's description and install-gate copy → Test `test_refetch_drafts_and_preserves_curated_copy`
 - **Dimension 1.5** — creating from a repository whose frontmatter id already exists under a *different* source repository is rejected 409 unless `replace` is set → Test `test_create_rejects_id_collision_without_replace`
-- **Dimension 1.6** — no `fleet_bundle` path or import survives the rename; the build is green under the new folder → Test `test_no_fleet_bundle_references`
+- **Dimension 1.6** — DONE — no `fleet_bundle` path or import survives the rename; the build is green under the new folder → Test `test_no_fleet_bundle_references`
 
 ### §2 — The catalog routes
 
