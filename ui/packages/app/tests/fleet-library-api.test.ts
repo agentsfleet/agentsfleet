@@ -57,4 +57,38 @@ describe("lib/api/fleet-library", () => {
     );
     expect(res.id).toBe("tmpl_new");
   });
+
+  it("onboardPlatformFleetLibrary POSTs to the admin path — no workspace segment", async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 201,
+      json: async () => ({
+        id: "platform-ops",
+        name: "Platform operations diagnostician",
+        visibility: "platform",
+        content_hash: "sha256:y",
+      }),
+    });
+    const mod = await import("../lib/api/fleet-library");
+    const res = await mod.onboardPlatformFleetLibrary(
+      { source_kind: "github", source_ref: "agentsfleet/platform-ops" },
+      "operator-tkn",
+    );
+
+    const [url, init] = fetchMock.mock.calls[0] ?? [];
+    // The platform tier is workspace-less: a workspace segment here would mean
+    // the operator surface had been pointed at the tenant route.
+    expect(url).toContain("/v1/admin/fleet-libraries");
+    expect(url).not.toContain("/v1/workspaces/");
+    expect(init).toMatchObject({ method: "POST" });
+    expect(init.headers).toMatchObject({ Authorization: "Bearer operator-tkn" });
+    expect(JSON.parse(init.body as string)).toEqual({
+      source_kind: "github",
+      source_ref: "agentsfleet/platform-ops",
+    });
+
+    // The catalog id comes back from the bundle, not from the repository path.
+    expect(res.id).toBe("platform-ops");
+    expect(res.visibility).toBe("platform");
+  });
 });

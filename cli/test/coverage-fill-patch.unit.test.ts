@@ -8,7 +8,7 @@ import {
   parseIntOption,
   parseFloatOption,
 } from "../src/program/validators.ts";
-import { apiRequest, authHeaders, type FetchImpl } from "../src/lib/http.ts";
+import { apiRequest, authHeaders, readProblemDetails, type FetchImpl } from "../src/lib/http.ts";
 import { apiRequestWithRetry, type RetryInfo } from "../src/lib/http-retry.ts";
 import { openUrl } from "../src/lib/browser.ts";
 import { asFetchImpl } from "./helpers.ts";
@@ -75,6 +75,53 @@ test("apiRequest tolerates non-JSON response body", async () => {
   const res = await apiRequest("https://x", { fetchImpl });
   // JSON.parse fails → json=null → returns {}.
   expect(res).toEqual({});
+});
+
+test("readProblemDetails prefers the legacy envelope while accepting RFC 7807 fields", () => {
+  expect(readProblemDetails({
+    error: { code: "UZ-LEGACY-001", message: "legacy detail", request_id: "req_legacy" },
+    error_code: "UZ-FLAT-001",
+    detail: "flat detail",
+    request_id: "req_flat",
+  })).toEqual({
+    code: "UZ-LEGACY-001",
+    message: "legacy detail",
+    requestId: "req_legacy",
+    missingSecrets: undefined,
+  });
+});
+
+test("readProblemDetails rejects malformed missing secret arrays", () => {
+  expect(readProblemDetails({
+    error_code: "UZ-BUNDLE-003",
+    title: "Fleet Bundle secrets missing",
+    missing_secrets: ["fly", 7],
+  })).toEqual({
+    code: "UZ-BUNDLE-003",
+    message: "Fleet Bundle secrets missing",
+    requestId: undefined,
+    missingSecrets: undefined,
+  });
+});
+
+test("apiRequest maps an RFC 7807 body onto ApiError", async () => {
+  const fetchImpl = asFetchImpl(async () => ({
+    ok: false,
+    status: 424,
+    statusText: "Failed Dependency",
+    headers: { get: () => null },
+    text: async () => JSON.stringify({
+      error_code: "UZ-BUNDLE-003",
+      detail: "required secrets are absent",
+      request_id: "req_bundle",
+      missing_secrets: ["fly", "github"],
+    }),
+  }));
+  await expect(apiRequest("https://x", { fetchImpl })).rejects.toMatchObject({
+    code: "UZ-BUNDLE-003",
+    message: "required secrets are absent",
+    requestId: "req_bundle",
+  });
 });
 
 test("apiRequestWithRetry retries on ECONNRESET (network classify)", async () => {

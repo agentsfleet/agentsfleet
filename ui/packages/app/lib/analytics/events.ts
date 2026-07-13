@@ -18,6 +18,7 @@ export const EVENTS = {
   platform_default_set: "platform_default_set",
   secret_added: "secret_added",
   fleet_library_onboarded: "fleet_library_onboarded",
+  platform_library_onboarded: "platform_library_onboarded",
   fleet_viewed: "fleet_viewed",
   integration_requested: "integration_requested",
   approval_resolved: "approval_resolved",
@@ -42,6 +43,15 @@ export type EventProps = {
     source_kind: string;
     outcome: string;
   };
+  // Platform-tier onboarding. No workspace_id — the platform catalog has no
+  // workspace segment. `entry_id` is the catalog slug the importer derived from
+  // the bundle (e.g. "platform-ops"), present only when the onboard succeeded;
+  // the repository the operator typed is never sent as free text.
+  [EVENTS.platform_library_onboarded]: {
+    source_kind: string;
+    outcome: string;
+    entry_id?: string;
+  };
   [EVENTS.fleet_viewed]: { fleet_id: string; status: string };
   [EVENTS.integration_requested]: { integration_id: string; integration_name: string };
   [EVENTS.approval_resolved]: { gate_id: string; decision: string; has_reason: boolean };
@@ -62,6 +72,7 @@ export const EVENT_PROP_KEYS = {
   [EVENTS.platform_default_set]: ["provider", "model", "is_custom"],
   [EVENTS.secret_added]: ["secret_name"],
   [EVENTS.fleet_library_onboarded]: ["workspace_id", "visibility", "source_kind", "outcome"],
+  [EVENTS.platform_library_onboarded]: ["source_kind", "outcome", "entry_id"],
   [EVENTS.fleet_viewed]: ["fleet_id", "status"],
   [EVENTS.integration_requested]: ["integration_id", "integration_name"],
   [EVENTS.approval_resolved]: ["gate_id", "decision", "has_reason"],

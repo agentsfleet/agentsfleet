@@ -12,21 +12,25 @@ const config = @import("config.zig");
 const BYTES_PER_KIB = 1024;
 
 const FIXTURES_BASE = "tests/fixtures/fleetbundle";
-const PLATFORM_OPS_FIXTURE_NAME = "platform-ops-agent";
+const PLATFORM_OPS_FIXTURE_NAME = "platform-ops";
 const PLATFORM_OPS_SKILL_PATH = "platform-ops/SKILL.md";
 const PLATFORM_OPS_TRIGGER_PATH = "platform-ops/TRIGGER.md";
 const MODEL_PLACEHOLDER = "{{model}}";
 const MODEL_VALUE = "accounts/fireworks/models/kimi-k2.6";
 const CONTEXT_CAP_PLACEHOLDER = "{{context_cap_tokens}}";
 const CONTEXT_CAP_VALUE = "256000";
-const FirstPartyFixture = struct {
-    name: []const u8,
-    directory: []const u8,
-};
-const FIRST_PARTY_FIXTURES = [_]FirstPartyFixture{
-    .{ .name = "github-pr-reviewer", .directory = "github-pr-reviewer" },
-    .{ .name = "security-reviewer", .directory = "security-reviewer" },
-    .{ .name = "zoho-sprint-daily-summarizer", .directory = "zoho-sprint-daily-summarizer" },
+// One slug per first-party bundle, and the slug IS the identity: it names the
+// fixture directory, the `agentsfleet/<slug>` repository operators onboard from,
+// the `name:` both SKILL.md and TRIGGER.md must declare, and — because the
+// importer takes the catalog row id straight from that frontmatter name — the
+// fleet-library id. A bundle whose declared name drifts from its directory
+// onboards as a second catalog entry instead of filling the seeded one, so the
+// list is a single string rather than a (name, directory) pair that can disagree.
+const FIRST_PARTY_FIXTURE_SLUGS = [_][]const u8{
+    "github-pr-reviewer",
+    "security-reviewer",
+    "zoho-sprint-daily-summarizer",
+    "zoho-recruiter-daily-summarizer",
 };
 
 fn loadFixture(alloc: std.mem.Allocator, rel_path: []const u8) ![]u8 {
@@ -173,10 +177,10 @@ test "platform operations acceptance fixture parses as one matching fleet" {
 
 test "first-party library fixtures use the supported HTTP request tool" {
     const alloc = std.testing.allocator;
-    for (FIRST_PARTY_FIXTURES) |fixture| {
-        const skill_path = try std.fmt.allocPrint(alloc, "{s}/SKILL.md", .{fixture.directory});
+    for (FIRST_PARTY_FIXTURE_SLUGS) |slug| {
+        const skill_path = try std.fmt.allocPrint(alloc, "{s}/SKILL.md", .{slug});
         defer alloc.free(skill_path);
-        const trigger_path = try std.fmt.allocPrint(alloc, "{s}/TRIGGER.md", .{fixture.directory});
+        const trigger_path = try std.fmt.allocPrint(alloc, "{s}/TRIGGER.md", .{slug});
         defer alloc.free(trigger_path);
         const skill_md = try loadFixture(alloc, skill_path);
         defer alloc.free(skill_md);
@@ -184,17 +188,18 @@ test "first-party library fixtures use the supported HTTP request tool" {
         defer alloc.free(trigger_md);
 
         var meta = config.parseSkillMetadata(alloc, skill_md) catch |err| {
-            std.debug.print("first-party SKILL fixture failed: {s}: {s}\n", .{ fixture.name, @errorName(err) });
+            std.debug.print("first-party SKILL fixture failed: {s}: {s}\n", .{ slug, @errorName(err) });
             return err;
         };
         defer meta.deinit(alloc);
         var parsed = config.parseTriggerMarkdownWithJson(alloc, trigger_md) catch |err| {
-            std.debug.print("first-party TRIGGER fixture failed: {s}: {s}\n", .{ fixture.name, @errorName(err) });
+            std.debug.print("first-party TRIGGER fixture failed: {s}: {s}\n", .{ slug, @errorName(err) });
             return err;
         };
         defer parsed.deinit(alloc);
 
-        try std.testing.expectEqualStrings(fixture.name, meta.name);
+        // The three-way identity: directory slug == SKILL name == TRIGGER name.
+        try std.testing.expectEqualStrings(slug, meta.name);
         try std.testing.expectEqualStrings(meta.name, parsed.config.name);
         try std.testing.expectEqual(@as(usize, 1), parsed.config.tools.len);
         try std.testing.expectEqualStrings("http_request", parsed.config.tools[0]);
