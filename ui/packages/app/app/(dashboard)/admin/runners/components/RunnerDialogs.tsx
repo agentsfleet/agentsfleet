@@ -4,6 +4,7 @@ import {
   Badge,
   Button,
   ConfirmDialog,
+  CopyButton,
   Dialog,
   DialogContent,
   DialogDescription,
@@ -79,7 +80,10 @@ export function RunnerActivityDialog({
       <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle>{RUNNER_ACTIVITY_TITLE}</DialogTitle>
-          <DialogDescription>{runner.host_id}</DialogDescription>
+          <DialogDescription className="flex items-center gap-1">
+            <span>{runner.host_id}</span>
+            <CopyButton value={runner.host_id} label={`Copy host id: ${runner.host_id}`} />
+          </DialogDescription>
         </DialogHeader>
         <div className="flex flex-wrap gap-2">
           <Badge variant="default">{runner.admin_state}</Badge>
@@ -121,6 +125,7 @@ export function RunnerActivityDialog({
 
 function ActivityRow({ event }: { event: RunnerEventItem }) {
   const occurredAt = new Date(event.occurred_at);
+  const metadata = formatMetadata(event.metadata);
   return (
     <li className="rounded-md border p-3">
       <div className="flex flex-wrap items-center gap-2">
@@ -131,7 +136,12 @@ function ActivityRow({ event }: { event: RunnerEventItem }) {
           className="font-mono text-xs tabular-nums text-muted-foreground"
         />
       </div>
-      <p className="mt-2 break-all font-mono text-xs text-muted-foreground">{formatMetadata(event.metadata)}</p>
+      {/* Raw event metadata is a debugging payload — its whole use is being pasted
+          into a ticket or a log search, never read off the screen. */}
+      <div className="mt-2 flex items-start gap-1">
+        <p className="break-all font-mono text-xs text-muted-foreground">{metadata}</p>
+        <CopyButton value={metadata} label="Copy event metadata" />
+      </div>
     </li>
   );
 }

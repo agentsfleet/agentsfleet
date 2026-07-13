@@ -9,7 +9,7 @@
     "start": "next start",
     "typecheck": "node ./node_modules/@typescript/native/bin/tsc --noEmit",
     "lint": "oxlint --type-aware .",
-    "test": "vitest run tests/*.test.ts tests/*.test.tsx lib/*.test.ts lib/**/*.test.ts 'app/(dashboard)' --testTimeout 60000",
+    "test": "vitest run 'tests/**/*.test.ts' 'tests/**/*.test.tsx' 'lib/**/*.test.ts' 'app/(dashboard)' --testTimeout 60000",
     "test:smoke": "vitest run tests/smoke.test.ts",
     "test:e2e": "bunx playwright test",
     "test:e2e:smoke": "bunx playwright test tests/e2e/smoke.spec.ts",

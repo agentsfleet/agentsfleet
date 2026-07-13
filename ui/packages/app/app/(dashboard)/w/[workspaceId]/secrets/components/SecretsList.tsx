@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   ConfirmDialog,
+  CopyButton,
   DataTable,
   EmptyState,
   IconAction,
@@ -88,7 +89,13 @@ function SecretNameCell({
   return (
     <div className="flex min-w-0 items-start gap-1">
       <div className="min-w-0">
-        <div className="truncate font-mono text-sm">{secret.name}</div>
+        {/* The name is the interpolation key a user retypes into fleet config as
+            ${secrets.<name>.<field>}. Copying it removes a whole class of silent
+            typo — a mistyped key resolves to nothing, and the fleet just fails. */}
+        <div className="flex min-w-0 items-center gap-1">
+          <div className="truncate font-mono text-sm">{secret.name}</div>
+          <CopyButton value={secret.name} label={`Copy secret name: ${secret.name}`} />
+        </div>
         <div className="text-xs text-muted-foreground">{SECRET_ROW_DESCRIPTION}</div>
       </div>
       <IconAction

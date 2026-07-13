@@ -20,7 +20,9 @@ import { useResettableTimeout } from "./use-resettable-timeout";
  * permission, no user gesture) that this is not a theoretical branch.
  */
 
-const RESET_MS = 2_000;
+/** How long the copied/failed outcome shows before reverting. Exported so a test
+ *  pins the real window instead of re-spelling the number (RULE UFS). */
+export const COPY_RESET_MS = 2_000;
 const COPIED_LABEL = "Copied";
 const FAILED_LABEL = "Copy failed — select the value and copy it manually";
 
@@ -31,10 +33,17 @@ export interface CopyButtonProps {
   value: string;
   /** Accessible name, e.g. "Copy workspace ID". */
   label: string;
+  /**
+   * Render `label` as visible text beside the icon. Icon-only (the default) is
+   * right beside a value the user can already see — a table cell, a field. Set
+   * this where copying IS the page's action and an icon alone would be a hunt:
+   * the CLI verification code, a one-time secret's reveal panel.
+   */
+  showLabel?: boolean;
   className?: string;
 }
 
-export function CopyButton({ value, label, className }: CopyButtonProps) {
+export function CopyButton({ value, label, showLabel = false, className }: CopyButtonProps) {
   const [outcome, setOutcome] = useState<CopyOutcome>("idle");
   const reset = useResettableTimeout();
 
@@ -48,42 +57,55 @@ export function CopyButton({ value, label, className }: CopyButtonProps) {
       next = "failed";
     }
     setOutcome(next);
-    reset.start(() => setOutcome("idle"), RESET_MS);
+    reset.start(() => setOutcome("idle"), COPY_RESET_MS);
   }
 
   const accessibleName =
     outcome === "copied" ? COPIED_LABEL : outcome === "failed" ? FAILED_LABEL : label;
 
+  const icon =
+    outcome === "copied" ? (
+      <CheckIcon size={14} className="text-success" aria-hidden="true" />
+    ) : outcome === "failed" ? (
+      <XIcon size={14} className="text-destructive" aria-hidden="true" />
+    ) : (
+      <CopyIcon size={14} aria-hidden="true" />
+    );
+
   return (
     <Button
       type="button"
-      variant="ghost"
-      size="icon-sm"
+      variant={showLabel ? "secondary" : "ghost"}
+      size={showLabel ? "sm" : "icon-sm"}
       onClick={() => {
         void copy();
       }}
       aria-label={accessibleName}
       title={accessibleName}
-      // icon-sm keeps its 24px visuals; the ::after overlay widens the
-      // interactive area (40px, 48px on touch) toward the 44px floor.
+      // Icon-only keeps its 24px visuals; the ::after overlay widens the
+      // interactive area (40px, 48px on touch) toward the 44px floor. A labelled
+      // button already clears the floor on its own.
       className={cn(
-        "relative after:absolute after:-inset-md pointer-coarse:after:-inset-lg",
+        !showLabel && "relative after:absolute after:-inset-md pointer-coarse:after:-inset-lg",
         className,
       )}
       data-slot="copy-button"
       data-outcome={outcome}
     >
-      {/* The live region is the failure's real carrier: an icon swap alone is
-          not announced, and this is the branch a user must not miss. */}
-      <span className="sr-only" role="status" aria-live="polite">
-        {outcome === "idle" ? "" : accessibleName}
-      </span>
-      {outcome === "copied" ? (
-        <CheckIcon size={14} className="text-success" aria-hidden="true" />
-      ) : outcome === "failed" ? (
-        <XIcon size={14} className="text-destructive" aria-hidden="true" />
+      {icon}
+      {/* One node carries the outcome, never two — a duplicated string inside one
+          button is both a DOM smell and unassertable. Labelled: the visible text IS
+          the live region. Icon-only: there is no visible text, so an off-screen one
+          does the announcing, because an icon swap alone is not announced and the
+          failure is the branch a user must not miss. */}
+      {showLabel ? (
+        <span role="status" aria-live="polite">
+          {accessibleName}
+        </span>
       ) : (
-        <CopyIcon size={14} aria-hidden="true" />
+        <span className="sr-only" role="status" aria-live="polite">
+          {outcome === "idle" ? "" : accessibleName}
+        </span>
       )}
     </Button>
   );

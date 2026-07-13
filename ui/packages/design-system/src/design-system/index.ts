@@ -137,7 +137,7 @@ export {
   type TooltipContentProps,
 } from "./Tooltip";
 export { EmptyState, type EmptyStateProps } from "./EmptyState";
-export { CopyButton, type CopyButtonProps } from "./CopyButton";
+export { CopyButton, COPY_RESET_MS, type CopyButtonProps } from "./CopyButton";
 export { TabNav, type TabNavItem, type TabNavProps } from "./TabNav";
 export {
   StatusCard,

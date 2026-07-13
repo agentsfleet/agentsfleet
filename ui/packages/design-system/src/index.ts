@@ -125,6 +125,7 @@ export {
   EmptyState,
   type EmptyStateProps,
   CopyButton,
+  COPY_RESET_MS,
   type CopyButtonProps,
   TabNav,
   type TabNavItem,

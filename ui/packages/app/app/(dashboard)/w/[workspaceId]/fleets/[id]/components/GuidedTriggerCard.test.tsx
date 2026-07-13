@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import GuidedTriggerCard from "./GuidedTriggerCard";
+import { COPY_RESET_MS } from "@agentsfleet/design-system";
 import { PROVIDER_GUIDANCE } from "./provider-guidance";
 
 afterEach(() => cleanup());
@@ -143,9 +144,16 @@ describe("GuidedTriggerCard", () => {
     await waitFor(() => expect(writeText).toHaveBeenCalledWith(WEBHOOK));
   });
 
-  it("clears the copied label after the reset window and preserves a newer copied key", async () => {
-    // A step larger than the reset window, used to fire a pending copy timer.
-    const ADVANCE_PAST_RESET_MS = 1000;
+  // Each copy affordance owns its own outcome and its own timer now that they all
+  // route through the design-system CopyButton. The card used to share ONE
+  // `copiedKey` and one single-shot timer across every button, so copying a second
+  // value silently cancelled the first one's reset — coupling the two buttons for
+  // no reason. They are independent, and that is what these pin.
+  //
+  // The accessible name flips to "Copied" on success, so the button is captured
+  // BEFORE the click and re-read: re-querying by the idle label would miss the very
+  // state change under test. React updates the node in place, so the ref holds.
+  it("shows Copied on the button that was copied, and leaves the other alone", async () => {
     vi.useFakeTimers();
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, "clipboard", {
@@ -154,39 +162,23 @@ describe("GuidedTriggerCard", () => {
     });
     renderCard();
 
-    fireEvent.click(screen.getByLabelText("Copy registration command"));
-    await act(async () => {
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-    expect(screen.getByLabelText("Copy registration command").textContent).toMatch(
-      /Copied command/,
-    );
+    const cmd = screen.getByLabelText("Copy registration command");
+    const url = screen.getByLabelText("Copy webhook URL");
 
-    // Advance halfway through the first reset window, then trigger a second copy
-    // so the two setTimeout callbacks resolve at different times.
-    await act(async () => {
-      vi.advanceTimersByTime(500);
-    });
-    fireEvent.click(screen.getByLabelText("Copy webhook URL"));
+    fireEvent.click(cmd);
     await act(async () => {
       await Promise.resolve();
       await Promise.resolve();
     });
-    expect(screen.getByLabelText("Copy webhook URL").textContent).toMatch(/Copied URL/);
+    expect(cmd.textContent).toMatch(/Copied/);
+    // The other button is untouched — no shared state to bleed into it.
+    expect(url.textContent).toMatch(/Copy webhook URL/);
 
-    // The command copy's timer was cancelled by the url copy (single-shot
-    // timer), so it never fires — the "Copied URL" label persists here.
     await act(async () => {
-      vi.advanceTimersByTime(ADVANCE_PAST_RESET_MS);
+      vi.advanceTimersByTime(COPY_RESET_MS);
     });
-    expect(screen.getByLabelText("Copy webhook URL").textContent).toMatch(/Copied URL/);
-
-    // The surviving url timer fires and clears the copied label.
-    await act(async () => {
-      vi.advanceTimersByTime(ADVANCE_PAST_RESET_MS);
-    });
-    expect(screen.getByLabelText("Copy webhook URL").textContent).toMatch(/Copy URL/);
+    expect(cmd.textContent).toMatch(/Copy registration command/);
+    vi.useRealTimers();
   });
 
   it("survives unmount-mid-reset without spurious setState on the unmounted tree (page-navigate / refresh scenario)", async () => {
@@ -203,30 +195,33 @@ describe("GuidedTriggerCard", () => {
       await Promise.resolve();
       await Promise.resolve();
     });
-    // User navigates away (or hard-refreshes) before the 1.5 s reset
-    // window elapses. The pending timer must be cancelled by the hook's
-    // useEffect destructor — no setState on the unmounted tree, no React
-    // error logged.
+    // User navigates away (or hard-refreshes) before the reset window elapses.
+    // The pending timer must be cancelled by the hook's useEffect destructor —
+    // no setState on the unmounted tree, no React error logged.
     unmount();
     await act(async () => {
       vi.advanceTimersByTime(5000);
     });
     expect(errSpy).not.toHaveBeenCalled();
     errSpy.mockRestore();
+    vi.useRealTimers();
   });
 
-  it("swallows clipboard rejection without throwing", async () => {
+  // This card used to swallow a clipboard rejection outright. It no longer does:
+  // the button reports the failure, because a copy that silently did nothing on a
+  // button that looked like it worked sends the user off with an empty clipboard.
+  it("reports a clipboard rejection rather than swallowing it", async () => {
     const writeText = vi.fn().mockRejectedValue(new Error("denied"));
     Object.defineProperty(navigator, "clipboard", {
       configurable: true,
       value: { writeText },
     });
     renderCard();
-    fireEvent.click(screen.getByLabelText("Copy registration command"));
+    const cmd = screen.getByLabelText("Copy registration command");
+    fireEvent.click(cmd);
     await waitFor(() => expect(writeText).toHaveBeenCalled());
-    // The Copied label never appears — state stayed un-toggled.
-    expect(screen.getByLabelText("Copy registration command").textContent).toMatch(
-      /Copy command/,
-    );
+    await waitFor(() => expect(cmd.textContent).toMatch(/Copy failed/i));
+    // Never the success flash: that is the lie this branch exists to prevent.
+    expect(cmd.textContent).not.toMatch(/^Copied$/);
   });
 });

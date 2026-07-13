@@ -148,7 +148,7 @@ describe("CreateApiKeyDialog component", () => {
     const writeText = stubClipboardWriteText().mockResolvedValue(undefined);
     const { user } = await openDialog();
     await reachReveal(user);
-    await user.click(screen.getByRole("button", { name: /^copy$/i }));
+    await user.click(screen.getByRole("button", { name: /copy api key/i }));
     await waitFor(() => expect(writeText).toHaveBeenCalledWith("agt_tdeadbeef"));
     // The "Copied" label flips after the async clipboard write resolves + a
     // re-render; await it rather than racing a synchronous getByRole — this is
@@ -160,8 +160,8 @@ describe("CreateApiKeyDialog component", () => {
     stubClipboardWriteText().mockRejectedValue(new Error("blocked"));
     const { user } = await openDialog();
     await reachReveal(user);
-    await user.click(screen.getByRole("button", { name: /^copy$/i }));
-    await waitFor(() => expect(screen.getByText(/copy failed\. select the key/i)).toBeTruthy());
+    await user.click(screen.getByRole("button", { name: /copy api key/i }));
+    await waitFor(() => expect(screen.getByRole("button", { name: /copy failed/i })).toBeTruthy());
     // The reveal stays intact so the user can still grab the value manually.
     expect((screen.getByLabelText(/API key value/i) as HTMLInputElement).value).toBe("agt_tdeadbeef");
   });

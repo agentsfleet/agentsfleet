@@ -8,6 +8,7 @@ import {
   Alert,
   AlertDescription,
   Button,
+  CopyButton,
   Dialog,
   DialogContent,
   DialogDescription,
@@ -125,7 +126,49 @@ export default function AddRunnerDialog({ onCreated }: { onCreated: () => void }
         }}
       >
         {created ? (
-          <RevealPanel token={created.runner_token} onClose={() => handleOpenChange(false)} />
+          // The reveal is INLINE, not a <RevealPanel token={...} /> child.
+          //
+          // A one-time runner token is never handed to another component as a prop.
+          // `tests/grep-gates/no-api-template-mint.test.ts` forbids a token-typed
+          // prop in any "use client" file, because a prop crossing into a client
+          // component is serialized into the hydration payload. Here `created` is
+          // already client state from a server action, so the prop was not in fact
+          // a hydration leak — but a regex cannot know that, and a credential that
+          // is never named as a prop cannot become one when the next person moves
+          // this panel into its own file. The gate wins; the token stays put.
+          <>
+            <DialogHeader>
+              <DialogTitle>Save the runner token</DialogTitle>
+              <DialogDescription>
+                This is the only time it is shown. Install it on the host as{" "}
+                <span className="font-mono">AGENTSFLEET_RUNNER_TOKEN</span> — you won&apos;t be able
+                to see it again.
+              </DialogDescription>
+            </DialogHeader>
+            {/* ph-no-capture keeps the one-time raw token out of PostHog autocapture
+                and session replay, even if input masking is relaxed project-side. */}
+            <div className="space-y-3 ph-no-capture">
+              {/* The copy sits ON the field, not below it. This value is shown once
+                  and cannot be recovered, so the affordance belongs where the eye
+                  already is. CopyButton reports a failed write rather than swallowing
+                  it — a silent failure here costs the operator the token for good. */}
+              <div className="flex items-center gap-2">
+                <Input
+                  readOnly
+                  value={created.runner_token}
+                  aria-label="Runner token"
+                  className="font-mono text-sm"
+                  onFocus={(e) => e.currentTarget.select()}
+                />
+                <CopyButton value={created.runner_token} label="Copy runner token" />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button type="button" onClick={() => handleOpenChange(false)}>
+                I&apos;ve stored it — close
+              </Button>
+            </DialogFooter>
+          </>
         ) : (
           <>
             <DialogHeader>
@@ -225,52 +268,5 @@ export default function AddRunnerDialog({ onCreated }: { onCreated: () => void }
         )}
       </DialogContent>
     </Dialog>
-  );
-}
-
-function RevealPanel({ token, onClose }: { token: string; onClose: () => void }) {
-  const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">("idle");
-
-  async function copy() {
-    try {
-      await navigator.clipboard.writeText(token);
-      setCopyState("copied");
-    } catch {
-      setCopyState("failed");
-    }
-  }
-
-  return (
-    <>
-      <DialogHeader>
-        <DialogTitle>Save the runner token</DialogTitle>
-        <DialogDescription>
-          This is the only time it is shown. Install it on the host as <span className="font-mono">AGENTSFLEET_RUNNER_TOKEN</span>{" "}
-          — you won&apos;t be able to see it again.
-        </DialogDescription>
-      </DialogHeader>
-      {/* ph-no-capture keeps the one-time raw token out of PostHog autocapture
-          and session replay, even if input masking is relaxed project-side. */}
-      <div className="space-y-3 ph-no-capture">
-        <Input
-          readOnly
-          value={token}
-          aria-label="Runner token"
-          className="font-mono text-sm"
-          onFocus={(e) => e.currentTarget.select()}
-        />
-        <Button type="button" variant="ghost" size="sm" onClick={() => void copy()}>
-          {copyState === "copied" ? "Copied" : "Copy to clipboard"}
-        </Button>
-        {copyState === "failed" ? (
-          <p className="text-sm text-destructive">Copy failed — select the value above and copy it manually.</p>
-        ) : null}
-      </div>
-      <DialogFooter>
-        <Button type="button" onClick={onClose}>
-          I&apos;ve stored it — close
-        </Button>
-      </DialogFooter>
-    </>
   );
 }

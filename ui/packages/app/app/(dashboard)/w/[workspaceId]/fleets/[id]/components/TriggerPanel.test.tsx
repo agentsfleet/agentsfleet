@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { COPY_RESET_MS } from "@agentsfleet/design-system";
 import TriggerPanel, { triggerKey } from "./TriggerPanel";
 import type { FleetTrigger } from "@/lib/types";
 
@@ -149,18 +150,24 @@ describe("TriggerPanel", () => {
       value: { writeText },
     });
     render(<TriggerPanel fleetId="agt_ax" workspaceId="ws_1" />);
-    fireEvent.click(screen.getByLabelText("Copy webhook URL"));
-    // Flush the clipboard write + the setCopied(true) state update.
+    // Captured before the click: the accessible name flips to "Copied" on success,
+    // so re-querying by the idle name would miss the very node under test. React
+    // updates it in place, so the ref holds.
+    const copyUrl = screen.getByLabelText("Copy webhook URL");
+    fireEvent.click(copyUrl);
+    // Flush the clipboard write + the outcome state update.
     await act(async () => {
       await Promise.resolve();
       await Promise.resolve();
     });
-    expect(screen.getByLabelText("Copy webhook URL").textContent?.trim()).toBe("Copied");
-    // Past the reset delay, the label reverts — fires `() => setCopied(false)`.
+    expect(copyUrl.textContent?.trim()).toBe("Copied");
+    // Past the reset window, the outcome reverts to idle.
     await act(async () => {
-      vi.advanceTimersByTime(2000);
+      vi.advanceTimersByTime(COPY_RESET_MS);
     });
-    expect(screen.getByLabelText("Copy webhook URL").textContent?.trim()).toBe("Copy");
+    expect(copyUrl.textContent?.trim()).toBe("");
+    expect(copyUrl.getAttribute("aria-label")).toBe("Copy webhook URL");
+    vi.useRealTimers();
   });
 
   it("produces stable accordion keys via triggerKey()", () => {
