@@ -16,12 +16,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M130
 **Workstream:** 001
 **Date:** Jul 13, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — the catalog badge currently asserts the opposite of what install does; the operator cannot correct a mistyped repository without deleting the row.
 **Categories:** API, UI
 **Batch:** B1 — standalone; no sibling workstream shares its files.
-**Branch:** {feat/mNN-name — added at CHORE(open)}
-**Test Baseline:** set at CHORE(open) — `unit=<N> integration=<M>` via `make _lint_zig_test_depth`
+**Branch:** feat/m130-catalog-row-edit
+**Test Baseline:** unit=2598 integration=324
 **Depends on:** M128_001 (built the catalog surface this corrects; already in `done/`)
 **Provenance:** LLM-drafted (claude-opus-4-8, Jul 13, 2026) — authored from a live read of `catalog.zig`, `library_store.zig`, `sql.zig`, and the admin surface; Indy chose the invalidate-and-unpublish model in session.
 **Canonical architecture:** `docs/architecture/fleet_bundles.md`
@@ -63,7 +63,14 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `ui/packages/app/app/(dashboard)/admin/fleet-libraries/components/EditFleetDialog.tsx` | EDIT | Name / repository / ref fields; the un-explained-credential surface. |
 | `ui/packages/app/app/(dashboard)/admin/fleet-libraries/components/PlatformCatalogTable.tsx` | EDIT | Repository cell becomes a link when the value is `owner/repo` shaped. |
 | `ui/packages/app/app/(dashboard)/admin/fleet-libraries/components/FleetLibrariesView.tsx` | EDIT | Consumes the corrected button verb and title constant. |
+| `ui/packages/app/app/(dashboard)/admin/fleet-libraries/loading.tsx` | EDIT | The route's skeleton header follows the corrected title constant. |
+| `ui/packages/app/components/layout/Shell.tsx` | EDIT | The platform nav entry follows the corrected title constant. |
 | `ui/packages/app/lib/analytics/events.ts` | EDIT | The source-changed operator event. |
+| `ui/packages/app/app/(dashboard)/admin/runners/components/RunnerDialogs.tsx` | EDIT | §6 — the activity dialog paints a skeleton instead of a blank body while its events fetch is in flight. |
+| `ui/packages/app/app/(dashboard)/admin/runners/components/RunnerDialogs.test.tsx` | CREATE | §6 coverage — the dialog's three render states. |
+| `ui/packages/app/tests/app-shell-navigation.test.ts` | EDIT | Nav assertions follow the corrected title constant. |
+| `ui/packages/app/tests/loading-states.test.ts` | EDIT | Loading assertions follow the corrected title constant. |
+| `scripts/scopes.admin` | CREATE | The platform-admin scope string, kept as a file so minting an operator token stops being a copy-paste of fifteen scopes. |
 | `src/agentsfleetd/http/handlers/library/catalog_patch_test.zig` | CREATE | Unit coverage for the widened patch: validation, invalidation, no-op equality. |
 | `ui/packages/app/app/(dashboard)/admin/fleet-libraries/components/EditFleetDialog.test.tsx` | EDIT | The new fields and the un-explained-credential surface. |
 | `ui/packages/app/app/(dashboard)/admin/fleet-libraries/components/FleetLibrariesView.test.tsx` | EDIT | The fourth status, its row actions, the repository link. |
@@ -143,6 +150,13 @@ Three copy and affordance faults on the admin page. The button reads **Add fleet
 
 - **Dimension 5.1** — the repository cell links to the GitHub repository when the value is `owner/repo` shaped, and renders inert text when it is not → Test `test_repository_cell_links_only_when_slug_shaped`
 - **Dimension 5.2** — the admin button and its dialog read `Create fleet library`, matching the tenant surface → Test `test_admin_button_reads_create_fleet_library`
+- **Dimension 5.3** — the entity is singular wherever it is named — page title, nav entry, route skeleton — and the plural spelling survives nowhere → Test `test_fleet_library_named_in_the_singular`
+
+### §6 — A dialog that is loading does not look broken
+
+The runner activity dialog fetches its events through a server action and renders nothing at all while that round-trip is in flight, so the body is blank for the whole wait and reads as a failure rather than a delay. It paints a skeleton instead. This slice rides with M130 because it is the same admin surface and the same class of fault the rest of the spec corrects — a surface asserting something untrue about its own state.
+
+- **Dimension 6.1** — the activity dialog renders a skeleton while its events fetch is pending, and never renders the skeleton beside real data, an empty-state, or an error → Test `test_runner_activity_dialog_render_states`
 
 ## Interfaces
 
@@ -219,6 +233,8 @@ A source change is the one operator action here that silently removes a fleet fr
 | 4.2 | unit | `test_edit_dialog_flags_unexplained_credentials` | A bundle declaring a credential with no reason text → the dialog marks it; one with copy is not marked. |
 | 5.1 | unit | `test_repository_cell_links_only_when_slug_shaped` | `"agentsfleet/github-pr-reviewer"` → a link to the GitHub repository; a non-slug source → inert text, no anchor. |
 | 5.2 | unit | `test_admin_button_reads_create_fleet_library` | The admin page's add affordance reads `Create fleet library`; the string "Add fleet" appears nowhere on the surface. |
+| 5.3 | unit | `test_fleet_library_named_in_the_singular` | Page title, platform nav entry, and route skeleton all render "Fleet library"; the plural spelling appears in no rendered surface. |
+| 6.1 | unit | `test_runner_activity_dialog_render_states` | `data=null, error=null` → a skeleton renders; `data` present → real rows and no skeleton; `error` set → the error and no skeleton. |
 | — | e2e | `test_e2e_operator_corrects_mistyped_repository` | The operator adds a fleet from a wrong repo, publishes, discovers it, edits the repository, watches the row fall to draft, refetches, republishes — the whole recovery path this spec exists to enable. |
 | — | integration | `test_publish_without_bundle_still_refused` | **Regression**: `UZ-CATALOG-002` still fires — the widened PATCH did not weaken the publish guard. |
 | — | integration | `test_delete_published_still_refused` | **Regression**: `UZ-CATALOG-003` still fires — the widened PATCH did not weaken the delete guard. |
@@ -274,7 +290,7 @@ N/A — no files deleted.
 2. **Preserved user behaviour** — Add, fetch, publish, unpublish, delete, and the description/credential-reason editing all keep working exactly as they do today. Every existing workspace install keeps running its pinned bundle regardless of what the operator does to the catalog row. The publish-needs-a-bundle and delete-needs-withdrawal guards are untouched.
 3. **Optimal-way check** — The most direct shape would let the operator fix the repository *and* refetch in one action, with no window where the fleet is withdrawn. We take the two-step (invalidate, then fetch) because doing the network fetch inside a PATCH puts a fallible GitHub call inside a database transaction and invents a new class of half-applied failure. The window is acceptable: the row is already broken when the repository is wrong.
 4. **Rebuild-vs-iterate** — Iterate. The catalog's field-ownership model (bundle owns identity, operator owns copy) is sound; this spec moves three fields across that line and makes the derived status total. Nothing about the lifecycle needs rebuilding.
-5. **What we build** — A fourth derived status; three new PATCH fields with source-invalidation; `name` removed from the refetch overwrite; reason-map pruning; a repository link; corrected button copy.
+5. **What we build** — A fourth derived status; three new PATCH fields with source-invalidation; `name` removed from the refetch overwrite; reason-map pruning; a repository link; corrected button copy; a loading skeleton on the runner activity dialog.
 6. **What we do NOT build** — Bundle upgrade for existing installs (needs its own milestone). Orphan-object reclamation (storage concern). Slug editing (would orphan installs). Ref-pinning at import (not needed for the recovery path). A refetch-inside-PATCH (see item 3).
 7. **Fit with existing features** — Compounds with the install gate: the credential reasons the operator curates here are what a user reads when a fleet asks for their token, so keeping that map correct across a repository change directly protects the install experience. The one feature it must not destabilize is **install** — the gallery and install queries are the contract this status fix is being made *honest against*, and their behaviour does not change.
 8. **Surface order** — UI-first, justified: this is a platform-operator dashboard surface with no CLI equivalent today; the API widening exists to serve it.
@@ -283,7 +299,7 @@ N/A — no files deleted.
 
 ## Decomposition & alternatives (patch vs refactor)
 
-- **Chosen shape:** Five Sections split by the *fault each one closes*, not by layer — status honesty (§1), identity ownership (§2), rename durability (§3), credential-copy drift (§4), surface copy (§5). §3 and §4 exist only because §2 does: making the source editable is what makes a rename revertible and a reason key stale. Sequencing them behind §2 keeps that causality legible to the implementing agent, and each is independently testable.
+- **Chosen shape:** Six Sections split by the *fault each one closes*, not by layer — status honesty (§1), identity ownership (§2), rename durability (§3), credential-copy drift (§4), surface copy (§5), loading honesty (§6). §3 and §4 exist only because §2 does: making the source editable is what makes a rename revertible and a reason key stale. Sequencing them behind §2 keeps that causality legible to the implementing agent, and each is independently testable. §5 and §6 were work already in flight on `main` when this spec was authored; Indy folded them in rather than splitting a second branch, and they belong here because each is the same fault as §1 — an admin surface asserting something untrue about its own state.
 - **Alternatives considered:** (a) **Refetch inside the PATCH** — no withdrawal window, but it puts a fallible network call inside a transaction and invents a half-applied failure class the codebase has nowhere else. Rejected. (b) **Copy-and-ref only** — do not make `name`/`source_repo` editable; repoint via the existing `replace: true` add flow. Smallest possible diff and breaks no invariant, but it leaves the actual complaint (a mistyped repository is uncorrectable without discarding curated copy) unsolved. Rejected. (c) **Status fix alone** — honest badge, no editing. Fixes the lie but not the trap. Rejected as half the job.
 - **Patch-vs-refactor verdict:** this is a **patch** because the field-ownership model it extends already exists and already works — `description` has been operator-owned, refetch-durable, and excluded from the conflict SET since M128. `name` acquires the identical treatment through the identical mechanism. No new abstraction is introduced; one derivation becomes total and one write path widens.
 
