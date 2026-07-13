@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { TooltipProvider } from "@agentsfleet/design-system";
+import { EVENTS } from "@/lib/analytics/events";
 import type { PlatformCatalogEntry } from "@/lib/types";
 import FleetLibrariesView from "./FleetLibrariesView";
 
@@ -19,7 +20,10 @@ vi.mock("@/app/(dashboard)/admin/fleet-libraries/actions", () => ({
   patchPlatformLibraryAction: (...args: unknown[]) => patchPlatformLibraryActionMock(...args),
   deletePlatformLibraryAction: (...args: unknown[]) => deletePlatformLibraryActionMock(...args),
 }));
-vi.mock("@/lib/analytics/posthog", () => ({ captureProductEvent: vi.fn() }));
+const captureProductEventMock = vi.fn();
+vi.mock("@/lib/analytics/posthog", () => ({
+  captureProductEvent: (...args: unknown[]) => captureProductEventMock(...args),
+}));
 
 function entry(over: Partial<PlatformCatalogEntry> = {}): PlatformCatalogEntry {
   return {
@@ -60,6 +64,7 @@ describe("FleetLibrariesView", () => {
     onboardPlatformLibraryActionMock.mockReset();
     patchPlatformLibraryActionMock.mockReset();
     deletePlatformLibraryActionMock.mockReset();
+    captureProductEventMock.mockReset();
   });
   afterEach(cleanup);
 
@@ -263,5 +268,45 @@ describe("FleetLibrariesView", () => {
 
     await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
     expect(deletePlatformLibraryActionMock).not.toHaveBeenCalled();
+  });
+
+  // Publishing is the moment a fleet becomes available to every tenant — the one
+  // state change here with a decision riding on it, so it is the one event added.
+  it("emits the publish event with the catalog slug and no operator free-text", async () => {
+    patchPlatformLibraryActionMock.mockResolvedValue({ ok: true, data: PUBLISHED });
+    renderView([DRAFT]);
+
+    await userEvent.click(screen.getByRole("button", { name: "Publish" }));
+
+    await waitFor(() => expect(captureProductEventMock).toHaveBeenCalled());
+    const [event, props] = captureProductEventMock.mock.calls[0] ?? [];
+    expect(event).toBe(EVENTS.platform_library_published);
+    expect(props).toEqual({ entry_id: "platform-ops", action: "published", outcome: "success" });
+  });
+
+  it("records a refused publish as an outcome rather than dropping the signal", async () => {
+    patchPlatformLibraryActionMock.mockResolvedValue({
+      ok: false,
+      error: "no bundle",
+      errorCode: "UZ-CATALOG-002",
+    });
+    renderView([DRAFT]);
+
+    await userEvent.click(screen.getByRole("button", { name: "Publish" }));
+
+    await waitFor(() => expect(captureProductEventMock).toHaveBeenCalled());
+    const [, props] = captureProductEventMock.mock.calls[0] ?? [];
+    expect(props).toMatchObject({ action: "published", outcome: "failure" });
+  });
+
+  it("records an unpublish as its own action", async () => {
+    patchPlatformLibraryActionMock.mockResolvedValue({ ok: true, data: DRAFT });
+    renderView([PUBLISHED]);
+
+    await userEvent.click(screen.getByRole("button", { name: "Unpublish" }));
+
+    await waitFor(() => expect(captureProductEventMock).toHaveBeenCalled());
+    const [, props] = captureProductEventMock.mock.calls[0] ?? [];
+    expect(props).toMatchObject({ action: "unpublished", outcome: "success" });
   });
 });

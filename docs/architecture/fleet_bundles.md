@@ -43,10 +43,27 @@ The re-pack is deliberate: the runner untars the result **without re-validating*
 
 Fleet library entries onboard into one of two catalog tiers, each its own table:
 
-- **Platform tier — `core.fleet_library`** (slug id, e.g. `github-pr-reviewer`). The global shop-window; a platform operator holding the `platform-library:write` scope onboards via `POST /v1/admin/fleet-libraries`. Migration-seeded rows bootstrap the catalog and become installable once onboarded (which populates their content hash + snapshot).
+- **Platform tier — `core.fleet_library`** (slug id, e.g. `github-pr-reviewer`). The global shop-window; a platform operator holding the `platform-library:write` scope owns its whole lifecycle from `/admin/fleet-libraries`. **Runtime-owned since M128: no migration seeds it.** A row is born when an operator adds a repository, and the bundle's `SKILL.md` frontmatter supplies its id, name, description, credentials, tools, and hosts.
 - **Tenant tier — `core.tenant_fleet_library`** (UUIDv7 id + `workspace_id` FK CASCADE). A workspace's own library entries; a tenant admin holding `library:write` onboards via `POST /v1/workspaces/{ws}/fleet-libraries`, deduped on `(workspace_id, content_hash)`.
 
-The workspace gallery `GET /v1/workspaces/{ws}/fleet-libraries` returns the union of all platform rows and that workspace's tenant rows, and nothing from another workspace.
+The workspace gallery `GET /v1/workspaces/{ws}/fleet-libraries` returns the union of all **published** platform rows and that workspace's tenant rows, and nothing from another workspace.
+
+## The publish gate (M128)
+
+The platform tier has a lifecycle, carried by `core.fleet_library.visibility`. The column was vestigial — tenant entries live in a different table, so it had only ever held `'public'`, on every row — and it now means:
+
+- **`draft`** — the bundle is fetched, validated, and stored, and the fleet is invisible to every tenant.
+- **`public`** — live: it appears in the workspace gallery and in `GET /v1/fleets/bundles`, and it can be installed.
+
+**Every write stages to `draft`.** `INSERT_PLATFORM`'s `ON CONFLICT` list includes `visibility`, so re-fetching a newer bundle for a *published* fleet withdraws it rather than shipping unreviewed content to every tenant. Publishing is always a separate, deliberate `PATCH`.
+
+**Publish is the only door to a tenant.** Three reads gate on it — the workspace gallery, `GET /v1/fleets/bundles`, and `SELECT_PLATFORM_INSTALL` (the resolve-by-id path the install flow uses). The third is the load-bearing one: without it a draft would be *unlisted but installable* by anyone who knew its id, and Unpublish would be decoration.
+
+**Withdrawing is safe because an install snapshots the bundle** onto `core.fleets.bundle_content_hash` + `bundle_snapshot_key`. A workspace already running a fleet is untouched by an unpublish or a delete of the catalog row it came from; only *new* installs pause.
+
+The operator's two curated fields — `description` and `required_credentials_reasons` (the install gate's "why this fleet needs your token" copy) — are deliberately **absent from the `ON CONFLICT` update list**, so a bundle refetch can never clobber what an operator wrote.
+
+The catalog id comes from the bundle's frontmatter `name:`, **not** the repository path. A repository declaring a name another repository already owns is refused (`UZ-CATALOG-004`) rather than silently swapping the bundle every workspace installs; overwriting takes an explicit `replace`.
 
 ## Storage map: R2 is the only content store (M103)
 
@@ -90,3 +107,6 @@ At lease time (see [`data_flow.md` §C](./data_flow.md)):
 - **The runner's behaviour comes from the fleet's live SKILL.md, not the library entry's.** A PATCH takes effect on the next lease; the tar's onboard-time copies are inert.
 - **Secrets never enter R2 or the snapshot.** Credentials are vault refs (`fleet:<source>`), resolved at lease and delivered inline; the tar carries only author-authored files.
 - **Content-addressing makes onboarding idempotent.** Re-onboarding identical bytes reuses the same R2 object and (per workspace, for the tenant tier) the same library row.
+- **A platform fleet is never born in SQL.** No migration inserts into `core.fleet_library`; a row exists only because an operator added a repository (M128).
+- **A published platform row always has a bundle.** Publishing a row with a null `content_hash` is refused — `public` promises every tenant something installable.
+- **A tenant can only ever reach a published platform fleet.** Gallery, bundles list, and install-by-id all filter `visibility = 'public'`.
