@@ -69,9 +69,13 @@ export default function PlatformCatalogTable({
   // then be editing a description read from a row the server has already replaced.
   const [editingId, setEditingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deletePending, setDeleting] = useState(false);
 
   const editing = entries.find((e) => e.id === editingId) ?? null;
   const deleting = entries.find((e) => e.id === deletingId) ?? null;
+
+  // One signal for "a write is in flight", covering publish/unpublish AND delete.
+  const busy = pending || deletePending;
 
   function setPublished(entry: PlatformCatalogEntry, published: boolean) {
     setError(null);
@@ -91,13 +95,23 @@ export default function PlatformCatalogTable({
     });
   }
 
+  // ConfirmDialog owns its own pending state and disables both of its buttons while
+  // this resolves, so the confirm cannot be double-fired. What it does NOT do is tell
+  // the TABLE that a write is in flight — so without this flag an operator could
+  // publish or refetch a row whose delete is still running. Every row action is gated
+  // on one pending signal, and delete is not an exception to it.
   async function confirmDelete(entry: PlatformCatalogEntry) {
-    const result = await deletePlatformLibraryAction(entry.id);
-    if (!result.ok) {
-      setError(presentErrorString({ errorCode: result.errorCode, message: result.error, action: DELETE_ACTION }));
-      return;
+    setDeleting(true);
+    try {
+      const result = await deletePlatformLibraryAction(entry.id);
+      if (!result.ok) {
+        setError(presentErrorString({ errorCode: result.errorCode, message: result.error, action: DELETE_ACTION }));
+        return;
+      }
+      setDeletingId(null);
+    } finally {
+      setDeleting(false);
     }
-    setDeletingId(null);
   }
 
   const columns: DataTableColumn<PlatformCatalogEntry>[] = [
@@ -150,7 +164,7 @@ export default function PlatformCatalogTable({
             {actions.canPublish ? (
               <IconAction
                 label={PUBLISH}
-                disabled={pending}
+                disabled={busy}
                 onClick={() => setPublished(row, true)}
               >
                 <EyeIcon size={14} />
@@ -159,7 +173,7 @@ export default function PlatformCatalogTable({
             {actions.canUnpublish ? (
               <IconAction
                 label={UNPUBLISH}
-                disabled={pending}
+                disabled={busy}
                 onClick={() => setPublished(row, false)}
               >
                 <EyeOffIcon size={14} />
@@ -167,12 +181,12 @@ export default function PlatformCatalogTable({
             ) : null}
             <IconAction
               label={row.content_hash ? FETCH_UPDATE : FETCH_BUNDLE}
-              disabled={pending}
+              disabled={busy}
               onClick={() => onFetch(row)}
             >
               <DownloadIcon size={14} />
             </IconAction>
-            <IconAction label={EDIT} disabled={pending} onClick={() => setEditingId(row.id)}>
+            <IconAction label={EDIT} disabled={busy} onClick={() => setEditingId(row.id)}>
               <PencilIcon size={14} />
             </IconAction>
             {/* A published fleet has no Delete at all, rather than a disabled one:
@@ -180,7 +194,7 @@ export default function PlatformCatalogTable({
             {actions.canDelete ? (
               <IconAction
                 label={DELETE}
-                disabled={pending}
+                disabled={busy}
                 onClick={() => setDeletingId(row.id)}
               >
                 <Trash2Icon size={14} />

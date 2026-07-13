@@ -5,6 +5,8 @@
 //! The load-bearing claims here are the ones a unit test cannot make, because
 //! they are properties of the real schema and the real router:
 //!   * a fleet is never born in SQL — a fresh catalog is EMPTY (Dimension 1.1);
+//!   * a bundle-less row cannot lie to a tenant, whatever its visibility says —
+//!     enforced in the queries, not by migrating rows (Dimension 1.2);
 //!   * publish is the only door to a tenant — a draft is absent from the gallery
 //!     AND uninstallable by id, so Unpublish is not decoration (§3);
 //!   * a refetch never destroys the operator's curated copy (Dimension 1.4);
@@ -486,4 +488,100 @@ test "integration: patching an entry that no longer exists is a 404, not a silen
     defer res.deinit();
     try res.expectStatus(.not_found);
     try res.expectErrorCode("UZ-CATALOG-001");
+}
+
+// ── Dimension 1.2 — a bundle-less row is invisible to tenants, whatever it claims ──
+//
+// Pre-M128 databases carry rows stored `public` that hold no bundle. They must not
+// be advertised and then dead-end at install. This is enforced in the three
+// tenant-facing reads rather than by migrating the rows: a stale row cannot lie to
+// a tenant no matter what state it is in, and no SQL is needed to make that true.
+
+test "integration: a public row with no bundle is hidden from every tenant-facing read" {
+    const alloc = std.testing.allocator;
+    const h = makeHarness(alloc) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    try reset(conn);
+
+    // Exactly the shape a deployed database still carries: 'public', no bundle.
+    _ = try conn.exec(
+        \\INSERT INTO core.fleet_library
+        \\  (id, name, description, source_repo, source_path, source_ref,
+        \\   required_credentials, required_credentials_reasons, required_tools,
+        \\   network_hosts, visibility, created_at, updated_at)
+        \\VALUES ($1, $1, 'legacy row, no bundle', $2, '', 'main',
+        \\        '[]'::jsonb, '{}'::jsonb, '[]'::jsonb, '[]'::jsonb, 'public', 1, 1)
+    , .{ PROBE_ID, PROBE_REPO });
+
+    const gallery_url = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/fleet-libraries", .{http_auth.WS_PRIMARY});
+    defer alloc.free(gallery_url);
+
+    // Absent from the workspace gallery...
+    const gallery = try (try h.get(gallery_url).bearer(TOKEN_TENANT)).send();
+    defer gallery.deinit();
+    try gallery.expectStatus(.ok);
+    try std.testing.expect(!gallery.bodyContains(PROBE_ID));
+
+    // ...and from the public bundles list, which would otherwise advertise a fleet
+    // that cannot be installed.
+    const bundles = try (try h.get(BUNDLES_URL).bearer(TOKEN_TENANT)).send();
+    defer bundles.deinit();
+    try bundles.expectStatus(.ok);
+    try std.testing.expect(!bundles.bodyContains(PROBE_ID));
+
+    // The operator still sees it — that is the whole point of the admin view — and
+    // can clean it up from the dashboard: unpublish, then delete. No SQL console.
+    const admin = try (try h.get(CATALOG_URL).bearer(TOKEN_PLATFORM)).send();
+    defer admin.deinit();
+    try std.testing.expect(admin.bodyContains(PROBE_ID));
+
+    const withdrawn = try patchEntry(h, alloc, PROBE_ID, "{\"published\":false}");
+    defer withdrawn.deinit();
+    try withdrawn.expectStatus(.ok);
+
+    const url = try entryUrl(alloc, PROBE_ID);
+    defer alloc.free(url);
+    const gone = try (try h.delete(url).bearer(TOKEN_PLATFORM)).send();
+    defer gone.deinit();
+    try gone.expectStatus(.no_content);
+    try std.testing.expectEqual(@as(i64, 0), try rowCount(conn));
+}
+
+// ── The greptile P1: the collision guard must be IN the write, not before it ──
+
+test "integration: two repositories racing the same unused name cannot both win" {
+    const alloc = std.testing.allocator;
+    const h = makeHarness(alloc) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    try reset(conn);
+
+    // First repository takes the id.
+    try addProbe(h, alloc);
+
+    // A pre-check would have raced here: with a check-then-act pair, two operators
+    // adding two DIFFERENT repositories that declare the same UNUSED name both see
+    // "no such row" and both proceed — and the second silently swaps out the first.
+    // The guard lives in the ON CONFLICT ... WHERE, so the statement itself refuses.
+    const collision = try addFleet(h, alloc, OTHER_REPO, false);
+    defer collision.deinit();
+    try collision.expectStatus(.conflict);
+    try collision.expectErrorCode("UZ-CATALOG-004");
+
+    // The incumbent's bundle is untouched, and the 409 names who owns the id.
+    try std.testing.expect(collision.bodyContains(PROBE_REPO));
+
+    var q = PgQuery.from(try conn.query("SELECT source_repo FROM core.fleet_library WHERE id = $1", .{PROBE_ID}));
+    defer q.deinit();
+    const row = try q.next() orelse return error.RowMissing;
+    try std.testing.expectEqualStrings(PROBE_REPO, try row.get([]const u8, 0));
 }
