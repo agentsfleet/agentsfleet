@@ -6850,6 +6850,11 @@
               "github"
             ]
           },
+          "replace": {
+            "type": "boolean",
+            "default": false,
+            "description": "Platform tier only. The catalog id comes from the bundle's SKILL.md frontmatter name, not this repository path. So a bundle may declare a name another repository already owns. That is refused with `UZ-CATALOG-004`, rather than silently swapping the bundle every workspace installs. Retry with `replace: true` to overwrite it deliberately."
+          },
           "source_ref": {
             "type": "string",
             "maxLength": 512,

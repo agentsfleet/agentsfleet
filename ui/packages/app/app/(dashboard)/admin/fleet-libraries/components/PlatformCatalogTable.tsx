@@ -57,8 +57,14 @@ export default function PlatformCatalogTable({
 }) {
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
-  const [editing, setEditing] = useState<PlatformCatalogEntry | null>(null);
-  const [deleting, setDeleting] = useState<PlatformCatalogEntry | null>(null);
+  // Hold the row's ID, never the row object. Every write revalidates the page, so
+  // a captured object goes stale the moment anything else lands — an operator would
+  // then be editing a description read from a row the server has already replaced.
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  const editing = entries.find((e) => e.id === editingId) ?? null;
+  const deleting = entries.find((e) => e.id === deletingId) ?? null;
 
   function setPublished(entry: PlatformCatalogEntry, published: boolean) {
     setError(null);
@@ -76,7 +82,7 @@ export default function PlatformCatalogTable({
       setError(presentErrorString({ errorCode: result.errorCode, message: result.error, action: DELETE_ACTION }));
       return;
     }
-    setDeleting(null);
+    setDeletingId(null);
   }
 
   const columns: DataTableColumn<PlatformCatalogEntry>[] = [
@@ -151,7 +157,7 @@ export default function PlatformCatalogTable({
             >
               <DownloadIcon size={14} />
             </IconAction>
-            <IconAction label={EDIT} disabled={pending} onClick={() => setEditing(row)}>
+            <IconAction label={EDIT} disabled={pending} onClick={() => setEditingId(row.id)}>
               <PencilIcon size={14} />
             </IconAction>
             {/* A published fleet has no Delete at all, rather than a disabled one:
@@ -160,7 +166,7 @@ export default function PlatformCatalogTable({
               <IconAction
                 label={DELETE}
                 disabled={pending}
-                onClick={() => setDeleting(row)}
+                onClick={() => setDeletingId(row.id)}
               >
                 <Trash2Icon size={14} />
               </IconAction>
@@ -194,12 +200,17 @@ export default function PlatformCatalogTable({
       />
 
       {editing ? (
-        <EditFleetDialog entry={editing} open onOpenChange={() => setEditing(null)} />
+        <EditFleetDialog
+          key={editing.id}
+          entry={editing}
+          open
+          onOpenChange={() => setEditingId(null)}
+        />
       ) : null}
 
       <ConfirmDialog
         open={deleting !== null}
-        onOpenChange={() => setDeleting(null)}
+        onOpenChange={() => setDeletingId(null)}
         title={DELETE_CONFIRM_TITLE}
         description={deleting ? `${deleting.name} — ${DELETE_CONFIRM_BODY}` : undefined}
         confirmLabel={DELETE}
