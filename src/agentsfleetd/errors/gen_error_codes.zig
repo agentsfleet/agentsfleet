@@ -137,6 +137,7 @@ const CATEGORY_COPY = [_]CategoryCopy{
     .{ .token = "MODELS", .label = "Tenant models", .prevention = "Use a model available to the tenant." },
     .{ .token = "PROVIDER", .label = "Model providers", .prevention = "Configure a supported provider, model, and secret." },
     .{ .token = "REQ", .label = "Request", .prevention = "Validate request fields before sending the request." },
+    .{ .token = "CATALOG", .label = "Fleet library catalog", .prevention = "Fetch a bundle before publishing a fleet, and unpublish before deleting one." },
     .{ .token = "RUN", .label = "Runners", .prevention = "Keep runner settings and lease health within configured limits." },
     .{ .token = "SLK", .label = "Slack", .prevention = "Keep Slack app credentials, permissions, and clocks current." },
     .{ .token = "STARTUP", .label = "Startup", .prevention = "Operators should verify required service settings before startup." },

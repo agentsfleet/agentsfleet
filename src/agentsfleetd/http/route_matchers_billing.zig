@@ -12,6 +12,7 @@ const SEG_BILLING = "billing";
 const SEG_CHARGES = "charges";
 const SEG_TELEMETRY = "telemetry";
 const SEG_MODELS = "models";
+const SEG_FLEET_LIBRARIES = "fleet-libraries";
 
 // ── /admin/platform-keys/{provider} ────────────────────────────────────────
 
@@ -28,6 +29,15 @@ pub fn matchAdminPlatformKey(p: Path) ?[]const u8 {
 pub fn matchAdminModel(p: Path) ?[]const u8 {
     if (p.segs.len != 3) return null;
     if (!p.eq(0, SEG_ADMIN) or !p.eq(1, SEG_MODELS)) return null;
+    return p.param(2);
+}
+
+// ── /admin/fleet-libraries/{id} ────────────────────────────────────────────
+// The catalog id is the bundle's SKILL.md frontmatter name (a slug), not a UUID.
+
+pub fn matchAdminFleetLibrary(p: Path) ?[]const u8 {
+    if (p.segs.len != 3) return null;
+    if (!p.eq(0, SEG_ADMIN) or !p.eq(1, SEG_FLEET_LIBRARIES)) return null;
     return p.param(2);
 }
 

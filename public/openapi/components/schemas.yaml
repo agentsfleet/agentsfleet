@@ -446,6 +446,92 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/FleetBundleSupportFileSummary'
+    FleetLibraryCatalogEntry:
+      type: object
+      description: >-
+        One row of the platform Fleet library catalog, as the operator sees it.
+        Metadata only — never bundle markdown, a support-file body, or an
+        object-store key.
+      required:
+      - id
+      - name
+      - description
+      - source_repo
+      - source_ref
+      - visibility
+      - content_hash
+      - requirements
+      - required_credentials_reasons
+      - support_files
+      - updated_at
+      properties:
+        id:
+          type: string
+          description: The catalog id — the bundle's SKILL.md frontmatter name.
+        name:
+          type: string
+        description:
+          type: string
+          description: >-
+            Operator-owned after the entry is created. Seeded from the bundle on the
+            first fetch; a later refetch never overwrites it.
+        source_repo:
+          type: string
+          description: The GitHub repository the bundle was fetched from, as `owner/repo`.
+        source_ref:
+          type: string
+          description: The git ref the bundle was fetched at.
+        visibility:
+          type: string
+          enum: [draft, public]
+          description: >-
+            The publish lifecycle. `draft` — the bundle is stored and the fleet is
+            invisible to every tenant. `public` — live in every workspace gallery and
+            installable.
+        content_hash:
+          type: string
+          nullable: true
+          description: >-
+            The content hash of the stored bundle, or null when no bundle has ever
+            been fetched for this entry. A null hash can never be published.
+        requirements:
+          $ref: '#/components/schemas/FleetBundleRequirements'
+        required_credentials_reasons:
+          type: object
+          additionalProperties:
+            type: string
+          description: >-
+            Per-credential "why this fleet needs it" copy, keyed by credential name,
+            shown at the install gate. Operator-owned: the importer cannot derive it,
+            and a bundle refetch never overwrites it.
+        support_files:
+          type: array
+          items:
+            $ref: '#/components/schemas/FleetBundleSupportFileSummary'
+        updated_at:
+          type: integer
+          format: int64
+          description: Milliseconds since the Unix epoch.
+
+    FleetLibraryCatalogPatch:
+      type: object
+      description: >-
+        Partial update of a catalog entry. Every field is optional; an absent field is
+        left untouched, so editing the description never blanks the credential copy.
+      properties:
+        description:
+          type: string
+        required_credentials_reasons:
+          type: object
+          additionalProperties:
+            type: string
+        published:
+          type: boolean
+          description: >-
+            true publishes the entry (requires a bundle); false withdraws it back to
+            draft, which removes it from every gallery and blocks new installs.
+            Workspaces already running the fleet are unaffected.
+
     FleetLibraryOnboardResult:
       type: object
       description: >-
