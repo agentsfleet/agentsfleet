@@ -49,6 +49,11 @@ describe("dashboard segment loading states", () => {
       expectsTitle: "Model library",
     },
     {
+      name: "admin/fleet-libraries",
+      importer: () => import("../app/(dashboard)/admin/fleet-libraries/loading"),
+      expectsTitle: "Fleet libraries",
+    },
+    {
       name: "integrations",
       importer: () => import("../app/(dashboard)/w/[workspaceId]/integrations/loading"),
       expectsTitle: "Integrations",

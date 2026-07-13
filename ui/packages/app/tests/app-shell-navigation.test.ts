@@ -30,7 +30,7 @@ vi.mock("lucide-react", () => {
     GitBranchIcon: icon("GitBranchIcon"), ActivityIcon: icon("ActivityIcon"), PauseIcon: icon("PauseIcon"), ExternalLinkIcon: icon("ExternalLinkIcon"),
     LayoutDashboardIcon: icon("LayoutDashboardIcon"), BoxIcon: icon("BoxIcon"), BotIcon: icon("BotIcon"), SettingsIcon: icon("SettingsIcon"),
     KeyIcon: icon("KeyIcon"), BookOpenIcon: icon("BookOpenIcon"), ZapIcon: icon("ZapIcon"), ShieldIcon: icon("ShieldIcon"),
-    KeyRoundIcon: icon("KeyRoundIcon"), LinkIcon: icon("LinkIcon"), CheckCircle2Icon: icon("CheckCircle2Icon"), ServerIcon: icon("ServerIcon"),
+    KeyRoundIcon: icon("KeyRoundIcon"), LibraryIcon: icon("LibraryIcon"), LinkIcon: icon("LinkIcon"), CheckCircle2Icon: icon("CheckCircle2Icon"), ServerIcon: icon("ServerIcon"),
     CpuIcon: icon("CpuIcon"), CoinsIcon: icon("CoinsIcon"), CreditCardIcon: icon("CreditCardIcon"), MenuIcon: icon("MenuIcon"),
     PanelLeftIcon: icon("PanelLeftIcon"), SunIcon: icon("SunIcon"), MoonIcon: icon("MoonIcon"), ChevronDownIcon: icon("ChevronDownIcon"), PlusIcon: icon("PlusIcon"),
   };
@@ -75,6 +75,30 @@ describe("app shell navigation", () => {
     const markup = renderToStaticMarkup(React.createElement(Shell, null, React.createElement("div")));
     expect(markup).not.toContain('href="/admin/runners"');
     expect(markup).not.toContain('data-icon="ServerIcon"');
+    expect(markup).not.toContain('href="/admin/fleet-libraries"');
+  });
+
+  it("appends Fleet libraries only for platform-library:write", async () => {
+    const { default: Shell } = await import("../components/layout/Shell");
+    mocks.usePathname.mockReturnValue("/");
+    const withScope = renderToStaticMarkup(
+      React.createElement(
+        Shell,
+        { operatorScopes: ["platform-library:write"] } as React.ComponentProps<typeof Shell>,
+        React.createElement("div"),
+      ),
+    );
+    expect(withScope).toContain("Fleet libraries");
+    expect(withScope).toContain('href="/admin/fleet-libraries"');
+
+    const otherScope = renderToStaticMarkup(
+      React.createElement(
+        Shell,
+        { operatorScopes: ["model:admin"] } as React.ComponentProps<typeof Shell>,
+        React.createElement("div"),
+      ),
+    );
+    expect(otherScope).not.toContain('href="/admin/fleet-libraries"');
   });
 
   it("renders the mobile navigation button", async () => {

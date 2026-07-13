@@ -1,5 +1,5 @@
 ---
-name: platform-ops-agent
+name: platform-ops
 description: Diagnoses platform health from fly.io app/log evidence and upstash redis stats, correlates the two, and posts a concise summary to Slack. Read-only against fly and upstash; write-only to a single Slack channel.
 tags:
   - platform-ops

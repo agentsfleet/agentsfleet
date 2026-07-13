@@ -1,7 +1,6 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
@@ -30,16 +29,18 @@ import { CircleHelpIcon, PlusIcon } from "lucide-react";
 import { captureProductEvent } from "@/lib/analytics/posthog";
 import { EVENTS } from "@/lib/analytics/events";
 import { presentError, type ErrorPresentation } from "@/lib/errors";
-import { SOURCE_KIND_GITHUB } from "@/lib/types";
+import { SOURCE_KIND_GITHUB, type OnboardedPlatformLibraryEntry } from "@/lib/types";
+import { onboardPlatformLibraryAction } from "../actions";
 import {
-  SOURCE_REF_PATTERN,
+  LIBRARY_AUTHORING_DOC_URL,
+  ONBOARD_ACTION,
+  ONBOARD_TOOLTIP,
   SAMPLE_LIBRARY_REPO,
-  SAMPLE_LIBRARY_REPO_URL,
-} from "@/lib/fleet-library-source";
-import { onboardLibraryEntryAction } from "../actions";
-import { CREATE_FLEET_LIBRARY_TOOLTIP, CREATE_LIBRARY_DOC_URL } from "./library-docs";
+  SOURCE_REF_PATTERN,
+} from "../library-copy";
 
-const ONBOARD_ACTION = "create the fleet library";
+const OUTCOME_SUCCESS = "success";
+const OUTCOME_FAILURE = "failure";
 
 const schema = z.object({
   source_ref: z
@@ -50,22 +51,16 @@ const schema = z.object({
 
 type FormValues = z.infer<typeof schema>;
 
-type Props = {
-  workspaceId: string;
-  triggerLabel?: string;
-  /** Open the dialog on first render (e.g. the ?create=1 deep link). */
-  defaultOpen?: boolean;
-};
-
-export default function AddLibraryDialog({
-  workspaceId,
-  triggerLabel = "Create fleet library",
-  defaultOpen = false,
-}: Props) {
-  const router = useRouter();
-  const [open, setOpen] = useState(defaultOpen);
+export default function OnboardPlatformLibraryDialog({
+  onOnboarded,
+}: {
+  onOnboarded: (entry: OnboardedPlatformLibraryEntry) => void;
+}) {
+  const [open, setOpen] = useState(false);
   const [apiError, setApiError] = useState<ErrorPresentation | null>(null);
   const [pending, setPending] = useState(false);
+  // Monotonic id so a response from a submit the operator has already abandoned
+  // (dialog closed, or a second submit raced past it) can never land.
   const requestIdRef = useRef(0);
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
@@ -86,29 +81,33 @@ export default function AddLibraryDialog({
     requestIdRef.current = requestId;
     setApiError(null);
     setPending(true);
-    const sourceRef = values.source_ref;
     try {
-      const result = await onboardLibraryEntryAction(workspaceId, {
+      const result = await onboardPlatformLibraryAction({
         source_kind: SOURCE_KIND_GITHUB,
-        source_ref: sourceRef,
+        source_ref: values.source_ref,
       });
       if (requestId !== requestIdRef.current) return;
       if (!result.ok) {
-        setApiError(presentError({
-          errorCode: result.errorCode,
-          message: result.error,
-          action: ONBOARD_ACTION,
-        }));
+        captureProductEvent(EVENTS.platform_library_onboarded, {
+          source_kind: SOURCE_KIND_GITHUB,
+          outcome: OUTCOME_FAILURE,
+        });
+        setApiError(
+          presentError({
+            errorCode: result.errorCode,
+            message: result.error,
+            action: ONBOARD_ACTION,
+          }),
+        );
         return;
       }
-      captureProductEvent(EVENTS.fleet_library_onboarded, {
-        workspace_id: workspaceId,
-        visibility: result.data.visibility,
+      captureProductEvent(EVENTS.platform_library_onboarded, {
         source_kind: SOURCE_KIND_GITHUB,
-        outcome: "success",
+        outcome: OUTCOME_SUCCESS,
+        entry_id: result.data.id,
       });
+      onOnboarded(result.data);
       handleOpenChange(false);
-      router.refresh();
     } finally {
       if (requestId === requestIdRef.current) setPending(false);
     }
@@ -117,20 +116,26 @@ export default function AddLibraryDialog({
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
-        <TooltipButton type="button" size="sm" tooltip={CREATE_FLEET_LIBRARY_TOOLTIP}>
+        <TooltipButton type="button" size="sm" tooltip={ONBOARD_TOOLTIP}>
           <PlusIcon size={14} />
-          {triggerLabel}
+          Onboard fleet
         </TooltipButton>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Create fleet library</DialogTitle>
+          <DialogTitle>Onboard fleet</DialogTitle>
           <DialogDescription>
-            Create from a GitHub repository that contains a fleet library entry.
+            Onboard a GitHub repository whose root carries a SKILL.md. Every workspace can install
+            what lands in the platform catalog.
           </DialogDescription>
         </DialogHeader>
         <Form {...form}>
-          <form onSubmit={(e) => { void form.handleSubmit(onSubmit)(e); }} className="space-y-4">
+          <form
+            onSubmit={(e) => {
+              void form.handleSubmit(onSubmit)(e);
+            }}
+            className="space-y-4"
+          >
             <FormField
               control={form.control}
               name="source_ref"
@@ -138,29 +143,24 @@ export default function AddLibraryDialog({
                 <FormItem>
                   <FormLabel>Repository</FormLabel>
                   <FormControl>
-                    <Input placeholder="owner/repo" autoComplete="off" spellCheck={false} {...field} />
+                    <Input
+                      placeholder="owner/repo"
+                      autoComplete="off"
+                      spellCheck={false}
+                      {...field}
+                    />
                   </FormControl>
                   <FormDescription className="space-y-1">
-                    <span className="block">
-                      Example:{" "}
-                      <a
-                        href={SAMPLE_LIBRARY_REPO_URL}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-pulse underline-offset-2 hover:underline focus-visible:underline"
-                      >
-                        {SAMPLE_LIBRARY_REPO}
-                        <span className="sr-only"> (opens in a new tab)</span>
-                      </a>
-                    </span>
+                    <span className="block">Example: {SAMPLE_LIBRARY_REPO}</span>
                     <a
-                      href={CREATE_LIBRARY_DOC_URL}
+                      href={LIBRARY_AUTHORING_DOC_URL}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="inline-flex items-center gap-1 text-pulse underline-offset-2 hover:underline focus-visible:underline"
                     >
                       <CircleHelpIcon size={13} aria-hidden="true" />
-                      Learn more<span className="sr-only"> about writing library entries (opens in a new tab)</span>
+                      Learn more
+                      <span className="sr-only"> about authoring fleet libraries (opens in a new tab)</span>
                     </a>
                   </FormDescription>
                   <FormMessage />
@@ -175,12 +175,17 @@ export default function AddLibraryDialog({
               </Alert>
             ) : null}
             <DialogFooter className="flex-col gap-2 sm:flex-row sm:gap-2">
-              <Button type="button" variant="ghost" disabled={pending} onClick={() => handleOpenChange(false)}>
+              <Button
+                type="button"
+                variant="ghost"
+                disabled={pending}
+                onClick={() => handleOpenChange(false)}
+              >
                 Cancel
               </Button>
-              <TooltipButton type="submit" disabled={pending} tooltip={CREATE_FLEET_LIBRARY_TOOLTIP}>
-                {pending ? <Spinner size="sm" srLabel="Creating fleet library" /> : null}
-                Create
+              <TooltipButton type="submit" disabled={pending} tooltip={ONBOARD_TOOLTIP}>
+                {pending ? <Spinner size="sm" srLabel="Onboarding fleet" /> : null}
+                Onboard
               </TooltipButton>
             </DialogFooter>
           </form>

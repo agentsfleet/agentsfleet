@@ -13,6 +13,7 @@ import {
   CoinsIcon,
   KeyIcon,
   KeyRoundIcon,
+  LibraryIcon,
   LinkIcon,
   CreditCardIcon,
   ServerIcon,
@@ -93,6 +94,14 @@ const CONFIGURATION_NAV: NavEntry[] = [
 const PLATFORM_NAV: PlatformNavEntry[] = [
   { label: "Runners", path: "/admin/runners", icon: ServerIcon, scope: SCOPE.RUNNER_READ },
   { label: "Model library", path: "/admin/models", icon: CoinsIcon, scope: SCOPE.MODEL_READ },
+  // Gated on the write scope because the platform catalog has no read route —
+  // `platform-library:write` is the only rung the backend defines for it.
+  {
+    label: "Fleet libraries",
+    path: "/admin/fleet-libraries",
+    icon: LibraryIcon,
+    scope: SCOPE.PLATFORM_LIBRARY_WRITE,
+  },
 ];
 
 // Tenant-scoped surfaces — one billing/key surface per tenant, so they too stay

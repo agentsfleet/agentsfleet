@@ -9,7 +9,7 @@
 // and passing it here as a Redacted value.
 
 import { Effect, Layer, Option, Redacted, Context } from "effect";
-import { ApiError, authHeaders, type FetchImpl } from "../lib/http.ts";
+import { ApiError, authHeaders, readProblemDetails, type FetchImpl } from "../lib/http.ts";
 import { apiRequestWithRetry, type RetryConfig } from "../lib/http-retry.ts";
 import { CliConfig } from "./config.ts";
 import { NetworkError, ServerError } from "../errors/index.ts";
@@ -45,6 +45,18 @@ const isFetchFailed = (cause: unknown): boolean =>
   isString(cause.message) &&
   cause.message.toLowerCase().includes("fetch failed");
 
+const BUNDLE_SECRETS_MISSING = "UZ-BUNDLE-003" as const;
+
+const apiErrorSuggestion = (cause: ApiError, status: number): string => {
+  if (cause.code === BUNDLE_SECRETS_MISSING) {
+    const missing = readProblemDetails(cause.body).missingSecrets;
+    if (missing && missing.length > 0) return `add: ${missing.join(", ")}`;
+  }
+  return status === 401 || status === 403
+    ? "re-authenticate with `agentsfleet login`"
+    : "verify the request payload and retry";
+};
+
 const toCliError = (
   url: string,
   cause: unknown,
@@ -62,9 +74,7 @@ const toCliError = (
     }
     return new ServerError({
       detail: cause.message,
-      suggestion: status === 401 || status === 403
-        ? "re-authenticate with `agentsfleet login`"
-        : "verify the request payload and retry",
+      suggestion: apiErrorSuggestion(cause, status),
       code: cause.code ?? `HTTP_${status}`,
       status,
       requestId: cause.requestId ?? null,

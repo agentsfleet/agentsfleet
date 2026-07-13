@@ -18,7 +18,12 @@ type Props = {
 // needs, and a caller-supplied action.
 export function LibraryCard({ entry, compact = false, action }: Props) {
   return (
-    <Card className={compact ? "flex flex-col gap-2 p-md" : "flex flex-col gap-3 p-lg"}>
+    // Keyed by catalog id so a test can assert an entry appears exactly once —
+    // a duplicate row in the catalog is only ever visible here, in the gallery.
+    <Card
+      data-testid={`library-card-${entry.id}`}
+      className={compact ? "flex flex-col gap-2 p-md" : "flex flex-col gap-3 p-lg"}
+    >
       <div className={compact ? "space-y-0.5" : "space-y-1"}>
         <h3 className="font-medium text-foreground">{entry.name}</h3>
         <p className="text-body-sm leading-body-sm text-muted-foreground">{entry.description}</p>
