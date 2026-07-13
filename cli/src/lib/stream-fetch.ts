@@ -6,7 +6,7 @@
 // the caller drains every frame). ApiError + FetchImpl are imported
 // from http.ts so the two transports share their error vocabulary.
 
-import { ApiError, type FetchImpl } from "./http.ts";
+import { ApiError, readProblemDetails, type FetchImpl } from "./http.ts";
 
 const DEFAULT_TIMEOUT_MS = 30_000;
 
@@ -18,17 +18,6 @@ export interface SseEvent {
 export interface StreamFetchOptions {
   timeoutMs?: number;
   fetchImpl?: FetchImpl | undefined;
-}
-
-interface ErrorEnvelope {
-  error?: {
-    code?: string;
-    message?: string;
-  };
-}
-
-function isErrorEnvelope(value: unknown): value is ErrorEnvelope {
-  return value !== null && typeof value === TYPE_OBJECT;
 }
 
 export async function streamFetch(
@@ -58,9 +47,9 @@ export async function streamFetch(
       const text = await res.text();
       let json: unknown = null;
       try { json = JSON.parse(text); } catch { /* ignore */ }
-      const envelope = isErrorEnvelope(json) ? json : null;
-      const errorCode = envelope?.error?.code ?? `HTTP_${res.status}`;
-      const message = envelope?.error?.message ?? res.statusText ?? "request failed";
+      const problem = readProblemDetails(json);
+      const errorCode = problem.code ?? `HTTP_${res.status}`;
+      const message = problem.message ?? res.statusText ?? "request failed";
       throw new ApiError(message, { status: res.status, code: errorCode, body: json ?? text });
     }
 

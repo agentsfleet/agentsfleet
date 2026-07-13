@@ -14,7 +14,16 @@
  */
 import { newMsgId, signSvix } from "./svix";
 import type { ProvisionedUser } from "./clerk-admin";
-import { FIXTURE_KEY } from "./constants";
+import { FIXTURE_KEY, type FixtureKey } from "./constants";
+
+// Total over FixtureKey, so a new fixture cannot silently inherit another's
+// name — the previous `key === admin ? "Admin" : "Regular"` would have
+// bootstrapped the operator's tenant as "Regular Fixture".
+const FIXTURE_FIRST_NAME: Record<FixtureKey, string> = {
+  [FIXTURE_KEY.regular]: "Regular",
+  [FIXTURE_KEY.admin]: "Admin",
+  [FIXTURE_KEY.operator]: "Operator",
+};
 
 interface UserCreatedPayload {
   type: "user.created";
@@ -34,7 +43,7 @@ function buildPayload(fixture: ProvisionedUser): UserCreatedPayload {
       id: fixture.clerkUserId,
       email_addresses: [{ id: "idn_x", email_address: fixture.email }],
       primary_email_address_id: "idn_x",
-      first_name: fixture.key === FIXTURE_KEY.admin ? "Admin" : "Regular",
+      first_name: FIXTURE_FIRST_NAME[fixture.key],
       last_name: "Fixture",
     },
   };

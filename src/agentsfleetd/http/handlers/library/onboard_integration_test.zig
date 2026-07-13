@@ -308,7 +308,9 @@ test "integration: gallery unions platform and own tenant templates" {
     try std.testing.expect(gallery.bodyContains("\"visibility\":\"platform\""));
     try std.testing.expect(gallery.bodyContains("\"visibility\":\"tenant\""));
     // An un-onboarded migration seed (no content_hash) stays hidden until onboarded.
-    try std.testing.expect(!gallery.bodyContains("\"security-reviewer\""));
+    // This test onboards only `onboard-probe`, so the curated seed rows are all
+    // still bundle-less — asserting on one of them keeps the claim load-bearing.
+    try std.testing.expect(!gallery.bodyContains("\"zoho-recruiter-daily-summarizer\""));
     // No object-store key escapes the gallery (Dimension 5.3).
     try std.testing.expect(!gallery.bodyContains("snapshot_key"));
     try std.testing.expect(!gallery.bodyContains("fleet-bundles/sha256/"));

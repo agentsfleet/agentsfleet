@@ -1,5 +1,5 @@
 ---
-name: platform-ops-agent
+name: platform-ops
 
 x-agentsfleet:
   # Both fields are populated by `/agentsfleet-install-platform-ops` from the
