@@ -14,13 +14,13 @@ const pg = @import("pg");
 const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
 const common = @import("../common.zig");
 const hx_mod = @import("../hx.zig");
+const library_store = @import("../../../fleet_library/library_store.zig");
 const sql = @import("../../../fleet_library/sql.zig");
 
 const Hx = hx_mod.Hx;
 
 // Visibility value set is enforced in app code (RULE STS) — the migration
 // deliberately ships no CHECK constraint. Only `public` rows surface here.
-const VISIBILITY_PUBLIC: []const u8 = "public";
 
 // No LIMIT by design: unlike the user-data list endpoints (fleets/keys/events,
 // which cap + cursor because they grow with usage), this is a curated catalog
@@ -60,7 +60,7 @@ fn buildCatalog(alloc: std.mem.Allocator, conn: *pg.Conn) ![]const CatalogRow {
     var rows: std.ArrayList(CatalogRow) = .empty;
     errdefer rows.deinit(alloc);
 
-    var q = PgQuery.from(try conn.query(SELECT_PUBLIC, .{VISIBILITY_PUBLIC}));
+    var q = PgQuery.from(try conn.query(SELECT_PUBLIC, .{library_store.VISIBILITY_PUBLIC}));
     defer q.deinit();
     while (try q.next()) |row| {
         try appendRow(alloc, &rows, row);

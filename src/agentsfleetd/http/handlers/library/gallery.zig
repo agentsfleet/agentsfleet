@@ -17,8 +17,6 @@ const sql = @import("../../../fleet_library/sql.zig");
 
 const Hx = hx_mod.Hx;
 
-// Only `public` platform rows are part of the gallery (matches list.zig).
-const VISIBILITY_PUBLIC: []const u8 = "public";
 
 const Requirements = struct {
     credentials: []const []const u8,
@@ -98,7 +96,7 @@ fn buildGallery(alloc: std.mem.Allocator, conn: *pg.Conn, workspace_id: []const 
 }
 
 fn appendPlatform(alloc: std.mem.Allocator, conn: *pg.Conn, rows: *std.ArrayList(GalleryEntry)) !void {
-    var q = PgQuery.from(try conn.query(SELECT_PLATFORM, .{VISIBILITY_PUBLIC}));
+    var q = PgQuery.from(try conn.query(SELECT_PLATFORM, .{library_store.VISIBILITY_PUBLIC}));
     defer q.deinit();
     while (try q.next()) |row| {
         try rows.append(alloc, .{

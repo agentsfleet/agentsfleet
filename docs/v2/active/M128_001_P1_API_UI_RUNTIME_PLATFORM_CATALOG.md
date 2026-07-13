@@ -55,9 +55,9 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 |------|--------|-----|
 | `src/agentsfleetd/fleet_bundle/**` → `src/agentsfleetd/fleet_library/**` | RENAME | Holds the library store, catalog SQL, importer — `fleet_library` is what it has always been |
 | `schema/023_fleet_library.sql` | EDIT | Delete the seed `INSERT`; the table DDL stays. A fresh database starts empty |
-| `schema/028_fleet_library_catalog_reconcile.sql` | DELETE | Its only job was reconciling the seed; with the seed gone it would re-insert the four rows into a fresh database, breaking Invariant 5 |
+| `schema/028_fleet_library_catalog_reconcile.sql` | EDIT | Seed `INSERT` stripped (it would re-seed a fresh database, breaking Invariant 5). File and registration KEPT — `cmd/common.zig` asserts migration versions are contiguous; see Discovery |
 | `schema/029_fleet_library_draft_normalize.sql` | CREATE | Data-only: bundle-less rows on a deployed database become `draft` |
-| `schema/embed.zig` | EDIT | Drop the 28 entry, register 29. (`canonicalMigrations()` derives from this array, so `cmd/common.zig` needs no edit) |
+| `schema/embed.zig` | EDIT | Register 29 (`canonicalMigrations()` derives from this array, so `cmd/common.zig` needs no edit) |
 | `src/agentsfleetd/fleet_library/sql.zig` | EDIT | Admin list projection; `INSERT_PLATFORM` upsert semantics; publish/unpublish/delete; `SELECT_PLATFORM_INSTALL` gains the published filter |
 | `src/agentsfleetd/fleet_library/library_store.zig` | EDIT | `draft`/`public` constants; the store fns behind the new routes |
 | `src/agentsfleetd/http/handlers/library/{catalog,api}.zig` | CREATE/EDIT | `GET` list, `PATCH` curate/publish, `DELETE` draft; export the new inner handlers |
@@ -105,7 +105,7 @@ Delete the seed. A `core.fleet_library` row is no longer born in a migration car
 
 **Implementation defaults.** (a) Every write stages to `draft` — `INSERT_PLATFORM`'s `ON CONFLICT` list gains `visibility`, so fetching a newer bundle for a published fleet returns it to draft rather than shipping it unreviewed; the publish gate must cover updates, not just first creation. (b) `description` is **removed** from that `ON CONFLICT` list and `required_credentials_reasons` stays out of it (it already is) — both are operator-owned after creation, and a refetch that clobbered the operator's edit would make §5's pencil a lie; a brand-new row still takes its description from the bundle at `INSERT`. (c) The deployed database keeps its four rows — they carry curated copy and are exactly what a create would produce minus the bundle; `029` only normalizes them (`content_hash IS NULL` ⇒ `draft`), because a bundle-less row claiming to be public is the accident this milestone exists to end.
 
-- **Dimension 1.1** — a fresh database has an empty `core.fleet_library`; no migration inserts a catalog row (`023`'s seed and the whole of `028` are gone) → Test `test_fresh_database_catalog_empty`
+- **Dimension 1.1** — a fresh database has an empty `core.fleet_library`; no migration anywhere inserts a catalog row → Test `test_fresh_database_catalog_empty`
 - **Dimension 1.2** — on a database that already applied `023`, every bundle-less row becomes `draft` and no row with a bundle is touched; re-running changes nothing → Test `test_draft_normalize_is_idempotent_and_scoped`
 - **Dimension 1.3** — creating from a repository writes a `draft` row whose id, name, description, credentials, tools, and hosts all come from the bundle → Test `test_create_derives_row_from_bundle`
 - **Dimension 1.4** — fetching a newer bundle for a published fleet rewrites its bundle fields and returns it to `draft`, preserving the operator's description and install-gate copy → Test `test_refetch_drafts_and_preserves_curated_copy`
@@ -256,7 +256,7 @@ Regression: M127's scope-gating tests and the nav gate pass unchanged; the tenan
 | R3 | Routes documented; route coverage passes (§2.6) | `make check-openapi` | exit 0 | P0 | |
 | R4 | The full operator path works against a real stack (§5) | `cd ui/packages/app && bunx playwright test --config=playwright.acceptance.config.ts platform-library-onboarding.spec.ts` | exit 0 | P0 | |
 | R5 | Diff stays inside Files Changed | `git diff --name-only origin/main` | 0 paths missing from the Files Changed table | P0 | |
-| S1 | Zig unit lane passes | `make test` | exit 0 | P0 | |
+| S1 | Zig unit lane passes | `make test-unit-agentsfleetd` | exit 0 | P0 | |
 | S2 | Lint clean | `make lint-all` | exit 0 | P0 | |
 | S3 | Schema gate clean (no `ALTER`/`DROP` below v2.0.0) | `make check-schema-gate` | exit 0 | P0 | |
 | S5 | No leaks on the new query paths | `make memleak` | exit 0 | P0 | |
@@ -271,18 +271,13 @@ Regression: M127's scope-gating tests and the nav gate pass unchanged; the tenan
 
 **1. Orphaned files — deleted from disk and git.**
 
-| File to delete | Verify |
-|----------------|--------|
-| `schema/028_fleet_library_catalog_reconcile.sql` | `test ! -f schema/028_fleet_library_catalog_reconcile.sql` |
-
-Two renames (`fleet_bundle/` → `fleet_library/`, `OnboardPlatformLibraryDialog.tsx` → `AddFleetDialog.tsx`) are swept below.
+N/A — no files deleted. Two renames (`fleet_bundle/` → `fleet_library/`, `OnboardPlatformLibraryDialog.tsx` → `AddFleetDialog.tsx`) are swept below.
 
 **2. Orphaned references — zero remaining imports/uses.**
 
 | Deleted symbol/import | Grep | Expected |
 |-----------------------|------|----------|
 | The catalog seed | `grep -rn "INSERT INTO core.fleet_library" schema/` | 0 matches |
-| The `028` embed entry | `grep -rn "028_fleet_library" schema/embed.zig` | 0 matches |
 | `fleet_bundle` (the renamed folder) | `grep -rn "fleet_bundle" src/ \| grep -v fleet_bundles` | 0 matches |
 | `OnboardPlatformLibraryDialog` | `grep -rn "OnboardPlatformLibraryDialog" ui/packages/app` | 0 matches |
 | `onOnboarded` + `EMPTY_TITLE` (the lifted-state prop and its copy) | `grep -rEn "onOnboarded\|Nothing onboarded yet" ui/packages/app` | 0 matches |
@@ -321,6 +316,7 @@ Two renames (`fleet_bundle/` → `fleet_library/`, `OnboardPlatformLibraryDialog
 - **Consults** —
   - *Publish gate + metadata edit (Indy, Jul 13, 2026).* Instantly live, or staged? Indy chose two-step **onboard → publish** — explicit, reversible, with Unpublish as the non-destructive withdraw path. And should the install-gate credential copy stay seed-owned? Indy chose **a `PATCH` route + edit dialog** — which is what made the seed redundant.
   - *The seed itself (Indy, Jul 13, 2026).* "I assume with the PATCH or edit we would have no requirement for seed? Can the onboard library be like a create library?" and "I want to think about less dependency on the static stuff in sqls" — the pivot this spec is built on. The seed rows are deleted; the catalog becomes runtime data.
+  - *`schema/028` vs the contiguity tests (Indy, Jul 13, 2026).* Deleting `028` (its only job was seeding) left a version gap, and `cmd/common.zig` hard-asserts contiguous versions (`versionsContiguousFromFirst`, `last version == registered count`) — stricter than `docs/SCHEMA_CONVENTIONS.md`, which says "slot gaps are fine". Renumbering the normalize migration to `028` was rejected outright: production has already recorded version 28 as applied, so the migrator would skip it and prod would never normalize (the M127 trap again). Indy chose **keep `028`, strip its seed** — its `DELETE` of the never-published `security-reviewer` row remains true and is a no-op on a fresh database — over relaxing the tests, which would have weakened the guard that catches a forgotten `@embedFile` registration.
   - *Naming (Indy, Jul 13, 2026).* "is Re-onboard a good name?" — no. Operator verbs: **Add fleet**, **Edit**, **Publish**/**Unpublish**, **Fetch update**, **Delete**; "onboard" survives only as the internal write. "fleet_bundle (name the folder as fleet_library)" — the domain folder is renamed; `handlers/fleet_bundles/` is not, since it names the public route (Out of Scope).
 - **Metrics review** —
 - **Skill-chain outcomes** —

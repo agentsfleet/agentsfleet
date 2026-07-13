@@ -2,10 +2,15 @@
 //! `core.fleet_library` / `core.tenant_fleet_library` lives here so table names
 //! are grep-able from one file and queries are testable in isolation.
 
+/// Resolve-by-id for the install flow. Filters on `visibility` ($2 = 'public'),
+/// not just on the bundle's presence: an unpublished fleet must be UNREACHABLE,
+/// not merely unlisted (M128 Invariant 2). Without this arm, anyone who knew a
+/// draft's id could install it, and Unpublish would be decoration.
 pub const SELECT_PLATFORM_INSTALL =
     \\SELECT skill_markdown, trigger_markdown, content_hash
     \\  FROM core.fleet_library
-    \\ WHERE id = $1 AND content_hash IS NOT NULL AND skill_markdown IS NOT NULL
+    \\ WHERE id = $1 AND visibility = $2
+    \\   AND content_hash IS NOT NULL AND skill_markdown IS NOT NULL
 ;
 
 pub const SELECT_TENANT_INSTALL =
@@ -14,6 +19,20 @@ pub const SELECT_TENANT_INSTALL =
     \\ WHERE id = $1::uuid AND workspace_id = $2::uuid
 ;
 
+/// Add-or-refetch a platform catalog entry. $9 is always VISIBILITY_DRAFT — the
+/// caller cannot pass 'public' — so EVERY write stages to draft and publishing
+/// stays an explicit, separate act (M128 §1). That is why `visibility` is in the
+/// ON CONFLICT list: refetching a newer bundle for a PUBLISHED fleet withdraws it
+/// back to draft rather than shipping unreviewed content to every tenant. Safe to
+/// withdraw, because an install snapshots the bundle onto
+/// `core.fleets.bundle_content_hash` — a workspace already running the fleet is
+/// untouched; only NEW installs pause until it is republished.
+///
+/// `description` and `required_credentials_reasons` are ABSENT from the ON
+/// CONFLICT list on purpose: both are operator-owned after creation (the pencil
+/// on /admin/fleet-libraries writes them), and a refetch that clobbered the
+/// operator's copy would make that edit a lie (M128 Invariant 4). A brand-new row
+/// still takes its description from the bundle, via the INSERT arm.
 pub const INSERT_PLATFORM =
     \\INSERT INTO core.fleet_library
     \\  (id, name, description, source_repo, source_path, source_ref,
@@ -25,12 +44,12 @@ pub const INSERT_PLATFORM =
     \\        $9, $10, $11, $12, $13::jsonb, $14, $14)
     \\ON CONFLICT (id) DO UPDATE SET
     \\   name = EXCLUDED.name,
-    \\   description = EXCLUDED.description,
     \\   source_repo = EXCLUDED.source_repo,
     \\   source_ref = EXCLUDED.source_ref,
     \\   required_credentials = EXCLUDED.required_credentials,
     \\   required_tools = EXCLUDED.required_tools,
     \\   network_hosts = EXCLUDED.network_hosts,
+    \\   visibility = EXCLUDED.visibility,
     \\   content_hash = EXCLUDED.content_hash,
     \\   skill_markdown = EXCLUDED.skill_markdown,
     \\   trigger_markdown = EXCLUDED.trigger_markdown,
