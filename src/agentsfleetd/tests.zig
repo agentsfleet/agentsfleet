@@ -161,6 +161,9 @@ test {
     _ = @import("http/handlers/library/onboard.zig");
     _ = @import("http/handlers/library/gallery.zig");
     _ = @import("http/handlers/library/onboard_integration_test.zig");
+    _ = @import("http/handlers/library/catalog.zig");
+    _ = @import("http/handlers/library/entry_view.zig");
+    _ = @import("http/handlers/library/catalog_integration_test.zig");
     _ = @import("fleet_library/library_store.zig");
     _ = @import("fleet_library/importer.zig");
     _ = @import("fleet_library/github_source.zig");

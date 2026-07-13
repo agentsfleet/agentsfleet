@@ -48,11 +48,9 @@ fn makeHarness(alloc: std.mem.Allocator) !*TestHarness {
 fn resetAndSeed(conn: *pg.Conn) !void {
     _ = try conn.exec("DELETE FROM core.tenant_fleet_library WHERE workspace_id = $1::uuid", .{http_auth.WS_PRIMARY});
     _ = try conn.exec("DELETE FROM core.tenant_fleet_library WHERE workspace_id = $1::uuid", .{http_auth.WS_SECONDARY});
-    _ = try conn.exec("DELETE FROM core.fleet_library WHERE id = $1", .{PROBE_NAME});
-    // Restore the migration-seeded platform rows to their un-onboarded
-    // (metadata-only) state, so a test that onboards one — setting content_hash,
-    // which makes it gallery-visible — never leaks into the next test.
-    _ = try conn.exec("UPDATE core.fleet_library SET content_hash = NULL, skill_markdown = NULL, trigger_markdown = NULL", .{});
+    // The catalog is runtime-owned (M128): no migration seeds it, so a test starts
+    // from an empty table and creates exactly the rows it needs.
+    _ = try conn.exec("DELETE FROM core.fleet_library", .{});
     http_auth.cleanup(conn);
     try http_auth.seedTenant(conn);
     try http_auth.seedScopeWorkspace(conn, http_auth.WS_PRIMARY);
@@ -61,6 +59,18 @@ fn resetAndSeed(conn: *pg.Conn) !void {
 // Onboarding the github-pr-reviewer slug UPSERTs the seed row (id == the parsed
 // SKILL name), setting content_hash (installable → gallery-visible) while the
 // UPSERT preserves the seed's curated required_credentials_reasons.
+const GH_REVIEWER_NAME = "github-pr-reviewer";
+const DRAFT_NAME = "draft-only-probe";
+/// Added but never published — the gallery must never carry it.
+const DRAFT_SKILL =
+    \\---
+    \\name: draft-only-probe
+    \\description: Added, never published.
+    \\version: 0.1.0
+    \\---
+    \\Body for the draft-only probe.
+;
+
 const GH_REVIEWER_SKILL =
     \\---
     \\name: github-pr-reviewer
@@ -69,6 +79,17 @@ const GH_REVIEWER_SKILL =
     \\---
     \\Body for the github-pr-reviewer onboarding.
 ;
+
+/// Publish a platform entry. Onboarding stages every write as a draft (M128), and
+/// a draft is invisible to tenants, so any test asserting gallery visibility must
+/// publish first — which is the product behaviour, not a test artefact.
+fn publishPlatform(h: *TestHarness, alloc: std.mem.Allocator, id: []const u8) !void {
+    const url = try std.fmt.allocPrint(alloc, "{s}/{s}", .{ PLATFORM_URL, id });
+    defer alloc.free(url);
+    const res = try (try (try h.patch(url).bearer(TOKEN_PLATFORM)).json("{\"published\":true}")).send();
+    defer res.deinit();
+    try res.expectStatus(.ok);
+}
 
 // Onboard `skill` into the platform tier (upload kind — no fetch, no R2).
 fn onboardPlatform(h: *TestHarness, alloc: std.mem.Allocator, skill: []const u8) !void {
@@ -286,9 +307,10 @@ test "integration: gallery unions platform and own tenant templates" {
     defer h.releaseConn(conn);
     try resetAndSeed(conn);
 
-    // Onboard a platform template so an installable platform row exists — raw
-    // migration seeds carry no content_hash and are hidden by the gallery filter.
+    // Add a platform fleet AND publish it: an unpublished entry is invisible to
+    // every tenant, which is the whole point of the publish gate.
     try onboardPlatform(h, alloc, PROBE_SKILL);
+    try publishPlatform(h, alloc, PROBE_NAME);
 
     // Onboard one tenant template into WS_PRIMARY.
     const body = try onboardBody(alloc);
@@ -307,10 +329,12 @@ test "integration: gallery unions platform and own tenant templates" {
     try std.testing.expect(gallery.bodyContains("\"onboard-probe\"")); // onboarded platform + own tenant
     try std.testing.expect(gallery.bodyContains("\"visibility\":\"platform\""));
     try std.testing.expect(gallery.bodyContains("\"visibility\":\"tenant\""));
-    // An un-onboarded migration seed (no content_hash) stays hidden until onboarded.
-    // This test onboards only `onboard-probe`, so the curated seed rows are all
-    // still bundle-less — asserting on one of them keeps the claim load-bearing.
-    try std.testing.expect(!gallery.bodyContains("\"zoho-recruiter-daily-summarizer\""));
+    // A DRAFT platform entry stays hidden. Added, never published — so the gallery
+    // must not carry it, and the claim stays load-bearing.
+    try onboardPlatform(h, alloc, DRAFT_SKILL);
+    const after_draft = try (try h.get(url).bearer(TOKEN_TENANT)).send();
+    defer after_draft.deinit();
+    try std.testing.expect(!after_draft.bodyContains(DRAFT_NAME));
     // No object-store key escapes the gallery (Dimension 5.3).
     try std.testing.expect(!gallery.bodyContains("snapshot_key"));
     try std.testing.expect(!gallery.bodyContains("fleet-bundles/sha256/"));
@@ -327,10 +351,18 @@ test "integration: gallery entries carry description and credential reasons" {
     defer h.releaseConn(conn);
     try resetAndSeed(conn);
 
-    // Onboard the github-pr-reviewer seed so it becomes installable (gallery-
-    // visible). The platform UPSERT sets content_hash but preserves the seed's
-    // curated required_credentials_reasons — that's what surfaces below.
+    // Add github-pr-reviewer, write the curated per-credential copy an operator
+    // would write (no bundle can supply it), then publish. That copy is what the
+    // install gate shows a tenant, and it is what must surface below.
     try onboardPlatform(h, alloc, GH_REVIEWER_SKILL);
+    const curate_url = try std.fmt.allocPrint(alloc, "{s}/{s}", .{ PLATFORM_URL, GH_REVIEWER_NAME });
+    defer alloc.free(curate_url);
+    const curated = try (try (try h.patch(curate_url).bearer(TOKEN_PLATFORM)).json(
+        \\{"required_credentials_reasons":{"github":"review your pull requests and post review comments"}}
+    )).send();
+    defer curated.deinit();
+    try curated.expectStatus(.ok);
+    try publishPlatform(h, alloc, GH_REVIEWER_NAME);
 
     // Onboard a tenant template so the gallery exercises both tiers.
     const body = try onboardBody(alloc);
@@ -365,8 +397,9 @@ test "integration: gallery isolates another workspace's tenant templates" {
     try resetAndSeed(conn);
     try seedForeignTenantTemplate(conn);
 
-    // An installable platform row must survive the workspace filter unchanged.
+    // A published platform row must survive the workspace filter unchanged.
     try onboardPlatform(h, alloc, PROBE_SKILL);
+    try publishPlatform(h, alloc, PROBE_NAME);
 
     const url = try tenantUrl(alloc, http_auth.WS_PRIMARY);
     defer alloc.free(url);
