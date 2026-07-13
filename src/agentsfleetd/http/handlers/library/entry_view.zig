@@ -44,12 +44,18 @@ pub fn decodeReasons(alloc: std.mem.Allocator, json_text: []const u8) !std.json.
     return std.json.parseFromSliceLeaky(std.json.Value, alloc, json_text, .{});
 }
 
-/// Project the stored manifest into {path, size_bytes} summaries. A manifest that
-/// fails to parse degrades to zero support files rather than failing the whole
-/// read — one malformed row must not take down the operator's catalog view.
+/// Project the stored manifest into {path, size_bytes} summaries. A MALFORMED
+/// manifest degrades to zero support files rather than failing the whole read —
+/// one bad row must not take down the operator's catalog view.
+///
+/// OutOfMemory is deliberately NOT degraded: an allocation failure is not a
+/// statement about the manifest, and silently reporting "this fleet has no
+/// support files" because the machine was under pressure would be a lie told to
+/// every tenant in the gallery. It propagates.
 pub fn decodeSummaries(alloc: std.mem.Allocator, json_text: []const u8) ![]const SupportSummary {
-    const manifest = std.json.parseFromSliceLeaky([]const ManifestEntry, alloc, json_text, .{ .ignore_unknown_fields = true }) catch {
-        return &.{};
+    const manifest = std.json.parseFromSliceLeaky([]const ManifestEntry, alloc, json_text, .{ .ignore_unknown_fields = true }) catch |err| switch (err) {
+        error.OutOfMemory => return error.OutOfMemory,
+        else => return &.{},
     };
     const out = try alloc.alloc(SupportSummary, manifest.len);
     for (manifest, 0..) |entry, i| out[i] = .{ .path = entry.path, .size_bytes = entry.size_bytes };

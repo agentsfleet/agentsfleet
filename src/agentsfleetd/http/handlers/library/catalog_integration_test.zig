@@ -409,3 +409,81 @@ test "integration: a draft is invisible to tenants and uninstallable by id" {
     defer hidden_again.deinit();
     try std.testing.expect(!hidden_again.bodyContains(PROBE_ID));
 }
+
+// ── /review finding: a guarded write that touched nothing is NOT a success ───
+
+test "integration: a delete that races a publish is refused, not reported as done" {
+    const alloc = std.testing.allocator;
+    const h = makeHarness(alloc) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    try reset(conn);
+
+    try addProbe(h, alloc);
+
+    // Simulate the race the handler's pre-check cannot close: the row is published
+    // between "is it a draft?" and the DELETE. The statement is guarded, so it
+    // matches zero rows — and a handler that ignored its RETURNING would answer 204
+    // while the fleet stayed live and installable in every workspace.
+    const pub_res = try publish(h, alloc, PROBE_ID);
+    defer pub_res.deinit();
+    try pub_res.expectStatus(.ok);
+
+    const url = try entryUrl(alloc, PROBE_ID);
+    defer alloc.free(url);
+    const refused = try (try h.delete(url).bearer(TOKEN_PLATFORM)).send();
+    defer refused.deinit();
+    try refused.expectStatus(.conflict);
+    try refused.expectErrorCode("UZ-CATALOG-003");
+
+    // The fleet survives. That is the whole point.
+    try std.testing.expectEqual(@as(i64, 1), try rowCount(conn));
+    try std.testing.expectEqualStrings("public", try visibilityOf(conn, PROBE_ID));
+}
+
+test "integration: a curate-and-publish patch commits together or not at all" {
+    const alloc = std.testing.allocator;
+    const h = makeHarness(alloc) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    try reset(conn);
+
+    try addProbe(h, alloc);
+
+    // One PATCH carrying BOTH the operator's copy and the publish. The two statements
+    // run in one transaction, so the fleet cannot end up published with the old copy,
+    // or re-described but still a draft.
+    const res = try patchEntry(h, alloc, PROBE_ID,
+        \\{"description":"Operator copy.","published":true}
+    );
+    defer res.deinit();
+    try res.expectStatus(.ok);
+    try std.testing.expect(res.bodyContains("Operator copy."));
+    try std.testing.expect(res.bodyContains("\"visibility\":\"public\""));
+    try std.testing.expectEqualStrings("public", try visibilityOf(conn, PROBE_ID));
+}
+
+test "integration: patching an entry that no longer exists is a 404, not a silent 200" {
+    const alloc = std.testing.allocator;
+    const h = makeHarness(alloc) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    try reset(conn);
+
+    const res = try patchEntry(h, alloc, "no-such-fleet", "{\"published\":false}");
+    defer res.deinit();
+    try res.expectStatus(.not_found);
+    try res.expectErrorCode("UZ-CATALOG-001");
+}

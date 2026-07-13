@@ -76,6 +76,19 @@ pub const SELECT_ADMIN_CATALOG =
     \\ ORDER BY id
 ;
 
+/// The operator's view of ONE row. Column-for-column identical to
+/// SELECT_ADMIN_CATALOG, so both decode through the same mapper and the indices
+/// cannot drift apart.
+pub const SELECT_ADMIN_CATALOG_ROW =
+    \\SELECT id, name, description, source_repo, source_ref, visibility, content_hash,
+    \\       required_credentials::text, required_tools::text, network_hosts::text,
+    \\       required_credentials_reasons::text,
+    \\       COALESCE(support_files_json::text, '[]'), (trigger_markdown IS NOT NULL),
+    \\       updated_at
+    \\  FROM core.fleet_library
+    \\ WHERE id = $1
+;
+
 /// Read one row's lifecycle facts. Backs three guards: publish-needs-a-bundle,
 /// delete-needs-unpublished, and the add-path's id-collision check (whether this
 /// id already belongs to a DIFFERENT repository).
