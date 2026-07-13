@@ -19,6 +19,7 @@ export const EVENTS = {
   secret_added: "secret_added",
   fleet_library_onboarded: "fleet_library_onboarded",
   platform_library_onboarded: "platform_library_onboarded",
+  platform_library_published: "platform_library_published",
   fleet_viewed: "fleet_viewed",
   integration_requested: "integration_requested",
   approval_resolved: "approval_resolved",
@@ -52,6 +53,14 @@ export type EventProps = {
     outcome: string;
     entry_id?: string;
   };
+  // Publishing is the moment a fleet becomes available to EVERY tenant — the one
+  // state change on the catalog surface with a decision riding on it. `entry_id`
+  // is the catalog slug the importer derived, never operator free text.
+  [EVENTS.platform_library_published]: {
+    entry_id: string;
+    action: string;
+    outcome: string;
+  };
   [EVENTS.fleet_viewed]: { fleet_id: string; status: string };
   [EVENTS.integration_requested]: { integration_id: string; integration_name: string };
   [EVENTS.approval_resolved]: { gate_id: string; decision: string; has_reason: boolean };
@@ -73,6 +82,7 @@ export const EVENT_PROP_KEYS = {
   [EVENTS.secret_added]: ["secret_name"],
   [EVENTS.fleet_library_onboarded]: ["workspace_id", "visibility", "source_kind", "outcome"],
   [EVENTS.platform_library_onboarded]: ["source_kind", "outcome", "entry_id"],
+  [EVENTS.platform_library_published]: ["entry_id", "action", "outcome"],
   [EVENTS.fleet_viewed]: ["fleet_id", "status"],
   [EVENTS.integration_requested]: ["integration_id", "integration_name"],
   [EVENTS.approval_resolved]: ["gate_id", "decision", "has_reason"],

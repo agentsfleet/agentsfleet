@@ -19,6 +19,8 @@ import {
 } from "lucide-react";
 import type { PlatformCatalogEntry } from "@/lib/types";
 import { presentErrorString } from "@/lib/errors";
+import { captureProductEvent } from "@/lib/analytics/posthog";
+import { EVENTS } from "@/lib/analytics/events";
 import { deletePlatformLibraryAction, patchPlatformLibraryAction } from "../actions";
 import {
   COLUMN_ACTIONS,
@@ -47,6 +49,11 @@ import EditFleetDialog from "./EditFleetDialog";
 // blank space reads as a rendering bug.
 const NO_HASH = "—";
 
+const ACTION_PUBLISHED = "published";
+const ACTION_UNPUBLISHED = "unpublished";
+const OUTCOME_SUCCESS = "success";
+const OUTCOME_FAILURE = "failure";
+
 export default function PlatformCatalogTable({
   entries,
   onFetch,
@@ -70,6 +77,14 @@ export default function PlatformCatalogTable({
     setError(null);
     startTransition(async () => {
       const result = await patchPlatformLibraryAction(entry.id, { published });
+      // Publishing is the moment a fleet becomes available to every tenant. A
+      // refusal is recorded too — a publish nobody could complete is a signal, not
+      // an absence of one.
+      captureProductEvent(EVENTS.platform_library_published, {
+        entry_id: entry.id,
+        action: published ? ACTION_PUBLISHED : ACTION_UNPUBLISHED,
+        outcome: result.ok ? OUTCOME_SUCCESS : OUTCOME_FAILURE,
+      });
       if (!result.ok) {
         setError(presentErrorString({ errorCode: result.errorCode, message: result.error, action: PATCH_ACTION }));
       }
