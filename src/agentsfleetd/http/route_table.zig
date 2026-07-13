@@ -65,6 +65,7 @@ pub fn classFor(route: router.Route) RouteClass {
         .tenant_model_entry_by_id,
         .fleet_bundles,
         .admin_fleet_library,
+        .admin_fleet_library_by_id,
         .workspace_fleet_library,
         .receive_webhook,
         .receive_svix_webhook,
@@ -155,7 +156,8 @@ pub fn specFor(route: router.Route, registry: *auth_mw.MiddlewareRegistry) Route
         // Fleet library onboarding (M103). Scope enforced by requireScope from
         // route_scopes (platform-library:write / library:write); the tenant
         // handler adds a workspace-ownership check.
-        .admin_fleet_library => .{ .middlewares = registry.bearer(), .invoke = library_invoke.invokePlatformLibraryOnboard },
+        .admin_fleet_library => .{ .middlewares = registry.bearer(), .invoke = library_invoke.invokePlatformFleetLibrary },
+        .admin_fleet_library_by_id => .{ .middlewares = registry.bearer(), .invoke = library_invoke.invokePlatformFleetLibraryById },
         .workspace_fleet_library => .{ .middlewares = registry.bearer(), .invoke = library_invoke.invokeWorkspaceFleetLibrary },
 
         // Admin platform keys + model catalogue — platform-plane scopes

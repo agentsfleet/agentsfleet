@@ -107,9 +107,9 @@ Delete the seed. A `core.fleet_library` row is no longer born in a migration car
 
 - **Dimension 1.1** — a fresh database has an empty `core.fleet_library`; no migration anywhere inserts a catalog row → Test `test_fresh_database_catalog_empty`
 - **Dimension 1.2** — on a database that already applied `023`, every bundle-less row becomes `draft` and no row with a bundle is touched; re-running changes nothing → Test `test_draft_normalize_is_idempotent_and_scoped`
-- **Dimension 1.3** — creating from a repository writes a `draft` row whose id, name, description, credentials, tools, and hosts all come from the bundle → Test `test_create_derives_row_from_bundle`
-- **Dimension 1.4** — fetching a newer bundle for a published fleet rewrites its bundle fields and returns it to `draft`, preserving the operator's description and install-gate copy → Test `test_refetch_drafts_and_preserves_curated_copy`
-- **Dimension 1.5** — creating from a repository whose frontmatter id already exists under a *different* source repository is rejected 409 unless `replace` is set → Test `test_create_rejects_id_collision_without_replace`
+- **Dimension 1.3** — CODE DONE (test pending) — creating from a repository writes a `draft` row whose id, name, description, credentials, tools, and hosts all come from the bundle → Test `test_create_derives_row_from_bundle`
+- **Dimension 1.4** — CODE DONE (test pending) — fetching a newer bundle for a published fleet rewrites its bundle fields and returns it to `draft`, preserving the operator's description and install-gate copy → Test `test_refetch_drafts_and_preserves_curated_copy`
+- **Dimension 1.5** — CODE DONE (test pending) — creating from a repository whose frontmatter id already exists under a *different* source repository is rejected 409 unless `replace` is set → Test `test_create_rejects_id_collision_without_replace`
 - **Dimension 1.6** — DONE — no `fleet_bundle` path or import survives the rename; the build is green under the new folder → Test `test_no_fleet_bundle_references`
 
 ### §2 — The catalog routes
@@ -118,18 +118,18 @@ The admin plane's only resource with no read, no update, no delete. Add them: a 
 
 **Implementation defaults.** (a) Every method requires `platform-library:write` — no `platform-library:read` rung. Scopes are hand-provisioned in Clerk (`docs/AUTH.md` §Manually-provisioned), so a read rung would lock today's operators out of the page until a human re-provisioned them, to serve a read-only auditor role nobody has; `route_scopes.zig` resolves per method anyway, so splitting later is a one-line change. (b) No pagination, filter, or search — a curated first-party list, ordered by id.
 
-- **Dimension 2.1** — `GET` returns every row, draft and published, with metadata only: never `skill_markdown`, `trigger_markdown`, or an object-store key → Test `test_admin_catalog_lists_all_rows_without_bodies`
-- **Dimension 2.2** — `PATCH` updates the description and the per-credential install-gate copy, leaving bundle-derived fields untouched → Test `test_patch_updates_curated_copy_only`
-- **Dimension 2.3** — `PATCH` publishes and unpublishes; publishing a row with no bundle is rejected with a registry code → Test `test_publish_requires_a_bundle`
-- **Dimension 2.4** — `DELETE` removes a draft; deleting a published row is rejected with a registry code → Test `test_delete_rejects_published_row`
-- **Dimension 2.5** — a token without the scope gets 403 `UZ-AUTH-022` on every method; an unsupported method gets 405 → Test `test_catalog_routes_scope_and_method_enforced`
-- **Dimension 2.6** — every new method is documented in the split OpenAPI source and route coverage passes → Test `test_openapi_covers_catalog_routes`
+- **Dimension 2.1** — CODE DONE (test pending) — `GET` returns every row, draft and published, with metadata only: never `skill_markdown`, `trigger_markdown`, or an object-store key → Test `test_admin_catalog_lists_all_rows_without_bodies`
+- **Dimension 2.2** — CODE DONE (test pending) — `PATCH` updates the description and the per-credential install-gate copy, leaving bundle-derived fields untouched → Test `test_patch_updates_curated_copy_only`
+- **Dimension 2.3** — CODE DONE (test pending) — `PATCH` publishes and unpublishes; publishing a row with no bundle is rejected with a registry code → Test `test_publish_requires_a_bundle`
+- **Dimension 2.4** — CODE DONE (test pending) — `DELETE` removes a draft; deleting a published row is rejected with a registry code → Test `test_delete_rejects_published_row`
+- **Dimension 2.5** — CODE DONE (test pending) — a token without the scope gets 403 `UZ-AUTH-022` on every method; an unsupported method gets 405 → Test `test_catalog_routes_scope_and_method_enforced`
+- **Dimension 2.6** — CODE DONE (test pending) — every new method is documented in the split OpenAPI source and route coverage passes → Test `test_openapi_covers_catalog_routes`
 
 ### §3 — Publish is the only door to a tenant
 
 An unpublished fleet must be unreachable, not merely unlisted. The gallery already filters `visibility = 'public'`, but `SELECT_PLATFORM_INSTALL` — the resolve-by-id path the install flow uses — does **not**, so today a draft could be installed by anyone who knows its id. Without this slice, Unpublish is decoration.
 
-- **Dimension 3.1** — installing a draft fleet by id fails; publishing it makes the same install succeed → Test `test_draft_fleet_is_not_installable_by_id`
+- **Dimension 3.1** — CODE DONE (test pending) — installing a draft fleet by id fails; publishing it makes the same install succeed → Test `test_draft_fleet_is_not_installable_by_id`
 - **Dimension 3.2** — a draft appears in neither the workspace gallery nor `GET /v1/fleets/bundles`; publishing surfaces it in both → Test `test_draft_absent_from_gallery_and_bundles`
 - **Dimension 3.3** — unpublishing removes it from both surfaces and blocks new installs, while a workspace that already installed it keeps running (its fleet holds its own `bundle_content_hash`) → Test `test_unpublish_leaves_existing_installs_intact`
 

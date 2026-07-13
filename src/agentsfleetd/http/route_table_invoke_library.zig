@@ -1,6 +1,7 @@
-//! Invoke wrappers for the two Fleet library onboarding routes (M103). Each
-//! enforces POST, extracts path params from `route`, and calls the inner handler
-//! (the capability scope is already enforced by requireScope middleware).
+//! Invoke wrappers for the Fleet library routes. Each dispatches on method and
+//! calls the inner handler; the capability scope is already enforced by the
+//! requireScope middleware (route_scopes.zig — the two platform routes below
+//! need `platform-library:write` on every method).
 
 const httpz = @import("httpz");
 const router = @import("router.zig");
@@ -10,10 +11,28 @@ const library = @import("handlers/library/api.zig");
 
 const Hx = hx_mod.Hx;
 
-pub fn invokePlatformLibraryOnboard(hx: *Hx, req: *httpz.Request, route: router.Route) void {
+/// The platform catalog collection (M128). GET lists every row — draft,
+/// published, and bundle-less alike, because the operator's page exists to show
+/// exactly what the tenant-facing reads hide. POST adds a fleet from a repository
+/// or refetches an existing one's bundle; either way the row lands as a draft.
+pub fn invokePlatformFleetLibrary(hx: *Hx, req: *httpz.Request, route: router.Route) void {
     _ = route;
-    if (!common.requireMethod(hx.res, req.method, .POST)) return;
-    library.innerPlatformOnboard(hx.*, req);
+    switch (req.method) {
+        .GET => library.innerAdminCatalogList(hx.*),
+        .POST => library.innerPlatformOnboard(hx.*, req),
+        else => common.respondMethodNotAllowed(hx.res),
+    }
+}
+
+/// One catalog entry (M128). PATCH curates the operator-owned copy and
+/// publishes/unpublishes; DELETE removes an entry that is not live.
+pub fn invokePlatformFleetLibraryById(hx: *Hx, req: *httpz.Request, route: router.Route) void {
+    const id = route.admin_fleet_library_by_id;
+    switch (req.method) {
+        .PATCH => library.innerAdminCatalogPatch(hx.*, req, id),
+        .DELETE => library.innerAdminCatalogDelete(hx.*, id),
+        else => common.respondMethodNotAllowed(hx.res),
+    }
 }
 
 /// GET lists the workspace gallery (platform ∪ this workspace's tenant

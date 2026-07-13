@@ -101,6 +101,7 @@ fn matchV1(p: matchers.Path, method: httpz.Method) ?Route {
 
     // ── Admin model-library catalogue row by uid ─────────────────────────────
     if (matchers.matchAdminModel(p)) |uid| return .{ .admin_model_by_id = uid };
+    if (matchers.matchAdminFleetLibrary(p)) |id| return .{ .admin_fleet_library_by_id = id };
 
     // ── Tenant API key by id ──────────────────────────────────────────────
     if (matchers.matchTenantApiKeyById(p)) |id| return .{ .tenant_api_key_by_id = id };
@@ -227,14 +228,26 @@ test "match resolves auth routes" {
     try std.testing.expect(match("/v1/runs/run_1", .GET) == null);
 }
 
-test "match resolves the two Fleet library onboarding routes (M103)" {
+test "match resolves the Fleet library catalog routes" {
+    // The collection carries both the operator's list and the add/refetch write.
+    try std.testing.expectEqualDeep(Route.admin_fleet_library, match("/v1/admin/fleet-libraries", .GET).?);
     try std.testing.expectEqualDeep(Route.admin_fleet_library, match("/v1/admin/fleet-libraries", .POST).?);
     switch (match("/v1/workspaces/ws_abc/fleet-libraries", .POST).?) {
         .workspace_fleet_library => |ws_id| try std.testing.expectEqualStrings("ws_abc", ws_id),
         else => return error.TestExpectedEqual,
     }
-    // A deeper path under the platform route must not match the static prong.
-    try std.testing.expect(match("/v1/admin/fleet-libraries/x", .POST) == null);
+    // The per-entry route (M128). The catalog id is a slug — the bundle's SKILL.md
+    // frontmatter name — not a UUID, so the matcher must not demand one.
+    switch (match("/v1/admin/fleet-libraries/zoho-sprint-daily-summarizer", .PATCH).?) {
+        .admin_fleet_library_by_id => |id| try std.testing.expectEqualStrings("zoho-sprint-daily-summarizer", id),
+        else => return error.TestExpectedEqual,
+    }
+    switch (match("/v1/admin/fleet-libraries/github-pr-reviewer", .DELETE).?) {
+        .admin_fleet_library_by_id => |id| try std.testing.expectEqualStrings("github-pr-reviewer", id),
+        else => return error.TestExpectedEqual,
+    }
+    // Deeper still is nobody's route.
+    try std.testing.expect(match("/v1/admin/fleet-libraries/x/y", .GET) == null);
 }
 
 test "match resolves admin platform key routes" {

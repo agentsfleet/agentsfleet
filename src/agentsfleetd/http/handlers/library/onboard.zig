@@ -20,6 +20,7 @@ const ec = @import("../../../errors/error_registry.zig");
 const id_format = @import("../../../types/id_format.zig");
 const importer = @import("../../../fleet_library/importer.zig");
 const library_store = @import("../../../fleet_library/library_store.zig");
+const catalog = @import("catalog.zig");
 const resolve = @import("../fleet_bundles/resolve.zig");
 const pipeline = @import("pipeline.zig");
 const clock = @import("common").clock;
@@ -47,7 +48,7 @@ const OnboardCtx = struct {
 pub fn innerPlatformOnboard(hx: Hx, req: *httpz.Request) void {
     var ctx = prepareOnboard(hx, req) orelse return;
     defer ctx.deinit(hx.alloc);
-    const id = insertPlatform(hx, ctx.resolved.body, ctx.prepared) orelse return;
+    const id = insertPlatform(hx, ctx.resolved.body, ctx.prepared, ctx.parsed.value.replace) orelse return;
     defer hx.alloc.free(id);
     respond(hx, ctx.resolved.body, ctx.prepared, id, library_store.TIER_PLATFORM);
 }
@@ -115,9 +116,36 @@ fn authorizeWs(hx: Hx, workspace_id: []const u8) bool {
     return true;
 }
 
-fn insertPlatform(hx: Hx, body: importer.ImportBody, prepared: importer.PreparedBundle) ?[]const u8 {
+fn insertPlatform(hx: Hx, body: importer.ImportBody, prepared: importer.PreparedBundle, replace: bool) ?[]const u8 {
     var db = hx.db() orelse return null;
     defer db.end();
+
+    // The catalog id is the bundle's frontmatter name, NOT the repository the
+    // operator typed. So a repository whose SKILL.md declares a name someone else
+    // already owns would silently overwrite that fleet's content — every tenant
+    // installing it would get this bundle instead. Refuse, and make the operator
+    // say `replace` out loud. Re-fetching the SAME repository is not a collision;
+    // that is the update path.
+    if (!replace) {
+        const existing = catalog.fetchRowState(hx.alloc, db.conn, prepared.name) catch |err| {
+            log.err("platform_onboard_collision_probe_failed", .{ .error_code = ec.ERR_INTERNAL_DB_QUERY, .err = @errorName(err), .req_id = hx.req_id });
+            common.internalDbError(hx.res, hx.req_id);
+            return null;
+        };
+        if (existing) |state| {
+            if (!std.mem.eql(u8, state.source_repo, body.source_ref)) {
+                common.errorResponseConflict(
+                    hx.res,
+                    ec.ERR_CATALOG_ID_COLLISION,
+                    "That bundle's name is already taken by a different repository. Rename the bundle, or retry with replace to overwrite it.",
+                    hx.req_id,
+                    state.source_repo,
+                );
+                return null;
+            }
+        }
+    }
+
     return library_store.insertOrUpdatePlatform(db.conn, hx.alloc, .{
         .id = prepared.name,
         .name = prepared.name,

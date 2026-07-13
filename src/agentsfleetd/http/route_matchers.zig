@@ -128,6 +128,7 @@ pub fn matchAuthSessionVerify(p: Path) ?[]const u8 {
 // route_matchers_billing.zig (RULE FLL). Re-exported so call sites stay unchanged.
 pub const matchAdminPlatformKey = billing.matchAdminPlatformKey;
 pub const matchAdminModel = billing.matchAdminModel;
+pub const matchAdminFleetLibrary = billing.matchAdminFleetLibrary;
 pub const matchTenantApiKeyById = billing.matchTenantApiKeyById;
 pub const matchTenantMeteringPeriods = billing.matchTenantMeteringPeriods;
 pub const matchTenantModelEntryById = billing.matchTenantModelEntryById;

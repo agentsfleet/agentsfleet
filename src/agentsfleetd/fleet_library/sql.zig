@@ -58,6 +58,69 @@ pub const INSERT_PLATFORM =
     \\RETURNING id
 ;
 
+/// The operator's catalog view (GET /v1/admin/fleet-libraries). Unlike every
+/// tenant-facing read, this one filters on NOTHING: a draft, and a row whose
+/// bundle was never fetched, are exactly what the operator needs to see — the
+/// page exists to answer "what is live, and what still needs work".
+///
+/// Metadata only. `skill_markdown`, `trigger_markdown`, and the support-file
+/// bodies are never selected, so an object-store key cannot leak through this
+/// projection (M128 Invariant 3).
+pub const SELECT_ADMIN_CATALOG =
+    \\SELECT id, name, description, source_repo, source_ref, visibility, content_hash,
+    \\       required_credentials::text, required_tools::text, network_hosts::text,
+    \\       required_credentials_reasons::text,
+    \\       COALESCE(support_files_json::text, '[]'), (trigger_markdown IS NOT NULL),
+    \\       updated_at
+    \\  FROM core.fleet_library
+    \\ ORDER BY id
+;
+
+/// Read one row's lifecycle facts. Backs three guards: publish-needs-a-bundle,
+/// delete-needs-unpublished, and the add-path's id-collision check (whether this
+/// id already belongs to a DIFFERENT repository).
+pub const SELECT_CATALOG_ROW =
+    \\SELECT source_repo, visibility, content_hash
+    \\  FROM core.fleet_library
+    \\ WHERE id = $1
+;
+
+/// The operator's pencil: the two fields no bundle can supply. `description` and
+/// `required_credentials_reasons` are absent from INSERT_PLATFORM's ON CONFLICT
+/// list precisely so a refetch cannot undo what this wrote (M128 Invariant 4).
+/// COALESCE keeps the statement a partial update — a null argument leaves the
+/// column alone, so editing one field never blanks the other.
+pub const UPDATE_CATALOG_CURATE =
+    \\UPDATE core.fleet_library
+    \\   SET description = COALESCE($2, description),
+    \\       required_credentials_reasons = COALESCE($3::jsonb, required_credentials_reasons),
+    \\       updated_at = $4
+    \\ WHERE id = $1
+    \\RETURNING id
+;
+
+/// Publish / unpublish. The `content_hash IS NOT NULL` arm is the invariant, not
+/// a convenience: a published row ALWAYS has a bundle, so a publish of an empty
+/// row updates zero rows and the handler turns that into UZ-CATALOG-002. Guarding
+/// it here means the database enforces it even if a caller bypasses the handler.
+pub const UPDATE_CATALOG_VISIBILITY =
+    \\UPDATE core.fleet_library
+    \\   SET visibility = $2, updated_at = $3
+    \\ WHERE id = $1
+    \\   AND ($2 <> $4 OR content_hash IS NOT NULL)
+    \\RETURNING id
+;
+
+/// Delete an unpublished entry. Scoped to `visibility <> $2` ('public'): a live
+/// fleet is never deleted out from under the tenants who can install it —
+/// withdraw it first. Zero rows affected on a published row, which the handler
+/// turns into UZ-CATALOG-003.
+pub const DELETE_CATALOG_DRAFT =
+    \\DELETE FROM core.fleet_library
+    \\ WHERE id = $1 AND visibility <> $2
+    \\RETURNING id
+;
+
 pub const INSERT_TENANT =
     \\WITH inserted AS (
     \\  INSERT INTO core.tenant_fleet_library
