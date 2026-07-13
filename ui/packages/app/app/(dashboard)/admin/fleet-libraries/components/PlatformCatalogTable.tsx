@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import {
   Badge,
+  Button,
   ConfirmDialog,
   DataTable,
   type DataTableColumn,
@@ -40,6 +41,9 @@ import {
   HASH_PREVIEW_LENGTH,
   PATCH_ACTION,
   PUBLISH,
+  REPOSITORY_HOST,
+  REPOSITORY_LINK_LABEL,
+  SOURCE_REF_PATTERN,
   UNPUBLISH,
 } from "../library-copy";
 import { rowActions, statusView } from "./catalog-status";
@@ -48,6 +52,28 @@ import EditFleetDialog from "./EditFleetDialog";
 // Em dash, not an empty cell: a row with no bundle has a definite absence, and
 // blank space reads as a rendering bug.
 const NO_HASH = "—";
+
+// A platform row is normally imported from GitHub, so its source is `owner/repo`
+// and an operator wants to click through and check it. A template- or
+// upload-sourced row is not, and linking it would point at a repository that does
+// not exist — so the cell only becomes a link when the value is actually a slug.
+function RepositoryCell({ repo }: { repo: string }) {
+  if (!SOURCE_REF_PATTERN.test(repo)) {
+    return <span className="text-sm text-muted-foreground">{repo}</span>;
+  }
+  return (
+    <Button asChild variant="link" size="sm" className="h-auto p-0 text-sm font-normal">
+      <a
+        href={`${REPOSITORY_HOST}${repo}`}
+        target="_blank"
+        rel="noopener noreferrer"
+        aria-label={`${REPOSITORY_LINK_LABEL}: ${repo}`}
+      >
+        {repo}
+      </a>
+    </Button>
+  );
+}
 
 const ACTION_PUBLISHED = "published";
 const ACTION_UNPUBLISHED = "unpublished";
@@ -129,7 +155,7 @@ export default function PlatformCatalogTable({
       key: "repository",
       header: COLUMN_REPOSITORY,
       hideOnMobile: true,
-      cell: (row) => <span className="text-sm text-muted-foreground">{row.source_repo}</span>,
+      cell: (row) => <RepositoryCell repo={row.source_repo} />,
     },
     {
       key: "status",

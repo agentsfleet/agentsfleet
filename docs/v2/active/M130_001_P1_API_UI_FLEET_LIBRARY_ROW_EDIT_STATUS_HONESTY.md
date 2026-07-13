@@ -54,7 +54,11 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 | File | Action | Why |
 |------|--------|-----|
-| `src/agentsfleetd/http/handlers/library/catalog.zig` | EDIT | `PatchBody` gains three fields; `applyPatch` gains the source-invalidation write and reuses the existing source validators. |
+| `src/agentsfleetd/http/handlers/library/catalog_patch.zig` | CREATE | The widened PATCH: `PatchBody`'s three new fields, the source validators, the invalidation write, and the publish-vs-repoint guard. Split out because the write pushed `catalog.zig` past the 350-line cap (RULE FLL). |
+| `src/agentsfleetd/http/handlers/library/catalog.zig` | EDIT | Keeps the reads and `RowState`/`fetchRowState` (which `onboard.zig` also depends on); `RowState` gains `source_ref`, `respondEntry` becomes pub. The PATCH moves out. |
+| `src/agentsfleetd/http/handlers/library/api.zig` | EDIT | Re-exports the PATCH from its new module — the route table is untouched. |
+| `src/agentsfleetd/fleet_library/github_source.zig` | EDIT | Gains `parseOwnerRepo` — one home for what counts as a repository, so the import path and the edit path cannot drift. |
+| `src/agentsfleetd/http/handlers/fleet_bundles/resolve.zig` | EDIT | Its private, structure-only `parseOwnerRepo` is deleted in favour of the validating one (RULE NDC — two spellings of one rule is how the client regex and the server already drifted). |
 | `src/agentsfleetd/fleet_library/sql.zig` | EDIT | New statement for the identity/source update (nulls `content_hash`, stages `draft`); `name` leaves `INSERT_PLATFORM`'s conflict SET; the refetch statement prunes the reason map. |
 | `src/agentsfleetd/fleet_library/library_store.zig` | EDIT | Params struct for the new update; the refetch path passes the declared credential set through for pruning. |
 | `ui/packages/app/lib/types.ts` | EDIT | `catalogStatus()` gains the fourth state; `PlatformCatalogPatch` gains the three fields. |
@@ -109,9 +113,9 @@ A row that is `public` with a null `content_hash` currently renders as `PUBLISHE
 
 **Implementation default:** the new state is presented as a fault, not a lifecycle step — its tone is the destructive/attention tone, not the `draft` amber, because it is a row that needs an operator, not a row awaiting one.
 
-- **Dimension 1.1** — `catalogStatus()` returns the new state for `visibility=public` + `content_hash=null`, and is exhaustive over all four combinations → Test `test_catalog_status_public_without_bundle`
-- **Dimension 1.2** — the badge for the new state carries its own label and help text and never renders the published "live in every workspace gallery" copy → Test `test_status_badge_never_claims_live_without_bundle`
-- **Dimension 1.3** — `rowActions` for the new state offers `Unpublish` (to make it honest) and `Fetch bundle` (to make it true), and withholds `Publish` and `Delete` — the server refuses both for a public row → Test `test_row_actions_broken_state_recoverable`
+- **Dimension 1.1** (DONE) — `catalogStatus()` returns the new state for `visibility=public` + `content_hash=null`, and is exhaustive over all four combinations → Test `test_catalog_status_public_without_bundle`
+- **Dimension 1.2** (DONE) — the badge for the new state carries its own label and help text and never renders the published "live in every workspace gallery" copy → Test `test_status_badge_never_claims_live_without_bundle`
+- **Dimension 1.3** (DONE) — `rowActions` for the new state offers `Unpublish` (to make it honest) and `Fetch bundle` (to make it true), and withholds `Publish` and `Delete` — the server refuses both for a public row → Test `test_row_actions_broken_state_recoverable`
 
 ### §2 — The operator owns the row's identity
 
@@ -121,17 +125,17 @@ A row that is `public` with a null `content_hash` currently renders as `PUBLISHE
 
 **Implementation default:** invalidation triggers on a *changed* value, not a *present* one — re-sending the identical repository must not withdraw a live fleet, so the comparison is against the stored row inside the transaction, not against the request body's presence.
 
-- **Dimension 2.1** — `PATCH` accepts `name` and persists it; empty or over-cap names are refused → Test `test_patch_accepts_name`
-- **Dimension 2.2** — `PATCH` accepts `source_repo` / `source_ref`, validated by the *existing* `parseOwnerRepo` + `validSegment` validators; a malformed source is refused with the registered bundle-invalid code → Test `test_patch_rejects_malformed_source`
+- **Dimension 2.1** (DONE) — `PATCH` accepts `name` and persists it; empty or over-cap names are refused → Test `test_patch_accepts_name`
+- **Dimension 2.2** (DONE) — `PATCH` accepts `source_repo` / `source_ref`, validated by the *existing* `parseOwnerRepo` + `validSegment` validators; a malformed source is refused with the registered bundle-invalid code → Test `test_patch_rejects_malformed_source`
 - **Dimension 2.3** — changing either source field nulls `content_hash` and stages `visibility` to `draft` atomically → Test `test_patch_source_change_invalidates_bundle`
-- **Dimension 2.4** — re-sending the *unchanged* source leaves `content_hash` and `visibility` untouched; a live fleet is not withdrawn by an idempotent PATCH → Test `test_patch_unchanged_source_is_noop`
-- **Dimension 2.5** — `id` is absent from the patch body and unmovable; a body carrying one is ignored and the row keeps its slug → Test `test_patch_cannot_move_slug`
+- **Dimension 2.4** (DONE) — re-sending the *unchanged* source leaves `content_hash` and `visibility` untouched; a live fleet is not withdrawn by an idempotent PATCH → Test `test_patch_unchanged_source_is_noop`
+- **Dimension 2.5** (DONE) — `id` is absent from the patch body and unmovable; a body carrying one is ignored and the row keeps its slug → Test `test_patch_cannot_move_slug`
 
 ### §3 — A rename survives the next fetch
 
 Once the operator owns `name`, the refetch upsert must stop overwriting it — otherwise the next `Fetch update` silently reverts the rename, which is worse than not offering the field. `name` leaves `INSERT_PLATFORM`'s `ON CONFLICT … DO UPDATE SET` list, joining `description` and `required_credentials_reasons`, which are already excluded for precisely this reason. A first import still takes the name from the bundle's frontmatter; only the *conflict* path preserves the operator's.
 
-- **Dimension 3.1** — a refetch preserves an operator-renamed `name`; a first import still seeds it from the bundle → Test `test_refetch_preserves_operator_name`
+- **Dimension 3.1** (DONE) — a refetch preserves an operator-renamed `name`; a first import still seeds it from the bundle → Test `test_refetch_preserves_operator_name`
 
 ### §4 — The credential copy tracks the declared set
 
@@ -139,7 +143,7 @@ The reason map is keyed by credential name and the declared credential set moves
 
 **Implementation default:** pruning happens in the refetch statement, not in the handler — the map and the declared set are written by the same statement, so the intersection is enforced where it cannot drift.
 
-- **Dimension 4.1** — a refetch drops reason keys absent from the new bundle's declared credentials and preserves the rest → Test `test_refetch_prunes_stale_reason_keys`
+- **Dimension 4.1** (DONE) — a refetch drops reason keys absent from the new bundle's declared credentials and preserves the rest → Test `test_refetch_prunes_stale_reason_keys`
 - **Dimension 4.2** — the edit dialog marks every declared credential that has no reason text, so the operator can see what the install gate will not explain → Test `test_edit_dialog_flags_unexplained_credentials`
 
 ### §5 — The surface says what it means
@@ -149,14 +153,14 @@ Three copy and affordance faults on the admin page. The button reads **Add fleet
 **Implementation default:** the repository links only when its value is `owner/repo` shaped — a row imported from a template or an upload carries a source that is not a GitHub slug, and must render as plain text rather than a broken link.
 
 - **Dimension 5.1** — the repository cell links to the GitHub repository when the value is `owner/repo` shaped, and renders inert text when it is not → Test `test_repository_cell_links_only_when_slug_shaped`
-- **Dimension 5.2** — the admin button and its dialog read `Create fleet library`, matching the tenant surface → Test `test_admin_button_reads_create_fleet_library`
+- **Dimension 5.2** (DONE) — the admin button and its dialog read `Create fleet library`, matching the tenant surface → Test `test_admin_button_reads_create_fleet_library`
 - **Dimension 5.3** — the entity is singular wherever it is named — page title, nav entry, route skeleton — and the plural spelling survives nowhere → Test `test_fleet_library_named_in_the_singular`
 
 ### §6 — A dialog that is loading does not look broken
 
 The runner activity dialog fetches its events through a server action and renders nothing at all while that round-trip is in flight, so the body is blank for the whole wait and reads as a failure rather than a delay. It paints a skeleton instead. This slice rides with M130 because it is the same admin surface and the same class of fault the rest of the spec corrects — a surface asserting something untrue about its own state.
 
-- **Dimension 6.1** — the activity dialog renders a skeleton while its events fetch is pending, and never renders the skeleton beside real data, an empty-state, or an error → Test `test_runner_activity_dialog_render_states`
+- **Dimension 6.1** (DONE) — the activity dialog renders a skeleton while its events fetch is pending, and never renders the skeleton beside real data, an empty-state, or an error → Test `test_runner_activity_dialog_render_states`
 
 ## Interfaces
 
@@ -244,20 +248,22 @@ A source change is the one operator action here that silently removes a fleet fr
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | No catalog row can render as published without a bundle (§1) | `cd ui/packages/app && bun test tests/ app/ -t "status"` | exit 0 | P0 | |
+| R1 | No catalog row can render as published without a bundle (§1) | `make test-unit-app` | exit 0 | P0 | |
 | R2 | A source change invalidates the bundle and withdraws the row (§2) | `make test-integration` | exit 0 | P0 | |
 | R3 | An operator rename survives a refetch (§3) | `make test-integration` | exit 0 | P0 | |
 | R4 | The publish-needs-a-bundle and delete-needs-withdrawal guards still hold (regression) | `make test-integration` | exit 0 | P0 | |
-| R5 | The admin surface says `Create fleet library` and nowhere says `Add fleet` (§5) | `git grep -rn "Add fleet" -- ui/ \| wc -l` | `0` | P1 | |
-| R6 | Diff stays inside Files Changed | `git diff --name-only origin/main` | 0 paths missing from the Files Changed table | P0 | |
-| S1 | Unit tests pass | `make test` | exit 0 | P0 | |
-| S2 | Lint clean | `make lint` | exit 0 | P0 | |
+| R5 | The admin surface says `Create fleet library` and nowhere says `Add fleet` (§5) | `git grep -n "Add fleet" -- ui/ \| wc -l` | `0` | P1 | |
+| R6 | Every copied value uses the design-system primitive; no hand-rolled clipboard survives (§7) | `git grep -n "navigator.clipboard" -- ui/packages/app \| wc -l` | `0` | P1 | |
+| R7 | Diff stays inside Files Changed | `git diff --name-only origin/main` | 0 paths missing from the Files Changed table | P0 | |
+| S1 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | |
+| S2 | Lint clean | `make lint-all` | exit 0 | P0 | |
 | S3 | Integration passes (HTTP + schema touched) | `make test-integration` | exit 0 | P0 | |
-| S4 | e2e walks the operator's recovery path | `cd ui/packages/app && bun run test:e2e -- platform-library-onboarding` | exit 0 | P0 | |
+| S4 | e2e walks the operator's recovery path | `make acceptance-e2e` | exit 0 | P0 | |
+| S5 | No leaks (Zig allocator paths touched) | `make memleak` | exit 0 | P0 | |
 | S6 | Cross-compile (Zig touched) | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` | exit 0 | P0 | |
 | S7 | No secrets | `gitleaks detect` | exit 0 | P0 | |
 | S8 | No oversize source file | `git diff --name-only origin/main \| grep -v '\.md$' \| xargs wc -l 2>/dev/null \| awk '$1>350 && $2!="total"'` | no output | P0 | |
-| S9 | Orphan sweep — the old title constant is gone | `git grep -rn "FLEET_LIBRARIES_TITLE" -- ui/ \| wc -l` | `0` | P0 | |
+| S9 | Orphan sweep — the old title constant is gone | `git grep -n "FLEET_LIBRARIES_TITLE" -- ui/ \| wc -l` | `0` | P0 | |
 
 **Grading protocol (VERIFY):** run the Verify command verbatim; grade ONLY from its output. Graded = ✅/❌ + the one decisive output line (`342 passed`); long evidence goes to PR Session Notes with a pointer here. **Ship gate:** every row graded, every P0 ✅ → eligible for CHORE(close); any ❌ or empty cell → return to EXECUTE; a P1 ❌ ships only with an Indy-acked deferral quote in Discovery.
 

@@ -9,6 +9,7 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
+  Skeleton,
   Time,
 } from "@agentsfleet/design-system";
 import type {
@@ -86,6 +87,14 @@ export function RunnerActivityDialog({
           {runner.labels.map((label) => <Badge key={label} variant="default">{label}</Badge>)}
         </div>
         {error ? <p className="text-sm text-destructive">{error}</p> : null}
+        {!data && !error ? (
+          // The events fetch round-trips a server action; without a placeholder
+          // the dialog body is blank for the whole wait and reads as broken.
+          <div className="space-y-3" aria-hidden>
+            <Skeleton className="h-16 w-full rounded-md" />
+            <Skeleton className="h-16 w-full rounded-md" />
+          </div>
+        ) : null}
         {data?.items.length === 0 ? <p className="text-sm text-muted-foreground">No activity yet.</p> : null}
         <ul className="max-h-96 space-y-3 overflow-y-auto pr-1" aria-label={RUNNER_ACTIVITY_TITLE}>
           {data?.items.map((event) => <ActivityRow key={event.id} event={event} />)}

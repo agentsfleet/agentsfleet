@@ -11,10 +11,10 @@ import {
 import { PlusIcon } from "lucide-react";
 import type { PlatformCatalogEntry } from "@/lib/types";
 import {
-  ADD_FLEET,
   ADD_TOOLTIP,
+  CREATE_FLEET_LIBRARY,
   FLEET_LIBRARIES_DESCRIPTION,
-  FLEET_LIBRARIES_TITLE,
+  FLEET_LIBRARY_TITLE,
 } from "../library-copy";
 import AddFleetDialog from "./AddFleetDialog";
 import PlatformCatalogTable from "./PlatformCatalogTable";
@@ -41,15 +41,15 @@ export default function FleetLibrariesView({ entries }: { entries: PlatformCatal
   return (
     <div className="space-y-8">
       <PageHeader description={FLEET_LIBRARIES_DESCRIPTION}>
-        <PageTitle>{FLEET_LIBRARIES_TITLE}</PageTitle>
+        <PageTitle>{FLEET_LIBRARY_TITLE}</PageTitle>
       </PageHeader>
 
       <Section aria-label="Platform fleet catalog">
         <div className="flex flex-wrap items-baseline justify-between gap-md">
-          <SectionLabel>{FLEET_LIBRARIES_TITLE}</SectionLabel>
+          <SectionLabel>{FLEET_LIBRARY_TITLE}</SectionLabel>
           <TooltipButton type="button" size="sm" tooltip={ADD_TOOLTIP} onClick={openAdd}>
             <PlusIcon size={14} />
-            {ADD_FLEET}
+            {CREATE_FLEET_LIBRARY}
           </TooltipButton>
         </div>
 

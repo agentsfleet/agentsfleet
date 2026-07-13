@@ -97,7 +97,7 @@ const PLATFORM_NAV: PlatformNavEntry[] = [
   // Gated on the write scope because the platform catalog has no read route —
   // `platform-library:write` is the only rung the backend defines for it.
   {
-    label: "Fleet libraries",
+    label: "Fleet library",
     path: "/admin/fleet-libraries",
     icon: LibraryIcon,
     scope: SCOPE.PLATFORM_LIBRARY_WRITE,
