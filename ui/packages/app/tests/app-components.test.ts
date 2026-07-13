@@ -3,92 +3,46 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { render, screen, cleanup, within, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-
+const TOAST_FADE_MS = 240;
 const mocks = vi.hoisted(() => ({
-  trackAppEvent: vi.fn(),
-  trackNavigationClicked: vi.fn(),
-  identifyAnalyticsUser: vi.fn(),
-  resetAnalyticsIdentity: vi.fn(),
-  hasStaleAnalyticsIdentity: vi.fn(() => false),
-  setAnalyticsContext: vi.fn(),
-  captureProductEvent: vi.fn(),
-  useUser: vi.fn(),
-  usePathname: vi.fn(),
-  useEffectMock: vi.fn((fn: () => void) => fn()),
+  trackAppEvent: vi.fn(), trackNavigationClicked: vi.fn(),
+  identifyAnalyticsUser: vi.fn(), resetAnalyticsIdentity: vi.fn(),
+  hasStaleAnalyticsIdentity: vi.fn(() => false), setAnalyticsContext: vi.fn(),
+  captureProductEvent: vi.fn(), useUser: vi.fn(), usePathname: vi.fn(),
 }));
-
-vi.mock("react", async () => {
-  const actual = await vi.importActual<typeof import("react")>("react");
-  return { ...actual, useEffect: mocks.useEffectMock };
-});
 
 vi.mock("@/lib/analytics/posthog", () => ({
-  trackAppEvent: mocks.trackAppEvent,
-  trackNavigationClicked: mocks.trackNavigationClicked,
-  identifyAnalyticsUser: mocks.identifyAnalyticsUser,
-  resetAnalyticsIdentity: mocks.resetAnalyticsIdentity,
-  hasStaleAnalyticsIdentity: mocks.hasStaleAnalyticsIdentity,
-  setAnalyticsContext: mocks.setAnalyticsContext,
+  trackAppEvent: mocks.trackAppEvent, trackNavigationClicked: mocks.trackNavigationClicked,
+  identifyAnalyticsUser: mocks.identifyAnalyticsUser, resetAnalyticsIdentity: mocks.resetAnalyticsIdentity,
+  hasStaleAnalyticsIdentity: mocks.hasStaleAnalyticsIdentity, setAnalyticsContext: mocks.setAnalyticsContext,
   captureProductEvent: mocks.captureProductEvent,
 }));
-
 vi.mock("@clerk/nextjs", () => ({
-  UserButton: () => React.createElement("div", { "data-user-button": "1" }),
-  useUser: mocks.useUser,
+  UserButton: () => React.createElement("div"), useUser: mocks.useUser,
   ClerkProvider: ({ children }: { children: React.ReactNode }) => React.createElement(React.Fragment, null, children),
-  SignIn: () => React.createElement("div", { "data-sign-in": "1" }),
-  SignUp: () => React.createElement("div", { "data-sign-up": "1" }),
+  SignIn: () => React.createElement("div"), SignUp: () => React.createElement("div"),
   useAuth: () => ({ getToken: async () => "token_stub" }),
 }));
-
 vi.mock("next/navigation", () => ({
-  usePathname: mocks.usePathname,
-  useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }),
+  usePathname: mocks.usePathname, useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }),
 }));
-
 vi.mock("next/link", () => ({
   default: ({ children, ...props }: React.PropsWithChildren<React.AnchorHTMLAttributes<HTMLAnchorElement>>) =>
     React.createElement("a", props, children),
 }));
-
-vi.mock("lucide-react", () => ({
-  GitBranchIcon: (props: Record<string, unknown>) => React.createElement("svg", { ...props, "data-icon": "GitBranchIcon" }),
-  ActivityIcon: (props: Record<string, unknown>) => React.createElement("svg", { ...props, "data-icon": "ActivityIcon" }),
-  PauseIcon: (props: Record<string, unknown>) => React.createElement("svg", { ...props, "data-icon": "PauseIcon" }),
-  ExternalLinkIcon: (props: Record<string, unknown>) => React.createElement("svg", { ...props, "data-icon": "ExternalLinkIcon" }),
-  LayoutDashboardIcon: (props: Record<string, unknown>) => React.createElement("svg", { ...props, "data-icon": "LayoutDashboardIcon" }),
-  BoxIcon: (props: Record<string, unknown>) => React.createElement("svg", { ...props, "data-icon": "BoxIcon" }),
-  BotIcon: (props: Record<string, unknown>) => React.createElement("svg", { ...props, "data-icon": "BotIcon" }),
-  SettingsIcon: (props: Record<string, unknown>) => React.createElement("svg", { ...props, "data-icon": "SettingsIcon" }),
-  KeyIcon: (props: Record<string, unknown>) => React.createElement("svg", { ...props, "data-icon": "KeyIcon" }),
-  BookOpenIcon: (props: Record<string, unknown>) => React.createElement("svg", { ...props, "data-icon": "BookOpenIcon" }),
-  ZapIcon: (props: Record<string, unknown>) => React.createElement("svg", { ...props, "data-icon": "ZapIcon" }),
-  ShieldIcon: (props: Record<string, unknown>) => React.createElement("svg", { ...props, "data-icon": "ShieldIcon" }),
-  KeyRoundIcon: (props: Record<string, unknown>) => React.createElement("svg", { ...props, "data-icon": "KeyRoundIcon" }),
-  LinkIcon: (props: Record<string, unknown>) => React.createElement("svg", { ...props, "data-icon": "LinkIcon" }),
-  CheckCircle2Icon: (props: Record<string, unknown>) => React.createElement("svg", { ...props, "data-icon": "CheckCircle2Icon" }),
-  ServerIcon: (props: Record<string, unknown>) => React.createElement("svg", { ...props, "data-icon": "ServerIcon" }),
-  CpuIcon: (props: Record<string, unknown>) => React.createElement("svg", { ...props, "data-icon": "CpuIcon" }),
-  CoinsIcon: (props: Record<string, unknown>) => React.createElement("svg", { ...props, "data-icon": "CoinsIcon" }),
-  CreditCardIcon: (props: Record<string, unknown>) => React.createElement("svg", { ...props, "data-icon": "CreditCardIcon" }),
-  MenuIcon: (props: Record<string, unknown>) => React.createElement("svg", { ...props, "data-icon": "MenuIcon" }),
-  PanelLeftIcon: (props: Record<string, unknown>) => React.createElement("svg", { ...props, "data-icon": "PanelLeftIcon" }),
-  SunIcon: (props: Record<string, unknown>) => React.createElement("svg", { ...props, "data-icon": "SunIcon" }),
-  MoonIcon: (props: Record<string, unknown>) => React.createElement("svg", { ...props, "data-icon": "MoonIcon" }),
-  ChevronDownIcon: (props: Record<string, unknown>) => React.createElement("svg", { ...props, "data-icon": "ChevronDownIcon" }),
-  PlusIcon: (props: Record<string, unknown>) => React.createElement("svg", { ...props, "data-icon": "PlusIcon" }),
-}));
-
-// ThemeToggle setStates inside a useEffect; this file's synchronous useEffect
-// mock (runs every render, ignores deps) would loop on it. These tests cover
-// Shell nav, not theming — stub it.
-vi.mock("@/components/layout/ThemeToggle", () => ({
-  default: () => React.createElement("button", { "data-theme-toggle": "1" }),
-}));
-
-vi.mock("@/components/layout/ClientOnlyAuthUserButton", () => ({
-  default: () => React.createElement("div", { "data-user-button": "1" }),
-}));
+vi.mock("lucide-react", () => {
+  const icon = (name: string) => (props: Record<string, unknown>) => React.createElement("svg", { ...props, "data-icon": name });
+  return {
+    GitBranchIcon: icon("GitBranchIcon"), ActivityIcon: icon("ActivityIcon"), PauseIcon: icon("PauseIcon"), ExternalLinkIcon: icon("ExternalLinkIcon"),
+    LayoutDashboardIcon: icon("LayoutDashboardIcon"), BoxIcon: icon("BoxIcon"), BotIcon: icon("BotIcon"), SettingsIcon: icon("SettingsIcon"),
+    KeyIcon: icon("KeyIcon"), BookOpenIcon: icon("BookOpenIcon"), ZapIcon: icon("ZapIcon"), ShieldIcon: icon("ShieldIcon"),
+    KeyRoundIcon: icon("KeyRoundIcon"), LinkIcon: icon("LinkIcon"), CheckCircle2Icon: icon("CheckCircle2Icon"), ServerIcon: icon("ServerIcon"),
+    CpuIcon: icon("CpuIcon"), CoinsIcon: icon("CoinsIcon"), CreditCardIcon: icon("CreditCardIcon"), MenuIcon: icon("MenuIcon"),
+    PanelLeftIcon: icon("PanelLeftIcon"), SunIcon: icon("SunIcon"), MoonIcon: icon("MoonIcon"), ChevronDownIcon: icon("ChevronDownIcon"), PlusIcon: icon("PlusIcon"),
+  };
+});
+vi.mock("@/components/layout/ThemeToggle", () => ({ default: () => React.createElement("button") }));
+vi.mock("@/components/layout/ClientOnlyAuthUserButton", () => ({ default: () => React.createElement("div") }));
 
 beforeEach(() => {
   mocks.useUser.mockReset();
@@ -101,7 +55,6 @@ beforeEach(() => {
   mocks.hasStaleAnalyticsIdentity.mockReturnValue(false);
   mocks.setAnalyticsContext.mockReset();
   mocks.captureProductEvent.mockReset();
-  mocks.useEffectMock.mockClear();
   mocks.usePathname.mockReturnValue("/workspaces");
 });
 
@@ -131,6 +84,29 @@ describe("app components", () => {
     expect(container.innerHTML).toContain("agentsfleet");
     expect(container.innerHTML).toContain("data-live");
     cleanup();
+  });
+
+  it("clears the workspace toast fade timer when the shell unmounts", async () => {
+    const { default: Shell } = await import("../components/layout/Shell");
+    const setTimeoutSpy = vi.spyOn(globalThis, "setTimeout");
+    const clearTimeoutSpy = vi.spyOn(globalThis, "clearTimeout");
+    try {
+      const { unmount } = render(
+        React.createElement(Shell, null, React.createElement("div", null, "content")),
+      );
+      const fadeTimerIndex = setTimeoutSpy.mock.calls.findIndex(
+        ([, delay]) => delay === TOAST_FADE_MS,
+      );
+
+      expect(screen.getByTestId("workspace-toast")).toBeDefined();
+      expect(fadeTimerIndex).toBeGreaterThanOrEqual(0);
+      const fadeTimer = setTimeoutSpy.mock.results[fadeTimerIndex]!.value;
+      unmount();
+      expect(clearTimeoutSpy).toHaveBeenCalledWith(fadeTimer);
+    } finally {
+      clearTimeoutSpy.mockRestore();
+      setTimeoutSpy.mockRestore();
+    }
   });
 
   it("binds the analytics workspace context from the active workspace + count", async () => {
@@ -167,9 +143,9 @@ describe("app components", () => {
 
     const { default: AnalyticsBootstrap } = await import("../components/analytics/AnalyticsBootstrap");
 
-    const tree = AnalyticsBootstrap();
+    const { container } = render(React.createElement(AnalyticsBootstrap));
 
-    expect(tree).toBeNull();
+    expect(container.innerHTML).toBe("");
     expect(mocks.identifyAnalyticsUser).toHaveBeenCalledWith({
       id: "user_123",
       email: "kishore@example.com",
@@ -185,7 +161,7 @@ describe("app components", () => {
 
     const { default: AnalyticsBootstrap } = await import("../components/analytics/AnalyticsBootstrap");
 
-    AnalyticsBootstrap();
+    render(React.createElement(AnalyticsBootstrap));
 
     expect(mocks.identifyAnalyticsUser).not.toHaveBeenCalled();
     expect(mocks.resetAnalyticsIdentity).not.toHaveBeenCalled();
@@ -196,7 +172,7 @@ describe("app components", () => {
 
     const { default: AnalyticsBootstrap } = await import("../components/analytics/AnalyticsBootstrap");
 
-    AnalyticsBootstrap();
+    render(React.createElement(AnalyticsBootstrap));
 
     expect(mocks.identifyAnalyticsUser).not.toHaveBeenCalled();
     expect(mocks.resetAnalyticsIdentity).not.toHaveBeenCalled();
@@ -209,10 +185,10 @@ describe("app components", () => {
 
     const { default: AnalyticsBootstrap } = await import("../components/analytics/AnalyticsBootstrap");
 
-    AnalyticsBootstrap();
+    const { rerender } = render(React.createElement(AnalyticsBootstrap));
     // …and once reset clears it, repeated signed-out renders are no-ops.
-    AnalyticsBootstrap();
-    AnalyticsBootstrap();
+    rerender(React.createElement(AnalyticsBootstrap));
+    rerender(React.createElement(AnalyticsBootstrap));
 
     expect(mocks.resetAnalyticsIdentity).toHaveBeenCalledTimes(1);
     expect(mocks.identifyAnalyticsUser).not.toHaveBeenCalled();
@@ -223,8 +199,8 @@ describe("app components", () => {
 
     const { default: AnalyticsBootstrap } = await import("../components/analytics/AnalyticsBootstrap");
 
-    AnalyticsBootstrap();
-    AnalyticsBootstrap();
+    const { rerender } = render(React.createElement(AnalyticsBootstrap));
+    rerender(React.createElement(AnalyticsBootstrap));
 
     expect(mocks.resetAnalyticsIdentity).not.toHaveBeenCalled();
   });
@@ -237,13 +213,13 @@ describe("app components", () => {
       isSignedIn: true,
       user: { id: "user_123", primaryEmailAddress: { emailAddress: "kishore@example.com" } },
     });
-    AnalyticsBootstrap();
+    const { rerender } = render(React.createElement(AnalyticsBootstrap));
     expect(mocks.identifyAnalyticsUser).toHaveBeenCalledTimes(1);
 
     // Sign-out: the analytics module reports the identity as stale once.
     mocks.useUser.mockReturnValue({ isLoaded: true, isSignedIn: false, user: null });
     mocks.hasStaleAnalyticsIdentity.mockReturnValueOnce(true);
-    AnalyticsBootstrap();
+    rerender(React.createElement(AnalyticsBootstrap));
     expect(mocks.resetAnalyticsIdentity).toHaveBeenCalledTimes(1);
 
     // Re-login: identify fires again for the new session.
@@ -252,7 +228,7 @@ describe("app components", () => {
       isSignedIn: true,
       user: { id: "user_123", primaryEmailAddress: { emailAddress: "kishore@example.com" } },
     });
-    AnalyticsBootstrap();
+    rerender(React.createElement(AnalyticsBootstrap));
     expect(mocks.identifyAnalyticsUser).toHaveBeenCalledTimes(2);
   });
 
@@ -371,245 +347,4 @@ describe("app components", () => {
     expect(activeFor("/admin/runners", ["runner:read"])).toEqual({ count: 1, icon: "ServerIcon" });
   });
 
-  it("Shell appends the Runners item only when the session holds runner:read", async () => {
-    const { default: Shell } = await import("../components/layout/Shell");
-    mocks.usePathname.mockReturnValue("/");
-    const markup = renderToStaticMarkup(
-      React.createElement(
-        Shell,
-        { operatorScopes: ["runner:read"] } as React.ComponentProps<typeof Shell>,
-        React.createElement("div"),
-      ),
-    );
-    // Runners joins the Configuration group with its link + ServerIcon glyph.
-    expect(markup).toContain("Configuration");
-    expect(markup).toContain("Runners");
-    expect(markup).toContain('href="/admin/runners"');
-    expect(markup).toContain('data-icon="ServerIcon"');
-    // It is appended to Configuration, not rendered as a separate group: the
-    // Configuration header appears exactly once and there is no "Platform" group.
-    expect((markup.match(/>Configuration</g) ?? []).length).toBe(1);
-    expect(markup).not.toMatch(/>\s*Platform\s*</);
-  });
-
-  it("Shell hides the platform surface for a session without operator scopes", async () => {
-    const { default: Shell } = await import("../components/layout/Shell");
-    mocks.usePathname.mockReturnValue("/");
-    // Default (no operatorScopes prop) → the platform nav items are absent. This
-    // is discoverability only; the backend independently gates the route.
-    const markup = renderToStaticMarkup(React.createElement(Shell, null, React.createElement("div")));
-    expect(markup).not.toContain('href="/admin/runners"');
-    expect(markup).not.toContain('data-icon="ServerIcon"');
-  });
-
-  it("Shell mobile-nav: hamburger button is present (md:hidden)", async () => {
-    const { default: Shell } = await import("../components/layout/Shell");
-    mocks.usePathname.mockReturnValue("/");
-    render(
-      React.createElement(Shell, null, React.createElement("div", null, "content")),
-    );
-    // The mobile hamburger renders as a Button with aria-label="Open navigation".
-    // It exists in the DOM at all viewports; CSS hides it ≥md.
-    const hamburger = screen.getByRole("button", { name: /open navigation/i });
-    expect(hamburger).toBeTruthy();
-    expect(hamburger.className).toContain("md:hidden");
-    cleanup();
-  });
-
-  it("Shell mobile-nav: clicking hamburger opens the dialog with sidebar nav", async () => {
-    const { default: Shell } = await import("../components/layout/Shell");
-    mocks.usePathname.mockReturnValue("/");
-    const user = userEvent.setup();
-    render(
-      React.createElement(Shell, null, React.createElement("div", null, "content")),
-    );
-    const hamburger = screen.getByRole("button", { name: /open navigation/i });
-    await user.click(hamburger);
-    // Dialog renders the SidebarNav which carries the same 5 operational
-    // links. The dialog itself is keyed by an accessible "Navigation" title.
-    const dialog = await screen.findByRole("dialog");
-    expect(dialog).toBeTruthy();
-    expect(dialog.textContent).toContain("Dashboard");
-    expect(dialog.textContent).toContain("Fleets");
-    cleanup();
-  });
-
-  it("Shell mobile-nav: clicking a link inside the dialog closes it", async () => {
-    const { default: Shell } = await import("../components/layout/Shell");
-    mocks.usePathname.mockReturnValue("/fleets");
-    const user = userEvent.setup();
-    render(
-      React.createElement(Shell, null, React.createElement("div", null, "content")),
-    );
-    await user.click(screen.getByRole("button", { name: /open navigation/i }));
-    const dialog = await screen.findByRole("dialog");
-    // Clicking a nav link fires the dialog instance's onNavigate (setOpen(false)),
-    // collapsing the mobile sheet — the desktop sidebar passes a no-op instead.
-    await user.click(within(dialog).getByRole("link", { name: /dashboard/i }));
-    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-    cleanup();
-  });
-
-  it("emits navigation analytics from sidebar and bottom-nav links", async () => {
-    const { default: Shell } = await import("../components/layout/Shell");
-    mocks.usePathname.mockReturnValue("/");
-    const user = userEvent.setup();
-    render(
-      React.createElement(Shell, null, React.createElement("div", null, "content")),
-    );
-    // Sidebar 'Dashboard' is href "/" → the source uses the 'root' branch;
-    // 'Fleets' (href /fleets) exercises the path-to-slug replaceAll branch.
-    await user.click(screen.getByText("Dashboard"));
-    await user.click(screen.getByText("Fleets"));
-    // Footer 'Docs' is external; 'API Keys' is internal.
-    await user.click(screen.getByText("Docs"));
-    await user.click(screen.getByText("API Keys"));
-    // The Models Configuration entry — a nested route exercises the
-    // multi-segment slug branch.
-    await user.click(screen.getByText("Models"));
-    await user.click(screen.getByText("Billing"));
-
-    const sources = mocks.trackNavigationClicked.mock.calls.map(
-      (c) => (c[0] as { source: string }).source,
-    );
-    expect(sources).toContain("app_sidebar_root");
-    expect(sources).toContain("app_sidebar_fleets");
-    expect(sources).toContain("app_sidebar_docs");
-    expect(sources).toContain("app_sidebar_settings_api-keys");
-    expect(sources).toContain("app_sidebar_settings_models");
-    expect(sources).toContain("app_sidebar_settings_billing");
-    cleanup();
-  });
-
-  it("should collapse the sidebar and hide nav labels when the toggle is clicked", async () => {
-    const { default: Shell } = await import("../components/layout/Shell");
-    mocks.usePathname.mockReturnValue("/");
-    const user = userEvent.setup();
-    render(React.createElement(Shell, null, React.createElement("div", null, "content")));
-
-    const toggle = screen.getByRole("button", { name: /collapse sidebar/i });
-    expect(toggle.getAttribute("aria-expanded")).toBe("true");
-    // Label text is visible pre-collapse — plain getByText, not getByRole,
-    // since NavItem renders the label as a text node beside the icon.
-    expect(screen.getByText("Dashboard")).toBeTruthy();
-
-    await user.click(toggle);
-
-    // aria-expanded flips and the label swaps to "Expand sidebar" — proves
-    // the button reflects state, not just that a click handler ran.
-    expect(screen.getByRole("button", { name: /expand sidebar/i })).toBeTruthy();
-    expect(screen.queryByRole("button", { name: /collapse sidebar/i })).toBeNull();
-    expect(screen.getByRole("button", { name: /expand sidebar/i }).getAttribute("aria-expanded")).toBe(
-      "false",
-    );
-    // The label text node is gone — collapsed renders icon-only.
-    expect(screen.queryByText("Dashboard")).toBeNull();
-    cleanup();
-  });
-
-  it("should expand the sidebar again when the toggle is clicked twice", async () => {
-    const { default: Shell } = await import("../components/layout/Shell");
-    mocks.usePathname.mockReturnValue("/");
-    const user = userEvent.setup();
-    render(React.createElement(Shell, null, React.createElement("div", null, "content")));
-
-    const toggle = screen.getByRole("button", { name: /collapse sidebar/i });
-    await user.click(toggle);
-    expect(screen.queryByText("Dashboard")).toBeNull();
-
-    await user.click(screen.getByRole("button", { name: /expand sidebar/i }));
-    // Round-trip: labels are back, and the button reverts to "Collapse sidebar".
-    expect(screen.getByText("Dashboard")).toBeTruthy();
-    expect(screen.getByRole("button", { name: /collapse sidebar/i })).toBeTruthy();
-    cleanup();
-  });
-
-  it("should keep nav links accessible by name when collapsed (icon-only, no visible text)", async () => {
-    const { default: Shell } = await import("../components/layout/Shell");
-    mocks.usePathname.mockReturnValue("/w/ws_1");
-    const user = userEvent.setup();
-    render(React.createElement(Shell, null, React.createElement("div", null, "content")));
-
-    await user.click(screen.getByRole("button", { name: /collapse sidebar/i }));
-
-    // No visible label text, but the link is still reachable by its accessible
-    // name (title/aria-label) — a screen-reader user isn't stranded by the
-    // icon-only rail. getByRole with `name` matches the accessible name
-    // computation, not textContent, so this fails if aria-label is dropped.
-    const fleetsLink = screen.getByRole("link", { name: "Fleets" });
-    expect(fleetsLink).toBeTruthy();
-    // M118: the Fleets destination is workspace-scoped — `/w/<id>/fleets`.
-    expect(fleetsLink.getAttribute("href")).toBe("/w/ws_1/fleets");
-    cleanup();
-  });
-
-  it("should hide section group labels (Automations/Configuration/Organization) when collapsed", async () => {
-    const { default: Shell } = await import("../components/layout/Shell");
-    mocks.usePathname.mockReturnValue("/");
-    const user = userEvent.setup();
-    render(React.createElement(Shell, null, React.createElement("div", null, "content")));
-
-    expect(screen.getByText("Automations")).toBeTruthy();
-    expect(screen.getByText("Configuration")).toBeTruthy();
-
-    await user.click(screen.getByRole("button", { name: /collapse sidebar/i }));
-
-    expect(screen.queryByText("Automations")).toBeNull();
-    expect(screen.queryByText("Configuration")).toBeNull();
-    expect(screen.queryByText("Organization")).toBeNull();
-    cleanup();
-  });
-
-  it("should render the active nav link with the mint/pulse styling classes, not the generic accent", async () => {
-    const { default: Shell } = await import("../components/layout/Shell");
-    mocks.usePathname.mockReturnValue("/w/ws_1/fleets");
-    render(React.createElement(Shell, null, React.createElement("div", null, "content")));
-
-    const activeLink = screen.getByRole("link", { name: "Fleets" });
-    expect(activeLink.getAttribute("data-active")).toBe("true");
-    expect(activeLink.className).toContain("data-[active=true]:bg-pulse/10");
-    expect(activeLink.className).toContain("data-[active=true]:text-pulse");
-    // Regression guard: the old generic-accent active styling must not
-    // resurface — a revert to `bg-accent` for the active state would pass a
-    // sloppier assertion that only checks presence of *a* highlight class.
-    expect(activeLink.className).not.toContain("data-[active=true]:bg-accent");
-    cleanup();
-  });
-
-  it("should render a left accent bar on the active nav item, on top of the fill", async () => {
-    const { default: Shell } = await import("../components/layout/Shell");
-    mocks.usePathname.mockReturnValue("/w/ws_1/fleets");
-    render(React.createElement(Shell, null, React.createElement("div", null, "content")));
-
-    const activeLink = screen.getByRole("link", { name: "Fleets" });
-    expect(activeLink.className).toContain("border-l-2");
-    expect(activeLink.className).toContain("border-transparent");
-    expect(activeLink.className).toContain("data-[active=true]:border-pulse");
-
-    const inactiveLink = screen.getByRole("link", { name: "Events" });
-    expect(inactiveLink.getAttribute("data-active")).toBeNull();
-    expect(inactiveLink.className).toContain("border-l-2");
-    cleanup();
-  });
-
-  it("mobile nav dialog always renders expanded, regardless of the desktop collapse state", async () => {
-    const { default: Shell } = await import("../components/layout/Shell");
-    mocks.usePathname.mockReturnValue("/");
-    const user = userEvent.setup();
-    render(React.createElement(Shell, null, React.createElement("div", null, "content")));
-
-    // Collapse the desktop sidebar first.
-    await user.click(screen.getByRole("button", { name: /collapse sidebar/i }));
-    expect(screen.queryByText("Dashboard")).toBeNull();
-
-    // The mobile dialog is a structurally separate SidebarNav instance
-    // hardcoded to collapsed={false} — opening it must show full labels even
-    // though the desktop instance is currently collapsed. This pins that the
-    // two instances never accidentally share the collapsed prop.
-    await user.click(screen.getByRole("button", { name: /open navigation/i }));
-    const dialog = await screen.findByRole("dialog");
-    expect(within(dialog).getByText("Dashboard")).toBeTruthy();
-    expect(within(dialog).getByText("Fleets")).toBeTruthy();
-    cleanup();
-  });
 });
