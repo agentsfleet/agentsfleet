@@ -103,6 +103,9 @@ export type OnboardLibraryEntryRequest =
   | {
       source_kind: typeof SOURCE_KIND_GITHUB;
       source_ref: string;
+      // Platform tier only: overwrite a catalog id already owned by a DIFFERENT
+      // repository. Absent means a collision is a 409 the operator must confirm.
+      replace?: boolean;
     }
   | {
       source_kind: typeof SOURCE_KIND_UPLOAD;
@@ -124,10 +127,66 @@ type OnboardedLibraryEntryBase = {
 
 export type OnboardedLibraryEntry = OnboardedLibraryEntryBase & { visibility: "tenant" };
 
-// Onboarded by a `platform-library:write` operator. Stored `visibility='public'`
-// server-side, which is what puts it in every workspace's gallery beside the
-// migration-seeded rows.
+// Onboarded by a `platform-library:write` operator. Stored `visibility='draft'`
+// server-side (M128): adding a fleet never publishes it, so it reaches no tenant
+// until an operator says so. The tier is still reported as "platform".
 export type OnboardedPlatformLibraryEntry = OnboardedLibraryEntryBase & { visibility: "platform" };
+
+// ── The platform catalog (M128) — GET /v1/admin/fleet-libraries ──────────────
+//
+// The publish lifecycle as the server stores it. Spelled verbatim in
+// src/agentsfleetd/fleet_library/library_store.zig and in
+// schema/029_fleet_library_draft_normalize.sql; SQL cannot import a Zig constant
+// and TypeScript cannot import either, so the three must agree by hand. A drift
+// silently hides or exposes fleets, which is why an integration test pins it.
+export const CATALOG_DRAFT = "draft" as const;
+export const CATALOG_PUBLIC = "public" as const;
+export type CatalogVisibility = typeof CATALOG_DRAFT | typeof CATALOG_PUBLIC;
+
+// One row of the platform catalog, as the operator sees it. Unlike a gallery
+// entry this hides nothing — a draft, and a row whose bundle was never fetched,
+// are exactly what the operator needs to see.
+export type PlatformCatalogEntry = {
+  id: string;
+  name: string;
+  description: string;
+  source_repo: string;
+  source_ref: string;
+  visibility: CatalogVisibility;
+  // null ⇒ no bundle has ever been fetched. Such a row can never be published.
+  content_hash: string | null;
+  requirements: FleetLibraryRequirements;
+  required_credentials_reasons?: Record<string, string>;
+  support_files: FleetLibrarySupportFileSummary[];
+  updated_at: number;
+};
+
+export type PlatformCatalogResponse = { entries: PlatformCatalogEntry[] };
+
+// The three states a row can be in, derived — never a wire field. Two sources for
+// one fact is how a table starts lying.
+export const CATALOG_STATUS_NO_BUNDLE = "no_bundle" as const;
+export const CATALOG_STATUS_DRAFT = "draft" as const;
+export const CATALOG_STATUS_PUBLISHED = "published" as const;
+export type CatalogStatus =
+  | typeof CATALOG_STATUS_NO_BUNDLE
+  | typeof CATALOG_STATUS_DRAFT
+  | typeof CATALOG_STATUS_PUBLISHED;
+
+/// A published row is always live. Otherwise the bundle decides: a row whose
+/// bundle was never fetched has nothing to publish, and says so.
+export function catalogStatus(entry: PlatformCatalogEntry): CatalogStatus {
+  if (entry.visibility === CATALOG_PUBLIC) return CATALOG_STATUS_PUBLISHED;
+  return entry.content_hash ? CATALOG_STATUS_DRAFT : CATALOG_STATUS_NO_BUNDLE;
+}
+
+// A partial update. An absent field is left untouched, so editing the description
+// never blanks the credential copy.
+export type PlatformCatalogPatch = {
+  description?: string;
+  required_credentials_reasons?: Record<string, string>;
+  published?: boolean;
+};
 
 export type FleetListResponse = {
   items: Fleet[];

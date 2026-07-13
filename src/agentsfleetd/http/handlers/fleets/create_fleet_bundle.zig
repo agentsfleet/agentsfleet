@@ -4,9 +4,9 @@ const httpz = @import("httpz");
 const common = @import("../common.zig");
 const hx_mod = @import("../hx.zig");
 const ec = @import("../../../errors/error_registry.zig");
-const store = @import("../../../fleet_bundle/store.zig");
-const library_store = @import("../../../fleet_bundle/library_store.zig");
-const importer = @import("../../../fleet_bundle/importer.zig");
+const store = @import("../../../fleet_library/store.zig");
+const library_store = @import("../../../fleet_library/library_store.zig");
+const importer = @import("../../../fleet_library/importer.zig");
 const markdown_limits = @import("../../../fleet_runtime/markdown_limits.zig");
 
 /// Install source — exactly one of the two onboarded Fleet library tiers

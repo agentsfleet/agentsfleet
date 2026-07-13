@@ -16,18 +16,27 @@ const pg = @import("pg");
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
 const sql = @import("sql.zig");
 
-/// Tier literal reported in the onboarding response `visibility` field. The tier
-/// is the table, not a stored column value; the platform table's own
-/// `visibility` column stays the public/unlisted axis (`PLATFORM_CATALOG_VISIBILITY`).
+/// Tier literal reported in the API response `visibility` field. The tier is the
+/// table, not a stored column value: platform entries live in
+/// `core.fleet_library`, tenant entries in `core.tenant_fleet_library`.
 pub const TIER_PLATFORM: []const u8 = "platform";
 pub const TIER_TENANT: []const u8 = "tenant";
 
-/// Onboarded platform rows are stored `public` so the existing gallery filter
-/// (`list.zig`, visibility = 'public') surfaces them beside the seed rows.
-const PLATFORM_CATALOG_VISIBILITY: []const u8 = "public";
-/// The importer does not produce per-credential reason copy; onboarded rows
-/// start with an empty reasons object (the seed rows carry curated copy). Shared
-/// with the gallery handler, which emits the same empty object for tenant rows.
+/// The publish lifecycle stored in `core.fleet_library.visibility` (M128).
+/// `draft` — the bundle is fetched and stored, and the fleet is invisible to
+/// every tenant. `public` — live: it appears in the workspace gallery and in
+/// GET /v1/fleets/bundles, and it can be installed.
+///
+/// These two literals are the whole value set. No migration writes them — the
+/// catalog is runtime data — so the only other place they are spelled is the
+/// dashboard's `lib/types.ts`. A drift between the two silently hides or exposes
+/// fleets, which is why the wire values are asserted, not assumed.
+pub const VISIBILITY_DRAFT: []const u8 = "draft";
+pub const VISIBILITY_PUBLIC: []const u8 = "public";
+
+/// The importer does not produce per-credential reason copy; a new row starts
+/// with an empty reasons object and an operator writes it via PATCH. Shared with
+/// the gallery handler, which emits the same empty object for tenant rows.
 pub const EMPTY_REASONS_JSON: []const u8 = "{}";
 /// One repo per entry, bundle at the repo root — no subpath filter.
 const SOURCE_PATH_ROOT: []const u8 = "";
@@ -35,7 +44,7 @@ const SOURCE_PATH_ROOT: []const u8 = "";
 const SOURCE_REF_DEFAULT: []const u8 = "main";
 
 pub const PlatformInsertParams = struct {
-    /// Slug id == the parsed SKILL name (seed convention).
+    /// Slug id == the bundle SKILL.md frontmatter name — the catalog identity.
     id: []const u8,
     name: []const u8,
     description: []const u8,
@@ -49,6 +58,9 @@ pub const PlatformInsertParams = struct {
     requirements_json: []const u8,
     support_files_json: []const u8,
     now_ms: i64,
+    /// Overwrite a catalog id that already belongs to a DIFFERENT repository.
+    /// False means the statement itself refuses the swap — see INSERT_PLATFORM.
+    replace: bool = false,
 };
 
 pub const TenantInsertParams = struct {
@@ -81,10 +93,11 @@ pub const InstallEntry = struct {
     }
 };
 
-/// Resolve a platform entry for install by slug id. Only onboarded rows (a
-/// non-null snapshot) are installable; a seed row not yet onboarded returns null.
+/// Resolve a platform entry for install by slug id. Only a PUBLISHED row holding
+/// a bundle is installable — a draft returns null, so an unpublished fleet cannot
+/// be installed by anyone who merely knows its id (M128 Invariant 2).
 pub fn fetchPlatformInstall(conn: *pg.Conn, alloc: std.mem.Allocator, id: []const u8) !?InstallEntry {
-    var q = PgQuery.from(try conn.query(sql.SELECT_PLATFORM_INSTALL, .{id}));
+    var q = PgQuery.from(try conn.query(sql.SELECT_PLATFORM_INSTALL, .{ id, VISIBILITY_PUBLIC }));
     defer q.deinit();
     return rowToInstall(try q.next(), alloc);
 }
@@ -109,8 +122,15 @@ fn rowToInstall(row_opt: anytype, alloc: std.mem.Allocator) !?InstallEntry {
     return .{ .skill_markdown = skill, .trigger_markdown = trigger, .content_hash = content_hash };
 }
 
-/// UPSERT a platform entry by slug id, refreshing the onboarding snapshot and
-/// requirement columns on re-onboard. Returns the row id (caller owns it).
+/// Add-or-refetch a platform entry by slug id, refreshing the bundle snapshot and
+/// requirement columns. ALWAYS stages the row to `draft`: publishing is a separate,
+/// explicit act, so neither a new fleet nor a newly-fetched bundle can reach a
+/// tenant without an operator saying so (M128 §1). Returns the row id (caller owns it).
+///
+/// `error.CatalogIdCollision` when the id already belongs to a different repository
+/// and `replace` is false. The guard lives in the statement, so two operators racing
+/// the same unused id cannot both win — one INSERTs, the other's conflict path finds
+/// a foreign `source_repo` and refuses.
 pub fn insertOrUpdatePlatform(conn: *pg.Conn, alloc: std.mem.Allocator, p: PlatformInsertParams) ![]const u8 {
     var q = PgQuery.from(try conn.query(sql.INSERT_PLATFORM, .{
         p.id,
@@ -121,15 +141,18 @@ pub fn insertOrUpdatePlatform(conn: *pg.Conn, alloc: std.mem.Allocator, p: Platf
         SOURCE_REF_DEFAULT,
         p.requirements_json,
         EMPTY_REASONS_JSON,
-        PLATFORM_CATALOG_VISIBILITY,
+        VISIBILITY_DRAFT,
         p.content_hash,
         p.skill_markdown,
         p.trigger_markdown,
         p.support_files_json,
         p.now_ms,
+        p.replace,
     }));
     defer q.deinit();
-    const row = try q.next() orelse return error.TemplateInsertMissing;
+    // Zero rows can now mean only one thing: the ON CONFLICT guard refused, because
+    // this id is owned by another repository. A plain insert always returns.
+    const row = try q.next() orelse return error.CatalogIdCollision;
     return try alloc.dupe(u8, try row.get([]const u8, 0));
 }
 

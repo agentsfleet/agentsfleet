@@ -5,6 +5,9 @@ import type {
   OnboardedLibraryEntry,
   OnboardedPlatformLibraryEntry,
   OnboardLibraryEntryRequest,
+  PlatformCatalogEntry,
+  PlatformCatalogPatch,
+  PlatformCatalogResponse,
 } from "../types";
 
 const workspaceFleetLibrariesPath = (workspaceId: string) =>
@@ -12,8 +15,11 @@ const workspaceFleetLibrariesPath = (workspaceId: string) =>
 
 // The platform catalog has no workspace segment — it is a single tier shared by
 // every tenant, gated on `platform-library:write` rather than workspace
-// ownership (src/agentsfleetd/http/route_scopes.zig).
+// ownership (src/agentsfleetd/http/route_scopes.zig). Every method needs that same
+// scope: there is no read rung.
 const PLATFORM_FLEET_LIBRARIES_PATH = "/v1/admin/fleet-libraries";
+const platformEntryPath = (id: string) =>
+  `${PLATFORM_FLEET_LIBRARIES_PATH}/${encodeURIComponent(id)}`;
 
 // Fleet library gallery client. Mirrors src/agentsfleetd/http/routes.zig:
 //   GET /v1/workspaces/{ws}/fleet-libraries  (platform ∪ own-tenant entries)
@@ -53,8 +59,8 @@ export async function onboardWorkspaceFleetLibrary(
 // frontmatter name. The onboarded row is stored `public`, which is what puts it
 // in every workspace's gallery beside the migration-seeded rows.
 //
-// There is no matching GET: the platform catalog has no list route, so the
-// dashboard verifies an onboard through the workspace gallery.
+// The row is stored `draft` (M128): adding a fleet never publishes it. It reaches
+// no tenant until `publishPlatformFleetLibraryEntry` says so.
 export async function onboardPlatformFleetLibrary(
   body: OnboardLibraryEntryRequest,
   token: string,
@@ -71,3 +77,34 @@ export async function onboardPlatformFleetLibrary(
 // gallery and /fleets/new both list library entries) to a single round-trip.
 // Server-only — cache() is a React Server Component primitive.
 export const listWorkspaceFleetLibraryCached = cache(listWorkspaceFleetLibrary);
+
+// ── The platform catalog (M128) ──────────────────────────────────────────────
+//
+// The operator's view of core.fleet_library. Unlike the workspace gallery it
+// hides nothing: drafts and rows whose bundle was never fetched are exactly what
+// the page exists to show. Metadata only — the server never returns bundle
+// markdown or an object-store key.
+
+export async function listPlatformFleetLibrary(token: string): Promise<PlatformCatalogResponse> {
+  return request<PlatformCatalogResponse>(PLATFORM_FLEET_LIBRARIES_PATH, { method: "GET" }, token);
+}
+
+// Curate the two fields no bundle can supply, and/or publish/unpublish. A bundle
+// refetch never overwrites what this writes.
+export async function patchPlatformFleetLibraryEntry(
+  id: string,
+  body: PlatformCatalogPatch,
+  token: string,
+): Promise<PlatformCatalogEntry> {
+  return request<PlatformCatalogEntry>(
+    platformEntryPath(id),
+    { method: "PATCH", body: JSON.stringify(body) },
+    token,
+  );
+}
+
+// Remove an entry. The server refuses while it is published (UZ-CATALOG-003) —
+// a live fleet is never taken from the tenants who can install it.
+export async function deletePlatformFleetLibraryEntry(id: string, token: string): Promise<void> {
+  await request<void>(platformEntryPath(id), { method: "DELETE" }, token);
+}

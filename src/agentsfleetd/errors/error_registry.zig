@@ -140,6 +140,11 @@ pub const ERR_FLEET_BUNDLE_SECRETS_MISSING = "UZ-BUNDLE-003";
 pub const ERR_FLEET_BUNDLE_FETCH_FAILED = "UZ-BUNDLE-004";
 pub const ERR_FLEET_BUNDLE_STORAGE_UNAVAILABLE = "UZ-BUNDLE-005";
 // UZ-BUNDLE-006 retired — no producer ever emitted it.
+// CATALOG (platform fleet-library lifecycle — /v1/admin/fleet-libraries, M128)
+pub const ERR_CATALOG_NOT_FOUND = "UZ-CATALOG-001";
+pub const ERR_CATALOG_PUBLISH_WITHOUT_BUNDLE = "UZ-CATALOG-002";
+pub const ERR_CATALOG_DELETE_PUBLISHED = "UZ-CATALOG-003";
+pub const ERR_CATALOG_ID_COLLISION = "UZ-CATALOG-004";
 // VAULT (structured-credential JSON shape)
 pub const ERR_VAULT_DATA_INVALID = "UZ-VAULT-001";
 pub const ERR_VAULT_DATA_TOO_LARGE = "UZ-VAULT-002";

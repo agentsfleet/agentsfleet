@@ -1,4 +1,37 @@
 /v1/admin/fleet-libraries:
+  get:
+    operationId: list_platform_fleet_library
+    summary: List the platform Fleet library catalog
+    description: >-
+      Lists every entry in the global platform catalog. Published, draft, and
+      entries whose bundle was never fetched all appear. Unlike the workspace
+      gallery, this operator view hides nothing: it shows what is live and what
+      still needs work. Requires the `platform-library:write` scope. Metadata only —
+      never bundle markdown, a support-file body, or an object-store key.
+    tags:
+    - Fleet library
+    responses:
+      '200':
+        description: The platform catalog.
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - entries
+              properties:
+                entries:
+                  type: array
+                  items:
+                    $ref: ../components/schemas.yaml#/components/schemas/FleetLibraryCatalogEntry
+      '401':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '403':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '503':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      default:
+        $ref: ../components/responses.yaml#/components/responses/Error
   post:
     operationId: onboard_platform_fleet_library
     summary: Onboard a platform Fleet library entry
@@ -35,8 +68,96 @@
         $ref: ../components/responses.yaml#/components/responses/Error
       '503':
         $ref: ../components/responses.yaml#/components/responses/Error
+      '409':
+        description: The bundle's name is a catalog id already owned by a different repository; retry with `replace` (`UZ-CATALOG-004`).
+        $ref: ../components/responses.yaml#/components/responses/Error
       default:
         $ref: ../components/responses.yaml#/components/responses/Error
+
+/v1/admin/fleet-libraries/{id}:
+  patch:
+    operationId: update_platform_fleet_library
+    summary: Curate, publish, or unpublish a platform Fleet library entry
+    parameters:
+    - name: id
+      in: path
+      required: true
+      description: The catalog id — the bundle's SKILL.md frontmatter name (a slug, not a UUID).
+      schema:
+        type: string
+    description: >-
+      Partial update. `description` and `required_credentials_reasons` are the two
+      fields no bundle can supply, so they are operator-owned: a later bundle
+      refetch never overwrites them. `published` moves the entry between `draft`
+      (stored, invisible to every tenant) and `public` (live in every workspace
+      gallery and installable). Publishing an entry whose bundle was never fetched
+      is refused — a published entry always has something to install. Requires the
+      `platform-library:write` scope.
+    tags:
+    - Fleet library
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../components/schemas.yaml#/components/schemas/FleetLibraryCatalogPatch
+    responses:
+      '200':
+        description: The entry as it now stands.
+        content:
+          application/json:
+            schema:
+              $ref: ../components/schemas.yaml#/components/schemas/FleetLibraryCatalogEntry
+      '400':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '401':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '403':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '404':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '409':
+        description: Publish was requested for an entry with no bundle; fetch it from the repository first (`UZ-CATALOG-002`).
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '503':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      default:
+        $ref: ../components/responses.yaml#/components/responses/Error
+  delete:
+    operationId: delete_platform_fleet_library
+    summary: Delete an unpublished platform Fleet library entry
+    parameters:
+    - name: id
+      in: path
+      required: true
+      description: The catalog id — the bundle's SKILL.md frontmatter name (a slug, not a UUID).
+      schema:
+        type: string
+    description: >-
+      Removes a catalog entry. Only an entry that is NOT published may be deleted.
+      A live fleet is never taken away from the tenants who can install it, so
+      unpublish it first. Workspaces that already installed the fleet are
+      unaffected: an install snapshots the bundle, so it keeps running. Requires the
+      `platform-library:write` scope.
+    tags:
+    - Fleet library
+    responses:
+      '204':
+        description: Entry deleted.
+      '401':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '403':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '404':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '409':
+        description: The entry is published; unpublish it first, then delete (`UZ-CATALOG-003`).
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '503':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      default:
+        $ref: ../components/responses.yaml#/components/responses/Error
+
 /v1/workspaces/{workspace_id}/fleet-libraries:
   get:
     operationId: list_workspace_fleet_library
