@@ -159,27 +159,44 @@ const LIVE_TLS_HOSTS = [_][]const u8{
 
 const HTTPS_PORT: u16 = 443;
 
+// A live third-party endpoint can transiently refuse one handshake (an edge pop
+// mid-rotation, rate limiting) without the pin being broken. A real priming
+// regression is deterministic — it refuses every attempt on every host — so a
+// bounded per-host retry keeps the per-host guarantee (a dead or misspelled
+// entry still fails) while absorbing the single-connect transient that failed
+// a whole gate run on one slack.com refusal.
+const PIN_SWEEP_ATTEMPTS: usize = 3;
+const PIN_SWEEP_RETRY_DELAY_NS: u64 = 2 * std.time.ns_per_s;
+
 test "every production secure endpoint primes its certificate state and pins without panicking" {
     const io = testIo();
     var failures: usize = 0;
     for (LIVE_TLS_HOSTS) |host| {
-        // A fresh client per host — exactly as the daemon's connector and broker
-        // sites build one, and as the runner's client starts — so every iteration
-        // exercises the COLD, unprimed state the runner booted into. This is the
-        // precise call `control_plane_client.pooledHandle` makes.
-        var client: std.http.Client = .{ .allocator = testing.allocator, .io = io };
-        defer client.deinit();
+        var pinned = false;
+        var attempt: usize = 0;
+        while (attempt < PIN_SWEEP_ATTEMPTS and !pinned) : (attempt += 1) {
+            // Best-effort pacing between attempts (this module is std-only, so
+            // common/sync.zig's sleepNanos is out of reach; same idiom inline).
+            if (attempt > 0) io.sleep(std.Io.Duration.fromNanoseconds(@intCast(PIN_SWEEP_RETRY_DELAY_NS)), .awake) catch {};
+            // A fresh client per attempt — exactly as the daemon's connector and
+            // broker sites build one, and as the runner's client starts — so every
+            // attempt exercises the COLD, unprimed state the runner booted into.
+            // This is the precise call `control_plane_client.pooledHandle` makes.
+            var client: std.http.Client = .{ .allocator = testing.allocator, .io = io };
+            defer client.deinit();
 
-        const handle = http_pin.connectPinned(&client, host, HTTPS_PORT, true);
-        if (handle == null) {
-            std.debug.print("secure-pin sweep: {s} refused the pin\n", .{host});
-            failures += 1;
-            continue;
+            const handle = http_pin.connectPinned(&client, host, HTTPS_PORT, true);
+            if (handle == null) continue;
+            // Priming populated the validation clock — the null whose dereference
+            // in `Connection.Tls.create` was the production panic. A real
+            // handshake completed against a real certificate chain.
+            try testing.expect(client.now != null);
+            pinned = true;
         }
-        // Priming populated the validation clock — the null whose dereference in
-        // `Connection.Tls.create` was the production panic. A real handshake
-        // completed against a real certificate chain.
-        try testing.expect(client.now != null);
+        if (!pinned) {
+            std.debug.print("secure-pin sweep: {s} refused the pin {d} times\n", .{ host, PIN_SWEEP_ATTEMPTS });
+            failures += 1;
+        }
     }
     try testing.expectEqual(@as(usize, 0), failures);
 }
