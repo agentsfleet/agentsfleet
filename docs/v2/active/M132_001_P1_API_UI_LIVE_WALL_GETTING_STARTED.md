@@ -57,16 +57,24 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 |------|--------|-----|
 | `schema/028_core_user_ui_prefs.sql` | CREATE | Per-user, per-workspace UI-prefs key/value store (G6). Single-concern migration; GRANT to `api_runtime`; no static strings (pref keys validated in app). |
 | `schema/embed.zig` | EDIT | Register migration 28 in the `migrations` array (RULE MIG — index tracks position). |
-| `src/agentsfleetd/state/user_ui_prefs_store.zig` | CREATE | Read/upsert prefs rows keyed on `(user_id, workspace_id, pref_key)`; drain-audited queries. |
+| `src/agentsfleetd/state/user_ui_prefs_store.zig` | CREATE | Read/upsert prefs rows keyed on `(user_id, workspace_id, pref_key)`; drain-audited queries; resolves the Clerk `oidc_subject` → `core.users.user_id`. |
+| `src/agentsfleetd/state/user_ui_prefs/sql.zig` | CREATE | Named SQL statement constants (RULE SQLMOD — no inline SQL in new production modules; amended at PLAN). |
+| `src/agentsfleetd/types/id_format.zig` | EDIT | `generateUserUiPrefId()` — every new table gets an app-side UUIDv7 generator (`docs/SCHEMA_CONVENTIONS.md`; amended at PLAN). |
 | `src/agentsfleetd/http/handlers/user_ui_prefs.zig` | CREATE | `GET …/ui-prefs` + `PUT …/ui-prefs/{key}` handler (via `Hx`); resolves the Clerk subject → `core.users.user_id`, authorizes the workspace; validates key registry + value size. |
 | `src/agentsfleetd/http/routes.zig` | EDIT | New `workspace_ui_prefs` route variant. |
+| `src/agentsfleetd/http/router.zig` | EDIT | `match()` arm calling the new matcher (REST guide §7 step 2 — was missing from this table; amended at PLAN). |
+| `src/agentsfleetd/http/route_table.zig` | EDIT | `specFor()` maps the variant to middleware policy + invoke (REST guide §7 step 3 — amended at PLAN). |
 | `src/agentsfleetd/http/route_table_invoke.zig` | EDIT | Dispatch the new route to the handler. |
 | `src/agentsfleetd/http/route_matchers.zig` | EDIT | Segment matchers for `/v1/workspaces/{ws}/ui-prefs` and `…/ui-prefs/{key}`. |
 | `src/agentsfleetd/http/route_scopes.zig` | EDIT | Scope for the route (authenticated-only; ownership via `authorizeWorkspace`). |
-| `src/agentsfleetd/errors/error_registry.zig` | EDIT | `ERR_UI_PREF_KEY_UNKNOWN` (`UZ-…`) for a pref key outside the named registry. |
-| `src/agentsfleetd/http/handlers/user_ui_prefs_integration_test.zig` | CREATE | Real-schema integration coverage (RULE ITF): read-default, upsert, cross-tenant isolation, unknown key. |
+| `public/openapi/paths/*.yaml` + `public/openapi.json` | EDIT | Endpoint documentation + regenerated bundle (REST guide §6/§7 step 6 — amended at PLAN; exact tag file picked at EXECUTE). |
+| `src/agentsfleetd/errors/error_registry.zig` | EDIT | `ERR_UI_PREF_KEY_UNKNOWN` (`UZ-PREFS-…`) const for a pref key outside the named registry. |
+| `src/agentsfleetd/errors/error_entries.zig` | EDIT | The registry `Entry` row (status/title/hint) — the two-file registry split requires both (amended at PLAN). |
+| `src/agentsfleetd/http/user_ui_prefs_integration_test.zig` | CREATE | Real-schema integration coverage (RULE ITF): read-default, upsert, cross-tenant isolation, unknown key. Lives in `http/` root beside its peers (path amended at PLAN). |
+| `src/agentsfleetd/tests.zig` | EDIT | Force-import the new integration test into the aggregate test root (amended at PLAN — unimported tests never run). |
 | `ui/packages/app/lib/types.ts` | EDIT | Widen `Fleet` with `budget_used_nanos` and `events_processed` (already on the wire, dropped by the client). |
 | `ui/packages/app/lib/api/fleets.ts` | EDIT | Surface the two widened fields through the list parse. |
+| `ui/packages/app/lib/api/events.ts` | EDIT | `EventsQuery` gains `actor_prefix` — the server filter (`events.zig:91`) exists but the client never exposed it; steer detection needs it (amended at PLAN). |
 | `ui/packages/app/lib/api/tenant_billing.ts` | EDIT | Comment-only: the `StatusTiles` reference at line 10 follows the tiles' removal, so the S9 sweep grep reaches 0 without leaving R6. |
 | `ui/packages/app/lib/api/ui-prefs.ts` | CREATE | Client for `GET …/ui-prefs` / `PUT …/ui-prefs/{key}`; fail-open read (missing/error → empty prefs). |
 | `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/components/FleetTile.tsx` | CREATE | One tile: live (own SSE stream + pulse + footer) vs drained (parked/killed) vs snapshot (stream refused/errored); links to the console. |
@@ -309,6 +317,10 @@ Onboarding funnel: these three client events plus the server-authoritative `Flee
 
 - **Consults** — Architecture / Legacy-Design / gate-flag triage:
   - > Indy (2026-07-15): "yes i need design-shotgun … during implementation time … so i know what we are building" — context: the §3/§4 checklist treatment; encoded as read-first item 6 (design-shotgun gate). The winning variant's pick lands here when it runs.
+  - PLAN discovery (2026-07-15): `designs/fleet-dashboard-20260714/FREEZE.md` (read-first item 1) does not exist on disk or in git history — it was authoring-session-local and never committed. Every load-bearing wire fact it carried is cited inline in this spec and was re-verified against the code at PLAN; the spec is the surviving canonical record.
+  - PLAN amendment (2026-07-15): Files Changed gained `router.zig`, `route_table.zig`, and the OpenAPI path/bundle rows — the REST guide's §7 six-place route registration requires them; the authored table stopped at four. Rules win over spec (AGENTS.md §Specification Standards).
+  - PLAN amendment 2 (2026-07-15, post-inventory): six more rows from repo-convention reads — `state/user_ui_prefs/sql.zig` (RULE SQLMOD), `types/id_format.zig` (per-table UUIDv7 generator), `errors/error_entries.zig` (two-file registry), `tests.zig` (integration-test discovery), `lib/api/events.ts` (client lacks the server's `actor_prefix` param), and the integration test relocated to `http/` root beside its peers.
+  - PLAN deviation note (2026-07-15): §2's "honors `Retry-After` with one retry" cannot be implemented literally — the wall reuses the console's `EventSource`-based stream registry (`fleet-stream-registry.ts`), and `EventSource` exposes no response headers. The registry's existing bounded reconnect backoff stands in for `Retry-After` (one retry window, then the tile rests at `snapshot` until reload). Operator-visible behavior is identical; the timing source differs.
 - **Metrics review** —
 - **Skill-chain outcomes** —
 - **Deferrals** —
