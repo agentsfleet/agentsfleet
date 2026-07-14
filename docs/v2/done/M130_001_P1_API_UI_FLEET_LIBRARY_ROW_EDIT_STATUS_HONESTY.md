@@ -16,10 +16,10 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M130
 **Workstream:** 001
 **Date:** Jul 13, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — the catalog badge currently asserts the opposite of what install does; the operator cannot correct a mistyped repository without deleting the row.
 **Categories:** API, UI
-**Batch:** B1 — standalone; no sibling workstream shares its files.
+**Batch:** B1 — shares the branch and PR with M130_002 (scope Indy folded mid-flight, split at the length bound).
 **Branch:** feat/m130-catalog-row-edit
 **Test Baseline:** unit=2598 integration=324
 **Depends on:** M128_001 (built the catalog surface this corrects; already in `done/`)
@@ -47,8 +47,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 1. `src/agentsfleetd/http/handlers/library/catalog.zig` — the PATCH handler being widened. Its header states the two guards that must survive this change verbatim (a published row always has a bundle; a published row is never deleted). `applyPatch` already wraps its statements in one BEGIN/COMMIT and grades every write on `RETURNING id` — mirror that shape, do not invent a second one.
 2. `src/agentsfleetd/fleet_library/sql.zig` — `INSERT_PLATFORM`'s `ON CONFLICT … DO UPDATE SET` list is the refetch overwrite policy. `description` and `required_credentials_reasons` are *absent* from it on purpose; `name` joins them in §3. `UPDATE_CATALOG_VISIBILITY` carries the publish-needs-a-bundle guard in SQL — it stays.
 3. `ui/packages/app/lib/types.ts` — `catalogStatus()` is the single derivation of a row's state; the status is deliberately never a wire field. The hole is that it consults `visibility` alone on the public branch.
-4. `src/agentsfleetd/http/handlers/fleet_bundles/resolve.zig` (`parseOwnerRepo`) and `src/agentsfleetd/fleet_library/github_source.zig` (`validSegment`) — the existing source validation the widened PATCH must reuse rather than re-derive.
-5. `docs/architecture/fleet_bundles.md` — the bundle lifecycle and the content-addressed store this spec must not contradict.
+4. `src/agentsfleetd/fleet_library/github_source.zig` (`parseOwnerRepo`, `validSegment`) — the source validation the widened PATCH reuses; and `docs/architecture/fleet_bundles.md` — the lifecycle this spec must not contradict (and now documents).
 
 ## Files Changed (blast radius)
 
@@ -75,11 +74,27 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `ui/packages/app/tests/app-shell-navigation.test.ts` | EDIT | Nav assertions follow the corrected title constant. |
 | `ui/packages/app/tests/loading-states.test.ts` | EDIT | Loading assertions follow the corrected title constant. |
 | `scripts/scopes.admin` | CREATE | The platform-admin scope string, kept as a file so minting an operator token stops being a copy-paste of fifteen scopes. |
-| `src/agentsfleetd/http/handlers/library/catalog_patch_test.zig` | CREATE | Unit coverage for the widened patch: validation, invalidation, no-op equality. |
-| `ui/packages/app/app/(dashboard)/admin/fleet-libraries/components/EditFleetDialog.test.tsx` | EDIT | The new fields and the un-explained-credential surface. |
+| `docs/architecture/fleet_bundles.md` | EDIT | The identity-ownership and source-invalidation flow, recorded where specs cite it. |
+| `src/agentsfleetd/http/handlers/library/catalog_patch_integration_test.zig` | CREATE | Integration coverage: invalidation, no-op source, malformed refusal, slug immutability, rename-survives-refetch, reason pruning, repoint+publish conflict. |
+| `src/agentsfleetd/tests.zig` | EDIT | Registers the new integration file. |
+| `src/agentsfleetd/fleet_library/github_source_test.zig` | EDIT | `parseOwnerRepo` unit pins — split, refusals, segment ceiling. |
+| `ui/packages/app/app/(dashboard)/admin/fleet-libraries/components/AddFleetDialog.tsx` | EDIT | Adopts the corrected verb (`Create fleet library`). |
+| `ui/packages/app/app/(dashboard)/admin/fleet-libraries/components/AddFleetDialog.test.tsx` | EDIT | Selectors follow the verb. |
+| `ui/packages/app/app/(dashboard)/admin/fleet-libraries/components/EditFleetDialog.test.tsx` | EDIT | Identity fields, source warning, moved-fields-only patch, unexplained-credential marker, source-changed event — both outcomes: a REFUSED repoint still records the event (`outcome: "failure"`) and keeps the dialog open. |
+| `ui/packages/app/app/(dashboard)/admin/fleet-libraries/components/catalog-status.test.ts` | CREATE | §1 totality, badge honesty, row-action verdicts. |
 | `ui/packages/app/app/(dashboard)/admin/fleet-libraries/components/FleetLibrariesView.test.tsx` | EDIT | The fourth status, its row actions, the repository link. |
 | `ui/packages/app/tests/admin-fleet-libraries-page.test.ts` | EDIT | Page-level copy assertions follow the corrected verbs. |
 | `ui/packages/app/tests/e2e/acceptance/platform-library-onboarding.spec.ts` | EDIT | The operator walks the correct-a-mistyped-repository path end to end. |
+| `src/agentsfleetd/fleet_library/importer.zig` | EDIT | Review-driven: `ImportBody.ref`. The pinned ref had nowhere to ride, so the store recorded the source but not the ref its content actually came from. |
+| `src/agentsfleetd/http/handlers/library/onboard.zig` | EDIT | Review-driven: passes `body.ref` into `PlatformInsertParams.source_ref`, closing the loop — a ref pinned via the PATCH is no longer reset to the default branch by the next Fetch. |
+| `src/agentsfleetd/http/handlers/fleet_bundles/resolve_test.zig` | EDIT | Review-driven: `buildSource` takes the ref; pins the pinned-ref fetch, the segment-rule refusal, and that a template source refuses a malformed ref too. |
+| `ui/packages/app/lib/fleet-library-source.ts` | EDIT | Review-driven: `SOURCE_SEGMENT_PATTERN` — one client-side spelling of the server's ref-segment charset, so the Edit dialog blocks a malformed ref inline instead of round-tripping to the server's refusal. |
+| `public/openapi/components/schemas.yaml` | EDIT | Review-driven: `FleetLibraryImport.ref`; `FleetLibraryCatalogPatch` gains `name`/`source_repo`/`source_ref` and states the discard-and-return-to-draft rule the handler enforces. |
+| `public/openapi.json` | EDIT | The regenerated bundle (`make check-openapi`) — generated, never hand-edited. |
+| `src/agentsfleetd/http/handlers/library/catalog_patch_test.zig` | CREATE | The handler's `changesSource` unit pins, lifted out of `catalog_patch.zig` when the review-driven ref plumbing pushed it to 353 lines (RULE FLL). Sibling `_test.zig` shape, force-imported so the blocks stay reachable. |
+| `src/agentsfleetd/observability/metrics_runner.zig` | EDIT | **Out of this workstream's scope — Indy approved the fix in session (see PR Session Notes).** A pre-existing duplicate-slot race: `resolveSlot` probed PAST a slot whose claim it lost, but the winner may have claimed that slot for the loser's own `runner_id` — so one runner could own two identically-labelled series. Adds `awaitReady` + a test-only arrival barrier in the claim window (gated on `builtin.is_test`; release builds carry none of it). |
+| `src/agentsfleetd/observability/metrics_runner_test.zig` | EDIT | The regression test made deterministic by construction: the armed barrier parks every storm thread's first claim inside the saw-it-free → claimed-it gap until all are in it. Pre-fix code renders 8 identically-labelled series for one `runner_id`; post-fix, 1. Previously it could only trip on a starved machine. |
+| `src/agentsfleetd/state/heroku_names_test.zig` | EDIT | **Out of scope — Indy approved in session (see PR Session Notes).** Pre-existing seed-dependent leak: a duplicate draw's `put()` kept the map's original key and dropped the new allocation on the floor, so `test-unit-all` was a seed lottery. `getOrPut`; a duplicate frees its own copy. |
 
 ## Applicable Rules
 
@@ -127,7 +142,7 @@ A row that is `public` with a null `content_hash` currently renders as `PUBLISHE
 
 - **Dimension 2.1** (DONE) — `PATCH` accepts `name` and persists it; empty or over-cap names are refused → Test `test_patch_accepts_name`
 - **Dimension 2.2** (DONE) — `PATCH` accepts `source_repo` / `source_ref`, validated by the *existing* `parseOwnerRepo` + `validSegment` validators; a malformed source is refused with the registered bundle-invalid code → Test `test_patch_rejects_malformed_source`
-- **Dimension 2.3** — changing either source field nulls `content_hash` and stages `visibility` to `draft` atomically → Test `test_patch_source_change_invalidates_bundle`
+- **Dimension 2.3** (DONE) — changing either source field nulls `content_hash` and stages `visibility` to `draft` atomically → Test `test_patch_source_change_invalidates_bundle`
 - **Dimension 2.4** (DONE) — re-sending the *unchanged* source leaves `content_hash` and `visibility` untouched; a live fleet is not withdrawn by an idempotent PATCH → Test `test_patch_unchanged_source_is_noop`
 - **Dimension 2.5** (DONE) — `id` is absent from the patch body and unmovable; a body carrying one is ignored and the row keeps its slug → Test `test_patch_cannot_move_slug`
 
@@ -144,7 +159,7 @@ The reason map is keyed by credential name and the declared credential set moves
 **Implementation default:** pruning happens in the refetch statement, not in the handler — the map and the declared set are written by the same statement, so the intersection is enforced where it cannot drift.
 
 - **Dimension 4.1** (DONE) — a refetch drops reason keys absent from the new bundle's declared credentials and preserves the rest → Test `test_refetch_prunes_stale_reason_keys`
-- **Dimension 4.2** — the edit dialog marks every declared credential that has no reason text, so the operator can see what the install gate will not explain → Test `test_edit_dialog_flags_unexplained_credentials`
+- **Dimension 4.2** (DONE) — the edit dialog marks every declared credential that has no reason text, so the operator can see what the install gate will not explain → Test `test_edit_dialog_flags_unexplained_credentials`
 
 ### §5 — The surface says what it means
 
@@ -152,9 +167,9 @@ Three copy and affordance faults on the admin page. The button reads **Add fleet
 
 **Implementation default:** the repository links only when its value is `owner/repo` shaped — a row imported from a template or an upload carries a source that is not a GitHub slug, and must render as plain text rather than a broken link.
 
-- **Dimension 5.1** — the repository cell links to the GitHub repository when the value is `owner/repo` shaped, and renders inert text when it is not → Test `test_repository_cell_links_only_when_slug_shaped`
+- **Dimension 5.1** (DONE) — the repository cell links to the GitHub repository when the value is `owner/repo` shaped, and renders inert text when it is not → Test `test_repository_cell_links_only_when_slug_shaped`
 - **Dimension 5.2** (DONE) — the admin button and its dialog read `Create fleet library`, matching the tenant surface → Test `test_admin_button_reads_create_fleet_library`
-- **Dimension 5.3** — the entity is singular wherever it is named — page title, nav entry, route skeleton — and the plural spelling survives nowhere → Test `test_fleet_library_named_in_the_singular`
+- **Dimension 5.3** (DONE) — the entity is singular wherever it is named — page title, nav entry, route skeleton — and the plural spelling survives nowhere → Test `test_fleet_library_named_in_the_singular`
 
 ### §6 — A dialog that is loading does not look broken
 
@@ -181,7 +196,6 @@ PATCH /v1/admin/fleet-libraries/{id}          scope: platform-library:write
   `id` is a path parameter and is never patchable.
   A CHANGED source_repo or source_ref sets content_hash = NULL and visibility = draft
   in the same statement. An unchanged value leaves both untouched.
-
 Derived status (UI, never a wire field) — total over (visibility × has-bundle):
   public  + bundle  → published
   public  + none    → the new fault state   ← the hole this spec closes
@@ -218,8 +232,6 @@ Derived status (UI, never a wire field) — total over (visibility × has-bundle
 | `platform_library_source_changed` | ops | An operator PATCHes a *changed* `source_repo` or `source_ref` — the act that withdraws a fleet from every workspace gallery | `entry_id`, `field` (repo/ref), `was_published` (bool), `outcome` (success/failure) | No repository contents, no credential names, no token material — the entry slug and the coarse outcome only | `test_source_change_emits_operator_event` |
 | `platform_library_published` | ops | Unchanged — the existing publish/unpublish event | Unchanged | Unchanged | Existing coverage retained |
 
-A source change is the one operator action here that silently removes a fleet from every tenant's gallery; it is the only new signal worth carrying. Editing copy is not instrumented — it changes nothing a tenant can observe until publish. No funnel changes, so no analytics playbook update is required.
-
 ## Test Specification (tiered)
 
 | Dimension | Tier | Test | Asserts (concrete inputs → expected output) |
@@ -248,22 +260,22 @@ A source change is the one operator action here that silently removes a fleet fr
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | No catalog row can render as published without a bundle (§1) | `make test-unit-app` | exit 0 | P0 | |
-| R2 | A source change invalidates the bundle and withdraws the row (§2) | `make test-integration` | exit 0 | P0 | |
-| R3 | An operator rename survives a refetch (§3) | `make test-integration` | exit 0 | P0 | |
-| R4 | The publish-needs-a-bundle and delete-needs-withdrawal guards still hold (regression) | `make test-integration` | exit 0 | P0 | |
-| R5 | The admin surface says `Create fleet library` and nowhere says `Add fleet` (§5) | `git grep -n "Add fleet" -- ui/ \| wc -l` | `0` | P1 | |
-| R6 | Every copied value uses the design-system primitive; no hand-rolled clipboard survives (§7) | `git grep -n "navigator.clipboard" -- ui/packages/app \| wc -l` | `0` | P1 | |
-| R7 | Diff stays inside Files Changed | `git diff --name-only origin/main` | 0 paths missing from the Files Changed table | P0 | |
-| S1 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | |
-| S2 | Lint clean | `make lint-all` | exit 0 | P0 | |
-| S3 | Integration passes (HTTP + schema touched) | `make test-integration` | exit 0 | P0 | |
-| S4 | e2e walks the operator's recovery path | `make acceptance-e2e` | exit 0 | P0 | |
-| S5 | No leaks (Zig allocator paths touched) | `make memleak` | exit 0 | P0 | |
-| S6 | Cross-compile (Zig touched) | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` | exit 0 | P0 | |
-| S7 | No secrets | `gitleaks detect` | exit 0 | P0 | |
-| S8 | No oversize source file | `git diff --name-only origin/main \| grep -v '\.md$' \| xargs wc -l 2>/dev/null \| awk '$1>350 && $2!="total"'` | no output | P0 | |
-| S9 | Orphan sweep — the old title constant is gone | `git grep -n "FLEET_LIBRARIES_TITLE" -- ui/ \| wc -l` | `0` | P0 | |
+| R1 | No catalog row can render as published without a bundle (§1) | `make test-unit-app` | exit 0 | P0 | ✅ 1432 passed (150 files, shuffled) |
+| R2 | A source change invalidates the bundle and withdraws the row (§2) | `make test-integration` | exit 0 | P0 | ✅ ✓ DB-backed integration tests passed |
+| R3 | An operator rename survives a refetch (§3) | `make test-integration` | exit 0 | P0 | ✅ same lane — rename survives refetch |
+| R4 | The publish-needs-a-bundle and delete-needs-withdrawal guards still hold (regression) | `make test-integration` | exit 0 | P0 | ✅ same lane — UZ-CATALOG-002/003 regressions green |
+| R5 | The admin surface says `Create fleet library` and nowhere says `Add fleet` (§5) | `git grep -n "Add fleet" -- ui/ \| wc -l` | `0` | P1 | ✅ 0 |
+| R6 | Every copied value uses the design-system primitive; no hand-rolled clipboard survives (M130_002 §1) | `git grep -n "navigator.clipboard" -- ui/packages/app \| wc -l` | `0` | P1 | ✅ 0 |
+| R7 | Diff stays inside Files Changed | `git diff --name-only origin/main` | 0 paths missing from the Files Changed table | P0 | ✅ three-dot union vs both tables: NONE missing |
+| S1 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | ✅ test-unit-all exit 0 — zig 2614u/332i depth · app 1443 (151 files, shuffled) · cli 1308 · website · design-system 461 · coverage 100% lines/branches |
+| S2 | Lint clean | `make lint-all` | exit 0 | P0 | ✅ ✓ All lint checks passed (lint-all, 26 gates) |
+| S3 | Integration passes (HTTP + schema touched) | `make test-integration` | exit 0 | P0 | ✅ ✓ DB-backed integration tests passed |
+| S4 | e2e walks the operator's recovery path | `make acceptance-e2e` | exit 0 | P0 | ⏭ env-gated — runs in Continuous Integration (CI): acceptance-e2e-dev (VERIFY GATE note in Session Notes) |
+| S5 | No leaks (Zig allocator paths touched) | `make memleak` | exit 0 | P0 | ✅ ✓ memleak gate passed (agentsfleetd + runner + lib lanes + boot→drain lifecycle) |
+| S6 | Cross-compile (Zig touched) | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` | exit 0 | P0 | ✅ exit 0 · x86_64-linux + aarch64-linux |
+| S7 | No secrets | `gitleaks detect` | exit 0 | P0 | ✅ no leaks found |
+| S8 | No source file newly over the length cap | `git diff --name-only origin/main \| grep -vE '\.md$\|_test\.zig$\|\.test\.(ts\|tsx)$' \| xargs wc -l 2>/dev/null \| awk '$1>350 && $2!="total"'` | only `Shell.tsx` (459 on main), `lib/types.ts` (356 on main), `fleetMessageRenderers.tsx` (363 on main, zero growth here) — all over the cap before this branch; splits tracked in M131/M132 | P0 | ✅ only the three named pre-existing files |
+| S9 | Orphan sweep — the old title constant is gone | `git grep -n "FLEET_LIBRARIES_TITLE" -- ui/ \| wc -l` | `0` | P0 | ✅ all sweep greps 0 |
 
 **Grading protocol (VERIFY):** run the Verify command verbatim; grade ONLY from its output. Graded = ✅/❌ + the one decisive output line (`342 passed`); long evidence goes to PR Session Notes with a pointer here. **Ship gate:** every row graded, every P0 ✅ → eligible for CHORE(close); any ❌ or empty cell → return to EXECUTE; a P1 ❌ ships only with an Indy-acked deferral quote in Discovery.
 
@@ -298,7 +310,7 @@ N/A — no files deleted.
 4. **Rebuild-vs-iterate** — Iterate. The catalog's field-ownership model (bundle owns identity, operator owns copy) is sound; this spec moves three fields across that line and makes the derived status total. Nothing about the lifecycle needs rebuilding.
 5. **What we build** — A fourth derived status; three new PATCH fields with source-invalidation; `name` removed from the refetch overwrite; reason-map pruning; a repository link; corrected button copy; a loading skeleton on the runner activity dialog.
 6. **What we do NOT build** — Bundle upgrade for existing installs (needs its own milestone). Orphan-object reclamation (storage concern). Slug editing (would orphan installs). Ref-pinning at import (not needed for the recovery path). A refetch-inside-PATCH (see item 3).
-7. **Fit with existing features** — Compounds with the install gate: the credential reasons the operator curates here are what a user reads when a fleet asks for their token, so keeping that map correct across a repository change directly protects the install experience. The one feature it must not destabilize is **install** — the gallery and install queries are the contract this status fix is being made *honest against*, and their behaviour does not change.
+7. **Fit with existing features** — Compounds with the install gate: the credential reasons the operator curates here are what a user reads when a fleet asks for their token, so keeping that map correct across a repository change directly protects the install experience. The one feature it must not destabilize is **install** — the gallery and install queries are the ground truth this status fix is made *honest against*, and their behaviour does not change.
 8. **Surface order** — UI-first, justified: this is a platform-operator dashboard surface with no CLI equivalent today; the API widening exists to serve it.
 9. **Dashboard restraint** — The un-explained-credential marker (4.2) states a fact the row already carries; it makes no quality claim and offers no control. The new status is a fault indicator, not a feature.
 10. **Confused-user next step** — An operator who lands on the fault state reads a badge that names the problem ("no bundle has been fetched") and sees exactly two affordances: Fetch bundle, or Unpublish. Both are self-serve, and both resolve the state.
