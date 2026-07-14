@@ -223,7 +223,7 @@ Existing routes, request fields, response fields, status codes, authorization ch
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | Plaintext and dispatch storage erase on success and failure (§1–§2) | `make test-unit-agentsfleetd` | exit 0 including zeroizing allocator and plaintext lifetime tests | P0 | ✅ 1,645 pass, 557 skip, 0 fail |
+| R1 | Plaintext and dispatch storage erase on success and failure (§1–§2) | `make test-unit-agentsfleetd` | exit 0 including zeroizing allocator and plaintext lifetime tests | P0 | ✅ 1,645 pass, 570 skip, 0 fail |
 | R2 | Sensitive responses erase and failed writes close (§3) | `make test-integration` | exit 0 including lease/mint behavior and failed-write tests | P0 | ✅ Full integration suite passed |
 | R3 | Architecture names the exact erasure boundary (§4) | `rg -n "zero|erase" docs/architecture/data_flow.md docs/architecture/billing_and_provider_keys.md` | matches for vault plaintext, request body, dispatch arena, and serialized response | P0 | ✅ All four boundaries matched |
 | R4 | Diff stays inside Files Changed | `git diff --name-only origin/main` | 0 paths missing from the Files Changed table | P0 | ✅ 32 changed paths, 0 missing |
@@ -272,5 +272,5 @@ N/A — no files deleted and no public symbols renamed or removed.
 - **Consults** — Architecture / Legacy-Design / gate-flag triage: Fable adversarial review corrected the false dangling-slice claim and identified retained response storage; Indy approved implementing the corrected four-boundary design on Jul 13, 2026.
 - **Metrics review** — four unlabeled process-level series measure current resident memory, aggregate erased request/response bytes, and failed sensitive writes; no values, identifiers, routes, or individual secret sizes enter telemetry.
 - **Skill-chain outcomes** — `/write-unit-test`: clean across behaviour, failure, invariant, integration, leak, performance, and 100-way concurrency coverage; `/review`: one missed sensitive-writer call-site family found and fixed for runner registration plus tenant/fleet API-key creation, with the final direct review clean; `kishore-babysit-prs`: pending after push.
-- **Test delta** — unit=2606 (+21), integration=311 (+0). Existing real-datastore integration tests cover the unchanged lease, mint, registration, and API-key wire paths; the new failure injection and memory-lifetime proofs are unit tests because they require allocator and socket control.
+- **Test delta** — unit=2619 (+34 from the recorded baseline; +21 branch-local after the current-main rebase), integration=324 (+13 from the recorded baseline; +0 branch-local). Existing real-datastore integration tests cover the unchanged lease, mint, registration, and API-key wire paths; the new failure injection and memory-lifetime proofs are unit tests because they require allocator and socket control.
 - **Deferrals** — none.
