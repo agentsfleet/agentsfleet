@@ -3,6 +3,7 @@
 import type { CSSProperties, ReactNode } from "react";
 import type { MessageState } from "@assistant-ui/react";
 import { Badge, cn, EYEBROW_CLASS, type BadgeVariant } from "@agentsfleet/design-system";
+import type { FleetToolCall } from "@/lib/streaming/fleet-stream-frames";
 
 const ACTOR_STEER_PREFIX = "steer:";
 const ACTOR_WEBHOOK_PREFIX = "webhook:";
@@ -19,6 +20,11 @@ const RUN_STATUS_RUNNING = "running";
 
 const STEER_GLYPH = "›";
 const STREAM_CURSOR = "▍";
+// A tool that is still running vs one that returned. Same vocabulary as the
+// install ladder's state glyphs (install-flow.ts) — one glyph set, one meaning.
+const TOOL_RUNNING_GLYPH = "◐";
+const TOOL_DONE_GLYPH = "✓";
+const MS_PER_SECOND = 1_000;
 const FRAME_ENTER = "animate-in fade-in-0 duration-150";
 
 // Single source of truth for the actor-rail layout. The grid's first
@@ -113,6 +119,7 @@ function AssistantRow({ message }: { message: MessageState }) {
         labelClassName="text-success"
       />
       <div className="text-sm text-foreground">
+        <ToolCalls tools={readTools(message)} />
         {text}
         {isStreaming ? (
           <span className="ml-xs text-pulse animate-pulse" aria-label="streaming">
@@ -122,6 +129,34 @@ function AssistantRow({ message }: { message: MessageState }) {
       </div>
     </div>
   );
+}
+
+// What the fleet actually DID, above what it said about it. A running tool shows
+// its elapsed time so a long call reads as work rather than as a hang.
+function ToolCalls({ tools }: { tools: FleetToolCall[] }) {
+  if (tools.length === 0) return null;
+  return (
+    <ul className="mb-xs flex flex-col gap-3xs" aria-label="Tool calls">
+      {tools.map((tool) => (
+        <li
+          key={tool.name}
+          data-tool={tool.name}
+          data-done={tool.done || undefined}
+          className="flex items-center gap-xs font-mono text-label text-muted-foreground"
+        >
+          <span aria-hidden="true" className={tool.done ? "text-success" : "text-pulse"}>
+            {tool.done ? TOOL_DONE_GLYPH : TOOL_RUNNING_GLYPH}
+          </span>
+          <span>{tool.name}</span>
+          {tool.ms !== null ? <span className="tabular-nums">{formatToolMs(tool.ms)}</span> : null}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function formatToolMs(ms: number): string {
+  return ms < MS_PER_SECOND ? `${ms}ms` : `${(ms / MS_PER_SECOND).toFixed(1)}s`;
 }
 
 function AssistantErrorRow({
@@ -315,6 +350,23 @@ function readActor(message: MessageState): string {
 function readCustomStatus(message: MessageState): string {
   const raw = message.metadata.custom["status"];
   return typeof raw === "string" ? raw : "";
+}
+
+/// The tools the fleet called while working this event. The backend has always
+/// published these; the stream reducer used to drop them, so the panel's own
+/// promise — "Tool calls, chunks, and completions appear here as the fleet runs" —
+/// was never kept. Narrowed rather than cast: the custom bag is `unknown`, and a
+/// malformed entry must not take the thread down.
+function readTools(message: MessageState): FleetToolCall[] {
+  const raw = message.metadata.custom["tools"];
+  if (!Array.isArray(raw)) return [];
+  return raw.filter(
+    (t): t is FleetToolCall =>
+      typeof t === "object" &&
+      t !== null &&
+      typeof (t as FleetToolCall).name === "string" &&
+      typeof (t as FleetToolCall).done === "boolean",
+  );
 }
 
 function readRequestJson(message: MessageState): string | null {

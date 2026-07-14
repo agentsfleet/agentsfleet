@@ -17,6 +17,18 @@ export const AGENTSFLEET_EVENT_STATUS = {
 export type FleetEventStatus =
   (typeof AGENTSFLEET_EVENT_STATUS)[keyof typeof AGENTSFLEET_EVENT_STATUS];
 
+// One tool the fleet called while working an event. The backend has always
+// published `tool_call_started` / `_progress` / `_completed` frames; the reducer
+// below dropped all three on the floor via a `default: return prev`, while the
+// thread's own empty state promised "Tool calls, chunks, and completions appear
+// here as the fleet runs." The frames were arriving and being discarded.
+export type FleetToolCall = {
+  name: string;
+  /** Wall time so far (from a progress frame) or final (from a completion). */
+  ms: number | null;
+  done: boolean;
+};
+
 export type FleetEvent = {
   id: string;
   role: "user" | "assistant" | "system";
@@ -24,6 +36,8 @@ export type FleetEvent = {
   text: string;
   createdAt: Date;
   status: FleetEventStatus;
+  /** Tools called while working this event, in first-seen order. */
+  tools?: FleetToolCall[];
   custom?: { requestJson?: string | null; reason?: string };
 };
 
@@ -87,9 +101,57 @@ export function applyLiveFrame(
       return applyChunk(prev, frame);
     case FRAME_KIND.EVENT_COMPLETE:
       return applyEventComplete(prev, frame);
+    case FRAME_KIND.TOOL_CALL_STARTED:
+      return applyToolCall(prev, frame.event_id, frame.name, null, false);
+    case FRAME_KIND.TOOL_CALL_PROGRESS:
+      return applyToolCall(prev, frame.event_id, frame.name, frame.elapsed_ms, false);
+    case FRAME_KIND.TOOL_CALL_COMPLETED:
+      return applyToolCall(prev, frame.event_id, frame.name, frame.ms, true);
     default:
+      // Install frames are forked off this path by the registry and never reach
+      // the message list. Anything else is a frame the backend shipped ahead of
+      // us — ignoring it is correct, but ONLY because it is genuinely unknown.
+      // A frame we know about and drop here is the bug this switch just fixed.
       return prev;
   }
+}
+
+/// Fold one tool-call frame onto its event. The three frames are the same tool
+/// seen at three moments, keyed by (event_id, name) — started has no timing yet,
+/// progress carries elapsed, completed carries the final wall time. A frame whose
+/// event has not arrived yet is dropped rather than synthesizing an orphan event:
+/// `event_received` always precedes its tool calls on the wire, and inventing an
+/// event here would put a message in the thread that the backfill would then
+/// duplicate.
+function applyToolCall(
+  prev: FleetEvent[],
+  eventId: string,
+  name: string,
+  ms: number | null,
+  done: boolean,
+): FleetEvent[] {
+  const index = prev.findIndex((e) => e.id === eventId);
+  const event = prev[index];
+  // Narrowed, not asserted: `index === -1` and `event === undefined` are the same
+  // fact, and letting the type system see it is cheaper than promising it.
+  if (event === undefined) return prev;
+
+  const tools = event.tools ?? [];
+  const existing = tools.findIndex((t) => t.name === name && !t.done);
+
+  const next: FleetToolCall = { name, ms, done };
+  const merged =
+    existing === -1
+      ? [...tools, next]
+      : tools.map((t, i) =>
+          // A completion with no timing must not erase the elapsed a progress
+          // frame already reported.
+          i === existing ? { name, ms: ms ?? t.ms, done } : t,
+        );
+
+  const updated = [...prev];
+  updated[index] = { ...event, tools: merged };
+  return updated;
 }
 
 export function actorToRole(actor: string): "user" | "assistant" | "system" {

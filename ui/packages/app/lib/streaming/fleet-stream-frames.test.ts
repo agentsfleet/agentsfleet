@@ -9,6 +9,8 @@ import {
   type FleetEvent,
 } from "./fleet-stream-frames";
 
+const MS_PER_SECOND = 1000 as const;
+
 function row(over: Partial<EventRow> = {}): EventRow {
   return {
     event_id: "e1",
@@ -189,5 +191,126 @@ describe("applyLiveFrame", () => {
     expect(bystanderOut).toBe(bystander);
     expect(bystanderOut?.status).toBe("received");
   });
+
+  // ── Tool calls ──────────────────────────────────────────────────────────
+  //
+  // The backend has always published tool_call_started / _progress / _completed.
+  // applyLiveFrame dropped all three through a `default: return prev`, while the
+  // thread's own empty state promised "Tool calls, chunks, and completions appear
+  // here as the fleet runs." The frames arrived; nothing kept them.
+
+  it("TOOL_CALL_STARTED attaches the tool to its event instead of dropping the frame", () => {
+    const seed = [evt({ id: "e1" })];
+    const out = applyLiveFrame(seed, {
+      kind: FRAME_KIND.TOOL_CALL_STARTED,
+      event_id: "e1",
+      name: "search_repo",
+      args_redacted: {},
+    });
+    expect(out[0]?.tools).toEqual([{ name: "search_repo", ms: null, done: false }]);
+  });
+
+  it("TOOL_CALL_PROGRESS updates the running tool's elapsed time in place", () => {
+    let out = applyLiveFrame([evt({ id: "e1" })], {
+      kind: FRAME_KIND.TOOL_CALL_STARTED,
+      event_id: "e1",
+      name: "search_repo",
+      args_redacted: {},
+    });
+    out = applyLiveFrame(out, {
+      kind: FRAME_KIND.TOOL_CALL_PROGRESS,
+      event_id: "e1",
+      name: "search_repo",
+      elapsed_ms: 400,
+    });
+    expect(out[0]?.tools).toEqual([{ name: "search_repo", ms: 400, done: false }]);
+  });
+
+  it("TOOL_CALL_COMPLETED marks the tool done with its final wall time", () => {
+    let out = applyLiveFrame([evt({ id: "e1" })], {
+      kind: FRAME_KIND.TOOL_CALL_STARTED,
+      event_id: "e1",
+      name: "search_repo",
+      args_redacted: {},
+    });
+    out = applyLiveFrame(out, {
+      kind: FRAME_KIND.TOOL_CALL_COMPLETED,
+      event_id: "e1",
+      name: "search_repo",
+      ms: 1_200,
+    });
+    expect(out[0]?.tools).toEqual([{ name: "search_repo", ms: 1_200, done: true }]);
+  });
+
+  it("keeps two distinct tools on one event, in first-seen order", () => {
+    let out = applyLiveFrame([evt({ id: "e1" })], {
+      kind: FRAME_KIND.TOOL_CALL_STARTED,
+      event_id: "e1",
+      name: "first",
+      args_redacted: {},
+    });
+    out = applyLiveFrame(out, {
+      kind: FRAME_KIND.TOOL_CALL_STARTED,
+      event_id: "e1",
+      name: "second",
+      args_redacted: {},
+    });
+    expect(out[0]?.tools?.map((t) => t.name)).toEqual(["first", "second"]);
+  });
+
+  // The same tool can be called twice in one event. The second call must not
+  // reopen the finished first one.
+  it("a second call to the same tool starts a new entry rather than reviving the finished one", () => {
+    let out = applyLiveFrame([evt({ id: "e1" })], {
+      kind: FRAME_KIND.TOOL_CALL_STARTED,
+      event_id: "e1",
+      name: "grep",
+      args_redacted: {},
+    });
+    out = applyLiveFrame(out, {
+      kind: FRAME_KIND.TOOL_CALL_COMPLETED,
+      event_id: "e1",
+      name: "grep",
+      ms: 90,
+    });
+    out = applyLiveFrame(out, {
+      kind: FRAME_KIND.TOOL_CALL_STARTED,
+      event_id: "e1",
+      name: "grep",
+      args_redacted: {},
+    });
+    expect(out[0]?.tools).toEqual([
+      { name: "grep", ms: 90, done: true },
+      { name: "grep", ms: null, done: false },
+    ]);
+  });
+
+  // event_received always precedes its tool frames on the wire. Synthesizing an
+  // event here would put a message in the thread that the backfill then duplicates.
+  it("drops a tool frame whose event has not arrived, rather than inventing an event", () => {
+    const seed = [evt({ id: "e1" })];
+    const out = applyLiveFrame(seed, {
+      kind: FRAME_KIND.TOOL_CALL_STARTED,
+      event_id: "ghost",
+      name: "search_repo",
+      args_redacted: {},
+    });
+    expect(out).toBe(seed);
+  });
+
+  it("a completion carrying no timing does not erase the elapsed a progress frame reported", () => {
+    let out = applyLiveFrame([evt({ id: "e1" })], {
+      kind: FRAME_KIND.TOOL_CALL_PROGRESS,
+      event_id: "e1",
+      name: "slow",
+      elapsed_ms: 5_000,
+    });
+    out = applyLiveFrame(out, {
+      kind: FRAME_KIND.TOOL_CALL_COMPLETED,
+      event_id: "e1",
+      name: "slow",
+      ms: null as unknown as number,
+    });
+    expect(out[0]?.tools).toEqual([{ name: "slow", ms: 5_000, done: true }]);
+  });
 });
-const MS_PER_SECOND = 1000 as const;

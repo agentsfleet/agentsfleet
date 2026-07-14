@@ -109,6 +109,12 @@ function convertEvent(event: FleetEvent): ThreadMessageLike {
         requestJson: event.custom?.requestJson,
         reason: event.custom?.reason,
         status: event.status,
+        // The tool calls the fleet made while working this event. They ride the
+        // custom bag rather than assistant-ui's tool-call content parts: the
+        // backend publishes them as sibling frames keyed by event_id, not as
+        // structured parts of the assistant message, and reshaping them into
+        // parts would invent a message boundary the wire does not have.
+        tools: event.tools,
       },
     },
   };
