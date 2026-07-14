@@ -30,11 +30,11 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ## Overview
 
-**Goal (testable):** `/w/{ws}/fleets` renders one tile per fleet — every live tile opens its own per-fleet SSE stream with a pulse and a footer of server-truth spend + event counts, every parked/killed tile is drained and dimmed, every tile links to its console, and a tile whose stream is refused by `sse_max_streams` or errors falls back to a last-event snapshot with a `snapshot` eyebrow (never a dead tile); `/w/{ws}/` renders a first-run Getting Started checklist (4 required + 2 optional steps, completion derived from live API state) plus a persistent bottom-left sidebar widget whose dismissal/collapse/manual-tick state is a per-user, per-workspace server preference that survives across devices.
+**Goal (testable):** `/w/{ws}/fleets` renders one tile per fleet — every live tile opens its own per-fleet SSE stream with a pulse and a footer of server-truth spend + event counts, every parked/killed tile is drained and dimmed, every tile links to its console, and a tile whose stream is refused by `sse_max_streams` or errors falls back to a last-event snapshot with a `snapshot` eyebrow (never a dead tile); `/w/{ws}/` renders a first-run Getting Started checklist — a vertical tick-rail list (5 required + 1 optional step), each row a leading tick marker that fills and strikes the label through on completion, with "Model configured" first and ticked by default via the platform default — completion derived from live API state, plus a persistent bottom-left sidebar widget whose dismissal/collapse/manual-tick state is a per-user, per-workspace server preference that survives across devices.
 
 **Problem:** The current `/w/{ws}/` is a static tile-count "dashboard" — it shows how many fleets are in each status and nothing living. A new operator has no guided path from zero to a steered fleet, and a returning operator has no at-a-glance view of what their fleets are doing right now. The information is on the wire — per-fleet spend and event counts already ride the fleet list row, workspace event history is index-backed, onboarding progress is derivable from `total`/`secrets`/`events` — but the client discards it and renders a count instead of a wall.
 
-**Solution summary:** Replace the dashboard with two surfaces. `/w/{ws}/fleets` becomes a Live Wall: the client `Fleet` type widens to carry `budget_used_nanos` and `events_processed` (already served per row per `list.zig:173-175`), each live tile opens its per-fleet SSE stream (reusing the console's frame reducer), and a refused or errored stream degrades to a snapshot tile — visually indistinguishable except an eyebrow — so the uncapped-stream policy never produces a dead tile. `/w/{ws}/` becomes Getting Started: a checklist page whose four required steps are computed from existing endpoints (fleet list, secrets, workspace events) plus two optional steps (one manual tick, one provider check), and a persistent collapsible widget. Widget/checklist persistence is a new small per-user UI-prefs endpoint backed by one migration (gap G6, pulled forward per Indy's server-pref decision). The landing route picks Getting Started while onboarding is incomplete-and-not-dismissed, and the wall otherwise.
+**Solution summary:** Replace the dashboard with two surfaces. `/w/{ws}/fleets` becomes a Live Wall: the client `Fleet` type widens to carry `budget_used_nanos` and `events_processed` (already served per row per `list.zig:173-175`), each live tile opens its per-fleet SSE stream (reusing the console's frame reducer), and a refused or errored stream degrades to a snapshot tile — visually indistinguishable except an eyebrow — so the uncapped-stream policy never produces a dead tile. `/w/{ws}/` becomes Getting Started: an explicit tick-rail checklist page whose five required steps are computed from existing endpoints — "Model configured" first (from the provider view, ticked by default because a fresh tenant rides the platform default), then fleet list, secrets, and workspace events — plus one optional step (the manual Command-Line Interface (CLI) tick), and a persistent collapsible widget. Widget/checklist persistence is a new small per-user UI-prefs endpoint backed by one migration (gap G6, pulled forward per Indy's server-pref decision). The landing route picks Getting Started while onboarding is incomplete-and-not-dismissed, and the wall otherwise.
 
 ## PR Intent & comprehension handshake
 
@@ -49,6 +49,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 3. `src/agentsfleetd/http/handlers/tenant_provider.zig` + its route in `routes.zig` (`tenant_provider`) and scope in `route_scopes.zig` — the closest existing tenant-scoped GET/PUT handler for the new UI-prefs endpoint to mirror (route enum → invoke → scope → store).
 4. `ui/packages/app/lib/streaming/fleet-stream-frames.ts` — the frame reducer the console uses (M130); the live tile reuses it rather than inventing a second stream consumer.
 5. `docs/architecture/scaling.md` §"SSE_MAX_STREAMS" — the per-replica stream budget (~0.25 MiB stack per tail, default 64); the PLAN headroom line reads from here.
+6. **Design-shotgun gate (Indy, Jul 15, 2026) — blocks §3/§4 build.** Before writing any checklist/widget component, run `/design-shotgun` scoped to the Getting Started checklist (page + sidebar widget): 2–3 tick-rail treatments (marker style, row density, done-state rendering) inside the frozen variant-F system — the freeze owns the surface, the shotgun decides the checklist treatment only. Indy picks the winner on the comparison board; implement only the picked variant and record the pick in Discovery. Building §3/§4 without the recorded pick is a scope violation, not a shortcut.
 
 ## Files Changed (blast radius)
 
@@ -73,8 +74,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/components/FleetsList.tsx` | EDIT | Superseded by the wall for the fleets route; retained only where still referenced (else swept). |
 | `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/page.tsx` | EDIT | Render the wall. |
 | `ui/packages/app/app/(dashboard)/w/[workspaceId]/page.tsx` | EDIT | Becomes Getting Started (or redirects to the wall when onboarding is complete/dismissed) — the old status-tile rollup is removed. |
-| `ui/packages/app/app/(dashboard)/w/[workspaceId]/components/GettingStarted.tsx` | CREATE | The checklist page: 4 required + 2 optional steps, completion from live state. |
-| `ui/packages/app/lib/onboarding.ts` | CREATE | Pure step-derivation from `{fleetTotal, secretCount, hasProcessedEvent, hasSteerEvent, providerSet, cliTicked}` → step states; single source for page and widget. |
+| `ui/packages/app/app/(dashboard)/w/[workspaceId]/components/GettingStarted.tsx` | CREATE | The tick-rail checklist page: 5 required + 1 optional step, left tick markers + strikethrough, completion from live state. |
+| `ui/packages/app/lib/onboarding.ts` | CREATE | Pure step-derivation from `{modelConfigured, fleetTotal, secretCount, hasProcessedEvent, hasSteerEvent, cliTicked}` → step states; single source for page and widget. |
 | `ui/packages/app/lib/onboarding.test.ts` | CREATE | Step-derivation truth table. |
 | `ui/packages/app/components/layout/GettingStartedWidget.tsx` | CREATE | The persistent bottom-left widget: strikethrough on completion, collapsible, dismissible; reads/writes prefs. |
 | `ui/packages/app/components/layout/Shell.tsx` | EDIT | Mount the widget (bottom-left); no change to the existing non-persisted nav collapse. |
@@ -127,17 +128,19 @@ Every live tile opens its own per-fleet SSE stream and mints a pulse — no clie
 - **Dimension 2.2** — a tile whose stream is refused (`ERR_SSE_STREAM_CAP`/503) renders the snapshot state with last event + pulse + `snapshot` eyebrow, never blank → Test `test_capped_tile_degrades_to_snapshot` (FAILURE MODE)
 - **Dimension 2.3** — a tile whose stream errors mid-flight transitions live→snapshot without a dead frame → Test `test_stream_error_falls_back_to_snapshot` (FAILURE MODE)
 
-### §3 — Getting Started: the checklist
+### §3 — Getting Started: the explicit tick-rail checklist
 
-`/w/{ws}/` renders a first-run checklist. Four required steps, each derived from an existing endpoint (no new detection backend): ① Install a fleet — fleet list `total ≥ 1`. ② Connect its credential — `GET …/secrets ≥ 1` (the install gate already blocks creation on missing with `ERR_FLEET_BUNDLE_SECRETS_MISSING` + `missing_secrets[]`). ③ Watch it wake — `≥1` processed event via `GET /v1/workspaces/{ws}/events`. ④ Steer it — `≥1` event with actor prefix `steer:` (the endpoint's `actor_prefix` filter, `events.zig:91`). Two optional steps: install the Command-Line Interface (CLI) — NOT server-detectable, so a manual user tick (`npm install -g @agentsfleet/cli@next`) — per-workspace by construction (the pref row is keyed `(user, workspace, key)`); re-ticking in a second workspace is accepted; and bring your own model key — `GET /v1/tenants/me/provider`. Step derivation is a pure function so the page and the widget agree by construction. **Displaced dashboard content:** `ExhaustionBanner` mounts on Getting Started; the balance figure lives at `/settings/billing` (linked from Getting Started); the free-credit pill folds into step ① copy.
+`/w/{ws}/` renders a first-run checklist as a **vertical step list with a left tick rail** — not tiles/cards: every row leads with a tick marker (filled tick when done, hollow circle when pending), a done row's label strikes through, and step order is fixed. Five required steps, each derived from an existing endpoint (no new detection backend): ① **Model configured** — the provider view (`GET /v1/tenants/me/provider`) reports a non-empty `model`; a fresh tenant rides the live platform default (`tenant_provider.zig:305-322`), so this step renders **ticked by default** — the operator's first sight of the checklist already shows progress. It unticks only in the honest case: no platform default configured AND no tenant selection (empty `model`, `tenant_provider.zig:324-337`) — then its row links to `/settings/models`. The step copy also carries the bring-your-own-key pointer (Models page), absorbing the old optional provider step. ② Install a fleet — fleet list `total ≥ 1`. ③ Connect its credential — `GET …/secrets ≥ 1` (the install gate already blocks creation on missing with `ERR_FLEET_BUNDLE_SECRETS_MISSING` + `missing_secrets[]`). ④ Watch it wake — `≥1` processed event via `GET /v1/workspaces/{ws}/events`. ⑤ Steer it — `≥1` event with actor prefix `steer:` (the endpoint's `actor_prefix` filter, `events.zig:91`). One optional step: install the CLI — NOT server-detectable, so a manual user tick (`npm install -g @agentsfleet/cli@next`) — per-workspace by construction (the pref row is keyed `(user, workspace, key)`); re-ticking in a second workspace is accepted. Step derivation is a pure function so the page and the widget agree by construction. **Displaced dashboard content:** `ExhaustionBanner` mounts on Getting Started; the balance figure lives at `/settings/billing` (linked from Getting Started); the free-credit pill folds into step ② copy.
 
-- **Dimension 3.1** — the 4 required steps compute true/false from `{fleetTotal, secretCount, hasProcessedEvent, hasSteerEvent}` → Test `test_required_steps_derive_from_state`
-- **Dimension 3.2** — the 2 optional steps: provider from `GET /tenants/me/provider`, CLI from the persisted manual tick → Test `test_optional_steps_provider_and_cli_tick`
-- **Dimension 3.3** — "onboarding complete" = all 4 required done; optional steps never block completion → Test `test_completion_requires_only_required`
+- **Dimension 3.1** — the 5 required steps compute true/false from `{modelConfigured, fleetTotal, secretCount, hasProcessedEvent, hasSteerEvent}` → Test `test_required_steps_derive_from_state`
+- **Dimension 3.2** — the optional CLI step derives from the persisted manual tick, independent of required steps → Test `test_optional_step_cli_tick`
+- **Dimension 3.3** — "onboarding complete" = all 5 required done; the optional step never blocks completion → Test `test_completion_requires_only_required`
+- **Dimension 3.4** — a done step renders a filled tick + struck-through label; a pending step renders a hollow marker, no strikethrough; step order is fixed → Test `test_checklist_tick_marks_and_strikethrough`
+- **Dimension 3.5** — with a platform default present, a fresh workspace renders step ① already ticked; with the provider view's `model` empty, step ① is unticked and links to `/settings/models` → Test `test_model_step_ticked_by_default` (FAILURE MODE for the empty case)
 
 ### §4 — The persistent sidebar widget
 
-A bottom-left widget mirrors the checklist for a returning user: each step strikes through on completion, the widget is collapsible, and it is dismissible once onboarding is complete. Its dismissal/collapse/CLI-tick state is read from and written to the prefs endpoint (§5), so it survives across devices. The existing non-persisted nav collapse (`Shell.tsx`) is unchanged.
+A bottom-left widget mirrors the checklist for a returning user: the same tick-rail rows as §3 (filled tick + strikethrough when done, hollow circle when pending — one row per step, same fixed order), the widget is collapsible, and it is dismissible once onboarding is complete. Its dismissal/collapse/CLI-tick state is read from and written to the prefs endpoint (§5), so it survives across devices. The existing non-persisted nav collapse (`Shell.tsx`) is unchanged.
 
 - **Dimension 4.1** — a completed step renders struck-through; the widget collapses/expands → Test `test_widget_strikethrough_and_collapse`
 - **Dimension 4.2** — dismiss writes the pref and hides the widget; a fresh load with the pref set keeps it hidden → Test `test_widget_dismiss_persists`
@@ -171,7 +174,7 @@ CONSUMED AS-IS (no wire change):
   FleetListItem.budget_used_nanos: i64, .events_processed: i64          (already served, list.zig:173-175)
   GET /v1/workspaces/{ws}/events?actor_prefix=steer:                    (steer detection, events.zig:91)
   GET /v1/workspaces/{ws}/fleets/{id}/events/stream                     (per-tile SSE; ERR_SSE_STREAM_CAP on refusal)
-  GET /v1/tenants/me/provider                                          (optional step 6)
+  GET /v1/tenants/me/provider                                          (required step ① "Model configured": non-empty model → ticked; ticked by default via the platform default)
 
 Client Fleet type gains: budget_used_nanos: number, events_processed: number.
 Tile state (client): { kind: "live" } | { kind: "drained" } | { kind: "snapshot", lastEvent, reason }.
@@ -189,6 +192,7 @@ Tile state (client): { kind: "live" } | { kind: "drained" } | { kind: "snapshot"
 | Oversize pref value | `pref_value` exceeds `MAX_UI_PREF_VALUE_BYTES` (1 KiB, app-validated named constant) | `400`; no row written — the opaque JSON column is not free tenant storage. |
 | Concurrent `PUT` to one key | Two devices toggle the same pref | Last-write-wins by design — explicit ETag/`If-Match` opt-out per the REST guide's concurrency section: a pref is a single scalar toggle; a lost write costs one click, not authored content. |
 | Cross-tenant/user prefs read | Malicious or buggy workspace id | Workspace ownership check + user scoping → another user's/tenant's prefs are never returned. |
+| No model available at all | No platform default row AND no tenant selection → provider view carries empty `model` | Step ① renders unticked with a link to `/settings/models`; onboarding honestly incomplete — never a false default tick. |
 
 ## Invariants
 
@@ -206,7 +210,7 @@ Tile state (client): { kind: "live" } | { kind: "drained" } | { kind: "snapshot"
 | `getting_started_cli_ticked` | product | user manually ticks the CLI step | workspace id | none beyond ids | `test_gs_cli_ticked_emitted` |
 | `getting_started_dismissed` | product | dismiss pref written | workspace id, completed-step count | none beyond ids | `test_gs_dismissed_emitted` |
 
-Onboarding funnel: these three client events plus the server-authoritative `FleetTriggered`/`FleetCompleted` (already emitted, `product_analytics.md`) form the zero→steered funnel. Events single-sourced in `lib/analytics/events.ts` (`EVENTS`, `EVENT_PROP_KEYS`); no bare event-name literals. No server telemetry added — the four required steps are derived from existing endpoints, not new emits.
+Onboarding funnel: these three client events plus the server-authoritative `FleetTriggered`/`FleetCompleted` (already emitted, `product_analytics.md`) form the zero→steered funnel. Events single-sourced in `lib/analytics/events.ts` (`EVENTS`, `EVENT_PROP_KEYS`); no bare event-name literals. No server telemetry added — the five required steps are derived from existing endpoints, not new emits.
 
 ## Test Specification (tiered)
 
@@ -218,9 +222,11 @@ Onboarding funnel: these three client events plus the server-authoritative `Flee
 | 2.1 | unit | `test_live_tile_streams_frames` | an `active` tile subscribes and renders a streamed frame + pulse via the shared reducer. |
 | 2.2 | unit | `test_capped_tile_degrades_to_snapshot` | stream open returns `503 ERR_SSE_STREAM_CAP` → tile kind `snapshot`, last event shown, `snapshot` eyebrow present, not blank. |
 | 2.3 | unit | `test_stream_error_falls_back_to_snapshot` | a mid-flight stream error transitions the tile live→snapshot; pulse retained; no empty render. |
-| 3.1 | unit | `test_required_steps_derive_from_state` | `{fleetTotal:0…}` all false; `{fleetTotal:1, secretCount:1, hasProcessedEvent:true, hasSteerEvent:true}` all four true. |
-| 3.2 | unit | `test_optional_steps_provider_and_cli_tick` | provider set → step 6 true; `cli_ticked` pref true → step 5 true; both independent of required steps. |
-| 3.3 | unit | `test_completion_requires_only_required` | 4 required done + 0 optional → complete; 3 required + 2 optional → not complete. |
+| 3.1 | unit | `test_required_steps_derive_from_state` | `{modelConfigured:false, fleetTotal:0…}` all false; `{modelConfigured:true, fleetTotal:1, secretCount:1, hasProcessedEvent:true, hasSteerEvent:true}` all five true. |
+| 3.2 | unit | `test_optional_step_cli_tick` | `cli_ticked` pref true → the CLI step is true; independent of every required step. |
+| 3.3 | unit | `test_completion_requires_only_required` | 5 required done + 0 optional → complete; 4 required + optional ticked → not complete. |
+| 3.4 | unit | `test_checklist_tick_marks_and_strikethrough` | a done step renders a filled tick marker + struck-through label; a pending step renders a hollow marker, no strikethrough; rows render in the fixed §3 order. |
+| 3.5 | unit | `test_model_step_ticked_by_default` | provider view `{mode:"platform", model:"claude-…"}` → step ① ticked on a fresh workspace; `{model:""}` → step ① unticked with an href to `/settings/models`. |
 | 4.1 | unit | `test_widget_strikethrough_and_collapse` | a done step renders struck-through; toggling collapse hides/shows the step list. |
 | 4.2 | unit | `test_widget_dismiss_persists` | dismiss PUTs `getting_started_dismissed`; a re-render with that pref set renders no widget. |
 | 5.1 | integration | `test_ui_prefs_roundtrip` | `GET` before any write → empty bag; `PUT …/ui-prefs/getting_started_collapsed` body `true` then `GET` → bag carries it. |
@@ -302,6 +308,7 @@ Onboarding funnel: these three client events plus the server-authoritative `Flee
 ## Discovery (consult log)
 
 - **Consults** — Architecture / Legacy-Design / gate-flag triage:
+  - > Indy (2026-07-15): "yes i need design-shotgun … during implementation time … so i know what we are building" — context: the §3/§4 checklist treatment; encoded as read-first item 6 (design-shotgun gate). The winning variant's pick lands here when it runs.
 - **Metrics review** —
 - **Skill-chain outcomes** —
 - **Deferrals** —
