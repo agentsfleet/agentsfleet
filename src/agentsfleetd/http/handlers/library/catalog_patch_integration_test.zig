@@ -1,24 +1,24 @@
-//! Integration coverage for the widened PATCH (M130 §2/§3/§4).
+//! Integration coverage for the widened catalog PATCH.
 //!
 //! Three claims, each of which is only true if the SQL is right — a unit test on
 //! the handler cannot prove any of them, because the behaviour lives inside the
 //! statements:
 //!
-//!   §2  Repointing the source DISCARDS the bundle. `content_hash` goes NULL and
+//!   - Repointing the source DISCARDS the bundle. `content_hash` goes NULL and
 //!       `visibility` falls to draft, together, in one statement. Re-sending the
 //!       SAME source does neither — the dialog echoes every field back, so
 //!       treating "present" as "changed" would withdraw a live fleet on a copy
 //!       edit.
 //!
-//!   §3  An operator's rename SURVIVES the next refetch. `name` left
+//!   - An operator's rename SURVIVES the next refetch. `name` left
 //!       INSERT_PLATFORM's ON CONFLICT SET to make that true.
 //!
-//!   §4  A refetch PRUNES the reason map to the credentials the incoming bundle
+//!   - A refetch PRUNES the reason map to the credentials the incoming bundle
 //!       actually declares — a departed credential must not leave a dead key that
 //!       the dialog never renders and every save faithfully round-trips.
 //!
-//! Sibling file to catalog_integration_test.zig, which owns the M128 lifecycle
-//! guards; this one owns the M130 write. Upload-kind onboards throughout — no
+//! Sibling file to catalog_integration_test.zig, which owns the lifecycle
+//! guards; this one owns the widened write. Upload-kind onboards throughout — no
 //! network, no object storage.
 
 const std = @import("std");
@@ -44,7 +44,7 @@ const MOVED_REPO = "agentsfleet/patch-probe-moved";
 
 const OPERATOR_NAME = "Operator's own name";
 
-/// The probe's bundle declares ONE credential. §4's pruning is only observable
+/// The probe's bundle declares ONE credential. The reason-map pruning is only observable
 /// against a bundle that declares a DIFFERENT set, which
 /// `PROBE_SKILL_SWAPPED_CREDS` supplies.
 const PROBE_SKILL =
@@ -164,7 +164,11 @@ fn freeRow(alloc: std.mem.Allocator, r: Row) void {
 
 // ── The ref pin survives the round trip ─────────────────────────────────────
 
-test "integration: a pinned ref is stored by the fetch that honors it" {
+// A ref names a git revision, so it selects content only for a github source.
+// Pasted bytes came from no revision — recording a ref for them would store the
+// source of content the row never fetched, and a later repository-only repoint
+// could reuse that stale value as a real fetch ref.
+test "integration: an upload carrying a ref is refused, and no row is written" {
     const alloc = std.testing.allocator;
     const h = makeHarness(alloc) catch |err| switch (err) {
         error.SkipZigTest => return error.SkipZigTest,
@@ -176,9 +180,6 @@ test "integration: a pinned ref is stored by the fetch that honors it" {
     defer h.releaseConn(conn);
     try reset(conn);
 
-    // Upload-kind body carrying an explicit ref — the same field the dashboard's
-    // Fetch-update sends with the row's stored pin. The store must record the
-    // ref the content came from, not silently reset to the default branch.
     const body = try std.json.Stringify.valueAlloc(alloc, .{
         .source_kind = "upload",
         .source_ref = PROBE_REPO,
@@ -189,14 +190,38 @@ test "integration: a pinned ref is stored by the fetch that honors it" {
     defer alloc.free(body);
     const res = try (try (try h.post(CATALOG_URL).bearer(TOKEN_PLATFORM)).json(body)).send();
     defer res.deinit();
-    try res.expectStatus(.created);
+    try res.expectStatus(.bad_request);
+
+    // Refused at the door: the row never lands.
+    try std.testing.expectError(error.RowMissing, readRow(alloc, conn, PROBE_ID));
+}
+
+// The operator's pin, on the path that actually stores one. The github fetch
+// needs the network, so the PATCH is where the stored ref is provable end to
+// end: it is the same column the refetch then honors.
+test "integration: an operator's pinned ref is stored on the row" {
+    const alloc = std.testing.allocator;
+    const h = makeHarness(alloc) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    try reset(conn);
+    try addProbe(h, alloc);
+
+    const res = try patchEntry(h, alloc, PROBE_ID, "{\"source_ref\":\"v2.1.0\"}");
+    defer res.deinit();
+    try res.expectStatus(.ok);
 
     const after = try readRow(alloc, conn, PROBE_ID);
     defer freeRow(alloc, after);
     try std.testing.expectEqualStrings("v2.1.0", after.source_ref);
 }
 
-// ── Dimension 2.3 — a changed source discards the bundle ─────────────────────
+// ── A changed source discards the bundle ────────────────────────────────────
 
 test "integration: repointing the repository nulls the bundle and withdraws the fleet" {
     const alloc = std.testing.allocator;
@@ -235,7 +260,7 @@ test "integration: repointing the repository nulls the bundle and withdraws the 
     try std.testing.expectEqualStrings(MOVED_REPO, after.source_repo);
 }
 
-// ── Dimension 2.4 — an unchanged source is a no-op ───────────────────────────
+// ── An unchanged source is a no-op ──────────────────────────────────────────
 
 test "integration: re-sending the SAME repository does not withdraw a live fleet" {
     const alloc = std.testing.allocator;
@@ -270,7 +295,7 @@ test "integration: re-sending the SAME repository does not withdraw a live fleet
     try std.testing.expectEqualStrings("public", after.visibility);
 }
 
-// ── Dimension 2.2 — the edit path refuses what the add path refuses ──────────
+// ── The edit path refuses what the add path refuses ─────────────────────────
 
 test "integration: a malformed repository is refused and the row is untouched" {
     const alloc = std.testing.allocator;
@@ -306,7 +331,7 @@ test "integration: a malformed repository is refused and the row is untouched" {
     try std.testing.expectEqualStrings(PROBE_REPO, after.source_repo);
 }
 
-// ── Dimension 2.1 — the name refusals ────────────────────────────────────────
+// ── The name refusals ────────────────────────────────────────────────────────
 
 test "integration: an empty or over-cap name, and a malformed ref, are refused untouched" {
     const alloc = std.testing.allocator;
@@ -351,7 +376,7 @@ test "integration: an empty or over-cap name, and a malformed ref, are refused u
     try std.testing.expect(after.has_bundle);
 }
 
-// ── Dimension 2.5 — the slug is immutable ────────────────────────────────────
+// ── The slug is immutable ───────────────────────────────────────────────────
 
 test "integration: a body carrying an id cannot move the slug" {
     const alloc = std.testing.allocator;
@@ -384,7 +409,7 @@ test "integration: a body carrying an id cannot move the slug" {
     try std.testing.expectEqual(@as(i64, 1), try row.get(i64, 0));
 }
 
-// ── Dimension 3.1 — a rename survives the next fetch ─────────────────────────
+// ── A rename survives the next fetch ────────────────────────────────────────
 
 test "integration: an operator rename survives a refetch; a first import takes the bundle's" {
     const alloc = std.testing.allocator;
@@ -428,7 +453,7 @@ test "integration: an operator rename survives a refetch; a first import takes t
     try std.testing.expectEqualStrings(OPERATOR_NAME, after.name);
 }
 
-// ── Dimension 4.1 — the reason map tracks the declared credential set ────────
+// ── The reason map tracks the declared credential set ───────────────────────
 
 test "integration: a refetch prunes reason keys the new bundle no longer declares" {
     const alloc = std.testing.allocator;
@@ -476,7 +501,7 @@ test "integration: a refetch prunes reason keys the new bundle no longer declare
     try std.testing.expect(std.mem.indexOf(u8, after.reasons, "GITHUB_TOKEN") == null);
 }
 
-// ── Regression — the M128 guards did not weaken ──────────────────────────────
+// ── Regression — the lifecycle guards did not weaken ────────────────────────
 
 test "integration: publishing a row whose bundle this same request discards is refused" {
     const alloc = std.testing.allocator;
