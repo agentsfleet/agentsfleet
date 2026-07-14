@@ -19,6 +19,7 @@ pub const keyset_cursor = @import("fleet_runtime/keyset_cursor.zig");
 pub const id_format = @import("types/id_format.zig");
 pub const webhook_verify = @import("fleet_runtime/webhook_verify.zig");
 pub const queue = @import("queue/redis.zig");
+pub const ZeroizingAllocator = @import("secrets/zeroizing_allocator.zig");
 // Zig 0.16 removed `std.time.nanoTimestamp` / `std.process.getEnvVarOwned`;
 // benches reach the migration's facades through the bridge rather than
 // hand-rolling clock_gettime / environ walks.

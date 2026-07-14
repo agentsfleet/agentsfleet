@@ -54,6 +54,48 @@ test "validateObject accepts non-empty object" {
 
 const TEST_WS_ID = "0195b4ba-8d3a-7f13-8abc-cd0000000001";
 
+const ZeroFreeObserver = struct {
+    child: std.mem.Allocator,
+    last_free_zero: bool = false,
+
+    fn allocator(self: *ZeroFreeObserver) std.mem.Allocator {
+        return .{ .ptr = self, .vtable = &vtable };
+    }
+
+    const vtable: std.mem.Allocator.VTable = .{
+        .alloc = allocate,
+        .resize = resize,
+        .remap = remap,
+        .free = free,
+    };
+
+    fn allocate(ctx: *anyopaque, len: usize, alignment: std.mem.Alignment, ret_addr: usize) ?[*]u8 {
+        const self: *ZeroFreeObserver = @ptrCast(@alignCast(ctx));
+        return self.child.rawAlloc(len, alignment, ret_addr);
+    }
+
+    fn resize(ctx: *anyopaque, memory: []u8, alignment: std.mem.Alignment, new_len: usize, ret_addr: usize) bool {
+        const self: *ZeroFreeObserver = @ptrCast(@alignCast(ctx));
+        return self.child.rawResize(memory, alignment, new_len, ret_addr);
+    }
+
+    fn remap(ctx: *anyopaque, memory: []u8, alignment: std.mem.Alignment, new_len: usize, ret_addr: usize) ?[*]u8 {
+        const self: *ZeroFreeObserver = @ptrCast(@alignCast(ctx));
+        return self.child.rawRemap(memory, alignment, new_len, ret_addr);
+    }
+
+    fn free(ctx: *anyopaque, memory: []u8, alignment: std.mem.Alignment, ret_addr: usize) void {
+        const self: *ZeroFreeObserver = @ptrCast(@alignCast(ctx));
+        self.last_free_zero = allZero(memory);
+        self.child.rawFree(memory, alignment, ret_addr);
+    }
+};
+
+fn allZero(bytes: []const u8) bool {
+    for (bytes) |byte| if (byte != 0) return false;
+    return true;
+}
+
 fn setEncryptionKey() void {
     crypto_primitives.setTestKek();
 }
@@ -92,8 +134,10 @@ test "storeJson + loadJson round-trip preserves nested object" {
 
     try base.storeVaultJson(alloc, handle.conn, TEST_WS_ID, "fleet:fly", stored);
 
-    var loaded = try vault.loadJson(alloc, handle.conn, TEST_WS_ID, "fleet:fly");
+    var observer = ZeroFreeObserver{ .child = alloc };
+    var loaded = try vault.loadJson(observer.allocator(), handle.conn, TEST_WS_ID, "fleet:fly");
     defer loaded.deinit();
+    try std.testing.expect(observer.last_free_zero);
 
     try std.testing.expect(loaded.value == .object);
     try std.testing.expectEqualStrings(
@@ -104,6 +148,27 @@ test "storeJson + loadJson round-trip preserves nested object" {
         "FLY_API_TOKEN_xyz",
         loaded.value.object.get("api_token").?.string,
     );
+}
+
+test "loadJson parse failure releases zeroed plaintext" {
+    setEncryptionKey();
+    const alloc = std.testing.allocator;
+    const handle = (try base.openTestConn(alloc)) orelse return error.SkipZigTest;
+    defer {
+        handle.pool.release(handle.conn);
+        handle.pool.deinit();
+    }
+    try seedWorkspaceForVault(handle.conn);
+    defer cleanupTestRows(handle.conn);
+    try vault.storeJsonPlaintext(alloc, handle.conn, TEST_WS_ID, "malformed", "{not-json");
+
+    var observer = ZeroFreeObserver{ .child = alloc };
+    if (vault.loadJson(observer.allocator(), handle.conn, TEST_WS_ID, "malformed")) |parsed_value| {
+        var parsed = parsed_value;
+        parsed.deinit();
+        return error.TestExpectedError;
+    } else |_| {}
+    try std.testing.expect(observer.last_free_zero);
 }
 
 test "storeJson + loadJson round-trip preserves nested + arrays + numbers + bools + nulls" {

@@ -282,6 +282,11 @@ pub fn checkBodySize(req: *httpz.Request, res: *httpz.Response, body: []const u8
     return true;
 }
 
+/// Erase the mutable httpz-owned storage exposed through a const body view.
+pub fn secureZeroRequestBody(body: []const u8) void {
+    std.crypto.secureZero(u8, @constCast(body));
+}
+
 pub fn requestId(alloc: std.mem.Allocator) []const u8 {
     var id: [16]u8 = undefined;
     constants.secureRandomBytes(&id) catch return UNKNOWN_REQUEST_ID;
