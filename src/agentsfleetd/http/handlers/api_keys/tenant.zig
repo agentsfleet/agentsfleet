@@ -149,7 +149,7 @@ fn performCreate(
         .key_name = body.key_name,
     });
 
-    hx.ok(.created, .{
+    hx.okSensitive(.created, .{
         .id = id,
         .key_name = body.key_name,
         .key = raw_key,

@@ -15,6 +15,7 @@ const std = @import("std");
 const pg = @import("pg");
 const logging = @import("log");
 const crypto_store = @import("../secrets/crypto_store.zig");
+const secure_memory = @import("../secrets/secure_memory.zig");
 const error_codes = @import("../errors/error_registry.zig");
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
 
@@ -69,7 +70,7 @@ pub fn loadJson(
     key_name: []const u8,
 ) !std.json.Parsed(std.json.Value) {
     const plaintext = try crypto_store.load(alloc, conn, workspace_id, key_name);
-    defer alloc.free(plaintext);
+    defer secure_memory.freeBytes(alloc, plaintext);
 
     const parsed = std.json.parseFromSlice(std.json.Value, alloc, plaintext, .{}) catch |err| {
         // AEAD + validateObject make this unreachable for rows written via

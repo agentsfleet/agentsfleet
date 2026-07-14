@@ -139,7 +139,7 @@ pub fn innerCreateFleetKey(hx: Hx, req: *httpz.Request, workspace_id: []const u8
     });
 
     // Return the raw key once — callers must store it; it cannot be retrieved again.
-    hx.ok(.created, .{
+    hx.okSensitive(.created, .{
         .fleet_key_id = fleet_key_id,
         .workspace_id = workspace_id,
         .fleet_id = body.fleet_id,

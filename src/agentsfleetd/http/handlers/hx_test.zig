@@ -22,6 +22,8 @@
 const std = @import("std");
 const httpz = @import("httpz");
 const hx_mod = @import("hx.zig");
+const common = @import("common.zig");
+const sensitive_metrics = @import("../../observability/metrics_sensitive_memory.zig");
 const error_codes = @import("../../errors/error_registry.zig");
 
 const Hx = hx_mod.Hx;
@@ -192,4 +194,68 @@ test "Hx.ok and Hx.fail do not leak — safe under std.testing.allocator" {
     hx.fail(error_codes.ERR_INVALID_REQUEST, "repeat ok call above");
     // std.testing.allocator asserts at test-exit; absence of a leak report
     // is the success condition here.
+}
+
+test "Hx.okSensitive writes JSON once then erases the exact response buffer" {
+    const before = sensitive_metrics.snapshot();
+    var ht = httpz.testing.init(.{});
+    defer ht.deinit();
+
+    const hx = buildHx(ht.res, "req-sensitive");
+    hx.okSensitive(.ok, .{ .token = "minted-once", .expires_at_ms = 123 });
+
+    const expected = "{\"token\":\"minted-once\",\"expires_at_ms\":123}";
+    try std.testing.expectEqual(expected.len, ht.res.buffer.writer.buffer.len);
+    try std.testing.expect(allZero(ht.res.buffer.writer.buffered()));
+    const json = try ht.getJson();
+    try std.testing.expectEqualStrings("minted-once", json.object.get("token").?.string);
+    try std.testing.expectEqual(@as(i64, 123), json.object.get("expires_at_ms").?.integer);
+    const after = sensitive_metrics.snapshot();
+    try std.testing.expectEqual(before.response_erased_bytes_total + expected.len, after.response_erased_bytes_total);
+}
+
+test "Hx.okSensitive write failure closes connection and erases buffered bytes" {
+    const before = sensitive_metrics.snapshot();
+    var ht = httpz.testing.init(.{});
+    defer ht.deinit();
+    ht._ctx.close();
+
+    const hx = buildHx(ht.res, "req-sensitive-fail");
+    hx.okSensitive(.ok, .{ .token = "must-not-remain" });
+
+    try std.testing.expectEqual(.close, std.meta.activeTag(ht.res.conn.handover));
+    try std.testing.expect(allZero(ht.res.buffer.writer.buffered()));
+    const after = sensitive_metrics.snapshot();
+    try std.testing.expectEqual(before.response_write_failures_total + 1, after.response_write_failures_total);
+}
+
+test "all secret-bearing success responses route through the sensitive writer" {
+    const lease_source = @embedFile("../../fleet/service.zig");
+    const mint_source = @embedFile("runner/credentials_mint.zig");
+    const register_source = @embedFile("runner/register.zig");
+    const tenant_key_source = @embedFile("api_keys/tenant.zig");
+    const fleet_key_source = @embedFile("api_keys/fleet.zig");
+    const sensitive_call = "hx.okSensitive";
+
+    try std.testing.expect(std.mem.indexOf(u8, lease_source, sensitive_call) != null);
+    try std.testing.expect(std.mem.indexOf(u8, mint_source, sensitive_call) != null);
+    try std.testing.expect(std.mem.indexOf(u8, register_source, sensitive_call) != null);
+    try std.testing.expect(std.mem.indexOf(u8, tenant_key_source, sensitive_call) != null);
+    try std.testing.expect(std.mem.indexOf(u8, fleet_key_source, sensitive_call) != null);
+}
+
+test "secret request body remains borrowed through parse cleanup then erases" {
+    var body = "{\"api_key\":\"body-secret\"}".*;
+    const ParsedBody = struct { api_key: []const u8 };
+    const parsed = try std.json.parseFromSlice(ParsedBody, std.testing.allocator, &body, .{});
+
+    try std.testing.expectEqualStrings("body-secret", parsed.value.api_key);
+    parsed.deinit();
+    common.secureZeroRequestBody(&body);
+    try std.testing.expect(allZero(&body));
+}
+
+fn allZero(bytes: []const u8) bool {
+    for (bytes) |byte| if (byte != 0) return false;
+    return true;
 }

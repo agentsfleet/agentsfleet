@@ -81,7 +81,11 @@ pub fn innerRunnerCredentialsMint(hx: Hx, req: *httpz.Request) void {
         return;
     };
 
-    const parsed = parseMintRequest(hx, req) orelse return; // error already written
+    const raw_body = req.body() orelse {
+        hx.fail(ec.ERR_INVALID_REQUEST, "Request body required");
+        return;
+    };
+    const parsed = parseMintRequest(hx, raw_body) orelse return; // error already written
     defer parsed.deinit();
 
     var inputs = loadMintInputs(hx, runner_id, parsed.value) orelse return; // error already written
@@ -91,11 +95,7 @@ pub fn innerRunnerCredentialsMint(hx: Hx, req: *httpz.Request) void {
 
 /// Parse the mint request body. Writes the typed error and returns null on any
 /// failure; the caller just returns.
-fn parseMintRequest(hx: Hx, req: *httpz.Request) ?std.json.Parsed(protocol.MintCredentialRequest) {
-    const raw_body = req.body() orelse {
-        hx.fail(ec.ERR_INVALID_REQUEST, "Request body required");
-        return null;
-    };
+fn parseMintRequest(hx: Hx, raw_body: []const u8) ?std.json.Parsed(protocol.MintCredentialRequest) {
     return std.json.parseFromSlice(protocol.MintCredentialRequest, hx.alloc, raw_body, .{}) catch {
         hx.fail(ec.ERR_INVALID_REQUEST, "Malformed mint request body");
         return null;
@@ -295,7 +295,7 @@ fn dispose(id: ?integration.Id, result: integration.MintResult) Disposition {
 /// echoed into a frame (VLT).
 fn respond(hx: Hx, id: ?integration.Id, result: integration.MintResult) void {
     switch (result) {
-        .ok => |minted| hx.ok(.ok, protocol.MintCredentialResponse{
+        .ok => |minted| hx.okSensitive(.ok, protocol.MintCredentialResponse{
             .token = minted.token,
             .expires_at_ms = minted.expires_at_ms,
         }),
