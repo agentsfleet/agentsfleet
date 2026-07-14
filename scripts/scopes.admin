@@ -1,0 +1,1 @@
+"scopes":"fleet:admin secret:write apikey:admin fleetkey:write grant:write connector:write billing:read approval:resolve workspace:admin library:write runner:enroll runner:write stream:read model:admin platform-key:admin platform-library:write workspace:any"

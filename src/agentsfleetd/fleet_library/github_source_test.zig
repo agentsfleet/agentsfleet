@@ -108,6 +108,32 @@ test "fromTarBytes rejects an over-cap file" {
     try testing.expectError(error.TarballTooLarge, github_source.fromTarBytes(alloc, tar));
 }
 
+// parseOwnerRepo is the single home for "what counts as a repository" — the
+// import path and the catalog PATCH both ask it, so these pins hold for both.
+test "parseOwnerRepo splits a well-formed owner/repo" {
+    const parsed = github_source.parseOwnerRepo("agentsfleet/github-pr-reviewer") orelse
+        return error.TestUnexpectedResult;
+    try testing.expectEqualStrings("agentsfleet", parsed.owner);
+    try testing.expectEqualStrings("github-pr-reviewer", parsed.repo);
+}
+
+test "parseOwnerRepo rejects everything that is not exactly owner/repo" {
+    // No slash; empty halves; a second slash; traversal; injection charset.
+    const bad = [_][]const u8{
+        "no-slash", "owner/", "/repo", "a/b/c", "../etc",
+        "owner/re po", "owner/re:po", ".", "a/..",
+    };
+    for (bad) |candidate| {
+        try testing.expect(github_source.parseOwnerRepo(candidate) == null);
+    }
+}
+
+test "parseOwnerRepo enforces the per-segment length ceiling" {
+    const long = "a" ** 101;
+    const candidate = "owner/" ++ long;
+    try testing.expect(github_source.parseOwnerRepo(candidate) == null);
+}
+
 test "validSegment accepts safe segments and rejects injection attempts" {
     try testing.expect(github_source.validSegment("github-pr-reviewer"));
     try testing.expect(github_source.validSegment("main"));

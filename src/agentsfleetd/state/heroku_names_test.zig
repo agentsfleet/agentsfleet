@@ -41,7 +41,10 @@ test "heroku_names: generates varied names" {
     while (i < 32) : (i += 1) {
         const name = try heroku_names.generate(alloc);
         errdefer alloc.free(name);
-        try seen.put(name, {});
+        // put() on an existing key keeps the map's original key string — a
+        // duplicate draw (seed lottery) must free its own copy or it leaks.
+        const gop = try seen.getOrPut(name);
+        if (gop.found_existing) alloc.free(name);
     }
     try std.testing.expect(seen.count() > 1);
 }

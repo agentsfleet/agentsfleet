@@ -50,6 +50,9 @@ pub const PlatformInsertParams = struct {
     description: []const u8,
     /// The onboarding source reference (e.g. "owner/repo"), kept as provenance.
     source_repo: []const u8,
+    /// The ref the bundle was actually fetched at. Null ⇒ the default branch.
+    /// Stored so the row never claims a ref its content did not come from.
+    source_ref: ?[]const u8 = null,
     content_hash: []const u8,
     skill_markdown: []const u8,
     trigger_markdown: ?[]const u8,
@@ -138,7 +141,7 @@ pub fn insertOrUpdatePlatform(conn: *pg.Conn, alloc: std.mem.Allocator, p: Platf
         p.description,
         p.source_repo,
         SOURCE_PATH_ROOT,
-        SOURCE_REF_DEFAULT,
+        p.source_ref orelse SOURCE_REF_DEFAULT,
         p.requirements_json,
         EMPTY_REASONS_JSON,
         VISIBILITY_DRAFT,

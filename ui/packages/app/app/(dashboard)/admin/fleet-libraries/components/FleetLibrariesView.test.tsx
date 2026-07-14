@@ -168,7 +168,7 @@ describe("FleetLibrariesView", () => {
     });
     await userEvent.keyboard("{Escape}");
 
-    await userEvent.click(screen.getByRole("button", { name: "Add fleet" }));
+    await userEvent.click(screen.getByRole("button", { name: "Create fleet library" }));
     await waitFor(() => {
       expect((screen.getByLabelText("Repository") as HTMLInputElement).value).toBe("");
     });
@@ -216,10 +216,10 @@ describe("FleetLibrariesView", () => {
     renderView([DRAFT]);
 
     await userEvent.click(screen.getByRole("button", { name: "Edit" }));
-    expect(await screen.findByText("Edit install-gate copy")).toBeTruthy();
+    expect(await screen.findByText("Edit fleet library")).toBeTruthy();
 
     await userEvent.click(screen.getByRole("button", { name: /^cancel$/i }));
-    await waitFor(() => expect(screen.queryByText("Edit install-gate copy")).toBeNull());
+    await waitFor(() => expect(screen.queryByText("Edit fleet library")).toBeNull());
   });
 
   it("unpublishes a published fleet through the patch action", async () => {
@@ -309,4 +309,26 @@ describe("FleetLibrariesView", () => {
     const [, props] = captureProductEventMock.mock.calls[0] ?? [];
     expect(props).toMatchObject({ action: "unpublished", outcome: "success" });
   });
+
+  // ── Dimension 5.1 — the repository cell links only when it can ────────────
+
+  it("links the repository to GitHub when the source is owner/repo shaped", async () => {
+    renderView([entry({ id: "linked", source_repo: "agentsfleet/platform-ops" })]);
+
+    const link = await screen.findByRole("link", { name: /agentsfleet\/platform-ops/ });
+    expect(link.getAttribute("href")).toBe("https://github.com/agentsfleet/platform-ops");
+    // Never a tab-hijack: external link opens away without a window handle.
+    expect(link.getAttribute("rel")).toContain("noopener");
+  });
+
+  // A template- or upload-sourced row carries a source that is not a GitHub
+  // slug. Linking it would point at a repository that does not exist — inert
+  // text is the honest rendering.
+  it("renders a non-slug source as inert text, never a broken link", async () => {
+    renderView([entry({ id: "pasted", source_repo: "platform/template:ops" })]);
+
+    expect(await screen.findByText("platform/template:ops")).toBeTruthy();
+    expect(screen.queryByRole("link", { name: /platform\/template:ops/ })).toBeNull();
+  });
 });
+

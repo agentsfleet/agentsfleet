@@ -37,6 +37,16 @@ afterEach(() => {
   cleanup();
 });
 
+// The row is the container; the link inside it is the navigation affordance. The
+// row carries `data-state` and holds the pulse dot, so a copy button can live in
+// the row without being an interactive child of an anchor (invalid HTML) that
+// swallows its own click. Ask the link for its row.
+function rowOf(link: HTMLElement): HTMLElement {
+  const row = link.closest("[data-state]");
+  if (!row) throw new Error("fleet row not found for link");
+  return row as HTMLElement;
+}
+
 describe("FleetsList component", () => {
   const baseFleets = [
     { id: "zom_1", name: "alpha-bot", status: "active", created_at: 1745280000000, updated_at: 1745280000000 },
@@ -152,9 +162,9 @@ describe("FleetsList component", () => {
         { id: "zom_3", name: "gamma-bot", status: "killed", created_at: 1745280002000, updated_at: 1745280002000 },
       ],
     });
-    const liveRow = screen.getByRole("link", { name: /alpha-bot/i });
-    const parkedRow = screen.getByRole("link", { name: /beta-bot/i });
-    const failedRow = screen.getByRole("link", { name: /gamma-bot/i });
+    const liveRow = rowOf(screen.getByRole("link", { name: /alpha-bot/i }));
+    const parkedRow = rowOf(screen.getByRole("link", { name: /beta-bot/i }));
+    const failedRow = rowOf(screen.getByRole("link", { name: /gamma-bot/i }));
     expect(liveRow.getAttribute("data-state")).toBe("live");
     expect(parkedRow.getAttribute("data-state")).toBe("parked");
     expect(failedRow.getAttribute("data-state")).toBe("failed");
@@ -172,7 +182,7 @@ describe("FleetsList component", () => {
       updated_at: 1745280000000 + i,
     }));
     await renderList({ initialFleets: sixLive });
-    const rows = screen.getAllByRole("link", { name: /live-/i });
+    const rows = screen.getAllByRole("link", { name: /live-/i }).map(rowOf);
     expect(rows).toHaveLength(6);
     const livePulses = rows.filter((r) => r.querySelector("[data-live]"));
     expect(livePulses).toHaveLength(5);
@@ -189,11 +199,11 @@ describe("FleetsList component", () => {
         { id: "zom_4", name: "delta", status: "stopped", created_at: 1745280003000, updated_at: 1745280003000 },
       ],
     });
-    expect(screen.getByRole("link", { name: /alpha/ }).getAttribute("data-state")).toBe("live");
-    expect(screen.getByRole("link", { name: /beta/ }).getAttribute("data-state")).toBe("parked");
-    expect(screen.getByRole("link", { name: /gamma/ }).getAttribute("data-state")).toBe("failed");
+    expect(rowOf(screen.getByRole("link", { name: /alpha/ })).getAttribute("data-state")).toBe("live");
+    expect(rowOf(screen.getByRole("link", { name: /beta/ })).getAttribute("data-state")).toBe("parked");
+    expect(rowOf(screen.getByRole("link", { name: /gamma/ })).getAttribute("data-state")).toBe("failed");
     // `stopped` is parked, not failed — only `killed` maps to the failed dot.
-    expect(screen.getByRole("link", { name: /delta/ }).getAttribute("data-state")).toBe("parked");
+    expect(rowOf(screen.getByRole("link", { name: /delta/ })).getAttribute("data-state")).toBe("parked");
   });
 
   // An installing fleet always surfaces its installing state until it resolves
@@ -206,7 +216,7 @@ describe("FleetsList component", () => {
         { id: "zom_a", name: "live-bot", status: "active", created_at: 1745280001000, updated_at: 1745280001000 },
       ],
     });
-    const installingRow = screen.getByRole("link", { name: /fresh-bot/i });
+    const installingRow = rowOf(screen.getByRole("link", { name: /fresh-bot/i }));
     expect(installingRow.getAttribute("data-state")).toBe("installing");
     // A live indicator marks it as in-flight (not a dead parked dot).
     expect(installingRow.querySelector("[data-live]")).toBeTruthy();

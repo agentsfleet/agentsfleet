@@ -38,27 +38,27 @@ const ENTRY = {
 // The dialog is controlled by the page now — success closes it and the page
 // revalidates, so there is no lifted "here is what you onboarded" callback. This
 // harness stands in for the page: it owns `open`, so closing is observable.
-function Harness({ prefillRepo }: { prefillRepo?: string }) {
+function Harness({ prefillRepo, prefillRef }: { prefillRepo?: string; prefillRef?: string }) {
   const [open, setOpen] = useState(false);
   return (
     <TooltipProvider>
       <Button type="button" onClick={() => setOpen(true)}>
         open
       </Button>
-      <AddFleetDialog open={open} onOpenChange={setOpen} prefillRepo={prefillRepo} />
+      <AddFleetDialog open={open} onOpenChange={setOpen} prefillRepo={prefillRepo} prefillRef={prefillRef} />
     </TooltipProvider>
   );
 }
 
-function renderDialog(prefillRepo?: string) {
-  render(<Harness prefillRepo={prefillRepo} />);
+function renderDialog(prefillRepo?: string, prefillRef?: string) {
+  render(<Harness prefillRepo={prefillRepo} prefillRef={prefillRef} />);
 }
 
 async function openAndSubmit(user: ReturnType<typeof userEvent.setup>, repo: string) {
   await user.click(screen.getByRole("button", { name: /^open$/i }));
   const input = await screen.findByLabelText(/repository/i);
   if (repo) await user.type(input, repo);
-  await user.click(screen.getByRole("button", { name: /^add fleet$/i }));
+  await user.click(screen.getByRole("button", { name: /^create fleet library$/i }));
 }
 
 beforeEach(() => {
@@ -208,7 +208,7 @@ describe("AddFleetDialog", () => {
 
     // A slow importer (GitHub fetch + validate + object-store write) must not let
     // the operator fire a second add on top of the first.
-    const submit = await screen.findByRole("button", { name: /adding fleet|add fleet$/i });
+    const submit = await screen.findByRole("button", { name: /creating fleet library|create fleet library$/i });
     await waitFor(() => expect(submit.hasAttribute("disabled")).toBe(true));
     expect(screen.getByRole("button", { name: /^cancel$/i }).hasAttribute("disabled")).toBe(true);
 
@@ -273,4 +273,35 @@ describe("AddFleetDialog", () => {
     const [, props] = captureProductEventMock.mock.calls[0] ?? [];
     expect(props).toEqual({ source_kind: "github", outcome: "failure" });
   });
+
+  // The Fetch-update path pins the row's stored ref, so a branch or tag the
+  // operator set via the pencil is what the refetch actually pulls — never
+  // silently the default branch.
+  it("fetch-update sends the row's stored ref alongside the repository", async () => {
+    const user = userEvent.setup();
+    onboardPlatformLibraryActionMock.mockResolvedValueOnce({ ok: true, data: ENTRY });
+    renderDialog(REPO, "v2.1.0");
+
+    // Prefilled path: submit what the row provided, type nothing.
+    await openAndSubmit(user, "");
+
+    await waitFor(() =>
+      expect(onboardPlatformLibraryActionMock).toHaveBeenCalledWith(
+        expect.objectContaining({ source_ref: REPO, ref: "v2.1.0" }),
+      ),
+    );
+  });
+
+  it("a fresh add sends no ref — the default branch is the server's call", async () => {
+    const user = userEvent.setup();
+    onboardPlatformLibraryActionMock.mockResolvedValueOnce({ ok: true, data: ENTRY });
+    renderDialog();
+
+    await openAndSubmit(user, REPO);
+
+    await waitFor(() => expect(onboardPlatformLibraryActionMock).toHaveBeenCalled());
+    const body = onboardPlatformLibraryActionMock.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect("ref" in body).toBe(false);
+  });
 });
+

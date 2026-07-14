@@ -103,6 +103,10 @@ export type OnboardLibraryEntryRequest =
   | {
       source_kind: typeof SOURCE_KIND_GITHUB;
       source_ref: string;
+      // Branch or tag to fetch at; absent fetches the default branch. The
+      // catalog's Fetch-update sends the row's stored ref, so a PATCH-pinned
+      // ref is honored by the next fetch rather than silently reset (M130).
+      ref?: string;
       // Platform tier only: overwrite a catalog id already owned by a DIFFERENT
       // repository. Absent means a collision is a 409 the operator must confirm.
       replace?: boolean;
@@ -136,9 +140,9 @@ export type OnboardedPlatformLibraryEntry = OnboardedLibraryEntryBase & { visibi
 //
 // The publish lifecycle as the server stores it. Spelled verbatim in
 // src/agentsfleetd/fleet_library/library_store.zig and in
-// schema/029_fleet_library_draft_normalize.sql; SQL cannot import a Zig constant
-// and TypeScript cannot import either, so the three must agree by hand. A drift
-// silently hides or exposes fleets, which is why an integration test pins it.
+// schema/023_fleet_library.sql; SQL cannot import a Zig constant and TypeScript
+// cannot import either, so the three must agree by hand. A drift silently hides
+// or exposes fleets, which is why an integration test pins it.
 export const CATALOG_DRAFT = "draft" as const;
 export const CATALOG_PUBLIC = "public" as const;
 export type CatalogVisibility = typeof CATALOG_DRAFT | typeof CATALOG_PUBLIC;
@@ -163,27 +167,54 @@ export type PlatformCatalogEntry = {
 
 export type PlatformCatalogResponse = { entries: PlatformCatalogEntry[] };
 
-// The three states a row can be in, derived — never a wire field. Two sources for
+// The four states a row can be in, derived — never a wire field. Two sources for
 // one fact is how a table starts lying.
 export const CATALOG_STATUS_NO_BUNDLE = "no_bundle" as const;
 export const CATALOG_STATUS_DRAFT = "draft" as const;
 export const CATALOG_STATUS_PUBLISHED = "published" as const;
+/// Public, but holding no bundle. The gallery and install queries both require
+/// `content_hash IS NOT NULL`, so such a row is invisible and uninstallable —
+/// calling it "published" asserts the opposite of what the system does.
+export const CATALOG_STATUS_BROKEN = "broken" as const;
 export type CatalogStatus =
   | typeof CATALOG_STATUS_NO_BUNDLE
   | typeof CATALOG_STATUS_DRAFT
-  | typeof CATALOG_STATUS_PUBLISHED;
+  | typeof CATALOG_STATUS_PUBLISHED
+  | typeof CATALOG_STATUS_BROKEN;
 
-/// A published row is always live. Otherwise the bundle decides: a row whose
-/// bundle was never fetched has nothing to publish, and says so.
+/// Total over both axes — visibility AND the bundle, never visibility alone.
+/// The API refuses to create the public-without-bundle row (publishing checks
+/// the hash in SQL), but a hand-inserted one exists in the wild, and a surface
+/// that assumes it away lies about it.
+///
+/// "Has a bundle" means exactly what the server means: `content_hash IS NOT
+/// NULL`. An empty-string hash counts as a bundle here BECAUSE it counts as one
+/// in every server guard — diverging (treating "" as bundle-less) would hide a
+/// Publish the API accepts, which is the exact class of lie this function exists
+/// to end.
 export function catalogStatus(entry: PlatformCatalogEntry): CatalogStatus {
-  if (entry.visibility === CATALOG_PUBLIC) return CATALOG_STATUS_PUBLISHED;
-  return entry.content_hash ? CATALOG_STATUS_DRAFT : CATALOG_STATUS_NO_BUNDLE;
+  const hasBundle = entry.content_hash !== null;
+  if (entry.visibility === CATALOG_PUBLIC) {
+    return hasBundle ? CATALOG_STATUS_PUBLISHED : CATALOG_STATUS_BROKEN;
+  }
+  return hasBundle ? CATALOG_STATUS_DRAFT : CATALOG_STATUS_NO_BUNDLE;
 }
 
 // A partial update. An absent field is left untouched, so editing the description
 // never blanks the credential copy.
+//
+// `id` is deliberately absent and stays absent: it is the primary key, and a
+// workspace install references it as `platform_library_id`. Moving it would
+// orphan every install.
+//
+// Changing `source_repo` or `source_ref` invalidates the stored bundle — it was
+// built from the OLD repository — so the server nulls `content_hash` and stages
+// the row back to draft. Re-sending an unchanged value does neither.
 export type PlatformCatalogPatch = {
+  name?: string;
   description?: string;
+  source_repo?: string;
+  source_ref?: string;
   required_credentials_reasons?: Record<string, string>;
   published?: boolean;
 };

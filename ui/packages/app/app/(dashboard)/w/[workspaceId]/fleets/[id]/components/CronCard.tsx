@@ -3,7 +3,14 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { CronExpressionParser } from "cron-parser";
-import { Card, CardContent, CardHeader, CardTitle, Time } from "@agentsfleet/design-system";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CopyButton,
+  Time,
+} from "@agentsfleet/design-system";
 import type { FleetTrigger } from "@/lib/types";
 import { workspacePath } from "@/lib/workspace-routes";
 
@@ -51,8 +58,12 @@ export default function CronCard({ trigger, workspaceId, fleetId }: Props) {
   return (
     <Card data-testid="cron-card" className="bg-card">
       <CardHeader className="gap-1">
-        <CardTitle className="font-mono text-base">
-          Cron — {trigger.schedule}
+        {/* Every other trigger type in this accordion offers a copy; cron was the
+            one that did not, and its schedule is the field most likely to be
+            transcribed into another tool. */}
+        <CardTitle className="flex items-center gap-1 font-mono text-base">
+          <span>Cron — {trigger.schedule}</span>
+          <CopyButton value={trigger.schedule} label={`Copy schedule: ${trigger.schedule}`} />
         </CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col gap-3">

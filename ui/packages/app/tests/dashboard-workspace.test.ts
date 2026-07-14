@@ -228,7 +228,9 @@ describe("WorkspaceSwitcher component", () => {
     });
     await renderSwitcher();
     await user.click(screen.getByTestId("workspace-new"));
-    await user.type(screen.getByTestId("workspace-name-input"), "inline-prod");
+    // findByTestId, not getByTestId — the input mounts on the dropdown item's
+    // state flip, and a sync query races that render under a loaded shuffle run.
+    await user.type(await screen.findByTestId("workspace-name-input"), "inline-prod");
     await user.click(screen.getByTestId("workspace-create-submit"));
     await waitFor(() =>
       expect(screen.getByText("Workspace created: inline-prod.")).toBeTruthy(),

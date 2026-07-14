@@ -9,7 +9,7 @@
     "start": "next start",
     "typecheck": "node ./node_modules/@typescript/native/bin/tsc --noEmit",
     "lint": "oxlint --type-aware .",
-    "test": "vitest run tests/*.test.ts tests/*.test.tsx lib/*.test.ts lib/**/*.test.ts 'app/(dashboard)' --testTimeout 60000",
+    "test": "vitest run",
     "test:smoke": "vitest run tests/smoke.test.ts",
     "test:e2e": "bunx playwright test",
     "test:e2e:smoke": "bunx playwright test tests/e2e/smoke.spec.ts",
@@ -18,7 +18,7 @@
     "test:e2e:acceptance:dev": "BASE_URL=https://app-dev.agentsfleet.net NEXT_PUBLIC_API_URL=https://api-dev.agentsfleet.net bunx playwright test --config=playwright.acceptance.config.ts",
     "test:e2e:acceptance:prod": "BASE_URL=https://app.agentsfleet.net NEXT_PUBLIC_API_URL=https://api.agentsfleet.net bunx playwright test --config=playwright.acceptance.config.ts",
     "qa": "bun run test && bun run test:e2e",
-    "test:coverage": "vitest run tests/*.test.ts tests/*.test.tsx lib/*.test.ts lib/**/*.test.ts 'app/(dashboard)' --coverage --testTimeout 60000",
+    "test:coverage": "vitest run --coverage",
     "qa:smoke": "bun run test:smoke && bun run test:e2e:smoke"
   },
   "dependencies": {

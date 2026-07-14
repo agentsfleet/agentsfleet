@@ -167,6 +167,22 @@ fn resolveUrl(alloc: std.mem.Allocator, source: Source) (Error || std.mem.Alloca
     }
 }
 
+pub const OwnerRepo = struct { owner: []const u8, repo: []const u8 };
+
+/// Split and validate an `owner/repo` source: exactly one '/', and both halves a
+/// valid segment. The single home for the rule — the import path asks it at fetch
+/// time and the catalog PATCH asks it at write time, so what counts as a
+/// repository cannot drift between adding a fleet and repointing one. Null when
+/// the value is not a repository. Pure; unit-tested.
+pub fn parseOwnerRepo(source_repo: []const u8) ?OwnerRepo {
+    const slash = std.mem.indexOfScalar(u8, source_repo, '/') orelse return null;
+    const owner = source_repo[0..slash];
+    const repo = source_repo[slash + 1 ..];
+    if (std.mem.indexOfScalar(u8, repo, '/') != null) return null;
+    if (!validSegment(owner) or !validSegment(repo)) return null;
+    return .{ .owner = owner, .repo = repo };
+}
+
 /// A single URL path segment: non-empty, length-capped, charset
 /// `[A-Za-z0-9._-]`, never "." or "..". Rejecting '/' and ':' means the segment
 /// cannot inject a host or escape the path. Pure; unit-tested.

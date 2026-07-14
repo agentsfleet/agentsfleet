@@ -82,6 +82,48 @@ describe("dashboard overview page", () => {
     await expect(Page()).rejects.toThrow("redirect:/w/ws_1");
   });
 
+  it("StatusTiles surfaces Installing and Killed tiles only when they have fleets to report", async () => {
+    const { StatusTiles } = await import("../app/(dashboard)/w/[workspaceId]/page");
+    // The bug this pins: installing/killed fleets used to appear in NO tile at
+    // all — present in the workspace, absent from the summary.
+    listFleetsMock.mockResolvedValue({
+      items: [
+        { id: "z1", name: "a", status: "active", created_at: "2026-04-22T00:00:00Z" },
+        { id: "z2", name: "b", status: "installing", created_at: "2026-04-22T00:00:00Z" },
+        { id: "z3", name: "c", status: "killed", created_at: "2026-04-22T00:00:00Z" },
+      ],
+      total: 3,
+      cursor: null,
+    });
+    const m = renderToStaticMarkup(React.createElement(React.Fragment, null, await StatusTiles({ workspaceId: "ws_1" })));
+    // The harness stubs StatusCard to `label: count`, so the honest assertions
+    // are the tiles' presence and their counts — sublabel copy is the real
+    // StatusCard's contract, tested in the design system.
+    expect(m).toContain("Installing: 1");
+    expect(m).toContain("Killed: 1");
+    // Every status here is recognized, so the Unknown tile must stay hidden — a
+    // permanent zero tile would read as a broken workspace.
+    expect(m).not.toContain("Unknown");
+  });
+
+  it("StatusTiles surfaces an Unknown tile when the wire carries a status this build does not recognize", async () => {
+    const { StatusTiles } = await import("../app/(dashboard)/w/[workspaceId]/page");
+    // countFleets buckets an unrecognized wire status (a backend that shipped
+    // ahead of this client) into `unknown`; the dashboard must render that
+    // bucket, or the fleet is present in the workspace and absent from the
+    // summary — the exact missing-tile bug the rollup exists to prevent.
+    listFleetsMock.mockResolvedValue({
+      items: [
+        { id: "z1", name: "a", status: "active", created_at: "2026-04-22T00:00:00Z" },
+        { id: "z2", name: "b", status: "hibernating", created_at: "2026-04-22T00:00:00Z" },
+      ],
+      total: 2,
+      cursor: null,
+    });
+    const m = renderToStaticMarkup(React.createElement(React.Fragment, null, await StatusTiles({ workspaceId: "ws_1" })));
+    expect(m).toContain("Unknown: 1");
+  });
+
   it("StatusTiles renders Live/Paused/Stopped tiles + balance from the fleet list", async () => {
     const { StatusTiles } = await import("../app/(dashboard)/w/[workspaceId]/page");
     // beforeEach seeds 1 active / 1 paused / 1 stopped; an exhausted balance

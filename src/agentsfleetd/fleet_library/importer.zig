@@ -56,6 +56,9 @@ pub const SupportFileManifest = struct {
 pub const ImportBody = struct {
     source_kind: []const u8,
     source_ref: []const u8 = "",
+    /// The branch/tag a github source was fetched at; null ⇒ default branch.
+    /// Carried so the store records the ref the content actually came from.
+    ref: ?[]const u8 = null,
     skill_markdown: []const u8,
     trigger_markdown: ?[]const u8 = null,
     support_files: []const SupportFile = &.{},

@@ -78,7 +78,7 @@ describe("app shell navigation", () => {
     expect(markup).not.toContain('href="/admin/fleet-libraries"');
   });
 
-  it("appends Fleet libraries only for platform-library:write", async () => {
+  it("appends Fleet library only for platform-library:write", async () => {
     const { default: Shell } = await import("../components/layout/Shell");
     mocks.usePathname.mockReturnValue("/");
     const withScope = renderToStaticMarkup(
@@ -88,7 +88,7 @@ describe("app shell navigation", () => {
         React.createElement("div"),
       ),
     );
-    expect(withScope).toContain("Fleet libraries");
+    expect(withScope).toContain("Fleet library");
     expect(withScope).toContain('href="/admin/fleet-libraries"');
 
     const otherScope = renderToStaticMarkup(

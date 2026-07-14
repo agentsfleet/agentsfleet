@@ -25,6 +25,7 @@ import {
 } from "@/app/(dashboard)/w/[workspaceId]/events/actions";
 import type { EventRow, EventsPage } from "@/lib/api/events";
 import { presentErrorString } from "@/lib/errors";
+import { formatMs } from "@/lib/utils";
 
 type Scope =
   | { kind: "fleet"; workspaceId: string; fleetId: string }
@@ -187,9 +188,25 @@ function EventCard({ row, showFleetId }: { row: EventRow; showFleetId: boolean }
           ) : row.failure_label ? (
             <p className="text-sm text-warning">Reason: {failureLabel(row.failure_label)}</p>
           ) : null}
+          <EventCost tokens={row.tokens} wallMs={row.wall_ms} />
         </CardContent>
       </article>
     </Card>
+  );
+}
+
+// What the event COST. `tokens` and `wall_ms` have always ridden the wire on
+// every EventRow, and until now nothing in the app rendered either of them —
+// fetched on every page load and dropped on the floor. They are the only per-event
+// cost signal there is; without them, "why is my balance moving" is answerable
+// only from the tenant-wide billing table, which cannot name the fleet.
+function EventCost({ tokens, wallMs }: { tokens: number | null; wallMs: number | null }) {
+  if (tokens === null && wallMs === null) return null;
+  return (
+    <p className="mt-xs flex gap-md font-mono text-xs tabular-nums text-muted-foreground">
+      {tokens !== null ? <span>{tokens.toLocaleString()} tok</span> : null}
+      {wallMs !== null ? <span>{formatMs(wallMs)}</span> : null}
+    </p>
   );
 }
 

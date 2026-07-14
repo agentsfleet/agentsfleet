@@ -137,6 +137,7 @@ fn insertPlatform(hx: Hx, body: importer.ImportBody, prepared: importer.Prepared
         .name = prepared.name,
         .description = prepared.description,
         .source_repo = body.source_ref,
+        .source_ref = body.ref,
         .content_hash = prepared.content_hash,
         .skill_markdown = body.skill_markdown,
         .trigger_markdown = body.trigger_markdown,

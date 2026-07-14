@@ -51,7 +51,7 @@ describe("dashboard segment loading states", () => {
     {
       name: "admin/fleet-libraries",
       importer: () => import("../app/(dashboard)/admin/fleet-libraries/loading"),
-      expectsTitle: "Fleet libraries",
+      expectsTitle: "Fleet library",
     },
     {
       name: "integrations",

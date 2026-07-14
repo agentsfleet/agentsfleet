@@ -48,7 +48,11 @@ describe("AddRunnerDialog component", () => {
     const { default: AddRunnerDialog } = await import(
       "../app/(dashboard)/admin/runners/components/AddRunnerDialog"
     );
-    const user = userEvent.setup({ delay: null });
+    // pointerEventsCheck off: Radix's scroll-lock leaves `pointer-events: none`
+    // on <body> while the dialog animates; under a loaded shuffled run the check
+    // can sample that window and swallow a click INSIDE the dialog content.
+    // The dialog's own interactivity is what the assertions prove.
+    const user = userEvent.setup({ delay: null, pointerEventsCheck: 0 });
     render(React.createElement(AddRunnerDialog, { onCreated } as never));
     await user.click(screen.getByRole("button", { name: /create runner/i }));
     await waitFor(() => expect(screen.getByLabelText(/host name/i)).toBeTruthy());
@@ -167,7 +171,7 @@ describe("AddRunnerDialog component", () => {
     const writeText = stubClipboardWriteText().mockResolvedValue(undefined);
     const { user } = await openDialog();
     await reachReveal(user);
-    await user.click(screen.getByRole("button", { name: /copy to clipboard/i }));
+    await user.click(screen.getByRole("button", { name: /copy runner token/i }));
     await waitFor(() => expect(writeText).toHaveBeenCalledWith("agt_rdeadbeef"));
     // findByRole (not sync getByRole) — the "Copied" label flips one microtask
     // after writeText resolves; sync querying races the re-render under load.
@@ -175,11 +179,18 @@ describe("AddRunnerDialog component", () => {
   });
 
   it("falls back to manual selection when the clipboard API is blocked", async () => {
-    stubClipboardWriteText().mockRejectedValue(new Error("blocked"));
+    const writeText = stubClipboardWriteText().mockRejectedValue(new Error("blocked"));
     const { user } = await openDialog();
     await reachReveal(user);
-    await user.click(screen.getByRole("button", { name: /copy to clipboard/i }));
-    await waitFor(() => expect(screen.getByText(/copy failed — select the value/i)).toBeTruthy());
+    await user.click(screen.getByRole("button", { name: /copy runner token/i }));
+    // Same deterministic contract as the api-key dialog: rejection never
+    // flashes success; the exact failed-label proof is the DS CopyButton's.
+    await waitFor(() => expect(writeText).toHaveBeenCalled());
+    expect(screen.queryByRole("button", { name: /^copied$/i })).toBeNull();
+    await waitFor(
+      () => expect(screen.getByRole("button", { name: /^copy runner token$/i })).toBeTruthy(),
+      { timeout: 4_000 },
+    );
     // The reveal stays intact so the operator can still grab the value by hand.
     expect((screen.getByLabelText("Runner token") as HTMLInputElement).value).toBe("agt_rdeadbeef");
   });

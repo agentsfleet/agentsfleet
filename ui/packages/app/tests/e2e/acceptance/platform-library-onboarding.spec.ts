@@ -25,7 +25,7 @@ import { workspaceUrlPattern } from "./fixtures/nav";
 import { FIXTURE_KEY } from "./fixtures/constants";
 
 const ADMIN_PATH = "/admin/fleet-libraries";
-const NAV_LABEL = "Fleet libraries";
+const NAV_LABEL = "Fleet library";
 
 // Published at agentsfleet/<id>. The catalog id is the bundle's SKILL.md
 // frontmatter name — not the repository path the operator types.
@@ -42,9 +42,9 @@ const IMPORT_TIMEOUT = 60_000;
 // refetch path, not a collision, so a re-run of this suite is safe.
 async function addSampleFleet(page: Page) {
   await page.goto(ADMIN_PATH);
-  await page.getByRole("button", { name: /add fleet/i }).click();
+  await page.getByRole("button", { name: /create fleet library/i }).click();
   await page.getByLabel(/repository/i).fill(SAMPLE_REPO);
-  await page.getByRole("button", { name: /^add fleet$/i }).click();
+  await page.getByRole("button", { name: /^create fleet library$/i }).click();
   await expect(page.getByText(SAMPLE_ENTRY_ID)).toBeVisible({ timeout: IMPORT_TIMEOUT });
 }
 
@@ -81,9 +81,9 @@ test.describe("platform fleet catalog", () => {
     await signInAs(page, FIXTURE_KEY.operator);
     await page.goto(ADMIN_PATH);
 
-    await page.getByRole("button", { name: /add fleet/i }).click();
+    await page.getByRole("button", { name: /create fleet library/i }).click();
     await page.getByLabel(/repository/i).fill(MISSING_REPO);
-    await page.getByRole("button", { name: /^add fleet$/i }).click();
+    await page.getByRole("button", { name: /^create fleet library$/i }).click();
 
     // The dialog stays mounted with the failure shown — the operator corrects the
     // repository in place rather than losing what they typed.
@@ -150,7 +150,7 @@ test.describe("platform fleet catalog", () => {
 
     // Re-fetch the bundle from the same repository — the update path.
     await page.getByRole("button", { name: /fetch update/i }).click();
-    await page.getByRole("button", { name: /^add fleet$/i }).click();
+    await page.getByRole("button", { name: /^create fleet library$/i }).click();
     await expect(page.getByText(SAMPLE_ENTRY_ID)).toBeVisible({ timeout: IMPORT_TIMEOUT });
 
     // The operator's copy is still there. The server keeps `description` out of the
@@ -158,4 +158,42 @@ test.describe("platform fleet catalog", () => {
     await page.getByRole("button", { name: /^edit$/i }).click();
     await expect(page.getByLabel(/^description$/i)).toHaveValue(COPY);
   });
+
+  // M130 — the recovery path the milestone exists for. A mistyped repository is
+  // corrected IN PLACE: the repoint discards the stored bundle and withdraws the
+  // row (a fleet must never advertise a source it is not serving), then a refetch
+  // and republish bring it back — with the operator's curated copy intact the
+  // whole way, because none of this ever deleted the row.
+  test("the operator corrects a mistyped repository in place and the fleet returns", async ({
+    page,
+  }) => {
+    await signInAs(page, FIXTURE_KEY.operator);
+    await addSampleFleet(page);
+    await page.getByRole("button", { name: /^publish$/i }).click();
+    await expect(page.getByText("Published")).toBeVisible({ timeout: 30_000 });
+
+    // Repoint to the wrong repository. The dialog says what this costs BEFORE save.
+    await page.getByRole("button", { name: /^edit$/i }).click();
+    await page.getByLabel(/^repository$/i).fill(MISSING_REPO);
+    await expect(page.getByTestId("source-warning")).toBeVisible();
+    await page.getByRole("button", { name: /^save$/i }).click();
+
+    // Server truth: bundle discarded, row withdrawn. Not an error — an honest state.
+    await expect(page.getByText("No bundle")).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByText("Published")).toHaveCount(0);
+
+    // Correct the typo back, refetch, republish.
+    await page.getByRole("button", { name: /^edit$/i }).click();
+    await page.getByLabel(/^repository$/i).fill(SAMPLE_REPO);
+    await page.getByRole("button", { name: /^save$/i }).click();
+    await expect(page.getByLabel(/^repository$/i)).toHaveCount(0, { timeout: 30_000 });
+
+    await page.getByRole("button", { name: /fetch bundle/i }).click();
+    await page.getByRole("button", { name: /^create fleet library$/i }).click();
+    await expect(page.getByText("Draft")).toBeVisible({ timeout: IMPORT_TIMEOUT });
+
+    await page.getByRole("button", { name: /^publish$/i }).click();
+    await expect(page.getByText("Published")).toBeVisible({ timeout: 30_000 });
+  });
 });
+
