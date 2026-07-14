@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M129
 **Workstream:** 001
 **Date:** Jul 13, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P0 — secret-bearing request and response storage currently survives request completion without deterministic erasure
 **Categories:** API
 **Batch:** B1 — isolated security hardening
@@ -33,6 +33,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Goal (testable):** Secret-bearing vault, request, dispatch-arena, lease/mint, runner-registration, and API-key response bytes are deterministically zeroed after their final consumer, including parse failures and partial HTTP writes.
 **Problem:** Envelope encryption protects database rows, but decrypted plaintext, canonical secret JSON, request bodies, parser allocations, and serialized credential responses can remain in reusable process memory after a request completes. The current code has no proven dangling-slice defect; this work narrows the lifetime and residue of valid plaintext copies.
 **Solution summary:** Add zero-before-free at plaintext choke points, erase secret-bearing request bodies after borrowed typed values are destroyed, back each dispatch arena with an allocator that wipes complete allocations on release, and synchronously write then erase sensitive lease and credential response buffers. Any sensitive response write failure closes the HTTP connection so a truncated response cannot be followed by another response on the same connection.
+
+**Pull Request (PR) scope:** internal security hardening with no wire or schema change.
 
 ## PR Intent & comprehension handshake
 
@@ -71,13 +73,14 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `src/agentsfleetd/http/handlers/api_keys/fleet.zig` | EDIT | Use the sensitive response boundary for the one-time fleet key |
 | `src/agentsfleetd/fleet/service.zig` | EDIT | Use the sensitive response boundary for secret-bearing leases |
 | `src/agentsfleetd/tests.zig` | EDIT | Import the new unit-test module into the canonical test root |
-| `src/agentsfleetd/observability/metrics_sensitive_memory.zig` | CREATE | Expose current process RSS plus unlabeled erasure-byte and sensitive-write-failure counters |
+| `src/agentsfleetd/observability/metrics_sensitive_memory.zig` | CREATE | Expose current process Resident Set Size (RSS) plus unlabeled erasure-byte and sensitive-write-failure counters |
 | `src/agentsfleetd/observability/metrics_sensitive_memory_test.zig` | CREATE | Prove metric deltas, concurrent increments, rendering, and absence of labels |
 | `src/agentsfleetd/observability/metrics_render.zig` | EDIT | Render the new memory and erasure families on the existing Prometheus endpoint |
 | `src/agentsfleetd/observability/metrics.zig` | EDIT | Root the focused telemetry tests in the canonical test graph |
 | `src/agentsfleetd/main.zig` | EDIT | Point allocator-lifecycle guidance at the implemented runtime resident-memory gauge |
 | `src/agentsfleetd/bench_exports.zig` | EDIT | Expose the zeroizing allocator to the existing benchmark module |
 | `tests/bench/micro.zig` | EDIT | Measure the fixed-size request-arena erasure cost in the existing benchmark lane |
+| `docs/v2/done/M129_001_P0_API_VAULT_PLAINTEXT_ERASURE.md` | CREATE | Record the approved scope, implementation evidence, and acceptance grades |
 | `docs/architecture/data_flow.md` | EDIT | Record dispatch and serialized-response erasure at the lease boundary |
 | `docs/architecture/billing_and_provider_keys.md` | EDIT | Correct the provider-key memory boundary to include response-buffer erasure |
 | `docs/architecture/observability.md` | EDIT | Record the unlabeled process-memory and erasure telemetry boundary |
@@ -152,7 +155,7 @@ Lease, credential-mint, runner-registration, and API-key creation success respon
 Canonical architecture states exactly which copies are erased and which remain outside this guarantee. Existing HTTP routes, JSON shapes, authorization, and successful lease/mint behavior remain unchanged.
 
 - **Dimension 4.1 — DONE** — architecture names raw plaintext, request body, dispatch arena, and serialized response boundaries without claiming headers or active-use memory are erased → Verify with the R3 architecture grep gate
-- **Dimension 4.2 — DONE** — existing lease, mint, registration, and tenant-key integration behavior remains wire-compatible → Tests `integration: runner control plane — a fresh lease carries the resolved provider key on the policy`, `integration: test_mint_scoped_to_lease_workspace`, `register: a runner:enroll JWT mints a agt_r (201)`, and `integration: minted agt_t key authenticates GET, revoked by PATCH {active:false}`
+- **Dimension 4.2 — DONE** — existing lease, mint, registration, and tenant-key integration behavior remains wire-compatible → Tests `integration: runner control plane — a fresh lease carries the resolved provider key on the policy`, `integration: test_mint_scoped_to_lease_workspace`, `register: a runner:enroll JSON Web Token (JWT) mints a agt_r (201)`, and `integration: minted agt_t key authenticates GET, revoked by PATCH {active:false}`
 
 ## Interfaces
 
@@ -220,17 +223,17 @@ Existing routes, request fields, response fields, status codes, authorization ch
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | Plaintext and dispatch storage erase on success and failure (§1–§2) | `make test-unit-agentsfleetd` | exit 0 including zeroizing allocator and plaintext lifetime tests | P0 | |
-| R2 | Sensitive responses erase and failed writes close (§3) | `make test-integration` | exit 0 including lease/mint behavior and failed-write tests | P0 | |
-| R3 | Architecture names the exact erasure boundary (§4) | `rg -n "zero|erase" docs/architecture/data_flow.md docs/architecture/billing_and_provider_keys.md` | matches for vault plaintext, request body, dispatch arena, and serialized response | P0 | |
-| R4 | Diff stays inside Files Changed | `git diff --name-only origin/main` | 0 paths missing from the Files Changed table | P0 | |
-| S1 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | |
-| S2 | Lint clean | `make lint-all` | exit 0 | P0 | |
-| S3 | No leaks | `make memleak` | exit 0 with 0 leaks | P0 | |
-| S4 | Cross-compile | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` | exit 0 | P0 | |
-| S5 | No secrets committed | `gitleaks detect` | exit 0 | P0 | |
-| S6 | Source files remain within limits | `git diff --name-only origin/main | grep -v '\.md$' | xargs wc -l 2>/dev/null | awk '$1>350 && $2!="total"'` | no output | P0 | |
-| S7 | Erasure remains leak-free, linear, and concurrent | `make memleak && make _bench-micro && make test-unit-agentsfleetd` | leak gate passes; `zeroizing_free_4k` runs; 1,000 lifecycle and 3 × 100 concurrency proofs pass | P0 | |
+| R1 | Plaintext and dispatch storage erase on success and failure (§1–§2) | `make test-unit-agentsfleetd` | exit 0 including zeroizing allocator and plaintext lifetime tests | P0 | ✅ 1,645 pass, 557 skip, 0 fail |
+| R2 | Sensitive responses erase and failed writes close (§3) | `make test-integration` | exit 0 including lease/mint behavior and failed-write tests | P0 | ✅ Full integration suite passed |
+| R3 | Architecture names the exact erasure boundary (§4) | `rg -n "zero|erase" docs/architecture/data_flow.md docs/architecture/billing_and_provider_keys.md` | matches for vault plaintext, request body, dispatch arena, and serialized response | P0 | ✅ All four boundaries matched |
+| R4 | Diff stays inside Files Changed | `git diff --name-only origin/main` | 0 paths missing from the Files Changed table | P0 | ✅ 32 changed paths, 0 missing |
+| S1 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | ✅ All unit lanes passed |
+| S2 | Lint clean | `make lint-all` | exit 0 | P0 | ✅ All lint checks passed |
+| S3 | No leaks | `make memleak` | exit 0 with 0 leaks | P0 | ✅ All leak lanes and boot-to-drain lifecycle passed |
+| S4 | Cross-compile | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` | exit 0 | P0 | ✅ Both Linux target builds exited 0 |
+| S5 | No secrets committed | `gitleaks detect` | exit 0 | P0 | ✅ No leaks found |
+| S6 | Source files remain within limits | `git diff --name-only origin/main | grep -v '\.md$' | xargs wc -l 2>/dev/null | awk '$1>350 && $2!="total"'` | no output | P0 | ✅ No output |
+| S7 | Erasure remains leak-free, linear, and concurrent | `make memleak && make _bench-micro && make test-unit-agentsfleetd` | leak gate passes; `zeroizing_free_4k` runs; 1,000 lifecycle and 3 × 100 concurrency proofs pass | P0 | ✅ 4 KiB erase average 9.257 µs; leak and concurrency proofs passed |
 
 **Grading protocol (VERIFY):** run the Verify command verbatim; grade ONLY from its output. Graded = ✅/❌ + the one decisive output line; long evidence goes to PR Session Notes with a pointer here. **Ship gate:** every row graded, every P0 ✅ → eligible for CHORE(close); any ❌ or empty cell → return to EXECUTE.
 
