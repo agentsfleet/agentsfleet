@@ -10,6 +10,7 @@ import {
   Skeleton,
 } from "@agentsfleet/design-system";
 import { listFleets, AGENTSFLEET_STATUS } from "@/lib/api/fleets";
+import { countFleets } from "@/lib/fleet-rollup";
 import { listWorkspaceFleetLibraryCached } from "@/lib/api/fleet-library";
 import { getTenantBillingCached } from "@/lib/api/tenant_billing";
 import { NANOS_PER_USD } from "@/lib/types";
@@ -34,9 +35,16 @@ export async function StatusTiles({ workspaceId }: { workspaceId: string }) {
     getTenantBillingCached(token).catch(() => null),
   ]);
 
-  const active = fleets.filter((z) => z.status === AGENTSFLEET_STATUS.ACTIVE).length;
-  const paused = fleets.filter((z) => z.status === AGENTSFLEET_STATUS.PAUSED).length;
-  const stopped = fleets.filter((z) => z.status === AGENTSFLEET_STATUS.STOPPED).length;
+  // Total over the status registry, not three hand-picked filters. The tiles used
+  // to count active/paused/stopped and nothing else, so an `installing` or
+  // `killed` fleet appeared in NO tile — present in the workspace, absent from the
+  // summary that claims to describe it.
+  const counts = countFleets(fleets);
+  const active = counts.byStatus[AGENTSFLEET_STATUS.ACTIVE];
+  const paused = counts.byStatus[AGENTSFLEET_STATUS.PAUSED];
+  const stopped = counts.byStatus[AGENTSFLEET_STATUS.STOPPED];
+  const installing = counts.byStatus[AGENTSFLEET_STATUS.INSTALLING];
+  const killed = counts.byStatus[AGENTSFLEET_STATUS.KILLED];
 
   if (fleets.length === 0) {
     const entries = await listWorkspaceFleetLibraryCached(workspaceId, token)
@@ -60,8 +68,15 @@ export async function StatusTiles({ workspaceId }: { workspaceId: string }) {
       <ExhaustionBanner billing={billing} />
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 mb-6">
         <StatusCard label="Live" count={active} variant="success" sublabel={active > 0 ? "wake on event" : undefined} />
+        {/* Installing and Killed appear only when they have fleets to report. A
+            zero tile hides nothing; a MISSING tile with a non-zero count is what
+            the dashboard was doing, and that is the bug. */}
+        {installing > 0 ? (
+          <StatusCard label="Installing" count={installing} variant="default" sublabel="provisioning" />
+        ) : null}
         <StatusCard label="Paused" count={paused} variant="warning" />
         <StatusCard label="Stopped" count={stopped} variant="default" />
+        {killed > 0 ? <StatusCard label="Killed" count={killed} variant="danger" /> : null}
         <StatusCard
           label="Balance"
           count={billing ? `$${(billing.balance_nanos / NANOS_PER_USD).toFixed(2)}` : "—"}
