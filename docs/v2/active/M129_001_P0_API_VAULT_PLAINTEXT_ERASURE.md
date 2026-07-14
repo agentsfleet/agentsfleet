@@ -30,9 +30,9 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ## Overview
 
-**Goal (testable):** Secret-bearing vault, request, dispatch-arena, and lease/mint response bytes are deterministically zeroed after their final consumer, including parse failures and partial HTTP writes.
-**Problem:** Envelope encryption protects database rows, but decrypted plaintext, canonical secret JSON, request bodies, parser allocations, and serialized lease or mint responses can remain in reusable process memory after a request completes. The current code has no proven dangling-slice defect; this work narrows the lifetime and residue of valid plaintext copies.
-**Solution summary:** Add zero-before-free at plaintext choke points, erase secret-bearing request bodies after borrowed typed values are destroyed, back each dispatch arena with an allocator that wipes complete allocations on release, and synchronously write then erase sensitive lease and mint response buffers. Any sensitive response write failure closes the HTTP connection so a truncated response cannot be followed by another response on the same connection.
+**Goal (testable):** Secret-bearing vault, request, dispatch-arena, lease/mint, runner-registration, and API-key response bytes are deterministically zeroed after their final consumer, including parse failures and partial HTTP writes.
+**Problem:** Envelope encryption protects database rows, but decrypted plaintext, canonical secret JSON, request bodies, parser allocations, and serialized credential responses can remain in reusable process memory after a request completes. The current code has no proven dangling-slice defect; this work narrows the lifetime and residue of valid plaintext copies.
+**Solution summary:** Add zero-before-free at plaintext choke points, erase secret-bearing request bodies after borrowed typed values are destroyed, back each dispatch arena with an allocator that wipes complete allocations on release, and synchronously write then erase sensitive lease and credential response buffers. Any sensitive response write failure closes the HTTP connection so a truncated response cannot be followed by another response on the same connection.
 
 ## PR Intent & comprehension handshake
 
@@ -53,18 +53,35 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 |------|--------|-----|
 | `src/agentsfleetd/secrets/zeroizing_allocator.zig` | CREATE | Backing allocator that wipes released allocations without destructive speculative shrink behavior |
 | `src/agentsfleetd/secrets/zeroizing_allocator_test.zig` | CREATE | Prove free, shrink fallback, remap fallback, and allocation-failure behavior |
+| `src/agentsfleetd/secrets/secure_memory.zig` | CREATE | Zero and raw-free owned byte buffers without a later debug-poison overwrite |
+| `src/agentsfleetd/secrets/secure_memory_test.zig` | CREATE | Prove the child allocator receives only zeroed released bytes |
 | `src/agentsfleetd/state/vault.zig` | EDIT | Zero raw decrypted plaintext before release on every exit |
 | `src/agentsfleetd/state/vault_test.zig` | EDIT | Prove load success and parse failure release zeroed plaintext storage |
 | `src/agentsfleetd/http/server.zig` | EDIT | Back the dispatch arena with the zeroizing allocator |
-| `src/agentsfleetd/http/handlers/common.zig` | EDIT | Add one sensitive JSON write boundary with exact capacity, synchronous write, failure close, and buffer erasure |
+| `src/agentsfleetd/http/handlers/sensitive_response.zig` | CREATE | Own exact-capacity sensitive JSON serialization, synchronous write, failure close, and buffer erasure |
+| `src/agentsfleetd/http/sensitive_request.zig` | CREATE | Erase secret-bearing route bodies after middleware and handler completion, including auth short-circuits |
+| `src/agentsfleetd/http/sensitive_request_test.zig` | CREATE | Prove route and method selection plus erasure on pre-handler exits |
+| `src/agentsfleetd/http/handlers/common.zig` | EDIT | Centralize framework-owned request-body erasure after the final borrower |
 | `src/agentsfleetd/http/handlers/hx.zig` | EDIT | Expose the sensitive response operation through the existing handler context |
 | `src/agentsfleetd/http/handlers/hx_test.zig` | EDIT | Prove sensitive response routing and error behavior through the handler context |
-| `src/agentsfleetd/http/handlers/fleets/secrets.zig` | EDIT | Zero store/rotate plaintext and request bodies in correct lifetime order |
-| `src/agentsfleetd/http/handlers/runner/credentials_mint.zig` | EDIT | Zero the request body and use the sensitive response boundary for minted tokens |
+| `src/agentsfleetd/http/handlers/fleets/secrets.zig` | EDIT | Zero store/rotate canonical plaintext before release |
+| `src/agentsfleetd/http/handlers/runner/credentials_mint.zig` | EDIT | Use the sensitive response boundary for minted tokens |
+| `src/agentsfleetd/http/handlers/runner/register.zig` | EDIT | Use the sensitive response boundary for the one-time runner token |
+| `src/agentsfleetd/http/handlers/api_keys/tenant.zig` | EDIT | Use the sensitive response boundary for the one-time tenant API key |
+| `src/agentsfleetd/http/handlers/api_keys/fleet.zig` | EDIT | Use the sensitive response boundary for the one-time fleet key |
 | `src/agentsfleetd/fleet/service.zig` | EDIT | Use the sensitive response boundary for secret-bearing leases |
 | `src/agentsfleetd/tests.zig` | EDIT | Import the new unit-test module into the canonical test root |
+| `src/agentsfleetd/observability/metrics_sensitive_memory.zig` | CREATE | Expose current process RSS plus unlabeled erasure-byte and sensitive-write-failure counters |
+| `src/agentsfleetd/observability/metrics_sensitive_memory_test.zig` | CREATE | Prove metric deltas, concurrent increments, rendering, and absence of labels |
+| `src/agentsfleetd/observability/metrics_render.zig` | EDIT | Render the new memory and erasure families on the existing Prometheus endpoint |
+| `src/agentsfleetd/observability/metrics.zig` | EDIT | Root the focused telemetry tests in the canonical test graph |
+| `src/agentsfleetd/main.zig` | EDIT | Point allocator-lifecycle guidance at the implemented runtime resident-memory gauge |
+| `src/agentsfleetd/bench_exports.zig` | EDIT | Expose the zeroizing allocator to the existing benchmark module |
+| `tests/bench/micro.zig` | EDIT | Measure the fixed-size request-arena erasure cost in the existing benchmark lane |
 | `docs/architecture/data_flow.md` | EDIT | Record dispatch and serialized-response erasure at the lease boundary |
 | `docs/architecture/billing_and_provider_keys.md` | EDIT | Correct the provider-key memory boundary to include response-buffer erasure |
+| `docs/architecture/observability.md` | EDIT | Record the unlabeled process-memory and erasure telemetry boundary |
+| `docs/AUTH.md` | EDIT | Record one-time runner and API-key response-buffer erasure |
 
 ## Applicable Rules
 
@@ -90,46 +107,57 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 - **Reference:** `src/agentsfleetd/secrets/crypto_store.zig` — mirror its deferred `secureZero` then free sequence.
 - **Reference:** `~/Projects/oss/ghostty/src/config/Config.zig` — preserve arena-as-owner teardown; erasure is an `agentsfleet` extension, not a Ghostty behavior claim.
+- **Reference:** `~/Projects/oss/bun/src/runtime/server/server.zig` on `bun-v1.3.14` — HTTP request completion calls the memory-pressure scheduler and every claimed request context reports its size. `agentsfleet` adopts the response-completion ownership boundary, while using deterministic Zig arena teardown instead of garbage collection.
 - **Reference:** Zig 0.16 `std.mem.Allocator.VTable` and `std.heap.ArenaAllocator` — shrinking and remapping must fall back rather than zero still-live bytes.
 
 ## Sections (implementation slices)
 
 ### §1 — Plaintext choke-point erasure
 
+**Section status:** DONE
+
 Raw decrypted bytes, canonical store/rotate JSON, and secret-bearing request bodies are erased after their final consumer. Typed request parses may borrow body slices, so parsed values must be destroyed before body erasure.
 
-- **Dimension 1.1** — vault plaintext is zeroed before free on successful and failed JSON parse → Test `vault load releases zeroed plaintext on success and parse failure`
-- **Dimension 1.2** — store and rotate canonical plaintext is zeroed before free on successful and failed persistence → Test `secret writes release zeroed canonical plaintext`
-- **Dimension 1.3** — store, rotate, and credential-mint request bodies are erased only after borrowed parsed values are destroyed → Test `secret request bodies remain valid through parse cleanup then erase`
+- **Dimension 1.1 — DONE** — vault plaintext is zeroed before free on successful and failed JSON parse → Tests `storeJson + loadJson round-trip preserves nested object` and `loadJson parse failure releases zeroed plaintext`
+- **Dimension 1.2 — DONE** — store and rotate canonical plaintext is zeroed before free on successful and failed persistence → Tests `secure memory free hands zeroed bytes to the child allocator` and `vault and secret write choke points use secure memory release`
+- **Dimension 1.3 — DONE** — store, rotate, and credential-mint request bodies are erased only after borrowed parsed values are destroyed → Tests `secret request body remains borrowed through parse cleanup then erases` and `sensitive request cleanup erases store rotate and mint bodies`
 
 ### §2 — Dispatch-arena erasure
 
+**Section status:** DONE
+
 Every dispatch arena returns all pages through a zeroizing backing allocator, covering reachable values, parser growth garbage, duplicate-key allocations, numeric token storage, and partial parse failures. **Implementation default:** shrinking and remapping are refused so the caller performs allocate-copy-free; speculative tail erasure is forbidden because a failed shrink would corrupt a live allocation.
 
-- **Dimension 2.1** — freeing an allocation zeroes its full initialized region before the child sees the free → Test `zeroizing allocator wipes complete allocation before free`
-- **Dimension 2.2** — shrink and remap requests cannot erase live bytes when the child cannot perform them safely → Test `zeroizing allocator preserves live allocation when shrink or remap falls back`
-- **Dimension 2.3** — dispatch teardown wipes every arena page on normal and allocation-failure exits → Test `dispatch arena releases only zeroed pages across allocation failures`
+- **Dimension 2.1 — DONE** — freeing an allocation zeroes its full initialized region before the child sees the free → Test `zeroizing allocator wipes complete allocation before free`
+- **Dimension 2.2 — DONE** — shrink and remap requests cannot erase live bytes when the child cannot perform them safely → Test `zeroizing allocator preserves live allocation when shrink or remap falls back`
+- **Dimension 2.3 — DONE** — dispatch teardown wipes every arena page on normal and allocation-failure exits → Test `dispatch arena releases only zeroed pages across allocation failures`
+- **Dimension 2.4 — DONE** — repeated and concurrent request teardown does not leak, retain storage, or introduce shared allocator state → Tests `dispatch arena retains no storage across repeated request lifecycles` and `zeroizing request arenas share one allocator across 100 concurrent requests`
+- **Dimension 2.5 — DONE** — allocator calls remain constant and erased-byte work remains linear in allocation size → Test `zeroizing free has constant allocator calls and linear byte work`; benchmark `zeroizing_free_4k`
 
 ### §3 — Sensitive response erasure
 
-Lease and credential-mint success responses serialize without abandoned response blocks, write synchronously, and erase the serialized bytes after the socket has consumed them. A write error marks the connection for close before returning. Ordinary non-secret responses keep the worker-driven path.
+**Section status:** DONE
 
-- **Dimension 3.1** — lease success uses the sensitive writer and leaves serialized provider and secret bytes zeroed → Test `lease response buffer is zero after synchronous write`
-- **Dimension 3.2** — credential-mint success uses the sensitive writer and leaves the minted token buffer zeroed → Test `mint response buffer is zero after synchronous write`
-- **Dimension 3.3** — partial or failed sensitive write closes the connection and never permits worker reuse → Test `sensitive response write failure closes connection`
-- **Dimension 3.4** — exact preallocation prevents abandoned secret-bearing response blocks → Test `sensitive response serialization performs one body allocation`
+Lease, credential-mint, runner-registration, and API-key creation success responses serialize without abandoned response blocks, write synchronously, and erase the serialized bytes after the socket has consumed them. A write error marks the connection for close before returning. Ordinary non-secret responses keep the worker-driven path.
+
+- **Dimension 3.1 — DONE** — lease success uses the sensitive writer and leaves serialized provider and secret bytes zeroed → Tests `all secret-bearing success responses route through the sensitive writer` and `Hx.okSensitive writes JSON once then erases the exact response buffer`
+- **Dimension 3.2 — DONE** — credential-mint, runner-registration, tenant API-key creation, and fleet-key creation use the same sensitive writer and leave serialized credentials zeroed → Tests `all secret-bearing success responses route through the sensitive writer` and `Hx.okSensitive writes JSON once then erases the exact response buffer`
+- **Dimension 3.3 — DONE** — partial or failed sensitive write closes the connection and never permits worker reuse → Test `Hx.okSensitive write failure closes connection and erases buffered bytes`
+- **Dimension 3.4 — DONE** — exact preallocation prevents abandoned secret-bearing response blocks → Test `Hx.okSensitive writes JSON once then erases the exact response buffer`
 
 ### §4 — Architecture and regression proof
 
+**Section status:** DONE
+
 Canonical architecture states exactly which copies are erased and which remain outside this guarantee. Existing HTTP routes, JSON shapes, authorization, and successful lease/mint behavior remain unchanged.
 
-- **Dimension 4.1** — architecture names raw plaintext, request body, dispatch arena, and serialized response boundaries without claiming headers or active-use memory are erased → Test `plaintext erasure architecture names all four boundaries`
-- **Dimension 4.2** — existing lease and mint integration behavior remains wire-compatible → Test `sensitive response path preserves lease and mint JSON`
+- **Dimension 4.1 — DONE** — architecture names raw plaintext, request body, dispatch arena, and serialized response boundaries without claiming headers or active-use memory are erased → Verify with the R3 architecture grep gate
+- **Dimension 4.2 — DONE** — existing lease, mint, registration, and tenant-key integration behavior remains wire-compatible → Tests `integration: runner control plane — a fresh lease carries the resolved provider key on the policy`, `integration: test_mint_scoped_to_lease_workspace`, `register: a runner:enroll JWT mints a agt_r (201)`, and `integration: minted agt_t key authenticates GET, revoked by PATCH {active:false}`
 
 ## Interfaces
 
 ```
-ZeroizingAllocator.init(child_allocator) -> allocator whose released storage is zeroed.
+ZeroizingAllocator.wrap(child_allocator) -> allocator whose released storage is zeroed.
 Hx.okSensitive(status, body) -> existing JSON envelope and wire shape, synchronously written and erased.
 
 Existing routes, request fields, response fields, status codes, authorization checks, and database schema remain unchanged.
@@ -154,44 +182,55 @@ Existing routes, request fields, response fields, status codes, authorization ch
 4. A sensitive response is either fully written or its connection is closed — enforced by the failed-write handover test.
 5. Sensitive serialization produces no abandoned secret-bearing growth allocation — enforced by an allocation-count assertion.
 6. HTTP and JSON interfaces are unchanged — enforced by existing integration tests and the new wire regression test.
+7. Request-arena teardown uses one allocation and one free for a direct allocation regardless of byte size; erasure work is linear in released bytes.
+8. One shared production-style allocator remains leak-free under three barrier-started rounds of 100 concurrent request arenas.
 
 ## Metrics & Observability
 
 | Metric / event | Owner | Fires when | Properties allowed | Privacy guard | Test proof |
 |----------------|-------|------------|--------------------|---------------|------------|
-| not applicable — no product/operator signal changes | — | erasure occurs during existing cleanup | none | no secret values, sizes, or token fragments are logged | `sensitive response path preserves lease and mint JSON` |
+| `fleet_process_resident_memory_bytes` | `agentsfleetd` | each Prometheus scrape | current process RSS bytes | process-level only; no request labels | `sensitive memory metrics render current RSS and unlabeled aggregate counters` |
+| `fleet_sensitive_request_erased_bytes_total` | dispatcher cleanup | secret-bearing request body erased | aggregate byte count | no tenant, workspace, fleet, route, or secret labels | `sensitive memory counters record aggregate bytes and write failures` |
+| `fleet_sensitive_response_erased_bytes_total` | sensitive response writer | serialized sensitive response erased | aggregate byte count | no tenant, workspace, fleet, route, or secret labels | `sensitive memory counters record aggregate bytes and write failures` |
+| `fleet_sensitive_response_write_failures_total` | sensitive response writer | synchronous write fails and connection closes | aggregate failure count | no request identifiers or error strings | `sensitive response write failure closes connection` |
 
 ## Test Specification (tiered)
 
 | Dimension | Tier | Test | Asserts (concrete inputs → expected output) |
 |-----------|------|------|---------------------------------------------|
-| 1.1 | unit, negative | `vault load releases zeroed plaintext on success and parse failure` | capture allocator observes zeroed decrypted storage for valid and malformed JSON |
-| 1.2 | integration, negative | `secret writes release zeroed canonical plaintext` | successful and injected-failure store/rotate paths release only zeroed canonical buffers |
-| 1.3 | unit, negative | `secret request bodies remain valid through parse cleanup then erase` | borrowed fields are readable until parsed cleanup; full body becomes zero afterward |
+| 1.1 | integration, negative | `storeJson + loadJson round-trip preserves nested object`; `loadJson parse failure releases zeroed plaintext` | capture allocator observes zeroed decrypted storage for valid and malformed JSON |
+| 1.2 | unit, invariant | `secure memory free hands zeroed bytes to the child allocator`; `vault and secret write choke points use secure memory release` | the child receives zeroed storage and all three canonical plaintext call sites retain the deferred secure release |
+| 1.3 | unit, negative | `secret request body remains borrowed through parse cleanup then erases`; `sensitive request cleanup erases store rotate and mint bodies` | borrowed fields are readable through parsed cleanup; all three selected route bodies become zero afterward |
 | 2.1 | unit | `zeroizing allocator wipes complete allocation before free` | initialized secret bytes are zero when the child allocator receives free |
 | 2.2 | unit, negative | `zeroizing allocator preserves live allocation when shrink or remap falls back` | fallback returns failure/null and every original byte remains unchanged until later free |
 | 2.3 | unit, negative | `dispatch arena releases only zeroed pages across allocation failures` | exhaustive injected allocation failures leak zero bytes and capture only zeroed frees |
-| 3.1 | integration | `lease response buffer is zero after synchronous write` | secret map and provider key serialize to the expected body, then buffered bytes are zero |
-| 3.2 | integration | `mint response buffer is zero after synchronous write` | minted token reaches the client once, then buffered bytes are zero |
-| 3.3 | integration, negative | `sensitive response write failure closes connection` | deterministic failed write sets close handover and a second response cannot be appended |
-| 3.4 | unit, invariant | `sensitive response serialization performs one body allocation` | exact sizing yields one response-body allocation and no growth allocation |
-| 4.1 | unit, source assertion | `plaintext erasure architecture names all four boundaries` | both canonical documents name vault, request, dispatch arena, and serialized response erasure limits |
-| 4.2 | integration, regression | `sensitive response path preserves lease and mint JSON` | real routes retain existing status and response fields for successful lease and mint requests |
+| 2.4 | unit, invariant | `dispatch arena retains no storage across repeated request lifecycles` | 1,000 arena lifecycles return allocator high-water state to zero and leave backing storage zeroed |
+| 2.4 | unit, concurrency | `zeroizing request arenas share one allocator across 100 concurrent requests` | three barrier-started 100-request rounds complete against one thread-safe allocator with zero failures and zero leaks |
+| 2.5 | unit, performance | `zeroizing free has constant allocator calls and linear byte work` | the 256/512/1,024/2,048-byte ladder performs one allocation and one free while erased-byte work equals input size |
+| 3.1 | unit, invariant | `all secret-bearing success responses route through the sensitive writer`; `Hx.okSensitive writes JSON once then erases the exact response buffer` | the lease call site uses the sensitive operation; secret JSON reaches the client once and the exact buffer is zero afterward |
+| 3.2 | unit, invariant | `all secret-bearing success responses route through the sensitive writer`; `Hx.okSensitive writes JSON once then erases the exact response buffer` | every mint or one-time credential call site uses the sensitive operation; credential JSON reaches the client once and the exact buffer is zero afterward |
+| 3.3 | unit, negative | `Hx.okSensitive write failure closes connection and erases buffered bytes` | deterministic failed write sets close handover and erases the exact buffer |
+| 3.4 | unit, invariant | `Hx.okSensitive writes JSON once then erases the exact response buffer` | response-buffer length equals the serialized body length, proving no growth block is needed |
+| 4.1 | static architecture gate | R3 architecture grep | both canonical documents name vault, request, dispatch arena, and serialized response erasure limits |
+| 4.2 | integration, regression | existing lease, mint, registration, and tenant-key integration tests named in Dimension 4.2 | real routes retain existing status and response fields for successful secret-bearing responses |
+| 4.3 | unit, observability | `sensitive memory metrics render current RSS and unlabeled aggregate counters` | `/metrics` includes current process RSS and three aggregate erasure families with no labels |
+| 4.3 | unit, concurrency | `sensitive memory counters preserve increments from 100 concurrent writers` | 100 concurrent writers lose zero byte or failure increments |
 
 ## Acceptance Rubric (single scoring surface)
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
 | R1 | Plaintext and dispatch storage erase on success and failure (§1–§2) | `make test-unit-agentsfleetd` | exit 0 including zeroizing allocator and plaintext lifetime tests | P0 | |
-| R2 | Sensitive responses erase and failed writes close (§3) | `make test-integration-fast` | exit 0 including lease/mint response and failed-write tests | P0 | |
+| R2 | Sensitive responses erase and failed writes close (§3) | `make test-integration` | exit 0 including lease/mint behavior and failed-write tests | P0 | |
 | R3 | Architecture names the exact erasure boundary (§4) | `rg -n "zero|erase" docs/architecture/data_flow.md docs/architecture/billing_and_provider_keys.md` | matches for vault plaintext, request body, dispatch arena, and serialized response | P0 | |
 | R4 | Diff stays inside Files Changed | `git diff --name-only origin/main` | 0 paths missing from the Files Changed table | P0 | |
-| S1 | Unit and integration tests pass | `make test` | exit 0 | P0 | |
-| S2 | Lint clean | `make lint` | exit 0 | P0 | |
+| S1 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | |
+| S2 | Lint clean | `make lint-all` | exit 0 | P0 | |
 | S3 | No leaks | `make memleak` | exit 0 with 0 leaks | P0 | |
 | S4 | Cross-compile | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` | exit 0 | P0 | |
 | S5 | No secrets committed | `gitleaks detect` | exit 0 | P0 | |
 | S6 | Source files remain within limits | `git diff --name-only origin/main | grep -v '\.md$' | xargs wc -l 2>/dev/null | awk '$1>350 && $2!="total"'` | no output | P0 | |
+| S7 | Erasure remains leak-free, linear, and concurrent | `make memleak && make _bench-micro && make test-unit-agentsfleetd` | leak gate passes; `zeroizing_free_4k` runs; 1,000 lifecycle and 3 × 100 concurrency proofs pass | P0 | |
 
 **Grading protocol (VERIFY):** run the Verify command verbatim; grade ONLY from its output. Graded = ✅/❌ + the one decisive output line; long evidence goes to PR Session Notes with a pointer here. **Ship gate:** every row graded, every P0 ✅ → eligible for CHORE(close); any ❌ or empty cell → return to EXECUTE.
 
@@ -228,6 +267,7 @@ N/A — no files deleted and no public symbols renamed or removed.
 ## Discovery (consult log)
 
 - **Consults** — Architecture / Legacy-Design / gate-flag triage: Fable adversarial review corrected the false dangling-slice claim and identified retained response storage; Indy approved implementing the corrected four-boundary design on Jul 13, 2026.
-- **Metrics review** — no analytics or funnel signal changes; erasure emits no values or size metadata.
-- **Skill-chain outcomes** — `/write-unit-test`: pending; `/review`: pending; `kishore-babysit-prs`: pending after push.
+- **Metrics review** — four unlabeled process-level series measure current resident memory, aggregate erased request/response bytes, and failed sensitive writes; no values, identifiers, routes, or individual secret sizes enter telemetry.
+- **Skill-chain outcomes** — `/write-unit-test`: clean across behaviour, failure, invariant, integration, leak, performance, and 100-way concurrency coverage; `/review`: one missed sensitive-writer call-site family found and fixed for runner registration plus tenant/fleet API-key creation, with the final direct review clean; `kishore-babysit-prs`: pending after push.
+- **Test delta** — unit=2606 (+21), integration=311 (+0). Existing real-datastore integration tests cover the unchanged lease, mint, registration, and API-key wire paths; the new failure injection and memory-lifetime proofs are unit tests because they require allocator and socket control.
 - **Deferrals** — none.

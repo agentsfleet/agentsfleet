@@ -118,7 +118,7 @@ fn performRegister(hx: Hx, conn: *pg.Conn, body: protocol.RegisterRequest) Regis
         .sandbox_tier = @tagName(body.sandbox_tier),
     });
 
-    hx.ok(.created, protocol.RegisterResponse{
+    hx.okSensitive(.created, protocol.RegisterResponse{
         .runner_id = runner_id,
         .runner_token = raw_token,
     });

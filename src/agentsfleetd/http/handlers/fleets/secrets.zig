@@ -15,6 +15,7 @@ const hx_mod = @import("../hx.zig");
 const ec = @import("../../../errors/error_registry.zig");
 const id_format = @import("../../../types/id_format.zig");
 const vault = @import("../../../state/vault.zig");
+const secure_memory = @import("../../../secrets/secure_memory.zig");
 const workspace_guards = @import("../../workspace_guards.zig");
 const tenant_model_entries = @import("../../../state/tenant_model_entries.zig");
 
@@ -104,7 +105,7 @@ fn storeSecretJsonOnConn(
     // we hand to the vault envelope. innerStoreSecret already ran
     // vault.validateObject on cred.data, so the JSON shape is known good.
     const plaintext = try std.json.Stringify.valueAlloc(alloc, cred.data, .{});
-    defer alloc.free(plaintext);
+    defer secure_memory.freeBytes(alloc, plaintext);
     if (plaintext.len > MAX_SECRET_DATA_LEN) return error.DataTooLarge;
 
     try vault.storeJsonPlaintext(alloc, conn, workspace_id, cred.name, plaintext);
@@ -281,19 +282,16 @@ fn rotateSecretKeyOnConn(
     };
     defer parsed.deinit();
 
-    // Own a mutable copy of the key so it can be securely zeroed after the
-    // re-store; the parse-arena/request-body copies are not wiped.
+    // Own a mutable copy of the key so it can be erased immediately after the
+    // re-store. The dispatcher erases the request body and parse arena later.
     const key_copy = try alloc.dupe(u8, new_key);
-    defer {
-        std.crypto.secureZero(u8, key_copy);
-        alloc.free(key_copy);
-    }
+    defer secure_memory.freeBytes(alloc, key_copy);
     // The object map is backed by the parse arena — mutate it with that same
     // allocator so its storage stays single-owner (freed by parsed.deinit()).
     try parsed.value.object.put(parsed.arena.allocator(), S_API_KEY, .{ .string = key_copy });
 
     const plaintext = try std.json.Stringify.valueAlloc(alloc, parsed.value, .{});
-    defer alloc.free(plaintext);
+    defer secure_memory.freeBytes(alloc, plaintext);
     if (plaintext.len > MAX_SECRET_DATA_LEN) return error.DataTooLarge;
 
     try vault.storeJsonPlaintext(alloc, conn, workspace_id, secret_name, plaintext);

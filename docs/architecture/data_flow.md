@@ -608,7 +608,7 @@ The deleted worker's single in-process `processEvent` loop is now split across t
         ExecutionPolicy.provider + ExecutionPolicy.api_key; it does NOT join
         secrets_map and is never substituted into a tool placeholder. The
         runner injects it into the NullClaw child for the inference call only,
-        and agentsfleetd secureZeros it after the lease serializes.
+        and agentsfleetd keeps it live only through the synchronous lease write.
      5. UPSERT core.fleet_sessions                ← marks busy
           SET execution_id, execution_started_at = now()
      6. issue fleet.runner_leases row              ← durable ownership
@@ -622,6 +622,16 @@ The deleted worker's single in-process `processEvent` loop is now split across t
        (`bundle_manifest` appears only for fleets installed from a Fleet Bundle. It
         names the immutable snapshot and support-file paths the runner must
         materialize; it never contains resolved secret values.)
+
+       Plaintext lifetime boundary: vault decrypt buffers and canonical secret
+       JSON are erased before release; secret store, rotate, and credential-mint
+       request bodies are erased by the dispatcher after middleware and handler
+       completion; every dispatch-arena page is erased by its backing allocator;
+       and lease, mint, runner-registration, or API-key creation JSON response
+       buffers are erased after a synchronous socket write. A failed sensitive
+       write closes that connection. This does
+       not claim erasure while bytes are actively in use, or cover authorization
+       headers in httpz's connection read buffer.
 
    agentsfleet-runner — parent (child_supervisor.zig):
        establish cgroup → fork → exec self as `agentsfleet-runner __execute`
