@@ -16,12 +16,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M132
 **Workstream:** 001
 **Date:** Jul 14, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — the "dashboard" stops existing; a new operator either sees a first-run checklist that lands them on their first steered fleet, or a wall of live tiles — and every live tile must survive the Server-Sent Events (SSE) stream cap without going dark.
 **Categories:** API, UI
 **Batch:** B1 — the wall and Getting Started ship together: the same route (`/w/{ws}/`) decides which surface a user lands on, so they cannot be split across Pull Requests without a broken landing in between.
-**Branch:** feat/mNN-name — added at CHORE(open)
-**Test Baseline:** set at CHORE(open) — `unit=<N> integration=<M>` via `make _lint_zig_test_depth`
+**Branch:** feat/m132-live-wall-getting-started
+**Test Baseline:** unit=2642 integration=334
 **Depends on:** M131_001 (every tile links into the fleet console it builds — a tile whose `Open →` lands nowhere is a dead tile)
 **Provenance:** Large Language Model (LLM)-drafted (claude-opus-4-8, Jul 14, 2026) — authored from the frozen variant-F design (`designs/fleet-dashboard-20260714/FREEZE.md`) and its route→handler→schema vetting matrix; every wire fact below is cited to that matrix rather than re-derived.
 **Canonical architecture:** `docs/architecture/product_analytics.md` (onboarding funnel) · `docs/architecture/scaling.md` §SSE knobs (`SSE_MAX_STREAMS` budget — the wall's binding constraint)
