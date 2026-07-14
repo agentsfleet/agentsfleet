@@ -16,12 +16,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M131
 **Workstream:** 001
 **Date:** Jul 14, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — the fleet detail page today is a stack of unlabelled panels with no source view, no cost figure, and a config card that lies about which endpoints exist; it is the page an operator lives on and it cannot answer the four questions it exists to answer.
 **Categories:** API, UI
 **Batch:** B1 — first of the console/wall trio; M132 and M133 build on the surfaces this lands.
-**Branch:** {feat/mNN-name — added at CHORE(open)}
-**Test Baseline:** set at CHORE(open) — `unit=<N> integration=<M>` via `make _lint_zig_test_depth`
+**Branch:** feat/m131-fleet-console
+**Test Baseline:** unit=2642 integration=334
 **Depends on:** M130_001 (shipped the catalog surface and the `CopyButton` / `EventsList` primitives this console reuses; already in `done/`)
 **Provenance:** Large Language Model (LLM)-drafted (claude-opus-4-8, Jul 14, 2026) — authored from the frozen variant-F design (`designs/fleet-dashboard-20260714/FREEZE.md`) and its panel→route→handler→schema vetting matrix, cross-checked against a live read of `route_table_invoke.zig`, `fleet_events_store.zig`, `memory/handler.zig`, and the console `page.tsx`.
 **Canonical architecture:** `docs/architecture/memory.md` and `docs/architecture/fleet_bundles.md`
