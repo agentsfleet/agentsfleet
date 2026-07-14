@@ -57,11 +57,12 @@ describe("catalogStatus", () => {
     expect(catalogStatus(entry(CATALOG_DRAFT, null))).toBe(CATALOG_STATUS_NO_BUNDLE);
   });
 
-  // An empty-string hash is no bundle. Postgres stores NULL, but a serialisation
-  // that ever coerced it would otherwise publish a fleet nobody can install.
-  it("treats an empty hash as no bundle", () => {
-    expect(catalogStatus(entry(CATALOG_PUBLIC, ""))).toBe(CATALOG_STATUS_BROKEN);
-    expect(catalogStatus(entry(CATALOG_DRAFT, ""))).toBe(CATALOG_STATUS_NO_BUNDLE);
+  // Server parity: every server guard is `content_hash IS NOT NULL`, so an
+  // empty-string hash IS a bundle here too. Treating "" as bundle-less would
+  // hide a Publish the API accepts — the exact lie-class this module ends.
+  it("counts an empty-string hash as a bundle, exactly as the server does", () => {
+    expect(catalogStatus(entry(CATALOG_PUBLIC, ""))).toBe(CATALOG_STATUS_PUBLISHED);
+    expect(catalogStatus(entry(CATALOG_DRAFT, ""))).toBe(CATALOG_STATUS_DRAFT);
   });
 });
 

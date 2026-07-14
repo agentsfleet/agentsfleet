@@ -116,6 +116,16 @@ test "cardinality overflow routes to _other with the reason preserved" {
 // runner ones, pinned there through this same render entry point.
 
 // ── Slot resolution under contention (saturation policy, no duplicates) ─────
+//
+// Why resolveSlot never advances past a slot without ruling it out: a slot
+// observed free can be claimed by another thread before our own compare-and-swap
+// lands, and that winner may have claimed it FOR OUR KEY — probing on from a
+// lost claim is precisely how one runner_id ends up owning two identically-
+// labelled Prometheus series, its counter split across them, when N threads
+// first touch it at once. The claim barrier below exists because that window is
+// nanoseconds wide on an idle machine: without parking every contender inside
+// it, the storm sails through one thread at a time and the invariant is only
+// exercised when the scheduler happens to starve the winner mid-init.
 
 const StormThread = struct {
     const PER_THREAD: usize = 200;
@@ -144,6 +154,12 @@ test "metrics_runner_no_duplicate_slot_under_contention" {
     mr.resetForTest();
     const THREADS = 8;
     const TOTAL = THREADS * StormThread.PER_THREAD;
+
+    // Park every thread's first claim inside the claim window until the whole
+    // storm is in it (see the section comment above).
+    mr.setClaimBarrierForTest(THREADS);
+    defer mr.setClaimBarrierForTest(0);
+
     var threads: [THREADS]std.Thread = undefined;
     for (&threads) |*t| t.* = try std.Thread.spawn(.{}, StormThread.run, .{"contended-runner"});
     for (&threads) |*t| t.join();

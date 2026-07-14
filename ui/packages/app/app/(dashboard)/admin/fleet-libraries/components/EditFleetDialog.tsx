@@ -15,9 +15,13 @@ import {
   Spinner,
   Textarea,
 } from "@agentsfleet/design-system";
+import { CATALOG_STATUS_PUBLISHED, catalogStatus } from "@/lib/types";
 import type { PlatformCatalogEntry, PlatformCatalogPatch } from "@/lib/types";
 import { presentError, type ErrorPresentation } from "@/lib/errors";
+import { captureProductEvent } from "@/lib/analytics/posthog";
+import { EVENTS } from "@/lib/analytics/events";
 import { patchPlatformLibraryAction } from "../actions";
+
 import {
   EDIT_DESCRIPTION,
   EDIT_DESCRIPTION_LABEL,
@@ -31,7 +35,12 @@ import {
   EDIT_TITLE,
   PATCH_ACTION,
   SOURCE_REF_PATTERN,
+  SOURCE_SEGMENT_PATTERN,
 } from "../library-copy";
+
+const FIELD_REPO = "repo";
+const FIELD_REF = "ref";
+const FIELD_BOTH = "both";
 
 // The fields the operator owns, and the ones the bundle does.
 //
@@ -54,12 +63,18 @@ export default function EditFleetDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
-  const [name, setName] = useState(entry.name);
-  const [description, setDescription] = useState(entry.description);
-  const [sourceRepo, setSourceRepo] = useState(entry.source_repo);
-  const [sourceRef, setSourceRef] = useState(entry.source_ref);
+  // The BASELINE is frozen at dialog-open. Every revalidation refreshes the
+  // `entry` prop under a still-open dialog (the table re-resolves it by id), so
+  // comparing against the live prop would misread another operator's mid-flight
+  // change as THIS operator's edit — and send a repoint they never made. Fields
+  // are compared, and sent, against what this dialog actually showed them.
+  const [baseline] = useState(entry);
+  const [name, setName] = useState(baseline.name);
+  const [description, setDescription] = useState(baseline.description);
+  const [sourceRepo, setSourceRepo] = useState(baseline.source_repo);
+  const [sourceRef, setSourceRef] = useState(baseline.source_ref);
   const [reasons, setReasons] = useState<Record<string, string>>(
-    entry.required_credentials_reasons ?? {},
+    baseline.required_credentials_reasons ?? {},
   );
   const [pending, setPending] = useState(false);
   const [apiError, setApiError] = useState<ErrorPresentation | null>(null);
@@ -67,30 +82,66 @@ export default function EditFleetDialog({
   // The credentials the BUNDLE declares are the ones the install gate will ask
   // for, so they are the ones worth explaining. An operator cannot invent a
   // credential the fleet never requests.
-  const credentials = entry.requirements.credentials;
+  const credentials = baseline.requirements.credentials;
+
+  // Only what MOVED is validated and sent. This is one rule doing two jobs:
+  // a template/upload-sourced row carries a source that is not owner/repo shaped,
+  // and it must stay copy-editable — its untouched source is never sent, so it is
+  // never re-validated. And a stale dialog must not clobber another operator's
+  // newer copy (or resurrect refetch-pruned reasons) by re-sending fields the
+  // operator never touched.
+  const nameChanged = name !== baseline.name;
+  const repoChanged = sourceRepo !== baseline.source_repo;
+  const refChanged = sourceRef !== baseline.source_ref;
+  const descriptionChanged = description !== baseline.description;
+  const reasonsChanged =
+    JSON.stringify(reasons) !== JSON.stringify(baseline.required_credentials_reasons ?? {});
 
   // Repointing the source throws the bundle away and withdraws the fleet. Say so
   // while the operator can still change their mind, not after they saved.
-  const sourceChanged = sourceRepo !== entry.source_repo || sourceRef !== entry.source_ref;
-  const repoMalformed = !SOURCE_REF_PATTERN.test(sourceRepo);
-  const refEmpty = sourceRef.trim().length === 0;
-  const nameEmpty = name.trim().length === 0;
-  const blocked = pending || nameEmpty || repoMalformed || refEmpty;
+  const sourceChanged = repoChanged || refChanged;
+  const repoMalformed = repoChanged && !SOURCE_REF_PATTERN.test(sourceRepo);
+  // Tested raw, not trimmed — the raw value is what a save sends, so a stray
+  // space must block here rather than round-trip to the server's refusal.
+  const refInvalid = refChanged && !SOURCE_SEGMENT_PATTERN.test(sourceRef);
+  const nameInvalid = nameChanged && name.trim().length === 0;
+  const blocked = pending || nameInvalid || repoMalformed || refInvalid;
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setPending(true);
     setApiError(null);
     try {
-      // Send only what moved. An absent field is untouched server-side, so an
-      // unchanged source never reaches the invalidation write — re-saving a
-      // description must not withdraw a live fleet.
-      const patch: PlatformCatalogPatch = { description, required_credentials_reasons: reasons };
-      if (name !== entry.name) patch.name = name;
-      if (sourceRepo !== entry.source_repo) patch.source_repo = sourceRepo;
-      if (sourceRef !== entry.source_ref) patch.source_ref = sourceRef;
+      // Send only what moved — nothing else exists on the wire. A save with
+      // zero moves is a close, not a write.
+      const patch: PlatformCatalogPatch = {};
+      if (nameChanged) patch.name = name;
+      if (descriptionChanged) patch.description = description;
+      if (reasonsChanged) patch.required_credentials_reasons = reasons;
+      if (repoChanged) patch.source_repo = sourceRepo;
+      if (refChanged) patch.source_ref = sourceRef;
+      if (Object.keys(patch).length === 0) {
+        onOpenChange(false);
+        return;
+      }
 
       const result = await patchPlatformLibraryAction(entry.id, patch);
+
+      // Repointing is the one edit here that withdraws a live fleet from every
+      // workspace gallery — the operator action worth an ops signal. A refusal
+      // is recorded too: a repoint nobody could complete is a signal, not an
+      // absence of one. ONE event per save (1 event = 1 operator action; a
+      // both-halves repoint must not double-count), and never the values
+      // themselves — a repository name can carry a private org.
+      if (sourceChanged) {
+        captureProductEvent(EVENTS.platform_library_source_changed, {
+          entry_id: entry.id,
+          field: repoChanged && refChanged ? FIELD_BOTH : repoChanged ? FIELD_REPO : FIELD_REF,
+          was_published: catalogStatus(baseline) === CATALOG_STATUS_PUBLISHED,
+          outcome: result.ok ? "success" : "failure",
+        });
+      }
+
       if (!result.ok) {
         setApiError(
           presentError({ errorCode: result.errorCode, message: result.error, action: PATCH_ACTION }),
@@ -136,6 +187,7 @@ export default function EditFleetDialog({
             <Input
               id="fleet-source-ref"
               value={sourceRef}
+              aria-invalid={refInvalid}
               onChange={(e) => setSourceRef(e.target.value)}
             />
             <p className="text-xs text-muted-foreground">{EDIT_SOURCE_REF_HINT}</p>

@@ -20,6 +20,7 @@
 //! refresher (deferred).
 
 const std = @import("std");
+const builtin = @import("builtin");
 const clock = @import("common").clock;
 const contract = @import("contract");
 const metrics_memory = @import("metrics_memory.zig");
@@ -32,6 +33,10 @@ pub const MAX_SLOTS: usize = 4096;
 /// Truncated runner_id length stored per slot (enough for a Prometheus label).
 const ID_LEN: usize = 48;
 const MS_PER_S: i64 = 1000;
+/// How long a claimer waits for another thread's in-flight `initSlot` before it
+/// gives up and drops the record. Bounded so a descheduled initializer can never
+/// stall a metrics write path; dropping one increment beats blocking a runner.
+const READY_SPIN_CAP: u32 = 4096;
 
 const FAILURES_NAME = "agentsfleet_runner_failures_total";
 const FAILURES_HELP = "Runner-executed runs that failed, labelled by runner and failure reason.";
@@ -126,10 +131,43 @@ fn initSlot(slot: *Slot, h: u64, runner_id: []const u8) void {
     slot.ready.store(1, .release); // safe because: publishes the init writes above to readers loading ready with .acquire
 }
 
+/// Test-only arrival barrier inside the load→cmpxchg claim window (rationale in metrics_runner_test.zig).
+var g_claim_barrier_target: u64 = 0; // written single-threaded, before contenders spawn
+var g_claim_barrier_arrivals = std.atomic.Value(u64).init(0);
+
+pub fn setClaimBarrierForTest(target: u64) void {
+    g_claim_barrier_target = target;
+    g_claim_barrier_arrivals.store(0, .release); // safe because: no contender is running when the barrier is (re)armed
+}
+
+inline fn claimBarrierForTest() void {
+    if (!builtin.is_test) return;
+    const target = g_claim_barrier_target;
+    if (target == 0) return;
+    // The counter only grows past `target`, so a late arrival passes through.
+    _ = g_claim_barrier_arrivals.fetchAdd(1, .acq_rel);
+    while (g_claim_barrier_arrivals.load(.acquire) < target) std.atomic.spinLoopHint(); // safe because: pairs with the fetchAdd above across contenders
+}
+
+/// Spin until a claimed slot's initializer publishes it. `false` ⇒ the slot
+/// outlasted the bounded spin, and the caller DROPS the record rather than
+/// probing past a slot that may already hold its own key (saturation policy).
+fn awaitReady(slot: *const Slot) bool {
+    var spins: u32 = 0;
+    while (slot.ready.load(.acquire) != 1) { // safe because: pairs with the .release store in initSlot
+        if (spins >= READY_SPIN_CAP) return false;
+        std.atomic.spinLoopHint();
+        spins += 1;
+    }
+    return true;
+}
+
 /// Linear-probe to the runner's slot, claiming a fresh one on first sight.
 /// Returns null when every slot is occupied (cardinality overflow), or when a
-/// slot stuck mid-init outlasts the bounded spin (saturation drop, §ready
-/// spin below) — both cases bump the same overflow counters at the call site.
+/// slot stuck mid-init outlasts the bounded spin (saturation drop) — both cases
+/// bump the same overflow counters at the call site. Never advances past a slot
+/// without ruling it out: a lost claim re-examines the same index, since the
+/// winner may have claimed it for OUR key (rationale in metrics_runner_test.zig).
 fn resolveSlot(runner_id: []const u8) ?*Slot {
     const h = runnerHash(runner_id);
     const start = h % MAX_SLOTS;
@@ -138,32 +176,18 @@ fn resolveSlot(runner_id: []const u8) ?*Slot {
         const idx = (start + i) % MAX_SLOTS;
         const slot = &g_slots[idx];
 
-        const occ = slot.occupied.load(.acquire); // safe because: pairs with the cmpxchg release on claim
-        if (occ == 1) {
-            // Bounded spin so we never race past a mid-init slot for our own
-            // key (which would claim a duplicate).
-            var spins: u32 = 0;
-            const SPIN_CAP: u32 = 4096;
-            while (slot.ready.load(.acquire) != 1) { // safe because: pairs with the .release store in initSlot
-                if (spins >= SPIN_CAP) {
-                    // Saturation policy: a slot stuck mid-init past the cap
-                    // may be OUR key — probing past it could claim a
-                    // duplicate slot and split this runner's counters
-                    // forever. Drop this one record instead; the next call
-                    // lands after the initializer finishes.
-                    return null;
-                }
-                std.atomic.spinLoopHint();
-                spins += 1;
+        if (slot.occupied.load(.acquire) == 0) { // safe because: pairs with the cmpxchg release on claim
+            claimBarrierForTest();
+            if (slot.occupied.cmpxchgStrong(0, 1, .acq_rel, .acquire) == null) {
+                initSlot(slot, h, runner_id);
+                _ = g_slot_count.fetchAdd(1, .monotonic); // safe because: independent counter, no ordering dependency
+                return slot;
             }
-            if (slotMatches(slot, h, runner_id)) return slot;
-            continue;
+            // Lost the claim by a hair — fall through and inspect THIS slot.
         }
 
-        if (slot.occupied.cmpxchgStrong(0, 1, .acq_rel, .acquire)) |_| continue;
-        initSlot(slot, h, runner_id);
-        _ = g_slot_count.fetchAdd(1, .monotonic); // safe because: independent counter, no ordering dependency
-        return slot;
+        if (!awaitReady(slot)) return null;
+        if (slotMatches(slot, h, runner_id)) return slot;
     }
     return null;
 }
@@ -286,5 +310,7 @@ pub fn resetForTest() void {
     g_overflow = .{};
     g_overflow_total.store(0, .release);
     g_slot_count.store(0, .release);
+    g_claim_barrier_target = 0; // a barrier left armed would deadlock the next single-threaded claim
+    g_claim_barrier_arrivals.store(0, .release);
     metrics_memory.resetForTest();
 }

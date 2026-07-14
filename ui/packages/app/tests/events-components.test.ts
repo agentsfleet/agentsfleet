@@ -319,4 +319,34 @@ describe("EventsList", () => {
     expect(screen.getByRole("button", { name: /load more|next/i })).toBeTruthy();
     expect(screen.queryByRole("link", { name: /view all events/i })).toBeNull();
   });
+
+  // ── M130 §8 — the event's cost line ───────────────────────────────────────
+  //
+  // tokens and wall_ms have ridden the wire on every EventRow since the type
+  // was written, and nothing ever rendered either. These pin that they now do —
+  // and that a row without them stays clean rather than printing placeholders.
+
+  it("renders tokens and wall time on a row that carries them", () => {
+    renderList({ items: [row({ tokens: 12480, wall_ms: 3200 })], next_cursor: null });
+    expect(screen.getByText("12,480 tok")).toBeTruthy();
+    expect(screen.getByText("3.2s")).toBeTruthy();
+  });
+
+  it("renders tokens alone when the row carries no wall time", () => {
+    renderList({ items: [row({ tokens: 512, wall_ms: null })], next_cursor: null });
+    expect(screen.getByText("512 tok")).toBeTruthy();
+    expect(screen.queryByText(/^\d+(\.\d+)?(ms|s)$/)).toBeNull();
+  });
+
+  it("formats sub-second wall time in milliseconds", () => {
+    renderList({ items: [row({ tokens: null, wall_ms: 840 })], next_cursor: null });
+    expect(screen.getByText("840ms")).toBeTruthy();
+  });
+
+  it("renders no cost line at all when the row carries neither figure", () => {
+    renderList({ items: [row({ tokens: null, wall_ms: null })], next_cursor: null });
+    expect(screen.queryByText(/tok$/)).toBeNull();
+    expect(screen.queryByText(/^\d+(\.\d+)?(ms|s)$/)).toBeNull();
+  });
 });
+

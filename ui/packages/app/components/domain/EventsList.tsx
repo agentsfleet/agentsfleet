@@ -25,6 +25,7 @@ import {
 } from "@/app/(dashboard)/w/[workspaceId]/events/actions";
 import type { EventRow, EventsPage } from "@/lib/api/events";
 import { presentErrorString } from "@/lib/errors";
+import { formatMs } from "@/lib/utils";
 
 type Scope =
   | { kind: "fleet"; workspaceId: string; fleetId: string }
@@ -43,8 +44,6 @@ export type EventsListProps = {
 
 // Map server status → Badge variant. Untracked statuses fall through to
 // the default (muted) badge — readable, not opinionated.
-const MS_PER_SECOND = 1_000;
-
 const STATUS_VARIANT: Record<string, BadgeVariant> = {
   processed: "green",
   fleet_error: "destructive",
@@ -206,13 +205,9 @@ function EventCost({ tokens, wallMs }: { tokens: number | null; wallMs: number |
   return (
     <p className="mt-xs flex gap-md font-mono text-xs tabular-nums text-muted-foreground">
       {tokens !== null ? <span>{tokens.toLocaleString()} tok</span> : null}
-      {wallMs !== null ? <span>{formatWallMs(wallMs)}</span> : null}
+      {wallMs !== null ? <span>{formatMs(wallMs)}</span> : null}
     </p>
   );
-}
-
-function formatWallMs(ms: number): string {
-  return ms < MS_PER_SECOND ? `${ms}ms` : `${(ms / MS_PER_SECOND).toFixed(1)}s`;
 }
 
 function previewText(text: string | null): string {

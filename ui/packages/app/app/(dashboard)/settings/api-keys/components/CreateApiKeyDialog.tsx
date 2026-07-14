@@ -159,6 +159,9 @@ export default function CreateApiKeyDialog({ onCreated }: { onCreated: () => voi
 }
 
 function RevealPanel({ keyValue, keyName, onClose }: { keyValue: string; keyName: string; onClose: () => void }) {
+  // Sticky once true — see AddRunnerDialog: a one-time value's failure notice
+  // must outlive the button's 2s flash.
+  const [copyEverFailed, setCopyEverFailed] = useState(false);
   return (
     <>
       <DialogHeader>
@@ -181,8 +184,19 @@ function RevealPanel({ keyValue, keyName, onClose }: { keyValue: string; keyName
             className="font-mono text-sm"
             onFocus={(e) => e.currentTarget.select()}
           />
-          <CopyButton value={keyValue} label="Copy API key" />
+          <CopyButton
+            value={keyValue}
+            label="Copy API key"
+            onOutcomeChange={(outcome) => {
+              if (outcome === "failed") setCopyEverFailed(true);
+            }}
+          />
         </div>
+        {copyEverFailed ? (
+          <p className="text-sm text-destructive">
+            Copy failed — select the key above and copy it manually.
+          </p>
+        ) : null}
       </div>
       <DialogFooter>
         <Button type="button" onClick={onClose}>

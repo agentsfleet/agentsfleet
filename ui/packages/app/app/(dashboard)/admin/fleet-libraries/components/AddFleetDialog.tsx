@@ -64,11 +64,14 @@ export default function AddFleetDialog({
   open,
   onOpenChange,
   prefillRepo,
+  prefillRef,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   /** A row's repository, when the dialog was opened from that row's Fetch action. */
   prefillRepo?: string;
+  /** The row's stored ref on the Fetch-update path — the pin the fetch honors. */
+  prefillRef?: string;
 }) {
   const [apiError, setApiError] = useState<ErrorPresentation | null>(null);
   const [pending, setPending] = useState(false);
@@ -107,6 +110,8 @@ export default function AddFleetDialog({
       const result = await onboardPlatformLibraryAction({
         source_kind: SOURCE_KIND_GITHUB,
         source_ref: values.source_ref,
+        // Only the refetch path pins: a fresh add fetches the default branch.
+        ...(prefillRef ? { ref: prefillRef } : {}),
         ...(replace ? { replace: true } : {}),
       });
       if (requestId !== requestIdRef.current) return;

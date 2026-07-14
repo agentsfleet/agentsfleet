@@ -377,8 +377,16 @@ components:
           type: string
           maxLength: 512
           description: >-
-            Required for `github` (an `owner/repo` locator resolved at the default
-            branch) and `template` (a first-party template id).
+            Required for `github` (an `owner/repo` locator) and `template` (a
+            first-party template id).
+        ref:
+          type: string
+          maxLength: 100
+          description: >-
+            Optional branch or tag for `github` sources; absent fetches the default
+            branch. The dashboard's Fetch-update sends the entry's stored ref, so a
+            ref pinned via the catalog PATCH is honored by the refetch rather than
+            silently reset. Same character rules as a repository segment.
         skill_markdown:
           type: string
           maxLength: 204800
@@ -525,9 +533,28 @@ components:
     FleetLibraryCatalogPatch:
       type: object
       description: >-
-        Partial update of a catalog entry. Every field is optional; an absent field is
-        left untouched, so editing the description never blanks the credential copy.
+        Partial update of a catalog entry. Every field is optional, and an absent
+        field is left untouched. Editing the description never blanks the credential
+        copy, and the entry id is never patchable.
+
+
+        A `source_repo` or `source_ref` that differs from the stored value discards
+        the stored bundle and returns the entry to draft, atomically. The bundle was
+        built from the old source, so an entry never advertises a source it is not
+        serving. Re-sending the stored value is a no-op.
       properties:
+        name:
+          type: string
+          maxLength: 200
+          description: Display name. Operator-owned — survives bundle refetches.
+        source_repo:
+          type: string
+          maxLength: 512
+          description: "`owner/repo`. Validated with the same rules as onboarding."
+        source_ref:
+          type: string
+          maxLength: 100
+          description: Branch or tag the next fetch should use.
         description:
           type: string
         required_credentials_reasons:

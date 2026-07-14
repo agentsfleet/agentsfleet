@@ -46,7 +46,11 @@ describe("CreateApiKeyDialog component", () => {
     const { default: CreateApiKeyDialog } = await import(
       "../app/(dashboard)/settings/api-keys/components/CreateApiKeyDialog"
     );
-    const user = userEvent.setup({ delay: null });
+    // pointerEventsCheck off: Radix's scroll-lock leaves `pointer-events: none`
+    // on <body> while the dialog animates; under a loaded shuffled run the check
+    // can sample that window and swallow a click INSIDE the dialog content.
+    // The dialog's own interactivity is what the assertions prove.
+    const user = userEvent.setup({ delay: null, pointerEventsCheck: 0 });
     render(React.createElement(CreateApiKeyDialog, { onCreated } as never));
     // Trigger and dialog submit share the "Create key" label — only the
     // trigger matches before the dialog opens.
@@ -157,11 +161,21 @@ describe("CreateApiKeyDialog component", () => {
   });
 
   it("falls back to manual selection when the clipboard API is blocked", async () => {
-    stubClipboardWriteText().mockRejectedValue(new Error("blocked"));
+    // Deterministic contract at THIS level: a rejected write never flashes
+    // "Copied", and the button ends back at its idle label. The transient
+    // failed-label itself lives for exactly COPY_RESET_MS and is pinned by the
+    // design-system CopyButton tests under fake timers — sampling a 2s window
+    // with waitFor here is the race, not the proof.
+    const writeText = stubClipboardWriteText().mockRejectedValue(new Error("blocked"));
     const { user } = await openDialog();
     await reachReveal(user);
     await user.click(screen.getByRole("button", { name: /copy api key/i }));
-    await waitFor(() => expect(screen.getByRole("button", { name: /copy failed/i })).toBeTruthy());
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith("agt_tdeadbeef"));
+    expect(screen.queryByRole("button", { name: /^copied$/i })).toBeNull();
+    await waitFor(
+      () => expect(screen.getByRole("button", { name: /^copy api key$/i })).toBeTruthy(),
+      { timeout: 4_000 },
+    );
     // The reveal stays intact so the user can still grab the value manually.
     expect((screen.getByLabelText(/API key value/i) as HTMLInputElement).value).toBe("agt_tdeadbeef");
   });

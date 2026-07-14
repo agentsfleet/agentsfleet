@@ -20,6 +20,7 @@ export const EVENTS = {
   fleet_library_onboarded: "fleet_library_onboarded",
   platform_library_onboarded: "platform_library_onboarded",
   platform_library_published: "platform_library_published",
+  platform_library_source_changed: "platform_library_source_changed",
   fleet_viewed: "fleet_viewed",
   integration_requested: "integration_requested",
   approval_resolved: "approval_resolved",
@@ -61,6 +62,16 @@ export type EventProps = {
     action: string;
     outcome: string;
   };
+  // Repointing a catalog entry's source is the one operator edit that silently
+  // withdraws a fleet from every workspace gallery (the server discards the
+  // bundle and drafts the row). `field` names which half moved (repo|ref);
+  // `was_published` says whether a live fleet was withdrawn by it.
+  [EVENTS.platform_library_source_changed]: {
+    entry_id: string;
+    field: string;
+    was_published: boolean;
+    outcome: string;
+  };
   [EVENTS.fleet_viewed]: { fleet_id: string; status: string };
   [EVENTS.integration_requested]: { integration_id: string; integration_name: string };
   [EVENTS.approval_resolved]: { gate_id: string; decision: string; has_reason: boolean };
@@ -83,6 +94,7 @@ export const EVENT_PROP_KEYS = {
   [EVENTS.fleet_library_onboarded]: ["workspace_id", "visibility", "source_kind", "outcome"],
   [EVENTS.platform_library_onboarded]: ["source_kind", "outcome", "entry_id"],
   [EVENTS.platform_library_published]: ["entry_id", "action", "outcome"],
+  [EVENTS.platform_library_source_changed]: ["entry_id", "field", "was_published", "outcome"],
   [EVENTS.fleet_viewed]: ["fleet_id", "status"],
   [EVENTS.integration_requested]: ["integration_id", "integration_name"],
   [EVENTS.approval_resolved]: ["gate_id", "decision", "has_reason"],

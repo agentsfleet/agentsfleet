@@ -126,7 +126,7 @@ export default function AddRunnerDialog({ onCreated }: { onCreated: () => void }
         }}
       >
         {created ? (
-          // The reveal is INLINE, not a <RevealPanel token={...} /> child.
+          // The reveal is INLINE — never a child component taking the token as a prop.
           //
           // A one-time runner token is never handed to another component as a prop.
           // `tests/grep-gates/no-api-template-mint.test.ts` forbids a token-typed
