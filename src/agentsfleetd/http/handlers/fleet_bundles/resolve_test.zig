@@ -70,17 +70,33 @@ test "buildSource rejects a pinned ref that fails the segment rules" {
     );
 }
 
-// A template has no git ref, but the value still lands in the store — the same
-// segment rules apply, so a template row can never carry a ref string the
-// github path would have refused.
-test "buildSource rejects a malformed ref on a template source too" {
+// A ref names a git revision, so it selects content only for a github source.
+// A template id resolves to fixed first-party bytes and an upload carries its
+// own — a ref on either would be recorded as the source of content it never
+// came from, and a later repository-only repoint could reuse that stale value
+// as a real fetch ref. Both doors refuse it rather than storing a lie.
+test "buildSource refuses a ref on a template source — a template has no revision to select" {
     try testing.expectError(
         error.InvalidSourceRef,
-        resolve.buildSource(importer.SOURCE_KIND_TEMPLATE, "github-pr-reviewer", ".."),
+        resolve.buildSource(importer.SOURCE_KIND_TEMPLATE, "github-pr-reviewer", "v2"),
     );
 }
 
-test "buildSource accepts a template with a well-formed or absent ref" {
-    const pinned = try resolve.buildSource(importer.SOURCE_KIND_TEMPLATE, "github-pr-reviewer", "v1");
-    try testing.expectEqualStrings("github-pr-reviewer", pinned.template);
+test "resolveUpload refuses a ref — pasted bytes came from no revision" {
+    try testing.expectError(error.InvalidSourceRef, resolve.resolveUpload(.{
+        .source_kind = importer.SOURCE_KIND_UPLOAD,
+        .source_ref = "",
+        .ref = "v2",
+        .skill_markdown = SKILL,
+    }));
+}
+
+test "resolveUpload records no ref when none is sent" {
+    const resolved = try resolve.resolveUpload(.{
+        .source_kind = importer.SOURCE_KIND_UPLOAD,
+        .source_ref = "",
+        .ref = null,
+        .skill_markdown = SKILL,
+    });
+    try testing.expectEqual(@as(?[]const u8, null), resolved.body.ref);
 }

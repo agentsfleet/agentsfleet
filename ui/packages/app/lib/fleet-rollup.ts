@@ -36,7 +36,11 @@ export function countFleets(fleets: readonly { status: string }[]): FleetCounts 
   const byStatus = emptyRollup();
   let unknown = 0;
   for (const fleet of fleets) {
-    if (fleet.status in byStatus) byStatus[fleet.status as FleetStatus] += 1;
+    // hasOwn, not `in` — the status is wire data, and `in` walks the prototype,
+    // so a fleet whose status is "constructor" or "toString" would answer true
+    // and be counted as a KNOWN status. The one function whose job is totality
+    // would then miscount the very value it exists to catch.
+    if (Object.hasOwn(byStatus, fleet.status)) byStatus[fleet.status as FleetStatus] += 1;
     else unknown += 1;
   }
   return { byStatus, unknown, total: fleets.length };

@@ -56,4 +56,21 @@ describe("countFleets", () => {
       Object.values(counts.byStatus).reduce((a, b) => a + b, 0) + counts.unknown;
     expect(summed).toBe(counts.total);
   });
+
+  // The status is wire data, so it can name an Object.prototype member. Under a
+  // plain `in` check those answer true, get treated as a KNOWN status, and the
+  // totals stop reconciling — the one failure the unknown bucket exists to catch.
+  it.each(["constructor", "toString", "hasOwnProperty", "__proto__"])(
+    "counts the prototype member %s as unknown, and the totals still reconcile",
+    (status) => {
+      const counts = countFleets([fleet(status), fleet(AGENTSFLEET_STATUS.ACTIVE)]);
+      expect(counts.unknown).toBe(1);
+      const summed =
+        Object.values(counts.byStatus).reduce((a, b) => a + b, 0) + counts.unknown;
+      expect(summed).toBe(counts.total);
+      for (const known of Object.values(AGENTSFLEET_STATUS)) {
+        expect(typeof counts.byStatus[known]).toBe("number");
+      }
+    },
+  );
 });
