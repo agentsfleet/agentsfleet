@@ -2,22 +2,20 @@
 
 import type { FleetTrigger } from "@/lib/types";
 import { useEffect, useMemo, useState } from "react";
-import { CheckIcon, CopyIcon } from "lucide-react";
 import {
   Accordion,
   AccordionContent,
   AccordionItem,
   AccordionTrigger,
-  Button,
   Card,
   CardContent,
   cn,
+  CopyButton,
   EYEBROW_CLASS,
   Time,
-  useResettableTimeout,
 } from "@agentsfleet/design-system";
 import { webhookUrlFor } from "@/lib/api/fleets";
-import GuidedTriggerCard, { COPY_RESET_MS } from "./GuidedTriggerCard";
+import GuidedTriggerCard from "./GuidedTriggerCard";
 import CronCard from "./CronCard";
 import { guidanceFor } from "./provider-guidance";
 import { AGENT_TRIGGER_TYPE, triggerKey } from "./trigger-key";
@@ -177,17 +175,6 @@ const COPY_URL_FALLBACK_HELPER_TEXT: Record<string, string> = {
 };
 
 function CopyUrlFallback({ url, source }: { url: string; source: string }) {
-  const [copied, setCopied] = useState(false);
-  const resetTimer = useResettableTimeout();
-  async function onCopy() {
-    try {
-      await navigator.clipboard.writeText(url);
-      setCopied(true);
-      resetTimer.start(() => setCopied(false), COPY_RESET_MS);
-    } catch {
-      // clipboard unavailable
-    }
-  }
   // Object.hasOwn guard — `source` can be operator-supplied via trigger config;
   // a bare bracket-access would inherit Object.prototype members (e.g.
   // `constructor`, `toString`) and render them as helper text.
@@ -206,16 +193,7 @@ function CopyUrlFallback({ url, source }: { url: string; source: string }) {
         >
           {url}
         </code>
-        <Button
-          type="button"
-          onClick={() => void onCopy()}
-          variant="ghost"
-          size="sm"
-          aria-label="Copy webhook URL"
-        >
-          {copied ? <CheckIcon size={14} /> : <CopyIcon size={14} />}
-          {copied ? "Copied" : "Copy"}
-        </Button>
+        <CopyButton value={url} label="Copy webhook URL" />
       </div>
       <p className="text-xs text-muted-foreground">{helperText}</p>
     </div>

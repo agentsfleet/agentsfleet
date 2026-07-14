@@ -167,6 +167,7 @@ test {
     _ = @import("http/handlers/library/catalog.zig");
     _ = @import("http/handlers/library/entry_view.zig");
     _ = @import("http/handlers/library/catalog_integration_test.zig");
+    _ = @import("http/handlers/library/catalog_patch_integration_test.zig");
     _ = @import("fleet_library/library_store.zig");
     _ = @import("fleet_library/importer.zig");
     _ = @import("fleet_library/github_source.zig");

@@ -60,7 +60,14 @@ describe("RunnerList icon-action row + relative host timestamps", () => {
   it("test_runner_row_actions_have_accessible_names", async () => {
     await renderList(listResponse([ACTIVE]));
     // active state → Activity + Cordon + Drain + Revoke, all icon-only.
-    const buttons = within(rowFor(ACTIVE.host_id)).getAllByRole("button");
+    //
+    // The host-id cell also carries a CopyButton. It is an affordance on a value,
+    // not an action on the runner, so it is excluded by its `data-slot` rather
+    // than folded into the action set — the point of this test is that the set of
+    // things you can DO to a runner is exactly those four, each with a name.
+    const buttons = within(rowFor(ACTIVE.host_id))
+      .getAllByRole("button")
+      .filter((b) => b.getAttribute("data-slot") !== "copy-button");
     expect(buttons.length).toBe(4);
     const names = buttons.map((b) => b.getAttribute("aria-label") ?? "");
     for (const name of names) expect(name.length).toBeGreaterThan(0);

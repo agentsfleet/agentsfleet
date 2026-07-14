@@ -3,7 +3,9 @@
 import { useState, useTransition } from "react";
 import {
   Badge,
+  Button,
   ConfirmDialog,
+  CopyButton,
   DataTable,
   type DataTableColumn,
   EmptyState,
@@ -37,9 +39,14 @@ import {
   EMPTY_TITLE,
   FETCH_BUNDLE,
   FETCH_UPDATE,
+  COPY_HASH_LABEL,
+  COPY_SLUG_LABEL,
   HASH_PREVIEW_LENGTH,
   PATCH_ACTION,
   PUBLISH,
+  REPOSITORY_HOST,
+  REPOSITORY_LINK_LABEL,
+  SOURCE_REF_PATTERN,
   UNPUBLISH,
 } from "../library-copy";
 import { rowActions, statusView } from "./catalog-status";
@@ -48,6 +55,28 @@ import EditFleetDialog from "./EditFleetDialog";
 // Em dash, not an empty cell: a row with no bundle has a definite absence, and
 // blank space reads as a rendering bug.
 const NO_HASH = "—";
+
+// A platform row is normally imported from GitHub, so its source is `owner/repo`
+// and an operator wants to click through and check it. A template- or
+// upload-sourced row is not, and linking it would point at a repository that does
+// not exist — so the cell only becomes a link when the value is actually a slug.
+function RepositoryCell({ repo }: { repo: string }) {
+  if (!SOURCE_REF_PATTERN.test(repo)) {
+    return <span className="text-sm text-muted-foreground">{repo}</span>;
+  }
+  return (
+    <Button asChild variant="link" size="sm" className="h-auto p-0 text-sm font-normal">
+      <a
+        href={`${REPOSITORY_HOST}${repo}`}
+        target="_blank"
+        rel="noopener noreferrer"
+        aria-label={`${REPOSITORY_LINK_LABEL}: ${repo}`}
+      >
+        {repo}
+      </a>
+    </Button>
+  );
+}
 
 const ACTION_PUBLISHED = "published";
 const ACTION_UNPUBLISHED = "unpublished";
@@ -121,7 +150,12 @@ export default function PlatformCatalogTable({
       cell: (row) => (
         <div className="flex flex-col">
           <span className="font-medium">{row.name}</span>
-          <span className="text-xs text-muted-foreground">{row.id}</span>
+          {/* The slug is the id a workspace installs by (`platform_library_id`) and
+              the id every API call names. It is meant to be pasted, so it can be. */}
+          <span className="flex items-center gap-1">
+            <span className="text-xs text-muted-foreground">{row.id}</span>
+            <CopyButton value={row.id} label={`${COPY_SLUG_LABEL}: ${row.id}`} />
+          </span>
         </div>
       ),
     },
@@ -129,7 +163,7 @@ export default function PlatformCatalogTable({
       key: "repository",
       header: COLUMN_REPOSITORY,
       hideOnMobile: true,
-      cell: (row) => <span className="text-sm text-muted-foreground">{row.source_repo}</span>,
+      cell: (row) => <RepositoryCell repo={row.source_repo} />,
     },
     {
       key: "status",
@@ -147,12 +181,21 @@ export default function PlatformCatalogTable({
       key: "bundle",
       header: COLUMN_BUNDLE,
       hideOnMobile: true,
-      // The hash is how an operator confirms a refetch actually changed something.
-      cell: (row) => (
-        <code className="text-xs text-muted-foreground">
-          {row.content_hash ? row.content_hash.slice(0, HASH_PREVIEW_LENGTH) : NO_HASH}
-        </code>
-      ),
+      // The hash is how an operator confirms a refetch actually changed something —
+      // comparing two of them IS the job this column exists for. The cell shows a
+      // preview (the full hash would dominate the row) and copies the WHOLE hash,
+      // because a truncated one compares to nothing.
+      cell: (row) =>
+        row.content_hash ? (
+          <span className="flex items-center gap-1">
+            <code className="text-xs text-muted-foreground">
+              {row.content_hash.slice(0, HASH_PREVIEW_LENGTH)}
+            </code>
+            <CopyButton value={row.content_hash} label={COPY_HASH_LABEL} />
+          </span>
+        ) : (
+          <code className="text-xs text-muted-foreground">{NO_HASH}</code>
+        ),
     },
     {
       key: "actions",

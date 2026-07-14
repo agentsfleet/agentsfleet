@@ -1,6 +1,12 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const requestMock = vi.hoisted(() => vi.fn());
+
+// Module-level mock, per-test state: without the reset, call counts leak across
+// tests and the suite only passes in file order (found by the shuffled run).
+beforeEach(() => {
+  requestMock.mockReset();
+});
 vi.mock("./client", () => ({ request: requestMock }));
 
 import { getModelLibrary, modelsForProvider, providerLabel, uniqueModelIds, uniqueProviders, type ModelLibrary } from "./model_library";

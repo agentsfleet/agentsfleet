@@ -39,21 +39,64 @@ test "resolveUpload rejects support files (attachments are fetch-only)" {
 }
 
 test "buildSource maps template id verbatim" {
-    const tmpl = try resolve.buildSource(importer.SOURCE_KIND_TEMPLATE, "github-pr-reviewer");
+    const tmpl = try resolve.buildSource(importer.SOURCE_KIND_TEMPLATE, "github-pr-reviewer", null);
     try testing.expectEqualStrings("github-pr-reviewer", tmpl.template);
 }
 
 test "buildSource parses github owner/repo at default ref" {
-    const gh = try resolve.buildSource(importer.SOURCE_KIND_GITHUB, "agentsfleet/github-pr-reviewer");
+    const gh = try resolve.buildSource(importer.SOURCE_KIND_GITHUB, "agentsfleet/github-pr-reviewer", null);
     try testing.expectEqualStrings("agentsfleet", gh.github.owner);
     try testing.expectEqualStrings("github-pr-reviewer", gh.github.repo);
     try testing.expectEqualStrings("main", gh.github.ref);
 }
 
 test "buildSource rejects malformed github owner/repo" {
-    try testing.expectError(error.InvalidSourceRef, resolve.buildSource(importer.SOURCE_KIND_GITHUB, "no-slash"));
-    try testing.expectError(error.InvalidSourceRef, resolve.buildSource(importer.SOURCE_KIND_GITHUB, "owner/repo/extra"));
-    try testing.expectError(error.InvalidSourceRef, resolve.buildSource(importer.SOURCE_KIND_GITHUB, "/repo"));
-    try testing.expectError(error.InvalidSourceRef, resolve.buildSource(importer.SOURCE_KIND_GITHUB, "owner/"));
-    try testing.expectError(error.InvalidSourceRef, resolve.buildSource(importer.SOURCE_KIND_GITHUB, ""));
+    try testing.expectError(error.InvalidSourceRef, resolve.buildSource(importer.SOURCE_KIND_GITHUB, "no-slash", null));
+    try testing.expectError(error.InvalidSourceRef, resolve.buildSource(importer.SOURCE_KIND_GITHUB, "owner/repo/extra", null));
+    try testing.expectError(error.InvalidSourceRef, resolve.buildSource(importer.SOURCE_KIND_GITHUB, "/repo", null));
+    try testing.expectError(error.InvalidSourceRef, resolve.buildSource(importer.SOURCE_KIND_GITHUB, "owner/", null));
+    try testing.expectError(error.InvalidSourceRef, resolve.buildSource(importer.SOURCE_KIND_GITHUB, "", null));
+}
+
+test "buildSource fetches at a pinned ref instead of the default branch" {
+    const gh = try resolve.buildSource(importer.SOURCE_KIND_GITHUB, "agentsfleet/github-pr-reviewer", "v2.1.0");
+    try testing.expectEqualStrings("v2.1.0", gh.github.ref);
+}
+
+test "buildSource rejects a pinned ref that fails the segment rules" {
+    try testing.expectError(
+        error.InvalidSourceRef,
+        resolve.buildSource(importer.SOURCE_KIND_GITHUB, "agentsfleet/github-pr-reviewer", ".."),
+    );
+}
+
+// A ref names a git revision, so it selects content only for a github source.
+// A template id resolves to fixed first-party bytes and an upload carries its
+// own — a ref on either would be recorded as the source of content it never
+// came from, and a later repository-only repoint could reuse that stale value
+// as a real fetch ref. Both doors refuse it rather than storing a lie.
+test "buildSource refuses a ref on a template source — a template has no revision to select" {
+    try testing.expectError(
+        error.InvalidSourceRef,
+        resolve.buildSource(importer.SOURCE_KIND_TEMPLATE, "github-pr-reviewer", "v2"),
+    );
+}
+
+test "resolveUpload refuses a ref — pasted bytes came from no revision" {
+    try testing.expectError(error.InvalidSourceRef, resolve.resolveUpload(.{
+        .source_kind = importer.SOURCE_KIND_UPLOAD,
+        .source_ref = "",
+        .ref = "v2",
+        .skill_markdown = SKILL,
+    }));
+}
+
+test "resolveUpload records no ref when none is sent" {
+    const resolved = try resolve.resolveUpload(.{
+        .source_kind = importer.SOURCE_KIND_UPLOAD,
+        .source_ref = "",
+        .ref = null,
+        .skill_markdown = SKILL,
+    });
+    try testing.expectEqual(@as(?[]const u8, null), resolved.body.ref);
 }

@@ -6,6 +6,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import {
   Button,
+  CopyButton,
   Dialog,
   DialogContent,
   DialogDescription,
@@ -158,17 +159,9 @@ export default function CreateApiKeyDialog({ onCreated }: { onCreated: () => voi
 }
 
 function RevealPanel({ keyValue, keyName, onClose }: { keyValue: string; keyName: string; onClose: () => void }) {
-  const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">("idle");
-
-  async function copy() {
-    try {
-      await navigator.clipboard.writeText(keyValue);
-      setCopyState("copied");
-    } catch {
-      setCopyState("failed");
-    }
-  }
-
+  // Sticky once true — see AddRunnerDialog: a one-time value's failure notice
+  // must outlive the button's 2s flash.
+  const [copyEverFailed, setCopyEverFailed] = useState(false);
   return (
     <>
       <DialogHeader>
@@ -180,18 +173,29 @@ function RevealPanel({ keyValue, keyName, onClose }: { keyValue: string; keyName
       {/* ph-no-capture keeps the one-time raw key out of PostHog autocapture and
           session replay, even if input masking is relaxed project-side later. */}
       <div className="space-y-3 ph-no-capture">
-        <Input
-          readOnly
-          value={keyValue}
-          aria-label="API key value"
-          className="font-mono text-sm"
-          onFocus={(e) => e.currentTarget.select()}
-        />
-        <Button type="button" variant="ghost" size="sm" onClick={() => void copy()}>
-          {copyState === "copied" ? "Copied" : "Copy"}
-        </Button>
-        {copyState === "failed" ? (
-          <p className="text-sm text-destructive">Copy failed. Select the key and copy manually.</p>
+        {/* The copy sits ON the field. This key is shown once and cannot be
+            recovered, so a silent clipboard failure would cost the user the key —
+            CopyButton reports one rather than swallowing it. */}
+        <div className="flex items-center gap-2">
+          <Input
+            readOnly
+            value={keyValue}
+            aria-label="API key value"
+            className="font-mono text-sm"
+            onFocus={(e) => e.currentTarget.select()}
+          />
+          <CopyButton
+            value={keyValue}
+            label="Copy API key"
+            onOutcomeChange={(outcome) => {
+              if (outcome === "failed") setCopyEverFailed(true);
+            }}
+          />
+        </div>
+        {copyEverFailed ? (
+          <p className="text-sm text-destructive">
+            Copy failed — select the key above and copy it manually.
+          </p>
         ) : null}
       </div>
       <DialogFooter>

@@ -47,12 +47,14 @@ describe("GuidedTriggerCard", () => {
       />,
     );
 
-    await user.click(screen.getAllByRole("button", { name: /copy webhook url/i })[0]!);
+    // Capture the button BEFORE clicking. Its accessible name flips to "Copied"
+    // on success — that IS the behaviour under test — so re-querying by the idle
+    // name would silently find the *other* copy button on the card and assert
+    // against the wrong node. React updates in place, so the ref stays valid.
+    const copyUrl = screen.getAllByRole("button", { name: /copy webhook url/i })[0]!;
 
-    await waitFor(() =>
-      expect(screen.getAllByRole("button", { name: /copy webhook url/i })[0]?.textContent).toContain(
-        "Copied",
-      ),
-    );
+    await user.click(copyUrl);
+
+    await waitFor(() => expect(copyUrl.textContent).toContain("Copied"));
   });
 });

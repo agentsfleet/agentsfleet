@@ -3,7 +3,7 @@
 import type { CSSProperties, ReactNode } from "react";
 import type { MessageState } from "@assistant-ui/react";
 import { Badge, cn, EYEBROW_CLASS, type BadgeVariant } from "@agentsfleet/design-system";
-
+import { readTools, ToolCalls } from "./FleetToolCalls";
 const ACTOR_STEER_PREFIX = "steer:";
 const ACTOR_WEBHOOK_PREFIX = "webhook:";
 const ACTOR_AGENT = "fleet";
@@ -113,6 +113,7 @@ function AssistantRow({ message }: { message: MessageState }) {
         labelClassName="text-success"
       />
       <div className="text-sm text-foreground">
+        <ToolCalls tools={readTools(message)} />
         {text}
         {isStreaming ? (
           <span className="ml-xs text-pulse animate-pulse" aria-label="streaming">

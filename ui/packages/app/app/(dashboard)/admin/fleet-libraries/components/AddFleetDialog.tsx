@@ -31,8 +31,8 @@ import { SOURCE_KIND_GITHUB } from "@/lib/types";
 import { onboardPlatformLibraryAction } from "../actions";
 import {
   ADD_ACTION,
-  ADD_FLEET,
   ADD_TOOLTIP,
+  CREATE_FLEET_LIBRARY,
   LIBRARY_AUTHORING_DOC_URL,
   REPLACE_ACTION,
   REPLACE_CONFIRM,
@@ -57,18 +57,21 @@ const schema = z.object({
 
 type FormValues = z.infer<typeof schema>;
 
-// One dialog serves both "Add fleet" and a row's "Fetch update": same validation,
+// One dialog serves both "Create fleet library" and a row's "Fetch update": same validation,
 // same double-submit guard, same error mapping — differing only in a prefilled
 // repository. A second form would be a second place for the validation to drift.
 export default function AddFleetDialog({
   open,
   onOpenChange,
   prefillRepo,
+  prefillRef,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   /** A row's repository, when the dialog was opened from that row's Fetch action. */
   prefillRepo?: string;
+  /** The row's stored ref on the Fetch-update path — the pin the fetch honors. */
+  prefillRef?: string;
 }) {
   const [apiError, setApiError] = useState<ErrorPresentation | null>(null);
   const [pending, setPending] = useState(false);
@@ -107,6 +110,8 @@ export default function AddFleetDialog({
       const result = await onboardPlatformLibraryAction({
         source_kind: SOURCE_KIND_GITHUB,
         source_ref: values.source_ref,
+        // Only the refetch path pins: a fresh add fetches the default branch.
+        ...(prefillRef ? { ref: prefillRef } : {}),
         ...(replace ? { replace: true } : {}),
       });
       if (requestId !== requestIdRef.current) return;
@@ -139,7 +144,7 @@ export default function AddFleetDialog({
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>{ADD_FLEET}</DialogTitle>
+          <DialogTitle>{CREATE_FLEET_LIBRARY}</DialogTitle>
           <DialogDescription>{ADD_TOOLTIP}</DialogDescription>
         </DialogHeader>
         <Form {...form}>
@@ -209,8 +214,8 @@ export default function AddFleetDialog({
                 Cancel
               </Button>
               <Button type="submit" disabled={pending}>
-                {pending ? <Spinner size="sm" srLabel="Adding fleet" /> : null}
-                {ADD_FLEET}
+                {pending ? <Spinner size="sm" srLabel="Creating fleet library" /> : null}
+                {CREATE_FLEET_LIBRARY}
               </Button>
             </DialogFooter>
           </form>

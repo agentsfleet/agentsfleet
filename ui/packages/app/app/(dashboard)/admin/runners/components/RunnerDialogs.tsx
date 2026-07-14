@@ -4,11 +4,13 @@ import {
   Badge,
   Button,
   ConfirmDialog,
+  CopyButton,
   Dialog,
   DialogContent,
   DialogDescription,
   DialogHeader,
   DialogTitle,
+  Skeleton,
   Time,
 } from "@agentsfleet/design-system";
 import type {
@@ -78,7 +80,10 @@ export function RunnerActivityDialog({
       <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle>{RUNNER_ACTIVITY_TITLE}</DialogTitle>
-          <DialogDescription>{runner.host_id}</DialogDescription>
+          <DialogDescription className="flex items-center gap-1">
+            <span>{runner.host_id}</span>
+            <CopyButton value={runner.host_id} label={`Copy host id: ${runner.host_id}`} />
+          </DialogDescription>
         </DialogHeader>
         <div className="flex flex-wrap gap-2">
           <Badge variant="default">{runner.admin_state}</Badge>
@@ -86,6 +91,14 @@ export function RunnerActivityDialog({
           {runner.labels.map((label) => <Badge key={label} variant="default">{label}</Badge>)}
         </div>
         {error ? <p className="text-sm text-destructive">{error}</p> : null}
+        {!data && !error ? (
+          // The events fetch round-trips a server action; without a placeholder
+          // the dialog body is blank for the whole wait and reads as broken.
+          <div className="space-y-3" aria-hidden>
+            <Skeleton className="h-16 w-full rounded-md" />
+            <Skeleton className="h-16 w-full rounded-md" />
+          </div>
+        ) : null}
         {data?.items.length === 0 ? <p className="text-sm text-muted-foreground">No activity yet.</p> : null}
         <ul className="max-h-96 space-y-3 overflow-y-auto pr-1" aria-label={RUNNER_ACTIVITY_TITLE}>
           {data?.items.map((event) => <ActivityRow key={event.id} event={event} />)}
@@ -112,6 +125,7 @@ export function RunnerActivityDialog({
 
 function ActivityRow({ event }: { event: RunnerEventItem }) {
   const occurredAt = new Date(event.occurred_at);
+  const metadata = formatMetadata(event.metadata);
   return (
     <li className="rounded-md border p-3">
       <div className="flex flex-wrap items-center gap-2">
@@ -122,7 +136,12 @@ function ActivityRow({ event }: { event: RunnerEventItem }) {
           className="font-mono text-xs tabular-nums text-muted-foreground"
         />
       </div>
-      <p className="mt-2 break-all font-mono text-xs text-muted-foreground">{formatMetadata(event.metadata)}</p>
+      {/* Raw event metadata is a debugging payload — its whole use is being pasted
+          into a ticket or a log search, never read off the screen. */}
+      <div className="mt-2 flex items-start gap-1">
+        <p className="break-all font-mono text-xs text-muted-foreground">{metadata}</p>
+        <CopyButton value={metadata} label="Copy event metadata" />
+      </div>
     </li>
   );
 }

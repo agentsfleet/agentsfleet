@@ -7,6 +7,7 @@ import {
   Alert,
   Button,
   cn,
+  CopyButton,
   EYEBROW_CLASS,
   Input,
   List,
@@ -170,30 +171,48 @@ export default function FleetsList({
 
 type FleetRowProps = { fleet: Fleet; workspaceId: string; pulses: boolean };
 
+// The row navigates, and the id copies. Nesting the copy button inside the row's
+// anchor would be invalid HTML (interactive content inside interactive content)
+// and would fire the navigation on every copy — so the link is a full-bleed
+// overlay UNDER the cells, and the copy button sits above it. The whole row stays
+// clickable; the one interactive child inside it does not have to fight the anchor
+// to be pressed.
 function FleetRow({ fleet: z, workspaceId, pulses }: FleetRowProps) {
   const state = liveStateOf(z.status);
   return (
-    <Link
-      href={workspacePath(workspaceId, `fleets/${z.id}`)}
-      className="grid grid-cols-12 gap-3 items-center px-4 py-3 transition-colors duration-snap ease-snap hover:bg-muted"
+    <div
+      className="relative grid grid-cols-12 gap-3 items-center px-4 py-3 transition-colors duration-snap ease-snap hover:bg-muted"
       data-state={state}
     >
+      <Link
+        href={workspacePath(workspaceId, `fleets/${z.id}`)}
+        className="absolute inset-0 rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        // Names are not unique; the id is the disambiguator. The old full-row
+        // link announced all of this — the overlay must not announce less.
+        aria-label={`${z.name} — ${z.status} — ${z.id}`}
+      />
       <div className="col-span-1 flex justify-start" aria-hidden="true">
         <StateDot state={state} pulses={pulses} />
       </div>
-      <div className="col-span-7 sm:col-span-5 min-w-0">
+      <div className="col-span-7 sm:col-span-5 min-w-0 pointer-events-none">
         <div className="font-medium truncate">{z.name}</div>
         <div className={cn(EYEBROW_CLASS, "text-muted-foreground")}>
           {z.status}
         </div>
       </div>
-      <div className="hidden sm:block sm:col-span-3 font-mono text-xs text-muted-foreground tabular-nums truncate">
-        {z.id}
+      <div className="hidden sm:flex sm:col-span-3 min-w-0 items-center gap-1">
+        {/* Truncated in the cell, whole on the clipboard. */}
+        <span className="font-mono text-xs text-muted-foreground tabular-nums truncate pointer-events-none">
+          {z.id}
+        </span>
+        <span className="relative z-10">
+          <CopyButton value={z.id} label={`Copy fleet id: ${z.id}`} />
+        </span>
       </div>
-      <div className="col-span-4 sm:col-span-3 font-mono text-xs text-muted-foreground tabular-nums text-right">
+      <div className="col-span-4 sm:col-span-3 font-mono text-xs text-muted-foreground tabular-nums text-right pointer-events-none">
         <Time value={new Date(z.updated_at)} format="relative" tooltip={false} />
       </div>
-    </Link>
+    </div>
   );
 }
 
