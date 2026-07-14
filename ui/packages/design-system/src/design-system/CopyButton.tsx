@@ -40,10 +40,16 @@ export interface CopyButtonProps {
    * the CLI verification code, a one-time secret's reveal panel.
    */
   showLabel?: boolean;
+  /**
+   * Observe outcome transitions. For one-time secrets the 2s failed flash is
+   * not enough — the dialog wants a PERSISTENT "copy it manually" line once a
+   * write has failed, and this is how it knows without a second clipboard path.
+   */
+  onOutcomeChange?: (outcome: "idle" | "copied" | "failed") => void;
   className?: string;
 }
 
-export function CopyButton({ value, label, showLabel = false, className }: CopyButtonProps) {
+export function CopyButton({ value, label, showLabel = false, onOutcomeChange, className }: CopyButtonProps) {
   const [outcome, setOutcome] = useState<CopyOutcome>("idle");
   const reset = useResettableTimeout();
 
@@ -57,7 +63,11 @@ export function CopyButton({ value, label, showLabel = false, className }: CopyB
       next = "failed";
     }
     setOutcome(next);
-    reset.start(() => setOutcome("idle"), COPY_RESET_MS);
+    onOutcomeChange?.(next);
+    reset.start(() => {
+      setOutcome("idle");
+      onOutcomeChange?.("idle");
+    }, COPY_RESET_MS);
   }
 
   const accessibleName =

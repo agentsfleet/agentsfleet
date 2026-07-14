@@ -187,7 +187,9 @@ function FleetRow({ fleet: z, workspaceId, pulses }: FleetRowProps) {
       <Link
         href={workspacePath(workspaceId, `fleets/${z.id}`)}
         className="absolute inset-0 rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        aria-label={z.name}
+        // Names are not unique; the id is the disambiguator. The old full-row
+        // link announced all of this — the overlay must not announce less.
+        aria-label={`${z.name} — ${z.status} — ${z.id}`}
       />
       <div className="col-span-1 flex justify-start" aria-hidden="true">
         <StateDot state={state} pulses={pulses} />

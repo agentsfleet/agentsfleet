@@ -97,7 +97,7 @@ export const EDIT_SOURCE_REF_HINT = "Branch or tag. Defaults to main.";
 // repository, so the server discards it and withdraws the row rather than let it
 // advertise a source it is not serving. Say so BEFORE the operator saves.
 export const EDIT_SOURCE_WARNING =
-  "Changing the repository or ref discards the stored bundle and unpublishes this fleet. Workspaces already running it keep the version they installed. Fetch the bundle again, then publish.";
+  "Changing the repository or ref discards the stored bundle and unpublishes this fleet. Workspaces already running it keep the version they installed. Fetch the bundle again, then publish. The new repository's SKILL.md must keep this entry's exact name — a bundle declaring a different name lands as a separate entry, stranding this one.";
 
 // A declared credential with no reason is a credential the install gate will ask
 // for and refuse to explain.
@@ -118,6 +118,7 @@ export const COPY_HASH_LABEL = "Copy the full bundle hash";
 // tightening must reach both.
 export {
   SOURCE_REF_PATTERN,
+  SOURCE_SEGMENT_PATTERN,
   SAMPLE_LIBRARY_REPO,
   LIBRARY_AUTHORING_DOC_URL,
 } from "@/lib/fleet-library-source";

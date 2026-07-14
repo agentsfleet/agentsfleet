@@ -156,7 +156,7 @@ describe("applyLiveFrame", () => {
     expect(out).toBe(seed);
   });
 
-  it("ignores frame kinds the timeline does not render", () => {
+  it("a tool frame for an event not yet in the timeline is dropped (same reference back)", () => {
     const seed: FleetEvent[] = [];
     const frame: LiveFrame = {
       kind: FRAME_KIND.TOOL_CALL_STARTED,
@@ -282,6 +282,22 @@ describe("applyLiveFrame", () => {
     expect(out[0]?.tools).toEqual([
       { name: "grep", ms: 90, done: true },
       { name: "grep", ms: null, done: false },
+    ]);
+  });
+
+  it("updating one tool leaves a coexisting tool untouched (bystander arm)", () => {
+    let out = applyLiveFrame([evt({ id: "e1" })], {
+      kind: FRAME_KIND.TOOL_CALL_STARTED, event_id: "e1", name: "first", args_redacted: {},
+    });
+    out = applyLiveFrame(out, {
+      kind: FRAME_KIND.TOOL_CALL_STARTED, event_id: "e1", name: "second", args_redacted: {},
+    });
+    out = applyLiveFrame(out, {
+      kind: FRAME_KIND.TOOL_CALL_COMPLETED, event_id: "e1", name: "second", ms: 250,
+    });
+    expect(out[0]?.tools).toEqual([
+      { name: "first", ms: null, done: false },
+      { name: "second", ms: 250, done: true },
     ]);
   });
 

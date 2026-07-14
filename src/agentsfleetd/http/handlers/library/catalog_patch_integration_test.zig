@@ -162,6 +162,40 @@ fn freeRow(alloc: std.mem.Allocator, r: Row) void {
     alloc.free(r.reasons);
 }
 
+// ── The ref pin survives the round trip ─────────────────────────────────────
+
+test "integration: a pinned ref is stored by the fetch that honors it" {
+    const alloc = std.testing.allocator;
+    const h = makeHarness(alloc) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    try reset(conn);
+
+    // Upload-kind body carrying an explicit ref — the same field the dashboard's
+    // Fetch-update sends with the row's stored pin. The store must record the
+    // ref the content came from, not silently reset to the default branch.
+    const body = try std.json.Stringify.valueAlloc(alloc, .{
+        .source_kind = "upload",
+        .source_ref = PROBE_REPO,
+        .ref = "v2.1.0",
+        .skill_markdown = PROBE_SKILL,
+        .replace = false,
+    }, .{});
+    defer alloc.free(body);
+    const res = try (try (try h.post(CATALOG_URL).bearer(TOKEN_PLATFORM)).json(body)).send();
+    defer res.deinit();
+    try res.expectStatus(.created);
+
+    const after = try readRow(alloc, conn, PROBE_ID);
+    defer freeRow(alloc, after);
+    try std.testing.expectEqualStrings("v2.1.0", after.source_ref);
+}
+
 // ── Dimension 2.3 — a changed source discards the bundle ─────────────────────
 
 test "integration: repointing the repository nulls the bundle and withdraws the fleet" {
@@ -270,6 +304,51 @@ test "integration: a malformed repository is refused and the row is untouched" {
     try std.testing.expect(after.has_bundle);
     try std.testing.expectEqualStrings("public", after.visibility);
     try std.testing.expectEqualStrings(PROBE_REPO, after.source_repo);
+}
+
+// ── Dimension 2.1 — the name refusals ────────────────────────────────────────
+
+test "integration: an empty or over-cap name, and a malformed ref, are refused untouched" {
+    const alloc = std.testing.allocator;
+    const h = makeHarness(alloc) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    try reset(conn);
+    try addProbe(h, alloc);
+
+    // Empty name: display copy, but never blank — the wall and the gallery both
+    // render it.
+    {
+        const res = try patchEntry(h, alloc, PROBE_ID, "{\"name\":\"\"}");
+        defer res.deinit();
+        try res.expectStatus(.bad_request);
+    }
+    // Over the cap: a paste accident must not fill the column.
+    {
+        const long_name = "n" ** 201;
+        const body = try std.fmt.allocPrint(alloc, "{{\"name\":\"{s}\"}}", .{long_name});
+        defer alloc.free(body);
+        const res = try patchEntry(h, alloc, PROBE_ID, body);
+        defer res.deinit();
+        try res.expectStatus(.bad_request);
+    }
+    // A ref that fails validSegment — same charset rules as the import path.
+    {
+        const res = try patchEntry(h, alloc, PROBE_ID, "{\"source_ref\":\"..\"}");
+        defer res.deinit();
+        try res.expectStatus(.bad_request);
+    }
+
+    // Every refusal left the row exactly as seeded.
+    const after = try readRow(alloc, conn, PROBE_ID);
+    defer freeRow(alloc, after);
+    try std.testing.expectEqualStrings(PROBE_ID, after.name);
+    try std.testing.expect(after.has_bundle);
 }
 
 // ── Dimension 2.5 — the slug is immutable ────────────────────────────────────

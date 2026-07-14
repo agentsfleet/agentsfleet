@@ -1,7 +1,12 @@
 import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vitest/config'
 
-const TEST_TIMEOUT_MS = 10_000
+// The heavy dialog suites drive multi-field userEvent flows through happy-dom
+// and legitimately run 8–15s on a loaded worker; 10s put them on a scheduling
+// cliff. Owned here — not as a per-script CLI flag — so every entry point
+// (scripts, bare `vitest`, watch mode, editor integrations) agrees on the
+// budget instead of flaking only outside `bun run test`.
+const TEST_TIMEOUT_MS = 60_000
 
 export default defineConfig({
   cacheDir: '.tmp/vite',

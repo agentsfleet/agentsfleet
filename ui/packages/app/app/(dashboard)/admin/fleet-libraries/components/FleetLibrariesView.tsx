@@ -27,14 +27,19 @@ export default function FleetLibrariesView({ entries }: { entries: PlatformCatal
   // Set when the dialog was opened from a row's Fetch action, so the operator
   // never retypes a repository the table is already showing them.
   const [prefillRepo, setPrefillRepo] = useState<string | undefined>(undefined);
+  // The stored ref rides along so a PATCH-pinned branch/tag is what the refetch
+  // actually fetches — not silently the default branch.
+  const [prefillRef, setPrefillRef] = useState<string | undefined>(undefined);
 
   function openAdd() {
     setPrefillRepo(undefined);
+    setPrefillRef(undefined);
     setAdding(true);
   }
 
   function openFetch(entry: PlatformCatalogEntry) {
     setPrefillRepo(entry.source_repo);
+    setPrefillRef(entry.source_ref);
     setAdding(true);
   }
 
@@ -55,7 +60,7 @@ export default function FleetLibrariesView({ entries }: { entries: PlatformCatal
 
         <PlatformCatalogTable entries={entries} onFetch={openFetch} />
 
-        <AddFleetDialog open={adding} onOpenChange={setAdding} prefillRepo={prefillRepo} />
+        <AddFleetDialog open={adding} onOpenChange={setAdding} prefillRepo={prefillRepo} prefillRef={prefillRef} />
       </Section>
     </div>
   );

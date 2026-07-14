@@ -103,6 +103,10 @@ export type OnboardLibraryEntryRequest =
   | {
       source_kind: typeof SOURCE_KIND_GITHUB;
       source_ref: string;
+      // Branch or tag to fetch at; absent fetches the default branch. The
+      // catalog's Fetch-update sends the row's stored ref, so a PATCH-pinned
+      // ref is honored by the next fetch rather than silently reset (M130).
+      ref?: string;
       // Platform tier only: overwrite a catalog id already owned by a DIFFERENT
       // repository. Absent means a collision is a 409 the operator must confirm.
       replace?: boolean;
@@ -182,8 +186,14 @@ export type CatalogStatus =
 /// The API refuses to create the public-without-bundle row (publishing checks
 /// the hash in SQL), but a hand-inserted one exists in the wild, and a surface
 /// that assumes it away lies about it.
+///
+/// "Has a bundle" means exactly what the server means: `content_hash IS NOT
+/// NULL`. An empty-string hash counts as a bundle here BECAUSE it counts as one
+/// in every server guard — diverging (treating "" as bundle-less) would hide a
+/// Publish the API accepts, which is the exact class of lie this function exists
+/// to end.
 export function catalogStatus(entry: PlatformCatalogEntry): CatalogStatus {
-  const hasBundle = entry.content_hash !== null && entry.content_hash !== "";
+  const hasBundle = entry.content_hash !== null;
   if (entry.visibility === CATALOG_PUBLIC) {
     return hasBundle ? CATALOG_STATUS_PUBLISHED : CATALOG_STATUS_BROKEN;
   }

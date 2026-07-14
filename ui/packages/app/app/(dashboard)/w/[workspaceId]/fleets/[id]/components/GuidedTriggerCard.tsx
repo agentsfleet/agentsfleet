@@ -25,9 +25,6 @@ type Props = {
   lastDeliveryAt?: number | null;
 };
 
-// Copy-feedback reset delay — how long a "Copied" affordance stays before
-// reverting. Shared with TriggerPanel's CopyUrlFallback so the two copy
-// surfaces in this feature can't drift apart.
 
 export default function GuidedTriggerCard({
   trigger,

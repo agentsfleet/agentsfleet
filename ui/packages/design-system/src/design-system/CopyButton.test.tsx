@@ -83,4 +83,29 @@ describe("CopyButton", () => {
       expect(screen.getByRole("button", { name: LABEL })).toBeTruthy();
     });
   });
+
+  // The labelled variant: where copying IS the page's action (the CLI code, a
+  // one-time secret), the label renders visibly and doubles as the live region.
+  it("renders the label visibly in showLabel mode and flips it to Copied", async () => {
+    stubClipboard(vi.fn().mockResolvedValue(undefined));
+    render(<CopyButton value={VALUE} label={LABEL} showLabel />);
+
+    const button = screen.getByRole("button", { name: LABEL });
+    expect(button.textContent).toContain(LABEL);
+
+    fireEvent.click(button);
+    await waitFor(() => expect(button.textContent).toContain("Copied"));
+    // One node carries the outcome — never a duplicated string in one button.
+    expect(button.textContent?.match(/Copied/g)).toHaveLength(1);
+  });
+
+  it("announces a failure visibly in showLabel mode", async () => {
+    stubClipboard(vi.fn().mockRejectedValue(new Error("denied")));
+    render(<CopyButton value={VALUE} label={LABEL} showLabel />);
+
+    fireEvent.click(screen.getByRole("button", { name: LABEL }));
+    const failed = await screen.findByRole("button", { name: /copy failed/i });
+    expect(failed.textContent).toMatch(/copy failed/i);
+  });
 });
+

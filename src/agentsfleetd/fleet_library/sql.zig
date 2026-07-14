@@ -39,7 +39,11 @@ pub const SELECT_TENANT_INSTALL =
 /// PRUNED to the credentials the incoming bundle actually declares. The map is
 /// keyed by credential name, so a bundle that drops a credential would otherwise
 /// leave a dead key that the dialog never renders and every save faithfully
-/// round-trips (M130 §4). Kept keys keep their copy; departed ones are dropped.
+/// round-trips (M130 §4). Kept keys keep their copy; departed ones are dropped. One guard on
+/// the prune: a bundle that declares NO credentials at all (e.g. a version
+/// shipped without TRIGGER.md — requirements derive from the trigger) PRESERVES
+/// the map instead of wiping it, so a transient authoring state cannot destroy
+/// curated copy that the very next version would need again.
 ///
 /// The id-collision guard is IN the statement ($15 = replace), not a SELECT before
 /// it. The catalog id comes from the bundle's frontmatter, so two operators adding
@@ -62,13 +66,16 @@ pub const INSERT_PLATFORM =
     \\   source_repo = EXCLUDED.source_repo,
     \\   source_ref = EXCLUDED.source_ref,
     \\   required_credentials = EXCLUDED.required_credentials,
-    \\   required_credentials_reasons = (
-    \\       SELECT COALESCE(jsonb_object_agg(k, v), '{}'::jsonb)
-    \\         FROM jsonb_each_text(core.fleet_library.required_credentials_reasons) AS r(k, v)
-    \\        WHERE r.k IN (
-    \\              SELECT jsonb_array_elements_text(EXCLUDED.required_credentials)
-    \\        )
-    \\   ),
+    \\   required_credentials_reasons = CASE
+    \\       WHEN jsonb_array_length(EXCLUDED.required_credentials) = 0
+    \\       THEN core.fleet_library.required_credentials_reasons
+    \\       ELSE (
+    \\           SELECT COALESCE(jsonb_object_agg(k, v), '{}'::jsonb)
+    \\             FROM jsonb_each_text(core.fleet_library.required_credentials_reasons) AS r(k, v)
+    \\            WHERE r.k IN (
+    \\                  SELECT jsonb_array_elements_text(EXCLUDED.required_credentials)
+    \\            )
+    \\       ) END,
     \\   required_tools = EXCLUDED.required_tools,
     \\   network_hosts = EXCLUDED.network_hosts,
     \\   visibility = EXCLUDED.visibility,
@@ -155,6 +162,12 @@ pub const UPDATE_CATALOG_CURATE =
 /// $5 is the draft visibility: a row whose bundle just went away cannot stay
 /// public, and UPDATE_CATALOG_VISIBILITY below would refuse to republish it until
 /// a bundle is fetched.
+/// THE TWO CASE ARMS BELOW ARE ONE INVARIANT, SPELLED TWICE. `content_hash`
+/// and `visibility` must move together or not at all (M130 Invariant 3) — SQL
+/// offers no clean way to share the predicate, so any edit to one arm's
+/// IS DISTINCT FROM pair MUST be mirrored in the other. The integration test
+/// `repointing the repository nulls the bundle and withdraws the fleet` pins
+/// the pair; this comment is why it exists.
 pub const UPDATE_CATALOG_IDENTITY =
     \\UPDATE core.fleet_library
     \\   SET name = COALESCE($2, name),
