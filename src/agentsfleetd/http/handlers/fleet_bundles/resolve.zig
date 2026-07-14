@@ -81,10 +81,14 @@ pub fn resolve(alloc: std.mem.Allocator, io: std.Io, req: ImportRequest) Error!R
 pub fn resolveUpload(req: ImportRequest) Error!Resolved {
     const skill = req.skill_markdown orelse return Error.MissingSkill;
     if (req.support_files.len > 0) return Error.UploadAttachmentsUnsupported;
+    // Pasted bytes came from no revision, so there is no ref to record. Storing
+    // one would leave a value a later repository-only repoint could reuse as a
+    // fetch ref — a ref the content never came from.
+    if (req.ref != null) return Error.InvalidSourceRef;
     return .{ .body = .{
         .source_kind = req.source_kind,
         .source_ref = req.source_ref,
-        .ref = req.ref,
+        .ref = null,
         .skill_markdown = skill,
         .trigger_markdown = req.trigger_markdown,
         .support_files = &.{},
@@ -113,10 +117,11 @@ fn resolveFetched(alloc: std.mem.Allocator, io: std.Io, req: ImportRequest) Erro
 /// the ref verbatim as the first-party template id; `github` parses `owner/repo`.
 pub fn buildSource(source_kind: []const u8, source_ref: []const u8, ref: ?[]const u8) error{InvalidSourceRef}!FetchedBundle.Source {
     if (std.mem.eql(u8, source_kind, importer.SOURCE_KIND_TEMPLATE)) {
-        // A template has no git ref, but the value still lands in the store —
-        // validate a present one so a template row can never carry a ref string
-        // the github path would have refused.
-        if (ref) |r| if (!FetchedBundle.validSegment(r)) return error.InvalidSourceRef;
+        // A template id selects fixed first-party bytes — no revision is
+        // consulted, so a ref selects nothing. Accepting one would record a ref
+        // the content never came from, and a later repository-only repoint could
+        // then reuse that stale value as a real fetch ref.
+        if (ref != null) return error.InvalidSourceRef;
         return .{ .template = source_ref };
     }
     // A pinned ref rides the same segment rules as owner/repo — reject it here,
