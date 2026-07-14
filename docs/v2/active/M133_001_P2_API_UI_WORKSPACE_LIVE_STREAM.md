@@ -16,12 +16,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M133
 **Workstream:** 001
 **Date:** Jul 14, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P2 — an optimization of the already-shipped-and-working Live Wall (M132), not a blocker; the wall streams correctly today via N per-fleet connections, this collapses them to one.
 **Categories:** API, UI
 **Batch:** B1
-**Branch:** feat/mNN-name — added at CHORE(open)
-**Test Baseline:** set at CHORE(open) — `unit=<N> integration=<M>` via `make _lint_zig_test_depth`
+**Branch:** feat/m133-workspace-stream
+**Test Baseline:** unit=2642 integration=334
 **Depends on:** M132_001 (ships the Live Wall whose N-per-tile stream mode this replaces and deletes)
 **Provenance:** Large Language Model (LLM)-drafted (claude-opus-4-8, Jul 14, 2026) — authored from the frozen variant-F design (`designs/fleet-dashboard-20260714/FREEZE.md` §2 G4, §3, §5) and its route/handler/schema vetting matrix.
 **Canonical architecture:** `docs/architecture/data_flow.md` §"Two streams + one pub/sub channel", §"Connection topology"; `docs/architecture/concurrency.md` §"Channel inventory"
@@ -312,6 +312,7 @@ completes both grep rows with the real identifiers. -->
 ## Discovery (consult log)
 
 - **Consults** — Architecture / Legacy-Design / gate-flag triage:
+  - CHORE(open) Jul 15, 2026: M132_001 (dependency) is in-flight on `feat/m132-live-wall-getting-started` with spec-only commits — no wall code exists yet, so the Dead Code Sweep's M132 symbol names cannot be pinned at open. Sequencing: §1–§3 + the client stream module/proxy land API-first off `main`; §4 (wall swap + N-stream deletion) and the sweep's symbol pinning fold in once M132_001 merges. Surfaced to Indy at start.
 - **Metrics review** —
 - **Skill-chain outcomes** —
 - **Deferrals** —
