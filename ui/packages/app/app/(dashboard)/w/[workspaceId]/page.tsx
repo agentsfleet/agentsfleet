@@ -77,6 +77,13 @@ export async function StatusTiles({ workspaceId }: { workspaceId: string }) {
         <StatusCard label="Paused" count={paused} variant="warning" />
         <StatusCard label="Stopped" count={stopped} variant="default" />
         {killed > 0 ? <StatusCard label="Killed" count={killed} variant="danger" /> : null}
+        {/* A status this client build does not recognize — a backend that shipped
+            ahead of us. Counted by countFleets precisely so it cannot vanish from
+            the summary; hiding the bucket would recreate the missing-tile bug for
+            every future status. */}
+        {counts.unknown > 0 ? (
+          <StatusCard label="Unknown" count={counts.unknown} variant="warning" sublabel="unrecognized status" />
+        ) : null}
         <StatusCard
           label="Balance"
           count={billing ? `$${(billing.balance_nanos / NANOS_PER_USD).toFixed(2)}` : "—"}

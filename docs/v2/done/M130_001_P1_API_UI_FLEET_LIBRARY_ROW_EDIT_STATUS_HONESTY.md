@@ -215,7 +215,7 @@ Derived status (UI, never a wire field) — total over (visibility × has-bundle
 | Delete a published row | An operator deletes without withdrawing | Existing 409 `UZ-CATALOG-003` with `current_state: "public"`. **Regression — must still hold.** |
 | Source change withdraws a live fleet | The operator repoints a published row's repository | Intended: the row drops to `draft`, leaves every gallery, and new installs 404. **Existing installs are unaffected** — they hold their own pinned `content_hash`. The dialog warns before saving. |
 | Non-slug source | A template/upload-sourced row carries a source that is not `owner/repo` | The repository cell renders inert text, never a link to a nonexistent GitHub page. |
-| New bundle declares no credentials | A refetch whose bundle dropped every credential | The reason map prunes to `{}`; the dialog renders no reason fields. Not an error. |
+| New bundle declares no credentials | A refetch whose bundle declares an empty credential set (e.g. a version shipped without TRIGGER.md — requirements derive from the trigger) | The reason map is **preserved**, not wiped: a transient authoring state must not destroy curated copy the very next version would need again. The dialog still renders no reason fields, because it renders only declared credentials. *(Amended in review — the original row said "prunes to `{}`"; the shipped guard in `INSERT_PLATFORM` keeps the map.)* |
 
 ## Invariants
 
@@ -223,7 +223,7 @@ Derived status (UI, never a wire field) — total over (visibility × has-bundle
 2. **A public row always has a bundle.** Enforced in SQL, not the handler: `UPDATE_CATALOG_VISIBILITY`'s existing `AND ($2 <> $4 OR content_hash IS NOT NULL)` guard is retained verbatim.
 3. **A row never advertises a source it is not serving.** Enforced by the single statement that writes the source: it sets `content_hash = NULL` and `visibility = draft` in the same `UPDATE`, so no interleaving observes a changed source beside a stale hash.
 4. **The slug is immutable.** Enforced by `id` being a path parameter absent from `PatchBody`; `ignore_unknown_fields` discards any `id` a caller sends.
-5. **Reason keys are a subset of declared credentials.** Enforced in the refetch statement, which writes the pruned map and the declared set together.
+5. **Reason keys are a subset of declared credentials — whenever the bundle declares any.** Enforced in the refetch statement, which writes the pruned map and the declared set together. *(Amended in review:)* a bundle declaring an empty set is the deliberate exception — the map is preserved wholesale (see the error table's last row), so during that transient state stale keys may outlive the declared set. They are invisible (the dialog renders only declared credentials) and are pruned by the next refetch that declares a non-empty set.
 
 ## Metrics & Observability
 

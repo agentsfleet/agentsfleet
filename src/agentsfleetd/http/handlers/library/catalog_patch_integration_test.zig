@@ -44,32 +44,52 @@ const MOVED_REPO = "agentsfleet/patch-probe-moved";
 
 const OPERATOR_NAME = "Operator's own name";
 
-/// The probe's bundle declares ONE credential. The reason-map pruning is only observable
-/// against a bundle that declares a DIFFERENT set, which
-/// `PROBE_SKILL_SWAPPED_CREDS` supplies.
+/// The probe's SKILL body. A bundle's declared credential set does NOT live
+/// here: SKILL.md front matter is permissive (`parseSkillMetadata` silently
+/// drops unknown keys), and the importer derives requirements exclusively from
+/// TRIGGER.md (`buildRequirementsJson`). A test that needs a declared set must
+/// pair this with one of the trigger fixtures below — a `credentials:` key in
+/// this front matter would be an inert decoy.
 const PROBE_SKILL =
     \\---
     \\name: patch-probe
     \\description: Bundle-derived description.
     \\version: 0.1.0
-    \\credentials:
-    \\  - GITHUB_TOKEN
     \\---
     \\Body for the patch probe.
 ;
 
-/// Same slug, a DIFFERENT declared credential set: GITHUB_TOKEN departs, SLACK
-/// arrives. A refetch of this must drop the GITHUB_TOKEN reason and keep nothing
-/// stale behind.
-const PROBE_SKILL_SWAPPED_CREDS =
+/// Declares BOTH credentials. The reason-map prune is only observable against a
+/// later bundle declaring a strictly smaller set, which
+/// `PROBE_TRIGGER_SLACK_ONLY` supplies: GITHUB_TOKEN departs, SLACK_TOKEN stays.
+const PROBE_TRIGGER_BOTH_CREDS =
     \\---
     \\name: patch-probe
-    \\description: Bundle-derived description.
-    \\version: 0.1.0
-    \\credentials:
-    \\  - SLACK_TOKEN
+    \\x-agentsfleet:
+    \\  triggers:
+    \\    - type: webhook
+    \\      source: github
+    \\  credentials: [GITHUB_TOKEN, SLACK_TOKEN]
+    \\  tools: [http_request]
+    \\  budget:
+    \\    daily_dollars: 1.0
     \\---
-    \\Body for the patch probe.
+;
+
+/// Same slug, a smaller declared set: GITHUB_TOKEN is gone. A refetch carrying
+/// this trigger must drop the GITHUB_TOKEN reason and leave SLACK_TOKEN's alone.
+const PROBE_TRIGGER_SLACK_ONLY =
+    \\---
+    \\name: patch-probe
+    \\x-agentsfleet:
+    \\  triggers:
+    \\    - type: webhook
+    \\      source: github
+    \\  credentials: [SLACK_TOKEN]
+    \\  tools: [http_request]
+    \\  budget:
+    \\    daily_dollars: 1.0
+    \\---
 ;
 
 fn configureRegistry(_: *auth_mw.MiddlewareRegistry, _: *TestHarness) anyerror!void {}
@@ -94,11 +114,12 @@ fn entryUrl(alloc: std.mem.Allocator, id: []const u8) ![]const u8 {
     return std.fmt.allocPrint(alloc, "{s}/{s}", .{ CATALOG_URL, id });
 }
 
-fn addFleet(h: *TestHarness, alloc: std.mem.Allocator, repo: []const u8, skill: []const u8) !harness_mod.Response {
+fn addFleet(h: *TestHarness, alloc: std.mem.Allocator, repo: []const u8, skill: []const u8, trigger: ?[]const u8) !harness_mod.Response {
     const body = try std.json.Stringify.valueAlloc(alloc, .{
         .source_kind = "upload",
         .source_ref = repo,
         .skill_markdown = skill,
+        .trigger_markdown = trigger,
         .replace = false,
     }, .{});
     defer alloc.free(body);
@@ -106,7 +127,7 @@ fn addFleet(h: *TestHarness, alloc: std.mem.Allocator, repo: []const u8, skill: 
 }
 
 fn addProbe(h: *TestHarness, alloc: std.mem.Allocator) !void {
-    const res = try addFleet(h, alloc, PROBE_REPO, PROBE_SKILL);
+    const res = try addFleet(h, alloc, PROBE_REPO, PROBE_SKILL, null);
     defer res.deinit();
     try res.expectStatus(.created);
 }
@@ -443,7 +464,7 @@ test "integration: an operator rename survives a refetch; a first import takes t
     // so the bundle no longer overwrites it — offering a rename that the next
     // Fetch update silently reverts would be worse than not offering one.
     {
-        const res = try addFleet(h, alloc, PROBE_REPO, PROBE_SKILL);
+        const res = try addFleet(h, alloc, PROBE_REPO, PROBE_SKILL, null);
         defer res.deinit();
         try res.expectStatus(.created);
     }
@@ -466,15 +487,25 @@ test "integration: a refetch prunes reason keys the new bundle no longer declare
     const conn = try h.acquireConn();
     defer h.releaseConn(conn);
     try reset(conn);
-    try addProbe(h, alloc);
 
-    // Curate copy for the credential the bundle declares today.
+    // Seed with a trigger declaring BOTH credentials. The declared set lives in
+    // TRIGGER.md — a bundle with no trigger declares nothing, and the refetch
+    // statement deliberately preserves the whole reason map for a zero-credential
+    // bundle, so the prune is unobservable without trigger-declared sets on both
+    // sides of the refetch.
+    {
+        const res = try addFleet(h, alloc, PROBE_REPO, PROBE_SKILL, PROBE_TRIGGER_BOTH_CREDS);
+        defer res.deinit();
+        try res.expectStatus(.created);
+    }
+
+    // Curate copy for both credentials the bundle declares today.
     {
         const res = try patchEntry(
             h,
             alloc,
             PROBE_ID,
-            "{\"required_credentials_reasons\":{\"GITHUB_TOKEN\":\"to read your pull requests\"}}",
+            "{\"required_credentials_reasons\":{\"GITHUB_TOKEN\":\"to read your pull requests\",\"SLACK_TOKEN\":\"to post review summaries\"}}",
         );
         defer res.deinit();
         try res.expectStatus(.ok);
@@ -483,15 +514,16 @@ test "integration: a refetch prunes reason keys the new bundle no longer declare
         const seeded = try readRow(alloc, conn, PROBE_ID);
         defer freeRow(alloc, seeded);
         try std.testing.expect(std.mem.indexOf(u8, seeded.reasons, "GITHUB_TOKEN") != null);
+        try std.testing.expect(std.mem.indexOf(u8, seeded.reasons, "SLACK_TOKEN") != null);
     }
 
-    // Refetch a bundle that declares SLACK_TOKEN instead. GITHUB_TOKEN is gone from
+    // Refetch a bundle that declares only SLACK_TOKEN. GITHUB_TOKEN is gone from
     // the declared set, so its reason is a dead key: the dialog renders only
     // declared credentials, so an operator would never see it — but it seeds its
     // state from the whole map and PATCHes the whole map back, so the corpse would
-    // round-trip forever.
+    // round-trip forever. SLACK_TOKEN survived the swap, so its copy must too.
     {
-        const res = try addFleet(h, alloc, PROBE_REPO, PROBE_SKILL_SWAPPED_CREDS);
+        const res = try addFleet(h, alloc, PROBE_REPO, PROBE_SKILL, PROBE_TRIGGER_SLACK_ONLY);
         defer res.deinit();
         try res.expectStatus(.created);
     }
@@ -499,6 +531,7 @@ test "integration: a refetch prunes reason keys the new bundle no longer declare
     const after = try readRow(alloc, conn, PROBE_ID);
     defer freeRow(alloc, after);
     try std.testing.expect(std.mem.indexOf(u8, after.reasons, "GITHUB_TOKEN") == null);
+    try std.testing.expect(std.mem.indexOf(u8, after.reasons, "SLACK_TOKEN") != null);
 }
 
 // ── Regression — the lifecycle guards did not weaken ────────────────────────
