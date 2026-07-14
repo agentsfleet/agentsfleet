@@ -13,6 +13,7 @@
 const std = @import("std");
 const httpz = @import("httpz");
 const common = @import("common.zig");
+const sensitive_response = @import("sensitive_response.zig");
 const pg = @import("pg");
 
 /// Scoped DB connection — acquire-on-construct, release-on-end. Use via
@@ -55,6 +56,11 @@ pub const Hx = struct {
     /// Write a successful JSON response.
     pub fn ok(self: Self, status: std.http.Status, body: anytype) void {
         common.writeJson(self.res, status, body);
+    }
+
+    /// Write one secret-bearing JSON response, then erase its serialized bytes.
+    pub fn okSensitive(self: Self, status: std.http.Status, body: anytype) void {
+        sensitive_response.writeJson(self.res, status, body);
     }
 
     /// Write an RFC 7807 error response. HTTP status is owned by the error code table.

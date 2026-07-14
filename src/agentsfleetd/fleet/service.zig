@@ -146,7 +146,7 @@ fn issueLease(hx: Hx, runner_id: []const u8, session: *FleetSession, acq: assign
     metrics_runner.incRunnerActiveLeases(runner_id); // in-memory gauge; decremented on the runner's report
 
     log.debug("lease_issued", .{ .fleet_id = acq.fleet_id, .event_id = acq.event_id, .lease_id = lease_id, .fencing_token = acq.fencing_token, .runner_id = runner_id, .kind = @tagName(acq.kind) });
-    hx.ok(.ok, protocol.LeaseResponse{
+    hx.okSensitive(.ok, protocol.LeaseResponse{
         .lease = .{
             .lease_id = lease_id,
             .fencing_token = acq.fencing_token,

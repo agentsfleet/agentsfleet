@@ -13,7 +13,10 @@ const keyset_cursor = app.keyset_cursor;
 const id_format = app.id_format;
 const credential_broker = app.credential_broker;
 const credential_integration = app.credential_integration;
+const ZeroizingAllocator = app.ZeroizingAllocator;
 const fx = @import("micro_fixtures.zig");
+
+const ZEROING_BENCH_BYTES: usize = 4 * 1024;
 
 // ── route_match ───────────────────────────────────────────────────────────
 fn benchRouteMatch(allocator: std.mem.Allocator) void {
@@ -127,6 +130,15 @@ fn benchStaticMintDispatch(allocator: std.mem.Allocator) void {
     allocator.free(out.ok.token);
 }
 
+// ── zeroizing_free_4k ─ request-arena teardown floor
+fn benchZeroizingFree(allocator: std.mem.Allocator) void {
+    var zeroing = ZeroizingAllocator.wrap(allocator);
+    const alloc = zeroing.allocator();
+    const secret = alloc.alloc(u8, ZEROING_BENCH_BYTES) catch @panic("zeroing allocation failed");
+    @memset(secret, 0xA5);
+    alloc.free(secret);
+}
+
 // ── Entry point ───────────────────────────────────────────────────────────
 
 pub fn main() !void {
@@ -160,6 +172,7 @@ pub fn main() !void {
     try bench.add("activity_chunk_encode", benchActivityChunkEncode, .{});
     try bench.add("broker_cache_hit", benchBrokerCacheHit, .{});
     try bench.add("static_mint_dispatch", benchStaticMintDispatch, .{});
+    try bench.add("zeroizing_free_4k", benchZeroizingFree, .{});
 
     // zbench 0.11.2's run writes + flushes to the File directly on the 0.16 io.
     try bench.run(app.globalIo(), std.Io.File.stdout());

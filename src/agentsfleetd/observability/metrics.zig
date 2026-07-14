@@ -107,4 +107,5 @@ test {
     _ = @import("metrics_counters_test.zig");
     _ = @import("metrics_runner_test.zig");
     _ = @import("metrics_memory_test.zig");
+    _ = @import("metrics_sensitive_memory_test.zig");
 }

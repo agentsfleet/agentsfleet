@@ -4,6 +4,7 @@ const std = @import("std");
 const mc = @import("metrics_counters.zig");
 const mr = @import("metrics_runner.zig");
 const mrp = @import("metrics_redis_pool.zig");
+const msm = @import("metrics_sensitive_memory.zig");
 
 const S_TYPE_S_S_N = "# TYPE {s} {s}\n";
 const S_REASON = "reason";
@@ -105,6 +106,8 @@ pub fn renderPrometheus(
         try appendMetric(writer, "fleet_redis_pool_forced_closes_total", S_COUNTER, "Connections closed by release because the idle list was already at max_idle (over-cap overflow).", rps.forced_closes_total);
         try appendMetric(writer, "fleet_redis_pool_acquire_timeouts_total", S_COUNTER, "Acquire calls that timed out waiting for a slot (currently always 0 — Pool acquires never block).", rps.acquire_timeouts_total);
     }
+
+    try msm.renderPrometheus(writer);
 
     // Per-runner failure metrics (pushed in on each runner report).
     try mr.renderPrometheus(writer);

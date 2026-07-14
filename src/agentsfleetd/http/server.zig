@@ -1,5 +1,4 @@
-//! httpz HTTP server setup and request routing.
-//! Thread 1 — all endpoint handlers run here. Never blocks on fleet execution.
+//! httpz request routing; handlers run here and never block on fleet execution.
 
 const std = @import("std");
 const clock = @import("common").clock;
@@ -15,6 +14,8 @@ const route_scopes = @import("route_scopes.zig");
 const hx_mod = @import("handlers/hx.zig");
 const error_codes = @import("../errors/error_registry.zig");
 const metrics = @import("../observability/metrics.zig");
+const ZeroizingAllocator = @import("../secrets/zeroizing_allocator.zig");
+const sensitive_request = @import("sensitive_request.zig");
 const logging = @import("log");
 
 const log = logging.scoped(.http);
@@ -22,10 +23,7 @@ const log = logging.scoped(.http);
 const DEFAULT_MAX_CLIENTS = 1024;
 pub const S_AUTH_MW_FAILURE_DETAIL = "Could not verify the request. Try again; if it persists, contact support.";
 
-// 429 shed headers — the REST guidelines bind 429 to Retry-After + X-RateLimit-*.
-// Semantics here are the instance-wide in-flight ceiling, not a per-client
-// quota. Retry-After name, seconds, and rendered value live in
-// handlers/common.zig (shared with the SSE cap's 503).
+// Instance-wide shed headers; shared retry values live in handlers/common.zig.
 const HEADER_RATELIMIT_LIMIT = "X-RateLimit-Limit";
 const HEADER_RATELIMIT_REMAINING = "X-RateLimit-Remaining";
 const HEADER_RATELIMIT_RESET = "X-RateLimit-Reset";
@@ -225,7 +223,9 @@ fn emitRequestSpan(tctx: common.TraceContext, path: []const u8, start_ns: u64) v
 
 fn dispatchMatchedRoute(ctx: *handler.Context, registry: *auth_mw.MiddlewareRegistry, req: *httpz.Request, res: *httpz.Response, matched: router.Route) void {
     const spec = route_table.specFor(matched, registry);
-    var arena = std.heap.ArenaAllocator.init(ctx.alloc);
+    defer sensitive_request.eraseAfterDispatch(req, matched);
+    var zeroing = ZeroizingAllocator.wrap(ctx.alloc);
+    var arena = std.heap.ArenaAllocator.init(zeroing.allocator());
     defer arena.deinit();
     const alloc = arena.allocator();
     const req_id = common.requestId(alloc);

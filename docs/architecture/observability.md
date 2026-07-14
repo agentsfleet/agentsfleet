@@ -21,10 +21,13 @@ independent signal paths, each with a different consumer:
 
 - **Prometheus metrics (pull).** The `fleet_*` metric families — counters,
   histograms, and gauges for API and Server-Sent Events (SSE) backpressure and
-  in-flight depth, the signup funnel, `fleet_triggered_total`, the runner fleet,
-  and the Redis pool — render at the pull endpoint
+  in-flight depth, process Resident Set Size (RSS), aggregate plaintext-erasure
+  bytes and sensitive-write failures, the signup funnel, `fleet_triggered_total`,
+  the runner fleet, and the Redis pool — render at the pull endpoint
   `GET /metrics` (`src/agentsfleetd/http/handlers/health.zig`, via `metrics_render.zig`).
-  Nothing pushes; Prometheus scrapes.
+  Nothing pushes; Prometheus scrapes. The plaintext-erasure families have no
+  labels: tenant, workspace, fleet, route, individual secret size, and token
+  material never enter telemetry.
 
 - **OpenTelemetry (OTel) logs + traces — LIVE, exported direct.** `otel_logs.zig`
   and `otel_traces.zig` are real OpenTelemetry Protocol (OTLP) / JSON exporters: a
