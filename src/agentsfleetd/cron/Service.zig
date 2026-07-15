@@ -36,6 +36,16 @@ pub const UpdateInput = struct {
     desired_status: model.DesiredStatus,
 };
 
+pub const SourceInput = struct {
+    fleet_id: []const u8,
+    source: model.Source,
+    source_key: []const u8,
+    cron: []const u8,
+    timezone: []const u8,
+    message: []const u8,
+    desired_status: model.DesiredStatus,
+};
+
 pub const ProviderFailure = struct {
     schedule: model.Schedule,
     cause: QStashClient.Outcome,
@@ -115,6 +125,62 @@ pub fn remove(self: Service, alloc: std.mem.Allocator, fleet_id: []const u8, sch
         .cron = schedule.cron,
         .timezone = schedule.timezone,
         .message = schedule.message,
+        .desired_status = .deleting,
+    });
+}
+
+pub fn upsertSource(self: Service, alloc: std.mem.Allocator, input: SourceInput) !Outcome {
+    try validateInput(input.cron, input.timezone, input.message);
+    var existing = (try self.store.getBySourceKey(alloc, input.fleet_id, input.source_key)) orelse {
+        if (input.desired_status != .active) return .not_found;
+        return self.create(alloc, .{
+            .fleet_id = input.fleet_id,
+            .source = input.source,
+            .source_key = input.source_key,
+            .cron = input.cron,
+            .timezone = input.timezone,
+            .message = input.message,
+        });
+    };
+    defer existing.deinit(alloc);
+    return self.claimAndApply(alloc, .{
+        .fleet_id = existing.fleet_id,
+        .schedule_id = existing.schedule_id,
+        .cron = input.cron,
+        .timezone = input.timezone,
+        .message = input.message,
+        .desired_status = input.desired_status,
+    });
+}
+
+pub fn setSourceDesired(
+    self: Service,
+    alloc: std.mem.Allocator,
+    fleet_id: []const u8,
+    source_key: []const u8,
+    desired_status: model.DesiredStatus,
+) !Outcome {
+    var existing = (try self.store.getBySourceKey(alloc, fleet_id, source_key)) orelse return .not_found;
+    defer existing.deinit(alloc);
+    return self.claimAndApply(alloc, .{
+        .fleet_id = existing.fleet_id,
+        .schedule_id = existing.schedule_id,
+        .cron = existing.cron,
+        .timezone = existing.timezone,
+        .message = existing.message,
+        .desired_status = desired_status,
+    });
+}
+
+pub fn removeSource(self: Service, alloc: std.mem.Allocator, fleet_id: []const u8, source_key: []const u8) !Outcome {
+    var existing = (try self.store.getBySourceKey(alloc, fleet_id, source_key)) orelse return .not_found;
+    defer existing.deinit(alloc);
+    return self.claimAndApply(alloc, .{
+        .fleet_id = existing.fleet_id,
+        .schedule_id = existing.schedule_id,
+        .cron = existing.cron,
+        .timezone = existing.timezone,
+        .message = existing.message,
         .desired_status = .deleting,
     });
 }

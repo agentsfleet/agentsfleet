@@ -108,7 +108,7 @@ This spec uses Create, Read, Update, Delete (CRUD), Hash-based Message Authentic
 | `scripts/check_openapi_url_shape.py` | EDIT | Recognize schedule collections as resource-shaped URLs. |
 | `src/agentsfleetd/{auth/scopes.zig,auth/scopes_test.zig,http/test_scope_tokens.zig}` + `docs/AUTH.md` + `scripts/mint-scope-personas.mjs` | EDIT | Schedule scopes. |
 | `src/agentsfleetd/{state/model_library/sql,fleet/budget,fleet/budget_test,fleet/budget_integration_test,fleet_library/github_source_test,http/handlers/pagination,http/handlers/library/catalog,http/handlers/library/gallery,http/handlers/fleet_bundles/api_integration_test}.zig` + `src/runner/engine/stream_redactor.zig` | EDIT | Formatter-only unblock approved by Indy after the full-tree Zig gate exposed pre-existing drift. |
-| `src/agentsfleetd/fleet_runtime/{config_helpers,config_types,config_parser_test}.zig` + `src/agentsfleetd/http/handlers/fleets/{create,patch,delete,stop,resume,kill}.zig` | EDIT | Shared cron/timezone/message validation and Fleet lifecycle synchronization. |
+| `src/agentsfleetd/fleet_runtime/{config_helpers,config_types}.zig` + `src/agentsfleetd/http/handlers/fleets/{create,patch,delete,cron_sync,cron_lifecycle_integration_test}.zig` | CREATE/EDIT | Shared cron/timezone/message validation and Fleet lifecycle synchronization. |
 | `src/agentsfleetd/errors/{error_registry,error_entries}.zig` | EDIT | Schedule errors and recovery text. |
 | `src/runner/engine/{tool_bridge,tool_builders}.zig` + runner tool tests | EDIT | Reject hosted `cron_*` tools so local fallback is unreachable. |
 | `cli/src/program/cli-tree-fleet.ts` + `cli/src/commands/fleet_schedule*.ts` | CREATE/EDIT | Add/list/update/rm/status/sync commands and rendering. |
@@ -166,9 +166,9 @@ A signed ingress verifies current and next QStash signing keys against the raw b
 
 Fleet install and patch synchronously configure the single declarative cron schedule by source identity; stop/kill suppress fires, resume explicitly restores the schedule, and hard delete removes provider schedules before deleting the Fleet. All paths call the same service and surface provider errors rather than scheduling hidden retries.
 
-- **Dimension 5.1** — installing or patching a Fleet with `type: cron` creates or updates exactly one declarative desired schedule → Test `test_fleet_cron_syncs_schedule`
-- **Dimension 5.2** — installing a Fleet with no cron trigger creates no schedule → Test `test_install_no_cron_no_schedule`
-- **Dimension 5.3** — stop/resume/kill/delete never leave an effective or orphaned provider schedule → Test `test_fleet_lifecycle_syncs_schedules`
+- **Dimension 5.1** — installing or patching a Fleet with `type: cron` creates or updates exactly one declarative desired schedule → Test `test_fleet_cron_syncs_schedule_and_lifecycle` → **DONE**
+- **Dimension 5.2** — installing a Fleet with no cron trigger creates no schedule → Test `test_install_no_cron_no_schedule` → **DONE**
+- **Dimension 5.3** — stop/resume/kill/delete never leave an effective or orphaned provider schedule → Test `test_fleet_cron_syncs_schedule_and_lifecycle` → **DONE**
 
 ### §6 — Optimized `agentsfleet schedule` CLI
 
@@ -269,9 +269,9 @@ Event enqueued on fire: EventEnvelope{ event_type=.cron, actor="cron:<schedule_i
 | 4.3 | integration | `test_fire_dedupes_replay` | same message id twice → one stream entry; second is `200` no-op. |
 | 4.4 | integration | `test_fire_skips_inactive` | missing schedule, killed Fleet, and inactive schedule states → `200`, stream length unchanged. |
 | 4.5 | concurrency | `test_fire_100_way_exactly_once` | 100 identical signed requests → one stream event and parallel verification. |
-| 5.1 | integration | `test_fleet_cron_syncs_schedule` | install/patch declarative cron → one sourced desired schedule at latest generation. |
+| 5.1 | integration | `test_fleet_cron_syncs_schedule_and_lifecycle` | install/patch declarative cron → one sourced desired schedule at latest generation. |
 | 5.2 | integration | `test_install_no_cron_no_schedule` | install non-cron Fleet → zero schedules. |
-| 5.3 | integration | `test_fleet_lifecycle_syncs_schedules` | stop/resume/kill/delete suppress or remove provider state without orphan. |
+| 5.3 | integration | `test_fleet_cron_syncs_schedule_and_lifecycle` | stop/resume/kill/delete suppress or remove provider state without orphan. |
 | 6.1 | e2e | `test_cli_schedule_add` | subprocess `schedule add … --cron` → exit 0, prints id. |
 | 6.2 | e2e | `test_cli_schedule_list_json` | piped stdout → JSON array; tty → human table. |
 | 6.3 | e2e | `test_cli_schedule_update_rm` | update + rm round-trip; structured error on bad cron. |

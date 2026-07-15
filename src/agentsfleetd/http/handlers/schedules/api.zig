@@ -76,7 +76,8 @@ pub fn innerScheduleSync(hx: Hx, req: *httpz.Request, workspace_id: []const u8, 
     if (!validateIds(hx, workspace_id, fleet_id, schedule_id)) return;
     if (!authorizeMutation(hx, workspace_id)) return;
     var exchange: QStashClient.HttpClientExchange = .{ .io = hx.ctx.io };
-    const service = cronService(hx, &exchange) orelse return;
+    var destination_buffer: [cron_constants.max_destination_url_bytes]u8 = undefined;
+    const service = cronService(hx, &exchange, &destination_buffer) orelse return;
     var outcome = service.sync(hx.alloc, fleet_id, schedule_id) catch |err| return serviceError(hx, err);
     defer outcome.deinit(hx.alloc);
     writeOutcome(hx, outcome, .ok);
@@ -117,7 +118,8 @@ fn createSchedule(hx: Hx, req: *httpz.Request, workspace_id: []const u8, fleet_i
     var source_key_buffer: [64]u8 = undefined;
     const source_key = std.fmt.bufPrint(&source_key_buffer, SOURCE_KEY_FORMAT, .{hx.req_id}) catch return common.internalDbError(hx.res, hx.req_id);
     var exchange: QStashClient.HttpClientExchange = .{ .io = hx.ctx.io };
-    const service = cronService(hx, &exchange) orelse return;
+    var destination_buffer: [cron_constants.max_destination_url_bytes]u8 = undefined;
+    const service = cronService(hx, &exchange, &destination_buffer) orelse return;
     var outcome = service.create(hx.alloc, .{
         .fleet_id = fleet_id,
         .source = .api,
@@ -146,7 +148,8 @@ fn patchSchedule(hx: Hx, req: *httpz.Request, workspace_id: []const u8, fleet_id
         return;
     } else current.desired_status;
     var exchange: QStashClient.HttpClientExchange = .{ .io = hx.ctx.io };
-    const service = cronService(hx, &exchange) orelse return;
+    var destination_buffer: [cron_constants.max_destination_url_bytes]u8 = undefined;
+    const service = cronService(hx, &exchange, &destination_buffer) orelse return;
     var outcome = service.update(hx.alloc, .{
         .fleet_id = fleet_id,
         .schedule_id = schedule_id,
@@ -163,19 +166,23 @@ fn deleteSchedule(hx: Hx, workspace_id: []const u8, fleet_id: []const u8, schedu
     if (!validateIds(hx, workspace_id, fleet_id, schedule_id)) return;
     if (!authorizeMutation(hx, workspace_id)) return;
     var exchange: QStashClient.HttpClientExchange = .{ .io = hx.ctx.io };
-    const service = cronService(hx, &exchange) orelse return;
+    var destination_buffer: [cron_constants.max_destination_url_bytes]u8 = undefined;
+    const service = cronService(hx, &exchange, &destination_buffer) orelse return;
     var outcome = service.remove(hx.alloc, fleet_id, schedule_id) catch |err| return serviceError(hx, err);
     defer outcome.deinit(hx.alloc);
     writeOutcome(hx, outcome, .no_content);
 }
 
-fn cronService(hx: Hx, exchange: *QStashClient.HttpClientExchange) ?Service {
+fn cronService(
+    hx: Hx,
+    exchange: *QStashClient.HttpClientExchange,
+    destination_buffer: *[cron_constants.max_destination_url_bytes]u8,
+) ?Service {
     const credentials = hx.ctx.qstash_credentials orelse {
         hx.fail(error_codes.ERR_SCHEDULE_NOT_CONFIGURED, DETAIL_UNCONFIGURED);
         return null;
     };
-    var destination_buffer: [cron_constants.max_destination_url_bytes]u8 = undefined;
-    const destination = cron_constants.destinationUrl(&destination_buffer, hx.ctx.api_url) catch {
+    const destination = cron_constants.destinationUrl(destination_buffer, hx.ctx.api_url) catch {
         hx.fail(error_codes.ERR_SCHEDULE_NOT_CONFIGURED, DETAIL_UNCONFIGURED);
         return null;
     };

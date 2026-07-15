@@ -46,6 +46,10 @@ pub const SELECT_ONE =
     SELECT_PREFIX ++ ROW_COLUMNS ++
     " FROM core.fleet_schedules WHERE uid = $1::uuid AND fleet_id = $2::uuid";
 
+pub const SELECT_SOURCE_KEY =
+    SELECT_PREFIX ++ ROW_COLUMNS ++
+    " FROM core.fleet_schedules WHERE fleet_id = $1::uuid AND source_key = $2";
+
 pub const LIST_FOR_FLEET =
     SELECT_PREFIX ++ ROW_COLUMNS ++
     " FROM core.fleet_schedules WHERE fleet_id = $1::uuid ORDER BY created_at, uid";
