@@ -7,6 +7,7 @@ import { workspacePath } from "@/lib/workspace-routes";
 import { useFleetEventStream } from "@/components/domain/useFleetEventStream";
 import {
   deriveTileLiveness,
+  fleetRowState,
   formatTileEvents,
   formatTileSpend,
   tileShouldStream,
@@ -90,6 +91,7 @@ function TileShell({ fleet, workspaceId, kind, eyebrow, feed, children }: ShellP
         href={workspacePath(workspaceId, `fleets/${fleet.id}`)}
         className="absolute inset-0 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         aria-label={`${fleet.name} — ${fleet.status} — ${fleet.id}`}
+        data-state={fleetRowState(fleet.status)}
       />
       <div className="pointer-events-none flex flex-col gap-3">
         <div className="flex items-start justify-between gap-2">

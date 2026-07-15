@@ -14,6 +14,7 @@ const fleet_api = @import("handlers/fleets/api.zig");
 const fleet_secrets = @import("handlers/fleets/secrets.zig");
 const ws_lifecycle = @import("handlers/workspaces/lifecycle.zig");
 const preferences_h = @import("handlers/workspaces/preferences.zig");
+const onboarding_h = @import("handlers/workspaces/onboarding.zig");
 const tenant_billing_h = @import("handlers/tenant_billing.zig");
 const tenant_workspaces_h = @import("handlers/tenant_workspaces.zig");
 const tenant_provider_h = @import("handlers/tenant_provider.zig");
@@ -255,6 +256,11 @@ pub fn invokeWorkspacePreferenceItem(hx: *Hx, req: *httpz.Request, route: router
     if (!common.requireMethod(hx.res, req.method, .PUT)) return;
     const r = route.workspace_preference;
     preferences_h.innerPutPreference(hx.*, req, r.workspace_id, r.pref_key);
+}
+
+pub fn invokeWorkspaceOnboarding(hx: *Hx, req: *httpz.Request, route: router.Route) void {
+    if (!common.requireMethod(hx.res, req.method, .GET)) return;
+    onboarding_h.innerGetOnboarding(hx.*, route.workspace_onboarding);
 }
 
 // ── Fleet messages (chat ingress) ────────────────────────────────────────

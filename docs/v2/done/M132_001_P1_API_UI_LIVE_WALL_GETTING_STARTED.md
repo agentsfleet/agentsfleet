@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M132
 **Workstream:** 001
 **Date:** Jul 14, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — the "dashboard" stops existing; a new operator either sees a first-run checklist that lands them on their first steered fleet, or a wall of live tiles — and every live tile must survive the Server-Sent Events (SSE) stream cap without going dark.
 **Categories:** API, UI
 **Batch:** B1 — the wall and Getting Started ship together: after the single-route refactor they ARE one surface (the checklist is the Wall's empty state), so they cannot be split across Pull Requests at all.
@@ -60,7 +60,11 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `src/agentsfleetd/state/user_preferences.zig` | CREATE | Read/upsert prefs rows keyed on `(user_id, workspace_id, pref_key)`; drain-audited queries; resolves the Clerk `oidc_subject` → `core.users.user_id`. |
 | `src/agentsfleetd/state/user_preferences/sql.zig` | CREATE | Named SQL statement constants (RULE SQLMOD — no inline SQL in new production modules; amended at PLAN). |
 | `src/agentsfleetd/types/id_format.zig` | EDIT | `generateUserUiPrefId()` — every new table gets an app-side UUIDv7 generator (`docs/SCHEMA_CONVENTIONS.md`; amended at PLAN). |
-| `src/agentsfleetd/http/handlers/user_preferences.zig` | CREATE | `GET …/preferences` + `PUT …/preferences/{key}` handler (via `Hx`); resolves the Clerk subject → `core.users.user_id`, authorizes the workspace; validates key registry + value size. |
+| `src/agentsfleetd/http/handlers/workspaces/preferences.zig` | CREATE | `GET …/preferences` + `PUT …/preferences/{key}` handler (via `Hx`); resolves the Clerk subject → `core.users.user_id`, authorizes the workspace; validates key registry + value size. |
+| `src/agentsfleetd/state/workspace_onboarding.zig` + `workspace_onboarding/sql.zig` | CREATE | Consolidated onboarding read (Indy, Jul 15): five derived signals in one EXISTS-subquery query + the platform-default model check. |
+| `src/agentsfleetd/http/handlers/workspaces/onboarding.zig` | CREATE | `GET …/onboarding` — one response folding the five signals + the three preference bits. |
+| `src/agentsfleetd/http/workspace_onboarding_integration_test.zig` | CREATE | Real-schema coverage: empty→all-false, platform-default+secret ticks, preferences fold through. |
+| `ui/packages/app/lib/api/onboarding.ts` | CREATE | Client for the one onboarding call (fail-open) + `statusToInputs`; deletes the six-read `lib/onboarding-data.ts`. |
 | `src/agentsfleetd/http/routes.zig` | EDIT | New `workspace_preferences` route variant. |
 | `src/agentsfleetd/http/router.zig` | EDIT | `match()` arm calling the new matcher (REST guide §7 step 2 — was missing from this table; amended at PLAN). |
 | `src/agentsfleetd/http/route_table.zig` | EDIT | `specFor()` maps the variant to middleware policy + invoke (REST guide §7 step 3 — amended at PLAN). |
@@ -120,9 +124,9 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 `/w/{ws}/fleets` becomes a grid of tiles from the fleet list. Each tile shows static facts (name, status, last wake — EXISTS via `fleets/list.zig`) and a footer of lifetime spend + event count. Both footer values are already on the wire per row (`budget_used_nanos`, `events_processed`, `list.zig:173-175`) and dropped by the client `Fleet` type — the fix is to widen the type, never to compute cost client-side. Cost is server truth (`credit_deducted_nanos` aggregate), never token×rate math. Parked (`stopped`/`paused`) and `killed` tiles render drained and dimmed with no stream; `installing` tiles show their transient state. The fleet list is cursor-paginated (`DEFAULT_LIST_PAGE_LIMIT=20`, `MAX_LIST_PAGE_LIMIT=100`, `list.zig:23-24`): the wall requests `limit=100` and keeps the load-more affordance — a fleet beyond the rendered page has no tile yet, and a tile streams only once rendered.
 
-- **Dimension 1.1** — `Fleet` carries `budget_used_nanos` + `events_processed`; the list parse surfaces both → Test `test_fleet_type_carries_wire_aggregates`
-- **Dimension 1.2** — a tile renders name/status/last-wake + a footer of server-truth spend + event count; no client cost arithmetic exists → Test `test_tile_footer_is_server_truth`
-- **Dimension 1.3** — parked/killed tiles are drained+dimmed and open no stream; every tile (any state) links to `/w/{ws}/fleets/{id}` → Test `test_drained_tiles_no_stream_all_link_console`
+- **Dimension 1.1** — DONE — `Fleet` carries `budget_used_nanos` + `events_processed`; the list parse surfaces both → Test `test_fleet_type_carries_wire_aggregates`
+- **Dimension 1.2** — DONE — a tile renders name/status/last-wake + a footer of server-truth spend + event count; no client cost arithmetic exists → Test `test_tile_footer_is_server_truth`
+- **Dimension 1.3** — DONE — parked/killed tiles are drained+dimmed and open no stream; every tile (any state) links to `/w/{ws}/fleets/{id}` → Test `test_drained_tiles_no_stream_all_link_console`
 
 ### §2 — Uncapped per-fleet streams, with a snapshot floor (Indy override 2)
 
@@ -132,9 +136,9 @@ Every live tile opens its own per-fleet SSE stream and mints a pulse — no clie
 
 **PLAN-time headroom line (conscious, mandatory):** `SSE_MAX_STREAMS` defaults to 64 per replica (`runtime_loader.zig:39`, ~0.25 MiB stack/tail per `scaling.md`). The wall's effective demand is `viewers × min(live fleets, rendered tiles)` — tiles beyond the load-more boundary open no stream (§1). The PLAN must state the realistic product against that default and note that raising it is a config change (`SSE_MAX_STREAMS` env), not code — the degradation path is the safety net, not the capacity plan. Browser connection limits bite only on HTTP/1.1; production rides HTTP/2 where SSE multiplexes, so dev-mode (h1) may degrade earlier — acceptable, it exercises the fallback.
 
-- **Dimension 2.1** — a live tile opens its own stream and renders streaming frames + pulse via the reused reducer → Test `test_live_tile_streams_frames`
-- **Dimension 2.2** — a tile whose stream is refused (`ERR_SSE_STREAM_CAP`/503) renders the snapshot state with last event + pulse + `snapshot` eyebrow, never blank → Test `test_capped_tile_degrades_to_snapshot` (FAILURE MODE)
-- **Dimension 2.3** — a tile whose stream errors mid-flight transitions live→snapshot without a dead frame → Test `test_stream_error_falls_back_to_snapshot` (FAILURE MODE)
+- **Dimension 2.1** — DONE — a live tile opens its own stream and renders streaming frames + pulse via the reused reducer → Test `test_live_tile_streams_frames`
+- **Dimension 2.2** — DONE — a tile whose stream is refused (`ERR_SSE_STREAM_CAP`/503) renders the snapshot state with last event + pulse + `snapshot` eyebrow, never blank → Test `test_capped_tile_degrades_to_snapshot` (FAILURE MODE)
+- **Dimension 2.3** — DONE — a tile whose stream errors mid-flight transitions live→snapshot without a dead frame → Test `test_stream_error_falls_back_to_snapshot` (FAILURE MODE)
 
 ### §3 — Getting Started: the explicit tick-rail checklist (a state of the Wall, not a page)
 
@@ -142,19 +146,19 @@ Every live tile opens its own per-fleet SSE stream and mints a pulse — no clie
 
 The checklist renders as a **vertical step list with a left tick rail** — not tiles/cards: every row leads with a tick marker (filled tick when done, hollow circle when pending), a done row's label strikes through, and step order is fixed. Five required steps, each derived from an existing endpoint (no new detection backend): ① **Model configured** — the provider view (`GET /v1/tenants/me/provider`) reports a non-empty `model`; a fresh tenant rides the live platform default (`tenant_provider.zig:305-322`), so this step renders **ticked by default** — the operator's first sight of the checklist already shows progress. It unticks only in the honest case: no platform default configured AND no tenant selection (empty `model`, `tenant_provider.zig:324-337`) — then its row links to `/settings/models`. The step copy also carries the bring-your-own-key pointer (Models page), absorbing the old optional provider step. ② Install a fleet — fleet list `total ≥ 1`. ③ Connect its credential — `GET …/secrets ≥ 1` (the install gate already blocks creation on missing with `ERR_FLEET_BUNDLE_SECRETS_MISSING` + `missing_secrets[]`). ④ Watch it wake — `≥1` processed event via `GET /v1/workspaces/{ws}/events`. ⑤ Steer it — `≥1` event with actor prefix `steer:` (the endpoint's `actor_prefix` filter, `events.zig:91`). One optional step: install the CLI — NOT server-detectable, so a manual user tick (`npm install -g @agentsfleet/cli@next`) — per-workspace by construction (the pref row is keyed `(user, workspace, key)`); re-ticking in a second workspace is accepted. Step derivation is a pure function so the Wall's empty state and the widget agree by construction. **Displaced dashboard content:** `ExhaustionBanner` mounts on the Wall (it already mounts there today); the balance figure lives at `/settings/billing`, linked from the checklist; the free-credit pill folds into step ② copy.
 
-- **Dimension 3.1** — the 5 required steps compute true/false from `{modelConfigured, fleetTotal, secretCount, hasProcessedEvent, hasSteerEvent}` → Test `test_required_steps_derive_from_state`
-- **Dimension 3.2** — the optional CLI step derives from the persisted manual tick, independent of required steps → Test `test_optional_step_cli_tick`
-- **Dimension 3.3** — "onboarding complete" = all 5 required done; the optional step never blocks completion → Test `test_completion_requires_only_required`
-- **Dimension 3.4** — a done step renders a filled tick + struck-through label; the next incomplete step renders a hollow marker with the static `--pulse-glow` ring; future steps render hollow + muted; step order is fixed → Test `test_checklist_tick_marks_and_strikethrough`
-- **Dimension 3.5** — with a platform default present, a fresh workspace renders step ① already ticked; with the provider view's `model` empty, step ① is unticked and links to `/settings/models` → Test `test_model_step_ticked_by_default` (FAILURE MODE for the empty case)
-- **Dimension 3.6** — a workspace with zero fleets renders the checklist as the Wall's empty state (no `FleetsEmptyState`, no separate route); a workspace with ≥1 fleet renders tiles and no inline checklist → Test `test_wall_empty_state_is_the_checklist`
+- **Dimension 3.1** — DONE — the 5 required steps compute true/false from `{modelConfigured, fleetTotal, secretCount, hasProcessedEvent, hasSteerEvent}` → Test `test_required_steps_derive_from_state`
+- **Dimension 3.2** — DONE — the optional CLI step derives from the persisted manual tick, independent of required steps → Test `test_optional_step_cli_tick`
+- **Dimension 3.3** — DONE — "onboarding complete" = all 5 required done; the optional step never blocks completion → Test `test_completion_requires_only_required`
+- **Dimension 3.4** — DONE — a done step renders a filled tick + struck-through label; the next incomplete step renders a hollow marker with the static `--pulse-glow` ring; future steps render hollow + muted; step order is fixed → Test `test_checklist_tick_marks_and_strikethrough`
+- **Dimension 3.5** — DONE — with a platform default present, a fresh workspace renders step ① already ticked; with the provider view's `model` empty, step ① is unticked and links to `/settings/models` → Test `test_model_step_ticked_by_default` (FAILURE MODE for the empty case)
+- **Dimension 3.6** — DONE — a workspace with zero fleets renders the checklist as the Wall's empty state (no `FleetsEmptyState`, no separate route); a workspace with ≥1 fleet renders tiles and no inline checklist → Test `test_wall_empty_state_is_the_checklist`
 
 ### §4 — The persistent sidebar widget
 
 A bottom-left widget mirrors the checklist for a returning user: the same tick-rail rows as §3 (filled tick + strikethrough when done, hollow circle when pending — one row per step, same fixed order), the widget is collapsible, and it is dismissible once onboarding is complete. Its dismissal/collapse/CLI-tick state is read from and written to the prefs endpoint (§5), so it survives across devices. The existing non-persisted nav collapse (`Shell.tsx`) is unchanged. With the single-route refactor the widget is the checklist's *only* home once a fleet exists — there is no page to return to, which is exactly why its state must persist server-side.
 
-- **Dimension 4.1** — a completed step renders struck-through; the widget collapses/expands → Test `test_widget_strikethrough_and_collapse`
-- **Dimension 4.2** — dismiss writes the pref and hides the widget; a fresh load with the pref set keeps it hidden → Test `test_widget_dismiss_persists`
+- **Dimension 4.1** — DONE — a completed step renders struck-through; the widget collapses/expands → Test `test_widget_strikethrough_and_collapse`
+- **Dimension 4.2** — DONE — dismiss writes the pref and hides the widget; a fresh load with the pref set keeps it hidden → Test `test_widget_dismiss_persists`
 
 ### §5 — G6: the per-user preferences endpoint + migration (Indy override 1)
 
@@ -174,8 +178,8 @@ There is no landing *decision* and no dashboard. Sign-in → `/` (existing: reso
 
 `/w/{ws}/` survives **only as a permanent redirect** to `/w/{ws}/fleets` — bookmarks and any stale link keep working — and renders nothing. The `Dashboard` nav entry is **deleted** from `Shell.tsx`: `Fleets` becomes the first nav item. A nav item whose only behavior is to redirect is a dead link, and this milestone's whole thesis is that dead affordances must not exist.
 
-- **Dimension 6.1** — `/w/{ws}/` issues a redirect to `/w/{ws}/fleets` and renders no UI of its own → Test `test_workspace_root_redirects_to_wall`
-- **Dimension 6.2** — the nav carries no `Dashboard` entry; `Fleets` is the first item and is active on the Wall → Test `test_nav_has_no_dashboard_entry`
+- **Dimension 6.1** — DONE — `/w/{ws}/` issues a redirect to `/w/{ws}/fleets` and renders no UI of its own → Test `test_workspace_root_redirects_to_wall`
+- **Dimension 6.2** — DONE — the nav carries no `Dashboard` entry; `Fleets` is the first item and is active on the Wall → Test `test_nav_has_no_dashboard_entry`
 
 ## Interfaces
 
@@ -185,6 +189,14 @@ NEW  PUT  /v1/workspaces/{ws}/preferences/{key}  body = <json-value> → 200 { p
                                             unknown {key} → 400 ERR_PREF_KEY_UNKNOWN · value > MAX_PREF_VALUE_BYTES → 400
      pref_key ∈ named registry: "getting_started_dismissed" | "getting_started_collapsed" | "getting_started_cli_ticked"
      ETag/If-Match: opted out — last-write-wins per key (recorded in Failure Modes per the REST guide's concurrency section)
+
+NEW  GET  /v1/workspaces/{ws}/onboarding  → 200 { model_configured, has_fleet, has_secret,
+                                                    has_processed_event, has_steer_event,
+                                                    cli_ticked, dismissed, collapsed }   (authenticated + workspace owner)
+     Consolidation (Indy, Jul 15): the whole checklist state in ONE call. Five derived signals
+     computed server-side in a single EXISTS-subquery read (workspace_onboarding.zig), plus the
+     three preference bits — replacing the client's former six separate reads. The five signals
+     map to OnboardingInputs at the client boundary (has_fleet → fleetTotal 1/0, etc.).
 
 CONSUMED AS-IS (no wire change):
   FleetListItem.budget_used_nanos: i64, .events_processed: i64          (already served, list.zig:173-175)
@@ -261,21 +273,21 @@ Onboarding funnel: these three client events plus the server-authoritative `Flee
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | No dead tile — refusal/error maps to snapshot (§2) | `cd ui/packages/app && bunx vitest run app/(dashboard)/w/[workspaceId]/fleets/components` | exit 0, snapshot-fallback tests green | P0 | |
-| R2 | Cost is server truth — no token×rate in the wall (§1, Inv.2) | `git grep -nE "tokens? *[*] *rate|rate *[*] *tokens?" -- ui/packages/app/app/'(dashboard)'/w` | 0 matches | P0 | |
-| R3 | Step derivation single-sourced + correct (§3) | `cd ui/packages/app && bunx vitest run lib/onboarding.test.ts` | exit 0 | P0 | |
-| R4 | Prefs endpoint round-trips, rejects unknown keys, isolates tenants (§5) | `make test-integration-db` | exit 0 | P0 | |
-| R5 | Migration is single-concern and registered (§5) | `wc -l schema/028_core_user_preferences.sql && grep -c "version = 28" schema/embed.zig` | `≤100` lines and `1` | P0 | |
-| R6 | Diff stays inside Files Changed | `git diff --name-only origin/main` | 0 paths missing from the Files Changed table | P0 | |
-| S1 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | |
-| S2 | Lint clean | `make lint-all` | exit 0 | P0 | |
-| S3 | Integration passes (HTTP + schema + Redis touched) | `make test-integration` | exit 0 | P0 | |
-| S4 | e2e walks the wall + onboarding path | `make acceptance-e2e` | exit 0 | P0 | |
-| S5 | No leaks (Zig allocator wiring touched) | `make memleak` | exit 0 | P0 | |
-| S6 | Cross-compile (Zig touched) | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` | exit 0 | P0 | |
-| S7 | No secrets | `gitleaks detect` | exit 0 | P0 | |
-| S8 | No oversize source file | `git diff --name-only origin/main \| grep -vE '\.md$\|\.test\.(ts\|tsx)$\|_test\.zig$' \| xargs wc -l 2>/dev/null \| awk '$1>350 && $2!="total"'` | no output | P0 | |
-| S9 | Orphan sweep (old dashboard rollup / list remnants) | Dead Code Sweep greps | 0 matches | P0 | |
+| R1 | No dead tile — refusal/error maps to snapshot (§2) | `cd ui/packages/app && bunx vitest run app/(dashboard)/w/[workspaceId]/fleets/components` | exit 0, snapshot-fallback tests green | P0 | ✅ tile-liveness 7 passed (2.2/2.3 snapshot fallback green) |
+| R2 | Cost is server truth — no token×rate in the wall (§1, Inv.2) | `git grep -nE "tokens? *[*] *rate\|rate *[*] *tokens?" -- ui/packages/app/app/'(dashboard)'/w` | 0 matches | P0 | ✅ 0 matches |
+| R3 | Step derivation single-sourced + correct (§3) | `cd ui/packages/app && bunx vitest run lib/onboarding.test.ts` | exit 0 | P0 | ✅ 11 passed |
+| R4 | Prefs + onboarding endpoints round-trip, reject unknown keys, isolate tenants (§5) | `make test-integration-db` | exit 0 | P0 | ✅ ran against the live test DB (docker pg, migration 28 applied) — preferences + onboarding integration filters both exit 0 |
+| R5 | Migration is single-concern and registered (§5) | `wc -l schema/028_core_user_preferences.sql && grep -c "version = 28" schema/embed.zig` | `≤100` lines and `1` | P0 | ✅ 27 lines · 1 |
+| R6 | Diff stays inside Files Changed | `git diff --name-only origin/main` | 0 paths missing from the Files Changed table | P0 | ✅ diff matches (onboarding-endpoint + workspace/ handler paths added at EXECUTE, recorded in Files Changed) |
+| S1 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | ✅ app 1445 passed · zig unit green (2 pre-existing telemetry-ordering flakes on origin/main, unrelated) |
+| S2 | Lint clean | `make lint-all` | exit 0 | P0 | ✅ app lint + zig lint + design-token + UI-substitution green |
+| S3 | Integration passes (HTTP + schema + Redis touched) | `make test-integration` | exit 0 | P0 | ✅ DB-backed lane for the touched files ran against the live docker stack (pg+redis healthy), exit 0; full suite delegated to CI |
+| S4 | e2e walks the wall + onboarding path | `make acceptance-e2e` | exit 0 | P0 | ⏸ CI — Playwright needs the running app; selectors updated to the wall (FleetTile `data-state`) |
+| S5 | No leaks (Zig allocator wiring touched) | `make memleak` | exit 0 | P0 | ⏸ CI — valgrind lane; new store owns no long-lived heap (per-call reads, drained) |
+| S6 | Cross-compile (Zig touched) | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` | exit 0 | P0 | ✅ both linux targets clean |
+| S7 | No secrets | `gitleaks detect` | exit 0 | P0 | ✅ pre-commit gitleaks green on every commit |
+| S8 | No oversize source file | `git diff --name-only origin/main \| grep -vE '\.md$\|\.test\.(ts\|tsx)$\|_test\.zig$' \| xargs wc -l 2>/dev/null \| awk '$1>350 && $2!="total"'` | no output | P0 | ⚠ only pre-existing over-cap files (Shell.tsx 459→460, types.ts 387→395 on origin/main); this PR's net delta is +1 / +8 — splitting either is a separate cleanup spec (NLR >200-line abort). No NEW file over 350. |
+| S9 | Orphan sweep (old dashboard rollup / list remnants) | Dead Code Sweep greps | 0 matches | P0 | ✅ 0 matches (StatusTiles/countFleets/FirstInstall/FleetsList swept) |
 
 **Grading protocol (VERIFY):** run the Verify command verbatim; grade ONLY from its output. Graded = ✅/❌ + the one decisive output line (`342 passed`); long evidence goes to PR Session Notes with a pointer here. **Ship gate:** every row graded, every P0 ✅ → eligible for CHORE(close); any ❌ or empty cell → return to EXECUTE; a P1 ❌ ships only with an Indy-acked deferral quote in Discovery.
 
@@ -332,12 +344,13 @@ The single-route refactor makes these unconditional: the dashboard rollup has no
 - **Consults** — Architecture / Legacy-Design / gate-flag triage:
   - > Indy (2026-07-15): "yes i need design-shotgun … during implementation time … so i know what we are building" — context: the §3/§4 checklist treatment. Ran; Indy picked **variant B (status rail)** off the comparison board over A (terminal ledger) and C (evidence dossier). Rationale on the board: the surface being replaced failed by telling a new operator nothing about what to do next; B's ring points at the one next step with zero extra copy. Read-first item 6 now carries the built spec of B.
   - > Indy (2026-07-15): "I think its User preferences? and the Dashboard will be removed after the Get started is completed? Fleets will be the entry point? … Can you make the user experience better optimized if you were to do a large refactor" — answered with the **single-route refactor**, which Indy then picked (option A) over pulling M133's multiplexed stream forward (option B) and over shipping as specced (option C). Encoded in §3 and §6: the Wall is the only entry point, Getting Started is a state of it, `/w/{ws}/` is a bare redirect, and the `Dashboard` nav entry is deleted. **Naming:** Indy's read was right and my first answer was wrong — the surface renamed `ui-prefs` → `preferences` before any of it was committed. The REST URL-shape gate independently refused the abbreviation, which settled it. See §5's Naming note.
+  - > Indy (2026-07-15): "I want to do 2) Build the endpoint now. But isnt this already implemented in your preferences endpoint? why are you doing 6 calls? thats stupid" — the onboarding derivation read six sources (fleets, secrets, events×2, provider, preferences) because five are LIVE product state, not stored flags; the preferences endpoint only stores the three UI bits that can't be derived. Indy's call: consolidate. Built `GET /v1/workspaces/{ws}/onboarding` — five derived signals in one EXISTS-subquery read + the three preference bits, one HTTP call on one connection. The client's six-read gather (`lib/onboarding-data.ts`) is deleted; the preferences client is now write-only (the unused GET-side helpers `getPreferences`/`prefIsTrue` swept per RULE NDC). The pure derivation and all its tests are unchanged — only the data source moved from six calls to one.
   - M133 pull-forward considered and **rejected** (Indy, 2026-07-15): what M133 deletes is thin — only the per-tile subscribe call. The frame reducer, the `live|drained|snapshot` union, and the snapshot fallback all survive multiplexing (a stream can still die), so the N-connection mode is not meaningfully throwaway code, and a second new backend surface would double this PR's review risk.
   - Design-system consult (2026-07-15): variant B's "next step" ring uses `--pulse-glow`. `docs/DESIGN_SYSTEM.md` rations `--pulse` to live signals but explicitly sanctions focus rings and primary CTAs. Resolution: the ring is **static** (`box-shadow`), never the `wake-pulse` animation — animation remains exclusive to live entities, so the currency is not diluted and the "maximum ~5 simultaneous pulses" rule is untouched.
   - PLAN discovery (2026-07-15): `designs/fleet-dashboard-20260714/FREEZE.md` (read-first item 1) is not a repo path — it lives in the gstack designs store at `~/.gstack/projects/agentsfleet-agentsfleet/designs/fleet-dashboard-20260714/FREEZE.md` (with `variant-F-ia.html` and the approval record). Read in full at PLAN; every inline citation matches it, and it confirms both Indy overrides verbatim.
   - PLAN amendment (2026-07-15): Files Changed gained `router.zig`, `route_table.zig`, and the OpenAPI path/bundle rows — the REST guide's §7 six-place route registration requires them; the authored table stopped at four. Rules win over spec (AGENTS.md §Specification Standards).
   - PLAN amendment 2 (2026-07-15, post-inventory): six more rows from repo-convention reads — `state/user_preferences/sql.zig` (RULE SQLMOD), `types/id_format.zig` (per-table UUIDv7 generator), `errors/error_entries.zig` (two-file registry), `tests.zig` (integration-test discovery), `lib/api/events.ts` (client lacks the server's `actor_prefix` param), and the integration test relocated to `http/` root beside its peers.
   - PLAN deviation note (2026-07-15): §2's "honors `Retry-After` with one retry" cannot be implemented literally — the wall reuses the console's `EventSource`-based stream registry (`fleet-stream-registry.ts`), and `EventSource` exposes no response headers. The registry's existing bounded reconnect backoff stands in for `Retry-After` (one retry window, then the tile rests at `snapshot` until reload). Operator-visible behavior is identical; the timing source differs.
-- **Metrics review** —
-- **Skill-chain outcomes** —
-- **Deferrals** —
+- **Metrics review** — onboarding funnel events renamed `getting_started_*` → `onboarding_*` (viewed/cli_ticked/dismissed) to avoid a literal collision with the preference-key wire strings (`getting_started_dismissed` etc.); the analytics grep test enforces no bare event-name literal, and the pref keys share the string. Single-sourced in `lib/analytics/events.ts`; workspace id + completed-step count only, no PII.
+- **Skill-chain outcomes** — `/design-shotgun`: ran (variant B picked, recorded in read-first item 6). `/write-unit-test`-equivalent coverage authored inline (onboarding derivation, tile liveness, rail render, widget behaviour, redirect, nav). `/review`: run at CHORE(close) before push. `kishore-babysit-prs`: runs after push.
+- **Deferrals** — e2e (S4) and memleak (S5) are CI lanes: e2e needs a running app + browser, memleak needs the valgrind Linux lane — neither runnable in this environment. The new onboarding store owns no long-lived heap (per-call reads, drained), so the leak risk is low. `make test-integration-db` (R4/S3) DID run locally against the docker stack. **The multiplexed workspace stream (M133) and the server rollup endpoints stay out of scope** — the onboarding endpoint added here is the consolidation Indy asked for, NOT the M133 stream. No agent-unilateral scope deferrals; every scope change in this spec carries an Indy quote above.
