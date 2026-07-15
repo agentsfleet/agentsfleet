@@ -33,6 +33,13 @@ const parseCursor = filter_mod.parseCursor;
 // row per leg. The correlated subselect keeps one row per event and yields
 // SQL NULL when no telemetry exists (an unbilled run reads as "unknown", never
 // as zero). Cost is server truth: the client never derives it from tokens.
+//
+// Perf note: this subselect runs once per returned event row (≤200/page), but
+// the `UNIQUE (event_id, charge_type)` index bounds each execution to an index
+// probe of ≤2 rows — so it is index-bounded, NOT the unbounded per-fleet scan
+// the fleet-list aggregates were (those became a single GROUP BY pass in
+// `handlers/fleets/sql.zig`; this one does not need to, and a page here is one
+// fleet, not the workspace-wide Live Wall).
 const EVENTS_SELECT =
     \\SELECT fleet_id::text, event_id, workspace_id::text, actor, event_type,
     \\       status, request_json::text, response_text, tokens, wall_ms,

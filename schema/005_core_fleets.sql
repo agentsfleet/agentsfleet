@@ -40,6 +40,15 @@ CREATE TABLE IF NOT EXISTS core.fleets (
     required_tags   TEXT[] NOT NULL DEFAULT '{}'::text[],
     bundle_content_hash TEXT,
     bundle_snapshot_key TEXT,
+    -- Denormalized activity counters, maintained at write time by the triggers
+    -- in migration 028. They mirror COUNT(core.fleet_events) and
+    -- SUM(core.fleet_execution_telemetry.credit_deducted_nanos) for this fleet,
+    -- so the fleets list / detail (the Live Wall hot path) read them as plain
+    -- columns instead of re-aggregating the child tables on every read. Same
+    -- structural DEFAULT-0 class as required_tags above -- a counter's zero
+    -- origin, not an STS enum-value default mirroring a code constant.
+    events_processed  BIGINT NOT NULL DEFAULT 0,
+    budget_used_nanos BIGINT NOT NULL DEFAULT 0,
     created_at      BIGINT NOT NULL,
     updated_at      BIGINT NOT NULL,
     CONSTRAINT uq_fleets_workspace_id_name UNIQUE (workspace_id, name)
