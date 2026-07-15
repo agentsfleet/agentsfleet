@@ -1161,6 +1161,68 @@
         }
       }
     },
+    "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/memories/{key}": {
+      "delete": {
+        "operationId": "delete_fleet_memory",
+        "summary": "Forget a fleet memory entry",
+        "description": "Deletes one memory entry for this fleet. The key is scoped to the fleet, so a key from another fleet is not deleted.\n\nMissing keys return 404 so an operator can tell a mistyped key from a successful forget.\n",
+        "tags": [
+          "Memory"
+        ],
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "description": "UUIDv7 of the workspace.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "fleet_id",
+            "in": "path",
+            "required": true,
+            "description": "UUIDv7 of the fleet.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "key",
+            "in": "path",
+            "required": true,
+            "description": "Memory entry key.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Memory entry deleted."
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "description": "No memory entry with that key exists for this fleet.",
+            "$ref": "#/components/responses/Error"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/v1/auth/identity-events/clerk": {
       "post": {
         "operationId": "auth_identity_event_clerk",
@@ -4214,7 +4276,7 @@
       "get": {
         "operationId": "list_platform_fleet_library",
         "summary": "List the platform Fleet library catalog",
-        "description": "Lists every entry in the global platform catalog. Published, draft, and entries whose bundle was never fetched all appear. Unlike the workspace gallery, this operator view hides nothing: it shows what is live and what still needs work. Requires the `platform-library:write` scope. Metadata only — never bundle markdown, a support-file body, or an object-store key.",
+        "description": "Lists every entry in the global platform catalog. Published, draft, and entries whose bundle was never fetched all appear. Unlike the workspace gallery, this operator view hides nothing: it shows what is live and what still needs work. Requires the `platform-library:write` scope. Metadata only — never bundle markdown, a support-file body, or an object-store key. Each row carries an `etag` that an editor can send as `If-Match` on PATCH.",
         "tags": [
           "Fleet library"
         ],
@@ -4323,9 +4385,18 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": false,
+            "description": "Optional catalog row version from the list response. Stale values return 412 with the current `etag`.",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
-        "description": "Partial update. `description` and `required_credentials_reasons` are the two fields no bundle can supply, so they are operator-owned: a later bundle refetch never overwrites them. `published` moves the entry between `draft` (stored, invisible to every tenant) and `public` (live in every workspace gallery and installable). Publishing an entry whose bundle was never fetched is refused — a published entry always has something to install. Requires the `platform-library:write` scope.",
+        "description": "Partial update. `description` and `required_credentials_reasons` are the two fields no bundle can supply, so they are operator-owned: a later bundle refetch never overwrites them. `published` moves the entry between `draft` (stored, invisible to every tenant) and `public` (live in every workspace gallery and installable). Publishing an entry whose bundle was never fetched is refused — a published entry always has something to install. Requires the `platform-library:write` scope. Send `If-Match` with the row's `etag` to reject stale edits before they can repoint the source or unpublish the entry. Omitting the header preserves last-write-wins behavior.",
         "tags": [
           "Fleet library"
         ],
@@ -4364,6 +4435,10 @@
           },
           "409": {
             "description": "Publish was requested for an entry with no bundle; fetch it from the repository first (`UZ-CATALOG-002`).",
+            "$ref": "#/components/responses/Error"
+          },
+          "412": {
+            "description": "The `If-Match` value is stale. The problem body carries the current `etag` (`UZ-CATALOG-005`).",
             "$ref": "#/components/responses/Error"
           },
           "503": {
@@ -4539,10 +4614,10 @@
       }
     },
     "/v1/workspaces/{workspace_id}/fleets/{fleet_id}": {
-      "patch": {
-        "operationId": "patch_fleet",
-        "summary": "Update a fleet",
-        "description": "Updates fleet files or status. Every request field is optional.\n\n`config_json` and `trigger_markdown` cannot be used together. A killed fleet cannot be changed.\n\nStatus changes require an operator role. Config changes require workspace membership.\n",
+      "get": {
+        "operationId": "get_fleet",
+        "summary": "Get a fleet",
+        "description": "Returns one fleet's editable source, trigger markdown, bundle pin, trigger list, status, and lifetime counters.\n\nThe response carries an `ETag` header over `source_markdown` and `trigger_markdown`. Send that value as `If-Match` when saving source changes to avoid overwriting another operator's edit.\n",
         "tags": [
           "Fleets"
         ],
@@ -4565,6 +4640,81 @@
             "schema": {
               "type": "string",
               "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Fleet detail.",
+            "headers": {
+              "ETag": {
+                "description": "Version of the editable source fields.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FleetDetail"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "description": "No fleet with that id exists in this workspace. Cross-workspace reads also return 404.",
+            "$ref": "#/components/responses/Error"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "patch": {
+        "operationId": "patch_fleet",
+        "summary": "Update a fleet",
+        "description": "Updates fleet files or status. Every request field is optional.\n\n`config_json` and `trigger_markdown` cannot be used together. A killed fleet cannot be changed.\n\nSource editors can send `If-Match` with the `ETag` from GET. A stale tag returns 412 with the current tag in the problem body; omitting the header preserves last-write-wins behavior.\n\nStatus changes require an operator role. Config changes require workspace membership.\n",
+        "tags": [
+          "Fleets"
+        ],
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "description": "UUIDv7 of the workspace.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "fleet_id",
+            "in": "path",
+            "required": true,
+            "description": "UUIDv7 of the fleet.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": false,
+            "description": "Optional source-version tag from GET. Stale values return 412 with the current `etag`.",
+            "schema": {
+              "type": "string"
             }
           }
         ],
@@ -4604,6 +4754,14 @@
         "responses": {
           "200": {
             "description": "OK",
+            "headers": {
+              "ETag": {
+                "description": "Fresh version of the editable source fields after the update.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {
@@ -4625,6 +4783,10 @@
                     "config_revision": {
                       "type": "integer",
                       "format": "int64"
+                    },
+                    "etag": {
+                      "type": "string",
+                      "description": "Fresh version of the editable source fields after the update."
                     }
                   }
                 }
@@ -4644,6 +4806,10 @@
             "$ref": "#/components/responses/Error"
           },
           "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "412": {
+            "description": "The `If-Match` value is stale. The problem body carries the current `etag`.",
             "$ref": "#/components/responses/Error"
           },
           "503": {
@@ -5162,8 +5328,7 @@
                     "items": {
                       "type": "array",
                       "items": {
-                        "type": "object",
-                        "description": "One fleet event."
+                        "$ref": "#/components/schemas/FleetEvent"
                       }
                     },
                     "next_cursor": {
@@ -5320,6 +5485,205 @@
                     "next_cursor": {
                       "type": "string",
                       "nullable": true
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/workspaces/{workspace_id}/onboarding": {
+      "get": {
+        "operationId": "get_workspace_onboarding",
+        "summary": "Read the workspace's onboarding checklist state",
+        "description": "Returns every signal the Getting Started checklist needs in one call. Five signals are derived server-side in a single query. A model is configured, a fleet exists, a credential exists, an event has been processed, and a steer event exists. Three more are the caller's stored UI preferences: dismissed, collapsed, and CLI ticked. This replaces six separate requests with one.\n",
+        "tags": [
+          "Workspaces"
+        ],
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Workspace identifier (Universally Unique Identifier version 7)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The onboarding checklist state for the calling user",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "model_configured",
+                    "has_fleet",
+                    "has_secret",
+                    "has_processed_event",
+                    "has_steer_event",
+                    "cli_ticked",
+                    "dismissed",
+                    "collapsed"
+                  ],
+                  "properties": {
+                    "model_configured": {
+                      "type": "boolean",
+                      "x-stability": "stable"
+                    },
+                    "has_fleet": {
+                      "type": "boolean",
+                      "x-stability": "stable"
+                    },
+                    "has_secret": {
+                      "type": "boolean",
+                      "x-stability": "stable"
+                    },
+                    "has_processed_event": {
+                      "type": "boolean",
+                      "x-stability": "stable"
+                    },
+                    "has_steer_event": {
+                      "type": "boolean",
+                      "x-stability": "stable"
+                    },
+                    "cli_ticked": {
+                      "type": "boolean",
+                      "x-stability": "stable"
+                    },
+                    "dismissed": {
+                      "type": "boolean",
+                      "x-stability": "stable"
+                    },
+                    "collapsed": {
+                      "type": "boolean",
+                      "x-stability": "stable"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/workspaces/{workspace_id}/preferences": {
+      "get": {
+        "operationId": "get_workspace_preferences",
+        "summary": "Read the caller's dashboard preferences for a workspace",
+        "description": "Returns every dashboard preference the calling user has set in this workspace, as an object keyed by preference key. A user who has set nothing gets `{\"prefs\": {}}` - never a 404, so a client can tell \"no preferences\" from \"preferences unavailable\" without branching. Preferences are per user AND per workspace: a second workspace starts its onboarding checklist fresh.\n",
+        "tags": [
+          "Workspaces"
+        ],
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Workspace identifier (Universally Unique Identifier version 7)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The caller's preference bag for this workspace",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "prefs"
+                  ],
+                  "properties": {
+                    "prefs": {
+                      "type": "object",
+                      "description": "Preference key to value. Values are client-owned and opaque to the server. Absent keys have never been set.\n",
+                      "additionalProperties": true,
+                      "x-stability": "stable"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/workspaces/{workspace_id}/preferences/{pref_key}": {
+      "put": {
+        "operationId": "put_workspace_preference",
+        "summary": "Write one dashboard preference",
+        "description": "Upserts a single preference for the calling user in this workspace and returns the full updated bag. The request body IS the value - any well-formed JavaScript Object Notation (JSON) value up to 1 KiB, stored verbatim and never interpreted by the server. `pref_key` must be one the dashboard declares; anything else is refused with `UZ-PREFS-001` and no row is written. Concurrent writes to one key are last-write-wins by design: a preference is a single toggle, so a lost write costs one click.\n",
+        "tags": [
+          "Workspaces"
+        ],
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Workspace identifier (Universally Unique Identifier version 7)"
+          },
+          {
+            "name": "pref_key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "getting_started_dismissed",
+                "getting_started_collapsed",
+                "getting_started_cli_ticked"
+              ]
+            },
+            "description": "The preference to write. Must be a key the dashboard declares."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "The preference value. Any JSON value up to 1 KiB.",
+          "content": {
+            "application/json": {
+              "schema": {}
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The caller's preference bag, including the written key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "prefs"
+                  ],
+                  "properties": {
+                    "prefs": {
+                      "type": "object",
+                      "additionalProperties": true,
+                      "x-stability": "stable"
                     }
                   }
                 }
@@ -6096,6 +6460,10 @@
             "type": "string",
             "description": "Plain message safe to show to a user. Present only when an error defines one.\n\nUse `detail` or `title` when this field is absent.\n",
             "example": "We couldn't find that Fleet. It may have been deleted, or the ID doesn't match one in this workspace."
+          },
+          "etag": {
+            "type": "string",
+            "description": "Resource version returned on 412 responses so the caller can refetch and retry."
           }
         }
       },
@@ -6777,6 +7145,7 @@
           "requirements",
           "required_credentials_reasons",
           "support_files",
+          "etag",
           "updated_at"
         ],
         "properties": {
@@ -6827,6 +7196,10 @@
             "items": {
               "$ref": "#/components/schemas/FleetBundleSupportFileSummary"
             }
+          },
+          "etag": {
+            "type": "string",
+            "description": "Optimistic-concurrency tag over the operator-editable catalog row fields. Send it as `If-Match` on PATCH to prevent stale overwrites."
           },
           "updated_at": {
             "type": "integer",
@@ -7035,6 +7408,37 @@
           }
         }
       },
+      "FleetDetail": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/FleetSummary"
+          },
+          {
+            "type": "object",
+            "required": [
+              "source_markdown",
+              "trigger_markdown",
+              "bundle_content_hash"
+            ],
+            "properties": {
+              "source_markdown": {
+                "type": "string",
+                "description": "Current SKILL.md markdown for this fleet."
+              },
+              "trigger_markdown": {
+                "type": "string",
+                "nullable": true,
+                "description": "Current TRIGGER.md markdown, or null when the fleet has no trigger file."
+              },
+              "bundle_content_hash": {
+                "type": "string",
+                "nullable": true,
+                "description": "Installed bundle content hash, or null when the fleet was not installed from a bundle."
+              }
+            }
+          }
+        ]
+      },
       "IntegrationGrant": {
         "type": "object",
         "required": [
@@ -7082,6 +7486,44 @@
           },
           "reason": {
             "type": "string"
+          }
+        }
+      },
+      "FleetEvent": {
+        "type": "object",
+        "description": "One fleet event in newest-first history order.",
+        "properties": {
+          "event_id": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "actor": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "tokens": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "wall_ms": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "cost_nanos": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true,
+            "description": "Billed cost for this event in nanos, mapped from the event's `credit_deducted_nanos` charge. Null when no charge has been recorded."
           }
         }
       },

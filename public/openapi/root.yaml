@@ -119,6 +119,8 @@ paths:
     $ref: ./paths/authentication.yaml#/~1v1~1auth~1sessions~1all
   /v1/workspaces/{workspace_id}/fleets/{fleet_id}/memories:
     $ref: ./paths/memory.yaml#/~1v1~1workspaces~1{workspace_id}~1fleets~1{fleet_id}~1memories
+  /v1/workspaces/{workspace_id}/fleets/{fleet_id}/memories/{key}:
+    $ref: ./paths/memory.yaml#/~1v1~1workspaces~1{workspace_id}~1fleets~1{fleet_id}~1memories~1{key}
   /v1/auth/identity-events/clerk:
     $ref: ./paths/auth/identity-events.yaml#/~1v1~1auth~1identity-events~1clerk
   /v1/ingress/{provider}:
@@ -197,6 +199,12 @@ paths:
     $ref: ./paths/fleets.yaml#/~1v1~1workspaces~1{workspace_id}~1fleets~1{fleet_id}~1events~1stream
   /v1/workspaces/{workspace_id}/events:
     $ref: ./paths/workspaces.yaml#/~1v1~1workspaces~1{workspace_id}~1events
+  /v1/workspaces/{workspace_id}/onboarding:
+    $ref: ./paths/workspaces.yaml#/~1v1~1workspaces~1{workspace_id}~1onboarding
+  /v1/workspaces/{workspace_id}/preferences:
+    $ref: ./paths/workspaces.yaml#/~1v1~1workspaces~1{workspace_id}~1preferences
+  /v1/workspaces/{workspace_id}/preferences/{pref_key}:
+    $ref: ./paths/workspaces.yaml#/~1v1~1workspaces~1{workspace_id}~1preferences~1{pref_key}
   /v1/workspaces/{workspace_id}/approvals:
     $ref: ./paths/approvals.yaml#/~1v1~1workspaces~1{workspace_id}~1approvals
   /v1/workspaces/{workspace_id}/approvals/{gate_id}:

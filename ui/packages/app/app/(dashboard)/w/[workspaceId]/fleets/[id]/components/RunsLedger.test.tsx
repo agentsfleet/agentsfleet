@@ -98,6 +98,18 @@ describe("RunsLedger", () => {
     expect(screen.getByText("$1.00")).toBeTruthy();
   });
 
+  it("renders an unknown row status and omits absent token and wall metrics", () => {
+    render(
+      <RunsLedger
+        windowEvents={[evt({ status: "runner_restarted" as EventRow["status"], tokens: null, wall_ms: null })]}
+        lifetimeBudgetNanos={LIFETIME_NANOS}
+      />,
+    );
+    expect(screen.getByText("runner_restarted")).toBeTruthy();
+    expect(screen.queryByText(/tok$/)).toBeNull();
+    expect(screen.queryByText("5.0s")).toBeNull();
+  });
+
   it("test_rollup_empty_window", () => {
     render(<RunsLedger windowEvents={[]} lifetimeBudgetNanos={0} />);
     // Zero events → the rollup renders zeros, not an absent or broken panel.

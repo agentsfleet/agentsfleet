@@ -26,22 +26,20 @@ export const CANCEL_EDIT_LABEL = "Cancel";
 export const SAVE_SOURCE_LABEL = "Save changes";
 export const SAVE_CONFIRM_LABEL = "Save";
 
-// The save dialog's next-wake contract — verbatim, pinned by
-// test_source_save_next_wake_semantics.
+// The save dialog's next-wake notice, pinned by its behavior test.
 export const SAVE_NEXT_WAKE_NOTICE =
   "Takes effect on the next wake. In-flight runs finish on the current source. Memory is kept — same fleet_id.";
 export const SAVE_DIALOG_TITLE = "Save source changes?";
 
-// The "what changes when you save" diff panel (§4).
+// The "what changes when you save" preview.
 export const DIFF_PANEL_TITLE = "What changes when you save";
-export const DIFF_NO_CHANGES = "No changes to save.";
-export const DIFF_ADDED_PREFIX = "+";
-export const DIFF_REMOVED_PREFIX = "-";
+export const DIFF_CURRENT_LABEL = "Current";
+export const DIFF_PENDING_LABEL = "Pending";
 
 // Shown after a 412: another operator saved while this editor was open, so the
-// base was reloaded and the diff recomputed against the new current source.
+// current source was reloaded while the operator's pending edit was kept.
 export const SAVE_STALE_RELOADED_NOTICE =
-  "This source changed while you were editing. The diff below is against the latest version — review it before saving again.";
+  "This source changed while you were editing. Compare your pending edit with the latest version before saving again.";
 
 // Which document a save touched — the `field` value on fleet_source_saved.
 export const SOURCE_FIELD = {
@@ -80,7 +78,7 @@ export const LEDGER_EMPTY_TITLE = "No runs yet";
 export const LEDGER_EMPTY_DESCRIPTION = "Each wake the fleet records lands here.";
 export const LEDGER_COST_UNKNOWN = "—";
 
-export const ROLLUP_WINDOW_LABEL = "Last 7 days";
+export const ROLLUP_WINDOW_LABEL = "Latest 200 events in 7 days";
 export const ROLLUP_WAKES_LABEL = "Wakes";
 export const ROLLUP_TOKENS_LABEL = "Tokens";
 export const ROLLUP_SPEND_LABEL = "Spend";
@@ -94,7 +92,7 @@ export const ROLLUP_WINDOW_UNAVAILABLE =
 // The events window the client-side rollup covers (§6). One place so the label
 // and the query string can never drift.
 export const ROLLUP_WINDOW_SINCE = "7d";
-export const ROLLUP_WINDOW_LIMIT = 100;
+export const ROLLUP_WINDOW_LIMIT = 200;
 
 // ── Middle: the run-metrics strip (§3) ──
 

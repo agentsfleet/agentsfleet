@@ -37,7 +37,6 @@ const Hx = hx_mod.Hx;
 const MSG_CATALOG_ID_REQUIRED = "A catalog id is required";
 const MSG_NOT_FOUND = "No fleet library entry has that catalog id";
 
-
 /// One catalog row as the operator sees it. Deliberately carries no markdown and
 /// no storage key — see `entry_view.zig`.
 const CatalogEntry = struct {
@@ -214,7 +213,17 @@ fn deleteDraft(conn: *pg.Conn, id: []const u8) !void {
 /// stay distinguishable — a guarded UPDATE touching zero rows cannot tell them
 /// apart, and the operator deserves to know which one happened.
 pub fn fetchRowState(alloc: std.mem.Allocator, conn: *pg.Conn, id: []const u8) !?RowState {
-    var q = PgQuery.from(try conn.query(sql.SELECT_CATALOG_ROW, .{id}));
+    return fetchRowStateWithSql(alloc, conn, id, sql.SELECT_CATALOG_ROW);
+}
+
+/// PATCH-only row snapshot. Caller owns the surrounding transaction, which
+/// keeps this lock through the version check and all writes.
+pub fn fetchRowStateForUpdate(alloc: std.mem.Allocator, conn: *pg.Conn, id: []const u8) !?RowState {
+    return fetchRowStateWithSql(alloc, conn, id, sql.SELECT_CATALOG_ROW_FOR_UPDATE);
+}
+
+fn fetchRowStateWithSql(alloc: std.mem.Allocator, conn: *pg.Conn, id: []const u8, statement: []const u8) !?RowState {
+    var q = PgQuery.from(try conn.query(statement, .{id}));
     defer q.deinit();
     const row = try q.next() orelse return null;
     const repo = try alloc.dupe(u8, try row.get([]const u8, 0));

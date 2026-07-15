@@ -41,7 +41,7 @@ CREATE TABLE IF NOT EXISTS core.fleets (
     bundle_content_hash TEXT,
     bundle_snapshot_key TEXT,
     -- Denormalized activity counters, maintained at write time by the triggers
-    -- in migration 028. They mirror COUNT(core.fleet_events) and
+    -- in migration 029. They mirror COUNT(core.fleet_events) and
     -- SUM(core.fleet_execution_telemetry.credit_deducted_nanos) for this fleet,
     -- so the fleets list / detail (the Live Wall hot path) read them as plain
     -- columns instead of re-aggregating the child tables on every read. Same

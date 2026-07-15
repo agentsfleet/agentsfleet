@@ -246,6 +246,53 @@
       default:
         $ref: ../components/responses.yaml#/components/responses/Error
 /v1/workspaces/{workspace_id}/fleets/{fleet_id}:
+  get:
+    operationId: get_fleet
+    summary: Get a fleet
+    description: |
+      Returns one fleet's editable source, trigger markdown, bundle pin, trigger list, status, and lifetime counters.
+
+      The response carries an `ETag` header over `source_markdown` and `trigger_markdown`. Send that value as `If-Match` when saving source changes to avoid overwriting another operator's edit.
+    tags:
+    - Fleets
+    parameters:
+    - name: workspace_id
+      in: path
+      required: true
+      description: UUIDv7 of the workspace.
+      schema:
+        type: string
+        format: uuid
+    - name: fleet_id
+      in: path
+      required: true
+      description: UUIDv7 of the fleet.
+      schema:
+        type: string
+        format: uuid
+    responses:
+      '200':
+        description: Fleet detail.
+        headers:
+          ETag:
+            description: Version of the editable source fields.
+            schema:
+              type: string
+        content:
+          application/json:
+            schema:
+              $ref: ../components/schemas.yaml#/components/schemas/FleetDetail
+      '400':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '401':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '403':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '404':
+        description: No fleet with that id exists in this workspace. Cross-workspace reads also return 404.
+        $ref: ../components/responses.yaml#/components/responses/Error
+      default:
+        $ref: ../components/responses.yaml#/components/responses/Error
   patch:
     operationId: patch_fleet
     summary: Update a fleet
@@ -253,6 +300,8 @@
       Updates fleet files or status. Every request field is optional.
 
       `config_json` and `trigger_markdown` cannot be used together. A killed fleet cannot be changed.
+
+      Source editors can send `If-Match` with the `ETag` from GET. A stale tag returns 412 with the current tag in the problem body; omitting the header preserves last-write-wins behavior.
 
       Status changes require an operator role. Config changes require workspace membership.
     tags:
@@ -272,6 +321,12 @@
       schema:
         type: string
         format: uuid
+    - name: If-Match
+      in: header
+      required: false
+      description: Optional source-version tag from GET. Stale values return 412 with the current `etag`.
+      schema:
+        type: string
     requestBody:
       required: false
       content:
@@ -306,6 +361,11 @@
     responses:
       '200':
         description: OK
+        headers:
+          ETag:
+            description: Fresh version of the editable source fields after the update.
+            schema:
+              type: string
         content:
           application/json:
             schema:
@@ -324,6 +384,9 @@
                 config_revision:
                   type: integer
                   format: int64
+                etag:
+                  type: string
+                  description: Fresh version of the editable source fields after the update.
       '400':
         $ref: ../components/responses.yaml#/components/responses/Error
       '401':
@@ -333,6 +396,9 @@
       '404':
         $ref: ../components/responses.yaml#/components/responses/Error
       '409':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '412':
+        description: The `If-Match` value is stale. The problem body carries the current `etag`.
         $ref: ../components/responses.yaml#/components/responses/Error
       '503':
         $ref: ../components/responses.yaml#/components/responses/Error
@@ -505,8 +571,7 @@
                 items:
                   type: array
                   items:
-                    type: object
-                    description: One fleet event.
+                    $ref: ../components/schemas.yaml#/components/schemas/FleetEvent
                 next_cursor:
                   type: string
                   nullable: true

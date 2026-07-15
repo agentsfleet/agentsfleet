@@ -47,7 +47,8 @@ const EVENTS_SELECT =
     \\       created_at, updated_at,
     \\       (SELECT SUM(te.credit_deducted_nanos)::bigint
     \\          FROM core.fleet_execution_telemetry te
-    \\         WHERE te.event_id = core.fleet_events.event_id) AS cost_nanos
+    \\         WHERE te.event_id = core.fleet_events.event_id
+    \\           AND te.fleet_id = core.fleet_events.fleet_id::text) AS cost_nanos
     \\FROM core.fleet_events
     \\
 ;

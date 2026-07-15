@@ -59,6 +59,17 @@ describe("MemoryPanel", () => {
     expect(Object.keys(props)).toEqual(["fleet_id", "outcome"]);
   });
 
+  it("Cancel closes the forget dialog without deleting the entry", async () => {
+    const user = userEvent.setup({ delay: null });
+    render(<MemoryPanel workspaceId="ws_1" fleetId="agt_1" entries={[ENTRY]} />);
+
+    await user.click(screen.getByRole("button", { name: "Forget convention" }));
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+
+    expect(forgetMemoryAction).not.toHaveBeenCalled();
+    expect(screen.getByText(ENTRY.content)).toBeTruthy();
+  });
+
   it("surfaces a missing key (404) and leaves the list unchanged", async () => {
     forgetMemoryAction.mockResolvedValue({ ok: false, status: 404, error: "gone", errorCode: "UZ-MEM-004" });
     const user = userEvent.setup({ delay: null });
@@ -69,6 +80,22 @@ describe("MemoryPanel", () => {
 
     await waitFor(() => expect(screen.getByText(MEMORY_FORGET_MISSING)).toBeTruthy());
     // The entry stays — a mistyped/already-gone key does not blank the list.
+    expect(screen.getByText(ENTRY.content)).toBeTruthy();
+    expect(captureProductEvent).toHaveBeenCalledWith(EVENTS.fleet_memory_forgotten, {
+      fleet_id: "agt_1",
+      outcome: OUTCOME.failure,
+    });
+  });
+
+  it("surfaces a generic forget failure and leaves the list unchanged", async () => {
+    forgetMemoryAction.mockResolvedValue({ ok: false, status: 500, error: "storage refused", errorCode: "UZ-MEM-500" });
+    const user = userEvent.setup({ delay: null });
+    render(<MemoryPanel workspaceId="ws_1" fleetId="agt_1" entries={[ENTRY]} />);
+
+    await user.click(screen.getByRole("button", { name: "Forget convention" }));
+    await user.click(screen.getByRole("button", { name: "Forget" }));
+
+    await waitFor(() => expect(screen.getByText(/Couldn't forget this memory/)).toBeTruthy());
     expect(screen.getByText(ENTRY.content)).toBeTruthy();
     expect(captureProductEvent).toHaveBeenCalledWith(EVENTS.fleet_memory_forgotten, {
       fleet_id: "agt_1",

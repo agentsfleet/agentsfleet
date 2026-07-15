@@ -28,6 +28,8 @@ const STATUS_VARIANT: Record<string, BadgeVariant> = {
   received: "cyan",
 };
 
+const COUNT_FORMATTER = new Intl.NumberFormat("en-US");
+
 type Rollup = { wakes: number; tokens: number; spendNanos: number; failed: number };
 
 // Client-side 7-day rollup (§6). Every figure sums a server field: spend adds
@@ -67,10 +69,10 @@ export default function RunsLedger({ windowEvents, lifetimeBudgetNanos }: Props)
           <Alert variant="warning">{ROLLUP_WINDOW_UNAVAILABLE}</Alert>
         ) : (
           <div className="grid grid-cols-2 gap-xs sm:grid-cols-4">
-            <Stat label={ROLLUP_WAKES_LABEL} value={rollup.wakes.toLocaleString()} />
-            <Stat label={ROLLUP_TOKENS_LABEL} value={rollup.tokens.toLocaleString()} />
+            <Stat label={ROLLUP_WAKES_LABEL} value={COUNT_FORMATTER.format(rollup.wakes)} />
+            <Stat label={ROLLUP_TOKENS_LABEL} value={COUNT_FORMATTER.format(rollup.tokens)} />
             <Stat label={ROLLUP_SPEND_LABEL} value={formatDollars(rollup.spendNanos)} />
-            <Stat label={ROLLUP_FAILED_LABEL} value={rollup.failed.toLocaleString()} />
+            <Stat label={ROLLUP_FAILED_LABEL} value={COUNT_FORMATTER.format(rollup.failed)} />
           </div>
         )}
         <Stat label={ROLLUP_LIFETIME_LABEL} value={formatDollars(lifetimeBudgetNanos)} />
@@ -112,7 +114,7 @@ function LedgerRow({ row }: { row: EventRow }) {
         </span>
       </div>
       <div className="mt-xs flex flex-wrap items-center gap-md font-mono text-xs tabular-nums text-muted-foreground">
-        {row.tokens !== null ? <span>{row.tokens.toLocaleString()} tok</span> : null}
+        {row.tokens !== null ? <span>{COUNT_FORMATTER.format(row.tokens)} tok</span> : null}
         {row.wall_ms !== null ? <span>{formatMs(row.wall_ms)}</span> : null}
         <Time value={new Date(row.created_at)} format="relative" tooltip={false} className="ml-auto" />
       </div>
