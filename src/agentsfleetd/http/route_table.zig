@@ -85,6 +85,9 @@ pub fn classFor(route: router.Route) RouteClass {
         .workspace_fleet_messages,
         .workspace_fleet_events,
         .workspace_events,
+        .workspace_onboarding,
+        .workspace_preferences,
+        .workspace_preference,
         .workspace_approvals,
         .workspace_approval_detail,
         .workspace_approval_resolve,
@@ -215,6 +218,9 @@ pub fn specFor(route: router.Route, registry: *auth_mw.MiddlewareRegistry) Route
         // One multiplexed SSE stream for the whole workspace (Bearer this slice;
         // the dashboard's cookie proxy mints a Bearer, like the per-fleet tail).
         .workspace_events_stream => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeWorkspaceEventsStream },
+        .workspace_onboarding => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeWorkspaceOnboarding },
+        .workspace_preferences => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeWorkspacePreferences },
+        .workspace_preference => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeWorkspacePreferenceItem },
         // Approval inbox
         .workspace_approvals => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeWorkspaceApprovals },
         .workspace_approval_detail => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeWorkspaceApprovalDetail },

@@ -118,7 +118,8 @@ describe("app shell navigation", () => {
     await user.click(screen.getByRole("button", { name: /open navigation/i }));
     const dialog = await screen.findByRole("dialog");
     expect(dialog).toBeTruthy();
-    expect(dialog.textContent).toContain("Dashboard");
+    // The Wall (Fleets) leads the nav; the dashboard entry no longer exists.
+    expect(dialog.textContent).not.toContain("Dashboard");
     expect(dialog.textContent).toContain("Fleets");
   });
 
@@ -129,7 +130,7 @@ describe("app shell navigation", () => {
     render(React.createElement(Shell, null, React.createElement("div", null, "content")));
     await user.click(screen.getByRole("button", { name: /open navigation/i }));
     const dialog = await screen.findByRole("dialog");
-    await user.click(within(dialog).getByRole("link", { name: /dashboard/i }));
+    await user.click(within(dialog).getByRole("link", { name: /fleets/i }));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   });
 
@@ -138,7 +139,6 @@ describe("app shell navigation", () => {
     mocks.usePathname.mockReturnValue("/");
     const user = userEvent.setup();
     render(React.createElement(Shell, null, React.createElement("div", null, "content")));
-    await user.click(screen.getByText("Dashboard"));
     await user.click(screen.getByText("Fleets"));
     await user.click(screen.getByText("Docs"));
     await user.click(screen.getByText("API Keys"));
@@ -148,7 +148,6 @@ describe("app shell navigation", () => {
     const sources = mocks.trackNavigationClicked.mock.calls.map(
       (call) => (call[0] as { source: string }).source,
     );
-    expect(sources).toContain("app_sidebar_root");
     expect(sources).toContain("app_sidebar_fleets");
     expect(sources).toContain("app_sidebar_docs");
     expect(sources).toContain("app_sidebar_settings_api-keys");
@@ -163,13 +162,13 @@ describe("app shell navigation", () => {
     render(React.createElement(Shell, null, React.createElement("div", null, "content")));
     const toggle = screen.getByRole("button", { name: /collapse sidebar/i });
     expect(toggle.getAttribute("aria-expanded")).toBe("true");
-    expect(screen.getByText("Dashboard")).toBeTruthy();
+    expect(screen.getByText("Fleets")).toBeTruthy();
     await user.click(toggle);
     const expand = screen.getByRole("button", { name: /expand sidebar/i });
     expect(expand).toBeTruthy();
     expect(screen.queryByRole("button", { name: /collapse sidebar/i })).toBeNull();
     expect(expand.getAttribute("aria-expanded")).toBe("false");
-    expect(screen.queryByText("Dashboard")).toBeNull();
+    expect(screen.queryByText("Fleets")).toBeNull();
   });
 
   it("expands the sidebar again when the toggle is clicked twice", async () => {
@@ -178,9 +177,9 @@ describe("app shell navigation", () => {
     const user = userEvent.setup();
     render(React.createElement(Shell, null, React.createElement("div", null, "content")));
     await user.click(screen.getByRole("button", { name: /collapse sidebar/i }));
-    expect(screen.queryByText("Dashboard")).toBeNull();
+    expect(screen.queryByText("Fleets")).toBeNull();
     await user.click(screen.getByRole("button", { name: /expand sidebar/i }));
-    expect(screen.getByText("Dashboard")).toBeTruthy();
+    expect(screen.getByText("Fleets")).toBeTruthy();
     expect(screen.getByRole("button", { name: /collapse sidebar/i })).toBeTruthy();
   });
 
@@ -240,7 +239,7 @@ describe("app shell navigation", () => {
     await user.click(screen.getByRole("button", { name: /collapse sidebar/i }));
     await user.click(screen.getByRole("button", { name: /open navigation/i }));
     const dialog = await screen.findByRole("dialog");
-    expect(within(dialog).getByText("Dashboard")).toBeTruthy();
+    expect(within(dialog).getByText("Fleets")).toBeTruthy();
     expect(within(dialog).getByText("Fleets")).toBeTruthy();
   });
 });

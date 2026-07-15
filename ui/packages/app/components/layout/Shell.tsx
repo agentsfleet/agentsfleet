@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
 import {
-  LayoutDashboardIcon,
   ActivityIcon,
   BookOpenIcon,
   BotIcon,
@@ -34,6 +33,7 @@ import {
 import { setAnalyticsContext, trackNavigationClicked } from "@/lib/analytics/posthog";
 import { SCOPE } from "@/lib/auth/scopes";
 import { workspaceIdFromPath, workspacePath } from "@/lib/workspace-routes";
+import GettingStartedWidget from "@/components/layout/GettingStartedWidget";
 import type { TenantWorkspace } from "@/lib/api/workspaces";
 import WorkspaceSwitcher from "./WorkspaceSwitcher";
 import ThemeToggle from "./ThemeToggle";
@@ -47,8 +47,6 @@ type NavEntry = {
   path: string;
   icon: React.ComponentType<{ size?: number }>;
   workspaceScoped?: boolean;
-  // Home matches its resolved path exactly (else it'd claim every deeper route).
-  exact?: boolean;
   external?: boolean;
 };
 
@@ -65,10 +63,9 @@ const NAV_SURFACE = "app_sidebar";
 // can't be interpolated into one at runtime.
 const SIDEBAR_NAV_ID = "app-sidebar-nav";
 
-// Dashboard sits above the labelled groups as a headerless overview entry.
-const TOP_NAV: NavEntry[] = [
-  { label: "Dashboard", path: "", icon: LayoutDashboardIcon, workspaceScoped: true, exact: true },
-];
+// The Wall (Fleets) is the workspace's only entry point — there is no dashboard
+// route and no dashboard nav entry (a nav item whose only job is to redirect is
+// a dead link, M132 single-route refactor). Fleets leads the nav.
 
 // The live work — what the fleets do.
 const OPERATIONS_NAV: NavEntry[] = [
@@ -116,7 +113,6 @@ const BOTTOM_NAV: NavEntry[] = [
 ];
 
 const INTERNAL_NAV: NavEntry[] = [
-  ...TOP_NAV,
   ...OPERATIONS_NAV,
   ...CONFIGURATION_NAV,
   ...PLATFORM_NAV,
@@ -137,21 +133,22 @@ function resolveHref(entry: NavEntry, workspaceId: string | null): string {
 // unchanged from the pre-URL nav (root / fleets / settings_models / …).
 function navSource(entry: NavEntry): string {
   if (entry.external) return `${NAV_SURFACE}_${entry.label.toLowerCase()}`;
-  const canonical = entry.workspaceScoped
-    ? (entry.path === "" ? "/" : `/${entry.path}`)
-    : entry.path;
-  return `${NAV_SURFACE}_${canonical === "/" ? "root" : canonical.replaceAll("/", "_").replace(/^_+/, "")}`;
+  // No nav entry is the workspace root anymore (the Dashboard entry is gone), so
+  // every workspace-scoped path is non-empty.
+  const canonical = entry.workspaceScoped ? `/${entry.path}` : entry.path;
+  return `${NAV_SURFACE}_${canonical.replaceAll("/", "_").replace(/^_+/, "")}`;
 }
 
 function resolveActiveHref(
-  entries: { href: string; exact?: boolean }[],
+  entries: { href: string }[],
   pathname: string,
 ): string {
   let active = "";
-  for (const { href, exact } of entries) {
-    const hit = exact
-      ? pathname === href
-      : pathname === href || pathname.startsWith(`${href}/`);
+  for (const { href } of entries) {
+    // Longest matching prefix wins, so a nested route lights its section and a
+    // child under one section never lights a sibling. No entry needs an exact
+    // match anymore — the workspace-root (Dashboard) entry that did is gone.
+    const hit = pathname === href || pathname.startsWith(`${href}/`);
     if (hit && href.length > active.length) active = href;
   }
   return active;
@@ -177,7 +174,7 @@ export default function Shell({
   const linkWorkspaceId = activeWorkspaceId ?? workspaces[0]?.id ?? null;
 
   const activeHref = resolveActiveHref(
-    INTERNAL_NAV.map((entry) => ({ href: resolveHref(entry, linkWorkspaceId), exact: entry.exact })),
+    INTERNAL_NAV.map((entry) => ({ href: resolveHref(entry, linkWorkspaceId) })),
     pathname,
   );
   // `/` is only ever a resolved href for workspace items when the tenant owns no
@@ -323,11 +320,14 @@ function SidebarNav({ isActive, workspaceId, onNavigate, operatorScopes, collaps
   const configItems = [...CONFIGURATION_NAV, ...platformItems];
   return (
     <Nav aria-label="Primary" className="flex flex-col h-full">
-      <NavSection items={TOP_NAV} isActive={isActive} workspaceId={workspaceId} onNavigate={onNavigate} collapsed={collapsed} />
       <NavSection label="Automations" items={OPERATIONS_NAV} isActive={isActive} workspaceId={workspaceId} onNavigate={onNavigate} collapsed={collapsed} />
       <NavSection label="Configuration" items={configItems} isActive={isActive} workspaceId={workspaceId} onNavigate={onNavigate} collapsed={collapsed} />
       <NavSection label="Organization" items={ORGANIZATION_NAV} isActive={isActive} workspaceId={workspaceId} onNavigate={onNavigate} collapsed={collapsed} />
       <div className="mt-auto">
+        {/* The onboarding checklist's only home once a fleet exists — pinned
+            above Docs, hidden when there is no workspace or once dismissed. The
+            expanded rail is suppressed while the nav is collapsed to 64px. */}
+        {workspaceId && !collapsed ? <GettingStartedWidget workspaceId={workspaceId} /> : null}
         <NavSection items={BOTTOM_NAV} isActive={isActive} workspaceId={workspaceId} onNavigate={onNavigate} collapsed={collapsed} />
       </div>
     </Nav>

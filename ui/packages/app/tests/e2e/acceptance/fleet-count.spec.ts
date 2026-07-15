@@ -1,11 +1,11 @@
 /**
  * fleet-count.spec.ts — `/fleets` live counter tracks row additions.
  *
- * `FleetsList` renders an `aria-label="{N} live"` badge on the page
+ * `FleetWall` renders an `aria-label="{N} live"` badge on the page
  * header. This spec seeds fleets one at a time and asserts the counter
- * follows. Catches regressions in `liveStateOf` (status → "live"|"parked"|
+ * follows. Catches regressions in `fleetRowState` (status → "live"|"parked"|
  * "failed" mapping), the pulse-cap consolidation, and the
- * `revalidatePath` plumbing that backs the dashboard listing.
+ * `revalidatePath` plumbing that backs the wall.
  *
  * Uses API-side `seedFleet` instead of `installViaUI` — install through
  * the form is already covered end-to-end by login-install-lifecycle and

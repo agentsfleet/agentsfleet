@@ -59,6 +59,14 @@ describe("listFleetEvents", () => {
     expect(url).toContain("limit=25");
   });
 
+  it("forwards actor_prefix — the steer-detection filter (M132)", async () => {
+    fetchMock.mockResolvedValue({ ok: true, status: 200, json: async () => ({ items: [], next_cursor: null }) });
+    const { listWorkspaceEvents } = await import("./events");
+    await listWorkspaceEvents("ws_1", "tok", { actor_prefix: "steer:", limit: 1 });
+    const url = fetchMock.mock.calls[0]![0] as string;
+    expect(url).toContain("actor_prefix=steer%3A");
+  });
+
   it("omits since from the query string when opts provides other params but not since", async () => {
     // Exercises the false branch of `if (opts.since)` in buildQuery.
     fetchMock.mockResolvedValue({ ok: true, status: 200, json: async () => ({ items: [], next_cursor: null }) });

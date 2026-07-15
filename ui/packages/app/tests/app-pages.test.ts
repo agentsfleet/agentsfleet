@@ -110,15 +110,14 @@ describe("app layouts and pages", () => {
     expect(dashboardMarkup).not.toContain('href="/credentials"');
   });
 
-  it("workspace entry page renders page header when authenticated", async () => {
-    // M118: the dashboard home moved under `/w/[workspaceId]` and reads its
-    // workspace from the route param; the bare `(dashboard)` root now only
-    // redirects to the first owned workspace.
-    const { default: DashboardPage } = await import("../app/(dashboard)/w/[workspaceId]/page");
-    const markup = renderToStaticMarkup(
-      await DashboardPage({ params: Promise.resolve({ workspaceId: "ws_1" }) }),
-    );
-    expect(markup).toContain("Dashboard");
+  it("workspace root redirects to the wall and renders no UI of its own (6.1)", async () => {
+    // M132 single-route refactor: the dashboard is gone. `/w/{ws}/` is a bare
+    // permanent redirect to the Wall (`/w/{ws}/fleets`) — it renders nothing, so
+    // driving it must land in `redirect`, never in returned markup.
+    const { default: WorkspaceRootPage } = await import("../app/(dashboard)/w/[workspaceId]/page");
+    await expect(
+      WorkspaceRootPage({ params: Promise.resolve({ workspaceId: "ws_1" }) }),
+    ).rejects.toThrow("redirect:/w/ws_1/fleets");
   });
 
   it("renders sign-in and sign-up pages with shared auth appearance", async () => {

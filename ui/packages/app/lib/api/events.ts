@@ -38,6 +38,10 @@ export type EventsPage = {
 export type EventsQuery = {
   cursor?: string;
   actor?: string;
+  // Prefix filter on the event actor — the server matches `actor LIKE '<prefix>%'`
+  // (events.zig). Mutually exclusive with `actor`; the server 400s if both are
+  // sent. Onboarding uses `actor_prefix=steer:` to detect the first steer.
+  actor_prefix?: string;
   since?: string;
   fleet_id?: string;
   limit?: number;
@@ -48,6 +52,7 @@ function buildQuery(opts?: EventsQuery): string {
   const params = new URLSearchParams();
   if (opts.cursor) params.set("cursor", opts.cursor);
   if (opts.actor) params.set("actor", opts.actor);
+  if (opts.actor_prefix) params.set("actor_prefix", opts.actor_prefix);
   if (opts.since) params.set("since", opts.since);
   if (opts.fleet_id) params.set("fleet_id", opts.fleet_id);
   if (opts.limit != null) params.set("limit", String(opts.limit));
