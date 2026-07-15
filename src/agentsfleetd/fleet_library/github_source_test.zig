@@ -120,8 +120,8 @@ test "parseOwnerRepo splits a well-formed owner/repo" {
 test "parseOwnerRepo rejects everything that is not exactly owner/repo" {
     // No slash; empty halves; a second slash; traversal; injection charset.
     const bad = [_][]const u8{
-        "no-slash", "owner/", "/repo", "a/b/c", "../etc",
-        "owner/re po", "owner/re:po", ".", "a/..",
+        "no-slash",    "owner/",      "/repo", "a/b/c", "../etc",
+        "owner/re po", "owner/re:po", ".",     "a/..",
     };
     for (bad) |candidate| {
         try testing.expect(github_source.parseOwnerRepo(candidate) == null);

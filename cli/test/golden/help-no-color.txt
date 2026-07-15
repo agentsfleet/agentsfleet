@@ -38,6 +38,7 @@ Commands:
   events [options] <fleet_id>  Page through historical events
   steer <fleet_id> [message]   Send a message; stream the response
   secret                       Workspace secret vault
+  schedule                     Manage hosted Fleet schedules
   memory                       Inspect a Fleet's durable memory (read-only)
   help [command]               display help for command
 

@@ -62,6 +62,10 @@ pub fn generateUserPreferenceId(alloc: std.mem.Allocator) ![]const u8 {
     return allocUuidV7(alloc);
 }
 
+pub fn generateScheduleId(alloc: std.mem.Allocator) ![]const u8 {
+    return allocUuidV7(alloc);
+}
+
 pub fn isSupportedFleetId(id: []const u8) bool {
     return isUuidV7(id);
 }

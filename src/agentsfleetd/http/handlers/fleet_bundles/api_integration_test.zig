@@ -92,8 +92,6 @@ test "integration: the bundles list carries published catalog entries" {
     try std.testing.expect(res.bodyContains(REVIEWER_REASON));
     try std.testing.expect(res.bodyContains(EMPTY_REASONS_ID));
     try std.testing.expect(res.bodyContains("\"required_credentials_reasons\":{}"));
-
-
 }
 
 test "integration: the bundles list hides an unpublished entry" {
@@ -118,6 +116,5 @@ test "integration: the bundles list hides an unpublished entry" {
     try res.expectStatus(.ok);
     try std.testing.expect(!res.bodyContains(DRAFT_PROBE_ID)); // a draft never reaches a tenant
     try std.testing.expect(res.bodyContains(REVIEWER_ID)); // public still shown
-
 
 }

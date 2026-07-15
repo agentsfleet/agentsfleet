@@ -34,6 +34,8 @@ const NONE = [_]S{};
 const FLEET_READ = [_]S{.fleet_read};
 const FLEET_WRITE = [_]S{.fleet_write};
 const FLEET_ADMIN = [_]S{.fleet_admin};
+const SCHEDULE_READ = [_]S{.schedule_read};
+const SCHEDULE_WRITE = [_]S{.schedule_write};
 const SECRET_READ = [_]S{.secret_read};
 const SECRET_WRITE = [_]S{.secret_write};
 const APIKEY_READ = [_]S{.apikey_read};
@@ -85,6 +87,7 @@ pub fn requiredScopes(route: router.Route, method: httpz.Method) []const S {
         .grant_approval_webhook,
         .github_webhook,
         .app_ingress,
+        .qstash_schedule_ingress,
         .connector_callback,
         .slack_events,
         .request_integration_grant,
@@ -147,6 +150,15 @@ pub fn requiredScopes(route: router.Route, method: httpz.Method) []const S {
             else => &FLEET_WRITE,
         },
         .workspace_fleet_messages => &FLEET_WRITE,
+        .workspace_fleet_schedules => switch (method) {
+            .GET => &SCHEDULE_READ,
+            else => &SCHEDULE_WRITE,
+        },
+        .workspace_fleet_schedule => switch (method) {
+            .GET => &SCHEDULE_READ,
+            else => &SCHEDULE_WRITE,
+        },
+        .workspace_fleet_schedule_sync => &SCHEDULE_WRITE,
         .workspace_fleet_events,
         .workspace_fleet_events_stream,
         .workspace_events,

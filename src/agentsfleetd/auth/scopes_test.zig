@@ -13,18 +13,19 @@ test "test_scope_catalog_covers_every_enumerated_gate" {
     // proving the catalog is a superset of the enumeration checklist (Invariant 5).
     const enumerated = [_][]const u8{
         // Platform plane (former platform_admin routes).
-        "platform-key:read", "platform-key:admin", "model:read",     "model:admin",
-        "runner:enroll",     "runner:read",        "runner:write",   "stream:read",
+        "platform-key:read", "platform-key:admin",     "model:read",       "model:admin",
+        "runner:enroll",     "runner:read",            "runner:write",     "stream:read",
         // Tenant plane (former bearer + operator-role + enforce routes).
-        "fleet:read",        "fleet:write",        "fleet:admin",    "secret:read",
-        "secret:write",  "apikey:read",        "apikey:write",   "apikey:admin",
-        "fleetkey:read",     "fleetkey:write",     "grant:read",     "grant:write",
-        "connector:read",    "connector:write",    "billing:read",   "approval:read",
-        "approval:resolve",  "workspace:admin",    "library:write", "platform-library:write",
+        "fleet:read",        "fleet:write",            "fleet:admin",      "schedule:read",
+        "schedule:write",    "secret:read",            "secret:write",     "apikey:read",
+        "apikey:write",      "apikey:admin",           "fleetkey:read",    "fleetkey:write",
+        "grant:read",        "grant:write",            "connector:read",   "connector:write",
+        "billing:read",      "approval:read",          "approval:resolve", "workspace:admin",
+        "library:write",     "platform-library:write",
         // Runner credential.
         "runner:self",
         // Cross-tenant override (single scope covering read + write).
-              "workspace:any",
+             "workspace:any",
     };
     for (enumerated) |wire_str| {
         const set = scopes.parseClaim(wire_str);
@@ -74,6 +75,9 @@ test "test_principal_scopes_populated_from_claim" {
     try testing.expect(held.contains(.secret_write));
     try testing.expect(held.contains(.secret_read)); // write ⊇ read
     try testing.expect(!held.contains(.fleet_write));
+    const sched = scopes.parseClaim("schedule:write");
+    try testing.expect(sched.contains(.schedule_write));
+    try testing.expect(sched.contains(.schedule_read));
 
     // Absent claim → empty set (every capability gate then fails closed).
     try testing.expectEqual(@as(usize, 0), scopes.parseClaim("").count());
@@ -110,6 +114,8 @@ test "test_default_grants_provision_and_are_not_enforced" {
     const owner = scopes.defaultScopes(.tenant);
     try testing.expect(owner.contains(.fleet_admin));
     try testing.expect(owner.contains(.fleet_read)); // closure
+    try testing.expect(owner.contains(.schedule_write));
+    try testing.expect(owner.contains(.schedule_read));
     try testing.expect(owner.contains(.secret_write));
     try testing.expect(owner.contains(.workspace_admin));
     try testing.expect(owner.contains(.library_write));
@@ -122,6 +128,7 @@ test "test_default_grants_provision_and_are_not_enforced" {
     // platform/cross-tenant scope — the signup owner never gets `workspace:any`.
     const wire = scopes.defaultClaim(.tenant);
     try testing.expect(std.mem.indexOf(u8, wire, "fleet:admin") != null);
+    try testing.expect(std.mem.indexOf(u8, wire, "schedule:write") != null);
     try testing.expect(std.mem.indexOf(u8, wire, "workspace:admin") != null);
     try testing.expect(std.mem.indexOf(u8, wire, "workspace:any") == null);
     try testing.expect(std.mem.indexOf(u8, wire, "runner:enroll") == null);

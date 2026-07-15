@@ -9,15 +9,12 @@
 const std = @import("std");
 const entries = @import("error_entries.zig");
 const entries_runtime = @import("error_entries_runtime.zig");
-
 const EVAL_BRANCH_QUOTA = 1_000_000;
-
 pub const Entry = entries.Entry;
 pub const UNKNOWN = entries.UNKNOWN;
 pub const ERROR_DOCS_BASE = entries.ERROR_DOCS_BASE;
 pub const REGISTRY = entries.ENTRIES ++ entries_runtime.ENTRIES_RUNTIME;
 
-// ── Comptime validation ────────────────────────────────────────────────────
 comptime {
     @setEvalBranchQuota(REGISTRY.len * REGISTRY.len * 20);
     for (REGISTRY) |entry| {
@@ -44,7 +41,6 @@ comptime {
     }
 }
 
-// ── Lookup ─────────────────────────────────────────────────────────────────
 const LOOKUP = blk: {
     @setEvalBranchQuota(REGISTRY.len * REGISTRY.len * 20);
     var kvs: [REGISTRY.len]struct { []const u8, usize } = undefined;
@@ -64,7 +60,6 @@ pub fn hint(code: []const u8) []const u8 {
     return lookup(code).hint;
 }
 
-// ── ERR_* constants ────────────────────────────────────────────────────────
 // UUIDV7
 pub const ERR_UUIDV7_INVALID_ID_SHAPE = "UZ-UUIDV7-009";
 // INTERNAL
@@ -133,6 +128,15 @@ pub const ERR_AGENTSFLEET_ALREADY_TERMINAL = "UZ-AGT-010";
 pub const ERR_AGENTSFLEET_NAME_MISMATCH = "UZ-AGT-011";
 pub const ERR_AGENTSFLEET_PAUSED_INGRESS = "UZ-AGT-012";
 pub const ERR_AGENTSFLEET_INSTALL_ROLLED_BACK = "UZ-AGT-013";
+// SCHEDULE
+pub const ERR_SCHEDULE_INVALID = "UZ-SCHED-001";
+pub const ERR_SCHEDULE_NOT_FOUND = "UZ-SCHED-002";
+pub const ERR_SCHEDULE_LIMIT_REACHED = "UZ-SCHED-003";
+pub const ERR_SCHEDULE_PROVIDER_UNAVAILABLE = "UZ-SCHED-004";
+pub const ERR_SCHEDULE_SIGNATURE_INVALID = "UZ-SCHED-005";
+pub const ERR_SCHEDULE_UPDATE_BUSY = "UZ-SCHED-006";
+pub const ERR_SCHEDULE_NOT_CONFIGURED = "UZ-SCHED-007";
+pub const ERR_SCHEDULE_CONFLICT = "UZ-SCHED-008";
 // Fleet Bundle
 pub const ERR_FLEET_BUNDLE_INVALID = "UZ-BUNDLE-001";
 pub const ERR_FLEET_BUNDLE_NOT_FOUND = "UZ-BUNDLE-002";
@@ -140,7 +144,7 @@ pub const ERR_FLEET_BUNDLE_SECRETS_MISSING = "UZ-BUNDLE-003";
 pub const ERR_FLEET_BUNDLE_FETCH_FAILED = "UZ-BUNDLE-004";
 pub const ERR_FLEET_BUNDLE_STORAGE_UNAVAILABLE = "UZ-BUNDLE-005";
 // UZ-BUNDLE-006 retired — no producer ever emitted it.
-// CATALOG (platform fleet-library lifecycle — /v1/admin/fleet-libraries, M128)
+// CATALOG (platform fleet-library lifecycle — /v1/admin/fleet-libraries)
 pub const ERR_CATALOG_NOT_FOUND = "UZ-CATALOG-001";
 pub const ERR_CATALOG_PUBLISH_WITHOUT_BUNDLE = "UZ-CATALOG-002";
 pub const ERR_CATALOG_DELETE_PUBLISHED = "UZ-CATALOG-003";
@@ -326,10 +330,7 @@ comptime {
     }
 }
 
-// ── Comptime mirror-pin: auth_codes leaf must byte-match these codes ───────
-// Split into error_registry_mirror_pin.zig (RULE FLL) — the pin's own
-// container-level comptime block still runs eagerly once this import forces
-// Zig to analyze it.
+// The split mirror pin still runs eagerly once this import forces analysis.
 comptime {
     _ = @import("error_registry_mirror_pin.zig");
 }

@@ -9,6 +9,7 @@ vault_dev="${VAULT_DEV:-ZMB_CD_DEV}"
 vault_prod="${VAULT_PROD:-ZMB_CD_PROD}"
 
 missing=0
+readonly uuidv7_pattern='^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
 declare -A OP_CACHE_VALUE
 declare -A OP_CACHE_STATUS
 
@@ -73,6 +74,21 @@ check_url_ref() {
   fi
 }
 
+check_uuidv7_ref() {
+  local ref="$1"
+  local value
+  value="$(op_read_with_retry "$ref" || true)"
+  if [ -z "$value" ]; then
+    echo "✗ MISSING: $ref"
+    missing=$((missing + 1))
+  elif ! printf '%s' "$value" | grep -qE "$uuidv7_pattern"; then
+    echo "✗ INVALID WORKSPACE IDENTIFIER: $ref"
+    missing=$((missing + 1))
+  else
+    echo "✓ $ref"
+  fi
+}
+
 check_distinct() {
   local left_ref="$1"
   local right_ref="$2"
@@ -119,6 +135,8 @@ check_prod() {
   check_ref "op://$v/clerk-prod/publishable-key"
   check_ref "op://$v/clerk-prod/secret-key"
   check_ref "op://$v/clerk-prod/webhook-secret"
+  check_ref "op://$v/agentsfleet-admin/api-key"
+  check_uuidv7_ref "op://$v/agentsfleet-admin/platform_admin_workspace_id"
   check_ref "op://$v/github-app/app-id"
   check_ref "op://$v/github-app/private-key"
   check_ref "op://$v/encryption-master-key/credential"
@@ -159,6 +177,8 @@ check_dev() {
   check_ref "op://$v/clerk-dev/publishable-key"
   check_ref "op://$v/clerk-dev/secret-key"
   check_ref "op://$v/clerk-dev/webhook-secret"
+  check_ref "op://$v/agentsfleet-admin/api-key"
+  check_uuidv7_ref "op://$v/agentsfleet-admin/platform_admin_workspace_id"
   check_ref "op://$v/github-app/app-id"
   check_ref "op://$v/github-app/private-key"
   check_ref "op://$v/encryption-master-key/credential"

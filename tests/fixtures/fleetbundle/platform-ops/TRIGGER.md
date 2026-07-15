@@ -29,9 +29,6 @@ x-agentsfleet:
     - http_request
     - memory_recall
     - memory_store
-    - cron_add
-    - cron_list
-    - cron_remove
 
   credentials:
     - fly

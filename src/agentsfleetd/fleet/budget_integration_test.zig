@@ -139,7 +139,7 @@ test "integration: spend is timed by DRAIN, not by run start (the P1 regression)
     try seedStageSlice(conn, WS_A, FLEET_A, "evt-budget-longrun", 1, 500, NOW_MS - 25 * HOUR_MS, NOW_MS - 13 * HOUR_MS);
 
     const spend = (try budget.spendForFleetOn(conn, WS_A, FLEET_A, NOW_MS)).?;
-    try std.testing.expectEqual(@as(i64, 500), spend.day_nanos);   // drained inside 24h → counted
+    try std.testing.expectEqual(@as(i64, 500), spend.day_nanos); // drained inside 24h → counted
     try std.testing.expectEqual(@as(i64, 500), spend.month_nanos);
 }
 
@@ -163,7 +163,7 @@ test "integration: a multi-slice run counts each slice in the window it drained"
     try seedStageSlice(conn, WS_A, FLEET_A, "evt-budget-multi", 3, 3, NOW_MS - 25 * HOUR_MS, NOW_MS - 13 * HOUR_MS);
 
     const spend = (try budget.spendForFleetOn(conn, WS_A, FLEET_A, NOW_MS)).?;
-    try std.testing.expectEqual(@as(i64, 23), spend.day_nanos);   // slices 2+3
+    try std.testing.expectEqual(@as(i64, 23), spend.day_nanos); // slices 2+3
     try std.testing.expectEqual(@as(i64, 123), spend.month_nanos); // all three (same month)
 }
 
