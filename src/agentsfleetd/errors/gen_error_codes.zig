@@ -135,6 +135,7 @@ const CATEGORY_COPY = [_]CategoryCopy{
     .{ .token = "INTERNAL", .label = "Service failures", .prevention = "Clients cannot prevent this failure. Keep retry handling ready." },
     .{ .token = "MEM", .label = "Memory", .prevention = "Use an existing fleet and a valid memory category." },
     .{ .token = "MODELS", .label = "Tenant models", .prevention = "Use a model available to the tenant." },
+    .{ .token = "PREFS", .label = "Dashboard preferences", .prevention = "Write only preference keys the dashboard declares, with small values." },
     .{ .token = "PROVIDER", .label = "Model providers", .prevention = "Configure a supported provider, model, and secret." },
     .{ .token = "REQ", .label = "Request", .prevention = "Validate request fields before sending the request." },
     .{ .token = "CATALOG", .label = "Fleet library catalog", .prevention = "Fetch a bundle before publishing a fleet, and unpublish before deleting one." },
