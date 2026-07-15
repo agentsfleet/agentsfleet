@@ -3,7 +3,9 @@ name: zoho-sprint-daily-summarizer
 x-agentsfleet:
   triggers:
     - type: cron
-      schedule: "0 18 * * 1-5"
+      schedule: "0 9 * * *"
+      timezone: "Asia/Kolkata"
+      message: "Summarize today's Zoho Sprints activity"
   tools:
     - http_request
   credentials:
@@ -17,4 +19,4 @@ x-agentsfleet:
 ---
 # Wake rule
 
-Wakes weekdays at 18:00 (cron) to summarize the day's Zoho Sprints activity.
+Wakes every morning at 09:00 Asia/Kolkata to summarize the day's Zoho Sprints activity.

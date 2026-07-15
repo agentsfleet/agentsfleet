@@ -166,7 +166,7 @@ Primary job:
 Trigger modes:
 
 - **Webhook.** A workspace connection is accepted only after the GitHub user-authorization callback proves access to the claimed installation; cross-workspace reassignment is refused. GitHub Actions then posts a completed failed `workflow_run` to the shared GitHub App ingress (`POST /v1/ingress/github`). The receiver verifies the platform App signature, maps the installation to a workspace, and wakes only fleets explicitly subscribed to that repository and event with an approved GitHub grant. The manual fleet-addressed route remains available for custom hooks. Both paths write `actor=webhook:github`.
-- **Cron.** A periodic production health check, scheduled by NullClaw's `cron_add` tool; each fire arrives as a synthetic event with `actor=cron:<schedule>`.
+- **Cron.** A periodic production health check, stored by `agentsfleet` and synchronously registered with Upstash QStash; each signed QStash fire arrives at `agentsfleetd` as a synthetic event with `actor=cron:<schedule_id>`. The runner's disposable NullClaw child owns no timer or local scheduler state.
 - **Steer.** A direct operator instruction via `agentsfleet steer <fleet_id> <message>` or the dashboard chat widget; lands with `actor=steer:<user>`.
 
 All three flow through the same reasoning loop. The fleet does not branch on actor type — its SKILL.md describes the general outcome and the same `http_request` tool calls fire regardless of trigger source.

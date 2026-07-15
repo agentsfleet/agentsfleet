@@ -43,8 +43,9 @@ These are the tool primitives NullClaw exposes. The fleet's `tools:` allowlist g
 | `file_read` / `file_write` / `file_edit` | Read or change files inside the runner workspace. A fleet receives only the file tools listed in its policy. | Yes, when explicitly enabled. |
 | `git` | Inspect and change the repository inside the runner workspace. Network access and GitHub credentials remain separate controls. | Yes, when explicitly enabled. |
 | `memory_store` / `memory_recall` | Durable scratchpad keyed by string. Survives run boundaries and full restart. The "where I am" snapshot mechanism. | Yes — the fleet reads and writes. |
-| `cron_add` / `cron_list` / `cron_remove` | Self-schedule future invocations. Each fire arrives as a synthetic event with `actor=cron:<schedule>`. | Yes. |
 | `shell` (gated) | Read-only commands like `docker ps`, `kubectl get`. Not part of the initial platform-ops surface. | Yes, when explicitly enabled. |
+
+Scheduled wakes are not a child tool. A Fleet declares its primary cron in `TRIGGER.md`, or an operator manages schedules through the schedule API / `agentsfleet schedule`; `agentsfleetd` stores the schedule, QStash owns the clock, and the runner receives only the resulting event.
 
 ---
 

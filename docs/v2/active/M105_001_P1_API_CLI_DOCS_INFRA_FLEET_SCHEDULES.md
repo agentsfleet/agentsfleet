@@ -181,17 +181,17 @@ Fleet install and patch synchronously configure the single declarative cron sche
 
 ### §7 — Hosted NullClaw cron tools fail closed
 
-Remove the pinned NullClaw cron builders from hosted tool resolution. Declarative `TRIGGER.md` and explicit CLI/API calls are the only scheduling entrypoints. A hosted Fleet that lists any `cron_*` tool fails admission with a clear unsupported-tool error; no child receives a local cron tool, touches `cron.json`, launches `curl`, or creates durable work without operator intent.
+Remove the pinned NullClaw local scheduler builders from hosted tool resolution. Declarative `TRIGGER.md` and explicit command-line or API calls are the only scheduling entrypoints. A hosted Fleet that lists `schedule` or any `cron_*` tool fails admission with a clear unsupported-tool error; the null-spec fallback filters out `schedule`, so no child receives a local scheduler tool, touches `cron.json`, launches `curl`, or creates durable work without operator intent.
 
-- **Dimension 7.1** — every hosted `cron_*` tool name is rejected before child execution with no local file → Test `test_hosted_cron_tools_rejected`
-- **Dimension 7.2** — the Zoho declarative schedule installs and fires without exposing any NullClaw cron tool → Test `test_declarative_schedule_has_no_cron_tool`
+- **Dimension 7.1** — every hosted local scheduler tool name is rejected before child execution with no local file → Test `should reject hosted NullClaw scheduler tools before execution` + `should filter local scheduler from fallback default tools` → **DONE**
+- **Dimension 7.2** — the Zoho declarative schedule installs and fires without exposing any NullClaw cron tool → Test `declarative schedule has no local cron tool` + `test_fleet_cron_syncs_schedule_and_lifecycle` → **DONE**
 
 ### §8 — Operator setup and architecture accuracy
 
 The platform operator gets one repeatable QStash registration playbook, while the architecture documents name one scheduling model consistently for humans and agents. Hosted schedules are stored and synchronously configured by `agentsfleet`, timed by QStash, and delivered through `agentsfleetd`; no NullClaw child or background worker owns them.
 
-- **Dimension 8.1** — the playbook covers QStash account setup, API token plus current/next signing keys, vault storage, public ingress verification, and rotation without printing credentials → Test `make check-playbooks`
-- **Dimension 8.2** — architecture documents no longer claim a disposable NullClaw child owns or fires hosted cron schedules → Test `architecture_schedule_ownership`
+- **Dimension 8.1** — the playbook covers QStash account setup, API token plus current/next signing keys, vault storage, public ingress verification, and rotation without printing credentials → Test `make check-playbooks` → **DONE**
+- **Dimension 8.2** — architecture documents no longer claim a disposable NullClaw child owns or fires hosted cron schedules → Test `architecture_schedule_ownership` via `make check-architecture-doc` → **DONE**
 
 ## Interfaces
 
@@ -276,8 +276,8 @@ Event enqueued on fire: EventEnvelope{ event_type=.cron, actor="cron:<schedule_i
 | 6.2 | e2e | `` `schedule list` emits JSON when stdout is redirected `` | redirected stdout emits the API envelope. |
 | 6.3 | e2e | `` `schedule update` and `schedule rm` use item routes `` | update + rm round-trip through PATCH and DELETE item routes. |
 | 6.4 | e2e | `` `schedule status` and `schedule sync` read and reapply the item route `` | status GETs the item; sync POSTs the `:sync` route; parser tests expose all verbs. |
-| 7.1 | failure | `test_hosted_cron_tools_rejected` | each `cron_*` declaration is rejected before child start and creates no local state. |
-| 7.2 | e2e | `test_declarative_schedule_has_no_cron_tool` | declarative create/fire path succeeds with only the Fleet's declared non-cron tools. |
+| 7.1 | failure | `should reject hosted NullClaw scheduler tools before execution` + `should filter local scheduler from fallback default tools` | each local scheduler declaration is rejected before child start and default fallback exposes no scheduler tool. |
+| 7.2 | e2e | `declarative schedule has no local cron tool` + `test_fleet_cron_syncs_schedule_and_lifecycle` | declarative create/fire path succeeds with only the Fleet's declared non-cron tools. |
 | 8.1 | documentation | `make check-playbooks` | QStash registration playbook passes repository playbook checks. |
 | 8.2 | documentation | `architecture_schedule_ownership` | Four architecture documents consistently name QStash, `agentsfleetd`, and disposable runner ownership. |
 
@@ -292,9 +292,9 @@ Cron and QStash fixtures: `samples/fixtures/m105-fixtures/{valid_crons.json, qst
 - [ ] Installing the Zoho-summarizer fixture creates one declarative schedule and Fleet lifecycle leaves no provider orphan
 - [ ] Bad signature / replay / inactive Fleet all enqueue nothing — verify: `make test-integration 2>&1 | grep -E "bad_signature|dedupes_replay|skips_inactive"`
 - [ ] CLI `schedule add|list|update|rm|status|sync` gives deterministic human and JSON output with exact recovery guidance
-- [ ] Hosted NullClaw cron tools are rejected before execution and never touch local scheduler state
-- [ ] QStash human setup and rotation are repeatable without credentials in arguments or output — verify: `make check-playbooks`
-- [ ] Architecture docs name QStash as clock, `agentsfleetd` as synchronous facade and signed ingress, and state that no schedule worker or NullClaw cron owner exists
+- [x] Hosted NullClaw local scheduler tools are rejected before execution and never touch local scheduler state
+- [x] QStash human setup and rotation are repeatable without credentials in arguments or output — verify: `make check-playbooks`
+- [x] Architecture docs name QStash as clock, `agentsfleetd` as synchronous facade and signed ingress, and state that no schedule worker or NullClaw cron owner exists
 - [ ] `make lint` clean · `make test` passes · `make test-integration` passes
 - [ ] 100-way concurrency gates pass repeatedly; query/provider round-trip counters stay bounded
 - [ ] `make memleak` reports zero for daemon, runner, library, boot-drain, and injected error paths
