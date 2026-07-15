@@ -105,6 +105,9 @@ describe("fleets routes", () => {
       if (url.includes("/approvals")) {
         return { ok: true, status: 200, json: async () => ({ items: [], next_cursor: null }) };
       }
+      if (url.includes("/memories")) {
+        return { ok: true, status: 200, json: async () => ({ items: [], total: 0, request_id: "req_1" }) };
+      }
       if (url.includes("/events")) {
         return { ok: true, status: 200, json: async () => ({ items: [], next_cursor: null }) };
       }
@@ -289,9 +292,27 @@ describe("fleets routes", () => {
       await Page({ params: Promise.resolve({ workspaceId: "ws_1", id: "zom_1" }) }),
     );
     expect(markup).toContain("platform-ops");
-    expect(markup).toContain("Trigger");
-    expect(markup).toContain("Configuration");
     expect(markup).toContain("Balance exhausted");
+  });
+
+  it("test_console_renders_three_columns", async () => {
+    // The three-column console (M131 §3): what the fleet IS / DOES / KNOWS &
+    // COSTS. Each is a labelled region carrying its panels (the source editor,
+    // the metrics strip, the memory panel, the runs ledger).
+    mockFetchBilling(happyBilling);
+    const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
+    const markup = renderToStaticMarkup(
+      await Page({ params: Promise.resolve({ workspaceId: "ws_1", id: "zom_1" }) }),
+    );
+    // Ampersand escapes to &amp; in static markup, so assert the ampersand-free
+    // heads of each column label.
+    expect(markup).toContain("What it is");
+    expect(markup).toContain("What it does");
+    expect(markup).toContain("What it knows");
+    // The left rail's source editor + the right rail's memory and runs panels.
+    expect(markup).toContain("Source");
+    expect(markup).toContain("Memory");
+    expect(markup).toContain("Runs");
   });
 
   it("fleets detail page renders without badge when not exhausted", async () => {
@@ -321,6 +342,9 @@ describe("fleets routes", () => {
       }
       if (url.includes("/approvals")) {
         return { ok: true, status: 200, json: async () => ({ items: [], next_cursor: null }) };
+      }
+      if (url.includes("/memories")) {
+        return { ok: true, status: 200, json: async () => ({ items: [], total: 0, request_id: "req_1" }) };
       }
       if (url.includes("/events")) {
         return { ok: true, status: 200, json: async () => ({ items: [], next_cursor: null }) };
@@ -353,6 +377,9 @@ describe("fleets routes", () => {
             next_cursor: "cur_xyz",
           }),
         };
+      }
+      if (url.includes("/memories")) {
+        return { ok: true, status: 200, json: async () => ({ items: [], total: 0, request_id: "req_1" }) };
       }
       if (url.includes("/events")) {
         return { ok: true, status: 200, json: async () => ({ items: [], next_cursor: null }) };
@@ -393,6 +420,9 @@ describe("fleets routes", () => {
           }),
         };
       }
+      if (url.includes("/memories")) {
+        return { ok: true, status: 200, json: async () => ({ items: [], total: 0, request_id: "req_1" }) };
+      }
       if (url.includes("/events")) {
         return { ok: true, status: 200, json: async () => ({ items: [], next_cursor: null }) };
       }
@@ -416,6 +446,9 @@ describe("fleets routes", () => {
       }
       if (url.includes("/approvals")) {
         return { ok: true, status: 200, json: async () => ({ items: [], next_cursor: null }) };
+      }
+      if (url.includes("/memories")) {
+        return { ok: true, status: 200, json: async () => ({ items: [], total: 0, request_id: "req_1" }) };
       }
       if (url.includes("/events")) {
         return { ok: true, status: 200, json: async () => ({ items: [], next_cursor: null }) };
@@ -441,6 +474,9 @@ describe("fleets routes", () => {
       }
       if (url.includes("/approvals")) {
         return { ok: true, status: 200, json: async () => ({ items: [], next_cursor: null }) };
+      }
+      if (url.includes("/memories")) {
+        return { ok: true, status: 200, json: async () => ({ items: [], total: 0, request_id: "req_1" }) };
       }
       if (url.includes("/events")) {
         return { ok: true, status: 200, json: async () => ({ items: [], next_cursor: null }) };
@@ -469,6 +505,7 @@ describe("fleets routes", () => {
         return { ok: true, status: 200, json: async () => happyBilling };
       }
       if (url.includes("/approvals")) throw new Error("approvals down");
+      if (url.includes("/memories")) throw new Error("memories down");
       if (url.includes("/events")) throw new Error("events down");
       return {
         ok: true,
@@ -480,10 +517,13 @@ describe("fleets routes", () => {
     const markup = renderToStaticMarkup(
       await Page({ params: Promise.resolve({ workspaceId: "ws_1", id: "zom_1" }) }),
     );
-    // The fleet still renders; the failed events + approvals calls degrade
-    // to empty via their `.catch` arms (the events list shows its empty state).
+    // The fleet still renders; the failed events + approvals calls degrade via
+    // their `.catch` arms. The 7-day window catches to `null`, so the runs
+    // ledger shows its degraded state rather than a blank, and the metrics strip
+    // shows no run.
     expect(markup).toContain("platform-ops");
-    expect(markup).toContain("No events yet");
+    expect(markup).toContain("Recent window unavailable");
+    expect(markup).toContain("No runs recorded yet");
   });
 });
 

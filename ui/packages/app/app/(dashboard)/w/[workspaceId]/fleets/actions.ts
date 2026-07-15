@@ -4,14 +4,18 @@ import { withToken, type ActionResult } from "@/lib/actions/with-token";
 import { onboardWorkspaceFleetLibrary as apiOnboardWorkspaceFleetLibrary } from "@/lib/api/fleet-library";
 import {
   deleteFleet as apiDeleteFleet,
+  getFleet as apiGetFleet,
   installFleet as apiInstallFleet,
   listFleets as apiListFleets,
+  saveFleetSource as apiSaveFleetSource,
   setFleetStatus as apiSetFleetStatus,
   steerFleet as apiSteerFleet,
+  type FleetDetail,
   type FleetListResponse,
   type FleetStatusSettable,
   type FleetStatusUpdate,
 } from "@/lib/api/fleets";
+import { forgetMemory as apiForgetMemory } from "@/lib/api/memory";
 import type {
   InstallFleetRequest,
   InstallFleetResponse,
@@ -39,6 +43,41 @@ export async function deleteFleetAction(
   fleetId: string,
 ): Promise<ActionResult<void>> {
   return withToken((t) => apiDeleteFleet(workspaceId, fleetId, t));
+}
+
+// Re-reads the single fleet detail + its ETag (M131 §1/§4). The source editor
+// calls this after a 412 to reload the current source and rebase its pending
+// edit — the GET's ETag is authoritative, so the editor need not thread the
+// stale-save's etag through; it re-diffs against this fresh read.
+export async function getFleetDetailAction(
+  workspaceId: string,
+  fleetId: string,
+): Promise<ActionResult<{ fleet: FleetDetail; etag: string | null }>> {
+  return withToken((t) => apiGetFleet(workspaceId, fleetId, t));
+}
+
+// Saves an edited SKILL.md / TRIGGER.md over the existing PATCH with `If-Match`
+// (M131 §4). A stale tag surfaces as `ok: false, status: 412` (UZ-AGT-014) — the
+// editor reloads via getFleetDetailAction and re-diffs rather than overwriting.
+// On success the fresh ETag rides `data.etag` for the editor's next save.
+export async function saveFleetSourceAction(
+  workspaceId: string,
+  fleetId: string,
+  body: { source_markdown?: string; trigger_markdown?: string },
+  ifMatch: string,
+): Promise<ActionResult<{ etag: string | null; config_revision: number }>> {
+  return withToken((t) => apiSaveFleetSource(workspaceId, fleetId, body, ifMatch, t));
+}
+
+// Forgets one memory entry (M131 §5). 204 → ok; a missing key surfaces as
+// `ok: false, status: 404` (UZ-MEM-004) so the panel can say the key was
+// already gone and leave its list unchanged.
+export async function forgetMemoryAction(
+  workspaceId: string,
+  fleetId: string,
+  key: string,
+): Promise<ActionResult<void>> {
+  return withToken((t) => apiForgetMemory(workspaceId, fleetId, key, t));
 }
 
 export async function installFleetAction(
