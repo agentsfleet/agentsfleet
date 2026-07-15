@@ -139,7 +139,6 @@ test "refusalFor surfaces a monthly breach distinctly from a daily one" {
     );
 }
 
-
 // ── windowFloors + parseStoredBudget (pub helpers, no DB) ────────────────────
 
 test "windowFloors derives both bounds from one now_ms" {
