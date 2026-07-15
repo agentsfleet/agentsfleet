@@ -7,6 +7,7 @@ const pg = @import("pg");
 const auth_mw = @import("../../../auth/middleware/mod.zig");
 const Credentials = @import("../../../cron/Credentials.zig");
 const QStashClient = @import("../../../cron/QStashClient.zig");
+const Store = @import("../../../cron/Store.zig");
 const fixtures = @import("../../../db/test_fixtures.zig");
 const error_codes = @import("../../../errors/error_registry.zig");
 const scope_fixtures = @import("../../test_scope_tokens.zig");
@@ -23,7 +24,16 @@ const OTHER_FLEET_ID = "0195b4ba-8d3a-7f13-8abc-1050000005f1";
 const FLEET_NAME = "m105-schedule-api";
 const COLLECTION_PATH = "/v1/workspaces/" ++ WORKSPACE_ID ++ "/fleets/" ++ FLEET_ID ++ "/schedules";
 const FOREIGN_FLEET_PATH = "/v1/workspaces/" ++ WORKSPACE_ID ++ "/fleets/" ++ OTHER_FLEET_ID ++ "/schedules";
-const CREATE_BODY = "{\"cron\":\"0 9 * * *\",\"timezone\":\"Asia/Kolkata\",\"message\":\"summarize\"}";
+const FOREIGN_FLEET_DELETE_PATH = "/v1/workspaces/" ++ WORKSPACE_ID ++ "/fleets/" ++ OTHER_FLEET_ID;
+const FOREIGN_SCHEDULE_ID = "0195b4ba-8d3a-7f13-8abc-1050000005f2";
+const FOREIGN_LEASE_TOKEN = "0195b4ba-8d3a-7f13-8abc-1050000005f3";
+const SCHEDULE_CRON = "0 9 * * *";
+const SCHEDULE_TIMEZONE = "Asia/Kolkata";
+const SCHEDULE_MESSAGE = "summarize";
+const CREATED_AT_MS: i64 = 100;
+const SYNCED_AT_MS: i64 = 101;
+const LEASE_UNTIL_MS: i64 = 200;
+const CREATE_BODY = "{\"cron\":\"" ++ SCHEDULE_CRON ++ "\",\"timezone\":\"" ++ SCHEDULE_TIMEZONE ++ "\",\"message\":\"" ++ SCHEDULE_MESSAGE ++ "\"}";
 const PATCH_BODY = "{\"cron\":\"15 9 * * *\",\"message\":\"summarize again\"}";
 
 const FakeQStash = struct {
@@ -123,6 +133,25 @@ fn create(setup: *Setup) !harness_mod.Response {
     return (try (try setup.h.post(COLLECTION_PATH).bearer(scope_fixtures.TENANT_ADMIN)).json(CREATE_BODY)).send();
 }
 
+fn seedForeignSchedule(setup: *Setup) !void {
+    const store = Store.init(setup.h.ctx.pool);
+    var created = switch (try store.create(testing.allocator, .{
+        .fleet_id = OTHER_FLEET_ID,
+        .source = .api,
+        .source_key = FOREIGN_SCHEDULE_ID,
+        .cron = SCHEDULE_CRON,
+        .timezone = SCHEDULE_TIMEZONE,
+        .message = SCHEDULE_MESSAGE,
+    }, FOREIGN_SCHEDULE_ID, FOREIGN_LEASE_TOKEN, CREATED_AT_MS, LEASE_UNTIL_MS)) {
+        .created => |schedule| schedule,
+        else => return error.ForeignScheduleCreateFailed,
+    };
+    defer created.deinit(testing.allocator);
+    var synced = (try store.finalizeSuccess(testing.allocator, FOREIGN_SCHEDULE_ID, created.generation, FOREIGN_LEASE_TOKEN, SYNCED_AT_MS)) orelse
+        return error.ForeignScheduleFinalizeFailed;
+    synced.deinit(testing.allocator);
+}
+
 fn scheduleIdFrom(response: harness_mod.Response) ![]u8 {
     const Parsed = struct { schedule_id: []const u8 };
     var parsed = try std.json.parseFromSlice(Parsed, testing.allocator, response.body, .{ .ignore_unknown_fields = true });
@@ -199,6 +228,22 @@ test "test_delete_schedule_provider_outcomes" {
     var failed_delete = try (try setup.h.delete(failed_path).bearer(scope_fixtures.TENANT_ADMIN)).send();
     defer failed_delete.deinit();
     try failed_delete.expectStatus(.bad_gateway);
+}
+
+test "should reject foreign fleet deletion before schedule removal" {
+    var setup = try Setup.init();
+    defer setup.deinit();
+    try seedForeignSchedule(&setup);
+
+    var denied = try (try setup.h.delete(FOREIGN_FLEET_DELETE_PATH).bearer(scope_fixtures.TENANT_ADMIN)).send();
+    defer denied.deinit();
+    try denied.expectStatus(.not_found);
+    try denied.expectErrorCode(error_codes.ERR_AGENTSFLEET_NOT_FOUND);
+    try testing.expectEqual(@as(u32, 0), setup.fake.calls.load(.acquire));
+
+    var preserved = (try Store.init(setup.h.ctx.pool).get(testing.allocator, OTHER_FLEET_ID, FOREIGN_SCHEDULE_ID)) orelse
+        return error.ForeignScheduleRemoved;
+    defer preserved.deinit(testing.allocator);
 }
 
 test "test_schedule_authz" {
