@@ -183,6 +183,71 @@ test "service: explicit sync claims current row state" {
     try std.testing.expectEqual(@as(u32, 1), fake.deletes.load(.acquire));
 }
 
+test "service: partial update preserves current row fields" {
+    const alloc = std.testing.allocator;
+    var fixture = (try support.Fixture.open(
+        "0195b4ba-8d3a-7f13-8abc-105000000351",
+        "0195b4ba-8d3a-7f13-8abc-105000000352",
+    )) orelse return error.SkipZigTest;
+    defer fixture.deinit();
+    const schedule_id = "0195b4ba-8d3a-7f13-8abc-105000000353";
+    var seeded = try support.createAndFinalize(&fixture, alloc, schedule_id, LEASE_TOKEN);
+    defer seeded.deinit(alloc);
+    const conn = try fixture.pool.acquire();
+    defer fixture.pool.release(conn);
+    _ = try conn.exec(
+        \\UPDATE core.fleet_schedules
+        \\SET cron_expression = '0 12 * * *', updated_at = $2
+        \\WHERE uid = $1::uuid
+    , .{ schedule_id, common.clock.nowMillis() });
+    var fake: Fake = .{};
+    const service = Service.init(fixture.store, client(&fake), TOKEN);
+    var patched = try service.update(alloc, .{
+        .fleet_id = fixture.fleet_id,
+        .schedule_id = schedule_id,
+        .message = "patched only the message",
+    });
+    defer patched.deinit(alloc);
+    switch (patched) {
+        .schedule => |schedule| {
+            try std.testing.expectEqualStrings("0 12 * * *", schedule.cron);
+            try std.testing.expectEqualStrings("patched only the message", schedule.message);
+        },
+        else => return error.UnexpectedOutcome,
+    }
+}
+test "service: source desired update preserves current schedule fields" {
+    const alloc = std.testing.allocator;
+    var fixture = (try support.Fixture.open(
+        "0195b4ba-8d3a-7f13-8abc-105000000361",
+        "0195b4ba-8d3a-7f13-8abc-105000000362",
+    )) orelse return error.SkipZigTest;
+    defer fixture.deinit();
+    const schedule_id = "0195b4ba-8d3a-7f13-8abc-105000000363";
+    var seeded = try support.createAndFinalize(&fixture, alloc, schedule_id, LEASE_TOKEN);
+    defer seeded.deinit(alloc);
+    const conn = try fixture.pool.acquire();
+    defer fixture.pool.release(conn);
+    _ = try conn.exec(
+        \\UPDATE core.fleet_schedules
+        \\SET cron_expression = '15 7 * * *', message = 'current trigger', updated_at = $2
+        \\WHERE uid = $1::uuid
+    , .{ schedule_id, common.clock.nowMillis() });
+    var fake: Fake = .{};
+    const service = Service.init(fixture.store, client(&fake), TOKEN);
+    var paused = try service.setSourceDesired(alloc, fixture.fleet_id, schedule_id, .paused);
+    defer paused.deinit(alloc);
+    switch (paused) {
+        .schedule => |schedule| {
+            try std.testing.expectEqual(.paused, schedule.desired_status);
+            try std.testing.expectEqualStrings("15 7 * * *", schedule.cron);
+            try std.testing.expectEqualStrings("current trigger", schedule.message);
+        },
+        else => return error.UnexpectedOutcome,
+    }
+    try std.testing.expectEqual(@as(u32, 1), fake.deletes.load(.acquire));
+}
+
 test "service: provider out of memory clears the lease into durable failed state" {
     const alloc = std.testing.allocator;
     var fixture = (try support.Fixture.open(OOM_WORKSPACE_ID, OOM_FLEET_ID)) orelse return error.SkipZigTest;

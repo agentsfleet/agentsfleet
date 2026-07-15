@@ -138,25 +138,19 @@ fn patchSchedule(hx: Hx, req: *httpz.Request, workspace_id: []const u8, fleet_id
     if (!authorizeMutationFleet(hx, workspace_id, fleet_id)) return;
     var parsed = parseBody(PatchBody, hx, req) orelse return;
     defer parsed.deinit();
-    const store = Store.init(hx.ctx.pool);
-    var current = (store.get(hx.alloc, fleet_id, schedule_id) catch |err| return serviceError(hx, err)) orelse {
-        hx.fail(error_codes.ERR_SCHEDULE_NOT_FOUND, DETAIL_NOT_FOUND);
-        return;
-    };
-    defer current.deinit(hx.alloc);
     const desired = if (parsed.value.desired_status) |raw| parseDesiredStatus(raw) orelse {
         hx.fail(error_codes.ERR_SCHEDULE_INVALID, DETAIL_STATUS);
         return;
-    } else current.desired_status;
+    } else null;
     var exchange: QStashClient.HttpClientExchange = .{ .io = hx.ctx.io };
     var destination_buffer: [cron_constants.max_destination_url_bytes]u8 = undefined;
     const service = cronService(hx, &exchange, &destination_buffer) orelse return;
     var outcome = service.update(hx.alloc, .{
         .fleet_id = fleet_id,
         .schedule_id = schedule_id,
-        .cron = parsed.value.cron orelse current.cron,
-        .timezone = parsed.value.timezone orelse current.timezone,
-        .message = parsed.value.message orelse current.message,
+        .cron = parsed.value.cron,
+        .timezone = parsed.value.timezone,
+        .message = parsed.value.message,
         .desired_status = desired,
     }) catch |err| return serviceError(hx, err);
     defer outcome.deinit(hx.alloc);

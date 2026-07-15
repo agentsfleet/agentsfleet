@@ -64,8 +64,9 @@ pub const LIST_FOR_FLEET =
     " FROM core.fleet_schedules WHERE fleet_id = $1::uuid ORDER BY created_at, uid";
 
 pub const CLAIM_MUTATION =
-    "UPDATE core.fleet_schedules SET cron_expression = $3, timezone = $4, " ++
-    "message = $5, desired_status = $6, sync_status = $7, " ++
+    "UPDATE core.fleet_schedules SET cron_expression = COALESCE($3, cron_expression), " ++
+    "timezone = COALESCE($4, timezone), message = COALESCE($5, message), " ++
+    "desired_status = COALESCE($6, desired_status), sync_status = $7, " ++
     "generation = generation + 1, sync_token = $8::uuid, " ++
     "sync_lease_until = $9, last_error = NULL, updated_at = $10 " ++
     SCHEDULE_FLEET_WHERE ++

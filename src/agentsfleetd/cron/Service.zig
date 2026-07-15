@@ -30,10 +30,10 @@ qstash_token: []const u8,
 pub const UpdateInput = struct {
     fleet_id: []const u8,
     schedule_id: []const u8,
-    cron: []const u8,
-    timezone: []const u8,
-    message: []const u8,
-    desired_status: model.DesiredStatus,
+    cron: ?[]const u8 = null,
+    timezone: ?[]const u8 = null,
+    message: ?[]const u8 = null,
+    desired_status: ?model.DesiredStatus = null,
 };
 
 pub const SourceInput = struct {
@@ -99,7 +99,7 @@ pub fn create(self: Service, alloc: std.mem.Allocator, input: model.CreateInput)
 }
 
 pub fn update(self: Service, alloc: std.mem.Allocator, input: UpdateInput) !Outcome {
-    try validateInput(input.cron, input.timezone, input.message);
+    try validateOptionalInput(input.cron, input.timezone, input.message);
     return self.claimAndApply(alloc, input);
 }
 
@@ -108,14 +108,9 @@ pub fn sync(self: Service, alloc: std.mem.Allocator, fleet_id: []const u8, sched
 }
 
 pub fn remove(self: Service, alloc: std.mem.Allocator, fleet_id: []const u8, schedule_id: []const u8) !Outcome {
-    var schedule = (try self.store.get(alloc, fleet_id, schedule_id)) orelse return .not_found;
-    defer schedule.deinit(alloc);
     return self.claimAndApply(alloc, .{
-        .fleet_id = schedule.fleet_id,
-        .schedule_id = schedule.schedule_id,
-        .cron = schedule.cron,
-        .timezone = schedule.timezone,
-        .message = schedule.message,
+        .fleet_id = fleet_id,
+        .schedule_id = schedule_id,
         .desired_status = .deleting,
     });
 }
@@ -156,9 +151,6 @@ pub fn setSourceDesired(
     return self.claimAndApply(alloc, .{
         .fleet_id = existing.fleet_id,
         .schedule_id = existing.schedule_id,
-        .cron = existing.cron,
-        .timezone = existing.timezone,
-        .message = existing.message,
         .desired_status = desired_status,
     });
 }
@@ -169,9 +161,6 @@ pub fn removeSource(self: Service, alloc: std.mem.Allocator, fleet_id: []const u
     return self.claimAndApply(alloc, .{
         .fleet_id = existing.fleet_id,
         .schedule_id = existing.schedule_id,
-        .cron = existing.cron,
-        .timezone = existing.timezone,
-        .message = existing.message,
         .desired_status = .deleting,
     });
 }
@@ -295,4 +284,10 @@ fn validateInput(cron: []const u8, timezone: []const u8, message: []const u8) !v
     try validate.cron(cron);
     try validate.timezone(timezone);
     try validate.message(message);
+}
+
+fn validateOptionalInput(cron: ?[]const u8, timezone: ?[]const u8, message: ?[]const u8) !void {
+    if (cron) |value| try validate.cron(value);
+    if (timezone) |value| try validate.timezone(value);
+    if (message) |value| try validate.message(value);
 }
