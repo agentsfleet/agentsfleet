@@ -19,6 +19,11 @@ const MODEL_PLACEHOLDER = "{{model}}";
 const MODEL_VALUE = "accounts/fireworks/models/kimi-k2.6";
 const CONTEXT_CAP_PLACEHOLDER = "{{context_cap_tokens}}";
 const CONTEXT_CAP_VALUE = "256000";
+const ZOHO_DAILY_SUMMARIZER = "zoho-sprint-daily-summarizer";
+const ZOHO_CRON_SCHEDULE = "0 9 * * *";
+const ZOHO_CRON_TIMEZONE = "Asia/Kolkata";
+const ZOHO_CRON_MESSAGE = "Summarize today's Zoho Sprints activity";
+const TOOL_HTTP_REQUEST = "http_request";
 // One slug per first-party bundle, and the slug IS the identity: it names the
 // fixture directory, the `agentsfleet/<slug>` repository operators onboard from,
 // the `name:` both SKILL.md and TRIGGER.md must declare, and — because the
@@ -29,7 +34,7 @@ const CONTEXT_CAP_VALUE = "256000";
 const FIRST_PARTY_FIXTURE_SLUGS = [_][]const u8{
     "github-pr-reviewer",
     "security-reviewer",
-    "zoho-sprint-daily-summarizer",
+    ZOHO_DAILY_SUMMARIZER,
     "zoho-recruiter-daily-summarizer",
 };
 
@@ -202,6 +207,25 @@ test "first-party library fixtures use the supported HTTP request tool" {
         try std.testing.expectEqualStrings(slug, meta.name);
         try std.testing.expectEqualStrings(meta.name, parsed.config.name);
         try std.testing.expectEqual(@as(usize, 1), parsed.config.tools.len);
-        try std.testing.expectEqualStrings("http_request", parsed.config.tools[0]);
+        try std.testing.expectEqualStrings(TOOL_HTTP_REQUEST, parsed.config.tools[0]);
     }
+}
+
+test "declarative schedule has no local cron tool" {
+    const alloc = std.testing.allocator;
+    const trigger_path = try std.fmt.allocPrint(alloc, "{s}/TRIGGER.md", .{ZOHO_DAILY_SUMMARIZER});
+    defer alloc.free(trigger_path);
+    const trigger_md = try loadFixture(alloc, trigger_path);
+    defer alloc.free(trigger_md);
+
+    var parsed = try config.parseTriggerMarkdownWithJson(alloc, trigger_md);
+    defer parsed.deinit(alloc);
+
+    try std.testing.expectEqualStrings(ZOHO_DAILY_SUMMARIZER, parsed.config.name);
+    try std.testing.expectEqual(@as(usize, 1), parsed.config.triggers.len);
+    try std.testing.expectEqualStrings(ZOHO_CRON_SCHEDULE, parsed.config.triggers[0].cron.schedule);
+    try std.testing.expectEqualStrings(ZOHO_CRON_TIMEZONE, parsed.config.triggers[0].cron.timezone);
+    try std.testing.expectEqualStrings(ZOHO_CRON_MESSAGE, parsed.config.triggers[0].cron.message);
+    try std.testing.expectEqual(@as(usize, 1), parsed.config.tools.len);
+    try std.testing.expectEqualStrings(TOOL_HTTP_REQUEST, parsed.config.tools[0]);
 }
