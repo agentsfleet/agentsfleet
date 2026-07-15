@@ -19,6 +19,7 @@ const connectors = @import("route_matchers_connectors.zig");
 const S_APPROVALS = "approvals";
 const S_WORKSPACES = "workspaces";
 const S_FLEETS = "fleets";
+pub const S_MEMORIES = "memories"; // shared: collection call site + leaf matcher
 const S_BUNDLES = "bundles";
 const S_AUTH = "auth";
 const S_SESSIONS = "sessions";
@@ -258,6 +259,19 @@ pub const WorkspaceFleetGrantRoute = struct {
 pub fn matchWorkspaceFleetGrant(p: Path) ?WorkspaceFleetGrantRoute {
     const v = matchFleetLeaf(p, "integration-grants") orelse return null;
     return .{ .workspace_id = v.workspace_id, .fleet_id = v.fleet_id, .grant_id = v.leaf };
+}
+
+pub const WorkspaceFleetMemoryRoute = struct {
+    workspace_id: []const u8,
+    fleet_id: []const u8,
+    memory_key: []const u8,
+};
+
+/// The 6-segment `…/memories/{key}` leaf — shape-exclusive from the 5-segment
+/// collection, so match order cannot decide which fires.
+pub fn matchWorkspaceFleetMemoryItem(p: Path) ?WorkspaceFleetMemoryRoute {
+    const v = matchFleetLeaf(p, S_MEMORIES) orelse return null;
+    return .{ .workspace_id = v.workspace_id, .fleet_id = v.fleet_id, .memory_key = v.leaf };
 }
 
 // ── /workspaces/{ws}/approvals/{gate_id}[:approve|:deny] ───────────────────

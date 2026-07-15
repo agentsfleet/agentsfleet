@@ -219,6 +219,7 @@ pub fn invokeWorkspaceFleets(hx: *Hx, req: *httpz.Request, route: router.Route) 
 pub fn invokePatchWorkspaceFleet(hx: *Hx, req: *httpz.Request, route: router.Route) void {
     const r = route.patch_workspace_fleet;
     switch (req.method) {
+        .GET => fleet_api.innerGetFleet(hx.*, r.workspace_id, r.fleet_id),
         .PATCH => fleet_api.innerPatchFleet(hx.*, req, r.workspace_id, r.fleet_id),
         .DELETE => fleet_api.innerDeleteFleet(hx.*, req, r.workspace_id, r.fleet_id),
         else => common.respondMethodNotAllowed(hx.res),
@@ -259,6 +260,14 @@ pub fn invokeFleetMemoriesCollection(hx: *Hx, req: *httpz.Request, route: router
     const r = route.workspace_fleet_memories;
     switch (req.method) {
         .GET => memory.innerListMemories(hx.*, req, r.workspace_id, r.fleet_id),
+        else => common.respondMethodNotAllowed(hx.res),
+    }
+}
+
+pub fn invokeFleetMemoryItem(hx: *Hx, req: *httpz.Request, route: router.Route) void {
+    const r = route.workspace_fleet_memory_item;
+    switch (req.method) {
+        .DELETE => memory.innerDeleteMemory(hx.*, r.workspace_id, r.fleet_id, r.memory_key),
         else => common.respondMethodNotAllowed(hx.res),
     }
 }

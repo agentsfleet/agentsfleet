@@ -50,6 +50,12 @@ fn stateOf(repo: []const u8, ref: []const u8, has_bundle: bool) RowState {
         .source_ref = ref,
         .visibility = library_store.VISIBILITY_PUBLIC,
         .has_bundle = has_bundle,
+        // Editable-surface fields — only `changesSource` is exercised here, which
+        // reads the source pair; the rest feed the ETag surface (covered by the
+        // catalog ETag integration test).
+        .name = "github-pr-reviewer",
+        .description = "curated",
+        .reasons_raw = "{}",
     };
 }
 

@@ -1,36 +1,45 @@
-// External-fleet memory API — workspace-scoped /memories collection (READ-ONLY).
+// External-fleet memory API — workspace-scoped /memories resource.
 //
-//   GET    /v1/workspaces/{ws}/fleets/{zid}/memories          → innerListMemories
-//                                                                query: query?, category?, limit?
+//   GET    /v1/workspaces/{ws}/fleets/{zid}/memories        → innerListMemories
+//                                                              query: query?, category?, limit?
+//   DELETE /v1/workspaces/{ws}/fleets/{zid}/memories/{key}  → innerDeleteMemory
 //
-// The write verbs (POST store / DELETE by-key) are retired: durable memory is
-// written only by the runner-plane capture push (the single fenced write path,
-// src/agentsfleetd/http/handlers/runner/memory.zig). Retired verbs answer 405
-// (collection POST) / 404 (by-key DELETE) with no compat shim.
+// Memory is *stored* only by the runner-plane capture push (the single fenced
+// write path, src/agentsfleetd/http/handlers/runner/memory.zig) — a tenant
+// cannot author a memory. It can forget one: the operator who sees a fleet
+// carrying a wrong lesson needs a way to remove it, so the tenant plane owns
+// the DELETE. Collection POST stays retired (405) with no compat shim.
 //
-// Auth: bearer (workspace-scoped). The path's workspace_id is the source of
-// truth — `resolveFleetInWorkspace` verifies the principal can access it and
-// the fleet belongs to it before the memory_runtime SET ROLE.
+// Auth: bearer (workspace-scoped); the DELETE takes `fleet:write` — forgetting
+// mutates fleet state, but it is not a lifecycle transition, so not
+// `fleet:admin`. The path's workspace_id is the source of truth —
+// `resolveFleetInWorkspace` verifies the principal can access it and the fleet
+// belongs to it before the memory_runtime SET ROLE.
 //
 // RULE FLS: all conn.query() calls use PgQuery with defer deinit().
 // RULE NSQ: schema-qualified SQL (memory.memory_entries / core.fleets).
 
 const std = @import("std");
 const httpz = @import("httpz");
+const logging = @import("log");
 const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
 const common = @import("../common.zig");
 const ec = @import("../../../errors/error_registry.zig");
+const fleet_memory = @import("../../../memory/fleet_memory.zig");
 const metrics_memory = @import("../../../observability/metrics_memory.zig");
 
 const h = @import("helpers.zig");
 const Hx = h.Hx;
 const MemoryEntry = h.MemoryEntry;
 
+const log = logging.scoped(.memory_http);
+
 pub const Context = common.Context;
 
 const S_MEMORY_SEARCH_FAILED = "Failed to process the memory search";
 const S_MEMORY_BACKEND_ROLE_SWITCH_FAILED = "memory backend role switch failed";
 const S_MEMORY_LIST_FAILED = "memory list failed";
+const S_MEMORY_ENTRY_NOT_FOUND = "No memory entry with that key";
 
 // ── List / Search ─────────────────────────────────────────────────────────
 // `?query=...` flips behaviour from list-most-recent to fuzzy LIKE search
@@ -139,6 +148,55 @@ pub fn innerListMemories(
         .total = entries.items.len,
         .request_id = hx.req_id,
     });
+}
+
+// ── Forget ────────────────────────────────────────────────────────────────
+// The operator's correction path: a fleet learned a convention wrong, and the
+// entry has to go before the next hydrate seeds it into another run.
+
+pub fn innerDeleteMemory(
+    hx: Hx,
+    workspace_id: []const u8,
+    fleet_id: []const u8,
+    key: []const u8,
+) void {
+    if (key.len == 0 or key.len > h.MAX_KEY_LEN) {
+        hx.fail(ec.ERR_INVALID_REQUEST, "memory key must be 1..255 chars");
+        return;
+    }
+
+    const conn = hx.ctx.pool.acquire() catch {
+        common.internalDbUnavailable(hx.res, hx.req_id);
+        return;
+    };
+    defer hx.ctx.pool.release(conn);
+
+    // Ownership first: a fleet in another workspace 404s here, before the role
+    // switch — so no cross-workspace caller ever reaches the memory schema.
+    const fleet_scope = h.resolveFleetInWorkspace(hx, conn, workspace_id, fleet_id) orelse return;
+
+    if (!h.setMemoryRole(conn)) {
+        hx.fail(ec.ERR_MEM_UNAVAILABLE, S_MEMORY_BACKEND_ROLE_SWITCH_FAILED);
+        return;
+    }
+    defer h.resetRole(conn);
+
+    const deleted = fleet_memory.deleteEntry(conn, fleet_scope, key) catch |err| {
+        log.err("memory_forget_failed", .{ .error_code = ec.ERR_MEM_UNAVAILABLE, .err = @errorName(err), .req_id = hx.req_id });
+        hx.fail(ec.ERR_MEM_UNAVAILABLE, "memory forget failed");
+        return;
+    };
+
+    if (!deleted) {
+        // A key that was never there is a 404, not a silent 204: an operator
+        // who mistypes a key learns the entry is still in the fleet's head.
+        log.info("memory_forget_missing_key", .{ .error_code = ec.ERR_MEM_ENTRY_NOT_FOUND, .fleet_id = fleet_id, .req_id = hx.req_id });
+        hx.fail(ec.ERR_MEM_ENTRY_NOT_FOUND, S_MEMORY_ENTRY_NOT_FOUND);
+        return;
+    }
+
+    log.debug("memory_forgotten", .{ .fleet_id = fleet_id, .req_id = hx.req_id });
+    hx.noContent();
 }
 
 // ── parseLimitQs ──────────────────────────────────────────────────────────

@@ -133,6 +133,7 @@ pub const ERR_AGENTSFLEET_ALREADY_TERMINAL = "UZ-AGT-010";
 pub const ERR_AGENTSFLEET_NAME_MISMATCH = "UZ-AGT-011";
 pub const ERR_AGENTSFLEET_PAUSED_INGRESS = "UZ-AGT-012";
 pub const ERR_AGENTSFLEET_INSTALL_ROLLED_BACK = "UZ-AGT-013";
+pub const ERR_AGENTSFLEET_SOURCE_STALE = "UZ-AGT-014";
 // Fleet Bundle
 pub const ERR_FLEET_BUNDLE_INVALID = "UZ-BUNDLE-001";
 pub const ERR_FLEET_BUNDLE_NOT_FOUND = "UZ-BUNDLE-002";
@@ -145,6 +146,7 @@ pub const ERR_CATALOG_NOT_FOUND = "UZ-CATALOG-001";
 pub const ERR_CATALOG_PUBLISH_WITHOUT_BUNDLE = "UZ-CATALOG-002";
 pub const ERR_CATALOG_DELETE_PUBLISHED = "UZ-CATALOG-003";
 pub const ERR_CATALOG_ID_COLLISION = "UZ-CATALOG-004";
+pub const ERR_CATALOG_ROW_STALE = "UZ-CATALOG-005";
 // VAULT (structured-credential JSON shape)
 pub const ERR_VAULT_DATA_INVALID = "UZ-VAULT-001";
 pub const ERR_VAULT_DATA_TOO_LARGE = "UZ-VAULT-002";
@@ -169,6 +171,7 @@ pub const ERR_MODELS_ENTRY_NOT_FOUND = "UZ-MODELS-004";
 // MEMORY
 pub const ERR_MEM_AGENTSFLEET_NOT_FOUND = "UZ-MEM-002";
 pub const ERR_MEM_UNAVAILABLE = "UZ-MEM-003";
+pub const ERR_MEM_ENTRY_NOT_FOUND = "UZ-MEM-004";
 // GATE
 // STARTUP
 pub const ERR_STARTUP_ENV_CHECK = "UZ-STARTUP-001";
@@ -254,6 +257,7 @@ pub const MSG_AGENTSFLEET_NAME_REQUIRED = "name is required (max 64 chars, slug-
 pub const MSG_AGENTSFLEET_SOURCE_REQUIRED = "source_markdown is required (max 64KB)";
 pub const MSG_AGENTSFLEET_TRIGGER_REQUIRED = "trigger_markdown is required (max 64KB)";
 pub const MSG_AGENTSFLEET_CONFIG_REQUIRED = "config_json is required";
+pub const MSG_AGENTSFLEET_SOURCE_STALE = "The fleet source changed since you read it; refetch and reapply your edit";
 pub const MSG_WORKSPACE_ID_REQUIRED = "workspace_id is required (UUIDv7)";
 pub const MSG_SECRET_NAME_REQUIRED = "secret name is required (max 64 chars)";
 pub const MSG_SECRET_DATA_REQUIRED = "secret data must be a non-empty JSON object";

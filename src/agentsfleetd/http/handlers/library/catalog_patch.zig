@@ -23,6 +23,7 @@ const pg = @import("pg");
 const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
 const common = @import("../common.zig");
 const hx_mod = @import("../hx.zig");
+const etag = @import("../../etag.zig");
 const ec = @import("../../../errors/error_registry.zig");
 const library_store = @import("../../../fleet_library/library_store.zig");
 const github_source = @import("../../../fleet_library/github_source.zig");
@@ -46,6 +47,7 @@ const MSG_SOURCE_REPO_INVALID = "A repository must be owner/repo, using letters,
 const MSG_SOURCE_REF_INVALID = "A ref must be a branch or tag name, using letters, digits, '.', '-' or '_'";
 const MSG_REASONS_INVALID = "required_credentials_reasons must be an object mapping credential names to strings";
 const MSG_PUBLISH_WITHOUT_BUNDLE = "This entry has no bundle. Fetch it from its repository first, then publish.";
+const MSG_ROW_STALE = "This catalog entry changed since you loaded it. Refresh to see the latest, then re-apply your edit.";
 
 const SQL_BEGIN = "BEGIN";
 const SQL_COMMIT = "COMMIT";
@@ -85,6 +87,7 @@ pub fn innerAdminCatalogPatch(hx: Hx, req: *httpz.Request, id: []const u8) void 
     var db = hx.db() orelse return;
     defer db.end();
 
+    if (!ifMatchPasses(hx, db.conn, id, req)) return;
     if (!publishPrecheckPasses(hx, db.conn, id, body)) return;
 
     applyPatch(hx.alloc, db.conn, id, body) catch |err| switch (err) {
@@ -102,6 +105,38 @@ pub fn innerAdminCatalogPatch(hx: Hx, req: *httpz.Request, id: []const u8) void 
         },
     };
     catalog.respondEntry(hx, db.conn, id);
+}
+
+/// Optimistic concurrency (opt-in): a caller may send `If-Match` with the etag
+/// the row read returned; a stale one is a 412 carrying the current tag, so two
+/// operators curating the same row cannot silently clobber each other. Load-
+/// bearing here because a stale re-send is destructive, not merely lossy — the
+/// re-sent `source_repo` repoints the row, and repointing discards the bundle
+/// (`content_hash` → null, back to draft). A caller that omits `If-Match`
+/// behaves as before (last-write-wins).
+fn ifMatchPasses(hx: Hx, conn: *pg.Conn, id: []const u8, req: *httpz.Request) bool {
+    const if_match = etag.ifMatch(req) orelse return true;
+    const state = catalog.fetchRowState(hx.alloc, conn, id) catch {
+        common.internalDbError(hx.res, hx.req_id);
+        return false;
+    } orelse {
+        hx.fail(ec.ERR_CATALOG_NOT_FOUND, MSG_NOT_FOUND);
+        return false;
+    };
+    const current = etag.staleTag(hx.alloc, if_match, &catalog.rowSurface(
+        state.name,
+        state.description,
+        state.source_repo,
+        state.source_ref,
+        state.reasons_raw,
+        state.visibility,
+    )) catch {
+        common.internalOperationError(hx.res, "Failed to check this entry's version", hx.req_id);
+        return false;
+    } orelse return true;
+    log.info("catalog_patch_stale_etag", .{ .error_code = ec.ERR_CATALOG_ROW_STALE, .req_id = hx.req_id });
+    common.errorResponsePrecondition(hx.res, ec.ERR_CATALOG_ROW_STALE, MSG_ROW_STALE, hx.req_id, current);
+    return false;
 }
 
 /// One spelling of the publish-without-bundle 409, so the two race arms can never answer differently.

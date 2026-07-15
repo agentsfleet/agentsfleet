@@ -114,11 +114,12 @@ fn matchV1(p: matchers.Path, method: httpz.Method) ?Route {
 
     // ── Workspace + fleet + leaf-id sub-resources ────────────────────────
     if (matchers.matchWorkspaceFleetGrant(p)) |r| return .{ .revoke_integration_grant = r };
+    if (matchers.matchWorkspaceFleetMemoryItem(p)) |r| return .{ .workspace_fleet_memory_item = r };
 
     // ── Workspace + fleet + action ───────────────────────────────────────
     if (matchers.matchWorkspaceFleetAction(p, S_EVENTS)) |r| return .{ .workspace_fleet_events = r };
     if (matchers.matchWorkspaceFleetAction(p, "messages")) |r| return .{ .workspace_fleet_messages = r };
-    if (matchers.matchWorkspaceFleetAction(p, "memories")) |r| return .{ .workspace_fleet_memories = r };
+    if (matchers.matchWorkspaceFleetAction(p, matchers.S_MEMORIES)) |r| return .{ .workspace_fleet_memories = r };
     if (matchers.matchWorkspaceFleetAction(p, "integration-requests")) |r| return .{ .request_integration_grant = r };
     if (matchers.matchWorkspaceFleetAction(p, "integration-grants")) |r| return .{ .list_integration_grants = r };
     // ── Connectors: generic {provider} trio, registry-resolved (M108) ─────
@@ -326,4 +327,6 @@ test "match rejects retired /v1/memory/* paths (pre-v2: 404 with no compat shim)
 // Webhook + approval route tests are in router_test.zig.
 test {
     _ = @import("router_test.zig");
+    // Shared optimistic-concurrency ETag capability (fleet source + catalog row).
+    _ = @import("etag.zig");
 }
