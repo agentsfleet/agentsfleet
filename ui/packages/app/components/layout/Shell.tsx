@@ -47,8 +47,6 @@ type NavEntry = {
   path: string;
   icon: React.ComponentType<{ size?: number }>;
   workspaceScoped?: boolean;
-  // Home matches its resolved path exactly (else it'd claim every deeper route).
-  exact?: boolean;
   external?: boolean;
 };
 
@@ -135,21 +133,22 @@ function resolveHref(entry: NavEntry, workspaceId: string | null): string {
 // unchanged from the pre-URL nav (root / fleets / settings_models / …).
 function navSource(entry: NavEntry): string {
   if (entry.external) return `${NAV_SURFACE}_${entry.label.toLowerCase()}`;
-  const canonical = entry.workspaceScoped
-    ? (entry.path === "" ? "/" : `/${entry.path}`)
-    : entry.path;
-  return `${NAV_SURFACE}_${canonical === "/" ? "root" : canonical.replaceAll("/", "_").replace(/^_+/, "")}`;
+  // No nav entry is the workspace root anymore (the Dashboard entry is gone), so
+  // every workspace-scoped path is non-empty.
+  const canonical = entry.workspaceScoped ? `/${entry.path}` : entry.path;
+  return `${NAV_SURFACE}_${canonical.replaceAll("/", "_").replace(/^_+/, "")}`;
 }
 
 function resolveActiveHref(
-  entries: { href: string; exact?: boolean }[],
+  entries: { href: string }[],
   pathname: string,
 ): string {
   let active = "";
-  for (const { href, exact } of entries) {
-    const hit = exact
-      ? pathname === href
-      : pathname === href || pathname.startsWith(`${href}/`);
+  for (const { href } of entries) {
+    // Longest matching prefix wins, so a nested route lights its section and a
+    // child under one section never lights a sibling. No entry needs an exact
+    // match anymore — the workspace-root (Dashboard) entry that did is gone.
+    const hit = pathname === href || pathname.startsWith(`${href}/`);
     if (hit && href.length > active.length) active = href;
   }
   return active;
@@ -175,7 +174,7 @@ export default function Shell({
   const linkWorkspaceId = activeWorkspaceId ?? workspaces[0]?.id ?? null;
 
   const activeHref = resolveActiveHref(
-    INTERNAL_NAV.map((entry) => ({ href: resolveHref(entry, linkWorkspaceId), exact: entry.exact })),
+    INTERNAL_NAV.map((entry) => ({ href: resolveHref(entry, linkWorkspaceId) })),
     pathname,
   );
   // `/` is only ever a resolved href for workspace items when the tenant owns no
