@@ -29,6 +29,7 @@ const stream_registry = @import("../http/stream_registry.zig");
 const model_rate_cache = @import("../state/model_rate_cache.zig");
 const crypto_primitives = @import("../secrets/crypto_primitives.zig");
 const env_resolve = @import("../config/env_resolve.zig");
+const serve_qstash = @import("serve_qstash.zig");
 
 const log = logging.scoped(.agentsfleetd);
 
@@ -165,6 +166,9 @@ pub fn run(io: std.Io, env_map: *const EnvMap, argv: []const [:0]const u8, alloc
     defer model_rate_cache.deinit();
     log.info("startup.model_rate_cache_ok", .{});
 
+    var qstash_credentials = serve_qstash.load(alloc, api_pool, serve_cfg.platform_admin_workspace_id);
+    defer if (qstash_credentials) |*credentials| credentials.deinit(alloc);
+
     var sessions = session_store_redis.SessionStore.init(
         alloc,
         &api_queue,
@@ -216,6 +220,7 @@ pub fn run(io: std.Io, env_map: *const EnvMap, argv: []const [:0]const u8, alloc
         .app_url = serve_cfg.app_url,
         .api_url = serve_cfg.api_url,
         .platform_admin_workspace_id = serve_cfg.platform_admin_workspace_id,
+        .qstash_credentials = if (qstash_credentials) |*credentials| credentials else null,
         .api_in_flight_requests = std.atomic.Value(u32).init(0),
         .api_max_in_flight_requests = serve_cfg.api_max_in_flight_requests,
         .sse_max_streams = serve_cfg.sse_max_streams,

@@ -19,6 +19,18 @@ test "tenant fleet routes map method → capability scope (GET read, write/delet
     try testing.expectEqual(scopes.Scope.fleet_admin, onlyScope(route_scopes.requiredScopes(fleet, .DELETE)).?);
 }
 
+test "schedule routes use schedule read/write scopes" {
+    const collection: @import("router.zig").Route = .{ .workspace_fleet_schedules = .{ .workspace_id = "ws1", .fleet_id = "z1" } };
+    const item: @import("router.zig").Route = .{ .workspace_fleet_schedule = .{ .workspace_id = "ws1", .fleet_id = "z1", .schedule_id = "s1" } };
+    const sync: @import("router.zig").Route = .{ .workspace_fleet_schedule_sync = .{ .workspace_id = "ws1", .fleet_id = "z1", .schedule_id = "s1" } };
+    try testing.expectEqual(scopes.Scope.schedule_read, onlyScope(route_scopes.requiredScopes(collection, .GET)).?);
+    try testing.expectEqual(scopes.Scope.schedule_write, onlyScope(route_scopes.requiredScopes(collection, .POST)).?);
+    try testing.expectEqual(scopes.Scope.schedule_read, onlyScope(route_scopes.requiredScopes(item, .GET)).?);
+    try testing.expectEqual(scopes.Scope.schedule_write, onlyScope(route_scopes.requiredScopes(item, .PATCH)).?);
+    try testing.expectEqual(scopes.Scope.schedule_write, onlyScope(route_scopes.requiredScopes(item, .DELETE)).?);
+    try testing.expectEqual(scopes.Scope.schedule_write, onlyScope(route_scopes.requiredScopes(sync, .POST)).?);
+}
+
 test "platform routes map to platform-plane scopes; runner enroll is its own verb" {
     try testing.expectEqual(scopes.Scope.runner_enroll, onlyScope(route_scopes.requiredScopes(.register_runner, .POST)).?);
     try testing.expectEqual(scopes.Scope.runner_read, onlyScope(route_scopes.requiredScopes(.fleet_runners_list, .GET)).?);
@@ -46,6 +58,7 @@ test "runner self-plane routes all require runner:self" {
 test "no-auth and self-service routes carry no capability scope (authenticated-only/none)" {
     try testing.expectEqual(@as(usize, 0), route_scopes.requiredScopes(.healthz, .GET).len);
     try testing.expectEqual(@as(usize, 0), route_scopes.requiredScopes(.{ .receive_webhook = "z1" }, .POST).len);
+    try testing.expectEqual(@as(usize, 0), route_scopes.requiredScopes(.qstash_schedule_ingress, .POST).len);
     // Self-session management authenticates but needs no capability scope.
     try testing.expectEqual(@as(usize, 0), route_scopes.requiredScopes(.delete_all_auth_sessions, .DELETE).len);
 }

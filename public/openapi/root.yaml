@@ -36,6 +36,10 @@ tags:
   description: Create, configure, and run fleets
   x-mintlify:
     navigation: Fleets
+- name: Schedules
+  description: Manage and receive scheduled Fleet events
+  x-mintlify:
+    navigation: Schedules
 - name: Memory
   description: Read and search saved fleet memory
   x-mintlify:
@@ -125,6 +129,14 @@ paths:
     $ref: ./paths/auth/identity-events.yaml#/~1v1~1auth~1identity-events~1clerk
   /v1/ingress/{provider}:
     $ref: ./paths/webhooks.yaml#/~1v1~1ingress~1{provider}
+  /v1/ingress/qstash/schedules:
+    $ref: ./paths/schedules.yaml#/~1v1~1ingress~1qstash~1schedules
+  /v1/workspaces/{workspace_id}/fleets/{fleet_id}/schedules:
+    $ref: ./paths/schedules.yaml#/~1v1~1workspaces~1{workspace_id}~1fleets~1{fleet_id}~1schedules
+  /v1/workspaces/{workspace_id}/fleets/{fleet_id}/schedules/{schedule_id}:
+    $ref: ./paths/schedules.yaml#/~1v1~1workspaces~1{workspace_id}~1fleets~1{fleet_id}~1schedules~1{schedule_id}
+  /v1/workspaces/{workspace_id}/fleets/{fleet_id}/schedules/{schedule_id}:sync:
+    $ref: ./paths/schedules.yaml#/~1v1~1workspaces~1{workspace_id}~1fleets~1{fleet_id}~1schedules~1{schedule_id}:sync
   /v1/webhooks/svix/{fleet_id}:
     $ref: ./paths/webhooks.yaml#/~1v1~1webhooks~1svix~1{fleet_id}
   /v1/webhooks/{fleet_id}:

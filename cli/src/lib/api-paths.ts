@@ -56,6 +56,23 @@ export const wsFleetEventsStreamPath = (wsId: string, fleetId: string): string =
 export const wsFleetMemoriesPath = (wsId: string, fleetId: string): string =>
   `${WORKSPACES_PATH}${enc(wsId)}/fleets/${enc(fleetId)}/memories`;
 
+export const wsFleetSchedulesPath = (wsId: string, fleetId: string): string =>
+  `${WORKSPACES_PATH}${enc(wsId)}/fleets/${enc(fleetId)}/schedules`;
+
+export const wsFleetSchedulePath = (
+  wsId: string,
+  fleetId: string,
+  scheduleId: string,
+): string =>
+  `${wsFleetSchedulesPath(wsId, fleetId)}/${enc(scheduleId)}`;
+
+export const wsFleetScheduleSyncPath = (
+  wsId: string,
+  fleetId: string,
+  scheduleId: string,
+): string =>
+  `${wsFleetSchedulePath(wsId, fleetId, scheduleId)}:sync`;
+
 // Workspace-aggregate event history.
 export const wsEventsPath = (wsId: string): string =>
   `${WORKSPACES_PATH}${enc(wsId)}/events`;

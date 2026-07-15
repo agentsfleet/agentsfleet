@@ -17,6 +17,8 @@ const runtime_loader = @import("../../config/runtime_loader.zig");
 const subscription_hub = @import("../../events/subscription_hub.zig");
 const stream_registry = @import("../stream_registry.zig");
 const CredentialBroker = @import("../../credentials/broker.zig");
+const QStashCredentials = @import("../../cron/Credentials.zig");
+const QStashClient = @import("../../cron/QStashClient.zig");
 const authz = @import("common_authz.zig");
 const problem_response = @import("problem_response.zig");
 /// Request-id sentinel for responses written before a request id exists
@@ -37,7 +39,6 @@ pub const RETRY_AFTER_BRIEF_SECONDS: u32 = 1;
 pub const RETRY_AFTER_BRIEF_VALUE = std.fmt.comptimePrint("{d}", .{RETRY_AFTER_BRIEF_SECONDS});
 
 const S_PAYLOAD_TOO_LARGE_MAX_2MB = "Payload too large: max 2MB";
-
 const S_PUNCT_99914B = "{}";
 
 pub const Context = struct {
@@ -63,10 +64,10 @@ pub const Context = struct {
     /// browser flow, not a hot path). Empty → connectors fail closed. Boot-set
     /// from `serve_cfg.platform_admin_workspace_id`.
     platform_admin_workspace_id: []const u8 = "",
-    /// Test/dev seam: override the OAuth-2.0 connector token endpoint. Null in
-    /// production — the connector's compile-time `Spec.token_endpoint` (the real
-    /// provider) is used. Integration tests point it at a loopback fake-provider
-    /// so the code-exchange hits an in-process server, never the real Slack API.
+    qstash_credentials: ?*const QStashCredentials = null, // boot-loaded; null fails schedule surfaces closed
+    qstash_exchange_override: ?QStashClient.Exchange = null, // test seam; production uses HTTP
+    /// Test/dev seam: override the connector token endpoint. Null in production;
+    /// integration tests point it at a loopback fake-provider.
     connector_oauth_token_endpoint_override: ?[]const u8 = null,
     /// Test/dev seam for GitHub's user-installation ownership lookup. Null in
     /// production. Integration tests point it at a loopback fake-provider.

@@ -54,6 +54,10 @@ pub fn match(path: []const u8, method: httpz.Method) ?Route {
 /// (no API-version literal). Disambiguation is shape-driven (segment count +
 /// segment[i] equality); no two matchers can both fire on the same path.
 fn matchV1(p: matchers.Path, method: httpz.Method) ?Route {
+    if (matchers.matchQStashScheduleIngress(p)) return switch (method) {
+        .POST => .qstash_schedule_ingress,
+        else => null,
+    };
     if (matchers.matchIngress(p)) |provider| return switch (method) {
         .POST => .{ .app_ingress = provider },
         else => null,
@@ -111,12 +115,15 @@ fn matchV1(p: matchers.Path, method: httpz.Method) ?Route {
 
     // ── Workspace + fleet + events/stream (deepest shape first) ──────────
     if (matchers.matchWorkspaceFleetEventsStream(p)) |r| return .{ .workspace_fleet_events_stream = r };
+    if (matchers.matchScheduleSync(p)) |r| return .{ .workspace_fleet_schedule_sync = r };
 
     // ── Workspace + fleet + leaf-id sub-resources ────────────────────────
+    if (matchers.matchScheduleItem(p)) |r| return .{ .workspace_fleet_schedule = r };
     if (matchers.matchWorkspaceFleetGrant(p)) |r| return .{ .revoke_integration_grant = r };
     if (matchers.matchWorkspaceFleetMemoryItem(p)) |r| return .{ .workspace_fleet_memory_item = r };
 
     // ── Workspace + fleet + action ───────────────────────────────────────
+    if (matchers.matchScheduleCollection(p)) |r| return .{ .workspace_fleet_schedules = r };
     if (matchers.matchWorkspaceFleetAction(p, S_EVENTS)) |r| return .{ .workspace_fleet_events = r };
     if (matchers.matchWorkspaceFleetAction(p, "messages")) |r| return .{ .workspace_fleet_messages = r };
     if (matchers.matchWorkspaceFleetAction(p, matchers.S_MEMORIES)) |r| return .{ .workspace_fleet_memories = r };

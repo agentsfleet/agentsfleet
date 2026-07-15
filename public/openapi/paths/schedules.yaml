@@ -1,0 +1,417 @@
+/v1/workspaces/{workspace_id}/fleets/{fleet_id}/schedules:
+  get:
+    operationId: list_fleet_schedules
+    summary: List hosted schedules
+    description: Lists the hosted schedules for a Fleet. The result is bounded by the per-Fleet schedule cap.
+    tags:
+    - Schedules
+    parameters: &workspace_fleet_params
+    - name: workspace_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    - name: fleet_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    responses:
+      '200':
+        description: Schedule list.
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [items, total, next_cursor]
+              properties:
+                items:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/Schedule'
+                total:
+                  type: integer
+                  nullable: true
+                next_cursor:
+                  type: string
+                  nullable: true
+      '401':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '403':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      default:
+        $ref: ../components/responses.yaml#/components/responses/Error
+  post:
+    operationId: create_fleet_schedule
+    summary: Create a hosted schedule
+    description: Creates a schedule and synchronously registers it in Upstash QStash.
+    tags:
+    - Schedules
+    parameters: *workspace_fleet_params
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ScheduleWrite'
+    responses:
+      '201':
+        description: Schedule created and synced.
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Schedule'
+      '400':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '401':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '403':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '409':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '422':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '502':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '503':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      default:
+        $ref: ../components/responses.yaml#/components/responses/Error
+
+/v1/workspaces/{workspace_id}/fleets/{fleet_id}/schedules/{schedule_id}:
+  get:
+    operationId: get_fleet_schedule
+    summary: Get a hosted schedule
+    tags:
+    - Schedules
+    parameters: &workspace_fleet_schedule_params
+    - name: workspace_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    - name: fleet_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    - name: schedule_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    responses:
+      '200':
+        description: Schedule.
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Schedule'
+      '401':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '403':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '404':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      default:
+        $ref: ../components/responses.yaml#/components/responses/Error
+  patch:
+    operationId: update_fleet_schedule
+    summary: Update a hosted schedule
+    description: Updates schedule fields and synchronously overwrites the QStash registration.
+    tags:
+    - Schedules
+    parameters: *workspace_fleet_schedule_params
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/SchedulePatch'
+    responses:
+      '200':
+        description: Schedule updated and synced.
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Schedule'
+      '400':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '401':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '403':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '404':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '409':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '422':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '502':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '503':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      default:
+        $ref: ../components/responses.yaml#/components/responses/Error
+  delete:
+    operationId: delete_fleet_schedule
+    summary: Delete a hosted schedule
+    description: Deletes the QStash registration before removing the local schedule row.
+    tags:
+    - Schedules
+    parameters: *workspace_fleet_schedule_params
+    responses:
+      '204':
+        description: Schedule deleted.
+      '401':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '403':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '404':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '409':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '502':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '503':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      default:
+        $ref: ../components/responses.yaml#/components/responses/Error
+
+/v1/workspaces/{workspace_id}/fleets/{fleet_id}/schedules/{schedule_id}:sync:
+  post:
+    operationId: sync_fleet_schedule
+    summary: Sync a hosted schedule
+    description: Idempotently overwrites the QStash registration from the latest local generation.
+    tags:
+    - Schedules
+    parameters: *workspace_fleet_schedule_params
+    responses:
+      '200':
+        description: Schedule synced.
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Schedule'
+      '401':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '403':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '404':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '409':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '502':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '503':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      default:
+        $ref: ../components/responses.yaml#/components/responses/Error
+
+/v1/ingress/qstash/schedules:
+  post:
+    operationId: ingest_qstash_schedule
+    summary: Receive a scheduled fire
+    description: |
+      Receives a signed fire from Upstash QStash and appends a `cron` event to the target Fleet.
+
+      A valid duplicate, missing, inactive, or stale fire is accepted without appending an event.
+    tags:
+    - Schedules
+    parameters:
+    - name: Upstash-Signature
+      in: header
+      required: true
+      description: QStash signature over the exact request body and destination URL.
+      schema:
+        type: string
+    - name: Upstash-Schedule-Id
+      in: header
+      required: true
+      description: Schedule identifier supplied by QStash.
+      schema:
+        type: string
+        format: uuid
+    - name: Upstash-Message-Id
+      in: header
+      required: true
+      description: QStash delivery identifier used for replay suppression.
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 256
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            additionalProperties: false
+            required:
+            - schedule_id
+            - generation
+            properties:
+              schedule_id:
+                type: string
+                format: uuid
+              generation:
+                type: integer
+                format: int64
+                minimum: 1
+    responses:
+      '200':
+        description: Signed fire accepted. The fire may have been appended, deduplicated, or ignored as stale or inactive.
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+              - accepted
+              properties:
+                accepted:
+                  type: boolean
+                  const: true
+                  x-stability: stable
+      '400':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '401':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '429':
+        description: This API instance reached its in-flight request ceiling. Retry after the advertised delay.
+        headers:
+          Retry-After:
+            description: Seconds before retrying.
+            schema:
+              type: integer
+              minimum: 0
+          X-RateLimit-Limit:
+            description: Instance in-flight request ceiling.
+            schema:
+              type: integer
+              minimum: 0
+          X-RateLimit-Remaining:
+            description: Remaining admission capacity, zero for this response.
+            schema:
+              type: integer
+              enum:
+              - 0
+          X-RateLimit-Reset:
+            description: Unix timestamp in seconds when immediate retry becomes reasonable.
+            schema:
+              type: integer
+              format: int64
+        content:
+          application/problem+json:
+            schema:
+              $ref: ../components/schemas.yaml#/components/schemas/ErrorBody
+      '503':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      default:
+        $ref: ../components/responses.yaml#/components/responses/Error
+    security: []
+
+components:
+  schemas:
+    ScheduleWrite:
+      type: object
+      additionalProperties: false
+      required: [cron, message]
+      properties:
+        cron:
+          type: string
+          minLength: 1
+          maxLength: 128
+        timezone:
+          type: string
+          default: UTC
+          maxLength: 64
+        message:
+          type: string
+          minLength: 1
+          maxLength: 8192
+    SchedulePatch:
+      type: object
+      additionalProperties: false
+      properties:
+        cron:
+          type: string
+          minLength: 1
+          maxLength: 128
+        timezone:
+          type: string
+          maxLength: 64
+        message:
+          type: string
+          minLength: 1
+          maxLength: 8192
+        desired_status:
+          type: string
+          enum: [active, paused]
+    Schedule:
+      type: object
+      additionalProperties: false
+      required:
+      - schedule_id
+      - fleet_id
+      - source
+      - cron
+      - timezone
+      - message
+      - desired_status
+      - sync_status
+      - generation
+      - created_at
+      - updated_at
+      properties:
+        schedule_id:
+          type: string
+          format: uuid
+          x-stability: stable
+        fleet_id:
+          type: string
+          format: uuid
+          x-stability: stable
+        source:
+          type: string
+          enum: [api, trigger]
+          x-stability: stable
+        cron:
+          type: string
+          x-stability: stable
+        timezone:
+          type: string
+          x-stability: stable
+        message:
+          type: string
+          x-stability: stable
+        desired_status:
+          type: string
+          enum: [active, paused, deleting]
+          x-stability: stable
+        sync_status:
+          type: string
+          enum: [syncing, synced, failed]
+          x-stability: stable
+        generation:
+          type: integer
+          format: int64
+          x-stability: stable
+        last_error:
+          type: string
+          nullable: true
+          x-stability: stable
+        created_at:
+          type: integer
+          format: int64
+          x-stability: stable
+        updated_at:
+          type: integer
+          format: int64
+          x-stability: stable

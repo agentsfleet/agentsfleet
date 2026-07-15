@@ -2,7 +2,7 @@
 //
 // `events_processed` / `budget_used_nanos` used to be aggregated over the child
 // tables on every read (~1.8s at scale); §8 denormalized them onto core.fleets,
-// maintained by the migration-029 triggers. This test pins the OBSERVABLE
+// maintained by the migration-030 triggers. This test pins the OBSERVABLE
 // contract: after seeding events/telemetry directly, the triggers have kept the
 // fleet's counters in step with the child rows, and a fleet with zero children
 // reports 0 (NOT NULL DEFAULT 0), never null. Because the triggers fire on the
