@@ -61,7 +61,10 @@ function StreamingTile({ fleet, workspaceId }: Props) {
       feed={lastEvent?.text}
     >
       <WakePulse
-        live
+        // The pulse animation is live-only (DESIGN_SYSTEM.md §Motion). A snapshot
+        // tile holds a static dot — the animation must not claim a feed is live
+        // when the stream is gone; the `snapshot` eyebrow is the honest signal.
+        live={liveness.kind === "live"}
         className={cn(
           "inline-block w-2 h-2 rounded-full",
           fleet.status === "installing" ? "bg-info" : "bg-pulse",

@@ -32,6 +32,7 @@ const S_USER_CONTEXT_REQUIRED = "User context required";
 pub fn innerGetPreferences(hx: Hx, workspace_id: []const u8) void {
     const ctx = open(hx, workspace_id) orelse return;
     defer hx.ctx.pool.release(ctx.conn);
+    defer hx.alloc.free(ctx.user_id);
 
     respondWithBag(hx, ctx, workspace_id);
 }
@@ -59,6 +60,7 @@ pub fn innerPutPreference(hx: Hx, req: *httpz.Request, workspace_id: []const u8,
 
     const ctx = open(hx, workspace_id) orelse return;
     defer hx.ctx.pool.release(ctx.conn);
+    defer hx.alloc.free(ctx.user_id);
 
     prefs_store.upsert(hx.alloc, ctx.conn, ctx.user_id, workspace_id, key, body) catch |err| {
         log.err("upsert_failed", .{
@@ -95,7 +97,9 @@ fn open(hx: Hx, workspace_id: []const u8) ?Opened {
         common.internalDbUnavailable(hx.res, hx.req_id);
         return null;
     };
-    errdefer hx.ctx.pool.release(conn);
+    // No errdefer: this fn returns ?Opened (not an error union), so no error can
+    // unwind out of it. Every early-null path releases the conn explicitly below;
+    // on success the conn is handed to the caller, which releases it.
 
     if (!common.authorizeWorkspaceAndSetTenantContext(conn, hx.principal, workspace_id)) {
         hx.fail(ec.ERR_FORBIDDEN, S_WORKSPACE_ACCESS_DENIED);
