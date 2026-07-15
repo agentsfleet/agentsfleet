@@ -114,3 +114,97 @@
                   nullable: true
       default:
         $ref: ../components/responses.yaml#/components/responses/Error
+/v1/workspaces/{workspace_id}/preferences:
+  get:
+    operationId: get_workspace_preferences
+    summary: Read the caller's dashboard preferences for a workspace
+    description: >
+      Returns every dashboard preference the calling user has set in this
+      workspace, as an object keyed by preference key. A user who has set
+      nothing gets `{"prefs": {}}` - never a 404, so a client can tell "no
+      preferences" from "preferences unavailable" without branching.
+      Preferences are per user AND per workspace: a second workspace starts
+      its onboarding checklist fresh.
+    tags:
+    - Workspaces
+    parameters:
+    - name: workspace_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Workspace identifier (Universally Unique Identifier version 7)
+    responses:
+      '200':
+        description: The caller's preference bag for this workspace
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - prefs
+              properties:
+                prefs:
+                  type: object
+                  description: >
+                    Preference key to value. Values are client-owned and opaque
+                    to the server. Absent keys have never been set.
+                  additionalProperties: true
+                  x-stability: stable
+      default:
+        $ref: ../components/responses.yaml#/components/responses/Error
+/v1/workspaces/{workspace_id}/preferences/{pref_key}:
+  put:
+    operationId: put_workspace_preference
+    summary: Write one dashboard preference
+    description: >
+      Upserts a single preference for the calling user in this workspace and
+      returns the full updated bag. The request body IS the value - any
+      well-formed JavaScript Object Notation (JSON) value up to 1 KiB, stored
+      verbatim and never interpreted by the server. `pref_key` must be one the
+      dashboard declares; anything else is refused with `UZ-PREFS-001` and no
+      row is written. Concurrent writes to one key are last-write-wins by
+      design: a preference is a single toggle, so a lost write costs one click.
+    tags:
+    - Workspaces
+    parameters:
+    - name: workspace_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Workspace identifier (Universally Unique Identifier version 7)
+    - name: pref_key
+      in: path
+      required: true
+      schema:
+        type: string
+        enum:
+        - getting_started_dismissed
+        - getting_started_collapsed
+        - getting_started_cli_ticked
+      description: The preference to write. Must be a key the dashboard declares.
+    requestBody:
+      required: true
+      description: The preference value. Any JSON value up to 1 KiB.
+      content:
+        application/json:
+          schema: {}
+    responses:
+      '200':
+        description: The caller's preference bag, including the written key
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - prefs
+              properties:
+                prefs:
+                  type: object
+                  additionalProperties: true
+                  x-stability: stable
+      default:
+        $ref: ../components/responses.yaml#/components/responses/Error
