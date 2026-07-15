@@ -44,15 +44,15 @@ const privateKey = crypto.createPrivateKey({
 const PERSONAS = {
   // Read-only member. Holds no write/admin/credential scope, so it is the
   // canonical "denied" identity for negative-authz assertions.
-  VIEWER: { sub: "user_test", scopes: "fleet:read" },
+  VIEWER: { sub: "user_test", scopes: "fleet:read schedule:read" },
   // Mid-tier: can write fleets + read secrets, but not manage secrets
   // or tenant admin. Exercises the read/write/admin ladder (rbac suite).
-  OPERATOR: { sub: "user_test", scopes: "fleet:write secret:read" },
+  OPERATOR: { sub: "user_test", scopes: "fleet:write schedule:write secret:read" },
   // Full tenant grant — every tenant-plane capability.
   TENANT_ADMIN: {
     sub: "user_test",
     scopes:
-      "fleet:admin secret:write apikey:admin fleetkey:write grant:write connector:write billing:read approval:resolve workspace:admin library:write",
+      "fleet:admin schedule:write secret:write apikey:admin fleetkey:write grant:write connector:write billing:read approval:resolve workspace:admin library:write",
     },
     // Platform plane (runners, models, platform keys, cross-tenant override).
     PLATFORM_ADMIN: {
@@ -66,7 +66,7 @@ const PERSONAS = {
     sub: "user_m11_006",
     noTenant: true,
     scopes:
-      "fleet:admin secret:write apikey:admin fleetkey:write grant:write connector:write billing:read approval:resolve workspace:admin library:write",
+      "fleet:admin schedule:write secret:write apikey:admin fleetkey:write grant:write connector:write billing:read approval:resolve workspace:admin library:write",
   },
 };
 
@@ -94,7 +94,7 @@ const ALIASES = {
   "http/handlers/fleet_bundles/api_integration_test.zig": { TOKEN_USER: "TENANT_ADMIN" },
   "http/handlers/approvals/inbox_integration_test.zig": { TOKEN_OPERATOR: "TENANT_ADMIN" },
   "http/handlers/api_keys/tenant_integration_test.zig": { TOKEN_OPERATOR: "TENANT_ADMIN" },
-  "http/handlers/admin/model_caps_admin_integration_test.zig": { PLATFORM_ADMIN_TOKEN: "PLATFORM_ADMIN", TENANT_ADMIN_TOKEN: "TENANT_ADMIN" },
+  "http/handlers/admin/model_library_admin_integration_test.zig": { PLATFORM_ADMIN_TOKEN: "PLATFORM_ADMIN", TENANT_ADMIN_TOKEN: "TENANT_ADMIN" },
 };
 
 // ── Mint ──

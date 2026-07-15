@@ -101,12 +101,12 @@ This spec uses Create, Read, Update, Delete (CRUD), Hash-based Message Authentic
 | `src/agentsfleetd/cron/*.zig` | CREATE/EDIT | Cron façade, credentials, value modules, stateful file-as-struct types, synchronous provider boundary, signed verification, explicit recovery, and tests. |
 | `src/agentsfleetd/cron/*_test.zig` | CREATE | Failure, leak, concurrency, and performance proofs. |
 | `src/agentsfleetd/tests.zig` | EDIT | Register the cron facade and its private test graph in the canonical test binary. |
-| `src/agentsfleetd/http/handlers/{schedules/manage,ingress/qstash}.zig` | CREATE | Thin workspace, explicit-sync, and signed-ingress adapters. |
+| `src/agentsfleetd/http/handlers/{schedules/api,ingress/qstash}.zig` | CREATE | Thin workspace, explicit-sync, and signed-ingress adapters. |
 | `src/agentsfleetd/http/handlers/common.zig` + `src/agentsfleetd/cmd/{serve,serve_qstash}.zig` | CREATE/EDIT | Load QStash credentials once and borrow them from immutable request context. |
-| `src/agentsfleetd/http/{routes,router,route_matchers,route_table,route_scopes,route_table_invoke_fleets,route_table_invoke_webhooks}.zig` | EDIT | Route and authorize management plus ingress surfaces. |
+| `src/agentsfleetd/http/{routes,router,route_matchers,route_matchers_schedules,route_table,route_scopes,route_table_invoke,route_table_invoke_schedules}.zig` | EDIT | Route and authorize management plus ingress surfaces. |
 | `public/openapi/{root.yaml,paths/schedules.yaml,components/schemas.yaml}` + `public/{openapi.json,llms.txt,skill.md}` | CREATE/EDIT | Document and bundle the schedule management and signed-ingress API surfaces. |
 | `scripts/check_openapi_url_shape.py` | EDIT | Recognize schedule collections as resource-shaped URLs. |
-| `src/agentsfleetd/{auth/scopes.zig,auth/scopes_test.zig}` | EDIT | Schedule scopes. |
+| `src/agentsfleetd/{auth/scopes.zig,auth/scopes_test.zig,http/test_scope_tokens.zig}` + `docs/AUTH.md` + `scripts/mint-scope-personas.mjs` | EDIT | Schedule scopes. |
 | `src/agentsfleetd/{state/model_library/sql,fleet/budget,fleet/budget_test,fleet/budget_integration_test,fleet_library/github_source_test,http/handlers/pagination,http/handlers/library/catalog,http/handlers/library/gallery,http/handlers/fleet_bundles/api_integration_test}.zig` + `src/runner/engine/stream_redactor.zig` | EDIT | Formatter-only unblock approved by Indy after the full-tree Zig gate exposed pre-existing drift. |
 | `src/agentsfleetd/fleet_runtime/{config_helpers,config_types,config_parser_test}.zig` + `src/agentsfleetd/http/handlers/fleets/{create,patch,delete,stop,resume,kill}.zig` | EDIT | Shared cron/timezone/message validation and Fleet lifecycle synchronization. |
 | `src/agentsfleetd/errors/{error_registry,error_entries}.zig` | EDIT | Schedule errors and recovery text. |
@@ -144,13 +144,13 @@ A native QStash client performs create/overwrite/delete inside the caller reques
 
 ### §3 — Schedule CRUD REST surface
 
-`POST`/`GET`/`PATCH`/`DELETE` plus `POST …/{sid}/sync` under `…/fleets/{id}/schedules`, workspace-authorized, gated on `schedule:write` (mutations) / `schedule:read` (list). Mirrors the Fleet-CRUD handlers.
+`POST`/`GET`/`PATCH`/`DELETE` plus `POST …/{sid}:sync` under `…/fleets/{id}/schedules`, workspace-authorized, gated on `schedule:write` (mutations) / `schedule:read` (list). Mirrors the Fleet-CRUD handlers.
 
-- **Dimension 3.1** — confirmed `POST` returns `201 active`; provider failure returns `502 UZ-SCHED-004` with schedule identifier and sync recovery → Test `test_create_schedule_provider_outcomes`
-- **Dimension 3.2** — confirmed `PATCH` returns `200 active`; a busy synchronization lease returns deterministic `409` → Test `test_patch_schedule_serialization`
-- **Dimension 3.3** — confirmed `DELETE` returns `204`; failure leaves an inert visible `deleting` row and actionable `502` → Test `test_delete_schedule_provider_outcomes`
-- **Dimension 3.4** — a principal lacking `schedule:write` gets `403` naming the scope; cross-workspace access gets `403` → Test `test_schedule_authz`
-- **Dimension 3.5** — `POST …/{sid}/sync` repairs only the current generation and returns `200 active` or an actionable `502` → Test `test_schedule_sync_route`
+- **Dimension 3.1** — confirmed `POST` returns `201 active`; provider failure returns `502 UZ-SCHED-004` with schedule identifier and sync recovery → Test `test_create_schedule_provider_outcomes` → **DONE**
+- **Dimension 3.2** — confirmed `PATCH` returns `200 active`; a busy synchronization lease returns deterministic `409` → Test `test_patch_schedule_serialization` → **DONE**
+- **Dimension 3.3** — confirmed `DELETE` returns `204`; failure leaves an inert visible `deleting` row and actionable `502` → Test `test_delete_schedule_provider_outcomes` → **DONE**
+- **Dimension 3.4** — a principal lacking `schedule:write` gets `403` naming the scope; cross-workspace access gets `403` → Test `test_schedule_authz` → **DONE**
+- **Dimension 3.5** — `POST …/{sid}:sync` repairs only the current generation and returns `200 active` or an actionable `502` → Test `test_schedule_sync_route` → **DONE**
 
 ### §4 — Cron-fire ingress + idempotency
 
@@ -197,11 +197,11 @@ The platform operator gets one repeatable QStash registration playbook, while th
 
 ```
 POST   /v1/workspaces/{ws}/fleets/{id}/schedules        → 201 Schedule
-GET    /v1/workspaces/{ws}/fleets/{id}/schedules        → 200 {schedules:[Schedule]}
+GET    /v1/workspaces/{ws}/fleets/{id}/schedules        → 200 {items:[Schedule],total,next_cursor}
 GET    /v1/workspaces/{ws}/fleets/{id}/schedules/{sid}  → 200 Schedule
 PATCH  /v1/workspaces/{ws}/fleets/{id}/schedules/{sid}  → 200 Schedule
 DELETE /v1/workspaces/{ws}/fleets/{id}/schedules/{sid}  → 204
-POST   /v1/workspaces/{ws}/fleets/{id}/schedules/{sid}/sync → 200 Schedule
+POST   /v1/workspaces/{ws}/fleets/{id}/schedules/{sid}:sync → 200 Schedule
 POST   /v1/ingress/qstash/schedules                     → 200 {accepted:true}
 
 Create body: { "cron": "0 9 * * *", "message": "summarize today's Zoho Sprints", "timezone": "Asia/Kolkata" }
