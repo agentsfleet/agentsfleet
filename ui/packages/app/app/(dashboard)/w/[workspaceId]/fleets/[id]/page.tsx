@@ -28,13 +28,21 @@ export default async function FleetDetailPage({
   const token = await getToken();
   if (!token) redirect("/sign-in");
 
-  const [fleet, billing, eventsPage, pendingApprovals] = await Promise.all([
-    getFleet(workspaceId, id, token),
+  // All four reads fire in parallel — one round-trip. getFleet now hits the real
+  // GET …/fleets/{id} (M131 §1) and throws on 404, so it takes its own catch to
+  // a null sentinel (the other three already degrade to empty) and we notFound()
+  // after the batch, rather than serializing it ahead and paying an extra
+  // round-trip on the common path. The ETag it returns is held for the source
+  // editor's If-Match save (the three-column console rebuild wires the editor —
+  // this page is interim).
+  const [fleetResult, billing, eventsPage, pendingApprovals] = await Promise.all([
+    getFleet(workspaceId, id, token).catch(() => null),
     getTenantBillingCached(token).catch(() => null),
     listFleetEvents(workspaceId, id, token, { limit: 20 }).catch(() => ({ items: [], next_cursor: null })),
     listApprovals(workspaceId, token, { fleetId: id, limit: 50 }).catch(() => ({ items: [], next_cursor: null })),
   ]);
-  if (!fleet) notFound();
+  if (!fleetResult) notFound();
+  const { fleet } = fleetResult;
 
   // Per-trigger "last delivery" lookup. One lightweight server-side call
   // per declared trigger, in parallel; failures degrade to `null` (the
@@ -84,7 +92,19 @@ export default async function FleetDetailPage({
             <Badge variant="destructive">{pendingCountLabel} pending approval{pendingApprovals.items.length === 1 ? "" : "s"}</Badge>
           ) : null}
         </div>
-        <KillSwitch workspaceId={workspaceId} fleet={fleet} />
+        <KillSwitch
+          workspaceId={workspaceId}
+          fleet={{
+            id: fleet.id,
+            name: fleet.name,
+            status: fleet.status,
+            created_at: fleet.created_at,
+            updated_at: fleet.updated_at,
+            // FleetDetail sends triggers as null when absent; the list-shaped
+            // Fleet the KillSwitch takes omits them instead.
+            triggers: fleet.triggers ?? undefined,
+          }}
+        />
       </PageHeader>
 
       <FleetInstallGate

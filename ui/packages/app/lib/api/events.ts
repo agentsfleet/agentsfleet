@@ -24,6 +24,13 @@ export type EventRow = {
   failure_label: string | null;
   checkpoint_id: string | null;
   resumes_event_id: string | null;
+  /**
+   * Summed telemetry `credit_deducted_nanos` for this event — server truth
+   * (M131 §2). `null` when the event recorded no telemetry: the ledger renders
+   * that as unknown (`—`), never a fabricated zero, and never derives cost from
+   * `tokens`.
+   */
+  cost_nanos: number | null;
   /** epoch milliseconds */
   created_at: number;
   /** epoch milliseconds */
