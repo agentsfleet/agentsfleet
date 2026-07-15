@@ -15,6 +15,7 @@ const hx_mod = @import("../hx.zig");
 const ec = @import("../../../errors/error_registry.zig");
 const id_format = @import("../../../types/id_format.zig");
 const keyset_cursor = @import("../../../fleet_runtime/keyset_cursor.zig");
+const sql = @import("sql.zig");
 
 const log = logging.scoped(.fleet_api);
 
@@ -168,16 +169,9 @@ fn fetchFleetPageFirst(
     limit: u32,
 ) !FleetPage {
     var q = PgQuery.from(try conn.query(
-        \\SELECT id::text, name, status, created_at, updated_at,
-        \\       (config_json->'x-agentsfleet'->'triggers')::text,
-        \\       (SELECT COUNT(*) FROM core.fleet_events ev WHERE ev.fleet_id = core.fleets.id)::bigint,
-        \\       (SELECT COALESCE(SUM(te.credit_deducted_nanos), 0)::bigint
-        \\          FROM core.fleet_execution_telemetry te WHERE te.fleet_id = core.fleets.id::text)
-        \\FROM core.fleets
-        \\WHERE workspace_id = $1::uuid
-        \\ORDER BY created_at DESC, id DESC
-        \\LIMIT $2
-    , .{ workspace_id, @as(i64, @intCast(limit)) }));
+        sql.SELECT_FLEET_PAGE_FIRST,
+        .{ workspace_id, @as(i64, @intCast(limit)) },
+    ));
     defer q.deinit();
     return collectFleetPage(alloc, &q, limit);
 }
@@ -192,17 +186,9 @@ fn fetchFleetPageAfter(
     const parsed = keyset_cursor.parse(cursor) catch return error.InvalidCursor;
 
     var q = PgQuery.from(try conn.query(
-        \\SELECT id::text, name, status, created_at, updated_at,
-        \\       (config_json->'x-agentsfleet'->'triggers')::text,
-        \\       (SELECT COUNT(*) FROM core.fleet_events ev WHERE ev.fleet_id = core.fleets.id)::bigint,
-        \\       (SELECT COALESCE(SUM(te.credit_deducted_nanos), 0)::bigint
-        \\          FROM core.fleet_execution_telemetry te WHERE te.fleet_id = core.fleets.id::text)
-        \\FROM core.fleets
-        \\WHERE workspace_id = $1::uuid
-        \\  AND (created_at < $2 OR (created_at = $2 AND id::text < $3))
-        \\ORDER BY created_at DESC, id DESC
-        \\LIMIT $4
-    , .{ workspace_id, parsed.created_at_ms, parsed.id, @as(i64, @intCast(limit)) }));
+        sql.SELECT_FLEET_PAGE_AFTER,
+        .{ workspace_id, parsed.created_at_ms, parsed.id, @as(i64, @intCast(limit)) },
+    ));
     defer q.deinit();
     return collectFleetPage(alloc, &q, limit);
 }

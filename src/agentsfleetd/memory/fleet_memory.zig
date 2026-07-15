@@ -249,6 +249,22 @@ pub fn sweepExpiredDaily(conn: *pg.Conn, fleet_id: []const u8, cutoff_ms: i64) !
     return if (n < 0) 0 else @intCast(n);
 }
 
+/// Forget one entry by key — the operator's correction path when a fleet
+/// learned something wrong. Keyed on `(fleet_id, key)`, the same pair the
+/// upsert's unique index owns, so no fleet can forget another's memory.
+/// Caller has already `SET ROLE memory_runtime`. Returns false when the key
+/// was not there (the handler answers 404 — a mistyped key is surfaced, not
+/// swallowed).
+pub fn deleteEntry(conn: *pg.Conn, fleet_id: []const u8, key: []const u8) !bool {
+    var q = PgQuery.from(try conn.query(
+        \\DELETE FROM memory.memory_entries
+        \\WHERE fleet_id = $1::uuid AND key = $2
+        \\RETURNING key
+    , .{ fleet_id, key }));
+    defer q.deinit();
+    return (try q.next()) != null;
+}
+
 /// Every memory entry for `fleet_id`, newest first — the hydration read the
 /// runner parent seeds into the child's in-run store. Caller has already
 /// `SET ROLE memory_runtime`. Returns an arena-owned `[]MemoryDelta`; each field

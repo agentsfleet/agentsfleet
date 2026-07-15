@@ -98,8 +98,11 @@ pub const Route = union(enum) {
     workspace_approvals: []const u8, // GET /v1/workspaces/{ws}/approvals
     workspace_approval_detail: matchers.ApprovalGateRoute, // GET /v1/workspaces/{ws}/approvals/{gate_id}
     workspace_approval_resolve: matchers.ApprovalResolveRoute, // POST /v1/workspaces/{ws}/approvals/{gate_id}:approve|:deny
-    // External-fleet memory API — workspace-scoped resource collection (read-only).
-    workspace_fleet_memories: matchers.WorkspaceFleetRoute, // GET (list-or-search); write verbs retired
+    // External-fleet memory API — workspace-scoped. The collection is read-only
+    // (memory is written only by the runner-plane capture push); the by-key leaf
+    // is the operator's forget.
+    workspace_fleet_memories: matchers.WorkspaceFleetRoute, // GET (list-or-search); POST retired
+    workspace_fleet_memory_item: matchers.WorkspaceFleetMemoryRoute, // DELETE /…/memories/{key}
     // Integration grant CRUD (workspace-scoped)
     request_integration_grant: matchers.WorkspaceFleetRoute, // POST /v1/workspaces/{ws}/fleets/{id}/integration-requests
     list_integration_grants: matchers.WorkspaceFleetRoute, // GET /v1/workspaces/{ws}/fleets/{id}/integration-grants

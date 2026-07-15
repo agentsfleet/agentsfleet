@@ -54,7 +54,18 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 |------|--------|-----|
 | `src/agentsfleetd/http/handlers/fleets/get.zig` | CREATE | The single-fleet read (G1): serializes `source_markdown`, `trigger_markdown`, `bundle_content_hash`, `status`, `triggers`, `budget_used_nanos`, `events_processed`; sets the `ETag` response header (content hash of the editable markdown, §4). Split from `api.zig` so the read path has its own home under the 350-line cap (RULE FLL). |
 | `src/agentsfleetd/http/handlers/fleets/api.zig` | EDIT | Re-exports the new read from its module; the route table calls through it. |
-| `src/agentsfleetd/http/handlers/fleets/patch.zig` | EDIT | The existing PATCH gains the `If-Match` check — stale ETag → 412 Precondition Failed with the current etag in the body; the response carries the fresh `ETag` (§4). |
+| `src/agentsfleetd/http/handlers/fleets/patch.zig` | EDIT | The existing PATCH gains the `If-Match` check — stale ETag → 412 Precondition Failed with the current etag in the body; the response carries the fresh `ETag` (§4). Body parse/validate and the transaction split to the two siblings below (RULE FLL — the If-Match check pushed it past the cap). |
+| `src/agentsfleetd/http/handlers/fleets/patch_body.zig` | CREATE | The PATCH's body parsing + field validation, split from `patch.zig`. |
+| `src/agentsfleetd/http/handlers/fleets/patch_txn.zig` | CREATE | The PATCH's transaction: `SELECT … FOR UPDATE` → `If-Match` verdict → reparse → FSM-gated `UPDATE`; owns `TxnOutcome`. Split from `patch.zig`. |
+| `src/agentsfleetd/http/handlers/fleets/sql.zig` | CREATE | SQL statement text for the fleets handler domain (RULE SQLMOD): the single-fleet detail read (§1) and the single-pass page query (§8). |
+| `src/agentsfleetd/http/etag.zig` | CREATE | **§9** — the shared ETag capability: `compute` over a declared field list, `staleTag` (the `If-Match` verdict), `ifMatch`, `attach`. Sits at the http layer, not under `fleets/`, because the catalog row adopts it too. |
+| `src/agentsfleetd/http/handlers/fleets/list.zig` | EDIT | **§8** — the page query stops re-running both aggregates per row; SQL moves to `sql.zig`. Pure performance rewrite, identical numbers. |
+| `src/agentsfleetd/http/handlers/library/catalog_patch.zig` | EDIT | **§9** — the second ETag adopter: `If-Match` on the catalog row PATCH; a stale re-send of `source_repo` can no longer discard the bundle and unpublish. One `RowState` read now serves both the publish precheck and the concurrency verdict. |
+| `src/agentsfleetd/http/handlers/library/catalog.zig` | EDIT | **§9** — `RowState` carries the row's editable surface; the catalog entry (list + single) carries its `etag`. |
+| `src/agentsfleetd/fleet_library/sql.zig` | EDIT | **§9** — `SELECT_CATALOG_ROW` projects the fields the row's ETag hashes. |
+| `src/agentsfleetd/http/handlers/common.zig` | EDIT | The RFC 7807 writer gains the `etag` extension the 412 mandates (REST guide §4), beside the existing `current_state` for 409. Omitted from the wire unless the status sets it — the base envelope is unchanged for every other endpoint. |
+| `src/agentsfleetd/errors/error_entries.zig` + `error_entries_runtime.zig` + `error_registry.zig` | EDIT | `UZ-AGT-014` (fleet source stale), `UZ-CATALOG-005` (catalog row stale), `UZ-MEM-004` (memory entry not found). The mechanism is shared; the operator-facing copy is per-resource. |
+| `src/agentsfleetd/errors/internal_op_error_sweep_test.zig` | EDIT | Baseline bump for the ETag-attach failure paths (plain-English details, per the sweep's own bump rule). |
 | `src/agentsfleetd/http/route_table_invoke.zig` | EDIT | `invokePatchWorkspaceFleet` gains the GET arm (G1); a new memory-item invoke wires the DELETE (G5). |
 | `src/agentsfleetd/http/router.zig` | EDIT | New route variant for the memory item (`…/memories/{key}`), deepest-shape-first before the collection match. |
 | `src/agentsfleetd/http/route_matchers.zig` | EDIT | `matchWorkspaceFleetMemoryItem` — the `{key}` leaf matcher, mirroring `matchWorkspaceFleetKeyDelete`. |
@@ -78,6 +89,9 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `ui/packages/app/lib/analytics/events.ts` | EDIT | The source-saved and memory-forgotten operator events. |
 | `public/openapi/paths/fleets.yaml` + `paths/memory.yaml` + `root.yaml` + `public/openapi.json` | EDIT | The `{fleet_id}` path gains GET and the events item gains `cost_nanos` (the description names the `cost_nanos` ↔ `credit_deducted_nanos` mapping); `memory.yaml` gains the `{key}` DELETE; `root.yaml` registers the new path; the `.json` bundle is regenerated (`make check-openapi`), never hand-edited. |
 | `src/agentsfleetd/http/handlers/fleets/get_integration_test.zig` | CREATE | G1: read serialization, not-found, cross-workspace refusal, scope enforcement. |
+| `src/agentsfleetd/http/etag_test.zig` | CREATE | **§9**: the shared module — field-boundary unambiguity, null-vs-empty, verdict on match/stale/absent. |
+| `src/agentsfleetd/http/handlers/fleets/list_aggregate_integration_test.zig` | CREATE | **§8**: the single-pass page query returns per-row-subselect-identical numbers; zero-event fleets read 0, not null. |
+| `src/agentsfleetd/http/handlers/library/catalog_etag_integration_test.zig` | CREATE | **§9**: catalog stale `If-Match` → 412 + current etag, nothing written; the destructive stale-resend cannot unpublish; absent `If-Match` still succeeds. |
 | `src/agentsfleetd/http/handlers/fleets/events_cost_integration_test.zig` | CREATE | G2: cost joined onto the row; null when no telemetry; no double-count across the two telemetry rows per event. |
 | `src/agentsfleetd/http/handlers/memory/memory_forget_integration_test.zig` | CREATE | G5: forget removes the entry; missing key 404; cross-fleet refusal; scope enforcement. |
 | `src/agentsfleetd/tests.zig` | EDIT | Registers the three new integration files. |
@@ -180,6 +194,35 @@ The danger zone's stop/resume/kill/delete already work over the existing status 
 - **Dimension 7.1** — the config card carries no copy asserting PATCH/pause/resume are unbuilt; that string survives nowhere → Test `test_config_card_no_stale_endpoint_copy`
 - **Dimension 7.2** — the delete confirm states the memory is deleted with the fleet and that editing keeps it → Test `test_delete_confirm_states_memory_trap`
 
+### §8 — The fleet list stops counting one fleet at a time (performance)
+
+`fleets/list.zig` computes both of its aggregates as **correlated subselects evaluated once per row**: `COUNT(*)` over `core.fleet_events` and `SUM(credit_deducted_nanos)` over `core.fleet_execution_telemetry`, each re-executed for every fleet on the page. At `MAX_LIST_PAGE_LIMIT` (100) that is up to **200 subquery executions per list request**. It is survivable today because the fleets list is a sleepy page — and it stops being survivable in M132, which turns that exact route into the Live Wall: the workspace's landing surface, re-fetched on every wall render.
+
+This slice rewrites the page query as a single pass: page the fleet rows once, aggregate each child table **once** with `GROUP BY` restricted to that page's fleet ids, then `LEFT JOIN` the two aggregates back onto the page. Two index scans plus two hash aggregates replace 200 subquery executions, and the shape no longer degrades with page size. The numbers themselves are unchanged — this is a pure performance rewrite, pinned by a test that asserts the new query returns exactly what the old one did. `core.fleet_execution_telemetry.fleet_id` is `TEXT` while `core.fleets.id` is `UUID`, so the join key carries the `::text` cast the old subselect already carried.
+
+**Implementation default:** a fleet with no events and no telemetry reads `0`, never `NULL` — the `LEFT JOIN` misses, and `COALESCE` restores the zero the correlated subselect used to produce. Losing that would turn a brand-new fleet's counters into nulls on the wall.
+
+- **Dimension 8.1** — the list returns identical `events_processed` / `budget_used_nanos` values to the per-row-subselect query for a workspace of fleets with mixed event/telemetry counts → Test `test_list_aggregates_match_per_row_semantics`
+- **Dimension 8.2** — a fleet with zero events and zero telemetry reports `0`/`0`, not null → Test `test_list_aggregates_zero_not_null`
+- **Dimension 8.3** — the aggregate subqueries are evaluated once per page, not once per row: the page query contains no correlated subselect over the child tables → Test `test_list_query_has_no_per_row_subselect`
+
+### §9 — ETag is a capability, not a fleet feature (generalization + second adopter)
+
+§1/§4 landed optimistic concurrency as fleet-local code. This slice promotes the mechanism to a shared HTTP capability (`src/agentsfleetd/http/etag.zig`) any handler opts into in three lines — `compute` over an ordered list of the fields whose change must invalidate a caller's edit, `staleTag` for the `If-Match` verdict, `ifMatch`/`attach` for the wire — and proves the abstraction on a **second, independent adopter**: the platform catalog row.
+
+The catalog row earns it on merit, not symmetry. Its PATCH is a partial update over a form the operator edits from a list read, and **a stale re-send is destructive, not merely lossy**: re-sending the `source_repo` the form was loaded with repoints the row, and repointing discards the bundle — `content_hash` goes null and the row falls back to draft (`catalog_patch.zig`, `UPDATE_CATALOG_IDENTITY`). Two platform operators curating the same row can therefore silently unpublish a fleet that tenants are installing. `If-Match` makes that unrepresentable.
+
+The mechanism generalizes; the **copy does not**. Each adopter keeps its own registered 412 code so the operator reads a sentence about their resource (`UZ-AGT-014` for the fleet source, `UZ-CATALOG-005` for the catalog row) — the shared module owns the hash and the verdict, the registry owns the words.
+
+**Implementation default:** each resource declares its own **editable surface** rather than hashing the whole row. The fleet hashes `source_markdown` + `trigger_markdown` (so a stop/resume never 412s an open editor that has no source conflict); the catalog row hashes the operator-owned fields — `name`, `description`, `source_repo`, `source_ref`, `required_credentials_reasons`, `visibility` — and excludes `content_hash`, so a bundle refetch does not invalidate an unrelated description edit.
+
+**Implementation default:** `If-Match` stays **optional on every adopter**. A caller that omits it behaves exactly as it does today (last-write-wins). This keeps the CLI and every existing client working unchanged, and makes the header a capability a client opts into rather than a breaking change.
+
+- **Dimension 9.1** — one shared module computes the tag over a declared field list; the fleet and the catalog both consume it, and no second ETag implementation exists → Test `test_etag_module_is_single_sourced`
+- **Dimension 9.2** — a catalog PATCH carrying a stale `If-Match` returns 412 with the current etag and writes nothing; a matching `If-Match` succeeds → Test `test_catalog_patch_if_match_stale_412`
+- **Dimension 9.3** — the destructive case: an operator's stale form re-sends `source_repo` after another operator repointed the row; the write is refused (412), so `content_hash` and `visibility` survive → Test `test_catalog_stale_resend_cannot_unpublish`
+- **Dimension 9.4** — the catalog list and single-row responses carry an `etag` field, and a PATCH without `If-Match` still succeeds (opt-in, not breaking) → Test `test_catalog_etag_on_wire_and_optional`
+
 ## Interfaces
 
 ```
@@ -195,6 +238,18 @@ GET  …/fleets/{id}/events   scope: fleet:read   (extended) — each item gains
 
 DELETE …/fleets/{id}/memories/{key}   scope: fleet:write
   204 no body   entry forgotten      404 <not-found>   no entry with that key
+
+PATCH /v1/admin/fleet-libraries/{id}   (existing, extended — §9)
+  accepts If-Match: <etag>; stale → 412 with the current etag in the body; absent → unchanged (last-write-wins)
+GET   /v1/admin/fleet-libraries        (extended) — each entry gains  etag: string
+  (the catalog row's editable surface: name, description, source_repo, source_ref,
+   required_credentials_reasons, visibility — NOT content_hash, so a bundle refetch
+   does not invalidate an unrelated description edit)
+
+Shared capability (src/agentsfleetd/http/etag.zig):
+  compute(alloc, fields: []const ?[]const u8) -> "\"<sha256-hex>\""   // ordered, NUL-separated
+  staleTag(alloc, if_match, fields) -> ?current_tag                   // null = match or no If-Match
+  ifMatch(req) -> ?[]const u8   ·   attach(res, tag)
 ```
 
 ## Failure Modes
@@ -217,6 +272,9 @@ DELETE …/fleets/{id}/memories/{key}   scope: fleet:write
 3. **The single-fleet read carries no new column.** Enforced by SCHEMA GUARD firing on no migration: the spec touches no `schema/*.sql` and no `schema/embed.zig`; every serialized column already exists — `trigger_markdown` and `bundle_content_hash` are nullable and serialize as null.
 4. **A cross-workspace read cannot confirm a fleet's existence.** Enforced by the handler returning 404 (not 403) on a workspace-authorization miss, asserted by `test_get_fleet_missing_and_cross_workspace`.
 5. **Forget is scoped and fleet-isolated.** Enforced by the route requiring `fleet:write` and the DELETE statement keying on `(fleet_id, key)` so no fleet can forget another's memory, asserted by `test_memory_forget_scope_and_isolation`.
+6. **The list page cost is independent of page size × fleet count.** Enforced by the single-pass query (§8): the two child-table aggregates are each evaluated once per page, not once per row — asserted by `test_list_query_has_no_per_row_subselect` and the R9 grep, not by review.
+7. **Optimistic concurrency is one mechanism, not per-resource copies.** Enforced by both adopters computing their tag through `src/agentsfleetd/http/etag.zig` over a declared editable-field list — asserted by `test_etag_module_is_single_sourced` and the R10 grep. The 412 *copy* is per-resource (each adopter's own registered code); the *mechanism* is single-sourced.
+8. **A stale write cannot silently destroy state.** Enforced on the catalog row by the `If-Match` verdict running before the identity UPDATE, so a stale re-send of `source_repo` is refused rather than nulling `content_hash` — asserted by `test_catalog_stale_resend_cannot_unpublish`.
 
 ## Metrics & Observability
 
@@ -253,7 +311,14 @@ DELETE …/fleets/{id}/memories/{key}   scope: fleet:write
 | 7.2 | unit | `test_delete_confirm_states_memory_trap` | The delete confirm states the memory is deleted with the fleet and that editing keeps it. |
 | — | unit | `test_source_save_emits_event` | A successful save emits `fleet_source_saved` (`fleet_id`+`field`+`outcome`); a forget emits `fleet_memory_forgotten` (`fleet_id`+`outcome`); neither carries content. |
 | — | e2e | `test_e2e_operator_lives_on_the_console` | The operator opens a fleet, reads its source, sees a run's cost, steers it, edits and saves the source, and reads the next-wake confirmation — the whole page this spec exists to build. |
-| — | integration | `test_existing_patch_and_delete_unchanged` | **Regression**: the status PATCH and the fleet DELETE behave exactly as before; this spec adds a GET arm and does not touch them. |
+| 8.1 | integration | `test_list_aggregates_match_per_row_semantics` | A workspace of fleets with mixed event/telemetry counts → the single-pass page query returns the same `events_processed`/`budget_used_nanos` per fleet as the per-row-subselect query it replaces. |
+| 8.2 | integration | `test_list_aggregates_zero_not_null` | A fleet with no events and no telemetry → `events_processed: 0`, `budget_used_nanos: 0` (the `LEFT JOIN` miss is COALESCEd), never null. |
+| 8.3 | unit | `test_list_query_has_no_per_row_subselect` | The page SQL contains no correlated subselect over `core.fleet_events` / `core.fleet_execution_telemetry` — the aggregates are evaluated once per page. |
+| 9.1 | unit | `test_etag_module_is_single_sourced` | The shared module hashes an ordered field list unambiguously (`("ab",null)` ≠ `("a","b")`, null ≠ empty); both adopters call it and no second implementation exists. |
+| 9.2 | integration | `test_catalog_patch_if_match_stale_412` | Catalog PATCH with a stale `If-Match` → 412 + the current `etag` in the body; the row is unchanged; a matching `If-Match` → 200. |
+| 9.3 | integration | `test_catalog_stale_resend_cannot_unpublish` | **The destructive case**: operator B repoints + republishes; operator A's stale form re-sends the OLD `source_repo` → 412, and `content_hash` + `visibility` survive (without `If-Match` this write would null the hash and draft the row). |
+| 9.4 | integration | `test_catalog_etag_on_wire_and_optional` | The list and single-row responses carry `etag`; a PATCH with no `If-Match` still succeeds — the header is opt-in, not a breaking change. |
+| — | integration | `test_existing_patch_and_delete_unchanged` | **Regression**: the status PATCH and the fleet DELETE behave exactly as before; this spec adds a GET arm and does not touch them. A PATCH with no `If-Match` behaves exactly as it did pre-M131 on both adopters. |
 
 ## Acceptance Rubric (single scoring surface)
 
@@ -267,6 +332,9 @@ DELETE …/fleets/{id}/memories/{key}   scope: fleet:write
 | R6 | The stale "endpoints don't exist" copy is gone (§7) | `git grep -n "become available once the backend adds" -- ui/ \| wc -l` | `0` | P1 | |
 | R7 | The list-scan getFleet fallback and its bespoke code are deleted (§1, RULE NDC) | `git grep -n "UZ-AGT-SCAN-CAP" -- ui/ \| wc -l` | `0` | P0 | |
 | R8 | Diff stays inside Files Changed | `git diff --name-only origin/main` | 0 paths missing from the Files Changed table | P0 | |
+| R9 | The fleet list runs no per-row aggregate subselect (§8) | `git grep -nE "SELECT (COUNT|COALESCE\\(SUM)" -- src/agentsfleetd/http/handlers/fleets/list.zig src/agentsfleetd/http/handlers/fleets/sql.zig \| grep -c "core.fleets.id"` | `0` | P0 | |
+| R10 | One ETag implementation, two adopters (§9) | `git grep -ln "std.crypto.hash.sha2.Sha256" -- 'src/agentsfleetd/http/**' \| wc -l` | `1` | P0 | |
+| R11 | A stale catalog re-send cannot unpublish (§9) | `make test-integration-db` | exit 0 | P0 | |
 | S1 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | |
 | S2 | Lint clean | `make lint-all` | exit 0 | P0 | |
 | S3 | Integration passes (HTTP + schema + Redis touched) | `make test-integration` | exit 0 | P0 | |
@@ -315,6 +383,7 @@ DELETE …/fleets/{id}/memories/{key}   scope: fleet:write
 
 - **Consults** — Architecture / Legacy-Design / gate-flag triage: the question asked + Indy's decision.
   > Indy (2026-07-14): "ETag/If-Match in M131" — context: the GET→edit→PATCH lost-update surface; chose optimistic concurrency over a last-write-wins opt-out.
+  > Indy (2026-07-15): "you must add the list-aggregate query fix in to this PR. This is a performance fix. And the eTag generalization as well into this PR" — context: scope-expansion. Orly had recommended filing the list-aggregate N+1 (§8) as a follow-up spec and deferring the ETag generalization to a trigger-at-N=2. Indy overrode both: §8 (single-pass list query) and §9 (shared `http/etag.zig` + catalog-row adopter) fold into this PR. Rationale accepted: M132 promotes `fleets/list.zig` to the Live Wall's hot path, so the N+1 is urgent now; and the catalog row's stale-resend is destructive (nulls `content_hash`, unpublishes), so the second adopter is real, not speculative — clearing RULE NDC's "don't abstract at N=1".
 - **Metrics review** — events added, extra events found during `/review`, analytics/funnel playbook update or the explicit no-change reason.
 - **Skill-chain outcomes** — `/write-unit-test`, `/review`, `kishore-babysit-prs` results (order per `AGENTS.md` CHORE(close); iteration counts, findings dispositioned).
 - **Deferrals** — every "deferred to follow-up" needs an Indy-acked verbatim quote here, format `> Indy (YYYY-MM-DD HH:MM): "<quote>" — context: <which item, why>`.

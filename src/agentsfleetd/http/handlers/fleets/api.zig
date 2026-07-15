@@ -19,6 +19,7 @@
 
 const create = @import("create.zig");
 const list = @import("list.zig");
+const get = @import("get.zig");
 const patch = @import("patch.zig");
 const delete_h = @import("delete.zig");
 const common = @import("../common.zig");
@@ -27,5 +28,6 @@ pub const Context = common.Context;
 
 pub const innerCreateFleet = create.innerCreateFleet;
 pub const innerListFleets = list.innerListFleets;
+pub const innerGetFleet = get.innerGetFleet;
 pub const innerPatchFleet = patch.innerPatchFleet;
 pub const innerDeleteFleet = delete_h.innerDeleteFleet;
