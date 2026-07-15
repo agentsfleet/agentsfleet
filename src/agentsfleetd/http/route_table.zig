@@ -19,8 +19,6 @@ const invoke = @import("route_table_invoke.zig");
 const connectors_invoke = @import("route_table_invoke_connectors.zig");
 const library_invoke = @import("route_table_invoke_library.zig");
 
-// ── Types ─────────────────────────────────────────────────────────────────
-
 pub const AuthCtx = auth_mw.AuthCtx;
 pub const Hx = hx_mod.Hx;
 
