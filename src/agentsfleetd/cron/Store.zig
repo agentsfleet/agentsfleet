@@ -80,6 +80,15 @@ pub fn get(self: Store, alloc: std.mem.Allocator, fleet_id: []const u8, schedule
     return try rowToSchedule(alloc, row);
 }
 
+pub fn getBySourceKey(self: Store, alloc: std.mem.Allocator, fleet_id: []const u8, source_key: []const u8) !?model.Schedule {
+    const conn = try self.pool.acquire();
+    defer self.pool.release(conn);
+    var query = PgQuery.from(try conn.query(sql.SELECT_SOURCE_KEY, .{ fleet_id, source_key }));
+    defer query.deinit();
+    const row = (try query.next()) orelse return null;
+    return try rowToSchedule(alloc, row);
+}
+
 pub fn list(self: Store, alloc: std.mem.Allocator, fleet_id: []const u8) ![]model.Schedule {
     const conn = try self.pool.acquire();
     defer self.pool.release(conn);

@@ -16,12 +16,6 @@
 //! statement_timeout=10s, idle_in_transaction_session_timeout=5s. PG
 //! `55P03` (lock_timeout) → 503 ERR_INTERNAL_DB_UNAVAILABLE.
 //!
-//! Status FSM (paused is gate-only, never set via API):
-//!     active|paused|stopped → stopped  (resume from auto-pause/operator-stop)
-//!     active|paused|stopped → active
-//!     active|paused|stopped → killed   (terminal — 404 on further PATCH)
-//!     same → same          → 409 (no-op transition rejected by SQL guard)
-//!
 //! `updated_at` (BIGINT ms epoch) doubles as config_revision — monotonic.
 
 const std = @import("std");
@@ -37,6 +31,7 @@ const ec = @import("../../../errors/error_registry.zig");
 const id_format = @import("../../../types/id_format.zig");
 const fleet_config = @import("../../../fleet_runtime/config.zig");
 const create = @import("create.zig");
+const cron_sync = @import("cron_sync.zig");
 const workspace_guards = @import("../../workspace_guards.zig");
 
 const log = logging.scoped(.fleet_api);
@@ -133,9 +128,14 @@ pub fn innerPatchFleet(hx: Hx, req: *httpz.Request, workspace_id: []const u8, fl
         },
     };
 
-    // No control-stream signal: `agentsfleetd` resolves a fleet's status + config
-    // fresh from Postgres on every lease, so the PATCH'd row (already committed
-    // above) takes effect on the next lease with nothing to notify.
+    if (body.status != null or body.trigger_markdown != null or body.config_json != null) {
+        const cron_result = cron_sync.syncStoredFleet(hx, workspace_id, fleet_id);
+        if (cron_result != .ok and cron_result != .skipped) {
+            _ = cron_sync.writeFailure(hx, cron_result);
+            return;
+        }
+    }
+
     log.debug("patched", .{ .id = fleet_id, .workspace = workspace_id, .revision = revision, .status_set = body.status });
     if (body.status) |s| {
         hx.ok(.ok, .{ .fleet_id = fleet_id, .status = s, .config_revision = revision });

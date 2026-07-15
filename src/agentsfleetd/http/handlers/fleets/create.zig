@@ -22,6 +22,7 @@ const markdown_limits = @import("../../../fleet_runtime/markdown_limits.zig");
 const create_stream = @import("create_stream.zig");
 const create_install_steps = @import("create_install_steps.zig");
 const create_fleet_bundle = @import("create_fleet_bundle.zig");
+const cron_sync = @import("cron_sync.zig");
 // Request-independent core.fleets row-write primitives (insert/activate/delete +
 // unique-violation probe) live in their own module — shared with the Slack
 // channel-fleet materialization + the install worker, and split out per RULE FLL.
@@ -31,6 +32,7 @@ const log = logging.scoped(.fleet_api);
 
 const Hx = hx_mod.Hx;
 const DEFAULT_TRIGGER_DAILY_DOLLARS = "1.0";
+const HINT_ROW_ORPHANED_MANUAL_RECOVERY = "row_orphaned_manual_recovery";
 
 pub const MAX_SOURCE_LEN = markdown_limits.MAX_SOURCE_LEN;
 pub const MAX_TRIGGER_LEN = markdown_limits.MAX_TRIGGER_LEN;
@@ -68,7 +70,8 @@ pub fn innerCreateFleet(hx: Hx, req: *httpz.Request, workspace_id: []const u8) v
     const body = parseCreateBody(hx, req) orelse return;
 
     var db = hx.db() orelse return;
-    defer db.end();
+    var db_open = true;
+    defer if (db_open) db.end();
 
     if (!common.authorizeWorkspace(db.conn, hx.principal, workspace_id)) {
         hx.fail(ec.ERR_FORBIDDEN, "Workspace access denied");
@@ -171,25 +174,25 @@ pub fn innerCreateFleet(hx: Hx, req: *httpz.Request, workspace_id: []const u8) v
         common.internalDbError(hx.res, hx.req_id);
         return;
     };
+    db.end();
+    db_open = false;
 
     create_stream.ensureEventStream(hx.ctx.queue, fleet_id) catch |err| {
         log.err(
             "create_stream_setup_failed",
             .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .err = @errorName(err), .fleet_id = fleet_id, .req_id = hx.req_id, .hint = "rolling_back_pg_row" },
         );
-        // Roll back the PG row so the caller can retry cleanly without leaving
-        // an orphan behind. If the rollback also fails (rare — PG flapping in
-        // the same handler), the orphan is not auto-healed: a control-plane
-        // reconcile job is the planned replacement for the deleted watcher.
-        fleet_row.deleteFleetRow(db.conn, workspace_id, fleet_id) catch |rollback_err| {
-            log.err(
-                "create_rollback_failed",
-                .{ .error_code = ec.ERR_INTERNAL_DB_QUERY, .err = @errorName(rollback_err), .fleet_id = fleet_id, .req_id = hx.req_id, .hint = "row_orphaned_manual_recovery" },
-            );
-        };
+        rollbackCreatedFleet(hx, workspace_id, fleet_id, "create_rollback_failed");
         common.errorResponse(hx.res, ec.ERR_AGENTSFLEET_INSTALL_ROLLED_BACK, "Failed to finish setting up the fleet; nothing was created", hx.req_id);
         return;
     };
+
+    const cron_result = cron_sync.syncNewConfig(hx, fleet_id, parsed.config);
+    if (cron_result != .ok and cron_result != .skipped) {
+        rollbackCreatedFleet(hx, workspace_id, fleet_id, "create_cron_rollback_failed");
+        _ = cron_sync.writeFailure(hx, cron_result);
+        return;
+    }
 
     var webhook_urls: std.json.ObjectMap = .empty;
     defer {
@@ -257,6 +260,20 @@ fn buildDefaultTriggerMarkdown(alloc: std.mem.Allocator, name: []const u8) ![]co
         \\---
         \\
     , .{ name, DEFAULT_TRIGGER_DAILY_DOLLARS });
+}
+
+fn rollbackCreatedFleet(hx: Hx, workspace_id: []const u8, fleet_id: []const u8, comptime event: []const u8) void {
+    const conn = hx.ctx.pool.acquire() catch |err| {
+        log.err(event, .{ .error_code = ec.ERR_INTERNAL_DB_UNAVAILABLE, .err = @errorName(err), .fleet_id = fleet_id, .req_id = hx.req_id, .hint = HINT_ROW_ORPHANED_MANUAL_RECOVERY });
+        return;
+    };
+    defer hx.ctx.pool.release(conn);
+    fleet_row.deleteFleetRow(conn, workspace_id, fleet_id) catch |rollback_err| {
+        log.err(
+            event,
+            .{ .error_code = ec.ERR_INTERNAL_DB_QUERY, .err = @errorName(rollback_err), .fleet_id = fleet_id, .req_id = hx.req_id, .hint = HINT_ROW_ORPHANED_MANUAL_RECOVERY },
+        );
+    };
 }
 
 // The request-independent row-write primitives (insertFleetOnConn /
