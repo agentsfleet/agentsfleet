@@ -3,6 +3,7 @@ import { AGENTSFLEET_STATUS } from "@/lib/api/fleets";
 import { CONNECTION_STATUS } from "@/lib/streaming/fleet-stream-registry";
 import {
   deriveTileLiveness,
+  fleetRowState,
   formatTileEvents,
   formatTileSpend,
   SNAPSHOT_CAPPED_OR_ERRORED,
@@ -56,5 +57,17 @@ describe("tile footer is server truth (Inv. 2)", () => {
   it("renders a real zero distinctly from a missing field", () => {
     expect(formatTileEvents(0)).toBe("0");
     expect(formatTileEvents(7)).toBe("7");
+  });
+});
+
+describe("fleetRowState — lifecycle state for the tile link (e2e data-state)", () => {
+  it("maps each status to its row state", () => {
+    expect(fleetRowState(AGENTSFLEET_STATUS.ACTIVE)).toBe("live");
+    expect(fleetRowState(AGENTSFLEET_STATUS.INSTALLING)).toBe("installing");
+    expect(fleetRowState(AGENTSFLEET_STATUS.KILLED)).toBe("failed");
+    expect(fleetRowState(AGENTSFLEET_STATUS.STOPPED)).toBe("parked");
+    expect(fleetRowState(AGENTSFLEET_STATUS.PAUSED)).toBe("parked");
+    // An unrecognized status falls back to parked (the neutral, non-live default).
+    expect(fleetRowState("who_knows")).toBe("parked");
   });
 });

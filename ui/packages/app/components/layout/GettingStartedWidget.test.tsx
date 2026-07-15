@@ -106,4 +106,16 @@ describe("GettingStartedWidget — read failure never hides onboarding (FM §5)"
     expect(queryByText("Getting started")).toBeNull();
     expect(putPreference).not.toHaveBeenCalled();
   });
+
+  it("ignores a snapshot that resolves after unmount (no state update on a dead component)", async () => {
+    // Control the resolution timing: unmount before it settles so the effect's
+    // `if (!live) return` guard fires. A settle-after-unmount must not throw.
+    let resolve!: (v: unknown) => void;
+    getSnapshot.mockReturnValue(new Promise((r) => { resolve = r; }));
+    const { unmount, queryByText } = renderWidget();
+    unmount();
+    resolve(snapshotOk(COMPLETE));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(queryByText("Getting started")).toBeNull();
+  });
 });
