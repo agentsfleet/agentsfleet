@@ -235,8 +235,8 @@ pub fn spendForFleet(
 pub fn spendForFleetOn(conn: *pg.Conn, workspace_id: []const u8, fleet_id: []const u8, now_ms: i64) !?Spend {
     const floors = windowFloors(now_ms);
     var q = PgQuery.from(try conn.query(SELECT_SPEND_SQL, .{
-        workspace_id, fleet_id, floors.day, floors.month,
-        ChargeType.stage.label(),   ChargeType.receive.label(), DRAIN_BACKOFF_MS,
+        workspace_id,             fleet_id,                   floors.day,       floors.month,
+        ChargeType.stage.label(), ChargeType.receive.label(), DRAIN_BACKOFF_MS,
     }));
     defer q.deinit();
     const row = try q.next() orelse return Spend{ .day_nanos = 0, .month_nanos = 0 };
@@ -284,7 +284,7 @@ pub fn fetchBudgetAndSpend(
 ) !?BudgetAndSpend {
     const floors = windowFloors(now_ms);
     var q = PgQuery.from(try conn.query(SELECT_BUDGET_AND_SPEND_SQL, .{
-        fleet_id, workspace_id, fleet_id, floors.day, floors.month,
+        fleet_id,                 workspace_id,               fleet_id,         floors.day, floors.month,
         ChargeType.stage.label(), ChargeType.receive.label(), DRAIN_BACKOFF_MS,
     }));
     defer q.deinit();

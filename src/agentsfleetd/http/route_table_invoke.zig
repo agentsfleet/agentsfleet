@@ -21,7 +21,6 @@ const tenant_provider_h = @import("handlers/tenant_provider.zig");
 const tenant_model_entries_h = @import("handlers/tenant_model_entries.zig");
 const admin_keys = @import("handlers/admin/platform_keys.zig");
 const admin_models = @import("handlers/admin/model_library_admin.zig");
-const memory = @import("handlers/memory/handler.zig");
 const grants = @import("handlers/integration_grants/handler.zig");
 const grants_ws = @import("handlers/integration_grants/workspace.zig");
 const fleet_keys_h = @import("handlers/api_keys/fleet.zig");
@@ -42,6 +41,13 @@ pub const invokeWorkspaceApprovalDetail = approvals_invokes.invokeWorkspaceAppro
 pub const invokeWorkspaceApprovalResolve = approvals_invokes.invokeWorkspaceApprovalResolve;
 const bundle_invokes = @import("route_table_invoke_fleet_bundles.zig");
 pub const invokeFleetBundles = bundle_invokes.invokeFleetBundles;
+const schedule_invokes = @import("route_table_invoke_schedules.zig");
+pub const invokeScheduleCollection = schedule_invokes.invokeScheduleCollection;
+pub const invokeScheduleItem = schedule_invokes.invokeScheduleItem;
+pub const invokeScheduleSync = schedule_invokes.invokeScheduleSync;
+const memory_invokes = @import("route_table_invoke_memory.zig");
+pub const invokeFleetMemoriesCollection = memory_invokes.invokeFleetMemoriesCollection;
+pub const invokeFleetMemoryItem = memory_invokes.invokeFleetMemoryItem;
 
 const Hx = hx_mod.Hx;
 
@@ -206,6 +212,7 @@ pub const invokeApprovalWebhook = webhooks_invokes.invokeApprovalWebhook;
 pub const invokeGrantApprovalWebhook = webhooks_invokes.invokeGrantApprovalWebhook;
 pub const invokeGithubWebhook = webhooks_invokes.invokeGithubWebhook;
 pub const invokeAppIngress = webhooks_invokes.invokeAppIngress;
+pub const invokeQStashScheduleIngress = webhooks_invokes.invokeQStashScheduleIngress;
 
 // ── Fleet create/read/update/delete ──────────────────────────────────────
 
@@ -270,26 +277,6 @@ pub fn invokeFleetMessagesPost(hx: *Hx, req: *httpz.Request, route: router.Route
     if (!common.requireMethod(hx.res, req.method, .POST)) return;
     const r = route.workspace_fleet_messages;
     fleet_messages.innerFleetMessagesPost(hx.*, req, r.workspace_id, r.fleet_id);
-}
-
-// ── Memory ────────────────────────────────────────────────────────────────
-// /memories collection — GET (list-or-search) only. The write verbs are retired
-// (capture flows through the runner plane); POST answers 405, by-key DELETE 404.
-
-pub fn invokeFleetMemoriesCollection(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    const r = route.workspace_fleet_memories;
-    switch (req.method) {
-        .GET => memory.innerListMemories(hx.*, req, r.workspace_id, r.fleet_id),
-        else => common.respondMethodNotAllowed(hx.res),
-    }
-}
-
-pub fn invokeFleetMemoryItem(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    const r = route.workspace_fleet_memory_item;
-    switch (req.method) {
-        .DELETE => memory.innerDeleteMemory(hx.*, r.workspace_id, r.fleet_id, r.memory_key),
-        else => common.respondMethodNotAllowed(hx.res),
-    }
 }
 
 // ── Integration grants ────────────────────────────────────────────────────

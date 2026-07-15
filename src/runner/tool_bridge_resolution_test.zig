@@ -10,11 +10,22 @@
 const std = @import("std");
 const nullclaw = @import("nullclaw");
 const tool_bridge = @import("engine/tool_bridge.zig");
+const runner_helpers = @import("engine/runner_helpers.zig");
 const client_errors = @import("engine/client_errors.zig");
 const context_budget = @import("engine/context_budget.zig");
 
 const Config = nullclaw.config.Config;
 const WORKSPACE = "/tmp/fleet-ws-bridge";
+const TOOL_SCHEDULE = "schedule";
+const UNSUPPORTED_HOSTED_TOOLS = [_][]const u8{
+    TOOL_SCHEDULE,
+    "cron_add",
+    "cron_list",
+    "cron_remove",
+    "cron_run",
+    "cron_runs",
+    "cron_update",
+};
 
 /// nullclaw.config.Config requires `workspace_dir` + `config_path` (no defaults);
 /// every other field (tools, autonomy, …) defaults. Builders read only the
@@ -49,18 +60,47 @@ test "should resolve every canonical tool name to its own registry entry" {
     // Each registry name resolves to an entry whose .name echoes the lookup —
     // proves no cross-wired builder. Mirrors the registry's own coverage list.
     const names = [_][]const u8{
-        "shell",         "file_read",   "file_write",       "file_edit",
-        "file_append",   "file_delete", "file_read_hashed", "file_edit_hashed",
-        "git",           "image",       "calculator",       "memory_store",
-        "memory_recall", "memory_list", "memory_forget",    "delegate",
-        "schedule",      "spawn",       "http_request",     "web_search",
-        "web_fetch",     "pushover",    "browser",          "screenshot",
-        "browser_open",  "cron_add",    "cron_list",        "cron_remove",
-        "cron_run",      "cron_runs",   "cron_update",      "message",
+        "shell",         "file_read",    "file_write",       "file_edit",
+        "file_append",   "file_delete",  "file_read_hashed", "file_edit_hashed",
+        "git",           "image",        "calculator",       "memory_store",
+        "memory_recall", "memory_list",  "memory_forget",    "delegate",
+        "spawn",         "http_request", "web_search",       "web_fetch",
+        "pushover",      "browser",      "screenshot",       "browser_open",
+        "message",
     };
     for (names) |n| {
         const entry = tool_bridge.resolve(n) orelse return error.TestUnexpectedResult;
         try std.testing.expectEqualStrings(n, entry.name);
+    }
+}
+
+test "should reject hosted NullClaw scheduler tools before execution" {
+    const alloc = std.testing.allocator;
+    const cfg = defaultCfg();
+
+    for (UNSUPPORTED_HOSTED_TOOLS) |tool_name| {
+        const spec = try specOf(alloc, &.{tool_name});
+        defer freeSpec(alloc, spec);
+
+        try std.testing.expectError(
+            error.UnsupportedHostedTool,
+            tool_bridge.buildTools(alloc, spec, WORKSPACE, &cfg, null, null),
+        );
+    }
+}
+
+test "should filter local scheduler from fallback default tools" {
+    const alloc = std.testing.allocator;
+    const cfg = defaultCfg();
+    const tools = try runner_helpers.buildToolsFromSpec(alloc, WORKSPACE, null, &cfg, null, null);
+    defer {
+        for (tools) |t| t.deinit(alloc);
+        alloc.free(tools);
+    }
+
+    for (tools) |tool| {
+        try std.testing.expect(!std.mem.eql(u8, TOOL_SCHEDULE, tool.name()));
+        try std.testing.expect(!tool_bridge.isUnsupportedHostedToolName(tool.name()));
     }
 }
 

@@ -15,7 +15,7 @@ Read this when you need to know where a webhook, a steer, or a cron fire ends up
 
 | Target | Producer | Consumer |
 |---|---|---|
-| `fleet:{id}:events` | `agentsfleetd-api` on steer / webhook / continuation; NullClaw cron-tool fires; `agentsfleetd` on chunk-continuation | **`agentsfleetd`** — non-blocking `XREADGROUP` on each `lease`, `XACK` on each `report` |
+| `fleet:{id}:events` | `agentsfleetd-api` on steer / webhook / signed QStash fire / continuation | **`agentsfleetd`** — non-blocking `XREADGROUP` on each `lease`, `XACK` on each `report` |
 | `fleet:{id}:activity` | `agentsfleetd` (sole publisher) — bracket frames directly, mid-run frames fed by the runner's `activity` stream | SSE streams in `agentsfleetd-api`, fanned out from the SubscriptionHub's one shared pub/sub connection (refcounted SUBSCRIBE per channel) |
 | `core.fleet_events` | `agentsfleetd` lease path (INSERT received) → report path (UPDATE terminal) | `agentsfleetd-api` `GET /events` endpoints, dashboard, `agentsfleet events` |
 | `core.fleets` | `agentsfleetd-api` only | Canonical Fleet runtime table; `agentsfleetd` reads it at lease so config resolves fresh per lease |
@@ -508,12 +508,18 @@ not authority by itself.
                `/v1/webhooks/` and `/v1/ingress/` namespaces are
                customer-data-plane only.
 
-   CRON      NullClaw cron-tool fires on schedule (in the sandboxed child)
-               → the runner reports a cron-scheduling intent; agentsfleetd
-               → XADD fleet:{id}:events *
-                      actor=cron:0_*/30_*_*_*  type=cron
-                      workspace_id=<ws>        request=<msg>
+   CRON      QStash calls POST /v1/ingress/qstash/schedules
+               → agentsfleetd verifies the signature with its boot-loaded
+                 current or next signing key
+               → checks the stored schedule generation and Fleet state
+               → atomically suppresses replay + XADD fleet:{id}:events *
+                      actor=cron:<schedule_id>  type=cron
+                      workspace_id=<ws>        request=<schedule-event-json>
                       created_at=<ms>
+
+             QStash owns the clock. agentsfleetd stores the desired schedule,
+             pushes each requested mutation synchronously, and receives fires.
+             The runner and its disposable NullClaw child own no schedule timer.
 
    CONTINUATION  agentsfleetd re-enqueue (chunk-continuation or
                  user-resumed fulfillment)

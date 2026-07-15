@@ -34,6 +34,7 @@ const id_format = @import("../../../types/id_format.zig");
 const etag_mod = @import("../../etag.zig");
 const patch_body = @import("patch_body.zig");
 const patch_txn = @import("patch_txn.zig");
+const cron_sync = @import("cron_sync.zig");
 const workspace_guards = @import("../../workspace_guards.zig");
 
 const log = logging.scoped(.fleet_api);
@@ -95,6 +96,14 @@ pub fn innerPatchFleet(hx: Hx, req: *httpz.Request, workspace_id: []const u8, fl
     };
 
     const updated = resolveOutcome(hx, fleet_id, outcome) orelse return;
+
+    if (body.status != null or body.trigger_markdown != null or body.config_json != null) {
+        const cron_result = cron_sync.syncStoredFleet(hx, workspace_id, fleet_id);
+        if (cron_result != .ok and cron_result != .skipped) {
+            _ = cron_sync.writeFailure(hx, cron_result);
+            return;
+        }
+    }
 
     // No control-stream signal: `agentsfleetd` resolves a fleet's status + config
     // fresh from Postgres on every lease, so the PATCH'd row (already committed

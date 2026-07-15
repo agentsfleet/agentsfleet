@@ -1,0 +1,116 @@
+//! Production SQL for the cron store. Keep statement text out of adapters.
+
+pub const ROW_COLUMNS =
+    "uid::text, fleet_id::text, source, source_key, cron_expression, " ++
+    "timezone, message, desired_status, sync_status, generation, " ++
+    "sync_token::text, sync_lease_until, last_error, created_at, updated_at";
+
+const SELECT_PREFIX = "SELECT ";
+const RETURNING_PREFIX = "RETURNING ";
+const FINALIZE_PREFIX =
+    "UPDATE core.fleet_schedules SET sync_status = $4, sync_token = NULL, ";
+const FINALIZE_SUCCESS_FIELDS =
+    "sync_lease_until = NULL, last_error = NULL, updated_at = $5 ";
+const FINALIZE_FAILURE_FIELDS =
+    "sync_lease_until = NULL, last_error = $5, updated_at = $6 ";
+const FINALIZE_WHERE =
+    "WHERE uid = $1::uuid AND generation = $2 AND sync_token = $3::uuid ";
+const SCHEDULE_FLEET_WHERE =
+    "WHERE uid = $1::uuid AND fleet_id = $2::uuid AND ";
+
+pub const LOCK_FLEET =
+    \\SELECT f.id::text
+    \\FROM core.fleets f
+    \\WHERE f.id = $1::uuid
+    \\FOR UPDATE OF f
+;
+
+pub const FLEET_IN_WORKSPACE =
+    \\SELECT 1::bigint
+    \\FROM core.fleets
+    \\WHERE id = $1::uuid AND workspace_id = $2::uuid
+    \\LIMIT 1
+;
+
+pub const COUNT_FOR_FLEET =
+    \\SELECT COUNT(*) FROM core.fleet_schedules
+    \\WHERE fleet_id = $1::uuid
+;
+
+pub const SOURCE_KEY_EXISTS =
+    \\SELECT 1::bigint FROM core.fleet_schedules
+    \\WHERE fleet_id = $1::uuid AND source_key = $2
+    \\LIMIT 1
+;
+
+pub const INSERT =
+    "INSERT INTO core.fleet_schedules " ++
+    "(uid, fleet_id, source, source_key, cron_expression, timezone, message, " ++
+    "desired_status, sync_status, generation, sync_token, sync_lease_until, " ++
+    "last_error, created_at, updated_at) " ++
+    "VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7, $8, $9, $10, " ++
+    "$11::uuid, $12, NULL, $13, $13) " ++ RETURNING_PREFIX ++ ROW_COLUMNS;
+
+pub const SELECT_ONE =
+    SELECT_PREFIX ++ ROW_COLUMNS ++
+    " FROM core.fleet_schedules WHERE uid = $1::uuid AND fleet_id = $2::uuid";
+
+pub const SELECT_SOURCE_KEY =
+    SELECT_PREFIX ++ ROW_COLUMNS ++
+    " FROM core.fleet_schedules WHERE fleet_id = $1::uuid AND source_key = $2";
+
+pub const LIST_FOR_FLEET =
+    SELECT_PREFIX ++ ROW_COLUMNS ++
+    " FROM core.fleet_schedules WHERE fleet_id = $1::uuid ORDER BY created_at, uid";
+
+pub const CLAIM_MUTATION =
+    "UPDATE core.fleet_schedules SET cron_expression = COALESCE($3, cron_expression), " ++
+    "timezone = COALESCE($4, timezone), message = COALESCE($5, message), " ++
+    "desired_status = COALESCE($6, desired_status), sync_status = $7, " ++
+    "generation = generation + 1, sync_token = $8::uuid, " ++
+    "sync_lease_until = $9, last_error = NULL, updated_at = $10 " ++
+    SCHEDULE_FLEET_WHERE ++
+    "(sync_token IS NULL OR sync_lease_until IS NULL OR sync_lease_until <= $10) " ++
+    RETURNING_PREFIX ++ ROW_COLUMNS;
+
+pub const CLAIM_CURRENT =
+    "UPDATE core.fleet_schedules SET sync_status = $3, " ++
+    "generation = generation + 1, sync_token = $4::uuid, " ++
+    "sync_lease_until = $5, last_error = NULL, updated_at = $6 " ++
+    SCHEDULE_FLEET_WHERE ++
+    "(sync_token IS NULL OR sync_lease_until IS NULL OR sync_lease_until <= $6) " ++
+    RETURNING_PREFIX ++ ROW_COLUMNS;
+
+pub const EXISTS =
+    "SELECT 1::bigint FROM core.fleet_schedules " ++
+    "WHERE uid = $1::uuid AND fleet_id = $2::uuid LIMIT 1";
+
+pub const FINALIZE_SUCCESS =
+    FINALIZE_PREFIX ++ FINALIZE_SUCCESS_FIELDS ++
+    FINALIZE_WHERE ++ RETURNING_PREFIX ++ ROW_COLUMNS;
+
+pub const FINALIZE_SUCCESS_STATE =
+    FINALIZE_PREFIX ++ FINALIZE_SUCCESS_FIELDS ++
+    FINALIZE_WHERE;
+
+pub const FINALIZE_FAILURE =
+    FINALIZE_PREFIX ++ FINALIZE_FAILURE_FIELDS ++
+    FINALIZE_WHERE ++ RETURNING_PREFIX ++ ROW_COLUMNS;
+
+pub const FINALIZE_FAILURE_STATE =
+    FINALIZE_PREFIX ++ FINALIZE_FAILURE_FIELDS ++
+    FINALIZE_WHERE;
+
+pub const DELETE_CLAIMED =
+    \\DELETE FROM core.fleet_schedules
+    \\WHERE uid = $1::uuid AND generation = $2 AND sync_token = $3::uuid
+    \\RETURNING uid::text
+;
+
+pub const FIRE_TARGET =
+    \\SELECT s.fleet_id::text, f.workspace_id::text, s.message, s.generation,
+    \\       s.desired_status, s.sync_status, f.status
+    \\FROM core.fleet_schedules s
+    \\JOIN core.fleets f ON f.id = s.fleet_id
+    \\WHERE s.uid = $1::uuid
+;

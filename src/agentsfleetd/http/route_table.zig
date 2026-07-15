@@ -19,8 +19,6 @@ const invoke = @import("route_table_invoke.zig");
 const connectors_invoke = @import("route_table_invoke_connectors.zig");
 const library_invoke = @import("route_table_invoke_library.zig");
 
-// ── Types ─────────────────────────────────────────────────────────────────
-
 pub const AuthCtx = auth_mw.AuthCtx;
 pub const Hx = hx_mod.Hx;
 
@@ -74,12 +72,16 @@ pub fn classFor(route: router.Route) RouteClass {
         .grant_approval_webhook,
         .github_webhook,
         .app_ingress,
+        .qstash_schedule_ingress,
         .admin_platform_keys,
         .delete_admin_platform_key,
         .admin_models,
         .admin_model_by_id,
         .workspace_fleets,
         .patch_workspace_fleet,
+        .workspace_fleet_schedules,
+        .workspace_fleet_schedule,
+        .workspace_fleet_schedule_sync,
         .workspace_secrets,
         .workspace_secret,
         .workspace_fleet_messages,
@@ -180,6 +182,9 @@ pub fn specFor(route: router.Route, registry: *auth_mw.MiddlewareRegistry) Route
         .receive_webhook => .{ .middlewares = registry.webhookSig(), .invoke = invoke.invokeReceiveWebhook },
         .github_webhook => .{ .middlewares = registry.webhookSig(), .invoke = invoke.invokeGithubWebhook },
         .app_ingress => .{ .middlewares = auth_mw.MiddlewareRegistry.none, .invoke = invoke.invokeAppIngress },
+        // No generic middleware fits: QStash signs the exact raw body with
+        // current/next platform vault keys, verified inline without bearer fallback.
+        .qstash_schedule_ingress => .{ .middlewares = auth_mw.MiddlewareRegistry.none, .invoke = invoke.invokeQStashScheduleIngress },
         // Clerk via Svix — dedicated middleware, shared handler.
         .receive_svix_webhook => .{ .middlewares = registry.svix(), .invoke = invoke.invokeReceiveSvixWebhook },
         // Clerk user.created auth-plane event — no fleet context; handler
@@ -206,6 +211,9 @@ pub fn specFor(route: router.Route, registry: *auth_mw.MiddlewareRegistry) Route
         // Fleet create/read/update/delete + activity + credentials
         .workspace_fleets => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeWorkspaceFleets },
         .patch_workspace_fleet => .{ .middlewares = registry.bearer(), .invoke = invoke.invokePatchWorkspaceFleet },
+        .workspace_fleet_schedules => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeScheduleCollection },
+        .workspace_fleet_schedule => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeScheduleItem },
+        .workspace_fleet_schedule_sync => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeScheduleSync },
         .workspace_secrets => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeWorkspaceSecrets },
         .workspace_secret => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeWorkspaceSecretItem },
         // Chat ingress (workspace-scoped) — POST /messages
@@ -227,7 +235,6 @@ pub fn specFor(route: router.Route, registry: *auth_mw.MiddlewareRegistry) Route
         // (write verbs retired; capture flows through the runner plane).
         .workspace_fleet_memories => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeFleetMemoriesCollection },
         .workspace_fleet_memory_item => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeFleetMemoryItem },
-
         // Integration grants
         .request_integration_grant => .{ .middlewares = auth_mw.MiddlewareRegistry.none, .invoke = invoke.invokeRequestGrant },
         .list_integration_grants => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeListGrants },
@@ -313,6 +320,7 @@ test "specFor resolves a RouteSpec for a representative sample of every route fa
     _ = specFor(.{ .grant_approval_webhook = "z1" }, &reg);
     _ = specFor(.{ .github_webhook = "z1" }, &reg);
     _ = specFor(.{ .app_ingress = "github" }, &reg);
+    _ = specFor(.qstash_schedule_ingress, &reg);
     _ = specFor(.{ .workspace_fleet_memories = .{ .workspace_id = "ws1", .fleet_id = "z1" } }, &reg);
     _ = specFor(.{ .request_integration_grant = .{ .workspace_id = "ws1", .fleet_id = "z1" } }, &reg);
     _ = specFor(.{ .list_integration_grants = .{ .workspace_id = "ws1", .fleet_id = "z1" } }, &reg);

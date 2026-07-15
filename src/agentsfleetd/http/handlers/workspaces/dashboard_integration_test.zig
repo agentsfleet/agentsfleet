@@ -93,12 +93,18 @@ fn seedFleets(conn: *pg.Conn, alloc: std.mem.Allocator, fx: TestFixtures, now_ms
         // same run don't collide on UNIQUE (workspace_id, name).
         const name = try std.fmt.allocPrint(alloc, "fleet-dash-{s}-{s}", .{ z.suffix, z.id });
         defer alloc.free(name);
+        const config_json = try std.fmt.allocPrint(
+            alloc,
+            "{{\"name\":\"{s}\",\"x-agentsfleet\":{{\"triggers\":[{{\"type\":\"api\"}}],\"tools\":[],\"budget\":{{\"daily_dollars\":1.0}}}}}}",
+            .{name},
+        );
+        defer alloc.free(config_json);
         _ = try conn.exec(
             \\INSERT INTO core.fleets
             \\  (id, workspace_id, name, source_markdown, trigger_markdown, config_json,
             \\   status, created_at, updated_at)
-            \\VALUES ($1::uuid, $2::uuid, $3, 'seed', null, '{}'::jsonb, 'active', $4, $4)
-        , .{ z.id, TEST_WORKSPACE_ID, name, now_ms });
+            \\VALUES ($1::uuid, $2::uuid, $3, 'seed', null, $4::jsonb, 'active', $5, $5)
+        , .{ z.id, TEST_WORKSPACE_ID, name, config_json, now_ms });
     }
 }
 

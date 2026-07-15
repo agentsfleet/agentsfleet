@@ -31,6 +31,7 @@ import { buildAccessHandlers } from "./handlers-bind-access.ts";
 import { buildFleetHandlers } from "./handlers-bind-fleet.ts";
 import { buildWorkspaceHandlers } from "./handlers-bind-workspace.ts";
 import { buildMemoryHandlers } from "./handlers-bind-memory.ts";
+import { buildScheduleHandlers } from "./handlers-bind-schedule.ts";
 
 import type { ActionFrame, CommandHandlerFn, Handlers } from "./cli-tree-types.ts";
 import { readStringOpt as optString, type CommandCtx, type CommandDeps, type Workspaces } from "../commands/types.ts";
@@ -300,6 +301,7 @@ export function buildHandlers(lifecycle: Lifecycle): Handlers {
       ),
     },
     fleet: buildFleetHandlers(wrapE, wrapEFn),
+    schedule: buildScheduleHandlers(wrapEFn, () => stdoutIsTtyFromCtx(lifecycle.ctx)),
     memory: buildMemoryHandlers(wrapEFn, () => stdoutIsTtyFromCtx(lifecycle.ctx)),
   };
 }

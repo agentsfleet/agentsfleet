@@ -47,9 +47,19 @@ pub fn matchIngress(p: Path) ?[]const u8 {
     return p.param(1);
 }
 
+pub fn matchQStashScheduleIngress(p: Path) bool {
+    return p.segs.len == 3 and p.eq(0, S_INGRESS) and p.eq(1, "qstash") and p.eq(2, "schedules");
+}
+
 test "App ingress matcher captures one provider segment" {
     const provider = matchIngress(.{ .segs = &.{ "ingress", "github" } }) orelse return error.TestExpectedMatch;
     try testing.expectEqualStrings("github", provider);
     try testing.expect(matchIngress(.{ .segs = &.{"ingress"} }) == null);
     try testing.expect(matchIngress(.{ .segs = &.{ "ingress", "github", "extra" } }) == null);
+}
+
+test "QStash schedule ingress matcher requires exact shape" {
+    try testing.expect(matchQStashScheduleIngress(.{ .segs = &.{ "ingress", "qstash", "schedules" } }));
+    try testing.expect(!matchQStashScheduleIngress(.{ .segs = &.{ "ingress", "qstash" } }));
+    try testing.expect(!matchQStashScheduleIngress(.{ .segs = &.{ "ingress", "qstash", "schedules", "extra" } }));
 }

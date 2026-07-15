@@ -49,6 +49,8 @@ playbooks/
     │   └── 001_playbook.md
     ├── zoho_app_registration/         ← register the agentsfleet Zoho Desk OAuth app + vault platform secrets
     │   └── 001_playbook.md
+    ├── qstash_registration/           ← register Upstash QStash schedule credentials + signing keys
+    │   └── 001_playbook.md
     ├── jira_app_registration/         ← register the agentsfleet Jira OAuth (3LO) app + vault platform secrets
     │   └── 001_playbook.md
     ├── linear_app_registration/       ← register the agentsfleet Linear OAuth app + vault platform secrets

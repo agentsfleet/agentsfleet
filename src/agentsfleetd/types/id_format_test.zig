@@ -31,6 +31,10 @@ test "generators produce uuidv7-shaped ids that pass their validators" {
     const tenant_model_entry_id = try id.generateTenantModelEntryId(alloc);
     defer alloc.free(tenant_model_entry_id);
     try std.testing.expect(id.isUuidV7(tenant_model_entry_id));
+
+    const schedule_id = try id.generateScheduleId(alloc);
+    defer alloc.free(schedule_id);
+    try std.testing.expect(id.isUuidV7(schedule_id));
 }
 
 test "uuidv7 validator accepts canonical v7 variant 10xx" {
@@ -54,6 +58,7 @@ test "all live id generators produce valid uuidv7" {
         id.generatePlatformLlmKeyId,
         id.generateFleetBundleId,
         id.generateTenantModelEntryId,
+        id.generateScheduleId,
     }) |gen| {
         const idd = try gen(alloc);
         defer alloc.free(idd);
@@ -87,6 +92,7 @@ test "version nibble and variant bits are correctly set across all live generato
         id.generatePlatformLlmKeyId,
         id.generateFleetBundleId,
         id.generateTenantModelEntryId,
+        id.generateScheduleId,
     }) |gen| {
         const idd = try gen(alloc);
         defer alloc.free(idd);

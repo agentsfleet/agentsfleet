@@ -18,6 +18,7 @@ import { parseIntOption, parseIdOption } from "./validators.ts";
 import { buildAccessTree } from "./cli-tree-access.ts";
 import { buildFleetTree } from "./cli-tree-fleet.ts";
 import { buildMemoryTree } from "./cli-tree-memory.ts";
+import { buildScheduleTree } from "./cli-tree-schedule.ts";
 import { helpTail } from "./cli-tree-help.ts";
 import type {
   ActionFrame,
@@ -143,6 +144,7 @@ export function buildProgram({ handlers, version, state, helpFactory }: BuildPro
   buildTenantTree(program, handlers, state);
   buildBillingTree(program, handlers, state);
   buildFleetTree(program, handlers, state, { actionFor, runHandler });
+  buildScheduleTree(program, handlers, state, { actionFor, runHandler });
   buildMemoryTree(program, handlers, state, { actionFor, runHandler });
 
   return program;
