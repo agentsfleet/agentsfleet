@@ -87,6 +87,7 @@ test "store concurrency: 100 simultaneous mutations have one lease winner" {
     while (ready.load(.acquire) != CONTENDERS) std.atomic.spinLoopHint();
     gate.store(true, .release);
     for (&threads) |*thread| thread.join();
+    spawned = 0;
 
     try std.testing.expectEqual(@as(u32, 1), counts.claimed.load(.acquire));
     try std.testing.expectEqual(@as(u32, CONTENDERS - 1), counts.busy.load(.acquire));
@@ -125,7 +126,7 @@ const CreateWorker = struct {
 };
 
 test "store concurrency: racing creates never exceed the 32 schedule Fleet cap" {
-    var fixture = (try support.Fixture.open(
+    var fixture = (try support.Fixture.openContended(
         "0195b4ba-8d3a-7f13-8abc-105000000111",
         "0195b4ba-8d3a-7f13-8abc-105000000112",
     )) orelse return error.SkipZigTest;
@@ -171,6 +172,7 @@ test "store concurrency: racing creates never exceed the 32 schedule Fleet cap" 
     }
     gate.store(true, .release);
     for (&threads) |*thread| thread.join();
+    spawned = 0;
 
     try std.testing.expectEqual(@as(u32, 1), counts.claimed.load(.acquire));
     try std.testing.expectEqual(@as(u32, CONTENDERS - 1), counts.capped.load(.acquire));

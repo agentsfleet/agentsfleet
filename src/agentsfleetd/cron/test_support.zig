@@ -1,9 +1,14 @@
 const std = @import("std");
 const pg = @import("pg");
+const common = @import("common");
 
 const base = @import("../db/test_fixtures.zig");
+const db = @import("../db/pool.zig");
 const Store = @import("Store.zig");
 const model = @import("model.zig");
+
+const EMPTY_JSON = "{}";
+const SINGLE_POOL_TIMEOUT_MS: u32 = 1_000;
 
 pub const Fixture = struct {
     pool: *pg.Pool,
@@ -17,7 +22,7 @@ pub const Fixture = struct {
         errdefer db_ctx.pool.release(db_ctx.conn);
         try base.seedTenant(db_ctx.conn);
         try base.seedWorkspace(db_ctx.conn, workspace_id);
-        try base.seedFleet(db_ctx.conn, fleet_id, workspace_id, "cron-store-test", "{}", "");
+        try base.seedFleet(db_ctx.conn, fleet_id, workspace_id, "cron-store-test", EMPTY_JSON, "");
         db_ctx.pool.release(db_ctx.conn);
         return .{
             .pool = db_ctx.pool,
@@ -25,6 +30,32 @@ pub const Fixture = struct {
             .workspace_id = workspace_id,
             .fleet_id = fleet_id,
         };
+    }
+
+    pub fn openSingle(workspace_id: []const u8, fleet_id: []const u8) !?Fixture {
+        return openWithSizing(workspace_id, fleet_id, 1, SINGLE_POOL_TIMEOUT_MS);
+    }
+
+    pub fn openContended(workspace_id: []const u8, fleet_id: []const u8) !?Fixture {
+        return openWithSizing(workspace_id, fleet_id, 4, 10_000);
+    }
+
+    fn openWithSizing(workspace_id: []const u8, fleet_id: []const u8, size: u16, timeout_ms: u32) !?Fixture {
+        const url = common.env.testLiveValue("TEST_DATABASE_URL") orelse
+            common.env.testLiveValue("DATABASE_URL") orelse return null;
+        var opts = try db.parseUrl(std.heap.page_allocator, url);
+        opts.size = size;
+        opts.timeout = timeout_ms;
+        const pool = try pg.Pool.init(common.globalIo(), std.testing.allocator, opts);
+        errdefer pool.deinit();
+        const conn = try pool.acquire();
+        errdefer pool.release(conn);
+        base.dropInjectedFaultConstraints(conn);
+        try base.seedTenant(conn);
+        try base.seedWorkspace(conn, workspace_id);
+        try base.seedFleet(conn, fleet_id, workspace_id, "cron-service-test", EMPTY_JSON, "");
+        pool.release(conn);
+        return .{ .pool = pool, .store = Store.init(pool), .workspace_id = workspace_id, .fleet_id = fleet_id };
     }
 
     pub fn deinit(self: *Fixture) void {

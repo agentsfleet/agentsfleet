@@ -9,15 +9,23 @@ const SELECT_PREFIX = "SELECT ";
 const RETURNING_PREFIX = "RETURNING ";
 const FINALIZE_PREFIX =
     "UPDATE core.fleet_schedules SET sync_status = $4, sync_token = NULL, ";
+const FINALIZE_SUCCESS_FIELDS =
+    "sync_lease_until = NULL, last_error = NULL, updated_at = $5 ";
+const FINALIZE_FAILURE_FIELDS =
+    "sync_lease_until = NULL, last_error = $5, updated_at = $6 ";
 const FINALIZE_WHERE =
     "WHERE uid = $1::uuid AND generation = $2 AND sync_token = $3::uuid ";
 
-pub const LOCK_FLEET_AND_COUNT =
-    \\SELECT f.id::text,
-    \\       (SELECT COUNT(*) FROM core.fleet_schedules s WHERE s.fleet_id = f.id)
+pub const LOCK_FLEET =
+    \\SELECT f.id::text
     \\FROM core.fleets f
     \\WHERE f.id = $1::uuid
     \\FOR UPDATE OF f
+;
+
+pub const COUNT_FOR_FLEET =
+    \\SELECT COUNT(*) FROM core.fleet_schedules
+    \\WHERE fleet_id = $1::uuid
 ;
 
 pub const SOURCE_KEY_EXISTS =
@@ -56,14 +64,20 @@ pub const EXISTS =
     "WHERE uid = $1::uuid AND fleet_id = $2::uuid LIMIT 1";
 
 pub const FINALIZE_SUCCESS =
-    FINALIZE_PREFIX ++
-    "sync_lease_until = NULL, last_error = NULL, updated_at = $5 " ++
+    FINALIZE_PREFIX ++ FINALIZE_SUCCESS_FIELDS ++
     FINALIZE_WHERE ++ RETURNING_PREFIX ++ ROW_COLUMNS;
 
+pub const FINALIZE_SUCCESS_STATE =
+    FINALIZE_PREFIX ++ FINALIZE_SUCCESS_FIELDS ++
+    FINALIZE_WHERE;
+
 pub const FINALIZE_FAILURE =
-    FINALIZE_PREFIX ++
-    "sync_lease_until = NULL, last_error = $5, updated_at = $6 " ++
+    FINALIZE_PREFIX ++ FINALIZE_FAILURE_FIELDS ++
     FINALIZE_WHERE ++ RETURNING_PREFIX ++ ROW_COLUMNS;
+
+pub const FINALIZE_FAILURE_STATE =
+    FINALIZE_PREFIX ++ FINALIZE_FAILURE_FIELDS ++
+    FINALIZE_WHERE;
 
 pub const DELETE_CLAIMED =
     \\DELETE FROM core.fleet_schedules
