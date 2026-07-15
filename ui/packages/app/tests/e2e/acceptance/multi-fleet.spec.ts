@@ -2,7 +2,7 @@
  * multi-fleet.spec.ts — pulse-cap contract.
  *
  * Seeds 6 fleets in the fixture user's workspace (more than `PULSE_CAP=5`
- * in `FleetsList.tsx`). Asserts the listing renders all 6 rows but only
+ * in `FleetTile.tsx`). Asserts the listing renders all 6 rows but only
  * the first 5 carry `data-live="true"` on the WakePulse — the 6th gets a
  * static glow. The header consolidates with the canonical "{N} live"
  * label and a single brand WakePulse next to it.
@@ -13,7 +13,7 @@
  *
  * Note on status: seedFleet creates rows that start in `active` status
  * (agentsfleetd's default for new installs). All 6 are therefore "live" as far
- * as `liveStateOf()` is concerned, which is what the pulse-cap actually
+ * as `fleetRowState()` is concerned, which is what the pulse-cap actually
  * exercises.
  */
 import { expect, test } from "@playwright/test";

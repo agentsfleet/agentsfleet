@@ -15,11 +15,15 @@ const billing = @import("route_matchers_billing.zig");
 const fleet = @import("route_matchers_fleet.zig");
 const runner_m = @import("route_matchers_runner.zig");
 const connectors = @import("route_matchers_connectors.zig");
+const workspace = @import("route_matchers_workspace.zig");
 
 const S_APPROVALS = "approvals";
 const S_WORKSPACES = "workspaces";
 const S_FLEETS = "fleets";
 const S_BUNDLES = "bundles";
+/// Shared with the router: the collection form goes through matchWorkspaceSuffix,
+/// the item form through matchWorkspacePreference, and the two must name one segment.
+pub const S_PREFERENCES = "preferences";
 const S_AUTH = "auth";
 const S_SESSIONS = "sessions";
 const S_ALL = "all";
@@ -147,20 +151,14 @@ fn isFleetRuntimeSegment(p: Path, idx: usize) bool {
     return p.eq(idx, S_FLEETS) and (idx + 1 >= p.segs.len or !p.eq(idx + 1, S_BUNDLES));
 }
 
-// ── /workspaces/{ws}/secrets/{name} ────────────────────────────────────────
-
-pub const WorkspaceSecretRoute = struct {
-    workspace_id: []const u8,
-    secret_name: []const u8,
-};
-
-pub fn matchWorkspaceSecret(p: Path) ?WorkspaceSecretRoute {
-    if (p.segs.len != 4) return null;
-    if (!p.eq(0, S_WORKSPACES) or !p.eq(2, "secrets")) return null;
-    const ws = p.param(1) orelse return null;
-    const name = p.param(3) orelse return null;
-    return .{ .workspace_id = ws, .secret_name = name };
-}
+// Workspace item-leaf matchers (`/workspaces/{ws}/secrets/{name}`,
+// `/workspaces/{ws}/preferences/{key}`) live in route_matchers_workspace.zig
+// (RULE FLL — keep this file under 350 lines); re-exported so call sites stay
+// unchanged.
+pub const WorkspaceSecretRoute = workspace.WorkspaceSecretRoute;
+pub const matchWorkspaceSecret = workspace.matchWorkspaceSecret;
+pub const WorkspacePreferenceRoute = workspace.WorkspacePreferenceRoute;
+pub const matchWorkspacePreference = workspace.matchWorkspacePreference;
 
 // Connector matchers (the generic `{provider}` trio resolved against the
 // connector registry + Slack's bespoke events ingress) live in

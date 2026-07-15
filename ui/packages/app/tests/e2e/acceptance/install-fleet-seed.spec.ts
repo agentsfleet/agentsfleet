@@ -38,7 +38,7 @@ test.describe("install-fleet-seed", () => {
     // wrapping a `<div class="font-medium truncate">{name}</div>`. Match by
     // visible name (accessible to a Playwright user) and assert data-state
     // is "live" (the dashboard's translation of agentsfleetd's "active" status —
-    // canonical mapping at app/(dashboard)/w/[workspaceId]/fleets/components/FleetsList.tsx).
+    // canonical mapping at app/(dashboard)/w/[workspaceId]/fleets/components/FleetTile.tsx).
     const row = page.locator(`a[href="${workspaceHref(ws, `fleets/${seeded.id}`)}"]`);
     await expect(row).toBeVisible();
     await expect(row).toHaveAttribute("data-state", "live");

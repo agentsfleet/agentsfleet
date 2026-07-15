@@ -83,6 +83,8 @@ test {
     _ = @import("http/secrets_json_metadata_integration_test.zig");
     _ = @import("http/tenant_provider_platform_default_available_integration_test.zig");
     _ = @import("http/tenant_model_entries_integration_test.zig");
+    _ = @import("http/user_preferences_integration_test.zig");
+    _ = @import("http/workspace_onboarding_integration_test.zig");
     _ = @import("hmac_sig");
     _ = @import("crypto/hmac_sig_test.zig");
     _ = @import("fleet_runtime/webhook_verify.zig");
@@ -111,6 +113,8 @@ test {
     _ = logging.sinks;
     _ = @import("state/tenant_billing.zig");
     _ = @import("state/tenant_model_entries.zig");
+    _ = @import("state/user_preferences.zig");
+    _ = @import("state/workspace_onboarding.zig");
     _ = @import("state/model_rate_cache.zig");
     _ = @import("state/model_rate_cache_integration_test.zig");
     _ = @import("state/account_teardown.zig");
