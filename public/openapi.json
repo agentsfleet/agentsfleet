@@ -5374,6 +5374,205 @@
         ]
       }
     },
+    "/v1/workspaces/{workspace_id}/onboarding": {
+      "get": {
+        "operationId": "get_workspace_onboarding",
+        "summary": "Read the workspace's onboarding checklist state",
+        "description": "Returns every signal the Getting Started checklist needs in one call. Five signals are derived server-side in a single query. A model is configured, a fleet exists, a credential exists, an event has been processed, and a steer event exists. Three more are the caller's stored UI preferences: dismissed, collapsed, and CLI ticked. This replaces six separate requests with one.\n",
+        "tags": [
+          "Workspaces"
+        ],
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Workspace identifier (Universally Unique Identifier version 7)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The onboarding checklist state for the calling user",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "model_configured",
+                    "has_fleet",
+                    "has_secret",
+                    "has_processed_event",
+                    "has_steer_event",
+                    "cli_ticked",
+                    "dismissed",
+                    "collapsed"
+                  ],
+                  "properties": {
+                    "model_configured": {
+                      "type": "boolean",
+                      "x-stability": "stable"
+                    },
+                    "has_fleet": {
+                      "type": "boolean",
+                      "x-stability": "stable"
+                    },
+                    "has_secret": {
+                      "type": "boolean",
+                      "x-stability": "stable"
+                    },
+                    "has_processed_event": {
+                      "type": "boolean",
+                      "x-stability": "stable"
+                    },
+                    "has_steer_event": {
+                      "type": "boolean",
+                      "x-stability": "stable"
+                    },
+                    "cli_ticked": {
+                      "type": "boolean",
+                      "x-stability": "stable"
+                    },
+                    "dismissed": {
+                      "type": "boolean",
+                      "x-stability": "stable"
+                    },
+                    "collapsed": {
+                      "type": "boolean",
+                      "x-stability": "stable"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/workspaces/{workspace_id}/preferences": {
+      "get": {
+        "operationId": "get_workspace_preferences",
+        "summary": "Read the caller's dashboard preferences for a workspace",
+        "description": "Returns every dashboard preference the calling user has set in this workspace, as an object keyed by preference key. A user who has set nothing gets `{\"prefs\": {}}` - never a 404, so a client can tell \"no preferences\" from \"preferences unavailable\" without branching. Preferences are per user AND per workspace: a second workspace starts its onboarding checklist fresh.\n",
+        "tags": [
+          "Workspaces"
+        ],
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Workspace identifier (Universally Unique Identifier version 7)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The caller's preference bag for this workspace",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "prefs"
+                  ],
+                  "properties": {
+                    "prefs": {
+                      "type": "object",
+                      "description": "Preference key to value. Values are client-owned and opaque to the server. Absent keys have never been set.\n",
+                      "additionalProperties": true,
+                      "x-stability": "stable"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/workspaces/{workspace_id}/preferences/{pref_key}": {
+      "put": {
+        "operationId": "put_workspace_preference",
+        "summary": "Write one dashboard preference",
+        "description": "Upserts a single preference for the calling user in this workspace and returns the full updated bag. The request body IS the value - any well-formed JavaScript Object Notation (JSON) value up to 1 KiB, stored verbatim and never interpreted by the server. `pref_key` must be one the dashboard declares; anything else is refused with `UZ-PREFS-001` and no row is written. Concurrent writes to one key are last-write-wins by design: a preference is a single toggle, so a lost write costs one click.\n",
+        "tags": [
+          "Workspaces"
+        ],
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Workspace identifier (Universally Unique Identifier version 7)"
+          },
+          {
+            "name": "pref_key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "getting_started_dismissed",
+                "getting_started_collapsed",
+                "getting_started_cli_ticked"
+              ]
+            },
+            "description": "The preference to write. Must be a key the dashboard declares."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "The preference value. Any JSON value up to 1 KiB.",
+          "content": {
+            "application/json": {
+              "schema": {}
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The caller's preference bag, including the written key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "prefs"
+                  ],
+                  "properties": {
+                    "prefs": {
+                      "type": "object",
+                      "additionalProperties": true,
+                      "x-stability": "stable"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/v1/workspaces/{workspace_id}/approvals": {
       "get": {
         "operationId": "list_workspace_approvals",

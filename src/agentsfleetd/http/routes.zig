@@ -99,6 +99,11 @@ pub const Route = union(enum) {
     /// its `fleet_id`. The Fleets Wall's single stream; replaces its former
     /// one-connection-per-tile fan-out.
     workspace_events_stream: []const u8,
+    // Consolidated onboarding checklist state (derived signals + preferences)
+    workspace_onboarding: []const u8, // GET /v1/workspaces/{ws}/onboarding
+    // Per-user dashboard preferences (onboarding checklist state)
+    workspace_preferences: []const u8, // GET /v1/workspaces/{ws}/preferences
+    workspace_preference: matchers.WorkspacePreferenceRoute, // PUT /v1/workspaces/{ws}/preferences/{pref_key}
     // Approval inbox (workspace-scoped pending-gate surface)
     workspace_approvals: []const u8, // GET /v1/workspaces/{ws}/approvals
     workspace_approval_detail: matchers.ApprovalGateRoute, // GET /v1/workspaces/{ws}/approvals/{gate_id}

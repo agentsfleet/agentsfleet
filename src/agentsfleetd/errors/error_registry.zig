@@ -166,6 +166,9 @@ pub const ERR_MODELS_DELETE_ACTIVE = "UZ-MODELS-001";
 pub const ERR_MODELS_SECRET_NOT_FOUND = "UZ-MODELS-002";
 pub const ERR_MODELS_DUPLICATE_ENTRY = "UZ-MODELS-003";
 pub const ERR_MODELS_ENTRY_NOT_FOUND = "UZ-MODELS-004";
+// PREFS (per-user dashboard UI prefs — /v1/workspaces/{workspace_id}/preferences)
+pub const ERR_PREF_KEY_UNKNOWN = "UZ-PREFS-001";
+pub const ERR_PREF_VALUE_TOO_LARGE = "UZ-PREFS-002";
 // MEMORY
 pub const ERR_MEM_AGENTSFLEET_NOT_FOUND = "UZ-MEM-002";
 pub const ERR_MEM_UNAVAILABLE = "UZ-MEM-003";

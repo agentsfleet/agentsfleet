@@ -8,8 +8,7 @@
  * duplicate the same getByRole pattern, and a future ConfirmDialog refactor
  * (button label, copy, dialog role) has to be tracked across four files.
  *
- * State assertions key on the dashboard listing's `data-state` attribute
- * (canonical mapping in app/(dashboard)/w/[workspaceId]/fleets/components/FleetsList.tsx:
+ * State assertions key on the wall tile anchor (FleetTile) `data-state` attribute  * (canonical mapping in app/(dashboard)/w/[workspaceId]/fleets/components/FleetTile.tsx:
  * active → live, paused/stopped → parked, killed/errored → failed).
  */
 import { expect, type Page } from "@playwright/test";
@@ -43,7 +42,7 @@ export async function expectRowState(
   fleetId: string,
   state: RowState,
 ): Promise<void> {
-  // The FleetsList row anchor is now workspace-scoped
+  // The wall tile anchor (FleetTile) is workspace-scoped
   // (`/w/<workspaceId>/fleets/<id>`); match on the stable suffix so this shared
   // helper needn't thread the workspace id through every caller.
   const row = page.locator(`a[href$="/fleets/${fleetId}"]`);
