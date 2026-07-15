@@ -1,14 +1,14 @@
-import { API_ORIGIN, request } from "./client";
+import { API_ORIGIN, request, requestWithEtag } from "./client";
 import { requestWithRetry, type RetryOptions } from "./retry";
-import { ApiError } from "./errors";
 import type {
   InstallFleetRequest,
   InstallFleetResponse,
   Fleet,
+  FleetDetail,
   FleetListResponse,
 } from "../types";
 
-export type { Fleet, FleetListResponse };
+export type { Fleet, FleetDetail, FleetListResponse };
 
 export async function listFleets(
   workspaceId: string,
@@ -25,29 +25,42 @@ export async function listFleets(
   return request<FleetListResponse>(path, { method: "GET" }, token);
 }
 
-// Single-fleet lookup. Filters the list response until a dedicated
-// GET /v1/workspaces/{ws}/fleets/{id} endpoint ships. Requests the
-// server max (100) since we cannot target a specific id without that
-// endpoint — workspaces above that size will miss fleets on later pages.
+// Single-fleet detail read (M131 §1). Hits the real
+// GET /v1/workspaces/{ws}/fleets/{id} and returns the fleet plus its ETag —
+// the source editor holds the tag and sends it back as `If-Match` on save, so a
+// concurrent edit is a 412, not a silent overwrite. A 404 (missing, or a fleet
+// in another workspace) surfaces as an ApiError the page maps to `notFound()`.
 export async function getFleet(
   workspaceId: string,
   fleetId: string,
   token: string,
-): Promise<Fleet | null> {
-  const page = await listFleets(workspaceId, token, { limit: 100 });
-  const hit = page.items.find((z) => z.id === fleetId);
-  if (hit) return hit;
-  // `cursor` non-null means the workspace has more fleets than we scanned.
-  // Surface this as a distinct error instead of a silent null → 404 so
-  // operators aren't left staring at "not found" for a fleet that exists.
-  if (page.cursor) {
-    throw new ApiError(
-      `Fleet ${fleetId} is not in the first 100 fleets for this workspace. This workspace has more fleets than the client-side scan can cover; a dedicated GET /fleets/{id} endpoint is required for reliable lookup at this scale.`,
-      404,
-      "UZ-AGT-SCAN-CAP",
-    );
-  }
-  return null;
+): Promise<{ fleet: FleetDetail; etag: string | null }> {
+  const { data, etag } = await requestWithEtag<FleetDetail>(
+    `/v1/workspaces/${workspaceId}/fleets/${fleetId}`,
+    { method: "GET" },
+    token,
+  );
+  return { fleet: data, etag };
+}
+
+// PATCH the fleet's SKILL.md / TRIGGER.md source (M131 §4). Sends `If-Match`
+// with the ETag from the read; a stale tag throws an ApiError with status 412
+// and the current tag on `.etag`, which the editor uses to reload-and-rediff.
+// Takes effect on the next wake — no re-provision, no reload event. Returns the
+// fresh ETag (echoed in the response body) for the editor's next save.
+export async function saveFleetSource(
+  workspaceId: string,
+  fleetId: string,
+  body: { source_markdown?: string; trigger_markdown?: string },
+  ifMatch: string,
+  token: string,
+): Promise<{ etag: string | null; config_revision: number }> {
+  const { data, etag } = await requestWithEtag<{ etag?: string; config_revision: number }>(
+    `/v1/workspaces/${workspaceId}/fleets/${fleetId}`,
+    { method: "PATCH", headers: { "If-Match": ifMatch }, body: JSON.stringify(body) },
+    token,
+  );
+  return { etag: data.etag ?? etag, config_revision: data.config_revision };
 }
 
 export async function installFleet(

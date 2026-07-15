@@ -35,6 +35,35 @@ export type Fleet = {
   triggers?: FleetTrigger[];
 };
 
+// The single-fleet detail read (`GET …/fleets/{id}`, M131 §1) — the list row
+// plus the editable source and the bundle pin. `trigger_markdown` /
+// `bundle_content_hash` are nullable columns that serialize as JSON null.
+// `budget_used_nanos` / `events_processed` are server-truth lifetime counters
+// (denormalized on the fleet row); the console never derives cost from tokens.
+export type FleetDetail = {
+  id: string;
+  name: string;
+  status: string;
+  source_markdown: string;
+  trigger_markdown: string | null;
+  bundle_content_hash: string | null;
+  triggers: FleetTrigger[] | null;
+  events_processed: number;
+  budget_used_nanos: number;
+  created_at: number;
+  updated_at: number;
+};
+
+// One durable memory entry as the tenant read returns it (`GET …/memories`).
+// The field is **`content`**, not `text` — the memory store's column name.
+export type MemoryEntry = {
+  key: string;
+  content: string;
+  category: string;
+  /** epoch milliseconds */
+  updated_at: number;
+};
+
 // Install a fleet from exactly one onboarded library tier: a platform entry
 // (slug id) or this workspace's tenant entry. The `?: never` arms make the two
 // mutually exclusive at compile time; raw-`SKILL.md` paste, per-workspace
