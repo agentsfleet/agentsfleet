@@ -208,3 +208,51 @@
                   x-stability: stable
       default:
         $ref: ../components/responses.yaml#/components/responses/Error
+/v1/workspaces/{workspace_id}/onboarding:
+  get:
+    operationId: get_workspace_onboarding
+    summary: Read the workspace's onboarding checklist state
+    description: >
+      Returns every signal the Getting Started checklist needs in one call.
+      Five signals are derived server-side in a single query. A model is
+      configured, a fleet exists, a credential exists, an event has been
+      processed, and a steer event exists. Three more are the caller's stored UI
+      preferences: dismissed, collapsed, and CLI ticked. This replaces six
+      separate requests with one.
+    tags:
+    - Workspaces
+    parameters:
+    - name: workspace_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Workspace identifier (Universally Unique Identifier version 7)
+    responses:
+      '200':
+        description: The onboarding checklist state for the calling user
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - model_configured
+              - has_fleet
+              - has_secret
+              - has_processed_event
+              - has_steer_event
+              - cli_ticked
+              - dismissed
+              - collapsed
+              properties:
+                model_configured: { type: boolean, x-stability: stable }
+                has_fleet: { type: boolean, x-stability: stable }
+                has_secret: { type: boolean, x-stability: stable }
+                has_processed_event: { type: boolean, x-stability: stable }
+                has_steer_event: { type: boolean, x-stability: stable }
+                cli_ticked: { type: boolean, x-stability: stable }
+                dismissed: { type: boolean, x-stability: stable }
+                collapsed: { type: boolean, x-stability: stable }
+      default:
+        $ref: ../components/responses.yaml#/components/responses/Error

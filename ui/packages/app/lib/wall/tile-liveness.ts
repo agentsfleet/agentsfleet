@@ -50,6 +50,20 @@ export function deriveTileLiveness(
   return { kind: "live" };
 }
 
+// The fleet's LIFECYCLE state (distinct from stream liveness): active → live,
+// parked/killed → parked/failed. Emitted as the tile link's `data-state` so
+// lifecycle acceptance tests can key on how a stop/kill reflects in the wall,
+// the same vocabulary the list rows used. Not the same axis as `TileKind`,
+// which is about the stream (a live fleet can be `snapshot` if its feed drops).
+export type FleetRowState = "live" | "installing" | "parked" | "failed";
+
+export function fleetRowState(status: string): FleetRowState {
+  if (status === AGENTSFLEET_STATUS.ACTIVE) return "live";
+  if (status === AGENTSFLEET_STATUS.INSTALLING) return "installing";
+  if (status === AGENTSFLEET_STATUS.KILLED) return "failed";
+  return "parked";
+}
+
 // True when a fleet's tile should open its own stream. Drained fleets never do
 // (Dimension 1.3) — this is what the tile checks before choosing which subtree
 // to render, keeping the streaming hook out of the drained path entirely rather

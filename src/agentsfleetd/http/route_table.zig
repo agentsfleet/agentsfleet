@@ -85,6 +85,7 @@ pub fn classFor(route: router.Route) RouteClass {
         .workspace_fleet_messages,
         .workspace_fleet_events,
         .workspace_events,
+        .workspace_onboarding,
         .workspace_preferences,
         .workspace_preference,
         .workspace_approvals,
@@ -214,6 +215,7 @@ pub fn specFor(route: router.Route, registry: *auth_mw.MiddlewareRegistry) Route
         .workspace_fleet_events_stream => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeFleetEventsStream },
         // Workspace-aggregate event history (replaces deleted activity.zig)
         .workspace_events => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeWorkspaceEvents },
+        .workspace_onboarding => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeWorkspaceOnboarding },
         .workspace_preferences => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeWorkspacePreferences },
         .workspace_preference => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeWorkspacePreferenceItem },
         // Approval inbox

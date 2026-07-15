@@ -4,8 +4,8 @@
  * Wire: API-seed → /w/[workspaceId]/fleets/[id] → KillSwitch "Kill" → ConfirmDialog
  * confirm → return to /w/[workspaceId]/fleets and assert the row's `data-state` is
  * `failed` (the dashboard's translation of agentsfleetd's `killed` status,
- * per `liveStateOf` in
- * `app/(dashboard)/w/[workspaceId]/fleets/components/FleetsList.tsx:19`).
+ * per `fleetRowState` in
+ * `app/(dashboard)/w/[workspaceId]/fleets/components/FleetTile.tsx`).
  *
  * Sister to lifecycle.spec.ts; both exercise the same KillSwitch +
  * ConfirmDialog wiring but with different target statuses. Killing is

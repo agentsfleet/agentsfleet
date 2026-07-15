@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { PageHeader, PageTitle, Skeleton } from "@agentsfleet/design-system";
 import { listFleets } from "@/lib/api/fleets";
 import { getTenantBillingCached } from "@/lib/api/tenant_billing";
-import { gatherOnboardingInputs } from "@/lib/onboarding-data";
+import { getOnboarding, statusToInputs } from "@/lib/api/onboarding";
 import ExhaustionBanner from "@/components/domain/ExhaustionBanner";
 import FleetWall from "./components/FleetWall";
 import GettingStarted from "./components/GettingStarted";
@@ -50,9 +50,9 @@ export async function FleetsData({ workspaceId }: { workspaceId: string }) {
   ]);
 
   if (page.items.length === 0) {
-    // We already know the fleet count is 0 from `page` — pass it so the gather
-    // skips re-listing fleets (one fewer round trip on the empty wall).
-    const inputs = await gatherOnboardingInputs(workspaceId, token, 0);
+    // One call for the whole checklist — the onboarding endpoint derives every
+    // signal server-side in a single query (Indy's consolidation).
+    const inputs = statusToInputs(await getOnboarding(workspaceId, token));
     return (
       <>
         <ExhaustionBanner billing={billing} />

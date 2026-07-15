@@ -4,8 +4,8 @@
  * Wire: API-seed → /w/[workspaceId]/fleets/[id] → KillSwitch "Stop" → ConfirmDialog
  * confirm → return to /w/[workspaceId]/fleets and assert the row's `data-state` is
  * `parked` (the dashboard's translation of agentsfleetd's `stopped` status,
- * per `liveStateOf` in
- * `app/(dashboard)/w/[workspaceId]/fleets/components/FleetsList.tsx:19`).
+ * per `fleetRowState` in
+ * `app/(dashboard)/w/[workspaceId]/fleets/components/FleetTile.tsx`).
  *
  * Sister to kill.spec.ts; both exercise the same KillSwitch + ConfirmDialog
  * wiring but with different target statuses (`stopped` vs `killed`). The
