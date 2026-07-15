@@ -147,6 +147,27 @@ pub fn finalizeFailure(
     return self.finalize(alloc, sql.FINALIZE_FAILURE, .{ schedule_id, generation, lease_token, model.SyncStatus.failed.toSlice(), detail, now_ms });
 }
 
+pub fn finalizeSuccessState(
+    self: Store,
+    schedule_id: []const u8,
+    generation: i64,
+    lease_token: []const u8,
+    now_ms: i64,
+) !bool {
+    return self.finalizeState(sql.FINALIZE_SUCCESS_STATE, .{ schedule_id, generation, lease_token, model.SyncStatus.synced.toSlice(), now_ms });
+}
+
+pub fn finalizeFailureState(
+    self: Store,
+    schedule_id: []const u8,
+    generation: i64,
+    lease_token: []const u8,
+    detail: []const u8,
+    now_ms: i64,
+) !bool {
+    return self.finalizeState(sql.FINALIZE_FAILURE_STATE, .{ schedule_id, generation, lease_token, model.SyncStatus.failed.toSlice(), detail, now_ms });
+}
+
 pub fn deleteClaimed(self: Store, schedule_id: []const u8, generation: i64, lease_token: []const u8) !bool {
     const conn = try self.pool.acquire();
     defer self.pool.release(conn);
@@ -164,11 +185,22 @@ fn finalize(self: Store, alloc: std.mem.Allocator, statement: []const u8, args: 
     return try rowToSchedule(alloc, row);
 }
 
+fn finalizeState(self: Store, statement: []const u8, args: anytype) !bool {
+    const conn = try self.pool.acquire();
+    defer self.pool.release(conn);
+    return try conn.exec(statement, args) == 1;
+}
+
 fn lockedScheduleCount(conn: *pg.Conn, fleet_id: []const u8) !?usize {
-    var query = PgQuery.from(try conn.query(sql.LOCK_FLEET_AND_COUNT, .{fleet_id}));
-    defer query.deinit();
-    const row = (try query.next()) orelse return null;
-    return @intCast(try row.get(i64, 1));
+    {
+        var lock = PgQuery.from(try conn.query(sql.LOCK_FLEET, .{fleet_id}));
+        defer lock.deinit();
+        if (try lock.next() == null) return null;
+    }
+    var count = PgQuery.from(try conn.query(sql.COUNT_FOR_FLEET, .{fleet_id}));
+    defer count.deinit();
+    const row = (try count.next()) orelse return error.CountReturnedNoRow;
+    return @intCast(try row.get(i64, 0));
 }
 
 fn sourceKeyExists(conn: *pg.Conn, fleet_id: []const u8, source_key: []const u8) !bool {
