@@ -4,7 +4,9 @@
 //
 //   GET    /v1/workspaces/{ws}/fleets/{zid}/memories          → list-or-search
 //   POST   /v1/workspaces/{ws}/fleets/{zid}/memories          → retired (404/405)
-//   DELETE /v1/workspaces/{ws}/fleets/{zid}/memories/{key}    → retired (404/405)
+//   DELETE /v1/workspaces/{ws}/fleets/{zid}/memories/{key}    → tenant forget
+//                                                              (behaviour lives in
+//                                                              memory_forget_integration_test.zig)
 //
 // Entries are seeded directly (memory_runtime INSERT) since POST is gone. Uses
 // the shared TestHarness; DB-required; self-skips when TEST_DATABASE_URL is unset.
@@ -133,10 +135,6 @@ fn seedEntry(f: Fixture, fleet_id: []const u8, key: []const u8, content: []const
 
 fn memoriesUrl(ws: []const u8, zid: []const u8) ![]u8 {
     return std.fmt.allocPrint(ALLOC, "/v1/workspaces/{s}/fleets/{s}/memories", .{ ws, zid });
-}
-
-fn memoryKeyUrl(ws: []const u8, zid: []const u8, key: []const u8) ![]u8 {
-    return std.fmt.allocPrint(ALLOC, "/v1/workspaces/{s}/fleets/{s}/memories/{s}", .{ ws, zid, key });
 }
 
 // ── GET surface (the tenant memory API is read-only after the write-verb teardown) ──
@@ -317,9 +315,10 @@ test "integration: memories GET fleet-in-foreign-ws returns 404" {
     try r.expectStatus(.not_found);
 }
 
-// ── The tenant write verbs are retired (no compat shim) ──
-// POST /memories and DELETE /memories/{key} were removed with the runner-push
-// cutover — the runner plane is the only writer. Both 404/405; GET still 200.
+// ── The tenant STORE verb is retired (no compat shim) ──
+// POST /memories was removed with the runner-push cutover — the runner plane is
+// the only writer. It stays 404/405; GET still 200. (The tenant DELETE is NOT
+// retired: it is the operator's forget, tested in memory_forget_integration_test.zig.)
 
 test "integration: tenant memory POST is retired (404/405, no write surface)" {
     const f = try fixture();
@@ -329,16 +328,6 @@ test "integration: tenant memory POST is retired (404/405, no write surface)" {
     const r = try (try (try f.h.post(url).bearer(TOKEN_OPERATOR)).json(
         "{\"key\":\"k\",\"content\":\"c\",\"category\":\"core\"}",
     )).send();
-    defer r.deinit();
-    try std.testing.expect(r.status == 404 or r.status == 405);
-}
-
-test "integration: tenant memory DELETE is retired (404/405, no delete surface)" {
-    const f = try fixture();
-    defer f.deinit();
-    const url = try memoryKeyUrl(TEST_WORKSPACE_ID, AGENTSFLEET_LOCAL, "any");
-    defer ALLOC.free(url);
-    const r = try (try f.h.delete(url).bearer(TOKEN_OPERATOR)).send();
     defer r.deinit();
     try std.testing.expect(r.status == 404 or r.status == 405);
 }

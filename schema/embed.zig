@@ -34,4 +34,7 @@ pub const migrations = [_]MigrationEntry{
     .{ .version = 25, .sql = @embedFile("025_core_connector_installs.sql") },
     .{ .version = 26, .sql = @embedFile("026_core_connector_channels.sql") },
     .{ .version = 27, .sql = @embedFile("027_core_tenant_model_entries.sql") },
+    // NOTE: M132 (in-flight) also claims version 28 for user prefs. Whichever
+    // branch rebases second renumbers to 29 (the contiguity test enforces no gap).
+    .{ .version = 28, .sql = @embedFile("028_fleet_activity_counters.sql") },
 };
