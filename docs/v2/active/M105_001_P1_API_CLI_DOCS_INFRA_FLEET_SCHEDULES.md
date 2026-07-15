@@ -13,12 +13,12 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Milestone:** M105
 **Workstream:** 001
 **Date:** Jun 29, 2026
-**Status:** DONE
+**Status:** IN_PROGRESS
 **Priority:** P1 — customer-facing: a `type: cron` Fleet has been parseable but never fires; this lights up time-based wakes.
 **Categories:** API, CLI, DOCS, INFRA
 **Batch:** B1 — standalone capability.
 **Branch:** feat/m105-fleet-schedules
-**Test Baseline:** unit=2642 integration=334
+**Test Baseline:** unit=2714 integration=341
 **Depends on:** M104_001 (DONE — `schedule:read` / `schedule:write` extend its scope catalog).
 **Provenance:** agent-generated (Indy design chat, Jun 29, 2026) — architecture fork (agentsfleet-owns-CRUD + QStash-fires) and provider (QStash) chosen by Indy via AskUserQuestion.
 
@@ -114,6 +114,8 @@ This spec uses Create, Read, Update, Delete (CRUD), Hash-based Message Authentic
 | `cli/src/{commands/fleet_schedule,lib/api-paths,program/cli-tree,program/cli-tree-schedule,program/cli-tree-types,program/handlers-bind,program/handlers-bind-schedule}.ts` + `cli/test/{fleet-schedule,fleet-schedule.integration,cli-tree-schedule,json-contract,helpers-cli-tree}.ts` | CREATE/EDIT | Add/list/update/rm/status/sync commands and rendering. |
 | `tests/fixtures/fleetbundle/zoho-sprint-daily-summarizer/TRIGGER.md` | EDIT | Daily 09:00 Asia/Kolkata declarative example. |
 | `playbooks/operations/qstash_registration/001_playbook.md` | CREATE | Account, vault, ingress, and rotation setup. |
+| `.github/workflows/{deploy-dev,release}.yml` | EDIT | Load the platform administrative workspace identifier from 1Password and pass it to `agentsfleetd`. |
+| `playbooks/{founding/02_preflight/001_playbook,founding/03_priming_infra/001_playbook,operations/admin_bootstrap/001_playbook}.md` | EDIT | Inventory, persist, and deploy the administrative workspace pointer used by platform credentials. |
 | `docs/REST_API_DESIGN_GUIDELINES.md` | EDIT | Register QStash as an inline-signature raw-handler exception. |
 | `docs/architecture/{data_flow,user_flow,capabilities,high_level}.md` | EDIT | One concise hosted scheduling model. |
 
@@ -192,6 +194,7 @@ The platform operator gets one repeatable QStash registration playbook, while th
 
 - **Dimension 8.1** — the playbook covers QStash account setup, API token plus current/next signing keys, vault storage, public ingress verification, and rotation without printing credentials → Test `make check-playbooks` → **DONE**
 - **Dimension 8.2** — architecture documents no longer claim a disposable NullClaw child owns or fires hosted cron schedules → Test `architecture_schedule_ownership` via `make check-architecture-doc` → **DONE**
+- **Dimension 8.3** — development and production deployments load the platform administrative workspace identifier from the environment's `agentsfleet-admin` 1Password item, while bootstrap and preflight verify the field exists → Test workflow syntax plus repository playbook checks → **IN_PROGRESS**
 
 ## Interfaces
 
@@ -280,6 +283,7 @@ Event enqueued on fire: EventEnvelope{ event_type=.cron, actor="cron:<schedule_i
 | 7.2 | e2e | `declarative schedule has no local cron tool` + `test_fleet_cron_syncs_schedule_and_lifecycle` | declarative create/fire path succeeds with only the Fleet's declared non-cron tools. |
 | 8.1 | documentation | `make check-playbooks` | QStash registration playbook passes repository playbook checks. |
 | 8.2 | documentation | `architecture_schedule_ownership` | Four architecture documents consistently name QStash, `agentsfleetd`, and disposable runner ownership. |
+| 8.3 | infrastructure | workflow syntax + `make check-playbooks` | Both deployment environments resolve `platform_admin_workspace_id` from 1Password and pass `PLATFORM_ADMIN_WORKSPACE_ID` to Fly.io; bootstrap and preflight use the same field. |
 
 **Regression:** steer (`event_type=chat`), webhook ingest, and lease/execute/report paths unchanged — `test_steer_unaffected`, existing webhook + lease suites stay green.
 **Idempotency/replay:** Dimensions 2.1–2.4 and 4.3–4.5 prove explicit provider retries and delivery replay are safe under concurrency.
@@ -295,6 +299,7 @@ Cron and QStash fixtures: `samples/fixtures/m105-fixtures/{valid_crons.json, qst
 - [x] Hosted NullClaw local scheduler tools are rejected before execution and never touch local scheduler state
 - [x] QStash human setup and rotation are repeatable without credentials in arguments or output — verify: `make check-playbooks`
 - [x] Architecture docs name QStash as clock, `agentsfleetd` as synchronous facade and signed ingress, and state that no schedule worker or NullClaw cron owner exists
+- [ ] Development and production deployments load the administrative workspace pointer from 1Password and pass it to `agentsfleetd`.
 - [x] Verification lanes clean: `make lint-zig`, `make test-unit-all`, `make test-integration`, and `make _bench-micro`.
 - [x] 100-way concurrency gates pass repeatedly; query/provider round-trip counters stay bounded.
 - [x] `make memleak` reports zero for daemon, runner, library, boot-drain, and injected error paths.
@@ -324,6 +329,7 @@ Cron and QStash fixtures: `samples/fixtures/m105-fixtures/{valid_crons.json, qst
 - **Local review** — Jul 15, 2026: `/review` checked the current diff for hidden scheduler loops, QStash credential leakage, provider-call races, row-lock cleanup isolation, generated token fixture drift, and test-worker silent exits. One silent-exit path in the concurrent PATCH test worker was hardened before commit.
 - **Skill chain outcomes** — `/write-unit-test` complete; `/review` complete; `kishore-babysit-prs` pending until the Pull Request is pushed.
 - **Deferrals** — none yet (every deferral needs an Indy-acked verbatim quote here).
+- **Deployment-pointer correction** — Jul 15, 2026: repository inspection found that `PLATFORM_ADMIN_WORKSPACE_ID` was read by `agentsfleetd` but never supplied by development or production deployment automation. Indy directed both environments to load it from the `agentsfleet-admin` 1Password item; the workstream reopened to make that setup deterministic.
 
 ## Out of Scope
 
