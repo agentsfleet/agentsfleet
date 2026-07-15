@@ -5,9 +5,13 @@
 
 pub const model = @import("model.zig");
 pub const validate = @import("validate.zig");
+pub const Credentials = @import("Credentials.zig");
 pub const Store = @import("Store.zig");
 pub const QStashClient = @import("QStashClient.zig");
 pub const QStashVerifier = @import("QStashVerifier.zig");
+pub const FireQueue = @import("FireQueue.zig");
+pub const FireService = @import("FireService.zig");
+pub const FireStore = @import("FireStore.zig");
 pub const Service = @import("Service.zig");
 
 test {
@@ -17,5 +21,6 @@ test {
     _ = @import("validate_test.zig");
     _ = @import("qstash_client_test.zig");
     _ = @import("qstash_verifier_test.zig");
+    _ = @import("fire_queue_integration_test.zig");
     _ = @import("service_test.zig");
 }

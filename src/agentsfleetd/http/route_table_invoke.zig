@@ -206,6 +206,7 @@ pub const invokeApprovalWebhook = webhooks_invokes.invokeApprovalWebhook;
 pub const invokeGrantApprovalWebhook = webhooks_invokes.invokeGrantApprovalWebhook;
 pub const invokeGithubWebhook = webhooks_invokes.invokeGithubWebhook;
 pub const invokeAppIngress = webhooks_invokes.invokeAppIngress;
+pub const invokeQStashScheduleIngress = webhooks_invokes.invokeQStashScheduleIngress;
 
 // ── Fleet create/read/update/delete ──────────────────────────────────────
 
