@@ -36,7 +36,6 @@ const Hx = hx_mod.Hx;
 const MSG_CATALOG_ID_REQUIRED = "A catalog id is required";
 const MSG_NOT_FOUND = "No fleet library entry has that catalog id";
 
-
 /// One catalog row as the operator sees it. Deliberately carries no markdown and
 /// no storage key — see `entry_view.zig`.
 const CatalogEntry = struct {

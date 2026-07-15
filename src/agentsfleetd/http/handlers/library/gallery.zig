@@ -18,7 +18,6 @@ const entry_view = @import("entry_view.zig");
 
 const Hx = hx_mod.Hx;
 
-
 const GalleryEntry = struct {
     id: []const u8,
     name: []const u8,
@@ -115,4 +114,3 @@ fn appendTenant(alloc: std.mem.Allocator, conn: *pg.Conn, workspace_id: []const 
         });
     }
 }
-

@@ -34,7 +34,7 @@ This spec uses Create, Read, Update, Delete (CRUD), Hash-based Message Authentic
 2. `src/agentsfleetd/http/handlers/webhooks/fleet.zig` + `src/agentsfleetd/cmd/serve_webhook_lookup.zig` — the **signature-verify → dedup (SET NX) → XADD** ingress the cron-fire endpoint reuses verbatim; the per-fleet secret-from-vault lookup is the model for the QStash signing key.
 3. `src/lib/contract/event_envelope.zig` + `src/agentsfleetd/http/handlers/fleets/messages.zig` — `EventType.cron` already exists; the fire endpoint builds that envelope (`actor=cron:<schedule_id>`) instead of `messages.zig`'s `chat`.
 4. `src/agentsfleetd/fleet_runtime/config_helpers.zig` (`parseFleetTriggers`) — already parses + caps the `type: cron` trigger and its `schedule`; §5 turns that parsed value into a schedule row. Cron-expression, timezone, and message validation live here too (currently absent).
-5. `schema/007_core_fleets.sql`, `schema/embed.zig`, and `docs/SCHEMA_CONVENTIONS.md` — the nearest migration to mirror for `core.fleet_schedules` (uuidv7 PK, BIGINT millis timestamps, app-enforced enums, no static-string `CHECK`).
+5. `schema/005_core_fleets.sql`, `schema/embed.zig`, and `docs/SCHEMA_CONVENTIONS.md` — the nearest migration to mirror for `core.fleet_schedules` (uuidv7 PK, BIGINT millis timestamps, app-enforced enums, no static-string `CHECK`).
 
 ## PR Intent & comprehension handshake
 
@@ -90,7 +90,7 @@ This spec uses Create, Read, Update, Delete (CRUD), Hash-based Message Authentic
 - **Bounded provider I/O** → existing native HTTP clients under `src/agentsfleetd/` — caller-owned buffers, hard timeout, typed outcomes, and no subprocess.
 - **Hosted tool admission** → `src/runner/engine/{tool_bridge,tool_builders}.zig` — remove local cron builders from hosted resolution rather than forwarding or falling back.
 - **Module layout** → `~/Projects/oss/ghostty/src/{crash,terminal}/main.zig` — cohesive topic directory with `main.zig` as the public façade and private concern files beside it.
-- **Schema** → `schema/007_core_fleets.sql` + `docs/SCHEMA_CONVENTIONS.md`.
+- **Schema** → `schema/005_core_fleets.sql` + `docs/SCHEMA_CONVENTIONS.md`.
 - **CLI** → `cli/src/program/cli-tree-fleet.ts` (`fleet.steer`, the `credential` group) + the **7 Pillars** of CLI developer experience (handler purity, output-as-a-service, structured JSON errors, auto-JSON when piped).
 
 ## Files Changed (blast radius)
@@ -100,9 +100,11 @@ This spec uses Create, Read, Update, Delete (CRUD), Hash-based Message Authentic
 | `schema/{028_core_fleet_schedules.sql,embed.zig}` | CREATE/EDIT | Visible state, generation/sync-lease fields, and migration registration. |
 | `src/agentsfleetd/cron/{main,model,validate,sql}.zig` + `{Service,Store,QStashClient,QStashVerifier}.zig` | CREATE | Cron façade, value modules, stateful file-as-struct types, synchronous provider boundary, signed verification, explicit recovery. |
 | `src/agentsfleetd/cron/*_test.zig` | CREATE | Failure, leak, concurrency, and performance proofs. |
+| `src/agentsfleetd/tests.zig` | EDIT | Register the cron facade and its private test graph in the canonical test binary. |
 | `src/agentsfleetd/http/handlers/{schedules/manage,ingress/qstash}.zig` | CREATE | Thin workspace, explicit-sync, and signed-ingress adapters. |
 | `src/agentsfleetd/http/{routes,router,route_matchers,route_table,route_scopes,route_table_invoke_fleets,route_table_invoke_webhooks}.zig` | EDIT | Route and authorize management plus ingress surfaces. |
 | `src/agentsfleetd/{auth/scopes.zig,auth/scopes_test.zig}` | EDIT | Schedule scopes. |
+| `src/agentsfleetd/{state/model_library/sql,fleet/budget,fleet/budget_test,fleet/budget_integration_test,fleet_library/github_source_test,http/handlers/pagination,http/handlers/library/catalog,http/handlers/library/gallery,http/handlers/fleet_bundles/api_integration_test}.zig` + `src/runner/engine/stream_redactor.zig` | EDIT | Formatter-only unblock approved by Indy after the full-tree Zig gate exposed pre-existing drift. |
 | `src/agentsfleetd/fleet_runtime/{config_helpers,config_types,config_parser_test}.zig` + `src/agentsfleetd/http/handlers/fleets/{create,patch,delete,stop,resume,kill}.zig` | EDIT | Shared cron/timezone/message validation and Fleet lifecycle synchronization. |
 | `src/agentsfleetd/errors/{error_registry,error_entries}.zig` | EDIT | Schedule errors and recovery text. |
 | `src/runner/engine/{tool_bridge,tool_builders}.zig` + runner tool tests | EDIT | Reject hosted `cron_*` tools so local fallback is unreachable. |
@@ -123,9 +125,9 @@ This spec uses Create, Read, Update, Delete (CRUD), Hash-based Message Authentic
 
 The persisted visible state and shared cron guard. **Implementation default:** the `agentsfleet` identifier is also the QStash schedule identifier; no premature provider identifier or provider interface is stored. Desired lifecycle and provider sync state are separate so users can see uncertain outcomes honestly.
 
-- **Dimension 1.1** — `core.fleet_schedules` persists identity, ownership, source, cron, timezone, message, desired state, sync state, generation, synchronization lease, error, and audit timestamps → Test `test_schedule_row_roundtrips`
-- **Dimension 1.2** — a malformed cron expression is rejected at write with `UZ-SCHED-001` naming the field → Test `test_cron_validate_rejects_malformed`
-- **Dimension 1.3** — the (N+1)th schedule on a Fleet is rejected with `UZ-SCHED-003` → Test `test_schedule_per_fleet_cap`
+- **Dimension 1.1** — `core.fleet_schedules` persists identity, ownership, source, cron, timezone, message, desired state, sync state, generation, synchronization lease, error, and audit timestamps → Test `test_schedule_row_roundtrips` → **DONE** (database integration test green)
+- **Dimension 1.2** — a malformed cron expression is rejected at write with `UZ-SCHED-001` naming the field → Test `test_cron_validate_rejects_malformed` → **DONE** (unit test green)
+- **Dimension 1.3** — the 33rd schedule on a Fleet is rejected with `UZ-SCHED-003` → Test `test_schedule_per_fleet_cap` → **DONE** (100-way integration test admits exactly one create from a starting count of 31)
 
 ### §2 — Synchronous QStash facade + explicit recovery
 
@@ -201,7 +203,7 @@ POST   /v1/ingress/qstash/schedules                     → 200 {accepted:true}
 Create body: { "cron": "0 9 * * *", "message": "summarize today's Zoho Sprints", "timezone": "Asia/Kolkata" }
   - cron      : required, 5-field expression, validated (UZ-SCHED-001)
   - message   : required, the steer text delivered as the cron event payload (≤8192 bytes)
-  - timezone  : optional, app-default UTC
+  - timezone  : optional, app-default UTC; local syntax validation, QStash validates the Internet Assigned Numbers Authority name
 
 Declarative `TRIGGER.md` uses the same `schedule`, `timezone`, and `message` fields under its single `type: cron` entry.
 
@@ -219,7 +221,7 @@ Event enqueued on fire: EventEnvelope{ event_type=.cron, actor="cron:<schedule_i
 | Mode | Cause | Handling (system response + what the caller observes) |
 |------|-------|--------------------------------------------------------|
 | Invalid cron | Malformed expression on create/update | Reject `422` `UZ-SCHED-001` naming the field; nothing persisted. |
-| Per-fleet cap | (N+1)th schedule | Reject `409` `UZ-SCHED-003`; nothing persisted. |
+| Per-fleet cap | 33rd schedule | Reject `409` `UZ-SCHED-003`; nothing persisted. |
 | Schedule not found | Bad `{sid}` on workspace management route | `404` `UZ-SCHED-002`. Signed ingress treats an absent row as an idempotent `200`. |
 | Provider unavailable | QStash timeout, rate limit, or server error | State remains durable; `sync_status=error`; API returns `502 UZ-SCHED-004` and CLI prints the exact `schedule sync` recovery command. No hidden retry. |
 | Concurrent mutation | Another request owns the unexpired synchronization lease | Reject `409 UZ-SCHED-006`; the caller retries after the bounded lease. |
@@ -247,7 +249,7 @@ Event enqueued on fire: EventEnvelope{ event_type=.cron, actor="cron:<schedule_i
 |-----------|------|------|---------------------------------------------|
 | 1.1 | integration | `test_schedule_row_roundtrips` | INSERT then SELECT returns identical field set including the UUIDv7 primary key. |
 | 1.2 | unit | `test_cron_validate_rejects_malformed` | `"99 * * * *"`, `"* * *"`, `""` → rejected; `"0 18 * * 1-5"` → accepted. |
-| 1.3 | integration | `test_schedule_per_fleet_cap` | (cap+1)th create → `409 UZ-SCHED-003`. |
+| 1.3 | integration | `test_schedule_per_fleet_cap` | 33rd create → `409 UZ-SCHED-003`. |
 | 2.1 | integration | `test_qstash_facade_roundtrip` | create/overwrite/delete happen in the caller request by stable identifier. |
 | 2.2 | concurrency | `test_schedule_sync_100_way_serialization` | 100 barrier-started mutations → one provider call, 99 deterministic busy outcomes, no global lock. |
 | 2.3 | integration | `test_qstash_facade_failure_matrix` | injected timeout/429/5xx/malformed/response-loss/allocation failures preserve actionable state and leak nothing. |

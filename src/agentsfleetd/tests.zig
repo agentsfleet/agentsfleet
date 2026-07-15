@@ -29,6 +29,7 @@ test {
     _ = @import("fleet/event_rows.zig");
     _ = @import("fleet/budget.zig");
     _ = @import("fleet/budget_test.zig");
+    _ = @import("cron/main.zig");
     _ = @import("fleet/service_activity.zig");
     _ = @import("fleet/approval_gate.zig");
     _ = @import("fleet_runtime/approval_gate_async.zig");
