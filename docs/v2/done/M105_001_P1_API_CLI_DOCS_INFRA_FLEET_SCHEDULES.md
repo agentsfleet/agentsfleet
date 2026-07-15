@@ -13,7 +13,7 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Milestone:** M105
 **Workstream:** 001
 **Date:** Jun 29, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — customer-facing: a `type: cron` Fleet has been parseable but never fires; this lights up time-based wakes.
 **Categories:** API, CLI, DOCS, INFRA
 **Batch:** B1 — standalone capability.
