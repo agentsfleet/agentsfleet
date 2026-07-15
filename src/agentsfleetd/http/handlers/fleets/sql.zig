@@ -3,9 +3,9 @@
 //! pre-existing inline SQL keep their shape until extracted).
 //!
 //! `events_processed` and `budget_used_nanos` are read straight off
-//! `core.fleets` — denormalized counters maintained by the migration-028
+//! `core.fleets` — denormalized counters maintained by the migration-029
 //! triggers, so neither the list nor the detail re-aggregates the child tables
-//! per read (the Live Wall is the hot path; see migration 028's header for the
+//! per read (the Live Wall is the hot path; see migration 029's header for the
 //! why and the measured numbers).
 
 /// The single-fleet detail read.

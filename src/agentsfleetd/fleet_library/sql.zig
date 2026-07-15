@@ -134,6 +134,12 @@ pub const SELECT_CATALOG_ROW =
     \\ WHERE id = $1
 ;
 
+/// PATCH snapshot: lock the row before checking `If-Match`, so the version
+/// verdict and the guarded writes observe one serial state.
+pub const SELECT_CATALOG_ROW_FOR_UPDATE = SELECT_CATALOG_ROW ++
+    \\ FOR UPDATE
+;
+
 /// The operator's pencil: the two fields no bundle can supply. `description` and
 /// `required_credentials_reasons` are absent from INSERT_PLATFORM's ON CONFLICT
 /// list precisely so a refetch cannot undo what this wrote (M128 Invariant 4).

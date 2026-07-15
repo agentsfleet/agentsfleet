@@ -29,6 +29,8 @@ const IF_MATCH = "if-match";
 const PROBE_ID = "etag-probe";
 const PROBE_REPO = "agentsfleet/etag-probe";
 const MOVED_REPO = "agentsfleet/etag-probe-moved";
+const LOCK_POLL_NS = 20 * std.time.ns_per_ms;
+const LOCK_POLL_LIMIT = 250;
 const PROBE_SKILL =
     \\---
     \\name: etag-probe
@@ -104,6 +106,36 @@ fn readSourceRepo(alloc: std.mem.Allocator, conn: *pg.Conn, id: []const u8) ![]c
     return alloc.dupe(u8, try row.get([]const u8, 0));
 }
 
+const PatchOutcome = struct {
+    status: u16 = 0,
+};
+
+const PatchWorker = struct {
+    fn run(h: *TestHarness, url: []const u8, body: []const u8, if_match: []const u8, outcome: *PatchOutcome) void {
+        const req = h.patch(url).bearer(TOKEN_PLATFORM) catch return;
+        const with_body = req.json(body) catch return;
+        const with_etag = with_body.header(IF_MATCH, if_match) catch return;
+        const response = with_etag.send() catch return;
+        defer response.deinit();
+        outcome.status = response.status;
+    }
+};
+
+fn waitForCatalogLockWaiter(conn: *pg.Conn) !void {
+    var attempts: usize = 0;
+    while (attempts < LOCK_POLL_LIMIT) : (attempts += 1) {
+        var q = PgQuery.from(try conn.query(
+            "SELECT count(*)::bigint FROM pg_stat_activity WHERE wait_event_type = 'Lock' AND query LIKE '%core.fleet_library%'",
+            .{},
+        ));
+        defer q.deinit();
+        const row = try q.next() orelse return error.LockWaiterQueryEmpty;
+        if (try row.get(i64, 0) > 0) return;
+        @import("common").sleepNanos(LOCK_POLL_NS);
+    }
+    return error.CatalogPatchNeverBlocked;
+}
+
 test "integration: catalog stale If-Match → 412 with current etag, nothing written" {
     const alloc = std.testing.allocator;
     const h = makeHarness(alloc) catch |err| switch (err) {
@@ -175,6 +207,52 @@ test "integration: a stale re-send of source_repo cannot discard the bundle" {
 
     // The bundle was NOT discarded and the source was NOT repointed.
     try std.testing.expect(try hasBundle(conn, PROBE_ID));
+    const repo = try readSourceRepo(alloc, conn, PROBE_ID);
+    defer alloc.free(repo);
+    try std.testing.expectEqualStrings(PROBE_REPO, repo);
+}
+
+test "integration: If-Match check serializes with a concurrent catalog write" {
+    const alloc = std.testing.allocator;
+    const h = makeHarness(alloc) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    try reset(conn);
+    try addProbe(h, alloc);
+
+    const stale_etag = try probeEtag(h, alloc);
+    defer alloc.free(stale_etag);
+    const url = try entryUrl(alloc, PROBE_ID);
+    defer alloc.free(url);
+    const moved_body = try std.json.Stringify.valueAlloc(alloc, .{ .source_repo = MOVED_REPO }, .{});
+    defer alloc.free(moved_body);
+
+    _ = try conn.exec("BEGIN", .{});
+    var transaction_open = true;
+    var worker: ?std.Thread = null;
+    defer {
+        if (transaction_open) _ = conn.exec("ROLLBACK", .{}) catch {};
+        if (worker) |thread| thread.join();
+    }
+    _ = try conn.exec(
+        "UPDATE core.fleet_library SET description = 'committed by B' WHERE id = $1",
+        .{PROBE_ID},
+    );
+
+    var outcome: PatchOutcome = .{};
+    worker = try std.Thread.spawn(.{}, PatchWorker.run, .{ h, url, moved_body, stale_etag, &outcome });
+    try waitForCatalogLockWaiter(conn);
+    _ = try conn.exec("COMMIT", .{});
+    transaction_open = false;
+    worker.?.join();
+    worker = null;
+
+    try std.testing.expectEqual(@as(u16, 412), outcome.status);
     const repo = try readSourceRepo(alloc, conn, PROBE_ID);
     defer alloc.free(repo);
     try std.testing.expectEqualStrings(PROBE_REPO, repo);

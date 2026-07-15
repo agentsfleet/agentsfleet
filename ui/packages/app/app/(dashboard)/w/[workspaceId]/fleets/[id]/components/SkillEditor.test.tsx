@@ -4,7 +4,14 @@ import userEvent from "@testing-library/user-event";
 import SkillEditor from "./SkillEditor";
 import type { FleetDetail } from "@/lib/types";
 import { EVENTS } from "@/lib/analytics/events";
-import { OUTCOME, SAVE_NEXT_WAKE_NOTICE, SAVE_STALE_RELOADED_NOTICE, SOURCE_FIELD } from "./console-copy";
+import {
+  OUTCOME,
+  SAVE_NEXT_WAKE_NOTICE,
+  SAVE_STALE_RELOADED_NOTICE,
+  SOURCE_FIELD,
+  TRIGGER_DOC_EMPTY,
+  TRIGGER_DOC_LABEL,
+} from "./console-copy";
 
 const saveFleetSourceAction = vi.fn();
 const getFleetDetailAction = vi.fn();
@@ -86,6 +93,26 @@ describe("SkillEditor", () => {
     expect(diff.textContent).toContain("added line");
   });
 
+  it("Cancel exits edit mode and restores the original source", async () => {
+    const user = await enterEditAndType("# SKILL\nthrowaway");
+    expect(screen.getByTestId("source-diff").textContent).toContain("throwaway");
+
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+
+    expect(screen.queryByTestId("source-diff")).toBeNull();
+    expect(screen.queryByRole("textbox", { name: "Edit SKILL.md" })).toBeNull();
+    const readOnlySource = screen.getAllByLabelText("SKILL.md").find((node) => node.tagName === "PRE");
+    expect(readOnlySource?.textContent).toContain("# SKILL");
+    expect(readOnlySource?.textContent).toContain("original");
+  });
+
+  it("renders the trigger empty hint when no TRIGGER.md exists", async () => {
+    renderEditor();
+    const user = userEvent.setup({ delay: null });
+    await user.click(screen.getByRole("tab", { name: TRIGGER_DOC_LABEL }));
+    expect(screen.getByText(TRIGGER_DOC_EMPTY)).toBeTruthy();
+  });
+
   it("test_source_save_emits_event", async () => {
     saveFleetSourceAction.mockResolvedValue({ ok: true, data: { etag: '"next"', config_revision: 2 } });
     const user = await enterEditAndType("# SKILL\nedited");
@@ -104,6 +131,33 @@ describe("SkillEditor", () => {
     expect(Object.keys(props).sort()).toEqual(["field", "fleet_id", "outcome"]);
   });
 
+  it("does not save when the detail read has no ETag", async () => {
+    render(<SkillEditor workspaceId="ws_1" fleetId="agt_1" sourceMarkdown="# SKILL\noriginal" triggerMarkdown={null} etag={null} />);
+    const user = userEvent.setup({ delay: null });
+    await user.click(screen.getByRole("button", { name: /Edit/ }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Edit SKILL.md" }), { target: { value: "# SKILL\nedited" } });
+    await user.click(screen.getByRole("button", { name: "Save changes" }));
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(saveFleetSourceAction).not.toHaveBeenCalled();
+    expect(routerRefresh).not.toHaveBeenCalled();
+  });
+
+  it("surfaces a save failure and records the failed outcome", async () => {
+    saveFleetSourceAction.mockResolvedValue({ ok: false, status: 500, error: "storage refused", errorCode: "UZ-AGT-500" });
+    const user = await enterEditAndType("# SKILL\nedited");
+    await user.click(screen.getByRole("button", { name: "Save changes" }));
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(screen.getByText(/Couldn't save the source/)).toBeTruthy());
+    expect(captureProductEvent).toHaveBeenCalledWith(EVENTS.fleet_source_saved, {
+      fleet_id: "agt_1",
+      field: SOURCE_FIELD.skill,
+      outcome: OUTCOME.failure,
+    });
+    expect(routerRefresh).not.toHaveBeenCalled();
+  });
+
   it("a stale If-Match (412) reloads the current source and re-diffs — never a silent overwrite", async () => {
     saveFleetSourceAction.mockResolvedValue({ ok: false, status: 412, error: "stale", errorCode: "UZ-AGT-014" });
     getFleetDetailAction.mockResolvedValue({
@@ -119,5 +173,17 @@ describe("SkillEditor", () => {
     await waitFor(() => expect(screen.getByText(SAVE_STALE_RELOADED_NOTICE)).toBeTruthy());
     // The operator's draft survives for a re-save against the fresh ETag.
     expect(screen.getByTestId("source-diff").textContent).toContain("my edit");
+  });
+
+  it("surfaces a stale-save reload failure and keeps the editor open", async () => {
+    saveFleetSourceAction.mockResolvedValue({ ok: false, status: 412, error: "stale", errorCode: "UZ-AGT-014" });
+    getFleetDetailAction.mockResolvedValue({ ok: false, status: 500, error: "reload failed", errorCode: "UZ-AGT-500" });
+    const user = await enterEditAndType("# SKILL\nmy edit");
+    await user.click(screen.getByRole("button", { name: "Save changes" }));
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(screen.getByText(/Couldn't reload the source/)).toBeTruthy());
+    expect(screen.getByRole("textbox", { name: "Edit SKILL.md" })).toBeTruthy();
+    expect(routerRefresh).not.toHaveBeenCalled();
   });
 });

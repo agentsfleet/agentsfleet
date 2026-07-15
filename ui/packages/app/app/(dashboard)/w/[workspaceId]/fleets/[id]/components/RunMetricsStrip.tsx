@@ -11,6 +11,8 @@ import {
   METRICS_WALL_LABEL,
 } from "./console-copy";
 
+const COUNT_FORMATTER = new Intl.NumberFormat("en-US");
+
 // Tokens · wall · cost for the latest run (§3). Every figure is a server field
 // off the event row — the strip does no token→cost arithmetic (Invariant 1);
 // `cost_nanos` is the summed telemetry credit, and a run with no telemetry
@@ -28,7 +30,7 @@ export default function RunMetricsStrip({ latest }: { latest: EventRow | null })
       aria-label={METRICS_STRIP_LABEL}
       className="flex flex-wrap items-center gap-lg rounded-md border border-border bg-card px-4 py-2"
     >
-      <Metric label={METRICS_TOKENS_LABEL} value={latest.tokens === null ? METRICS_COST_UNKNOWN : latest.tokens.toLocaleString()} />
+      <Metric label={METRICS_TOKENS_LABEL} value={latest.tokens === null ? METRICS_COST_UNKNOWN : COUNT_FORMATTER.format(latest.tokens)} />
       <Metric label={METRICS_WALL_LABEL} value={latest.wall_ms === null ? METRICS_COST_UNKNOWN : formatMs(latest.wall_ms)} />
       <Metric
         label={METRICS_COST_LABEL}

@@ -15,7 +15,6 @@ import {
   TabsList,
   TabsTrigger,
   Textarea,
-  cn,
 } from "@agentsfleet/design-system";
 import { getFleetDetailAction, saveFleetSourceAction } from "../../actions";
 import { captureProductEvent } from "@/lib/analytics/posthog";
@@ -23,10 +22,9 @@ import { EVENTS } from "@/lib/analytics/events";
 import { presentErrorString } from "@/lib/errors";
 import {
   CANCEL_EDIT_LABEL,
-  DIFF_ADDED_PREFIX,
-  DIFF_NO_CHANGES,
+  DIFF_CURRENT_LABEL,
   DIFF_PANEL_TITLE,
-  DIFF_REMOVED_PREFIX,
+  DIFF_PENDING_LABEL,
   EDIT_SOURCE_LABEL,
   OUTCOME,
   SAVE_CONFIRM_LABEL,
@@ -42,9 +40,7 @@ import {
   type SourceField,
 } from "./console-copy";
 
-// HTTP 412 Precondition Failed — the source changed under an open editor, so the
-// save was refused rather than overwriting (M131 §4). Named so the branch reads
-// as intent, not a magic number.
+// HTTP 412 Precondition Failed means the source changed under an open editor.
 const PRECONDITION_FAILED = 412;
 
 type Props = {
@@ -64,6 +60,13 @@ const PATCH_FIELD: Record<SourceField, "source_markdown" | "trigger_markdown"> =
   [SOURCE_FIELD.trigger]: "trigger_markdown",
 };
 
+function sourceState(sourceMarkdown: string, triggerMarkdown: string | null): DocState {
+  return {
+    [SOURCE_FIELD.skill]: sourceMarkdown,
+    [SOURCE_FIELD.trigger]: triggerMarkdown ?? "",
+  };
+}
+
 export default function SkillEditor({
   workspaceId,
   fleetId,
@@ -72,10 +75,7 @@ export default function SkillEditor({
   etag: initialEtag,
 }: Props) {
   const router = useRouter();
-  const [base, setBase] = useState<DocState>({
-    [SOURCE_FIELD.skill]: sourceMarkdown,
-    [SOURCE_FIELD.trigger]: triggerMarkdown ?? "",
-  });
+  const [base, setBase] = useState<DocState>(() => sourceState(sourceMarkdown, triggerMarkdown));
   const [draft, setDraft] = useState<DocState>(base);
   const [active, setActive] = useState<SourceField>(SOURCE_FIELD.skill);
   const [editing, setEditing] = useState(false);
@@ -88,7 +88,6 @@ export default function SkillEditor({
   const activeBase = base[active];
   const activeDraft = draft[active];
   const changed = activeDraft !== activeBase;
-  const diff = changed ? computeLineDiff(activeBase, activeDraft) : [];
 
   function enterEdit() {
     setError(null);
@@ -107,9 +106,8 @@ export default function SkillEditor({
     setDraft((prev) => ({ ...prev, [active]: value }));
   }
 
-  // A 412 means another operator saved while this editor was open. Reload the
-  // current source + ETag, keep the operator's draft, and re-diff against the
-  // fresh base — never a silent overwrite (§4).
+  // Keep the operator's draft while refreshing the current source after a
+  // concurrent save. This prevents a silent overwrite.
   async function reloadAfterStale() {
     const reloaded = await getFleetDetailAction(workspaceId, fleetId);
     if (!reloaded.ok) {
@@ -117,11 +115,7 @@ export default function SkillEditor({
       return;
     }
     const fresh = reloaded.data.fleet;
-    setBase((prev) => ({
-      ...prev,
-      [SOURCE_FIELD.skill]: fresh.source_markdown,
-      [SOURCE_FIELD.trigger]: fresh.trigger_markdown ?? "",
-    }));
+    setBase(sourceState(fresh.source_markdown, fresh.trigger_markdown));
     setEtag(reloaded.data.etag);
     setStaleReloaded(true);
   }
@@ -131,12 +125,7 @@ export default function SkillEditor({
     const field = active;
     setError(null);
     startTransition(async () => {
-      const result = await saveFleetSourceAction(
-        workspaceId,
-        fleetId,
-        { [PATCH_FIELD[field]]: draft[field] },
-        etag,
-      );
+      const result = await saveFleetSourceAction(workspaceId, fleetId, { [PATCH_FIELD[field]]: draft[field] }, etag);
       if (result.ok) {
         setBase((prev) => ({ ...prev, [field]: draft[field] }));
         setEtag(result.data.etag);
@@ -204,7 +193,7 @@ export default function SkillEditor({
         </TabsContent>
       </Tabs>
 
-      {editing && changed ? <DiffPanel diff={diff} stale={staleReloaded} /> : null}
+      {editing && changed ? <ChangePreview current={activeBase} pending={activeDraft} stale={staleReloaded} /> : null}
       {error ? <Alert variant="destructive">{error}</Alert> : null}
 
       <ConfirmDialog
@@ -264,9 +253,7 @@ function DocumentPane({
   );
 }
 
-// The "what changes when you save" panel (§4): added/removed lines against the
-// current source. Rendered only while editing with a pending change.
-function DiffPanel({ diff, stale }: { diff: DiffLine[]; stale: boolean }) {
+function ChangePreview({ current, pending, stale }: { current: string; pending: string; stale: boolean }) {
   return (
     <div className="flex flex-col gap-xs" data-testid="source-diff">
       <div className="flex items-center gap-md">
@@ -274,70 +261,21 @@ function DiffPanel({ diff, stale }: { diff: DiffLine[]; stale: boolean }) {
         {stale ? <Badge variant="amber">reloaded</Badge> : null}
       </div>
       {stale ? <Alert variant="warning">{SAVE_STALE_RELOADED_NOTICE}</Alert> : null}
-      {diff.length === 0 ? (
-        <p className="text-xs text-muted-foreground">{DIFF_NO_CHANGES}</p>
-      ) : (
-        <div className="overflow-x-auto rounded-md border border-border bg-muted/30 font-mono text-xs leading-mono">
-          {diff.map((line, i) => (
-            <div
-              key={`${line.kind}:${i}:${line.text}`}
-              className={cn(
-                "whitespace-pre px-3 py-0.5",
-                line.kind === DIFF_KIND.add ? "text-success" : "text-destructive",
-              )}
-            >
-              {line.kind === DIFF_KIND.add ? DIFF_ADDED_PREFIX : DIFF_REMOVED_PREFIX} {line.text}
-            </div>
-          ))}
-        </div>
-      )}
+      <div className="grid gap-sm">
+        <SourcePreview label={DIFF_CURRENT_LABEL} value={current} />
+        <SourcePreview label={DIFF_PENDING_LABEL} value={pending} />
+      </div>
     </div>
   );
 }
 
-// ── the pending-change diff (§4) ──
-
-const DIFF_KIND = { add: "add", remove: "remove" } as const;
-type DiffKind = (typeof DIFF_KIND)[keyof typeof DIFF_KIND];
-type DiffLine = { kind: DiffKind; text: string };
-
-// A minimal line-level diff over the longest common subsequence: the lines
-// present in the edited source but not the current one are additions; the
-// reverse are removals. Equal inputs yield an empty diff — that is what the
-// "no changes" branch keys on. No external diff dependency.
-function computeLineDiff(base: string, next: string): DiffLine[] {
-  const a = base.split("\n");
-  const b = next.split("\n");
-  const m = a.length;
-  const n = b.length;
-  // lcs[i][j] = LCS length of a[i:] and b[j:], as a flat row-major (m+1)×(n+1)
-  // grid. `at` reads with a `?? 0` floor so no index access needs a non-null
-  // assertion (oxlint forbids `!`); `line` does the same for the string reads.
-  const width = n + 1;
-  const lcs = new Array<number>((m + 1) * width).fill(0);
-  const at = (i: number, j: number): number => lcs[i * width + j] ?? 0;
-  const line = (arr: string[], i: number): string => arr[i] ?? "";
-  for (let i = m - 1; i >= 0; i--) {
-    for (let j = n - 1; j >= 0; j--) {
-      lcs[i * width + j] = a[i] === b[j] ? at(i + 1, j + 1) + 1 : Math.max(at(i + 1, j), at(i, j + 1));
-    }
-  }
-  const out: DiffLine[] = [];
-  let i = 0;
-  let j = 0;
-  while (i < m && j < n) {
-    if (a[i] === b[j]) {
-      i++;
-      j++;
-    } else if (at(i + 1, j) >= at(i, j + 1)) {
-      out.push({ kind: DIFF_KIND.remove, text: line(a, i) });
-      i++;
-    } else {
-      out.push({ kind: DIFF_KIND.add, text: line(b, j) });
-      j++;
-    }
-  }
-  while (i < m) out.push({ kind: DIFF_KIND.remove, text: line(a, i++) });
-  while (j < n) out.push({ kind: DIFF_KIND.add, text: line(b, j++) });
-  return out;
+function SourcePreview({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex min-w-0 flex-col gap-xs">
+      <span className="text-xs text-muted-foreground">{label}</span>
+      <pre className="max-h-48 overflow-auto rounded-md border border-border bg-muted/30 px-3 py-2 font-mono text-xs leading-mono">
+        {value}
+      </pre>
+    </div>
+  );
 }

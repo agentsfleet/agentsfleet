@@ -131,6 +131,7 @@ fn matchV1(p: matchers.Path, method: httpz.Method) ?Route {
     if (matchers.matchSlackEvents(p)) return .{ .slack_events = {} };
     // ── Workspace + leaf ──────────────────────────────────────────────────
     if (matchers.matchWorkspaceSecret(p)) |r| return .{ .workspace_secret = r };
+    if (matchers.matchWorkspacePreference(p)) |r| return .{ .workspace_preference = r };
     if (matchers.matchWorkspaceFleetKeyDelete(p)) |r| return .{ .delete_fleet_key = r };
     if (matchers.matchWorkspaceFleet(p)) |r| return .{ .patch_workspace_fleet = r };
 
@@ -144,6 +145,8 @@ fn matchV1(p: matchers.Path, method: httpz.Method) ?Route {
     if (matchers.matchWorkspaceSuffix(p, "secrets")) |ws_id| return .{ .workspace_secrets = ws_id };
     if (matchers.matchWorkspaceSuffix(p, "fleet-keys")) |ws_id| return .{ .fleet_keys = ws_id };
     if (matchers.matchWorkspaceSuffix(p, S_EVENTS)) |ws_id| return .{ .workspace_events = ws_id };
+    if (matchers.matchWorkspaceSuffix(p, "onboarding")) |ws_id| return .{ .workspace_onboarding = ws_id };
+    if (matchers.matchWorkspaceSuffix(p, matchers.S_PREFERENCES)) |ws_id| return .{ .workspace_preferences = ws_id };
     if (matchers.matchWorkspaceSuffix(p, "approvals")) |ws_id| return .{ .workspace_approvals = ws_id };
 
     // ── Webhook family (reserved-segment exclusions in the matchers make

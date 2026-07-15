@@ -63,6 +63,23 @@ describe("InstallEntry", () => {
     expect(m).toContain("GitHub PR reviewer");
   });
 
+  it("renders compactly and drops the credential badges for a no-credential entry", () => {
+    // The compact grid + a credential-less entry cover LibraryCard's compact and
+    // no-badge branches (formerly exercised by the removed dashboard FirstInstall).
+    const noCreds = {
+      ...TEMPLATE,
+      id: "no-creds",
+      name: "No-credential fleet",
+      requirements: { ...TEMPLATE.requirements, credentials: [] as string[] },
+    };
+    const m = renderToStaticMarkup(
+      React.createElement(InstallEntry, { workspaceId: "ws_1", entries: [noCreds], compact: true }),
+    );
+    expect(m).toContain("No-credential fleet");
+    // No credential requirement → no "needs" badge rendered.
+    expect(m).not.toContain("github");
+  });
+
   it("falls back to an empty state with Learn-more + Create-fleet-library when library:write is available", () => {
     const m = renderToStaticMarkup(
       React.createElement(InstallEntry, { workspaceId: "ws_1", entries: [], canAddLibraryEntry: true }),

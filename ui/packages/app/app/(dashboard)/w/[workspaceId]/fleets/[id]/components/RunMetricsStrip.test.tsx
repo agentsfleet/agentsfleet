@@ -45,6 +45,13 @@ describe("RunMetricsStrip", () => {
     expect(screen.queryByText("$0.00")).toBeNull();
   });
 
+  it("renders missing token and wall metrics as unknown, not zero", () => {
+    render(<RunMetricsStrip latest={evt({ tokens: null, wall_ms: null })} />);
+    expect(screen.getAllByText("—")).toHaveLength(2);
+    expect(screen.queryByText("0")).toBeNull();
+    expect(screen.queryByText("0ms")).toBeNull();
+  });
+
   it("renders the empty note when no run has been recorded", () => {
     render(<RunMetricsStrip latest={null} />);
     expect(screen.getByText(METRICS_EMPTY)).toBeTruthy();

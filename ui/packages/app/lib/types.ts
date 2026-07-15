@@ -33,6 +33,14 @@ export type Fleet = {
   created_at: number;
   updated_at: number;
   triggers?: FleetTrigger[];
+  // Lifetime server-truth aggregates, already served per row
+  // (`list.zig:173-175`) and previously dropped by the client. `budget_used_nanos`
+  // is the summed `credit_deducted_nanos` — cost is never token×rate math on the
+  // client (Inv.2). The wall's tile footer reads both; a fleet the server did not
+  // send them for (an older daemon) leaves them undefined, which the tile renders
+  // as a dash, not a zero.
+  budget_used_nanos?: number;
+  events_processed?: number;
 };
 
 // The single-fleet detail read (`GET …/fleets/{id}`, M131 §1) — the list row

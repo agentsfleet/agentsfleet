@@ -1,6 +1,7 @@
 import { auth } from "@clerk/nextjs/server";
 import { notFound, redirect } from "next/navigation";
 import { Badge, cn, EYEBROW_CLASS, PageHeader, PageTitle, Section, SectionLabel, WakePulse } from "@agentsfleet/design-system";
+import { ApiError } from "@/lib/api/errors";
 import { getFleet, AGENTSFLEET_STATUS } from "@/lib/api/fleets";
 import { getTenantBillingCached } from "@/lib/api/tenant_billing";
 import { listFleetEvents } from "@/lib/api/events";
@@ -55,7 +56,10 @@ export default async function FleetDetailPage({
   // ledger degrades to the lifetime figure rather than failing the page. The
   // ETag getFleet returns is held for the source editor's If-Match save (§4).
   const [fleetResult, billing, eventsPage, windowPage, pendingApprovals, memories] = await Promise.all([
-    getFleet(workspaceId, id, token).catch(() => null),
+    getFleet(workspaceId, id, token).catch((error: unknown) => {
+      if (error instanceof ApiError && error.status === 404) return null;
+      throw error;
+    }),
     getTenantBillingCached(token).catch(() => null),
     listFleetEvents(workspaceId, id, token, { limit: 20 }).catch(() => ({ items: [], next_cursor: null })),
     listFleetEvents(workspaceId, id, token, { since: ROLLUP_WINDOW_SINCE, limit: ROLLUP_WINDOW_LIMIT }).catch(() => null),
