@@ -25,6 +25,7 @@ const auth_mw = @import("../../../auth/middleware/mod.zig");
 const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
 const harness_mod = @import("../../test_harness.zig");
 const markdown_limits = @import("../../../fleet_runtime/markdown_limits.zig");
+const test_qstash = @import("../test_qstash.zig");
 
 const MS_PER_SECOND = 1_000;
 const EVAL_BRANCH_QUOTA = 100_000;
@@ -163,10 +164,9 @@ fn seedFixture(conn: *pg.Conn) !void {
 }
 
 fn cleanup(conn: *pg.Conn) void {
+    _ = conn.exec("DELETE FROM core.fleet_schedules WHERE fleet_id = $1::uuid", .{FLEET_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
     _ = conn.exec("DELETE FROM core.fleet_events WHERE fleet_id = $1::uuid", .{FLEET_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
-    _ = conn.exec("DELETE FROM core.fleets WHERE workspace_id = $1::uuid", .{TEST_WORKSPACE_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
-    _ = conn.exec("DELETE FROM workspaces WHERE workspace_id = $1::uuid", .{TEST_WORKSPACE_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
-    _ = conn.exec("DELETE FROM tenants WHERE tenant_id = $1::uuid", .{TEST_TENANT_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
+    _ = conn.exec("DELETE FROM core.fleets WHERE id = $1::uuid", .{FLEET_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
 }
 
 fn patchUrl() ![]const u8 {
@@ -210,6 +210,7 @@ test "integration: PATCH trigger_markdown only — reparses, persists, bumps rev
         else => return err,
     };
     defer h.deinit();
+    test_qstash.attachSuccess(h);
 
     const url = try patchUrl();
     defer ALLOC.free(url);
@@ -346,6 +347,7 @@ test "integration: PATCH trigger_markdown + source_markdown — single UPDATE, b
         else => return err,
     };
     defer h.deinit();
+    test_qstash.attachSuccess(h);
 
     const url = try patchUrl();
     defer ALLOC.free(url);
@@ -392,6 +394,7 @@ test "integration: PATCH malformed trigger_markdown — 400, next PATCH on same 
         else => return err,
     };
     defer h.deinit();
+    test_qstash.attachSuccess(h);
 
     const url = try patchUrl();
     defer ALLOC.free(url);

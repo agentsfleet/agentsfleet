@@ -22,6 +22,8 @@ const AUDIENCE = "https://api.agentsfleet.net";
 const EXP = 4102444800; // 2100-01-01 — fixtures never expire under test
 const TENANT = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01";
 const WORKSPACE = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11";
+const PATCH_CONCURRENT_TENANT = "0195b4ba-8d3a-7f13-8abc-2b3e1e0c6f01";
+const PATCH_CONCURRENT_WORKSPACE = "0195b4ba-8d3a-7f13-8abc-2b3e1e0c6f11";
 
 // Stable, throwaway TEST signing key (RSA-2048, PKCS8 DER, base64). NOT a real
 // credential — it only signs offline fixtures verified by the test JWKS below.
@@ -53,12 +55,22 @@ const PERSONAS = {
     sub: "user_test",
     scopes:
       "fleet:admin schedule:write secret:write apikey:admin fleetkey:write grant:write connector:write billing:read approval:resolve workspace:admin library:write",
-    },
-    // Platform plane (runners, models, platform keys, cross-tenant override).
-    PLATFORM_ADMIN: {
-      sub: "user_op_m104",
-      scopes:
-        "runner:enroll runner:read runner:write stream:read model:admin platform-key:admin platform-library:write workspace:any",
+  },
+  // Tenant grant bound to the Fleet PATCH concurrency fixture's private
+  // tenant/workspace. Keeps full-suite cleanup in other shared-workspace
+  // tests from deleting rows while this test is proving row-lock behaviour.
+  PATCH_CONCURRENT_ADMIN: {
+    sub: "user_patch_concurrent",
+    tenant: PATCH_CONCURRENT_TENANT,
+    workspace: PATCH_CONCURRENT_WORKSPACE,
+    scopes:
+      "fleet:admin schedule:write secret:write apikey:admin fleetkey:write grant:write connector:write billing:read approval:resolve workspace:admin library:write",
+  },
+  // Platform plane (runners, models, platform keys, cross-tenant override).
+  PLATFORM_ADMIN: {
+    sub: "user_op_m104",
+    scopes:
+      "runner:enroll runner:read runner:write stream:read model:admin platform-key:admin platform-library:write workspace:any",
   },
   // Full tenant scopes but NO tenant_id/workspace_id claim — proves the null-
   // tenant principal is denied workspace authorization (IDOR fail-closed).
@@ -89,7 +101,7 @@ const ALIASES = {
   "http/handlers/fleets/events_integration_test.zig": { TOKEN_OPERATOR: "TENANT_ADMIN" },
   "http/handlers/fleets/messages_integration_test.zig": { TOKEN_OPERATOR: "TENANT_ADMIN" },
   "http/handlers/fleets/patch_body_fields_integration_test.zig": { TOKEN_USER: "TENANT_ADMIN" },
-  "http/handlers/fleets/patch_concurrent_integration_test.zig": { TOKEN_OPERATOR: "TENANT_ADMIN" },
+  "http/handlers/fleets/patch_concurrent_integration_test.zig": { TOKEN_OPERATOR: "PATCH_CONCURRENT_ADMIN" },
   "http/handlers/fleets/sse_test_fixtures.zig": { TOKEN_OPERATOR: "TENANT_ADMIN" },
   "http/handlers/fleet_bundles/api_integration_test.zig": { TOKEN_USER: "TENANT_ADMIN" },
   "http/handlers/approvals/inbox_integration_test.zig": { TOKEN_OPERATOR: "TENANT_ADMIN" },
@@ -99,7 +111,7 @@ const ALIASES = {
 
 // ── Mint ──
 function mint(p) {
-  const md = p.noTenant ? {} : { tenant_id: TENANT, workspace_id: WORKSPACE };
+  const md = p.noTenant ? {} : { tenant_id: p.tenant ?? TENANT, workspace_id: p.workspace ?? WORKSPACE };
   const payload = { sub: p.sub, iss: ISSUER, aud: AUDIENCE, exp: EXP, scopes: p.scopes, metadata: md };
   const hdr = { alg: "RS256", typ: "JWT", kid: KID };
   const si = `${b64u(JSON.stringify(hdr))}.${b64u(JSON.stringify(payload))}`;

@@ -214,7 +214,7 @@ test "test_schedule_sync_route" {
     const path = try std.fmt.allocPrint(testing.allocator, "{s}/{s}:sync", .{ COLLECTION_PATH, sid });
     defer testing.allocator.free(path);
     setup.fake.status.store(200, .release);
-    var synced = try (try setup.h.post(path).bearer(scope_fixtures.TENANT_ADMIN)).send();
+    var synced = try (try (try setup.h.post(path).bearer(scope_fixtures.TENANT_ADMIN)).json("{}")).send();
     defer synced.deinit();
     try synced.expectStatus(.ok);
     try testing.expect(synced.bodyContains("\"sync_status\":\"synced\""));
