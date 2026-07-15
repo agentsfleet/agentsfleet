@@ -77,6 +77,26 @@ describe("fleets routes", () => {
     },
   ];
 
+  // The single-fleet detail body getFleet now reads (M131 §1) — the fields the
+  // detail page renders. Inline fetch mocks return this for `…/fleets/{id}`
+  // instead of the old list envelope the list-scan getFleet used to page.
+  function detailBody(over: Record<string, unknown> = {}) {
+    return {
+      id: "zom_1",
+      name: "platform-ops",
+      status: "active",
+      source_markdown: "# SKILL",
+      trigger_markdown: null,
+      bundle_content_hash: null,
+      triggers: null,
+      events_processed: 0,
+      budget_used_nanos: 0,
+      created_at: 1,
+      updated_at: 1,
+      ...over,
+    };
+  }
+
   function mockFetchBilling(billing: BillingSnapshot) {
     fetchMock.mockImplementation(async (url: string) => {
       if (url.endsWith("/v1/tenants/me/billing")) {
@@ -88,22 +108,29 @@ describe("fleets routes", () => {
       if (url.includes("/events")) {
         return { ok: true, status: 200, json: async () => ({ items: [], next_cursor: null }) };
       }
-      return {
-        ok: true,
-        status: 200,
-        json: async () => ({
-          items: [
-            {
-              id: "zom_1",
-              name: "platform-ops",
-              status: "active",
-              created_at: 1713700000000,
-              updated_at: 1713700000000,
-            },
-          ],
-          total: 1,
-        }),
-      };
+      // The single-fleet detail read (M131 §1): `…/fleets/{id}` with a trailing
+      // id segment. getFleet reads the fleet object directly (not a list scan); a
+      // fleet id other than the seeded one is a 404, which getFleet throws and
+      // the page maps to notFound(). The bare `…/fleets` list URL falls through
+      // to the list envelope below.
+      const detailMatch = url.match(/\/fleets\/([^/]+)$/);
+      if (detailMatch) {
+        if (detailMatch[1] !== "zom_1") {
+          return {
+            ok: false,
+            status: 404,
+            headers: { get: () => null },
+            json: async () => ({ error_code: "UZ-AGT-009", detail: "Fleet not found" }),
+          };
+        }
+        return {
+          ok: true,
+          status: 200,
+          headers: { get: (k: string) => (k.toLowerCase() === "etag" ? '"seed-etag"' : null) },
+          json: async () => detailBody(),
+        };
+      }
+      return { ok: true, status: 200, json: async () => ({ items: [detailBody()], total: 1 }) };
     });
   }
 
@@ -301,12 +328,7 @@ describe("fleets routes", () => {
       return {
         ok: true,
         status: 200,
-        json: async () => ({
-          // A paused fleet hits the null arm of the status===ACTIVE ternary —
-          // no WakePulse is rendered, so the live dot is absent.
-          items: [{ id: "zom_1", name: "platform-ops", status: "paused", created_at: 1, updated_at: 1 }],
-          total: 1,
-        }),
+        json: async () => detailBody({ name: "platform-ops", status: "paused" }),
       };
     });
     const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
@@ -338,10 +360,7 @@ describe("fleets routes", () => {
       return {
         ok: true,
         status: 200,
-        json: async () => ({
-          items: [{ id: "zom_1", name: "platform-ops", status: "active", created_at: 1, updated_at: 1 }],
-          total: 1,
-        }),
+        json: async () => detailBody({ name: "platform-ops", status: "active" }),
       };
     });
     const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
@@ -380,10 +399,7 @@ describe("fleets routes", () => {
       return {
         ok: true,
         status: 200,
-        json: async () => ({
-          items: [{ id: "zom_1", name: "platform-ops", status: "active", created_at: 1, updated_at: 1 }],
-          total: 1,
-        }),
+        json: async () => detailBody({ name: "platform-ops", status: "active" }),
       };
     });
     const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
@@ -404,22 +420,7 @@ describe("fleets routes", () => {
       if (url.includes("/events")) {
         return { ok: true, status: 200, json: async () => ({ items: [], next_cursor: null }) };
       }
-      return {
-        ok: true,
-        status: 200,
-        json: async () => ({
-          items: [
-            {
-              id: "zom_1",
-              name: "platform-ops",
-              status: "active",
-              created_at: 1713700000000,
-              updated_at: 1713700000000,
-            },
-          ],
-          total: 1,
-        }),
-      };
+      return { ok: true, status: 200, json: async () => detailBody() };
     });
     const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
     const markup = renderToStaticMarkup(
@@ -447,10 +448,7 @@ describe("fleets routes", () => {
       return {
         ok: true,
         status: 200,
-        json: async () => ({
-          items: [{ id: "zom_1", name: "fresh-bot", status: "installing", created_at: 1, updated_at: 1 }],
-          total: 1,
-        }),
+        json: async () => detailBody({ name: "fresh-bot", status: "installing" }),
       };
     });
     const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
@@ -475,10 +473,7 @@ describe("fleets routes", () => {
       return {
         ok: true,
         status: 200,
-        json: async () => ({
-          items: [{ id: "zom_1", name: "platform-ops", status: "active", created_at: 1, updated_at: 1 }],
-          total: 1,
-        }),
+        json: async () => detailBody({ name: "platform-ops", status: "active" }),
       };
     });
     const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
