@@ -24,6 +24,7 @@ const logging = @import("log");
 const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
 const approval_gate_db = @import("../../../fleet_runtime/approval_gate_db.zig");
 const common = @import("../common.zig");
+const CronStore = @import("../../../cron/Store.zig");
 const cron_sync = @import("cron_sync.zig");
 const hx_mod = @import("../hx.zig");
 const ec = @import("../../../errors/error_registry.zig");
@@ -62,6 +63,15 @@ pub fn innerDeleteFleet(hx: Hx, _: *httpz.Request, workspace_id: []const u8, fle
         defer hx.ctx.pool.release(conn);
         const access = workspace_guards.enforce(hx.res, hx.req_id, conn, hx.principal, workspace_id) orelse return;
         defer access.deinit(hx.alloc);
+    }
+
+    const belongs = CronStore.init(hx.ctx.pool).fleetBelongsToWorkspace(fleet_id, workspace_id) catch {
+        common.internalDbError(hx.res, hx.req_id);
+        return;
+    };
+    if (!belongs) {
+        hx.fail(ec.ERR_AGENTSFLEET_NOT_FOUND, ec.MSG_AGENTSFLEET_NOT_FOUND);
+        return;
     }
 
     const cron_result = cron_sync.removeAll(hx, fleet_id);
