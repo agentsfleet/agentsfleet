@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
 import {
-  LayoutDashboardIcon,
   ActivityIcon,
   BookOpenIcon,
   BotIcon,
@@ -34,6 +33,7 @@ import {
 import { setAnalyticsContext, trackNavigationClicked } from "@/lib/analytics/posthog";
 import { SCOPE } from "@/lib/auth/scopes";
 import { workspaceIdFromPath, workspacePath } from "@/lib/workspace-routes";
+import GettingStartedWidget from "@/components/layout/GettingStartedWidget";
 import type { TenantWorkspace } from "@/lib/api/workspaces";
 import WorkspaceSwitcher from "./WorkspaceSwitcher";
 import ThemeToggle from "./ThemeToggle";
@@ -65,10 +65,9 @@ const NAV_SURFACE = "app_sidebar";
 // can't be interpolated into one at runtime.
 const SIDEBAR_NAV_ID = "app-sidebar-nav";
 
-// Dashboard sits above the labelled groups as a headerless overview entry.
-const TOP_NAV: NavEntry[] = [
-  { label: "Dashboard", path: "", icon: LayoutDashboardIcon, workspaceScoped: true, exact: true },
-];
+// The Wall (Fleets) is the workspace's only entry point — there is no dashboard
+// route and no dashboard nav entry (a nav item whose only job is to redirect is
+// a dead link, M132 single-route refactor). Fleets leads the nav.
 
 // The live work — what the fleets do.
 const OPERATIONS_NAV: NavEntry[] = [
@@ -116,7 +115,6 @@ const BOTTOM_NAV: NavEntry[] = [
 ];
 
 const INTERNAL_NAV: NavEntry[] = [
-  ...TOP_NAV,
   ...OPERATIONS_NAV,
   ...CONFIGURATION_NAV,
   ...PLATFORM_NAV,
@@ -323,11 +321,14 @@ function SidebarNav({ isActive, workspaceId, onNavigate, operatorScopes, collaps
   const configItems = [...CONFIGURATION_NAV, ...platformItems];
   return (
     <Nav aria-label="Primary" className="flex flex-col h-full">
-      <NavSection items={TOP_NAV} isActive={isActive} workspaceId={workspaceId} onNavigate={onNavigate} collapsed={collapsed} />
       <NavSection label="Automations" items={OPERATIONS_NAV} isActive={isActive} workspaceId={workspaceId} onNavigate={onNavigate} collapsed={collapsed} />
       <NavSection label="Configuration" items={configItems} isActive={isActive} workspaceId={workspaceId} onNavigate={onNavigate} collapsed={collapsed} />
       <NavSection label="Organization" items={ORGANIZATION_NAV} isActive={isActive} workspaceId={workspaceId} onNavigate={onNavigate} collapsed={collapsed} />
       <div className="mt-auto">
+        {/* The onboarding checklist's only home once a fleet exists — pinned
+            above Docs, hidden when there is no workspace or once dismissed. The
+            expanded rail is suppressed while the nav is collapsed to 64px. */}
+        {workspaceId && !collapsed ? <GettingStartedWidget workspaceId={workspaceId} /> : null}
         <NavSection items={BOTTOM_NAV} isActive={isActive} workspaceId={workspaceId} onNavigate={onNavigate} collapsed={collapsed} />
       </div>
     </Nav>

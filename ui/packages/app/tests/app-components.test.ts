@@ -76,7 +76,7 @@ describe("app components", () => {
     );
 
     // Clicking a sidebar nav link emits a navigation-analytics event.
-    await user.click(screen.getByText("Dashboard"));
+    await user.click(screen.getByText("Fleets"));
     expect(mocks.trackNavigationClicked).toHaveBeenCalled();
 
     // Brand-mark + wordmark are the topbar shape — Operational Restraint:
@@ -262,11 +262,12 @@ describe("app components", () => {
     expect(markup).toContain("data-live");
     expect(markup).toContain("agentsfleet");
     // Sidebar nav rendered across the Automations / Configuration / Organization
-    // groups, plus the Dashboard overview entry and the Docs footer link.
+    // groups, plus the Docs footer link. The Wall (Fleets) leads — there is no
+    // dashboard entry (single-route refactor).
     expect(markup).toContain("Automations");
     expect(markup).toContain("Configuration");
     expect(markup).toContain("Organization");
-    expect(markup).toContain("Dashboard");
+    expect(markup).not.toContain("Dashboard");
     expect(markup).toContain("Fleets");
     // Models, Integrations, and Secrets are the three Configuration
     // entries — Secrets is standalone again, not folded into Models.
@@ -341,9 +342,11 @@ describe("app components", () => {
     // /settings on its own has no nav entry (it's a redirect-only route, the
     // Workspace tab folded into API Keys) — nothing lights up.
     expect(activeFor("/settings")).toEqual({ count: 0, icon: null });
-    // The workspace home (`/w/<id>`) lights the Dashboard overview entry; other
+    // The workspace home (`/w/<id>`) is a redirect-only route with no nav entry
+    // — nothing lights up there. The Wall (`/w/<id>/fleets`) lights Fleets; other
     // groups resolve to their own item; root admin-gated paths too.
-    expect(activeFor("/w/ws_1")).toEqual({ count: 1, icon: "LayoutDashboardIcon" });
+    expect(activeFor("/w/ws_1")).toEqual({ count: 0, icon: null });
+    expect(activeFor("/w/ws_1/fleets")).toEqual({ count: 1, icon: "BotIcon" });
     expect(activeFor("/admin/runners", ["runner:read"])).toEqual({ count: 1, icon: "ServerIcon" });
   });
 
