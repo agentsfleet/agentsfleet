@@ -111,6 +111,7 @@ fn applySource(hx: Hx, fleet_id: []const u8, trigger: CronTrigger, desired: cron
 }
 
 fn pauseSource(hx: Hx, fleet_id: []const u8) Result {
+    if (!(sourceScheduleExists(hx, fleet_id) catch return .internal)) return .skipped;
     var exchange: QStashClient.HttpClientExchange = .{ .io = hx.ctx.io };
     var destination_buffer: [cron_constants.max_destination_url_bytes]u8 = undefined;
     const service = serviceFromContext(hx, &exchange, &destination_buffer) orelse return .unconfigured;
@@ -120,12 +121,19 @@ fn pauseSource(hx: Hx, fleet_id: []const u8) Result {
 }
 
 fn removeSource(hx: Hx, fleet_id: []const u8, missing: MissingPolicy) Result {
+    if (missing == .missing_ok and !(sourceScheduleExists(hx, fleet_id) catch return .internal)) return .skipped;
     var exchange: QStashClient.HttpClientExchange = .{ .io = hx.ctx.io };
     var destination_buffer: [cron_constants.max_destination_url_bytes]u8 = undefined;
     const service = serviceFromContext(hx, &exchange, &destination_buffer) orelse return .unconfigured;
     var outcome = service.removeSource(hx.alloc, fleet_id, SOURCE_KEY) catch |err| return mapError(err);
     defer outcome.deinit(hx.alloc);
     return mapOutcome(outcome, missing);
+}
+
+fn sourceScheduleExists(hx: Hx, fleet_id: []const u8) !bool {
+    var schedule = try Store.init(hx.ctx.pool).getBySourceKey(hx.alloc, fleet_id, SOURCE_KEY);
+    defer if (schedule) |*value| value.deinit(hx.alloc);
+    return schedule != null;
 }
 
 fn serviceFromContext(

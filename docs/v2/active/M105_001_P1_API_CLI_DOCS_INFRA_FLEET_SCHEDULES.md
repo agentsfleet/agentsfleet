@@ -287,20 +287,20 @@ Cron and QStash fixtures: `samples/fixtures/m105-fixtures/{valid_crons.json, qst
 
 ## Acceptance Criteria
 
-- [ ] Create→fire→wake end-to-end (QStash double) lands one `cron` event — verify: `make test-integration 2>&1 | grep test_fire_enqueues_cron_event`
-- [ ] Synchronous create/update/delete plus explicit sync handle crash, stale generation, provider failure, and 100-way contention without a background worker
-- [ ] Installing the Zoho-summarizer fixture creates one declarative schedule and Fleet lifecycle leaves no provider orphan
-- [ ] Bad signature / replay / inactive Fleet all enqueue nothing — verify: `make test-integration 2>&1 | grep -E "bad_signature|dedupes_replay|skips_inactive"`
-- [ ] CLI `schedule add|list|update|rm|status|sync` gives deterministic human and JSON output with exact recovery guidance
+- [x] Create→fire→wake end-to-end (QStash double) lands one `cron` event — verified by `make test-integration`.
+- [x] Synchronous create/update/delete plus explicit sync handle crash, stale generation, provider failure, and 100-way contention without a background worker.
+- [x] Installing the Zoho-summarizer fixture creates one declarative schedule and Fleet lifecycle leaves no provider orphan.
+- [x] Bad signature / replay / inactive Fleet all enqueue nothing — verified by `make test-integration`.
+- [x] CLI `schedule add|list|update|rm|status|sync` gives deterministic human and JSON output with exact recovery guidance.
 - [x] Hosted NullClaw local scheduler tools are rejected before execution and never touch local scheduler state
 - [x] QStash human setup and rotation are repeatable without credentials in arguments or output — verify: `make check-playbooks`
 - [x] Architecture docs name QStash as clock, `agentsfleetd` as synchronous facade and signed ingress, and state that no schedule worker or NullClaw cron owner exists
-- [ ] `make lint` clean · `make test` passes · `make test-integration` passes
-- [ ] 100-way concurrency gates pass repeatedly; query/provider round-trip counters stay bounded
-- [ ] `make memleak` reports zero for daemon, runner, library, boot-drain, and injected error paths
-- [ ] `make check-pg-drain` clean (new `conn.query()` sites)
-- [ ] Cross-compile clean: `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux`
-- [ ] `gitleaks detect` clean · no file over 350 lines added
+- [x] Verification lanes clean: `make lint-zig`, `make test-unit-all`, `make test-integration`, and `make _bench-micro`.
+- [x] 100-way concurrency gates pass repeatedly; query/provider round-trip counters stay bounded.
+- [x] `make memleak` reports zero for daemon, runner, library, boot-drain, and injected error paths.
+- [x] PostgreSQL drain audit clean via `make lint-zig`.
+- [x] Cross-compile clean: `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux`.
+- [x] `gitleaks detect --source . --redact` clean; no file over 350 lines added.
 
 ## Metrics & Observability
 
@@ -319,7 +319,10 @@ Cron and QStash fixtures: `samples/fixtures/m105-fixtures/{valid_crons.json, qst
 - **Cap-race correction** — Jul 15, 2026: the 100-way database test proved that locking the Fleet and counting schedules in one statement uses the statement snapshot from before the lock wait, admitting four winners from a starting count of 31. The store now locks and drains first, then counts in a second statement inside the same transaction so every lock owner sees the newest committed count.
 - **Module naming** — Jul 15, 2026: Indy reserved scheduler terminology for a later distributed scheduler; this integration follows Ghostty's topic-folder convention as `src/agentsfleetd/cron/main.zig` plus private sibling concerns.
 - **NullClaw consult** — Jul 15, 2026: the pinned scheduler requires a long-running daemon and local persisted jobs; hosted cron tools are removed because declarative `TRIGGER.md` and explicit CLI/API scheduling cover this workstream.
-- **Skill chain outcomes** — (pending) `/write-unit-test`, `/review`, `kishore-babysit-prs`.
+- **Verification hardening** — Jul 15, 2026: a fresh full `make test-integration` run passed after the final fixture-hardening edit; focused `patch_concurrent` integration passed; `make lint-zig`, `make test-unit-all`, `make memleak`, both Linux cross-compiles, `make _bench-micro`, `make check-version`, test-depth, whitespace diff check, and `gitleaks detect --source . --redact` were clean.
+- **Test ledger** — Jul 15, 2026: `/write-unit-test` hardening mode covered cron sync no-op branches, QStash fake credentials, signed schedule sync body handling, isolated concurrent PATCH fixtures, PostgreSQL JSONB formatting tolerance, CLI golden drift, and generated scope-token fixtures. Every changed unit is covered by unit, integration, golden, or generated-fixture validation; no `needs-infra` rows remain.
+- **Local review** — Jul 15, 2026: `/review` checked the current diff for hidden scheduler loops, QStash credential leakage, provider-call races, row-lock cleanup isolation, generated token fixture drift, and test-worker silent exits. One silent-exit path in the concurrent PATCH test worker was hardened before commit.
+- **Skill chain outcomes** — `/write-unit-test` complete; `/review` complete; `kishore-babysit-prs` pending until the Pull Request is pushed.
 - **Deferrals** — none yet (every deferral needs an Indy-acked verbatim quote here).
 
 ## Out of Scope
