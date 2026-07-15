@@ -15,7 +15,6 @@ pub const UNKNOWN = entries.UNKNOWN;
 pub const ERROR_DOCS_BASE = entries.ERROR_DOCS_BASE;
 pub const REGISTRY = entries.ENTRIES ++ entries_runtime.ENTRIES_RUNTIME;
 
-// ── Comptime validation ────────────────────────────────────────────────────
 comptime {
     @setEvalBranchQuota(REGISTRY.len * REGISTRY.len * 20);
     for (REGISTRY) |entry| {
@@ -42,7 +41,6 @@ comptime {
     }
 }
 
-// ── Lookup ─────────────────────────────────────────────────────────────────
 const LOOKUP = blk: {
     @setEvalBranchQuota(REGISTRY.len * REGISTRY.len * 20);
     var kvs: [REGISTRY.len]struct { []const u8, usize } = undefined;
@@ -62,7 +60,6 @@ pub fn hint(code: []const u8) []const u8 {
     return lookup(code).hint;
 }
 
-// ── ERR_* constants ────────────────────────────────────────────────────────
 // UUIDV7
 pub const ERR_UUIDV7_INVALID_ID_SHAPE = "UZ-UUIDV7-009";
 // INTERNAL

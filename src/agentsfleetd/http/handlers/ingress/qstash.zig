@@ -67,7 +67,7 @@ fn reject(hx: Hx, err: anyerror) void {
         error.TokenNotYetValid,
         error.BodyMismatch,
         => hx.fail(error_codes.ERR_SCHEDULE_SIGNATURE_INVALID, SIGNATURE_DETAIL),
-        else => common.internalOperationError(hx.res, PROCESSING_DETAIL, hx.req_id),
+        else => common.internalOperationError(hx.res, PROCESSING_DETAIL, hx.req_id), // mudball-ok: machine ingress catch-all, plain-English detail, raw tag logged nowhere
     }
 }
 
