@@ -90,6 +90,9 @@ pub const Route = union(enum) {
     workspace_secret: matchers.WorkspaceSecretRoute, // PATCH|DELETE /v1/workspaces/{ws}/secrets/{name}
     // Chat ingress — POST /v1/workspaces/{ws}/fleets/{id}/messages
     workspace_fleet_messages: matchers.WorkspaceFleetRoute,
+    workspace_fleet_schedules: matchers.WorkspaceFleetScheduleCollectionRoute, // GET|POST /v1/workspaces/{ws}/fleets/{id}/schedules
+    workspace_fleet_schedule: matchers.WorkspaceFleetScheduleRoute, // GET|PATCH|DELETE /v1/workspaces/{ws}/fleets/{id}/schedules/{sid}
+    workspace_fleet_schedule_sync: matchers.WorkspaceFleetScheduleRoute, // POST /v1/workspaces/{ws}/fleets/{id}/schedules/{sid}:sync
     // Per-Fleet event history + Server-Sent Events (SSE) live tail
     workspace_fleet_events: matchers.WorkspaceFleetRoute, // GET /v1/workspaces/{ws}/fleets/{id}/events
     workspace_fleet_events_stream: matchers.WorkspaceFleetRoute, // GET /v1/workspaces/{ws}/fleets/{id}/events/stream

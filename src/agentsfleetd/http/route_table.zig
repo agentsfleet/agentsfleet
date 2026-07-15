@@ -81,6 +81,9 @@ pub fn classFor(route: router.Route) RouteClass {
         .admin_model_by_id,
         .workspace_fleets,
         .patch_workspace_fleet,
+        .workspace_fleet_schedules,
+        .workspace_fleet_schedule,
+        .workspace_fleet_schedule_sync,
         .workspace_secrets,
         .workspace_secret,
         .workspace_fleet_messages,
@@ -209,6 +212,9 @@ pub fn specFor(route: router.Route, registry: *auth_mw.MiddlewareRegistry) Route
         // Fleet create/read/update/delete + activity + credentials
         .workspace_fleets => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeWorkspaceFleets },
         .patch_workspace_fleet => .{ .middlewares = registry.bearer(), .invoke = invoke.invokePatchWorkspaceFleet },
+        .workspace_fleet_schedules => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeScheduleCollection },
+        .workspace_fleet_schedule => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeScheduleItem },
+        .workspace_fleet_schedule_sync => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeScheduleSync },
         .workspace_secrets => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeWorkspaceSecrets },
         .workspace_secret => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeWorkspaceSecretItem },
         // Chat ingress (workspace-scoped) — POST /messages

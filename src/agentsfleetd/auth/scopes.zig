@@ -27,6 +27,8 @@ pub const Scope = enum {
     fleet_read,
     fleet_write,
     fleet_admin,
+    schedule_read,
+    schedule_write,
     secret_read,
     secret_write,
     apikey_read,
@@ -96,6 +98,7 @@ fn grantMembers(src: DefaultGrant) []const Scope {
         // enroll a runner").
         .tenant => &.{
             .fleet_admin,
+            .schedule_write,
             .secret_write,
             .apikey_admin,
             .fleetkey_write,
@@ -118,6 +121,7 @@ pub fn defaultScopes(comptime src: DefaultGrant) Set {
     // credential source resolves to a constant Set inlined at the call site —
     // no per-request closure walk, and the set can't be silently widened.
     return comptime blk: {
+        @setEvalBranchQuota(2_000);
         var set = Set.initEmpty();
         for (grantMembers(src)) |s| insertWithClosure(&set, s);
         break :blk set;
@@ -146,6 +150,8 @@ const WIRE = [_]ScopeWire{
     .{ .scope = .fleet_read, .str = "fleet:read" },
     .{ .scope = .fleet_write, .str = "fleet:write" },
     .{ .scope = .fleet_admin, .str = "fleet:admin" },
+    .{ .scope = .schedule_read, .str = "schedule:read" },
+    .{ .scope = .schedule_write, .str = "schedule:write" },
     .{ .scope = .secret_read, .str = "secret:read" },
     .{ .scope = .secret_write, .str = "secret:write" },
     .{ .scope = .apikey_read, .str = "apikey:read" },
@@ -176,6 +182,7 @@ const WIRE = [_]ScopeWire{
 };
 
 comptime {
+    @setEvalBranchQuota(2_000);
     // WIRE is total over Scope and collision-free: every variant has exactly
     // one wire string and no two share one. A missing/dup entry is a build error.
     const n = @typeInfo(Scope).@"enum".fields.len;
@@ -199,6 +206,7 @@ const Subsumption = struct { scope: Scope, includes: []const Scope };
 const HIERARCHY = [_]Subsumption{
     .{ .scope = .fleet_admin, .includes = &.{ .fleet_write, .fleet_read } },
     .{ .scope = .fleet_write, .includes = &.{.fleet_read} },
+    .{ .scope = .schedule_write, .includes = &.{.schedule_read} },
     .{ .scope = .secret_write, .includes = &.{.secret_read} },
     .{ .scope = .apikey_admin, .includes = &.{ .apikey_write, .apikey_read } },
     .{ .scope = .apikey_write, .includes = &.{.apikey_read} },

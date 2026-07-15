@@ -16,6 +16,7 @@ const fleet = @import("route_matchers_fleet.zig");
 const runner_m = @import("route_matchers_runner.zig");
 const connectors = @import("route_matchers_connectors.zig");
 const workspace = @import("route_matchers_workspace.zig");
+const schedules = @import("route_matchers_schedules.zig");
 
 const S_APPROVALS = "approvals";
 const S_WORKSPACES = "workspaces";
@@ -170,6 +171,11 @@ pub const matchWorkspaceConnectorConnect = connectors.matchWorkspaceConnectorCon
 pub const matchConnectorCallback = connectors.matchConnectorCallback;
 pub const matchWorkspaceConnectorCatalog = connectors.matchWorkspaceConnectorCatalog;
 pub const matchSlackEvents = connectors.matchSlackEvents;
+pub const WorkspaceFleetScheduleCollectionRoute = schedules.WorkspaceFleetScheduleCollectionRoute;
+pub const WorkspaceFleetScheduleRoute = schedules.WorkspaceFleetScheduleRoute;
+pub const matchScheduleCollection = schedules.matchScheduleCollection;
+pub const matchScheduleItem = schedules.matchScheduleItem;
+pub const matchScheduleSync = schedules.matchScheduleSync;
 
 // ── /workspaces/{ws}/fleet-keys/{fleet_key_id} ─────────────────────────────────
 
