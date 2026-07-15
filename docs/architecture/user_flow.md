@@ -131,7 +131,7 @@ A Fleet's `TRIGGER.md` declares `triggers: [...]` — an array of 1–8 trigger 
 
 - **GitHub App trigger.** Type `webhook`, `source: github`, explicit `repositories: [owner/repo, …]`, and `events: [...]`. GitHub posts once to `POST /v1/ingress/github`; the signed delivery's installation resolves the workspace, then repository + event + approved GitHub grant select the fleet. Omitting `repositories` is fail-closed for App traffic.
 - **Manual/custom webhook trigger.** The existing fleet-addressed routes remain available: `POST /v1/webhooks/{fleet_id}` and the GitHub-specific `POST /v1/webhooks/{fleet_id}/github`. The operator registers those URLs and a workspace webhook secret with the provider. This path does not infer a fleet from an App installation and does not require `repositories`.
-- **Cron trigger.** Type `cron`, `schedule` as a 5-field cron expression. NullClaw's in-runner cron tool fires on time. Each fire arrives as a synthetic event with `actor=cron:<schedule>`. At most one cron entry per Fleet.
+- **Cron trigger.** Type `cron`, `schedule` as a 5-field cron expression, plus `timezone` and `message`. Installing the Fleet stores one desired schedule and synchronously registers the same stable schedule identifier with QStash. QStash owns the clock and sends each signed fire to `agentsfleetd`, which appends one synthetic event with `actor=cron:<schedule_id>`. The runner and its disposable NullClaw child own no timer. `TRIGGER.md` allows at most one declarative cron entry per Fleet; the schedule API can manage additional explicit schedules within the per-Fleet limit.
 
 In addition to the declared triggers, every Fleet always accepts:
 
@@ -152,7 +152,7 @@ The user experience inside Claude (or Amp / Codex CLI / OpenCode) feels like thi
 3. Claude edits `SKILL.md`, `TRIGGER.md`, and related project instructions.
 4. Claude installs or updates the fleet through the CLI. For GitHub App triggers, `TRIGGER.md` carries explicit `repositories` and `events`; the workspace's existing App installation supplies the event source. For a custom webhook, the install response still carries `webhook_urls` for operator registration.
 5. Claude can also manually invoke the fleet via `agentsfleet steer` for one-off user-triggered tasks.
-6. Later, the fleet wakes on webhook or cron without the user staying in the terminal.
+6. Later, the fleet wakes on webhook or a QStash fire without the user staying in the terminal or any `agentsfleet` cron daemon running.
 7. When the user returns to Claude, they inspect what happened from durable history (`agentsfleet events {id}` or the dashboard Events tab) instead of reconstructing it from memory.
 
 The dashboard equivalent surface on `/fleets/{id}` matches the CLI path:

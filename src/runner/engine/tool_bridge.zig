@@ -2,9 +2,9 @@
 //!
 //! Replaces the hardcoded if/else chain in runner.buildToolsFromSpec().
 //! The bridge owns a static registry of {name, builderFn} entries for
-//! every NullClaw built-in tool.
+//! every hosted NullClaw built-in tool.
 //!
-//! To add a new runner-side NullClaw tool:
+//! To add a new runner-side hosted NullClaw tool:
 //!   1. Write a builder function in tool_builders.zig.
 //!   2. Add one ToolEntry to BRIDGE_REGISTRY below.
 //!   Zero other changes required.
@@ -30,6 +30,22 @@ const log = logging.scoped(.tool_bridge);
 
 const ERR_TOOL_UNKNOWN = client_errors.ERR_TOOL_UNKNOWN;
 const ERR_EXEC_RUNNER_FLEET_INIT = client_errors.ERR_EXEC_RUNNER_FLEET_INIT;
+const TOOL_SCHEDULE = "schedule";
+const TOOL_CRON_ADD = "cron_add";
+const TOOL_CRON_LIST = "cron_list";
+const TOOL_CRON_REMOVE = "cron_remove";
+const TOOL_CRON_RUN = "cron_run";
+const TOOL_CRON_RUNS = "cron_runs";
+const TOOL_CRON_UPDATE = "cron_update";
+const UNSUPPORTED_HOSTED_TOOLS = [_][]const u8{
+    TOOL_SCHEDULE,
+    TOOL_CRON_ADD,
+    TOOL_CRON_LIST,
+    TOOL_CRON_REMOVE,
+    TOOL_CRON_RUN,
+    TOOL_CRON_RUNS,
+    TOOL_CRON_UPDATE,
+};
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -64,9 +80,10 @@ const ToolEntry = struct {
 };
 
 // ── Static registry ────────────────────────────────────────────────────────
-// Every NullClaw built-in tool. Skills are dynamic — no entries here.
+// Every hosted NullClaw built-in tool. Skills are dynamic — no entries here.
 //
-// When tools: null → allTools() gives the fleet everything (default).
+// When tools: null → runner_helpers filters NullClaw fallback tools against
+// this file's unsupported hosted-tool list before exposing them.
 // When tools: ["shell", "file_read"] → the bridge resolves only those.
 
 const BRIDGE_REGISTRY = [_]ToolEntry{
@@ -91,7 +108,6 @@ const BRIDGE_REGISTRY = [_]ToolEntry{
     .{ .name = "memory_forget", .buildFn = builders.buildMemoryForget },
     // Fleet orchestration
     .{ .name = "delegate", .buildFn = builders.buildDelegate },
-    .{ .name = "schedule", .buildFn = builders.buildSchedule },
     .{ .name = "spawn", .buildFn = builders.buildSpawn },
     // Network (HTTP/search/fetch)
     .{ .name = "http_request", .buildFn = builders.buildHttpRequest },
@@ -102,13 +118,6 @@ const BRIDGE_REGISTRY = [_]ToolEntry{
     .{ .name = "browser", .buildFn = builders.buildBrowser },
     .{ .name = "screenshot", .buildFn = builders.buildScreenshot },
     .{ .name = "browser_open", .buildFn = builders.buildBrowserOpen },
-    // Cron
-    .{ .name = "cron_add", .buildFn = builders.buildCronAdd },
-    .{ .name = "cron_list", .buildFn = builders.buildCronList },
-    .{ .name = "cron_remove", .buildFn = builders.buildCronRemove },
-    .{ .name = "cron_run", .buildFn = builders.buildCronRun },
-    .{ .name = "cron_runs", .buildFn = builders.buildCronRuns },
-    .{ .name = "cron_update", .buildFn = builders.buildCronUpdate },
     // Misc
     .{ .name = "message", .buildFn = builders.buildMessage },
 };
@@ -124,6 +133,15 @@ pub fn resolve(tool_name: []const u8) ?*const ToolEntry {
         if (std.mem.eql(u8, entry.name, tool_name)) return entry;
     }
     return null;
+}
+
+/// True when a NullClaw tool manages local scheduler state and is therefore
+/// unsupported in hosted runs. Hosted scheduling goes through agentsfleetd cron.
+pub fn isUnsupportedHostedToolName(tool_name: []const u8) bool {
+    for (UNSUPPORTED_HOSTED_TOOLS) |unsupported| {
+        if (std.mem.eql(u8, unsupported, tool_name)) return true;
+    }
+    return false;
 }
 
 /// Result of buildTools — tools plus any names that could not be resolved.
@@ -183,6 +201,10 @@ pub fn buildTools(
         if (item != .object) continue;
         const tool_name = jsonGetStr(item, "name") orelse continue;
         if (!jsonGetBoolDefault(item, "enabled", true)) continue;
+        if (isUnsupportedHostedToolName(tool_name)) {
+            log.err("unsupported_hosted_tool", .{ .error_code = ERR_TOOL_UNKNOWN, .name = tool_name });
+            return error.UnsupportedHostedTool;
+        }
 
         const entry = resolve(tool_name) orelse {
             log.warn("unknown_tool", .{ .error_code = ERR_TOOL_UNKNOWN, .name = tool_name });
@@ -231,19 +253,25 @@ test "resolve: canonical name found" {
 
 test "resolve: all core tools resolvable" {
     const core = [_][]const u8{
-        "shell",         "file_read",   "file_write",       "file_edit",
-        "file_append",   "file_delete", "file_read_hashed", "file_edit_hashed",
-        "git",           "image",       "calculator",       "memory_store",
-        "memory_recall", "memory_list", "memory_forget",    "delegate",
-        "schedule",      "spawn",       "http_request",     "web_search",
-        "web_fetch",     "pushover",    "browser",          "screenshot",
-        "browser_open",  "cron_add",    "cron_list",        "cron_remove",
-        "cron_run",      "cron_runs",   "cron_update",      "message",
+        "shell",         "file_read",    "file_write",       "file_edit",
+        "file_append",   "file_delete",  "file_read_hashed", "file_edit_hashed",
+        "git",           "image",        "calculator",       "memory_store",
+        "memory_recall", "memory_list",  "memory_forget",    "delegate",
+        "spawn",         "http_request", "web_search",       "web_fetch",
+        "pushover",      "browser",      "screenshot",       "browser_open",
+        "message",
     };
     for (core) |name| {
         try std.testing.expect(resolve(name) != null);
     }
     try std.testing.expectEqual(@as(usize, core.len), TOOL_COUNT);
+}
+
+test "resolve: hosted local scheduler tools are unsupported" {
+    for (UNSUPPORTED_HOSTED_TOOLS) |name| {
+        try std.testing.expect(resolve(name) == null);
+        try std.testing.expect(isUnsupportedHostedToolName(name));
+    }
 }
 
 test "resolve: unknown name returns null" {

@@ -8,6 +8,7 @@
 #   * test_arch_M_references_resolve  — every milestone identifier resolves
 #   * test_arch_anchor_links_resolve  — every relative .md link target exists
 #   * test_arch_no_orphan_TODO        — 0 TODO/TKTK/FIXME hits in architecture/
+#   * architecture_schedule_ownership — cron ownership names QStash, not NullClaw
 #
 # ARCH_DIR and SPEC_ROOT are overridable so check_architecture_doc_test.sh can
 # point the gate at fixtures. Nothing else sets them.
@@ -126,6 +127,30 @@ if [ -n "$todo_hits" ]; then
   printf "%s\n" "$todo_hits" >&2
 else
   ok "test_arch_no_orphan_TODO: no TODO/TKTK/FIXME in architecture/"
+fi
+
+# ---------------------------------------------------------------------------
+# 4. architecture_schedule_ownership
+# ---------------------------------------------------------------------------
+if [ -f "$ARCH_DIR/data_flow.md" ] && [ -f "$ARCH_DIR/user_flow.md" ] && [ -f "$ARCH_DIR/high_level.md" ] && [ -f "$ARCH_DIR/README.md" ]; then
+  if ! grep -q "QStash owns the clock" "$ARCH_DIR/data_flow.md"; then
+    err "architecture_schedule_ownership: data_flow.md must state QStash owns the clock"
+  fi
+  if ! grep -q "QStash owns the clock" "$ARCH_DIR/user_flow.md"; then
+    err "architecture_schedule_ownership: user_flow.md must state QStash owns the clock"
+  fi
+  if ! grep -q "synchronously registered with Upstash QStash" "$ARCH_DIR/high_level.md"; then
+    err "architecture_schedule_ownership: high_level.md must name Upstash QStash as the cron provider"
+  fi
+  if ! grep -q "Upstash QStash" "$ARCH_DIR/README.md"; then
+    err "architecture_schedule_ownership: README.md must define cron trigger ownership"
+  fi
+  stale_schedule_hits=$(grep -rEn "NullClaw-managed schedule|cron_add.*schedule" "$ARCH_DIR" 2>/dev/null || true)
+  if [ -n "$stale_schedule_hits" ]; then
+    err "architecture_schedule_ownership: stale local-scheduler ownership text found:"
+    printf "%s\n" "$stale_schedule_hits" >&2
+  fi
+  [ "$FAIL" = 0 ] && ok "architecture_schedule_ownership: QStash/agentsfleetd ownership is consistent"
 fi
 
 # ---------------------------------------------------------------------------

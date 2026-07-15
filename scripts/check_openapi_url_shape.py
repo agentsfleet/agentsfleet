@@ -41,6 +41,7 @@ NOUN_FINAL_SEGMENT_ALLOW: set[str] = {
     "messages",          # chat messages collection (per-fleet ingress)
     "memories",          # memory entries collection (per-fleet scratchpad)
     "secrets",           # vault.secrets (renamed from "credentials")
+    "schedules",         # core.fleet_schedules schedule collection and signed QStash ingress
     "fleets",           # core.fleets
     "bundles",           # Fleet Bundle catalog/import nested under /fleets by product vocabulary
     "fleet-libraries",   # two-tier Fleet Library catalog onboarding (M103)
