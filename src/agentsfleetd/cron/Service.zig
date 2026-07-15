@@ -104,16 +104,7 @@ pub fn update(self: Service, alloc: std.mem.Allocator, input: UpdateInput) !Outc
 }
 
 pub fn sync(self: Service, alloc: std.mem.Allocator, fleet_id: []const u8, schedule_id: []const u8) !Outcome {
-    var schedule = (try self.store.get(alloc, fleet_id, schedule_id)) orelse return .not_found;
-    defer schedule.deinit(alloc);
-    return self.claimAndApply(alloc, .{
-        .fleet_id = schedule.fleet_id,
-        .schedule_id = schedule.schedule_id,
-        .cron = schedule.cron,
-        .timezone = schedule.timezone,
-        .message = schedule.message,
-        .desired_status = schedule.desired_status,
-    });
+    return self.claimCurrentAndApply(alloc, fleet_id, schedule_id);
 }
 
 pub fn remove(self: Service, alloc: std.mem.Allocator, fleet_id: []const u8, schedule_id: []const u8) !Outcome {
@@ -200,6 +191,25 @@ fn claimAndApply(self: Service, alloc: std.mem.Allocator, input: UpdateInput) !O
         .now_ms = now_ms,
         .lease_until_ms = now_ms + SYNC_LEASE_MS,
     });
+    return switch (claimed) {
+        .claimed => |schedule| self.applyClaimed(alloc, schedule),
+        .busy => .busy,
+        .not_found => .not_found,
+    };
+}
+
+fn claimCurrentAndApply(self: Service, alloc: std.mem.Allocator, fleet_id: []const u8, schedule_id: []const u8) !Outcome {
+    const lease_token = try id_format.allocUuidV7(alloc);
+    defer alloc.free(lease_token);
+    const now_ms = common.clock.nowMillis();
+    const claimed = try self.store.claimCurrent(
+        alloc,
+        fleet_id,
+        schedule_id,
+        lease_token,
+        now_ms + SYNC_LEASE_MS,
+        now_ms,
+    );
     return switch (claimed) {
         .claimed => |schedule| self.applyClaimed(alloc, schedule),
         .busy => .busy,

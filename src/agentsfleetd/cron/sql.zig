@@ -15,12 +15,21 @@ const FINALIZE_FAILURE_FIELDS =
     "sync_lease_until = NULL, last_error = $5, updated_at = $6 ";
 const FINALIZE_WHERE =
     "WHERE uid = $1::uuid AND generation = $2 AND sync_token = $3::uuid ";
+const SCHEDULE_FLEET_WHERE =
+    "WHERE uid = $1::uuid AND fleet_id = $2::uuid AND ";
 
 pub const LOCK_FLEET =
     \\SELECT f.id::text
     \\FROM core.fleets f
     \\WHERE f.id = $1::uuid
     \\FOR UPDATE OF f
+;
+
+pub const FLEET_IN_WORKSPACE =
+    \\SELECT 1::bigint
+    \\FROM core.fleets
+    \\WHERE id = $1::uuid AND workspace_id = $2::uuid
+    \\LIMIT 1
 ;
 
 pub const COUNT_FOR_FLEET =
@@ -59,8 +68,16 @@ pub const CLAIM_MUTATION =
     "message = $5, desired_status = $6, sync_status = $7, " ++
     "generation = generation + 1, sync_token = $8::uuid, " ++
     "sync_lease_until = $9, last_error = NULL, updated_at = $10 " ++
-    "WHERE uid = $1::uuid AND fleet_id = $2::uuid AND " ++
+    SCHEDULE_FLEET_WHERE ++
     "(sync_token IS NULL OR sync_lease_until IS NULL OR sync_lease_until <= $10) " ++
+    RETURNING_PREFIX ++ ROW_COLUMNS;
+
+pub const CLAIM_CURRENT =
+    "UPDATE core.fleet_schedules SET sync_status = $3, " ++
+    "generation = generation + 1, sync_token = $4::uuid, " ++
+    "sync_lease_until = $5, last_error = NULL, updated_at = $6 " ++
+    SCHEDULE_FLEET_WHERE ++
+    "(sync_token IS NULL OR sync_lease_until IS NULL OR sync_lease_until <= $6) " ++
     RETURNING_PREFIX ++ ROW_COLUMNS;
 
 pub const EXISTS =
