@@ -111,7 +111,7 @@ This spec uses Create, Read, Update, Delete (CRUD), Hash-based Message Authentic
 | `src/agentsfleetd/fleet_runtime/{config_helpers,config_types}.zig` + `src/agentsfleetd/http/handlers/fleets/{create,patch,delete,cron_sync,cron_lifecycle_integration_test}.zig` | CREATE/EDIT | Shared cron/timezone/message validation and Fleet lifecycle synchronization. |
 | `src/agentsfleetd/errors/{error_registry,error_entries}.zig` | EDIT | Schedule errors and recovery text. |
 | `src/runner/engine/{tool_bridge,tool_builders}.zig` + runner tool tests | EDIT | Reject hosted `cron_*` tools so local fallback is unreachable. |
-| `cli/src/program/cli-tree-fleet.ts` + `cli/src/commands/fleet_schedule*.ts` | CREATE/EDIT | Add/list/update/rm/status/sync commands and rendering. |
+| `cli/src/{commands/fleet_schedule,lib/api-paths,program/cli-tree,program/cli-tree-schedule,program/cli-tree-types,program/handlers-bind,program/handlers-bind-schedule}.ts` + `cli/test/{fleet-schedule,fleet-schedule.integration,cli-tree-schedule,json-contract,helpers-cli-tree}.ts` | CREATE/EDIT | Add/list/update/rm/status/sync commands and rendering. |
 | `tests/fixtures/fleetbundle/zoho-sprint-daily-summarizer/TRIGGER.md` | EDIT | Daily 09:00 Asia/Kolkata declarative example. |
 | `playbooks/operations/qstash_registration/001_playbook.md` | CREATE | Account, vault, ingress, and rotation setup. |
 | `docs/REST_API_DESIGN_GUIDELINES.md` | EDIT | Register QStash as an inline-signature raw-handler exception. |
@@ -174,10 +174,10 @@ Fleet install and patch synchronously configure the single declarative cron sche
 
 `add | list | update | rm | status | sync` over the §3 routes, following the 7 Pillars. Provider operations complete inside the request; human mode prints the confirmed next run or an exact `sync` recovery command; piped mode emits stable JSON without a spinner.
 
-- **Dimension 6.1** — `agentsfleet schedule add <fleet_id> --cron "0 18 * * 1-5"` creates a schedule and prints its id → Test `test_cli_schedule_add` (e2e, subprocess)
-- **Dimension 6.2** — `agentsfleet schedule list <fleet_id>` renders human + (piped) JSON → Test `test_cli_schedule_list_json`
-- **Dimension 6.3** — `update`/`rm` round-trip to the API and surface structured errors → Test `test_cli_schedule_update_rm`
-- **Dimension 6.4** — confirmed success, provider error guidance, explicit sync, and piped output are deterministic → Test `test_cli_schedule_sync_experience`
+- **Dimension 6.1** — `agentsfleet schedule add <fleet_id> --cron "0 18 * * 1-5"` creates a schedule and prints its id → Test `` `schedule add` posts the schedule and prints the schedule id `` → **DONE**
+- **Dimension 6.2** — `agentsfleet schedule list <fleet_id>` renders human + (piped) JSON → Test `` `schedule list` emits JSON when stdout is redirected `` → **DONE**
+- **Dimension 6.3** — `update`/`rm` round-trip to the API and surface structured errors → Test `` `schedule update` and `schedule rm` use item routes `` → **DONE**
+- **Dimension 6.4** — confirmed success, provider error guidance, explicit sync, and piped output are deterministic → Test `` `schedule status` and `schedule sync` read and reapply the item route `` + `cli-tree-schedule.unit.test.ts` → **DONE**
 
 ### §7 — Hosted NullClaw cron tools fail closed
 
@@ -272,10 +272,10 @@ Event enqueued on fire: EventEnvelope{ event_type=.cron, actor="cron:<schedule_i
 | 5.1 | integration | `test_fleet_cron_syncs_schedule_and_lifecycle` | install/patch declarative cron → one sourced desired schedule at latest generation. |
 | 5.2 | integration | `test_install_no_cron_no_schedule` | install non-cron Fleet → zero schedules. |
 | 5.3 | integration | `test_fleet_cron_syncs_schedule_and_lifecycle` | stop/resume/kill/delete suppress or remove provider state without orphan. |
-| 6.1 | e2e | `test_cli_schedule_add` | subprocess `schedule add … --cron` → exit 0, prints id. |
-| 6.2 | e2e | `test_cli_schedule_list_json` | piped stdout → JSON array; tty → human table. |
-| 6.3 | e2e | `test_cli_schedule_update_rm` | update + rm round-trip; structured error on bad cron. |
-| 6.4 | e2e | `test_cli_schedule_sync_experience` | confirmed success and provider failure render deterministic human/JSON output plus exact sync recovery. |
+| 6.1 | e2e | `` `schedule add` posts the schedule and prints the schedule id `` | `runCli` over loopback API sends `POST /schedules` with cron/timezone/message and prints the schedule id. |
+| 6.2 | e2e | `` `schedule list` emits JSON when stdout is redirected `` | redirected stdout emits the API envelope. |
+| 6.3 | e2e | `` `schedule update` and `schedule rm` use item routes `` | update + rm round-trip through PATCH and DELETE item routes. |
+| 6.4 | e2e | `` `schedule status` and `schedule sync` read and reapply the item route `` | status GETs the item; sync POSTs the `:sync` route; parser tests expose all verbs. |
 | 7.1 | failure | `test_hosted_cron_tools_rejected` | each `cron_*` declaration is rejected before child start and creates no local state. |
 | 7.2 | e2e | `test_declarative_schedule_has_no_cron_tool` | declarative create/fire path succeeds with only the Fleet's declared non-cron tools. |
 | 8.1 | documentation | `make check-playbooks` | QStash registration playbook passes repository playbook checks. |

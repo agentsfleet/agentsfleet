@@ -66,6 +66,14 @@ export function makeSpyTree(): SpyTree {
       list: spy("grant.list"),
       delete: spy("grant.delete"),
     },
+    schedule: {
+      add: spy("schedule.add"),
+      list: spy("schedule.list"),
+      update: spy("schedule.update"),
+      rm: spy("schedule.rm"),
+      status: spy("schedule.status"),
+      sync: spy("schedule.sync"),
+    },
     tenant: {
       provider: {
         show: spy("tenant.provider.show"),
