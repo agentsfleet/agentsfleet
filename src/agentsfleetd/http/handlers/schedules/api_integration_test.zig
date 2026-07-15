@@ -17,9 +17,12 @@ const testing = std.testing;
 
 const TENANT_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01";
 const WORKSPACE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11";
+const OTHER_WORKSPACE_ID = "0195b4ba-8d3a-7f13-8abc-1050000005f0";
 const FLEET_ID = "0195b4ba-8d3a-7f13-8abc-105000000501";
+const OTHER_FLEET_ID = "0195b4ba-8d3a-7f13-8abc-1050000005f1";
 const FLEET_NAME = "m105-schedule-api";
 const COLLECTION_PATH = "/v1/workspaces/" ++ WORKSPACE_ID ++ "/fleets/" ++ FLEET_ID ++ "/schedules";
+const FOREIGN_FLEET_PATH = "/v1/workspaces/" ++ WORKSPACE_ID ++ "/fleets/" ++ OTHER_FLEET_ID ++ "/schedules";
 const CREATE_BODY = "{\"cron\":\"0 9 * * *\",\"timezone\":\"Asia/Kolkata\",\"message\":\"summarize\"}";
 const PATCH_BODY = "{\"cron\":\"15 9 * * *\",\"message\":\"summarize again\"}";
 
@@ -66,7 +69,9 @@ const Setup = struct {
         try cleanupDb(conn);
         try fixtures.seedTenantById(conn, TENANT_ID, FLEET_NAME);
         try fixtures.seedWorkspaceWithTenant(conn, WORKSPACE_ID, TENANT_ID);
+        try fixtures.seedWorkspaceWithTenant(conn, OTHER_WORKSPACE_ID, TENANT_ID);
         try fixtures.seedFleet(conn, FLEET_ID, WORKSPACE_ID, FLEET_NAME, "{}", "");
+        try fixtures.seedFleet(conn, OTHER_FLEET_ID, OTHER_WORKSPACE_ID, FLEET_NAME, "{}", "");
         const creds = try testing.allocator.create(Credentials);
         errdefer testing.allocator.destroy(creds);
         creds.* = try testCredentials();
@@ -106,6 +111,9 @@ fn testCredentials() !Credentials {
 
 fn cleanupDb(conn: *pg.Conn) !void {
     _ = try conn.exec("DELETE FROM core.fleet_schedules WHERE fleet_id = $1::uuid", .{FLEET_ID});
+    _ = try conn.exec("DELETE FROM core.fleet_schedules WHERE fleet_id = $1::uuid", .{OTHER_FLEET_ID});
+    fixtures.teardownFleets(conn, OTHER_WORKSPACE_ID);
+    fixtures.teardownWorkspace(conn, OTHER_WORKSPACE_ID);
     fixtures.teardownFleets(conn, WORKSPACE_ID);
     fixtures.teardownWorkspace(conn, WORKSPACE_ID);
     fixtures.teardownTenantById(conn, TENANT_ID);
@@ -200,6 +208,16 @@ test "test_schedule_authz" {
     defer denied.deinit();
     try denied.expectStatus(.forbidden);
     try denied.expectErrorCode(error_codes.ERR_INSUFFICIENT_SCOPE);
+}
+
+test "test_schedule_routes_bind_fleet_to_workspace" {
+    var setup = try Setup.init();
+    defer setup.deinit();
+    var foreign = try (try setup.h.get(FOREIGN_FLEET_PATH).bearer(scope_fixtures.TENANT_ADMIN)).send();
+    defer foreign.deinit();
+    try foreign.expectStatus(.not_found);
+    try foreign.expectErrorCode(error_codes.ERR_AGENTSFLEET_NOT_FOUND);
+    try testing.expectEqual(@as(u32, 0), setup.fake.calls.load(.acquire));
 }
 
 test "test_schedule_sync_route" {

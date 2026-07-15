@@ -18,6 +18,7 @@ const DETAIL_INVALID = "cron, timezone, or message is invalid";
 const DETAIL_NOT_FOUND = "Schedule not found";
 const DETAIL_PROVIDER = "QStash did not confirm the schedule change; run schedule sync.";
 const DETAIL_BUSY = "Schedule synchronization lease is busy";
+const DETAIL_SOURCE_CONFLICT = "A schedule with this source key already exists";
 const DETAIL_LIMIT = "Fleet schedule limit reached";
 const DETAIL_UNCONFIGURED = "QStash credentials are not configured";
 const DETAIL_WORKSPACE = "Workspace access denied";
@@ -74,7 +75,7 @@ pub fn innerScheduleItem(hx: Hx, req: *httpz.Request, workspace_id: []const u8, 
 pub fn innerScheduleSync(hx: Hx, req: *httpz.Request, workspace_id: []const u8, fleet_id: []const u8, schedule_id: []const u8) void {
     if (!common.requireMethod(hx.res, req.method, .POST)) return;
     if (!validateIds(hx, workspace_id, fleet_id, schedule_id)) return;
-    if (!authorizeMutation(hx, workspace_id)) return;
+    if (!authorizeMutationFleet(hx, workspace_id, fleet_id)) return;
     var exchange: QStashClient.HttpClientExchange = .{ .io = hx.ctx.io };
     var destination_buffer: [cron_constants.max_destination_url_bytes]u8 = undefined;
     const service = cronService(hx, &exchange, &destination_buffer) orelse return;
@@ -85,7 +86,7 @@ pub fn innerScheduleSync(hx: Hx, req: *httpz.Request, workspace_id: []const u8, 
 
 fn listSchedules(hx: Hx, workspace_id: []const u8, fleet_id: []const u8) void {
     if (!validateIds(hx, workspace_id, fleet_id, null)) return;
-    if (!authorizeRead(hx, workspace_id)) return;
+    if (!authorizeReadFleet(hx, workspace_id, fleet_id)) return;
     const store = Store.init(hx.ctx.pool);
     const schedules = store.list(hx.alloc, fleet_id) catch |err| return serviceError(hx, err);
     defer {
@@ -100,7 +101,7 @@ fn listSchedules(hx: Hx, workspace_id: []const u8, fleet_id: []const u8) void {
 
 fn getSchedule(hx: Hx, workspace_id: []const u8, fleet_id: []const u8, schedule_id: []const u8) void {
     if (!validateIds(hx, workspace_id, fleet_id, schedule_id)) return;
-    if (!authorizeRead(hx, workspace_id)) return;
+    if (!authorizeReadFleet(hx, workspace_id, fleet_id)) return;
     const store = Store.init(hx.ctx.pool);
     var schedule = (store.get(hx.alloc, fleet_id, schedule_id) catch |err| return serviceError(hx, err)) orelse {
         hx.fail(error_codes.ERR_SCHEDULE_NOT_FOUND, DETAIL_NOT_FOUND);
@@ -112,7 +113,7 @@ fn getSchedule(hx: Hx, workspace_id: []const u8, fleet_id: []const u8, schedule_
 
 fn createSchedule(hx: Hx, req: *httpz.Request, workspace_id: []const u8, fleet_id: []const u8) void {
     if (!validateIds(hx, workspace_id, fleet_id, null)) return;
-    if (!authorizeMutation(hx, workspace_id)) return;
+    if (!authorizeMutationFleet(hx, workspace_id, fleet_id)) return;
     var parsed = parseBody(CreateBody, hx, req) orelse return;
     defer parsed.deinit();
     var source_key_buffer: [64]u8 = undefined;
@@ -134,7 +135,7 @@ fn createSchedule(hx: Hx, req: *httpz.Request, workspace_id: []const u8, fleet_i
 
 fn patchSchedule(hx: Hx, req: *httpz.Request, workspace_id: []const u8, fleet_id: []const u8, schedule_id: []const u8) void {
     if (!validateIds(hx, workspace_id, fleet_id, schedule_id)) return;
-    if (!authorizeMutation(hx, workspace_id)) return;
+    if (!authorizeMutationFleet(hx, workspace_id, fleet_id)) return;
     var parsed = parseBody(PatchBody, hx, req) orelse return;
     defer parsed.deinit();
     const store = Store.init(hx.ctx.pool);
@@ -164,7 +165,7 @@ fn patchSchedule(hx: Hx, req: *httpz.Request, workspace_id: []const u8, fleet_id
 
 fn deleteSchedule(hx: Hx, workspace_id: []const u8, fleet_id: []const u8, schedule_id: []const u8) void {
     if (!validateIds(hx, workspace_id, fleet_id, schedule_id)) return;
-    if (!authorizeMutation(hx, workspace_id)) return;
+    if (!authorizeMutationFleet(hx, workspace_id, fleet_id)) return;
     var exchange: QStashClient.HttpClientExchange = .{ .io = hx.ctx.io };
     var destination_buffer: [cron_constants.max_destination_url_bytes]u8 = undefined;
     const service = cronService(hx, &exchange, &destination_buffer) orelse return;
@@ -211,6 +212,25 @@ fn authorizeMutation(hx: Hx, workspace_id: []const u8) bool {
     return true;
 }
 
+fn authorizeReadFleet(hx: Hx, workspace_id: []const u8, fleet_id: []const u8) bool {
+    return authorizeRead(hx, workspace_id) and requireFleetInWorkspace(hx, workspace_id, fleet_id);
+}
+
+fn authorizeMutationFleet(hx: Hx, workspace_id: []const u8, fleet_id: []const u8) bool {
+    return authorizeMutation(hx, workspace_id) and requireFleetInWorkspace(hx, workspace_id, fleet_id);
+}
+
+fn requireFleetInWorkspace(hx: Hx, workspace_id: []const u8, fleet_id: []const u8) bool {
+    const store = Store.init(hx.ctx.pool);
+    const belongs = store.fleetBelongsToWorkspace(fleet_id, workspace_id) catch {
+        common.internalDbError(hx.res, hx.req_id);
+        return false;
+    };
+    if (belongs) return true;
+    hx.fail(error_codes.ERR_AGENTSFLEET_NOT_FOUND, error_codes.MSG_AGENTSFLEET_NOT_FOUND);
+    return false;
+}
+
 fn parseBody(comptime Body: type, hx: Hx, req: *httpz.Request) ?std.json.Parsed(Body) {
     const raw = req.body() orelse {
         hx.fail(error_codes.ERR_INVALID_REQUEST, error_codes.MSG_MALFORMED_JSON);
@@ -254,7 +274,7 @@ fn writeOutcome(hx: Hx, outcome: Service.Outcome, success_status: std.http.Statu
         .not_found => hx.fail(error_codes.ERR_SCHEDULE_NOT_FOUND, DETAIL_NOT_FOUND),
         .fleet_not_found => hx.fail(error_codes.ERR_AGENTSFLEET_NOT_FOUND, error_codes.MSG_AGENTSFLEET_NOT_FOUND),
         .cap_reached => common.errorResponseConflict(hx.res, error_codes.ERR_SCHEDULE_LIMIT_REACHED, DETAIL_LIMIT, hx.req_id, "limit_reached"),
-        .source_conflict => common.errorResponseConflict(hx.res, error_codes.ERR_SCHEDULE_UPDATE_BUSY, DETAIL_BUSY, hx.req_id, "source_conflict"),
+        .source_conflict => common.errorResponseConflict(hx.res, error_codes.ERR_SCHEDULE_CONFLICT, DETAIL_SOURCE_CONFLICT, hx.req_id, "source_conflict"),
     }
 }
 

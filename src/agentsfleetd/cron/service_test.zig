@@ -27,6 +27,7 @@ const Fake = struct {
     probe_pool: bool = false,
     pool_probe_ok: bool = false,
     calls: std.atomic.Value(u32) = .init(0),
+    deletes: std.atomic.Value(u32) = .init(0),
     entered: std.atomic.Value(bool) = .init(false),
     block: std.atomic.Value(bool) = .init(false),
 
@@ -46,7 +47,10 @@ const Fake = struct {
         self.entered.store(true, .release);
         while (self.block.load(.acquire)) std.atomic.spinLoopHint();
         if (self.failure) |failure| return failure;
-        if (request.method == .DELETE) return .{ .status = self.status, .body = try alloc.dupe(u8, "") };
+        if (request.method == .DELETE) {
+            _ = self.deletes.fetchAdd(1, .monotonic);
+            return .{ .status = self.status, .body = try alloc.dupe(u8, "") };
+        }
         const Body = struct { schedule_id: []const u8, generation: i64 };
         var parsed = try std.json.parseFromSlice(Body, alloc, request.body, .{});
         defer parsed.deinit();
@@ -149,6 +153,34 @@ test "service: provider failure is durable and explicit sync recovers the newest
         },
         else => return error.UnexpectedOutcome,
     }
+}
+
+test "service: explicit sync claims current row state" {
+    const alloc = std.testing.allocator;
+    var fixture = (try support.Fixture.open(
+        "0195b4ba-8d3a-7f13-8abc-105000000341",
+        "0195b4ba-8d3a-7f13-8abc-105000000342",
+    )) orelse return error.SkipZigTest;
+    defer fixture.deinit();
+    const schedule_id = "0195b4ba-8d3a-7f13-8abc-105000000343";
+    var seeded = try support.createAndFinalize(&fixture, alloc, schedule_id, LEASE_TOKEN);
+    defer seeded.deinit(alloc);
+    const conn = try fixture.pool.acquire();
+    defer fixture.pool.release(conn);
+    _ = try conn.exec(
+        \\UPDATE core.fleet_schedules
+        \\SET desired_status = 'paused', sync_status = 'failed', updated_at = $2
+        \\WHERE uid = $1::uuid
+    , .{ schedule_id, common.clock.nowMillis() });
+    var fake: Fake = .{};
+    const service = Service.init(fixture.store, client(&fake), TOKEN);
+    var synced = try service.sync(alloc, fixture.fleet_id, schedule_id);
+    defer synced.deinit(alloc);
+    switch (synced) {
+        .schedule => |schedule| try std.testing.expectEqual(.paused, schedule.desired_status),
+        else => return error.UnexpectedOutcome,
+    }
+    try std.testing.expectEqual(@as(u32, 1), fake.deletes.load(.acquire));
 }
 
 test "service: provider out of memory clears the lease into durable failed state" {

@@ -121,10 +121,9 @@ fn verifySignature(self: QStashVerifier, parts: anytype) VerifyError!void {
     std.base64.url_safe_no_pad.Decoder.decode(&supplied, parts.signature_b64) catch
         return VerifyError.TokenMalformed;
     const current_mac = hmac_sig.computeMac(self.current_key, &.{ parts.header_b64, ".", parts.payload_b64 });
-    const rotation_key = if (self.next_key.len == 0) self.current_key else self.next_key;
-    const next_mac = hmac_sig.computeMac(rotation_key, &.{ parts.header_b64, ".", parts.payload_b64 });
-    const current_valid = self.current_key.len > 0 and hmac_sig.constantTimeEql(&current_mac, &supplied);
-    const next_valid = self.next_key.len > 0 and hmac_sig.constantTimeEql(&next_mac, &supplied);
+    const next_mac = hmac_sig.computeMac(self.next_key, &.{ parts.header_b64, ".", parts.payload_b64 });
+    const current_valid = hmac_sig.constantTimeEql(&current_mac, &supplied);
+    const next_valid = hmac_sig.constantTimeEql(&next_mac, &supplied);
     if (!current_valid and !next_valid) return VerifyError.SignatureInvalid;
 }
 

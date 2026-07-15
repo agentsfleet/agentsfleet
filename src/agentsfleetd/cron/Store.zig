@@ -80,6 +80,14 @@ pub fn get(self: Store, alloc: std.mem.Allocator, fleet_id: []const u8, schedule
     return try rowToSchedule(alloc, row);
 }
 
+pub fn fleetBelongsToWorkspace(self: Store, fleet_id: []const u8, workspace_id: []const u8) !bool {
+    const conn = try self.pool.acquire();
+    defer self.pool.release(conn);
+    var query = PgQuery.from(try conn.query(sql.FLEET_IN_WORKSPACE, .{ fleet_id, workspace_id }));
+    defer query.deinit();
+    return (try query.next()) != null;
+}
+
 pub fn getBySourceKey(self: Store, alloc: std.mem.Allocator, fleet_id: []const u8, source_key: []const u8) !?model.Schedule {
     const conn = try self.pool.acquire();
     defer self.pool.release(conn);
@@ -128,6 +136,35 @@ pub fn claimMutation(self: Store, alloc: std.mem.Allocator, input: model.Mutatio
         if (try query.next()) |row| return .{ .claimed = try rowToSchedule(alloc, row) };
     }
     return if (try scheduleExists(conn, input.fleet_id, input.schedule_id))
+        .{ .busy = {} }
+    else
+        .{ .not_found = {} };
+}
+
+pub fn claimCurrent(
+    self: Store,
+    alloc: std.mem.Allocator,
+    fleet_id: []const u8,
+    schedule_id: []const u8,
+    lease_token: []const u8,
+    lease_until_ms: i64,
+    now_ms: i64,
+) !ClaimOutcome {
+    const conn = try self.pool.acquire();
+    defer self.pool.release(conn);
+    {
+        var query = PgQuery.from(try conn.query(sql.CLAIM_CURRENT, .{
+            schedule_id,
+            fleet_id,
+            model.SyncStatus.syncing.toSlice(),
+            lease_token,
+            lease_until_ms,
+            now_ms,
+        }));
+        defer query.deinit();
+        if (try query.next()) |row| return .{ .claimed = try rowToSchedule(alloc, row) };
+    }
+    return if (try scheduleExists(conn, fleet_id, schedule_id))
         .{ .busy = {} }
     else
         .{ .not_found = {} };
