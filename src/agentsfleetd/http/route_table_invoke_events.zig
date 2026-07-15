@@ -9,6 +9,7 @@ const hx_mod = @import("handlers/hx.zig");
 const fleet_events = @import("handlers/fleets/events.zig");
 const fleet_events_stream_h = @import("handlers/fleets/events_stream.zig");
 const workspace_events_h = @import("handlers/workspaces/events.zig");
+const workspace_events_stream_h = @import("handlers/workspaces/events_stream.zig");
 
 const Hx = hx_mod.Hx;
 
@@ -27,4 +28,9 @@ pub fn invokeFleetEventsStream(hx: *Hx, req: *httpz.Request, route: router.Route
 pub fn invokeWorkspaceEvents(hx: *Hx, req: *httpz.Request, route: router.Route) void {
     if (!common.requireMethod(hx.res, req.method, .GET)) return;
     workspace_events_h.innerListWorkspaceEvents(hx.*, req, route.workspace_events);
+}
+
+pub fn invokeWorkspaceEventsStream(hx: *Hx, req: *httpz.Request, route: router.Route) void {
+    if (!common.requireMethod(hx.res, req.method, .GET)) return;
+    workspace_events_stream_h.innerWorkspaceEventsStream(hx.*, req, route.workspace_events_stream);
 }

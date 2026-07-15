@@ -163,3 +163,27 @@ export function backfillFleetEventsUrl(
     `/fleets/${encodeURIComponent(fleetId)}/events${buildQuery(opts)}`
   );
 }
+
+// One multiplexed SSE frame from the workspace stream: a `LiveFrame` plus the
+// `fleet_id` the backend spliced in, so the wall demultiplexes each frame to
+// its tile. The backend guarantees the tag on every frame; a frame missing it
+// is malformed and dropped by the client (never routed to a wrong tile).
+export type WorkspaceLiveFrame = LiveFrame & { fleet_id: string };
+
+// Same-origin URL for the ONE multiplexed workspace SSE stream. Intercepted by
+// the Next Route Handler at app/backend/.../events/stream/route.ts, which mints
+// the api-audience Bearer server-side. This is the wall's single connection —
+// it replaces the per-tile streamFleetEventsUrl fan-out.
+export function streamWorkspaceEventsUrl(workspaceId: string): string {
+  return `/backend/v1/workspaces/${encodeURIComponent(workspaceId)}/events/stream`;
+}
+
+// Same-origin URL for the workspace-scoped reconnect backfill list. The wall
+// recovers a gap by paging `core.fleet_events` for the whole workspace (or one
+// fleet via `fleet_id`), the same durable source the per-fleet client uses.
+export function backfillWorkspaceEventsUrl(
+  workspaceId: string,
+  opts?: Pick<EventsQuery, "cursor" | "since" | "limit" | "fleet_id">,
+): string {
+  return `/backend/v1/workspaces/${encodeURIComponent(workspaceId)}/events${buildQuery(opts)}`;
+}

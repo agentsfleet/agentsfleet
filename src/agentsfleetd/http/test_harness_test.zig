@@ -42,6 +42,8 @@ fn fakeHarness(alloc: std.mem.Allocator) TestHarness {
         // SAFETY: test fixture; field is populated by the surrounding builder before any read.
         .streams = undefined,
         // SAFETY: test fixture; field is populated by the surrounding builder before any read.
+        .fleet_sets = undefined,
+        // SAFETY: test fixture; field is populated by the surrounding builder before any read.
         .server = undefined,
         // SAFETY: test fixture; field is populated by the surrounding builder before any read.
         .thread = undefined,

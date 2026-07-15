@@ -114,3 +114,44 @@
                   nullable: true
       default:
         $ref: ../components/responses.yaml#/components/responses/Error
+
+/v1/workspaces/{workspace_id}/events/stream:
+  get:
+    operationId: stream_workspace_events
+    summary: Stream live activity for a whole workspace
+    description: |
+      Opens ONE Server-Sent Events (SSE) stream carrying live activity for
+      every fleet the caller can read in the workspace. It is the Fleets Wall's
+      single connection, replacing one stream per tile.
+
+      Each message's `data` is the fleet's activity payload with `fleet_id`
+      spliced in as the leading field. The client demultiplexes each frame to
+      the right fleet by that tag. Identifiers restart at 0 for each connection,
+      and the route ignores `Last-Event-ID`.
+
+      The connection adjusts its fan-in as fleets appear or disappear. A caller
+      whose workspace access is revoked stops receiving on the next refresh. At
+      capacity the route returns 503 `UZ-API-002` with `Retry-After`. Recover a
+      reconnect gap through `GET /v1/workspaces/{workspace_id}/events` before
+      reconnecting.
+    tags:
+    - Workspaces
+    parameters:
+    - name: workspace_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    responses:
+      '200':
+        description: SSE stream opened.
+        content:
+          text/event-stream:
+            schema:
+              type: string
+              description: SSE-formatted frames; each `data` carries `fleet_id`.
+      default:
+        $ref: ../components/responses.yaml#/components/responses/Error
+    security:
+    - BearerAuth: []

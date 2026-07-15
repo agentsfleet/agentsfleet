@@ -20,6 +20,7 @@ const logging = @import("log");
 const ec = @import("../errors/error_registry.zig");
 const http_server = @import("../http/server.zig");
 const subscription_hub = @import("../events/subscription_hub.zig");
+const fleet_set_cache = @import("../events/fleet_set_cache.zig");
 const stream_registry = @import("../http/stream_registry.zig");
 
 const log = logging.scoped(.serve_shutdown);
@@ -103,11 +104,15 @@ pub fn signalWatcher() void {
 /// streams.drain() is deliberately NOT folded in: it is the first unwind step
 /// (declared at the server site) so client fds shut down while srv.deinit()
 /// is still joining request threads that may touch hub/registry.
-pub fn deinitStreaming(hub: *subscription_hub, streams: *stream_registry) void {
+pub fn deinitStreaming(hub: *subscription_hub, streams: *stream_registry, fleet_sets: *fleet_set_cache) void {
     hub.stop();
     streams.awaitEmpty();
     hub.deinit();
     streams.deinit();
+    // After awaitEmpty: every stream thread has deregistered, so no workspace
+    // stream can still hold a fleet-set reference. Freeing it before that would
+    // free the set under a live tick.
+    fleet_sets.deinit();
 }
 
 /// One wait round on the detached install workers before logging stragglers.

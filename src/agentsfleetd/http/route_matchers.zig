@@ -143,6 +143,19 @@ pub fn matchWorkspaceSuffix(p: Path, suffix: []const u8) ?[]const u8 {
     return p.param(1);
 }
 
+// ── /workspaces/{ws}/{collection}/{action} ─────────────────────────────────
+// A two-segment suffix under a workspace (4 segments total) — distinct by
+// count from `matchWorkspaceSuffix` (3) and by literal from the
+// `{ws}/{collection}/{leaf_id}` shapes, whose 4th segment is an id, not a
+// reserved action word. Today's only inhabitant: `events/stream`.
+
+pub fn matchWorkspaceSuffixAction(p: Path, suffix: []const u8, action: []const u8) ?[]const u8 {
+    if (p.segs.len != 4) return null;
+    if (!p.eq(0, S_WORKSPACES)) return null;
+    if (!p.eq(2, suffix) or !p.eq(3, action)) return null;
+    return p.param(1);
+}
+
 fn isFleetRuntimeSegment(p: Path, idx: usize) bool {
     return p.eq(idx, S_FLEETS) and (idx + 1 >= p.segs.len or !p.eq(idx + 1, S_BUNDLES));
 }

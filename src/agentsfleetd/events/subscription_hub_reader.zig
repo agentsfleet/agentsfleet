@@ -50,12 +50,45 @@ pub fn readerMain(hub: *Hub) void {
     }
 }
 
+/// Fan one frame out to every viewer of `channel`.
+///
+/// The map mutex covers the LOOKUP and a pointer snapshot — nothing else. The
+/// push itself (a payload copy, the subscription's own lock, a futex wake, per
+/// viewer) runs with the lock released, so a hot channel with many viewers
+/// cannot stall `subscribe`/`unsubscribe`/`channelCount` for the duration of
+/// its fan-out (C3: never do blocking work under a lock the consumer needs).
+///
+/// Pushing unlocked means a racing `unsubscribe` could otherwise free a handle
+/// mid-push, so the snapshot takes a ref per subscriber and drops it after —
+/// the last ref frees, never the unsubscribe that raced us.
 fn dispatch(hub: *Hub, channel: []const u8, payload: []const u8) void {
-    hub.mutex.lockUncancelable(hub.io);
-    defer hub.mutex.unlock(hub.io);
-    // a frame racing the last unsubscribe simply has nobody to deliver to
-    const entry = hub.channels.get(channel) orelse return;
-    for (entry.subscribers.items) |sub| sub.push(payload);
+    hub.reader_scratch.clearRetainingCapacity();
+    {
+        hub.mutex.lockUncancelable(hub.io);
+        defer hub.mutex.unlock(hub.io);
+        // a frame racing the last unsubscribe simply has nobody to deliver to
+        const entry = hub.channels.get(channel) orelse return;
+        hub.reader_scratch.ensureTotalCapacity(hub.alloc, entry.subscribers.items.len) catch {
+            // Out of memory for the snapshot: deliver under the lock rather
+            // than drop the frame. Briefly contended beats silently lossy.
+            for (entry.subscribers.items) |sub| pushOne(sub, channel, payload);
+            return;
+        };
+        for (entry.subscribers.items) |sub| {
+            sub.ref();
+            hub.reader_scratch.appendAssumeCapacity(sub);
+        }
+    }
+    for (hub.reader_scratch.items) |sub| {
+        pushOne(sub, channel, payload);
+        sub.unref();
+    }
+}
+
+/// A shared consumer (one queue fed by N channels) needs to know which channel
+/// a frame arrived on; a per-channel consumer already does.
+fn pushOne(sub: *Hub.Subscription, channel: []const u8, payload: []const u8) void {
+    if (sub.tagged) sub.pushTagged(channel, payload) else sub.push(payload);
 }
 
 /// Drop the dead connection, redial with stop-checked pacing, then

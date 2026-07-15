@@ -5332,6 +5332,48 @@
         }
       }
     },
+    "/v1/workspaces/{workspace_id}/events/stream": {
+      "get": {
+        "operationId": "stream_workspace_events",
+        "summary": "Stream live activity for a whole workspace",
+        "description": "Opens ONE Server-Sent Events (SSE) stream carrying live activity for\nevery fleet the caller can read in the workspace. It is the Fleets Wall's\nsingle connection, replacing one stream per tile.\n\nEach message's `data` is the fleet's activity payload with `fleet_id`\nspliced in as the leading field. The client demultiplexes each frame to\nthe right fleet by that tag. Identifiers restart at 0 for each connection,\nand the route ignores `Last-Event-ID`.\n\nThe connection adjusts its fan-in as fleets appear or disappear. A caller\nwhose workspace access is revoked stops receiving on the next refresh. At\ncapacity the route returns 503 `UZ-API-002` with `Retry-After`. Recover a\nreconnect gap through `GET /v1/workspaces/{workspace_id}/events` before\nreconnecting.\n",
+        "tags": [
+          "Workspaces"
+        ],
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "SSE stream opened.",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "type": "string",
+                  "description": "SSE-formatted frames; each `data` carries `fleet_id`."
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
     "/v1/workspaces/{workspace_id}/approvals": {
       "get": {
         "operationId": "list_workspace_approvals",

@@ -25,6 +25,7 @@ const serve_r2 = @import("serve_r2.zig");
 const serve_secrets = @import("serve_secrets.zig");
 const serve_webhook_lookup = @import("serve_webhook_lookup.zig");
 const subscription_hub = @import("../events/subscription_hub.zig");
+const fleet_set_cache = @import("../events/fleet_set_cache.zig");
 const stream_registry = @import("../http/stream_registry.zig");
 const model_rate_cache = @import("../state/model_rate_cache.zig");
 const crypto_primitives = @import("../secrets/crypto_primitives.zig");
@@ -176,7 +177,8 @@ pub fn run(io: std.Io, env_map: *const EnvMap, argv: []const [:0]const u8, alloc
     // from (borrows the queue pool's resolved config — torn down before it).
     var streams = stream_registry.init(alloc, io);
     var hub = subscription_hub.init(alloc, io);
-    defer serve_shutdown.deinitStreaming(&hub, &streams);
+    var fleet_sets = fleet_set_cache.init(alloc, io);
+    defer serve_shutdown.deinitStreaming(&hub, &streams, &fleet_sets);
     hub.start(api_queue.pool.cfg) catch |err| {
         log.err("startup.subscription_hub_failed", .{
             .error_code = error_codes.ERR_STARTUP_REDIS_CONNECT,
@@ -221,6 +223,7 @@ pub fn run(io: std.Io, env_map: *const EnvMap, argv: []const [:0]const u8, alloc
         .sse_max_streams = serve_cfg.sse_max_streams,
         .hub = &hub,
         .stream_registry = &streams,
+        .fleet_sets = &fleet_sets,
         .ready_max_queue_depth = serve_cfg.ready_max_queue_depth,
         .ready_max_queue_age_ms = serve_cfg.ready_max_queue_age_ms,
         .balance_policy = balance_policy.resolveFromEnv(env_map, alloc),
