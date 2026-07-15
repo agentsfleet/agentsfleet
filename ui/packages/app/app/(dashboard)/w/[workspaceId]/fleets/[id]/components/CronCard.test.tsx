@@ -25,6 +25,17 @@ describe("CronCard", () => {
     expect(node.textContent).toMatch(/TRIGGER\.md/);
   });
 
+  it("test_triggers_render_read_only", () => {
+    // §4: cron triggers render read-only. Schedules change by editing
+    // TRIGGER.md and reinstalling (M105 owns schedule CRUD), so the card exposes
+    // no editable field and no create/update/delete/save control.
+    render(<CronCard trigger={{ type: "cron", schedule: "*/15 * * * *" }} workspaceId="ws_1" fleetId="agt_ax" />);
+    expect(screen.queryByRole("textbox")).toBeNull();
+    for (const verb of [/^add/i, /create/i, /edit schedule/i, /^delete/i, /^save/i, /update/i]) {
+      expect(screen.queryByRole("button", { name: verb })).toBeNull();
+    }
+  });
+
   it("links to the actor-filtered deliveries view", () => {
     render(<CronCard trigger={{ type: "cron", schedule: "*/15 * * * *" }} workspaceId="ws_1" fleetId="agt_ax" />);
     const link = screen.getByTestId("cron-deliveries-link");
