@@ -51,18 +51,19 @@ describe("FleetTile — the three kinds (Inv. 1)", () => {
     expect(container.querySelector('a[href="/w/ws_1/fleets/flt_1"]')).not.toBeNull();
   });
 
-  it("an active fleet with a live stream renders the live kind + server-truth footer (1.2, 2.1)", () => {
+  it("an active fleet with a live stream renders the live kind + server-truth footer, pulse animating (1.2, 2.1)", () => {
     streamMock.mockReturnValue({ events: [], connectionStatus: CONNECTION_STATUS.LIVE });
     const { container, getByText } = renderTile(fleet());
     expect(container.querySelector('[data-kind="live"]')).not.toBeNull();
     // Footer reads server truth, not token math.
     expect(getByText("$1.20")).toBeTruthy();
     expect(getByText("7 ev")).toBeTruthy();
-    // No snapshot eyebrow while live.
+    // No snapshot eyebrow while live; the pulse animates (data-live set).
     expect(container.textContent).not.toContain("snapshot");
+    expect(container.querySelector('[data-live="true"]')).not.toBeNull();
   });
 
-  it("a reconnecting stream degrades to a snapshot tile with its last event (2.2, 2.3)", () => {
+  it("a reconnecting stream degrades to a snapshot tile with its last event, pulse STILL (2.2, 2.3)", () => {
     streamMock.mockReturnValue({
       events: [{ id: "e1", role: "assistant", actor: "fleet", text: "ran a check", createdAt: new Date(0), status: "received" }],
       connectionStatus: CONNECTION_STATUS.RECONNECTING,
@@ -71,6 +72,9 @@ describe("FleetTile — the three kinds (Inv. 1)", () => {
     expect(container.querySelector('[data-kind="snapshot"]')).not.toBeNull();
     expect(getByText("snapshot")).toBeTruthy();
     expect(getByText("ran a check")).toBeTruthy();
+    // The pulse must NOT animate in snapshot mode — the animation is live-only,
+    // so a frozen feed cannot masquerade as live (greptile P2, DESIGN_SYSTEM §Motion).
+    expect(container.querySelector('[data-live="true"]')).toBeNull();
   });
 
   it("an installing fleet streams with an info-toned marker", () => {
