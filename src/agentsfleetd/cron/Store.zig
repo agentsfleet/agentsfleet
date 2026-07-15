@@ -119,6 +119,7 @@ pub fn list(self: Store, alloc: std.mem.Allocator, fleet_id: []const u8) ![]mode
 pub fn claimMutation(self: Store, alloc: std.mem.Allocator, input: model.MutationInput) !ClaimOutcome {
     const conn = try self.pool.acquire();
     defer self.pool.release(conn);
+    const desired: ?[]const u8 = if (input.desired_status) |status| status.toSlice() else null;
     {
         var query = PgQuery.from(try conn.query(sql.CLAIM_MUTATION, .{
             input.schedule_id,
@@ -126,7 +127,7 @@ pub fn claimMutation(self: Store, alloc: std.mem.Allocator, input: model.Mutatio
             input.cron,
             input.timezone,
             input.message,
-            input.desired_status.toSlice(),
+            desired,
             model.SyncStatus.syncing.toSlice(),
             input.lease_token,
             input.lease_until_ms,
