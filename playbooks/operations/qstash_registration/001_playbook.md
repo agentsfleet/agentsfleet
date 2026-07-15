@@ -3,11 +3,11 @@
 **Milestone:** M105
 **Workstream:** 001 (§8.1 deliverable)
 **Updated:** Jul 15, 2026
-**Prerequisite:** `op` Command-Line Interface (CLI) authenticated; the `agentsfleet-admin` tenant API key in vault (`operations/admin_bootstrap/001_playbook.md`); an Upstash account with QStash enabled; the target `agentsfleetd` API deployed and reachable.
+**Prerequisite:** `op` Command-Line Interface (CLI) authenticated; the `agentsfleet-admin` 1Password item carries `api-key` and a Universally Unique Identifier version 7 (UUIDv7) `platform_admin_workspace_id`; an Upstash account with QStash enabled; the target `agentsfleetd` API deployed and reachable.
 
 Registers the environment's Upstash QStash credentials for hosted Fleet schedules. QStash owns the clock; `agentsfleetd` owns schedule state, synchronous schedule mutation calls, and the signed ingress at `/v1/ingress/qstash/schedules`. The daemon loads one admin-workspace vault item named `qstash` with fields `{token,current_signing_key,next_signing_key}`.
 
-> **Run once per environment.** Re-running §4 with `--force` is idempotent on the vault item. QStash key rotation uses the same playbook: update `next_signing_key`, roll once in Upstash, then update both fields before rolling again.
+> **Run once per environment.** Re-running §3 idempotently overwrites the vault item. QStash key rotation uses the same playbook: update `next_signing_key`, roll once in Upstash, then update both fields before rolling again.
 
 ---
 
@@ -38,14 +38,22 @@ case "$ENV" in
 esac
 
 export QSTASH_DESTINATION="$API_BASE/v1/ingress/qstash/schedules"
-export ADMIN_KEY=$(op read "op://$VAULT/agentsfleet-admin/api_key")
+export ADMIN_KEY=$(op read "op://$VAULT/agentsfleet-admin/api-key")
+export PLATFORM_ADMIN_WORKSPACE_ID=$(op read "op://$VAULT/agentsfleet-admin/platform_admin_workspace_id")
+workspace_id_pattern='^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
 [[ "$ADMIN_KEY" =~ ^agt_t[0-9a-f]{64}$ ]] || { echo "missing admin key"; exit 1; }
+[[ "$PLATFORM_ADMIN_WORKSPACE_ID" =~ $workspace_id_pattern ]] || { echo "missing admin workspace pointer"; exit 1; }
 curl -sf -o /dev/null "$API_BASE/healthz" || { echo "$API_BASE unreachable"; exit 1; }
+curl -fsS -H "Authorization: Bearer $ADMIN_KEY" "$API_BASE/v1/tenants/me/workspaces" |
+  jq -e --arg workspace "$PLATFORM_ADMIN_WORKSPACE_ID" '.items[] | select(.id == $workspace)' >/dev/null || {
+    echo "admin API key does not own the configured platform workspace"
+    exit 1
+  }
 ```
 
 ### Acceptance
 
-`$API_BASE/healthz` returns 200; `QSTASH_DESTINATION` is the exact public URL QStash will sign in deliveries.
+`$API_BASE/healthz` returns 200; the admin key owns `PLATFORM_ADMIN_WORKSPACE_ID`; `QSTASH_DESTINATION` is the exact public URL QStash will sign in deliveries.
 
 ---
 
@@ -92,18 +100,25 @@ qstash_next=$(op read "op://$VAULT/qstash/next_signing_key" 2>/dev/null) || read
 
 printf '%s\0%s\0%s' "$qstash_token" "$qstash_current" "$qstash_next" |
   jq -Rs 'split("\u0000") | {
-    token: .[0],
-    current_signing_key: .[1],
-    next_signing_key: .[2]
+    name: "qstash",
+    data: {
+      token: .[0],
+      current_signing_key: .[1],
+      next_signing_key: .[2]
+    }
   }' |
-  AGENTSFLEET_API_KEY="$ADMIN_KEY" agentsfleet secret create qstash --force --data @-
+  curl -fsS -o /dev/null -X POST \
+    -H "Authorization: Bearer $ADMIN_KEY" \
+    -H "Content-Type: application/json" \
+    --data-binary @- \
+    "$API_BASE/v1/workspaces/$PLATFORM_ADMIN_WORKSPACE_ID/secrets"
 
 unset qstash_token qstash_current qstash_next
 ```
 
 ### Acceptance
 
-`agentsfleet secret create` exits 0. No token or signing key appears in command output, shell history, or process arguments.
+The workspace-scoped secret request exits 0. No token or signing key appears in command output, shell history, or process arguments.
 
 ---
 
@@ -112,7 +127,9 @@ unset qstash_token qstash_current qstash_next
 **Goal:** verify the vault item exists, then restart or roll the daemon so process-lifetime QStash credentials load at boot.
 
 ```bash
-AGENTSFLEET_API_KEY="$ADMIN_KEY" agentsfleet secret show qstash --json | jq '{name,kind}'
+curl -fsS -H "Authorization: Bearer $ADMIN_KEY" \
+  "$API_BASE/v1/workspaces/$PLATFORM_ADMIN_WORKSPACE_ID/secrets" |
+  jq -e '.secrets[] | select(.name == "qstash") | {name,kind}'
 
 # Roll/restart agentsfleetd for the target environment using the normal deploy path.
 # Then run one explicit sync against a known test Fleet schedule:
@@ -122,7 +139,7 @@ AGENTSFLEET_API_KEY="$ADMIN_KEY" agentsfleet schedule status "$FLEET_ID" "$SCHED
 
 ### Acceptance
 
-`secret show` returns metadata only; after the daemon roll, `schedule sync` reaches QStash and `schedule status` reports `sync_status=active` for the current generation.
+The exact platform workspace lists `qstash` metadata only; after the daemon roll, `schedule sync` reaches QStash and `schedule status` reports `sync_status=active` for the current generation.
 
 ---
 
@@ -134,7 +151,7 @@ AGENTSFLEET_API_KEY="$ADMIN_KEY" agentsfleet schedule status "$FLEET_ID" "$SCHED
 4. In Upstash, roll signing keys once. Upstash promotes `next` to `current` and creates a new `next`.
 5. Update both 1Password fields from Upstash, re-run §3, and roll `agentsfleetd` again.
 
-Do not roll twice before §5 completes. After two provider-side rolls, the daemon's old current/next pair can no longer verify new deliveries.
+Do not roll twice before rotation step 5 completes. After two provider-side rolls, the daemon's old current/next pair can no longer verify new deliveries.
 
 ---
 
