@@ -58,6 +58,7 @@ NOUN_FINAL_SEGMENT_ALLOW: set[str] = {
     "diagnostics",       # tenant doctor block (provider posture, resolver state)
     "provider",          # tenant's currently-active LLM provider (singleton resource — exactly one row per tenant in core.tenant_model_selection)
     "models",            # tenant model registry collection (M121) — core.tenant_model_entries
+    "preferences",       # per-user dashboard preferences (M132) — core.user_preferences, one row per named key
     "integration-grants",
     "integration-requests",
     "approvals",         # approval-gate inbox collection

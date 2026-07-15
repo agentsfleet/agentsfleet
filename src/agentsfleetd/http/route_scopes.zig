@@ -165,6 +165,12 @@ pub fn requiredScopes(route: router.Route, method: httpz.Method) []const S {
             else => &LIBRARY_WRITE,
         },
 
+        // ── Dashboard UI prefs ──
+        // Authenticated-only: the object is the caller's own preference row, so
+        // there is no capability to hold. Ownership is enforced in-handler by
+        // authorizeWorkspace + the subject→user_id resolution.
+        .workspace_preferences, .workspace_preference => &NONE,
+
         // ── Credentials ──
         .workspace_secrets => switch (method) {
             .GET => &SECRET_READ,
