@@ -133,6 +133,35 @@ test "matchWorkspaceFleetEventsStream: 7-segment shape" {
     try std.testing.expect(matchers.matchWorkspaceFleetEventsStream(parse("/v1/workspaces/ws_abc/fleets/z_123/events", &buf)) == null);
 }
 
+test "matchWorkspaceSuffixAction: workspace events/stream is distinct from the bare events collection" {
+    var buf: [matchers.PATH_MAX_SEGMENTS][]const u8 = undefined;
+    const ws = matchers.matchWorkspaceSuffixAction(parse("/v1/workspaces/ws_abc/events/stream", &buf), "events", "stream").?;
+    try std.testing.expectEqualStrings("ws_abc", ws);
+    // The 3-segment collection is NOT this shape — the two never collide.
+    try std.testing.expect(matchers.matchWorkspaceSuffixAction(parse("/v1/workspaces/ws_abc/events", &buf), "events", "stream") == null);
+    // The per-fleet stream (6 segments) is a different matcher entirely.
+    try std.testing.expect(matchers.matchWorkspaceSuffixAction(parse("/v1/workspaces/ws_abc/fleets/z1/events/stream", &buf), "events", "stream") == null);
+    // Empty workspace id rejects at the matcher.
+    try std.testing.expect(matchers.matchWorkspaceSuffixAction(parse("/v1/workspaces//events/stream", &buf), "events", "stream") == null);
+    // Wrong trailing action does not match.
+    try std.testing.expect(matchers.matchWorkspaceSuffixAction(parse("/v1/workspaces/ws_abc/events/rollup", &buf), "events", "stream") == null);
+}
+
+test "match resolves the workspace multiplexed stream and rejects non-GET" {
+    const router = @import("router.zig");
+    switch (router.match("/v1/workspaces/ws_abc/events/stream", .GET).?) {
+        .workspace_events_stream => |ws| try std.testing.expectEqualStrings("ws_abc", ws),
+        else => return error.TestExpectedEqual,
+    }
+    // The bare collection still resolves to the list, not the stream.
+    switch (router.match("/v1/workspaces/ws_abc/events", .GET).?) {
+        .workspace_events => |ws| try std.testing.expectEqualStrings("ws_abc", ws),
+        else => return error.TestExpectedEqual,
+    }
+    // Only GET streams.
+    try std.testing.expect(router.match("/v1/workspaces/ws_abc/events/stream", .POST) == null);
+}
+
 test "matchWebhook: HMAC-only 2-segment form" {
     var buf: [matchers.PATH_MAX_SEGMENTS][]const u8 = undefined;
     const id = "019abc12-8d3a-7f13-8abc-2b3e1e0a6f11";

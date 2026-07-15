@@ -137,6 +137,13 @@ fn matchV1(p: matchers.Path, method: httpz.Method) ?Route {
     if (matchers.matchWorkspaceApprovalResolve(p)) |r| return .{ .workspace_approval_resolve = r };
     if (matchers.matchWorkspaceApprovalGate(p)) |r| return .{ .workspace_approval_detail = r };
 
+    // ── Workspace + two-segment suffix (deeper than the bare collections) ─
+    // {ws}/events/stream (4 segs) before {ws}/events (3 segs).
+    if (matchers.matchWorkspaceSuffixAction(p, S_EVENTS, "stream")) |ws_id| return switch (method) {
+        .GET => .{ .workspace_events_stream = ws_id },
+        else => null,
+    };
+
     // ── Workspace + suffix collections ────────────────────────────────────
     if (matchers.matchWorkspaceSuffix(p, S_FLEETS)) |ws_id| return .{ .workspace_fleets = ws_id };
     if (matchers.matchWorkspaceSuffix(p, "fleet-libraries")) |ws_id| return .{ .workspace_fleet_library = ws_id };

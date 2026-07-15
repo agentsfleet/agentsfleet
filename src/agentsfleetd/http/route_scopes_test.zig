@@ -19,6 +19,12 @@ test "tenant fleet routes map method → capability scope (GET read, write/delet
     try testing.expectEqual(scopes.Scope.fleet_admin, onlyScope(route_scopes.requiredScopes(fleet, .DELETE)).?);
 }
 
+test "workspace event reads (list + both SSE streams) require fleet:read" {
+    try testing.expectEqual(scopes.Scope.fleet_read, onlyScope(route_scopes.requiredScopes(.{ .workspace_events = "ws1" }, .GET)).?);
+    try testing.expectEqual(scopes.Scope.fleet_read, onlyScope(route_scopes.requiredScopes(.{ .workspace_events_stream = "ws1" }, .GET)).?);
+    try testing.expectEqual(scopes.Scope.fleet_read, onlyScope(route_scopes.requiredScopes(.{ .workspace_fleet_events_stream = .{ .workspace_id = "ws1", .fleet_id = "z1" } }, .GET)).?);
+}
+
 test "platform routes map to platform-plane scopes; runner enroll is its own verb" {
     try testing.expectEqual(scopes.Scope.runner_enroll, onlyScope(route_scopes.requiredScopes(.register_runner, .POST)).?);
     try testing.expectEqual(scopes.Scope.runner_read, onlyScope(route_scopes.requiredScopes(.fleet_runners_list, .GET)).?);

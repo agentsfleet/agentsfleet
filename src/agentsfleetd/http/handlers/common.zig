@@ -15,6 +15,7 @@ const principal_mod = @import("../../auth/principal.zig");
 const balance_policy = @import("../../config/balance_policy.zig");
 const runtime_loader = @import("../../config/runtime_loader.zig");
 const subscription_hub = @import("../../events/subscription_hub.zig");
+const fleet_set_cache = @import("../../events/fleet_set_cache.zig");
 const stream_registry = @import("../stream_registry.zig");
 const CredentialBroker = @import("../../credentials/broker.zig");
 const authz = @import("common_authz.zig");
@@ -107,10 +108,10 @@ pub const Context = struct {
     /// through it instead of dialing per-stream connections. Boot-owned
     /// (serve.zig / TestHarness), started before the server listens.
     hub: *subscription_hub,
-    /// Owner of the live SSE streams: cap admission, the in-flight gauge,
-    /// the shutdown drain, and the fleet listing all read from it.
-    /// Boot-owned, like the hub.
+    /// Live SSE stream owner: cap admission, in-flight gauge, drain, listing. Boot-owned.
     stream_registry: *stream_registry,
+    /// Per-workspace fleet sets, enumerated once per workspace per cadence, shared by every stream (V viewers → one enumeration).
+    fleet_sets: *fleet_set_cache,
     ready_max_queue_depth: ?i64,
     ready_max_queue_age_ms: ?i64,
     telemetry: *telemetry_mod.Telemetry,

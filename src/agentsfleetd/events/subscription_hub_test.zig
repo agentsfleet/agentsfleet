@@ -27,6 +27,10 @@ const CHANNEL_B = "hubtest:beta:activity";
 /// otherwise hold the count at 1 while early publishes go to the dead socket.
 const CHANNEL_ISOLATION = "hubtest:gamma:activity";
 const PAYLOAD_ONE = "{\"kind\":\"chunk\",\"n\":1}";
+const PAYLOAD_TWO = "{\"kind\":\"chunk\",\"n\":2}";
+/// A shared consumer's label — a workspace id in production; it names the
+/// consumer in logs and is never a channel map key.
+const WS_LABEL = "hubtest-workspace";
 const SHORT_POP_MS: u64 = 50;
 const DELIVERY_WAIT_MS: u64 = 5_000;
 const RECOVERY_WAIT_MS: u64 = 15_000;
@@ -65,7 +69,7 @@ const HUB_RSS_GROWTH_BOUND_BYTES: u64 = 4 * 1024 * 1024; // 4 MiB — catches un
 
 test "subscription: frames pop in publish order and ownership transfers" {
     const sub = try Subscription.create(testing.allocator, common.globalIo(), CHANNEL_A);
-    defer sub.destroy();
+    defer sub.unref();
 
     sub.push("first");
     sub.push("second");
@@ -83,7 +87,7 @@ test "subscription: frames pop in publish order and ownership transfers" {
 
 test "subscription: full ring drops oldest, counts it, keeps newest" {
     const sub = try Subscription.create(testing.allocator, common.globalIo(), CHANNEL_A);
-    defer sub.destroy();
+    defer sub.unref();
 
     const dropped_before = metrics.snapshot().sse_dropped_frames_total;
     var frame_buf: [16]u8 = undefined;
@@ -105,13 +109,13 @@ test "subscription: full ring drops oldest, counts it, keeps newest" {
 
 test "subscription: pop times out on a quiet queue" {
     const sub = try Subscription.create(testing.allocator, common.globalIo(), CHANNEL_A);
-    defer sub.destroy();
+    defer sub.unref();
     try testing.expect(sub.pop(SHORT_POP_MS) == .timeout);
 }
 
 test "subscription: queued frames drain before the closed signal" {
     const sub = try Subscription.create(testing.allocator, common.globalIo(), CHANNEL_A);
-    defer sub.destroy();
+    defer sub.unref();
 
     sub.push(PAYLOAD_ONE);
     sub.close();
@@ -148,7 +152,7 @@ test "subscription: push wakes a consumer already parked in pop" {
     // The core liveness property of the epoch-futex protocol: a parked
     // consumer is woken by the producer's bump-then-wake, not by its deadline.
     const sub = try Subscription.create(testing.allocator, common.globalIo(), CHANNEL_A);
-    defer sub.destroy();
+    defer sub.unref();
 
     var probe: WakeProbe = .{};
     const consumer = try std.Thread.spawn(.{}, popOnceIntoProbe, .{ sub, &probe });
@@ -162,7 +166,7 @@ test "subscription: push wakes a consumer already parked in pop" {
 
 test "subscription: close wakes a consumer already parked in pop" {
     const sub = try Subscription.create(testing.allocator, common.globalIo(), CHANNEL_A);
-    defer sub.destroy();
+    defer sub.unref();
 
     var probe: WakeProbe = .{};
     const consumer = try std.Thread.spawn(.{}, popOnceIntoProbe, .{ sub, &probe });
@@ -179,7 +183,7 @@ test "subscription: push after close is freed, never delivered" {
     // must not resurrect the queue, and its copy must be freed (the leak
     // detector is half the assertion).
     const sub = try Subscription.create(testing.allocator, common.globalIo(), CHANNEL_A);
-    defer sub.destroy();
+    defer sub.unref();
 
     sub.close();
     sub.push(PAYLOAD_ONE);
@@ -189,7 +193,7 @@ test "subscription: push after close is freed, never delivered" {
 test "subscription: a failed payload copy counts a drop and delivers nothing" {
     var failing = std.testing.FailingAllocator.init(testing.allocator, .{ .fail_index = PUSH_COPY_FAIL_INDEX });
     const sub = try Subscription.create(failing.allocator(), common.globalIo(), CHANNEL_A);
-    defer sub.destroy();
+    defer sub.unref();
 
     const dropped_before = metrics.snapshot().sse_dropped_frames_total;
     sub.push(PAYLOAD_ONE); // alloc.dupe fails → noteDrop, no enqueue
@@ -198,13 +202,146 @@ test "subscription: a failed payload copy counts a drop and delivers nothing" {
     try testing.expect(sub.pop(SHORT_POP_MS) == .timeout);
 }
 
+// ── Shared consumer: N channels → ONE queue, each frame carrying its channel ─
+
+test "subscription: a tagged frame carries its channel and the untouched payload" {
+    const sub = try Subscription.createShared(testing.allocator, common.globalIo(), WS_LABEL);
+    defer sub.unref();
+    try testing.expect(sub.tagged);
+
+    sub.pushTagged(CHANNEL_A, PAYLOAD_ONE);
+    const got = sub.pop(SHORT_POP_MS);
+    try testing.expect(got == .message);
+    defer testing.allocator.free(got.message);
+
+    const split = Subscription.splitTagged(got.message).?;
+    try testing.expectEqualStrings(CHANNEL_A, split.channel_name);
+    // the payload crosses the queue byte-for-byte — the tag is a prefix, not a rewrite
+    try testing.expectEqualStrings(PAYLOAD_ONE, split.payload);
+}
+
+test "subscription: splitTagged rejects a frame with no channel delimiter" {
+    // The multiplexed handler drops such a frame rather than mis-routing it.
+    try testing.expect(Subscription.splitTagged(PAYLOAD_ONE) == null);
+    try testing.expect(Subscription.splitTagged("") == null);
+}
+
+test "subscription: one shared queue interleaves frames from two channels in publish order" {
+    const sub = try Subscription.createShared(testing.allocator, common.globalIo(), WS_LABEL);
+    defer sub.unref();
+
+    sub.pushTagged(CHANNEL_A, PAYLOAD_ONE);
+    sub.pushTagged(CHANNEL_B, PAYLOAD_TWO);
+
+    const first = sub.pop(SHORT_POP_MS);
+    try testing.expect(first == .message);
+    defer testing.allocator.free(first.message);
+    const second = sub.pop(SHORT_POP_MS);
+    try testing.expect(second == .message);
+    defer testing.allocator.free(second.message);
+
+    try testing.expectEqualStrings(CHANNEL_A, Subscription.splitTagged(first.message).?.channel_name);
+    try testing.expectEqualStrings(CHANNEL_B, Subscription.splitTagged(second.message).?.channel_name);
+}
+
+test "subscription: the shared queue's memory bound is per-consumer, not per-channel" {
+    // The fan-in's whole point: N attached channels share ONE ring, so a
+    // stalled workspace stream costs QUEUE_CAPACITY frames total — never
+    // capacity × fleets.
+    const sub = try Subscription.createShared(testing.allocator, common.globalIo(), WS_LABEL);
+    defer sub.unref();
+
+    var i: usize = 0;
+    while (i < Subscription.QUEUE_CAPACITY + 5) : (i += 1) {
+        sub.pushTagged(if (i % 2 == 0) CHANNEL_A else CHANNEL_B, PAYLOAD_ONE);
+    }
+    try testing.expectEqual(@as(u64, 5), sub.dropCount());
+    try testing.expectEqual(Subscription.QUEUE_CAPACITY, sub.count);
+}
+
+test "hub: a shared consumer attaches N channels and detaches each, leaving no channel behind" {
+    var hub = subscription_hub.init(testing.allocator, common.globalIo());
+    defer hub.deinit();
+    defer hub.stop();
+
+    const shared = try hub.createSharedConsumer(WS_LABEL);
+    try hub.attachChannel(shared, CHANNEL_A);
+    try hub.attachChannel(shared, CHANNEL_B);
+    // N channels, ONE consumer — the wire cost is per channel, the queue cost is one.
+    try testing.expectEqual(@as(usize, 2), hub.channelCount());
+
+    hub.detachChannel(shared, CHANNEL_A);
+    try testing.expectEqual(@as(usize, 1), hub.channelCount());
+    hub.detachChannel(shared, CHANNEL_B);
+    try testing.expectEqual(@as(usize, 0), hub.channelCount());
+    shared.unref();
+}
+
+test "hub: a shared consumer and a per-fleet subscriber share a channel by refcount" {
+    var hub = subscription_hub.init(testing.allocator, common.globalIo());
+    defer hub.deinit();
+    defer hub.stop();
+
+    // The console's single-fleet stream and the wall's workspace stream watch
+    // the same fleet: one wire SUBSCRIBE, two local consumers.
+    const solo = try hub.subscribe(CHANNEL_A);
+    const shared = try hub.createSharedConsumer(WS_LABEL);
+    try hub.attachChannel(shared, CHANNEL_A);
+    try testing.expectEqual(@as(usize, 1), hub.channelCount());
+
+    hub.detachChannel(shared, CHANNEL_A);
+    shared.unref();
+    // the console's stream still holds the channel
+    try testing.expectEqual(@as(usize, 1), hub.channelCount());
+    hub.unsubscribe(solo);
+    try testing.expectEqual(@as(usize, 0), hub.channelCount());
+}
+
+test "hub: stop wakes a shared consumer parked on its fan-in" {
+    var hub = subscription_hub.init(testing.allocator, common.globalIo());
+    defer hub.deinit();
+
+    const shared = try hub.createSharedConsumer(WS_LABEL);
+    try hub.attachChannel(shared, CHANNEL_A);
+    try hub.attachChannel(shared, CHANNEL_B);
+
+    var probe: WakeProbe = .{};
+    const consumer = try std.Thread.spawn(.{}, popOnceIntoProbe, .{ shared, &probe });
+    common.sleepNanos(PARK_SETTLE_NS);
+    hub.stop(); // close-sweep reaches the consumer through EVERY channel it holds
+    consumer.join();
+
+    try testing.expect(probe.outcome == .closed);
+    try testing.expect(probe.elapsed_ms < WAKE_BOUND_MS);
+
+    hub.detachChannel(shared, CHANNEL_A);
+    hub.detachChannel(shared, CHANNEL_B);
+    shared.unref();
+}
+
+test "hub: the shared-consumer fan-in unwinds cleanly under allocation failure" {
+    try std.testing.checkAllAllocationFailures(testing.allocator, sharedFanInRoundTrip, .{});
+}
+
+fn sharedFanInRoundTrip(alloc: std.mem.Allocator) !void {
+    var hub = subscription_hub.init(alloc, common.globalIo());
+    defer hub.deinit();
+    const shared = try hub.createSharedConsumer(WS_LABEL);
+    defer shared.unref();
+    try hub.attachChannel(shared, CHANNEL_A);
+    errdefer hub.detachChannel(shared, CHANNEL_A);
+    try hub.attachChannel(shared, CHANNEL_B);
+    hub.detachChannel(shared, CHANNEL_B);
+    hub.detachChannel(shared, CHANNEL_A);
+}
+
 test "subscription: create unwinds cleanly under allocation failure" {
     try std.testing.checkAllAllocationFailures(testing.allocator, createDestroy, .{});
 }
 
 fn createDestroy(alloc: std.mem.Allocator) !void {
     const sub = try Subscription.create(alloc, common.globalIo(), CHANNEL_A);
-    sub.destroy();
+    sub.unref();
 }
 
 // ── Hub refcount map (cold hub — no connection, the reconnect-gap path) ─────
@@ -428,6 +565,59 @@ test "integration: hub holds one wire subscriber per channel for N viewers; fan-
     hub.unsubscribe(s3);
     live[2] = null;
     try expectNumsub(&pub_client, CHANNEL_A, 0);
+}
+
+test "integration: a shared consumer receives both channels over the wire, each frame tagged" {
+    // The transport proof for the fan-in (RULE STR): frames must arrive on ONE
+    // queue carrying the channel they were published on — asserted through a
+    // real Redis PUBLISH, not by calling pushTagged directly.
+    const url = try requireRedisUrlOrSkip();
+    const cfg = try queue_redis.testing.poolConfigFromUrl(testing.allocator, url);
+    defer redis_config.deinitConfig(testing.allocator, cfg);
+    var pub_client = try queue_redis.testing.connectFromUrl(common.globalIo(), testing.allocator, url);
+    defer pub_client.deinit();
+
+    var hub = subscription_hub.init(testing.allocator, common.globalIo());
+    defer hub.deinit();
+    defer hub.stop();
+    try hub.start(cfg);
+
+    const shared = try hub.createSharedConsumer(WS_LABEL);
+    try hub.attachChannel(shared, CHANNEL_A);
+    try hub.attachChannel(shared, CHANNEL_B);
+    defer {
+        hub.detachChannel(shared, CHANNEL_A);
+        hub.detachChannel(shared, CHANNEL_B);
+        shared.unref();
+    }
+    // one wire subscriber per channel — the fan-in is a scoped SUBSCRIBE set,
+    // never a pattern subscribe over every tenant's channels
+    try expectNumsub(&pub_client, CHANNEL_A, 1);
+    try expectNumsub(&pub_client, CHANNEL_B, 1);
+    try testing.expectEqual(@as(usize, 2), hub.channelCount());
+
+    try pub_client.publish(CHANNEL_A, PAYLOAD_ONE);
+    try pub_client.publish(CHANNEL_B, PAYLOAD_TWO);
+
+    // Both land on the ONE queue; the pub/sub order across two channels is not
+    // guaranteed, so assert the SET of (channel, payload) pairs.
+    var saw_a = false;
+    var saw_b = false;
+    for (0..2) |_| {
+        const got = shared.pop(DELIVERY_WAIT_MS);
+        try testing.expect(got == .message);
+        defer testing.allocator.free(got.message);
+        const split = Subscription.splitTagged(got.message).?;
+        if (std.mem.eql(u8, split.channel_name, CHANNEL_A)) {
+            try testing.expectEqualStrings(PAYLOAD_ONE, split.payload);
+            saw_a = true;
+        } else {
+            try testing.expectEqualStrings(CHANNEL_B, split.channel_name);
+            try testing.expectEqualStrings(PAYLOAD_TWO, split.payload);
+            saw_b = true;
+        }
+    }
+    try testing.expect(saw_a and saw_b);
 }
 
 test "integration: hub reconnects after its connection is killed and delivery resumes" {

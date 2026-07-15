@@ -47,7 +47,7 @@ pub const RouteClass = enum { ops, stream, api };
 pub fn classFor(route: router.Route) RouteClass {
     return switch (route) {
         .healthz, .readyz, .metrics => .ops,
-        .workspace_fleet_events_stream => .stream,
+        .workspace_fleet_events_stream, .workspace_events_stream => .stream,
         .model_library,
         .create_auth_session,
         .poll_auth_session,
@@ -212,6 +212,9 @@ pub fn specFor(route: router.Route, registry: *auth_mw.MiddlewareRegistry) Route
         .workspace_fleet_events_stream => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeFleetEventsStream },
         // Workspace-aggregate event history (replaces deleted activity.zig)
         .workspace_events => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeWorkspaceEvents },
+        // One multiplexed SSE stream for the whole workspace (Bearer this slice;
+        // the dashboard's cookie proxy mints a Bearer, like the per-fleet tail).
+        .workspace_events_stream => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeWorkspaceEventsStream },
         // Approval inbox
         .workspace_approvals => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeWorkspaceApprovals },
         .workspace_approval_detail => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeWorkspaceApprovalDetail },

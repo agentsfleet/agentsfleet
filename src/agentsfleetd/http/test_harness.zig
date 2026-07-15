@@ -38,6 +38,7 @@ const handler = @import("handler.zig");
 const http_server = @import("server.zig");
 const telemetry_mod = @import("../observability/telemetry.zig");
 const subscription_hub = @import("../events/subscription_hub.zig");
+const fleet_set_cache = @import("../events/fleet_set_cache.zig");
 const stream_registry = @import("stream_registry.zig");
 const message = @import("test_http_message.zig");
 const server_bringup = @import("test_harness_server.zig");
@@ -53,6 +54,10 @@ const TEST_AUDIT_LOG_PEPPER: []const u8 = "test-pepper-bytes-32-len--padded";
 /// (instant, tiny pub/sub frames) a 100 ms SO_RCVTIMEO never truncates a frame,
 /// and the dead-socket discrimination (read_timeout_ms / 2 = 50 ms) still holds.
 const TEST_HUB_READ_TIMEOUT_MS: u32 = 100;
+/// Workspace-stream refresh cadence under test: low enough that a fleet
+/// appearing or a membership revoked surfaces within a test's patience, high
+/// enough that a settle sleep can reliably straddle exactly one tick.
+const TEST_FLEET_SET_REFRESH_MS: i64 = 150;
 
 /// Re-exported from `test_http_message.zig` so consumers keep importing the
 /// fluent request/response types from this module unchanged.
@@ -91,9 +96,10 @@ pub const TestHarness = struct {
     /// `connectRedis` once the queue config exists. SSE suites gate on the
     /// Redis env anyway, so a cold hub only ever serves non-SSE routes.
     hub: subscription_hub,
-    /// Live-stream owner, mirroring serve.zig (cap admission, gauge, drain,
-    /// fleet listing). Cheap init, no Redis dependency.
+    /// Live-stream owner, mirroring serve.zig. Cheap init, no Redis dependency.
     streams: stream_registry,
+    /// Shared per-workspace fleet sets, mirroring serve.zig (lazy DB query).
+    fleet_sets: fleet_set_cache,
     telemetry: telemetry_mod.Telemetry,
     registry: auth_mw.MiddlewareRegistry,
     ctx: handler.Context,
@@ -187,6 +193,11 @@ pub const TestHarness = struct {
             .queue = undefined,
             .hub = subscription_hub.init(alloc, constants.globalIo()),
             .streams = stream_registry.init(alloc, constants.globalIo()),
+            .fleet_sets = blk: {
+                var fs = fleet_set_cache.init(alloc, constants.globalIo());
+                fs.refresh_interval_ms = TEST_FLEET_SET_REFRESH_MS;
+                break :blk fs;
+            },
             .telemetry = telemetry_mod.Telemetry.initTest(),
             // SAFETY: test fixture; field is populated by the surrounding builder before any read.
             .registry = undefined,
@@ -226,6 +237,7 @@ pub const TestHarness = struct {
             .api_max_in_flight_requests = 64,
             .hub = &h.hub,
             .stream_registry = &h.streams,
+            .fleet_sets = &h.fleet_sets,
             .ready_max_queue_depth = null,
             .ready_max_queue_age_ms = null,
             .telemetry = &h.telemetry,
@@ -286,6 +298,9 @@ pub const TestHarness = struct {
         self.streams.awaitEmpty();
         self.hub.deinit();
         self.streams.deinit();
+        // awaitEmpty above guarantees no stream thread survives to hold a
+        // fleet-set reference (mirrors serve_shutdown.deinitStreaming).
+        self.fleet_sets.deinit();
         self.verifier.deinit();
         // Server threads are joined above, so no request can be mid-publish;
         // frees the lazily-cached Slack signing secret (ctx.alloc-owned).

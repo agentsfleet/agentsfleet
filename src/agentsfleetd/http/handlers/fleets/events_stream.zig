@@ -52,24 +52,12 @@ const ec = @import("../../../errors/error_registry.zig");
 const id_format = @import("../../../types/id_format.zig");
 const metrics = @import("../../../observability/metrics.zig");
 const subscription_hub = @import("../../../events/subscription_hub.zig");
+const activity_channel = @import("../../../events/activity_channel.zig");
+const sse_frame = @import("../sse_frame.zig");
 
 const log = logging.scoped(.http_fleet_events_stream);
 
 const Hx = hx_mod.Hx;
-
-const channel_prefix = "fleet:";
-const channel_suffix = ":activity";
-
-/// Idle wake-up cadence for the subscription pop. Each tick with no frames
-/// sends a heartbeat comment so a vanished client is detected by the failing
-/// write — without it a stream over a dead client would hold its thread and
-/// slot until a publish that may never come.
-const SSE_HEARTBEAT_INTERVAL_MS: u32 = 15_000;
-/// Channel name scratch: prefix + UUID + suffix.
-const CHANNEL_BUF_LEN: usize = 128;
-/// SSE comment frame — ignored by EventSource clients, but the write probes
-/// client liveness and keeps intermediaries from idling the connection out.
-const SSE_HEARTBEAT_FRAME = ": heartbeat\n\n";
 
 pub fn innerEventsStream(
     hx: Hx,
@@ -172,9 +160,8 @@ const StreamJob = struct {
 
     fn create(ctx: *common.Context, fleet_id: []const u8, reg_id: u64) CreateError!*StreamJob {
         const alloc = ctx.alloc;
-        var channel_buf: [CHANNEL_BUF_LEN]u8 = undefined;
-        const name = std.fmt.bufPrint(&channel_buf, "{s}{s}{s}", .{ channel_prefix, fleet_id, channel_suffix }) catch
-            return error.ChannelTooLong;
+        var channel_buf: [activity_channel.BUF_LEN]u8 = undefined;
+        const name = try activity_channel.format(&channel_buf, fleet_id);
         const job = alloc.create(StreamJob) catch return error.OutOfMemory;
         errdefer alloc.destroy(job);
         const sub = ctx.hub.subscribe(name) catch |err| {
@@ -203,45 +190,20 @@ fn streamLoop(
     var seq: u64 = 0;
     var w = stream.writer(io, &.{});
     while (true) {
-        switch (sub.pop(SSE_HEARTBEAT_INTERVAL_MS)) {
+        switch (sub.pop(sse_frame.HEARTBEAT_INTERVAL_MS)) {
             .message => |payload| {
                 defer alloc.free(payload);
-                const kind = extractKind(payload) orelse "message";
-                try writeFrame(&w, seq, kind, payload);
+                const kind = sse_frame.extractKind(payload) orelse sse_frame.DEFAULT_KIND;
+                try sse_frame.writeFrame(&w, seq, kind, payload);
                 seq +%= 1;
             },
             // A heartbeat write to a vanished client fails and unwinds the
             // loop, releasing the thread + subscription.
-            .timeout => try w.interface.writeAll(SSE_HEARTBEAT_FRAME),
+            .timeout => try w.interface.writeAll(sse_frame.HEARTBEAT_FRAME),
             // Hub shutdown drain: exit promptly so stop() never waits on us.
             .closed => return,
         }
     }
-}
-
-/// Extract the `kind` field from the JSON payload so the SSE `event:`
-/// line can carry it. Anchors on the leading `{"kind":"` prefix so an
-/// embedded "\"kind\":\"" inside a string field cannot poison the
-/// dispatch. Best-effort — falls back to `message` if the publisher's
-/// shape changes.
-fn extractKind(payload: []const u8) ?[]const u8 {
-    const prefix = "{\"kind\":\"";
-    if (payload.len < prefix.len) return null;
-    if (!std.mem.startsWith(u8, payload, prefix)) return null;
-    const close = std.mem.indexOfScalarPos(u8, payload, prefix.len, '"') orelse return null;
-    return payload[prefix.len..close];
-}
-
-fn writeFrame(w: anytype, seq: u64, kind: []const u8, data_json: []const u8) !void {
-    var seq_buf: [24]u8 = undefined;
-    const seq_str = try std.fmt.bufPrint(&seq_buf, "{d}", .{seq});
-    try w.interface.writeAll("id: ");
-    try w.interface.writeAll(seq_str);
-    try w.interface.writeAll("\nevent: ");
-    try w.interface.writeAll(kind);
-    try w.interface.writeAll("\ndata: ");
-    try w.interface.writeAll(data_json);
-    try w.interface.writeAll("\n\n");
 }
 
 fn authorize(hx: Hx, workspace_id: []const u8, fleet_id: []const u8) bool {
@@ -285,32 +247,5 @@ fn verifyFleetInWorkspace(hx: Hx, conn: *pg.Conn, path_workspace_id: []const u8,
     return true;
 }
 
-// ── Tests ───────────────────────────────────────────────────────────────────
-
-const testing = std.testing;
-
-test "extractKind: parses leading kind field" {
-    try testing.expectEqualStrings("event_received", extractKind("{\"kind\":\"event_received\",\"event_id\":\"x\"}").?);
-    try testing.expectEqualStrings("chunk", extractKind("{\"kind\":\"chunk\",\"text\":\"hi\"}").?);
-}
-
-test "extractKind: returns null when field missing" {
-    try testing.expect(extractKind("{\"foo\":\"bar\"}") == null);
-}
-
-test "extractKind: ignores embedded kind inside a string value" {
-    // If a chunk's text happens to contain the kind-needle literal, the
-    // anchored prefix scan must not pick it up — the real kind comes
-    // first per the publisher's frame shape.
-    const poisoned = "{\"kind\":\"chunk\",\"text\":\"\\\"kind\\\":\\\"fake\\\"\"}";
-    try testing.expectEqualStrings("chunk", extractKind(poisoned).?);
-}
-
-test "extractKind: returns null when kind is not the leading field" {
-    try testing.expect(extractKind("{\"event_id\":\"x\",\"kind\":\"chunk\"}") == null);
-}
-
-test "extractKind: handles short payloads without panicking" {
-    try testing.expect(extractKind("") == null);
-    try testing.expect(extractKind("{\"k\"") == null);
-}
+// Frame-shape tests moved with the writers into `handlers/sse_frame.zig` —
+// both SSE handlers share one tested copy (RULE NDC).
