@@ -74,6 +74,7 @@ pub fn classFor(route: router.Route) RouteClass {
         .grant_approval_webhook,
         .github_webhook,
         .app_ingress,
+        .qstash_schedule_ingress,
         .admin_platform_keys,
         .delete_admin_platform_key,
         .admin_models,
@@ -179,6 +180,9 @@ pub fn specFor(route: router.Route, registry: *auth_mw.MiddlewareRegistry) Route
         .receive_webhook => .{ .middlewares = registry.webhookSig(), .invoke = invoke.invokeReceiveWebhook },
         .github_webhook => .{ .middlewares = registry.webhookSig(), .invoke = invoke.invokeGithubWebhook },
         .app_ingress => .{ .middlewares = auth_mw.MiddlewareRegistry.none, .invoke = invoke.invokeAppIngress },
+        // No generic middleware fits: QStash signs the exact raw body with
+        // current/next platform vault keys, verified inline without bearer fallback.
+        .qstash_schedule_ingress => .{ .middlewares = auth_mw.MiddlewareRegistry.none, .invoke = invoke.invokeQStashScheduleIngress },
         // Clerk via Svix — dedicated middleware, shared handler.
         .receive_svix_webhook => .{ .middlewares = registry.svix(), .invoke = invoke.invokeReceiveSvixWebhook },
         // Clerk user.created auth-plane event — no fleet context; handler
@@ -311,6 +315,7 @@ test "specFor resolves a RouteSpec for a representative sample of every route fa
     _ = specFor(.{ .grant_approval_webhook = "z1" }, &reg);
     _ = specFor(.{ .github_webhook = "z1" }, &reg);
     _ = specFor(.{ .app_ingress = "github" }, &reg);
+    _ = specFor(.qstash_schedule_ingress, &reg);
     _ = specFor(.{ .workspace_fleet_memories = .{ .workspace_id = "ws1", .fleet_id = "z1" } }, &reg);
     _ = specFor(.{ .request_integration_grant = .{ .workspace_id = "ws1", .fleet_id = "z1" } }, &reg);
     _ = specFor(.{ .list_integration_grants = .{ .workspace_id = "ws1", .fleet_id = "z1" } }, &reg);

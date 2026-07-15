@@ -136,6 +136,16 @@ test "qstash verifier: missing rotation key and oversized token fail closed" {
     try std.testing.expectError(error.TokenTooLarge, verifier.verifyAt(std.testing.allocator, oversized, "{}", NOW));
 }
 
+test "qstash verifier: oversized signed message identifier fails closed" {
+    const alloc = std.testing.allocator;
+    const oversized_message_id = "x" ** (QStashVerifier.MAX_MESSAGE_ID_BYTES + 1);
+    const claims: Claims = .{ .message_id = oversized_message_id };
+    const token = try sign(alloc, CURRENT_KEY, claims);
+    defer alloc.free(token);
+    const verifier = QStashVerifier.init(DESTINATION, CURRENT_KEY, NEXT_KEY);
+    try std.testing.expectError(error.ClaimsInvalid, verifier.verifyAt(alloc, token, claims.body, NOW));
+}
+
 fn allocationSweep(alloc: std.mem.Allocator) !void {
     const claims: Claims = .{};
     const token = try sign(alloc, CURRENT_KEY, claims);

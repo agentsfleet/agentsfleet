@@ -85,6 +85,7 @@ pub fn requiredScopes(route: router.Route, method: httpz.Method) []const S {
         .grant_approval_webhook,
         .github_webhook,
         .app_ingress,
+        .qstash_schedule_ingress,
         .connector_callback,
         .slack_events,
         .request_integration_grant,

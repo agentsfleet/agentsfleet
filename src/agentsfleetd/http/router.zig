@@ -54,6 +54,10 @@ pub fn match(path: []const u8, method: httpz.Method) ?Route {
 /// (no API-version literal). Disambiguation is shape-driven (segment count +
 /// segment[i] equality); no two matchers can both fire on the same path.
 fn matchV1(p: matchers.Path, method: httpz.Method) ?Route {
+    if (matchers.matchQStashScheduleIngress(p)) return switch (method) {
+        .POST => .qstash_schedule_ingress,
+        else => null,
+    };
     if (matchers.matchIngress(p)) |provider| return switch (method) {
         .POST => .{ .app_ingress = provider },
         else => null,

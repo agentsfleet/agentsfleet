@@ -46,6 +46,7 @@ test "runner self-plane routes all require runner:self" {
 test "no-auth and self-service routes carry no capability scope (authenticated-only/none)" {
     try testing.expectEqual(@as(usize, 0), route_scopes.requiredScopes(.healthz, .GET).len);
     try testing.expectEqual(@as(usize, 0), route_scopes.requiredScopes(.{ .receive_webhook = "z1" }, .POST).len);
+    try testing.expectEqual(@as(usize, 0), route_scopes.requiredScopes(.qstash_schedule_ingress, .POST).len);
     // Self-session management authenticates but needs no capability scope.
     try testing.expectEqual(@as(usize, 0), route_scopes.requiredScopes(.delete_all_auth_sessions, .DELETE).len);
 }

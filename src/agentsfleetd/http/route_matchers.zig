@@ -318,6 +318,7 @@ pub const matchWebhookAction = webhook.matchWebhookAction;
 pub const matchSvixWebhook = webhook.matchSvixWebhook;
 pub const matchWebhook = webhook.matchWebhook;
 pub const matchIngress = webhook.matchIngress;
+pub const matchQStashScheduleIngress = webhook.matchQStashScheduleIngress;
 
 pub const matchFleetRunner = fleet.matchFleetRunner;
 pub const matchFleetRunnerEvents = fleet.matchFleetRunnerEvents;

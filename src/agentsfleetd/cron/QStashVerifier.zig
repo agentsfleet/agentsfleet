@@ -14,6 +14,7 @@ const jwt_token = @import("../auth/jwks_token.zig");
 const EXPECTED_ALGORITHM = "HS256";
 const EXPECTED_ISSUER = "Upstash";
 pub const MAX_TOKEN_BYTES: usize = 8 * 1024;
+pub const MAX_MESSAGE_ID_BYTES: usize = 256;
 const MAX_CLAIMS_BYTES: usize = 4 * 1024;
 const SHA256_BYTES = std.crypto.hash.sha2.Sha256.digest_length;
 const BODY_HASH_BYTES = std.base64.url_safe_no_pad.Encoder.calcSize(SHA256_BYTES);
@@ -95,7 +96,7 @@ pub fn verifyAt(
     if (!std.mem.eql(u8, claims.sub, self.destination_url)) return VerifyError.SubjectMismatch;
     if (claims.exp <= now_seconds) return VerifyError.TokenExpired;
     if (claims.nbf > now_seconds) return VerifyError.TokenNotYetValid;
-    if (claims.jti.len == 0) return VerifyError.ClaimsInvalid;
+    if (claims.jti.len == 0 or claims.jti.len > MAX_MESSAGE_ID_BYTES) return VerifyError.ClaimsInvalid;
     if (!bodyHashMatches(raw_body, claims.body)) return VerifyError.BodyMismatch;
     return .{ .message_id = try alloc.dupe(u8, claims.jti) };
 }

@@ -84,3 +84,11 @@ pub const DELETE_CLAIMED =
     \\WHERE uid = $1::uuid AND generation = $2 AND sync_token = $3::uuid
     \\RETURNING uid::text
 ;
+
+pub const FIRE_TARGET =
+    \\SELECT s.fleet_id::text, f.workspace_id::text, s.message, s.generation,
+    \\       s.desired_status, s.sync_status, f.status
+    \\FROM core.fleet_schedules s
+    \\JOIN core.fleets f ON f.id = s.fleet_id
+    \\WHERE s.uid = $1::uuid
+;

@@ -98,11 +98,14 @@ This spec uses Create, Read, Update, Delete (CRUD), Hash-based Message Authentic
 | File | Action | Why |
 |------|--------|-----|
 | `schema/{028_core_fleet_schedules.sql,embed.zig}` | CREATE/EDIT | Visible state, generation/sync-lease fields, and migration registration. |
-| `src/agentsfleetd/cron/{main,model,validate,sql}.zig` + `{Service,Store,QStashClient,QStashVerifier}.zig` | CREATE | Cron façade, value modules, stateful file-as-struct types, synchronous provider boundary, signed verification, explicit recovery. |
+| `src/agentsfleetd/cron/*.zig` | CREATE/EDIT | Cron façade, credentials, value modules, stateful file-as-struct types, synchronous provider boundary, signed verification, explicit recovery, and tests. |
 | `src/agentsfleetd/cron/*_test.zig` | CREATE | Failure, leak, concurrency, and performance proofs. |
 | `src/agentsfleetd/tests.zig` | EDIT | Register the cron facade and its private test graph in the canonical test binary. |
 | `src/agentsfleetd/http/handlers/{schedules/manage,ingress/qstash}.zig` | CREATE | Thin workspace, explicit-sync, and signed-ingress adapters. |
+| `src/agentsfleetd/http/handlers/common.zig` + `src/agentsfleetd/cmd/{serve,serve_qstash}.zig` | CREATE/EDIT | Load QStash credentials once and borrow them from immutable request context. |
 | `src/agentsfleetd/http/{routes,router,route_matchers,route_table,route_scopes,route_table_invoke_fleets,route_table_invoke_webhooks}.zig` | EDIT | Route and authorize management plus ingress surfaces. |
+| `public/openapi/{root.yaml,paths/schedules.yaml,components/schemas.yaml}` + `public/{openapi.json,llms.txt,skill.md}` | CREATE/EDIT | Document and bundle the schedule management and signed-ingress API surfaces. |
+| `scripts/check_openapi_url_shape.py` | EDIT | Recognize schedule collections as resource-shaped URLs. |
 | `src/agentsfleetd/{auth/scopes.zig,auth/scopes_test.zig}` | EDIT | Schedule scopes. |
 | `src/agentsfleetd/{state/model_library/sql,fleet/budget,fleet/budget_test,fleet/budget_integration_test,fleet_library/github_source_test,http/handlers/pagination,http/handlers/library/catalog,http/handlers/library/gallery,http/handlers/fleet_bundles/api_integration_test}.zig` + `src/runner/engine/stream_redactor.zig` | EDIT | Formatter-only unblock approved by Indy after the full-tree Zig gate exposed pre-existing drift. |
 | `src/agentsfleetd/fleet_runtime/{config_helpers,config_types,config_parser_test}.zig` + `src/agentsfleetd/http/handlers/fleets/{create,patch,delete,stop,resume,kill}.zig` | EDIT | Shared cron/timezone/message validation and Fleet lifecycle synchronization. |
@@ -111,6 +114,7 @@ This spec uses Create, Read, Update, Delete (CRUD), Hash-based Message Authentic
 | `cli/src/program/cli-tree-fleet.ts` + `cli/src/commands/fleet_schedule*.ts` | CREATE/EDIT | Add/list/update/rm/status/sync commands and rendering. |
 | `tests/fixtures/fleetbundle/zoho-sprint-daily-summarizer/TRIGGER.md` | EDIT | Daily 09:00 Asia/Kolkata declarative example. |
 | `playbooks/operations/qstash_registration/001_playbook.md` | CREATE | Account, vault, ingress, and rotation setup. |
+| `docs/REST_API_DESIGN_GUIDELINES.md` | EDIT | Register QStash as an inline-signature raw-handler exception. |
 | `docs/architecture/{data_flow,user_flow,capabilities,high_level}.md` | EDIT | One concise hosted scheduling model. |
 
 ## Decomposition & alternatives (patch vs refactor)
@@ -152,11 +156,11 @@ A native QStash client performs create/overwrite/delete inside the caller reques
 
 A signed ingress verifies current and next QStash signing keys against the raw body, exact configured URL, issuer, expiry, not-before, and body hash. It cross-checks the body/header schedule identifiers, requires the body generation to equal the current active generation, then uses one atomic Redis script to deduplicate and append the event without a crash gap.
 
-- **Dimension 4.1** — a valid signed fire enqueues exactly one `cron` event on `fleet:{id}:events` → Test `test_fire_enqueues_cron_event`
-- **Dimension 4.2** — an invalid/absent signature is rejected `401` and enqueues nothing → Test `test_fire_rejects_bad_signature`
-- **Dimension 4.3** — a replayed fire (same message id) is an idempotent no-op (`200`, no second event) → Test `test_fire_dedupes_replay`
-- **Dimension 4.4** — a fire for missing, stopped, killed, paused, deleting, or unsynced state enqueues nothing and returns `200` → Test `test_fire_skips_inactive`
-- **Dimension 4.5** — 100 concurrent copies of one signed delivery create one stream entry with no serialized global lock → Test `test_fire_100_way_exactly_once`
+- **Dimension 4.1** — a valid signed fire enqueues exactly one `cron` event on `fleet:{id}:events` → Test `test_fire_enqueues_cron_event` → **DONE**
+- **Dimension 4.2** — an invalid/absent signature is rejected `401` and enqueues nothing → Test `test_fire_rejects_bad_signature` → **DONE**
+- **Dimension 4.3** — a replayed fire (same message id) is an idempotent no-op (`200`, no second event) → Test `test_fire_dedupes_replay` → **DONE**
+- **Dimension 4.4** — a fire for missing, stopped, killed, paused, deleting, or unsynced state enqueues nothing and returns `200` → Test `test_fire_skips_inactive` → **DONE**
+- **Dimension 4.5** — 100 concurrent copies of one signed delivery create one stream entry with no serialized global lock → Test `test_fire_100_way_exactly_once` → **DONE**
 
 ### §5 — Declarative cron and Fleet lifecycle
 
@@ -225,6 +229,7 @@ Event enqueued on fire: EventEnvelope{ event_type=.cron, actor="cron:<schedule_i
 | Schedule not found | Bad `{sid}` on workspace management route | `404` `UZ-SCHED-002`. Signed ingress treats an absent row as an idempotent `200`. |
 | Provider unavailable | QStash timeout, rate limit, or server error | State remains durable; `sync_status=error`; API returns `502 UZ-SCHED-004` and CLI prints the exact `schedule sync` recovery command. No hidden retry. |
 | Concurrent mutation | Another request owns the unexpired synchronization lease | Reject `409 UZ-SCHED-006`; the caller retries after the bounded lease. |
+| QStash not configured | Administrative vault entry is absent or invalid at daemon boot | Schedule management and fire ingress reject `503 UZ-SCHED-007`; the operator follows the QStash registration playbook and rolls the daemon. |
 | Process crash / response loss | Request dies after the state write or QStash call | Row remains `provisioning`, `deleting`, or `error`; ingress rejects non-active or stale generations; explicit `schedule sync` safely overwrites by stable identifier. |
 | Fire signature invalid | Forged/absent QStash signature | `401` `UZ-SCHED-005`; nothing enqueued (fail closed). |
 | Replayed fire | QStash at-least-once retry | Idempotent `200`; one atomic Redis operation suppresses the second event. |
@@ -260,9 +265,9 @@ Event enqueued on fire: EventEnvelope{ event_type=.cron, actor="cron:<schedule_i
 | 3.4 | integration | `test_schedule_authz` | no `schedule:write` → `403` naming scope; other workspace → `403`. |
 | 3.5 | integration | `test_schedule_sync_route` | explicit sync repairs the current generation or returns actionable `502`. |
 | 4.1 | integration | `test_fire_enqueues_cron_event` | signed fire → exactly one stream entry, `event_type=cron`, `actor=cron:<sid>`. |
-| 4.2 | integration | `test_fire_rejects_bad_signature` | bad signature → `401`; stream length unchanged. |
+| 4.2 | integration | `test_fire_rejects_bad_signature` | bad or absent signature → `401`; stream length unchanged. |
 | 4.3 | integration | `test_fire_dedupes_replay` | same message id twice → one stream entry; second is `200` no-op. |
-| 4.4 | integration | `test_fire_skips_inactive` | killed Fleet / paused schedule → `200`, stream length unchanged. |
+| 4.4 | integration | `test_fire_skips_inactive` | missing schedule, killed Fleet, and inactive schedule states → `200`, stream length unchanged. |
 | 4.5 | concurrency | `test_fire_100_way_exactly_once` | 100 identical signed requests → one stream event and parallel verification. |
 | 5.1 | integration | `test_fleet_cron_syncs_schedule` | install/patch declarative cron → one sourced desired schedule at latest generation. |
 | 5.2 | integration | `test_install_no_cron_no_schedule` | install non-cron Fleet → zero schedules. |

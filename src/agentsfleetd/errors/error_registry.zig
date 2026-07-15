@@ -9,9 +9,7 @@
 const std = @import("std");
 const entries = @import("error_entries.zig");
 const entries_runtime = @import("error_entries_runtime.zig");
-
 const EVAL_BRANCH_QUOTA = 1_000_000;
-
 pub const Entry = entries.Entry;
 pub const UNKNOWN = entries.UNKNOWN;
 pub const ERROR_DOCS_BASE = entries.ERROR_DOCS_BASE;
@@ -133,6 +131,14 @@ pub const ERR_AGENTSFLEET_ALREADY_TERMINAL = "UZ-AGT-010";
 pub const ERR_AGENTSFLEET_NAME_MISMATCH = "UZ-AGT-011";
 pub const ERR_AGENTSFLEET_PAUSED_INGRESS = "UZ-AGT-012";
 pub const ERR_AGENTSFLEET_INSTALL_ROLLED_BACK = "UZ-AGT-013";
+// SCHEDULE
+pub const ERR_SCHEDULE_INVALID = "UZ-SCHED-001";
+pub const ERR_SCHEDULE_NOT_FOUND = "UZ-SCHED-002";
+pub const ERR_SCHEDULE_LIMIT_REACHED = "UZ-SCHED-003";
+pub const ERR_SCHEDULE_PROVIDER_UNAVAILABLE = "UZ-SCHED-004";
+pub const ERR_SCHEDULE_SIGNATURE_INVALID = "UZ-SCHED-005";
+pub const ERR_SCHEDULE_UPDATE_BUSY = "UZ-SCHED-006";
+pub const ERR_SCHEDULE_NOT_CONFIGURED = "UZ-SCHED-007";
 // Fleet Bundle
 pub const ERR_FLEET_BUNDLE_INVALID = "UZ-BUNDLE-001";
 pub const ERR_FLEET_BUNDLE_NOT_FOUND = "UZ-BUNDLE-002";
@@ -326,10 +332,7 @@ comptime {
     }
 }
 
-// ── Comptime mirror-pin: auth_codes leaf must byte-match these codes ───────
-// Split into error_registry_mirror_pin.zig (RULE FLL) — the pin's own
-// container-level comptime block still runs eagerly once this import forces
-// Zig to analyze it.
+// The split mirror pin still runs eagerly once this import forces analysis.
 comptime {
     _ = @import("error_registry_mirror_pin.zig");
 }

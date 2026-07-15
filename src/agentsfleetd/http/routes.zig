@@ -76,6 +76,7 @@ pub const Route = union(enum) {
     /// requests and failed completed workflow runs.
     github_webhook: []const u8,
     app_ingress: []const u8, // POST /v1/ingress/{provider}; provider-signature auth in-handler
+    qstash_schedule_ingress, // POST /v1/ingress/qstash/schedules; signature auth in-handler
     // Admin platform key management
     admin_platform_keys, // GET + PUT /v1/admin/platform-keys (method-dispatched in server.zig)
     delete_admin_platform_key: []const u8, // DELETE /v1/admin/platform-keys/{provider}
