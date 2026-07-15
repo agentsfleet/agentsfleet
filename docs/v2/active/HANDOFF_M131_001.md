@@ -2,15 +2,20 @@
 
 **Branch:** `feat/m131-fleet-console` (pushed) · **Worktree:** `~/Projects/agentsfleet-m131-fleet-console`
 **Spec:** `docs/v2/active/M131_001_P1_API_UI_FLEET_CONSOLE.md` (amended — read it, esp. §8/§9 and Discovery)
-**Test Baseline:** unit=2642 integration=334 → **now unit=2658 integration=343** (+16 / +9)
+**Test Baseline:** unit=2642 integration=334 → **backend now unit=2658 integration=343** (+16 / +9); UI console rebuild adds ~30 unit tests on top (re-run `make _lint_zig_test_depth` at VERIFY for the final delta).
 
-## State: backend + client API DONE and green; UI console rebuild NOT started
+## State: backend + client API + **UI console DONE and green**; remaining = OpenAPI, rebase+renumber, VERIFY/CHORE(close)
 
-Four commits on the branch (newest first):
+Commits on the branch (newest first):
+- `00ac775b1` **UI: three-column console** — SkillEditor/MemoryPanel/RunsLedger/RunMetricsStrip + FleetConfig copy fix + page.tsx rebuild + all component tests + e2e + 2 analytics events. All harness gates + oxlint + tsc green; app unit tests green.
+- `67af829fc` fleets-routes page mocks follow the getFleet detail contract
+- `789eb2984` handoff notes
 - `d16ac8eff` client API layer (getFleet+ETag, memory.ts, cost, FleetDetail/MemoryEntry, interim page.tsx)
 - `3e1439df7` denormalized activity counters (migration 028 + triggers) + all 6 backend integration tests
 - `0392603f0` backend: fleet read+ETag, event cost, memory forget, list query, shared http/etag.zig, catalog ETag
 - `74ed4f188` CHORE(open)
+
+**`00ac775b1` is committed but NOT pushed** (branch is 1 ahead of origin). `origin/main` is 9 commits ahead of the branch's merge-base (M132's Live Wall landed — see rebase note below).
 
 **Verified green:** `make lint-zig` · `make test-integration-db` (full DB suite) · `zig build test` · cross-compile both linux targets · app `tsc --noEmit` (0 errors) · `bunx vitest run lib/api …` (252 UI tests). Memleak / gitleaks / full `make lint-all` NOT yet run (do at VERIFY).
 
@@ -38,14 +43,17 @@ Client API (committed): `lib/api/client.ts` (`requestWithEtag`+`etagFrom`), `err
 5. **`bash audits/ufs.sh` (pre-commit) is slow (~2min+)** — commit in the background or it times out the tool call. Numeric test literals need `// pin test: literal is the contract`.
 6. The `getFleet` return changed to `{ fleet, etag }` — any NEW caller must destructure.
 
-## Remaining work (UI-heavy — spec §3/§4/§5/§6/§7 + OpenAPI + e2e)
+## UI console — DONE (commit `00ac775b1`)
 
-Rebuild `page.tsx` into the **three-column console** and its components (all NEW under `.../fleets/[id]/components/`):
-- `console-copy.ts` (named copy constants — RULE UFS), `SkillEditor.tsx` (§4: viewer→edit, next-wake save dialog, "what changes" diff, If-Match 412 reload-and-rediff via `saveFleetSource` + `ApiError.etag`), `MemoryPanel.tsx` (§5: content/category/updated_at + forget), `RunsLedger.tsx` (§6: events + cost column + client 7-day rollup over `?since=7d` + lifetime `budget_used_nanos`; null cost renders `—`, counts as a wake with 0 spend), `RunMetricsStrip.tsx` (§3: tokens·wall·cost server truth). Edit `FleetConfig.tsx` (§7: remove the stale "endpoints don't exist" copy; delete-confirm states the memory trap). Reuse `FleetThread`/`SteerComposer` **unchanged** (middle column).
-- Per-component `.test.tsx` (spec Test Specification has the exact test names + asserts), plus `tests/e2e/acceptance/fleet-console.spec.ts` and selector updates in `logs-detail.spec.ts` + `fleet-thread.spec.ts`.
-- Analytics events `fleet_source_saved` / `fleet_memory_forgotten` in `lib/analytics/events.ts` (spec Metrics table — no source/content in properties).
-- **OpenAPI** (task 9, not started): `public/openapi/paths/fleets.yaml` (GET `{id}` + events `cost_nanos`), `memory.yaml` (`{key}` DELETE), `root.yaml`, regen `public/openapi.json` via `make check-openapi` (never hand-edit). Also add the catalog `etag` field + `If-Match`/412 to the fleet-library path. Migration 028 note: no OpenAPI change (internal).
-- **VERIFY + CHORE(close):** grade the Acceptance Rubric (R1–R11, S1–S9 — note R9/R10 greps changed: §8 is now "no aggregate over child tables", R10 is "one Sha256 under http/"), `make memleak`, `gitleaks detect`, `/write-unit-test`, `/review`, changelog `<Update>` in `~/Projects/docs`, spec Dimensions → DONE + move to `done/`, `kishore-babysit-prs` after PR.
+All under `.../fleets/[id]/components/` unless noted. **New:** `console-copy.ts` (named copy — RULE UFS), `SkillEditor.tsx` (+`.test.tsx`), `MemoryPanel.tsx` (+test), `RunsLedger.tsx` (+test), `RunMetricsStrip.tsx` (+test), `FleetConfig.test.tsx`, `components/domain/SteerComposer.test.tsx`, `tests/e2e/acceptance/fleet-console.spec.ts`. **Edited:** `page.tsx` (three-column rebuild), `loading.tsx`, `FleetConfig.tsx` (§7 copy), `CronCard.test.tsx` (added `test_triggers_render_read_only`), `fleets/actions.ts` (added `getFleetDetailAction`/`saveFleetSourceAction`/`forgetMemoryAction`), `lib/analytics/events.ts` (2 events), `tests/fleets-routes.test.ts` (page assertions + `/memories` mocks), `tests/helpers/dashboard-mocks.tsx` (BrainIcon), `tests/e2e/acceptance/logs-detail.spec.ts` (region selectors).
+
+Every named unit test in the spec Test Specification exists and passes. Gotchas encountered + resolved: cost uses `formatDollars` from `settings/billing/lib/charges` (console cost = invoice — Product Clarity #6); the UI gate forbids raw `<article>/<section>/<form>` — sections are `<Section asChild><section>` (the `<Section asChild>` must be verbatim, no `key` — use a keyed `<Fragment>` in a `.map`), card rows are plain `<Card>` (renders a div); oxlint forbids `!` non-null assertions (the diff uses a flat lcs array with `?? 0`/`?? ""`). Server actions + RunMetricsStrip.tsx + several test files are **not in the spec's Files Changed table** — reconcile the table at CHORE(close) (amend, don't scope-cut).
+
+## Remaining work (in order)
+
+1. **OpenAPI** (task 11, NOT started — do it AFTER the rebase so `root.yaml`/`openapi.json` reconcile once): `public/openapi/paths/fleets.yaml` (GET `{id}` + events `cost_nanos`, description names the `cost_nanos`↔`credit_deducted_nanos` map), `memory.yaml` (`{key}` DELETE), catalog `etag` field + `If-Match`/412 on the fleet-library PATCH, `root.yaml` registration, regen `public/openapi.json` via `make check-openapi` (never hand-edit). Migration is internal — no OpenAPI change.
+2. **Rebase + renumber** (task 12): `origin/main` is 9 ahead (M132 Live Wall). Integrate main (merge preferred — force-push needs Indy approval; the branch is pushed w/ no PR yet). **Renumber my `schema/028_fleet_activity_counters.sql` → `029`** (main already has `028_core_user_preferences.sql`), update `schema/embed.zig`, resolve conflicts in `embed.zig` + `route_table_invoke.zig` (both M131 & M132 edited) + `public/openapi/root.yaml` + `openapi.json`. **Verify DB via `make test-integration-db`** (drops everything via teardown.sql — hand-migration won't reset the `audit`-schema `schema_migrations`).
+3. **VERIFY + CHORE(close)** (task 13): grade the Acceptance Rubric (R1–R11, S1–S9 — R9 grep = "no aggregate over child tables in list.zig/sql.zig", R10 = "one Sha256 under http/"), `make test-integration-db`, `make test-unit-all`, `make lint-all`, `make memleak`, `gitleaks detect`, cross-compile both linux targets, Test Delta row (`make _lint_zig_test_depth` vs baseline), `/write-unit-test` (confirm clean), `/review`, changelog `<Update>` + affected pages in `~/Projects/docs`, reconcile the spec Files-Changed table + mark Dimensions DONE + move spec to `done/`, delete this HANDOFF, open PR, `kishore-babysit-prs`.
 
 ## Fast repro of the perf win (if asked)
 Seed 100 fleets × 3000 events into a workspace (uuidv7 ids via `overlay(gen_random_uuid()::text placing '7' from 15 for 1)`), then `EXPLAIN ANALYZE` the list query — 0.999ms (index scan) vs the old subselect shape's 1773ms. Triggers verified exact against 300k/600k rows incl. the renewal-delta path.
