@@ -98,7 +98,7 @@ This spec uses Create, Read, Update, Delete (CRUD), Hash-based Message Authentic
 | File | Action | Why |
 |------|--------|-----|
 | `schema/{028_core_fleet_schedules.sql,embed.zig}` | CREATE/EDIT | Visible state, generation/sync-lease fields, and migration registration. |
-| `src/agentsfleetd/cron/{main,model,store,validate,qstash_client,qstash_verify}.zig` | CREATE | Cron integration façade, state, synchronous provider boundary, signed verification, explicit recovery. |
+| `src/agentsfleetd/cron/{main,model,validate,sql}.zig` + `{Service,Store,QStashClient,QStashVerifier}.zig` | CREATE | Cron façade, value modules, stateful file-as-struct types, synchronous provider boundary, signed verification, explicit recovery. |
 | `src/agentsfleetd/cron/*_test.zig` | CREATE | Failure, leak, concurrency, and performance proofs. |
 | `src/agentsfleetd/http/handlers/{schedules/manage,ingress/qstash}.zig` | CREATE | Thin workspace, explicit-sync, and signed-ingress adapters. |
 | `src/agentsfleetd/http/{routes,router,route_matchers,route_table,route_scopes,route_table_invoke_fleets,route_table_invoke_webhooks}.zig` | EDIT | Route and authorize management plus ingress surfaces. |
