@@ -82,13 +82,27 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `ui/packages/app/app/backend/v1/workspaces/[workspaceId]/events/route.ts` | CREATE | *(Amended at PLAN)* same-origin proxy for the workspace events LIST — the reconnect backfill source; did not exist. |
 | `ui/packages/app/lib/streaming/workspace-stream.ts` | CREATE | One-connection-per-workspace client: opens the multiplexed `EventSource`, demultiplexes by `fleet_id`, reconnect + workspace-scoped backfill. |
 | `ui/packages/app/lib/streaming/workspace-stream.test.ts` | CREATE | Demultiplex-by-fleet, reconnect/backfill, malformed-frame-drop tests. |
-| `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/components/FleetsList.tsx` | EDIT | The wall subscribes ONCE to the workspace stream and routes frames to tiles; the per-tile stream wiring is removed. |
-| `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/components/FleetTile.tsx` | EDIT | The tile (M132-created) stops opening its own `EventSource` and takes frames from the workspace stream. |
+| `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/components/FleetWall.tsx` | EDIT | *(M132 shipped the wall as `FleetWall.tsx`, NOT `FleetsList.tsx` — pinned at resume, Jul 15.)* The wall wraps its tiles in a workspace-stream provider that opens ONE connection, coalesces bursts (§4.4), reads the server hello frame's live set (§4.5), and surfaces "catching up" from the server drop signal (§4.6). |
+| `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/components/FleetTile.tsx` | EDIT | The tile (M132-created) stops calling the per-fleet `useFleetEventStream` hook (the N-per-tile fan-out) and takes its fleet's frames from the workspace-stream provider. |
 | `ui/packages/app/app/backend/v1/workspaces/[workspaceId]/events/stream/route.ts` | CREATE | Same-origin token-minting proxy for the multiplexed stream (mirror of the per-fleet SSE proxy). |
 | `ui/packages/app/tests/dashboard-fleets-wall.test.ts` | EDIT | Wall opens exactly one stream; tiles update from tagged frames; the N-stream path is asserted gone. |
 
 <!-- G3-v2 rollup endpoint files are intentionally NOT listed here — that Section
 is optional (§5) and its blast radius is added only if its trigger fires. -->
+
+**Blast-radius amendment — Jul 15, 2026 (Indy chose "reopen server, emit real frames" for §4.5/§4.6; see Discovery).** Dims 4.5/4.6's test names (`…_from_hello_frame`, `…_on_drops`) require SERVER-emitted frames the built §1–§3 handler does not send. These files are ADDED to the blast radius — the frames are REAL, not client-simulated:
+
+| File | Action | Why |
+|------|--------|-----|
+| `src/agentsfleetd/http/handlers/workspaces/events_stream.zig` | EDIT (already in table) | On connect, emit a `hello` frame carrying the fanned-in fleet-id set (§4.5). When `writeTagged`/backpressure drops a frame against a stalled consumer, emit a `catching_up` (drop-signal) frame so the client can surface it (§4.6). Both are handler-synthetic frames (like the create path's `install:*`), NOT pub/sub payloads. |
+| `src/agentsfleetd/http/handlers/sse_frame.zig` | EDIT | `writeHelloFrame` (fleet-set array) + `writeCatchingUpFrame` (drop count) writers beside `writeTaggedFrame`; new `KIND_HELLO` / `KIND_CATCHING_UP` named constants. |
+| `src/agentsfleetd/http/handlers/workspaces/workspace_events_stream_integration_test.zig` | EDIT | Negative + positive tests: hello frame lists exactly the readable fleet set; a forced drop emits exactly one `catching_up` frame; neither burns a sequence id. |
+| `ui/packages/app/lib/api/events.ts` | EDIT | Add `FRAME_KIND.HELLO` + `FRAME_KIND.CATCHING_UP` and their `LiveFrame`/`WorkspaceLiveFrame` shapes (`hello` carries `fleet_ids: string[]`; `catching_up` carries `dropped: number`), mirrored from `sse_frame.zig`'s constants. |
+| `ui/packages/app/lib/streaming/workspace-stream.ts` | EDIT | Route `hello`/`catching_up` frames to a workspace-level callback (they carry no per-fleet routing tag) so the provider gets the live set + drop signal; keep per-fleet demux for activity frames. |
+| `ui/packages/app/components/domain/useWorkspaceStream.ts` | CREATE | React provider/store over `workspace-stream.ts`: one connection, rAF burst-coalescing (§4.4), the hello-frame live set (§4.5), the `catching_up` state (§4.6); the tile hook reads its per-fleet slice via `useSyncExternalStore`. Replaces `useFleetEventStream` at the tile. |
+| `public/openapi/paths/workspaces.yaml` + `public/openapi.json` | EDIT | Document the `hello` and `catching_up` frame kinds in the `text/event-stream` description for `GET …/events/stream`; regenerate the bundle. |
+
+**Naming reconciliation (Jul 15):** every `FleetsList.tsx` reference in this spec means the merged **`FleetWall.tsx`**; the per-tile fan-out symbol is the `useFleetEventStream(workspaceId, fleet.id, [])` call in `FleetTile.tsx`'s `StreamingTile` (import `FleetTile.tsx:7`, call `:47`).
 
 ## Applicable Rules
 
@@ -301,22 +315,20 @@ GET /v1/workspaces/{ws}/events/rollup?window=7d&fleet_id=<id>  (§5 — OPTIONAL
 
 ## Dead Code Sweep
 
+**Symbols pinned against merged M132 (Jul 15, 2026).** M132 shipped NO separate per-tile stream module — the wall's per-tile fan-out is the `useFleetEventStream(workspaceId, fleet.id, [])` hook call inside `FleetTile.tsx`'s `StreamingTile` (import `FleetTile.tsx:7`, call `:47`). That hook is SHARED with the M131 Fleet Console and MUST survive; §4 removes only the WALL TILE's use of it. So this is an in-file removal, not a file deletion.
+
 **1. Orphaned files — deleted from disk and git.**
 
 | File to delete | Verify |
 |----------------|--------|
-| The wall's per-tile stream module M132 shipped for the N-connection mode (name confirmed against the M132 branch at CHORE(open); if the per-tile fan-out lives inside `FleetsList.tsx` it is deleted in-file, not as a file) | `test ! -f <the M132 per-tile stream module>` OR documented in-file removal |
+| None. The fan-out is an in-file hook call in `FleetTile.tsx`, not a module. `useFleetEventStream` and `fleet-stream-registry.ts` are the console's and are NOT deleted. | in-file removal only (row 2 is the real gate) |
 
 **2. Orphaned references — zero remaining imports/uses.**
 
 | Deleted symbol/import | Grep | Expected |
 |-----------------------|------|----------|
-| the wall's per-tile `EventSource`/registry fan-out (M132 symbol) | `git grep -nE "perTile\|perFleetTileStream\|N-stream" -- "ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets"` | 0 matches |
-| the tile's own `EventSource`/registry use (M132-created; console keeps its own) | `git grep -n "fleet-stream-registry\|EventSource" -- "ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/components/FleetTile.tsx"` | 0 matches (the tile takes frames from the workspace stream) |
-
-<!-- The exact M132 symbol names are resolvable only against the M132 branch this
-depends on; the executing agent pins them at CHORE(open) from that diff and
-completes both grep rows with the real identifiers. -->
+| the wall tile's per-fleet `useFleetEventStream` fan-out (the N-per-tile stream) | `git grep -n "useFleetEventStream" -- "ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets"` | 0 matches (the tile takes frames from the workspace-stream provider) |
+| any raw per-tile `EventSource`/registry use under the wall | `git grep -nE "fleet-stream-registry\|new EventSource" -- "ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets"` | 0 matches |
 
 ## Out of Scope
 
@@ -353,6 +365,9 @@ completes both grep rows with the real identifiers. -->
   - CHORE(open) Jul 15, 2026: M132_001 (dependency) is in-flight on `feat/m132-live-wall-getting-started` with spec-only commits — no wall code exists yet, so the Dead Code Sweep's M132 symbol names cannot be pinned at open. Sequencing: §1–§3 + the client stream module/proxy land API-first off `main`; §4 (wall swap + N-stream deletion) and the sweep's symbol pinning fold in once M132_001 merges. Surfaced to Indy at start.
   - PLAN Jul 15, 2026 — Files Changed amended (rules beat spec): OpenAPI paths YAML + bundle added (REST guide §7 is six steps; route-coverage gate enforces), workspace events LIST proxy route added (backfill source did not exist), `lib/api/events.ts` URL helpers added, fixtures moved sibling to the integration suite per `dispatch/write_zig.md`, per-fleet handler touched non-behaviorally to share the hub's channel-name constants (RULE UFS).
   - PLAN Jul 15, 2026 — §5 rollup budget constant named `ROLLUP_PAGING_BUDGET_ROUND_TRIPS = 3` (× the workspace events list `LIMIT_MAX = 200`). The trigger cannot be measured yet: M131's client-side aggregation is unmerged, so there is no real paging cost to measure. §5 tracks toward `DEFERRED` unless a measurement lands before CHORE(close).
+  - RESUME Jul 15, 2026 — M132_001 (#520) MERGED to `main`; `main` merged into this branch (merge commit, additive route conflicts resolved: `workspace_events_stream` kept beside M132's onboarding/preferences in routes/route_table/OpenAPI). §4 is UNBLOCKED. Symbols pinned: the wall is `FleetWall.tsx` (not `FleetsList.tsx`), the per-tile fan-out is the `useFleetEventStream` call at `FleetTile.tsx:47` (shared with the M131 console — survives; only the wall's use is removed).
+  - RESUME Jul 15, 2026 — **§4.5/§4.6 mechanism fork, Indy-decided.** The built §1–§3 handler emits ONLY `fleet_id`-tagged activity frames; it drops stalled/malformed frames silently server-side (logged, never signaled) and sends NO hello frame. Dims 4.5/4.6's test names (`…_from_hello_frame`, `…_on_drops`) bake in server frames that do not exist. Options surfaced: (A) client-derive both from data the wall already has, no server change; (B) reopen §1–§3 to emit real hello + drop frames; (C) ship 4.1–4.4, defer 4.5/4.6. **Indy chose (B) — reopen the server, emit real frames** (blast-radius amendment recorded in Files Changed). Governing directive, verbatim: 
+    > Indy (Jul 15, 2026): "I need things to be working not a dummy fake one saying oh we have it and when the user uses its its not there" — context: §4.5/§4.6 must be driven by REAL server-emitted hello/drop frames the client actually receives, never a client-side simulation of a capability the wire does not carry.
 - **Performance decisions (Indy-directed, "make it performant, not an explanation"):**
   - **Per-tick authorization is a point lookup, not the enumeration.** Each stream re-authorizes its own caller every refresh tick (10 s prod) with `authorizeWorkspace` — the authorize-ONLY variant (one `SELECT 1 … workspace_id AND tenant_id`, `Index Scan using workspaces_workspace_id_key`, no `set_config`). The RLS context the enumeration needs is set by the cache's own `enumerate`, so the handler's tick pays one indexed point lookup, not two round-trips. Revocation latency = one tick (Indy chose 10 s over tightening — negligible auth load, acceptable eyeballs-surface latency).
   - **Enumeration query, EXPLAIN-verified.** `SELECT id::text AS fleet_id FROM core.fleets WHERE workspace_id=$1 ORDER BY id LIMIT $2`. `Index Scan using uq_fleets_workspace_id_name` (workspace_id prefix) + a bounded top-N **native-uuid** Sort. The `AS fleet_id` alias is load-bearing: without it `ORDER BY id` binds to the `id::text` projection and sorts 36-char strings under the DB collation (slower AND locale-dependent, which would make the stable-set order collation-sensitive). No status filter — a paused fleet mid-run still emits, so the partial `_active` index is deliberately not used. Runs ≤0.1×/sec per **workspace** (shared via the cache), never per connection.
@@ -364,5 +379,5 @@ completes both grep rows with the real identifiers. -->
 - **Test-isolation decision:** fleet-set-cardinality tests are driven at the `FanIn` seam against a workspace UNIQUE to each test (constructed principal, no shared token) — the shared fixture workspace is nondeterministic under the parallel runner (siblings seed fleets into it), and every persona token is pinned to that one workspace. Connection-lifecycle tests (cap, forbidden, hub-down, one-slot, reconnect-seq) stay at HTTP against the shared workspace since they assert on the connection, not the fleet set.
 - **Metrics review** — reused `sse_backpressure_rejections` / `sse_dropped_frames_total`; workspace-stream open/close + fleet-set-change logs added (no new metric names). No token/payload contents logged.
 - **Skill-chain outcomes** — (pending CHORE(close): `/write-unit-test`, `/review`, `kishore-babysit-prs`).
-- **Deferrals** — §4 wall swap (FleetsList/FleetTile consuming the workspace stream, the N-stream deletion, and the Dead Code Sweep symbol pinning) is BLOCKED on M132_001 merging — the wall code does not exist yet on `main`. The client (`workspace-stream.ts`) + proxy routes + URL helpers land now; the wall wiring + burst-coalescing/hello-frame/catching-up UX (Dims 4.4–4.6) fold in once M132 merges. §5 rollup ships `DEFERRED` (trigger not measurable — M131 client aggregation unmerged).
+- **Deferrals** — §4 wall swap is NO LONGER BLOCKED: M132_001 merged Jul 15 and `main` is merged in. Remaining §4 work is IN PROGRESS, not deferred — Dims 4.1–4.4 (one stream, snapshot-degrade, drop-malformed, burst-coalesce) + Dims 4.5/4.6 driven by REAL server hello/drop frames (Indy's decision above), + the N-per-tile `useFleetEventStream` deletion from `FleetTile.tsx`. §5 rollup ships `DEFERRED` (trigger not measurable — M131 client aggregation unmerged).
 - **§7 soak status** — the SUBSTRATE concurrency safety (the §6 unlocked fan-out + refcount, the shared-consumer map under contention) is proven DETERMINISTICALLY in `workspace_stream_soak_test.zig`: 16-thread × 400-round create/attach/detach/release churn leaves the hub empty + leak-free under `testing.allocator`, and a reader-pushes-while-owner-releases race proves no use-after-free. The at-scale live tests (≥100 real SSE connections, Redis-killed-mid-stream, fleet-churn-under-load, long RSS soak — Dims 7.1 full/7.2/7.3/7.4) are DEFERRED: they need an isolated DB/Redis to be non-flaky, and this shared localhost instance is contended by three sibling milestone worktrees running their suites concurrently. Filed as a follow-up to run in CI (isolated datastore) or a quiet machine; the load-bearing thread-safety is already covered.
