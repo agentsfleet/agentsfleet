@@ -24,6 +24,9 @@ export const EVENTS = {
   fleet_viewed: "fleet_viewed",
   integration_requested: "integration_requested",
   approval_resolved: "approval_resolved",
+  onboarding_viewed: "onboarding_viewed",
+  onboarding_cli_ticked: "onboarding_cli_ticked",
+  onboarding_dismissed: "onboarding_dismissed",
 } as const;
 
 export type EventName = (typeof EVENTS)[keyof typeof EVENTS];
@@ -75,6 +78,12 @@ export type EventProps = {
   [EVENTS.fleet_viewed]: { fleet_id: string; status: string };
   [EVENTS.integration_requested]: { integration_id: string; integration_name: string };
   [EVENTS.approval_resolved]: { gate_id: string; decision: string; has_reason: boolean };
+  // The onboarding funnel. `completed_steps` is the required-step count (0-5);
+  // no email/token/secret material rides any of these — workspace id + counts
+  // only, the same discipline as every other event here.
+  [EVENTS.onboarding_viewed]: { workspace_id: string; completed_steps: number };
+  [EVENTS.onboarding_cli_ticked]: { workspace_id: string };
+  [EVENTS.onboarding_dismissed]: { workspace_id: string; completed_steps: number };
 };
 
 // Runtime mirror of EventProps — `satisfies` locks every array to that event's
@@ -98,4 +107,7 @@ export const EVENT_PROP_KEYS = {
   [EVENTS.fleet_viewed]: ["fleet_id", "status"],
   [EVENTS.integration_requested]: ["integration_id", "integration_name"],
   [EVENTS.approval_resolved]: ["gate_id", "decision", "has_reason"],
+  [EVENTS.onboarding_viewed]: ["workspace_id", "completed_steps"],
+  [EVENTS.onboarding_cli_ticked]: ["workspace_id"],
+  [EVENTS.onboarding_dismissed]: ["workspace_id", "completed_steps"],
 } as const satisfies { [E in EventName]: readonly (keyof EventProps[E])[] };

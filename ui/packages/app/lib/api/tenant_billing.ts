@@ -7,7 +7,7 @@ export async function getTenantBilling(token: string): Promise<TenantBilling> {
 }
 
 // Per-request deduped billing read. Multiple regions in one render (e.g. the
-// dashboard's StatusTiles balance tile + ExhaustionBanner) share a single
+// Wall's ExhaustionBanner and any billing-linked copy) share a single
 // GET /v1/tenants/me/billing instead of each firing their own. Mirrors
 // `listTenantWorkspacesCached`. Billing is tenant-scoped, so the cache key is
 // the token alone — no workspace dimension.

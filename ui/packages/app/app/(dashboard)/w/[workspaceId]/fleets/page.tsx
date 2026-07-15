@@ -1,29 +1,25 @@
 import { Suspense } from "react";
 import { auth } from "@clerk/nextjs/server";
-import Link from "next/link";
 import { redirect } from "next/navigation";
-import {
-  buttonClassName,
-  EmptyState,
-  PageHeader,
-  PageTitle,
-  Skeleton,
-  TooltipButton,
-} from "@agentsfleet/design-system";
+import { PageHeader, PageTitle, Skeleton } from "@agentsfleet/design-system";
 import { listFleets } from "@/lib/api/fleets";
 import { getTenantBillingCached } from "@/lib/api/tenant_billing";
-import { workspacePath } from "@/lib/workspace-routes";
+import { gatherOnboardingInputs } from "@/lib/onboarding-data";
 import ExhaustionBanner from "@/components/domain/ExhaustionBanner";
-import { BotIcon, PlusIcon } from "lucide-react";
-import FleetsList from "./components/FleetsList";
-import { INSTALL_FLEET_TOOLTIP } from "./new/library-docs";
+import FleetWall from "./components/FleetWall";
+import GettingStarted from "./components/GettingStarted";
 
 export const dynamic = "force-dynamic";
 
 const FLEETS_DESCRIPTION = "Fleets installed in this workspace, and their live state.";
-const FLEETS_DOC_URL = "https://docs.agentsfleet.net/fleets/overview";
 
-export default async function FleetsListPage({
+// The Wall — the workspace's only entry point (single-route refactor). With
+// zero fleets it renders the Getting Started checklist as its empty state; with
+// fleets it renders the tile grid. The page header adapts to which one shows,
+// so it can't paint "Fleets" over a first-run checklist — that means the header
+// waits on the data (no shell-first here), a deliberate trade for a truthful
+// title on a route that is now two surfaces in one.
+export default async function FleetsPage({
   params,
 }: {
   params: Promise<{ workspaceId: string }>;
@@ -33,25 +29,16 @@ export default async function FleetsListPage({
   const token = await getToken();
   if (!token) redirect("/sign-in");
 
-  // Shell-first: the header paints immediately while the list/billing load
-  // inside FleetsData. Mirrors the home page's StatusTiles streaming. The
-  // Install affordance lives with the content it acts on: the list toolbar when
-  // fleets exist, the empty state's primary action otherwise.
   return (
-    <div>
-      <PageHeader description={FLEETS_DESCRIPTION}>
-        <PageTitle>Fleets</PageTitle>
-      </PageHeader>
-
-      <Suspense fallback={<Skeleton className="h-48 rounded-lg" />}>
-        <FleetsData workspaceId={workspaceId} />
-      </Suspense>
-    </div>
+    <Suspense fallback={<Skeleton className="h-48 rounded-lg" />}>
+      <FleetsData workspaceId={workspaceId} />
+    </Suspense>
   );
 }
 
-// Async data region streamed under the shell: the fleet page + billing in one
-// pass, keyed by the URL workspace. Exported so it renders/tests in isolation.
+// Async data region: the fleet page + billing in one pass, keyed by the URL
+// workspace. When empty, additionally gathers the onboarding signals so the
+// checklist renders from live state. Exported so it renders/tests in isolation.
 export async function FleetsData({ workspaceId }: { workspaceId: string }) {
   const { getToken } = await auth();
   const token = await getToken();
@@ -62,49 +49,29 @@ export async function FleetsData({ workspaceId }: { workspaceId: string }) {
     getTenantBillingCached(token).catch(() => null),
   ]);
 
-  return (
-    <>
-      <ExhaustionBanner billing={billing} />
-      {page.items.length === 0 ? (
-        <FleetsEmptyState workspaceId={workspaceId} />
-      ) : (
-        <FleetsList
-          workspaceId={workspaceId}
-          initialFleets={page.items}
-          initialCursor={page.cursor}
-        />
-      )}
-    </>
-  );
-}
+  if (page.items.length === 0) {
+    // We already know the fleet count is 0 from `page` — pass it so the gather
+    // skips re-listing fleets (one fewer round trip on the empty wall).
+    const inputs = await gatherOnboardingInputs(workspaceId, token, 0);
+    return (
+      <>
+        <ExhaustionBanner billing={billing} />
+        <GettingStarted workspaceId={workspaceId} inputs={inputs} />
+      </>
+    );
+  }
 
-// Empty fleets → a centered EmptyState: icon, headline, one line of context,
-// then [Learn more] + the primary Install affordance. The library gallery
-// itself lives on /fleets/new (the Install fleet button routes there), so the
-// first-run screen stays calm rather than rendering the full picker inline.
-function FleetsEmptyState({ workspaceId }: { workspaceId: string }) {
   return (
-    <EmptyState
-      icon={<BotIcon size={28} />}
-      title="No fleets yet"
-      description="Pick from the fleet library to install your first fleet."
-      action={
-        <div className="flex flex-wrap items-center justify-center gap-md">
-          <a
-            href={FLEETS_DOC_URL}
-            target="_blank"
-            rel="noopener noreferrer"
-            className={buttonClassName("outline", "sm")}
-          >
-            Learn more
-          </a>
-          <TooltipButton asChild size="sm" tooltip={INSTALL_FLEET_TOOLTIP}>
-            <Link href={workspacePath(workspaceId, "fleets/new")}>
-              <PlusIcon size={14} /> Install fleet
-            </Link>
-          </TooltipButton>
-        </div>
-      }
-    />
+    <div>
+      <PageHeader description={FLEETS_DESCRIPTION}>
+        <PageTitle>Fleets</PageTitle>
+      </PageHeader>
+      <ExhaustionBanner billing={billing} />
+      <FleetWall
+        workspaceId={workspaceId}
+        initialFleets={page.items}
+        initialCursor={page.cursor}
+      />
+    </div>
   );
 }
