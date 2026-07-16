@@ -44,10 +44,12 @@ test.describe("fleet detail logs", () => {
     await expect(statusIndicator).toBeVisible({ timeout: RENDER_TIMEOUT_MS });
     await expect(statusIndicator.locator("[data-live]")).toBeVisible();
 
-    // Recent Activity section is always present on the detail page; assert
-    // its label so a section-rename surfaces here.
-    const recentActivity = page.getByRole("region", { name: "Recent Activity" });
-    await expect(recentActivity).toBeVisible();
+    // The three-column console (M131 §3): the "What it does" region carries the
+    // steer thread, and the runs ledger carries the recent-activity + cost view
+    // that the old flat "Recent Activity" section became. Assert both so a
+    // layout regression surfaces here.
+    await expect(page.getByRole("region", { name: "What it does" })).toBeVisible();
+    await expect(page.getByLabel("Runs")).toBeVisible();
   });
 
   test.afterEach(async () => {

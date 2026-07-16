@@ -26,6 +26,7 @@ const pg = @import("pg");
 const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
 const common = @import("../common.zig");
 const hx_mod = @import("../hx.zig");
+const etag = @import("../../etag.zig");
 const ec = @import("../../../errors/error_registry.zig");
 const library_store = @import("../../../fleet_library/library_store.zig");
 const sql = @import("../../../fleet_library/sql.zig");
@@ -52,18 +53,43 @@ const CatalogEntry = struct {
     required_credentials_reasons: std.json.Value,
     support_files: []const entry_view.SupportSummary,
     updated_at: i64,
+    /// Optimistic-concurrency tag over the operator-editable surface
+    /// (`rowSurface`), so a row editor can send it as `If-Match` on PATCH.
+    etag: []const u8,
 };
 
 const ListBody = struct { entries: []const CatalogEntry };
 
 /// The lifecycle facts one row carries, read before any guarded write. Public
-/// because the add path in onboard.zig reads it too, for its collision guard.
+/// because the add path in onboard.zig reads it too (collision guard) and the
+/// PATCH reads it for both the publish precheck and the `If-Match` verdict.
+/// `name`/`description`/`reasons_raw` exist only to feed `rowSurface`.
 pub const RowState = struct {
     source_repo: []const u8,
     source_ref: []const u8,
     visibility: []const u8,
     has_bundle: bool,
+    name: []const u8,
+    description: []const u8,
+    reasons_raw: []const u8,
 };
+
+/// The catalog row's operator-editable surface, in a fixed order — the field
+/// list its ETag hashes. `content_hash` is deliberately absent: a bundle
+/// refetch changes the hash but not what the operator authored, so it must not
+/// 412 an unrelated description edit. Read identically here (the wire tag) and
+/// in `catalog_patch.zig` (the `If-Match` verdict), so the two tags a save
+/// compares are computed the same way.
+pub fn rowSurface(
+    name: []const u8,
+    description: []const u8,
+    source_repo: []const u8,
+    source_ref: []const u8,
+    reasons_raw: []const u8,
+    visibility: []const u8,
+) [6]?[]const u8 {
+    return .{ name, description, source_repo, source_ref, reasons_raw, visibility };
+}
 
 pub fn innerAdminCatalogList(hx: Hx) void {
     var db = hx.db() orelse return;
@@ -80,13 +106,19 @@ pub fn innerAdminCatalogList(hx: Hx) void {
 /// projection, so the column indices are shared by construction).
 fn rowToEntry(alloc: std.mem.Allocator, row: anytype) !CatalogEntry {
     const hash_opt = try row.get(?[]const u8, 6);
+    const name = try alloc.dupe(u8, try row.get([]const u8, 1));
+    const description = try alloc.dupe(u8, try row.get([]const u8, 2));
+    const source_repo = try alloc.dupe(u8, try row.get([]const u8, 3));
+    const source_ref = try alloc.dupe(u8, try row.get([]const u8, 4));
+    const visibility = try alloc.dupe(u8, try row.get([]const u8, 5));
+    const reasons_raw = try row.get([]const u8, 10);
     return .{
         .id = try alloc.dupe(u8, try row.get([]const u8, 0)),
-        .name = try alloc.dupe(u8, try row.get([]const u8, 1)),
-        .description = try alloc.dupe(u8, try row.get([]const u8, 2)),
-        .source_repo = try alloc.dupe(u8, try row.get([]const u8, 3)),
-        .source_ref = try alloc.dupe(u8, try row.get([]const u8, 4)),
-        .visibility = try alloc.dupe(u8, try row.get([]const u8, 5)),
+        .name = name,
+        .description = description,
+        .source_repo = source_repo,
+        .source_ref = source_ref,
+        .visibility = visibility,
         .content_hash = if (hash_opt) |h| try alloc.dupe(u8, h) else null,
         .requirements = .{
             .credentials = try entry_view.decodeStrings(alloc, try row.get([]const u8, 7)),
@@ -94,9 +126,10 @@ fn rowToEntry(alloc: std.mem.Allocator, row: anytype) !CatalogEntry {
             .network_hosts = try entry_view.decodeStrings(alloc, try row.get([]const u8, 9)),
             .trigger_present = try row.get(bool, 12),
         },
-        .required_credentials_reasons = try entry_view.decodeReasons(alloc, try row.get([]const u8, 10)),
+        .required_credentials_reasons = try entry_view.decodeReasons(alloc, reasons_raw),
         .support_files = try entry_view.decodeSummaries(alloc, try row.get([]const u8, 11)),
         .updated_at = try row.get(i64, 13),
+        .etag = try etag.compute(alloc, &rowSurface(name, description, source_repo, source_ref, reasons_raw, visibility)),
     };
 }
 
@@ -180,7 +213,17 @@ fn deleteDraft(conn: *pg.Conn, id: []const u8) !void {
 /// stay distinguishable — a guarded UPDATE touching zero rows cannot tell them
 /// apart, and the operator deserves to know which one happened.
 pub fn fetchRowState(alloc: std.mem.Allocator, conn: *pg.Conn, id: []const u8) !?RowState {
-    var q = PgQuery.from(try conn.query(sql.SELECT_CATALOG_ROW, .{id}));
+    return fetchRowStateWithSql(alloc, conn, id, sql.SELECT_CATALOG_ROW);
+}
+
+/// PATCH-only row snapshot. Caller owns the surrounding transaction, which
+/// keeps this lock through the version check and all writes.
+pub fn fetchRowStateForUpdate(alloc: std.mem.Allocator, conn: *pg.Conn, id: []const u8) !?RowState {
+    return fetchRowStateWithSql(alloc, conn, id, sql.SELECT_CATALOG_ROW_FOR_UPDATE);
+}
+
+fn fetchRowStateWithSql(alloc: std.mem.Allocator, conn: *pg.Conn, id: []const u8, statement: []const u8) !?RowState {
+    var q = PgQuery.from(try conn.query(statement, .{id}));
     defer q.deinit();
     const row = try q.next() orelse return null;
     const repo = try alloc.dupe(u8, try row.get([]const u8, 0));
@@ -189,11 +232,20 @@ pub fn fetchRowState(alloc: std.mem.Allocator, conn: *pg.Conn, id: []const u8) !
     errdefer alloc.free(visibility);
     const hash = try row.get(?[]const u8, 2);
     const ref = try alloc.dupe(u8, try row.get([]const u8, 3));
+    errdefer alloc.free(ref);
+    const name = try alloc.dupe(u8, try row.get([]const u8, 4));
+    errdefer alloc.free(name);
+    const description = try alloc.dupe(u8, try row.get([]const u8, 5));
+    errdefer alloc.free(description);
+    const reasons_raw = try alloc.dupe(u8, try row.get([]const u8, 6));
     return .{
         .source_repo = repo,
         .source_ref = ref,
         .visibility = visibility,
         .has_bundle = hash != null,
+        .name = name,
+        .description = description,
+        .reasons_raw = reasons_raw,
     };
 }
 

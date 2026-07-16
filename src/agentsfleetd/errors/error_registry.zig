@@ -1,11 +1,6 @@
-/// error_registry.zig — comptime-generated error registry.
-///
-/// Single source of truth for error codes. Adding a new error code:
-/// 1. Add one e() entry to ENTRIES in error_entries.zig (control-plane)
-///    or ENTRIES_RUNTIME in error_entries_runtime.zig (execute path).
-/// 2. Add the ERR_* constant below.
-/// Comptime validation guarantees: non-empty hints, UZ- prefix, no duplicates,
-/// no sentinel collision, and every ERR_* resolves in the registry.
+/// Compile-time-generated error registry and lookup.
+/// Add codes to error_entries.zig or error_entries_runtime.zig, then define the
+/// matching ERR_* constant below. Validation rejects malformed entries.
 const std = @import("std");
 const entries = @import("error_entries.zig");
 const entries_runtime = @import("error_entries_runtime.zig");
@@ -128,6 +123,7 @@ pub const ERR_AGENTSFLEET_ALREADY_TERMINAL = "UZ-AGT-010";
 pub const ERR_AGENTSFLEET_NAME_MISMATCH = "UZ-AGT-011";
 pub const ERR_AGENTSFLEET_PAUSED_INGRESS = "UZ-AGT-012";
 pub const ERR_AGENTSFLEET_INSTALL_ROLLED_BACK = "UZ-AGT-013";
+pub const ERR_AGENTSFLEET_SOURCE_STALE = "UZ-AGT-014";
 // SCHEDULE
 pub const ERR_SCHEDULE_INVALID = "UZ-SCHED-001";
 pub const ERR_SCHEDULE_NOT_FOUND = "UZ-SCHED-002";
@@ -149,6 +145,7 @@ pub const ERR_CATALOG_NOT_FOUND = "UZ-CATALOG-001";
 pub const ERR_CATALOG_PUBLISH_WITHOUT_BUNDLE = "UZ-CATALOG-002";
 pub const ERR_CATALOG_DELETE_PUBLISHED = "UZ-CATALOG-003";
 pub const ERR_CATALOG_ID_COLLISION = "UZ-CATALOG-004";
+pub const ERR_CATALOG_ROW_STALE = "UZ-CATALOG-005";
 // VAULT (structured-credential JSON shape)
 pub const ERR_VAULT_DATA_INVALID = "UZ-VAULT-001";
 pub const ERR_VAULT_DATA_TOO_LARGE = "UZ-VAULT-002";
@@ -176,6 +173,7 @@ pub const ERR_PREF_VALUE_TOO_LARGE = "UZ-PREFS-002";
 // MEMORY
 pub const ERR_MEM_AGENTSFLEET_NOT_FOUND = "UZ-MEM-002";
 pub const ERR_MEM_UNAVAILABLE = "UZ-MEM-003";
+pub const ERR_MEM_ENTRY_NOT_FOUND = "UZ-MEM-004";
 // GATE
 // STARTUP
 pub const ERR_STARTUP_ENV_CHECK = "UZ-STARTUP-001";
@@ -261,6 +259,7 @@ pub const MSG_AGENTSFLEET_NAME_REQUIRED = "name is required (max 64 chars, slug-
 pub const MSG_AGENTSFLEET_SOURCE_REQUIRED = "source_markdown is required (max 64KB)";
 pub const MSG_AGENTSFLEET_TRIGGER_REQUIRED = "trigger_markdown is required (max 64KB)";
 pub const MSG_AGENTSFLEET_CONFIG_REQUIRED = "config_json is required";
+pub const MSG_AGENTSFLEET_SOURCE_STALE = "The fleet source changed since you read it; refetch and reapply your edit";
 pub const MSG_WORKSPACE_ID_REQUIRED = "workspace_id is required (UUIDv7)";
 pub const MSG_SECRET_NAME_REQUIRED = "secret name is required (max 64 chars)";
 pub const MSG_SECRET_DATA_REQUIRED = "secret data must be a non-empty JSON object";

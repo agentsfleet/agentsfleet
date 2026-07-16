@@ -36,35 +36,119 @@ describe("listFleets", () => {
   });
 });
 
+const detail = {
+  id: "zom_1",
+  name: "platform-ops",
+  status: "active",
+  source_markdown: "# SKILL",
+  trigger_markdown: null,
+  bundle_content_hash: null,
+  triggers: null,
+  events_processed: 3,
+  budget_used_nanos: 4000,
+  created_at: 0,
+  updated_at: 0,
+};
+
+// A Headers double so the client can read the ETag off the response.
+function headers(map: Record<string, string>): Headers {
+  return { get: (k: string) => map[k.toLowerCase()] ?? null } as unknown as Headers;
+}
+
 describe("getFleet", () => {
-  it("returns fleet matching id from list", async () => {
-    fetchMock.mockResolvedValue({ ok: true, status: 200, json: async () => ({ items: [fleet], total: 1, next_cursor: null }) });
-    const { getFleet } = await import("./fleets");
-    const result = await getFleet("ws_1", "zom_1", "tok");
-    expect(result?.id).toBe("zom_1");
-  });
-
-  it("returns null when id not found in list", async () => {
-    fetchMock.mockResolvedValue({ ok: true, status: 200, json: async () => ({ items: [fleet], total: 1, next_cursor: null }) });
-    const { getFleet } = await import("./fleets");
-    const result = await getFleet("ws_1", "missing", "tok");
-    expect(result).toBeNull();
-  });
-
-  it("throws ApiError UZ-AGT-SCAN-CAP (404) when id absent and cursor signals more pages exist", async () => {
-    // Workspace has >100 fleets — the first page doesn't contain the target
-    // id but `cursor` is non-null, meaning there ARE more pages we can't scan.
-    // The function must surface a distinct error rather than silently returning null.
+  it("hits GET /fleets/{id} and returns the fleet plus its ETag", async () => {
     fetchMock.mockResolvedValue({
       ok: true,
       status: 200,
-      json: async () => ({ items: [fleet], total: 999, cursor: "cursor_abc" }),
+      headers: headers({ etag: '"abc123"' }),
+      json: async () => detail,
     });
     const { getFleet } = await import("./fleets");
-    const err = await getFleet("ws_1", "not_in_first_page", "tok").catch((e) => e) as ApiError;
+    const { fleet: got, etag } = await getFleet("ws_1", "zom_1", "tok");
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining("/v1/workspaces/ws_1/fleets/zom_1"),
+      expect.objectContaining({ method: "GET" }),
+    );
+    expect(got.id).toBe("zom_1");
+    expect(got.events_processed).toBe(3);
+    expect(etag).toBe('"abc123"');
+  });
+
+  it("propagates a 404 as ApiError (missing or cross-workspace)", async () => {
+    fetchMock.mockResolvedValue({
+      ok: false,
+      status: 404,
+      headers: headers({}),
+      json: async () => ({ error_code: "UZ-AGT-009", detail: "Fleet not found" }),
+    });
+    const { getFleet } = await import("./fleets");
+    const err = (await getFleet("ws_1", "missing", "tok").catch((e) => e)) as ApiError;
     expect(err).toBeInstanceOf(ApiError);
     expect(err.status).toBe(404);
-    expect(err.code).toBe("UZ-AGT-SCAN-CAP");
+  });
+
+  it("rejects a successful detail response with a missing or empty ETag", async () => {
+    const { FLEET_ETAG_REQUIRED, getFleet } = await import("./fleets");
+    for (const responseEtag of [undefined, "", "   "]) {
+      fetchMock.mockResolvedValue({
+        ok: true,
+        status: 200,
+        headers: headers(responseEtag === undefined ? {} : { etag: responseEtag }),
+        json: async () => detail,
+      });
+      await expect(getFleet("ws_1", "zom_1", "tok")).rejects.toThrow(FLEET_ETAG_REQUIRED);
+    }
+  });
+});
+
+describe("saveFleetSource", () => {
+  it("sends If-Match and returns the fresh etag", async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      headers: headers({ etag: '"new"' }),
+      json: async () => ({ fleet_id: "zom_1", config_revision: 5, etag: '"new"' }),
+    });
+    const { saveFleetSource } = await import("./fleets");
+    const res = await saveFleetSource("ws_1", "zom_1", { source_markdown: "# edited" }, '"old"', "tok");
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining("/v1/workspaces/ws_1/fleets/zom_1"),
+      expect.objectContaining({
+        method: "PATCH",
+        headers: expect.objectContaining({ "If-Match": '"old"' }),
+      }),
+    );
+    expect(res.etag).toBe('"new"');
+    expect(res.config_revision).toBe(5);
+  });
+
+  it("a stale If-Match throws ApiError 412 carrying the current etag", async () => {
+    fetchMock.mockResolvedValue({
+      ok: false,
+      status: 412,
+      headers: headers({ etag: '"current"' }),
+      json: async () => ({ error_code: "UZ-AGT-014", detail: "stale", etag: '"current"' }),
+    });
+    const { saveFleetSource } = await import("./fleets");
+    const err = (await saveFleetSource("ws_1", "zom_1", { source_markdown: "x" }, '"stale"', "tok").catch((e) => e)) as ApiError;
+    expect(err.status).toBe(412);
+    expect(err.code).toBe("UZ-AGT-014");
+    expect(err.etag).toBe('"current"');
+  });
+
+  it("rejects a successful save response with a missing or empty ETag", async () => {
+    const { FLEET_ETAG_REQUIRED, saveFleetSource } = await import("./fleets");
+    for (const responseEtag of [undefined, "", "   "]) {
+      fetchMock.mockResolvedValue({
+        ok: true,
+        status: 200,
+        headers: headers({}),
+        json: async () => ({ fleet_id: "zom_1", config_revision: 5, etag: responseEtag }),
+      });
+      await expect(
+        saveFleetSource("ws_1", "zom_1", { source_markdown: "# edited" }, '"old"', "tok"),
+      ).rejects.toThrow(FLEET_ETAG_REQUIRED);
+    }
   });
 });
 

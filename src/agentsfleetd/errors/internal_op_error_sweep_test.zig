@@ -41,10 +41,22 @@
 // build the models list", "Failed to mint an entry id") — both plain English,
 // no jargon/schema names/@errorName, so bumped straight into BASELINE rather
 // than mudball-ok'd (79 -> 81).
+//
+// The fleet console's ETag paths added 3 call sites (fleets/get.zig x2,
+// fleets/patch.zig x1). Each fires only when attaching the source-version
+// header fails, and each answers a plain-English detail naming what the
+// operator lost ("Failed to load this fleet's source" / "Failed to confirm
+// this fleet's saved source") — no schema names, no @errorName, no
+// state-machine language — so they bump BASELINE rather than mudball-ok
+// (81 -> 84).
+//
+// The catalog row's If-Match verdict added 1 more (library/catalog_patch.zig,
+// "Failed to check this entry's version") — same shape, plain English, so
+// bumped too (84 -> 85).
 const std = @import("std");
 const common = @import("common");
 
-const BASELINE_CALL_SITE_COUNT: usize = 81;
+const BASELINE_CALL_SITE_COUNT: usize = 85;
 const CALL_SITE_NEEDLE = "internalOperationError(";
 const HANDLERS_DIR_PATH = "src/agentsfleetd/http/handlers";
 // `http/server.zig` sits one level above `http/handlers/` (the dispatcher,

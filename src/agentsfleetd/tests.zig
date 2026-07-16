@@ -156,6 +156,12 @@ test {
     // Fleet CRUD, activity, router
     _ = @import("http/handlers/fleets/api.zig");
     _ = @import("http/handlers/fleets/api_integration_test.zig");
+    _ = @import("http/handlers/fleets/get_integration_test.zig");
+    _ = @import("http/handlers/fleets/events_cost_integration_test.zig");
+    _ = @import("http/handlers/fleets/list_aggregate_integration_test.zig");
+    _ = @import("http/handlers/fleets/patch_if_match_integration_test.zig");
+    _ = @import("http/handlers/memory/memory_forget_integration_test.zig");
+    _ = @import("http/handlers/library/catalog_etag_integration_test.zig");
     _ = @import("http/handlers/fleets/create.zig");
     _ = @import("http/handlers/fleets/create_install_steps.zig");
     _ = @import("http/handlers/fleets/create_install_steps_lifecycle_test.zig");

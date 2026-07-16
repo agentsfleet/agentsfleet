@@ -17,6 +17,7 @@ const withTokenMock = vi.fn();
 const onboardPlatformFleetLibraryMock = vi.fn();
 const listPlatformFleetLibraryMock = vi.fn();
 const patchPlatformFleetLibraryEntryMock = vi.fn();
+const CATALOG_ETAG = '"catalog-v1"';
 const deletePlatformFleetLibraryEntryMock = vi.fn();
 // Every write revalidates the page — the table IS the confirmation, so the action
 // must not return before asking Next to re-read it. Outside a request scope
@@ -175,12 +176,17 @@ describe("catalog write actions", () => {
     patchPlatformFleetLibraryEntryMock.mockResolvedValueOnce(entry);
 
     const { patchPlatformLibraryAction } = await loadActions();
-    const result = await patchPlatformLibraryAction("platform-ops", { published: true });
+    const result = await patchPlatformLibraryAction(
+      "platform-ops",
+      { published: true },
+      CATALOG_ETAG,
+    );
 
     expect(result).toEqual({ ok: true, data: entry });
     expect(patchPlatformFleetLibraryEntryMock).toHaveBeenCalledWith(
       "platform-ops",
       { published: true },
+      CATALOG_ETAG,
       "tok",
     );
     expect(revalidatePathMock).toHaveBeenCalledWith("/admin/fleet-libraries");
@@ -189,7 +195,11 @@ describe("catalog write actions", () => {
   it("patch: refuses before any round-trip when the session lacks the scope", async () => {
     hasScopeMock.mockResolvedValueOnce(false);
     const { patchPlatformLibraryAction } = await loadActions();
-    const result = await patchPlatformLibraryAction("platform-ops", { published: true });
+    const result = await patchPlatformLibraryAction(
+      "platform-ops",
+      { published: true },
+      CATALOG_ETAG,
+    );
 
     expect(result.ok).toBe(false);
     expect(patchPlatformFleetLibraryEntryMock).not.toHaveBeenCalled();
@@ -204,7 +214,11 @@ describe("catalog write actions", () => {
       errorCode: "UZ-CATALOG-002",
     });
     const { patchPlatformLibraryAction } = await loadActions();
-    const result = await patchPlatformLibraryAction("platform-ops", { published: true });
+    const result = await patchPlatformLibraryAction(
+      "platform-ops",
+      { published: true },
+      CATALOG_ETAG,
+    );
 
     expect(result).toMatchObject({ ok: false, errorCode: "UZ-CATALOG-002" });
     expect(revalidatePathMock).not.toHaveBeenCalled();

@@ -15,8 +15,16 @@ test "tenant fleet routes map method → capability scope (GET read, write/delet
     try testing.expectEqual(scopes.Scope.fleet_write, onlyScope(route_scopes.requiredScopes(.{ .workspace_fleets = "ws1" }, .POST)).?);
 
     const fleet = router_fleet();
+    try testing.expectEqual(scopes.Scope.fleet_read, onlyScope(route_scopes.requiredScopes(fleet, .GET)).?);
     try testing.expectEqual(scopes.Scope.fleet_write, onlyScope(route_scopes.requiredScopes(fleet, .PATCH)).?);
     try testing.expectEqual(scopes.Scope.fleet_admin, onlyScope(route_scopes.requiredScopes(fleet, .DELETE)).?);
+
+    const memory: @import("router.zig").Route = .{ .workspace_fleet_memory_item = .{
+        .workspace_id = "ws1",
+        .fleet_id = "z1",
+        .memory_key = "lesson",
+    } };
+    try testing.expectEqual(scopes.Scope.fleet_write, onlyScope(route_scopes.requiredScopes(memory, .DELETE)).?);
 }
 
 test "schedule routes use schedule read/write scopes" {

@@ -146,10 +146,14 @@ pub fn requiredScopes(route: router.Route, method: httpz.Method) []const S {
             else => &FLEET_WRITE,
         },
         .patch_workspace_fleet => switch (method) {
+            .GET => &FLEET_READ,
             .DELETE => &FLEET_ADMIN,
             else => &FLEET_WRITE,
         },
         .workspace_fleet_messages => &FLEET_WRITE,
+        // Forgetting mutates what the fleet knows, so it takes the write scope;
+        // it is not a lifecycle transition, so not fleet:admin.
+        .workspace_fleet_memory_item => &FLEET_WRITE,
         .workspace_fleet_schedules => switch (method) {
             .GET => &SCHEDULE_READ,
             else => &SCHEDULE_WRITE,

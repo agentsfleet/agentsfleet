@@ -21,6 +21,7 @@ const schedules = @import("route_matchers_schedules.zig");
 const S_APPROVALS = "approvals";
 const S_WORKSPACES = "workspaces";
 const S_FLEETS = "fleets";
+pub const S_MEMORIES = "memories";
 const S_BUNDLES = "bundles";
 /// Shared with the router: the collection form goes through matchWorkspaceSuffix,
 /// the item form through matchWorkspacePreference, and the two must name one segment.
@@ -328,6 +329,8 @@ pub const matchQStashScheduleIngress = webhook.matchQStashScheduleIngress;
 
 pub const matchFleetRunner = fleet.matchFleetRunner;
 pub const matchFleetRunnerEvents = fleet.matchFleetRunnerEvents;
+pub const WorkspaceFleetMemoryRoute = fleet.WorkspaceFleetMemoryRoute;
+pub const matchWorkspaceFleetMemoryItem = fleet.matchWorkspaceFleetMemoryItem;
 
 // Runner control-plane matchers live in `route_matchers_runner.zig` (RULE FLL);
 // re-exported here so `matchers.matchRunner*` is unchanged for the router.

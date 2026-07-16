@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback } from "react";
+import { useCallback, useEffect, useRef } from "react";
+import { useRouter } from "next/navigation";
 import {
   AssistantRuntimeProvider,
   ThreadPrimitive,
@@ -23,7 +24,9 @@ import {
   useFleetEventStream,
   type ConnectionStatus,
   type FleetEvent,
+  type FleetEventStatus,
 } from "./useFleetEventStream";
+import { AGENTSFLEET_EVENT_STATUS } from "@/lib/streaming/fleet-stream-frames";
 import type { EventRow } from "@/lib/api/events";
 import { steerFleetAction } from "@/app/(dashboard)/w/[workspaceId]/fleets/actions";
 import { SteerComposer } from "./SteerComposer";
@@ -49,6 +52,11 @@ const STATUS_VARIANT: Record<ConnectionStatus, "cyan" | "live" | "amber"> = {
 // stream's matching `EVENT_RECEIVED` lands and reconciliation runs.
 // The server's actor (the authenticated user's email) replaces this.
 const OPTIMISTIC_ACTOR = "steer:pending";
+const TERMINAL_EVENT_STATUSES: ReadonlySet<FleetEventStatus> = new Set([
+  AGENTSFLEET_EVENT_STATUS.PROCESSED,
+  AGENTSFLEET_EVENT_STATUS.AGENT_ERROR,
+  AGENTSFLEET_EVENT_STATUS.GATE_BLOCKED,
+]);
 
 export type FleetThreadProps = {
   workspaceId: string;
@@ -70,6 +78,7 @@ export type FleetThreadProps = {
  */
 export function FleetThread({ workspaceId, fleetId, initial }: FleetThreadProps) {
   const stream = useFleetEventStream(workspaceId, fleetId, initial);
+  useRefreshSummariesOnCompletion(initial, stream.events);
   // Pass the registry methods (each `useCallback([fleetId])`-stable), not
   // the whole `stream` object — `stream` is a fresh reference on every SSE
   // frame, so listing it would rebuild `onNew` per frame for no benefit.
@@ -120,6 +129,33 @@ export function FleetThread({ workspaceId, fleetId, initial }: FleetThreadProps)
 }
 
 // ── internals ────────────────────────────────────────────────────────────
+
+function useRefreshSummariesOnCompletion(initial: EventRow[], events: FleetEvent[]) {
+  const router = useRouter();
+  const terminalEventIds = useRef(
+    new Set([
+      ...events
+        .filter((event) => TERMINAL_EVENT_STATUSES.has(event.status))
+        .map((event) => event.id),
+      ...initial
+        .filter((event) => event.status !== AGENTSFLEET_EVENT_STATUS.RECEIVED)
+        .map((event) => event.event_id),
+    ]),
+  );
+  useEffect(() => {
+    let completed = false;
+    for (const event of events) {
+      if (
+        TERMINAL_EVENT_STATUSES.has(event.status) &&
+        terminalEventIds.current.has(event.id) === false
+      ) {
+        terminalEventIds.current.add(event.id);
+        completed = true;
+      }
+    }
+    if (completed) router.refresh();
+  }, [events, router]);
+}
 
 function ThreadViewport({
   eventsCount,

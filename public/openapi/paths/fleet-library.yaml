@@ -7,7 +7,8 @@
       entries whose bundle was never fetched all appear. Unlike the workspace
       gallery, this operator view hides nothing: it shows what is live and what
       still needs work. Requires the `platform-library:write` scope. Metadata only —
-      never bundle markdown, a support-file body, or an object-store key.
+      never bundle markdown, a support-file body, or an object-store key. Each row
+      carries an `etag` that an editor can send as `If-Match` on PATCH.
     tags:
     - Fleet library
     responses:
@@ -85,6 +86,12 @@
       description: The catalog id — the bundle's SKILL.md frontmatter name (a slug, not a UUID).
       schema:
         type: string
+    - name: If-Match
+      in: header
+      required: false
+      description: Optional catalog row version from the list response. Stale values return 412 with the current `etag`.
+      schema:
+        type: string
     description: >-
       Partial update. `description` and `required_credentials_reasons` are the two
       fields no bundle can supply, so they are operator-owned: a later bundle
@@ -92,7 +99,9 @@
       (stored, invisible to every tenant) and `public` (live in every workspace
       gallery and installable). Publishing an entry whose bundle was never fetched
       is refused — a published entry always has something to install. Requires the
-      `platform-library:write` scope.
+      `platform-library:write` scope. Send `If-Match` with the row's `etag` to
+      reject stale edits before they can repoint the source or unpublish the entry.
+      Omitting the header preserves last-write-wins behavior.
     tags:
     - Fleet library
     requestBody:
@@ -118,6 +127,9 @@
         $ref: ../components/responses.yaml#/components/responses/Error
       '409':
         description: Publish was requested for an entry with no bundle; fetch it from the repository first (`UZ-CATALOG-002`).
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '412':
+        description: The `If-Match` value is stale. The problem body carries the current `etag` (`UZ-CATALOG-005`).
         $ref: ../components/responses.yaml#/components/responses/Error
       '503':
         $ref: ../components/responses.yaml#/components/responses/Error

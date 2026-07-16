@@ -12,6 +12,9 @@ const {
   listFleetsMock,
   setFleetStatusMock,
   deleteFleetMock,
+  getFleetMock,
+  saveFleetSourceMock,
+  forgetMemoryMock,
   installFleetMock,
   steerFleetMock,
   onboardWorkspaceFleetLibraryMock,
@@ -21,6 +24,9 @@ const {
     listFleetsMock: vi.fn(),
     setFleetStatusMock: vi.fn(),
     deleteFleetMock: vi.fn(),
+    getFleetMock: vi.fn(),
+    saveFleetSourceMock: vi.fn(),
+    forgetMemoryMock: vi.fn(),
     installFleetMock: vi.fn(),
     steerFleetMock: vi.fn(),
     onboardWorkspaceFleetLibraryMock: vi.fn(),
@@ -31,8 +37,13 @@ vi.mock("@/lib/api/fleets", () => ({
   listFleets: listFleetsMock,
   setFleetStatus: setFleetStatusMock,
   deleteFleet: deleteFleetMock,
+  getFleet: getFleetMock,
+  saveFleetSource: saveFleetSourceMock,
   installFleet: installFleetMock,
   steerFleet: steerFleetMock,
+}));
+vi.mock("@/lib/api/memory", () => ({
+  forgetMemory: forgetMemoryMock,
 }));
 vi.mock("@/lib/api/fleet-library", () => ({
   onboardWorkspaceFleetLibrary: onboardWorkspaceFleetLibraryMock,
@@ -42,6 +53,9 @@ import {
   listFleetsAction,
   setFleetStatusAction,
   deleteFleetAction,
+  getFleetDetailAction,
+  saveFleetSourceAction,
+  forgetMemoryAction,
   installFleetAction,
   steerFleetAction,
   onboardLibraryEntryAction,
@@ -89,6 +103,30 @@ describe("fleet server actions — thin token-forwarders", () => {
     const r = await deleteFleetAction("ws1", "z1");
     expect(r).toEqual({ ok: true, data: undefined });
     expect(deleteFleetMock).toHaveBeenCalledWith("ws1", "z1", "tok");
+  });
+
+  it("getFleetDetailAction forwards ws and id with token last", async () => {
+    const detail = { fleet: { id: "z1", name: "ops" }, etag: '"v1"' };
+    getFleetMock.mockResolvedValueOnce(detail);
+    const r = await getFleetDetailAction("ws1", "z1");
+    expect(r).toEqual({ ok: true, data: detail });
+    expect(getFleetMock).toHaveBeenCalledWith("ws1", "z1", "tok");
+  });
+
+  it("saveFleetSourceAction forwards the changed document and If-Match tag", async () => {
+    const update = { etag: '"v2"', config_revision: 3 };
+    saveFleetSourceMock.mockResolvedValueOnce(update);
+    const body = { source_markdown: "# SKILL\nship" };
+    const r = await saveFleetSourceAction("ws1", "z1", body, '"v1"');
+    expect(r).toEqual({ ok: true, data: update });
+    expect(saveFleetSourceMock).toHaveBeenCalledWith("ws1", "z1", body, '"v1"', "tok");
+  });
+
+  it("forgetMemoryAction forwards the memory key without exposing content", async () => {
+    forgetMemoryMock.mockResolvedValueOnce(undefined);
+    const r = await forgetMemoryAction("ws1", "z1", "style");
+    expect(r).toEqual({ ok: true, data: undefined });
+    expect(forgetMemoryMock).toHaveBeenCalledWith("ws1", "z1", "style", "tok");
   });
 
   it("installFleetAction forwards ws + platform-template body with token last", async () => {

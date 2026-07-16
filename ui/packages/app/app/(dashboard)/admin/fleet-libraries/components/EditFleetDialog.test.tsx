@@ -40,6 +40,7 @@ const ENTRY: PlatformCatalogEntry = {
   },
   required_credentials_reasons: { github: "review your pull requests" },
   support_files: [],
+  etag: '"catalog-v1"',
   updated_at: 1_700_000_000_000,
 };
 
@@ -100,9 +101,40 @@ describe("EditFleetDialog", () => {
       // moved-only: untouched reasons stay off the wire entirely.
       expect(patchPlatformLibraryActionMock).toHaveBeenCalledWith("github-pr-reviewer", {
         description: "Reviews your pull requests and comments.",
-      }),
+      }, ENTRY.etag),
     );
     expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  it("keeps the dialog-open ETag when the table revalidates underneath it", async () => {
+    const user = userEvent.setup();
+    patchPlatformLibraryActionMock.mockResolvedValueOnce({ ok: true, data: ENTRY });
+    const onOpenChange = vi.fn();
+    const view = render(
+      <TooltipProvider>
+        <EditFleetDialog entry={ENTRY} open onOpenChange={onOpenChange} />
+      </TooltipProvider>,
+    );
+
+    await user.type(screen.getByLabelText("Description"), " locally edited");
+    view.rerender(
+      <TooltipProvider>
+        <EditFleetDialog
+          entry={{ ...ENTRY, description: "Someone else's copy", etag: '"catalog-v2"' }}
+          open
+          onOpenChange={onOpenChange}
+        />
+      </TooltipProvider>,
+    );
+    await user.click(screen.getByRole("button", { name: /^save$/i }));
+
+    await waitFor(() =>
+      expect(patchPlatformLibraryActionMock).toHaveBeenCalledWith(
+        ENTRY.id,
+        { description: "Reviews pull requests. locally edited" },
+        ENTRY.etag,
+      ),
+    );
   });
 
   it("keeps the dialog open and shows the mapped error when the save fails", async () => {
@@ -146,7 +178,7 @@ describe("EditFleetDialog", () => {
       // moved-only: the untouched description stays off the wire.
       expect(patchPlatformLibraryActionMock).toHaveBeenCalledWith("github-pr-reviewer", {
         required_credentials_reasons: { github: "review your pull requests" },
-      }),
+      }, ENTRY.etag),
     );
   });
 
@@ -216,6 +248,7 @@ describe("EditFleetDialog", () => {
       expect(patchPlatformLibraryActionMock).toHaveBeenCalledWith(
         "github-pr-reviewer",
         expect.objectContaining({ name: "Reviewer" }),
+        ENTRY.etag,
       ),
     );
   });
@@ -330,6 +363,7 @@ describe("EditFleetDialog", () => {
       expect(patchPlatformLibraryActionMock).toHaveBeenCalledWith(
         "github-pr-reviewer",
         expect.objectContaining({ source_ref: "v2" }),
+        ENTRY.etag,
       ),
     );
     const body = patchPlatformLibraryActionMock.mock.calls[0]?.[1] as Record<string, unknown>;
@@ -415,4 +449,3 @@ describe("EditFleetDialog", () => {
     expect(patchPlatformLibraryActionMock).not.toHaveBeenCalled();
   });
 });
-

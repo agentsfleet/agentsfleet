@@ -22,6 +22,13 @@ export const EVENTS = {
   platform_library_published: "platform_library_published",
   platform_library_source_changed: "platform_library_source_changed",
   fleet_viewed: "fleet_viewed",
+  // An operator saved an edited SKILL.md / TRIGGER.md from the console left rail
+  // (M131 §4). Props carry the fleet id, which half was saved, and the coarse
+  // outcome — never the source contents.
+  fleet_source_saved: "fleet_source_saved",
+  // An operator forgot a memory entry from the console right rail (M131 §5).
+  // Props carry the fleet id and outcome — never the memory key or content.
+  fleet_memory_forgotten: "fleet_memory_forgotten",
   integration_requested: "integration_requested",
   approval_resolved: "approval_resolved",
   onboarding_viewed: "onboarding_viewed",
@@ -76,6 +83,13 @@ export type EventProps = {
     outcome: string;
   };
   [EVENTS.fleet_viewed]: { fleet_id: string; status: string };
+  // Saving the source is the one console edit that changes what the fleet does
+  // on its next wake. `field` names which half moved (skill|trigger); `outcome`
+  // is the coarse success/failure. No source markdown, no credential material.
+  [EVENTS.fleet_source_saved]: { fleet_id: string; field: string; outcome: string };
+  // Forgetting a memory is the operator's correction path. `outcome` is the
+  // coarse success/failure. No memory `content`, no key text.
+  [EVENTS.fleet_memory_forgotten]: { fleet_id: string; outcome: string };
   [EVENTS.integration_requested]: { integration_id: string; integration_name: string };
   [EVENTS.approval_resolved]: { gate_id: string; decision: string; has_reason: boolean };
   // The onboarding funnel. `completed_steps` is the required-step count (0-5);
@@ -105,6 +119,8 @@ export const EVENT_PROP_KEYS = {
   [EVENTS.platform_library_published]: ["entry_id", "action", "outcome"],
   [EVENTS.platform_library_source_changed]: ["entry_id", "field", "was_published", "outcome"],
   [EVENTS.fleet_viewed]: ["fleet_id", "status"],
+  [EVENTS.fleet_source_saved]: ["fleet_id", "field", "outcome"],
+  [EVENTS.fleet_memory_forgotten]: ["fleet_id", "outcome"],
   [EVENTS.integration_requested]: ["integration_id", "integration_name"],
   [EVENTS.approval_resolved]: ["gate_id", "decision", "has_reason"],
   [EVENTS.onboarding_viewed]: ["workspace_id", "completed_steps"],

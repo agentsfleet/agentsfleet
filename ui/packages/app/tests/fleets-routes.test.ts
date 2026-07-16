@@ -77,6 +77,35 @@ describe("fleets routes", () => {
     },
   ];
 
+  // The single-fleet detail body getFleet now reads (M131 §1) — the fields the
+  // detail page renders. Inline fetch mocks return this for `…/fleets/{id}`
+  // instead of the old list envelope the list-scan getFleet used to page.
+  function detailBody(over: Record<string, unknown> = {}) {
+    return {
+      id: "zom_1",
+      name: "platform-ops",
+      status: "active",
+      source_markdown: "# SKILL",
+      trigger_markdown: null,
+      bundle_content_hash: null,
+      triggers: null,
+      events_processed: 0,
+      budget_used_nanos: 0,
+      created_at: 1,
+      updated_at: 1,
+      ...over,
+    };
+  }
+
+  function detailResponse(over: Record<string, unknown> = {}) {
+    return {
+      ok: true,
+      status: 200,
+      headers: { get: (key: string) => (key.toLowerCase() === "etag" ? '"seed-etag"' : null) },
+      json: async () => detailBody(over),
+    };
+  }
+
   function mockFetchBilling(billing: BillingSnapshot) {
     fetchMock.mockImplementation(async (url: string) => {
       if (url.endsWith("/v1/tenants/me/billing")) {
@@ -85,25 +114,30 @@ describe("fleets routes", () => {
       if (url.includes("/approvals")) {
         return { ok: true, status: 200, json: async () => ({ items: [], next_cursor: null }) };
       }
+      if (url.includes("/memories")) {
+        return { ok: true, status: 200, json: async () => ({ items: [], total: 0, request_id: "req_1" }) };
+      }
       if (url.includes("/events")) {
         return { ok: true, status: 200, json: async () => ({ items: [], next_cursor: null }) };
       }
-      return {
-        ok: true,
-        status: 200,
-        json: async () => ({
-          items: [
-            {
-              id: "zom_1",
-              name: "platform-ops",
-              status: "active",
-              created_at: 1713700000000,
-              updated_at: 1713700000000,
-            },
-          ],
-          total: 1,
-        }),
-      };
+      // The single-fleet detail read (M131 §1): `…/fleets/{id}` with a trailing
+      // id segment. getFleet reads the fleet object directly (not a list scan); a
+      // fleet id other than the seeded one is a 404, which getFleet throws and
+      // the page maps to notFound(). The bare `…/fleets` list URL falls through
+      // to the list envelope below.
+      const detailMatch = url.match(/\/fleets\/([^/]+)$/);
+      if (detailMatch) {
+        if (detailMatch[1] !== "zom_1") {
+          return {
+            ok: false,
+            status: 404,
+            headers: { get: () => null },
+            json: async () => ({ error_code: "UZ-AGT-009", detail: "Fleet not found" }),
+          };
+        }
+        return detailResponse();
+      }
+      return { ok: true, status: 200, json: async () => ({ items: [detailBody()], total: 1 }) };
     });
   }
 
@@ -256,6 +290,38 @@ describe("fleets routes", () => {
     ).rejects.toThrow("notFound");
   });
 
+  it("fleets detail page rethrows a server failure instead of rendering notFound", async () => {
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url.match(/\/fleets\/zom_1$/)) {
+        return {
+          ok: false,
+          status: 500,
+          headers: { get: () => null },
+          json: async () => ({ error_code: "UZ-INTERNAL-001", detail: "Fleet read failed" }),
+        };
+      }
+      if (url.endsWith("/v1/tenants/me/billing")) {
+        return { ok: true, status: 200, json: async () => happyBilling };
+      }
+      if (url.includes("/memories")) {
+        return { ok: true, status: 200, json: async () => ({ items: [], total: 0, request_id: "req_1" }) };
+      }
+      return { ok: true, status: 200, json: async () => ({ items: [], next_cursor: null }) };
+    });
+    const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
+    await expect(
+      Page({ params: Promise.resolve({ workspaceId: "ws_1", id: "zom_1" }) }),
+    ).rejects.toThrow("Fleet read failed");
+  });
+
+  it("fleets detail page bounds the recent rollup request at 200 events", async () => {
+    mockFetchBilling(happyBilling);
+    const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
+    await Page({ params: Promise.resolve({ workspaceId: "ws_1", id: "zom_1" }) });
+    const urls = fetchMock.mock.calls.map(([url]) => String(url));
+    expect(urls).toContainEqual(expect.stringContaining("/events?since=7d&limit=200"));
+  });
+
   it("fleets detail page renders panels + exhaustion badge when tenant is exhausted", async () => {
     mockFetchBilling(exhaustedBilling);
     const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
@@ -263,9 +329,27 @@ describe("fleets routes", () => {
       await Page({ params: Promise.resolve({ workspaceId: "ws_1", id: "zom_1" }) }),
     );
     expect(markup).toContain("platform-ops");
-    expect(markup).toContain("Trigger");
-    expect(markup).toContain("Configuration");
     expect(markup).toContain("Balance exhausted");
+  });
+
+  it("test_console_renders_three_columns", async () => {
+    // The three-column console (M131 §3): what the fleet IS / DOES / KNOWS &
+    // COSTS. Each is a labelled region carrying its panels (the source editor,
+    // the metrics strip, the memory panel, the runs ledger).
+    mockFetchBilling(happyBilling);
+    const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
+    const markup = renderToStaticMarkup(
+      await Page({ params: Promise.resolve({ workspaceId: "ws_1", id: "zom_1" }) }),
+    );
+    // Ampersand escapes to &amp; in static markup, so assert the ampersand-free
+    // heads of each column label.
+    expect(markup).toContain("What it is");
+    expect(markup).toContain("What it does");
+    expect(markup).toContain("What it knows");
+    // The left rail's source editor + the right rail's memory and runs panels.
+    expect(markup).toContain("Source");
+    expect(markup).toContain("Memory");
+    expect(markup).toContain("Runs");
   });
 
   it("fleets detail page renders without badge when not exhausted", async () => {
@@ -296,19 +380,13 @@ describe("fleets routes", () => {
       if (url.includes("/approvals")) {
         return { ok: true, status: 200, json: async () => ({ items: [], next_cursor: null }) };
       }
+      if (url.includes("/memories")) {
+        return { ok: true, status: 200, json: async () => ({ items: [], total: 0, request_id: "req_1" }) };
+      }
       if (url.includes("/events")) {
         return { ok: true, status: 200, json: async () => ({ items: [], next_cursor: null }) };
       }
-      return {
-        ok: true,
-        status: 200,
-        json: async () => ({
-          // A paused fleet hits the null arm of the status===ACTIVE ternary —
-          // no WakePulse is rendered, so the live dot is absent.
-          items: [{ id: "zom_1", name: "platform-ops", status: "paused", created_at: 1, updated_at: 1 }],
-          total: 1,
-        }),
-      };
+      return detailResponse({ name: "platform-ops", status: "paused" });
     });
     const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
     const markup = renderToStaticMarkup(
@@ -333,17 +411,13 @@ describe("fleets routes", () => {
           }),
         };
       }
+      if (url.includes("/memories")) {
+        return { ok: true, status: 200, json: async () => ({ items: [], total: 0, request_id: "req_1" }) };
+      }
       if (url.includes("/events")) {
         return { ok: true, status: 200, json: async () => ({ items: [], next_cursor: null }) };
       }
-      return {
-        ok: true,
-        status: 200,
-        json: async () => ({
-          items: [{ id: "zom_1", name: "platform-ops", status: "active", created_at: 1, updated_at: 1 }],
-          total: 1,
-        }),
-      };
+      return detailResponse({ name: "platform-ops", status: "active" });
     });
     const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
     const markup = renderToStaticMarkup(
@@ -375,17 +449,13 @@ describe("fleets routes", () => {
           }),
         };
       }
+      if (url.includes("/memories")) {
+        return { ok: true, status: 200, json: async () => ({ items: [], total: 0, request_id: "req_1" }) };
+      }
       if (url.includes("/events")) {
         return { ok: true, status: 200, json: async () => ({ items: [], next_cursor: null }) };
       }
-      return {
-        ok: true,
-        status: 200,
-        json: async () => ({
-          items: [{ id: "zom_1", name: "platform-ops", status: "active", created_at: 1, updated_at: 1 }],
-          total: 1,
-        }),
-      };
+      return detailResponse({ name: "platform-ops", status: "active" });
     });
     const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
     const markup = renderToStaticMarkup(
@@ -402,25 +472,13 @@ describe("fleets routes", () => {
       if (url.includes("/approvals")) {
         return { ok: true, status: 200, json: async () => ({ items: [], next_cursor: null }) };
       }
+      if (url.includes("/memories")) {
+        return { ok: true, status: 200, json: async () => ({ items: [], total: 0, request_id: "req_1" }) };
+      }
       if (url.includes("/events")) {
         return { ok: true, status: 200, json: async () => ({ items: [], next_cursor: null }) };
       }
-      return {
-        ok: true,
-        status: 200,
-        json: async () => ({
-          items: [
-            {
-              id: "zom_1",
-              name: "platform-ops",
-              status: "active",
-              created_at: 1713700000000,
-              updated_at: 1713700000000,
-            },
-          ],
-          total: 1,
-        }),
-      };
+      return detailResponse();
     });
     const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
     const markup = renderToStaticMarkup(
@@ -442,17 +500,13 @@ describe("fleets routes", () => {
       if (url.includes("/approvals")) {
         return { ok: true, status: 200, json: async () => ({ items: [], next_cursor: null }) };
       }
+      if (url.includes("/memories")) {
+        return { ok: true, status: 200, json: async () => ({ items: [], total: 0, request_id: "req_1" }) };
+      }
       if (url.includes("/events")) {
         return { ok: true, status: 200, json: async () => ({ items: [], next_cursor: null }) };
       }
-      return {
-        ok: true,
-        status: 200,
-        json: async () => ({
-          items: [{ id: "zom_1", name: "fresh-bot", status: "installing", created_at: 1, updated_at: 1 }],
-          total: 1,
-        }),
-      };
+      return detailResponse({ name: "fresh-bot", status: "installing" });
     });
     const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
     const markup = renderToStaticMarkup(
@@ -472,24 +526,21 @@ describe("fleets routes", () => {
         return { ok: true, status: 200, json: async () => happyBilling };
       }
       if (url.includes("/approvals")) throw new Error("approvals down");
+      if (url.includes("/memories")) throw new Error("memories down");
       if (url.includes("/events")) throw new Error("events down");
-      return {
-        ok: true,
-        status: 200,
-        json: async () => ({
-          items: [{ id: "zom_1", name: "platform-ops", status: "active", created_at: 1, updated_at: 1 }],
-          total: 1,
-        }),
-      };
+      return detailResponse({ name: "platform-ops", status: "active" });
     });
     const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
     const markup = renderToStaticMarkup(
       await Page({ params: Promise.resolve({ workspaceId: "ws_1", id: "zom_1" }) }),
     );
-    // The fleet still renders; the failed events + approvals calls degrade
-    // to empty via their `.catch` arms (the events list shows its empty state).
+    // The fleet still renders; the failed events + approvals calls degrade via
+    // their `.catch` arms. The 7-day window catches to `null`, so the runs
+    // ledger shows its degraded state rather than a blank, and the metrics strip
+    // shows no run.
     expect(markup).toContain("platform-ops");
-    expect(markup).toContain("No events yet");
+    expect(markup).toContain("Recent window unavailable");
+    expect(markup).toContain("No runs recorded yet");
   });
 });
 

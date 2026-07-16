@@ -46,6 +46,7 @@ function row(over: Partial<EventRow> = {}): EventRow {
     response_text: "hello world",
     tokens: 1,
     wall_ms: 10,
+    cost_nanos: null,
     failure_label: null,
     checkpoint_id: null,
     resumes_event_id: null,
