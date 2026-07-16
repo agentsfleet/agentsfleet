@@ -44,6 +44,7 @@ const subscription_hub = @import("../../../events/subscription_hub.zig");
 const activity_channel = @import("../../../events/activity_channel.zig");
 const sse_frame = @import("../sse_frame.zig");
 const FanIn = @import("events_stream_fanin.zig");
+const stream_refresh = @import("events_stream_refresh.zig");
 
 const log = logging.scoped(.http_workspace_events_stream);
 
@@ -213,9 +214,10 @@ fn streamLoop(job: *StreamJob, stream: std.Io.net.Stream) !void {
     while (true) {
         const now_ms = clock.nowMillis();
         if (now_ms >= next_refresh_ms) {
-            if (!refreshFanIn(job, now_ms)) return;
+            const refresh = stream_refresh.run(job.fanin, now_ms);
+            if (refresh == .revoked) return;
             next_refresh_ms = now_ms + refresh_interval_ms;
-            if (!hello_sent) {
+            if (refresh != .deferred and (!hello_sent or refresh == .changed)) {
                 try writeHello(&w, job);
                 try w.interface.flush();
                 hello_sent = true;
@@ -261,26 +263,6 @@ fn popWaitMs(next_refresh_ms: i64) u64 {
     const remaining = next_refresh_ms - clock.nowMillis();
     if (remaining <= 0) return 0;
     return @min(@as(u64, @intCast(remaining)), @as(u64, sse_frame.HEARTBEAT_INTERVAL_MS));
-}
-
-/// One refresh tick. False ⇒ the stream must close (the caller lost access).
-fn refreshFanIn(job: *StreamJob, now_ms: i64) bool {
-    switch (job.fanin.sync(now_ms)) {
-        .unchanged, .deferred => return true,
-        .changed => |delta| {
-            log.debug("workspace_stream_fleet_set_changed", .{
-                .workspace_id = job.fanin.workspace_id,
-                .added = delta.added,
-                .removed = delta.removed,
-                .fanned_in = job.fanin.channelCount(),
-            });
-            return true;
-        },
-        .revoked => {
-            log.info("workspace_stream_revoked", .{ .workspace_id = job.fanin.workspace_id });
-            return false;
-        },
-    }
 }
 
 fn writeHello(w: anytype, job: *StreamJob) !void {

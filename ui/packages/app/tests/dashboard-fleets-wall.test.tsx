@@ -133,6 +133,19 @@ describe("workspace fleet wall provider", () => {
     expect(view.getByTestId(FLEET_B).textContent).toContain(LAST_KNOWN_LABEL);
   });
 
+  it("updates fleet liveness only when a later server hello announces the changed set", () => {
+    const view = renderWall([FLEET_A, FLEET_B]);
+    const source = onlyEventSource();
+
+    source.emit({ kind: FRAME_KIND.HELLO, fleet_ids: [FLEET_A] });
+    flushAnimationFrame();
+    expect(view.getByTestId(FLEET_B).textContent).toContain(LAST_KNOWN_LABEL);
+
+    source.emit({ kind: FRAME_KIND.HELLO, fleet_ids: [FLEET_A, FLEET_B] });
+    flushAnimationFrame();
+    expect(view.getByTestId(FLEET_B).textContent).toContain(LIVE_LABEL);
+  });
+
   it("surfaces catching up until the server drop gap is backfilled", async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,

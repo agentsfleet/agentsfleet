@@ -175,7 +175,11 @@ pub fn sync(self: *FanIn, now_ms: i64) SyncResult {
     self.ctx.fleet_sets.refreshIfStale(conn, self.workspace_id, now_ms);
 
     const current = self.ctx.fleet_sets.version(self.workspace_id);
-    if (current == self.synced_version) return .unchanged;
+    switch (compareVersion(current, self.synced_version)) {
+        .deferred => return .deferred,
+        .unchanged => return .unchanged,
+        .changed => {},
+    }
 
     const snap = (self.ctx.fleet_sets.snapshot(self.workspace_id) catch return .deferred) orelse
         return .unchanged;
@@ -185,6 +189,14 @@ pub fn sync(self: *FanIn, now_ms: i64) SyncResult {
     self.synced_version = snap.version;
     if (delta.added == 0 and delta.removed == 0) return .unchanged;
     return .{ .changed = delta };
+}
+
+const VersionComparison = enum { deferred, unchanged, changed };
+
+fn compareVersion(current: u64, synced: u64) VersionComparison {
+    if (current == 0) return .deferred;
+    if (current == synced) return .unchanged;
+    return .changed;
 }
 
 /// Attach the channels for fleets we do not hold, detach the ones that are
@@ -295,4 +307,10 @@ fn dupeOptional(alloc: std.mem.Allocator, maybe: ?[]const u8) !?[]u8 {
 
 fn freeOptional(alloc: std.mem.Allocator, maybe: ?[]u8) void {
     if (maybe) |value| alloc.free(value);
+}
+
+test "fan-in defers while the shared fleet set has never completed enumeration" {
+    try std.testing.expectEqual(VersionComparison.deferred, compareVersion(0, 0));
+    try std.testing.expectEqual(VersionComparison.changed, compareVersion(1, 0));
+    try std.testing.expectEqual(VersionComparison.unchanged, compareVersion(1, 1));
 }

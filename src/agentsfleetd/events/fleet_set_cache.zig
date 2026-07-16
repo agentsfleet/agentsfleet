@@ -227,7 +227,7 @@ fn finishRefresh(self: *FleetSetCache, workspace_id: []const u8, fresh: ?[][]u8)
         entry.refreshed_ms = clock.nowMillis();
 
         if (fresh) |ids| {
-            if (sameSet(entry.fleet_ids, ids)) {
+            if (entry.version != 0 and sameSet(entry.fleet_ids, ids)) {
                 // Unchanged: keep the old list (and its version), free the new
                 // one — every viewer's tick stays a no-op.
                 discard = ids;

@@ -159,6 +159,7 @@ is optional (§5) and its blast radius is added only if its trigger fires. -->
 | `ui/packages/app/tests/fleets-install-states.test.ts` | EDIT (already in table) | Cover failed durable-status reads, bounded retry exhaustion, capped backoff, and cancellation after unmount. |
 | `playbooks/operations/admin_bootstrap/001_playbook.md` | EDIT | Store and verify the canonical `agentsfleet-admin/api-key` 1Password field. |
 | `playbooks/operations/{github,jira,linear,slack,zoho}_app_registration/001_playbook.md` | EDIT | Read the same canonical `api-key` field already used by QStash and founding preflight. |
+| `src/agentsfleetd/http/handlers/workspaces/events_stream_refresh.zig` | CREATE | Keep refresh outcome logging and stream-loop decisions cohesive while repeated real server `hello` frames announce fleet-set changes. |
 
 ## Applicable Rules
 
