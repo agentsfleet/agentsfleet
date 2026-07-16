@@ -17,7 +17,6 @@ const pg = @import("pg");
 const auth_mw = @import("../../../auth/middleware/mod.zig");
 
 const scope_fixtures = @import("../../test_scope_tokens.zig");
-const http_auth = @import("../../../db/test_fixtures_http_auth.zig");
 const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
 const harness_mod = @import("../../test_harness.zig");
 const TestHarness = harness_mod.TestHarness;
@@ -26,19 +25,34 @@ const TOKEN_PLATFORM = scope_fixtures.PLATFORM_ADMIN;
 const CATALOG_URL = "/v1/admin/fleet-libraries";
 const IF_MATCH = "if-match";
 
-const PROBE_ID = "etag-probe";
-const PROBE_REPO = "agentsfleet/etag-probe";
-const MOVED_REPO = "agentsfleet/etag-probe-moved";
+const Probe = struct {
+    id: []const u8,
+    repo: []const u8,
+    moved_repo: []const u8,
+};
+
+const PROBE_STALE = Probe{
+    .id = "etag-probe-stale",
+    .repo = "agentsfleet/etag-probe-stale",
+    .moved_repo = "agentsfleet/etag-probe-stale-moved",
+};
+const PROBE_RESEND = Probe{
+    .id = "etag-probe-resend",
+    .repo = "agentsfleet/etag-probe-resend",
+    .moved_repo = "agentsfleet/etag-probe-resend-moved",
+};
+const PROBE_LOCK = Probe{
+    .id = "etag-probe-lock",
+    .repo = "agentsfleet/etag-probe-lock",
+    .moved_repo = "agentsfleet/etag-probe-lock-moved",
+};
+const PROBE_OPTIONAL = Probe{
+    .id = "etag-probe-optional",
+    .repo = "agentsfleet/etag-probe-optional",
+    .moved_repo = "agentsfleet/etag-probe-optional-moved",
+};
 const LOCK_POLL_NS = 20 * std.time.ns_per_ms;
 const LOCK_POLL_LIMIT = 250;
-const PROBE_SKILL =
-    \\---
-    \\name: etag-probe
-    \\description: Bundle-derived description.
-    \\version: 0.1.0
-    \\---
-    \\Body for the etag probe.
-;
 
 fn configureRegistry(_: *auth_mw.MiddlewareRegistry, _: *TestHarness) anyerror!void {}
 
@@ -51,18 +65,21 @@ fn makeHarness(alloc: std.mem.Allocator) !*TestHarness {
     });
 }
 
-fn reset(conn: *pg.Conn) !void {
-    _ = try conn.exec("DELETE FROM core.fleet_library", .{});
-    http_auth.cleanup(conn);
-    try http_auth.seedTenant(conn);
-    try http_auth.seedScopeWorkspace(conn, http_auth.WS_PRIMARY);
+fn reset(conn: *pg.Conn, id: []const u8) !void {
+    _ = try conn.exec("DELETE FROM core.fleet_library WHERE id = $1", .{id});
 }
 
-fn addProbe(h: *TestHarness, alloc: std.mem.Allocator) !void {
+fn addProbe(h: *TestHarness, alloc: std.mem.Allocator, probe: Probe) !void {
+    var skill_buf: [256]u8 = undefined;
+    const skill = try std.fmt.bufPrint(
+        &skill_buf,
+        "---\nname: {s}\ndescription: Bundle-derived description.\nversion: 0.1.0\n---\nBody for the etag probe.\n",
+        .{probe.id},
+    );
     const body = try std.json.Stringify.valueAlloc(alloc, .{
         .source_kind = "upload",
-        .source_ref = PROBE_REPO,
-        .skill_markdown = PROBE_SKILL,
+        .source_ref = probe.repo,
+        .skill_markdown = skill,
         .replace = false,
     }, .{});
     defer alloc.free(body);
@@ -73,14 +90,14 @@ fn addProbe(h: *TestHarness, alloc: std.mem.Allocator) !void {
 
 /// The catalog list's `etag` for the probe — the tag a row editor would send as
 /// `If-Match`. Caller frees.
-fn probeEtag(h: *TestHarness, alloc: std.mem.Allocator) ![]const u8 {
+fn probeEtag(h: *TestHarness, alloc: std.mem.Allocator, id: []const u8) ![]const u8 {
     const res = try (try h.get(CATALOG_URL).bearer(TOKEN_PLATFORM)).send();
     defer res.deinit();
     try res.expectStatus(.ok);
     const parsed = try std.json.parseFromSlice(std.json.Value, alloc, res.body, .{});
     defer parsed.deinit();
     for (parsed.value.object.get("entries").?.array.items) |entry| {
-        if (std.mem.eql(u8, entry.object.get("id").?.string, PROBE_ID)) {
+        if (std.mem.eql(u8, entry.object.get("id").?.string, id)) {
             const tag = entry.object.get("etag") orelse return error.NoEtagOnEntry;
             return alloc.dupe(u8, tag.string);
         }
@@ -138,6 +155,7 @@ fn waitForCatalogLockWaiter(conn: *pg.Conn) !void {
 
 test "integration: catalog stale If-Match → 412 with current etag, nothing written" {
     const alloc = std.testing.allocator;
+    const probe = PROBE_STALE;
     const h = makeHarness(alloc) catch |err| switch (err) {
         error.SkipZigTest => return error.SkipZigTest,
         else => return err,
@@ -146,13 +164,14 @@ test "integration: catalog stale If-Match → 412 with current etag, nothing wri
 
     const conn = try h.acquireConn();
     defer h.releaseConn(conn);
-    try reset(conn);
-    try addProbe(h, alloc);
+    try reset(conn, probe.id);
+    defer reset(conn, probe.id) catch |err| std.log.warn("cleanup ignored: {s}", .{@errorName(err)});
+    try addProbe(h, alloc, probe);
 
-    const current = try probeEtag(h, alloc);
+    const current = try probeEtag(h, alloc, probe.id);
     defer alloc.free(current);
 
-    const url = try entryUrl(alloc, PROBE_ID);
+    const url = try entryUrl(alloc, probe.id);
     defer alloc.free(url);
     const body = "{\"description\":\"edited by a racer\"}";
 
@@ -161,7 +180,9 @@ test "integration: catalog stale If-Match → 412 with current etag, nothing wri
     defer r_stale.deinit();
     try r_stale.expectStatus(.precondition_failed);
     try r_stale.expectErrorCode("UZ-CATALOG-005");
-    try std.testing.expect(r_stale.bodyContains(current)); // the 412 hands back the real tag
+    const problem = try std.json.parseFromSlice(std.json.Value, alloc, r_stale.body, .{});
+    defer problem.deinit();
+    try std.testing.expectEqualStrings(current, problem.value.object.get("etag").?.string);
 
     // The matching tag → 200 (the reloaded save).
     const r_ok = try (try (try (try h.patch(url).bearer(TOKEN_PLATFORM)).json(body)).header(IF_MATCH, current)).send();
@@ -171,6 +192,7 @@ test "integration: catalog stale If-Match → 412 with current etag, nothing wri
 
 test "integration: a stale re-send of source_repo cannot discard the bundle" {
     const alloc = std.testing.allocator;
+    const probe = PROBE_RESEND;
     const h = makeHarness(alloc) catch |err| switch (err) {
         error.SkipZigTest => return error.SkipZigTest,
         else => return err,
@@ -179,18 +201,19 @@ test "integration: a stale re-send of source_repo cannot discard the bundle" {
 
     const conn = try h.acquireConn();
     defer h.releaseConn(conn);
-    try reset(conn);
-    try addProbe(h, alloc);
-    try std.testing.expect(try hasBundle(conn, PROBE_ID)); // onboard stored a bundle
+    try reset(conn, probe.id);
+    defer reset(conn, probe.id) catch |err| std.log.warn("cleanup ignored: {s}", .{@errorName(err)});
+    try addProbe(h, alloc, probe);
+    try std.testing.expect(try hasBundle(conn, probe.id)); // onboard stored a bundle
 
     // Operator A loads the row.
-    const etag_a = try probeEtag(h, alloc);
+    const etag_a = try probeEtag(h, alloc, probe.id);
     defer alloc.free(etag_a);
 
     // Operator B renames the row (matching tag) — the row moves past etag_a.
-    const url = try entryUrl(alloc, PROBE_ID);
+    const url = try entryUrl(alloc, probe.id);
     defer alloc.free(url);
-    const etag_b = try probeEtag(h, alloc); // same version as A here
+    const etag_b = try probeEtag(h, alloc, probe.id); // same version as A here
     defer alloc.free(etag_b);
     const r_b = try (try (try (try h.patch(url).bearer(TOKEN_PLATFORM)).json("{\"description\":\"moved on by B\"}")).header(IF_MATCH, etag_b)).send();
     defer r_b.deinit();
@@ -199,21 +222,22 @@ test "integration: a stale re-send of source_repo cannot discard the bundle" {
     // Operator A, still holding the stale tag, tries to repoint the source — the
     // destructive op: without If-Match this repoint would null content_hash and
     // draft the row. With the stale tag it is REFUSED (412), so the bundle survives.
-    const moved_body = try std.json.Stringify.valueAlloc(alloc, .{ .source_repo = MOVED_REPO }, .{});
+    const moved_body = try std.json.Stringify.valueAlloc(alloc, .{ .source_repo = probe.moved_repo }, .{});
     defer alloc.free(moved_body);
     const r_a = try (try (try (try h.patch(url).bearer(TOKEN_PLATFORM)).json(moved_body)).header(IF_MATCH, etag_a)).send();
     defer r_a.deinit();
     try r_a.expectStatus(.precondition_failed);
 
     // The bundle was NOT discarded and the source was NOT repointed.
-    try std.testing.expect(try hasBundle(conn, PROBE_ID));
-    const repo = try readSourceRepo(alloc, conn, PROBE_ID);
+    try std.testing.expect(try hasBundle(conn, probe.id));
+    const repo = try readSourceRepo(alloc, conn, probe.id);
     defer alloc.free(repo);
-    try std.testing.expectEqualStrings(PROBE_REPO, repo);
+    try std.testing.expectEqualStrings(probe.repo, repo);
 }
 
 test "integration: If-Match check serializes with a concurrent catalog write" {
     const alloc = std.testing.allocator;
+    const probe = PROBE_LOCK;
     const h = makeHarness(alloc) catch |err| switch (err) {
         error.SkipZigTest => return error.SkipZigTest,
         else => return err,
@@ -222,14 +246,15 @@ test "integration: If-Match check serializes with a concurrent catalog write" {
 
     const conn = try h.acquireConn();
     defer h.releaseConn(conn);
-    try reset(conn);
-    try addProbe(h, alloc);
+    try reset(conn, probe.id);
+    defer reset(conn, probe.id) catch |err| std.log.warn("cleanup ignored: {s}", .{@errorName(err)});
+    try addProbe(h, alloc, probe);
 
-    const stale_etag = try probeEtag(h, alloc);
+    const stale_etag = try probeEtag(h, alloc, probe.id);
     defer alloc.free(stale_etag);
-    const url = try entryUrl(alloc, PROBE_ID);
+    const url = try entryUrl(alloc, probe.id);
     defer alloc.free(url);
-    const moved_body = try std.json.Stringify.valueAlloc(alloc, .{ .source_repo = MOVED_REPO }, .{});
+    const moved_body = try std.json.Stringify.valueAlloc(alloc, .{ .source_repo = probe.moved_repo }, .{});
     defer alloc.free(moved_body);
 
     _ = try conn.exec("BEGIN", .{});
@@ -241,7 +266,7 @@ test "integration: If-Match check serializes with a concurrent catalog write" {
     }
     _ = try conn.exec(
         "UPDATE core.fleet_library SET description = 'committed by B' WHERE id = $1",
-        .{PROBE_ID},
+        .{probe.id},
     );
 
     var outcome: PatchOutcome = .{};
@@ -253,13 +278,14 @@ test "integration: If-Match check serializes with a concurrent catalog write" {
     worker = null;
 
     try std.testing.expectEqual(@as(u16, 412), outcome.status);
-    const repo = try readSourceRepo(alloc, conn, PROBE_ID);
+    const repo = try readSourceRepo(alloc, conn, probe.id);
     defer alloc.free(repo);
-    try std.testing.expectEqualStrings(PROBE_REPO, repo);
+    try std.testing.expectEqualStrings(probe.repo, repo);
 }
 
 test "integration: catalog PATCH without If-Match still succeeds (opt-in)" {
     const alloc = std.testing.allocator;
+    const probe = PROBE_OPTIONAL;
     const h = makeHarness(alloc) catch |err| switch (err) {
         error.SkipZigTest => return error.SkipZigTest,
         else => return err,
@@ -268,10 +294,11 @@ test "integration: catalog PATCH without If-Match still succeeds (opt-in)" {
 
     const conn = try h.acquireConn();
     defer h.releaseConn(conn);
-    try reset(conn);
-    try addProbe(h, alloc);
+    try reset(conn, probe.id);
+    defer reset(conn, probe.id) catch |err| std.log.warn("cleanup ignored: {s}", .{@errorName(err)});
+    try addProbe(h, alloc, probe);
 
-    const url = try entryUrl(alloc, PROBE_ID);
+    const url = try entryUrl(alloc, probe.id);
     defer alloc.free(url);
     // No If-Match header at all → last-write-wins, unchanged from pre-M131.
     const r = try (try (try h.patch(url).bearer(TOKEN_PLATFORM)).json("{\"description\":\"blind save\"}")).send();

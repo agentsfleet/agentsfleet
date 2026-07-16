@@ -40,6 +40,7 @@ const S_MEMORY_SEARCH_FAILED = "Failed to process the memory search";
 const S_MEMORY_BACKEND_ROLE_SWITCH_FAILED = "memory backend role switch failed";
 const S_MEMORY_LIST_FAILED = "memory list failed";
 const S_MEMORY_ENTRY_NOT_FOUND = "No memory entry with that key";
+const S_MEMORY_KEY_LENGTH_INVALID = "memory key must be 1..255 chars";
 
 // ── List / Search ─────────────────────────────────────────────────────────
 // `?query=...` flips behaviour from list-most-recent to fuzzy LIKE search
@@ -160,8 +161,16 @@ pub fn innerDeleteMemory(
     fleet_id: []const u8,
     key: []const u8,
 ) void {
-    if (key.len == 0 or key.len > h.MAX_KEY_LEN) {
-        hx.fail(ec.ERR_INVALID_REQUEST, "memory key must be 1..255 chars");
+    var key_scratch: [h.MAX_KEY_LEN]u8 = undefined;
+    const decoded_key = decodePathSegment(&key_scratch, key) catch |err| {
+        switch (err) {
+            error.InvalidEscapeSequence => hx.fail(ec.ERR_INVALID_REQUEST, "memory key has invalid URL encoding"),
+            error.KeyTooLong => hx.fail(ec.ERR_INVALID_REQUEST, S_MEMORY_KEY_LENGTH_INVALID),
+        }
+        return;
+    };
+    if (decoded_key.len == 0 or decoded_key.len > h.MAX_KEY_LEN) {
+        hx.fail(ec.ERR_INVALID_REQUEST, S_MEMORY_KEY_LENGTH_INVALID);
         return;
     }
 
@@ -181,7 +190,7 @@ pub fn innerDeleteMemory(
     }
     defer h.resetRole(conn);
 
-    const deleted = fleet_memory.deleteEntry(conn, fleet_scope, key) catch |err| {
+    const deleted = fleet_memory.deleteEntry(conn, fleet_scope, decoded_key) catch |err| {
         log.err("memory_forget_failed", .{ .error_code = ec.ERR_MEM_UNAVAILABLE, .err = @errorName(err), .req_id = hx.req_id });
         hx.fail(ec.ERR_MEM_UNAVAILABLE, "memory forget failed");
         return;
@@ -197,6 +206,27 @@ pub fn innerDeleteMemory(
 
     log.debug("memory_forgotten", .{ .fleet_id = fleet_id, .req_id = hx.req_id });
     hx.noContent();
+}
+
+/// Decode one URL path segment. Unlike form/query decoding, a raw `+` in a
+/// path is literal; only `%XX` escapes are transformed.
+fn decodePathSegment(out: []u8, encoded: []const u8) error{ InvalidEscapeSequence, KeyTooLong }![]const u8 {
+    var read: usize = 0;
+    var written: usize = 0;
+    while (read < encoded.len) {
+        if (written >= out.len) return error.KeyTooLong;
+        if (encoded[read] == '%') {
+            if (read + 2 >= encoded.len) return error.InvalidEscapeSequence;
+            out[written] = std.fmt.parseInt(u8, encoded[read + 1 .. read + 3], 16) catch
+                return error.InvalidEscapeSequence;
+            read += 3;
+        } else {
+            out[written] = encoded[read];
+            read += 1;
+        }
+        written += 1;
+    }
+    return out[0..written];
 }
 
 // ── parseLimitQs ──────────────────────────────────────────────────────────

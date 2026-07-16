@@ -6062,7 +6062,7 @@
                     "items": {
                       "type": "array",
                       "items": {
-                        "type": "object"
+                        "$ref": "#/components/schemas/FleetEvent"
                       }
                     },
                     "next_cursor": {
@@ -7716,6 +7716,7 @@
           "status": {
             "type": "string",
             "enum": [
+              "installing",
               "active",
               "paused",
               "stopped",
@@ -8214,11 +8215,35 @@
       "FleetEvent": {
         "type": "object",
         "description": "One fleet event in newest-first history order.",
+        "required": [
+          "fleet_id",
+          "event_id",
+          "workspace_id",
+          "actor",
+          "event_type",
+          "status",
+          "request_json",
+          "response_text",
+          "tokens",
+          "wall_ms",
+          "failure_label",
+          "checkpoint_id",
+          "resumes_event_id",
+          "created_at",
+          "updated_at",
+          "cost_nanos"
+        ],
         "properties": {
+          "fleet_id": {
+            "type": "string"
+          },
           "event_id": {
             "type": "string"
           },
-          "type": {
+          "workspace_id": {
+            "type": "string"
+          },
+          "event_type": {
             "type": "string"
           },
           "actor": {
@@ -8226,6 +8251,14 @@
           },
           "status": {
             "type": "string"
+          },
+          "request_json": {
+            "type": "string",
+            "description": "The event request body serialized as JSON text."
+          },
+          "response_text": {
+            "type": "string",
+            "nullable": true
           },
           "created_at": {
             "type": "integer",
@@ -8240,6 +8273,22 @@
             "type": "integer",
             "format": "int64",
             "nullable": true
+          },
+          "failure_label": {
+            "type": "string",
+            "nullable": true
+          },
+          "checkpoint_id": {
+            "type": "string",
+            "nullable": true
+          },
+          "resumes_event_id": {
+            "type": "string",
+            "nullable": true
+          },
+          "updated_at": {
+            "type": "integer",
+            "format": "int64"
           },
           "cost_nanos": {
             "type": "integer",

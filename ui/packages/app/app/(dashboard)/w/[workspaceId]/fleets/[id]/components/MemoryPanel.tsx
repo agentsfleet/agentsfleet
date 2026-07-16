@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Alert,
   Badge,
@@ -21,6 +21,7 @@ import { presentErrorString } from "@/lib/errors";
 import {
   MEMORY_EMPTY_DESCRIPTION,
   MEMORY_EMPTY_TITLE,
+  MEMORY_FETCH_UNAVAILABLE,
   MEMORY_FORGET_CONFIRM_LABEL,
   MEMORY_FORGET_DIALOG_DESCRIPTION,
   MEMORY_FORGET_DIALOG_TITLE,
@@ -37,59 +38,69 @@ const NOT_FOUND = 404;
 type Props = {
   workspaceId: string;
   fleetId: string;
-  entries: MemoryEntry[];
+  entries: MemoryEntry[] | null;
 };
 
 export default function MemoryPanel({ workspaceId, fleetId, entries: initial }: Props) {
-  const [entries, setEntries] = useState<MemoryEntry[]>(initial);
-  const [pendingKey, setPendingKey] = useState<string | null>(null);
+  const hiddenVersions = useRef(new Map<string, number>());
+  const [entries, setEntries] = useState<MemoryEntry[]>(initial ?? []);
+  const [pendingEntry, setPendingEntry] = useState<MemoryEntry | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [, startTransition] = useTransition();
 
-  function forget(key: string) {
+  useEffect(() => {
+    if (initial === null) return;
+    for (const [key, hiddenAt] of hiddenVersions.current) {
+      const current = initial.find((entry) => entry.key === key);
+      if (!current || current.updated_at > hiddenAt) hiddenVersions.current.delete(key);
+    }
+    setEntries(initial.filter((entry) => !hiddenVersions.current.has(entry.key)));
+  }, [initial]);
+
+  async function forget(entry: MemoryEntry) {
+    const key = entry.key;
     setNotice(null);
-    startTransition(async () => {
-      const result = await forgetMemoryAction(workspaceId, fleetId, key);
-      setPendingKey(null);
-      if (result.ok) {
-        setEntries((prev) => prev.filter((e) => e.key !== key));
-        captureProductEvent(EVENTS.fleet_memory_forgotten, { fleet_id: fleetId, outcome: OUTCOME.success });
-        return;
-      }
-      captureProductEvent(EVENTS.fleet_memory_forgotten, { fleet_id: fleetId, outcome: OUTCOME.failure });
-      // A missing key is not a hard error — the entry is already gone, so say so
-      // and leave the list as-is (§5, Failure Modes).
-      if (result.status === NOT_FOUND) {
-        setNotice(MEMORY_FORGET_MISSING);
-        return;
-      }
-      setNotice(presentErrorString({ errorCode: result.errorCode, message: result.error, action: "forget this memory" }));
-    });
+    const result = await forgetMemoryAction(workspaceId, fleetId, key);
+    setPendingEntry(null);
+    if (result.ok) {
+      hiddenVersions.current.set(key, entry.updated_at);
+      setEntries((prev) => prev.filter((e) => e.key !== key));
+      captureProductEvent(EVENTS.fleet_memory_forgotten, { fleet_id: fleetId, outcome: OUTCOME.success });
+      return;
+    }
+    captureProductEvent(EVENTS.fleet_memory_forgotten, { fleet_id: fleetId, outcome: OUTCOME.failure });
+    // A missing key is not a hard error — the entry is already gone, so say so
+    // and leave the list as-is (§5, Failure Modes).
+    if (result.status === NOT_FOUND) {
+      setNotice(MEMORY_FORGET_MISSING);
+      return;
+    }
+    setNotice(presentErrorString({ errorCode: result.errorCode, message: result.error, action: "forget this memory" }));
   }
 
   return (
     <Card className="flex flex-col gap-md bg-card p-4" aria-label={MEMORY_PANEL_TITLE}>
       <span className="font-mono text-sm font-medium text-foreground">{MEMORY_PANEL_TITLE}</span>
+      {initial === null ? <Alert variant="warning">{MEMORY_FETCH_UNAVAILABLE}</Alert> : null}
       {notice ? <Alert variant="warning">{notice}</Alert> : null}
-      {entries.length === 0 ? (
+      {initial === null ? null : entries.length === 0 ? (
         <EmptyState icon={<BrainIcon size={28} />} title={MEMORY_EMPTY_TITLE} description={MEMORY_EMPTY_DESCRIPTION} />
       ) : (
         <List variant="ordered" className="flex list-none flex-col gap-2 space-y-0 pl-0">
           {entries.map((entry) => (
             <ListItem key={entry.key}>
-              <MemoryRow entry={entry} onForget={() => setPendingKey(entry.key)} />
+              <MemoryRow entry={entry} onForget={() => setPendingEntry(entry)} />
             </ListItem>
           ))}
         </List>
       )}
       <ConfirmDialog
-        open={pendingKey !== null}
-        onOpenChange={() => setPendingKey(null)}
+        open={pendingEntry !== null}
+        onOpenChange={() => setPendingEntry(null)}
         intent="destructive"
         title={MEMORY_FORGET_DIALOG_TITLE}
         description={MEMORY_FORGET_DIALOG_DESCRIPTION}
         confirmLabel={MEMORY_FORGET_CONFIRM_LABEL}
-        onConfirm={pendingKey ? () => forget(pendingKey) : undefined}
+        onConfirm={pendingEntry ? () => forget(pendingEntry) : undefined}
       />
     </Card>
   );

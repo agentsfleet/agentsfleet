@@ -109,7 +109,7 @@ export default function PlatformCatalogTable({
   function setPublished(entry: PlatformCatalogEntry, published: boolean) {
     setError(null);
     startTransition(async () => {
-      const result = await patchPlatformLibraryAction(entry.id, { published });
+      const result = await patchPlatformLibraryAction(entry.id, { published }, entry.etag);
       // Publishing is the moment a fleet becomes available to every tenant. A
       // refusal is recorded too — a publish nobody could complete is a signal, not
       // an absence of one.

@@ -100,6 +100,7 @@ At lease time (see [`data_flow.md` §C](./data_flow.md)):
 ## Update + sync
 
 - **SKILL.md / TRIGGER.md are editable** via `PATCH /v1/workspaces/{ws}/fleets/{id}` (`source_markdown` / `trigger_markdown`). The edit is **in place on `core.fleets`** (reparse, validate the name still matches, bump revision). It does **not** mint a new library entry and does **not** change the fleet's `bundle_content_hash`.
+- **Source saves can be optimistic.** `GET /v1/workspaces/{ws}/fleets/{id}` returns an ETag over the editable markdown. A client may send it in `If-Match` on PATCH; a stale tag returns 412 with the current tag, while omitting the header preserves last-write-wins behavior. A successful edit takes effect on the next lease and keeps the same `fleet_id`, so memory is retained.
 - **Library entries are immutable content** — a re-onboard with changed bytes mints a new snapshot (new `content_hash`); existing fleets are unaffected.
 - **Install is from a library entry only** — `POST /v1/workspaces/{ws}/fleets` accepts exactly `{platform_library_id}` or `{tenant_library_id}`. Raw-SKILL paste and the legacy `bundle_id` install were removed (M103 §4).
 - **Support files are NOT editable in place.** They live only in the immutable R2 snapshot, so changing one requires re-onboarding the library entry (new `content_hash`) and re-installing. No fleet-level support-file override today. 🟡 gap.
@@ -114,3 +115,4 @@ At lease time (see [`data_flow.md` §C](./data_flow.md)):
 - **A platform fleet is never born in SQL.** No migration inserts into `core.fleet_library`; a row exists only because an operator added a repository (M128).
 - **A published platform row always has a bundle.** Publishing a row with a null `content_hash` is refused — `public` promises every tenant something installable.
 - **A tenant can only ever reach a published platform fleet.** Gallery, bundles list, and install-by-id all filter `visibility = 'public'`.
+- **Catalog edits use the same optional concurrency mechanism.** Platform catalog reads expose an ETag over operator-owned fields; the admin editor sends it as `If-Match`, and the API refuses stale writes before a source re-send can clear `content_hash` and return a published row to draft.

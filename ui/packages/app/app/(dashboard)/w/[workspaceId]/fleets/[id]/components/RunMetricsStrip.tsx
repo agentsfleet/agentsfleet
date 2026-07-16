@@ -1,4 +1,10 @@
-import { cn } from "@agentsfleet/design-system";
+import {
+  Card,
+  cn,
+  DescriptionDetails,
+  DescriptionList,
+  DescriptionTerm,
+} from "@agentsfleet/design-system";
 import type { EventRow } from "@/lib/api/events";
 import { formatMs } from "@/lib/utils";
 import { formatDollars } from "@/app/(dashboard)/settings/billing/lib/charges";
@@ -20,34 +26,33 @@ const COUNT_FORMATTER = new Intl.NumberFormat("en-US");
 export default function RunMetricsStrip({ latest }: { latest: EventRow | null }) {
   if (latest === null) {
     return (
-      <div className="rounded-md border border-border bg-card px-4 py-2" aria-label={METRICS_STRIP_LABEL}>
+      <Card className="px-4 py-2" aria-label={METRICS_STRIP_LABEL}>
         <p className="text-sm text-muted-foreground">{METRICS_EMPTY}</p>
-      </div>
+      </Card>
     );
   }
   return (
-    <dl
-      aria-label={METRICS_STRIP_LABEL}
-      className="flex flex-wrap items-center gap-lg rounded-md border border-border bg-card px-4 py-2"
-    >
-      <Metric label={METRICS_TOKENS_LABEL} value={latest.tokens === null ? METRICS_COST_UNKNOWN : COUNT_FORMATTER.format(latest.tokens)} />
-      <Metric label={METRICS_WALL_LABEL} value={latest.wall_ms === null ? METRICS_COST_UNKNOWN : formatMs(latest.wall_ms)} />
-      <Metric
-        label={METRICS_COST_LABEL}
-        value={latest.cost_nanos === null ? METRICS_COST_UNKNOWN : formatDollars(latest.cost_nanos)}
-        emphatic
-      />
-    </dl>
+    <Card className="px-4 py-2" aria-label={METRICS_STRIP_LABEL}>
+      <DescriptionList layout="stacked" className="flex flex-wrap items-center gap-lg space-y-0">
+        <Metric label={METRICS_TOKENS_LABEL} value={latest.tokens === null ? METRICS_COST_UNKNOWN : COUNT_FORMATTER.format(latest.tokens)} />
+        <Metric label={METRICS_WALL_LABEL} value={latest.wall_ms === null ? METRICS_COST_UNKNOWN : formatMs(latest.wall_ms)} />
+        <Metric
+          label={METRICS_COST_LABEL}
+          value={latest.cost_nanos === null ? METRICS_COST_UNKNOWN : formatDollars(latest.cost_nanos)}
+          emphatic
+        />
+      </DescriptionList>
+    </Card>
   );
 }
 
 function Metric({ label, value, emphatic }: { label: string; value: string; emphatic?: boolean }) {
   return (
     <div className="flex items-baseline gap-xs">
-      <dt className="font-mono text-eyebrow uppercase text-muted-foreground">{label}</dt>
-      <dd className={cn("font-mono text-sm tabular-nums", emphatic ? "text-foreground" : "text-muted-foreground")}>
+      <DescriptionTerm className="font-mono text-eyebrow uppercase">{label}</DescriptionTerm>
+      <DescriptionDetails className={cn("font-mono text-sm tabular-nums", emphatic ? "text-foreground" : "text-muted-foreground")}>
         {value}
-      </dd>
+      </DescriptionDetails>
     </div>
   );
 }

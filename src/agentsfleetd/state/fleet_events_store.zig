@@ -37,9 +37,9 @@ const parseCursor = filter_mod.parseCursor;
 // Perf note: this subselect runs once per returned event row (≤200/page), but
 // the `UNIQUE (event_id, charge_type)` index bounds each execution to an index
 // probe of ≤2 rows — so it is index-bounded, NOT the unbounded per-fleet scan
-// the fleet-list aggregates were (those became a single GROUP BY pass in
-// `handlers/fleets/sql.zig`; this one does not need to, and a page here is one
-// fleet, not the workspace-wide Live Wall).
+// the fleet-list aggregates were (those now read the trigger-maintained
+// `core.fleet_activity_counters` row; this query stays event-scoped, and a page
+// here is one fleet, not the workspace-wide Live Wall).
 const EVENTS_SELECT =
     \\SELECT fleet_id::text, event_id, workspace_id::text, actor, event_type,
     \\       status, request_json::text, response_text, tokens, wall_ms,

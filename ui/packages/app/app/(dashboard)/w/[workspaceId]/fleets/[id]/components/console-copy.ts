@@ -62,6 +62,7 @@ export const MEMORY_PANEL_TITLE = "Memory";
 export const MEMORY_EMPTY_TITLE = "Nothing learned yet";
 export const MEMORY_EMPTY_DESCRIPTION =
   "Durable lessons the fleet records appear here. Forget one to correct it.";
+export const MEMORY_FETCH_UNAVAILABLE = "Memory is temporarily unavailable. Try refreshing the page.";
 export const MEMORY_FORGET_LABEL = "Forget";
 export const MEMORY_FORGET_DIALOG_TITLE = "Forget this memory?";
 export const MEMORY_FORGET_DIALOG_DESCRIPTION =

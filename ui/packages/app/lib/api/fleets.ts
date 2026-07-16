@@ -45,7 +45,8 @@ export async function getFleet(
 
 // PATCH the fleet's SKILL.md / TRIGGER.md source (M131 §4). Sends `If-Match`
 // with the ETag from the read; a stale tag throws an ApiError with status 412
-// and the current tag on `.etag`, which the editor uses to reload-and-rediff.
+// and the current tag on `.etag`; the server action reports the refusal and the
+// editor performs a fresh GET before rebuilding its diff.
 // Takes effect on the next wake — no re-provision, no reload event. Returns the
 // fresh ETag (echoed in the response body) for the editor's next save.
 export async function saveFleetSource(

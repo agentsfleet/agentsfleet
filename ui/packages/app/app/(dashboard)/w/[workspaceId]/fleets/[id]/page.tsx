@@ -64,7 +64,7 @@ export default async function FleetDetailPage({
     listFleetEvents(workspaceId, id, token, { limit: 20 }).catch(() => ({ items: [], next_cursor: null })),
     listFleetEvents(workspaceId, id, token, { since: ROLLUP_WINDOW_SINCE, limit: ROLLUP_WINDOW_LIMIT }).catch(() => null),
     listApprovals(workspaceId, token, { fleetId: id, limit: 50 }).catch(() => ({ items: [], next_cursor: null })),
-    listMemories(workspaceId, id, token, { limit: 100 }).catch(() => ({ items: [], total: 0, request_id: "" })),
+    listMemories(workspaceId, id, token, { limit: 100 }).catch(() => null),
   ]);
   if (!fleetResult) notFound();
   const { fleet, etag } = fleetResult;
@@ -150,7 +150,7 @@ export default async function FleetDetailPage({
           <Section asChild>
           <section aria-label={COLUMN_KNOWS_LABEL} className="min-w-0">
             <SectionLabel>{COLUMN_KNOWS_LABEL}</SectionLabel>
-            <MemoryPanel workspaceId={workspaceId} fleetId={fleet.id} entries={memories.items} />
+            <MemoryPanel workspaceId={workspaceId} fleetId={fleet.id} entries={memories?.items ?? null} />
             <div className="flex flex-col gap-xs">
               <h3 className={cn(EYEBROW_CLASS, "text-muted-foreground")}>{APPROVALS_SECTION_LABEL}</h3>
               <FleetApprovalsPanel workspaceId={workspaceId} fleetId={fleet.id} token={token} />

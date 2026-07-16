@@ -8,6 +8,7 @@ const std = @import("std");
 const harness_mod = @import("test_harness.zig");
 
 pub const MAX_HEADERS = 16;
+const RESPONSE_HEAD_BUFFER_SIZE = 16 * 1024;
 
 /// Fluent request builder. Non-chaining — each method mutates and returns
 /// by value. Keep on the caller's stack; `send` consumes.
@@ -89,19 +90,33 @@ pub const Request = struct {
 
         var client: std.http.Client = .{ .allocator = alloc, .io = @import("common").globalIo() };
         defer client.deinit();
-        var buf: std.ArrayList(u8) = .empty;
-        var writer: std.Io.Writer.Allocating = .fromArrayList(alloc, &buf);
-        const result = try client.fetch(.{
-            .location = .{ .url = url },
-            .method = self.method,
-            .payload = self.body,
+        var req = try client.request(self.method, try std.Uri.parse(url), .{
             .extra_headers = hdrs[0..self.hdr_count],
-            .redirect_behavior = self.redirect_behavior,
-            .response_writer = &writer.writer,
+            .redirect_behavior = self.redirect_behavior orelse
+                if (self.body == null) @enumFromInt(3) else .unhandled,
         });
+        defer req.deinit();
+        if (self.body) |body|
+            try req.sendBodyComplete(@constCast(body))
+        else
+            try req.sendBodiless();
+
+        var head_buffer: [RESPONSE_HEAD_BUFFER_SIZE]u8 = undefined;
+        var response = try req.receiveHead(&head_buffer);
+        const headers = try alloc.dupe(u8, response.head.bytes);
+        errdefer alloc.free(headers);
+        var buf: std.ArrayList(u8) = .empty;
+        defer buf.deinit(alloc);
+        var writer: std.Io.Writer.Allocating = .fromArrayList(alloc, &buf);
+        var transfer_buffer: [4096]u8 = undefined;
+        _ = response.reader(&transfer_buffer).streamRemaining(&writer.writer) catch |err| switch (err) {
+            error.ReadFailed => return response.bodyErr().?,
+            else => |stream_err| return stream_err,
+        };
         return .{
-            .status = @intFromEnum(result.status),
+            .status = @intFromEnum(response.head.status),
             .body = try writer.toOwnedSlice(),
+            .headers = headers,
             .alloc = alloc,
         };
     }
@@ -110,10 +125,12 @@ pub const Request = struct {
 pub const Response = struct {
     status: u16,
     body: []u8,
+    headers: ?[]u8 = null,
     alloc: std.mem.Allocator,
 
     pub fn deinit(self: Response) void {
         self.alloc.free(self.body);
+        if (self.headers) |headers| self.alloc.free(headers);
     }
 
     pub fn expectStatus(self: Response, expected: std.http.Status) !void {
@@ -140,5 +157,13 @@ pub const Response = struct {
 
     pub fn bodyContains(self: Response, needle: []const u8) bool {
         return std.mem.indexOf(u8, self.body, needle) != null;
+    }
+
+    pub fn header(self: Response, name: []const u8) ?[]const u8 {
+        var it = std.http.HeaderIterator.init(self.headers orelse return null);
+        while (it.next()) |header_value| {
+            if (std.ascii.eqlIgnoreCase(header_value.name, name)) return header_value.value;
+        }
+        return null;
     }
 };

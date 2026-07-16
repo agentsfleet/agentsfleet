@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { PencilIcon } from "lucide-react";
 import {
@@ -83,7 +83,19 @@ export default function SkillEditor({
   const [dialogOpen, setDialogOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [staleReloaded, setStaleReloaded] = useState(false);
-  const [, startTransition] = useTransition();
+  const editingRef = useRef(editing);
+  const activeRef = useRef(active);
+  editingRef.current = editing;
+  activeRef.current = active;
+
+  useEffect(() => {
+    const fresh = sourceState(sourceMarkdown, triggerMarkdown);
+    setBase(fresh);
+    setEtag(initialEtag);
+    setDraft((previous) => editingRef.current
+      ? { ...fresh, [activeRef.current]: previous[activeRef.current] }
+      : fresh);
+  }, [sourceMarkdown, triggerMarkdown, initialEtag]);
 
   const activeBase = base[active];
   const activeDraft = draft[active];
@@ -115,35 +127,43 @@ export default function SkillEditor({
       return;
     }
     const fresh = reloaded.data.fleet;
-    setBase(sourceState(fresh.source_markdown, fresh.trigger_markdown));
+    const freshState = sourceState(fresh.source_markdown, fresh.trigger_markdown);
+    setBase(freshState);
+    // Preserve only the document the operator just attempted to save. A draft
+    // in the sibling tab was based on the stale tag and must not inherit the
+    // fresh tag without being reloaded.
+    setDraft((previous) => ({ ...freshState, [active]: previous[active] }));
     setEtag(reloaded.data.etag);
     setStaleReloaded(true);
   }
 
-  function onConfirmSave() {
+  async function onConfirmSave() {
     if (etag === null) return;
     const field = active;
     setError(null);
-    startTransition(async () => {
-      const result = await saveFleetSourceAction(workspaceId, fleetId, { [PATCH_FIELD[field]]: draft[field] }, etag);
-      if (result.ok) {
-        setBase((prev) => ({ ...prev, [field]: draft[field] }));
-        setEtag(result.data.etag);
-        setEditing(false);
-        setDialogOpen(false);
-        setStaleReloaded(false);
-        captureProductEvent(EVENTS.fleet_source_saved, { fleet_id: fleetId, field, outcome: OUTCOME.success });
-        router.refresh();
-        return;
-      }
+    const result = await saveFleetSourceAction(workspaceId, fleetId, { [PATCH_FIELD[field]]: draft[field] }, etag);
+    if (result.ok) {
+      const saved = { ...base, [field]: draft[field] };
+      const sibling = field === SOURCE_FIELD.skill ? SOURCE_FIELD.trigger : SOURCE_FIELD.skill;
+      const siblingChanged = draft[sibling] !== base[sibling];
+      setBase(saved);
+      setDraft((previous) => ({ ...previous, [field]: draft[field] }));
+      setEtag(result.data.etag);
+      setEditing(siblingChanged);
+      if (siblingChanged) setActive(sibling);
       setDialogOpen(false);
-      if (result.status === PRECONDITION_FAILED) {
-        await reloadAfterStale();
-        return;
-      }
-      captureProductEvent(EVENTS.fleet_source_saved, { fleet_id: fleetId, field, outcome: OUTCOME.failure });
-      setError(presentErrorString({ errorCode: result.errorCode, message: result.error, action: "save the source" }));
-    });
+      setStaleReloaded(false);
+      captureProductEvent(EVENTS.fleet_source_saved, { fleet_id: fleetId, field, outcome: OUTCOME.success });
+      router.refresh();
+      return;
+    }
+    setDialogOpen(false);
+    if (result.status === PRECONDITION_FAILED) {
+      await reloadAfterStale();
+      return;
+    }
+    captureProductEvent(EVENTS.fleet_source_saved, { fleet_id: fleetId, field, outcome: OUTCOME.failure });
+    setError(presentErrorString({ errorCode: result.errorCode, message: result.error, action: "save the source" }));
   }
 
   return (

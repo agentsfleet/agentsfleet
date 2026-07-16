@@ -12,11 +12,9 @@
 const std = @import("std");
 const httpz = @import("httpz");
 const error_codes = @import("../../errors/error_registry.zig");
-// The two content-type constants live in `common.zig` (other handlers reach
-// them as `common.HEADER_CONTENT_TYPE`). Importing them here is a lazy decl
-// reference — `common` re-exports this file's writers in turn, and Zig resolves
-// the mutual import without a comptime cycle.
-const common = @import("common.zig");
+
+pub const HEADER_CONTENT_TYPE = "Content-Type";
+pub const CONTENT_TYPE_PROBLEM_JSON = "application/problem+json";
 
 const S_PUNCT_99914B = "{}";
 
@@ -74,7 +72,7 @@ fn writeProblem(
     const entry = error_codes.lookup(code);
     res.status = @intFromEnum(entry.http_status);
     // res.header() for application/problem+json — not in httpz.ContentType enum.
-    res.header(common.HEADER_CONTENT_TYPE, common.CONTENT_TYPE_PROBLEM_JSON);
+    res.header(HEADER_CONTENT_TYPE, CONTENT_TYPE_PROBLEM_JSON);
     const body = .{
         .docs_uri = entry.docs_uri,
         .title = entry.title,
