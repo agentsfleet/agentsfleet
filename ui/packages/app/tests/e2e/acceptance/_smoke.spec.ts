@@ -3,7 +3,7 @@
  *
  * Asserts:
  *   1. globalSetup ran (fail-fast didn't throw — implicit by reaching here).
- *   2. The fixture-JWT cache file exists with both fixture users' JWTs.
+ *   2. The fixture-JWT cache file exists with all fixture users' JWTs.
  *   3. signInAs(page, 'regular') mounts the __session cookie and Clerk
  *      middleware accepts the JWT (a navigation to '/' does NOT redirect to
  *      /sign-in).
@@ -66,7 +66,7 @@ test.describe("auth e2e wire", () => {
     expect(freshPassword().length).toBeGreaterThanOrEqual(16);
   });
 
-  test("globalSetup cached fixture JWTs for both fixture users", () => {
+  test("globalSetup cached JWTs for every fixture user", () => {
     expect(fs.existsSync(JWT_CACHE_PATH)).toBe(true);
     const cache = JSON.parse(fs.readFileSync(JWT_CACHE_PATH, "utf8")) as Record<
       string,
@@ -74,6 +74,7 @@ test.describe("auth e2e wire", () => {
     >;
     expect(cache.regular?.sessionJwt?.length ?? 0).toBeGreaterThan(20);
     expect(cache.admin?.sessionJwt?.length ?? 0).toBeGreaterThan(20);
+    expect(cache.operator?.sessionJwt?.length ?? 0).toBeGreaterThan(20);
   });
 
   test("signInAs('regular') produces an accepted Clerk session", async ({ page }) => {
@@ -88,7 +89,7 @@ test.describe("auth e2e wire", () => {
       await signInAs(page, FIXTURE_KEY.regular);
       await gotoWorkspace(page, FIXTURE_KEY.regular, "fleets");
       await expect(page).toHaveURL(workspaceUrlPattern("fleets"));
-      await expect(page.getByRole("heading", { name: /fleets/i }).first()).toBeVisible();
+      await expect(page.getByTestId("workspace-switcher")).toBeVisible();
     },
   );
 

@@ -166,6 +166,7 @@ pub fn requiredScopes(route: router.Route, method: httpz.Method) []const S {
         .workspace_fleet_events,
         .workspace_fleet_events_stream,
         .workspace_events,
+        .workspace_events_stream,
         .workspace_fleet_memories,
         .fleet_bundles,
         => &FLEET_READ,

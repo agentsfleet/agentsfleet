@@ -6,7 +6,7 @@
  * (/w/<id>/settings/models) and "Integrations" (/w/<id>/integrations) as
  * sibling items. This spec drives the nav itself (not a deep-link goto) so a
  * broken nav label or href is caught, then asserts each destination renders its
- * stable landmark — the Models hero and the Integrations connectors region.
+ * stable landmark — the Models table and the Integrations connectors region.
  * Read-only: no tenant or integration state is mutated.
  */
 import { expect, test } from "@playwright/test";
@@ -26,10 +26,10 @@ test.describe("settings navigation — Models + Integrations", () => {
     await expect(page.getByRole("heading", { name: /^integrations$/i })).toBeVisible();
     await expect(page.getByTestId("integrations-page")).toBeVisible();
 
-    // Models — sibling nav item lands on /w/<id>/settings/models and renders the hero.
+    // Models — sibling nav item lands on /w/<id>/settings/models and renders the registry.
     await page.getByRole("link", { name: "Models" }).first().click();
     await expect(page).toHaveURL(workspaceUrlPattern("settings/models"));
     await expect(page.getByRole("heading", { name: /^models$/i })).toBeVisible();
-    await expect(page.getByTestId("active-model-hero")).toBeVisible();
+    await expect(page.getByRole("table", { name: "Models" })).toBeVisible();
   });
 });

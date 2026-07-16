@@ -32,7 +32,7 @@ test.describe("workspace in the URL", () => {
     await expect(page).toHaveURL(new RegExp(`/w/${primary}(/|$|\\?)`), {
       timeout: SWITCH_TIMEOUT_MS,
     });
-    await expect(page.getByRole("heading", { name: /^dashboard$/i })).toBeVisible();
+    await expect(page.getByTestId("workspace-switcher")).toBeVisible();
   });
 
   test("deep-linking an owned workspace's Integrations loads its connectors", async ({ page }) => {

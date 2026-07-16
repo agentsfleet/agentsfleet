@@ -6080,6 +6080,48 @@
         }
       }
     },
+    "/v1/workspaces/{workspace_id}/events/stream": {
+      "get": {
+        "operationId": "stream_workspace_events",
+        "summary": "Stream live activity for a whole workspace",
+        "description": "Opens ONE Server-Sent Events (SSE) stream carrying live activity for\nevery fleet the caller can read in the workspace. It is the Fleets Wall's\nsingle connection, replacing one stream per tile.\n\nThe first frame is `event: hello`. Its `data` is\n`{\"kind\":\"hello\",\"fleet_ids\":[...]}` for the current readable fleet set.\n\nActivity frame `data` contains the publisher payload with `fleet_id`\nadded as the leading field. The client routes each frame by that tag.\n\nA stalled client can overflow its bounded server queue. The server then\nsends `event: catching_up` with `{\"kind\":\"catching_up\",\"dropped\":N}`.\n`dropped` is the new drop count since the previous signal.\n\nControl frames use identifier 0 and do not advance the activity sequence.\nActivity identifiers start at 0 for each connection. The route ignores\n`Last-Event-ID`.\n\nThe connection adjusts its fan-in as fleets appear or disappear. A caller\nwhose workspace access is revoked stops receiving on the next refresh. At\ncapacity the route returns 503 `UZ-API-002` with `Retry-After`. After a\nreconnect opens, recover the gap through\n`GET /v1/workspaces/{workspace_id}/events`.\n",
+        "tags": [
+          "Workspaces"
+        ],
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "SSE stream opened.",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "type": "string",
+                  "description": "SSE-formatted `hello`, tagged activity, and `catching_up` frames. Workspace control frames do not carry `fleet_id`.\n"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
     "/v1/workspaces/{workspace_id}/onboarding": {
       "get": {
         "operationId": "get_workspace_onboarding",

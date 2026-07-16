@@ -175,17 +175,22 @@ describe("installEffectFromFlags — missing --library", () => {
 });
 
 describe("installEffectFromFlags — template JSON mode", () => {
-  test("prints structured install output in JSON mode", async () => {
+  test("prints only structured install output when requirements are present", async () => {
     const captured: string[] = [];
     const requests: HttpRequestInput[] = [];
     const exit = await Effect.runPromiseExit(
       installEffectFromFlags({ libraryId: "t1" }).pipe(
         Effect.provide(makeLayer(captured, true, requests,
-          libraryResponse("t1", "platform", { trigger_present: true }, "t1"))),
+          libraryResponse("t1", "platform", {
+            tools: ["agentmail"],
+            trigger_present: true,
+          }, "t1"))),
       ),
     );
     expect(Exit.isSuccess(exit)).toBe(true);
-    expect(captured.join("\n")).toContain("\"status\":\"installed\"");
+    expect(captured).toHaveLength(1);
+    expect(JSON.parse(captured[0] ?? "{}"))
+      .toMatchObject({ status: "installed" });
   });
 });
 

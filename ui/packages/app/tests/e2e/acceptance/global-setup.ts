@@ -29,6 +29,7 @@ import * as crypto from "node:crypto";
 import { clerkSetup } from "@clerk/testing/playwright";
 import {
   attachJwt,
+  finalizeFixtureMetadata,
   provisionUser,
   type FixtureUserSpec,
   type MintedFixture,
@@ -127,19 +128,22 @@ export default async function globalSetup(): Promise<void> {
     if (!process.env[key]) failLoud(key);
   }
   await clerkSetup();
-  // Three-phase to keep JWT claims fresh:
+  // Ordered setup keeps JWT claims fresh:
   //   1. provisionUser: ensure each Clerk user exists (no JWT yet).
   //      Tags new users with publicMetadata.is_test_fixture=true so
   //      prod ops can filter them.
   //   2. bootstrapTenant: agentsfleetd creates tenant + writes tenant_id/role
   //      back to Clerk publicMetadata.
-  //   3. attachJwt: mint session JWT — now the JWT snapshots the updated
+  //   3. finalizeFixtureMetadata: wait for tenant writeback, then append the
+  //      operator-only scope without dropping ordinary tenant grants.
+  //   4. attachJwt: mint session JWT — now the JWT snapshots the updated
   //      publicMetadata, so agentsfleetd API calls that require tenant context
   //      succeed.
   const users = fixtureUsers();
   const provisioned = await Promise.all(users.map(provisionUser));
   for (const user of provisioned) {
     await bootstrapTenant(user);
+    await finalizeFixtureMetadata(user);
   }
   const fixtures: MintedFixture[] = [];
   for (const user of provisioned) {

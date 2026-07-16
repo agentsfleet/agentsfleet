@@ -112,9 +112,9 @@ export async function installViaUI(page: Page, name: string, auth: InstallAuth):
 
   // Gallery → confirm: click this template's card action, then name the fleet
   // and Install. Scope to the card's <article> so the click targets the right
-  // "Use template" among any sibling cards.
+  // "Use entry" among any sibling cards.
   const card = page.getByRole("article").filter({ hasText: templateName });
-  await card.getByRole("button", { name: "Use template" }).click();
+  await card.getByRole("button", { name: "Use entry" }).click();
   await page.getByLabel("Fleet name").fill(name);
   await page.getByRole("button", { name: "Install", exact: true }).click();
 

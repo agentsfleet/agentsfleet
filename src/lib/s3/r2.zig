@@ -44,6 +44,7 @@ pub const Config = struct {
 // bucket in the path (path-style), so virtual_host_style stays false.
 const REGION = "auto";
 const HTTP_2XX: u16 = 100; // status / HTTP_2XX == 2 → 2xx family
+const R2_IDLE_CONNECTION_LIMIT: usize = 0;
 
 /// Build an R2 client from resolved credentials. `io` is the caller's io interface
 /// (e.g. `constants.globalIo()`). Dupes every config string into owned storage —
@@ -61,13 +62,14 @@ pub fn init(alloc: std.mem.Allocator, io: std.Io, cfg: Config) (Error || std.mem
     const endpoint = try std.fmt.allocPrint(alloc, "https://{s}.r2.cloudflarestorage.com", .{account_id});
     errdefer alloc.free(endpoint);
 
-    const client = z3.S3Client.init(alloc, .{
+    var client = z3.S3Client.init(alloc, .{
         .access_key_id = access_key_id,
         .secret_access_key = secret_access_key,
         .region = REGION,
         .endpoint = endpoint,
         .virtual_host_style = false,
     }, .{ .io = io }) catch return Error.R2InitFailed;
+    client.http_client.connection_pool.free_size = R2_IDLE_CONNECTION_LIMIT;
 
     return .{
         .alloc = alloc,
@@ -106,6 +108,21 @@ pub fn get(self: *R2, alloc: std.mem.Allocator, key: []const u8) Error![]u8 {
     if (status == 404) return Error.R2NotFound;
     if (status / HTTP_2XX != 2) return Error.R2GetFailed;
     return alloc.dupe(u8, resp.body) catch return Error.R2GetFailed;
+}
+
+test "R2 disables idle HTTP connection reuse" {
+    var r2 = try R2.init(std.testing.allocator, std.testing.io, .{
+        .account_id = "",
+        .access_key_id = "",
+        .secret_access_key = "",
+        .bucket = "",
+    });
+    defer r2.deinit();
+
+    try std.testing.expectEqual(
+        R2_IDLE_CONNECTION_LIMIT,
+        r2.client.http_client.connection_pool.free_size,
+    );
 }
 
 const std = @import("std");

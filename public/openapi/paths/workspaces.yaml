@@ -114,6 +114,57 @@
                   nullable: true
       default:
         $ref: ../components/responses.yaml#/components/responses/Error
+/v1/workspaces/{workspace_id}/events/stream:
+  get:
+    operationId: stream_workspace_events
+    summary: Stream live activity for a whole workspace
+    description: |
+      Opens ONE Server-Sent Events (SSE) stream carrying live activity for
+      every fleet the caller can read in the workspace. It is the Fleets Wall's
+      single connection, replacing one stream per tile.
+
+      The first frame is `event: hello`. Its `data` is
+      `{"kind":"hello","fleet_ids":[...]}` for the current readable fleet set.
+
+      Activity frame `data` contains the publisher payload with `fleet_id`
+      added as the leading field. The client routes each frame by that tag.
+
+      A stalled client can overflow its bounded server queue. The server then
+      sends `event: catching_up` with `{"kind":"catching_up","dropped":N}`.
+      `dropped` is the new drop count since the previous signal.
+
+      Control frames use identifier 0 and do not advance the activity sequence.
+      Activity identifiers start at 0 for each connection. The route ignores
+      `Last-Event-ID`.
+
+      The connection adjusts its fan-in as fleets appear or disappear. A caller
+      whose workspace access is revoked stops receiving on the next refresh. At
+      capacity the route returns 503 `UZ-API-002` with `Retry-After`. After a
+      reconnect opens, recover the gap through
+      `GET /v1/workspaces/{workspace_id}/events`.
+    tags:
+    - Workspaces
+    parameters:
+    - name: workspace_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    responses:
+      '200':
+        description: SSE stream opened.
+        content:
+          text/event-stream:
+            schema:
+              type: string
+              description: >
+                SSE-formatted `hello`, tagged activity, and `catching_up`
+                frames. Workspace control frames do not carry `fleet_id`.
+      default:
+        $ref: ../components/responses.yaml#/components/responses/Error
+    security:
+    - BearerAuth: []
 /v1/workspaces/{workspace_id}/preferences:
   get:
     operationId: get_workspace_preferences

@@ -22,10 +22,9 @@ test.describe("settings billing", () => {
 
     const balance = page.getByTestId("balance-headline");
     await expect(balance).toBeVisible();
-    // tabular-nums is on the parent CardTitle; assert via class lookup so a
-    // future BillingBalanceCard refactor that moves the class up or down
-    // one node still reads as a regression.
-    const tabular = page.locator(".tabular-nums").first();
+    // Scope the numeric-style proof to the balance amount. The first matching
+    // class on the page belongs to the Getting Started progress widget.
+    const tabular = balance.locator("..");
     await expect(tabular).toBeVisible();
     await expect(tabular).toContainText(/\$\d/);
 

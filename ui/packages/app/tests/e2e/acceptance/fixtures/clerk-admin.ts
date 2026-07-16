@@ -21,8 +21,7 @@
  */
 
 import { FIXTURE_KEY, OPERATOR_FIXTURE_SCOPES, type FixtureKey } from "./constants";
-
-const CLERK_API_BASE = "https://api.clerk.com/v1";
+import { clerkRequest } from "./clerk-request";
 
 // Session-token TTL for minted fixture JWTs. Default Clerk TTL is 60s — too
 // short for a full suite run. The harness uses 15 min, which is ~2× the
@@ -34,6 +33,7 @@ const SESSION_TOKEN_TTL_SECONDS = 900;
 const CLERK_METADATA_POLL_MS = 500;
 const CLERK_METADATA_TIMEOUT_MS = 15_000;
 const TENANT_ID_METADATA_KEY = "tenant_id";
+const TENANT_SCOPE_SENTINEL = "workspace:admin";
 
 export interface FixtureUserSpec {
   key: FixtureKey;
@@ -71,26 +71,8 @@ interface ClerkSessionToken {
   jwt: string;
 }
 
-function authHeaders(): Record<string, string> {
-  const secret = process.env.CLERK_SECRET_KEY;
-  if (!secret) throw new Error("CLERK_SECRET_KEY missing");
-  return {
-    Authorization: `Bearer ${secret}`,
-    "Content-Type": "application/json",
-  };
-}
-
-async function clerkRequest<T>(method: string, path: string, body?: unknown): Promise<T> {
-  const res = await fetch(`${CLERK_API_BASE}${path}`, {
-    method,
-    headers: authHeaders(),
-    body: body !== undefined ? JSON.stringify(body) : undefined,
-  });
-  if (!res.ok) {
-    const detail = await res.text();
-    throw new Error(`Clerk ${method} ${path} → ${res.status}: ${detail}`);
-  }
-  return (await res.json()) as T;
+interface ClerkSignInToken {
+  token: string;
 }
 
 async function findUserByEmail(email: string): Promise<ClerkUser | null> {
@@ -141,12 +123,34 @@ async function ensureUser(spec: FixtureUserSpec): Promise<ClerkUser> {
     // Backfill the metadata on pre-existing fixture users — this is also what
     // grants the operator scope to an operator fixture created before the scope
     // existed.
-    await clerkRequest<ClerkUser>("PATCH", `/users/${existing.id}/metadata`, {
+    return clerkRequest<ClerkUser>("PATCH", `/users/${existing.id}/metadata`, {
       public_metadata: fixtureMetadata(spec),
-    }).catch(() => undefined);
-    return existing;
+    });
   }
   return createUser(spec);
+}
+
+function scopeValues(raw: unknown): string[] {
+  if (typeof raw === "string") return raw.split(/\s+/).filter(Boolean);
+  if (Array.isArray(raw)) return raw.filter((value): value is string => typeof value === "string");
+  return [];
+}
+
+export async function finalizeFixtureMetadata(user: ProvisionedUser): Promise<void> {
+  await waitForTenantMetadata(user.clerkUserId);
+  const current = await getUser(user.clerkUserId);
+  const publicMetadata = fixtureMetadata(user);
+  if (user.key === FIXTURE_KEY.operator) {
+    publicMetadata.scopes = [
+      ...new Set([
+        ...scopeValues(current.public_metadata?.scopes),
+        ...OPERATOR_FIXTURE_SCOPES,
+      ]),
+    ].join(" ");
+  }
+  await clerkRequest<ClerkUser>("PATCH", `/users/${user.clerkUserId}/metadata`, {
+    public_metadata: publicMetadata,
+  });
 }
 
 /**
@@ -239,14 +243,26 @@ export async function findUserIdByEmail(email: string): Promise<string | null> {
   return user?.id ?? null;
 }
 
+export async function createSignInTicket(userId: string): Promise<string> {
+  const result = await clerkRequest<ClerkSignInToken>("POST", "/sign_in_tokens", {
+    user_id: userId,
+    expires_in_seconds: 300,
+  });
+  return result.token;
+}
+
 export async function waitForTenantMetadata(userId: string): Promise<void> {
   const deadline = Date.now() + CLERK_METADATA_TIMEOUT_MS;
   while (Date.now() < deadline) {
     const user = await getUser(userId);
-    if (typeof user.public_metadata?.[TENANT_ID_METADATA_KEY] === "string") return;
+    const hasTenantId = typeof user.public_metadata?.[TENANT_ID_METADATA_KEY] === "string";
+    const scopes = scopeValues(user.public_metadata?.scopes);
+    if (hasTenantId && scopes.includes(TENANT_SCOPE_SENTINEL)) return;
     await new Promise((resolve) => setTimeout(resolve, CLERK_METADATA_POLL_MS));
   }
-  throw new Error(`Clerk user ${userId} missing public_metadata.${TENANT_ID_METADATA_KEY}`);
+  throw new Error(
+    `Clerk user ${userId} missing tenant metadata or ${TENANT_SCOPE_SENTINEL}`,
+  );
 }
 
 export async function deleteUser(userId: string): Promise<void> {

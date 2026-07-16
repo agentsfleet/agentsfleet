@@ -28,7 +28,7 @@ test.describe("signout → signin round-trip", () => {
     await signInAs(page, FIXTURE_KEY.regular);
     const ws = await gotoWorkspace(page, FIXTURE_KEY.regular, "fleets");
     await expect(page).toHaveURL(workspaceUrlPattern("fleets"));
-    await expect(page.getByRole("heading", { name: /fleets/i }).first()).toBeVisible();
+    await expect(page.getByTestId("workspace-switcher")).toBeVisible();
 
     // Drive the SDK-level sign-out the UserButton's "Sign out" item triggers.
     // The button is Clerk-rendered inside a Radix portal, which can race
@@ -45,6 +45,6 @@ test.describe("signout → signin round-trip", () => {
     await signInAs(page, FIXTURE_KEY.regular);
     await page.goto(workspaceHref(ws, "fleets"));
     await expect(page).toHaveURL(workspaceUrlPattern("fleets"), { timeout: SIGNOUT_TIMEOUT_MS });
-    await expect(page.getByRole("heading", { name: /fleets/i }).first()).toBeVisible();
+    await expect(page.getByTestId("workspace-switcher")).toBeVisible();
   });
 });

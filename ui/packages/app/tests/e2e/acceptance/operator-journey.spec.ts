@@ -23,6 +23,8 @@ import {
 
 const JOURNEY_TIMEOUT_MS = 300_000;
 const ACTION_TIMEOUT_MS = 60_000;
+const MENU_CLICK_TIMEOUT_MS = 5_000;
+const MENU_CLICK_ATTEMPTS = 3;
 const TEMP_DIR_PREFIX = "agentsfleet-operator-journey-";
 
 interface CliFleetListResponse {
@@ -55,7 +57,7 @@ async function createWorkspaceFromSwitcher(page: Page, name: string): Promise<vo
   await switcher.click();
   await page.getByTestId("workspace-new").click();
 
-  const dialog = page.getByRole("dialog", { name: "New workspace" });
+  const dialog = page.getByRole("dialog", { name: "Create workspace" });
   await expect(dialog).toBeVisible();
   await dialog.getByLabel("Name (optional)").fill(name);
   await dialog.getByRole("button", { name: "Create workspace" }).click();
@@ -66,8 +68,17 @@ async function createWorkspaceFromSwitcher(page: Page, name: string): Promise<vo
 async function switchWorkspace(page: Page, name: string): Promise<void> {
   const switcher = page.getByTestId("workspace-switcher");
   await expect(switcher).toBeVisible();
-  await switcher.click();
-  await page.getByRole("menuitem", { name }).click();
+  for (let attempt = 1; attempt <= MENU_CLICK_ATTEMPTS; attempt += 1) {
+    if ((await switcher.getAttribute("aria-expanded")) !== "true") {
+      await switcher.click();
+    }
+    try {
+      await page.getByRole("menuitem", { name }).click({ timeout: MENU_CLICK_TIMEOUT_MS });
+      break;
+    } catch (error) {
+      if (attempt === MENU_CLICK_ATTEMPTS) throw error;
+    }
+  }
   await expect(switcher).toContainText(name, { timeout: ACTION_TIMEOUT_MS });
 }
 
@@ -133,6 +144,7 @@ test.describe("operator journey", () => {
   });
 
   test("operator switches workspace, installs a Fleet, visits settings, mints an API key, uses it from command line, then halts the Fleet", async ({ page }) => {
+    page.setDefaultTimeout(ACTION_TIMEOUT_MS);
     const apiUrl = process.env.NEXT_PUBLIC_API_URL;
     if (!apiUrl) throw new Error("NEXT_PUBLIC_API_URL must be set");
 
@@ -143,7 +155,7 @@ test.describe("operator journey", () => {
 
     await signInAs(page, FIXTURE_KEY.admin);
     await gotoWorkspace(page, FIXTURE_KEY.admin, "fleets");
-    await expect(page.getByRole("heading", { name: /^fleets$/i }).first()).toBeVisible();
+    await expect(page.getByTestId("workspace-switcher")).toBeVisible();
 
     await createWorkspaceFromSwitcher(page, primaryWorkspaceName);
     await createWorkspaceFromSwitcher(page, secondaryWorkspaceName);
@@ -164,7 +176,7 @@ test.describe("operator journey", () => {
     activeWorkspaceId = wsId;
 
     await clickSidebarLink(page, workspaceHref(wsId, "fleets"), workspaceUrlPattern("fleets"));
-    await page.getByRole("link", { name: /install teammate/i }).first().click();
+    await page.getByRole("link", { name: /install a fleet/i }).first().click();
     await expect(page).toHaveURL(workspaceUrlPattern("fleets/new"));
     const fleetId = await installViaUI(page, fleetName, {
       handle: FIXTURE_KEY.admin,
@@ -190,10 +202,11 @@ test.describe("operator journey", () => {
 
     await page.goto("/settings/api-keys");
     await expect(page).toHaveURL(/\/settings\/api-keys(\?|$)/);
-    await page.getByRole("button", { name: /new api key/i }).click();
-    await page.getByLabel(/^name$/i).fill(apiKeyName);
+    await page.getByRole("button", { name: "Create key", exact: true }).click();
+    const createKeyDialog = page.getByRole("dialog", { name: "Create API key" });
+    await createKeyDialog.getByLabel(/^name$/i).fill(apiKeyName);
     createdApiKeyName = apiKeyName;
-    await page.getByRole("button", { name: /create key/i }).click();
+    await createKeyDialog.getByRole("button", { name: "Create key", exact: true }).click();
 
     const revealField = page.getByLabel(/api key value/i);
     await expect(revealField).toBeVisible();

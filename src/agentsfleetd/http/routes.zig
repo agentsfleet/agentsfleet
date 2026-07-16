@@ -98,6 +98,11 @@ pub const Route = union(enum) {
     workspace_fleet_events_stream: matchers.WorkspaceFleetRoute, // GET /v1/workspaces/{ws}/fleets/{id}/events/stream
     // Workspace-aggregate event history
     workspace_events: []const u8, // GET /v1/workspaces/{ws}/events
+    /// GET /v1/workspaces/{ws}/events/stream — ONE multiplexed SSE connection
+    /// carrying every readable fleet's live activity, each frame tagged with
+    /// its `fleet_id`. The Fleets Wall's single stream; replaces its former
+    /// one-connection-per-tile fan-out.
+    workspace_events_stream: []const u8,
     // Consolidated onboarding checklist state (derived signals + preferences)
     workspace_onboarding: []const u8, // GET /v1/workspaces/{ws}/onboarding
     // Per-user dashboard preferences (onboarding checklist state)
