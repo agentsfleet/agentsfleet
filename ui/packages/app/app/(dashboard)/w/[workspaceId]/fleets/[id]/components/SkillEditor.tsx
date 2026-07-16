@@ -48,7 +48,7 @@ type Props = {
   fleetId: string;
   sourceMarkdown: string;
   triggerMarkdown: string | null;
-  etag: string | null;
+  etag: string;
 };
 
 // The two editable documents, keyed by the analytics `field` value. `body` maps
@@ -138,7 +138,6 @@ export default function SkillEditor({
   }
 
   async function onConfirmSave() {
-    if (etag === null) return;
     const field = active;
     setError(null);
     const result = await saveFleetSourceAction(workspaceId, fleetId, { [PATCH_FIELD[field]]: draft[field] }, etag);

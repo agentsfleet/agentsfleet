@@ -227,18 +227,6 @@ describe("SkillEditor", () => {
     expect(Object.keys(props).sort()).toEqual(["field", "fleet_id", "outcome"]);
   });
 
-  it("does not save when the detail read has no ETag", async () => {
-    render(<SkillEditor workspaceId="ws_1" fleetId="agt_1" sourceMarkdown="# SKILL\noriginal" triggerMarkdown={null} etag={null} />);
-    const user = userEvent.setup({ delay: null });
-    await user.click(screen.getByRole("button", { name: /Edit/ }));
-    fireEvent.change(screen.getByRole("textbox", { name: "Edit SKILL.md" }), { target: { value: "# SKILL\nedited" } });
-    await user.click(screen.getByRole("button", { name: "Save changes" }));
-    await user.click(screen.getByRole("button", { name: "Save" }));
-
-    expect(saveFleetSourceAction).not.toHaveBeenCalled();
-    expect(routerRefresh).not.toHaveBeenCalled();
-  });
-
   it("surfaces a save failure and records the failed outcome", async () => {
     saveFleetSourceAction.mockResolvedValue({ ok: false, status: 500, error: "storage refused", errorCode: "UZ-AGT-500" });
     const user = await enterEditAndType("# SKILL\nedited");

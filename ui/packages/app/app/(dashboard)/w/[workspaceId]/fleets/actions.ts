@@ -52,7 +52,7 @@ export async function deleteFleetAction(
 export async function getFleetDetailAction(
   workspaceId: string,
   fleetId: string,
-): Promise<ActionResult<{ fleet: FleetDetail; etag: string | null }>> {
+): Promise<ActionResult<{ fleet: FleetDetail; etag: string }>> {
   return withToken((t) => apiGetFleet(workspaceId, fleetId, t));
 }
 
@@ -65,7 +65,7 @@ export async function saveFleetSourceAction(
   fleetId: string,
   body: { source_markdown?: string; trigger_markdown?: string },
   ifMatch: string,
-): Promise<ActionResult<{ etag: string | null; config_revision: number }>> {
+): Promise<ActionResult<{ etag: string; config_revision: number }>> {
   return withToken((t) => apiSaveFleetSource(workspaceId, fleetId, body, ifMatch, t));
 }
 
