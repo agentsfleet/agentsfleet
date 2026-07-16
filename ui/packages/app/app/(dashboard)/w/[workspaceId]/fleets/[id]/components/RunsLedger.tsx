@@ -1,4 +1,4 @@
-import { Alert, Badge, type BadgeVariant, Card, EmptyState, Time } from "@agentsfleet/design-system";
+import { Alert, Badge, type BadgeVariant, Card, EmptyState, List, ListItem, Time } from "@agentsfleet/design-system";
 import { ReceiptIcon } from "lucide-react";
 import type { EventRow, EventStatusValue } from "@/lib/api/events";
 import { formatMs } from "@/lib/utils";
@@ -81,13 +81,13 @@ export default function RunsLedger({ windowEvents, lifetimeBudgetNanos }: Props)
       {windowEvents === null ? null : rows.length === 0 ? (
         <EmptyState icon={<ReceiptIcon size={28} />} title={LEDGER_EMPTY_TITLE} description={LEDGER_EMPTY_DESCRIPTION} />
       ) : (
-        <ul className="flex list-none flex-col gap-2 pl-0">
+        <List variant="plain" className="flex flex-col gap-2 space-y-0">
           {rows.map((row) => (
-            <li key={`${row.fleet_id}:${row.event_id}`}>
+            <ListItem key={`${row.fleet_id}:${row.event_id}`}>
               <LedgerRow row={row} />
-            </li>
+            </ListItem>
           ))}
-        </ul>
+        </List>
       )}
     </Card>
   );

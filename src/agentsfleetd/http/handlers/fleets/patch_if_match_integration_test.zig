@@ -14,6 +14,7 @@ const std = @import("std");
 const scope_fixtures = @import("../../test_scope_tokens.zig");
 const clock = @import("common").clock;
 const pg = @import("pg");
+const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
 const auth_mw = @import("../../../auth/middleware/mod.zig");
 
 const harness_mod = @import("../../test_harness.zig");
@@ -35,6 +36,15 @@ const SKILL_V2 =
     \\---
     \\# Reviewer
     \\do the thing, edited
+;
+const SKILL_V3 =
+    \\---
+    \\name: ifmatch-fleet
+    \\description: second editor
+    \\version: 1.0.2
+    \\---
+    \\# Reviewer
+    \\do the thing, concurrently edited
 ;
 
 fn configureRegistry(_: *auth_mw.MiddlewareRegistry, _: *TestHarness) anyerror!void {}
@@ -69,8 +79,20 @@ fn seed(conn: *pg.Conn, now_ms: i64) !void {
     , .{ IFMATCH_FLEET, TEST_WORKSPACE_ID, now_ms });
 }
 
-fn patchBody(alloc: std.mem.Allocator) ![]const u8 {
-    return std.json.Stringify.valueAlloc(alloc, .{ .source_markdown = SKILL_V2 }, .{});
+fn patchBody(alloc: std.mem.Allocator, source: []const u8) ![]const u8 {
+    return std.json.Stringify.valueAlloc(alloc, .{ .source_markdown = source }, .{});
+}
+
+fn sourceMatches(conn: *pg.Conn, expected: []const u8) !bool {
+    var q = PgQuery.from(try conn.query(
+        "SELECT source_markdown = $2 FROM core.fleets WHERE id = $1::uuid",
+        .{ IFMATCH_FLEET, expected },
+    ));
+    defer q.deinit();
+    const row = try q.next() orelse return error.FleetMissing;
+    const matches = try row.get(bool, 0);
+    q.drain();
+    return matches;
 }
 
 fn etagFromBody(alloc: std.mem.Allocator, body: []const u8) ![]const u8 {
@@ -95,8 +117,10 @@ test "integration: PATCH If-Match — success returns etag, stale is 412, match 
 
     const url = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/fleets/{s}", .{ TEST_WORKSPACE_ID, IFMATCH_FLEET });
     defer alloc.free(url);
-    const body = try patchBody(alloc);
+    const body = try patchBody(alloc, SKILL_V2);
     defer alloc.free(body);
+    const concurrent_body = try patchBody(alloc, SKILL_V3);
+    defer alloc.free(concurrent_body);
 
     // 1. No If-Match → succeeds (opt-in header), and the 200 carries a fresh etag.
     const r1 = try (try (try h.patch(url).bearer(TOKEN)).json(body)).send();
@@ -106,7 +130,7 @@ test "integration: PATCH If-Match — success returns etag, stale is 412, match 
     defer alloc.free(fresh);
 
     // 2. A stale If-Match → 412 UZ-AGT-014, and the body carries the CURRENT etag.
-    const r2 = try (try (try (try h.patch(url).bearer(TOKEN)).json(body)).header(IF_MATCH, "\"deadbeef\"")).send();
+    const r2 = try (try (try (try h.patch(url).bearer(TOKEN)).json(concurrent_body)).header(IF_MATCH, "\"deadbeef\"")).send();
     defer r2.deinit();
     try r2.expectStatus(.precondition_failed);
     try r2.expectErrorCode("UZ-AGT-014");
@@ -115,9 +139,23 @@ test "integration: PATCH If-Match — success returns etag, stale is 412, match 
     // The 412's returned etag is the row's real tag — it equals the fresh tag
     // from step 1 (step 1 committed, and its returned etag is over that source).
     try std.testing.expectEqualStrings(fresh, current);
+    try std.testing.expect(try sourceMatches(conn, SKILL_V2));
 
     // 3. Re-send with the matching tag → 200 (the editor's reloaded save).
-    const r3 = try (try (try (try h.patch(url).bearer(TOKEN)).json(body)).header(IF_MATCH, current)).send();
+    const r3 = try (try (try (try h.patch(url).bearer(TOKEN)).json(concurrent_body)).header(IF_MATCH, current)).send();
     defer r3.deinit();
     try r3.expectStatus(.ok);
+    try std.testing.expect(try sourceMatches(conn, SKILL_V3));
+
+    // 4. Preserve the legacy empty PATCH only when no condition was supplied.
+    // A conditional no-op is rejected rather than silently skipping If-Match.
+    const empty_body = "{}";
+    const conditional_empty = try (try (try (try h.patch(url).bearer(TOKEN)).json(empty_body)).header(IF_MATCH, fresh)).send();
+    defer conditional_empty.deinit();
+    try conditional_empty.expectStatus(.bad_request);
+    try conditional_empty.expectErrorCode("UZ-REQ-001");
+
+    const legacy_empty = try (try (try h.patch(url).bearer(TOKEN)).json(empty_body)).send();
+    defer legacy_empty.deinit();
+    try legacy_empty.expectStatus(.ok);
 }

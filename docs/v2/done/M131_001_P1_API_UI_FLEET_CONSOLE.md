@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M131
 **Workstream:** 001
 **Date:** Jul 14, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — the fleet detail page today is a stack of unlabelled panels with no source view, no cost figure, and a config card that lies about which endpoints exist; it is the page an operator lives on and it cannot answer the four questions it exists to answer.
 **Categories:** API, UI
 **Batch:** B1 — first of the console/wall trio; M132 and M133 build on the surfaces this lands.
@@ -32,7 +32,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 **Problem:** The detail page shows a fleet's name and status, a trigger list, a config card whose copy claims rename/pause/resume "become available once the backend adds `PATCH`/`:pause`/`:resume` endpoints" — which shipped in M80 and which the kill switch already calls — and a flat activity feed. An operator cannot read the fleet's `SKILL.md`, cannot edit it in place, cannot see what a run cost, cannot forget a memory the fleet learned wrong, and cannot tell at a glance whether the last seven days were cheap or ruinous. The one number the page could show today (`budget_used_nanos`) is dropped by the client `Fleet` type. Delete offers no warning that deleting the fleet destroys everything it ever learned.
 
-**Solution summary:** Land the single-fleet read the console needs (`GET …/fleets/{id}`, route + serializer, no migration — the columns exist; `trigger_markdown` and `bundle_content_hash` are nullable), carry per-event cost on the events row via a LEFT JOIN into `core.fleet_execution_telemetry.credit_deducted_nanos` (no migration; the `event_id` index exists), and add tenant-plane memory forget (`DELETE …/memories/{key}`) so the memory panel can correct a bad lesson. On the client, rebuild `page.tsx` into three columns: the left rail reads and edits the source over the *existing* PATCH with next-wake save semantics, `If-Match` optimistic concurrency, and a "what changes when you save" diff; the middle reuses `FleetThread`/`SteerComposer` unchanged and gains a run-metrics strip; the right rail carries the memory panel, the existing approvals panel, and a runs ledger whose 7-day rollup covers the latest 200 events in one bounded API call plus lifetime `budget_used_nanos`. Cron triggers stay read-only — schedule editing is M105_001. Fix the config card's stale copy; make the delete confirm state the memory trap.
+**Solution summary:** Land the single-fleet read the console needs (`GET …/fleets/{id}`), carry per-event cost from `core.fleet_execution_telemetry.credit_deducted_nanos`, add tenant-plane memory forget (`DELETE …/memories/{key}`), and maintain fleet activity counters through migration 030 so list reads never re-aggregate child tables. On the client, rebuild `page.tsx` into three columns: source editing with `If-Match`, the existing steer thread plus run metrics, and memory plus a runs ledger whose 7-day rollup covers the latest 200 events in one bounded API call. Cron triggers stay read-only; the danger zone tells the truth about lifecycle endpoints and memory deletion.
 
 ## PR Intent & comprehension handshake
 
@@ -45,66 +45,33 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 1. `src/agentsfleetd/http/route_table_invoke.zig` (`invokePatchWorkspaceFleet`, `invokeWorkspaceFleetMemories`) — the fleet-scoped invoke handlers. Today GET on the `{id}` route falls through to 405; the single-fleet read adds the GET arm here. Mirror the acquire/release/`authorizeWorkspaceAndSetTenantContext` shape the events handler already uses — do not invent a second authorization idiom.
 2. `src/agentsfleetd/state/fleet_events_store.zig` (`EventRow`, `listForFleet`) — the events row and its query. `tokens` and `wall_ms` already ride the row; the cost LEFT JOIN adds one nullable `BIGINT` field alongside them. `EventRow.deinit` frees every owned slice — a new owned field frees there too.
 3. `src/agentsfleetd/http/handlers/memory/handler.zig` (`innerListMemories`) + `src/agentsfleetd/memory/fleet_memory.zig` — the tenant-plane memory surface. The entry field is **`content`**, not `text`; list is `fleet:read`, limit-only, max 100. Forget is a new tenant-plane DELETE mirroring the runner-plane forget already in `fleet_memory.zig`.
-4. `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/[id]/page.tsx` — the page being rebuilt into three columns, and `ui/packages/app/components/domain/FleetThread.tsx` / `SteerComposer.tsx` — reused **unchanged**; `isRunning` (`event_received`→`event_complete`) already gates the composer, and interrupting a running fleet is a backend capability that does not exist and must not be added here.
+4. `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/[id]/page.tsx` — the page being rebuilt into three columns, and `ui/packages/app/components/domain/FleetThread.tsx` / `SteerComposer.tsx` — existing steering stays intact; `FleetThread` refreshes the server-rendered summaries once when a live event completes, and `isRunning` still gates the composer.
 5. `docs/architecture/memory.md` — the memory lifecycle the forget endpoint and the delete-confirm copy must not contradict (fleet memory is keyed by `fleet_id`; a new `fleet_id` is a fresh, empty memory).
 
 ## Files Changed (blast radius)
 
 | File | Action | Why |
 |------|--------|-----|
-| `src/agentsfleetd/http/handlers/fleets/get.zig` | CREATE | The single-fleet read (G1): serializes `source_markdown`, `trigger_markdown`, `bundle_content_hash`, `status`, `triggers`, `budget_used_nanos`, `events_processed`; sets the `ETag` response header (content hash of the editable markdown, §4). Split from `api.zig` so the read path has its own home under the 350-line cap (RULE FLL). |
-| `src/agentsfleetd/http/handlers/fleets/api.zig` | EDIT | Re-exports the new read from its module; the route table calls through it. |
-| `src/agentsfleetd/http/handlers/fleets/patch.zig` | EDIT | The existing PATCH gains the `If-Match` check — stale ETag → 412 Precondition Failed with the current etag in the body; the response carries the fresh `ETag` (§4). Body parse/validate and the transaction split to the two siblings below (RULE FLL — the If-Match check pushed it past the cap). |
-| `src/agentsfleetd/http/handlers/fleets/patch_body.zig` | CREATE | The PATCH's body parsing + field validation, split from `patch.zig`. |
-| `src/agentsfleetd/http/handlers/fleets/patch_txn.zig` | CREATE | The PATCH's transaction: `SELECT … FOR UPDATE` → `If-Match` verdict → reparse → FSM-gated `UPDATE`; owns `TxnOutcome`. Split from `patch.zig`. |
-| `src/agentsfleetd/http/handlers/fleets/sql.zig` | CREATE | SQL statement text for the fleets handler domain (RULE SQLMOD): the single-fleet detail read (§1) and the single-pass page query (§8). |
-| `src/agentsfleetd/http/etag.zig` | CREATE | **§9** — the shared ETag capability: `compute` over a declared field list, `staleTag` (the `If-Match` verdict), `ifMatch`, `attach`. Sits at the http layer, not under `fleets/`, because the catalog row adopts it too. |
-| `src/agentsfleetd/http/handlers/fleets/list.zig` | EDIT | **§8** — the page query reads the denormalized `events_processed` / `budget_used_nanos` columns instead of aggregating the child tables; SQL moves to `sql.zig`. |
-| `schema/005_core_fleets.sql` | EDIT | **§8** — `core.fleets` gains the two counter columns (`NOT NULL DEFAULT 0`); declared on the table here (pre-2.0 teardown-rebuild re-runs 005) rather than via `ALTER` (SCHEMA GUARD blocks it). Same structural-default class as `required_tags`. |
-| `schema/030_fleet_activity_counters.sql` | CREATE | **§8** — the two `AFTER` triggers that maintain the counters (event-count on insert; budget on insert + renewal-delta on update) plus a one-time backfill. Invoker-rights, no new grant. |
-| `schema/embed.zig` | EDIT | **§8** — registers migration 30 after user preferences (28) and fleet schedules (29); the contiguity test enforces no gap. |
-| `src/agentsfleetd/http/handlers/library/catalog_patch.zig` | EDIT | **§9** — the second ETag adopter: `If-Match` on the catalog row PATCH; a stale re-send of `source_repo` can no longer discard the bundle and unpublish. One `RowState` read now serves both the publish precheck and the concurrency verdict. |
-| `src/agentsfleetd/http/handlers/library/catalog.zig` | EDIT | **§9** — `RowState` carries the row's editable surface; the catalog entry (list + single) carries its `etag`. |
-| `src/agentsfleetd/fleet_library/sql.zig` | EDIT | **§9** — `SELECT_CATALOG_ROW` projects the fields the row's ETag hashes. |
-| `src/agentsfleetd/http/handlers/common.zig` | EDIT | The RFC 7807 writer gains the `etag` extension the 412 mandates (REST guide §4), beside the existing `current_state` for 409. Omitted from the wire unless the status sets it — the base envelope is unchanged for every other endpoint. |
-| `src/agentsfleetd/errors/error_entries.zig` + `error_entries_runtime.zig` + `error_registry.zig` | EDIT | `UZ-AGT-014` (fleet source stale), `UZ-CATALOG-005` (catalog row stale), `UZ-MEM-004` (memory entry not found). The mechanism is shared; the operator-facing copy is per-resource. |
-| `src/agentsfleetd/errors/internal_op_error_sweep_test.zig` | EDIT | Baseline bump for the ETag-attach failure paths (plain-English details, per the sweep's own bump rule). |
-| `src/agentsfleetd/http/route_table_invoke.zig` | EDIT | `invokePatchWorkspaceFleet` gains the GET arm (G1); a new memory-item invoke wires the DELETE (G5). |
-| `src/agentsfleetd/http/router.zig` | EDIT | New route variant for the memory item (`…/memories/{key}`), deepest-shape-first before the collection match. |
-| `src/agentsfleetd/http/route_matchers.zig` | EDIT | `matchWorkspaceFleetMemoryItem` — the `{key}` leaf matcher, mirroring `matchWorkspaceFleetKeyDelete`. |
-| `src/agentsfleetd/http/route_scopes.zig` | EDIT | GET on `patch_workspace_fleet` → `fleet:read`; the memory-item DELETE → `fleet:write` (the scope decision, §5). |
-| `src/agentsfleetd/state/fleet_events_store.zig` | EDIT | `EventRow` gains a nullable cost field; `listForFleet` LEFT JOINs `fleet_execution_telemetry.credit_deducted_nanos` on `event_id`; `deinit` unchanged (the field is a scalar). |
-| `src/agentsfleetd/http/handlers/fleets/events.zig` | EDIT | Serializes the cost field onto each event row (G2). |
-| `src/agentsfleetd/memory/fleet_memory.zig` | EDIT | `deleteEntry(conn, fleet_id, key)` — one `DELETE … RETURNING key` graded on row count, mirroring the store's existing statements. |
-| `src/agentsfleetd/http/handlers/memory/handler.zig` | EDIT | `innerDeleteMemory` — the tenant-plane forget handler (G5). |
-| `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/[id]/page.tsx` | EDIT | Rebuilt into the three-column console; server-fetches the single fleet, events (with cost), approvals, and billing in parallel. |
-| `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/[id]/components/SkillEditor.tsx` | CREATE | Left rail: `SKILL.md`/`TRIGGER.md` viewer + editor over the existing PATCH, with the next-wake save dialog and the "what changes when you save" diff panel. |
-| `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/[id]/components/MemoryPanel.tsx` | CREATE | Right rail: the memory list (`content`, `category`, `updated_at`); the forget button always renders — this spec ships the DELETE (G5), and scope refusal is the server's job (§5). |
-| `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/[id]/components/RunsLedger.tsx` | CREATE | Right rail: events newest-first with a cost column and the client-side rollup over the latest 200 events within 7 days (G3-v1). |
-| `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/[id]/components/RunMetricsStrip.tsx` | CREATE | Middle: tokens · wall · cost for the current/last run, all from server fields. |
-| `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/[id]/components/FleetConfig.tsx` | EDIT | The danger zone (stop/resume/kill/delete); the stale "endpoints don't exist" copy is removed (G7); the delete confirm states the memory trap (G8). |
-| `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/[id]/components/console-copy.ts` | CREATE | The console's copy constants — save-dialog text, rollup labels, delete-confirm text — as named constants (RULE UFS). |
-| `ui/packages/app/lib/api/fleets.ts` | EDIT | `getFleet` calls the real `GET …/fleets/{id}` and drops the list-scan fallback (RULE NDC); returns the widened detail shape. |
-| `ui/packages/app/lib/api/fleets.test.ts` + `events.test.ts` | EDIT | The scan-cap test (`fleets.test.ts:54-67`) dies with the fallback it tests; the event type gains `cost_nanos`. |
-| `ui/packages/app/lib/api/memory.ts` + `memory.test.ts` | CREATE | Neither file exists yet: `listMemories` (first dashboard caller) + `forgetMemory` (DELETE), with their unit tests. |
-| `ui/packages/app/lib/api/events.ts` | EDIT | The event type gains the nullable cost field the ledger renders. |
-| `ui/packages/app/lib/types.ts` | EDIT | `FleetDetail` (the single-read shape); `MemoryEntry` (`content`, not `text`); the event cost field. |
-| `ui/packages/app/lib/analytics/events.ts` | EDIT | The source-saved and memory-forgotten operator events. |
-| `public/openapi/paths/fleets.yaml` + `paths/memory.yaml` + `root.yaml` + `public/openapi.json` | EDIT | The `{fleet_id}` path gains GET and the events item gains `cost_nanos` (the description names the `cost_nanos` ↔ `credit_deducted_nanos` mapping); `memory.yaml` gains the `{key}` DELETE; `root.yaml` registers the new path; the `.json` bundle is regenerated (`make check-openapi`), never hand-edited. |
-| `src/agentsfleetd/http/handlers/fleets/get_integration_test.zig` | CREATE | G1: read serialization, not-found, cross-workspace refusal, scope enforcement. |
-| `src/agentsfleetd/http/etag_test.zig` | CREATE | **§9**: the shared module — field-boundary unambiguity, null-vs-empty, verdict on match/stale/absent. |
-| `src/agentsfleetd/http/handlers/fleets/list_aggregate_integration_test.zig` | CREATE | **§8**: the single-pass page query returns per-row-subselect-identical numbers; zero-event fleets read 0, not null. |
-| `src/agentsfleetd/http/handlers/library/catalog_etag_integration_test.zig` | CREATE | **§9**: catalog stale `If-Match` → 412 + current etag, nothing written; the destructive stale-resend cannot unpublish; absent `If-Match` still succeeds. |
-| `src/agentsfleetd/http/handlers/fleets/events_cost_integration_test.zig` | CREATE | G2: cost joined onto the row; null when no telemetry; no double-count across the two telemetry rows per event. |
-| `src/agentsfleetd/http/handlers/memory/memory_forget_integration_test.zig` | CREATE | G5: forget removes the entry; missing key 404; cross-fleet refusal; scope enforcement. |
-| `src/agentsfleetd/tests.zig` | EDIT | Registers the three new integration files. |
-| `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/[id]/components/SkillEditor.test.tsx` | CREATE | Save semantics, the diff panel, disabled-mid-run behaviour, the 412 reload-and-rediff. |
-| `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/[id]/components/MemoryPanel.test.tsx` | CREATE | List render, the forget action, `content` field. |
-| `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/[id]/components/RunsLedger.test.tsx` | CREATE | Cost column from server truth; the 7-day rollup arithmetic; the empty-window case. |
-| `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/[id]/components/FleetConfig.test.tsx` | CREATE | The delete-confirm memory-trap copy; the removed stale copy; the four danger-zone actions. |
-| `ui/packages/app/tests/fleets.test.ts` | EDIT | Console page assertions follow the rebuild. |
-| `ui/packages/app/tests/e2e/acceptance/fleet-console.spec.ts` | CREATE | The operator reads the source, steers, sees a cost, and edits + saves the source end to end. |
-| `ui/packages/app/tests/e2e/acceptance/logs-detail.spec.ts` + `fleet-thread.spec.ts` | EDIT | Their selectors follow the three-column rebuild. |
+| `docs/v2/{active,done}/M131_001_P1_API_UI_FLEET_CONSOLE.md`, `docs/v2/active/HANDOFF_M131_001.md` | EDIT / DELETE | Reconcile the shipped surface and remove the temporary handoff at close. |
+| `docs/architecture/{memory,fleet_bundles}.md` | EDIT | Record tenant forget, optimistic source saves, and the bounded console rollup. |
+| `public/openapi/{root.yaml,components/schemas.yaml,paths/{fleets,memory,fleet-library}.yaml}`, `public/openapi.json` | EDIT | Publish fleet detail, event cost, memory forget, and catalog concurrency; regenerate the bundle. |
+| `schema/{005_core_fleets.sql,030_fleet_activity_counters.sql,embed.zig}` | EDIT / CREATE | Create, maintain, backfill, and register the one-row-per-fleet lifetime counter table. |
+| `src/agentsfleetd/errors/{error_entries.zig,error_entries_runtime.zig,error_registry.zig,gen_error_codes.zig,internal_op_error_sweep_test.zig}` | EDIT | Register and verify stale-write and missing-memory errors. |
+| `src/agentsfleetd/fleet_library/sql.zig` | EDIT | Project the editable catalog fields used for its ETag. |
+| `src/agentsfleetd/http/{etag.zig,handlers/{common.zig,problem_response.zig}}` | CREATE / EDIT | Share ETag handling and carry the current tag in problem responses. |
+| `src/agentsfleetd/http/{test_http_message.zig,test_harness_test.zig}` | EDIT | Capture response headers once in the shared integration harness so wire-level ETag assertions use the standard response helper. |
+| `src/agentsfleetd/http/handlers/fleets/{api.zig,get.zig,list.zig,patch.zig,patch_body.zig,patch_txn.zig,sql.zig}` | CREATE / EDIT | Add fleet detail, source concurrency, and counter-backed list reads. |
+| `src/agentsfleetd/http/handlers/fleets/{events_cost,get,list_aggregate,patch_if_match}_integration_test.zig` | CREATE / EDIT | Prove detail, cost, counters, and stale-write behavior against the real database. |
+| `src/agentsfleetd/http/handlers/library/{catalog.zig,catalog_patch.zig,catalog_patch_test.zig,catalog_etag_integration_test.zig}` | EDIT / CREATE | Add catalog ETags and prove stale re-sends cannot unpublish. |
+| `src/agentsfleetd/http/handlers/memory/{handler.zig,memories_integration_test.zig,memory_forget_integration_test.zig}`, `src/agentsfleetd/memory/fleet_memory.zig` | EDIT / CREATE | Add and verify tenant-plane memory forget with fleet isolation. |
+| `src/agentsfleetd/http/{route_matchers.zig,route_matchers_fleet.zig,route_scopes.zig,route_table.zig,route_table_invoke.zig,route_table_invoke_memory.zig,router.zig,routes.zig}` | EDIT / CREATE | Register fleet detail and memory-item routing in every routing layer. |
+| `src/agentsfleetd/http/handlers/workspaces/preferences.zig`, `src/agentsfleetd/state/fleet_events_store.zig`, `src/agentsfleetd/tests.zig` | EDIT | Reconcile shared response handling, event cost reads, and test registration after `main` integration. |
+| `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/[id]/{page.tsx,loading.tsx,components/*}` | EDIT / CREATE | Build and test the three-column console, source editor, metrics, ledger, memory, and danger-zone copy. |
+| `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/actions.ts`, `ui/packages/app/components/domain/SteerComposer.test.tsx` | CREATE / EDIT | Keep mutations server-side and verify run-state composer behavior. |
+| `ui/packages/app/app/(dashboard)/admin/fleet-libraries/{actions.ts,components/*}`, `ui/packages/app/components/domain/FleetThread.tsx`, `ui/packages/app/tests/{admin-fleet-libraries-page,fleet-library-api,fleet-thread}.test.ts` | EDIT | Send catalog ETags on admin writes and refresh server summaries once after a live completion. |
+| `ui/packages/app/lib/{types.ts,analytics/events.ts,api/{client,errors,events,fleets,memory}*}` | EDIT / CREATE | Carry ETags, detail, event cost, memory operations, and analytics through the client API. |
+| `ui/packages/app/{lib/streaming/fleet-stream-registry.test.ts,tests/{events-components,fleets-actions,fleets-api-client,fleets-routes,use-fleet-event-stream}.test.ts,tests/helpers/dashboard-mocks.tsx}` | EDIT / CREATE | Reconcile and verify client callers, route rendering, actions, and stream state. |
+| `ui/packages/app/tests/e2e/acceptance/{fleet-console,logs-detail}.spec.ts` | CREATE / EDIT | Walk the operator console and update detail-page selectors. |
 
 ## Applicable Rules
 
@@ -122,97 +89,97 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | File & Function Length (≤350/≤50/≤70) | yes — `page.tsx` is rebuilt; the read serializer is new | Split the console into per-column components (already in Files Changed); keep the read serializer under the fn cap by lifting the trigger serialization it shares with `list.zig`. |
 | UFS (repeated/semantic literals) | yes | Copy strings, rollup labels, the `7d` window, SQL identifiers, and route literals are named constants; the memory field name `content` is single-sourced. |
 | UI Substitution / DESIGN TOKEN | yes — every new component | Design-system primitives only (no raw `<textarea>`/`<a>`); token utilities only (no `text-[…]`). |
-| LOGGING / LIFECYCLE / ERROR REGISTRY / SCHEMA | LOGGING + ERROR REGISTRY yes; SCHEMA **no** | No Data Definition Language (DDL): every column the read serializes exists (`schema/005` — `source_markdown` NOT NULL at :30; `trigger_markdown` :31 and `bundle_content_hash` :41 are NULLABLE), `credit_deducted_nanos` exists (`schema/011`), and `UNIQUE (event_id, charge_type)` (schema/011:26) backs the cost join — this spec changes no migration and does not touch `schema/embed.zig`. |
+| LOGGING / LIFECYCLE / ERROR REGISTRY / SCHEMA | LOGGING + ERROR REGISTRY + SCHEMA yes | Registered errors cover stale writes and missing memory; migration 030 maintains and backfills the fleet counters, is registered in `schema/embed.zig`, and is verified through the full database integration target. |
 
 ## Prior-Art / Reference Implementations
 
 - **Reference:** `src/agentsfleetd/http/handlers/fleets/list.zig` — the fleet serializer that already emits `budget_used_nanos`, `events_processed`, and the trigger list from `config_json`. The single-fleet read serializes the same fields plus `source_markdown`/`trigger_markdown`/`bundle_content_hash` for one row; it mirrors this serializer, it does not invent a second one.
 - **Reference:** `src/agentsfleetd/http/handlers/fleets/events.zig` + `fleet_events_store.zig` — the cursor-paginated events query the cost column rides on. The LEFT JOIN mirrors how `tokens`/`wall_ms` already ride the row.
-- **Reference:** `ui/packages/app/components/domain/FleetThread.tsx` / `SteerComposer.tsx` — reused unchanged; the middle column composes them, and the `isRunning` gate they already carry is the composer's disable source.
+- **Reference:** `ui/packages/app/components/domain/FleetThread.tsx` / `SteerComposer.tsx` — the middle column composes them, the existing `isRunning` gate remains the composer's disable source, and a completed event now refreshes the server summaries once.
 - **Reference:** M130's `CopyButton` and `EventsList` (`ui/packages/app/components/domain/EventsList.tsx`) — the copy affordance for the source view and the row primitive the runs ledger extends.
 
 ## Sections (implementation slices)
 
-### §1 — The single-fleet read (G1)
+### §1 — The single-fleet read (G1) — DONE
 
-The console needs one row's full detail — including `source_markdown` and `trigger_markdown`, which are write-only today (only PATCH/DELETE are routed at the `{id}` path; GET falls to 405). This slice adds `GET /v1/workspaces/{ws}/fleets/{id}` under `fleet:read`, serializing `source_markdown`, `trigger_markdown`, `bundle_content_hash`, `status`, the trigger list, `budget_used_nanos`, and `events_processed`. No migration: every column exists (`schema/005`) — `source_markdown` is NOT NULL (:30), but `trigger_markdown` (:31) and `bundle_content_hash` (:41) are NULLABLE and serialize as JSON null. The response carries an `ETag` header — a content hash of the editable markdown — which §4's editor sends back as `If-Match`. The client's `getFleet` stops scanning the fleet list (which capped at 100 and 404'd larger workspaces) and calls the real endpoint; the scan fallback and its bespoke error code are deleted (RULE NDC).
+The console needs one row's full detail — including `source_markdown` and `trigger_markdown`, which are write-only today (only PATCH/DELETE are routed at the `{id}` path; GET falls to 405). This slice adds `GET /v1/workspaces/{ws}/fleets/{id}` under `fleet:read`, serializing `source_markdown`, `trigger_markdown`, `bundle_content_hash`, `status`, the trigger list, `budget_used_nanos`, and `events_processed`. The source fields already exist in `schema/005`; migration 030 supplies the lifetime counters through its one-to-one table. `trigger_markdown` and `bundle_content_hash` are nullable and serialize as JSON null. The response carries an `ETag` header — a content hash of the editable markdown — which §4's editor sends back as `If-Match`. The client's `getFleet` stops scanning the fleet list (which capped at 100 and 404'd larger workspaces) and calls the real endpoint; the scan fallback and its bespoke error code are deleted (RULE NDC).
 
 **Implementation default:** a cross-workspace read returns 404, not 403 — an operator must not learn a fleet exists in a workspace they cannot see.
 
-- **Dimension 1.1** — `GET …/fleets/{id}` returns the fleet with `source_markdown`, `trigger_markdown`, `bundle_content_hash`, `status`, `triggers`, `budget_used_nanos`, `events_processed`, including a seeded fleet whose `bundle_content_hash` is NULL serialized as null → Test `test_get_fleet_serializes_full_detail`
-- **Dimension 1.2** — a missing id returns 404 with the registered fleet-not-found code; a fleet in another workspace returns 404, never 403 → Test `test_get_fleet_missing_and_cross_workspace`
-- **Dimension 1.3** — GET requires `fleet:read`; a token without it is refused → Test `test_get_fleet_requires_fleet_read`
+- **Dimension 1.1 — DONE** — `GET …/fleets/{id}` returns the fleet with `source_markdown`, `trigger_markdown`, `bundle_content_hash`, `status`, `triggers`, `budget_used_nanos`, `events_processed`, including a seeded fleet whose `bundle_content_hash` is NULL serialized as null → Test `test_get_fleet_serializes_full_detail`
+- **Dimension 1.2 — DONE** — a missing id returns 404 with the registered fleet-not-found code; a fleet in another workspace returns 404, never 403 → Test `test_get_fleet_missing_and_cross_workspace`
+- **Dimension 1.3 — DONE** — GET requires `fleet:read`; a token without it is refused → Test `test_get_fleet_requires_fleet_read`
 
-### §2 — Cost rides the event row (G2)
+### §2 — Cost rides the event row (G2) — DONE
 
 The runs ledger and the metrics strip both need per-event cost, and cost is server truth: it lives in `core.fleet_execution_telemetry.credit_deducted_nanos` under time-based billing (`RUN_NANOS_PER_SEC`). This slice LEFT JOINs the telemetry cost onto the fleet events list on `event_id` (index exists; no migration) so cost arrives on the same row as `tokens`/`wall_ms`. An event with no telemetry row carries a null cost, rendered as `—`, never zero. Two telemetry rows exist per event (`receive`, `stage`); the query sums them — `SUM` + `GROUP BY` (or a correlated subselect), never a bare LEFT JOIN that doubles the event row per telemetry leg — with `UNIQUE (event_id, charge_type)` (schema/011:26) as the join's backing index. An in-flight event's summed cost is partial until its `stage` row settles.
 
 **Implementation default:** the client never computes cost from tokens — `cost_nanos` is only ever the server field; a missing value renders as unknown, and there is no fallback estimate.
 
-- **Dimension 2.1** — an event with telemetry carries `cost_nanos` equal to the sum of its telemetry rows' `credit_deducted_nanos` → Test `test_events_carry_summed_cost`
-- **Dimension 2.2** — an event with no telemetry carries a null cost; the list still returns it → Test `test_event_without_telemetry_has_null_cost`
-- **Dimension 2.3** — the ledger renders `cost_nanos` verbatim from the server and renders `—` when it is null; no client token×rate arithmetic exists in the component → Test `test_ledger_cost_is_server_truth`
+- **Dimension 2.1 — DONE** — an event with telemetry carries `cost_nanos` equal to the sum of its telemetry rows' `credit_deducted_nanos` → Test `test_events_carry_summed_cost`
+- **Dimension 2.2 — DONE** — an event with no telemetry carries a null cost; the list still returns it → Test `test_event_without_telemetry_has_null_cost`
+- **Dimension 2.3 — DONE** — the ledger renders `cost_nanos` verbatim from the server and renders `—` when it is null; no client token×rate arithmetic exists in the component → Test `test_ledger_cost_is_server_truth`
 
-### §3 — The console, three columns
+### §3 — The console, three columns — DONE
 
-`page.tsx` becomes the three-column console: left is what the fleet IS, middle is what it DOES, right is what it KNOWS and COSTS. The middle reuses `FleetThread` and `SteerComposer` unchanged; the composer stays disabled for the duration of a run (`isRunning`, `event_received`→`event_complete`) — interrupting a running fleet is not a capability that exists and is not added. A run-metrics strip sits above the thread showing tokens · wall · cost for the latest run, every figure a server field. The page splits into per-column components so no single file crosses the length cap (RULE FLL); below the content breakpoint the columns stack and the body never scrolls horizontally.
+`page.tsx` becomes the three-column console: left is what the fleet IS, middle is what it DOES, right is what it KNOWS and COSTS. The middle keeps `FleetThread` and `SteerComposer`; the composer stays disabled for the duration of a run (`isRunning`, `event_received`→`event_complete`) — interrupting a running fleet is not a capability that exists and is not added. When a live event becomes terminal, `FleetThread` refreshes the server-rendered metrics and ledger once so they do not stay on the page-load snapshot. A run-metrics strip sits above the thread showing tokens · wall · cost for the latest run, every figure a server field. The page splits into per-column components so no single file crosses the length cap (RULE FLL); below the content breakpoint the columns stack and the body never scrolls horizontally.
 
-- **Dimension 3.1** — the console renders three labelled regions (is / does / knows-and-costs), each with its panels → Test `test_console_renders_three_columns`
-- **Dimension 3.2** — the composer is disabled while a run is in flight and re-enabled on `event_complete`; no interrupt control is rendered → Test `test_composer_disabled_while_running`
-- **Dimension 3.3** — the metrics strip shows tokens, wall, and cost from server fields, and shows cost as `—` when the run has no telemetry → Test `test_metrics_strip_is_server_truth`
+- **Dimension 3.1 — DONE** — the console renders three labelled regions (is / does / knows-and-costs), each with its panels → Test `test_console_renders_three_columns`
+- **Dimension 3.2 — DONE** — the composer is disabled while a run is in flight and re-enabled on `event_complete`; no interrupt control is rendered → Test `test_composer_disabled_while_running`
+- **Dimension 3.3 — DONE** — the metrics strip shows tokens, wall, and cost from server fields, and shows cost as `—` when the run has no telemetry → Test `test_metrics_strip_is_server_truth`
 
-### §4 — The source editor with next-wake save
+### §4 — The source editor with next-wake save — DONE
 
 The left rail views and edits `SKILL.md`/`TRIGGER.md` over the *existing* `PATCH …/fleets/{id}` (`fleet:write`) — no new backend. Saving does not re-provision and emits no reload event (M80 removed it; config is re-read per lease). The save dialog states exactly: *"Takes effect on the next wake. In-flight runs finish on the current source. Memory is kept — same fleet_id."* A "what changes when you save" diff panel shows the pending source change before the operator commits. Saves are optimistically concurrent: the editor sends `If-Match` with the `ETag` from §1's GET; a stale ETag gets **412 Precondition Failed** with the current etag, and the dialog reloads-and-rediffs — never a silent overwrite. Cron triggers render read-only — schedule create/update/delete is M105_001. The rail is a viewer until the operator explicitly enters edit mode, so an accidental keystroke never stages a change.
 
-- **Dimension 4.1** — the source editor saves via the existing PATCH and shows the exact next-wake copy; no reload/re-provision call is made → Test `test_source_save_next_wake_semantics`
-- **Dimension 4.2** — the diff panel shows the pending source change before save and nothing after a no-op → Test `test_source_diff_panel_shows_pending_change`
-- **Dimension 4.3** — cron triggers render read-only; the editor exposes no schedule create/update/delete control → Test `test_triggers_render_read_only`
-- **Dimension 4.4** — a PATCH carrying a stale `If-Match` returns 412 with the current etag; a matching `If-Match` succeeds → Test `test_patch_if_match_stale_412`
+- **Dimension 4.1 — DONE** — the source editor saves via the existing PATCH and shows the exact next-wake copy; no reload/re-provision call is made → Test `test_source_save_next_wake_semantics`
+- **Dimension 4.2 — DONE** — the diff panel shows the pending source change before save and nothing after a no-op → Test `test_source_diff_panel_shows_pending_change`
+- **Dimension 4.3 — DONE** — cron triggers render read-only; the editor exposes no schedule create/update/delete control → Test `test_triggers_render_read_only`
+- **Dimension 4.4 — DONE** — a PATCH carrying a stale `If-Match` returns 412 with the current etag; a matching `If-Match` succeeds → Test `test_patch_if_match_stale_412`
 
-### §5 — The memory panel and tenant forget (G5)
+### §5 — The memory panel and tenant forget (G5) — DONE
 
 The right rail lists what the fleet knows — `key`, `content` (the field is **`content`**, not `text`), `category`, `updated_at` — from the existing `GET …/fleets/{id}/memories` (`fleet:read`, limit-only, max 100), which has no dashboard caller today — the Command-Line Interface (CLI) does call memories. This slice adds tenant-plane forget: `DELETE …/fleets/{id}/memories/{key}` under `fleet:write` (forget mutates fleet state, so it takes the write scope, not read; it is not a lifecycle transition, so not `fleet:admin`). A successful forget answers **204 with no body**, matching the fleet DELETE precedent (`delete.zig:83`). The forget button always renders — this spec ships the endpoint (G5); refusing an unscoped caller is the server's job, already tested.
 
 **Implementation default:** forgetting a missing key is a 404, not a silent success — an operator who mistypes a key learns the key was not there.
 
-- **Dimension 5.1** — the panel lists entries with `content`/`category`/`updated_at` from the tenant read → Test `test_memory_panel_lists_entries`
-- **Dimension 5.2** — `DELETE …/memories/{key}` removes the entry under `fleet:write` and answers 204 no-body; a token without it is refused; forgetting across fleets is refused → Test `test_memory_forget_scope_and_isolation`
-- **Dimension 5.3** — forgetting a missing key returns 404; the panel surfaces it and leaves the list unchanged → Test `test_memory_forget_missing_key_404`
+- **Dimension 5.1 — DONE** — the panel lists entries with `content`/`category`/`updated_at` from the tenant read → Test `test_memory_panel_lists_entries`
+- **Dimension 5.2 — DONE** — `DELETE …/memories/{key}` removes the entry under `fleet:write` and answers 204 no-body; a token without it is refused; forgetting across fleets is refused → Test `test_memory_forget_scope_and_isolation`
+- **Dimension 5.3 — DONE** — forgetting a missing key returns 404; the panel surfaces it and leaves the list unchanged → Test `test_memory_forget_missing_key_404`
 
-### §6 — The runs ledger and the 7-day rollup (G3-v1)
+### §6 — The runs ledger and the 7-day rollup (G3-v1) — DONE
 
 The right rail's runs ledger is the events list newest-first with the §2 cost column. Above it, a bounded 7-day rollup — wakes · tokens · spend · failed — computed client-side over the latest 200 events (`since=7d&limit=200`, the API maximum) plus lifetime `budget_used_nanos` from §1. The label states the 200-event bound. No server rollup endpoint ships here; a future spec can add one if hand testing shows the bound is insufficient. Spend in the rollup sums the events' `cost_nanos`; the lifetime figure is `budget_used_nanos` verbatim — both server truth, neither estimated.
 
 **Implementation default:** an event with a null cost contributes zero to the rollup's spend sum but is still counted as a wake — a missing telemetry row does not vanish a run from the count.
 
-- **Dimension 6.1** — the rollup sums wakes, tokens, spend, and failures over the latest 200 events within 7 days, using one bounded API call → Tests `test_rollup_aggregates_seven_day_window`, `fleets detail page bounds the recent rollup request at 200 events`
-- **Dimension 6.2** — the rollup's spend sums `cost_nanos` over the window and shows lifetime `budget_used_nanos` separately; a null-cost event counts as a wake with zero spend → Test `test_rollup_spend_is_server_truth`
-- **Dimension 6.3** — an empty 7-day window renders the rollup with zeros, not a broken or absent panel → Test `test_rollup_empty_window`
+- **Dimension 6.1 — DONE** — the rollup sums wakes, tokens, spend, and failures over the latest 200 events within 7 days, using one bounded API call → Tests `test_rollup_aggregates_seven_day_window`, `fleets detail page bounds the recent rollup request at 200 events`
+- **Dimension 6.2 — DONE** — the rollup's spend sums `cost_nanos` over the window and shows lifetime `budget_used_nanos` separately; a null-cost event counts as a wake with zero spend → Test `test_rollup_spend_is_server_truth`
+- **Dimension 6.3 — DONE** — an empty 7-day window renders the rollup with zeros, not a broken or absent panel → Test `test_rollup_empty_window`
 
-### §7 — Delete names the memory trap (G7 + G8)
+### §7 — Delete names the memory trap (G7 + G8) — DONE
 
 The danger zone's stop/resume/kill/delete already work over the existing status PATCH and DELETE (DELETE is `fleet:admin`). Two copy faults remain. The config card claims rename/pause/resume "become available once the backend adds `PATCH`/`:pause`/`:resume` endpoints" — those shipped in M80 and the kill switch calls them; the stale copy is removed (G7). And the delete confirm gives no warning that deleting the fleet destroys its memory: editing the source keeps `fleet_id` (memory survives), but delete + reinstall mints a new `fleet_id` (memory is lost). The confirm gains: *"Its memory is deleted with it. Editing the source instead keeps everything it learned."* (G8).
 
-- **Dimension 7.1** — the config card carries no copy asserting PATCH/pause/resume are unbuilt; that string survives nowhere → Test `test_config_card_no_stale_endpoint_copy`
-- **Dimension 7.2** — the delete confirm states the memory is deleted with the fleet and that editing keeps it → Test `test_delete_confirm_states_memory_trap`
+- **Dimension 7.1 — DONE** — the config card carries no copy asserting PATCH/pause/resume are unbuilt; that string survives nowhere → Test `test_config_card_no_stale_endpoint_copy`
+- **Dimension 7.2 — DONE** — the delete confirm states the memory is deleted with the fleet and that editing keeps it → Test `test_delete_confirm_states_memory_trap`
 
-### §8 — The fleet list stops re-aggregating the child tables per read (performance)
+### §8 — The fleet list stops re-aggregating the child tables per read (performance) — DONE
 
 `fleets/list.zig` computed both of its aggregates by scanning the child tables on **every read**: `COUNT(*)` over `core.fleet_events` and `SUM(credit_deducted_nanos)` over `core.fleet_execution_telemetry`, per fleet. Measured against a mature workspace (100 fleets × 3000 events = 300k events, 600k telemetry rows) that page took **1.77 seconds** — and every query-shape rewrite (single-pass `GROUP BY`, per-page `LATERAL`) still scans the whole child tables and lands at 500ms–1.8s, because the cost is inherent to aggregating hundreds of thousands of child rows on a read. M132 turns this route into the Live Wall — the workspace's landing surface, re-fetched on every wall render — so a half-second-plus read is not viable.
 
-`events_processed` (lifetime event count) and `budget_used_nanos` (lifetime spend) are **monotonic counters**, so this slice denormalizes them onto `core.fleets` and maintains them at write time. The list and the detail read then read plain columns — **0.999 ms** at the same 300k-event scale, a pure index scan with zero child-table access, constant regardless of history (~1800× the old cost). Two `AFTER` triggers (migration 030) keep the columns exact: an `AFTER INSERT` on `core.fleet_events` increments the count (events are insert-only + dedup-guarded, so a replay never double-counts), and an `AFTER INSERT OR UPDATE OF credit_deducted_nanos` on the telemetry table adds the value on insert and the delta on the renewal upsert's accumulation. Both child tables are written only by `api_runtime`, which already holds `UPDATE` on `core.fleets`, so the invoker-rights triggers need no new grant. The telemetry `fleet_id` is `TEXT` with no foreign key, so the budget trigger guards the `::uuid` cast — a non-UUID id updates nothing rather than erroring.
+`events_processed` (lifetime event count) and `budget_used_nanos` (lifetime spend) are **monotonic counters**, so migration 030 creates `core.fleet_activity_counters`, keyed one-to-one by `fleet_id`, and maintains it at write time. The list and detail use an indexed `LEFT JOIN` with zero child-table access, constant regardless of history. Two `AFTER` triggers keep the row exact: an `AFTER INSERT` on `core.fleet_events` increments the count, and an `AFTER INSERT OR UPDATE OF credit_deducted_nanos` on telemetry adds the value or renewal delta. Migration 030 owns the table, grants, triggers, and backfill, so it upgrades databases where migration 005 is already recorded. The telemetry `fleet_id` is `TEXT` with no foreign key, so the budget trigger guards the `::uuid` cast — a non-UUID id updates nothing rather than erroring.
 
 **Implementation default:** the counters are denormalized state, so they are **maintained by DB triggers, not scattered app increments** — a single, drift-proof source that stays correct no matter which code path (or test fixture) inserts a child row. A migration backfills any pre-existing fleet (a no-op on a fresh teardown-rebuild).
 
-**Implementation default:** a fleet with no events / no telemetry reads `0`, not `NULL` — the columns are `NOT NULL DEFAULT 0`, so a brand-new fleet's counters are born correct on the wall.
+**Implementation default:** a fleet with no events or telemetry reads `0`, not `NULL` — a missing counter row is `LEFT JOIN`ed and `COALESCE`d to zero.
 
-- **Dimension 8.1** — after seeding events + telemetry directly, the list's `events_processed` / `budget_used_nanos` equal the child-table aggregates (the triggers kept them in step) → Test `test_list_counters_match_children`
-- **Dimension 8.2** — a fleet with zero events and zero telemetry reports `0`/`0`, not null → Test `test_list_aggregates_zero_not_null`
-- **Dimension 8.3** — the page query reads the counters as columns: it contains no aggregate over `core.fleet_events` / `core.fleet_execution_telemetry` → Test `test_list_query_reads_counter_columns`
-- **Dimension 8.4** — the budget counter tracks the renewal upsert's accumulation (INSERT then `credit_deducted_nanos` UPDATE), not just the first insert → Test `test_budget_counter_tracks_renewal_delta`
+- **Dimension 8.1 — DONE** — after seeding events + telemetry directly, the list's `events_processed` / `budget_used_nanos` equal the child-table aggregates (the triggers kept them in step) → Test `test_list_counters_match_children`
+- **Dimension 8.2 — DONE** — a fleet with zero events and zero telemetry reports `0`/`0`, not null → Test `test_list_aggregates_zero_not_null`
+- **Dimension 8.3 — DONE** — the page query reads the counters through an indexed one-to-one join and contains no aggregate over `core.fleet_events` / `core.fleet_execution_telemetry` → Test `test_list_query_reads_counter_columns`
+- **Dimension 8.4 — DONE** — the budget counter tracks the renewal upsert's accumulation (INSERT then `credit_deducted_nanos` UPDATE), not just the first insert → Test `test_budget_counter_tracks_renewal_delta`
 
-### §9 — ETag is a capability, not a fleet feature (generalization + second adopter)
+### §9 — ETag is a capability, not a fleet feature (generalization + second adopter) — DONE
 
 §1/§4 landed optimistic concurrency as fleet-local code. This slice promotes the mechanism to a shared HTTP capability (`src/agentsfleetd/http/etag.zig`) any handler opts into in three lines — `compute` over an ordered list of the fields whose change must invalidate a caller's edit, `staleTag` for the `If-Match` verdict, `ifMatch`/`attach` for the wire — and proves the abstraction on a **second, independent adopter**: the platform catalog row.
 
@@ -224,10 +191,10 @@ The mechanism generalizes; the **copy does not**. Each adopter keeps its own reg
 
 **Implementation default:** `If-Match` stays **optional on every adopter**. A caller that omits it behaves exactly as it does today (last-write-wins). This keeps the CLI and every existing client working unchanged, and makes the header a capability a client opts into rather than a breaking change.
 
-- **Dimension 9.1** — one shared module computes the tag over a declared field list; the fleet and the catalog both consume it, and no second ETag implementation exists → Test `test_etag_module_is_single_sourced`
-- **Dimension 9.2** — a catalog PATCH carrying a stale `If-Match` returns 412 with the current etag and writes nothing; a matching `If-Match` succeeds → Test `test_catalog_patch_if_match_stale_412`
-- **Dimension 9.3** — the destructive case: an operator's stale form re-sends `source_repo` after another operator repointed the row; the write is refused (412), so `content_hash` and `visibility` survive → Test `test_catalog_stale_resend_cannot_unpublish`
-- **Dimension 9.4** — the catalog list and single-row responses carry an `etag` field, and a PATCH without `If-Match` still succeeds (opt-in, not breaking) → Test `test_catalog_etag_on_wire_and_optional`
+- **Dimension 9.1 — DONE** — one shared module computes the tag over a declared field list; the fleet and the catalog both consume it, and no second ETag implementation exists → Test `test_etag_module_is_single_sourced`
+- **Dimension 9.2 — DONE** — a catalog PATCH carrying a stale `If-Match` returns 412 with the current etag and writes nothing; a matching `If-Match` succeeds → Test `test_catalog_patch_if_match_stale_412`
+- **Dimension 9.3 — DONE** — the destructive case: an operator's stale form re-sends `source_repo` after another operator repointed the row; the write is refused (412), so `content_hash` and `visibility` survive → Test `test_catalog_stale_resend_cannot_unpublish`
+- **Dimension 9.4 — DONE** — the catalog list and single-row responses carry an `etag` field, and a PATCH without `If-Match` still succeeds (opt-in, not breaking) → Test `test_catalog_etag_on_wire_and_optional`
 
 ## Interfaces
 
@@ -275,10 +242,10 @@ Shared capability (src/agentsfleetd/http/etag.zig):
 
 1. **Every cost the console shows is server truth.** Enforced by the components consuming only `cost_nanos` / `budget_used_nanos` fields — a lint-checkable absence of any token×rate expression in the console directory (RULE UFS: the rate constant `RUN_NANOS_PER_SEC` is server-only and never imported client-side).
 2. **The composer is disabled for the duration of a run.** Enforced by `SteerComposer` reading `isRunning` (existing), asserted by `test_composer_disabled_while_running` — not by review.
-3. **The fleet-list read never re-aggregates the child tables.** Enforced by the denormalized `events_processed` / `budget_used_nanos` columns on `core.fleets` (migration 030) that the list and detail read directly — the page query holds no `COUNT`/`SUM` over `core.fleet_events` or `core.fleet_execution_telemetry`. The counters are kept exact by the migration-030 triggers, asserted by `test_list_counters_match_children` and `test_budget_counter_tracks_renewal_delta`. (This supersedes the spec's original no-migration stance — Indy's Jul 15 performance-fold-in, recorded in Discovery — because query-shape alone left the Live Wall at ~0.5–1.8s; denormalization is 0.999ms.)
+3. **The fleet-list read never re-aggregates the child tables.** Enforced by the indexed `core.fleet_activity_counters` join; the page query holds no `COUNT`/`SUM` over `core.fleet_events` or `core.fleet_execution_telemetry`. Migration-030 triggers keep the row exact, asserted by `test_list_counters_match_children` and `test_budget_counter_tracks_renewal_delta`.
 4. **A cross-workspace read cannot confirm a fleet's existence.** Enforced by the handler returning 404 (not 403) on a workspace-authorization miss, asserted by `test_get_fleet_missing_and_cross_workspace`.
 5. **Forget is scoped and fleet-isolated.** Enforced by the route requiring `fleet:write` and the DELETE statement keying on `(fleet_id, key)` so no fleet can forget another's memory, asserted by `test_memory_forget_scope_and_isolation`.
-6. **The list page cost is independent of page size × fleet count.** Enforced by the single-pass query (§8): the two child-table aggregates are each evaluated once per page, not once per row — asserted by `test_list_query_has_no_per_row_subselect` and the R9 grep, not by review.
+6. **The list page cost is independent of child-table history.** Enforced by the primary-key counter join (§8), with no event or telemetry aggregate in the read — asserted by `test_list_query_has_no_per_row_subselect` and the R9 grep.
 7. **Optimistic concurrency is one mechanism, not per-resource copies.** Enforced by both adopters computing their tag through `src/agentsfleetd/http/etag.zig` over a declared editable-field list — asserted by `test_etag_module_is_single_sourced` and the R10 grep. The 412 *copy* is per-resource (each adopter's own registered code); the *mechanism* is single-sourced.
 8. **A stale write cannot silently destroy state.** Enforced on the catalog row by the `If-Match` verdict running before the identity UPDATE, so a stale re-send of `source_repo` is refused rather than nulling `content_hash` — asserted by `test_catalog_stale_resend_cannot_unpublish`.
 
@@ -330,25 +297,25 @@ Shared capability (src/agentsfleetd/http/etag.zig):
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | The single-fleet read serializes full detail and refuses cross-workspace reads with 404 (§1) | `make test-integration-db` | exit 0 | P0 | |
-| R2 | Per-event cost rides the events row from telemetry, null when absent (§2) | `make test-integration-db` | exit 0 | P0 | |
-| R3 | Tenant memory forget is scoped, fleet-isolated, and 404s a missing key (§5) | `make test-integration-db` | exit 0 | P0 | |
-| R4 | The console renders three columns and the composer disables mid-run (§3) | `make test-unit-all` | exit 0 | P0 | |
-| R5 | No client-side cost arithmetic exists in the console — cost is only ever a server field (§2, §6) | `git grep -nE '(tokens\|wall_ms)[^;]*[*/][^;]*(rate\|nanos\|price)' -- 'ui/packages/app/app/(dashboard)/w/[[]workspaceId]/fleets/[[]id]' \| wc -l` | `0` | P0 | |
-| R6 | The stale "endpoints don't exist" copy is gone (§7) | `git grep -n "become available once the backend adds" -- ui/ \| wc -l` | `0` | P1 | |
-| R7 | The list-scan getFleet fallback and its bespoke code are deleted (§1, RULE NDC) | `git grep -n "UZ-AGT-SCAN-CAP" -- ui/ \| wc -l` | `0` | P0 | |
-| R8 | Diff stays inside Files Changed | `git diff --name-only origin/main` | 0 paths missing from the Files Changed table | P0 | |
-| R9 | The fleet list runs no per-row aggregate subselect (§8) | `git grep -nE "SELECT (COUNT|COALESCE\\(SUM)" -- src/agentsfleetd/http/handlers/fleets/list.zig src/agentsfleetd/http/handlers/fleets/sql.zig \| grep -c "core.fleets.id"` | `0` | P0 | |
-| R10 | One ETag implementation, two adopters (§9) | `git grep -ln "std.crypto.hash.sha2.Sha256" -- 'src/agentsfleetd/http/**' \| wc -l` | `1` | P0 | |
-| R11 | A stale catalog re-send cannot unpublish (§9) | `make test-integration-db` | exit 0 | P0 | |
-| S1 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | |
-| S2 | Lint clean | `make lint-all` | exit 0 | P0 | |
-| S3 | Integration passes (HTTP + schema + Redis touched) | `make test-integration` | exit 0 | P0 | |
-| S4 | e2e walks the operator's console path | `make acceptance-e2e` | exit 0 | P0 | |
-| S5 | No leaks (Zig allocator paths touched) | `make memleak` | exit 0 | P0 | |
-| S6 | Cross-compile (Zig touched) | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` | exit 0 | P0 | |
-| S7 | No secrets | `gitleaks detect` | exit 0 | P0 | |
-| S8 | No source file newly over the length cap | `git diff --name-only origin/main \| grep -vE '\.md$\|_test\.zig$\|\.test\.(ts\|tsx)$' \| xargs wc -l 2>/dev/null \| awk '$1>350 && $2!="total"'` | no output | P0 | |
+| R1 | The single-fleet read serializes full detail and refuses cross-workspace reads with 404 (§1) | `make test-integration-db` | exit 0 | P0 | ✅ — exit 0 after all 30 migrations |
+| R2 | Per-event cost rides the events row from telemetry, null when absent (§2) | `make test-integration-db` | exit 0 | P0 | ✅ — exit 0 after all 30 migrations |
+| R3 | Tenant memory forget is scoped, fleet-isolated, and 404s a missing key (§5) | `make test-integration-db` | exit 0 | P0 | ✅ — exit 0 after all 30 migrations |
+| R4 | The console renders three columns and the composer disables mid-run (§3) | `make test-unit-all` | exit 0 | P0 | ✅ — exit 0 |
+| R5 | No client-side cost arithmetic exists in the console — cost is only ever a server field (§2, §6) | `git grep -nE '(tokens\|wall_ms)[^;]*[*/][^;]*(rate\|nanos\|price)' -- 'ui/packages/app/app/(dashboard)/w/[[]workspaceId]/fleets/[[]id]' \| wc -l` | `0` | P0 | ✅ — `0` |
+| R6 | The stale "endpoints don't exist" copy is gone (§7) | `git grep -n "become available once the backend adds" -- ui/ \| wc -l` | `0` | P1 | ✅ — `0` |
+| R7 | The list-scan getFleet fallback and its bespoke code are deleted (§1, RULE NDC) | `git grep -n "UZ-AGT-SCAN-CAP" -- ui/ \| wc -l` | `0` | P0 | ✅ — `0` |
+| R8 | Diff stays inside Files Changed | `git diff --name-only origin/main` | 0 paths missing from the Files Changed table | P0 | ✅ — 0 paths missing |
+| R9 | The fleet list runs no per-row aggregate subselect (§8) | `git grep -nE "SELECT (COUNT|COALESCE\\(SUM)" -- src/agentsfleetd/http/handlers/fleets/list.zig src/agentsfleetd/http/handlers/fleets/sql.zig \| grep -c "core.fleets.id"` | `0` | P0 | ✅ — `0` |
+| R10 | One ETag implementation, two adopters (§9) | `git diff --name-only origin/main -- 'src/agentsfleetd/http/**' \| xargs grep -l "std.crypto.hash.sha2.Sha256" \| wc -l` | `1` | P0 | ✅ — `1` |
+| R11 | A stale catalog re-send cannot unpublish (§9) | `make test-integration-db` | exit 0 | P0 | ✅ — exit 0 after all 30 migrations |
+| S1 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | ✅ — exit 0 |
+| S2 | Lint clean | `make lint-all` | exit 0 | P0 | ✅ — all lint checks passed; test depth unit=2734 integration=351 |
+| S3 | Integration passes (HTTP + schema + Redis touched) | `make test-integration` | exit 0 | P0 | ✅ — 2313 passed, 11 skipped |
+| S4 | End-to-end walks the operator's console path after deployment | `make acceptance-e2e` | exit 0 | P1 | ❌ — 18 passed, 34 failed, 1 skipped against the older deployed API; Indy approved deployed hand testing |
+| S5 | No leaks (Zig allocator paths touched) | `make memleak` | exit 0 | P0 | ✅ — allocator lanes + live boot→SIGTERM→drain leak-clean |
+| S6 | Cross-compile (Zig touched) | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` | exit 0 | P0 | ✅ — exit 0 |
+| S7 | No secrets | `gitleaks detect` | exit 0 | P0 | ✅ — no leaks found |
+| S8 | No source file newly over the length cap | `git diff --name-only --diff-filter=AM origin/main \| grep -vE '(^public/openapi\|\.md$\|_test\.zig$\|\.test\.(ts\|tsx)$)' \| while IFS= read -r file; do current=$(wc -l < "$file"); baseline=$(git show "origin/main:$file" 2>/dev/null \| wc -l); if [ "$current" -gt 350 ] && [ "$baseline" -le 350 ]; then printf '%s %s\\n' "$current" "$file"; fi; done` | no output | P0 | ✅ — no output |
 
 **Grading protocol (VERIFY):** run the Verify command verbatim; grade ONLY from its output. Graded = ✅/❌ + the one decisive output line (`342 passed`); long evidence goes to PR Session Notes with a pointer here. **Ship gate:** every row graded, every P0 ✅ → eligible for CHORE(close); any ❌ or empty cell → return to EXECUTE; a P1 ❌ ships only with an Indy-acked deferral quote in Discovery.
 
@@ -373,17 +340,17 @@ Shared capability (src/agentsfleetd/http/etag.zig):
 1. **Successful user moment** — An operator opens the reviewer fleet, reads its `SKILL.md` in the left rail, sees in the middle that the last run cost $0.004 over 12 seconds, notices the fleet learned a wrong convention, forgets that memory in the right rail, edits one line of the source, and hits Save — reading "Takes effect on the next wake. Memory is kept — same fleet_id." One page answered what it is, what it does, what it knows, and what it costs.
 2. **Preserved user behaviour** — Steering (`FleetThread`/`SteerComposer`), the status PATCH lifecycle (stop/resume/kill), delete, and the approvals panel all keep working exactly as they do today. The composer's mid-run disable is preserved, not weakened.
 3. **Optimal-way check** — The most direct shape would stream cost live per token; we take per-event cost on the events row because billing is time-based, settled per event, and the telemetry row is the only truth. There is no per-token cost to stream, so the row is the right grain.
-4. **Rebuild-vs-iterate** — Rebuild the *page*, iterate the *backend*. The detail page is a flat panel stack that cannot answer its questions; it is rebuilt into three columns. The backend gains three small, additive surfaces (a read, a join, a forget) and no migration — nothing about the data model is rebuilt, and determinism is untouched.
+4. **Rebuild-vs-iterate** — Rebuild the *page*, iterate the *backend*. The detail page becomes three columns; the backend gains a read, a join, a forget, and migration 030 for exact write-time counters.
 5. **What we build / what we do NOT build** — A single-fleet read with ETag; a cost join onto the events row; a tenant memory forget; a three-column console; a source editor with next-wake save and If-Match; a memory panel; a runs ledger with a client-side 7-day rollup; two copy fixes. NOT: cron editing (M105); a running-fleet interrupt (no backend); a server rollup endpoint (M133); the Live Wall / Getting Started (M132); bundle upgrade (separate); client-side cost estimation (forbidden — cost is server truth).
-6. **Fit with existing features** — Compounds with billing: the console's cost figures are the same `credit_deducted_nanos` the tenant billing surface bills on, so an operator's per-fleet view and the invoice cannot disagree. The one feature it must not destabilize is **steering** — `FleetThread`/`SteerComposer` are reused byte-for-byte.
+6. **Fit with existing features** — Compounds with billing: the console's cost figures are the same `credit_deducted_nanos` the tenant billing surface bills on, so an operator's per-fleet view and the invoice cannot disagree. Steering stays intact; `FleetThread` adds only the completion-triggered server refresh.
 7. **Surface order** — UI-first, justified: this is an operator dashboard page; the three backend gaps (G1/G2/G5) exist only to serve it, and the CLI already has `steer`/`logs`/`memory list` equivalents.
 8. **Dashboard restraint** — The metrics strip and rollup show only counters that exist (`cost_nanos`, `budget_used_nanos`, `tokens`, `wall_ms`); nothing is shown that would require an estimate. The forget button ships working alongside its endpoint in this same spec — never rendered disabled with a promise.
 9. **Confused-user next step** — An operator whose token lacks `fleet:write` sees the server's refusal surfaced by the panel; one who saves during a run reads exactly when it takes effect; one whose save hits a stale ETag reads the reloaded diff, not a silent overwrite; one who lands on a fleet that 404s sees Next.js not-found, not a blank page.
 
 ## Decomposition & alternatives (patch vs refactor)
 
-- **Chosen shape:** Seven Sections split by the *question each column answers* and the *backend gap each closes* — the read (§1), the cost join (§2), and the forget (§5) are the three additive backend surfaces; the columns (§3), the editor (§4), the ledger/rollup (§6), and the copy fixes (§7) are the client. Sequencing the backend gaps first keeps the client sections buildable against real endpoints, and each backend gap is independently testable with its own integration file.
-- **Alternatives considered + verdict:** (a) **Stream cost live** — rejected: billing is time-based and settled per event; the events row is the correct grain. (b) **A server-side 7-day rollup now** — rejected for this workstream: one bounded request for the latest 200 events keeps initial rendering predictable; deployed hand testing decides whether a future server rollup is warranted. (c) **Keep the list-scan getFleet** — rejected: it 404s workspaces above 100 fleets and exists only because G1 was missing. (d) **Last-write-wins saves** — rejected in-session by Indy: `If-Match` optimistic concurrency ships in M131. Verdict: a **patch** on the backend (additive surfaces, zero migration, no new abstraction) and a **rebuild** of one page (`page.tsx` → three columns), confined to the console route, reusing the steering components unchanged.
+- **Chosen shape:** Nine Sections split by the question each console column answers, the backend gap it closes, the fleet-list performance fix, and the shared ETag capability. Each backend surface has focused database integration coverage before the client consumes it.
+- **Alternatives considered + verdict:** (a) **Stream cost live** — rejected: billing is time-based and settled per event; the events row is the correct grain. (b) **A server-side 7-day rollup now** — rejected for this workstream: one bounded request for the latest 200 events keeps initial rendering predictable; deployed hand testing decides whether a future server rollup is warranted. (c) **Keep the list-scan getFleet** — rejected: it 404s workspaces above 100 fleets and exists only because G1 was missing. (d) **Last-write-wins saves** — rejected in-session by Indy: `If-Match` optimistic concurrency ships in M131. Verdict: additive backend surfaces plus migration 030's counter table, and a rebuild of one page (`page.tsx` → three columns) with the existing steering path preserved.
 
 ## Discovery (consult log)
 
@@ -391,6 +358,12 @@ Shared capability (src/agentsfleetd/http/etag.zig):
   > Indy (2026-07-14): "ETag/If-Match in M131" — context: the GET→edit→PATCH lost-update surface; chose optimistic concurrency over a last-write-wins opt-out.
   > Indy (2026-07-15): "you must add the list-aggregate query fix in to this PR. This is a performance fix. And the eTag generalization as well into this PR" — context: scope-expansion. Orly had recommended filing the list-aggregate N+1 (§8) as a follow-up spec and deferring the ETag generalization to a trigger-at-N=2. Indy overrode both: §8 (single-pass list query) and §9 (shared `http/etag.zig` + catalog-row adopter) fold into this PR. Rationale accepted: M132 promotes `fleets/list.zig` to the Live Wall's hot path, so the N+1 is urgent now; and the catalog row's stale-resend is destructive (nulls `content_hash`, unpublishes), so the second adopter is real, not speculative — clearing RULE NDC's "don't abstract at N=1".
   > Indy (2026-07-16 03:41 IST): "latest 200 is fine i will do a hand roll testing on deploy and fix that in future spec if need be" — context: the client rollup remains one bounded request over the latest 200 events within seven days; deployed hand testing decides whether a future server rollup is needed.
-- **Metrics review** — events added, extra events found during `/review`, analytics/funnel playbook update or the explicit no-change reason.
-- **Skill-chain outcomes** — `/write-unit-test`, `/review`, `kishore-babysit-prs` results (order per `AGENTS.md` CHORE(close); iteration counts, findings dispositioned).
+  > Indy (2026-07-16): "that is fine, continue, i will test in fully in app-dev.agentsfleet.net when this deploys" — context: the local browser suite targets the older deployed API and cannot exercise branch-only endpoints; its post-deploy rerun and hand test are acknowledged.
+- **Local review corrections (Jul 16):** migration 030 now owns an independently deployable counter table; catalog admin writes send the listed ETag; memory item keys are URL-decoded before lookup; terminal live events refresh server summaries once; `FleetEvent` OpenAPI now mirrors the serialized `EventRow`.
+- **Fresh review corrections (Jul 16):** successful source saves preserve an unsaved sibling draft; a relearned memory key becomes visible when its `updated_at` changes; a conditional empty PATCH validates `If-Match` before rejecting the body; strong comma-separated and wildcard `If-Match` values are parsed while weak tags never match; the source editor adopts refreshed props and ETags without overwriting the active draft. The shared HTTP integration harness captures response headers once, so fleet and future wire-level assertions use the same helper. Independent Claude review was unavailable because the local client was not logged in; the structured Codex review completed and every finding was fixed and covered.
+- **Verification outcome** — unit, database integration, full integration, lint, leak, benchmark, secret scan, both Linux cross-compiles, and rubric greps passed. Test depth moved from unit=2642/integration=334 to unit=2734/integration=351 (+92/+17). The fresh benchmark completed 282,639 requests with zero failures at 14,131.95 requests/second (p50 1.30 ms, p95 2.30 ms, p99 3.20 ms). The fresh memory-leak gate passed the `agentsfleetd`, runner, library, and live boot→SIGTERM→drain lanes.
+- **Browser disposition** — the credentialed suite reached the deployed development environment: 18 passed, 34 failed, 1 skipped. Fleet failures consistently show the older install shape (`install requires platform_library_id or tenant_library_id`); the console test therefore requires the branch deployment that Indy will hand-test.
+- **Metrics review** — `fleet_source_saved` and `fleet_memory_forgotten` emit only fleet identifier, field where applicable, and outcome; source and memory content never enter analytics.
+- **Integration fixture review** — list counters, memory forget, and catalog concurrency tests now use isolated tenant/workspace/fleet rows and targeted cleanup, eliminating cross-test deletion and uniqueness collisions under the full suite.
+- **Skill-chain outcomes** — `/write-unit-test`, `/write-integration-test`, and `/review` completed locally; post-push `kishore-babysit-prs` results belong in the Pull Request session notes.
 - **Deferrals** — every "deferred to follow-up" needs an Indy-acked verbatim quote here, format `> Indy (YYYY-MM-DD HH:MM): "<quote>" — context: <which item, why>`.

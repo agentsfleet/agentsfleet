@@ -13,13 +13,10 @@
 //!   - the platform catalog row (`handlers/library/catalog_patch.zig`): hashes
 //!     the operator-owned fields, so a stale re-send cannot discard the bundle.
 //!
-//! Declare a resource's editable surface as a fixed field list. Order is part
-//! of the identity, and every field is NUL-separated so no two field boundaries
-//! can hash the same ((`"ab", null`) ≠ (`"a", "b"`)); a null field contributes
-//! only its separator, distinct from an empty-string field's zero bytes before
-//! the next separator... which is the same, so null and "" are treated as
-//! equal by construction — callers that need to distinguish them must not model
-//! the difference through this tag (no adopter does).
+//! Declare a resource's editable surface as a fixed field list. Order and field
+//! presence are part of the identity: each present value carries a byte-length
+//! prefix, while null carries its own marker. Field boundaries, null, and the
+//! empty string therefore remain distinct for every byte sequence.
 
 const std = @import("std");
 
@@ -29,18 +26,25 @@ pub const HEADER_ETAG = "ETag";
 /// httpz exposes request headers lowercased.
 pub const HEADER_IF_MATCH = "if-match";
 
-/// Separator between fields so adjacent-field boundaries are unambiguous.
-const FIELD_SEPARATOR = [_]u8{0};
+const FIELD_NULL = [_]u8{0};
+const FIELD_PRESENT = [_]u8{1};
 
 /// Quoted strong-ETag form per RFC 9110 (section 8.8.3): "<64 hex chars>".
-/// `fields` is the resource's editable surface, in a fixed order; a null field
-/// contributes only its separator. Caller owns the result (handlers pass the
-/// request arena).
+/// `fields` is the resource's editable surface, in a fixed order. Present
+/// fields contribute a marker, an eight-byte length, and their bytes; null
+/// contributes a distinct marker. Caller owns the result.
 pub fn compute(alloc: std.mem.Allocator, fields: []const ?[]const u8) ![]u8 {
     var hasher = Sha256.init(.{});
     for (fields) |field| {
-        if (field) |f| hasher.update(f);
-        hasher.update(&FIELD_SEPARATOR);
+        if (field) |f| {
+            hasher.update(&FIELD_PRESENT);
+            var len: [8]u8 = undefined;
+            std.mem.writeInt(u64, &len, @intCast(f.len), .big);
+            hasher.update(&len);
+            hasher.update(f);
+        } else {
+            hasher.update(&FIELD_NULL);
+        }
     }
     var digest: [Sha256.digest_length]u8 = undefined;
     hasher.final(&digest);
@@ -59,11 +63,36 @@ pub fn staleTag(
 ) !?[]u8 {
     const want = if_match orelse return null;
     const have = try compute(alloc, fields);
-    if (std.mem.eql(u8, want, have)) {
+    if (matchesIfMatch(want, have)) {
         alloc.free(have);
         return null;
     }
     return have;
+}
+
+/// Strong comparison for the `If-Match` field-value grammar. The wildcard
+/// matches any current representation; a comma-separated list matches when
+/// any strong entity tag equals `have`. Weak tags never satisfy `If-Match`.
+fn matchesIfMatch(raw: []const u8, have: []const u8) bool {
+    const value = std.mem.trim(u8, raw, " \t");
+    if (std.mem.eql(u8, value, "*")) return true;
+
+    var rest = value;
+    while (rest.len > 0) {
+        rest = std.mem.trimStart(u8, rest, " \t");
+        const weak = std.mem.startsWith(u8, rest, "W/");
+        if (weak) rest = rest[2..];
+        if (rest.len == 0 or rest[0] != '"') return false;
+        const close = std.mem.indexOfScalarPos(u8, rest, 1, '"') orelse return false;
+        const candidate = rest[0 .. close + 1];
+        const matched = !weak and std.mem.eql(u8, candidate, have);
+        rest = std.mem.trimStart(u8, rest[close + 1 ..], " \t");
+        if (rest.len == 0) return matched;
+        if (rest[0] != ',') return false;
+        if (matched) return true;
+        rest = rest[1..];
+    }
+    return false;
 }
 
 /// The `If-Match` request header, or null when the caller opted out.
@@ -96,6 +125,14 @@ test "compute: field boundaries are unambiguous" {
     try std.testing.expect(!std.mem.eql(u8, ab_c, a_bc));
 }
 
+test "compute: null and empty are distinct" {
+    const null_field = try compute(std.testing.allocator, &.{ "skill", null });
+    defer std.testing.allocator.free(null_field);
+    const empty_field = try compute(std.testing.allocator, &.{ "skill", "" });
+    defer std.testing.allocator.free(empty_field);
+    try std.testing.expect(!std.mem.eql(u8, null_field, empty_field));
+}
+
 test "compute: a null field differs from any content in that slot" {
     const with = try compute(std.testing.allocator, &.{ "skill", "t" });
     defer std.testing.allocator.free(with);
@@ -115,6 +152,23 @@ test "compute: field count is part of identity" {
 test "staleTag: no If-Match yields null (opt-in, last-write-wins)" {
     const verdict = try staleTag(std.testing.allocator, null, &.{"a"});
     try std.testing.expect(verdict == null);
+}
+
+test "staleTag: strong list and wildcard match; weak tag does not" {
+    const alloc = std.testing.allocator;
+    const current = try compute(alloc, &.{"a"});
+    defer alloc.free(current);
+
+    const list = try std.fmt.allocPrint(alloc, "\"other\", {s}", .{current});
+    defer alloc.free(list);
+    try std.testing.expect((try staleTag(alloc, list, &.{"a"})) == null);
+    try std.testing.expect((try staleTag(alloc, "*", &.{"a"})) == null);
+
+    const weak = try std.fmt.allocPrint(alloc, "W/{s}", .{current});
+    defer alloc.free(weak);
+    const stale = (try staleTag(alloc, weak, &.{"a"})) orelse return error.ExpectedStaleTag;
+    defer alloc.free(stale);
+    try std.testing.expectEqualStrings(current, stale);
 }
 
 test "staleTag: matching If-Match yields null" {

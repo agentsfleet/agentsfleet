@@ -19,8 +19,9 @@ import type { AppendMessage, ThreadMessageLike } from "@assistant-ui/react";
 
 // ── Hoisted mocks ────────────────────────────────────────────────────────
 
-const { steerFleetActionMock, useFleetEventStreamMock, capturedOnNew } =
+const { routerRefreshMock, steerFleetActionMock, useFleetEventStreamMock, capturedOnNew } =
   vi.hoisted(() => ({
+    routerRefreshMock: vi.fn(),
     steerFleetActionMock: vi.fn(),
     useFleetEventStreamMock: vi.fn(),
     // Capture the `onNew` callback wired into the external-store runtime so a
@@ -28,6 +29,10 @@ const { steerFleetActionMock, useFleetEventStreamMock, capturedOnNew } =
     // image-only append) to reach `extractMessageText`'s no-text-part path.
     capturedOnNew: { current: null as ((msg: AppendMessage) => Promise<void>) | null },
   }));
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ refresh: routerRefreshMock }),
+}));
 
 vi.mock("@/app/(dashboard)/w/[workspaceId]/fleets/actions", () => ({
   steerFleetAction: steerFleetActionMock,
@@ -58,6 +63,7 @@ vi.mock("@/components/domain/useFleetEventStream", async () => {
 
 import { FleetThread } from "@/components/domain/FleetThread";
 import { formatActorLabel } from "@/components/domain/fleetMessageRenderers";
+import type { EventRow } from "@/lib/api/events";
 import {
   CONNECTION_STATUS,
   type FleetEvent,
@@ -119,16 +125,44 @@ function mockStream(events: FleetEvent[], opts?: Omit<StreamMockOverrides, "even
 }
 
 function renderThread() {
+  return renderThreadWithInitial([]);
+}
+
+function renderThreadWithInitial(initial: EventRow[]) {
   return render(
     React.createElement(FleetThread, {
       workspaceId: WS,
       fleetId: ZID,
-      initial: [],
+      initial,
     }),
   );
 }
 
+function serverEvent(over: Partial<EventRow> = {}): EventRow {
+  const now = Date.UTC(2026, 4, 15, 9, 0, 0);
+  return {
+    event_id: "event-server-terminal",
+    fleet_id: ZID,
+    workspace_id: WS,
+    actor: "fleet",
+    event_type: "chat",
+    status: "processed",
+    request_json: "{}",
+    response_text: "done",
+    tokens: 1,
+    wall_ms: 10,
+    failure_label: null,
+    checkpoint_id: null,
+    resumes_event_id: null,
+    cost_nanos: 1,
+    created_at: now,
+    updated_at: now,
+    ...over,
+  };
+}
+
 beforeEach(() => {
+  routerRefreshMock.mockReset();
   steerFleetActionMock.mockReset();
   useFleetEventStreamMock.mockReset();
   capturedOnNew.current = null;
@@ -175,6 +209,38 @@ describe("FleetThread — header chrome", () => {
     expect(screen.getByText(/^Live activity$/)).toBeTruthy();
     expect(screen.getByText(/1 events/)).toBeTruthy();
     expect(screen.getByText(/^Live$/)).toBeTruthy();
+  });
+});
+
+describe("FleetThread — summary refresh", () => {
+  it("does not refresh for terminal events already present in the server snapshot", () => {
+    mockStream([]);
+    renderThreadWithInitial([serverEvent()]);
+
+    expect(routerRefreshMock).not.toHaveBeenCalled();
+  });
+
+  it("refreshes server-rendered summaries once when a live event completes", async () => {
+    const received = ev({
+      id: "event-refresh",
+      role: "assistant",
+      actor: "fleet",
+      status: "received",
+    });
+    mockStream([received], { isRunning: true });
+    const view = renderThread();
+    expect(routerRefreshMock).not.toHaveBeenCalled();
+
+    mockStream([{ ...received, status: "processed" }]);
+    view.rerender(
+      React.createElement(FleetThread, { workspaceId: WS, fleetId: ZID, initial: [] }),
+    );
+
+    await waitFor(() => expect(routerRefreshMock).toHaveBeenCalledTimes(1));
+    view.rerender(
+      React.createElement(FleetThread, { workspaceId: WS, fleetId: ZID, initial: [] }),
+    );
+    expect(routerRefreshMock).toHaveBeenCalledTimes(1);
   });
 });
 

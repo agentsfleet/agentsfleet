@@ -58,15 +58,18 @@ pub fn innerPatchFleet(hx: Hx, req: *httpz.Request, workspace_id: []const u8, fl
     }
 
     const body = patch_body.parsePatchBody(hx, req) orelse return;
+    const if_match = etag_mod.ifMatch(req);
     if (body.config_json == null and body.status == null and
         body.trigger_markdown == null and body.source_markdown == null)
     {
+        if (if_match != null) {
+            hx.fail(ec.ERR_INVALID_REQUEST, "A conditional fleet update requires at least one field");
+            return;
+        }
         hx.ok(.ok, .{ .fleet_id = fleet_id, .config_revision = @as(?i64, null) });
         return;
     }
     if (!patch_body.validateBody(hx, body)) return;
-
-    const if_match = etag_mod.ifMatch(req);
 
     const conn = hx.ctx.pool.acquire() catch {
         common.internalDbUnavailable(hx.res, hx.req_id);
@@ -123,8 +126,9 @@ pub fn innerPatchFleet(hx: Hx, req: *httpz.Request, workspace_id: []const u8, fl
     }
 }
 
-/// Every refusal writes its own response and yields null; only the success arm
-/// hands the revision + fresh ETag back to the caller.
+/// Every refusal writes its own response and yields null; the success arm hands
+/// the committed revision and tag to the caller, which attaches the tag before
+/// writing the response.
 fn resolveOutcome(hx: Hx, fleet_id: []const u8, outcome: patch_txn.TxnOutcome) ?patch_txn.Updated {
     switch (outcome) {
         .updated => |u| return u,

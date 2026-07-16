@@ -29,8 +29,8 @@ pub const TraceContext = trace_ctx.TraceContext;
 
 // HTTP wire constants. Centralised here so handlers cannot drift from the
 // canonical Content-Type strings used by the error envelope.
-pub const HEADER_CONTENT_TYPE = "Content-Type";
-pub const CONTENT_TYPE_PROBLEM_JSON = "application/problem+json";
+pub const HEADER_CONTENT_TYPE = problem_response.HEADER_CONTENT_TYPE;
+pub const CONTENT_TYPE_PROBLEM_JSON = problem_response.CONTENT_TYPE_PROBLEM_JSON;
 pub const HEADER_RETRY_AFTER = "Retry-After";
 /// Capacity rejections (429 in-flight shed, 503 SSE cap) point clients at an
 /// immediate short backoff: instance pressure clears in seconds, unlike

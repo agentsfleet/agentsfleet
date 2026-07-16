@@ -47,7 +47,8 @@ export type Fleet = {
 // plus the editable source and the bundle pin. `trigger_markdown` /
 // `bundle_content_hash` are nullable columns that serialize as JSON null.
 // `budget_used_nanos` / `events_processed` are server-truth lifetime counters
-// (denormalized on the fleet row); the console never derives cost from tokens.
+// read from `core.fleet_activity_counters`; the console never derives cost from
+// tokens.
 export type FleetDetail = {
   id: string;
   name: string;
@@ -199,6 +200,7 @@ export type PlatformCatalogEntry = {
   requirements: FleetLibraryRequirements;
   required_credentials_reasons?: Record<string, string>;
   support_files: FleetLibrarySupportFileSummary[];
+  etag: string;
   updated_at: number;
 };
 

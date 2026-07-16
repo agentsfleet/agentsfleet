@@ -14,6 +14,7 @@ const auth_mw = @import("../../../auth/middleware/mod.zig");
 const id_format = @import("../../../types/id_format.zig");
 const harness_mod = @import("../../test_harness.zig");
 const TestHarness = harness_mod.TestHarness;
+const etag_mod = @import("../../etag.zig");
 
 const TEST_TENANT_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01";
 const TEST_WORKSPACE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11";
@@ -23,6 +24,7 @@ const OTHER_WORKSPACE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f22";
 
 const TOKEN_VIEWER = scope_fixtures.VIEWER; // fleet:read
 const TOKEN_ADMIN = scope_fixtures.TENANT_ADMIN; // fleet:admin (closes over read)
+const TOKEN_WITHOUT_FLEET_SCOPE = scope_fixtures.PLATFORM_ADMIN;
 
 fn configureRegistry(_: *auth_mw.MiddlewareRegistry, _: *TestHarness) anyerror!void {}
 
@@ -95,6 +97,9 @@ test "integration: get fleet serializes full detail incl. null bundle hash + ETa
     const r = try (try h.get(url).bearer(TOKEN_VIEWER)).send();
     defer r.deinit();
     try r.expectStatus(.ok);
+    const expected_etag = try etag_mod.compute(alloc, &.{ source_md, null });
+    defer alloc.free(expected_etag);
+    try std.testing.expectEqualStrings(expected_etag, r.header(etag_mod.HEADER_ETAG).?);
 
     const parsed = try std.json.parseFromSlice(std.json.Value, alloc, r.body, .{});
     defer parsed.deinit();
@@ -109,10 +114,6 @@ test "integration: get fleet serializes full detail incl. null bundle hash + ETa
     // Server-truth aggregates ride the read (this fleet has neither → 0, not null).
     try std.testing.expectEqual(@as(i64, 0), obj.get("events_processed").?.integer);
     try std.testing.expectEqual(@as(i64, 0), obj.get("budget_used_nanos").?.integer);
-    // The ETag header itself is not observable through this harness (fetch
-    // captures status + body only). It is proven end-to-end by the PATCH
-    // If-Match round-trip (the tag rides the PATCH response body) and by
-    // etag.zig's compute/verdict unit tests.
 }
 
 test "integration: get fleet — missing id and cross-workspace both 404 (never 403)" {
@@ -165,8 +166,12 @@ test "integration: get fleet — fleet:admin satisfies the fleet:read route (sco
 
     const url = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/fleets/{s}", .{ TEST_WORKSPACE_ID, id });
     defer alloc.free(url);
+    const denied = try (try h.get(url).bearer(TOKEN_WITHOUT_FLEET_SCOPE)).send();
+    defer denied.deinit();
+    try denied.expectStatus(.forbidden);
+
     // fleet:admin closes over fleet:read — the read gate is fleet:read, and a
-    // stronger scope satisfies it (the no-scope 403 is owned by route_scopes_test).
+    // stronger scope satisfies it.
     const r = try (try h.get(url).bearer(TOKEN_ADMIN)).send();
     defer r.deinit();
     try r.expectStatus(.ok);

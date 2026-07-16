@@ -3,7 +3,7 @@ import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import MemoryPanel from "./MemoryPanel";
 import type { MemoryEntry } from "@/lib/types";
-import { MEMORY_EMPTY_TITLE, MEMORY_FORGET_MISSING, OUTCOME } from "./console-copy";
+import { MEMORY_EMPTY_TITLE, MEMORY_FETCH_UNAVAILABLE, MEMORY_FORGET_MISSING, OUTCOME } from "./console-copy";
 import { EVENTS } from "@/lib/analytics/events";
 
 const forgetMemoryAction = vi.fn();
@@ -40,6 +40,19 @@ describe("MemoryPanel", () => {
     expect(screen.getByText(MEMORY_EMPTY_TITLE)).toBeTruthy();
   });
 
+  it("shows an unavailable state instead of claiming the fleet learned nothing", () => {
+    render(<MemoryPanel workspaceId="ws_1" fleetId="agt_1" entries={null} />);
+    expect(screen.getByText(MEMORY_FETCH_UNAVAILABLE)).toBeTruthy();
+    expect(screen.queryByText(MEMORY_EMPTY_TITLE)).toBeNull();
+  });
+
+  it("reconciles memories delivered by a server refresh", () => {
+    const view = render(<MemoryPanel workspaceId="ws_1" fleetId="agt_1" entries={[]} />);
+    expect(screen.queryByText(ENTRY.content)).toBeNull();
+    view.rerender(<MemoryPanel workspaceId="ws_1" fleetId="agt_1" entries={[ENTRY]} />);
+    expect(screen.getByText(ENTRY.content)).toBeTruthy();
+  });
+
   it("forgets an entry: DELETE call, row removed, success event (no content in props)", async () => {
     forgetMemoryAction.mockResolvedValue({ ok: true, data: undefined });
     const user = userEvent.setup({ delay: null });
@@ -57,6 +70,39 @@ describe("MemoryPanel", () => {
     // Privacy: no key text, no content in the event props.
     const props = captureProductEvent.mock.calls[0]?.[1] ?? {};
     expect(Object.keys(props)).toEqual(["fleet_id", "outcome"]);
+  });
+
+  it("shows a newer entry when a forgotten key is learned again", async () => {
+    forgetMemoryAction.mockResolvedValue({ ok: true, data: undefined });
+    const user = userEvent.setup({ delay: null });
+    const view = render(<MemoryPanel workspaceId="ws_1" fleetId="agt_1" entries={[ENTRY]} />);
+    await user.click(screen.getByRole("button", { name: "Forget convention" }));
+    await user.click(screen.getByRole("button", { name: "Forget" }));
+    await waitFor(() => expect(screen.queryByText(ENTRY.content)).toBeNull());
+
+    view.rerender(<MemoryPanel workspaceId="ws_1" fleetId="agt_1" entries={[ENTRY]} />);
+    expect(screen.queryByText(ENTRY.content)).toBeNull();
+
+    const relearned = { ...ENTRY, content: "Use spaces in generated configs", updated_at: ENTRY.updated_at + 1 };
+    view.rerender(<MemoryPanel workspaceId="ws_1" fleetId="agt_1" entries={[relearned]} />);
+    await waitFor(() => expect(screen.getByText(relearned.content)).toBeTruthy());
+  });
+
+  it("keeps the confirm pending until forget finishes", async () => {
+    let finish!: (value: unknown) => void;
+    forgetMemoryAction.mockReturnValueOnce(new Promise((resolve) => { finish = resolve; }));
+    const user = userEvent.setup({ delay: null });
+    render(<MemoryPanel workspaceId="ws_1" fleetId="agt_1" entries={[ENTRY]} />);
+    await user.click(screen.getByRole("button", { name: "Forget convention" }));
+
+    const confirm = screen.getByRole("button", { name: "Forget" });
+    await user.click(confirm);
+    expect(confirm).toHaveProperty("disabled", true);
+    await user.click(confirm);
+    expect(forgetMemoryAction).toHaveBeenCalledTimes(1);
+
+    finish({ ok: true, data: undefined });
+    await waitFor(() => expect(screen.queryByText(ENTRY.content)).toBeNull());
   });
 
   it("Cancel closes the forget dialog without deleting the entry", async () => {

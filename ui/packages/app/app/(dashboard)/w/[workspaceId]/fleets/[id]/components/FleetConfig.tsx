@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Trash2Icon } from "lucide-react";
-import { Button, ConfirmDialog } from "@agentsfleet/design-system";
+import { Button, Card, ConfirmDialog } from "@agentsfleet/design-system";
 import { deleteFleetAction } from "../../actions";
 import { workspacePath } from "@/lib/workspace-routes";
 import { presentErrorString } from "@/lib/errors";
@@ -43,7 +43,7 @@ export default function FleetConfig({
   }
 
   return (
-    <div className="rounded-md border border-border bg-card p-4">
+    <Card className="p-4">
       <Button
         type="button"
         onClick={() => setOpen(true)}
@@ -66,6 +66,6 @@ export default function FleetConfig({
         // so onError always receives an Error.
         onError={(e) => setError((e as Error).message)}
       />
-    </div>
+    </Card>
   );
 }

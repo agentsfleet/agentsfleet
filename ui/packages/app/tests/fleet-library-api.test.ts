@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // dashboard/install component + route tests mock this module, so these cover the
 // real transport (GET/POST + the cache() wrapper) directly.
 const fetchMock = vi.fn();
+const CATALOG_ETAG = '"catalog-v1"';
 vi.stubGlobal("fetch", fetchMock);
 
 beforeEach(() => {
@@ -111,7 +112,7 @@ describe("lib/api/fleet-library", () => {
     expect(res.entries[0]?.id).toBe("platform-ops");
   });
 
-  it("patchPlatformFleetLibraryEntry PATCHes the entry path with the partial body", async () => {
+  it("patchPlatformFleetLibraryEntry sends the current ETag with the partial body", async () => {
     fetchMock.mockResolvedValue({
       ok: true,
       status: 200,
@@ -121,12 +122,14 @@ describe("lib/api/fleet-library", () => {
     const res = await mod.patchPlatformFleetLibraryEntry(
       "platform-ops",
       { published: true },
+      CATALOG_ETAG,
       "operator-tkn",
     );
 
     const [url, init] = fetchMock.mock.calls[0] ?? [];
     expect(url).toContain("/v1/admin/fleet-libraries/platform-ops");
     expect(init).toMatchObject({ method: "PATCH" });
+    expect(init.headers).toMatchObject({ "If-Match": CATALOG_ETAG });
     expect(JSON.parse(init.body as string)).toEqual({ published: true });
     expect(res.visibility).toBe("public");
   });
