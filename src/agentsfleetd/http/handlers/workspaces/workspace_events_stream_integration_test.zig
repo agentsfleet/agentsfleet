@@ -49,6 +49,7 @@ const POP_WAIT_MS: u64 = 4_000;
 const LARGE_PAYLOAD_BYTES: usize = 16 * 1024;
 const DROP_PUBLISH_COUNT: usize = Subscription.QUEUE_CAPACITY * 8;
 const CATCHING_UP_READ_LIMIT: usize = DROP_PUBLISH_COUNT + 16;
+const HELLO_READ_LIMIT: usize = 8;
 
 fn boot() !*TestHarness {
     return fx.startHarnessWithWorkspace(ALLOC) catch |err| switch (err) {
@@ -374,6 +375,39 @@ test "integration: workspace stream first frame is a server hello with the reada
     try std.testing.expect(std.mem.indexOf(u8, hello.data, "\"fleet_id\"") == null);
 }
 
+test "integration: a changed fleet set emits a new server hello" {
+    const INITIAL_FLEET = "0195b4ba-8d3a-7f13-8abc-2b3e1e0f9d03";
+    const LATE_FLEET = "0195b4ba-8d3a-7f13-8abc-2b3e1e0f9d04";
+    const h = try boot();
+    defer h.deinit();
+    {
+        const conn = try h.acquireConn();
+        defer h.releaseConn(conn);
+        try fx.seedFleet(conn, INITIAL_FLEET, "hello-initial");
+    }
+    defer httpCleanup(h, INITIAL_FLEET);
+    defer httpCleanup(h, LATE_FLEET);
+
+    var sc = try openHttpStream(h);
+    defer sc.deinit();
+    var initial = try sc.nextFrame();
+    defer initial.deinit(ALLOC);
+    try std.testing.expectEqualStrings(sse_frame.KIND_HELLO, initial.event);
+    try std.testing.expect(std.mem.indexOf(u8, initial.data, LATE_FLEET) == null);
+
+    {
+        const conn = try h.acquireConn();
+        defer h.releaseConn(conn);
+        try fx.seedFleet(conn, LATE_FLEET, "hello-late");
+    }
+    common.sleepNanos(TICK_SETTLE_NS);
+    var updated = try awaitHelloFrame(&sc);
+    defer updated.deinit(ALLOC);
+    try std.testing.expectEqualStrings(sse_frame.KIND_HELLO, updated.event);
+    try std.testing.expect(std.mem.indexOf(u8, updated.data, INITIAL_FLEET) != null);
+    try std.testing.expect(std.mem.indexOf(u8, updated.data, LATE_FLEET) != null);
+}
+
 // ── catching_up frame (HTTP) ────────────────────────────────────────────
 
 test "integration: workspace stream emits catching_up when server-side drops happen" {
@@ -564,6 +598,16 @@ fn openHttpStream(h: *TestHarness) !SseClient {
     const sc = try SseClient.connect(ALLOC, h.port, path, .{ .bearer = fx.TOKEN_OPERATOR });
     common.sleepNanos(TICK_SETTLE_NS);
     return sc;
+}
+
+fn awaitHelloFrame(sc: *SseClient) !SseClient.Frame {
+    var read_count: usize = 0;
+    while (read_count < HELLO_READ_LIMIT) : (read_count += 1) {
+        var frame = try sc.nextFrame();
+        if (std.mem.eql(u8, frame.event, sse_frame.KIND_HELLO)) return frame;
+        frame.deinit(ALLOC);
+    }
+    return error.NoHelloFrame;
 }
 
 fn drainHttp(sc: *SseClient, pub_client: anytype, fleet_id: []const u8) void {

@@ -200,6 +200,35 @@ test "integration: an unchanged set does not bump the version — a steady tick 
     try testing.expectEqual(first, cache.version(WS_A));
 }
 
+test "integration: a successful empty enumeration initializes the cache version" {
+    const db = TestDb.open() catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer db.close();
+    const ts = clock.nowMillis();
+    _ = try db.conn.exec(
+        \\INSERT INTO tenants (tenant_id, name, created_at, updated_at)
+        \\VALUES ($1, 'FleetSetCacheTest', $2, $2) ON CONFLICT (tenant_id) DO NOTHING
+    , .{ TENANT_ID, ts });
+    _ = try db.conn.exec(
+        \\INSERT INTO workspaces (workspace_id, tenant_id, created_at)
+        \\VALUES ($1, $2, $3) ON CONFLICT (workspace_id) DO NOTHING
+    , .{ WS_B, TENANT_ID, ts });
+    defer _ = db.conn.exec("DELETE FROM workspaces WHERE workspace_id = $1", .{WS_B}) catch |err| std.log.warn(CLEANUP_IGNORED, .{@errorName(err)});
+
+    var cache = FleetSetCache.init(testing.allocator, common.globalIo());
+    defer cache.deinit();
+    try cache.retain(WS_B);
+    defer cache.release(WS_B);
+
+    cache.refreshIfStale(db.conn, WS_B, now());
+    try testing.expectEqual(@as(u64, 1), cache.version(WS_B));
+    const snap = (try cache.snapshot(WS_B)).?;
+    defer snap.deinit(testing.allocator);
+    try testing.expectEqual(@as(usize, 0), snap.fleet_ids.len);
+}
+
 test "integration: a fleet appearing bumps the version exactly once" {
     const db = TestDb.open() catch |err| switch (err) {
         error.SkipZigTest => return error.SkipZigTest,
