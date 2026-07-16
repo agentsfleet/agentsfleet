@@ -97,6 +97,15 @@ describe("fleets routes", () => {
     };
   }
 
+  function detailResponse(over: Record<string, unknown> = {}) {
+    return {
+      ok: true,
+      status: 200,
+      headers: { get: (key: string) => (key.toLowerCase() === "etag" ? '"seed-etag"' : null) },
+      json: async () => detailBody(over),
+    };
+  }
+
   function mockFetchBilling(billing: BillingSnapshot) {
     fetchMock.mockImplementation(async (url: string) => {
       if (url.endsWith("/v1/tenants/me/billing")) {
@@ -126,12 +135,7 @@ describe("fleets routes", () => {
             json: async () => ({ error_code: "UZ-AGT-009", detail: "Fleet not found" }),
           };
         }
-        return {
-          ok: true,
-          status: 200,
-          headers: { get: (k: string) => (k.toLowerCase() === "etag" ? '"seed-etag"' : null) },
-          json: async () => detailBody(),
-        };
+        return detailResponse();
       }
       return { ok: true, status: 200, json: async () => ({ items: [detailBody()], total: 1 }) };
     });
@@ -382,11 +386,7 @@ describe("fleets routes", () => {
       if (url.includes("/events")) {
         return { ok: true, status: 200, json: async () => ({ items: [], next_cursor: null }) };
       }
-      return {
-        ok: true,
-        status: 200,
-        json: async () => detailBody({ name: "platform-ops", status: "paused" }),
-      };
+      return detailResponse({ name: "platform-ops", status: "paused" });
     });
     const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
     const markup = renderToStaticMarkup(
@@ -417,11 +417,7 @@ describe("fleets routes", () => {
       if (url.includes("/events")) {
         return { ok: true, status: 200, json: async () => ({ items: [], next_cursor: null }) };
       }
-      return {
-        ok: true,
-        status: 200,
-        json: async () => detailBody({ name: "platform-ops", status: "active" }),
-      };
+      return detailResponse({ name: "platform-ops", status: "active" });
     });
     const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
     const markup = renderToStaticMarkup(
@@ -459,11 +455,7 @@ describe("fleets routes", () => {
       if (url.includes("/events")) {
         return { ok: true, status: 200, json: async () => ({ items: [], next_cursor: null }) };
       }
-      return {
-        ok: true,
-        status: 200,
-        json: async () => detailBody({ name: "platform-ops", status: "active" }),
-      };
+      return detailResponse({ name: "platform-ops", status: "active" });
     });
     const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
     const markup = renderToStaticMarkup(
@@ -486,7 +478,7 @@ describe("fleets routes", () => {
       if (url.includes("/events")) {
         return { ok: true, status: 200, json: async () => ({ items: [], next_cursor: null }) };
       }
-      return { ok: true, status: 200, json: async () => detailBody() };
+      return detailResponse();
     });
     const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
     const markup = renderToStaticMarkup(
@@ -514,11 +506,7 @@ describe("fleets routes", () => {
       if (url.includes("/events")) {
         return { ok: true, status: 200, json: async () => ({ items: [], next_cursor: null }) };
       }
-      return {
-        ok: true,
-        status: 200,
-        json: async () => detailBody({ name: "fresh-bot", status: "installing" }),
-      };
+      return detailResponse({ name: "fresh-bot", status: "installing" });
     });
     const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
     const markup = renderToStaticMarkup(
@@ -540,11 +528,7 @@ describe("fleets routes", () => {
       if (url.includes("/approvals")) throw new Error("approvals down");
       if (url.includes("/memories")) throw new Error("memories down");
       if (url.includes("/events")) throw new Error("events down");
-      return {
-        ok: true,
-        status: 200,
-        json: async () => detailBody({ name: "platform-ops", status: "active" }),
-      };
+      return detailResponse({ name: "platform-ops", status: "active" });
     });
     const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
     const markup = renderToStaticMarkup(
