@@ -1,13 +1,17 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { Button, WakePulse } from "@agentsfleet/design-system";
 import { useFleetEventStream } from "@/components/domain/useFleetEventStream";
+import { AGENTSFLEET_STATUS } from "@/lib/api/fleets";
 import {
   INSTALL_STEP,
+  advanceInstallStep,
   isInstallComplete,
   rankOf,
   type InstallStepId,
 } from "@/lib/streaming/install-steps";
+import { listFleetsAction } from "../actions";
 import { stepLine, type StateLine } from "./install-flow";
 import { StateList } from "./install-state-list";
 
@@ -18,9 +22,53 @@ type Props = {
   onOpen: () => void;
 };
 
-// The post-create surface. It consumes the existing SSE fleet-event stream via
+const STATUS_RECONCILE_BASE_MS = 500;
+const STATUS_RECONCILE_CAP_MS = 5_000;
+const STATUS_RECONCILE_ATTEMPTS = 12;
+
+function useInstallStatusReconciliation(
+  workspaceId: string,
+  fleetId: string,
+  installStep: InstallStepId | null,
+): InstallStepId | null {
+  const [reconciledStep, setReconciledStep] = useState<InstallStepId | null>(null);
+  useEffect(() => {
+    if (installStep === INSTALL_STEP.READY || installStep === INSTALL_STEP.ERROR) return;
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let attempt = 0;
+    async function reconcile() {
+      const result = await listFleetsAction(workspaceId, { limit: 100 });
+      if (cancelled) return;
+      const fleet = result.ok
+        ? result.data.items.find((candidate) => candidate.id === fleetId)
+        : null;
+      if (fleet?.status === AGENTSFLEET_STATUS.ACTIVE) {
+        setReconciledStep(INSTALL_STEP.READY);
+        return;
+      }
+      attempt += 1;
+      if (attempt >= STATUS_RECONCILE_ATTEMPTS) {
+        setReconciledStep(INSTALL_STEP.ERROR);
+        return;
+      }
+      const delay = Math.min(STATUS_RECONCILE_BASE_MS * 2 ** attempt, STATUS_RECONCILE_CAP_MS);
+      timer = setTimeout(() => void reconcile(), delay);
+    }
+    timer = setTimeout(() => void reconcile(), STATUS_RECONCILE_BASE_MS);
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [fleetId, installStep, workspaceId]);
+  return reconciledStep;
+}
+
+// The post-create surface. It consumes the existing Server-Sent Events (SSE)
+// fleet-event stream via
 // useFleetEventStream — each `install:*` frame advances `installStep` with no
-// polling — and renders the creating→provisioning→ready ladder. On
+// delay, while durable status reconciliation covers a missed ephemeral frame.
+// It renders the creating→provisioning→ready ladder. On
 // `install:ready` (the fleet has flipped installing→active on the server) it
 // surfaces "Open fleet", which lands in the full-height steer/chat.
 export function InstallStreamSteps({ workspaceId, fleetId, fleetName, onOpen }: Props) {
@@ -28,7 +76,10 @@ export function InstallStreamSteps({ workspaceId, fleetId, fleetName, onOpen }: 
   // starts empty and the install frames drive it. The 201 already told us the
   // fleet is `installing`, so we render `creating` until the first frame lands.
   const { installStep } = useFleetEventStream(workspaceId, fleetId, []);
-  const current = installStep ?? INSTALL_STEP.CREATING;
+  const reconciledStep = useInstallStatusReconciliation(workspaceId, fleetId, installStep);
+  const current = reconciledStep
+    ? advanceInstallStep(installStep, reconciledStep) ?? INSTALL_STEP.CREATING
+    : installStep ?? INSTALL_STEP.CREATING;
   const done = isInstallComplete(current);
 
   return (

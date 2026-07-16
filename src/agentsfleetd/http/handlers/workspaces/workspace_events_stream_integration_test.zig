@@ -32,6 +32,7 @@ const FanIn = @import("events_stream_fanin.zig");
 const principal_mod = @import("../../../auth/principal.zig");
 const Subscription = @import("../../../events/subscription.zig");
 const activity_channel = @import("../../../events/activity_channel.zig");
+const sse_frame = @import("../sse_frame.zig");
 
 const ALLOC = std.testing.allocator;
 
@@ -45,6 +46,9 @@ const TICK_SETTLE_NS: u64 = 500 * std.time.ns_per_ms;
 /// A quiet fan-in should see NOTHING within this window — the isolation proof.
 const NEGATIVE_POP_MS: u64 = 400;
 const POP_WAIT_MS: u64 = 4_000;
+const LARGE_PAYLOAD_BYTES: usize = 16 * 1024;
+const DROP_PUBLISH_COUNT: usize = Subscription.QUEUE_CAPACITY * 8;
+const CATCHING_UP_READ_LIMIT: usize = DROP_PUBLISH_COUNT + 16;
 
 fn boot() !*TestHarness {
     return fx.startHarnessWithWorkspace(ALLOC) catch |err| switch (err) {
@@ -61,6 +65,13 @@ fn frameFromFleet(raw_frame: []const u8, fleet_id: []const u8) bool {
     const split = Subscription.splitTagged(raw_frame) orelse return false;
     const from = activity_channel.fleetId(split.channel_name) orelse return false;
     return std.mem.eql(u8, from, fleet_id);
+}
+
+fn fleetListContains(fleet_ids: []const []const u8, fleet_id: []const u8) bool {
+    for (fleet_ids) |candidate| {
+        if (std.mem.eql(u8, candidate, fleet_id)) return true;
+    }
+    return false;
 }
 
 // ── FanIn-seam harness for the deterministic fleet-set tests ─────────────────
@@ -148,6 +159,12 @@ test "integration: workspace stream fans in every readable fleet, each frame tag
     defer iso.close();
     // Three seeded fleets → three attached channels, on ONE shared consumer.
     try std.testing.expectEqual(@as(usize, 3), iso.fanin.channelCount());
+    const fleet_ids = try iso.fanin.fleetIdList(ALLOC);
+    defer ALLOC.free(fleet_ids);
+    try std.testing.expectEqual(@as(usize, 3), fleet_ids.len);
+    try std.testing.expect(fleetListContains(fleet_ids, FA));
+    try std.testing.expect(fleetListContains(fleet_ids, FB));
+    try std.testing.expect(fleetListContains(fleet_ids, FC));
 
     var pub_client = fx.connectPublisher(ALLOC) catch return error.SkipZigTest;
     defer pub_client.deinit();
@@ -327,6 +344,87 @@ test "integration: a workspace stream claims exactly one registry slot" {
     drainHttp(&sc, &pub_client, SLOT_FLEET);
 }
 
+// ── hello frame (HTTP) ─────────────────────────────────────────────────
+
+test "integration: workspace stream first frame is a server hello with the readable fleet set" {
+    const HELLO_FLEET = "0195b4ba-8d3a-7f13-8abc-2b3e1e0f9d01";
+    const OUTSIDE_FLEET = "0195b4ba-8d3a-7f13-8abc-2b3e1e0f9d02";
+    const h = try boot();
+    defer h.deinit();
+    {
+        const conn = try h.acquireConn();
+        defer h.releaseConn(conn);
+        try fx.seedFleet(conn, HELLO_FLEET, "hello-frame");
+        try fx.seedOtherWorkspace(conn);
+        try fx.seedFleetInWorkspace(conn, fx.OTHER_WORKSPACE_ID, OUTSIDE_FLEET, "hello-outside");
+    }
+    defer httpCleanup(h, HELLO_FLEET);
+    defer httpCleanup(h, OUTSIDE_FLEET);
+
+    var sc = try openHttpStream(h);
+    defer sc.deinit();
+    var hello = try sc.nextFrame();
+    defer hello.deinit(ALLOC);
+
+    try std.testing.expectEqualStrings("0", hello.id);
+    try std.testing.expectEqualStrings(sse_frame.KIND_HELLO, hello.event);
+    try std.testing.expect(std.mem.indexOf(u8, hello.data, "\"fleet_ids\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, hello.data, HELLO_FLEET) != null);
+    try std.testing.expect(std.mem.indexOf(u8, hello.data, OUTSIDE_FLEET) == null);
+    try std.testing.expect(std.mem.indexOf(u8, hello.data, "\"fleet_id\"") == null);
+}
+
+// ── catching_up frame (HTTP) ────────────────────────────────────────────
+
+test "integration: workspace stream emits catching_up when server-side drops happen" {
+    const DROP_FLEET = "0195b4ba-8d3a-7f13-8abc-2b3e1e0f9e01";
+    const h = try boot();
+    defer h.deinit();
+    {
+        const conn = try h.acquireConn();
+        defer h.releaseConn(conn);
+        try fx.seedFleet(conn, DROP_FLEET, "drop-signal");
+    }
+    defer httpCleanup(h, DROP_FLEET);
+
+    var pub_client = fx.connectPublisher(ALLOC) catch return error.SkipZigTest;
+    defer pub_client.deinit();
+    const path = try fx.workspaceStreamPath(ALLOC);
+    defer ALLOC.free(path);
+    var sc = try SseClient.connect(ALLOC, h.port, path, .{ .bearer = fx.TOKEN_OPERATOR, .deadline_ms = 30_000 });
+    defer sc.deinit();
+    var hello = try sc.nextFrame();
+    hello.deinit(ALLOC);
+
+    const payload = try largePayload(ALLOC);
+    defer ALLOC.free(payload);
+    var i: usize = 0;
+    while (i < DROP_PUBLISH_COUNT) : (i += 1) try publish(&pub_client, DROP_FLEET, payload);
+
+    var read_count: usize = 0;
+    while (read_count < CATCHING_UP_READ_LIMIT) : (read_count += 1) {
+        var frame = try sc.nextFrame();
+        if (!std.mem.eql(u8, frame.event, sse_frame.KIND_CATCHING_UP)) {
+            frame.deinit(ALLOC);
+            continue;
+        }
+        try std.testing.expectEqualStrings("0", frame.id);
+        const parsed = try std.json.parseFromSlice(
+            struct { kind: []const u8, dropped: u64 },
+            ALLOC,
+            frame.data,
+            .{},
+        );
+        defer parsed.deinit();
+        try std.testing.expectEqualStrings(sse_frame.KIND_CATCHING_UP, parsed.value.kind);
+        try std.testing.expect(parsed.value.dropped > 0);
+        frame.deinit(ALLOC);
+        drainHttp(&sc, &pub_client, DROP_FLEET);
+        return;
+    }
+    return error.NoCatchingUpFrame;
+}
+
 // ── forbidden (HTTP) ────────────────────────────────────────────────────
 
 test "integration: workspace stream forbidden for a workspace the caller cannot read" {
@@ -378,7 +476,7 @@ test "integration: reconnect restarts the per-connection id at 0 and ignores Las
     var sc1 = try connectSeqStream(h, path);
     var sc1_live = true;
     defer if (sc1_live) sc1.deinit();
-    var f0 = try awaitFrame(&sc1, &pub_client, SEQ_FLEET);
+    var f0 = try awaitActivityFrame(&sc1, &pub_client, SEQ_FLEET);
     try std.testing.expectEqualStrings("0", f0.id);
     f0.deinit(ALLOC);
     fx.closeAndWakeSubscriber(&sc1, &pub_client, seq_channel);
@@ -389,7 +487,7 @@ test "integration: reconnect restarts the per-connection id at 0 and ignores Las
     // restarts at 0.
     var sc2 = try SseClient.connect(ALLOC, h.port, path, .{ .bearer = fx.TOKEN_OPERATOR, .last_event_id = "99", .deadline_ms = SEQ_READ_DEADLINE_MS });
     defer sc2.deinit();
-    var first = try awaitFrame(&sc2, &pub_client, SEQ_FLEET);
+    var first = try awaitActivityFrame(&sc2, &pub_client, SEQ_FLEET);
     defer first.deinit(ALLOC);
     try std.testing.expectEqualStrings("0", first.id);
 
@@ -410,12 +508,20 @@ fn connectSeqStream(h: *TestHarness, path: []const u8) !SseClient {
 /// each short read timeout until one lands — the first frame that arrives is
 /// the connection's first emitted frame, so its id is 0 regardless of how many
 /// pre-subscribe publishes were dropped.
-fn awaitFrame(sc: *SseClient, pub_client: anytype, fleet_id: []const u8) !SseClient.Frame {
+fn awaitActivityFrame(sc: *SseClient, pub_client: anytype, fleet_id: []const u8) !SseClient.Frame {
     var attempt: usize = 0;
     while (attempt < 30) : (attempt += 1) {
         try publish(pub_client, fleet_id, "{\"kind\":\"event_received\",\"event_id\":\"seq\"}");
         if (sc.nextFrame()) |f| {
-            return f;
+            if (std.mem.eql(u8, f.event, sse_frame.KIND_HELLO) or std.mem.eql(u8, f.event, sse_frame.KIND_CATCHING_UP)) {
+                var skip = f;
+                skip.deinit(ALLOC);
+                continue;
+            }
+            if (std.mem.indexOf(u8, f.data, fleet_id) != null) return f;
+            var skip = f;
+            skip.deinit(ALLOC);
+            continue;
         } else |err| switch (err) {
             error.SseFrameTimeout => continue,
             else => return err,
@@ -464,6 +570,13 @@ fn drainHttp(sc: *SseClient, pub_client: anytype, fleet_id: []const u8) void {
     const channel = fx.activityChannel(ALLOC, fleet_id) catch return;
     defer ALLOC.free(channel);
     fx.closeAndWakeSubscriber(sc, pub_client, channel);
+}
+
+fn largePayload(alloc: std.mem.Allocator) ![]u8 {
+    const body = try alloc.alloc(u8, LARGE_PAYLOAD_BYTES);
+    defer alloc.free(body);
+    @memset(body, 'a');
+    return std.fmt.allocPrint(alloc, "{{\"kind\":\"event_received\",\"event_id\":\"drop\",\"text\":\"{s}\"}}", .{body});
 }
 
 fn httpCleanup(h: *TestHarness, fleet_id: []const u8) void {

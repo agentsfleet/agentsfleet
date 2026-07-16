@@ -77,15 +77,21 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `src/agentsfleetd/http/handlers/workspaces/workspace_stream_test_fixtures.zig` | CREATE | Fixture rows (two workspaces, fleets in each) for the cross-workspace isolation and fan-in tests (RULE ITF). *(Amended at PLAN: fixtures live sibling to the integration suite per `dispatch/write_zig.md` §HTTP Integration Tests, not `src/db/`.)* |
 | `src/agentsfleetd/http/handlers/fleets/events_stream.zig` | EDIT (non-behavioral) | *(Amended at PLAN, RULE UFS)* its file-local `fleet:`/`:activity` literals become references to the hub's new shared `pub` channel-name constants; behavior untouched (Invariant 5 regression suite pins it). |
 | `docs/REST_API_DESIGN_GUIDELINES.md` | EDIT | §7 route-registration facts: add the new path so `check-route-registration-doc` stays green. |
+| `docs/architecture/data_flow.md` | EDIT | Record the wall's one-workspace stream, real control frames, and workspace backfill flow beside the per-fleet console stream. |
 | `public/openapi/paths/workspaces.yaml` + `public/openapi.json` | EDIT | *(Amended at PLAN)* §7 step 6: document `GET /v1/workspaces/{ws}/events/stream`; regenerated bundle — the served-vs-documented route-coverage gate blocks otherwise. |
 | `ui/packages/app/lib/api/events.ts` | EDIT | *(Amended at PLAN)* `streamWorkspaceEventsUrl` / `backfillWorkspaceEventsUrl` helpers beside the per-fleet ones. |
 | `ui/packages/app/app/backend/v1/workspaces/[workspaceId]/events/route.ts` | CREATE | *(Amended at PLAN)* same-origin proxy for the workspace events LIST — the reconnect backfill source; did not exist. |
+| `ui/packages/app/tests/workspace-backfill-route.test.ts` | CREATE | Route-level coverage for workspace backfill authentication, bounded query forwarding, response handling, and upstream failures. |
 | `ui/packages/app/lib/streaming/workspace-stream.ts` | CREATE | One-connection-per-workspace client: opens the multiplexed `EventSource`, demultiplexes by `fleet_id`, reconnect + workspace-scoped backfill. |
 | `ui/packages/app/lib/streaming/workspace-stream.test.ts` | CREATE | Demultiplex-by-fleet, reconnect/backfill, malformed-frame-drop tests. |
+| `ui/packages/app/lib/streaming/fleet-stream-backfill.ts` | EDIT | Share the existing bounded `since` + cursor recovery walk with the workspace stream; only the same-origin URL builder differs. |
 | `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/components/FleetWall.tsx` | EDIT | *(M132 shipped the wall as `FleetWall.tsx`, NOT `FleetsList.tsx` — pinned at resume, Jul 15.)* The wall wraps its tiles in a workspace-stream provider that opens ONE connection, coalesces bursts (§4.4), reads the server hello frame's live set (§4.5), and surfaces "catching up" from the server drop signal (§4.6). |
 | `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/components/FleetTile.tsx` | EDIT | The tile (M132-created) stops calling the per-fleet `useFleetEventStream` hook (the N-per-tile fan-out) and takes its fleet's frames from the workspace-stream provider. |
 | `ui/packages/app/app/backend/v1/workspaces/[workspaceId]/events/stream/route.ts` | CREATE | Same-origin token-minting proxy for the multiplexed stream (mirror of the per-fleet SSE proxy). |
-| `ui/packages/app/tests/dashboard-fleets-wall.test.ts` | EDIT | Wall opens exactly one stream; tiles update from tagged frames; the N-stream path is asserted gone. |
+| `ui/packages/app/tests/workspace-sse-route.test.ts` | CREATE | Route-level coverage for the workspace Server-Sent Events (SSE) proxy authentication, upstream piping, path validation, and failures. |
+| `ui/packages/app/tests/dashboard-fleets-wall.test.tsx` | CREATE | Rendered provider coverage: one stream, tagged tile updates, animation-frame burst coalescing, and real `hello` / `catching_up` frame state. |
+| `ui/packages/app/tests/e2e/acceptance/fixtures/seed.ts` | EDIT | Keep API-side fleet seeding aligned with the current library-backed install body so the wall acceptance path reaches the behavior under test. |
+| `ui/packages/app/tests/e2e/acceptance/install-fleet-seed.spec.ts` | EDIT | Assert the M132 wall tile's overlay link through its accessible name rather than searching for sibling display text inside the link. |
 
 <!-- G3-v2 rollup endpoint files are intentionally NOT listed here — that Section
 is optional (§5) and its blast radius is added only if its trigger fires. -->
@@ -103,6 +109,44 @@ is optional (§5) and its blast radius is added only if its trigger fires. -->
 | `public/openapi/paths/workspaces.yaml` + `public/openapi.json` | EDIT | Document the `hello` and `catching_up` frame kinds in the `text/event-stream` description for `GET …/events/stream`; regenerate the bundle. |
 
 **Naming reconciliation (Jul 15):** every `FleetsList.tsx` reference in this spec means the merged **`FleetWall.tsx`**; the per-tile fan-out symbol is the `useFleetEventStream(workspaceId, fleet.id, [])` call in `FleetTile.tsx`'s `StreamingTile` (import `FleetTile.tsx:7`, call `:47`).
+
+**Acceptance-repair amendment — Jul 16, 2026 (Indy directed that every failure exposed by the full browser suite be fixed).** The first full run reached the repaired wall scenario, then exposed stale harness assumptions and two production-path defects outside the original stream files. These files are added so the required `make acceptance-e2e` gate proves the complete user journey instead of stopping at unrelated setup drift:
+
+| File | Action | Why |
+|------|--------|-----|
+| `cli/src/commands/fleet_install.ts` | EDIT | Keep human requirement previews out of JSON mode so install output remains parseable. |
+| `cli/test/fleet-install-unit.test.ts` | EDIT | Prove JSON install emits exactly one structured record even when the library declares requirements. |
+| `ui/packages/app/tests/e2e/acceptance/fixtures/clerk-admin.ts` | EDIT | Reapply fixture-specific metadata after tenant bootstrap, fail loud when Clerk rejects the update, and delegate transport resilience to the bounded request module. |
+| `ui/packages/app/tests/e2e/acceptance/fixtures/clerk-request.ts` | CREATE | Keep Clerk transport policy separate: bounded Retry-After-aware retries for rate limits and safe idempotent failures, with no ambiguous replay of mutations. |
+| `ui/packages/app/tests/clerk-admin-fixture.test.ts` | CREATE | Failure-inject rate limits, connection resets, ordinary client errors, and bounded server-error exhaustion in Clerk fixture provisioning. |
+| `ui/packages/app/tests/e2e/acceptance/global-setup.ts` | EDIT | Preserve the operator-only platform-library scope after ordinary tenant grants are written. |
+| `ui/packages/app/tests/e2e/acceptance/fixtures/auth.ts` | EDIT | End fixture sign-in on a clean document after Clerk has stored the session, and fully sign out an active fixture before switching roles. |
+| `ui/packages/app/tests/e2e/acceptance/fixtures/install-ui.ts` | EDIT | Drive the current `Use entry` install action. |
+| `ui/packages/app/tests/e2e/acceptance/fixtures/signup.ts` | EDIT | Poll the workspace API with a minimal Bearer request and accept the current first-run surface. |
+| `ui/packages/app/playwright.acceptance.config.ts` | EDIT | Derive a stable worktree-local port and refuse existing-server reuse so one worktree never tests another worktree's dashboard. |
+| `ui/packages/app/components/layout/CreateWorkspaceDialog.tsx` | EDIT | Return the created workspace identity to the switcher so its preserved dashboard layout can update immediately after creation. |
+| `ui/packages/app/components/layout/WorkspaceSwitcher.tsx` | EDIT | Merge newly created workspaces into the client-visible list while the routed dashboard layout remains mounted. |
+| `ui/packages/app/tests/create-workspace-dialog.test.ts` | EDIT | Prove the creation callback receives the new workspace identity used by the switcher. |
+| `ui/packages/app/tests/dashboard-workspace.test.ts` | EDIT | Prove a newly created workspace is added to the mounted switcher's menu immediately. |
+| `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/new/InstallStreamSteps.tsx` | EDIT | Reconcile missed ephemeral install frames against the fleet's durable server status with bounded backoff. |
+| `ui/packages/app/tests/fleets-install-states.test.ts` | EDIT | Prove a missed `install:ready` frame still reaches the ready surface from real fleet status. |
+| `ui/packages/app/tests/e2e/acceptance/_smoke.spec.ts` | EDIT | Assert the current authenticated first-run surface. |
+| `ui/packages/app/tests/e2e/acceptance/auth-routing.spec.ts` | EDIT | Mount a Clerk-aware protected page before the signed-out routing walk. |
+| `ui/packages/app/tests/e2e/acceptance/install-fleet-cli.spec.ts` | EDIT | Parse strict JSON output and target the wall tile by accessible name. |
+| `ui/packages/app/tests/e2e/acceptance/integrations-nav.spec.ts` | EDIT | Assert the current Models table landmark. |
+| `ui/packages/app/tests/e2e/acceptance/operator-journey.spec.ts` | EDIT | Assert the current authenticated first-run surface before the operator journey. |
+| `ui/packages/app/tests/e2e/acceptance/platform-library-onboarding.spec.ts` | EDIT | Prove direct-route rejection without racing the redirect, use a valid sample bundle, scope row actions, and give real-network import journeys enough time to reach their existing assertions. |
+| `ui/packages/app/app/(dashboard)/admin/fleet-libraries/components/EditFleetDialog.tsx` | EDIT | Keep every edit action reachable by scrolling when the operator's form exceeds the viewport. |
+| `ui/packages/app/app/(dashboard)/admin/fleet-libraries/components/EditFleetDialog.test.tsx` | EDIT | Prove the long edit surface carries a viewport bound and vertical scrolling. |
+| `src/lib/s3/r2.zig` | EDIT | Disable idle HTTP connection reuse in the z3 Cloudflare R2 client and pin the setting without network access so consecutive library import and publish writes remain reliable. |
+| `ui/packages/app/tests/e2e/acceptance/provider-credential-reference.spec.ts` | EDIT | Scope model selection to the exact dialog field. |
+| `ui/packages/app/tests/e2e/acceptance/secrets-lifecycle.spec.ts` | EDIT | Assert the current Secrets heading. |
+| `ui/packages/app/tests/e2e/acceptance/settings-billing.spec.ts` | EDIT | Scope numeric-style proof to the billing balance instead of the sidebar. |
+| `ui/packages/app/tests/e2e/acceptance/settings-models.spec.ts` | EDIT | Assert the current Models table landmark. |
+| `ui/packages/app/tests/e2e/acceptance/signout-and-signin.spec.ts` | EDIT | Assert the current authenticated first-run surface before and after sign-in. |
+| `ui/packages/app/tests/e2e/acceptance/signup-lifecycle.spec.ts` | EDIT | Continue the signup journey from the current first-run surface. |
+| `ui/packages/app/tests/e2e/acceptance/workspace-create.spec.ts` | EDIT | Assert workspace creation against the current routed surface. |
+| `ui/packages/app/tests/e2e/acceptance/workspace-url-flow.spec.ts` | EDIT | Assert root routing against the current first-run surface. |
 
 ## Applicable Rules
 
@@ -176,7 +220,7 @@ The Live Wall subscribes once to the workspace stream and routes each tagged fra
 - **Dimension 4.2** — the workspace stream unavailable (503 / Redis down) leaves every tile on its last-event snapshot, no dead tiles, one reconnect loop → Test `test_wall_degrades_to_snapshot_when_stream_unavailable`
 - **Dimension 4.3** — a malformed or untagged frame is dropped, never routed to a wrong tile or crashing the wall → Test `test_workspace_stream_drops_malformed_frame`
 - **Dimension 4.4** *(added at PLAN — Indy, Jul 15, 2026: "make the user experience better")* — a burst of frames across many tiles coalesces into ONE render per animation frame, not one render per frame; a 60-fleet burst must not cost 60 React renders → Test `test_wall_coalesces_burst_into_one_render`
-- **Dimension 4.5** *(added at PLAN)* — the stream's first frame carries the fanned-in fleet set, so a quiet tile renders as *quiet* rather than indistinguishable from a dead one; a tile absent from the live set shows its snapshot eyebrow → Test `test_wall_marks_tiles_live_from_hello_frame`
+- **Dimension 4.5** *(added at PLAN)* — the stream's first frame carries the fanned-in fleet set, so a quiet tile renders as *quiet* rather than indistinguishable from a dead one; a tile absent from the live set shows its `last known` eyebrow → Test `test_wall_marks_tiles_live_from_hello_frame`
 - **Dimension 4.6** *(added at PLAN)* — when the server drops frames against a stalled consumer, the wall surfaces a "catching up" state rather than silently showing stale tiles → Test `test_wall_surfaces_catching_up_on_drops`
 
 ### §6 — The fan-in must not reintroduce per-viewer cost *(added at PLAN — Indy, Jul 15, 2026: "code optimized performance, concurrency … robust stability")*
@@ -288,6 +332,10 @@ GET /v1/workspaces/{ws}/events/rollup?window=7d&fleet_id=<id>  (§5 — OPTIONAL
 | 4.1 | e2e | `test_wall_opens_single_workspace_stream` | rendered wall opens exactly 1 `EventSource`; tagged frame updates the matching tile. |
 | 4.2 | unit | `test_wall_degrades_to_snapshot_when_stream_unavailable` | stream 503 → every tile shows last snapshot, one reconnect loop, no dead tile. |
 | 4.3 | unit | `test_workspace_stream_drops_malformed_frame` | untagged/garbled frame → dropped, no tile mutated, no throw. |
+| 4.3 | unit | workspace proxy route suites | workspace list and stream proxies pin authentication, forwarding, path validation, cancellation, and every upstream response branch. |
+| 4.4 | unit | `test_wall_coalesces_burst_into_one_render` | 60 fleet frames before one animation callback → one rendered-provider commit, never one commit per frame. |
+| 4.5 | unit | `test_wall_marks_tiles_live_from_hello_frame` | server `hello` set includes fleet A but not fleet B → A stays live; B shows `last known`. |
+| 4.6 | unit | `test_wall_surfaces_catching_up_on_drops` | server `catching_up` frame with a positive drop count → wall state shows `catching up`. |
 | 5.1 | integration | `test_workspace_rollup_matches_client_aggregation` *(conditional on §5 trigger)* | server rollup with `fleet_id=<id>` equals M131's per-fleet client-side 7-day aggregate for that fleet; spend from `credit_deducted_nanos`. |
 | regression | integration | per-fleet stream suite unchanged | `fleets/events_stream` integration tests stay green — console thread not regressed. |
 
@@ -298,7 +346,7 @@ GET /v1/workspaces/{ws}/events/rollup?window=7d&fleet_id=<id>  (§5 — OPTIONAL
 | R1 | Workspace isolation holds — isolation, forbidden, revocation covered (§2) | `grep -cE "never delivers a frame from a fleet outside\|forbidden for a workspace the caller cannot read\|membership revoked mid-stream" src/agentsfleetd/http/handlers/workspaces/workspace_events_stream_integration_test.zig` | `3` (pass/fail via S3) | P0 | |
 | R2 | Fan-in + single slot + no pattern covered (§1) | `grep -cE "fans in every readable fleet\|claims exactly one registry slot\|one wire channel per fleet .scoped" src/agentsfleetd/http/handlers/workspaces/workspace_events_stream_integration_test.zig` | `3` (pass/fail via S3) | P0 | |
 | R3 | Cap / reconnect / changing set / hub-down covered (§3) | `grep -cE "refused at the SSE cap\|created mid-stream is picked up\|reconnect restarts the per-connection\|refused with a transient error when the hub" src/agentsfleetd/http/handlers/workspaces/workspace_events_stream_integration_test.zig` | `4` (pass/fail via S3) | P0 | |
-| R4 | Wall opens one stream, N-mode gone (§4) | `cd ui/packages/app && bunx vitest run tests/dashboard-fleets-wall.test.ts` | exit 0 | P0 | |
+| R4 | Wall opens one stream, N-mode gone (§4) | `cd ui/packages/app && bunx vitest run tests/dashboard-fleets-wall.test.tsx` | exit 0 | P0 | |
 | R5 | Per-fleet console stream not regressed | `make test-integration 2>&1 \| grep -c "fleet_events_stream.*passed"` | ≥1, 0 failed | P0 | |
 | R6 | Diff stays inside Files Changed | `git diff --name-only origin/main` | 0 paths missing from the Files Changed table | P0 | |
 | S1 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | |
@@ -327,8 +375,8 @@ GET /v1/workspaces/{ws}/events/rollup?window=7d&fleet_id=<id>  (§5 — OPTIONAL
 
 | Deleted symbol/import | Grep | Expected |
 |-----------------------|------|----------|
-| the wall tile's per-fleet `useFleetEventStream` fan-out (the N-per-tile stream) | `git grep -n "useFleetEventStream" -- "ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets"` | 0 matches (the tile takes frames from the workspace-stream provider) |
-| any raw per-tile `EventSource`/registry use under the wall | `git grep -nE "fleet-stream-registry\|new EventSource" -- "ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets"` | 0 matches |
+| the wall tile's per-fleet `useFleetEventStream` fan-out (the N-per-tile stream) | `git grep -n "useFleetEventStream" -- "ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/components/FleetTile.tsx" "ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/components/FleetWall.tsx"` | 0 matches (the tile takes frames from the workspace-stream provider) |
+| any raw per-tile `EventSource`/registry use under the wall | `git grep -nE "fleet-stream-registry\|new EventSource" -- "ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/components/FleetTile.tsx" "ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/components/FleetWall.tsx"` | 0 matches |
 
 ## Out of Scope
 
@@ -342,7 +390,7 @@ GET /v1/workspaces/{ws}/events/rollup?window=7d&fleet_id=<id>  (§5 — OPTIONAL
 
 ## Product Clarity (authoring record)
 
-1. **Successful user moment** — An operator opens the Fleets Wall on a busy workspace; every live tile pulses in real time from a single connection, and nothing degrades to a stale snapshot the way it did when each tile fought for its own socket on HTTP/1.1.
+1. **Successful user moment** — An operator opens the Fleets Wall on a busy workspace; every live tile pulses in real time from a single connection, and interrupted updates remain visible as `last known` data instead of going blank.
 2. **Preserved user behaviour** — The wall looks and behaves identically (tiles, pulses, snapshot fallback); the Fleet Console's per-fleet thread is unchanged; no route the console or CLI depends on is removed.
 3. **Optimal-way check** — Fan-in over the existing refcounted hub is the most direct shape: it reuses the one shared pub/sub connection and the stream registry as-is. The unconstrained optimum (a single workspace-level Redis channel the publisher writes to directly) would need a publisher change and a new channel in the substrate; the gap is acceptable because fan-in delivers the same one-connection client outcome with zero substrate change.
 4. **Rebuild-vs-iterate** — Iterate. The substrate (hub, registry, per-fleet handler) is right; this generalizes the per-fleet handler to a workspace set. No determinism traded away.
@@ -351,7 +399,7 @@ GET /v1/workspaces/{ws}/events/rollup?window=7d&fleet_id=<id>  (§5 — OPTIONAL
 7. **Fit with existing features** — Compounds with M132's wall (its data source) and M122's client gap-recovery (same backfill discipline); must not destabilize the per-fleet console stream, pinned by the unchanged regression suite.
 8. **Surface order** — API-first (the multiplexed route is the enabling capability), then the UI swap. Justified: the wall cannot consume a stream that does not exist.
 9. **Dashboard restraint** — No new controls or claims; the wall shows exactly what it showed before, sourced more cheaply. The optional rollup surfaces only counters already backed by server-truth spend.
-10. **Confused-user next step** — A refused stream returns `ERR_SSE_STREAM_CAP` with Retry-After and the wall self-heals to snapshots; a degraded tile carries the `snapshot` eyebrow the operator already knows from M132.
+10. **Confused-user next step** — A refused stream returns `ERR_SSE_STREAM_CAP` with Retry-After and the wall keeps the latest known data; a degraded tile carries the plain-language `last known` eyebrow.
 
 ## Decomposition & alternatives (patch vs refactor)
 
@@ -365,8 +413,11 @@ GET /v1/workspaces/{ws}/events/rollup?window=7d&fleet_id=<id>  (§5 — OPTIONAL
   - CHORE(open) Jul 15, 2026: M132_001 (dependency) is in-flight on `feat/m132-live-wall-getting-started` with spec-only commits — no wall code exists yet, so the Dead Code Sweep's M132 symbol names cannot be pinned at open. Sequencing: §1–§3 + the client stream module/proxy land API-first off `main`; §4 (wall swap + N-stream deletion) and the sweep's symbol pinning fold in once M132_001 merges. Surfaced to Indy at start.
   - PLAN Jul 15, 2026 — Files Changed amended (rules beat spec): OpenAPI paths YAML + bundle added (REST guide §7 is six steps; route-coverage gate enforces), workspace events LIST proxy route added (backfill source did not exist), `lib/api/events.ts` URL helpers added, fixtures moved sibling to the integration suite per `dispatch/write_zig.md`, per-fleet handler touched non-behaviorally to share the hub's channel-name constants (RULE UFS).
   - PLAN Jul 15, 2026 — §5 rollup budget constant named `ROLLUP_PAGING_BUDGET_ROUND_TRIPS = 3` (× the workspace events list `LIMIT_MAX = 200`). The trigger cannot be measured yet: M131's client-side aggregation is unmerged, so there is no real paging cost to measure. §5 tracks toward `DEFERRED` unless a measurement lands before CHORE(close).
+  - VERIFY Jul 16, 2026 — the browser acceptance harness stopped before the wall scenario because `seedFleet()` still posted the removed raw-markdown fleet-create body. Indy directed that the harness be fixed in this workstream. The fixture now idempotently onboards one tenant library entry and creates each fleet with its returned `tenant_library_id` plus the requested name. The focused rerun then reached and rendered the live fleet row, exposing a second stale harness assumption: M132's overlay link carries the fleet name in its accessible name while the display text is a sibling. The assertion now checks that accessible name directly.
+  - VERIFY Jul 16, 2026 — the full browser suite then reported 22 failures: strict command-line JSON was polluted by a human requirements preview; tenant bootstrap replaced the operator fixture's platform scope before token minting; signup polling sent the browser cookie jar to the API and received 431; several assertions still named removed first-run, install, settings, and tile landmarks. Indy expanded this workstream to repair the complete gate:
+    > Indy (2026-07-16 04:45): "yes N133 go ahead and fix all the failures" — context: fix every failure from the full `make acceptance-e2e` run, including the two production-path defects and stale acceptance selectors, before CHORE(close).
   - RESUME Jul 15, 2026 — M132_001 (#520) MERGED to `main`; `main` merged into this branch (merge commit, additive route conflicts resolved: `workspace_events_stream` kept beside M132's onboarding/preferences in routes/route_table/OpenAPI). §4 is UNBLOCKED. Symbols pinned: the wall is `FleetWall.tsx` (not `FleetsList.tsx`), the per-tile fan-out is the `useFleetEventStream` call at `FleetTile.tsx:47` (shared with the M131 console — survives; only the wall's use is removed).
-  - RESUME Jul 15, 2026 — **§4.5/§4.6 mechanism fork, Indy-decided.** The built §1–§3 handler emits ONLY `fleet_id`-tagged activity frames; it drops stalled/malformed frames silently server-side (logged, never signaled) and sends NO hello frame. Dims 4.5/4.6's test names (`…_from_hello_frame`, `…_on_drops`) bake in server frames that do not exist. Options surfaced: (A) client-derive both from data the wall already has, no server change; (B) reopen §1–§3 to emit real hello + drop frames; (C) ship 4.1–4.4, defer 4.5/4.6. **Indy chose (B) — reopen the server, emit real frames** (blast-radius amendment recorded in Files Changed). Governing directive, verbatim: 
+  - RESUME Jul 15, 2026 — **§4.5/§4.6 mechanism fork, Indy-decided.** The built §1–§3 handler emits ONLY `fleet_id`-tagged activity frames; it drops stalled/malformed frames silently server-side (logged, never signaled) and sends NO hello frame. Dims 4.5/4.6's test names (`…_from_hello_frame`, `…_on_drops`) bake in server frames that do not exist. Options surfaced: (A) client-derive both from data the wall already has, no server change; (B) reopen §1–§3 to emit real hello + drop frames; (C) ship 4.1–4.4, defer 4.5/4.6. **Indy chose (B) — reopen the server, emit real frames** (blast-radius amendment recorded in Files Changed). Governing directive, verbatim:
     > Indy (Jul 15, 2026): "I need things to be working not a dummy fake one saying oh we have it and when the user uses its its not there" — context: §4.5/§4.6 must be driven by REAL server-emitted hello/drop frames the client actually receives, never a client-side simulation of a capability the wire does not carry.
 - **Performance decisions (Indy-directed, "make it performant, not an explanation"):**
   - **Per-tick authorization is a point lookup, not the enumeration.** Each stream re-authorizes its own caller every refresh tick (10 s prod) with `authorizeWorkspace` — the authorize-ONLY variant (one `SELECT 1 … workspace_id AND tenant_id`, `Index Scan using workspaces_workspace_id_key`, no `set_config`). The RLS context the enumeration needs is set by the cache's own `enumerate`, so the handler's tick pays one indexed point lookup, not two round-trips. Revocation latency = one tick (Indy chose 10 s over tightening — negligible auth load, acceptable eyeballs-surface latency).

@@ -107,11 +107,13 @@ export const FRAME_KIND = {
   INSTALL_PROVISIONING: "install:provisioning",
   INSTALL_READY: "install:ready",
   INSTALL_ERROR: "install:error",
+  HELLO: "hello",
+  CATCHING_UP: "catching_up",
 } as const;
 
 export type FrameKind = (typeof FRAME_KIND)[keyof typeof FRAME_KIND];
 
-export type LiveFrame =
+export type ActivityLiveFrame =
   | { kind: typeof FRAME_KIND.EVENT_RECEIVED; event_id: string; actor: string }
   | {
       kind: typeof FRAME_KIND.TOOL_CALL_STARTED;
@@ -143,6 +145,19 @@ export type LiveFrame =
   | { kind: typeof FRAME_KIND.INSTALL_READY }
   | { kind: typeof FRAME_KIND.INSTALL_ERROR };
 
+export type WorkspaceHelloFrame = {
+  kind: typeof FRAME_KIND.HELLO;
+  fleet_ids: string[];
+};
+
+export type WorkspaceCatchingUpFrame = {
+  kind: typeof FRAME_KIND.CATCHING_UP;
+  dropped: number;
+};
+
+export type WorkspaceControlFrame = WorkspaceHelloFrame | WorkspaceCatchingUpFrame;
+export type LiveFrame = ActivityLiveFrame | WorkspaceControlFrame;
+
 // Same-origin URL for the SSE stream. The path is intercepted by the
 // Next Route Handler at app/backend/.../events/stream/route.ts which
 // injects the api-audience Bearer token server-side.
@@ -173,7 +188,8 @@ export function backfillFleetEventsUrl(
 // `fleet_id` the backend spliced in, so the wall demultiplexes each frame to
 // its tile. The backend guarantees the tag on every frame; a frame missing it
 // is malformed and dropped by the client (never routed to a wrong tile).
-export type WorkspaceLiveFrame = LiveFrame & { fleet_id: string };
+export type WorkspaceLiveFrame = ActivityLiveFrame & { fleet_id: string };
+export type WorkspaceFrame = WorkspaceLiveFrame | WorkspaceControlFrame;
 
 // Same-origin URL for the ONE multiplexed workspace SSE stream. Intercepted by
 // the Next Route Handler at app/backend/.../events/stream/route.ts, which mints

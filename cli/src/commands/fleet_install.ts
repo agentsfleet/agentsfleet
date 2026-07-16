@@ -139,6 +139,7 @@ export const installEffectFromFlags = (
   CliConfig | Credentials | HttpClient | Output | Workspaces
 > =>
   Effect.gen(function* () {
+    const config = yield* CliConfig;
     const http = yield* HttpClient;
 
     const libraryId = yield* requireLibraryId(flags.libraryId);
@@ -163,7 +164,7 @@ export const installEffectFromFlags = (
         }),
       );
     }
-    yield* printRequirements(entry.requirements);
+    if (!config.jsonMode) yield* printRequirements(entry.requirements);
     // Key the create body off the resolved tier. Fail loud on an unrecognized
     // visibility rather than silently posting a platform slug as a tenant id.
     if (entry.visibility !== VISIBILITY_PLATFORM && entry.visibility !== VISIBILITY_TENANT) {

@@ -48,7 +48,7 @@ test.describe("secrets lifecycle", () => {
 
     await signInAs(page, FIXTURE_KEY.regular);
     await gotoWorkspace(page, FIXTURE_KEY.regular, "secrets");
-    await expect(page.getByRole("heading", { name: /^secrets & envs$/i })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /^secrets$/i })).toBeVisible();
 
     // Add via the field/value builder, opened in a dialog.
     await page.getByRole("button", { name: "Create secret", exact: true }).click();

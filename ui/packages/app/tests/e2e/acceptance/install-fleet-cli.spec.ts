@@ -206,7 +206,7 @@ test.describe("install-fleet-cli", () => {
     const row = page.locator(`a[href="${workspaceHref(ws, `fleets/${payload.fleet_id}`)}"]`);
     await expect(row).toBeVisible();
     await expect(row).toHaveAttribute("data-state", LIVE_STATE);
-    await expect(row.getByText(name)).toBeVisible();
+    await expect(row).toHaveAccessibleName(`${name} — active — ${payload.fleet_id}`);
   });
 
   test.afterEach(async () => {

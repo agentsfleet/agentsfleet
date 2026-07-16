@@ -268,6 +268,18 @@ pub fn channelCount(self: *const FanIn) usize {
     return self.channels.items.len;
 }
 
+/// Borrowed fleet ids for the current channel set. Caller owns only the slice
+/// list; each id points into `self.channels`.
+pub fn fleetIdList(self: *const FanIn, alloc: std.mem.Allocator) error{OutOfMemory}![][]const u8 {
+    const ids = try alloc.alloc([]const u8, self.channels.items.len);
+    errdefer alloc.free(ids);
+    for (self.channels.items, 0..) |name, i| {
+        // Populated only by `activity_channel.format` in `applySet`.
+        ids[i] = activity_channel.fleetId(name) orelse unreachable;
+    }
+    return ids;
+}
+
 const std = @import("std");
 const common = @import("../common.zig");
 const principal_mod = @import("../../../auth/principal.zig");

@@ -37,6 +37,8 @@ type Notice = {
   severity: ToastSeverity;
 };
 
+type WorkspaceOption = Pick<TenantWorkspace, "id" | "name">;
+
 export default function WorkspaceSwitcher({
   workspaces,
   activeId,
@@ -45,15 +47,23 @@ export default function WorkspaceSwitcher({
   const pathname = usePathname();
   const [pending, startTransition] = useTransition();
   const [createOpen, setCreateOpen] = useState(false);
+  const [createdWorkspaces, setCreatedWorkspaces] = useState<WorkspaceOption[]>([]);
   const [notice, setNotice] = useState<Notice | null>(null);
   const noticeTimer = useResettableTimeout();
+  const visibleWorkspaces = [
+    ...workspaces,
+    ...createdWorkspaces.filter(
+      (created) => !workspaces.some((workspace) => workspace.id === created.id),
+    ),
+  ];
 
   // Keep creation reachable when signup has not created a workspace yet.
-  const active = workspaces.find((w) => w.id === activeId) ?? workspaces[0];
+  const active =
+    visibleWorkspaces.find((workspace) => workspace.id === activeId) ?? visibleWorkspaces[0];
   const activeLabel = active?.name ?? active?.id ?? "No workspace";
 
   function workspaceLabel(id: string): string {
-    const workspace = workspaces.find((w) => w.id === id);
+    const workspace = visibleWorkspaces.find((candidate) => candidate.id === id);
     return workspace?.name ?? id;
   }
 
@@ -98,17 +108,17 @@ export default function WorkspaceSwitcher({
           <DropdownMenuContent align="start" className="max-h-96 overflow-y-auto">
             <DropdownMenuLabel>Workspace</DropdownMenuLabel>
             <DropdownMenuSeparator />
-            {workspaces.map((ws) => (
+            {visibleWorkspaces.map((workspace) => (
               <DropdownMenuItem
-                key={ws.id}
-                onSelect={() => pick(ws.id)}
-                data-active={ws.id === active?.id ? "true" : undefined}
+                key={workspace.id}
+                onSelect={() => pick(workspace.id)}
+                data-active={workspace.id === activeId ? "true" : undefined}
               >
-                <span className="flex-1">{ws.name ?? ws.id}</span>
-                {ws.id === active?.id ? <span aria-hidden="true">✓</span> : null}
+                <span className="flex-1">{workspace.name ?? workspace.id}</span>
+                {workspace.id === activeId ? <span aria-hidden="true">✓</span> : null}
               </DropdownMenuItem>
             ))}
-            {workspaces.length > 0 ? <DropdownMenuSeparator /> : null}
+            {visibleWorkspaces.length > 0 ? <DropdownMenuSeparator /> : null}
             <DropdownMenuItem onSelect={() => setCreateOpen(true)} data-testid="workspace-new">
               <PlusIcon size={14} aria-hidden="true" />
               <span className="flex-1">Create workspace</span>
@@ -119,7 +129,13 @@ export default function WorkspaceSwitcher({
       <CreateWorkspaceDialogDynamic
         open={createOpen}
         onOpenChange={setCreateOpen}
-        onCreated={(name) => showNotice("success", `Workspace created: ${name}.`)}
+        onCreated={(workspace) => {
+          setCreatedWorkspaces((current) => [
+            ...current,
+            { id: workspace.workspace_id, name: workspace.name },
+          ]);
+          showNotice("success", `Workspace created: ${workspace.name}.`);
+        }}
       />
       <div className="pointer-events-none fixed right-4 top-16 z-50 max-w-sm">
         <Toast

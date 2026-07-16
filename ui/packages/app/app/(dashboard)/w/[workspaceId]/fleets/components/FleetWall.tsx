@@ -13,11 +13,13 @@ import {
   WakePulse,
 } from "@agentsfleet/design-system";
 import { AGENTSFLEET_STATUS, type Fleet } from "@/lib/api/fleets";
+import { WorkspaceStreamProvider } from "@/components/domain/useWorkspaceStream";
 import { listFleetsAction } from "../actions";
 import { workspacePath } from "@/lib/workspace-routes";
 import { presentErrorString } from "@/lib/errors";
 import { INSTALL_FLEET_TOOLTIP } from "../new/library-docs";
 import FleetTile from "./FleetTile";
+import { tileShouldStream } from "@/lib/wall/tile-liveness";
 
 type Props = {
   workspaceId: string;
@@ -50,6 +52,10 @@ export default function FleetWall({ workspaceId, initialFleets, initialCursor }:
 
   const liveTotal = useMemo(
     () => filtered.filter((z) => z.status === AGENTSFLEET_STATUS.ACTIVE).length,
+    [filtered],
+  );
+  const streamFleetIds = useMemo(
+    () => filtered.filter((z) => tileShouldStream(z.status)).map((z) => z.id),
     [filtered],
   );
 
@@ -108,11 +114,13 @@ export default function FleetWall({ workspaceId, initialFleets, initialCursor }:
           No fleets match &ldquo;{deferredQuery}&rdquo; in the loaded set.
         </p>
       ) : (
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {filtered.map((z) => (
-            <FleetTile key={z.id} fleet={z} workspaceId={workspaceId} />
-          ))}
-        </div>
+        <WorkspaceStreamProvider workspaceId={workspaceId} fleetIds={streamFleetIds}>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {filtered.map((z) => (
+              <FleetTile key={z.id} fleet={z} workspaceId={workspaceId} />
+            ))}
+          </div>
+        </WorkspaceStreamProvider>
       )}
 
       {error ? (

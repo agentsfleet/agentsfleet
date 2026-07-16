@@ -1,4 +1,5 @@
 import { defineConfig, devices } from "@playwright/test";
+import { createHash } from "node:crypto";
 import { loadWorktreeEnv } from "./tests/e2e/acceptance/fixtures/env-loader";
 
 // Load <worktree-root>/.env so CLERK_SECRET_KEY / CLERK_WEBHOOK_SECRET land
@@ -6,7 +7,15 @@ import { loadWorktreeEnv } from "./tests/e2e/acceptance/fixtures/env-loader";
 // .env*, which gives us NEXT_PUBLIC_API_URL but not the Clerk creds.
 loadWorktreeEnv();
 
-const E2E_PORT = process.env.E2E_PORT ?? "3101";
+const DEFAULT_PORT_BASE = 30_000;
+const DEFAULT_PORT_SPAN = 20_000;
+
+function worktreePort(): string {
+  const digest = createHash("sha256").update(process.cwd()).digest();
+  return String(DEFAULT_PORT_BASE + (digest.readUInt16BE(0) % DEFAULT_PORT_SPAN));
+}
+
+const E2E_PORT = process.env.E2E_PORT ?? worktreePort();
 const BASE_URL = process.env.BASE_URL ?? `http://localhost:${E2E_PORT}`;
 const REPORTER_LINE = "line" as const;
 const PLAYWRIGHT_ON_FIRST_RETRY = "on-first-retry" as const;
@@ -46,9 +55,9 @@ export default defineConfig({
   webServer: process.env.BASE_URL
     ? undefined
     : {
-        command: `AGENTSFLEET_E2E_AUDIT=${ACCEPTANCE_AUDIT_ENABLED} AGENTSFLEET_E2E_AUDIT_TOKEN=${ACCEPTANCE_AUDIT_TOKEN} bun run dev -- --port ${E2E_PORT}`,
+        command: `bun run build && AGENTSFLEET_E2E_AUDIT=${ACCEPTANCE_AUDIT_ENABLED} AGENTSFLEET_E2E_AUDIT_TOKEN=${ACCEPTANCE_AUDIT_TOKEN} bun run start -- --port ${E2E_PORT}`,
         url: `http://localhost:${E2E_PORT}/sign-in`,
-        reuseExistingServer: !process.env.CI,
+        reuseExistingServer: false,
         timeout: 120_000,
       },
   outputDir: "playwright-acceptance-results",

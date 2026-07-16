@@ -14,6 +14,10 @@ vi.mock("./FleetTile", () => ({
   default: ({ fleet }: { fleet: Fleet }) =>
     React.createElement("div", { "data-testid": "tile", "data-status": fleet.status }, fleet.name),
 }));
+vi.mock("@/components/domain/useWorkspaceStream", () => ({
+  WorkspaceStreamProvider: ({ children }: React.PropsWithChildren) =>
+    React.createElement(React.Fragment, null, children),
+}));
 const listFleetsAction = vi.fn();
 vi.mock("../actions", () => ({ listFleetsAction: (...a: unknown[]) => listFleetsAction(...a) }));
 

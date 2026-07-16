@@ -24,13 +24,29 @@ pub const HEARTBEAT_FRAME = ": heartbeat\n\n";
 /// `kind` field.
 pub const DEFAULT_KIND = "message";
 
+/// Workspace-control frame sent once after the fan-in set is attached.
+pub const KIND_HELLO = "hello";
+
+/// Workspace-control frame sent when the server dropped queued activity frames.
+pub const KIND_CATCHING_UP = "catching_up";
+
 /// The key the multiplexed stream splices into every frame's payload.
 const FLEET_ID_KEY = "\"fleet_id\":\"";
 
+const KIND_FIELD_PREFIX = "{\"kind\":\"";
+const HELLO_FLEET_IDS_FIELD = "\",\"fleet_ids\":[";
+const HELLO_FRAME_PREFIX = KIND_FIELD_PREFIX ++ KIND_HELLO ++ HELLO_FLEET_IDS_FIELD;
+const CATCHING_UP_DROPPED_FIELD = KIND_FIELD_PREFIX ++ KIND_CATCHING_UP ++ "\",\"dropped\":";
+const ARRAY_SEPARATOR = ",";
+const JSON_QUOTE = "\"";
+const JSON_ARRAY_END = "]}";
+const JSON_OBJECT_END = "}";
+const U64_DECIMAL_FMT = "{d}";
 /// Blank line terminating an SSE frame's `data:` field.
 const FRAME_END = "\n\n";
 
 const SEQ_BUF_LEN: usize = 24;
+const U64_BUF_LEN: usize = 24;
 
 /// Extract the `kind` field from the JSON payload so the SSE `event:` line can
 /// carry it. Anchors on the leading `{"kind":"` prefix so an embedded
@@ -41,7 +57,7 @@ const SEQ_BUF_LEN: usize = 24;
 /// anchor is the leading field, and a splice-first payload no longer has `kind`
 /// in front.
 pub fn extractKind(payload: []const u8) ?[]const u8 {
-    const prefix = "{\"kind\":\"";
+    const prefix = KIND_FIELD_PREFIX;
     if (payload.len < prefix.len) return null;
     if (!std.mem.startsWith(u8, payload, prefix)) return null;
     const close = std.mem.indexOfScalarPos(u8, payload, prefix.len, '"') orelse return null;
@@ -51,6 +67,29 @@ pub fn extractKind(payload: []const u8) ?[]const u8 {
 pub fn writeFrame(w: anytype, seq: u64, kind: []const u8, data_json: []const u8) !void {
     try writeHead(w, seq, kind);
     try w.interface.writeAll(data_json);
+    try w.interface.writeAll(FRAME_END);
+}
+
+pub fn writeHelloFrame(w: anytype, seq: u64, fleet_ids: []const []const u8) !void {
+    try writeHead(w, seq, KIND_HELLO);
+    try w.interface.writeAll(HELLO_FRAME_PREFIX);
+    for (fleet_ids, 0..) |fleet_id, i| {
+        if (i != 0) try w.interface.writeAll(ARRAY_SEPARATOR);
+        try w.interface.writeAll(JSON_QUOTE);
+        try w.interface.writeAll(fleet_id);
+        try w.interface.writeAll(JSON_QUOTE);
+    }
+    try w.interface.writeAll(JSON_ARRAY_END);
+    try w.interface.writeAll(FRAME_END);
+}
+
+pub fn writeCatchingUpFrame(w: anytype, seq: u64, dropped: u64) !void {
+    var dropped_buf: [U64_BUF_LEN]u8 = undefined;
+    const dropped_str = try std.fmt.bufPrint(&dropped_buf, U64_DECIMAL_FMT, .{dropped});
+    try writeHead(w, seq, KIND_CATCHING_UP);
+    try w.interface.writeAll(CATCHING_UP_DROPPED_FIELD);
+    try w.interface.writeAll(dropped_str);
+    try w.interface.writeAll(JSON_OBJECT_END);
     try w.interface.writeAll(FRAME_END);
 }
 
@@ -87,7 +126,7 @@ pub fn writeTaggedFrame(
 
 fn writeHead(w: anytype, seq: u64, kind: []const u8) !void {
     var seq_buf: [SEQ_BUF_LEN]u8 = undefined;
-    const seq_str = try std.fmt.bufPrint(&seq_buf, "{d}", .{seq});
+    const seq_str = try std.fmt.bufPrint(&seq_buf, U64_DECIMAL_FMT, .{seq});
     try w.interface.writeAll("id: ");
     try w.interface.writeAll(seq_str);
     try w.interface.writeAll("\nevent: ");
@@ -153,6 +192,30 @@ test "writeFrame: id, event, and the untouched payload" {
     try writeFrame(&w, 7, "chunk", "{\"kind\":\"chunk\",\"text\":\"hi\"}");
     try testing.expectEqualStrings(
         "id: 7\nevent: chunk\ndata: {\"kind\":\"chunk\",\"text\":\"hi\"}\n\n",
+        out.items,
+    );
+}
+
+test "writeHelloFrame: announces the workspace fleet set" {
+    var out: std.ArrayList(u8) = .empty;
+    defer out.deinit(testing.allocator);
+    var w = sink(&out);
+
+    try writeHelloFrame(&w, 0, &.{ "z1", "z2" });
+    try testing.expectEqualStrings(
+        "id: 0\nevent: hello\ndata: {\"kind\":\"hello\",\"fleet_ids\":[\"z1\",\"z2\"]}\n\n",
+        out.items,
+    );
+}
+
+test "writeCatchingUpFrame: announces server-side drops" {
+    var out: std.ArrayList(u8) = .empty;
+    defer out.deinit(testing.allocator);
+    var w = sink(&out);
+
+    try writeCatchingUpFrame(&w, 0, 3);
+    try testing.expectEqualStrings(
+        "id: 0\nevent: catching_up\ndata: {\"kind\":\"catching_up\",\"dropped\":3}\n\n",
         out.items,
     );
 }

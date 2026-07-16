@@ -46,7 +46,7 @@ async function deleteCredentialDirect(name: string): Promise<void> {
 // The Provider field is a catalogue-backed <Select> when the fixture catalogue
 // has rows, and degrades to a free-text <Input> when it doesn't — handle both.
 async function pickProvider(page: Page): Promise<void> {
-  const providerField = page.getByLabel("Provider");
+  const providerField = page.getByRole("dialog").getByLabel("Provider", { exact: true });
   const role = await providerField.getAttribute("role").catch(() => null);
   if (role === "combobox") {
     await providerField.click();
@@ -60,7 +60,7 @@ async function pickProvider(page: Page): Promise<void> {
 // the provider and degrades to a free-text <Input> when it doesn't — handle
 // both so the spec survives either fixture-catalogue state.
 async function pickModel(page: Page): Promise<void> {
-  const model = page.getByLabel("Model");
+  const model = page.getByRole("dialog").getByLabel("Model", { exact: true });
   const role = await model.getAttribute("role").catch(() => null);
   if (role === "combobox") {
     await model.click();
