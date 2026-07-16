@@ -86,6 +86,19 @@ describe("getFleet", () => {
     expect(err).toBeInstanceOf(ApiError);
     expect(err.status).toBe(404);
   });
+
+  it("rejects a successful detail response with a missing or empty ETag", async () => {
+    const { FLEET_ETAG_REQUIRED, getFleet } = await import("./fleets");
+    for (const responseEtag of [undefined, "", "   "]) {
+      fetchMock.mockResolvedValue({
+        ok: true,
+        status: 200,
+        headers: headers(responseEtag === undefined ? {} : { etag: responseEtag }),
+        json: async () => detail,
+      });
+      await expect(getFleet("ws_1", "zom_1", "tok")).rejects.toThrow(FLEET_ETAG_REQUIRED);
+    }
+  });
 });
 
 describe("saveFleetSource", () => {
@@ -121,6 +134,21 @@ describe("saveFleetSource", () => {
     expect(err.status).toBe(412);
     expect(err.code).toBe("UZ-AGT-014");
     expect(err.etag).toBe('"current"');
+  });
+
+  it("rejects a successful save response with a missing or empty ETag", async () => {
+    const { FLEET_ETAG_REQUIRED, saveFleetSource } = await import("./fleets");
+    for (const responseEtag of [undefined, "", "   "]) {
+      fetchMock.mockResolvedValue({
+        ok: true,
+        status: 200,
+        headers: headers({}),
+        json: async () => ({ fleet_id: "zom_1", config_revision: 5, etag: responseEtag }),
+      });
+      await expect(
+        saveFleetSource("ws_1", "zom_1", { source_markdown: "# edited" }, '"old"', "tok"),
+      ).rejects.toThrow(FLEET_ETAG_REQUIRED);
+    }
   });
 });
 

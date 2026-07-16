@@ -10,6 +10,13 @@ import type {
 
 export type { Fleet, FleetDetail, FleetListResponse };
 
+export const FLEET_ETAG_REQUIRED = "Fleet source response must include a non-empty ETag";
+
+function requireFleetEtag(etag: string | null | undefined): string {
+  if (etag == null || etag.trim().length === 0) throw new Error(FLEET_ETAG_REQUIRED);
+  return etag;
+}
+
 export async function listFleets(
   workspaceId: string,
   token: string,
@@ -34,13 +41,13 @@ export async function getFleet(
   workspaceId: string,
   fleetId: string,
   token: string,
-): Promise<{ fleet: FleetDetail; etag: string | null }> {
+): Promise<{ fleet: FleetDetail; etag: string }> {
   const { data, etag } = await requestWithEtag<FleetDetail>(
     `/v1/workspaces/${workspaceId}/fleets/${fleetId}`,
     { method: "GET" },
     token,
   );
-  return { fleet: data, etag };
+  return { fleet: data, etag: requireFleetEtag(etag) };
 }
 
 // PATCH the fleet's SKILL.md / TRIGGER.md source (M131 §4). Sends `If-Match`
@@ -55,13 +62,13 @@ export async function saveFleetSource(
   body: { source_markdown?: string; trigger_markdown?: string },
   ifMatch: string,
   token: string,
-): Promise<{ etag: string | null; config_revision: number }> {
+): Promise<{ etag: string; config_revision: number }> {
   const { data, etag } = await requestWithEtag<{ etag?: string; config_revision: number }>(
     `/v1/workspaces/${workspaceId}/fleets/${fleetId}`,
     { method: "PATCH", headers: { "If-Match": ifMatch }, body: JSON.stringify(body) },
     token,
   );
-  return { etag: data.etag ?? etag, config_revision: data.config_revision };
+  return { etag: requireFleetEtag(data.etag ?? etag), config_revision: data.config_revision };
 }
 
 export async function installFleet(

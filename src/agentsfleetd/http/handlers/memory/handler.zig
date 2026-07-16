@@ -169,7 +169,7 @@ pub fn innerDeleteMemory(
         }
         return;
     };
-    if (decoded_key.len == 0 or decoded_key.len > h.MAX_KEY_LEN) {
+    if (decoded_key.len == 0) {
         hx.fail(ec.ERR_INVALID_REQUEST, S_MEMORY_KEY_LENGTH_INVALID);
         return;
     }
@@ -227,6 +227,12 @@ fn decodePathSegment(out: []u8, encoded: []const u8) error{ InvalidEscapeSequenc
         written += 1;
     }
     return out[0..written];
+}
+
+test "decodePathSegment accepts exact capacity and rejects overflow" {
+    var out: [3]u8 = undefined;
+    try std.testing.expectEqualStrings("abc", try decodePathSegment(&out, "abc"));
+    try std.testing.expectError(error.KeyTooLong, decodePathSegment(&out, "abcd"));
 }
 
 // ── parseLimitQs ──────────────────────────────────────────────────────────
