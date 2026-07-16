@@ -39,6 +39,12 @@ test "schedule routes use schedule read/write scopes" {
     try testing.expectEqual(scopes.Scope.schedule_write, onlyScope(route_scopes.requiredScopes(sync, .POST)).?);
 }
 
+test "workspace event reads (list + both SSE streams) require fleet:read" {
+    try testing.expectEqual(scopes.Scope.fleet_read, onlyScope(route_scopes.requiredScopes(.{ .workspace_events = "ws1" }, .GET)).?);
+    try testing.expectEqual(scopes.Scope.fleet_read, onlyScope(route_scopes.requiredScopes(.{ .workspace_events_stream = "ws1" }, .GET)).?);
+    try testing.expectEqual(scopes.Scope.fleet_read, onlyScope(route_scopes.requiredScopes(.{ .workspace_fleet_events_stream = .{ .workspace_id = "ws1", .fleet_id = "z1" } }, .GET)).?);
+}
+
 test "platform routes map to platform-plane scopes; runner enroll is its own verb" {
     try testing.expectEqual(scopes.Scope.runner_enroll, onlyScope(route_scopes.requiredScopes(.register_runner, .POST)).?);
     try testing.expectEqual(scopes.Scope.runner_read, onlyScope(route_scopes.requiredScopes(.fleet_runners_list, .GET)).?);

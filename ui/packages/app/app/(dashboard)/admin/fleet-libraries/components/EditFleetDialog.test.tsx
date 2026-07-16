@@ -268,6 +268,14 @@ describe("EditFleetDialog", () => {
     expect(await screen.findByTestId("source-warning")).toBeTruthy();
   });
 
+  it("keeps long edit forms vertically scrollable", () => {
+    renderDialog();
+
+    const dialogClasses = screen.getByRole("dialog").className;
+    expect(dialogClasses).toContain("max-h-svh");
+    expect(dialogClasses).toContain("overflow-y-auto");
+  });
+
   it("blocks save while the repository is not owner/repo shaped", async () => {
     const user = userEvent.setup();
     renderDialog();

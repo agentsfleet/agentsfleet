@@ -60,6 +60,12 @@ stop_drain_max_ms: u64 = STOP_DRAIN_MAX_MS,
 /// Bounds every wire send by shutting the socket down at the deadline.
 /// One instance suffices: `wire` serializes sends, so at most one is armed.
 send_watchdog: SendWatchdog = .{},
+/// Fan-out snapshot buffer — reader-thread-confined (C5; joined by `stop`
+/// before teardown). Retained across frames so a steady-state fan-out allocates
+/// nothing; lets the reader copy the subscriber set out from under `mutex` and
+/// push with the lock released (C3: no blocking work under a lock the consumer
+/// needs).
+reader_scratch: std.ArrayList(*Subscription) = .empty,
 
 const ChannelEntry = struct {
     subscribers: std.ArrayList(*Subscription) = .empty,
@@ -146,6 +152,8 @@ pub fn deinit(self: *Self) void {
         self.alloc.free(kv.key_ptr.*);
     }
     self.channels.deinit(self.alloc);
+    // Reader-owned; the reader is joined by stop() before any caller reaches here.
+    self.reader_scratch.deinit(self.alloc);
     self.* = undefined;
 }
 
@@ -157,18 +165,36 @@ pub const SubscribeError = error{ OutOfMemory, HubStopped };
 /// post-redial sweep re-subscribes from the map.
 pub fn subscribe(self: *Self, channel_name: []const u8) SubscribeError!*Subscription {
     const sub = try Subscription.create(self.alloc, self.io, channel_name);
-    errdefer sub.destroy();
-    if (try self.attach(sub)) self.wireSendSubscribe(sub.channel_name);
+    errdefer sub.unref();
+    try self.attachChannel(sub, channel_name);
     return sub;
+}
+
+/// A consumer with no channel of its own: ONE queue/epoch fed by N channel
+/// attachments, so a fan-in stream does one futex wait for the whole set and
+/// its memory budget stays fleet-count-independent. The caller `attachChannel`s
+/// each channel, `detachChannel`s every one, then `unref()`s. Refuses on a
+/// draining hub (like `subscribe`), so a workspace stream against a stopped hub
+/// is refused at connect rather than 200-ing into a consumer that never attaches.
+pub fn createSharedConsumer(self: *Self, label: []const u8) SubscribeError!*Subscription {
+    if (self.stopped.load(.acquire)) return error.HubStopped;
+    return Subscription.createShared(self.alloc, self.io, label);
+}
+
+/// Attach `sub` to one channel: map insert, then the first-subscriber wire
+/// SUBSCRIBE outside the map mutex. Per-fleet attaches one; a fan-in attaches
+/// one shared consumer to many.
+pub fn attachChannel(self: *Self, sub: *Subscription, channel_name: []const u8) SubscribeError!void {
+    if (try self.attach(sub, channel_name)) self.wireSendSubscribe(channel_name);
 }
 
 /// Map half of subscribe: insert under `mutex` only. Returns true when `sub`
 /// is the channel's first subscriber (the caller then does the wire send).
-fn attach(self: *Self, sub: *Subscription) SubscribeError!bool {
+fn attach(self: *Self, sub: *Subscription, channel_name: []const u8) SubscribeError!bool {
     // Everything fallible is allocated before the lock; `consumed` routes the
     // spares to the map or back to the allocator on the way out. The explicit
     // catch covers the window before the consumed-defer is registered.
-    const spare_key = try self.alloc.dupe(u8, sub.channel_name);
+    const spare_key = try self.alloc.dupe(u8, channel_name);
     const spare_entry = self.alloc.create(ChannelEntry) catch |err| {
         self.alloc.free(spare_key);
         return err;
@@ -200,18 +226,27 @@ fn attach(self: *Self, sub: *Subscription) SubscribeError!bool {
     return true;
 }
 
-/// Detach and destroy `sub`. The last subscriber off a channel sends the wire
-/// UNSUBSCRIBE outside the map mutex, then repairs the one benign race: a new
-/// first-subscriber whose SUBSCRIBE landed before our UNSUBSCRIBE would be
-/// silently muted, so if the channel is live again we re-SUBSCRIBE (a double
-/// SUBSCRIBE is a Redis no-op).
+/// Detach and release `sub` — the single-channel (per-fleet) path. The handle
+/// is freed by the last `unref`, which may be an in-flight reader fan-out
+/// rather than this call.
 pub fn unsubscribe(self: *Self, sub: *Subscription) void {
+    self.detachChannel(sub, sub.channel_name);
+    sub.unref();
+}
+
+/// Detach `sub` from ONE channel, leaving the handle alive (a shared consumer
+/// is detached once per attached channel, then destroyed by its owner). The
+/// last subscriber off a channel sends the wire UNSUBSCRIBE outside the map
+/// mutex, then repairs the one benign race: a new first-subscriber whose
+/// SUBSCRIBE landed before our UNSUBSCRIBE would be silently muted, so if the
+/// channel is live again we re-SUBSCRIBE (a double SUBSCRIBE is a Redis no-op).
+pub fn detachChannel(self: *Self, sub: *Subscription, channel_name: []const u8) void {
     var freed_key: ?[]const u8 = null;
     var freed_entry: ?*ChannelEntry = null;
     {
         self.mutex.lockUncancelable(self.io);
         defer self.mutex.unlock(self.io);
-        if (self.channels.getEntry(sub.channel_name)) |entry| {
+        if (self.channels.getEntry(channel_name)) |entry| {
             const subs = &entry.value_ptr.*.subscribers;
             for (subs.items, 0..) |candidate, i| {
                 if (candidate == sub) {
@@ -227,15 +262,14 @@ pub fn unsubscribe(self: *Self, sub: *Subscription) void {
         }
     }
     if (freed_entry != null) {
-        self.wireSendUnsubscribe(sub.channel_name);
-        if (self.channelLive(sub.channel_name)) self.wireSendSubscribe(sub.channel_name);
+        self.wireSendUnsubscribe(channel_name);
+        if (self.channelLive(channel_name)) self.wireSendSubscribe(channel_name);
     }
     if (freed_entry) |entry| {
         entry.subscribers.deinit(self.alloc);
         self.alloc.destroy(entry);
     }
     if (freed_key) |key| self.alloc.free(key);
-    sub.destroy();
 }
 
 /// Live channel count (wire SUBSCRIBE cardinality). Test + admin surface.

@@ -120,12 +120,12 @@ async function waitForTenantWorkspace(page: Page, email: string, sessionJwt: str
     // deep-link the browser to that workspace's fleets page (post-M118 the
     // workspace lives in the URL — there is no implicit-active-workspace root
     // route) and confirm the session renders it before returning.
-    const apiState = await readWorkspaceApiState(page, sessionJwt);
+    const apiState = await readWorkspaceApiState(sessionJwt);
     lastApiState = apiState.label;
     if (apiState.workspaceId) {
       await page.goto(`/w/${apiState.workspaceId}/fleets`);
       const rendered = await page
-        .getByRole("heading", { name: /fleets/i })
+        .getByRole("heading", { name: "Getting started" })
         .first()
         .waitFor({ timeout: 5_000 })
         .then(() => true)
@@ -144,14 +144,14 @@ interface WorkspaceApiState {
   workspaceId?: string;
 }
 
-async function readWorkspaceApiState(page: Page, sessionJwt: string): Promise<WorkspaceApiState> {
+async function readWorkspaceApiState(sessionJwt: string): Promise<WorkspaceApiState> {
   const apiUrl = process.env.NEXT_PUBLIC_API_URL;
   if (!apiUrl) return { label: "NEXT_PUBLIC_API_URL missing" };
 
-  const res = await page.request.get(`${apiUrl}${WORKSPACES_PATH}`, {
+  const res = await fetch(`${apiUrl}${WORKSPACES_PATH}`, {
     headers: { Authorization: `Bearer ${sessionJwt}` },
   });
-  if (!res.ok()) return { label: `workspace API ${res.status()}` };
+  if (!res.ok) return { label: `workspace API ${res.status}` };
   const body = (await res.json()) as { items?: Array<{ id?: unknown }> };
   const workspaceId = typeof body.items?.[0]?.id === "string" ? body.items[0].id : undefined;
   return { label: `workspace API items=${body.items?.length ?? "unknown"}`, workspaceId };

@@ -35,6 +35,7 @@ const events_invokes = @import("route_table_invoke_events.zig");
 pub const invokeFleetEvents = events_invokes.invokeFleetEvents;
 pub const invokeFleetEventsStream = events_invokes.invokeFleetEventsStream;
 pub const invokeWorkspaceEvents = events_invokes.invokeWorkspaceEvents;
+pub const invokeWorkspaceEventsStream = events_invokes.invokeWorkspaceEventsStream;
 const approvals_invokes = @import("route_table_invoke_approvals.zig");
 pub const invokeWorkspaceApprovals = approvals_invokes.invokeWorkspaceApprovals;
 pub const invokeWorkspaceApprovalDetail = approvals_invokes.invokeWorkspaceApprovalDetail;

@@ -1,5 +1,6 @@
 import {
   backfillFleetEventsUrl,
+  backfillWorkspaceEventsUrl,
   type EventRow,
   type EventsPage,
   type EventsQuery,
@@ -45,15 +46,18 @@ export type BackfillRequest = {
   onPage: (rows: EventRow[]) => void;
 };
 
+export type WorkspaceBackfillRequest = Omit<BackfillRequest, "fleetId">;
+type BackfillQuery = Pick<EventsQuery, "cursor" | "since" | "limit">;
+type BackfillWalkRequest = WorkspaceBackfillRequest & {
+  pageUrl: (query: BackfillQuery) => string;
+};
+
 // One page of the backfill list, or null when the fetch failed (already
 // diagnosed). Upstream rejects `cursor` together with `since`, so the caller
 // sends exactly one of them.
 async function fetchBackfillPage(
-  workspaceId: string,
-  fleetId: string,
-  query: Pick<EventsQuery, "cursor" | "since" | "limit">,
+  url: string,
 ): Promise<EventsPage | null> {
-  const url = backfillFleetEventsUrl(workspaceId, fleetId, query);
   const res = await fetch(url, { signal: AbortSignal.timeout(BACKFILL_TIMEOUT_MS) });
   if (!res.ok) {
     warnBackfillFailure(`HTTP ${res.status}`);
@@ -83,7 +87,23 @@ function oldestCreatedAt(rows: EventRow[]): number | null {
 // A never-seeded fleet has no anchor to walk back to, so it takes exactly one
 // most-recent page — following the cursor there would drag in all of history.
 export async function runBackfill(req: BackfillRequest): Promise<BackfillOutcome> {
-  const { workspaceId, fleetId, anchorMs, stillCurrent, onPage } = req;
+  return runBackfillWalk({
+    ...req,
+    pageUrl: (query) => backfillFleetEventsUrl(req.workspaceId, req.fleetId, query),
+  });
+}
+
+export async function runWorkspaceBackfill(
+  req: WorkspaceBackfillRequest,
+): Promise<BackfillOutcome> {
+  return runBackfillWalk({
+    ...req,
+    pageUrl: (query) => backfillWorkspaceEventsUrl(req.workspaceId, query),
+  });
+}
+
+async function runBackfillWalk(req: BackfillWalkRequest): Promise<BackfillOutcome> {
+  const { anchorMs, stillCurrent, onPage, pageUrl } = req;
   const floorMs = anchorMs === null ? null : Math.max(anchorMs - BACKFILL_OVERLAP_MS, 0);
   let watermark = anchorMs;
   let cursor: string | undefined;
@@ -97,7 +117,7 @@ export async function runBackfill(req: BackfillRequest): Promise<BackfillOutcome
           }
         : { cursor, limit: BACKFILL_PAGE_LIMIT };
 
-    const body = await fetchBackfillPage(workspaceId, fleetId, query);
+    const body = await fetchBackfillPage(pageUrl(query));
     if (body === null) return { ok: false };
     if (!stillCurrent()) return { ok: false };
 

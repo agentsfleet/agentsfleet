@@ -83,13 +83,12 @@ test.describe("signup → install → lifecycle", () => {
     const workspaceId = signup.workspaceId;
     cleanupSession = { sessionJwt: signup.sessionJwt, workspaceId };
 
-    // Dashboard /w/<id>/fleets renders auto-provisioned workspace + empty state.
+    // Dashboard /w/<id>/fleets renders the auto-provisioned workspace and first-run state.
     // First-deploy regression surface lives here (route-guard chain on a
     // brand-new tenant, WorkspaceSwitcher with the auto-provisioned default).
     await page.goto(workspaceHref(workspaceId, "fleets"));
-    await expect(page.getByRole("heading", { name: /fleets/i }).first()).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Getting started" })).toBeVisible();
     await expect(page.getByTestId("workspace-switcher")).toBeVisible();
-    await expect(page.getByText(/no fleets yet/i)).toBeVisible();
 
     // Install via the dashboard template gallery. The fresh tenant has exactly
     // one auto-provisioned workspace (signup.workspaceId) — the one active in

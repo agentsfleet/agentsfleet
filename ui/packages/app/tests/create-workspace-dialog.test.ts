@@ -48,7 +48,7 @@ describe("CreateWorkspaceDialog component", () => {
     await user.type(screen.getByTestId("workspace-name-input"), "  acme-prod  ");
     await user.click(screen.getByTestId("workspace-create-submit"));
     await waitFor(() => expect(createWorkspaceActionMock).toHaveBeenCalledWith({ name: "acme-prod" }));
-    expect(onCreated).toHaveBeenCalledWith("acme-prod");
+    expect(onCreated).toHaveBeenCalledWith({ workspace_id: "ws_x", name: "acme-prod" });
     expect(onOpenChange).toHaveBeenCalledWith(false);
     expect(routerPush).toHaveBeenCalledWith("/w/ws_x");
   });

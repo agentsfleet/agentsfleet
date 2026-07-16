@@ -723,10 +723,24 @@ The deleted worker's single in-process `processEvent` loop is now split across t
                    id:<seq>\nevent:<kind>\ndata:<json>\n\n
                → on disconnect: UNSUBSCRIBE, close.
 
-   UI        Dashboard /fleets/{id}/live
-               → same GET /events/stream SSE consumer.
+   UI        Fleet Console /fleets/{id}
+               → same per-fleet GET /events/stream SSE consumer.
                → on page load also fetches GET /events?limit=20 for
                  recent history context.
+
+   UI        Fleets Wall /fleets
+               → opens ONE GET /v1/workspaces/{id}/events/stream SSE
+                 connection for every visible live fleet.
+               → agentsfleetd authorizes the workspace and fans in only its
+                 readable fleet:{id}:activity channels through one bounded
+                 shared-consumer ring.
+               → first frame is hello { fleet_ids:[...] }; this is the live
+                 set the wall trusts for quiet-versus-last-known status.
+               → activity data gains fleet_id; the wall routes it to one tile.
+               → if the bounded ring drops old frames, agentsfleetd sends
+                 catching_up { dropped:N }; the wall shows recovery state.
+               → hello and catching_up use id:0 without advancing the
+                 per-connection activity sequence.
 
    SSE auth (dual-accept, strict no-fallthrough). The endpoint accepts
    EITHER a session cookie (browser EventSource path; cookie sent
@@ -744,8 +758,10 @@ The deleted worker's single in-process `processEvent` loop is now split across t
    per-connection in-memory monotonic counter that resets to 0 on each
    new SUBSCRIBE. The server IGNORES the Last-Event-ID request header —
    sequence ids are not durable and have no cross-connection meaning.
-   Clients backfill via GET /events?cursor=<last_seen_event_id>&limit=20
-   after reconnect; the new SSE then resumes from sequence 0.
+   Clients backfill after reconnect through the matching events list. The
+   first request uses a server-time `since` floor; later pages use only the
+   server-issued `next_cursor`. Clients never derive a cursor from an event id.
+   The new SSE resumes its activity sequence from 0.
 
    HISTORY   agentsfleet events {id} [--actor=…] [--since=2h]
              Dashboard /fleets/{id}/events
@@ -755,9 +771,9 @@ The deleted worker's single in-process `processEvent` loop is now split across t
                → reads core.fleet_sessions
                  ("busy or idle, last response").
 
-   If a live frame drops (slow consumer, network blip), the user pulls
-   the gap from GET /events. Live tail is best-effort by design; the
-   durable record is core.fleet_events.
+   If a live frame drops (slow consumer, network blip), the client pulls
+   the gap from the matching GET /events list. Live tail is best-effort;
+   the durable record is core.fleet_events.
 ```
 
 ### KILL

@@ -13,16 +13,30 @@
 //! check and the wait (the same registered-waiter shape `Io.Condition` uses
 //! internally, plus a deadline).
 //!
-//! Created by `SubscriptionHub.subscribe`, destroyed by
-//! `SubscriptionHub.unsubscribe`; the stream thread only borrows it between
-//! those two calls.
+//! Ownership is refcounted (`ref`/`unref`), and that is load-bearing: the hub
+//! reader fans a frame out with the channel-map mutex RELEASED, so a racing
+//! `unsubscribe` must not free a handle the reader already snapshotted. The
+//! stream thread holds one ref for its lifetime; the reader holds one for the
+//! duration of a push; the last `unref` frees. `SubscriptionHub.subscribe`
+//! hands out the first ref, `unsubscribe` drops it.
 
 const Self = @This();
 
 alloc: std.mem.Allocator,
 io: std.Io,
-/// Channel this subscription is attached to. Owned copy.
+/// Live references to this handle: the owner (stream thread) plus any reader
+/// fan-out currently pushing into it. Zero ⇒ freed. Without it, pushing
+/// outside the hub's map mutex would be a use-after-free the moment a viewer
+/// closed mid-frame.
+refs: std.atomic.Value(u32) = .init(1),
+/// Channel this subscription is attached to. Owned copy. A shared (tagged)
+/// consumer is attached to N channels through the hub; this field then only
+/// labels the consumer (log/teardown identity), never a map key.
 channel_name: []u8,
+/// Shared-consumer marker, set by `SubscriptionHub.createConsumer`. The hub
+/// reader routes tagged consumers through `pushTagged` so each queued frame
+/// carries its originating channel.
+tagged: bool = false,
 /// Guards the epoch counter and payload ring; the epoch is read under it before a futex sleep.
 mutex: std.Io.Mutex = .init,
 /// Bumped (release) + futex-woken on every push/close; pop reads it under
@@ -38,10 +52,18 @@ count: usize = 0,
 drops: u64 = 0,
 closed: bool = false,
 
-/// Per-stream standing buffer: 64 frames × publisher-bounded activity
-/// payloads (~1 KiB typical) ≈ 64 KiB worst case for one stalled consumer,
-/// bounded overall by the SSE stream cap.
+/// Per-consumer standing buffer: 64 frames × publisher-bounded activity
+/// payloads (~1 KiB typical) ≈ 64 KiB worst case for one stalled consumer.
+/// A per-fleet stream owns one consumer; a workspace stream's whole fan-in
+/// SHARES one tagged consumer, so the budget stays per-CONNECTION —
+/// fleet-count-independent — and the overall ceiling is the SSE stream cap
+/// times this capacity, never cap × fleets.
 pub const QUEUE_CAPACITY: usize = 64;
+
+/// Separates channel name from payload inside a tagged frame. `\n` cannot
+/// appear in a Redis channel name, so the consumer splits at the FIRST
+/// occurrence unambiguously.
+pub const TAGGED_FRAME_DELIMITER: u8 = '\n';
 
 pub const PopResult = union(enum) {
     /// Caller owns the payload; free it with the allocator the hub was
@@ -59,17 +81,60 @@ pub fn create(alloc: std.mem.Allocator, io: std.Io, channel_name: []const u8) er
     return self;
 }
 
-/// Hub-only: by the time the hub calls this it has unhooked the subscription
-/// from its map, so no producer can race the teardown; the consumer's part
-/// of the deal is that the stream thread never touches the handle after
-/// unsubscribe.
-pub fn destroy(self: *Self) void {
+/// A shared consumer: one queue/epoch fed by N channel attachments, so the
+/// stream thread does ONE futex wait for a whole fan-in. `label` names the
+/// consumer in logs (a workspace id) — it is never a channel map key.
+pub fn createShared(alloc: std.mem.Allocator, io: std.Io, label: []const u8) error{OutOfMemory}!*Self {
+    const self = try create(alloc, io, label);
+    self.tagged = true;
+    return self;
+}
+
+/// One frame off a shared consumer: the channel it arrived on plus the
+/// publisher's untouched payload. Both borrow the popped buffer — free the
+/// buffer, not these.
+pub const TaggedFrame = struct {
+    channel_name: []const u8,
+    payload: []const u8,
+};
+
+/// Split a `pushTagged` frame. Null when the delimiter is absent — a frame
+/// shape the consumer must drop rather than mis-route.
+pub fn splitTagged(frame: []const u8) ?TaggedFrame {
+    const cut = std.mem.indexOfScalar(u8, frame, TAGGED_FRAME_DELIMITER) orelse return null;
+    return .{ .channel_name = frame[0..cut], .payload = frame[cut + 1 ..] };
+}
+
+/// Take a reference. The hub reader calls this under the channel-map mutex
+/// while snapshotting subscribers, so the handle cannot be freed by a racing
+/// `unsubscribe` between the snapshot and the push.
+pub fn ref(self: *Self) void {
+    // safe because: the map mutex (or an existing ref) already keeps the
+    // handle alive at the call site — this bump only publishes the new count
+    // to whoever later does the releasing decrement.
+    _ = self.refs.fetchAdd(1, .monotonic);
+}
+
+/// Drop a reference; the last one frees. `unref` is the ONLY way a handle is
+/// released — a caller that still holds a ref cannot be use-after-freed by
+/// another thread's unsubscribe.
+pub fn unref(self: *Self) void {
+    // safe because: acq_rel makes every prior push's writes visible to the
+    // thread that observes the final decrement and runs the free.
+    if (self.refs.fetchSub(1, .acq_rel) != 1) return;
+    self.destroy();
+}
+
+/// Free the handle. Private: the last `unref` calls it, so no caller can free
+/// a subscription another thread is still pushing into.
+fn destroy(self: *Self) void {
     while (self.count > 0) : (self.count -= 1) {
         self.alloc.free(self.ring[self.tail]);
         self.tail = (self.tail + 1) % QUEUE_CAPACITY;
     }
     self.alloc.free(self.channel_name);
     const alloc = self.alloc;
+    self.* = undefined;
     alloc.destroy(self);
 }
 
@@ -81,6 +146,26 @@ pub fn push(self: *Self, payload: []const u8) void {
         self.noteDrop();
         return;
     };
+    self.enqueueOwned(copy);
+}
+
+/// Producer side for a shared (tagged) consumer: the frame is stored as
+/// `channel ++ TAGGED_FRAME_DELIMITER ++ payload` in one owned buffer, so
+/// the consumer can splice the originating fleet id from the channel name
+/// without re-parsing the payload. Same drop semantics as `push`.
+pub fn pushTagged(self: *Self, channel_name: []const u8, payload: []const u8) void {
+    const copy = self.alloc.alloc(u8, channel_name.len + 1 + payload.len) catch {
+        self.noteDrop();
+        return;
+    };
+    @memcpy(copy[0..channel_name.len], channel_name);
+    copy[channel_name.len] = TAGGED_FRAME_DELIMITER;
+    @memcpy(copy[channel_name.len + 1 ..], payload);
+    self.enqueueOwned(copy);
+}
+
+/// Ring insert shared by `push`/`pushTagged`. Takes ownership of `copy`.
+fn enqueueOwned(self: *Self, copy: []u8) void {
     var evicted: ?[]u8 = null;
     {
         self.mutex.lockUncancelable(self.io);

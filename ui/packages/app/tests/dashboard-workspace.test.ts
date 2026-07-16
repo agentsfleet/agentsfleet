@@ -235,5 +235,6 @@ describe("WorkspaceSwitcher component", () => {
     await waitFor(() =>
       expect(screen.getByText("Workspace created: inline-prod.")).toBeTruthy(),
     );
+    expect(screen.getByRole("menuitem", { name: "inline-prod" })).toBeTruthy();
   });
 });

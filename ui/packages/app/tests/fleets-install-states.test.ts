@@ -1,6 +1,6 @@
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { routerPush, routerRefresh, resetCommonMocks } from "./helpers/dashboard-mocks";
 import { INSTALL_STEP } from "@/lib/streaming/install-steps";
@@ -14,10 +14,12 @@ import type { FleetLibraryGalleryEntry } from "@/lib/types";
 // flow opens on the selected template and creates with a visibility-keyed body.
 const {
   installFleetActionMock,
+  listFleetsActionMock,
   captureProductEventMock,
   useFleetEventStreamMock,
 } = vi.hoisted(() => ({
   installFleetActionMock: vi.fn(),
+  listFleetsActionMock: vi.fn(),
   captureProductEventMock: vi.fn(),
   useFleetEventStreamMock: vi.fn(),
 }));
@@ -26,6 +28,7 @@ vi.mock("next/navigation", async () => (await import("./helpers/dashboard-mocks"
 vi.mock("next/link", async () => (await import("./helpers/dashboard-mocks")).nextLinkMock());
 vi.mock("@/app/(dashboard)/w/[workspaceId]/fleets/actions", () => ({
   installFleetAction: installFleetActionMock,
+  listFleetsAction: listFleetsActionMock,
 }));
 vi.mock("@/lib/analytics/posthog", () => ({ captureProductEvent: captureProductEventMock }));
 vi.mock("@/components/domain/useFleetEventStream", () => ({
@@ -105,8 +108,12 @@ beforeEach(() => {
   vi.clearAllMocks();
   resetCommonMocks();
   stubStream(null);
+  listFleetsActionMock.mockReturnValue(new Promise(() => {}));
 });
-afterEach(() => cleanup());
+afterEach(() => {
+  vi.useRealTimers();
+  cleanup();
+});
 
 // ── 9.4: states render in order; error shows retry ──────────────────────────
 
@@ -303,6 +310,52 @@ describe("test_install_status_stream — InstallStreamSteps consumes the SSE str
     expect(screen.getByText(/is ready/i)).toBeTruthy();
     await user.click(screen.getByRole("button", { name: /open fleet/i }));
     expect(onOpen).toHaveBeenCalledTimes(1);
+  });
+
+  it("reconciles a missed ready frame from the fleet's active server status", async () => {
+    stubStream(null);
+    listFleetsActionMock.mockResolvedValueOnce({
+      ok: true,
+      data: { items: [{ id: "zom_1", status: "active" }] },
+    });
+    renderSteps();
+    await waitFor(() => expect(screen.getByRole("button", { name: /open fleet/i })).toBeTruthy());
+    expect(listFleetsActionMock).toHaveBeenCalledWith("ws_1", { limit: 100 });
+  });
+
+  it("stops bounded reconciliation with an error when durable status never becomes active", async () => {
+    vi.useFakeTimers();
+    stubStream(null);
+    listFleetsActionMock
+      .mockResolvedValueOnce({ ok: false, error: "temporarily unavailable", status: 503 })
+      .mockResolvedValue({ ok: true, data: { items: [] } });
+    renderSteps();
+
+    await act(async () => {
+      await vi.runAllTimersAsync();
+    });
+
+    expect(screen.getByText(/install failed/i)).toBeTruthy();
+    expect(listFleetsActionMock).toHaveBeenCalledTimes(12);
+  });
+
+  it("drops an in-flight reconciliation result after unmount", async () => {
+    vi.useFakeTimers();
+    stubStream(null);
+    let resolveList: (value: unknown) => void = () => {};
+    listFleetsActionMock.mockReturnValueOnce(new Promise((resolve) => (resolveList = resolve)));
+    const view = renderSteps();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(500);
+    });
+    view.unmount();
+    await act(async () => {
+      resolveList({ ok: true, data: { items: [{ id: "zom_1", status: "active" }] } });
+      await Promise.resolve();
+    });
+
+    expect(screen.queryByRole("button", { name: /open fleet/i })).toBeNull();
   });
 
   it("an error step renders the failure line (spinner never hangs)", () => {

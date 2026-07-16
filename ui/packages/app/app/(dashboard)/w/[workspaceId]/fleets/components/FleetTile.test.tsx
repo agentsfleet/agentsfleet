@@ -12,11 +12,13 @@ vi.mock("next/link", () => ({
 // The streaming hook is the tile's only live dependency; a stub lets each test
 // pin connectionStatus + the last event without a real EventSource.
 const streamMock = vi.fn();
-vi.mock("@/components/domain/useFleetEventStream", () => ({
-  useFleetEventStream: (...a: unknown[]) => streamMock(...a),
+vi.mock("@/components/domain/useWorkspaceStream", () => ({
+  useWorkspaceFleetStream: (...a: unknown[]) => streamMock(...a),
 }));
 
 import FleetTile from "./FleetTile";
+
+const LAST_KNOWN_LABEL = "last known";
 
 function fleet(over: Partial<Fleet> = {}): Fleet {
   return {
@@ -52,7 +54,13 @@ describe("FleetTile — the three kinds (Inv. 1)", () => {
   });
 
   it("an active fleet with a live stream renders the live kind + server-truth footer, pulse animating (1.2, 2.1)", () => {
-    streamMock.mockReturnValue({ events: [], connectionStatus: CONNECTION_STATUS.LIVE });
+    streamMock.mockReturnValue({
+      events: [],
+      connectionStatus: CONNECTION_STATUS.LIVE,
+      helloReceived: true,
+      isLive: true,
+      catchingUp: false,
+    });
     const { container, getByText } = renderTile(fleet());
     expect(container.querySelector('[data-kind="live"]')).not.toBeNull();
     // Footer reads server truth, not token math.
@@ -67,10 +75,13 @@ describe("FleetTile — the three kinds (Inv. 1)", () => {
     streamMock.mockReturnValue({
       events: [{ id: "e1", role: "assistant", actor: "fleet", text: "ran a check", createdAt: new Date(0), status: "received" }],
       connectionStatus: CONNECTION_STATUS.RECONNECTING,
+      helloReceived: true,
+      isLive: true,
+      catchingUp: false,
     });
     const { container, getByText } = renderTile(fleet());
     expect(container.querySelector('[data-kind="snapshot"]')).not.toBeNull();
-    expect(getByText("snapshot")).toBeTruthy();
+    expect(getByText(LAST_KNOWN_LABEL)).toBeTruthy();
     expect(getByText("ran a check")).toBeTruthy();
     // The pulse must NOT animate in snapshot mode — the animation is live-only,
     // so a frozen feed cannot masquerade as live (greptile P2, DESIGN_SYSTEM §Motion).
@@ -78,15 +89,53 @@ describe("FleetTile — the three kinds (Inv. 1)", () => {
   });
 
   it("an installing fleet streams with an info-toned marker", () => {
-    streamMock.mockReturnValue({ events: [], connectionStatus: CONNECTION_STATUS.CONNECTING });
+    streamMock.mockReturnValue({
+      events: [],
+      connectionStatus: CONNECTION_STATUS.CONNECTING,
+      helloReceived: false,
+      isLive: true,
+      catchingUp: false,
+    });
     const { container } = renderTile(fleet({ status: "installing" }));
     expect(container.querySelector(".bg-info")).not.toBeNull();
   });
 
   it("a fleet the daemon sent no aggregates for renders dashes, not $0.00", () => {
-    streamMock.mockReturnValue({ events: [], connectionStatus: CONNECTION_STATUS.LIVE });
+    streamMock.mockReturnValue({
+      events: [],
+      connectionStatus: CONNECTION_STATUS.LIVE,
+      helloReceived: true,
+      isLive: true,
+      catchingUp: false,
+    });
     const { getByText } = renderTile(fleet({ budget_used_nanos: undefined, events_processed: undefined }));
     expect(getByText("—")).toBeTruthy();
     expect(getByText("— ev")).toBeTruthy();
+  });
+
+  it("a tile absent from the server hello set renders snapshot, not live", () => {
+    streamMock.mockReturnValue({
+      events: [],
+      connectionStatus: CONNECTION_STATUS.LIVE,
+      helloReceived: true,
+      isLive: false,
+      catchingUp: false,
+    });
+    const { container, getByText } = renderTile(fleet());
+    expect(container.querySelector('[data-kind="snapshot"]')).not.toBeNull();
+    expect(getByText(LAST_KNOWN_LABEL)).toBeTruthy();
+    expect(container.querySelector('[data-live="true"]')).toBeNull();
+  });
+
+  it("a server drop signal surfaces catching up", () => {
+    streamMock.mockReturnValue({
+      events: [],
+      connectionStatus: CONNECTION_STATUS.LIVE,
+      helloReceived: true,
+      isLive: true,
+      catchingUp: true,
+    });
+    const { getByText } = renderTile(fleet());
+    expect(getByText("catching up")).toBeTruthy();
   });
 });
