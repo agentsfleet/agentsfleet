@@ -148,6 +148,18 @@ is optional (§5) and its blast radius is added only if its trigger fires. -->
 | `ui/packages/app/tests/e2e/acceptance/workspace-create.spec.ts` | EDIT | Assert workspace creation against the current routed surface. |
 | `ui/packages/app/tests/e2e/acceptance/workspace-url-flow.spec.ts` | EDIT | Assert root routing against the current first-run surface. |
 
+**Continuous Integration (CI) repair amendment — Jul 16, 2026.** Merging the latest `main` pushed three touched Zig files over the File and Function Length (FLL) limit and exposed untested bounded-reconciliation branches. Indy also selected the repository's hyphenated 1Password field convention while reviewing the newly merged QStash preflight. These files are added to the approved scope:
+
+| File | Action | Why |
+|------|--------|-----|
+| `src/agentsfleetd/cmd/serve_redis_timeout.zig` | CREATE | Keep Redis request-timeout startup resolution cohesive while returning `serve.zig` below the FLL limit. |
+| `src/agentsfleetd/http/route_admission.zig` | CREATE | Own exhaustive route admission classification and its stream-class test while returning `route_table.zig` below the FLL limit. |
+| `src/agentsfleetd/http/route_matchers_workspace.zig` | EDIT | Own the existing workspace fleet-key matcher so `route_matchers.zig` remains below the FLL limit. |
+| `ui/packages/app/lib/streaming/install-steps.ts` | EDIT | Declare the existing forward-only advance helper's non-null result when its next step is present. |
+| `ui/packages/app/tests/fleets-install-states.test.ts` | EDIT (already in table) | Cover failed durable-status reads, bounded retry exhaustion, capped backoff, and cancellation after unmount. |
+| `playbooks/operations/admin_bootstrap/001_playbook.md` | EDIT | Store and verify the canonical `agentsfleet-admin/api-key` 1Password field. |
+| `playbooks/operations/{github,jira,linear,slack,zoho}_app_registration/001_playbook.md` | EDIT | Read the same canonical `api-key` field already used by QStash and founding preflight. |
+
 ## Applicable Rules
 
 - **`docs/greptile-learnings/RULES.md`** — **NDC** + **ORP** (the wall's N-per-tile stream mode is DELETED, not stranded — every removed symbol swept, see Dead Code Sweep), **NLR** (touch-it-fix-it on the wall client), **STR** (streaming test must verify the transport frames over the wire, not just a parser), **KYS** (reconnect backfill is a `since` floor + `next_cursor` follow against the workspace events list's composite `(created_at, event_id)` keyset — the client never fabricates a cursor from an event id), **ECL** (Redis-down / hub-stopped is a distinct transient class from client disconnect — 503 vs quiet-close), **HLP** (the fleet enumeration is an inline handler query mirroring `fleets/list.zig:176` — no orphan store helper), **OBS** (cap rejection, Redis-unavailable, and fleet-set changes each get a log/metric), **ITF** (integration tests use real schema fixtures), **TSC/TSJ** (every `.ts` touched), **FLS** (the fleet-id enumeration query drains before `deinit`), **FLL** (handler ≤350 / fn ≤50).

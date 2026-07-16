@@ -1,6 +1,6 @@
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { routerPush, routerRefresh, resetCommonMocks } from "./helpers/dashboard-mocks";
 import { INSTALL_STEP } from "@/lib/streaming/install-steps";
@@ -110,7 +110,10 @@ beforeEach(() => {
   stubStream(null);
   listFleetsActionMock.mockReturnValue(new Promise(() => {}));
 });
-afterEach(() => cleanup());
+afterEach(() => {
+  vi.useRealTimers();
+  cleanup();
+});
 
 // ── 9.4: states render in order; error shows retry ──────────────────────────
 
@@ -318,6 +321,41 @@ describe("test_install_status_stream — InstallStreamSteps consumes the SSE str
     renderSteps();
     await waitFor(() => expect(screen.getByRole("button", { name: /open fleet/i })).toBeTruthy());
     expect(listFleetsActionMock).toHaveBeenCalledWith("ws_1", { limit: 100 });
+  });
+
+  it("stops bounded reconciliation with an error when durable status never becomes active", async () => {
+    vi.useFakeTimers();
+    stubStream(null);
+    listFleetsActionMock
+      .mockResolvedValueOnce({ ok: false, error: "temporarily unavailable", status: 503 })
+      .mockResolvedValue({ ok: true, data: { items: [] } });
+    renderSteps();
+
+    await act(async () => {
+      await vi.runAllTimersAsync();
+    });
+
+    expect(screen.getByText(/install failed/i)).toBeTruthy();
+    expect(listFleetsActionMock).toHaveBeenCalledTimes(12);
+  });
+
+  it("drops an in-flight reconciliation result after unmount", async () => {
+    vi.useFakeTimers();
+    stubStream(null);
+    let resolveList: (value: unknown) => void = () => {};
+    listFleetsActionMock.mockReturnValueOnce(new Promise((resolve) => (resolveList = resolve)));
+    const view = renderSteps();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(500);
+    });
+    view.unmount();
+    await act(async () => {
+      resolveList({ ok: true, data: { items: [{ id: "zom_1", status: "active" }] } });
+      await Promise.resolve();
+    });
+
+    expect(screen.queryByRole("button", { name: /open fleet/i })).toBeNull();
   });
 
   it("an error step renders the failure line (spinner never hangs)", () => {

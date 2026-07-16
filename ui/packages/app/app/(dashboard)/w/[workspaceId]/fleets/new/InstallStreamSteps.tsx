@@ -35,7 +35,7 @@ function useInstallStatusReconciliation(
   useEffect(() => {
     if (installStep === INSTALL_STEP.READY || installStep === INSTALL_STEP.ERROR) return;
     let cancelled = false;
-    let timer: ReturnType<typeof setTimeout> | null = null;
+    let timer: ReturnType<typeof setTimeout>;
     let attempt = 0;
     async function reconcile() {
       const result = await listFleetsAction(workspaceId, { limit: 100 });
@@ -58,7 +58,7 @@ function useInstallStatusReconciliation(
     timer = setTimeout(() => void reconcile(), STATUS_RECONCILE_BASE_MS);
     return () => {
       cancelled = true;
-      if (timer) clearTimeout(timer);
+      clearTimeout(timer);
     };
   }, [fleetId, installStep, workspaceId]);
   return reconciledStep;
@@ -78,7 +78,7 @@ export function InstallStreamSteps({ workspaceId, fleetId, fleetName, onOpen }: 
   const { installStep } = useFleetEventStream(workspaceId, fleetId, []);
   const reconciledStep = useInstallStatusReconciliation(workspaceId, fleetId, installStep);
   const current = reconciledStep
-    ? advanceInstallStep(installStep, reconciledStep) ?? INSTALL_STEP.CREATING
+    ? advanceInstallStep(installStep, reconciledStep)
     : installStep ?? INSTALL_STEP.CREATING;
   const done = isInstallComplete(current);
 

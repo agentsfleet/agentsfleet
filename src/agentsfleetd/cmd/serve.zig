@@ -29,8 +29,8 @@ const fleet_set_cache = @import("../events/fleet_set_cache.zig");
 const stream_registry = @import("../http/stream_registry.zig");
 const model_rate_cache = @import("../state/model_rate_cache.zig");
 const crypto_primitives = @import("../secrets/crypto_primitives.zig");
-const env_resolve = @import("../config/env_resolve.zig");
 const serve_qstash = @import("serve_qstash.zig");
+const serve_redis_timeout = @import("serve_redis_timeout.zig");
 
 const log = logging.scoped(.agentsfleetd);
 
@@ -41,22 +41,6 @@ const S_STARTUP_MODEL_RATE_CACHE_FAILED = "startup.model_rate_cache_failed";
 const S_STARTUP_ARGS_PARSE_FAILED = "startup.args_parse_failed";
 const S_STARTUP_ENV_CHECK_FAILED = "startup.env_check_failed";
 const S_API = "api";
-
-/// Boot-path read of the request-path Redis read-timeout knob.
-/// Absent env → default; present-but-malformed → fail loud (env hygiene
-/// matches DATABASE_URL / REDIS_URL validation upstream).
-fn readRedisRequestTimeoutMs(env_map: *const EnvMap, alloc: std.mem.Allocator) u32 {
-    const raw = env_resolve.config(env_map, alloc, queue_redis.REDIS_REQUEST_TIMEOUT_MS_ENV) orelse
-        return queue_redis.REDIS_REQUEST_TIMEOUT_MS_DEFAULT;
-    defer alloc.free(raw);
-    return queue_redis.parseRequestTimeoutMs(raw) catch {
-        log.err(S_STARTUP_ENV_CHECK_FAILED, .{
-            .error_code = error_codes.ERR_STARTUP_ENV_CHECK,
-            .err = queue_redis.REDIS_REQUEST_TIMEOUT_MS_ENV ++ " must parse as a non-negative integer (ms)",
-        });
-        std.process.exit(1);
-    };
-}
 
 const webhook_sig = auth_mw.webhook_sig_mod;
 const svix_signature = auth_mw.svix_signature_mod;
@@ -130,7 +114,7 @@ pub fn run(io: std.Io, env_map: *const EnvMap, argv: []const [:0]const u8, alloc
     defer api_pool.deinit();
 
     log.info("startup.redis_connect_start", .{ .role = S_API });
-    const redis_request_timeout_ms = readRedisRequestTimeoutMs(env_map, alloc);
+    const redis_request_timeout_ms = serve_redis_timeout.read(env_map, alloc);
     log.info("startup.redis_request_timeout_resolved", .{ .ms = redis_request_timeout_ms });
     var api_queue = queue_redis.Client.connectFromEnvWithOptions(io, env_map, alloc, .api, .{
         .read_timeout_ms = redis_request_timeout_ms,
