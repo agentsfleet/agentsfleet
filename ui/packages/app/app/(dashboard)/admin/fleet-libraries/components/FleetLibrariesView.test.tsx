@@ -42,6 +42,7 @@ function entry(over: Partial<PlatformCatalogEntry> = {}): PlatformCatalogEntry {
     },
     required_credentials_reasons: {},
     support_files: [{ path: "README.md", size_bytes: 120 }],
+    etag: '"catalog-v1"',
     updated_at: 1_700_000_000_000,
     ...over,
   };
@@ -128,7 +129,7 @@ describe("FleetLibrariesView", () => {
     await waitFor(() => {
       expect(patchPlatformLibraryActionMock).toHaveBeenCalledWith("platform-ops", {
         published: true,
-      });
+      }, DRAFT.etag);
     });
   });
 
@@ -231,7 +232,7 @@ describe("FleetLibrariesView", () => {
     await waitFor(() => {
       expect(patchPlatformLibraryActionMock).toHaveBeenCalledWith("github-pr-reviewer", {
         published: false,
-      });
+      }, PUBLISHED.etag);
     });
   });
 
@@ -331,4 +332,3 @@ describe("FleetLibrariesView", () => {
     expect(screen.queryByRole("link", { name: /platform\/template:ops/ })).toBeNull();
   });
 });
-

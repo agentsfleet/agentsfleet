@@ -119,15 +119,25 @@ pub const SELECT_ADMIN_CATALOG_ROW =
     \\ WHERE id = $1
 ;
 
-/// Read one row's lifecycle facts. Backs four guards: publish-needs-a-bundle,
-/// delete-needs-unpublished, the add-path's id-collision check (whether this id
-/// already belongs to a DIFFERENT repository), and the PATCH's publish-vs-
-/// source-change check (you cannot publish a bundle you are discarding in the
-/// same request).
+/// Read one row's lifecycle facts + its editable surface. Backs five guards:
+/// publish-needs-a-bundle, delete-needs-unpublished, the add-path's
+/// id-collision check (whether this id already belongs to a DIFFERENT
+/// repository), the PATCH's publish-vs-source-change check (you cannot publish
+/// a bundle you are discarding in the same request), and the PATCH's `If-Match`
+/// optimistic-concurrency verdict — which hashes `name` … `visibility` (NOT
+/// `content_hash`, so a bundle refetch does not 412 an unrelated description
+/// edit). Column order here is the ETag field order in `catalog.rowSurface`.
 pub const SELECT_CATALOG_ROW =
-    \\SELECT source_repo, visibility, content_hash, source_ref
+    \\SELECT source_repo, visibility, content_hash, source_ref,
+    \\       name, description, required_credentials_reasons::text
     \\  FROM core.fleet_library
     \\ WHERE id = $1
+;
+
+/// PATCH snapshot: lock the row before checking `If-Match`, so the version
+/// verdict and the guarded writes observe one serial state.
+pub const SELECT_CATALOG_ROW_FOR_UPDATE = SELECT_CATALOG_ROW ++
+    \\ FOR UPDATE
 ;
 
 /// The operator's pencil: the two fields no bundle can supply. `description` and

@@ -38,7 +38,7 @@ pub const IS_REFERENCED_BY_ACTIVE_DEFAULT =
     \\    ON plk.provider = mc.provider AND plk.model = mc.model_id AND plk.active = true
     \\ WHERE mc.uid = $1::uuid
     \\ LIMIT 1
-;
+    ;
 
 /// Insert one priced row; ON CONFLICT (provider, model_id) DO NOTHING so the
 /// affected count is 1 on create and 0 on a duplicate (caller → 409).
@@ -50,7 +50,7 @@ pub const INSERT_ROW =
     \\   created_at_ms, updated_at_ms)
     \\VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $8)
     \\ON CONFLICT (provider, model_id) DO NOTHING
-;
+    ;
 
 /// Update caps/rates of the row identified by uid. Affected 0 → no such uid
 /// (caller → 404).
@@ -61,7 +61,7 @@ pub const UPDATE_RATES =
     \\       cached_input_nanos_per_mtok = $4, output_nanos_per_mtok = $5,
     \\       updated_at_ms = $6
     \\ WHERE uid = $1::uuid
-;
+    ;
 
 /// Delete the row identified by uid. Affected 0 → no such uid (caller → 404).
 pub const DELETE_BY_UID =

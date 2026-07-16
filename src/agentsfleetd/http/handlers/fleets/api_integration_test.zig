@@ -11,6 +11,7 @@ const auth_mw = @import("../../../auth/middleware/mod.zig");
 
 const id_format = @import("../../../types/id_format.zig");
 const harness_mod = @import("../../test_harness.zig");
+const test_qstash = @import("../test_qstash.zig");
 const TestHarness = harness_mod.TestHarness;
 const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
 
@@ -387,6 +388,7 @@ test "integration: install — cron-only trigger returns empty webhook_urls map"
         else => return err,
     };
     defer h.deinit();
+    test_qstash.attachSuccess(h);
     if (!h.tryConnectRedis()) return error.SkipZigTest;
 
     const conn = try h.acquireConn();
@@ -552,6 +554,7 @@ test "integration: fleet create persists SKILL.md tags into required_tags" {
         else => return err,
     };
     defer h.deinit();
+    test_qstash.attachSuccess(h);
     if (!h.tryConnectRedis()) return error.SkipZigTest;
 
     const conn = try h.acquireConn();
@@ -781,6 +784,7 @@ test "integration: fleet patch re-derives required_tags from reparsed source_mar
         else => return err,
     };
     defer h.deinit();
+    test_qstash.attachSuccess(h);
     if (!h.tryConnectRedis()) return error.SkipZigTest;
 
     const conn = try h.acquireConn();

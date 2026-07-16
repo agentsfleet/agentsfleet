@@ -26,11 +26,29 @@ const parseCursor = filter_mod.parseCursor;
 // SELECT list shared across every branch. Trailing newline matters —
 // the concatenated suffix begins with WHERE/ORDER BY (PG syntax error
 // 42601 if glued straight onto `core.fleet_events`).
+//
+// `cost_nanos` is what this event actually cost, summed over its telemetry
+// rows — billing writes up to two per event (`receive`, `stage`, unique on
+// `(event_id, charge_type)`), so a bare LEFT JOIN would duplicate the event
+// row per leg. The correlated subselect keeps one row per event and yields
+// SQL NULL when no telemetry exists (an unbilled run reads as "unknown", never
+// as zero). Cost is server truth: the client never derives it from tokens.
+//
+// Perf note: this subselect runs once per returned event row (≤200/page), but
+// the `UNIQUE (event_id, charge_type)` index bounds each execution to an index
+// probe of ≤2 rows — so it is index-bounded, NOT the unbounded per-fleet scan
+// the fleet-list aggregates were (those now read the trigger-maintained
+// `core.fleet_activity_counters` row; this query stays event-scoped, and a page
+// here is one fleet, not the workspace-wide Live Wall).
 const EVENTS_SELECT =
     \\SELECT fleet_id::text, event_id, workspace_id::text, actor, event_type,
     \\       status, request_json::text, response_text, tokens, wall_ms,
     \\       failure_label, checkpoint_id, resumes_event_id,
-    \\       created_at, updated_at
+    \\       created_at, updated_at,
+    \\       (SELECT SUM(te.credit_deducted_nanos)::bigint
+    \\          FROM core.fleet_execution_telemetry te
+    \\         WHERE te.event_id = core.fleet_events.event_id
+    \\           AND te.fleet_id = core.fleet_events.fleet_id::text) AS cost_nanos
     \\FROM core.fleet_events
     \\
 ;
@@ -53,6 +71,10 @@ pub const EventRow = struct {
     resumes_event_id: ?[]u8,
     created_at: i64,
     updated_at: i64,
+    /// Summed `credit_deducted_nanos` over this event's telemetry rows.
+    /// `null` when the event recorded no telemetry — the ledger renders that
+    /// as unknown, never as a zero charge. Scalar: nothing to free in deinit.
+    cost_nanos: ?i64,
 
     pub fn deinit(self: *Self, alloc: std.mem.Allocator) void {
         alloc.free(self.fleet_id);
@@ -239,6 +261,7 @@ fn readRow(alloc: std.mem.Allocator, row: pg.Row) !EventRow {
     errdefer if (resumes_event_id) |v| alloc.free(v);
     const created_at = try row.get(i64, 13);
     const updated_at = try row.get(i64, 14);
+    const cost_nanos = try row.get(?i64, 15);
 
     return .{
         .fleet_id = fleet_id,
@@ -256,6 +279,7 @@ fn readRow(alloc: std.mem.Allocator, row: pg.Row) !EventRow {
         .resumes_event_id = resumes_event_id,
         .created_at = created_at,
         .updated_at = updated_at,
+        .cost_nanos = cost_nanos,
     };
 }
 

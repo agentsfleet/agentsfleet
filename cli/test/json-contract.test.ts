@@ -29,6 +29,7 @@ function makeStubHandlers(): Handlers {
     apiKey:    { create: noop, list: noop, revoke: noop, delete: noop },
     connector: { list: noop, status: noop },
     grant:     { list: noop, delete: noop },
+    schedule:  { add: noop, list: noop, update: noop, rm: noop, status: noop, sync: noop },
     tenant:    { provider: { show: noop, create: noop, delete: noop } },
     billing:   { show: noop },
     fleet: {
@@ -70,6 +71,7 @@ describe("CLI tree — every documented route is reachable through commander", (
     ["api-key", "create"], ["api-key", "list"], ["api-key", "revoke"], ["api-key", "delete"],
     ["connector", "list"], ["connector", "status"],
     ["grant", "list"], ["grant", "delete"],
+    ["schedule", "add"], ["schedule", "list"], ["schedule", "update"], ["schedule", "rm"], ["schedule", "status"], ["schedule", "sync"],
     ["tenant", "provider", "show"], ["tenant", "provider", "create"], ["tenant", "provider", "delete"],
     ["billing", "show"],
     ["install"], ["list"], ["status"], ["stop"], ["resume"], ["kill"], ["delete"],

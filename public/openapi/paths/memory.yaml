@@ -67,3 +67,48 @@
         $ref: ../components/responses.yaml#/components/responses/Error
       default:
         $ref: ../components/responses.yaml#/components/responses/Error
+/v1/workspaces/{workspace_id}/fleets/{fleet_id}/memories/{key}:
+  delete:
+    operationId: delete_fleet_memory
+    summary: Forget a fleet memory entry
+    description: |
+      Deletes one memory entry for this fleet. The key is scoped to the fleet, so a key from another fleet is not deleted.
+
+      Missing keys return 404 so an operator can tell a mistyped key from a successful forget.
+    tags:
+    - Memory
+    parameters:
+    - name: workspace_id
+      in: path
+      required: true
+      description: UUIDv7 of the workspace.
+      schema:
+        type: string
+        format: uuid
+    - name: fleet_id
+      in: path
+      required: true
+      description: UUIDv7 of the fleet.
+      schema:
+        type: string
+        format: uuid
+    - name: key
+      in: path
+      required: true
+      description: Memory entry key.
+      schema:
+        type: string
+    responses:
+      '204':
+        description: Memory entry deleted.
+      '400':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '401':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '403':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '404':
+        description: No memory entry with that key exists for this fleet.
+        $ref: ../components/responses.yaml#/components/responses/Error
+      default:
+        $ref: ../components/responses.yaml#/components/responses/Error

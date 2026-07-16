@@ -59,6 +59,16 @@ fn makeResponse(alloc: std.mem.Allocator, status: u16, body: []const u8) !Respon
     };
 }
 
+test "Response.header reads captured headers case-insensitively" {
+    const alloc = std.testing.allocator;
+    const body = try alloc.dupe(u8, "{}");
+    const headers = try alloc.dupe(u8, "HTTP/1.1 200 OK\r\nETag: \"abc\"\r\n\r\n");
+    const response: Response = .{ .status = 200, .body = body, .headers = headers, .alloc = alloc };
+    defer response.deinit();
+    try std.testing.expectEqualStrings("\"abc\"", response.header("etag").?);
+    try std.testing.expect(response.header("missing") == null);
+}
+
 // ── T1: Request builder happy paths ────────────────────────────────────────
 
 test "Request.header stores name and value at current slot" {

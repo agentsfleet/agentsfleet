@@ -94,11 +94,12 @@ export async function listPlatformFleetLibrary(token: string): Promise<PlatformC
 export async function patchPlatformFleetLibraryEntry(
   id: string,
   body: PlatformCatalogPatch,
+  ifMatch: string,
   token: string,
 ): Promise<PlatformCatalogEntry> {
   return request<PlatformCatalogEntry>(
     platformEntryPath(id),
-    { method: "PATCH", body: JSON.stringify(body) },
+    { method: "PATCH", headers: { "If-Match": ifMatch }, body: JSON.stringify(body) },
     token,
   );
 }

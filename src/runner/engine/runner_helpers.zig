@@ -12,6 +12,7 @@ const providers = nullclaw.providers;
 const json = @import("json_helpers.zig");
 const wire = @import("wire.zig");
 const tool_bridge = @import("tool_bridge.zig");
+const hosted_tools = @import("hosted_tools.zig");
 const context_budget = @import("context_budget.zig");
 const credential_request = @import("credential_request.zig");
 const runner_progress = @import("runner_progress.zig");
@@ -238,14 +239,8 @@ pub fn buildToolsFromSpec(
     policy: ?*const context_budget.ExecutionPolicy,
     cred_channel: ?credential_request.Channel,
 ) ![]tools_mod.Tool {
-    const spec = tools_spec orelse return tools_mod.allTools(alloc, workspace_path, .{
-        .allowed_paths = &.{workspace_path},
-        .tools_config = cfg.tools,
-    });
-    if (spec != .array) return tools_mod.allTools(alloc, workspace_path, .{
-        .allowed_paths = &.{workspace_path},
-        .tools_config = cfg.tools,
-    });
+    const spec = tools_spec orelse return hosted_tools.buildDefault(alloc, workspace_path, cfg);
+    if (spec != .array) return hosted_tools.buildDefault(alloc, workspace_path, cfg);
 
     const result = try tool_bridge.buildTools(alloc, spec, workspace_path, cfg, policy, cred_channel);
     for (result.skipped) |name| {

@@ -52,6 +52,15 @@ export interface GrantHandlers {
   delete: CommandHandlerFn;
 }
 
+export interface ScheduleHandlers {
+  add: CommandHandlerFn;
+  list: CommandHandlerFn;
+  update: CommandHandlerFn;
+  rm: CommandHandlerFn;
+  status: CommandHandlerFn;
+  sync: CommandHandlerFn;
+}
+
 export interface TenantProviderHandlers {
   show: CommandHandlerFn;
   create: CommandHandlerFn;
@@ -104,6 +113,7 @@ export interface Handlers {
   apiKey: ApiKeyHandlers;
   connector: ConnectorHandlers;
   grant: GrantHandlers;
+  schedule: ScheduleHandlers;
   tenant: TenantHandlers;
   billing: BillingHandlers;
   fleet: FleetHandlers;

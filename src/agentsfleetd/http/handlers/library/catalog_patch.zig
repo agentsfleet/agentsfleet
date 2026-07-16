@@ -23,6 +23,7 @@ const pg = @import("pg");
 const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
 const common = @import("../common.zig");
 const hx_mod = @import("../hx.zig");
+const etag = @import("../../etag.zig");
 const ec = @import("../../../errors/error_registry.zig");
 const library_store = @import("../../../fleet_library/library_store.zig");
 const github_source = @import("../../../fleet_library/github_source.zig");
@@ -33,6 +34,13 @@ const log = @import("log").scoped(.library_catalog);
 
 const Hx = hx_mod.Hx;
 const RowState = catalog.RowState;
+
+const ApplyOutcome = union(enum) {
+    updated,
+    stale_etag: []const u8,
+    not_found,
+    visibility_refused,
+};
 
 /// The `current_state` a publish-without-bundle 409 reports (docs/REST_API_DESIGN_GUIDELINES.md §4).
 const STATE_NO_BUNDLE: []const u8 = "no_bundle";
@@ -46,6 +54,7 @@ const MSG_SOURCE_REPO_INVALID = "A repository must be owner/repo, using letters,
 const MSG_SOURCE_REF_INVALID = "A ref must be a branch or tag name, using letters, digits, '.', '-' or '_'";
 const MSG_REASONS_INVALID = "required_credentials_reasons must be an object mapping credential names to strings";
 const MSG_PUBLISH_WITHOUT_BUNDLE = "This entry has no bundle. Fetch it from its repository first, then publish.";
+const MSG_ROW_STALE = "This catalog entry changed since you loaded it. Refresh to see the latest, then re-apply your edit.";
 
 const SQL_BEGIN = "BEGIN";
 const SQL_COMMIT = "COMMIT";
@@ -85,15 +94,9 @@ pub fn innerAdminCatalogPatch(hx: Hx, req: *httpz.Request, id: []const u8) void 
     var db = hx.db() orelse return;
     defer db.end();
 
-    if (!publishPrecheckPasses(hx, db.conn, id, body)) return;
-
-    applyPatch(hx.alloc, db.conn, id, body) catch |err| switch (err) {
+    const outcome = applyPatch(hx.alloc, db.conn, id, body, etag.ifMatch(req)) catch |err| switch (err) {
         error.CatalogRaced => {
             hx.fail(ec.ERR_CATALOG_NOT_FOUND, MSG_NOT_FOUND);
-            return;
-        },
-        error.VisibilityRefused => {
-            respondVisibilityRefused(hx, db.conn, id);
             return;
         },
         else => {
@@ -101,6 +104,22 @@ pub fn innerAdminCatalogPatch(hx: Hx, req: *httpz.Request, id: []const u8) void 
             return;
         },
     };
+    switch (outcome) {
+        .updated => {},
+        .stale_etag => |current| {
+            log.info("catalog_patch_stale_etag", .{ .error_code = ec.ERR_CATALOG_ROW_STALE, .req_id = hx.req_id });
+            common.errorResponsePrecondition(hx.res, ec.ERR_CATALOG_ROW_STALE, MSG_ROW_STALE, hx.req_id, current);
+            return;
+        },
+        .not_found => {
+            hx.fail(ec.ERR_CATALOG_NOT_FOUND, MSG_NOT_FOUND);
+            return;
+        },
+        .visibility_refused => {
+            conflictNoBundle(hx);
+            return;
+        },
+    }
     catalog.respondEntry(hx, db.conn, id);
 }
 
@@ -113,35 +132,6 @@ fn conflictNoBundle(hx: Hx) void {
         hx.req_id,
         STATE_NO_BUNDLE,
     );
-}
-
-/// Refuses a publish with no bundle to serve — including a body that repoints and publishes in one call.
-fn publishPrecheckPasses(hx: Hx, conn: *pg.Conn, id: []const u8, body: PatchBody) bool {
-    const publish = body.published orelse return true;
-    const state = catalog.fetchRowState(hx.alloc, conn, id) catch {
-        common.internalDbError(hx.res, hx.req_id);
-        return false;
-    } orelse {
-        hx.fail(ec.ERR_CATALOG_NOT_FOUND, MSG_NOT_FOUND);
-        return false;
-    };
-    if (publish and (!state.has_bundle or changesSource(body, state))) {
-        conflictNoBundle(hx);
-        return false;
-    }
-    return true;
-}
-
-/// The re-read only tells "row deleted" (404) from "guard refused" (409); the 409 names the state at refusal time.
-fn respondVisibilityRefused(hx: Hx, conn: *pg.Conn, id: []const u8) void {
-    _ = catalog.fetchRowState(hx.alloc, conn, id) catch {
-        common.internalDbError(hx.res, hx.req_id);
-        return;
-    } orelse {
-        hx.fail(ec.ERR_CATALOG_NOT_FOUND, MSG_NOT_FOUND);
-        return;
-    };
-    conflictNoBundle(hx);
 }
 
 /// Compared against the row as READ, not field presence — re-sending the stored value is a no-op, never a withdrawal.
@@ -193,17 +183,36 @@ fn validIdentity(hx: Hx, body: PatchBody) bool {
     return true;
 }
 
-/// One transaction; identity first, so the DB itself (not just the pre-check) refuses repoint+publish.
-fn applyPatch(alloc: std.mem.Allocator, conn: *pg.Conn, id: []const u8, body: PatchBody) !void {
+/// One row-locked transaction: version check, publish guard, then writes.
+fn applyPatch(
+    alloc: std.mem.Allocator,
+    conn: *pg.Conn,
+    id: []const u8,
+    body: PatchBody,
+    if_match: ?[]const u8,
+) !ApplyOutcome {
     const now_ms = clock.nowMillis();
 
     _ = try conn.exec(SQL_BEGIN, .{});
     var tx_open = true;
     // rollback() rather than exec("ROLLBACK") — exec short-circuits once the
     // connection is in FAIL state (mirrors state/tenant_provider.zig).
-    errdefer if (tx_open) {
+    defer if (tx_open) {
         conn.rollback() catch |err| log.warn("catalog_patch_rollback_failed", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .err = @errorName(err) });
     };
+
+    const state = try catalog.fetchRowStateForUpdate(alloc, conn, id) orelse return .not_found;
+    if (try etag.staleTag(alloc, if_match, &catalog.rowSurface(
+        state.name,
+        state.description,
+        state.source_repo,
+        state.source_ref,
+        state.reasons_raw,
+        state.visibility,
+    ))) |current| return .{ .stale_etag = current };
+    if ((body.published orelse false) and (!state.has_bundle or changesSource(body, state))) {
+        return .visibility_refused;
+    }
 
     if (body.name != null or body.source_repo != null or body.source_ref != null) {
         try expectOneRow(conn, sql.UPDATE_CATALOG_IDENTITY, .{
@@ -235,13 +244,14 @@ fn applyPatch(alloc: std.mem.Allocator, conn: *pg.Conn, id: []const u8, body: Pa
             // Zero rows from THIS statement is not the generic race: its WHERE
             // carries the publish-needs-a-bundle guard, so the handler must
             // answer with the row's current truth, not a 404.
-            error.CatalogRaced => return error.VisibilityRefused,
+            error.CatalogRaced => return .visibility_refused,
             else => return err,
         };
     }
 
     _ = try conn.exec(SQL_COMMIT, .{});
     tx_open = false;
+    return .updated;
 }
 
 /// Zero rows from a guarded write is the guard refusing (CatalogRaced), never a silent success.

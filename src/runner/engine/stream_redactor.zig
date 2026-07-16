@@ -171,9 +171,9 @@ test "pendingPrefixLen matches a brute-force reference (optimization is behaviou
         .{ .value = "s", .placeholder = "[C]" }, // 1-byte: never a partial head
     };
     const bufs = [_][]const u8{
-        "",                  "x",                "sk",            "plain sk-abc",
-        "ends with tok-X",   "sk-abc123 done",   "noise tok-",    "aaaask-ab",
-        "sk-abc12",          "trailing s",       "tok-XYno",      "sk-",
+        "",                "x",              "sk",         "plain sk-abc",
+        "ends with tok-X", "sk-abc123 done", "noise tok-", "aaaask-ab",
+        "sk-abc12",        "trailing s",     "tok-XYno",   "sk-",
     };
     for (bufs) |b| {
         try testing.expectEqual(ref(b, &secrets), pendingPrefixLen(b, &secrets));

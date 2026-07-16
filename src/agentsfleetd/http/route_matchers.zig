@@ -16,10 +16,12 @@ const fleet = @import("route_matchers_fleet.zig");
 const runner_m = @import("route_matchers_runner.zig");
 const connectors = @import("route_matchers_connectors.zig");
 const workspace = @import("route_matchers_workspace.zig");
+const schedules = @import("route_matchers_schedules.zig");
 
 const S_APPROVALS = "approvals";
 const S_WORKSPACES = "workspaces";
 const S_FLEETS = "fleets";
+pub const S_MEMORIES = "memories";
 const S_BUNDLES = "bundles";
 /// Shared with the router: the collection form goes through matchWorkspaceSuffix,
 /// the item form through matchWorkspacePreference, and the two must name one segment.
@@ -183,6 +185,11 @@ pub const matchWorkspaceConnectorConnect = connectors.matchWorkspaceConnectorCon
 pub const matchConnectorCallback = connectors.matchConnectorCallback;
 pub const matchWorkspaceConnectorCatalog = connectors.matchWorkspaceConnectorCatalog;
 pub const matchSlackEvents = connectors.matchSlackEvents;
+pub const WorkspaceFleetScheduleCollectionRoute = schedules.WorkspaceFleetScheduleCollectionRoute;
+pub const WorkspaceFleetScheduleRoute = schedules.WorkspaceFleetScheduleRoute;
+pub const matchScheduleCollection = schedules.matchScheduleCollection;
+pub const matchScheduleItem = schedules.matchScheduleItem;
+pub const matchScheduleSync = schedules.matchScheduleSync;
 
 // ── /workspaces/{ws}/fleet-keys/{fleet_key_id} ─────────────────────────────────
 
@@ -331,9 +338,12 @@ pub const matchWebhookAction = webhook.matchWebhookAction;
 pub const matchSvixWebhook = webhook.matchSvixWebhook;
 pub const matchWebhook = webhook.matchWebhook;
 pub const matchIngress = webhook.matchIngress;
+pub const matchQStashScheduleIngress = webhook.matchQStashScheduleIngress;
 
 pub const matchFleetRunner = fleet.matchFleetRunner;
 pub const matchFleetRunnerEvents = fleet.matchFleetRunnerEvents;
+pub const WorkspaceFleetMemoryRoute = fleet.WorkspaceFleetMemoryRoute;
+pub const matchWorkspaceFleetMemoryItem = fleet.matchWorkspaceFleetMemoryItem;
 
 // Runner control-plane matchers live in `route_matchers_runner.zig` (RULE FLL);
 // re-exported here so `matchers.matchRunner*` is unchanged for the router.

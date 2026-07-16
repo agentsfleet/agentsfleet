@@ -18,7 +18,10 @@ const subscription_hub = @import("../../events/subscription_hub.zig");
 const fleet_set_cache = @import("../../events/fleet_set_cache.zig");
 const stream_registry = @import("../stream_registry.zig");
 const CredentialBroker = @import("../../credentials/broker.zig");
+const QStashCredentials = @import("../../cron/Credentials.zig");
+const QStashClient = @import("../../cron/QStashClient.zig");
 const authz = @import("common_authz.zig");
+const problem_response = @import("problem_response.zig");
 /// Request-id sentinel for responses written before a request id exists
 /// (e.g. the dispatch backpressure shed, which precedes the per-route arena).
 pub const UNKNOWN_REQUEST_ID = "req_unknown";
@@ -27,8 +30,8 @@ pub const TraceContext = trace_ctx.TraceContext;
 
 // HTTP wire constants. Centralised here so handlers cannot drift from the
 // canonical Content-Type strings used by the error envelope.
-pub const HEADER_CONTENT_TYPE = "Content-Type";
-pub const CONTENT_TYPE_PROBLEM_JSON = "application/problem+json";
+pub const HEADER_CONTENT_TYPE = problem_response.HEADER_CONTENT_TYPE;
+pub const CONTENT_TYPE_PROBLEM_JSON = problem_response.CONTENT_TYPE_PROBLEM_JSON;
 pub const HEADER_RETRY_AFTER = "Retry-After";
 /// Capacity rejections (429 in-flight shed, 503 SSE cap) point clients at an
 /// immediate short backoff: instance pressure clears in seconds, unlike
@@ -37,7 +40,6 @@ pub const RETRY_AFTER_BRIEF_SECONDS: u32 = 1;
 pub const RETRY_AFTER_BRIEF_VALUE = std.fmt.comptimePrint("{d}", .{RETRY_AFTER_BRIEF_SECONDS});
 
 const S_PAYLOAD_TOO_LARGE_MAX_2MB = "Payload too large: max 2MB";
-
 const S_PUNCT_99914B = "{}";
 
 pub const Context = struct {
@@ -63,10 +65,10 @@ pub const Context = struct {
     /// browser flow, not a hot path). Empty → connectors fail closed. Boot-set
     /// from `serve_cfg.platform_admin_workspace_id`.
     platform_admin_workspace_id: []const u8 = "",
-    /// Test/dev seam: override the OAuth-2.0 connector token endpoint. Null in
-    /// production — the connector's compile-time `Spec.token_endpoint` (the real
-    /// provider) is used. Integration tests point it at a loopback fake-provider
-    /// so the code-exchange hits an in-process server, never the real Slack API.
+    qstash_credentials: ?*const QStashCredentials = null, // boot-loaded; null fails schedule surfaces closed
+    qstash_exchange_override: ?QStashClient.Exchange = null, // test seam; production uses HTTP
+    /// Test/dev seam: override the connector token endpoint. Null in production;
+    /// integration tests point it at a loopback fake-provider.
     connector_oauth_token_endpoint_override: ?[]const u8 = null,
     /// Test/dev seam for GitHub's user-installation ownership lookup. Null in
     /// production. Integration tests point it at a loopback fake-provider.
@@ -198,69 +200,15 @@ pub fn writeJson(res: *httpz.Response, status: std.http.Status, value: anytype) 
     };
 }
 
-/// RFC 7807 error response. Looks up http_status and title from error_registry.
-/// Content-Type is set to application/problem+json.
-/// Callers no longer pass std.http.Status — the error code owns its status.
-pub fn errorResponse(
-    res: *httpz.Response,
-    code: []const u8,
-    detail: []const u8,
-    request_id: []const u8,
-) void {
-    writeProblem(res, code, detail, request_id, null);
-}
-
-/// 409 variant: REST guide §4 mandates every conflict carry `current_state`
-/// naming the state that forbade the transition (e.g. "paused").
-pub fn errorResponseConflict(
-    res: *httpz.Response,
-    code: []const u8,
-    detail: []const u8,
-    request_id: []const u8,
-    current_state: []const u8,
-) void {
-    writeProblem(res, code, detail, request_id, current_state);
-}
-
-fn writeProblem(
-    res: *httpz.Response,
-    code: []const u8,
-    detail: []const u8,
-    request_id: []const u8,
-    current_state: ?[]const u8,
-) void {
-    const entry = error_codes.lookup(code);
-    res.status = @intFromEnum(entry.http_status);
-    // Use res.header() for application/problem+json — not in httpz.ContentType enum.
-    res.header(HEADER_CONTENT_TYPE, CONTENT_TYPE_PROBLEM_JSON);
-    const body = .{
-        .docs_uri = entry.docs_uri,
-        .title = entry.title,
-        .detail = detail,
-        .error_code = code,
-        .request_id = request_id,
-        .current_state = current_state,
-        .user_message = entry.user_message,
-    };
-    // emit_null_optional_fields=false keeps the non-409 wire shape unchanged.
-    const json_formatter = std.json.fmt(body, .{ .emit_null_optional_fields = false });
-    json_formatter.format(&res.buffer.writer) catch {
-        res.status = 500;
-        res.body = S_PUNCT_99914B;
-    };
-}
-
-pub fn internalDbUnavailable(res: *httpz.Response, request_id: []const u8) void {
-    errorResponse(res, error_codes.ERR_INTERNAL_DB_UNAVAILABLE, "Database unavailable", request_id);
-}
-
-pub fn internalDbError(res: *httpz.Response, request_id: []const u8) void {
-    errorResponse(res, error_codes.ERR_INTERNAL_DB_QUERY, "Database error", request_id);
-}
-
-pub fn internalOperationError(res: *httpz.Response, detail: []const u8, request_id: []const u8) void {
-    errorResponse(res, error_codes.ERR_INTERNAL_OPERATION_FAILED, detail, request_id);
-}
+// The RFC 7807 problem-response writers live in `problem_response.zig` (RULE
+// FLL). Re-exported so every handler's `common.errorResponse(...)` /
+// `common.internal*Error(...)` call site is unchanged.
+pub const errorResponse = problem_response.errorResponse;
+pub const errorResponseConflict = problem_response.errorResponseConflict;
+pub const errorResponsePrecondition = problem_response.errorResponsePrecondition;
+pub const internalDbUnavailable = problem_response.internalDbUnavailable;
+pub const internalDbError = problem_response.internalDbError;
+pub const internalOperationError = problem_response.internalOperationError;
 
 pub const MAX_BODY_SIZE: usize = 2 * 1024 * 1024; // 2MB — must match server.zig max_body_size
 

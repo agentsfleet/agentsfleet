@@ -125,7 +125,7 @@ export default function EditFleetDialog({
         return;
       }
 
-      const result = await patchPlatformLibraryAction(entry.id, patch);
+      const result = await patchPlatformLibraryAction(baseline.id, patch, baseline.etag);
 
       // Repointing is the one edit here that withdraws a live fleet from every
       // workspace gallery — the operator action worth an ops signal. A refusal
@@ -135,7 +135,7 @@ export default function EditFleetDialog({
       // themselves — a repository name can carry a private org.
       if (sourceChanged) {
         captureProductEvent(EVENTS.platform_library_source_changed, {
-          entry_id: entry.id,
+          entry_id: baseline.id,
           field: repoChanged && refChanged ? FIELD_BOTH : repoChanged ? FIELD_REPO : FIELD_REF,
           was_published: catalogStatus(baseline) === CATALOG_STATUS_PUBLISHED,
           outcome: result.ok ? "success" : "failure",

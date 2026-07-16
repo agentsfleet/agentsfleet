@@ -29,6 +29,7 @@ test {
     _ = @import("fleet/event_rows.zig");
     _ = @import("fleet/budget.zig");
     _ = @import("fleet/budget_test.zig");
+    _ = @import("cron/main.zig");
     _ = @import("fleet/service_activity.zig");
     _ = @import("fleet/approval_gate.zig");
     _ = @import("fleet_runtime/approval_gate_async.zig");
@@ -60,6 +61,7 @@ test {
     _ = @import("http/handlers/connectors/slack/oauth_callback_integration_test.zig");
     _ = @import("http/handlers/connectors/slack/events_integration_test.zig");
     _ = @import("http/handlers/ingress/github_integration_test.zig");
+    _ = @import("http/handlers/ingress/qstash_integration_test.zig");
     _ = @import("http/handlers/connectors/slack/outbound_integration_test.zig");
     _ = @import("http/handlers/connectors/slack/thread_refetch_integration_test.zig");
     _ = @import("http/handlers/connectors/slack/channel_memory_integration_test.zig");
@@ -156,6 +158,12 @@ test {
     // Fleet CRUD, activity, router
     _ = @import("http/handlers/fleets/api.zig");
     _ = @import("http/handlers/fleets/api_integration_test.zig");
+    _ = @import("http/handlers/fleets/get_integration_test.zig");
+    _ = @import("http/handlers/fleets/events_cost_integration_test.zig");
+    _ = @import("http/handlers/fleets/list_aggregate_integration_test.zig");
+    _ = @import("http/handlers/fleets/patch_if_match_integration_test.zig");
+    _ = @import("http/handlers/memory/memory_forget_integration_test.zig");
+    _ = @import("http/handlers/library/catalog_etag_integration_test.zig");
     _ = @import("http/handlers/fleets/create.zig");
     _ = @import("http/handlers/fleets/create_install_steps.zig");
     _ = @import("http/handlers/fleets/create_install_steps_lifecycle_test.zig");
@@ -163,6 +171,7 @@ test {
     _ = @import("http/handlers/fleets/patch.zig");
     _ = @import("http/handlers/fleets/patch_body_fields_integration_test.zig");
     _ = @import("http/handlers/fleets/patch_concurrent_integration_test.zig");
+    _ = @import("http/handlers/fleets/cron_lifecycle_integration_test.zig");
     _ = @import("http/handlers/fleets/delete.zig");
     _ = @import("http/handlers/fleet_bundles/api_integration_test.zig");
     _ = @import("http/handlers/fleet_bundles/resolve.zig");
@@ -208,6 +217,7 @@ test {
     _ = @import("http/handlers/fleets/messages.zig");
     // Chat ingress — POST /v1/.../fleets/{id}/messages
     _ = @import("http/handlers/fleets/messages_integration_test.zig");
+    _ = @import("http/handlers/schedules/api_integration_test.zig");
     _ = @import("http/handlers/memory/memories_integration_test.zig");
     _ = @import("http/handlers/runner/memory_fencing_test.zig");
     _ = @import("http/handlers/runner/credentials_mint_integration_test.zig");
