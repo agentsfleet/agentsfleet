@@ -70,7 +70,7 @@ export function isInstallFrame(frame: LiveFrame): boolean {
 export function advanceInstallStep(
   current: InstallStepId | null,
   next: InstallStepId,
-): InstallStepId | null {
+): InstallStepId {
   if (next === INSTALL_STEP.ERROR) return INSTALL_STEP.ERROR;
   if (current === INSTALL_STEP.ERROR) return current;
   if (current === null) return next;

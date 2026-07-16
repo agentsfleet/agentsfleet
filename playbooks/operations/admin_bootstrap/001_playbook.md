@@ -20,7 +20,7 @@ Provisions the one global admin user (`agentsfleet-admin`) in Clerk for a given 
 | 2.0 | Human | Set `publicMetadata.role=admin` **and** `platform_admin=true` in Clerk Dashboard |
 | 3.0 | Agent | Verify the admin JWT carries `role=admin` by calling an admin-gated endpoint |
 | 4.0 | Agent | Mint a `agt_t` tenant API key via `POST /v1/api-keys` |
-| 5.0 | Agent | Write the raw key to `op://ZMB_CD_<env>/agentsfleet-admin` field `api_key` |
+| 5.0 | Agent | Write the raw key to `op://ZMB_CD_<env>/agentsfleet-admin` field `api-key` |
 | 6.0 | Agent | Verify the stored key authenticates a protected endpoint |
 | 7.0 | Agent | Store the platform Fireworks key in the admin workspace vault |
 | 8.0 | Agent | Register Fireworks as the active platform default |
@@ -181,16 +181,16 @@ echo "Minted key_id=$KEY_ID (raw key held in RAW_KEY)"
 
 ## 5.0 Agent: Write raw key to vault
 
-**Goal:** persist the raw key at `op://$VAULT/agentsfleet-admin` field `api_key`. This is the only place it will ever exist after this step — the server stores only the SHA-256 hash.
+**Goal:** persist the raw key at `op://$VAULT/agentsfleet-admin` field `api-key`. This is the only place it will ever exist after this step — the server stores only the SHA-256 hash.
 
 ```bash
-op item edit "agentsfleet-admin" --vault "$VAULT" "api_key=$RAW_KEY"
+op item edit "agentsfleet-admin" --vault "$VAULT" "api-key=$RAW_KEY"
 unset RAW_KEY
 
 # Verify:
-STORED=$(op read "op://$VAULT/agentsfleet-admin/api_key")
+STORED=$(op read "op://$VAULT/agentsfleet-admin/api-key")
 [[ "$STORED" =~ ^agt_t[0-9a-f]{64}$ ]] || { echo "vault write verification failed"; exit 1; }
-echo "api_key stored at op://$VAULT/agentsfleet-admin/api_key"
+echo "api-key stored at op://$VAULT/agentsfleet-admin/api-key"
 unset STORED
 ```
 
@@ -205,7 +205,7 @@ unset STORED
 **Goal:** a request bearing the vault-stored key hits an admin-gated endpoint and gets 200.
 
 ```bash
-KEY=$(op read "op://$VAULT/agentsfleet-admin/api_key")
+KEY=$(op read "op://$VAULT/agentsfleet-admin/api-key")
 curl -s -o /dev/null -w "%{http_code}\n" \
   -H "Authorization: Bearer $KEY" \
   "$API_BASE/v1/admin/platform-keys"
@@ -226,7 +226,7 @@ unset KEY
 ```bash
 op read "op://$VAULT/agentsfleet-admin/fireworks_api_key" |
   jq -Rn '{provider:"fireworks", api_key: input, model:"accounts/fireworks/models/kimi-k2.6"}' |
-  AGENTSFLEET_API_KEY="$(op read "op://$VAULT/agentsfleet-admin/api_key")" \
+  AGENTSFLEET_API_KEY="$(op read "op://$VAULT/agentsfleet-admin/api-key")" \
     agentsfleet secret create fireworks --force --data @-
 ```
 
@@ -241,7 +241,7 @@ op read "op://$VAULT/agentsfleet-admin/fireworks_api_key" |
 **Goal:** create or update the active `core.platform_llm_keys` pointer so platform-managed users resolve Fireworks from the admin workspace vault at runtime. No key material is stored in `core.platform_llm_keys`.
 
 ```bash
-KEY=$(op read "op://$VAULT/agentsfleet-admin/api_key")
+KEY=$(op read "op://$VAULT/agentsfleet-admin/api-key")
 curl -s -X PUT \
   -H "Authorization: Bearer $KEY" \
   -H "Content-Type: application/json" \
@@ -262,6 +262,6 @@ If the admin user was misconfigured mid-playbook:
 
 1. `DELETE /v1/api-keys/{KEY_ID}` (after PATCHing `active:false`) to revoke the minted key.
 2. Clerk Dashboard → user → Metadata → set `"role": "operator"` to demote.
-3. Clear `op://$VAULT/agentsfleet-admin/api_key`.
+3. Clear `op://$VAULT/agentsfleet-admin/api-key`.
 4. Deactivate the Fireworks platform-default row through `/v1/admin/platform-keys`.
 5. Restart the playbook from step 1.

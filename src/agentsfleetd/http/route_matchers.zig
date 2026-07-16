@@ -174,6 +174,8 @@ pub const WorkspaceSecretRoute = workspace.WorkspaceSecretRoute;
 pub const matchWorkspaceSecret = workspace.matchWorkspaceSecret;
 pub const WorkspacePreferenceRoute = workspace.WorkspacePreferenceRoute;
 pub const matchWorkspacePreference = workspace.matchWorkspacePreference;
+pub const WorkspaceFleetKeyRoute = workspace.WorkspaceFleetKeyRoute;
+pub const matchWorkspaceFleetKeyDelete = workspace.matchWorkspaceFleetKeyDelete;
 
 // Connector matchers (the generic `{provider}` trio resolved against the
 // connector registry + Slack's bespoke events ingress) live in
@@ -190,21 +192,6 @@ pub const WorkspaceFleetScheduleRoute = schedules.WorkspaceFleetScheduleRoute;
 pub const matchScheduleCollection = schedules.matchScheduleCollection;
 pub const matchScheduleItem = schedules.matchScheduleItem;
 pub const matchScheduleSync = schedules.matchScheduleSync;
-
-// ── /workspaces/{ws}/fleet-keys/{fleet_key_id} ─────────────────────────────────
-
-pub const WorkspaceFleetKeyRoute = struct {
-    workspace_id: []const u8,
-    fleet_key_id: []const u8,
-};
-
-pub fn matchWorkspaceFleetKeyDelete(p: Path) ?WorkspaceFleetKeyRoute {
-    if (p.segs.len != 4) return null;
-    if (!p.eq(0, S_WORKSPACES) or !p.eq(2, "fleet-keys")) return null;
-    const ws = p.param(1) orelse return null;
-    const fleet_key_id = p.param(3) orelse return null;
-    return .{ .workspace_id = ws, .fleet_key_id = fleet_key_id };
-}
 
 // ── /workspaces/{ws}/fleets/{fleet_id} ───────────────────────────────────
 

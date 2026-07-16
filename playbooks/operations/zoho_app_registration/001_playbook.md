@@ -37,7 +37,7 @@ case "$ENV" in
   prod) export VAULT="ZMB_CD_PROD"; export API_BASE="https://api.agentsfleet.net" ;;
   *)    echo "ENV must be dev|prod"; exit 1 ;;
 esac
-export ADMIN_KEY=$(op read "op://$VAULT/agentsfleet-admin/api_key")
+export ADMIN_KEY=$(op read "op://$VAULT/agentsfleet-admin/api-key")
 [[ "$ADMIN_KEY" =~ ^agt_t[0-9a-f]{64}$ ]] || { echo "missing admin key"; exit 1; }
 curl -sf -o /dev/null "$API_BASE/healthz" || { echo "$API_BASE unreachable"; exit 1; }
 ```
