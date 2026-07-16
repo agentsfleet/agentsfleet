@@ -46,6 +46,7 @@ test.describe("auth routing", () => {
 
   test("signed-out user is redirected from protected routes to sign-in", async ({ page }) => {
     await signInAs(page, FIXTURE_KEY.regular);
+    await gotoWorkspace(page, FIXTURE_KEY.regular, "fleets");
     await clerk.signOut({ page });
 
     for (const route of PROTECTED_ROUTES) {

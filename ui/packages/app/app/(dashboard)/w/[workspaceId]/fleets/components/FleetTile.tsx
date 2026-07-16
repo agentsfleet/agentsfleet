@@ -4,7 +4,7 @@ import Link from "next/link";
 import { Card, cn, EYEBROW_CLASS, Time, WakePulse } from "@agentsfleet/design-system";
 import { type Fleet } from "@/lib/api/fleets";
 import { workspacePath } from "@/lib/workspace-routes";
-import { useFleetEventStream } from "@/components/domain/useFleetEventStream";
+import { useWorkspaceFleetStream } from "@/components/domain/useWorkspaceStream";
 import {
   deriveTileLiveness,
   fleetRowState,
@@ -41,30 +41,26 @@ function DrainedTile({ fleet, workspaceId }: Props) {
 }
 
 function StreamingTile({ fleet, workspaceId }: Props) {
-  // Reuses the console's per-fleet stream registry — the tile is a second
-  // consumer of the one EventSource, not a second SSE path. No SSR events on the
-  // wall, so the seed is empty; frames fill in as they arrive.
-  const { events, connectionStatus } = useFleetEventStream(
-    workspaceId,
-    fleet.id,
-    [],
-  );
+  const { events, connectionStatus, helloReceived, isLive, catchingUp } =
+    useWorkspaceFleetStream(fleet.id);
   const liveness = deriveTileLiveness(fleet.status, connectionStatus);
+  const kind = liveness.kind === "live" && helloReceived && !isLive ? "snapshot" : liveness.kind;
+  const eyebrow = catchingUp ? "catching up" : kind === "snapshot" ? "last known" : undefined;
   const lastEvent = events.length > 0 ? events[events.length - 1] : null;
 
   return (
     <TileShell
       fleet={fleet}
       workspaceId={workspaceId}
-      kind={liveness.kind}
-      eyebrow={liveness.kind === "snapshot" ? "snapshot" : undefined}
+      kind={kind}
+      eyebrow={eyebrow}
       feed={lastEvent?.text}
     >
       <WakePulse
         // The pulse animation is live-only (DESIGN_SYSTEM.md §Motion). A snapshot
         // tile holds a static dot — the animation must not claim a feed is live
-        // when the stream is gone; the `snapshot` eyebrow is the honest signal.
-        live={liveness.kind === "live"}
+        // when the stream is gone; the `last known` eyebrow is the honest signal.
+        live={kind === "live"}
         className={cn(
           "inline-block w-2 h-2 rounded-full",
           fleet.status === "installing" ? "bg-info" : "bg-pulse",

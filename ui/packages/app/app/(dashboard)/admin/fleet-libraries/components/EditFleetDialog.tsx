@@ -156,7 +156,7 @@ export default function EditFleetDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent className="max-h-svh overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{EDIT_TITLE}</DialogTitle>
           <DialogDescription>{EDIT_DESCRIPTION}</DialogDescription>

@@ -62,6 +62,7 @@ const SSE_WRITE_BUF_LEN: usize = 8 * 1024;
 /// distinct from any UUID, so an operator listing streams can tell the two
 /// kinds apart at a glance.
 const WORKSPACE_STREAM_FLEET_SENTINEL = "*";
+const SYNTHETIC_FRAME_ID: u64 = 0;
 
 pub fn innerWorkspaceEventsStream(
     hx: Hx,
@@ -196,6 +197,8 @@ const StreamJob = struct {
 fn streamLoop(job: *StreamJob, stream: std.Io.net.Stream) !void {
     const ctx = job.ctx;
     var seq: u64 = 0;
+    var hello_sent = false;
+    var last_reported_drops: u64 = 0;
     // Buffered: one frame's pieces accumulate, then a single flush sends the
     // whole frame — one syscall per frame instead of one per piece, at
     // identical latency (the flush fires the moment the frame is complete).
@@ -212,6 +215,11 @@ fn streamLoop(job: *StreamJob, stream: std.Io.net.Stream) !void {
         if (now_ms >= next_refresh_ms) {
             if (!refreshFanIn(job, now_ms)) return;
             next_refresh_ms = now_ms + refresh_interval_ms;
+            if (!hello_sent) {
+                try writeHello(&w, job);
+                try w.interface.flush();
+                hello_sent = true;
+            }
         }
 
         // Wake for whichever comes first: the next heartbeat or the next fleet-set
@@ -221,6 +229,9 @@ fn streamLoop(job: *StreamJob, stream: std.Io.net.Stream) !void {
         switch (job.fanin.sub.pop(popWaitMs(next_refresh_ms))) {
             .message => |frame| {
                 defer ctx.alloc.free(frame);
+                if (try writeCatchingUpIfNeeded(&w, job, &last_reported_drops)) {
+                    try w.interface.flush();
+                }
                 // A dropped frame must not burn a sequence number — ids stay
                 // gapless for the frames the client actually receives.
                 if (try writeTagged(&w, seq, frame, job)) {
@@ -231,6 +242,9 @@ fn streamLoop(job: *StreamJob, stream: std.Io.net.Stream) !void {
             // A heartbeat write to a vanished client fails and unwinds the loop,
             // releasing the thread, the slot, and every subscription.
             .timeout => {
+                if (try writeCatchingUpIfNeeded(&w, job, &last_reported_drops)) {
+                    try w.interface.flush();
+                }
                 try w.interface.writeAll(sse_frame.HEARTBEAT_FRAME);
                 try w.interface.flush();
             },
@@ -269,6 +283,25 @@ fn refreshFanIn(job: *StreamJob, now_ms: i64) bool {
     }
 }
 
+fn writeHello(w: anytype, job: *StreamJob) !void {
+    const fleet_ids = try job.fanin.fleetIdList(job.ctx.alloc);
+    defer job.ctx.alloc.free(fleet_ids);
+    try sse_frame.writeHelloFrame(w, SYNTHETIC_FRAME_ID, fleet_ids);
+}
+
+fn writeCatchingUpIfNeeded(w: anytype, job: *StreamJob, last_reported_drops: *u64) !bool {
+    const drops = job.fanin.sub.dropCount();
+    const delta = takeUnreportedDrops(drops, last_reported_drops) orelse return false;
+    try sse_frame.writeCatchingUpFrame(w, SYNTHETIC_FRAME_ID, delta);
+    return true;
+}
+
+fn takeUnreportedDrops(drops: u64, last_reported_drops: *u64) ?u64 {
+    if (drops <= last_reported_drops.*) return null;
+    const delta = drops - last_reported_drops.*;
+    last_reported_drops.* = drops;
+    return delta;
+}
 /// Write one multiplexed frame: recover the originating fleet from the channel
 /// the frame arrived on, read `kind` from the ORIGINAL payload, then splice the
 /// `fleet_id` in.
@@ -301,6 +334,13 @@ fn writeTagged(w: anytype, seq: u64, frame: []const u8, job: *StreamJob) !bool {
     return true;
 }
 
+test "catching_up reports each new server drop total once" {
+    var reported: u64 = 0;
+    try std.testing.expectEqual(@as(?u64, 3), takeUnreportedDrops(3, &reported));
+    try std.testing.expectEqual(@as(?u64, null), takeUnreportedDrops(3, &reported));
+    try std.testing.expectEqual(@as(?u64, 2), takeUnreportedDrops(5, &reported));
+    try std.testing.expectEqual(@as(?u64, null), takeUnreportedDrops(4, &reported));
+}
 test {
     // The integration + soak suites are not production-imported, so discover
     // them here. sse_frame and events_stream_fanin are already imported at the

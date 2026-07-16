@@ -34,15 +34,14 @@ test.describe("install-fleet-seed", () => {
     await page.goto(workspaceHref(ws, "fleets"));
     await expect(page).toHaveURL(workspaceUrlPattern("fleets"));
 
-    // The row is an anchor `<Link href="/w/{ws}/fleets/{id}" data-state="live">`
-    // wrapping a `<div class="font-medium truncate">{name}</div>`. Match by
-    // visible name (accessible to a Playwright user) and assert data-state
-    // is "live" (the dashboard's translation of agentsfleetd's "active" status —
-    // canonical mapping at app/(dashboard)/w/[workspaceId]/fleets/components/FleetTile.tsx).
+    // M132's card uses an absolute overlay link; the visible name is its sibling,
+    // while the link's accessible name carries the fleet name, status, and id.
+    // Assert that user-facing name plus data-state="live" (the dashboard's
+    // translation of agentsfleetd's "active" status).
     const row = page.locator(`a[href="${workspaceHref(ws, `fleets/${seeded.id}`)}"]`);
     await expect(row).toBeVisible();
     await expect(row).toHaveAttribute("data-state", "live");
-    await expect(row.getByText(name)).toBeVisible();
+    await expect(row).toHaveAccessibleName(`${name} — active — ${seeded.id}`);
   });
 
   test.afterEach(async () => {

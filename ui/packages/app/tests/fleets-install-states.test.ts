@@ -14,10 +14,12 @@ import type { FleetLibraryGalleryEntry } from "@/lib/types";
 // flow opens on the selected template and creates with a visibility-keyed body.
 const {
   installFleetActionMock,
+  listFleetsActionMock,
   captureProductEventMock,
   useFleetEventStreamMock,
 } = vi.hoisted(() => ({
   installFleetActionMock: vi.fn(),
+  listFleetsActionMock: vi.fn(),
   captureProductEventMock: vi.fn(),
   useFleetEventStreamMock: vi.fn(),
 }));
@@ -26,6 +28,7 @@ vi.mock("next/navigation", async () => (await import("./helpers/dashboard-mocks"
 vi.mock("next/link", async () => (await import("./helpers/dashboard-mocks")).nextLinkMock());
 vi.mock("@/app/(dashboard)/w/[workspaceId]/fleets/actions", () => ({
   installFleetAction: installFleetActionMock,
+  listFleetsAction: listFleetsActionMock,
 }));
 vi.mock("@/lib/analytics/posthog", () => ({ captureProductEvent: captureProductEventMock }));
 vi.mock("@/components/domain/useFleetEventStream", () => ({
@@ -105,6 +108,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   resetCommonMocks();
   stubStream(null);
+  listFleetsActionMock.mockReturnValue(new Promise(() => {}));
 });
 afterEach(() => cleanup());
 
@@ -303,6 +307,17 @@ describe("test_install_status_stream — InstallStreamSteps consumes the SSE str
     expect(screen.getByText(/is ready/i)).toBeTruthy();
     await user.click(screen.getByRole("button", { name: /open fleet/i }));
     expect(onOpen).toHaveBeenCalledTimes(1);
+  });
+
+  it("reconciles a missed ready frame from the fleet's active server status", async () => {
+    stubStream(null);
+    listFleetsActionMock.mockResolvedValueOnce({
+      ok: true,
+      data: { items: [{ id: "zom_1", status: "active" }] },
+    });
+    renderSteps();
+    await waitFor(() => expect(screen.getByRole("button", { name: /open fleet/i })).toBeTruthy());
+    expect(listFleetsActionMock).toHaveBeenCalledWith("ws_1", { limit: 100 });
   });
 
   it("an error step renders the failure line (spinner never hangs)", () => {

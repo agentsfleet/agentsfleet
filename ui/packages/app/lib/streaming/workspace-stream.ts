@@ -1,6 +1,9 @@
 import {
+  FRAME_KIND,
   streamWorkspaceEventsUrl,
   type LiveFrame,
+  type WorkspaceControlFrame,
+  type WorkspaceFrame,
   type WorkspaceLiveFrame,
 } from "@/lib/api/events";
 
@@ -23,6 +26,7 @@ import {
 // through backfill.
 
 export type FleetFrameListener = (frame: WorkspaceLiveFrame) => void;
+export type WorkspaceFrameListener = (frame: WorkspaceControlFrame) => void;
 
 export const WORKSPACE_CONNECTION_STATUS = {
   CONNECTING: "connecting",
@@ -53,6 +57,7 @@ type Entry = {
   // fleetId → the tile listeners watching that fleet. A fleet with no listeners
   // is pruned so the map tracks exactly the live tiles.
   fleetListeners: Map<string, Set<FleetFrameListener>>;
+  workspaceListeners: Set<WorkspaceFrameListener>;
   statusListeners: Set<StatusListener>;
   refCount: number;
   reconnectTimer: ReturnType<typeof setTimeout> | null;
@@ -78,7 +83,6 @@ function setStatus(entry: Entry, status: WorkspaceConnectionStatus): void {
 }
 
 function startEventSource(entry: Entry): void {
-  if (entry.eventSource) return;
   const es = new EventSource(streamWorkspaceEventsUrl(entry.workspaceId));
   entry.eventSource = es;
   es.onopen = () => {
@@ -104,7 +108,7 @@ async function backfillGap(entry: Entry): Promise<void> {
 
 // Parse + validate a raw SSE frame, returning the tagged frame or null when it
 // must be dropped. Exported for the demux test.
-export function parseWorkspaceFrame(data: string): WorkspaceLiveFrame | null {
+export function parseWorkspaceFrame(data: string): WorkspaceFrame | null {
   let parsed: unknown;
   try {
     parsed = JSON.parse(data);
@@ -113,19 +117,42 @@ export function parseWorkspaceFrame(data: string): WorkspaceLiveFrame | null {
   }
   if (!parsed || typeof parsed !== "object") return null;
   const kind = (parsed as { kind?: unknown }).kind;
-  const fleetId = (parsed as { fleet_id?: unknown }).fleet_id;
-  if (typeof kind !== "string" || typeof fleetId !== "string" || fleetId.length === 0) {
-    return null;
+  if (typeof kind !== "string") return null;
+  if (kind === FRAME_KIND.HELLO) {
+    const fleetIds = (parsed as { fleet_ids?: unknown }).fleet_ids;
+    if (
+      !Array.isArray(fleetIds) ||
+      !fleetIds.every((value) => typeof value === "string" && value.length > 0)
+    ) {
+      return null;
+    }
+    return parsed as WorkspaceControlFrame;
   }
+  if (kind === FRAME_KIND.CATCHING_UP) {
+    const dropped = (parsed as { dropped?: unknown }).dropped;
+    if (typeof dropped !== "number" || !Number.isSafeInteger(dropped) || dropped < 0) return null;
+    return parsed as WorkspaceControlFrame;
+  }
+  const fleetId = (parsed as { fleet_id?: unknown }).fleet_id;
+  if (typeof fleetId !== "string" || fleetId.length === 0) return null;
   return parsed as WorkspaceLiveFrame;
 }
 
 function onFrame(entry: Entry, e: MessageEvent): void {
   const frame = parseWorkspaceFrame(typeof e.data === "string" ? e.data : "");
   if (frame === null) return; // malformed / untagged — dropped, never routed
+  if (isWorkspaceFrame(frame)) {
+    for (const l of entry.workspaceListeners) l(frame);
+    if (frame.kind === FRAME_KIND.CATCHING_UP) void backfillGap(entry);
+    return;
+  }
   const listeners = entry.fleetListeners.get(frame.fleet_id);
   if (!listeners) return; // a fleet no tile is currently watching
   for (const l of listeners) l(frame);
+}
+
+function isWorkspaceFrame(frame: WorkspaceFrame): frame is WorkspaceControlFrame {
+  return frame.kind === FRAME_KIND.HELLO || frame.kind === FRAME_KIND.CATCHING_UP;
 }
 
 function onEventSourceError(entry: Entry): void {
@@ -157,6 +184,7 @@ function createEntry(workspaceId: string, backfill: BackfillFn | null): Entry {
     eventSource: null,
     status: WORKSPACE_CONNECTION_STATUS.CONNECTING,
     fleetListeners: new Map(),
+    workspaceListeners: new Set(),
     statusListeners: new Set(),
     refCount: 0,
     reconnectTimer: null,
@@ -176,6 +204,7 @@ function ensureEntry(workspaceId: string, backfill: BackfillFn | null): Entry {
     REGISTRY.set(workspaceId, entry);
     startEventSource(entry);
   }
+  if (backfill !== null) entry.backfill = backfill;
   if (entry.idleTimer) {
     clearTimeout(entry.idleTimer);
     entry.idleTimer = null;
@@ -199,8 +228,20 @@ export function subscribeFleet(
     entry.fleetListeners.set(fleetId, set);
   }
   set.add(listener);
+  const subscribedSet = set;
   entry.refCount += 1;
-  return () => releaseFleet(workspaceId, fleetId, listener);
+  return () => releaseFleet(workspaceId, fleetId, listener, subscribedSet);
+}
+
+export function subscribeWorkspaceFrames(
+  workspaceId: string,
+  listener: WorkspaceFrameListener,
+  backfill: BackfillFn | null = null,
+): () => void {
+  const entry = ensureEntry(workspaceId, backfill);
+  entry.workspaceListeners.add(listener);
+  entry.refCount += 1;
+  return () => releaseWorkspaceFrameListener(workspaceId, listener);
 }
 
 // Observe the workspace connection's health (for the wall's "catching up" /
@@ -218,14 +259,16 @@ export function subscribeStatus(
   return () => releaseStatus(workspaceId, listener);
 }
 
-function releaseFleet(workspaceId: string, fleetId: string, listener: FleetFrameListener): void {
+function releaseFleet(
+  workspaceId: string,
+  fleetId: string,
+  listener: FleetFrameListener,
+  listeners: Set<FleetFrameListener>,
+): void {
   const entry = REGISTRY.get(workspaceId);
   if (!entry) return;
-  const set = entry.fleetListeners.get(fleetId);
-  if (set) {
-    set.delete(listener);
-    if (set.size === 0) entry.fleetListeners.delete(fleetId);
-  }
+  listeners.delete(listener);
+  if (listeners.size === 0) entry.fleetListeners.delete(fleetId);
   decRef(entry);
 }
 
@@ -233,6 +276,13 @@ function releaseStatus(workspaceId: string, listener: StatusListener): void {
   const entry = REGISTRY.get(workspaceId);
   if (!entry) return;
   entry.statusListeners.delete(listener);
+  decRef(entry);
+}
+
+function releaseWorkspaceFrameListener(workspaceId: string, listener: WorkspaceFrameListener): void {
+  const entry = REGISTRY.get(workspaceId);
+  if (!entry) return;
+  entry.workspaceListeners.delete(listener);
   decRef(entry);
 }
 

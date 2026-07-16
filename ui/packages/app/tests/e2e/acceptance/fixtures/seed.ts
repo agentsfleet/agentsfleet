@@ -8,8 +8,12 @@
  * construction. Per-spec cleanup deletes everything in the fixture user's
  * workspace; no extra discriminator needed today.
  */
-import { clientFor, type ClientHandle } from "./api-client";
+import type { ClientHandle } from "./api-client";
 import type { FixtureKey, FleetStatus } from "./constants";
+import { SOURCE_KIND_UPLOAD } from "@/lib/types";
+import { clientFor } from "./api-client";
+
+const FIXTURE_LIBRARY_NAME = "acceptance-seed";
 
 export interface Workspace {
   id: string;
@@ -91,17 +95,37 @@ interface CreateFleetResp {
   status: string;
 }
 
+interface OnboardTemplateResp {
+  id: string;
+}
+
+async function onboardFixtureLibrary(
+  client: ReturnType<typeof clientFor>,
+  workspaceId: string,
+): Promise<string> {
+  const resp = await client.post<OnboardTemplateResp>(
+    `/v1/workspaces/${workspaceId}/fleet-libraries`,
+    {
+      source_kind: SOURCE_KIND_UPLOAD,
+      skill_markdown: skillMd(FIXTURE_LIBRARY_NAME),
+      trigger_markdown: triggerMd(FIXTURE_LIBRARY_NAME),
+    },
+  );
+  return resp.id;
+}
+
 export async function seedFleet(
   key: FixtureKey,
   workspaceId: string,
   opts: SeedFleetOpts,
 ): Promise<Fleet> {
   const c = clientFor(key);
+  const tenantLibraryId = await onboardFixtureLibrary(c, workspaceId);
   // create_fleet returns `fleet_id`; list_fleets items have `id`. Normalize
   // to the listing shape so callers can compare against listFleets output.
   const resp = await c.post<CreateFleetResp>(`/v1/workspaces/${workspaceId}/fleets`, {
-    trigger_markdown: triggerMd(opts.name),
-    source_markdown: skillMd(opts.name),
+    tenant_library_id: tenantLibraryId,
+    name: opts.name,
   });
   return { id: resp.fleet_id, name: resp.name };
 }
