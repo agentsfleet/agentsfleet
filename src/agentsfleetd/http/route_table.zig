@@ -94,6 +94,7 @@ pub fn classFor(route: router.Route) RouteClass {
         .workspace_approval_detail,
         .workspace_approval_resolve,
         .workspace_fleet_memories,
+        .workspace_fleet_memory_item,
         .request_integration_grant,
         .list_integration_grants,
         .revoke_integration_grant,
@@ -233,7 +234,7 @@ pub fn specFor(route: router.Route, registry: *auth_mw.MiddlewareRegistry) Route
         // External-fleet memory API — workspace-scoped collection, GET-only
         // (write verbs retired; capture flows through the runner plane).
         .workspace_fleet_memories => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeFleetMemoriesCollection },
-
+        .workspace_fleet_memory_item => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeFleetMemoryItem },
         // Integration grants
         .request_integration_grant => .{ .middlewares = auth_mw.MiddlewareRegistry.none, .invoke = invoke.invokeRequestGrant },
         .list_integration_grants => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeListGrants },

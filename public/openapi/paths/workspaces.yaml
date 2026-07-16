@@ -108,7 +108,7 @@
                 items:
                   type: array
                   items:
-                    type: object
+                    $ref: ../components/schemas.yaml#/components/schemas/FleetEvent
                 next_cursor:
                   type: string
                   nullable: true

@@ -71,6 +71,8 @@ pub const ENTRIES_RUNTIME = [_]Entry{
         "Verify the fleet_id and workspace scope."), // reachable: no — runner memory-push endpoint (fleet-side), not fetched by ui/packages/app
     e("UZ-MEM-003", .service_unavailable, "Saved memory unavailable", "The memory backend (Postgres memory schema) is unreachable. " ++
         "The fleet falls back to ephemeral workspace memory. Check MEMORY_RUNTIME_URL."), // reachable: no — runner memory-push endpoint (fleet-side), not fetched by ui/packages/app
+    eu("UZ-MEM-004", .not_found, "Memory entry not found", "No entry with that key exists for this fleet. Forgetting is keyed on (fleet_id, key) — " ++
+        "list the fleet's memories to confirm the exact key before retrying.", "That memory entry is already gone — the fleet isn't holding anything under that key."),
     // ── AGENT KEYS (workspace-scoped, agt_a prefix) ────────────────────────────
     e("UZ-APIKEY-001", .unauthorized, "Invalid API key", "API key is invalid or revoked. Mint a replacement with: `POST /v1/workspaces/{ws}/fleet-keys`"), // reachable: no — fleet-scoped agt_a bearer auth (CLI/runner), not a browser session
     // ── TENANT API KEYS (tenant-scoped, agt_t prefix) ────────────────────────

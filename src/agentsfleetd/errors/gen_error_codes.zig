@@ -94,7 +94,7 @@ fn categoryOf(code: []const u8) []const u8 {
 // the completeness check — a category with no entry here falls back to the
 // capitalized-token form, which stays legible but not friendly).
 const S_API = "API";
-const CATEGORY_COVERAGE_BRANCH_QUOTA = 10_000;
+const CATEGORY_COVERAGE_BRANCH_QUOTA = 20_000;
 
 const CategoryCopy = struct {
     token: []const u8,

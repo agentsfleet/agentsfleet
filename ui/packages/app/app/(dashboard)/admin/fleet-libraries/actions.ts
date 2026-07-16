@@ -42,9 +42,10 @@ export async function onboardPlatformLibraryAction(
 export async function patchPlatformLibraryAction(
   id: string,
   body: PlatformCatalogPatch,
+  ifMatch: string,
 ): Promise<ActionResult<PlatformCatalogEntry>> {
   return requireScope(SCOPE.PLATFORM_LIBRARY_WRITE, async () => {
-    const result = await withToken((t) => patchPlatformFleetLibraryEntry(id, body, t));
+    const result = await withToken((t) => patchPlatformFleetLibraryEntry(id, body, ifMatch, t));
     if (result.ok) revalidatePath(ADMIN_FLEET_LIBRARIES_PATH);
     return result;
   });
