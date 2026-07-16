@@ -119,10 +119,9 @@ jobs:
           GRAFANA_OTLP_ENDPOINT: op://${{ vars.VAULT_DEV }}/grafana-dev/otlp-endpoint
           GRAFANA_OTLP_INSTANCE_ID: op://${{ vars.VAULT_DEV }}/grafana-dev/instance-id
           GRAFANA_OTLP_API_KEY: op://${{ vars.VAULT_DEV }}/grafana-dev/api-key
+          PLATFORM_ADMIN_WORKSPACE_ID: op://${{ vars.VAULT_DEV }}/agentsfleet-admin/platform_admin_workspace_id
           OIDC_ISSUER: op://${{ vars.VAULT_DEV }}/clerk-dev/issuer
-
       - uses: superfly/flyctl-actions/setup-flyctl@master
-
       - name: Stage Fly secrets from vault (applied on next deploy)
         run: |
           flyctl secrets set \
@@ -139,6 +138,7 @@ jobs:
             CLERK_PUBLISHABLE_KEY="$CLERK_PUBLISHABLE_KEY" \
             CLERK_SECRET_KEY="$CLERK_SECRET_KEY" \
             CLERK_WEBHOOK_SECRET="$CLERK_WEBHOOK_SECRET" \
+            PLATFORM_ADMIN_WORKSPACE_ID="$PLATFORM_ADMIN_WORKSPACE_ID" \
             OIDC_ISSUER="$OIDC_ISSUER" \
             OIDC_PROVIDER="clerk" \
             OIDC_AUDIENCE="https://api-dev.agentsfleet.net" \

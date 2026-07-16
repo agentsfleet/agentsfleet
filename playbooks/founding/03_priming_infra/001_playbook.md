@@ -107,6 +107,7 @@ for APP in agentsfleetd-dev; do
     DATABASE_URL_MIGRATOR="$(op read 'op://$VAULT_DEV/planetscale-dev/migrator-connection-string')" \
     REDIS_URL_API="$(op read 'op://$VAULT_DEV/upstash-dev/api-url')" \
     ENCRYPTION_MASTER_KEY="$(op read 'op://$VAULT_DEV/encryption-master-key/credential')" \
+    PLATFORM_ADMIN_WORKSPACE_ID="$(op read 'op://$VAULT_DEV/agentsfleet-admin/platform_admin_workspace_id')" \
     GITHUB_APP_ID="$(op read 'op://$VAULT_DEV/github-app/app-id')" \
     GITHUB_APP_PRIVATE_KEY="$(op read 'op://$VAULT_DEV/github-app/private-key')" \
     POSTHOG_API_KEY="$(op read 'op://$VAULT_DEV/posthog-dev/credential')" \

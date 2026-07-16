@@ -85,6 +85,8 @@ pub const FleetStatus = enum {
 };
 
 pub const FleetTriggerType = enum { webhook, cron, api };
+pub const DEFAULT_CRON_TIMEZONE = "UTC";
+pub const DEFAULT_CRON_MESSAGE = "Scheduled Fleet run";
 
 pub const MAX_SIGNATURE_HEADER_LEN: usize = 64;
 
@@ -118,7 +120,11 @@ pub const FleetTrigger = union(FleetTriggerType) {
         credential_name: ?[]const u8 = null,
         signature: ?WebhookSignatureConfig = null,
     },
-    cron: struct { schedule: []const u8 },
+    cron: struct {
+        schedule: []const u8,
+        timezone: []const u8,
+        message: []const u8,
+    },
     api: void,
 };
 
@@ -256,7 +262,11 @@ pub fn freeFleetTrigger(alloc: Allocator, t: FleetTrigger) void {
                 alloc.free(sig.secret_ref);
             }
         },
-        .cron => |c| alloc.free(c.schedule),
+        .cron => |c| {
+            alloc.free(c.schedule);
+            alloc.free(c.timezone);
+            alloc.free(c.message);
+        },
         .api => {},
     }
 }

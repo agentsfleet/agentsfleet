@@ -3,10 +3,11 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Trash2Icon } from "lucide-react";
-import { Button, ConfirmDialog } from "@agentsfleet/design-system";
+import { Button, Card, ConfirmDialog } from "@agentsfleet/design-system";
 import { deleteFleetAction } from "../../actions";
 import { workspacePath } from "@/lib/workspace-routes";
 import { presentErrorString } from "@/lib/errors";
+import { DELETE_MEMORY_TRAP_NOTICE } from "./console-copy";
 
 type Props = {
   workspaceId: string;
@@ -42,15 +43,7 @@ export default function FleetConfig({
   }
 
   return (
-    <div className="rounded-md border border-border bg-card p-4">
-      <p className="mb-4 text-sm text-muted-foreground">
-        Rename, pause, and resume become available once the backend adds{" "}
-        <code className="font-mono text-xs">PATCH</code> /{" "}
-        <code className="font-mono text-xs">:pause</code> /{" "}
-        <code className="font-mono text-xs">:resume</code> endpoints. Delete
-        works today.
-      </p>
-
+    <Card className="p-4">
       <Button
         type="button"
         onClick={() => setOpen(true)}
@@ -64,7 +57,7 @@ export default function FleetConfig({
         open={open}
         onOpenChange={setOpen}
         title={`Delete ${fleetName}?`}
-        description="This removes the fleet. In-flight runs should be stopped first."
+        description={`This permanently deletes the fleet. ${DELETE_MEMORY_TRAP_NOTICE}`}
         confirmLabel="Yes, delete"
         intent="destructive"
         onConfirm={onConfirm}
@@ -73,6 +66,6 @@ export default function FleetConfig({
         // so onError always receives an Error.
         onError={(e) => setError((e as Error).message)}
       />
-    </div>
+    </Card>
   );
 }

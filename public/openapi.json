@@ -64,6 +64,13 @@
       }
     },
     {
+      "name": "Schedules",
+      "description": "Manage and receive scheduled Fleet events",
+      "x-mintlify": {
+        "navigation": "Schedules"
+      }
+    },
+    {
       "name": "Memory",
       "description": "Read and search saved fleet memory",
       "x-mintlify": {
@@ -1161,6 +1168,68 @@
         }
       }
     },
+    "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/memories/{key}": {
+      "delete": {
+        "operationId": "delete_fleet_memory",
+        "summary": "Forget a fleet memory entry",
+        "description": "Deletes one memory entry for this fleet. The key is scoped to the fleet, so a key from another fleet is not deleted.\n\nMissing keys return 404 so an operator can tell a mistyped key from a successful forget.\n",
+        "tags": [
+          "Memory"
+        ],
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "description": "UUIDv7 of the workspace.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "fleet_id",
+            "in": "path",
+            "required": true,
+            "description": "UUIDv7 of the fleet.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "key",
+            "in": "path",
+            "required": true,
+            "description": "Memory entry key.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Memory entry deleted."
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "description": "No memory entry with that key exists for this fleet.",
+            "$ref": "#/components/responses/Error"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/v1/auth/identity-events/clerk": {
       "post": {
         "operationId": "auth_identity_event_clerk",
@@ -1482,6 +1551,582 @@
           }
         },
         "security": []
+      }
+    },
+    "/v1/ingress/qstash/schedules": {
+      "post": {
+        "operationId": "ingest_qstash_schedule",
+        "summary": "Receive a scheduled fire",
+        "description": "Receives a signed fire from Upstash QStash and appends a `cron` event to the target Fleet.\n\nA valid duplicate, missing, inactive, or stale fire is accepted without appending an event.\n",
+        "tags": [
+          "Schedules"
+        ],
+        "parameters": [
+          {
+            "name": "Upstash-Signature",
+            "in": "header",
+            "required": true,
+            "description": "QStash signature over the exact request body and destination URL.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Upstash-Schedule-Id",
+            "in": "header",
+            "required": true,
+            "description": "Schedule identifier supplied by QStash.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Upstash-Message-Id",
+            "in": "header",
+            "required": true,
+            "description": "QStash delivery identifier used for replay suppression.",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "schedule_id",
+                  "generation"
+                ],
+                "properties": {
+                  "schedule_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "generation": {
+                    "type": "integer",
+                    "format": "int64",
+                    "minimum": 1
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Signed fire accepted. The fire may have been appended, deduplicated, or ignored as stale or inactive.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "accepted"
+                  ],
+                  "properties": {
+                    "accepted": {
+                      "type": "boolean",
+                      "const": true,
+                      "x-stability": "stable"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "description": "This API instance reached its in-flight request ceiling. Retry after the advertised delay.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds before retrying.",
+                "schema": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              },
+              "X-RateLimit-Limit": {
+                "description": "Instance in-flight request ceiling.",
+                "schema": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              },
+              "X-RateLimit-Remaining": {
+                "description": "Remaining admission capacity, zero for this response.",
+                "schema": {
+                  "type": "integer",
+                  "enum": [
+                    0
+                  ]
+                }
+              },
+              "X-RateLimit-Reset": {
+                "description": "Unix timestamp in seconds when immediate retry becomes reasonable.",
+                "schema": {
+                  "type": "integer",
+                  "format": "int64"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": []
+      }
+    },
+    "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/schedules": {
+      "get": {
+        "operationId": "list_fleet_schedules",
+        "summary": "List hosted schedules",
+        "description": "Lists the hosted schedules for a Fleet. The result is bounded by the per-Fleet schedule cap.",
+        "tags": [
+          "Schedules"
+        ],
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "fleet_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Schedule list.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "items",
+                    "total",
+                    "next_cursor"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Schedule"
+                      }
+                    },
+                    "total": {
+                      "type": "integer",
+                      "nullable": true
+                    },
+                    "next_cursor": {
+                      "type": "string",
+                      "nullable": true
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "create_fleet_schedule",
+        "summary": "Create a hosted schedule",
+        "description": "Creates a schedule and synchronously registers it in Upstash QStash.",
+        "tags": [
+          "Schedules"
+        ],
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "fleet_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScheduleWrite"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Schedule created and synced.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Schedule"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          },
+          "502": {
+            "$ref": "#/components/responses/Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/schedules/{schedule_id}": {
+      "get": {
+        "operationId": "get_fleet_schedule",
+        "summary": "Get a hosted schedule",
+        "tags": [
+          "Schedules"
+        ],
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "fleet_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "schedule_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Schedule.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Schedule"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "patch": {
+        "operationId": "update_fleet_schedule",
+        "summary": "Update a hosted schedule",
+        "description": "Updates schedule fields and synchronously overwrites the QStash registration.",
+        "tags": [
+          "Schedules"
+        ],
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "fleet_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "schedule_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SchedulePatch"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Schedule updated and synced.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Schedule"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          },
+          "502": {
+            "$ref": "#/components/responses/Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "delete_fleet_schedule",
+        "summary": "Delete a hosted schedule",
+        "description": "Deletes the QStash registration before removing the local schedule row.",
+        "tags": [
+          "Schedules"
+        ],
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "fleet_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "schedule_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Schedule deleted."
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "502": {
+            "$ref": "#/components/responses/Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/schedules/{schedule_id}:sync": {
+      "post": {
+        "operationId": "sync_fleet_schedule",
+        "summary": "Sync a hosted schedule",
+        "description": "Idempotently overwrites the QStash registration from the latest local generation.",
+        "tags": [
+          "Schedules"
+        ],
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "fleet_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "schedule_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Schedule synced.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Schedule"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "502": {
+            "$ref": "#/components/responses/Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
       }
     },
     "/v1/webhooks/svix/{fleet_id}": {
@@ -4214,7 +4859,7 @@
       "get": {
         "operationId": "list_platform_fleet_library",
         "summary": "List the platform Fleet library catalog",
-        "description": "Lists every entry in the global platform catalog. Published, draft, and entries whose bundle was never fetched all appear. Unlike the workspace gallery, this operator view hides nothing: it shows what is live and what still needs work. Requires the `platform-library:write` scope. Metadata only — never bundle markdown, a support-file body, or an object-store key.",
+        "description": "Lists every entry in the global platform catalog. Published, draft, and entries whose bundle was never fetched all appear. Unlike the workspace gallery, this operator view hides nothing: it shows what is live and what still needs work. Requires the `platform-library:write` scope. Metadata only — never bundle markdown, a support-file body, or an object-store key. Each row carries an `etag` that an editor can send as `If-Match` on PATCH.",
         "tags": [
           "Fleet library"
         ],
@@ -4323,9 +4968,18 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": false,
+            "description": "Optional catalog row version from the list response. Stale values return 412 with the current `etag`.",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
-        "description": "Partial update. `description` and `required_credentials_reasons` are the two fields no bundle can supply, so they are operator-owned: a later bundle refetch never overwrites them. `published` moves the entry between `draft` (stored, invisible to every tenant) and `public` (live in every workspace gallery and installable). Publishing an entry whose bundle was never fetched is refused — a published entry always has something to install. Requires the `platform-library:write` scope.",
+        "description": "Partial update. `description` and `required_credentials_reasons` are the two fields no bundle can supply, so they are operator-owned: a later bundle refetch never overwrites them. `published` moves the entry between `draft` (stored, invisible to every tenant) and `public` (live in every workspace gallery and installable). Publishing an entry whose bundle was never fetched is refused — a published entry always has something to install. Requires the `platform-library:write` scope. Send `If-Match` with the row's `etag` to reject stale edits before they can repoint the source or unpublish the entry. Omitting the header preserves last-write-wins behavior.",
         "tags": [
           "Fleet library"
         ],
@@ -4364,6 +5018,10 @@
           },
           "409": {
             "description": "Publish was requested for an entry with no bundle; fetch it from the repository first (`UZ-CATALOG-002`).",
+            "$ref": "#/components/responses/Error"
+          },
+          "412": {
+            "description": "The `If-Match` value is stale. The problem body carries the current `etag` (`UZ-CATALOG-005`).",
             "$ref": "#/components/responses/Error"
           },
           "503": {
@@ -4539,10 +5197,10 @@
       }
     },
     "/v1/workspaces/{workspace_id}/fleets/{fleet_id}": {
-      "patch": {
-        "operationId": "patch_fleet",
-        "summary": "Update a fleet",
-        "description": "Updates fleet files or status. Every request field is optional.\n\n`config_json` and `trigger_markdown` cannot be used together. A killed fleet cannot be changed.\n\nStatus changes require an operator role. Config changes require workspace membership.\n",
+      "get": {
+        "operationId": "get_fleet",
+        "summary": "Get a fleet",
+        "description": "Returns one fleet's editable source, trigger markdown, bundle pin, trigger list, status, and lifetime counters.\n\nThe response carries an `ETag` header over `source_markdown` and `trigger_markdown`. Send that value as `If-Match` when saving source changes to avoid overwriting another operator's edit.\n",
         "tags": [
           "Fleets"
         ],
@@ -4565,6 +5223,81 @@
             "schema": {
               "type": "string",
               "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Fleet detail.",
+            "headers": {
+              "ETag": {
+                "description": "Version of the editable source fields.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FleetDetail"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "description": "No fleet with that id exists in this workspace. Cross-workspace reads also return 404.",
+            "$ref": "#/components/responses/Error"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "patch": {
+        "operationId": "patch_fleet",
+        "summary": "Update a fleet",
+        "description": "Updates fleet files or status. Every request field is optional.\n\n`config_json` and `trigger_markdown` cannot be used together. A killed fleet cannot be changed.\n\nSource editors can send `If-Match` with the `ETag` from GET. A stale tag returns 412 with the current tag in the problem body; omitting the header preserves last-write-wins behavior.\n\nStatus changes require an operator role. Config changes require workspace membership.\n",
+        "tags": [
+          "Fleets"
+        ],
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "description": "UUIDv7 of the workspace.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "fleet_id",
+            "in": "path",
+            "required": true,
+            "description": "UUIDv7 of the fleet.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": false,
+            "description": "Optional source-version tag from GET. Stale values return 412 with the current `etag`.",
+            "schema": {
+              "type": "string"
             }
           }
         ],
@@ -4604,6 +5337,14 @@
         "responses": {
           "200": {
             "description": "OK",
+            "headers": {
+              "ETag": {
+                "description": "Fresh version of the editable source fields after the update.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {
@@ -4625,6 +5366,10 @@
                     "config_revision": {
                       "type": "integer",
                       "format": "int64"
+                    },
+                    "etag": {
+                      "type": "string",
+                      "description": "Fresh version of the editable source fields after the update."
                     }
                   }
                 }
@@ -4644,6 +5389,10 @@
             "$ref": "#/components/responses/Error"
           },
           "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "412": {
+            "description": "The `If-Match` value is stale. The problem body carries the current `etag`.",
             "$ref": "#/components/responses/Error"
           },
           "503": {
@@ -5162,8 +5911,7 @@
                     "items": {
                       "type": "array",
                       "items": {
-                        "type": "object",
-                        "description": "One fleet event."
+                        "$ref": "#/components/schemas/FleetEvent"
                       }
                     },
                     "next_cursor": {
@@ -5314,7 +6062,7 @@
                     "items": {
                       "type": "array",
                       "items": {
-                        "type": "object"
+                        "$ref": "#/components/schemas/FleetEvent"
                       }
                     },
                     "next_cursor": {
@@ -6337,6 +7085,10 @@
             "type": "string",
             "description": "Plain message safe to show to a user. Present only when an error defines one.\n\nUse `detail` or `title` when this field is absent.\n",
             "example": "We couldn't find that Fleet. It may have been deleted, or the ID doesn't match one in this workspace."
+          },
+          "etag": {
+            "type": "string",
+            "description": "Resource version returned on 412 responses so the caller can refetch and retry."
           }
         }
       },
@@ -6480,6 +7232,145 @@
           "updated_at": {
             "type": "integer",
             "format": "int64"
+          }
+        }
+      },
+      "Schedule": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "schedule_id",
+          "fleet_id",
+          "source",
+          "cron",
+          "timezone",
+          "message",
+          "desired_status",
+          "sync_status",
+          "generation",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "schedule_id": {
+            "type": "string",
+            "format": "uuid",
+            "x-stability": "stable"
+          },
+          "fleet_id": {
+            "type": "string",
+            "format": "uuid",
+            "x-stability": "stable"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "api",
+              "trigger"
+            ],
+            "x-stability": "stable"
+          },
+          "cron": {
+            "type": "string",
+            "x-stability": "stable"
+          },
+          "timezone": {
+            "type": "string",
+            "x-stability": "stable"
+          },
+          "message": {
+            "type": "string",
+            "x-stability": "stable"
+          },
+          "desired_status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "paused",
+              "deleting"
+            ],
+            "x-stability": "stable"
+          },
+          "sync_status": {
+            "type": "string",
+            "enum": [
+              "syncing",
+              "synced",
+              "failed"
+            ],
+            "x-stability": "stable"
+          },
+          "generation": {
+            "type": "integer",
+            "format": "int64",
+            "x-stability": "stable"
+          },
+          "last_error": {
+            "type": "string",
+            "nullable": true,
+            "x-stability": "stable"
+          },
+          "created_at": {
+            "type": "integer",
+            "format": "int64",
+            "x-stability": "stable"
+          },
+          "updated_at": {
+            "type": "integer",
+            "format": "int64",
+            "x-stability": "stable"
+          }
+        }
+      },
+      "ScheduleWrite": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "cron",
+          "message"
+        ],
+        "properties": {
+          "cron": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "timezone": {
+            "type": "string",
+            "default": "UTC",
+            "maxLength": 64
+          },
+          "message": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 8192
+          }
+        }
+      },
+      "SchedulePatch": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "cron": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "timezone": {
+            "type": "string",
+            "maxLength": 64
+          },
+          "message": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 8192
+          },
+          "desired_status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "paused"
+            ]
           }
         }
       },
@@ -6867,6 +7758,7 @@
           "status": {
             "type": "string",
             "enum": [
+              "installing",
               "active",
               "paused",
               "stopped",
@@ -7018,6 +7910,7 @@
           "requirements",
           "required_credentials_reasons",
           "support_files",
+          "etag",
           "updated_at"
         ],
         "properties": {
@@ -7068,6 +7961,10 @@
             "items": {
               "$ref": "#/components/schemas/FleetBundleSupportFileSummary"
             }
+          },
+          "etag": {
+            "type": "string",
+            "description": "Optimistic-concurrency tag over the operator-editable catalog row fields. Send it as `If-Match` on PATCH to prevent stale overwrites."
           },
           "updated_at": {
             "type": "integer",
@@ -7276,6 +8173,37 @@
           }
         }
       },
+      "FleetDetail": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/FleetSummary"
+          },
+          {
+            "type": "object",
+            "required": [
+              "source_markdown",
+              "trigger_markdown",
+              "bundle_content_hash"
+            ],
+            "properties": {
+              "source_markdown": {
+                "type": "string",
+                "description": "Current SKILL.md markdown for this fleet."
+              },
+              "trigger_markdown": {
+                "type": "string",
+                "nullable": true,
+                "description": "Current TRIGGER.md markdown, or null when the fleet has no trigger file."
+              },
+              "bundle_content_hash": {
+                "type": "string",
+                "nullable": true,
+                "description": "Installed bundle content hash, or null when the fleet was not installed from a bundle."
+              }
+            }
+          }
+        ]
+      },
       "IntegrationGrant": {
         "type": "object",
         "required": [
@@ -7323,6 +8251,92 @@
           },
           "reason": {
             "type": "string"
+          }
+        }
+      },
+      "FleetEvent": {
+        "type": "object",
+        "description": "One fleet event in newest-first history order.",
+        "required": [
+          "fleet_id",
+          "event_id",
+          "workspace_id",
+          "actor",
+          "event_type",
+          "status",
+          "request_json",
+          "response_text",
+          "tokens",
+          "wall_ms",
+          "failure_label",
+          "checkpoint_id",
+          "resumes_event_id",
+          "created_at",
+          "updated_at",
+          "cost_nanos"
+        ],
+        "properties": {
+          "fleet_id": {
+            "type": "string"
+          },
+          "event_id": {
+            "type": "string"
+          },
+          "workspace_id": {
+            "type": "string"
+          },
+          "event_type": {
+            "type": "string"
+          },
+          "actor": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "request_json": {
+            "type": "string",
+            "description": "The event request body serialized as JSON text."
+          },
+          "response_text": {
+            "type": "string",
+            "nullable": true
+          },
+          "created_at": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "tokens": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "wall_ms": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "failure_label": {
+            "type": "string",
+            "nullable": true
+          },
+          "checkpoint_id": {
+            "type": "string",
+            "nullable": true
+          },
+          "resumes_event_id": {
+            "type": "string",
+            "nullable": true
+          },
+          "updated_at": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "cost_nanos": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true,
+            "description": "Billed cost for this event in nanos, mapped from the event's `credit_deducted_nanos` charge. Null when no charge has been recorded."
           }
         }
       },

@@ -167,12 +167,6 @@ pub fn buildDelegate(ctx: BuildCtx) anyerror!tools_mod.Tool {
     return ptr.tool();
 }
 
-pub fn buildSchedule(ctx: BuildCtx) anyerror!tools_mod.Tool {
-    const ptr = try ctx.alloc.create(tools_mod.schedule.ScheduleTool);
-    ptr.* = .{};
-    return ptr.tool();
-}
-
 pub fn buildSpawn(ctx: BuildCtx) anyerror!tools_mod.Tool {
     const ptr = try ctx.alloc.create(tools_mod.spawn.SpawnTool);
     ptr.* = .{ .manager = null };
@@ -266,44 +260,6 @@ pub fn buildScreenshot(ctx: BuildCtx) anyerror!tools_mod.Tool {
 pub fn buildBrowserOpen(ctx: BuildCtx) anyerror!tools_mod.Tool {
     const ptr = try ctx.alloc.create(tools_mod.browser_open.BrowserOpenTool);
     ptr.* = .{ .allowed_domains = &.{} };
-    return ptr.tool();
-}
-
-// ── Cron tools ─────────────────────────────────────────────────────────────
-
-pub fn buildCronAdd(ctx: BuildCtx) anyerror!tools_mod.Tool {
-    const ptr = try ctx.alloc.create(tools_mod.cron_add.CronAddTool);
-    ptr.* = .{};
-    return ptr.tool();
-}
-
-pub fn buildCronList(ctx: BuildCtx) anyerror!tools_mod.Tool {
-    const ptr = try ctx.alloc.create(tools_mod.cron_list.CronListTool);
-    ptr.* = .{};
-    return ptr.tool();
-}
-
-pub fn buildCronRemove(ctx: BuildCtx) anyerror!tools_mod.Tool {
-    const ptr = try ctx.alloc.create(tools_mod.cron_remove.CronRemoveTool);
-    ptr.* = .{};
-    return ptr.tool();
-}
-
-pub fn buildCronRun(ctx: BuildCtx) anyerror!tools_mod.Tool {
-    const ptr = try ctx.alloc.create(tools_mod.cron_run.CronRunTool);
-    ptr.* = .{};
-    return ptr.tool();
-}
-
-pub fn buildCronRuns(ctx: BuildCtx) anyerror!tools_mod.Tool {
-    const ptr = try ctx.alloc.create(tools_mod.cron_runs.CronRunsTool);
-    ptr.* = .{};
-    return ptr.tool();
-}
-
-pub fn buildCronUpdate(ctx: BuildCtx) anyerror!tools_mod.Tool {
-    const ptr = try ctx.alloc.create(tools_mod.cron_update.CronUpdateTool);
-    ptr.* = .{};
     return ptr.tool();
 }
 

@@ -143,7 +143,7 @@ fn respondWithBag(hx: Hx, ctx: Opened, workspace_id: []const u8) void {
             continue;
         };
         map.put(hx.alloc, pref.key, value) catch {
-            common.internalOperationError(hx.res, "prefs could not be assembled", hx.req_id);
+            common.internalOperationError(hx.res, "Failed to prepare your preferences", hx.req_id); // mudball-ok: plain user-safe preference read failure; no internal details
             return;
         };
     }

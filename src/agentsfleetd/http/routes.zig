@@ -76,6 +76,7 @@ pub const Route = union(enum) {
     /// requests and failed completed workflow runs.
     github_webhook: []const u8,
     app_ingress: []const u8, // POST /v1/ingress/{provider}; provider-signature auth in-handler
+    qstash_schedule_ingress, // POST /v1/ingress/qstash/schedules; signature auth in-handler
     // Admin platform key management
     admin_platform_keys, // GET + PUT /v1/admin/platform-keys (method-dispatched in server.zig)
     delete_admin_platform_key: []const u8, // DELETE /v1/admin/platform-keys/{provider}
@@ -89,6 +90,9 @@ pub const Route = union(enum) {
     workspace_secret: matchers.WorkspaceSecretRoute, // PATCH|DELETE /v1/workspaces/{ws}/secrets/{name}
     // Chat ingress — POST /v1/workspaces/{ws}/fleets/{id}/messages
     workspace_fleet_messages: matchers.WorkspaceFleetRoute,
+    workspace_fleet_schedules: matchers.WorkspaceFleetScheduleCollectionRoute, // GET|POST /v1/workspaces/{ws}/fleets/{id}/schedules
+    workspace_fleet_schedule: matchers.WorkspaceFleetScheduleRoute, // GET|PATCH|DELETE /v1/workspaces/{ws}/fleets/{id}/schedules/{sid}
+    workspace_fleet_schedule_sync: matchers.WorkspaceFleetScheduleRoute, // POST /v1/workspaces/{ws}/fleets/{id}/schedules/{sid}:sync
     // Per-Fleet event history + Server-Sent Events (SSE) live tail
     workspace_fleet_events: matchers.WorkspaceFleetRoute, // GET /v1/workspaces/{ws}/fleets/{id}/events
     workspace_fleet_events_stream: matchers.WorkspaceFleetRoute, // GET /v1/workspaces/{ws}/fleets/{id}/events/stream
@@ -108,8 +112,11 @@ pub const Route = union(enum) {
     workspace_approvals: []const u8, // GET /v1/workspaces/{ws}/approvals
     workspace_approval_detail: matchers.ApprovalGateRoute, // GET /v1/workspaces/{ws}/approvals/{gate_id}
     workspace_approval_resolve: matchers.ApprovalResolveRoute, // POST /v1/workspaces/{ws}/approvals/{gate_id}:approve|:deny
-    // External-fleet memory API — workspace-scoped resource collection (read-only).
-    workspace_fleet_memories: matchers.WorkspaceFleetRoute, // GET (list-or-search); write verbs retired
+    // External-fleet memory API — workspace-scoped. The collection is read-only
+    // (memory is written only by the runner-plane capture push); the by-key leaf
+    // is the operator's forget.
+    workspace_fleet_memories: matchers.WorkspaceFleetRoute, // GET (list-or-search); POST retired
+    workspace_fleet_memory_item: matchers.WorkspaceFleetMemoryRoute, // DELETE /v1/workspaces/{workspace_id}/fleets/{fleet_id}/memories/{key}
     // Integration grant CRUD (workspace-scoped)
     request_integration_grant: matchers.WorkspaceFleetRoute, // POST /v1/workspaces/{ws}/fleets/{id}/integration-requests
     list_integration_grants: matchers.WorkspaceFleetRoute, // GET /v1/workspaces/{ws}/fleets/{id}/integration-grants

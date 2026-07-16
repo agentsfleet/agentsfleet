@@ -36,6 +36,8 @@ Every `op://` reference the agent will use across M2_002 and the deploy pipeline
 | `clerk-prod` | `secret-key` | Fly.io PROD `CLERK_SECRET_KEY` |
 | `clerk-prod` | `webhook-secret` | Fly.io PROD `CLERK_WEBHOOK_SECRET` (Svix signing key for `/v1/auth/identity-events/clerk`) |
 | `clerk-prod` | `issuer` | Fly.io PROD `OIDC_ISSUER` (JWKS URL derived from it — M93_001) |
+| `agentsfleet-admin` | `api-key` | Tenant API key used by platform registration playbooks |
+| `agentsfleet-admin` | `platform_admin_workspace_id` | Fly.io PROD `PLATFORM_ADMIN_WORKSPACE_ID`; Universally Unique Identifier version 7 (UUIDv7) pointer to the workspace holding platform connector and QStash secrets |
 | `github-app` | `app-id` | Fly.io PROD + DEV `GITHUB_APP_ID` |
 | `github-app` | `private-key` | Fly.io PROD + DEV `GITHUB_APP_PRIVATE_KEY` |
 | `encryption-master-key` | `credential` | Fly.io PROD `ENCRYPTION_MASTER_KEY` |
@@ -64,6 +66,8 @@ Every `op://` reference the agent will use across M2_002 and the deploy pipeline
 | `clerk-dev` | `secret-key` | Fly.io DEV `CLERK_SECRET_KEY` |
 | `clerk-dev` | `webhook-secret` | Fly.io DEV `CLERK_WEBHOOK_SECRET` (Svix signing key for `/v1/auth/identity-events/clerk`) |
 | `clerk-dev` | `issuer` | Fly.io DEV `OIDC_ISSUER` (JWKS URL derived from it — M93_001) |
+| `agentsfleet-admin` | `api-key` | Tenant API key used by platform registration playbooks |
+| `agentsfleet-admin` | `platform_admin_workspace_id` | Fly.io DEV `PLATFORM_ADMIN_WORKSPACE_ID`; UUIDv7 pointer to the workspace holding platform connector and QStash secrets |
 | `github-app` | `app-id` | Fly.io DEV `GITHUB_APP_ID` |
 | `github-app` | `private-key` | Fly.io DEV `GITHUB_APP_PRIVATE_KEY` |
 | `encryption-master-key` | `credential` | Fly.io DEV `ENCRYPTION_MASTER_KEY` |
@@ -183,6 +187,7 @@ Items not yet in the vault that block M2_002. Create these before re-running:
 
 | Item name | Field | How to get the value |
 |---|---|---|
+| `agentsfleet-admin` | `platform_admin_workspace_id` | Query `/v1/tenants/me/workspaces` with this item's `api-key`, select the oldest workspace `id`, and store it here. A placeholder permits daemon bootstrap but leaves platform integrations unavailable. |
 | `discord-ci-webhook` | `credential` | Discord → Server Settings → Integrations → Webhooks → New Webhook → Copy URL |
 | `posthog-prod` | `credential` | PostHog project API key shared by website, app, agentsfleetd, worker, and CLI |
 | `planetscale-prod` | `api-connection-string` | PlanetScale dashboard → create/get `api_runtime` connection string |
@@ -201,6 +206,7 @@ Items not yet in the vault that block M2_002. Create these before re-running:
 
 | Item name | Field | How to get the value |
 |---|---|---|
+| `agentsfleet-admin` | `platform_admin_workspace_id` | Query `/v1/tenants/me/workspaces` with this item's `api-key`, select the oldest workspace `id`, and store it here. A placeholder permits daemon bootstrap but leaves platform integrations unavailable. |
 | `planetscale-dev` | `api-connection-string` | PlanetScale → `agentsfleet-dev` DB → create/get `api_runtime` connection string |
 | `planetscale-dev` | `migrator-connection-string` | PlanetScale → `agentsfleet-dev` DB → create/get `db_migrator` connection string |
 | `upstash-dev` | `api-url` | Upstash → Redis → `agentsfleet-dev` → create/get API role URL (`rediss://...`) |

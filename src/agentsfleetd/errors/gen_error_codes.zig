@@ -94,7 +94,7 @@ fn categoryOf(code: []const u8) []const u8 {
 // the completeness check — a category with no entry here falls back to the
 // capitalized-token form, which stays legible but not friendly).
 const S_API = "API";
-const CATEGORY_COVERAGE_BRANCH_QUOTA = 10_000;
+const CATEGORY_COVERAGE_BRANCH_QUOTA = 20_000;
 
 const CategoryCopy = struct {
     token: []const u8,
@@ -140,6 +140,7 @@ const CATEGORY_COPY = [_]CategoryCopy{
     .{ .token = "REQ", .label = "Request", .prevention = "Validate request fields before sending the request." },
     .{ .token = "CATALOG", .label = "Fleet library catalog", .prevention = "Fetch a bundle before publishing a fleet, and unpublish before deleting one." },
     .{ .token = "RUN", .label = "Runners", .prevention = "Keep runner settings and lease health within configured limits." },
+    .{ .token = "SCHED", .label = "Schedules", .prevention = "Use a valid schedule, cron expression, timezone, and configured QStash ingress." },
     .{ .token = "SLK", .label = "Slack", .prevention = "Keep Slack app credentials, permissions, and clocks current." },
     .{ .token = "STARTUP", .label = "Startup", .prevention = "Operators should verify required service settings before startup." },
     .{ .token = "TOOL", .label = "Tools", .prevention = "Declare every tool used by the fleet." },

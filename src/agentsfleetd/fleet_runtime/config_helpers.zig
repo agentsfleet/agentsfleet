@@ -67,7 +67,17 @@ pub fn parseFleetTrigger(alloc: Allocator, obj: std.json.ObjectMap) (Allocator.E
     }
     if (std.mem.eql(u8, type_str, "cron")) {
         const schedule = try requireString(alloc, obj, "schedule") orelse return FleetConfigError.MissingRequiredField;
-        return .{ .cron = .{ .schedule = schedule } };
+        errdefer alloc.free(schedule);
+        const timezone = if (try optionalString(alloc, obj, "timezone")) |value|
+            value
+        else
+            try alloc.dupe(u8, config_types.DEFAULT_CRON_TIMEZONE);
+        errdefer alloc.free(timezone);
+        const message = if (try optionalString(alloc, obj, "message")) |value|
+            value
+        else
+            try alloc.dupe(u8, config_types.DEFAULT_CRON_MESSAGE);
+        return .{ .cron = .{ .schedule = schedule, .timezone = timezone, .message = message } };
     }
     if (std.mem.eql(u8, type_str, "api")) {
         return .{ .api = {} };

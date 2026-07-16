@@ -21,7 +21,7 @@ Every memory row belongs to **one fleet**, keyed by the column **`fleet_id`** (U
 
 ## 2. Isolation — a Postgres role, not the workspace
 
-Memory lives in its own `memory` schema behind the **`memory_runtime`** Postgres role, which holds **zero grants on `core.*`** (RULE CTX). `api_runtime` does `SET ROLE memory_runtime` only inside a memory request, then `RESET`. The table carries **no foreign key to `core.fleets`** and **survives workspace destruction** (`schema/013` lines 2, 5–6) — the role boundary is the isolation, not a workspace column. The workspace is only the *authorization* boundary above this: a tenant must own the fleet to read its memory via the tenant read (`GET /v1/workspaces/{ws}/fleets/{id}/memories`, scope `fleet:read`).
+Memory lives in its own `memory` schema behind the **`memory_runtime`** Postgres role, which holds **zero grants on `core.*`** (RULE CTX). `api_runtime` does `SET ROLE memory_runtime` only inside a memory request, then `RESET`. The table carries **no foreign key to `core.fleets`** and **survives workspace destruction** (`schema/013` lines 2, 5–6) — the role boundary is the isolation, not a workspace column. The workspace is only the *authorization* boundary above this: a tenant must own the fleet to read its memory via `GET /v1/workspaces/{ws}/fleets/{id}/memories` (`fleet:read`) or forget one entry via `DELETE /v1/workspaces/{ws}/fleets/{id}/memories/{key}` (`fleet:write`). The item path decodes its URL segment before lookup, so reserved characters such as `/` round-trip through an encoded key. Forget deletes only the row matching both `fleet_id` and decoded `key`; an absent key returns 404.
 
 ## 3. Durable store vs ephemeral compute — why "ephemeral fleets" lose memory
 
@@ -49,5 +49,5 @@ The four tools (`memory_store` / `memory_recall` / `memory_list` / `memory_forge
 | Schema (table, `(key, fleet_id)` index, role grants, `survives workspace destruction`) | `schema/013_memory_entries.sql` |
 | The only write/read adapter (`WHERE fleet_id = $1`, `ON CONFLICT (key, fleet_id)`) | `src/agentsfleetd/memory/fleet_memory.zig` |
 | Runner hydrate/capture endpoints (lease-derived `fleet_id`, fencing) | `src/agentsfleetd/http/handlers/runner/memory.zig` |
-| Tenant read (`fleet:read`, ownership-gated) | `src/agentsfleetd/http/handlers/memory/handler.zig` |
+| Tenant read and forget (ownership-gated) | `src/agentsfleetd/http/handlers/memory/handler.zig` |
 | In-run store seeding (`:memory:` SQLite) | `src/runner/engine/inrun_memory.zig` |

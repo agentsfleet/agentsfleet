@@ -77,6 +77,9 @@ components:
 
             Use `detail` or `title` when this field is absent.
           example: We couldn't find that Fleet. It may have been deleted, or the ID doesn't match one in this workspace.
+        etag:
+          type: string
+          description: Resource version returned on 412 responses so the caller can refetch and retry.
     TenantApiKey:
       type: object
       description: Metadata for a tenant API key. `key_hash` and the raw key are never returned.
@@ -249,6 +252,7 @@ components:
         status:
           type: string
           enum:
+          - installing
           - active
           - paused
           - stopped
@@ -274,6 +278,93 @@ components:
           type: integer
           format: int64
           description: Total balance used by this fleet, in nanos.
+    FleetDetail:
+      allOf:
+      - $ref: '#/components/schemas/FleetSummary'
+      - type: object
+        required:
+        - source_markdown
+        - trigger_markdown
+        - bundle_content_hash
+        properties:
+          source_markdown:
+            type: string
+            description: Current SKILL.md markdown for this fleet.
+          trigger_markdown:
+            type: string
+            nullable: true
+            description: Current TRIGGER.md markdown, or null when the fleet has no trigger file.
+          bundle_content_hash:
+            type: string
+            nullable: true
+            description: Installed bundle content hash, or null when the fleet was not installed from a bundle.
+    FleetEvent:
+      type: object
+      description: One fleet event in newest-first history order.
+      required:
+      - fleet_id
+      - event_id
+      - workspace_id
+      - actor
+      - event_type
+      - status
+      - request_json
+      - response_text
+      - tokens
+      - wall_ms
+      - failure_label
+      - checkpoint_id
+      - resumes_event_id
+      - created_at
+      - updated_at
+      - cost_nanos
+      properties:
+        fleet_id:
+          type: string
+        event_id:
+          type: string
+        workspace_id:
+          type: string
+        event_type:
+          type: string
+        actor:
+          type: string
+        status:
+          type: string
+        request_json:
+          type: string
+          description: The event request body serialized as JSON text.
+        response_text:
+          type: string
+          nullable: true
+        created_at:
+          type: integer
+          format: int64
+        tokens:
+          type: integer
+          format: int64
+          nullable: true
+        wall_ms:
+          type: integer
+          format: int64
+          nullable: true
+        failure_label:
+          type: string
+          nullable: true
+        checkpoint_id:
+          type: string
+          nullable: true
+        resumes_event_id:
+          type: string
+          nullable: true
+        updated_at:
+          type: integer
+          format: int64
+        cost_nanos:
+          type: integer
+          format: int64
+          nullable: true
+          description: Billed cost for this event in nanos, mapped from the event's `credit_deducted_nanos` charge. Null when no charge has been recorded.
     FleetBundleTemplate:
       type: object
       required:
@@ -480,6 +571,7 @@ components:
       - requirements
       - required_credentials_reasons
       - support_files
+      - etag
       - updated_at
       properties:
         id:
@@ -525,6 +617,9 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/FleetBundleSupportFileSummary'
+        etag:
+          type: string
+          description: Optimistic-concurrency tag over the operator-editable catalog row fields. Send it as `If-Match` on PATCH to prevent stale overwrites.
         updated_at:
           type: integer
           format: int64
