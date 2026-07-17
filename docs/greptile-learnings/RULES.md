@@ -78,12 +78,14 @@ every code a dispatch `.sh` emits resolves to exactly one row here.
 **Tags:** zig, js, security
 **Ref:** M22_001 extractCreatedAt used indexOf on JSON. M1_001 simpleYamlParse silently dropped all arrays.
 
+<!-- oracle-packs:start language.zig -->
 ## RULE OWN — One owner per resource — no double cleanup
 
 **Rule:** Every allocation has exactly one cleanup path — errdefer OR manual free, never both on the same pointer. For multi-step init, use the sequential errdefer chain (see dispatch/write_zig.md "Multi-Step Init"). For shared ownership, use `ref()`/`unref()` with an atomic refcount — `unref()` destroys when count hits zero. Raw pointer field = borrowed (caller owns); refcounted field = owned (self manages).
 **Why:** Two cleanup paths = double-free on the error path. The bvisor encoding (raw ptr = borrowed, refcount = owned) makes the ownership contract readable from the type alone.
 **Tags:** zig, memory
 **Ref:** M1_001 manual alloc.free() + errdefer on same pointer = double-free. bvisor Thread.zig, ThreadGroup.zig for ref/unref pattern.
+<!-- oracle-packs:end -->
 
 ## RULE CTM — Constant-time comparison for secrets
 
@@ -127,12 +129,14 @@ every code a dispatch `.sh` emits resolves to exactly one row here.
 **Tags:** zig, ci
 **Ref:** M22_001 client.open compiled on macOS, absent on Linux — 3 rounds to fix. v0.4.0 bare -gnu in CI.
 
+<!-- oracle-packs:start language.zig -->
 ## RULE FLS — Flush all layers — drain all results
 
 **Rule:** After TLS flush, also flush the socket layer. Cast UUID/JSONB to ::text in SELECT. For pg results: use `PgQuery` (see dispatch/write_zig.md "Pg Query Wrapper") — `defer q.deinit()` auto-drains. Manual `q.drain() catch {}; q.deinit()` on early-exit paths is eliminated by the wrapper.
 **Why:** TLS flush only encrypts into buffer; undrained slices dangle; ::text prevents binary/text divergence across OS.
 **Tags:** zig, tls, postgres
 **Ref:** M22_001 missing socket flush → infinite hang. M1_001 UUID read as binary on Linux CI, text on macOS. M10_004 PgQuery wraps drain into deinit.
+<!-- oracle-packs:end -->
 
 ## RULE TIM — Timing invariants must be explicit
 

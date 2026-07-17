@@ -92,10 +92,8 @@ The questionnaire is organised by scenario. Each scenario corresponds to a momen
 | 4.22 (Doc read) | Are auto-mode and "I read this earlier in the session" both invalid grounds to skip the proof-line? | YES |
 | 4.23 (Documentation) | Before published Markdown JSX (MDX), reusable snippets, customer readme, or public OpenAPI prose, must the agent read `dispatch/write_documentation.md` and `docs/DOCUMENTATION_RULES.md` before any narrower guide? | YES |
 | 4.24 (Documentation) | Are page, snippet, generated API, and changelog scopes distinct, with repository-owned pre-commit checks enforcing the mechanical rules? | YES |
-| 4.25 (Rust) | Do `*.rs` edits route to `dispatch/write_rust.md`, with ownership, error variants, feature combinations, and deterministic contention tests preserved? | YES |
 | 4.26 (Python) | Do `*.py` edits route to `dispatch/write_python.md`, with parse-boundary validation and context-managed resources? | YES |
 | 4.27 (Shell) | Do `*.sh` edits route to `dispatch/write_shell.md`, with quoted expansions, array arguments, cleanup, and compatibility requirements? | YES |
-| 4.28 (Markdown JSX) | Do `*.mdx` edits route to `dispatch/write_mdx.md`, with structure, link, accessibility, and Mintlify-isolation requirements? | YES |
 
 ### Scenario 5 — Picking up a handover
 
