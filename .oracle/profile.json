@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "name": "agentsfleet",
+  "packs": [
+    "universal.authoring",
+    "language.zig",
+    "language.typescript",
+    "language.javascript",
+    "language.python",
+    "language.shell",
+    "domain.sql",
+    "domain.http",
+    "domain.auth",
+    "domain.documentation",
+    "domain.changelog",
+    "domain.architecture",
+    "workflow.specifications",
+    "workflow.governance",
+    "product.agentsfleet"
+  ],
+  "commands": {
+    "conform": [
+      [
+        "make",
+        "harness-verify"
+      ]
+    ],
+    "verify.lint": [
+      [
+        "make",
+        "lint-all"
+      ]
+    ],
+    "verify.unit": [
+      [
+        "make",
+        "test-unit-all"
+      ]
+    ],
+    "verify.integration": [
+      [
+        "make",
+        "test-integration"
+      ]
+    ],
+    "verify.memory": [
+      [
+        "make",
+        "memleak"
+      ]
+    ],
+    "verify.version": [
+      [
+        "make",
+        "check-version"
+      ]
+    ]
+  }
+}
