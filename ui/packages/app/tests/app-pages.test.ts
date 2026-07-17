@@ -47,17 +47,19 @@ vi.mock("lucide-react", () => ({
   ShieldIcon: () => React.createElement("svg", { "data-icon": "ShieldIcon" }),
   KeyRoundIcon: () => React.createElement("svg", { "data-icon": "KeyRoundIcon" }),
   LibraryIcon: () => React.createElement("svg", { "data-icon": "LibraryIcon" }),
-  LinkIcon: () => React.createElement("svg", { "data-icon": "LinkIcon" }),
+  PlugIcon: () => React.createElement("svg", { "data-icon": "PlugIcon" }),
   CheckCircle2Icon: () => React.createElement("svg", { "data-icon": "CheckCircle2Icon" }),
   ServerIcon: () => React.createElement("svg", { "data-icon": "ServerIcon" }),
-  CpuIcon: () => React.createElement("svg", { "data-icon": "CpuIcon" }),
-  CoinsIcon: () => React.createElement("svg", { "data-icon": "CoinsIcon" }),
+  BrainCircuitIcon: () => React.createElement("svg", { "data-icon": "BrainCircuitIcon" }),
+  BoxesIcon: () => React.createElement("svg", { "data-icon": "BoxesIcon" }),
   CreditCardIcon: () => React.createElement("svg", { "data-icon": "CreditCardIcon" }),
   MenuIcon: () => React.createElement("svg", { "data-icon": "MenuIcon" }),
-  PanelLeftIcon: () => React.createElement("svg", { "data-icon": "PanelLeftIcon" }),
+  PanelLeftCloseIcon: () => React.createElement("svg", { "data-icon": "PanelLeftCloseIcon" }),
+  PanelLeftOpenIcon: () => React.createElement("svg", { "data-icon": "PanelLeftOpenIcon" }),
   SunIcon: () => React.createElement("svg", { "data-icon": "SunIcon" }),
   MoonIcon: () => React.createElement("svg", { "data-icon": "MoonIcon" }),
   ChevronDownIcon: () => React.createElement("svg", { "data-icon": "ChevronDownIcon" }),
+  ChevronRightIcon: () => React.createElement("svg", { "data-icon": "ChevronRightIcon" }),
 }));
 
 // M118: `lib/workspace` is slimmed to a single survivor — the active workspace

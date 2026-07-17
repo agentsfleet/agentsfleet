@@ -54,11 +54,11 @@ function renderDialog(prefillRepo?: string, prefillRef?: string) {
   render(<Harness prefillRepo={prefillRepo} prefillRef={prefillRef} />);
 }
 
-async function openAndSubmit(user: ReturnType<typeof userEvent.setup>, repo: string) {
+async function openAndSubmit(user: ReturnType<typeof userEvent.setup>, repo: string, action = "Create fleet library") {
   await user.click(screen.getByRole("button", { name: /^open$/i }));
   const input = await screen.findByLabelText(/repository/i);
   if (repo) await user.type(input, repo);
-  await user.click(screen.getByRole("button", { name: /^create fleet library$/i }));
+  await user.click(screen.getByRole("button", { name: action }));
 }
 
 beforeEach(() => {
@@ -111,6 +111,9 @@ describe("AddFleetDialog", () => {
 
     const input = (await screen.findByLabelText(/repository/i)) as HTMLInputElement;
     expect(input.value).toBe(REPO);
+    expect(input.readOnly).toBe(true);
+    expect(screen.getByRole("dialog", { name: "Fetch update" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Fetch update" })).toBeTruthy();
   });
 
   it("emits the event with the catalog id and no repository free-text", async () => {
@@ -216,6 +219,23 @@ describe("AddFleetDialog", () => {
     await waitFor(() => expect(screen.queryByLabelText(/repository/i)).toBeNull());
   });
 
+  it("labels the in-flight refetch distinctly", async () => {
+    const user = userEvent.setup();
+    let release: (v: unknown) => void = () => {};
+    onboardPlatformLibraryActionMock.mockReturnValueOnce(
+      new Promise((resolve) => {
+        release = resolve;
+      }),
+    );
+    renderDialog(REPO);
+
+    await openAndSubmit(user, "", "Fetch update");
+
+    expect(await screen.findByRole("button", { name: /fetching update/i })).toBeTruthy();
+    release({ ok: true, data: ENTRY });
+    await waitFor(() => expect(screen.queryByLabelText(/repository/i)).toBeNull());
+  });
+
   it("drops a response the operator already abandoned by closing the dialog", async () => {
     const user = userEvent.setup();
     let release: (v: unknown) => void = () => {};
@@ -283,7 +303,7 @@ describe("AddFleetDialog", () => {
     renderDialog(REPO, "v2.1.0");
 
     // Prefilled path: submit what the row provided, type nothing.
-    await openAndSubmit(user, "");
+    await openAndSubmit(user, "", "Fetch update");
 
     await waitFor(() =>
       expect(onboardPlatformLibraryActionMock).toHaveBeenCalledWith(
@@ -304,4 +324,3 @@ describe("AddFleetDialog", () => {
     expect("ref" in body).toBe(false);
   });
 });
-

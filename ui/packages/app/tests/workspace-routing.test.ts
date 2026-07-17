@@ -115,10 +115,10 @@ describe("dashboard entry page", () => {
     return (await import("../app/(dashboard)/page")).default;
   }
 
-  it("test_root_redirects_to_default_workspace: redirects to the first owned workspace", async () => {
+  it("redirects to the first owned workspace fleet wall without an intermediate route", async () => {
     listTenantWorkspacesCached.mockResolvedValue(OWNED);
     const Page = await importEntry();
-    await expect(Page()).rejects.toThrow("redirect:/w/ws_first");
+    await expect(Page()).rejects.toThrow("redirect:/w/ws_first/fleets");
   });
 
   it("test_no_workspace_empty_state: zero workspaces → create-workspace empty state, no throw", async () => {

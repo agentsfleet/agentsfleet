@@ -76,7 +76,7 @@ export default function WorkspaceSwitcher({
   // stays in the same section of the new workspace. No cookie, no server action —
   // the URL is authoritative. A resource-detail path (`fleets/{id}`) collapses to
   // its section (`fleets`) since the target workspace won't own that resource;
-  // from a tenant page (no `/w/` segment) the sub-path is empty → the home.
+  // from a tenant page (no `/w/` segment), the switch lands on the fleet wall.
   function pick(id: string) {
     // No-op only when we're already ON this workspace's route — `activeId` is a
     // display fallback (the first workspace) on tenant pages, so comparing to it

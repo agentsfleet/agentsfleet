@@ -31,12 +31,16 @@ export const EDIT = "Edit";
 export const DELETE = "Delete";
 
 export const ADD_ACTION = "add the fleet library";
+export const FETCH_UPDATE_ACTION = "fetch the fleet library update";
 export const PATCH_ACTION = "update the fleet library";
 export const DELETE_ACTION = "delete the fleet library";
 export const CATALOG_READ_ACTION = "load the fleet catalog";
 
 export const ADD_TOOLTIP =
   "Fetch a fleet's bundle from GitHub. It lands as a draft — no workspace sees it until you publish.";
+export const FETCH_UPDATE_DESCRIPTION =
+  "Fetch the latest bundle from this repository. The entry returns to Draft so you can review it before publishing.";
+export const FETCHING_UPDATE = "Fetching update";
 // IconAction folds the tooltip into `label` — the accessible name IS the tooltip,
 // so a second string would be a second spelling of the same thing. The verbs above
 // are those labels; the explanatory copy lives on the status badges and in the

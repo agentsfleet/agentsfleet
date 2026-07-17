@@ -8,7 +8,7 @@ import CreateWorkspaceDialogDynamic from "@/components/domain/island-dynamic/Cre
 // Zero-workspace entry state. A brand-new tenant (mid-provision, or one whose
 // only workspace was deleted) reaches `/` with an empty owned list — this is a
 // calm create-first surface, not a broken page. On create the dialog itself
-// navigates to `/w/<newId>` (see CreateWorkspaceDialog), so no id is threaded
+// navigates to `/w/<newId>/fleets` (see CreateWorkspaceDialog), so no id is threaded
 // back here.
 export default function NoWorkspaceEmptyState() {
   const [open, setOpen] = useState(false);

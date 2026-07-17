@@ -17,7 +17,7 @@ import {
 } from "@agentsfleet/design-system";
 import { createWorkspaceAction } from "@/app/(dashboard)/actions";
 import type { CreateWorkspaceResponse } from "@/lib/api/workspaces";
-import { workspacePath } from "@/lib/workspace-routes";
+import { DEFAULT_WORKSPACE_SUBPATH, workspacePath } from "@/lib/workspace-routes";
 import { presentErrorString } from "@/lib/errors";
 
 type Props = {
@@ -69,7 +69,7 @@ export default function CreateWorkspaceDialog({ open, onOpenChange, onCreated }:
       onOpenChange(false);
       // Selection is the URL: navigate straight to the new workspace's home so
       // the switcher, nav, and pages all key off it — no cookie, no refresh.
-      router.push(workspacePath(result.data.workspace_id));
+      router.push(workspacePath(result.data.workspace_id, DEFAULT_WORKSPACE_SUBPATH));
     });
   }
 
