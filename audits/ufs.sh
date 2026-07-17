@@ -29,6 +29,9 @@
 #   Walks the full working tree via `git ls-files` — sees staged content
 #   because the index is what `ls-files` reports. Pre-commit-safe: a fix
 #   staged but not yet committed satisfies the check on the same hook run.
+#   Deterministic negative fixtures under `evals/dispatch/fixtures/` are
+#   excluded from storage scans. The dispatch evaluator copies each fixture
+#   into `src/` before asserting its expected pass or failure result.
 #   The previous `--diff` (BASE...HEAD) mode was retired with M70 because
 #   it was blind to the index at pre-commit time.
 #
@@ -69,7 +72,7 @@ ok()     { printf "OK:   %s\n" "$*"; }
 is_source() {
   local f="$1"
   case "$f" in
-    vendor/*|third_party/*|.zig-cache/*|*/node_modules/*|*.tsbuildinfo) return 1 ;;
+    vendor/*|third_party/*|.zig-cache/*|*/node_modules/*|evals/dispatch/fixtures/*|*.tsbuildinfo) return 1 ;;
     *_test.zig|*.test.ts|*.test.tsx|*.test.js|*.test.jsx|*.unit.test.js|*.spec.ts) ;; # tests in scope
   esac
   case "$f" in

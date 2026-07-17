@@ -7,7 +7,7 @@ Every triggered edit requires a `📖 DOC READ: <path>` proof-line citing §N ap
 | Trigger | Read |
 |---|---|
 | Always (universal) | `docs/greptile-learnings/RULES.md`; re-read on sub-task shape change. |
-| `oracle-rules/**`, agent-home instruction links, repository rules synchronization, or governance hooks | `dispatch/edit_rules.md` + `docs/ORACLE_RULES_ARCHITECTURE.md` — canonical sources, profiles, snapshots, refusal boundaries, and evidence. |
+| `orly/**`, agent-home instruction links, repository rules synchronization, or governance hooks | `dispatch/edit_rules.md` + `docs/ORLY_ARCHITECTURE.md` — canonical sources, profiles, snapshots, refusal boundaries, and evidence. |
 | Any source file (cross-cutting authoring) | `dispatch/write_any.md` — length, logging, milestone-id, error-registry, UFS, greptile read, legacy-workaround family. |
 | Spec's "Applicable Rules" | Each rule (canonical). Missing → standard set is floor; surface omission. |
 | `*.zig` | `dispatch/write_zig.md`. ZIG GATE per edit. |

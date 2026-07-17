@@ -35,7 +35,7 @@
 set -euo pipefail
 
 # DISPATCH_HOME — where the dispatch scripts physically live. Follows a
-# oracle-rules snapshot, so it always locates lib.sh + the leaf
+# Orly snapshot, so it always locates lib.sh + the leaf
 # helpers correctly. This is NOT the repo being checked.
 DISPATCH_HOME="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DISPATCH_SCRIPTS="$DISPATCH_HOME/audits"

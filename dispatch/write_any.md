@@ -329,6 +329,11 @@ ERROR REGISTRY GATE: <file>
 
 **Carve-out:** **Pin tests** keep their literals if and only if the literal IS the contract under test (`expect(formatDollars(4_710_000_000)).toBe("$4.71")`). Each pin must carry an inline `// pin test: literal is the contract` comment on or above the line.
 
+Deterministic negative fixtures under `evals/dispatch/fixtures/` are storage
+inputs, not authored source. The full-tree audit excludes that directory; the
+dispatch evaluator copies each fixture into `src/` before asserting its expected
+pass or failure result.
+
 #### What this gate enforces
 
 > [DETERMINISTIC → UFS]
