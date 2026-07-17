@@ -28,13 +28,16 @@ run_case() {
   mkdir -p "$source_dir/.oracle"
   case "$case_name" in
     allowed-lock)
-      printf '{"api_key":"%s"}\n' "$LOWER_DIGEST" > "$source_dir/.oracle/ruleset.lock"
+      printf '{"dispatch/write_auth.md":"%s"}\n' "$LOWER_DIGEST" > "$source_dir/.oracle/ruleset.lock"
       ;;
     outside-lock)
       printf 'api_key = "%s"\n' "$LOWER_DIGEST" > "$source_dir/example.env"
       ;;
     blocked-lock)
-      printf '{"api_key":"%s"}\n' "$UPPER_DIGEST" > "$source_dir/.oracle/ruleset.lock"
+      printf '{"dispatch/write_auth.md":"%s"}\n' "$UPPER_DIGEST" > "$source_dir/.oracle/ruleset.lock"
+      ;;
+    token-keyed-lock)
+      printf '{"api_key":"%s"}\n' "$LOWER_DIGEST" > "$source_dir/.oracle/ruleset.lock"
       ;;
     *)
       printf 'FAIL: unknown gitleaks fixture: %s\n' "$case_name" >&2
@@ -64,5 +67,6 @@ run_case() {
 run_case allowed-lock 0
 run_case outside-lock "$DETECTED_EXIT"
 run_case blocked-lock "$DETECTED_EXIT"
+run_case token-keyed-lock "$DETECTED_EXIT"
 
-printf '%s\n' 'OK: gitleaks lock allowlist is path- and digest-restricted'
+printf '%s\n' 'OK: gitleaks lock allowlist is path-, key-, and digest-restricted'
