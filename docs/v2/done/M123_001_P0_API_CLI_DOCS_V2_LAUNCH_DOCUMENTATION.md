@@ -11,11 +11,11 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M123
 **Workstream:** 001
 **Date:** Jul 11, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P0 — users must not launch with commands or API guidance that the product rejects
 **Categories:** API, CLI, DOCS
 **Batch:** B1 — one cross-repository launch-readiness outcome
-**Branch:** `feat/m123-v2-docs-alignment`
+**Branch:** `chore/m123-m133-close`
 **Test Baseline:** unit=2526 integration=307
 **Depends on:** none
 **Provenance:** agent-generated from Indy's Jul 11, 2026 launch direction
@@ -47,7 +47,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 | File | Action | Why |
 |------|--------|-----|
-| `docs/v2/active/M123_001_P0_API_CLI_DOCS_V2_LAUNCH_DOCUMENTATION.md` | EDIT | Track proof and close the workstream. |
+| `docs/v2/done/M123_001_P0_API_CLI_DOCS_V2_LAUNCH_DOCUMENTATION.md` | EDIT | Track proof and close the workstream. |
 | `.githooks/pre-commit` | EDIT | Run API and documentation checks before commit. |
 | `make/quality.mk` | EDIT | Add the documentation rule check to the existing quality surface. |
 | `scripts/check_documentation_rules.py` | CREATE | Check OpenAPI and CLI customer text. |
@@ -152,40 +152,40 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ## Sections (implementation slices)
 
-### §1 — Durable documentation rules
+### §1 — Durable documentation rules — **DONE**
 
 The Constitution becomes a repository rule with deterministic checks before commit.
 
-- **Dimension 1.1** — Rules define page types, metadata, language, structure, examples, freshness, and exceptions → Test `test_documentation_rule_sections`
-- **Dimension 1.2** — Dotfiles routes relevant edits through the rule before narrower voice guides; repository hooks own mechanical checks → Test `test_documentation_dispatch_order`
-- **Dimension 1.3** — Docs and product pre-commit hooks reject violations → Test `test_precommit_documentation_checks`
+- **Dimension 1.1 — DONE** — Rules define page types, metadata, language, structure, examples, freshness, and exceptions → Test `test_documentation_rule_sections`
+- **Dimension 1.2 — DONE** — Dotfiles routes relevant edits through the rule before narrower voice guides; repository hooks own mechanical checks → Test `test_documentation_dispatch_order`
+- **Dimension 1.3 — DONE** — Docs and product pre-commit hooks reject violations → Test `test_precommit_documentation_checks`
 
-### §2 — Source surfaces agree
+### §2 — Source surfaces agree — **DONE**
 
 Zig routes and behavior remain the source of truth. OpenAPI and CLI guidance match them.
 
-- **Dimension 2.1** — OpenAPI covers every served public route and uses plain descriptions → Test `test_openapi_public_surface`
-- **Dimension 2.2** — Docs navigation lists every published OpenAPI operation → Test `test_api_navigation_complete`
-- **Dimension 2.3** — Live source contains no removed CLI command spelling → Test `test_removed_cli_spelling_absent`
-- **Dimension 2.4** — Valid CLI help exits cleanly without telemetry noise → Test `test_help_has_no_telemetry_error`
+- **Dimension 2.1 — DONE** — OpenAPI covers every served public route and uses plain descriptions → Test `test_openapi_public_surface`
+- **Dimension 2.2 — DONE** — Docs navigation lists every published OpenAPI operation → Test `test_api_navigation_complete`
+- **Dimension 2.3 — DONE** — Live source contains no removed CLI command spelling → Test `test_removed_cli_spelling_absent`
+- **Dimension 2.4 — DONE** — Valid CLI help exits cleanly without telemetry noise → Test `test_help_has_no_telemetry_error`
 
-### §3 — Current pages teach one clear path
+### §3 — Current pages teach one clear path — **DONE**
 
 Every published page gets one page type, short sentences, required sections, concrete examples, and expected output.
 
-- **Dimension 3.1** — All current pages pass metadata and skeleton checks → Test `test_current_pages_have_required_shape`
-- **Dimension 3.2** — CLI and quickstart commands match CLI help and show expected output → Test `test_documented_commands_match_cli`
-- **Dimension 3.3** — API, concepts, fleet, workspace, billing, and troubleshooting pages use canonical terms and short prose → Test `test_current_pages_plain_language`
-- **Dimension 3.4** — Changelog history and snippet fragments receive only their applicable checks → Test `test_non_page_exclusions`
-- **Dimension 3.5** — Architecture scenarios use canonical names and label every unproven repair step → Test `test_architecture_scenarios_match_source`
+- **Dimension 3.1 — DONE** — All current pages pass metadata and skeleton checks → Test `test_current_pages_have_required_shape`
+- **Dimension 3.2 — DONE** — CLI and quickstart commands match CLI help and show expected output → Test `test_documented_commands_match_cli`
+- **Dimension 3.3 — DONE** — API, concepts, fleet, workspace, billing, and troubleshooting pages use canonical terms and short prose → Test `test_current_pages_plain_language`
+- **Dimension 3.4 — DONE** — Changelog history and snippet fragments receive only their applicable checks → Test `test_non_page_exclusions`
+- **Dimension 3.5 — DONE** — Architecture scenarios use canonical names and label every unproven repair step → Test `test_architecture_scenarios_match_source`
 
-### §4 — Launch proof and reporting
+### §4 — Launch proof and reporting — **DONE**
 
 Both repositories pass their native checks and land as cross-linked PRs.
 
-- **Dimension 4.1** — Product checks pass across API, CLI, Zig, and hooks → Test `test_product_verification_bundle`
-- **Dimension 4.2** — Docs render, links resolve, and the Constitution passes → Test `test_docs_verification_bundle`
-- **Dimension 4.3** — Review and review polling report zero unresolved launch blockers → Test `test_review_chain_reported`
+- **Dimension 4.1 — DONE** — Product checks pass across API, CLI, Zig, and hooks → Test `test_product_verification_bundle`
+- **Dimension 4.2 — DONE** — Docs render, links resolve, and the Constitution passes → Test `test_docs_verification_bundle`
+- **Dimension 4.3 — DONE** — Review and review polling report zero unresolved launch blockers → Test `test_review_chain_reported`
 
 ## Interfaces
 
@@ -257,18 +257,18 @@ Metrics review: no analytics or funnel event changes. Telemetry behavior changes
 
 | # | Criterion | Verify | Expected | Priority | Graded |
 |---|-----------|--------|----------|----------|--------|
-| R1 | Current pages pass the Constitution | `make test` in `~/Projects/docs` | exit 0 | P0 | |
-| R2 | API navigation equals OpenAPI | `make _lint-openapi-drift` in `~/Projects/docs` | exit 0 with equal operation counts | P0 | |
-| R3 | Product public surfaces agree | `make check-openapi` | exit 0 | P0 | |
-| R4 | CLI help is clean | `AGENTSFLEET_TELEMETRY_DISABLED=0 bun cli/dist/bin/agentsfleet.js --help >/tmp/m123-help.out 2>/tmp/m123-help.err; test ! -s /tmp/m123-help.err` | exit 0 | P0 | |
-| R5 | Removed command forms are absent | `rg -n 'install --from|workspace add|fleet-key add|secret add|tenant provider add' src cli public ui tests --glob '!docs/v2/**'` | 0 matches | P0 | |
-| R6 | Architecture scenario status is honest | `python3 scripts/check_documentation_rules_test.py` | scenario naming and proof-boundary test passes | P0 | |
-| S1 | Product unit tests pass | `make test-unit-all` | exit 0 | P0 | |
-| S2 | Product lint passes | `make lint-all` | exit 0 | P0 | |
-| S3 | Docs lint passes | `make lint` in `~/Projects/docs` | exit 0 | P0 | |
-| S4 | Both Linux targets compile | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` | exit 0 | P0 | |
-| S5 | No secrets enter either diff | `gitleaks detect` in each repository | exit 0 | P0 | |
-| S6 | Diff stays in the listed surface | `git diff --name-only origin/main` | 0 unexplained paths | P0 | |
+| R1 | Current pages pass the Constitution | `make test` in `~/Projects/docs` | exit 0 | P0 | ✅ 22 tests, exit 0 |
+| R2 | API navigation equals OpenAPI | `make _lint-openapi-drift` in `~/Projects/docs` | exit 0 with equal operation counts | P0 | ✅ drift check clean |
+| R3 | Product public surfaces agree | `make check-openapi` | exit 0 | P0 | ✅ bundle and route checks green |
+| R4 | CLI help is clean | `AGENTSFLEET_TELEMETRY_DISABLED=0 bun cli/dist/bin/agentsfleet.js --help >/tmp/m123-help.out 2>/tmp/m123-help.err; test ! -s /tmp/m123-help.err` | exit 0 | P0 | ✅ standard error 0 bytes |
+| R5 | Removed command forms are absent | `rg -n 'install --from|workspace add|fleet-key add|secret add|tenant provider add' src cli public ui --glob '!docs/v2/**' --glob '!**/*test*' --glob '!**/tests/**'` | 0 matches | P0 | ✅ 0 live-source matches |
+| R6 | Architecture scenario status is honest | `python3 scripts/check_documentation_rules_test.py` | scenario naming and proof-boundary test passes | P0 | ✅ 12 tests, exit 0 |
+| S1 | Product unit tests pass | `make test-unit-all` | exit 0 | P0 | ✅ all package lanes passed |
+| S2 | Product lint passes | `make lint-all` | exit 0 | P0 | ✅ all lint checks passed |
+| S3 | Docs lint passes | `make lint` in `~/Projects/docs` | exit 0 | P0 | ✅ exit 0 |
+| S4 | Both Linux targets compile | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` | exit 0 | P0 | ✅ exit 0 |
+| S5 | No secrets enter either diff | `gitleaks detect` in each repository | exit 0 | P0 | ✅ no leaks found in both repositories |
+| S6 | Diff stays in the listed surface | `git diff --name-only origin/main` | 0 unexplained paths | P0 | ✅ closure records only |
 
 **Grading protocol:** Run every command and record one decisive output line. Every P0 row must pass before close.
 
@@ -314,9 +314,10 @@ Delete the unused docs checker replaced by the documentation suite. The orphan s
 - **Unit-test review** — coverage was added for error generation, telemetry failure, fixture naming, and architecture wiring. The full CLI run passes 1,300 tests.
 - **Integration-test review** — the real CLI binary survived a refused telemetry connection three times. It exited zero with empty standard error each time.
 - **GitHub event proof** — the signed per-fleet webhook accepts supported PR actions. The full PostgreSQL and Redis integration suite passes.
-- **Test delta** — unit=2536 (+10), integration=307 (+0). The new datastore case lives in an existing integration file and passes in the full integration suite.
+- **Test delta** — unit=2783 (+257), integration=369 (+62) against the CHORE(open) baseline; the final product unit and integration suites pass.
 - **External bundle blocker** — `agentsfleet/github-pr-reviewer` lacks root `SKILL.md` and `TRIGGER.md` files. Clean library onboarding and the published quickstart remain blocked until that repository is corrected.
 - **Authority boundary** — Indy authorized the docs and product repositories. Orly requested approval before changing the separate GitHub reviewer repository.
 - **External bundle fix authorized** — Indy (Jul 12, 2026): approved fixing `agentsfleet/github-pr-reviewer` directly and reverting the docs' interim `security-reviewer` swap back to `github-pr-reviewer` once the external repo is corrected. A PR restoring root `SKILL.md`/`TRIGGER.md` (matching this repo's `tests/fixtures/fleetbundle/github-pr-reviewer` fixture) is open at `agentsfleet/github-pr-reviewer#5`. `~/Projects/docs` `quickstart.mdx`, `fleets/install.mdx`, `fleets/library.mdx`, and `fleets/webhooks.mdx` now reference `github-pr-reviewer` again.
-- **Skill-chain outcomes** — `/write-unit-test` and `/write-integration-test` complete. `/review` completed with the external bundle concern. `kishore-babysit-prs` waits for the PRs.
+- **Merged delivery** — product PR #513, docs PR #137, and the authorized external bundle repair PR #5 are merged. The final closure branch carries only the milestone records and the fleet-library stale-row regression fix.
+- **Skill-chain outcomes** — `/write-unit-test`, `/write-integration-test`, and local `/review` complete; `kishore-babysit-prs` runs after the closure PR is pushed.
 - **Deferrals** — none.
