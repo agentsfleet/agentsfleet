@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState } from "react";
 import {
   Badge,
   Button,
@@ -83,6 +83,11 @@ const ACTION_UNPUBLISHED = "unpublished";
 const OUTCOME_SUCCESS = "success";
 const OUTCOME_FAILURE = "failure";
 
+type EntryOverride = {
+  baseEtag: string;
+  entry: PlatformCatalogEntry;
+};
+
 export default function PlatformCatalogTable({
   entries,
   onFetch,
@@ -91,7 +96,7 @@ export default function PlatformCatalogTable({
   /** Opens the add/fetch dialog prefilled with this row's repository. */
   onFetch: (entry: PlatformCatalogEntry) => void;
 }) {
-  const [pending, startTransition] = useTransition();
+  const [patchPending, setPatchPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Hold the row's ID, never the row object. Every write revalidates the page, so
   // a captured object goes stale the moment anything else lands — an operator would
@@ -99,16 +104,23 @@ export default function PlatformCatalogTable({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [deletePending, setDeleting] = useState(false);
+  const [entryOverrides, setEntryOverrides] = useState<Record<string, EntryOverride>>({});
 
-  const editing = entries.find((e) => e.id === editingId) ?? null;
-  const deleting = entries.find((e) => e.id === deletingId) ?? null;
+  const currentEntries = entries.map((entry) => {
+    const override = entryOverrides[entry.id];
+    return override?.baseEtag === entry.etag ? override.entry : entry;
+  });
+
+  const editing = currentEntries.find((e) => e.id === editingId) ?? null;
+  const deleting = currentEntries.find((e) => e.id === deletingId) ?? null;
 
   // One signal for "a write is in flight", covering publish/unpublish AND delete.
-  const busy = pending || deletePending;
+  const busy = patchPending || deletePending;
 
-  function setPublished(entry: PlatformCatalogEntry, published: boolean) {
+  async function setPublished(entry: PlatformCatalogEntry, published: boolean) {
     setError(null);
-    startTransition(async () => {
+    setPatchPending(true);
+    try {
       const result = await patchPlatformLibraryAction(entry.id, { published }, entry.etag);
       // Publishing is the moment a fleet becomes available to every tenant. A
       // refusal is recorded too — a publish nobody could complete is a signal, not
@@ -120,7 +132,23 @@ export default function PlatformCatalogTable({
       });
       if (!result.ok) {
         setError(presentErrorString({ errorCode: result.errorCode, message: result.error, action: PATCH_ACTION }));
+        return;
       }
+      rememberServerEntry(entry.etag, result.data);
+    } finally {
+      setPatchPending(false);
+    }
+  }
+
+  function rememberServerEntry(baseEtag: string, updated: PlatformCatalogEntry) {
+    // The action started with this server-component ETag; keep that baseline
+    // until revalidation supplies a newer row, even if another write races.
+    setEntryOverrides((current) => {
+      const baseline = current[updated.id]?.baseEtag ?? baseEtag;
+      return {
+        ...current,
+        [updated.id]: { baseEtag: baseline, entry: updated },
+      };
     });
   }
 
@@ -208,7 +236,7 @@ export default function PlatformCatalogTable({
               <IconAction
                 label={PUBLISH}
                 disabled={busy}
-                onClick={() => setPublished(row, true)}
+                onClick={() => void setPublished(row, true)}
               >
                 <EyeIcon size={14} />
               </IconAction>
@@ -217,7 +245,7 @@ export default function PlatformCatalogTable({
               <IconAction
                 label={UNPUBLISH}
                 disabled={busy}
-                onClick={() => setPublished(row, false)}
+                onClick={() => void setPublished(row, false)}
               >
                 <EyeOffIcon size={14} />
               </IconAction>
@@ -259,7 +287,7 @@ export default function PlatformCatalogTable({
 
       <DataTable
         columns={columns}
-        rows={entries}
+        rows={currentEntries}
         rowKey={(row) => row.id}
         caption={COLUMN_FLEET}
         empty={
@@ -277,6 +305,10 @@ export default function PlatformCatalogTable({
           entry={editing}
           open
           onOpenChange={() => setEditingId(null)}
+          onSaved={(updated) => {
+            rememberServerEntry(editing.etag, updated);
+            setEditingId(null);
+          }}
         />
       ) : null}
 

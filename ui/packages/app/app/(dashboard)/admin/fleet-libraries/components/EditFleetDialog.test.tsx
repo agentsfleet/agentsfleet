@@ -47,7 +47,7 @@ const ENTRY: PlatformCatalogEntry = {
 function renderDialog(entry: PlatformCatalogEntry = ENTRY, onOpenChange = vi.fn()) {
   render(
     <TooltipProvider>
-      <EditFleetDialog entry={entry} open onOpenChange={onOpenChange} />
+      <EditFleetDialog entry={entry} open onOpenChange={onOpenChange} onSaved={vi.fn()} />
     </TooltipProvider>,
   );
   return onOpenChange;
@@ -112,7 +112,12 @@ describe("EditFleetDialog", () => {
     const onOpenChange = vi.fn();
     const view = render(
       <TooltipProvider>
-        <EditFleetDialog entry={ENTRY} open onOpenChange={onOpenChange} />
+        <EditFleetDialog
+          entry={ENTRY}
+          open
+          onOpenChange={onOpenChange}
+          onSaved={vi.fn()}
+        />
       </TooltipProvider>,
     );
 
@@ -123,6 +128,7 @@ describe("EditFleetDialog", () => {
           entry={{ ...ENTRY, description: "Someone else's copy", etag: '"catalog-v2"' }}
           open
           onOpenChange={onOpenChange}
+          onSaved={vi.fn()}
         />
       </TooltipProvider>,
     );
