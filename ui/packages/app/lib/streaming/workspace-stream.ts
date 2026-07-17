@@ -49,6 +49,7 @@ const IDLE_RELEASE_MS = 30_000;
 const RECONNECT_BACKOFF_BASE_MS = 1_000;
 const RECONNECT_BACKOFF_CAP_MS = 15_000;
 const RECONNECT_MAX_BACKOFF_ATTEMPTS = 5;
+const WORKSPACE_FRAME_EVENT_NAMES = Object.values(FRAME_KIND);
 
 type Entry = {
   workspaceId: string;
@@ -92,7 +93,10 @@ function startEventSource(entry: Entry): void {
     setStatus(entry, WORKSPACE_CONNECTION_STATUS.LIVE);
     if (isReconnect) void backfillGap(entry);
   };
-  es.onmessage = (e) => onFrame(entry, e);
+  const handleFrame = (event: Event) => onFrame(entry, event as MessageEvent);
+  for (const eventName of WORKSPACE_FRAME_EVENT_NAMES) {
+    es.addEventListener(eventName, handleFrame);
+  }
   es.onerror = () => onEventSourceError(entry);
 }
 
@@ -139,7 +143,7 @@ export function parseWorkspaceFrame(data: string): WorkspaceFrame | null {
 }
 
 function onFrame(entry: Entry, e: MessageEvent): void {
-  const frame = parseWorkspaceFrame(typeof e.data === "string" ? e.data : "");
+  const frame = parseWorkspaceFrame(e.data as string);
   if (frame === null) return; // malformed / untagged — dropped, never routed
   if (isWorkspaceFrame(frame)) {
     for (const l of entry.workspaceListeners) l(frame);

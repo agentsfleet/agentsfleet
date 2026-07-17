@@ -50,7 +50,9 @@ function entry(over: Partial<PlatformCatalogEntry> = {}): PlatformCatalogEntry {
 
 const PUBLISHED = entry({ id: "github-pr-reviewer", name: "Reviewer", visibility: "public" });
 const DRAFT = entry();
+const PUBLISHED_DRAFT = entry({ visibility: "public", etag: '"catalog-v2"' });
 const NO_BUNDLE = entry({ id: "zoho-sprint", name: "Zoho", content_hash: null });
+const MISTYPED_REPO = "agentsfleet/mistyped";
 
 function renderView(entries: PlatformCatalogEntry[]) {
   render(
@@ -121,7 +123,7 @@ describe("FleetLibrariesView", () => {
   });
 
   it("publishes a draft through the patch action", async () => {
-    patchPlatformLibraryActionMock.mockResolvedValue({ ok: true, data: PUBLISHED });
+    patchPlatformLibraryActionMock.mockResolvedValue({ ok: true, data: PUBLISHED_DRAFT });
     renderView([DRAFT]);
 
     await userEvent.click(screen.getByRole("button", { name: "Publish" }));
@@ -131,6 +133,8 @@ describe("FleetLibrariesView", () => {
         published: true,
       }, DRAFT.etag);
     });
+    expect(await screen.findByText("Published")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Unpublish" })).toHaveProperty("disabled", false);
   });
 
   it("surfaces a failed publish instead of silently doing nothing", async () => {
@@ -156,6 +160,48 @@ describe("FleetLibrariesView", () => {
       const field = screen.getByLabelText("Repository") as HTMLInputElement;
       expect(field.value).toBe("agentsfleet/platform-ops");
     });
+  });
+
+  it("fetches from the repository returned by the completed edit", async () => {
+    const stale = entry({ content_hash: null, source_repo: MISTYPED_REPO });
+    const corrected = { ...stale, source_repo: DRAFT.source_repo, etag: '"catalog-v2"' };
+    patchPlatformLibraryActionMock.mockResolvedValueOnce({ ok: true, data: corrected });
+    renderView([stale]);
+
+    await userEvent.click(screen.getByRole("button", { name: "Edit" }));
+    const repository = screen.getByLabelText("Repository");
+    await userEvent.clear(repository);
+    await userEvent.type(repository, DRAFT.source_repo);
+    await userEvent.click(screen.getByRole("button", { name: /^save$/i }));
+    await waitFor(() => expect(screen.queryByText("Edit fleet library")).toBeNull());
+
+    await userEvent.click(screen.getByRole("button", { name: "Fetch bundle" }));
+    await waitFor(() => {
+      const field = screen.getByLabelText("Repository") as HTMLInputElement;
+      expect(field.value).toBe(DRAFT.source_repo);
+    });
+  });
+
+  it("keeps the latest server row across consecutive writes before revalidation", async () => {
+    const stale = entry({ visibility: DRAFT.visibility, etag: '"catalog-v1"' });
+    const edited = { ...stale, description: "Edited", etag: '"catalog-v2"' };
+    const published = { ...edited, visibility: "public" as const, etag: '"catalog-v3"' };
+    patchPlatformLibraryActionMock
+      .mockResolvedValueOnce({ ok: true, data: edited })
+      .mockResolvedValueOnce({ ok: true, data: published });
+    renderView([stale]);
+
+    await userEvent.click(screen.getByRole("button", { name: "Edit" }));
+    const description = screen.getByLabelText("Description");
+    await userEvent.clear(description);
+    await userEvent.type(description, edited.description);
+    await userEvent.click(screen.getByRole("button", { name: /^save$/i }));
+    await waitFor(() => expect(screen.queryByText("Edit fleet library")).toBeNull());
+    await userEvent.click(screen.getByRole("button", { name: "Publish" }));
+
+    expect(patchPlatformLibraryActionMock).toHaveBeenNthCalledWith(2, stale.id, { published: true }, edited.etag);
+    expect(await screen.findByText("Published")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Unpublish" })).toHaveProperty("disabled", false);
   });
 
   it("opens the add dialog empty, not prefilled from an earlier row", async () => {
@@ -274,7 +320,7 @@ describe("FleetLibrariesView", () => {
   // Publishing is the moment a fleet becomes available to every tenant — the one
   // state change here with a decision riding on it, so it is the one event added.
   it("emits the publish event with the catalog slug and no operator free-text", async () => {
-    patchPlatformLibraryActionMock.mockResolvedValue({ ok: true, data: PUBLISHED });
+    patchPlatformLibraryActionMock.mockResolvedValue({ ok: true, data: PUBLISHED_DRAFT });
     renderView([DRAFT]);
 
     await userEvent.click(screen.getByRole("button", { name: "Publish" }));
