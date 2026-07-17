@@ -58,10 +58,12 @@ export default function EditFleetDialog({
   entry,
   open,
   onOpenChange,
+  onSaved,
 }: {
   entry: PlatformCatalogEntry;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onSaved: (entry: PlatformCatalogEntry) => void;
 }) {
   // The BASELINE is frozen at dialog-open. Every revalidation refreshes the
   // `entry` prop under a still-open dialog (the table re-resolves it by id), so
@@ -148,6 +150,7 @@ export default function EditFleetDialog({
         );
         return;
       }
+      onSaved(result.data);
       onOpenChange(false);
     } finally {
       setPending(false);

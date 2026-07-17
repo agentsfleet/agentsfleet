@@ -20,6 +20,7 @@ class FakeEventSource {
   onopen: ((this: EventSource, ev: Event) => unknown) | null = null;
   onmessage: ((this: EventSource, ev: MessageEvent) => unknown) | null = null;
   onerror: ((this: EventSource, ev: Event) => unknown) | null = null;
+  listeners = new Map<string, (event: Event) => unknown>();
   closed = false;
   constructor(url: string) {
     this.url = url;
@@ -28,8 +29,24 @@ class FakeEventSource {
   close() {
     this.closed = true;
   }
-  emit(data: unknown) {
-    this.onmessage?.call(this as unknown as EventSource, { data } as MessageEvent);
+  addEventListener(name: string, listener: (event: Event) => unknown) {
+    this.listeners.set(name, listener);
+  }
+  emit(data: unknown, eventName?: string) {
+    let parsed: unknown = data;
+    if (typeof data === "string") {
+      try {
+        parsed = JSON.parse(data) as unknown;
+      } catch {
+        parsed = null;
+      }
+    }
+    const resolvedEventName = eventName ?? (typeof parsed === "object" && parsed !== null && "kind" in parsed
+      ? String((parsed as { kind: unknown }).kind)
+      : "");
+    const event = { data: typeof data === "string" ? data : JSON.stringify(data) } as MessageEvent;
+    this.listeners.get(resolvedEventName)?.call(this, event);
+    if (!resolvedEventName) this.onmessage?.call(this as unknown as EventSource, event);
   }
   open() {
     this.onopen?.call(this as unknown as EventSource, {} as Event);
@@ -62,6 +79,23 @@ afterEach(() => {
 });
 
 describe("workspace-stream — one connection, demultiplexed by fleet", () => {
+  it("receives server-named SSE frames through their event names", () => {
+    const onFleet = vi.fn();
+    const onWorkspace = vi.fn();
+    subscribeFleet(WS, FLEET_A, onFleet);
+    subscribeWorkspaceFrames(WS, onWorkspace);
+    const es = FakeEventSource.instances[0]!;
+
+    es.emit({ kind: FRAME_KIND.HELLO, fleet_ids: [FLEET_A] });
+    es.emit({ kind: FRAME_KIND.EVENT_RECEIVED, fleet_id: FLEET_A, event_id: "e1", actor: "a" });
+    es.emit({ kind: FRAME_KIND.CATCHING_UP, dropped: 2 });
+
+    expect(onWorkspace.mock.calls.map(([frame]) => frame.kind)).toEqual([
+      FRAME_KIND.HELLO,
+      FRAME_KIND.CATCHING_UP,
+    ]);
+    expect(onFleet).toHaveBeenCalledOnce();
+  });
   it("opens exactly one EventSource per workspace regardless of tile count", () => {
     const a = subscribeFleet(WS, FLEET_A, () => {});
     const b = subscribeFleet(WS, FLEET_B, () => {});
