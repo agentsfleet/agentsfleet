@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { cn, EYEBROW_CLASS } from "@agentsfleet/design-system";
+import { CheckIcon } from "lucide-react";
 import type { OnboardingStep } from "@/lib/onboarding";
 import { workspacePath } from "@/lib/workspace-routes";
 
@@ -13,8 +14,8 @@ type Props = {
 
 // The tick rail — the ONE renderer the page checklist and the sidebar widget
 // both use (design pick: variant B). A 1px rail threads every marker; a done
-// step is a filled mint dot with a struck-through label, the next incomplete
-// step carries a STATIC mint ring (never the wake-pulse animation — that stays
+// step is a checked mint marker with a struck-through label, the next incomplete
+// step carries a small centre dot (never the wake-pulse animation — that stays
 // exclusive to live entities), and future steps are hollow and muted. The
 // optional step sits after a rail gap behind an OPTIONAL eyebrow.
 export default function OnboardingRail({ workspaceId, steps, compact }: Props) {
@@ -106,18 +107,20 @@ function RailMarker({ step }: { step: OnboardingStep }) {
     return (
       <span
         aria-label="done"
-        className="inline-block w-3 h-3 rounded-full bg-pulse border border-pulse"
-      />
+        className="inline-flex w-3 h-3 items-center justify-center rounded-full bg-pulse text-on-pulse"
+      >
+        <CheckIcon size={10} aria-hidden="true" />
+      </span>
     );
   }
   if (step.isNext) {
-    // Static focus ring — the sanctioned CTA/focus use of the pulse currency,
-    // deliberately NOT the wake-pulse keyframe (DESIGN_SYSTEM.md §Motion).
     return (
       <span
         aria-label="next step"
-        className="inline-block w-3 h-3 rounded-full border border-pulse bg-background shadow-[0_0_0_4px_var(--pulse-glow)]"
-      />
+        className="inline-flex w-3 h-3 items-center justify-center rounded-full border border-pulse bg-background"
+      >
+        <span data-current-step="true" className="w-1 h-1 rounded-full bg-pulse" />
+      </span>
     );
   }
   return (

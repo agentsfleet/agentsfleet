@@ -37,7 +37,7 @@ describe("CreateWorkspaceDialog component", () => {
     return { onOpenChange };
   }
 
-  it("submits the trimmed name, then closes and routes to the new workspace on success", async () => {
+  it("submits the trimmed name, then closes and routes to the new fleet wall on success", async () => {
     const user = userEvent.setup({ delay: null });
     const onCreated = vi.fn();
     createWorkspaceActionMock.mockResolvedValueOnce({
@@ -50,7 +50,7 @@ describe("CreateWorkspaceDialog component", () => {
     await waitFor(() => expect(createWorkspaceActionMock).toHaveBeenCalledWith({ name: "acme-prod" }));
     expect(onCreated).toHaveBeenCalledWith({ workspace_id: "ws_x", name: "acme-prod" });
     expect(onOpenChange).toHaveBeenCalledWith(false);
-    expect(routerPush).toHaveBeenCalledWith("/w/ws_x");
+    expect(routerPush).toHaveBeenCalledWith("/w/ws_x/fleets");
   });
 
   it("explains how workspaces organize tenant resources", async () => {

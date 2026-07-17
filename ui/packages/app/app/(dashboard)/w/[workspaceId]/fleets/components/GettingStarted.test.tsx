@@ -67,8 +67,13 @@ describe("GettingStarted — the checklist page (Wall empty state)", () => {
     renderGS();
     await user.click(screen.getByRole("button", { name: /I've installed the CLI/i }));
     await waitFor(() => expect(screen.getByText(/Couldn't save/)).toBeTruthy());
-    // Reverted → the button is back (cliTicked flipped back to false).
-    expect(screen.getByRole("button", { name: /I've installed the CLI/i })).toBeTruthy();
+    // Reverted → the button is back (cliTicked flipped back to false). Wait for
+    // the transition's `pending` to settle: on the error render it can still be
+    // true, so the button momentarily reads "Saving…" before reverting to the
+    // tick prompt — a synchronous assert races that window under load.
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /I've installed the CLI/i })).toBeTruthy(),
+    );
     expect(refresh).not.toHaveBeenCalled();
   });
 });
