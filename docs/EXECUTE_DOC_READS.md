@@ -12,10 +12,8 @@ Every triggered edit requires a `📖 DOC READ: <path>` proof-line citing §N ap
 | Spec's "Applicable Rules" | Each rule (canonical). Missing → standard set is floor; surface omission. |
 | `*.zig` | `dispatch/write_zig.md`. ZIG GATE per edit. |
 | `*.ts`/`*.tsx`/`*.js`/`*.jsx` | `dispatch/write_ts_adhere_bun.md` — TS FILE SHAPE DECISION (§1) at PLAN, const/import/Bun-primitive discipline, anti-patterns. |
-| `*.rs` | `dispatch/write_rust.md` — ownership, error variants, feature combinations, and contention tests. |
 | `*.py` | `dispatch/write_python.md` — parsing boundaries, resource ownership, and specific exceptions. |
 | `*.sh` | `dispatch/write_shell.md` — quoting, array arguments, cleanup, input safety, and shell compatibility. |
-| `*.mdx` | `dispatch/write_mdx.md` — structure, front matter, links, code fences, accessibility, and Mintlify isolation. |
 | Log emit (any language; see LOGGING GATE triggers) | `docs/LOGGING_STANDARD.md` — wire format (logfmt), severity ladder, error-code embedding, scope/event discipline, PII redaction, §10A tightenings. LOGGING GATE per edit. |
 | Lifecycle method in `*.zig` (`init|deinit|close|release|destroy|shutdown|dispose|free`) | `docs/LIFECYCLE_PATTERNS.md` — init/deinit pairing, errdefer placement, allocator ownership, defer/errdefer mutual exclusion, §10A tightenings. LIFECYCLE GATE per edit. |
 | `src/agentsfleetd/http/handlers/**` or `public/openapi/**` | `docs/REST_API_DESIGN_GUIDELINES.md` — Quick Checklist; §1–§5 (URL/method/body/response/error), §6 (OpenAPI), §7 (6-place route registration), §8 (`Hx` handler interface), §10 (pre-PR gates). |

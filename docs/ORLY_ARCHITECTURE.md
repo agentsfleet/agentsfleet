@@ -29,10 +29,13 @@ symbolic links.
 ## Reference closure
 
 Every repository snapshot is reference-closed: each relative Markdown link and
-each `dispatch/*.md` target named by generated prose resolves inside that
-repository. Profile markers remove operating-model rows and blocks whose packs
-are not selected. Pack façades remain self-contained canonical files rather than
-depending on dotfiles-only design documents.
+each `dispatch/*.md` target named by any rendered Markdown file resolves inside
+that repository. Profile markers remove operating-model rows and blocks whose
+packs are not selected, and filter managed Markdown documents the same way —
+excluded lines are dropped while included lines keep their marker verbatim, so
+the source profile's self-render stays byte-stable. Pack façades remain
+self-contained canonical files rather than depending on dotfiles-only design
+documents.
 
 The `dotfiles` source profile deliberately selects the full pack inventory so its
 invariance audit exercises every route. Consumer profiles remain selective.
