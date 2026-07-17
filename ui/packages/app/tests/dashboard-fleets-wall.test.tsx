@@ -30,7 +30,7 @@ class FakeEventSource {
   onopen: ((this: EventSource, ev: Event) => unknown) | null = null;
   onmessage: ((this: EventSource, ev: MessageEvent) => unknown) | null = null;
   onerror: ((this: EventSource, ev: Event) => unknown) | null = null;
-  listeners = new Map<string, (event: Event) => unknown>();
+  listeners = new Map<string, Set<(event: Event) => unknown>>();
   closed = false;
 
   constructor(readonly url: string) {
@@ -42,7 +42,9 @@ class FakeEventSource {
   }
 
   addEventListener(name: string, listener: (event: Event) => unknown) {
-    this.listeners.set(name, listener);
+    const handlers = this.listeners.get(name) ?? new Set();
+    handlers.add(listener);
+    this.listeners.set(name, handlers);
   }
 
   open() {
@@ -56,7 +58,7 @@ class FakeEventSource {
       : "");
     const data = JSON.stringify(payload);
     const event = { data } as MessageEvent;
-    this.listeners.get(resolvedEventName)?.call(this, event);
+    for (const listener of this.listeners.get(resolvedEventName) ?? []) listener.call(this, event);
     if (!resolvedEventName) this.onmessage?.call(this as unknown as EventSource, event);
   }
 

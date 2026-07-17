@@ -134,20 +134,22 @@ export default function PlatformCatalogTable({
         setError(presentErrorString({ errorCode: result.errorCode, message: result.error, action: PATCH_ACTION }));
         return;
       }
-      rememberServerEntry(result.data);
+      rememberServerEntry(entry.etag, result.data);
     } finally {
       setPatchPending(false);
     }
   }
 
-  function rememberServerEntry(updated: PlatformCatalogEntry) {
-    // The patch action returns the same catalog ID; the prop row is its stable
-    // server-component baseline until revalidation supplies a newer ETag.
-    const baseEntry = entries.find((entry) => entry.id === updated.id) as PlatformCatalogEntry;
-    setEntryOverrides((current) => ({
-      ...current,
-      [updated.id]: { baseEtag: baseEntry.etag, entry: updated },
-    }));
+  function rememberServerEntry(baseEtag: string, updated: PlatformCatalogEntry) {
+    // The action started with this server-component ETag; keep that baseline
+    // until revalidation supplies a newer row, even if another write races.
+    setEntryOverrides((current) => {
+      const baseline = current[updated.id]?.baseEtag ?? baseEtag;
+      return {
+        ...current,
+        [updated.id]: { baseEtag: baseline, entry: updated },
+      };
+    });
   }
 
   // ConfirmDialog owns its own pending state and disables both of its buttons while
@@ -304,7 +306,7 @@ export default function PlatformCatalogTable({
           open
           onOpenChange={() => setEditingId(null)}
           onSaved={(updated) => {
-            rememberServerEntry(updated);
+            rememberServerEntry(editing.etag, updated);
             setEditingId(null);
           }}
         />
