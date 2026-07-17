@@ -43,6 +43,7 @@
     "language.zig",
     "language.typescript",
     "language.javascript",
+    "language.python",
     "language.shell",
     "domain.sql",
     "domain.http",
@@ -50,7 +51,9 @@
     "domain.documentation",
     "domain.changelog",
     "domain.architecture",
-    "workflow.specifications"
+    "workflow.specifications",
+    "workflow.governance",
+    "product.agentsfleet"
   ],
   "schema_version": 1
 }
