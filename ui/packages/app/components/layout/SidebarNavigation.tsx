@@ -154,10 +154,11 @@ type NavListProps = {
 
 function PlatformSection({ items, activeHref, workspaceId, onNavigate, collapsed }: NavListProps & { items: NavEntry[] }) {
   const active = items.some((entry) => resolveHref(entry, workspaceId) === activeHref);
-  // Collapsed by default: the group only renders for an operator holding a
-  // platform scope, and it stays out of the way until opened — force-open only
-  // when the current route lives inside it, so the active item is never hidden.
-  const [open, setOpen] = useState(active);
+  // Open by default: the group only renders for an operator holding a platform
+  // scope, so a platform admin sees Runners / Model library / Fleet library
+  // without a click. Still collapsible, and force-open whenever the current
+  // route lives inside it so the active item is never hidden.
+  const [open, setOpen] = useState(true);
   const regionId = useId();
 
   useEffect(() => {
