@@ -33,6 +33,10 @@ import {
   ADD_ACTION,
   ADD_TOOLTIP,
   CREATE_FLEET_LIBRARY,
+  FETCHING_UPDATE,
+  FETCH_UPDATE,
+  FETCH_UPDATE_ACTION,
+  FETCH_UPDATE_DESCRIPTION,
   LIBRARY_AUTHORING_DOC_URL,
   REPLACE_ACTION,
   REPLACE_CONFIRM,
@@ -57,9 +61,8 @@ const schema = z.object({
 
 type FormValues = z.infer<typeof schema>;
 
-// One dialog serves both "Create fleet library" and a row's "Fetch update": same validation,
-// same double-submit guard, same error mapping — differing only in a prefilled
-// repository. A second form would be a second place for the validation to drift.
+// One dialog serves create and refetch: validation, double-submit protection,
+// and error mapping stay shared while each operation keeps honest copy.
 export default function AddFleetDialog({
   open,
   onOpenChange,
@@ -73,6 +76,13 @@ export default function AddFleetDialog({
   /** The row's stored ref on the Fetch-update path — the pin the fetch honors. */
   prefillRef?: string;
 }) {
+  // Refetch is the row-driven path: a prefilled repo pins the source. An empty
+  // string is not a pin, so it stays create-mode rather than rendering a broken
+  // read-only dialog you can't type into.
+  const isRefetch = Boolean(prefillRepo);
+  const dialogTitle = isRefetch ? FETCH_UPDATE : CREATE_FLEET_LIBRARY;
+  const dialogDescription = isRefetch ? FETCH_UPDATE_DESCRIPTION : ADD_TOOLTIP;
+  const errorAction = isRefetch ? FETCH_UPDATE_ACTION : ADD_ACTION;
   const [apiError, setApiError] = useState<ErrorPresentation | null>(null);
   const [pending, setPending] = useState(false);
   // Set when the server reports a name collision; the operator must confirm the
@@ -125,7 +135,7 @@ export default function AddFleetDialog({
           return;
         }
         setApiError(
-          presentError({ errorCode: result.errorCode, message: result.error, action: ADD_ACTION }),
+          presentError({ errorCode: result.errorCode, message: result.error, action: errorAction }),
         );
         return;
       }
@@ -144,8 +154,8 @@ export default function AddFleetDialog({
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>{CREATE_FLEET_LIBRARY}</DialogTitle>
-          <DialogDescription>{ADD_TOOLTIP}</DialogDescription>
+          <DialogTitle>{dialogTitle}</DialogTitle>
+          <DialogDescription>{dialogDescription}</DialogDescription>
         </DialogHeader>
         <Form {...form}>
           <form
@@ -161,7 +171,13 @@ export default function AddFleetDialog({
                 <FormItem>
                   <FormLabel>Repository</FormLabel>
                   <FormControl>
-                    <Input placeholder="owner/repo" autoComplete="off" spellCheck={false} {...field} />
+                    <Input
+                      placeholder="owner/repo"
+                      autoComplete="off"
+                      spellCheck={false}
+                      {...field}
+                      readOnly={isRefetch}
+                    />
                   </FormControl>
                   <FormDescription className="space-y-1">
                     <span className="block">Example: {SAMPLE_LIBRARY_REPO}</span>
@@ -214,8 +230,8 @@ export default function AddFleetDialog({
                 Cancel
               </Button>
               <Button type="submit" disabled={pending}>
-                {pending ? <Spinner size="sm" srLabel="Creating fleet library" /> : null}
-                {CREATE_FLEET_LIBRARY}
+                {pending ? <Spinner size="sm" srLabel={isRefetch ? FETCHING_UPDATE : CREATE_FLEET_LIBRARY} /> : null}
+                {dialogTitle}
               </Button>
             </DialogFooter>
           </form>

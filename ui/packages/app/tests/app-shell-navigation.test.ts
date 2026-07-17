@@ -30,9 +30,9 @@ vi.mock("lucide-react", () => {
     GitBranchIcon: icon("GitBranchIcon"), ActivityIcon: icon("ActivityIcon"), PauseIcon: icon("PauseIcon"), ExternalLinkIcon: icon("ExternalLinkIcon"),
     LayoutDashboardIcon: icon("LayoutDashboardIcon"), BoxIcon: icon("BoxIcon"), BotIcon: icon("BotIcon"), SettingsIcon: icon("SettingsIcon"),
     KeyIcon: icon("KeyIcon"), BookOpenIcon: icon("BookOpenIcon"), ZapIcon: icon("ZapIcon"), ShieldIcon: icon("ShieldIcon"),
-    KeyRoundIcon: icon("KeyRoundIcon"), LibraryIcon: icon("LibraryIcon"), LinkIcon: icon("LinkIcon"), CheckCircle2Icon: icon("CheckCircle2Icon"), ServerIcon: icon("ServerIcon"),
-    CpuIcon: icon("CpuIcon"), CoinsIcon: icon("CoinsIcon"), CreditCardIcon: icon("CreditCardIcon"), MenuIcon: icon("MenuIcon"),
-    PanelLeftIcon: icon("PanelLeftIcon"), SunIcon: icon("SunIcon"), MoonIcon: icon("MoonIcon"), ChevronDownIcon: icon("ChevronDownIcon"), PlusIcon: icon("PlusIcon"),
+    KeyRoundIcon: icon("KeyRoundIcon"), LibraryIcon: icon("LibraryIcon"), PlugIcon: icon("PlugIcon"), CheckCircle2Icon: icon("CheckCircle2Icon"), ServerIcon: icon("ServerIcon"),
+    BrainCircuitIcon: icon("BrainCircuitIcon"), BoxesIcon: icon("BoxesIcon"), CreditCardIcon: icon("CreditCardIcon"), MenuIcon: icon("MenuIcon"),
+    PanelLeftCloseIcon: icon("PanelLeftCloseIcon"), PanelLeftOpenIcon: icon("PanelLeftOpenIcon"), SunIcon: icon("SunIcon"), MoonIcon: icon("MoonIcon"), ChevronDownIcon: icon("ChevronDownIcon"), ChevronRightIcon: icon("ChevronRightIcon"), PlusIcon: icon("PlusIcon"),
   };
 });
 vi.mock("@/components/layout/ThemeToggle", () => ({ default: () => React.createElement("button") }));
@@ -51,6 +51,15 @@ afterEach(() => {
 });
 
 describe("app shell navigation", () => {
+  it("links the product mark directly to the fleet wall", async () => {
+    const { default: Shell } = await import("../components/layout/Shell");
+    mocks.usePathname.mockReturnValue("/w/ws_1/events");
+    render(React.createElement(Shell, null, React.createElement("div")));
+    expect(screen.getByRole("link", { name: "agentsfleet home" }).getAttribute("href")).toBe(
+      "/w/ws_1/fleets",
+    );
+  });
+
   it("appends the Runners item only when the session holds runner:read", async () => {
     const { default: Shell } = await import("../components/layout/Shell");
     mocks.usePathname.mockReturnValue("/");
@@ -62,11 +71,13 @@ describe("app shell navigation", () => {
       ),
     );
     expect(markup).toContain("Configuration");
-    expect(markup).toContain("Runners");
+    expect(markup).toContain("Platform");
+    // Platform group is open by default, so the scoped surface is visible.
     expect(markup).toContain('href="/admin/runners"');
     expect(markup).toContain('data-icon="ServerIcon"');
-    expect((markup.match(/>Configuration</g) ?? []).length).toBe(1);
-    expect(markup).not.toMatch(/>\s*Platform\s*</);
+    // Scope-gated: no model:read / platform-library:write → those stay absent.
+    expect(markup).not.toContain('href="/admin/models"');
+    expect(markup).not.toContain('href="/admin/fleet-libraries"');
   });
 
   it("hides the platform surface for a session without operator scopes", async () => {
@@ -88,7 +99,8 @@ describe("app shell navigation", () => {
         React.createElement("div"),
       ),
     );
-    expect(withScope).toContain("Fleet library");
+    expect(withScope).toContain("Platform");
+    // Open by default → the scoped surface is visible without expanding.
     expect(withScope).toContain('href="/admin/fleet-libraries"');
 
     const otherScope = renderToStaticMarkup(
@@ -99,6 +111,45 @@ describe("app shell navigation", () => {
       ),
     );
     expect(otherScope).not.toContain('href="/admin/fleet-libraries"');
+  });
+
+  it("shows the Platform group open by default and collapses it on demand", async () => {
+    const { default: Shell } = await import("../components/layout/Shell");
+    mocks.usePathname.mockReturnValue("/");
+    const user = userEvent.setup();
+    render(
+      React.createElement(
+        Shell,
+        { operatorScopes: ["runner:read", "model:read", "platform-library:write"] } as React.ComponentProps<typeof Shell>,
+        React.createElement("div"),
+      ),
+    );
+
+    // Default open: platform operators see every surface without a click.
+    const platform = screen.getByRole("button", { name: "Platform" });
+    expect(platform.getAttribute("aria-expanded")).toBe("true");
+    expect(screen.getByRole("link", { name: "Runners" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Model library" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Fleet library" })).toBeTruthy();
+
+    // Still collapsible to declutter.
+    await user.click(platform);
+    expect(platform.getAttribute("aria-expanded")).toBe("false");
+    expect(screen.queryByRole("link", { name: "Runners" })).toBeNull();
+  });
+
+  it("opens the Platform group when the current route belongs to it", async () => {
+    const { default: Shell } = await import("../components/layout/Shell");
+    mocks.usePathname.mockReturnValue("/admin/runners");
+    render(
+      React.createElement(
+        Shell,
+        { operatorScopes: ["runner:read"] } as React.ComponentProps<typeof Shell>,
+        React.createElement("div"),
+      ),
+    );
+    expect(screen.getByRole("button", { name: "Platform" }).getAttribute("aria-expanded")).toBe("true");
+    expect(screen.getByRole("link", { name: "Runners" })).toBeTruthy();
   });
 
   it("renders the mobile navigation button", async () => {
@@ -161,10 +212,12 @@ describe("app shell navigation", () => {
     const user = userEvent.setup();
     render(React.createElement(Shell, null, React.createElement("div", null, "content")));
     const toggle = screen.getByRole("button", { name: /collapse sidebar/i });
+    expect(toggle.querySelector('[data-icon="PanelLeftCloseIcon"]')).not.toBeNull();
     expect(toggle.getAttribute("aria-expanded")).toBe("true");
     expect(screen.getByText("Fleets")).toBeTruthy();
     await user.click(toggle);
     const expand = screen.getByRole("button", { name: /expand sidebar/i });
+    expect(expand.querySelector('[data-icon="PanelLeftOpenIcon"]')).not.toBeNull();
     expect(expand).toBeTruthy();
     expect(screen.queryByRole("button", { name: /collapse sidebar/i })).toBeNull();
     expect(expand.getAttribute("aria-expanded")).toBe("false");
@@ -192,6 +245,23 @@ describe("app shell navigation", () => {
     const fleetsLink = screen.getByRole("link", { name: "Fleets" });
     expect(fleetsLink).toBeTruthy();
     expect(fleetsLink.getAttribute("href")).toBe("/w/ws_1/fleets");
+  });
+
+  it("keeps platform links accessible when the whole sidebar is collapsed", async () => {
+    const { default: Shell } = await import("../components/layout/Shell");
+    mocks.usePathname.mockReturnValue("/w/ws_1/fleets");
+    const user = userEvent.setup();
+    render(
+      React.createElement(
+        Shell,
+        { operatorScopes: ["runner:read"] } as React.ComponentProps<typeof Shell>,
+        React.createElement("div"),
+      ),
+    );
+    await user.click(screen.getByRole("button", { name: /collapse sidebar/i }));
+    expect(screen.getByRole("link", { name: "Runners" }).getAttribute("href")).toBe(
+      "/admin/runners",
+    );
   });
 
   it("hides section labels when collapsed", async () => {
@@ -241,5 +311,23 @@ describe("app shell navigation", () => {
     const dialog = await screen.findByRole("dialog");
     expect(within(dialog).getByText("Fleets")).toBeTruthy();
     expect(within(dialog).getByText("Fleets")).toBeTruthy();
+  });
+});
+
+describe("resolveActiveHref — single active winner", () => {
+  it("returns the longest href that prefixes the path, so a nested route never lights a sibling", async () => {
+    const { resolveActiveHref } = await import("../components/layout/SidebarNavigation");
+    // The invariant that guards against a future nav pair where one path
+    // prefixes another: the deeper route lights only its own href.
+    expect(
+      resolveActiveHref(["/w/1/settings", "/w/1/settings/models"], "/w/1/settings/models"),
+    ).toBe("/w/1/settings/models");
+    // A resource-detail route collapses onto its section href.
+    expect(resolveActiveHref(["/w/1/fleets"], "/w/1/fleets/abc")).toBe("/w/1/fleets");
+    // Exact match on a plain sibling.
+    expect(resolveActiveHref(["/w/1/fleets", "/w/1/events"], "/w/1/events")).toBe("/w/1/events");
+    // Entry-redirect stubs never win, and an unmatched path lights nothing.
+    expect(resolveActiveHref(["/", ""], "/")).toBe("");
+    expect(resolveActiveHref(["/w/1/fleets"], "/admin/runners")).toBe("");
   });
 });

@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { workspacePath } from "@/lib/workspace-routes";
+import { DEFAULT_WORKSPACE_SUBPATH, workspacePath } from "@/lib/workspace-routes";
 
 // The workspace root is a permanent redirect to the Wall — the single-route
 // refactor removed the dashboard. The Wall (`/w/{ws}/fleets`) is the only entry
@@ -12,5 +12,5 @@ export default async function WorkspaceRootPage({
   params: Promise<{ workspaceId: string }>;
 }) {
   const { workspaceId } = await params;
-  redirect(workspacePath(workspaceId, "fleets"));
+  redirect(workspacePath(workspaceId, DEFAULT_WORKSPACE_SUBPATH));
 }

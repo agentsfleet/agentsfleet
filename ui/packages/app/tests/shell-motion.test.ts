@@ -5,12 +5,16 @@ import { resolve } from "node:path";
 // The dashboard no longer animates page mounts or the ambient canvas: loading
 // feedback lives in RouteLoading's spinner, and navigation should not wobble.
 // jsdom/happy-dom cannot resolve @media (prefers-reduced-motion) into a
-// computed style, so this pins the stylesheet and Shell wiring structurally.
+// computed style, so this pins the stylesheet and layout wiring structurally.
 
 const APP_ROOT = resolve(__dirname, "..");
 
 const GLOBALS = readFileSync(resolve(APP_ROOT, "app/globals.css"), "utf8");
 const SHELL = readFileSync(resolve(APP_ROOT, "components/layout/Shell.tsx"), "utf8");
+const SIDEBAR_NAVIGATION = readFileSync(
+  resolve(APP_ROOT, "components/layout/SidebarNavigation.tsx"),
+  "utf8",
+);
 
 describe("dashboard route motion is absent", () => {
   it("keeps page mounts and the ambient canvas static", () => {
@@ -61,6 +65,6 @@ describe("test_motion_respects_reduced_motion — every effect is gated", () => 
   });
 
   it("gates the sidebar hover nudge with the motion-safe variant", () => {
-    expect(SHELL).toContain("motion-safe:hover:translate-x-px");
+    expect(SIDEBAR_NAVIGATION).toContain("motion-safe:hover:translate-x-px");
   });
 });
