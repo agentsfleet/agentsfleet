@@ -36,9 +36,9 @@ vi.mock("lucide-react", () => {
     GitBranchIcon: icon("GitBranchIcon"), ActivityIcon: icon("ActivityIcon"), PauseIcon: icon("PauseIcon"), ExternalLinkIcon: icon("ExternalLinkIcon"),
     LayoutDashboardIcon: icon("LayoutDashboardIcon"), BoxIcon: icon("BoxIcon"), BotIcon: icon("BotIcon"), SettingsIcon: icon("SettingsIcon"),
     KeyIcon: icon("KeyIcon"), BookOpenIcon: icon("BookOpenIcon"), ZapIcon: icon("ZapIcon"), ShieldIcon: icon("ShieldIcon"),
-    KeyRoundIcon: icon("KeyRoundIcon"), LibraryIcon: icon("LibraryIcon"), LinkIcon: icon("LinkIcon"), CheckCircle2Icon: icon("CheckCircle2Icon"), ServerIcon: icon("ServerIcon"),
-    CpuIcon: icon("CpuIcon"), CoinsIcon: icon("CoinsIcon"), CreditCardIcon: icon("CreditCardIcon"), MenuIcon: icon("MenuIcon"),
-    PanelLeftIcon: icon("PanelLeftIcon"), SunIcon: icon("SunIcon"), MoonIcon: icon("MoonIcon"), ChevronDownIcon: icon("ChevronDownIcon"), PlusIcon: icon("PlusIcon"),
+    KeyRoundIcon: icon("KeyRoundIcon"), LibraryIcon: icon("LibraryIcon"), PlugIcon: icon("PlugIcon"), CheckCircle2Icon: icon("CheckCircle2Icon"), ServerIcon: icon("ServerIcon"),
+    BrainCircuitIcon: icon("BrainCircuitIcon"), BoxesIcon: icon("BoxesIcon"), CreditCardIcon: icon("CreditCardIcon"), MenuIcon: icon("MenuIcon"),
+    PanelLeftCloseIcon: icon("PanelLeftCloseIcon"), PanelLeftOpenIcon: icon("PanelLeftOpenIcon"), SunIcon: icon("SunIcon"), MoonIcon: icon("MoonIcon"), ChevronDownIcon: icon("ChevronDownIcon"), ChevronRightIcon: icon("ChevronRightIcon"), PlusIcon: icon("PlusIcon"),
   };
 });
 vi.mock("@/components/layout/ThemeToggle", () => ({ default: () => React.createElement("button") }));
@@ -293,8 +293,8 @@ describe("app components", () => {
       React.createElement(Shell, null, React.createElement("div", null, "content")),
     );
     // Three distinct Configuration destinations, each at its own workspace route.
-    expect(markup).toMatch(/href="\/w\/ws_1\/settings\/models"[\s\S]*?data-icon="CpuIcon"[^>]*><\/svg>Models</);
-    expect(markup).toMatch(/href="\/w\/ws_1\/integrations"[\s\S]*?data-icon="LinkIcon"[^>]*><\/svg>Integrations</);
+    expect(markup).toMatch(/href="\/w\/ws_1\/settings\/models"[\s\S]*?data-icon="BrainCircuitIcon"[^>]*><\/svg>Models</);
+    expect(markup).toMatch(/href="\/w\/ws_1\/integrations"[\s\S]*?data-icon="PlugIcon"[^>]*><\/svg>Integrations</);
     expect(markup).toMatch(/href="\/w\/ws_1\/secrets"[\s\S]*?data-icon="KeyRoundIcon"[^>]*><\/svg>Secrets</);
   });
 
@@ -333,7 +333,7 @@ describe("app components", () => {
       const icon = markup.match(/data-active="true"[^>]*>\s*<svg[^>]*data-icon="([^"]+)"/)?.[1] ?? null;
       return { count, icon };
     };
-    expect(activeFor("/w/ws_1/settings/models")).toEqual({ count: 1, icon: "CpuIcon" });
+    expect(activeFor("/w/ws_1/settings/models")).toEqual({ count: 1, icon: "BrainCircuitIcon" });
     expect(activeFor("/settings/billing")).toEqual({ count: 1, icon: "CreditCardIcon" });
     // API Keys now owns its own distinct href — nested children (mint/reveal
     // detail routes, if any) still resolve to it via prefix match; a nested

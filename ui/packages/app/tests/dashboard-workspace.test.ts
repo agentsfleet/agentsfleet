@@ -167,7 +167,7 @@ describe("WorkspaceSwitcher component", () => {
     const items = screen.getAllByRole("menuitem");
     // First item = Alpha (the displayed-active fallback)
     await user.click(items[0]!);
-    await waitFor(() => expect(routerPush).toHaveBeenCalledWith("/w/ws_1"));
+    await waitFor(() => expect(routerPush).toHaveBeenCalledWith("/w/ws_1/fleets"));
   });
 
   it("uses the workspace id in the switch toast when the workspace has no name", async () => {

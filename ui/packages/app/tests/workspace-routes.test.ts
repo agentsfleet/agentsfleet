@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  DEFAULT_WORKSPACE_SUBPATH,
   WORKSPACE_ROUTE_PREFIX,
   workspaceIdFromPath,
   workspacePath,
@@ -62,12 +63,12 @@ describe("workspaceSwitchSubpath", () => {
     expect(workspaceSwitchSubpath("approvals/gate_9")).toBe("approvals");
   });
 
-  it("preserves generic pages verbatim", () => {
+  it("preserves generic pages and maps an empty route to the workspace home", () => {
     expect(workspaceSwitchSubpath("fleets")).toBe("fleets");
     expect(workspaceSwitchSubpath("fleets/new")).toBe("fleets/new");
     expect(workspaceSwitchSubpath("integrations")).toBe("integrations");
     expect(workspaceSwitchSubpath("settings/models")).toBe("settings/models");
-    expect(workspaceSwitchSubpath("")).toBe("");
+    expect(workspaceSwitchSubpath("")).toBe(DEFAULT_WORKSPACE_SUBPATH);
   });
 
   it("switching from a fleet detail lands on the target's fleets list, not a 404", () => {

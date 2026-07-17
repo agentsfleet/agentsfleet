@@ -33,21 +33,24 @@ function renderRail(inputs: OnboardingInputs) {
 }
 
 describe("OnboardingRail — tick marks + strikethrough (3.4)", () => {
-  it("a done step renders a filled tick marker and a struck-through label", () => {
+  it("a done step renders an explicit check and a struck-through label", () => {
     // Model configured → done; its label must be struck through.
     const { container, getByText } = renderRail({ ...ZERO, modelConfigured: true });
     expect(container.querySelector('[aria-label="done"]')).not.toBeNull();
+    expect(container.querySelector(".lucide-check")).not.toBeNull();
     const label = getByText("Model configured");
     expect(label.className).toContain("line-through");
   });
 
-  it("the next incomplete step renders the static ring marker, no strikethrough", () => {
-    // Nothing done → model_configured is the ringed next step.
+  it("the next incomplete step renders the centre-dot marker, no strikethrough", () => {
+    // Nothing done → model_configured is the next step.
     const { container, getByText } = renderRail(ZERO);
     const nextMarker = container.querySelector('[aria-label="next step"]');
     expect(nextMarker).not.toBeNull();
-    // The ring is the static pulse-glow shadow, NOT the wake-pulse animation.
-    expect(nextMarker?.className).toContain("shadow-[0_0_0_4px_var(--pulse-glow)]");
+    // The next marker is the small static centre dot, NOT a check (that's the
+    // done state) and NOT the wake-pulse animation (reserved for live entities).
+    expect(nextMarker?.querySelector('[data-current-step="true"]')).not.toBeNull();
+    expect(nextMarker?.querySelector(".lucide-check")).toBeNull();
     expect(getByText("Model configured").className).not.toContain("line-through");
   });
 

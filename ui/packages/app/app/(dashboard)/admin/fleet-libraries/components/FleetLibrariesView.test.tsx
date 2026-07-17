@@ -157,6 +157,7 @@ describe("FleetLibrariesView", () => {
     await userEvent.click(screen.getByRole("button", { name: "Fetch update" }));
 
     await waitFor(() => {
+      expect(screen.getByRole("dialog", { name: "Fetch update" })).toBeTruthy();
       const field = screen.getByLabelText("Repository") as HTMLInputElement;
       expect(field.value).toBe("agentsfleet/platform-ops");
     });

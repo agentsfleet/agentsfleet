@@ -6,6 +6,7 @@
 
 /** Route prefix for the workspace-scoped dashboard segment (`app/(dashboard)/w/[workspaceId]`). */
 export const WORKSPACE_ROUTE_PREFIX = "/w";
+export const DEFAULT_WORKSPACE_SUBPATH = "fleets";
 
 // Matches a leading `/w/<id>` and captures the id. Built from the prefix so the
 // literal lives in exactly one place.
@@ -52,6 +53,7 @@ const RESOURCE_DETAIL_SECTIONS = new Set(["fleets", "approvals"]);
 
 /**
  * Maps a workspace sub-path to the sub-path a workspace *switch* should land on.
+ * An empty path lands on the fleet wall instead of the redirect-only root.
  * A resource-detail path (`fleets/<id>`, `approvals/<gateId>`) collapses to its
  * section root (`fleets`, `approvals`) — the target workspace doesn't own that
  * resource. Generic pages (`fleets/new`, `settings/models`, `integrations`, …)
@@ -59,6 +61,7 @@ const RESOURCE_DETAIL_SECTIONS = new Set(["fleets", "approvals"]);
  */
 export function workspaceSwitchSubpath(subpath: string): string {
   const [section, detail] = subpath.split("/").filter(Boolean);
+  if (!section) return DEFAULT_WORKSPACE_SUBPATH;
   if (section && detail && detail !== "new" && RESOURCE_DETAIL_SECTIONS.has(section)) {
     return section;
   }
