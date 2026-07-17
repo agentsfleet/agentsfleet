@@ -1,4 +1,6 @@
 {
+  "schema_version": 1,
+  "profile": "agentsfleet",
   "files": [
     ".oracle/managed-files.json",
     ".oracle/profile.json",
@@ -38,13 +40,11 @@
     "docs/HARNESS_VERIFY_OUTPUT.md",
     "docs/LIFECYCLE_PATTERNS.md",
     "docs/LOGGING_STANDARD.md",
-    "docs/ORACLE_RULES_ARCHITECTURE.md",
+    "docs/ORLY_ARCHITECTURE.md",
     "docs/REST_API_DESIGN_GUIDELINES.md",
     "docs/SCHEMA_CONVENTIONS.md",
     "docs/TEMPLATE.md",
     "docs/VERIFY_TIERS.md",
     "docs/greptile-learnings/RULES.md"
-  ],
-  "profile": "agentsfleet",
-  "schema_version": 1
+  ]
 }

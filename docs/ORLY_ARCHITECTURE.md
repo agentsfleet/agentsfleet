@@ -1,23 +1,23 @@
-# Oracle rules architecture
+# Orly architecture
 
-Oracle rules use one canonical registry, explicit profiles, generated agent-home
+Orly uses one canonical registry, explicit profiles, generated agent-home
 instructions, and tracked repository snapshots. This removes implicit worktree
 mutation while keeping every repository's existing verification commands.
 
 ## Topology
 
 ```text
-oracle-rules/core/operating-model.md
-oracle-rules/packs/**
-oracle-rules/profiles/*.json
-oracle-rules/registry.json
+orly/core/operating-model.md
+orly/packs/**
+orly/profiles/*.json
+orly/registry.json
               │
               ▼
-       bin/oracle-rules
-          │         │
-          │         └── sync ──> repository snapshot + ruleset lock
+        bin/orly
           │
-          └── render global ──> oracle-rules/generated/global/AGENTS.md
+          ├── sync repository ──> tracked snapshot + ruleset lock
+          │
+          └── sync global ──────> orly/generated/global/AGENTS.md
                                       │
                                       └── agent-home symbolic links
 ```
@@ -44,21 +44,19 @@ repository snapshot, not a repository snapshot itself.
 
 ## Propagation
 
-Global agent-home instructions update in place after:
+Update global agent-home instructions:
 
 ```bash
-oracle-rules render --profile global --output ~/Projects/dotfiles/oracle-rules/generated/global
-oracle-rules link-agent-homes
+orly sync --global
 ```
 
 The agent-home links point at that generated file, so later renders become
 visible immediately to installed agents.
 
-Repository snapshots update only through an explicit clean-tree operation:
+Update registered repository snapshots:
 
 ```bash
-oracle-rules status --all
-oracle-rules sync --repository <NAME>
+orly sync --all
 ```
 
 Synchronization refuses a dirty repository, an absent `AGENTS.project.md`, an
@@ -67,13 +65,10 @@ worktrees.
 
 ## Repository setup
 
-1. Add the repository path and profile to `oracle-rules/repositories.json`.
-2. Run `oracle-rules init --profile <PROFILE> --repository <PATH>`.
-3. Fill `AGENTS.project.md` with local commands, terms, and architecture triggers.
-4. Commit `AGENTS.project.md` and `.oracle/profile.json` in that repository.
-5. Run `oracle-rules sync --repository <NAME>` from dotfiles.
-6. Review and commit the generated snapshot and `.oracle/ruleset.lock`.
-7. Run `oracle-rules doctor --repository <NAME>`.
+1. Add the repository path and profile to `orly/repositories.json`.
+2. Run `orly adopt <REPOSITORY_NAME>` from dotfiles.
+3. Review and commit the generated snapshot in the target repository.
+4. Run `orly doctor <REPOSITORY_NAME>`.
 
 The clean-tree boundary makes every propagation reviewable. A repository cannot
 receive a partial update while unrelated work is present.
@@ -89,11 +84,11 @@ after those commands pass. No additional lifecycle stage is needed.
 
 ## Evidence
 
-`oracle-rules verify --all` validates every profile and renders each profile
+`orly verify --all` validates every profile and renders each profile
 twice. Byte-identical output proves deterministic generation. With
 `--write-evidence`, the command writes `.oracle/evidence.json` containing the
 source commit, registry digest, checks, and live comprehension result.
 
-Repository snapshots carry `.oracle/ruleset.lock`. `oracle-rules doctor` verifies
+Repository snapshots carry `.oracle/ruleset.lock`. `orly doctor` verifies
 each managed file's bytes and normalized mode (`0644` or `0755`), rejects managed
 symbolic links, and reports an outdated profile-specific ruleset digest.

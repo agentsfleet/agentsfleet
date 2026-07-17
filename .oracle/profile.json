@@ -1,42 +1,5 @@
 {
-  "commands": {
-    "conform": [
-      [
-        "make",
-        "harness-verify"
-      ]
-    ],
-    "verify.integration": [
-      [
-        "make",
-        "test-integration"
-      ]
-    ],
-    "verify.lint": [
-      [
-        "make",
-        "lint-all"
-      ]
-    ],
-    "verify.memory": [
-      [
-        "make",
-        "memleak"
-      ]
-    ],
-    "verify.unit": [
-      [
-        "make",
-        "test-unit-all"
-      ]
-    ],
-    "verify.version": [
-      [
-        "make",
-        "check-version"
-      ]
-    ]
-  },
+  "schema_version": 1,
   "name": "agentsfleet",
   "packs": [
     "universal.authoring",
@@ -55,5 +18,42 @@
     "workflow.governance",
     "product.agentsfleet"
   ],
-  "schema_version": 1
+  "commands": {
+    "conform": [
+      [
+        "make",
+        "harness-verify"
+      ]
+    ],
+    "verify.lint": [
+      [
+        "make",
+        "lint-all"
+      ]
+    ],
+    "verify.unit": [
+      [
+        "make",
+        "test-unit-all"
+      ]
+    ],
+    "verify.integration": [
+      [
+        "make",
+        "test-integration"
+      ]
+    ],
+    "verify.memory": [
+      [
+        "make",
+        "memleak"
+      ]
+    ],
+    "verify.version": [
+      [
+        "make",
+        "check-version"
+      ]
+    ]
+  }
 }
