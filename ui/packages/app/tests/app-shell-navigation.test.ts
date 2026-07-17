@@ -71,13 +71,11 @@ describe("app shell navigation", () => {
       ),
     );
     expect(markup).toContain("Configuration");
+    // Scope grants the group; it renders collapsed by default, so its links are
+    // not in the initial markup until the operator expands it.
     expect(markup).toContain("Platform");
-    // Platform group is open by default, so the scoped surface is visible.
-    expect(markup).toContain('href="/admin/runners"');
-    expect(markup).toContain('data-icon="ServerIcon"');
-    // Scope-gated: no model:read / platform-library:write → those stay absent.
-    expect(markup).not.toContain('href="/admin/models"');
-    expect(markup).not.toContain('href="/admin/fleet-libraries"');
+    expect(markup).not.toContain('href="/admin/runners"');
+    expect(markup).not.toContain('data-icon="ServerIcon"');
   });
 
   it("hides the platform surface for a session without operator scopes", async () => {
@@ -100,8 +98,8 @@ describe("app shell navigation", () => {
       ),
     );
     expect(withScope).toContain("Platform");
-    // Open by default → the scoped surface is visible without expanding.
-    expect(withScope).toContain('href="/admin/fleet-libraries"');
+    // Collapsed by default → the link is not in the initial markup.
+    expect(withScope).not.toContain('href="/admin/fleet-libraries"');
 
     const otherScope = renderToStaticMarkup(
       React.createElement(
@@ -113,7 +111,7 @@ describe("app shell navigation", () => {
     expect(otherScope).not.toContain('href="/admin/fleet-libraries"');
   });
 
-  it("shows the Platform group open by default and collapses it on demand", async () => {
+  it("keeps the Platform group collapsed by default and expands it on demand", async () => {
     const { default: Shell } = await import("../components/layout/Shell");
     mocks.usePathname.mockReturnValue("/");
     const user = userEvent.setup();
@@ -125,17 +123,16 @@ describe("app shell navigation", () => {
       ),
     );
 
-    // Default open: platform operators see every surface without a click.
+    // Collapsed by default: the group label shows, the links stay tucked away.
     const platform = screen.getByRole("button", { name: "Platform" });
+    expect(platform.getAttribute("aria-expanded")).toBe("false");
+    expect(screen.queryByRole("link", { name: "Runners" })).toBeNull();
+
+    await user.click(platform);
     expect(platform.getAttribute("aria-expanded")).toBe("true");
     expect(screen.getByRole("link", { name: "Runners" })).toBeTruthy();
     expect(screen.getByRole("link", { name: "Model library" })).toBeTruthy();
     expect(screen.getByRole("link", { name: "Fleet library" })).toBeTruthy();
-
-    // Still collapsible to declutter.
-    await user.click(platform);
-    expect(platform.getAttribute("aria-expanded")).toBe("false");
-    expect(screen.queryByRole("link", { name: "Runners" })).toBeNull();
   });
 
   it("opens the Platform group when the current route belongs to it", async () => {
