@@ -51,3 +51,13 @@ stopwords = [
   "nonce1234567890abcdef",
   "8f742231b10e8888abcd99yyyzz0ek9i",
 ]
+
+[[rules]]
+id = "generic-api-key"
+
+  [rules.allowlist]
+  description = "Oracle Secure Hash Algorithm 256-bit (SHA-256) lock digests"
+  condition = "AND"
+  paths = ['''(^|/)\.oracle/ruleset\.lock$''']
+  regexTarget = "line"
+  regexes = ['''"(ruleset_digest|[^"]+\.(md|sh|json))":\s*"[0-9a-f]{64}"''']

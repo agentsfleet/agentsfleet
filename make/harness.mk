@@ -72,6 +72,7 @@ endef
 harness-verify:  ## Run every deterministic gate audit (mechanical HARNESS VERIFY layer; staged scope — pre-commit lens)
 	@printf "\n$(C_BOLD)$(C_CYAN)●$(C_RESET) $(C_BOLD)HARNESS VERIFY$(C_RESET) $(C_GREY)── deterministic gates · staged scope (pre-commit lens)$(C_RESET)\n"
 	$(call HARNESS_RUN,UFS,audits/ufs.sh --staged)
+	$(call HARNESS_RUN,GITLEAKS CONFIG,audits/gitleaks-config.sh)
 	$(call HARNESS_RUN,DESIGN TOKEN,audits/design-tokens.sh --staged)
 	$(call HARNESS_RUN,SPEC TEMPLATE,audits/spec-template.sh --staged)
 	$(call HARNESS_RUN,ERROR REGISTRY,audits/error-codes.sh --staged)
@@ -88,6 +89,7 @@ harness-verify-all:  ## Whole-worktree variant for periodic deep audits
 	# `--diff` (vs origin/main) is the broadest meaningful scope for that
 	# diff-shaped script.
 	$(call HARNESS_RUN,UFS,audits/ufs.sh)
+	$(call HARNESS_RUN,GITLEAKS CONFIG,audits/gitleaks-config.sh)
 	$(call HARNESS_RUN,DESIGN TOKEN,audits/design-tokens.sh)
 	$(call HARNESS_RUN,SPEC TEMPLATE,audits/spec-template.sh)
 	$(call HARNESS_RUN,ERROR REGISTRY,audits/error-codes.sh)
