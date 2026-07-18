@@ -112,10 +112,13 @@ fn testCredentials() !Credentials {
     errdefer testing.allocator.free(token);
     const current = try testing.allocator.dupe(u8, "m105-current-signing-key");
     errdefer testing.allocator.free(current);
+    const next = try testing.allocator.dupe(u8, "m105-next-signing-key");
+    errdefer testing.allocator.free(next);
     return .{
         .token = token,
         .current_signing_key = current,
-        .next_signing_key = try testing.allocator.dupe(u8, "m105-next-signing-key"),
+        .next_signing_key = next,
+        .url = try testing.allocator.dupe(u8, "https://qstash.test"),
     };
 }
 

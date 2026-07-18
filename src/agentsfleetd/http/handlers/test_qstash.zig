@@ -9,16 +9,19 @@ const harness_mod = @import("../test_harness.zig");
 const TOKEN_VALUE = "test-qstash-token";
 const CURRENT_SIGNING_KEY_VALUE = "test-qstash-current";
 const NEXT_SIGNING_KEY_VALUE = "test-qstash-next";
+const URL_VALUE = "https://qstash.test";
 const EMPTY_JSON = "{}";
 const EMPTY_BODY = "";
 
 var token_bytes = TOKEN_VALUE.*;
 var current_signing_key_bytes = CURRENT_SIGNING_KEY_VALUE.*;
 var next_signing_key_bytes = NEXT_SIGNING_KEY_VALUE.*;
+var url_bytes = URL_VALUE.*;
 var default_credentials: Credentials = .{
     .token = token_bytes[0..TOKEN_VALUE.len],
     .current_signing_key = current_signing_key_bytes[0..CURRENT_SIGNING_KEY_VALUE.len],
     .next_signing_key = next_signing_key_bytes[0..NEXT_SIGNING_KEY_VALUE.len],
+    .url = url_bytes[0..URL_VALUE.len],
 };
 var default_fake: FakeQStash = .{};
 
