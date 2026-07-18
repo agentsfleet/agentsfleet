@@ -32,7 +32,9 @@ a gate skip.
 
 - **One headline per entry.** The lead paragraph states *the change*, not the
   announcement ("X now does Y", not "We're excited to announce Y").
-- **No marketing words** — `seamless` / `magical` / `powerful` / `robust` are banned.
+- **No marketing words** — use the canonical banned-word lists in
+  `docs/CHANGELOG_VOICE.md` and `docs/DOCUMENTATION_RULES.md`; do not duplicate
+  either list here.
 - **Bullets** follow `**Bold lead-noun** — consequence-first clause`.
 - **Never drop load-bearing facts** — error codes, endpoints, env vars, schema
   names, money amounts stay verbatim.

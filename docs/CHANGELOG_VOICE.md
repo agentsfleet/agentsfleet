@@ -6,7 +6,9 @@
 
 Editing `~/Projects/docs/changelog.mdx` or any other Mintlify `<Update>` block.
 
-- **One headline per entry, no marketing words.** Banned: "seamless", "magical", "powerful", "robust", "we are pleased to", "we're excited to". The change speaks for itself.
+- **One headline per entry, no marketing words.** Apply Documentation rule 07
+  (`DOC-07`) from `DOCUMENTATION_RULES.md`. Also ban "magical", "we are pleased
+  to", and "we're excited to" in changelog entries. The change speaks for itself.
 - **Lead paragraph states the change, not the announcement.** A reader has 30 seconds; they should know what changed in the first sentence. ✅ "Pricing collapses to one number per surface." ❌ "Today we're shipping single-rate pricing."
 - **Bullets follow `**Bold lead-noun** — consequence-first clause`.** One bullet, one fact. Three "and"s in a sentence → split it. Code names always in backticks (functions, paths, env vars, routes, error codes, tables).
 - **Internal cleanup / refactor entries get the most aggressive trimming.** One lead paragraph + one bullet list. Skip "Test coverage" sections unless the test count is the headline. Indy's exact direction: *"Keep internal code cleanup, refactor to a minimal."*
