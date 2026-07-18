@@ -12,7 +12,6 @@ const http_pin = @import("http_pin");
 
 const model = @import("model.zig");
 
-const DEFAULT_API_BASE = "https://qstash.upstash.io";
 const SCHEDULES_PATH = "/v2/schedules/";
 const CONTENT_TYPE_JSON = "application/json";
 const AUTHORIZATION_HEADER = "authorization";
@@ -69,11 +68,7 @@ pub const Outcome = enum {
     malformed_response,
 };
 
-pub fn init(exchange: Exchange, destination_url: []const u8) QStashClient {
-    return initWithBase(exchange, DEFAULT_API_BASE, destination_url);
-}
-
-pub fn initWithBase(exchange: Exchange, api_base: []const u8, destination_url: []const u8) QStashClient {
+pub fn init(exchange: Exchange, api_base: []const u8, destination_url: []const u8) QStashClient {
     return .{ .exchange = exchange, .api_base = api_base, .destination_url = destination_url };
 }
 

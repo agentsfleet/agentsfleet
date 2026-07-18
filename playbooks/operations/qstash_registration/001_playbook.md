@@ -5,7 +5,7 @@
 **Updated:** Jul 15, 2026
 **Prerequisite:** `op` Command-Line Interface (CLI) authenticated; the `agentsfleet-admin` 1Password item carries `api-key` and a Universally Unique Identifier version 7 (UUIDv7) `platform_admin_workspace_id`; an Upstash account with QStash enabled; the target `agentsfleetd` API deployed and reachable.
 
-Registers the environment's Upstash QStash credentials for hosted Fleet schedules. QStash owns the clock; `agentsfleetd` owns schedule state, synchronous schedule mutation calls, and the signed ingress at `/v1/ingress/qstash/schedules`. The daemon loads one admin-workspace vault item named `qstash` with fields `{token,current_signing_key,next_signing_key}`.
+Registers the environment's Upstash QStash credentials for hosted Fleet schedules. QStash owns the clock; `agentsfleetd` owns schedule state, synchronous schedule mutation calls, and the signed ingress at `/v1/ingress/qstash/schedules`. The daemon loads one admin-workspace vault item named `qstash` with fields `{token,current_signing_key,next_signing_key,url}`. `url` is the QStash provider API base for the environment's region — US is `https://qstash.upstash.io`, EU is `https://qstash-eu-central-1.upstash.io`. The daemon uses it as the API base (it is not hardcoded), so it is a **required** field and must belong to the same region as the token and signing keys: an EU token against a US base fails auth. This is how dev and prod point at different regions/accounts — there is no separate dev/prod QStash instance, only per-environment vault items with their own `url`.
 
 > **Run once per environment.** Re-running §3 idempotently overwrites the vault item. QStash key rotation uses the same playbook: update `next_signing_key`, roll once in Upstash, then update both fields before rolling again.
 
@@ -18,7 +18,7 @@ Registers the environment's Upstash QStash credentials for hosted Fleet schedule
 | 0.0 | Agent | Resolve environment and verify the public ingress URL is reachable |
 | 1.0 | Human | Open the Upstash QStash console and copy the API token plus signing keys |
 | 2.0 | Human | Confirm the destination URL exactly matches the deployed API base |
-| 3.0 | Agent | Store `{token,current_signing_key,next_signing_key}` as `qstash` in the `agentsfleet-admin` vault |
+| 3.0 | Agent | Store `{token,current_signing_key,next_signing_key,url}` as `qstash` in the `agentsfleet-admin` vault |
 | 4.0 | Agent | Verify metadata, restart or roll `agentsfleetd`, and run one schedule sync smoke test |
 
 Steps 1–2 are browser-interactive; 3–4 run unattended once the values exist in 1Password or are pasted at local prompts.
@@ -59,13 +59,14 @@ curl -fsS -H "Authorization: Bearer $ADMIN_KEY" "$API_BASE/v1/tenants/me/workspa
 
 ## 1.0 Human: Copy QStash credentials from Upstash
 
-**Goal:** capture three values from the Upstash QStash console:
+**Goal:** capture four values from the Upstash QStash console, all from the **same region**:
 
+- QStash API base URL for the region (US: `https://qstash.upstash.io`; EU: `https://qstash-eu-central-1.upstash.io`)
 - QStash API token
 - current signing key
 - next signing key
 
-Upstash uses the API token in the `Authorization: Bearer …` header for schedule create/update/delete calls. QStash deliveries carry an `Upstash-Signature` JSON Web Token (JWT); `agentsfleetd` verifies it against the current and next signing keys so one key roll can happen without downtime.
+Upstash uses the API token in the `Authorization: Bearer …` header for schedule create/update/delete calls. QStash deliveries carry an `Upstash-Signature` JSON Web Token (JWT); `agentsfleetd` verifies it against the current and next signing keys so one key roll can happen without downtime. The API base URL, token, and signing keys must all come from one region — mixing regions (an EU token against the US base) fails auth.
 
 ### Acceptance
 
@@ -95,16 +96,18 @@ The chosen destination URL exactly matches the deployed `API_BASE` plus `/v1/ing
 
 ```bash
 qstash_token=$(op read "op://$VAULT/qstash/token" 2>/dev/null) || read -rsp 'qstash token: ' qstash_token >&2
-qstash_current=$(op read "op://$VAULT/qstash/current_signing_key" 2>/dev/null) || read -rsp 'current signing key: ' qstash_current >&2
-qstash_next=$(op read "op://$VAULT/qstash/next_signing_key" 2>/dev/null) || read -rsp 'next signing key: ' qstash_next >&2
+qstash_current=$(op read "op://$VAULT/qstash/current-signing-key" 2>/dev/null) || read -rsp 'current signing key: ' qstash_current >&2
+qstash_next=$(op read "op://$VAULT/qstash/next-signing-key" 2>/dev/null) || read -rsp 'next signing key: ' qstash_next >&2
+qstash_url=$(op read "op://$VAULT/qstash/url" 2>/dev/null) || read -rp 'qstash api base url: ' qstash_url >&2
 
-printf '%s\0%s\0%s' "$qstash_token" "$qstash_current" "$qstash_next" |
+printf '%s\0%s\0%s\0%s' "$qstash_token" "$qstash_current" "$qstash_next" "$qstash_url" |
   jq -Rs 'split("\u0000") | {
     name: "qstash",
     data: {
       token: .[0],
       current_signing_key: .[1],
-      next_signing_key: .[2]
+      next_signing_key: .[2],
+      url: .[3]
     }
   }' |
   curl -fsS -o /dev/null -X POST \
@@ -113,7 +116,7 @@ printf '%s\0%s\0%s' "$qstash_token" "$qstash_current" "$qstash_next" |
     --data-binary @- \
     "$API_BASE/v1/workspaces/$PLATFORM_ADMIN_WORKSPACE_ID/secrets"
 
-unset qstash_token qstash_current qstash_next
+unset qstash_token qstash_current qstash_next qstash_url
 ```
 
 ### Acceptance
@@ -145,7 +148,7 @@ The exact platform workspace lists `qstash` metadata only; after the daemon roll
 
 ## Rotation
 
-1. In Upstash QStash, generate or copy the **next** signing key and store it in `op://$VAULT/qstash/next_signing_key`.
+1. In Upstash QStash, generate or copy the **next** signing key and store it in `op://$VAULT/qstash/next-signing-key`.
 2. Re-run §3 so `agentsfleetd` trusts both current and next.
 3. Roll `agentsfleetd`.
 4. In Upstash, roll signing keys once. Upstash promotes `next` to `current` and creates a new `next`.

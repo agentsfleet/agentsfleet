@@ -83,7 +83,7 @@ fn schedule() model.Schedule {
 
 test "qstash client: upsert sends the exact stable schedule request" {
     var fake: Fake = .{};
-    const client = QStashClient.initWithBase(fake.exchange(), "https://qstash.test", DESTINATION);
+    const client = QStashClient.init(fake.exchange(), "https://qstash.test", DESTINATION);
     try std.testing.expectEqual(.success, try client.upsert(std.testing.allocator, TOKEN, schedule()));
     try std.testing.expectEqual(@as(usize, 1), fake.calls);
     try std.testing.expect(fake.request_ok);
@@ -91,7 +91,7 @@ test "qstash client: upsert sends the exact stable schedule request" {
 
 test "qstash client: delete is idempotent when the provider row is absent" {
     var fake: Fake = .{ .status = 404, .response_body = "" };
-    const client = QStashClient.initWithBase(fake.exchange(), "https://qstash.test", DESTINATION);
+    const client = QStashClient.init(fake.exchange(), "https://qstash.test", DESTINATION);
     try std.testing.expectEqual(.success, try client.delete(std.testing.allocator, TOKEN, SCHEDULE_ID));
     try std.testing.expectEqual(@as(usize, 1), fake.calls);
     try std.testing.expect(fake.request_ok);
@@ -108,7 +108,7 @@ test "qstash client: provider status and reply failures stay typed" {
     };
     for (cases) |case| {
         var fake: Fake = .{ .status = case.status, .response_body = case.body };
-        const client = QStashClient.initWithBase(fake.exchange(), "https://qstash.test", DESTINATION);
+        const client = QStashClient.init(fake.exchange(), "https://qstash.test", DESTINATION);
         try std.testing.expectEqual(case.expected, try client.upsert(std.testing.allocator, TOKEN, schedule()));
         try std.testing.expectEqual(@as(usize, 1), fake.calls);
     }
@@ -116,14 +116,14 @@ test "qstash client: provider status and reply failures stay typed" {
 
 test "qstash client: transport uncertainty makes one attempt and returns unavailable" {
     var fake: Fake = .{ .failure = error.ResponseLost };
-    const client = QStashClient.initWithBase(fake.exchange(), "https://qstash.test", DESTINATION);
+    const client = QStashClient.init(fake.exchange(), "https://qstash.test", DESTINATION);
     try std.testing.expectEqual(.unavailable, try client.upsert(std.testing.allocator, TOKEN, schedule()));
     try std.testing.expectEqual(@as(usize, 1), fake.calls);
 }
 
 test "qstash client: production transport refuses an unusable URL" {
     var exchange: QStashClient.HttpClientExchange = .{ .io = common.globalIo() };
-    const client = QStashClient.initWithBase(exchange.exchange(), "not a url", DESTINATION);
+    const client = QStashClient.init(exchange.exchange(), "not a url", DESTINATION);
     try std.testing.expectEqual(.unavailable, try client.delete(std.testing.allocator, TOKEN, SCHEDULE_ID));
 }
 
@@ -136,7 +136,7 @@ test "qstash client: production transport deadline cuts off a stalled provider" 
     var base_buffer: [48]u8 = undefined;
     const base = try std.fmt.bufPrint(&base_buffer, "http://127.0.0.1:{d}", .{port});
     var exchange: QStashClient.HttpClientExchange = .{ .io = io, .deadline_ms = STALL_DEADLINE_MS };
-    const client = QStashClient.initWithBase(exchange.exchange(), base, DESTINATION);
+    const client = QStashClient.init(exchange.exchange(), base, DESTINATION);
 
     const started_at = common.clock.nowMillis();
     const outcome = try client.delete(std.testing.allocator, TOKEN, SCHEDULE_ID);
@@ -147,7 +147,7 @@ test "qstash client: production transport deadline cuts off a stalled provider" 
 
 fn allocationSweep(alloc: std.mem.Allocator) !void {
     var fake: Fake = .{};
-    const client = QStashClient.initWithBase(fake.exchange(), "https://qstash.test", DESTINATION);
+    const client = QStashClient.init(fake.exchange(), "https://qstash.test", DESTINATION);
     const outcome = try client.upsert(alloc, TOKEN, schedule());
     try std.testing.expectEqual(.success, outcome);
 }
