@@ -8,6 +8,17 @@
 export const WORKSPACE_ROUTE_PREFIX = "/w";
 export const DEFAULT_WORKSPACE_SUBPATH = "fleets";
 
+/**
+ * Dashboard root (`app/(dashboard)/page.tsx`) — the single place that resolves
+ * the "default workspace" and redirects to its fleet wall. It is also the
+ * post-auth landing target: Clerk's `signInFallbackRedirectUrl` /
+ * `signUpFallbackRedirectUrl` point here so a completed sign-in flows through
+ * default-workspace resolution instead of Clerk's own default, which would
+ * strand the user on a non-fleets page. Kept a named constant (UFS) so the
+ * auth-landing target and the dashboard index agree on one literal.
+ */
+export const DASHBOARD_ROOT_PATH = "/";
+
 // Matches a leading `/w/<id>` and captures the id. Built from the prefix so the
 // literal lives in exactly one place.
 const WORKSPACE_PATH_RE = new RegExp(`^${WORKSPACE_ROUTE_PREFIX}/([^/]+)`);
