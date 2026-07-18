@@ -25,7 +25,7 @@ import {
   Spinner,
   TooltipButton,
 } from "@agentsfleet/design-system";
-import { PlusIcon } from "lucide-react";
+import { InfoIcon, PlusIcon } from "lucide-react";
 import { KEY_NAME_REGEX, DESCRIPTION_MAX, type CreatedApiKey } from "@/lib/api/api_keys";
 import { presentErrorString } from "@/lib/errors";
 import { createApiKeyAction } from "../actions";
@@ -96,7 +96,7 @@ export default function CreateApiKeyDialog({ onCreated }: { onCreated: () => voi
         onEscapeKeyDown={(e) => { if (created) e.preventDefault(); }}
       >
         {created ? (
-          <RevealPanel keyValue={created.key} keyName={created.key_name} onClose={() => handleOpenChange(false)} />
+          <RevealPanel keyValue={created.key} onClose={() => handleOpenChange(false)} />
         ) : (
           <>
             <DialogHeader>
@@ -158,7 +158,7 @@ export default function CreateApiKeyDialog({ onCreated }: { onCreated: () => voi
   );
 }
 
-function RevealPanel({ keyValue, keyName, onClose }: { keyValue: string; keyName: string; onClose: () => void }) {
+function RevealPanel({ keyValue, onClose }: { keyValue: string; onClose: () => void }) {
   // Sticky once true — see AddRunnerDialog: a one-time value's failure notice
   // must outlive the button's 2s flash.
   const [copyEverFailed, setCopyEverFailed] = useState(false);
@@ -166,8 +166,9 @@ function RevealPanel({ keyValue, keyName, onClose }: { keyValue: string; keyName
     <>
       <DialogHeader>
         <DialogTitle>Save your API key</DialogTitle>
-        <DialogDescription>
-          <span className="font-mono">{keyName}</span> is shown once. Copy it now.
+        <DialogDescription className="flex items-center gap-1.5 text-warning">
+          <InfoIcon size={14} className="shrink-0" aria-hidden />
+          API key is shown once. Copy it now.
         </DialogDescription>
       </DialogHeader>
       {/* ph-no-capture keeps the one-time raw key out of PostHog autocapture and

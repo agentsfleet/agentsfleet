@@ -222,7 +222,7 @@ export default function AddSecretForm({ workspaceId, onDone, onCancel }: Props) 
               Cancel
             </Button>
           ) : null}
-          <TooltipButton type="submit" disabled={pending} variant="outline" tooltip={CREATE_SECRET_TOOLTIP}>
+          <TooltipButton type="submit" disabled={pending} tooltip={CREATE_SECRET_TOOLTIP}>
             {pending ? <Spinner size="sm" srLabel="Creating" /> : null}
             {ADD_SECRET_LABEL}
           </TooltipButton>

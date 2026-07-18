@@ -10,6 +10,7 @@ import {
   type StatusPillVariant,
 } from "@agentsfleet/design-system";
 import {
+  BookOpenIcon,
   BriefcaseIcon,
   GitPullRequestIcon,
   Grid2x2Icon,
@@ -31,7 +32,7 @@ const CONNECTED_LABEL = "Connected";
 const RECONNECT_LABEL = "Reconnect needed";
 const NOT_CONFIGURED_LABEL = "Admin setup required";
 const CONNECTING_LABEL = "Connecting…";
-const SETUP_STEPS_LABEL = "Setup steps";
+const SETUP_STEPS_LABEL = "Setup guide";
 const CONNECTED_IDENTITY_PREFIX = "Connected: ";
 const NOT_CONFIGURED_DESCRIPTION = "A platform admin needs to enable this connector.";
 
@@ -154,8 +155,9 @@ export function OAuthConnectorRow({
               href={CONNECTOR_NOT_CONFIGURED_DOCS_URI}
               target="_blank"
               rel="noreferrer"
-              className="rounded-sm text-body-sm text-primary underline underline-offset-2 hover:no-underline focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="inline-flex items-center gap-1 rounded-sm text-body-sm text-primary underline underline-offset-2 hover:no-underline focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
+              <BookOpenIcon size={14} aria-hidden />
               {SETUP_STEPS_LABEL}
             </a>
           ) : isConnected ? null : (
