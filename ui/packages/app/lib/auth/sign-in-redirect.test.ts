@@ -29,4 +29,22 @@ describe("buildSignInUrl", () => {
     expect(url.pathname).toBe(SIGN_IN_PATH);
     expect(url.searchParams.get("redirect_url")).toBe("/");
   });
+
+  // Open-redirect guard: a completed sign-in must never be steerable off-origin
+  // via a crafted request path.
+  it.each([
+    ["protocol-relative authority", "//evil.example/path"],
+    ["backslash-tricked authority", "/\\evil.example/path"],
+    ["mixed slash-backslash authority", "/\\/evil.example"],
+    ["non-absolute path", "evil.example"],
+    ["scheme-relative-ish", "///evil.example"],
+  ])("collapses a %s destination to root", (_label, hostile) => {
+    const url = new URL(buildSignInUrl(`${ORIGIN}/`, hostile));
+    expect(url.searchParams.get("redirect_url")).toBe("/");
+  });
+
+  it("still keeps a legitimate deep link with a single leading slash", () => {
+    const url = new URL(buildSignInUrl(`${ORIGIN}/`, "/w/ws_1/fleets/f_9"));
+    expect(url.searchParams.get("redirect_url")).toBe("/w/ws_1/fleets/f_9");
+  });
 });
