@@ -6,26 +6,24 @@ import {
   type PreferenceBag,
   type PreferenceKey,
 } from "@/lib/api/preferences";
-import { getOnboarding, statusToInputs } from "@/lib/api/onboarding";
+import { getOnboardingRequired, statusToInputs } from "@/lib/api/onboarding";
 import type { OnboardingInputs } from "@/lib/onboarding";
 
-export type OnboardingSnapshot = {
+export type OnboardingProgress = {
   inputs: OnboardingInputs;
   dismissed: boolean;
   collapsed: boolean;
 };
 
-// The sidebar widget's own data pull — it lives in the client Shell, which has
-// no token, so it fetches its snapshot through this action after it knows the
-// route's workspace. Now a SINGLE onboarding call: the endpoint returns every
-// derived signal AND the preferences in one request. Fail-open by construction —
-// the client read defaults to an undismissed, zeroed status on error, so a read
-// failure shows onboarding rather than hiding it.
-export async function getOnboardingSnapshotAction(
+// The client shell has no token, so the sidebar widget reads the workspace's
+// onboarding progress through this server action. The endpoint returns every
+// derived signal and the widget preferences in one request. A failed read does
+// not invent a zeroed checklist; the client keeps the last successful result.
+export async function getOnboardingProgressAction(
   workspaceId: string,
-): Promise<ActionResult<OnboardingSnapshot>> {
+): Promise<ActionResult<OnboardingProgress>> {
   return withToken(async (t) => {
-    const status = await getOnboarding(workspaceId, t);
+    const status = await getOnboardingRequired(workspaceId, t);
     return {
       inputs: statusToInputs(status),
       dismissed: status.dismissed,
@@ -34,10 +32,9 @@ export async function getOnboardingSnapshotAction(
   });
 }
 
-// Server action wrapping the preference write — the browser holds no token, so
-// the widget's dismiss/collapse/CLI-tick all route through here. Returns the
-// full updated bag on success; on failure the caller keeps its pre-action state
-// and surfaces a retry (the fail-open direction for onboarding is always SHOW).
+// The browser holds no token, so dismiss, collapse, and command-line preference
+// writes route through this server action. On failure, the caller keeps its
+// pre-action state and surfaces a retry.
 export async function putPreferenceAction(
   workspaceId: string,
   key: PreferenceKey,
