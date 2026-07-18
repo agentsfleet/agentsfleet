@@ -16,6 +16,7 @@ vi.mock("lucide-react", () => {
   const make = (name: string) => (p: Record<string, unknown>) =>
     React.createElement("svg", { ...p, "data-icon": name });
   return {
+    BookOpenIcon: make("BookOpenIcon"),
     BriefcaseIcon: make("BriefcaseIcon"),
     GitPullRequestIcon: make("GitPullRequestIcon"),
     Grid2x2Icon: make("Grid2x2Icon"),
@@ -183,7 +184,7 @@ describe("IntegrationsConnectors (test_ui_connectors_cards_from_catalog)", () =>
     expect(jira.textContent).toContain("Admin setup required");
     expect(jira.textContent).toContain("A platform admin needs to enable this connector.");
     expect(screen.queryByRole("button", { name: /connect jira/i })).toBeNull();
-    const link = within(jira).getByRole("link", { name: /setup steps/i });
+    const link = within(jira).getByRole("link", { name: /setup guide/i });
     expect(link.getAttribute("href")).toBe(CONNECTOR_NOT_CONFIGURED_DOCS_URI);
   });
 });
