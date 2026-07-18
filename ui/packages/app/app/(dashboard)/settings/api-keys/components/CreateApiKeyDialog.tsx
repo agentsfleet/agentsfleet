@@ -25,7 +25,7 @@ import {
   Spinner,
   TooltipButton,
 } from "@agentsfleet/design-system";
-import { AlertTriangleIcon, PlusIcon } from "lucide-react";
+import { InfoIcon, PlusIcon } from "lucide-react";
 import { KEY_NAME_REGEX, DESCRIPTION_MAX, type CreatedApiKey } from "@/lib/api/api_keys";
 import { presentErrorString } from "@/lib/errors";
 import { createApiKeyAction } from "../actions";
@@ -167,7 +167,7 @@ function RevealPanel({ keyValue, onClose }: { keyValue: string; onClose: () => v
       <DialogHeader>
         <DialogTitle>Save your API key</DialogTitle>
         <DialogDescription className="flex items-center gap-1.5 text-warning">
-          <AlertTriangleIcon size={14} className="shrink-0" aria-hidden />
+          <InfoIcon size={14} className="shrink-0" aria-hidden />
           API key is shown once. Copy it now.
         </DialogDescription>
       </DialogHeader>
