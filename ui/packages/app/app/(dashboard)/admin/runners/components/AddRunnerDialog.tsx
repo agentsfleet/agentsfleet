@@ -29,7 +29,7 @@ import {
   Spinner,
   TooltipButton,
 } from "@agentsfleet/design-system";
-import { AlertTriangleIcon, PlusIcon } from "lucide-react";
+import { InfoIcon, PlusIcon } from "lucide-react";
 import {
   HOST_ID_REGEX,
   SANDBOX_TIERS,
@@ -178,7 +178,7 @@ export default function AddRunnerDialog({ onCreated }: { onCreated: () => void }
               </DialogDescription>
             </DialogHeader>
             <Alert variant="warning">
-              <AlertTriangleIcon size={16} className="mt-0.5 shrink-0" aria-hidden />
+              <InfoIcon size={16} className="mt-0.5 shrink-0" aria-hidden />
               <AlertDescription className="mt-0">{RUNNER_TOKEN_WARNING}</AlertDescription>
             </Alert>
             <Form {...form}>
