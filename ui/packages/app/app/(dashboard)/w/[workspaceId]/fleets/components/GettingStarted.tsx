@@ -13,6 +13,7 @@ import { PREFERENCE_KEY } from "@/lib/api/preferences";
 import { putPreferenceAction } from "@/lib/actions/preferences";
 import { captureProductEvent } from "@/lib/analytics/posthog";
 import { EVENTS } from "@/lib/analytics/events";
+import { requestOnboardingRefresh } from "@/lib/onboarding-refresh";
 
 type Props = { workspaceId: string; inputs: OnboardingInputs };
 
@@ -59,6 +60,7 @@ export default function GettingStarted({ workspaceId, inputs }: Props) {
       captureProductEvent(EVENTS.onboarding_cli_ticked, {
         workspace_id: workspaceId,
       });
+      requestOnboardingRefresh(workspaceId);
       router.refresh();
     });
   }

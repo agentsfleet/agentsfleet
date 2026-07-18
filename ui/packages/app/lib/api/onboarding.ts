@@ -35,14 +35,24 @@ export async function getOnboarding(
   token: string,
 ): Promise<OnboardingStatus> {
   try {
-    return await request<OnboardingStatus>(
-      `/v1/workspaces/${workspaceId}/onboarding`,
-      { method: "GET" },
-      token,
-    );
+    return await getOnboardingRequired(workspaceId, token);
   } catch {
     return FAILOPEN_STATUS;
   }
+}
+
+// Live refreshes must preserve the last good progress when the backend is
+// unavailable. This variant lets the server action turn a failed read into an
+// `ok: false` result instead of presenting the fail-open status as fresh data.
+export function getOnboardingRequired(
+  workspaceId: string,
+  token: string,
+): Promise<OnboardingStatus> {
+  return request<OnboardingStatus>(
+    `/v1/workspaces/${workspaceId}/onboarding`,
+    { method: "GET" },
+    token,
+  );
 }
 
 // Maps the endpoint's booleans onto the pure derivation's inputs. The derivation

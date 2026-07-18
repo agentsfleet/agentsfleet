@@ -9,6 +9,7 @@ import { captureProductEvent } from "@/lib/analytics/posthog";
 import { FLEET_NAME_CONFLICT_MESSAGE } from "@/lib/errors";
 import { WORKSPACE_SECRETS_PATH } from "@/lib/fleet-secrets";
 import { workspacePath } from "@/lib/workspace-routes";
+import { requestOnboardingRefresh } from "@/lib/onboarding-refresh";
 import { installFleetAction } from "../actions";
 import {
   flowError,
@@ -84,6 +85,7 @@ export function InstallStates({ workspaceId, source, presentCredentialNames, nam
       return;
     }
     captureProductEvent(EVENTS.fleet_created, { fleet_id: created.data.fleet_id });
+    requestOnboardingRefresh(workspaceId);
     setFleet({ id: created.data.fleet_id, name: name?.trim() || requirements.name });
   }, [resolveCreateBody, workspaceId, requirements.name, name]);
 
