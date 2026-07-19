@@ -143,6 +143,13 @@ check_prod() {
   check_ref "op://$v/planetscale-prod/api-connection-string"
   check_ref "op://$v/planetscale-prod/migrator-connection-string"
   check_ref "op://$v/upstash-prod/api-url"
+  # QStash schedule provider. The daemon loads {token,current_signing_key,
+  # next_signing_key,url} from the admin workspace; url is region/env-specific
+  # (US vs EU) and is read as the API base, so it is a required field, not cosmetic.
+  check_ref "op://$v/qstash/token"
+  check_ref "op://$v/qstash/current-signing-key"
+  check_ref "op://$v/qstash/next-signing-key"
+  check_url_ref "op://$v/qstash/url"
   # tailscale: oauth-client-id/oauth-secret mint tagged keys for
   # CI tailnet join (ephemeral; deploy-dev.yml + release.yml) and bare-metal
   # worker-node join (persistent, ephemeral=false; playbooks 06/07).
@@ -187,6 +194,13 @@ check_dev() {
   check_ref "op://$v/planetscale-dev/api-connection-string"
   check_ref "op://$v/planetscale-dev/migrator-connection-string"
   check_ref "op://$v/upstash-dev/api-url"
+  # QStash schedule provider. The daemon loads {token,current_signing_key,
+  # next_signing_key,url} from the admin workspace; url is region/env-specific
+  # (US vs EU) and is read as the API base, so it is a required field, not cosmetic.
+  check_ref "op://$v/qstash/token"
+  check_ref "op://$v/qstash/current-signing-key"
+  check_ref "op://$v/qstash/next-signing-key"
+  check_url_ref "op://$v/qstash/url"
   check_ref "op://$v/zombie-dev-worker-ant/runner-token"
   check_ref "op://$v/fly-api-token/credential"
   check_ref "op://$v/posthog-dev/credential"

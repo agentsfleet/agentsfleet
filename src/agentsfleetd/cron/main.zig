@@ -15,6 +15,7 @@ pub const FireStore = @import("FireStore.zig");
 pub const Service = @import("Service.zig");
 
 test {
+    _ = @import("constants.zig");
     _ = @import("model_test.zig");
     _ = @import("store_test.zig");
     _ = @import("store_concurrency_test.zig");

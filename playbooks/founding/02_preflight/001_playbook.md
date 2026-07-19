@@ -46,6 +46,10 @@ Every `op://` reference the agent will use across M2_002 and the deploy pipeline
 | `planetscale-prod` | `api-connection-string` | Fly.io PROD `DATABASE_URL_API` |
 | `planetscale-prod` | `migrator-connection-string` | Fly.io PROD `DATABASE_URL_MIGRATOR` (release migrations). **Must be the DIRECT/session connection (port `5432`), NOT the pooled `:6432` endpoint — migrations take a session-scoped advisory lock that transaction-mode pooling breaks (it leaks onto a pooled backend and silently hangs `migrate`).** |
 | `upstash-prod` | `api-url` | Fly.io PROD `REDIS_URL_API` |
+| `qstash` | `token` | Admin-workspace `qstash` secret — schedule create/update/delete Bearer (pushed by `operations/qstash_registration`, M105) |
+| `qstash` | `current-signing-key` | QStash delivery signature verification (current) |
+| `qstash` | `next-signing-key` | QStash delivery signature verification (next; zero-downtime roll) |
+| `qstash` | `url` | QStash provider API base for the region (US `https://qstash.upstash.io`, EU `https://qstash-eu-central-1.upstash.io`); the daemon reads it as the API base, so it must match the token/signing-key region |
 | `grafana-prod` | `otlp-endpoint` | Fly.io PROD `GRAFANA_OTLP_ENDPOINT` (OTLP traces/metrics export) |
 | `grafana-prod` | `instance-id` | Fly.io PROD `GRAFANA_OTLP_INSTANCE_ID` |
 | `grafana-prod` | `api-key` | Fly.io PROD `GRAFANA_OTLP_API_KEY` |
@@ -80,6 +84,10 @@ Every `op://` reference the agent will use across M2_002 and the deploy pipeline
 | `planetscale-dev` | `api-connection-string` | Fly.io DEV `DATABASE_URL_API` |
 | `planetscale-dev` | `migrator-connection-string` | Fly.io DEV `DATABASE_URL_MIGRATOR` (`agentsfleetd migrate`) |
 | `upstash-dev` | `api-url` | Fly.io DEV `REDIS_URL_API` |
+| `qstash` | `token` | Admin-workspace `qstash` secret — schedule create/update/delete Bearer (pushed by `operations/qstash_registration`, M105) |
+| `qstash` | `current-signing-key` | QStash delivery signature verification (current) |
+| `qstash` | `next-signing-key` | QStash delivery signature verification (next; zero-downtime roll) |
+| `qstash` | `url` | QStash provider API base for the region (US `https://qstash.upstash.io`, EU `https://qstash-eu-central-1.upstash.io`); the daemon reads it as the API base, so it must match the token/signing-key region |
 | `grafana-dev` | `otlp-endpoint` | Fly.io DEV `GRAFANA_OTLP_ENDPOINT` (OTLP traces/metrics export) |
 | `grafana-dev` | `instance-id` | Fly.io DEV `GRAFANA_OTLP_INSTANCE_ID` |
 | `grafana-dev` | `api-key` | Fly.io DEV `GRAFANA_OTLP_API_KEY` |

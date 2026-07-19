@@ -30,6 +30,7 @@ case "$ref" in
   */issuer) printf 'https://identity.example.test\n' ;;
   */migrator-connection-string) printf 'postgres-migrator\n' ;;
   */api-connection-string) printf 'postgres-api\n' ;;
+  */qstash/url) printf 'https://qstash-eu-central-1.upstash.io\n' ;;
   *) printf 'stub-value\n' ;;
 esac
 STUB
