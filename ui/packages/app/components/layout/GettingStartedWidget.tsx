@@ -32,9 +32,9 @@ type Props = {
 // dismiss/collapse state is a server preference (§5), so it survives a device
 // change; the browser has no token, so it pulls its progress through a server
 // action. Successful local actions invalidate that progress, while focus and a
-// visible-tab timer cover changes that happen elsewhere. Fail-open: while
-// loading, or before the first successful read, the widget stays hidden rather
-// than flashing a zeroed checklist.
+// visible-tab timer cover changes that happen elsewhere. While loading, the
+// widget stays hidden. An initial read failure shows a zeroed checklist so
+// onboarding is not lost; later failures preserve the last good progress.
 export default function GettingStartedWidget({ workspaceId, pollingMode = "mounted" }: Props) {
   const [localPreference, setLocalPreference] = useState<{
     workspaceId: string;

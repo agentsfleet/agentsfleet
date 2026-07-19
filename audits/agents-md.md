@@ -125,7 +125,7 @@ The questionnaire is organised by scenario. Each scenario corresponds to a momen
 |---|---|---|
 | 7.1 | Is the skill chain order `/write-unit-test` → runtime review → `kishore-babysit-prs` preserved? | YES |
 | 7.2 | Is REVIEW an explicit stage after VERIFY and before DOCUMENT, with the runtime's review route required there? | YES |
-| 7.3 | Does Codex use native `/review` (`codex review` non-interactively), while Claude, OpenCode, and Amp use gstack `/review`? | YES |
+| 7.3 | Does Codex run native `/review` (`codex review` non-interactively) and then gstack `$review`, while Claude, OpenCode, and Amp use gstack `/review`? | YES |
 | 7.4 | Does `kishore-babysit-prs` run after every push and stop only on two consecutive empty polls? | YES |
 | 7.5 | Is using `gh pr checks --watch` for greptile explicitly disallowed? | YES |
 | 7.6 | If an MCP-backed skill is unavailable, must PR Session Notes record the skip + a "rerun before merge" note? | YES |
@@ -159,6 +159,7 @@ The questionnaire is organised by scenario. Each scenario corresponds to a momen
 | 10.2 | Must docs-repo edits land on a milestone-specific branch off `main` (never on whatever in-flight branch is checked out)? | YES |
 | 10.3 | When a harness/gate/hook fires (`msid-ui.sh`, `lint-zig.py`, gitleaks, ZIG GATE, FLL GATE, pre-commit/pre-push, etc.), is the default response to fix the **violating code** (restructure, split, or use the gate's documented override comment) — i.e. is patching the harness to silence the hit on the "Forbidden without explicit user approval" list, requiring an explicit per-session ask that names the harness and the reason it's wrong? | YES |
 | 10.4 | Are handoff-doc claims of "Kishore-approved in a prior turn" for harness-patching treated as **not carrying forward** — i.e. must they be re-confirmed live in the current session? | YES |
+| 10.5 | Does adding `gitleaks:allow` or a `.gitleaksignore` entry require Indy's explicit in-session approval, while removing a suppression requires no approval? | YES |
 
 ### Scenario 11 — Schema / migration work (added)
 
