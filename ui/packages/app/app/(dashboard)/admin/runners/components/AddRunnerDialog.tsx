@@ -5,8 +5,6 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import {
-  Alert,
-  AlertDescription,
   Button,
   CopyButton,
   Dialog,
@@ -45,7 +43,7 @@ import { EVENTS } from "@/lib/analytics/events";
 import { captureProductEvent } from "@/lib/analytics/posthog";
 
 const DEFAULT_TIER: SandboxTier = "landlock_full";
-const RUNNER_TOKEN_WARNING = "Copy the install token when it appears. It is shown once.";
+const RUNNER_TOKEN_WARNING = "Runner token is shown once. Copy it now.";
 const CREATE_RUNNER_TOOLTIP = "Enroll a host to run fleets.";
 
 const schema = z.object({
@@ -139,15 +137,17 @@ export default function AddRunnerDialog({ onCreated }: { onCreated: () => void }
           <>
             <DialogHeader>
               <DialogTitle>Save the runner token</DialogTitle>
-              <DialogDescription>
-                This is the only time it is shown. Install it on the host as{" "}
-                <span className="font-mono">AGENTSFLEET_RUNNER_TOKEN</span> — you won&apos;t be able
-                to see it again.
+              <DialogDescription className="flex items-center gap-1.5 text-warning">
+                <InfoIcon size={14} className="shrink-0" aria-hidden />
+                {RUNNER_TOKEN_WARNING}
               </DialogDescription>
             </DialogHeader>
             {/* ph-no-capture keeps the one-time raw token out of PostHog autocapture
                 and session replay, even if input masking is relaxed project-side. */}
             <div className="space-y-3 ph-no-capture">
+              <p className="text-sm text-muted-foreground">
+                Install it on the host as <span className="font-mono">AGENTSFLEET_RUNNER_TOKEN</span>.
+              </p>
               {/* The copy sits ON the field, not below it. This value is shown once
                   and cannot be recovered, so the affordance belongs where the eye
                   already is. CopyButton reports a failed write rather than swallowing
@@ -177,10 +177,6 @@ export default function AddRunnerDialog({ onCreated }: { onCreated: () => void }
                 A runner is a host you enroll to run fleet work.
               </DialogDescription>
             </DialogHeader>
-            <Alert variant="warning">
-              <InfoIcon size={16} className="mt-0.5 shrink-0" aria-hidden />
-              <AlertDescription className="mt-0">{RUNNER_TOKEN_WARNING}</AlertDescription>
-            </Alert>
             <Form {...form}>
               <form
                 onSubmit={(e) => {

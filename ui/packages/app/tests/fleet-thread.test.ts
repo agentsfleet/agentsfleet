@@ -63,6 +63,7 @@ vi.mock("@/components/domain/useFleetEventStream", async () => {
 
 import { FleetThread } from "@/components/domain/FleetThread";
 import { formatActorLabel } from "@/components/domain/fleetMessageRenderers";
+import { subscribeOnboardingRefresh } from "@/lib/onboarding-refresh";
 import type { EventRow } from "@/lib/api/events";
 import {
   CONNECTION_STATUS,
@@ -373,6 +374,8 @@ describe("FleetThread — composer disabled-while-running", () => {
 
 describe("FleetThread — steer submission", () => {
   it("calls steerFleetAction and reconciles the optimistic message on ok", async () => {
+    const refreshed = vi.fn();
+    const unsubscribe = subscribeOnboardingRefresh(WS, refreshed);
     const appendOptimistic = vi.fn().mockReturnValue("temp_42");
     const reconcileOptimistic = vi.fn();
     const markOptimisticFailed = vi.fn();
@@ -398,9 +401,13 @@ describe("FleetThread — steer submission", () => {
     );
     expect(reconcileOptimistic).toHaveBeenCalledWith("temp_42", "evt_real_42");
     expect(markOptimisticFailed).not.toHaveBeenCalled();
+    expect(refreshed).toHaveBeenCalledTimes(1);
+    unsubscribe();
   });
 
   it("marks the optimistic message failed when the action returns ok:false", async () => {
+    const refreshed = vi.fn();
+    const unsubscribe = subscribeOnboardingRefresh(WS, refreshed);
     const appendOptimistic = vi.fn().mockReturnValue("temp_99");
     const reconcileOptimistic = vi.fn();
     const markOptimisticFailed = vi.fn();
@@ -423,9 +430,13 @@ describe("FleetThread — steer submission", () => {
       "steer:pending",
     );
     expect(reconcileOptimistic).not.toHaveBeenCalled();
+    expect(refreshed).not.toHaveBeenCalled();
+    unsubscribe();
   });
 
   it("marks the optimistic message failed when the action invocation throws", async () => {
+    const refreshed = vi.fn();
+    const unsubscribe = subscribeOnboardingRefresh(WS, refreshed);
     const appendOptimistic = vi.fn().mockReturnValue("temp_t");
     const reconcileOptimistic = vi.fn();
     const markOptimisticFailed = vi.fn();
@@ -439,6 +450,8 @@ describe("FleetThread — steer submission", () => {
       expect(markOptimisticFailed).toHaveBeenCalledWith("temp_t"),
     );
     expect(reconcileOptimistic).not.toHaveBeenCalled();
+    expect(refreshed).not.toHaveBeenCalled();
+    unsubscribe();
   });
 
   it("does not call the action when the submitted message text is empty", async () => {

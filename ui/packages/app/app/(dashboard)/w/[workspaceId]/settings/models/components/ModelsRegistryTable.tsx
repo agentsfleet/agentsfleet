@@ -10,6 +10,7 @@ import {
 } from "@agentsfleet/design-system";
 import type { Secret } from "@/lib/api/secrets";
 import { presentErrorString } from "@/lib/errors";
+import { requestOnboardingRefresh } from "@/lib/onboarding-refresh";
 import type { TenantModelEntry, TenantModelEntryList, TenantPlatformDefault } from "@/lib/types";
 import { listModelEntriesAction, listSecretsAction, resetProviderAction, setProviderSelfManagedAction, deleteModelEntryAction } from "../actions";
 import { captureModelActivated, captureProviderReset } from "../lib/track";
@@ -135,6 +136,7 @@ export default function ModelsRegistryTable({ workspaceId, initial, initialSecre
         return;
       }
       captureModelActivated(r.data);
+      requestOnboardingRefresh(workspaceId);
       refresh();
     });
   }
