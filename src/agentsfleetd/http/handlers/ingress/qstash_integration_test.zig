@@ -85,10 +85,13 @@ fn testCredentials(alloc: std.mem.Allocator) !Credentials {
     errdefer alloc.free(token);
     const current = try alloc.dupe(u8, CURRENT_KEY);
     errdefer alloc.free(current);
+    const next = try alloc.dupe(u8, NEXT_KEY);
+    errdefer alloc.free(next);
     return .{
         .token = token,
         .current_signing_key = current,
-        .next_signing_key = try alloc.dupe(u8, NEXT_KEY),
+        .next_signing_key = next,
+        .url = try alloc.dupe(u8, "https://qstash.test"),
     };
 }
 

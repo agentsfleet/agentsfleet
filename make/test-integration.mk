@@ -45,6 +45,16 @@ TEST_REDIS_TLS_URL_LOCAL ?= rediss://:agentsfleet@localhost:6379
 # Cert path — populated by _ensure-test-infra after Redis is healthy. Do NOT shell-expand
 # at parse time; Redis may not be running yet when the Makefile is first evaluated.
 TEST_REDIS_TLS_CA_CERT ?= $(CURDIR)/.tmp/redis-ca.crt
+# QStash local dev server (docker-compose `qstash` service). The emulator ships a
+# hardcoded local identity and rejects anything else (a different user 404s, a
+# different password 401s), so this is a fixture we reproduce, not a credential we
+# choose — and nothing it authenticates to holds real data. Derived here from its
+# two plain parts so no credential-shaped blob is stored in the repo.
+# The opt-in live QStash tests read these vars; unset (or server down) → self-skip.
+QSTASH_DEV_URL_LOCAL ?= http://localhost:8080
+QSTASH_DEV_IDENTITY ?= defaultUser
+QSTASH_DEV_SECRET ?= defaultPassword
+QSTASH_DEV_TOKEN_LOCAL ?= $(shell printf '{"UserID":"%s","Password":"%s"}' '$(QSTASH_DEV_IDENTITY)' '$(QSTASH_DEV_SECRET)' | base64 | tr -d '\n')
 
 # Bring postgres + redis up via docker compose and wait for healthchecks to pass.
 # Idempotent — if already healthy, docker compose up --wait is a no-op. Safe to call
@@ -69,15 +79,15 @@ else
 	@# so another worktree's compose can leave stale containers blocking ours. Remove
 	@# by name if they exist but are NOT owned by this project. Idempotent.
 	@this_project=$$(basename "$(CURDIR)"); \
-	for c in agentsfleet-postgres agentsfleet-redis; do \
+	for c in agentsfleet-postgres agentsfleet-redis agentsfleet-qstash; do \
 	  owner=$$(docker inspect -f '{{ index .Config.Labels "com.docker.compose.project" }}' $$c 2>/dev/null); \
 	  if [ -n "$$owner" ] && [ "$$owner" != "$$this_project" ]; then \
 	    echo "→ [infra] Removing stale $$c (owned by project '$$owner')..."; \
 	    docker rm -f $$c >/dev/null; \
 	  fi; \
 	done
-	@echo "→ [infra] Starting postgres + redis (waiting for healthchecks)..."
-	@docker compose up -d --wait postgres redis
+	@echo "→ [infra] Starting postgres + redis + qstash (waiting for healthchecks)..."
+	@docker compose up -d --wait postgres redis qstash
 	@mkdir -p "$(CURDIR)/.tmp"
 	@echo "→ [infra] Extracting Redis TLS CA cert..."
 	@docker compose cp redis:/tls/server.crt "$(TEST_REDIS_TLS_CA_CERT)" >/dev/null
@@ -134,6 +144,8 @@ _test-integration-db: _reset-test-db
 	ZIG_LOCAL_CACHE_DIR="$(ZIG_LOCAL_CACHE_DIR)" \
 	LIVE_DB=1 \
 	TEST_DATABASE_URL="$$db_url" \
+	AGENTSFLEET_QSTASH_LIVE_URL="$(QSTASH_DEV_URL_LOCAL)" \
+	AGENTSFLEET_QSTASH_LIVE_TOKEN="$(QSTASH_DEV_TOKEN_LOCAL)" \
 	zig build test
 	@echo "✓ [agentsfleetd] DB-backed integration tests passed"
 
@@ -198,6 +210,8 @@ _test-integration-full: _reset-test-db
 	TEST_REDIS_TLS_URL="$$redis_tls_test_url" \
 	REDIS_URL_API="$$redis_tls_test_url" \
 	REDIS_TLS_CA_CERT_FILE="$(TEST_REDIS_TLS_CA_CERT)" \
+	AGENTSFLEET_QSTASH_LIVE_URL="$(QSTASH_DEV_URL_LOCAL)" \
+	AGENTSFLEET_QSTASH_LIVE_TOKEN="$(QSTASH_DEV_TOKEN_LOCAL)" \
 	zig build test
 	@echo "✓ [agentsfleetd] Full integration suite passed"
 
