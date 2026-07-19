@@ -94,6 +94,34 @@ pub const Cache = struct {
         const key = writeKey(&key_buf, provider, model) orelse return null;
         return self.rates.get(key);
     }
+
+    /// Context cap for a model under ANY provider.
+    ///
+    /// A context window is a property of the MODEL; rates are a property of the
+    /// (host, model) pair. kimi-k3 is 1,048,576 tokens whether it is reached via
+    /// Moonshot, Novita, or a custom OpenAI-compatible endpoint pointed at either.
+    /// So a custom endpoint can borrow the cap without borrowing a price it is
+    /// not billed at — which is why this deliberately returns only the cap and
+    /// never a ModelRate.
+    ///
+    /// Linear scan: the catalogue is a curated ~100 rows and this runs on entry
+    /// activation, not the hot path. Hosts genuinely disagree on the window for
+    /// the same model (GLM-5.2 is 262k on Together and 1M on Pioneer), so this
+    /// takes the MINIMUM across matches — deterministic regardless of hash
+    /// iteration order, and conservative: a budget under the real window wastes
+    /// headroom, a budget over it fails the request mid-run at the provider.
+    pub fn contextCapForModel(self: *const Self, model: []const u8) ?u32 {
+        var min_cap: ?u32 = null;
+        var it = self.rates.iterator();
+        while (it.next()) |entry| {
+            const key = entry.key_ptr.*;
+            const sep = std.mem.indexOfScalar(u8, key, KEY_SEP) orelse continue;
+            if (!std.mem.eql(u8, key[sep + 1 ..], model)) continue;
+            const cap = entry.value_ptr.context_cap_tokens;
+            min_cap = if (min_cap) |m| @min(m, cap) else cap;
+        }
+        return min_cap;
+    }
 };
 
 // ── Process-global singleton (initialized at API boot) ─────────────────────
@@ -143,6 +171,14 @@ pub fn lookup_model_rate(provider: []const u8, model: []const u8) ?ModelRate {
     global_lock.lock();
     defer global_lock.unlock();
     if (global) |*g| return g.lookup(provider, model);
+    return null;
+}
+
+/// Cap-only lookup across providers — see Cache.contextCapForModel.
+pub fn lookup_context_cap(model: []const u8) ?u32 {
+    global_lock.lock();
+    defer global_lock.unlock();
+    if (global) |*g| return g.contextCapForModel(model);
     return null;
 }
 

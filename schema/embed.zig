@@ -37,4 +37,5 @@ pub const migrations = [_]MigrationEntry{
     .{ .version = 28, .sql = @embedFile("028_core_user_preferences.sql") },
     .{ .version = 29, .sql = @embedFile("029_core_fleet_schedules.sql") },
     .{ .version = 30, .sql = @embedFile("030_fleet_activity_counters.sql") },
+    .{ .version = 31, .sql = @embedFile("031_fleet_runners_delete_grant.sql") },
 };

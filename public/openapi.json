@@ -6818,6 +6818,48 @@
             "$ref": "#/components/responses/Error"
           }
         }
+      },
+      "delete": {
+        "operationId": "delete_fleet_runner",
+        "summary": "Delete a revoked runner",
+        "description": "Removes a revoked runner's record, along with its lease and event history (cascade). A runner that is not revoked returns 409 `UZ-RUN-016` — revoke is the destructive step; delete only retires the already-dead record.",
+        "tags": [
+          "Fleet"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Runner id (UUIDv7).",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "description": "No runner with this id (`UZ-RUN-014`).",
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "description": "Active runner must be revoked before deletion (`UZ-RUN-016`).",
+            "$ref": "#/components/responses/Error"
+          }
+        }
       }
     },
     "/v1/fleets/runners/{id}/events": {

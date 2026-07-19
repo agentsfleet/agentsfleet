@@ -174,6 +174,11 @@ export async function updateRunnerAdminState(
   );
 }
 
+/** Retires a revoked runner's record. 409 UZ-RUN-016 if it is not revoked yet. */
+export async function deleteRunner(token: string, runnerId: string): Promise<void> {
+  await request<void>(`${FLEET_RUNNERS_PATH}/${runnerId}`, { method: "DELETE" }, token);
+}
+
 export async function listRunnerEvents(
   token: string,
   runnerId: string,

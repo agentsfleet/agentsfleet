@@ -7,6 +7,7 @@ import {
   listRunners,
   createRunner,
   updateRunnerAdminState,
+  deleteRunner,
   listRunnerEvents,
   type RunnerListResponse,
   type CreatedRunner,
@@ -35,6 +36,13 @@ export async function updateRunnerAdminStateAction(
   action: RunnerAdminAction,
 ): Promise<ActionResult<RunnerAdminStateUpdate>> {
   return requireScope(SCOPE.RUNNER_WRITE, () => withToken((t) => updateRunnerAdminState(t, runnerId, action)));
+}
+
+// runner:write, the same scope as revoke — deleting an already-revoked record is
+// strictly less consequential than taking a live runner out of service, so
+// gating it higher would be backwards.
+export async function deleteRunnerAction(runnerId: string): Promise<ActionResult<void>> {
+  return requireScope(SCOPE.RUNNER_WRITE, () => withToken((t) => deleteRunner(t, runnerId)));
 }
 
 export async function listRunnerEventsAction(

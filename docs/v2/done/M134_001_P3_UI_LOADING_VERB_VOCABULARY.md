@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M134
 **Workstream:** 001
 **Date:** Jul 19, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P3 — cosmetic polish on a shipped, working loader; nothing is broken today
 **Categories:** UI
 **Batch:** B1 — standalone; no other workstream touches the loading chrome
@@ -88,25 +88,25 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 A single module owning the verb list and the copy templates, so no call site inlines a loader string and the list can grow without touching components. **Implementation default:** every verb is present-participle and object-free, because each must read correctly in BOTH slots — "Wrangling Fleets…" and a bare "Wrangling…"; a verb needing an object strands the title-less fallback.
 
-- **Dimension 1.1** — the vocabulary is duplicate-free and large enough that repeats are uncommon → Test `test_vocabulary_is_unique_and_deep`
-- **Dimension 1.2** — every verb matches the present-participle, capitalised shape → Test `test_verbs_read_as_english_in_both_slots`
-- **Dimension 1.3** — the picker only ever returns a vocabulary member, and every member is reachable → Test `test_picker_covers_whole_vocabulary`
-- **Dimension 1.4** — visible phrase includes the title when present and never leaves a dangling space when absent → Test `test_phrase_titled_and_titleless`
+- **Dimension 1.1** — DONE — the vocabulary is duplicate-free and large enough that repeats are uncommon → Test `test_vocabulary_is_unique_and_deep`
+- **Dimension 1.2** — DONE — every verb matches the present-participle, capitalised shape → Test `test_verbs_read_as_english_in_both_slots`
+- **Dimension 1.3** — DONE — the picker only ever returns a vocabulary member, and every member is reachable → Test `test_picker_covers_whole_vocabulary`
+- **Dimension 1.4** — DONE — visible phrase includes the title when present and never leaves a dangling space when absent → Test `test_phrase_titled_and_titleless`
 
 ### §2 — The client-frozen pick
 
 The impure pick is isolated in one client leaf so the design-system primitive and the route fallbacks stay server-renderable. **Implementation default:** freeze the verb in mount state rather than rotating on a timer — Indy's choice, and a rotating word would retext a `role=status` live region on a timer and force assistive tech to re-announce mid-wait.
 
-- **Dimension 2.1** — the verb is chosen once per mount and does not change afterwards → Test `test_verb_frozen_at_mount`
-- **Dimension 2.2** — a server/client disagreement on the word does not log a hydration mismatch → Test `test_no_hydration_warning_on_verb_mismatch`
+- **Dimension 2.1** — DONE — the verb is chosen once per mount and does not change afterwards → Test `test_verb_frozen_at_mount`
+- **Dimension 2.2** — DONE — a server/client disagreement on the word does not log a hydration mismatch → Test `test_no_hydration_warning_on_verb_mismatch`
 
 ### §3 — Route loaders adopt it without losing what they guarantee
 
 Both loader shapes consume the vocabulary while keeping their existing promises: the titled fallback still paints its exact route title (no header wobble), and the multi-route fallback still claims no route name. **Implementation default:** pin the announced name with `aria-label` on the status element, so the visible whimsy never reaches assistive tech.
 
-- **Dimension 3.1** — a titled loader renders exactly one verb plus its route title → Test `test_route_loading_renders_verb_and_title`
-- **Dimension 3.2** — the announced name stays the plain wording and contains no verb → Test `test_accessible_name_is_plain`
-- **Dimension 3.3** — the title-less fallback renders a bare verb and no route name → Test `test_titleless_fallback_claims_no_route`
+- **Dimension 3.1** — DONE — a titled loader renders exactly one verb plus its route title → Test `test_route_loading_renders_verb_and_title`
+- **Dimension 3.2** — DONE — the announced name stays the plain wording and contains no verb → Test `test_accessible_name_is_plain`
+- **Dimension 3.3** — DONE — the title-less fallback renders a bare verb and no route name → Test `test_titleless_fallback_claims_no_route`
 
 ## Interfaces
 

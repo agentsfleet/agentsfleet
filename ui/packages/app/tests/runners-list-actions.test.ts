@@ -11,6 +11,7 @@ const PAGINATED_TOTAL = 30;
 const listRunnersActionMock = vi.fn();
 const updateRunnerAdminStateActionMock = vi.fn();
 const listRunnerEventsActionMock = vi.fn();
+const deleteRunnerActionMock = vi.fn();
 
 type EventsActionResult =
   | { ok: true; data: RunnerEventsResponse }
@@ -21,6 +22,7 @@ vi.mock("@/app/(dashboard)/admin/runners/actions", () => ({
   createRunnerAction: vi.fn(),
   updateRunnerAdminStateAction: updateRunnerAdminStateActionMock,
   listRunnerEventsAction: listRunnerEventsActionMock,
+  deleteRunnerAction: deleteRunnerActionMock,
 }));
 
 const REGISTERED: RunnerListItem = {
@@ -137,6 +139,7 @@ beforeEach(() => {
     ok: true,
     data: { items: [], total: 0, page: 1, page_size: PAGE_SIZE },
   });
+  deleteRunnerActionMock.mockResolvedValue({ ok: true, data: undefined });
 });
 afterEach(() => {
   cleanup();
@@ -179,6 +182,58 @@ describe("RunnerList row actions", () => {
     await user.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: /^revoke$/i }));
     await waitFor(() => expect(updateRunnerAdminStateActionMock).toHaveBeenCalledWith(ONLINE.id, "revoke"));
     expect(await screen.findByText("revoked")).toBeTruthy();
+  });
+
+  // Delete is offered only after revoke, mirroring ApiKeyList's BanIcon/Trash2Icon
+  // split. The daemon 409s (UZ-RUN-016) on a live runner, so a trash can on an
+  // active row would advertise an action that cannot succeed.
+  it("offers Delete only on a revoked runner, never alongside Revoke", async () => {
+    await renderList(listResponse([ONLINE, CORDONED, BUSY, DRAINED, OFFLINE]));
+
+    for (const live of [ONLINE, CORDONED, BUSY, DRAINED]) {
+      const row = within(rowFor(live.host_id));
+      expect(row.queryByRole("button", { name: /^delete$/i })).toBeNull();
+      expect(row.getByRole("button", { name: /^revoke$/i })).toBeTruthy();
+    }
+
+    const revoked = within(rowFor(OFFLINE.host_id));
+    expect(revoked.getByRole("button", { name: /^delete$/i })).toBeTruthy();
+    expect(revoked.queryByRole("button", { name: /^revoke$/i })).toBeNull();
+  });
+
+  it("deletes a revoked runner and refetches so the page count stays honest", async () => {
+    const user = userEvent.setup();
+    await renderList(listResponse([ONLINE, OFFLINE], 2));
+    // The refetch after a successful delete must reflect the row being gone —
+    // splicing locally would leave `total` stale and the pagination short.
+    listRunnersActionMock.mockResolvedValueOnce({ ok: true, data: listResponse([ONLINE], 1) });
+
+    await user.click(within(rowFor(OFFLINE.host_id)).getByRole("button", { name: /^delete$/i }));
+    await user.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: /^delete$/i }));
+
+    await waitFor(() => expect(deleteRunnerActionMock).toHaveBeenCalledWith(OFFLINE.id));
+    await waitFor(() => expect(screen.queryByText(OFFLINE.host_id)).toBeNull());
+    expect(screen.getByText(ONLINE.host_id)).toBeTruthy();
+    expect(updateRunnerAdminStateActionMock).not.toHaveBeenCalled();
+  });
+
+  it("keeps the row and surfaces the daemon's reason when delete is refused", async () => {
+    deleteRunnerActionMock.mockResolvedValueOnce({
+      ok: false,
+      error: "Active runner must be revoked before deletion",
+      errorCode: "UZ-RUN-016",
+    });
+    const user = userEvent.setup();
+    await renderList(listResponse([OFFLINE]));
+
+    await user.click(screen.getByRole("button", { name: /^delete$/i }));
+    await user.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: /^delete$/i }));
+
+    await waitFor(() => expect(deleteRunnerActionMock).toHaveBeenCalledWith(OFFLINE.id));
+    // Confirmation stays open carrying the error — closing it would strand the
+    // operator with a row that silently did not go away.
+    expect(screen.getByRole("alertdialog")).toBeTruthy();
+    expect(screen.getByText(OFFLINE.host_id)).toBeTruthy();
   });
 
   it("keeps the confirmation open and surfaces an action error when the state update fails", async () => {

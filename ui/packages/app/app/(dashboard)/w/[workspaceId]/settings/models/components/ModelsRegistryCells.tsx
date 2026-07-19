@@ -21,6 +21,11 @@ const PLATFORM_UNAVAILABLE_NOTE = "No default is configured.";
 const TOKENS_PER_K = 1000;
 const EMPTY_VALUE = "—";
 const RATES_UNAVAILABLE = "Rates unavailable";
+// Self-managed rows are billed by the tenant's own provider account — token
+// rates apply only under platform-managed posture (schema/003_model_library.sql).
+// "Rates unavailable" reads as "we tried and failed"; the truth is "this does not
+// apply to you", and a dollar figure here would imply agentsfleet is charging it.
+const RATES_NOT_APPLICABLE = "Billed by provider";
 
 export function rowKey(row: RegistryRow): string {
   return row.kind === "default" ? "default" : row.entry.id;
@@ -158,10 +163,17 @@ export function ContextCell({
     return <span className="font-mono text-xs tabular-nums text-muted-foreground">{EMPTY_VALUE}</span>;
   }
   const rate = identity.rate ?? libraryRateFor(libraryModels, identity.provider, identity.model);
+  // A tenant entry is self-managed by definition — the platform row is the only
+  // platform-managed one — so an unpriced entry is "not applicable", not a miss.
+  const rateLine = rate
+    ? formatRates(rate)
+    : row.kind === "entry"
+      ? RATES_NOT_APPLICABLE
+      : RATES_UNAVAILABLE;
   return (
     <div className="font-mono text-xs tabular-nums text-muted-foreground">
       <div>{formatContext(identity.context)}</div>
-      <div>{formatRates(rate)}</div>
+      <div>{rateLine}</div>
     </div>
   );
 }
