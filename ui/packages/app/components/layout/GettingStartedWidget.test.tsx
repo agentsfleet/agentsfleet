@@ -1,6 +1,6 @@
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, waitFor } from "@testing-library/react";
+import { act, cleanup, render, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { TooltipProvider } from "@agentsfleet/design-system";
 import type { OnboardingInputs } from "@/lib/onboarding";
@@ -10,10 +10,10 @@ vi.mock("next/link", () => ({
     React.createElement("a", { href }, children),
 }));
 
-const getSnapshot = vi.fn();
+const getProgress = vi.fn();
 const putPreference = vi.fn();
 vi.mock("@/lib/actions/preferences", () => ({
-  getOnboardingSnapshotAction: (...a: unknown[]) => getSnapshot(...a),
+  getOnboardingProgressAction: (...a: unknown[]) => getProgress(...a),
   putPreferenceAction: (...a: unknown[]) => putPreference(...a),
 }));
 const capture = vi.fn();
@@ -21,6 +21,7 @@ vi.mock("@/lib/analytics/posthog", () => ({ captureProductEvent: (...a: unknown[
 
 import GettingStartedWidget from "./GettingStartedWidget";
 import { PREFERENCE_KEY } from "@/lib/api/preferences";
+import { requestOnboardingRefresh } from "@/lib/onboarding-refresh";
 
 const COMPLETE: OnboardingInputs = {
   modelConfigured: true,
@@ -32,26 +33,34 @@ const COMPLETE: OnboardingInputs = {
 };
 const INCOMPLETE: OnboardingInputs = { ...COMPLETE, hasSteerEvent: false };
 
-function snapshotOk(inputs: OnboardingInputs, over: Partial<{ dismissed: boolean; collapsed: boolean }> = {}) {
+function progressOk(inputs: OnboardingInputs, over: Partial<{ dismissed: boolean; collapsed: boolean }> = {}) {
   return { ok: true as const, data: { inputs, dismissed: false, collapsed: false, ...over } };
 }
 
-function renderWidget() {
+function renderWidget(workspaceId = "ws_1", pollingMode: "desktop" | "mounted" = "mounted") {
   return render(
-    React.createElement(TooltipProvider, null, React.createElement(GettingStartedWidget, { workspaceId: "ws_1" })),
+    React.createElement(
+      TooltipProvider,
+      null,
+      React.createElement(GettingStartedWidget, { workspaceId, pollingMode }),
+    ),
   );
 }
 
 beforeEach(() => {
-  getSnapshot.mockReset();
+  getProgress.mockReset();
   putPreference.mockReset().mockResolvedValue({ ok: true, data: {} });
   capture.mockReset();
 });
-afterEach(() => cleanup());
+afterEach(() => {
+  vi.useRealTimers();
+  vi.restoreAllMocks();
+  cleanup();
+});
 
 describe("GettingStartedWidget — strikethrough + collapse (4.1)", () => {
   it("renders done steps struck-through and collapses/expands the step list", async () => {
-    getSnapshot.mockResolvedValue(snapshotOk(INCOMPLETE));
+    getProgress.mockResolvedValue(progressOk(INCOMPLETE));
     const user = userEvent.setup();
     const { getByText, queryByText, getByLabelText } = renderWidget();
 
@@ -67,7 +76,7 @@ describe("GettingStartedWidget — strikethrough + collapse (4.1)", () => {
 
 describe("GettingStartedWidget — dismiss persists (4.2)", () => {
   it("dismiss is offered only when complete, writes the pref, and hides the widget", async () => {
-    getSnapshot.mockResolvedValue(snapshotOk(COMPLETE));
+    getProgress.mockResolvedValue(progressOk(COMPLETE));
     const user = userEvent.setup();
     const { getByText, queryByText, getByLabelText } = renderWidget();
 
@@ -80,41 +89,49 @@ describe("GettingStartedWidget — dismiss persists (4.2)", () => {
   });
 
   it("an incomplete checklist offers no dismiss control", async () => {
-    getSnapshot.mockResolvedValue(snapshotOk(INCOMPLETE));
+    getProgress.mockResolvedValue(progressOk(INCOMPLETE));
     const { getByText, queryByLabelText } = renderWidget();
     await waitFor(() => expect(getByText("Getting started")).toBeTruthy());
     expect(queryByLabelText("Dismiss getting started")).toBeNull();
   });
 
   it("a widget loaded with the dismissed pref set renders nothing (persistence)", async () => {
-    getSnapshot.mockResolvedValue(snapshotOk(COMPLETE, { dismissed: true }));
+    getProgress.mockResolvedValue(progressOk(COMPLETE, { dismissed: true }));
     const { queryByText } = renderWidget();
-    // Give the effect a tick; the dismissed snapshot must keep it hidden.
+    // Give the effect a tick; the dismissed progress must keep it hidden.
     await new Promise((r) => setTimeout(r, 0));
     expect(queryByText("Getting started")).toBeNull();
   });
 });
 
 describe("GettingStartedWidget — read failure never hides onboarding (FM §5)", () => {
-  it("stays hidden (no false checklist) when the snapshot read fails", async () => {
-    // A failed action leaves the widget in its null-snapshot state — it renders
-    // nothing rather than a zeroed checklist, and crucially never marks
-    // onboarding dismissed off a read failure.
-    getSnapshot.mockResolvedValue({ ok: false, error: "down" });
-    const { queryByText } = renderWidget();
-    await new Promise((r) => setTimeout(r, 0));
-    expect(queryByText("Getting started")).toBeNull();
+  it("shows fail-open onboarding when the initial progress read fails", async () => {
+    getProgress.mockResolvedValue({ ok: false, error: "down" });
+    const { getByText } = renderWidget();
+    await waitFor(() => expect(getByText("0/5")).toBeTruthy());
     expect(putPreference).not.toHaveBeenCalled();
   });
 
-  it("ignores a snapshot that resolves after unmount (no state update on a dead component)", async () => {
+  it("preserves the last good progress when a later refresh fails", async () => {
+    getProgress
+      .mockResolvedValueOnce(progressOk(INCOMPLETE))
+      .mockResolvedValueOnce({ ok: false, error: "down" });
+    const rendered = renderWidget();
+
+    await waitFor(() => expect(rendered.getByText("4/5")).toBeTruthy());
+    act(() => requestOnboardingRefresh("ws_1"));
+    await waitFor(() => expect(getProgress).toHaveBeenCalledTimes(2));
+    expect(rendered.getByText("4/5")).toBeTruthy();
+  });
+
+  it("ignores a progress that resolves after unmount (no state update on a dead component)", async () => {
     // Control the resolution timing: unmount before it settles so the effect's
     // `if (!live) return` guard fires. A settle-after-unmount must not throw.
     let resolve!: (v: unknown) => void;
-    getSnapshot.mockReturnValue(new Promise((r) => { resolve = r; }));
+    getProgress.mockReturnValue(new Promise((r) => { resolve = r; }));
     const { unmount, queryByText } = renderWidget();
     unmount();
-    resolve(snapshotOk(COMPLETE));
+    resolve(progressOk(COMPLETE));
     await new Promise((r) => setTimeout(r, 0));
     expect(queryByText("Getting started")).toBeNull();
   });

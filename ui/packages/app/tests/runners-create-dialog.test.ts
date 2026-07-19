@@ -121,6 +121,16 @@ describe("AddRunnerDialog component", () => {
     expect(JSON.stringify(captureProductEventMock.mock.calls)).not.toContain("agt_rdeadbeef");
   });
 
+  it("shows the one-time warning only after the runner token is minted", async () => {
+    const { user } = await openDialog();
+    expect(screen.queryByText(/shown once/i)).toBeNull();
+
+    await reachReveal(user);
+
+    // pin test: the runner warning must match the established one-time-secret voice.
+    expect(screen.getByText("Runner token is shown once. Copy it now.")).toBeTruthy();
+  });
+
   it("isolation mode's radiogroup has an accessible name and keeps its self-reported disclaimer", async () => {
     await openDialog();
     // Named via aria-labelledby (a div[role=radiogroup] isn't a labelable

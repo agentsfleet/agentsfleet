@@ -5,6 +5,7 @@ import userEvent from "@testing-library/user-event";
 import { routerPush, routerRefresh, resetCommonMocks } from "./helpers/dashboard-mocks";
 import { INSTALL_STEP } from "@/lib/streaming/install-steps";
 import type { FleetLibraryGalleryEntry } from "@/lib/types";
+import { subscribeOnboardingRefresh } from "@/lib/onboarding-refresh";
 
 // InstallStates drives the inline template-only flow; its only boundaries are
 // the install server action, analytics, and the Server-Sent Events (SSE) hook.
@@ -205,11 +206,15 @@ describe("test_install_states_render", () => {
   });
 
   it("auto-creates when the required credential is already present (no gate)", async () => {
+    const refreshed = vi.fn();
+    const unsubscribe = subscribeOnboardingRefresh("ws_1", refreshed);
     installFleetActionMock.mockResolvedValue({ ok: true, data: { fleet_id: "zom_after_gate" } });
     // The credential is present, so the gate never shows and create runs on mount.
     renderStates(TEMPLATE_GH, ["github"]);
     await waitFor(() => expect(installFleetActionMock).toHaveBeenCalled());
+    await waitFor(() => expect(refreshed).toHaveBeenCalledTimes(1));
     expect(screen.queryByText(/first run: connect github/i)).toBeNull();
+    unsubscribe();
   });
 
   it("renders the skill-only line when the template has no TRIGGER.md", async () => {
@@ -219,6 +224,8 @@ describe("test_install_states_render", () => {
   });
 
   it("a create 409 surfaces the duplicate-name hint with Retry", async () => {
+    const refreshed = vi.fn();
+    const unsubscribe = subscribeOnboardingRefresh("ws_1", refreshed);
     installFleetActionMock.mockResolvedValue({
       ok: false,
       error: "conflict",
@@ -231,6 +238,8 @@ describe("test_install_states_render", () => {
     );
     expect(screen.getByRole("button", { name: /retry/i })).toBeTruthy();
     expect(routerPush).not.toHaveBeenCalled();
+    expect(refreshed).not.toHaveBeenCalled();
+    unsubscribe();
   });
 
   it("the mount guard blocks a second create when the effect re-runs", async () => {

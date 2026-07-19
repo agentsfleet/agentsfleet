@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { OnboardingInputs } from "@/lib/onboarding";
+import { subscribeOnboardingRefresh } from "@/lib/onboarding-refresh";
 
 vi.mock("next/link", () => ({
   default: ({ href, children }: React.PropsWithChildren<{ href: string }>) =>
@@ -13,6 +14,7 @@ vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh }) }));
 const putPreferenceAction = vi.fn();
 vi.mock("@/lib/actions/preferences", () => ({ putPreferenceAction: (...a: unknown[]) => putPreferenceAction(...a) }));
 const capture = vi.fn();
+let unsubscribeRefresh: (() => void) | null = null;
 vi.mock("@/lib/analytics/posthog", () => ({ captureProductEvent: (...a: unknown[]) => capture(...a) }));
 
 import GettingStarted from "./GettingStarted";
@@ -32,6 +34,8 @@ function renderGS(inputs = INPUTS) {
 }
 
 afterEach(() => {
+  unsubscribeRefresh?.();
+  unsubscribeRefresh = null;
   cleanup();
   refresh.mockReset();
   putPreferenceAction.mockReset();
@@ -50,6 +54,8 @@ describe("GettingStarted — the checklist page (Wall empty state)", () => {
   });
 
   it("ticks the CLI: persists, fires the event, refreshes", async () => {
+    const onboardingRefresh = vi.fn();
+    unsubscribeRefresh = subscribeOnboardingRefresh("ws_1", onboardingRefresh);
     putPreferenceAction.mockResolvedValue({ ok: true, data: {} });
     const user = userEvent.setup();
     renderGS();
@@ -58,10 +64,13 @@ describe("GettingStarted — the checklist page (Wall empty state)", () => {
       expect(putPreferenceAction).toHaveBeenCalledWith("ws_1", "getting_started_cli_ticked", true),
     );
     expect(capture).toHaveBeenCalledWith(EVENTS.onboarding_cli_ticked, { workspace_id: "ws_1" });
+    expect(onboardingRefresh).toHaveBeenCalledTimes(1);
     expect(refresh).toHaveBeenCalled();
   });
 
   it("reverts and surfaces an error when the CLI tick write fails", async () => {
+    const onboardingRefresh = vi.fn();
+    unsubscribeRefresh = subscribeOnboardingRefresh("ws_1", onboardingRefresh);
     putPreferenceAction.mockResolvedValue({ ok: false, error: "down" });
     const user = userEvent.setup();
     renderGS();
@@ -74,6 +83,7 @@ describe("GettingStarted — the checklist page (Wall empty state)", () => {
     await waitFor(() =>
       expect(screen.getByRole("button", { name: /I've installed the CLI/i })).toBeTruthy(),
     );
+    expect(onboardingRefresh).not.toHaveBeenCalled();
     expect(refresh).not.toHaveBeenCalled();
   });
 });
