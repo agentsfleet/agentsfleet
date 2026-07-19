@@ -450,6 +450,16 @@ describe("ModelsRegistryTable", () => {
     expect(screen.getByText("0")).toBeTruthy();
   });
 
+  it("formatRates still names unavailable rates for its remaining direct callers", async () => {
+    // The entry-row path now routes a missing rate to "Billed by provider", so
+    // the null arm survives only for callers outside that path (the admin
+    // catalogue presentation). Pin it directly so the guard cannot rot unseen.
+    const { formatRates } = await import(
+      "../app/(dashboard)/w/[workspaceId]/settings/models/components/ModelsRegistryCells"
+    );
+    expect(formatRates(null)).toBe("Rates unavailable");
+  });
+
   it("renders a dash for absent context and names who bills", async () => {
     await renderTable(registry([entry({ id: "e1", model_id: "m1", context_cap_tokens: undefined })]));
     const rows = screen.getAllByRole("row");

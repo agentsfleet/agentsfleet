@@ -55,6 +55,15 @@ describe("pickLoadingVerb", () => {
     expect(pickLoadingVerb()).toBe(LOADING_VERBS[0]);
     random.mockRestore();
   });
+
+  it("degrades to the first verb if the index ever lands out of range", () => {
+    // A hostile mock returning exactly 1 (out of Math.random's spec) drives the
+    // index past the array — the total-function fallback must yield a real verb,
+    // never undefined leaking into the rendered phrase.
+    const random = vi.spyOn(Math, "random").mockReturnValue(1);
+    expect(pickLoadingVerb()).toBe(LOADING_VERBS[0]);
+    random.mockRestore();
+  });
 });
 
 describe("loadingPhrase", () => {
