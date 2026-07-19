@@ -18,6 +18,8 @@ export interface FleetRow {
   readonly [key: string]: unknown;
 }
 
+export class FleetNotFoundError extends Error {}
+
 async function lifecycleAction(verb: string, fleetId: string, env: Env): Promise<unknown> {
   const result = await runFleetctl([verb, fleetId, "--json"], { env });
   if (result.code !== 0) {
@@ -45,7 +47,9 @@ export async function getStatus(env: Env, fleetId: string, timeoutMs?: number): 
   const items: FleetRow[] = Array.isArray(payload.items) ? (payload.items as FleetRow[]) : [];
   const match = items.find((z) => z.id === fleetId || z.fleet_id === fleetId);
   if (!match) {
-    throw new Error(`fleet ${fleetId} not found in workspace list: ${result.stdout.slice(0, 400)}`);
+    throw new FleetNotFoundError(
+      `fleet ${fleetId} not found in workspace list: ${result.stdout.slice(0, 400)}`,
+    );
   }
   return match;
 }
