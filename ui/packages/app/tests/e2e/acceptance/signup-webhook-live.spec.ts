@@ -24,7 +24,7 @@ const FLOW_TIMEOUT_MS = 90_000;
 
 function uniqueEmail(): string {
   const tag = crypto.randomBytes(4).toString("hex");
-  return `signup-webhook-${tag}+clerk_test@mailinator.com`;
+  return `signup-webhook-${tag}+clerk_test@e2e.agentsfleet.net`;
 }
 
 const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "";
@@ -44,7 +44,11 @@ test.describe("signup webhook live", () => {
   test.afterEach(async () => {
     if (!createdEmail) return;
     const userId = await findUserIdByEmail(createdEmail).catch(() => null);
-    if (userId) await deleteUser(userId).catch(() => undefined);
+    if (userId) await deleteUser(userId).catch((err: unknown) => {
+        // Loud, not silent: a swallowed failure here is how users leak. The
+        // global-teardown sweep is the backstop for anything that slips.
+        console.error(`[e2e] fixture user cleanup failed for ${userId}:`, err);
+      });
     createdEmail = null;
   });
 

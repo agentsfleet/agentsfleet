@@ -4,14 +4,14 @@ import {
   findUserIdByEmail,
 } from "./e2e/acceptance/fixtures/clerk-admin";
 
-const FIXTURE_EMAIL = "operator-fixture@mailinator.com";
+const FIXTURE_EMAIL = "operator-fixture@e2e.agentsfleet.net";
 const FIXTURE_USER_ID = "user_fixture";
 const CLERK_SECRET = "sk_test_fixture";
 const RETRY_AFTER_SECONDS = "1";
 const RETRY_AFTER_MILLISECONDS = 1000;
 const NETWORK_BACKOFF_MILLISECONDS = 500;
 const FIND_USER_ERROR_PREFIX =
-  "Clerk GET /users?email_address=operator-fixture%40mailinator.com";
+  "Clerk GET /users?email_address=operator-fixture%40e2e.agentsfleet.net";
 
 function userResponse(): Response {
   return Response.json([
