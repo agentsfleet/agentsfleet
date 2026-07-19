@@ -1,4 +1,4 @@
-import type { ComponentProps } from "react";
+import type { ComponentProps, ReactNode } from "react";
 
 import { cn } from "../utils";
 import { WakePulse } from "./WakePulse";
@@ -20,8 +20,12 @@ const ORBIT_SIZE: Record<SpinnerSize, string> = {
 export interface SpinnerProps extends Omit<ComponentProps<"span">, "children"> {
   /** Pulse-dot diameter. `sm` for in-button, `lg` for page-level loaders. */
   size?: SpinnerSize;
-  /** Visible text beside the dot — use for standalone loaders. */
-  label?: string;
+  /**
+   * Visible text beside the dot — use for standalone loaders. Accepts a node so
+   * callers can supply a client-rendered label (see the app's LoadingVerbLabel)
+   * without this component becoming client-only itself.
+   */
+  label?: ReactNode;
   /** Screen-reader text when there is no visible `label`. */
   srLabel?: string;
 }

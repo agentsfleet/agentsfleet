@@ -76,7 +76,7 @@ pub fn cleanup(h: *TestHarness) void {
     const conn = h.acquireConn() catch return;
     defer h.releaseConn(conn);
     _ = conn.exec("DELETE FROM core.platform_provider_defaults WHERE source_workspace_id = $1::uuid", .{WORKSPACE_ID}) catch |err| std.log.warn("cleanup ignored: {s}", .{@errorName(err)});
-    _ = conn.exec("DELETE FROM core.model_library WHERE provider IN ('fireworks','anthropic','m100test')", .{}) catch |err| std.log.warn("cleanup ignored: {s}", .{@errorName(err)});
+    _ = conn.exec("DELETE FROM core.model_library WHERE provider IN ('m100fw','m100an','m100test')", .{}) catch |err| std.log.warn("cleanup ignored: {s}", .{@errorName(err)});
     _ = conn.exec("DELETE FROM core.workspaces WHERE workspace_id = $1::uuid", .{WORKSPACE_ID}) catch |err| std.log.warn("cleanup ignored: {s}", .{@errorName(err)});
 }
 
@@ -141,7 +141,7 @@ test "admin models: PATCH updates rates; DELETE removes the row" {
     const h = try startHarness(ALLOC);
     defer h.deinit();
     defer cleanup(h);
-    try seedModel(h, UID_GLM, "fireworks", "glm-5.2");
+    try seedModel(h, UID_GLM, "m100fw", "glm-5.2");
 
     const patch = try (try (try h.request(.PATCH, "/v1/admin/models/" ++ UID_GLM).bearer(PLATFORM_ADMIN_TOKEN))
         .json("{\"context_cap_tokens\":200000,\"input_nanos_per_mtok\":2,\"cached_input_nanos_per_mtok\":0,\"output_nanos_per_mtok\":3}")).send();
@@ -170,7 +170,7 @@ test "platform default: an uncatalogued model is rejected 400" {
     defer cleanup(h);
     try seedTenantWorkspace(h);
 
-    const body = "{\"provider\":\"fireworks\",\"source_workspace_id\":\"" ++ WORKSPACE_ID ++ "\",\"model\":\"not-in-catalogue\"}";
+    const body = "{\"provider\":\"m100fw\",\"source_workspace_id\":\"" ++ WORKSPACE_ID ++ "\",\"model\":\"not-in-catalogue\"}";
     const r = try (try (try h.put("/v1/admin/platform-keys").bearer(PLATFORM_ADMIN_TOKEN)).json(body)).send();
     defer r.deinit();
     try r.expectStatus(.bad_request);
@@ -182,23 +182,23 @@ test "platform default: setting a second provider leaves exactly one active row"
     defer h.deinit();
     defer cleanup(h);
     try seedTenantWorkspace(h);
-    try seedModel(h, UID_GLM, "fireworks", "glm-5.2");
-    try seedModel(h, UID_OPUS, "anthropic", "claude-opus-4-8");
+    try seedModel(h, UID_GLM, "m100fw", "glm-5.2");
+    try seedModel(h, UID_OPUS, "m100an", "claude-opus-4-8");
 
     const a = try (try (try h.put("/v1/admin/platform-keys").bearer(PLATFORM_ADMIN_TOKEN))
-        .json("{\"provider\":\"fireworks\",\"source_workspace_id\":\"" ++ WORKSPACE_ID ++ "\",\"model\":\"glm-5.2\"}")).send();
+        .json("{\"provider\":\"m100fw\",\"source_workspace_id\":\"" ++ WORKSPACE_ID ++ "\",\"model\":\"glm-5.2\"}")).send();
     defer a.deinit();
     try a.expectStatus(.ok);
 
     const b = try (try (try h.put("/v1/admin/platform-keys").bearer(PLATFORM_ADMIN_TOKEN))
-        .json("{\"provider\":\"anthropic\",\"source_workspace_id\":\"" ++ WORKSPACE_ID ++ "\",\"model\":\"claude-opus-4-8\"}")).send();
+        .json("{\"provider\":\"m100an\",\"source_workspace_id\":\"" ++ WORKSPACE_ID ++ "\",\"model\":\"claude-opus-4-8\"}")).send();
     defer b.deinit();
     try b.expectStatus(.ok);
 
     const active = try countActivePlatformKeys(h);
     defer ALLOC.free(active.provider);
     try std.testing.expectEqual(@as(i64, 1), active.total);
-    try std.testing.expectEqualStrings("anthropic", active.provider);
+    try std.testing.expectEqualStrings("m100an", active.provider);
 }
 
 test "platform default: GET returns the active row's model for the Edit-default pre-fill" {
@@ -206,10 +206,10 @@ test "platform default: GET returns the active row's model for the Edit-default 
     defer h.deinit();
     defer cleanup(h);
     try seedTenantWorkspace(h);
-    try seedModel(h, UID_GLM, "fireworks", "glm-5.2");
+    try seedModel(h, UID_GLM, "m100fw", "glm-5.2");
 
     const set = try (try (try h.put("/v1/admin/platform-keys").bearer(PLATFORM_ADMIN_TOKEN))
-        .json("{\"provider\":\"fireworks\",\"source_workspace_id\":\"" ++ WORKSPACE_ID ++ "\",\"model\":\"glm-5.2\"}")).send();
+        .json("{\"provider\":\"m100fw\",\"source_workspace_id\":\"" ++ WORKSPACE_ID ++ "\",\"model\":\"glm-5.2\"}")).send();
     defer set.deinit();
     try set.expectStatus(.ok);
 
@@ -229,17 +229,17 @@ test "platform default: GET reports a stood-down provider's model as null" {
     defer h.deinit();
     defer cleanup(h);
     try seedTenantWorkspace(h);
-    try seedModel(h, UID_GLM, "fireworks", "glm-5.2");
-    try seedModel(h, UID_OPUS, "anthropic", "claude-opus-4-8");
+    try seedModel(h, UID_GLM, "m100fw", "glm-5.2");
+    try seedModel(h, UID_OPUS, "m100an", "claude-opus-4-8");
 
     // fireworks is the default (model = glm-5.2) …
     const a = try (try (try h.put("/v1/admin/platform-keys").bearer(PLATFORM_ADMIN_TOKEN))
-        .json("{\"provider\":\"fireworks\",\"source_workspace_id\":\"" ++ WORKSPACE_ID ++ "\",\"model\":\"glm-5.2\"}")).send();
+        .json("{\"provider\":\"m100fw\",\"source_workspace_id\":\"" ++ WORKSPACE_ID ++ "\",\"model\":\"glm-5.2\"}")).send();
     defer a.deinit();
     try a.expectStatus(.ok);
     // … then anthropic takes over, standing fireworks down (NULLs its model).
     const b = try (try (try h.put("/v1/admin/platform-keys").bearer(PLATFORM_ADMIN_TOKEN))
-        .json("{\"provider\":\"anthropic\",\"source_workspace_id\":\"" ++ WORKSPACE_ID ++ "\",\"model\":\"claude-opus-4-8\"}")).send();
+        .json("{\"provider\":\"m100an\",\"source_workspace_id\":\"" ++ WORKSPACE_ID ++ "\",\"model\":\"claude-opus-4-8\"}")).send();
     defer b.deinit();
     try b.expectStatus(.ok);
 
@@ -257,10 +257,10 @@ test "admin models: deleting the active default's model is blocked 409" {
     defer h.deinit();
     defer cleanup(h);
     try seedTenantWorkspace(h);
-    try seedModel(h, UID_GLM, "fireworks", "glm-5.2");
+    try seedModel(h, UID_GLM, "m100fw", "glm-5.2");
 
     const set = try (try (try h.put("/v1/admin/platform-keys").bearer(PLATFORM_ADMIN_TOKEN))
-        .json("{\"provider\":\"fireworks\",\"source_workspace_id\":\"" ++ WORKSPACE_ID ++ "\",\"model\":\"glm-5.2\"}")).send();
+        .json("{\"provider\":\"m100fw\",\"source_workspace_id\":\"" ++ WORKSPACE_ID ++ "\",\"model\":\"glm-5.2\"}")).send();
     defer set.deinit();
     try set.expectStatus(.ok);
 
@@ -304,12 +304,12 @@ test "platform default: standing a provider down NULLs its model, freeing its ca
     defer h.deinit();
     defer cleanup(h);
     try seedTenantWorkspace(h);
-    try seedModel(h, UID_GLM, "fireworks", "glm-5.2");
-    try seedModel(h, UID_OPUS, "anthropic", "claude-opus-4-8");
+    try seedModel(h, UID_GLM, "m100fw", "glm-5.2");
+    try seedModel(h, UID_OPUS, "m100an", "claude-opus-4-8");
 
     // fireworks becomes the default — its row references glm-5.2.
     const a = try (try (try h.put("/v1/admin/platform-keys").bearer(PLATFORM_ADMIN_TOKEN))
-        .json("{\"provider\":\"fireworks\",\"source_workspace_id\":\"" ++ WORKSPACE_ID ++ "\",\"model\":\"glm-5.2\"}")).send();
+        .json("{\"provider\":\"m100fw\",\"source_workspace_id\":\"" ++ WORKSPACE_ID ++ "\",\"model\":\"glm-5.2\"}")).send();
     defer a.deinit();
     try a.expectStatus(.ok);
 
@@ -317,7 +317,7 @@ test "platform default: standing a provider down NULLs its model, freeing its ca
     // fireworks' model, releasing fk_platform_provider_defaults_model — so glm-5.2 is now
     // deletable. WITHOUT the NULL, this DELETE would hit the FK and 500.
     const b = try (try (try h.put("/v1/admin/platform-keys").bearer(PLATFORM_ADMIN_TOKEN))
-        .json("{\"provider\":\"anthropic\",\"source_workspace_id\":\"" ++ WORKSPACE_ID ++ "\",\"model\":\"claude-opus-4-8\"}")).send();
+        .json("{\"provider\":\"m100an\",\"source_workspace_id\":\"" ++ WORKSPACE_ID ++ "\",\"model\":\"claude-opus-4-8\"}")).send();
     defer b.deinit();
     try b.expectStatus(.ok);
 

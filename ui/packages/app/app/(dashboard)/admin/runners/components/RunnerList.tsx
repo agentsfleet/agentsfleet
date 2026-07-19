@@ -19,9 +19,15 @@ import {
   type RunnerEventsResponse,
 } from "@/lib/api/runners";
 import { presentErrorString } from "@/lib/errors";
-import { listRunnersAction, listRunnerEventsAction, updateRunnerAdminStateAction } from "../actions";
-import { RunnerActionConfirm, RunnerActivityDialog, type RunnerActionConfirmTarget } from "./RunnerDialogs";
-import { ACTION_CONFIG, ActionsCell, HostCell, LabelsCell, StatusCell } from "./RunnerListCells";
+import { listRunnersAction, listRunnerEventsAction, updateRunnerAdminStateAction, deleteRunnerAction } from "../actions";
+import {
+  RunnerActionConfirm,
+  RunnerActivityDialog,
+  type RunnerActionConfirmTarget,
+  type RunnerConfirmCopy,
+  type RunnerDeleteConfirmTarget,
+} from "./RunnerDialogs";
+import { ACTION_CONFIG, DELETE_ACTION_CONFIG, ActionsCell, HostCell, LabelsCell, StatusCell } from "./RunnerListCells";
 
 export type RunnerListHandle = { refresh: () => void };
 
@@ -34,10 +40,12 @@ function buildColumns({
   pending,
   onActivity,
   onAction,
+  onDelete,
 }: {
   pending: boolean;
   onActivity: (runner: RunnerListItem) => void;
   onAction: (runner: RunnerListItem, action: RunnerAdminAction) => void;
+  onDelete: (runner: RunnerListItem) => void;
 }): DataTableColumn<RunnerListItem>[] {
   return [
     { key: "host", header: "Host", cell: (r) => <HostCell r={r} /> },
@@ -53,7 +61,9 @@ function buildColumns({
       key: "actions",
       header: "Actions",
       numeric: true,
-      cell: (r) => <ActionsCell r={r} pending={pending} onActivity={onActivity} onAction={onAction} />,
+      cell: (r) => (
+        <ActionsCell r={r} pending={pending} onActivity={onActivity} onAction={onAction} onDelete={onDelete} />
+      ),
     },
   ];
 }
@@ -72,6 +82,7 @@ export default function RunnerList({
   const [page, setPage] = useState(initial.page);
   const [error, setError] = useState<string | null>(null);
   const [confirmTarget, setConfirmTarget] = useState<RunnerActionConfirmTarget>(null);
+  const [deleteTarget, setDeleteTarget] = useState<RunnerDeleteConfirmTarget>(null);
   const [activityRunner, setActivityRunner] = useState<RunnerListItem | null>(null);
   const [activityData, setActivityData] = useState<ActivityDataState | null>(null);
   const [activityError, setActivityError] = useState<string | null>(null);
@@ -111,6 +122,22 @@ export default function RunnerList({
     });
   }
 
+  function confirmDelete(target: RunnerConfirmCopy) {
+    startTransition(async () => {
+      const r = await deleteRunnerAction(target.runner.id);
+      if (!r.ok) {
+        setError(presentErrorString({ errorCode: r.errorCode, message: r.error, action: target.errorAction }));
+        return;
+      }
+      setError(null);
+      setDeleteTarget(null);
+      // Refetch rather than splice the row out: the row is gone server-side, so
+      // the current page is now short one entry and `total` has moved. Refetching
+      // keeps pagination honest where a local filter would leave a gap.
+      loadPage(page);
+    });
+  }
+
   function loadEvents(runnerId: string, nextPage = 1) {
     startActivityTransition(async () => {
       const r = await listRunnerEventsAction(runnerId, { page: nextPage, page_size: DEFAULT_PAGE_SIZE });
@@ -146,6 +173,10 @@ export default function RunnerList({
       setError(null);
       setConfirmTarget({ runner, action, ...ACTION_CONFIG[action] });
     },
+    onDelete: (runner) => {
+      setError(null);
+      setDeleteTarget({ runner, ...DELETE_ACTION_CONFIG });
+    },
   });
 
   return (
@@ -164,7 +195,7 @@ export default function RunnerList({
         }
       />
 
-      {error && !confirmTarget ? <p className="text-sm text-destructive">{error}</p> : null}
+      {error && !confirmTarget && !deleteTarget ? <p className="text-sm text-destructive">{error}</p> : null}
 
       {lastPage > 1 ? (
         <div className="flex items-center justify-between text-sm text-muted-foreground">
@@ -202,6 +233,15 @@ export default function RunnerList({
           setError(null);
         }}
         onConfirm={confirmAction}
+      />
+      <RunnerActionConfirm
+        target={deleteTarget}
+        error={error}
+        onOpenChange={() => {
+          setDeleteTarget(null);
+          setError(null);
+        }}
+        onConfirm={confirmDelete}
       />
     </div>
   );

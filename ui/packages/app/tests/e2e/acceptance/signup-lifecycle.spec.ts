@@ -7,7 +7,7 @@
  * lifecycle transition is a real click in the dashboard. No API short-cuts.
  *
  * DEV-only — Clerk PROD almost certainly does not have test mode enabled, so
- * the `+clerk_test@mailinator.com` alias would not short-circuit OTP. Mirrors
+ * the `+clerk_test` alias would not short-circuit OTP. Mirrors
  * the same isProdApi guard signup.spec.ts uses.
  *
  * Why this spec exists: the persistent-fixture suite covers each lifecycle
@@ -37,7 +37,7 @@ const FLOW_TIMEOUT_MS = 120_000;
 
 function uniqueEmail(): string {
   const tag = crypto.randomBytes(4).toString("hex");
-  return `signup-lifecycle-${tag}+clerk_test@mailinator.com`;
+  return `signup-lifecycle-${tag}+clerk_test@e2e.agentsfleet.net`;
 }
 
 function uniqueName(): string {
@@ -63,7 +63,11 @@ test.describe("signup → install → lifecycle", () => {
     }
     if (!createdEmail) return;
     const userId = await findUserIdByEmail(createdEmail).catch(() => null);
-    if (userId) await deleteUser(userId).catch(() => undefined);
+    if (userId) await deleteUser(userId).catch((err: unknown) => {
+        // Loud, not silent: a swallowed failure here is how users leak. The
+        // global-teardown sweep is the backstop for anything that slips.
+        console.error(`[e2e] fixture user cleanup failed for ${userId}:`, err);
+      });
     createdEmail = null;
   });
 

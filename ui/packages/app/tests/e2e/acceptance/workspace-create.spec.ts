@@ -9,7 +9,7 @@ const WORKSPACE_CREATE_TIMEOUT_MS = 30_000;
 
 function uniqueEmail(): string {
   const tag = crypto.randomBytes(4).toString("hex");
-  return `workspace-create-${tag}+clerk_test@mailinator.com`;
+  return `workspace-create-${tag}+clerk_test@e2e.agentsfleet.net`;
 }
 
 function uniqueWorkspaceName(): string {
@@ -30,7 +30,11 @@ test.describe("workspace create", () => {
   test.afterEach(async () => {
     if (!createdEmail) return;
     const userId = await findUserIdByEmail(createdEmail).catch(() => null);
-    if (userId) await deleteUser(userId).catch(() => undefined);
+    if (userId) await deleteUser(userId).catch((err: unknown) => {
+        // Loud, not silent: a swallowed failure here is how users leak. The
+        // global-teardown sweep is the backstop for anything that slips.
+        console.error(`[e2e] fixture user cleanup failed for ${userId}:`, err);
+      });
     createdEmail = null;
   });
 

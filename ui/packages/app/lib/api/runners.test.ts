@@ -7,6 +7,7 @@ import {
   listRunners,
   createRunner,
   updateRunnerAdminState,
+  deleteRunner,
   listRunnerEvents,
   parseLabels,
   DEFAULT_PAGE_SIZE,
@@ -62,6 +63,26 @@ describe("updateRunnerAdminState", () => {
       { method: "PATCH", body: JSON.stringify({ action: "cordon" }) },
       "tok",
     );
+  });
+});
+
+describe("deleteRunner", () => {
+  it("DELETEs the runner path with no body and resolves void on 204", async () => {
+    requestMock.mockResolvedValueOnce(undefined);
+    await expect(deleteRunner("tok", "runner-1")).resolves.toBeUndefined();
+    expect(requestMock).toHaveBeenCalledWith(
+      "/v1/fleets/runners/runner-1",
+      { method: "DELETE" },
+      "tok",
+    );
+  });
+
+  it("propagates the daemon's revoke-first refusal untouched", async () => {
+    // The UI layers above decide presentation; the client must not swallow or
+    // reshape the 409 (UZ-RUN-016) — a masked refusal would strand the row
+    // with no explanation.
+    requestMock.mockRejectedValueOnce(new Error("UZ-RUN-016"));
+    await expect(deleteRunner("tok", "runner-1")).rejects.toThrow("UZ-RUN-016");
   });
 });
 

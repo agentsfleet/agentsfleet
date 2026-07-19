@@ -201,6 +201,9 @@ _test-integration-full: _reset-test-db
 	wait "$$runner_build_pid" || { echo "✗ [agentsfleet-runner] Runner binary build failed"; exit 1; }; \
 	[ "$$migrate_rc" -eq 0 ] || { echo "✗ [agentsfleetd] Test database migration failed (exit $$migrate_rc) — not running tests against an unmigrated DB"; exit 1; }; \
 	echo "✓ [agentsfleet-runner] Runner binary built."; \
+	echo "→ [catalogue] model_library seeding is SELF-SERVE: the Zig seed tests apply"; \
+	echo "  samples/fixtures/model-library/seed.sql over their own pg connection —"; \
+	echo "  the CI zig container has neither node nor psql, so no make step seeds here."; \
 	echo "→ [agentsfleetd] Building the integration test binary, then running the suite against real DB + Redis (silent zig compile first, then tests)..."; \
 	ZIG_GLOBAL_CACHE_DIR="$(ZIG_GLOBAL_CACHE_DIR)" \
 	ZIG_LOCAL_CACHE_DIR="$(ZIG_LOCAL_CACHE_DIR)" \

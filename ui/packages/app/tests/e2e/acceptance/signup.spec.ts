@@ -4,7 +4,7 @@
  * bypass user creation.
  *
  * Flow:
- *   1. Generate a unique `+clerk_test` alias under mailinator. Clerk's
+ *   1. Generate a unique `+clerk_test` alias under e2e.agentsfleet.net (owned, MX-less). Clerk's
  *      documented testing email pattern shortcuts one-time-code delivery in
  *      development instances with test mode enabled.
  *   2. Drive Clerk's browser signup helper and replay the identity event so
@@ -29,15 +29,15 @@ const SIGNUP_TEST_TIMEOUT_MS = 90_000;
 
 function uniqueEmail(): string {
   const tag = crypto.randomBytes(4).toString("hex");
-  return `signup-fixture-${tag}+clerk_test@mailinator.com`;
+  return `signup-fixture-${tag}+clerk_test@e2e.agentsfleet.net`;
 }
 
 // Skip signup against production: Clerk production almost certainly does
 // not have test mode enabled (a development-only configuration), so the
-// documented `+clerk_test@mailinator.com` alias would not short-circuit
+// documented `+clerk_test` alias would not short-circuit
 // one-time password (OTP) delivery and the spec would either hang on the
-// verification screen or send a real OTP to a publicly-readable mailinator
-// inbox. Both are unsafe.
+// verification screen or attempt a real OTP send to the undeliverable
+// fixture domain. Both are dead ends.
 const isProdApi = (process.env.NEXT_PUBLIC_API_URL ?? "").includes("api.agentsfleet.net");
 
 test.describe("signup", () => {
@@ -50,7 +50,11 @@ test.describe("signup", () => {
     if (!createdEmail) return;
     const userId = await findUserIdByEmail(createdEmail).catch(() => null);
     if (userId) {
-      await deleteUser(userId).catch(() => undefined);
+      await deleteUser(userId).catch((err: unknown) => {
+        // Loud, not silent: a swallowed failure here is how users leak. The
+        // global-teardown sweep is the backstop for anything that slips.
+        console.error(`[e2e] fixture user cleanup failed for ${userId}:`, err);
+      });
     }
     createdEmail = null;
   });
