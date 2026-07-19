@@ -52,6 +52,36 @@ services:
       timeout: 5s
       retries: 20
 
+  qstash:
+    container_name: agentsfleet-qstash
+    # Upstash's official QStash local dev server, run via Bun. Ships deterministic
+    # credentials (fixed token + signing keys), so integration tests point at it
+    # with a committed fixture token — no per-run secret. Used by the opt-in live
+    # QStash tests (AGENTSFLEET_QSTASH_LIVE_URL/TOKEN); self-skip when it is down.
+    # Debian (glibc), not Alpine: the CLI fetches a glibc-linked Go binary that
+    # cannot exec under musl.
+    image: mirror.gcr.io/oven/bun:1
+    command:
+      - sh
+      - -c
+      - |
+        cd /tmp
+        bun add @upstash/qstash-cli@latest
+        # Bun blocks postinstall scripts, so the Go binary the CLI wraps is not
+        # fetched by `bun add` — run its installer explicitly before launching.
+        bun node_modules/@upstash/qstash-cli/install.js
+        exec node_modules/@upstash/qstash-cli/bin/qstash dev -port 8080
+    ports:
+      - "8080:8080"
+    healthcheck:
+      # Unauthenticated requests 401, which still proves the server is accepting
+      # connections; fetch resolves on any HTTP response and rejects only on a
+      # connection error, so a resolved fetch means healthy.
+      test: ["CMD", "bun", "-e", "fetch('http://localhost:8080/').then(()=>process.exit(0)).catch(()=>process.exit(1))"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
   agentsfleetd:
     container_name: agentsfleetd-api
     build:

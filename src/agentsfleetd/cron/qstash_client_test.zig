@@ -7,6 +7,13 @@ const model = @import("model.zig");
 const SCHEDULE_ID = "0195b4ba-8d3a-7f13-8abc-105000000201";
 const DESTINATION = "https://api.agentsfleet.net/v1/ingress/qstash/schedules";
 const TOKEN = "qstash-test-token";
+// Opt-in live QStash (the dev server container, or `npx @upstash/qstash-cli dev`).
+// Both env vars must be set for the live test to run; otherwise it self-skips.
+const LIVE_URL_ENV = "AGENTSFLEET_QSTASH_LIVE_URL";
+const LIVE_TOKEN_ENV = "AGENTSFLEET_QSTASH_LIVE_TOKEN";
+// A publicly resolvable destination the dev server accepts (it does real DNS on
+// the destination at create time); the schedule is deleted right after.
+const LIVE_DESTINATION = "https://example.com";
 const STALL_DEADLINE_MS: u31 = 250;
 const STALL_ELAPSED_BOUND_MS: i64 = 2_000;
 
@@ -16,6 +23,10 @@ const Fake = struct {
     failure: ?anyerror = null,
     calls: usize = 0,
     request_ok: bool = false,
+    // Opt-in so the shared fake stays leak-free for tests that never free it;
+    // only the api-base regression test captures + frees the outbound URL.
+    capture_url: bool = false,
+    captured_url: ?[]u8 = null,
 
     fn exchange(self: *Fake) QStashClient.Exchange {
         return .{ .ptr = self, .callFn = call };
@@ -25,13 +36,14 @@ const Fake = struct {
         const self: *Fake = @ptrCast(@alignCast(ptr));
         self.calls += 1;
         if (self.failure) |failure| return failure;
+        if (self.capture_url) self.captured_url = try alloc.dupe(u8, request.url);
         self.request_ok = requestMatches(request);
         return .{ .status = self.status, .body = try alloc.dupe(u8, self.response_body) };
     }
 
     fn requestMatches(request: QStashClient.Request) bool {
         if (request.method == .POST) {
-            if (!std.mem.eql(u8, request.url, "https://qstash.test/v2/schedules/https%3A%2F%2Fapi.agentsfleet.net%2Fv1%2Fingress%2Fqstash%2Fschedules")) return false;
+            if (!std.mem.eql(u8, request.url, "https://qstash.test/v2/schedules/" ++ DESTINATION)) return false;
             if (!headerEquals(request.headers, "authorization", "Bearer " ++ TOKEN)) return false;
             if (!headerEquals(request.headers, "Upstash-Cron", "CRON_TZ=Asia/Kolkata 0 9 * * *")) return false;
             if (!headerEquals(request.headers, "Upstash-Schedule-Id", SCHEDULE_ID)) return false;
@@ -87,6 +99,18 @@ test "qstash client: upsert sends the exact stable schedule request" {
     try std.testing.expectEqual(.success, try client.upsert(std.testing.allocator, TOKEN, schedule()));
     try std.testing.expectEqual(@as(usize, 1), fake.calls);
     try std.testing.expect(fake.request_ok);
+}
+
+test "qstash client: outbound url uses the configured api base, not a hardcoded host" {
+    // Regression: pins that credentials.url flows to the request URL. Fails if
+    // anyone reintroduces a hardcoded provider host (the pre-M105 US default).
+    const eu_base = "https://qstash-eu-central-1.upstash.io";
+    var fake: Fake = .{ .capture_url = true };
+    const client = QStashClient.init(fake.exchange(), eu_base, DESTINATION);
+    try std.testing.expectEqual(.success, try client.upsert(std.testing.allocator, TOKEN, schedule()));
+    defer if (fake.captured_url) |u| std.testing.allocator.free(u);
+    try std.testing.expect(fake.captured_url != null);
+    try std.testing.expect(std.mem.startsWith(u8, fake.captured_url.?, eu_base ++ "/v2/schedules/"));
 }
 
 test "qstash client: delete is idempotent when the provider row is absent" {
@@ -154,4 +178,20 @@ fn allocationSweep(alloc: std.mem.Allocator) !void {
 
 test "qstash client: every allocation failure unwinds without a leak" {
     try std.testing.checkAllAllocationFailures(std.testing.allocator, allocationSweep, .{});
+}
+
+test "qstash client (live): a real qstash dev server accepts a publish over http" {
+    // Live end-to-end against a real QStash (the piece the fake exchange cannot
+    // prove): the configured url + token actually authenticate and the publish
+    // is accepted. Run `npx @upstash/qstash-cli dev`, then export
+    // AGENTSFLEET_QSTASH_LIVE_URL=http://localhost:8000 and
+    // AGENTSFLEET_QSTASH_LIVE_TOKEN=<printed token>. Self-skips otherwise.
+    const base = common.env.testLiveValue(LIVE_URL_ENV) orelse return error.SkipZigTest;
+    const token = common.env.testLiveValue(LIVE_TOKEN_ENV) orelse return error.SkipZigTest;
+    var exchange: QStashClient.HttpClientExchange = .{ .io = common.globalIo() };
+    const client = QStashClient.init(exchange.exchange(), base, LIVE_DESTINATION);
+    const outcome = try client.upsert(std.testing.allocator, token, schedule());
+    // Clean up the schedule we just created on the live server regardless.
+    defer _ = client.delete(std.testing.allocator, token, SCHEDULE_ID) catch {};
+    try std.testing.expectEqual(QStashClient.Outcome.success, outcome);
 }
