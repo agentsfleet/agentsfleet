@@ -268,3 +268,21 @@ export async function waitForTenantMetadata(userId: string): Promise<void> {
 export async function deleteUser(userId: string): Promise<void> {
   await clerkRequest<{ deleted: boolean }>("DELETE", `/users/${userId}`);
 }
+
+export interface ClerkUserSummary {
+  id: string;
+  email: string;
+  createdAtMs: number;
+}
+
+/** Users whose primary email matches `query` (Clerk substring search), newest first. */
+export async function listUsersByQuery(query: string): Promise<ClerkUserSummary[]> {
+  const users = await clerkRequest<
+    Array<{ id: string; created_at: number; email_addresses: Array<{ email_address: string }> }>
+  >("GET", `/users?query=${encodeURIComponent(query)}&limit=100&order_by=-created_at`);
+  return users.map((u) => ({
+    id: u.id,
+    email: u.email_addresses[0]?.email_address ?? "",
+    createdAtMs: u.created_at,
+  }));
+}

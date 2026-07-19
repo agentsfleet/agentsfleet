@@ -9,8 +9,8 @@
  *      persisted — the harness mints sessions through Clerk's admin API
  *      (CLERK_SECRET_KEY-authenticated), not through the user-password flow,
  *      so a stable password buys nothing and surfaces a real attack vector
- *      (mailinator inbox is public; any leak of the password = direct PROD
- *      account access via Clerk's hosted sign-in page).
+ *      (the old public mailinator inbox made any password leak = direct PROD
+ *      account access; fixtures now live on MX-less e2e.agentsfleet.net).
  *   3. Provision the fixture users in Clerk (idempotent on email) tagged
  *      with `is_test_fixture: true` metadata so prod ops dashboards can
  *      filter them out.
@@ -54,17 +54,17 @@ const REQUIRED_ENV = [
 ] as const;
 
 // Fixture emails — opt-in env override. The CI workflows resolve these
-// from op:// vault items. Defaults remain the historical mailinator
-// addresses for local DEV runs (where the public-inbox concern is
-// acceptable: local agentsfleetd + DEV Clerk + DEV billing balance only).
-const DEFAULT_REGULAR_EMAIL = "regular-fixture@mailinator.com";
-const DEFAULT_ADMIN_EMAIL = "admin-fixture@mailinator.com";
-const DEFAULT_OPERATOR_EMAIL = "operator-fixture@mailinator.com";
+// from op:// vault items. Defaults live on e2e.agentsfleet.net — an owned,
+// MX-less subdomain, undeliverable by construction. Nobody can receive a
+// login code for these addresses, unlike the old public mailinator inbox.
+const DEFAULT_REGULAR_EMAIL = "regular-fixture@e2e.agentsfleet.net";
+const DEFAULT_ADMIN_EMAIL = "admin-fixture@e2e.agentsfleet.net";
+const DEFAULT_OPERATOR_EMAIL = "operator-fixture@e2e.agentsfleet.net";
 
 // Random per-create password. The harness never logs in via password;
 // CLERK_SECRET_KEY admin API mints sessions directly. A stable password
 // would only enable an attacker who learns it (via source, leaked logs,
-// public mailinator inbox) to sign in via Clerk's hosted UI. 32 random
+// undeliverable fixture inbox) to sign in via Clerk's hosted UI. 32 random
 // bytes = 256 bits of entropy.
 function freshPassword(): string {
   return crypto.randomBytes(32).toString("base64url");
