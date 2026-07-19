@@ -66,10 +66,11 @@ fn dupeField(
     return alloc.dupe(u8, value.string);
 }
 
-// The provider base is concatenated with a leading-slash path, so a trailing
-// slash in the vault value would emit `host//v2/schedules/...` and leave every
-// schedule mutation depending on provider-side path normalization. Mirrors the
-// same trim `cron/constants.zig` applies to `api_url`.
+// The provider base is concatenated with a leading-slash path and the raw
+// destination, so it must survive that concatenation as a path prefix: a
+// trailing slash would emit `host//v2/schedules/...`, and a `?` or `#` would
+// swallow the schedules path into the base's query or fragment. Same
+// normalization `cron/constants.zig` applies to `api_url` on the other side.
 fn dupeBaseUrlField(
     alloc: std.mem.Allocator,
     object: std.json.ObjectMap,
@@ -79,6 +80,7 @@ fn dupeBaseUrlField(
     if (value != .string) return error.QStashCredentialInvalid;
     const trimmed = std.mem.trimEnd(u8, value.string, "/");
     if (trimmed.len == 0) return error.QStashCredentialInvalid;
+    if (std.mem.indexOfAny(u8, trimmed, "?#") != null) return error.QStashCredentialInvalid;
     return alloc.dupe(u8, trimmed);
 }
 
@@ -110,6 +112,19 @@ test "fromObject trims a trailing slash off the provider base" {
     var creds = try fromObject(alloc, parsed.value.object);
     defer creds.deinit(alloc);
     try std.testing.expectEqualStrings("https://qstash.test", creds.url);
+}
+
+test "fromObject rejects a provider base carrying a query or fragment" {
+    // The base is a path prefix: `host?x=1` + `/v2/schedules/` puts the schedules
+    // path inside the query, so create/delete fail at runtime on a credential
+    // that loaded cleanly. Mirrors the same guard on the destination side.
+    const alloc = std.testing.allocator;
+    inline for (.{ "https://qstash.test?x=1", "https://qstash.test#frag" }) |bad| {
+        const json = "{\"token\":\"t\",\"current_signing_key\":\"c\",\"next_signing_key\":\"n\",\"url\":\"" ++ bad ++ "\"}";
+        var parsed = try std.json.parseFromSlice(std.json.Value, alloc, json, .{});
+        defer parsed.deinit();
+        try std.testing.expectError(error.QStashCredentialInvalid, fromObject(alloc, parsed.value.object));
+    }
 }
 
 test "fromObject rejects a url that is only slashes" {
