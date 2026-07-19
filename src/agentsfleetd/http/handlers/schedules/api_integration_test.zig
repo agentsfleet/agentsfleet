@@ -30,6 +30,9 @@ const FOREIGN_LEASE_TOKEN = "0195b4ba-8d3a-7f13-8abc-1050000005f3";
 const SCHEDULE_CRON = "0 9 * * *";
 const SCHEDULE_TIMEZONE = "Asia/Kolkata";
 const SCHEDULE_MESSAGE = "summarize";
+// The QStash API base the test credentials carry; the handler must pass it
+// through as the outbound provider base (proves credentials.url wiring).
+const QSTASH_API_BASE = "https://qstash.test";
 const CREATED_AT_MS: i64 = 100;
 const SYNCED_AT_MS: i64 = 101;
 const LEASE_UNTIL_MS: i64 = 200;
@@ -39,6 +42,10 @@ const PATCH_BODY = "{\"cron\":\"15 9 * * *\",\"message\":\"summarize again\"}";
 const FakeQStash = struct {
     status: std.atomic.Value(u16) = .init(200),
     calls: std.atomic.Value(u32) = .init(0),
+    // Opt-in URL capture: off by default so every other test stays leak-free;
+    // the seam test flips it to assert the outbound base is credentials.url.
+    capture_url: bool = false,
+    captured_url: ?[]u8 = null,
 
     fn exchange(self: *FakeQStash) QStashClient.Exchange {
         return .{ .ptr = self, .callFn = call };
@@ -47,6 +54,10 @@ const FakeQStash = struct {
     fn call(ptr: *anyopaque, alloc: std.mem.Allocator, request: QStashClient.Request) anyerror!QStashClient.Response {
         const self: *FakeQStash = @ptrCast(@alignCast(ptr));
         _ = self.calls.fetchAdd(1, .monotonic);
+        if (self.capture_url) {
+            if (self.captured_url) |old| testing.allocator.free(old);
+            self.captured_url = testing.allocator.dupe(u8, request.url) catch null;
+        }
         const status = self.status.load(.acquire);
         if (status != 200 and status != 204) return .{ .status = status, .body = try alloc.dupe(u8, "{}") };
         if (request.method == .DELETE) return .{ .status = 204, .body = try alloc.dupe(u8, "") };
@@ -100,6 +111,7 @@ const Setup = struct {
         self.h.deinit();
         self.creds.deinit(testing.allocator);
         testing.allocator.destroy(self.creds);
+        if (self.fake.captured_url) |u| testing.allocator.free(u);
         testing.allocator.destroy(self.fake);
         self.* = undefined;
     }
@@ -118,7 +130,7 @@ fn testCredentials() !Credentials {
         .token = token,
         .current_signing_key = current,
         .next_signing_key = next,
-        .url = try testing.allocator.dupe(u8, "https://qstash.test"),
+        .url = try testing.allocator.dupe(u8, QSTASH_API_BASE),
     };
 }
 
@@ -180,6 +192,20 @@ test "test_create_schedule_provider_outcomes" {
     defer failed.deinit();
     try failed.expectStatus(.bad_gateway);
     try failed.expectErrorCode(error_codes.ERR_SCHEDULE_PROVIDER_UNAVAILABLE);
+}
+
+test "create schedule sends the outbound request to the credentials-configured qstash base" {
+    // Seam proof through the real handler + DB: credentials.url must become the
+    // QStash API base of the outbound request. Fails if the wiring passes any
+    // other field or a hardcoded host.
+    var setup = try Setup.init();
+    defer setup.deinit();
+    setup.fake.capture_url = true;
+    var ok = try create(&setup);
+    defer ok.deinit();
+    try ok.expectStatus(.created);
+    try testing.expect(setup.fake.captured_url != null);
+    try testing.expect(std.mem.startsWith(u8, setup.fake.captured_url.?, QSTASH_API_BASE ++ "/v2/schedules/"));
 }
 
 test "test_patch_schedule_serialization" {

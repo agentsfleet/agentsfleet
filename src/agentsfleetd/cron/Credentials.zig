@@ -84,3 +84,25 @@ test "fromObject rejects a secret bag missing url" {
     defer parsed.deinit();
     try std.testing.expectError(error.QStashCredentialInvalid, fromObject(alloc, parsed.value.object));
 }
+
+test "fromObject rejects an empty url string" {
+    const alloc = std.testing.allocator;
+    const json = "{\"token\":\"t\",\"current_signing_key\":\"c\",\"next_signing_key\":\"n\",\"url\":\"\"}";
+    var parsed = try std.json.parseFromSlice(std.json.Value, alloc, json, .{});
+    defer parsed.deinit();
+    try std.testing.expectError(error.QStashCredentialInvalid, fromObject(alloc, parsed.value.object));
+}
+
+fn fromObjectSweep(alloc: std.mem.Allocator) !void {
+    const json = "{\"token\":\"t\",\"current_signing_key\":\"c\",\"next_signing_key\":\"n\",\"url\":\"https://q\"}";
+    var parsed = try std.json.parseFromSlice(std.json.Value, alloc, json, .{});
+    defer parsed.deinit();
+    var creds = try fromObject(alloc, parsed.value.object);
+    creds.deinit(alloc);
+}
+
+test "fromObject unwinds every allocation failure without a leak" {
+    // Proves the errdefer ladder frees token/current/next when a later field
+    // (url) allocation fails — the exact path the required-url change added.
+    try std.testing.checkAllAllocationFailures(std.testing.allocator, fromObjectSweep, .{});
+}
