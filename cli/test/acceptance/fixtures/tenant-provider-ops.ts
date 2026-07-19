@@ -3,7 +3,7 @@
  *
  * Tenant provider posture is TENANT-scoped shared state in the DEV tenant —
  * there is no per-run prefix to isolate it the way fleets get
- * `ACCEPTANCE_RUN_PREFIX`. The only safe contract is: capture the baseline
+ * `ACCEPTANCE_RUN_PREFIX`. The only safe rule is: capture the baseline
  * before mutating, and restore it (PUT back to the captured self-managed
  * config, or DELETE back to the platform default) in `afterAll` even on
  * failure. These helpers wrap `tenant provider show` so the spec can snapshot
@@ -38,6 +38,8 @@ const SUB_DELETE = "delete" as const;
 export const FLAG_PROVIDER = "--provider" as const;
 export const FLAG_BASE_URL = "--base-url" as const;
 export const FLAG_API_KEY = "--api-key" as const;
+export const FLAG_MODEL = "--model" as const;
+const CUSTOM_ENDPOINT_MODEL = "qwen2.5-acceptance" as const;
 
 export interface CustomSecretOptions {
   readonly name: string;
@@ -47,7 +49,7 @@ export interface CustomSecretOptions {
 
 /**
  * `secret create <name> --provider openai-compatible --base-url <url>
- * --api-key <key> --json`. Stores a custom OpenAI-compatible secret so a
+ * --api-key <key> --model <model> --json`. Stores a custom OpenAI-compatible secret so a
  * subsequent `tenant provider create --secret <name>` can target it. Returns
  * the raw run result; the secret-leak regression fires against the JWT.
  */
@@ -62,6 +64,7 @@ export async function createCustomEndpointSecret(
       FLAG_PROVIDER, OPENAI_COMPATIBLE_PROVIDER,
       FLAG_BASE_URL, opts.baseUrl,
       FLAG_API_KEY, opts.apiKey,
+      FLAG_MODEL, CUSTOM_ENDPOINT_MODEL,
       FLAG_JSON,
     ],
     { env },
@@ -106,7 +109,6 @@ export const TENANT_PROVIDER_DELETE_ARGS: ReadonlyArray<string> = [...TENANT_PRO
 
 export const FLAG_JSON = "--json" as const;
 export const FLAG_SECRET = "--secret" as const;
-export const FLAG_MODEL = "--model" as const;
 
 // Backend surfaces an unresolved secret via the `error` field rather
 // than failing the PUT — the posture row is still written. The spec

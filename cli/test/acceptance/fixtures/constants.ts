@@ -23,6 +23,7 @@ export const FIXTURE_EMAIL_VAULT_PATHS = {
 
 export const AGENTSFLEET_STATUS = {
   active: "active",
+  installing: "installing",
   paused: "paused",
   stopped: "stopped",
   killed: "killed",

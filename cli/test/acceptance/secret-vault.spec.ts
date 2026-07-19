@@ -42,6 +42,7 @@ import {
 import { attachJwt } from "./fixtures/clerk-admin.ts";
 import { hydrateWorkspacesForToken } from "./fixtures/workspace-hydration.ts";
 import { sweepSecrets } from "./fixtures/secret-ops.ts";
+import { OPENAI_COMPATIBLE_PROVIDER } from "../../src/constants/custom-endpoint.ts";
 
 const target = process.env[ACCEPTANCE_TARGET_ENV] ?? "";
 const isLive = target.startsWith("https://");
@@ -80,7 +81,8 @@ const UNKNOWN_NAME_SUFFIX = "ghost" as const;
 const FLAG_PROVIDER = "--provider" as const;
 const FLAG_BASE_URL = "--base-url" as const;
 const FLAG_API_KEY = "--api-key" as const;
-const OPENAI_COMPATIBLE_PROVIDER = "openai-compatible" as const;
+const FLAG_MODEL = "--model" as const;
+const CUSTOM_ENDPOINT_MODEL = "qwen2.5-acceptance" as const;
 const CUSTOM_BASE_URL = "https://vllm.acceptance.example/v1" as const;
 const NON_HTTPS_BASE_URL = "http://vllm.acceptance.example/v1" as const;
 
@@ -342,6 +344,7 @@ if (!isLive) {
           FLAG_PROVIDER, OPENAI_COMPATIBLE_PROVIDER,
           FLAG_BASE_URL, CUSTOM_BASE_URL,
           FLAG_API_KEY, CUSTOM_API_KEY_VALUE,
+          FLAG_MODEL, CUSTOM_ENDPOINT_MODEL,
           FLAG_JSON,
         ]);
         assert.equal(result.code, 0, `custom create exited ${result.code}: ${result.stderr}`);
@@ -363,6 +366,7 @@ if (!isLive) {
           FLAG_PROVIDER, OPENAI_COMPATIBLE_PROVIDER,
           FLAG_BASE_URL, NON_HTTPS_BASE_URL,
           FLAG_API_KEY, CUSTOM_API_KEY_VALUE,
+          FLAG_MODEL, CUSTOM_ENDPOINT_MODEL,
           FLAG_JSON,
         ]);
       });

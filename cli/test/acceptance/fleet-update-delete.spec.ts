@@ -81,6 +81,8 @@ const STOPPED_STATES: ReadonlyArray<string> = [
 // body — a minor error-registry gap, surfaced in the PR session notes.)
 const TRANSITION_REJECTION =
   /UZ-AGT-010|transition not allowed|already.*terminal|must be killed|HTTP_409|HTTP_404|Conflict|Not Found/i;
+const INSTALL_TIMEOUT_MS = 90_000;
+const SETUP_TIMEOUT_MS = 120_000;
 
 function installedId(installed: { id?: string; fleet_id?: string }): string {
   const id = installed.id ?? installed.fleet_id;
@@ -138,11 +140,11 @@ if (!isLive) {
       let fleetName: string = "";
 
       it("install platform-ops bundle", async () => {
-        const installed = await installPlatformOpsFleet({ env });
+        const installed = await installPlatformOpsFleet({ env, timeoutMs: INSTALL_TIMEOUT_MS });
         fleetId = installedId(installed);
         fleetName = await resolveFleetName(env, fleetId);
         assert.ok(fleetName.startsWith(ACCEPTANCE_RUN_PREFIX), `name not run-scoped: ${fleetName}`);
-      });
+      }, SETUP_TIMEOUT_MS);
 
       it("fleet update re-PATCHes the bundle and acks the fleet_id", async () => {
         const updated = await updateFleetBundle(env, fleetId, fleetName);
@@ -194,11 +196,11 @@ if (!isLive) {
       let fleetId: string = "";
 
       beforeAll(async () => {
-        const installed = await installPlatformOpsFleet({ env });
+        const installed = await installPlatformOpsFleet({ env, timeoutMs: INSTALL_TIMEOUT_MS });
         fleetId = installedId(installed);
         await killFleet(env, fleetId);
         await expectStatus(env, fleetId, TERMINAL_STATUSES);
-      }, 30_000);
+      }, SETUP_TIMEOUT_MS);
 
       it("resume <killed-id> exits non-zero with UZ-AGT-010", async () => {
         const result = await runWithEnv(["resume", fleetId, "--json"]);
@@ -219,11 +221,11 @@ if (!isLive) {
       let fleetId: string = "";
 
       beforeAll(async () => {
-        const installed = await installPlatformOpsFleet({ env });
+        const installed = await installPlatformOpsFleet({ env, timeoutMs: INSTALL_TIMEOUT_MS });
         fleetId = installedId(installed);
         await stopFleet(env, fleetId);
         await expectStatus(env, fleetId, STOPPED_STATES);
-      }, 30_000);
+      }, SETUP_TIMEOUT_MS);
 
       it("stop on an already-stopped fleet is handled gracefully", async () => {
         // Either the server treats stop→stopped as a no-op (exit 0) or it

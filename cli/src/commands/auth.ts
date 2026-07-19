@@ -12,6 +12,7 @@ import { HttpClient } from "../services/http-client.ts";
 import { Output } from "../services/output.ts";
 import { AUTH_SESSIONS_PATH, TENANT_BILLING_PATH } from "../lib/api-paths.ts";
 import { AuthError, ServerError, ValidationError, type CliError } from "../errors/index.ts";
+import { ERR_UNAUTHORIZED } from "../errors/auth.ts";
 import { EVT_LOGOUT_COMPLETED } from "../constants/analytics-events.ts";
 import { decodeTokenPayload } from "../program/auth-token.ts";
 
@@ -20,7 +21,6 @@ import { decodeTokenPayload } from "../program/auth-token.ts";
 // UZ-* codes the CLI inspects by name (other codes flow through the
 // dispatcher's typed CliError variants as opaque strings).
 const ERR_FORBIDDEN = "UZ-AUTH-001";
-const ERR_UNAUTHORIZED = "UZ-AUTH-002";
 const ERR_TOKEN_EXPIRED = "UZ-AUTH-003";
 
 type TokenSource = "file" | "env" | "none";

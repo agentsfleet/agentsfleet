@@ -18,6 +18,8 @@ export interface FleetRow {
   readonly [key: string]: unknown;
 }
 
+export class FleetNotFoundError extends Error {}
+
 async function lifecycleAction(verb: string, fleetId: string, env: Env): Promise<unknown> {
   const result = await runFleetctl([verb, fleetId, "--json"], { env });
   if (result.code !== 0) {
@@ -30,10 +32,14 @@ export const stopFleet = (env: Env, id: string): Promise<unknown> => lifecycleAc
 export const resumeFleet = (env: Env, id: string): Promise<unknown> => lifecycleAction("resume", id, env);
 export const killFleet = (env: Env, id: string): Promise<unknown> => lifecycleAction("kill", id, env);
 
-export async function getStatus(env: Env, fleetId: string): Promise<FleetRow> {
+export async function getStatus(env: Env, fleetId: string, timeoutMs?: number): Promise<FleetRow> {
   // `agentsfleet list --json` returns every fleet in the current workspace.
   // Filter client-side because `agentsfleet status` is workspace-wide.
-  const result = await runFleetctl(["list", "--json"], { env });
+  const statusArgs = ["list", "--json"];
+  const result = await runFleetctl(
+    statusArgs,
+    timeoutMs === undefined ? { env } : { env, timeoutMs },
+  );
   if (result.code !== 0) {
     throw new Error(`list (for status of ${fleetId}) exited ${result.code}: ${result.stderr.trim()}`);
   }
@@ -41,7 +47,9 @@ export async function getStatus(env: Env, fleetId: string): Promise<FleetRow> {
   const items: FleetRow[] = Array.isArray(payload.items) ? (payload.items as FleetRow[]) : [];
   const match = items.find((z) => z.id === fleetId || z.fleet_id === fleetId);
   if (!match) {
-    throw new Error(`fleet ${fleetId} not found in workspace list: ${result.stdout.slice(0, 400)}`);
+    throw new FleetNotFoundError(
+      `fleet ${fleetId} not found in workspace list: ${result.stdout.slice(0, 400)}`,
+    );
   }
   return match;
 }
