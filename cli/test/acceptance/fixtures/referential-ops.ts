@@ -43,6 +43,7 @@
 
 import assert from "node:assert/strict";
 
+import { ERR_UNAUTHORIZED } from "../../../src/errors/auth.ts";
 import { composeEnv, runFleetctl } from "./cli.js";
 import type { RunResult } from "./cli.js";
 import { assertNoSecretLeak } from "./negatives.ts";
@@ -79,12 +80,15 @@ export const AGENT_KEY_SECRET_PREFIX = "agt_a" as const;
 
 // An `agt_a` fleet key sent as a control-plane bearer is REJECTED at the auth
 // boundary — the `bearer()` middleware answers 401 (no JWT / no `agt_t`), which
-// the CLI surfaces as an `HTTP_401` / `HTTP_403` ServerError stem. The same
-// rejection holds after the key is revoked. Anchored to auth-rejection stems
-// only — a bare `invalid`/`expired` would also match unrelated errors
+// the CLI surfaces primarily as UZ-AUTH-002, with HTTP_401 / HTTP_403 stems or
+// wording tolerated as fallbacks. The same rejection holds after the key is
+// revoked. Anchored to auth-rejection forms only — a bare `invalid`/`expired`
+// would also match unrelated errors
 // ("invalid argument", "expired snapshot") and let a wrong-reason failure
 // pass as an auth rejection.
-export const REJECTED_AUTH_RE = /HTTP_401|HTTP_403|\b401\b|\b403\b|unauthor|forbidden/i;
+const REJECTED_AUTH_PATTERN =
+  `${ERR_UNAUTHORIZED}|HTTP_401|HTTP_403|\\b401\\b|\\b403\\b|unauthor|forbidden`;
+export const REJECTED_AUTH_RE = new RegExp(REJECTED_AUTH_PATTERN, "i");
 
 // A secret delete refused for referential reasons surfaces as a conflict
 // (HTTP_409); the alternative is a clean cascade (exit 0). Dropped the bare

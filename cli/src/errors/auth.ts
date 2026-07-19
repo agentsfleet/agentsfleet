@@ -2,6 +2,7 @@
 // Effect.catchTag and the shared renderer can classify login failures.
 
 const SUGGESTION_PREFIX = "\n  Suggestion: " as const;
+export const ERR_UNAUTHORIZED = "UZ-AUTH-002" as const;
 export const AUTH_FLOW_ERROR_TAG = {
   invalidSession: "InvalidSessionError",
   expiredSession: "ExpiredSessionError",
