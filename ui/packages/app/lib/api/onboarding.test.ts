@@ -3,7 +3,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 const requestMock = vi.fn();
 vi.mock("./client", () => ({ request: (...a: unknown[]) => requestMock(...a) }));
 
-import { getOnboarding, statusToInputs, type OnboardingStatus } from "./onboarding";
+import {
+  getOnboarding,
+  getOnboardingRequired,
+  statusToInputs,
+  type OnboardingStatus,
+} from "./onboarding";
 
 const FULL: OnboardingStatus = {
   model_configured: true,
@@ -37,6 +42,11 @@ describe("getOnboarding", () => {
     expect(s.model_configured).toBe(false);
     expect(s.has_fleet).toBe(false);
     expect(s.cli_ticked).toBe(false);
+  });
+
+  it("propagates a required-read failure so live progress keeps its last good state", async () => {
+    requestMock.mockRejectedValue(new Error("down"));
+    await expect(getOnboardingRequired("ws_1", "tok")).rejects.toThrow("down");
   });
 });
 

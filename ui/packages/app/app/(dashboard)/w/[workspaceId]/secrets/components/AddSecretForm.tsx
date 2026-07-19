@@ -26,6 +26,7 @@ import { SECRET_NAME_MAX } from "../lib/secret-data";
 import { EVENTS } from "@/lib/analytics/events";
 import { captureProductEvent } from "@/lib/analytics/posthog";
 import { CREATE_SECRET_TOOLTIP } from "../copy";
+import { requestOnboardingRefresh } from "@/lib/onboarding-refresh";
 
 type Props = {
   workspaceId: string;
@@ -115,6 +116,7 @@ export default function AddSecretForm({ workspaceId, onDone, onCancel }: Props) 
         return;
       }
       captureProductEvent(EVENTS.secret_added, { secret_name: name });
+      requestOnboardingRefresh(workspaceId);
       form.reset({ name: "", fields: [{ ...EMPTY_FIELD }] });
       onDone?.();
       router.refresh();
