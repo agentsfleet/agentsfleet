@@ -47,7 +47,7 @@ fn fromObject(alloc: std.mem.Allocator, object: std.json.ObjectMap) !Credentials
     errdefer secure_memory.freeBytes(alloc, current);
     const next = try dupeField(alloc, object, NEXT_SIGNING_KEY_FIELD);
     errdefer secure_memory.freeBytes(alloc, next);
-    const url = try dupeField(alloc, object, URL_FIELD);
+    const url = try dupeBaseUrlField(alloc, object, URL_FIELD);
     return .{
         .token = token,
         .current_signing_key = current,
@@ -66,6 +66,22 @@ fn dupeField(
     return alloc.dupe(u8, value.string);
 }
 
+// The provider base is concatenated with a leading-slash path, so a trailing
+// slash in the vault value would emit `host//v2/schedules/...` and leave every
+// schedule mutation depending on provider-side path normalization. Mirrors the
+// same trim `cron/constants.zig` applies to `api_url`.
+fn dupeBaseUrlField(
+    alloc: std.mem.Allocator,
+    object: std.json.ObjectMap,
+    field: []const u8,
+) ![]u8 {
+    const value = object.get(field) orelse return error.QStashCredentialInvalid;
+    if (value != .string) return error.QStashCredentialInvalid;
+    const trimmed = std.mem.trimEnd(u8, value.string, "/");
+    if (trimmed.len == 0) return error.QStashCredentialInvalid;
+    return alloc.dupe(u8, trimmed);
+}
+
 test "fromObject loads url alongside the token and signing keys" {
     const alloc = std.testing.allocator;
     const eu_url = "https://qstash-eu-central-1.upstash.io";
@@ -80,6 +96,25 @@ test "fromObject loads url alongside the token and signing keys" {
 test "fromObject rejects a secret bag missing url" {
     const alloc = std.testing.allocator;
     const json = "{\"token\":\"t\",\"current_signing_key\":\"c\",\"next_signing_key\":\"n\"}";
+    var parsed = try std.json.parseFromSlice(std.json.Value, alloc, json, .{});
+    defer parsed.deinit();
+    try std.testing.expectError(error.QStashCredentialInvalid, fromObject(alloc, parsed.value.object));
+}
+
+test "fromObject trims a trailing slash off the provider base" {
+    // Without the trim the client emits `host//v2/schedules/...`.
+    const alloc = std.testing.allocator;
+    const json = "{\"token\":\"t\",\"current_signing_key\":\"c\",\"next_signing_key\":\"n\",\"url\":\"https://qstash.test/\"}";
+    var parsed = try std.json.parseFromSlice(std.json.Value, alloc, json, .{});
+    defer parsed.deinit();
+    var creds = try fromObject(alloc, parsed.value.object);
+    defer creds.deinit(alloc);
+    try std.testing.expectEqualStrings("https://qstash.test", creds.url);
+}
+
+test "fromObject rejects a url that is only slashes" {
+    const alloc = std.testing.allocator;
+    const json = "{\"token\":\"t\",\"current_signing_key\":\"c\",\"next_signing_key\":\"n\",\"url\":\"//\"}";
     var parsed = try std.json.parseFromSlice(std.json.Value, alloc, json, .{});
     defer parsed.deinit();
     try std.testing.expectError(error.QStashCredentialInvalid, fromObject(alloc, parsed.value.object));
