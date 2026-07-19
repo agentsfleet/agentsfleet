@@ -4,7 +4,11 @@ import {
   AGENTSFLEET_STATUS,
   TERMINAL_STATUSES,
 } from "./acceptance/fixtures/constants.ts";
-import { fleetReachedActive } from "./acceptance/fixtures/seed.ts";
+import { FleetNotFoundError } from "./acceptance/fixtures/lifecycle.ts";
+import {
+  fleetReadErrorIsRetryable,
+  fleetReachedActive,
+} from "./acceptance/fixtures/seed.ts";
 
 const FLEET_ID = "019b0000-0000-7000-8000-000000000001";
 
@@ -24,5 +28,10 @@ describe("fleet readiness classification", () => {
         `fleet ${FLEET_ID} entered terminal status=${status} before becoming active`,
       );
     }
+  });
+
+  test("missing fleet retries while other read errors fail", () => {
+    expect(fleetReadErrorIsRetryable(new FleetNotFoundError("not visible yet"))).toBe(true);
+    expect(fleetReadErrorIsRetryable(new Error("list failed"))).toBe(false);
   });
 });

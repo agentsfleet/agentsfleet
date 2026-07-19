@@ -18,7 +18,7 @@ import {
   TERMINAL_STATUSES,
 } from "./constants.ts";
 import { runFleetctl } from "./cli.js";
-import { getStatus } from "./lifecycle.ts";
+import { FleetNotFoundError, getStatus } from "./lifecycle.ts";
 import { ensurePlatformSecretsSeeded } from "./platform-secrets.ts";
 import {
   buildPlatformOpsContent,
@@ -61,6 +61,10 @@ export function fleetReachedActive(fleetId: string, status: string | undefined):
   return false;
 }
 
+export function fleetReadErrorIsRetryable(error: unknown): boolean {
+  return error instanceof FleetNotFoundError;
+}
+
 async function waitForFleetActive(
   env: Readonly<Record<string, string>>,
   fleetId: string,
@@ -68,9 +72,13 @@ async function waitForFleetActive(
 ): Promise<void> {
   let lastStatus: string | undefined;
   while (Date.now() < deadline) {
-    const fleet = await getStatus(env, fleetId, remainingTimeoutMs(deadline));
-    lastStatus = fleet.status;
-    if (fleetReachedActive(fleetId, lastStatus)) return;
+    try {
+      const fleet = await getStatus(env, fleetId, remainingTimeoutMs(deadline));
+      lastStatus = fleet.status;
+      if (fleetReachedActive(fleetId, lastStatus)) return;
+    } catch (error) {
+      if (!fleetReadErrorIsRetryable(error)) throw error;
+    }
     await Bun.sleep(Math.min(FLEET_READY_POLL_MS, remainingTimeoutMs(deadline)));
   }
   throw new Error(`fleet ${fleetId} did not become active; last status=${lastStatus ?? "unknown"}`);
