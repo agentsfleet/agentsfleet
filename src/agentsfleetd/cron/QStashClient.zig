@@ -12,7 +12,6 @@ const http_pin = @import("http_pin");
 
 const model = @import("model.zig");
 
-const DEFAULT_API_BASE = "https://qstash.upstash.io";
 const SCHEDULES_PATH = "/v2/schedules/";
 const CONTENT_TYPE_JSON = "application/json";
 const AUTHORIZATION_HEADER = "authorization";
@@ -69,11 +68,7 @@ pub const Outcome = enum {
     malformed_response,
 };
 
-pub fn init(exchange: Exchange, destination_url: []const u8) QStashClient {
-    return initWithBase(exchange, DEFAULT_API_BASE, destination_url);
-}
-
-pub fn initWithBase(exchange: Exchange, api_base: []const u8, destination_url: []const u8) QStashClient {
+pub fn init(exchange: Exchange, api_base: []const u8, destination_url: []const u8) QStashClient {
     return .{ .exchange = exchange, .api_base = api_base, .destination_url = destination_url };
 }
 
@@ -83,9 +78,11 @@ pub fn upsert(
     token: []const u8,
     schedule: model.Schedule,
 ) error{OutOfMemory}!Outcome {
-    const encoded_destination = try percentEncode(alloc, self.destination_url);
-    defer alloc.free(encoded_destination);
-    const url = try std.fmt.allocPrint(alloc, ENDPOINT_FORMAT, .{ self.api_base, SCHEDULES_PATH, encoded_destination });
+    // QStash takes the destination raw in the path segment (it parses the
+    // destination URL itself and forwards its query params). Percent-encoding it
+    // makes QStash reject the create with "invalid destination url: endpoint has
+    // invalid scheme" — proven by the live dev-server integration test.
+    const url = try std.fmt.allocPrint(alloc, ENDPOINT_FORMAT, .{ self.api_base, SCHEDULES_PATH, self.destination_url });
     defer alloc.free(url);
     const body = try std.json.Stringify.valueAlloc(alloc, .{
         .schedule_id = schedule.schedule_id,
@@ -142,7 +139,10 @@ pub fn delete(
 }
 
 fn classifyUpsert(alloc: std.mem.Allocator, response: Response, expected_id: []const u8) error{OutOfMemory}!Outcome {
-    if (response.status != 200) return classifyStatus(response.status);
+    // QStash returns 201 Created for a schedule upsert (proven against the live
+    // dev server); 200 is accepted too for forward-compatibility. Both are the
+    // success path — the body still carries the echoed scheduleId.
+    if (response.status != 200 and response.status != 201) return classifyStatus(response.status);
     const Reply = struct { scheduleId: []const u8 };
     var parsed = std.json.parseFromSlice(Reply, alloc, response.body, .{ .ignore_unknown_fields = true }) catch |err| switch (err) {
         error.OutOfMemory => return error.OutOfMemory,

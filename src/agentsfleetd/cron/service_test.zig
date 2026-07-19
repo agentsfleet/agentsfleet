@@ -60,7 +60,7 @@ const Fake = struct {
 };
 
 fn client(fake: *Fake) QStashClient {
-    return QStashClient.initWithBase(fake.exchange(), "https://qstash.test", DESTINATION);
+    return QStashClient.init(fake.exchange(), "https://qstash.test", DESTINATION);
 }
 
 test "service: provider I/O runs after releasing the only database connection" {
