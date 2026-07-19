@@ -108,8 +108,8 @@ async function refreshProgress(
       commitFailOpenProgress(state, workspaceId, generation, setProgress);
     }
   } catch {
-    // Keep the last good progress. Focus, invalidation, or the fallback timer
-    // will retry without replacing it with a false zeroed checklist.
+    // Keep the last good progress, or use the fail-open checklist before the
+    // first success. Focus, invalidation, or the fallback timer will retry.
     commitFailOpenProgress(state, workspaceId, generation, setProgress);
   } finally {
     state.activeWorkspaceIds.delete(workspaceId);
