@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useState, useTransition } from "react";
 import { ChevronDownIcon, ChevronUpIcon, XIcon } from "lucide-react";
 import { cn, EYEBROW_CLASS, IconAction } from "@agentsfleet/design-system";
 import OnboardingRail from "@/components/domain/OnboardingRail";
@@ -12,56 +12,54 @@ import {
 } from "@/lib/onboarding";
 import { PREFERENCE_KEY } from "@/lib/api/preferences";
 import {
-  getOnboardingSnapshotAction,
   putPreferenceAction,
-  type OnboardingSnapshot,
 } from "@/lib/actions/preferences";
 import { captureProductEvent } from "@/lib/analytics/posthog";
 import { EVENTS } from "@/lib/analytics/events";
+import {
+  useOnboardingProgress,
+  type OnboardingPollingMode,
+} from "./use-onboarding-progress";
 
-type Props = { workspaceId: string };
+type Props = {
+  workspaceId: string;
+  pollingMode?: OnboardingPollingMode;
+};
 
 // Bottom-left onboarding widget — the checklist's only home once a fleet exists
 // (the single-route refactor removed the page). Mirrors the same tick rail via
 // the one derivation, so it can't disagree with the empty-state checklist. Its
 // dismiss/collapse state is a server preference (§5), so it survives a device
-// change; the browser has no token, so it pulls its snapshot through a server
-// action. Fail-open: while loading, or on error, the widget stays hidden rather
-// than flashing a zeroed checklist, and a genuine read failure returns an
-// undismissed snapshot so onboarding is never hidden by a failure.
-export default function GettingStartedWidget({ workspaceId }: Props) {
-  const [snapshot, setSnapshot] = useState<OnboardingSnapshot | null>(null);
-  const [collapsed, setCollapsed] = useState(false);
-  const [dismissed, setDismissed] = useState(false);
+// change; the browser has no token, so it pulls its progress through a server
+// action. Successful local actions invalidate that progress, while focus and a
+// visible-tab timer cover changes that happen elsewhere. Fail-open: while
+// loading, or before the first successful read, the widget stays hidden rather
+// than flashing a zeroed checklist.
+export default function GettingStartedWidget({ workspaceId, pollingMode = "mounted" }: Props) {
+  const [localPreference, setLocalPreference] = useState<{
+    workspaceId: string;
+    collapsed: boolean;
+    dismissed: boolean;
+  } | null>(null);
+  const local = localPreference?.workspaceId === workspaceId ? localPreference : null;
+  const progress = useOnboardingProgress(
+    workspaceId,
+    local?.dismissed ?? false,
+    pollingMode,
+  );
   const [, startTransition] = useTransition();
 
-  useEffect(() => {
-    let live = true;
-    setSnapshot(null);
-    getOnboardingSnapshotAction(workspaceId)
-      .then((res) => {
-        if (!live) return;
-        if (res.ok) {
-          setSnapshot(res.data);
-          setCollapsed(res.data.collapsed);
-          setDismissed(res.data.dismissed);
-        }
-      })
-      // Fail-open: a rejected snapshot read leaves the widget hidden (null
-      // snapshot) rather than crashing the shell — the checklist reappears on
-      // the next successful load, and a read failure never marks onboarding
-      // dismissed.
-      .catch(() => {});
-    return () => {
-      live = false;
-    };
-  }, [workspaceId]);
+  if (!progress) return null;
 
-  if (!snapshot || dismissed) return null;
+  const collapsed = local?.collapsed ?? progress.collapsed;
+  // A confirmed server dismissal wins over a stale local `false` left behind
+  // by an earlier collapse toggle. Local `true` still provides optimistic hide.
+  const dismissed = progress.dismissed || local?.dismissed === true;
+  if (dismissed) return null;
 
-  const steps = deriveSteps(snapshot.inputs);
-  const completed = completedRequiredCount(snapshot.inputs);
-  const complete = isOnboardingComplete(snapshot.inputs);
+  const steps = deriveSteps(progress.inputs);
+  const completed = completedRequiredCount(progress.inputs);
+  const complete = isOnboardingComplete(progress.inputs);
 
   function persist(key: (typeof PREFERENCE_KEY)[keyof typeof PREFERENCE_KEY], value: boolean) {
     startTransition(() => {
@@ -71,7 +69,7 @@ export default function GettingStartedWidget({ workspaceId }: Props) {
 
   function toggleCollapse() {
     const next = !collapsed;
-    setCollapsed(next);
+    setLocalPreference({ workspaceId, collapsed: next, dismissed });
     persist(PREFERENCE_KEY.COLLAPSED, next);
   }
 
@@ -79,7 +77,7 @@ export default function GettingStartedWidget({ workspaceId }: Props) {
     // Optimistic hide — dismiss is only offered when onboarding is complete, so
     // a lost write costs at most the widget reappearing on the next load, never
     // hidden onboarding.
-    setDismissed(true);
+    setLocalPreference({ workspaceId, collapsed, dismissed: true });
     persist(PREFERENCE_KEY.DISMISSED, true);
     captureProductEvent(EVENTS.onboarding_dismissed, {
       workspace_id: workspaceId,

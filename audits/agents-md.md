@@ -123,8 +123,9 @@ The questionnaire is organised by scenario. Each scenario corresponds to a momen
 
 | # | Question | Expected |
 |---|---|---|
-| 7.1 | Is the skill chain order `/write-unit-test` → `/review` → `kishore-babysit-prs` preserved? | YES |
-| 7.2 | Is REVIEW an explicit stage after VERIFY and before DOCUMENT, with `/review` required there when a spec is active? | YES |
+| 7.1 | Is the skill chain order `/write-unit-test` → runtime review → `kishore-babysit-prs` preserved? | YES |
+| 7.2 | Is REVIEW an explicit stage after VERIFY and before DOCUMENT, with the runtime's review route required there? | YES |
+| 7.3 | Does Codex use native `/review` (`codex review` non-interactively), while Claude, OpenCode, and Amp use gstack `/review`? | YES |
 | 7.4 | Does `kishore-babysit-prs` run after every push and stop only on two consecutive empty polls? | YES |
 | 7.5 | Is using `gh pr checks --watch` for greptile explicitly disallowed? | YES |
 | 7.6 | If an MCP-backed skill is unavailable, must PR Session Notes record the skip + a "rerun before merge" note? | YES |

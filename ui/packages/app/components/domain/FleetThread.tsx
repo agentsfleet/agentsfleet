@@ -31,6 +31,7 @@ import type { EventRow } from "@/lib/api/events";
 import { steerFleetAction } from "@/app/(dashboard)/w/[workspaceId]/fleets/actions";
 import { SteerComposer } from "./SteerComposer";
 import { renderFleetMessage } from "./fleetMessageRenderers";
+import { requestOnboardingRefresh } from "@/lib/onboarding-refresh";
 
 const PANEL_TITLE = "Live activity";
 const EMPTY_HINT =
@@ -249,6 +250,7 @@ function useNewMessageHandler({
         const result = await steerFleetAction(workspaceId, fleetId, text);
         if (result.ok) {
           reconcileOptimistic(tempId, result.data.event_id);
+          requestOnboardingRefresh(workspaceId);
         } else {
           markOptimisticFailed(tempId);
         }
