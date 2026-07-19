@@ -16,6 +16,7 @@ const {
   listRunnersMock,
   createRunnerMock,
   updateRunnerAdminStateMock,
+  deleteRunnerMock,
   listRunnerEventsMock,
 } = vi.hoisted(() => ({
   hasScopeMock: vi.fn(),
@@ -23,6 +24,7 @@ const {
   listRunnersMock: vi.fn(),
   createRunnerMock: vi.fn(),
   updateRunnerAdminStateMock: vi.fn(),
+  deleteRunnerMock: vi.fn(),
   listRunnerEventsMock: vi.fn(),
 }));
 
@@ -32,6 +34,7 @@ vi.mock("@/lib/api/runners", () => ({
   listRunners: listRunnersMock,
   createRunner: createRunnerMock,
   updateRunnerAdminState: updateRunnerAdminStateMock,
+  deleteRunner: deleteRunnerMock,
   listRunnerEvents: listRunnerEventsMock,
 }));
 
@@ -39,6 +42,7 @@ import {
   listRunnersAction,
   createRunnerAction,
   updateRunnerAdminStateAction,
+  deleteRunnerAction,
   listRunnerEventsAction,
 } from "@/app/(dashboard)/admin/runners/actions";
 
@@ -95,6 +99,28 @@ describe("runner server actions — per-scope gate (defence-in-depth)", () => {
     expect(hasScopeMock).toHaveBeenCalledWith(SCOPE.RUNNER_WRITE);
     expect(withTokenMock).not.toHaveBeenCalled();
     expect(updateRunnerAdminStateMock).not.toHaveBeenCalled();
+  });
+
+  it("deleteRunnerAction gates on runner:write — the same scope as revoke, deliberately — and fails closed without it", async () => {
+    hasScopeMock.mockResolvedValueOnce(false);
+    const r = await deleteRunnerAction("runner-1");
+    expect(r).toEqual({
+      ok: false,
+      error: "Operator scope required: runner:write",
+      status: 403,
+      errorCode: "UZ-AUTH-022",
+    });
+    expect(hasScopeMock).toHaveBeenCalledWith(SCOPE.RUNNER_WRITE);
+    expect(withTokenMock).not.toHaveBeenCalled();
+    expect(deleteRunnerMock).not.toHaveBeenCalled();
+  });
+
+  it("deleteRunnerAction forwards the token round-trip when the scope holds", async () => {
+    hasScopeMock.mockResolvedValueOnce(true);
+    deleteRunnerMock.mockResolvedValueOnce(undefined);
+    const r = await deleteRunnerAction("runner-1");
+    expect(r).toEqual({ ok: true, data: undefined });
+    expect(deleteRunnerMock).toHaveBeenCalledWith("tok", "runner-1");
   });
 
   it("listRunnerEventsAction gates on runner:read and fails closed 403 UZ-AUTH-022 without it", async () => {

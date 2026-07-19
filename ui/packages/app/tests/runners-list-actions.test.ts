@@ -217,6 +217,19 @@ describe("RunnerList row actions", () => {
     expect(updateRunnerAdminStateActionMock).not.toHaveBeenCalled();
   });
 
+  it("dismissing the delete confirmation clears it without calling the daemon", async () => {
+    const user = userEvent.setup();
+    await renderList(listResponse([OFFLINE]));
+
+    await user.click(screen.getByRole("button", { name: /^delete$/i }));
+    expect(screen.getByRole("alertdialog")).toBeTruthy();
+    await user.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: /cancel/i }));
+
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+    expect(deleteRunnerActionMock).not.toHaveBeenCalled();
+    expect(screen.getByText(OFFLINE.host_id)).toBeTruthy();
+  });
+
   it("keeps the row and surfaces the daemon's reason when delete is refused", async () => {
     deleteRunnerActionMock.mockResolvedValueOnce({
       ok: false,

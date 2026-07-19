@@ -201,17 +201,9 @@ _test-integration-full: _reset-test-db
 	wait "$$runner_build_pid" || { echo "✗ [agentsfleet-runner] Runner binary build failed"; exit 1; }; \
 	[ "$$migrate_rc" -eq 0 ] || { echo "✗ [agentsfleetd] Test database migration failed (exit $$migrate_rc) — not running tests against an unmigrated DB"; exit 1; }; \
 	echo "✓ [agentsfleet-runner] Runner binary built."; \
-	echo "→ [catalogue] Seeding core.model_library from the allowlist (fixtures, no network)..."; \
-	SEED_PSQL="docker compose exec -T postgres psql -U agentsfleet -d agentsfleetdb" \
-	  node scripts/seed-models.mjs --fixtures --apply >/dev/null || \
-	  { echo "✗ [catalogue] seed-models failed — model_library_seed_integration_test will fail loudly"; exit 1; }; \
-	docker compose exec -T postgres psql -U agentsfleet -d agentsfleetdb -q -c \
-	  "UPDATE core.model_library SET input_nanos_per_mtok = 1 WHERE provider = 'kimi' AND model_id = 'kimi-k3'" || \
-	  { echo "✗ [catalogue] drift injection failed"; exit 1; }; \
-	SEED_PSQL="docker compose exec -T postgres psql -U agentsfleet -d agentsfleetdb" \
-	  node scripts/seed-models.mjs --fixtures --apply >/dev/null || \
-	  { echo "✗ [catalogue] refresh pass failed — the ON CONFLICT DO UPDATE path is broken"; exit 1; }; \
-	echo "✓ [catalogue] Seeded, then re-seeded over injected drift — the Zig rate-units test asserts the correction landed."; \
+	echo "→ [catalogue] model_library seeding is SELF-SERVE: the Zig seed tests apply"; \
+	echo "  samples/fixtures/model-library/seed.sql over their own pg connection —"; \
+	echo "  the CI zig container has neither node nor psql, so no make step seeds here."; \
 	echo "→ [agentsfleetd] Building the integration test binary, then running the suite against real DB + Redis (silent zig compile first, then tests)..."; \
 	ZIG_GLOBAL_CACHE_DIR="$(ZIG_GLOBAL_CACHE_DIR)" \
 	ZIG_LOCAL_CACHE_DIR="$(ZIG_LOCAL_CACHE_DIR)" \
