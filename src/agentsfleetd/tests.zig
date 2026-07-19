@@ -121,6 +121,7 @@ test {
     _ = @import("state/workspace_onboarding.zig");
     _ = @import("state/model_rate_cache.zig");
     _ = @import("state/model_rate_cache_integration_test.zig");
+    _ = @import("state/model_library_seed_integration_test.zig");
     _ = @import("state/account_teardown.zig");
     _ = @import("state/account_teardown_test.zig");
     _ = @import("state/heroku_names.zig");

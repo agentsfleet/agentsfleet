@@ -145,7 +145,11 @@ describe("fleets routes", () => {
     const { default: Loading } = await import("../app/(dashboard)/w/[workspaceId]/fleets/loading");
     render(React.createElement(Loading));
     const el = screen.getByRole("status");
-    expect(el.textContent).toContain("Loading Fleets");
+    // Visible copy is a random waiting verb ("Brewing Fleets…"), so assert the
+    // route name plus the stable accessible name rather than the old static
+    // "Loading Fleets" — that string now lives only in aria-label.
+    expect(el.textContent).toContain("Fleets");
+    expect(el.getAttribute("aria-label")).toBe("Loading Fleets");
     // Branded WakePulse dot (data-live), not the off-system Loader2Icon spin.
     const dot = el.querySelector("[data-live]");
     expect(dot).toBeTruthy();

@@ -24,26 +24,34 @@ const RUNNER_ACTIVITY_TITLE = "Runner activity";
 const CONFIRM_LABEL = "Confirm";
 const EMPTY_METADATA = "{}";
 
-export type RunnerActionConfirmTarget = {
+// The confirm copy the dialog actually renders. Delete carries the same copy but
+// no `action` — it is a DELETE verb, not one of the three PATCH admin actions —
+// so the copy shape is factored out rather than widening RunnerAdminAction.
+export type RunnerConfirmCopy = {
   runner: RunnerListItem;
-  action: RunnerAdminAction;
   label: string;
   title: string;
   description: string;
   intent: "default" | "destructive";
   errorAction: string;
-} | null;
+};
 
-export function RunnerActionConfirm({
+export type RunnerActionConfirmTarget = (RunnerConfirmCopy & { action: RunnerAdminAction }) | null;
+export type RunnerDeleteConfirmTarget = RunnerConfirmCopy | null;
+
+// Generic over the target so both callers keep their exact shape: the PATCH
+// caller's handler needs `action`, the delete caller's does not. A non-generic
+// RunnerConfirmCopy parameter would reject the PATCH handler outright.
+export function RunnerActionConfirm<T extends RunnerConfirmCopy>({
   target,
   error,
   onOpenChange,
   onConfirm,
 }: {
-  target: RunnerActionConfirmTarget;
+  target: T | null;
   error: string | null;
   onOpenChange: (open: boolean) => void;
-  onConfirm: (target: NonNullable<RunnerActionConfirmTarget>) => void;
+  onConfirm: (target: T) => void;
 }) {
   return (
     <ConfirmDialog

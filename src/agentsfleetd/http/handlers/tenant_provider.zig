@@ -238,7 +238,12 @@ fn resolveSelfManagedCap(provider: []const u8, model: []const u8) ?u32 {
     const trimmed = std.mem.trim(u8, model, &std.ascii.whitespace);
     if (trimmed.len == 0 or trimmed.len != model.len) return null;
     if (std.mem.eql(u8, provider, tenant_provider.OPENAI_COMPATIBLE_PROVIDER)) {
-        return CUSTOM_ENDPOINT_CAP_UNKNOWN;
+        // A custom endpoint still names a real model, and a context window is a
+        // property of the MODEL, not the host serving it — so borrow the
+        // catalogue's cap when it knows one (never the rate: self-managed is
+        // billed by the tenant's own provider). The sentinel fallback keeps a
+        // genuinely unknown model activating exactly as before.
+        return model_rate_cache.lookup_context_cap(trimmed) orelse CUSTOM_ENDPOINT_CAP_UNKNOWN;
     }
     const entry = model_rate_cache.lookup_model_rate(provider, model) orelse return null;
     return entry.context_cap_tokens;

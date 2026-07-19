@@ -12,10 +12,11 @@ import {
   Time,
 } from "@agentsfleet/design-system";
 // Glyph vocabulary follows the settings surfaces: BanIcon means "revoke a
-// credential", Trash2Icon means "delete". There is no runner delete, so no
-// trash-can appears here — a trash-can that revokes would advertise an action
-// the daemon does not serve.
-import { ActivityIcon, BanIcon, ArrowDownToLineIcon, PauseIcon } from "lucide-react";
+// credential", Trash2Icon means "delete". Both appear here, and never together
+// on one row — revoke is offered until the runner is revoked, delete only after
+// (DELETE /v1/fleets/runners/{id} 409s on a live runner), exactly as ApiKeyList
+// alternates the two.
+import { ActivityIcon, BanIcon, ArrowDownToLineIcon, PauseIcon, Trash2Icon } from "lucide-react";
 import {
   RUNNER_ADMIN_ACTION,
   RUNNER_ADMIN_STATE,
@@ -81,6 +82,25 @@ export const ACTION_CONFIG: Record<RunnerAdminAction, {
   },
 };
 
+// Delete is deliberately NOT a member of ACTION_CONFIG: that map is keyed on
+// RunnerAdminAction, the three PATCH verbs the daemon serves, and widening it
+// would loosen an exhaustive type that actionsFor and RunnerList both lean on.
+// Delete is a different HTTP verb with a different lifecycle, so it gets its own
+// config and its own trigger.
+export const DELETE_ACTION_CONFIG = {
+  label: "Delete",
+  title: "Delete this runner?",
+  description:
+    "Removes the revoked runner's record, along with its lease and event history. The enrolled host is unaffected — it was already blocked at revoke. This cannot be undone.",
+  intent: "destructive" as const,
+  errorAction: "delete this runner",
+};
+
+/** Only a revoked runner is deletable — the daemon 409s (UZ-RUN-016) otherwise. */
+export function canDelete(state: RunnerAdminState): boolean {
+  return state === RUNNER_ADMIN_STATE.revoked;
+}
+
 export function actionsFor(state: RunnerAdminState): RunnerAdminAction[] {
   const out: RunnerAdminAction[] = [];
   if (state === RUNNER_ADMIN_STATE.active) out.push(RUNNER_ADMIN_ACTION.cordon);
@@ -135,11 +155,13 @@ export function ActionsCell({
   pending,
   onActivity,
   onAction,
+  onDelete,
 }: {
   r: RunnerListItem;
   pending: boolean;
   onActivity: (runner: RunnerListItem) => void;
   onAction: (runner: RunnerListItem, action: RunnerAdminAction) => void;
+  onDelete: (runner: RunnerListItem) => void;
 }) {
   return (
     <div className="flex flex-wrap items-center justify-end gap-2">
@@ -157,6 +179,16 @@ export function ActionsCell({
           {ACTION_CONFIG[action].icon}
         </IconAction>
       ))}
+      {canDelete(r.admin_state) ? (
+        <IconAction
+          label={DELETE_ACTION_CONFIG.label}
+          variant="destructive"
+          onClick={() => onDelete(r)}
+          disabled={pending}
+        >
+          <Trash2Icon />
+        </IconAction>
+      ) : null}
     </div>
   );
 }
