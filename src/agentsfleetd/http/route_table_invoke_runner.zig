@@ -12,6 +12,7 @@ const runner_register = @import("handlers/runner/register.zig");
 const fleet_runners_list = @import("handlers/fleet/runners_list.zig");
 const fleet_streams_list = @import("handlers/fleet/streams_list.zig");
 const fleet_runner_patch = @import("handlers/fleet/runner_patch.zig");
+const fleet_runner_delete = @import("handlers/fleet/runner_delete.zig");
 const fleet_runner_events = @import("handlers/fleet/runner_events.zig");
 const runner_self = @import("handlers/runner/self.zig");
 const runner_heartbeat = @import("handlers/runner/heartbeat.zig");
@@ -47,9 +48,17 @@ pub fn invokeFleetStreamsList(hx: *Hx, req: *httpz.Request, route: router.Route)
     fleet_streams_list.innerListFleetStreams(hx.*, req);
 }
 
+// PATCH and DELETE share one route variant (the router matches the path
+// method-agnostically), so the method fans out here — the same shape as
+// invokeTenantApiKeyById. Keeping one variant avoids touching the exhaustive
+// classFor switch in route_admission.zig.
 pub fn invokeFleetRunnerPatch(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    if (!common.requireMethod(hx.res, req.method, .PATCH)) return;
-    fleet_runner_patch.innerPatchFleetRunner(hx.*, req, route.fleet_runner_patch);
+    const runner_id = route.fleet_runner_patch;
+    switch (req.method) {
+        .PATCH => fleet_runner_patch.innerPatchFleetRunner(hx.*, req, runner_id),
+        .DELETE => fleet_runner_delete.innerDeleteFleetRunner(hx.*, runner_id),
+        else => common.respondMethodNotAllowed(hx.res),
+    }
 }
 
 pub fn invokeFleetRunnerEvents(hx: *Hx, req: *httpz.Request, route: router.Route) void {

@@ -1,0 +1,300 @@
+{
+  "_readme": [
+    "Curated input for `make seed-models` (scripts/seed-models.mjs). This file is the",
+    "anti-clutter mechanism: Pioneer alone returns ~95 models including embeddings and",
+    "Gemma/Llama variants. Only what is listed here reaches core.model_library.",
+    "",
+    "Scope rule: current flagship plus at most one or two tiers down. A model that a",
+    "provider has superseded comes out on the next curation pass — this is not an archive.",
+    "",
+    "Two provider shapes:",
+    "  source=api     the provider publishes machine-readable pricing; `models` lists",
+    "                 only the ids to keep and rates are pulled live at run time.",
+    "  source=manual  no machine-readable feed; rates live here, hand-verified against",
+    "                 source_url on verified_at. The script warns when these go stale.",
+    "",
+    "Rates are USD per 1,000,000 tokens; the script converts to nanos (x 1e9) for",
+    "core.model_library. `cached_input` is the cache-READ price, never cache-write.",
+    "Where a provider publishes no cache discount, cached_input equals input on purpose",
+    "— a 0 there would silently zero-rate cached reads.",
+    "",
+    "Providers are keyed on nullclaw's canonical identifiers (post alias-map, see",
+    "oss/nullclaw/src/provider_names.zig): `kimi` not moonshot-cn, `xai` not grok.",
+    "",
+    "!! base_url is LOAD-BEARING, never decorative. Three of our provider names collide",
+    "!! with a nullclaw alias that resolves to a DIFFERENT endpoint than the one priced",
+    "!! here (see nullclaw_alias_collisions below). We always ship base_url explicitly,",
+    "!! so nullclaw's default table is never consulted. Do not 'simplify' by dropping it:",
+    "!! the failure is silent — right price, wrong continent.",
+    "",
+    "Deliberately absent: nvidia-nim (no per-token pricing exists — credits retired",
+    "Sep 2025, production needs an AI Enterprise licence)."
+  ],
+  "verified_at": "2026-07-19",
+  "stale_after_days": 45,
+
+  "nullclaw_alias_collisions": {
+    "_readme": [
+      "Provider names where OUR base_url deliberately differs from what nullclaw's",
+      "same-named alias would resolve to. Harmless while base_url is always shipped;",
+      "a silent wrong-endpoint bug the moment it is not.",
+      "Source: oss/nullclaw/src/providers/factory.zig compat_providers table."
+    ],
+    "kimi": {
+      "ours": "https://api.moonshot.ai/v1",
+      "nullclaw_alias_resolves_to": "https://api.moonshot.cn/v1",
+      "nullclaw_alias_that_matches_ours": "kimi-intl / moonshot-intl",
+      "why_kept": "`kimi` is the name users recognise; the CN/intl split is nullclaw's internal concern and should not leak into our provider dropdown."
+    },
+    "qwen": {
+      "ours": "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+      "nullclaw_alias_resolves_to": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+      "nullclaw_alias_that_matches_ours": "qwen-intl / dashscope-intl",
+      "why_kept": "Same reasoning as kimi."
+    }
+  },
+
+  "tiering_note": [
+    "core.model_library holds ONE rate triple per (provider, model_id), but some models",
+    "double their rate above a context threshold, charging the higher rate on ALL tokens",
+    "in the request. Those rows carry \"tier\": \"upper\" and are seeded at the HIGHER rate.",
+    "Rationale: a coding agent on a real repo crosses 200k routinely, so the upper tier is",
+    "the modal case, not the edge case. Under-billing is silent and unrecoverable;",
+    "over-billing is visible and refundable. Remove the upper-tier seeding once the schema",
+    "grows a tier column."
+  ],
+
+  "providers": {
+    "anthropic": {
+      "source": "manual",
+      "base_url": "https://api.anthropic.com",
+      "source_url": "https://platform.claude.com/docs/en/about-claude/pricing.md",
+      "models": [
+        { "model_id": "claude-opus-4-8", "context_cap_tokens": 1000000, "input": 5.0, "cached_input": 0.5, "output": 25.0 },
+        { "model_id": "claude-sonnet-5", "context_cap_tokens": 1000000, "input": 3.0, "cached_input": 0.3, "output": 15.0,
+          "note": "STANDARD rate. Introductory 2.00/0.20/10.00 runs to Aug 31 2026; standard applies from Sep 1 2026. Seeded standard deliberately — see decisions.sonnet_5." },
+        { "model_id": "claude-fable-5", "context_cap_tokens": 1000000, "input": 10.0, "cached_input": 1.0, "output": 50.0 },
+        { "model_id": "claude-haiku-4-5", "context_cap_tokens": 200000, "input": 1.0, "cached_input": 0.1, "output": 5.0 }
+      ]
+    },
+
+    "openai": {
+      "source": "manual",
+      "base_url": "https://api.openai.com/v1",
+      "source_url": "https://developers.openai.com/api/docs/pricing",
+      "models": [
+        { "model_id": "gpt-5.6-sol", "context_cap_tokens": 1050000, "input": 5.0, "cached_input": 0.5, "output": 30.0 },
+        { "model_id": "gpt-5.6-terra", "context_cap_tokens": 1050000, "input": 2.5, "cached_input": 0.25, "output": 15.0 },
+        { "model_id": "gpt-5.6-luna", "context_cap_tokens": 1050000, "input": 1.0, "cached_input": 0.1, "output": 6.0 },
+        { "model_id": "gpt-5.5-pro", "context_cap_tokens": 1050000, "input": 30.0, "cached_input": 30.0, "output": 180.0,
+          "note": "cached_input == input on purpose: OpenAI documents that this model offers NO cached-input discount." },
+        { "model_id": "gpt-5.3-codex", "context_cap_tokens": 400000, "input": 1.75, "cached_input": 0.175, "output": 14.0 }
+      ]
+    },
+
+    "gemini": {
+      "source": "manual",
+      "base_url": "https://generativelanguage.googleapis.com/v1beta",
+      "source_url": "https://ai.google.dev/gemini-api/docs/pricing",
+      "models": [
+        { "model_id": "gemini-3.1-pro-preview", "context_cap_tokens": 1048576, "input": 4.0, "cached_input": 0.4, "output": 18.0, "tier": "upper",
+          "note": "Base tier (prompts <=200k) is 2.00/0.20/12.00; above 200k doubles on all tokens." },
+        { "model_id": "gemini-3.5-flash", "context_cap_tokens": 1048576, "input": 1.5, "cached_input": 0.15, "output": 9.0,
+          "note": "Also charges $1.00 per 1M tokens per HOUR of cache storage — a time-based fee with no per-mtok equivalent, not represented here." },
+        { "model_id": "gemini-3.1-flash-lite", "context_cap_tokens": 1048576, "input": 0.25, "cached_input": 0.025, "output": 1.5 }
+      ]
+    },
+
+    "deepseek": {
+      "source": "manual",
+      "base_url": "https://api.deepseek.com",
+      "source_url": "https://api-docs.deepseek.com/quick_start/pricing",
+      "models": [
+        { "model_id": "deepseek-v4-pro", "context_cap_tokens": 1000000, "input": 0.435, "cached_input": 0.003625, "output": 0.87 },
+        { "model_id": "deepseek-v4-flash", "context_cap_tokens": 1000000, "input": 0.14, "cached_input": 0.0028, "output": 0.28 }
+      ]
+    },
+
+    "kimi": {
+      "source": "manual",
+      "base_url": "https://api.moonshot.ai/v1",
+      "source_url": "https://platform.kimi.ai/docs/pricing/chat-k3",
+      "models": [
+        { "model_id": "kimi-k3", "context_cap_tokens": 1048576, "input": 3.0, "cached_input": 0.3, "output": 15.0 },
+        { "model_id": "kimi-k2.7-code", "context_cap_tokens": 262144, "input": 0.95, "cached_input": 0.19, "output": 4.0,
+          "note": "The 2.7 generation ships ONLY in coding-specialised form — there is no plain kimi-k2.7." },
+        { "model_id": "kimi-k2.7-code-highspeed", "context_cap_tokens": 262144, "input": 1.9, "cached_input": 0.38, "output": 8.0,
+          "note": "Latency tier, not a capability tier: exactly 2x standard across all three columns." }
+      ]
+    },
+
+    "glm": {
+      "source": "manual",
+      "base_url": "https://api.z.ai/api/paas/v4",
+      "source_url": "https://docs.z.ai/guides/overview/pricing",
+      "models": [
+        { "model_id": "glm-5.2", "context_cap_tokens": 1000000, "input": 1.4, "cached_input": 0.26, "output": 4.4 }
+      ],
+      "note": "Keyed `glm`, not `zai`, on purpose: nullclaw's `zai` alias resolves to the CODING endpoint (api.z.ai/api/coding/paas/v4) while `glm` resolves to the general paas path priced here. GLM-5.2 is a general model, so `glm` is the alias that matches."
+    },
+
+    "minimax": {
+      "source": "manual",
+      "base_url": "https://api.minimax.io/v1",
+      "source_url": "https://platform.minimax.io/docs/guides/pricing-paygo",
+      "models": [
+        { "model_id": "MiniMax-M3", "context_cap_tokens": 1000000, "input": 0.6, "cached_input": 0.12, "output": 2.4, "tier": "upper",
+          "note": "Base tier (<=512k input) is 0.30/0.06/1.20; above 512k every rate doubles." }
+      ]
+    },
+
+    "qwen": {
+      "source": "manual",
+      "base_url": "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+      "source_url": "https://www.alibabacloud.com/help/en/model-studio/model-pricing",
+      "models": [
+        { "model_id": "qwen3.7-max", "context_cap_tokens": 1000000, "input": 2.5, "cached_input": 0.25, "output": 7.5,
+          "note": "List price. A 50% promotional discount is live (1.25/3.75 effective) and deliberately not seeded." }
+      ]
+    },
+
+    "xai": {
+      "source": "manual",
+      "base_url": "https://api.x.ai",
+      "source_url": "https://docs.x.ai/docs/pricing",
+      "models": [
+        { "model_id": "grok-4.5", "context_cap_tokens": 500000, "input": 4.0, "cached_input": 0.6, "output": 12.0, "tier": "upper",
+          "note": "Base tier (<200k prompt) is 2.00/0.30/6.00; crossing 200k doubles all tokens, not the overage." },
+        { "model_id": "grok-4.3", "context_cap_tokens": 1000000, "input": 2.5, "cached_input": 0.4, "output": 5.0, "tier": "upper",
+          "note": "Base tier is 1.25/0.20/2.50." }
+      ]
+    },
+
+    "groq": {
+      "source": "manual",
+      "base_url": "https://api.groq.com/openai/v1",
+      "source_url": "https://groq.com/pricing",
+      "models": [
+        { "model_id": "openai/gpt-oss-120b", "context_cap_tokens": 131072, "input": 0.15, "cached_input": 0.075, "output": 0.6 },
+        { "model_id": "openai/gpt-oss-20b", "context_cap_tokens": 131072, "input": 0.075, "cached_input": 0.0375, "output": 0.3 }
+      ]
+    },
+
+    "mistral": {
+      "source": "manual",
+      "base_url": "https://api.mistral.ai/v1",
+      "source_url": "https://mistral.ai/pricing/api",
+      "models": [
+        { "model_id": "mistral-medium-latest", "context_cap_tokens": 256000, "input": 1.5, "cached_input": 0.15, "output": 7.5,
+          "note": "Mistral publishes only a global '-90% on input' cache modifier, no per-model figure; cached_input is input x 0.10, derived." },
+        { "model_id": "mistral-large-latest", "context_cap_tokens": 256000, "input": 0.5, "cached_input": 0.05, "output": 1.5,
+          "note": "The ladder is INVERTED: Large 3 is open-weight and cheaper than Medium 3.5. Do not assume Large > Medium > Small." },
+        { "model_id": "mistral-small-latest", "context_cap_tokens": 256000, "input": 0.15, "cached_input": 0.015, "output": 0.6 },
+        { "model_id": "devstral-medium-latest", "context_cap_tokens": 256000, "input": 0.4, "cached_input": 0.04, "output": 2.0 },
+        { "model_id": "codestral-latest", "context_cap_tokens": 128000, "input": 0.3, "cached_input": 0.03, "output": 0.9 }
+      ]
+    },
+
+    "pioneer": {
+      "source": "api",
+      "base_url": "https://api.pioneer.ai",
+      "endpoint": "https://api.pioneer.ai/base-models",
+      "rate_unit": "per_million",
+      "field_map": {
+        "model_id": "id",
+        "context_cap_tokens": "context_window",
+        "input": "input_price_per_million",
+        "cached_input": "cache_read_price_per_million",
+        "output": "output_price_per_million"
+      },
+      "models": [
+        "claude-opus-4-8", "claude-sonnet-5", "claude-fable-5", "claude-haiku-4-5",
+        "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "gpt-5.3-codex",
+        "gemini-3.1-pro", "gemini-3.5-flash",
+        "deepseek-ai/DeepSeek-V4-Pro", "deepseek-ai/DeepSeek-V4-Flash",
+        "moonshotai/Kimi-K2.7-Code", "zai-org/GLM-5.2",
+        "MiniMaxAI/MiniMax-M3", "grok-4.5",
+        "qwen3.7-max", "qwen3.7-plus",
+        "nvidia/NVIDIA-Nemotron-3-Ultra-550B-A55B-BF16"
+      ]
+    },
+
+    "openrouter": {
+      "source": "api",
+      "base_url": "https://openrouter.ai/api/v1",
+      "endpoint": "https://openrouter.ai/api/v1/models",
+      "rate_unit": "per_token",
+      "field_map": {
+        "model_id": "id",
+        "context_cap_tokens": "context_length",
+        "input": "pricing.prompt",
+        "cached_input": "pricing.input_cache_read",
+        "output": "pricing.completion"
+      },
+      "models": [
+        "anthropic/claude-opus-4.8", "anthropic/claude-sonnet-5", "anthropic/claude-fable-5",
+        "openai/gpt-5.6-sol", "openai/gpt-5.6-terra", "openai/gpt-5.6-luna",
+        "moonshotai/kimi-k3", "moonshotai/kimi-k2.7-code",
+        "minimax/minimax-m3", "x-ai/grok-4.5", "qwen/qwen3.7-max"
+      ],
+      "excluded": {
+        "z-ai/glm-5.2": "Lists input at $0.2576/Mtok against z.ai's own $1.40 — 5.4x cheaper first-party for the same model. Unexplained; likely a quantised variant or promo. Not seeded until the discrepancy is understood."
+      }
+    },
+
+    "fireworks": {
+      "source": "manual",
+      "base_url": "https://api.fireworks.ai/inference/v1",
+      "source_url": "https://docs.fireworks.ai/serverless/pricing",
+      "models": [
+        { "model_id": "accounts/fireworks/models/deepseek-v4-pro", "context_cap_tokens": 1048576, "input": 1.74, "cached_input": 0.145, "output": 3.48 },
+        { "model_id": "accounts/fireworks/models/deepseek-v4-flash", "context_cap_tokens": 1048576, "input": 0.14, "cached_input": 0.028, "output": 0.28 },
+        { "model_id": "accounts/fireworks/models/kimi-k2p7-code", "context_cap_tokens": 262144, "input": 0.95, "cached_input": 0.19, "output": 4.0 },
+        { "model_id": "accounts/fireworks/models/glm-5p2", "context_cap_tokens": 1048576, "input": 1.4, "cached_input": 0.14, "output": 4.4 },
+        { "model_id": "accounts/fireworks/models/qwen3p7-plus", "context_cap_tokens": 262144, "input": 0.4, "cached_input": 0.08, "output": 1.6 },
+        { "model_id": "accounts/fireworks/models/minimax-m3", "context_cap_tokens": 512000, "input": 0.3, "cached_input": 0.06, "output": 1.2 },
+        { "model_id": "accounts/fireworks/models/gpt-oss-120b", "context_cap_tokens": 131072, "input": 0.15, "cached_input": 0.015, "output": 0.6 }
+      ],
+      "note": "Fireworks' page claims a default 50% cached-input rate; real per-model ratios are 8-20% on the flagships. Always read the per-model row."
+    },
+
+    "together-ai": {
+      "source": "manual",
+      "base_url": "https://api.together.xyz",
+      "source_url": "https://docs.together.ai/docs/serverless-models",
+      "models": [
+        { "model_id": "deepseek-ai/DeepSeek-V4-Pro", "context_cap_tokens": 512000, "input": 1.74, "cached_input": 0.2, "output": 3.48 },
+        { "model_id": "moonshotai/Kimi-K2.7-Code", "context_cap_tokens": 262144, "input": 0.95, "cached_input": 0.19, "output": 4.0 },
+        { "model_id": "zai-org/GLM-5.2", "context_cap_tokens": 262144, "input": 1.4, "cached_input": 0.26, "output": 4.4 },
+        { "model_id": "MiniMaxAI/MiniMax-M3", "context_cap_tokens": 524288, "input": 0.3, "cached_input": 0.06, "output": 1.2 },
+        { "model_id": "Qwen/Qwen3.7-Plus", "context_cap_tokens": 1000000, "input": 0.32, "cached_input": 0.32, "output": 1.28,
+          "note": "cached_input == input: Together publishes no cache-read price for this model." }
+      ]
+    },
+
+    "novita": {
+      "source": "manual",
+      "base_url": "https://api.novita.ai/openai/v1",
+      "source_url": "https://novita.ai/pricing",
+      "models": [
+        { "model_id": "moonshotai/kimi-k3", "context_cap_tokens": 1048576, "input": 3.0, "cached_input": 0.3, "output": 15.0 },
+        { "model_id": "moonshotai/kimi-k2.7-code", "context_cap_tokens": 262144, "input": 0.95, "cached_input": 0.19, "output": 4.0 },
+        { "model_id": "deepseek/deepseek-v4-pro", "context_cap_tokens": 1048576, "input": 1.6, "cached_input": 0.135, "output": 3.2 },
+        { "model_id": "deepseek/deepseek-v4-flash", "context_cap_tokens": 1048576, "input": 0.14, "cached_input": 0.028, "output": 0.28 },
+        { "model_id": "zai-org/glm-5.2", "context_cap_tokens": 1048576, "input": 1.4, "cached_input": 0.26, "output": 4.4 },
+        { "model_id": "qwen/qwen3.7-max", "context_cap_tokens": 1000000, "input": 1.25, "cached_input": 0.25, "output": 3.75 }
+      ]
+    }
+  },
+
+  "retired": {
+    "_readme": "Explicitly NOT seeded. Kept so a future curation pass does not re-add them by accident.",
+    "deepseek-chat / deepseek-reasoner": "Deprecated 2026-07-24. Aliases onto deepseek-v4-flash; seed the successor.",
+    "llama-3.3-70b-versatile / llama-3.1-8b-instant": "Groq shutdown 2026-08-16. Replaced by gpt-oss-120b / gpt-oss-20b.",
+    "gemini-2.5-*": "Superseded by the 3.x line.",
+    "kimi-k2.5 / kimi-k2.6": "Superseded by K2.7-code and K3.",
+    "glm-5 / glm-5.1": "Superseded by 5.2.",
+    "minimax-m2.x": "Superseded by M3.",
+    "nvidia-nim": "No per-token pricing exists at all; credits retired Sep 2025, production requires an AI Enterprise licence."
+  }
+}

@@ -252,6 +252,7 @@ pub const ENTRIES = [_]Entry{
     e("UZ-RUN-013", .bad_request, "Renew body malformed", "The renew request body could not be parsed. Token counts become zero, but the renewed slice still charges for runtime. The lease still renews."), // reachable: no — runner-daemon-to-control-plane wire contract, not dashboard-facing
     eu("UZ-RUN-014", .not_found, "Runner not found", "No runner matches this runner_id. Verify the platform admin minted the runner before mutating it.", "We couldn't find that runner. It may have been removed — refresh the list."),
     e("UZ-RUN-015", .payment_required, "Lease renewal blocked: fleet budget exhausted", "The fleet reached its daily_dollars or monthly_dollars limit from `TRIGGER.md`. The lease cannot renew, so the run stops. This differs from UZ-RUN-012, which reports a low tenant balance."), // reachable: no — runner-daemon-to-control-plane wire protocol, not dashboard-facing
+    eu("UZ-RUN-016", .conflict, "Active runner must be revoked before deletion", "Revoke the runner first with `PATCH /v1/fleets/runners/{id}` body `{\"action\": \"revoke\"}`, then retry DELETE.", "This runner is still live. Revoke it first, then delete it."),
     // Runtime / execute-path entries (sandbox, runner, relay, credentials,
     // approval-gate, memory, api-keys, grants, tool/credential, proxy,
     // gate-execute) live in error_entries_runtime.zig and are concatenated

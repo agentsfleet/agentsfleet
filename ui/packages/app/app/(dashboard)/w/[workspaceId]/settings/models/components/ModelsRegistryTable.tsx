@@ -69,7 +69,20 @@ export default function ModelsRegistryTable({ workspaceId, initial, initialSecre
   // provider; a failed fetch degrades rates to "—", never the table.
   const { models: libraryModels } = useModelCatalogue();
 
-  const isDefaultLive = !entries.some((e) => e.active);
+  const hasActiveEntry = entries.some((e) => e.active);
+  // The platform default is live only when it BOTH wins resolution (no active
+  // tenant entry) and actually exists. Testing only the first half painted a
+  // green "Active" badge on a default that was never configured — and because
+  // ActionsCell short-circuits on a live default, it also suppressed the "No
+  // default is configured" warning that would have said so. A fresh tenant on a
+  // fresh install hits exactly that: core.model_library ships empty, so no
+  // platform default can exist yet, and the first fleet run fails
+  // PlatformKeyMissing while the UI reads healthy.
+  const isDefaultLive = !hasActiveEntry && platformDefaultAvailable;
+  // Hide the locked platform row outright when it is neither in effect nor
+  // configurable-from-here: a self-managed tenant with no platform default was
+  // shown a row it cannot act on and does not need.
+  const showDefaultRow = !hasActiveEntry || platformDefaultAvailable;
 
   const sortedEntries = useMemo(() => {
     if (!sort) return entries;
@@ -77,7 +90,10 @@ export default function ModelsRegistryTable({ workspaceId, initial, initialSecre
     return [...entries].sort((a, b) => sortValueFor(a, sort.key).localeCompare(sortValueFor(b, sort.key)) * dir);
   }, [entries, sort]);
 
-  const rows: RegistryRow[] = [{ kind: "default" }, ...sortedEntries.map((entry) => ({ kind: "entry" as const, entry }))];
+  const rows: RegistryRow[] = [
+    ...(showDefaultRow ? [{ kind: "default" as const }] : []),
+    ...sortedEntries.map((entry) => ({ kind: "entry" as const, entry })),
+  ];
 
   function onSortChange(key: string) {
     const next = computeNextSort(sort, key);

@@ -177,10 +177,32 @@ describe("ModelsRegistryTable", () => {
     expect(screen.queryByLabelText(/api key/i)).toBeNull();
   });
 
-  it("Default row's Use-default is disabled with explanatory copy when no platform default exists", async () => {
+  it("hides the platform row entirely for a self-managed tenant with no platform default", async () => {
+    // Nothing to act on and nothing in effect: the tenant's own entry wins
+    // resolution and no default exists to switch to. Showing a locked row there
+    // read as a broken setting.
     await renderTable(registry([entry({ active: true })], false));
-    const useDefault = screen.getByRole("button", { name: /use default/i });
-    expect(useDefault.hasAttribute("disabled")).toBe(true);
+    expect(screen.queryByText("Default")).toBeNull();
+    expect(screen.queryByText("No default is configured.")).toBeNull();
+    expect(screen.queryByRole("button", { name: /use default/i })).toBeNull();
+  });
+
+  it("keeps the platform row, disabled with explanatory copy, when a default exists but is not in effect", async () => {
+    await renderTable(registry([entry({ active: true })], true));
+    expect(screen.getByText("Default")).toBeTruthy();
+    expect(screen.getByRole("button", { name: /use default/i })).toBeTruthy();
+  });
+
+  it("warns instead of claiming Active when nothing is active and no platform default exists", async () => {
+    // The regression this pins: isDefaultLive once tested only "no active
+    // entry", so a fresh tenant on a fresh install (core.model_library ships
+    // empty, so no default can exist) saw a green Active badge on a default
+    // that did not exist — and the badge suppressed the warning. That tenant's
+    // first fleet run fails PlatformKeyMissing.
+    await renderTable(registry([], false));
+    const rows = screen.getAllByRole("row");
+    const defaultRow = within(rows[1]!);
+    expect(defaultRow.queryByText("Active")).toBeNull();
     expect(screen.getByText("No default is configured.")).toBeTruthy();
   });
 
@@ -321,14 +343,16 @@ describe("ModelsRegistryTable", () => {
   });
 
   it("default row degrades to '—' when no platform default identity rides the list", async () => {
-    await renderTable(registry([entry({ active: true })], false));
+    // No active entry, so the platform row still renders (it is what would run)
+    // — but with no identity to show it must degrade rather than invent one.
+    await renderTable(registry([], false));
     const rows = screen.getAllByRole("row");
     const defaultRow = within(rows[1]!);
     expect(defaultRow.getByText("—")).toBeTruthy();
     expect(screen.getByText("No default is configured.")).toBeTruthy();
   });
 
-  it("entry rows price from the library when known and name unavailable rates otherwise", async () => {
+  it("entry rows price from the library when known and say who bills otherwise", async () => {
     await renderTableWithLibrary(
       registry([
         entry({ id: "e1", model_id: "claude-sonnet-5", provider: "anthropic", context_cap_tokens: 200000 }),
@@ -341,7 +365,11 @@ describe("ModelsRegistryTable", () => {
     // Row order: header, Default, sonnet (priced), local (unpriced).
     const localRow = within(rows[3]!);
     expect(localRow.getByText("32k")).toBeTruthy();
-    expect(localRow.getByText("Rates unavailable")).toBeTruthy();
+    // A tenant entry is self-managed by definition, so an unpriced row is "not
+    // applicable", not a lookup miss — and a price here would imply agentsfleet
+    // is charging it when the tenant's own provider bills them directly.
+    expect(localRow.getByText("Billed by provider")).toBeTruthy();
+    expect(localRow.queryByText("Rates unavailable")).toBeNull();
   });
 
   it("entry rows render server-provided rates without depending on the public catalogue", async () => {
@@ -422,12 +450,12 @@ describe("ModelsRegistryTable", () => {
     expect(screen.getByText("0")).toBeTruthy();
   });
 
-  it("renders a dash for absent context and names unavailable rates", async () => {
+  it("renders a dash for absent context and names who bills", async () => {
     await renderTable(registry([entry({ id: "e1", model_id: "m1", context_cap_tokens: undefined })]));
     const rows = screen.getAllByRole("row");
     const contextCell = within(rows[2]!);
     expect(contextCell.getByText("—")).toBeTruthy();
-    expect(contextCell.getByText("Rates unavailable")).toBeTruthy();
+    expect(contextCell.getByText("Billed by provider")).toBeTruthy();
   });
 
   it("creating a model entry refreshes the secrets list — a repeat add on the same key name rotates instead of re-creating", async () => {

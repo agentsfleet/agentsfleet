@@ -227,6 +227,7 @@ pub const ERR_RUN_RENEW_BODY_INVALID = "UZ-RUN-013";
 pub const ERR_RUNNER_NOT_FOUND = "UZ-RUN-014";
 /// The FLEET's own spend ceiling, not the tenant's credit pool (UZ-RUN-012).
 pub const ERR_RUN_BUDGET_EXCEEDED = "UZ-RUN-015";
+pub const ERR_RUNNER_MUST_REVOKE_FIRST = "UZ-RUN-016"; // mirrors ERR_APIKEY_MUST_REVOKE_FIRST
 // CREDENTIAL BROKER (M102 — on-demand mint via POST /v1/runners/me/credentials/mint)
 pub const ERR_CRED_INTEGRATION_NOT_CONNECTED = "UZ-CRED-001";
 pub const ERR_CRED_BROKER_NOT_CONFIGURED = "UZ-CRED-002";

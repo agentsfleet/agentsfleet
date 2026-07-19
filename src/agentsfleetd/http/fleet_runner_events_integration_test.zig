@@ -198,6 +198,17 @@ fn registeredRunnerId(conn: anytype) ![]const u8 {
     return ALLOC.dupe(u8, try row.get([]const u8, 0));
 }
 
+/// Helper-scoped so the PgQuery drains on return — an inline query with a
+/// deferred deinit holds the connection busy for the next statement.
+fn runnerRowCount(conn: anytype, runner_id: []const u8) !i64 {
+    var q = PgQuery.from(try conn.query(
+        \\SELECT COUNT(*)::bigint FROM fleet.runners WHERE id = $1::uuid
+    , .{runner_id}));
+    defer q.deinit();
+    const row = (try q.next()) orelse return error.TestUnexpectedResult;
+    return row.get(i64, 0);
+}
+
 fn cleanupRegister(conn: anytype) void {
     _ = conn.exec("DELETE FROM fleet.runners WHERE host_id = $1", .{REGISTER_HOST}) catch |err|
         std.log.warn("cleanup registered runner ignored: {s}", .{@errorName(err)});
@@ -331,4 +342,51 @@ test "heartbeat keeps liveness update when runner event insert fails" {
 
     try std.testing.expect((try runnerLastSeen(conn, RUNNER_ID)) > protocol.RUNNER_LAST_SEEN_NEVER);
     try std.testing.expectEqual(@as(i64, 0), try eventCount(conn, RUNNER_ID, .runner_online));
+}
+
+test "delete lifecycle: 409 while live, 204 once revoked, cascade clears events, then 404" {
+    const h = try startHarness();
+    defer h.deinit();
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    defer cleanupRegister(conn);
+
+    const register = try (try (try h.post(protocol.PATH_RUNNERS).bearer(PLATFORM_ADMIN_TOKEN)).json(REGISTER_BODY)).send();
+    defer register.deinit();
+    try register.expectStatus(.created);
+    const runner_id = try registeredRunnerId(conn);
+    defer ALLOC.free(runner_id);
+
+    const p = try patchPath(runner_id);
+    defer ALLOC.free(p);
+
+    // Live runner: the revoke-first guard must refuse, and refuse with the
+    // registered conflict code — not a bare 409.
+    const premature = try (try h.request(.DELETE, p).bearer(PLATFORM_ADMIN_TOKEN)).send();
+    defer premature.deinit();
+    try premature.expectStatus(.conflict);
+    try std.testing.expect(premature.bodyContains("UZ-RUN-016"));
+    try std.testing.expectEqual(@as(i64, 1), try eventCount(conn, runner_id, .runner_registered));
+
+    const revoke = try (try (try h.request(.PATCH, p).bearer(PLATFORM_ADMIN_TOKEN)).json("{\"action\":\"revoke\"}")).send();
+    defer revoke.deinit();
+    try revoke.expectStatus(.ok);
+
+    const deleted = try (try h.request(.DELETE, p).bearer(PLATFORM_ADMIN_TOKEN)).send();
+    defer deleted.deinit();
+    try deleted.expectStatus(.no_content);
+
+    // The row is gone and the cascade took the event history with it — the FK
+    // on fleet.runner_events is ON DELETE CASCADE and runs as constraint owner,
+    // so the append-only privilege posture never had to be widened.
+    try std.testing.expectEqual(@as(i64, 0), try runnerRowCount(conn, runner_id));
+    try std.testing.expectEqual(@as(i64, 0), try eventCount(conn, runner_id, .runner_registered));
+    try std.testing.expectEqual(@as(i64, 0), try eventCount(conn, runner_id, .runner_revoked));
+
+    // Idempotence at the HTTP layer: the second delete is a clean 404, distinct
+    // from the pre-revoke 409.
+    const again = try (try h.request(.DELETE, p).bearer(PLATFORM_ADMIN_TOKEN)).send();
+    defer again.deinit();
+    try again.expectStatus(.not_found);
+    try std.testing.expect(again.bodyContains("UZ-RUN-014"));
 }
