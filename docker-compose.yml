@@ -80,7 +80,11 @@ services:
       test: ["CMD", "bun", "-e", "fetch('http://localhost:8080/').then(()=>process.exit(0)).catch(()=>process.exit(1))"]
       interval: 5s
       timeout: 5s
-      retries: 30
+      # Generous: the container installs the CLI and downloads its Go binary on
+      # first boot, so a cold or slow network needs well past the usual budget —
+      # a premature unhealthy verdict fails the whole integration lane.
+      retries: 60
+      start_period: 30s
 
   agentsfleetd:
     container_name: agentsfleetd-api

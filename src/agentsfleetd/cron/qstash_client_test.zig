@@ -180,18 +180,20 @@ test "qstash client: every allocation failure unwinds without a leak" {
     try std.testing.checkAllAllocationFailures(std.testing.allocator, allocationSweep, .{});
 }
 
-test "qstash client (live): a real qstash dev server accepts a publish over http" {
+test "qstash client (live): a real qstash dev server accepts the schedule lifecycle" {
     // Live end-to-end against a real QStash (the piece the fake exchange cannot
-    // prove): the configured url + token actually authenticate and the publish
-    // is accepted. Run `npx @upstash/qstash-cli dev`, then export
-    // AGENTSFLEET_QSTASH_LIVE_URL=http://localhost:8000 and
-    // AGENTSFLEET_QSTASH_LIVE_TOKEN=<printed token>. Self-skips otherwise.
+    // prove): the configured url + token actually authenticate, and both the
+    // publish and the removal are accepted with the exact request shapes this
+    // client builds. `make test-integration` starts the compose `qstash` service
+    // and exports the two vars below; self-skips when they are unset.
     const base = common.env.testLiveValue(LIVE_URL_ENV) orelse return error.SkipZigTest;
     const token = common.env.testLiveValue(LIVE_TOKEN_ENV) orelse return error.SkipZigTest;
     var exchange: QStashClient.HttpClientExchange = .{ .io = common.globalIo() };
     const client = QStashClient.init(exchange.exchange(), base, LIVE_DESTINATION);
-    const outcome = try client.upsert(std.testing.allocator, token, schedule());
-    // Clean up the schedule we just created on the live server regardless.
-    defer _ = client.delete(std.testing.allocator, token, SCHEDULE_ID) catch {};
-    try std.testing.expectEqual(QStashClient.Outcome.success, outcome);
+    const created = try client.upsert(std.testing.allocator, token, schedule());
+    try std.testing.expectEqual(QStashClient.Outcome.success, created);
+    // Asserted, not swallowed: a broken delete request shape would otherwise
+    // pass silently and only surface when a real schedule failed to unregister.
+    const removed = try client.delete(std.testing.allocator, token, SCHEDULE_ID);
+    try std.testing.expectEqual(QStashClient.Outcome.success, removed);
 }
