@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { Secret } from "@/lib/api/secrets";
+import { subscribeOnboardingRefresh } from "@/lib/onboarding-refresh";
 
 // Split from models-registry-add.test.tsx (RULE FLL — the combined file grew
 // past the 350-line cap): the OpenAI-compatible provider path only (the
@@ -90,6 +91,8 @@ describe("AddModelEntryDialog — OpenAI-compatible provider", () => {
   });
 
   it("registers a keyless entry and activates it on Save & make active", async () => {
+    const refreshed = vi.fn();
+    const unsubscribe = subscribeOnboardingRefresh("ws_1", refreshed);
     const { onCreated, user } = await renderDialog();
     const dialog = screen.getByRole("dialog");
 
@@ -115,6 +118,8 @@ describe("AddModelEntryDialog — OpenAI-compatible provider", () => {
       expect(setProviderSelfManagedActionMock).toHaveBeenCalledWith({ secret_ref: "vllm-gateway", model: "vllm-model" }),
     );
     await waitFor(() => expect(onCreated).toHaveBeenCalled());
+    expect(refreshed).toHaveBeenCalledTimes(1);
+    unsubscribe();
   });
 
   it("disables Save while the custom shape is incomplete — key stays optional", async () => {

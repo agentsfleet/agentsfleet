@@ -34,6 +34,7 @@ import { captureProductEvent } from "@/lib/analytics/posthog";
 import { captureModelActivated } from "../lib/track";
 import { useModelCatalogue } from "./ModelCatalogueProvider";
 import ProviderModelSelect from "./ProviderModelSelect";
+import { requestOnboardingRefresh } from "@/lib/onboarding-refresh";
 
 const REGISTER_ACTION = "register the model entry";
 const ACTIVATE_ACTION = "activate this model";
@@ -98,6 +99,7 @@ export default function AddModelEntryDialog({
   async function doCreateEntry(secretRef: string, modelId: string, activate: boolean, secretsChanged: boolean) {
     const created = await createModelEntryAction({ model_id: modelId, secret_ref: secretRef });
     if (!created.ok) {
+      if (secretsChanged) requestOnboardingRefresh(workspaceId);
       setError(presentErrorString({ errorCode: created.errorCode, message: created.error, action: REGISTER_ACTION }));
       return false;
     }
@@ -111,11 +113,13 @@ export default function AddModelEntryDialog({
     if (activate) {
       const activated = await setProviderSelfManagedAction({ secret_ref: secretRef, model: modelId });
       if (!activated.ok) {
+        if (secretsChanged) requestOnboardingRefresh(workspaceId);
         setError(presentErrorString({ errorCode: activated.errorCode, message: activated.error, action: ACTIVATE_ACTION }));
         return false;
       }
       captureModelActivated(activated.data);
     }
+    if (secretsChanged || activate) requestOnboardingRefresh(workspaceId);
     return true;
   }
 

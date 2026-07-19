@@ -85,6 +85,11 @@ profile maps `CONFORM` to `make harness-verify`; that command remains unchanged.
 `VERIFY` runs the profile's correctness commands. `REVIEW` challenges the diff
 after those commands pass. No additional lifecycle stage is needed.
 
+The REVIEW command is runtime-specific. Codex uses its native `/review`
+surface, or `codex review` when invoked non-interactively. Claude, OpenCode, and
+Amp use gstack `/review`. Both routes implement the same local pre-commit
+responsibility; post-push reviewer triage remains separate.
+
 ## Evidence
 
 `orly verify --all` validates every profile and renders each profile
