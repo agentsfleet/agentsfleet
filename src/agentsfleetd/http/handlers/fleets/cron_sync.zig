@@ -144,10 +144,10 @@ fn serviceFromContext(
     const credentials = hx.ctx.qstash_credentials orelse return null;
     const destination = cron_constants.destinationUrl(destination_buffer, hx.ctx.api_url) catch return null;
     const qstash = if (hx.ctx.qstash_exchange_override) |override|
-        QStashClient.init(override, destination)
+        QStashClient.init(override, credentials.url, destination)
     else blk: {
         exchange.* = .{ .io = hx.ctx.io };
-        break :blk QStashClient.init(exchange.exchange(), destination);
+        break :blk QStashClient.init(exchange.exchange(), credentials.url, destination);
     };
     return Service.init(Store.init(hx.ctx.pool), qstash, credentials.token);
 }
