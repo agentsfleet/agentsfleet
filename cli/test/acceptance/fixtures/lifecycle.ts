@@ -30,10 +30,14 @@ export const stopFleet = (env: Env, id: string): Promise<unknown> => lifecycleAc
 export const resumeFleet = (env: Env, id: string): Promise<unknown> => lifecycleAction("resume", id, env);
 export const killFleet = (env: Env, id: string): Promise<unknown> => lifecycleAction("kill", id, env);
 
-export async function getStatus(env: Env, fleetId: string): Promise<FleetRow> {
+export async function getStatus(env: Env, fleetId: string, timeoutMs?: number): Promise<FleetRow> {
   // `agentsfleet list --json` returns every fleet in the current workspace.
   // Filter client-side because `agentsfleet status` is workspace-wide.
-  const result = await runFleetctl(["list", "--json"], { env });
+  const statusArgs = ["list", "--json"];
+  const result = await runFleetctl(
+    statusArgs,
+    timeoutMs === undefined ? { env } : { env, timeoutMs },
+  );
   if (result.code !== 0) {
     throw new Error(`list (for status of ${fleetId}) exited ${result.code}: ${result.stderr.trim()}`);
   }

@@ -8,7 +8,10 @@ interface SeedResult {
 
 type SecretRunner = (
   args: ReadonlyArray<string>,
-  opts: { readonly env: Readonly<Record<string, string>> },
+  opts: {
+    readonly env: Readonly<Record<string, string>>;
+    readonly timeoutMs: number;
+  },
 ) => Promise<SeedResult>;
 
 const PLATFORM_SECRET_PAYLOADS = {
@@ -20,12 +23,13 @@ const PLATFORM_SECRET_PAYLOADS = {
 
 export async function ensurePlatformSecretsSeeded(
   env: Readonly<Record<string, string>>,
+  remainingTimeoutMs: () => number,
   run: SecretRunner = runFleetctl,
 ): Promise<void> {
   for (const [name, data] of Object.entries(PLATFORM_SECRET_PAYLOADS)) {
     const result = await run(
       ["secret", "create", name, "--data", JSON.stringify(data), "--json"],
-      { env },
+      { env, timeoutMs: remainingTimeoutMs() },
     );
     if (result.code !== 0) {
       throw new Error(`platform secret seed failed for ${name}: ${result.stderr.trim() || result.stdout.trim()}`);

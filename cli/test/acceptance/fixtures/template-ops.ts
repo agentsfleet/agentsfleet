@@ -24,6 +24,7 @@ const WORKTREE_ROOT = path.resolve(HERE, "..", "..", "..", "..");
 const ENV_API_URL = "AGENTSFLEET_API_URL";
 const ENV_STATE_DIR = "AGENTSFLEET_STATE_DIR";
 const SOURCE_KIND_UPLOAD = "upload";
+const DEFAULT_ONBOARD_TIMEOUT_MS = 60_000;
 
 export interface AuthContext {
   readonly apiUrl: string;
@@ -78,6 +79,7 @@ export async function buildPlatformOpsContent(name: string): Promise<SampleConte
 export async function onboardUploadTemplate(
   ctx: AuthContext,
   content: SampleContent,
+  timeoutMs = DEFAULT_ONBOARD_TIMEOUT_MS,
 ): Promise<string> {
   const res = await fetch(
     `${ctx.apiUrl}/v1/workspaces/${encodeURIComponent(ctx.workspaceId)}/fleet-libraries`,
@@ -92,6 +94,7 @@ export async function onboardUploadTemplate(
         skill_markdown: content.skillMarkdown,
         trigger_markdown: content.triggerMarkdown,
       }),
+      signal: AbortSignal.timeout(timeoutMs),
     },
   );
   if (!res.ok) {

@@ -37,6 +37,10 @@ import { installPlatformOpsFleet } from "./fixtures/seed.ts";
 import { cleanWorkspaceFleets } from "./fixtures/teardown.ts";
 import { sweepSecrets } from "./fixtures/secret-ops.ts";
 import {
+  FLAG_WORKSPACE_ID,
+  WORKSPACE_LOCAL_REMOVAL_FIELD,
+} from "./fixtures/workspace-ops.ts";
+import {
   TENANT_PROVIDER_MODE,
   restoreProviderBaseline,
   showProvider,
@@ -68,7 +72,6 @@ const SUB_LIST = "list" as const;
 const FLAG_DATA = "--data" as const;
 const FLAG_SECRET = "--secret" as const;
 const FLAG_MODEL = "--model" as const;
-const FLAG_WORKSPACE_ID = "--workspace-id" as const;
 const FLAG_JSON = "--json" as const;
 
 const KEY_STATUS = "status" as const;
@@ -214,39 +217,43 @@ if (!isLive) {
     // ── (b) workspace delete with a live prefix-named fleet inside ────────
     describe("(b) delete a workspace that still has a LIVE prefix-named fleet", () => {
       it("local workspace delete does not orphan the server fleet (documented behaviour)", async () => {
-        // Install a live fleet into the current (bootstrap) workspace.
-        const installed = await installPlatformOpsFleet({ env, timeoutMs: INSTALL_TIMEOUT_MS });
-        const fleetId = (installed.fleet_id ?? installed.id) as string | undefined;
-        assert.ok(fleetId, `install missing id: ${JSON.stringify(installed)}`);
+        const deletedWorkspaceId = workspaceId;
+        try {
+          // Install a live fleet into the current (bootstrap) workspace.
+          const installed = await installPlatformOpsFleet({ env, timeoutMs: INSTALL_TIMEOUT_MS });
+          const fleetId = (installed.fleet_id ?? installed.id) as string | undefined;
+          assert.ok(fleetId, `install missing id: ${JSON.stringify(installed)}`);
 
-        // `workspace delete` is a LOCAL-store op (no server DELETE route), so
-        // it cannot guard against, nor cascade onto, the live fleet. The
-        // documented behaviour: the local delete succeeds and the server
-        // workspace + its fleet remain reachable via `list --workspace-id`.
-        const del = await run([CMD_WORKSPACE, SUB_DELETE, workspaceId, FLAG_JSON]);
-        assert.equal(del.code, 0, `workspace delete exited ${del.code}: ${del.stderr}`);
-        assert.equal(
-          parseJson<Record<string, unknown>>(del.stdout, "ws-del")[KEY_DELETED],
-          workspaceId,
-          `workspace delete echoed the wrong id: ${del.stdout}`,
-        );
+          // `workspace delete` is a LOCAL-store op (no server DELETE route), so
+          // it cannot guard against, nor cascade onto, the live fleet. The
+          // documented behaviour: the local delete succeeds and the server
+          // workspace + its fleet remain reachable via `list --workspace-id`.
+          const del = await run([CMD_WORKSPACE, SUB_DELETE, deletedWorkspaceId, FLAG_JSON]);
+          assert.equal(del.code, 0, `workspace delete exited ${del.code}: ${del.stderr}`);
+          assert.equal(
+            parseJson<Record<string, unknown>>(del.stdout, "ws-del")[WORKSPACE_LOCAL_REMOVAL_FIELD],
+            deletedWorkspaceId,
+            `workspace delete echoed the wrong id: ${del.stdout}`,
+          );
 
-        // Server side is unaffected: the fleet is still listable by id even
-        // though the local workspace pointer was removed. `list --workspace-id`
-        // takes the explicit override without requiring the (now-deleted) local
-        // store entry (per cli/src/commands/fleet_list.ts).
-        const listed = await run([CMD_LIST, FLAG_WORKSPACE_ID, workspaceId, FLAG_JSON]);
-        assert.equal(listed.code, 0, `list --workspace-id exited ${listed.code}: ${listed.stderr}`);
-        const rows = parseJson<FleetListEnvelope>(listed.stdout, "ws-fleets").items ?? [];
-        const survived = rows.some((r) => r.id === fleetId || r.fleet_id === fleetId);
-        assert.ok(survived,
-          `server fleet ${fleetId} vanished after a LOCAL workspace delete — ` +
-          `the documented no-server-DELETE behaviour was breached: ${listed.stdout}`);
+          // Server side is unaffected: the fleet is still listable by id even
+          // though the local workspace pointer was removed. `list --workspace-id`
+          // takes the explicit override without requiring the (now-deleted) local
+          // store entry (per cli/src/commands/fleet_list.ts).
+          const listed = await run([CMD_LIST, FLAG_WORKSPACE_ID, deletedWorkspaceId, FLAG_JSON]);
+          assert.equal(listed.code, 0, `list --workspace-id exited ${listed.code}: ${listed.stderr}`);
+          const rows = parseJson<FleetListEnvelope>(listed.stdout, "ws-fleets").items ?? [];
+          const survived = rows.some((r) => r.id === fleetId || r.fleet_id === fleetId);
+          assert.ok(survived,
+            `server fleet ${fleetId} vanished after a LOCAL workspace delete — ` +
+            `the documented no-server-DELETE behaviour was breached: ${listed.stdout}`);
 
-        // Re-hydrate the local store so afterAll teardown has a workspace
-        // pointer again (the local delete dropped it).
-        const rehydrated = await hydrateWorkspacesForToken({ apiUrl, token: sessionJwt, stateDir });
-        workspaceId = rehydrated.currentWorkspaceId;
+        } finally {
+          // Re-hydrate even when an assertion fails so later scenarios and
+          // teardown retain a usable local workspace pointer.
+          const rehydrated = await hydrateWorkspacesForToken({ apiUrl, token: sessionJwt, stateDir });
+          workspaceId = rehydrated.currentWorkspaceId;
+        }
       }, SCENARIO_TIMEOUT_MS);
     });
 
