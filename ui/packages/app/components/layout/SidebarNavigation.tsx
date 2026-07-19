@@ -34,6 +34,7 @@ import { trackNavigationClicked } from "@/lib/analytics/posthog";
 import { SCOPE } from "@/lib/auth/scopes";
 import { workspacePath } from "@/lib/workspace-routes";
 import GettingStartedWidget from "./GettingStartedWidget";
+import type { OnboardingPollingMode } from "./use-onboarding-progress";
 
 type NavEntry = {
   label: string;
@@ -50,6 +51,7 @@ type SidebarNavigationProps = {
   workspaceId: string | null;
   operatorScopes: string[];
   collapsed: boolean;
+  gettingStartedPolling?: OnboardingPollingMode;
   onNavigate: () => void;
 };
 
@@ -119,6 +121,7 @@ export function SidebarNavigation({
   workspaceId,
   operatorScopes,
   collapsed,
+  gettingStartedPolling = "desktop",
   onNavigate,
 }: SidebarNavigationProps) {
   const platformItems = PLATFORM_NAV.filter((entry) => operatorScopes.includes(entry.scope));
@@ -138,7 +141,9 @@ export function SidebarNavigation({
       <PlatformSection items={platformItems} {...shared} />
       <NavSection label="Organization" items={ORGANIZATION_NAV} {...shared} />
       <div className="mt-auto">
-        {workspaceId && !collapsed ? <GettingStartedWidget workspaceId={workspaceId} /> : null}
+        {workspaceId && !collapsed ? (
+          <GettingStartedWidget workspaceId={workspaceId} pollingMode={gettingStartedPolling} />
+        ) : null}
         <NavSection items={BOTTOM_NAV} {...shared} />
       </div>
     </Nav>
@@ -201,7 +206,12 @@ export function MobileNavigation(props: Omit<SidebarNavigationProps, "collapsed"
       </DialogTrigger>
       <DialogContent className="sm:max-w-xs">
         <DialogTitle className="sr-only">Navigation</DialogTitle>
-        <SidebarNavigation {...props} collapsed={false} onNavigate={() => setOpen(false)} />
+        <SidebarNavigation
+          {...props}
+          collapsed={false}
+          gettingStartedPolling="mounted"
+          onNavigate={() => setOpen(false)}
+        />
       </DialogContent>
     </Dialog>
   );

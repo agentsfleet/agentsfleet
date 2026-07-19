@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { EVENTS } from "../lib/analytics/events";
+import { subscribeOnboardingRefresh } from "@/lib/onboarding-refresh";
 
 // ── Shared mocks ───────────────────────────────────────────────────────────
 
@@ -286,6 +287,8 @@ describe("AddSecretForm component", () => {
   });
 
   it("happy path: assembles the JSON object, calls the action, refreshes; no secret in analytics", async () => {
+    const refreshed = vi.fn();
+    const unsubscribe = subscribeOnboardingRefresh("ws_1", refreshed);
     createSecretActionMock.mockResolvedValue({ ok: true, data: { name: "stripe" } });
     const user = userEvent.setup();
     await renderForm();
@@ -303,14 +306,18 @@ describe("AddSecretForm component", () => {
       }),
     );
     await waitFor(() => expect(routerRefresh).toHaveBeenCalled());
+    expect(refreshed).toHaveBeenCalledTimes(1);
     expect(captureProductEventMock).toHaveBeenCalledWith(EVENTS.secret_added, {
       secret_name: "stripe",
     });
     // The secret value must never reach analytics.
     expect(JSON.stringify(captureProductEventMock.mock.calls)).not.toContain("sk-test");
+    unsubscribe();
   });
 
   it("API error renders below the form", async () => {
+    const refreshed = vi.fn();
+    const unsubscribe = subscribeOnboardingRefresh("ws_1", refreshed);
     createSecretActionMock.mockResolvedValue({ ok: false, error: "data too large", status: 400 });
     const user = userEvent.setup();
     await renderForm();
@@ -320,6 +327,8 @@ describe("AddSecretForm component", () => {
     await user.click(screen.getByRole("button", ADD_SECRET));
     await waitFor(() => expect(screen.getByText(/data too large/i)).toBeTruthy());
     expect(captureProductEventMock).not.toHaveBeenCalled();
+    expect(refreshed).not.toHaveBeenCalled();
+    unsubscribe();
   });
 
   it("API error with empty string falls back to the default message", async () => {
