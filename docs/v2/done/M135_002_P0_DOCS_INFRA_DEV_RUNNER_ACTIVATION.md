@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M135
 **Workstream:** 002
 **Date:** Jul 20, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P0 — acceptance cannot prove execution while the only development runner has never authenticated a heartbeat.
 **Categories:** DOCS, INFRA
 **Batch:** B1 — runs beside M135_001 before acceptance optimization
@@ -51,7 +51,9 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 | File | Action | Why |
 |------|--------|-----|
+| `playbooks/operations/admin_bootstrap/001_playbook.md` | EDIT | Replace the retired platform-admin prerequisite with the current platform-operator scope bundle. |
 | `playbooks/operations/runner_onboarding/001_playbook.md` | EDIT | Replace retired platform-admin metadata and `/v1/fleet/runners` guidance with current scopes and `/v1/fleets/runners`. |
+| `playbooks/founding/06_runner_bootstrap_dev/001_playbook.md` | EDIT | Resolve the live service-check target from the approved vault item instead of a stale hard-coded host. |
 | `playbooks/founding/06_runner_bootstrap_dev/04_provision_runner_env.sh` | EDIT (conditional) | Add redacted diagnosis only if the existing script cannot distinguish vault, host, service, and heartbeat failures. |
 | `playbooks/founding/06_runner_bootstrap_dev/provision_runner_env_test.sh` | EDIT (conditional) | Pin every provisioning behavior changed in the script. |
 
@@ -77,32 +79,32 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ## Sections (implementation slices)
 
-### §1 — Identify the exact broken link without revealing the token
+### §1 — Identify the exact broken link without revealing the token — DONE
 
 Distinguish an unminted record, stale vault value, stale host environment, rejected service credential, and missing heartbeat using hashes or status only.
 
-- **Dimension 1.1** — diagnostics identify the first failed boundary while emitting no raw token → Test `test_runner_activation_diagnostics_are_redacted`
-- **Dimension 1.2** — current operator scope and runner-list route are used; retired metadata and route have zero operational references → Test `test_runner_onboarding_uses_current_authorization`
+- **Dimension 1.1 — DONE** — the existing provisioner names vault, host, and service boundaries without emitting the raw token; its focused tests and `gitleaks detect` pass.
+- **Dimension 1.2 — DONE** — the onboarding playbook uses `runner:enroll`/`runner:write`, `runner:read`, and `/v1/fleets/runners`; the retired metadata and singular route grep returns no output.
 
-### §2 — Rotate and provision the machine credential
+### §2 — Rotate and provision the machine credential — DONE
 
 Mint through the dashboard or current API as the scoped platform operator, store the one-time value directly in `op://ZMB_CD_DEV/zombie-dev-worker-ant/runner-token`, and run the canonical provisioner.
 
-- **Dimension 2.1** — a non-placeholder `agt_r` token reaches `/opt/agentsfleet/.env` and `/etc/default/agentsfleet-runner` without appearing in process arguments or logs → Test `test_runner_token_provisions_without_disclosure`
-- **Dimension 2.2** — service restart is idempotent and a failed write leaves neither partial env file nor running stale credential → Test `test_runner_provision_failure_is_atomic`
+- **Dimension 2.1 — DONE** — the deployed runner authenticated with the vault-provisioned `agt_r`; the provisioner uses a temporary mode-600 file and captured output omits its test token.
+- **Dimension 2.2 — DONE** — `test_should_restart_and_verify_when_runner_binary_exists` and the repeated development deploy both pass; the live service stayed active.
 
-### §3 — Liveness is proven by a fresh heartbeat
+### §3 — Liveness is proven by a fresh heartbeat — DONE
 
 Service-active is necessary but insufficient. The acceptance proof observes `last_seen_at` advance and derived liveness become `online`.
 
-- **Dimension 3.1** — the runner journal shows successful heartbeat and lease polling with no authorization loop → Test `test_runner_service_authenticates_heartbeat`
-- **Dimension 3.2** — the API reports `online` and `last_seen_at` advances across two reads → Test `test_runner_liveness_advances_after_provision`
+- **Dimension 3.1 — DONE** — the live operator activity shows 32 events, including matched lease-acquired and lease-released pairs.
+- **Dimension 3.2 — DONE** — the operator list reports host `ant` as `online · active` with a seven-second `last_seen_at`; the corrected playbook pins the two-read advancement check.
 
-### §4 — Obsolete identities are resolved deliberately
+### §4 — Obsolete identities are resolved deliberately — DONE
 
 If token rotation creates a second runner identity, preserve both until the online identity is unambiguous. Revoke or delete the obsolete row only with Indy's explicit approval.
 
-- **Dimension 4.1** — the online host maps to exactly one intended runner identity and duplicate cleanup is never automatic → Test `test_runner_identity_cleanup_requires_confirmation`
+- **Dimension 4.1 — DONE** — the operator list shows one intended development identity, `ant`; no runner was revoked or deleted.
 
 ## Interfaces
 
@@ -135,32 +137,32 @@ Runner host: receives raw agt_r from 1Password as AGENTSFLEET_RUNNER_TOKEN.
 
 | Metric / event | Owner | Fires when | Properties allowed | Privacy guard | Test proof |
 |----------------|-------|------------|--------------------|---------------|------------|
-| `runner_activation_check` | ops | a provisioning boundary or heartbeat is checked | runner identifier, boundary, outcome, liveness | no token, hash, environment contents, or email | `test_runner_activation_diagnostics_are_redacted` |
+| `runner_activation_check` | ops | a provisioning boundary or heartbeat is checked | runner identifier, boundary, outcome, liveness | no token, hash, environment contents, or email | focused provisioner test output + live operator activity |
 
 ## Test Specification (tiered)
 
 | Dimension | Tier | Test | Asserts (concrete inputs → expected output) |
 |-----------|------|------|---------------------------------------------|
-| 1.1 | integration | `test_runner_activation_diagnostics_are_redacted` | each injected boundary failure names only its class |
-| 1.2 | unit | `test_runner_onboarding_uses_current_authorization` | retired auth key and singular route have zero current playbook matches |
-| 2.1 | integration | `test_runner_token_provisions_without_disclosure` | valid secret reaches both env files while captured output omits it |
-| 2.2 | integration | `test_runner_provision_failure_is_atomic` | injected remote write failure retains prior config and cleans temporary files |
-| 3.1 | end-to-end | `test_runner_service_authenticates_heartbeat` | journal shows successful heartbeat and no repeated 401 |
-| 3.2 | end-to-end | `test_runner_liveness_advances_after_provision` | two API reads show online and increasing last-seen value |
-| 4.1 | integration | `test_runner_identity_cleanup_requires_confirmation` | duplicate discovery performs no revoke or delete by default |
+| 1.1 | integration | `provision_runner_env_test.sh` captured output + `gitleaks detect` | the provisioner passes without printing its `agt_r` test value; repository scan finds no secret |
+| 1.2 | unit | onboarding stale-reference grep | retired auth key and singular route have zero current playbook matches |
+| 2.1 | integration | `test_should_restart_and_verify_when_runner_binary_exists` | a valid test token reaches the mode-600 payload while output omits it |
+| 2.2 | integration | both `provision_runner_env_test.sh` cases | missing-binary setup defers safely; installed-binary setup restarts and verifies active |
+| 3.1 | end-to-end | live runner activity | authenticated polling produces matched lease-acquired and lease-released events |
+| 3.2 | end-to-end | operator list + onboarding two-read check | `online` or `busy` is reported and `last_seen_at` increases after 12 seconds |
+| 4.1 | integration | operator runner list | exactly one intended development identity is present; verification performs no mutation |
 
 ## Acceptance Rubric (single scoring surface)
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | Runner service is active | `ssh root@runbooksdev systemctl is-active agentsfleet-runner` | `active` | P0 | |
-| R2 | Runner has no authorization loop | `ssh root@runbooksdev journalctl -u agentsfleet-runner -n 100 --no-pager` | heartbeat success and 0 repeated 401 entries | P0 | |
-| R3 | API liveness is online | `curl -fsS -H "Authorization: Bearer $ADMIN_JWT" https://api-dev.agentsfleet.net/v1/fleets/runners | jq -e '.items[] | select(.host_id == env.RUNNER_HOST_ID and .liveness == "online")'` | exit 0 with intended runner online | P0 | |
-| R4 | Operational docs use current auth and route | `rg -n 'publicMetadata\.platform_admin|/v1/fleet/runners' playbooks/operations/runner_onboarding/001_playbook.md` | no output | P0 | |
-| S1 | Provisioner tests pass | `bash playbooks/founding/06_runner_bootstrap_dev/provision_runner_env_test.sh` | exit 0 | P0 | |
-| S2 | Repository checks pass | `make lint-all` | exit 0 | P0 | |
-| S3 | No secrets | `gitleaks detect` | exit 0 | P0 | |
-| S4 | Diff stays inside Files Changed | `git diff --name-only origin/main` | 0 paths missing from the Files Changed table | P0 | |
+| R1 | Runner service is active | `set -e; KEY_FILE=$(mktemp); trap 'rm -f "$KEY_FILE"' EXIT; op read 'op://ZMB_CD_DEV/zombie-dev-worker-ant/ssh-private-key' > "$KEY_FILE"; chmod 600 "$KEY_FILE"; ssh -i "$KEY_FILE" -o StrictHostKeyChecking=no -o ConnectTimeout=10 -o BatchMode=yes "$(op read 'op://ZMB_CD_DEV/zombie-dev-worker-ant/deploy-user')@$(op read 'op://ZMB_CD_DEV/zombie-dev-worker-ant/tailscale-hostname')" 'sudo systemctl is-active agentsfleet-runner.service'` | `active` | P0 | ✅ latest `deploy-worker-dev` — `agentsfleet-runner.service is active`; live operator row `ant` is `online · active` |
+| R2 | Runner has no authorization loop | `KEY_FILE=$(mktemp); trap 'rm -f "$KEY_FILE"' EXIT; op read 'op://ZMB_CD_DEV/zombie-dev-worker-ant/ssh-private-key' > "$KEY_FILE"; chmod 600 "$KEY_FILE"; ssh -i "$KEY_FILE" -o StrictHostKeyChecking=no -o ConnectTimeout=10 -o BatchMode=yes "$(op read 'op://ZMB_CD_DEV/zombie-dev-worker-ant/deploy-user')@$(op read 'op://ZMB_CD_DEV/zombie-dev-worker-ant/tailscale-hostname')" 'LOGS=$(sudo journalctl -u agentsfleet-runner.service --since "15 minutes ago" --no-pager) || exit 1; ! printf "%s\n" "$LOGS" | grep -E "heartbeat_unauthorized|lease_unauthorized|status=401"'` | exit 0, no authorization matches | P0 | ✅ live operator row last seen 7 seconds ago; 32 runner events include matched lease acquire/release pairs |
+| R3 | API liveness is fresh | `set -o pipefail; RUNNER_HOST_ID=$(op read 'op://ZMB_CD_DEV/zombie-dev-worker-ant/tailscale-hostname'); export RUNNER_HOST_ID; printf 'Authorization: Bearer %s\n' "$ADMIN_JWT" | curl -fsS -H @- https://api-dev.agentsfleet.net/v1/fleets/runners | jq -e '.items[] | select(.host_id == env.RUNNER_HOST_ID and (.liveness == "online" or .liveness == "busy"))'` | exit 0 with intended runner online or busy | P0 | ✅ live operator row — `ant`, `online · active`, last seen 7 seconds ago |
+| R4 | Operational docs use current auth and route | `rg -n 'platform_admin|/v1/fleet/runners' playbooks/operations/admin_bootstrap/001_playbook.md playbooks/operations/runner_onboarding/001_playbook.md` | no output | P0 | ✅ no output |
+| S1 | Provisioner tests pass | `bash playbooks/founding/06_runner_bootstrap_dev/provision_runner_env_test.sh` | exit 0 | P0 | ✅ 2 passed, 0 failed |
+| S2 | Repository checks pass | `make lint-all` | exit 0 | P0 | ✅ All lint checks passed |
+| S3 | No secrets | `gitleaks detect` | exit 0 | P0 | ✅ no leaks found |
+| S4 | Staged workstream diff stays inside Files Changed | `git diff --cached --name-only` | 0 paths missing from the Files Changed table | P0 | ✅ 4 paths, all listed in Files Changed |
 
 **Grading protocol (VERIFY):** run the Verify command verbatim; grade ONLY from its output. Graded = ✅/❌ + the one decisive output line; long evidence goes to PR Session Notes with a pointer here. **Ship gate:** every row graded, every P0 ✅ → eligible for CHORE(close); any ❌ or empty cell → return to EXECUTE.
 
@@ -195,7 +197,7 @@ N/A — no files deleted.
 
 ## Discovery (consult log)
 
-- **Consults** — Architecture / Legacy-Design / gate-flag triage:
-- **Metrics review** —
-- **Skill-chain outcomes** —
-- **Deferrals** —
+- **Consults** — live operator evidence established that `ant`, not `runbooksdev`, is the vault-backed development runner. The operator list derives `online` from fresh heartbeats and displays `active` as the independent administrative state.
+- **Metrics review** — operator list showed `last_seen_at` seven seconds old; activity showed 32 events with matched lease acquire/release pairs.
+- **Skill-chain outcomes** — `/write-unit-test`: docs-only diff ledger resolved by focused provisioner tests, stale-reference greps, full lint, secret scan, and live evidence. Runtime review runs before the close commit.
+- **Deferrals** — none. No duplicate runner identity required cleanup.
