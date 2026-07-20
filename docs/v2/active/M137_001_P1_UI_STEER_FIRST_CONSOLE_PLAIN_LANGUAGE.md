@@ -16,12 +16,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M137
 **Workstream:** 001
 **Date:** Jul 20, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — customer-facing: operators cannot read the wall/console today (cryptic labels, overlapping columns, buried composer)
 **Categories:** UI
 **Batch:** B1 — standalone; no sibling workstreams
-**Branch:** — set at CHORE(open)
-**Test Baseline:** set at CHORE(open) — `unit=<N> integration=<M>` via `make _lint_zig_test_depth`
+**Branch:** feat/m137-steer-first-console
+**Test Baseline:** unit=2806 integration=371
 **Depends on:** none — M131_001 (console) and M132_001 (wall) are in `done/`
 **Provenance:** LLM-drafted (Claude Fable 5, Jul 20, 2026) — from Indy's dev-session review of `app-dev` screenshots
 **Canonical architecture:** `docs/DESIGN_SYSTEM.md` §Operational Restraint; frozen reference `~/.gstack/projects/agentsfleet-agentsfleet/designs/fleet-dashboard-20260714/{variant-F-ia.html,FREEZE.md}`
