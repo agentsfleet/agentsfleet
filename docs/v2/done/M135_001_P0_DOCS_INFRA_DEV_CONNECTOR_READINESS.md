@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M135
 **Workstream:** 001
 **Date:** Jul 20, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P0 — development and production promotion are unsafe while provider credentials, callback origins, and registration grants drift between environments.
 **Categories:** DOCS, INFRA
 **Batch:** B1 — runs beside M135_002 before either acceptance lane is tuned
@@ -71,7 +71,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `src/agentsfleetd/http/handlers/connectors/jira/spec.zig` | EDIT (discovered) | Request and pin the least-privilege read/write scopes needed to reply on Jira and Service Management tickets. |
 | `src/agentsfleetd/http/handlers/connectors/linear/spec.zig` | EDIT (discovered) | Remove the retired offline scope and request targeted Linear comment replies. |
 | `docs/architecture/scenarios/github-pr-reviewer.md` | EDIT | Keep the external proof visibly open without citing a pending milestone from canonical architecture. |
-| `docs/v2/active/M135_001_P0_DOCS_INFRA_DEV_CONNECTOR_READINESS.md` | EDIT | Grade and close this amended readiness contract. |
+| `docs/v2/done/M135_001_P0_DOCS_INFRA_DEV_CONNECTOR_READINESS.md` | EDIT | Grade and close this amended readiness contract. |
 | `docs/v2/active/M135_002_P0_DOCS_INFRA_DEV_RUNNER_ACTIVATION.md` | NO EDIT (parked) | Keep the active runner workstream open as M136_001's prerequisite. |
 | `docs/v2/active/M135_003_P0_CLI_INFRA_CLI_ACCEPTANCE_TRUTH_AND_SPEED.md` | NO EDIT (parked) | Keep the active CLI workstream open for later execution. |
 | `docs/v2/active/M135_004_P0_INFRA_UI_DEV_RELEASE_ACCEPTANCE_GATE.md` | NO EDIT (parked) | Keep the active UI workstream open for later execution. |
@@ -176,13 +176,13 @@ No raw provider secret crosses into the repository, shell history, or evidence a
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | Development credential gate accepts every canonical bag | `OP_BIOMETRIC_UNLOCK_ENABLED=false ENV=dev ./playbooks/founding/02_preflight/00_gate.sh` | exit 0 and `002_preflight check complete (env: dev)` | P0 | |
-| R2 | Provider callbacks return to workspace-scoped app routes | `zig build test -Dtest-filter='OAuth callback' && zig build test -Dtest-filter='GitHub callback'` | exit 0 | P0 | |
-| R3 | Deployment workflow contracts and registration playbooks agree | `bash playbooks/founding/02_preflight/credentials_test.sh && make check-playbooks` | exit 0 and `8 passed, 0 failed` | P0 | |
-| R4 | Architecture proof remains visibly open | `rg -n 'External .github-pr-reviewer. repository test.*external proof remains open' docs/architecture/scenarios/github-pr-reviewer.md` | one match | P0 | |
-| S1 | Repository checks pass | `make lint-all` | exit 0 | P0 | |
-| S2 | No secrets | `gitleaks detect --no-banner` | exit 0 | P0 | |
-| S3 | Diff stays inside Files Changed | `git diff --name-only origin/main` | 0 paths missing from the Files Changed table | P0 | |
+| R1 | Development credential gate accepts every canonical bag | `OP_BIOMETRIC_UNLOCK_ENABLED=false ENV=dev ./playbooks/founding/02_preflight/00_gate.sh` | exit 0 and `002_preflight check complete (env: dev)` | P0 | ✅ `002_preflight check complete (env: dev)` |
+| R2 | Provider callbacks return to workspace-scoped app routes | `zig build test -Dtest-filter='OAuth callback' && zig build test -Dtest-filter='GitHub callback'` | exit 0 | P0 | ✅ both filtered test commands exited 0 |
+| R3 | Deployment workflow contracts and registration playbooks agree | `bash playbooks/founding/02_preflight/credentials_test.sh && make check-playbooks` | exit 0 and `8 passed, 0 failed` | P0 | ✅ `8 passed, 0 failed`; playbook checks exited 0 |
+| R4 | Architecture proof remains visibly open | `rg -n 'External .github-pr-reviewer. repository test.*external proof remains open' docs/architecture/scenarios/github-pr-reviewer.md` | one match | P0 | ✅ one match at line 108 |
+| S1 | Repository checks pass | `make lint-all` | exit 0 | P0 | ✅ `All lint checks passed` |
+| S2 | No secrets | `gitleaks detect --no-banner` | exit 0 | P0 | ✅ `no leaks found` |
+| S3 | Diff stays inside Files Changed | `git diff --name-only origin/main` | 0 paths missing from the Files Changed table | P0 | ✅ comparison emitted 0 paths |
 
 **Grading protocol (VERIFY):** run the Verify command verbatim; grade ONLY from its output. Graded = ✅/❌ + the one decisive output line; long evidence goes to PR Session Notes with a pointer here. **Ship gate:** every row graded, every P0 ✅ → eligible for CHORE(close); any ❌ or empty cell → return to EXECUTE.
 
@@ -220,6 +220,8 @@ N/A — no files deleted.
 
 - **Consults** — Architecture marker remains open because the real repository proof has not run; Jira and Linear registration grants are not described as implemented outbound posters.
 - **Metrics review** — no analytics or funnel event changes; this work changes deployment inputs, callback redirects, and operator playbooks.
-- **Skill-chain outcomes** — `/review` rerun Jul 20 against `caa6f6392`: no P0 finding; corrected Jira/Linear capability overstatement and required the explicit M136_001 lifecycle split. `/write-unit-test` and final review evidence are recorded at CHORE(close).
+- **Skill-chain outcomes** — `/write-unit-test`: PASS after adding provider-secret redaction, exact dev/prod signer workflow contracts, fail-closed connect/callback signer coverage, and Jira/Linear source-to-playbook assertions; `8 passed, 0 failed`. Final gstack `/review`: CLEAN after correcting the Jira/Linear capability overstatement and one mechanical parked-lifecycle wording fix; 0 unresolved findings, quality score 10/10, adversarial sources both clean. `make lint-all`, `make harness-verify`, and gitleaks passed; test depth advanced from unit=2802/integration=369 to unit=2806/integration=371. `kishore-babysit-prs` runs after the closure push.
 - **Deferrals** —
   > Indy (2026-07-20 22:23): "And move th 2,3,4 to the next milestone and read and move this milestone to done?" — context: runner activation remains M135_002; live Slack authorization/signed mention and real GitHub review/replay proof move to M136_001 rather than being claimed passed by M135_001.
+
+**Jul 20, 2026 — CHORE(close).** M135_001 closes the amended provider registration and callback-readiness contract. M135_002–004 remain active and parked. M136_001 is pending and owns the unrun live Slack and GitHub proof; the canonical architecture marker remains visibly open. No external proof was relabelled as passed. No user-facing changelog entry is required because this is internal deployment, callback routing, test, and operator-playbook readiness work.
