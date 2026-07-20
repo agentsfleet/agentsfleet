@@ -57,11 +57,14 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `playbooks/founding/02_preflight/001_playbook.md` | EDIT | Inventory the actual connector bags and agentsfleet callback signer required before promotion. |
 | `playbooks/founding/02_preflight/02_credentials.sh` | EDIT | Fail loud on missing canonical GitHub, Slack, OAuth, QStash, and callback-state credentials. |
 | `playbooks/founding/02_preflight/credentials_test.sh` | EDIT | Pin canonical field checks and missing callback-signer failure. |
+| `playbooks/founding/01_bootstrap/001_playbook.md` | EDIT (review) | Remove retired GitHub Fly secrets and load the agentsfleet callback signer. |
+| `playbooks/founding/03_priming_infra/001_playbook.md` | EDIT (review) | Keep the manual Fly bootstrap contract aligned with the deployment workflow. |
 | `.github/workflows/deploy-dev.yml` | EDIT | Load the callback signer and remove retired GitHub Fly secrets. |
 | `.github/workflows/release.yml` | EDIT | Make the same production path reproducible without activating or deploying it. |
 | `deploy/fly/agentsfleetd-dev/fly.toml` | EDIT (discovered) | Pin the development API and app origins so OAuth redemption and browser redirects use the same environment. |
 | `src/agentsfleetd/http/handlers/connectors/callback.zig` | EDIT (discovered) | Redirect successful connector callbacks to the workspace-scoped integrations route. |
 | `src/agentsfleetd/http/handlers/connectors/github/callback_integration_test.zig` | EDIT (discovered) | Prevent regression to the stale unscoped integrations redirect. |
+| `src/agentsfleetd/http/handlers/connectors/slack/oauth_callback_integration_test.zig` | EDIT (review) | Cover the OAuth callback path and trailing-slash-safe workspace redirect. |
 | `docs/architecture/scenarios/github-pr-reviewer.md` | EDIT | Replace the outstanding external proof marker only after the real repository run and replay check pass. |
 
 ## Applicable Rules

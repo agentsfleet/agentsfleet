@@ -167,6 +167,7 @@ test "integration: slack oauth callback persists install + vaults token (Dim 1.1
     h.ctx.approval_signing_secret = SIGNING_SECRET;
     h.ctx.platform_admin_workspace_id = ADMIN_WS;
     h.ctx.connector_oauth_token_endpoint_override = token_url;
+    h.ctx.app_url = "http://127.0.0.1/";
 
     // Mint the signed single-use state the callback consumes (binds TARGET_WS).
     const state = try oauth2.mintState(alloc, &h.queue, spec.SPEC, SIGNING_SECRET, TARGET_WS, common.clock.nowMillis());
@@ -180,6 +181,8 @@ test "integration: slack oauth callback persists install + vaults token (Dim 1.1
     const r = try h.get(path).redirectBehavior(.unhandled).send();
     defer r.deinit();
     try r.expectStatus(.found);
+    const expected_redirect = "http://127.0.0.1/w/" ++ TARGET_WS ++ "/integrations";
+    try testing.expectEqualStrings(expected_redirect, r.header("location") orelse return error.RedirectLocationMissing);
 
     // (1) Exactly one connector_installs row, mapping team_id → TARGET_WS.
     var q = PgQuery.from(try conn.query(

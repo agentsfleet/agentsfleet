@@ -35,7 +35,7 @@ jobs:
           OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
           VAULT_DEV: ${{ vars.VAULT_DEV }}
           VAULT_PROD: ${{ vars.VAULT_PROD }}
-        run: ./playbooks/founding/02_preflight/00_gate.sh
+        run: ENV=dev ./playbooks/founding/02_preflight/00_gate.sh
 
   # ── 1a. Compile linux/amd64 binaries (Alpine — musl-native static OpenSSL) ─
   # Build inside Alpine so static OpenSSL archives are musl-compatible.

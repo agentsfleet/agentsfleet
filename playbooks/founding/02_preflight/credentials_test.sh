@@ -106,8 +106,11 @@ test_should_check_runtime_connector_credentials() {
     'slack-app/client_secret'
     'slack-app/signing_secret'
     'zoho-app/client_id'
+    'zoho-app/client_secret'
     'jira-app/client_id'
+    'jira-app/client_secret'
     'linear-app/client_id'
+    'linear-app/client_secret'
   )
   local ref
   if [[ "$status" -ne 0 ]]; then
@@ -141,11 +144,58 @@ test_should_reject_missing_approval_signer() {
   fi
 }
 
+test_should_reject_missing_canonical_provider_fields() {
+  local name="test_should_reject_missing_canonical_provider_fields"
+  local -a refs=(
+    'op://ZMB_CD_DEV/github-app/private_key_pem'
+    'op://ZMB_CD_DEV/slack-app/client_secret'
+    'op://ZMB_CD_DEV/linear-app/client_secret'
+  )
+  local ref output status
+  for ref in "${refs[@]}"; do
+    status=0
+    output="$(run_gate '0190f5a2-4b2d-7c11-8d5e-2a5f31d98210' "$ref")" || status=$?
+    if [[ "$status" -ne 1 || "$output" != *"MISSING: $ref"* ]]; then
+      bad "$name" "missing canonical field was not rejected: $ref: $output"
+      return
+    fi
+  done
+  ok "$name"
+}
+
+test_should_scope_deployment_credential_gates() {
+  local name="test_should_scope_deployment_credential_gates"
+  local repo_root workflow
+  repo_root="$(cd "$script_dir/../../.." && pwd)"
+  if ! grep -q 'run: ENV=dev ./playbooks/founding/02_preflight/00_gate.sh' \
+      "$repo_root/.github/workflows/deploy-dev.yml"; then
+    bad "$name" "development deployment does not scope the gate to dev"
+    return
+  elif ! grep -q 'run: ENV=prod ./playbooks/founding/02_preflight/00_gate.sh' \
+      "$repo_root/.github/workflows/release.yml"; then
+    bad "$name" "production release does not scope the gate to prod"
+    return
+  fi
+
+  for workflow in deploy-dev.yml release.yml; do
+    if ! grep -q 'APPROVAL_SIGNING_SECRET' "$repo_root/.github/workflows/$workflow"; then
+      bad "$name" "$workflow does not provision the callback signer"
+      return
+    elif grep -Eq 'GITHUB_APP_ID|GITHUB_APP_PRIVATE_KEY' "$repo_root/.github/workflows/$workflow"; then
+      bad "$name" "$workflow still provisions retired GitHub App secrets"
+      return
+    fi
+  done
+  ok "$name"
+}
+
 test_should_accept_uuidv7_workspace_pointer
 test_should_reject_missing_workspace_pointer
 test_should_reject_non_uuidv7_workspace_pointer
 test_should_check_runtime_connector_credentials
 test_should_reject_missing_approval_signer
+test_should_reject_missing_canonical_provider_fields
+test_should_scope_deployment_credential_gates
 
 printf '\n%d passed, %d failed\n' "$passed" "$failed"
 [[ "$failed" -eq 0 ]]

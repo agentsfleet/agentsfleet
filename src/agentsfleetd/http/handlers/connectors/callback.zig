@@ -130,7 +130,8 @@ fn redirectToDashboard(hx: hx_mod.Hx, workspace_id: []const u8) void {
     // The Location value must outlive the handler: httpz writes response
     // headers AFTER the dispatcher's per-request arena (hx.alloc) is freed, so
     // it lives on res.arena (owned until the response is written).
-    const url = std.fmt.allocPrint(hx.res.arena, "{s}" ++ DEST_PATH_FMT, .{ hx.ctx.app_url, workspace_id }) catch {
+    const app_url = std.mem.trimEnd(u8, hx.ctx.app_url, "/");
+    const url = std.fmt.allocPrint(hx.res.arena, "{s}" ++ DEST_PATH_FMT, .{ app_url, workspace_id }) catch {
         // The connection succeeded; a redirect-build failure is cosmetic, so
         // return 200 rather than a 500 over a missing app_url.
         hx.ok(.ok, .{ .status = "connected" });
