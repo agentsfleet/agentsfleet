@@ -34,7 +34,7 @@ case "$ref" in
   */migrator-connection-string) printf 'postgres-migrator\n' ;;
   */api-connection-string) printf 'postgres-api\n' ;;
   */qstash/url) printf 'https://qstash-eu-central-1.upstash.io\n' ;;
-  *) printf 'stub-value\n' ;;
+  *) printf '%s\n' "${SECRET_SENTINEL:-stub-value}" ;;
 esac
 STUB
 chmod +x "$stub_dir/op"
@@ -48,6 +48,7 @@ run_gate() {
     OP_READ_MIN_INTERVAL_SECONDS=0 \
     PLATFORM_WORKSPACE_VALUE="$workspace_value" \
     MISSING_REF="$missing_ref" \
+    SECRET_SENTINEL='do-not-print-provider-secret' \
     bash "$script_under_test" 2>&1
 }
 
@@ -139,6 +140,8 @@ test_should_reject_missing_approval_signer() {
     bad "$name" "missing signer returned status $status: $output"
   elif [[ "$output" != *"MISSING: $ref"* ]]; then
     bad "$name" "missing signer did not name its 1Password field: $output"
+  elif [[ "$output" == *'do-not-print-provider-secret'* ]]; then
+    bad "$name" "preflight emitted a provider secret value: $output"
   else
     ok "$name"
   fi
@@ -155,7 +158,7 @@ test_should_reject_missing_canonical_provider_fields() {
   for ref in "${refs[@]}"; do
     status=0
     output="$(run_gate '0190f5a2-4b2d-7c11-8d5e-2a5f31d98210' "$ref")" || status=$?
-    if [[ "$status" -ne 1 || "$output" != *"MISSING: $ref"* ]]; then
+    if [[ "$status" -ne 1 || "$output" != *"MISSING: $ref"* || "$output" == *'do-not-print-provider-secret'* ]]; then
       bad "$name" "missing canonical field was not rejected: $ref: $output"
       return
     fi
@@ -165,7 +168,7 @@ test_should_reject_missing_canonical_provider_fields() {
 
 test_should_scope_deployment_credential_gates() {
   local name="test_should_scope_deployment_credential_gates"
-  local repo_root workflow
+  local repo_root workflow vault
   repo_root="$(cd "$script_dir/../../.." && pwd)"
   if ! grep -q 'run: ENV=dev ./playbooks/founding/02_preflight/00_gate.sh' \
       "$repo_root/.github/workflows/deploy-dev.yml"; then
@@ -178,8 +181,15 @@ test_should_scope_deployment_credential_gates() {
   fi
 
   for workflow in deploy-dev.yml release.yml; do
-    if ! grep -q 'APPROVAL_SIGNING_SECRET' "$repo_root/.github/workflows/$workflow"; then
-      bad "$name" "$workflow does not provision the callback signer"
+    vault="VAULT_DEV"
+    [[ "$workflow" == "release.yml" ]] && vault="VAULT_PROD"
+    # The dollar expression is the literal Fly command contract, not shell input.
+    # shellcheck disable=SC2016
+    if ! grep -Fq "APPROVAL_SIGNING_SECRET: op://\${{ vars.$vault }}/approval-signing-secret/credential" "$repo_root/.github/workflows/$workflow"; then
+      bad "$name" "$workflow does not load the environment-scoped callback signer"
+      return
+    elif ! grep -Fq 'APPROVAL_SIGNING_SECRET="$APPROVAL_SIGNING_SECRET"' "$repo_root/.github/workflows/$workflow"; then
+      bad "$name" "$workflow does not pass the callback signer to Fly"
       return
     elif grep -Eq 'GITHUB_APP_ID|GITHUB_APP_PRIVATE_KEY' "$repo_root/.github/workflows/$workflow"; then
       bad "$name" "$workflow still provisions retired GitHub App secrets"
@@ -189,6 +199,31 @@ test_should_scope_deployment_credential_gates() {
   ok "$name"
 }
 
+test_should_pin_issue_tracker_registration_contracts() {
+  local name="test_should_pin_issue_tracker_registration_contracts"
+  local repo_root jira_spec linear_spec jira_doc linear_doc
+  repo_root="$(cd "$script_dir/../../.." && pwd)"
+  jira_spec="$repo_root/src/agentsfleetd/http/handlers/connectors/jira/spec.zig"
+  linear_spec="$repo_root/src/agentsfleetd/http/handlers/connectors/linear/spec.zig"
+  jira_doc="$repo_root/playbooks/operations/jira_app_registration/001_playbook.md"
+  linear_doc="$repo_root/playbooks/operations/linear_app_registration/001_playbook.md"
+
+  # Backticks below are literal Markdown delimiters.
+  # shellcheck disable=SC2016
+  if ! grep -Fq 'const SCOPES = "read:jira-work read:jira-user write:jira-work read:servicedesk-request write:servicedesk-request offline_access";' "$jira_spec" \
+      || ! grep -Fq 'exactly `read:jira-work read:jira-user write:jira-work read:servicedesk-request write:servicedesk-request`' "$jira_doc"; then
+    bad "$name" "Jira source and registration playbook do not pin the exact selected scopes"
+  elif ! grep -Fq 'const SCOPES = "read,comments:create";' "$linear_spec" \
+      || ! grep -Fq 'The authorization request supplies `read,comments:create`.' "$linear_doc"; then
+    bad "$name" "Linear source and registration playbook do not pin the exact selected scopes"
+  elif ! grep -Fq 'registration alone does not claim that outbound delivery is implemented' "$jira_doc" \
+      || ! grep -Fq 'Registration does not claim that the outbound Linear poster is implemented.' "$linear_doc"; then
+    bad "$name" "registration docs claim outbound Jira or Linear posting is implemented"
+  else
+    ok "$name"
+  fi
+}
+
 test_should_accept_uuidv7_workspace_pointer
 test_should_reject_missing_workspace_pointer
 test_should_reject_non_uuidv7_workspace_pointer
@@ -196,6 +231,7 @@ test_should_check_runtime_connector_credentials
 test_should_reject_missing_approval_signer
 test_should_reject_missing_canonical_provider_fields
 test_should_scope_deployment_credential_gates
+test_should_pin_issue_tracker_registration_contracts
 
 printf '\n%d passed, %d failed\n' "$passed" "$failed"
 [[ "$failed" -eq 0 ]]

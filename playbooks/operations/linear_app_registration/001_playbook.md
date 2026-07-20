@@ -49,7 +49,7 @@ curl -sf -o /dev/null "$API_BASE/healthz" || { echo "$API_BASE unreachable"; exi
 
 ## 1.0 Human: Create the Linear OAuth application
 
-**Goal:** one confidential OAuth application scoped to read issues and post targeted comment replies. At **linear.app** → workspace **Settings → API → OAuth applications → Create new**:
+**Goal:** one confidential OAuth application scoped to read issues, with the targeted comment grant needed by future reply delivery. Registration does not claim that the outbound Linear poster is implemented. At **linear.app** → workspace **Settings → API → OAuth applications → Create new**:
 
 1. **Name** — `agentsfleet-dev` in development and `agentsfleet` in production; **Developer URL** is the matching app origin (`https://app-dev.agentsfleet.net` or `https://app.agentsfleet.net`).
 2. **Callback URL(s)**:

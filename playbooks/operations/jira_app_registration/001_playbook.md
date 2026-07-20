@@ -70,9 +70,9 @@ The app exists; the callback URL is saved exactly as above.
 
 ## 2.0 Human: Add scopes
 
-**Goal:** the app can read and reply on both Jira issues and Jira Service Management customer requests. In **Permissions**, add both **Jira platform REST API** and **Jira Service Management API**, then select the classic (non-granular) scopes `read:jira-work`, `read:jira-user`, `write:jira-work`, `read:servicedesk-request`, and `write:servicedesk-request`. The connector requests `offline_access` dynamically for refresh tokens; it may not appear in the permissions selector.
+**Goal:** the app can authorize agentsfleet to read Jira issues and Jira Service Management customer requests, with the least-privilege write grants needed by future reply delivery. In **Permissions**, add both **Jira platform REST API** and **Jira Service Management API**, then select the classic (non-granular) scopes `read:jira-work`, `read:jira-user`, `write:jira-work`, `read:servicedesk-request`, and `write:servicedesk-request`. The connector requests `offline_access` dynamically for refresh tokens; it may not appear in the permissions selector.
 
-Do not add administrative, project-management, or user-management scopes. The two write scopes permit issue/request replies and updates; expanding beyond them requires a separate reviewed product change.
+Do not add administrative, project-management, or user-management scopes. The two write scopes permit a future outbound connector to post issue/request replies and updates; registration alone does not claim that outbound delivery is implemented. Expanding beyond these grants requires a separate reviewed product change.
 
 > **Cloud id note:** you do **not** configure a Jira **cloud id** anywhere in this app registration. Each connecting workspace's Jira site is looked up automatically at callback time via Atlassian's accessible-resources endpoint (`https://api.atlassian.com/oauth/token/accessible-resources`) and persisted on the vaulted handle as `cloud_id`/`site_url` — there is no operator step for it.
 

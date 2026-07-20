@@ -105,7 +105,7 @@ The gate + billing path is identical to every other event — see [`../billing_a
 | `SKILL.md` delivered as `instructions` per lease | ✅ |
 | Read the diff + post comments via `http_request` | ✅ |
 | Local repository-bound `pull_request` datastore test | ✅ 49/49 named-suite tests pass against real Postgres and Redis |
-| External `github-pr-reviewer` repository test | 🔨 — proof gate for this scenario; do not call the scenario fixed until it passes |
+| External `github-pr-reviewer` repository test | 🔨 — external proof remains open; do not call the scenario fixed until it passes |
 | Compounding memory across PRs | 🔨 (parked design) |
 
 ## 7. What is NOT in this scenario
