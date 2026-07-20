@@ -54,6 +54,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 |------|--------|-----|
 | `playbooks/operations/github_app_registration/001_playbook.md` | EDIT | Record any discovered app-dev-safe, idempotent connection or verification correction. |
 | `playbooks/operations/slack_app_registration/001_playbook.md` | EDIT | Record any discovered app-dev-safe, idempotent connection or verification correction. |
+| `playbooks/operations/jira_app_registration/001_playbook.md` | EDIT (discovered) | Pin resource-level authorization and the issue plus Service Management reply scopes selected during development registration. |
+| `playbooks/operations/linear_app_registration/001_playbook.md` | EDIT (discovered) | Align the application controls and targeted comment scope with Linear's current refresh-token contract. |
 | `playbooks/founding/02_preflight/001_playbook.md` | EDIT | Inventory the actual connector bags and agentsfleet callback signer required before promotion. |
 | `playbooks/founding/02_preflight/02_credentials.sh` | EDIT | Fail loud on missing canonical GitHub, Slack, OAuth, QStash, and callback-state credentials. |
 | `playbooks/founding/02_preflight/credentials_test.sh` | EDIT | Pin canonical field checks and missing callback-signer failure. |
@@ -65,6 +67,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `src/agentsfleetd/http/handlers/connectors/callback.zig` | EDIT (discovered) | Redirect successful connector callbacks to the workspace-scoped integrations route. |
 | `src/agentsfleetd/http/handlers/connectors/github/callback_integration_test.zig` | EDIT (discovered) | Prevent regression to the stale unscoped integrations redirect. |
 | `src/agentsfleetd/http/handlers/connectors/slack/oauth_callback_integration_test.zig` | EDIT (review) | Cover the OAuth callback path and trailing-slash-safe workspace redirect. |
+| `src/agentsfleetd/http/handlers/connectors/jira/spec.zig` | EDIT (discovered) | Request and pin the least-privilege read/write scopes needed to reply on Jira and Service Management tickets. |
+| `src/agentsfleetd/http/handlers/connectors/linear/spec.zig` | EDIT (discovered) | Remove the retired offline scope and request targeted Linear comment replies. |
 | `docs/architecture/scenarios/github-pr-reviewer.md` | EDIT | Replace the outstanding external proof marker only after the real repository run and replay check pass. |
 
 ## Applicable Rules
