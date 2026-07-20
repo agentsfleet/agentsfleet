@@ -3,7 +3,7 @@
 **Milestone:** M106
 **Workstream:** 001 (§6.1 deliverable)
 **Updated:** Jun 30, 2026
-**Prerequisite:** The M106 ingress (`POST /v1/connectors/slack/events`, `GET /v1/connectors/slack/callback`) is **deployed and reachable** at `$API_BASE` — Slack verifies the events Request URL with a live `url_verification` challenge, so the handler must answer before this playbook can complete. `op` CLI authenticated; the `agentsfleet-admin` tenant API key in vault (see `operations/admin_bootstrap/001_playbook.md`). Slack workspace where you can create apps.
+**Prerequisite:** The M106 ingress (`POST /v1/connectors/slack/events`, `GET /v1/connectors/slack/callback`) is **deployed and reachable** at `$API_BASE` — Slack verifies the events Request URL with a live `url_verification` challenge, so the handler must answer before this playbook can complete. `op` CLI authenticated; the `agentsfleet-admin` tenant API key and agentsfleet-owned `approval-signing-secret/credential` in the environment vault (see `operations/admin_bootstrap/001_playbook.md`). The deployment must load that value as `APPROVAL_SIGNING_SECRET` before any connector callback can be minted or verified. Slack workspace where you can create apps.
 
 Registers **one** multi-tenant Slack app and stores its **platform** credentials (`client_id`, `client_secret`, `signing_secret`) in the `agentsfleet-admin` workspace vault, resolved daemon-side via `crypto_store.load` — the same model as the platform LLM key (admin_bootstrap §7) and the GitHub App private key (`github_app_registration`). This is the Stage-0 one-time setup; the per-customer bot token (`xoxb`) is minted later at OAuth-install time and stored in **the customer's** workspace vault under the `fleet:slack` handle — it is **not** handled here.
 

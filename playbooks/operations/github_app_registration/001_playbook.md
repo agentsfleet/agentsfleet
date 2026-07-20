@@ -3,7 +3,7 @@
 **Milestone:** M106
 **Workstream:** 001 (§6.2 deliverable — documents the GitHub App used by M102_001 agent-identity proxy)
 **Updated:** Jul 11, 2026
-**Prerequisite:** `op` Command-Line Interface (CLI) authenticated; the `agentsfleet-admin` tenant API key in vault (`operations/admin_bootstrap/001_playbook.md`). A GitHub user or organisation where you may create a GitHub App.
+**Prerequisite:** `op` Command-Line Interface (CLI) authenticated; the `agentsfleet-admin` tenant API key and `approval-signing-secret/credential` in the environment vault (`operations/admin_bootstrap/001_playbook.md`). The deployment workflow must load `APPROVAL_SIGNING_SECRET`; it signs agentsfleet's single-use workspace callback state and is not a GitHub credential. A GitHub user or organisation where you may create a GitHub App.
 
 Registers **one** GitHub App and stores its platform identity and inbound secret in the `agentsfleet-admin` workspace vault as `github-app` `{app_id, private_key_pem, app_slug, webhook_secret, client_id, client_secret}`. The private key signs App JSON Web Tokens (JWTs) for outbound installation-token minting; the distinct webhook secret verifies inbound App deliveries at `/v1/ingress/github`; the client credentials let the callback prove that the returning GitHub user may access the claimed installation. None of the secret fields leaves the daemon. Only `app_id`, `app_slug`, and `client_id` are public identifiers.
 
@@ -87,26 +87,32 @@ App ID, public slug, Client ID, downloaded `.pem`, client-secret vault reference
 **Goal:** persist `{app_id, private_key_pem, app_slug, webhook_secret, client_id, client_secret}` as `github-app`. Secret values flow through files or 1Password reads into standard input, never command arguments or output. Then destroy the local key file.
 
 ```bash
-PEM_PATH="${1:?path to the downloaded .pem}"
-jq -n \
-  --arg app_id "$(read -rp 'App ID: ' v; echo "$v")" \
-  --arg app_slug "$(read -rp 'App public slug: ' v; echo "$v")" \
-  --arg client_id "$(read -rp 'Client ID: ' v; echo "$v")" \
-  --arg client_secret "$(op read "op://$VAULT/github-app/client_secret")" \
-  --arg private_key_pem "$(cat "$PEM_PATH")" \
-  --arg webhook_secret "$(op read "op://$VAULT/github-app/webhook_secret")" \
-  '{app_id:$app_id, private_key_pem:$private_key_pem, app_slug:$app_slug, webhook_secret:$webhook_secret, client_id:$client_id, client_secret:$client_secret}' |
-  AGENTSFLEET_API_KEY="$ADMIN_KEY" agentsfleet secret create github-app --data @-
+printf '%s\0%s\0%s\0%s\0%s\0%s' \
+  "$(op read "op://$VAULT/github-app/app_id")" \
+  "$(op read "op://$VAULT/github-app/app_slug")" \
+  "$(op read "op://$VAULT/github-app/client_id")" \
+  "$(op read "op://$VAULT/github-app/client_secret")" \
+  "$(op read "op://$VAULT/github-app/private_key_pem")" \
+  "$(op read "op://$VAULT/github-app/webhook_secret")" |
+  jq -Rs 'split("\u0000") | {
+    app_id: .[0], app_slug: .[1], client_id: .[2], client_secret: .[3],
+    private_key_pem: .[4], webhook_secret: .[5]
+  }' |
+  AGENTSFLEET_API_KEY="$ADMIN_KEY" agentsfleet secret create github-app --force --data @-
 
-# Destroy the local key copy — vault is now the only source of truth.
-command -v shred >/dev/null && shred -u "$PEM_PATH" || rm -P "$PEM_PATH" 2>/dev/null || trash "$PEM_PATH"
+# If this run followed key generation, destroy the downloaded copy after the
+# 1Password-backed write succeeds. A later idempotent re-run has no local PEM.
+PEM_PATH="${1:-}"
+if [ -n "$PEM_PATH" ] && [ -f "$PEM_PATH" ]; then
+  command -v shred >/dev/null && shred -u "$PEM_PATH" || rm -P "$PEM_PATH" 2>/dev/null || trash "$PEM_PATH"
+fi
 ```
 
-> Prefer mirroring the PEM + identifiers into `op://$VAULT/github-app/*` first (so a vault rotation can re-issue), then pipe `op read` → `jq` → `agentsfleet secret create`. Re-run with `--force` to overwrite an existing `github-app`.
+The six canonical 1Password field names intentionally match the JSON bag. Do not retain the retired `app-id` / `private-key` aliases or stage `GITHUB_APP_ID` / `GITHUB_APP_PRIVATE_KEY` in Fly; the daemon reads the encrypted admin-workspace bag. Restart or roll the daemon after adding or rotating this boot-loaded GitHub identity. Slack and the refresh-token OAuth app bags are loaded on demand and do not share this restart requirement.
 
 ### Acceptance
 
-`agentsfleet secret create` exits 0; the `.pem` no longer exists on disk; no key bytes in shell history, argv, or output.
+`agentsfleet secret create` exits 0; the downloaded `.pem` no longer exists on disk; `APPROVAL_SIGNING_SECRET` is present in the deployment; no key bytes appear in shell history, argv, or output.
 
 ---
 

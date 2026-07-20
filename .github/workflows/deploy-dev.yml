@@ -109,10 +109,9 @@ jobs:
           REDIS_URL_API: op://${{ vars.VAULT_DEV }}/upstash-dev/api-url
           ENCRYPTION_MASTER_KEY: op://${{ vars.VAULT_DEV }}/encryption-master-key/credential
           AUTH_SESSION_CODE_PEPPER: op://${{ vars.VAULT_DEV }}/auth-session-code-pepper/credential
+          APPROVAL_SIGNING_SECRET: op://${{ vars.VAULT_DEV }}/approval-signing-secret/credential
           AUDIT_LOG_PEPPER: op://${{ vars.VAULT_DEV }}/audit-log-pepper/credential
           POSTHOG_API_KEY: op://${{ vars.VAULT_DEV }}/posthog-dev/credential
-          GITHUB_APP_ID: op://${{ vars.VAULT_DEV }}/github-app/app-id
-          GITHUB_APP_PRIVATE_KEY: op://${{ vars.VAULT_DEV }}/github-app/private-key
           CLERK_PUBLISHABLE_KEY: op://${{ vars.VAULT_DEV }}/clerk-dev/publishable-key
           CLERK_SECRET_KEY: op://${{ vars.VAULT_DEV }}/clerk-dev/secret-key
           CLERK_WEBHOOK_SECRET: op://${{ vars.VAULT_DEV }}/clerk-dev/webhook-secret
@@ -131,10 +130,9 @@ jobs:
             REDIS_URL_API="$REDIS_URL_API" \
             ENCRYPTION_MASTER_KEY="$ENCRYPTION_MASTER_KEY" \
             AUTH_SESSION_CODE_PEPPER="$AUTH_SESSION_CODE_PEPPER" \
+            APPROVAL_SIGNING_SECRET="$APPROVAL_SIGNING_SECRET" \
             AUDIT_LOG_PEPPER="$AUDIT_LOG_PEPPER" \
             POSTHOG_API_KEY="$POSTHOG_API_KEY" \
-            GITHUB_APP_ID="$GITHUB_APP_ID" \
-            GITHUB_APP_PRIVATE_KEY="$GITHUB_APP_PRIVATE_KEY" \
             CLERK_PUBLISHABLE_KEY="$CLERK_PUBLISHABLE_KEY" \
             CLERK_SECRET_KEY="$CLERK_SECRET_KEY" \
             CLERK_WEBHOOK_SECRET="$CLERK_WEBHOOK_SECRET" \

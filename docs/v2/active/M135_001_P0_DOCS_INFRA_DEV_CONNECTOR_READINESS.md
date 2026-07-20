@@ -54,6 +54,14 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 |------|--------|-----|
 | `playbooks/operations/github_app_registration/001_playbook.md` | EDIT | Record any discovered app-dev-safe, idempotent connection or verification correction. |
 | `playbooks/operations/slack_app_registration/001_playbook.md` | EDIT | Record any discovered app-dev-safe, idempotent connection or verification correction. |
+| `playbooks/founding/02_preflight/001_playbook.md` | EDIT | Inventory the actual connector bags and agentsfleet callback signer required before promotion. |
+| `playbooks/founding/02_preflight/02_credentials.sh` | EDIT | Fail loud on missing canonical GitHub, Slack, OAuth, QStash, and callback-state credentials. |
+| `playbooks/founding/02_preflight/credentials_test.sh` | EDIT | Pin canonical field checks and missing callback-signer failure. |
+| `.github/workflows/deploy-dev.yml` | EDIT | Load the callback signer and remove retired GitHub Fly secrets. |
+| `.github/workflows/release.yml` | EDIT | Make the same production path reproducible without activating or deploying it. |
+| `deploy/fly/agentsfleetd-dev/fly.toml` | EDIT (discovered) | Pin the development API and app origins so OAuth redemption and browser redirects use the same environment. |
+| `src/agentsfleetd/http/handlers/connectors/callback.zig` | EDIT (discovered) | Redirect successful connector callbacks to the workspace-scoped integrations route. |
+| `src/agentsfleetd/http/handlers/connectors/github/callback_integration_test.zig` | EDIT (discovered) | Prevent regression to the stale unscoped integrations redirect. |
 | `docs/architecture/scenarios/github-pr-reviewer.md` | EDIT | Replace the outstanding external proof marker only after the real repository run and replay check pass. |
 
 ## Applicable Rules
