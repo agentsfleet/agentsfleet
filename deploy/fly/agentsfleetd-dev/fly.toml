@@ -27,6 +27,8 @@ primary_region = "iad"
 [env]
   API_HTTP_THREADS = "32"
   API_HTTP_WORKERS = "1"
+  API_URL = "https://api-dev.agentsfleet.net"
+  APP_URL = "https://app-dev.agentsfleet.net"
 
 [[vm]]
   size = "shared-cpu-1x"

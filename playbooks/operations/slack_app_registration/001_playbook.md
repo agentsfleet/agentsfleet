@@ -3,7 +3,7 @@
 **Milestone:** M106
 **Workstream:** 001 (§6.1 deliverable)
 **Updated:** Jun 30, 2026
-**Prerequisite:** The M106 ingress (`POST /v1/connectors/slack/events`, `GET /v1/connectors/slack/callback`) is **deployed and reachable** at `$API_BASE` — Slack verifies the events Request URL with a live `url_verification` challenge, so the handler must answer before this playbook can complete. `op` CLI authenticated; the `agentsfleet-admin` tenant API key in vault (see `operations/admin_bootstrap/001_playbook.md`). Slack workspace where you can create apps.
+**Prerequisite:** The M106 ingress (`POST /v1/connectors/slack/events`, `GET /v1/connectors/slack/callback`) is **deployed and reachable** at `$API_BASE` — Slack verifies the events Request URL with a live `url_verification` challenge, so the handler must answer before this playbook can complete. `op` CLI authenticated; the `agentsfleet-admin` tenant API key and agentsfleet-owned `approval-signing-secret/credential` in the environment vault (see `operations/admin_bootstrap/001_playbook.md`). The deployment must load that value as `APPROVAL_SIGNING_SECRET` before any connector callback can be minted or verified. Slack workspace where you can create apps.
 
 Registers **one** multi-tenant Slack app and stores its **platform** credentials (`client_id`, `client_secret`, `signing_secret`) in the `agentsfleet-admin` workspace vault, resolved daemon-side via `crypto_store.load` — the same model as the platform LLM key (admin_bootstrap §7) and the GitHub App private key (`github_app_registration`). This is the Stage-0 one-time setup; the per-customer bot token (`xoxb`) is minted later at OAuth-install time and stored in **the customer's** workspace vault under the `fleet:slack` handle — it is **not** handled here.
 
@@ -79,11 +79,25 @@ settings:
   socket_mode_enabled: false
 ```
 
+Use `agentsfleet-dev` for both `display_information.name` and `features.bot_user.display_name` in development. Reserve `agentsfleet` and `@agentsfleet` for production so installing both apps in one Slack workspace cannot create ambiguous mentions or duplicate handling.
+
 > **Scope discipline (RULE PRI / privacy):** do **not** add `message.channels` or any channel-wide read. The bot learns from interaction, not surveillance. Interactivity, slash commands, and DM scopes (`im:write`) are **Rung-1** and deliberately absent.
 
 ### Acceptance
 
 The app exists; the manifest applied with no scope warnings.
+
+---
+
+## 1.1 Human: Enable production distribution
+
+**Goal:** customer workspaces can authorize the production app without receiving platform credentials. In the production Slack app, open **Manage Distribution**, complete Slack's required app details and OAuth checks, and activate public distribution. Marketplace listing is not required for the agentsfleet **Connect Slack** button; public distribution is.
+
+Keep the development app restricted to the agentsfleet test workspace unless a cross-workspace development proof explicitly requires distribution.
+
+### Acceptance
+
+The production app can be installed into a different authorized Slack workspace through OAuth; the development app remains visibly named `agentsfleet-dev`.
 
 ---
 

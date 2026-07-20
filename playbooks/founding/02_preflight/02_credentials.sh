@@ -112,6 +112,33 @@ check_distinct() {
   fi
 }
 
+check_platform_integrations() {
+  local v="$1"
+
+  # Browser connector callbacks bind workspace intent with this agentsfleet-
+  # owned HMAC key. It is a Fly boot secret, not part of a provider app bag.
+  check_ref "op://$v/approval-signing-secret/credential"
+
+  # Platform connector bags are copied from 1Password into the encrypted
+  # admin-workspace vault. Check the runtime field names, not retired Fly env
+  # aliases. Provider credentials never belong in a tenant workspace.
+  check_ref "op://$v/github-app/app_id"
+  check_ref "op://$v/github-app/app_slug"
+  check_ref "op://$v/github-app/client_id"
+  check_ref "op://$v/github-app/client_secret"
+  check_ref "op://$v/github-app/private_key_pem"
+  check_ref "op://$v/github-app/webhook_secret"
+  check_ref "op://$v/slack-app/client_id"
+  check_ref "op://$v/slack-app/client_secret"
+  check_ref "op://$v/slack-app/signing_secret"
+
+  local provider
+  for provider in zoho jira linear; do
+    check_ref "op://$v/$provider-app/client_id"
+    check_ref "op://$v/$provider-app/client_secret"
+  done
+}
+
 check_prod() {
   local v="$vault_prod"
   echo "-- checking PROD vault: $v"
@@ -137,8 +164,7 @@ check_prod() {
   check_ref "op://$v/clerk-prod/webhook-secret"
   check_ref "op://$v/agentsfleet-admin/api-key"
   check_uuidv7_ref "op://$v/agentsfleet-admin/platform_admin_workspace_id"
-  check_ref "op://$v/github-app/app-id"
-  check_ref "op://$v/github-app/private-key"
+  check_platform_integrations "$v"
   check_ref "op://$v/encryption-master-key/credential"
   check_ref "op://$v/planetscale-prod/api-connection-string"
   check_ref "op://$v/planetscale-prod/migrator-connection-string"
@@ -186,8 +212,7 @@ check_dev() {
   check_ref "op://$v/clerk-dev/webhook-secret"
   check_ref "op://$v/agentsfleet-admin/api-key"
   check_uuidv7_ref "op://$v/agentsfleet-admin/platform_admin_workspace_id"
-  check_ref "op://$v/github-app/app-id"
-  check_ref "op://$v/github-app/private-key"
+  check_platform_integrations "$v"
   check_ref "op://$v/encryption-master-key/credential"
   check_ref "op://$v/vercel-api-token/credential"
   check_ref "op://$v/posthog-dev/credential"
