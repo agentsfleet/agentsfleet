@@ -16,12 +16,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M135
 **Workstream:** 004
 **Date:** Jul 20, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P0 — the browser job reaches its workflow cap on deterministic drift, and the deployment notification can still say release-ready without the CLI result.
 **Categories:** INFRA, UI
 **Batch:** B3 — integrates the prerequisite and CLI workstreams into one release gate
-**Branch:** set at CHORE(open)
-**Test Baseline:** set at CHORE(open) — `unit=<N> integration=<M>` via `make _lint_zig_test_depth`
+**Branch:** `feat/m135-release-readiness`
+**Test Baseline:** unit=2802 integration=369
 **Depends on:** M135_001 (connectors proven), M135_002 (runner online), M135_003 (CLI lane exports truthful result)
 **Provenance:** human-directed, Oracle-authored from Actions runs 29680816280, 29708730980, current Playwright configuration, and browser acceptance sources
 **Canonical architecture:** `docs/architecture/scenarios/github-pr-reviewer.md` §What John sees; `docs/VERIFY_TIERS.md` §Correctness tiers

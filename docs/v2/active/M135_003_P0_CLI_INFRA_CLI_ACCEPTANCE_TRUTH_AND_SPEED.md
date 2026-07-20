@@ -16,12 +16,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M135
 **Workstream:** 003
 **Date:** Jul 20, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P0 — the current CLI job either fails on missing fixture identities or spends most of its run accepting inconclusive steer timeouts.
 **Categories:** CLI, INFRA
 **Batch:** B2 — starts only after M135_001 and M135_002 pass
-**Branch:** set at CHORE(open)
-**Test Baseline:** set at CHORE(open) — `unit=<N> integration=<M>` via `make _lint_zig_test_depth`
+**Branch:** `feat/m135-release-readiness`
+**Test Baseline:** unit=2802 integration=369
 **Depends on:** M135_001 (provider-ready fleet path), M135_002 (online runner executes live steer)
 **Provenance:** human-directed, Oracle-authored from Actions runs 29680816280 and 29708730980 plus current CLI fixtures
 **Canonical architecture:** `docs/architecture/data_flow.md` §Running one event; `docs/AUTH.md` §CLI browser handoff
