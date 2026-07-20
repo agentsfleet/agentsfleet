@@ -213,8 +213,7 @@ fly secrets set \
   DATABASE_URL_MIGRATOR="$(op read 'op://$VAULT_DEV/planetscale-dev/migrator-connection-string')" \
   REDIS_URL_API="$(op read 'op://$VAULT_DEV/upstash-dev/api-url')" \
   ENCRYPTION_MASTER_KEY="$(op read 'op://$VAULT_DEV/encryption-master-key/credential')" \
-  GITHUB_APP_ID="$(op read 'op://$VAULT_DEV/github-app/app-id')" \
-  GITHUB_APP_PRIVATE_KEY="$(op read 'op://$VAULT_DEV/github-app/private-key')" \
+  APPROVAL_SIGNING_SECRET="$(op read 'op://$VAULT_DEV/approval-signing-secret/credential')" \
   OIDC_ISSUER="https://winning-wombat-65.clerk.accounts.dev" \
   --app agentsfleetd-dev
 

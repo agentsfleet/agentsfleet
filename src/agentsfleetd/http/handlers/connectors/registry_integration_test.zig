@@ -236,6 +236,25 @@ test "integration: connect for a provider without its platform app bag is a loud
     try testing.expect(r.bodyContains("Slack")); // display-name wording preserved
 }
 
+test "integration: connect without approval signing secret fails closed" {
+    const alloc = testing.allocator;
+    const h = startAuthedHarness(alloc) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    try seedAuthedFixtures(conn);
+    h.ctx.approval_signing_secret = null;
+
+    const r = try (try (try h.post("/v1/workspaces/" ++ AUTHED_WS ++ "/connectors/github/connect").json("{}")).bearer(scope_tokens.TENANT_ADMIN)).send();
+    defer r.deinit();
+    try r.expectStatus(.service_unavailable);
+    try r.expectErrorCode("UZ-CONN-001");
+    try testing.expect(!r.bodyContains("install_url"));
+}
+
 test "integration: slack connect returns the provider authorize URL with a bound state" {
     const alloc = testing.allocator;
     const h = startAuthedHarness(alloc) catch |err| switch (err) {
@@ -300,6 +319,21 @@ test "integration: github connect without an App slug is a loud 503" {
 }
 
 // ── Callback request-shape failures (Bearer-less route) ─────────────────────
+
+test "integration: callback without approval signing secret fails closed" {
+    const alloc = testing.allocator;
+    const h = TestHarness.start(alloc, .{ .configureRegistry = noopRegistry }) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+    h.ctx.approval_signing_secret = null;
+
+    const r = try h.get("/v1/connectors/slack/callback?code=unused&state=unsigned").send();
+    defer r.deinit();
+    try r.expectStatus(.service_unavailable);
+    try r.expectErrorCode("UZ-CONN-001");
+}
 
 test "integration: callback with a missing state is a 400 invalid request" {
     const alloc = testing.allocator;

@@ -22,7 +22,7 @@ jobs:
           OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
           VAULT_DEV: ${{ vars.VAULT_DEV }}
           VAULT_PROD: ${{ vars.VAULT_PROD }}
-        run: ./playbooks/founding/02_preflight/00_gate.sh
+        run: ENV=prod ./playbooks/founding/02_preflight/00_gate.sh
 
   # ── 0b. Tag / version contract ─────────────────────────────────────────
   verify-tag:
@@ -380,10 +380,9 @@ jobs:
           REDIS_URL_API: op://${{ vars.VAULT_PROD }}/upstash-prod/api-url
           ENCRYPTION_MASTER_KEY: op://${{ vars.VAULT_PROD }}/encryption-master-key/credential
           AUTH_SESSION_CODE_PEPPER: op://${{ vars.VAULT_PROD }}/auth-session-code-pepper/credential
+          APPROVAL_SIGNING_SECRET: op://${{ vars.VAULT_PROD }}/approval-signing-secret/credential
           AUDIT_LOG_PEPPER: op://${{ vars.VAULT_PROD }}/audit-log-pepper/credential
           POSTHOG_API_KEY: op://${{ vars.VAULT_PROD }}/posthog-prod/credential
-          GITHUB_APP_ID: op://${{ vars.VAULT_PROD }}/github-app/app-id
-          GITHUB_APP_PRIVATE_KEY: op://${{ vars.VAULT_PROD }}/github-app/private-key
           CLERK_PUBLISHABLE_KEY: op://${{ vars.VAULT_PROD }}/clerk-prod/publishable-key
           CLERK_SECRET_KEY: op://${{ vars.VAULT_PROD }}/clerk-prod/secret-key
           CLERK_WEBHOOK_SECRET: op://${{ vars.VAULT_PROD }}/clerk-prod/webhook-secret
@@ -401,10 +400,9 @@ jobs:
             REDIS_URL_API="$REDIS_URL_API" \
             ENCRYPTION_MASTER_KEY="$ENCRYPTION_MASTER_KEY" \
             AUTH_SESSION_CODE_PEPPER="$AUTH_SESSION_CODE_PEPPER" \
+            APPROVAL_SIGNING_SECRET="$APPROVAL_SIGNING_SECRET" \
             AUDIT_LOG_PEPPER="$AUDIT_LOG_PEPPER" \
             POSTHOG_API_KEY="$POSTHOG_API_KEY" \
-            GITHUB_APP_ID="$GITHUB_APP_ID" \
-            GITHUB_APP_PRIVATE_KEY="$GITHUB_APP_PRIVATE_KEY" \
             CLERK_PUBLISHABLE_KEY="$CLERK_PUBLISHABLE_KEY" \
             CLERK_SECRET_KEY="$CLERK_SECRET_KEY" \
             CLERK_WEBHOOK_SECRET="$CLERK_WEBHOOK_SECRET" \

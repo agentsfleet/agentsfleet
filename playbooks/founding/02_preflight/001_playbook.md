@@ -38,8 +38,10 @@ Every `op://` reference the agent will use across M2_002 and the deploy pipeline
 | `clerk-prod` | `issuer` | Fly.io PROD `OIDC_ISSUER` (JWKS URL derived from it — M93_001) |
 | `agentsfleet-admin` | `api-key` | Tenant API key used by platform registration playbooks |
 | `agentsfleet-admin` | `platform_admin_workspace_id` | Fly.io PROD `PLATFORM_ADMIN_WORKSPACE_ID`; Universally Unique Identifier version 7 (UUIDv7) pointer to the workspace holding platform connector and QStash secrets |
-| `github-app` | `app-id` | Fly.io PROD + DEV `GITHUB_APP_ID` |
-| `github-app` | `private-key` | Fly.io PROD + DEV `GITHUB_APP_PRIVATE_KEY` |
+| `approval-signing-secret` | `credential` | Fly.io PROD `APPROVAL_SIGNING_SECRET`; agentsfleet-owned HMAC key for single-use connector callback state |
+| `github-app` | `app_id`, `app_slug`, `client_id`, `client_secret`, `private_key_pem`, `webhook_secret` | Admin-workspace `github-app` JSON bag; App identity, callback exchange, ingress verification, and short-lived installation-token minting |
+| `slack-app` | `client_id`, `client_secret`, `signing_secret` | Admin-workspace `slack-app` JSON bag; OAuth exchange and signed Slack ingress |
+| `zoho-app`, `jira-app`, `linear-app` | `client_id`, `client_secret` | Admin-workspace OAuth app bags used for connect and refresh minting |
 | `encryption-master-key` | `credential` | Fly.io PROD `ENCRYPTION_MASTER_KEY` |
 | `auth-session-code-pepper` | `credential` | Fly.io PROD `AUTH_SESSION_CODE_PEPPER` — `agentsfleetd` loads at boot via `src/state/vault.zig`; process fails fast if missing. Used to keyed-HMAC the CLI-login verification code (defeats offline brute-force from a Redis dump). |
 | `audit-log-pepper` | `credential` | Fly.io PROD `AUDIT_LOG_PEPPER` — `agentsfleetd` loads at boot; fails fast if missing. Used to keyed-HMAC `session_id` in the `.auth_audit` log scope (pseudonymization across audit events). |
@@ -72,8 +74,10 @@ Every `op://` reference the agent will use across M2_002 and the deploy pipeline
 | `clerk-dev` | `issuer` | Fly.io DEV `OIDC_ISSUER` (JWKS URL derived from it — M93_001) |
 | `agentsfleet-admin` | `api-key` | Tenant API key used by platform registration playbooks |
 | `agentsfleet-admin` | `platform_admin_workspace_id` | Fly.io DEV `PLATFORM_ADMIN_WORKSPACE_ID`; UUIDv7 pointer to the workspace holding platform connector and QStash secrets |
-| `github-app` | `app-id` | Fly.io DEV `GITHUB_APP_ID` |
-| `github-app` | `private-key` | Fly.io DEV `GITHUB_APP_PRIVATE_KEY` |
+| `approval-signing-secret` | `credential` | Fly.io DEV `APPROVAL_SIGNING_SECRET`; agentsfleet-owned HMAC key for single-use connector callback state |
+| `github-app` | `app_id`, `app_slug`, `client_id`, `client_secret`, `private_key_pem`, `webhook_secret` | Admin-workspace `github-app` JSON bag; App identity, callback exchange, ingress verification, and short-lived installation-token minting |
+| `slack-app` | `client_id`, `client_secret`, `signing_secret` | Admin-workspace `slack-app` JSON bag; OAuth exchange and signed Slack ingress |
+| `zoho-app`, `jira-app`, `linear-app` | `client_id`, `client_secret` | Admin-workspace OAuth app bags used for connect and refresh minting |
 | `encryption-master-key` | `credential` | Fly.io DEV `ENCRYPTION_MASTER_KEY` |
 | `auth-session-code-pepper` | `credential` | Fly.io DEV `AUTH_SESSION_CODE_PEPPER` — `agentsfleetd` loads at boot via `src/state/vault.zig`; process fails fast if missing. Used to keyed-HMAC the CLI-login verification code (defeats offline brute-force from a Redis dump). |
 | `audit-log-pepper` | `credential` | Fly.io DEV `AUDIT_LOG_PEPPER` — `agentsfleetd` loads at boot; fails fast if missing. Used to keyed-HMAC `session_id` in the `.auth_audit` log scope (pseudonymization across audit events). |
@@ -196,6 +200,10 @@ Items not yet in the vault that block M2_002. Create these before re-running:
 | Item name | Field | How to get the value |
 |---|---|---|
 | `agentsfleet-admin` | `platform_admin_workspace_id` | Query `/v1/tenants/me/workspaces` with this item's `api-key`, select the oldest workspace `id`, and store it here. A placeholder permits daemon bootstrap but leaves platform integrations unavailable. |
+| `approval-signing-secret` | `credential` | Generate an environment-unique 256-bit random value. This belongs to agentsfleet, not a provider; never reuse it across DEV and PROD. |
+| `github-app` | `app_id`, `app_slug`, `client_id`, `client_secret`, `private_key_pem`, `webhook_secret` | Follow `playbooks/operations/github_app_registration/001_playbook.md`; use the production GitHub App and canonical underscore field names. |
+| `slack-app` | `client_id`, `client_secret`, `signing_secret` | Follow `playbooks/operations/slack_app_registration/001_playbook.md`; do not store workspace bot tokens here. |
+| `zoho-app`, `jira-app`, `linear-app` | `client_id`, `client_secret` | Follow each provider's operation playbook; keep one environment-specific OAuth app per provider. |
 | `discord-ci-webhook` | `credential` | Discord → Server Settings → Integrations → Webhooks → New Webhook → Copy URL |
 | `posthog-prod` | `credential` | PostHog project API key shared by website, app, agentsfleetd, worker, and CLI |
 | `planetscale-prod` | `api-connection-string` | PlanetScale dashboard → create/get `api_runtime` connection string |
@@ -215,6 +223,10 @@ Items not yet in the vault that block M2_002. Create these before re-running:
 | Item name | Field | How to get the value |
 |---|---|---|
 | `agentsfleet-admin` | `platform_admin_workspace_id` | Query `/v1/tenants/me/workspaces` with this item's `api-key`, select the oldest workspace `id`, and store it here. A placeholder permits daemon bootstrap but leaves platform integrations unavailable. |
+| `approval-signing-secret` | `credential` | Generate an environment-unique 256-bit random value. This belongs to agentsfleet, not a provider; never reuse it across DEV and PROD. |
+| `github-app` | `app_id`, `app_slug`, `client_id`, `client_secret`, `private_key_pem`, `webhook_secret` | Follow `playbooks/operations/github_app_registration/001_playbook.md`; use the development GitHub App and canonical underscore field names. |
+| `slack-app` | `client_id`, `client_secret`, `signing_secret` | Follow `playbooks/operations/slack_app_registration/001_playbook.md`; do not store workspace bot tokens here. |
+| `zoho-app`, `jira-app`, `linear-app` | `client_id`, `client_secret` | Follow each provider's operation playbook; keep one environment-specific OAuth app per provider. |
 | `planetscale-dev` | `api-connection-string` | PlanetScale → `agentsfleet-dev` DB → create/get `api_runtime` connection string |
 | `planetscale-dev` | `migrator-connection-string` | PlanetScale → `agentsfleet-dev` DB → create/get `db_migrator` connection string |
 | `upstash-dev` | `api-url` | Upstash → Redis → `agentsfleet-dev` → create/get API role URL (`rediss://...`) |

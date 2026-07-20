@@ -31,6 +31,7 @@ const TOKEN_PATH = "/login/oauth/access_token";
 const CALLBACK_PATH_FMT = "/v1/connectors/github/callback?installation_id={s}&code={s}&state={s}";
 const CONTENT_TYPE_JSON = "application/json";
 const USER_TOKEN_BODY = "{\"access_token\":\"github-user-token\"}";
+const EXPECTED_REDIRECT = "http://127.0.0.1/w/" ++ WORKSPACE_ID ++ "/integrations";
 const WAIT_SLICE_NS = 1 * std.time.ns_per_ms;
 const WAIT_ATTEMPTS = 2000;
 
@@ -198,6 +199,7 @@ fn connect(h: *TestHarness, installation_id: []const u8) !void {
     const response = try h.get(path).redirectBehavior(.unhandled).send();
     defer response.deinit();
     try response.expectStatus(.found);
+    try testing.expectEqualStrings(EXPECTED_REDIRECT, response.header("location") orelse return error.RedirectLocationMissing);
 }
 
 fn seedInstall(conn: *pg.Conn, installation_id: []const u8, workspace_id: []const u8) !void {

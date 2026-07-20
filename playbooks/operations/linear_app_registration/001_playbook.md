@@ -5,7 +5,7 @@
 **Updated:** Jul 06, 2026
 **Prerequisite:** `op` CLI authenticated; the `agentsfleet-admin` tenant API key in vault (`operations/admin_bootstrap/001_playbook.md`). A Linear workspace where you can create an OAuth application.
 
-Registers **one** multi-tenant Linear OAuth application and stores its **platform** credentials (`client_id`, `client_secret`) in the `agentsfleet-admin` workspace vault, resolved daemon-side via `crypto_store.load` — the same model as the Slack/GitHub platform app secrets. Linear is an **OAuth 2.0 + refresh** connector: the broker uses `linear-app`'s `client_id`/`client_secret` both for the initial code exchange and for every later refresh mint (`credentials/integration.zig`'s `selectLinear`).
+Registers **one** multi-tenant Linear OAuth application and stores its **platform** credentials (`client_id`, `client_secret`) in the `agentsfleet-admin` workspace vault, resolved daemon-side via `crypto_store.load` — the same model as the Slack/GitHub platform app secrets. Linear is an **OAuth 2.0 + refresh** connector: the broker uses `linear-app`'s `client_id`/`client_secret` both for the initial code exchange and for every later refresh mint (`credentials/integration.zig`'s `selectLinear`). Linear returns refresh tokens automatically for authorization-code apps; `offline_access` is not a Linear scope.
 
 > **Run once per environment.** Re-running is idempotent on the vault write (§4); the Linear app itself is edited in place at `linear.app/settings/api/applications`.
 
@@ -49,9 +49,9 @@ curl -sf -o /dev/null "$API_BASE/healthz" || { echo "$API_BASE unreachable"; exi
 
 ## 1.0 Human: Create the Linear OAuth application
 
-**Goal:** one OAuth application scoped to the read + offline-access shape the connector requests. At **linear.app** → workspace **Settings → API → OAuth applications → Create new**:
+**Goal:** one confidential OAuth application scoped to read issues, with the targeted comment grant needed by future reply delivery. Registration does not claim that the outbound Linear poster is implemented. At **linear.app** → workspace **Settings → API → OAuth applications → Create new**:
 
-1. **Name** — `agentsfleet` (or `agentsfleet-<env>`); **Developer URL** `https://agentsfleet.net`.
+1. **Name** — `agentsfleet-dev` in development and `agentsfleet` in production; **Developer URL** is the matching app origin (`https://app-dev.agentsfleet.net` or `https://app.agentsfleet.net`).
 2. **Callback URL(s)**:
 
 ```
@@ -60,11 +60,15 @@ https://api.agentsfleet.net/v1/connectors/linear/callback
 
 (swap `api.agentsfleet.net` for `$API_BASE` in dev)
 
-3. Leave the application **public/confidential** setting at its default (confidential) — the exchange runs server-side with `client_secret`, never in a browser.
+3. Leave **Public** off for the development app unless cross-workspace testing requires it. Turn **Public** on for the production app before customer use so other Linear workspaces can authorize it. Public distribution does not make this a browser-only client: the server still protects and uses `client_secret` for the exchange.
+4. Leave **Client credentials** off: each workspace uses the authorization-code flow and its own refresh-token handle.
+5. Leave **Webhook** off/unset: agentsfleet does not expose a Linear OAuth-app webhook receiver. Fleet-specific generic webhook triggers are configured separately.
+
+The authorization request supplies `read,comments:create`. There is no scope field in the application form, and no `offline_access` scope: Linear returns a refresh token automatically after a successful authorization-code exchange.
 
 ### Acceptance
 
-The application exists; the callback URL is saved exactly as above.
+The confidential application exists and the callback URL is exact. Client credentials and Webhook are off. Public is off for isolated development and on for customer-facing production.
 
 ---
 
