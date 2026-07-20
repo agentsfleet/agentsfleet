@@ -52,8 +52,9 @@ curl -sf -o /dev/null "$API_BASE/healthz" || { echo "$API_BASE unreachable"; exi
 
 **Goal:** one app registered against the `api.atlassian.com` audience. At **developer.atlassian.com/console/myapps** → **Create → OAuth 2.0 integration**:
 
-1. **App name** — `agentsfleet` (or `agentsfleet-<env>`).
-2. Under **Authorization** → **OAuth 2.0 (3LO)**, set the **Callback URL**:
+1. **App name** — `agentsfleet-dev` in development and `agentsfleet` in production.
+2. Select **Resource-level grant** so each authorization is limited to the Jira site selected on the consent screen. The callback stores one resolved `cloud_id`; do not use an account-level grant that can return multiple sites.
+3. Under **Authorization** → **OAuth 2.0 (3LO)**, set the **Callback URL**:
 
 ```
 https://api.agentsfleet.net/v1/connectors/jira/callback
@@ -69,13 +70,27 @@ The app exists; the callback URL is saved exactly as above.
 
 ## 2.0 Human: Add scopes
 
-**Goal:** the app's **Permissions** tab grants the Jira platform REST API scopes the connector requests at authorize time: `read:jira-work`, `read:jira-user`, and `offline_access` (the refresh-token grant — `connectors/jira/spec.zig`). Add the **Jira platform REST API** permission and select the classic (non-granular) scopes matching those three.
+**Goal:** the app can read and reply on both Jira issues and Jira Service Management customer requests. In **Permissions**, add both **Jira platform REST API** and **Jira Service Management API**, then select the classic (non-granular) scopes `read:jira-work`, `read:jira-user`, `write:jira-work`, `read:servicedesk-request`, and `write:servicedesk-request`. The connector requests `offline_access` dynamically for refresh tokens; it may not appear in the permissions selector.
+
+Do not add administrative, project-management, or user-management scopes. The two write scopes permit issue/request replies and updates; expanding beyond them requires a separate reviewed product change.
 
 > **Cloud id note:** you do **not** configure a Jira **cloud id** anywhere in this app registration. Each connecting workspace's Jira site is looked up automatically at callback time via Atlassian's accessible-resources endpoint (`https://api.atlassian.com/oauth/token/accessible-resources`) and persisted on the vaulted handle as `cloud_id`/`site_url` — there is no operator step for it.
 
 ### Acceptance
 
-Permissions tab shows the Jira platform REST API scopes matching `read:jira-work read:jira-user offline_access`.
+The app uses a resource-level grant. Its Permissions tab shows exactly `read:jira-work read:jira-user write:jira-work read:servicedesk-request write:servicedesk-request`; the callback URL is environment-correct.
+
+---
+
+## 2.1 Human: Enable production sharing
+
+**Goal:** users outside the app owner's Atlassian account can authorize the production integration. In the production app's **Distribution** settings, enable sharing and complete Atlassian's required vendor, privacy-policy, and terms fields. A Marketplace listing is not required for the agentsfleet **Connect Jira** button.
+
+Keep the development app private unless cross-site testing requires sharing. Sharing changes who may authorize the app; it does not expose the client secret.
+
+### Acceptance
+
+The production app reports sharing/distribution enabled and its consent flow allows a different Atlassian site to be selected under the resource-level grant.
 
 ---
 

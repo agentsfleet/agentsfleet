@@ -79,11 +79,25 @@ settings:
   socket_mode_enabled: false
 ```
 
+Use `agentsfleet-dev` for both `display_information.name` and `features.bot_user.display_name` in development. Reserve `agentsfleet` and `@agentsfleet` for production so installing both apps in one Slack workspace cannot create ambiguous mentions or duplicate handling.
+
 > **Scope discipline (RULE PRI / privacy):** do **not** add `message.channels` or any channel-wide read. The bot learns from interaction, not surveillance. Interactivity, slash commands, and DM scopes (`im:write`) are **Rung-1** and deliberately absent.
 
 ### Acceptance
 
 The app exists; the manifest applied with no scope warnings.
+
+---
+
+## 1.1 Human: Enable production distribution
+
+**Goal:** customer workspaces can authorize the production app without receiving platform credentials. In the production Slack app, open **Manage Distribution**, complete Slack's required app details and OAuth checks, and activate public distribution. Marketplace listing is not required for the agentsfleet **Connect Slack** button; public distribution is.
+
+Keep the development app restricted to the agentsfleet test workspace unless a cross-workspace development proof explicitly requires distribution.
+
+### Acceptance
+
+The production app can be installed into a different authorized Slack workspace through OAuth; the development app remains visibly named `agentsfleet-dev`.
 
 ---
 
