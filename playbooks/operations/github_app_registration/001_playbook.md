@@ -87,13 +87,26 @@ App ID, public slug, Client ID, downloaded `.pem`, client-secret vault reference
 **Goal:** persist `{app_id, private_key_pem, app_slug, webhook_secret, client_id, client_secret}` as `github-app`. Secret values flow through files or 1Password reads into standard input, never command arguments or output. Then destroy the local key file.
 
 ```bash
+set -euo pipefail
+
+app_id="$(op read "op://$VAULT/github-app/app_id")"
+app_slug="$(op read "op://$VAULT/github-app/app_slug")"
+client_id="$(op read "op://$VAULT/github-app/client_id")"
+client_secret="$(op read "op://$VAULT/github-app/client_secret")"
+private_key_pem="$(op read "op://$VAULT/github-app/private_key_pem")"
+webhook_secret="$(op read "op://$VAULT/github-app/webhook_secret")"
+
+for value in "$app_id" "$app_slug" "$client_id" "$client_secret" "$private_key_pem" "$webhook_secret"; do
+  [ -n "$value" ] || { echo "GitHub App credential field is empty" >&2; exit 1; }
+done
+
 printf '%s\0%s\0%s\0%s\0%s\0%s' \
-  "$(op read "op://$VAULT/github-app/app_id")" \
-  "$(op read "op://$VAULT/github-app/app_slug")" \
-  "$(op read "op://$VAULT/github-app/client_id")" \
-  "$(op read "op://$VAULT/github-app/client_secret")" \
-  "$(op read "op://$VAULT/github-app/private_key_pem")" \
-  "$(op read "op://$VAULT/github-app/webhook_secret")" |
+  "$app_id" \
+  "$app_slug" \
+  "$client_id" \
+  "$client_secret" \
+  "$private_key_pem" \
+  "$webhook_secret" |
   jq -Rs 'split("\u0000") | {
     app_id: .[0], app_slug: .[1], client_id: .[2], client_secret: .[3],
     private_key_pem: .[4], webhook_secret: .[5]
@@ -108,7 +121,7 @@ if [ -n "$PEM_PATH" ] && [ -f "$PEM_PATH" ]; then
 fi
 ```
 
-The six canonical 1Password field names intentionally match the JSON bag. Do not retain the retired `app-id` / `private-key` aliases or stage `GITHUB_APP_ID` / `GITHUB_APP_PRIVATE_KEY` in Fly; the daemon reads the encrypted admin-workspace bag. Restart or roll the daemon after adding or rotating this boot-loaded GitHub identity. Slack and the refresh-token OAuth app bags are loaded on demand and do not share this restart requirement.
+The six canonical 1Password field names intentionally match the JSON bag. Do not retain the retired `app-id` / `private-key` aliases or stage `GITHUB_APP_ID` / `GITHUB_APP_PRIVATE_KEY` in Fly; the daemon reads the encrypted admin-workspace bag. Restart or roll the daemon after adding or rotating this boot-loaded GitHub identity. Slack is loaded on demand. Zoho, Jira, and Linear connect callbacks load current app credentials on demand, but refresh-token minting snapshots them at daemon boot, so adding or rotating those bags also requires a restart or roll.
 
 ### Acceptance
 
