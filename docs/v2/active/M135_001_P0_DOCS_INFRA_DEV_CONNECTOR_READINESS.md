@@ -10,34 +10,34 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
   sequencing signal. A section that contradicts these rules loses — delete it.
 -->
 
-# M135_001: Development connectors prove the GitHub reviewer path
+# M135_001: Provider registration and callback readiness
 
 **Prototype:** v2.0.0
 **Milestone:** M135
 **Workstream:** 001
 **Date:** Jul 20, 2026
 **Status:** IN_PROGRESS
-**Priority:** P0 — production release evidence is invalid while the flagship fleet lacks its provider connections and real repository proof.
+**Priority:** P0 — development and production promotion are unsafe while provider credentials, callback origins, and registration grants drift between environments.
 **Categories:** DOCS, INFRA
 **Batch:** B1 — runs beside M135_002 before either acceptance lane is tuned
 **Branch:** `feat/m135-release-readiness`
 **Test Baseline:** unit=2802 integration=369
-**Depends on:** none
+**Depends on:** none; live provider proof continues in M136_001 after M135_002 establishes an online runner
 **Provenance:** human-directed, Oracle-authored from the Jul 20, 2026 app-dev state and run evidence
-**Canonical architecture:** `docs/architecture/connectors.md` §GitHub App: platform setup to fleet execution; `docs/architecture/scenarios/github-pr-reviewer.md` §Remaining proof punch list
+**Canonical architecture:** `docs/architecture/connectors.md` §GitHub App: platform setup to fleet execution; `docs/architecture/scenarios/github-pr-reviewer.md` §Remaining proof punch list (open until M136_001)
 
 ---
 
 ## Overview
 
-**Goal (testable):** The designated platform operator can connect the app-dev workspace to GitHub and Slack, install `github-pr-reviewer`, approve its declared grants, and prove one real Pull Request (PR) delivery creates exactly one review without exposing provider credentials.
-**Problem:** The default platform model library and QStash are configured, and one platform fleet library exists, but GitHub is disconnected in Integrations and `github-pr-reviewer` has no usable GitHub or Slack connection. The architecture still marks the external repository proof incomplete.
-**Solution summary:** Verify the running app sees the already-configured model and QStash prerequisites, complete both browser-mediated Open Authorization (OAuth) connector flows idempotently, bind only the credentials and repository access declared by the installed fleet, run the repository-level GitHub proof, and record whether Slack is a fleet dependency or a separately verified workspace connector. Never paste provider tokens into commands, chat, logs, or repository files.
+**Goal (testable):** Development and production deployment paths consume canonical, validated provider credential bags and return successful Open Authorization (OAuth) callbacks to the environment-correct workspace Integrations route without exposing secrets.
+**Problem:** Provider setup was split across stale Fly aliases, incomplete preflight checks, and an API-origin browser redirect, so a valid provider authorization could end on the wrong host while deployments silently omitted the callback-state signer.
+**Solution summary:** Make 1Password provider bags and the agentsfleet approval signer explicit deployment inputs, fail preflight on missing canonical fields, keep API and app origins distinct, return successful callbacks to the workspace-scoped app route, and document the current GitHub, Slack, Zoho Desk, Jira, and Linear registration contracts. Live Slack authorization and the real GitHub reviewer/replay proof remain visibly open in M136_001 rather than being claimed by this infrastructure milestone.
 
 ## PR Intent & comprehension handshake
 
-- **PR title (eventual):** docs(m135): prove development connector readiness
-- **Intent (one sentence):** A release operator can demonstrate that app-dev has working provider connections and that `github-pr-reviewer` performs one real review with replay safety.
+- **PR title (eventual):** fix(connectors): align provider deployment readiness
+- **Intent (one sentence):** A release operator can promote provider applications without credential, scope, callback-origin, or browser-redirect drift between development and production.
 - **Handshake** — the implementing agent fills this at PLAN, before EXECUTE: restate the Intent in its own words and list `ASSUMPTIONS I'M MAKING: …`. A mismatch between the restatement and the Intent above → STOP and reconcile before any edit.
 
 ## Implementing agent — read these first
@@ -65,11 +65,17 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `.github/workflows/release.yml` | EDIT | Make the same production path reproducible without activating or deploying it. |
 | `deploy/fly/agentsfleetd-dev/fly.toml` | EDIT (discovered) | Pin the development API and app origins so OAuth redemption and browser redirects use the same environment. |
 | `src/agentsfleetd/http/handlers/connectors/callback.zig` | EDIT (discovered) | Redirect successful connector callbacks to the workspace-scoped integrations route. |
+| `src/agentsfleetd/http/handlers/connectors/registry_integration_test.zig` | EDIT (review) | Prove connect and callback paths fail closed without the approval signer. |
 | `src/agentsfleetd/http/handlers/connectors/github/callback_integration_test.zig` | EDIT (discovered) | Prevent regression to the stale unscoped integrations redirect. |
 | `src/agentsfleetd/http/handlers/connectors/slack/oauth_callback_integration_test.zig` | EDIT (review) | Cover the OAuth callback path and trailing-slash-safe workspace redirect. |
 | `src/agentsfleetd/http/handlers/connectors/jira/spec.zig` | EDIT (discovered) | Request and pin the least-privilege read/write scopes needed to reply on Jira and Service Management tickets. |
 | `src/agentsfleetd/http/handlers/connectors/linear/spec.zig` | EDIT (discovered) | Remove the retired offline scope and request targeted Linear comment replies. |
-| `docs/architecture/scenarios/github-pr-reviewer.md` | EDIT | Replace the outstanding external proof marker only after the real repository run and replay check pass. |
+| `docs/architecture/scenarios/github-pr-reviewer.md` | EDIT | Keep the external proof visibly open without citing a pending milestone from canonical architecture. |
+| `docs/v2/active/M135_001_P0_DOCS_INFRA_DEV_CONNECTOR_READINESS.md` | EDIT | Grade and close this amended readiness contract. |
+| `docs/v2/active/M135_002_P0_DOCS_INFRA_DEV_RUNNER_ACTIVATION.md` | NO EDIT (parked) | Keep the active runner workstream open as M136_001's prerequisite. |
+| `docs/v2/active/M135_003_P0_CLI_INFRA_CLI_ACCEPTANCE_TRUTH_AND_SPEED.md` | NO EDIT (parked) | Keep the active CLI workstream open for later execution. |
+| `docs/v2/active/M135_004_P0_INFRA_UI_DEV_RELEASE_ACCEPTANCE_GATE.md` | NO EDIT (parked) | Keep the active UI workstream open for later execution. |
+| `docs/v2/pending/M136_001_P0_DOCS_INFRA_LIVE_CONNECTOR_PROOF.md` | CREATE | Carry the explicitly deferred Slack and real-repository proof without claiming it passed here. |
 
 ## Applicable Rules
 
@@ -88,34 +94,35 @@ N/A — docs/markdown only. External mutations remain governed by the secret and
 
 ## Sections (implementation slices)
 
-### §1 — Prerequisites are runtime facts
+### §1 — Canonical provider inputs are deployment facts — **DONE**
 
 Prove app-dev, not merely the vault, reports a default platform model and usable QStash configuration before provider work begins.
 
-- **Dimension 1.1** — a platform-library install preflight no longer returns `UZ-SCHED-007` and identifies the configured default model → Test `test_dev_platform_prerequisites_are_runtime_visible`
-- **Dimension 1.2** — missing runtime prerequisites fail before provider mutation with typed, redacted diagnostics → Test `test_dev_connector_preflight_fails_redacted`
+- **Dimension 1.1 — DONE** — development and production workflows read the canonical provider bags and agentsfleet approval signer from their environment vault → Test `test_deployment_workflows_load_canonical_connector_credentials`
+- **Dimension 1.2 — DONE** — a missing bag or required field fails preflight with the item and field name but no value → Test `test_connector_preflight_fails_redacted`
 
-### §2 — Workspace connectors are connected safely
+### §2 — OAuth callbacks preserve environment and workspace — **DONE**
 
-Use the existing browser-mediated GitHub App and Slack Open Authorization flows. Platform app bags are checked, not recreated when already valid.
+Keep the provider exchange on the API origin and return the browser to the app origin's workspace-scoped Integrations route.
 
-- **Dimension 2.1** — GitHub status is connected to the intended installation and repository set → Test `test_dev_github_connector_is_connected`
-- **Dimension 2.2** — Slack status is connected to the intended workspace and a signed mention round-trip succeeds → Test `test_dev_slack_connector_is_connected`
-- **Dimension 2.3** — reconnect is idempotent and never moves an installation owned by another workspace → Test `test_dev_connector_reconnect_is_safe`
+- **Dimension 2.1 — DONE** — GitHub callback success returns to `/w/{workspace_id}/integrations` on the configured app origin → Test `test_github_callback_redirects_to_workspace_integrations`
+- **Dimension 2.2 — DONE** — Slack callback success uses the same workspace-aware redirect and handles a trailing-slash origin → Test `test_slack_callback_redirects_to_workspace_integrations`
+- **Dimension 2.3 — DONE** — callback-state signing is unavailable when the agentsfleet-owned signer is absent rather than accepting an unsigned fallback → Test `test_connector_callback_requires_approval_signing_secret`
 
-### §3 — The fleet has least-privilege bindings
+### §3 — Provider registration is reproducible and least privilege — **DONE**
 
-Inspect the live platform-library snapshot. GitHub must be granted because the checked-in trigger declares it. Slack is granted to the fleet only if the live snapshot declares it; otherwise Slack remains a separately proven workspace connector and the evidence says so.
+Pin the provider-owned settings that an operator must reproduce while distinguishing authorization grants from outbound capabilities that are not implemented yet.
 
-- **Dimension 3.1** — `github-pr-reviewer` installs from the platform library with an approved GitHub grant and an explicit repository subscription → Test `test_github_reviewer_install_has_declared_grants`
-- **Dimension 3.2** — no undeclared Slack secret is injected into a fleet that does not request it → Test `test_github_reviewer_rejects_undeclared_slack_binding`
+- **Dimension 3.1 — DONE** — GitHub and Slack playbooks use environment-correct callbacks and canonical provider bags → Test `test_github_and_slack_registration_contracts`
+- **Dimension 3.2 — DONE** — Jira and Linear request only the selected read/write grants while stating that registration does not implement outbound posting → Test `test_issue_tracker_registration_contracts`
+- **Dimension 3.3 — DONE** — Zoho registration describes the implemented Desk connector without claiming Recruit or Sprints support → Test `test_zoho_registration_contract`
 
-### §4 — Real repository proof closes the architecture punch list
+### §4 — Live proof remains explicit — **DONE**
 
-Open a harmless PR in a dedicated repository, observe one fleet event and one posted review, then replay the same delivery.
+The architecture marker remains open and points to the pending successor. This milestone does not relabel an unrun external proof as infrastructure success.
 
-- **Dimension 4.1** — one signed GitHub delivery produces one queued event and one review through a short-lived installation token → Test `test_external_github_reviewer_posts_one_review`
-- **Dimension 4.2** — replay produces neither a second event nor a second review → Test `test_external_github_reviewer_replay_is_idempotent`
+- **Dimension 4.1 — DONE** — M136_001 owns Slack workspace authorization and signed mention proof after runner activation → Test `test_live_slack_proof_has_successor`
+- **Dimension 4.2 — DONE** — M136_001 owns the real Pull Request review and replay-deduplication proof → Test `test_external_github_proof_has_successor`
 
 ## Interfaces
 
@@ -154,26 +161,27 @@ No raw provider secret crosses into the repository, shell history, or evidence a
 
 | Dimension | Tier | Test | Asserts (concrete inputs → expected output) |
 |-----------|------|------|---------------------------------------------|
-| 1.1 | end-to-end | `test_dev_platform_prerequisites_are_runtime_visible` | live install preflight sees model and QStash and returns no scheduler-config error |
-| 1.2 | integration | `test_dev_connector_preflight_fails_redacted` | absent prerequisite stops before connector mutation without secret output |
-| 2.1 | end-to-end | `test_dev_github_connector_is_connected` | intended installation and repository set report connected |
-| 2.2 | end-to-end | `test_dev_slack_connector_is_connected` | intended Slack workspace reports connected and signed mention succeeds |
-| 2.3 | integration | `test_dev_connector_reconnect_is_safe` | repeat connect is idempotent; cross-workspace move is refused |
-| 3.1 | end-to-end | `test_github_reviewer_install_has_declared_grants` | installed fleet has GitHub grant and repository subscription |
-| 3.2 | integration | `test_github_reviewer_rejects_undeclared_slack_binding` | undeclared connector material is not delivered |
-| 4.1 | end-to-end | `test_external_github_reviewer_posts_one_review` | real PR yields one event and one review |
-| 4.2 | end-to-end | `test_external_github_reviewer_replay_is_idempotent` | replay leaves event and review counts unchanged |
+| 1.1 | integration | `test_deployment_workflows_load_canonical_connector_credentials` | workflow contracts select the environment vault and stage every required connector input |
+| 1.2 | integration | `test_connector_preflight_fails_redacted` | an absent bag or field fails without emitting its value |
+| 2.1 | integration | `test_github_callback_redirects_to_workspace_integrations` | successful GitHub callback returns the browser to the app origin and workspace route |
+| 2.2 | integration | `test_slack_callback_redirects_to_workspace_integrations` | successful Slack callback returns the browser to the app origin and workspace route |
+| 2.3 | integration | `test_connector_callback_requires_approval_signing_secret` | missing signer prevents callback state issuance or redemption |
+| 3.1 | integration | `test_github_and_slack_registration_contracts` | playbooks name canonical bags, callbacks, and environment-specific app distribution |
+| 3.2 | integration | `test_issue_tracker_registration_contracts` | Jira and Linear grants match source constants without claiming an outbound poster exists |
+| 3.3 | integration | `test_zoho_registration_contract` | playbook limits the shipped connector claim to Zoho Desk |
+| 4.1 | documentation | `test_live_slack_proof_has_successor` | pending M136_001 depends on M135_002 and contains the signed mention proof |
+| 4.2 | documentation | `test_external_github_proof_has_successor` | active spec names M136_001 while the architecture marker remains open |
 
 ## Acceptance Rubric (single scoring surface)
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | GitHub and Slack report connected | `agentsfleet connector list --workspace "$WORKSPACE_ID" --json` | github and slack each have `connected` status | P0 | |
-| R2 | Reviewer installs from the platform library | `agentsfleet list --workspace-id "$WORKSPACE_ID" --json | jq -e '.. | objects | select(.name? == "github-pr-reviewer")'` | exit 0 with installed reviewer fleet | P0 | |
-| R3 | Real PR is reviewed exactly once | `gh pr view "$PROOF_PR" --json reviews,comments` | one fleet-authored review for the proof delivery | P0 | |
-| R4 | Architecture proof is closed | `rg -n 'External .github-pr-reviewer. repository test.*✅' docs/architecture/scenarios/github-pr-reviewer.md` | one match | P0 | |
+| R1 | Development credential gate accepts every canonical bag | `OP_BIOMETRIC_UNLOCK_ENABLED=false ENV=dev ./playbooks/founding/02_preflight/00_gate.sh` | exit 0 and `002_preflight check complete (env: dev)` | P0 | |
+| R2 | Provider callbacks return to workspace-scoped app routes | `zig build test -Dtest-filter='OAuth callback' && zig build test -Dtest-filter='GitHub callback'` | exit 0 | P0 | |
+| R3 | Deployment workflow contracts and registration playbooks agree | `bash playbooks/founding/02_preflight/credentials_test.sh && make check-playbooks` | exit 0 and `8 passed, 0 failed` | P0 | |
+| R4 | Architecture proof remains visibly open | `rg -n 'External .github-pr-reviewer. repository test.*external proof remains open' docs/architecture/scenarios/github-pr-reviewer.md` | one match | P0 | |
 | S1 | Repository checks pass | `make lint-all` | exit 0 | P0 | |
-| S2 | No secrets | `gitleaks detect` | exit 0 | P0 | |
+| S2 | No secrets | `gitleaks detect --no-banner` | exit 0 | P0 | |
 | S3 | Diff stays inside Files Changed | `git diff --name-only origin/main` | 0 paths missing from the Files Changed table | P0 | |
 
 **Grading protocol (VERIFY):** run the Verify command verbatim; grade ONLY from its output. Graded = ✅/❌ + the one decisive output line; long evidence goes to PR Session Notes with a pointer here. **Ship gate:** every row graded, every P0 ✅ → eligible for CHORE(close); any ❌ or empty cell → return to EXECUTE.
@@ -187,15 +195,16 @@ N/A — no files deleted.
 - Changing connector protocol, provider registry, or OAuth trust design.
 - Adding Slack to the fleet bundle unless the canonical external bundle already declares it.
 - Configuring production provider connections.
+- Completing live Slack authorization, signed mention, real repository review, or replay proof — M136_001.
 
 ## Product Clarity (authoring record)
 
-1. **Successful user moment** — a real GitHub PR receives one useful review from `github-pr-reviewer`.
+1. **Successful user moment** — a successful provider callback returns the operator to that workspace's Integrations page in the same environment.
 2. **Preserved user behaviour** — existing workspace connector and fleet-install flows remain unchanged.
 3. **Optimal-way check** — real provider proof is the shortest release-grade evidence; synthetic ingress alone is insufficient.
 4. **Rebuild-vs-iterate** — iterate on shipped connector plumbing; no provider rewrite is justified.
-5. **What we build** — app-dev connections, least-privilege bindings, real repository evidence, corrected playbooks.
-6. **What we do NOT build** — new providers, static provider keys, or unrelated fleet behavior.
+5. **What we build** — canonical provider inputs, fail-closed preflight, environment-correct redirects, least-privilege registration guidance, and a named live-proof successor.
+6. **What we do NOT build** — new providers, static provider keys, outbound Jira/Linear posters, or fabricated live evidence.
 7. **Fit with existing features** — compounds with platform libraries, grants, QStash scheduling, and runner execution.
 8. **Surface order** — UI-first for provider authorization, CLI for inspection and repeatable proof.
 9. **Dashboard restraint** — connected labels appear only after provider status confirms persisted handles.
@@ -203,13 +212,14 @@ N/A — no files deleted.
 
 ## Decomposition & alternatives (patch vs refactor)
 
-- **Chosen shape:** one readiness workstream owns provider setup and real-repository proof because both are one user journey.
+- **Chosen shape:** this workstream closes deterministic provider registration and callback readiness; M136_001 owns external proof after M135_002 supplies the execution dependency.
 - **Alternatives considered:** replacing browser authorization with pasted tokens was rejected because it weakens the connector trust boundary.
 - **Patch-vs-refactor verdict:** this is a **patch** because the architecture is shipped and the missing work is environment binding plus proof.
 
 ## Discovery (consult log)
 
-- **Consults** — Architecture / Legacy-Design / gate-flag triage:
-- **Metrics review** —
-- **Skill-chain outcomes** —
+- **Consults** — Architecture marker remains open because the real repository proof has not run; Jira and Linear registration grants are not described as implemented outbound posters.
+- **Metrics review** — no analytics or funnel event changes; this work changes deployment inputs, callback redirects, and operator playbooks.
+- **Skill-chain outcomes** — `/review` rerun Jul 20 against `caa6f6392`: no P0 finding; corrected Jira/Linear capability overstatement and required the explicit M136_001 lifecycle split. `/write-unit-test` and final review evidence are recorded at CHORE(close).
 - **Deferrals** —
+  > Indy (2026-07-20 22:23): "And move th 2,3,4 to the next milestone and read and move this milestone to done?" — context: runner activation remains M135_002; live Slack authorization/signed mention and real GitHub review/replay proof move to M136_001 rather than being claimed passed by M135_001.
