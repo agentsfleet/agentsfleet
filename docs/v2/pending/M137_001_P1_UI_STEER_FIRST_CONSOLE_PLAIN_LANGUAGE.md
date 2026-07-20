@@ -32,7 +32,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 **Goal (testable):** The fleet console renders three non-overlapping columns with the steer thread as the visually primary surface, a `← Fleets` back affordance, and every wall-tile / metrics label readable as plain English — asserted by unit label tests and an e2e pass over the rendered console.
 **Problem:** Operators reading the wall and console today hit three walls: (1) cryptic labels — "LAST KNOWN", "10 ev", metrics "WALL" — that Indy himself could not decode; (2) the console's left-column cards inflate past their grid track on long source lines and paint under the middle column, wrecking the page; (3) the Source editor visually dominates while the steer composer — the point of the page per the Jul 14 freeze — is buried, and there is no way back to the wall except the sidebar.
-**Solution summary:** Copy-and-layout changes inside the frozen variant F design, no backend. Wall tiles spell out their footer ("$0.00 spent · 10 events · 6 hours ago") and replace the "last known" eyebrow with "not live" plus a tooltip. The console gains the frozen-but-never-built `← Fleets` back link, renames the metrics "Wall" label to "Time", collapses the Source card to its header by default (expand on demand; Edit auto-expands), orders the steer column first when columns stack, and locks column children to their grid track (`min-w-0` chain) so wide source/commands scroll inside their own blocks.
+**Solution summary:** Copy-and-layout changes inside the frozen variant F design, no backend. Wall tiles spell out their footer ("$0.00 spent · 10 events · 6 hours ago") and replace the "last known" eyebrow with "not live" plus a tooltip; the wall header drops the legacy search box (M94 carry-over, not in variant F — Indy's removal call, Jul 21, 2026) leaving title · live count · Install fleet. The console gains the frozen-but-never-built `← Fleets` back link, renames the metrics "Wall" label to "Time", collapses the Source card to its header by default (expand on demand; Edit auto-expands), orders the steer column first when columns stack, and locks column children to their grid track (`min-w-0` chain) so wide source/commands scroll inside their own blocks.
 
 ## PR Intent & comprehension handshake
 
@@ -56,6 +56,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/components/FleetTile.test.tsx` | EDIT | Assert new labels, eyebrow, tooltip |
 | `ui/packages/app/lib/wall/tile-liveness.ts` | EDIT | Home for the wall copy consts if the agent places them beside the formatters |
 | `ui/packages/app/lib/wall/tile-liveness.test.ts` | EDIT | Cover any moved/added consts and formatter suffix changes |
+| `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/components/FleetWall.tsx` | EDIT | Remove the search box, client-side filter state, and its empty-state branch; header becomes live count + Install fleet per variant F |
 | `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/[id]/page.tsx` | EDIT | Back link, steer-column stacking order, `min-w-0` column-child lock (partially in working tree — port the uncommitted diff) |
 | `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/[id]/components/console-copy.ts` | EDIT | `METRICS_WALL_LABEL` → `METRICS_TIME_LABEL = "Time"`; new back-link and disclosure consts |
 | `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/[id]/components/RunMetricsStrip.tsx` | EDIT | Consume renamed label const |
@@ -96,6 +97,7 @@ The wall tile's footer and degradation eyebrow become readable without decoding.
 - **Dimension 1.2** — Footer spend renders with the suffix "spent" from the server figure → Test `test_tile_footer_labels_spend`
 - **Dimension 1.3** — Snapshot tile shows eyebrow "not live" with the explanatory tooltip; live tile shows neither → Test `test_snapshot_eyebrow_reads_not_live`
 - **Dimension 1.4** — All new tile strings are named consts referenced by component and tests → Test `test_wall_copy_consts_are_single_source`
+- **Dimension 1.5** — The wall header renders live count + Install fleet and no search input; the client-side filter state and its "No fleets match" branch are deleted (a zero-fleet workspace routes to Getting Started before the wall renders, so the branch is unreachable) → Test `test_wall_header_has_no_search`
 
 ### §2 — Console back affordance and plain metrics
 
@@ -155,6 +157,7 @@ No HTTP, CLI, or wire interface changes. Locked component surfaces:
 | 1.2 | unit | `test_tile_footer_labels_spend` | Fleet with known `budget_used_nanos` → footer contains "$X.XX spent" |
 | 1.3 | unit | `test_snapshot_eyebrow_reads_not_live` | Stream state reconnecting/hello-without-live → eyebrow "not live" + tooltip text present; live state → neither rendered |
 | 1.4 | unit | `test_wall_copy_consts_are_single_source` | Rendered labels equal the exported consts (imported, not re-typed) |
+| 1.5 | unit | `test_wall_header_has_no_search` | Wall with fleets → no search input in the header; live count and Install fleet render; all tiles render unfiltered |
 | 2.1 | unit | `test_console_back_link_targets_wall` | Console header link "← Fleets" has the workspace fleets href |
 | 2.2 | unit | `test_metrics_strip_labels_time` | Event with `wall_ms` → strip shows "Time"; rendering contains no "Wall" label |
 | 3.1 | unit | `test_source_card_collapsed_by_default` | Fresh render → header present, SKILL.md pane absent |
@@ -170,6 +173,7 @@ No HTTP, CLI, or wire interface changes. Locked component surfaces:
 |---|--------------------------------|---------------------|----------|----------|-----------------|
 | R1 | Wall tile carries no cryptic labels (§1) | `grep -cE '\bev\b\|last known' "ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/components/FleetTile.tsx"` | 0 | P0 | |
 | R2 | Back affordance exists in console copy (§2) | `grep -c "← Fleets" "ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/[id]/components/console-copy.ts"` | 1 | P0 | |
+| R6 | Wall search box is gone (§1) | `grep -rc "Search loaded fleets\|Search fleets" ui/packages/app --include='*.tsx' \| grep -v ':0' \| wc -l` | 0 | P0 | |
 | R3 | Metrics label renamed, old const gone (§2) | `grep -rc "METRICS_WALL_LABEL" ui/packages/app --include='*.ts*' \| grep -v ':0' \| wc -l` | 0 | P0 | |
 | R4 | Steer-first + overlap lock in the console shell (§3) | `grep -cE 'order-first\|\*:min-w-0' "ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/[id]/page.tsx"` | 2 | P0 | |
 | R5 | Diff stays inside Files Changed | `git diff --name-only origin/main` | 0 paths missing from the Files Changed table | P0 | |
@@ -192,11 +196,12 @@ N/A — no files deleted.
 | Deleted symbol/import | Grep | Expected |
 |-----------------------|------|----------|
 | `METRICS_WALL_LABEL` | `git grep -rn -w "METRICS_WALL_LABEL"` | 0 matches |
+| Wall search filter (placeholder, aria-label, empty-state copy) | `git grep -rn "Search loaded fleets\|No fleets match"` | 0 matches |
 
 ## Out of Scope
 
-- Removing the wall's search box — legacy carry-over from the M94 list, not in variant F; awaiting Indy's explicit call (surfaced Jul 20, 2026).
-- Workspace-multiplexed live stream and reconnect robustness — M133_001 (active).
+- Workspace-multiplexed live stream and reconnect robustness — M133_001, already IN_PROGRESS on `feat/m133-workspace-stream`; folding a backend stream into this UI-polish PR is forbidden by the spec-authoring discipline, and this spec's tests do not depend on a healthy stream (the "not live" state is fully testable — it is dev's current state).
+- Server-side fleet search — if walls ever grow past a screenful, search returns as a server-backed feature spec, not a client-side filter.
 - Why `github-app` wakes fail instantly with zero tokens on dev — backend/runner investigation, separate spec.
 - Runs-ledger copy overhaul ("LATEST 200 EVENTS IN 7 DAYS") — revisit only if Indy flags it after this lands.
 
@@ -208,8 +213,8 @@ N/A — no files deleted.
 2. **Preserved user behaviour** — Editing SKILL.md/TRIGGER.md (PATCH + If-Match + 412 reload), steer composer semantics, approvals, memory, ledger, tile links, and snapshot degradation all behave exactly as today; only labels, emphasis, and navigation change.
 3. **Optimal-way check** — Yes for copy and hierarchy; the unconstrained-optimal console might redesign the ledger column too, but that has no evidence of confusion yet — the gap is deliberate restraint.
 4. **Rebuild-vs-iterate** — Iterate. The frozen variant F layout is right; the implementation under-delivers its emphasis and vocabulary. No determinism trade.
-5. **What we build** — Relabelled tile footer + eyebrow with tooltip; `← Fleets` link; "Time" metrics label; collapsed-by-default source card; steer-first stacking; column-track lock.
-6. **What we do NOT build** — Search removal (Indy's call pending); stream fixes (M133); server changes of any kind; new analytics events; a breadcrumb system (one back link suffices).
+5. **What we build** — Relabelled tile footer + eyebrow with tooltip; search-box removal from the wall header; `← Fleets` link; "Time" metrics label; collapsed-by-default source card; steer-first stacking; column-track lock.
+6. **What we do NOT build** — Stream fixes (M133, in flight); server-side search; server changes of any kind; new analytics events; a breadcrumb system (one back link suffices).
 7. **Fit with existing features** — Compounds M131 console + M132 wall; must not destabilize the SkillEditor save flow (draft/etag state machine) — the collapse state must sit beside it, not inside it.
 8. **Surface order** — UI-only by nature; the CLI already has `fleet update`/`steer` verbs covering these actions.
 9. **Dashboard restraint** — No new controls, counters, or claims; the collapse hides a heavy editor until asked for, which is restraint applied.
@@ -224,6 +229,7 @@ N/A — no files deleted.
 ## Discovery (consult log)
 
 - **Consults** —
+  > Indy (2026-07-21): "i think the `wall's searchbox must be removed`" — context: wall search box (M94 carry-over, absent from frozen variant F) surfaced Jul 20 as awaiting his call; removal is now in scope (§1, Dimension 1.5).
 - **Metrics review** —
 - **Skill-chain outcomes** —
 - **Deferrals** —
