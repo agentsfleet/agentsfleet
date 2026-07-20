@@ -16,12 +16,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M135
 **Workstream:** 001
 **Date:** Jul 20, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P0 — production release evidence is invalid while the flagship fleet lacks its provider connections and real repository proof.
 **Categories:** DOCS, INFRA
 **Batch:** B1 — runs beside M135_002 before either acceptance lane is tuned
-**Branch:** set at CHORE(open)
-**Test Baseline:** set at CHORE(open) — `unit=<N> integration=<M>` via `make _lint_zig_test_depth`
+**Branch:** `feat/m135-release-readiness`
+**Test Baseline:** unit=2802 integration=369
 **Depends on:** none
 **Provenance:** human-directed, Oracle-authored from the Jul 20, 2026 app-dev state and run evidence
 **Canonical architecture:** `docs/architecture/connectors.md` §GitHub App: platform setup to fleet execution; `docs/architecture/scenarios/github-pr-reviewer.md` §Remaining proof punch list

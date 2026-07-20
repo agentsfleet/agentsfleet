@@ -16,12 +16,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M135
 **Workstream:** 002
 **Date:** Jul 20, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P0 — acceptance cannot prove execution while the only development runner has never authenticated a heartbeat.
 **Categories:** DOCS, INFRA
 **Batch:** B1 — runs beside M135_001 before acceptance optimization
-**Branch:** set at CHORE(open)
-**Test Baseline:** set at CHORE(open) — `unit=<N> integration=<M>` via `make _lint_zig_test_depth`
+**Branch:** `feat/m135-release-readiness`
+**Test Baseline:** unit=2802 integration=369
 **Depends on:** none
 **Provenance:** human-directed, Oracle-authored from the Jul 20, 2026 app-dev state and runner bootstrap code
 **Canonical architecture:** `docs/architecture/runner_fleet.md` §Registering a runner and §Runner state
