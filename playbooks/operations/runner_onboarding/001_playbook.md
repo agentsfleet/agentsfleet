@@ -1,19 +1,20 @@
 # Runner Onboarding (local dashboard + mint)
 
 **Tier:** operations (on-demand runbook, no implied order)
-**Updated:** Jun 05, 2026
+**Updated:** Jul 20, 2026
 **Owner:** Human (Clerk + mint) · Agent (host provision)
 **Prerequisite:** `operations/admin_bootstrap/001_playbook.md` has run for the
 target environment — the operator (`nkishore@megam.io`) is a Clerk user with
-`publicMetadata.platform_admin = true`. `op` is authenticated.
+`runner:enroll runner:write` in `public_metadata.scopes`. The Clerk session-token
+claims project those scopes onto the top-level `scopes` claim. `op` is authenticated.
 
 Onboard a `agentsfleet-runner` end to end: stand up the dashboard (locally or via the
-deployed dev app), mint a dedicated `agt_r` token from the platform-admin
-"Add runner" surface, store it in 1Password, and provision it onto a host. The
+deployed dev app), mint a dedicated `agt_r` token from the scoped operator's
+"Create runner" surface, store it in 1Password, and provision it onto a host. The
 host-bootstrap playbooks (`founding/06_runner_bootstrap_dev`,
 `founding/07_runner_bootstrap_prod`) only *install* a `agt_r`; **this** playbook is
-where one is *minted*. The mint requires a platform-admin Clerk **session** — a
-tenant `agt_t` key is rejected (`403 UZ-AUTH-021`).
+where one is *minted*. The mint requires a Clerk session with `runner:enroll` — a
+tenant `agt_t` key is rejected (`403 UZ-AUTH-022`).
 
 ---
 
@@ -66,7 +67,7 @@ service-name endpoint.
 
 | Step | Owner | What |
 |------|-------|------|
-| 0.0 | — | Prereq: admin_bootstrap ran; operator has `platform_admin=true` |
+| 0.0 | — | Prereq: admin_bootstrap ran; operator has `runner:enroll runner:write` |
 | 1.0 | Human | Set up `ui/packages/app/.env.local` (API base + dev Clerk keys) |
 | 2.0 | Human | Run the dashboard (or use the deployed one) and sign in as the platform admin |
 | 3.0 | Human | Mint a `agt_r` at `/admin/runners` → revealed once → copy |
@@ -89,18 +90,19 @@ surface.
   built against `api-dev` (may sit behind a Vercel bypass).
 
 Sign in as `nkishore@megam.io`. If **Configuration → Runners** is **absent**, the
-`platform_admin` claim is not set on your user — return to
-`operations/admin_bootstrap/001_playbook.md` §2 and set it.
+session lacks `runner:read` — set `runner:enroll runner:write` in
+`public_metadata.scopes`, confirm the Clerk session-token claims project `scopes`,
+then sign in again. `runner:write` includes `runner:read`.
 
 ---
 
 ## 3.0 Human: mint a runner
 
-**Configuration → Runners → Add runner**:
+**Configuration → Runners → Create runner**:
 
 | Field | Value |
 |-------|-------|
-| `host_id` | the runner's stable id — dev bare-metal: `zombie-dev-worker-ant`; local: `local-dev-runner` |
+| `host_id` | dev bare-metal: the value at `op://ZMB_CD_DEV/zombie-dev-worker-ant/tailscale-hostname`; local: `local-dev-runner` |
 | `sandbox_tier` | `landlock_full` (bare-metal Linux) · `dev_none` (local) |
 | `labels` | `dev` |
 
@@ -118,8 +120,19 @@ runner is never a fake `online`).
 ## 4.0 Agent: store the token + provision the host
 
 ```bash
-# Bare-metal dev host:
-op item edit "zombie-dev-worker-ant" --vault ZMB_CD_DEV "runner-token=<agt_r…>"
+# Bare-metal dev host. Keep the one-time token out of argv and shell history.
+set -euo pipefail
+TOKEN_FILE=$(mktemp)
+trap 'rm -f "$TOKEN_FILE"' EXIT
+chmod 600 "$TOKEN_FILE"
+read -rsp 'Runner token: ' RUNNER_TOKEN; printf '\n'
+case "$RUNNER_TOKEN" in agt_r*) ;; *) echo "invalid runner token" >&2; exit 1 ;; esac
+printf '%s' "$RUNNER_TOKEN" > "$TOKEN_FILE"
+unset RUNNER_TOKEN
+op item get "zombie-dev-worker-ant" --vault ZMB_CD_DEV --format=json --reveal \
+  | jq --rawfile token "$TOKEN_FILE" \
+      '(.fields[] | select(.label == "runner-token").value) = $token' \
+  | op item edit "zombie-dev-worker-ant" --vault ZMB_CD_DEV
 ```
 
 Then hand off:
@@ -130,24 +143,58 @@ Then hand off:
 
 ### Acceptance
 
-List the fleet with a platform-admin Clerk **session** JWT (mint one via Clerk's
-Backend API exactly as `admin_bootstrap/001_playbook.md` §3 does — a tenant `agt_t`
-key is rejected here):
+First verify the service on the same Tailscale host that the deploy workflow uses.
+The key stays in a mode-600 temporary file and is not printed.
 
 ```bash
+set -euo pipefail
+KEY_FILE=$(mktemp)
+trap 'rm -f "$KEY_FILE"' EXIT
+op read 'op://ZMB_CD_DEV/zombie-dev-worker-ant/ssh-private-key' > "$KEY_FILE"
+chmod 600 "$KEY_FILE"
+HOST=$(op read 'op://ZMB_CD_DEV/zombie-dev-worker-ant/tailscale-hostname')
+USER=$(op read 'op://ZMB_CD_DEV/zombie-dev-worker-ant/deploy-user')
+ssh -i "$KEY_FILE" -o StrictHostKeyChecking=no -o ConnectTimeout=10 -o BatchMode=yes \
+  "$USER@$HOST" 'bash -s' <<'REMOTE'
+set -euo pipefail
+sudo systemctl is-active agentsfleet-runner.service
+LOGS=$(sudo journalctl -u agentsfleet-runner.service --since '15 minutes ago' --no-pager) || exit 1
+if printf '%s\n' "$LOGS" | grep -E 'heartbeat_unauthorized|lease_unauthorized|status=401'; then
+  echo "runner authorization failure found in journal" >&2
+  exit 1
+fi
+REMOTE
+# Expected: active
+```
+
+List the fleet with a Clerk session JSON Web Token (JWT) carrying `runner:read`
+(mint one via Clerk's Backend API exactly as `admin_bootstrap/001_playbook.md` §3
+does — a tenant `agt_t` key is rejected here):
+
+```bash
+set -euo pipefail
 API_BASE="https://api-dev.agentsfleet.net"
 ADMIN_EMAIL="nkishore@megam.io"
 CLERK_SECRET=$(op read 'op://ZMB_CD_DEV/clerk-dev/secret-key')
-USER_ID=$(curl -s -H "Authorization: Bearer $CLERK_SECRET" \
+USER_ID=$(printf 'Authorization: Bearer %s\n' "$CLERK_SECRET" | curl -fsS -H @- \
   "https://api.clerk.com/v1/users?email_address=$ADMIN_EMAIL" | jq -r '.[0].id')
-SESSION_ID=$(curl -s -X POST -H "Authorization: Bearer $CLERK_SECRET" \
+SESSION_ID=$(printf 'Authorization: Bearer %s\n' "$CLERK_SECRET" | curl -fsS -X POST -H @- \
   "https://api.clerk.com/v1/sessions" -d "user_id=$USER_ID" | jq -r '.id')
-ADMIN_JWT=$(curl -s -X POST -H "Authorization: Bearer $CLERK_SECRET" \
+ADMIN_JWT=$(printf 'Authorization: Bearer %s\n' "$CLERK_SECRET" | curl -fsS -X POST -H @- \
   "https://api.clerk.com/v1/sessions/$SESSION_ID/tokens" | jq -r '.jwt')
+RUNNER_HOST_ID=$(op read 'op://ZMB_CD_DEV/zombie-dev-worker-ant/tailscale-hostname')
+export RUNNER_HOST_ID
 
-curl -s -H "Authorization: Bearer $ADMIN_JWT" "$API_BASE/v1/fleet/runners" | jq .
-# The runner is listed; liveness registered → online after first heartbeat.
+FIRST_SEEN=$(printf 'Authorization: Bearer %s\n' "$ADMIN_JWT" | curl -fsS -H @- \
+  "$API_BASE/v1/fleets/runners" | jq -er \
+  '.items[] | select(.host_id == env.RUNNER_HOST_ID and (.liveness == "online" or .liveness == "busy")) | .last_seen_at')
+sleep 12
+SECOND_SEEN=$(printf 'Authorization: Bearer %s\n' "$ADMIN_JWT" | curl -fsS -H @- \
+  "$API_BASE/v1/fleets/runners" | jq -er \
+  '.items[] | select(.host_id == env.RUNNER_HOST_ID and (.liveness == "online" or .liveness == "busy")) | .last_seen_at')
+test "$SECOND_SEEN" -gt "$FIRST_SEEN"
+echo "runner online; last_seen_at advanced"
+# Expected: runner online; last_seen_at advanced
 ```
 
-A tenant `agt_t` key or a non-platform-admin JSON Web Token returns
-`403 UZ-AUTH-021`.
+A tenant `agt_t` key or a JWT without `runner:read` returns `403 UZ-AUTH-022`.
