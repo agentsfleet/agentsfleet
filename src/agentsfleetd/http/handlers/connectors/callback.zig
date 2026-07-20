@@ -27,7 +27,7 @@ const Q_LOCATION = "location";
 const HTTP_OK: u16 = 200;
 const HEADER_LOCATION = "location";
 const STATUS_FOUND: u16 = 302;
-const DEST_PATH = "/integrations";
+const DEST_PATH_FMT = "/w/{s}/integrations";
 const S_STATE_INVALID = "Invalid or expired connect state";
 // Callback wording is the shipped shorter form (no "on this deployment").
 const NOT_CONFIGURED_FMT = "{s} connect is not configured";
@@ -80,7 +80,7 @@ pub fn innerCallback(hx: hx_mod.Hx, req: *httpz.Request, provider: []const u8) v
                 }
                 return;
             };
-            redirectToDashboard(hx);
+            redirectToDashboard(hx, workspace_id);
         },
         .app_install => |a| {
             const workspace_id = connector_state.verifyConsume(hx.alloc, hx.ctx.queue, a.state, secret, raw_state, clock.nowMillis()) orelse {
@@ -91,7 +91,7 @@ pub fn innerCallback(hx: hx_mod.Hx, req: *httpz.Request, provider: []const u8) v
 
             // The hook owns validation + persistence + its failure responses
             // (installation callbacks carry vendor-bespoke inputs).
-            if (a.complete(hx, workspace_id, raw_state, req)) redirectToDashboard(hx);
+            if (a.complete(hx, workspace_id, raw_state, req)) redirectToDashboard(hx, workspace_id);
         },
     }
 }
@@ -126,11 +126,11 @@ fn completeOauth2(hx: hx_mod.Hx, spec: *const registry.ConnectorSpec, o: registr
     try o.post_auth(hx, workspace_id, result.body, location);
 }
 
-fn redirectToDashboard(hx: hx_mod.Hx) void {
+fn redirectToDashboard(hx: hx_mod.Hx, workspace_id: []const u8) void {
     // The Location value must outlive the handler: httpz writes response
     // headers AFTER the dispatcher's per-request arena (hx.alloc) is freed, so
     // it lives on res.arena (owned until the response is written).
-    const url = std.fmt.allocPrint(hx.res.arena, "{s}" ++ DEST_PATH, .{hx.ctx.app_url}) catch {
+    const url = std.fmt.allocPrint(hx.res.arena, "{s}" ++ DEST_PATH_FMT, .{ hx.ctx.app_url, workspace_id }) catch {
         // The connection succeeded; a redirect-build failure is cosmetic, so
         // return 200 rather than a 500 over a missing app_url.
         hx.ok(.ok, .{ .status = "connected" });
