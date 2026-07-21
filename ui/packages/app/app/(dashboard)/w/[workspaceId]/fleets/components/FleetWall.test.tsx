@@ -49,6 +49,14 @@ describe("FleetWall", () => {
     expect(screen.getByLabelText("1 live")).toBeTruthy();
   });
 
+  it("hides the live counter when no loaded fleet is active", () => {
+    renderWall([fleet({ status: "stopped" }), fleet({ id: "f2", name: "beta", status: "killed" })]);
+    // A wall of parked/killed fleets shows no "N live" eyebrow — a zero count
+    // is silence, not "0 live".
+    expect(screen.queryByLabelText(/live$/)).toBeNull();
+    expect(screen.getAllByTestId("tile")).toHaveLength(2);
+  });
+
   it("test_wall_header_has_no_search", () => {
     renderWall([fleet(), fleet({ id: "f2", name: "beta" })]);
     // The wall is tiles, live count, and Install fleet — no client-side filter
