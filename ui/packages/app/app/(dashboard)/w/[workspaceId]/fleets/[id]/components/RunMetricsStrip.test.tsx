@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 import RunMetricsStrip from "./RunMetricsStrip";
 import type { EventRow } from "@/lib/api/events";
-import { METRICS_EMPTY } from "./console-copy";
+import { METRICS_EMPTY, METRICS_TIME_LABEL } from "./console-copy";
 
 afterEach(() => cleanup());
 
@@ -31,10 +31,18 @@ function evt(over: Partial<EventRow> = {}): EventRow {
 describe("RunMetricsStrip", () => {
   it("test_metrics_strip_is_server_truth", () => {
     render(<RunMetricsStrip latest={evt()} />);
-    // Every figure is the server field, rendered verbatim — tokens/wall/cost.
+    // Every figure is the server field, rendered verbatim — tokens/time/cost.
     expect(screen.getByText("1,500")).toBeTruthy();
     expect(screen.getByText("12.0s")).toBeTruthy();
     expect(screen.getByText("$0.04")).toBeTruthy();
+  });
+
+  it("test_metrics_strip_labels_time", () => {
+    render(<RunMetricsStrip latest={evt()} />);
+    // The duration figure is labelled in plain words; "Wall" is jargon and
+    // collides with the Live Wall page name.
+    expect(screen.getByText(METRICS_TIME_LABEL)).toBeTruthy();
+    expect(screen.queryByText("Wall")).toBeNull();
   });
 
   it("renders cost as — when the run has no telemetry (null cost, never a fabricated zero)", () => {

@@ -72,6 +72,19 @@ export function tileShouldStream(status: string): boolean {
   return !DRAINED_STATUSES.has(status);
 }
 
+// ── Wall tile copy ──
+// The operator-facing tile strings, single-sourced (RULE UFS) so the tile and
+// its tests read the same constant. The eyebrow states the condition in plain
+// words — an operator must understand it without knowing the stream mechanics;
+// the tooltip carries the one-sentence explanation.
+export const TILE_NOT_LIVE_EYEBROW = "not live";
+export const TILE_NOT_LIVE_TOOLTIP =
+  "Live feed unavailable — showing the last activity received.";
+export const TILE_CATCHING_UP_EYEBROW = "catching up";
+// Footer suffixes: figures carry their unit as a word, never an abbreviation.
+export const TILE_SPEND_SUFFIX = "spent";
+export const TILE_EVENTS_SUFFIX = "events";
+
 // Server-truth spend, formatted for the tile footer. Reads the summed
 // `credit_deducted_nanos` the row already carries — never token×rate math on
 // the client (Invariant 2). A fleet an older daemon served without the field

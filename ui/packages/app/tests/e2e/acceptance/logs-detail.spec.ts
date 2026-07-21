@@ -2,10 +2,10 @@
  * logs-detail.spec.ts — fleet detail page renders SSR-authenticated content.
  *
  * Spec called for "event-row click → <Dialog> opens with payload preview".
- * The current EventsList renders event cards with an inline truncated
- * preview (`<p title="...">` on the response body) — it does not yet open
- * a modal payload viewer. That click-to-dialog feature is on the deferred
- * dashboard polish queue, not on M64_006.
+ * The current EventsList renders the workspace events DataTable whose summary
+ * cell carries an inline truncated preview (title-attribute tooltip on the
+ * response body) — it does not yet open a modal payload viewer. That
+ * click-to-dialog feature stays on the deferred dashboard polish queue.
  *
  * Pragmatic asserts (what WS-A actually unblocked):
  *   - SSR loads the detail page for an active fleet.

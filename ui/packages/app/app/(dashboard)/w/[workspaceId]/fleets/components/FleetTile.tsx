@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Card, cn, EYEBROW_CLASS, Time, WakePulse } from "@agentsfleet/design-system";
+import { Card, cn, EYEBROW_CLASS, Time, Tooltip, TooltipContent, TooltipTrigger, WakePulse } from "@agentsfleet/design-system";
 import { type Fleet } from "@/lib/api/fleets";
 import { workspacePath } from "@/lib/workspace-routes";
 import { useWorkspaceFleetStream } from "@/components/domain/useWorkspaceStream";
@@ -11,6 +11,11 @@ import {
   formatTileEvents,
   formatTileSpend,
   tileShouldStream,
+  TILE_CATCHING_UP_EYEBROW,
+  TILE_EVENTS_SUFFIX,
+  TILE_NOT_LIVE_EYEBROW,
+  TILE_NOT_LIVE_TOOLTIP,
+  TILE_SPEND_SUFFIX,
   type TileKind,
 } from "@/lib/wall/tile-liveness";
 
@@ -45,7 +50,13 @@ function StreamingTile({ fleet, workspaceId }: Props) {
     useWorkspaceFleetStream(fleet.id);
   const liveness = deriveTileLiveness(fleet.status, connectionStatus);
   const kind = liveness.kind === "live" && helloReceived && !isLive ? "snapshot" : liveness.kind;
-  const eyebrow = catchingUp ? "catching up" : kind === "snapshot" ? "last known" : undefined;
+  // One state branch decides both the eyebrow text and its tooltip, so copy
+  // never doubles as a logic discriminator.
+  const eyebrowInfo = catchingUp
+    ? { text: TILE_CATCHING_UP_EYEBROW }
+    : kind === "snapshot"
+      ? { text: TILE_NOT_LIVE_EYEBROW, tooltip: TILE_NOT_LIVE_TOOLTIP }
+      : undefined;
   const lastEvent = events.length > 0 ? events[events.length - 1] : null;
 
   return (
@@ -53,13 +64,14 @@ function StreamingTile({ fleet, workspaceId }: Props) {
       fleet={fleet}
       workspaceId={workspaceId}
       kind={kind}
-      eyebrow={eyebrow}
+      eyebrow={eyebrowInfo?.text}
+      eyebrowTitle={eyebrowInfo?.tooltip}
       feed={lastEvent?.text}
     >
       <WakePulse
         // The pulse animation is live-only (DESIGN_SYSTEM.md §Motion). A snapshot
         // tile holds a static dot — the animation must not claim a feed is live
-        // when the stream is gone; the `last known` eyebrow is the honest signal.
+        // when the stream is gone; the "not live" eyebrow is the honest signal.
         live={kind === "live"}
         className={cn(
           "inline-block w-2 h-2 rounded-full",
@@ -76,11 +88,12 @@ type ShellProps = {
   workspaceId: string;
   kind: TileKind;
   eyebrow?: string;
+  eyebrowTitle?: string;
   feed?: string;
   children: React.ReactNode;
 };
 
-function TileShell({ fleet, workspaceId, kind, eyebrow, feed, children }: ShellProps) {
+function TileShell({ fleet, workspaceId, kind, eyebrow, eyebrowTitle, feed, children }: ShellProps) {
   return (
     <Card
       className={cn("p-4", kind === "drained" && "opacity-60")}
@@ -102,7 +115,22 @@ function TileShell({ fleet, workspaceId, kind, eyebrow, feed, children }: ShellP
           </div>
           <div className="flex items-center gap-2">
             {eyebrow ? (
-              <span className={cn(EYEBROW_CLASS, "text-text-subtle")}>{eyebrow}</span>
+              eyebrowTitle ? (
+                // The wrapper below is pointer-events-none so clicks fall through
+                // to the overlay link; the trigger opts back in so the tooltip is
+                // reachable by hover AND keyboard focus — a plain title attribute
+                // would be unreachable here.
+                <Tooltip>
+                  <TooltipTrigger
+                    className={cn(EYEBROW_CLASS, "pointer-events-auto cursor-default border-0 bg-transparent p-0 text-text-subtle")}
+                  >
+                    {eyebrow}
+                  </TooltipTrigger>
+                  <TooltipContent>{eyebrowTitle}</TooltipContent>
+                </Tooltip>
+              ) : (
+                <span className={cn(EYEBROW_CLASS, "text-text-subtle")}>{eyebrow}</span>
+              )
             ) : null}
             {children}
           </div>
@@ -113,11 +141,11 @@ function TileShell({ fleet, workspaceId, kind, eyebrow, feed, children }: ShellP
         </div>
 
         <div className="flex items-center justify-between font-mono text-xs text-muted-foreground tabular-nums">
-          <span title="Lifetime spend (server truth)">
-            {formatTileSpend(fleet.budget_used_nanos)}
+          <span>
+            {formatTileSpend(fleet.budget_used_nanos)} {TILE_SPEND_SUFFIX}
           </span>
-          <span title="Lifetime events processed">
-            {formatTileEvents(fleet.events_processed)} ev
+          <span>
+            {formatTileEvents(fleet.events_processed)} {TILE_EVENTS_SUFFIX}
           </span>
           <Time value={new Date(fleet.updated_at)} format="relative" tooltip={false} />
         </div>

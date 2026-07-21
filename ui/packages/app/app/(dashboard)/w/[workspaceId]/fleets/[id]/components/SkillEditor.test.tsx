@@ -5,12 +5,14 @@ import SkillEditor from "./SkillEditor";
 import type { FleetDetail } from "@/lib/types";
 import { EVENTS } from "@/lib/analytics/events";
 import {
+  HIDE_SOURCE_LABEL,
   OUTCOME,
   SAVE_NEXT_WAKE_NOTICE,
   SAVE_STALE_RELOADED_NOTICE,
   SOURCE_FIELD,
   TRIGGER_DOC_EMPTY,
   TRIGGER_DOC_LABEL,
+  VIEW_SOURCE_LABEL,
 } from "./console-copy";
 
 const saveFleetSourceAction = vi.fn();
@@ -65,6 +67,57 @@ beforeEach(() => {
 afterEach(() => cleanup());
 
 describe("SkillEditor", () => {
+  it("test_source_card_collapsed_by_default", () => {
+    renderEditor();
+    // The steer thread is the page's primary surface — the document viewer
+    // renders only on request. Header controls stay reachable.
+    expect(screen.queryByRole("tab", { name: "SKILL.md" })).toBeNull();
+    expect(screen.queryAllByLabelText("SKILL.md")).toHaveLength(0);
+    expect(screen.getByRole("button", { name: VIEW_SOURCE_LABEL })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Edit/ })).toBeTruthy();
+  });
+
+  it("test_source_card_expand_toggle", async () => {
+    renderEditor();
+    const user = userEvent.setup({ delay: null });
+    await user.click(screen.getByRole("button", { name: VIEW_SOURCE_LABEL }));
+    const pre = screen.getAllByLabelText("SKILL.md").find((node) => node.tagName === "PRE");
+    expect(pre?.textContent).toContain("original");
+    // The trigger pane keeps its empty hint when no TRIGGER.md exists.
+    await user.click(screen.getByRole("tab", { name: TRIGGER_DOC_LABEL }));
+    expect(screen.getByText(TRIGGER_DOC_EMPTY)).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: HIDE_SOURCE_LABEL }));
+    expect(screen.queryByRole("tab", { name: "SKILL.md" })).toBeNull();
+  });
+
+  it("test_edit_auto_expands_and_pins_open", async () => {
+    renderEditor();
+    const user = userEvent.setup({ delay: null });
+    await user.click(screen.getByRole("button", { name: /Edit/ }));
+    // Edit from collapsed lands straight in the editor…
+    const box = screen.getByRole("textbox", { name: "Edit SKILL.md" });
+    fireEvent.change(box, { target: { value: "# SKILL\ndraft in progress" } });
+    // …and no collapse control exists while a draft is live, so the draft can
+    // never be hidden mid-edit.
+    expect(screen.queryByRole("button", { name: HIDE_SOURCE_LABEL })).toBeNull();
+    expect(screen.queryByRole("button", { name: VIEW_SOURCE_LABEL })).toBeNull();
+    expect(screen.getByRole("textbox", { name: "Edit SKILL.md" })).toHaveProperty(
+      "value",
+      "# SKILL\ndraft in progress",
+    );
+  });
+
+  it("keeps the card expanded after leaving edit mode via Cancel", async () => {
+    renderEditor();
+    const user = userEvent.setup({ delay: null });
+    await user.click(screen.getByRole("button", { name: /Edit/ }));
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    // Edit pinned the card open; Cancel exits editing but does not yank the
+    // viewer away — the operator keeps reading what they were about to change.
+    expect(screen.getByRole("button", { name: HIDE_SOURCE_LABEL })).toBeTruthy();
+    expect(screen.getAllByLabelText("SKILL.md").some((node) => node.tagName === "PRE")).toBe(true);
+  });
+
   it("test_source_save_next_wake_semantics", async () => {
     saveFleetSourceAction.mockResolvedValue({ ok: true, data: { etag: '"next"', config_revision: 2 } });
     const user = await enterEditAndType("# SKILL\nedited");
@@ -159,6 +212,7 @@ describe("SkillEditor", () => {
       />,
     );
     const user = userEvent.setup({ delay: null });
+    await user.click(screen.getByRole("button", { name: VIEW_SOURCE_LABEL }));
     await waitFor(() => expect(
       screen.getAllByLabelText("SKILL.md").find((node) => node.tagName === "PRE")?.textContent,
     ).toBe("# SKILL\nserver refresh"));
@@ -200,13 +254,6 @@ describe("SkillEditor", () => {
     const readOnlySource = screen.getAllByLabelText("SKILL.md").find((node) => node.tagName === "PRE");
     expect(readOnlySource?.textContent).toContain("# SKILL");
     expect(readOnlySource?.textContent).toContain("original");
-  });
-
-  it("renders the trigger empty hint when no TRIGGER.md exists", async () => {
-    renderEditor();
-    const user = userEvent.setup({ delay: null });
-    await user.click(screen.getByRole("tab", { name: TRIGGER_DOC_LABEL }));
-    expect(screen.getByText(TRIGGER_DOC_EMPTY)).toBeTruthy();
   });
 
   it("test_source_save_emits_event", async () => {

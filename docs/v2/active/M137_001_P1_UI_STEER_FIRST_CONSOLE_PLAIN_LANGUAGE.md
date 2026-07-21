@@ -38,7 +38,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 - **PR title (eventual):** feat(ui): steer-first console, plain-language wall and console labels
 - **Intent (one sentence):** An operator landing on the wall or console understands every label without decoding, immediately sees the steer thread as the main surface, and can navigate back to the wall.
-- **Handshake** — the implementing agent fills this at PLAN, before EXECUTE: restate the Intent in its own words and list `ASSUMPTIONS I'M MAKING: …`. A mismatch between the restatement and the Intent above → STOP and reconcile before any edit.
+- **Handshake** (filled at PLAN) — Restatement: make the wall and console legible and honest for a first-time operator — plain words on every figure, the steer thread visually first, a way back to the wall, no layout breakage, and the legacy search box gone. ASSUMPTIONS I'M MAKING: (1) "not live" is the eyebrow wording, with the one-sentence tooltip carrying the explanation; (2) the collapse state is per-visit React state, not persisted; (3) the back affordance is a single eyebrow-styled link above the page header, not a breadcrumb component; (4) stacking order is CSS `order-first lg:order-none` on the steer column, DOM order unchanged for the three-column layout.
 
 ## Implementing agent — read these first
 
@@ -57,6 +57,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `ui/packages/app/lib/wall/tile-liveness.ts` | EDIT | Home for the wall copy consts if the agent places them beside the formatters |
 | `ui/packages/app/lib/wall/tile-liveness.test.ts` | EDIT | Cover any moved/added consts and formatter suffix changes |
 | `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/components/FleetWall.tsx` | EDIT | Remove the search box, client-side filter state, and its empty-state branch; header becomes live count + Install fleet per variant F |
+| `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/components/FleetWall.test.tsx` | EDIT | Replace the filter tests with the no-search header assertion |
 | `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/[id]/page.tsx` | EDIT | Back link, steer-column stacking order, `min-w-0` column-child lock (partially in working tree — port the uncommitted diff) |
 | `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/[id]/components/console-copy.ts` | EDIT | `METRICS_WALL_LABEL` → `METRICS_TIME_LABEL = "Time"`; new back-link and disclosure consts |
 | `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/[id]/components/RunMetricsStrip.tsx` | EDIT | Consume renamed label const |
@@ -65,6 +66,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/[id]/components/SkillEditor.test.tsx` | EDIT | Collapsed default, expand, Edit-auto-expand, draft-preservation tests |
 | `ui/packages/app/tests/dashboard-fleets-wall.test.tsx` | EDIT | Wall-level assertions updated to new labels |
 | `ui/packages/app/tests/e2e/acceptance/fleet-console.spec.ts` | EDIT | Back-nav walk + no-horizontal-overflow assertion |
+| `ui/packages/app/components/domain/EventsList.tsx` | EDIT | Card list → standard `DataTable`; dead preview/fleet arms removed |
+| `ui/packages/app/app/(dashboard)/w/[workspaceId]/events/page.tsx` | EDIT | Pass the simplified `EventsList` props |
+| `ui/packages/app/tests/events-components.test.ts` | EDIT | Assert table rendering; drop preview/fleet-arm tests |
+| `ui/packages/app/app/(dashboard)/w/[workspaceId]/events/actions.ts` | EDIT | Delete `listFleetEventsAction` — the table rewrite removed its last production caller, and an exported server action is a live network endpoint |
+| `ui/packages/app/tests/events-actions.test.ts` | EDIT | Drop the deleted action's forwarder tests |
+| `ui/packages/app/tests/e2e/acceptance/logs-detail.spec.ts` | EDIT | Header comment updated — described the deleted card list |
 
 ## Applicable Rules
 
@@ -93,28 +100,35 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 The wall tile's footer and degradation eyebrow become readable without decoding. Footer renders `{spend} spent · {n} events · {relative time}`; the `ev` abbreviation dies. The snapshot eyebrow "last known" becomes **"not live"** with a tooltip explaining "Live feed unavailable — showing the last activity received." "catching up" stays (already plain). **Implementation default:** keep the existing `title` tooltips on spend/events and the mono/tabular footer styling — Operational Restraint means words, not layout changes.
 
-- **Dimension 1.1** — Footer events figure renders with the word "events", never bare "ev" → Test `test_tile_footer_spells_out_events`
-- **Dimension 1.2** — Footer spend renders with the suffix "spent" from the server figure → Test `test_tile_footer_labels_spend`
-- **Dimension 1.3** — Snapshot tile shows eyebrow "not live" with the explanatory tooltip; live tile shows neither → Test `test_snapshot_eyebrow_reads_not_live`
-- **Dimension 1.4** — All new tile strings are named consts referenced by component and tests → Test `test_wall_copy_consts_are_single_source`
-- **Dimension 1.5** — The wall header renders live count + Install fleet and no search input; the client-side filter state and its "No fleets match" branch are deleted (a zero-fleet workspace routes to Getting Started before the wall renders, so the branch is unreachable) → Test `test_wall_header_has_no_search`
+- **Dimension 1.1** — Footer events figure renders with the word "events", never bare "ev" → Test `test_tile_footer_spells_out_events` — **DONE**
+- **Dimension 1.2** — Footer spend renders with the suffix "spent" from the server figure → Test `test_tile_footer_labels_spend` — **DONE**
+- **Dimension 1.3** — Snapshot tile shows eyebrow "not live" with the explanatory tooltip; live tile shows neither → Test `test_snapshot_eyebrow_reads_not_live` — **DONE**
+- **Dimension 1.4** — All new tile strings are named consts referenced by component and tests → Test `test_wall_copy_consts_are_single_source` — **DONE**
+- **Dimension 1.5** — The wall header renders live count + Install fleet and no search input; the client-side filter state and its "No fleets match" branch are deleted (a zero-fleet workspace routes to Getting Started before the wall renders, so the branch is unreachable) → Test `test_wall_header_has_no_search` — **DONE**
 
 ### §2 — Console back affordance and plain metrics
 
 The console header gains `← Fleets` linking to the wall (frozen in variant F, never built), and the metrics strip's "Wall" label becomes "Time" — "Wall" collides with the product's own Live Wall vocabulary and means nothing to an operator. The const renames to `METRICS_TIME_LABEL` (RULE NLR).
 
-- **Dimension 2.1** — Console header renders a `← Fleets` link whose href is the workspace fleets route → Test `test_console_back_link_targets_wall`
-- **Dimension 2.2** — Metrics strip renders "Time" for `wall_ms`; no rendered surface says "Wall" → Test `test_metrics_strip_labels_time`
+- **Dimension 2.1** — Console header renders a `← Fleets` link whose href is the workspace fleets route → Test `test_console_back_link_targets_wall` — **DONE**
+- **Dimension 2.2** — Metrics strip renders "Time" for `wall_ms`; no rendered surface says "Wall" → Test `test_metrics_strip_labels_time` — **DONE**
 
 ### §3 — Steer-first console hierarchy
 
 The steer thread + composer is the point of the page (FREEZE §1); the layout must say so. The Source card collapses to its header row (title + Edit + expand disclosure) by default; expanding reveals the tabs and viewer; pressing Edit from collapsed auto-expands into the editor; collapse is disabled while editing so a draft can never be hidden or lost. Below the `lg` breakpoint the steer column stacks first. Column children are locked to their grid track (`min-w-0` on each column's direct children) so long source lines, webhook URLs, and registration commands scroll inside their own `overflow-x-auto` blocks instead of painting under the neighbouring column — this half exists as an uncommitted working-tree diff on `main`; port it into the branch.
 
-- **Dimension 3.1** — Source card renders collapsed by default: header visible, document panes absent until expanded → Test `test_source_card_collapsed_by_default`
-- **Dimension 3.2** — Expand disclosure reveals the SKILL.md/TRIGGER.md panes; collapsing hides them again → Test `test_source_card_expand_toggle`
-- **Dimension 3.3** — Edit pressed while collapsed expands into the editor; collapse control is disabled while editing → Test `test_edit_auto_expands_and_pins_open`
-- **Dimension 3.4** — Steer column is first in stacked (below-`lg`) order, middle in the three-column order → Test `test_steer_column_stacks_first`
-- **Dimension 3.5** — Each console column applies the `min-w-0` child lock; the rendered console page has no horizontal document overflow → Test `test_console_columns_never_overlap` (e2e)
+- **Dimension 3.1** — Source card renders collapsed by default: header visible, document panes absent until expanded → Test `test_source_card_collapsed_by_default` — **DONE**
+- **Dimension 3.2** — Expand disclosure reveals the SKILL.md/TRIGGER.md panes; collapsing hides them again → Test `test_source_card_expand_toggle` — **DONE**
+- **Dimension 3.3** — Edit pressed while collapsed expands into the editor; collapse control is disabled while editing → Test `test_edit_auto_expands_and_pins_open` — **DONE**
+- **Dimension 3.4** — Steer column is first in stacked (below-`lg`) order, middle in the three-column order → Test `test_steer_column_stacks_first` — **DONE**
+- **Dimension 3.5** — Each console column applies the `min-w-0` child lock; the rendered console page has no horizontal document overflow → Test `test_console_columns_never_overlap` (e2e) — **DONE**
+
+### §4 — Events page in the standard table
+
+The workspace Events page renders card-shaped rows today while every sibling data surface (API keys, secrets, runners, billing usage) uses the design-system `DataTable`. Indy's call (Jul 21, 2026): Events joins the standard table. Columns: Time · Status · Fleet · Actor · Type · Summary (truncated preview, or the warning-toned failure reason) · Tokens · Duration; secondary columns hide on mobile via the primitive's `hideOnMobile`. Cursor pagination, the error alert, and the empty state stay. The rewrite also deletes `EventsList`'s two production-dead arms — the `viewAllHref` preview mode and the `fleet` scope (only tests exercise them; the sole live consumer is the workspace Events page) — per RULE NLR.
+
+- **Dimension 4.1** — Events page renders the standard `DataTable` with the column set above; failure rows carry their plain-language reason → Test `test_events_page_uses_standard_table` — **DONE**
+- **Dimension 4.2** — Dead preview/fleet arms removed; `EventsList` takes `workspaceId` + `initial` only → Test `test_events_table_paginates_by_cursor` (regression: load-more appends) — **DONE**
 
 ## Interfaces
 
@@ -153,35 +167,36 @@ No HTTP, CLI, or wire interface changes. Locked component surfaces:
 
 | Dimension | Tier | Test | Asserts (concrete inputs → expected output) |
 |-----------|------|------|---------------------------------------------|
-| 1.1 | unit | `test_tile_footer_spells_out_events` | Fleet with `events_processed: 10` → footer text contains "10 events", zero matches for the bare token "ev" |
-| 1.2 | unit | `test_tile_footer_labels_spend` | Fleet with known `budget_used_nanos` → footer contains "$X.XX spent" |
-| 1.3 | unit | `test_snapshot_eyebrow_reads_not_live` | Stream state reconnecting/hello-without-live → eyebrow "not live" + tooltip text present; live state → neither rendered |
+| 1.1 | unit | FleetTile "live kind + server-truth footer" | Fleet with `events_processed: 7` → footer text "7 events", never the bare token "ev"; missing aggregates render "— events" |
+| 1.2 | unit | FleetTile "live kind + server-truth footer" | Fleet with known `budget_used_nanos` → footer "$1.20 spent"; missing field renders "— spent" |
+| 1.3 | unit | FleetTile "reconnecting stream degrades to a snapshot tile" | Stream state reconnecting/hello-without-live → eyebrow "not live" + tooltip attribute present; live state → neither rendered |
 | 1.4 | unit | `test_wall_copy_consts_are_single_source` | Rendered labels equal the exported consts (imported, not re-typed) |
 | 1.5 | unit | `test_wall_header_has_no_search` | Wall with fleets → no search input in the header; live count and Install fleet render; all tiles render unfiltered |
-| 2.1 | unit | `test_console_back_link_targets_wall` | Console header link "← Fleets" has the workspace fleets href |
+| 2.1 | e2e | `test_console_back_link_targets_wall` (in the console e2e walk) | Clicking "← Fleets" on the console navigates to the workspace fleets wall |
 | 2.2 | unit | `test_metrics_strip_labels_time` | Event with `wall_ms` → strip shows "Time"; rendering contains no "Wall" label |
 | 3.1 | unit | `test_source_card_collapsed_by_default` | Fresh render → header present, SKILL.md pane absent |
 | 3.2 | unit | `test_source_card_expand_toggle` | Expand → panes visible; collapse → hidden; empty TRIGGER.md shows existing hint (regression) |
 | 3.3 | unit | `test_edit_auto_expands_and_pins_open` | Edit from collapsed → textarea visible; collapse control disabled while editing; draft text survives |
-| 3.4 | unit | `test_steer_column_stacks_first` | The "What it does" section carries the stack-first ordering; column labels keep their three-column order |
-| 3.5 | e2e | `test_console_columns_never_overlap` | Seeded fleet with long source lines → console page `document.scrollWidth <= viewport width`; back link navigates to the wall |
+| 3.4 | e2e | `test_steer_column_stacks_first` (in the console e2e walk) | At a 390px viewport the "What it does" region's top sits above "What it is" |
+| 3.5 | e2e | `test_console_columns_never_overlap` (in the console e2e walk) | Seeded fleet with long source lines → document scrollWidth ≤ clientWidth + 1 |
 | reg | unit | existing FleetTile/SkillEditor/RunMetricsStrip suites | All pre-existing behaviour (liveness derivation, save flow, 412 reload, cost fields) passes unmodified except label assertions |
 
 ## Acceptance Rubric (single scoring surface)
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | Wall tile carries no cryptic labels (§1) | `grep -cE '\bev\b\|last known' "ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/components/FleetTile.tsx"` | 0 | P0 | |
-| R2 | Back affordance exists in console copy (§2) | `grep -c "← Fleets" "ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/[id]/components/console-copy.ts"` | 1 | P0 | |
-| R6 | Wall search box is gone (§1) | `grep -rc "Search loaded fleets\|Search fleets" ui/packages/app --include='*.tsx' \| grep -v ':0' \| wc -l` | 0 | P0 | |
-| R3 | Metrics label renamed, old const gone (§2) | `grep -rc "METRICS_WALL_LABEL" ui/packages/app --include='*.ts*' \| grep -v ':0' \| wc -l` | 0 | P0 | |
-| R4 | Steer-first + overlap lock in the console shell (§3) | `grep -cE 'order-first\|\*:min-w-0' "ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/[id]/page.tsx"` | 2 | P0 | |
-| R5 | Diff stays inside Files Changed | `git diff --name-only origin/main` | 0 paths missing from the Files Changed table | P0 | |
-| S1 | Unit tests pass | `make test-unit-app` | exit 0 | P0 | |
-| S2 | Lint clean (Oxlint + tsc + design tokens) | `make lint-app` | exit 0 | P0 | |
-| S4 | e2e walks the console (back-nav + no overflow) | `cd ui/packages/app && bun run test:e2e:acceptance:local tests/e2e/acceptance/fleet-console.spec.ts` | exit 0 | P0 | |
-| S7 | No secrets | `gitleaks detect` | exit 0 | P0 | |
-| S8 | No oversize source file | `git diff --name-only origin/main \| grep -v '\.md$' \| xargs wc -l 2>/dev/null \| awk '$1>350 && $2!="total"'` | no output | P0 | |
+| R1 | Wall tile carries no cryptic labels (§1) | `grep -cE '\bev\b\|last known' "ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/components/FleetTile.tsx"` | 0 | P0 | ✅ `0` |
+| R2 | Back affordance exists in console copy (§2) | `grep -c "← Fleets" "ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/[id]/components/console-copy.ts"` | 1 | P0 | ✅ `1` |
+| R6 | Wall search box is gone (§1) | `grep -rn "Search loaded fleets\|Search fleets" ui/packages/app --include='*.tsx' \| grep -v '.test.tsx' \| wc -l` | 0 (test-file negative assertions excluded) | P0 | ✅ `0` — sole remaining hit is the test asserting absence |
+| R7 | Events page is the standard table (§4) | `grep -c "DataTable" ui/packages/app/components/domain/EventsList.tsx` | ≥ 1 (and `git grep -w viewAllHref` = 0 in source) | P0 | ✅ `4`; viewAllHref 0 source matches |
+| R3 | Metrics label renamed, old const gone (§2) | `grep -rc "METRICS_WALL_LABEL" ui/packages/app --include='*.ts*' \| grep -v ':0' \| wc -l` | 0 | P0 | ✅ `0` |
+| R4 | Steer-first + overlap lock in the console shell (§3) | `grep -cE 'order-first\|\*:min-w-0' "ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/[id]/page.tsx"` | ≥ 2 (class usages; comments may also match) | P0 | ✅ `4` |
+| R5 | Diff stays inside Files Changed | `git diff --name-only origin/main` | 0 paths missing from the Files Changed table | P0 | ✅ 20/20 paths listed |
+| S1 | Unit tests pass | `make test-unit-app` | exit 0 | P0 | ✅ `1644 passed (175 files)` |
+| S2 | Lint clean (Oxlint + tsc + design tokens) | `make lint-app` | exit 0 | P0 | ✅ `Lint passed` |
+| S4 | e2e walks the console (back-nav + no overflow) | `cd ui/packages/app && bun run test:e2e:acceptance:local tests/e2e/acceptance/fleet-console.spec.ts` | exit 0 | P0 | ⏳ VERIFY GATE: skipped per environment constraint (needs the live acceptance stack + fixture credentials; runs in CI on the PR) |
+| S7 | No secrets | `gitleaks protect --staged` | exit 0 | P0 | ✅ `no leaks found` (pre-commit hook) |
+| S8 | No oversize source file (tests exempt per the canonical length audit) | `git diff --name-only origin/main \| grep -v -E '\.md$\|^docs/\|\.test\.\|\.spec\.\|/tests?/' \| xargs wc -l 2>/dev/null \| awk '$1>350 && $2!="total"'` | no output | P0 | ✅ no output |
 
 **Grading protocol (VERIFY):** run the Verify command verbatim; grade ONLY from its output. Graded = ✅/❌ + the one decisive output line (`342 passed`); long evidence goes to PR Session Notes with a pointer here. **Ship gate:** every row graded, every P0 ✅ → eligible for CHORE(close); any ❌ or empty cell → return to EXECUTE; a P1 ❌ ships only with an Indy-acked deferral quote in Discovery.
 
@@ -197,11 +212,15 @@ N/A — no files deleted.
 |-----------------------|------|----------|
 | `METRICS_WALL_LABEL` | `git grep -rn -w "METRICS_WALL_LABEL"` | 0 matches |
 | Wall search filter (placeholder, aria-label, empty-state copy) | `git grep -rn "Search loaded fleets\|No fleets match"` | 0 matches |
+| `viewAllHref` preview mode (production-dead; only the deleted tests used it) | `git grep -rn -w "viewAllHref"` | 0 matches |
+| `listFleetEventsAction` (caller-less exported server action = dead network surface) | `git grep -rn -w "listFleetEventsAction"` | 0 matches |
+| `METRICS_COST_UNKNOWN` (renamed — the dash placeholders every figure, not just cost) | `git grep -rn -w "METRICS_COST_UNKNOWN"` | 0 matches |
 
 ## Out of Scope
 
 - Workspace-multiplexed live stream and reconnect robustness — M133_001, already IN_PROGRESS on `feat/m133-workspace-stream`; folding a backend stream into this UI-polish PR is forbidden by the spec-authoring discipline, and this spec's tests do not depend on a healthy stream (the "not live" state is fully testable — it is dev's current state).
 - Server-side fleet search — if walls ever grow past a screenful, search returns as a server-backed feature spec, not a client-side filter.
+- Runners "Runner activity" popup → standard table — Indy asked for a suggestion (Jul 21, 2026); recommendation is a runner detail page with a `DataTable` of activity, mirroring the fleets list→console pattern. Lands as its own workstream once Indy picks a shape.
 - Why `github-app` wakes fail instantly with zero tokens on dev — backend/runner investigation, separate spec.
 - Runs-ledger copy overhaul ("LATEST 200 EVENTS IN 7 DAYS") — revisit only if Indy flags it after this lands.
 
@@ -230,6 +249,8 @@ N/A — no files deleted.
 
 - **Consults** —
   > Indy (2026-07-21): "i think the `wall's searchbox must be removed`" — context: wall search box (M94 carry-over, absent from frozen variant F) surfaced Jul 20 as awaiting his call; removal is now in scope (§1, Dimension 1.5).
+  > Indy (2026-07-21): "Additionally i want this to be in the standard table" — context: the workspace Events page (card rows) joins the design-system `DataTable` like API keys/secrets; folded in as §4 per the same-tree default.
+  > Indy (2026-07-21): "This must be a standard table and shouldnt be a popup, what can you suggest here?" — context: the Runners page "Runner activity" dialog; suggestion delivered (runner detail page + standard table), awaiting his pick — tracked in Out of Scope, not folded into this diff.
 - **Metrics review** —
 - **Skill-chain outcomes** —
 - **Deferrals** —

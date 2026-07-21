@@ -1,6 +1,7 @@
 import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render } from "@testing-library/react";
+import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
+import { TooltipProvider } from "@agentsfleet/design-system";
 import { CONNECTION_STATUS } from "@/lib/streaming/fleet-stream-registry";
 import type { Fleet } from "@/lib/api/fleets";
 
@@ -17,8 +18,13 @@ vi.mock("@/components/domain/useWorkspaceStream", () => ({
 }));
 
 import FleetTile from "./FleetTile";
-
-const LAST_KNOWN_LABEL = "last known";
+import {
+  TILE_CATCHING_UP_EYEBROW,
+  TILE_EVENTS_SUFFIX,
+  TILE_NOT_LIVE_EYEBROW,
+  TILE_NOT_LIVE_TOOLTIP,
+  TILE_SPEND_SUFFIX,
+} from "@/lib/wall/tile-liveness";
 
 function fleet(over: Partial<Fleet> = {}): Fleet {
   return {
@@ -34,7 +40,13 @@ function fleet(over: Partial<Fleet> = {}): Fleet {
 }
 
 function renderTile(f: Fleet) {
-  return render(React.createElement(FleetTile, { fleet: f, workspaceId: "ws_1" }));
+  return render(
+    React.createElement(
+      TooltipProvider,
+      null,
+      React.createElement(FleetTile, { fleet: f, workspaceId: "ws_1" }),
+    ),
+  );
 }
 
 afterEach(() => {
@@ -63,15 +75,16 @@ describe("FleetTile — the three kinds (Inv. 1)", () => {
     });
     const { container, getByText } = renderTile(fleet());
     expect(container.querySelector('[data-kind="live"]')).not.toBeNull();
-    // Footer reads server truth, not token math.
-    expect(getByText("$1.20")).toBeTruthy();
-    expect(getByText("7 ev")).toBeTruthy();
+    // Footer reads server truth, not token math — figures carry their unit as
+    // a plain word, never an abbreviation.
+    expect(getByText("$1.20 spent")).toBeTruthy();
+    expect(getByText("7 events")).toBeTruthy();
     // No snapshot eyebrow while live; the pulse animates (data-live set).
     expect(container.textContent).not.toContain("snapshot");
     expect(container.querySelector('[data-live="true"]')).not.toBeNull();
   });
 
-  it("a reconnecting stream degrades to a snapshot tile with its last event, pulse STILL (2.2, 2.3)", () => {
+  it("a reconnecting stream degrades to a snapshot tile with its last event, pulse STILL (2.2, 2.3)", async () => {
     streamMock.mockReturnValue({
       events: [{ id: "e1", role: "assistant", actor: "fleet", text: "ran a check", createdAt: new Date(0), status: "received" }],
       connectionStatus: CONNECTION_STATUS.RECONNECTING,
@@ -79,9 +92,15 @@ describe("FleetTile — the three kinds (Inv. 1)", () => {
       isLive: true,
       catchingUp: false,
     });
-    const { container, getByText } = renderTile(fleet());
+    const { container, getByText, getAllByText } = renderTile(fleet());
     expect(container.querySelector('[data-kind="snapshot"]')).not.toBeNull();
-    expect(getByText(LAST_KNOWN_LABEL)).toBeTruthy();
+    const notLive = getByText(TILE_NOT_LIVE_EYEBROW);
+    expect(notLive).toBeTruthy();
+    // The plain-words eyebrow carries the one-sentence explanation in a real
+    // tooltip, reachable by keyboard focus (a bare title attribute would be
+    // unreachable under the tile's pointer-events-none wrapper).
+    fireEvent.focus(notLive);
+    await waitFor(() => expect(getAllByText(TILE_NOT_LIVE_TOOLTIP).length).toBeGreaterThan(0));
     expect(getByText("ran a check")).toBeTruthy();
     // The pulse must NOT animate in snapshot mode — the animation is live-only,
     // so a frozen feed cannot masquerade as live (greptile P2, DESIGN_SYSTEM §Motion).
@@ -109,8 +128,8 @@ describe("FleetTile — the three kinds (Inv. 1)", () => {
       catchingUp: false,
     });
     const { getByText } = renderTile(fleet({ budget_used_nanos: undefined, events_processed: undefined }));
-    expect(getByText("—")).toBeTruthy();
-    expect(getByText("— ev")).toBeTruthy();
+    expect(getByText("— spent")).toBeTruthy();
+    expect(getByText("— events")).toBeTruthy();
   });
 
   it("a tile absent from the server hello set renders snapshot, not live", () => {
@@ -123,8 +142,24 @@ describe("FleetTile — the three kinds (Inv. 1)", () => {
     });
     const { container, getByText } = renderTile(fleet());
     expect(container.querySelector('[data-kind="snapshot"]')).not.toBeNull();
-    expect(getByText(LAST_KNOWN_LABEL)).toBeTruthy();
+    expect(getByText(TILE_NOT_LIVE_EYEBROW)).toBeTruthy();
     expect(container.querySelector('[data-live="true"]')).toBeNull();
+  });
+
+  it("test_wall_copy_consts_are_single_source", () => {
+    streamMock.mockReturnValue({
+      events: [],
+      connectionStatus: CONNECTION_STATUS.RECONNECTING,
+      helloReceived: true,
+      isLive: true,
+      catchingUp: false,
+    });
+    const { container, getByText } = renderTile(fleet());
+    // Every rendered label is the exported constant — the component and this
+    // test read the same source, so a copy change lands in exactly one place.
+    expect(getByText(TILE_NOT_LIVE_EYEBROW)).toBeTruthy();
+    expect(container.textContent).toContain(`7 ${TILE_EVENTS_SUFFIX}`);
+    expect(container.textContent).toContain(`$1.20 ${TILE_SPEND_SUFFIX}`);
   });
 
   it("a server drop signal surfaces catching up", () => {
@@ -136,6 +171,6 @@ describe("FleetTile — the three kinds (Inv. 1)", () => {
       catchingUp: true,
     });
     const { getByText } = renderTile(fleet());
-    expect(getByText("catching up")).toBeTruthy();
+    expect(getByText(TILE_CATCHING_UP_EYEBROW)).toBeTruthy();
   });
 });

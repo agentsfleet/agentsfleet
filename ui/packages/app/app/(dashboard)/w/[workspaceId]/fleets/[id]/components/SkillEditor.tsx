@@ -26,6 +26,7 @@ import {
   DIFF_PANEL_TITLE,
   DIFF_PENDING_LABEL,
   EDIT_SOURCE_LABEL,
+  HIDE_SOURCE_LABEL,
   OUTCOME,
   SAVE_CONFIRM_LABEL,
   SAVE_DIALOG_TITLE,
@@ -37,11 +38,16 @@ import {
   SOURCE_PANEL_TITLE,
   TRIGGER_DOC_EMPTY,
   TRIGGER_DOC_LABEL,
+  VIEW_SOURCE_LABEL,
   type SourceField,
 } from "./console-copy";
 
 // HTTP 412 Precondition Failed means the source changed under an open editor.
 const PRECONDITION_FAILED = 412;
+
+// DOM id the disclosure toggle points at via aria-controls — one console page
+// renders one source card, so the id cannot collide.
+const SOURCE_PANES_ID = "fleet-source-panes";
 
 type Props = {
   workspaceId: string;
@@ -79,6 +85,11 @@ export default function SkillEditor({
   const [draft, setDraft] = useState<DocState>(base);
   const [active, setActive] = useState<SourceField>(SOURCE_FIELD.skill);
   const [editing, setEditing] = useState(false);
+  // Collapsed by default — the steer thread is the page's primary surface, so
+  // the document viewer renders only on request. Editing pins the card open:
+  // no collapse control exists while a draft is live, so a draft can never be
+  // hidden mid-edit.
+  const [expanded, setExpanded] = useState(false);
   const [etag, setEtag] = useState(initialEtag);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -104,6 +115,7 @@ export default function SkillEditor({
   function enterEdit() {
     setError(null);
     setStaleReloaded(false);
+    setExpanded(true);
     setEditing(true);
   }
 
@@ -179,41 +191,57 @@ export default function SkillEditor({
             </Button>
           </div>
         ) : (
-          <Button type="button" variant="outline" size="sm" onClick={enterEdit}>
-            <PencilIcon size={14} /> {EDIT_SOURCE_LABEL}
-          </Button>
+          <div className="flex items-center gap-xs">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              aria-expanded={expanded}
+              aria-controls={SOURCE_PANES_ID}
+              onClick={() => setExpanded((v) => !v)}
+            >
+              {expanded ? HIDE_SOURCE_LABEL : VIEW_SOURCE_LABEL}
+            </Button>
+            <Button type="button" variant="outline" size="sm" onClick={enterEdit}>
+              <PencilIcon size={14} /> {EDIT_SOURCE_LABEL}
+            </Button>
+          </div>
         )}
       </div>
 
-      <Tabs value={active} onValueChange={(v) => setActive(v as SourceField)}>
-        <TabsList>
-          <TabsTrigger value={SOURCE_FIELD.skill}>{SKILL_DOC_LABEL}</TabsTrigger>
-          <TabsTrigger value={SOURCE_FIELD.trigger}>{TRIGGER_DOC_LABEL}</TabsTrigger>
-        </TabsList>
-        <TabsContent value={SOURCE_FIELD.skill} className="mt-md">
-          <DocumentPane
-            label={SKILL_DOC_LABEL}
-            editing={editing}
-            base={base[SOURCE_FIELD.skill]}
-            draft={draft[SOURCE_FIELD.skill]}
-            emptyHint=""
-            onChange={setActiveDraft}
-          />
-        </TabsContent>
-        <TabsContent value={SOURCE_FIELD.trigger} className="mt-md">
-          <DocumentPane
-            label={TRIGGER_DOC_LABEL}
-            editing={editing}
-            base={base[SOURCE_FIELD.trigger]}
-            draft={draft[SOURCE_FIELD.trigger]}
-            emptyHint={TRIGGER_DOC_EMPTY}
-            onChange={setActiveDraft}
-          />
-        </TabsContent>
-      </Tabs>
+      {expanded || editing ? (
+        <div id={SOURCE_PANES_ID} className="flex flex-col gap-md">
+          <Tabs value={active} onValueChange={(v) => setActive(v as SourceField)}>
+            <TabsList>
+              <TabsTrigger value={SOURCE_FIELD.skill}>{SKILL_DOC_LABEL}</TabsTrigger>
+              <TabsTrigger value={SOURCE_FIELD.trigger}>{TRIGGER_DOC_LABEL}</TabsTrigger>
+            </TabsList>
+            <TabsContent value={SOURCE_FIELD.skill} className="mt-md">
+              <DocumentPane
+                label={SKILL_DOC_LABEL}
+                editing={editing}
+                base={base[SOURCE_FIELD.skill]}
+                draft={draft[SOURCE_FIELD.skill]}
+                emptyHint=""
+                onChange={setActiveDraft}
+              />
+            </TabsContent>
+            <TabsContent value={SOURCE_FIELD.trigger} className="mt-md">
+              <DocumentPane
+                label={TRIGGER_DOC_LABEL}
+                editing={editing}
+                base={base[SOURCE_FIELD.trigger]}
+                draft={draft[SOURCE_FIELD.trigger]}
+                emptyHint={TRIGGER_DOC_EMPTY}
+                onChange={setActiveDraft}
+              />
+            </TabsContent>
+          </Tabs>
 
-      {editing && changed ? <ChangePreview current={activeBase} pending={activeDraft} stale={staleReloaded} /> : null}
-      {error ? <Alert variant="destructive">{error}</Alert> : null}
+          {editing && changed ? <ChangePreview current={activeBase} pending={activeDraft} stale={staleReloaded} /> : null}
+          {error ? <Alert variant="destructive">{error}</Alert> : null}
+        </div>
+      ) : null}
 
       <ConfirmDialog
         open={dialogOpen}
