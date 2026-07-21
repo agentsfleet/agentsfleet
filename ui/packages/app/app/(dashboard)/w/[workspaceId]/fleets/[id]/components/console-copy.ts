@@ -3,6 +3,14 @@
 // here so the test asserts against the constant, not a re-spelled literal, and
 // a copy change lands in exactly one place.
 
+// ── Header: the way back to the wall ──
+
+// The console's escape hatch — one link, not a breadcrumb system. The visible
+// label keeps the frozen design's arrow glyph; the aria name drops it so a
+// screen reader never announces "leftwards arrow".
+export const BACK_TO_FLEETS_LABEL = "← Fleets";
+export const BACK_TO_FLEETS_ARIA = "Back to fleets";
+
 // ── Column headings (§3 — the three questions the console answers) ──
 
 export const COLUMN_IS_LABEL = "What it is";
@@ -23,6 +31,11 @@ export const TRIGGER_DOC_EMPTY = "No TRIGGER.md — this fleet has no declared t
 
 export const EDIT_SOURCE_LABEL = "Edit";
 export const CANCEL_EDIT_LABEL = "Cancel";
+// The source card is collapsed by default — the steer thread is the point of
+// the page, so the heavy document viewer appears only on request. Editing pins
+// the card open (no collapse control while a draft exists).
+export const VIEW_SOURCE_LABEL = "View source";
+export const HIDE_SOURCE_LABEL = "Hide source";
 export const SAVE_SOURCE_LABEL = "Save changes";
 export const SAVE_CONFIRM_LABEL = "Save";
 
@@ -99,9 +112,13 @@ export const ROLLUP_WINDOW_LIMIT = 200;
 
 export const METRICS_STRIP_LABEL = "Latest run";
 export const METRICS_TOKENS_LABEL = "Tokens";
-export const METRICS_WALL_LABEL = "Wall";
+// Wall-clock duration of the latest run. Labelled "Time" — "Wall" collides
+// with the product's own Live Wall vocabulary and reads as jargon.
+export const METRICS_TIME_LABEL = "Time";
 export const METRICS_COST_LABEL = "Cost";
-export const METRICS_COST_UNKNOWN = "—";
+// Any missing figure (tokens, time, or cost) renders a dash — an unknown is
+// never a fabricated zero.
+export const METRICS_VALUE_UNKNOWN = "—";
 export const METRICS_EMPTY = "No runs recorded yet.";
 
 // ── §7 — the delete confirm's memory trap (G8) ──

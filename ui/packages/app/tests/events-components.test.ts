@@ -1,24 +1,16 @@
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 // ── Shared mocks ───────────────────────────────────────────────────────────
 
-const { listFleetEventsActionMock, listWorkspaceEventsActionMock } = vi.hoisted(() => ({
-  listFleetEventsActionMock: vi.fn(),
+const { listWorkspaceEventsActionMock } = vi.hoisted(() => ({
   listWorkspaceEventsActionMock: vi.fn(),
 }));
 
 vi.mock("@/app/(dashboard)/w/[workspaceId]/events/actions", () => ({
-  listFleetEventsAction: listFleetEventsActionMock,
   listWorkspaceEventsAction: listWorkspaceEventsActionMock,
-}));
-
-// EventsList renders a next/link <Link> in its viewAllHref preview mode.
-vi.mock("next/link", () => ({
-  default: ({ children, ...props }: React.PropsWithChildren<React.AnchorHTMLAttributes<HTMLAnchorElement>>) =>
-    React.createElement("a", props, children),
 }));
 
 beforeEach(() => {
@@ -30,7 +22,7 @@ afterEach(() => cleanup());
 // ── EventsList ─────────────────────────────────────────────────────────────
 
 import { EventsList } from "../components/domain/EventsList";
-import { FRAME_KIND, type EventRow, type EventsPage, type LiveFrame } from "@/lib/api/events";
+import { type EventRow, type EventsPage } from "@/lib/api/events";
 import { TooltipProvider } from "@agentsfleet/design-system";
 
 function row(over: Partial<EventRow> = {}): EventRow {
@@ -56,44 +48,35 @@ function row(over: Partial<EventRow> = {}): EventRow {
   };
 }
 
-function renderList(
-  initial: EventsPage,
-  scope:
-    | { kind: "fleet"; workspaceId: string; fleetId: string }
-    | { kind: "workspace"; workspaceId: string } = {
-    kind: "fleet",
-    workspaceId: "ws_1",
-    fleetId: "zomb_1",
-  },
-  extra: { emptyTitle?: string; emptyDescription?: string } = {},
-) {
+function renderList(initial: EventsPage) {
   return render(
     React.createElement(
       TooltipProvider,
       null,
-      React.createElement(EventsList, { scope, initial, ...extra }),
+      React.createElement(EventsList, { workspaceId: "ws_1", initial }),
     ),
   );
 }
 
-describe("EventsList", () => {
+describe("EventsList — the standard workspace events table", () => {
   it("renders default empty state when no items", () => {
     renderList({ items: [], next_cursor: null });
     expect(screen.getByText(/No events yet/i)).toBeTruthy();
     expect(screen.getByText(/Fleet activity appears here/i)).toBeTruthy();
+    expect(screen.queryByRole("table")).toBeNull();
+    // No pagination affordance on an empty feed — nothing to page through.
+    expect(screen.queryByRole("button", { name: /load more|next/i })).toBeNull();
   });
 
-  it("respects custom empty copy", () => {
-    renderList(
-      { items: [], next_cursor: null },
-      { kind: "fleet", workspaceId: "ws_1", fleetId: "zomb_1" },
-      { emptyTitle: "Nothing Here", emptyDescription: "yet" },
-    );
-    expect(screen.getByText(/Nothing Here/)).toBeTruthy();
-    expect(screen.getByText(/^yet$/)).toBeTruthy();
+  it("still offers Load more when an empty page carries a cursor (no stranded data)", () => {
+    renderList({ items: [], next_cursor: "cur_more" });
+    // Compaction between pages can return an empty page with a live cursor —
+    // the affordance to keep paging must survive the empty state.
+    expect(screen.getByText(/No events yet/i)).toBeTruthy();
+    expect(screen.getByRole("button", { name: /load more|next/i })).toBeTruthy();
   });
 
-  it("renders one row per event with status badge, actor, and preview", () => {
+  it("test_events_page_uses_standard_table — one table row per event with status badge, actor, and summary", () => {
     renderList({
       items: [
         row({ event_id: "a", status: "processed", response_text: "first event" }),
@@ -104,14 +87,23 @@ describe("EventsList", () => {
       ],
       next_cursor: null,
     });
+    // The standard table primitive: a real <table> with a header row.
+    expect(screen.getByRole("table")).toBeTruthy();
+    // 1 header row + 5 event rows.
+    expect(screen.getAllByRole("row").length).toBe(6);
     expect(screen.getByText("first event")).toBeTruthy();
     // failure_label fallback for null response_text — "boom" isn't a real
-    // FailureClass tag, so it renders raw (Invariant #2's negative case).
-    expect(screen.getByText(/Reason: boom/)).toBeTruthy();
+    // FailureClass tag, so it renders raw (fails soft on unknown tags).
+    expect(screen.getByText("boom")).toBeTruthy();
     // weird status falls through to default badge variant (still rendered)
     expect(screen.getByText("weird-unknown")).toBeTruthy();
-    // listitems should equal items.length
-    expect(screen.getAllByRole("listitem").length).toBe(5);
+    // A row with neither response text nor a failure label renders an empty
+    // summary cell — never a placeholder or a crash. Summary is the 6th column.
+    const rowC = screen.getAllByRole("row").find((r) => r.textContent?.includes("gate_blocked"));
+    expect(rowC).toBeTruthy();
+    const cells = Array.from(rowC!.querySelectorAll("td"));
+    const summaryCell = cells[5];
+    expect(summaryCell?.textContent).toBe("");
   });
 
   it("renders a known FailureClass tag as its friendly label, not the raw enum name", () => {
@@ -119,54 +111,38 @@ describe("EventsList", () => {
       items: [row({ event_id: "f", status: "fleet_error", response_text: null, failure_label: "oom_kill" })],
       next_cursor: null,
     });
-    expect(screen.getByText("Reason: Ran out of memory")).toBeTruthy();
+    expect(screen.getByText("Ran out of memory")).toBeTruthy();
     expect(screen.queryByText(/oom_kill/)).toBeNull();
   });
 
-  it("collapses whitespace and truncates long preview text to 160 chars", () => {
+  it("collapses whitespace and truncates long summary text to 160 chars", () => {
     const long = "x".repeat(300);
     renderList({
       items: [row({ event_id: "z", response_text: `  multi  \n  line   ${long}` })],
       next_cursor: null,
     });
-    const article = screen.getByLabelText(/Event z by /);
-    const para = article.querySelector("p");
-    expect(para).toBeTruthy();
-    const txt = para!.textContent ?? "";
+    const cell = screen.getByTitle(/multi/);
+    const txt = cell.textContent ?? "";
     expect(txt.length).toBeLessThanOrEqual(161); // 157 + "…"
     expect(txt.endsWith("…")).toBe(true);
     expect(txt).not.toMatch(/\s\s/);
   });
 
-  it("renders short fleet id only in workspace scope, full label in aria", () => {
-    renderList(
-      {
-        items: [row({ fleet_id: "zomb_abcdefghijkl" })],
-        next_cursor: null,
-      },
-      { kind: "workspace", workspaceId: "ws_1" },
-    );
-    // shortId: first 4 + … + last 4
-    expect(screen.getByText(/zomb…ijkl/)).toBeTruthy();
-  });
-
-  it("does not render fleet id suffix in fleet scope", () => {
+  it("renders the short fleet id in the Fleet column", () => {
     renderList({
       items: [row({ fleet_id: "zomb_abcdefghijkl" })],
       next_cursor: null,
     });
-    expect(screen.queryByText(/zomb…ijkl/)).toBeNull();
+    // shortId: first 4 + … + last 4
+    expect(screen.getByText(/zomb…ijkl/)).toBeTruthy();
   });
 
   it("shortId returns the id verbatim when length <= 12", () => {
-    renderList(
-      {
-        items: [row({ fleet_id: "abc12345" })],
-        next_cursor: null,
-      },
-      { kind: "workspace", workspaceId: "ws_1" },
-    );
-    expect(screen.getByText(/· abc12345/)).toBeTruthy();
+    renderList({
+      items: [row({ fleet_id: "abc12345" })],
+      next_cursor: null,
+    });
+    expect(screen.getByText("abc12345")).toBeTruthy();
   });
 
   it("renders <time> with ISO when created_at is valid; omits when invalid", () => {
@@ -186,12 +162,12 @@ describe("EventsList", () => {
     expect(times[0]!.textContent).toMatch(/^\d{2}:\d{2}(\s?[ap]m)?$/i);
   });
 
-  it("loadMore (fleet scope) appends items and updates cursor", async () => {
-    listFleetEventsActionMock.mockResolvedValueOnce({
+  it("test_events_table_paginates_by_cursor — load more appends rows and updates the cursor", async () => {
+    listWorkspaceEventsActionMock.mockResolvedValueOnce({
       ok: true,
       data: {
         items: [row({ event_id: "p2", response_text: "page two" })],
-        next_cursor: "cur_2",
+        next_cursor: null,
       },
     });
     renderList({
@@ -200,38 +176,14 @@ describe("EventsList", () => {
     });
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: /load more|next/i }));
-    await waitFor(() => expect(listFleetEventsActionMock).toHaveBeenCalled());
-    expect(listFleetEventsActionMock).toHaveBeenCalledWith("ws_1", "zomb_1", {
-      cursor: "cur_1",
-    });
-    await waitFor(() => expect(screen.getByText("page two")).toBeTruthy());
-  });
-
-  it("loadMore (workspace scope) calls workspace action", async () => {
-    listWorkspaceEventsActionMock.mockResolvedValueOnce({
-      ok: true,
-      data: {
-        items: [row({ event_id: "wsp", response_text: "ws page" })],
-        next_cursor: null,
-      },
-    });
-    renderList(
-      {
-        items: [row({ event_id: "wsp0", response_text: "ws first" })],
-        next_cursor: "cur_a",
-      },
-      { kind: "workspace", workspaceId: "ws_42" },
-    );
-    const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: /load more|next/i }));
     await waitFor(() => expect(listWorkspaceEventsActionMock).toHaveBeenCalled());
-    expect(listWorkspaceEventsActionMock).toHaveBeenCalledWith("ws_42", {
-      cursor: "cur_a",
-    });
+    expect(listWorkspaceEventsActionMock).toHaveBeenCalledWith("ws_1", { cursor: "cur_1" });
+    await waitFor(() => expect(screen.getByText("page two")).toBeTruthy());
+    expect(screen.getByText("page one")).toBeTruthy();
   });
 
   it("loadMore surfaces 'Not authenticated' when the action reports unauth", async () => {
-    listFleetEventsActionMock.mockResolvedValueOnce({
+    listWorkspaceEventsActionMock.mockResolvedValueOnce({
       ok: false,
       error: "Not authenticated",
       status: 401,
@@ -245,7 +197,7 @@ describe("EventsList", () => {
   });
 
   it("loadMore surfaces error message when the action returns an error", async () => {
-    listFleetEventsActionMock.mockResolvedValueOnce({ ok: false, error: "backend down" });
+    listWorkspaceEventsActionMock.mockResolvedValueOnce({ ok: false, error: "backend down" });
     renderList({ items: [row()], next_cursor: "cur_x" });
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: /load more|next/i }));
@@ -255,7 +207,7 @@ describe("EventsList", () => {
   });
 
   it("loadMore falls back to default message when the action returns an empty error", async () => {
-    listFleetEventsActionMock.mockResolvedValueOnce({ ok: false, error: "" });
+    listWorkspaceEventsActionMock.mockResolvedValueOnce({ ok: false, error: "" });
     renderList({ items: [row()], next_cursor: "cur_x" });
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: /load more|next/i }));
@@ -264,90 +216,25 @@ describe("EventsList", () => {
     );
   });
 
-  it("loadMore (workspace scope) falls back to default message on empty error string", async () => {
-    listWorkspaceEventsActionMock.mockResolvedValueOnce({ ok: false, error: "" });
-    renderList(
-      { items: [row()], next_cursor: "cur_y" },
-      { kind: "workspace", workspaceId: "ws_42" },
-    );
-    const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: /load more|next/i }));
-    await waitFor(() =>
-      expect(screen.getByRole("alert").textContent).toMatch(/Couldn't load more events/),
-    );
-  });
-
-  // ── viewAllHref preview mode (dashboard Recent Activity) ──────────────────
-
-  it("renders a 'View all' link to the href instead of cursor pagination when viewAllHref is set", () => {
-    render(
-      React.createElement(
-        TooltipProvider,
-        null,
-        React.createElement(EventsList, {
-          scope: { kind: "workspace", workspaceId: "ws_1" },
-          // A next_cursor is present, so without viewAllHref the Pagination
-          // control WOULD render — this proves the preview branch replaces it.
-          initial: { items: [row({ event_id: "p1" })], next_cursor: "cur_1" },
-          viewAllHref: "/events",
-        }),
-      ),
-    );
-    expect(screen.getByRole("link", { name: /view all events/i }).getAttribute("href")).toBe("/events");
-    expect(screen.queryByRole("button", { name: /load more|next/i })).toBeNull();
-  });
-
-  it("hides the 'View all' link in preview mode when no further events exist (next_cursor null)", () => {
-    render(
-      React.createElement(
-        TooltipProvider,
-        null,
-        React.createElement(EventsList, {
-          scope: { kind: "workspace", workspaceId: "ws_1" },
-          // Every event already fits in the preview (no next_cursor), so a
-          // "View all" link would point at an identical list — it must not show.
-          initial: { items: [row({ event_id: "p1" })], next_cursor: null },
-          viewAllHref: "/events",
-        }),
-      ),
-    );
-    expect(screen.queryByRole("link", { name: /view all events/i })).toBeNull();
-    expect(screen.queryByRole("button", { name: /load more|next/i })).toBeNull();
-  });
-
-  it("renders cursor pagination (not a 'View all' link) when viewAllHref is absent", () => {
-    renderList({ items: [row({ event_id: "p1" })], next_cursor: "cur_1" });
-    expect(screen.getByRole("button", { name: /load more|next/i })).toBeTruthy();
-    expect(screen.queryByRole("link", { name: /view all events/i })).toBeNull();
-  });
-
-  // ── M130 §8 — the event's cost line ───────────────────────────────────────
+  // ── The event's cost columns ───────────────────────────────────────────────
   //
-  // tokens and wall_ms have ridden the wire on every EventRow since the type
-  // was written, and nothing ever rendered either. These pin that they now do —
-  // and that a row without them stays clean rather than printing placeholders.
+  // tokens and wall_ms ride the wire on every EventRow; the table gives each
+  // its own labelled column, and a row without them renders a dash — an unknown
+  // is never a fabricated zero.
 
-  it("renders tokens and wall time on a row that carries them", () => {
+  it("renders tokens and duration in their columns on a row that carries them", () => {
     renderList({ items: [row({ tokens: 12480, wall_ms: 3200 })], next_cursor: null });
-    expect(screen.getByText("12,480 tok")).toBeTruthy();
+    expect(screen.getByText("12,480")).toBeTruthy();
     expect(screen.getByText("3.2s")).toBeTruthy();
   });
 
-  it("renders tokens alone when the row carries no wall time", () => {
-    renderList({ items: [row({ tokens: 512, wall_ms: null })], next_cursor: null });
-    expect(screen.getByText("512 tok")).toBeTruthy();
-    expect(screen.queryByText(/^\d+(\.\d+)?(ms|s)$/)).toBeNull();
-  });
-
-  it("formats sub-second wall time in milliseconds", () => {
+  it("formats sub-second duration in milliseconds", () => {
     renderList({ items: [row({ tokens: null, wall_ms: 840 })], next_cursor: null });
     expect(screen.getByText("840ms")).toBeTruthy();
   });
 
-  it("renders no cost line at all when the row carries neither figure", () => {
+  it("renders dashes when the row carries neither figure", () => {
     renderList({ items: [row({ tokens: null, wall_ms: null })], next_cursor: null });
-    expect(screen.queryByText(/tok$/)).toBeNull();
-    expect(screen.queryByText(/^\d+(\.\d+)?(ms|s)$/)).toBeNull();
+    expect(screen.getAllByText("—").length).toBe(2);
   });
 });
-

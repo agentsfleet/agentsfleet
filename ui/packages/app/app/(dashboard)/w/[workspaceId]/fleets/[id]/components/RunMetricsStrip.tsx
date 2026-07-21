@@ -10,11 +10,11 @@ import { formatMs } from "@/lib/utils";
 import { formatDollars } from "@/app/(dashboard)/settings/billing/lib/charges";
 import {
   METRICS_COST_LABEL,
-  METRICS_COST_UNKNOWN,
+  METRICS_VALUE_UNKNOWN,
   METRICS_EMPTY,
   METRICS_STRIP_LABEL,
   METRICS_TOKENS_LABEL,
-  METRICS_WALL_LABEL,
+  METRICS_TIME_LABEL,
 } from "./console-copy";
 
 const COUNT_FORMATTER = new Intl.NumberFormat("en-US");
@@ -34,11 +34,11 @@ export default function RunMetricsStrip({ latest }: { latest: EventRow | null })
   return (
     <Card className="px-4 py-2" aria-label={METRICS_STRIP_LABEL}>
       <DescriptionList layout="stacked" className="flex flex-wrap items-center gap-lg space-y-0">
-        <Metric label={METRICS_TOKENS_LABEL} value={latest.tokens === null ? METRICS_COST_UNKNOWN : COUNT_FORMATTER.format(latest.tokens)} />
-        <Metric label={METRICS_WALL_LABEL} value={latest.wall_ms === null ? METRICS_COST_UNKNOWN : formatMs(latest.wall_ms)} />
+        <Metric label={METRICS_TOKENS_LABEL} value={latest.tokens === null ? METRICS_VALUE_UNKNOWN : COUNT_FORMATTER.format(latest.tokens)} />
+        <Metric label={METRICS_TIME_LABEL} value={latest.wall_ms === null ? METRICS_VALUE_UNKNOWN : formatMs(latest.wall_ms)} />
         <Metric
           label={METRICS_COST_LABEL}
-          value={latest.cost_nanos === null ? METRICS_COST_UNKNOWN : formatDollars(latest.cost_nanos)}
+          value={latest.cost_nanos === null ? METRICS_VALUE_UNKNOWN : formatDollars(latest.cost_nanos)}
           emphatic
         />
       </DescriptionList>
