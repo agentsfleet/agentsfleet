@@ -302,27 +302,38 @@ the first deploy, a deferred service start is the expected result.
 After this step, all future deploys happen automatically via `deploy-dev.yml` on every push to `main`. The CI job (`deploy-worker-dev`) scp's the freshly compiled `agentsfleet-runner` binary, the latest `deploy.sh`, and `agentsfleet-runner.service` to the server — then calls `deploy.sh runner` to install and restart. No manual intervention needed after bootstrap.
 
 ```bash
-KEY=$(op read "op://$VAULT_DEV/zombie-dev-worker-ant/ssh-private-key")
+set -euo pipefail
+VAULT_DEV="${VAULT_DEV:-ZMB_CD_DEV}"
+KEY_FILE=$(mktemp)
+trap 'rm -f "$KEY_FILE"' EXIT
+op read "op://$VAULT_DEV/zombie-dev-worker-ant/ssh-private-key" > "$KEY_FILE"
+chmod 600 "$KEY_FILE"
+HOST=$(op read "op://$VAULT_DEV/zombie-dev-worker-ant/tailscale-hostname")
 USER=$(op read "op://$VAULT_DEV/zombie-dev-worker-ant/deploy-user")
-SSH_OPTS="-i <(printf '%s\n' \"\$KEY\") -o StrictHostKeyChecking=no"
+SSH_OPTS=(-i "$KEY_FILE" -o StrictHostKeyChecking=no -o ConnectTimeout=10 -o BatchMode=yes)
 
 # Build the runner binary for linux/amd64
 zig build -Doptimize=ReleaseSafe -Dtarget=x86_64-linux
 
 # scp binary to server
-scp $SSH_OPTS zig-out/bin/agentsfleet-runner "${USER}@zombie-dev-worker-ant:/opt/agentsfleet/bin/agentsfleet-runner"
-ssh $SSH_OPTS "${USER}@zombie-dev-worker-ant" "chmod +x /opt/agentsfleet/bin/agentsfleet-runner"
+scp "${SSH_OPTS[@]}" zig-out/bin/agentsfleet-runner "${USER}@${HOST}:/opt/agentsfleet/bin/agentsfleet-runner"
+ssh "${SSH_OPTS[@]}" "${USER}@${HOST}" "chmod +x /opt/agentsfleet/bin/agentsfleet-runner"
 
 # Deploy (single runner component)
 VERSION="bootstrap-$(date +%Y%m%d)"
-ssh $SSH_OPTS "${USER}@zombie-dev-worker-ant" \
+ssh "${SSH_OPTS[@]}" "${USER}@${HOST}" \
   "sudo /opt/agentsfleet/deploy/deploy.sh runner $VERSION /opt/agentsfleet/bin/agentsfleet-runner"
 
-# Verify
-ssh $SSH_OPTS "${USER}@zombie-dev-worker-ant" << 'REMOTE'
+# Verify the service on the same vault-resolved host used by deploy-dev.yml.
+ssh "${SSH_OPTS[@]}" "${USER}@${HOST}" << 'REMOTE'
+set -euo pipefail
 sleep 3
-systemctl is-active agentsfleet-runner.service
-journalctl -u agentsfleet-runner.service --no-pager -n 10
+sudo systemctl is-active agentsfleet-runner.service
+LOGS=$(sudo journalctl -u agentsfleet-runner.service --since '15 minutes ago' --no-pager) || exit 1
+if printf '%s\n' "$LOGS" | grep -E 'heartbeat_unauthorized|lease_unauthorized|status=401'; then
+  echo "runner authorization failure found in journal" >&2
+  exit 1
+fi
 REMOTE
 
 # Activate CI — flip the gate ONLY after the runner is verified active with a
@@ -330,14 +341,14 @@ REMOTE
 # (agt_rFAKE_…) is rejected by deploy.sh and by the daemon's startup prefix check;
 # leaving the gate true with a placeholder would just produce a red deploy.
 gh variable set DEV_WORKER_READY --body "true" --repo agentsfleet/agentsfleet
-echo "CI activated. Next push to main will deploy to zombie-dev-worker-ant."
+echo "CI activated. Next push to main will deploy to $HOST."
 ```
 
 ### Acceptance
 
 ```
 active                            <- agentsfleet-runner.service running
-<runner startup log lines>        <- no MissingEnvVar / InvalidRunnerToken
+<no authorization matches>        <- no heartbeat/lease authorization loop
 DEV_WORKER_READY set              <- CI guard lifted
 ```
 
