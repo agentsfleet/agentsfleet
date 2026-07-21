@@ -16,7 +16,7 @@
 import { expect, test } from "@playwright/test";
 import { signInAs } from "./fixtures/auth";
 import { FIXTURE_KEY } from "./fixtures/constants";
-import { getDefaultWorkspaceId, seedFleet } from "./fixtures/seed";
+import { getDefaultWorkspaceId, seedFleet, waitForFleetActive } from "./fixtures/seed";
 import { cleanWorkspaceFleets } from "./fixtures/teardown";
 import { workspaceHref, workspaceUrlPattern } from "./fixtures/nav";
 
@@ -30,6 +30,7 @@ test.describe("fleet console", () => {
     const ws = await getDefaultWorkspaceId(FIXTURE_KEY.regular);
     const tag = Math.random().toString(36).slice(2, 8);
     const fleet = await seedFleet(FIXTURE_KEY.regular, ws, { name: `console-${tag}` });
+    await waitForFleetActive(FIXTURE_KEY.regular, ws, fleet.id);
 
     await signInAs(page, FIXTURE_KEY.regular);
     await page.goto(workspaceHref(ws, `fleets/${fleet.id}`));
@@ -81,7 +82,10 @@ test.describe("fleet console", () => {
     const source = page.getByLabel("Source");
     await expect(source).toBeVisible({ timeout: RENDER_TIMEOUT_MS });
     await source.getByRole("button", { name: "View source" }).click();
-    await expect(source.getByRole("tab", { name: "SKILL.md" })).toBeVisible();
+    // The Skill view shows one document directly — no tab bar. Expanding
+    // reveals the seeded skill body and flips the disclosure to Hide.
+    await expect(source.getByRole("button", { name: "Hide source" })).toBeVisible();
+    await expect(source.getByText("acceptance-seed").first()).toBeVisible();
 
     // The way back to the wall — the breadcrumb's first crumb, scoped to its
     // own landmark so it is not confused with the sidebar destination.
