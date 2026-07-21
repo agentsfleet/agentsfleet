@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M137
 **Workstream:** 001
 **Date:** Jul 20, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — customer-facing: operators cannot read the wall/console today (cryptic labels, overlapping columns, buried composer)
 **Categories:** UI
 **Batch:** B1 — standalone; no sibling workstreams
@@ -251,6 +251,6 @@ N/A — no files deleted.
   > Indy (2026-07-21): "i think the `wall's searchbox must be removed`" — context: wall search box (M94 carry-over, absent from frozen variant F) surfaced Jul 20 as awaiting his call; removal is now in scope (§1, Dimension 1.5).
   > Indy (2026-07-21): "Additionally i want this to be in the standard table" — context: the workspace Events page (card rows) joins the design-system `DataTable` like API keys/secrets; folded in as §4 per the same-tree default.
   > Indy (2026-07-21): "This must be a standard table and shouldnt be a popup, what can you suggest here?" — context: the Runners page "Runner activity" dialog; suggestion delivered (runner detail page + standard table), awaiting his pick — tracked in Out of Scope, not folded into this diff.
-- **Metrics review** —
-- **Skill-chain outcomes** —
-- **Deferrals** —
+- **Metrics review** — no analytics events added, renamed, or removed; the existing `fleet_source_saved` events are untouched (its tests pass unchanged). No analytics/funnel playbook update required.
+- **Skill-chain outcomes** — `/write-unit-test`: diff ledger fully resolved (every changed unit tested or covered by the console e2e; suites green under shuffled order; details in PR Session Notes). gstack `/review`: scope CLEAN; 4 specialists + Claude adversarial produced 15 findings — 2 critical (caller-less `listFleetEventsAction` server action; tooltip unreachable under the tile's pointer-events-none overlay) and 10 informational all fixed in-diff; 3 dispositioned with reasons (e2e literal coupling = black-box spec convention; row memoization premature at 20-row pages; adversarial F2 suppressed — search removal is Indy's recorded call and the wall rides one multiplexed stream). Codex adversarial: timed out (non-blocking). Codex structured: single P1 = false positive — it diffed committed history while the implementation was staged pre-COMMIT; resolved by the lifecycle's own commit. Test delta: app suite 1645 → 1644 (−1 raw) on a diff that deleted five dead-surface tests (search filter, fleet-scope forwarder, custom empty copy) and added eight behaviour tests — behaviour coverage grew; Zig baseline untouched (no Zig in diff).
+- **Deferrals** — none of the spec's Sections/Dimensions are deferred. Review items surfaced for Indy's decision as follow-up candidates (not spec scope): (1) mobile visual order vs DOM/tab order on the console columns (WCAG 2.4.3 nuance of `order-first`); (2) pre-existing SkillEditor sibling-draft silent overwrite when props refresh mid-edit (`useEffect` prop-sync path); (3) Runners "Runner activity" dialog → runner detail page with a standard table (Indy asked for a suggestion Jul 21; recommendation delivered, will spec as its own workstream on his pick).
