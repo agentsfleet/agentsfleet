@@ -35,7 +35,12 @@ import {
   resolveFleetView,
   type FleetView,
 } from "./components/FleetSubnavigation";
-import { DANGER_ZONE_LABEL, SOURCE_FIELD } from "./components/console-copy";
+import {
+  BREADCRUMB_LABEL,
+  DANGER_ZONE_LABEL,
+  FLEETS_CRUMB_LABEL,
+  SOURCE_FIELD,
+} from "./components/console-copy";
 import type { FleetDetail } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -258,13 +263,16 @@ function SettingsView({ context }: { context: PageContext }) {
 
 function FleetBreadcrumb({ workspaceId, fleetName }: { workspaceId: string; fleetName: string }) {
   return (
-    <p className="mb-sm font-mono text-sm text-muted-foreground">
+    <nav
+      aria-label={BREADCRUMB_LABEL}
+      className="mb-sm shrink-0 font-mono text-sm text-muted-foreground"
+    >
       <Link href={workspacePath(workspaceId, "fleets")} className="hover:text-foreground">
-        Fleets
+        {FLEETS_CRUMB_LABEL}
       </Link>
       <span aria-hidden="true"> / </span>
       <span className="text-foreground">{fleetName}</span>
-    </p>
+    </nav>
   );
 }
 
