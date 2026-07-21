@@ -222,14 +222,12 @@ function fastBackoffMs(attempts: number): number {
 // re-establish: the tab coming back to the foreground, and the browser
 // reporting the network back. Either one skips the remaining wait.
 function attachRecoveryListeners(entry: Entry, fleetId: string): () => void {
-  if (typeof window === "undefined") return () => {};
   const recover = () => {
     // A connection already open or in flight needs nothing; this is what keeps
     // both signals arriving together from opening two streams.
     if (entry.eventSource !== null) return;
     if (document.visibilityState === "hidden") return;
-    if (entry.reconnectTimer) clearTimeout(entry.reconnectTimer);
-    entry.reconnectTimer = null;
+    cancelPendingReconnect(entry);
     entry.reconnectAttempts = 0;
     patchSnapshot(entry, { connectionStatus: CONNECTION_STATUS.CONNECTING });
     startEventSource(entry, fleetId);
@@ -242,11 +240,17 @@ function attachRecoveryListeners(entry: Entry, fleetId: string): () => void {
   };
 }
 
+// One place cancels a pending reconnect, so the "is one pending?" question is
+// asked identically by the operator's retry, the recovery signals, and teardown.
+function cancelPendingReconnect(entry: Entry): void {
+  if (entry.reconnectTimer) clearTimeout(entry.reconnectTimer);
+  entry.reconnectTimer = null;
+}
+
 export function retryConnection(fleetId: string): void {
   const entry = REGISTRY.get(fleetId);
   if (!entry) return;
-  if (entry.reconnectTimer) clearTimeout(entry.reconnectTimer);
-  entry.reconnectTimer = null;
+  cancelPendingReconnect(entry);
   entry.eventSource?.close();
   entry.eventSource = null;
   entry.reconnectAttempts = 0;
@@ -255,7 +259,7 @@ export function retryConnection(fleetId: string): void {
 }
 
 function teardown(entry: Entry, fleetId: string): void {
-  if (entry.reconnectTimer) clearTimeout(entry.reconnectTimer);
+  cancelPendingReconnect(entry);
   if (entry.idleTimer) clearTimeout(entry.idleTimer);
   entry.detachRecovery?.();
   entry.detachRecovery = null;

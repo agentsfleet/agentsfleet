@@ -86,6 +86,14 @@ describe("RunMetricsStrip", () => {
     expect(screen.queryByText("startup_posture")).toBeNull();
   });
 
+  it("omits the time rather than printing a broken one", () => {
+    // A row whose stored timestamp does not read as a date still renders its
+    // outcome; the strip drops the time instead of showing "Invalid Date".
+    renderStrip(event({ created_at: Number.NaN, response_text: "review completed" }));
+    expect(screen.getByText("review completed")).toBeTruthy();
+    expect(screen.queryByText(/invalid/i)).toBeNull();
+  });
+
   it("shows when the latest outcome happened", () => {
     const at = Date.UTC(2026, 6, 21, 10, 42, 17);
     renderStrip(event({ created_at: at, response_text: "Pull request review completed" }));

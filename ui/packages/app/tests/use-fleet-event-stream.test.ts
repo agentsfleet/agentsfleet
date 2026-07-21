@@ -297,6 +297,21 @@ describe("useFleetEventStream", () => {
     vi.useRealTimers();
   });
 
+  it("convertEvent falls back to the outcome when an event has no body", () => {
+    const { result } = mount();
+    const msg = result.current.convertEvent({
+      id: "evt_silent",
+      role: "system",
+      actor: "github-app",
+      text: "",
+      outcome: OUTCOME.NO_REPLY,
+      createdAt: new Date(0),
+      status: "processed",
+    });
+    // The floor: a row with nothing to say still says what happened.
+    expect(msg.content).toEqual([{ type: "text", text: OUTCOME.NO_REPLY }]);
+  });
+
   it("convertEvent produces an assistant-ui ThreadMessageLike with custom metadata", () => {
     const { result } = mount();
     const msg = result.current.convertEvent({

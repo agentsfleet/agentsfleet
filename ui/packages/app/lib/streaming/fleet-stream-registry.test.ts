@@ -792,6 +792,24 @@ describe("fleet-stream-registry — a lost connection recovers itself", () => {
     release();
   });
 
+  it("does not reconnect for a tab that is still hidden", () => {
+    const release = subscribe(WS, Z_A, NO_SEED, () => {});
+    exhaustFastAttempts();
+    const opened = FakeEventSource.instances.length;
+
+    // `visibilitychange` fires on the way OUT as well as in. Reconnecting for a
+    // tab nobody is looking at spends a stream slot on nothing.
+    const visibility = vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
+    document.dispatchEvent(new Event("visibilitychange"));
+    expect(FakeEventSource.instances.length).toBe(opened);
+
+    visibility.mockReturnValue("visible");
+    document.dispatchEvent(new Event("visibilitychange"));
+    expect(FakeEventSource.instances.length).toBe(opened + 1);
+    visibility.mockRestore();
+    release();
+  });
+
   it("ignores a recovery signal while a connection is already live", () => {
     const release = subscribe(WS, Z_A, NO_SEED, () => {});
     const opened = FakeEventSource.instances.length;

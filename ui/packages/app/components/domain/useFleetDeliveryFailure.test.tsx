@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, renderHook } from "@testing-library/react";
+import { renderToStaticMarkup } from "react-dom/server";
 import type { AppendMessage } from "@assistant-ui/react";
 import {
   useFleetDeliveryFailure,
@@ -75,6 +76,16 @@ describe("useFleetDeliveryFailure", () => {
     act(() => {
       writeAfterUnmount({ message: message("no listeners"), kind: "send" });
     });
+  });
+
+  it("reads as nothing on the server, where no browser registry exists", () => {
+    // The registry is module state in the browser. Server-rendering must not
+    // read it — a failure from one request would leak into another's markup.
+    function Probe() {
+      const { failedDelivery } = useFleetDeliveryFailure("fleet_ssr");
+      return <span>{failedDelivery === null ? "no failure" : "leaked"}</span>;
+    }
+    expect(renderToStaticMarkup(<Probe />)).toContain("no failure");
   });
 
   it("notifies mounted failure consumers when the test registry resets", () => {
