@@ -49,20 +49,22 @@ describe("FleetWall", () => {
     expect(screen.getByLabelText("1 live")).toBeTruthy();
   });
 
-  it("filters the loaded set by the search query", async () => {
-    const user = userEvent.setup();
-    renderWall([fleet(), fleet({ id: "f2", name: "beta" })]);
-    await user.type(screen.getByLabelText("Search fleets"), "beta");
-    await waitFor(() => expect(screen.getAllByTestId("tile")).toHaveLength(1));
-    expect(screen.getByText("beta")).toBeTruthy();
+  it("hides the live counter when no loaded fleet is active", () => {
+    renderWall([fleet({ status: "stopped" }), fleet({ id: "f2", name: "beta", status: "killed" })]);
+    // A wall of parked/killed fleets shows no "N live" eyebrow — a zero count
+    // is silence, not "0 live".
+    expect(screen.queryByLabelText(/live$/)).toBeNull();
+    expect(screen.getAllByTestId("tile")).toHaveLength(2);
   });
 
-  it("shows a no-match message when the filter empties the set", async () => {
-    const user = userEvent.setup();
-    renderWall([fleet()]);
-    await user.type(screen.getByLabelText("Search fleets"), "zzz");
-    await waitFor(() => expect(screen.queryAllByTestId("tile")).toHaveLength(0));
-    expect(screen.getByText(/No fleets match/)).toBeTruthy();
+  it("test_wall_header_has_no_search", () => {
+    renderWall([fleet(), fleet({ id: "f2", name: "beta" })]);
+    // The wall is tiles, live count, and Install fleet — no client-side filter
+    // box. Every loaded fleet renders unfiltered.
+    expect(screen.queryByRole("searchbox")).toBeNull();
+    expect(screen.queryByLabelText("Search fleets")).toBeNull();
+    expect(screen.getAllByTestId("tile")).toHaveLength(2);
+    expect(screen.getByText(/install fleet/i)).toBeTruthy();
   });
 
   it("appends the next page on Load more", async () => {

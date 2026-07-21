@@ -8,6 +8,8 @@ import {
 } from "@agentsfleet/design-system";
 import { auth } from "@clerk/nextjs/server";
 import { listWorkspaceEvents } from "@/lib/api/events";
+// The section aria-label below must equal WORKSPACE_EVENTS_LABEL (the events
+// table caption) — the parity is pinned by the events page test.
 import { EventsList } from "@/components/domain/EventsList";
 
 export const dynamic = "force-dynamic";
@@ -52,10 +54,7 @@ export async function EventsData({ workspaceId }: { workspaceId: string }) {
   return (
     <Section asChild>
       <section aria-label="Workspace events">
-        <EventsList
-          scope={{ kind: "workspace", workspaceId }}
-          initial={page}
-        />
+        <EventsList workspaceId={workspaceId} initial={page} />
       </section>
     </Section>
   );

@@ -35,9 +35,21 @@ test.describe("fleet console", () => {
     await expect(page.getByRole("region", { name: "What it does" })).toBeVisible();
     await expect(page.getByRole("region", { name: /What it knows/ })).toBeVisible();
 
-    // Reads the source — the SKILL.md viewer in the left rail.
+    // test_console_columns_never_overlap — wide source lines and commands
+    // scroll inside their own blocks; the document itself never scrolls
+    // horizontally (a card inflating past its grid track paints under the
+    // neighbouring column, which is exactly what this catches).
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    );
+    expect(overflow).toBeLessThanOrEqual(1);
+
+    // Reads the source — collapsed by default (the steer thread is the page's
+    // primary surface), one click away.
     const source = page.getByLabel("Source");
     await expect(source).toBeVisible();
+    await expect(source.getByRole("tab", { name: "SKILL.md" })).toHaveCount(0);
+    await source.getByRole("button", { name: "View source" }).click();
     await expect(source.getByRole("tab", { name: "SKILL.md" })).toBeVisible();
 
     // Sees a cost — the runs ledger carries a lifetime spend figure (server
@@ -72,6 +84,21 @@ test.describe("fleet console", () => {
     // proving the PATCH round-tripped.
     await expect(source.getByRole("button", { name: /^Edit/ })).toBeVisible({ timeout: RENDER_TIMEOUT_MS });
     await expect(source.getByRole("textbox", { name: "Edit SKILL.md" })).toHaveCount(0);
+
+    // test_steer_column_stacks_first — on a narrow screen the steer column
+    // renders above the source column; the point of the page never hides
+    // below the editor.
+    await page.setViewportSize({ width: 390, height: 844 });
+    const doesBox = await page.getByRole("region", { name: "What it does" }).boundingBox();
+    const isBox = await page.getByRole("region", { name: "What it is" }).boundingBox();
+    expect(doesBox && isBox && doesBox.y < isBox.y).toBe(true);
+
+    // test_console_back_link_targets_wall — the console's escape hatch back
+    // to the wall (frozen in the design header, now real). The accessible
+    // name drops the arrow glyph.
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.getByRole("link", { name: "Back to fleets" }).click();
+    await expect(page).toHaveURL(workspaceUrlPattern("fleets"));
   });
 
   test.afterEach(async () => {

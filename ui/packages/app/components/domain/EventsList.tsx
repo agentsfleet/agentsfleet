@@ -1,46 +1,39 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import Link from "next/link";
 import {
   Alert,
   Badge,
   type BadgeVariant,
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-  CardDescription,
+  DataTable,
+  type DataTableColumn,
   EmptyState,
-  List,
-  ListItem,
   Pagination,
   Separator,
   Time,
 } from "@agentsfleet/design-system";
 import { ActivityIcon } from "lucide-react";
-import {
-  listWorkspaceEventsAction,
-  listFleetEventsAction,
-} from "@/app/(dashboard)/w/[workspaceId]/events/actions";
+import { listWorkspaceEventsAction } from "@/app/(dashboard)/w/[workspaceId]/events/actions";
 import type { EventRow, EventsPage } from "@/lib/api/events";
 import { presentErrorString } from "@/lib/errors";
 import { formatMs } from "@/lib/utils";
 
-type Scope =
-  | { kind: "fleet"; workspaceId: string; fleetId: string }
-  | { kind: "workspace"; workspaceId: string };
-
 export type EventsListProps = {
-  scope: Scope;
+  workspaceId: string;
   initial: EventsPage;
-  emptyTitle?: string;
-  emptyDescription?: string;
-  // When set, the list renders as a preview: a "View all" link to this href
-  // replaces inline cursor pagination (used by the dashboard Recent Activity
-  // section, which points at the full /events page).
-  viewAllHref?: string;
 };
+
+// One label names the surface everywhere: the table caption here and the
+// landmark region in events/page.tsx — never re-spelled.
+export const WORKSPACE_EVENTS_LABEL = "Workspace events";
+
+const EVENTS_EMPTY_TITLE = "No events yet";
+const EVENTS_EMPTY_DESCRIPTION = "Fleet activity appears here.";
+// An unknown figure renders a dash — never a fabricated zero.
+const VALUE_UNKNOWN = "—";
+// The summary tooltip carries more context than the 160-char preview, but a
+// multi-megabyte agent response must not ride into the DOM per row.
+const SUMMARY_TITLE_MAX_CHARS = 2_000;
 
 // Map server status → Badge variant. Untracked statuses fall through to
 // the default (muted) badge — readable, not opinionated.
@@ -71,13 +64,42 @@ function failureLabel(tag: string): string {
   return FAILURE_LABEL[tag] ?? tag;
 }
 
-export function EventsList({
-  scope,
-  initial,
-  emptyTitle = "No events yet",
-  emptyDescription = "Fleet activity appears here.",
-  viewAllHref,
-}: EventsListProps) {
+// The workspace event feed in the standard table every sibling data surface
+// uses (API keys, secrets, runners, billing). One row per event; the summary
+// column carries the response preview or the plain-language failure reason.
+const EVENT_COLUMNS: DataTableColumn<EventRow>[] = [
+  { key: "time", header: "Time", cell: (row) => <EventTimeCell row={row} /> },
+  {
+    key: "status",
+    header: "Status",
+    cell: (row) => <Badge variant={STATUS_VARIANT[row.status] ?? "default"}>{row.status}</Badge>,
+  },
+  {
+    key: "fleet",
+    header: "Fleet",
+    hideOnMobile: true,
+    cell: (row) => <span className="font-mono text-xs">{shortId(row.fleet_id)}</span>,
+  },
+  { key: "actor", header: "Actor", cell: (row) => row.actor },
+  { key: "type", header: "Type", hideOnMobile: true, cell: (row) => row.event_type },
+  { key: "summary", header: "Summary", cell: (row) => <EventSummaryCell row={row} /> },
+  {
+    key: "tokens",
+    header: "Tokens",
+    numeric: true,
+    hideOnMobile: true,
+    cell: (row) => (row.tokens === null ? VALUE_UNKNOWN : row.tokens.toLocaleString()),
+  },
+  {
+    key: "duration",
+    header: "Duration",
+    numeric: true,
+    hideOnMobile: true,
+    cell: (row) => (row.wall_ms === null ? VALUE_UNKNOWN : formatMs(row.wall_ms)),
+  },
+];
+
+export function EventsList({ workspaceId, initial }: EventsListProps) {
   const [items, setItems] = useState<EventRow[]>(initial.items);
   const [cursor, setCursor] = useState<string | null>(initial.next_cursor);
   const [error, setError] = useState<string | null>(null);
@@ -86,10 +108,7 @@ export function EventsList({
   function loadMore(nextCursor: string) {
     setError(null);
     startTransition(async () => {
-      const result =
-        scope.kind === "fleet"
-          ? await listFleetEventsAction(scope.workspaceId, scope.fleetId, { cursor: nextCursor })
-          : await listWorkspaceEventsAction(scope.workspaceId, { cursor: nextCursor });
+      const result = await listWorkspaceEventsAction(workspaceId, { cursor: nextCursor });
       if (!result.ok) {
         setError(
           presentErrorString({
@@ -105,109 +124,67 @@ export function EventsList({
     });
   }
 
-  if (items.length === 0) {
-    return (
-      <EmptyState
-        icon={<ActivityIcon size={28} />}
-        title={emptyTitle}
-        description={emptyDescription}
-      />
-    );
-  }
-
   return (
     <div className="flex flex-col gap-3">
-      <List variant="ordered" className="flex flex-col gap-2 list-none pl-0 space-y-0">
-        {items.map((row) => (
-          <ListItem key={`${row.fleet_id}:${row.event_id}`}>
-            <EventCard row={row} showFleetId={scope.kind === "workspace"} />
-          </ListItem>
-        ))}
-      </List>
-      {error ? (
-        <Alert variant="destructive">{error}</Alert>
-      ) : null}
-      {viewAllHref ? (
-        // Preview mode: only offer "View all" when more events exist than are
-        // shown here — otherwise the link points at an identical list.
-        cursor !== null ? (
-          <>
-            <Separator />
-            <Link
-              href={viewAllHref}
-              className="font-mono text-eyebrow text-muted-foreground no-underline transition-colors duration-snap ease-snap hover:text-foreground"
-            >
-              View all events →
-            </Link>
-          </>
-        ) : null
-      ) : (
+      <DataTable
+        caption={WORKSPACE_EVENTS_LABEL}
+        columns={EVENT_COLUMNS}
+        rows={items}
+        rowKey={(row) => `${row.fleet_id}:${row.event_id}`}
+        empty={
+          <EmptyState
+            icon={<ActivityIcon size={28} />}
+            title={EVENTS_EMPTY_TITLE}
+            description={EVENTS_EMPTY_DESCRIPTION}
+          />
+        }
+      />
+      {error ? <Alert variant="destructive">{error}</Alert> : null}
+      {items.length > 0 || cursor ? (
+        // Also rendered when a page came back empty but a cursor remains
+        // (compaction between pages) — data behind the cursor must never be
+        // stranded behind an empty state.
         <>
           <Separator />
           <Pagination kind="cursor" nextCursor={cursor} onNext={loadMore} isLoading={pending} />
         </>
-      )}
+      ) : null}
     </div>
   );
 }
 
-function EventCard({ row, showFleetId }: { row: EventRow; showFleetId: boolean }) {
+function EventTimeCell({ row }: { row: EventRow }) {
   const created = new Date(row.created_at);
-  const ts = isFinite(created.getTime()) ? created.toISOString() : null;
-  const variant = STATUS_VARIANT[row.status] ?? "default";
-  const preview = previewText(row.response_text);
-  const fullText = row.response_text ?? undefined;
-
+  if (!isFinite(created.getTime())) return null;
   return (
-    <Card asChild className="p-4">
-      <article aria-label={`Event ${row.event_id} by ${row.actor}, status ${row.status}`}>
-        <CardHeader className="flex flex-row flex-wrap items-baseline gap-3 space-y-0 p-0 pb-2">
-          <Badge variant={variant}>{row.status}</Badge>
-          <CardTitle className="text-sm font-medium text-foreground">{row.actor}</CardTitle>
-          <CardDescription className="text-xs text-muted-foreground">
-            {row.event_type}
-            {showFleetId ? ` · ${shortId(row.fleet_id)}` : ""}
-          </CardDescription>
-          <div className="ml-auto">
-            {ts ? (
-              <Time
-                value={created}
-                tooltip
-                label={clockTime(created)}
-                tooltipContent={ts}
-                className="font-mono text-xs text-muted-foreground tabular-nums"
-              />
-            ) : null}
-          </div>
-        </CardHeader>
-        <CardContent className="p-0">
-          {preview ? (
-            <p className="truncate text-sm text-muted-foreground" title={fullText}>
-              {preview}
-            </p>
-          ) : row.failure_label ? (
-            <p className="text-sm text-warning">Reason: {failureLabel(row.failure_label)}</p>
-          ) : null}
-          <EventCost tokens={row.tokens} wallMs={row.wall_ms} />
-        </CardContent>
-      </article>
-    </Card>
+    <Time
+      value={created}
+      tooltip
+      label={clockTime(created)}
+      tooltipContent={created.toISOString()}
+      className="font-mono text-xs text-muted-foreground tabular-nums"
+    />
   );
 }
 
-// What the event COST. `tokens` and `wall_ms` have always ridden the wire on
-// every EventRow, and until now nothing in the app rendered either of them —
-// fetched on every page load and dropped on the floor. They are the only per-event
-// cost signal there is; without them, "why is my balance moving" is answerable
-// only from the tenant-wide billing table, which cannot name the fleet.
-function EventCost({ tokens, wallMs }: { tokens: number | null; wallMs: number | null }) {
-  if (tokens === null && wallMs === null) return null;
-  return (
-    <p className="mt-xs flex gap-md font-mono text-xs tabular-nums text-muted-foreground">
-      {tokens !== null ? <span>{tokens.toLocaleString()} tok</span> : null}
-      {wallMs !== null ? <span>{formatMs(wallMs)}</span> : null}
-    </p>
-  );
+// The one prose cell: a truncated response preview (full text one hover away)
+// or, for a failed run, the plain-language reason the operator can act on.
+function EventSummaryCell({ row }: { row: EventRow }) {
+  const preview = previewText(row.response_text);
+  if (preview) {
+    return (
+      <span
+        className="block max-w-prose truncate text-muted-foreground"
+        title={row.response_text?.slice(0, SUMMARY_TITLE_MAX_CHARS)}
+      >
+        {preview}
+      </span>
+    );
+  }
+  if (row.failure_label) {
+    return <span className="text-warning">{failureLabel(row.failure_label)}</span>;
+  }
+  return null;
 }
 
 function previewText(text: string | null): string {
@@ -222,7 +199,7 @@ function shortId(id: string): string {
 
 // Visible HH:MM clock label is intentionally browser-local — operators
 // scan the activity feed in their own time zone. The Tooltip surfaces
-// the canonical UTC ISO string (`tooltipContent={ts}`), so the precise
+// the canonical UTC ISO string (`tooltipContent`), so the precise
 // instant is always one hover away. Using Intl rather than getHours()
 // so locale formatting (24h vs 12h) follows the user's region instead
 // of forcing 24h everywhere.
