@@ -70,8 +70,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `ui/packages/app/lib/streaming/fleet-stream-registry.ts` | EDIT | A lost connection retries on a slow cadence and on tab focus / network recovery instead of pinning to a terminal offline. |
 | `ui/packages/app/lib/streaming/fleet-stream-registry.test.ts` | EDIT | Cover the slow retry, the focus and network triggers, and that a recovered connection still backfills its gap. |
 | `ui/packages/app/components/domain/useFleetEventStream.ts` | EDIT | The in-flight signal reads the newest event within a bounded window so a stranded run cannot wedge the surface. |
-| `ui/packages/app/components/domain/useFleetMessageQueue.ts` | EDIT | The browser-side hold and its delivery-outcome vocabulary are deleted; the delivery-failure surface survives. |
-| `ui/packages/app/components/domain/useFleetMessageQueue.test.tsx` | EDIT | Drop the hold's tests; keep and extend the delivery-failure coverage. |
+| `ui/packages/app/components/domain/useFleetDeliveryFailure.ts` | RENAME + EDIT | *(Amended at EXECUTE — RULE NLR)* Was `useFleetMessageQueue.ts`; the browser-side hold and its delivery-outcome vocabulary are deleted, so the name kept a queue the file no longer has. The delivery-failure surface survives. |
+| `ui/packages/app/components/domain/useFleetDeliveryFailure.test.tsx` | RENAME + EDIT | *(Amended at EXECUTE)* Drop the hold's tests; keep and extend the delivery-failure coverage. |
+| `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/[id]/components/FleetInstallGate.tsx` | EDIT | *(Amended at EXECUTE)* The revealed surface takes the console's layout claim instead of being flattened into a fragment. |
+| `ui/packages/app/components/domain/FleetThreadDynamic.tsx` | EDIT | *(Amended at EXECUTE)* The code-split placeholder takes the same share of the frame the thread will, so the swap costs no layout shift. |
+| `ui/packages/app/tests/fleet-thread-dynamic.test.ts` | EDIT | *(Amended at EXECUTE)* Fixture carries the fleet name the thread now labels its replies with. |
+| `ui/packages/app/tests/use-fleet-event-stream.test.ts` | EDIT | *(Amended at EXECUTE)* Fixture carries the outcome floor every event now holds. |
 | `ui/packages/app/components/domain/EventsList.tsx` | EDIT | Reads the shared failure vocabulary instead of owning a private copy. |
 | `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/[id]/components/RunMetricsStrip.tsx` | EDIT | The latest outcome reads as a sentence with its absolute time, per the approved design. |
 | `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/[id]/components/RunMetricsStrip.test.tsx` | EDIT | Assert the sentence and the absolute time; assert no raw runner tag reaches the surface. |
@@ -113,7 +117,7 @@ The Chat view is an application surface, not a document: its summary stays put, 
 
 - **Dimension 1.1** — the dashboard frame is fixed: the header and the navigation rail do not scroll with page content, and the content region owns the scroll → Test `test_dashboard_frame_owns_its_scroll`
 - **Dimension 1.2** — on the Chat view the composer is rendered without scrolling the page at a standard viewport height, with a history long enough to overflow → Test `test_console_composer_is_reachable_without_page_scroll`
-- **Dimension 1.3** — the message list scrolls inside itself and lands on the newest message when a message arrives → Test `test_thread_scrolls_internally_and_follows_the_newest_message`
+- **Dimension 1.3 — DONE** — the message list scrolls inside itself and lands on the newest message when a message arrives → Test `test_thread_scrolls_internally_and_follows_the_newest_message`
 - **Dimension 1.4** — a non-Chat console view still scrolls as an ordinary page, with no clipped content → Test `test_non_chat_console_views_scroll_normally`
 
 ### §2 — Messages render as the approved design
@@ -122,10 +126,10 @@ Every row carries a sender chip, a sender name an operator recognises, a right-a
 
 **Implementation default:** the sender label is resolved from the actor's declared vocabulary — an operator actor renders the operator label, the fleet renders the fleet's own name, an integration renders its source name — because the actor field carries an opaque identifier that no operator can read and no formatting of that identifier makes it readable. The payload disclosure is offered for any event that carries a request payload, not only for actors matching one prefix.
 
-- **Dimension 2.1** — every rendered row carries a sender chip, sender name, right-aligned timestamp, body and separator → Test `test_message_row_renders_the_approved_shape`
-- **Dimension 2.2** — an operator message renders the operator label; the raw account identifier appears nowhere in the rendered output → Test `test_operator_message_never_renders_the_account_identifier`
-- **Dimension 2.3** — a fleet message renders the fleet's own name as its sender → Test `test_fleet_message_renders_the_fleet_name`
-- **Dimension 2.4** — an event carrying a request payload offers the payload disclosure regardless of which integration produced it → Test `test_payload_disclosure_is_offered_for_every_integration`
+- **Dimension 2.1 — DONE** — every rendered row carries a sender chip, sender name, right-aligned timestamp, body and separator → Test `test_message_row_renders_the_approved_shape`
+- **Dimension 2.2 — DONE** — an operator message renders the operator label; the raw account identifier appears nowhere in the rendered output → Test `test_operator_message_never_renders_the_account_identifier`
+- **Dimension 2.3 — DONE** — a fleet message renders the fleet's own name as its sender → Test `test_fleet_message_renders_the_fleet_name`
+- **Dimension 2.4 — DONE** — an event carrying a request payload offers the payload disclosure regardless of which integration produced it → Test `test_payload_disclosure_is_offered_for_every_integration`
 
 ### §3 — Every event says what happened
 
@@ -145,10 +149,10 @@ Submitting a message is an authenticated write that does not touch the live stre
 
 **Implementation default:** the browser-side hold is deleted rather than narrowed, because ordering already belongs to the fleet's own event stream and any client-side hold is a second, weaker queue that can only disagree with it. The delivery-failure surface stays: a submission the server rejected is still shown as failed with a retry.
 
-- **Dimension 4.1** — with the live connection unavailable, a submitted message is sent and leaves the composer → Test `test_message_sends_while_the_live_feed_is_unavailable`
-- **Dimension 4.2** — with the fleet mid-run, a submitted message is sent rather than held in the browser → Test `test_message_sends_while_the_fleet_is_working`
-- **Dimension 4.3** — a submission the server rejects renders as failed with a retry that resubmits it → Test `test_rejected_message_offers_a_retry_that_resubmits`
-- **Dimension 4.4** — no dormant hold survives: the queue module, its delivery-outcome vocabulary and its rendering are gone → Test `test_composer_exposes_no_pending_hold`
+- **Dimension 4.1 — DONE** — with the live connection unavailable, a submitted message is sent and leaves the composer → Test `test_message_sends_while_the_live_feed_is_unavailable`
+- **Dimension 4.2 — DONE** — with the fleet mid-run, a submitted message is sent rather than held in the browser → Test `test_message_sends_while_the_fleet_is_working`
+- **Dimension 4.3 — DONE** — a submission the server rejects renders as failed with a retry that resubmits it → Test `test_rejected_message_offers_a_retry_that_resubmits`
+- **Dimension 4.4 — DONE** — no dormant hold survives: the queue module, its delivery-outcome vocabulary and its rendering are gone → Test `test_composer_exposes_no_pending_hold`
 
 ### §5 — The live connection is honest and recovers itself
 

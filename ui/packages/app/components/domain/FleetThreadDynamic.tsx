@@ -10,16 +10,16 @@ import type { FleetThreadProps } from "./FleetThread";
 // forbids `ssr: false` directly in Server Components.
 //
 // Code-split: `@assistant-ui/react` ships in a separate chunk that
-// only loads after this client component mounts. The skeleton fills
-// the panel's grid cell during the swap to avoid a CLS bump — `h-96`
-// (24rem stock Tailwind) is the documented scale; no arbitrary needed.
+// only loads after this client component mounts. The skeleton takes the
+// same share of the frame the thread will, so the swap costs no layout
+// shift on a console that claims the viewport.
 
 const InnerFleetThread = nextDynamic(
   () =>
     import("./FleetThread").then((mod) => ({ default: mod.FleetThread })),
   {
     ssr: false,
-    loading: () => <Skeleton className="h-96 w-full rounded-md" />,
+    loading: () => <Skeleton className="min-h-0 w-full flex-1 rounded-md" />,
   },
 );
 

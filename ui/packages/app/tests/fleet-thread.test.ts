@@ -84,7 +84,6 @@ vi.mock("@/components/domain/SteerComposer", async () => {
 });
 
 import { FleetThread } from "@/components/domain/FleetThread";
-import { formatActorLabel } from "@/components/domain/fleetMessageRenderers";
 import { subscribeOnboardingRefresh } from "@/lib/onboarding-refresh";
 import type { EventRow } from "@/lib/api/events";
 import {
@@ -96,6 +95,7 @@ import {
 
 const WS = "ws_test";
 const ZID = "zomb_test";
+const FLEET_NAME = "github-pr-reviewer";
 
 function ev(over: Partial<FleetEvent> & { actor: string; role: FleetEvent["role"] }): FleetEvent {
   return {
@@ -171,6 +171,7 @@ function renderThreadWithInitial(initial: EventRow[]) {
     React.createElement(FleetThread, {
       workspaceId: WS,
       fleetId: ZID,
+      fleetName: FLEET_NAME,
       initial,
     }),
   );
@@ -209,25 +210,6 @@ beforeEach(() => {
 
 afterEach(() => cleanup());
 
-// ── formatActorLabel unit ────────────────────────────────────────────────
-
-describe("formatActorLabel", () => {
-  it("returns local-part first segment lowercase for steer actors", () => {
-    expect(formatActorLabel("steer:Kishore.Kumar@e2enetworks.com")).toBe(
-      "kishore",
-    );
-  });
-  it("returns 'fleet' verbatim", () => {
-    expect(formatActorLabel("fleet")).toBe("fleet");
-  });
-  it("formats webhook actors with separator", () => {
-    expect(formatActorLabel("webhook:github")).toBe("webhook · github");
-  });
-  it("lowercases unknown actors", () => {
-    expect(formatActorLabel("Cron")).toBe("cron");
-  });
-});
-
 // ── FleetThread integration ─────────────────────────────────────────────
 
 describe("FleetThread — empty state", () => {
@@ -235,19 +217,31 @@ describe("FleetThread — empty state", () => {
     mockStream([]);
     renderThread();
     expect(screen.getByText(/Message this fleet or wait for its next trigger/i)).toBeTruthy();
-    expect(screen.getByText(/0 events/i)).toBeTruthy();
   });
 });
 
 describe("FleetThread — header chrome", () => {
-  it("shows panel title, frame count, and Live badge while connected", () => {
+  it("shows the panel title and the live connection indicator", () => {
     mockStream([
       ev({ role: "system", actor: "config_reload", text: "Reloaded" }),
     ]);
     renderThread();
     expect(screen.getByText(/^Chat$/)).toBeTruthy();
-    expect(screen.getByText(/1 events/)).toBeTruthy();
     expect(screen.getByText(/^Live$/)).toBeTruthy();
+  });
+
+  it("names each connection state rather than only the live one", () => {
+    mockStream([], { connectionStatus: CONNECTION_STATUS.RECONNECTING });
+    renderThread();
+    expect(screen.getByText(/^Reconnecting…$/)).toBeTruthy();
+  });
+
+  it("says a lost feed is not live, and keeps the composer usable", () => {
+    mockStream([], { connectionStatus: CONNECTION_STATUS.OFFLINE });
+    renderThread();
+    expect(screen.getByText(/^Not live$/)).toBeTruthy();
+    const input = screen.getByPlaceholderText(/message this fleet/i) as HTMLTextAreaElement;
+    expect(input.disabled).toBe(false);
   });
 });
 
@@ -272,30 +266,47 @@ describe("FleetThread — summary refresh", () => {
 
     mockStream([{ ...received, status: "processed" }]);
     view.rerender(
-      React.createElement(FleetThread, { workspaceId: WS, fleetId: ZID, initial: [] }),
+      React.createElement(FleetThread, { workspaceId: WS, fleetId: ZID, fleetName: FLEET_NAME, initial: [] }),
     );
 
     await waitFor(() => expect(routerRefreshMock).toHaveBeenCalledTimes(1));
     view.rerender(
-      React.createElement(FleetThread, { workspaceId: WS, fleetId: ZID, initial: [] }),
+      React.createElement(FleetThread, { workspaceId: WS, fleetId: ZID, fleetName: FLEET_NAME, initial: [] }),
     );
     expect(routerRefreshMock).toHaveBeenCalledTimes(1);
   });
 });
 
 describe("FleetThread — role rendering", () => {
-  it("renders a user steer with the › pulse prefix", () => {
+  it("labels an operator steer with a word, never the account identifier", () => {
+    const accountId = "user_3gkbgxjnujsxbdxttcwcslpc87k";
     mockStream([
       ev({
         role: "user",
-        actor: "steer:kishore@e2e.com",
+        actor: `steer:${accountId}`,
         text: "morning health check",
       }),
     ]);
-    renderThread();
+    const { container } = renderThread();
     expect(screen.getByText(/morning health check/)).toBeTruthy();
-    const glyphs = screen.getAllByText("›");
-    expect(glyphs.length).toBeGreaterThan(0);
+    expect(screen.getByText("Operator")).toBeTruthy();
+    expect(container.textContent).not.toContain(accountId);
+  });
+
+  it("labels a fleet reply with the fleet's own name", () => {
+    mockStream([ev({ role: "assistant", actor: "fleet", text: "reviewed it" })]);
+    renderThread();
+    expect(screen.getByText(FLEET_NAME)).toBeTruthy();
+  });
+
+  it("gives every row a sender chip and a machine-readable timestamp", () => {
+    mockStream([ev({ role: "assistant", actor: "fleet", text: "reviewed it" })]);
+    const { container } = renderThread();
+    expect(container.querySelector('[data-chip="fleet"]')).toBeTruthy();
+    const stamp = container.querySelector("time");
+    expect(stamp?.getAttribute("dateTime")).toBe(
+      new Date(Date.UTC(2026, 4, 15, 9, 0, 0)).toISOString(),
+    );
   });
 
   it("renders an assistant message in sans body text", () => {
@@ -315,22 +326,39 @@ describe("FleetThread — role rendering", () => {
       }),
     ]);
     renderThread();
-    expect(screen.getByText("cron")).toBeTruthy();
+    expect(screen.getByText("Schedule")).toBeTruthy();
     expect(screen.getByText(/tick/)).toBeTruthy();
   });
 
   it("renders a continuation system row with its chip label", () => {
     mockStream([ev({ role: "system", actor: "continuation", text: "resumed after gate" })]);
     renderThread();
-    expect(screen.getByText("continuation")).toBeTruthy();
+    expect(screen.getByText("Continuation")).toBeTruthy();
     expect(screen.getByText(/resumed after gate/)).toBeTruthy();
   });
 
   it("renders a gate_blocked system row with its chip label", () => {
     mockStream([ev({ role: "system", actor: "gate_blocked", text: "blocked on approval" })]);
     renderThread();
-    expect(screen.getByText("gate_blocked")).toBeTruthy();
+    expect(screen.getByText("Approval gate")).toBeTruthy();
     expect(screen.getByText(/blocked on approval/)).toBeTruthy();
+  });
+
+  it("offers the payload disclosure for a platform identity, not only a prefixed actor", () => {
+    // A GitHub App event arrives as the actor `github-app`, not `webhook:…`.
+    // Gating the payload on the prefix is why those rows rendered blank.
+    mockStream([
+      ev({
+        role: "system",
+        actor: "github-app",
+        text: "opened · owner/repo#7",
+        custom: { requestJson: '{"repo":"owner/repo"}' },
+      }),
+    ]);
+    renderThread();
+    expect(screen.getByText("github-app")).toBeTruthy();
+    expect(screen.getByText(/opened · owner\/repo#7/)).toBeTruthy();
+    expect(screen.getByText(/"repo":"owner\/repo"/)).toBeTruthy();
   });
 
   it("renders a webhook row with the source tag and collapsible payload", () => {
@@ -359,7 +387,7 @@ describe("FleetThread — role rendering", () => {
     ]);
     renderThread();
     expect(screen.getByText(/investigate the spike/)).toBeTruthy();
-    expect(screen.getByText(/^queued$/i)).toBeTruthy();
+    expect(screen.getByText(/^sending$/i)).toBeTruthy();
   });
 
   it("renders a failed user message with the destructive failed badge", () => {
@@ -373,9 +401,9 @@ describe("FleetThread — role rendering", () => {
     ]);
     renderThread();
     expect(screen.getByText(/this steer did not land/)).toBeTruthy();
-    expect(screen.getByText(/^failed$/i)).toBeTruthy();
-    // The optimistic "queued" badge must not also render for a failed row.
-    expect(screen.queryByText(/^queued$/i)).toBeNull();
+    expect(screen.getByText(/^not sent$/i)).toBeTruthy();
+    // The in-flight annotation must not also render for a failed row.
+    expect(screen.queryByText(/^sending$/i)).toBeNull();
   });
 
   it("renders a fleet_error as a destructive meta-row", () => {
@@ -394,15 +422,18 @@ describe("FleetThread — role rendering", () => {
 });
 
 describe("FleetThread — fluid composer", () => {
-  it("keeps the message field available while running", () => {
+  it("keeps the message field and its send action available while running", () => {
     mockStream(
-      [ev({ role: "assistant", actor: "fleet", text: "streaming…" })],
+      [ev({ role: "assistant", actor: "fleet", text: "streaming…", status: "received" })],
       { isRunning: true },
     );
     renderThread();
     const input = screen.getByPlaceholderText(/message this fleet/i) as HTMLTextAreaElement;
     expect(input.disabled).toBe(false);
-    expect(screen.getByText(/new messages will queue/i)).toBeTruthy();
+    // A working fleet is not a reason to park a message in the browser: the
+    // send action stays live and nothing announces a queue.
+    expect(screen.getByRole("button", { name: /^Send/ })).toBeTruthy();
+    expect(screen.queryByText(/will queue/i)).toBeNull();
   });
 
   it("uses the idle placeholder when not running", () => {
@@ -640,9 +671,10 @@ describe("FleetThread — robustness against malformed metadata", () => {
   });
 
   it("renders a user row whose converted content has no text part", () => {
-    // `readText` iterates content for a `text` part; an image-only user
-    // append leaves it empty, so the row paints the steer glyph with no body.
-    const e = ev({ role: "user", actor: "steer:kishore@e2e.com", text: "" });
+    // `readText` iterates content for a `text` part; an image-only append
+    // leaves it empty. The row must still carry its sender and its time —
+    // the shape survives even when there is nothing to say.
+    const e = ev({ role: "user", actor: "steer:user_3gkbg", text: "" });
     useFleetEventStreamMock.mockReturnValue({
       events: [e],
       connectionStatus: CONNECTION_STATUS.LIVE,
@@ -661,8 +693,8 @@ describe("FleetThread — robustness against malformed metadata", () => {
     const { container } = renderThread();
     const row = container.querySelector('[data-role="user"]');
     expect(row).toBeTruthy();
-    // Glyph renders; body text is empty because readText found no text part.
-    expect(row?.textContent).toContain("›");
+    expect(row?.textContent).toContain("Operator");
+    expect(row?.querySelector("time")).toBeTruthy();
   });
 
   it("viewport carries role=log, aria-live=polite, aria-label", () => {
@@ -732,24 +764,28 @@ describe("FleetThread — robustness against malformed metadata", () => {
     expect(screen.getByRole("button", { name: /jump to latest/i })).toBeTruthy();
   });
 
-  it("message rows apply responsive grid modifiers + actor-rail var", () => {
+  it("separates rows with a hairline and keeps a long body inside its own row", () => {
     mockStream([ev({ role: "assistant", actor: "fleet", text: "x" })]);
     const { container } = renderThread();
     const row = container.querySelector('[data-role="assistant"]') as HTMLElement;
     expect(row).toBeTruthy();
-    expect(row.className).toMatch(/grid-cols-1/);
-    expect(row.className).toMatch(/md:grid-cols-\[var\(--actor-rail-w\)_1fr\]/);
-    expect(row.style.getPropertyValue("--actor-rail-w")).toBe("72px");
+    expect(row.className).toMatch(/border-b/);
+    const body = row.querySelector(".break-words");
+    expect(body).toBeTruthy();
   });
 
-  it("composer stacks vertically at <sm, row-aligned at sm+", () => {
-    mockStream([]);
+  it("scrolls the conversation inside itself so the composer stays on screen", () => {
+    mockStream([ev({ role: "assistant", actor: "fleet", text: "x" })]);
     const { container } = renderThread();
-    const composerInner = container.querySelector('[aria-label="Chat composer"] > div:last-child');
-    expect(composerInner).toBeTruthy();
-    const cls = composerInner!.className;
-    expect(cls).toMatch(/flex-col/);
-    expect(cls).toMatch(/sm:flex-row/);
+    const viewport = container.querySelector('[role="log"]') as HTMLElement;
+    expect(viewport).toBeTruthy();
+    // The message list owns the overflow. Without this the card grows to the
+    // height of its whole history and pushes the composer off the page.
+    expect(viewport.className).toMatch(/overflow-y-auto/);
+    expect(viewport.className).toMatch(/min-h-0/);
+    const card = container.querySelector('[aria-label="Fleet chat"]') as HTMLElement;
+    expect(card.className).toMatch(/flex-col/);
+    expect(card.className).toMatch(/min-h-0/);
   });
 
   it("renders a webhook row WITHOUT a payload block when requestJson is empty", () => {
@@ -765,5 +801,6 @@ describe("FleetThread — robustness against malformed metadata", () => {
     expect(screen.getByText(/Slack ping · no body/)).toBeTruthy();
     expect(screen.getByText("slack")).toBeTruthy();
     expect(screen.queryByText(/"action":/)).toBeNull();
+    expect(screen.queryByText(/payload/i)).toBeNull();
   });
 });

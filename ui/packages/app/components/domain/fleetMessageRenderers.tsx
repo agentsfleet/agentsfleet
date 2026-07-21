@@ -1,305 +1,133 @@
 "use client";
 
-import type { CSSProperties, ReactNode } from "react";
+import type { ReactNode } from "react";
 import type { MessageState } from "@assistant-ui/react";
-import { Badge, cn, EYEBROW_CLASS, type BadgeVariant } from "@agentsfleet/design-system";
+import { Badge, cn } from "@agentsfleet/design-system";
 import { readTools, ToolCalls } from "./FleetToolCalls";
-const ACTOR_STEER_PREFIX = "steer:";
-const ACTOR_WEBHOOK_PREFIX = "webhook:";
-const ACTOR_AGENT = "fleet";
-const ACTOR_CRON = "cron";
-const ACTOR_CONTINUATION = "continuation";
-const ACTOR_CONFIG_RELOAD = "config_reload";
-const ACTOR_GATE_BLOCKED = "gate_blocked";
+import {
+  FleetMessageRow,
+  ROW_TONE,
+  useFleetName,
+  type RowTone,
+} from "./FleetMessageRow";
+import { roleFor, senderLabelFor } from "@/lib/events/event-summary";
 
 const STATUS_OPTIMISTIC = "optimistic";
 const STATUS_FAILED = "failed";
 const STATUS_AGENT_ERROR = "fleet_error";
-const RUN_STATUS_RUNNING = "running";
+// An event the server has accepted but not finished. The cursor reads off our
+// own event status rather than the runtime's running flag — that flag means
+// "disable the composer" in this library, which is not this surface's
+// behaviour, so the thread never sets it.
+const STATUS_IN_FLIGHT = "received";
 
-const STEER_GLYPH = "›";
+const SENDING_LABEL = "sending";
+const FAILED_LABEL = "not sent";
 const STREAM_CURSOR = "▍";
-const FRAME_ENTER = "animate-in fade-in-0 duration-150";
 
-// Single source of truth for the actor-rail layout. The grid's first
-// column is the rail; the webhook payload indent is rail + the parent
-// gap. Defined as CSS variables so every dependent class derives from
-// one literal — no repeated 72px / 84px arbitraries in the renderers.
-const ACTOR_RAIL_VARS = {
-  "--actor-rail-w": "72px",
-  "--actor-rail-gap": "12px",
-} as CSSProperties;
-const GRID_2 = "grid-cols-1 md:grid-cols-[var(--actor-rail-w)_1fr]";
-const GRID_3 = "grid-cols-1 md:grid-cols-[var(--actor-rail-w)_1fr_auto]";
-const PAYLOAD_OFFSET =
-  "md:ml-[calc(var(--actor-rail-w)+var(--actor-rail-gap))]";
+const PAYLOAD_SHOW_LABEL = "▸ payload";
+const PAYLOAD_HIDE_LABEL = "▾ hide payload";
 
 /**
  * Render function passed to `<ThreadPrimitive.Messages>` in `FleetThread`.
- * Switches on `message.role`; for system messages, switches further on
- * `metadata.custom.actor` to pick a chip-or-webhook treatment.
+ * Every role renders the same approved row; the role decides the chip tone,
+ * the annotation beside the sender, and what rides under the body.
  */
-export function renderFleetMessage({
-  message,
-}: {
-  message: MessageState;
-}): ReactNode {
-  if (message.role === "user") return <UserRow message={message} />;
-  if (message.role === "assistant") return <AssistantRow message={message} />;
-  return <SystemRow message={message} />;
+export function renderFleetMessage({ message }: { message: MessageState }): ReactNode {
+  return <FleetMessage message={message} />;
 }
 
-// ── Row components ────────────────────────────────────────────────────────
-
-function UserRow({ message }: { message: MessageState }) {
+function FleetMessage({ message }: { message: MessageState }) {
+  const fleetName = useFleetName();
   const actor = readActor(message);
-  const text = readText(message);
   const status = readCustomStatus(message);
   const optimistic = status === STATUS_OPTIMISTIC;
   const failed = status === STATUS_FAILED;
+  const payload = readRequestJson(message);
+  const tools = readTools(message);
+  const streaming = status === STATUS_IN_FLIGHT && message.role === "assistant";
   return (
-    <div
-      style={ACTOR_RAIL_VARS}
-      className={cn(
-        "grid gap-xs md:gap-lg px-xl py-md",
-        GRID_2,
-        "hover:bg-card",
-        FRAME_ENTER,
-        optimistic && "opacity-60",
-      )}
-      data-role="user"
-      data-optimistic={optimistic || undefined}
-      data-failed={failed || undefined}
+    <FleetMessageRow
+      sender={senderLabelFor(actor, fleetName)}
+      createdAt={message.createdAt}
+      tone={toneFor(actor, status)}
+      role={message.role}
+      dimmed={optimistic}
+      failed={failed}
+      annotation={<Annotation optimistic={optimistic} failed={failed} errored={status === STATUS_AGENT_ERROR} />}
     >
-      <ActorRail label={formatActorLabel(actor)} createdAt={message.createdAt} />
-      <div className="font-mono text-mono leading-mono text-foreground">
-        <span className="text-pulse mr-xs" aria-hidden="true">
-          {STEER_GLYPH}
+      <ToolCalls tools={tools} />
+      <span className={cn(status === STATUS_AGENT_ERROR && "text-destructive")}>
+        {readText(message)}
+      </span>
+      {streaming ? (
+        <span className="ml-xs text-pulse animate-pulse" aria-label="streaming">
+          {STREAM_CURSOR}
         </span>
-        {text}
-        {optimistic ? (
-          <Badge variant="evidence" className="ml-md">
-            queued
-          </Badge>
-        ) : null}
-        {failed ? (
-          <Badge variant="destructive" className="ml-md">
-            failed
-          </Badge>
-        ) : null}
-      </div>
-    </div>
+      ) : null}
+      {payload ? <PayloadDisclosure json={payload} /> : null}
+    </FleetMessageRow>
   );
 }
 
-function AssistantRow({ message }: { message: MessageState }) {
-  const text = readText(message);
-  const isError = readCustomStatus(message) === STATUS_AGENT_ERROR;
-  const isStreaming = message.status?.type === RUN_STATUS_RUNNING;
-  if (isError) return <AssistantErrorRow message={message} text={text} />;
-  return (
-    <div
-      style={ACTOR_RAIL_VARS}
-      className={cn(
-        "grid gap-xs md:gap-lg px-xl py-md hover:bg-card",
-        GRID_2,
-        FRAME_ENTER,
-      )}
-      data-role="assistant"
-    >
-      <ActorRail
-        label="fleet"
-        createdAt={message.createdAt}
-        labelClassName="text-success"
-      />
-      <div className="text-sm text-foreground">
-        <ToolCalls tools={readTools(message)} />
-        {text}
-        {isStreaming ? (
-          <span className="ml-xs text-pulse animate-pulse" aria-label="streaming">
-            {STREAM_CURSOR}
-          </span>
-        ) : null}
-      </div>
-    </div>
-  );
-}
+// ── Row parts ─────────────────────────────────────────────────────────────
 
-function AssistantErrorRow({
-  message,
-  text,
+function Annotation({
+  optimistic,
+  failed,
+  errored,
 }: {
-  message: MessageState;
-  text: string;
+  optimistic: boolean;
+  failed: boolean;
+  errored: boolean;
 }) {
-  return (
-    <MetaRow
-      createdAt={message.createdAt}
-      chipLabel="fleet_error"
-      chipVariant="destructive"
-      content={text}
-    />
-  );
+  if (optimistic) return <Badge variant="evidence">{SENDING_LABEL}</Badge>;
+  if (failed) return <Badge variant="destructive">{FAILED_LABEL}</Badge>;
+  if (errored) return <Badge variant="destructive">{STATUS_AGENT_ERROR}</Badge>;
+  return null;
 }
 
-function SystemRow({ message }: { message: MessageState }) {
-  const actor = readActor(message);
-  const text = readText(message);
-  if (actor.startsWith(ACTOR_WEBHOOK_PREFIX)) {
-    return <WebhookRow message={message} actor={actor} text={text} />;
-  }
-  const { chipLabel, chipVariant } = systemChipFor(actor);
+/**
+ * The payload an event arrived with, one click away. Offered for every event
+ * that carries one — a platform identity such as `github-app` is as much a
+ * webhook as a `webhook:`-prefixed actor, and hiding its payload behind an
+ * actor-name prefix was why those rows read as blank.
+ */
+function PayloadDisclosure({ json }: { json: string }) {
   return (
-    <MetaRow
-      createdAt={message.createdAt}
-      chipLabel={chipLabel}
-      chipVariant={chipVariant}
-      content={text}
-    />
-  );
-}
-
-function WebhookRow({
-  message,
-  actor,
-  text,
-}: {
-  message: MessageState;
-  actor: string;
-  text: string;
-}) {
-  const source = actor.slice(ACTOR_WEBHOOK_PREFIX.length);
-  const requestJson = readRequestJson(message);
-  return (
-    <div
-      style={ACTOR_RAIL_VARS}
-      className={cn("px-xl py-md", FRAME_ENTER)}
-      data-role="system"
-      data-system="webhook"
-    >
-      <details className="group">
-        <summary
-          className={cn(
-            "grid gap-xs md:items-center md:gap-lg",
-            GRID_3,
-            "cursor-pointer list-none rounded-sm py-xs",
-            "font-mono text-mono leading-mono text-foreground",
-            "hover:bg-card",
-            "[&::-webkit-details-marker]:hidden",
-          )}
-        >
-          <Timestamp createdAt={message.createdAt} />
-          <span className="flex items-center gap-md">
-            <span
-              className={cn(
-                "rounded-sm bg-accent px-md py-xs",
-                EYEBROW_CLASS,
-                "font-semibold",
-                "text-foreground",
-              )}
-            >
-              {source}
-            </span>
-            <span className="text-foreground">{text}</span>
-          </span>
-          <span className="text-muted-foreground font-mono text-label">
-            <span className="hidden group-open:inline">▾ collapse</span>
-            <span className="group-open:hidden">▸ payload</span>
-          </span>
-        </summary>
-        {requestJson ? (
-          <pre
-            className={cn(
-              "mt-xs overflow-auto rounded-sm border border-border",
-              "max-h-64",
-              PAYLOAD_OFFSET,
-              "bg-surface-deep p-lg",
-              "font-mono text-mono leading-mono text-foreground",
-            )}
-          >
-            {requestJson}
-          </pre>
-        ) : null}
-      </details>
-    </div>
-  );
-}
-
-// ── Shared sub-components ────────────────────────────────────────────────
-
-function ActorRail({
-  label,
-  createdAt,
-  labelClassName,
-}: {
-  label: string;
-  createdAt: Date;
-  labelClassName?: string;
-}) {
-  return (
-    <div className="font-mono leading-mono">
-      <div
+    <details className="group mt-md">
+      <summary
         className={cn(
-          "text-mono lowercase tracking-label text-muted-foreground",
-          labelClassName,
+          "cursor-pointer list-none font-mono text-label text-muted-foreground",
+          "hover:text-foreground",
+          "[&::-webkit-details-marker]:hidden",
         )}
       >
-        {label}
-      </div>
-      <Timestamp createdAt={createdAt} />
-    </div>
-  );
-}
-
-function MetaRow({
-  createdAt,
-  chipLabel,
-  chipVariant,
-  content,
-}: {
-  createdAt: Date;
-  chipLabel: string;
-  chipVariant: BadgeVariant;
-  content: string;
-}) {
-  return (
-    <div
-      style={ACTOR_RAIL_VARS}
-      className={cn(
-        "grid gap-xs md:items-center md:gap-lg px-xl py-md",
-        GRID_3,
-        "font-mono text-mono leading-mono text-muted-foreground",
-        FRAME_ENTER,
-      )}
-      data-role="system"
-      data-system={chipLabel}
-    >
-      <Timestamp createdAt={createdAt} />
-      <span className="flex items-center gap-md">
-        <span
-          aria-hidden="true"
-          className="inline-block h-px w-lg shrink-0 bg-border-strong"
-        />
-        <Badge variant={chipVariant}>{chipLabel}</Badge>
-        <span className="text-foreground">{content}</span>
-      </span>
-      <span />
-    </div>
-  );
-}
-
-function Timestamp({ createdAt }: { createdAt: Date }) {
-  return (
-    <time
-      className="block font-mono text-label leading-mono text-muted-foreground"
-      dateTime={createdAt.toISOString()}
-    >
-      {formatTimestamp(createdAt)}
-    </time>
+        <span className="group-open:hidden">{PAYLOAD_SHOW_LABEL}</span>
+        <span className="hidden group-open:inline">{PAYLOAD_HIDE_LABEL}</span>
+      </summary>
+      <pre
+        className={cn(
+          "mt-xs max-h-64 overflow-auto rounded-sm border border-border",
+          "bg-surface-deep p-lg",
+          "font-mono text-mono leading-mono text-foreground",
+        )}
+      >
+        {json}
+      </pre>
+    </details>
   );
 }
 
 // ── helpers ──────────────────────────────────────────────────────────────
+
+function toneFor(actor: string, status: string): RowTone {
+  if (status === STATUS_OPTIMISTIC || status === STATUS_FAILED) return ROW_TONE.OPERATOR;
+  const role = roleFor(actor);
+  if (role === "user") return ROW_TONE.OPERATOR;
+  if (role === "assistant") return ROW_TONE.FLEET;
+  return ROW_TONE.EVENT;
+}
 
 function readText(message: MessageState): string {
   for (const part of message.content) {
@@ -320,45 +148,9 @@ function readCustomStatus(message: MessageState): string {
 
 function readRequestJson(message: MessageState): string | null {
   const raw = message.metadata.custom["requestJson"];
-  return typeof raw === "string" && raw.length > 0 ? raw : null;
-}
-
-function systemChipFor(actor: string): { chipLabel: string; chipVariant: BadgeVariant } {
-  if (actor === ACTOR_CRON) return { chipLabel: ACTOR_CRON, chipVariant: "cyan" };
-  if (actor === ACTOR_CONTINUATION) {
-    return { chipLabel: ACTOR_CONTINUATION, chipVariant: "cyan" };
-  }
-  if (actor === ACTOR_GATE_BLOCKED) {
-    return { chipLabel: ACTOR_GATE_BLOCKED, chipVariant: "amber" };
-  }
-  if (actor === ACTOR_CONFIG_RELOAD) {
-    return { chipLabel: ACTOR_CONFIG_RELOAD, chipVariant: "default" };
-  }
-  return { chipLabel: actor || "system", chipVariant: "default" };
-}
-
-function firstSegment(value: string, separator: string): string {
-  const idx = value.indexOf(separator);
-  return idx === -1 ? value : value.slice(0, idx);
-}
-
-export function formatActorLabel(actor: string): string {
-  if (actor.startsWith(ACTOR_STEER_PREFIX)) {
-    const rest = actor.slice(ACTOR_STEER_PREFIX.length);
-    const local = firstSegment(rest, "@");
-    const first = firstSegment(local, ".");
-    return first.toLowerCase();
-  }
-  if (actor === ACTOR_AGENT) return ACTOR_AGENT;
-  if (actor.startsWith(ACTOR_WEBHOOK_PREFIX)) {
-    return `webhook · ${actor.slice(ACTOR_WEBHOOK_PREFIX.length)}`;
-  }
-  return actor.toLowerCase();
-}
-
-function formatTimestamp(d: Date): string {
-  const hh = String(d.getHours()).padStart(2, "0");
-  const mm = String(d.getMinutes()).padStart(2, "0");
-  const ss = String(d.getSeconds()).padStart(2, "0");
-  return `${hh}:${mm}:${ss}`;
+  if (typeof raw !== "string") return null;
+  const trimmed = raw.trim();
+  // An empty object is what a payload-less event stores; offering a disclosure
+  // that opens onto `{}` is noise, not evidence.
+  return trimmed.length > 0 && trimmed !== "{}" ? trimmed : null;
 }
