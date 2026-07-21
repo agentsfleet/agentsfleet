@@ -51,7 +51,7 @@ function FleetMessage({ message }: { message: MessageState }) {
       sender={senderLabelFor(actor, fleetName)}
       createdAt={message.createdAt}
       tone={toneFor(actor, status)}
-      role={message.role}
+      messageRole={message.role}
       dimmed={optimistic}
       failed={failed}
       annotation={<Annotation optimistic={optimistic} failed={failed} errored={status === STATUS_AGENT_ERROR} />}

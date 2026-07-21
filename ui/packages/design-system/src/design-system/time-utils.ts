@@ -6,7 +6,7 @@
  * bundle.
  */
 
-export type TimeFormat = "absolute" | "relative" | "datetime";
+export type TimeFormat = "absolute" | "relative" | "datetime" | "clock";
 
 const DEFAULT_LOCALE = "en-US";
 
@@ -16,6 +16,15 @@ const ABSOLUTE_OPTIONS: Intl.DateTimeFormatOptions = {
   day: "2-digit",
   hour: "2-digit",
   minute: "2-digit",
+};
+
+/* Time of day alone, to the second. For surfaces where every entry shares the
+ * day and the date would be repeated noise — a conversation thread, a run's
+ * latest outcome — while the second still matters for ordering two events. */
+const CLOCK_OPTIONS: Intl.DateTimeFormatOptions = {
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
 };
 
 /**
@@ -39,6 +48,15 @@ export function formatTimeAbsolute(
   const d = coerceDate(value);
   if (Number.isNaN(d.getTime())) return TIME_INVALID_FALLBACK;
   return new Intl.DateTimeFormat(locale, ABSOLUTE_OPTIONS).format(d);
+}
+
+export function formatTimeClock(
+  value: string | Date,
+  locale: string = DEFAULT_LOCALE,
+): string {
+  const d = coerceDate(value);
+  if (Number.isNaN(d.getTime())) return TIME_INVALID_FALLBACK;
+  return new Intl.DateTimeFormat(locale, CLOCK_OPTIONS).format(d);
 }
 
 export function formatTimeRelative(
@@ -73,6 +91,7 @@ export function visibleTimeLabel(
 ): string {
   if (format === "datetime") return iso;
   if (format === "relative") return formatTimeRelative(value);
+  if (format === "clock") return formatTimeClock(value, locale);
   return formatTimeAbsolute(value, locale);
 }
 

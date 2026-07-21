@@ -28,7 +28,6 @@ export {
 export type UseFleetEventStreamResult = {
   events: FleetEvent[];
   connectionStatus: ConnectionStatus;
-  isRunning: boolean;
   // The latest install step advanced by an `install:*` frame on the shared
   // stream, or null for a non-installing fleet. The InstallStates surface reads
   // this to advance its rendered step with no polling and to detect the
@@ -91,10 +90,14 @@ export function useFleetEventStream(
     [fleetId],
   );
 
+  // There is deliberately no aggregate "the fleet is working" flag. The one
+  // that existed was true whenever ANY event sat unfinished, so a single
+  // stranded run marked the fleet busy forever — and the composer, which read
+  // it, held every message from then on. Work is now reported per event, on
+  // the row it belongs to, where a strand can only misreport itself.
   return {
     events: snapshot.events,
     connectionStatus: snapshot.connectionStatus,
-    isRunning: snapshot.events.some((ev) => ev.status === "received"),
     installStep: snapshot.installStep,
     appendOptimistic,
     reconcileOptimistic,

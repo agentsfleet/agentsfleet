@@ -1,7 +1,9 @@
+import type { ReactNode } from "react";
 import {
   Badge,
   Button,
   Card,
+  Time,
   cn,
   DescriptionDetails,
   DescriptionList,
@@ -11,6 +13,7 @@ import Link from "next/link";
 import type { EventRow } from "@/lib/api/events";
 import { AGENTSFLEET_STATUS } from "@/lib/api/fleets";
 import { formatMs } from "@/lib/utils";
+import { outcomeFor } from "@/lib/events/event-summary";
 import { formatDollars } from "@/app/(dashboard)/settings/billing/lib/charges";
 import {
   METRICS_APPROVAL_LABEL,
@@ -29,9 +32,6 @@ import {
 
 const COUNT_FORMATTER = new Intl.NumberFormat("en-US");
 const OUTCOME_PREVIEW_CHARS = 120;
-const EVENT_STATUS_RECEIVED = "received";
-const EVENT_STATUS_GATE_BLOCKED = "gate_blocked";
-const EVENT_STATUS_FLEET_ERROR = "fleet_error";
 
 // Tokens · wall · cost for the latest run (§3). Every figure is a server field
 // off the event row — the strip does no token→cost arithmetic (Invariant 1);
@@ -58,7 +58,11 @@ export default function RunMetricsStrip({
     <Card className="flex flex-col gap-lg p-lg xl:flex-row xl:items-center" aria-label={METRICS_STRIP_LABEL}>
       <DescriptionList layout="stacked" className="grid flex-1 grid-cols-2 gap-lg space-y-0 md:grid-cols-5">
         <Metric label={METRICS_STATUS_LABEL} value={status} status />
-        <Metric label={METRICS_OUTCOME_LABEL} value={latestOutcome(latest, summaryAvailable)} />
+        <Metric
+          label={METRICS_OUTCOME_LABEL}
+          value={latestOutcome(latest, summaryAvailable)}
+          detail={outcomeTime(latest, summaryAvailable)}
+        />
         <Metric label={METRICS_TOKENS_LABEL} value={formatTokens(latest, summaryAvailable)} />
         <Metric label={METRICS_COST_LABEL} value={formatCost(latest, summaryAvailable)} emphatic />
         <Metric label={METRICS_TIME_LABEL} value={formatDuration(latest, summaryAvailable)} />
@@ -82,11 +86,13 @@ export default function RunMetricsStrip({
 function Metric({
   label,
   value,
+  detail,
   emphatic,
   status,
 }: {
   label: string;
   value: string;
+  detail?: ReactNode;
   emphatic?: boolean;
   status?: boolean;
 }) {
@@ -105,20 +111,33 @@ function Metric({
           </Badge>
         ) : value}
       </DescriptionDetails>
+      {detail ? (
+        <p className="mt-xs truncate font-mono text-label text-muted-foreground tabular-nums">
+          {detail}
+        </p>
+      ) : null}
     </div>
   );
 }
 
+// A sentence, never a machine tag. The runner's failure classes read as plain
+// English through the shared vocabulary, so this strip cannot say
+// `startup_posture` where the events table says "Failed a startup safety check".
 function latestOutcome(latest: EventRow | null, available: boolean): string {
   if (!available) return METRICS_UNAVAILABLE;
   if (latest === null) return METRICS_EMPTY;
   const response = latest.response_text?.replace(/\s+/g, " ").trim();
   if (response) return response.slice(0, OUTCOME_PREVIEW_CHARS);
-  if (latest.failure_label) return latest.failure_label;
-  if (latest.status === EVENT_STATUS_RECEIVED) return `Received ${latest.event_type}`;
-  if (latest.status === EVENT_STATUS_GATE_BLOCKED) return "Waiting for approval";
-  if (latest.status === EVENT_STATUS_FLEET_ERROR) return `${latest.event_type} failed`;
-  return `${latest.event_type} completed`;
+  return outcomeFor(latest);
+}
+
+// When the latest outcome happened, beside the sentence saying what it was —
+// the approved design carries both.
+function outcomeTime(latest: EventRow | null, available: boolean): ReactNode {
+  if (!available || latest === null) return null;
+  const at = new Date(latest.created_at);
+  if (!Number.isFinite(at.getTime())) return null;
+  return <Time value={at} format="clock" />;
 }
 
 function formatTokens(latest: EventRow | null, available: boolean): string {

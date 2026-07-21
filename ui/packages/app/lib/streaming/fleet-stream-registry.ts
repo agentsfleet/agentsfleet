@@ -79,6 +79,9 @@ type Entry = {
   // the gap it left).
   serverSinceMs: number | null;
   backfillInFlight: boolean;
+  // Detaches the tab-visible / network-online recovery listeners. Held on the
+  // entry so teardown can remove exactly what subscribe attached.
+  detachRecovery: (() => void) | null;
 };
 
 const REGISTRY = new Map<string, Entry>();
@@ -87,7 +90,13 @@ const IDLE_RELEASE_MS = 30_000;
 const RECONNECT_BACKOFF_BASE_MS = 1_000;
 const RECONNECT_BACKOFF_CAP_MS = 15_000;
 const RECONNECT_MAX_BACKOFF_ATTEMPTS = 5;
-const MAX_AUTOMATIC_RECONNECTS = 5;
+// How many fast attempts run before the connection is reported as not live.
+// Reporting is all that changes at this point — the client keeps trying.
+const FAST_RECONNECT_ATTEMPTS = 5;
+// The unhurried cadence a not-live connection keeps trying on. An outage that
+// outlasts the fast attempts is usually minutes long, not seconds, and the
+// operator should not have to press a button to come back from it.
+const OFFLINE_RETRY_MS = 30_000;
 
 const EMPTY_SNAPSHOT: FleetStreamSnapshot = Object.freeze({
   events: [],
@@ -177,26 +186,60 @@ function onFrame(entry: Entry, e: MessageEvent): void {
   setEvents(entry, (prev) => applyLiveFrame(prev, frame));
 }
 
+// A lost connection is a transient state, never a terminal one. The fast
+// attempts run first; after them the connection is reported as not live but
+// the client keeps retrying on an unhurried cadence, so an outage that ends
+// while the operator is reading recovers without them doing anything.
 function onEventSourceError(entry: Entry, fleetId: string): void {
   entry.eventSource?.close();
   entry.eventSource = null;
   entry.hadConnectionError = true;
   if (entry.reconnectTimer) return;
   entry.reconnectAttempts += 1;
-  if (entry.reconnectAttempts > MAX_AUTOMATIC_RECONNECTS) {
-    patchSnapshot(entry, { connectionStatus: CONNECTION_STATUS.OFFLINE });
-    return;
-  }
-  patchSnapshot(entry, { connectionStatus: CONNECTION_STATUS.RECONNECTING });
-  const delayMs = Math.min(
-    RECONNECT_BACKOFF_BASE_MS *
-      2 ** Math.min(entry.reconnectAttempts, RECONNECT_MAX_BACKOFF_ATTEMPTS),
+  const exhausted = entry.reconnectAttempts > FAST_RECONNECT_ATTEMPTS;
+  patchSnapshot(entry, {
+    connectionStatus: exhausted
+      ? CONNECTION_STATUS.OFFLINE
+      : CONNECTION_STATUS.RECONNECTING,
+  });
+  entry.reconnectTimer = setTimeout(
+    () => {
+      entry.reconnectTimer = null;
+      startEventSource(entry, fleetId);
+    },
+    exhausted ? OFFLINE_RETRY_MS : fastBackoffMs(entry.reconnectAttempts),
+  );
+}
+
+function fastBackoffMs(attempts: number): number {
+  return Math.min(
+    RECONNECT_BACKOFF_BASE_MS * 2 ** Math.min(attempts, RECONNECT_MAX_BACKOFF_ATTEMPTS),
     RECONNECT_BACKOFF_CAP_MS,
   );
-  entry.reconnectTimer = setTimeout(() => {
+}
+
+// The two moments a stale connection is both most likely wrong and cheapest to
+// re-establish: the tab coming back to the foreground, and the browser
+// reporting the network back. Either one skips the remaining wait.
+function attachRecoveryListeners(entry: Entry, fleetId: string): () => void {
+  if (typeof window === "undefined") return () => {};
+  const recover = () => {
+    // A connection already open or in flight needs nothing; this is what keeps
+    // both signals arriving together from opening two streams.
+    if (entry.eventSource !== null) return;
+    if (document.visibilityState === "hidden") return;
+    if (entry.reconnectTimer) clearTimeout(entry.reconnectTimer);
     entry.reconnectTimer = null;
+    entry.reconnectAttempts = 0;
+    patchSnapshot(entry, { connectionStatus: CONNECTION_STATUS.CONNECTING });
     startEventSource(entry, fleetId);
-  }, delayMs);
+  };
+  document.addEventListener("visibilitychange", recover);
+  window.addEventListener("online", recover);
+  return () => {
+    document.removeEventListener("visibilitychange", recover);
+    window.removeEventListener("online", recover);
+  };
 }
 
 export function retryConnection(fleetId: string): void {
@@ -214,6 +257,8 @@ export function retryConnection(fleetId: string): void {
 function teardown(entry: Entry, fleetId: string): void {
   if (entry.reconnectTimer) clearTimeout(entry.reconnectTimer);
   if (entry.idleTimer) clearTimeout(entry.idleTimer);
+  entry.detachRecovery?.();
+  entry.detachRecovery = null;
   entry.eventSource?.close();
   REGISTRY.delete(fleetId);
 }
@@ -237,6 +282,7 @@ function createEntry(workspaceId: string, initial: EventRow[]): Entry {
     hadConnectionError: false,
     serverSinceMs: maxServerCreatedAt(null, initial),
     backfillInFlight: false,
+    detachRecovery: null,
   };
 }
 
@@ -250,6 +296,7 @@ export function subscribe(
   if (!entry) {
     entry = createEntry(workspaceId, initial);
     REGISTRY.set(fleetId, entry);
+    entry.detachRecovery = attachRecoveryListeners(entry, fleetId);
     startEventSource(entry, fleetId);
   }
   if (entry.idleTimer) {

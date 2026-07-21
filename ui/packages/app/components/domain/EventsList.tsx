@@ -16,6 +16,7 @@ import { ActivityIcon } from "lucide-react";
 import { listWorkspaceEventsAction } from "@/app/(dashboard)/w/[workspaceId]/events/actions";
 import { formatDollars } from "@/app/(dashboard)/settings/billing/lib/charges";
 import type { EventRow, EventsPage } from "@/lib/api/events";
+import { failureSentenceFor } from "@/lib/events/event-summary";
 import { presentErrorString } from "@/lib/errors";
 import { formatMs } from "@/lib/utils";
 
@@ -46,26 +47,6 @@ const STATUS_VARIANT: Record<string, BadgeVariant> = {
   gate_blocked: "amber",
   received: "cyan",
 };
-
-// Friendly labels for the runner's FailureClass tags (src/lib/contract/execution_result.zig).
-// A tag this table doesn't cover renders its raw name rather than throwing —
-// fails soft if the backend ships a new FailureClass this list hasn't caught up to.
-const FAILURE_LABEL: Record<string, string> = {
-  startup_posture: "Failed a startup safety check",
-  policy_deny: "Blocked by fleet policy",
-  timeout_kill: "Timed out",
-  oom_kill: "Ran out of memory",
-  resource_kill: "Hit a resource limit",
-  runner_crash: "The runner crashed",
-  transport_loss: "Lost connection to the runner",
-  landlock_deny: "Blocked by the sandbox policy",
-  lease_expired: "The run's lease expired",
-  renewal_terminate: "Stopped by lease renewal policy",
-};
-
-function failureLabel(tag: string): string {
-  return FAILURE_LABEL[tag] ?? tag;
-}
 
 // The workspace event feed in the standard table every sibling data surface
 // uses (API keys, secrets, runners, billing). One row per event; the summary
@@ -197,7 +178,7 @@ function EventSummaryCell({ row }: { row: EventRow }) {
     );
   }
   if (row.failure_label) {
-    return <span className="text-warning">{failureLabel(row.failure_label)}</span>;
+    return <span className="text-warning">{failureSentenceFor(row.failure_label)}</span>;
   }
   return null;
 }
