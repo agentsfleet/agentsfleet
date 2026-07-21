@@ -2,21 +2,36 @@ import { streamFleetEventsUrl, type EventRow, type LiveFrame } from "@/lib/api/e
 import { outcomeForStatus } from "@/lib/events/event-summary";
 import { runBackfill, warnBackfillFailure } from "./fleet-stream-backfill";
 import {
+  FAST_RECONNECT_ATTEMPTS,
+  OFFLINE_RETRY_MS,
+  attachRecoveryListeners,
+  cancelPendingReconnect,
+  fastBackoffMs,
+} from "./fleet-stream-reconnect";
+import {
   applyLiveFrame,
-  maxServerCreatedAt,
   mergeBackfill,
   type FleetEvent,
 } from "./fleet-stream-frames";
-import {
-  advanceInstallStep,
-  installStepFromKind,
-  type InstallStepId,
-} from "./install-steps";
+import { advanceInstallStep, installStepFromKind } from "./install-steps";
 
 export {
   type FleetEvent,
   type FleetEventStatus,
 } from "./fleet-stream-frames";
+import {
+  CONNECTION_STATUS,
+  EMPTY_SNAPSHOT,
+  createEntry,
+  type Entry,
+  type FleetStreamSnapshot,
+  type Listener,
+} from "./fleet-stream-entry";
+export {
+  CONNECTION_STATUS,
+  type ConnectionStatus,
+  type FleetStreamSnapshot,
+} from "./fleet-stream-entry";
 
 // Module-level subscription registry. One Entry per fleetId; multiple
 // React hook instances share it via refcounted subscribe/release. The
@@ -31,78 +46,13 @@ export {
 // frames published during the outage via the same-origin events proxy,
 // merged through the id-deduping mergeBackfill.
 
-export const CONNECTION_STATUS = {
-  CONNECTING: "connecting",
-  LIVE: "live",
-  RECONNECTING: "reconnecting",
-  OFFLINE: "offline",
-} as const;
-export type ConnectionStatus =
-  (typeof CONNECTION_STATUS)[keyof typeof CONNECTION_STATUS];
-
 const STATUS_OPTIMISTIC = "optimistic";
 const STATUS_FAILED = "failed";
 const STATUS_RECEIVED = "received";
 
-export type FleetStreamSnapshot = {
-  events: FleetEvent[];
-  connectionStatus: ConnectionStatus;
-  // The latest install step advanced by an `install:*` frame, or null when no
-  // install frame has arrived (a non-installing fleet, or pre-first-frame). The
-  // InstallStates surface reads this to advance its rendered step and to detect
-  // the installing→active flip; the chat path ignores it.
-  installStep: InstallStepId | null;
-};
-
-type Listener = () => void;
-
-type Entry = {
-  workspaceId: string;
-  snapshot: FleetStreamSnapshot;
-  listeners: Set<Listener>;
-  refCount: number;
-  eventSource: EventSource | null;
-  reconnectTimer: ReturnType<typeof setTimeout> | null;
-  reconnectAttempts: number;
-  idleTimer: ReturnType<typeof setTimeout> | null;
-  tempCounter: number;
-  // Whether this entry's EventSource has ever reached onopen. Distinguishes
-  // the initial (SSR-seeded) connect from a reconnect — only the latter
-  // backfills. Lives on the mutable Entry, never a passed primitive.
-  hasConnectedOnce: boolean;
-  // An outage before the first successful open still creates a history gap.
-  // The next open backfills even though `hasConnectedOnce` is still false.
-  hadConnectionError: boolean;
-  // Newest server-confirmed created_at (epoch ms) — advanced only by the SSR
-  // seed and successful backfill pages, never by client-clock-stamped live or
-  // optimistic rows, and never by a failed backfill (so a failure cannot seal
-  // the gap it left).
-  serverSinceMs: number | null;
-  backfillInFlight: boolean;
-  // Detaches the tab-visible / network-online recovery listeners. Held on the
-  // entry so teardown can remove exactly what subscribe attached.
-  detachRecovery: (() => void) | null;
-};
-
 const REGISTRY = new Map<string, Entry>();
 
 const IDLE_RELEASE_MS = 30_000;
-const RECONNECT_BACKOFF_BASE_MS = 1_000;
-const RECONNECT_BACKOFF_CAP_MS = 15_000;
-const RECONNECT_MAX_BACKOFF_ATTEMPTS = 5;
-// How many fast attempts run before the connection is reported as not live.
-// Reporting is all that changes at this point — the client keeps trying.
-const FAST_RECONNECT_ATTEMPTS = 5;
-// The unhurried cadence a not-live connection keeps trying on. An outage that
-// outlasts the fast attempts is usually minutes long, not seconds, and the
-// operator should not have to press a button to come back from it.
-const OFFLINE_RETRY_MS = 30_000;
-
-const EMPTY_SNAPSHOT: FleetStreamSnapshot = Object.freeze({
-  events: [],
-  connectionStatus: CONNECTION_STATUS.CONNECTING,
-  installStep: null,
-}) as FleetStreamSnapshot;
 
 function notify(entry: Entry): void {
   for (const l of entry.listeners) l();
@@ -211,42 +161,6 @@ function onEventSourceError(entry: Entry, fleetId: string): void {
   );
 }
 
-function fastBackoffMs(attempts: number): number {
-  return Math.min(
-    RECONNECT_BACKOFF_BASE_MS * 2 ** Math.min(attempts, RECONNECT_MAX_BACKOFF_ATTEMPTS),
-    RECONNECT_BACKOFF_CAP_MS,
-  );
-}
-
-// The two moments a stale connection is both most likely wrong and cheapest to
-// re-establish: the tab coming back to the foreground, and the browser
-// reporting the network back. Either one skips the remaining wait.
-function attachRecoveryListeners(entry: Entry, fleetId: string): () => void {
-  const recover = () => {
-    // A connection already open or in flight needs nothing; this is what keeps
-    // both signals arriving together from opening two streams.
-    if (entry.eventSource !== null) return;
-    if (document.visibilityState === "hidden") return;
-    cancelPendingReconnect(entry);
-    entry.reconnectAttempts = 0;
-    patchSnapshot(entry, { connectionStatus: CONNECTION_STATUS.CONNECTING });
-    startEventSource(entry, fleetId);
-  };
-  document.addEventListener("visibilitychange", recover);
-  window.addEventListener("online", recover);
-  return () => {
-    document.removeEventListener("visibilitychange", recover);
-    window.removeEventListener("online", recover);
-  };
-}
-
-// One place cancels a pending reconnect, so the "is one pending?" question is
-// asked identically by the operator's retry, the recovery signals, and teardown.
-function cancelPendingReconnect(entry: Entry): void {
-  if (entry.reconnectTimer) clearTimeout(entry.reconnectTimer);
-  entry.reconnectTimer = null;
-}
-
 export function retryConnection(fleetId: string): void {
   const entry = REGISTRY.get(fleetId);
   if (!entry) return;
@@ -267,29 +181,6 @@ function teardown(entry: Entry, fleetId: string): void {
   REGISTRY.delete(fleetId);
 }
 
-function createEntry(workspaceId: string, initial: EventRow[]): Entry {
-  return {
-    workspaceId,
-    snapshot: {
-      events: mergeBackfill([], initial),
-      connectionStatus: CONNECTION_STATUS.CONNECTING,
-      installStep: null,
-    },
-    listeners: new Set(),
-    refCount: 0,
-    eventSource: null,
-    reconnectTimer: null,
-    reconnectAttempts: 0,
-    idleTimer: null,
-    tempCounter: 0,
-    hasConnectedOnce: false,
-    hadConnectionError: false,
-    serverSinceMs: maxServerCreatedAt(null, initial),
-    backfillInFlight: false,
-    detachRecovery: null,
-  };
-}
-
 export function subscribe(
   workspaceId: string,
   fleetId: string,
@@ -300,7 +191,16 @@ export function subscribe(
   if (!entry) {
     entry = createEntry(workspaceId, initial);
     REGISTRY.set(fleetId, entry);
-    entry.detachRecovery = attachRecoveryListeners(entry, fleetId);
+    const tracked = entry;
+    entry.detachRecovery = attachRecoveryListeners({
+      hasConnection: () => tracked.eventSource !== null,
+      recover: () => {
+        cancelPendingReconnect(tracked);
+        tracked.reconnectAttempts = 0;
+        patchSnapshot(tracked, { connectionStatus: CONNECTION_STATUS.CONNECTING });
+        startEventSource(tracked, fleetId);
+      },
+    });
     startEventSource(entry, fleetId);
   }
   if (entry.idleTimer) {

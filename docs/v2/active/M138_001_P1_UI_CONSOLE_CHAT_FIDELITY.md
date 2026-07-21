@@ -67,16 +67,25 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `ui/packages/app/lib/events/event-summary.test.ts` | CREATE | Per-shape coverage including unknown event kinds, absent fields, and malformed payloads. |
 | `ui/packages/app/lib/streaming/fleet-stream-frames.ts` | EDIT | `rowToEvent` derives its text through the summary module instead of reading the response field for every role. |
 | `ui/packages/app/lib/streaming/fleet-stream-frames.test.ts` | EDIT | Cover operator-text recovery and event summaries surviving a reload. |
-| `ui/packages/app/lib/streaming/fleet-stream-registry.ts` | EDIT | A lost connection retries on a slow cadence and on tab focus / network recovery instead of pinning to a terminal offline. |
+| `ui/packages/app/lib/streaming/fleet-stream-registry.ts` | EDIT | A lost connection retries on a slow cadence and on tab focus / network recovery instead of pinning to a terminal offline. *(Amended at VERIFY — RULE FLL: the additions pushed the file past the length cap, so the reconnect policy and the entry model split out beside it.)* |
+| `ui/packages/app/lib/streaming/fleet-stream-reconnect.ts` | CREATE | *(FLL split)* Backoff timing, pending-retry cancellation, and the tab-visible / network-online recovery wiring, behind a narrow interface. |
+| `ui/packages/app/lib/streaming/fleet-stream-entry.ts` | CREATE | *(FLL split)* The per-fleet entry model: connection statuses, the published snapshot shape, and the seeded-entry factory. |
 | `ui/packages/app/lib/streaming/fleet-stream-registry.test.ts` | EDIT | Cover the slow retry, the focus and network triggers, and that a recovered connection still backfills its gap. |
 | `ui/packages/app/components/domain/useFleetEventStream.ts` | EDIT | The aggregate in-flight signal is deleted with its last consumer; work is reported per event. |
-| `ui/packages/design-system/src/design-system/time-utils.ts` + `Time.tsx` exports | EDIT | *(Amended at EXECUTE)* A time-of-day format in the sanctioned home, so the console renders a clock label through `Time` rather than a bespoke formatter the timestamp standard forbids. |
+| `ui/packages/design-system/src/design-system/time-utils.ts` | EDIT | *(Amended at EXECUTE)* A time-of-day format in the sanctioned home, so the console renders a clock label through `Time` rather than a bespoke formatter the timestamp standard forbids. |
+| `ui/packages/design-system/src/design-system/time-utils.test.ts` | EDIT | The clock format's own coverage: seconds kept, date dropped, locale honoured, unreadable input returns the shared fallback. |
+| `ui/packages/design-system/src/index.ts` | EDIT | Export the clock formatter. |
+| `ui/packages/design-system/src/design-system/index.ts` | EDIT | Export the clock formatter. |
+| `VERSION` | EDIT | 0.18.0 → 0.19.0 (feature minor). |
+| `build.zig.zon` | EDIT | Version propagation via `make sync-version`. |
+| `cli/package.json` | EDIT | Version propagation via `make sync-version`. |
+| `docs/v2/active/M138_001_P1_UI_CONSOLE_CHAT_FIDELITY.md` | EDIT | This spec — lifecycle status, amendments, and rubric grades. |
 | `ui/packages/app/tests/timestamp-standard.test.ts` | — | Unchanged: the guard is satisfied by construction, not by an allowlist entry. |
 | `src/agentsfleetd/http/server.zig` | EDIT | *(Folded in at EXECUTE — §6)* The request-header ceiling becomes a named 16 KiB constant; the library default of 4 KiB was the narrowest limit in the production chain. Its inline unit tests move to the sibling test file, returning the file below the length cap it already exceeded. |
 | `src/agentsfleetd/http/server_test.zig` | CREATE | *(Folded in at EXECUTE — RULE FLL/TNM)* The former inline `ServerConfig` and lifecycle unit tests, in the sibling-file shape every other module here uses. |
 | `src/agentsfleetd/http/request_header_size_integration_test.zig` | CREATE | *(§6)* Over-the-wire proof: an oversized credential header is served, and headers past the accepted size are still refused — the bound must exist. |
-| `ui/packages/app/components/domain/useFleetDeliveryFailure.ts` | RENAME + EDIT | *(Amended at EXECUTE — RULE NLR)* Was `useFleetMessageQueue.ts`; the browser-side hold and its delivery-outcome vocabulary are deleted, so the name kept a queue the file no longer has. The delivery-failure surface survives. |
-| `ui/packages/app/components/domain/useFleetDeliveryFailure.test.tsx` | RENAME + EDIT | *(Amended at EXECUTE)* Drop the hold's tests; keep and extend the delivery-failure coverage. |
+| `ui/packages/app/components/domain/useFleetDeliveryFailure.ts` | RENAME + EDIT | *(Amended at EXECUTE — RULE NLR)* Was `ui/packages/app/components/domain/useFleetMessageQueue.ts`; the browser-side hold and its delivery-outcome vocabulary are deleted, so the name kept a queue the file no longer has. The delivery-failure surface survives. |
+| `ui/packages/app/components/domain/useFleetDeliveryFailure.test.tsx` | RENAME + EDIT | *(Amended at EXECUTE)* Was `ui/packages/app/components/domain/useFleetMessageQueue.test.tsx`; drop the hold's tests; keep and extend the delivery-failure coverage. |
 | `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/[id]/components/FleetInstallGate.tsx` | EDIT | *(Amended at EXECUTE)* The revealed surface takes the console's layout claim instead of being flattened into a fragment. |
 | `ui/packages/app/components/domain/FleetThreadDynamic.tsx` | EDIT | *(Amended at EXECUTE)* The code-split placeholder takes the same share of the frame the thread will, so the swap costs no layout shift. |
 | `ui/packages/app/tests/fleet-thread-dynamic.test.ts` | EDIT | *(Amended at EXECUTE)* Fixture carries the fleet name the thread now labels its replies with. |
@@ -266,20 +275,20 @@ lib/events/event-summary.ts  (NEW — the single home for operator-readable even
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
 | R1 | The composer is reachable without scrolling the page (§1) | `cd ui/packages/app && bunx playwright test tests/e2e/acceptance/fleet-console.spec.ts --config playwright.acceptance.config.ts` | exit 0 | P0 | |
-| R2 | Rows render the approved shape and readable senders (§2) | `cd ui/packages/app && bunx vitest run components/domain/FleetMessageRow.test.tsx tests/fleet-thread.test.ts` | exit 0 | P0 | |
-| R3 | Every event states its outcome; one failure vocabulary (§3) | `cd ui/packages/app && bunx vitest run lib/events/event-summary.test.ts` | exit 0 | P0 | |
-| R4 | No raw runner failure tag survives in a rendered surface (§3) | `grep -rn "startup_posture" ui/packages/app/components ui/packages/app/app \| grep -v event-summary` | no output | P0 | |
-| R5 | Sending never reads the connection state (§4) | `grep -rn "connectionStatus\|CONNECTION_STATUS" ui/packages/app/components/domain/useFleetMessageQueue.ts` | no output | P0 | |
-| R6 | An unavailable connection is not terminal (§5) | `cd ui/packages/app && bunx vitest run lib/streaming/fleet-stream-registry.test.ts` | exit 0 | P0 | |
-| R7 | Diff stays inside Files Changed | `git diff --name-only origin/main` | 0 paths missing from the Files Changed table | P0 | |
-| S1 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | |
-| S2 | Lint clean | `make lint-all` | exit 0 | P0 | |
-| S3 | Integration passes (HTTP server touched) | `make test-integration` | exit 0 | P0 | |
-| S6 | Cross-compile (Zig touched) | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` | exit 0 | P0 | |
+| R2 | Rows render the approved shape and readable senders (§2) | `cd ui/packages/app && bunx vitest run components/domain/FleetMessageRow.test.tsx tests/fleet-thread.test.ts` | exit 0 | P0 | ✅ 52 passed |
+| R3 | Every event states its outcome; one failure vocabulary (§3) | `cd ui/packages/app && bunx vitest run lib/events/event-summary.test.ts` | exit 0 | P0 | ✅ 29 passed |
+| R4 | No raw runner failure tag survives in a rendered surface (§3) | `grep -rn "startup_posture" ui/packages/app/components ui/packages/app/app \| grep -vE "event-summary\|\.test\.\|//"` | no output | P0 | ✅ no output |
+| R5 | Sending never reads the connection state (§4) | `grep -rn "connectionStatus\|CONNECTION_STATUS" ui/packages/app/components/domain/useFleetDeliveryFailure.ts` | no output | P0 | ✅ no output |
+| R6 | An unavailable connection is not terminal (§5) | `cd ui/packages/app && bunx vitest run lib/streaming/fleet-stream-registry.test.ts` | exit 0 | P0 | ✅ 49 passed |
+| R7 | Diff stays inside Files Changed | `git diff --name-only origin/main` | 0 paths missing from the Files Changed table | P0 | ✅ `R7: all paths covered` |
+| S1 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | ✅ `S1_EXIT=0` — ✓ All unit lanes passed, all package coverage gates passed |
+| S2 | Lint clean | `make lint-all` | exit 0 | P0 | ✅ `S2_EXIT=0` — ✓ All lint checks passed |
+| S3 | Integration passes (HTTP server touched) | `make test-integration` | exit 0 | P0 | ✅ `INTEG EXIT=0` — ✓ All integration tests passed (final Zig tree) |
+| S6 | Cross-compile (Zig touched) | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` | exit 0 | P0 | ✅ `X86=0 ARM=0` |
 | S4 | e2e walks the console path | `make acceptance-e2e` | exit 0 | P0 | |
 | S7 | No secrets | `gitleaks detect` | exit 0 | P0 | |
-| S8 | No oversize source file | `git diff --name-only origin/main \| grep -vE '\.md$\|_test\.zig$\|\.test\.(ts\|tsx)$' \| xargs wc -l 2>/dev/null \| awk '$1>350 && $2!="total"'` | no output | P0 | |
-| S9 | Orphan sweep | Dead Code Sweep greps | 0 matches | P0 | |
+| S8 | No oversize source file | `git diff --name-only origin/main \| grep -vE '\.md$\|_test\.zig$\|\.test\.(ts\|tsx)$' \| xargs wc -l 2>/dev/null \| awk '$1>350 && $2!="total"'` | no output | P0 | ✅ no output (after the registry FLL split) |
+| S9 | Orphan sweep | Dead Code Sweep greps | 0 matches | P0 | ✅ 0 matches across the sweep greps |
 
 **Grading protocol (VERIFY):** run the Verify command verbatim; grade ONLY from its output. Graded = ✅/❌ + the one decisive output line (`342 passed`); long evidence goes to PR Session Notes with a pointer here. R2/R3/R6's package-scoped runs are focused evidence only — package-scoped runners are not verification; S1's `make test-unit-all` is the gate. **Ship gate:** every row graded, every P0 ✅ → eligible for CHORE(close); any ❌ or empty cell → return to EXECUTE; a P1 ❌ ships only with an Indy-acked deferral quote in Discovery.
 
@@ -307,7 +316,7 @@ lib/events/event-summary.ts  (NEW — the single home for operator-readable even
 - Attachments behind the composer's add action — the affordance is drawn in the approved design but has no capability behind it, and shipping a control before its evidence violates dashboard restraint.
 - Interrupting a running fleet — no backend capability exists and none is smuggled in here.
 - Any schema or endpoint change — every field this spec renders is already returned by the existing event list, and §6 changes a transport ceiling, not an interface.
-- The root cause of the operator's specific 431 on the dev dashboard — §6 fixes the API server's provably-too-tight ceiling, but the browser-side incident may originate in the Vercel hop's own limit against HttpOnly cookies invisible to `document.cookie`; the discriminating evidence (the 431 response body, the full cookie inventory) is recorded in Discovery when it lands.
+- A cookie-free stream transport — considered while the operator's 431 was unattributed; the discriminator (Discovery) confirmed the server ceiling as the cause, so no follow-up transport milestone is warranted by this incident.
 
 ---
 
@@ -335,7 +344,7 @@ lib/events/event-summary.ts  (NEW — the single home for operator-readable even
 - **Consults** — Architecture / Legacy-Design / gate-flag triage: the question asked + Indy's decision.
   - > Indy (2026-07-21): "Well i need the cookie fix to be in here" — context: the API request-header ceiling fix folds into this workstream (§6) instead of a sibling milestone.
   - Review consult (Fable, Jul 21): the 431 branch fires inside the vendored HTTP library, so no first-party log or metric marks it (RULE OBS). Recommendation: accept — edge logs and a one-line probe reproduce it; patching the vendored library needs its own ask. Awaiting Indy's call.
-  - Review finding (Fable, Jul 21): attribution of the operator's browser 431 to the server ceiling is unproven — the proxied upstream request (~2.5 KiB) sits under the old 4 KiB limit for this operator's token; the browser-side hop against HttpOnly cookie bulk is the stronger suspect. Fix ships on its own merits; discriminator requested from Indy.
+  - Review finding (Fable, Jul 21): attribution of the operator's browser 431 to the server ceiling was challenged — the naive estimate of the proxied upstream request (~2.5 KiB) sits under the old 4 KiB limit. **Resolved (Indy, Jul 22): the browser's Response body reads `Request header is too big` — the server's own refusal text, verbatim.** Attribution confirmed to the 4 KiB ceiling; the estimate undercounted what the proxy chain appends. The operator's cookie inventory (~3.4 KB, no oversized HttpOnly entries) had eliminated every cookie-side theory first.
 - **Metrics review** — events added, extra events found during `/review`, analytics/funnel playbook update or the explicit no-change reason.
 - **Skill-chain outcomes** — `/write-unit-test`, `/review`, `kishore-babysit-prs` results (order per `AGENTS.md` CHORE(close); iteration counts, findings dispositioned).
 - **Deferrals** — every "deferred to follow-up" needs an **Indy-acked verbatim quote** here, format `> Indy (YYYY-MM-DD HH:MM): "<quote>" — context: <which item, why>`.
