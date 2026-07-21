@@ -162,7 +162,7 @@ Runner host: receives raw agt_r from 1Password as AGENTSFLEET_RUNNER_TOKEN.
 | S1 | Provisioner tests pass | `bash playbooks/founding/06_runner_bootstrap_dev/provision_runner_env_test.sh` | exit 0 | P0 | ✅ 2 passed, 0 failed |
 | S2 | Repository checks pass | `make lint-all` | exit 0 | P0 | ✅ All lint checks passed |
 | S3 | No secrets | `gitleaks detect` | exit 0 | P0 | ✅ no leaks found |
-| S4 | Staged workstream diff stays inside Files Changed | `git diff --cached --name-only` | 0 paths missing from the Files Changed table | P0 | ✅ 4 paths, all listed in Files Changed |
+| S4 | Workstream diff stays inside Files Changed | `git diff --name-only origin/main` | 0 paths missing from the Files Changed table | P0 | ✅ 4 paths, all listed in Files Changed |
 
 **Grading protocol (VERIFY):** run the Verify command verbatim; grade ONLY from its output. Graded = ✅/❌ + the one decisive output line; long evidence goes to PR Session Notes with a pointer here. **Ship gate:** every row graded, every P0 ✅ → eligible for CHORE(close); any ❌ or empty cell → return to EXECUTE.
 
