@@ -116,15 +116,22 @@ describe("useFleetEventStream", () => {
     });
   });
 
-  it("a double error fires two reconnects but the second start no-ops (no leaked EventSource)", async () => {
+  it("lets the operator retry the connection immediately", () => {
+    const { result } = mount();
+    const first = FakeEventSource.instances[0]!;
+    act(() => result.current.retryConnection());
+    expect(first.closed).toBe(true);
+    expect(result.current.connectionStatus).toBe(CONNECTION_STATUS.CONNECTING);
+    expect(FakeEventSource.instances).toHaveLength(2);
+  });
+
+  it("deduplicates a double error into one reconnect", async () => {
     vi.useFakeTimers();
     try {
       mount();
       expect(FakeEventSource.instances.length).toBe(1);
-      // Two error events before any reconnect fires leave two pending reconnect
-      // timers (onEventSourceError doesn't dedupe). When both fire, the first
-      // re-opens the stream and the second finds entry.eventSource already set
-      // and bails — the double-start guard prevents a leaked EventSource.
+      // Repeated error callbacks from one source share the already-scheduled
+      // reconnect, so only one replacement EventSource is created.
       act(() => FakeEventSource.instances[0]!.fail());
       act(() => FakeEventSource.instances[0]!.fail());
       await act(async () => {
@@ -240,7 +247,9 @@ describe("useFleetEventStream", () => {
     expect(result.current.events[0]!.text).toBe("howdy");
     expect(result.current.events[0]!.role).toBe("user");
 
-    act(() => result.current.reconcileOptimistic(tempId, "evt_real"));
+    act(() => {
+      result.current.reconcileOptimistic(tempId, "evt_real");
+    });
     await waitFor(() => expect(result.current.events[0]!.id).toBe("evt_real"));
     expect(result.current.events[0]!.status).toBe("received");
   });

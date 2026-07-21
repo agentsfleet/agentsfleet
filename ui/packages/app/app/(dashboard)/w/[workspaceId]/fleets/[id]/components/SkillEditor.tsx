@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { PencilIcon } from "lucide-react";
 import {
@@ -10,10 +10,6 @@ import {
   Card,
   ConfirmDialog,
   CopyButton,
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
   Textarea,
 } from "@agentsfleet/design-system";
 import { getFleetDetailAction, saveFleetSourceAction } from "../../actions";
@@ -34,83 +30,82 @@ import {
   SAVE_SOURCE_LABEL,
   SAVE_STALE_RELOADED_NOTICE,
   SKILL_DOC_LABEL,
+  SKILL_SOURCE_PANEL_TITLE,
   SOURCE_FIELD,
-  SOURCE_PANEL_TITLE,
   TRIGGER_DOC_EMPTY,
   TRIGGER_DOC_LABEL,
+  TRIGGER_SOURCE_PANEL_TITLE,
   VIEW_SOURCE_LABEL,
   type SourceField,
 } from "./console-copy";
 
-// HTTP 412 Precondition Failed means the source changed under an open editor.
 const PRECONDITION_FAILED = 412;
-
-// DOM id the disclosure toggle points at via aria-controls — one console page
-// renders one source card, so the id cannot collide.
-const SOURCE_PANES_ID = "fleet-source-panes";
 
 type Props = {
   workspaceId: string;
   fleetId: string;
+  field: SourceField;
   sourceMarkdown: string;
   triggerMarkdown: string | null;
   etag: string;
 };
-
-// The two editable documents, keyed by the analytics `field` value. `body` maps
-// each to the PATCH field name so a save sends only the document that changed.
-type DocState = Record<SourceField, string>;
 
 const PATCH_FIELD: Record<SourceField, "source_markdown" | "trigger_markdown"> = {
   [SOURCE_FIELD.skill]: "source_markdown",
   [SOURCE_FIELD.trigger]: "trigger_markdown",
 };
 
-function sourceState(sourceMarkdown: string, triggerMarkdown: string | null): DocState {
-  return {
-    [SOURCE_FIELD.skill]: sourceMarkdown,
-    [SOURCE_FIELD.trigger]: triggerMarkdown ?? "",
-  };
+function documentValue(
+  field: SourceField,
+  sourceMarkdown: string,
+  triggerMarkdown: string | null,
+): string {
+  return field === SOURCE_FIELD.skill ? sourceMarkdown : (triggerMarkdown ?? "");
 }
 
 export default function SkillEditor({
   workspaceId,
   fleetId,
+  field,
   sourceMarkdown,
   triggerMarkdown,
   etag: initialEtag,
 }: Props) {
   const router = useRouter();
-  const [base, setBase] = useState<DocState>(() => sourceState(sourceMarkdown, triggerMarkdown));
-  const [draft, setDraft] = useState<DocState>(base);
-  const [active, setActive] = useState<SourceField>(SOURCE_FIELD.skill);
+  const panelId = useId();
+  const initial = documentValue(field, sourceMarkdown, triggerMarkdown);
+  const [base, setBase] = useState(initial);
+  const [draft, setDraft] = useState(initial);
   const [editing, setEditing] = useState(false);
-  // Collapsed by default — the steer thread is the page's primary surface, so
-  // the document viewer renders only on request. Editing pins the card open:
-  // no collapse control exists while a draft is live, so a draft can never be
-  // hidden mid-edit.
   const [expanded, setExpanded] = useState(false);
   const [etag, setEtag] = useState(initialEtag);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [staleReloaded, setStaleReloaded] = useState(false);
   const editingRef = useRef(editing);
-  const activeRef = useRef(active);
+  const fieldRef = useRef(field);
   editingRef.current = editing;
-  activeRef.current = active;
 
   useEffect(() => {
-    const fresh = sourceState(sourceMarkdown, triggerMarkdown);
+    const fresh = documentValue(field, sourceMarkdown, triggerMarkdown);
+    const sameField = fieldRef.current === field;
     setBase(fresh);
     setEtag(initialEtag);
-    setDraft((previous) => editingRef.current
-      ? { ...fresh, [activeRef.current]: previous[activeRef.current] }
-      : fresh);
-  }, [sourceMarkdown, triggerMarkdown, initialEtag]);
+    setDraft((previous) => editingRef.current && sameField ? previous : fresh);
+    if (!sameField) {
+      setEditing(false);
+      setExpanded(false);
+      setError(null);
+      setStaleReloaded(false);
+    }
+    fieldRef.current = field;
+  }, [field, sourceMarkdown, triggerMarkdown, initialEtag]);
 
-  const activeBase = base[active];
-  const activeDraft = draft[active];
-  const changed = activeDraft !== activeBase;
+  const changed = draft !== base;
+  const label = field === SOURCE_FIELD.skill ? SKILL_DOC_LABEL : TRIGGER_DOC_LABEL;
+  const title = field === SOURCE_FIELD.skill
+    ? SKILL_SOURCE_PANEL_TITLE
+    : TRIGGER_SOURCE_PANEL_TITLE;
 
   function enterEdit() {
     setError(null);
@@ -126,45 +121,45 @@ export default function SkillEditor({
     setStaleReloaded(false);
   }
 
-  function setActiveDraft(value: string) {
-    setDraft((prev) => ({ ...prev, [active]: value }));
-  }
-
-  // Keep the operator's draft while refreshing the current source after a
-  // concurrent save. This prevents a silent overwrite.
   async function reloadAfterStale() {
     const reloaded = await getFleetDetailAction(workspaceId, fleetId);
     if (!reloaded.ok) {
-      setError(presentErrorString({ errorCode: reloaded.errorCode, message: reloaded.error, action: "reload the source" }));
+      setError(presentErrorString({
+        errorCode: reloaded.errorCode,
+        message: reloaded.error,
+        action: "reload the source",
+      }));
       return;
     }
-    const fresh = reloaded.data.fleet;
-    const freshState = sourceState(fresh.source_markdown, fresh.trigger_markdown);
-    setBase(freshState);
-    // Preserve only the document the operator just attempted to save. A draft
-    // in the sibling tab was based on the stale tag and must not inherit the
-    // fresh tag without being reloaded.
-    setDraft((previous) => ({ ...freshState, [active]: previous[active] }));
+    const fresh = documentValue(
+      field,
+      reloaded.data.fleet.source_markdown,
+      reloaded.data.fleet.trigger_markdown,
+    );
+    setBase(fresh);
     setEtag(reloaded.data.etag);
     setStaleReloaded(true);
   }
 
   async function onConfirmSave() {
-    const field = active;
     setError(null);
-    const result = await saveFleetSourceAction(workspaceId, fleetId, { [PATCH_FIELD[field]]: draft[field] }, etag);
+    const result = await saveFleetSourceAction(
+      workspaceId,
+      fleetId,
+      { [PATCH_FIELD[field]]: draft },
+      etag,
+    );
     if (result.ok) {
-      const saved = { ...base, [field]: draft[field] };
-      const sibling = field === SOURCE_FIELD.skill ? SOURCE_FIELD.trigger : SOURCE_FIELD.skill;
-      const siblingChanged = draft[sibling] !== base[sibling];
-      setBase(saved);
-      setDraft((previous) => ({ ...previous, [field]: draft[field] }));
+      setBase(draft);
       setEtag(result.data.etag);
-      setEditing(siblingChanged);
-      if (siblingChanged) setActive(sibling);
+      setEditing(false);
       setDialogOpen(false);
       setStaleReloaded(false);
-      captureProductEvent(EVENTS.fleet_source_saved, { fleet_id: fleetId, field, outcome: OUTCOME.success });
+      captureProductEvent(EVENTS.fleet_source_saved, {
+        fleet_id: fleetId,
+        field,
+        outcome: OUTCOME.success,
+      });
       router.refresh();
       return;
     }
@@ -173,72 +168,46 @@ export default function SkillEditor({
       await reloadAfterStale();
       return;
     }
-    captureProductEvent(EVENTS.fleet_source_saved, { fleet_id: fleetId, field, outcome: OUTCOME.failure });
-    setError(presentErrorString({ errorCode: result.errorCode, message: result.error, action: "save the source" }));
+    captureProductEvent(EVENTS.fleet_source_saved, {
+      fleet_id: fleetId,
+      field,
+      outcome: OUTCOME.failure,
+    });
+    setError(presentErrorString({
+      errorCode: result.errorCode,
+      message: result.error,
+      action: "save the source",
+    }));
   }
 
   return (
-    <Card className="flex flex-col gap-md bg-card p-4" aria-label={SOURCE_PANEL_TITLE}>
+    <Card className="flex flex-col gap-md bg-card p-4" aria-label={title}>
       <div className="flex items-center justify-between gap-md">
-        <span className="font-mono text-sm font-medium text-foreground">{SOURCE_PANEL_TITLE}</span>
-        {editing ? (
-          <div className="flex items-center gap-xs">
-            <Button type="button" variant="ghost" size="sm" onClick={cancelEdit}>
-              {CANCEL_EDIT_LABEL}
-            </Button>
-            <Button type="button" variant="secondary" size="sm" disabled={!changed} onClick={() => setDialogOpen(true)}>
-              {SAVE_SOURCE_LABEL}
-            </Button>
-          </div>
-        ) : (
-          <div className="flex items-center gap-xs">
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              aria-expanded={expanded}
-              aria-controls={SOURCE_PANES_ID}
-              onClick={() => setExpanded((v) => !v)}
-            >
-              {expanded ? HIDE_SOURCE_LABEL : VIEW_SOURCE_LABEL}
-            </Button>
-            <Button type="button" variant="outline" size="sm" onClick={enterEdit}>
-              <PencilIcon size={14} /> {EDIT_SOURCE_LABEL}
-            </Button>
-          </div>
-        )}
+        <span className="font-mono text-sm font-medium text-foreground">{title}</span>
+        <EditorActions
+          editing={editing}
+          expanded={expanded}
+          changed={changed}
+          panelId={panelId}
+          onCancel={cancelEdit}
+          onSave={() => setDialogOpen(true)}
+          onToggle={() => setExpanded((value) => !value)}
+          onEdit={enterEdit}
+        />
       </div>
 
       {expanded || editing ? (
-        <div id={SOURCE_PANES_ID} className="flex flex-col gap-md">
-          <Tabs value={active} onValueChange={(v) => setActive(v as SourceField)}>
-            <TabsList>
-              <TabsTrigger value={SOURCE_FIELD.skill}>{SKILL_DOC_LABEL}</TabsTrigger>
-              <TabsTrigger value={SOURCE_FIELD.trigger}>{TRIGGER_DOC_LABEL}</TabsTrigger>
-            </TabsList>
-            <TabsContent value={SOURCE_FIELD.skill} className="mt-md">
-              <DocumentPane
-                label={SKILL_DOC_LABEL}
-                editing={editing}
-                base={base[SOURCE_FIELD.skill]}
-                draft={draft[SOURCE_FIELD.skill]}
-                emptyHint=""
-                onChange={setActiveDraft}
-              />
-            </TabsContent>
-            <TabsContent value={SOURCE_FIELD.trigger} className="mt-md">
-              <DocumentPane
-                label={TRIGGER_DOC_LABEL}
-                editing={editing}
-                base={base[SOURCE_FIELD.trigger]}
-                draft={draft[SOURCE_FIELD.trigger]}
-                emptyHint={TRIGGER_DOC_EMPTY}
-                onChange={setActiveDraft}
-              />
-            </TabsContent>
-          </Tabs>
-
-          {editing && changed ? <ChangePreview current={activeBase} pending={activeDraft} stale={staleReloaded} /> : null}
+        <div id={panelId} className="flex flex-col gap-md">
+          <DocumentPane
+            label={label}
+            editing={editing}
+            value={editing ? draft : base}
+            emptyHint={field === SOURCE_FIELD.trigger ? TRIGGER_DOC_EMPTY : ""}
+            onChange={setDraft}
+          />
+          {editing && changed ? (
+            <ChangePreview current={base} pending={draft} stale={staleReloaded} />
+          ) : null}
           {error ? <Alert variant="destructive">{error}</Alert> : null}
         </div>
       ) : null}
@@ -255,20 +224,66 @@ export default function SkillEditor({
   );
 }
 
-// One document's viewer (read-only mono block + copy) or editor (Textarea). The
-// active tab drives which document `onChange` writes to via the parent.
+function EditorActions({
+  editing,
+  expanded,
+  changed,
+  panelId,
+  onCancel,
+  onSave,
+  onToggle,
+  onEdit,
+}: {
+  editing: boolean;
+  expanded: boolean;
+  changed: boolean;
+  panelId: string;
+  onCancel: () => void;
+  onSave: () => void;
+  onToggle: () => void;
+  onEdit: () => void;
+}) {
+  if (editing) {
+    return (
+      <div className="flex items-center gap-xs">
+        <Button type="button" variant="ghost" size="sm" onClick={onCancel}>
+          {CANCEL_EDIT_LABEL}
+        </Button>
+        <Button type="button" variant="secondary" size="sm" disabled={!changed} onClick={onSave}>
+          {SAVE_SOURCE_LABEL}
+        </Button>
+      </div>
+    );
+  }
+  return (
+    <div className="flex items-center gap-xs">
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        aria-expanded={expanded}
+        aria-controls={panelId}
+        onClick={onToggle}
+      >
+        {expanded ? HIDE_SOURCE_LABEL : VIEW_SOURCE_LABEL}
+      </Button>
+      <Button type="button" variant="outline" size="sm" onClick={onEdit}>
+        <PencilIcon size={14} /> {EDIT_SOURCE_LABEL}
+      </Button>
+    </div>
+  );
+}
+
 function DocumentPane({
   label,
   editing,
-  base,
-  draft,
+  value,
   emptyHint,
   onChange,
 }: {
   label: string;
   editing: boolean;
-  base: string;
-  draft: string;
+  value: string;
   emptyHint: string;
   onChange: (value: string) => void;
 }) {
@@ -276,25 +291,23 @@ function DocumentPane({
     return (
       <Textarea
         aria-label={`Edit ${label}`}
-        value={draft}
-        onChange={(e) => onChange(e.target.value)}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
         className="min-h-64 w-full resize-y font-mono text-xs leading-mono"
       />
     );
   }
-  if (base.length === 0) {
-    return <p className="text-sm text-muted-foreground">{emptyHint}</p>;
-  }
+  if (value.length === 0) return <p className="text-sm text-muted-foreground">{emptyHint}</p>;
   return (
     <div className="relative">
       <div className="absolute right-xs top-xs">
-        <CopyButton value={base} label={`Copy ${label}`} />
+        <CopyButton value={value} label={`Copy ${label}`} />
       </div>
       <pre
         aria-label={label}
         className="max-h-96 overflow-auto rounded-md border border-border bg-muted/30 px-3 py-2 font-mono text-xs leading-mono text-foreground"
       >
-        {base}
+        {value}
       </pre>
     </div>
   );

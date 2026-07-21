@@ -34,6 +34,7 @@ export const CONNECTION_STATUS = {
   CONNECTING: "connecting",
   LIVE: "live",
   RECONNECTING: "reconnecting",
+  OFFLINE: "offline",
 } as const;
 export type ConnectionStatus =
   (typeof CONNECTION_STATUS)[keyof typeof CONNECTION_STATUS];
@@ -68,6 +69,9 @@ type Entry = {
   // the initial (SSR-seeded) connect from a reconnect — only the latter
   // backfills. Lives on the mutable Entry, never a passed primitive.
   hasConnectedOnce: boolean;
+  // An outage before the first successful open still creates a history gap.
+  // The next open backfills even though `hasConnectedOnce` is still false.
+  hadConnectionError: boolean;
   // Newest server-confirmed created_at (epoch ms) — advanced only by the SSR
   // seed and successful backfill pages, never by client-clock-stamped live or
   // optimistic rows, and never by a failed backfill (so a failure cannot seal
@@ -82,6 +86,7 @@ const IDLE_RELEASE_MS = 30_000;
 const RECONNECT_BACKOFF_BASE_MS = 1_000;
 const RECONNECT_BACKOFF_CAP_MS = 15_000;
 const RECONNECT_MAX_BACKOFF_ATTEMPTS = 5;
+const MAX_AUTOMATIC_RECONNECTS = 5;
 
 const EMPTY_SNAPSHOT: FleetStreamSnapshot = Object.freeze({
   events: [],
@@ -107,16 +112,16 @@ function setEvents(
 }
 
 function startEventSource(entry: Entry, fleetId: string): void {
-  if (entry.eventSource) return;
   const url = streamFleetEventsUrl(entry.workspaceId, fleetId);
   const es = new EventSource(url);
   entry.eventSource = es;
   es.onopen = () => {
-    const isReconnect = entry.hasConnectedOnce;
+    const needsBackfill = entry.hasConnectedOnce || entry.hadConnectionError;
     entry.hasConnectedOnce = true;
+    entry.hadConnectionError = false;
     entry.reconnectAttempts = 0;
     patchSnapshot(entry, { connectionStatus: CONNECTION_STATUS.LIVE });
-    if (isReconnect) void backfillMissedFrames(entry, fleetId);
+    if (needsBackfill) void backfillMissedFrames(entry, fleetId);
   };
   es.onmessage = (e) => onFrame(entry, e);
   es.onerror = () => onEventSourceError(entry, fleetId);
@@ -174,8 +179,14 @@ function onFrame(entry: Entry, e: MessageEvent): void {
 function onEventSourceError(entry: Entry, fleetId: string): void {
   entry.eventSource?.close();
   entry.eventSource = null;
-  patchSnapshot(entry, { connectionStatus: CONNECTION_STATUS.RECONNECTING });
+  entry.hadConnectionError = true;
+  if (entry.reconnectTimer) return;
   entry.reconnectAttempts += 1;
+  if (entry.reconnectAttempts > MAX_AUTOMATIC_RECONNECTS) {
+    patchSnapshot(entry, { connectionStatus: CONNECTION_STATUS.OFFLINE });
+    return;
+  }
+  patchSnapshot(entry, { connectionStatus: CONNECTION_STATUS.RECONNECTING });
   const delayMs = Math.min(
     RECONNECT_BACKOFF_BASE_MS *
       2 ** Math.min(entry.reconnectAttempts, RECONNECT_MAX_BACKOFF_ATTEMPTS),
@@ -185,6 +196,18 @@ function onEventSourceError(entry: Entry, fleetId: string): void {
     entry.reconnectTimer = null;
     startEventSource(entry, fleetId);
   }, delayMs);
+}
+
+export function retryConnection(fleetId: string): void {
+  const entry = REGISTRY.get(fleetId);
+  if (!entry) return;
+  if (entry.reconnectTimer) clearTimeout(entry.reconnectTimer);
+  entry.reconnectTimer = null;
+  entry.eventSource?.close();
+  entry.eventSource = null;
+  entry.reconnectAttempts = 0;
+  patchSnapshot(entry, { connectionStatus: CONNECTION_STATUS.CONNECTING });
+  startEventSource(entry, fleetId);
 }
 
 function teardown(entry: Entry, fleetId: string): void {
@@ -210,6 +233,7 @@ function createEntry(workspaceId: string, initial: EventRow[]): Entry {
     idleTimer: null,
     tempCounter: 0,
     hasConnectedOnce: false,
+    hadConnectionError: false,
     serverSinceMs: maxServerCreatedAt(null, initial),
     backfillInFlight: false,
   };
@@ -276,14 +300,23 @@ export function reconcileOptimistic(
   fleetId: string,
   tempId: string,
   realEventId: string,
-): void {
+): boolean {
   const entry = REGISTRY.get(fleetId);
-  if (!entry) return;
-  setEvents(entry, (prev) =>
-    prev.map((ev) =>
-      ev.id === tempId ? { ...ev, id: realEventId, status: STATUS_RECEIVED } : ev,
-    ),
-  );
+  if (!entry) return false;
+  let alreadyComplete = false;
+  setEvents(entry, (prev) => {
+    const serverEvent = prev.find((event) => event.id === realEventId);
+    if (serverEvent) {
+      alreadyComplete = serverEvent.status !== STATUS_RECEIVED;
+      return prev.filter((event) => event.id !== tempId);
+    }
+    return prev.map((event) =>
+      event.id === tempId
+        ? { ...event, id: realEventId, status: STATUS_RECEIVED }
+        : event,
+    );
+  });
+  return alreadyComplete;
 }
 
 // A steer that failed server-side (the Server Action returned ok:false

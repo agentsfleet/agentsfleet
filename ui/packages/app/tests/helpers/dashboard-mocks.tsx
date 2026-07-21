@@ -72,6 +72,7 @@ const LUCIDE_ICONS = [
   "BotIcon", "PlugIcon", "CheckCircle2Icon", "CircleHelpIcon", "LayoutTemplateIcon",
   "BookOpenIcon", "LibraryIcon", "ServerIcon", "MenuIcon", "PanelLeftCloseIcon", "PanelLeftOpenIcon",
   "BrainIcon",
+  "MessageSquareIcon", "Code2Icon",
 ] as const;
 
 export function lucideMock() {

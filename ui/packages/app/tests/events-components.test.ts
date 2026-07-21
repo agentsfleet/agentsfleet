@@ -48,12 +48,12 @@ function row(over: Partial<EventRow> = {}): EventRow {
   };
 }
 
-function renderList(initial: EventsPage) {
+function renderList(initial: EventsPage, fleetId?: string) {
   return render(
     React.createElement(
       TooltipProvider,
       null,
-      React.createElement(EventsList, { workspaceId: "ws_1", initial }),
+      React.createElement(EventsList, { workspaceId: "ws_1", initial, fleetId }),
     ),
   );
 }
@@ -143,6 +143,26 @@ describe("EventsList — the standard workspace events table", () => {
       next_cursor: null,
     });
     expect(screen.getByText("abc12345")).toBeTruthy();
+  });
+
+  it("fleet scope removes the Fleet column and keeps Result, Cost, Tokens, and Duration", () => {
+    renderList({ items: [row({ cost_nanos: 20_000_000 })], next_cursor: null }, "zomb_1234567890ab");
+    const headers = screen.getAllByRole("columnheader").map((header) => header.textContent);
+    expect(headers).toEqual(["Time", "Status", "Actor", "Type", "Result", "Cost", "Tokens", "Duration"]);
+    expect(screen.getByText("$0.02")).toBeTruthy();
+  });
+
+  it("fleet-scoped pagination preserves the fleet filter", async () => {
+    listWorkspaceEventsActionMock.mockResolvedValueOnce({
+      ok: true,
+      data: { items: [], next_cursor: null },
+    });
+    renderList({ items: [row()], next_cursor: "cur_fleet" }, "zomb_1234567890ab");
+    await userEvent.click(screen.getByRole("button", { name: /load more|next/i }));
+    await waitFor(() => expect(listWorkspaceEventsActionMock).toHaveBeenCalledWith("ws_1", {
+      cursor: "cur_fleet",
+      fleet_id: "zomb_1234567890ab",
+    }));
   });
 
   it("renders <time> with ISO when created_at is valid; omits when invalid", () => {
@@ -235,6 +255,6 @@ describe("EventsList — the standard workspace events table", () => {
 
   it("renders dashes when the row carries neither figure", () => {
     renderList({ items: [row({ tokens: null, wall_ms: null })], next_cursor: null });
-    expect(screen.getAllByText("—").length).toBe(2);
+    expect(screen.getAllByText("—").length).toBe(3);
   });
 });
