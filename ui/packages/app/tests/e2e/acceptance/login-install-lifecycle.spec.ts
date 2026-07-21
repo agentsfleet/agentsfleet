@@ -40,7 +40,7 @@ test.describe("login → install → lifecycle", () => {
 
   test.afterEach(async () => {
     const ws = await getDefaultWorkspaceId(FIXTURE_KEY.regular);
-    await cleanWorkspaceFleets(FIXTURE_KEY.regular, ws);
+    await cleanWorkspaceFleets(FIXTURE_KEY.regular, ws, "lifecycle-");
   });
 
   test("persistent fixture installs via UI then walks observe → bill → halt", async ({ page }) => {
@@ -61,7 +61,9 @@ test.describe("login → install → lifecycle", () => {
     // Post-install: form redirects to detail page. Recent Activity section
     // is the section-scaffolding assertion (matches logs-detail downgrade).
     await expect(page).toHaveURL(workspaceUrlPattern(`fleets/${fleetId}`));
-    await expect(page.getByRole("region", { name: "Recent Activity" })).toBeVisible();
+    // The detail page opens on Chat — the conversation card is the
+    // post-install scaffolding assertion.
+    await expect(page.getByLabel("Fleet chat")).toBeVisible({ timeout: 15_000 });
 
     // Listing shows the new row live.
     await page.goto(workspaceHref(workspaceId, "fleets"));
