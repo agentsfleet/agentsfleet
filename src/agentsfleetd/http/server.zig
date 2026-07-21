@@ -21,6 +21,21 @@ const logging = @import("log");
 const log = logging.scoped(.http);
 
 const DEFAULT_MAX_CLIENTS = 1024;
+
+/// Room for a request's status line and headers. httpz defaults to 4 KiB and
+/// answers 431 past it — the narrowest header limit anywhere in the
+/// production chain, and smaller than a real authenticated request can be:
+/// a session bearer token runs past a kilobyte on its own, and each proxy the
+/// request crosses appends its own forwarding and tracing headers before this
+/// server reads them. Because the dashboard proxy returns the upstream status
+/// verbatim, a refusal born here surfaces in a browser as a 431 against a
+/// request whose own headers were small.
+///
+/// 16 KiB matches the default the Node proxy in front of this server already
+/// tolerates, so this server stops being the tightest limit in the chain.
+/// The cost is bounded: buffers are per connection, and only `min_conn` of
+/// them are allocated ahead of demand.
+const MAX_REQUEST_HEADER_BYTES: usize = 16 * 1024;
 pub const S_AUTH_MW_FAILURE_DETAIL = "Could not verify the request. Try again; if it persists, contact support.";
 
 // Instance-wide shed headers; shared retry values live in handlers/common.zig.
@@ -30,7 +45,7 @@ const HEADER_RATELIMIT_RESET = "X-RateLimit-Reset";
 const FMT_UNSIGNED = "{d}";
 const S_RATELIMIT_REMAINING_NONE = "0";
 
-const ServerConfig = struct {
+pub const ServerConfig = struct {
     port: u16 = 3000,
     /// Dual-stack "::" accepts both IPv4 and IPv6 connections.
     /// httpz (pure Zig) uses std.posix — no C-layer IPV6_V6ONLY concern.
@@ -95,6 +110,7 @@ pub const Server = struct {
                 },
                 .request = .{
                     .max_body_size = common.MAX_BODY_SIZE,
+                    .buffer_size = MAX_REQUEST_HEADER_BYTES,
                 },
             }, .{ .ctx = ctx, .registry = registry }),
             .cfg = cfg,
@@ -117,25 +133,7 @@ pub const Server = struct {
         self.inner.deinit();
         self.alloc.destroy(self);
     }
-
-    /// Convenience constructor for tests that do not exercise the middleware
-    /// fast-path. Uses a module-level dummy registry (route table is empty in
-    /// C.2, so the registry is never dereferenced during test runs).
-    fn initForTesting(io: std.Io, ctx: *handler.Context, cfg: ServerConfig) !*Server {
-        return init(io, ctx, &testing_dummy_registry, cfg);
-    }
 };
-
-/// Module-level dummy registry used by `Server.initForTesting`.
-///
-/// Fields are undefined — safe only for tests that do NOT hit authenticated
-/// routes (i.e. tests that never call dispatch, or only hit `none`-policy
-/// routes like /healthz). Integration tests that exercise bearer/admin routes
-/// must use `Server.init` with a properly-initialized registry instead.
-/// Lives in the data segment (not the stack) so `initForTesting` returns
-/// no dangling pointer.
-// SAFETY: written by surrounding init logic before any read of this storage.
-var testing_dummy_registry: auth_mw.MiddlewareRegistry = undefined;
 
 // ── Request dispatch ──────────────────────────────────────────────────────
 
@@ -270,70 +268,6 @@ fn respondNotFound(res: *httpz.Response) void {
     ;
 }
 
-test "dispatchMatchedRoute route matcher covers tenant billing endpoint" {
-    const matched = router.match("/v1/tenants/me/billing", .GET) orelse return error.TestExpectedEqual;
-    switch (matched) {
-        .get_tenant_billing => {},
-        else => return error.TestExpectedEqual,
-    }
-}
-
-// ── ServerConfig tests ───────────────────────────────────────────────────
-
-test "ServerConfig default interface is dual-stack (::)" {
-    const cfg = ServerConfig{};
-    try std.testing.expectEqualStrings("::", cfg.interface);
-}
-
-test "ServerConfig default interface is NOT IPv4-only — regression guard" {
-    const cfg = ServerConfig{};
-    // The old default "0.0.0.0" caused Fly 6PN (IPv6) tunnel connections to be refused.
-    const is_ipv4_only = std.mem.eql(u8, cfg.interface, "0.0.0.0") or
-        std.mem.eql(u8, cfg.interface, "127.0.0.1");
-    try std.testing.expect(!is_ipv4_only);
-}
-
-test "ServerConfig accepts custom IPv4 interface override" {
-    const cfg = ServerConfig{ .interface = "0.0.0.0" };
-    try std.testing.expectEqualStrings("0.0.0.0", cfg.interface);
-}
-
-test "ServerConfig accepts custom IPv6 loopback interface" {
-    const cfg = ServerConfig{ .interface = "::1" };
-    try std.testing.expectEqualStrings("::1", cfg.interface);
-}
-
-test "ServerConfig default port is 3000" {
-    const cfg = ServerConfig{};
-    try std.testing.expectEqual(@as(u16, 3000), cfg.port);
-}
-
-test "ServerConfig defaults are stable — full struct check" {
-    const cfg = ServerConfig{};
-    try std.testing.expectEqual(@as(u16, 3000), cfg.port);
-    try std.testing.expectEqualStrings("::", cfg.interface);
-    try std.testing.expectEqual(@as(i16, 1), cfg.threads);
-    try std.testing.expectEqual(@as(i16, 1), cfg.workers);
-    try std.testing.expectEqual(@as(?isize, DEFAULT_MAX_CLIENTS), cfg.max_clients);
-}
-
-// ── Server lifecycle tests ───────────────────────────────────────────────
-// The integration tests (rbac/tenant_provider/telemetry) cover init→listen→stop→deinit
-// end-to-end. These two unit tests lock contracts those can't reach:
-// the no-listen unwind path and pre-listen stop().
-
-test "Server.init then deinit without listen does not leak" {
-    // std.testing.allocator asserts no leaks at test exit.
-    // Catches any future refactor that allocates in init() but only frees in
-    // a path conditional on listen() having been called.
-    const alloc = std.testing.allocator;
-    var ctx: handler.Context = undefined;
-    ctx.alloc = alloc;
-    const srv = try Server.initForTesting(@import("common").globalIo(), &ctx, .{ .threads = 1, .workers = 1, .max_clients = 4 });
-
-    srv.deinit();
-}
-
 test {
     _ = @import("rbac_http_integration_test.zig");
     _ = @import("secrets_json_integration_test.zig");
@@ -342,9 +276,12 @@ test {
     _ = @import("webhook_test_fixtures.zig");
     _ = @import("webhook_http_integration_test.zig");
     _ = @import("auth_mw_failure_integration_test.zig");
+    _ = @import("request_header_size_integration_test.zig");
     _ = @import("test_port.zig");
     // M102 §3 — credential-mint handler unit tests (outcome→wire mapping).
     _ = @import("handlers/runner/credentials_mint.zig");
     // Declarative route → required-scope table tests.
     _ = @import("route_scopes_test.zig");
+    // The server module's own unit tests (config defaults, lifecycle unwind).
+    _ = @import("server_test.zig");
 }
