@@ -116,13 +116,19 @@ function TileShell({ fleet, workspaceId, kind, eyebrow, eyebrowTitle, feed, chil
           <div className="flex items-center gap-2">
             {eyebrow ? (
               eyebrowTitle ? (
-                // The wrapper below is pointer-events-none so clicks fall through
-                // to the overlay link; the trigger opts back in so the tooltip is
-                // reachable by hover AND keyboard focus — a plain title attribute
-                // would be unreachable here.
+                // Two things block this tooltip and both must be undone. The
+                // content wrapper is pointer-events-none (clicks fall through to
+                // the card-wide link), so the trigger opts back in; and the link
+                // is absolutely positioned, which paints it above in-flow
+                // content, so the trigger takes `relative z-10` to sit above the
+                // link and actually receive the hover. Without the stacking fix
+                // the pointer-events opt-in alone is dead.
                 <Tooltip>
                   <TooltipTrigger
-                    className={cn(EYEBROW_CLASS, "pointer-events-auto cursor-default border-0 bg-transparent p-0 text-text-subtle")}
+                    className={cn(
+                      EYEBROW_CLASS,
+                      "relative z-10 pointer-events-auto cursor-default border-0 bg-transparent p-0 text-text-subtle",
+                    )}
                   >
                     {eyebrow}
                   </TooltipTrigger>
