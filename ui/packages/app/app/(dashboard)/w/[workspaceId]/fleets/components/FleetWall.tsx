@@ -1,6 +1,6 @@
 "use client";
 
-import { useDeferredValue, useMemo, useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { PlusIcon } from "lucide-react";
 import {
@@ -8,7 +8,6 @@ import {
   Button,
   cn,
   EYEBROW_CLASS,
-  Input,
   TooltipButton,
   WakePulse,
 } from "@agentsfleet/design-system";
@@ -34,29 +33,16 @@ type Props = {
 export default function FleetWall({ workspaceId, initialFleets, initialCursor }: Props) {
   const [fleets, setFleets] = useState<Fleet[]>(initialFleets);
   const [cursor, setCursor] = useState<string | null>(initialCursor);
-  const [query, setQuery] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
-  const deferredQuery = useDeferredValue(query);
-
-  const filtered = useMemo(() => {
-    const q = deferredQuery.trim().toLowerCase();
-    if (!q) return fleets;
-    return fleets.filter(
-      (z) =>
-        z.name.toLowerCase().includes(q) ||
-        z.id.toLowerCase().includes(q) ||
-        z.status.toLowerCase().includes(q),
-    );
-  }, [fleets, deferredQuery]);
 
   const liveTotal = useMemo(
-    () => filtered.filter((z) => z.status === AGENTSFLEET_STATUS.ACTIVE).length,
-    [filtered],
+    () => fleets.filter((z) => z.status === AGENTSFLEET_STATUS.ACTIVE).length,
+    [fleets],
   );
   const streamFleetIds = useMemo(
-    () => filtered.filter((z) => tileShouldStream(z.status)).map((z) => z.id),
-    [filtered],
+    () => fleets.filter((z) => tileShouldStream(z.status)).map((z) => z.id),
+    [fleets],
   );
 
   function loadMore(next: string) {
@@ -80,15 +66,7 @@ export default function FleetWall({ workspaceId, initialFleets, initialCursor }:
 
   return (
     <>
-      <div className="mb-4 flex items-center gap-3">
-        <Input
-          type="search"
-          placeholder="Search loaded fleets by name, status, or id…"
-          value={query}
-          onChange={(e) => setQuery(e.currentTarget.value)}
-          aria-label="Search fleets"
-          className="flex-1"
-        />
+      <div className="mb-4 flex items-center justify-end gap-3">
         {liveTotal > 0 ? (
           <span
             className={cn(EYEBROW_CLASS, "text-muted-foreground inline-flex items-center gap-2")}
@@ -109,19 +87,13 @@ export default function FleetWall({ workspaceId, initialFleets, initialCursor }:
         </TooltipButton>
       </div>
 
-      {filtered.length === 0 ? (
-        <p className="text-sm text-muted-foreground">
-          No fleets match &ldquo;{deferredQuery}&rdquo; in the loaded set.
-        </p>
-      ) : (
-        <WorkspaceStreamProvider workspaceId={workspaceId} fleetIds={streamFleetIds}>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {filtered.map((z) => (
-              <FleetTile key={z.id} fleet={z} workspaceId={workspaceId} />
-            ))}
-          </div>
-        </WorkspaceStreamProvider>
-      )}
+      <WorkspaceStreamProvider workspaceId={workspaceId} fleetIds={streamFleetIds}>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {fleets.map((z) => (
+            <FleetTile key={z.id} fleet={z} workspaceId={workspaceId} />
+          ))}
+        </div>
+      </WorkspaceStreamProvider>
 
       {error ? (
         <Alert variant="destructive" className="mt-3">{error}</Alert>

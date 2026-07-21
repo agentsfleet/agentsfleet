@@ -7,19 +7,17 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // vi.mock is hoisted above the static actions import, so the mock fns must be
 // created via vi.hoisted() to exist when the factories run (see runners.test.ts).
-const { withTokenMock, listFleetEventsMock, listWorkspaceEventsMock } = vi.hoisted(() => ({
+const { withTokenMock, listWorkspaceEventsMock } = vi.hoisted(() => ({
   withTokenMock: vi.fn(),
-  listFleetEventsMock: vi.fn(),
   listWorkspaceEventsMock: vi.fn(),
 }));
 
 vi.mock("@/lib/actions/with-token", () => ({ withToken: withTokenMock }));
 vi.mock("@/lib/api/events", () => ({
-  listFleetEvents: listFleetEventsMock,
   listWorkspaceEvents: listWorkspaceEventsMock,
 }));
 
-import { listFleetEventsAction, listWorkspaceEventsAction } from "@/app/(dashboard)/w/[workspaceId]/events/actions";
+import { listWorkspaceEventsAction } from "@/app/(dashboard)/w/[workspaceId]/events/actions";
 
 const PAGE = { items: [], next_cursor: null };
 
@@ -32,23 +30,6 @@ beforeEach(() => {
   }));
 });
 afterEach(() => vi.resetAllMocks());
-
-describe("listFleetEventsAction — thin forwarder", () => {
-  it("threads the token between fleetId and opts when opts is provided", async () => {
-    listFleetEventsMock.mockResolvedValueOnce(PAGE);
-    const opts = { cursor: "c1", actor: "alice", since: "2026-06-01", limit: 50 };
-    const r = await listFleetEventsAction("ws1", "z1", opts);
-    expect(listFleetEventsMock).toHaveBeenCalledWith("ws1", "z1", "tok", opts);
-    expect(r).toEqual({ ok: true, data: PAGE });
-  });
-
-  it("forwards undefined opts (omitted) with the token still in position", async () => {
-    listFleetEventsMock.mockResolvedValueOnce(PAGE);
-    const r = await listFleetEventsAction("ws2", "z2");
-    expect(listFleetEventsMock).toHaveBeenCalledWith("ws2", "z2", "tok", undefined);
-    expect(r).toEqual({ ok: true, data: PAGE });
-  });
-});
 
 describe("listWorkspaceEventsAction — thin forwarder", () => {
   it("threads the token between workspaceId and opts when opts is provided", async () => {
