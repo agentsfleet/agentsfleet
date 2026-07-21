@@ -5,14 +5,13 @@ import SkillEditor from "./SkillEditor";
 import type { FleetDetail } from "@/lib/types";
 import { EVENTS } from "@/lib/analytics/events";
 import {
-  HIDE_SOURCE_LABEL,
   OUTCOME,
   SAVE_NEXT_WAKE_NOTICE,
   SAVE_STALE_RELOADED_NOTICE,
   SOURCE_FIELD,
   TRIGGER_DOC_EMPTY,
-  TRIGGER_DOC_LABEL,
   VIEW_SOURCE_LABEL,
+  type SourceField,
 } from "./console-copy";
 
 const saveFleetSourceAction = vi.fn();
@@ -21,19 +20,21 @@ const captureProductEvent = vi.fn();
 const routerRefresh = vi.fn();
 
 vi.mock("../../actions", () => ({
-  saveFleetSourceAction: (...a: unknown[]) => saveFleetSourceAction(...a),
-  getFleetDetailAction: (...a: unknown[]) => getFleetDetailAction(...a),
+  saveFleetSourceAction: (...args: unknown[]) => saveFleetSourceAction(...args),
+  getFleetDetailAction: (...args: unknown[]) => getFleetDetailAction(...args),
 }));
-vi.mock("@/lib/analytics/posthog", () => ({ captureProductEvent: (...a: unknown[]) => captureProductEvent(...a) }));
+vi.mock("@/lib/analytics/posthog", () => ({
+  captureProductEvent: (...args: unknown[]) => captureProductEvent(...args),
+}));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: routerRefresh }) }));
 
 function detail(over: Partial<FleetDetail> = {}): FleetDetail {
   return {
     id: "agt_1",
-    name: "platform-ops",
+    name: "support-triage",
     status: "active",
     source_markdown: "# SKILL\noriginal",
-    trigger_markdown: null,
+    trigger_markdown: "# TRIGGER\noriginal",
     bundle_content_hash: null,
     triggers: null,
     events_processed: 0,
@@ -44,17 +45,25 @@ function detail(over: Partial<FleetDetail> = {}): FleetDetail {
   };
 }
 
-function renderEditor() {
+function renderEditor(field: SourceField = SOURCE_FIELD.skill) {
   return render(
-    <SkillEditor workspaceId="ws_1" fleetId="agt_1" sourceMarkdown="# SKILL\noriginal" triggerMarkdown={null} etag='"seed"' />,
+    <SkillEditor
+      workspaceId="ws_1"
+      fleetId="agt_1"
+      field={field}
+      sourceMarkdown="# SKILL\noriginal"
+      triggerMarkdown="# TRIGGER\noriginal"
+      etag={'"seed"'}
+    />,
   );
 }
 
-async function enterEditAndType(value: string) {
-  renderEditor();
+async function edit(field: SourceField, value: string) {
+  renderEditor(field);
   const user = userEvent.setup({ delay: null });
   await user.click(screen.getByRole("button", { name: /Edit/ }));
-  fireEvent.change(screen.getByRole("textbox", { name: "Edit SKILL.md" }), { target: { value } });
+  const label = field === SOURCE_FIELD.skill ? "Edit SKILL.md" : "Edit TRIGGER.md";
+  fireEvent.change(screen.getByRole("textbox", { name: label }), { target: { value } });
   return user;
 }
 
@@ -67,287 +76,153 @@ beforeEach(() => {
 afterEach(() => cleanup());
 
 describe("SkillEditor", () => {
-  it("test_source_card_collapsed_by_default", () => {
+  it("renders one collapsed document without internal tabs", () => {
     renderEditor();
-    // The steer thread is the page's primary surface — the document viewer
-    // renders only on request. Header controls stay reachable.
-    expect(screen.queryByRole("tab", { name: "SKILL.md" })).toBeNull();
-    expect(screen.queryAllByLabelText("SKILL.md")).toHaveLength(0);
     expect(screen.getByRole("button", { name: VIEW_SOURCE_LABEL })).toBeTruthy();
-    expect(screen.getByRole("button", { name: /Edit/ })).toBeTruthy();
+    expect(screen.queryByRole("tab")).toBeNull();
+    expect(screen.queryByLabelText("SKILL.md")).toBeNull();
   });
 
-  it("test_source_card_expand_toggle", async () => {
+  it("expands the selected skill document", async () => {
     renderEditor();
-    const user = userEvent.setup({ delay: null });
-    await user.click(screen.getByRole("button", { name: VIEW_SOURCE_LABEL }));
-    const pre = screen.getAllByLabelText("SKILL.md").find((node) => node.tagName === "PRE");
-    expect(pre?.textContent).toContain("original");
-    // The trigger pane keeps its empty hint when no TRIGGER.md exists.
-    await user.click(screen.getByRole("tab", { name: TRIGGER_DOC_LABEL }));
-    expect(screen.getByText(TRIGGER_DOC_EMPTY)).toBeTruthy();
-    await user.click(screen.getByRole("button", { name: HIDE_SOURCE_LABEL }));
-    expect(screen.queryByRole("tab", { name: "SKILL.md" })).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: VIEW_SOURCE_LABEL }));
+    expect(screen.getByLabelText("SKILL.md").textContent).toContain("original");
+    expect(screen.queryByLabelText("TRIGGER.md")).toBeNull();
   });
 
-  it("test_edit_auto_expands_and_pins_open", async () => {
-    renderEditor();
-    const user = userEvent.setup({ delay: null });
-    await user.click(screen.getByRole("button", { name: /Edit/ }));
-    // Edit from collapsed lands straight in the editor…
-    const box = screen.getByRole("textbox", { name: "Edit SKILL.md" });
-    fireEvent.change(box, { target: { value: "# SKILL\ndraft in progress" } });
-    // …and no collapse control exists while a draft is live, so the draft can
-    // never be hidden mid-edit.
-    expect(screen.queryByRole("button", { name: HIDE_SOURCE_LABEL })).toBeNull();
-    expect(screen.queryByRole("button", { name: VIEW_SOURCE_LABEL })).toBeNull();
-    expect(screen.getByRole("textbox", { name: "Edit SKILL.md" })).toHaveProperty(
-      "value",
-      "# SKILL\ndraft in progress",
+  it("shows the empty trigger message only on the Trigger view", async () => {
+    render(
+      <SkillEditor
+        workspaceId="ws_1"
+        fleetId="agt_1"
+        field={SOURCE_FIELD.trigger}
+        sourceMarkdown="# SKILL"
+        triggerMarkdown={null}
+        etag={'"seed"'}
+      />,
     );
+    await userEvent.click(screen.getByRole("button", { name: VIEW_SOURCE_LABEL }));
+    expect(screen.getByText(TRIGGER_DOC_EMPTY)).toBeTruthy();
   });
 
-  it("keeps the card expanded after leaving edit mode via Cancel", async () => {
-    renderEditor();
-    const user = userEvent.setup({ delay: null });
-    await user.click(screen.getByRole("button", { name: /Edit/ }));
-    await user.click(screen.getByRole("button", { name: "Cancel" }));
-    // Edit pinned the card open; Cancel exits editing but does not yank the
-    // viewer away — the operator keeps reading what they were about to change.
-    expect(screen.getByRole("button", { name: HIDE_SOURCE_LABEL })).toBeTruthy();
-    expect(screen.getAllByLabelText("SKILL.md").some((node) => node.tagName === "PRE")).toBe(true);
-  });
-
-  it("test_source_save_next_wake_semantics", async () => {
-    saveFleetSourceAction.mockResolvedValue({ ok: true, data: { etag: '"next"', config_revision: 2 } });
-    const user = await enterEditAndType("# SKILL\nedited");
-
+  it.each([
+    [SOURCE_FIELD.skill, "# SKILL\nedited", { source_markdown: "# SKILL\nedited" }],
+    [SOURCE_FIELD.trigger, "# TRIGGER\nedited", { trigger_markdown: "# TRIGGER\nedited" }],
+  ] as const)("saves only the selected %s document", async (field, value, body) => {
+    saveFleetSourceAction.mockResolvedValue({
+      ok: true,
+      data: { etag: '"next"', config_revision: 2 },
+    });
+    const user = await edit(field, value);
     await user.click(screen.getByRole("button", { name: "Save changes" }));
-    // The dialog states the exact next-wake contract.
     expect(screen.getByText(SAVE_NEXT_WAKE_NOTICE)).toBeTruthy();
     await user.click(screen.getByRole("button", { name: "Save" }));
-
-    await waitFor(() =>
-      expect(saveFleetSourceAction).toHaveBeenCalledWith("ws_1", "agt_1", { source_markdown: "# SKILL\nedited" }, '"seed"'),
-    );
-    // No reload / re-provision call on the happy path.
-    expect(getFleetDetailAction).not.toHaveBeenCalled();
-  });
-
-  it("keeps the confirm pending until the source save finishes", async () => {
-    let finish!: (value: unknown) => void;
-    saveFleetSourceAction.mockReturnValueOnce(new Promise((resolve) => { finish = resolve; }));
-    const user = await enterEditAndType("# SKILL\nedited");
-    await user.click(screen.getByRole("button", { name: "Save changes" }));
-
-    const confirm = screen.getByRole("button", { name: "Save" });
-    await user.click(confirm);
-    expect(confirm).toHaveProperty("disabled", true);
-    await user.click(confirm);
-    expect(saveFleetSourceAction).toHaveBeenCalledTimes(1);
-
-    finish({ ok: true, data: { etag: '"next"', config_revision: 2 } });
-    await waitFor(() => expect(routerRefresh).toHaveBeenCalledTimes(1));
-  });
-
-  it("preserves an unsaved sibling draft after saving the active document", async () => {
-    saveFleetSourceAction.mockResolvedValue({ ok: true, data: { etag: '"next"', config_revision: 2 } });
-    renderEditor();
-    const user = userEvent.setup({ delay: null });
-    await user.click(screen.getByRole("button", { name: /Edit/ }));
-    fireEvent.change(screen.getByRole("textbox", { name: "Edit SKILL.md" }), {
-      target: { value: "# SKILL\nsaved edit" },
-    });
-    await user.click(screen.getByRole("tab", { name: TRIGGER_DOC_LABEL }));
-    fireEvent.change(screen.getByRole("textbox", { name: "Edit TRIGGER.md" }), {
-      target: { value: "# TRIGGER\nsaved edit" },
-    });
-    await user.click(screen.getByRole("button", { name: "Save changes" }));
-    await user.click(screen.getByRole("button", { name: "Save" }));
-
-    await waitFor(() => expect(screen.getByRole("textbox", { name: "Edit SKILL.md" })).toHaveProperty(
-      "value",
-      "# SKILL\nsaved edit",
-    ));
-  });
-
-  it("preserves the active draft when refreshed props arrive during editing", async () => {
-    const view = renderEditor();
-    const user = userEvent.setup({ delay: null });
-    await user.click(screen.getByRole("button", { name: /Edit/ }));
-    fireEvent.change(screen.getByRole("textbox", { name: "Edit SKILL.md" }), {
-      target: { value: "# SKILL\nactive draft" },
-    });
-
-    view.rerender(
-      <SkillEditor
-        workspaceId="ws_1"
-        fleetId="agt_1"
-        sourceMarkdown={"# SKILL\nserver refresh"}
-        triggerMarkdown={"# TRIGGER\nserver refresh"}
-        etag='"fresh"'
-      />,
-    );
-    await waitFor(() => expect(screen.getByRole("textbox", { name: "Edit SKILL.md" })).toHaveProperty(
-      "value",
-      "# SKILL\nactive draft",
-    ));
-    await user.click(screen.getByRole("tab", { name: TRIGGER_DOC_LABEL }));
-    expect(screen.getByRole("textbox", { name: "Edit TRIGGER.md" })).toHaveProperty(
-      "value",
-      "# TRIGGER\nserver refresh",
-    );
-  });
-
-  it("adopts refreshed source props and their ETag while idle", async () => {
-    saveFleetSourceAction.mockResolvedValue({ ok: true, data: { etag: '"next"', config_revision: 3 } });
-    const view = renderEditor();
-    view.rerender(
-      <SkillEditor
-        workspaceId="ws_1"
-        fleetId="agt_1"
-        sourceMarkdown={"# SKILL\nserver refresh"}
-        triggerMarkdown={null}
-        etag='"fresh"'
-      />,
-    );
-    const user = userEvent.setup({ delay: null });
-    await user.click(screen.getByRole("button", { name: VIEW_SOURCE_LABEL }));
-    await waitFor(() => expect(
-      screen.getAllByLabelText("SKILL.md").find((node) => node.tagName === "PRE")?.textContent,
-    ).toBe("# SKILL\nserver refresh"));
-    await user.click(screen.getByRole("button", { name: /Edit/ }));
-    fireEvent.change(screen.getByRole("textbox", { name: "Edit SKILL.md" }), {
-      target: { value: "# SKILL\nafter refresh" },
-    });
-    await user.click(screen.getByRole("button", { name: "Save changes" }));
-    await user.click(screen.getByRole("button", { name: "Save" }));
-
     await waitFor(() => expect(saveFleetSourceAction).toHaveBeenCalledWith(
       "ws_1",
       "agt_1",
-      { source_markdown: "# SKILL\nafter refresh" },
-      '"fresh"',
+      body,
+      '"seed"',
     ));
+    expect(captureProductEvent).toHaveBeenCalledWith(EVENTS.fleet_source_saved, {
+      fleet_id: "agt_1",
+      field,
+      outcome: OUTCOME.success,
+    });
+    expect(routerRefresh).toHaveBeenCalledTimes(1);
   });
 
-  it("test_source_diff_panel_shows_pending_change", async () => {
-    renderEditor();
+  it("keeps the pending edit when a stale save reloads server source", async () => {
+    saveFleetSourceAction.mockResolvedValue({ ok: false, status: 412, error: "stale" });
+    getFleetDetailAction.mockResolvedValue({
+      ok: true,
+      data: { fleet: detail({ source_markdown: "# SKILL\nnew server" }), etag: '"fresh"' },
+    });
+    const user = await edit(SOURCE_FIELD.skill, "# SKILL\nmy draft");
+    await user.click(screen.getByRole("button", { name: "Save changes" }));
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(screen.getByText(SAVE_STALE_RELOADED_NOTICE)).toBeTruthy());
+    expect(screen.getByRole("textbox", { name: "Edit SKILL.md" })).toHaveProperty(
+      "value",
+      "# SKILL\nmy draft",
+    );
+  });
+
+  it("preserves a draft when refreshed props arrive for the same document", async () => {
+    const view = renderEditor();
     const user = userEvent.setup({ delay: null });
     await user.click(screen.getByRole("button", { name: /Edit/ }));
-    // Unchanged source → no diff panel.
-    expect(screen.queryByTestId("source-diff")).toBeNull();
-    // An edit → the diff panel shows the pending change.
-    fireEvent.change(screen.getByRole("textbox", { name: "Edit SKILL.md" }), { target: { value: "# SKILL\noriginal\nadded line" } });
-    const diff = screen.getByTestId("source-diff");
-    expect(diff.textContent).toContain("added line");
-  });
-
-  it("Cancel exits edit mode and restores the original source", async () => {
-    const user = await enterEditAndType("# SKILL\nthrowaway");
-    expect(screen.getByTestId("source-diff").textContent).toContain("throwaway");
-
-    await user.click(screen.getByRole("button", { name: "Cancel" }));
-
-    expect(screen.queryByTestId("source-diff")).toBeNull();
-    expect(screen.queryByRole("textbox", { name: "Edit SKILL.md" })).toBeNull();
-    const readOnlySource = screen.getAllByLabelText("SKILL.md").find((node) => node.tagName === "PRE");
-    expect(readOnlySource?.textContent).toContain("# SKILL");
-    expect(readOnlySource?.textContent).toContain("original");
-  });
-
-  it("test_source_save_emits_event", async () => {
-    saveFleetSourceAction.mockResolvedValue({ ok: true, data: { etag: '"next"', config_revision: 2 } });
-    const user = await enterEditAndType("# SKILL\nedited");
-    await user.click(screen.getByRole("button", { name: "Save changes" }));
-    await user.click(screen.getByRole("button", { name: "Save" }));
-
-    await waitFor(() =>
-      expect(captureProductEvent).toHaveBeenCalledWith(EVENTS.fleet_source_saved, {
-        fleet_id: "agt_1",
-        field: SOURCE_FIELD.skill,
-        outcome: OUTCOME.success,
-      }),
+    fireEvent.change(screen.getByRole("textbox", { name: "Edit SKILL.md" }), {
+      target: { value: "# SKILL\nmy draft" },
+    });
+    view.rerender(
+      <SkillEditor
+        workspaceId="ws_1"
+        fleetId="agt_1"
+        field={SOURCE_FIELD.skill}
+        sourceMarkdown="# SKILL\nserver refresh"
+        triggerMarkdown="# TRIGGER"
+        etag={'"fresh"'}
+      />,
     );
-    // Privacy: fleet id + field + outcome only — never the source markdown.
-    const props = captureProductEvent.mock.calls[0]?.[1] ?? {};
-    expect(Object.keys(props).sort()).toEqual(["field", "fleet_id", "outcome"]);
+    expect(screen.getByRole("textbox", { name: "Edit SKILL.md" })).toHaveProperty(
+      "value",
+      "# SKILL\nmy draft",
+    );
   });
 
-  it("surfaces a save failure and records the failed outcome", async () => {
-    saveFleetSourceAction.mockResolvedValue({ ok: false, status: 500, error: "storage refused", errorCode: "UZ-AGT-500" });
-    const user = await enterEditAndType("# SKILL\nedited");
+  it("resets editing when navigation changes the selected document", async () => {
+    const view = renderEditor();
+    await userEvent.click(screen.getByRole("button", { name: /Edit/ }));
+    view.rerender(
+      <SkillEditor
+        workspaceId="ws_1"
+        fleetId="agt_1"
+        field={SOURCE_FIELD.trigger}
+        sourceMarkdown="# SKILL\noriginal"
+        triggerMarkdown="# TRIGGER\nserver"
+        etag={'"fresh"'}
+      />,
+    );
+    await waitFor(() => expect(screen.queryByRole("textbox")).toBeNull());
+    expect(screen.getByRole("button", { name: VIEW_SOURCE_LABEL })).toBeTruthy();
+  });
+
+  it("cancels an edit and restores the durable document", async () => {
+    await edit(SOURCE_FIELD.skill, "# SKILL\nthrow this away");
+    await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByRole("textbox")).toBeNull();
+    expect(screen.getByLabelText("SKILL.md").textContent).toContain("original");
+  });
+
+  it("surfaces a failure while reloading after a stale save", async () => {
+    saveFleetSourceAction.mockResolvedValue({ ok: false, status: 412, error: "stale" });
+    getFleetDetailAction.mockResolvedValue({
+      ok: false,
+      status: 503,
+      error: "Source reload unavailable",
+      errorCode: "UZ-AGT-503",
+    });
+    const user = await edit(SOURCE_FIELD.skill, "# SKILL\nmy draft");
     await user.click(screen.getByRole("button", { name: "Save changes" }));
     await user.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(screen.getByText(/Source reload unavailable/i)).toBeTruthy());
+  });
 
-    await waitFor(() => expect(screen.getByText(/Couldn't save the source/)).toBeTruthy());
+  it("surfaces a save failure and records only coarse analytics", async () => {
+    saveFleetSourceAction.mockResolvedValue({
+      ok: false,
+      status: 500,
+      error: "storage refused",
+      errorCode: "UZ-AGT-500",
+    });
+    const user = await edit(SOURCE_FIELD.skill, "# SKILL\nedited");
+    await user.click(screen.getByRole("button", { name: "Save changes" }));
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(screen.getByText(/storage refused/i)).toBeTruthy());
     expect(captureProductEvent).toHaveBeenCalledWith(EVENTS.fleet_source_saved, {
       fleet_id: "agt_1",
       field: SOURCE_FIELD.skill,
       outcome: OUTCOME.failure,
     });
-    expect(routerRefresh).not.toHaveBeenCalled();
-  });
-
-  it("a stale If-Match (412) reloads the current source and re-diffs — never a silent overwrite", async () => {
-    saveFleetSourceAction.mockResolvedValue({ ok: false, status: 412, error: "stale", errorCode: "UZ-AGT-014" });
-    getFleetDetailAction.mockResolvedValue({
-      ok: true,
-      data: { fleet: detail({ source_markdown: "# SKILL\nsomeone else changed this" }), etag: '"fresh"' },
-    });
-    const user = await enterEditAndType("# SKILL\nmy edit");
-    await user.click(screen.getByRole("button", { name: "Save changes" }));
-    await user.click(screen.getByRole("button", { name: "Save" }));
-
-    await waitFor(() => expect(getFleetDetailAction).toHaveBeenCalledWith("ws_1", "agt_1"));
-    // The dialog reloaded-and-rediffed against the fresh source, not overwrote it.
-    await waitFor(() => expect(screen.getByText(SAVE_STALE_RELOADED_NOTICE)).toBeTruthy());
-    // The operator's draft survives for a re-save against the fresh ETag.
-    expect(screen.getByTestId("source-diff").textContent).toContain("my edit");
-  });
-
-  it("drops a stale sibling draft when a conflict reloads both documents", async () => {
-    saveFleetSourceAction.mockResolvedValue({ ok: false, status: 412, error: "stale", errorCode: "UZ-AGT-014" });
-    getFleetDetailAction.mockResolvedValue({
-      ok: true,
-      data: {
-        fleet: detail({
-          source_markdown: "# SKILL\nserver edit",
-          trigger_markdown: "# TRIGGER\nserver trigger",
-        }),
-        etag: '"fresh"',
-      },
-    });
-    renderEditor();
-    const user = userEvent.setup({ delay: null });
-    await user.click(screen.getByRole("button", { name: /Edit/ }));
-    fireEvent.change(screen.getByRole("textbox", { name: "Edit SKILL.md" }), {
-      target: { value: "# SKILL\nstale sibling draft" },
-    });
-    await user.click(screen.getByRole("tab", { name: TRIGGER_DOC_LABEL }));
-    fireEvent.change(screen.getByRole("textbox", { name: "Edit TRIGGER.md" }), {
-      target: { value: "# TRIGGER\nmy active edit" },
-    });
-    await user.click(screen.getByRole("button", { name: "Save changes" }));
-    await user.click(screen.getByRole("button", { name: "Save" }));
-
-    await waitFor(() => expect(screen.getByText(SAVE_STALE_RELOADED_NOTICE)).toBeTruthy());
-    await user.click(screen.getByRole("tab", { name: "SKILL.md" }));
-    expect(screen.getByRole("textbox", { name: "Edit SKILL.md" })).toHaveProperty(
-      "value",
-      "# SKILL\nserver edit",
-    );
-  });
-
-  it("surfaces a stale-save reload failure and keeps the editor open", async () => {
-    saveFleetSourceAction.mockResolvedValue({ ok: false, status: 412, error: "stale", errorCode: "UZ-AGT-014" });
-    getFleetDetailAction.mockResolvedValue({ ok: false, status: 500, error: "reload failed", errorCode: "UZ-AGT-500" });
-    const user = await enterEditAndType("# SKILL\nmy edit");
-    await user.click(screen.getByRole("button", { name: "Save changes" }));
-    await user.click(screen.getByRole("button", { name: "Save" }));
-
-    await waitFor(() => expect(screen.getByText(/Couldn't reload the source/)).toBeTruthy());
-    expect(screen.getByRole("textbox", { name: "Edit SKILL.md" })).toBeTruthy();
-    expect(routerRefresh).not.toHaveBeenCalled();
   });
 });

@@ -35,16 +35,18 @@ const DRAINED_STATUSES: ReadonlySet<string> = new Set([
 // Pure liveness derivation — the single source both the tile and its tests
 // read. A parked or killed fleet is `drained` and opens no stream at all; a
 // live fleet whose connection is up (or still opening) is `live`; a live fleet
-// whose connection is stuck reconnecting shows its last event as a `snapshot`
-// rather than going dark. The registry reconnects forever with backoff, so
-// `reconnecting` is exactly "the feed is gone right now" — the honest snapshot
-// trigger — and if it recovers this flips back to `live` on the next frame.
+// whose connection is reconnecting or offline shows its last event as a `snapshot`
+// rather than going dark. If the connection recovers this flips back to `live`
+// on the next frame.
 export function deriveTileLiveness(
   status: string,
   connectionStatus: ConnectionStatus,
 ): TileLiveness {
   if (DRAINED_STATUSES.has(status)) return { kind: "drained" };
-  if (connectionStatus === CONNECTION_STATUS.RECONNECTING) {
+  if (
+    connectionStatus === CONNECTION_STATUS.RECONNECTING ||
+    connectionStatus === CONNECTION_STATUS.OFFLINE
+  ) {
     return { kind: "snapshot", reason: SNAPSHOT_CAPPED_OR_ERRORED };
   }
   return { kind: "live" };

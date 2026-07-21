@@ -34,10 +34,14 @@ vi.mock("next/link", () => ({
 }));
 // Client child components — stub to keep server-component tests synchronous.
 vi.mock("@/app/(dashboard)/w/[workspaceId]/approvals/components/ApprovalsList", () => ({
-  default: (props: { initialItems: unknown[] }) =>
+  default: (props: { initialItems: unknown[]; fleetId?: string }) =>
     React.createElement(
       "div",
-      { "data-stub": "ApprovalsList", "data-initial-items": String(props.initialItems.length) },
+      {
+        "data-stub": "ApprovalsList",
+        "data-initial-items": String(props.initialItems.length),
+        "data-fleet-id": props.fleetId,
+      },
       "approvals-list-stub",
     ),
 }));
@@ -77,6 +81,17 @@ describe("ApprovalsPage (workspace inbox)", () => {
     expect(markup).toContain("Approvals"); // PageTitle in the shell
     expect(markup).toContain("animate-pulse"); // Skeleton fallback
     expect(markup).not.toContain("approvals-list-stub"); // data not yet resolved
+  });
+
+  it("accepts a fleet filter in the page-shell query", async () => {
+    const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/approvals/page");
+    const markup = renderToStaticMarkup(
+      await Page({
+        params: Promise.resolve({ workspaceId: WORKSPACE_ID }),
+        searchParams: Promise.resolve({ fleetId: FLEET_ID }),
+      }),
+    );
+    expect(markup).toContain("Approvals");
   });
 
   it("ApprovalsData returns null when the token is missing", async () => {
@@ -126,6 +141,22 @@ describe("ApprovalsPage (workspace inbox)", () => {
       React.createElement(React.Fragment, null, await ApprovalsData({ workspaceId: WORKSPACE_ID })),
     );
     expect(markup).toContain('data-initial-items="0"');
+  });
+
+  it("filters the inbox and list pagination to one fleet", async () => {
+    const { ApprovalsData } = await import("../app/(dashboard)/w/[workspaceId]/approvals/page");
+    const markup = renderToStaticMarkup(
+      React.createElement(
+        React.Fragment,
+        null,
+        await ApprovalsData({ workspaceId: WORKSPACE_ID, fleetId: FLEET_ID }),
+      ),
+    );
+    expect(listApprovalsMock).toHaveBeenCalledWith(WORKSPACE_ID, TOKEN, {
+      limit: 50,
+      fleetId: FLEET_ID,
+    });
+    expect(markup).toContain(`data-fleet-id="${FLEET_ID}"`);
   });
 });
 
