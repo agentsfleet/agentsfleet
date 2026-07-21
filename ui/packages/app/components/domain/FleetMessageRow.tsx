@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useContext, type ReactNode } from "react";
-import { cn } from "@agentsfleet/design-system";
+import { Time, cn } from "@agentsfleet/design-system";
 import { senderInitialsFor } from "@/lib/events/event-summary";
 
 // The approved conversation row (designs/fleet-workspace-20260721/variant-A):
@@ -27,15 +27,6 @@ const CHIP_TONE: Record<RowTone, string> = {
   [ROW_TONE.FLEET]: "border-pulse/40 text-pulse",
   [ROW_TONE.EVENT]: "border-border text-muted-foreground",
 };
-
-// The visible clock label is browser-local — an operator scans their own
-// timeline in their own zone — and the machine-readable instant rides the
-// `dateTime` attribute, so the exact moment is never lost to formatting.
-const CLOCK_FORMAT = new Intl.DateTimeFormat(undefined, {
-  hour: "2-digit",
-  minute: "2-digit",
-  second: "2-digit",
-});
 
 // The console's own fleet, so a fleet reply is labelled with the fleet's name
 // rather than the word "fleet". Rows are rendered by a callback the thread
@@ -63,7 +54,9 @@ export type FleetMessageRowProps = {
   children: ReactNode;
   /** Rendered on the header line, right of the sender — status, chips. */
   annotation?: ReactNode;
-  role: string;
+  /** The message's conversational role. Named apart from the ARIA `role`
+   * attribute it would otherwise be mistaken for; it lands on `data-role`. */
+  messageRole: string;
   dimmed?: boolean;
   failed?: boolean;
 };
@@ -74,7 +67,7 @@ export function FleetMessageRow({
   tone,
   children,
   annotation,
-  role,
+  messageRole,
   dimmed,
   failed,
 }: FleetMessageRowProps) {
@@ -86,7 +79,7 @@ export function FleetMessageRow({
         ROW_ENTER,
         dimmed && "opacity-60",
       )}
-      data-role={role}
+      data-role={messageRole}
       data-optimistic={dimmed || undefined}
       data-failed={failed || undefined}
     >
@@ -123,13 +116,16 @@ function SenderChip({ sender, tone }: { sender: string; tone: RowTone }) {
   );
 }
 
+// Time of day alone: every row in a conversation shares its day, so the date
+// would be repeated noise. The canonical instant still rides the `datetime`
+// attribute. No tooltip — one Radix instance per message is a real cost on a
+// long thread, and the exact moment is already in the markup.
 function Timestamp({ createdAt }: { createdAt: Date }) {
   return (
-    <time
+    <Time
+      value={createdAt}
+      format="clock"
       className="shrink-0 font-mono text-label leading-mono text-muted-foreground tabular-nums"
-      dateTime={createdAt.toISOString()}
-    >
-      {CLOCK_FORMAT.format(createdAt)}
-    </time>
+    />
   );
 }

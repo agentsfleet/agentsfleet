@@ -40,7 +40,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 - **PR title (eventual):** feat(ui): console chat matches the approved fleet workspace design
 - **Intent (one sentence):** An operator opening a fleet console can read every message, understand every event, reach the composer without scrolling, and send a message whether or not the live feed is up.
-- **Handshake** (filled at PLAN) — Restatement: make the fleet console's chat legible and usable — the composer always on screen, every row carrying a name and a sentence a person can read, and a send that works whether or not the live feed is up. ASSUMPTIONS I'M MAKING: (1) the sender vocabulary is a fixed three-way resolution — operator, the fleet's own name, the integration's source name — and the fleet name reaches the thread as a prop from the console page, which already holds it; (2) the viewport claim is expressed by making the shell frame fixed and the content region the scroll owner, so the Chat view needs only an ordinary full-height child and no per-breakpoint height literal; (3) the bounded in-flight window is a named constant in the stream client, not a server signal; (4) the console acceptance walk is rewritten against the post-navigation surface — its current assertions describe a console that no longer exists.
+- **Handshake** (filled at PLAN) — Restatement: make the fleet console's chat legible and usable — the composer always on screen, every row carrying a name and a sentence a person can read, and a send that works whether or not the live feed is up. ASSUMPTIONS I'M MAKING: (1) the sender vocabulary is a fixed three-way resolution — operator, the fleet's own name, the integration's source name — and the fleet name reaches the thread as a prop from the console page, which already holds it; (2) the viewport claim is expressed by making the shell frame fixed and the content region the scroll owner, so the Chat view needs only an ordinary full-height child and no per-breakpoint height literal; (3) the aggregate in-flight flag is deleted rather than bounded — with the browser-side hold gone it had no consumer left, and a flag nothing reads is dead code, not a safety net; (4) the console acceptance walk is rewritten against the post-navigation surface — its current assertions describe a console that no longer exists.
 
 ## Implementing agent — read these first
 
@@ -69,7 +69,9 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `ui/packages/app/lib/streaming/fleet-stream-frames.test.ts` | EDIT | Cover operator-text recovery and event summaries surviving a reload. |
 | `ui/packages/app/lib/streaming/fleet-stream-registry.ts` | EDIT | A lost connection retries on a slow cadence and on tab focus / network recovery instead of pinning to a terminal offline. |
 | `ui/packages/app/lib/streaming/fleet-stream-registry.test.ts` | EDIT | Cover the slow retry, the focus and network triggers, and that a recovered connection still backfills its gap. |
-| `ui/packages/app/components/domain/useFleetEventStream.ts` | EDIT | The in-flight signal reads the newest event within a bounded window so a stranded run cannot wedge the surface. |
+| `ui/packages/app/components/domain/useFleetEventStream.ts` | EDIT | The aggregate in-flight signal is deleted with its last consumer; work is reported per event. |
+| `ui/packages/design-system/src/design-system/time-utils.ts` + `Time.tsx` exports | EDIT | *(Amended at EXECUTE)* A time-of-day format in the sanctioned home, so the console renders a clock label through `Time` rather than a bespoke formatter the timestamp standard forbids. |
+| `ui/packages/app/tests/timestamp-standard.test.ts` | — | Unchanged: the guard is satisfied by construction, not by an allowlist entry. |
 | `ui/packages/app/components/domain/useFleetDeliveryFailure.ts` | RENAME + EDIT | *(Amended at EXECUTE — RULE NLR)* Was `useFleetMessageQueue.ts`; the browser-side hold and its delivery-outcome vocabulary are deleted, so the name kept a queue the file no longer has. The delivery-failure surface survives. |
 | `ui/packages/app/components/domain/useFleetDeliveryFailure.test.tsx` | RENAME + EDIT | *(Amended at EXECUTE)* Drop the hold's tests; keep and extend the delivery-failure coverage. |
 | `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/[id]/components/FleetInstallGate.tsx` | EDIT | *(Amended at EXECUTE)* The revealed surface takes the console's layout claim instead of being flattened into a fragment. |
@@ -140,8 +142,8 @@ An event row states its own outcome, derived only from fields the durable row ca
 - **Dimension 3.1 — DONE** — an operator message keeps its text across a reload, recovered from the durable row rather than the fleet's reply field → Test `test_operator_message_text_survives_a_reload`
 - **Dimension 3.2 — DONE** — a webhook event renders a headline built from its normalized fields, and an unrecognised payload shape falls back to a neutral headline instead of throwing or rendering empty → Test `test_webhook_event_headline_reads_from_its_normalized_fields`
 - **Dimension 3.3 — DONE** — an event with no recorded reply states its outcome honestly — still working, waiting for approval, failed, or no reply recorded — and never renders an empty body → Test `test_event_without_a_reply_states_its_outcome`
-- **Dimension 3.4** — a runner failure renders its plain-language sentence in the thread, the console summary and the events table from one shared vocabulary; no raw runner tag reaches any rendered surface → Test `test_failure_vocabulary_is_shared_by_every_surface`
-- **Dimension 3.5** — the console summary renders the latest outcome as a sentence with its absolute time, and renders unknown figures as a dash rather than a fabricated zero → Test `test_latest_outcome_reads_as_a_sentence_with_its_time`
+- **Dimension 3.4 — DONE** — a runner failure renders its plain-language sentence in the thread, the console summary and the events table from one shared vocabulary; no raw runner tag reaches any rendered surface → Test `test_failure_vocabulary_is_shared_by_every_surface`
+- **Dimension 3.5 — DONE** — the console summary renders the latest outcome as a sentence with its absolute time, and renders unknown figures as a dash rather than a fabricated zero → Test `test_latest_outcome_reads_as_a_sentence_with_its_time`
 
 ### §4 — Sending never waits on the live feed
 
@@ -160,10 +162,10 @@ The connection indicator reads as the approved design, and a lost connection is 
 
 **Implementation default:** after the fast reconnect attempts are exhausted the client keeps retrying on a slow named cadence and additionally retries immediately when the tab becomes visible or the browser reports the network back, because those two signals are precisely when a stale connection is both most likely wrong and cheapest to re-establish. The recovered connection still runs the existing gap-recovery walk.
 
-- **Dimension 5.1** — the thread header renders the approved connection indicator for each state, and an unavailable feed says so explicitly → Test `test_connection_indicator_renders_every_state`
-- **Dimension 5.2** — an unavailable connection is not terminal: the client retries on its slow cadence without any operator action → Test `test_unavailable_connection_retries_on_its_own`
-- **Dimension 5.3** — the client retries immediately when the tab becomes visible or the network returns, and does not stack duplicate connections when both fire → Test `test_focus_and_network_recovery_retry_exactly_once`
-- **Dimension 5.4** — the in-flight signal reads the newest event within a bounded window, so an event stranded in progress does not mark the fleet as working forever → Test `test_stranded_event_does_not_mark_the_fleet_working`
+- **Dimension 5.1 — DONE** — the thread header renders the approved connection indicator for each state, and an unavailable feed says so explicitly → Test `test_connection_indicator_renders_every_state`
+- **Dimension 5.2 — DONE** — an unavailable connection is not terminal: the client retries on its slow cadence without any operator action → Test `test_unavailable_connection_retries_on_its_own`
+- **Dimension 5.3 — DONE** — the client retries immediately when the tab becomes visible or the network returns, and does not stack duplicate connections when both fire → Test `test_focus_and_network_recovery_retry_exactly_once`
+- **Dimension 5.4 — DONE** *(shape changed at EXECUTE)* — there is no aggregate in-flight signal at all: with the browser-side hold deleted its only consumer disappeared, so rather than bounding a flag nothing reads, the flag is deleted and work is reported per event on the row it belongs to. A stranded run can now only misreport itself → Test `test_stranded_event_does_not_mark_the_fleet_working`
 
 ## Interfaces
 

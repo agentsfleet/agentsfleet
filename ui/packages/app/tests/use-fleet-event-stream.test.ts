@@ -224,7 +224,10 @@ describe("useFleetEventStream", () => {
       });
     });
     await waitFor(() => expect(result.current.events).toHaveLength(1));
-    expect(result.current.isRunning).toBe(true);
+    // Work is reported on the event itself, not as a thread-wide flag: an
+    // aggregate "something is running" was true forever once any run stranded.
+    expect(result.current.events[0]!.status).toBe("received");
+    expect(result.current.events[0]!.outcome).toBe(OUTCOME.WORKING);
     act(() => {
       FakeEventSource.instances[0]!.emit({
         kind: FRAME_KIND.EVENT_COMPLETE,
@@ -233,7 +236,16 @@ describe("useFleetEventStream", () => {
       });
     });
     await waitFor(() => expect(result.current.events[0]!.status).toBe("processed"));
-    expect(result.current.isRunning).toBe(false);
+    // The outcome follows the status — a finished event stops saying it works.
+    expect(result.current.events[0]!.outcome).toBe(OUTCOME.NO_REPLY);
+  });
+
+  it("a stranded event cannot report the whole fleet as working", () => {
+    // The hook exposes no aggregate running flag at all. That flag was read by
+    // the composer's old hold, so one run that never completed silently turned
+    // the console read-only.
+    const { result } = mount();
+    expect("isRunning" in result.current).toBe(false);
   });
 
   it("appendOptimistic + reconcileOptimistic swaps the temp id for the real one", async () => {
