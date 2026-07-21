@@ -18,7 +18,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Date:** Jul 21, 2026
 **Status:** IN_PROGRESS
 **Priority:** P1 — customer-facing: the operator must scroll a full page to reach the composer, their own messages render blank, and every webhook event renders as an empty row
-**Categories:** UI
+**Categories:** API, UI
 **Batch:** B1 — standalone; no sibling workstreams
 **Branch:** feat/m138-console-chat-fidelity
 **Test Baseline:** unit=2806 integration=371
@@ -38,9 +38,9 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ## PR Intent & comprehension handshake
 
-- **PR title (eventual):** feat(ui): console chat matches the approved fleet workspace design
-- **Intent (one sentence):** An operator opening a fleet console can read every message, understand every event, reach the composer without scrolling, and send a message whether or not the live feed is up.
-- **Handshake** (filled at PLAN) — Restatement: make the fleet console's chat legible and usable — the composer always on screen, every row carrying a name and a sentence a person can read, and a send that works whether or not the live feed is up. ASSUMPTIONS I'M MAKING: (1) the sender vocabulary is a fixed three-way resolution — operator, the fleet's own name, the integration's source name — and the fleet name reaches the thread as a prop from the console page, which already holds it; (2) the viewport claim is expressed by making the shell frame fixed and the content region the scroll owner, so the Chat view needs only an ordinary full-height child and no per-breakpoint height literal; (3) the aggregate in-flight flag is deleted rather than bounded — with the browser-side hold gone it had no consumer left, and a flag nothing reads is dead code, not a safety net; (4) the console acceptance walk is rewritten against the post-navigation surface — its current assertions describe a console that no longer exists.
+- **PR title (eventual):** feat(m138): approved console chat + 16 KiB request-header ceiling
+- **Intent (one sentence):** An operator opening a fleet console can read every message, understand every event, reach the composer without scrolling, and send a message whether or not the live feed is up — and the API server no longer refuses a request for carrying the header bytes a real authenticated chain produces.
+- **Handshake** (filled at PLAN) — Restatement: make the fleet console's chat legible and usable — the composer always on screen, every row carrying a name and a sentence a person can read, and a send that works whether or not the live feed is up. ASSUMPTIONS I'M MAKING: (1) the sender vocabulary is a fixed three-way resolution — operator, the fleet's own name, the integration's source name — and the fleet name reaches the thread as a prop from the console page, which already holds it; (2) the viewport claim is expressed by making the shell frame fixed and the content region the scroll owner, so the Chat view needs only an ordinary full-height child and no per-breakpoint height literal; (3) the aggregate in-flight flag is deleted rather than bounded — with the browser-side hold gone it had no consumer left, and a flag nothing reads is dead code, not a safety net; (4) the console acceptance walk is rewritten against the post-navigation surface — its current assertions describe a console that no longer exists; (5) the API server's request-header ceiling folds into this workstream per Indy's direction rather than a sibling milestone — one operator-visible outcome, one PR.
 
 ## Implementing agent — read these first
 
@@ -72,6 +72,9 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `ui/packages/app/components/domain/useFleetEventStream.ts` | EDIT | The aggregate in-flight signal is deleted with its last consumer; work is reported per event. |
 | `ui/packages/design-system/src/design-system/time-utils.ts` + `Time.tsx` exports | EDIT | *(Amended at EXECUTE)* A time-of-day format in the sanctioned home, so the console renders a clock label through `Time` rather than a bespoke formatter the timestamp standard forbids. |
 | `ui/packages/app/tests/timestamp-standard.test.ts` | — | Unchanged: the guard is satisfied by construction, not by an allowlist entry. |
+| `src/agentsfleetd/http/server.zig` | EDIT | *(Folded in at EXECUTE — §6)* The request-header ceiling becomes a named 16 KiB constant; the library default of 4 KiB was the narrowest limit in the production chain. Its inline unit tests move to the sibling test file, returning the file below the length cap it already exceeded. |
+| `src/agentsfleetd/http/server_test.zig` | CREATE | *(Folded in at EXECUTE — RULE FLL/TNM)* The former inline `ServerConfig` and lifecycle unit tests, in the sibling-file shape every other module here uses. |
+| `src/agentsfleetd/http/request_header_size_integration_test.zig` | CREATE | *(§6)* Over-the-wire proof: an oversized credential header is served, and headers past the accepted size are still refused — the bound must exist. |
 | `ui/packages/app/components/domain/useFleetDeliveryFailure.ts` | RENAME + EDIT | *(Amended at EXECUTE — RULE NLR)* Was `useFleetMessageQueue.ts`; the browser-side hold and its delivery-outcome vocabulary are deleted, so the name kept a queue the file no longer has. The delivery-failure surface survives. |
 | `ui/packages/app/components/domain/useFleetDeliveryFailure.test.tsx` | RENAME + EDIT | *(Amended at EXECUTE)* Drop the hold's tests; keep and extend the delivery-failure coverage. |
 | `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/[id]/components/FleetInstallGate.tsx` | EDIT | *(Amended at EXECUTE)* The revealed surface takes the console's layout claim instead of being flattened into a fragment. |
@@ -92,14 +95,15 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 - **`docs/greptile-learnings/RULES.md`** — **UFS** (every new operator-visible string is a named constant referenced by component and test; the `ui/` carve-out means the author runs this pass by hand), **NDC** + **ORP** (the browser-side send hold and the old actor-rail renderers are deleted, not stranded — see Dead Code Sweep), **NLR** (touch-it-fix-it: the renderer file is already over the length cap and is split in the same diff), **NLG** (no parallel "old rendering" path kept behind a flag), **HLP** (the summary module ships with all three consumers wired in the same diff), **DRV** (the sender label is derived from the actor's own prefix vocabulary, never by slicing an identifier into a shape it does not have), **TNM/TST-NAM** (behaviour-named tests, no milestone identifiers), **FLL** (no source file over 350 lines, no function over 50).
 - **`dispatch/write_ts_adhere_bun.md`** — the entire diff is `*.ts` / `*.tsx` under `ui/packages/app`: §1 TS FILE SHAPE DECISION for each new module, §2 `const` discipline, and the UI Component Substitution / DESIGN TOKEN sections for every rendered surface.
 - **`docs/DESIGN_SYSTEM.md`** §Operational Restraint — the row treatment composes existing primitives and token utilities; no new visual primitive is invented for a chip that a styled span already expresses.
+- **`dispatch/write_zig.md`** — for §6: UFS (the ceiling is a named constant), FLL + TNM (the touched server file drops below the cap by moving its inline unit tests to the sibling test file), XCC (both Linux targets cross-compiled), and §HTTP Integration Tests (the new suite uses the shared TestHarness).
 
 ## Applicable Gates
 
 | Gate | Fires? | Satisfaction strategy |
 |------|--------|-----------------------|
-| ZIG GATE | no — no Zig touched | — |
+| ZIG GATE | yes — §6 touches the API server and adds an integration suite | `zig build -Dtarget=x86_64-linux && -Dtarget=aarch64-linux`; no allocator wiring changes. |
 | PUB / Struct-Shape | no — no Zig pub surface | — |
-| File & Function Length (≤350/≤50/≤70) | yes — the renderer file is already at the cap and the thread file is close | The row shape is extracted to its own module in the same diff; the summary logic lands in `lib/events/`, not inside a component. |
+| File & Function Length (≤350/≤50/≤70) | yes — the renderer file is already at the cap, the thread file is close, and the touched server file already exceeded it | The row shape is extracted to its own module; the summary logic lands in `lib/events/`; the server file's inline unit tests move to `server_test.zig` (RULE NLR — touched, therefore fixed). |
 | UFS (repeated/semantic literals) | yes — new operator-visible copy and new actor/label vocabulary | Every string is a named constant in `console-copy.ts` or the summary module; tests reference the constant. Manual pass — the audit skips `ui/`. |
 | UI Substitution / DESIGN TOKEN | yes — every edit is a dashboard `*.tsx` | Compose `Card`, `Badge`, `Button`, `Textarea`, `Tooltip`, `Alert`; token utilities only. Any viewport-height utility the frame needs is declared once as a token-backed value, not re-spelled per component. |
 | LOGGING / LIFECYCLE / ERROR REGISTRY / SCHEMA | no — no server surface, no error code, no migration | — |
@@ -157,6 +161,15 @@ Submitting a message is an authenticated write that does not touch the live stre
 - **Dimension 4.3 — DONE** — a submission the server rejects renders as failed with a retry that resubmits it → Test `test_rejected_message_offers_a_retry_that_resubmits`
 - **Dimension 4.4 — DONE** — no dormant hold survives: the queue module, its delivery-outcome vocabulary and its rendering are gone → Test `test_composer_exposes_no_pending_hold`
 
+### §6 — The server accepts a real request's headers *(folded in at EXECUTE — Indy, Jul 21, 2026: "i need the cookie fix to be in here")*
+
+The API server allowed 4 KiB for a request's status line and headers — the library default, never configured — and answered 431 past it. That is smaller than a real authenticated request can be once a bearer token and each proxy's forwarding and tracing headers ride along, and because the dashboard proxy returns the upstream status verbatim, the refusal surfaces in a browser against a request whose own headers were small.
+
+**Implementation default:** the ceiling becomes a named 16 KiB constant, matching the Node proxy in front of this server, so this server stops being the narrowest header limit in the chain. The bound's existence stays proven by test — an unbounded header buffer is a memory-exhaustion lever held by any unauthenticated caller. The cost is bounded: read buffers are per connection, and only the minimum connection pool is allocated ahead of demand.
+
+- **Dimension 6.1 — DONE** — a request whose headers exceed the old library default is served, proven over a real socket → Test `a request whose headers exceed the library default is still served`
+- **Dimension 6.2 — DONE** — headers past the accepted size are still refused, after the same harness proved it serves an ordinary request → Test `headers past the accepted size are still refused, not read without bound`
+
 ### §5 — The live connection is honest and recovers itself
 
 The connection indicator reads as the approved design, and a lost connection is a transient state the client works its way out of. Today the client stops trying after a fixed number of attempts and only a manual action revives it, so a brief outage leaves the surface permanently marked offline.
@@ -201,6 +214,7 @@ lib/events/event-summary.ts  (NEW — the single home for operator-readable even
 | Both recovery signals fire together | The tab regains focus at the same moment the network returns | Exactly one connection attempt is made; no duplicate stream is opened. |
 | Stranded run | An event never reaches a terminal state | Outside the bounded window the fleet stops being reported as working; the event still renders its in-progress outcome honestly. |
 | Very long message body | A reply or payload far exceeds the row width | The body wraps inside its own row and the row never widens the page or clips its neighbours. |
+| Headers past the accepted size | A caller sends more than the 16 KiB ceiling | Refused with 431 (or a closed connection), never read without bound; proven over a real socket. |
 
 ## Invariants
 
@@ -210,6 +224,7 @@ lib/events/event-summary.ts  (NEW — the single home for operator-readable even
 4. **Sending does not read the live-connection state** — the delivery path takes no connection-status input, so a down feed cannot block a write. Proven by `test_message_sends_while_the_live_feed_is_unavailable`.
 5. **An unavailable connection is never terminal** — every exhausted-retry path schedules the next attempt; there is no branch that stops scheduling. Proven by `test_unavailable_connection_retries_on_its_own`.
 6. **Unknown figures render as unknown** — an absent token, spend or duration renders the dash constant, never a zero. Proven by `test_latest_outcome_reads_as_a_sentence_with_its_time`.
+7. **The header ceiling is bounded in both directions** — larger than a real authenticated chain's headers, and still finite; both arms are enforced over a real socket by the §6 integration suite, not by a config assertion.
 
 ## Metrics & Observability
 
@@ -243,6 +258,8 @@ lib/events/event-summary.ts  (NEW — the single home for operator-readable even
 | 5.3 | unit | `test_focus_and_network_recovery_retry_exactly_once` | Tab-visible and network-online fired together produce exactly one new connection. |
 | 5.4 | unit | `test_stranded_event_does_not_mark_the_fleet_working` | An in-progress event older than the bounded window leaves the fleet reported as not working. |
 | regression | unit | existing thread and wall suites | The live-wall surface and the per-fleet stream client keep their current behaviour; only the console's rendering and send path change. |
+| 6.1 | integration | `a request whose headers exceed the library default is still served` | A 6 KiB credential header on a real socket → 200, never 431. |
+| 6.2 | integration | `headers past the accepted size are still refused, not read without bound` | The harness first serves an ordinary request, then a 32 KiB header → 431 or a closed connection. |
 
 ## Acceptance Rubric (single scoring surface)
 
@@ -257,9 +274,11 @@ lib/events/event-summary.ts  (NEW — the single home for operator-readable even
 | R7 | Diff stays inside Files Changed | `git diff --name-only origin/main` | 0 paths missing from the Files Changed table | P0 | |
 | S1 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | |
 | S2 | Lint clean | `make lint-all` | exit 0 | P0 | |
+| S3 | Integration passes (HTTP server touched) | `make test-integration` | exit 0 | P0 | |
+| S6 | Cross-compile (Zig touched) | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` | exit 0 | P0 | |
 | S4 | e2e walks the console path | `make acceptance-e2e` | exit 0 | P0 | |
 | S7 | No secrets | `gitleaks detect` | exit 0 | P0 | |
-| S8 | No oversize source file | `git diff --name-only origin/main \| grep -vE '\.md$\|\.test\.(ts\|tsx)$' \| xargs wc -l 2>/dev/null \| awk '$1>350 && $2!="total"'` | no output | P0 | |
+| S8 | No oversize source file | `git diff --name-only origin/main \| grep -vE '\.md$\|_test\.zig$\|\.test\.(ts\|tsx)$' \| xargs wc -l 2>/dev/null \| awk '$1>350 && $2!="total"'` | no output | P0 | |
 | S9 | Orphan sweep | Dead Code Sweep greps | 0 matches | P0 | |
 
 **Grading protocol (VERIFY):** run the Verify command verbatim; grade ONLY from its output. Graded = ✅/❌ + the one decisive output line (`342 passed`); long evidence goes to PR Session Notes with a pointer here. R2/R3/R6's package-scoped runs are focused evidence only — package-scoped runners are not verification; S1's `make test-unit-all` is the gate. **Ship gate:** every row graded, every P0 ✅ → eligible for CHORE(close); any ❌ or empty cell → return to EXECUTE; a P1 ❌ ships only with an Indy-acked deferral quote in Discovery.
@@ -287,7 +306,8 @@ lib/events/event-summary.ts  (NEW — the single home for operator-readable even
 - A Steer tab — the approved feedback is explicit that steering is the underlying behaviour, not a separate surface.
 - Attachments behind the composer's add action — the affordance is drawn in the approved design but has no capability behind it, and shipping a control before its evidence violates dashboard restraint.
 - Interrupting a running fleet — no backend capability exists and none is smuggled in here.
-- Any server, schema, or endpoint change — every field this spec renders is already returned by the existing event list.
+- Any schema or endpoint change — every field this spec renders is already returned by the existing event list, and §6 changes a transport ceiling, not an interface.
+- The root cause of the operator's specific 431 on the dev dashboard — §6 fixes the API server's provably-too-tight ceiling, but the browser-side incident may originate in the Vercel hop's own limit against HttpOnly cookies invisible to `document.cookie`; the discriminating evidence (the 431 response body, the full cookie inventory) is recorded in Discovery when it lands.
 
 ---
 
@@ -313,6 +333,9 @@ lib/events/event-summary.ts  (NEW — the single home for operator-readable even
 ## Discovery (consult log)
 
 - **Consults** — Architecture / Legacy-Design / gate-flag triage: the question asked + Indy's decision.
+  - > Indy (2026-07-21): "Well i need the cookie fix to be in here" — context: the API request-header ceiling fix folds into this workstream (§6) instead of a sibling milestone.
+  - Review consult (Fable, Jul 21): the 431 branch fires inside the vendored HTTP library, so no first-party log or metric marks it (RULE OBS). Recommendation: accept — edge logs and a one-line probe reproduce it; patching the vendored library needs its own ask. Awaiting Indy's call.
+  - Review finding (Fable, Jul 21): attribution of the operator's browser 431 to the server ceiling is unproven — the proxied upstream request (~2.5 KiB) sits under the old 4 KiB limit for this operator's token; the browser-side hop against HttpOnly cookie bulk is the stronger suspect. Fix ships on its own merits; discriminator requested from Indy.
 - **Metrics review** — events added, extra events found during `/review`, analytics/funnel playbook update or the explicit no-change reason.
 - **Skill-chain outcomes** — `/write-unit-test`, `/review`, `kishore-babysit-prs` results (order per `AGENTS.md` CHORE(close); iteration counts, findings dispositioned).
 - **Deferrals** — every "deferred to follow-up" needs an **Indy-acked verbatim quote** here, format `> Indy (YYYY-MM-DD HH:MM): "<quote>" — context: <which item, why>`.
