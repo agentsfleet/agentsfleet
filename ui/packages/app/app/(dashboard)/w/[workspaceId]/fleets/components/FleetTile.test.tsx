@@ -101,6 +101,13 @@ describe("FleetTile — the three kinds (Inv. 1)", () => {
     // unreachable under the tile's pointer-events-none wrapper).
     fireEvent.focus(notLive);
     await waitFor(() => expect(getAllByText(TILE_NOT_LIVE_TOOLTIP).length).toBeGreaterThan(0));
+    // Mouse reachability is two separate escapes and losing either one silently
+    // kills the tooltip: the trigger must opt back into pointer events AND
+    // stack above the card-wide absolute link, which otherwise paints over all
+    // in-flow content and swallows the hover.
+    expect(notLive.className).toContain("pointer-events-auto");
+    expect(notLive.className).toContain("relative");
+    expect(notLive.className).toContain("z-10");
     expect(getByText("ran a check")).toBeTruthy();
     // The pulse must NOT animate in snapshot mode — the animation is live-only,
     // so a frozen feed cannot masquerade as live (greptile P2, DESIGN_SYSTEM §Motion).
