@@ -12,10 +12,13 @@ const APPROVALS_DESCRIPTION = "Fleet actions that pause for human review.";
 
 export default async function ApprovalsPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ workspaceId: string }>;
+  searchParams?: Promise<{ fleetId?: string }>;
 }) {
   const { workspaceId } = await params;
+  const { fleetId } = searchParams ? await searchParams : { fleetId: undefined };
   const { getToken } = await auth();
   const token = await getToken();
   if (!token) redirect("/sign-in");
@@ -28,7 +31,7 @@ export default async function ApprovalsPage({
       </PageHeader>
 
       <Suspense fallback={<Skeleton className="h-48 rounded-lg" />}>
-        <ApprovalsData workspaceId={workspaceId} />
+        <ApprovalsData workspaceId={workspaceId} fleetId={fleetId} />
       </Suspense>
     </div>
   );
@@ -36,12 +39,12 @@ export default async function ApprovalsPage({
 
 // Async data region: loads the pending-approval inbox (workspace from the URL).
 // Exported so it renders/tests in isolation.
-export async function ApprovalsData({ workspaceId }: { workspaceId: string }) {
+export async function ApprovalsData({ workspaceId, fleetId }: { workspaceId: string; fleetId?: string }) {
   const { getToken } = await auth();
   const token = await getToken();
   if (!token) return null;
 
-  const initial = await listApprovals(workspaceId, token, { limit: 50 }).catch(
+  const initial = await listApprovals(workspaceId, token, { limit: 50, fleetId }).catch(
     () => ({ items: [], next_cursor: null }),
   );
 
@@ -52,6 +55,7 @@ export async function ApprovalsData({ workspaceId }: { workspaceId: string }) {
           workspaceId={workspaceId}
           initialItems={initial.items}
           initialCursor={initial.next_cursor}
+          fleetId={fleetId}
         />
       </section>
     </Section>

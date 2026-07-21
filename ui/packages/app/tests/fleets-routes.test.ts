@@ -20,9 +20,6 @@ vi.mock("@clerk/nextjs/server", async () => (await import("./helpers/dashboard-m
 vi.mock("@clerk/nextjs", async () => (await import("./helpers/dashboard-mocks")).clerkMock());
 vi.mock("next/link", async () => (await import("./helpers/dashboard-mocks")).nextLinkMock());
 vi.mock("@/lib/workspace", async () => (await import("./helpers/dashboard-mocks")).workspaceMock());
-vi.mock("@/components/domain/FleetApprovalsPanel", () => ({
-  default: () => React.createElement("div", { "data-stub": "FleetApprovalsPanel" }),
-}));
 vi.mock("lucide-react", async () => (await import("./helpers/dashboard-mocks")).lucideMock());
 vi.mock("@agentsfleet/design-system", async (orig) => {
   const h = await import("./helpers/dashboard-mocks");
@@ -318,12 +315,85 @@ describe("fleets routes", () => {
     ).rejects.toThrow("Fleet read failed");
   });
 
-  it("fleets detail page bounds the recent rollup request at 200 events", async () => {
+  it("fleet Events view loads the scoped standard-table window", async () => {
     mockFetchBilling(happyBilling);
     const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
-    await Page({ params: Promise.resolve({ workspaceId: "ws_1", id: "zom_1" }) });
+    const markup = renderToStaticMarkup(
+      await Page({
+        params: Promise.resolve({ workspaceId: "ws_1", id: "zom_1" }),
+        searchParams: Promise.resolve({ view: "events" }),
+      }),
+    );
     const urls = fetchMock.mock.calls.map(([url]) => String(url));
-    expect(urls).toContainEqual(expect.stringContaining("/events?since=7d&limit=200"));
+    expect(urls).toContainEqual(expect.stringContaining("/fleets/zom_1/events?limit=50"));
+    expect(urls.some((url) => url.includes("since="))).toBe(false);
+    expect(markup).toContain('href="/w/ws_1/fleets/zom_1?view=events" aria-current="page"');
+  });
+
+  it("fleet Events view falls back to an empty table when history is unavailable", async () => {
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url.endsWith("/v1/tenants/me/billing")) {
+        return { ok: true, status: 200, json: async () => happyBilling };
+      }
+      if (url.includes("/events")) throw new Error("history down");
+      return detailResponse();
+    });
+    const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
+    const markup = renderToStaticMarkup(
+      await Page({
+        params: Promise.resolve({ workspaceId: "ws_1", id: "zom_1" }),
+        searchParams: Promise.resolve({ view: "events" }),
+      }),
+    );
+    expect(markup).toContain("No events yet");
+  });
+
+  it("fleet Memory view renders stored entries and a fetch failure separately", async () => {
+    mockFetchBilling(happyBilling);
+    const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
+    const emptyMarkup = renderToStaticMarkup(
+      await Page({
+        params: Promise.resolve({ workspaceId: "ws_1", id: "zom_1" }),
+        searchParams: Promise.resolve({ view: "memory" }),
+      }),
+    );
+    expect(emptyMarkup).toContain("Nothing learned yet");
+
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url.endsWith("/v1/tenants/me/billing")) {
+        return { ok: true, status: 200, json: async () => happyBilling };
+      }
+      if (url.includes("/memories")) throw new Error("memory down");
+      return detailResponse();
+    });
+    const unavailableMarkup = renderToStaticMarkup(
+      await Page({
+        params: Promise.resolve({ workspaceId: "ws_1", id: "zom_1" }),
+        searchParams: Promise.resolve({ view: "memory" }),
+      }),
+    );
+    expect(unavailableMarkup).toContain("Memory is temporarily unavailable");
+  });
+
+  it("fleet Chat remains available when summary reads fail", async () => {
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url.endsWith("/v1/tenants/me/billing")) {
+        return { ok: true, status: 200, json: async () => happyBilling };
+      }
+      if (url.includes("/events") || url.includes("/approvals")) {
+        throw new Error("summary down");
+      }
+      return detailResponse();
+    });
+    const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
+    const markup = renderToStaticMarkup(
+      await Page({ params: Promise.resolve({ workspaceId: "ws_1", id: "zom_1" }) }),
+    );
+    expect(markup).toContain("Latest outcome");
+    expect(markup).toContain("Latest data unavailable.");
+    expect(markup).toContain("Approvals unavailable");
+    expect(markup).not.toContain("No outcome recorded yet.");
+    expect(markup).toContain("Chat");
   });
 
   it("fleets detail page renders panels + exhaustion badge when tenant is exhausted", async () => {
@@ -336,24 +406,22 @@ describe("fleets routes", () => {
     expect(markup).toContain("Balance exhausted");
   });
 
-  it("test_console_renders_three_columns", async () => {
-    // The three-column console (M131 §3): what the fleet IS / DOES / KNOWS &
-    // COSTS. Each is a labelled region carrying its panels (the source editor,
-    // the metrics strip, the memory panel, the runs ledger).
+  it("renders fleet-local navigation with Chat as the focused default", async () => {
     mockFetchBilling(happyBilling);
     const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
     const markup = renderToStaticMarkup(
       await Page({ params: Promise.resolve({ workspaceId: "ws_1", id: "zom_1" }) }),
     );
-    // Ampersand escapes to &amp; in static markup, so assert the ampersand-free
-    // heads of each column label.
-    expect(markup).toContain("What it is");
-    expect(markup).toContain("What it does");
-    expect(markup).toContain("What it knows");
-    // The left rail's source editor + the right rail's memory and runs panels.
-    expect(markup).toContain("Source");
+    expect(markup).toContain('aria-label="Fleet sections"');
+    expect(markup).toContain('href="/w/ws_1/fleets/zom_1" aria-current="page"');
+    expect(markup).toContain("Chat");
+    expect(markup).toContain("Events");
     expect(markup).toContain("Memory");
-    expect(markup).toContain("Runs");
+    expect(markup).toContain("Skill");
+    expect(markup).toContain("Trigger");
+    expect(markup).toContain("Settings");
+    expect(markup).toContain('aria-label="Fleet summary"');
+    expect(markup).not.toContain("What it knows");
   });
 
   it("fleets detail page renders without badge when not exhausted", async () => {
@@ -365,15 +433,17 @@ describe("fleets routes", () => {
     expect(markup).not.toContain("Balance exhausted");
   });
 
-  it("fleets detail page pulses the WakePulse dot when the fleet is active", async () => {
-    // mockFetchBilling returns a fleet with status "active" — exercises the
-    // truthy arm of the status===ACTIVE ternary (renders <WakePulse live />).
+  it("fleet Skill view isolates the skill source editor", async () => {
     mockFetchBilling(happyBilling);
     const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
     const markup = renderToStaticMarkup(
-      await Page({ params: Promise.resolve({ workspaceId: "ws_1", id: "zom_1" }) }),
+      await Page({
+        params: Promise.resolve({ workspaceId: "ws_1", id: "zom_1" }),
+        searchParams: Promise.resolve({ view: "skill" }),
+      }),
     );
-    expect(markup).toContain("data-live");
+    expect(markup).toContain("Skill source");
+    expect(markup).not.toContain("Latest outcome");
   });
 
   it("fleets detail page omits the WakePulse dot when the fleet is not active", async () => {
@@ -400,7 +470,7 @@ describe("fleets routes", () => {
     expect(markup).not.toContain("data-live");
   });
 
-  it("fleets detail page renders pending-approvals badge + 50+ label when next_cursor set", async () => {
+  it("fleet summary links an exact pending count to the filtered Approvals inbox", async () => {
     fetchMock.mockImplementation(async (url: string) => {
       if (url.endsWith("/v1/tenants/me/billing")) {
         return { ok: true, status: 200, json: async () => happyBilling };
@@ -427,45 +497,24 @@ describe("fleets routes", () => {
     const markup = renderToStaticMarkup(
       await Page({ params: Promise.resolve({ workspaceId: "ws_1", id: "zom_1" }) }),
     );
-    expect(markup).toMatch(/1\+ pending approval/i);
-    // Exactly one pending → singular ("") arm of the plural ternary.
-    expect(markup).toContain("1+ pending approval");
-    expect(markup).not.toMatch(/pending approvals/);
+    expect(markup).toContain("1+ approval waiting");
+    expect(markup).toContain('href="/w/ws_1/approvals?fleetId=zom_1"');
   });
 
-  it("fleets detail page pluralizes the pending-approvals badge with more than one pending", async () => {
-    fetchMock.mockImplementation(async (url: string) => {
-      if (url.endsWith("/v1/tenants/me/billing")) {
-        return { ok: true, status: 200, json: async () => happyBilling };
-      }
-      if (url.includes("/approvals")) {
-        return {
-          ok: true,
-          status: 200,
-          // Two pending, no next_cursor → exact-count label "2" and the
-          // plural "s" arm of the `length === 1 ? "" : "s"` ternary.
-          json: async () => ({
-            items: [
-              { gate_id: "g1", fleet_id: "zom_1", fleet_name: "platform-ops" },
-              { gate_id: "g2", fleet_id: "zom_1", fleet_name: "platform-ops" },
-            ],
-            next_cursor: null,
-          }),
-        };
-      }
-      if (url.includes("/memories")) {
-        return { ok: true, status: 200, json: async () => ({ items: [], total: 0, request_id: "req_1" }) };
-      }
-      if (url.includes("/events")) {
-        return { ok: true, status: 200, json: async () => ({ items: [], next_cursor: null }) };
-      }
-      return detailResponse({ name: "platform-ops", status: "active" });
-    });
+  it("fleet Settings view contains runtime controls and the danger zone", async () => {
+    mockFetchBilling(happyBilling);
     const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
-    const markup = renderToStaticMarkup(
-      await Page({ params: Promise.resolve({ workspaceId: "ws_1", id: "zom_1" }) }),
+    const settingsMarkup = renderToStaticMarkup(
+      await Page({
+        params: Promise.resolve({ workspaceId: "ws_1", id: "zom_1" }),
+        searchParams: Promise.resolve({ view: "settings" }),
+      }),
     );
-    expect(markup).toContain("2 pending approvals");
+    expect(settingsMarkup).toContain("Runtime");
+    expect(settingsMarkup).toContain("Stop");
+    expect(settingsMarkup).toContain("Kill");
+    expect(settingsMarkup).toContain("Danger zone");
+    expect(settingsMarkup).toContain("Delete fleet");
   });
 
   it("fleets detail page handles billing fetch failure gracefully (catch branch)", async () => {
@@ -524,7 +573,7 @@ describe("fleets routes", () => {
     expect(markup).not.toContain("Pending approvals");
   });
 
-  it("fleets detail page degrades to empty when the events + approvals fetches fail (catch branches)", async () => {
+  it("fleet Trigger view degrades cleanly and never renders a webhook box", async () => {
     fetchMock.mockImplementation(async (url: string) => {
       if (url.endsWith("/v1/tenants/me/billing")) {
         return { ok: true, status: 200, json: async () => happyBilling };
@@ -536,18 +585,14 @@ describe("fleets routes", () => {
     });
     const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
     const markup = renderToStaticMarkup(
-      await Page({ params: Promise.resolve({ workspaceId: "ws_1", id: "zom_1" }) }),
+      await Page({
+        params: Promise.resolve({ workspaceId: "ws_1", id: "zom_1" }),
+        searchParams: Promise.resolve({ view: "trigger" }),
+      }),
     );
-    // The fleet still renders; the failed events + approvals calls degrade via
-    // their `.catch` arms. The 7-day window catches to `null`, so the runs
-    // ledger shows its degraded state rather than a blank, and the metrics strip
-    // shows no run.
     expect(markup).toContain("platform-ops");
-    expect(markup).toContain("Recent window unavailable");
-    expect(markup).toContain("No runs recorded yet");
+    expect(markup).toContain("Trigger source");
+    expect(markup).toContain("No triggers declared");
+    expect(markup).not.toContain("Webhook URL");
   });
 });
-
-// TriggerPanel coverage moved to a co-located test file with the
-// per-trigger accordion rewrite (`components/TriggerPanel.test.tsx`).
-// The legacy Tabs interface tested in this block no longer exists.

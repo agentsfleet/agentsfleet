@@ -1,36 +1,51 @@
 import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { SteerComposer } from "./SteerComposer";
 
-// Mock assistant-ui's ComposerPrimitive so the composer renders without a full
-// AssistantRuntimeProvider — the `asChild` Input clones the design-system
-// Textarea with the `disabled` + `placeholder` props SteerComposer passes, which
-// is exactly the gate under test.
 vi.mock("@assistant-ui/react", () => ({
   ComposerPrimitive: {
     Root: ({ children, ...rest }: { children: React.ReactNode }) => <div {...rest}>{children}</div>,
-    Input: ({ children, disabled, placeholder }: { children: React.ReactElement; disabled?: boolean; placeholder?: string }) =>
-      React.cloneElement(children, { disabled, placeholder } as Record<string, unknown>),
+    Queue: ({ children }: { children: (args: { queueItem: { id: string } }) => React.ReactNode }) =>
+      children({ queueItem: { id: "queued-1" } }),
+    Input: ({ children, placeholder }: { children: React.ReactElement; placeholder?: string }) =>
+      React.cloneElement(children, { placeholder } as Record<string, unknown>),
     Send: ({ children }: { children: React.ReactElement }) => children,
+  },
+  QueueItemPrimitive: {
+    Text: () => <span />,
+    Remove: ({ children }: { children: React.ReactNode }) => <>{children}</>,
   },
 }));
 
 afterEach(() => cleanup());
 
 describe("SteerComposer", () => {
-  it("test_composer_disabled_while_running", () => {
-    const { rerender } = render(<SteerComposer isRunning={true} />);
-    const textarea = screen.getByRole("textbox") as HTMLTextAreaElement;
-    // Mid-run: the composer is disabled and shows the working-state placeholder;
-    // there is no interrupt control (steering a running fleet is not a capability).
-    expect(textarea.disabled).toBe(true);
-    expect(textarea.placeholder).toBe("Fleet is working — composer disabled");
-    expect(screen.queryByRole("button", { name: /interrupt|stop|cancel/i })).toBeNull();
+  it("renders queued messages with a removable state", () => {
+    render(<SteerComposer isRunning={false} failureKind={null} onRetry={vi.fn()} />);
+    expect(screen.getByText("queued")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Remove" })).toBeTruthy();
+  });
 
-    // event_complete flips isRunning false → the composer re-enables.
-    rerender(<SteerComposer isRunning={false} />);
-    expect((screen.getByRole("textbox") as HTMLTextAreaElement).disabled).toBe(false);
-    expect((screen.getByRole("textbox") as HTMLTextAreaElement).placeholder).toBe("Steer this fleet…");
+  it("stays usable while the fleet works and explains queuing", () => {
+    render(<SteerComposer isRunning failureKind={null} onRetry={vi.fn()} />);
+    const textarea = screen.getByRole("textbox") as HTMLTextAreaElement;
+    expect(textarea.disabled).toBe(false);
+    expect(textarea.placeholder).toBe("Message this fleet…");
+    expect(screen.getByText("Working — new messages will queue.")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Send ↵" })).toBeTruthy();
+  });
+
+  it("offers Retry after a send failure", async () => {
+    const retry = vi.fn();
+    render(<SteerComposer isRunning={false} failureKind="send" onRetry={retry} />);
+    await userEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(retry).toHaveBeenCalledTimes(1);
+  });
+
+  it("sends an expired session to sign in", () => {
+    render(<SteerComposer isRunning={false} failureKind="session" onRetry={vi.fn()} />);
+    expect(screen.getByRole("link", { name: "Sign in" }).getAttribute("href")).toBe("/sign-in");
   });
 });

@@ -13,18 +13,13 @@ export const BACK_TO_FLEETS_ARIA = "Back to fleets";
 
 // ── Column headings (§3 — the three questions the console answers) ──
 
-export const COLUMN_IS_LABEL = "What it is";
-export const COLUMN_DOES_LABEL = "What it does";
-export const COLUMN_KNOWS_LABEL = "What it knows & costs";
-
-// Sub-section labels within the columns.
-export const TRIGGERS_SECTION_LABEL = "Triggers";
 export const DANGER_ZONE_LABEL = "Danger zone";
-export const APPROVALS_SECTION_LABEL = "Approvals";
 
 // ── Left rail: the source editor (§4) ──
 
 export const SOURCE_PANEL_TITLE = "Source";
+export const SKILL_SOURCE_PANEL_TITLE = "Skill source";
+export const TRIGGER_SOURCE_PANEL_TITLE = "Trigger source";
 export const SKILL_DOC_LABEL = "SKILL.md";
 export const TRIGGER_DOC_LABEL = "TRIGGER.md";
 export const TRIGGER_DOC_EMPTY = "No TRIGGER.md — this fleet has no declared triggers.";
@@ -87,39 +82,22 @@ export const MEMORY_FORGET_MISSING =
 
 // ── Right rail: the runs ledger and 7-day rollup (§6) ──
 
-export const LEDGER_PANEL_TITLE = "Runs";
-export const LEDGER_EMPTY_TITLE = "No runs yet";
-export const LEDGER_EMPTY_DESCRIPTION = "Each wake the fleet records lands here.";
-export const LEDGER_COST_UNKNOWN = "—";
+// ── Chat summary ──
 
-export const ROLLUP_WINDOW_LABEL = "Latest 200 events in 7 days";
-export const ROLLUP_WAKES_LABEL = "Wakes";
-export const ROLLUP_TOKENS_LABEL = "Tokens";
-export const ROLLUP_SPEND_LABEL = "Spend";
-export const ROLLUP_FAILED_LABEL = "Failed";
-export const ROLLUP_LIFETIME_LABEL = "Lifetime spend";
-// Shown when the 7-day window fetch failed — the rollup degrades to the
-// lifetime figure rather than blanking (Failure Modes: events page fetch fails).
-export const ROLLUP_WINDOW_UNAVAILABLE =
-  "Recent window unavailable — showing lifetime spend only.";
-
-// The events window the client-side rollup covers (§6). One place so the label
-// and the query string can never drift.
-export const ROLLUP_WINDOW_SINCE = "7d";
-export const ROLLUP_WINDOW_LIMIT = 200;
-
-// ── Middle: the run-metrics strip (§3) ──
-
-export const METRICS_STRIP_LABEL = "Latest run";
+export const METRICS_STRIP_LABEL = "Fleet summary";
+export const METRICS_STATUS_LABEL = "Status";
+export const METRICS_OUTCOME_LABEL = "Latest outcome";
 export const METRICS_TOKENS_LABEL = "Tokens";
-// Wall-clock duration of the latest run. Labelled "Time" — "Wall" collides
-// with the product's own Live Wall vocabulary and reads as jargon.
-export const METRICS_TIME_LABEL = "Time";
-export const METRICS_COST_LABEL = "Cost";
+export const METRICS_TIME_LABEL = "Duration";
+export const METRICS_COST_LABEL = "Spend";
 // Any missing figure (tokens, time, or cost) renders a dash — an unknown is
 // never a fabricated zero.
 export const METRICS_VALUE_UNKNOWN = "—";
-export const METRICS_EMPTY = "No runs recorded yet.";
+export const METRICS_EMPTY = "No outcome recorded yet.";
+export const METRICS_UNAVAILABLE = "Latest data unavailable.";
+export const METRICS_APPROVALS_UNAVAILABLE = "Approvals unavailable";
+export const METRICS_APPROVAL_LABEL = "approval waiting";
+export const METRICS_APPROVALS_LABEL = "approvals waiting";
 
 // ── §7 — the delete confirm's memory trap (G8) ──
 

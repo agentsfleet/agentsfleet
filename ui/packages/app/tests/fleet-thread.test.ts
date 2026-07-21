@@ -8,6 +8,7 @@ import {
   vi,
 } from "vitest";
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -19,7 +20,13 @@ import type { AppendMessage, ThreadMessageLike } from "@assistant-ui/react";
 
 // ── Hoisted mocks ────────────────────────────────────────────────────────
 
-const { routerRefreshMock, steerFleetActionMock, useFleetEventStreamMock, capturedOnNew } =
+const {
+  routerRefreshMock,
+  steerFleetActionMock,
+  useFleetEventStreamMock,
+  capturedOnNew,
+  capturedRetry,
+} =
   vi.hoisted(() => ({
     routerRefreshMock: vi.fn(),
     steerFleetActionMock: vi.fn(),
@@ -28,6 +35,7 @@ const { routerRefreshMock, steerFleetActionMock, useFleetEventStreamMock, captur
     // test can drive it with content the composer UI never emits (e.g. an
     // image-only append) to reach `extractMessageText`'s no-text-part path.
     capturedOnNew: { current: null as ((msg: AppendMessage) => Promise<void>) | null },
+    capturedRetry: { current: null as (() => void) | null },
   }));
 
 vi.mock("next/navigation", () => ({
@@ -58,6 +66,19 @@ vi.mock("@/components/domain/useFleetEventStream", async () => {
   return {
     ...actual,
     useFleetEventStream: useFleetEventStreamMock,
+  };
+});
+
+vi.mock("@/components/domain/SteerComposer", async () => {
+  const actual = await vi.importActual<typeof import("@/components/domain/SteerComposer")>(
+    "@/components/domain/SteerComposer",
+  );
+  return {
+    ...actual,
+    SteerComposer: (props: React.ComponentProps<typeof actual.SteerComposer>) => {
+      capturedRetry.current = props.onRetry;
+      return React.createElement(actual.SteerComposer, props);
+    },
   };
 });
 
@@ -111,6 +132,7 @@ type StreamMockOverrides = {
   appendOptimistic?: ReturnType<typeof vi.fn>;
   reconcileOptimistic?: ReturnType<typeof vi.fn>;
   markOptimisticFailed?: ReturnType<typeof vi.fn>;
+  retryConnection?: ReturnType<typeof vi.fn>;
 };
 
 function mockStream(events: FleetEvent[], opts?: Omit<StreamMockOverrides, "events">) {
@@ -121,8 +143,21 @@ function mockStream(events: FleetEvent[], opts?: Omit<StreamMockOverrides, "even
     appendOptimistic: opts?.appendOptimistic ?? vi.fn().mockReturnValue("temp_1"),
     reconcileOptimistic: opts?.reconcileOptimistic ?? vi.fn(),
     markOptimisticFailed: opts?.markOptimisticFailed ?? vi.fn(),
+    retryConnection: opts?.retryConnection ?? vi.fn(),
     convertEvent: toThreadMessage,
   });
+}
+
+function appendMessage(text: string): AppendMessage {
+  return {
+    role: "user",
+    content: [{ type: "text", text }],
+    createdAt: new Date(0),
+    metadata: { custom: {} },
+    parentId: null,
+    sourceId: null,
+    runConfig: undefined,
+  };
 }
 
 function renderThread() {
@@ -167,6 +202,7 @@ beforeEach(() => {
   steerFleetActionMock.mockReset();
   useFleetEventStreamMock.mockReset();
   capturedOnNew.current = null;
+  capturedRetry.current = null;
 });
 
 afterEach(() => cleanup());
@@ -196,7 +232,7 @@ describe("FleetThread — empty state", () => {
   it("renders the waiting-for-activity hint when no events", () => {
     mockStream([]);
     renderThread();
-    expect(screen.getByText(/waiting for activity/i)).toBeTruthy();
+    expect(screen.getByText(/Message this fleet or wait for its next trigger/i)).toBeTruthy();
     expect(screen.getByText(/0 events/i)).toBeTruthy();
   });
 });
@@ -207,7 +243,7 @@ describe("FleetThread — header chrome", () => {
       ev({ role: "system", actor: "config_reload", text: "Reloaded" }),
     ]);
     renderThread();
-    expect(screen.getByText(/^Live activity$/)).toBeTruthy();
+    expect(screen.getByText(/^Chat$/)).toBeTruthy();
     expect(screen.getByText(/1 events/)).toBeTruthy();
     expect(screen.getByText(/^Live$/)).toBeTruthy();
   });
@@ -355,24 +391,34 @@ describe("FleetThread — role rendering", () => {
   });
 });
 
-describe("FleetThread — composer disabled-while-running", () => {
-  it("flips placeholder when isRunning toggles true", () => {
+describe("FleetThread — fluid composer", () => {
+  it("keeps the message field available while running", () => {
     mockStream(
       [ev({ role: "assistant", actor: "fleet", text: "streaming…" })],
       { isRunning: true },
     );
     renderThread();
-    expect(screen.getByPlaceholderText(/fleet is working/i)).toBeTruthy();
+    const input = screen.getByPlaceholderText(/message this fleet/i) as HTMLTextAreaElement;
+    expect(input.disabled).toBe(false);
+    expect(screen.getByText(/new messages will queue/i)).toBeTruthy();
   });
 
   it("uses the idle placeholder when not running", () => {
     mockStream([], { isRunning: false });
     renderThread();
-    expect(screen.getByPlaceholderText(/steer this fleet/i)).toBeTruthy();
+    expect(screen.getByPlaceholderText(/message this fleet/i)).toBeTruthy();
   });
 });
 
 describe("FleetThread — steer submission", () => {
+  it("ignores Retry when no delivery has failed", () => {
+    mockStream([]);
+    renderThread();
+    expect(capturedRetry.current).toBeTypeOf("function");
+    act(() => capturedRetry.current!());
+    expect(steerFleetActionMock).not.toHaveBeenCalled();
+  });
+
   it("calls steerFleetAction and reconciles the optimistic message on ok", async () => {
     const refreshed = vi.fn();
     const unsubscribe = subscribeOnboardingRefresh(WS, refreshed);
@@ -385,9 +431,7 @@ describe("FleetThread — steer submission", () => {
       data: { event_id: "evt_real_42" },
     });
     renderThread();
-    const textarea = screen.getByPlaceholderText(/steer this fleet/i);
-    fireEvent.change(textarea, { target: { value: "deploy the canary" } });
-    fireEvent.submit(textarea.closest("form")!);
+    await capturedOnNew.current!(appendMessage("deploy the canary"));
     await waitFor(() =>
       expect(steerFleetActionMock).toHaveBeenCalledWith(
         WS,
@@ -405,6 +449,21 @@ describe("FleetThread — steer submission", () => {
     unsubscribe();
   });
 
+  it("accepts a steer that completed before its HTTP response returned", async () => {
+    const reconcileOptimistic = vi.fn().mockReturnValue(true);
+    mockStream([], { reconcileOptimistic });
+    steerFleetActionMock.mockResolvedValueOnce({
+      ok: true,
+      data: { event_id: "evt_already_complete" },
+    });
+    renderThread();
+    await capturedOnNew.current!(appendMessage("fast completion"));
+    expect(reconcileOptimistic).toHaveBeenCalledWith(
+      "temp_1",
+      "evt_already_complete",
+    );
+  });
+
   it("marks the optimistic message failed when the action returns ok:false", async () => {
     const refreshed = vi.fn();
     const unsubscribe = subscribeOnboardingRefresh(WS, refreshed);
@@ -419,9 +478,7 @@ describe("FleetThread — steer submission", () => {
       errorCode: "UZ-AUTH-401",
     });
     renderThread();
-    const textarea = screen.getByPlaceholderText(/steer this fleet/i);
-    fireEvent.change(textarea, { target: { value: "deploy that fails" } });
-    fireEvent.submit(textarea.closest("form")!);
+    await capturedOnNew.current!(appendMessage("deploy that fails"));
     await waitFor(() =>
       expect(markOptimisticFailed).toHaveBeenCalledWith("temp_99"),
     );
@@ -434,6 +491,25 @@ describe("FleetThread — steer submission", () => {
     unsubscribe();
   });
 
+  it("retries a non-session send failure through the queue", async () => {
+    const markOptimisticFailed = vi.fn();
+    mockStream([], { markOptimisticFailed });
+    steerFleetActionMock
+      .mockResolvedValueOnce({
+        ok: false,
+        error: "Provider unavailable",
+        status: 503,
+        errorCode: "UZ-AGT-503",
+      })
+      .mockResolvedValueOnce({ ok: true, data: { event_id: "evt_retry_ok" } });
+    renderThread();
+    await capturedOnNew.current!(appendMessage("retry this send"));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    await waitFor(() => expect(steerFleetActionMock).toHaveBeenCalledTimes(2));
+    expect(markOptimisticFailed).toHaveBeenCalledTimes(1);
+  });
+
   it("marks the optimistic message failed when the action invocation throws", async () => {
     const refreshed = vi.fn();
     const unsubscribe = subscribeOnboardingRefresh(WS, refreshed);
@@ -441,11 +517,9 @@ describe("FleetThread — steer submission", () => {
     const reconcileOptimistic = vi.fn();
     const markOptimisticFailed = vi.fn();
     mockStream([], { appendOptimistic, reconcileOptimistic, markOptimisticFailed });
-    steerFleetActionMock.mockRejectedValueOnce(new Error("RSC transport failed"));
+    steerFleetActionMock.mockRejectedValueOnce(new Error("Server Component transport failed"));
     renderThread();
-    const textarea = screen.getByPlaceholderText(/steer this fleet/i);
-    fireEvent.change(textarea, { target: { value: "offline send" } });
-    fireEvent.submit(textarea.closest("form")!);
+    await capturedOnNew.current!(appendMessage("offline send"));
     await waitFor(() =>
       expect(markOptimisticFailed).toHaveBeenCalledWith("temp_t"),
     );
@@ -458,9 +532,7 @@ describe("FleetThread — steer submission", () => {
     const appendOptimistic = vi.fn();
     mockStream([], { appendOptimistic });
     renderThread();
-    const textarea = screen.getByPlaceholderText(/steer this fleet/i);
-    fireEvent.submit(textarea.closest("form")!);
-    await new Promise((r) => setTimeout(r, 30));
+    await capturedOnNew.current!(appendMessage(""));
     expect(steerFleetActionMock).not.toHaveBeenCalled();
     expect(appendOptimistic).not.toHaveBeenCalled();
   });
@@ -485,7 +557,7 @@ describe("FleetThread — connection-state header", () => {
   it("renders the Reconnecting badge while connectionStatus=RECONNECTING", () => {
     mockStream([], { connectionStatus: CONNECTION_STATUS.RECONNECTING });
     renderThread();
-    expect(screen.getByText(/Reconnecting…/)).toBeTruthy();
+    expect(screen.getAllByText(/Reconnecting…/).length).toBeGreaterThan(0);
   });
 
   it("renders the Connecting badge while connectionStatus=CONNECTING", () => {
@@ -596,14 +668,14 @@ describe("FleetThread — robustness against malformed metadata", () => {
     const viewport = container.querySelector('[role="log"]');
     expect(viewport).toBeTruthy();
     expect(viewport?.getAttribute("aria-live")).toBe("polite");
-    expect(viewport?.getAttribute("aria-label")).toBe("Live activity");
+    expect(viewport?.getAttribute("aria-label")).toBe("Chat");
   });
 
   it("renders the backfill skeleton when CONNECTING with no events", () => {
     mockStream([], { connectionStatus: CONNECTION_STATUS.CONNECTING });
     const { container } = renderThread();
     expect(container.querySelector('[data-testid="backfill-skeleton"]')).toBeTruthy();
-    expect(screen.queryByText(/waiting for activity/i)).toBeNull();
+    expect(screen.queryByText(/Message this fleet or wait for its next trigger/i)).toBeNull();
   });
 
   it("renders the backfill skeleton when RECONNECTING with no events", () => {
@@ -616,7 +688,7 @@ describe("FleetThread — robustness against malformed metadata", () => {
     mockStream([], { connectionStatus: CONNECTION_STATUS.LIVE });
     const { container } = renderThread();
     expect(container.querySelector('[data-testid="backfill-skeleton"]')).toBeNull();
-    expect(screen.getByText(/waiting for activity/i)).toBeTruthy();
+    expect(screen.getByText(/Message this fleet or wait for its next trigger/i)).toBeTruthy();
   });
 
   it("never renders the skeleton once any event is present", () => {
@@ -670,7 +742,7 @@ describe("FleetThread — robustness against malformed metadata", () => {
   it("composer stacks vertically at <sm, row-aligned at sm+", () => {
     mockStream([]);
     const { container } = renderThread();
-    const composerInner = container.querySelector('[aria-label="Steer composer"] > div');
+    const composerInner = container.querySelector('[aria-label="Chat composer"] > div:last-child');
     expect(composerInner).toBeTruthy();
     const cls = composerInner!.className;
     expect(cls).toMatch(/flex-col/);

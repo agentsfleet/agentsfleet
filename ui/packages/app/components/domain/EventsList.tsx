@@ -14,6 +14,7 @@ import {
 } from "@agentsfleet/design-system";
 import { ActivityIcon } from "lucide-react";
 import { listWorkspaceEventsAction } from "@/app/(dashboard)/w/[workspaceId]/events/actions";
+import { formatDollars } from "@/app/(dashboard)/settings/billing/lib/charges";
 import type { EventRow, EventsPage } from "@/lib/api/events";
 import { presentErrorString } from "@/lib/errors";
 import { formatMs } from "@/lib/utils";
@@ -21,11 +22,13 @@ import { formatMs } from "@/lib/utils";
 export type EventsListProps = {
   workspaceId: string;
   initial: EventsPage;
+  fleetId?: string;
 };
 
 // One label names the surface everywhere: the table caption here and the
 // landmark region in events/page.tsx — never re-spelled.
 export const WORKSPACE_EVENTS_LABEL = "Workspace events";
+export const FLEET_EVENTS_LABEL = "Fleet events";
 
 const EVENTS_EMPTY_TITLE = "No events yet";
 const EVENTS_EMPTY_DESCRIPTION = "Fleet activity appears here.";
@@ -67,7 +70,7 @@ function failureLabel(tag: string): string {
 // The workspace event feed in the standard table every sibling data surface
 // uses (API keys, secrets, runners, billing). One row per event; the summary
 // column carries the response preview or the plain-language failure reason.
-const EVENT_COLUMNS: DataTableColumn<EventRow>[] = [
+const EVENT_COLUMNS_WITH_FLEET: DataTableColumn<EventRow>[] = [
   { key: "time", header: "Time", cell: (row) => <EventTimeCell row={row} /> },
   {
     key: "status",
@@ -82,7 +85,14 @@ const EVENT_COLUMNS: DataTableColumn<EventRow>[] = [
   },
   { key: "actor", header: "Actor", cell: (row) => row.actor },
   { key: "type", header: "Type", hideOnMobile: true, cell: (row) => row.event_type },
-  { key: "summary", header: "Summary", cell: (row) => <EventSummaryCell row={row} /> },
+  { key: "result", header: "Result", cell: (row) => <EventSummaryCell row={row} /> },
+  {
+    key: "cost",
+    header: "Cost",
+    numeric: true,
+    hideOnMobile: true,
+    cell: (row) => (row.cost_nanos === null ? VALUE_UNKNOWN : formatDollars(row.cost_nanos)),
+  },
   {
     key: "tokens",
     header: "Tokens",
@@ -99,7 +109,9 @@ const EVENT_COLUMNS: DataTableColumn<EventRow>[] = [
   },
 ];
 
-export function EventsList({ workspaceId, initial }: EventsListProps) {
+const EVENT_COLUMNS_FLEET = EVENT_COLUMNS_WITH_FLEET.filter((column) => column.key !== "fleet");
+
+export function EventsList({ workspaceId, initial, fleetId }: EventsListProps) {
   const [items, setItems] = useState<EventRow[]>(initial.items);
   const [cursor, setCursor] = useState<string | null>(initial.next_cursor);
   const [error, setError] = useState<string | null>(null);
@@ -108,7 +120,10 @@ export function EventsList({ workspaceId, initial }: EventsListProps) {
   function loadMore(nextCursor: string) {
     setError(null);
     startTransition(async () => {
-      const result = await listWorkspaceEventsAction(workspaceId, { cursor: nextCursor });
+      const result = await listWorkspaceEventsAction(workspaceId, {
+        cursor: nextCursor,
+        ...(fleetId ? { fleet_id: fleetId } : {}),
+      });
       if (!result.ok) {
         setError(
           presentErrorString({
@@ -127,8 +142,8 @@ export function EventsList({ workspaceId, initial }: EventsListProps) {
   return (
     <div className="flex flex-col gap-3">
       <DataTable
-        caption={WORKSPACE_EVENTS_LABEL}
-        columns={EVENT_COLUMNS}
+        caption={fleetId ? FLEET_EVENTS_LABEL : WORKSPACE_EVENTS_LABEL}
+        columns={fleetId ? EVENT_COLUMNS_FLEET : EVENT_COLUMNS_WITH_FLEET}
         rows={items}
         rowKey={(row) => `${row.fleet_id}:${row.event_id}`}
         empty={

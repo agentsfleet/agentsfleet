@@ -31,22 +31,32 @@ import type { EventRow } from "@/lib/api/events";
 import { steerFleetAction } from "@/app/(dashboard)/w/[workspaceId]/fleets/actions";
 import { SteerComposer } from "./SteerComposer";
 import { renderFleetMessage } from "./fleetMessageRenderers";
+import { FleetConnectionNotice } from "./FleetConnectionNotice";
+import {
+  QUEUE_DELIVERY,
+  useFleetDeliveryFailure,
+  useFleetMessageQueue,
+  type FailedDelivery,
+  type QueueDeliveryResult,
+} from "./useFleetMessageQueue";
 import { requestOnboardingRefresh } from "@/lib/onboarding-refresh";
 
-const PANEL_TITLE = "Live activity";
+const PANEL_TITLE = "Chat";
 const EMPTY_HINT =
-  "Waiting for activity. Tool calls, chunks, and completions appear here as the fleet runs.";
+  "Message this fleet or wait for its next trigger. Activity and outcomes appear here.";
 
 const STATUS_LABEL: Record<ConnectionStatus, string> = {
   [CONNECTION_STATUS.CONNECTING]: "Connecting…",
   [CONNECTION_STATUS.LIVE]: "Live",
   [CONNECTION_STATUS.RECONNECTING]: "Reconnecting…",
+  [CONNECTION_STATUS.OFFLINE]: "Offline",
 };
 
-const STATUS_VARIANT: Record<ConnectionStatus, "cyan" | "live" | "amber"> = {
+const STATUS_VARIANT: Record<ConnectionStatus, "cyan" | "live" | "amber" | "error"> = {
   [CONNECTION_STATUS.CONNECTING]: "cyan",
   [CONNECTION_STATUS.LIVE]: "live",
   [CONNECTION_STATUS.RECONNECTING]: "amber",
+  [CONNECTION_STATUS.OFFLINE]: "error",
 };
 
 // Placeholder actor used on optimistic user messages until the SSE
@@ -79,51 +89,79 @@ export type FleetThreadProps = {
  */
 export function FleetThread({ workspaceId, fleetId, initial }: FleetThreadProps) {
   const stream = useFleetEventStream(workspaceId, fleetId, initial);
+  const {
+    failedDelivery,
+    setFailedDelivery,
+    clearFailedDelivery,
+  } = useFleetDeliveryFailure(fleetId);
   useRefreshSummariesOnCompletion(initial, stream.events);
   // Pass the registry methods (each `useCallback([fleetId])`-stable), not
   // the whole `stream` object — `stream` is a fresh reference on every SSE
   // frame, so listing it would rebuild `onNew` per frame for no benefit.
-  const onNew = useNewMessageHandler({
+  const deliverMessage = useNewMessageHandler({
     workspaceId,
     fleetId,
     appendOptimistic: stream.appendOptimistic,
     reconcileOptimistic: stream.reconcileOptimistic,
     markOptimisticFailed: stream.markOptimisticFailed,
+    onFailure: setFailedDelivery,
   });
+  const connectionBusy = stream.connectionStatus !== CONNECTION_STATUS.LIVE;
+  const { queue, retryMessage } = useFleetMessageQueue(
+    fleetId,
+    stream.isRunning || connectionBusy,
+    deliverMessage,
+  );
+  const retryFailedDelivery = useCallback(() => {
+    if (!failedDelivery) return;
+    retryMessage(failedDelivery.message);
+    clearFailedDelivery();
+  }, [clearFailedDelivery, failedDelivery, retryMessage]);
   const runtime = useExternalStoreRuntime<FleetEvent>({
     messages: stream.events,
     convertMessage: stream.convertEvent,
     isRunning: stream.isRunning,
-    onNew,
+    queue,
+    onNew: async (message) => {
+      await deliverMessage(message);
+    },
   });
   return (
     <AssistantRuntimeProvider runtime={runtime}>
-      <Card aria-label="Live activity stream">
+      <Card aria-label="Fleet chat">
         <CardHeader className="flex flex-row items-center justify-between gap-md space-y-0 py-lg">
-            <CardTitle className="flex items-center gap-md text-sm font-medium">
-              <WakePulse
-                live={stream.connectionStatus === CONNECTION_STATUS.LIVE}
-                className="inline-block h-2 w-2 rounded-full bg-pulse"
-                aria-hidden="true"
-              />
-              {PANEL_TITLE}
-            </CardTitle>
-            <div className="flex items-center gap-md">
-              <span className="font-mono text-label text-muted-foreground">
-                {stream.events.length} events
-              </span>
-              <Badge variant={STATUS_VARIANT[stream.connectionStatus]}>
-                {STATUS_LABEL[stream.connectionStatus]}
-              </Badge>
-            </div>
-          </CardHeader>
-          <CardContent className="p-0">
-            <ThreadViewport
-              eventsCount={stream.events.length}
-              connectionStatus={stream.connectionStatus}
+          <CardTitle className="flex items-center gap-md text-sm font-medium">
+            <WakePulse
+              live={stream.connectionStatus === CONNECTION_STATUS.LIVE}
+              className="inline-block h-2 w-2 rounded-full bg-pulse"
+              aria-hidden="true"
             />
-            <SteerComposer isRunning={stream.isRunning} />
-          </CardContent>
+            {PANEL_TITLE}
+          </CardTitle>
+          <div className="flex items-center gap-md">
+            <span className="font-mono text-label text-muted-foreground">
+              {stream.events.length} events
+            </span>
+            <Badge variant={STATUS_VARIANT[stream.connectionStatus]}>
+              {STATUS_LABEL[stream.connectionStatus]}
+            </Badge>
+          </div>
+        </CardHeader>
+        <CardContent className="p-0">
+          <FleetConnectionNotice
+            status={stream.connectionStatus}
+            onRetry={stream.retryConnection}
+          />
+          <ThreadViewport
+            eventsCount={stream.events.length}
+            connectionStatus={stream.connectionStatus}
+          />
+          <SteerComposer
+            isRunning={stream.isRunning}
+            failureKind={failedDelivery?.kind ?? null}
+            onRetry={retryFailedDelivery}
+          />
+        </CardContent>
       </Card>
     </AssistantRuntimeProvider>
   );
@@ -232,6 +270,7 @@ type NewHandlerCtx = {
   appendOptimistic: StreamApi["appendOptimistic"];
   reconcileOptimistic: StreamApi["reconcileOptimistic"];
   markOptimisticFailed: StreamApi["markOptimisticFailed"];
+  onFailure: (failure: FailedDelivery) => void;
 };
 
 function useNewMessageHandler({
@@ -240,28 +279,44 @@ function useNewMessageHandler({
   appendOptimistic,
   reconcileOptimistic,
   markOptimisticFailed,
-}: NewHandlerCtx): (msg: AppendMessage) => Promise<void> {
+  onFailure,
+}: NewHandlerCtx): (msg: AppendMessage) => Promise<QueueDeliveryResult> {
   return useCallback(
     async (msg: AppendMessage) => {
       const text = extractMessageText(msg);
-      if (text.length === 0) return;
+      if (text.length === 0) return QUEUE_DELIVERY.FAILED;
       const tempId = appendOptimistic(text, OPTIMISTIC_ACTOR);
       try {
         const result = await steerFleetAction(workspaceId, fleetId, text);
         if (result.ok) {
-          reconcileOptimistic(tempId, result.data.event_id);
+          const alreadyComplete = reconcileOptimistic(tempId, result.data.event_id);
           requestOnboardingRefresh(workspaceId);
+          return alreadyComplete ? QUEUE_DELIVERY.COMPLETE : QUEUE_DELIVERY.WAITING;
         } else {
           markOptimisticFailed(tempId);
+          onFailure({
+            message: msg,
+            kind: result.status === 401 ? "session" : "send",
+          });
+          return QUEUE_DELIVERY.FAILED;
         }
       } catch {
         // The Server Action's RPC transport itself failed (offline, or the
         // action invocation errored) — surface the same `failed` row the
         // ok:false path produces so the user knows the steer didn't land.
         markOptimisticFailed(tempId);
+        onFailure({ message: msg, kind: "send" });
+        return QUEUE_DELIVERY.FAILED;
       }
     },
-    [workspaceId, fleetId, appendOptimistic, reconcileOptimistic, markOptimisticFailed],
+    [
+      workspaceId,
+      fleetId,
+      appendOptimistic,
+      reconcileOptimistic,
+      markOptimisticFailed,
+      onFailure,
+    ],
   );
 }
 

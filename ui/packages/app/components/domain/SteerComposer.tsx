@@ -1,40 +1,54 @@
 "use client";
 
-import { ComposerPrimitive } from "@assistant-ui/react";
-import { Button, Textarea, cn } from "@agentsfleet/design-system";
+import Link from "next/link";
+import {
+  ComposerPrimitive,
+  QueueItemPrimitive,
+} from "@assistant-ui/react";
+import { Alert, Badge, Button, Textarea, cn } from "@agentsfleet/design-system";
+import type { DeliveryFailureKind } from "./useFleetMessageQueue";
 
-const PLACEHOLDER_IDLE = "Steer this fleet…";
-const PLACEHOLDER_RUNNING = "Fleet is working — composer disabled";
-const SEND_LABEL = "steer ⏎";
+const PLACEHOLDER = "Message this fleet…";
+const SEND_LABEL = "Send ↵";
+const WORKING_HINT = "Working — new messages will queue.";
 
 export type SteerComposerProps = {
-  /**
-   * `true` while a stage is mid-flight (a `received` event without a
-   * terminal status yet). When set, the textarea + send button render
-   * disabled with a working-state placeholder. Drives the same signal
-   * assistant-ui's runtime uses internally to disable Send, mirrored
-   * onto the textarea so the user sees the same gate on both controls.
-   */
   isRunning: boolean;
+  failureKind: DeliveryFailureKind | null;
+  onRetry: () => void;
 };
 
-/**
- * Wraps assistant-ui's `<ComposerPrimitive.*>` with design-system
- * primitives so the visible chrome (textarea + send button) lives in
- * the project token system. The composer's Root is the form: submit
- * fires assistant-ui's onNew, which in `FleetThread` posts via the
- * `steerFleetAction` Server Action and appends an optimistic message.
- */
-export function SteerComposer({ isRunning }: SteerComposerProps) {
-  const placeholder = isRunning ? PLACEHOLDER_RUNNING : PLACEHOLDER_IDLE;
+export function SteerComposer({
+  isRunning,
+  failureKind,
+  onRetry,
+}: SteerComposerProps) {
   return (
     <ComposerPrimitive.Root
       className={cn(
         "border-t border-border bg-card px-xl py-lg",
         "flex flex-col gap-md",
       )}
-      aria-label="Steer composer"
+      aria-label="Chat composer"
     >
+      <ComposerPrimitive.Queue>
+        {({ queueItem }) => (
+          <div
+            key={queueItem.id}
+            className="flex items-center gap-md rounded-md border border-border bg-muted/30 px-md py-sm"
+          >
+            <QueueItemPrimitive.Text className="min-w-0 flex-1 truncate font-mono text-sm" />
+            <Badge variant="evidence">queued</Badge>
+            <QueueItemPrimitive.Remove asChild>
+              <Button type="button" variant="ghost" size="sm">Remove</Button>
+            </QueueItemPrimitive.Remove>
+          </div>
+        )}
+      </ComposerPrimitive.Queue>
+
+      <DeliveryFailureNotice failureKind={failureKind} onRetry={onRetry} />
+      {isRunning ? <p className="text-xs text-muted-foreground">{WORKING_HINT}</p> : null}
+
       <div
         className={cn(
           "flex flex-col gap-xs rounded-md border border-border bg-background",
@@ -42,32 +56,22 @@ export function SteerComposer({ isRunning }: SteerComposerProps) {
           "px-md py-xs",
           "transition-colors duration-snap ease-snap",
           "focus-within:border-pulse",
-          isRunning && "bg-muted",
         )}
       >
         <span
           aria-hidden="true"
-          className={cn(
-            "font-mono text-mono pb-xs",
-            "text-muted-foreground",
-            !isRunning && "focus-within:text-pulse",
-          )}
+          className="pb-xs font-mono text-mono text-muted-foreground focus-within:text-pulse"
         >
           ›
         </span>
-        <ComposerPrimitive.Input
-          asChild
-          disabled={isRunning}
-          placeholder={placeholder}
-        >
+        <ComposerPrimitive.Input asChild placeholder={PLACEHOLDER}>
           <Textarea
             rows={1}
             className={cn(
-              "flex-1 min-h-0 resize-none border-0 bg-transparent px-0 py-md",
+              "min-h-0 flex-1 resize-none border-0 bg-transparent px-0 py-md",
               "font-mono text-mono leading-mono text-foreground",
               "placeholder:text-muted-foreground",
-              "focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:border-0",
-              isRunning && "text-muted-foreground",
+              "focus-visible:border-0 focus-visible:ring-0 focus-visible:ring-offset-0",
             )}
           />
         </ComposerPrimitive.Input>
@@ -79,4 +83,34 @@ export function SteerComposer({ isRunning }: SteerComposerProps) {
       </div>
     </ComposerPrimitive.Root>
   );
+}
+
+function DeliveryFailureNotice({
+  failureKind,
+  onRetry,
+}: {
+  failureKind: DeliveryFailureKind | null;
+  onRetry: () => void;
+}) {
+  if (failureKind === "session") {
+    return (
+      <Alert variant="destructive" className="items-center justify-between">
+        <span>Your session expired. Sign in again before sending this message.</span>
+        <Button asChild type="button" variant="outline" size="sm">
+          <Link href="/sign-in">Sign in</Link>
+        </Button>
+      </Alert>
+    );
+  }
+  if (failureKind === "send") {
+    return (
+      <Alert variant="destructive" className="items-center justify-between">
+        <span>Message not sent.</span>
+        <Button type="button" variant="outline" size="sm" onClick={onRetry}>
+          Retry
+        </Button>
+      </Alert>
+    );
+  }
+  return null;
 }
