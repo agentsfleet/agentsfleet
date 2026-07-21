@@ -16,12 +16,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M138
 **Workstream:** 001
 **Date:** Jul 21, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — customer-facing: the operator must scroll a full page to reach the composer, their own messages render blank, and every webhook event renders as an empty row
 **Categories:** UI
 **Batch:** B1 — standalone; no sibling workstreams
 **Branch:** feat/m138-console-chat-fidelity
-**Test Baseline:** set at CHORE(open) — `unit=<N> integration=<M>` via `make _lint_zig_test_depth`
+**Test Baseline:** unit=2806 integration=371
 **Depends on:** none — M137_001 is in `done/` and the fleet-local navigation rail is merged on `main`
 **Provenance:** Large Language Model (LLM)-drafted (claude-opus-4-8, Jul 21, 2026) — authored from Indy's live `app-dev` session screenshots and the approved design at `~/.gstack/projects/agentsfleet-agentsfleet/designs/fleet-workspace-20260721/`
 **Canonical architecture:** `docs/DESIGN_SYSTEM.md` §Operational Restraint; `docs/architecture/data_flow.md` §"Two streams + one pub/sub channel" for the frames the thread renders
