@@ -130,6 +130,34 @@ export async function seedFleet(
   return { id: resp.fleet_id, name: resp.name };
 }
 
+/**
+ * Poll until the fleet leaves `installing`. `seedFleet` returns on the create
+ * response, but the detail page hides its working surfaces behind the install
+ * gate until the server-side status flips — a spec that navigates immediately
+ * lands on the gate, not the fleet.
+ */
+export async function waitForFleetActive(
+  handle: ClientHandle,
+  workspaceId: string,
+  fleetId: string,
+  timeoutMs = 30_000,
+): Promise<void> {
+  const c = clientFor(handle);
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const fleet = await c.get<{ status: string }>(
+      `/v1/workspaces/${workspaceId}/fleets/${fleetId}`,
+    );
+    if (fleet.status !== "installing") return;
+    if (Date.now() > deadline) {
+      throw new Error(
+        `[e2e:seed] fleet ${fleetId} still installing after ${timeoutMs}ms`,
+      );
+    }
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+}
+
 export async function listFleets(handle: ClientHandle, workspaceId: string): Promise<Fleet[]> {
   const c = clientFor(handle);
   const res = await c.get<ListResp<Fleet>>(`/v1/workspaces/${workspaceId}/fleets`);

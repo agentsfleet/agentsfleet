@@ -1,48 +1,39 @@
 /**
- * fleet-thread.spec.ts — operator-facing chat surface renders against
- * the durable event log for an authenticated user.
+ * fleet-thread.spec.ts — the operator's chat surface renders against the
+ * durable event log for an authenticated user.
  *
- * The full vision (HANDOFF punchlist #22) calls for four tests:
- *   1. Stream connects + first frame appears in <1s
- *   2. CHUNK concat + streaming cursor visible/cleared
- *   3. Reconnect recovery — abort route, badge flips, recovers within backoff
- *   4. Steer-to-render roundtrip — composer submit → optimistic queued → real frame
- *
- * Tests #1–#3 require either backend-side SSE injection or test-mode
- * frame-emit hooks the M68 harness doesn't yet expose. Filing those as
- * §6 follow-ups in this milestone's spec. What this spec pins now is
- * the load-bearing assertion: an authenticated user lands on
- * /w/[workspaceId]/fleets/[id], the thread surface mounts, the live-activity panel is
- * present, the composer renders, and SSE handshake at least starts.
- * A regression here lands either as a /sign-in redirect (server-side
- * token resolution broke) or as a missing Card / missing composer
- * (registry or layout wiring broke).
+ * What this spec pins: an authenticated user lands on
+ * /w/[workspaceId]/fleets/[id], the chat surface mounts, the composer
+ * renders and accepts a message, and no same-origin request ever carries a
+ * browser-set Authorization header. A regression lands either as a /sign-in
+ * redirect (server-side token resolution broke) or as a missing Card /
+ * missing composer (registry or layout wiring broke).
  */
 import { expect, test } from "@playwright/test";
 import { signInAs } from "./fixtures/auth";
 import { FIXTURE_KEY } from "./fixtures/constants";
-import { getDefaultWorkspaceId, listFleets, seedFleet } from "./fixtures/seed";
+import { getDefaultWorkspaceId, seedFleet, waitForFleetActive } from "./fixtures/seed";
 import { workspaceHref, workspaceUrlPattern } from "./fixtures/nav";
 
-const PANEL_LABEL = /^Live activity$/;
-const COMPOSER_LABEL = "Steer composer";
+const THREAD_LABEL = "Fleet chat";
+const PANEL_LABEL = /^Chat$/;
+const COMPOSER_LABEL = "Chat composer";
 
 test.describe("fleet thread surface", () => {
-  test("renders the live-activity panel + composer for an authenticated user", async ({
+  test("renders the chat panel + composer for an authenticated user", async ({
     page,
   }) => {
     await signInAs(page, FIXTURE_KEY.regular);
 
-    // Pick any existing fixture fleet or seed a fresh one. Earlier specs
-    // in this run may have left rows; we don't depend on a specific
-    // identity, only that some fleet exists for this workspace.
+    // Seed a uniquely-named fleet rather than reusing whatever an earlier
+    // spec left behind: sibling specs clean the shared workspace from
+    // parallel workers, and a borrowed fleet can vanish mid-test.
     const workspaceId = await getDefaultWorkspaceId(FIXTURE_KEY.regular);
-    const existing = await listFleets(FIXTURE_KEY.regular, workspaceId);
-    const fleet =
-      existing[0] ??
-      (await seedFleet(FIXTURE_KEY.regular, workspaceId, {
-        name: "thread-spec-target",
-      }));
+    const tag = Math.random().toString(36).slice(2, 8);
+    const fleet = await seedFleet(FIXTURE_KEY.regular, workspaceId, {
+      name: `thread-spec-${tag}`,
+    });
+    await waitForFleetActive(FIXTURE_KEY.regular, workspaceId, fleet.id);
 
     await page.goto(workspaceHref(workspaceId, `fleets/${fleet.id}`));
     await expect(page).toHaveURL(workspaceUrlPattern(`fleets/${fleet.id}`));
@@ -52,12 +43,10 @@ test.describe("fleet thread surface", () => {
       page.getByRole("heading", { name: new RegExp(fleet.name, "i") }).first(),
     ).toBeVisible();
 
-    // The thread Card is the load-bearing component for this PR. It mounts
-    // client-side via next/dynamic(ssr:false) and consumes the
-    // module-singleton stream registry. Asserting on its `aria-label`
-    // (set on the wrapping <article asChild>) gives a stable hook that
-    // doesn't depend on visual styling.
-    const threadCard = page.getByLabel("Live activity stream");
+    // The thread Card mounts client-side via next/dynamic(ssr:false) and
+    // consumes the module-singleton stream registry. Its `aria-label` is a
+    // stable hook that doesn't depend on visual styling.
+    const threadCard = page.getByLabel(THREAD_LABEL);
     await expect(threadCard).toBeVisible({ timeout: 10_000 });
 
     // Title row is part of the same Card.
@@ -65,18 +54,17 @@ test.describe("fleet thread surface", () => {
       threadCard.getByText(PANEL_LABEL).first(),
     ).toBeVisible();
 
-    // Viewport carries role="log" + aria-live=polite (polish #16).
-    const log = threadCard.getByRole("log", { name: /live activity/i });
+    // The conversation carries role="log" + aria-live=polite.
+    const log = threadCard.getByRole("log", { name: /chat/i });
     await expect(log).toBeVisible();
 
-    // Composer always renders. The textarea placeholder swaps when a
-    // stage is running; either form is acceptable on a fresh visit.
+    // The composer always renders and never disables itself — sending does
+    // not depend on the live feed or on the fleet being idle.
     const composer = threadCard.getByLabel(COMPOSER_LABEL);
     await expect(composer).toBeVisible();
-    const placeholder = composer.getByPlaceholder(
-      /(steer this fleet|fleet is working)/i,
-    );
+    const placeholder = composer.getByPlaceholder(/message this fleet/i);
     await expect(placeholder).toBeVisible();
+    await expect(placeholder).toBeEnabled();
   });
 
   test("survives a /w/[workspaceId]/fleets ↔ /w/[workspaceId]/fleets/[id] round-trip without unmounting the surface", async ({
@@ -89,15 +77,14 @@ test.describe("fleet thread surface", () => {
     // every revisit, observable here as the badge value).
     await signInAs(page, FIXTURE_KEY.regular);
     const workspaceId = await getDefaultWorkspaceId(FIXTURE_KEY.regular);
-    const existing = await listFleets(FIXTURE_KEY.regular, workspaceId);
-    const fleet =
-      existing[0] ??
-      (await seedFleet(FIXTURE_KEY.regular, workspaceId, {
-        name: "thread-revisit-target",
-      }));
+    const tag = Math.random().toString(36).slice(2, 8);
+    const fleet = await seedFleet(FIXTURE_KEY.regular, workspaceId, {
+      name: `thread-revisit-${tag}`,
+    });
+    await waitForFleetActive(FIXTURE_KEY.regular, workspaceId, fleet.id);
 
     await page.goto(workspaceHref(workspaceId, `fleets/${fleet.id}`));
-    await expect(page.getByLabel("Live activity stream")).toBeVisible({
+    await expect(page.getByLabel(THREAD_LABEL)).toBeVisible({
       timeout: 10_000,
     });
 
@@ -109,11 +96,11 @@ test.describe("fleet thread surface", () => {
     // network layer from a Playwright test (that's the registry unit-test
     // surface), only that the user-visible surface comes back cleanly.
     await page.goto(workspaceHref(workspaceId, `fleets/${fleet.id}`));
-    await expect(page.getByLabel("Live activity stream")).toBeVisible({
+    await expect(page.getByLabel(THREAD_LABEL)).toBeVisible({
       timeout: 10_000,
     });
     await expect(
-      page.getByLabel("Live activity stream").getByLabel(COMPOSER_LABEL),
+      page.getByLabel(THREAD_LABEL).getByLabel(COMPOSER_LABEL),
     ).toBeVisible();
   });
 
@@ -128,12 +115,11 @@ test.describe("fleet thread surface", () => {
     // server-side, so its request is cookie-only here too.
     await signInAs(page, FIXTURE_KEY.regular);
     const workspaceId = await getDefaultWorkspaceId(FIXTURE_KEY.regular);
-    const existing = await listFleets(FIXTURE_KEY.regular, workspaceId);
-    const fleet =
-      existing[0] ??
-      (await seedFleet(FIXTURE_KEY.regular, workspaceId, {
-        name: "steer-probe-target",
-      }));
+    const tag = Math.random().toString(36).slice(2, 8);
+    const fleet = await seedFleet(FIXTURE_KEY.regular, workspaceId, {
+      name: `steer-probe-${tag}`,
+    });
+    await waitForFleetActive(FIXTURE_KEY.regular, workspaceId, fleet.id);
 
     const seen: { method: string; url: string; auth: boolean; serverAction: boolean }[] = [];
     page.on("request", (req) => {
@@ -148,17 +134,17 @@ test.describe("fleet thread surface", () => {
 
     await page.goto(workspaceHref(workspaceId, `fleets/${fleet.id}`));
     const appOrigin = new URL(page.url()).origin;
-    const threadCard = page.getByLabel("Live activity stream");
+    const threadCard = page.getByLabel(THREAD_LABEL);
     await expect(threadCard).toBeVisible({ timeout: 10_000 });
 
     const composer = threadCard.getByLabel(COMPOSER_LABEL);
-    const textarea = composer.getByPlaceholder(/steer this fleet/i);
+    const textarea = composer.getByPlaceholder(/message this fleet/i);
     await expect(textarea).toBeVisible();
     await textarea.fill("acceptance steer probe");
-    await composer.getByRole("button", { name: /steer/i }).click();
+    await composer.getByRole("button", { name: /^Send/ }).click();
 
     // The optimistic row renders the message text immediately, regardless
-    // of whether the steer ultimately resolves queued→received or →failed.
+    // of whether the send ultimately resolves to sent or to failed.
     await expect(threadCard.getByText(/acceptance steer probe/)).toBeVisible({
       timeout: 5_000,
     });

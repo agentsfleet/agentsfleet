@@ -97,6 +97,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `ui/packages/app/tests/fleet-thread.test.ts` | EDIT | Rebuild against the approved rows, the pinned composer, and immediate send. |
 | `ui/packages/app/tests/events-components.test.ts` | EDIT | Assert the shared failure vocabulary through the table. |
 | `ui/packages/app/tests/e2e/acceptance/fleet-console.spec.ts` | EDIT | Walk the real console: the composer is reachable without scrolling and a submitted message leaves the composer. *(Its prior assertions described the pre-navigation three-column console and a deleted runs ledger — the walk was failing on `main` before this milestone touched it.)* |
+| `ui/packages/app/tests/e2e/acceptance/fleet-thread.spec.ts` | EDIT | *(Amended at VERIFY)* The chat-surface walk asserted labels (`Live activity stream`, `steer this fleet…`) that exist nowhere on `main` — stale since the console redesign. Rewritten against the real surface; each test seeds its own fleet instead of borrowing one a parallel worker's cleanup can delete. |
+| `ui/packages/app/tests/e2e/acceptance/fixtures/seed.ts` | EDIT | *(Amended at VERIFY)* `waitForFleetActive`: seeding returns on the create response while installation is in flight, and a spec navigating immediately lands on the install gate — the wait makes the fixture's guarantee explicit instead of timing luck. |
 | `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/[id]/components/console-copy.ts` | EDIT | *(Amended at EXECUTE — RULE NDC)* The back-link constants were stranded when the navigation rail replaced the back link; they become the breadcrumb's landmark and crumb label, which the walk needs to tell the crumb from the identically-named sidebar destination. |
 
 ## Applicable Rules
@@ -274,7 +276,7 @@ lib/events/event-summary.ts  (NEW — the single home for operator-readable even
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | The composer is reachable without scrolling the page (§1) | `cd ui/packages/app && bunx playwright test tests/e2e/acceptance/fleet-console.spec.ts --config playwright.acceptance.config.ts` | exit 0 | P0 | |
+| R1 | The composer is reachable without scrolling the page (§1) | `cd ui/packages/app && bunx playwright test tests/e2e/acceptance/fleet-console.spec.ts --config playwright.acceptance.config.ts` | exit 0 | P0 | ✅ `FOCUSED_EXIT=0` — 4 passed (console + thread walks, real stack) |
 | R2 | Rows render the approved shape and readable senders (§2) | `cd ui/packages/app && bunx vitest run components/domain/FleetMessageRow.test.tsx tests/fleet-thread.test.ts` | exit 0 | P0 | ✅ 52 passed |
 | R3 | Every event states its outcome; one failure vocabulary (§3) | `cd ui/packages/app && bunx vitest run lib/events/event-summary.test.ts` | exit 0 | P0 | ✅ 29 passed |
 | R4 | No raw runner failure tag survives in a rendered surface (§3) | `grep -rn "startup_posture" ui/packages/app/components ui/packages/app/app \| grep -vE "event-summary\|\.test\.\|//"` | no output | P0 | ✅ no output |
