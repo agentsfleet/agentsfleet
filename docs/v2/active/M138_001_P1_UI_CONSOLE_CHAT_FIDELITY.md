@@ -84,7 +84,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/[id]/components/console-copy.ts` | EDIT | New console strings as named constants (sender labels, connection labels, composer hint). |
 | `ui/packages/app/tests/fleet-thread.test.ts` | EDIT | Rebuild against the approved rows, the pinned composer, and immediate send. |
 | `ui/packages/app/tests/events-components.test.ts` | EDIT | Assert the shared failure vocabulary through the table. |
-| `ui/packages/app/tests/e2e/acceptance/fleet-console.spec.ts` | EDIT | Walk the real console: the composer is reachable without scrolling and a submitted message leaves the composer. |
+| `ui/packages/app/tests/e2e/acceptance/fleet-console.spec.ts` | EDIT | Walk the real console: the composer is reachable without scrolling and a submitted message leaves the composer. *(Its prior assertions described the pre-navigation three-column console and a deleted runs ledger — the walk was failing on `main` before this milestone touched it.)* |
+| `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/[id]/components/console-copy.ts` | EDIT | *(Amended at EXECUTE — RULE NDC)* The back-link constants were stranded when the navigation rail replaced the back link; they become the breadcrumb's landmark and crumb label, which the walk needs to tell the crumb from the identically-named sidebar destination. |
 
 ## Applicable Rules
 
@@ -117,10 +118,10 @@ The Chat view is an application surface, not a document: its summary stays put, 
 
 **Implementation default:** the shell becomes a fixed frame and its content region becomes the scroll container, because a page can then claim the viewport with an ordinary full-height child; the alternative — leaving the document scrolling and giving the thread a hard-coded height — reintroduces a magic number per breakpoint and still lets the summary scroll away. Views other than Chat keep ordinary scrolling inside that region, so no existing page changes behaviour.
 
-- **Dimension 1.1** — the dashboard frame is fixed: the header and the navigation rail do not scroll with page content, and the content region owns the scroll → Test `test_dashboard_frame_owns_its_scroll`
-- **Dimension 1.2** — on the Chat view the composer is rendered without scrolling the page at a standard viewport height, with a history long enough to overflow → Test `test_console_composer_is_reachable_without_page_scroll`
+- **Dimension 1.1 — DONE** — the dashboard frame is fixed: the header and the navigation rail do not scroll with page content, and the content region owns the scroll → Test `test_dashboard_frame_owns_its_scroll`
+- **Dimension 1.2 — DONE** — on the Chat view the composer is rendered without scrolling the page at a standard viewport height, with a history long enough to overflow → Test `test_console_composer_is_reachable_without_page_scroll`
 - **Dimension 1.3 — DONE** — the message list scrolls inside itself and lands on the newest message when a message arrives → Test `test_thread_scrolls_internally_and_follows_the_newest_message`
-- **Dimension 1.4** — a non-Chat console view still scrolls as an ordinary page, with no clipped content → Test `test_non_chat_console_views_scroll_normally`
+- **Dimension 1.4 — DONE** — a non-Chat console view still scrolls as an ordinary page, with no clipped content → Test `test_non_chat_console_views_scroll_normally`
 
 ### §2 — Messages render as the approved design
 
