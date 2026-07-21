@@ -9,6 +9,7 @@ import {
   PageHeader,
   PageTitle,
   Section,
+  WakePulse,
 } from "@agentsfleet/design-system";
 import { workspacePath } from "@/lib/workspace-routes";
 import { ApiError } from "@/lib/api/errors";
@@ -283,7 +284,7 @@ function FleetStatus({ status }: { status: string }) {
       data-state={status}
     >
       {status === AGENTSFLEET_STATUS.ACTIVE ? (
-        <span className="size-2 rounded-full bg-pulse" aria-hidden="true" />
+        <WakePulse live className="size-2 rounded-full bg-pulse" aria-hidden="true" />
       ) : null}
       {status}
     </span>

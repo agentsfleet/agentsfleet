@@ -30,12 +30,15 @@ test.describe("reload + back-nav mid-session", () => {
     const seeded = await seedFleet(FIXTURE_KEY.regular, ws, { name });
 
     await signInAs(page, FIXTURE_KEY.regular);
-    await page.goto(workspaceHref(ws, `fleets/${seeded.id}`));
+    // Trigger is a rail destination now; the query names the view so both the
+    // hard reload and the back-nav below re-resolve the same surface.
+    await page.goto(workspaceHref(ws, `fleets/${seeded.id}?view=trigger`));
     await expect(page).toHaveURL(workspaceUrlPattern(`fleets/${seeded.id}`));
-    // `Trigger` label is shared between the page <section> and a nested
-    // Tabs role="tablist" ("Trigger mode"); the region role disambiguates.
-    const triggerSection = page.getByRole("region", { name: "Trigger" });
-    await expect(triggerSection).toBeVisible();
+    // `.first()`: during reload hydration the framework can briefly hold a
+    // second detached copy of the card, and strict mode trips on the pair
+    // before visibility resolves.
+    const triggerSection = page.getByLabel("Configured triggers").first();
+    await expect(triggerSection).toBeVisible({ timeout: 15_000 });
 
     // 1. Hard reload — server re-resolves cookie + RSC tree.
     await page.reload();
@@ -49,13 +52,13 @@ test.describe("reload + back-nav mid-session", () => {
     await expect(page).toHaveURL(workspaceUrlPattern("events"));
     await expect(page.getByRole("heading", { name: /^events$/i })).toBeVisible();
 
-    await page.goto(workspaceHref(ws, `fleets/${seeded.id}`));
+    await page.goto(workspaceHref(ws, `fleets/${seeded.id}?view=trigger`));
     await expect(page).toHaveURL(workspaceUrlPattern(`fleets/${seeded.id}`));
     await expect(triggerSection).toBeVisible({ timeout: NAV_TIMEOUT_MS });
   });
 
   test.afterEach(async () => {
     const ws = await getDefaultWorkspaceId(FIXTURE_KEY.regular);
-    await cleanWorkspaceFleets(FIXTURE_KEY.regular, ws);
+    await cleanWorkspaceFleets(FIXTURE_KEY.regular, ws, "nav-");
   });
 });

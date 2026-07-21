@@ -108,7 +108,9 @@ test.describe("signup → install → lifecycle", () => {
     // section is the section-scaffolding assertion (matches logs-detail's
     // downgrade — section presence, not payload contents).
     await expect(page).toHaveURL(workspaceUrlPattern(`fleets/${fleetId}`));
-    await expect(page.getByRole("region", { name: "Recent Activity" })).toBeVisible();
+    // The detail page opens on Chat — the conversation card is the
+    // post-install scaffolding assertion.
+    await expect(page.getByLabel("Fleet chat")).toBeVisible({ timeout: 15_000 });
 
     // Listing shows the new row live.
     await page.goto(workspaceHref(workspaceId, "fleets"));

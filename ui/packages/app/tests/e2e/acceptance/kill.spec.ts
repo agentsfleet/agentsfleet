@@ -45,6 +45,6 @@ test.describe("kill", () => {
 
   test.afterEach(async () => {
     const ws = await getDefaultWorkspaceId(FIXTURE_KEY.regular);
-    await cleanWorkspaceFleets(FIXTURE_KEY.regular, ws);
+    await cleanWorkspaceFleets(FIXTURE_KEY.regular, ws, "kill-");
   });
 });

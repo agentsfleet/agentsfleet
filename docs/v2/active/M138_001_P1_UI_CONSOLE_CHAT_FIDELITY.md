@@ -99,6 +99,20 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `ui/packages/app/tests/e2e/acceptance/fleet-console.spec.ts` | EDIT | Walk the real console: the composer is reachable without scrolling and a submitted message leaves the composer. *(Its prior assertions described the pre-navigation three-column console and a deleted runs ledger — the walk was failing on `main` before this milestone touched it.)* |
 | `ui/packages/app/tests/e2e/acceptance/fleet-thread.spec.ts` | EDIT | *(Amended at VERIFY)* The chat-surface walk asserted labels (`Live activity stream`, `steer this fleet…`) that exist nowhere on `main` — stale since the console redesign. Rewritten against the real surface; each test seeds its own fleet instead of borrowing one a parallel worker's cleanup can delete. |
 | `ui/packages/app/tests/e2e/acceptance/fixtures/seed.ts` | EDIT | *(Amended at VERIFY)* `waitForFleetActive`: seeding returns on the create response while installation is in flight, and a spec navigating immediately lands on the install gate — the wait makes the fixture's guarantee explicit instead of timing luck. |
+| `ui/packages/app/tests/e2e/acceptance/fixtures/lifecycle.ts` | EDIT | *(Sweep — Indy's fold-in)* Stop/Resume/Kill live in the fleet's Settings view behind the local rail; the shared fixture navigates there before acting, fixing every lifecycle-family spec in one place. |
+| `ui/packages/app/tests/e2e/acceptance/fleet-count.spec.ts` | EDIT | *(Sweep)* The live badge counts ACTIVE fleets; each seed now waits out installation before asserting the count. |
+| `ui/packages/app/tests/e2e/acceptance/multi-fleet.spec.ts` | EDIT | *(Sweep)* The per-tile pulse cap died with the one-workspace stream — the spec now asserts every live tile renders, scoped to its own seed tag; the animation contract stays pinned by the wall's unit suite. |
+| `ui/packages/app/tests/e2e/acceptance/login-install-lifecycle.spec.ts` | EDIT | *(Sweep)* The "Recent Activity" region died with the redesign; the post-install scaffolding assertion is the chat card. |
+| `ui/packages/app/tests/e2e/acceptance/signup-lifecycle.spec.ts` | EDIT | *(Sweep)* Same replacement. |
+| `ui/packages/app/tests/e2e/acceptance/operator-journey.spec.ts` | EDIT | *(Sweep)* Same replacement. |
+| `ui/packages/app/tests/e2e/acceptance/logs-detail.spec.ts` | EDIT | *(Sweep)* Three-column assertions become chat-first ones: summary strip + chat card; the header dot now carries the WakePulse `data-live` idiom. |
+| `ui/packages/app/tests/e2e/acceptance/reload-and-back-nav.spec.ts` | EDIT | *(Sweep)* Trigger is a rail destination; the walk names its view in the URL so reload and back-nav re-resolve the same surface. |
+| `ui/packages/app/tests/e2e/acceptance/fixtures/teardown.ts` | EDIT | *(Sweep)* Cleanup scopes to the caller's seed prefix — an unscoped sweep deletes a sibling worker's fleet mid-test. |
+| `ui/packages/app/tests/e2e/acceptance/global-setup.ts` | EDIT | *(Sweep)* One unscoped janitor pass before any worker runs; the only race-free moment to clear leftovers from interrupted runs. |
+| `ui/packages/app/tests/e2e/acceptance/platform-library-onboarding.spec.ts` | EDIT | *(Sweep)* The refetch dialog's submit is titled `Fetch update`; the read-only prefill needs a reload after a corrective save; the sample entry self-heals a repository poisoned by an interrupted run; the root redirect lands on the wall. |
+| `ui/packages/app/tests/e2e/acceptance/_smoke.spec.ts` | EDIT | *(Sweep)* Prefix-scoped cleanup. |
+| `ui/packages/app/tests/e2e/acceptance/install-fleet-cli.spec.ts` | EDIT | *(Sweep)* Prefix-scoped cleanup. |
+| `ui/packages/app/tests/e2e/acceptance/install-fleet-seed.spec.ts` | EDIT | *(Sweep)* Prefix-scoped cleanup. |
 | `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/[id]/components/console-copy.ts` | EDIT | *(Amended at EXECUTE — RULE NDC)* The back-link constants were stranded when the navigation rail replaced the back link; they become the breadcrumb's landmark and crumb label, which the walk needs to tell the crumb from the identically-named sidebar destination. |
 
 ## Applicable Rules
@@ -287,7 +301,7 @@ lib/events/event-summary.ts  (NEW — the single home for operator-readable even
 | S2 | Lint clean | `make lint-all` | exit 0 | P0 | ✅ `S2_EXIT=0` — ✓ All lint checks passed |
 | S3 | Integration passes (HTTP server touched) | `make test-integration` | exit 0 | P0 | ✅ `INTEG EXIT=0` — ✓ All integration tests passed (final Zig tree) |
 | S6 | Cross-compile (Zig touched) | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` | exit 0 | P0 | ✅ `X86=0 ARM=0` |
-| S4 | e2e walks the console path | `make acceptance-e2e` | exit 0 | P0 | |
+| S4 | e2e walks the console path | `make acceptance-e2e` | exit 0 | P0 | ✅ `S4_EXIT=0` — 52 passed, 1 skipped, 0 failed (full suite, Indy's fold-in) |
 | S7 | No secrets | `gitleaks detect` | exit 0 | P0 | |
 | S8 | No oversize source file | `git diff --name-only origin/main \| grep -vE '\.md$\|_test\.zig$\|\.test\.(ts\|tsx)$' \| xargs wc -l 2>/dev/null \| awk '$1>350 && $2!="total"'` | no output | P0 | ✅ no output (after the registry FLL split) |
 | S9 | Orphan sweep | Dead Code Sweep greps | 0 matches | P0 | ✅ 0 matches across the sweep greps |
@@ -345,6 +359,7 @@ lib/events/event-summary.ts  (NEW — the single home for operator-readable even
 
 - **Consults** — Architecture / Legacy-Design / gate-flag triage: the question asked + Indy's decision.
   - > Indy (2026-07-21): "Well i need the cookie fix to be in here" — context: the API request-header ceiling fix folds into this workstream (§6) instead of a sibling milestone.
+  - > Indy (2026-07-22): "A - fold everything into this PR. upon folding ensure the tree you got those reminiscent file, that tree is deleted?" — context: the full acceptance-spec sweep (thirteen failures across eleven specs, stale since the console redesign) folds into this workstream rather than deferring to M135_004; the `variant-a` worktree was removed on a misread of that sentence and restored byte-identically at Indy's direction — a deletion phrased as a half-question deserved a confirming echo before action, recorded here so the lesson survives the session.
   - Review consult (Fable, Jul 21): the 431 branch fires inside the vendored HTTP library, so no first-party log or metric marks it (RULE OBS). Recommendation: accept — edge logs and a one-line probe reproduce it; patching the vendored library needs its own ask. Awaiting Indy's call.
   - Review finding (Fable, Jul 21): attribution of the operator's browser 431 to the server ceiling was challenged — the naive estimate of the proxied upstream request (~2.5 KiB) sits under the old 4 KiB limit. **Resolved (Indy, Jul 22): the browser's Response body reads `Request header is too big` — the server's own refusal text, verbatim.** Attribution confirmed to the 4 KiB ceiling; the estimate undercounted what the proxy chain appends. The operator's cookie inventory (~3.4 KB, no oversized HttpOnly entries) had eliminated every cookie-side theory first.
 - **Metrics review** — events added, extra events found during `/review`, analytics/funnel playbook update or the explicit no-change reason.

@@ -97,6 +97,6 @@ test.describe("fleet console", () => {
 
   test.afterEach(async () => {
     const ws = await getDefaultWorkspaceId(FIXTURE_KEY.regular);
-    await cleanWorkspaceFleets(FIXTURE_KEY.regular, ws);
+    await cleanWorkspaceFleets(FIXTURE_KEY.regular, ws, "console-");
   });
 });
