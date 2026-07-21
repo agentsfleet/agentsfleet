@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { FRAME_KIND, type EventRow, type LiveFrame } from "@/lib/api/events";
+import { OUTCOME } from "@/lib/events/event-summary";
 import {
-  actorToRole,
   applyLiveFrame,
   maxServerCreatedAt,
   mergeBackfill,
@@ -38,20 +38,12 @@ function evt(over: Partial<FleetEvent> = {}): FleetEvent {
     role: "assistant",
     actor: "fleet",
     text: "x",
+    outcome: OUTCOME.WORKING,
     createdAt: new Date(2000),
     status: "received",
     ...over,
   };
 }
-
-describe("actorToRole", () => {
-  it("maps steer:* to user, fleet to assistant, everything else to system", () => {
-    expect(actorToRole("steer:alice")).toBe("user");
-    expect(actorToRole("fleet")).toBe("assistant");
-    expect(actorToRole("system")).toBe("system");
-    expect(actorToRole("webhook")).toBe("system");
-  });
-});
 
 describe("mergeBackfill", () => {
   it("dedupes by id and sorts the union oldest-first", () => {
@@ -79,6 +71,50 @@ describe("mergeBackfill", () => {
     expect(merged).toHaveLength(1);
     expect(merged[0]?.text).toBe("the full final text");
     expect(merged[0]?.status).toBe("processed");
+  });
+
+  it("recovers the operator's own submitted text from the durable row", () => {
+    // The reply field belongs to the fleet. An operator's message lives in the
+    // stored request payload, so reading the reply field renders their own
+    // message blank the moment the page reloads.
+    const [first] = mergeBackfill(
+      [],
+      [
+        row({
+          actor: "steer:user_3gkbgxjnujsxbdxttcwcslpc87k",
+          event_type: "chat",
+          request_json: '{"message":"are you alive"}',
+          response_text: null,
+        }),
+      ],
+    );
+    expect(first?.role).toBe("user");
+    expect(first?.text).toBe("are you alive");
+  });
+
+  it("gives an integration event a headline instead of an empty body", () => {
+    const [first] = mergeBackfill(
+      [],
+      [
+        row({
+          actor: "github-app",
+          event_type: "webhook",
+          request_json: JSON.stringify({ repo: "owner/repo", number: 12, action: "opened" }),
+          response_text: null,
+        }),
+      ],
+    );
+    expect(first?.role).toBe("system");
+    expect(first?.text).toBe("opened · owner/repo#12");
+  });
+
+  it("carries a non-empty outcome for a row with no body at all", () => {
+    const [first] = mergeBackfill(
+      [],
+      [row({ response_text: null, status: "fleet_error", failure_label: "startup_posture" })],
+    );
+    expect(first?.text).toBe("");
+    expect(first?.outcome).toBe("Failed a startup safety check");
   });
 
   it("keeps the live accumulation when the backfill row is still in progress", () => {

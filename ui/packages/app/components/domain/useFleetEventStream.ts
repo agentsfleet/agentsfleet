@@ -109,7 +109,9 @@ function convertEvent(event: FleetEvent): ThreadMessageLike {
     role: event.role,
     id: event.id,
     createdAt: event.createdAt,
-    content: [{ type: "text", text: event.text }],
+    // The outcome is the floor: an event with no body still says what
+    // happened, so no rendered row is ever blank.
+    content: [{ type: "text", text: event.text.length > 0 ? event.text : event.outcome }],
     metadata: {
       custom: {
         actor: event.actor,

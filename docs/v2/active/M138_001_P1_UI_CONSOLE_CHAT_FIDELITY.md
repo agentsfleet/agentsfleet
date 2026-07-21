@@ -40,7 +40,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 - **PR title (eventual):** feat(ui): console chat matches the approved fleet workspace design
 - **Intent (one sentence):** An operator opening a fleet console can read every message, understand every event, reach the composer without scrolling, and send a message whether or not the live feed is up.
-- **Handshake** — the implementing agent fills this at PLAN, before EXECUTE: restate the Intent in its own words and list `ASSUMPTIONS I'M MAKING: …`. A mismatch between the restatement and the Intent above → STOP and reconcile before any edit.
+- **Handshake** (filled at PLAN) — Restatement: make the fleet console's chat legible and usable — the composer always on screen, every row carrying a name and a sentence a person can read, and a send that works whether or not the live feed is up. ASSUMPTIONS I'M MAKING: (1) the sender vocabulary is a fixed three-way resolution — operator, the fleet's own name, the integration's source name — and the fleet name reaches the thread as a prop from the console page, which already holds it; (2) the viewport claim is expressed by making the shell frame fixed and the content region the scroll owner, so the Chat view needs only an ordinary full-height child and no per-breakpoint height literal; (3) the bounded in-flight window is a named constant in the stream client, not a server signal; (4) the console acceptance walk is rewritten against the post-navigation surface — its current assertions describe a console that no longer exists.
 
 ## Implementing agent — read these first
 
@@ -133,9 +133,9 @@ An event row states its own outcome, derived only from fields the durable row ca
 
 **Implementation default:** the summary is computed on the client from the durable row, because every field it needs is already in the list response and a server-side summary would fix the wording for the CLI too, where the raw fields are the point. The failure vocabulary moves out of the events table into the shared module so the thread, the console summary and the table cannot drift apart.
 
-- **Dimension 3.1** — an operator message keeps its text across a reload, recovered from the durable row rather than the fleet's reply field → Test `test_operator_message_text_survives_a_reload`
-- **Dimension 3.2** — a webhook event renders a headline built from its normalized fields, and an unrecognised payload shape falls back to a neutral headline instead of throwing or rendering empty → Test `test_webhook_event_headline_reads_from_its_normalized_fields`
-- **Dimension 3.3** — an event with no recorded reply states its outcome honestly — still working, waiting for approval, failed, or no reply recorded — and never renders an empty body → Test `test_event_without_a_reply_states_its_outcome`
+- **Dimension 3.1 — DONE** — an operator message keeps its text across a reload, recovered from the durable row rather than the fleet's reply field → Test `test_operator_message_text_survives_a_reload`
+- **Dimension 3.2 — DONE** — a webhook event renders a headline built from its normalized fields, and an unrecognised payload shape falls back to a neutral headline instead of throwing or rendering empty → Test `test_webhook_event_headline_reads_from_its_normalized_fields`
+- **Dimension 3.3 — DONE** — an event with no recorded reply states its outcome honestly — still working, waiting for approval, failed, or no reply recorded — and never renders an empty body → Test `test_event_without_a_reply_states_its_outcome`
 - **Dimension 3.4** — a runner failure renders its plain-language sentence in the thread, the console summary and the events table from one shared vocabulary; no raw runner tag reaches any rendered surface → Test `test_failure_vocabulary_is_shared_by_every_surface`
 - **Dimension 3.5** — the console summary renders the latest outcome as a sentence with its absolute time, and renders unknown figures as a dash rather than a fabricated zero → Test `test_latest_outcome_reads_as_a_sentence_with_its_time`
 

@@ -6,6 +6,7 @@ import {
   useFleetEventStream,
 } from "../components/domain/useFleetEventStream";
 import { __resetRegistryForTests } from "@/lib/streaming/fleet-stream-registry";
+import { OUTCOME } from "@/lib/events/event-summary";
 import { FRAME_KIND, type EventRow, type LiveFrame } from "@/lib/api/events";
 
 // ── FakeEventSource ────────────────────────────────────────────────────────
@@ -291,6 +292,7 @@ describe("useFleetEventStream", () => {
       role: "system",
       actor: "webhook:github",
       text: "workflow_run failure",
+      outcome: OUTCOME.NO_REPLY,
       createdAt: new Date(0),
       status: "processed",
       custom: { requestJson: '{"action":"workflow_run"}' },

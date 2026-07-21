@@ -17,6 +17,7 @@ import {
 } from "@testing-library/react";
 
 import type { AppendMessage, ThreadMessageLike } from "@assistant-ui/react";
+import { OUTCOME } from "@/lib/events/event-summary";
 
 // ── Hoisted mocks ────────────────────────────────────────────────────────
 
@@ -102,6 +103,7 @@ function ev(over: Partial<FleetEvent> & { actor: string; role: FleetEvent["role"
     role: over.role,
     actor: over.actor,
     text: over.text ?? "",
+    outcome: over.outcome ?? OUTCOME.NO_REPLY,
     createdAt: over.createdAt ?? new Date(Date.UTC(2026, 4, 15, 9, 0, 0)),
     status: over.status ?? "processed",
     custom: over.custom,
@@ -577,6 +579,7 @@ describe("FleetThread — robustness against malformed metadata", () => {
       role: "system",
       actor: "" as unknown as string,
       text: "config has non-string actor in custom",
+      outcome: OUTCOME.NO_REPLY,
       createdAt: new Date(Date.UTC(2026, 4, 15, 9, 0, 0)),
       status: "processed",
     };

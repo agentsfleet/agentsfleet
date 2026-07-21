@@ -1,4 +1,5 @@
 import { streamFleetEventsUrl, type EventRow, type LiveFrame } from "@/lib/api/events";
+import { outcomeForStatus } from "@/lib/events/event-summary";
 import { runBackfill, warnBackfillFailure } from "./fleet-stream-backfill";
 import {
   applyLiveFrame,
@@ -289,6 +290,9 @@ export function appendOptimistic(
       role: "user",
       actor,
       text,
+      // A submission always carries its own text, so the outcome floor is
+      // never reached — it is set for shape, not for display.
+      outcome: outcomeForStatus(STATUS_RECEIVED),
       createdAt: new Date(),
       status: STATUS_OPTIMISTIC,
     },
