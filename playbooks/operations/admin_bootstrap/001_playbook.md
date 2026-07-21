@@ -2,10 +2,10 @@
 
 **Milestone:** M11
 **Workstream:** 006 (§5 deliverable)
-**Updated:** Apr 21, 2026
+**Updated:** Jul 20, 2026
 **Prerequisite:** Vault items `ZMB_CD_DEV/agentsfleet-admin` and `ZMB_CD_PROD/agentsfleet-admin` exist with fields `username` (email), `credential` (password), and `fireworks_api_key` (platform default Fireworks key). Clerk Dashboard access for both dev and prod. `op` CLI authenticated. Environment `{dev|prod}` selected per run.
 
-Provisions the one global admin user (`agentsfleet-admin`) in Clerk for a given environment, promotes the user from `operator` to `admin` via `publicMetadata`, mints a tenant API key via `POST /v1/api-keys`, writes the raw key to the environment's vault item, stores the platform Fireworks key in the admin workspace vault, and registers it as the active platform default via `/v1/admin/platform-keys`. Idempotent on step 1 (signup) — if the user already exists in Clerk, step 1 becomes a login check and the playbook resumes at step 2.
+Provisions the one global admin user (`agentsfleet-admin`) in Clerk for a given environment, promotes the user from `operator` to `admin` and grants the platform-operator scope bundle via `publicMetadata`, mints a tenant API key via `POST /v1/api-keys`, writes the raw key to the environment's vault item, stores the platform Fireworks key in the admin workspace vault, and registers it as the active platform default via `/v1/admin/platform-keys`. Idempotent on step 1 (signup) — if the user already exists in Clerk, step 1 becomes a login check and the playbook resumes at step 2.
 
 **This playbook is not run during the M11_006 merge.** Run it manually, per environment, when you are ready to exercise admin-only endpoints.
 
@@ -17,7 +17,7 @@ Provisions the one global admin user (`agentsfleet-admin`) in Clerk for a given 
 |------|-------|------|
 | 0.0 | Agent | Resolve environment; load credentials from vault |
 | 1.0 | Human | Sign up at the website with the admin email + password |
-| 2.0 | Human | Set `publicMetadata.role=admin` **and** `platform_admin=true` in Clerk Dashboard |
+| 2.0 | Human | Set `publicMetadata.role=admin` and the platform-operator scope bundle in Clerk Dashboard |
 | 3.0 | Agent | Verify the admin JWT carries `role=admin` by calling an admin-gated endpoint |
 | 4.0 | Agent | Mint a `agt_t` tenant API key via `POST /v1/api-keys` |
 | 5.0 | Agent | Write the raw key to `op://ZMB_CD_<env>/agentsfleet-admin` field `api-key` |
@@ -82,17 +82,17 @@ curl -s -H "Authorization: Bearer $(op read op://$VAULT/clerk-$ENV/secret-key)" 
 
 ---
 
-## 2.0 Human: Promote to admin + platform admin in Clerk Dashboard
+## 2.0 Human: Promote to admin + platform operator in Clerk Dashboard
 
 **Goal:** for the one global admin user, set `publicMetadata.role = "admin"` **and**
-`publicMetadata.platform_admin = true`. These are two **independent** authorization
+grant the platform-operator scopes in `publicMetadata.scopes`. These are two **independent** authorization
 axes:
 
 - `role=admin` → the tenant-admin surface (`/v1/admin/*`, api-keys, platform keys).
-- `platform_admin=true` → the **fleet/runner-enrollment** surface: the dashboard's
+- `runner:enroll runner:write` → the **fleet/runner-enrollment** surface: the dashboard's
   **Configuration → Runners** item, `POST /v1/runners` (mint), and
-  `GET /v1/fleet/runners`. `role=admin` does **not** grant it, and the dashboard
-  **hides** the Runners item unless `platform_admin === true`.
+  `GET /v1/fleets/runners`. `runner:write` includes `runner:read`; `role=admin`
+  does **not** grant these scopes.
 
 No other user in the environment receives either change.
 
@@ -102,22 +102,23 @@ No other user in the environment receives either change.
 3. Users → search for `$ADMIN_EMAIL` (`nkishore@megam.io`) → open the user.
 4. Metadata tab → Public metadata → edit (keep `tenant_id` as-is):
    ```json
-   { "tenant_id": "...<leave as-is>...", "role": "admin", "platform_admin": true }
+   { "tenant_id": "...<leave as-is>...", "role": "admin", "scopes": "<existing scopes> runner:enroll runner:write stream:read model:admin platform-key:admin platform-library:write workspace:any" }
    ```
    The `"...<leave as-is>..."` is a **human-readable instruction, not a literal to
-   paste**: keep whatever `tenant_id` UUID the signup webhook already wrote, and only
-   add/update the `role` and `platform_admin` keys.
+   paste**: keep whatever `tenant_id` UUID and tenant scopes the signup webhook
+   already wrote, then add/update the `role` and append the platform-operator
+   bundle to the space-delimited `scopes` value.
 5. Save.
 6. **Do NOT touch any other user's metadata.** This is the only account that gets
-   `role=admin` or `platform_admin=true`.
+   `role=admin` or the platform-operator scopes.
 
 ### Acceptance
 
 - `role=admin` is confirmed by step 3.0 below (an admin-gated endpoint returns 200).
-- `platform_admin=true` is confirmed behaviorally: a fresh dashboard session for
+- The platform-operator scopes are confirmed behaviorally: a fresh dashboard session for
   `$ADMIN_EMAIL` shows **Configuration → Runners**, and that surface can mint a
-  `agt_r` — see `operations/runner_onboarding/001_playbook.md`. A non-platform-admin
-  session 403s (`UZ-AUTH-021`) and the nav item is hidden.
+  `agt_r` — see `operations/runner_onboarding/001_playbook.md`. A session without
+  `runner:enroll`/`runner:read` 403s (`UZ-AUTH-022`) and the nav item is hidden.
 
 ---
 
