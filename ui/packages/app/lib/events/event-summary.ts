@@ -82,7 +82,10 @@ export function senderInitialsFor(label: string): string {
   const words = label.split(/[\s·\-_/]+/).filter((word) => word.length > 0);
   const first = words[0] ?? "";
   const second = words[1] ?? "";
-  const initials = second.length > 0 ? `${first[0] ?? ""}${second[0] ?? ""}` : first.slice(0, 2);
+  // `charAt` is total — empty words are already filtered out, so there is no
+  // missing-character case to defend against.
+  const initials =
+    second.length > 0 ? `${first.charAt(0)}${second.charAt(0)}` : first.slice(0, 2);
   return initials.toUpperCase();
 }
 
