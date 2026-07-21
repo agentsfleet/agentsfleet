@@ -1,4 +1,4 @@
-import { API_ORIGIN, request, requestWithEtag } from "./client";
+import { request, requestWithEtag } from "./client";
 import { requestWithRetry, type RetryOptions } from "./retry";
 import type {
   InstallFleetRequest,
@@ -150,16 +150,6 @@ export async function deleteFleet(
     { method: "DELETE" },
     token,
   );
-}
-
-// Builds the per-source webhook URL the server returns in
-// `webhook_urls` on install (`src/http/handlers/fleets/create.zig`
-// populateWebhookUrls). When `source` is omitted the legacy
-// no-source path is returned — the M68 fallback panel still uses it.
-export function webhookUrlFor(fleetId: string, source?: string): string {
-  return source
-    ? `${API_ORIGIN}/v1/webhooks/${fleetId}/${source}`
-    : `${API_ORIGIN}/v1/webhooks/${fleetId}`;
 }
 
 // POST /v1/workspaces/{ws}/fleets/{id}/messages

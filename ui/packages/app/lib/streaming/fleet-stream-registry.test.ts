@@ -231,11 +231,27 @@ describe("fleet-stream-registry — optimistic mutations", () => {
   it("reconcileOptimistic swaps tempId for the real event_id and clears optimistic", () => {
     const a = subscribe(WS, Z_A, NO_SEED, () => {});
     const tempId = appendOptimistic(Z_A, "x", "steer:k@e2e.com");
-    reconcileOptimistic(Z_A, tempId, "evt_real");
+    expect(reconcileOptimistic(Z_A, tempId, "evt_real")).toBe(false);
     const snap = getSnapshot(Z_A);
     expect(snap.events).toHaveLength(1);
     expect(snap.events[0]!.id).toBe("evt_real");
     expect(snap.events[0]!.status).toBe("received");
+    a();
+  });
+
+  it("drops the optimistic duplicate when the real event completed before reconciliation", () => {
+    const a = subscribe(
+      WS,
+      Z_A,
+      [row({ event_id: "evt_fast", status: "processed", response_text: "done" })],
+      () => {},
+    );
+    const tempId = appendOptimistic(Z_A, "fast task", "steer:k@e2e.com");
+    expect(reconcileOptimistic(Z_A, tempId, "evt_fast")).toBe(true);
+    const events = getSnapshot(Z_A).events;
+    expect(events).toHaveLength(1);
+    expect(events[0]?.id).toBe("evt_fast");
+    expect(events[0]?.status).toBe("processed");
     a();
   });
 
@@ -393,6 +409,30 @@ describe("fleet-stream-registry — reconnect backfill", () => {
     await flushBackfill();
     expect(fetchSpy).not.toHaveBeenCalled();
     expect(getSnapshot(Z_A).connectionStatus).toBe(CONNECTION_STATUS.LIVE);
+    a();
+  });
+
+  it("backfills when the initial connection failed before its first open", async () => {
+    fetchSpy.mockResolvedValueOnce(
+      pageWith([row({ event_id: "evt_initial_gap", created_at: MISSED_AT_MS })]),
+    );
+    const a = subscribe(
+      WS,
+      Z_A,
+      [row({ event_id: "evt_seed", created_at: SEED_AT_MS })],
+      () => {},
+    );
+    const initial = FakeEventSource.instances[0]!;
+    initial.onerror?.call(initial as unknown as EventSource, {} as Event);
+    vi.advanceTimersByTime(RECONNECT_ADVANCE_MS);
+    const recovered = FakeEventSource.instances[1]!;
+    recovered.onopen?.call(recovered as unknown as EventSource, {} as Event);
+    await flushBackfill();
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(getSnapshot(Z_A).events.map((event) => event.id)).toEqual([
+      "evt_seed",
+      "evt_initial_gap",
+    ]);
     a();
   });
 

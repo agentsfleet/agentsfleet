@@ -1,219 +1,113 @@
-"use client";
-
 import type { FleetTrigger } from "@/lib/types";
-import { useEffect, useMemo, useState } from "react";
 import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
+  Badge,
   Card,
   CardContent,
-  cn,
-  CopyButton,
-  EYEBROW_CLASS,
+  EmptyState,
+  List,
+  ListItem,
   Time,
 } from "@agentsfleet/design-system";
-import { webhookUrlFor } from "@/lib/api/fleets";
-import GuidedTriggerCard from "./GuidedTriggerCard";
-import CronCard from "./CronCard";
-import { guidanceFor } from "./provider-guidance";
+import { ZapIcon } from "lucide-react";
 import { AGENT_TRIGGER_TYPE, triggerKey } from "./trigger-key";
 
 export { triggerKey } from "./trigger-key";
 
 type Props = {
-  workspaceId: string;
-  fleetId: string;
   triggers?: FleetTrigger[];
-  /**
-   * Map of trigger-key → epoch-ms of the most-recent delivery for that trigger.
-   * Keys are stable per-trigger ids produced by `triggerKey()`. `null` means
-   * the parent looked but found no delivery; `undefined` means it did not
-   * look at all (no badge rendered).
-   */
   lastDeliveryByKey?: Record<string, number | null>;
 };
 
-function triggerLabel(t: FleetTrigger): string {
-  switch (t.type) {
+const TRIGGERS_TITLE = "Configured triggers";
+const TRIGGERS_EMPTY_TITLE = "No triggers declared";
+const TRIGGERS_EMPTY_DESCRIPTION =
+  "Add a trigger declaration to TRIGGER.md. Saved changes take effect on the next wake.";
+
+export default function TriggerPanel({ triggers = [], lastDeliveryByKey }: Props) {
+  return (
+    <Card className="bg-card" aria-label={TRIGGERS_TITLE}>
+      <CardContent className="flex flex-col gap-md py-4">
+        <h2 className="font-mono text-sm font-medium">{TRIGGERS_TITLE}</h2>
+        {triggers.length === 0 ? (
+          <EmptyState
+            icon={<ZapIcon size={28} />}
+            title={TRIGGERS_EMPTY_TITLE}
+            description={TRIGGERS_EMPTY_DESCRIPTION}
+          />
+        ) : (
+          <List variant="ordered" className="flex list-none flex-col gap-sm space-y-0 pl-0">
+            {triggers.map((trigger) => {
+              const key = triggerKey(trigger);
+              return (
+                <ListItem key={key}>
+                  <TriggerRow
+                    trigger={trigger}
+                    lastDeliveryAt={lastDeliveryByKey?.[key]}
+                  />
+                </ListItem>
+              );
+            })}
+          </List>
+        )}
+        <p className="text-xs text-muted-foreground">
+          Edit <code className="font-mono">TRIGGER.md</code> above to change how this fleet wakes.
+        </p>
+      </CardContent>
+    </Card>
+  );
+}
+
+function TriggerRow({
+  trigger,
+  lastDeliveryAt,
+}: {
+  trigger: FleetTrigger;
+  lastDeliveryAt: number | null | undefined;
+}) {
+  return (
+    <div className="flex flex-col gap-sm rounded-md border border-border p-md sm:flex-row sm:items-center sm:justify-between">
+      <div className="min-w-0">
+        <p className="font-mono text-sm text-foreground">{triggerLabel(trigger)}</p>
+        <p className="mt-xs break-words text-sm text-muted-foreground">
+          {triggerDetail(trigger)}
+        </p>
+      </div>
+      <LastDelivery at={lastDeliveryAt} />
+    </div>
+  );
+}
+
+function triggerLabel(trigger: FleetTrigger): string {
+  switch (trigger.type) {
     case AGENT_TRIGGER_TYPE.webhook:
-      return `Webhook · ${t.source}`;
+      return "Webhook";
     case AGENT_TRIGGER_TYPE.cron:
-      return `Cron · ${t.schedule}`;
+      return "Schedule";
     case AGENT_TRIGGER_TYPE.api:
       return "API ingress";
   }
 }
 
-export default function TriggerPanel({
-  workspaceId,
-  fleetId,
-  triggers,
-  lastDeliveryByKey,
-}: Props) {
-  const list = useMemo(() => triggers ?? [], [triggers]);
-
-  // Auto-expand the first trigger that has no recorded delivery — that's the
-  // "still in setup" case the operator most wants to see. If every trigger
-  // has delivered, leave the accordion collapsed by default.
-  const initiallyOpen = useMemo(() => {
-    if (list.length === 0) return undefined;
-    const setup = list.find((t) => {
-      const last = lastDeliveryByKey?.[triggerKey(t)];
-      return last === null;
-    });
-    return setup ? triggerKey(setup) : undefined;
-  }, [list, lastDeliveryByKey]);
-
-  const [openValue, setOpenValue] = useState("");
-  // Defer auto-expand to the client so server-rendered markup matches a collapsed accordion.
-  useEffect(() => {
-    setOpenValue(initiallyOpen ?? "");
-  }, [initiallyOpen]);
-
-  if (list.length === 0) {
-    return <EmptyTriggers fleetId={fleetId} />;
-  }
-
-  return (
-    <Card className="bg-card">
-      <Accordion
-        type="single"
-        collapsible
-        value={openValue}
-        onValueChange={setOpenValue}
-        data-testid="trigger-accordion"
-      >
-        {list.map((t) => {
-          const key = triggerKey(t);
-          const last = lastDeliveryByKey?.[key];
-          return (
-            <AccordionItem key={key} value={key} className="px-4 last:border-b-0">
-              <AccordionTrigger className="font-mono text-sm">
-                <span className="flex flex-1 items-center justify-between gap-3 pr-3">
-                  <span data-testid={`trigger-label-${key}`}>{triggerLabel(t)}</span>
-                  <LastDeliveryBadge at={last} />
-                </span>
-              </AccordionTrigger>
-              <AccordionContent className="pb-4">
-                <TriggerBody trigger={t} workspaceId={workspaceId} fleetId={fleetId} lastDeliveryAt={last} />
-              </AccordionContent>
-            </AccordionItem>
-          );
-        })}
-      </Accordion>
-      <CardContent className="text-xs text-muted-foreground">
-        Edit <code className="font-mono">TRIGGER.md</code> and reinstall to change
-        triggers — the source markdown is the source of truth.
-      </CardContent>
-    </Card>
-  );
-}
-
-function TriggerBody({
-  trigger,
-  workspaceId,
-  fleetId,
-  lastDeliveryAt,
-}: {
-  trigger: FleetTrigger;
-  workspaceId: string;
-  fleetId: string;
-  lastDeliveryAt: number | null | undefined;
-}) {
-  if (trigger.type === AGENT_TRIGGER_TYPE.cron) {
-    return <CronCard trigger={trigger} workspaceId={workspaceId} fleetId={fleetId} />;
-  }
-  if (trigger.type === AGENT_TRIGGER_TYPE.webhook) {
-    const guidance = guidanceFor(trigger.source);
-    const url = webhookUrlFor(fleetId, trigger.source);
-    if (!guidance) {
-      return <CopyUrlFallback url={url} source={trigger.source} />;
+function triggerDetail(trigger: FleetTrigger): string {
+  switch (trigger.type) {
+    case AGENT_TRIGGER_TYPE.webhook: {
+      const events = trigger.events?.length ? ` · ${trigger.events.join(", ")}` : "";
+      return `${trigger.source}${events}`;
     }
-    return (
-      <GuidedTriggerCard
-        trigger={trigger}
-        webhookUrl={url}
-        guidance={guidance}
-        lastDeliveryAt={lastDeliveryAt ?? null}
-      />
-    );
+    case AGENT_TRIGGER_TYPE.cron:
+      return trigger.schedule;
+    case AGENT_TRIGGER_TYPE.api:
+      return "Accepts events through the fleet API.";
   }
-  return <CopyUrlFallback url={webhookUrlFor(fleetId)} source={AGENT_TRIGGER_TYPE.api} />;
 }
 
-function LastDeliveryBadge({ at }: { at: number | null | undefined }) {
+function LastDelivery({ at }: { at: number | null | undefined }) {
   if (at === undefined) return null;
-  if (at === null) {
-    return (
-      <span
-        className="font-mono text-xs text-muted-foreground"
-        data-testid="last-delivery-badge"
-      >
-        never
-      </span>
-    );
-  }
+  if (at === null) return <Badge variant="default">Never delivered</Badge>;
   return (
-    <span
-      className="font-mono text-xs text-muted-foreground"
-      data-testid="last-delivery-badge"
-    >
+    <Badge variant="default">
+      Last delivery&nbsp;
       <Time value={new Date(at)} format="relative" tooltip={false} />
-    </span>
-  );
-}
-
-// First-class sources get tailored copy. Everything else falls through to the
-// generic "Unknown provider" line. `api` is a declared trigger type; `none`
-// is the empty-triggers sentinel — both render via CopyUrlFallback as the
-// rendering strategy, so calling them "Unknown provider" misleads operators.
-const COPY_URL_FALLBACK_HELPER_TEXT: Record<string, string> = {
-  api: "API ingress — POST events directly to this URL.",
-  none: "Bare webhook URL — POST events here from any service.",
-};
-
-function CopyUrlFallback({ url, source }: { url: string; source: string }) {
-  // Object.hasOwn guard — `source` can be operator-supplied via trigger config;
-  // a bare bracket-access would inherit Object.prototype members (e.g.
-  // `constructor`, `toString`) and render them as helper text.
-  const helperText = Object.hasOwn(COPY_URL_FALLBACK_HELPER_TEXT, source)
-    ? COPY_URL_FALLBACK_HELPER_TEXT[source]
-    : "Unknown provider — paste this URL into any webhook-capable service.";
-  return (
-    <div className="flex flex-col gap-2" data-testid={`copy-url-fallback-${source}`}>
-      <span className={cn(EYEBROW_CLASS, "text-muted-foreground")}>
-        Webhook URL
-      </span>
-      <div className="flex items-center gap-2">
-        <code
-          data-testid="webhook-url"
-          className="flex-1 break-all rounded-md border border-border bg-muted/30 px-3 py-2 font-mono text-xs"
-        >
-          {url}
-        </code>
-        <CopyButton value={url} label="Copy webhook URL" />
-      </div>
-      <p className="text-xs text-muted-foreground">{helperText}</p>
-    </div>
-  );
-}
-
-function EmptyTriggers({ fleetId }: { fleetId: string }) {
-  return (
-    <Card className="bg-card" data-testid="trigger-panel-empty">
-      <CardContent className="flex flex-col gap-3 py-4">
-        <p className={cn(EYEBROW_CLASS, "text-muted-foreground")}>
-          No triggers declared
-        </p>
-        <p className="text-sm text-muted-foreground">
-          Add <code className="font-mono">triggers:</code> entries to{" "}
-          <code className="font-mono">TRIGGER.md</code> and reinstall to wire a
-          webhook or cron trigger.
-        </p>
-        <CopyUrlFallback url={webhookUrlFor(fleetId)} source="none" />
-      </CardContent>
-    </Card>
+    </Badge>
   );
 }

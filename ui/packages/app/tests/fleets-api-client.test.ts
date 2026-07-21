@@ -136,12 +136,6 @@ describe("lib/api/fleets", () => {
     expect(res).toEqual({ etag: '"fleet-v2"', config_revision: 4 });
   });
 
-  it("webhookUrlFor composes the deterministic webhook URL", async () => {
-    const mod = await import("../lib/api/fleets");
-    expect(mod.webhookUrlFor("zom_abc")).toBe(
-      "https://api-dev.agentsfleet.net/v1/webhooks/zom_abc",
-    );
-  });
 });
 
 describe("lib/api/memory", () => {
