@@ -25,6 +25,8 @@ import {
   type FleetEventStatus,
 } from "./useFleetEventStream";
 import { AGENTSFLEET_EVENT_STATUS } from "@/lib/streaming/fleet-stream-frames";
+import type { ThreadEntry } from "@/lib/events/event-grouping";
+import { useFleetThreadEntries } from "./useFleetThreadEntries";
 import type { EventRow } from "@/lib/api/events";
 import { steerFleetAction } from "@/app/(dashboard)/w/[workspaceId]/fleets/actions";
 import { SteerComposer } from "./SteerComposer";
@@ -125,9 +127,13 @@ export function FleetThread({ workspaceId, fleetId, fleetName, initial }: FleetT
     discardOptimistic(tempId);
     void deliverMessage(message);
   }, [clearFailedDelivery, deliverMessage, discardOptimistic, failedDelivery]);
-  const runtime = useExternalStoreRuntime<FleetEvent>({
-    messages: stream.events,
-    convertMessage: stream.convertEvent,
+  // Runs of identical activity render as one expandable row. Grouping is a
+  // pure view over the array the stream already ordered — it never reorders,
+  // drops, or renames an event, so a group can always hand back what it hid.
+  const { entries, convertEntry } = useFleetThreadEntries(stream.events, stream.convertEvent);
+  const runtime = useExternalStoreRuntime<ThreadEntry>({
+    messages: entries,
+    convertMessage: convertEntry,
     onNew: async (message) => {
       await deliverMessage(message);
     },

@@ -363,6 +363,47 @@ describe("FleetThread — role rendering", () => {
     expect(screen.getByText(OUTCOME.WAITING_APPROVAL)).toBeTruthy();
   });
 
+  it("collapses a run of identical deliveries into one row that opens on demand", async () => {
+    const burst = Array.from({ length: 15 }, (_, i) =>
+      ev({
+        id: `burst_${i}`,
+        role: "system",
+        actor: "webhook:github",
+        text: "edited · agentsfleet/agentsfleet#541",
+        reply: "",
+        status: "fleet_error",
+        outcome: "Failed a startup safety check — no instructions configured",
+        failureLabel: "startup_posture",
+      }),
+    );
+    mockStream(burst);
+    const { container } = renderThread();
+
+    // Fifteen deliveries, one row — and the count is stated, not implied.
+    expect(screen.getByTestId("group-count").textContent).toBe("×15");
+    expect(container.querySelectorAll('[data-compact="true"]')).toHaveLength(0);
+
+    // The count is a summary the operator can always check.
+    const toggle = screen.getByRole("button", { expanded: false });
+    await act(async () => { fireEvent.click(toggle); });
+    expect(container.querySelectorAll('[data-compact="true"]')).toHaveLength(15);
+  });
+
+  it("breaks a group when the operator speaks mid-burst", () => {
+    const activity = (id: string) =>
+      ev({ id, role: "system", actor: "webhook:github", text: "edited #541", reply: "", status: "fleet_error" });
+    mockStream([
+      activity("a1"), activity("a2"),
+      ev({ role: "user", actor: "steer:user_abc", text: "what is going on?" }),
+      activity("b1"), activity("b2"),
+    ]);
+    const { container } = renderThread();
+
+    // Two groups, and the operator's question still reads as their own row.
+    expect(container.querySelectorAll('[data-group="true"]')).toHaveLength(2);
+    expect(screen.getByText("what is going on?")).toBeTruthy();
+  });
+
   it("renders an integration delivery as one compact line, payload still reachable", () => {
     mockStream([
       ev({

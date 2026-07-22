@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState, useTransition } from "react";
+import { useCallback, useRef, useState, useTransition } from "react";
 
 // Paging for a keyset (cursor) feed, presented as numbered pages.
 //
@@ -32,31 +32,41 @@ export type CursorPages<T> = {
   hasNext: boolean;
   isLoading: boolean;
   error: string | null;
-  /** 1-based target, matching the pager's own numbering. */
+  /**
+   * 1-based target, matching the pager's own numbering. Referentially stable
+   * for the component's lifetime, so paging does not hand the table a new
+   * callback and force it to rebuild its row model (the React Compiler is off
+   * in `next.config.ts`, so this has to be earned rather than assumed).
+   */
   goToPage: (page: number) => void;
 };
+
+type Cache<T> = { pages: CursorPage<T>[]; index: number };
 
 export function useCursorPages<T>(
   initial: CursorPage<T>,
   fetchPage: (cursor: string) => Promise<FetchPageResult<T>>,
   presentError: (result: { error: string; errorCode?: string }) => string,
 ): CursorPages<T> {
-  const [pages, setPages] = useState<CursorPage<T>[]>([initial]);
-  const [index, setIndex] = useState(0);
+  const [cache, setCache] = useState<Cache<T>>({ pages: [initial], index: 0 });
   const [error, setError] = useState<string | null>(null);
   const [isLoading, startTransition] = useTransition();
 
-  const current = pages[index] ?? initial;
-  const hasNext = index < pages.length - 1 || current.next_cursor !== null;
+  // The callback reads the cache through a ref so it does not have to list it
+  // as a dependency. Listing it would rebuild `goToPage` on every page turn —
+  // the one moment the table is already re-rendering.
+  const cacheRef = useRef(cache);
+  cacheRef.current = cache;
 
   const goToPage = useCallback(
     (target: number) => {
+      const { pages, index } = cacheRef.current;
       const nextIndex = target - 1;
       if (nextIndex < 0 || nextIndex === index) return;
       setError(null);
       // Already fetched — including every backward step — so show it now.
       if (nextIndex < pages.length) {
-        setIndex(nextIndex);
+        setCache((prev) => ({ ...prev, index: nextIndex }));
         return;
       }
       // Only ever one page beyond what we hold, because the pager offers a
@@ -69,14 +79,17 @@ export function useCursorPages<T>(
           setError(presentError(result));
           return;
         }
-        // Advance only after the page lands, so a failed fetch leaves the
-        // operator on the page they can still read.
-        setPages((prev) => [...prev, result.data]);
-        setIndex(nextIndex);
+        // Appended functionally, so a second click that lands while this one
+        // is still in flight cannot drop the page it raced with. Advance only
+        // after the page arrives, so a failed fetch leaves the operator on the
+        // page they can still read.
+        setCache((prev) => ({ pages: [...prev.pages, result.data], index: prev.pages.length }));
       });
     },
-    [fetchPage, index, pages, presentError],
+    [fetchPage, presentError],
   );
 
-  return { items: current.items, page: index + 1, hasNext, isLoading, error, goToPage };
+  const current = cache.pages[cache.index] ?? initial;
+  const hasNext = cache.index < cache.pages.length - 1 || current.next_cursor !== null;
+  return { items: current.items, page: cache.index + 1, hasNext, isLoading, error, goToPage };
 }

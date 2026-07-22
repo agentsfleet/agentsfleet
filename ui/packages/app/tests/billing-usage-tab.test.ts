@@ -164,6 +164,14 @@ describe("BillingUsageTab (test_billing_usage_ledger_and_empty)", () => {
     await waitFor(() => expect(screen.getByText("Page 2")).toBeTruthy());
 
     const callsAfterForward = listChargesActionMock.mock.calls.length;
+    // The pager disables both buttons while a fetch is in flight, and the
+    // transition can still be settling after page 2 paints — clicking then
+    // would be swallowed. Wait for the control to be live before using it.
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Previous page" }).hasAttribute("disabled"),
+      ).toBe(false),
+    );
     fireEvent.click(screen.getByRole("button", { name: "Previous page" }));
     await waitFor(() => expect(screen.getByText("Page 1")).toBeTruthy());
     // Backward motion is free: every page fetched is kept, so stepping back
