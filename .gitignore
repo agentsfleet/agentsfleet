@@ -28,6 +28,7 @@ playwright-acceptance-report/
 playwright-acceptance-results/
 playwright-auth-results/
 .fixture-jwts.json
+.vercel-bypass-state.json
 test-results/
 blob-report/
 .playwright-mcp/

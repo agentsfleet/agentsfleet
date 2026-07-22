@@ -181,7 +181,7 @@ async function installFixture(
 }
 
 test.describe("install-fleet-cli", () => {
-  test("agentsfleet install lands a row on /w/[workspaceId]/fleets with live state", async ({ page }) => {
+  test("test_user_installs_fleet_with_cli_binary", async ({ page }) => {
     // Drive the CLI and the workspace-id fetch against the SAME agentsfleetd —
     // splitting them lands the install at a 404 (workspace from server A,
     // install to server B) with no clear hint about the URL mismatch.

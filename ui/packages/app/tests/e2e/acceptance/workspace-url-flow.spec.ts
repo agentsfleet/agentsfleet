@@ -15,11 +15,10 @@
  */
 import { expect, test } from "@playwright/test";
 import { signInAs } from "./fixtures/auth";
-import { FIXTURE_KEY } from "./fixtures/constants";
+import { FIXTURE_KEY, SECOND_WORKSPACE_NAME } from "./fixtures/constants";
 import { getDefaultWorkspaceId, ensureSecondWorkspace } from "./fixtures/seed";
 import { gotoWorkspace, workspaceUrlPattern, workspaceHref } from "./fixtures/nav";
 
-const SECOND_WORKSPACE_NAME = "fixture-secondary";
 const SWITCH_TIMEOUT_MS = 10_000;
 
 test.describe("workspace in the URL", () => {

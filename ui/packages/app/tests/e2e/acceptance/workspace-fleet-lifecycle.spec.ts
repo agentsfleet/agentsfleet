@@ -29,19 +29,19 @@ import { ensureSecondWorkspace, getDefaultWorkspaceId } from "./fixtures/seed";
 import { installViaUI } from "./fixtures/install-ui";
 import { expectDetailKilled, expectRowState, killFleet } from "./fixtures/lifecycle";
 import { cleanWorkspaceFleets } from "./fixtures/teardown";
-import { FIXTURE_KEY } from "./fixtures/constants";
+import { FIXTURE_KEY, SECOND_WORKSPACE_NAME } from "./fixtures/constants";
 import { gotoWorkspace, workspaceHref, workspaceUrlPattern } from "./fixtures/nav";
 
-const SECONDARY_NAME = "fixture-secondary";
 const SWITCH_TIMEOUT_MS = 10_000;
 const FLOW_TIMEOUT_MS = 120_000;
+const SEED_PREFIX = "ws-life-";
 
 test.describe("multi-workspace + fleet lifecycle", () => {
   test.setTimeout(FLOW_TIMEOUT_MS);
 
   test("operator switches workspace, installs, then kills the fleet", async ({ page }) => {
     const primary = await getDefaultWorkspaceId(FIXTURE_KEY.regular);
-    const secondary = await ensureSecondWorkspace(FIXTURE_KEY.regular, SECONDARY_NAME);
+    const secondary = await ensureSecondWorkspace(FIXTURE_KEY.regular, SECOND_WORKSPACE_NAME);
     expect(secondary.id).not.toEqual(primary);
 
     await signInAs(page, FIXTURE_KEY.regular);
@@ -58,7 +58,7 @@ test.describe("multi-workspace + fleet lifecycle", () => {
 
     // Onboard + install against the secondary workspace — the one now active
     // in the browser, so the onboarded card renders on /w/<secondary>/fleets/new.
-    const name = `ws-life-${Math.random().toString(36).slice(2, 8)}`;
+    const name = `${SEED_PREFIX}${Math.random().toString(36).slice(2, 8)}`;
     const fleetId = await installViaUI(page, name, {
       handle: FIXTURE_KEY.regular,
       workspaceId: secondary.id,
@@ -82,7 +82,9 @@ test.describe("multi-workspace + fleet lifecycle", () => {
   });
 
   test.afterEach(async () => {
-    const secondary = await ensureSecondWorkspace(FIXTURE_KEY.regular, SECONDARY_NAME);
-    await cleanWorkspaceFleets(FIXTURE_KEY.regular, secondary.id);
+    // Prefix-scoped: the secondary workspace is shared with the switcher
+    // specs, so cleanup must never reach past this spec's own seeds.
+    const secondary = await ensureSecondWorkspace(FIXTURE_KEY.regular, SECOND_WORKSPACE_NAME);
+    await cleanWorkspaceFleets(FIXTURE_KEY.regular, secondary.id, SEED_PREFIX);
   });
 });

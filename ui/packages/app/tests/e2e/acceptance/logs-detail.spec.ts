@@ -34,8 +34,13 @@ test.describe("fleet detail logs", () => {
     // figures and the chat card carries the conversation.
     await expect(page.getByLabel("Fleet summary")).toBeVisible();
     await expect(page.getByLabel("Fleet chat")).toBeVisible({ timeout: 15_000 });
-    await page.getByRole("link", { name: "Events" }).click();
-    const events = page.getByLabel("Fleet events");
+    // Scope to the fleet rail: the workspace sidebar carries its own Events
+    // link, so the bare role query is ambiguous on the detail page.
+    await page
+      .getByRole("navigation", { name: "Fleet sections" })
+      .getByRole("link", { name: "Events" })
+      .click();
+    const events = page.getByRole("table", { name: "Fleet events" });
     await expect(events).toBeVisible({ timeout: RENDER_TIMEOUT_MS });
     await events.getByRole("button", { name: /inspect event/i }).first().click();
 

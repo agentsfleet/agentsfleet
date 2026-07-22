@@ -12,7 +12,8 @@
  * attribute (canonical mapping in
  * app/(dashboard)/w/[workspaceId]/fleets/components/FleetTile.tsx:
  * active → live, paused/stopped → parked, killed/errored → failed).
- * Actions live in the fleet's Settings view behind the local rail.
+ * Actions live in the detail header ("Fleet lifecycle actions"), visible
+ * from every rail view — the old Settings rail destination is gone.
  */
 import { expect, type Page } from "@playwright/test";
 
@@ -21,12 +22,8 @@ const ROW_STATE_TIMEOUT_MS = 15_000;
 type RowState = "live" | "parked" | "failed";
 
 async function confirmAction(page: Page, label: "Stop" | "Resume" | "Kill"): Promise<void> {
-  // The lifecycle controls live in the fleet's Settings view. The rail link
-  // works from whichever view the spec landed on.
-  await page
-    .getByRole("navigation", { name: "Fleet sections" })
-    .getByRole("link", { name: "Settings" })
-    .click();
+  // KillSwitch renders its Stop/Resume/Kill buttons directly in the detail
+  // header, so the action is reachable from whichever view the spec is on.
   await page.getByRole("button", { name: label }).first().click();
   const dialog = page.getByRole("alertdialog");
   await expect(dialog).toBeVisible();
