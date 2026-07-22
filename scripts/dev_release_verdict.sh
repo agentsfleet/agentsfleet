@@ -44,9 +44,14 @@ else
   fi
 fi
 
-OUT="${GITHUB_OUTPUT:-/dev/stdout}"
-{
+write_outputs() {
   echo "verdict=$VERDICT"
   echo "color=$COLOR"
   echo "message=$MESSAGE"
-} >>"$OUT"
+}
+
+if [ -n "${GITHUB_OUTPUT:-}" ]; then
+  write_outputs >>"$GITHUB_OUTPUT"
+else
+  write_outputs
+fi
