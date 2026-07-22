@@ -37,15 +37,18 @@ const FLEET_NAV_ITEMS: FleetNavItem[] = [
 const FLEET_NAV_ITEM_CLASS =
   "flex min-h-11 shrink-0 items-center gap-md rounded-md px-md py-sm font-mono text-body-sm text-muted-foreground no-underline transition duration-snap ease-snap hover:bg-accent hover:text-foreground data-[active=true]:bg-accent data-[active=true]:font-medium data-[active=true]:text-foreground";
 
-export function resolveFleetView(value: string | undefined): FleetView {
+export function resolveFleetView(value: string | undefined): FleetView | null {
   switch (value) {
+    case undefined:
+    case FLEET_VIEW.chat:
+      return FLEET_VIEW.chat;
     case FLEET_VIEW.events:
     case FLEET_VIEW.memory:
     case FLEET_VIEW.skill:
     case FLEET_VIEW.trigger:
       return value;
     default:
-      return FLEET_VIEW.chat;
+      return null;
   }
 }
 

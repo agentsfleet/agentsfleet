@@ -506,21 +506,15 @@ describe("fleets routes", () => {
     expect(markup).toContain('href="/w/ws_1/approvals?fleetId=zom_1"');
   });
 
-  it("an obsolete Settings query falls back to Chat with actions in the header", async () => {
-    mockFetchBilling(happyBilling);
+  it("redirects an obsolete Settings query to the canonical Chat URL", async () => {
     const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
-    const settingsMarkup = renderToStaticMarkup(
-      await Page({
+    await expect(
+      Page({
         params: Promise.resolve({ workspaceId: "ws_1", id: "zom_1" }),
         searchParams: Promise.resolve({ view: "settings" }),
       }),
-    );
-    expect(settingsMarkup).toContain("Chat");
-    expect(settingsMarkup).not.toContain("Runtime");
-    expect(settingsMarkup).toContain("Stop");
-    expect(settingsMarkup).toContain("Kill");
-    expect(settingsMarkup).not.toContain("Danger zone");
-    expect(settingsMarkup).not.toContain("Delete fleet");
+    ).rejects.toThrow("redirect:/w/ws_1/fleets/zom_1");
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("shows Delete instead of lifecycle controls after a fleet is killed", async () => {
