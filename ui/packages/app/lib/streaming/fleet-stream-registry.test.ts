@@ -741,6 +741,42 @@ describe("fleet-stream-registry — a lost connection recovers itself", () => {
   const FAST_BACKOFF_CAP_MS = 15_000;
   const OFFLINE_RETRY_MS = 30_000;
 
+  it("escalates an accept-then-close upstream instead of hammering at base delay", () => {
+    // An unhealthy upstream that opens then immediately errors must NOT reset
+    // the attempt count on open — otherwise it retries at the base delay
+    // forever, stampeding the failing server. Only a delivered frame proves
+    // health and returns to fast backoff.
+    const release = subscribe(WS, Z_A, NO_SEED, () => {});
+    for (let cycle = 0; cycle < FAST_ATTEMPTS + 1; cycle += 1) {
+      const es = FakeEventSource.instances.at(-1)!;
+      es.onopen?.call(es as unknown as EventSource, {} as Event);
+      es.onerror?.call(es as unknown as EventSource, {} as Event);
+      vi.advanceTimersByTime(FAST_BACKOFF_CAP_MS);
+    }
+    // Despite every cycle reaching onopen, the connection is reported not live.
+    expect(getSnapshot(Z_A).connectionStatus).toBe(CONNECTION_STATUS.OFFLINE);
+    release();
+  });
+
+  it("returns to fast backoff once a real frame proves the stream healthy", () => {
+    const release = subscribe(WS, Z_A, NO_SEED, () => {});
+    exhaustFastAttempts();
+    expect(getSnapshot(Z_A).connectionStatus).toBe(CONNECTION_STATUS.OFFLINE);
+
+    // Recover, and this time a frame actually arrives.
+    vi.advanceTimersByTime(OFFLINE_RETRY_MS);
+    const es = FakeEventSource.instances.at(-1)!;
+    es.onopen?.call(es as unknown as EventSource, {} as Event);
+    es.onmessage?.call(es as unknown as EventSource, {
+      data: JSON.stringify({ kind: "event_received", event_id: "e1", actor: "fleet" }),
+    } as MessageEvent);
+    // A subsequent failure is treated as attempt 1 (fast), not a continuation
+    // of the exhausted offline count.
+    es.onerror?.call(es as unknown as EventSource, {} as Event);
+    expect(getSnapshot(Z_A).connectionStatus).toBe(CONNECTION_STATUS.RECONNECTING);
+    release();
+  });
+
   it("keeps trying on its own once the fast attempts are exhausted", () => {
     const release = subscribe(WS, Z_A, NO_SEED, () => {});
     exhaustFastAttempts();

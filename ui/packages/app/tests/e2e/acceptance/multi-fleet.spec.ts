@@ -52,13 +52,12 @@ test.describe("multi-fleet wall", () => {
       const liveRows = page.locator(`${own}[data-state="live"]`);
       await expect(liveRows).toHaveCount(SEED_COUNT);
 
-      // Every live tile carries its status dot. Whether the dot ANIMATES
-      // (`data-live`) depends on the workspace stream being connected, which
-      // this environment cannot guarantee until the request-header fix in
-      // this change reaches the deployed API — the animation contract is
-      // pinned by the wall's unit suite instead.
-      const dots = page.locator(`${own}[data-state="live"]`);
-      await expect(dots).toHaveCount(SEED_COUNT, { timeout: RENDER_TIMEOUT_MS });
+      // Every seeded tile renders live. The dot's ANIMATION (`data-live`) needs
+      // the workspace stream connected, which this environment cannot reach
+      // until the request-header fix in THIS change deploys — so the animation
+      // contract is pinned by the wall's unit suite, and this walk asserts only
+      // what it can honestly observe: the tiles exist and read live.
+      // (Assertion already made by `liveRows` above; no second dot selector.)
 
       // The header carries the canonical live-count label. The exact figure is
       // workspace-wide (parallel specs may hold live fleets of their own), so

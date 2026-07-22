@@ -286,27 +286,43 @@ function useNewMessageHandler({
   markOptimisticFailed,
   onFailure,
 }: NewHandlerCtx): (msg: AppendMessage) => Promise<void> {
+  // The tail of the delivery chain. Removing the browser-side queue let two
+  // rapid submissions race: their Server Action POSTs could reach the server
+  // out of submission order, so "stop" could be assigned an earlier event id
+  // than the "deploy" it was meant to follow. Optimistic rows still appear the
+  // instant they are typed; only the POSTs are serialised, so the server
+  // assigns event ids in the order the operator sent them.
+  const deliveryTail = useRef<Promise<void>>(Promise.resolve());
   return useCallback(
     async (msg: AppendMessage) => {
       const text = extractMessageText(msg);
       if (text.length === 0) return;
+      // Optimistic append is synchronous and in call order — the operator sees
+      // both messages immediately, before any POST resolves.
       const tempId = appendOptimistic(text, OPTIMISTIC_ACTOR);
-      try {
-        const result = await steerFleetAction(workspaceId, fleetId, text);
-        if (result.ok) {
-          reconcileOptimistic(tempId, result.data.event_id);
-          requestOnboardingRefresh(workspaceId);
-          return;
+      const send = async () => {
+        try {
+          const result = await steerFleetAction(workspaceId, fleetId, text);
+          if (result.ok) {
+            reconcileOptimistic(tempId, result.data.event_id);
+            requestOnboardingRefresh(workspaceId);
+            return;
+          }
+          markOptimisticFailed(tempId);
+          onFailure({ message: msg, kind: result.status === 401 ? "session" : "send" });
+        } catch {
+          // The Server Action's RPC transport itself failed (offline, or the
+          // action invocation errored) — surface the same `failed` row the
+          // ok:false path produces so the user knows the steer didn't land.
+          markOptimisticFailed(tempId);
+          onFailure({ message: msg, kind: "send" });
         }
-        markOptimisticFailed(tempId);
-        onFailure({ message: msg, kind: result.status === 401 ? "session" : "send" });
-      } catch {
-        // The Server Action's RPC transport itself failed (offline, or the
-        // action invocation errored) — surface the same `failed` row the
-        // ok:false path produces so the user knows the steer didn't land.
-        markOptimisticFailed(tempId);
-        onFailure({ message: msg, kind: "send" });
-      }
+      };
+      // Chain this POST after the previous one. A failed send must not block
+      // the next, so the chain swallows outcomes; each `send` reports its own.
+      const slot = deliveryTail.current.then(send);
+      deliveryTail.current = slot.catch(() => undefined);
+      await slot;
     },
     [
       workspaceId,

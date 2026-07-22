@@ -38,6 +38,7 @@ function evt(over: Partial<FleetEvent> = {}): FleetEvent {
     role: "assistant",
     actor: "fleet",
     text: "x",
+    reply: "",
     outcome: OUTCOME.WORKING,
     createdAt: new Date(2000),
     status: "received",
@@ -64,12 +65,12 @@ describe("mergeBackfill", () => {
   it("replaces a partial live row with a terminal backfill row of the same id", () => {
     // An event that straddled an outage: live chunks accumulated a partial
     // text, the durable row carries the full final text + terminal status.
-    const prev = [evt({ id: "e1", text: "partial chu", status: "received" })];
+    const prev = [evt({ id: "e1", reply: "partial chu", status: "received" })];
     const merged = mergeBackfill(prev, [
       row({ event_id: "e1", status: "processed", response_text: "the full final text" }),
     ]);
     expect(merged).toHaveLength(1);
-    expect(merged[0]?.text).toBe("the full final text");
+    expect(merged[0]?.reply).toBe("the full final text");
     expect(merged[0]?.status).toBe("processed");
   });
 
@@ -120,12 +121,12 @@ describe("mergeBackfill", () => {
   it("keeps the live accumulation when the backfill row is still in progress", () => {
     // The live chunk stream is newer than the list snapshot for a running
     // event — a "received" backfill row must not clobber it.
-    const prev = [evt({ id: "e1", text: "live chunks so far", status: "received" })];
+    const prev = [evt({ id: "e1", reply: "live chunks so far", status: "received" })];
     const merged = mergeBackfill(prev, [
       row({ event_id: "e1", status: "received", response_text: "stale snapshot" }),
     ]);
     expect(merged).toHaveLength(1);
-    expect(merged[0]?.text).toBe("live chunks so far");
+    expect(merged[0]?.reply).toBe("live chunks so far");
   });
 });
 
@@ -159,17 +160,19 @@ describe("applyLiveFrame", () => {
     expect(twice).toBe(once); // unchanged reference — no duplicate row
   });
 
-  it("CHUNK creates an assistant event when none exists, then concatenates text", () => {
+  it("CHUNK creates an assistant event when none exists, accumulating into the reply", () => {
     const created = applyLiveFrame([], { kind: FRAME_KIND.CHUNK, event_id: "e9", text: "Hel" });
-    expect(created[0]).toMatchObject({ role: "assistant", actor: "fleet", text: "Hel" });
+    expect(created[0]).toMatchObject({ role: "assistant", actor: "fleet", text: "", reply: "Hel" });
     const appended = applyLiveFrame(created, { kind: FRAME_KIND.CHUNK, event_id: "e9", text: "lo" });
-    expect(appended[0]?.text).toBe("Hello");
+    // The chunk stream is the fleet's reply — it never becomes the trigger text.
+    expect(appended[0]?.reply).toBe("Hello");
+    expect(appended[0]?.text).toBe("");
   });
 
-  it("CHUNK keeps a user-role event as user while concatenating", () => {
-    const seed = [evt({ id: "e9", role: "user", actor: "steer:x", text: "Hi " })];
+  it("CHUNK on an operator turn appends to the reply, never the operator's own text", () => {
+    const seed = [evt({ id: "e9", role: "user", actor: "steer:x", text: "Hi ", reply: "" })];
     const out = applyLiveFrame(seed, { kind: FRAME_KIND.CHUNK, event_id: "e9", text: "there" });
-    expect(out[0]).toMatchObject({ role: "user", text: "Hi there" });
+    expect(out[0]).toMatchObject({ role: "user", text: "Hi ", reply: "there" });
   });
 
   it("EVENT_COMPLETE sets the reported status", () => {
@@ -205,12 +208,12 @@ describe("applyLiveFrame", () => {
 
   it("CHUNK with two events: only the matching event is updated; the other is returned unchanged", () => {
     // Two-element array exercises the `: e` (non-matching) arm of the map call.
-    const bystander = evt({ id: "bystander", text: "untouched" });
-    const target = evt({ id: "target", text: "start" });
+    const bystander = evt({ id: "bystander", reply: "untouched" });
+    const target = evt({ id: "target", reply: "start" });
     const seed = [bystander, target];
     const out = applyLiveFrame(seed, { kind: FRAME_KIND.CHUNK, event_id: "target", text: " more" });
-    // The target event must have its text extended.
-    expect(out.find((e) => e.id === "target")?.text).toBe("start more");
+    // The target event must have its reply extended.
+    expect(out.find((e) => e.id === "target")?.reply).toBe("start more");
     // The bystander element must be the exact same object reference — not a copy.
     expect(out.find((e) => e.id === "bystander")).toBe(bystander);
   });
