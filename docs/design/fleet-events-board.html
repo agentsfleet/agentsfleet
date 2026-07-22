@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>M139 fleet-events — variant board</title>
+<style>
+  :root{--bg:#0a0e0d;--fg:#d6e2dd;--mut:#78877f;--dim:#4d5a55;--line:#182220;--mint:#4ade9b;--red:#ef6a6a;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+  *{box-sizing:border-box;margin:0}
+  body{background:var(--bg);color:var(--fg);font:14px/1.6 var(--mono);padding:32px}
+  h1{font-size:18px;margin-bottom:4px}
+  .sub{color:var(--mut);font-size:12px;margin-bottom:28px}
+  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:24px}
+  .card{border:1px solid var(--line);border-radius:10px;overflow:hidden;background:#0e1412}
+  .card h2{font-size:14px;padding:14px 16px 2px}
+  .card h2 b{color:var(--mint)}
+  .card .concept{color:var(--mut);font-size:11.5px;padding:0 16px 12px;border-bottom:1px solid var(--line)}
+  .framebox{height:640px;overflow:hidden;background:var(--bg)}
+  .framebox iframe{width:200%;height:1280px;border:0;transform:scale(.5);transform-origin:0 0;pointer-events:none}
+  .notes{padding:12px 16px;font-size:11.5px;color:var(--mut);border-top:1px solid var(--line)}
+  .notes b{color:var(--fg);font-weight:600}
+  .notes .plus{color:var(--mint)}
+  .notes .minus{color:var(--red)}
+  .open{display:block;padding:10px 16px;border-top:1px solid var(--line);font-size:11.5px;color:var(--mint);text-decoration:none}
+  .judge{margin-top:28px;border:1px solid var(--line);border-radius:10px;padding:16px 20px;font-size:12.5px;color:var(--mut)}
+  .judge b{color:var(--fg)}
+</style>
+</head>
+<body>
+<h1>M139_001 · fleet event legibility — variant board</h1>
+<div class="sub">Fixture: github-pr-reviewer · 15 identical FLEET_ERROR webhook deliveries (11:38–12:03) interleaved with two operator steers and one fleet reply. All variants share the design tokens and the approved variant-A row grammar; they differ in where the failure story lives.</div>
+
+<div class="grid">
+  <div class="card">
+    <h2><b>A</b> — Incident Ledger</h2>
+    <div class="concept">Banner as a full-width strip pinned under the Chat header · repeats as one ledger line with a right-aligned ×15 badge · underlined tab filter.</div>
+    <div class="framebox"><iframe src="fleet-events-variant-A-incident-ledger.html"></iframe></div>
+    <div class="notes"><b>Judge:</b> <span class="plus">calmest; closest to today’s grammar; banner always at top</span> · <span class="minus">banner consumes a header row even after recovery reading begins</span></div>
+    <a class="open" href="fleet-events-variant-A-incident-ledger.html" target="_blank">Open full-size →</a>
+  </div>
+  <div class="card">
+    <h2><b>B</b> — Timeline Rail</h2>
+    <div class="concept">Activity shrinks onto a left timeline rail (dots + ticks) · a repeat-run is one rail node with a ×15 pill · floating failure card over the viewport · pill segmented filter.</div>
+    <div class="framebox"><iframe src="fleet-events-variant-B-timeline-rail.html"></iframe></div>
+    <div class="notes"><b>Judge:</b> <span class="plus">strongest conversation/activity contrast; scroll shrinks the most</span> · <span class="minus">new rail grammar to build + a floating layer over the thread</span></div>
+    <a class="open" href="fleet-events-variant-B-timeline-rail.html" target="_blank">Open full-size →</a>
+  </div>
+  <div class="card">
+    <h2><b>C</b> — Console Digest</h2>
+    <div class="concept">Activity folds like terminal log sections (▸ 15 identical failures…) · failure pinned as a system row just above the composer · quiet View dropdown.</div>
+    <div class="framebox"><iframe src="fleet-events-variant-C-console-digest.html"></iframe></div>
+    <div class="notes"><b>Judge:</b> <span class="plus">most terminal-native; failure sits where the eye rests before typing</span> · <span class="minus">banner-at-bottom is unconventional; folds bury per-delivery payloads one level deeper</span></div>
+    <a class="open" href="fleet-events-variant-C-console-digest.html" target="_blank">Open full-size →</a>
+  </div>
+</div>
+
+<div class="judge"><b>What to judge across all three:</b> (1) where the failure cause + count should live; (2) how hard the activity feed should recede next to conversation; (3) the filter control’s shape; (4) the Events-table group treatment (×N badge beside Status vs leading Runs column vs full-width fold row). Reply with A, B, C, or a remix (e.g. “A’s banner + C’s folds”).</div>
+</body>
+</html>
