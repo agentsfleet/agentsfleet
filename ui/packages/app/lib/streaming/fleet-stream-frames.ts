@@ -62,6 +62,13 @@ export type FleetEvent = {
    * keeps a completed turn from rendering blank. Recomputed on status change.
    */
   outcome: string;
+  /**
+   * The runner's failure class for a failed turn (`startup_posture`, …), kept
+   * beside the rendered `outcome` sentence because remediation guidance is
+   * chosen by the CLASS, not by the sentence. Null on a clean or in-flight
+   * turn — a row that has not failed has no class to carry.
+   */
+  failureLabel: string | null;
   createdAt: Date;
   status: FleetEventStatus;
   /** Tools called while working this event, in first-seen order. */
@@ -198,6 +205,7 @@ function rowToEvent(row: EventRow): FleetEvent {
     text: triggerBodyFor(row),
     reply: replyBodyFor(row),
     outcome: outcomeFor(row),
+    failureLabel: row.failure_label ?? null,
     createdAt: new Date(row.created_at),
     status: row.status as FleetEventStatus,
     custom: { requestJson: row.request_json },
@@ -227,6 +235,7 @@ function applyEventReceived(
       }),
       reply: "",
       outcome: outcomeForStatus(AGENTSFLEET_EVENT_STATUS.RECEIVED),
+      failureLabel: null,
       createdAt: new Date(),
       status: AGENTSFLEET_EVENT_STATUS.RECEIVED,
     },
@@ -237,8 +246,11 @@ function applyChunk(
   prev: FleetEvent[],
   frame: Extract<LiveFrame, { kind: typeof FRAME_KIND.CHUNK }>,
 ): FleetEvent[] {
-  const existing = prev.find((e) => e.id === frame.event_id);
-  if (!existing) {
+  // Locate once and copy once, matching `applyToolCall` — a streaming reply
+  // fires this per chunk, so a second full pass per frame is pure waste.
+  const index = prev.findIndex((e) => e.id === frame.event_id);
+  const existing = prev[index];
+  if (existing === undefined) {
     // A chunk with no prior trigger row: the fleet is replying to something the
     // client never saw the receipt for. The chunk text is the reply, and the
     // trigger stays empty rather than mislabelling the reply as the trigger.
@@ -251,6 +263,7 @@ function applyChunk(
         text: "",
         reply: frame.text,
         outcome: outcomeForStatus(AGENTSFLEET_EVENT_STATUS.RECEIVED),
+        failureLabel: null,
         createdAt: new Date(),
         status: AGENTSFLEET_EVENT_STATUS.RECEIVED,
       },
@@ -259,24 +272,30 @@ function applyChunk(
   // Chunks are the fleet's reply — they accumulate into `reply`, never into the
   // trigger `text`, so the operator's own message is not overwritten by the
   // answer streaming back.
-  return prev.map((e) =>
-    e === existing ? { ...e, reply: e.reply + frame.text } : e,
-  );
+  const updated = [...prev];
+  updated[index] = { ...existing, reply: existing.reply + frame.text };
+  return updated;
 }
 
 function applyEventComplete(
   prev: FleetEvent[],
   frame: Extract<LiveFrame, { kind: typeof FRAME_KIND.EVENT_COMPLETE }>,
 ): FleetEvent[] {
-  const existing = prev.find((e) => e.id === frame.event_id);
-  if (!existing) return prev;
+  // Locate once, copy once — same shape as `applyToolCall` and `applyChunk`.
+  const index = prev.findIndex((e) => e.id === frame.event_id);
+  const existing = prev[index];
+  if (existing === undefined) return prev;
   const status = (frame.status ?? AGENTSFLEET_EVENT_STATUS.PROCESSED) as FleetEventStatus;
   // The outcome follows the status — and carries the failure cause the frame
   // ships, so a failed turn names its check live instead of a generic floor
-  // until reload.
-  return prev.map((e) =>
-    e === existing
-      ? { ...e, status, outcome: outcomeForCompletion(status, frame.failure_label, frame.failure_detail) }
-      : e,
-  );
+  // until reload. The class rides alongside so guidance renders live too.
+  const label = (frame.failure_label ?? "").trim();
+  const updated = [...prev];
+  updated[index] = {
+    ...existing,
+    status,
+    outcome: outcomeForCompletion(status, frame.failure_label, frame.failure_detail),
+    failureLabel: label.length > 0 ? label : null,
+  };
+  return updated;
 }

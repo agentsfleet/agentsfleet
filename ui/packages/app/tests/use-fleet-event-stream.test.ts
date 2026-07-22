@@ -345,6 +345,7 @@ describe("useFleetEventStream", () => {
       text: "opened · owner/repo#7",
       reply: "",
       outcome: OUTCOME.NO_REPLY,
+      failureLabel: null,
       createdAt: new Date(0),
       status: "processed",
     });
@@ -363,6 +364,7 @@ describe("useFleetEventStream", () => {
       actor: "webhook:github",
       text: "workflow_run failure",
       reply: "",
+      failureLabel: null,
       outcome: OUTCOME.NO_REPLY,
       createdAt: new Date(0),
       status: "processed",

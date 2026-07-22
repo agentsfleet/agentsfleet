@@ -266,6 +266,7 @@ export function appendOptimistic(
       // yet, so the reply is empty and the outcome floor is set for shape.
       reply: "",
       outcome: outcomeForStatus(STATUS_RECEIVED),
+      failureLabel: null,
       createdAt: new Date(),
       status: STATUS_OPTIMISTIC,
     },

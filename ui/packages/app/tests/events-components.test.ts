@@ -24,6 +24,7 @@ afterEach(() => cleanup());
 import { EventsList } from "../components/domain/EventsList";
 import { type EventRow, type EventsPage } from "@/lib/api/events";
 import { TooltipProvider } from "@agentsfleet/design-system";
+import { GUIDANCE } from "@/lib/events/event-summary";
 
 function row(over: Partial<EventRow> = {}): EventRow {
   const now = Date.UTC(2026, 3, 28, 10, 30, 0);
@@ -258,12 +259,10 @@ describe("EventsList — the standard workspace events table", () => {
     expect(screen.getByLabelText("Failed event")).toBeTruthy();
     expect(screen.queryByText("No specific reason was recorded for this event.")).toBeNull();
     expect(screen.queryByText("startup_posture")).toBeNull();
-    expect(screen.getByText(
-      "Nothing specific can be fixed from this event because it did not record which startup check failed.",
-    )).toBeTruthy();
-    expect(screen.getByText(
-      "Retry it once. If it fails again, use the copy icon below and ask a coding agent to inspect the diagnostic.",
-    )).toBeTruthy();
+    // No recorded cause on this row: the actionable line still shows, and the
+    // "which check?" fall-back stays because nothing here names the check.
+    expect(screen.getByText(GUIDANCE.STARTUP)).toBeTruthy();
+    expect(screen.getByText(/did not record which check failed/)).toBeTruthy();
     expect(screen.queryByText("Add non-empty instructions in Skill, then save the fleet.")).toBeNull();
     expect(screen.queryByText("Make an active runner available to this workspace.")).toBeNull();
     expect(screen.queryByText("Select an available model and provider credential.")).toBeNull();

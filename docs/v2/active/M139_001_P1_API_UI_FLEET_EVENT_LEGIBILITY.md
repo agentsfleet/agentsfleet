@@ -129,7 +129,7 @@ A failure that cannot say why it failed is noise. The runner names the cause at 
 `event-summary.ts` stays the single voice. The failure sentence keeps its plain-language label; when a detail exists it renders beneath it; the authored-but-unrendered `guidance` presentation gets its consumer (startup guidance points the operator at the fleet's configuration surface). Unknown labels keep the render-the-tag fallback.
 
 - **Dimension 2.1** — DONE — Outcome presentation includes the detail when present and exactly the canned sentence when absent → Test `test_outcome_includes_detail_when_present`
-- **Dimension 2.2** — Startup failures render the guidance line in the chat row and the details dialog → Test `test_guidance_renders_for_startup_failures`
+- **Dimension 2.2** — DONE — Startup failures render the guidance line in the chat row and the details dialog; an unactionable class and a fleet's own reply both render none → Test `test_guidance_renders_for_startup_failures`
 
 ### §3 — Conversation dominates; activity compacts
 
@@ -309,3 +309,4 @@ N/A — no files deleted. The one latent surface (`guidance` in `event-summary.t
 - **Deferrals** — every "deferred to follow-up" needs an **Indy-acked verbatim quote** here, format `> Indy (YYYY-MM-DD HH:MM): "<quote>" — context: <which item, why>`. An agent-unilateral deferral is **incomplete scope, not deferral**, and blocks CHORE(close) until the item lands or the quote is captured.
   > Indy (2026-07-22 14:05): "go (I dont need the All, Conversation, Activity option) we just show all for now." — context: §6 chat filter deferred at the design lock; the thread always shows all rows; reactivate on usage evidence after §3–§5 ship.
 - **D4 (Jul 22, 2026, scope)** — asked whether the three §1-surfaced refactor findings should be their own milestone (authoring recommendation) or land here: > Indy: "I want all the finding refactor to be fixed in this PR." — §8 added; blast-radius grep first (8 production + 6 test files touch `exit_ok`; 5 touch the failure fields).
+- **Self-correction (Jul 22, 2026)** — **Dimension 8.4** was marked DONE while `applyChunk`/`applyEventComplete` still ran `find` then `map` and no single-pass test existed. The merges now match `applyToolCall`'s locate-once/copy-once shape, proven by reference-identity assertions on the untouched siblings. Recorded rather than quietly re-marked: a Dimension is DONE only when its named test exists and runs (AGENTS.md "DONE = called in production + tested").

@@ -10,7 +10,7 @@ import {
   useFleetName,
   type RowTone,
 } from "./FleetMessageRow";
-import { SENDER, roleFor, senderLabelFor } from "@/lib/events/event-summary";
+import { SENDER, guidanceFor, roleFor, senderLabelFor } from "@/lib/events/event-summary";
 
 const SENDER_FLEET = SENDER.FLEET_FALLBACK;
 const STATUS_OPTIMISTIC = "optimistic";
@@ -81,6 +81,10 @@ function FleetReply({
   const streaming = status === STATUS_IN_FLIGHT;
   if (status === STATUS_OPTIMISTIC || status === STATUS_FAILED) return null;
   const body = reply.length > 0 ? reply : outcome;
+  // The cause says what broke; the guidance says what to do about it. Only
+  // rendered when the failure sentence is what the operator is reading — a
+  // recorded reply is the fleet's own words and takes precedence.
+  const guidance = reply.length > 0 ? null : guidanceFor(readFailureLabel(message));
   return (
     <FleetMessageRow
       sender={fleetName.length > 0 ? fleetName : SENDER_FLEET}
@@ -94,6 +98,11 @@ function FleetReply({
       {streaming ? (
         <span className="ml-xs animate-pulse text-pulse" aria-label="streaming">
           {STREAM_CURSOR}
+        </span>
+      ) : null}
+      {guidance ? (
+        <span className="mt-xs block text-label text-muted-foreground" data-testid="failure-guidance">
+          {guidance}
         </span>
       ) : null}
     </FleetMessageRow>
@@ -164,6 +173,11 @@ function readReply(message: MessageState): string {
 function readOutcome(message: MessageState): string {
   const raw = message.metadata.custom["outcome"];
   return typeof raw === "string" ? raw : "";
+}
+
+function readFailureLabel(message: MessageState): string | null {
+  const raw = message.metadata.custom["failureLabel"];
+  return typeof raw === "string" && raw.length > 0 ? raw : null;
 }
 
 function readRequestJson(message: MessageState): string | null {
