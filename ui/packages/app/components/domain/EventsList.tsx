@@ -17,11 +17,10 @@ import { ActivityIcon, ChevronRightIcon } from "lucide-react";
 import { listWorkspaceEventsAction } from "@/app/(dashboard)/w/[workspaceId]/events/actions";
 import { formatDollars } from "@/app/(dashboard)/settings/billing/lib/charges";
 import type { EventRow, EventsPage } from "@/lib/api/events";
-import { failureSentenceFor } from "@/lib/events/event-summary";
+import { failureSentenceFor, senderLabelFor } from "@/lib/events/event-summary";
 import { presentErrorString } from "@/lib/errors";
 import { formatMs } from "@/lib/utils";
 import { EventDetailsDialog } from "./EventDetailsDialog";
-import { presentFleetActor } from "./fleetActorPresentation";
 
 export type EventsListProps = {
   workspaceId: string;
@@ -57,10 +56,16 @@ const STATUS_VARIANT: Record<string, BadgeVariant> = {
 // column carries the response preview or the plain-language failure reason.
 function createEventColumns(onInspect: (row: EventRow) => void): DataTableColumn<EventRow>[] {
   return [
-    { key: "time", header: "Time", cell: (row) => <EventTimeCell row={row} /> },
+    {
+      key: "time",
+      header: "Time",
+      hideOnMobile: true,
+      cell: (row) => <EventTimeCell row={row} />,
+    },
     {
       key: "status",
       header: "Status",
+      hideOnMobile: true,
       cell: (row) => <Badge variant={STATUS_VARIANT[row.status] ?? "default"}>{row.status}</Badge>,
     },
     {
@@ -69,7 +74,7 @@ function createEventColumns(onInspect: (row: EventRow) => void): DataTableColumn
       hideOnMobile: true,
       cell: (row) => <span className="font-mono text-xs">{shortId(row.fleet_id)}</span>,
     },
-    { key: "actor", header: "Actor", cell: (row) => presentFleetActor(row.actor) },
+    { key: "actor", header: "Actor", cell: (row) => senderLabelFor(row.actor) },
     {
       key: "details",
       header: "Details",
@@ -78,6 +83,7 @@ function createEventColumns(onInspect: (row: EventRow) => void): DataTableColumn
           type="button"
           variant="ghost"
           size="sm"
+          className="min-h-11 sm:min-h-0"
           aria-label={`Inspect event ${row.event_id}`}
           onClick={() => onInspect(row)}
         >

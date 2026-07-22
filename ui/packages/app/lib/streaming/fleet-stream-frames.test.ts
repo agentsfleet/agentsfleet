@@ -56,7 +56,7 @@ describe("mergeBackfill", () => {
     expect(merged.map((e) => e.id)).toEqual(["e1", "e2"]);
   });
 
-  it("maps a null response_text and carries request context plus the failure reason", () => {
+  it("maps a null response_text with request context and a readable failure outcome", () => {
     const [first] = mergeBackfill([], [row({
       response_text: null,
       request_json: "{\"a\":1}",
@@ -64,7 +64,7 @@ describe("mergeBackfill", () => {
     })]);
     expect(first?.text).toBe("");
     expect(first?.custom?.requestJson).toBe("{\"a\":1}");
-    expect(first?.custom?.reason).toBe("startup_posture");
+    expect(first?.outcome).toBe("Failed a startup safety check");
   });
 
   it("replaces a partial live row with a terminal backfill row of the same id", () => {
@@ -77,6 +77,15 @@ describe("mergeBackfill", () => {
     expect(merged).toHaveLength(1);
     expect(merged[0]?.reply).toBe("the full final text");
     expect(merged[0]?.status).toBe("processed");
+  });
+
+  it("retains live tool evidence when a terminal row is reconciled", () => {
+    const tools = [{ name: "inspect", ms: 12, done: true }];
+    const prev = [evt({ id: "e1", status: "received", tools })];
+    const merged = mergeBackfill(prev, [
+      row({ event_id: "e1", status: "processed", response_text: "done" }),
+    ]);
+    expect(merged[0]?.tools).toEqual(tools);
   });
 
   it("recovers the operator's own submitted text from the durable row", () => {

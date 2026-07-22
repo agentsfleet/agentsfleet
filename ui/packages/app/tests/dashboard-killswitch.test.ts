@@ -1,6 +1,6 @@
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { routerRefresh } from "./helpers/dashboard-mocks";
 import { resetDashboardMocks, stopFleetMock, setFleetStatusActionMock } from "./helpers/dashboard-app-mocks";
@@ -116,6 +116,42 @@ describe("KillSwitch component", () => {
     await waitFor(() =>
       expect(setFleetStatusActionMock).toHaveBeenCalledWith("ws_1", "zom_1", "killed"),
     );
+  });
+
+  it("keeps confirmation pending and blocks duplicate terminal requests", async () => {
+    let resolveRequest!: (value: { ok: true; data: unknown }) => void;
+    setFleetStatusActionMock.mockReturnValueOnce(new Promise((resolve) => {
+      resolveRequest = resolve;
+    }));
+    const user = userEvent.setup({ delay: null });
+    await renderSwitch("active");
+    await user.click(screen.getByRole("button", { name: /^kill$/i }));
+    const dialog = await screen.findByRole("alertdialog");
+    const confirm = within(dialog).getByRole("button", { name: /^kill$/i });
+
+    fireEvent.click(confirm);
+    await waitFor(() => expect(
+      (within(dialog).getByRole("button", { name: /working/i }) as HTMLButtonElement).disabled,
+    ).toBe(true));
+    fireEvent.click(within(dialog).getByRole("button", { name: /working/i }));
+    expect(setFleetStatusActionMock).toHaveBeenCalledTimes(1);
+
+    resolveRequest({ ok: true, data: undefined });
+    await waitFor(() => expect(routerRefresh).toHaveBeenCalled());
+  });
+
+  it("reports a rejected terminal request and restores the dialog", async () => {
+    setFleetStatusActionMock.mockRejectedValueOnce(new Error("network down"));
+    const user = userEvent.setup({ delay: null });
+    await renderSwitch("active");
+    await user.click(screen.getByRole("button", { name: /^kill$/i }));
+    await clickConfirmInDialog(user, /^kill$/i);
+
+    await waitFor(() => expect(screen.getByRole("alert").textContent).toMatch(/network down/i));
+    expect(screen.getByRole("alertdialog")).toBeTruthy();
+    expect(
+      (within(screen.getByRole("alertdialog")).getByRole("button", { name: /^kill$/i }) as HTMLButtonElement).disabled,
+    ).toBe(false);
   });
 
   it("409 conflict closes the dialog and refreshes (status changed elsewhere)", async () => {

@@ -129,7 +129,7 @@ describe("fleet-stream-registry — server-rendered seed", () => {
     b();
   });
 
-  it("reconciles a refreshed terminal row with its recorded failure reason", () => {
+  it("reconciles a refreshed terminal row with its recorded failure outcome", () => {
     const release = subscribe(WS, Z_A, [
       row({ event_id: "evt_live", status: "received", response_text: null }),
     ], () => {});
@@ -146,7 +146,7 @@ describe("fleet-stream-registry — server-rendered seed", () => {
     expect(getSnapshot(Z_A).events[0]).toMatchObject({
       id: "evt_live",
       status: "fleet_error",
-      custom: { reason: "startup_posture" },
+      outcome: "Failed a startup safety check",
     });
     release();
   });

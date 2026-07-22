@@ -21,7 +21,7 @@ describe("FleetConnectionNotice", () => {
     view.rerender(
       <FleetConnectionNotice status={CONNECTION_STATUS.RECONNECTING} onRetry={vi.fn()} />,
     );
-    expect(screen.getByText(/Messages will queue/i)).toBeTruthy();
+    expect(screen.getByText(/retry any failed send/i)).toBeTruthy();
   });
 
   it("offers a manual retry when automatic reconnects stop", async () => {

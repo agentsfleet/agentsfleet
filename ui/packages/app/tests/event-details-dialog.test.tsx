@@ -78,6 +78,18 @@ describe("EventDetailsDialog", () => {
     expect(screen.queryByText("Fix")).toBeNull();
   });
 
+  it("treats a whitespace-only startup response as unrecorded", () => {
+    renderDialog(event({ response_text: "   ", failure_label: "startup_posture" }));
+    expect(screen.getByText("Failed a startup safety check")).toBeTruthy();
+    expect(screen.getByText("Fix")).toBeTruthy();
+  });
+
+  it("shows an unknown recorded failure without inventing startup guidance", () => {
+    renderDialog(event({ failure_label: "brand_new_class" }));
+    expect(screen.getByText("brand_new_class")).toBeTruthy();
+    expect(screen.queryByText("Fix")).toBeNull();
+  });
+
   it("keeps the identifier and relative created time in the header and the copy icon in the footer", () => {
     renderDialog(event({
       event_id: "evt_header",
@@ -283,7 +295,7 @@ describe("EventDetailsDialog", () => {
     expect(screen.queryByText("Pull request")).toBeNull();
   });
 
-  it("bounds a large visible result while retaining it in the copied diagnostic", async () => {
+  it("bounds a large result in both the dialog and copied diagnostic", async () => {
     const writeText = stubClipboardWriteText();
     const response = `${"x".repeat(20_000)}hidden-result-tail`;
     renderDialog(event({ response_text: response }));
@@ -295,7 +307,19 @@ describe("EventDetailsDialog", () => {
 
     fireEvent.click(screen.getByRole("button", { name: COPY_DIAGNOSTIC_LABEL }));
     await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
-    expect(writeText.mock.calls[0]?.[0]).toContain("hidden-result-tail");
+    const copied = writeText.mock.calls[0]?.[0] ?? "";
+    expect(copied).not.toContain("hidden-result-tail");
+    const diagnostic = JSON.parse(copied) as { recorded_response: string };
+    expect(diagnostic.recorded_response).toHaveLength(20_000);
+    expect(diagnostic.recorded_response.endsWith("…")).toBe(true);
+  });
+
+  it("marks a whitespace-prefixed large result as truncated", () => {
+    const response = `   ${"x".repeat(20_000)}hidden-result-tail`;
+    renderDialog(event({ response_text: response }));
+    const result = screen.getByRole("alert").textContent ?? "";
+    expect(result.endsWith("…")).toBe(true);
+    expect(result).not.toContain("hidden-result-tail");
   });
 
   it("preserves an invalid created value in the copied diagnostic", async () => {

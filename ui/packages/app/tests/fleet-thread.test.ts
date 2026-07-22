@@ -122,7 +122,6 @@ function toThreadMessage(e: FleetEvent): ThreadMessageLike {
       custom: {
         actor: e.actor,
         requestJson: e.custom?.requestJson,
-        reason: e.custom?.reason,
         status: e.status,
         reply: e.reply,
         outcome: e.outcome,
@@ -219,8 +218,6 @@ beforeEach(() => {
 });
 
 afterEach(() => cleanup());
-
-// ── formatActorLabel unit ────────────────────────────────────────────────
 
 // ── FleetThread integration ─────────────────────────────────────────────
 
@@ -457,7 +454,7 @@ describe("FleetThread — role rendering", () => {
       }),
     ]);
     renderThread();
-    expect(screen.getByText("github-app")).toBeTruthy();
+    expect(screen.getByText("GitHub App")).toBeTruthy();
     expect(screen.getByText(/opened · owner\/repo#7/)).toBeTruthy();
     expect(screen.getByText(/"repo":"owner\/repo"/)).toBeTruthy();
   });
@@ -485,7 +482,7 @@ describe("FleetThread — role rendering", () => {
         text: "",
         status: "fleet_error",
         outcome: "Failed a startup safety check",
-        custom: { reason: "startup_posture", requestJson: "{}" },
+        custom: { requestJson: "{}" },
       }),
     ]);
     renderThread();
@@ -757,29 +754,6 @@ describe("FleetThread — connection-state header", () => {
 });
 
 describe("FleetThread — robustness against malformed metadata", () => {
-  it("ignores a non-string failure reason on an empty system event", () => {
-    const e = ev({ role: "system", actor: "cron", text: "" });
-    useFleetEventStreamMock.mockReturnValue({
-      events: [e],
-      connectionStatus: CONNECTION_STATUS.LIVE,
-      isRunning: false,
-      appendOptimistic: vi.fn(),
-      reconcileOptimistic: vi.fn(),
-      markOptimisticFailed: vi.fn(),
-      convertEvent: (message: FleetEvent) => ({
-        role: message.role,
-        id: message.id,
-        createdAt: message.createdAt,
-        content: [{ type: "text" as const, text: message.text }],
-        metadata: { custom: { actor: message.actor, status: message.status, reason: 7 } },
-      }),
-    });
-    const { container } = renderThread();
-    const row = container.querySelector('[data-role="system"]');
-    expect(row).toBeTruthy();
-    expect(row?.textContent).not.toContain("7");
-  });
-
   it("does not throw when an event's custom.actor is a non-string", () => {
     // Simulate a frame whose convertEvent emits metadata.custom with a
     // non-string actor. The renderer must degrade to an empty actor label

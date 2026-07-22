@@ -45,30 +45,44 @@ export default function KillSwitch({ workspaceId, fleet }: KillSwitchProps) {
   // pendingAction is non-null), so no in-function null check is needed.
   async function handleConfirm(action: ActionConfig) {
     setErrorMessage(null);
+    const previous = optimisticStatus;
 
-    startTransition(async () => {
-      const previous = optimisticStatus;
-      setOptimisticStatus(action.target);
-      const result = await setFleetStatusAction(workspaceId, fleet.id, action.target);
-      if (result.ok) {
-        setPendingAction(null);
-        router.refresh();
-        return;
-      }
-      setOptimisticStatus(previous);
-      if (result.status === 409) {
-        // Status changed under us. Refresh picks up the new state.
-        setPendingAction(null);
-        router.refresh();
-        return;
-      }
-      setErrorMessage(
-        presentErrorString({
-          errorCode: result.errorCode,
-          message: result.error,
-          action: action.errorVerb,
-        }),
-      );
+    await new Promise<void>((resolve) => {
+      startTransition(async () => {
+        setOptimisticStatus(action.target);
+        try {
+          const result = await setFleetStatusAction(workspaceId, fleet.id, action.target);
+          if (result.ok) {
+            setPendingAction(null);
+            router.refresh();
+            return;
+          }
+          setOptimisticStatus(previous);
+          if (result.status === 409) {
+            // Status changed under us. Refresh picks up the new state.
+            setPendingAction(null);
+            router.refresh();
+            return;
+          }
+          setErrorMessage(
+            presentErrorString({
+              errorCode: result.errorCode,
+              message: result.error,
+              action: action.errorVerb,
+            }),
+          );
+        } catch (error) {
+          setOptimisticStatus(previous);
+          setErrorMessage(
+            presentErrorString({
+              message: error instanceof Error ? error.message : "",
+              action: action.errorVerb,
+            }),
+          );
+        } finally {
+          resolve();
+        }
+      });
     });
   }
 
@@ -120,29 +134,27 @@ export default function KillSwitch({ workspaceId, fleet }: KillSwitchProps) {
     }
   })();
 
-  if (actions.length === 0) {
-    return (
-      <Button variant="outline" size="sm" disabled>
-        Killed
-      </Button>
-    );
-  }
-
   return (
     <>
-      <div className="flex flex-wrap items-center justify-end gap-sm">
-        {actions.map((action) => (
-          <Button
-            key={action.target}
-            variant={action.variant}
-            size="sm"
-            className="min-h-11 sm:min-h-0"
-            onClick={() => setPendingAction(action)}
-          >
-            {action.buttonLabel}
-          </Button>
-        ))}
-      </div>
+      {actions.length === 0 ? (
+        <Button variant="outline" size="sm" disabled>
+          Killed
+        </Button>
+      ) : (
+        <div className="flex flex-wrap items-center justify-end gap-sm">
+          {actions.map((action) => (
+            <Button
+              key={action.target}
+              variant={action.variant}
+              size="sm"
+              className="min-h-11 sm:min-h-0"
+              onClick={() => setPendingAction(action)}
+            >
+              {action.buttonLabel}
+            </Button>
+          ))}
+        </div>
+      )}
       <ConfirmDialog
         open={pendingAction !== null}
         // ConfirmDialog only calls onOpenChange on user-dismiss (cancel,
@@ -157,9 +169,8 @@ export default function KillSwitch({ workspaceId, fleet }: KillSwitchProps) {
         // Bound to the pending action when open; `undefined` when closed so the
         // handler never needs an unreachable null guard.
         onConfirm={pendingAction ? () => handleConfirm(pendingAction) : undefined}
-        // handleConfirm owns its own error reporting (sets errorMessage
-        // directly on result.ok=false). It never throws, so ConfirmDialog
-        // doesn't need an onError backup.
+        // handleConfirm owns result and transport error reporting, and its
+        // returned promise keeps both dialog actions disabled until settled.
         errorMessage={errorMessage}
       />
     </>
