@@ -202,8 +202,7 @@ test "integration: workspace stream survives Redis pubsub termination and resume
     try awaitFleetFrame(&client, &publisher, channel, RECOVERY_FLEET, RECOVERY_BEFORE_PAYLOAD, RECOVERY_BEFORE_MARKER);
 
     const reconnects_before = metrics.snapshot().sse_hub_reconnects_total;
-    var reply = try publisher.command(&.{ "CLIENT", "KILL", "TYPE", "pubsub" });
-    reply.deinit(testing.allocator);
+    try testing.expect(h.hub.testDisconnectConnection());
     try waitForSubscriberCount(&publisher, channel, 1);
     try awaitFleetFrame(&client, &publisher, channel, RECOVERY_FLEET, RECOVERY_AFTER_PAYLOAD, RECOVERY_AFTER_MARKER);
     try testing.expectEqual(@as(usize, 1), h.streams.count());

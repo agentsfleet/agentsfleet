@@ -323,18 +323,19 @@ fn wireSend(self: *Self, verb: WireVerb, channel_name: []const u8) void {
         log.warn("hub_wire_write_slowpath", .{ .verb = @tagName(verb), .channel = channel_name, .deadline_ms = self.send_timeout_ms });
     }
 }
-
-/// Test seam: hold the wire lock to simulate a peer-stalled send, proving map
-/// operations proceed while a wire write is blocked.
+pub fn testDisconnectConnection(self: *Self) bool {
+    self.wire.lockUncancelable(self.io);
+    defer self.wire.unlock(self.io);
+    const conn = if (self.conn) |*c| c else return false;
+    call_deadline.shutdownSocket(conn.socketHandle());
+    return true;
+}
 pub fn testHoldWire(self: *Self) void {
     self.wire.lockUncancelable(self.io);
 }
-
-/// Test seam: release the lock taken by `testHoldWire`.
 pub fn testReleaseWire(self: *Self) void {
     self.wire.unlock(self.io);
 }
-
 const std = @import("std");
 const common = @import("common");
 const clock = common.clock;
@@ -344,7 +345,6 @@ const redis_config = @import("../queue/redis_config.zig");
 const redis_subscriber = @import("../queue/redis_subscriber.zig");
 const reader = @import("subscription_hub_reader.zig");
 const log = logging.scoped(.subscription_hub);
-
 test {
     _ = @import("subscription_hub_test.zig");
 }
