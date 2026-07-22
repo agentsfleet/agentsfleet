@@ -16,12 +16,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M140
 **Workstream:** 001
 **Date:** Jul 22, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — dashboard users need dense datasets to remain navigable without scrolling the whole page
 **Categories:** User Interface (UI)
 **Batch:** B1 — standalone dashboard table improvement
-**Branch:** pending — assigned at CHORE(open)
-**Test Baseline:** pending — recorded at CHORE(open)
+**Branch:** `feat/data-table-tanstack`
+**Test Baseline:** unit=2814 integration=376
 **Depends on:** none
 **Provenance:** Large Language Model-drafted (LLM-drafted, Codex, Jul 22, 2026)
 **Canonical architecture:** `docs/architecture/direction.md` — dashboard behavior stays a presentation concern and does not create another runtime
