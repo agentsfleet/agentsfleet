@@ -166,17 +166,17 @@ export type WorkspaceControlFrame = WorkspaceHelloFrame | WorkspaceCatchingUpFra
 export type LiveFrame = ActivityLiveFrame | WorkspaceControlFrame;
 
 // Same-origin URL for the SSE stream. The path is intercepted by the
-// Next Route Handler at app/backend/.../events/stream/route.ts which
+// Next Route Handler at app/live/.../events/stream/route.ts which
 // injects the api-audience Bearer token server-side.
 export function streamFleetEventsUrl(workspaceId: string, fleetId: string): string {
   return (
-    `/backend/v1/workspaces/${encodeURIComponent(workspaceId)}` +
+    `/live/v1/workspaces/${encodeURIComponent(workspaceId)}` +
     `/fleets/${encodeURIComponent(fleetId)}/events/stream`
   );
 }
 
 // Same-origin URL for the reconnect backfill list. Intercepted by the Next
-// Route Handler at app/backend/.../events/route.ts (the non-stream sibling
+// Route Handler at app/live/.../events/route.ts (the non-stream sibling
 // of streamFleetEventsUrl's handler), which injects the Bearer token
 // server-side. The opts type carries exactly the keys that handler forwards
 // upstream — anything wider would be silently dropped at the proxy.
@@ -186,7 +186,7 @@ export function backfillFleetEventsUrl(
   opts?: Pick<EventsQuery, "cursor" | "since" | "limit">,
 ): string {
   return (
-    `/backend/v1/workspaces/${encodeURIComponent(workspaceId)}` +
+    `/live/v1/workspaces/${encodeURIComponent(workspaceId)}` +
     `/fleets/${encodeURIComponent(fleetId)}/events${buildQuery(opts)}`
   );
 }
@@ -199,11 +199,11 @@ export type WorkspaceLiveFrame = ActivityLiveFrame & { fleet_id: string };
 export type WorkspaceFrame = WorkspaceLiveFrame | WorkspaceControlFrame;
 
 // Same-origin URL for the ONE multiplexed workspace SSE stream. Intercepted by
-// the Next Route Handler at app/backend/.../events/stream/route.ts, which mints
+// the Next Route Handler at app/live/.../events/stream/route.ts, which mints
 // the api-audience Bearer server-side. This is the wall's single connection —
 // it replaces the per-tile streamFleetEventsUrl fan-out.
 export function streamWorkspaceEventsUrl(workspaceId: string): string {
-  return `/backend/v1/workspaces/${encodeURIComponent(workspaceId)}/events/stream`;
+  return `/live/v1/workspaces/${encodeURIComponent(workspaceId)}/events/stream`;
 }
 
 // Same-origin URL for the workspace-scoped reconnect backfill list. The wall
@@ -213,5 +213,5 @@ export function backfillWorkspaceEventsUrl(
   workspaceId: string,
   opts?: Pick<EventsQuery, "cursor" | "since" | "limit" | "fleet_id">,
 ): string {
-  return `/backend/v1/workspaces/${encodeURIComponent(workspaceId)}/events${buildQuery(opts)}`;
+  return `/live/v1/workspaces/${encodeURIComponent(workspaceId)}/events${buildQuery(opts)}`;
 }

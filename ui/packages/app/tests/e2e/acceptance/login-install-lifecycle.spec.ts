@@ -43,7 +43,7 @@ test.describe("login → install → lifecycle", () => {
     await cleanWorkspaceFleets(FIXTURE_KEY.regular, ws, "lifecycle-");
   });
 
-  test("persistent fixture installs via UI then walks observe → bill → halt", async ({ page }) => {
+  test("test_user_installs_platform_library_fleet", async ({ page }) => {
     // Cookie-mount via signInAs — no form-drive needed.
     await signInAs(page, FIXTURE_KEY.regular);
 

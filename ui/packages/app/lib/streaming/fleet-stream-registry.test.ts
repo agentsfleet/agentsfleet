@@ -483,7 +483,7 @@ describe("fleet-stream-registry — reconnect backfill", () => {
     await flushBackfill();
     expect(fetchSpy).toHaveBeenCalledTimes(1);
     const url = String(fetchSpy.mock.calls[0]![0]);
-    expect(url).toContain(`/backend/v1/workspaces/${WS}/fleets/${Z_A}/events?`);
+    expect(url).toContain(`/live/v1/workspaces/${WS}/fleets/${Z_A}/events?`);
     expect(url).toContain(`since=${encodeURIComponent(SEED_SINCE_PARAM)}`);
     expect(url).toContain("limit=200");
     expect(getSnapshot(Z_A).events.map((e) => e.id)).toEqual(["evt_seed", "evt_missed"]);

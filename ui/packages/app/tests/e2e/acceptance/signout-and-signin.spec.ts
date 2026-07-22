@@ -24,7 +24,7 @@ import { FIXTURE_KEY } from "./fixtures/constants";
 const SIGNOUT_TIMEOUT_MS = 15_000;
 
 test.describe("signout → signin round-trip", () => {
-  test("authenticated session signs out cleanly and signs back in", async ({ page }) => {
+  test("test_user_can_sign_out_and_sign_in_again", async ({ page }) => {
     await signInAs(page, FIXTURE_KEY.regular);
     const ws = await gotoWorkspace(page, FIXTURE_KEY.regular, "fleets");
     await expect(page).toHaveURL(workspaceUrlPattern("fleets"));

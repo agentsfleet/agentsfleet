@@ -44,9 +44,25 @@ export const FIXTURE_KEYS: readonly FixtureKey[] = [
 // Provisioned onto the operator fixture's Clerk `public_metadata.scopes`, which
 // the session-token template projects to the top-level `scopes` claim that both
 // the dashboard's `readSessionScopes` and agentsfleetd's `requireScope` read
-// (docs/AUTH.md §Manually-provisioned). Only the platform fleet-library scope is
-// granted — the acceptance suite exercises that surface and nothing else.
-export const OPERATOR_FIXTURE_SCOPES = ["platform-library:write"] as const;
+// (docs/AUTH.md §Manually-provisioned). Two scopes only: the platform
+// fleet-library scope the catalog specs exercise, and `runner:read` — the
+// read-only runner-plane scope AUTH.md recommends for runner visibility —
+// which the release preflight uses to prove a runner is online before the
+// expensive journeys start. No write/admin runner scope: the preflight must
+// stay incapable of mutating platform state by construction.
+export const OPERATOR_FIXTURE_SCOPES = ["platform-library:write", "runner:read"] as const;
+
+// Storage-state file global-setup primes with the short-lived Vercel bypass
+// cookie. The browser then never sends the raw x-vercel-protection-bypass
+// header, so retained failure traces record only the derived cookie — the
+// loaded secret itself stays out of every uploaded artifact.
+export const VERCEL_BYPASS_STATE_FILENAME = ".vercel-bypass-state.json";
+
+// The regular fixture's second workspace, shared by every spec that exercises
+// the WorkspaceSwitcher or workspace-scoped deep links. Provisioned ONCE in
+// global-setup (before any worker exists) so parallel first runs can't race
+// the list-then-create in ensureSecondWorkspace; specs only ever resolve it.
+export const SECOND_WORKSPACE_NAME = "fixture-secondary";
 
 /**
  * `@clerk/nextjs` major version that the harness was tested against. A bump

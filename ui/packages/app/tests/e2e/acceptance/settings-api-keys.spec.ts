@@ -14,6 +14,12 @@ import { expect, test } from "@playwright/test";
 import { signInAs } from "./fixtures/auth";
 import { FIXTURE_KEY } from "./fixtures/constants";
 
+// A failure between reveal and revoke would otherwise retain a trace or
+// screenshot whose DOM snapshot contains the one-time raw agt_t value —
+// a replayable live credential inside an uploaded CI artifact. This spec
+// trades failure evidence for keeping that value out of every artifact.
+test.use({ trace: "off", screenshot: "off" });
+
 test.describe("settings api-keys page", () => {
   test("operator round-trip: mint, reveal once, revoke, delete", async ({ page }) => {
     await signInAs(page, FIXTURE_KEY.admin);

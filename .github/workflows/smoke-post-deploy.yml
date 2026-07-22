@@ -55,14 +55,8 @@ jobs:
             { echo "package=website"; echo "workdir=ui/packages/website"; echo "bypass_item=vercel-bypass-website"; echo "smoke_base_url=$WEBSITE_CANONICAL_URL"; } >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Load Vercel bypass secret from 1Password
-        uses: 1password/load-secrets-action@v4
-        with:
-          export-env: true
-        env:
-          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
-          VERCEL_BYPASS_SECRET: op://${{ vars.VAULT_PROD }}/${{ steps.detect.outputs.bypass_item }}/credential
-
+      # Install runs BEFORE the 1Password load (uniform posture across every
+      # job here): no postinstall script ever sees a loaded secret.
       - name: Install dependencies
         run: bun install --frozen-lockfile
         working-directory: ${{ steps.detect.outputs.workdir }}
@@ -70,6 +64,14 @@ jobs:
       - name: Install Playwright browsers
         run: bunx playwright install --with-deps chromium
         working-directory: ${{ steps.detect.outputs.workdir }}
+
+      - name: Load Vercel bypass secret from 1Password
+        uses: 1password/load-secrets-action@v4
+        with:
+          export-env: true
+        env:
+          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+          VERCEL_BYPASS_SECRET: op://${{ vars.VAULT_PROD }}/${{ steps.detect.outputs.bypass_item }}/credential
 
       - name: Run smoke tests against deployed URL
         run: bun run test:e2e:smoke
@@ -97,12 +99,59 @@ jobs:
       contains(github.event.deployment.environment, 'agentsfleet-app')
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    # deployment_status fires per Vercel deploy; two quick successive deploys
+    # must not run this suite concurrently against the same production
+    # fixtures — the isolation story is per-run, not cross-run.
+    concurrency:
+      group: acceptance-e2e-prod
+      cancel-in-progress: true
     steps:
       - uses: actions/checkout@v6
 
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.3.14
+
+      # Installs and builds run BEFORE the 1Password load (same posture as
+      # the dev jobs): no postinstall script ever sees a Clerk key.
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+        working-directory: ui/packages/app
+
+      - name: Build the CLI once for browser CLI journeys
+        # The release preflight and the CLI-driven journeys consume
+        # cli/dist/bin/agentsfleet.js — mirrors acceptance-e2e-dev.
+        run: |
+          bun install --frozen-lockfile
+          bun run build
+        working-directory: cli
+
+      - name: Resolve Playwright version
+        id: playwright-version
+        run: |
+          PLAYWRIGHT_VERSION="$(bunx playwright --version | awk '{print $2}')"
+          test -n "$PLAYWRIGHT_VERSION"
+          echo "version=$PLAYWRIGHT_VERSION" >> "$GITHUB_OUTPUT"
+        working-directory: ui/packages/app
+
+      - name: Restore Playwright browser cache
+        id: playwright-cache-acceptance
+        uses: actions/cache@v5
+        with:
+          path: ~/.cache/ms-playwright
+          # Real inputs only: the repo-root lock (ui/packages/app has no lock
+          # of its own) plus the Playwright version. Exact match or a fresh
+          # install — no fallback prefixes.
+          key: ${{ runner.os }}-playwright-app-${{ steps.playwright-version.outputs.version }}-${{ hashFiles('bun.lock') }}
+
+      - name: Install Playwright browsers
+        run: |
+          if [ "${{ steps.playwright-cache-acceptance.outputs.cache-hit }}" = "true" ]; then
+            bunx playwright install chromium
+          else
+            bunx playwright install --with-deps chromium
+          fi
+        working-directory: ui/packages/app
 
       - name: Load Clerk PROD credentials from 1Password
         uses: 1password/load-secrets-action@v4
@@ -115,28 +164,6 @@ jobs:
           CLERK_WEBHOOK_SECRET: op://${{ vars.VAULT_PROD }}/clerk-prod/webhook-secret
           VERCEL_BYPASS_SECRET: op://${{ vars.VAULT_PROD }}/vercel-bypass-app/credential
 
-      - name: Install dependencies
-        run: bun install --frozen-lockfile
-        working-directory: ui/packages/app
-
-      - name: Restore Playwright browser cache
-        id: playwright-cache-acceptance
-        uses: actions/cache@v5
-        with:
-          path: ~/.cache/ms-playwright
-          key: ${{ runner.os }}-playwright-app-${{ hashFiles('ui/packages/app/bun.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-playwright-app-
-
-      - name: Install Playwright browsers
-        run: |
-          if [ "${{ steps.playwright-cache-acceptance.outputs.cache-hit }}" = "true" ]; then
-            bunx playwright install chromium
-          else
-            bunx playwright install --with-deps chromium
-          fi
-        working-directory: ui/packages/app
-
       - name: Run acceptance e2e against PROD
         run: bun run test:e2e:acceptance
         working-directory: ui/packages/app
@@ -148,10 +175,18 @@ jobs:
           CLERK_WEBHOOK_SECRET: ${{ env.CLERK_WEBHOOK_SECRET }}
           VERCEL_BYPASS_SECRET: ${{ env.VERCEL_BYPASS_SECRET }}
 
-      - name: Upload acceptance Playwright report
+      - name: Upload acceptance evidence (raw results + rendered report)
         uses: actions/upload-artifact@v7
+        # Raw per-test artifacts are written DURING the run — a canceled or
+        # hard-failed job still uploads diagnosable evidence even when the
+        # HTML report was never rendered. Mirrors acceptance-e2e-dev.
         if: always()
         with:
-          name: acceptance-e2e-prod-${{ github.sha }}
-          path: ui/packages/app/playwright-acceptance-report/
+          name: acceptance-e2e-prod-results
+          # Immutable-artifact model: a job re-run re-uploads under the same
+          # stable name the release rubric downloads by.
+          overwrite: true
+          path: |
+            ui/packages/app/playwright-acceptance-results/
+            ui/packages/app/playwright-acceptance-report/
           retention-days: 7

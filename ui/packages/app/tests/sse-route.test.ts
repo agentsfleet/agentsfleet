@@ -1,5 +1,5 @@
 // Tests for the same-origin SSE proxy route handler at
-// app/backend/v1/workspaces/[workspaceId]/fleets/[fleetId]/events/stream.
+// app/live/v1/workspaces/[workspaceId]/fleets/[fleetId]/events/stream.
 //
 // The handler is the trust boundary between the browser (cookie-authed via
 // Clerk) and the Zig backend (Bearer-only, aud=api.agentsfleet.net). Coverage
@@ -31,7 +31,7 @@ afterEach(() => {
   globalThis.fetch = originalFetch;
 });
 
-import { GET } from "../app/backend/v1/workspaces/[workspaceId]/fleets/[fleetId]/events/stream/route";
+import { GET } from "../app/live/v1/workspaces/[workspaceId]/fleets/[fleetId]/events/stream/route";
 
 function makeReq(): Request {
   return new Request("http://localhost/proxy", { method: "GET" });

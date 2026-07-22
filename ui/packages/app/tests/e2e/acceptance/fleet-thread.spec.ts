@@ -39,7 +39,11 @@ test.describe("fleet thread surface", () => {
 
     // Breadcrumb rendered server-side without duplicating the fleet name in a
     // second oversized title row.
-    await expect(page.getByRole("link", { name: "Fleets" })).toBeVisible();
+    // Scope to the breadcrumb — the sidebar carries its own Fleets link, so
+    // the bare role query became ambiguous when the breadcrumb shipped.
+    await expect(
+      page.getByLabel("Breadcrumb").getByRole("link", { name: "Fleets" }),
+    ).toBeVisible();
     await expect(page.getByText(fleet.name, { exact: true }).first()).toBeVisible();
 
     // The thread card mounts client-side and consumes the shared stream registry.

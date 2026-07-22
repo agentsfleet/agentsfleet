@@ -39,7 +39,9 @@ test.describe("fleet console", () => {
     // The console's local rail — one working surface at a time.
     const rail = page.getByRole("navigation", { name: "Fleet sections" });
     await expect(rail).toBeVisible({ timeout: RENDER_TIMEOUT_MS });
-    for (const section of ["Chat", "Events", "Memory", "Skill", "Trigger", "Settings"]) {
+    // Five destinations — lifecycle actions moved to the detail header, so
+    // Settings is no longer a rail view.
+    for (const section of ["Chat", "Events", "Memory", "Skill", "Trigger"]) {
       await expect(rail.getByRole("link", { name: section })).toBeVisible();
     }
 
@@ -49,7 +51,9 @@ test.describe("fleet console", () => {
     // test_console_composer_is_reachable_without_page_scroll — the defect this
     // milestone exists for: the card used to grow to the height of its whole
     // history, so reaching the composer meant scrolling past every event.
-    const composer = thread.getByLabel("Chat composer");
+    // The composer is pinned OUTSIDE the chat card — a sibling below it —
+    // so it stays reachable while the transcript scrolls internally.
+    const composer = page.getByLabel("Chat composer");
     await expect(composer).toBeInViewport();
     const pageOverflow = await page.evaluate(
       () => document.documentElement.scrollHeight - document.documentElement.clientHeight,
