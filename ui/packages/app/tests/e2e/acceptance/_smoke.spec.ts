@@ -19,13 +19,27 @@ import * as crypto from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { expect, test } from "@playwright/test";
+import { setupClerkTestingToken } from "@clerk/testing/playwright";
 import { signInAs } from "./fixtures/auth";
 import { getDefaultWorkspaceId, listFleets, seedFleet } from "./fixtures/seed";
 import { gotoWorkspace, workspaceUrlPattern } from "./fixtures/nav";
 import { cleanWorkspaceFleets } from "./fixtures/teardown";
 import { CLERK_NEXTJS_PINNED_MAJOR, FIXTURE_KEY } from "./fixtures/constants";
+import {
+  assertCliArtifactPresent,
+  diagnoseApiError,
+  probeConnectorRegistry,
+  probeDeployedService,
+  probeRunnerOnline,
+  probeRuntimeModel,
+} from "./fixtures/preflight";
 
 const JWT_CACHE_PATH = path.join(process.cwd(), ".fixture-jwts.json");
+
+// Clerk's SignIn card hydrates client-side from clerk.accounts.dev; a cold CI
+// browser can take longer than expect()'s 5s default while the page itself is
+// healthy. Web-first wait, not a sleep — passes as soon as the card mounts.
+const CLERK_HYDRATION_TIMEOUT_MS = 15_000;
 
 // Mirrors the random-password generator used by global-setup.ts so the smoke
 // assertion checks the same shape that lands in Clerk during provisioning.
@@ -33,11 +47,41 @@ function freshPassword(): string {
   return crypto.randomBytes(32).toString("base64url");
 }
 
+// Release preflight — every prerequisite a browser journey depends on, proven
+// read-only before the expensive groups start. A failure here is an
+// environment problem with a recovery step in the message, not product drift.
+test.describe("release preflight", () => {
+  test("deployed service is live and its dependencies are ready", async () => {
+    await probeDeployedService();
+  });
+
+  test("a runtime model is available to tenants", async () => {
+    await probeRuntimeModel();
+  });
+
+  test("the connector registry has a configured provider", async () => {
+    await probeConnectorRegistry();
+  });
+
+  test("a runner is online to execute fleets", async () => {
+    await probeRunnerOnline();
+  });
+
+  test("the workflow-built CLI artifact is present", () => {
+    assertCliArtifactPresent();
+  });
+});
+
 test.describe("auth e2e wire", () => {
   test("dashboard /sign-in renders", async ({ page }) => {
+    // Same posture as every other browser path in this harness: the testing
+    // token exempts clerk-js's Frontend API calls from bot protection, which
+    // otherwise stalls the dev-instance card mount behind a challenge no
+    // headless run can pass. The card itself still renders for real.
+    await setupClerkTestingToken({ page });
     await page.goto("/sign-in");
     const heading = page.getByRole("heading", { level: 1, name: /sign in/i });
-    await expect(heading).toBeVisible();
+    await expect(heading).toBeVisible({ timeout: CLERK_HYDRATION_TIMEOUT_MS });
   });
 
   test("required Clerk credentials present in env", () => {
@@ -102,8 +146,14 @@ test.describe("auth e2e wire", () => {
     // prior interrupted run left a killed fleet that couldn't be deleted
     // (agentsfleetd has a known ConnectionBusy bug on delete; orphans stick).
     const tag = Math.random().toString(36).slice(2, 8);
+    // The create path is also the QStash-visibility probe: a deployment whose
+    // schedule credentials are unseeded 503s here (the cron trigger sync runs
+    // inside fleet creation). Surface that as the typed recovery diagnosis
+    // instead of a raw wire error the operator has to decode.
     const seeded = await seedFleet(FIXTURE_KEY.regular, ws, {
       name: `fixture-roundtrip-${tag}`,
+    }).catch((error: unknown) => {
+      throw diagnoseApiError(error, "fleet seed roundtrip");
     });
     expect(seeded.id).toBeTruthy();
 

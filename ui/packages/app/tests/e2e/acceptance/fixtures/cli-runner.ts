@@ -1,4 +1,5 @@
 import * as fs from "node:fs/promises";
+import { existsSync } from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { spawn } from "node:child_process";
@@ -6,7 +7,15 @@ import { fileURLToPath } from "node:url";
 
 const THIS_DIR = path.dirname(fileURLToPath(import.meta.url));
 const WORKTREE_ROOT = path.resolve(THIS_DIR, "../../../../../../..");
-const AGENTSFLEET_ENTRY = path.join(WORKTREE_ROOT, "cli/dist/bin/agentsfleet.js");
+// The one CLI the whole suite runs: the workflow-built dist bundle. Preflight
+// (fixtures/preflight.ts) checks the same path so a missing build stops the
+// job before any browser journey, and this module double-checks at spawn time
+// so a directly-invoked spec fails with the recovery step instead of node's
+// bare "Cannot find module".
+export const AGENTSFLEET_CLI_ENTRY = path.join(WORKTREE_ROOT, "cli/dist/bin/agentsfleet.js");
+export const CLI_ARTIFACT_MISSING_DIAGNOSIS =
+  `CLI artifact missing at ${AGENTSFLEET_CLI_ENTRY}. ` +
+  "Build it first: cd cli && bun install && bun run build.";
 const DEFAULT_TIMEOUT_MS = 60_000;
 const STATE_DIR_NAME = "agentsfleet";
 
@@ -34,10 +43,13 @@ export async function spawnAgentsfleet(
   env: Record<string, string>,
   timeoutMs = DEFAULT_TIMEOUT_MS,
 ): Promise<SpawnResult> {
+  if (!existsSync(AGENTSFLEET_CLI_ENTRY)) {
+    return Promise.reject(new Error(CLI_ARTIFACT_MISSING_DIAGNOSIS));
+  }
   return new Promise((resolve, reject) => {
     const childEnv: NodeJS.ProcessEnv = { ...process.env, ...env };
     delete childEnv.FORCE_COLOR;
-    const child = spawn(process.execPath, [AGENTSFLEET_ENTRY, ...args], {
+    const child = spawn(process.execPath, [AGENTSFLEET_CLI_ENTRY, ...args], {
       env: childEnv,
       stdio: ["ignore", "pipe", "pipe"],
     });

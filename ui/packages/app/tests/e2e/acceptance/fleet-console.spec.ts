@@ -39,7 +39,9 @@ test.describe("fleet console", () => {
     // The console's local rail — one working surface at a time.
     const rail = page.getByRole("navigation", { name: "Fleet sections" });
     await expect(rail).toBeVisible({ timeout: RENDER_TIMEOUT_MS });
-    for (const section of ["Chat", "Events", "Memory", "Skill", "Trigger", "Settings"]) {
+    // Five destinations — lifecycle actions moved to the detail header, so
+    // Settings is no longer a rail view.
+    for (const section of ["Chat", "Events", "Memory", "Skill", "Trigger"]) {
       await expect(rail.getByRole("link", { name: section })).toBeVisible();
     }
 

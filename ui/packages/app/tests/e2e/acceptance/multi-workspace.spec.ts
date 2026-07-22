@@ -19,11 +19,9 @@
 import { expect, test } from "@playwright/test";
 import { signInAs } from "./fixtures/auth";
 import { ensureSecondWorkspace, getDefaultWorkspaceId } from "./fixtures/seed";
-import { cleanWorkspaceFleets } from "./fixtures/teardown";
 import { gotoWorkspace, workspaceUrlPattern } from "./fixtures/nav";
-import { FIXTURE_KEY } from "./fixtures/constants";
+import { FIXTURE_KEY, SECOND_WORKSPACE_NAME } from "./fixtures/constants";
 
-const SECOND_WORKSPACE_NAME = "fixture-secondary";
 const SWITCH_TIMEOUT_MS = 10_000;
 
 test.describe("multi-workspace switcher", () => {
@@ -60,8 +58,8 @@ test.describe("multi-workspace switcher", () => {
     });
   });
 
-  test.afterEach(async () => {
-    const ws = await getDefaultWorkspaceId(FIXTURE_KEY.regular);
-    await cleanWorkspaceFleets(FIXTURE_KEY.regular, ws);
-  });
+  // No fleet teardown: this spec seeds no fleets — it only switches
+  // workspaces. The unscoped sweep it used to run here deleted sibling
+  // workers' fleets mid-test the moment the suite went parallel; leftover
+  // rows from interrupted runs are the global-setup janitor's job.
 });
