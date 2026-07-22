@@ -1,6 +1,6 @@
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 // ── Shared mocks ───────────────────────────────────────────────────────────
@@ -104,6 +104,35 @@ describe("EventsList — the standard workspace events table", () => {
     const cells = Array.from(rowC!.querySelectorAll("td"));
     const summaryCell = cells[6];
     expect(summaryCell?.textContent).toBe("No result recorded");
+  });
+
+  it("sorts every event data column from its header arrow", () => {
+    renderList({
+      items: [
+        row({ event_id: "a", response_text: "response", cost_nanos: 5, tokens: 4, wall_ms: 3 }),
+        row({ event_id: "b", response_text: null, failure_label: "oom_kill", cost_nanos: null, tokens: null, wall_ms: null }),
+        row({ event_id: "c", response_text: null, failure_label: null }),
+      ],
+      next_cursor: null,
+    });
+
+    for (const name of ["Time", "Status", "Fleet", "Actor", "Type", "Result", "Cost", "Tokens", "Duration"]) {
+      fireEvent.click(screen.getByRole("button", { name }));
+      expect(screen.getByRole("columnheader", { name }).getAttribute("aria-sort")).not.toBe("none");
+    }
+  });
+
+  it("sorts results by the normalized operator-facing summary", () => {
+    renderList({
+      items: [
+        row({ event_id: "failure", response_text: null, failure_label: "oom_kill" }),
+        row({ event_id: "response", response_text: "  Quiet   result ", failure_label: null }),
+      ],
+      next_cursor: null,
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Result" }));
+    expect(screen.getAllByRole("row")[1]?.textContent).toContain("Quiet result");
   });
 
   it("renders a known FailureClass tag as a friendly label without its internal tag", () => {

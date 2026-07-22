@@ -342,7 +342,13 @@ describe("app shell frame", () => {
     // the page scrolls and the composer leaves the viewport with it.
     const frame = container.querySelector('[data-glow="dashboard"]') as HTMLElement;
     expect(frame.className).toMatch(/h-dvh/);
+    expect(frame.className).toMatch(/fixed/);
+    expect(frame.className).toMatch(/inset-0/);
     expect(frame.className).not.toMatch(/min-h-screen/);
+
+    const header = container.querySelector("header") as HTMLElement;
+    expect(header.className).not.toMatch(/border-b/);
+    expect(header.className).toContain("after:h-px");
 
     const main = container.querySelector("main") as HTMLElement;
     expect(main.className).toMatch(/overflow-y-auto/);

@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
 import { PanelLeftCloseIcon, PanelLeftOpenIcon } from "lucide-react";
-import { Button, cn, WakePulse } from "@agentsfleet/design-system";
+import { Button, cn, DashboardShellHeader, WakePulse } from "@agentsfleet/design-system";
 import { setAnalyticsContext } from "@/lib/analytics/posthog";
 import {
   DEFAULT_WORKSPACE_SUBPATH,
@@ -50,11 +50,12 @@ export default function Shell({
       // only an ordinary full-height child, with no height literal of its own.
       className={cn(
         "app-glow-surface grid h-dvh grid-rows-[56px_1fr]",
+        "fixed inset-0",
         collapsed ? "md:grid-cols-[64px_1fr]" : "md:grid-cols-[240px_1fr]",
       )}
       data-glow="dashboard"
     >
-      <header className="col-span-full sticky top-0 z-40 flex items-center gap-4 px-4 md:px-6 border-b border-border bg-background/85 backdrop-blur">
+      <DashboardShellHeader>
         <MobileNavigation
           pathname={pathname}
           workspaceId={linkWorkspaceId}
@@ -87,7 +88,7 @@ export default function Shell({
         <WorkspaceSwitcher workspaces={workspaces} activeId={linkWorkspaceId} />
         <ThemeToggle />
         <ClientOnlyAuthUserButton />
-      </header>
+      </DashboardShellHeader>
 
       <aside
         id={SIDEBAR_NAV_ID}
