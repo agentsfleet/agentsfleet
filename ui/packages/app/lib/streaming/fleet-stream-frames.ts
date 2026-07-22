@@ -69,6 +69,12 @@ export type FleetEvent = {
    * turn — a row that has not failed has no class to carry.
    */
   failureLabel: string | null;
+  /**
+   * The recorded cause line for a failed turn, kept beside the class so a
+   * summary above the thread can name WHICH check failed without re-parsing
+   * it back out of the rendered outcome sentence.
+   */
+  failureDetail: string | null;
   createdAt: Date;
   status: FleetEventStatus;
   /** Tools called while working this event, in first-seen order. */
@@ -206,6 +212,7 @@ function rowToEvent(row: EventRow): FleetEvent {
     reply: replyBodyFor(row),
     outcome: outcomeFor(row),
     failureLabel: row.failure_label ?? null,
+    failureDetail: row.failure_detail ?? null,
     createdAt: new Date(row.created_at),
     status: row.status as FleetEventStatus,
     custom: { requestJson: row.request_json },
@@ -236,6 +243,7 @@ function applyEventReceived(
       reply: "",
       outcome: outcomeForStatus(AGENTSFLEET_EVENT_STATUS.RECEIVED),
       failureLabel: null,
+      failureDetail: null,
       createdAt: new Date(),
       status: AGENTSFLEET_EVENT_STATUS.RECEIVED,
     },
@@ -264,6 +272,7 @@ function applyChunk(
         reply: frame.text,
         outcome: outcomeForStatus(AGENTSFLEET_EVENT_STATUS.RECEIVED),
         failureLabel: null,
+        failureDetail: null,
         createdAt: new Date(),
         status: AGENTSFLEET_EVENT_STATUS.RECEIVED,
       },
@@ -290,12 +299,14 @@ function applyEventComplete(
   // ships, so a failed turn names its check live instead of a generic floor
   // until reload. The class rides alongside so guidance renders live too.
   const label = (frame.failure_label ?? "").trim();
+  const detail = (frame.failure_detail ?? "").trim();
   const updated = [...prev];
   updated[index] = {
     ...existing,
     status,
     outcome: outcomeForCompletion(status, frame.failure_label, frame.failure_detail),
     failureLabel: label.length > 0 ? label : null,
+    failureDetail: detail.length > 0 ? detail : null,
   };
   return updated;
 }

@@ -107,6 +107,7 @@ function ev(over: Partial<FleetEvent> & { actor: string; role: FleetEvent["role"
     reply: over.reply ?? "",
     outcome: over.outcome ?? OUTCOME.NO_REPLY,
     failureLabel: over.failureLabel ?? null,
+    failureDetail: over.failureDetail ?? null,
     createdAt: over.createdAt ?? new Date(Date.UTC(2026, 4, 15, 9, 0, 0)),
     status: over.status ?? "processed",
     custom: over.custom,
@@ -361,6 +362,61 @@ describe("FleetThread — role rendering", () => {
     // A blocked turn does not render the instruction as if it succeeded — the
     // fleet bubble states the outcome (coding-agent finding #4).
     expect(screen.getByText(OUTCOME.WAITING_APPROVAL)).toBeTruthy();
+  });
+
+  it("pins one banner for a fleet that keeps failing the same way", () => {
+    const cause = "no instructions configured";
+    mockStream(
+      Array.from({ length: 15 }, (_, i) =>
+        ev({
+          id: `fail_${i}`,
+          role: "system",
+          actor: "webhook:github",
+          text: "edited #541",
+          reply: "",
+          status: "fleet_error",
+          outcome: "Failed a startup safety check",
+          failureLabel: "startup_posture",
+          failureDetail: cause,
+        }),
+      ),
+    );
+    renderThread();
+
+    const banner = screen.getByTestId("fleet-failure-banner");
+    // One line carries what fifteen rows were saying: what, why, how often.
+    expect(banner.textContent).toContain("Failed a startup safety check");
+    expect(screen.getByTestId("failure-banner-count").textContent).toBe("×15");
+    expect(banner.textContent).toContain(cause);
+    expect(banner.textContent).toContain(GUIDANCE.STARTUP);
+  });
+
+  it("shows no banner for a single failure, and clears it once the fleet recovers", () => {
+    const failure = () =>
+      ev({
+        role: "system",
+        actor: "webhook:github",
+        text: "edited #541",
+        reply: "",
+        status: "fleet_error",
+        outcome: "Failed a startup safety check",
+        failureLabel: "startup_posture",
+      });
+
+    mockStream([failure()]);
+    const single = renderThread();
+    expect(screen.queryByTestId("fleet-failure-banner")).toBeNull();
+    single.unmount();
+
+    // Recovery is the case that matters: a banner that outlived it would
+    // report a fleet as broken while it is working.
+    mockStream([
+      failure(),
+      failure(),
+      ev({ role: "system", actor: "webhook:github", text: "edited #542", reply: "", status: "processed" }),
+    ]);
+    renderThread();
+    expect(screen.queryByTestId("fleet-failure-banner")).toBeNull();
   });
 
   it("collapses a run of identical deliveries into one row that opens on demand", async () => {
@@ -948,6 +1004,7 @@ describe("FleetThread — robustness against malformed metadata", () => {
       reply: "",
       outcome: OUTCOME.NO_REPLY,
       failureLabel: null,
+      failureDetail: null,
       createdAt: new Date(Date.UTC(2026, 4, 15, 9, 0, 0)),
       status: "processed",
     };

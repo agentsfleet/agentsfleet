@@ -1,12 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import {
   AssistantRuntimeProvider,
   ThreadPrimitive,
   useExternalStoreRuntime,
-  type AppendMessage,
 } from "@assistant-ui/react";
 import {
   Button,
@@ -28,16 +27,14 @@ import { AGENTSFLEET_EVENT_STATUS } from "@/lib/streaming/fleet-stream-frames";
 import type { ThreadEntry } from "@/lib/events/event-grouping";
 import { useFleetThreadEntries } from "./useFleetThreadEntries";
 import type { EventRow } from "@/lib/api/events";
-import { steerFleetAction } from "@/app/(dashboard)/w/[workspaceId]/fleets/actions";
 import { SteerComposer } from "./SteerComposer";
 import { renderFleetMessage } from "./fleetMessageRenderers";
 import { FleetNameProvider } from "./FleetMessageRow";
 import { FleetConnectionNotice } from "./FleetConnectionNotice";
-import {
-  useFleetDeliveryFailure,
-  type FailedDelivery,
-} from "./useFleetDeliveryFailure";
-import { requestOnboardingRefresh } from "@/lib/onboarding-refresh";
+import { FleetFailureBanner } from "./FleetFailureBanner";
+import { failureBannerFor } from "@/lib/events/event-banner";
+import { useFleetDeliveryFailure } from "./useFleetDeliveryFailure";
+import { useNewMessageHandler } from "./useFleetMessageDelivery";
 
 const PANEL_TITLE = "Chat";
 const EMPTY_HINT =
@@ -63,10 +60,6 @@ const STATUS_CLASS: Record<ConnectionStatus, string> = {
   [CONNECTION_STATUS.OFFLINE]: "text-destructive",
 };
 
-// Placeholder actor used on optimistic user messages until the Server-Sent Events (SSE)
-// stream's matching `EVENT_RECEIVED` lands and reconciliation runs.
-// The server's actor (the authenticated principal) replaces this.
-const OPTIMISTIC_ACTOR = "steer:pending";
 const TERMINAL_EVENT_STATUSES: ReadonlySet<FleetEventStatus> = new Set([
   AGENTSFLEET_EVENT_STATUS.PROCESSED,
   AGENTSFLEET_EVENT_STATUS.AGENT_ERROR,
@@ -131,6 +124,9 @@ export function FleetThread({ workspaceId, fleetId, fleetName, initial }: FleetT
   // pure view over the array the stream already ordered — it never reorders,
   // drops, or renames an event, so a group can always hand back what it hid.
   const { entries, convertEntry } = useFleetThreadEntries(stream.events, stream.convertEvent);
+  // Pinned above the thread, derived from the same ordered array — so it
+  // appears, counts up, and clears without any state of its own.
+  const banner = useMemo(() => failureBannerFor(stream.events), [stream.events]);
   const runtime = useExternalStoreRuntime<ThreadEntry>({
     messages: entries,
     convertMessage: convertEntry,
@@ -154,6 +150,7 @@ export function FleetThread({ workspaceId, fleetId, fleetName, initial }: FleetT
             </CardHeader>
             <CardContent className="flex min-h-0 flex-1 flex-col p-0">
               <FleetConnectionNotice status={stream.connectionStatus} onRetry={stream.retryConnection} />
+              <FleetFailureBanner banner={banner} />
               <ThreadViewport eventsCount={stream.events.length}
                 connectionStatus={stream.connectionStatus} />
             </CardContent>
@@ -274,79 +271,4 @@ function BackfillSkeleton() {
       <Skeleton className="h-12 w-2/3 rounded-md" />
     </div>
   );
-}
-
-type StreamApi = ReturnType<typeof useFleetEventStream>;
-type NewHandlerCtx = {
-  workspaceId: string;
-  fleetId: string;
-  appendOptimistic: StreamApi["appendOptimistic"];
-  reconcileOptimistic: StreamApi["reconcileOptimistic"];
-  markOptimisticFailed: StreamApi["markOptimisticFailed"];
-  onFailure: (failure: FailedDelivery) => void;
-};
-
-function useNewMessageHandler({
-  workspaceId,
-  fleetId,
-  appendOptimistic,
-  reconcileOptimistic,
-  markOptimisticFailed,
-  onFailure,
-}: NewHandlerCtx): (msg: AppendMessage) => Promise<void> {
-  // The tail of the delivery chain. Removing the browser-side queue let two
-  // rapid submissions race: their Server Action POSTs could reach the server
-  // out of submission order, so "stop" could be assigned an earlier event id
-  // than the "deploy" it was meant to follow. Optimistic rows still appear the
-  // instant they are typed; only the POSTs are serialised, so the server
-  // assigns event ids in the order the operator sent them.
-  const deliveryTail = useRef<Promise<void>>(Promise.resolve());
-  return useCallback(
-    async (msg: AppendMessage) => {
-      const text = extractMessageText(msg);
-      if (text.length === 0) return;
-      // Optimistic append is synchronous and in call order — the operator sees
-      // both messages immediately, before any POST resolves.
-      const tempId = appendOptimistic(text, OPTIMISTIC_ACTOR);
-      const send = async () => {
-        try {
-          const result = await steerFleetAction(workspaceId, fleetId, text);
-          if (result.ok) {
-            reconcileOptimistic(tempId, result.data.event_id);
-            requestOnboardingRefresh(workspaceId);
-            return;
-          }
-          markOptimisticFailed(tempId);
-          onFailure({ message: msg, tempId, kind: result.status === 401 ? "session" : "send" });
-        } catch {
-          // The Server Action's Remote Procedure Call (RPC) transport failed (offline, or the
-          // action invocation errored) — surface the same `failed` row the
-          // ok:false path produces so the user knows the steer didn't land.
-          markOptimisticFailed(tempId);
-          onFailure({ message: msg, tempId, kind: "send" });
-        }
-      };
-      // Chain this POST after the previous one. `send` reports its own failure
-      // and never rejects, so the tail never rejects — the next message always
-      // gets its slot whether this one succeeded or failed.
-      const slot = deliveryTail.current.then(send);
-      deliveryTail.current = slot;
-      await slot;
-    },
-    [
-      workspaceId,
-      fleetId,
-      appendOptimistic,
-      reconcileOptimistic,
-      markOptimisticFailed,
-      onFailure,
-    ],
-  );
-}
-
-function extractMessageText(msg: AppendMessage): string {
-  for (const part of msg.content) {
-    if (part.type === "text") return part.text;
-  }
-  return "";
 }

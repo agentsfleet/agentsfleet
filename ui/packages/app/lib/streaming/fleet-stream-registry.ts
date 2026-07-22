@@ -267,6 +267,7 @@ export function appendOptimistic(
       reply: "",
       outcome: outcomeForStatus(STATUS_RECEIVED),
       failureLabel: null,
+      failureDetail: null,
       createdAt: new Date(),
       status: STATUS_OPTIMISTIC,
     },
