@@ -117,10 +117,10 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 A failure that cannot say why it failed is noise. The runner names the cause at classification time; the cause survives the wire, the row, the envelope, and the live frame. **Implementation default:** truncate at a named byte cap at the report write (chat renders one line; Inspect shows the full stored value) because a runaway child must not bloat rows.
 
-- **Dimension 1.1** — A new additive migration adds nullable `failure_detail` (shipped slots frozen — Indy's migration-model decision, Discovery D3); the store roundtrips the field → Test `test_event_row_failure_detail_roundtrip`
+- **Dimension 1.1** — DONE — A new additive migration adds nullable `failure_detail` (shipped slots frozen — Indy's migration-model decision, Discovery D3); the store roundtrips the field → Test `test_event_row_failure_detail_roundtrip`
 - **Dimension 1.2** — DONE — `ExecutionResult` gains defaulted `failure_detail`; a frame without the field parses to empty (old runner ⇒ new daemon, and inverse) → Test `test_result_frame_absent_detail_parses_empty`
 - **Dimension 1.3** — DONE — Every `startup_posture` classification site emits a human-readable cause (`child_exec` reuses its existing messages; `child_supervisor` names the failing step; `engine/runner` maps its error set) → Test `test_startup_posture_sites_carry_detail`
-- **Dimension 1.4** — Report verb persists label + detail; the events envelope returns both verbatim → Test `test_report_persists_and_envelope_returns_detail`
+- **Dimension 1.4** — DONE — Report verb persists label + detail; the events envelope returns both verbatim → Test `test_report_persists_and_envelope_returns_detail`
 - **Dimension 1.5** — DONE — Completion frame carries `failure_label` + `failure_detail`; the dashboard merge renders the real sentence live, no reload → Test `test_stream_merge_renders_failure_detail`
 - **Dimension 1.6** — DONE — Over-cap and control-character detail is truncated and escaped at the report write; the stored value is what Inspect shows → Test `test_detail_truncated_and_escaped_at_write`
 
@@ -143,9 +143,9 @@ Operator and fleet turns keep the full row skeleton. Integration (system-role) e
 
 Runs of system-role events with the same actor, headline, and outcome collapse into one expandable group row — "headline ×N · first–last time" — with every delivery (and its payload disclosure) inside. Any operator or fleet row breaks the group. **Implementation default:** a pure, memoized grouping function over the event array at render time, because the stream registry already owns ordering and identity.
 
-- **Dimension 4.1** — Grouping coalesces qualifying runs and never groups user/assistant rows or differing outcomes → Test `test_grouping_rules`
-- **Dimension 4.2** — Group row renders count + time range; expansion restores individual rows → Test `test_group_row_expands`
-- **Dimension 4.3** — A live frame matching the newest group joins it and updates the count → Test `test_live_frame_extends_group`
+- **Dimension 4.1** — DONE — Grouping coalesces qualifying runs and never groups user/assistant rows or differing outcomes → Test `test_grouping_rules`
+- **Dimension 4.2** — DONE — Group row renders count + time range; expansion restores individual rows → Test `test_group_row_expands`
+- **Dimension 4.3** — DONE — A live frame matching the newest group joins it and updates the count → Test `test_live_frame_extends_group`
 
 ### §5 — A repeating failure is one banner, not N rows
 
