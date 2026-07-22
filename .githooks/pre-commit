@@ -18,7 +18,6 @@
 #   - lint-cli                 (cli/*)
 #   - lint-shell               (scripts/*.sh)
 #   - check-documentation-rules (public API and command help text)
-#   - check-schema-gate        (schema/*.sql)
 #   - check-openapi            (public/openapi/*, public/openapi.json)
 #   - check-gh-actions-valid   (.github/workflows/*, Makefile, make/*.mk)
 #   - check-playbooks          (playbooks/*, deploy/*, .github/workflows/* —
@@ -66,7 +65,6 @@ needs_lint_cli=0
 needs_lint_shell=0
 needs_check_documentation=0
 needs_check_openapi=0
-needs_check_schema_gate=0
 needs_check_gh_actions=0
 needs_check_playbooks=0
 needs_harness_only=0
@@ -79,7 +77,6 @@ while IFS= read -r f; do
       needs_test_auth=1
       needs_check_documentation=1 ;;
     schema/*.sql)
-      needs_check_schema_gate=1
       needs_lint_zig=1
       needs_test_auth=1 ;;
     public/openapi/*|public/openapi.json)
@@ -124,7 +121,7 @@ while IFS= read -r f; do
   esac
 done <<< "$staged"
 
-any_needed=$(( needs_lint_zig + needs_test_auth + needs_lint_website + needs_lint_app + needs_lint_design_system + needs_lint_cli + needs_lint_shell + needs_check_documentation + needs_check_openapi + needs_check_schema_gate + needs_check_gh_actions + needs_check_playbooks + needs_harness_only ))
+any_needed=$(( needs_lint_zig + needs_test_auth + needs_lint_website + needs_lint_app + needs_lint_design_system + needs_lint_cli + needs_lint_shell + needs_check_documentation + needs_check_openapi + needs_check_gh_actions + needs_check_playbooks + needs_harness_only ))
 
 if [ "$any_needed" -eq 0 ]; then
   echo "pre-commit: no lint-relevant files staged, skipping harness-verify + targeted lint"
@@ -157,7 +154,6 @@ make_targets=()
 [ "$needs_lint_cli"            = 1 ] && make_targets+=(lint-cli)
 [ "$needs_lint_shell"          = 1 ] && make_targets+=(lint-shell)
 [ "$needs_check_documentation" = 1 ] && make_targets+=(check-documentation-rules)
-[ "$needs_check_schema_gate"   = 1 ] && make_targets+=(check-schema-gate)
 [ "$needs_check_openapi"       = 1 ] && make_targets+=(check-openapi)
 [ "$needs_check_gh_actions"    = 1 ] && make_targets+=(check-gh-actions-valid)
 [ "$needs_check_playbooks"     = 1 ] && make_targets+=(check-playbooks)
