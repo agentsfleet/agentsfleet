@@ -23,12 +23,14 @@ const bundle_extract = @import("../bundle_extract.zig");
 const forwarders = @import("forwarders.zig");
 const renew_driver = @import("renew_driver.zig");
 const RenewDriver = renew_driver.RenewDriver(*client_mod);
-// outcomeFor/splitFields stay in loop.zig (pub, unit-tested there); imported back
-// here so the report mapping has one home. loop imports this file for
-// executeAndReport — a runtime function reference, no comptime cycle.
+// splitFields stays in loop.zig (pub, unit-tested there) because the token-split
+// wire width is a runner policy; the verdict→wire projection belongs to
+// `report_mapping`. loop imports this file for executeAndReport — a runtime
+// function reference, no comptime cycle.
 const loop = @import("loop.zig");
 
 const protocol = contract.protocol;
+const report_mapping = contract.report_mapping;
 const log = logging.scoped(.fleet_runner);
 const ERR_EXEC_RUNNER_FLEET_INIT = client_errors.ERR_EXEC_RUNNER_FLEET_INIT;
 const ERR_EXEC_TRANSPORT_LOSS = client_errors.ERR_EXEC_TRANSPORT_LOSS;
@@ -141,35 +143,33 @@ pub fn executeAndReport(
     const result = child_supervisor.run(io, alloc, cfg, env_map, workspace_path, payload, hydrated_memory, sink, mem_sink, fanout.hook(), minter.hook());
     const wall_ms: u64 = @intCast(@max(0, clock.nowMillis() - start_ms));
     defer if (result.content.len > 0) alloc.free(result.content);
-    defer if (result.failure_detail.len > 0) alloc.free(result.failure_detail);
+    defer {
+        const detail = result.failureDetail();
+        if (detail.len > 0) alloc.free(detail);
+    }
     // Ship whatever the batch still holds before the terminal report.
     forwarder.flush();
 
-    log.debug("execute_completed", .{ .lease_id = payload.lease_id, .exit_ok = result.exit_ok, .wall_ms = wall_ms });
+    log.debug("execute_completed", .{ .lease_id = payload.lease_id, .exit_ok = result.succeeded(), .wall_ms = wall_ms });
 
-    const outcome = loop.outcomeFor(result.exit_ok);
     const splits = loop.splitFields(result);
-    cp.report(alloc, runner_token, protocol.ReportRequest{
+    const report = report_mapping.toReport(result, .{
         .lease_id = payload.lease_id,
         .event_id = payload.event.event_id,
         .fencing_token = payload.fencing_token,
-        .outcome = outcome,
-        .failure_reason = result.failure,
-        .failure_detail = result.failure_detail,
-        .response_text = result.content,
-        .tokens = result.token_count,
+        .wall_ms = wall_ms,
         .input_tokens = splits.input_tokens,
         .cached_input_tokens = splits.cached_input_tokens,
         .output_tokens = splits.output_tokens,
-        .telemetry = .{ .time_to_first_token_ms = 0, .wall_ms = wall_ms },
-        .checkpoint = .{ .last_event_id = payload.event.event_id, .last_response = result.content },
-    }, cfg.cp_deadlines.report_ms) catch |err| {
+        .checkpoint_response = result.content,
+    });
+    cp.report(alloc, runner_token, report, cfg.cp_deadlines.report_ms) catch |err| {
         log.err("report_failed", .{ .error_code = ERR_EXEC_TRANSPORT_LOSS, .lease_id = payload.lease_id, .err = @errorName(err) });
         sleepMs(io, constants.backoff.ms(0)); // back off so a down report endpoint can't hot-spin the pool
         return;
     };
 
-    log.debug("report_submitted", .{ .lease_id = payload.lease_id, .outcome = @tagName(outcome) });
+    log.debug("report_submitted", .{ .lease_id = payload.lease_id, .outcome = @tagName(report.outcome) });
 }
 
 /// Materialize the leased bundle's support files into `workspace_path` before the
@@ -192,18 +192,15 @@ fn materializeBundle(io: std.Io, alloc: std.mem.Allocator, cp: *client_mod, runn
 /// expiring and redelivering forever. No child forked → no tokens to settle. Retry
 /// is deferred; a failed report is logged and the lease expires for reclaim.
 fn reportStartupFailure(alloc: std.mem.Allocator, cp: *client_mod, runner_token: []const u8, payload: protocol.LeasePayload, deadline_ms: u31, detail: []const u8) void {
-    cp.report(alloc, runner_token, protocol.ReportRequest{
+    const result: contract.execution_result.ExecutionResult = .{
+        .outcome = .{ .failed = .{ .class = .startup_posture, .detail = detail } },
+    };
+    cp.report(alloc, runner_token, report_mapping.toReport(result, .{
         .lease_id = payload.lease_id,
         .event_id = payload.event.event_id,
         .fencing_token = payload.fencing_token,
-        .outcome = .fleet_error,
-        .failure_reason = .startup_posture,
-        .failure_detail = detail,
-        .response_text = "",
-        .tokens = 0,
-        .telemetry = .{ .time_to_first_token_ms = 0, .wall_ms = 0 },
-        .checkpoint = .{ .last_event_id = payload.event.event_id, .last_response = "" },
-    }, deadline_ms) catch |err| {
+        .wall_ms = 0,
+    }), deadline_ms) catch |err| {
         log.err("bundle_startup_report_failed", .{ .error_code = ERR_EXEC_TRANSPORT_LOSS, .lease_id = payload.lease_id, .err = @errorName(err) });
     };
 }

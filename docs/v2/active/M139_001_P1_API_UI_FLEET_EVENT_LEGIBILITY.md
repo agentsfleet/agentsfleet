@@ -58,7 +58,9 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `schema/embed.zig` | EDIT | Register slot 32 (single-source migration registry). |
 | `make/quality.mk` | EDIT | Remove `_schema_gate_check`/`check-schema-gate` per Indy (Discovery D3) — the teardown-era gate contradicts the new model. |
 | `docs/SCHEMA_CONVENTIONS.md` | EDIT | §Migration Model rewritten: additive migrations, frozen slot files, destructive changes owner-gated. |
-| `src/lib/contract/execution_result.zig` | EDIT | `failure_detail` field, defaulted empty — wire-compatible. |
+| `src/lib/contract/execution_result.zig` | EDIT | `failure_detail` field; §8 tagged `outcome` replacing `exit_ok` + `failure`. |
+| `src/lib/contract/report_mapping.zig` | CREATE | §8: the single result↔report conversion pair (`protocol.zig` is at its length cap). |
+| `src/runner/daemon/loop.zig` | EDIT | §8: outcome derivation moves onto the tagged type. |
 | `src/runner/child_exec.zig` | EDIT | Startup checks populate the detail (two sites already carry readable messages in `content`). |
 | `src/runner/child_supervisor.zig` | EDIT | `failed(.startup_posture)` sites name the failing step. |
 | `src/runner/engine/runner.zig` | EDIT | Error→class mapping carries the cause. |
@@ -84,7 +86,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ## Applicable Rules
 
-- **`docs/greptile-learnings/RULES.md`** — UFS (every new label/sentence is a named constant), NDC + NLR (the unused `guidance` hook gets a consumer in this diff — no latent surface remains), ESC (`failure_detail` is escaped at JSON emission), STS + NSQ (no schema defaults; schema-qualified named-constant SQL), TST-NAM (milestone-free test identifiers), XCC (cross-compile both linux targets), FLS (new store reads drain), IMS (`[]const u8` for the detail), ORP (any renamed export swept cross-layer).
+- **`docs/greptile-learnings/RULES.md`** — TGU (§8: the tagged outcome is the rule applied to the result type itself), UFS (every new label/sentence is a named constant), NDC + NLR (the unused `guidance` hook gets a consumer in this diff — no latent surface remains), ESC (`failure_detail` is escaped at JSON emission), STS + NSQ (no schema defaults; schema-qualified named-constant SQL), TST-NAM (milestone-free test identifiers), XCC (cross-compile both linux targets), FLS (new store reads drain), IMS (`[]const u8` for the detail), ORP (any renamed export swept cross-layer).
 - `dispatch/write_zig.md` — runner + daemon edits (lifecycle, tagged results, length caps).
 - `dispatch/write_ts_adhere_bun.md` — all dashboard edits (file-shape verdicts, design-system substitution).
 - `dispatch/write_sql.md` + `docs/SCHEMA_CONVENTIONS.md` — migration 032 (additive, single-concern, ≤100 lines).
@@ -164,6 +166,15 @@ Consecutive rows with identical actor, status, and failure cause collapse into o
 - **Dimension 7.2** — Failed rows dim zero metrics; processed rows render unchanged → Test `test_zero_metrics_dimmed_on_failures`
 - **Dimension 7.3** — Grouping never crosses a page boundary; pagination behaviour unchanged (regression) → Test `test_grouping_respects_page_boundary`
 
+### §8 — The result type stops permitting illegal states
+
+Folded in by Indy at the §1 review (Discovery D4). Three findings surfaced by §1's cost: the execution result encodes its verdict as `exit_ok: bool` beside `failure: ?FailureClass` (four representable states for two meanings, the "null iff processed" invariant hand-written at three consumers); the same type is disassembled into the report wire and rebuilt field-by-field on the far side; and the live chat merge rescans the whole event array per streaming chunk. **Implementation default:** the domain type becomes precise (tagged outcome) while the report wire stays flat and defaulted, because the report is the genuine cross-version boundary and the child frame is not (the daemon forks its own binary).
+
+- **Dimension 8.1** — The result carries a tagged `outcome` (`completed` | `failed` with its classified cause); a result that claims success while naming a failure does not compile → Test `test_outcome_union_forbids_success_with_failure`
+- **Dimension 8.2** — One conversion pair owns result↔report translation, including the trust-boundary guard that a cause never accompanies a clean outcome → Test `test_report_round_trip_preserves_every_wire_field`
+- **Dimension 8.3** — The completion frame takes a named failure-cause struct, not adjacent same-typed strings → Test `test_completion_frame_cause_is_named`
+- **Dimension 8.4** — Chunk and completion merges locate their event once and copy the array once, matching the tool-call helper → Test `test_chunk_merge_single_pass`
+
 ## Interfaces
 
 ```
@@ -196,6 +207,8 @@ Dashboard                — no route or navigation changes; chat row grammar ga
 4. A frame or row without `failure_detail` renders exactly the pre-M139 sentence — wire-compatibility unit test.
 5. No opaque identifier renders in the banner or group rows — both reuse `senderLabelFor`; test with an opaque-actor fixture.
 6. Every new user-facing string is a named constant — UFS gate, enforced at edit time.
+7. A result cannot claim success and name a failure — the outcome is a tagged union, so the illegal pairing is unrepresentable and the compiler replaces the hand-written guard at every consumer (§8).
+8. The report wire and the domain result never drift — one conversion pair, proven by a round-trip test asserting every wire field survives (§8).
 
 ## Metrics & Observability
 
@@ -228,6 +241,10 @@ This workstream renders existing durable data; it adds, renames, and removes no 
 | 7.1 | unit | `test_table_groups_identical_failures` | 15 identical failure rows → 1 group row "×15"; expansion restores. |
 | 7.2 | unit | `test_zero_metrics_dimmed_on_failures` | Failed row with 0/0/0 → dimmed; processed row → unchanged (regression). |
 | 7.3 | unit | `test_grouping_respects_page_boundary` | Identical rows across two pages → two groups; cursors unchanged (regression). |
+| 8.1 | unit | `test_outcome_union_forbids_success_with_failure` | A completed outcome exposes no cause; a failed one always carries its `Failure`. |
+| 8.2 | unit | `test_report_round_trip_preserves_every_wire_field` | result→report→result returns the original; a cause on a processed outcome is dropped at the boundary (negative). |
+| 8.3 | unit | `test_completion_frame_cause_is_named` | Frame built from a named cause struct emits label+detail; a clean completion emits both empty. |
+| 8.4 | unit | `test_chunk_merge_single_pass` | Chunk and completion merges update only the target event and preserve every other reference. |
 | end-to-end (e2e) | e2e | `acceptance-e2e` console walk | Failing fleet → operator sees banner + collapsed group + cause sentence on the real rendered console. |
 
 ## Acceptance Rubric (single scoring surface)
@@ -291,3 +308,4 @@ N/A — no files deleted. The one latent surface (`guidance` in `event-summary.t
 - **Skill-chain outcomes** — `/write-unit-test`, `/review`, `kishore-babysit-prs` results (order per `AGENTS.md` CHORE(close)); `/design-shotgun` variant pick and `/design-review` findings land here.
 - **Deferrals** — every "deferred to follow-up" needs an **Indy-acked verbatim quote** here, format `> Indy (YYYY-MM-DD HH:MM): "<quote>" — context: <which item, why>`. An agent-unilateral deferral is **incomplete scope, not deferral**, and blocks CHORE(close) until the item lands or the quote is captured.
   > Indy (2026-07-22 14:05): "go (I dont need the All, Conversation, Activity option) we just show all for now." — context: §6 chat filter deferred at the design lock; the thread always shows all rows; reactivate on usage evidence after §3–§5 ship.
+- **D4 (Jul 22, 2026, scope)** — asked whether the three §1-surfaced refactor findings should be their own milestone (authoring recommendation) or land here: > Indy: "I want all the finding refactor to be fixed in this PR." — §8 added; blast-radius grep first (8 production + 6 test files touch `exit_ok`; 5 touch the failure fields).

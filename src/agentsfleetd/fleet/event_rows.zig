@@ -163,8 +163,8 @@ pub fn classifyStatus(pool: *pg.Pool, fleet_id: []const u8, event_id: []const u8
 }
 
 /// UPDATE the event row to its terminal status + response + telemetry + the
-/// granular failure label. Reads `exit_ok`/`content`/`token_count`/`failure`
-/// off the result; status is derived from `exit_ok`, and `failure_label` carries
+/// granular failure label. Reads the verdict/`content`/`token_count` off the
+/// result; status is derived from the outcome, and `failure_label` carries
 /// the runner's `FailureClass` tag (NULL on a clean run, or a failure whose
 /// reason the runner did not report). Best-effort (failures logged, not raised).
 pub fn markTerminal(
@@ -180,13 +180,13 @@ pub fn markTerminal(
     };
     defer pool.release(conn);
     const now_ms = clock.nowMillis();
-    const status_text: []const u8 = if (result.exit_ok) STATUS_PROCESSED else STATUS_FLEET_ERROR;
-    const failure_label: ?[]const u8 = if (result.failure) |f| f.label() else null;
-    // Cause line only ever accompanies a classified failure (same trust
-    // boundary as failure_label), capped at the write so a runaway child
-    // cannot bloat the row.
-    const failure_detail: ?[]const u8 = if (result.failure != null and result.failure_detail.len > 0)
-        truncateUtf8(result.failure_detail, MAX_FAILURE_DETAIL_BYTES)
+    const status_text: []const u8 = if (result.succeeded()) STATUS_PROCESSED else STATUS_FLEET_ERROR;
+    const failure = result.failure();
+    const failure_label: ?[]const u8 = if (failure) |f| (if (f.class) |c| c.label() else null) else null;
+    // The cause rides the failed variant, so it cannot accompany a clean run.
+    // Capped at the write so a runaway child cannot bloat the row.
+    const failure_detail: ?[]const u8 = if (failure) |f|
+        (if (f.detail.len > 0) truncateUtf8(f.detail, MAX_FAILURE_DETAIL_BYTES) else null)
     else
         null;
     // Guarded on `status = 'received'`: a terminal row is never reopened

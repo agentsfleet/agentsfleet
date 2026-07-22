@@ -30,7 +30,7 @@ pub const ReadOutcome = struct {
 /// A failed execution with no body — the supervisor's universal "something went
 /// wrong" outcome, classified by `class`.
 pub fn failed(class: types.FailureClass) ExecutionResult {
-    return .{ .exit_ok = false, .failure = class };
+    return ExecutionResult.failedWith(class);
 }
 
 // Cause lines for parent-side classifications. Always passed through
@@ -48,7 +48,7 @@ const DETAIL_SECCOMP_TRAP = "a denylisted syscall was trapped by the sandbox";
 /// degrades to the detail-less shape.
 pub fn failedDetailed(alloc: std.mem.Allocator, class: types.FailureClass, detail: []const u8) ExecutionResult {
     const owned = alloc.dupe(u8, detail) catch return failed(class);
-    return .{ .exit_ok = false, .failure = class, .failure_detail = owned };
+    return .{ .outcome = .{ .failed = .{ .class = class, .detail = owned } } };
 }
 
 /// Map the child's exit status + read outcome to an `ExecutionResult`.
@@ -99,22 +99,23 @@ fn parseResult(alloc: std.mem.Allocator, bytes: []const u8) ExecutionResult {
     defer parsed.deinit();
     const v = parsed.value;
     const content = alloc.dupe(u8, v.content) catch "";
-    // Duped off the parse arena like `content`; an absent field is "" and stays
-    // un-alloc'd, matching the len-guarded free at the consumer.
-    const failure_detail: []const u8 = if (v.failure_detail.len > 0)
-        alloc.dupe(u8, v.failure_detail) catch ""
-    else
-        "";
+    // The cause line is duped off the parse arena like `content`; an absent one
+    // stays un-alloc'd, matching the len-guarded free at the consumer.
+    const outcome: ExecutionResult.Outcome = switch (v.outcome) {
+        .completed => .{ .completed = .{} },
+        .failed => |f| .{ .failed = .{
+            .class = f.class,
+            .detail = if (f.detail.len > 0) alloc.dupe(u8, f.detail) catch "" else "",
+        } },
+    };
     return .{
+        .outcome = outcome,
         .content = content,
         .token_count = v.token_count,
         .input_tokens = v.input_tokens,
         .cached_input_tokens = v.cached_input_tokens,
         .output_tokens = v.output_tokens,
         .wall_seconds = v.wall_seconds,
-        .exit_ok = v.exit_ok,
-        .failure = v.failure,
-        .failure_detail = failure_detail,
     };
 }
 
@@ -124,40 +125,40 @@ test "classify parses a result frame missing failure_detail to the empty default
     // Wire compatibility: an older child omits the field; the parse must land
     // on the struct default, not an error — and nothing extra is allocated.
     var scope: ?cgroup = null;
-    const bytes = try std.testing.allocator.dupe(u8, "{\"exit_ok\":true,\"content\":\"done\"}");
+    const bytes = try std.testing.allocator.dupe(u8, "{\"outcome\":{\"completed\":{}},\"content\":\"done\"}");
     defer std.testing.allocator.free(bytes);
     const r = classify(std.testing.allocator, .{ .bytes = bytes }, .{ .exited = 0 }, &scope);
     defer if (r.content.len > 0) std.testing.allocator.free(r.content);
-    try std.testing.expect(r.exit_ok);
-    try std.testing.expectEqualStrings("", r.failure_detail);
+    try std.testing.expect(r.succeeded());
+    try std.testing.expectEqualStrings("", r.failureDetail());
 }
 
 test "classify dupes a frame-carried failure_detail off the parse arena" {
     var scope: ?cgroup = null;
     const bytes = try std.testing.allocator.dupe(
         u8,
-        "{\"exit_ok\":false,\"failure\":\"startup_posture\",\"failure_detail\":\"no instructions configured\"}",
+        "{\"outcome\":{\"failed\":{\"class\":\"startup_posture\",\"detail\":\"no instructions configured\"}}}",
     );
     defer std.testing.allocator.free(bytes);
     const r = classify(std.testing.allocator, .{ .bytes = bytes }, .{ .exited = 0 }, &scope);
-    defer if (r.failure_detail.len > 0) std.testing.allocator.free(r.failure_detail);
-    try std.testing.expectEqual(types.FailureClass.startup_posture, r.failure.?);
-    try std.testing.expectEqualStrings("no instructions configured", r.failure_detail);
+    defer if (r.failureDetail().len > 0) std.testing.allocator.free(r.failureDetail());
+    try std.testing.expectEqual(types.FailureClass.startup_posture, r.failureClass().?);
+    try std.testing.expectEqualStrings("no instructions configured", r.failureDetail());
 }
 
 test "sandbox abort exit classifies startup_posture with an owned cause line" {
     var scope: ?cgroup = null;
     const r = classify(std.testing.allocator, .{}, .{ .exited = pipe_proto.SANDBOX_FAIL_EXIT }, &scope);
-    defer if (r.failure_detail.len > 0) std.testing.allocator.free(r.failure_detail);
-    try std.testing.expectEqual(types.FailureClass.startup_posture, r.failure.?);
-    try std.testing.expectEqualStrings(DETAIL_SANDBOX_ABORT, r.failure_detail);
+    defer if (r.failureDetail().len > 0) std.testing.allocator.free(r.failureDetail());
+    try std.testing.expectEqual(types.FailureClass.startup_posture, r.failureClass().?);
+    try std.testing.expectEqualStrings(DETAIL_SANDBOX_ABORT, r.failureDetail());
 }
 
 test "failedDetailed dupes the cause; failed leaves it empty" {
     const detailed = failedDetailed(std.testing.allocator, .startup_posture, DETAIL_LEASE_SERIALIZE);
-    defer if (detailed.failure_detail.len > 0) std.testing.allocator.free(detailed.failure_detail);
-    try std.testing.expectEqualStrings(DETAIL_LEASE_SERIALIZE, detailed.failure_detail);
+    defer if (detailed.failureDetail().len > 0) std.testing.allocator.free(detailed.failureDetail());
+    try std.testing.expectEqualStrings(DETAIL_LEASE_SERIALIZE, detailed.failureDetail());
     // The dupe means the result never borrows the caller's buffer.
-    try std.testing.expect(detailed.failure_detail.ptr != DETAIL_LEASE_SERIALIZE.ptr);
-    try std.testing.expectEqualStrings("", failed(.runner_crash).failure_detail);
+    try std.testing.expect(detailed.failureDetail().ptr != DETAIL_LEASE_SERIALIZE.ptr);
+    try std.testing.expectEqualStrings("", failed(.runner_crash).failureDetail());
 }

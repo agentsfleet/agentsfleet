@@ -222,10 +222,7 @@ test "integration: a budget-killed run persists failure_label=budget_breach on t
     // Mid-run, `/renew` refuses (UZ-RUN-015) and the runner reports this result.
     // The class the control plane named must land verbatim in `failure_label` —
     // this is what lets an operator answer "did my budget hold?" from the row.
-    event_rows.markTerminal(h.pool, FLEET_UNDER, event_id, .{
-        .exit_ok = false,
-        .failure = contract.execution_result.FailureClass.budget_breach,
-    }, 1234);
+    event_rows.markTerminal(h.pool, FLEET_UNDER, event_id, contract.execution_result.ExecutionResult.failedWith(.budget_breach), 1234);
 
     try life.expectRow(conn, FLEET_UNDER, event_id, event_rows.STATUS_FLEET_ERROR, event_rows.LABEL_BUDGET_BREACH);
 }
@@ -249,10 +246,7 @@ test "integration: a credit-exhausted kill still reports renewal_terminate, not 
 
     // The whole point of the new label is that it is DISTINCT. A tenant-credit
     // stop must not be mistaken for the fleet author's own ceiling.
-    event_rows.markTerminal(h.pool, FLEET_UNDER, event_id, .{
-        .exit_ok = false,
-        .failure = contract.execution_result.FailureClass.renewal_terminate,
-    }, 1234);
+    event_rows.markTerminal(h.pool, FLEET_UNDER, event_id, contract.execution_result.ExecutionResult.failedWith(.renewal_terminate), 1234);
 
     try life.expectRow(conn, FLEET_UNDER, event_id, event_rows.STATUS_FLEET_ERROR, "renewal_terminate");
 }

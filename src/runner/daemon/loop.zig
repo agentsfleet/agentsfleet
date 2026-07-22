@@ -18,7 +18,6 @@ const worker_pool = @import("worker_pool.zig");
 const renew_driver = @import("renew_driver.zig");
 const lease_run = @import("lease_run.zig");
 
-const protocol = contract.protocol;
 const log = logging.scoped(.fleet_runner);
 const ERR_EXEC_RUNNER_FLEET_INIT = client_errors.ERR_EXEC_RUNNER_FLEET_INIT;
 const ERR_EXEC_TRANSPORT_LOSS = client_errors.ERR_EXEC_TRANSPORT_LOSS;
@@ -202,12 +201,6 @@ pub fn pollAndProcess(io: std.Io, alloc: std.mem.Allocator, cp: *client_mod, run
     }
 
     lease_run.executeAndReport(io, alloc, cp, runner_token, cfg, env_map, lease_resp.lease.?);
-}
-
-/// Map a child's clean-exit flag to the reported outcome. A failed execution
-/// (incl. a fail-closed sandbox setup) is reported as `fleet_error`.
-pub fn outcomeFor(exit_ok: bool) protocol.Outcome {
-    return if (exit_ok) .processed else .fleet_error;
 }
 
 /// Saturate the final ExecutionResult's u64 cumulative splits onto the report's
