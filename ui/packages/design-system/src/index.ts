@@ -136,7 +136,6 @@ export {
   PAGINATION_KIND,
   Pagination,
   type PaginationProps,
-  type CursorPaginationProps,
   type PagePaginationProps,
   ConfirmDialog,
   type ConfirmDialogProps,

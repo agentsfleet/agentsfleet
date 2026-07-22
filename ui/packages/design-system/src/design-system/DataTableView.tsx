@@ -155,12 +155,9 @@ export function DataTableFooter<T>({
     );
   }
   if (!hasExternalPaginationNavigation(pagination)) return null;
-  const externalPagination = pagination.kind === PAGINATION_KIND.cursor
-    ? { ...pagination, loadedCount: totalRows > 0 ? totalRows : undefined }
-    : pagination;
   return (
     <Pagination
-      {...externalPagination}
+      {...pagination}
       className={cn("border-t border-border px-3", pagination.className)}
     />
   );

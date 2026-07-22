@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useCallback } from "react";
 import { ActivityIcon } from "lucide-react";
 import {
   Alert,
@@ -20,6 +20,7 @@ import {
   type ChargeRow,
 } from "../lib/charges";
 import { presentErrorString } from "@/lib/errors";
+import { useCursorPages } from "@/lib/pagination/use-cursor-pages";
 
 export type BillingUsageTabProps = {
   initialCharges: ChargeRow[];
@@ -28,13 +29,13 @@ export type BillingUsageTabProps = {
 
 /**
  * Read-only Usage ledger — a terminal-native charge history (date · amount ·
- * type · description), newest-first, with cursor-based "Load more" pagination.
+ * type · description), newest-first, paged like every other table.
  * Each row is one raw telemetry charge (receive = gate-pass, stage = run); the
  * model + token detail rides the description column. Charges are deductions, so
  * amounts render negative. Pages are fetched via `listTenantBillingChargesAction`,
  * a Server Action that mints the session token via `auth().getToken()`.
  */
-const PAGE_SIZE = 50;
+const PAGE_SIZE = 25;
 
 const COLUMNS: DataTableColumn<ChargeRow>[] = [
   {
@@ -78,33 +79,23 @@ const COLUMNS: DataTableColumn<ChargeRow>[] = [
 ];
 
 export default function BillingUsageTab({ initialCharges, initialCursor }: BillingUsageTabProps) {
-  const [charges, setCharges] = useState<ChargeRow[]>(initialCharges);
-  const [cursor, setCursor] = useState<string | null>(initialCursor);
-  const [error, setError] = useState<string | null>(null);
-  const [pending, startTransition] = useTransition();
-
-  // CursorPagination invokes this callback only when a cursor is present.
-  function loadMore(cursor: string) {
-    setError(null);
-    startTransition(async () => {
-      const result = await listTenantBillingChargesAction({ limit: PAGE_SIZE, cursor });
-      if (!result.ok) {
-        setError(
-          presentErrorString({
-            errorCode: result.errorCode,
-            message: result.error,
-            action: "load more usage events",
-          }),
-        );
-        return;
-      }
-      // De-dupe by charge id in case the page boundary repeats a row.
-      const seen = new Set(charges.map((c) => c.id));
-      const fresh = result.data.items.filter((c) => !seen.has(c.id));
-      setCharges([...charges, ...fresh]);
-      setCursor(result.data.next_cursor);
-    });
-  }
+  const fetchPage = useCallback(
+    (cursor: string) => listTenantBillingChargesAction({ limit: PAGE_SIZE, cursor }),
+    [],
+  );
+  // The ledger pages like every other table instead of appending forever. The
+  // old control sat under a list that grew on every press, so reaching it
+  // meant scrolling past everything already read.
+  const feed = useCursorPages<ChargeRow>(
+    { items: initialCharges, next_cursor: initialCursor },
+    fetchPage,
+    (result) => presentErrorString({
+      errorCode: result.errorCode,
+      message: result.error,
+      action: "load usage events",
+    }),
+  );
+  const { items: charges, error } = feed;
 
   return (
     <div className="space-y-3">
@@ -116,11 +107,19 @@ export default function BillingUsageTab({ initialCharges, initialCursor }: Billi
         empty={(
           <EmptyState
             icon={<ActivityIcon size={28} />}
-            title={cursor ? "No charges loaded" : "No charges yet"}
-            description={cursor ? "Load more to continue." : "Charges appear once fleets run."}
+            title="No charges yet"
+            description="Charges appear once fleets run."
           />
         )}
-        pagination={{ kind: PAGINATION_KIND.cursor, nextCursor: cursor, onNext: loadMore, isLoading: pending }}
+        pagination={{
+          kind: PAGINATION_KIND.page,
+          page: feed.page,
+          pageSize: PAGE_SIZE,
+          hasNext: feed.hasNext,
+          totalLabel: "charges",
+          onPageChange: feed.goToPage,
+          isLoading: feed.isLoading,
+        }}
       />
       {error ? <Alert variant="destructive">{error}</Alert> : null}
     </div>

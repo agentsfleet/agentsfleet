@@ -348,12 +348,6 @@ test.describe("StatusCard — computed styles", () => {
 });
 
 test.describe("Pagination — computed styles", () => {
-  test("cursor variant renders a Load-more Button", async ({ page }) => {
-    const nav = page.locator('[data-testid="pagination-cursor"]').first();
-    await expect(nav).toBeVisible();
-    await expect(nav.locator("button")).toContainText("Load more");
-  });
-
   test("page variant renders Prev/Next + page counter text", async ({ page }) => {
     const nav = page.locator('[data-testid="pagination-page"]').first();
     await expect(nav).toBeVisible();

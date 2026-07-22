@@ -225,6 +225,8 @@ test {
     _ = @import("http/handlers/runner/memory_loop_integration_test.zig");
     _ = @import("http/handlers/runner/bundles.zig");
     _ = @import("http/handlers/fleets/events_integration_test.zig");
+    // The failure cause is durable end to end: report write → column → envelope.
+    _ = @import("http/handlers/fleets/events_failure_detail_integration_test.zig");
     _ = @import("http/handlers/approvals/inbox_integration_test.zig");
     _ = @import("http/handlers/fleets/sse_streaming_integration_test.zig");
     _ = @import("http/handlers/fleets/backpressure_integration_test.zig");

@@ -55,28 +55,29 @@ describe("BillingUsageTab (test_billing_usage_ledger_and_empty)", () => {
   it("renders the empty-state when there are no charges and no cursor", () => {
     render(React.createElement(BillingUsageTab, { initialCharges: [], initialCursor: null }));
     expect(screen.getByText("No charges yet")).toBeTruthy();
-    expect(screen.queryByTestId("pagination-cursor")).toBeNull();
+    expect(screen.queryByTestId("pagination-page")).toBeNull();
   });
 
-  it("recovers an empty cursor page through Load more", async () => {
+  it("recovers an empty first page by paging forward", async () => {
     let resolveCharges: ((value: ActionResult<TenantBillingChargesResponse>) => void) | undefined;
     listChargesActionMock.mockImplementation(() => new Promise((resolve) => {
       resolveCharges = resolve;
     }));
     render(React.createElement(BillingUsageTab, { initialCharges: [], initialCursor: "tok_page2" }));
 
-    expect(screen.getByText("No charges loaded")).toBeTruthy();
-    expect(screen.getByText("Load more to continue.")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Load more items" }));
-    expect(screen.getByText("No charges loaded")).toBeTruthy();
-    expect(screen.getByRole("navigation", { name: "Feed pagination" }).getAttribute("aria-busy")).toBe("true");
+    expect(screen.getByText("No charges yet")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Next page" }));
+    expect(screen.getByText("No charges yet")).toBeTruthy();
+    expect(screen.getByRole("navigation", { name: "Pagination" }).getAttribute("aria-busy")).toBe("true");
     expect(screen.getByText("Loading…")).toBeTruthy();
 
     resolveCharges?.({ ok: true, data: { items: [charge()], next_cursor: null } });
 
     await waitFor(() => expect(screen.getByText("kimi-k2.6 · run · 820→1040 tok")).toBeTruthy());
-    expect(listChargesActionMock).toHaveBeenCalledWith({ limit: 50, cursor: "tok_page2" });
-    await waitFor(() => expect(screen.queryByTestId("pagination-cursor")).toBeNull());
+    expect(listChargesActionMock).toHaveBeenCalledWith({ limit: 25, cursor: "tok_page2" });
+    // Page 2 keeps its pager — the way back matters as much as the way on.
+    expect(screen.getByText("Page 2")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Next page" }).hasAttribute("disabled")).toBe(true);
   });
 
   it("renders a ledger row with date · amount · type · description", () => {
@@ -131,12 +132,12 @@ describe("BillingUsageTab (test_billing_usage_ledger_and_empty)", () => {
     }
   });
 
-  it("hides Load more when there is no cursor", () => {
+  it("shows no pager when the ledger fits one page", () => {
     render(React.createElement(BillingUsageTab, { initialCharges: [charge()], initialCursor: null }));
-    expect(screen.queryByTestId("pagination-cursor")).toBeNull();
+    expect(screen.queryByTestId("pagination-page")).toBeNull();
   });
 
-  it("fetches and appends the next page on Load more click", async () => {
+  it("replaces the rows with the next page instead of growing one long list", async () => {
     listChargesActionMock.mockResolvedValue({
       ok: true,
       data: {
@@ -145,36 +146,45 @@ describe("BillingUsageTab (test_billing_usage_ledger_and_empty)", () => {
       },
     });
     render(React.createElement(BillingUsageTab, { initialCharges: [charge()], initialCursor: "tok_page2" }));
-    fireEvent.click(screen.getByRole("button", { name: "Load more items" }));
-    await waitFor(() => expect(screen.getAllByText(/kimi-k2\.6/).length).toBe(2));
-    expect(listChargesActionMock).toHaveBeenCalledWith({ limit: 50, cursor: "tok_page2" });
-    await waitFor(() => expect(screen.queryByTestId("pagination-cursor")).toBeNull());
+    fireEvent.click(screen.getByRole("button", { name: "Next page" }));
+    // One page on screen at a time — the operator never scrolls past rows
+    // they already read to reach the control.
+    await waitFor(() => expect(screen.getAllByText(/kimi-k2\.6/).length).toBe(1));
+    expect(listChargesActionMock).toHaveBeenCalledWith({ limit: 25, cursor: "tok_page2" });
+    expect(screen.getByText("Page 2")).toBeTruthy();
   });
 
-  it("de-dupes by charge id when a page boundary repeats a row", async () => {
+  it("returns to a cached page without asking the server again", async () => {
     listChargesActionMock.mockResolvedValue({
       ok: true,
-      data: { items: [charge({ id: "tel_1" })], next_cursor: null }, // same id as initial
+      data: { items: [charge({ id: "tel_2", event_id: "evt_2" })], next_cursor: null },
     });
-    render(React.createElement(BillingUsageTab, { initialCharges: [charge({ id: "tel_1" })], initialCursor: "tok" }));
-    fireEvent.click(screen.getByRole("button", { name: "Load more items" }));
-    await waitFor(() => expect(screen.queryByTestId("pagination-cursor")).toBeNull());
-    expect(screen.getAllByText("−$0.001").length).toBe(1);
+    render(React.createElement(BillingUsageTab, { initialCharges: [charge()], initialCursor: "tok" }));
+    fireEvent.click(screen.getByRole("button", { name: "Next page" }));
+    await waitFor(() => expect(screen.getByText("Page 2")).toBeTruthy());
+
+    const callsAfterForward = listChargesActionMock.mock.calls.length;
+    fireEvent.click(screen.getByRole("button", { name: "Previous page" }));
+    await waitFor(() => expect(screen.getByText("Page 1")).toBeTruthy());
+    // Backward motion is free: every page fetched is kept, so stepping back
+    // costs no request at all.
+    expect(listChargesActionMock.mock.calls.length).toBe(callsAfterForward);
   });
 
   it("surfaces a 'Not authenticated' alert when the action returns unauthenticated", async () => {
     listChargesActionMock.mockResolvedValue({ ok: false, error: "Not authenticated", status: 401 });
     render(React.createElement(BillingUsageTab, { initialCharges: [charge()], initialCursor: "tok" }));
-    fireEvent.click(screen.getByRole("button", { name: "Load more items" }));
+    fireEvent.click(screen.getByRole("button", { name: "Next page" }));
     await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("Not authenticated"));
   });
 
   it("surfaces a fetch error inline without losing the previous page", async () => {
     listChargesActionMock.mockResolvedValue({ ok: false, error: "503 service unavailable" });
     render(React.createElement(BillingUsageTab, { initialCharges: [charge()], initialCursor: "tok" }));
-    fireEvent.click(screen.getByRole("button", { name: "Load more items" }));
+    fireEvent.click(screen.getByRole("button", { name: "Next page" }));
     await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("503 service unavailable"));
+    // The failed fetch leaves the operator on the page they can still read.
     expect(screen.getByText("kimi-k2.6 · run · 820→1040 tok")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Load more items" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Next page" })).toBeTruthy();
   });
 });

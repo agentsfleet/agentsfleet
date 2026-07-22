@@ -335,8 +335,10 @@ describe("EventsList — the standard workspace events table", () => {
     await user.click(screen.getByRole("button", { name: /load more|next/i }));
     await waitFor(() => expect(listWorkspaceEventsActionMock).toHaveBeenCalled());
     expect(listWorkspaceEventsActionMock).toHaveBeenCalledWith("ws_1", { cursor: "cur_1" });
+    // The next page REPLACES the current one: a page of rows is a screenful,
+    // not one list that grows until the pager falls off the bottom.
     await waitFor(() => expect(screen.getByText("page two")).toBeTruthy());
-    expect(screen.getByText("page one")).toBeTruthy();
+    expect(screen.queryByText("page one")).toBeNull();
   });
 
   it("loadMore surfaces 'Not authenticated' when the action reports unauth", async () => {
@@ -369,7 +371,7 @@ describe("EventsList — the standard workspace events table", () => {
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: /load more|next/i }));
     await waitFor(() =>
-      expect(screen.getByRole("alert").textContent).toMatch(/Couldn't load more events/),
+      expect(screen.getByRole("alert").textContent).toMatch(/Couldn't load events/),
     );
   });
 
