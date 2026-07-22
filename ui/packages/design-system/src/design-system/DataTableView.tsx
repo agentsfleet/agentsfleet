@@ -156,7 +156,7 @@ export function DataTableFooter<T>({
   }
   if (!hasExternalPaginationNavigation(pagination)) return null;
   const externalPagination = pagination.kind === PAGINATION_KIND.cursor
-    ? { ...pagination, loadedCount: totalRows }
+    ? { ...pagination, loadedCount: totalRows > 0 ? totalRows : undefined }
     : pagination;
   return (
     <Pagination

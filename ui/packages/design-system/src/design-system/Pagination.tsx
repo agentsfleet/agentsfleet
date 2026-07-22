@@ -60,6 +60,7 @@ function CursorPagination({
       data-testid="pagination-cursor"
       role="navigation"
       aria-label="Feed pagination"
+      aria-busy={isLoading ? "true" : "false"}
       className={cn("flex flex-wrap items-center justify-end gap-2 py-3", className)}
     >
       {loadedCount !== undefined ? (
@@ -106,6 +107,7 @@ function PagePagination({
       data-testid="pagination-page"
       role="navigation"
       aria-label="Pagination"
+      aria-busy={isLoading ? "true" : "false"}
       className={cn("flex flex-wrap items-center justify-end gap-2 py-3", className)}
     >
       <div className="mr-auto flex items-center gap-2 text-xs text-muted-foreground tabular-nums">

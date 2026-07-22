@@ -106,16 +106,6 @@ export default function BillingUsageTab({ initialCharges, initialCursor }: Billi
     });
   }
 
-  if (charges.length === 0) {
-    return (
-      <EmptyState
-        icon={<ActivityIcon size={28} />}
-        title="No charges yet"
-        description="Charges appear once fleets run."
-      />
-    );
-  }
-
   return (
     <div className="space-y-3">
       <DataTable
@@ -123,6 +113,13 @@ export default function BillingUsageTab({ initialCharges, initialCursor }: Billi
         rows={charges}
         rowKey={(c) => c.id}
         caption="usage history"
+        empty={(
+          <EmptyState
+            icon={<ActivityIcon size={28} />}
+            title={cursor ? "No charges loaded" : "No charges yet"}
+            description={cursor ? "Load more to continue." : "Charges appear once fleets run."}
+          />
+        )}
         pagination={{ kind: PAGINATION_KIND.cursor, nextCursor: cursor, onNext: loadMore, isLoading: pending }}
       />
       {error ? <Alert variant="destructive">{error}</Alert> : null}

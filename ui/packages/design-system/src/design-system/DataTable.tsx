@@ -46,14 +46,16 @@ export function DataTable<T>({
   const emptyState = empty ?? <EmptyState title="Nothing to show yet" />;
   const loading = isLoading || isPaginationLoading(pagination);
 
-  if (!loading && rows.length === 0) {
-    if (!hasExternalPaginationNavigation(pagination)) return <>{emptyState}</>;
-    return (
-      <>
-        {emptyState}
-        <DataTableFooter table={table} pagination={pagination} totalRows={0} />
-      </>
-    );
+  if (rows.length === 0) {
+    if (hasExternalPaginationNavigation(pagination)) {
+      return (
+        <>
+          {emptyState}
+          <DataTableFooter table={table} pagination={pagination} totalRows={0} />
+        </>
+      );
+    }
+    if (!loading) return <>{emptyState}</>;
   }
 
   return (
