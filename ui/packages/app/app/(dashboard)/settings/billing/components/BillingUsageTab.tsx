@@ -56,7 +56,7 @@ const COLUMNS: DataTableColumn<ChargeRow>[] = [
     key: "amount",
     header: "Amount",
     numeric: true,
-    sortValue: (c) => c.credit_deducted_nanos,
+    sortValue: (c) => -c.credit_deducted_nanos,
     cell: (c) => (
       <span className="font-mono tabular-nums text-destructive">−{formatDollars(c.credit_deducted_nanos)}</span>
     ),
@@ -83,8 +83,7 @@ export default function BillingUsageTab({ initialCharges, initialCursor }: Billi
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
-  // `cursor` is passed in (narrowed to a non-null string by the `{cursor ? …}`
-  // render guard on the trigger), so no in-function null check is needed.
+  // CursorPagination invokes this callback only when a cursor is present.
   function loadMore(cursor: string) {
     setError(null);
     startTransition(async () => {

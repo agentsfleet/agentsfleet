@@ -1,9 +1,14 @@
+import { useLayoutEffect, useRef } from "react";
 import { flexRender, type Table } from "@tanstack/react-table";
 import { ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
 
 import { cn } from "../utils";
 import { Button } from "./Button";
-import { DEFAULT_PAGE_SIZE, isClientPagination } from "./DataTableModel";
+import {
+  DEFAULT_PAGE_SIZE,
+  hasExternalPaginationNavigation,
+  isClientPagination,
+} from "./DataTableModel";
 import type { DataTableColumn, DataTablePagination } from "./DataTable.types";
 import { PAGINATION_KIND, Pagination } from "./Pagination";
 
@@ -43,7 +48,8 @@ function DataTableHead<T>({
                 scope="col"
                 aria-sort={canSort ? ariaSort : undefined}
                 className={cn(
-                  "px-3 py-1.5 text-left font-mono text-label font-medium uppercase tracking-label text-muted-foreground",
+                  "text-left font-mono text-label font-medium uppercase tracking-label text-muted-foreground",
+                  canSort ? "p-0" : "px-3 py-1.5",
                   definition?.numeric && "text-right",
                   definition?.hideOnMobile && "hidden sm:table-cell",
                 )}
@@ -57,7 +63,7 @@ function DataTableHead<T>({
                       ? () => onSortChange(header.column.id)
                       : header.column.getToggleSortingHandler()}
                     className={cn(
-                      "h-auto min-h-0 w-full justify-start gap-1.5 rounded-none border-0 p-0 uppercase tracking-label hover:bg-transparent motion-reduce:transition-none",
+                      "w-full justify-start gap-1.5 rounded-none border-0 uppercase tracking-label hover:bg-transparent focus-visible:ring-inset focus-visible:ring-offset-0 motion-reduce:transition-none",
                       definition?.numeric && "justify-end",
                     )}
                   >
@@ -148,18 +154,16 @@ export function DataTableFooter<T>({
       />
     );
   }
-  if (
-    pagination.kind === PAGINATION_KIND.cursor
-    && pagination.nextCursor === null
-    && !pagination.isLoading
-  ) return null;
-  if (
-    pagination.kind === PAGINATION_KIND.page
-    && pagination.page === 1
-    && pagination.total !== undefined
-    && pagination.total <= pagination.pageSize
-  ) return null;
-  return <Pagination {...pagination} className={cn("border-t border-border px-3", pagination.className)} />;
+  if (!hasExternalPaginationNavigation(pagination)) return null;
+  const externalPagination = pagination.kind === PAGINATION_KIND.cursor
+    ? { ...pagination, loadedCount: totalRows }
+    : pagination;
+  return (
+    <Pagination
+      {...externalPagination}
+      className={cn("border-t border-border px-3", pagination.className)}
+    />
+  );
 }
 
 export function DataTableView<T>({
@@ -185,6 +189,29 @@ export function DataTableView<T>({
   pagination: DataTablePagination | undefined;
   totalRows: number;
 }) {
+  const viewportRef = useRef<HTMLDivElement>(null);
+  const numericPage = isClientPagination(pagination)
+    ? table.getState().pagination.pageIndex
+    : pagination !== false && pagination.kind === PAGINATION_KIND.page
+      ? pagination.page
+      : null;
+  const sortingSignature = table.getState().sorting
+    .map((sort) => `${sort.id}:${sort.desc}`)
+    .join("|");
+  const handleSortChange = onSortChange
+    ? (key: string) => {
+        if (isClientPagination(pagination)) table.setPageIndex(0);
+        onSortChange(key);
+      }
+    : undefined;
+
+  useLayoutEffect(() => {
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+    if (typeof viewport.scrollTo === "function") viewport.scrollTo({ top: 0 });
+    else viewport.scrollTop = 0;
+  }, [numericPage, sortingSignature]);
+
   return (
     <div
       data-slot="data-table"
@@ -192,6 +219,7 @@ export function DataTableView<T>({
       className={cn("w-full overflow-hidden rounded-md border border-border bg-card", className)}
     >
       <div
+        ref={viewportRef}
         className={cn(
           "overflow-x-auto overscroll-contain motion-safe:scroll-smooth focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-pulse",
           stickyHeader && "max-h-96 overflow-y-auto",
@@ -207,7 +235,7 @@ export function DataTableView<T>({
             columnsByKey={columnsByKey}
             sticky={stickyHeader}
             isLoading={isLoading}
-            onSortChange={onSortChange}
+            onSortChange={handleSortChange}
           />
           <DataTableBody table={table} columnsByKey={columnsByKey} onRowClick={onRowClick} />
         </table>

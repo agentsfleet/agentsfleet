@@ -202,6 +202,7 @@ export default function RunnerList({
           page,
           pageSize: DEFAULT_PAGE_SIZE,
           total,
+          totalLabel: "runners",
           onPageChange: loadPage,
           isLoading: pending,
         }}

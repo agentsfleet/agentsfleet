@@ -174,6 +174,21 @@ describe("DataTable", () => {
     expect(screen.getByRole("columnheader", { name: "Remote name" })).not.toHaveAttribute("aria-sort");
   });
 
+  it("lets sortable false override a supplied sort value", () => {
+    const cols: DataTableColumn<Row>[] = [
+      {
+        key: "name",
+        header: "Name",
+        cell: (row) => row.name,
+        sortValue: (row) => row.name,
+        sortable: false,
+      },
+    ];
+    render(<DataTable columns={cols} rows={ROWS} rowKey={(row) => row.id} />);
+
+    expect(screen.queryByRole("button", { name: "Name" })).toBeNull();
+  });
+
   it("renders a sr-only caption when caption is supplied", () => {
     render(
       <DataTable
@@ -202,12 +217,14 @@ describe("DataTable", () => {
     expect(wrapper.className).toContain("overflow-hidden");
   });
 
-  it("uses py-1.5 cell padding by default (density tighten)", () => {
+  it("keeps dense cells while giving sortable headers the standard button target", () => {
     render(<DataTable columns={COLUMNS} rows={ROWS} rowKey={(r) => r.id} />);
     const headerCell = screen.getAllByRole("columnheader")[0];
+    const headerButton = screen.getByRole("button", { name: "Name" });
     const bodyCell = screen.getByText("Alpha").closest("td")!;
-    expect(headerCell.className).toContain("py-1.5");
-    expect(headerCell.className).not.toContain("py-2");
+    expect(headerCell.className).toContain("p-0");
+    expect(headerButton.className).toContain("h-8");
+    expect(headerButton.className).toContain("focus-visible:ring-inset");
     expect(bodyCell.className).toContain("py-1.5");
     expect(bodyCell.className).not.toContain("py-2");
   });
@@ -218,6 +235,7 @@ describe("DataTable", () => {
     );
     const scrollDiv = container.querySelector(".max-h-96.overflow-y-auto");
     expect(scrollDiv).toBeInTheDocument();
+    expect(scrollDiv?.className).toContain("motion-safe:scroll-smooth");
     expect(scrollDiv?.querySelector("table")).toBeInTheDocument();
     const thead = container.querySelector("thead") as HTMLElement;
     expect(thead.className).toContain("sticky");
@@ -246,7 +264,7 @@ describe("DataTable", () => {
     expect(screen.getByRole("region", { name: /scrollable table/i })).toBeInTheDocument();
   });
 
-  it("sorts local rows in both directions through the shared Button control", () => {
+  it("cycles local rows through ascending, descending, and original order", () => {
     render(<DataTable columns={COLUMNS} rows={[ROWS[1], ROWS[0]]} rowKey={(r) => r.id} />);
     const button = screen.getByRole("button", { name: /name/i });
 
@@ -256,6 +274,10 @@ describe("DataTable", () => {
 
     fireEvent.click(button);
     expect(screen.getByRole("columnheader", { name: /name/i })).toHaveAttribute("aria-sort", "descending");
+    expect(within(screen.getAllByRole("row")[1]).getByText("Bravo")).toBeInTheDocument();
+
+    fireEvent.click(button);
+    expect(screen.getByRole("columnheader", { name: /name/i })).toHaveAttribute("aria-sort", "none");
     expect(within(screen.getAllByRole("row")[1]).getByText("Bravo")).toBeInTheDocument();
   });
 
@@ -276,6 +298,52 @@ describe("DataTable", () => {
     expect(onSortChange).toHaveBeenCalledWith("name");
   });
 
+  it("resets client pagination when controlled sorting changes", () => {
+    const onSortChange = vi.fn();
+    const rows = Array.from({ length: 26 }, (_, index) => ({
+      id: String(index + 1),
+      name: `Row ${index + 1}`,
+      spend: index,
+    }));
+    render(
+      <DataTable
+        columns={COLUMNS}
+        rows={rows}
+        rowKey={(row) => row.id}
+        onSortChange={onSortChange}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Next page" }));
+    expect(screen.getByText("Page 2 of 2 · 26 items")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Name" }));
+
+    expect(onSortChange).toHaveBeenCalledWith("name");
+    expect(screen.getByText("Page 1 of 2 · 26 items")).toBeInTheDocument();
+  });
+
+  it("should delegate controlled sorting without resetting server pagination", () => {
+    const onSortChange = vi.fn();
+    const onPageChange = vi.fn();
+    render(
+      <DataTable
+        columns={COLUMNS}
+        rows={ROWS}
+        rowKey={(row) => row.id}
+        sortKey="name"
+        sortDirection="ascending"
+        onSortChange={onSortChange}
+        pagination={{ kind: "page", page: 2, pageSize: 2, total: 6, onPageChange }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Name" }));
+
+    expect(onSortChange).toHaveBeenCalledWith("name");
+    expect(onPageChange).not.toHaveBeenCalled();
+    expect(screen.getByText("Page 2 of 3 · 6 items")).toBeInTheDocument();
+  });
+
   it("paginates local rows at 25 items without growing the page", () => {
     const rows = Array.from({ length: 26 }, (_, index) => ({
       id: String(index + 1),
@@ -284,11 +352,67 @@ describe("DataTable", () => {
     }));
     render(<DataTable columns={COLUMNS} rows={rows} rowKey={(row) => row.id} />);
 
-    expect(screen.getByText("Page 1 of 2")).toBeInTheDocument();
+    expect(screen.getByText("Page 1 of 2 · 26 items")).toBeInTheDocument();
     expect(screen.queryByText("Row 26")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Next page" }));
     expect(screen.getByText("Row 26")).toBeInTheDocument();
-    expect(screen.getByText("Page 2 of 2")).toBeInTheDocument();
+    expect(screen.getByText("Page 2 of 2 · 26 items")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Name" }));
+    expect(screen.getByText("Page 1 of 2 · 26 items")).toBeInTheDocument();
+  });
+
+  it("preserves an equal-length rerender and does not revive a clamped client page", () => {
+    const rows = Array.from({ length: 26 }, (_, index) => ({
+      id: String(index + 1),
+      name: `Row ${index + 1}`,
+      spend: index,
+    }));
+    const { rerender } = render(<DataTable columns={COLUMNS} rows={rows} rowKey={(row) => row.id} />);
+    fireEvent.click(screen.getByRole("button", { name: "Next page" }));
+
+    rerender(<DataTable columns={COLUMNS} rows={[...rows]} rowKey={(row) => row.id} />);
+    expect(screen.getByText("Page 2 of 2 · 26 items")).toBeInTheDocument();
+    expect(screen.getByText("Row 26")).toBeInTheDocument();
+
+    rerender(<DataTable columns={COLUMNS} rows={rows.slice(0, 2)} rowKey={(row) => row.id} />);
+    expect(screen.queryByRole("navigation", { name: "Pagination" })).toBeNull();
+    expect(screen.getByText("Row 1")).toBeInTheDocument();
+
+    rerender(<DataTable columns={COLUMNS} rows={rows} rowKey={(row) => row.id} />);
+    expect(screen.getByText("Page 1 of 2 · 26 items")).toBeInTheDocument();
+    expect(screen.getByText("Row 1")).toBeInTheDocument();
+    expect(screen.queryByText("Row 26")).toBeNull();
+  });
+
+  it("resets the bounded viewport when local sorting changes", () => {
+    render(<DataTable columns={COLUMNS} rows={ROWS} rowKey={(row) => row.id} />);
+    const viewport = screen.getByRole("region", { name: "Scrollable table" });
+    viewport.scrollTop = 120;
+
+    fireEvent.click(screen.getByRole("button", { name: "Name" }));
+
+    expect(viewport.scrollTop).toBe(0);
+  });
+
+  it("should sort with pagination disabled and reset through the browser scroll API", () => {
+    render(
+      <DataTable
+        columns={COLUMNS}
+        rows={[ROWS[1], ROWS[0]]}
+        rowKey={(row) => row.id}
+        pagination={false}
+      />,
+    );
+    const viewport = screen.getByRole("region", { name: "Scrollable table" });
+    const scrollTo = vi.fn();
+    Object.defineProperty(viewport, "scrollTo", { configurable: true, value: scrollTo });
+
+    fireEvent.click(screen.getByRole("button", { name: "Name" }));
+
+    expect(within(screen.getAllByRole("row")[1]).getByText("Alpha")).toBeInTheDocument();
+    expect(scrollTo).toHaveBeenCalledWith({ top: 0 });
+    expect(screen.queryByRole("navigation", { name: "Pagination" })).toBeNull();
   });
 
   it("omits pagination chrome for one local page", () => {
@@ -317,7 +441,7 @@ describe("DataTable", () => {
       />,
     );
 
-    expect(screen.getByText("Page 1 of 2")).toBeInTheDocument();
+    expect(screen.getByText("Page 1 of 2 · 2 items")).toBeInTheDocument();
     expect(screen.queryByText("Bravo")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Next page" }));
     expect(screen.getByText("Bravo")).toBeInTheDocument();
@@ -340,9 +464,24 @@ describe("DataTable", () => {
         pagination={{ kind: "page", page: 2, pageSize: 2, total: 6, onPageChange }}
       />,
     );
-    expect(screen.getByText("Page 2 of 3")).toBeInTheDocument();
+    expect(screen.getByText("Page 2 of 3 · 6 items")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Next page" }));
     expect(onPageChange).toHaveBeenCalledWith(3);
+  });
+
+  it("resets the bounded viewport when a numeric server page changes", () => {
+    const pagination = { kind: "page" as const, pageSize: 2, total: 6, onPageChange: vi.fn() };
+    const { rerender } = render(
+      <DataTable columns={COLUMNS} rows={ROWS} rowKey={(row) => row.id} pagination={{ ...pagination, page: 1 }} />,
+    );
+    const viewport = screen.getByRole("region", { name: "Scrollable table" });
+    viewport.scrollTop = 120;
+
+    rerender(
+      <DataTable columns={COLUMNS} rows={ROWS} rowKey={(row) => row.id} pagination={{ ...pagination, page: 2 }} />,
+    );
+
+    expect(viewport.scrollTop).toBe(0);
   });
 
   it("omits server pagination when the first page contains the full result", () => {
@@ -408,6 +547,9 @@ describe("DataTable", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: "Load more items" }));
     expect(onNext).toHaveBeenCalledWith("next-1");
+    const loadedStatus = screen.getByText("2 loaded · sort scope: loaded");
+    expect(loadedStatus).toHaveAttribute("aria-live", "polite");
+    expect(loadedStatus.className).toContain("font-mono");
 
     rerender(
       <DataTable

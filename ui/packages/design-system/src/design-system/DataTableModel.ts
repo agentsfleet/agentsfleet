@@ -27,6 +27,17 @@ export function isClientPagination(
   );
 }
 
+export function hasExternalPaginationNavigation(
+  pagination: DataTablePagination | undefined,
+): boolean {
+  if (pagination === false || isClientPagination(pagination)) return false;
+  if (pagination.isLoading) return true;
+  if (pagination.kind === PAGINATION_KIND.cursor) return pagination.nextCursor !== null;
+  return pagination.page > 1
+    || pagination.total === undefined
+    || pagination.total > pagination.pageSize;
+}
+
 function buildColumns<T>(columns: DataTableColumn<T>[], externallySorted: boolean): ColumnDef<T>[] {
   return columns.map((column) => {
     const sortingRequested = column.sortable ?? column.sortValue !== undefined;
@@ -38,6 +49,7 @@ function buildColumns<T>(columns: DataTableColumn<T>[], externallySorted: boolea
       id: column.key,
       ...accessor,
       enableSorting: sortingEnabled,
+      sortDescFirst: false,
       header: () => column.header,
       cell: (context) => column.cell(context.row.original),
     };
@@ -68,6 +80,15 @@ export function useDataTableModel<T>({
   const controlledSorting: SortingState = sortKey
     ? [{ id: sortKey, desc: sortDirection === "descending" }]
     : [];
+  const lastClientPage = Math.max(0, Math.ceil(rows.length / pageSize) - 1);
+  const pageIndex = clientPagination ? Math.min(page.pageIndex, lastClientPage) : page.pageIndex;
+
+  // Keep internal state canonical when rows shrink. React immediately retries
+  // this render, so a later row-count increase cannot revive an invalid page.
+  if (page.pageIndex !== pageIndex) {
+    setPage((current) => ({ ...current, pageIndex }));
+  }
+
   const table = useReactTable({
     columns: tableColumns,
     data: rows,
@@ -77,11 +98,15 @@ export function useDataTableModel<T>({
     getPaginationRowModel: clientPagination ? getPaginationRowModel() : undefined,
     manualSorting: externallySorted,
     manualPagination: !clientPagination,
-    onSortingChange: setSorting,
+    autoResetPageIndex: false,
+    onSortingChange: (updater) => {
+      setSorting(updater);
+      if (clientPagination) setPage((current) => ({ ...current, pageIndex: 0 }));
+    },
     onPaginationChange: setPage,
     state: {
       sorting: externallySorted ? controlledSorting : sorting,
-      pagination: { pageIndex: page.pageIndex, pageSize },
+      pagination: { pageIndex, pageSize },
     },
   });
   return { columnsByKey, table };

@@ -1,4 +1,5 @@
 import { Button } from "./Button";
+import { Spinner } from "./Spinner";
 import { cn } from "../utils";
 
 export const PAGINATION_KIND = {
@@ -12,14 +13,16 @@ export const PAGINATION_KIND = {
  *   • cursor: opaque next-cursor string (activity feed, telemetry).
  *   • page:   numeric pages (agents list).
  * Both land on the same UI so pages render identically regardless of the
- * backend contract. RSC-safe — event handlers are passed as props and
- * forwarded to the (RSC-safe) shared Button.
+ * server pagination rules. React Server Component (RSC)-safe — event handlers
+ * are passed as props and forwarded to the RSC-safe shared Button.
  */
 
 export interface CursorPaginationProps {
   kind: typeof PAGINATION_KIND.cursor;
   nextCursor: string | null;
   onNext: (cursor: string) => void;
+  /** Number of rows fetched into this append-only cursor feed. */
+  loadedCount?: number;
   isLoading?: boolean;
   className?: string;
 }
@@ -29,6 +32,8 @@ export interface PagePaginationProps {
   page: number;
   pageSize: number;
   total?: number;
+  /** Plural noun shown after the total count. Defaults to "items". */
+  totalLabel?: string;
   onPageChange: (page: number) => void;
   isLoading?: boolean;
   className?: string;
@@ -41,7 +46,13 @@ export function Pagination(props: PaginationProps) {
   return <PagePagination {...props} />;
 }
 
-function CursorPagination({ nextCursor, onNext, isLoading, className }: CursorPaginationProps) {
+function CursorPagination({
+  nextCursor,
+  onNext,
+  loadedCount,
+  isLoading,
+  className,
+}: CursorPaginationProps) {
   const exhausted = nextCursor === null;
   return (
     <nav
@@ -51,6 +62,15 @@ function CursorPagination({ nextCursor, onNext, isLoading, className }: CursorPa
       aria-label="Feed pagination"
       className={cn("flex flex-wrap items-center justify-end gap-2 py-3", className)}
     >
+      {loadedCount !== undefined ? (
+        <span
+          className="mr-auto font-mono text-label leading-label text-muted-foreground tabular-nums"
+          aria-live="polite"
+          aria-atomic="true"
+        >
+          {loadedCount} loaded · sort scope: loaded
+        </span>
+      ) : null}
       <Button
         type="button"
         variant="ghost"
@@ -61,6 +81,7 @@ function CursorPagination({ nextCursor, onNext, isLoading, className }: CursorPa
         }}
         aria-label="Load more items"
       >
+        {isLoading ? <Spinner size="sm" srLabel="" /> : null}
         {isLoading ? "Loading…" : exhausted ? "End of feed" : "Load more"}
       </Button>
     </nav>
@@ -71,6 +92,7 @@ function PagePagination({
   page,
   pageSize,
   total,
+  totalLabel = "items",
   onPageChange,
   isLoading,
   className,
@@ -86,13 +108,14 @@ function PagePagination({
       aria-label="Pagination"
       className={cn("flex flex-wrap items-center justify-end gap-2 py-3", className)}
     >
-      <span
-        className="mr-auto text-xs text-muted-foreground tabular-nums"
-        aria-live="polite"
-        aria-atomic="true"
-      >
-        {totalPages != null ? `Page ${page} of ${totalPages}` : `Page ${page}`}
-      </span>
+      <div className="mr-auto flex items-center gap-2 text-xs text-muted-foreground tabular-nums">
+        <span aria-live="polite" aria-atomic="true">
+          {totalPages != null
+            ? `Page ${page} of ${totalPages} · ${total} ${totalLabel}`
+            : `Page ${page}`}
+        </span>
+        {isLoading ? <Spinner size="sm" label="Loading…" className="border-0 bg-transparent p-0" /> : null}
+      </div>
       <Button
         type="button"
         variant="ghost"

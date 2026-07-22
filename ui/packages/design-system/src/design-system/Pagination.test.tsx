@@ -25,6 +25,7 @@ describe("Pagination (cursor variant)", () => {
   it("shows Loading… while fetching", () => {
     render(<Pagination kind="cursor" nextCursor="abc" onNext={() => {}} isLoading />);
     expect(screen.getByText(/Loading/)).toBeInTheDocument();
+    expect(screen.getByRole("button").querySelector("[data-spinner-orbit]")).toBeInTheDocument();
   });
 
   it("uses flex-wrap so buttons reflow on narrow viewports", () => {
@@ -49,7 +50,7 @@ describe("Pagination (page variant)", () => {
   it("renders Page X of Y with aria-live=polite and correct button states", () => {
     const onPageChange = vi.fn();
     render(<Pagination kind="page" page={2} pageSize={20} total={87} onPageChange={onPageChange} />);
-    expect(screen.getByText("Page 2 of 5")).toBeInTheDocument();
+    expect(screen.getByText("Page 2 of 5 · 87 items")).toBeInTheDocument();
     const prev = screen.getByRole("button", { name: "Previous page" });
     const next = screen.getByRole("button", { name: "Next page" });
     expect(prev).not.toBeDisabled();
@@ -69,6 +70,14 @@ describe("Pagination (page variant)", () => {
     render(<Pagination kind="page" page={4} pageSize={20} onPageChange={() => {}} />);
     expect(screen.getByText("Page 4")).toBeInTheDocument();
     expect(screen.queryByText(/Page\s+\d+\s+of\s+\d+/)).not.toBeInTheDocument();
+  });
+
+  it("shows visible progress while a numeric page is loading", () => {
+    render(<Pagination kind="page" page={2} pageSize={20} total={87} onPageChange={() => {}} isLoading />);
+    expect(screen.getByText("Page 2 of 5 · 87 items")).toBeInTheDocument();
+    expect(screen.getByText("Loading…")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Previous page" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Next page" })).toBeDisabled();
   });
 
   it("SSR renders with role=navigation", () => {
