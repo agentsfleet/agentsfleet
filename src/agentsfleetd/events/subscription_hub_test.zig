@@ -636,10 +636,9 @@ test "integration: hub reconnects after its connection is killed and delivery re
     defer hub.unsubscribe(sub);
     try expectNumsub(&pub_client, CHANNEL_A, 1);
 
-    // sever the shared connection out from under the hub
+    // Sever only this hub's socket; never disrupt sibling Redis subscribers.
     const reconnects_before = metrics.snapshot().sse_hub_reconnects_total;
-    var kill_reply = try pub_client.command(&.{ "CLIENT", "KILL", "TYPE", "pubsub" });
-    kill_reply.deinit(testing.allocator);
+    try testing.expect(hub.testDisconnectConnection());
 
     // the viewer notices nothing; publish-poll until the redialed connection
     // and its re-SUBSCRIBE sweep deliver again

@@ -93,7 +93,7 @@ pub const LogSpec = struct {
 /// link it, but the standalone `test-lib` compilation does not, and `std.c`
 /// there is a compile error. macOS has no stable syscall ABI and always links
 /// libc, so it keeps the `std.c` path.
-fn rawShutdown(handle: std.posix.fd_t) void {
+pub fn shutdownSocket(handle: std.posix.fd_t) void {
     if (comptime builtin.os.tag == .linux) {
         _ = std.os.linux.shutdown(handle, std.os.linux.SHUT.RDWR);
     } else {
@@ -200,7 +200,7 @@ pub fn Watchdog(comptime log_spec: ?LogSpec) type {
                     // the syscall and the shutdown would hit the next call's
                     // socket. shutdown(2) is non-blocking; the hold is
                     // microseconds.
-                    rawShutdown(self.handle);
+                    shutdownSocket(self.handle);
                     self.armed = false;
                     self.fired = true;
                     if (comptime log_spec) |spec| {
