@@ -44,8 +44,12 @@ export default function Shell({
 
   return (
     <div
+      // A fixed application frame, not a growing document: the header and the
+      // navigation rail stay put and the content region below owns the scroll.
+      // A page that wants the viewport — the fleet console's chat — then needs
+      // only an ordinary full-height child, with no height literal of its own.
       className={cn(
-        "app-glow-surface grid min-h-screen grid-rows-[56px_1fr]",
+        "app-glow-surface grid h-dvh grid-rows-[56px_1fr]",
         collapsed ? "md:grid-cols-[64px_1fr]" : "md:grid-cols-[240px_1fr]",
       )}
       data-glow="dashboard"
@@ -87,7 +91,7 @@ export default function Shell({
 
       <aside
         id={SIDEBAR_NAV_ID}
-        className="hidden md:flex flex-col bg-muted border-r border-border sticky top-14 h-[calc(100vh-56px)] overflow-y-auto py-4"
+        className="hidden md:flex min-h-0 flex-col overflow-y-auto border-r border-border bg-muted py-4"
       >
         <SidebarNavigation
           pathname={pathname}
@@ -98,8 +102,11 @@ export default function Shell({
         />
       </aside>
 
-      <main className="app-dashboard-canvas overflow-auto px-4 py-6 sm:px-6 md:px-8 md:py-8 2xl:px-12">
-        <div className="w-full">{children}</div>
+      <main className="app-dashboard-canvas min-h-0 overflow-y-auto px-4 py-6 sm:px-6 md:px-8 md:py-8 2xl:px-12">
+        {/* `min-h-full` + column flow: ordinary pages grow past the viewport
+            and scroll here, while a page that asks for `flex-1` fills exactly
+            the region and scrolls inside itself instead. */}
+        <div className="flex min-h-full w-full flex-col">{children}</div>
       </main>
     </div>
   );

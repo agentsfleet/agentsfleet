@@ -51,6 +51,22 @@ async function gotoRejectedAdminPath(page: Page): Promise<void> {
 // while restoring the draft visibility this suite starts from.
 async function addSampleFleet(page: Page) {
   await page.goto(ADMIN_PATH);
+  // Self-heal: an interrupted earlier run can leave the entry pointing at a
+  // deliberately-broken repository. Restore it before anything else, or the
+  // re-add below refetches from the poisoned source and never reaches Draft.
+  const editButton = sampleRow(page).getByRole("button", { name: /^edit$/i });
+  if (await editButton.isVisible()) {
+    await editButton.click();
+    const repoField = page.getByLabel(/^repository$/i);
+    if ((await repoField.inputValue()) !== SAMPLE_LIBRARY_REPO) {
+      await repoField.fill(SAMPLE_LIBRARY_REPO);
+      await page.getByRole("button", { name: /^save$/i }).click();
+      await expect(repoField).toHaveCount(0, { timeout: 30_000 });
+      await page.reload();
+    } else {
+      await page.getByRole("button", { name: /^cancel$/i }).click();
+    }
+  }
   const unpublish = sampleRow(page).getByRole("button", { name: /^unpublish$/i });
   if (await unpublish.isVisible()) {
     await unpublish.click();
@@ -125,8 +141,9 @@ test.describe("platform fleet catalog", () => {
     // A plain workspace user cannot see it. Not hidden-but-installable — absent.
     await signInAs(page, FIXTURE_KEY.regular);
     await page.goto("/");
-    await expect(page).toHaveURL(workspaceUrlPattern());
-    const workspacePath = new URL(page.url()).pathname;
+    // The root redirect lands on the workspace wall.
+    await expect(page).toHaveURL(workspaceUrlPattern("fleets"));
+    const workspacePath = new URL(page.url()).pathname.match(/^\/w\/[^/]+/)![0];
     await page.goto(`${workspacePath}/fleets/new`);
     await expect(galleryCards(page)).toHaveCount(0);
 
@@ -171,7 +188,7 @@ test.describe("platform fleet catalog", () => {
 
     // Re-fetch the bundle from the same repository — the update path.
     await sampleRow(page).getByRole("button", { name: /fetch update/i }).click();
-    await page.getByRole("button", { name: /^create fleet library$/i }).click();
+    await page.getByRole("dialog").getByRole("button", { name: /^fetch update$/i }).click();
     await expect(sampleRow(page)).toBeVisible({ timeout: IMPORT_TIMEOUT });
 
     // The operator's copy is still there. The server keeps `description` out of the
@@ -209,8 +226,11 @@ test.describe("platform fleet catalog", () => {
     await page.getByRole("button", { name: /^save$/i }).click();
     await expect(page.getByLabel(/^repository$/i)).toHaveCount(0, { timeout: 30_000 });
 
+    // The refetch dialog's repository is read-only and prefills from the
+    // row; reload so the prefill reflects the corrective save above.
+    await page.reload();
     await sampleRow(page).getByRole("button", { name: /fetch bundle/i }).click();
-    await page.getByRole("button", { name: /^create fleet library$/i }).click();
+    await page.getByRole("dialog").getByRole("button", { name: /^fetch update$/i }).click();
     await expect(sampleRow(page).getByText("Draft")).toBeVisible({ timeout: IMPORT_TIMEOUT });
 
     await sampleRow(page).getByRole("button", { name: /^publish$/i }).click();

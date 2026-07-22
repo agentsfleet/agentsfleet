@@ -183,7 +183,9 @@ test.describe("operator journey", () => {
       workspaceId: wsId,
     });
     createdFleetId = fleetId;
-    await expect(page.getByRole("region", { name: "Recent Activity" })).toBeVisible();
+    // The detail page opens on Chat — the conversation card is the
+    // post-install scaffolding assertion.
+    await expect(page.getByLabel("Fleet chat")).toBeVisible({ timeout: 15_000 });
 
     await clickSidebarLink(page, workspaceHref(wsId, "events"), workspaceUrlPattern("events"));
     await expect(page.getByRole("heading", { name: /^events$/i })).toBeVisible();

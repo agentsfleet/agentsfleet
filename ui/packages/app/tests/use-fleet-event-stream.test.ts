@@ -6,6 +6,7 @@ import {
   useFleetEventStream,
 } from "../components/domain/useFleetEventStream";
 import { __resetRegistryForTests } from "@/lib/streaming/fleet-stream-registry";
+import { OUTCOME } from "@/lib/events/event-summary";
 import { FRAME_KIND, type EventRow, type LiveFrame } from "@/lib/api/events";
 
 // ── FakeEventSource ────────────────────────────────────────────────────────
@@ -209,7 +210,7 @@ describe("useFleetEventStream", () => {
       });
     });
     await waitFor(() => expect(result.current.events).toHaveLength(1));
-    expect(result.current.events[0]!.text).toBe("Hello, world.");
+    expect(result.current.events[0]!.reply).toBe("Hello, world.");
     expect(result.current.events[0]!.role).toBe("assistant");
   });
 
@@ -223,7 +224,10 @@ describe("useFleetEventStream", () => {
       });
     });
     await waitFor(() => expect(result.current.events).toHaveLength(1));
-    expect(result.current.isRunning).toBe(true);
+    // Work is reported on the event itself, not as a thread-wide flag: an
+    // aggregate "something is running" was true forever once any run stranded.
+    expect(result.current.events[0]!.status).toBe("received");
+    expect(result.current.events[0]!.outcome).toBe(OUTCOME.WORKING);
     act(() => {
       FakeEventSource.instances[0]!.emit({
         kind: FRAME_KIND.EVENT_COMPLETE,
@@ -232,7 +236,16 @@ describe("useFleetEventStream", () => {
       });
     });
     await waitFor(() => expect(result.current.events[0]!.status).toBe("processed"));
-    expect(result.current.isRunning).toBe(false);
+    // The outcome follows the status — a finished event stops saying it works.
+    expect(result.current.events[0]!.outcome).toBe(OUTCOME.NO_REPLY);
+  });
+
+  it("a stranded event cannot report the whole fleet as working", () => {
+    // The hook exposes no aggregate running flag at all. That flag was read by
+    // the composer's old hold, so one run that never completed silently turned
+    // the console read-only.
+    const { result } = mount();
+    expect("isRunning" in result.current).toBe(false);
   });
 
   it("appendOptimistic + reconcileOptimistic swaps the temp id for the real one", async () => {
@@ -266,6 +279,19 @@ describe("useFleetEventStream", () => {
     expect(result.current.events[0]!.id).toBe(tempId);
   });
 
+  it("discardOptimistic removes the failed row so a retry cannot duplicate it", async () => {
+    const { result } = mount();
+    let tempId = "";
+    act(() => {
+      tempId = result.current.appendOptimistic("send that fails", "steer:pending");
+    });
+    await waitFor(() => expect(result.current.events).toHaveLength(1));
+    act(() => result.current.markOptimisticFailed(tempId));
+    await waitFor(() => expect(result.current.events[0]!.status).toBe("failed"));
+    act(() => result.current.discardOptimistic(tempId));
+    await waitFor(() => expect(result.current.events).toHaveLength(0));
+  });
+
   it("flips to RECONNECTING on onerror and reopens via backoff", async () => {
     vi.useFakeTimers();
     const { result } = mount();
@@ -284,6 +310,25 @@ describe("useFleetEventStream", () => {
     vi.useRealTimers();
   });
 
+  it("convertEvent carries the trigger in content and the reply/outcome in metadata", () => {
+    const { result } = mount();
+    const msg = result.current.convertEvent({
+      id: "evt_silent",
+      role: "system",
+      actor: "github-app",
+      text: "opened · owner/repo#7",
+      reply: "",
+      outcome: OUTCOME.NO_REPLY,
+      createdAt: new Date(0),
+      status: "processed",
+    });
+    // Content is the trigger; the reply bubble reads reply/outcome from metadata,
+    // so a reply-less turn still says what happened without clobbering the trigger.
+    expect(msg.content).toEqual([{ type: "text", text: "opened · owner/repo#7" }]);
+    expect(msg.metadata?.custom?.["reply"]).toBe("");
+    expect(msg.metadata?.custom?.["outcome"]).toBe(OUTCOME.NO_REPLY);
+  });
+
   it("convertEvent produces an assistant-ui ThreadMessageLike with custom metadata", () => {
     const { result } = mount();
     const msg = result.current.convertEvent({
@@ -291,6 +336,8 @@ describe("useFleetEventStream", () => {
       role: "system",
       actor: "webhook:github",
       text: "workflow_run failure",
+      reply: "",
+      outcome: OUTCOME.NO_REPLY,
       createdAt: new Date(0),
       status: "processed",
       custom: { requestJson: '{"action":"workflow_run"}' },
@@ -333,7 +380,7 @@ describe("useFleetEventStream", () => {
     await waitFor(() => {
       expect(result.current.events.length).toBe(1);
       expect(result.current.events[0]!.id).toBe("evt_orphan");
-      expect(result.current.events[0]!.text).toBe(
+      expect(result.current.events[0]!.reply).toBe(
         "partial body without a header frame",
       );
     });

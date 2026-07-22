@@ -4,6 +4,7 @@ import {
   TIME_INVALID_FALLBACK,
   coerceDate,
   formatTimeAbsolute,
+  formatTimeClock,
   formatTimeRelative,
   toIso,
   visibleTimeLabel,
@@ -198,6 +199,11 @@ describe("visibleTimeLabel", () => {
   it("'absolute' respects the passed locale", () => {
     expect(visibleTimeLabel(ISO, "absolute", "en-GB", ISO)).toBe(
       formatTimeAbsolute(ISO, "en-GB"),
+    );
+  });
+  it("'clock' returns formatTimeClock(value, locale)", () => {
+    expect(visibleTimeLabel(ISO, "clock", "en-US", ISO)).toBe(
+      formatTimeClock(ISO, "en-US"),
     );
   });
 });

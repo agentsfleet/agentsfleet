@@ -35,6 +35,8 @@ import {
   type MintedFixture,
 } from "./fixtures/clerk-admin";
 import { bootstrapTenant } from "./fixtures/bootstrap";
+import { cleanWorkspaceFleets } from "./fixtures/teardown";
+import { getDefaultWorkspaceId } from "./fixtures/seed";
 import { FIXTURE_KEY } from "./fixtures/constants";
 import { loadWorktreeEnv } from "./fixtures/env-loader";
 
@@ -150,9 +152,18 @@ export default async function globalSetup(): Promise<void> {
     fixtures.push(await attachJwt(user));
   }
   writeCache(fixtures);
+  // One unscoped sweep of the shared fixture workspace while no worker is
+  // running yet. Per-spec cleanups are scoped to their own seed prefix (a
+  // parallel worker must never delete a sibling's fleet mid-test), so this
+  // is the only place leftovers from interrupted runs get cleared — without
+  // it they accumulate past the wall's first page and exact-count specs
+  // starve.
+  const regularWs = await getDefaultWorkspaceId(FIXTURE_KEY.regular);
+  const swept = await cleanWorkspaceFleets(FIXTURE_KEY.regular, regularWs);
   console.log(
     `[e2e:auth] env present (api=${process.env.NEXT_PUBLIC_API_URL}); ` +
       `${fixtures.length} fixture users provisioned in Clerk + bootstrapped in agentsfleetd; ` +
-      `JWTs cached to ${JWT_CACHE_PATH}`,
+      `JWTs cached to ${JWT_CACHE_PATH}; ` +
+      `${swept} leftover fleet(s) swept from the shared workspace`,
   );
 }

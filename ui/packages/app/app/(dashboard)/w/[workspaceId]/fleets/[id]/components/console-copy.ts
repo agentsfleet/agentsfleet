@@ -5,11 +5,11 @@
 
 // ── Header: the way back to the wall ──
 
-// The console's escape hatch — one link, not a breadcrumb system. The visible
-// label keeps the frozen design's arrow glyph; the aria name drops it so a
-// screen reader never announces "leftwards arrow".
-export const BACK_TO_FLEETS_LABEL = "← Fleets";
-export const BACK_TO_FLEETS_ARIA = "Back to fleets";
+// The console's escape hatch is the breadcrumb's first crumb. It carries a
+// landmark so a screen reader can reach it directly and so the crumb is
+// distinguishable from the identically-named sidebar destination.
+export const BREADCRUMB_LABEL = "Breadcrumb";
+export const FLEETS_CRUMB_LABEL = "Fleets";
 
 // ── Column headings (§3 — the three questions the console answers) ──
 

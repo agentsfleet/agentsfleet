@@ -70,13 +70,17 @@ export function Time({
   const label = labelOverride ?? visibleTimeLabel(value, format, locale, iso);
   const showTooltip = tooltip ?? format === "relative";
   const isRelative = format === "relative";
+  // `clock` labels depend on the renderer's timezone the same way `relative`
+  // labels depend on Date.now(): a UTC server and a local browser disagree,
+  // so hydration must tolerate the label re-resolving client-side.
+  const labelIsEnvironmentDependent = isRelative || format === "clock";
 
   const timeEl = (
     <time
       ref={ref}
       dateTime={iso}
       className={className}
-      suppressHydrationWarning={isRelative}
+      suppressHydrationWarning={labelIsEnvironmentDependent}
       {...rest}
     >
       {label}

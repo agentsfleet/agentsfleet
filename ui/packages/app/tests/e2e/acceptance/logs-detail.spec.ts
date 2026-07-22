@@ -44,16 +44,14 @@ test.describe("fleet detail logs", () => {
     await expect(statusIndicator).toBeVisible({ timeout: RENDER_TIMEOUT_MS });
     await expect(statusIndicator.locator("[data-live]")).toBeVisible();
 
-    // The three-column console (M131 §3): the "What it does" region carries the
-    // steer thread, and the runs ledger carries the recent-activity + cost view
-    // that the old flat "Recent Activity" section became. Assert both so a
-    // layout regression surfaces here.
-    await expect(page.getByRole("region", { name: "What it does" })).toBeVisible();
-    await expect(page.getByLabel("Runs")).toBeVisible();
+    // The chat-first console: the summary strip carries status/outcome/cost
+    // figures and the chat card carries the conversation.
+    await expect(page.getByLabel("Fleet summary")).toBeVisible();
+    await expect(page.getByLabel("Fleet chat")).toBeVisible({ timeout: 15_000 });
   });
 
   test.afterEach(async () => {
     const ws = await getDefaultWorkspaceId(FIXTURE_KEY.regular);
-    await cleanWorkspaceFleets(FIXTURE_KEY.regular, ws);
+    await cleanWorkspaceFleets(FIXTURE_KEY.regular, ws, "logs-");
   });
 });

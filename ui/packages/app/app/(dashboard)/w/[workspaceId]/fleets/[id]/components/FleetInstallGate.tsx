@@ -16,6 +16,10 @@ type Props = {
   // full surface directly.
   status: string;
   children: ReactNode;
+  // Layout classes for the revealed surface. The console's chat view claims
+  // the frame, so the gate must pass that claim down rather than flattening it
+  // into a fragment.
+  className?: string;
 };
 
 // Detail-page gate: a still-provisioning fleet shows the live install states
@@ -24,10 +28,17 @@ type Props = {
 // place. InstallStreamSteps drives the steps; on `install:ready` it surfaces
 // "Open fleet", which refreshes the server data so the page re-renders with the
 // fleet now `active` and its full surface (the steer/chat + panels) revealed.
-export function FleetInstallGate({ workspaceId, fleetId, fleetName, status, children }: Props) {
+export function FleetInstallGate({
+  workspaceId,
+  fleetId,
+  fleetName,
+  status,
+  children,
+  className,
+}: Props) {
   const router = useRouter();
 
-  if (status !== AGENTSFLEET_STATUS.INSTALLING) return <>{children}</>;
+  if (status !== AGENTSFLEET_STATUS.INSTALLING) return <div className={className}>{children}</div>;
 
   return (
     <InstallShell title={`installing · ${fleetName}`} onBack={() => router.push(workspacePath(workspaceId, "fleets"))}>

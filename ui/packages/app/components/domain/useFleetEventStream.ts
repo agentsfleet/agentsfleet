@@ -6,6 +6,7 @@ import type { EventRow } from "@/lib/api/events";
 import {
   appendOptimistic as registryAppendOptimistic,
   CONNECTION_STATUS,
+  discardOptimistic as registryDiscardOptimistic,
   getSnapshot,
   markOptimisticFailed as registryMarkOptimisticFailed,
   reconcileOptimistic as registryReconcileOptimistic,
@@ -28,7 +29,6 @@ export {
 export type UseFleetEventStreamResult = {
   events: FleetEvent[];
   connectionStatus: ConnectionStatus;
-  isRunning: boolean;
   // The latest install step advanced by an `install:*` frame on the shared
   // stream, or null for a non-installing fleet. The InstallStates surface reads
   // this to advance its rendered step with no polling and to detect the
@@ -37,6 +37,7 @@ export type UseFleetEventStreamResult = {
   appendOptimistic: (text: string, actor: string) => string;
   reconcileOptimistic: (tempId: string, realEventId: string) => boolean;
   markOptimisticFailed: (tempId: string) => void;
+  discardOptimistic: (tempId: string) => void;
   retryConnection: () => void;
   convertEvent: (event: FleetEvent) => ThreadMessageLike;
 };
@@ -86,19 +87,28 @@ export function useFleetEventStream(
     (tempId: string) => registryMarkOptimisticFailed(fleetId, tempId),
     [fleetId],
   );
+  const discardOptimistic = useCallback(
+    (tempId: string) => registryDiscardOptimistic(fleetId, tempId),
+    [fleetId],
+  );
   const retryConnection = useCallback(
     () => registryRetryConnection(fleetId),
     [fleetId],
   );
 
+  // There is deliberately no aggregate "the fleet is working" flag. The one
+  // that existed was true whenever ANY event sat unfinished, so a single
+  // stranded run marked the fleet busy forever — and the composer, which read
+  // it, held every message from then on. Work is now reported per event, on
+  // the row it belongs to, where a strand can only misreport itself.
   return {
     events: snapshot.events,
     connectionStatus: snapshot.connectionStatus,
-    isRunning: snapshot.events.some((ev) => ev.status === "received"),
     installStep: snapshot.installStep,
     appendOptimistic,
     reconcileOptimistic,
     markOptimisticFailed,
+    discardOptimistic,
     retryConnection,
     convertEvent,
   };
@@ -109,6 +119,9 @@ function convertEvent(event: FleetEvent): ThreadMessageLike {
     role: event.role,
     id: event.id,
     createdAt: event.createdAt,
+    // Content carries the TRIGGER — the operator's message or the integration
+    // headline. The fleet's reply rides the custom bag; the renderer paints it
+    // as its own bubble so a reply never appears as operator speech.
     content: [{ type: "text", text: event.text }],
     metadata: {
       custom: {
@@ -116,6 +129,10 @@ function convertEvent(event: FleetEvent): ThreadMessageLike {
         requestJson: event.custom?.requestJson,
         reason: event.custom?.reason,
         status: event.status,
+        // The fleet's reply on this same durable row, and the sentence to show
+        // in its place when the reply is empty (still working, blocked, failed).
+        reply: event.reply,
+        outcome: event.outcome,
         // The tool calls the fleet made while working this event. They ride the
         // custom bag rather than assistant-ui's tool-call content parts: the
         // backend publishes them as sibling frames keyed by event_id, not as

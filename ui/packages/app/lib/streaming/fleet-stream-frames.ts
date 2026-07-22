@@ -1,15 +1,26 @@
 import { FRAME_KIND, type EventRow, type LiveFrame } from "@/lib/api/events";
+import {
+  ACTOR,
+  EVENT_STATUS,
+  outcomeFor,
+  outcomeForStatus,
+  replyBodyFor,
+  roleFor,
+  triggerBodyFor,
+} from "@/lib/events/event-summary";
 
 // Pure frame-transform helpers shared by the streaming registry.
 // Nothing here touches Map state, EventSource, or React. Splitting
 // these out keeps the registry's lifecycle file under the LENGTH GATE
 // and the helpers unit-testable without spinning up a subscription.
 
+// The server's durable statuses plus the two the browser owns: a submission
+// awaiting its server identifier, and one the server refused.
 export const AGENTSFLEET_EVENT_STATUS = {
-  RECEIVED: "received",
-  PROCESSED: "processed",
-  AGENT_ERROR: "fleet_error",
-  GATE_BLOCKED: "gate_blocked",
+  RECEIVED: EVENT_STATUS.RECEIVED,
+  PROCESSED: EVENT_STATUS.PROCESSED,
+  AGENT_ERROR: EVENT_STATUS.FLEET_ERROR,
+  GATE_BLOCKED: EVENT_STATUS.GATE_BLOCKED,
   OPTIMISTIC: "optimistic",
   FAILED: "failed",
 } as const;
@@ -33,7 +44,23 @@ export type FleetEvent = {
   id: string;
   role: "user" | "assistant" | "system";
   actor: string;
+  /**
+   * The trigger body — what woke the fleet (an operator's steer, a webhook
+   * headline). Fixed at creation from the actor + request payload; the fleet's
+   * reply never overwrites it. Empty for a row that is itself a reply.
+   */
   text: string;
+  /**
+   * The fleet's reply on this same durable row (`response_text`), accumulated
+   * from CHUNK frames while streaming. Empty until the fleet answers; the row
+   * then renders `outcome` in the reply's place.
+   */
+  reply: string;
+  /**
+   * What the reply bubble says when `reply` is empty — the honest floor that
+   * keeps a completed turn from rendering blank. Recomputed on status change.
+   */
+  outcome: string;
   createdAt: Date;
   status: FleetEventStatus;
   /** Tools called while working this event, in first-seen order. */
@@ -154,20 +181,20 @@ function applyToolCall(
   return updated;
 }
 
-export function actorToRole(actor: string): "user" | "assistant" | "system" {
-  if (actor.startsWith("steer:")) return "user";
-  if (actor === "fleet") return "assistant";
-  return "system";
-}
-
 // ── internals ────────────────────────────────────────────────────────────
 
+// A durable row becomes a rendered turn: the trigger (from the actor + request
+// payload) and the fleet's reply (from response_text on the same row). Neither
+// clobbers the other, so an operator's own message survives reload and the
+// fleet's answer is never dropped or attributed to the operator.
 function rowToEvent(row: EventRow): FleetEvent {
   return {
     id: row.event_id,
-    role: actorToRole(row.actor),
+    role: roleFor(row.actor),
     actor: row.actor,
-    text: row.response_text ?? "",
+    text: triggerBodyFor(row),
+    reply: replyBodyFor(row),
+    outcome: outcomeFor(row),
     createdAt: new Date(row.created_at),
     status: row.status as FleetEventStatus,
     custom: { requestJson: row.request_json },
@@ -183,11 +210,22 @@ function applyEventReceived(
     ...prev,
     {
       id: frame.event_id,
-      role: actorToRole(frame.actor),
+      role: roleFor(frame.actor),
       actor: frame.actor,
-      text: "",
+      // The frame carries no payload and no event type, so the trigger comes
+      // from the actor alone. A steer renders empty here until reconciliation
+      // grafts the operator's text; anything else gets the neutral "Event
+      // received" floor — fabricating `event_type: "chat"` would caption a
+      // webhook or cron trigger as "chat received" until reload.
+      text: triggerBodyFor({
+        actor: frame.actor,
+        request_json: "{}",
+        event_type: "",
+      }),
+      reply: "",
+      outcome: outcomeForStatus(AGENTSFLEET_EVENT_STATUS.RECEIVED),
       createdAt: new Date(),
-      status: "received",
+      status: AGENTSFLEET_EVENT_STATUS.RECEIVED,
     },
   ];
 }
@@ -198,26 +236,28 @@ function applyChunk(
 ): FleetEvent[] {
   const existing = prev.find((e) => e.id === frame.event_id);
   if (!existing) {
+    // A chunk with no prior trigger row: the fleet is replying to something the
+    // client never saw the receipt for. The chunk text is the reply, and the
+    // trigger stays empty rather than mislabelling the reply as the trigger.
     return [
       ...prev,
       {
         id: frame.event_id,
         role: "assistant",
-        actor: "fleet",
-        text: frame.text,
+        actor: ACTOR.FLEET,
+        text: "",
+        reply: frame.text,
+        outcome: outcomeForStatus(AGENTSFLEET_EVENT_STATUS.RECEIVED),
         createdAt: new Date(),
-        status: "received",
+        status: AGENTSFLEET_EVENT_STATUS.RECEIVED,
       },
     ];
   }
+  // Chunks are the fleet's reply — they accumulate into `reply`, never into the
+  // trigger `text`, so the operator's own message is not overwritten by the
+  // answer streaming back.
   return prev.map((e) =>
-    e === existing
-      ? {
-          ...e,
-          role: e.role === "user" ? "user" : "assistant",
-          text: e.text + frame.text,
-        }
-      : e,
+    e === existing ? { ...e, reply: e.reply + frame.text } : e,
   );
 }
 
@@ -227,9 +267,10 @@ function applyEventComplete(
 ): FleetEvent[] {
   const existing = prev.find((e) => e.id === frame.event_id);
   if (!existing) return prev;
+  const status = (frame.status ?? AGENTSFLEET_EVENT_STATUS.PROCESSED) as FleetEventStatus;
+  // The outcome follows the status: an event that completes with no text must
+  // stop saying it is still working.
   return prev.map((e) =>
-    e === existing
-      ? { ...e, status: (frame.status ?? AGENTSFLEET_EVENT_STATUS.PROCESSED) as FleetEventStatus }
-      : e,
+    e === existing ? { ...e, status, outcome: outcomeForStatus(status) } : e,
   );
 }

@@ -1,21 +1,37 @@
 import { streamFleetEventsUrl, type EventRow, type LiveFrame } from "@/lib/api/events";
+import { outcomeForStatus } from "@/lib/events/event-summary";
 import { runBackfill, warnBackfillFailure } from "./fleet-stream-backfill";
 import {
+  FAST_RECONNECT_ATTEMPTS,
+  OFFLINE_RETRY_MS,
+  attachRecoveryListeners,
+  cancelPendingReconnect,
+  fastBackoffMs,
+} from "./fleet-stream-reconnect";
+import {
   applyLiveFrame,
-  maxServerCreatedAt,
   mergeBackfill,
   type FleetEvent,
 } from "./fleet-stream-frames";
-import {
-  advanceInstallStep,
-  installStepFromKind,
-  type InstallStepId,
-} from "./install-steps";
+import { advanceInstallStep, installStepFromKind } from "./install-steps";
 
 export {
   type FleetEvent,
   type FleetEventStatus,
 } from "./fleet-stream-frames";
+import {
+  CONNECTION_STATUS,
+  EMPTY_SNAPSHOT,
+  createEntry,
+  type Entry,
+  type FleetStreamSnapshot,
+  type Listener,
+} from "./fleet-stream-entry";
+export {
+  CONNECTION_STATUS,
+  type ConnectionStatus,
+  type FleetStreamSnapshot,
+} from "./fleet-stream-entry";
 
 // Module-level subscription registry. One Entry per fleetId; multiple
 // React hook instances share it via refcounted subscribe/release. The
@@ -30,69 +46,20 @@ export {
 // frames published during the outage via the same-origin events proxy,
 // merged through the id-deduping mergeBackfill.
 
-export const CONNECTION_STATUS = {
-  CONNECTING: "connecting",
-  LIVE: "live",
-  RECONNECTING: "reconnecting",
-  OFFLINE: "offline",
-} as const;
-export type ConnectionStatus =
-  (typeof CONNECTION_STATUS)[keyof typeof CONNECTION_STATUS];
-
 const STATUS_OPTIMISTIC = "optimistic";
 const STATUS_FAILED = "failed";
 const STATUS_RECEIVED = "received";
 
-export type FleetStreamSnapshot = {
-  events: FleetEvent[];
-  connectionStatus: ConnectionStatus;
-  // The latest install step advanced by an `install:*` frame, or null when no
-  // install frame has arrived (a non-installing fleet, or pre-first-frame). The
-  // InstallStates surface reads this to advance its rendered step and to detect
-  // the installing→active flip; the chat path ignores it.
-  installStep: InstallStepId | null;
-};
-
-type Listener = () => void;
-
-type Entry = {
-  workspaceId: string;
-  snapshot: FleetStreamSnapshot;
-  listeners: Set<Listener>;
-  refCount: number;
-  eventSource: EventSource | null;
-  reconnectTimer: ReturnType<typeof setTimeout> | null;
-  reconnectAttempts: number;
-  idleTimer: ReturnType<typeof setTimeout> | null;
-  tempCounter: number;
-  // Whether this entry's EventSource has ever reached onopen. Distinguishes
-  // the initial (SSR-seeded) connect from a reconnect — only the latter
-  // backfills. Lives on the mutable Entry, never a passed primitive.
-  hasConnectedOnce: boolean;
-  // An outage before the first successful open still creates a history gap.
-  // The next open backfills even though `hasConnectedOnce` is still false.
-  hadConnectionError: boolean;
-  // Newest server-confirmed created_at (epoch ms) — advanced only by the SSR
-  // seed and successful backfill pages, never by client-clock-stamped live or
-  // optimistic rows, and never by a failed backfill (so a failure cannot seal
-  // the gap it left).
-  serverSinceMs: number | null;
-  backfillInFlight: boolean;
-};
-
 const REGISTRY = new Map<string, Entry>();
 
 const IDLE_RELEASE_MS = 30_000;
-const RECONNECT_BACKOFF_BASE_MS = 1_000;
-const RECONNECT_BACKOFF_CAP_MS = 15_000;
-const RECONNECT_MAX_BACKOFF_ATTEMPTS = 5;
-const MAX_AUTOMATIC_RECONNECTS = 5;
 
-const EMPTY_SNAPSHOT: FleetStreamSnapshot = Object.freeze({
-  events: [],
-  connectionStatus: CONNECTION_STATUS.CONNECTING,
-  installStep: null,
-}) as FleetStreamSnapshot;
+// Module-level, not per-entry: a FailedDelivery (and the tempId it stores)
+// deliberately outlives the stream entry, which is torn down after the idle
+// window and recreated with fresh state. A per-entry counter restarting at 1
+// would let a stale stored tempId collide with a new row's id — and retry's
+// discard would then remove the operator's newest pending message.
+let tempCounter = 0;
 
 function notify(entry: Entry): void {
   for (const l of entry.listeners) l();
@@ -119,11 +86,19 @@ function startEventSource(entry: Entry, fleetId: string): void {
     const needsBackfill = entry.hasConnectedOnce || entry.hadConnectionError;
     entry.hasConnectedOnce = true;
     entry.hadConnectionError = false;
-    entry.reconnectAttempts = 0;
+    // Deliberately NOT resetting reconnectAttempts here. A TCP/SSE open is not
+    // proof of a working stream — an unhealthy upstream can accept and close
+    // immediately. Attempts reset only once a real frame arrives (onFrame), so
+    // an accept-then-close upstream escalates to the slow cadence instead of
+    // hammering at the base delay forever.
     patchSnapshot(entry, { connectionStatus: CONNECTION_STATUS.LIVE });
     if (needsBackfill) void backfillMissedFrames(entry, fleetId);
   };
-  es.onmessage = (e) => onFrame(entry, e);
+  es.onmessage = (e) => {
+    // A delivered frame is proof the stream works: return to fast backoff.
+    entry.reconnectAttempts = 0;
+    onFrame(entry, e);
+  };
   es.onerror = () => onEventSourceError(entry, fleetId);
 }
 
@@ -176,33 +151,35 @@ function onFrame(entry: Entry, e: MessageEvent): void {
   setEvents(entry, (prev) => applyLiveFrame(prev, frame));
 }
 
+// A lost connection is a transient state, never a terminal one. The fast
+// attempts run first; after them the connection is reported as not live but
+// the client keeps retrying on an unhurried cadence, so an outage that ends
+// while the operator is reading recovers without them doing anything.
 function onEventSourceError(entry: Entry, fleetId: string): void {
   entry.eventSource?.close();
   entry.eventSource = null;
   entry.hadConnectionError = true;
   if (entry.reconnectTimer) return;
   entry.reconnectAttempts += 1;
-  if (entry.reconnectAttempts > MAX_AUTOMATIC_RECONNECTS) {
-    patchSnapshot(entry, { connectionStatus: CONNECTION_STATUS.OFFLINE });
-    return;
-  }
-  patchSnapshot(entry, { connectionStatus: CONNECTION_STATUS.RECONNECTING });
-  const delayMs = Math.min(
-    RECONNECT_BACKOFF_BASE_MS *
-      2 ** Math.min(entry.reconnectAttempts, RECONNECT_MAX_BACKOFF_ATTEMPTS),
-    RECONNECT_BACKOFF_CAP_MS,
+  const exhausted = entry.reconnectAttempts > FAST_RECONNECT_ATTEMPTS;
+  patchSnapshot(entry, {
+    connectionStatus: exhausted
+      ? CONNECTION_STATUS.OFFLINE
+      : CONNECTION_STATUS.RECONNECTING,
+  });
+  entry.reconnectTimer = setTimeout(
+    () => {
+      entry.reconnectTimer = null;
+      startEventSource(entry, fleetId);
+    },
+    exhausted ? OFFLINE_RETRY_MS : fastBackoffMs(entry.reconnectAttempts),
   );
-  entry.reconnectTimer = setTimeout(() => {
-    entry.reconnectTimer = null;
-    startEventSource(entry, fleetId);
-  }, delayMs);
 }
 
 export function retryConnection(fleetId: string): void {
   const entry = REGISTRY.get(fleetId);
   if (!entry) return;
-  if (entry.reconnectTimer) clearTimeout(entry.reconnectTimer);
-  entry.reconnectTimer = null;
+  cancelPendingReconnect(entry);
   entry.eventSource?.close();
   entry.eventSource = null;
   entry.reconnectAttempts = 0;
@@ -211,32 +188,12 @@ export function retryConnection(fleetId: string): void {
 }
 
 function teardown(entry: Entry, fleetId: string): void {
-  if (entry.reconnectTimer) clearTimeout(entry.reconnectTimer);
+  cancelPendingReconnect(entry);
   if (entry.idleTimer) clearTimeout(entry.idleTimer);
+  entry.detachRecovery?.();
+  entry.detachRecovery = null;
   entry.eventSource?.close();
   REGISTRY.delete(fleetId);
-}
-
-function createEntry(workspaceId: string, initial: EventRow[]): Entry {
-  return {
-    workspaceId,
-    snapshot: {
-      events: mergeBackfill([], initial),
-      connectionStatus: CONNECTION_STATUS.CONNECTING,
-      installStep: null,
-    },
-    listeners: new Set(),
-    refCount: 0,
-    eventSource: null,
-    reconnectTimer: null,
-    reconnectAttempts: 0,
-    idleTimer: null,
-    tempCounter: 0,
-    hasConnectedOnce: false,
-    hadConnectionError: false,
-    serverSinceMs: maxServerCreatedAt(null, initial),
-    backfillInFlight: false,
-  };
 }
 
 export function subscribe(
@@ -249,6 +206,16 @@ export function subscribe(
   if (!entry) {
     entry = createEntry(workspaceId, initial);
     REGISTRY.set(fleetId, entry);
+    const tracked = entry;
+    entry.detachRecovery = attachRecoveryListeners({
+      hasConnection: () => tracked.eventSource !== null,
+      recover: () => {
+        cancelPendingReconnect(tracked);
+        tracked.reconnectAttempts = 0;
+        patchSnapshot(tracked, { connectionStatus: CONNECTION_STATUS.CONNECTING });
+        startEventSource(tracked, fleetId);
+      },
+    });
     startEventSource(entry, fleetId);
   }
   if (entry.idleTimer) {
@@ -280,8 +247,8 @@ export function appendOptimistic(
 ): string {
   const entry = REGISTRY.get(fleetId);
   if (!entry) return "";
-  entry.tempCounter += 1;
-  const tempId = `optim-${entry.tempCounter}`;
+  tempCounter += 1;
+  const tempId = `optim-${tempCounter}`;
   setEvents(entry, (prev) => [
     ...prev,
     {
@@ -289,6 +256,10 @@ export function appendOptimistic(
       role: "user",
       actor,
       text,
+      // The operator's own message is the trigger; the fleet has not replied
+      // yet, so the reply is empty and the outcome floor is set for shape.
+      reply: "",
+      outcome: outcomeForStatus(STATUS_RECEIVED),
       createdAt: new Date(),
       status: STATUS_OPTIMISTIC,
     },
@@ -308,7 +279,19 @@ export function reconcileOptimistic(
     const serverEvent = prev.find((event) => event.id === realEventId);
     if (serverEvent) {
       alreadyComplete = serverEvent.status !== STATUS_RECEIVED;
-      return prev.filter((event) => event.id !== tempId);
+      // A live EVENT_RECEIVED frame carries no message body, so a server row
+      // that landed before this reconcile holds an empty trigger. The
+      // optimistic row is the only holder of the operator's text — graft it
+      // onto the server row before dropping the temp row, or the message
+      // blanks out of the thread until a reload.
+      const temp = prev.find((event) => event.id === tempId);
+      const grafted =
+        temp !== undefined && serverEvent.text.length === 0
+          ? prev.map((event) =>
+              event === serverEvent ? { ...event, text: temp.text } : event,
+            )
+          : prev;
+      return grafted.filter((event) => event.id !== tempId);
     }
     return prev.map((event) =>
       event.id === tempId
@@ -317,6 +300,16 @@ export function reconcileOptimistic(
     );
   });
   return alreadyComplete;
+}
+
+// A failed optimistic row being retried leaves the thread here: the retry
+// re-submits the same text as a fresh optimistic row, so keeping the stale
+// failed copy would stack a duplicate of the same operator message on every
+// attempt.
+export function discardOptimistic(fleetId: string, tempId: string): void {
+  const entry = REGISTRY.get(fleetId);
+  if (!entry) return;
+  setEvents(entry, (prev) => prev.filter((event) => event.id !== tempId));
 }
 
 // A steer that failed server-side (the Server Action returned ok:false
@@ -335,4 +328,5 @@ export function markOptimisticFailed(fleetId: string, tempId: string): void {
 // should call this.
 export function __resetRegistryForTests(): void {
   for (const [id, e] of REGISTRY.entries()) teardown(e, id);
+  tempCounter = 0;
 }

@@ -9,6 +9,7 @@ import {
   PageHeader,
   PageTitle,
   Section,
+  WakePulse,
 } from "@agentsfleet/design-system";
 import { workspacePath } from "@/lib/workspace-routes";
 import { ApiError } from "@/lib/api/errors";
@@ -35,7 +36,12 @@ import {
   resolveFleetView,
   type FleetView,
 } from "./components/FleetSubnavigation";
-import { DANGER_ZONE_LABEL, SOURCE_FIELD } from "./components/console-copy";
+import {
+  BREADCRUMB_LABEL,
+  DANGER_ZONE_LABEL,
+  FLEETS_CRUMB_LABEL,
+  SOURCE_FIELD,
+} from "./components/console-copy";
 import type { FleetDetail } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -69,9 +75,13 @@ export default async function FleetDetailPage({
   const { fleet, etag } = fleetResult;
   const view = resolveFleetView(query.view);
   const content = await loadFleetView(view, { workspaceId, fleet, etag, token });
+  // The chat is a conversation surface, not a document: it claims the frame so
+  // its composer stays on screen and only the message list scrolls. Every
+  // other view is ordinary page content and scrolls with the page.
+  const claimsViewport = view === FLEET_VIEW.chat;
 
   return (
-    <div>
+    <div className={cn("flex flex-col", claimsViewport && "min-h-0 flex-1")}>
       <FleetViewedTracker fleetId={fleet.id} status={fleet.status} />
       <FleetBreadcrumb workspaceId={workspaceId} fleetName={fleet.name} />
       <PageHeader>
@@ -87,14 +97,22 @@ export default async function FleetDetailPage({
         fleetId={fleet.id}
         fleetName={fleet.name}
         status={fleet.status}
+        className={cn("flex flex-col", claimsViewport && "min-h-0 flex-1")}
       >
-        <div className="flex min-w-0 flex-col gap-xl lg:flex-row">
+        <div
+          className={cn(
+            "flex min-w-0 flex-col gap-xl lg:flex-row",
+            claimsViewport && "min-h-0 flex-1",
+          )}
+        >
           <FleetSubnavigation
             workspaceId={workspaceId}
             fleetId={fleet.id}
             activeView={view}
           />
-          <div className="min-w-0 flex-1">{content}</div>
+          <div className={cn("flex min-w-0 flex-1 flex-col", claimsViewport && "min-h-0")}>
+            {content}
+          </div>
         </div>
       </FleetInstallGate>
     </div>
@@ -136,19 +154,22 @@ async function loadChatView({ workspaceId, fleet, token }: PageContext) {
   const approvals = approvalsResult ?? { items: [], next_cursor: null };
   const approvalsHref = `${workspacePath(workspaceId, "approvals")}?fleetId=${encodeURIComponent(fleet.id)}`;
   return (
-    <div className="flex flex-col gap-lg">
-      <RunMetricsStrip
-        status={fleet.status}
-        latest={events.items[0] ?? null}
-        pendingApprovals={approvals.items.length}
-        pendingApprovalsHasMore={approvals.next_cursor !== null}
-        approvalsHref={approvalsHref}
-        summaryAvailable={eventsResult !== null}
-        approvalsAvailable={approvalsResult !== null}
-      />
+    <div className="flex min-h-0 flex-1 flex-col gap-lg">
+      <div className="shrink-0">
+        <RunMetricsStrip
+          status={fleet.status}
+          latest={events.items[0] ?? null}
+          pendingApprovals={approvals.items.length}
+          pendingApprovalsHasMore={approvals.next_cursor !== null}
+          approvalsHref={approvalsHref}
+          summaryAvailable={eventsResult !== null}
+          approvalsAvailable={approvalsResult !== null}
+        />
+      </div>
       <FleetThreadDynamic
         workspaceId={workspaceId}
         fleetId={fleet.id}
+        fleetName={fleet.name}
         initial={events.items}
       />
     </div>
@@ -243,13 +264,16 @@ function SettingsView({ context }: { context: PageContext }) {
 
 function FleetBreadcrumb({ workspaceId, fleetName }: { workspaceId: string; fleetName: string }) {
   return (
-    <p className="mb-sm font-mono text-sm text-muted-foreground">
+    <nav
+      aria-label={BREADCRUMB_LABEL}
+      className="mb-sm shrink-0 font-mono text-sm text-muted-foreground"
+    >
       <Link href={workspacePath(workspaceId, "fleets")} className="hover:text-foreground">
-        Fleets
+        {FLEETS_CRUMB_LABEL}
       </Link>
       <span aria-hidden="true"> / </span>
       <span className="text-foreground">{fleetName}</span>
-    </p>
+    </nav>
   );
 }
 
@@ -260,7 +284,7 @@ function FleetStatus({ status }: { status: string }) {
       data-state={status}
     >
       {status === AGENTSFLEET_STATUS.ACTIVE ? (
-        <span className="size-2 rounded-full bg-pulse" aria-hidden="true" />
+        <WakePulse live className="size-2 rounded-full bg-pulse" aria-hidden="true" />
       ) : null}
       {status}
     </span>
