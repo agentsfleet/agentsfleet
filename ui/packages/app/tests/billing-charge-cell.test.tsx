@@ -5,6 +5,9 @@ import { cleanup, render } from "@testing-library/react";
 vi.mock("lucide-react", () => ({
   ActivityIcon: () => React.createElement("svg", { "data-icon": "ActivityIcon" }),
   Loader2Icon: () => React.createElement("svg", { "data-icon": "Loader2Icon" }),
+  ArrowUp: () => React.createElement("svg", { "data-icon": "ArrowUp" }),
+  ArrowDown: () => React.createElement("svg", { "data-icon": "ArrowDown" }),
+  ArrowUpDown: () => React.createElement("svg", { "data-icon": "ArrowUpDown" }),
 }));
 
 vi.mock("@/app/(dashboard)/settings/billing/actions", () => ({

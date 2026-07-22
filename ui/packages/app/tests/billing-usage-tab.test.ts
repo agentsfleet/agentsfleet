@@ -5,6 +5,9 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 vi.mock("lucide-react", () => ({
   ActivityIcon: () => React.createElement("svg", { "data-icon": "ActivityIcon" }),
   Loader2Icon: () => React.createElement("svg", { "data-icon": "Loader2Icon" }),
+  ArrowUp: () => React.createElement("svg", { "data-icon": "ArrowUp" }),
+  ArrowDown: () => React.createElement("svg", { "data-icon": "ArrowDown" }),
+  ArrowUpDown: () => React.createElement("svg", { "data-icon": "ArrowUpDown" }),
 }));
 
 const { listChargesActionMock } = vi.hoisted(() => ({
@@ -17,7 +20,8 @@ vi.mock("@/app/(dashboard)/settings/billing/actions", () => ({
 
 import BillingUsageTab from "@/app/(dashboard)/settings/billing/components/BillingUsageTab";
 import type { ChargeRow } from "@/app/(dashboard)/settings/billing/lib/charges";
-import { CHARGE_TYPE, PROVIDER_MODE } from "@/lib/types";
+import type { ActionResult } from "@/lib/actions/with-token";
+import { CHARGE_TYPE, PROVIDER_MODE, type TenantBillingChargesResponse } from "@/lib/types";
 
 // $0.001 — a representative sub-cent stage charge; the "−$0.001" row assertions
 // below depend on this exact value.
@@ -51,7 +55,28 @@ describe("BillingUsageTab (test_billing_usage_ledger_and_empty)", () => {
   it("renders the empty-state when there are no charges and no cursor", () => {
     render(React.createElement(BillingUsageTab, { initialCharges: [], initialCursor: null }));
     expect(screen.getByText("No charges yet")).toBeTruthy();
-    expect(screen.queryByTestId("usage-load-more")).toBeNull();
+    expect(screen.queryByTestId("pagination-cursor")).toBeNull();
+  });
+
+  it("recovers an empty cursor page through Load more", async () => {
+    let resolveCharges: ((value: ActionResult<TenantBillingChargesResponse>) => void) | undefined;
+    listChargesActionMock.mockImplementation(() => new Promise((resolve) => {
+      resolveCharges = resolve;
+    }));
+    render(React.createElement(BillingUsageTab, { initialCharges: [], initialCursor: "tok_page2" }));
+
+    expect(screen.getByText("No charges loaded")).toBeTruthy();
+    expect(screen.getByText("Load more to continue.")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Load more items" }));
+    expect(screen.getByText("No charges loaded")).toBeTruthy();
+    expect(screen.getByRole("navigation", { name: "Feed pagination" }).getAttribute("aria-busy")).toBe("true");
+    expect(screen.getByText("Loading…")).toBeTruthy();
+
+    resolveCharges?.({ ok: true, data: { items: [charge()], next_cursor: null } });
+
+    await waitFor(() => expect(screen.getByText("kimi-k2.6 · run · 820→1040 tok")).toBeTruthy());
+    expect(listChargesActionMock).toHaveBeenCalledWith({ limit: 50, cursor: "tok_page2" });
+    await waitFor(() => expect(screen.queryByTestId("pagination-cursor")).toBeNull());
   });
 
   it("renders a ledger row with date · amount · type · description", () => {
@@ -93,10 +118,22 @@ describe("BillingUsageTab (test_billing_usage_ledger_and_empty)", () => {
     expect(region.getAttribute("tabindex")).toBe("0");
   });
 
+  it("sorts every usage data column from its header arrow", () => {
+    render(React.createElement(BillingUsageTab, { initialCharges: [
+      charge(),
+      charge({ id: "tel_2", recorded_at: 1_800_000_000_000, credit_deducted_nanos: 5_000_000 }),
+    ], initialCursor: null }));
+
+    for (const name of ["Date", "Amount", "Type", "Description"]) {
+      fireEvent.click(screen.getByRole("button", { name }));
+      expect(screen.getByRole("columnheader", { name }).getAttribute("aria-sort")).not.toBe("none");
+      if (name === "Amount") expect(screen.getAllByRole("row")[1]?.textContent).toContain("−$0.005");
+    }
+  });
+
   it("hides Load more when there is no cursor", () => {
     render(React.createElement(BillingUsageTab, { initialCharges: [charge()], initialCursor: null }));
-    expect(screen.queryByTestId("usage-load-more")).toBeNull();
-    expect(screen.getByText("No more events.")).toBeTruthy();
+    expect(screen.queryByTestId("pagination-cursor")).toBeNull();
   });
 
   it("fetches and appends the next page on Load more click", async () => {
@@ -108,11 +145,10 @@ describe("BillingUsageTab (test_billing_usage_ledger_and_empty)", () => {
       },
     });
     render(React.createElement(BillingUsageTab, { initialCharges: [charge()], initialCursor: "tok_page2" }));
-    fireEvent.click(screen.getByTestId("usage-load-more"));
+    fireEvent.click(screen.getByRole("button", { name: "Load more items" }));
     await waitFor(() => expect(screen.getAllByText(/kimi-k2\.6/).length).toBe(2));
     expect(listChargesActionMock).toHaveBeenCalledWith({ limit: 50, cursor: "tok_page2" });
-    await waitFor(() => expect(screen.queryByTestId("usage-load-more")).toBeNull());
-    expect(screen.getByText("No more events.")).toBeTruthy();
+    await waitFor(() => expect(screen.queryByTestId("pagination-cursor")).toBeNull());
   });
 
   it("de-dupes by charge id when a page boundary repeats a row", async () => {
@@ -121,24 +157,24 @@ describe("BillingUsageTab (test_billing_usage_ledger_and_empty)", () => {
       data: { items: [charge({ id: "tel_1" })], next_cursor: null }, // same id as initial
     });
     render(React.createElement(BillingUsageTab, { initialCharges: [charge({ id: "tel_1" })], initialCursor: "tok" }));
-    fireEvent.click(screen.getByTestId("usage-load-more"));
-    await waitFor(() => expect(screen.queryByTestId("usage-load-more")).toBeNull());
+    fireEvent.click(screen.getByRole("button", { name: "Load more items" }));
+    await waitFor(() => expect(screen.queryByTestId("pagination-cursor")).toBeNull());
     expect(screen.getAllByText("−$0.001").length).toBe(1);
   });
 
   it("surfaces a 'Not authenticated' alert when the action returns unauthenticated", async () => {
     listChargesActionMock.mockResolvedValue({ ok: false, error: "Not authenticated", status: 401 });
     render(React.createElement(BillingUsageTab, { initialCharges: [charge()], initialCursor: "tok" }));
-    fireEvent.click(screen.getByTestId("usage-load-more"));
+    fireEvent.click(screen.getByRole("button", { name: "Load more items" }));
     await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("Not authenticated"));
   });
 
   it("surfaces a fetch error inline without losing the previous page", async () => {
     listChargesActionMock.mockResolvedValue({ ok: false, error: "503 service unavailable" });
     render(React.createElement(BillingUsageTab, { initialCharges: [charge()], initialCursor: "tok" }));
-    fireEvent.click(screen.getByTestId("usage-load-more"));
+    fireEvent.click(screen.getByRole("button", { name: "Load more items" }));
     await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("503 service unavailable"));
     expect(screen.getByText("kimi-k2.6 · run · 820→1040 tok")).toBeTruthy();
-    expect(screen.getByTestId("usage-load-more")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Load more items" })).toBeTruthy();
   });
 });

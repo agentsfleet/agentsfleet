@@ -175,6 +175,7 @@ export default function PlatformCatalogTable({
     {
       key: "fleet",
       header: COLUMN_FLEET,
+      sortValue: (row) => row.name,
       cell: (row) => (
         <div className="flex flex-col">
           <span className="font-medium">{row.name}</span>
@@ -191,11 +192,13 @@ export default function PlatformCatalogTable({
       key: "repository",
       header: COLUMN_REPOSITORY,
       hideOnMobile: true,
+      sortValue: (row) => row.source_repo,
       cell: (row) => <RepositoryCell repo={row.source_repo} />,
     },
     {
       key: "status",
       header: COLUMN_STATUS,
+      sortValue: (row) => statusView(row).label,
       cell: (row) => {
         const view = statusView(row);
         return (
@@ -209,6 +212,7 @@ export default function PlatformCatalogTable({
       key: "bundle",
       header: COLUMN_BUNDLE,
       hideOnMobile: true,
+      sortValue: (row) => row.content_hash ?? "",
       // The hash is how an operator confirms a refetch actually changed something —
       // comparing two of them IS the job this column exists for. The cell shows a
       // preview (the full hash would dominate the row) and copies the WHOLE hash,

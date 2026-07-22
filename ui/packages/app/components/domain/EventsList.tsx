@@ -9,8 +9,7 @@ import {
   DataTable,
   type DataTableColumn,
   EmptyState,
-  Pagination,
-  Separator,
+  PAGINATION_KIND,
   Time,
 } from "@agentsfleet/design-system";
 import { ActivityIcon, ChevronRightIcon } from "lucide-react";
@@ -37,6 +36,7 @@ const EVENTS_EMPTY_TITLE = "No events yet";
 const EVENTS_EMPTY_DESCRIPTION = "Fleet activity appears here.";
 // An unknown figure renders a dash — never a fabricated zero.
 const VALUE_UNKNOWN = "—";
+const NULL_METRIC_SORT_VALUE = -1;
 // The summary tooltip carries more context than the 160-char preview, but a
 // multi-megabyte agent response must not ride into the DOM per row.
 const SUMMARY_TITLE_MAX_CHARS = 2_000;
@@ -60,21 +60,24 @@ function createEventColumns(onInspect: (row: EventRow) => void): DataTableColumn
       key: "time",
       header: "Time",
       hideOnMobile: true,
+      sortValue: (row) => row.created_at,
       cell: (row) => <EventTimeCell row={row} />,
     },
     {
       key: "status",
       header: "Status",
       hideOnMobile: true,
+      sortValue: (row) => row.status,
       cell: (row) => <Badge variant={STATUS_VARIANT[row.status] ?? "default"}>{row.status}</Badge>,
     },
     {
       key: "fleet",
       header: "Fleet",
       hideOnMobile: true,
+      sortValue: (row) => row.fleet_id,
       cell: (row) => <span className="font-mono text-xs">{shortId(row.fleet_id)}</span>,
     },
-    { key: "actor", header: "Actor", cell: (row) => senderLabelFor(row.actor) },
+    { key: "actor", header: "Actor", sortValue: (row) => senderLabelFor(row.actor), cell: (row) => senderLabelFor(row.actor) },
     {
       key: "details",
       header: "Details",
@@ -92,13 +95,14 @@ function createEventColumns(onInspect: (row: EventRow) => void): DataTableColumn
         </Button>
       ),
     },
-    { key: "type", header: "Type", hideOnMobile: true, cell: (row) => row.event_type },
-    { key: "result", header: "Result", cell: (row) => <EventSummaryCell row={row} /> },
+    { key: "type", header: "Type", hideOnMobile: true, sortValue: (row) => row.event_type, cell: (row) => row.event_type },
+    { key: "result", header: "Result", sortValue: eventSummaryText, cell: (row) => <EventSummaryCell row={row} /> },
     {
       key: "cost",
       header: "Cost",
       numeric: true,
       hideOnMobile: true,
+      sortValue: (row) => row.cost_nanos ?? NULL_METRIC_SORT_VALUE,
       cell: (row) => (row.cost_nanos === null ? VALUE_UNKNOWN : formatDollars(row.cost_nanos)),
     },
     {
@@ -106,6 +110,7 @@ function createEventColumns(onInspect: (row: EventRow) => void): DataTableColumn
       header: "Tokens",
       numeric: true,
       hideOnMobile: true,
+      sortValue: (row) => row.tokens ?? NULL_METRIC_SORT_VALUE,
       cell: (row) => (row.tokens === null ? VALUE_UNKNOWN : TOKEN_COUNT_FORMAT.format(row.tokens)),
     },
     {
@@ -113,6 +118,7 @@ function createEventColumns(onInspect: (row: EventRow) => void): DataTableColumn
       header: "Duration",
       numeric: true,
       hideOnMobile: true,
+      sortValue: (row) => row.wall_ms ?? NULL_METRIC_SORT_VALUE,
       cell: (row) => (row.wall_ms === null ? VALUE_UNKNOWN : formatMs(row.wall_ms)),
     },
   ];
@@ -158,6 +164,7 @@ export function EventsList({ workspaceId, initial, fleetId }: EventsListProps) {
         columns={columns}
         rows={items}
         rowKey={(row) => `${row.fleet_id}:${row.event_id}`}
+        pagination={{ kind: PAGINATION_KIND.cursor, nextCursor: cursor, onNext: loadMore, isLoading: pending }}
         empty={
           <EmptyState
             icon={<ActivityIcon size={28} />}
@@ -171,15 +178,6 @@ export function EventsList({ workspaceId, initial, fleetId }: EventsListProps) {
         onOpenChange={() => setSelected(null)}
       />
       {error ? <Alert variant="destructive">{error}</Alert> : null}
-      {items.length > 0 || cursor ? (
-        // Also rendered when a page came back empty but a cursor remains
-        // (compaction between pages) — data behind the cursor must never be
-        // stranded behind an empty state.
-        <>
-          <Separator />
-          <Pagination kind="cursor" nextCursor={cursor} onNext={loadMore} isLoading={pending} />
-        </>
-      ) : null}
     </div>
   );
 }
@@ -214,6 +212,13 @@ function EventSummaryCell({ row }: { row: EventRow }) {
     return <span className="text-warning">{failureSentenceFor(row.failure_label)}</span>;
   }
   return <span className="text-muted-foreground">No result recorded</span>;
+}
+
+function eventSummaryText(row: EventRow): string {
+  const preview = previewText(row.response_text);
+  if (preview) return preview;
+  if (row.failure_label) return failureSentenceFor(row.failure_label);
+  return "No result recorded";
 }
 
 function previewText(text: string | null): string {
