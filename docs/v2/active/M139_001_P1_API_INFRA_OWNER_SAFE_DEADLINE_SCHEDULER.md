@@ -38,7 +38,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 - **PR title (eventual):** refactor(deadlines): add owner-safe process scheduler
 - **Intent (one sentence):** Hung network work is cancelled by its owning connection only, with one bounded scheduler worker per process instead of one watchdog worker per caller.
-- **Handshake** — the implementing agent fills this at PLAN, before EXECUTE: restate the Intent in its own words and list `ASSUMPTIONS I'M MAKING: …`. A mismatch between the restatement and the Intent above → STOP and reconcile before any edit.
+- **Handshake** — replace descriptor-based per-instance watchdogs with one injected monotonic scheduler whose guards quiesce callbacks and whose targets can interrupt only the connection generation that armed them. `ASSUMPTIONS I'M MAKING: 1. Section 1 lands the scheduler beside the existing watchdog; callers migrate before the watchdog is removed in Section 4. 2. Zig's awake clock is the production monotonic source; wall time never participates in deadline ordering. 3. Guards identify heap-stable registrations by scheduler-issued identity, so copied guards fail harmlessly after the first finish. 4. An indexed heap is required so guard completion removes registrations in logarithmic work instead of retaining cancelled tombstones.`
 
 ## Implementing agent — read these first
 
@@ -53,6 +53,9 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | File | Action | Why |
 |------|--------|-----|
 | `src/lib/call_deadline/call_deadline.zig` | EDIT | Replace per-instance wall-clock polling watchdogs with the process-owned monotonic scheduler, generation-bound targets, guards, and lifecycle tests. |
+| `src/lib/call_deadline/scheduler.zig` | CREATE | Own the single scheduler worker, guard lifecycle, registration identity, monotonic backend, and quiescence barriers. |
+| `src/lib/call_deadline/deadline_queue.zig` | CREATE | Keep indexed earliest-deadline insertion and arbitrary guard removal logarithmic while updating stable registration positions. |
+| `src/lib/call_deadline/scheduler_test.zig` | CREATE | Prove preemption, lifecycle validation, quiescence, concurrency cardinality, and bounded queue work through injected timing seams. |
 | `src/lib/common/sync.zig` | EDIT if needed | Supply the wakeable timed wait required to preempt a later scheduled wake when an earlier deadline is armed. |
 | `src/lib/http_pin/http_pin.zig` | EDIT | Return an owner-validating HTTP interruption target instead of exposing a bare pooled socket descriptor. |
 | `src/lib/http_pin/http_pin_test.zig` | EDIT | Prove stale pins and descriptor reuse cannot interrupt a successor HTTP connection. |
@@ -269,3 +272,4 @@ N/A — no files deleted.
 - **Skill-chain outcomes** — pending; record `/write-unit-test`, `/review`, and `kishore-babysit-prs` outcomes during execution.
 - **Deferrals** — none at creation.
 - **Dependency decision** — > Indy (2026-07-22 23:29): "screw the depenedency - this spec doesnt need that" — context: M133 deployment and browser acceptance do not gate the owner-safe deadline scheduler.
+- **PLAN surface call** — no OpenAPI, command-line interface behavior, user-facing documentation, release note, version, or schema change in Section 1; `docs/architecture/concurrency.md` changes before closure because the worker topology changes.
