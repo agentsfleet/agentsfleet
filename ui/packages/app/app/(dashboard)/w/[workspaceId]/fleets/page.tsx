@@ -11,7 +11,8 @@ import GettingStarted from "./components/GettingStarted";
 
 export const dynamic = "force-dynamic";
 
-const FLEETS_DESCRIPTION = "Fleets installed in this workspace, and their live state.";
+const FLEETS_DESCRIPTION =
+  "A fleet is an always-on AI agent that wakes on events, gathers evidence, and acts with your approval.";
 
 // The Wall — the workspace's only entry point (single-route refactor). With
 // zero fleets it renders the Getting Started checklist as its empty state; with
