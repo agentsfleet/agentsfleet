@@ -20,7 +20,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Priority:** P2 — an optimization of the already-shipped-and-working Live Wall (M132), not a blocker; the wall streams correctly today via N per-fleet connections, this collapses them to one.
 **Categories:** API, UI
 **Batch:** B1
-**Branch:** feat/m133-workspace-stream
+**Branch:** feat/m133-workspace-stream-hardening
 **Test Baseline:** unit=2642 integration=334
 **Depends on:** M132_001 (ships the Live Wall whose N-per-tile stream mode this replaces and deletes)
 **Provenance:** Large Language Model (LLM)-drafted (claude-opus-4-8, Jul 14, 2026) — authored from the frozen variant-F design (`designs/fleet-dashboard-20260714/FREEZE.md` §2 G4, §3, §5) and its route/handler/schema vetting matrix.
