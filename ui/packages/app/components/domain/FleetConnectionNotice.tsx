@@ -8,7 +8,7 @@ import {
 } from "./useFleetEventStream";
 
 const RESTORED_NOTICE_MS = 4_000;
-const NOTICE_CLASS_NAME = "mx-xl mb-md";
+const NOTICE_CLASS_NAME = "mx-xl my-md rounded-md px-lg py-sm";
 
 export function FleetConnectionNotice({
   status,
@@ -51,23 +51,23 @@ export function FleetConnectionNotice({
   if (status === CONNECTION_STATUS.CONNECTING) {
     return (
       <Alert variant="info" className={NOTICE_CLASS_NAME}>
-        Connecting to live updates. Recent history remains available.
+        Connecting to live updates. History remains available.
       </Alert>
     );
   }
   if (status === CONNECTION_STATUS.RECONNECTING) {
     return (
       <Alert variant="warning" className={NOTICE_CLASS_NAME}>
-        Connection lost. Reconnecting… New messages will queue; history remains available.
+        Reconnecting to live updates. History remains available; retry any failed send.
       </Alert>
     );
   }
   return (
     <Alert
       variant="destructive"
-      className={`${NOTICE_CLASS_NAME} items-center justify-between`}
+      className={`${NOTICE_CLASS_NAME} items-center justify-between gap-md`}
     >
-      <span>Live connection unavailable. History remains visible and new messages will queue.</span>
+      <span>Live updates unavailable. History remains available; retry any failed send.</span>
       <Button type="button" size="sm" variant="outline" onClick={onRetry}>
         Retry
       </Button>

@@ -21,12 +21,10 @@ const APP_ROOT = path.resolve(TESTS_DIR, ".."); // ui/packages/app
 const SKIP_DIRS = new Set(["node_modules", ".next", "tests", "dist", ".turbo"]);
 
 // The only files sanctioned to touch a locale date/number API in production:
-//   - EventsList.tsx  — the browser-local HH:MM clock label fed to Time.
 //   - charges.ts      — the ledger "MMM DD, YYYY · HH:MM" label fed to Time.
 //   - CatalogueList.tsx — formats a token COUNT (a number), not a date.
 // Paths are relative to APP_ROOT with POSIX separators.
 const ALLOWED = new Set([
-  "components/domain/EventsList.tsx",
   "app/(dashboard)/settings/billing/lib/charges.ts",
   "app/(dashboard)/admin/models/components/CatalogueList.tsx",
 ]);

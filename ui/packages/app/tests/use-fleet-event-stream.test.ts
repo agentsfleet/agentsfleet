@@ -155,6 +155,31 @@ describe("useFleetEventStream", () => {
     expect(result.current.events.map((e) => e.id)).toEqual(["evt_older", "evt_newer"]);
   });
 
+  it("reconciles a refreshed terminal row without reopening the live stream", async () => {
+    const received = row({ status: "received", response_text: null });
+    const view = renderHook(
+      ({ initial }) => useFleetEventStream(WS, ZID, initial),
+      { initialProps: { initial: [received] } },
+    );
+    await waitFor(() => expect(view.result.current.events).toHaveLength(1));
+    const source = FakeEventSource.instances[0];
+
+    view.rerender({
+      initial: [row({
+        status: "fleet_error",
+        response_text: null,
+        failure_label: "startup_posture",
+      })],
+    });
+
+    await waitFor(() => expect(view.result.current.events[0]).toMatchObject({
+      status: "fleet_error",
+      outcome: "Failed a startup safety check",
+    }));
+    expect(FakeEventSource.instances).toHaveLength(1);
+    expect(FakeEventSource.instances[0]).toBe(source);
+  });
+
   it("maps actor → role: steer:* → user, webhook:* → system, fleet → assistant", async () => {
     const { result } = mount([
       row({ event_id: "u", actor: "steer:alice@example.com" }),

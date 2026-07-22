@@ -49,7 +49,7 @@ describe("FleetThreadDynamic", () => {
       React.createElement(FleetThreadDynamic, {
         workspaceId: "ws_1",
         fleetId: "zomb_1",
-        fleetName: "console-fleet",
+        fleetName: "reviewer",
         initial: [],
       }),
     );
@@ -63,12 +63,13 @@ describe("FleetThreadDynamic", () => {
       React.createElement(FleetThreadDynamic, {
         workspaceId: "ws_prod",
         fleetId: "zomb_42",
-        fleetName: "console-fleet",
+        fleetName: "github-pr-reviewer",
         initial: [],
       }),
     );
     const inner = await findByTestId("mounted-inner");
     expect(inner.getAttribute("workspaceid")).toBe("ws_prod");
     expect(inner.getAttribute("fleetid")).toBe("zomb_42");
+    expect(inner.getAttribute("fleetname")).toBe("github-pr-reviewer");
   });
 });

@@ -8,6 +8,7 @@ import {
   getSnapshot,
   markOptimisticFailed,
   reconcileOptimistic,
+  reconcileServerRows,
   subscribe,
 } from "./fleet-stream-registry";
 import { FRAME_KIND, type EventRow } from "@/lib/api/events";
@@ -127,6 +128,29 @@ describe("fleet-stream-registry — server-rendered seed", () => {
     a();
     b();
   });
+
+  it("reconciles a refreshed terminal row with its recorded failure outcome", () => {
+    const release = subscribe(WS, Z_A, [
+      row({ event_id: "evt_live", status: "received", response_text: null }),
+    ], () => {});
+
+    reconcileServerRows(Z_A, [
+      row({
+        event_id: "evt_live",
+        status: "fleet_error",
+        response_text: null,
+        failure_label: "startup_posture",
+      }),
+    ]);
+
+    expect(getSnapshot(Z_A).events[0]).toMatchObject({
+      id: "evt_live",
+      status: "fleet_error",
+      outcome: "Failed a startup safety check",
+    });
+    release();
+  });
+
 });
 
 describe("fleet-stream-registry — refcount + idle release", () => {
@@ -464,6 +488,25 @@ describe("fleet-stream-registry — reconnect backfill", () => {
     expect(url).toContain("limit=200");
     expect(getSnapshot(Z_A).events.map((e) => e.id)).toEqual(["evt_seed", "evt_missed"]);
     a();
+  });
+
+  it("keeps the recovery anchor behind a reconciled partial page", async () => {
+    fetchSpy.mockResolvedValueOnce(
+      pageWith([row({ event_id: "evt_missed", created_at: MISSED_AT_MS })]),
+    );
+    const release = subscribe(WS, Z_A, [
+      row({ event_id: "evt_seed", created_at: SEED_AT_MS }),
+    ], () => {});
+    reconcileServerRows(Z_A, [
+      row({ event_id: "evt_newest", created_at: MISSED_AT_MS + 60_000 }),
+    ]);
+
+    reconnect();
+    await flushBackfill();
+
+    expect(queryOf(0).get("since")).toBe(SEED_SINCE_PARAM);
+    expect(getSnapshot(Z_A).events.map((event) => event.id)).toContain("evt_missed");
+    release();
   });
 
   it("test_registry_initial_open_no_backfill — the first-ever onopen issues no backfill fetch", async () => {

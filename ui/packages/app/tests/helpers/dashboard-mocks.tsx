@@ -69,7 +69,7 @@ const LUCIDE_ICONS = [
   "KeyRoundIcon", "KeyIcon", "Trash2Icon", "ChevronDownIcon", "ChevronRightIcon", "SettingsIcon",
   "WalletIcon", "ZapIcon", "ReceiptIcon", "CreditCardIcon", "ActivityIcon", "BrainCircuitIcon", "BoxesIcon",
   "SlidersHorizontalIcon", "PencilIcon", "GitPullRequestIcon", "BriefcaseIcon", "HashIcon",
-  "BotIcon", "PlugIcon", "CheckCircle2Icon", "CircleHelpIcon", "LayoutTemplateIcon",
+  "BotIcon", "PlugIcon", "CheckCircle2Icon", "CircleHelpIcon", "CircleXIcon", "LayoutTemplateIcon",
   "BookOpenIcon", "LibraryIcon", "ServerIcon", "MenuIcon", "PanelLeftCloseIcon", "PanelLeftOpenIcon",
   "BrainIcon",
   "MessageSquareIcon", "Code2Icon",
@@ -95,12 +95,13 @@ type ConfirmDialogProps = {
   description?: React.ReactNode;
   confirmLabel?: string;
   cancelLabel?: string;
-  onConfirm: () => void | Promise<void>;
+  onConfirm?: () => void | Promise<void>;
   errorMessage?: string | null;
   onError?: (e: unknown) => void;
 };
 
 function ConfirmDialogMock({ open, onOpenChange, title, description, confirmLabel = "Confirm", cancelLabel = "Cancel", onConfirm, errorMessage, onError }: ConfirmDialogProps) {
+  const [pending, setPending] = React.useState(false);
   if (!open) return null;
   return React.createElement(
     "div",
@@ -108,21 +109,25 @@ function ConfirmDialogMock({ open, onOpenChange, title, description, confirmLabe
     React.createElement("div", { key: "title" }, title),
     description ? React.createElement("div", { key: "desc" }, description) : null,
     errorMessage ? React.createElement("div", { key: "err", role: "alert" }, errorMessage) : null,
-    React.createElement("button", { key: "cancel", type: "button", onClick: () => onOpenChange(false) }, cancelLabel),
+    React.createElement("button", { key: "cancel", type: "button", disabled: pending, onClick: () => onOpenChange(false) }, cancelLabel),
     React.createElement(
       "button",
       {
         key: "confirm",
         type: "button",
+        disabled: pending,
         onClick: async () => {
+          setPending(true);
           try {
-            await onConfirm();
+            await onConfirm?.();
           } catch (e) {
             if (onError) onError(e);
+          } finally {
+            setPending(false);
           }
         },
       },
-      confirmLabel,
+      pending ? "Working…" : confirmLabel,
     ),
   );
 }

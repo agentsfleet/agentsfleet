@@ -199,7 +199,7 @@ describe("FleetThread uses design-system tokens, not raw assistant-ui defaults",
   it("styles with design-system token utilities", () => {
     // Spacing + surface + text tokens from @agentsfleet/design-system — not raw
     // pixel/hex values or assistant-ui's stock theme.
-    expect(source).toContain("bg-surface-deep");
+    expect(source).toContain("bg-card");
     expect(source).toContain("border-border");
     expect(source).toContain("text-muted-foreground");
   });

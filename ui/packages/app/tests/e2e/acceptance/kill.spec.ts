@@ -9,8 +9,8 @@
  *
  * Sister to lifecycle.spec.ts; both exercise the same KillSwitch +
  * ConfirmDialog wiring but with different target statuses. Killing is
- * terminal — the detail page's action panel collapses to a disabled
- * "Killed" indicator afterwards (no Resume / Stop / Kill options). The
+ * terminal — the detail page's action panel exposes only Delete afterwards
+ * (no Resume / Stop / Kill options). The
  * shared interaction lives in fixtures/lifecycle.ts.
  */
 import { expect, test } from "@playwright/test";

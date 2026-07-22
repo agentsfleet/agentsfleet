@@ -1,9 +1,11 @@
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { routerRefresh } from "./helpers/dashboard-mocks";
 import { resetDashboardMocks, stopFleetMock, setFleetStatusActionMock } from "./helpers/dashboard-app-mocks";
+
+const KILL_FAILURE_PATTERN = /Couldn't kill this fleet/i;
 
 // Common dashboard mock harness — see tests/helpers/dashboard-mocks.tsx.
 vi.mock("next/navigation", async () => (await import("./helpers/dashboard-mocks")).nextNavigationMock());
@@ -68,6 +70,16 @@ describe("KillSwitch component", () => {
     expect(screen.getByRole("button", { name: /^kill$/i })).toBeTruthy();
   });
 
+  it("styles reversible Stop separately from terminal Kill and keeps both touchable", async () => {
+    await renderSwitch("active");
+    const stop = screen.getByRole("button", { name: /^stop$/i });
+    const kill = screen.getByRole("button", { name: /^kill$/i });
+    expect(stop.getAttribute("data-variant")).toBe("outline");
+    expect(kill.getAttribute("data-variant")).toBe("destructive");
+    expect(stop.className).toMatch(/min-h-11/);
+    expect(kill.className).toMatch(/min-h-11/);
+  });
+
   // After opening the action dialog, both the trigger button and the
   // ConfirmDialog confirm button carry the same accessible name. Scope the
   // confirm-click to the alertdialog subtree to disambiguate.
@@ -106,6 +118,55 @@ describe("KillSwitch component", () => {
     await waitFor(() =>
       expect(setFleetStatusActionMock).toHaveBeenCalledWith("ws_1", "zom_1", "killed"),
     );
+  });
+
+  it("keeps confirmation pending and blocks duplicate terminal requests", async () => {
+    let resolveRequest!: (value: { ok: true; data: unknown }) => void;
+    setFleetStatusActionMock.mockReturnValueOnce(new Promise((resolve) => {
+      resolveRequest = resolve;
+    }));
+    const user = userEvent.setup({ delay: null });
+    await renderSwitch("active");
+    await user.click(screen.getByRole("button", { name: /^kill$/i }));
+    const dialog = await screen.findByRole("alertdialog");
+    const confirm = within(dialog).getByRole("button", { name: /^kill$/i });
+
+    fireEvent.click(confirm);
+    await waitFor(() => expect(
+      (within(dialog).getByRole("button", { name: /working/i }) as HTMLButtonElement).disabled,
+    ).toBe(true));
+    fireEvent.click(within(dialog).getByRole("button", { name: /working/i }));
+    expect(setFleetStatusActionMock).toHaveBeenCalledTimes(1);
+
+    resolveRequest({ ok: true, data: undefined });
+    await waitFor(() => expect(routerRefresh).toHaveBeenCalled());
+  });
+
+  it("reports a rejected terminal request and restores the dialog", async () => {
+    setFleetStatusActionMock.mockRejectedValueOnce(new Error("network down"));
+    const user = userEvent.setup({ delay: null });
+    await renderSwitch("active");
+    await user.click(screen.getByRole("button", { name: /^kill$/i }));
+    await clickConfirmInDialog(user, /^kill$/i);
+
+    await waitFor(() => expect(screen.getByRole("alert").textContent).toMatch(/network down/i));
+    expect(screen.getByRole("alertdialog")).toBeTruthy();
+    expect(
+      (within(screen.getByRole("alertdialog")).getByRole("button", { name: /^kill$/i }) as HTMLButtonElement).disabled,
+    ).toBe(false);
+  });
+
+  it("uses the action fallback when a terminal request rejects without an Error", async () => {
+    setFleetStatusActionMock.mockRejectedValueOnce(null);
+    const user = userEvent.setup({ delay: null });
+    await renderSwitch("active");
+    await user.click(screen.getByRole("button", { name: /^kill$/i }));
+    await clickConfirmInDialog(user, /^kill$/i);
+
+    await waitFor(() =>
+      expect(screen.getByRole("alert").textContent).toMatch(KILL_FAILURE_PATTERN),
+    );
+    expect(screen.getByRole("alertdialog")).toBeTruthy();
   });
 
   it("409 conflict closes the dialog and refreshes (status changed elsewhere)", async () => {
@@ -159,11 +220,7 @@ describe("KillSwitch component", () => {
     );
   });
 
-  // WS-G — every ActionConfig carries its own `errorVerb` literal so the
-  // operator-facing sentence reads naturally per action. The Stop case above
-  // exercises the Stop verb; the next two pin Resume and Kill so each branch
-  // of the static-literal config is hit by patch coverage.
-  it("resume action error path renders 'Couldn't resume this fleet' (WS-G verb literal)", async () => {
+  it("resume action error path renders 'Couldn't resume this fleet'", async () => {
     setFleetStatusActionMock.mockResolvedValueOnce({
       ok: false,
       error: "",
@@ -178,7 +235,7 @@ describe("KillSwitch component", () => {
     );
   });
 
-  it("kill action error path renders 'Couldn't kill this fleet' (WS-G verb literal)", async () => {
+  it("kill action error path renders the action-specific fallback", async () => {
     setFleetStatusActionMock.mockResolvedValueOnce({
       ok: false,
       error: "",
@@ -189,7 +246,7 @@ describe("KillSwitch component", () => {
     await user.click(screen.getByRole("button", { name: /^kill$/i }));
     await clickConfirmInDialog(user, /^kill$/i);
     await waitFor(() =>
-      expect(screen.getByRole("alert").textContent).toMatch(/Couldn't kill this fleet/i),
+      expect(screen.getByRole("alert").textContent).toMatch(KILL_FAILURE_PATTERN),
     );
   });
 
