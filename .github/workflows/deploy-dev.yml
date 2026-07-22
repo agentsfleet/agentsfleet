@@ -705,11 +705,10 @@ jobs:
           OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
           DISCORD_WEBHOOK: op://${{ vars.VAULT_PROD }}/discord-ci-webhook/credential
 
-      # One verdict, every gate: scripts/dev_release_verdict.sh is the single
-      # green/red decision (unit-tested in ui/packages/app/tests). Green
-      # requires qa-dev, acceptance-e2e-dev, AND cli-acceptance-dev to be
-      # "success" — a skipped or canceled release-critical job is red — with
-      # deploy-worker-dev allowed its documented DEV_WORKER_READY skip.
+      # One verdict, every gate. Green requires qa-dev, acceptance-e2e-dev,
+      # AND cli-acceptance-dev to be "success" — a skipped or canceled
+      # release-critical job is red — with deploy-worker-dev allowed its
+      # documented DEV_WORKER_READY skip.
       - name: Compose release verdict
         id: verdict
         env:
@@ -720,12 +719,27 @@ jobs:
           REF_NAME: ${{ github.ref_name }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          SHORT_SHA="${GITHUB_SHA:0:7}" ./scripts/dev_release_verdict.sh
+          SHORT_SHA="${GITHUB_SHA:0:7}"
+          for entry in "qa-dev=$QA_RESULT" "acceptance-e2e-dev=$ACCEPTANCE_RESULT" "cli-acceptance-dev=$CLI_RESULT" "deploy-worker-dev=$WORKER_RESULT"; do
+            echo "dev_release_acceptance_summary job=${entry%%=*} result=${entry#*=} commit=$SHORT_SHA"
+          done
+
+          if [ "$QA_RESULT" = success ] && [ "$ACCEPTANCE_RESULT" = success ] && [ "$CLI_RESULT" = success ] \
+            && { [ "$WORKER_RESULT" = success ] || [ "$WORKER_RESULT" = skipped ]; }; then
+            COLOR=3066993
+            MESSAGE="✅ DEV deploy green — \`$REF_NAME\` @ \`$SHORT_SHA\`\\nQA: passed | acceptance-e2e: passed | cli-acceptance: passed | worker: ${WORKER_RESULT}\\n→ ready for tag release"
+          else
+            COLOR=15158332
+            MESSAGE="❌ DEV deploy not releasable — \`$REF_NAME\` @ \`$SHORT_SHA\`\\nQA: ${QA_RESULT} | acceptance-e2e: ${ACCEPTANCE_RESULT} | cli-acceptance: ${CLI_RESULT} | worker: ${WORKER_RESULT}\\nCheck: ${RUN_URL}"
+          fi
+
+          echo "color=$COLOR" >>"$GITHUB_OUTPUT"
+          echo "message=$MESSAGE" >>"$GITHUB_OUTPUT"
 
       - name: Notify Discord
-        # always(): a verdict-script failure (e.g. a workflow wiring typo)
-        # must still produce a red notification — a silently absent message
-        # is the worst possible outcome for a release gate.
+        # always(): a verdict-step failure must still produce a red
+        # notification — a silently absent message is the worst possible
+        # outcome for a release gate.
         if: always()
         env:
           MSG: ${{ steps.verdict.outputs.message }}

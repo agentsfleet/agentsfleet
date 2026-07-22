@@ -74,7 +74,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `ui/packages/app/tests/e2e/acceptance/install-fleet-cli.spec.ts` | EDIT (discovered) | Carry the canonical CLI-install journey name against the workflow-built binary. |
 | `ui/packages/app/tests/release-gate-workflow.test.ts` | ADD (discovered) | Deployment workflow cache, artifact, and notification-verdict assertions. |
 | `ui/packages/app/tests/release-gate-suite-config.test.ts` | ADD (discovered) | Acceptance-suite retry, grouping, and artifact configuration assertions. |
-| `scripts/dev_release_verdict.sh` | ADD (discovered) | Notification verdict extracted to a directly testable script. |
+| `.github/workflows/deploy-dev.yml` | EDIT (discovered) | Compose the notification verdict inline from every release-critical job. |
 | `ui/packages/app/tests/e2e/acceptance/multi-workspace.spec.ts` | EDIT (discovered) | Import the shared secondary-workspace name provisioned once in setup. |
 | `ui/packages/app/tests/e2e/acceptance/workspace-fleet-lifecycle.spec.ts` | EDIT (discovered) | Shared secondary-workspace name plus prefix-scoped cleanup. |
 | `ui/packages/app/lib/auth/client.ts` | EDIT (discovered) | Keep the Clerk session token fresh during long-lived dashboard use without exposing it to application code. |
@@ -266,6 +266,6 @@ N/A — no files deleted. Removed retry and stale-selector branches require zero
   - Blast-radius rows `install-ui.ts`, `nav.ts`, `seed.ts`, `platform-library-onboarding.spec.ts`, and `cli-adversarial.spec.ts` were verified current against the shipped product (the acceptance-repair commit that landed after this spec was authored already fixed them) — no diff needed; the `cli-adversarial` fail-on-missing-artifact requirement landed in the shared `cli-runner.ts` fixture all CLI specs spawn through.
   - Adversarial review (REVIEW stage) surfaced and this diff fixed: the raw Vercel bypass secret riding into retained failure traces (now traded for its derived cookie via storage state before any traced context exists), a re-run artifact-name conflict (overwrite enabled), the fetch-audit group not being strictly last, silent empty Playwright-version cache keys, two jobs loading secrets before installs, missing prod-suite concurrency, and a string-concatenated notification payload (now jq-built).
   - Known-bounded residual: retained traces still carry fixture-user Clerk session cookies (dev/prod fixture tenants only; sessions revoked at teardown) and cross-job fleet mutations between `cli-acceptance-dev` and the browser suite share fixture tenants — both routed to the M135_003 CLI-lane workstream on this same branch.
-- **Metrics review** — `dev_release_acceptance_summary` fires once per release-critical job from `scripts/dev_release_verdict.sh` as a logfmt stderr line (job, result, commit); no email, token, cookie, payload body, or provider secret is readable by the script.
+- **Metrics review** — `dev_release_acceptance_summary` fires once per release-critical job from the deploy notification step as a logfmt line (job, result, commit); no email, token, cookie, payload body, or provider secret is included.
 - **Skill-chain outcomes** — recorded in PR Session Notes at CHORE(close).
 - **Deferrals** — none.
