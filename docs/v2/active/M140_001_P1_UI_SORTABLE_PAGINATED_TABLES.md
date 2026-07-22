@@ -52,6 +52,10 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | File | Action | Why |
 |------|--------|-----|
 | `docs/v2/pending/M140_001_P1_UI_SORTABLE_PAGINATED_TABLES.md` | CREATE | Record intent, proof, and review outcomes. |
+| `VERSION` | EDIT | Advance the user-facing feature release to `0.20.0`. |
+| `build.zig.zon` | EDIT | Keep the daemon package version synchronized. |
+| `cli/package.json` | EDIT | Keep the command-line package version synchronized. |
+| `~/Projects/docs/changelog.mdx` | EDIT | Describe sortable, paginated tables for users. |
 | `bun.lock` | EDIT | Lock the TanStack Table dependency. |
 | `ui/packages/design-system/package.json` | EDIT | Declare TanStack Table. |
 | `ui/packages/design-system/src/design-system/DataTable.tsx` | EDIT | Keep a thin public wrapper. |
@@ -189,9 +193,10 @@ Vendor-specific TanStack types are internal and are not exported.
 | R3 | Full unit lanes pass | `make test-unit-all` | exit 0; all unit lanes pass | P0 | |
 | R4 | TypeScript and design-system lint stays clean | `make lint-apps-ds-ctl` | exit 0 | P0 | |
 | R5 | Repository conformance stays green | `make harness-verify` | exit 0; ALL GATES GREEN | P0 | |
-| R6 | No secrets enter the repository | `gitleaks detect` | exit 0; no leaks found | P0 | |
-| R7 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | every path is listed above or is this spec after lifecycle movement | P0 | |
-| R8 | New source files stay within the repository line limit | `git diff --name-only origin/main...HEAD | grep -v '\.md$' | xargs wc -l 2>/dev/null | awk '$1>350 && $2!="total"'` | no new source file exceeds the limit | P0 | |
+| R6 | Release versions stay synchronized | `make check-version` | exit 0; all versions match `0.20.0` | P0 | |
+| R7 | No secrets enter the repository | `gitleaks detect` | exit 0; no leaks found | P0 | |
+| R8 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | every path is listed above or is this spec after lifecycle movement | P0 | |
+| R9 | New source files stay within the repository line limit | `git diff --name-only origin/main...HEAD | grep -v '\.md$' | xargs wc -l 2>/dev/null | awk '$1>350 && $2!="total"'` | no new source file exceeds the limit | P0 | |
 
 ## Dead Code Sweep
 
@@ -224,7 +229,7 @@ N/A — no files or public symbols were deleted or renamed.
 
 ## Discovery (consult log)
 
-- **Consults** — Indy selected TanStack Table behind the existing `DataTable` API, requested Bun, standard buttons, bounded viewport scrolling, minimal motion, and exact shell geometry.
+- **Consults** — Indy selected TanStack Table behind the existing `DataTable` API, requested Bun, standard buttons, bounded viewport scrolling, minimal motion, exact shell geometry, and approved the `0.20.0` minor release bump.
 - **Metrics review** — No analytics or funnel changes are required because the same datasets and actions remain; only presentation and navigation improve.
 - **Skill-chain outcomes** — Pending lifecycle grading.
 - **Deferrals** — None.
