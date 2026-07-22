@@ -21,7 +21,7 @@
  */
 import { expect, test, type Page } from "@playwright/test";
 import { SAMPLE_LIBRARY_REPO } from "@/lib/fleet-library-source";
-import { refreshBrowserSession, signInAs } from "./fixtures/auth";
+import { signInAs } from "./fixtures/auth";
 import { workspaceUrlPattern } from "./fixtures/nav";
 import { FIXTURE_KEY } from "./fixtures/constants";
 
@@ -37,13 +37,22 @@ const SAMPLE_ENTRY_ID = SAMPLE_LIBRARY_REPO.slice(SAMPLE_LIBRARY_REPO.indexOf("/
 const MISSING_REPO = "agentsfleet/definitely-not-a-fleet-bundle";
 
 const IMPORT_TIMEOUT = 60_000;
-const PLATFORM_JOURNEY_TIMEOUT = IMPORT_TIMEOUT * 2;
+const CLERK_TOKEN_EXPIRY_PROOF_MS = 70_000;
+// The longest walk in the suite: a GitHub import plus four identity switches
+// plus publish/unpublish round-trips, every leg a remote round-trip. Sized
+// off the import budget with room for those legs rather than a bare 2x.
+const PLATFORM_JOURNEY_TIMEOUT = IMPORT_TIMEOUT * 5;
 
 async function gotoRejectedAdminPath(page: Page): Promise<void> {
   await page.goto(ADMIN_PATH).catch((error: unknown) => {
     if (!(error instanceof Error) || !error.message.includes("ERR_ABORTED")) throw error;
   });
-  await expect(page).not.toHaveURL(new RegExp(ADMIN_PATH));
+  // An aborted navigation leaves the page on about:blank, which reports an
+  // empty URL — still proof the admin surface was refused. Assert on the
+  // settled URL so the empty case reads as the rejection it is.
+  await expect
+    .poll(() => page.url(), { timeout: 10_000 })
+    .not.toContain(ADMIN_PATH);
 }
 
 // Establish the sample as an unpublished catalog entry. Re-adding the same
@@ -134,9 +143,6 @@ test.describe("platform fleet catalog", () => {
   test("an added fleet is a draft no workspace can see until it is published", async ({ page }) => {
     await signInAs(page, FIXTURE_KEY.operator);
     await addSampleFleet(page);
-    // The import inside addSampleFleet outlives the 60s session token;
-    // refresh before the publish Server Action or the POST 307s.
-    await refreshBrowserSession(page);
 
     // It exists, and it is a draft. The table says so.
     await expect(sampleRow(page).getByText("Draft")).toBeVisible();
@@ -183,7 +189,11 @@ test.describe("platform fleet catalog", () => {
 
     await signInAs(page, FIXTURE_KEY.operator);
     await addSampleFleet(page);
-    await refreshBrowserSession(page);
+
+    // Cross Clerk's original token lifetime while the dashboard stays open.
+    // Saving afterward is a real Server Action proof that the product keeper,
+    // not an acceptance-only token call, preserved the signed-in session.
+    await page.waitForTimeout(CLERK_TOKEN_EXPIRY_PROOF_MS);
 
     await sampleRow(page).getByRole("button", { name: /^edit$/i }).click();
     await page.getByLabel(/^description$/i).fill(COPY);
@@ -211,7 +221,6 @@ test.describe("platform fleet catalog", () => {
   }) => {
     await signInAs(page, FIXTURE_KEY.operator);
     await addSampleFleet(page);
-    await refreshBrowserSession(page);
     await sampleRow(page).getByRole("button", { name: /^publish$/i }).click();
     await expect(sampleRow(page).getByText("Published")).toBeVisible({ timeout: 30_000 });
 
@@ -238,7 +247,6 @@ test.describe("platform fleet catalog", () => {
     await page.getByRole("dialog").getByRole("button", { name: /^fetch update$/i }).click();
     await expect(sampleRow(page).getByText("Draft")).toBeVisible({ timeout: IMPORT_TIMEOUT });
 
-    await refreshBrowserSession(page);
     await sampleRow(page).getByRole("button", { name: /^publish$/i }).click();
     await expect(sampleRow(page).getByText("Published")).toBeVisible({ timeout: 30_000 });
   });

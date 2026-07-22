@@ -179,7 +179,7 @@ The full data lifecycle, sequence, session state machine, threat model, pinned c
 
 ## Flow 2 — UI (browser dashboard)
 
-> **Post-Stage-1 reconciliation (M74_002 §9 shipped).** The Token A / Token B description in this section is the **historical pre-Stage-1 shape**, kept for context on *why* the split existed. **Current shape:** the dashboard rides **one** token — the customized session token (`auth().getToken()`, no template arg). The browser holds no token of its own: reads run in React Server Components, mutations in Server Actions (both server-side), and the SSE route handler mints server-side. The single remaining client-held token — the `token` prop on the fleet-detail thread, serialized into hydration data — is closed by **M77_001** (`docs/v2/done/M77_001_P1_UI_AUTH_CLIENT_TOKEN_REMOVAL.md`). For where this is headed, see [`architecture/roadmap.md`](./architecture/roadmap.md).
+> **Post-Stage-1 reconciliation (M74_002 §9 shipped).** The Token A / Token B description in this section is the **historical pre-Stage-1 shape**, kept for context on *why* the split existed. **Current shape:** the dashboard rides **one** token — the customized session token (`auth().getToken()`, no template arg). The browser holds no token value of its own: reads run in React Server Components, mutations in Server Actions (both server-side), and the Server-Sent Events (SSE) route handler mints server-side. `AuthSessionKeeper` calls Clerk's `user.reload()` while a signed-in dashboard is active and when the browser resumes; this refreshes the `__session` cookie without returning token bytes to application code. For where this is headed, see [`architecture/roadmap.md`](./architecture/roadmap.md).
 
 ### Shape
 
@@ -744,11 +744,11 @@ After Stage 1 (single-token collapse) + Stage 2 (BFF), the dashboard carries one
 
 | Token | Lives in | TTL | Refreshes | Crosses boundaries |
 |---|---|---|---|---|
-| **Customized session JWT** (dashboard) | `__session` cookie on `app.agentsfleet.net`; transient JS-heap copy via `auth().getToken()` inside a route handler / Server Action for ~5ms | ~60s (Clerk default) | Clerk SDK auto-refreshes via the cookie on every `getToken()` call | browser ↔ cookie ↔ Clerk FAPI ↔ Next.js server runtime; **never crosses into client-rendered React** |
+| **Customized session JWT** (dashboard) | `__session` cookie on `app.agentsfleet.net`; transient server-runtime copy via `auth().getToken()` inside a route handler / Server Action | ~60s (Clerk default) | Clerk SDK background refresh plus `AuthSessionKeeper` while active and on browser resume | browser ↔ cookie ↔ Clerk FAPI ↔ Next.js server runtime; token bytes **never cross into application client code** |
 | **Api-template JWT** (CLI carve-out) | `~/.config/agentsfleet/credentials.json` on the operator's workstation | ~15 min (Clerk api template default) | None — CLI re-runs `agentsfleet login` on 401 | dashboard JS process (mint) → ECDH-encrypted → CLI process (post-decrypt persistence) |
 | **Tenant API key** `agt_t*` (Flow 3) | Operator's external-service config (n8n, Zapier, scheduled jobs) | Until explicit revoke | None | DB-hash-compare; never re-issued |
 
-**"What happens if the dashboard's session JWT expires mid-request?"** Doesn't happen the way the question implies — Clerk SDK refreshes the cookie token on each `getToken()` call, and Stage 2's route handler mints fresh on every request. There is no long-lived in-memory copy of the JWT to expire.
+**"What happens if the dashboard's session JWT expires before a request?"** Clerk does not handshake non-GET requests. With a stale cookie, `clerkMiddleware` treats the Server Action POST as signed out and the app's `auth.protect()` sends it to `/sign-in` before the action executes. `AuthSessionKeeper` refreshes on mount, before expiry while visible, and when focus, visibility, or connectivity resumes. The Server Action then receives a current cookie and mints its short-lived Bearer server-side; no token value crosses into application client code.
 
 **"What happens if the CLI's api-template JWT expires?"** `bearer_or_api_key.zig` returns `401 token_expired`; the CLI surfaces "session expired, re-run `agentsfleet login`" via `AUTH_PRESET.ExpiredSession`. Re-login is a 30-second human-mediated device flow; no transparent refresh path (intentional — see *Beyond Stage 2* row 1 for the long-term direction).
 

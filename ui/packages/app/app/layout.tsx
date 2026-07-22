@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { cookies } from "next/headers";
-import { AuthProvider } from "@/lib/auth/client";
+import { AuthProvider, AuthSessionKeeper } from "@/lib/auth/client";
 import { AUTH_APPEARANCE } from "@/lib/clerkAppearance";
 import AnalyticsBootstrap from "@/components/analytics/AnalyticsBootstrap";
 import { THEME_COOKIE, normalizeTheme } from "@/lib/theme";
@@ -30,6 +30,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
     >
       <html lang="en" data-theme={theme} suppressHydrationWarning>
         <body>
+          <AuthSessionKeeper />
           <AnalyticsBootstrap />
           {children}
         </body>
