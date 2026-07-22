@@ -307,3 +307,7 @@ test "deadlineFired: cleared by arm, survives disarm (the owner reads it post-ve
     wd.disarm();
     try std.testing.expect(!wd.deadlineFired());
 }
+
+test {
+    _ = @import("scheduler_test.zig");
+}

@@ -38,7 +38,13 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 - **PR title (eventual):** refactor(deadlines): add owner-safe process scheduler
 - **Intent (one sentence):** Hung network work is cancelled by its owning connection only, with one bounded scheduler worker per process instead of one watchdog worker per caller.
-- **Handshake** — replace descriptor-based per-instance watchdogs with one injected monotonic scheduler whose guards quiesce callbacks and whose targets can interrupt only the connection generation that armed them. `ASSUMPTIONS I'M MAKING: 1. Section 1 lands the scheduler beside the existing watchdog; callers migrate before the watchdog is removed in Section 4. 2. Zig's awake clock is the production monotonic source; wall time never participates in deadline ordering. 3. Guards identify heap-stable registrations by scheduler-issued identity, so copied guards fail harmlessly after the first finish. 4. An indexed heap is required so guard completion removes registrations in logarithmic work instead of retaining cancelled tombstones.`
+- **Handshake** — replace descriptor-based per-instance watchdogs with one injected monotonic scheduler whose guards quiesce callbacks and whose targets can interrupt only the connection generation that armed them. `ASSUMPTIONS I'M MAKING: 1. Section 1 lands the scheduler beside the existing watchdog; callers migrate before the watchdog is removed in Section 4. 2. Zig's boot clock is the production monotonic source; wall time never participates in deadline ordering, and machine suspension counts against a network deadline where the operating system supports it. 3. Guards identify heap-stable registrations by scheduler-issued identity, so copied guards fail harmlessly after the first finish. 4. std.Treap supplies ordered minimum lookup and direct-node removal without a hand-written queue.`
+
+## Timing picture
+
+Wall time answers “what calendar time is it?” and may jump forward or backward. Monotonic time answers “how much time has elapsed?” and never moves backward. A 30-second network deadline is therefore stored as `boot_now + 30 seconds`; changing the calendar clock has no path into its ordering or expiry.
+
+![Monotonic deadline scheduler flow](../../../diagrams/deadline-scheduler-flow.svg)
 
 ## Implementing agent — read these first
 
@@ -54,8 +60,11 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 |------|--------|-----|
 | `src/lib/call_deadline/call_deadline.zig` | EDIT | Replace per-instance wall-clock polling watchdogs with the process-owned monotonic scheduler, generation-bound targets, guards, and lifecycle tests. |
 | `src/lib/call_deadline/scheduler.zig` | CREATE | Own the single scheduler worker, guard lifecycle, registration identity, monotonic backend, and quiescence barriers. |
-| `src/lib/call_deadline/deadline_queue.zig` | CREATE | Keep indexed earliest-deadline insertion and arbitrary guard removal logarithmic while updating stable registration positions. |
 | `src/lib/call_deadline/scheduler_test.zig` | CREATE | Prove preemption, lifecycle validation, quiescence, concurrency cardinality, and bounded queue work through injected timing seams. |
+| `diagrams/deadline-scheduler-flow.mmd` | CREATE | Keep the scheduler timing and ownership flow editable as Mermaid source. |
+| `diagrams/deadline-scheduler-flow.excalidraw` | CREATE | Provide an editable visual scene for architecture review. |
+| `diagrams/deadline-scheduler-flow.svg` | CREATE | Embed the scheduler flow in this specification without raster loss. |
+| `diagrams/deadline-scheduler-flow.png` | CREATE | Provide a chat and issue-friendly rendered diagram. |
 | `src/lib/common/sync.zig` | EDIT if needed | Supply the wakeable timed wait required to preempt a later scheduled wake when an earlier deadline is armed. |
 | `src/lib/http_pin/http_pin.zig` | EDIT | Return an owner-validating HTTP interruption target instead of exposing a bare pooled socket descriptor. |
 | `src/lib/http_pin/http_pin_test.zig` | EDIT | Prove stale pins and descriptor reuse cannot interrupt a successor HTTP connection. |
@@ -110,18 +119,18 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ## Prior-Art / Reference Implementations
 
-- **Reference:** `std.PriorityQueue` plus `src/lib/common/sync.zig` — use the repository's queue primitive and futex-backed mutex/condition lifecycle; diverge from the existing watchdog by sleeping until the earliest monotonic deadline rather than polling each instance.
+- **Reference:** Zig `std.Treap`, Bun `src/runtime/timer/Timer.zig`, Bun `src/threading/Futex.zig`, Ghostty `src/Surface.zig`, and `src/lib/common/sync.zig` — use a standard intrusive ordered tree, one absolute monotonic deadline across spurious wakes, and stop → wake → join → deinit ordering.
 - **Reference:** `src/agentsfleetd/events/subscription_hub.zig` — preserve its one-wire-owner and no-map-lock-during-I/O invariants while moving interruption authority into the subscriber transport.
 
 ## Sections (implementation slices)
 
 ### §1 — One monotonic scheduler owns deadline timing
 
-Each process root owns and explicitly injects one scheduler worker and an earliest-deadline queue. Deadline arithmetic uses an injectable monotonic clock/wait backend. An idle worker blocks without polling, and arming a new earliest deadline preempts its current wait. `Guard.finish()` is a quiescence barrier: after it returns, that target callback is neither running nor eligible to run, so its owner may move or free transport state. `Scheduler.stop()` rejects new arms, interrupts and drains pending registrations rather than merely abandoning blocked operations, and waits for in-flight callbacks; network users then join and finish guards before owner deinit, followed by scheduler storage deinit. **Implementation default:** a single-use guard makes missed completion harder to represent, and invalid transitions fail closed without invoking methods on already-deinitialized Zig values.
+Each process root owns and explicitly injects one scheduler worker and an earliest-deadline queue. Deadline arithmetic uses an injectable monotonic clock/wait backend. An idle worker blocks without polling, and arming a new earliest deadline preempts its current wait. `Guard.finish()` is a quiescence barrier: after it returns, that target callback is neither running nor eligible to run, so its owner may move or free transport state. `Scheduler.stop()` rejects new arms, interrupts and drains pending registrations rather than merely abandoning blocked operations, and waits for in-flight callbacks; network users then join and finish guards before owner deinit, followed by scheduler storage deinit. **Implementation default:** a copy-tolerant identity handle lets the first finish consume the registration and makes later copies harmless. Every thread capable of calling arm, finish, or stop is joined before exclusive scheduler deinit begins.
 
-- **Dimension 1.1** — deadlines fire in monotonic order, a newly earlier arm wakes the worker, and wall-clock changes cannot advance or delay them → Test `test_scheduler_preempts_wait_with_monotonic_deadline_order`
-- **Dimension 1.2** — double finish and arm-after-stop are rejected or harmless according to one explicit guard state model → Test `test_deadline_guard_validates_lifecycle`
-- **Dimension 1.3** — finish/stop racing fire invokes the target at most once and both barriers return only after any callback quiesces → Test `test_deadline_finish_and_stop_are_quiescence_barriers`
+- **Dimension 1.1 — IN_PROGRESS** — deadlines fire in monotonic order, a newly earlier arm wakes the worker, and wall-clock changes cannot advance or delay them → Test `test_scheduler_preempts_wait_with_monotonic_deadline_order`
+- **Dimension 1.2 — IN_PROGRESS** — double finish and arm-after-stop are rejected or harmless according to one explicit guard state model → Test `test_deadline_guard_validates_lifecycle`
+- **Dimension 1.3 — IN_PROGRESS** — finish/stop racing fire invokes the target at most once and both barriers return only after any callback quiesces → Test `test_deadline_finish_and_stop_are_quiescence_barriers`
 
 ### §2 — Cancellation belongs to a transport generation
 
@@ -144,7 +153,7 @@ Redis name resolution/dial, TLS, authentication, initial subscribe, reconnect, a
 HTTP connector, credential-broker, QStash, runner, and Redis hub callers use guards from their process scheduler. Per-instance watchdog workers disappear, and public raw socket shutdown is removed or made private after the final migration. Scheduler tests use high concurrency and deterministic counters rather than timing-only performance claims.
 
 - **Dimension 4.1** — production source has no per-instance watchdog type, public raw socket shutdown, `socketHandle` deadline seam, or caller-owned descriptor arm → Test `test_deadline_migration_has_no_raw_fd_surface`
-- **Dimension 4.2** — at least 100 concurrent registrations use one scheduler worker, preserve earliest-first firing, and keep queue work within logarithmic comparison bounds → Test `test_scheduler_concurrency_has_one_worker_and_bounded_queue_work`
+- **Dimension 4.2** — at least 100 concurrent registrations use one scheduler worker, preserve earliest-first firing, and use direct-node `std.Treap` insertion/removal without a linear registration scan → Test `test_scheduler_concurrency_has_one_worker_and_bounded_queue_work`
 - **Dimension 4.3** — process shutdown with pending, firing, and cancelled registrations joins the scheduler within the test bound and leaks no memory or threads → Test `test_scheduler_shutdown_is_bounded_and_leak_free`
 
 ## Interfaces
@@ -158,8 +167,10 @@ Subscriber.interrupt(expected_generation) -> InterruptOutcome
 Process roots explicitly pass *Scheduler to every network owner; there is no
 hidden global scheduler. InterruptTarget points to a stable operation control
 block and identifies one non-repeating owner/connection generation. It never
-exposes a socket descriptor. Guard.finish and Scheduler.stop wait for selected
-callbacks to quiesce before their owner/control-block storage may be freed.
+exposes a socket descriptor. Its interrupt method is a bounded, nonblocking,
+non-reentrant leaf operation and never calls scheduler barriers. Guard.finish
+and Scheduler.stop wait for selected callbacks to quiesce before their
+owner/control-block storage may be freed.
 ```
 
 ## Failure Modes
@@ -188,6 +199,8 @@ callbacks to quiesce before their owner/control-block storage may be freed.
 |----------------|-------|------------|--------------------|---------------|------------|
 | existing deadline/retry events | ops | a deadline fires, a stale target is refused, scheduler setup fails, or Redis recovery retries | operation class, transport kind, generation relation, outcome, duration | no URL credentials, tokens, Redis password, payload, or raw descriptor | `test_deadline_events_are_structured_and_redacted` |
 
+**Signal routing:** the shared scheduler core emits standard logfmt mechanism events in every process: worker-start failure at `err`, plus arm rejection, fire, and stop/drain detail at `debug`. Owning integrations emit the visible warn/error event with their registered error code and safe operation context. In `agentsfleetd`, structured logs fan out through the existing OpenTelemetry Protocol (OTLP) sink; `agentsfleet-runner` emits the same standard locally and reports its existing liveness/results. Deadline mechanics are not new PostHog product-analytics events; product-event capture remains an `agentsfleetd` owner decision, never a scheduler-core side effect.
+
 ## Test Specification (tiered)
 
 | Dimension | Tier | Test | Asserts (concrete inputs → expected output) |
@@ -202,7 +215,7 @@ callbacks to quiesce before their owner/control-block storage may be freed.
 | 3.2 | integration | `test_redis_reconnect_and_resubscribe_are_bounded` | stalled recovery and multi-channel sweep with stop signal → interruption/retry occurs and stop is checked between sends. |
 | 3.3 | integration | `test_hub_send_deadline_preserves_recovery` | first/last channel sends plus targeted stall → one connection recovers and fan-out resumes. |
 | 4.1 | unit | `test_deadline_migration_has_no_raw_fd_surface` | source audit after migration → no public raw-fd shutdown or per-instance watchdog production use. |
-| 4.2 | unit | `test_scheduler_concurrency_has_one_worker_and_bounded_queue_work` | 100+ mixed registrations → one worker, correct outcomes, logarithmic comparison ceiling. |
+| 4.2 | unit | `test_scheduler_concurrency_has_one_worker_and_bounded_queue_work` | 100+ parallel arms with concurrent finishes → one worker, correct outcomes, direct-node `std.Treap` removal, and no linear registration scan. |
 | 4.3 | unit | `test_scheduler_shutdown_is_bounded_and_leak_free` | pending/firing/cancelled registrations at shutdown → worker joined, targets quiescent, allocator clean. |
 | metrics | unit | `test_deadline_events_are_structured_and_redacted` | fire/stale/setup-fail/retry branches → named events with no credential or descriptor fields. |
 
@@ -215,12 +228,12 @@ callbacks to quiesce before their owner/control-block storage may be freed.
 | R3 | One scheduler worker handles concurrent registrations (§1, §4) | `zig build test-lib --summary all` | exit 0; 100+ registration concurrency test passes | P0 | |
 | R4 | Raw-descriptor and per-instance watchdog surfaces are gone (§4) | `rg -n 'shutdownSocket|socketHandle\(\)|CallWatchdog|Watchdog\(' src --glob '*.zig'` | 0 production migration leftovers; owner-target type assertions and safety regressions pass under R1 | P0 | |
 | R5 | Diff stays inside Files Changed | `git diff --name-only origin/main` | 0 paths missing from the Files Changed table | P0 | |
-| S1 | Lint and unit suites pass | `make lint && make test` | exit 0 | P0 | |
+| S1 | Lint and unit suites pass | `make lint-all && make test-unit-all` | exit 0 | P0 | |
 | S2 | Integration suites pass | `make test-integration` | exit 0 | P0 | |
 | S3 | Memory/leak suite passes | `make memleak` | exit 0 | P0 | |
 | S4 | Both Linux targets compile | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` | exit 0 | P0 | |
 | S5 | No secrets | `gitleaks detect` | exit 0 | P0 | |
-| S6 | No oversize source file or orphan | `make lint && git diff --check` | exit 0 | P0 | |
+| S6 | No oversize source file or orphan | `make lint-all && git diff --check` | exit 0 | P0 | |
 
 **Grading protocol (VERIFY):** run the Verify command verbatim; grade ONLY from its output. Graded = ✅/❌ + the one decisive output line (`342 passed`); long evidence goes to PR Session Notes with a pointer here. **Ship gate:** every row graded, every P0 ✅ → eligible for CHORE(close); any ❌ or empty cell → return to EXECUTE; a P1 ❌ ships only with an Indy-acked deferral quote in Discovery.
 
@@ -269,7 +282,10 @@ N/A — no files deleted.
 
 - **Consults** — Architecture / Legacy-Design / gate-flag triage: pending; the prior M133 acceptance prerequisite was removed by Indy before CHORE(open).
 - **Metrics review** — pending; no product analytics or funnel change is expected because this is internal reliability work.
-- **Skill-chain outcomes** — pending; record `/write-unit-test`, `/review`, and `kishore-babysit-prs` outcomes during execution.
+- **Skill-chain outcomes** — `/write-unit-test` clean for the scheduler-core slice: deterministic production expiry, parked-worker preemption, lifecycle failures, allocation failures, pending drain, 128 parallel arms, and 64 concurrent finishes are covered. Native `codex review` read the diff twice but returned no final verdict (`Jul 23, 2026: 12:24 AM`); rerun before merge. The gstack `/review` route found and fixed absolute-to-relative timeout drift, unconditional in-lock wakes, missing deterministic barriers/tests, logging ownership, deinit preconditions, and guard wording; final testing, performance, and red-team passes returned no findings. `kishore-babysit-prs` remains pending until push.
 - **Deferrals** — none at creation.
 - **Dependency decision** — > Indy (2026-07-22 23:29): "screw the depenedency - this spec doesnt need that" — context: M133 deployment and browser acceptance do not gate the owner-safe deadline scheduler.
+- **Data-structure decision** — > Indy (2026-07-22): "I prefer to avoid hand woven custom zig concepts and use the standard battle tested ones from ghostty or bun" — context: the hand-written indexed heap was discarded; the scheduler uses Zig `std.Treap`, following Bun timer-node and Ghostty worker-lifecycle patterns.
 - **PLAN surface call** — no OpenAPI, command-line interface behavior, user-facing documentation, release note, version, or schema change in Section 1; `docs/architecture/concurrency.md` changes before closure because the worker topology changes.
+- **Section 1 evidence** — the scheduler core is implemented and under verification; 97/97 library tests pass, including 15 call-deadline tests. Dimensions 1.1–1.3 remain `IN_PROGRESS` until one concrete owner-safe target is called from a production process root. The clock backend exposes only Zig's monotonic boot clock, so wall time is structurally absent from deadline arithmetic. Process-root injection remains tracked by Section 4 before the section heading can close.
+- **`/write-unit-test` ledger** — `start` success/double-start/spawn-failure retry, `arm` success/stopped/allocation-failure, production absolute expiry, parked-worker preemption, `Guard.finish` pending/firing/fired/already-finished, `stop` before start/running/concurrent/repeated/pending-drain, repeated `deinit`, 128 parallel arm callers, and 64 concurrent finishes are covered. Identifier exhaustion is intentionally not forced through a public test seam: reaching it requires `2^64 - 1` successful arms, and exposing scheduler internals only for that unreachable boundary would weaken the production surface.
