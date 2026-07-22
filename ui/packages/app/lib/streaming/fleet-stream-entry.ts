@@ -43,7 +43,6 @@ export type Entry = {
   reconnectTimer: ReturnType<typeof setTimeout> | null;
   reconnectAttempts: number;
   idleTimer: ReturnType<typeof setTimeout> | null;
-  tempCounter: number;
   // Whether this entry's EventSource has ever reached onopen. Distinguishes
   // the initial (SSR-seeded) connect from a reconnect — only the latter
   // backfills. Lives on the mutable Entry, never a passed primitive.
@@ -82,7 +81,6 @@ export function createEntry(workspaceId: string, initial: EventRow[]): Entry {
     reconnectTimer: null,
     reconnectAttempts: 0,
     idleTimer: null,
-    tempCounter: 0,
     hasConnectedOnce: false,
     hadConnectionError: false,
     serverSinceMs: maxServerCreatedAt(null, initial),

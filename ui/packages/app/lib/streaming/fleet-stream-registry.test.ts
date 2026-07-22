@@ -324,6 +324,30 @@ describe("fleet-stream-registry — mutation edges", () => {
     expect(getSnapshot("never_subscribed").events).toHaveLength(0);
   });
 
+  it("a stale tempId from a torn-down entry can never discard a fresh row", () => {
+    // A FailedDelivery outlives the stream entry: fail, navigate away past
+    // the idle window (entry torn down), come back, send a new message. A
+    // per-entry counter would hand the new row the SAME id the failure
+    // stored, and retry's discard would remove the operator's newest
+    // pending message instead of the stale failed one.
+    const first = subscribe(WS, Z_A, NO_SEED, () => {});
+    const staleTempId = appendOptimistic(Z_A, "old failed send", "steer:k");
+    markOptimisticFailed(Z_A, staleTempId);
+    first();
+    vi.advanceTimersByTime(IDLE_RELEASE_MS);
+    expect(getSnapshot(Z_A).events).toHaveLength(0);
+
+    const second = subscribe(WS, Z_A, NO_SEED, () => {});
+    const freshTempId = appendOptimistic(Z_A, "newest message", "steer:k");
+    expect(freshTempId).not.toBe(staleTempId);
+    discardOptimistic(Z_A, staleTempId);
+    const events = getSnapshot(Z_A).events;
+    expect(events).toHaveLength(1);
+    expect(events[0]!.id).toBe(freshTempId);
+    expect(events[0]!.text).toBe("newest message");
+    second();
+  });
+
   it("rewrites only the matching optimistic row and leaves the others untouched", () => {
     const a = subscribe(WS, Z_A, NO_SEED, () => {});
     const keep = appendOptimistic(Z_A, "first", "steer:k");
