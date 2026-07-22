@@ -17,12 +17,21 @@ const RECONNECT_BACKOFF_BASE_MS = 1_000;
 const RECONNECT_BACKOFF_CAP_MS = 15_000;
 const RECONNECT_MAX_BACKOFF_ATTEMPTS = 5;
 
-/** Exponential backoff for the fast attempts, capped. */
+// Equal jitter: scale a computed delay by a random factor in [0.5, 1.0). Many
+// browsers reconnecting to one recovered upstream must not fire in lockstep and
+// stampede it; jitter spreads them. The factor only ever SHORTENS the delay
+// below its ceiling, so a caller waiting the full ceiling always sees the retry.
+export function jitter(ms: number): number {
+  return Math.round(ms * (0.5 + Math.random() * 0.5));
+}
+
+/** Exponential backoff for the fast attempts, capped, with jitter applied. */
 export function fastBackoffMs(attempts: number): number {
-  return Math.min(
+  const capped = Math.min(
     RECONNECT_BACKOFF_BASE_MS * 2 ** Math.min(attempts, RECONNECT_MAX_BACKOFF_ATTEMPTS),
     RECONNECT_BACKOFF_CAP_MS,
   );
+  return jitter(capped);
 }
 
 type HoldsReconnectTimer = { reconnectTimer: ReturnType<typeof setTimeout> | null };

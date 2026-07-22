@@ -54,27 +54,52 @@ export type MessageRole = "user" | "assistant" | "system";
 
 /** Which side of the conversation an actor sits on. */
 export function roleFor(actor: string): MessageRole {
-  if (actor.startsWith(ACTOR.STEER_PREFIX)) return "user";
-  if (actor === ACTOR.FLEET) return "assistant";
+  // A continuation carries the trigger it resumed; a resumed steer is still the
+  // operator's turn.
+  const base = actor.startsWith("continuation:") ? actor.slice("continuation:".length) : actor;
+  if (base.startsWith(ACTOR.STEER_PREFIX)) return "user";
+  if (base === ACTOR.FLEET) return "assistant";
   return "system";
 }
+
+// A source segment that is a bare opaque identifier — a Clerk user id, a Slack
+// member id, a UUID — must never render. These reach the label through a
+// `steer:<uid>` an exact match missed, a `continuation:steer:<uid>` chain, or a
+// connector actor like `slack:<member-id>`. The whole point of the sender label
+// is that no operator sees an identifier (Invariant 2).
+const OPAQUE_ID = /^(user_|sess_|org_)/i;
+const CONTINUATION_PREFIX = "continuation:";
 
 /**
  * The name rendered beside a message. `fleetName` is the console's own fleet —
  * the design labels the fleet's messages with the fleet's name, not the word
- * "fleet". An actor this vocabulary does not know renders its own identity,
- * which is already a readable slug (`github-app`), unlike an account id.
+ * "fleet". An actor this vocabulary does not recognise renders a readable slug
+ * (`github-app`), never a raw account or member identifier.
  */
 export function senderLabelFor(actor: string, fleetName?: string): string {
-  if (actor === ACTOR.API_STEER) return SENDER.API;
-  if (actor.startsWith(ACTOR.STEER_PREFIX)) return SENDER.OPERATOR;
-  if (actor === ACTOR.FLEET) return fleetName && fleetName.length > 0 ? fleetName : SENDER.FLEET_FALLBACK;
-  if (actor.startsWith(ACTOR.WEBHOOK_PREFIX)) return actor.slice(ACTOR.WEBHOOK_PREFIX.length);
-  if (actor === ACTOR.CRON) return SENDER.SCHEDULE;
-  if (actor === ACTOR.CONTINUATION) return SENDER.CONTINUATION;
-  if (actor === ACTOR.CONFIG_RELOAD) return SENDER.CONFIG_RELOAD;
-  if (actor === ACTOR.GATE_BLOCKED) return SENDER.APPROVAL_GATE;
-  return actor.length > 0 ? actor : SENDER.UNKNOWN;
+  // A continuation of a steer is still that operator speaking, not a new actor.
+  const base = actor.startsWith(CONTINUATION_PREFIX)
+    ? actor.slice(CONTINUATION_PREFIX.length)
+    : actor;
+  if (base === ACTOR.API_STEER) return SENDER.API;
+  if (base.startsWith(ACTOR.STEER_PREFIX)) return SENDER.OPERATOR;
+  if (base === ACTOR.FLEET) return fleetName && fleetName.length > 0 ? fleetName : SENDER.FLEET_FALLBACK;
+  if (base.startsWith(ACTOR.WEBHOOK_PREFIX)) return sourceOf(base.slice(ACTOR.WEBHOOK_PREFIX.length));
+  if (base === ACTOR.CRON) return SENDER.SCHEDULE;
+  if (base === ACTOR.CONTINUATION) return SENDER.CONTINUATION;
+  if (base === ACTOR.CONFIG_RELOAD) return SENDER.CONFIG_RELOAD;
+  if (base === ACTOR.GATE_BLOCKED) return SENDER.APPROVAL_GATE;
+  // A connector actor such as `slack:<member-id>`: name the source, drop the id.
+  const colon = base.indexOf(":");
+  if (colon > 0) return sourceOf(base.slice(0, colon));
+  return sourceOf(base);
+}
+
+// A single source token: safe to render if it isn't an opaque identifier.
+function sourceOf(token: string): string {
+  const trimmed = token.trim();
+  if (trimmed.length === 0 || OPAQUE_ID.test(trimmed)) return SENDER.UNKNOWN;
+  return trimmed;
 }
 
 /** Two letters for the sender chip — initials, never an identifier fragment. */
@@ -228,16 +253,28 @@ function completedRunHeadline(payload: Payload): string | null {
 }
 
 /**
- * The body a message row renders for a durable event row. Resolves by role:
- * the operator's own submitted text, the fleet's reply, or the integration
- * headline. Returns an empty string only when the caller should fall back to
- * `outcomeFor` — which the row conversion always does.
+ * The trigger a durable row renders — the thing that WOKE the fleet, never the
+ * fleet's answer. A durable event row is one conversation turn: the actor and
+ * `request_json` name the trigger (an operator's steer, a webhook, a cron),
+ * and `response_text` carries the fleet's reply written back onto the SAME row
+ * (event_rows.zig UPDATEs response_text WHERE event_id). So the trigger body
+ * comes only from the actor + request payload; the reply is `replyBodyFor`.
+ *
+ * An assistant-actor row has no separate trigger (it IS a reply); returns "".
  */
-export function messageBodyFor(row: EventRow): string {
+export function triggerBodyFor(row: Pick<EventRow, "actor" | "request_json" | "event_type">): string {
   const role = roleFor(row.actor);
   if (role === "user") return steerMessageFrom(row.request_json);
-  if (role === "assistant") return (row.response_text ?? "").trim();
-  const reply = (row.response_text ?? "").trim();
-  if (reply.length > 0) return reply;
+  if (role === "assistant") return "";
   return eventHeadlineFrom(row.request_json, row.event_type);
+}
+
+/**
+ * The fleet's reply on a durable row — the text UPDATEd into `response_text`
+ * after the trigger's turn completes. Empty until the fleet answers; the row
+ * conversion falls back to `outcomeFor` so a reply-less turn still says what
+ * happened rather than rendering blank.
+ */
+export function replyBodyFor(row: Pick<EventRow, "response_text">): string {
+  return (row.response_text ?? "").trim();
 }

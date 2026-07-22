@@ -109,6 +109,19 @@ describe("Time", () => {
     );
     expect(container.querySelector("time")?.textContent).toMatch(/seconds? ago/);
   });
+
+  it("clock format renders time-of-day only and tolerates hydration re-resolution", () => {
+    // The clock label depends on the renderer's timezone (a UTC server and a
+    // local browser disagree), mirroring the relative format's dependence on
+    // Date.now() — both must survive the label re-resolving client-side.
+    const { container } = renderTime(
+      <Time value="2026-07-21T10:42:17.000Z" format="clock" tooltip={false} />,
+    );
+    const el = container.querySelector("time");
+    expect(el?.getAttribute("datetime")).toBe("2026-07-21T10:42:17.000Z");
+    expect(el?.textContent).toMatch(/\d{1,2}:\d{2}:\d{2}/);
+    expect(el?.textContent).not.toMatch(/2026/);
+  });
 });
 
 describe("formatTimeRelative", () => {

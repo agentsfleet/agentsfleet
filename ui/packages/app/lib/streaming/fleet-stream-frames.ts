@@ -2,10 +2,11 @@ import { FRAME_KIND, type EventRow, type LiveFrame } from "@/lib/api/events";
 import {
   ACTOR,
   EVENT_STATUS,
-  messageBodyFor,
   outcomeFor,
   outcomeForStatus,
+  replyBodyFor,
   roleFor,
+  triggerBodyFor,
 } from "@/lib/events/event-summary";
 
 // Pure frame-transform helpers shared by the streaming registry.
@@ -43,11 +44,21 @@ export type FleetEvent = {
   id: string;
   role: "user" | "assistant" | "system";
   actor: string;
-  /** The body as stored or as it streams in. Empty until the first chunk. */
+  /**
+   * The trigger body — what woke the fleet (an operator's steer, a webhook
+   * headline). Fixed at creation from the actor + request payload; the fleet's
+   * reply never overwrites it. Empty for a row that is itself a reply.
+   */
   text: string;
   /**
-   * What to say when `text` is empty — the honest floor that keeps a rendered
-   * row from ever being blank. Recomputed whenever the status changes.
+   * The fleet's reply on this same durable row (`response_text`), accumulated
+   * from CHUNK frames while streaming. Empty until the fleet answers; the row
+   * then renders `outcome` in the reply's place.
+   */
+  reply: string;
+  /**
+   * What the reply bubble says when `reply` is empty — the honest floor that
+   * keeps a completed turn from rendering blank. Recomputed on status change.
    */
   outcome: string;
   createdAt: Date;
@@ -172,15 +183,17 @@ function applyToolCall(
 
 // ── internals ────────────────────────────────────────────────────────────
 
-// A durable row becomes a rendered message. The body is resolved by role —
-// the operator's own submitted text lives in the request payload, not in the
-// reply field — and the outcome carries the sentence for a row with no body.
+// A durable row becomes a rendered turn: the trigger (from the actor + request
+// payload) and the fleet's reply (from response_text on the same row). Neither
+// clobbers the other, so an operator's own message survives reload and the
+// fleet's answer is never dropped or attributed to the operator.
 function rowToEvent(row: EventRow): FleetEvent {
   return {
     id: row.event_id,
     role: roleFor(row.actor),
     actor: row.actor,
-    text: messageBodyFor(row),
+    text: triggerBodyFor(row),
+    reply: replyBodyFor(row),
     outcome: outcomeFor(row),
     createdAt: new Date(row.created_at),
     status: row.status as FleetEventStatus,
@@ -199,7 +212,12 @@ function applyEventReceived(
       id: frame.event_id,
       role: roleFor(frame.actor),
       actor: frame.actor,
-      text: "",
+      text: triggerBodyFor({
+        actor: frame.actor,
+        request_json: "{}",
+        event_type: "chat",
+      }),
+      reply: "",
       outcome: outcomeForStatus(AGENTSFLEET_EVENT_STATUS.RECEIVED),
       createdAt: new Date(),
       status: AGENTSFLEET_EVENT_STATUS.RECEIVED,
@@ -213,27 +231,28 @@ function applyChunk(
 ): FleetEvent[] {
   const existing = prev.find((e) => e.id === frame.event_id);
   if (!existing) {
+    // A chunk with no prior trigger row: the fleet is replying to something the
+    // client never saw the receipt for. The chunk text is the reply, and the
+    // trigger stays empty rather than mislabelling the reply as the trigger.
     return [
       ...prev,
       {
         id: frame.event_id,
         role: "assistant",
         actor: ACTOR.FLEET,
-        text: frame.text,
+        text: "",
+        reply: frame.text,
         outcome: outcomeForStatus(AGENTSFLEET_EVENT_STATUS.RECEIVED),
         createdAt: new Date(),
         status: AGENTSFLEET_EVENT_STATUS.RECEIVED,
       },
     ];
   }
+  // Chunks are the fleet's reply — they accumulate into `reply`, never into the
+  // trigger `text`, so the operator's own message is not overwritten by the
+  // answer streaming back.
   return prev.map((e) =>
-    e === existing
-      ? {
-          ...e,
-          role: e.role === "user" ? "user" : "assistant",
-          text: e.text + frame.text,
-        }
-      : e,
+    e === existing ? { ...e, reply: e.reply + frame.text } : e,
   );
 }
 

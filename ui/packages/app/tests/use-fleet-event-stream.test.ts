@@ -210,7 +210,7 @@ describe("useFleetEventStream", () => {
       });
     });
     await waitFor(() => expect(result.current.events).toHaveLength(1));
-    expect(result.current.events[0]!.text).toBe("Hello, world.");
+    expect(result.current.events[0]!.reply).toBe("Hello, world.");
     expect(result.current.events[0]!.role).toBe("assistant");
   });
 
@@ -297,19 +297,23 @@ describe("useFleetEventStream", () => {
     vi.useRealTimers();
   });
 
-  it("convertEvent falls back to the outcome when an event has no body", () => {
+  it("convertEvent carries the trigger in content and the reply/outcome in metadata", () => {
     const { result } = mount();
     const msg = result.current.convertEvent({
       id: "evt_silent",
       role: "system",
       actor: "github-app",
-      text: "",
+      text: "opened · owner/repo#7",
+      reply: "",
       outcome: OUTCOME.NO_REPLY,
       createdAt: new Date(0),
       status: "processed",
     });
-    // The floor: a row with nothing to say still says what happened.
-    expect(msg.content).toEqual([{ type: "text", text: OUTCOME.NO_REPLY }]);
+    // Content is the trigger; the reply bubble reads reply/outcome from metadata,
+    // so a reply-less turn still says what happened without clobbering the trigger.
+    expect(msg.content).toEqual([{ type: "text", text: "opened · owner/repo#7" }]);
+    expect(msg.metadata?.custom?.["reply"]).toBe("");
+    expect(msg.metadata?.custom?.["outcome"]).toBe(OUTCOME.NO_REPLY);
   });
 
   it("convertEvent produces an assistant-ui ThreadMessageLike with custom metadata", () => {
@@ -319,6 +323,7 @@ describe("useFleetEventStream", () => {
       role: "system",
       actor: "webhook:github",
       text: "workflow_run failure",
+      reply: "",
       outcome: OUTCOME.NO_REPLY,
       createdAt: new Date(0),
       status: "processed",
@@ -362,7 +367,7 @@ describe("useFleetEventStream", () => {
     await waitFor(() => {
       expect(result.current.events.length).toBe(1);
       expect(result.current.events[0]!.id).toBe("evt_orphan");
-      expect(result.current.events[0]!.text).toBe(
+      expect(result.current.events[0]!.reply).toBe(
         "partial body without a header frame",
       );
     });

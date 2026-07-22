@@ -8,7 +8,8 @@ import {
   SENDER,
   eventHeadlineFrom,
   failureSentenceFor,
-  messageBodyFor,
+  triggerBodyFor,
+  replyBodyFor,
   outcomeFor,
   outcomeForStatus,
   parsePayload,
@@ -84,6 +85,19 @@ describe("senderLabelFor", () => {
   it("renders an unknown platform identity as itself, and an empty actor as a word", () => {
     expect(senderLabelFor(PLATFORM_IDENTITY)).toBe(PLATFORM_IDENTITY);
     expect(senderLabelFor("")).toBe(SENDER.UNKNOWN);
+  });
+
+  it("never leaks a raw account or member identifier for an unrecognised actor", () => {
+    // A steer prefix an exact match missed, a continuation chain, a connector
+    // actor: none may render the opaque id (Invariant 2).
+    expect(senderLabelFor(`${ACTOR.STEER_PREFIX}${ACCOUNT_ID}`)).toBe(SENDER.OPERATOR);
+    expect(senderLabelFor(`continuation:${ACTOR.STEER_PREFIX}${ACCOUNT_ID}`)).toBe(SENDER.OPERATOR);
+    expect(senderLabelFor(ACCOUNT_ID)).toBe(SENDER.UNKNOWN);
+    expect(senderLabelFor("sess_3GkbgXzXU5iLaYCt")).toBe(SENDER.UNKNOWN);
+  });
+
+  it("names the source of a connector actor and drops its member id", () => {
+    expect(senderLabelFor("slack:U08ABCXYZ")).toBe("slack");
   });
 });
 
@@ -204,44 +218,42 @@ describe("eventHeadlineFrom", () => {
   });
 });
 
-describe("messageBodyFor", () => {
-  it("renders the operator's own text rather than the fleet's reply field", () => {
+describe("triggerBodyFor / replyBodyFor", () => {
+  it("the trigger is the operator's own text, never the fleet's reply on the same row", () => {
     const operator = row({
       actor: `${ACTOR.STEER_PREFIX}${ACCOUNT_ID}`,
       request_json: '{"message":"hello"}',
-      response_text: "the fleet answered something else",
+      response_text: "the fleet answered on this same durable row",
     });
-    expect(messageBodyFor(operator)).toBe("hello");
+    // The two fields of one turn: the operator asked, the fleet answered — and
+    // neither overwrites the other, so a reload shows both.
+    expect(triggerBodyFor(operator)).toBe("hello");
+    expect(replyBodyFor(operator)).toBe("the fleet answered on this same durable row");
   });
 
-  it("renders the fleet's reply for a fleet message", () => {
-    expect(messageBodyFor(row({ actor: ACTOR.FLEET, response_text: " reviewed it " }))).toBe(
-      "reviewed it",
-    );
-  });
-
-  it("renders an integration headline when an event recorded no reply", () => {
+  it("a webhook row keeps its headline as the trigger and its reply separately", () => {
     const event = row({
       actor: PLATFORM_IDENTITY,
       event_type: "webhook",
       request_json: JSON.stringify({ repo: "owner/repo", number: 12, action: "closed" }),
-    });
-    expect(messageBodyFor(event)).toBe("closed · owner/repo#12");
-  });
-
-  it("prefers a recorded reply over the headline for an integration event", () => {
-    const event = row({
-      actor: PLATFORM_IDENTITY,
-      event_type: "webhook",
-      request_json: JSON.stringify({ repo: "owner/repo", number: 12 }),
       response_text: "I reviewed the change",
     });
-    expect(messageBodyFor(event)).toBe("I reviewed the change");
+    // The reply must NOT clobber the headline — the old code showed the reply
+    // and dropped "closed · owner/repo#12" entirely.
+    expect(triggerBodyFor(event)).toBe("closed · owner/repo#12");
+    expect(replyBodyFor(event)).toBe("I reviewed the change");
   });
 
-  it("returns nothing when a row genuinely carries no body, leaving the outcome floor", () => {
+  it("an assistant-actor row has no trigger; its text is the reply", () => {
+    expect(triggerBodyFor(row({ actor: ACTOR.FLEET }))).toBe("");
+    expect(replyBodyFor(row({ actor: ACTOR.FLEET, response_text: " reviewed it " }))).toBe(
+      "reviewed it",
+    );
+  });
+
+  it("a reply-less operator turn leaves an empty reply and a non-empty outcome floor", () => {
     const operator = row({ actor: `${ACTOR.STEER_PREFIX}${ACCOUNT_ID}`, request_json: "{}" });
-    expect(messageBodyFor(operator)).toBe("");
+    expect(replyBodyFor(operator)).toBe("");
     expect(outcomeFor(operator).length).toBeGreaterThan(0);
   });
 });

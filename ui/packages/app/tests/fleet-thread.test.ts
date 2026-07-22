@@ -103,6 +103,7 @@ function ev(over: Partial<FleetEvent> & { actor: string; role: FleetEvent["role"
     role: over.role,
     actor: over.actor,
     text: over.text ?? "",
+    reply: over.reply ?? "",
     outcome: over.outcome ?? OUTCOME.NO_REPLY,
     createdAt: over.createdAt ?? new Date(Date.UTC(2026, 4, 15, 9, 0, 0)),
     status: over.status ?? "processed",
@@ -122,6 +123,8 @@ function toThreadMessage(e: FleetEvent): ThreadMessageLike {
         requestJson: e.custom?.requestJson,
         reason: e.custom?.reason,
         status: e.status,
+        reply: e.reply,
+        outcome: e.outcome,
       },
     },
   };
@@ -278,6 +281,50 @@ describe("FleetThread — summary refresh", () => {
 });
 
 describe("FleetThread — role rendering", () => {
+  it("renders an operator steer and the fleet's reply on ONE row as two bubbles", () => {
+    // The durable model: a steer row carries both the operator's message
+    // (request_json) and the fleet's answer (response_text) — the reply
+    // UPDATEs onto the same row. Both must render, attributed correctly.
+    mockStream([
+      ev({
+        role: "user",
+        actor: "steer:user_abc",
+        text: "please review PR 517",
+        reply: "Reviewed. Two suggestions, CI passing.",
+        status: "processed",
+      }),
+    ]);
+    const { container } = renderThread();
+    // The operator's question survives (the old code dropped it for the reply).
+    expect(screen.getByText(/please review PR 517/)).toBeTruthy();
+    // The fleet's reply survives too (the new-code bug dropped it for the
+    // question), and it is NOT attributed to the operator.
+    expect(screen.getByText(/Reviewed\. Two suggestions/)).toBeTruthy();
+    expect(screen.getByText("Operator")).toBeTruthy();
+    expect(screen.getByText(FLEET_NAME)).toBeTruthy();
+    // The reply sits under the fleet's chip, not the operator's.
+    const replyRow = screen.getByText(/Reviewed\. Two suggestions/).closest("[data-role]");
+    expect(replyRow?.getAttribute("data-role")).toBe("assistant");
+  });
+
+  it("shows the outcome as the fleet's bubble when a turn completes with no reply", () => {
+    mockStream([
+      ev({
+        role: "user",
+        actor: "steer:user_abc",
+        text: "deploy staging",
+        reply: "",
+        status: "gate_blocked",
+        outcome: OUTCOME.WAITING_APPROVAL,
+      }),
+    ]);
+    renderThread();
+    expect(screen.getByText(/deploy staging/)).toBeTruthy();
+    // A blocked turn does not render the instruction as if it succeeded — the
+    // fleet bubble states the outcome (Codex finding #4).
+    expect(screen.getByText(OUTCOME.WAITING_APPROVAL)).toBeTruthy();
+  });
+
   it("labels an operator steer with a word, never the account identifier", () => {
     const accountId = "user_3gkbgxjnujsxbdxttcwcslpc87k";
     mockStream([
@@ -311,7 +358,7 @@ describe("FleetThread — role rendering", () => {
 
   it("renders an assistant message in sans body text", () => {
     mockStream([
-      ev({ role: "assistant", actor: "fleet", text: "snapshot taken." }),
+      ev({ role: "assistant", actor: "fleet", reply: "snapshot taken." }),
     ]);
     renderThread();
     expect(screen.getByText(/snapshot taken/)).toBeTruthy();
@@ -411,7 +458,7 @@ describe("FleetThread — role rendering", () => {
       ev({
         role: "assistant",
         actor: "fleet",
-        text: "Provider returned 429; retry budget exhausted",
+        reply: "Provider returned 429; retry budget exhausted",
         status: "fleet_error",
       }),
     ]);
@@ -450,6 +497,40 @@ describe("FleetThread — steer submission", () => {
     expect(capturedRetry.current).toBeTypeOf("function");
     act(() => capturedRetry.current!());
     expect(steerFleetActionMock).not.toHaveBeenCalled();
+  });
+
+  it("serialises rapid submissions so their POSTs reach the server in order", async () => {
+    mockStream([]);
+    // Two rapid sends: the first resolves slowly, the second quickly. Without
+    // serialisation the fast one's POST would land first and the server would
+    // assign it the earlier event id — "stop" before "deploy".
+    const order: string[] = [];
+    let releaseFirst: (() => void) | null = null;
+    steerFleetActionMock.mockImplementationOnce(
+      (_ws: string, _z: string, text: string) =>
+        new Promise((resolve) => {
+          releaseFirst = () => {
+            order.push(text);
+            resolve({ ok: true, data: { event_id: "evt_1" } });
+          };
+        }),
+    );
+    steerFleetActionMock.mockImplementationOnce((_ws: string, _z: string, text: string) => {
+      order.push(text);
+      return Promise.resolve({ ok: true, data: { event_id: "evt_2" } });
+    });
+    renderThread();
+
+    const first = capturedOnNew.current!(appendMessage("deploy"));
+    const second = capturedOnNew.current!(appendMessage("stop"));
+    // The second POST must not fire until the first resolves.
+    await waitFor(() => expect(releaseFirst).not.toBeNull());
+    expect(order).toEqual([]);
+    await act(async () => {
+      releaseFirst!();
+      await Promise.all([first, second]);
+    });
+    expect(order).toEqual(["deploy", "stop"]);
   });
 
   it("calls steerFleetAction and reconciles the optimistic message on ok", async () => {
@@ -610,6 +691,7 @@ describe("FleetThread — robustness against malformed metadata", () => {
       role: "system",
       actor: "" as unknown as string,
       text: "config has non-string actor in custom",
+      reply: "",
       outcome: OUTCOME.NO_REPLY,
       createdAt: new Date(Date.UTC(2026, 4, 15, 9, 0, 0)),
       status: "processed",

@@ -112,15 +112,20 @@ function convertEvent(event: FleetEvent): ThreadMessageLike {
     role: event.role,
     id: event.id,
     createdAt: event.createdAt,
-    // The outcome is the floor: an event with no body still says what
-    // happened, so no rendered row is ever blank.
-    content: [{ type: "text", text: event.text.length > 0 ? event.text : event.outcome }],
+    // Content carries the TRIGGER — the operator's message or the integration
+    // headline. The fleet's reply rides the custom bag; the renderer paints it
+    // as its own bubble so a reply never appears as operator speech.
+    content: [{ type: "text", text: event.text }],
     metadata: {
       custom: {
         actor: event.actor,
         requestJson: event.custom?.requestJson,
         reason: event.custom?.reason,
         status: event.status,
+        // The fleet's reply on this same durable row, and the sentence to show
+        // in its place when the reply is empty (still working, blocked, failed).
+        reply: event.reply,
+        outcome: event.outcome,
         // The tool calls the fleet made while working this event. They ride the
         // custom bag rather than assistant-ui's tool-call content parts: the
         // backend publishes them as sibling frames keyed by event_id, not as

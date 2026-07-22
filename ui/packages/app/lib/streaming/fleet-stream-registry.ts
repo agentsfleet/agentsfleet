@@ -79,11 +79,19 @@ function startEventSource(entry: Entry, fleetId: string): void {
     const needsBackfill = entry.hasConnectedOnce || entry.hadConnectionError;
     entry.hasConnectedOnce = true;
     entry.hadConnectionError = false;
-    entry.reconnectAttempts = 0;
+    // Deliberately NOT resetting reconnectAttempts here. A TCP/SSE open is not
+    // proof of a working stream — an unhealthy upstream can accept and close
+    // immediately. Attempts reset only once a real frame arrives (onFrame), so
+    // an accept-then-close upstream escalates to the slow cadence instead of
+    // hammering at the base delay forever.
     patchSnapshot(entry, { connectionStatus: CONNECTION_STATUS.LIVE });
     if (needsBackfill) void backfillMissedFrames(entry, fleetId);
   };
-  es.onmessage = (e) => onFrame(entry, e);
+  es.onmessage = (e) => {
+    // A delivered frame is proof the stream works: return to fast backoff.
+    entry.reconnectAttempts = 0;
+    onFrame(entry, e);
+  };
   es.onerror = () => onEventSourceError(entry, fleetId);
 }
 
@@ -241,8 +249,9 @@ export function appendOptimistic(
       role: "user",
       actor,
       text,
-      // A submission always carries its own text, so the outcome floor is
-      // never reached — it is set for shape, not for display.
+      // The operator's own message is the trigger; the fleet has not replied
+      // yet, so the reply is empty and the outcome floor is set for shape.
+      reply: "",
       outcome: outcomeForStatus(STATUS_RECEIVED),
       createdAt: new Date(),
       status: STATUS_OPTIMISTIC,

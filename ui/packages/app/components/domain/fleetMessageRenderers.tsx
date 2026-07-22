@@ -10,7 +10,9 @@ import {
   useFleetName,
   type RowTone,
 } from "./FleetMessageRow";
-import { roleFor, senderLabelFor } from "@/lib/events/event-summary";
+import { SENDER, roleFor, senderLabelFor } from "@/lib/events/event-summary";
+
+const SENDER_FLEET = SENDER.FLEET_FALLBACK;
 
 const STATUS_OPTIMISTIC = "optimistic";
 const STATUS_FAILED = "failed";
@@ -45,45 +47,78 @@ function FleetMessage({ message }: { message: MessageState }) {
   const failed = status === STATUS_FAILED;
   const payload = readRequestJson(message);
   const tools = readTools(message);
-  const streaming = status === STATUS_IN_FLIGHT && message.role === "assistant";
+  const trigger = readText(message);
+  const isReplyRow = message.role === "assistant";
+  return (
+    <>
+      {/* The trigger bubble: the operator's message or the integration event.
+          An assistant-only row has no trigger and skips straight to the reply. */}
+      {isReplyRow ? null : (
+        <FleetMessageRow
+          sender={senderLabelFor(actor, fleetName)}
+          createdAt={message.createdAt}
+          tone={toneFor(actor, status)}
+          messageRole={message.role}
+          dimmed={optimistic}
+          failed={failed}
+          annotation={<Annotation optimistic={optimistic} failed={failed} />}
+        >
+          <span>{trigger}</span>
+          {payload ? <PayloadDisclosure json={payload} /> : null}
+        </FleetMessageRow>
+      )}
+      <FleetReply message={message} fleetName={fleetName} tools={tools} status={status} />
+    </>
+  );
+}
+
+// The fleet's answer to a trigger, or — for a completed turn with no answer —
+// the honest outcome sentence. Rendered as its own bubble so the reply never
+// appears under the operator's identity. Suppressed only for an operator turn
+// that is still optimistic or has failed to send (no fleet turn exists yet).
+function FleetReply({
+  message,
+  fleetName,
+  tools,
+  status,
+}: {
+  message: MessageState;
+  fleetName: string;
+  tools: ReturnType<typeof readTools>;
+  status: string;
+}) {
+  const reply = readReply(message);
+  const outcome = readOutcome(message);
+  const errored = status === STATUS_AGENT_ERROR;
+  const streaming = status === STATUS_IN_FLIGHT;
+  if (status === STATUS_OPTIMISTIC || status === STATUS_FAILED) return null;
+  const body = reply.length > 0 ? reply : outcome;
   return (
     <FleetMessageRow
-      sender={senderLabelFor(actor, fleetName)}
+      sender={fleetName.length > 0 ? fleetName : SENDER_FLEET}
       createdAt={message.createdAt}
-      tone={toneFor(actor, status)}
-      messageRole={message.role}
-      dimmed={optimistic}
-      failed={failed}
-      annotation={<Annotation optimistic={optimistic} failed={failed} errored={status === STATUS_AGENT_ERROR} />}
+      tone={ROW_TONE.FLEET}
+      messageRole="assistant"
+      annotation={errored ? <Badge variant="destructive">{STATUS_AGENT_ERROR}</Badge> : null}
     >
       <ToolCalls tools={tools} />
-      <span className={cn(status === STATUS_AGENT_ERROR && "text-destructive")}>
-        {readText(message)}
-      </span>
+      <span className={cn(errored && "text-destructive")}>{body}</span>
       {streaming ? (
         <span className="ml-xs text-pulse animate-pulse" aria-label="streaming">
           {STREAM_CURSOR}
         </span>
       ) : null}
-      {payload ? <PayloadDisclosure json={payload} /> : null}
     </FleetMessageRow>
   );
 }
 
 // ── Row parts ─────────────────────────────────────────────────────────────
 
-function Annotation({
-  optimistic,
-  failed,
-  errored,
-}: {
-  optimistic: boolean;
-  failed: boolean;
-  errored: boolean;
-}) {
+// The delivery state of an operator's own trigger message: sending, or not
+// sent. A fleet error is the reply bubble's annotation, not the trigger's.
+function Annotation({ optimistic, failed }: { optimistic: boolean; failed: boolean }) {
   if (optimistic) return <Badge variant="evidence">{SENDING_LABEL}</Badge>;
   if (failed) return <Badge variant="destructive">{FAILED_LABEL}</Badge>;
-  if (errored) return <Badge variant="destructive">{STATUS_AGENT_ERROR}</Badge>;
   return null;
 }
 
@@ -143,6 +178,16 @@ function readActor(message: MessageState): string {
 
 function readCustomStatus(message: MessageState): string {
   const raw = message.metadata.custom["status"];
+  return typeof raw === "string" ? raw : "";
+}
+
+function readReply(message: MessageState): string {
+  const raw = message.metadata.custom["reply"];
+  return typeof raw === "string" ? raw : "";
+}
+
+function readOutcome(message: MessageState): string {
+  const raw = message.metadata.custom["outcome"];
   return typeof raw === "string" ? raw : "";
 }
 
