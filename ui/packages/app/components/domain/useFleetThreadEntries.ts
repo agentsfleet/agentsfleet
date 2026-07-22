@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useRef } from "react";
 import type { ThreadMessageLike } from "@assistant-ui/react";
 
 import { groupThreadEvents, groupTimeRange, type ThreadEntry } from "@/lib/events/event-grouping";
@@ -33,7 +33,14 @@ export function useFleetThreadEntries(
   events: FleetEvent[],
   convertEvent: (event: FleetEvent) => ThreadMessageLike,
 ): FleetThreadEntries {
-  const entries = useMemo(() => groupThreadEvents(events), [events]);
+  // The previous result is fed back in so unchanged runs keep their identity
+  // across a streaming frame — see `groupThreadEvents` on why that matters.
+  const previous = useRef<ThreadEntry[]>([]);
+  const entries = useMemo(() => {
+    const next = groupThreadEvents(events, previous.current);
+    previous.current = next;
+    return next;
+  }, [events]);
   const convertEntry = useCallback(
     (entry: ThreadEntry): ThreadMessageLike => {
       if (entry.kind === "single") return convertEvent(entry.event);

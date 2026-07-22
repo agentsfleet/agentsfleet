@@ -126,6 +126,26 @@ describe("groupThreadEvents", () => {
     expect(second.key).toBe(first.key);
   });
 
+  it("hands back unchanged entries by reference so untouched rows can bail out", () => {
+    // A streaming reply regroups the whole thread on every frame. If every
+    // entry came back new, React would re-render every row per chunk.
+    const stable = run(3);
+    const tail = evt({ actor: "webhook:slack" });
+    const before = groupThreadEvents([...stable, tail]);
+    const changedTail = { ...tail, reply: "partial…" };
+    const after = groupThreadEvents([...stable, changedTail], before);
+
+    expect(after[0]).toBe(before[0]);
+    expect(after[1]).not.toBe(before[1]);
+  });
+
+  it("is unchanged in output whether or not a previous result is supplied", () => {
+    const events = [...run(3), evt({ actor: "webhook:slack" })];
+    const fresh = groupThreadEvents(events);
+    const reused = groupThreadEvents(events, groupThreadEvents(events));
+    expect(reused.map((e) => e.key)).toEqual(fresh.map((e) => e.key));
+  });
+
   it("survives an empty thread", () => {
     expect(groupThreadEvents([])).toEqual([]);
   });

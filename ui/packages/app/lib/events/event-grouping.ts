@@ -55,24 +55,49 @@ function sameRun(a: FleetEvent, b: FleetEvent): boolean {
 /**
  * Collapse each run of ≥`MIN_GROUP_RUN` identical consecutive activity events
  * into one group entry, leaving everything else untouched and in place.
+ *
+ * `previous` is the last result, and passing it is a performance contract, not
+ * a convenience: a streaming reply regroups the whole thread on every frame,
+ * and returning fresh objects for runs that did not change would make every
+ * row a new reference, so React re-renders the entire list per chunk. Entries
+ * whose members are identical are handed back by reference instead, letting
+ * the rows above the active one bail out.
  */
-export function groupThreadEvents(events: FleetEvent[]): ThreadEntry[] {
+export function groupThreadEvents(
+  events: FleetEvent[],
+  previous?: readonly ThreadEntry[],
+): ThreadEntry[] {
   const entries: ThreadEntry[] = [];
+  const reusable = new Map<string, ThreadEntry>();
+  for (const entry of previous ?? []) reusable.set(entry.key, entry);
+
   let index = 0;
   while (index < events.length) {
     const event = events[index];
     if (event === undefined) break;
     const run = runLengthAt(events, index);
-    if (run >= MIN_GROUP_RUN) {
-      const members = events.slice(index, index + run);
-      entries.push({ kind: "group", key: `group:${event.id}`, events: members });
-      index += run;
-      continue;
-    }
-    entries.push({ kind: "single", key: event.id, event });
-    index += 1;
+    const key = run >= MIN_GROUP_RUN ? `group:${event.id}` : event.id;
+    const built: ThreadEntry = run >= MIN_GROUP_RUN
+      ? { kind: "group", key, events: events.slice(index, index + run) }
+      : { kind: "single", key, event };
+    const prior = reusable.get(key);
+    entries.push(prior !== undefined && sameEntry(prior, built) ? prior : built);
+    index += run >= MIN_GROUP_RUN ? run : 1;
   }
   return entries;
+}
+
+// Identity by members, not by deep equality: the events themselves are already
+// replaced by reference whenever the stream changes one, so comparing the
+// references is both cheaper and exactly as strict.
+function sameEntry(before: ThreadEntry, after: ThreadEntry): boolean {
+  if (before.kind !== after.kind) return false;
+  if (before.kind === "single" && after.kind === "single") return before.event === after.event;
+  if (before.kind === "group" && after.kind === "group") {
+    return before.events.length === after.events.length
+      && before.events.every((event, i) => event === after.events[i]);
+  }
+  return false;
 }
 
 // How many consecutive events from `start` share its run key. Always ≥1; a
