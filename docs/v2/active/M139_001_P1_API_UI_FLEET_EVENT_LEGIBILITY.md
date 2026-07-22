@@ -34,7 +34,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 **Problem:** The fleet chat reads like a table and the Events table reads like a stuck record. Every webhook delivery renders at the same visual weight as an operator message, each with a second outcome row, so a burst of GitHub deliveries floods the thread and the operator scrolls to reach the composer. Every failure says only its class ("Failed a startup safety check") — never which check or why — because `core.fleet_events` stores only `failure_label`, several `startup_posture` classification sites return an empty `content`, and the live completion frame carries only `status` (the chat shows a generic "The run failed." until reload). The remediation `guidance` hook in `event-summary.ts` is authored but rendered nowhere.
 
-**Solution summary:** One additive column and a presentation overhaul. The runner names its failure cause at every classification site and carries it on the existing `result` wire frame (defaulted field — wire-compatible both directions); the report verb persists it, the envelope and the completion frame surface it, and the shared vocabulary module renders it under the plain-language failure sentence with its remediation guidance. In the chat, integration events demote to compact one-line rows, consecutive repeats coalesce into one expandable "×N" group, a repeating failure pins one banner (count, last seen, cause, guidance), and an All/Conversation/Activity filter lets the operator reach their own conversation without scrolling. The Events table groups consecutive identical failures and dims zero-value metrics on failed rows. Design variants come first via `/design-shotgun` (board committed under `docs/design/`, Indy picks); `/design-review` runs as the designer QA pass after implementation.
+**Solution summary:** One additive column and a presentation overhaul. The runner names its failure cause at every classification site and carries it on the existing `result` wire frame (defaulted field — wire-compatible both directions); the report verb persists it, the envelope and the completion frame surface it, and the shared vocabulary module renders it under the plain-language failure sentence with its remediation guidance. In the chat, integration events demote to compact one-line rows, consecutive repeats coalesce into one expandable "×N" group, and a repeating failure pins one banner (count, last seen, cause, guidance), so the operator reaches their own conversation without scrolling. The Events table groups consecutive identical failures and dims zero-value metrics on failed rows. Design variants come first via `/design-shotgun` (board committed under `docs/design/`, Indy picks); `/design-review` runs as the designer QA pass after implementation.
 
 ## PR Intent & comprehension handshake
 
@@ -72,7 +72,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `ui/packages/app/lib/events/event-summary.ts` | EDIT | Outcome renders detail under the failure sentence; guidance presentation exported. |
 | `ui/packages/app/components/domain/fleetMessageRenderers.tsx` | EDIT | Compact integration rows; failure rows render cause + guidance. |
 | `ui/packages/app/components/domain/FleetMessageRow.tsx` | EDIT | Compact row variant beside the full skeleton. |
-| `ui/packages/app/components/domain/FleetThread.tsx` | EDIT | Mounts filter, banner, and grouping over the event array. |
+| `ui/packages/app/components/domain/FleetThread.tsx` | EDIT | Mounts banner and grouping over the event array. |
 | `ui/packages/app/components/domain/FleetEventGroup.tsx` | CREATE | Collapsed "×N" group row (name indicative — match local style). |
 | `ui/packages/app/components/domain/FleetFailureBanner.tsx` | CREATE | Persistent-failure banner (name indicative). |
 | `ui/packages/app/components/domain/EventsList.tsx` | EDIT | Groups consecutive identical failures; dims zero metrics on failed rows. |
@@ -96,7 +96,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | ZIG GATE | yes — runner, daemon, wire type | Cross-compile x86_64-linux + aarch64-linux; colocated tests. |
 | PUB / Struct-Shape | yes — new field on the shared `pub` wire struct | Defaulted field on the existing struct; FILE SHAPE DECISION per touched pub surface. |
 | File & Function Length (≤350/≤50/≤70) | yes — `fleetMessageRenderers.tsx` and `FleetThread.tsx` are near caps | Grouping, banner, and filter land as the two new components + a pure grouping module, not inline growth. |
-| UFS (repeated/semantic literals) | yes — labels, filter names, frame keys | Named constants; the frame key spelling shared runner↔daemon↔dashboard verbatim. |
+| UFS (repeated/semantic literals) | yes — labels, frame keys | Named constants; the frame key spelling shared runner↔daemon↔dashboard verbatim. |
 | UI Substitution / DESIGN TOKEN | yes — banner, group row, filter control | Design-system primitives (`Badge`, `Alert`, existing segmented patterns); theme tokens only. |
 | SCHEMA GUARD | yes — migration 032 | Additive nullable column; no DROP/ALTER of existing shape; `embed.zig` + array updated same diff. |
 | LOGGING / LIFECYCLE / ERROR REGISTRY | no — no new log lines, error codes, or init/deinit surfaces planned | Re-verdict at PLAN if a new allocation-owning component appears. |
@@ -151,12 +151,9 @@ The same `failure_label` on ≥2 consecutive terminal failures pins one banner a
 - **Dimension 5.1** — Banner appears at the threshold with count, last-seen, and cause → Test `test_banner_appears_with_cause`
 - **Dimension 5.2** — A single failure shows no banner; a processed event clears it → Test `test_banner_threshold_and_clear`
 
-### §6 — All / Conversation / Activity filter
+### §6 — All / Conversation / Activity filter — DEFERRED
 
-A segmented control in the chat header partitions rows by role — Conversation (user + fleet), Activity (system), All (default). View-local state only. **Implementation default:** not persisted — restraint until usage evidence exists.
-
-- **Dimension 6.1** — Filter partitions correctly; composer and optimistic sends work in every view → Test `test_filter_partitions_and_composer_works`
-- **Dimension 6.2** — An empty filtered view says so in a sentence, never renders blank → Test `test_empty_filter_view_has_copy`
+Cut by Indy at the design lock (verbatim quote in Discovery): the thread always shows all rows. Reactivation condition: usage evidence that operators need to isolate conversation from activity after the §3–§5 demotion/coalescing ships. No Dimensions; no tests.
 
 ### §7 — The Events table stops repeating itself
 
@@ -187,13 +184,12 @@ Dashboard                — no route or navigation changes; chat row grammar ga
 | Control characters in detail | hostile child output | Escaped at JSON emission (RULE ESC); rendered only as text nodes — never interpreted as markup. |
 | Group swallows a distinct failure | same label, different cause | Grouping key includes the outcome sentence; differing causes never merge. |
 | Banner outlives recovery | stale client state | Any non-failure terminal event clears it; negative test proves the clear. |
-| Filter hides a live failure | operator sitting on Conversation view | The banner renders regardless of the active filter. |
 | Coalescing hides a failed send | operator's own optimistic/failed rows | User/assistant roles are never grouped (Invariant 1). |
 | Cross-page truncation lies about counts | keyset pagination | Groups form within one fetched page; the count claims only what the page holds. |
 
 ## Invariants
 
-1. Operator and fleet rows never coalesce and always appear in the Conversation view — role guard in the grouping function; unit test asserts no user/assistant row ever enters a group.
+1. Operator and fleet rows never coalesce — role guard in the grouping function; unit test asserts no user/assistant row ever enters a group.
 2. The `EventRow` envelope is mirrored verbatim daemon↔dashboard (no shim, no rename) — integration test asserts the envelope field names.
 3. `failure_detail` is render-safe: escaped at emission, rendered only as text nodes — component test asserts literal rendering of markup-shaped input.
 4. A frame or row without `failure_detail` renders exactly the pre-M139 sentence — wire-compatibility unit test.
@@ -228,8 +224,6 @@ This workstream renders existing durable data; it adds, renames, and removes no 
 | 4.3 | unit | `test_live_frame_extends_group` | Frame matching newest group → count increments; non-matching → new row. |
 | 5.1 | unit | `test_banner_appears_with_cause` | 2 consecutive identical failures → banner with count, last-seen, cause. |
 | 5.2 | unit | `test_banner_threshold_and_clear` | 1 failure → no banner; failures then processed → banner gone (negative). |
-| 6.1 | unit | `test_filter_partitions_and_composer_works` | Each view shows only its roles; a send lands from every view. |
-| 6.2 | unit | `test_empty_filter_view_has_copy` | Activity-only thread on Conversation view → explanatory sentence, not blank. |
 | 7.1 | unit | `test_table_groups_identical_failures` | 15 identical failure rows → 1 group row "×15"; expansion restores. |
 | 7.2 | unit | `test_zero_metrics_dimmed_on_failures` | Failed row with 0/0/0 → dimmed; processed row → unchanged (regression). |
 | 7.3 | unit | `test_grouping_respects_page_boundary` | Identical rows across two pages → two groups; cursors unchanged (regression). |
@@ -275,11 +269,11 @@ N/A — no files deleted. The one latent surface (`guidance` in `event-summary.t
 2. **Preserved user behaviour** — steering from the composer, optimistic sends and retry, payload disclosure, Inspect dialog, keyset pagination, live Server-Sent Events (SSE) updates, Jump to latest: all unchanged.
 3. **Optimal-way check** — the unconstrained shape re-threads the event model into conversation turns; one additive column plus presentation grouping delivers the moment without storage upheaval. Acceptable now; the re-thread stays a named non-goal.
 4. **Rebuild-vs-iterate** — iterate. The approved variant-A skeleton and the frame/envelope pipeline stay; determinism of the render path is preserved (pure grouping function over the same ordered array).
-5. **What we build** — one migration, one wire field, cause text at classification sites, envelope + frame plumbing, compact/group/banner/filter chat presentation, grouped events table, a shotgun board.
+5. **What we build** — one migration, one wire field, cause text at classification sites, envelope + frame plumbing, compact/group/banner chat presentation, grouped events table, a shotgun board.
 6. **What we do NOT build** — see Out of Scope; headline rejections: no event-model re-thread (too big), no server aggregation (page-local suffices), no new analytics (no evidence yet).
 7. **Fit with existing features** — compounds with `RunMetricsStrip` and `EventDetailsDialog` through the shared vocabulary module; must not destabilize the optimistic-steer reconciliation path in `useFleetEventStream`.
 8. **Surface order** — User Interface (UI)-first, diverging from the repo's Command-Line Interface (CLI)-first default: the defect is a console legibility failure; the API change is subordinate plumbing the console consumes, and the CLI inherits the richer envelope for free.
-9. **Dashboard restraint** — the banner needs ≥2 consecutive identical failures before it speaks; zero metrics dim rather than hide; the filter claims no unread counts; no health scores anywhere.
+9. **Dashboard restraint** — the banner needs ≥2 consecutive identical failures before it speaks; zero metrics dim rather than hide; no health scores anywhere.
 10. **Confused-user next step** — the banner's guidance line names the failing check and points at the fleet's configuration surface; every failure row carries its cause. No ticket surface needed.
 
 ## Decomposition & alternatives (patch vs refactor)
@@ -294,3 +288,4 @@ N/A — no files deleted. The one latent surface (`guidance` in `event-summary.t
 - **Metrics review** — no analytics/funnel playbook update required: no product events added, renamed, or removed (see Metrics & Observability).
 - **Skill-chain outcomes** — `/write-unit-test`, `/review`, `kishore-babysit-prs` results (order per `AGENTS.md` CHORE(close)); `/design-shotgun` variant pick and `/design-review` findings land here.
 - **Deferrals** — every "deferred to follow-up" needs an **Indy-acked verbatim quote** here, format `> Indy (YYYY-MM-DD HH:MM): "<quote>" — context: <which item, why>`. An agent-unilateral deferral is **incomplete scope, not deferral**, and blocks CHORE(close) until the item lands or the quote is captured.
+  > Indy (2026-07-22 14:05): "go (I dont need the All, Conversation, Activity option) we just show all for now." — context: §6 chat filter deferred at the design lock; the thread always shows all rows; reactivate on usage evidence after §3–§5 ship.
