@@ -13,7 +13,7 @@ vi.mock("@/lib/api/client", () => ({
   API_ORIGIN: "https://api.example.test",
 }));
 
-import { GET } from "../app/backend/v1/workspaces/[workspaceId]/events/route";
+import { GET } from "../app/live/v1/workspaces/[workspaceId]/events/route";
 
 const WORKSPACE_ID = "ws_1";
 const TOKEN = "session_token";

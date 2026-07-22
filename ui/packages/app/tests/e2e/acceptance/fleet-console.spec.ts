@@ -51,7 +51,9 @@ test.describe("fleet console", () => {
     // test_console_composer_is_reachable_without_page_scroll — the defect this
     // milestone exists for: the card used to grow to the height of its whole
     // history, so reaching the composer meant scrolling past every event.
-    const composer = thread.getByLabel("Chat composer");
+    // The composer is pinned OUTSIDE the chat card — a sibling below it —
+    // so it stays reachable while the transcript scrolls internally.
+    const composer = page.getByLabel("Chat composer");
     await expect(composer).toBeInViewport();
     const pageOverflow = await page.evaluate(
       () => document.documentElement.scrollHeight - document.documentElement.clientHeight,
