@@ -3,10 +3,10 @@
 import { type Ref, useImperativeHandle, useRef, useState, useTransition } from "react";
 import {
   Badge,
-  Button,
   DataTable,
   type DataTableColumn,
   EmptyState,
+  PAGINATION_KIND,
 } from "@agentsfleet/design-system";
 import { ServerIcon } from "lucide-react";
 import {
@@ -15,6 +15,7 @@ import {
   DEFAULT_SORT,
   type RunnerListResponse,
   type RunnerListItem,
+  type RunnerSort,
   type RunnerAdminAction,
   type RunnerEventsResponse,
 } from "@/lib/api/runners";
@@ -30,6 +31,9 @@ import {
 import { ACTION_CONFIG, DELETE_ACTION_CONFIG, ActionsCell, HostCell, LabelsCell, StatusCell } from "./RunnerListCells";
 
 export type RunnerListHandle = { refresh: () => void };
+
+const HOST_SORT_ASCENDING: RunnerSort = "host_id";
+const HOST_SORT_DESCENDING: RunnerSort = "-host_id";
 
 type ActivityDataState = {
   runnerId: string;
@@ -48,7 +52,7 @@ function buildColumns({
   onDelete: (runner: RunnerListItem) => void;
 }): DataTableColumn<RunnerListItem>[] {
   return [
-    { key: "host", header: "Host", cell: (r) => <HostCell r={r} /> },
+    { key: "host", header: "Host", sortable: true, cell: (r) => <HostCell r={r} /> },
     { key: "status", header: "Status", cell: (r) => <StatusCell r={r} /> },
     {
       key: "isolation",
@@ -80,6 +84,7 @@ export default function RunnerList({
   const [items, setItems] = useState<RunnerListItem[]>(initial.items);
   const [total, setTotal] = useState(initial.total);
   const [page, setPage] = useState(initial.page);
+  const [sort, setSort] = useState<RunnerSort>(DEFAULT_SORT);
   const [error, setError] = useState<string | null>(null);
   const [confirmTarget, setConfirmTarget] = useState<RunnerActionConfirmTarget>(null);
   const [deleteTarget, setDeleteTarget] = useState<RunnerDeleteConfirmTarget>(null);
@@ -90,22 +95,21 @@ export default function RunnerList({
 
   // The header "Create runner" dialog (rendered by the parent view) calls this
   // via ref on create — a targeted re-fetch of page 1 (newest-first default).
-  useImperativeHandle(ref, () => ({ refresh: () => loadPage(1) }));
+  useImperativeHandle(ref, () => ({ refresh: () => loadPage(1, false, DEFAULT_SORT) }));
 
-  const lastPage = Math.max(1, Math.ceil(total / DEFAULT_PAGE_SIZE));
-
-  function loadPage(nextPage: number, retried = false) {
+  function loadPage(nextPage: number, retried = false, nextSort = sort) {
     startTransition(async () => {
-      const r = await listRunnersAction({ page: nextPage, page_size: DEFAULT_PAGE_SIZE, sort: DEFAULT_SORT });
+      const r = await listRunnersAction({ page: nextPage, page_size: DEFAULT_PAGE_SIZE, sort: nextSort });
       if (!r.ok) {
         setError(presentErrorString({ errorCode: r.errorCode, message: r.error, action: "load runners" }));
-        if (r.errorCode === "UZ-REQ-001" && !retried) loadPage(1, true);
+        if (r.errorCode === "UZ-REQ-001" && !retried) loadPage(1, true, DEFAULT_SORT);
         return;
       }
       setError(null);
       setItems(r.data.items);
       setTotal(r.data.total);
       setPage(r.data.page);
+      setSort(nextSort);
     });
   }
 
@@ -186,6 +190,21 @@ export default function RunnerList({
         rows={items}
         rowKey={(r) => r.id}
         caption="Runners"
+        sortKey={sort === HOST_SORT_ASCENDING || sort === HOST_SORT_DESCENDING ? "host" : undefined}
+        sortDirection={sort === HOST_SORT_DESCENDING ? "descending" : "ascending"}
+        onSortChange={() => loadPage(
+          1,
+          false,
+          sort === HOST_SORT_ASCENDING ? HOST_SORT_DESCENDING : HOST_SORT_ASCENDING,
+        )}
+        pagination={{
+          kind: PAGINATION_KIND.page,
+          page,
+          pageSize: DEFAULT_PAGE_SIZE,
+          total,
+          onPageChange: loadPage,
+          isLoading: pending,
+        }}
         empty={
           <EmptyState
             icon={<ServerIcon size={28} />}
@@ -196,22 +215,6 @@ export default function RunnerList({
       />
 
       {error && !confirmTarget && !deleteTarget ? <p className="text-sm text-destructive">{error}</p> : null}
-
-      {lastPage > 1 ? (
-        <div className="flex items-center justify-between text-sm text-muted-foreground">
-          <span>
-            Page {page} of {lastPage} · {total} runners
-          </span>
-          <div className="flex gap-2">
-            <Button type="button" variant="ghost" size="sm" disabled={pending || page <= 1} onClick={() => loadPage(page - 1)}>
-              Previous
-            </Button>
-            <Button type="button" variant="ghost" size="sm" disabled={pending || page >= lastPage} onClick={() => loadPage(page + 1)}>
-              Next
-            </Button>
-          </div>
-        </div>
-      ) : null}
 
       {activityRunner ? (
         <RunnerActivityDialog

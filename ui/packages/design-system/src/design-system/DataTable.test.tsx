@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, within } from "@testing-library/react";
 import { DataTable, type DataTableColumn } from "./DataTable";
 
 type Row = { id: string; name: string; spend: number };
@@ -10,8 +10,8 @@ const ROWS: Row[] = [
 ];
 
 const COLUMNS: DataTableColumn<Row>[] = [
-  { key: "name", header: "Name", cell: (r) => r.name },
-  { key: "spend", header: "Spend", numeric: true, cell: (r) => `$${r.spend}` },
+  { key: "name", header: "Name", cell: (r) => r.name, sortValue: (r) => r.name },
+  { key: "spend", header: "Spend", numeric: true, cell: (r) => `$${r.spend}`, sortValue: (r) => r.spend },
 ];
 
 describe("DataTable", () => {
@@ -51,6 +51,26 @@ describe("DataTable", () => {
     );
     const table = screen.getByRole("table");
     expect(table.getAttribute("aria-busy")).toBe("true");
+  });
+
+  it("keeps an empty externally paginated table busy while its page loads", () => {
+    render(
+      <DataTable
+        columns={COLUMNS}
+        rows={[]}
+        rowKey={(row) => row.id}
+        pagination={{
+          kind: "page",
+          page: 2,
+          pageSize: 25,
+          total: 26,
+          onPageChange: vi.fn(),
+          isLoading: true,
+        }}
+      />,
+    );
+
+    expect(screen.getByRole("table").getAttribute("aria-busy")).toBe("true");
   });
 
   it("invokes onRowClick on click and on Enter / Space keypress", () => {
@@ -126,6 +146,34 @@ describe("DataTable", () => {
     expect(screen.queryByRole("button", { name: /spend/i })).toBeNull();
   });
 
+  it("keeps externally sorted columns usable without exposing a TanStack accessor", () => {
+    const onSortChange = vi.fn();
+    const cols: DataTableColumn<Row>[] = [
+      { key: "remote_name", header: "Remote name", cell: (row) => row.name, sortable: true },
+    ];
+    render(
+      <DataTable
+        columns={cols}
+        rows={ROWS}
+        rowKey={(row) => row.id}
+        onSortChange={onSortChange}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Remote name" }));
+    expect(onSortChange).toHaveBeenCalledWith("remote_name");
+  });
+
+  it("does not advertise local sorting without a sort value", () => {
+    const cols: DataTableColumn<Row>[] = [
+      { key: "remote_name", header: "Remote name", cell: (row) => row.name, sortable: true },
+    ];
+    render(<DataTable columns={cols} rows={ROWS} rowKey={(row) => row.id} />);
+
+    expect(screen.queryByRole("button", { name: "Remote name" })).toBeNull();
+    expect(screen.getByRole("columnheader", { name: "Remote name" })).not.toHaveAttribute("aria-sort");
+  });
+
   it("renders a sr-only caption when caption is supplied", () => {
     render(
       <DataTable
@@ -151,7 +199,7 @@ describe("DataTable", () => {
     );
     const wrapper = container.querySelector('[data-slot="data-table"]') as HTMLElement;
     expect(wrapper.className).toContain("my-table");
-    expect(wrapper.className).toContain("overflow-x-auto");
+    expect(wrapper.className).toContain("overflow-hidden");
   });
 
   it("uses py-1.5 cell padding by default (density tighten)", () => {
@@ -164,20 +212,9 @@ describe("DataTable", () => {
     expect(bodyCell.className).not.toContain("py-2");
   });
 
-  it("stickyHeader unset renders the table directly in the wrapper (no bounded-height scroll div)", () => {
+  it("bounds the table and pins its header by default", () => {
     const { container } = render(
       <DataTable columns={COLUMNS} rows={ROWS} rowKey={(r) => r.id} />,
-    );
-    const wrapper = container.querySelector('[data-slot="data-table"]') as HTMLElement;
-    expect(wrapper.firstElementChild?.tagName).toBe("TABLE");
-    expect(container.querySelector(".max-h-96")).toBeNull();
-    const thead = container.querySelector("thead") as HTMLElement;
-    expect(thead.className).not.toContain("sticky");
-  });
-
-  it("stickyHeader bounds the table height and pins <thead> via sticky top-0", () => {
-    const { container } = render(
-      <DataTable columns={COLUMNS} rows={ROWS} rowKey={(r) => r.id} stickyHeader />,
     );
     const scrollDiv = container.querySelector(".max-h-96.overflow-y-auto");
     expect(scrollDiv).toBeInTheDocument();
@@ -187,16 +224,216 @@ describe("DataTable", () => {
     expect(thead.className).toContain("top-0");
   });
 
-  it("stickyHeader's scroll region is keyboard-reachable (tabIndex + region role)", () => {
+  it("stickyHeader=false removes the height bound and pinned header", () => {
+    const { container } = render(
+      <DataTable columns={COLUMNS} rows={ROWS} rowKey={(r) => r.id} stickyHeader={false} />,
+    );
+    expect(container.querySelector(".max-h-96")).toBeNull();
+    const thead = container.querySelector("thead") as HTMLElement;
+    expect(thead.className).not.toContain("sticky");
+  });
+
+  it("the scroll region is keyboard-reachable (tabIndex + region role)", () => {
     render(
-      <DataTable columns={COLUMNS} rows={ROWS} rowKey={(r) => r.id} stickyHeader caption="Spend by agent" />,
+      <DataTable columns={COLUMNS} rows={ROWS} rowKey={(r) => r.id} caption="Spend by agent" />,
     );
     const region = screen.getByRole("region", { name: /spend by agent, scrollable/i });
     expect(region.getAttribute("tabindex")).toBe("0");
   });
 
-  it("stickyHeader without a caption falls back to a generic scrollable-region label", () => {
-    render(<DataTable columns={COLUMNS} rows={ROWS} rowKey={(r) => r.id} stickyHeader />);
+  it("a table without a caption falls back to a generic scrollable-region label", () => {
+    render(<DataTable columns={COLUMNS} rows={ROWS} rowKey={(r) => r.id} />);
     expect(screen.getByRole("region", { name: /scrollable table/i })).toBeInTheDocument();
+  });
+
+  it("sorts local rows in both directions through the shared Button control", () => {
+    render(<DataTable columns={COLUMNS} rows={[ROWS[1], ROWS[0]]} rowKey={(r) => r.id} />);
+    const button = screen.getByRole("button", { name: /name/i });
+
+    fireEvent.click(button);
+    expect(screen.getByRole("columnheader", { name: /name/i })).toHaveAttribute("aria-sort", "ascending");
+    expect(within(screen.getAllByRole("row")[1]).getByText("Alpha")).toBeInTheDocument();
+
+    fireEvent.click(button);
+    expect(screen.getByRole("columnheader", { name: /name/i })).toHaveAttribute("aria-sort", "descending");
+    expect(within(screen.getAllByRole("row")[1]).getByText("Bravo")).toBeInTheDocument();
+  });
+
+  it("keeps externally sorted rows in caller order and reports only the column key", () => {
+    const onSortChange = vi.fn();
+    render(
+      <DataTable
+        columns={COLUMNS}
+        rows={[ROWS[1], ROWS[0]]}
+        rowKey={(r) => r.id}
+        sortKey="name"
+        sortDirection="ascending"
+        onSortChange={onSortChange}
+      />,
+    );
+    expect(within(screen.getAllByRole("row")[1]).getByText("Bravo")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /name/i }));
+    expect(onSortChange).toHaveBeenCalledWith("name");
+  });
+
+  it("paginates local rows at 25 items without growing the page", () => {
+    const rows = Array.from({ length: 26 }, (_, index) => ({
+      id: String(index + 1),
+      name: `Row ${index + 1}`,
+      spend: index,
+    }));
+    render(<DataTable columns={COLUMNS} rows={rows} rowKey={(row) => row.id} />);
+
+    expect(screen.getByText("Page 1 of 2")).toBeInTheDocument();
+    expect(screen.queryByText("Row 26")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Next page" }));
+    expect(screen.getByText("Row 26")).toBeInTheDocument();
+    expect(screen.getByText("Page 2 of 2")).toBeInTheDocument();
+  });
+
+  it("omits pagination chrome for one local page", () => {
+    render(<DataTable columns={COLUMNS} rows={ROWS} rowKey={(r) => r.id} />);
+    expect(screen.queryByRole("navigation", { name: "Pagination" })).toBeNull();
+  });
+
+  it("omits pagination chrome at the exact default page-size boundary", () => {
+    const rows = Array.from({ length: 25 }, (_, index) => ({
+      id: String(index),
+      name: `Row ${index}`,
+      spend: index,
+    }));
+    render(<DataTable columns={COLUMNS} rows={rows} rowKey={(row) => row.id} />);
+
+    expect(screen.queryByRole("navigation", { name: "Pagination" })).toBeNull();
+  });
+
+  it("honours a custom client page size", () => {
+    render(
+      <DataTable
+        columns={COLUMNS}
+        rows={ROWS}
+        rowKey={(row) => row.id}
+        pagination={{ kind: "client", pageSize: 1 }}
+      />,
+    );
+
+    expect(screen.getByText("Page 1 of 2")).toBeInTheDocument();
+    expect(screen.queryByText("Bravo")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Next page" }));
+    expect(screen.getByText("Bravo")).toBeInTheDocument();
+  });
+
+  it("renders every row when pagination is explicitly disabled", () => {
+    const rows = Array.from({ length: 26 }, (_, index) => ({ id: String(index), name: `Row ${index}`, spend: index }));
+    render(<DataTable columns={COLUMNS} rows={rows} rowKey={(row) => row.id} pagination={false} />);
+    expect(screen.getByText("Row 25")).toBeInTheDocument();
+    expect(screen.queryByRole("navigation", { name: "Pagination" })).toBeNull();
+  });
+
+  it("forwards page-backed pagination without slicing server rows", () => {
+    const onPageChange = vi.fn();
+    render(
+      <DataTable
+        columns={COLUMNS}
+        rows={ROWS}
+        rowKey={(row) => row.id}
+        pagination={{ kind: "page", page: 2, pageSize: 2, total: 6, onPageChange }}
+      />,
+    );
+    expect(screen.getByText("Page 2 of 3")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Next page" }));
+    expect(onPageChange).toHaveBeenCalledWith(3);
+  });
+
+  it("omits server pagination when the first page contains the full result", () => {
+    render(
+      <DataTable
+        columns={COLUMNS}
+        rows={ROWS}
+        rowKey={(row) => row.id}
+        pagination={{ kind: "page", page: 1, pageSize: 25, total: 2, onPageChange: vi.fn() }}
+      />,
+    );
+
+    expect(screen.queryByRole("navigation", { name: "Pagination" })).toBeNull();
+  });
+
+  it("disables sorting while an external page is loading", () => {
+    render(
+      <DataTable
+        columns={COLUMNS}
+        rows={ROWS}
+        rowKey={(row) => row.id}
+        onSortChange={vi.fn()}
+        pagination={{
+          kind: "page",
+          page: 1,
+          pageSize: 25,
+          total: 26,
+          onPageChange: vi.fn(),
+          isLoading: true,
+        }}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "Name" })).toBeDisabled();
+  });
+
+  it("keeps page navigation reachable when a server page is empty", () => {
+    const onPageChange = vi.fn();
+    render(
+      <DataTable
+        columns={COLUMNS}
+        rows={[]}
+        rowKey={(row) => row.id}
+        empty={<div>No rows on this page</div>}
+        pagination={{ kind: "page", page: 2, pageSize: 25, total: 26, onPageChange }}
+      />,
+    );
+
+    expect(screen.getByText("No rows on this page")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Previous page" }));
+    expect(onPageChange).toHaveBeenCalledWith(1);
+  });
+
+  it("forwards cursor pagination and hides it when the feed is exhausted", () => {
+    const onNext = vi.fn();
+    const { rerender } = render(
+      <DataTable
+        columns={COLUMNS}
+        rows={ROWS}
+        rowKey={(row) => row.id}
+        pagination={{ kind: "cursor", nextCursor: "next-1", onNext }}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Load more items" }));
+    expect(onNext).toHaveBeenCalledWith("next-1");
+
+    rerender(
+      <DataTable
+        columns={COLUMNS}
+        rows={ROWS}
+        rowKey={(row) => row.id}
+        pagination={{ kind: "cursor", nextCursor: null, onNext }}
+      />,
+    );
+    expect(screen.queryByRole("navigation", { name: "Feed pagination" })).toBeNull();
+  });
+
+  it("keeps cursor pagination reachable when an intermediate page is empty", () => {
+    const onNext = vi.fn();
+    render(
+      <DataTable
+        columns={COLUMNS}
+        rows={[]}
+        rowKey={(row) => row.id}
+        empty={<div>No rows on this page</div>}
+        pagination={{ kind: "cursor", nextCursor: "next-2", onNext }}
+      />,
+    );
+
+    expect(screen.getByText("No rows on this page")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Load more items" }));
+    expect(onNext).toHaveBeenCalledWith("next-2");
   });
 });

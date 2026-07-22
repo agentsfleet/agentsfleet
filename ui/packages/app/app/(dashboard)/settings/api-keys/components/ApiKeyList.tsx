@@ -1,7 +1,7 @@
 "use client";
 
 import { type Ref, useImperativeHandle, useState, useTransition } from "react";
-import { Badge, Button, DataTable, type DataTableColumn, EmptyState, Time } from "@agentsfleet/design-system";
+import { Badge, Button, DataTable, type DataTableColumn, EmptyState, PAGINATION_KIND, Time } from "@agentsfleet/design-system";
 import { BanIcon, KeyRoundIcon, Trash2Icon } from "lucide-react";
 import {
   DEFAULT_PAGE_SIZE,
@@ -44,8 +44,6 @@ export default function ApiKeyList({
   useImperativeHandle(ref, () => ({
     refresh: () => loadPage({ page: 1, sort: DEFAULT_SORT }),
   }));
-
-  const lastPage = Math.max(1, Math.ceil(total / DEFAULT_PAGE_SIZE));
 
   function apply(data: ApiKeyListResponse, nextSort: ApiKeySort) {
     setItems(data.items);
@@ -104,46 +102,36 @@ export default function ApiKeyList({
 
   return (
     <div className="space-y-4">
-      {items.length === 0 ? (
-        <EmptyState
-          icon={<KeyRoundIcon size={28} />}
-          title="No API keys yet"
-          description="Create one for outside tools."
-        />
-      ) : (
-        <DataTable
-          columns={buildColumns({
-            pending,
-            onRevoke: (k) => setTarget({ ...k, mode: "revoke" }),
-            onDelete: (k) => setTarget({ ...k, mode: "delete" }),
-          })}
-          rows={items}
-          rowKey={(k) => k.id}
-          caption="API keys"
-          sortKey={sortKey}
-          sortDirection={sortDirection}
-          onSortChange={(key) => loadPage({ sort: NEXT_SORT[key as "name" | "activity"][sort], page: 1 })}
-        />
-      )}
+      <DataTable
+        columns={buildColumns({
+          pending,
+          onRevoke: (k) => setTarget({ ...k, mode: "revoke" }),
+          onDelete: (k) => setTarget({ ...k, mode: "delete" }),
+        })}
+        rows={items}
+        rowKey={(k) => k.id}
+        caption="API keys"
+        sortKey={sortKey}
+        sortDirection={sortDirection}
+        onSortChange={(key) => loadPage({ sort: NEXT_SORT[key as "name" | "activity"][sort], page: 1 })}
+        pagination={{
+          kind: PAGINATION_KIND.page,
+          page,
+          pageSize: DEFAULT_PAGE_SIZE,
+          total,
+          onPageChange: (nextPage) => loadPage({ page: nextPage }),
+          isLoading: pending,
+        }}
+        empty={
+          <EmptyState
+            icon={<KeyRoundIcon size={28} />}
+            title="No API keys yet"
+            description="Create one for outside tools."
+          />
+        }
+      />
 
       {error && target === null ? <p className="text-sm text-destructive">{error}</p> : null}
-
-      {lastPage > 1 ? (
-        <div className="flex items-center justify-between text-sm text-muted-foreground">
-          <span>
-            {/* Always plural: this block only renders when lastPage > 1, i.e. total > one page. */}
-            Page {page} of {lastPage} · {total} keys
-          </span>
-          <div className="flex gap-2">
-            <Button type="button" variant="ghost" size="sm" disabled={pending || page <= 1} onClick={() => loadPage({ page: page - 1 })}>
-              Previous
-            </Button>
-            <Button type="button" variant="ghost" size="sm" disabled={pending || page >= lastPage} onClick={() => loadPage({ page: page + 1 })}>
-              Next
-            </Button>
-          </div>
-        </div>
-      ) : null}
 
       {/* Open is controlled by `target`; ConfirmDialog only signals dismissal, so clear unconditionally. */}
       <RevokeConfirm target={target} error={error} onOpenChange={() => { setTarget(null); setError(null); }} onConfirm={onConfirm} />

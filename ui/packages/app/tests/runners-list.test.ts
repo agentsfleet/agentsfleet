@@ -1,9 +1,10 @@
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { TooltipProvider } from "@agentsfleet/design-system";
 import type { RunnerListItem, RunnerListResponse } from "@/lib/api/runners";
+import type { RunnerListHandle } from "@/app/(dashboard)/admin/runners/components/RunnerList";
 
 // ── Shared mocks ───────────────────────────────────────────────────────────
 
@@ -122,11 +123,64 @@ describe("RunnerList component", () => {
     expect(screen.getByText("us-east")).toBeTruthy();
   });
 
+  it("toggles the backend host sort from the shared header arrow", async () => {
+    const user = userEvent.setup();
+    await renderList(listResponse([REGISTERED, ONLINE]));
+    const hostSort = screen.getByRole("button", { name: "Host" });
+
+    await user.click(hostSort);
+    await user.click(hostSort);
+    expect(listRunnersActionMock).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(listRunnersActionMock).toHaveBeenLastCalledWith(expect.objectContaining({ sort: "host_id" })));
+    await waitFor(() => expect(hostSort.hasAttribute("disabled")).toBe(false));
+    await user.click(hostSort);
+    await waitFor(() => expect(listRunnersActionMock).toHaveBeenLastCalledWith(expect.objectContaining({ sort: "-host_id" })));
+  });
+
+  it("restores newest-first sorting when creation refreshes the list", async () => {
+    const { default: RunnerList } = await import(
+      "../app/(dashboard)/admin/runners/components/RunnerList"
+    );
+    const ref = React.createRef<RunnerListHandle>();
+    const user = userEvent.setup();
+    render(
+      React.createElement(
+        TooltipProvider,
+        null,
+        React.createElement(RunnerList, { initial: listResponse([REGISTERED, ONLINE]), ref }),
+      ),
+    );
+
+    await user.click(screen.getByRole("button", { name: "Host" }));
+    await waitFor(() => expect(listRunnersActionMock).toHaveBeenLastCalledWith(expect.objectContaining({ sort: "host_id" })));
+    await act(async () => ref.current?.refresh());
+    await waitFor(() => expect(listRunnersActionMock).toHaveBeenLastCalledWith(expect.objectContaining({ page: 1, sort: "-created_at" })));
+  });
+
+  it("recovers an invalid host sort with the newest-first default", async () => {
+    const user = userEvent.setup();
+    await renderList(listResponse([REGISTERED, ONLINE]));
+    const hostSort = screen.getByRole("button", { name: "Host" });
+
+    await user.click(hostSort);
+    await waitFor(() => expect(hostSort.hasAttribute("disabled")).toBe(false));
+    listRunnersActionMock
+      .mockResolvedValueOnce({ ok: false, error: "invalid sort", errorCode: "UZ-REQ-001" })
+      .mockResolvedValueOnce({ ok: true, data: listResponse([REGISTERED, ONLINE]) });
+    await user.click(hostSort);
+
+    await waitFor(() => expect(listRunnersActionMock).toHaveBeenCalledTimes(3));
+    expect(listRunnersActionMock.mock.calls[2]?.[0]).toEqual(expect.objectContaining({
+      page: 1,
+      sort: "-created_at",
+    }));
+  });
+
   it("pagination shows when total exceeds the page size and Next re-fetches page 2", async () => {
     listRunnersActionMock.mockResolvedValue({ ok: true, data: listResponse([ONLINE], 30, 2) });
     const user = userEvent.setup();
     await renderList(listResponse([REGISTERED], 30));
-    await user.click(screen.getByRole("button", { name: /^next$/i }));
+    await user.click(screen.getByRole("button", { name: /^next page$/i }));
     await waitFor(() =>
       expect(listRunnersActionMock).toHaveBeenCalledWith(expect.objectContaining({ page: 2, page_size: 25 })),
     );
@@ -137,7 +191,7 @@ describe("RunnerList component", () => {
     // Render already on page 2 so Previous is enabled and can't race a
     // pending-disabled button under the slower coverage instrumentation.
     await renderList({ ...listResponse([ONLINE], 30), page: 2 });
-    await user.click(screen.getByRole("button", { name: /^previous$/i }));
+    await user.click(screen.getByRole("button", { name: /^previous page$/i }));
     await waitFor(() =>
       expect(listRunnersActionMock).toHaveBeenCalledWith(expect.objectContaining({ page: 1 })),
     );
@@ -149,7 +203,7 @@ describe("RunnerList component", () => {
     listRunnersActionMock.mockResolvedValue({ ok: false, error: "invalid sort", errorCode: "UZ-REQ-001" });
     const user = userEvent.setup();
     await renderList(listResponse([REGISTERED], 30));
-    await user.click(screen.getByRole("button", { name: /^next$/i }));
+    await user.click(screen.getByRole("button", { name: /^next page$/i }));
     // Original click load + exactly one defaults-reset = 2 calls; never a third.
     await waitFor(() => expect(listRunnersActionMock.mock.calls.length).toBe(2));
     await new Promise((resolve) => setTimeout(resolve, 30));
@@ -171,7 +225,7 @@ describe("RunnerList component", () => {
       error: "Something broke on our end. Give it another shot — if it keeps failing, send us the code below.",
       errorCode: "UZ-INTERNAL-001",
     });
-    await user.click(screen.getByRole("button", { name: /^next$/i }));
+    await user.click(screen.getByRole("button", { name: /^next page$/i }));
     await screen.findByText(/something broke on our end/i);
     // No UZ-REQ-001 reset loop: exactly one load fired by the click.
     expect(listRunnersActionMock).toHaveBeenCalledWith(expect.objectContaining({ page: 2 }));
@@ -224,7 +278,7 @@ describe("RunnerList component", () => {
   it("never sends a page_size above the backend max (always the fixed default 25)", async () => {
     const user = userEvent.setup();
     await renderList(listResponse([REGISTERED], 30));
-    await user.click(screen.getByRole("button", { name: /^next$/i }));
+    await user.click(screen.getByRole("button", { name: /^next page$/i }));
     await waitFor(() => expect(listRunnersActionMock).toHaveBeenCalled());
     for (const call of listRunnersActionMock.mock.calls) {
       expect(call[0].page_size).toBeLessThanOrEqual(100);
