@@ -20,6 +20,7 @@ function evt(over: Partial<FleetEvent> = {}): FleetEvent {
     reply: over.reply ?? "",
     outcome: over.outcome ?? FAILED_OUTCOME,
     failureLabel: over.failureLabel ?? "startup_posture",
+    failureDetail: over.failureDetail ?? null,
     createdAt: over.createdAt ?? new Date(Date.UTC(2026, 6, 22, 11, 38, 0)),
     status: over.status ?? "fleet_error",
     ...(over.custom ? { custom: over.custom } : {}),

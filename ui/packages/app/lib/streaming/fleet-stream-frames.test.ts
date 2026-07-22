@@ -41,6 +41,7 @@ function evt(over: Partial<FleetEvent> = {}): FleetEvent {
     reply: "",
     outcome: OUTCOME.WORKING,
     failureLabel: null,
+    failureDetail: null,
     createdAt: new Date(2000),
     status: "received",
     ...over,

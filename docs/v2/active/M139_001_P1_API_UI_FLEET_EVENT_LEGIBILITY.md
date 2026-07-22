@@ -151,8 +151,8 @@ Runs of system-role events with the same actor, headline, and outcome collapse i
 
 The same `failure_label` on ≥2 consecutive terminal failures pins one banner above the viewport: count, last-seen time, cause sentence, guidance. The banner is exempt from the §6 filter and clears when a non-failure terminal event lands.
 
-- **Dimension 5.1** — Banner appears at the threshold with count, last-seen, and cause → Test `test_banner_appears_with_cause`
-- **Dimension 5.2** — A single failure shows no banner; a processed event clears it → Test `test_banner_threshold_and_clear`
+- **Dimension 5.1** — DONE — Banner appears at the threshold with count, last-seen, and cause → Test `test_banner_appears_with_cause`
+- **Dimension 5.2** — DONE — A single failure shows no banner; a processed event clears it → Test `test_banner_threshold_and_clear`
 
 ### §6 — All / Conversation / Activity filter — DEFERRED
 

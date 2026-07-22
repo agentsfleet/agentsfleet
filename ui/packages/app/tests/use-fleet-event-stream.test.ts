@@ -346,6 +346,7 @@ describe("useFleetEventStream", () => {
       reply: "",
       outcome: OUTCOME.NO_REPLY,
       failureLabel: null,
+      failureDetail: null,
       createdAt: new Date(0),
       status: "processed",
     });
@@ -365,6 +366,7 @@ describe("useFleetEventStream", () => {
       text: "workflow_run failure",
       reply: "",
       failureLabel: null,
+      failureDetail: null,
       outcome: OUTCOME.NO_REPLY,
       createdAt: new Date(0),
       status: "processed",
