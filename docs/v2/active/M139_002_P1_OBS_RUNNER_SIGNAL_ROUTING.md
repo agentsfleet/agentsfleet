@@ -16,12 +16,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M139
 **Workstream:** 002
 **Date:** Jul 23, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — observability must explain runner execution without turning signal volume into control-plane load
 **Categories:** Observability (OBS)
 **Batch:** B2 — investigation adjacent to M139_001; no scheduler owner wiring is required to begin
-**Branch:** set at CHORE(open)
-**Test Baseline:** set at CHORE(open)
+**Branch:** feat/m139-deadline-scheduler
+**Test Baseline:** unit=2824 integration=376
 **Depends on:** M139_001 for the scheduler event inventory; its remaining production wiring does not block this investigation
 **Provenance:** Large Language Model (LLM)-drafted (Codex, Jul 23, 2026) from Indy's signal-routing direction and verified source inspection
 **Canonical architecture:** `docs/architecture/observability.md` §agentsfleet-runner — deliberately bare
