@@ -37,6 +37,7 @@ describe("useFleetDeliveryFailure", () => {
     act(() => {
       first.result.current.setFailedDelivery({
         message: message("retry after navigation"),
+        tempId: "optim-1",
         kind: "send",
       });
     });
@@ -54,7 +55,7 @@ describe("useFleetDeliveryFailure", () => {
     const mine = renderHook(() => useFleetDeliveryFailure("fleet_a"));
     const other = renderHook(() => useFleetDeliveryFailure("fleet_b"));
     act(() => {
-      mine.result.current.setFailedDelivery({ message: message("mine"), kind: "send" });
+      mine.result.current.setFailedDelivery({ message: message("mine"), tempId: "optim-1", kind: "send" });
     });
     expect(mine.result.current.failedDelivery).not.toBeNull();
     expect(other.result.current.failedDelivery).toBeNull();
@@ -68,13 +69,14 @@ describe("useFleetDeliveryFailure", () => {
     act(() => {
       second.result.current.setFailedDelivery({
         message: message("one listener remains"),
+        tempId: "optim-2",
         kind: "session",
       });
     });
     expect(second.result.current.failedDelivery?.kind).toBe("session");
     second.unmount();
     act(() => {
-      writeAfterUnmount({ message: message("no listeners"), kind: "send" });
+      writeAfterUnmount({ message: message("no listeners"), tempId: "optim-3", kind: "send" });
     });
   });
 
@@ -93,6 +95,7 @@ describe("useFleetDeliveryFailure", () => {
     act(() => {
       hook.result.current.setFailedDelivery({
         message: message("clear me"),
+        tempId: "optim-4",
         kind: "send",
       });
     });

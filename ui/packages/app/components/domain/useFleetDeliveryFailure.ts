@@ -22,6 +22,8 @@ export type DeliveryFailureKind = "send" | "session";
 
 export type FailedDelivery = {
   message: AppendMessage;
+  /** The failed optimistic row's id — retry discards it before re-submitting. */
+  tempId: string;
   kind: DeliveryFailureKind;
 };
 

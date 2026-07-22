@@ -116,12 +116,16 @@ export function FleetThread({ workspaceId, fleetId, fleetName, initial }: FleetT
     markOptimisticFailed: stream.markOptimisticFailed,
     onFailure: setFailedDelivery,
   });
+  const { discardOptimistic } = stream;
   const retryFailedDelivery = useCallback(() => {
     if (!failedDelivery) return;
-    const { message } = failedDelivery;
+    const { message, tempId } = failedDelivery;
     clearFailedDelivery();
+    // The retry re-submits as a fresh optimistic row; the stale failed row
+    // must leave first or each attempt stacks a duplicate of the message.
+    discardOptimistic(tempId);
     void deliverMessage(message);
-  }, [clearFailedDelivery, deliverMessage, failedDelivery]);
+  }, [clearFailedDelivery, deliverMessage, discardOptimistic, failedDelivery]);
   const runtime = useExternalStoreRuntime<FleetEvent>({
     messages: stream.events,
     convertMessage: stream.convertEvent,
@@ -309,13 +313,13 @@ function useNewMessageHandler({
             return;
           }
           markOptimisticFailed(tempId);
-          onFailure({ message: msg, kind: result.status === 401 ? "session" : "send" });
+          onFailure({ message: msg, tempId, kind: result.status === 401 ? "session" : "send" });
         } catch {
           // The Server Action's RPC transport itself failed (offline, or the
           // action invocation errored) — surface the same `failed` row the
           // ok:false path produces so the user knows the steer didn't land.
           markOptimisticFailed(tempId);
-          onFailure({ message: msg, kind: "send" });
+          onFailure({ message: msg, tempId, kind: "send" });
         }
       };
       // Chain this POST after the previous one. `send` reports its own failure
