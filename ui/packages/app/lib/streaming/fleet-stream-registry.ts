@@ -54,6 +54,13 @@ const REGISTRY = new Map<string, Entry>();
 
 const IDLE_RELEASE_MS = 30_000;
 
+// Module-level, not per-entry: a FailedDelivery (and the tempId it stores)
+// deliberately outlives the stream entry, which is torn down after the idle
+// window and recreated with fresh state. A per-entry counter restarting at 1
+// would let a stale stored tempId collide with a new row's id — and retry's
+// discard would then remove the operator's newest pending message.
+let tempCounter = 0;
+
 function notify(entry: Entry): void {
   for (const l of entry.listeners) l();
 }
@@ -240,8 +247,8 @@ export function appendOptimistic(
 ): string {
   const entry = REGISTRY.get(fleetId);
   if (!entry) return "";
-  entry.tempCounter += 1;
-  const tempId = `optim-${entry.tempCounter}`;
+  tempCounter += 1;
+  const tempId = `optim-${tempCounter}`;
   setEvents(entry, (prev) => [
     ...prev,
     {
@@ -321,4 +328,5 @@ export function markOptimisticFailed(fleetId: string, tempId: string): void {
 // should call this.
 export function __resetRegistryForTests(): void {
   for (const [id, e] of REGISTRY.entries()) teardown(e, id);
+  tempCounter = 0;
 }
