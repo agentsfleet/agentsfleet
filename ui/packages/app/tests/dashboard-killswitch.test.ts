@@ -5,6 +5,8 @@ import userEvent from "@testing-library/user-event";
 import { routerRefresh } from "./helpers/dashboard-mocks";
 import { resetDashboardMocks, stopFleetMock, setFleetStatusActionMock } from "./helpers/dashboard-app-mocks";
 
+const KILL_FAILURE_PATTERN = /Couldn't kill this fleet/i;
+
 // Common dashboard mock harness — see tests/helpers/dashboard-mocks.tsx.
 vi.mock("next/navigation", async () => (await import("./helpers/dashboard-mocks")).nextNavigationMock());
 vi.mock("next/link", async () => (await import("./helpers/dashboard-mocks")).nextLinkMock());
@@ -154,6 +156,19 @@ describe("KillSwitch component", () => {
     ).toBe(false);
   });
 
+  it("uses the action fallback when a terminal request rejects without an Error", async () => {
+    setFleetStatusActionMock.mockRejectedValueOnce(null);
+    const user = userEvent.setup({ delay: null });
+    await renderSwitch("active");
+    await user.click(screen.getByRole("button", { name: /^kill$/i }));
+    await clickConfirmInDialog(user, /^kill$/i);
+
+    await waitFor(() =>
+      expect(screen.getByRole("alert").textContent).toMatch(KILL_FAILURE_PATTERN),
+    );
+    expect(screen.getByRole("alertdialog")).toBeTruthy();
+  });
+
   it("409 conflict closes the dialog and refreshes (status changed elsewhere)", async () => {
     const { ApiError } = await import("../lib/api/errors");
     stopFleetMock.mockRejectedValue(new ApiError("transition not allowed", 409, "UZ-AGT-010", "req_x"));
@@ -205,11 +220,7 @@ describe("KillSwitch component", () => {
     );
   });
 
-  // WS-G — every ActionConfig carries its own `errorVerb` literal so the
-  // operator-facing sentence reads naturally per action. The Stop case above
-  // exercises the Stop verb; the next two pin Resume and Kill so each branch
-  // of the static-literal config is hit by patch coverage.
-  it("resume action error path renders 'Couldn't resume this fleet' (WS-G verb literal)", async () => {
+  it("resume action error path renders 'Couldn't resume this fleet'", async () => {
     setFleetStatusActionMock.mockResolvedValueOnce({
       ok: false,
       error: "",
@@ -224,7 +235,7 @@ describe("KillSwitch component", () => {
     );
   });
 
-  it("kill action error path renders 'Couldn't kill this fleet' (WS-G verb literal)", async () => {
+  it("kill action error path renders the action-specific fallback", async () => {
     setFleetStatusActionMock.mockResolvedValueOnce({
       ok: false,
       error: "",
@@ -235,7 +246,7 @@ describe("KillSwitch component", () => {
     await user.click(screen.getByRole("button", { name: /^kill$/i }));
     await clickConfirmInDialog(user, /^kill$/i);
     await waitFor(() =>
-      expect(screen.getByRole("alert").textContent).toMatch(/Couldn't kill this fleet/i),
+      expect(screen.getByRole("alert").textContent).toMatch(KILL_FAILURE_PATTERN),
     );
   });
 
