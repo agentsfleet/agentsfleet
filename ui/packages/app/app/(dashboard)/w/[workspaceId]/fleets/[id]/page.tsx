@@ -63,6 +63,9 @@ export default async function FleetDetailPage({
   const token = await getToken();
   if (!token) redirect("/sign-in");
 
+  const view = resolveFleetView(query.view);
+  if (!view) redirect(workspacePath(workspaceId, `fleets/${id}`));
+
   const [fleetResult, billing] = await Promise.all([
     loadFleet(workspaceId, id, token),
     getTenantBillingCached(token).catch(() => null),
@@ -70,7 +73,6 @@ export default async function FleetDetailPage({
   if (!fleetResult) notFound();
 
   const { fleet, etag } = fleetResult;
-  const view = resolveFleetView(query.view);
   const content = await loadFleetView(view, { workspaceId, fleet, etag, token });
   // The chat is a conversation surface, not a document: it claims the frame so
   // its composer stays on screen and only the message list scrolls. Every

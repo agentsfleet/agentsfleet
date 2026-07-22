@@ -21,8 +21,9 @@ describe("FleetSubnavigation", () => {
       .toContain("lucide-brain");
   });
 
-  it("defaults unknown and missing views to Chat", () => {
+  it("defaults a missing view to Chat and rejects unknown views", () => {
     expect(resolveFleetView(undefined)).toBe(FLEET_VIEW.chat);
-    expect(resolveFleetView("unknown")).toBe(FLEET_VIEW.chat);
+    expect(resolveFleetView(FLEET_VIEW.chat)).toBe(FLEET_VIEW.chat);
+    expect(resolveFleetView("unknown")).toBeNull();
   });
 });
