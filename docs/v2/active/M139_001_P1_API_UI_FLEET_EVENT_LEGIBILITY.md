@@ -170,10 +170,10 @@ Consecutive rows with identical actor, status, and failure cause collapse into o
 
 Folded in by Indy at the §1 review (Discovery D4). Three findings surfaced by §1's cost: the execution result encodes its verdict as `exit_ok: bool` beside `failure: ?FailureClass` (four representable states for two meanings, the "null iff processed" invariant hand-written at three consumers); the same type is disassembled into the report wire and rebuilt field-by-field on the far side; and the live chat merge rescans the whole event array per streaming chunk. **Implementation default:** the domain type becomes precise (tagged outcome) while the report wire stays flat and defaulted, because the report is the genuine cross-version boundary and the child frame is not (the daemon forks its own binary).
 
-- **Dimension 8.1** — The result carries a tagged `outcome` (`completed` | `failed` with its classified cause); a result that claims success while naming a failure does not compile → Test `test_outcome_union_forbids_success_with_failure`
-- **Dimension 8.2** — One conversion pair owns result↔report translation, including the trust-boundary guard that a cause never accompanies a clean outcome → Test `test_report_round_trip_preserves_every_wire_field`
-- **Dimension 8.3** — The completion frame takes a named failure-cause struct, not adjacent same-typed strings → Test `test_completion_frame_cause_is_named`
-- **Dimension 8.4** — Chunk and completion merges locate their event once and copy the array once, matching the tool-call helper → Test `test_chunk_merge_single_pass`
+- **Dimension 8.1** — DONE — The result carries a tagged `outcome` (`completed` | `failed` with its classified cause); a result that claims success while naming a failure does not compile → Test `test_outcome_union_forbids_success_with_failure`
+- **Dimension 8.2** — DONE — One conversion pair owns result↔report translation, including the trust-boundary guard that a cause never accompanies a clean outcome → Test `test_report_round_trip_preserves_every_wire_field`
+- **Dimension 8.3** — DONE — The completion frame takes a named failure-cause struct, not adjacent same-typed strings → Test `test_completion_frame_cause_is_named`
+- **Dimension 8.4** — DONE — Chunk and completion merges locate their event once and copy the array once, matching the tool-call helper → Test `test_chunk_merge_single_pass`
 
 ## Interfaces
 
