@@ -172,6 +172,7 @@ describe("CreateApiKeyDialog component", () => {
     await user.click(screen.getByRole("button", { name: /copy api key/i }));
     await waitFor(() => expect(writeText).toHaveBeenCalledWith("agt_tdeadbeef"));
     expect(screen.queryByRole("button", { name: /^copied$/i })).toBeNull();
+    expect(await screen.findByText(/Copy failed — select the key above/i)).toBeTruthy();
     await waitFor(
       () => expect(screen.getByRole("button", { name: /^copy api key$/i })).toBeTruthy(),
       { timeout: 4_000 },
