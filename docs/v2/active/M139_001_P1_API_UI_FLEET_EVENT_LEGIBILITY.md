@@ -16,12 +16,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M139
 **Workstream:** 001
 **Date:** Jul 22, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — customer-facing: repeated webhook failures render as dozens of identical, cause-less rows in both the fleet chat and the Events table; the operator scrolls a full page and still cannot see which check failed
 **Categories:** API, UI
 **Batch:** B1 — standalone; no sibling workstreams
-**Branch:** set at CHORE(open)
-**Test Baseline:** set at CHORE(open) — `unit=<N> integration=<M>` via `make _lint_zig_test_depth`
+**Branch:** feat/m139-event-legibility
+**Test Baseline:** unit=2809 integration=371
 **Depends on:** none — M138_001 (console chat fidelity) is in `done/` and merged on `main`
 **Provenance:** Large Language Model (LLM)-drafted (claude-fable-5, Jul 22, 2026) — authored from Indy's live session screenshots (Chat + Events tabs, fleet `github-pr-reviewer`, workspace `gentle-mesa-130`) and a code read of the render path (`fleetMessageRenderers.tsx`, `event-summary.ts`, `EventsList.tsx`) and the report path (`execution_result.zig`, `event_rows.zig`, `service_report.zig`)
 **Canonical architecture:** `docs/architecture/data_flow.md` §"Two streams + one pub/sub channel"; `docs/architecture/runner_fleet.md` for the runner→report path
