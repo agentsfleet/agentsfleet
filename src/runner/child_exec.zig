@@ -201,7 +201,7 @@ fn runEngine(env_map: *const std.process.Environ.Map, alloc: std.mem.Allocator, 
 /// model is never invoked, so the fleet never runs as a generic chat. Reported
 /// as a startup-posture failure carrying an operator-facing message.
 fn noInstructionsResult() types.ExecutionResult {
-    return .{ .content = NO_INSTRUCTIONS_MESSAGE, .exit_ok = false, .failure = .startup_posture };
+    return .{ .content = NO_INSTRUCTIONS_MESSAGE, .exit_ok = false, .failure = .startup_posture, .failure_detail = NO_INSTRUCTIONS_MESSAGE };
 }
 
 /// Fail-closed result when the engine config could not be assembled from the
@@ -209,7 +209,7 @@ fn noInstructionsResult() types.ExecutionResult {
 /// partial config. A distinct operator message from `noInstructionsResult` so
 /// triage can tell "no SKILL.md to run" from "couldn't build the config".
 fn configBuildFailedResult() types.ExecutionResult {
-    return .{ .content = CONFIG_BUILD_FAILED_MESSAGE, .exit_ok = false, .failure = .startup_posture };
+    return .{ .content = CONFIG_BUILD_FAILED_MESSAGE, .exit_ok = false, .failure = .startup_posture, .failure_detail = CONFIG_BUILD_FAILED_MESSAGE };
 }
 
 /// Write the terminal `result` frame to stdout. Activity frames (if any) were

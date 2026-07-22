@@ -157,14 +157,27 @@ export const OUTCOME = {
   NO_REPLY: "Completed with no reply recorded.",
 } as const;
 
+const CAUSE_SEPARATOR = " — ";
+
 /**
  * What to say about an event that recorded no reply. Never empty — this is the
- * floor that guarantees no rendered row is blank.
+ * floor that guarantees no rendered row is blank. A failure with a recorded
+ * cause line renders it after the plain-language sentence, so the operator
+ * reads WHICH check failed, not only that one did.
  */
-export function outcomeFor(row: Pick<EventRow, "status" | "failure_label">): string {
+export function outcomeFor(
+  row: Pick<EventRow, "status" | "failure_label"> & Partial<Pick<EventRow, "failure_detail">>,
+): string {
   if (row.status === EVENT_STATUS.RECEIVED) return OUTCOME.WORKING;
   if (row.status === EVENT_STATUS.GATE_BLOCKED) return OUTCOME.WAITING_APPROVAL;
-  if (row.failure_label) return failureSentenceFor(row.failure_label);
+  if (row.failure_label) {
+    const sentence = failureSentenceFor(row.failure_label);
+    const detail = (row.failure_detail ?? "").trim();
+    // A detail that merely restates the sentence would read twice; only a
+    // distinct cause earns the second clause.
+    if (detail.length > 0 && detail !== sentence) return `${sentence}${CAUSE_SEPARATOR}${detail}`;
+    return sentence;
+  }
   if (row.status === EVENT_STATUS.FLEET_ERROR) return OUTCOME.FAILED;
   return OUTCOME.NO_REPLY;
 }
@@ -172,6 +185,24 @@ export function outcomeFor(row: Pick<EventRow, "status" | "failure_label">): str
 /** The same floor for a live frame, which carries a status but no durable row. */
 export function outcomeForStatus(status: EventStatusValue): string {
   return outcomeFor({ status, failure_label: null });
+}
+
+/**
+ * The floor for a live completion frame, which may carry the failure cause the
+ * durable row will hold — so the chat shows the real sentence without reload.
+ * Empty strings mean "no cause" (the publisher's wire convention).
+ */
+export function outcomeForCompletion(
+  status: EventStatusValue,
+  failureLabel: string | undefined,
+  failureDetail: string | undefined,
+): string {
+  const label = (failureLabel ?? "").trim();
+  return outcomeFor({
+    status,
+    failure_label: label.length > 0 ? label : null,
+    failure_detail: failureDetail ?? null,
+  });
 }
 
 // ── Event headlines ───────────────────────────────────────────────────────

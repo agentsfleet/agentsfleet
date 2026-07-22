@@ -55,6 +55,11 @@ pub const ExecutionResult = struct {
     wall_seconds: u64 = 0,
     exit_ok: bool = false,
     failure: ?FailureClass = null,
+    /// Human-readable cause from the classification site (which check failed,
+    /// and why). Defaults empty so an older peer's frame parses unchanged; the
+    /// daemon treats any non-empty value as alloc-owned (same len-guarded free
+    /// convention as `content`).
+    failure_detail: []const u8 = "",
     memory_peak_bytes: u64 = 0,
     cpu_throttled_ms: u64 = 0,
     /// Cumulative token splits for the whole run (defaults 0: an older child
@@ -82,6 +87,9 @@ test "ExecutionResult defaults describe an unrun stage" {
     try std.testing.expect(!r.exit_ok);
     try std.testing.expectEqual(@as(u64, 0), r.token_count);
     try std.testing.expect(r.failure == null);
+    // Wire compatibility floor: an older peer that omits the field must parse
+    // to this same empty default.
+    try std.testing.expectEqualStrings("", r.failure_detail);
     // Split fields default 0 — an old-wire result parses to run-fee-only.
     try std.testing.expectEqual(@as(u64, 0), r.input_tokens);
     try std.testing.expectEqual(@as(u64, 0), r.cached_input_tokens);

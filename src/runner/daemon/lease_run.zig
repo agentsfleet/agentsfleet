@@ -33,6 +33,10 @@ const log = logging.scoped(.fleet_runner);
 const ERR_EXEC_RUNNER_FLEET_INIT = client_errors.ERR_EXEC_RUNNER_FLEET_INIT;
 const ERR_EXEC_TRANSPORT_LOSS = client_errors.ERR_EXEC_TRANSPORT_LOSS;
 
+// Cause line for a pre-fork bundle-materialization failure. Static — the
+// report request borrows it for the POST; nothing frees it.
+const DETAIL_BUNDLE_MATERIALIZE = "fleet bundle download or extraction failed before start";
+
 /// Fans the supervisor's renewal tick out to the periodic work that rides it:
 /// the activity batch's staleness flush, then the renewal decision itself.
 const TickFanout = struct {
@@ -137,6 +141,7 @@ pub fn executeAndReport(
     const result = child_supervisor.run(io, alloc, cfg, env_map, workspace_path, payload, hydrated_memory, sink, mem_sink, fanout.hook(), minter.hook());
     const wall_ms: u64 = @intCast(@max(0, clock.nowMillis() - start_ms));
     defer if (result.content.len > 0) alloc.free(result.content);
+    defer if (result.failure_detail.len > 0) alloc.free(result.failure_detail);
     // Ship whatever the batch still holds before the terminal report.
     forwarder.flush();
 
@@ -150,6 +155,7 @@ pub fn executeAndReport(
         .fencing_token = payload.fencing_token,
         .outcome = outcome,
         .failure_reason = result.failure,
+        .failure_detail = result.failure_detail,
         .response_text = result.content,
         .tokens = result.token_count,
         .input_tokens = splits.input_tokens,
@@ -175,7 +181,7 @@ fn materializeBundle(io: std.Io, alloc: std.mem.Allocator, cp: *client_mod, runn
     switch (bundle_extract.materialize(io, alloc, cp, runner_token, cfg.workspace_base, workspace_path, manifest, cfg.cp_deadlines.default_ms)) {
         .ready => return true,
         .failed => {
-            reportStartupFailure(alloc, cp, runner_token, payload, cfg.cp_deadlines.report_ms);
+            reportStartupFailure(alloc, cp, runner_token, payload, cfg.cp_deadlines.report_ms, DETAIL_BUNDLE_MATERIALIZE);
             return false;
         },
     }
@@ -185,13 +191,14 @@ fn materializeBundle(io: std.Io, alloc: std.mem.Allocator, cp: *client_mod, runn
 /// the event is finalized (`fleet_error` / `startup_posture`) instead of silently
 /// expiring and redelivering forever. No child forked → no tokens to settle. Retry
 /// is deferred; a failed report is logged and the lease expires for reclaim.
-fn reportStartupFailure(alloc: std.mem.Allocator, cp: *client_mod, runner_token: []const u8, payload: protocol.LeasePayload, deadline_ms: u31) void {
+fn reportStartupFailure(alloc: std.mem.Allocator, cp: *client_mod, runner_token: []const u8, payload: protocol.LeasePayload, deadline_ms: u31, detail: []const u8) void {
     cp.report(alloc, runner_token, protocol.ReportRequest{
         .lease_id = payload.lease_id,
         .event_id = payload.event.event_id,
         .fencing_token = payload.fencing_token,
         .outcome = .fleet_error,
         .failure_reason = .startup_posture,
+        .failure_detail = detail,
         .response_text = "",
         .tokens = 0,
         .telemetry = .{ .time_to_first_token_ms = 0, .wall_ms = 0 },

@@ -196,6 +196,7 @@ function serverEvent(over: Partial<EventRow> = {}): EventRow {
     tokens: 1,
     wall_ms: 10,
     failure_label: null,
+    failure_detail: null,
     checkpoint_id: null,
     resumes_event_id: null,
     cost_nanos: 1,

@@ -39,6 +39,7 @@ function event(over: Partial<EventRow> = {}): EventRow {
     wall_ms: 10,
     cost_nanos: null,
     failure_label: null,
+    failure_detail: null,
     checkpoint_id: null,
     resumes_event_id: null,
     created_at: now,

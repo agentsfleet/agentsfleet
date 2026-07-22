@@ -53,6 +53,7 @@ pub const readResult = read_mod.readResult;
 pub const ReadOutcome = result_mod.ReadOutcome;
 pub const classify = result_mod.classify;
 const failed = result_mod.failed;
+const failedDetailed = result_mod.failedDetailed;
 
 /// Hook-facing alias so RenewHook implementors observe the cumulative usage
 /// snapshot without importing pipe_proto directly.
@@ -80,7 +81,7 @@ pub fn run(
 ) ExecutionResult {
     const input = contract.protocol.RunnerChildInput{ .lease = payload, .hydrated_memory = hydrated_memory };
     const lease_json = std.json.Stringify.valueAlloc(alloc, input, .{}) catch
-        return failed(.startup_posture);
+        return failedDetailed(alloc, .startup_posture, result_mod.DETAIL_LEASE_SERIALIZE);
     defer alloc.free(lease_json);
 
     return supervise(io, alloc, cfg, env_map, workspace_path, payload, lease_json, sink, mem_sink, renew_hook, mint_hook) catch |err| {
@@ -114,7 +115,7 @@ fn supervise(
             .lease_id = payload.lease_id,
             .tier = @tagName(cfg.sandbox_tier),
         });
-        return failed(.startup_posture);
+        return failedDetailed(alloc, .startup_posture, result_mod.DETAIL_SANDBOX_UNAVAILABLE);
     };
     defer if (scope) |*s| {
         _ = s.destroy(.{});
@@ -134,7 +135,7 @@ fn supervise(
             .error_code = client_errors.ERR_RUN_SANDBOX_ESTABLISH_FAILED,
             .lease_id = payload.lease_id,
         });
-        return failed(.startup_posture);
+        return failedDetailed(alloc, .startup_posture, result_mod.DETAIL_EGRESS_UNIMPLEMENTED);
     }
     var child = try child_process.forkExec(io, alloc, cfg, env_map, workspace_path, null);
     var reaped = false;
@@ -155,7 +156,7 @@ fn supervise(
     // FAIL-CLOSED: if the child cannot be enrolled in the cgroup kill
     // domain, refuse the lease — it would otherwise run unmetered in the daemon's
     // cgroup AND leave the exec-cgroup empty (a later scope.kill would no-op).
-    enrollOrFail(&scope, child.id.?, payload.lease_id) catch return failed(.startup_posture);
+    enrollOrFail(&scope, child.id.?, payload.lease_id) catch return failedDetailed(alloc, .startup_posture, result_mod.DETAIL_CGROUP_ENROLL);
 
     // Feed the lease (incl. inline secrets) as a single framed `lease` message,
     // then KEEP stdin open: it is the parent→child credential-response channel for
