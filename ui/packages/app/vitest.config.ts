@@ -59,6 +59,7 @@ export default defineConfig({
         'lib/types.ts',
         'next-env.d.ts',
         'next.config.ts',
+        'playwright.acceptance.config.ts',
         'playwright.config.ts',
         'global.d.ts',
         'proxy.ts',

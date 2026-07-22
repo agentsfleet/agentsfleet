@@ -122,14 +122,14 @@ describe("streamFleetEventsUrl", () => {
   it("returns a same-origin path the Next Route Handler intercepts", async () => {
     const { streamFleetEventsUrl } = await import("./events");
     expect(streamFleetEventsUrl("ws_1", "z_1")).toBe(
-      "/backend/v1/workspaces/ws_1/fleets/z_1/events/stream",
+      "/live/v1/workspaces/ws_1/fleets/z_1/events/stream",
     );
   });
 
   it("encodes path segments so a slashy id can not escape the URL", async () => {
     const { streamFleetEventsUrl } = await import("./events");
     expect(streamFleetEventsUrl("ws/1", "z 2")).toBe(
-      "/backend/v1/workspaces/ws%2F1/fleets/z%202/events/stream",
+      "/live/v1/workspaces/ws%2F1/fleets/z%202/events/stream",
     );
   });
 });
@@ -138,7 +138,7 @@ describe("backfillFleetEventsUrl", () => {
   it("returns a clean same-origin path when no query opts are given", async () => {
     const { backfillFleetEventsUrl } = await import("./events");
     expect(backfillFleetEventsUrl("ws_1", "z_1")).toBe(
-      "/backend/v1/workspaces/ws_1/fleets/z_1/events",
+      "/live/v1/workspaces/ws_1/fleets/z_1/events",
     );
   });
 
@@ -147,21 +147,21 @@ describe("backfillFleetEventsUrl", () => {
     expect(
       backfillFleetEventsUrl("ws_1", "z_1", { since: "2026-05-15T18:29:58Z", limit: 200 }),
     ).toBe(
-      "/backend/v1/workspaces/ws_1/fleets/z_1/events?since=2026-05-15T18%3A29%3A58Z&limit=200",
+      "/live/v1/workspaces/ws_1/fleets/z_1/events?since=2026-05-15T18%3A29%3A58Z&limit=200",
     );
   });
 
   it("appends a keyset cursor through the shared query builder", async () => {
     const { backfillFleetEventsUrl } = await import("./events");
     expect(backfillFleetEventsUrl("ws_1", "z_1", { cursor: "abc123" })).toBe(
-      "/backend/v1/workspaces/ws_1/fleets/z_1/events?cursor=abc123",
+      "/live/v1/workspaces/ws_1/fleets/z_1/events?cursor=abc123",
     );
   });
 
   it("encodes path segments so a slashy id can not escape the URL", async () => {
     const { backfillFleetEventsUrl } = await import("./events");
     expect(backfillFleetEventsUrl("ws/1", "z 2")).toBe(
-      "/backend/v1/workspaces/ws%2F1/fleets/z%202/events",
+      "/live/v1/workspaces/ws%2F1/fleets/z%202/events",
     );
   });
 });

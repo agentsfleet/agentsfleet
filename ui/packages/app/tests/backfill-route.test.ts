@@ -1,5 +1,5 @@
 // Tests for the same-origin backfill proxy route handler at
-// app/backend/v1/workspaces/[workspaceId]/fleets/[fleetId]/events.
+// app/live/v1/workspaces/[workspaceId]/fleets/[fleetId]/events.
 //
 // The non-stream sibling of sse-route.test.ts: same Clerk trust boundary
 // (cookie-authed browser → Bearer-only Zig backend), but a buffered JSON
@@ -32,7 +32,7 @@ afterEach(() => {
   globalThis.fetch = originalFetch;
 });
 
-import { GET } from "../app/backend/v1/workspaces/[workspaceId]/fleets/[fleetId]/events/route";
+import { GET } from "../app/live/v1/workspaces/[workspaceId]/fleets/[fleetId]/events/route";
 
 const UPSTREAM_PAGE = JSON.stringify({
   items: [{ event_id: "evt_1" }],

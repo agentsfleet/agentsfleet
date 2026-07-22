@@ -26,6 +26,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as crypto from "node:crypto";
+import { request as playwrightRequest } from "@playwright/test";
 import { clerkSetup } from "@clerk/testing/playwright";
 import {
   attachJwt,
@@ -36,8 +37,13 @@ import {
 } from "./fixtures/clerk-admin";
 import { bootstrapTenant } from "./fixtures/bootstrap";
 import { cleanWorkspaceFleets } from "./fixtures/teardown";
-import { getDefaultWorkspaceId } from "./fixtures/seed";
-import { FIXTURE_KEY } from "./fixtures/constants";
+import { ensureSecondWorkspace, getDefaultWorkspaceId } from "./fixtures/seed";
+import {
+  FIXTURE_KEY,
+  SECOND_WORKSPACE_NAME,
+  VERCEL_BYPASS_STATE_FILENAME,
+} from "./fixtures/constants";
+import { diagnoseApiError } from "./fixtures/preflight";
 import { loadWorktreeEnv } from "./fixtures/env-loader";
 
 // Defensive: playwright.acceptance.config.ts loads worktree-root .env, but
@@ -125,10 +131,43 @@ function writeCache(fixtures: MintedFixture[]): void {
   fs.chmodSync(JWT_CACHE_PATH, 0o600);
 }
 
+// Trade the raw Vercel bypass secret for its derived short-lived cookie ONCE,
+// before any traced browser context exists. Every context starts from this
+// storage state, so retained failure traces never record the loaded secret —
+// only the cookie Vercel minted from it. Without a secret (local webServer
+// runs) the state is empty and harmless.
+async function primeVercelBypassState(): Promise<void> {
+  const storagePath = path.join(process.cwd(), VERCEL_BYPASS_STATE_FILENAME);
+  const secret = process.env.VERCEL_BYPASS_SECRET;
+  const baseUrl = process.env.BASE_URL;
+  if (!secret || !baseUrl) {
+    fs.writeFileSync(storagePath, JSON.stringify({ cookies: [], origins: [] }));
+    fs.chmodSync(storagePath, 0o600);
+    return;
+  }
+  const context = await playwrightRequest.newContext({
+    extraHTTPHeaders: {
+      "x-vercel-protection-bypass": secret,
+      "x-vercel-set-bypass-cookie": "true",
+    },
+  });
+  try {
+    // No redirect-following: the bypass cookie arrives on the first response,
+    // and a redirecting (or compromised) target must never receive the raw
+    // secret header on a second host.
+    await context.get(baseUrl, { maxRedirects: 0 });
+    await context.storageState({ path: storagePath });
+  } finally {
+    await context.dispose();
+  }
+  fs.chmodSync(storagePath, 0o600);
+}
+
 export default async function globalSetup(): Promise<void> {
   for (const key of REQUIRED_ENV) {
     if (!process.env[key]) failLoud(key);
   }
+  await primeVercelBypassState();
   await clerkSetup();
   // Ordered setup keeps JWT claims fresh:
   //   1. provisionUser: ensure each Clerk user exists (no JWT yet).
@@ -158,12 +197,23 @@ export default async function globalSetup(): Promise<void> {
   // is the only place leftovers from interrupted runs get cleared — without
   // it they accumulate past the wall's first page and exact-count specs
   // starve.
-  const regularWs = await getDefaultWorkspaceId(FIXTURE_KEY.regular);
-  const swept = await cleanWorkspaceFleets(FIXTURE_KEY.regular, regularWs);
-  console.log(
-    `[e2e:auth] env present (api=${process.env.NEXT_PUBLIC_API_URL}); ` +
-      `${fixtures.length} fixture users provisioned in Clerk + bootstrapped in agentsfleetd; ` +
-      `JWTs cached to ${JWT_CACHE_PATH}; ` +
-      `${swept} leftover fleet(s) swept from the shared workspace`,
-  );
+  // API failures here are environment problems, not product drift — surface
+  // them as the typed redacted diagnosis (error code + recovery playbook)
+  // instead of a raw wire error, and never echo response bodies.
+  try {
+    const regularWs = await getDefaultWorkspaceId(FIXTURE_KEY.regular);
+    const swept = await cleanWorkspaceFleets(FIXTURE_KEY.regular, regularWs);
+    // Provision the shared secondary workspace before any worker exists —
+    // parallel specs racing ensureSecondWorkspace's list-then-create would
+    // otherwise collide on the (tenant, name) uniqueness during a first run.
+    await ensureSecondWorkspace(FIXTURE_KEY.regular, SECOND_WORKSPACE_NAME);
+    console.log(
+      `[e2e:auth] env present (api=${process.env.NEXT_PUBLIC_API_URL}); ` +
+        `${fixtures.length} fixture users provisioned in Clerk + bootstrapped in agentsfleetd; ` +
+        `JWTs cached to ${JWT_CACHE_PATH}; ` +
+        `${swept} leftover fleet(s) swept from the shared workspace`,
+    );
+  } catch (error) {
+    throw diagnoseApiError(error, "global setup");
+  }
 }

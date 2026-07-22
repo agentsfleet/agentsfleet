@@ -137,7 +137,9 @@ describe("RunnerList component", () => {
     await user.click(hostSort);
     expect(listRunnersActionMock).toHaveBeenCalledTimes(1);
     await waitFor(() => expect(listRunnersActionMock).toHaveBeenLastCalledWith(expect.objectContaining({ sort: "host_id" })));
-    finishFirstLoad?.({ ok: true, data: listResponse([REGISTERED, ONLINE]) });
+    await act(async () => {
+      finishFirstLoad?.({ ok: true, data: listResponse([REGISTERED, ONLINE]) });
+    });
     await waitFor(() => expect(hostSort.hasAttribute("disabled")).toBe(false));
     await user.click(hostSort);
     await waitFor(() => expect(listRunnersActionMock).toHaveBeenLastCalledWith(expect.objectContaining({ sort: "-host_id" })));
