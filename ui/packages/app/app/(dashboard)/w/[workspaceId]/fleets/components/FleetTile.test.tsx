@@ -85,7 +85,9 @@ describe("FleetTile kinds", () => {
     expect(getByText(FLEET_AGENT_DESCRIPTION)).toBeTruthy();
     expect(getByText(FLEET_WAITING_COPY)).toBeTruthy();
     expect(getByText(MANAGE_FLEET_LABEL, { exact: false })).toBeTruthy();
-    expect(getByRole("link", { name: /manage fleet: alpha — active/i })).toBeTruthy();
+    expect(
+      getByRole("link", { name: /manage fleet: alpha — agent [a-z]+-[0-9a-f]{4} — active/i }),
+    ).toBeTruthy();
     // Footer reads server truth, not token math — figures carry their unit as
     // a plain word, never an abbreviation.
     expect(getByText("$1.20 spent")).toBeTruthy();
@@ -163,6 +165,32 @@ describe("FleetTile kinds", () => {
       agentNames[1]?.getAttribute("data-agent-name"),
     );
     expect(container.textContent).toMatch(/Agent [A-Za-z]+-[0-9A-F]{4}/);
+  });
+
+  it("distinguishes same-named fleet links by their agent callsigns", () => {
+    streamMock.mockReturnValue({
+      events: [],
+      connectionStatus: CONNECTION_STATUS.LIVE,
+      helloReceived: true,
+      isLive: true,
+      catchingUp: false,
+    });
+    const { getAllByRole } = render(
+      React.createElement(
+        TooltipProvider,
+        null,
+        React.createElement(
+          React.Fragment,
+          null,
+          React.createElement(FleetTile, { fleet: fleet({ id: "fleet-alpha" }), workspaceId: "ws_1" }),
+          React.createElement(FleetTile, { fleet: fleet({ id: "fleet-bravo" }), workspaceId: "ws_1" }),
+        ),
+      ),
+    );
+    const labels = getAllByRole("link").map((link) => link.getAttribute("aria-label"));
+    expect(labels[0]).toMatch(/^Manage fleet: alpha — Agent [A-Za-z]+-[0-9A-F]{4} — active$/);
+    expect(labels[1]).toMatch(/^Manage fleet: alpha — Agent [A-Za-z]+-[0-9A-F]{4} — active$/);
+    expect(labels[0]).not.toBe(labels[1]);
   });
 
   it("preserves the canonical callsign and mirrored sigil geometry", () => {
