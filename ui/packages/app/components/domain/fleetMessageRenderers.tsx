@@ -158,10 +158,10 @@ function PayloadDisclosure({ json }: { json: string }) {
 
 function toneFor(actor: string, status: string): RowTone {
   if (status === STATUS_OPTIMISTIC || status === STATUS_FAILED) return ROW_TONE.OPERATOR;
-  const role = roleFor(actor);
-  if (role === "user") return ROW_TONE.OPERATOR;
-  if (role === "assistant") return ROW_TONE.FLEET;
-  return ROW_TONE.EVENT;
+  // toneFor is only asked for a TRIGGER's tone, and a trigger is never an
+  // assistant row (those render straight to the reply bubble). So the actor
+  // here is an operator or an integration — no assistant arm.
+  return roleFor(actor) === "user" ? ROW_TONE.OPERATOR : ROW_TONE.EVENT;
 }
 
 function readText(message: MessageState): string {

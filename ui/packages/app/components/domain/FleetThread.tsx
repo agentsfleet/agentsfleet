@@ -318,10 +318,11 @@ function useNewMessageHandler({
           onFailure({ message: msg, kind: "send" });
         }
       };
-      // Chain this POST after the previous one. A failed send must not block
-      // the next, so the chain swallows outcomes; each `send` reports its own.
+      // Chain this POST after the previous one. `send` reports its own failure
+      // and never rejects, so the tail never rejects — the next message always
+      // gets its slot whether this one succeeded or failed.
       const slot = deliveryTail.current.then(send);
-      deliveryTail.current = slot.catch(() => undefined);
+      deliveryTail.current = slot;
       await slot;
     },
     [
