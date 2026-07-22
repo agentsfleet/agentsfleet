@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
 import type { ThreadMessageLike } from "@assistant-ui/react";
 import type { EventRow } from "@/lib/api/events";
 import {
@@ -10,6 +10,7 @@ import {
   getSnapshot,
   markOptimisticFailed as registryMarkOptimisticFailed,
   reconcileOptimistic as registryReconcileOptimistic,
+  reconcileServerRows,
   retryConnection as registryRetryConnection,
   subscribe,
   type ConnectionStatus,
@@ -50,8 +51,8 @@ export type UseFleetEventStreamResult = {
  *
  * `initial` seeds the first subscriber's event list from server-rendered
  * data; the browser holds no token. Live updates arrive over the
- * cookie-authed SSE route handler. Later re-renders do not re-seed an
- * existing subscription (that would clobber live frames with stale data).
+ * cookie-authenticated Server-Sent Events route handler. Later snapshots
+ * merge authoritative terminal rows without replacing newer live frames.
  */
 export function useFleetEventStream(
   workspaceId: string,
@@ -62,7 +63,8 @@ export function useFleetEventStream(
   // a fresh array identity each render must not resubscribe. Updating the
   // ref every render (rather than capturing first-render only) keeps the
   // value current if `fleetId` changes within a live instance — the
-  // registry ignores `initial` for an existing entry, so seed-once holds.
+  // registry ignores `initial` while subscribing to an existing entry; the
+  // reconciliation effect below handles later authoritative snapshots.
   const initialRef = useRef(initial);
   initialRef.current = initial;
   const subscribeFn = useCallback(
@@ -72,6 +74,10 @@ export function useFleetEventStream(
   );
   const snapshotFn = useCallback(() => getSnapshot(fleetId), [fleetId]);
   const snapshot = useSyncExternalStore(subscribeFn, snapshotFn, snapshotFn);
+
+  useEffect(() => {
+    reconcileServerRows(fleetId, initial);
+  }, [fleetId, initial]);
 
   const appendOptimistic = useCallback(
     (text: string, actor: string) =>
@@ -127,7 +133,6 @@ function convertEvent(event: FleetEvent): ThreadMessageLike {
       custom: {
         actor: event.actor,
         requestJson: event.custom?.requestJson,
-        reason: event.custom?.reason,
         status: event.status,
         // The fleet's reply on this same durable row, and the sentence to show
         // in its place when the reply is empty (still working, blocked, failed).

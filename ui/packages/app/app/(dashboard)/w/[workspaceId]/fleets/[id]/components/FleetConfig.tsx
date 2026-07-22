@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Trash2Icon } from "lucide-react";
-import { Button, Card, ConfirmDialog } from "@agentsfleet/design-system";
+import { Button, ConfirmDialog } from "@agentsfleet/design-system";
 import { deleteFleetAction } from "../../actions";
 import { workspacePath } from "@/lib/workspace-routes";
 import { presentErrorString } from "@/lib/errors";
@@ -43,12 +43,13 @@ export default function FleetConfig({
   }
 
   return (
-    <Card className="p-4">
+    <>
       <Button
         type="button"
         onClick={() => setOpen(true)}
         variant="destructive"
         size="sm"
+        className="min-h-11 sm:min-h-0"
       >
         <Trash2Icon size={14} /> Delete fleet
       </Button>
@@ -66,6 +67,6 @@ export default function FleetConfig({
         // so onError always receives an Error.
         onError={(e) => setError((e as Error).message)}
       />
-    </Card>
+    </>
   );
 }

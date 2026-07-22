@@ -2,12 +2,11 @@
  * fleet-thread.spec.ts — the operator's chat surface renders against the
  * durable event log for an authenticated user.
  *
- * What this spec pins: an authenticated user lands on
- * /w/[workspaceId]/fleets/[id], the chat surface mounts, the composer
- * renders and accepts a message, and no same-origin request ever carries a
- * browser-set Authorization header. A regression lands either as a /sign-in
- * redirect (server-side token resolution broke) or as a missing Card /
- * missing composer (registry or layout wiring broke).
+ * This acceptance surface pins authenticated mount, workspace navigation,
+ * the transcript/composer sibling layout, optimistic steer rendering, and
+ * the rule that browser requests never carry a client Authorization header.
+ * Stream frame handling and reconnect behaviour are covered by the focused
+ * registry and event-stream tests where frame timing is deterministic.
  */
 import { expect, test } from "@playwright/test";
 import { signInAs } from "./fixtures/auth";
@@ -15,8 +14,8 @@ import { FIXTURE_KEY } from "./fixtures/constants";
 import { getDefaultWorkspaceId, seedFleet, waitForFleetActive } from "./fixtures/seed";
 import { workspaceHref, workspaceUrlPattern } from "./fixtures/nav";
 
-const THREAD_LABEL = "Fleet chat";
 const PANEL_LABEL = /^Chat$/;
+const CHAT_LABEL = "Fleet chat";
 const COMPOSER_LABEL = "Chat composer";
 
 test.describe("fleet thread surface", () => {
@@ -38,21 +37,21 @@ test.describe("fleet thread surface", () => {
     await page.goto(workspaceHref(workspaceId, `fleets/${fleet.id}`));
     await expect(page).toHaveURL(workspaceUrlPattern(`fleets/${fleet.id}`));
 
-    // Page-level header rendered server-side.
-    await expect(
-      page.getByRole("heading", { name: new RegExp(fleet.name, "i") }).first(),
-    ).toBeVisible();
+    // Breadcrumb rendered server-side without duplicating the fleet name in a
+    // second oversized title row.
+    await expect(page.getByRole("link", { name: "Fleets" })).toBeVisible();
+    await expect(page.getByText(fleet.name, { exact: true }).first()).toBeVisible();
 
-    // The thread Card mounts client-side via next/dynamic(ssr:false) and
-    // consumes the module-singleton stream registry. Its `aria-label` is a
-    // stable hook that doesn't depend on visual styling.
-    const threadCard = page.getByLabel(THREAD_LABEL);
+    // The thread card mounts client-side and consumes the shared stream registry.
+    // Its accessible label is stable across visual changes.
+    const threadCard = page.getByLabel(CHAT_LABEL);
     await expect(threadCard).toBeVisible({ timeout: 10_000 });
 
-    // Title row is part of the same Card.
-    await expect(
-      threadCard.getByText(PANEL_LABEL).first(),
-    ).toBeVisible();
+    // The chat heading and connection status share one baseline. The removed
+    // Steer tab cannot suggest a second view that does not exist.
+    await expect(threadCard.getByRole("heading", { name: PANEL_LABEL })).toBeVisible();
+    await expect(threadCard.getByRole("link", { name: "Steer" })).toHaveCount(0);
+    await expect(threadCard.getByLabel(/Connection status:/i)).toBeVisible();
 
     // The conversation carries role="log" + aria-live=polite.
     const log = threadCard.getByRole("log", { name: /chat/i });
@@ -60,7 +59,7 @@ test.describe("fleet thread surface", () => {
 
     // The composer always renders and never disables itself — sending does
     // not depend on the live feed or on the fleet being idle.
-    const composer = threadCard.getByLabel(COMPOSER_LABEL);
+    const composer = page.getByLabel(COMPOSER_LABEL);
     await expect(composer).toBeVisible();
     const placeholder = composer.getByPlaceholder(/message this fleet/i);
     await expect(placeholder).toBeVisible();
@@ -84,7 +83,7 @@ test.describe("fleet thread surface", () => {
     await waitForFleetActive(FIXTURE_KEY.regular, workspaceId, fleet.id);
 
     await page.goto(workspaceHref(workspaceId, `fleets/${fleet.id}`));
-    await expect(page.getByLabel(THREAD_LABEL)).toBeVisible({
+    await expect(page.getByLabel(CHAT_LABEL)).toBeVisible({
       timeout: 10_000,
     });
 
@@ -96,11 +95,11 @@ test.describe("fleet thread surface", () => {
     // network layer from a Playwright test (that's the registry unit-test
     // surface), only that the user-visible surface comes back cleanly.
     await page.goto(workspaceHref(workspaceId, `fleets/${fleet.id}`));
-    await expect(page.getByLabel(THREAD_LABEL)).toBeVisible({
+    await expect(page.getByLabel(CHAT_LABEL)).toBeVisible({
       timeout: 10_000,
     });
     await expect(
-      page.getByLabel(THREAD_LABEL).getByLabel(COMPOSER_LABEL),
+      page.getByLabel(COMPOSER_LABEL),
     ).toBeVisible();
   });
 
@@ -134,14 +133,14 @@ test.describe("fleet thread surface", () => {
 
     await page.goto(workspaceHref(workspaceId, `fleets/${fleet.id}`));
     const appOrigin = new URL(page.url()).origin;
-    const threadCard = page.getByLabel(THREAD_LABEL);
+    const threadCard = page.getByLabel(CHAT_LABEL);
     await expect(threadCard).toBeVisible({ timeout: 10_000 });
 
-    const composer = threadCard.getByLabel(COMPOSER_LABEL);
+    const composer = page.getByLabel(COMPOSER_LABEL);
     const textarea = composer.getByPlaceholder(/message this fleet/i);
     await expect(textarea).toBeVisible();
     await textarea.fill("acceptance steer probe");
-    await composer.getByRole("button", { name: /^Send/ }).click();
+    await composer.getByRole("button", { name: /send/i }).click();
 
     // The optimistic row renders the message text immediately, regardless
     // of whether the send ultimately resolves to sent or to failed.

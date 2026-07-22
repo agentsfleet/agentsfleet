@@ -2,13 +2,12 @@ import type { ComponentType } from "react";
 import Link from "next/link";
 import {
   ActivityIcon,
-  BrainCircuitIcon,
+  BrainIcon,
   Code2Icon,
   MessageSquareIcon,
-  SettingsIcon,
   ZapIcon,
 } from "lucide-react";
-import { cn, Nav, Separator } from "@agentsfleet/design-system";
+import { Nav } from "@agentsfleet/design-system";
 import { workspacePath } from "@/lib/workspace-routes";
 
 export const FLEET_VIEW = {
@@ -17,7 +16,6 @@ export const FLEET_VIEW = {
   memory: "memory",
   skill: "skill",
   trigger: "trigger",
-  settings: "settings",
 } as const;
 
 export type FleetView = (typeof FLEET_VIEW)[keyof typeof FLEET_VIEW];
@@ -26,31 +24,31 @@ type FleetNavItem = {
   view: FleetView;
   label: string;
   icon: ComponentType<{ size?: number }>;
-  separated?: boolean;
 };
 
 const FLEET_NAV_ITEMS: FleetNavItem[] = [
   { view: FLEET_VIEW.chat, label: "Chat", icon: MessageSquareIcon },
   { view: FLEET_VIEW.events, label: "Events", icon: ActivityIcon },
-  { view: FLEET_VIEW.memory, label: "Memory", icon: BrainCircuitIcon },
+  { view: FLEET_VIEW.memory, label: "Memory", icon: BrainIcon },
   { view: FLEET_VIEW.skill, label: "Skill", icon: Code2Icon },
   { view: FLEET_VIEW.trigger, label: "Trigger", icon: ZapIcon },
-  { view: FLEET_VIEW.settings, label: "Settings", icon: SettingsIcon, separated: true },
 ];
 
 const FLEET_NAV_ITEM_CLASS =
-  "flex shrink-0 items-center gap-md rounded-md px-md py-sm font-mono text-body-sm text-muted-foreground no-underline transition duration-snap ease-snap hover:bg-accent hover:text-foreground data-[active=true]:bg-accent data-[active=true]:font-medium data-[active=true]:text-foreground";
+  "flex min-h-11 shrink-0 items-center gap-md rounded-md px-md py-sm font-mono text-body-sm text-muted-foreground no-underline transition duration-snap ease-snap hover:bg-accent hover:text-foreground data-[active=true]:bg-accent data-[active=true]:font-medium data-[active=true]:text-foreground";
 
-export function resolveFleetView(value: string | undefined): FleetView {
+export function resolveFleetView(value: string | undefined): FleetView | null {
   switch (value) {
+    case undefined:
+    case FLEET_VIEW.chat:
+      return FLEET_VIEW.chat;
     case FLEET_VIEW.events:
     case FLEET_VIEW.memory:
     case FLEET_VIEW.skill:
     case FLEET_VIEW.trigger:
-    case FLEET_VIEW.settings:
       return value;
     default:
-      return FLEET_VIEW.chat;
+      return null;
   }
 }
 
@@ -67,7 +65,7 @@ export function FleetSubnavigation({
   return (
     <Nav
       aria-label="Fleet sections"
-      className="flex gap-xs overflow-x-auto border-b border-border pb-md lg:w-48 lg:shrink-0 lg:flex-col lg:overflow-visible lg:border-b-0 lg:border-r lg:pb-0 lg:pr-lg"
+      className="flex gap-xs overflow-x-auto border-b border-border pb-md lg:w-56 lg:shrink-0 lg:flex-col lg:overflow-visible lg:border-b-0 lg:border-r lg:pb-0 lg:pr-xl"
     >
       {FLEET_NAV_ITEMS.map((item) => {
         const Icon = item.icon;
@@ -76,18 +74,16 @@ export function FleetSubnavigation({
           ? baseHref
           : `${baseHref}?view=${item.view}`;
         return (
-          <div key={item.view} className={item.separated ? "contents lg:block lg:pt-md" : "contents"}>
-            {item.separated ? <Separator className="hidden lg:block" /> : null}
-            <Link
-              href={href}
-              aria-current={active ? "page" : undefined}
-              data-active={active ? "true" : undefined}
-              className={cn(FLEET_NAV_ITEM_CLASS, item.separated && "lg:mt-md")}
-            >
-              <Icon size={15} />
-              {item.label}
-            </Link>
-          </div>
+          <Link
+            key={item.view}
+            href={href}
+            aria-current={active ? "page" : undefined}
+            data-active={active ? "true" : undefined}
+            className={FLEET_NAV_ITEM_CLASS}
+          >
+            <Icon size={15} />
+            {item.label}
+          </Link>
         );
       })}
     </Nav>

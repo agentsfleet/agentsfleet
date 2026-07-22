@@ -97,22 +97,65 @@ describe("EventsList — the standard workspace events table", () => {
     expect(screen.getByText("boom")).toBeTruthy();
     // weird status falls through to default badge variant (still rendered)
     expect(screen.getByText("weird-unknown")).toBeTruthy();
-    // A row with neither response text nor a failure label renders an empty
-    // summary cell — never a placeholder or a crash. Summary is the 6th column.
+    // A row with neither response text nor a failure label says so instead of
+    // leaving the operator to guess whether the interface lost data.
     const rowC = screen.getAllByRole("row").find((r) => r.textContent?.includes("gate_blocked"));
     expect(rowC).toBeTruthy();
     const cells = Array.from(rowC!.querySelectorAll("td"));
-    const summaryCell = cells[5];
-    expect(summaryCell?.textContent).toBe("");
+    const summaryCell = cells[6];
+    expect(summaryCell?.textContent).toBe("No result recorded");
   });
 
-  it("renders a known FailureClass tag as its friendly label, not the raw enum name", () => {
+  it("renders a known FailureClass tag as a friendly label without its internal tag", () => {
     renderList({
-      items: [row({ event_id: "f", status: "fleet_error", response_text: null, failure_label: "oom_kill" })],
+      items: [
+        row({ event_id: "f", status: "fleet_error", response_text: null, failure_label: "oom_kill" }),
+        row({ event_id: "g", status: "fleet_error", response_text: null, failure_label: "resource_kill" }),
+      ],
       next_cursor: null,
     });
     expect(screen.getByText("Ran out of memory")).toBeTruthy();
-    expect(screen.queryByText(/oom_kill/)).toBeNull();
+    expect(screen.getByText("Hit a resource limit")).toBeTruthy();
+    expect(screen.queryByText("oom_kill")).toBeNull();
+    expect(screen.queryByText("resource_kill")).toBeNull();
+    expect(screen.getByRole("button", { name: "Inspect event f" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Inspect event f" }).className).toContain("min-h-11");
+  });
+
+  it("keeps a recorded response visible without exposing its internal failure tag", () => {
+    renderList({
+      items: [row({
+        event_id: "response-failure",
+        status: "fleet_error",
+        response_text: "Engine configuration could not be assembled.",
+        failure_label: "startup_posture",
+      })],
+      next_cursor: null,
+    });
+    expect(screen.getByText("Engine configuration could not be assembled.")).toBeTruthy();
+    expect(screen.queryByText("startup_posture")).toBeNull();
+  });
+
+  it("presents actor identifiers as readable names while retaining details", async () => {
+    renderList({
+      items: [row({ event_id: "actor", actor: "steer:user_3GkbgXjNuJSXbdxttcWCSlPc87k" })],
+      next_cursor: null,
+    });
+
+    expect(screen.getByText("Operator")).toBeTruthy();
+    expect(screen.queryByText("steer:user_3GkbgXjNuJSXbdxttcWCSlPc87k")).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: "Inspect event actor" }));
+    expect(screen.getAllByText("Operator")).toHaveLength(2);
+    expect(screen.queryByText("steer:user_3GkbgXjNuJSXbdxttcWCSlPc87k")).toBeNull();
+  });
+
+  it("renders the fleet budget failure with operator-facing copy", () => {
+    renderList({
+      items: [row({ event_id: "budget", status: "gate_blocked", response_text: null, failure_label: "budget_breach" })],
+      next_cursor: null,
+    });
+    expect(screen.getByText("Fleet budget limit reached")).toBeTruthy();
+    expect(screen.queryByText("budget_breach")).toBeNull();
   });
 
   it("collapses whitespace and truncates long summary text to 160 chars", () => {
@@ -148,8 +191,65 @@ describe("EventsList — the standard workspace events table", () => {
   it("fleet scope removes the Fleet column and keeps Result, Cost, Tokens, and Duration", () => {
     renderList({ items: [row({ cost_nanos: 20_000_000 })], next_cursor: null }, "zomb_1234567890ab");
     const headers = screen.getAllByRole("columnheader").map((header) => header.textContent);
-    expect(headers).toEqual(["Time", "Status", "Actor", "Type", "Result", "Cost", "Tokens", "Duration"]);
+    expect(headers).toEqual([
+      "Time",
+      "Status",
+      "Actor",
+      "Details",
+      "Type",
+      "Result",
+      "Cost",
+      "Tokens",
+      "Duration",
+    ]);
     expect(screen.getByText("$0.02")).toBeTruthy();
+  });
+
+  it("opens actionable diagnostics when startup safety failed without a recorded reason", async () => {
+    renderList({
+      items: [
+        row({
+          event_id: "evt_startup_1",
+          actor: "github-app",
+          event_type: "webhook",
+          status: "fleet_error",
+          request_json: '{"action":"opened","pull_request":482}',
+          response_text: null,
+          failure_label: "startup_posture",
+        }),
+      ],
+      next_cursor: null,
+    });
+
+    expect(screen.queryByRole("dialog")).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: "Inspect event evt_startup_1" }));
+
+    expect(screen.getByRole("dialog")).toBeTruthy();
+    expect(screen.getByLabelText("Failed event")).toBeTruthy();
+    expect(screen.queryByText("No specific reason was recorded for this event.")).toBeNull();
+    expect(screen.queryByText("startup_posture")).toBeNull();
+    expect(screen.getByText(
+      "Nothing specific can be fixed from this event because it did not record which startup check failed.",
+    )).toBeTruthy();
+    expect(screen.getByText(
+      "Retry it once. If it fails again, use the copy icon below and ask a coding agent to inspect the diagnostic.",
+    )).toBeTruthy();
+    expect(screen.queryByText("Add non-empty instructions in Skill, then save the fleet.")).toBeNull();
+    expect(screen.queryByText("Make an active runner available to this workspace.")).toBeNull();
+    expect(screen.queryByText("Select an available model and provider credential.")).toBeNull();
+    expect(screen.queryByText(/runner logs/i)).toBeNull();
+    expect(screen.getByText("Pull request")).toBeTruthy();
+    expect(screen.getByText("482")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Copy event ID" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Copy diagnostic" })).toBeTruthy();
+    expect(screen.queryByText("Copy diagnostic")).toBeNull();
+    expect(screen.queryByText("Copy event details")).toBeNull();
+    expect(screen.getAllByText("Created")).toHaveLength(1);
+    expect(screen.queryByText("Updated")).toBeNull();
+    expect(screen.queryByText(/Coordinated Universal Time/)).toBeNull();
+
+    await userEvent.click(screen.getByRole("button", { name: "Close" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 
   it("fleet-scoped pagination preserves the fleet filter", async () => {
@@ -165,7 +265,7 @@ describe("EventsList — the standard workspace events table", () => {
     }));
   });
 
-  it("renders <time> with ISO when created_at is valid; omits when invalid", () => {
+  it("renders relative <time> with a standard datetime when created_at is valid; omits when invalid", () => {
     const { container } = renderList({
       items: [
         row({ event_id: "ok", created_at: Date.UTC(2026, 0, 2, 3, 4, 0) }),
@@ -176,10 +276,7 @@ describe("EventsList — the standard workspace events table", () => {
     const times = container.querySelectorAll("time");
     expect(times.length).toBe(1);
     expect(times[0]!.getAttribute("datetime")).toMatch(/^2026-01-02T/);
-    // Locale-aware HH:MM (Intl.DateTimeFormat) — accept either 24h
-    // ("13:04") or 12h with AM/PM ("01:04 pm"). The exact format depends
-    // on the test runner's resolved locale.
-    expect(times[0]!.textContent).toMatch(/^\d{2}:\d{2}(\s?[ap]m)?$/i);
+    expect(times[0]!.textContent).toMatch(/ago|^in /i);
   });
 
   it("test_events_table_paginates_by_cursor — load more appends rows and updates the cursor", async () => {

@@ -27,37 +27,41 @@ export type SteerComposerProps = {
 export function SteerComposer({ failureKind, onRetry }: SteerComposerProps) {
   return (
     <ComposerPrimitive.Root
-      className={cn("border-t border-border bg-card px-xl py-lg", "flex flex-col gap-md")}
+      id="fleet-steer-composer"
+      className={cn(
+        "rounded-lg border border-border bg-card px-xl py-lg",
+        "flex flex-col gap-md",
+      )}
       aria-label={COMPOSER_LABEL}
     >
       <DeliveryFailureNotice failureKind={failureKind} onRetry={onRetry} />
 
       <div
         className={cn(
-          "flex flex-col gap-md rounded-md border border-border bg-background px-lg py-md",
-          "transition-colors duration-snap ease-snap",
-          "focus-within:border-pulse",
+          "flex min-h-16 flex-col gap-xs",
+          "sm:flex-row sm:items-end sm:gap-md",
         )}
       >
         <ComposerPrimitive.Input asChild placeholder={PLACEHOLDER}>
           <Textarea
-            rows={2}
+            aria-label={PLACEHOLDER}
+            rows={1}
             className={cn(
-              "min-h-0 resize-none border-0 bg-transparent px-0 py-0",
+              "min-h-0 flex-1 resize-none border-0 bg-transparent px-0 py-md",
               "font-mono text-mono leading-mono text-foreground",
               "placeholder:text-muted-foreground",
-              "focus-visible:border-0 focus-visible:ring-0 focus-visible:ring-offset-0",
+              "focus-visible:border-0 focus-visible:ring-1 focus-visible:ring-pulse focus-visible:ring-offset-0",
             )}
           />
         </ComposerPrimitive.Input>
-        <div className="flex items-center justify-end gap-md">
-          <span className="font-mono text-label text-muted-foreground">{SEND_HINT}</span>
-          <ComposerPrimitive.Send asChild>
-            <Button type="submit" variant="secondary" size="sm">
-              {SEND_LABEL}
-            </Button>
-          </ComposerPrimitive.Send>
-        </div>
+        <span className="pb-sm font-mono text-label text-muted-foreground">
+          {SEND_HINT}
+        </span>
+        <ComposerPrimitive.Send asChild>
+          <Button type="submit" variant="secondary" size="sm" className="min-h-11 sm:min-h-0">
+            {SEND_LABEL}
+          </Button>
+        </ComposerPrimitive.Send>
       </div>
     </ComposerPrimitive.Root>
   );

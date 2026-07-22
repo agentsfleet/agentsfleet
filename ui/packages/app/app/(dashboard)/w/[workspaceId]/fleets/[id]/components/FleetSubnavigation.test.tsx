@@ -13,16 +13,17 @@ describe("FleetSubnavigation", () => {
         activeView={FLEET_VIEW.memory}
       />,
     );
-    expect(screen.getAllByRole("link")).toHaveLength(6);
+    expect(screen.getAllByRole("link")).toHaveLength(5);
     expect(screen.getByRole("link", { name: "Memory" }).getAttribute("aria-current")).toBe("page");
     expect(screen.getByRole("link", { name: "Chat" }).getAttribute("href")).toBe("/w/ws_1/fleets/fleet_1");
-    expect(screen.getByRole("link", { name: "Settings" }).getAttribute("href")).toBe(
-      "/w/ws_1/fleets/fleet_1?view=settings",
-    );
+    expect(screen.queryByRole("link", { name: "Settings" })).toBeNull();
+    expect(screen.getByRole("link", { name: "Memory" }).querySelector("svg")?.getAttribute("class"))
+      .toContain("lucide-brain");
   });
 
-  it("defaults unknown and missing views to Chat", () => {
+  it("defaults a missing view to Chat and rejects unknown views", () => {
     expect(resolveFleetView(undefined)).toBe(FLEET_VIEW.chat);
-    expect(resolveFleetView("unknown")).toBe(FLEET_VIEW.chat);
+    expect(resolveFleetView(FLEET_VIEW.chat)).toBe(FLEET_VIEW.chat);
+    expect(resolveFleetView("unknown")).toBeNull();
   });
 });
