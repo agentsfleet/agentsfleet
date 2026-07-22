@@ -537,48 +537,45 @@ describe("DataTable", () => {
     expect(onPageChange).toHaveBeenCalledWith(1);
   });
 
-  it("forwards cursor pagination and hides it when the feed is exhausted", () => {
-    const onNext = vi.fn();
+  it("pages a cursor-backed feed and stops when the caller says the feed ended", () => {
+    const onPageChange = vi.fn();
     const { rerender } = render(
       <DataTable
         columns={COLUMNS}
         rows={ROWS}
         rowKey={(row) => row.id}
-        pagination={{ kind: "cursor", nextCursor: "next-1", onNext }}
+        pagination={{ kind: "page", page: 1, pageSize: 25, hasNext: true, onPageChange }}
       />,
     );
-    fireEvent.click(screen.getByRole("button", { name: "Load more items" }));
-    expect(onNext).toHaveBeenCalledWith("next-1");
-    const loadedStatus = screen.getByText("2 loaded · sort scope: loaded");
-    expect(loadedStatus).toHaveAttribute("aria-live", "polite");
-    expect(loadedStatus.className).toContain("font-mono");
+    fireEvent.click(screen.getByRole("button", { name: "Next page" }));
+    expect(onPageChange).toHaveBeenCalledWith(2);
 
     rerender(
       <DataTable
         columns={COLUMNS}
         rows={ROWS}
         rowKey={(row) => row.id}
-        pagination={{ kind: "cursor", nextCursor: null, onNext }}
+        pagination={{ kind: "page", page: 1, pageSize: 25, hasNext: false, onPageChange }}
       />,
     );
-    expect(screen.queryByRole("navigation", { name: "Feed pagination" })).toBeNull();
+    // Page 1 of a feed with nothing after it needs no pager at all.
+    expect(screen.queryByRole("navigation", { name: "Pagination" })).toBeNull();
   });
 
-  it("keeps cursor pagination reachable when an intermediate page is empty", () => {
-    const onNext = vi.fn();
+  it("keeps the pager reachable when an intermediate page comes back empty", () => {
+    const onPageChange = vi.fn();
     render(
       <DataTable
         columns={COLUMNS}
         rows={[]}
         rowKey={(row) => row.id}
         empty={<div>No rows on this page</div>}
-        pagination={{ kind: "cursor", nextCursor: "next-2", onNext }}
+        pagination={{ kind: "page", page: 2, pageSize: 25, hasNext: true, onPageChange }}
       />,
     );
 
     expect(screen.getByText("No rows on this page")).toBeInTheDocument();
-    expect(screen.queryByText("0 loaded · sort scope: loaded")).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Load more items" }));
-    expect(onNext).toHaveBeenCalledWith("next-2");
+    fireEvent.click(screen.getByRole("button", { name: "Previous page" }));
+    expect(onPageChange).toHaveBeenCalledWith(1);
   });
 });

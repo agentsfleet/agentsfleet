@@ -4,34 +4,35 @@ import { cn } from "../utils";
 
 export const PAGINATION_KIND = {
   client: "client",
-  cursor: "cursor",
   page: "page",
 } as const;
 
 /*
- * Pagination — two shapes under one component:
- *   • cursor: opaque next-cursor string (activity feed, telemetry).
- *   • page:   numeric pages (agents list).
- * Both land on the same UI so pages render identically regardless of the
- * server pagination rules. React Server Component (RSC)-safe — event handlers
- * are passed as props and forwarded to the RSC-safe shared Button.
+ * Pagination — ONE shape: numbered pages. Every table paginates identically,
+ * whether the server counts pages or hands back opaque cursors, because an
+ * operator moving between two tables should not have to learn two controls.
+ *
+ * There is deliberately no append-style "load more": it grows one list without
+ * bound, pushes its own control off the bottom of the screen, and leaves the
+ * operator scrolling to reach it. A cursor-backed caller pages through the
+ * feed instead and reports `hasNext` from the cursor it holds.
+ *
+ * React Server Component (RSC)-safe — event handlers are passed as props and
+ * forwarded to the RSC-safe shared Button.
  */
-
-export interface CursorPaginationProps {
-  kind: typeof PAGINATION_KIND.cursor;
-  nextCursor: string | null;
-  onNext: (cursor: string) => void;
-  /** Number of rows fetched into this append-only cursor feed. */
-  loadedCount?: number;
-  isLoading?: boolean;
-  className?: string;
-}
 
 export interface PagePaginationProps {
   kind: typeof PAGINATION_KIND.page;
   page: number;
   pageSize: number;
+  /** Omitted when the source cannot know it — a cursor feed never does. */
   total?: number;
+  /**
+   * Whether a further page exists. Required for a cursor-backed feed, whose
+   * `total` is unknowable: without it "Next" would stay live at the end of
+   * the feed and hand the operator an empty page.
+   */
+  hasNext?: boolean;
   /** Plural noun shown after the total count. Defaults to "items". */
   totalLabel?: string;
   onPageChange: (page: number) => void;
@@ -39,60 +40,17 @@ export interface PagePaginationProps {
   className?: string;
 }
 
-export type PaginationProps = CursorPaginationProps | PagePaginationProps;
+export type PaginationProps = PagePaginationProps;
 
 export function Pagination(props: PaginationProps) {
-  if (props.kind === PAGINATION_KIND.cursor) return <CursorPagination {...props} />;
   return <PagePagination {...props} />;
-}
-
-function CursorPagination({
-  nextCursor,
-  onNext,
-  loadedCount,
-  isLoading,
-  className,
-}: CursorPaginationProps) {
-  const exhausted = nextCursor === null;
-  return (
-    <nav
-      data-slot="pagination-cursor"
-      data-testid="pagination-cursor"
-      role="navigation"
-      aria-label="Feed pagination"
-      aria-busy={isLoading ? "true" : "false"}
-      className={cn("flex flex-wrap items-center justify-end gap-2 py-3", className)}
-    >
-      {loadedCount !== undefined ? (
-        <span
-          className="mr-auto font-mono text-label leading-label text-muted-foreground tabular-nums"
-          aria-live="polite"
-          aria-atomic="true"
-        >
-          {loadedCount} loaded · sort scope: loaded
-        </span>
-      ) : null}
-      <Button
-        type="button"
-        variant="ghost"
-        size="sm"
-        disabled={exhausted || isLoading}
-        onClick={() => {
-          if (nextCursor) onNext(nextCursor);
-        }}
-        aria-label="Load more items"
-      >
-        {isLoading ? <Spinner size="sm" srLabel="" /> : null}
-        {isLoading ? "Loading…" : exhausted ? "End of feed" : "Load more"}
-      </Button>
-    </nav>
-  );
 }
 
 function PagePagination({
   page,
   pageSize,
   total,
+  hasNext,
   totalLabel = "items",
   onPageChange,
   isLoading,
@@ -100,7 +58,9 @@ function PagePagination({
 }: PagePaginationProps) {
   const totalPages = total != null ? Math.max(1, Math.ceil(total / pageSize)) : null;
   const hasPrev = page > 1;
-  const hasNext = totalPages == null ? true : page < totalPages;
+  // An explicit `hasNext` always wins: only the caller holding the cursor
+  // knows whether the feed continues.
+  const canAdvance = hasNext ?? (totalPages == null ? true : page < totalPages);
   return (
     <nav
       data-slot="pagination-page"
@@ -132,7 +92,7 @@ function PagePagination({
         type="button"
         variant="ghost"
         size="sm"
-        disabled={!hasNext || isLoading}
+        disabled={!canAdvance || isLoading}
         onClick={() => onPageChange(page + 1)}
         aria-label="Next page"
       >

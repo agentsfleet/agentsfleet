@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useCallback, useMemo, useState } from "react";
 import {
   Alert,
   Badge,
@@ -18,6 +18,7 @@ import { formatDollars } from "@/app/(dashboard)/settings/billing/lib/charges";
 import type { EventRow, EventsPage } from "@/lib/api/events";
 import { failureSentenceFor, senderLabelFor } from "@/lib/events/event-summary";
 import { presentErrorString } from "@/lib/errors";
+import { useCursorPages } from "@/lib/pagination/use-cursor-pages";
 import { formatMs } from "@/lib/utils";
 import { EventDetailsDialog } from "./EventDetailsDialog";
 
@@ -41,6 +42,17 @@ const NULL_METRIC_SORT_VALUE = -1;
 // multi-megabyte agent response must not ride into the DOM per row.
 const SUMMARY_TITLE_MAX_CHARS = 2_000;
 const TOKEN_COUNT_FORMAT = new Intl.NumberFormat();
+// Matches the server-side page the surrounding pages request, so the pager's
+// numbering and the fetch boundary are the same thing.
+export const EVENTS_PAGE_SIZE = 25;
+
+function presentPageError(result: { error: string; errorCode?: string }): string {
+  return presentErrorString({
+    errorCode: result.errorCode,
+    message: result.error,
+    action: "load events",
+  });
+}
 
 // Map server status → Badge variant. Untracked statuses fall through to
 // the default (muted) badge — readable, not opinionated.
@@ -125,37 +137,22 @@ function createEventColumns(onInspect: (row: EventRow) => void): DataTableColumn
 }
 
 export function EventsList({ workspaceId, initial, fleetId }: EventsListProps) {
-  const [items, setItems] = useState<EventRow[]>(initial.items);
-  const [cursor, setCursor] = useState<string | null>(initial.next_cursor);
-  const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<EventRow | null>(null);
-  const [pending, startTransition] = useTransition();
   const columns = useMemo(() => {
     const all = createEventColumns(setSelected);
     return fleetId ? all.filter((column) => column.key !== "fleet") : all;
   }, [fleetId]);
 
-  function loadMore(nextCursor: string) {
-    setError(null);
-    startTransition(async () => {
-      const result = await listWorkspaceEventsAction(workspaceId, {
-        cursor: nextCursor,
+  const fetchPage = useCallback(
+    (cursor: string) =>
+      listWorkspaceEventsAction(workspaceId, {
+        cursor,
         ...(fleetId ? { fleet_id: fleetId } : {}),
-      });
-      if (!result.ok) {
-        setError(
-          presentErrorString({
-            errorCode: result.errorCode,
-            message: result.error,
-            action: "load more events",
-          }),
-        );
-        return;
-      }
-      setItems((prev) => [...prev, ...result.data.items]);
-      setCursor(result.data.next_cursor);
-    });
-  }
+      }),
+    [workspaceId, fleetId],
+  );
+  const feed = useCursorPages<EventRow>(initial, fetchPage, presentPageError);
+  const { items, error } = feed;
 
   return (
     <div className="flex flex-col gap-3">
@@ -164,13 +161,19 @@ export function EventsList({ workspaceId, initial, fleetId }: EventsListProps) {
         columns={columns}
         rows={items}
         rowKey={(row) => `${row.fleet_id}:${row.event_id}`}
-        // The event log grows with the page instead of scrolling inside a
-        // fixed 384px box. The default bound is a constant, not a fit: the
-        // first fetch alone is 50 rows, so it showed ~8 of them above a
-        // screen of dead space, and "Load more" appended rows nobody could
-        // see — the page looked unchanged. A log's length is the point.
+        // A page of rows is a screenful, so the table needs no inner scroll
+        // box of its own — the fixed 384px bound only clipped it and left
+        // dead space below.
         stickyHeader={false}
-        pagination={{ kind: PAGINATION_KIND.cursor, nextCursor: cursor, onNext: loadMore, isLoading: pending }}
+        pagination={{
+          kind: PAGINATION_KIND.page,
+          page: feed.page,
+          pageSize: EVENTS_PAGE_SIZE,
+          hasNext: feed.hasNext,
+          totalLabel: "events",
+          onPageChange: feed.goToPage,
+          isLoading: feed.isLoading,
+        }}
         empty={
           <EmptyState
             icon={<ActivityIcon size={28} />}

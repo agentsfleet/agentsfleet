@@ -49,6 +49,14 @@ pub const PingFake = struct {
     stop: std.atomic.Value(bool),
     accepts: std.atomic.Value(u32),
     keep_open: bool,
+    /// The connection currently being served, so `shutdown` can reach a read
+    /// already in flight. `pokeAccept` only ever wakes the LISTEN socket; a
+    /// thread parked in `readv` on an accepted conn is deaf to it, and
+    /// `join` then blocks forever. Guarded rather than atomic because the
+    /// serving thread clears it before closing, and shutdown must not touch
+    /// a handle that close has already released.
+    live_mu: common.Mutex,
+    live: ?net.Stream,
 
     pub fn start(self: *PingFake, keep_open: bool) !void {
         const lp = try test_port.listenLoopback(common.globalIo());
@@ -57,12 +65,25 @@ pub const PingFake = struct {
         self.stop = std.atomic.Value(bool).init(false);
         self.accepts = std.atomic.Value(u32).init(0);
         self.keep_open = keep_open;
+        self.live_mu = .{};
+        self.live = null;
         self.thread = try std.Thread.spawn(.{}, acceptLoop, .{self});
     }
 
     pub fn shutdown(self: *PingFake) void {
         const io = common.globalIo();
         self.stop.store(true, .release);
+        // Half-close the read side of the live conn (never `close`): the
+        // parked `readv` returns EOF, the serve loop sees it and exits, and
+        // the fd stays valid so the serving thread's own `close` remains the
+        // only one. A pool test that parks an idle conn — the saturated-cap
+        // suite does exactly that — otherwise wedges here forever.
+        self.live_mu.lock();
+        // A peer that already hung up makes this a no-op, which is the
+        // success case for our purposes: the parked read is over either way.
+        if (self.live) |stream| stream.shutdown(io, .recv) catch |err|
+            std.log.debug("ping fake read-shutdown ignored: {s}", .{@errorName(err)});
+        self.live_mu.unlock();
         pokeAccept(io, self.port);
         self.thread.join();
         self.server.deinit(io);
@@ -77,6 +98,7 @@ pub const PingFake = struct {
                 return;
             }
             _ = self.accepts.fetchAdd(1, .monotonic);
+            self.publishLive(stream);
 
             var rbuf: [256]u8 = undefined;
             var wbuf: [64]u8 = undefined;
@@ -96,8 +118,23 @@ pub const PingFake = struct {
                 // Single-shot: read one command, write one reply, close.
                 if (streamReadOnce(r) > 0) streamWriteAll(w, PONG_2);
             }
+            // Retract before closing, so a concurrent `shutdown` can never
+            // reach this handle after the close below releases it.
+            self.retractLive();
             stream.close(io);
         }
+    }
+
+    fn publishLive(self: *PingFake, stream: net.Stream) void {
+        self.live_mu.lock();
+        defer self.live_mu.unlock();
+        self.live = stream;
+    }
+
+    fn retractLive(self: *PingFake) void {
+        self.live_mu.lock();
+        defer self.live_mu.unlock();
+        self.live = null;
     }
 
     pub fn config(self: *PingFake, alloc: std.mem.Allocator) !redis_config.Config {

@@ -3,46 +3,36 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { Pagination } from "./Pagination";
 
-describe("Pagination (cursor variant)", () => {
-  it("enables Load more when a cursor is present", () => {
-    const onNext = vi.fn();
-    render(<Pagination kind="cursor" nextCursor="abc123" onNext={onNext} />);
-    const nav = screen.getByTestId("pagination-cursor");
-    expect(nav).toHaveAttribute("role", "navigation");
-    expect(nav).toHaveAttribute("aria-label", "Feed pagination");
-    const btn = screen.getByRole("button", { name: "Load more items" });
-    expect(btn).not.toBeDisabled();
-    fireEvent.click(btn);
-    expect(onNext).toHaveBeenCalledWith("abc123");
+describe("Pagination — cursor-backed feeds", () => {
+  // A keyset feed cannot count itself, so `total` is absent and `hasNext` is
+  // the only thing that knows whether the feed continues.
+  it("advances while the caller reports another page", () => {
+    const onPageChange = vi.fn();
+    render(<Pagination kind="page" page={2} pageSize={25} hasNext onPageChange={onPageChange} />);
+    expect(screen.getByText("Page 2")).toBeInTheDocument();
+    const next = screen.getByRole("button", { name: "Next page" });
+    expect(next).not.toBeDisabled();
+    fireEvent.click(next);
+    expect(onPageChange).toHaveBeenCalledWith(3);
   });
 
-  it("shows End of feed and disables the button when nextCursor is null", () => {
-    render(<Pagination kind="cursor" nextCursor={null} onNext={() => {}} />);
-    expect(screen.getByText("End of feed")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Load more items" })).toBeDisabled();
+  it("stops at the end of the feed instead of offering an empty page", () => {
+    // Without `hasNext` an unknown total leaves Next live forever, which is
+    // exactly the dead click this flag exists to prevent.
+    render(<Pagination kind="page" page={3} pageSize={25} hasNext={false} onPageChange={() => {}} />);
+    expect(screen.getByRole("button", { name: "Next page" })).toBeDisabled();
   });
 
-  it("shows Loading… while fetching", () => {
-    render(<Pagination kind="cursor" nextCursor="abc" onNext={() => {}} isLoading />);
-    expect(screen.getByText(/Loading/)).toBeInTheDocument();
-    expect(screen.getByRole("button").querySelector("[data-spinner-orbit]")).toBeInTheDocument();
+  it("lets an explicit hasNext override what the total implies", () => {
+    render(
+      <Pagination kind="page" page={1} pageSize={25} total={100} hasNext={false} onPageChange={() => {}} />,
+    );
+    expect(screen.getByRole("button", { name: "Next page" })).toBeDisabled();
   });
 
   it("uses flex-wrap so buttons reflow on narrow viewports", () => {
-    render(<Pagination kind="cursor" nextCursor="abc" onNext={() => {}} />);
-    expect(screen.getByTestId("pagination-cursor").className).toContain("flex-wrap");
-  });
-
-  it("does not call onNext when the cursor is an empty string (enabled-but-empty guard)", () => {
-    // Empty string !== null, so the button is NOT exhausted/disabled, yet the
-    // `if (nextCursor)` guard is falsy — clicking must be a no-op.
-    const onNext = vi.fn();
-    render(<Pagination kind="cursor" nextCursor="" onNext={onNext} />);
-    const btn = screen.getByRole("button", { name: "Load more items" });
-    expect(btn).not.toBeDisabled();
-    expect(screen.getByText("Load more")).toBeInTheDocument();
-    fireEvent.click(btn);
-    expect(onNext).not.toHaveBeenCalled();
+    render(<Pagination kind="page" page={1} pageSize={25} hasNext onPageChange={() => {}} />);
+    expect(screen.getByTestId("pagination-page").className).toContain("flex-wrap");
   });
 });
 
@@ -82,7 +72,7 @@ describe("Pagination (page variant)", () => {
 
   it("SSR renders with role=navigation", () => {
     const html = renderToStaticMarkup(
-      <Pagination kind="cursor" nextCursor="abc" onNext={() => {}} />,
+      <Pagination kind="page" page={1} pageSize={25} hasNext onPageChange={() => {}} />,
     );
     expect(html).toContain('role="navigation"');
   });
