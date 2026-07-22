@@ -2,15 +2,7 @@ import type { ReactNode } from "react";
 import { auth } from "@clerk/nextjs/server";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import {
-  Card,
-  cn,
-  EYEBROW_CLASS,
-  PageHeader,
-  PageTitle,
-  Section,
-  WakePulse,
-} from "@agentsfleet/design-system";
+import { Badge, cn } from "@agentsfleet/design-system";
 import { workspacePath } from "@/lib/workspace-routes";
 import { ApiError } from "@/lib/api/errors";
 import { getFleet, AGENTSFLEET_STATUS } from "@/lib/api/fleets";
@@ -38,7 +30,6 @@ import {
 } from "./components/FleetSubnavigation";
 import {
   BREADCRUMB_LABEL,
-  DANGER_ZONE_LABEL,
   FLEETS_CRUMB_LABEL,
   SOURCE_FIELD,
 } from "./components/console-copy";
@@ -52,6 +43,12 @@ type PageContext = {
   etag: string;
   token: string;
 };
+
+const LIFECYCLE_ACTION_STATUSES = new Set<string>([
+  AGENTSFLEET_STATUS.ACTIVE,
+  AGENTSFLEET_STATUS.PAUSED,
+  AGENTSFLEET_STATUS.STOPPED,
+]);
 
 export default async function FleetDetailPage({
   params,
@@ -83,14 +80,20 @@ export default async function FleetDetailPage({
   return (
     <div className={cn("flex flex-col", claimsViewport && "min-h-0 flex-1")}>
       <FleetViewedTracker fleetId={fleet.id} status={fleet.status} />
-      <FleetBreadcrumb workspaceId={workspaceId} fleetName={fleet.name} />
-      <PageHeader>
-        <div className="flex items-center gap-md">
-          <PageTitle>{fleet.name}</PageTitle>
-          <FleetStatus status={fleet.status} />
-          {billing?.is_exhausted ? <ExhaustionBadge exhaustedAt={billing.exhausted_at} /> : null}
+      <div className="flex min-w-0 flex-col gap-3xl lg:flex-row">
+        <div
+          aria-hidden="true"
+          data-testid="fleet-header-alignment-spacer"
+          className="hidden lg:block lg:w-56 lg:shrink-0"
+        />
+        <div className="min-w-0 flex-1">
+          <FleetHeader
+            workspaceId={workspaceId}
+            fleet={fleet}
+            exhaustedAt={billing?.is_exhausted ? billing.exhausted_at : undefined}
+          />
         </div>
-      </PageHeader>
+      </div>
 
       <FleetInstallGate
         workspaceId={workspaceId}
@@ -101,7 +104,7 @@ export default async function FleetDetailPage({
       >
         <div
           className={cn(
-            "flex min-w-0 flex-col gap-xl lg:flex-row",
+            "flex min-w-0 flex-col gap-3xl lg:flex-row",
             claimsViewport && "min-h-0 flex-1",
           )}
         >
@@ -136,8 +139,6 @@ async function loadFleetView(view: FleetView, context: PageContext): Promise<Rea
       return <SourceView context={context} field={SOURCE_FIELD.skill} />;
     case FLEET_VIEW.trigger:
       return loadTriggerView(context);
-    case FLEET_VIEW.settings:
-      return <SettingsView context={context} />;
     default:
       return loadChatView(context);
   }
@@ -229,39 +230,6 @@ async function loadTriggerView(context: PageContext) {
   );
 }
 
-function SettingsView({ context }: { context: PageContext }) {
-  const { workspaceId, fleet } = context;
-  return (
-    <div className="flex max-w-3xl flex-col gap-xl">
-      <Card className="flex items-center justify-between gap-lg p-lg">
-        <div>
-          <h2 className="font-mono text-sm font-medium">Runtime</h2>
-          <p className="mt-xs text-sm text-muted-foreground">
-            Stop, resume, or permanently kill this fleet.
-          </p>
-        </div>
-        <KillSwitch
-          workspaceId={workspaceId}
-          fleet={{
-            id: fleet.id,
-            name: fleet.name,
-            status: fleet.status,
-            created_at: fleet.created_at,
-            updated_at: fleet.updated_at,
-            triggers: fleet.triggers ?? undefined,
-          }}
-        />
-      </Card>
-      <Section aria-label={DANGER_ZONE_LABEL} className="gap-0">
-        <h2 className={cn(EYEBROW_CLASS, "mb-sm text-muted-foreground")}>
-          {DANGER_ZONE_LABEL}
-        </h2>
-        <FleetConfig workspaceId={workspaceId} fleetId={fleet.id} fleetName={fleet.name} />
-      </Section>
-    </div>
-  );
-}
-
 function FleetBreadcrumb({ workspaceId, fleetName }: { workspaceId: string; fleetName: string }) {
   return (
     <nav
@@ -277,16 +245,39 @@ function FleetBreadcrumb({ workspaceId, fleetName }: { workspaceId: string; flee
   );
 }
 
-function FleetStatus({ status }: { status: string }) {
+function FleetHeader({
+  workspaceId,
+  fleet,
+  exhaustedAt,
+}: {
+  workspaceId: string;
+  fleet: FleetDetail;
+  exhaustedAt?: number | null;
+}) {
+  const actionFleet = {
+    id: fleet.id,
+    name: fleet.name,
+    status: fleet.status,
+    created_at: fleet.created_at,
+    updated_at: fleet.updated_at,
+    triggers: fleet.triggers ?? undefined,
+  };
   return (
-    <span
-      className={cn(EYEBROW_CLASS, "inline-flex items-center gap-sm text-muted-foreground")}
-      data-state={status}
-    >
-      {status === AGENTSFLEET_STATUS.ACTIVE ? (
-        <WakePulse live className="size-2 rounded-full bg-pulse" aria-hidden="true" />
-      ) : null}
-      {status}
-    </span>
+    <div className="mb-lg flex flex-col gap-md sm:flex-row sm:items-center sm:justify-between">
+      <h1 className="sr-only">{fleet.name}</h1>
+      <FleetBreadcrumb workspaceId={workspaceId} fleetName={fleet.name} />
+      <div aria-label="Fleet lifecycle actions" className="flex flex-wrap items-center justify-end gap-sm">
+        {exhaustedAt !== undefined ? <ExhaustionBadge exhaustedAt={exhaustedAt} /> : null}
+        {fleet.status === AGENTSFLEET_STATUS.INSTALLING ? (
+          <Badge variant="cyan" aria-label="Fleet status: installing">Installing</Badge>
+        ) : fleet.status === AGENTSFLEET_STATUS.KILLED ? (
+          <FleetConfig workspaceId={workspaceId} fleetId={fleet.id} fleetName={fleet.name} />
+        ) : LIFECYCLE_ACTION_STATUSES.has(fleet.status) ? (
+          <KillSwitch workspaceId={workspaceId} fleet={actionFleet} />
+        ) : (
+          <Badge aria-label={`Fleet status: ${fleet.status}`}>{fleet.status}</Badge>
+        )}
+      </div>
+    </div>
   );
 }

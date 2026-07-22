@@ -11,10 +11,6 @@
 export const BREADCRUMB_LABEL = "Breadcrumb";
 export const FLEETS_CRUMB_LABEL = "Fleets";
 
-// ── Column headings (§3 — the three questions the console answers) ──
-
-export const DANGER_ZONE_LABEL = "Danger zone";
-
 // ── Left rail: the source editor (§4) ──
 
 export const SOURCE_PANEL_TITLE = "Source";

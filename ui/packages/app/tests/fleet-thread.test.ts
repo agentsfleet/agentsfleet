@@ -220,6 +220,8 @@ beforeEach(() => {
 
 afterEach(() => cleanup());
 
+// ── formatActorLabel unit ────────────────────────────────────────────────
+
 // ── FleetThread integration ─────────────────────────────────────────────
 
 describe("FleetThread — empty state", () => {
@@ -227,17 +229,46 @@ describe("FleetThread — empty state", () => {
     mockStream([]);
     renderThread();
     expect(screen.getByText(/Message this fleet or wait for its next trigger/i)).toBeTruthy();
+    expect(screen.queryByText(/0 events/i)).toBeNull();
   });
 });
 
 describe("FleetThread — header chrome", () => {
-  it("shows the panel title and the live connection indicator", () => {
+  it("shows one Chat heading and one aligned Live indicator", () => {
     mockStream([
       ev({ role: "system", actor: "config_reload", text: "Reloaded" }),
     ]);
+    const { container } = renderThread();
+    const header = container.querySelector('[data-testid="fleet-chat-header"]');
+    expect(header).toBeTruthy();
+    expect(header?.className).toMatch(/items-center/);
+    expect(screen.getByRole("heading", { name: "Chat" })).toBeTruthy();
+    expect(screen.queryByRole("link", { name: "Steer" })).toBeNull();
+    expect(screen.queryByText(/1 events/)).toBeNull();
+    const liveStatus = screen.getByLabelText("Connection status: Live");
+    expect(liveStatus.className).toMatch(/text-pulse/);
+    expect(liveStatus.querySelector('[aria-hidden="true"]')?.className)
+      .toMatch(/bg-current/);
+  });
+
+  it("uses one destructive colour for the Offline label and dot", () => {
+    mockStream([], { connectionStatus: CONNECTION_STATUS.OFFLINE });
     renderThread();
-    expect(screen.getByText(/^Chat$/)).toBeTruthy();
-    expect(screen.getByText(/^Live$/)).toBeTruthy();
+    const offlineStatus = screen.getByLabelText("Connection status: Not live");
+    expect(offlineStatus.className).toMatch(/text-destructive/);
+    expect(offlineStatus.querySelector('[aria-hidden="true"]')?.className)
+      .toMatch(/bg-current/);
+  });
+
+  it("renders the transcript and composer as separate matching surfaces", () => {
+    mockStream([]);
+    const { container } = renderThread();
+    const transcript = container.querySelector('[aria-label="Fleet chat"]');
+    const composer = container.querySelector('[aria-label="Chat composer"]');
+    expect(transcript).toBeTruthy();
+    expect(composer).toBeTruthy();
+    expect(transcript?.contains(composer)).toBe(false);
+    expect(composer?.getAttribute("id")).toBe("fleet-steer-composer");
   });
 
   it("names each connection state rather than only the live one", () => {
@@ -297,7 +328,7 @@ describe("FleetThread — role rendering", () => {
         role: "user",
         actor: "steer:user_abc",
         text: "please review PR 517",
-        reply: "Reviewed. Two suggestions, CI passing.",
+        reply: "Reviewed. Two suggestions, Continuous Integration (CI) passing.",
         status: "processed",
       }),
     ]);
@@ -328,7 +359,7 @@ describe("FleetThread — role rendering", () => {
     renderThread();
     expect(screen.getByText(/deploy staging/)).toBeTruthy();
     // A blocked turn does not render the instruction as if it succeeded — the
-    // fleet bubble states the outcome (Codex finding #4).
+    // fleet bubble states the outcome (coding-agent finding #4).
     expect(screen.getByText(OUTCOME.WAITING_APPROVAL)).toBeTruthy();
   });
 
@@ -344,6 +375,7 @@ describe("FleetThread — role rendering", () => {
     const { container } = renderThread();
     expect(screen.getByText(/morning health check/)).toBeTruthy();
     expect(screen.getByText("Operator")).toBeTruthy();
+    expect(screen.getByText("OP")).toBeTruthy();
     expect(container.textContent).not.toContain(accountId);
   });
 
@@ -378,7 +410,7 @@ describe("FleetThread — role rendering", () => {
     );
   });
 
-  it("renders an assistant message in sans body text", () => {
+  it("renders an assistant reply", () => {
     mockStream([
       ev({ role: "assistant", actor: "fleet", reply: "snapshot taken." }),
     ]);
@@ -440,9 +472,25 @@ describe("FleetThread — role rendering", () => {
       }),
     ]);
     renderThread();
-    expect(screen.getByText("github")).toBeTruthy();
+    expect(screen.getByText("GitHub App")).toBeTruthy();
     expect(screen.getByText(/workflow_run · main · success/)).toBeTruthy();
     expect(screen.getByText(/"action":"completed"/)).toBeTruthy();
+  });
+
+  it("uses the canonical outcome when a webhook has no response text", () => {
+    mockStream([
+      ev({
+        role: "system",
+        actor: "webhook:github",
+        text: "",
+        status: "fleet_error",
+        outcome: "Failed a startup safety check",
+        custom: { reason: "startup_posture", requestJson: "{}" },
+      }),
+    ]);
+    renderThread();
+    expect(screen.getByText("GitHub App")).toBeTruthy();
+    expect(screen.getByText("Failed a startup safety check")).toBeTruthy();
   });
 
   it("renders an optimistic user message with the queued badge", () => {
@@ -475,7 +523,7 @@ describe("FleetThread — role rendering", () => {
     expect(screen.queryByText(/^sending$/i)).toBeNull();
   });
 
-  it("renders a fleet_error as a destructive meta-row", () => {
+  it("renders a fleet_error as a destructive fleet reply", () => {
     mockStream([
       ev({
         role: "assistant",
@@ -521,10 +569,10 @@ describe("FleetThread — steer submission", () => {
     expect(steerFleetActionMock).not.toHaveBeenCalled();
   });
 
-  it("serialises rapid submissions so their POSTs reach the server in order", async () => {
+  it("serialises rapid submissions so their HTTP requests reach the server in order", async () => {
     mockStream([]);
     // Two rapid sends: the first resolves slowly, the second quickly. Without
-    // serialisation the fast one's POST would land first and the server would
+    // serialisation the fast one's HTTP request would land first and the server would
     // assign it the earlier event id — "stop" before "deploy".
     const order: string[] = [];
     let releaseFirst: (() => void) | null = null;
@@ -545,7 +593,7 @@ describe("FleetThread — steer submission", () => {
 
     const first = capturedOnNew.current!(appendMessage("deploy"));
     const second = capturedOnNew.current!(appendMessage("stop"));
-    // The second POST must not fire until the first resolves.
+    // The second HTTP request must not fire until the first resolves.
     await waitFor(() => expect(releaseFirst).not.toBeNull());
     expect(order).toEqual([]);
     await act(async () => {
@@ -681,7 +729,7 @@ describe("FleetThread — steer submission", () => {
   it("does not call the action when the append carries no text part", async () => {
     // The composer UI always emits a text part, but `onNew` may receive an
     // image-only append. `extractMessageText` must fall through to "" and the
-    // empty-text guard must short-circuit before any optimistic write/RPC.
+    // empty-text guard must short-circuit before any optimistic write or remote call.
     const appendOptimistic = vi.fn().mockReturnValue("temp_img");
     mockStream([], { appendOptimistic });
     renderThread();
@@ -709,6 +757,29 @@ describe("FleetThread — connection-state header", () => {
 });
 
 describe("FleetThread — robustness against malformed metadata", () => {
+  it("ignores a non-string failure reason on an empty system event", () => {
+    const e = ev({ role: "system", actor: "cron", text: "" });
+    useFleetEventStreamMock.mockReturnValue({
+      events: [e],
+      connectionStatus: CONNECTION_STATUS.LIVE,
+      isRunning: false,
+      appendOptimistic: vi.fn(),
+      reconcileOptimistic: vi.fn(),
+      markOptimisticFailed: vi.fn(),
+      convertEvent: (message: FleetEvent) => ({
+        role: message.role,
+        id: message.id,
+        createdAt: message.createdAt,
+        content: [{ type: "text" as const, text: message.text }],
+        metadata: { custom: { actor: message.actor, status: message.status, reason: 7 } },
+      }),
+    });
+    const { container } = renderThread();
+    const row = container.querySelector('[data-role="system"]');
+    expect(row).toBeTruthy();
+    expect(row?.textContent).not.toContain("7");
+  });
+
   it("does not throw when an event's custom.actor is a non-string", () => {
     // Simulate a frame whose convertEvent emits metadata.custom with a
     // non-string actor. The renderer must degrade to an empty actor label

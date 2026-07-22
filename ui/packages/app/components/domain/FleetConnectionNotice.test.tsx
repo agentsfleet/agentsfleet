@@ -14,11 +14,14 @@ describe("FleetConnectionNotice", () => {
     const view = render(
       <FleetConnectionNotice status={CONNECTION_STATUS.CONNECTING} onRetry={vi.fn()} />,
     );
-    expect(screen.getByText(/Recent history remains available/i)).toBeTruthy();
+    expect(screen.getByText(/History remains available/i)).toBeTruthy();
+    expect(screen.getByRole("status").className).toContain("rounded-md");
+    expect(screen.getByRole("status").className).toContain("mx-xl");
+    expect(screen.getByRole("status").className).not.toContain("border-x-0");
     view.rerender(
       <FleetConnectionNotice status={CONNECTION_STATUS.RECONNECTING} onRetry={vi.fn()} />,
     );
-    expect(screen.getByText(/New messages will queue/i)).toBeTruthy();
+    expect(screen.getByText(/Messages will queue/i)).toBeTruthy();
   });
 
   it("offers a manual retry when automatic reconnects stop", async () => {
@@ -66,6 +69,6 @@ describe("FleetConnectionNotice", () => {
       <FleetConnectionNotice status={CONNECTION_STATUS.OFFLINE} onRetry={vi.fn()} />,
     );
     expect(screen.queryByText("Live connection restored.")).toBeNull();
-    expect(screen.getByText(/Live connection unavailable/i)).toBeTruthy();
+    expect(screen.getByText(/Live updates unavailable/i)).toBeTruthy();
   });
 });

@@ -30,8 +30,9 @@ describe("FleetConfig", () => {
     expect(screen.getByRole("alertdialog").textContent).toContain(DELETE_MEMORY_TRAP_NOTICE);
   });
 
-  it("renders the delete action (the danger-zone control this card owns)", () => {
-    renderConfig();
+  it("renders a standalone delete action for the fleet header", () => {
+    const { container } = renderConfig();
     expect(screen.getByRole("button", { name: /delete fleet/i })).toBeTruthy();
+    expect(container.querySelector("article")).toBeNull();
   });
 });

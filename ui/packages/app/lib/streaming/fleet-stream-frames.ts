@@ -197,7 +197,10 @@ function rowToEvent(row: EventRow): FleetEvent {
     outcome: outcomeFor(row),
     createdAt: new Date(row.created_at),
     status: row.status as FleetEventStatus,
-    custom: { requestJson: row.request_json },
+    custom: {
+      requestJson: row.request_json,
+      ...(row.failure_label ? { reason: row.failure_label } : {}),
+    },
   };
 }
 

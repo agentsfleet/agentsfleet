@@ -75,7 +75,7 @@ export default function KillSwitch({ workspaceId, fleet }: KillSwitchProps) {
   const stopAction: ActionConfig = {
     target: AGENTSFLEET_STATUS.STOPPED,
     buttonLabel: "Stop",
-    variant: "destructive",
+    variant: "outline",
     dialogTitle: "Stop this fleet?",
     dialogDescription: "Halt execution now. You can resume it later from this page or via the CLI.",
     confirmLabel: "Stop",
@@ -130,12 +130,13 @@ export default function KillSwitch({ workspaceId, fleet }: KillSwitchProps) {
 
   return (
     <>
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center justify-end gap-sm">
         {actions.map((action) => (
           <Button
             key={action.target}
             variant={action.variant}
             size="sm"
+            className="min-h-11 sm:min-h-0"
             onClick={() => setPendingAction(action)}
           >
             {action.buttonLabel}

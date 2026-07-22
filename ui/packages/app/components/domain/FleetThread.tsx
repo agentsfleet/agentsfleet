@@ -13,7 +13,6 @@ import {
   Card,
   CardContent,
   CardHeader,
-  CardTitle,
   Skeleton,
   WakePulse,
   cn,
@@ -55,14 +54,14 @@ const STATUS_LABEL: Record<ConnectionStatus, string> = {
   [CONNECTION_STATUS.OFFLINE]: "Not live",
 };
 
-const STATUS_DOT: Record<ConnectionStatus, string> = {
-  [CONNECTION_STATUS.CONNECTING]: "bg-info",
-  [CONNECTION_STATUS.LIVE]: "bg-pulse",
-  [CONNECTION_STATUS.RECONNECTING]: "bg-warning",
-  [CONNECTION_STATUS.OFFLINE]: "bg-destructive",
+const STATUS_CLASS: Record<ConnectionStatus, string> = {
+  [CONNECTION_STATUS.CONNECTING]: "text-info",
+  [CONNECTION_STATUS.LIVE]: "text-pulse",
+  [CONNECTION_STATUS.RECONNECTING]: "text-warning",
+  [CONNECTION_STATUS.OFFLINE]: "text-destructive",
 };
 
-// Placeholder actor used on optimistic user messages until the SSE
+// Placeholder actor used on optimistic user messages until the Server-Sent Events (SSE)
 // stream's matching `EVENT_RECEIVED` lands and reconciliation runs.
 // The server's actor (the authenticated principal) replaces this.
 const OPTIMISTIC_ACTOR = "steer:pending";
@@ -136,26 +135,25 @@ export function FleetThread({ workspaceId, fleetId, fleetName, initial }: FleetT
   return (
     <AssistantRuntimeProvider runtime={runtime}>
       <FleetNameProvider fleetName={fleetName}>
-        <Card aria-label="Fleet chat" className="flex min-h-0 flex-1 flex-col">
-          <CardHeader className="flex flex-row items-center justify-between gap-md space-y-0 py-lg">
-            <CardTitle className="text-sm font-medium">{PANEL_TITLE}</CardTitle>
-            <ConnectionIndicator status={stream.connectionStatus} />
-          </CardHeader>
-          <CardContent className="flex min-h-0 flex-1 flex-col p-0">
-            <FleetConnectionNotice
-              status={stream.connectionStatus}
-              onRetry={stream.retryConnection}
-            />
-            <ThreadViewport
-              eventsCount={stream.events.length}
-              connectionStatus={stream.connectionStatus}
-            />
-            <SteerComposer
-              failureKind={failedDelivery?.kind ?? null}
-              onRetry={retryFailedDelivery}
-            />
-          </CardContent>
-        </Card>
+        <div className="flex min-h-0 flex-1 flex-col gap-lg">
+          <Card id="fleet-chat-transcript" aria-label="Fleet chat"
+            className="flex min-h-0 flex-1 flex-col overflow-hidden p-0">
+            <CardHeader
+              data-testid="fleet-chat-header"
+              className="flex flex-row items-center justify-between gap-md space-y-0 border-b border-border px-xl py-0"
+            >
+              <h2 className="border-b-2 border-pulse py-lg font-mono text-sm font-medium text-foreground">
+                {PANEL_TITLE}</h2>
+              <ConnectionIndicator status={stream.connectionStatus} />
+            </CardHeader>
+            <CardContent className="flex min-h-0 flex-1 flex-col p-0">
+              <FleetConnectionNotice status={stream.connectionStatus} onRetry={stream.retryConnection} />
+              <ThreadViewport eventsCount={stream.events.length}
+                connectionStatus={stream.connectionStatus} />
+            </CardContent>
+          </Card>
+          <SteerComposer failureKind={failedDelivery?.kind ?? null} onRetry={retryFailedDelivery} />
+        </div>
       </FleetNameProvider>
     </AssistantRuntimeProvider>
   );
@@ -167,12 +165,13 @@ function ConnectionIndicator({ status }: { status: ConnectionStatus }) {
   const live = status === CONNECTION_STATUS.LIVE;
   return (
     <span
-      className="flex items-center gap-md font-mono text-label text-muted-foreground"
+      aria-label={`Connection status: ${STATUS_LABEL[status]}`}
+      className={cn("inline-flex items-center gap-sm font-mono text-label", STATUS_CLASS[status])}
       data-connection={status}
     >
       <WakePulse
         live={live}
-        className={cn("inline-block h-2 w-2 rounded-full", STATUS_DOT[status])}
+        className="inline-block h-2 w-2 rounded-full bg-current"
         aria-hidden="true"
       />
       {STATUS_LABEL[status]}
@@ -223,7 +222,6 @@ function ThreadViewport({
     <ThreadPrimitive.Root
       className={cn(
         "relative flex min-h-0 flex-1 flex-col bg-surface-deep",
-        "border-t border-border",
       )}
     >
       {/* The conversation is the only thing on this page that scrolls. Its
@@ -315,7 +313,7 @@ function useNewMessageHandler({
           markOptimisticFailed(tempId);
           onFailure({ message: msg, tempId, kind: result.status === 401 ? "session" : "send" });
         } catch {
-          // The Server Action's RPC transport itself failed (offline, or the
+          // The Server Action's Remote Procedure Call (RPC) transport failed (offline, or the
           // action invocation errored) — surface the same `failed` row the
           // ok:false path produces so the user knows the steer didn't land.
           markOptimisticFailed(tempId);
