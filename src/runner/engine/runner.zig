@@ -80,7 +80,7 @@ pub fn execute(
 ) types.ExecutionResult {
     const msg = message orelse {
         log.err("invalid_config", .{ .error_code = ERR_EXEC_RUNNER_INVALID_CONFIG, .reason = "missing_message" });
-        return .{ .content = "", .exit_ok = false, .failure = .startup_posture, .failure_detail = DETAIL_MISSING_MESSAGE };
+        return .{ .outcome = .{ .failed = .{ .class = .startup_posture, .detail = DETAIL_MISSING_MESSAGE } } };
     };
 
     const start = clock.nowMillis();
@@ -93,7 +93,7 @@ pub fn execute(
             .err = @errorName(err),
             .wall_seconds = elapsed,
         });
-        return .{ .content = "", .wall_seconds = elapsed, .exit_ok = false, .failure = failure, .failure_detail = @errorName(err) };
+        return .{ .wall_seconds = elapsed, .outcome = .{ .failed = .{ .class = failure, .detail = @errorName(err) } } };
     };
 
     const elapsed = elapsedSeconds(start);
@@ -106,8 +106,7 @@ pub fn execute(
         .input_tokens = result.input_tokens,
         .output_tokens = result.output_tokens,
         .wall_seconds = elapsed,
-        .exit_ok = true,
-        .failure = null,
+        .outcome = .{ .completed = .{} },
     };
 }
 

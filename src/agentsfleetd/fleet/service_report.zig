@@ -48,7 +48,7 @@ const runner_events = @import("runner_events.zig");
 const Hx = hx_mod.Hx;
 const log = logging.scoped(.runner_report);
 
-const ExecutionResult = contract_mod.execution_result.ExecutionResult;
+const report_mapping = contract_mod.report_mapping;
 
 /// The lease-row fields the report needs to reproduce finalize. All arena-dup'd.
 const Lease = struct {
@@ -192,27 +192,23 @@ fn finalize(hx: Hx, runner_id: []const u8, lease: Lease, body: protocol.ReportRe
     const alloc = hx.alloc;
     const wall_ms = body.telemetry.wall_ms;
 
-    const result = ExecutionResult{
-        .content = body.response_text,
-        .token_count = body.tokens,
-        .wall_seconds = wall_ms / std.time.ms_per_s,
-        .exit_ok = body.outcome == .processed,
-        // Trust-boundary invariant: failure_label is null iff the run is
-        // processed — never persist a reason a misbehaving runner pairs with
-        // a clean outcome. The cause line rides the same boundary.
-        .failure = if (body.outcome == .processed) null else body.failure_reason,
-        .failure_detail = if (body.outcome == .processed) "" else event_rows.truncateUtf8(body.failure_detail, event_rows.MAX_FAILURE_DETAIL_BYTES),
-    };
+    // The trust boundary — a cause never accompanies a clean outcome — is
+    // structural in the conversion: `processed` maps onto a variant with
+    // nowhere to carry one. Row-width truncation belongs to the write.
+    const result = report_mapping.fromReport(body);
 
     event_rows.markTerminal(pool, lease.fleet_id, lease.event_id, result, wall_ms);
     // Close the SSE activity bracket the deleted worker published on completion —
     // the dashboard + `agentsfleet steer` consume `event_complete` to end the live
     // tail. Best-effort (the publisher swallows failures).
-    const status_text: []const u8 = if (result.exit_ok) event_rows.STATUS_PROCESSED else event_rows.STATUS_FLEET_ERROR;
+    const status_text: []const u8 = if (result.succeeded()) event_rows.STATUS_PROCESSED else event_rows.STATUS_FLEET_ERROR;
     var scratch = activity_publisher.Scratch.init(alloc);
     defer scratch.deinit();
-    const frame_label: []const u8 = if (result.failure) |f| f.label() else "";
-    activity_publisher.publishEventComplete(hx.ctx.queue, &scratch, lease.fleet_id, lease.event_id, status_text, frame_label, result.failure_detail);
+    const cause: activity_publisher.FailureCause = if (result.failure()) |f|
+        .{ .label = if (f.class) |c| c.label() else "", .detail = f.detail }
+    else
+        .{};
+    activity_publisher.publishEventComplete(hx.ctx.queue, &scratch, lease.fleet_id, lease.event_id, status_text, cause);
     // §4: if this fleet is a connector-resident fleet, hand the answer to the
     // connector:outbound worker for out-of-band delivery (e.g. Slack
     // chat.postMessage). Provider-agnostic + best-effort (Invariant 9) — a generic

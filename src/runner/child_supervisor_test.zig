@@ -362,15 +362,15 @@ test "classify: a renewal terminate is renewal_terminate, distinct from a deadli
 
     // A renewal `.terminate` (lease lost / capped / no credits) → policy stop.
     const terminated = supervisor.classify(std.testing.allocator, .{ .terminated = true }, .{ .exited = 0 }, &scope);
-    try std.testing.expect(!terminated.exit_ok);
-    try std.testing.expectEqual(FailureClass.renewal_terminate, terminated.failure.?);
+    try std.testing.expect(!terminated.succeeded());
+    try std.testing.expectEqual(FailureClass.renewal_terminate, terminated.failureClass().?);
 
     // A wall-clock deadline elapse → clock stop, a *different* category.
     const timed_out = supervisor.classify(std.testing.allocator, .{ .timed_out = true }, .{ .exited = 0 }, &scope);
-    try std.testing.expectEqual(FailureClass.timeout_kill, timed_out.failure.?);
+    try std.testing.expectEqual(FailureClass.timeout_kill, timed_out.failureClass().?);
 
     // The whole point of the fix: the two no longer collapse together.
-    try std.testing.expect(terminated.failure.? != timed_out.failure.?);
+    try std.testing.expect(terminated.failureClass().? != timed_out.failureClass().?);
 }
 
 test "classify: a policy terminate outranks a co-occurring deadline timeout" {
@@ -378,7 +378,7 @@ test "classify: a policy terminate outranks a co-occurring deadline timeout" {
     // Deadline elapsed AND the renewal said terminate — the policy reason is the
     // more actionable cause, so terminate wins.
     const both = supervisor.classify(std.testing.allocator, .{ .terminated = true, .timed_out = true }, .{ .exited = 0 }, &scope);
-    try std.testing.expectEqual(FailureClass.renewal_terminate, both.failure.?);
+    try std.testing.expectEqual(FailureClass.renewal_terminate, both.failureClass().?);
 }
 
 test "classify: a fleet-budget terminate reports budget_breach, not renewal_terminate" {
@@ -392,8 +392,8 @@ test "classify: a fleet-budget terminate reports budget_breach, not renewal_term
         .{ .exited = 0 },
         &scope,
     );
-    try std.testing.expect(!budget.exit_ok);
-    try std.testing.expectEqual(FailureClass.budget_breach, budget.failure.?);
+    try std.testing.expect(!budget.succeeded());
+    try std.testing.expectEqual(FailureClass.budget_breach, budget.failureClass().?);
 
     // It still outranks a co-occurring timeout, like any other policy stop.
     const with_timeout = supervisor.classify(
@@ -402,7 +402,7 @@ test "classify: a fleet-budget terminate reports budget_breach, not renewal_term
         .{ .exited = 0 },
         &scope,
     );
-    try std.testing.expectEqual(FailureClass.budget_breach, with_timeout.failure.?);
+    try std.testing.expectEqual(FailureClass.budget_breach, with_timeout.failureClass().?);
 }
 
 test "classify: an unset terminate_reason defaults to renewal_terminate" {
@@ -410,7 +410,7 @@ test "classify: an unset terminate_reason defaults to renewal_terminate" {
     // Every pre-existing `.terminated = true` call site omits the reason; the
     // field's default keeps their behaviour byte-identical.
     const defaulted = supervisor.classify(std.testing.allocator, .{ .terminated = true }, .{ .exited = 0 }, &scope);
-    try std.testing.expectEqual(FailureClass.renewal_terminate, defaulted.failure.?);
+    try std.testing.expectEqual(FailureClass.renewal_terminate, defaulted.failureClass().?);
 }
 
 test "classify maps distinct child exit codes (sandbox-fail, seccomp) to their failure classes" {
@@ -421,26 +421,31 @@ test "classify maps distinct child exit codes (sandbox-fail, seccomp) to their f
     // refusals; SECCOMP_VIOLATION_EXIT (a denylisted syscall at run time) →
     // landlock_deny. Both return before touching `scope`, so null is safe.
     var scope: ?cgroup = null;
+    // Both classifications now carry an owned cause line, so the caller frees it
+    // — the same len-guarded convention the daemon's report path follows.
     const sandbox_fail = supervisor.classify(std.testing.allocator, .{}, .{ .exited = pipe_proto.SANDBOX_FAIL_EXIT }, &scope);
-    try std.testing.expect(!sandbox_fail.exit_ok);
-    try std.testing.expectEqual(FailureClass.startup_posture, sandbox_fail.failure.?);
+    defer std.testing.allocator.free(sandbox_fail.failureDetail());
+    try std.testing.expect(!sandbox_fail.succeeded());
+    try std.testing.expectEqual(FailureClass.startup_posture, sandbox_fail.failureClass().?);
+    try std.testing.expect(sandbox_fail.failureDetail().len > 0);
 
     const seccomp_violation = supervisor.classify(std.testing.allocator, .{}, .{ .exited = pipe_proto.SECCOMP_VIOLATION_EXIT }, &scope);
-    try std.testing.expectEqual(FailureClass.landlock_deny, seccomp_violation.failure.?);
+    defer std.testing.allocator.free(seccomp_violation.failureDetail());
+    try std.testing.expectEqual(FailureClass.landlock_deny, seccomp_violation.failureClass().?);
 
     // Regression guard on the split: any OTHER non-zero exit is still a crash.
     const other_nonzero = supervisor.classify(std.testing.allocator, .{}, .{ .exited = 1 }, &scope);
-    try std.testing.expectEqual(FailureClass.runner_crash, other_nonzero.failure.?);
+    try std.testing.expectEqual(FailureClass.runner_crash, other_nonzero.failureClass().?);
 }
 
 test "classify threads the child's split counts through the result fold" {
     // Regression pin: parseResult must copy the splits off the child's result
     // JSON — dropping them folds the report back to zero and under-bills.
     var scope: ?cgroup = null;
-    var body = "{\"exit_ok\":true,\"token_count\":17,\"input_tokens\":10,\"cached_input_tokens\":2,\"output_tokens\":5}".*;
+    var body = "{\"outcome\":{\"completed\":{}},\"token_count\":17,\"input_tokens\":10,\"cached_input_tokens\":2,\"output_tokens\":5}".*;
     const r = supervisor.classify(std.testing.allocator, .{ .bytes = &body }, .{ .exited = 0 }, &scope);
     defer std.testing.allocator.free(r.content);
-    try std.testing.expect(r.exit_ok);
+    try std.testing.expect(r.succeeded());
     try std.testing.expectEqual(@as(u64, 17), r.token_count);
     try std.testing.expectEqual(@as(u64, 10), r.input_tokens);
     try std.testing.expectEqual(@as(u64, 2), r.cached_input_tokens);
@@ -449,10 +454,10 @@ test "classify threads the child's split counts through the result fold" {
 
 test "classify parses an old-wire result without splits to zeros (run-fee-only, never an error)" {
     var scope: ?cgroup = null;
-    var body = "{\"exit_ok\":true,\"token_count\":17}".*;
+    var body = "{\"outcome\":{\"completed\":{}},\"token_count\":17}".*;
     const r = supervisor.classify(std.testing.allocator, .{ .bytes = &body }, .{ .exited = 0 }, &scope);
     defer std.testing.allocator.free(r.content);
-    try std.testing.expect(r.exit_ok);
+    try std.testing.expect(r.succeeded());
     try std.testing.expectEqual(@as(u64, 17), r.token_count); // legacy total survives
     try std.testing.expectEqual(@as(u64, 0), r.input_tokens);
     try std.testing.expectEqual(@as(u64, 0), r.cached_input_tokens);

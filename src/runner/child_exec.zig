@@ -135,7 +135,7 @@ pub fn run(argv: []const [:0]const u8, env_map: *const std.process.Environ.Map, 
 /// with a sentinel body, no engine, no LLM, no network. Lets a test prove the
 /// pool forks N children, each runs, and each reports, without a model call.
 fn stubResult() types.ExecutionResult {
-    return .{ .exit_ok = true, .content = "stub-ok", .token_count = 0 };
+    return .{ .outcome = .{ .completed = .{} }, .content = "stub-ok", .token_count = 0 };
 }
 
 /// Map the lease to engine args and run NullClaw in this child's address space.
@@ -201,7 +201,7 @@ fn runEngine(env_map: *const std.process.Environ.Map, alloc: std.mem.Allocator, 
 /// model is never invoked, so the fleet never runs as a generic chat. Reported
 /// as a startup-posture failure carrying an operator-facing message.
 fn noInstructionsResult() types.ExecutionResult {
-    return .{ .content = NO_INSTRUCTIONS_MESSAGE, .exit_ok = false, .failure = .startup_posture, .failure_detail = NO_INSTRUCTIONS_MESSAGE };
+    return .{ .content = NO_INSTRUCTIONS_MESSAGE, .outcome = .{ .failed = .{ .class = .startup_posture, .detail = NO_INSTRUCTIONS_MESSAGE } } };
 }
 
 /// Fail-closed result when the engine config could not be assembled from the
@@ -209,7 +209,7 @@ fn noInstructionsResult() types.ExecutionResult {
 /// partial config. A distinct operator message from `noInstructionsResult` so
 /// triage can tell "no SKILL.md to run" from "couldn't build the config".
 fn configBuildFailedResult() types.ExecutionResult {
-    return .{ .content = CONFIG_BUILD_FAILED_MESSAGE, .exit_ok = false, .failure = .startup_posture, .failure_detail = CONFIG_BUILD_FAILED_MESSAGE };
+    return .{ .content = CONFIG_BUILD_FAILED_MESSAGE, .outcome = .{ .failed = .{ .class = .startup_posture, .detail = CONFIG_BUILD_FAILED_MESSAGE } } };
 }
 
 /// Write the terminal `result` frame to stdout. Activity frames (if any) were
@@ -282,8 +282,8 @@ test "runEngine fails closed with no model call when installed instructions are 
     // testLease defaults `instructions` to "" → the fail-closed guard returns
     // before buildCallArgs / engine.execute, so NullClaw is never invoked.
     const result = runEngine(&env_map, alloc, "/tmp/ws", testLease(.{ .context = .{ .model = "m" } }), &.{});
-    try testing.expect(!result.exit_ok);
-    try testing.expectEqual(types.FailureClass.startup_posture, result.failure.?);
+    try testing.expect(!result.succeeded());
+    try testing.expectEqual(types.FailureClass.startup_posture, result.failureClass().?);
     try testing.expect(std.mem.indexOf(u8, result.content, "no installed instructions") != null);
 }
 
@@ -299,8 +299,8 @@ test "runEngine fails closed with no model call when the instructions context ca
     var payload = testLease(.{ .context = .{ .model = "m" } });
     payload.instructions = "do platform ops"; // non-empty → past the empty guard
     const result = runEngine(&env_map, fa.allocator(), "/tmp/ws", payload, &.{});
-    try testing.expect(!result.exit_ok);
-    try testing.expectEqual(types.FailureClass.startup_posture, result.failure.?);
+    try testing.expect(!result.succeeded());
+    try testing.expectEqual(types.FailureClass.startup_posture, result.failureClass().?);
     // The instructions ARE configured (len > 0) — a ctx-build OOM is resource
     // exhaustion, so the operator message must be configBuildFailed, NOT the
     // missing-playbook "no installed instructions" (which would misdirect triage).
@@ -335,8 +335,8 @@ test "runEngine fails closed with no model call when the engine config cannot be
     payload.instructions = "do platform ops";
     var fa = std.testing.FailingAllocator.init(alloc, .{ .fail_index = ctx_alloc_count });
     const result = runEngine(&env_map, fa.allocator(), "/tmp/ws", payload, &.{});
-    try testing.expect(!result.exit_ok);
-    try testing.expectEqual(types.FailureClass.startup_posture, result.failure.?);
+    try testing.expect(!result.succeeded());
+    try testing.expectEqual(types.FailureClass.startup_posture, result.failureClass().?);
     // Specifically the config-build branch — not the no-instructions / ctx-build
     // branch (proves the ctx build succeeded and the failure came from assembly).
     try testing.expect(std.mem.indexOf(u8, result.content, "engine configuration could not be assembled") != null);
