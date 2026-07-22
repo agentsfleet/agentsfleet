@@ -3,6 +3,7 @@ import {
   ACTOR,
   EVENT_STATUS,
   outcomeFor,
+  outcomeForCompletion,
   outcomeForStatus,
   replyBodyFor,
   roleFor,
@@ -270,9 +271,12 @@ function applyEventComplete(
   const existing = prev.find((e) => e.id === frame.event_id);
   if (!existing) return prev;
   const status = (frame.status ?? AGENTSFLEET_EVENT_STATUS.PROCESSED) as FleetEventStatus;
-  // The outcome follows the status: an event that completes with no text must
-  // stop saying it is still working.
+  // The outcome follows the status — and carries the failure cause the frame
+  // ships, so a failed turn names its check live instead of a generic floor
+  // until reload.
   return prev.map((e) =>
-    e === existing ? { ...e, status, outcome: outcomeForStatus(status) } : e,
+    e === existing
+      ? { ...e, status, outcome: outcomeForCompletion(status, frame.failure_label, frame.failure_detail) }
+      : e,
   );
 }

@@ -199,8 +199,9 @@ fn finalize(hx: Hx, runner_id: []const u8, lease: Lease, body: protocol.ReportRe
         .exit_ok = body.outcome == .processed,
         // Trust-boundary invariant: failure_label is null iff the run is
         // processed — never persist a reason a misbehaving runner pairs with
-        // a clean outcome.
+        // a clean outcome. The cause line rides the same boundary.
         .failure = if (body.outcome == .processed) null else body.failure_reason,
+        .failure_detail = if (body.outcome == .processed) "" else event_rows.truncateUtf8(body.failure_detail, event_rows.MAX_FAILURE_DETAIL_BYTES),
     };
 
     event_rows.markTerminal(pool, lease.fleet_id, lease.event_id, result, wall_ms);
@@ -210,7 +211,8 @@ fn finalize(hx: Hx, runner_id: []const u8, lease: Lease, body: protocol.ReportRe
     const status_text: []const u8 = if (result.exit_ok) event_rows.STATUS_PROCESSED else event_rows.STATUS_FLEET_ERROR;
     var scratch = activity_publisher.Scratch.init(alloc);
     defer scratch.deinit();
-    activity_publisher.publishEventComplete(hx.ctx.queue, &scratch, lease.fleet_id, lease.event_id, status_text);
+    const frame_label: []const u8 = if (result.failure) |f| f.label() else "";
+    activity_publisher.publishEventComplete(hx.ctx.queue, &scratch, lease.fleet_id, lease.event_id, status_text, frame_label, result.failure_detail);
     // §4: if this fleet is a connector-resident fleet, hand the answer to the
     // connector:outbound worker for out-of-band delivery (e.g. Slack
     // chat.postMessage). Provider-agnostic + best-effort (Invariant 9) — a generic
@@ -245,7 +247,7 @@ fn buildContextJson(alloc: std.mem.Allocator, checkpoint: protocol.ReportCheckpo
     const ContextUpdate = struct { last_event_id: []const u8, last_response: []const u8 };
     return std.json.Stringify.valueAlloc(alloc, ContextUpdate{
         .last_event_id = checkpoint.last_event_id,
-        .last_response = event_rows.truncateForJson(checkpoint.last_response),
+        .last_response = event_rows.truncateUtf8(checkpoint.last_response, event_rows.MAX_CHECKPOINT_RESPONSE_BYTES),
     }, .{}) catch "{}";
 }
 

@@ -203,6 +203,34 @@ describe("applyLiveFrame", () => {
     expect(out[0]?.status).toBe("gate_blocked");
   });
 
+  it("EVENT_COMPLETE carries the failure cause into the outcome live", () => {
+    const seed = [evt({ id: "e9" })];
+    const out = applyLiveFrame(seed, {
+      kind: FRAME_KIND.EVENT_COMPLETE,
+      event_id: "e9",
+      status: "fleet_error",
+      failure_label: "startup_posture",
+      failure_detail: "fleet has no instructions configured",
+    });
+    // The live merge must name the failing check without a reload.
+    expect(out[0]?.status).toBe("fleet_error");
+    expect(out[0]?.outcome).toBe(
+      "Failed a startup safety check — fleet has no instructions configured",
+    );
+  });
+
+  it("EVENT_COMPLETE with empty failure fields keeps the plain status floor", () => {
+    const seed = [evt({ id: "e9" })];
+    const out = applyLiveFrame(seed, {
+      kind: FRAME_KIND.EVENT_COMPLETE,
+      event_id: "e9",
+      status: "fleet_error",
+      failure_label: "",
+      failure_detail: "",
+    });
+    expect(out[0]?.outcome).toBe("The run failed.");
+  });
+
   it("EVENT_COMPLETE falls back to processed when the wire omits status", () => {
     const seed = [evt({ id: "e9" })];
     // The backend can send a status-less completion frame; the timeline

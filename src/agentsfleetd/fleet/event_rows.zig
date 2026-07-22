@@ -56,6 +56,12 @@ pub const LABEL_BUDGET_BREACH = "budget_breach";
 const EVENT_TYPE_CONTINUATION = "continuation";
 const FIELD_ORIGINAL_EVENT_ID = "original_event_id";
 
+/// Byte caps applied at the report write, on a UTF-8 boundary (`truncateUtf8`).
+/// The cause line renders as one line in the console; Inspect shows the stored
+/// value, so the cap bounds the row, not the operator's visibility.
+pub const MAX_FAILURE_DETAIL_BYTES: usize = 512;
+pub const MAX_CHECKPOINT_RESPONSE_BYTES: usize = 2048;
+
 /// INSERT the `received` event row at lease issue (the lease verb's first
 /// durable write, mirroring the deleted worker's write path step 1). Keeps the
 /// full `*FleetSession` + `*FleetEvent` because the lease has both. Idempotent
@@ -176,6 +182,13 @@ pub fn markTerminal(
     const now_ms = clock.nowMillis();
     const status_text: []const u8 = if (result.exit_ok) STATUS_PROCESSED else STATUS_FLEET_ERROR;
     const failure_label: ?[]const u8 = if (result.failure) |f| f.label() else null;
+    // Cause line only ever accompanies a classified failure (same trust
+    // boundary as failure_label), capped at the write so a runaway child
+    // cannot bloat the row.
+    const failure_detail: ?[]const u8 = if (result.failure != null and result.failure_detail.len > 0)
+        truncateUtf8(result.failure_detail, MAX_FAILURE_DETAIL_BYTES)
+    else
+        null;
     // Guarded on `status = 'received'`: a terminal row is never reopened
     // (spec Invariant 2 — same one-way-door discipline as markBlocked). The
     // happy path always transitions a single received→terminal; a 0-row write
@@ -183,7 +196,7 @@ pub fn markTerminal(
     // and is logged rather than silently overwriting the settled result.
     const affected = conn.exec(
         \\UPDATE core.fleet_events
-        \\SET status = $3, response_text = $4, tokens = $5, wall_ms = $6, updated_at = $7, failure_label = $8
+        \\SET status = $3, response_text = $4, tokens = $5, wall_ms = $6, updated_at = $7, failure_label = $8, failure_detail = $10
         \\WHERE fleet_id = $1::uuid AND event_id = $2 AND status = $9
     , .{
         fleet_id,
@@ -195,6 +208,7 @@ pub fn markTerminal(
         now_ms,
         failure_label,
         STATUS_RECEIVED,
+        failure_detail,
     }) catch |err| {
         log.warn("terminal_update_failed", .{ .error_code = ec.ERR_INTERNAL_DB_QUERY, .fleet_id = fleet_id, .event_id = event_id, .err = @errorName(err) });
         return;
@@ -222,20 +236,22 @@ pub fn checkpointFleetSession(alloc: Allocator, pool: *pg.Pool, fleet_id: []cons
     , .{ row_id, fleet_id, context_json, now_ms });
 }
 
-/// Truncate a response to a JSON-safe length on a UTF-8 boundary so the
-/// checkpoint's `last_response` is byte-identical to the direct path's.
-pub fn truncateForJson(s: []const u8) []const u8 {
-    const max_len: usize = 2048;
+/// Truncate to `max_len` bytes on a UTF-8 boundary — no split code points, so
+/// the value stays valid text for JSON emission and the console.
+pub fn truncateUtf8(s: []const u8, max_len: usize) []const u8 {
     if (s.len <= max_len) return s;
     var end = max_len;
     while (end > 0 and (s[end] & 0xC0) == 0x80) end -= 1;
     return s[0..end];
 }
 
-test "truncateForJson leaves short input untouched and caps long input on a UTF-8 boundary" {
-    try std.testing.expectEqualStrings("hi", truncateForJson("hi"));
+test "truncateUtf8 leaves short input untouched and caps long input on a UTF-8 boundary" {
+    try std.testing.expectEqualStrings("hi", truncateUtf8("hi", MAX_CHECKPOINT_RESPONSE_BYTES));
     const long = "x" ** 3000;
-    const out = truncateForJson(long);
-    try std.testing.expect(out.len <= 2048);
-    try std.testing.expect(out.len >= 2048 - 4); // boundary walk-back is bounded
+    const out = truncateUtf8(long, MAX_CHECKPOINT_RESPONSE_BYTES);
+    try std.testing.expect(out.len <= MAX_CHECKPOINT_RESPONSE_BYTES);
+    try std.testing.expect(out.len >= MAX_CHECKPOINT_RESPONSE_BYTES - 4); // boundary walk-back is bounded
+    // The failure-cause cap follows the same boundary rule at its own limit.
+    const capped = truncateUtf8(long, MAX_FAILURE_DETAIL_BYTES);
+    try std.testing.expect(capped.len <= MAX_FAILURE_DETAIL_BYTES);
 }
