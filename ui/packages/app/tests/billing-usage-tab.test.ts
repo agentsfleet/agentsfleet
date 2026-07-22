@@ -20,7 +20,8 @@ vi.mock("@/app/(dashboard)/settings/billing/actions", () => ({
 
 import BillingUsageTab from "@/app/(dashboard)/settings/billing/components/BillingUsageTab";
 import type { ChargeRow } from "@/app/(dashboard)/settings/billing/lib/charges";
-import { CHARGE_TYPE, PROVIDER_MODE } from "@/lib/types";
+import type { ActionResult } from "@/lib/actions/with-token";
+import { CHARGE_TYPE, PROVIDER_MODE, type TenantBillingChargesResponse } from "@/lib/types";
 
 // $0.001 — a representative sub-cent stage charge; the "−$0.001" row assertions
 // below depend on this exact value.
@@ -55,6 +56,27 @@ describe("BillingUsageTab (test_billing_usage_ledger_and_empty)", () => {
     render(React.createElement(BillingUsageTab, { initialCharges: [], initialCursor: null }));
     expect(screen.getByText("No charges yet")).toBeTruthy();
     expect(screen.queryByTestId("pagination-cursor")).toBeNull();
+  });
+
+  it("recovers an empty cursor page through Load more", async () => {
+    let resolveCharges: ((value: ActionResult<TenantBillingChargesResponse>) => void) | undefined;
+    listChargesActionMock.mockImplementation(() => new Promise((resolve) => {
+      resolveCharges = resolve;
+    }));
+    render(React.createElement(BillingUsageTab, { initialCharges: [], initialCursor: "tok_page2" }));
+
+    expect(screen.getByText("No charges loaded")).toBeTruthy();
+    expect(screen.getByText("Load more to continue.")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Load more items" }));
+    expect(screen.getByText("No charges loaded")).toBeTruthy();
+    expect(screen.getByRole("navigation", { name: "Feed pagination" }).getAttribute("aria-busy")).toBe("true");
+    expect(screen.getByText("Loading…")).toBeTruthy();
+
+    resolveCharges?.({ ok: true, data: { items: [charge()], next_cursor: null } });
+
+    await waitFor(() => expect(screen.getByText("kimi-k2.6 · run · 820→1040 tok")).toBeTruthy());
+    expect(listChargesActionMock).toHaveBeenCalledWith({ limit: 50, cursor: "tok_page2" });
+    await waitFor(() => expect(screen.queryByTestId("pagination-cursor")).toBeNull());
   });
 
   it("renders a ledger row with date · amount · type · description", () => {

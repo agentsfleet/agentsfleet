@@ -53,7 +53,7 @@ describe("DataTable", () => {
     expect(table.getAttribute("aria-busy")).toBe("true");
   });
 
-  it("keeps an empty externally paginated table busy while its page loads", () => {
+  it("keeps an empty externally paginated state stable while its page loads", () => {
     render(
       <DataTable
         columns={COLUMNS}
@@ -70,7 +70,9 @@ describe("DataTable", () => {
       />,
     );
 
-    expect(screen.getByRole("table").getAttribute("aria-busy")).toBe("true");
+    expect(screen.getByText("Nothing to show yet")).toBeInTheDocument();
+    expect(screen.queryByRole("table")).toBeNull();
+    expect(screen.getByRole("navigation", { name: "Pagination" })).toHaveAttribute("aria-busy", "true");
   });
 
   it("invokes onRowClick on click and on Enter / Space keypress", () => {
@@ -575,6 +577,7 @@ describe("DataTable", () => {
     );
 
     expect(screen.getByText("No rows on this page")).toBeInTheDocument();
+    expect(screen.queryByText("0 loaded · sort scope: loaded")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Load more items" }));
     expect(onNext).toHaveBeenCalledWith("next-2");
   });
