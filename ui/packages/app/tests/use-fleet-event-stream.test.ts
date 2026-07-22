@@ -97,7 +97,7 @@ describe("useFleetEventStream", () => {
     mount();
     expect(FakeEventSource.instances.length).toBe(1);
     expect(FakeEventSource.instances[0]!.url).toBe(
-      "/backend/v1/workspaces/ws_1/fleets/zomb_1/events/stream",
+      "/live/v1/workspaces/ws_1/fleets/zomb_1/events/stream",
     );
   });
 

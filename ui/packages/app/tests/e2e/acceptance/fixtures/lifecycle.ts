@@ -16,12 +16,16 @@
  * from every rail view — the old Settings rail destination is gone.
  */
 import { expect, type Page } from "@playwright/test";
+import { refreshBrowserSession } from "./auth";
 
 const ROW_STATE_TIMEOUT_MS = 15_000;
 
 type RowState = "live" | "parked" | "failed";
 
 async function confirmAction(page: Page, label: "Stop" | "Resume" | "Kill"): Promise<void> {
+  // Lifecycle actions typically follow install/observe walks that outlive the
+  // 60-second session token; refresh first or the Server Action POST 307s.
+  await refreshBrowserSession(page);
   // KillSwitch renders its Stop/Resume/Kill buttons directly in the detail
   // header, so the action is reachable from whichever view the spec is on.
   await page.getByRole("button", { name: label }).first().click();

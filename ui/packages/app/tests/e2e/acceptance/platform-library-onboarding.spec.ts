@@ -21,7 +21,7 @@
  */
 import { expect, test, type Page } from "@playwright/test";
 import { SAMPLE_LIBRARY_REPO } from "@/lib/fleet-library-source";
-import { signInAs } from "./fixtures/auth";
+import { refreshBrowserSession, signInAs } from "./fixtures/auth";
 import { workspaceUrlPattern } from "./fixtures/nav";
 import { FIXTURE_KEY } from "./fixtures/constants";
 
@@ -134,6 +134,9 @@ test.describe("platform fleet catalog", () => {
   test("an added fleet is a draft no workspace can see until it is published", async ({ page }) => {
     await signInAs(page, FIXTURE_KEY.operator);
     await addSampleFleet(page);
+    // The import inside addSampleFleet outlives the 60s session token;
+    // refresh before the publish Server Action or the POST 307s.
+    await refreshBrowserSession(page);
 
     // It exists, and it is a draft. The table says so.
     await expect(sampleRow(page).getByText("Draft")).toBeVisible();
@@ -180,6 +183,7 @@ test.describe("platform fleet catalog", () => {
 
     await signInAs(page, FIXTURE_KEY.operator);
     await addSampleFleet(page);
+    await refreshBrowserSession(page);
 
     await sampleRow(page).getByRole("button", { name: /^edit$/i }).click();
     await page.getByLabel(/^description$/i).fill(COPY);
@@ -207,6 +211,7 @@ test.describe("platform fleet catalog", () => {
   }) => {
     await signInAs(page, FIXTURE_KEY.operator);
     await addSampleFleet(page);
+    await refreshBrowserSession(page);
     await sampleRow(page).getByRole("button", { name: /^publish$/i }).click();
     await expect(sampleRow(page).getByText("Published")).toBeVisible({ timeout: 30_000 });
 
@@ -233,6 +238,7 @@ test.describe("platform fleet catalog", () => {
     await page.getByRole("dialog").getByRole("button", { name: /^fetch update$/i }).click();
     await expect(sampleRow(page).getByText("Draft")).toBeVisible({ timeout: IMPORT_TIMEOUT });
 
+    await refreshBrowserSession(page);
     await sampleRow(page).getByRole("button", { name: /^publish$/i }).click();
     await expect(sampleRow(page).getByText("Published")).toBeVisible({ timeout: 30_000 });
   });
