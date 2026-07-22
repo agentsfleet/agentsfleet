@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo } from "react";
 import Link from "next/link";
 import {
   Card,
@@ -15,6 +16,7 @@ import { AGENTSFLEET_STATUS, type Fleet } from "@/lib/api/fleets";
 import { workspacePath } from "@/lib/workspace-routes";
 import { useWorkspaceFleetStream } from "@/components/domain/useWorkspaceStream";
 import { CONNECTION_STATUS } from "@/lib/streaming/fleet-stream-registry";
+import { deriveFleetIdentity, type FleetIdentity } from "./fleetIdentity";
 import {
   deriveTileLiveness,
   fleetRowState,
@@ -37,95 +39,11 @@ export const FLEET_WAITING_COPY = "Waiting for the next event.";
 export const FLEET_NO_LIVE_ACTIVITY_COPY = "No live activity.";
 export const MANAGE_FLEET_LABEL = "Manage fleet";
 
-const SIGIL_COLUMNS = 7;
-const SIGIL_ROWS = 7;
-const SIGIL_HALF_COLUMNS = 4;
-const SIGIL_HASH_OFFSET = 2_166_136_261;
-const SIGIL_HASH_PRIME = 16_777_619;
 const SIGIL_CELL_GAP = 2.25;
 const SIGIL_CELL_X_OFFSET = 4.5;
 const SIGIL_CELL_Y_OFFSET = 5;
 const SIGIL_CELL_SIZE = 1.5;
-const CALLSIGN_SUFFIX_LENGTH = 4;
-const CALLSIGN_NAME_SHIFT = 16;
-const CALLSIGN_NAME_MASK = 31;
-// These 32 hash buckets are identity data. Never reorder them; a future
-// expansion needs a versioned mapping so existing agents keep their callsigns.
-const CALLSIGN_NAMES = [
-  "Rivet",
-  "Beacon",
-  "Bolt",
-  "Bumble",
-  "Cinder",
-  "Comet",
-  "Copper",
-  "Drift",
-  "Echo",
-  "Finch",
-  "Fizz",
-  "Forge",
-  "Honey",
-  "Kestrel",
-  "Lumen",
-  "Mica",
-  "Moss",
-  "Nova",
-  "Orbit",
-  "Orly",
-  "Pixel",
-  "Pollen",
-  "Quill",
-  "Rook",
-  "Sable",
-  "Scout",
-  "Spark",
-  "Talon",
-  "Tinker",
-  "Warden",
-  "Willow",
-  "Zephyr",
-] as const;
-
-function fleetIdentityHash(seed: string): number {
-  let hash = SIGIL_HASH_OFFSET;
-  for (const character of seed) {
-    hash ^= character.charCodeAt(0);
-    hash = Math.imul(hash, SIGIL_HASH_PRIME) >>> 0;
-  }
-  return hash;
-}
-
-function fleetSigil(seed: string): { hash: number; cells: Array<{ x: number; y: number }> } {
-  const hash = fleetIdentityHash(seed);
-  const cells: Array<{ x: number; y: number }> = [];
-  for (let y = 0; y < SIGIL_ROWS; y += 1) {
-    for (let x = 0; x < SIGIL_HALF_COLUMNS; x += 1) {
-      const bit = y * SIGIL_HALF_COLUMNS + x;
-      if (((hash >>> bit) & 1) === 0) continue;
-      cells.push({ x, y });
-      const mirrorX = SIGIL_COLUMNS - x - 1;
-      if (mirrorX !== x) cells.push({ x: mirrorX, y });
-    }
-  }
-  return { hash, cells };
-}
-
-function fleetCallsign(seed: string): string {
-  const hash = fleetIdentityHash(seed);
-  const nameIndex = (hash >>> CALLSIGN_NAME_SHIFT) & CALLSIGN_NAME_MASK;
-  // The five-bit mask guarantees an index inside the fixed 32-name table.
-  // oxlint-disable-next-line typescript/no-non-null-assertion
-  const name = CALLSIGN_NAMES[nameIndex]!;
-  const suffix = hash
-    .toString(16)
-    .slice(-CALLSIGN_SUFFIX_LENGTH)
-    .padStart(CALLSIGN_SUFFIX_LENGTH, "0")
-    .toUpperCase();
-  return `${name}-${suffix}`;
-}
-
-function FleetSigil({ fleetId, live }: { fleetId: string; live: boolean }) {
-  const sigil = fleetSigil(fleetId);
+function FleetSigil({ identity, live }: { identity: FleetIdentity; live: boolean }) {
   return (
     <WakePulse asChild live={live}>
       <div
@@ -133,13 +51,13 @@ function FleetSigil({ fleetId, live }: { fleetId: string; live: boolean }) {
           "flex size-14 shrink-0 items-center justify-center rounded-md border bg-surface-2",
           live ? "border-pulse/50 text-pulse" : "border-border text-muted-foreground",
         )}
-        data-fleet-sigil={sigil.hash.toString(16)}
+        data-fleet-sigil={identity.hashHex}
         aria-hidden="true"
       >
         <svg viewBox="0 0 24 24" className="size-11" fill="none">
           <path d="M12 4V2M10 2h4M3 11H1M23 11h-2" stroke="currentColor" strokeWidth="1.25" />
           <rect x="3.5" y="4.5" width="17" height="16" rx="3" stroke="currentColor" />
-          {sigil.cells.map((cell) => (
+          {identity.cells.map((cell) => (
             <rect
               key={`${cell.x}-${cell.y}`}
               x={SIGIL_CELL_X_OFFSET + cell.x * SIGIL_CELL_GAP}
@@ -266,19 +184,21 @@ function TileEyebrow({ eyebrow, title }: { eyebrow?: string; title?: string }) {
 }
 
 function TileIdentity({ fleet, live, eyebrow, eyebrowTitle, children }: Omit<ShellProps, "workspaceId" | "kind" | "feed" | "emptyActivity">) {
-  const callsign = fleetCallsign(fleet.id);
+  // Stream frames re-render this tile frequently; identity changes only when
+  // React reuses the tile for a different immutable Fleet identifier.
+  const identity = useMemo(() => deriveFleetIdentity(fleet.id), [fleet.id]);
   return (
     <div className="flex items-start gap-4">
-      <FleetSigil fleetId={fleet.id} live={live} />
+      <FleetSigil identity={identity} live={live} />
       <div className="min-w-0 flex-1">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
             <div className="truncate font-medium">{fleet.name}</div>
             <div
               className={cn(EYEBROW_CLASS, "text-muted-foreground")}
-              data-agent-name={callsign}
+              data-agent-name={identity.callsign}
             >
-              Agent {callsign} · {fleet.status}
+              Agent {identity.callsign} · {fleet.status}
             </div>
           </div>
           <div className="flex items-center gap-2">
