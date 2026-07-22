@@ -272,7 +272,19 @@ export function reconcileOptimistic(
     const serverEvent = prev.find((event) => event.id === realEventId);
     if (serverEvent) {
       alreadyComplete = serverEvent.status !== STATUS_RECEIVED;
-      return prev.filter((event) => event.id !== tempId);
+      // A live EVENT_RECEIVED frame carries no message body, so a server row
+      // that landed before this reconcile holds an empty trigger. The
+      // optimistic row is the only holder of the operator's text — graft it
+      // onto the server row before dropping the temp row, or the message
+      // blanks out of the thread until a reload.
+      const temp = prev.find((event) => event.id === tempId);
+      const grafted =
+        temp !== undefined && serverEvent.text.length === 0
+          ? prev.map((event) =>
+              event === serverEvent ? { ...event, text: temp.text } : event,
+            )
+          : prev;
+      return grafted.filter((event) => event.id !== tempId);
     }
     return prev.map((event) =>
       event.id === tempId
@@ -281,6 +293,16 @@ export function reconcileOptimistic(
     );
   });
   return alreadyComplete;
+}
+
+// A failed optimistic row being retried leaves the thread here: the retry
+// re-submits the same text as a fresh optimistic row, so keeping the stale
+// failed copy would stack a duplicate of the same operator message on every
+// attempt.
+export function discardOptimistic(fleetId: string, tempId: string): void {
+  const entry = REGISTRY.get(fleetId);
+  if (!entry) return;
+  setEvents(entry, (prev) => prev.filter((event) => event.id !== tempId));
 }
 
 // A steer that failed server-side (the Server Action returned ok:false

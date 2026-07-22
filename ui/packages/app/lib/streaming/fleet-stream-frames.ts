@@ -212,10 +212,15 @@ function applyEventReceived(
       id: frame.event_id,
       role: roleFor(frame.actor),
       actor: frame.actor,
+      // The frame carries no payload and no event type, so the trigger comes
+      // from the actor alone. A steer renders empty here until reconciliation
+      // grafts the operator's text; anything else gets the neutral "Event
+      // received" floor — fabricating `event_type: "chat"` would caption a
+      // webhook or cron trigger as "chat received" until reload.
       text: triggerBodyFor({
         actor: frame.actor,
         request_json: "{}",
-        event_type: "chat",
+        event_type: "",
       }),
       reply: "",
       outcome: outcomeForStatus(AGENTSFLEET_EVENT_STATUS.RECEIVED),

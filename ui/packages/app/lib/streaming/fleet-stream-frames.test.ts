@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { FRAME_KIND, type EventRow, type LiveFrame } from "@/lib/api/events";
-import { OUTCOME } from "@/lib/events/event-summary";
+import { HEADLINE, OUTCOME } from "@/lib/events/event-summary";
 import {
   applyLiveFrame,
   maxServerCreatedAt,
@@ -158,6 +158,14 @@ describe("applyLiveFrame", () => {
     expect(once[0]?.role).toBe("user");
     const twice = applyLiveFrame(once, frame);
     expect(twice).toBe(once); // unchanged reference — no duplicate row
+  });
+
+  it("EVENT_RECEIVED for a webhook actor renders the neutral floor, not a chat caption", () => {
+    // The frame carries no payload and no event type — fabricating "chat"
+    // captioned webhook/cron turns as "chat received" until reload.
+    const frame: LiveFrame = { kind: FRAME_KIND.EVENT_RECEIVED, event_id: "e2", actor: "webhook:github" };
+    const out = applyLiveFrame([], frame);
+    expect(out[0]).toMatchObject({ role: "system", text: HEADLINE.EVENT_FALLBACK });
   });
 
   it("CHUNK creates an assistant event when none exists, accumulating into the reply", () => {

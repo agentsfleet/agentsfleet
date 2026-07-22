@@ -18,6 +18,7 @@ import {
 
 import type { AppendMessage, ThreadMessageLike } from "@assistant-ui/react";
 import { OUTCOME } from "@/lib/events/event-summary";
+import { __resetFleetDeliveryFailuresForTests } from "@/components/domain/useFleetDeliveryFailure";
 
 // ── Hoisted mocks ────────────────────────────────────────────────────────
 
@@ -137,6 +138,7 @@ type StreamMockOverrides = {
   appendOptimistic?: ReturnType<typeof vi.fn>;
   reconcileOptimistic?: ReturnType<typeof vi.fn>;
   markOptimisticFailed?: ReturnType<typeof vi.fn>;
+  discardOptimistic?: ReturnType<typeof vi.fn>;
   retryConnection?: ReturnType<typeof vi.fn>;
 };
 
@@ -148,6 +150,7 @@ function mockStream(events: FleetEvent[], opts?: Omit<StreamMockOverrides, "even
     appendOptimistic: opts?.appendOptimistic ?? vi.fn().mockReturnValue("temp_1"),
     reconcileOptimistic: opts?.reconcileOptimistic ?? vi.fn(),
     markOptimisticFailed: opts?.markOptimisticFailed ?? vi.fn(),
+    discardOptimistic: opts?.discardOptimistic ?? vi.fn(),
     retryConnection: opts?.retryConnection ?? vi.fn(),
     convertEvent: toThreadMessage,
   });
@@ -207,6 +210,10 @@ beforeEach(() => {
   routerRefreshMock.mockReset();
   steerFleetActionMock.mockReset();
   useFleetEventStreamMock.mockReset();
+  // The delivery-failure registry is module-scoped by design (it survives
+  // remounts); without this reset a failure recorded in one test leaks a
+  // Retry banner — and its stale message — into the next.
+  __resetFleetDeliveryFailuresForTests();
   capturedOnNew.current = null;
   capturedRetry.current = null;
 });
@@ -622,7 +629,9 @@ describe("FleetThread — steer submission", () => {
 
   it("retries a non-session send failure through the queue", async () => {
     const markOptimisticFailed = vi.fn();
-    mockStream([], { markOptimisticFailed });
+    const appendOptimistic = vi.fn().mockReturnValue("temp_fail_1");
+    const discardOptimistic = vi.fn();
+    mockStream([], { appendOptimistic, markOptimisticFailed, discardOptimistic });
     steerFleetActionMock
       .mockResolvedValueOnce({
         ok: false,
@@ -637,6 +646,9 @@ describe("FleetThread — steer submission", () => {
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     await waitFor(() => expect(steerFleetActionMock).toHaveBeenCalledTimes(2));
     expect(markOptimisticFailed).toHaveBeenCalledTimes(1);
+    // The stale failed row leaves the thread before the fresh optimistic
+    // re-submit — otherwise every retry stacks a duplicate of the message.
+    expect(discardOptimistic).toHaveBeenCalledWith("temp_fail_1");
   });
 
   it("marks the optimistic message failed when the action invocation throws", async () => {

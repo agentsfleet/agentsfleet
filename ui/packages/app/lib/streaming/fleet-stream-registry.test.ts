@@ -4,6 +4,7 @@ import {
   __resetRegistryForTests,
   CONNECTION_STATUS,
   appendOptimistic,
+  discardOptimistic,
   getSnapshot,
   markOptimisticFailed,
   reconcileOptimistic,
@@ -239,6 +240,30 @@ describe("fleet-stream-registry — optimistic mutations", () => {
     a();
   });
 
+  it("grafts the operator's text onto a body-less live row that beat the POST response", () => {
+    const a = subscribe(WS, Z_A, NO_SEED, () => {});
+    const tempId = appendOptimistic(Z_A, "deploy the canary", "steer:k@e2e.com");
+    // The SSE EVENT_RECEIVED for this steer lands before the Server Action
+    // resolves — the frame carries no message body, so the live row holds
+    // the real event id with an empty trigger.
+    const es = FakeEventSource.instances[0]!;
+    es.onmessage?.call(es as unknown as EventSource, {
+      data: JSON.stringify({
+        kind: FRAME_KIND.EVENT_RECEIVED,
+        event_id: "evt_early",
+        actor: "steer:k@e2e.com",
+      }),
+    } as MessageEvent);
+    expect(reconcileOptimistic(Z_A, tempId, "evt_early")).toBe(false);
+    const events = getSnapshot(Z_A).events;
+    expect(events).toHaveLength(1);
+    expect(events[0]!.id).toBe("evt_early");
+    // The optimistic row was the only holder of the operator's message;
+    // reconciliation must not blank it out of the thread until reload.
+    expect(events[0]!.text).toBe("deploy the canary");
+    a();
+  });
+
   it("drops the optimistic duplicate when the real event completed before reconciliation", () => {
     const a = subscribe(
       WS,
@@ -281,6 +306,21 @@ describe("fleet-stream-registry — mutation edges", () => {
 
   it("markOptimisticFailed is a no-op for a fleet with no active subscription", () => {
     markOptimisticFailed("never_subscribed", "temp_x");
+    expect(getSnapshot("never_subscribed").events).toHaveLength(0);
+  });
+
+  it("discardOptimistic removes only the matching row", () => {
+    const a = subscribe(WS, Z_A, NO_SEED, () => {});
+    const keep = appendOptimistic(Z_A, "first", "steer:k");
+    const stale = appendOptimistic(Z_A, "second", "steer:k");
+    markOptimisticFailed(Z_A, stale);
+    discardOptimistic(Z_A, stale);
+    expect(getSnapshot(Z_A).events.map((e) => e.id)).toEqual([keep]);
+    a();
+  });
+
+  it("discardOptimistic is a no-op for a fleet with no active subscription", () => {
+    discardOptimistic("never_subscribed", "temp_x");
     expect(getSnapshot("never_subscribed").events).toHaveLength(0);
   });
 
