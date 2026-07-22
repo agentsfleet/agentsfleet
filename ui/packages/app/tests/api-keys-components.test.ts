@@ -218,7 +218,7 @@ describe("ApiKeyList component", () => {
   it("pagination shows when total exceeds the page size and Next re-fetches page 2", async () => {
     const user = userEvent.setup();
     await renderList(listResponse([ACTIVE], 30));
-    const next = screen.getByRole("button", { name: /^next$/i });
+    const next = screen.getByRole("button", { name: /^next page$/i });
     await user.click(next);
     await waitFor(() =>
       expect(listApiKeysActionMock).toHaveBeenCalledWith(expect.objectContaining({ page: 2, page_size: 25 })),
@@ -231,7 +231,18 @@ describe("ApiKeyList component", () => {
     // the click can't race a pending-disabled button — deterministic under the
     // slower coverage instrumentation.
     await renderList({ ...listResponse([ACTIVE], 30), page: 2 });
-    await user.click(screen.getByRole("button", { name: /^previous$/i }));
+    await user.click(screen.getByRole("button", { name: /^previous page$/i }));
+    await waitFor(() =>
+      expect(listApiKeysActionMock).toHaveBeenCalledWith(expect.objectContaining({ page: 1 })),
+    );
+  });
+
+  it("keeps Previous available when a later server page becomes empty", async () => {
+    const user = userEvent.setup();
+    await renderList({ ...listResponse([], 26), page: 2 });
+
+    expect(screen.getByText(/No API keys yet/i)).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: /^previous page$/i }));
     await waitFor(() =>
       expect(listApiKeysActionMock).toHaveBeenCalledWith(expect.objectContaining({ page: 1 })),
     );
@@ -312,7 +323,7 @@ describe("ApiKeyList component", () => {
     const user = userEvent.setup();
     await renderList(listResponse([ACTIVE], 30));
     listApiKeysActionMock.mockResolvedValueOnce({ ok: false, error: "boom", errorCode: "UZ-INTERNAL-003" });
-    await user.click(screen.getByRole("button", { name: /^next$/i }));
+    await user.click(screen.getByRole("button", { name: /^next page$/i }));
     await screen.findByText(/couldn't load api keys/i);
     // No UZ-REQ-001 reset loop: exactly one load fired by the click.
     expect(listApiKeysActionMock).toHaveBeenCalledWith(expect.objectContaining({ page: 2 }));
@@ -322,7 +333,7 @@ describe("ApiKeyList component", () => {
     listApiKeysActionMock.mockResolvedValueOnce({ ok: false, error: "bad sort", errorCode: "UZ-REQ-001" });
     const user = userEvent.setup();
     await renderList(listResponse([ACTIVE], 30));
-    await user.click(screen.getByRole("button", { name: /^next$/i }));
+    await user.click(screen.getByRole("button", { name: /^next page$/i }));
     await waitFor(() =>
       expect(listApiKeysActionMock).toHaveBeenCalledWith(
         expect.objectContaining({ page: 1, sort: "-created_at" }),
@@ -333,7 +344,7 @@ describe("ApiKeyList component", () => {
   it("never sends a page_size above the backend max (always the fixed default 25)", async () => {
     const user = userEvent.setup();
     await renderList(listResponse([ACTIVE], 30));
-    await user.click(screen.getByRole("button", { name: /^next$/i }));
+    await user.click(screen.getByRole("button", { name: /^next page$/i }));
     await waitFor(() => expect(listApiKeysActionMock).toHaveBeenCalled());
     for (const call of listApiKeysActionMock.mock.calls) {
       expect(call[0].page_size).toBeLessThanOrEqual(100);

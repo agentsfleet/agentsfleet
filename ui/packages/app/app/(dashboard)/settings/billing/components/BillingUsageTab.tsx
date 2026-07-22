@@ -5,10 +5,9 @@ import { ActivityIcon } from "lucide-react";
 import {
   Alert,
   Badge,
-  Button,
   DataTable,
   EmptyState,
-  Spinner,
+  PAGINATION_KIND,
   Time,
   type DataTableColumn,
 } from "@agentsfleet/design-system";
@@ -41,6 +40,7 @@ const COLUMNS: DataTableColumn<ChargeRow>[] = [
   {
     key: "date",
     header: "Date",
+    sortValue: (c) => c.recorded_at,
     // The ledger keeps its approved "MMM DD, YYYY · HH:MM" string, now rendered
     // through Time so the cell carries the canonical <time datetime> ISO instant.
     // The label already IS the precise instant, so no hover tooltip is added.
@@ -56,6 +56,7 @@ const COLUMNS: DataTableColumn<ChargeRow>[] = [
     key: "amount",
     header: "Amount",
     numeric: true,
+    sortValue: (c) => c.credit_deducted_nanos,
     cell: (c) => (
       <span className="font-mono tabular-nums text-destructive">−{formatDollars(c.credit_deducted_nanos)}</span>
     ),
@@ -63,6 +64,7 @@ const COLUMNS: DataTableColumn<ChargeRow>[] = [
   {
     key: "type",
     header: "Type",
+    sortValue: (c) => c.posture,
     cell: (c) => (
       <Badge variant={c.posture === PROVIDER_MODE.self_managed ? "cyan" : "default"}>{c.posture}</Badge>
     ),
@@ -70,6 +72,7 @@ const COLUMNS: DataTableColumn<ChargeRow>[] = [
   {
     key: "description",
     header: "Description",
+    sortValue: (c) => describeCharge(c),
     cell: (c) => <span className="text-muted-foreground">{describeCharge(c)}</span>,
   },
 ];
@@ -121,30 +124,9 @@ export default function BillingUsageTab({ initialCharges, initialCursor }: Billi
         rows={charges}
         rowKey={(c) => c.id}
         caption="usage history"
-        stickyHeader
+        pagination={{ kind: PAGINATION_KIND.cursor, nextCursor: cursor, onNext: loadMore, isLoading: pending }}
       />
-      <div className="flex items-center gap-3 text-xs">
-        {cursor ? (
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => loadMore(cursor)}
-            disabled={pending}
-            data-testid="usage-load-more"
-          >
-            {pending ? <Spinner size="sm" srLabel="Loading" /> : null}
-            Load more
-          </Button>
-        ) : (
-          <span className="text-muted-foreground">No more events.</span>
-        )}
-        {error ? (
-          <Alert variant="destructive" className="px-2 py-1">
-            {error}
-          </Alert>
-        ) : null}
-      </div>
+      {error ? <Alert variant="destructive">{error}</Alert> : null}
     </div>
   );
 }

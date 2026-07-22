@@ -1,6 +1,12 @@
 import { Button } from "./Button";
 import { cn } from "../utils";
 
+export const PAGINATION_KIND = {
+  client: "client",
+  cursor: "cursor",
+  page: "page",
+} as const;
+
 /*
  * Pagination — two shapes under one component:
  *   • cursor: opaque next-cursor string (activity feed, telemetry).
@@ -11,7 +17,7 @@ import { cn } from "../utils";
  */
 
 export interface CursorPaginationProps {
-  kind: "cursor";
+  kind: typeof PAGINATION_KIND.cursor;
   nextCursor: string | null;
   onNext: (cursor: string) => void;
   isLoading?: boolean;
@@ -19,7 +25,7 @@ export interface CursorPaginationProps {
 }
 
 export interface PagePaginationProps {
-  kind: "page";
+  kind: typeof PAGINATION_KIND.page;
   page: number;
   pageSize: number;
   total?: number;
@@ -31,7 +37,7 @@ export interface PagePaginationProps {
 export type PaginationProps = CursorPaginationProps | PagePaginationProps;
 
 export function Pagination(props: PaginationProps) {
-  if (props.kind === "cursor") return <CursorPagination {...props} />;
+  if (props.kind === PAGINATION_KIND.cursor) return <CursorPagination {...props} />;
   return <PagePagination {...props} />;
 }
 

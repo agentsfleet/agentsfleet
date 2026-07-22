@@ -145,6 +145,7 @@ export {
   type StatusCardVariant,
 } from "./StatusCard";
 export {
+  PAGINATION_KIND,
   Pagination,
   type PaginationProps,
   type CursorPaginationProps,
@@ -156,13 +157,16 @@ export {
 } from "./ConfirmDialog";
 export { Nav, type NavProps } from "./Nav";
 export { PageHeader, PageDescription, type PageHeaderProps } from "./PageHeader";
+export { DashboardShellHeader, type DashboardShellHeaderProps } from "./DashboardShellHeader";
 export { PageTitle, type PageTitleProps } from "./PageTitle";
 export { SectionLabel, type SectionLabelProps } from "./SectionLabel";
 export { EYEBROW_CLASS } from "./eyebrow";
 export { DisplayXL, DisplayLG, type DisplayXLProps, type DisplayLGProps } from "./Display";
 export {
   DataTable,
+  type ClientDataTablePagination,
   type DataTableColumn,
+  type DataTablePagination,
   type DataTableProps,
 } from "./DataTable";
 export { UsageBar, type UsageBarProps } from "./UsageBar";
