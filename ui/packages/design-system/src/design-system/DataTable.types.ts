@@ -50,6 +50,9 @@ export interface DataTableProps<T> {
   sortDirection?: "ascending" | "descending";
   /** Enables externally controlled sorting without exposing TanStack types. */
   onSortChange?: (key: string) => void;
-  /** Local pagination by default; pass false, page, or cursor configuration to override. */
+  /**
+   * Local pagination by default; pass false, page, or cursor configuration to override.
+   * Built-in sorting on a cursor feed applies to the rows loaded so far.
+   */
   pagination?: DataTablePagination;
 }

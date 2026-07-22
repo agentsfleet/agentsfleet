@@ -97,11 +97,15 @@ describe("BillingUsageTab (test_billing_usage_ledger_and_empty)", () => {
   });
 
   it("sorts every usage data column from its header arrow", () => {
-    render(React.createElement(BillingUsageTab, { initialCharges: [charge(), charge({ id: "tel_2", recorded_at: 1_800_000_000_000 })], initialCursor: null }));
+    render(React.createElement(BillingUsageTab, { initialCharges: [
+      charge(),
+      charge({ id: "tel_2", recorded_at: 1_800_000_000_000, credit_deducted_nanos: 5_000_000 }),
+    ], initialCursor: null }));
 
     for (const name of ["Date", "Amount", "Type", "Description"]) {
       fireEvent.click(screen.getByRole("button", { name }));
       expect(screen.getByRole("columnheader", { name }).getAttribute("aria-sort")).not.toBe("none");
+      if (name === "Amount") expect(screen.getAllByRole("row")[1]?.textContent).toContain("−$0.005");
     }
   });
 

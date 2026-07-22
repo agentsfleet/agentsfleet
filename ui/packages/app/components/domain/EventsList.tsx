@@ -96,7 +96,7 @@ function createEventColumns(onInspect: (row: EventRow) => void): DataTableColumn
       ),
     },
     { key: "type", header: "Type", hideOnMobile: true, sortValue: (row) => row.event_type, cell: (row) => row.event_type },
-    { key: "result", header: "Result", sortValue: (row) => row.response_text ?? row.failure_label ?? "", cell: (row) => <EventSummaryCell row={row} /> },
+    { key: "result", header: "Result", sortValue: eventSummaryText, cell: (row) => <EventSummaryCell row={row} /> },
     {
       key: "cost",
       header: "Cost",
@@ -212,6 +212,13 @@ function EventSummaryCell({ row }: { row: EventRow }) {
     return <span className="text-warning">{failureSentenceFor(row.failure_label)}</span>;
   }
   return <span className="text-muted-foreground">No result recorded</span>;
+}
+
+function eventSummaryText(row: EventRow): string {
+  const preview = previewText(row.response_text);
+  if (preview) return preview;
+  if (row.failure_label) return failureSentenceFor(row.failure_label);
+  return "No result recorded";
 }
 
 function previewText(text: string | null): string {

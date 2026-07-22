@@ -218,6 +218,7 @@ describe("ApiKeyList component", () => {
   it("pagination shows when total exceeds the page size and Next re-fetches page 2", async () => {
     const user = userEvent.setup();
     await renderList(listResponse([ACTIVE], 30));
+    expect(screen.getByText("Page 1 of 2 · 30 keys")).toBeTruthy();
     const next = screen.getByRole("button", { name: /^next page$/i });
     await user.click(next);
     await waitFor(() =>

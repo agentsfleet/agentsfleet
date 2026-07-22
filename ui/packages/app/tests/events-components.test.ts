@@ -122,6 +122,19 @@ describe("EventsList — the standard workspace events table", () => {
     }
   });
 
+  it("sorts results by the normalized operator-facing summary", () => {
+    renderList({
+      items: [
+        row({ event_id: "failure", response_text: null, failure_label: "oom_kill" }),
+        row({ event_id: "response", response_text: "  Quiet   result ", failure_label: null }),
+      ],
+      next_cursor: null,
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Result" }));
+    expect(screen.getAllByRole("row")[1]?.textContent).toContain("Quiet result");
+  });
+
   it("renders a known FailureClass tag as a friendly label without its internal tag", () => {
     renderList({
       items: [

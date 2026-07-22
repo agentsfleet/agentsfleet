@@ -127,11 +127,17 @@ describe("RunnerList component", () => {
     const user = userEvent.setup();
     await renderList(listResponse([REGISTERED, ONLINE]));
     const hostSort = screen.getByRole("button", { name: "Host" });
+    let finishFirstLoad: ((result: { ok: true; data: RunnerListResponse }) => void) | undefined;
+    listRunnersActionMock.mockReturnValueOnce(new Promise<{ ok: true; data: RunnerListResponse }>((resolve) => {
+      finishFirstLoad = resolve;
+    }));
 
     await user.click(hostSort);
+    await waitFor(() => expect(hostSort.hasAttribute("disabled")).toBe(true));
     await user.click(hostSort);
     expect(listRunnersActionMock).toHaveBeenCalledTimes(1);
     await waitFor(() => expect(listRunnersActionMock).toHaveBeenLastCalledWith(expect.objectContaining({ sort: "host_id" })));
+    finishFirstLoad?.({ ok: true, data: listResponse([REGISTERED, ONLINE]) });
     await waitFor(() => expect(hostSort.hasAttribute("disabled")).toBe(false));
     await user.click(hostSort);
     await waitFor(() => expect(listRunnersActionMock).toHaveBeenLastCalledWith(expect.objectContaining({ sort: "-host_id" })));
@@ -180,6 +186,7 @@ describe("RunnerList component", () => {
     listRunnersActionMock.mockResolvedValue({ ok: true, data: listResponse([ONLINE], 30, 2) });
     const user = userEvent.setup();
     await renderList(listResponse([REGISTERED], 30));
+    expect(screen.getByText("Page 1 of 2 · 30 runners")).toBeTruthy();
     await user.click(screen.getByRole("button", { name: /^next page$/i }));
     await waitFor(() =>
       expect(listRunnersActionMock).toHaveBeenCalledWith(expect.objectContaining({ page: 2, page_size: 25 })),

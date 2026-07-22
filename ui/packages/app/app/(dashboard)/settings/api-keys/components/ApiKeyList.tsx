@@ -119,6 +119,7 @@ export default function ApiKeyList({
           page,
           pageSize: DEFAULT_PAGE_SIZE,
           total,
+          totalLabel: "keys",
           onPageChange: (nextPage) => loadPage({ page: nextPage }),
           isLoading: pending,
         }}
